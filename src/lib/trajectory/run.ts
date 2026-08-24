@@ -112,7 +112,8 @@ export interface TrajectoryRun {
   readonly warnings: readonly string[]
   // The only frame-access path. Sync for in-memory and same-thread indexed runs so scrubbing
   // needs no microtask; a Promise for worker/host runs. Rejects with the signal's reason when
-  // aborted and throws/rejects after dispose().
+  // aborted and throws/rejects after dispose(), except for frame 0, which is the in-memory
+  // `preview` and needs no resource.
   read_frame(frame_idx: number, signal?: AbortSignal): FrameResult
   // Present iff the run supports full-pass analyses (MSD/VACF/CNA/spectroscopy/trails)
   collect_positions?(options?: CollectPositionsOptions): Promise<TrajectoryPositionStream>
@@ -183,3 +184,72 @@ export const assert_frame_idx = (run: { frame_count: number }, frame_idx: number
 
 export const disposed_error = (what: string): Error =>
   new Error(`${what} was disposed; frames can no longer be read`)
+
+// What a same-thread run supplies on top of the shared fields: a synchronous frame decoder,
+// optionally a full-pass sweep, and the resources `release` lets go of on dispose
+export interface SyncRunSource extends Pick<
+  TrajectoryRun,
+  | `provenance`
+  | `properties`
+  | `time_step`
+  | `atom_masses`
+  | `signals`
+  | `metadata`
+  | `warnings`
+> {
+  // Names the run in the disposed error, e.g. `HDF5 trajectory`
+  label: string
+  frame_count: number
+  read: (frame_idx: number) => TrajectoryFrame
+  collect_positions?: (options: CollectPositionsOptions) => Promise<TrajectoryPositionStream>
+  release?: () => void
+}
+
+// The run contract over a synchronous frame source (memory, indexed text/ASE, open HDF5):
+// frame 0 is decoded once as the preview, every read is range-checked, and dispose is
+// idempotent, finishes the property stream and refuses further reads.
+export function sync_run(source: SyncRunSource): TrajectoryRun {
+  const { label, frame_count, read, collect_positions, release, ...fields } = source
+  if (!Number.isInteger(frame_count) || frame_count < 1) {
+    throw new Error(`Trajectory must have at least one frame, got ${frame_count}`)
+  }
+  const { time_step } = fields
+  if (
+    time_step &&
+    !(Number.isFinite(time_step.value) && time_step.value > 0 && time_step.unit)
+  ) {
+    throw new Error(
+      `time_step needs a positive value and a unit, got ${JSON.stringify(time_step)}`,
+    )
+  }
+  const preview = read(0)
+  let disposed = false
+  const live = (): void => {
+    if (disposed) throw disposed_error(label)
+  }
+  return {
+    ...fields,
+    frame_count,
+    preview,
+    read_frame: (frame_idx) => {
+      assert_frame_idx({ frame_count }, frame_idx)
+      if (frame_idx === 0) return preview
+      live()
+      return read(frame_idx)
+    },
+    ...(collect_positions
+      ? {
+          collect_positions: async (options = {}) => {
+            live()
+            return collect_positions(options)
+          },
+        }
+      : {}),
+    dispose: () => {
+      if (disposed) return
+      disposed = true
+      fields.properties.finish()
+      release?.()
+    },
+  }
+}

@@ -12,7 +12,6 @@ import {
   type ReferenceLineAxes,
   resolve_line_endpoints,
   solve_reference_annotations,
-  span_or,
 } from '$lib/plot/core/reference-line'
 import type { RefLine } from '$lib/plot/core/types'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
@@ -168,15 +167,6 @@ test(`normalize_point normalizes numeric and Date tuples`, () => {
   expect(normalize_point([10, 20])).toEqual([10, 20])
   const date = new Date(`2024-01-01`)
   expect(normalize_point([date, 100])).toEqual([date.getTime(), 100])
-})
-
-test(`span_or fills nullish span bounds from the range`, () => {
-  const range: Vec2 = [0, 100]
-  expect(span_or(undefined, range)).toEqual(range)
-  expect(span_or([20, 80], range)).toEqual([20, 80])
-  expect(span_or([null, 80], range)).toEqual([0, 80])
-  expect(span_or([20, null], range)).toEqual([20, 100])
-  expect(span_or([null, null], [10, 50])).toEqual([10, 50])
 })
 
 describe(`resolve_line_endpoints`, () => {

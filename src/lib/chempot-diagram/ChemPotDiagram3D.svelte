@@ -1,16 +1,16 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { is_editable_target, to_error } from '$lib/utils'
+  import { is_editable_target } from '$lib/utils'
   import { Filter } from 'svelte-widgets/icons'
-  import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
+  import { normalize_show_controls } from '$lib/controls'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
-  import { FullscreenButton, SettingsSection } from '$lib/layout'
+  import { SettingsSection, ViewerChrome } from '$lib/layout'
   import { ViewerPane } from '$lib/overlays'
   import type { Vec2, Vec3 } from '$lib/math'
   import {
@@ -22,7 +22,12 @@
     subtract,
   } from '$lib/math'
   import { ScatterPlot3DControls } from '$lib/plot'
-  import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
+  import {
+    create_renderer,
+    dispose_on_change,
+    type ThreltePointerEvent,
+    webgpu_available,
+  } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -36,16 +41,15 @@
   import { SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three/webgpu'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
-  import { compute_chempot_async } from './async-compute.svelte'
+  import { rescale_zoom_to_fit } from './camera'
+  import ChemPotControls from './ChemPotControls.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
-  import { get_domain_color_data } from './color'
-  import { rescale_zoom_to_fit } from './camera'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
-    CHEMPOT_COLOR_SCALE_OPTIONS,
-    create_chempot_overrides,
+    container_pointer,
+    create_chempot_state,
   } from './controls-state.svelte'
   import {
     export_glb_file,
@@ -61,9 +65,8 @@
     bbox_diagonal,
     build_axis_ranges,
     dedup_points,
+    entry_elements,
     get_3d_domain_simplexes_and_ann_loc,
-    get_energy_stats_by_formula,
-    get_min_entries_and_el_refs,
     get_ternary_combinations,
     get_visible_domain_labels,
     pad_domain_points,
@@ -71,15 +74,7 @@
     swizzle_to_render,
     type VisibleDomainLabel,
   } from './compute'
-  import { with_hover_pointer } from './pointer'
-  import { get_temp_filter_payload, get_valid_temperature } from './temperature'
-  import type {
-    ChemPotColorMode,
-    ChemPotDiagramConfig,
-    ChemPotDiagramData,
-    ChemPotHoverInfo,
-    ChemPotHoverInfo3D,
-  } from './types'
+  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotHoverInfo3D } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
@@ -100,16 +95,11 @@
   let {
     entries = [],
     config = {},
-    width = $bindable(800),
-    height = $bindable(600),
+    width = 800,
+    height = 600,
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    wrapper = $bindable(),
-    fullscreen = $bindable(false),
-    fullscreen_toggle = true,
-    controls_open = $bindable(false),
-    export_pane_open = $bindable(false),
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -117,55 +107,53 @@
     height?: number
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
-    // bindable: top-level wrapper element
-    wrapper?: HTMLDivElement
-    // bindable: fullscreen state
-    fullscreen?: boolean
-    // show/hide the fullscreen button
-    fullscreen_toggle?: boolean
-    // bindable: whether the controls pane is currently open
-    controls_open?: boolean
-    // bindable: whether the export pane is currently open
-    export_pane_open?: boolean
   } = $props()
+  let wrapper = $state<HTMLDivElement>()
+  let fullscreen = $state(false)
+  let controls_open = $state(false)
+  let export_pane_open = $state(false)
+  const controls_config = normalize_show_controls(undefined)
 
-  // Control overrides (override ?? config ?? default, cleared by Reset)
-  const overrides = create_chempot_overrides(
-    () => config,
-    [
-      `formal_chempots`,
-      `label_stable`,
-      `element_padding`,
-      `default_min_limit`,
-      `formulas_to_draw`,
-      `draw_formula_meshes`,
-      `draw_formula_lines`,
-      `color_mode`,
-      `color_scale`,
-      `reverse_color_scale`,
-    ],
-    { color_mode: `arity`, formulas_to_draw: [] },
-  )
-  const formal_chempots = $derived(overrides.resolve(`formal_chempots`))
-  const label_stable = $derived(overrides.resolve(`label_stable`))
-  const element_padding = $derived(overrides.resolve(`element_padding`))
-  const default_min_limit = $derived(overrides.resolve(`default_min_limit`))
-  const formulas_to_draw = $derived(overrides.resolve(`formulas_to_draw`))
-  const draw_formula_meshes = $derived(overrides.resolve(`draw_formula_meshes`))
-  const draw_formula_lines = $derived(overrides.resolve(`draw_formula_lines`))
-  const color_mode = $derived(overrides.resolve(`color_mode`))
-  const color_scale = $derived(overrides.resolve(`color_scale`))
-  const reverse_color_scale = $derived(overrides.resolve(`reverse_color_scale`))
-  const show_tooltip = $derived(config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip)
-  const tooltip_detail_level = $derived(
-    config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level,
-  )
+  const chempot = create_chempot_state({
+    entries: () => entries,
+    config: () => config,
+    temperature: { get: () => temperature, set: (value) => (temperature = value) },
+    min_elements: 3,
+    elements: () => (projection_elements.length === 3 ? projection_elements : config.elements),
+    formulas: () => render_domains.map((domain) => domain.formula),
+    extra_keys: [`formulas_to_draw`, `draw_formula_meshes`, `draw_formula_lines`],
+    custom_defaults: { color_mode: `arity`, formulas_to_draw: [] },
+    label: `ChemPotDiagram3D`,
+  })
+  const {
+    formal_chempots,
+    label_stable,
+    element_padding,
+    default_min_limit,
+    color_mode,
+    color_scale,
+    reverse_color_scale,
+    diagram_data,
+    computing: diagram_computing,
+    error: diagram_error,
+    entries: temp_filtered_entries,
+    has_temp_data,
+    available_temperatures,
+    energy_stats: entry_energy_stats_by_formula,
+    domain_colors,
+    color_range,
+  } = $derived(chempot)
+  const formulas_to_draw = $derived(chempot.resolve(`formulas_to_draw`))
+  const draw_formula_meshes = $derived(chempot.resolve(`draw_formula_meshes`))
+  const draw_formula_lines = $derived(chempot.resolve(`draw_formula_lines`))
   const formula_colors = $derived(
     config.formula_colors?.length ? config.formula_colors : CHEMPOT_DEFAULTS.formula_colors,
   )
 
   const formula_label_segments = (formula: string): FormulaLabelSegment[] =>
-    get_formula_label_segments(get_electro_neg_formula(formula, true, ``, `.3~s`))
+    get_formula_label_segments(
+      get_electro_neg_formula(formula, { plain_text: true, delim: ``, amount_format: `.3~s` }),
+    )
 
   function normalize_projection_triplet(
     maybe_triplet: string[] | undefined,
@@ -237,26 +225,9 @@
     return new THREE.Vector3(x_val, y_val, z_val)
   }
 
-  const { has_temp_data, available_temperatures, temp_filtered_entries } = $derived(
-    get_temp_filter_payload(entries, temperature, config),
-  )
-
-  // Keep bound temperature aligned with available data points.
-  $effect(() => {
-    const next_temperature = get_valid_temperature(temperature, available_temperatures)
-    if (next_temperature !== temperature) temperature = next_temperature
-  })
-
   // The chemical system comes from every entry, not the temperature slice: a slice can be
   // empty or miss an element, and the projection axes must stay selectable either way
-  const all_entry_elements = $derived.by(() => {
-    const elements = entries.flatMap((entry) =>
-      Object.entries(entry.composition)
-        .filter(([, amount]) => amount > 0)
-        .map(([element]) => element),
-    )
-    return Array.from(new Set(elements)).toSorted()
-  })
+  const all_entry_elements = $derived(entry_elements(entries))
   const has_multinary_system = $derived(all_entry_elements.length > 3)
   let projection_elements_override = $state<string[] | null>(null)
   const config_projection_elements = $derived(
@@ -273,49 +244,6 @@
       : null
     return override_projection ?? config_projection_elements ?? all_entry_elements.slice(0, 3)
   })
-  const effective_config = $derived({
-    ...config,
-    elements: projection_elements.length === 3 ? projection_elements : config.elements,
-    formal_chempots,
-    label_stable,
-    element_padding,
-    default_min_limit,
-    draw_formula_meshes,
-    draw_formula_lines,
-  })
-  // The previous diagram stays on screen (dimmed) while its replacement computes, so the
-  // <Canvas> and its camera survive temperature/padding/formal toggles instead of remounting
-  let diagram_data = $state<ChemPotDiagramData | null>(null)
-  let diagram_computing = $state(false)
-  let diagram_error = $state<string | null>(null)
-  $effect(() => {
-    if (temp_filtered_entries.length < 3) {
-      diagram_data = null
-      diagram_computing = false
-      diagram_error = null
-      return
-    }
-    let cancelled = false
-    diagram_computing = true
-    compute_chempot_async(temp_filtered_entries, effective_config)
-      .then((data) => {
-        if (cancelled) return
-        diagram_data = data.elements.length >= 3 ? data : null
-        diagram_error = null
-        diagram_computing = false
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.error(`ChemPotDiagram3D:`, err)
-        diagram_data = null
-        diagram_error = to_error(err).message
-        diagram_computing = false
-      })
-    return () => {
-      cancelled = true
-    }
-  })
-
   const plot_elements = $derived(diagram_data?.elements ?? projection_elements)
   const is_projection_mode = $derived(
     plot_elements.length > 0 &&
@@ -433,27 +361,6 @@
     render_domains.filter((domain) => !overlay_formulas.has(domain.formula)),
   )
 
-  const entry_energy_stats_by_formula = $derived(
-    get_energy_stats_by_formula(temp_filtered_entries),
-  )
-
-  // === Region coloring ===
-  // Raw (non-renormalized) elemental references for true DFT formation energies; the
-  // formal-chempot pipeline renormalizes its own refs to zero.
-  const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
-
-  const { colors: domain_colors, color_range } = $derived(
-    get_domain_color_data({
-      formulas: render_domains.map((domain) => domain.formula),
-      color_mode,
-      color_scale,
-      reverse_color_scale,
-      entries: temp_filtered_entries,
-      el_refs: raw_el_refs,
-      energy_stats: entry_energy_stats_by_formula,
-    }),
-  )
-
   // Stretch short axes (up to 4x) to improve screen-space utilization for highly anisotropic
   // systems. Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): Vec3 => {
@@ -556,19 +463,24 @@
     return geom
   })
 
-  // Build a single opaque convex hull mesh from ALL domain vertices for depth
-  // occlusion. This seamless surface writes to the depth buffer, hiding wireframe
-  // edges on the back side. Using all vertices together avoids gaps between domains.
-  const occlusion_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
+  // Coplanar-merged convex hull of the points in render coords; null for fewer than four
+  // distinct points or a degenerate hull (ConvexGeometry throws)
+  function render_hull_geometry(points_3d: number[][]): THREE.BufferGeometry | null {
+    const unique_points = dedup_3d(points_3d)
+    if (unique_points.length < 4) return null
     try {
-      const unique_points = dedup_3d(base_domains.flatMap((domain) => domain.points_3d))
-      if (unique_points.length < 4) return null
-      const vectors = unique_points.map((point) => to_vec3(point))
-      return merge_coplanar_geometry(new ConvexGeometry(vectors))
+      return merge_coplanar_geometry(new ConvexGeometry(unique_points.map(to_vec3)))
     } catch {
       return null
     }
-  })
+  }
+
+  // Build a single opaque convex hull mesh from ALL domain vertices for depth
+  // occlusion. This seamless surface writes to the depth buffer, hiding wireframe
+  // edges on the back side. Using all vertices together avoids gaps between domains.
+  const occlusion_hull_geometry = $derived(
+    render_hull_geometry(base_domains.flatMap((domain) => domain.points_3d)),
+  )
 
   // Non-indexed hull geometry with artificial closing faces removed.
   // The convex hull includes faces that close the diagram at the lower axis
@@ -856,11 +768,8 @@
   // by the "Surface" overlay quick-select. Computed on demand: it needs a convex hull plus
   // six raycasts per domain, and only a button click ever reads it.
   function get_surface_formulas(): string[] {
-    const unique_points = dedup_3d(render_domains.flatMap((domain) => domain.points_3d))
-    if (unique_points.length < 4) return render_domains.map((domain) => domain.formula)
-    const envelope = merge_coplanar_geometry(
-      new ConvexGeometry(unique_points.map((point) => to_vec3(point))),
-    )
+    const envelope = render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d))
+    if (!envelope) return render_domains.map((domain) => domain.formula)
     // Raycast from each domain's centroid outward -- if it hits the hull,
     // the centroid is inside (interior domain). Use multiple ray directions
     // and count: if most hit, the point is interior.
@@ -970,16 +879,9 @@
   )
 
   // Formula overlay meshes (convex hull surface, per formula)
-  const overlay_mesh_geometries = memo_overlay_geometry((domain) => {
-    if (domain.points_3d.length < 4) return null
-    const unique = dedup_3d(domain.points_3d)
-    if (unique.length < 4) return null
-    try {
-      return merge_coplanar_geometry(new ConvexGeometry(unique.map((pt) => to_vec3(pt))))
-    } catch {
-      return null // degenerate hull
-    }
-  })
+  const overlay_mesh_geometries = memo_overlay_geometry((domain) =>
+    render_hull_geometry(domain.points_3d),
+  )
   const formula_mesh_data = $derived(
     overlay_mesh_geometries(draw_formula_meshes ? overlay_domains : []),
   )
@@ -1048,16 +950,8 @@
       geom.computeVertexNormals()
       return { geometry: geom, n_vertices: 3 }
     }
-    try {
-      return {
-        geometry: merge_coplanar_geometry(
-          new ConvexGeometry(unique_points.map((point) => to_vec3(point))),
-        ),
-        n_vertices: unique_points.length,
-      }
-    } catch {
-      return null
-    }
+    const geometry = render_hull_geometry(unique_points)
+    return geometry && { geometry, n_vertices: unique_points.length }
   }
 
   // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
@@ -1309,7 +1203,7 @@
   })
 
   function reset_controls(): void {
-    overrides.reset()
+    chempot.reset()
     projection_elements_override = null
     formula_filter_query = ``
     reset_camera_view()
@@ -1342,7 +1236,7 @@
   }
 
   function toggle_formula_selection(formula: string): void {
-    overrides.set(
+    chempot.set(
       `formulas_to_draw`,
       overlay_formulas.has(formula)
         ? formulas_to_draw.filter((drawn) => drawn !== formula)
@@ -1351,12 +1245,12 @@
   }
 
   const select_surface_formulas = (): void =>
-    overrides.set(`formulas_to_draw`, get_surface_formulas())
+    chempot.set(`formulas_to_draw`, get_surface_formulas())
 
   function select_neighbor_formulas(): void {
     if (hover_info?.view !== `3d`) return
     const neighbors = domain_neighbors.get(hover_info.formula) ?? []
-    overrides.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
+    chempot.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
   }
 
   let png_dpi = $state(DEFAULT_PNG_DPI)
@@ -1437,12 +1331,11 @@
 
   let locked_hover_formula = $state<string | null>(null)
 
-  function set_hover_info(domain_data: HoverMesh, raw_event: unknown): void {
-    hover_info = with_hover_pointer<ChemPotHoverInfo>(
-      domain_data.info,
-      raw_event,
-      wrapper?.getBoundingClientRect() ?? null,
-    )
+  function set_hover_info(domain_data: HoverMesh, event: ThreltePointerEvent): void {
+    hover_info = {
+      ...domain_data.info,
+      pointer: container_pointer(event.nativeEvent, wrapper),
+    }
   }
 
   function clear_hover_lock(): void {
@@ -1450,28 +1343,21 @@
     hover_info = null
   }
 
-  function stop_phase_pointer_event(raw_event: unknown): void {
-    const event = raw_event as
-      | { nativeEvent?: { stopPropagation?: () => void }; stopPropagation?: () => void }
-      | null
-      | undefined
-    event?.stopPropagation?.()
-    event?.nativeEvent?.stopPropagation?.()
-  }
-
-  function handle_phase_hover(domain_data: HoverMesh, raw_event: unknown): void {
+  function handle_phase_hover(domain_data: HoverMesh, event: ThreltePointerEvent): void {
     if (locked_hover_formula && locked_hover_formula !== domain_data.formula) return
-    set_hover_info(domain_data, raw_event)
+    set_hover_info(domain_data, event)
   }
 
-  function toggle_phase_lock(domain_data: HoverMesh, raw_event: unknown): void {
-    stop_phase_pointer_event(raw_event)
+  // Stops both Threlte's dispatch to farther hits and the DOM event the wrapper listens to
+  function toggle_phase_lock(domain_data: HoverMesh, event: ThreltePointerEvent): void {
+    event.stopPropagation()
+    event.nativeEvent.stopPropagation()
     if (locked_hover_formula === domain_data.formula) {
       clear_hover_lock()
       return
     }
     locked_hover_formula = domain_data.formula
-    set_hover_info(domain_data, raw_event)
+    set_hover_info(domain_data, event)
   }
 
   function handle_phase_leave(domain_data: HoverMesh): void {
@@ -1482,7 +1368,7 @@
   const color_modes = CHEMPOT_COLOR_MODE_OPTIONS.map(([value]) => value)
   function cycle_color_mode(): void {
     const idx = color_modes.indexOf(color_mode)
-    overrides.set(`color_mode`, color_modes[(idx + 1) % color_modes.length])
+    chempot.set(`color_mode`, color_modes[(idx + 1) % color_modes.length])
   }
 </script>
 
@@ -1502,7 +1388,7 @@
     if (is_editable_target(event)) return
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
-    else if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
+    else if (event.key === `f`) fullscreen = !fullscreen
   }}
   onpointerdown={(event) => {
     const target = event.target
@@ -1514,7 +1400,12 @@
   onwheelcapture={mark_input}
   ondblclick={handle_dblclick}
 >
-  <section>
+  <ViewerChrome
+    {controls_config}
+    bind:fullscreen
+    {wrapper}
+    fullscreen_bg_css_var="--chempot-3d-bg-fullscreen"
+  >
     <ExportPane
       bind:export_pane_open
       bind:png_dpi
@@ -1533,7 +1424,7 @@
     >
       <h4>Formula Overlays</h4>
       <div class="overlay-actions">
-        <button type="button" onclick={() => overrides.set(`formulas_to_draw`, [])}>
+        <button type="button" onclick={() => chempot.set(`formulas_to_draw`, [])}>
           Clear
         </button>
         <button type="button" onclick={select_surface_formulas}>Surface</button>
@@ -1562,7 +1453,11 @@
                     formula_colors.length
                 ]}
               ></span>
-              {get_electro_neg_formula(formula, true, ``, `.3~s`)}
+              {get_electro_neg_formula(formula, {
+                plain_text: true,
+                delim: ``,
+                amount_format: `.3~s`,
+              })}
             </label>
           {/each}
         {/if}
@@ -1587,15 +1482,7 @@
       <SettingsSection
         title="ChemPot"
         current_values={{
-          formal_chempots,
-          label_stable,
-          element_padding,
-          default_min_limit,
-          draw_formula_meshes,
-          draw_formula_lines,
-          color_mode,
-          color_scale,
-          reverse_color_scale,
+          ...chempot.values,
           // a pinned camera is exactly the state Reset undoes, so it has to count as a change
           // or the affordance never appears for it
           camera_pinned: camera_position_override !== null,
@@ -1648,102 +1535,25 @@
             {/each}
           </div>
         {/if}
-        <div class="chempot-checks">
-          <label>
-            <input
-              type="checkbox"
-              checked={formal_chempots}
-              onchange={() => overrides.set(`formal_chempots`, !formal_chempots)}
-            /> Formal
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={label_stable}
-              onchange={() => overrides.set(`label_stable`, !label_stable)}
-            /> Labels
-          </label>
+        <ChemPotControls values={chempot} set={chempot.set}>
           <label>
             <input
               type="checkbox"
               checked={draw_formula_meshes}
-              onchange={() => overrides.set(`draw_formula_meshes`, !draw_formula_meshes)}
+              onchange={() => chempot.set(`draw_formula_meshes`, !draw_formula_meshes)}
             /> Meshes
           </label>
           <label>
             <input
               type="checkbox"
               checked={draw_formula_lines}
-              onchange={() => overrides.set(`draw_formula_lines`, !draw_formula_lines)}
+              onchange={() => chempot.set(`draw_formula_lines`, !draw_formula_lines)}
             /> Lines
           </label>
-        </div>
-        <div class="chempot-nums">
-          <label>
-            Pad (eV)
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={element_padding}
-              oninput={(event) =>
-                overrides.set(`element_padding`, Number(event.currentTarget.value))}
-            />
-          </label>
-          <label>
-            Min (eV)
-            <input
-              type="number"
-              max="0"
-              step="1"
-              value={default_min_limit}
-              oninput={(event) =>
-                overrides.set(`default_min_limit`, Number(event.currentTarget.value))}
-            />
-          </label>
-        </div>
-        <div class="pane-row">
-          <label for="chempot-color-mode">Color:</label>
-          <select
-            id="chempot-color-mode"
-            value={color_mode}
-            onchange={(event) =>
-              overrides.set(`color_mode`, event.currentTarget.value as ChemPotColorMode)}
-          >
-            {#each CHEMPOT_COLOR_MODE_OPTIONS as [value, label] (value)}
-              <option {value}>{label}</option>
-            {/each}
-          </select>
-        </div>
-        {#if color_mode !== `none` && color_mode !== `arity`}
-          <div class="pane-row">
-            <label for="chempot-color-scale">Scale:</label>
-            <select
-              id="chempot-color-scale"
-              value={color_scale}
-              onchange={(event) =>
-                overrides.set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
-            >
-              {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
-                <option {value}>{label}</option>
-              {/each}
-            </select>
-            <label>
-              <input
-                type="checkbox"
-                checked={reverse_color_scale}
-                onchange={() => overrides.set(`reverse_color_scale`, !reverse_color_scale)}
-              /> Rev
-            </label>
-          </div>
-        {/if}
+        </ChemPotControls>
       </SettingsSection>
     </ScatterPlot3DControls>
-
-    {#if fullscreen_toggle}
-      <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--chempot-3d-bg-fullscreen" />
-    {/if}
-  </section>
+  </ViewerChrome>
   {#if has_temp_data && temperature !== undefined}
     <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
   {/if}
@@ -1808,11 +1618,11 @@
       style="bottom: 16px; left: 1em"
     />
   {/if}
-  {#if show_tooltip && hover_info?.view === `3d`}
+  {#if chempot.show_tooltip && hover_info?.view === `3d`}
     <ChemPotTooltip
       {hover_info}
       pinned={locked_hover_formula === hover_info.formula}
-      detail_level={tooltip_detail_level}
+      detail_level={chempot.tooltip_detail_level}
       constrain_to={{ width: container_width, height: container_height }}
     />
   {/if}
@@ -1833,45 +1643,6 @@
   .chempot-diagram-3d:fullscreen {
     background: var(--chempot-3d-bg-fullscreen, var(--bg-color, #fff));
   }
-  .chempot-diagram-3d > section {
-    position: absolute;
-    top: 1ex;
-    right: 1ex;
-    display: flex;
-    gap: 8px;
-    z-index: 20;
-    opacity: 0;
-    transition: opacity 0.25s ease;
-    pointer-events: none;
-  }
-  .chempot-diagram-3d:hover > section,
-  .chempot-diagram-3d:focus-within > section,
-  .chempot-diagram-3d > section:has(:global(.pane-open)) {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  @media (hover: none) {
-    .chempot-diagram-3d > section {
-      opacity: 1;
-      pointer-events: auto;
-    }
-  }
-  .chempot-diagram-3d > section > :global(button),
-  .chempot-diagram-3d > section > :global(.pane-toggle) {
-    background: transparent;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    border-radius: 3px;
-    color: var(--text-color, currentColor);
-    transition: background-color 0.2s;
-    display: flex;
-    font-size: clamp(0.75em, 1.5cqmin, 1em);
-  }
-  .chempot-diagram-3d > section > :global(button:hover),
-  .chempot-diagram-3d > section > :global(.pane-toggle:hover) {
-    background-color: color-mix(in srgb, currentColor 8%, transparent);
-  }
   .chempot-diagram-3d :global(.chempot-temp-slider) {
     top: var(--chempot-temp-slider-top, calc(1ex + 108px));
     right: 4px;
@@ -1882,17 +1653,6 @@
     align-items: center;
     gap: 4pt;
     font-size: 0.9em;
-  }
-  .chempot-diagram-3d :global(.chempot-checks) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1ex;
-  }
-  .chempot-diagram-3d :global(.chempot-nums) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1ex;
-    margin: 4pt 0;
   }
   .chempot-diagram-3d :global(.projection-axes) {
     display: grid;
@@ -1986,9 +1746,6 @@
   .chempot-diagram-3d :global(.formula-empty) {
     font-size: 0.9em;
     opacity: 0.7;
-  }
-  .chempot-diagram-3d :global(.chempot-nums input[type='number']) {
-    width: 5em;
   }
   .chempot-diagram-3d :global(.draggable-pane select) {
     flex: 1;

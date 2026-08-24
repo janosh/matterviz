@@ -1,4 +1,10 @@
-import { build_orbit_props, mirror_scene_props, page_visibility } from '$lib/scene'
+import {
+  build_orbit_props,
+  mirror_scene_props,
+  page_visibility,
+  resolve_scene_controls,
+  SCENE_CONTROL_DEFAULTS,
+} from '$lib/scene'
 import { DEFAULTS } from '$lib/settings'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -69,6 +75,22 @@ describe(`build_orbit_props`, () => {
       expect(props.autoRotate).toBe(auto_rotate_on)
       expect(props.autoRotateSpeed).toBe(1.5) // resumes at full speed when shown
     })
+  })
+})
+
+describe(`resolve_scene_controls`, () => {
+  // Scenes forward their undestructured rest props, so an omitted prop arrives as undefined
+  // and must resolve to the structure viewer's default exactly like a Svelte prop default
+  test(`fills undefined props from the shared defaults and keeps explicit values`, () => {
+    const resolved = resolve_scene_controls({
+      rotate_speed: 3,
+      gizmo: false,
+      max_zoom: undefined,
+      camera_projection: `orthographic`,
+    })
+    expect(resolved).toEqual({ ...SCENE_CONTROL_DEFAULTS, rotate_speed: 3, gizmo: false })
+    expect(SCENE_CONTROL_DEFAULTS.fov).toBe(DEFAULTS.structure.fov)
+    expect(`camera_projection` in resolved).toBe(false) // per-viewer default, not shared
   })
 })
 

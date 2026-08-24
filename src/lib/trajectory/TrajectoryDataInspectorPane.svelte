@@ -1,26 +1,19 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
-  import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
+  import { format_num, trajectory_property_config } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import { type CellVal, HeatmapTable, type Label, type RowData } from '$lib/table'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Tabs } from 'svelte-widgets'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
-  import type {
-    TrajectoryFrame,
-    TrajectoryInspectorTab,
-    TrajectoryMetadata,
-    TrajectoryRun,
-  } from './index'
+  import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
 
   let {
     run,
     current_step_idx = 0,
     current_frame = null,
-    property_config = trajectory_property_config,
     on_step_change,
     on_site_select,
-    active_tab = $bindable(`frames`),
     pane_open = $bindable(false),
     ...pane_options
   }: ViewerPaneOptions & {
@@ -28,12 +21,13 @@
     current_step_idx?: number
     // Resolved frame for the atom tab. Lazy runs load frames on demand.
     current_frame?: TrajectoryFrame | null
-    property_config?: Record<string, TrajPropertyConfig>
     on_step_change?: (frame_idx: number) => void
     on_site_select?: (site_idx: number) => void
-    active_tab?: TrajectoryInspectorTab
     pane_open?: boolean
   } = $props()
+
+  // Per-frame scalars vs per-atom rows
+  let active_tab = $state<`frames` | `atoms`>(`frames`)
 
   const VEC3_AXES = [`x`, `y`, `z`] as const
   const FRAC_AXES = [`a`, `b`, `c`] as const
@@ -72,7 +66,9 @@
   // that labels the plot axes; per-atom keys, which that config never covers, take their
   // unit from SITE_PROPERTY_UNITS. `axis` splits a vec3 property into one column per axis.
   const property_column = (prop_name: string, axis?: string): Label => {
-    const config = property_config[prop_name] ?? property_config[prop_name.toLowerCase()]
+    const config =
+      trajectory_property_config[prop_name] ??
+      trajectory_property_config[prop_name.toLowerCase()]
     const label = axis ? `${prop_name} ${axis}` : (config?.label ?? prop_name)
     const unit = SITE_PROPERTY_UNITS[prop_name] ?? config?.unit
     return {

@@ -96,7 +96,7 @@ Series can have **different categories**: DFT (PBE) includes CdTe while GW only 
 
 Long category names no longer collide or waste most of the chart on a deep rotated-label gutter. `x`/`x2` tick labels default to `rotation: 'auto'`, which balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.
 
-Automatic wrapping uses at most three lines by default; set `tick.label.max_lines` to another limit or to `1` to disable wrapping. Labels that still need rotation trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force labels upright and unwrapped, or pass an explicit angle to override the automatic layout entirely:
+Automatic wrapping uses at most three lines by default; set `tick_label.max_lines` to another limit or to `1` to disable wrapping. Labels that still need rotation trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force labels upright and unwrapped, or pass an explicit angle to override the automatic layout entirely:
 
 ```svelte example
 <script lang="ts">
@@ -135,7 +135,7 @@ Automatic wrapping uses at most three lines by default; set `tick.label.max_line
   ])
   let x_axis = $derived({
     label: `Synthesis Route`,
-    tick: { label: { rotation, inside } },
+    tick_label: { rotation, inside },
   })
 </script>
 
@@ -322,7 +322,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
 
 ## Element Abundance in Earth's Crust
 
-Horizontal bars suit long category labels. `tick.label.inside` puts tick labels inside the plot for a tighter layout:
+Horizontal bars suit long category labels. `tick_label.inside` puts tick labels inside the plot for a tighter layout:
 
 ```svelte example
 <script lang="ts">
@@ -350,11 +350,11 @@ Horizontal bars suit long category labels. `tick.label.inside` puts tick labels 
   let inside = $state(false)
 
   // Categories sit on y when horizontal, on x when vertical, so the axis titles swap with it
-  let cat_axis = $derived({ label: `Element`, tick: { label: { inside } } })
+  let cat_axis = $derived({ label: `Element`, tick_label: { inside } })
   let val_axis = $derived({
     label: `Abundance (ppm)`,
     format: `~s`,
-    tick: { label: { inside } },
+    tick_label: { inside },
   })
 </script>
 
@@ -1144,7 +1144,7 @@ When comparing results from different computational methods or experimental tech
 
 <BarPlot
   bind:series
-  x_axis={{ label: `Material ID`, tick: { label: { show: false } } }}
+  x_axis={{ label: `Material ID` }}
   y_axis={{
     label: `${properties[y_key].label} (${properties[y_key].unit})`,
     options: y_options,
@@ -1363,7 +1363,7 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
 
 ## Adaptive Tick Strategies Under Pressure
 
-`tick.label.auto_layout` scores upright, wrapped, rotated, staggered, thinned, and ellipsized candidates against the measured container. Resize the plot and move the category axis between x and y to see the same strategy set adapt in both directions.
+`tick_label.auto_layout` scores upright, wrapped, rotated, staggered, thinned, and ellipsized candidates against the measured container. Resize the plot and move the category axis between x and y to see the same strategy set adapt in both directions.
 
 ```svelte example
 <script lang="ts">
@@ -1385,16 +1385,14 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
   let orientation = $state<`vertical` | `horizontal`>(`vertical`)
   const category_axis = {
     label: `Synthesis route used for the final experimental protocol`,
-    tick: {
-      label: {
-        auto_layout: {
-          strategies: [`upright`, `wrap`, `rotate`, `stagger`, `thin`, `ellipsis`] as const,
-          max_angle: 60,
-          max_band: 76,
-          min_visible_ticks: 3,
-          edge_gap: 6,
-          endpoint_policy: `adaptive` as const,
-        },
+    tick_label: {
+      auto_layout: {
+        strategies: [`upright`, `wrap`, `rotate`, `stagger`, `thin`, `ellipsis`] as const,
+        max_angle: 60,
+        max_band: 76,
+        min_visible_ticks: 3,
+        edge_gap: 6,
+        endpoint_policy: `adaptive` as const,
       },
     },
   }

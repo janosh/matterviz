@@ -15,7 +15,7 @@ import {
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import { format_num } from '$lib/labels'
-import { partition_point, type Vec2, type Vec3 } from '$lib/math'
+import { array_min, partition_point, type Vec2, type Vec3 } from '$lib/math'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
   Decomposition,
@@ -99,7 +99,10 @@ export function prepare_diagram(
         entry,
         label:
           entry.reduced_formula ??
-          format_composition_formula(reduced, sort_by_electronegativity, true, ``),
+          format_composition_formula(reduced, sort_by_electronegativity, {
+            plain_text: true,
+            delim: ``,
+          }),
         barycentric,
         xy: [0, 1].map((axis) =>
           barycentric.reduce(
@@ -389,7 +392,7 @@ function balance(
   products: ReactionSide,
 ): [ReactionSide, ReactionSide] {
   const all = [...reactants, ...products]
-  const base = Math.min(...all.map(({ coeff }) => coeff).filter((coeff) => coeff > 0)) || 1
+  const base = array_min(all.map(({ coeff }) => coeff).filter((coeff) => coeff > 0)) || 1
   let coeffs = all.map(({ coeff }) => coeff / base)
   for (let mult = 1; mult <= 24; mult++) {
     const scaled = coeffs.map((coeff) => coeff * mult)

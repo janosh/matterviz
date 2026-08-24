@@ -28,6 +28,14 @@ type IsoColormap = (typeof ISO_COLORMAPS)[number]
 
 export const DEFAULT_ISO_COLORMAP: IsoColormap = `interpolateViridis`
 
+// ColorScaleSelect props for picking one of ISO_COLORMAPS inside a compact settings grid
+// (isosurface layer colouring, Fermi surface property colouring)
+export const ISO_COLORMAP_SELECT_PROPS = {
+  options: [...ISO_COLORMAPS],
+  color_bar: { bar_style: `height: 8px`, title_style: `width: 4em; font-size: 1em;` },
+  liSelectedStyle: `width: 100%; margin: 0; padding: 0; background: transparent;`,
+}
+
 // A field counts as signed when it has significant values of both signs
 // (e.g. ESP, magnetization, orbitals) — drives diverging-colormap defaults.
 export const is_signed_range = (data_range: DataRange): boolean =>

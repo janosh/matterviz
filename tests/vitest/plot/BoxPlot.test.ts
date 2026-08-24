@@ -2,13 +2,22 @@ import { BoxPlot, type Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized, with_measured_text } from '../setup'
+import { bind_props, expect_plot_controls, mount_sized, with_measured_text } from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
     { length: count },
     (_, idx) => center + spread * Math.sin(idx * 1.7) + (idx % 5) * 0.1,
   )
+
+// Extract alternating x,y pixel coords from a violin path ("Mx,yLx,y...Z")
+const path_coords = (path_d: string): { xs: number[]; ys: number[] } => {
+  const nums = (path_d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) ?? []).map(Number)
+  return {
+    xs: nums.filter((_, idx) => idx % 2 === 0),
+    ys: nums.filter((_, idx) => idx % 2 === 1),
+  }
+}
 
 const basic: BoxPlotSeries = { y: dist(80, 0, 1), label: `Box A`, color: `steelblue` }
 
@@ -350,6 +359,59 @@ describe(`BoxPlot`, () => {
     expect(path?.getAttribute(`d`)).not.toContain(`NaN`)
   })
 
+  // the KDE grid covers exactly the observed support (no tail extension), so with min/max
+  // whiskers the violin's ends coincide with the whisker caps
+  test(`violin+box with minmax whiskers spans exactly the whisker range`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [basic],
+      kind: `violin+box`,
+      whisker_mode: `minmax`,
+    })
+    const first_series = plot.querySelector(`.box-series`)
+    const violin_y = path_coords(
+      first_series?.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``,
+    ).ys
+    const horizontal_lines = [...(first_series?.querySelectorAll(`line`) ?? [])]
+      .filter((line) => line.getAttribute(`y1`) === line.getAttribute(`y2`))
+      .map((line) => Number(line.getAttribute(`y1`)))
+    expect([Math.min(...violin_y), Math.max(...violin_y)]).toEqual([
+      Math.min(...horizontal_lines),
+      Math.max(...horizontal_lines),
+    ])
+  })
+
+  // side=positive must hug "above the center line" (horizontal, smaller screen y) /
+  // "right of it" (vertical, larger screen x) — the horizontal category pixel axis
+  // is inverted, so the rendered side flips
+  test.each([
+    [`horizontal`, -1],
+    [`vertical`, 1],
+  ] as const)(
+    `side=positive draws the violin hump on the positive side (%s)`,
+    async (orientation, sign) => {
+      const plot = await mount_sized_box_plot({
+        series: [{ y: dist(80, 5, 1), label: `A` }],
+        orientation,
+        side: `positive`,
+        kind: `violin+box`,
+      })
+      // whisker segments run along the value axis at the category center
+      const [c1, c2] = orientation === `horizontal` ? [`y1`, `y2`] : [`x1`, `x2`]
+      const whisker = [...plot.querySelectorAll(`.box-series line`)].find(
+        (ln) => ln.getAttribute(c1) === ln.getAttribute(c2),
+      )
+      const center = Number(whisker?.getAttribute(c1))
+      expect(Number.isFinite(center)).toBe(true)
+      const { xs, ys } = path_coords(
+        plot.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``,
+      )
+      // signed offsets from the center line: hump on the positive side, inner edge on it
+      const deltas = (orientation === `horizontal` ? ys : xs).map((px) => (px - center) * sign)
+      expect(Math.max(...deltas)).toBeGreaterThan(5)
+      expect(Math.min(...deltas)).toBeGreaterThanOrEqual(-1)
+    },
+  )
+
   test(`split violins share one category slot`, async () => {
     const series: BoxPlotSeries[] = [
       { y: dist(80, 0, 1), category: `X`, side: `negative`, label: `Left`, color: `#4e79a7` },
@@ -374,11 +436,14 @@ describe(`BoxPlot`, () => {
   })
 
   // on a log value axis, stats <= 0 (whisker_low is often exactly 0, outliers can be
-  // negative) must clamp to the log floor instead of rendering NaN coordinates
-  test(`log value axis renders finite coordinates when data includes zero`, async () => {
+  // negative) must clamp to the log floor instead of rendering NaN coordinates, and the KDE
+  // grid must clamp to the smallest positive sample (its tail would otherwise map to NaN
+  // pixels and a LOG_EPS-polluted auto range would squash the violin to a few px)
+  test(`log value axis renders finite box glyphs and a full-height violin`, async () => {
     const plot = await mount_sized_box_plot({
-      series: [{ y: [0, 1, 2, 5, 10, 100], label: `Z` }],
+      series: [{ y: [0, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 10, 15], label: `Z` }],
       y_axis: { scale_type: `log` },
+      kind: `violin+box`,
     })
     const attrs = [...plot.querySelectorAll(`.box-series line, .box-series rect`)].flatMap(
       (el) => [...el.attributes].map((attr) => attr.value),
@@ -388,6 +453,27 @@ describe(`BoxPlot`, () => {
       attrs.some((val) => val.includes(`NaN`)),
       `no NaN in box glyphs`,
     ).toBe(false)
+    const path = plot.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``
+    expect(path.length).toBeGreaterThan(0)
+    expect(path).not.toContain(`NaN`)
+    const { ys } = path_coords(path)
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(100)
+  })
+
+  test(`forwards controls props and the controls_open binding`, async () => {
+    expect.hasAssertions()
+    const controls_state = { controls_open: true }
+    const plot = await mount_sized_box_plot(
+      bind_props(
+        {
+          series: [basic],
+          controls_toggle_props: { 'data-testid': `box-toggle` },
+          controls_pane_props: { 'data-testid': `box-pane` },
+        },
+        controls_state,
+      ),
+    )
+    await expect_plot_controls(plot, controls_state, `box`)
   })
 
   test(`controls pane: Box / violin reset reverts changed settings to defaults`, async () => {

@@ -20,7 +20,8 @@
     constrain_to: { width: number; height: number }
   } = $props()
 
-  const label = (formula: string): string => get_electro_neg_formula(formula, true, ``, `.3~s`)
+  const label = (formula: string): string =>
+    get_electro_neg_formula(formula, { plain_text: true, delim: ``, amount_format: `.3~s` })
   const fmt = (value: number): string => format_num(value, `.4~g`)
 </script>
 

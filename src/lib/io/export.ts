@@ -1,5 +1,6 @@
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { download } from '$lib/io/fetch'
+import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
 import { to_error } from '$lib/utils'
@@ -437,7 +438,7 @@ export function observe_canvas_presence(
 // Estimate VP9 video bitrate (bits/s) from pixel count and frame rate.
 // VP9 needs ~0.1 bits per pixel per frame for good quality; clamped to [1, 200] Mbps.
 export const estimate_video_bitrate = (pixel_count: number, fps: number): number =>
-  Math.max(1_000_000, Math.min(pixel_count * fps * 0.1, 200_000_000))
+  clamp(pixel_count * fps * 0.1, 1_000_000, 200_000_000)
 
 // Generate FFmpeg command for WebM to MP4 conversion
 export function get_ffmpeg_conversion_command(input_filename: string): string {

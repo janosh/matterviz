@@ -297,8 +297,7 @@ export function sample_hkl_slice(
   const unit_normal = math.normalize_vec(plane_normal)
   const corners = cell_corners(volume, UNIT_CELL_RANGE)
   const projections = corners.map((corner) => math.dot(corner, unit_normal))
-  const normal_min = Math.min(...projections)
-  const normal_max = Math.max(...projections)
+  const [normal_min, normal_max] = math.array_extent(projections)
 
   // Plane position: fractional distance [0,1] along the normal extent
   const d_cartesian = normal_min + distance * (normal_max - normal_min)

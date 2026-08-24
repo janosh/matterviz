@@ -5,6 +5,7 @@
     resolve_computed_color,
   } from '$lib/colors'
   import type { Vec2 } from '$lib/math'
+  import { clamp01 } from '$lib/utils'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import type { Orientation } from '$lib/plot/core/types'
   import { contours as create_contours } from 'd3-contour'
@@ -53,8 +54,7 @@
     const [range_start, range_end] = resolved_color_range
     const span = range_end - range_start
     return (value: number): string => {
-      const normalized =
-        span === 0 ? 0.5 : Math.max(0, Math.min(1, (value - range_start) / span))
+      const normalized = span === 0 ? 0.5 : clamp01((value - range_start) / span)
       return interpolator(normalized)
     }
   })

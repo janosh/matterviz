@@ -5,6 +5,7 @@
   import { dispose_on_change, type ThreltePointerEvent } from '$lib/scene'
   import Cylinder from '$lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
+  import { DoubleSide } from 'three/webgpu'
   import { polyhedron_geometry } from './geometry'
   import type { BrillouinZoneData } from './types'
 
@@ -33,7 +34,13 @@
 <!-- Faces can be absent (all degenerate); the edges still outline the polyhedron -->
 {#if geometry}
   <T.Mesh {geometry} {onpointermove} {onpointerleave}>
-    <T.MeshStandardMaterial {color} transparent {opacity} side={2} depthWrite={false} />
+    <T.MeshStandardMaterial
+      {color}
+      transparent
+      {opacity}
+      side={DoubleSide}
+      depthWrite={false}
+    />
   </T.Mesh>
 {/if}
 {#each polyhedron.edges as [from, to], edge_idx (edge_idx)}

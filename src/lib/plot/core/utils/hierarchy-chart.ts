@@ -22,7 +22,7 @@ import type {
   PositionedArc,
   SunburstLabelText,
   SunburstNodeHandlerProps,
-} from '$lib/plot/sunburst/sunburst'
+} from '$lib/plot/core/utils/hierarchy-layout'
 
 // === Labels ===
 

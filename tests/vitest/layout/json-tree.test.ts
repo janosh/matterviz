@@ -232,6 +232,44 @@ describe(`folding`, () => {
     },
   )
 
+  // 250 children: a first page, a second full page, then a 50-entry remainder
+  const wide = (prefix: string) =>
+    Object.fromEntries(
+      Array.from({ length: 250 }, (_, idx) => [`key${idx}`, `${prefix}${idx}`]),
+    )
+  const rendered_children = () =>
+    document.querySelectorAll(`.json-node[data-path^="key"]`).length
+  const more_labels = () =>
+    [...document.querySelectorAll(`.more-children button`)].map((btn) =>
+      btn.textContent?.trim(),
+    )
+
+  it(`mounts long containers in pages of 100 that grow by a page or to the whole list`, async () => {
+    mount_tree({ value: wide(`v`), default_fold_level: 5, auto_fold_objects: Infinity })
+    expect(rendered_children()).toBe(100)
+    expect(more_labels()).toEqual([`Show 100 more`, `Show all 250`])
+    // the last rendered child is not the container's last, so it keeps its comma
+    expect(node_at(`key99`)?.querySelector(`.comma`)).not.toBeNull()
+
+    await click_and_tick(document.querySelector(`.more-children button`))
+    expect(rendered_children()).toBe(200)
+    expect(more_labels()).toEqual([`Show 50 more`])
+
+    await click_and_tick(document.querySelector(`.more-children button`))
+    expect(rendered_children()).toBe(250)
+    expect(more_labels()).toEqual([])
+    expect(node_at(`key249`)?.querySelector(`.comma`)).toBeNull()
+  })
+
+  it(`a search match past the rendered page extends the page up to it`, async () => {
+    mount_tree({ value: wide(`val`), default_fold_level: 5, auto_fold_objects: Infinity })
+    expect(node_at(`key230`)).toBeNull()
+    await type_search(`val230`, `1 of 1`)
+    expect(node_at(`key230`)?.classList.contains(`current-match`)).toBe(true)
+    expect(rendered_children()).toBe(231)
+    expect(more_labels()).toEqual([`Show 19 more`])
+  })
+
   it(`clicking a collapsed key expands it, clicking an expanded key copies its value`, async () => {
     const write_text = mock_clipboard_write()
     mount_tree({ value: { nested: { deep: 42 } }, show_header: false, default_fold_level: 1 })

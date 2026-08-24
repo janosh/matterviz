@@ -1,20 +1,18 @@
+import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import type * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import {
+  capitalize_symbol,
   cart_to_frac_with_fallback,
   make_lattice,
-  matrix3x3_from_rows,
   parse_float_token,
 } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import type { TrajectoryFrame, TrajectoryPositionStream } from './index'
 import type { WarnFn } from './parse/shared'
-
-// Numeric/element helpers shared with the structure parsers live in structure/parsers/shared
-export { parse_float_token } from '$lib/structure/parsers/shared'
 
 // Number of values in one sample of the given shape (1 for a scalar)
 export const values_per_sample = (shape: number[]): number =>
@@ -30,15 +28,39 @@ export const is_supported_trajectory_signal_shape = (
     ((sample_shape[0] === 3 && sample_shape[1] === 3) ||
       (sample_shape[0] === n_atoms && sample_shape[1] === 3)))
 
-export const validate_3x3_matrix = (data: unknown): math.Matrix3x3 =>
-  matrix3x3_from_rows(data, `lattice matrix`)
-
 export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
   numbers.map((num) => {
     const symbol = Number.isInteger(num) ? ELEM_SYMBOLS[num - 1] : undefined
     if (!symbol) throw new Error(`Unknown atomic number in trajectory data: ${num}`)
     return symbol
   })
+
+// Element symbol of a species token as written (`Fe`) or case-mangled (`FE`, `fe`); undefined
+// for anything else (`X`, `Type1`)
+export const elem_symbol_from_token = (token: string): ElementSymbol | undefined =>
+  coerce_elem_symbol(token) ?? coerce_elem_symbol(capitalize_symbol(token))
+
+// "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl] (XDATCAR header, vaspout/vaspwave ion_types)
+export const expand_ion_types = (
+  ion_types: readonly string[],
+  ion_counts: readonly number[],
+): ElementSymbol[] => {
+  if (ion_types.length !== ion_counts.length) {
+    throw new Error(
+      `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
+    )
+  }
+  return ion_types.flatMap((symbol, type_idx) => {
+    if (!is_elem_symbol(symbol)) {
+      throw new Error(`Unknown element symbol in ion_types: ${symbol}`)
+    }
+    const ion_count = ion_counts[type_idx]
+    if (!Number.isInteger(ion_count) || ion_count < 0) {
+      throw new Error(`Invalid ion count for ${symbol}: ${ion_count}`)
+    }
+    return Array<ElementSymbol>(ion_count).fill(symbol)
+  })
+}
 
 export const create_structure = (
   positions: number[][],

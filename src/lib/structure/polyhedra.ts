@@ -21,11 +21,15 @@ interface PolyhedraOptions {
   excluded_center_elements?: readonly string[] // per-element off-toggles
   included_center_elements?: readonly string[] // force-include (bypasses spectator/weak hiding + max_neighbors cap)
   electronegativity_margin?: number // vertex must be > center EN + margin
-  distance_factor?: number // vertices kept within shortest-bond * (1 + factor)
-  weak_bond_norm?: number // species with mean bond dist / covalent-radii sum above this
-  // are hidden when a strongly-bound framework species exists (e.g. lone-pair Bi3+)
-  volume_eps?: number // hulls below this volume (Å³) are skipped as degenerate
 }
+
+// Vertices are kept within shortest-bond * (1 + DISTANCE_FACTOR) of the center
+const DISTANCE_FACTOR = 0.3
+// Species whose mean bond dist / covalent-radii sum exceeds this are hidden when a
+// strongly-bound framework species exists (e.g. lone-pair Bi3+)
+const WEAK_BOND_NORM = 1.15
+// Hulls below this volume (A^3) are skipped as degenerate
+const VOLUME_EPS = 1e-3
 
 interface ConvexHullResult {
   vertices: Vec3[] // deduped subset of input points on the hull
@@ -433,9 +437,6 @@ export function compute_polyhedra(
     excluded_center_elements = [],
     included_center_elements = [],
     electronegativity_margin = 0,
-    distance_factor = 0.3,
-    weak_bond_norm = 1.15,
-    volume_eps = 1e-3,
   } = options
   const { sites } = structure
   if (sites.length === 0 || bonds.length === 0) return []
@@ -538,7 +539,7 @@ export function compute_polyhedra(
     // Trim over-long bonds relative to the shortest anion bond (VESTA-like local
     // cutoff): keeps distorted/Jahn-Teller octahedra intact but rejects e.g. a 5th
     // oxygen at 2.5 Å around P whose true tetrahedron has 1.5 Å bonds
-    const cutoff = min_dist * (1 + distance_factor)
+    const cutoff = min_dist * (1 + DISTANCE_FACTOR)
     const vertex_site_idxs: number[] = []
     const vertex_positions: Vec3[] = []
     let [norm_sum, norm_count] = [0, 0]
@@ -592,10 +593,10 @@ export function compute_polyhedra(
     return entry ? entry.sum / entry.count : null
   }
   const has_strong_species = [...norm_by_species.keys()].some(
-    (el) => (species_norm(el) ?? Infinity) <= weak_bond_norm && !is_spectator_center(el),
+    (el) => (species_norm(el) ?? Infinity) <= WEAK_BOND_NORM && !is_spectator_center(el),
   )
   const is_weak_species = (el: ElementSymbol): boolean =>
-    has_strong_species && (species_norm(el) ?? 0) > weak_bond_norm
+    has_strong_species && (species_norm(el) ?? 0) > WEAK_BOND_NORM
 
   const visible = candidates.filter(({ element }) => {
     if (included.has(element)) return true
@@ -630,7 +631,7 @@ export function compute_polyhedra(
     seen_positions.add(pos_key)
 
     const hull = convex_hull_3d(vertex_positions)
-    if (hull.faces.length === 0 || hull.volume < volume_eps) continue
+    if (hull.faces.length === 0 || hull.volume < VOLUME_EPS) continue
 
     polyhedra.push({
       center_site_idx: site_idx,

@@ -34,16 +34,12 @@
     children?: Snippet<[HoveredData]>
   } = $props()
 
-  // Get the first normalized band structure for path calculations
-  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict. A
-  // malformed pymatgen input throws from normalization; the nested Bands reports it, so the
-  // k-path just stays empty here.
+  // First normalized band structure, for the k-path. A malformed pymatgen input throws from
+  // normalization; the nested Bands reports it, so the k-path just stays empty here.
   let first_band_struct = $derived.by((): BaseBandStructure | null => {
     try {
       return helpers.normalize_band_structure(
-        `qpoints` in (band_structs as object) || `kpoints` in (band_structs as object)
-          ? band_structs
-          : Object.values(band_structs)[0],
+        helpers.band_struct_entries(band_structs)[0]?.[1],
       )
     } catch {
       return null

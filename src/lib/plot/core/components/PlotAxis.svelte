@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { format_tick_values } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
   import {
@@ -13,6 +12,7 @@
     invalidate_text_metrics_after_fonts_ready,
     resolve_font_spec,
   } from '$lib/plot/core/text-metrics'
+  import type { TicksOption } from '$lib/plot/core/scales'
   import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
   import type { AxisConfig } from '$lib/plot/core/types'
   import { DEFAULT_GRID_STYLE } from '$lib/plot/core/types'
@@ -33,7 +33,7 @@
     height,
     show_grid = false,
     show_baseline = true,
-    tick_label,
+    label_ticks,
     tick_color,
     domain,
     unit_on_first_tick = false,
@@ -52,7 +52,8 @@
     height: number
     show_grid?: boolean
     show_baseline?: boolean // axis spine line (ScatterPlot omits it)
-    tick_label?: (tick: number) => string | null | undefined // custom/categorical label
+    // Tick label source overriding `axis.ticks` (categorical axes label their slots)
+    label_ticks?: TicksOption
     tick_color?: (tick: number) => string | undefined // per-tick label color (else axis.color)
     domain?: Vec2 // when set, cull off-plot ticks and hide out-of-domain labels
     unit_on_first_tick?: boolean // append axis.unit after the first tick label (ScatterPlot)
@@ -64,11 +65,7 @@
   } = $props()
 
   const is_x = $derived(side === `x` || side === `x2`)
-  const inside = $derived(axis.tick?.label?.inside ?? false)
-  const tick_texts = $derived.by(() => {
-    const formatted_ticks = format_tick_values(ticks, axis.format)
-    return ticks.map((tick, tick_idx) => tick_label?.(tick) ?? formatted_ticks[tick_idx] ?? ``)
-  })
+  const inside = $derived(axis.tick_label?.inside ?? false)
   const tick_positions = $derived(ticks.map(place))
   const plot_w = $derived(Math.max(0, width - pad.l - pad.r))
   const plot_h = $derived(Math.max(0, height - pad.b - pad.t))
@@ -98,13 +95,14 @@
       mounted = false
     }
   })
-  // Resolved through the same helper calc_auto_padding uses, so the band reserved for these
-  // labels always matches the angle they actually render at.
+  // Resolved through the same helper calc_auto_padding uses (which also formats the labels), so
+  // the band reserved for these labels always matches the angle they actually render at.
   const tick_layout = $derived(
     resolve_tick_layout(
       {
         ...axis,
-        tick_values: tick_texts,
+        ticks: label_ticks ?? axis.ticks,
+        tick_values: ticks,
         tick_positions,
         // Tick labels may use outer padding; constrain their ends to the SVG, not plot area.
         axis_extent: is_x ? { start: 0, end: width } : { start: height, end: 0 },
@@ -115,8 +113,8 @@
     ),
   )
   const rotation = $derived(tick_layout.rotation)
-  const shift_x = $derived(axis.tick?.label?.shift?.x ?? 0)
-  const shift_y = $derived(axis.tick?.label?.shift?.y ?? 0)
+  const shift_x = $derived(axis.tick_label?.shift?.x ?? 0)
+  const shift_y = $derived(axis.tick_label?.shift?.y ?? 0)
   const stroke = $derived(axis.color || `var(--border-color, gray)`)
   const text_fill = $derived(axis.color || `var(--text-color)`)
   const axis_y = $derived(side === `x` ? height - pad.b : pad.t) // baseline y for x/x2

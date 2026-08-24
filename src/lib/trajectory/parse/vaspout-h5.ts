@@ -17,10 +17,10 @@
 // VASP 6.x schema definitions).
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import type * as h5wasm from 'h5wasm'
-import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import { create_trajectory_frame, expand_ion_types } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import {
-  expand_ion_types,
   is_hdf5_group,
   read_dataset,
   scale_matrix,
@@ -248,7 +248,10 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     forces: unknown,
     frame_scale: number, // traj_scale for ion-dynamics steps, scale for the final structure
   ) => {
-    const lattice = scale_matrix(validate_3x3_matrix(lattice_data), frame_scale)
+    const lattice = scale_matrix(
+      matrix3x3_from_rows(lattice_data, `lattice matrix`),
+      frame_scale,
+    )
     const frac_to_cart = create_frac_to_cart(lattice)
     const positions = frac_positions.map((frac) => frac_to_cart(frac as Vec3))
     const metadata: Record<string, unknown> = { ...scf_frame_metadata(scf) }

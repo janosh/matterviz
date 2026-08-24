@@ -28,14 +28,22 @@ export function suggest_analysis_frame_stride(
 }
 
 export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
-  // Names the analysis in the error a frame-at-a-time run raises, e.g. `MSD`
+  // Names the analysis in the errors below, e.g. `MSD`
   analysis_name: string
+  // Frames the analysis needs at all (2 for a displacement, 3 for a central difference)
+  min_frames?: number
 }
 
-export const collect_trajectory_positions = (
+// Async so the guards below reject like a failing sweep does, and one catch covers both
+export const collect_trajectory_positions = async (
   run: TrajectoryRun,
-  { analysis_name, ...options }: CollectTrajectoryPositionsOptions,
+  { analysis_name, min_frames = 1, ...options }: CollectTrajectoryPositionsOptions,
 ): Promise<TrajectoryPositionStream> => {
+  if (run.frame_count < min_frames) {
+    throw new Error(
+      `${analysis_name}: need at least ${min_frames} frames, got ${run.frame_count}`,
+    )
+  }
   if (!run.collect_positions) throw new Error(no_full_pass_message(run, analysis_name))
   return run.collect_positions(options)
 }

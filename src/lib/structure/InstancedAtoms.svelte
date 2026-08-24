@@ -9,6 +9,7 @@
   // one interactivity registration) per atom, which made structure changes on
   // supercells block the main thread for seconds and hover raycasts O(n²).
   import type { Vec3 } from '$lib/math'
+  import { set_linear_css_color } from '$lib/scene/colors'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import {
@@ -130,27 +131,17 @@
   })
 
   const gray = new Color(0x999999)
+  const scratch_color = new Color()
   let colored_mesh: InstancedMesh | null = null
   $effect(() => {
     const current = mesh
     if (!current || (positions_only && current === colored_mesh)) return
     const limit = Math.min(atoms.length, current.count)
-    // Color.set(string) parses CSS with regexes. Atoms draw from a handful of distinct
-    // colors, so resolve each one once per update instead of once per atom (>10k here).
-    // Plain Map: a scratch cache scoped to this effect run, so reactive entries would only
-    // add a signal per color.
-    const resolved = new Map<string | undefined, Color>()
-    const resolve_color = (color: string | undefined): Color => {
-      let hit = resolved.get(color)
-      if (!hit) {
-        hit = color === undefined ? gray.clone() : new Color(color)
-        resolved.set(color, ghost ? hit.lerp(gray, 0.4) : hit)
-      }
-      return hit
-    }
+    // set_linear_css_color caches the CSS parse per distinct color (a handful here, >10k atoms)
     for (let idx = 0; idx < limit; idx++) {
-      const { color } = atoms[idx]
-      current.setColorAt(idx, resolve_color(color))
+      set_linear_css_color(atoms[idx].color ?? `#999999`, scratch_color)
+      if (ghost) scratch_color.lerp(gray, 0.4)
+      current.setColorAt(idx, scratch_color)
     }
     if (current.instanceColor) current.instanceColor.needsUpdate = true
     colored_mesh = current

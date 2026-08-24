@@ -104,7 +104,7 @@
     {/if}
 
     <label>
-      <span {@attach tooltip()} title={tooltips?.symprec}>Precision</span>
+      <span {@attach tooltip()} title={tooltips.symprec}>Precision</span>
       <input
         type="number"
         step={symprec_step}
@@ -119,7 +119,7 @@
       />
     </label>
     <label>
-      <span {@attach tooltip()} title={tooltips?.algo}>Algorithm</span>
+      <span {@attach tooltip()} title={tooltips.algo}>Algorithm</span>
 
       <select
         value={settings.algo}
@@ -141,35 +141,35 @@
     {@const stat_tiles = [
       {
         label: `Space Group`,
-        title: `${tooltips?.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${tooltips?.hermann_mauguin}`,
+        title: `${tooltips.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${tooltips.hermann_mauguin}`,
         value: `${sym_data.number} (${display_hm_symbol})`,
       },
       {
         label: `Crystal System`,
-        title: tooltips?.crystal_system,
+        title: tooltips.crystal_system,
         value: crystal_system_label,
       },
       {
         label: `Hall Number`,
-        title: tooltips?.hall_number,
+        title: tooltips.hall_number,
         value: `${sym_data.hall_number}${
           current_setting ? ` (${current_setting.hall_symbol})` : ``
         }`,
       },
-      { label: `Pearson`, title: tooltips?.pearson_symbol, value: sym_data.pearson_symbol },
+      { label: `Pearson`, title: tooltips.pearson_symbol, value: sym_data.pearson_symbol },
       {
         label: `Wyckoff Positions`,
-        title: tooltips?.distinct_orbits,
+        title: tooltips.distinct_orbits,
         value: occupied_rows.length,
       },
       wyckoff_seq && {
         label: `Wyckoff Sequence`,
-        title: tooltips?.wyckoff_sequence,
+        title: tooltips.wyckoff_sequence,
         value: wyckoff_seq,
       },
       free_params !== null && {
         label: `Free Parameters`,
-        title: tooltips?.free_params,
+        title: tooltips.free_params,
         value: free_params,
       },
     ].filter((tile) => typeof tile === `object`)}
@@ -190,7 +190,7 @@
     </div>
     {#if settings_entries.length > 1}
       <details class="settings-explorer">
-        <summary title={tooltips?.settings} {@attach tooltip()}>
+        <summary title={tooltips.settings} {@attach tooltip()}>
           {settings_entries.length} settings of space group {sym_data.number}
         </summary>
         <table>

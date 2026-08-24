@@ -90,6 +90,7 @@
   } from '$lib/plot/core/fill-utils'
   import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
+  import { resolve_plot_display } from '$lib/plot/core/display.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import { stride_sample } from '$lib/plot/core/layout'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
@@ -118,7 +119,8 @@
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
-    display = $bindable(DEFAULTS.plot.display),
+    // Clone so the controls' checkbox writes never mutate the shared DEFAULTS
+    display = $bindable({ ...DEFAULTS.plot.display }),
     styles: styles_init = {},
     show_controls = $bindable(true),
     controls_open = $bindable(false),
@@ -310,7 +312,7 @@
   // Time axes only differ in range nicing; their scales are linear over epoch milliseconds
   const is_time_x = $derived(is_time_scale(final_x_axis.scale_type))
   const is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type))
-  const final_display = $derived({ ...DEFAULTS.plot.display, ...display })
+  const final_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
   // untrack() explicitly captures initial prop value (intentional - props provide initial config)
@@ -622,7 +624,9 @@
   // Marker appearance shared by the canvas and SVG paths so they can't drift. Everything that
   // is constant across a series (control overrides, defaults, scales, the plot colour) is read
   // once here; the returned closure only touches the point's own style/colour/size. Reading
-  // those reactive values per point cost more than all the geometry at 100k points.
+  // those reactive values per point cost more than all the geometry at 100k points. It
+  // builds the CanvasMarker directly (position + opacity included) so the canvas path
+  // allocates one object per point instead of an appearance object spread into a marker.
   const series_appearance = (series_data: FilteredSeries) => {
     const series_idx = series_data.orig_series_idx ?? 0
     const control_touched = applies_style_controls(series_data) ? touched : null
@@ -651,10 +655,18 @@
       DEFAULTS.scatter.point
     const [size_fn, color_fn] = [size_scale_fn, color_scale_fn]
     return {
-      appearance_of: (point: InternalPoint<Metadata>) => {
+      marker_of: (
+        point: InternalPoint<Metadata>,
+        cx = 0,
+        cy = 0,
+        opacity = 1,
+      ): CanvasMarker => {
         const pt = point.point_style
         const stroke = ctrl_stroke ?? pt?.stroke
         return {
+          cx,
+          cy,
+          opacity,
           radius: is_finite_num(point.size_value)
             ? size_fn(point.size_value)
             : (ctrl_radius ?? pt?.radius ?? default_radius),
@@ -757,14 +769,14 @@
     const markers: CanvasMarker[] = []
     for (const series_data of filtered_series) {
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
-      const { appearance_of, canvas_safe } = series_appearance(series_data)
+      const { marker_of, canvas_safe } = series_appearance(series_data)
       const project = series_projector(series_data)
       const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
       for (const point of series_data.filtered_data) {
         if (!canvas_safe(point)) return null
         if (needs_static_svg_overlay(point, selected)) continue
         const [cx, cy] = project.point(point)
-        markers.push({ cx, cy, opacity, ...appearance_of(point) })
+        markers.push(marker_of(point, cx, cy, opacity))
       }
     }
     return markers
@@ -1450,13 +1462,13 @@
           {@const rendered_points = use_canvas_markers
             ? (svg_overlay_points_by_series[series_pos] ?? [])
             : series_data.filtered_data}
-          {@const { appearance_of } = series_appearance(series_data)}
+          {@const { marker_of } = series_appearance(series_data)}
           {@const project = series_projector(series_data)}
           <g data-series-id={series_data._id}>
             {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
               {@const [cx, cy] = project.point(point)}
               {@const offset = point.point_offset ?? ZERO_OFFSET}
-              {@const appearance = appearance_of(point)}
+              {@const appearance = marker_of(point)}
               <ScatterPoint
                 x={cx - offset.x}
                 y={cy - offset.y}

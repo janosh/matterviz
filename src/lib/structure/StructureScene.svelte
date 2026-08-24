@@ -12,9 +12,8 @@
   import {
     bind_renderer,
     brighten_hex,
-    build_orbit_props,
     create_fly_to,
-    create_orthographic_zoom,
+    create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
     SceneCamera,
     SceneLights,
@@ -68,6 +67,7 @@
   } from '$lib/structure/partial-occupancy'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
+  import { rgb } from 'd3-color'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
@@ -229,7 +229,7 @@
     orbit_controls = $bindable(),
     rotation_target_ref = $bindable(),
     initial_computed_zoom = $bindable(),
-    hidden_elements = $bindable(new SvelteSet()),
+    hidden_elements = new SvelteSet(),
     hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
@@ -420,7 +420,7 @@
   // off-screen viewport every frame — once per pane in the 2x2 multi-side view.
   const pulse = create_pulse_animation(
     () => selected_sites.length > 0 || active_sites.length > 0,
-    { step: 0.015, frequency: 5, element: () => threlte.renderer?.domElement },
+    { step: 0.015, element: () => threlte.renderer?.domElement },
   )
   let pulse_opacity = $derived(pulsing_highlight_opacity(pulse.unit))
 
@@ -1089,7 +1089,9 @@
   // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
   let char_atom_spacing = $derived.by(() => {
     if (!lattice || !structure?.sites?.length) return structure_size
-    const n_real = structure.sites.filter((site) => !is_image_site(site)).length
+    // counted, not filtered: this re-runs on every trajectory frame of a supercell
+    let n_real = 0
+    for (const site of structure.sites) if (!is_image_site(site)) n_real += 1
     return n_real > 0 ? Math.cbrt(lattice.volume / n_real) : structure_size
   })
 
@@ -1127,12 +1129,33 @@
     fit_zoom = next_fit_zoom
     initial_computed_zoom = next_fit_zoom
   })
-  const ortho_zoom = create_orthographic_zoom({
+  const scene_camera = create_scene_camera({
+    controls: () => ({
+      camera_projection,
+      rotate_speed,
+      zoom_speed,
+      zoom_to_cursor,
+      pan_speed,
+      auto_rotate,
+      rotation_damping,
+      min_zoom,
+      max_zoom,
+    }),
+    target: () => camera_target ?? rotation_target,
     fit_zoom: () => fit_zoom,
-    min_zoom: () => min_zoom,
-    max_zoom: () => max_zoom,
     measured: () => width > 0 && height > 0,
     camera: () => camera,
+    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+    // Close hover tooltips + bond context menu while the camera moves. Only hide the
+    // VISIBLE menu (not bond_context_target): clicking a menu button fires this
+    // orbit-controls start handler before the button's own handler runs, which still
+    // needs the target bond to apply the edit (see bond_context_target comment).
+    on_start_extra: () => {
+      cancel_atom_hover_clear()
+      hovered_idx = null
+      hovered_bond_key = null
+      bond_context_menu = null
+    },
   })
 
   $effect.pre(() => {
@@ -1145,7 +1168,7 @@
       const next_fit_zoom = zoom_for(fit_extent)
       fit_zoom = next_fit_zoom
       initial_computed_zoom = next_fit_zoom
-      ortho_zoom.reset_to_fit()
+      scene_camera.reset_to_fit()
       // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
       const distance =
         camera_projection === `perspective`
@@ -1601,17 +1624,17 @@
     return targets
   })
 
-  // Interpolate between spin-down (#3498db blue) and spin-up (#e74c3c red)
-  // based on the z-component direction of a magnetic vector
+  // sRGB blend from spin-down blue to spin-up red by the z-component direction of a magnetic
+  // vector (0 = down, 1 = up; a zero vector sits in the middle)
+  const [spin_down_rgb, spin_up_rgb] = [rgb(`#3498db`), rgb(`#e74c3c`)]
   function spin_direction_color(vec: Vec3): string {
     const mag = Math.hypot(...vec)
-    const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5 // 0=down, 1=up
-    const red = Math.round(52 + (231 - 52) * z_frac)
-    const grn = Math.round(152 + (76 - 152) * z_frac)
-    const blu = Math.round(219 + (60 - 219) * z_frac)
-    return `#${red.toString(16).padStart(2, `0`)}${grn
-      .toString(16)
-      .padStart(2, `0`)}${blu.toString(16).padStart(2, `0`)}`
+    const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5
+    return rgb(
+      math.lerp(spin_down_rgb.r, spin_up_rgb.r, z_frac),
+      math.lerp(spin_down_rgb.g, spin_up_rgb.g, z_frac),
+      math.lerp(spin_down_rgb.b, spin_up_rgb.b, z_frac),
+    ).formatHex()
   }
 
   // Build one arrow layer per visible vector key. Auto-scales the longest
@@ -1832,33 +1855,6 @@
       : [],
   )
 
-  let orbit_controls_props = $derived(
-    build_orbit_props({
-      camera_projection,
-      target: camera_target ?? rotation_target,
-      rotate_speed,
-      zoom_speed,
-      zoom_to_cursor,
-      pan_speed,
-      auto_rotate,
-      rotation_damping,
-      // zoom limits (the initial fit may sit below the interaction floor for large structures)
-      // plus the gesture-end sync that keeps the user's zoom as the resize baseline
-      ...ortho_zoom.orbit_zoom_props(),
-      set_camera_is_moving: (moving) => (camera_is_moving = moving),
-      // Close hover tooltips + bond context menu while the camera moves. Only hide the
-      // VISIBLE menu (not bond_context_target): clicking a menu button fires this
-      // orbit-controls start handler before the button's own handler runs, which still
-      // needs the target bond to apply the edit (see bond_context_target comment).
-      on_start_extra: () => {
-        cancel_atom_hover_clear()
-        hovered_idx = null
-        hovered_bond_key = null
-        bond_context_menu = null
-      },
-    }),
-  )
-
   // Hovered site's bonded neighbours for the tooltip, e.g. `3 (N: 2, O: 1)`; null when none
   let hovered_bond_summary = $derived.by((): string | null => {
     if (hovered_idx === null || !structure?.sites) return null
@@ -1934,10 +1930,10 @@
   {camera_projection}
   position={camera_position}
   fov={effective_fov}
-  zoom={ortho_zoom.zoom}
+  zoom={scene_camera.zoom}
   near={camera_near}
   far={camera_far}
-  orbit_props={orbit_controls_props}
+  orbit_props={scene_camera.orbit_props}
   {gizmo}
   bind:orbit_controls
 />

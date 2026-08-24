@@ -3,9 +3,8 @@
 // used by the convex-hull demo. Loaded lazily: vite-plugin-json-gz decompresses at build time
 // and each glob entry becomes its own chunk.
 import type { PhaseData } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
 import type { FileInfo } from '$lib/io'
-import { hull_system_name, quaternary_loader } from '$site/convex-hull'
+import { filter_by_elements, hull_system_name, quaternary_loader } from '$site/convex-hull'
 
 const alexandria_files = import.meta.glob<{ default: PhaseData[] }>(`./*.json.gz`, {
   eager: false,
@@ -25,15 +24,6 @@ const CATEGORIES: Record<string, [category: string, icon: string]> = {
   'Fe-Cr-O': [`Alloy oxidation`, `🔩`],
   'Cu-Zn-O': [`Alloy oxidation`, `🔩`],
   'Ti-N-O': [`Nitrides`, `🛡️`],
-}
-
-const filter_by_elements = (entries: PhaseData[], elements: string[]): PhaseData[] => {
-  const element_set = new Set(elements)
-  return entries.filter((entry) =>
-    (Object.keys(entry.composition) as ElementSymbol[])
-      .filter((el) => (entry.composition[el] ?? 0) > 0)
-      .every((el) => element_set.has(el)),
-  )
 }
 
 export interface TernarySystemFile extends FileInfo {

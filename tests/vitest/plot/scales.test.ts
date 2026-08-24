@@ -182,6 +182,21 @@ describe(`scales`, () => {
       },
     )
 
+    // a log axis given a non-positive bound (explicit negative min, all data <= 0) must still
+    // come out ascending and strictly positive instead of the inverted [LOG_EPS, 0]
+    test.each([
+      { values: [0, 0], limits: [-5, null] as [number | null, number | null] },
+      { values: [-3, -1], limits: [-2, 0] as [number | null, number | null] },
+      { values: [-3, 1], limits: [-2, null] as [number | null, number | null] },
+    ])(
+      `log range stays positive and ascending for $values with limits $limits`,
+      ({ values, limits }) => {
+        const [lo, hi] = nice_range(values, limits, `log`, 0.05)
+        expect(lo).toBeGreaterThan(0)
+        expect(hi).toBeGreaterThan(lo)
+      },
+    )
+
     // an observed zero edge snaps to exactly 0 despite padding; an all-zero range still widens
     test.each([
       { xs: [0, 4.7], padding: 0.05, check: ([min, max]: Vec2) => min === 0 && max >= 4.7 },

@@ -3,7 +3,7 @@
 // Lives here (not in parse.ts) so format parsers can use it without importing
 // their own dispatcher.
 import type { ElementSymbol } from '$lib/element'
-import { coerce_elem_symbol, FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element/helpers'
+import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type {
@@ -238,6 +238,20 @@ export const parsed_result = (
 // Normalize a raw symbol to element casing (`FE` -> `Fe`), as written by PDB/MOL2 files
 export const capitalize_symbol = (raw: string): string =>
   raw ? raw[0].toUpperCase() + raw.slice(1).toLowerCase() : ``
+
+// Default element symbols used when a file omits or mangles element info
+export const FALLBACK_ELEMENTS = [
+  `H`,
+  `He`,
+  `Li`,
+  `Be`,
+  `B`,
+  `C`,
+  `N`,
+  `O`,
+  `F`,
+  `Ne`,
+] as const
 
 // Validate element symbol and provide fallback
 export function validate_element_symbol(symbol: string, index: number): ElementSymbol {

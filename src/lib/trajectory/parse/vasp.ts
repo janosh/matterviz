@@ -1,10 +1,10 @@
 // VASP XDATCAR trajectory parsing
-import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
+import { parse_float_token } from '$lib/structure/parsers/shared'
 import { lines_cursor, parse_vasp_header } from '$lib/structure/parsers/vasp-header'
-import { create_trajectory_frame, parse_float_token } from '$lib/trajectory/helpers'
+import { create_trajectory_frame, expand_ion_types } from '$lib/trajectory/helpers'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 // The XDATCAR header is the POSCAR one minus the coordinate-mode line, because its
@@ -31,13 +31,7 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
   if (!parsed.ok) throw new Error(parsed.error)
   const { elements: element_names, counts: element_counts } = parsed.header
   let lattice_matrix = parsed.header.lattice
-
-  // "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl]
-  const expand_element_counts = (
-    names: readonly ElementSymbol[],
-    counts: readonly number[],
-  ): ElementSymbol[] => names.flatMap((name, idx) => Array(counts[idx]).fill(name))
-  let elements = expand_element_counts(element_names, element_counts)
+  let elements = expand_ion_types(element_names, element_counts)
 
   const frames: TrajectoryFrame[] = []
   let line_idx = header_end
@@ -59,7 +53,7 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
       if (repeat.ok && end === config_idx) {
         lattice_matrix = repeat.header.lattice
         frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-        elements = expand_element_counts(repeat.header.elements, repeat.header.counts)
+        elements = expand_ion_types(repeat.header.elements, repeat.header.counts)
       }
     }
 

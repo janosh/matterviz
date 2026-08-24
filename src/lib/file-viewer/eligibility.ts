@@ -2,9 +2,15 @@ import {
   BINARY_VIEWER_EXT_REGEX,
   COMPRESSION_EXTENSIONS_REGEX,
   CONFIG_DIRS_REGEX,
+  ext_regex,
+  filename_token_regex,
   HDF5_EXT_REGEX,
+  STRUCTURE_EXTENSIONS,
+  TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS_REGEX,
+  VASP_STRUCTURE_FILES,
   VASP_VOLUMETRIC_REGEX,
+  XYZ_EXTENSIONS,
 } from '$lib/constants'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '$lib/file-viewer/types'
 import { detect_compression_format, is_stream_compression_format } from '$lib/io/decompress'
@@ -49,10 +55,14 @@ export const is_matterviz_filename = (filename: unknown): boolean => {
 }
 
 // Conservative auto-open list: only unambiguous structure / trajectory / volumetric /
-// Fermi filenames. No JSON/YAML/XML, no keyword+.log/.out/.dat/.data heuristics.
-const AUTO_RENDER_EXT_RE =
-  /\.(?:cif|mcif|mmcif|xyz|extxyz|poscar|vasp|cube|pdb|mol|mol2|sdf|lmp|dump|traj|xtc|lammpstrj)$/i
-const AUTO_RENDER_VASP_NAME_RE = /(?:^|[\\/_.-])(?:poscar|contcar|xdatcar)(?:[\\/_.-]|$)/i
+// Fermi filenames. No JSON/YAML/XML, no keyword+.log/.out/.dat/.data heuristics; `.data` is
+// left out because it is as often a LAMMPS data file as anything else.
+const AUTO_RENDER_EXT_RE = ext_regex([
+  ...STRUCTURE_EXTENSIONS.filter((ext) => ext !== `.data`),
+  ...XYZ_EXTENSIONS,
+  ...TRAJ_EXTENSIONS,
+])
+const AUTO_RENDER_VASP_NAME_RE = filename_token_regex([...VASP_STRUCTURE_FILES, `xdatcar`])
 
 export const is_auto_renderable_filename = (filename: unknown): boolean => {
   const normalized = normalize_eligible_filename(filename)

@@ -1,14 +1,32 @@
+import * as math from '$lib/math'
+import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import {
   convert_atomic_numbers,
+  copy_numeric_fields,
   create_trajectory_frame,
-  validate_3x3_matrix,
   values_per_sample,
 } from '$lib/trajectory/helpers'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
+import type { TrajectoryFrame, TrajectoryMetadata } from '$lib/trajectory/index'
 import { to_error } from '$lib/utils'
 import type { ParsedTrajectory } from './shared'
 
-const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
+// A frame JSON header this large can only be a corrupt offsets table pointing into payload
+// bytes (a real header is a few KB)
+const MAX_ASE_HEADER_BYTES = 50 * 1024 * 1024
+
+const ASE_PLOT_SCALARS = [
+  `energy`,
+  `potential_energy`,
+  `kinetic_energy`,
+  `total_energy`,
+  `force_max`,
+  `force_norm`,
+  `stress_max`,
+  `stress_frobenius`,
+  `pressure`,
+  `temperature`,
+  `bandgap`,
+]
 
 export const read_ase_header = (view: DataView): { n_items: number; offsets_pos: number } => ({
   n_items: Number(view.getBigInt64(32, true)),
@@ -137,7 +155,7 @@ export function decode_ase_frame(
     throw new Error(`missing ${!numbers ? `numbers` : `positions`}`)
   }
 
-  const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
+  const cell = frame_data.cell ? matrix3x3_from_rows(frame_data.cell, `ASE cell`) : undefined
   const frame = create_trajectory_frame(
     positions,
     convert_atomic_numbers(numbers),
@@ -149,44 +167,98 @@ export function decode_ase_frame(
   return { frame, numbers }
 }
 
-export function parse_ase_trajectory(buffer: ArrayBuffer): ParsedTrajectory {
-  const view = new DataView(buffer)
+// The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
+// first frame's atomic numbers are cached because ASE writes them once) and `property_row`
+// reads a frame's plot scalars off its JSON header alone. `release` drops the buffer.
+export interface AseFrames {
+  frame_count: number
+  decode: (frame_idx: number) => TrajectoryFrame
+  property_row: (frame_idx: number) => TrajectoryMetadata
+  release: () => void
+}
 
-  const signature = new TextDecoder().decode(new Uint8Array(buffer, 0, 8))
-  if (signature !== `- of Ulm`) throw new Error(`Invalid ASE trajectory`)
-
-  const { n_items, offsets_pos } = read_ase_header(view)
-
+export function open_ase_frames(data: ArrayBuffer): AseFrames {
+  const decoder = new TextDecoder()
+  if (data.byteLength < 48 || decoder.decode(new Uint8Array(data, 0, 8)) !== `- of Ulm`) {
+    throw new Error(`Invalid ASE trajectory`)
+  }
+  const { n_items, offsets_pos } = read_ase_header(new DataView(data))
   if (n_items <= 0) throw new Error(`Invalid frame count`)
-  if (offsets_pos < 0 || offsets_pos + n_items * 8 > buffer.byteLength) {
+  if (offsets_pos < 0 || offsets_pos + n_items * 8 > data.byteLength) {
     throw new Error(
-      `Invalid ASE frame offsets table bounds: offsets_pos=${offsets_pos}, n_items=${n_items}, byte_length=${buffer.byteLength}`,
+      `Invalid ASE frame offsets table bounds: offsets_pos=${offsets_pos}, n_items=${n_items}, byte_length=${data.byteLength}`,
     )
   }
-
-  const frame_offsets = Array.from({ length: n_items }, (_, idx) =>
-    Number(view.getBigInt64(offsets_pos + idx * 8, true)),
-  )
-
-  const frames: TrajectoryFrame[] = []
-  let global_numbers: number[] | undefined
-
-  // ASE rewrites the ULM header only after a frame is fully written, so every frame the
-  // offsets table points at should decode; one that does not is corruption, not a torn tail.
-  for (let idx = 0; idx < n_items; idx++) {
+  let source: { buffer: ArrayBuffer; view: DataView } | null = {
+    buffer: data,
+    view: new DataView(data),
+  }
+  const live = (): { buffer: ArrayBuffer; view: DataView } => {
+    if (!source) throw new Error(`ASE trajectory buffer was released`)
+    return source
+  }
+  const frame_offset = (frame_idx: number): number =>
+    Number(live().view.getBigInt64(offsets_pos + frame_idx * 8, true))
+  const frame_error = (frame_idx: number, offset: number, error: unknown): Error =>
+    new Error(
+      `ASE trajectory frame ${frame_idx} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
+      { cause: error },
+    )
+  let numbers: number[] | undefined
+  const decode = (frame_idx: number): TrajectoryFrame => {
+    if (frame_idx > 0 && !numbers) decode(0)
+    const offset = frame_offset(frame_idx)
     try {
-      const { frame, numbers } = decode_ase_frame(view, buffer, frame_offsets[idx], idx, {
-        fallback_numbers: global_numbers,
-        max_json_length: MAX_SAFE_STRING_LENGTH,
+      const { buffer, view } = live()
+      const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
+        fallback_numbers: numbers,
+        max_json_length: MAX_ASE_HEADER_BYTES,
       })
-      global_numbers = numbers
-      frames.push(frame)
+      numbers = decoded.numbers
+      return decoded.frame
     } catch (error) {
-      throw new Error(
-        `ASE trajectory frame ${idx} of ${n_items} (byte offset ${frame_offsets[idx]}): ${to_error(error).message}`,
-        { cause: error },
-      )
+      throw frame_error(frame_idx, offset, error)
     }
   }
+  const property_row = (frame_idx: number): TrajectoryMetadata => {
+    const offset = frame_offset(frame_idx)
+    const { buffer, view } = live()
+    const json_length = Number(view.getBigInt64(offset, true))
+    if (!(json_length >= 0 && json_length <= MAX_ASE_HEADER_BYTES)) {
+      throw frame_error(frame_idx, offset, `declares a ${json_length} byte header`)
+    }
+    const header = new Uint8Array(buffer, offset + 8, json_length)
+    const frame_data: Record<string, unknown> = JSON.parse(decoder.decode(header))
+    // ASE puts computed results in the calculator and user-set values in `info`, but which
+    // scalar lands where is up to whoever wrote the file, so both sections get every alias
+    const properties: Record<string, number> = {}
+    for (const section of [ase_calculator_data(frame_data), frame_data.info]) {
+      if (section && typeof section === `object`) {
+        copy_numeric_fields(properties, section as Record<string, unknown>, ASE_PLOT_SCALARS)
+      }
+    }
+    if (frame_data.cell) {
+      properties.volume = Math.abs(
+        math.det_3x3(matrix3x3_from_rows(frame_data.cell, `ASE cell`)),
+      )
+    }
+    return { frame_number: frame_idx, step: frame_idx, properties }
+  }
+  return {
+    frame_count: n_items,
+    decode,
+    property_row,
+    release: () => {
+      source = null
+    },
+  }
+}
+
+// Every frame materialised. ASE rewrites the ULM header only after a frame is fully written,
+// so every frame the offsets table points at should decode; one that does not is
+// corruption, not a torn tail.
+export function parse_ase_trajectory(buffer: ArrayBuffer): ParsedTrajectory {
+  const { frame_count, decode } = open_ase_frames(buffer)
+  const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => decode(frame_idx))
   return { format: `ase`, frames, metadata: {} }
 }

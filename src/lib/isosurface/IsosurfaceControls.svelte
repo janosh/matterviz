@@ -10,7 +10,11 @@
   import { clamp, type Vec2 } from '$lib/math'
   import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { auto_color_config, DEFAULT_ISO_COLORMAP, ISO_COLORMAPS } from './coloring'
+  import {
+    auto_color_config,
+    DEFAULT_ISO_COLORMAP,
+    ISO_COLORMAP_SELECT_PROPS,
+  } from './coloring'
   import type { DisplayRange } from './sampling'
   import { compare_volume_grids } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
@@ -349,16 +353,11 @@
             {@const explicit_range = layer.color_range}
             {@const auto_colormap = auto_color_config(color_vol.data_range).colormap}
             <ColorScaleSelect
-              options={[...ISO_COLORMAPS]}
+              {...ISO_COLORMAP_SELECT_PROPS}
               value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
               selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
               onadd={({ option }) =>
                 update_layer(layer_idx, { colormap: option as D3InterpolateName })}
-              color_bar={{
-                bar_style: `height: 8px`,
-                title_style: `width: 4em; font-size: 1em;`,
-              }}
-              liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}
             />

@@ -221,7 +221,7 @@ export const worker_run = (
     ...fields,
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)
-      if (frame_idx === 0 && !disposed_reason) return summary.preview
+      if (frame_idx === 0) return summary.preview
       return rpc<TrajectoryFrame>(`read_frame`, [frame_idx], signal)
     },
     ...(summary.has_collect_positions

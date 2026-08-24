@@ -1,7 +1,8 @@
 import GasPressureControls from '$lib/convex-hull/GasPressureControls.svelte'
+import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
 import type { GasSpecies, GasThermodynamicsConfig } from '$lib/convex-hull/types'
 import { flushSync, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 const mount_controls = (
   config: GasThermodynamicsConfig,
@@ -42,9 +43,7 @@ describe(`GasPressureControls`, () => {
 
   test(`one slider per enabled gas with subscripted formula and formatted default pressure`, () => {
     mount_controls({ enabled_gases: [`O2`, `CO2`, `CO`], pressures: { CO: 1e-6 } })
-    expect(document.querySelector(`.pressure-controls`)?.classList.contains(`top-right`)).toBe(
-      true,
-    )
+    expect(document.querySelectorAll(`.pressure-slider`)).toHaveLength(3)
     expect([...document.querySelectorAll(`.gas-name`)].map((name) => name.innerHTML)).toEqual([
       `O<sub>2</sub>`,
       `CO<sub>2</sub>`,
@@ -88,5 +87,57 @@ describe(`GasPressureControls`, () => {
     fire(text_input(`H2`), `change`, typed)
     expect(state.pressures).toEqual({ H2: 0.5 })
     expect(text_input(`H2`)?.value).toBe(`0.50`)
+  })
+})
+
+// TemperatureSlider shares VerticalSlider with the gas controls: its range input runs over
+// indices into the tabulated temperatures and drags commit at most every 100 ms
+describe(`TemperatureSlider`, () => {
+  const available_temperatures = [300, 400, 500, 600, 700, 800, 900]
+  const mount_slider = (temperature = 300) => {
+    const state = $state({ temperature })
+    mount(TemperatureSlider, {
+      target: document.body,
+      props: {
+        available_temperatures,
+        get temperature() {
+          return state.temperature
+        },
+        set temperature(value) {
+          state.temperature = value
+        },
+      },
+    })
+    return state
+  }
+  const range = () =>
+    document.querySelector<HTMLInputElement>(`.temperature-slider input[type="range"]`)
+  const readout = () =>
+    document.querySelector<HTMLInputElement>(`.temperature-slider input[type="number"]`)
+  afterEach(() => vi.useRealTimers())
+
+  test(`slider index maps to the tabulated temperature; drags preview and throttle commits`, () => {
+    vi.useFakeTimers({ now: 1000 })
+    const state = mount_slider(500)
+    expect(range()?.value).toBe(`2`)
+    expect(range()?.max).toBe(`6`)
+    fire(range(), `input`, `3`) // first drag sample commits
+    expect(state.temperature).toBe(600)
+    fire(range(), `input`, `5`) // within the throttle window: readout previews, no commit
+    expect(state.temperature).toBe(600)
+    expect(readout()?.value).toBe(`800`)
+    vi.setSystemTime(1200)
+    fire(range(), `input`, `4`)
+    expect(state.temperature).toBe(700)
+    fire(range(), `change`, `6`) // release always commits and drops the preview
+    expect(state.temperature).toBe(900)
+    expect(readout()?.value).toBe(`900`)
+  })
+
+  test(`typed temperature snaps to the closest tabulated value`, () => {
+    const state = mount_slider(300)
+    fire(readout(), `change`, `640`)
+    expect(state.temperature).toBe(600)
+    expect(range()?.value).toBe(`3`)
   })
 })

@@ -2,8 +2,7 @@
 // LazyTrajectorySource whose `dispose` closes the handle; this wraps it in the run contract.
 import type { LazyTrajectorySource } from '../parse/shared'
 import {
-  assert_frame_idx,
-  disposed_error,
+  sync_run,
   TrajectoryProperties,
   type TrajectoryProvenance,
   type TrajectoryRun,
@@ -15,16 +14,10 @@ export const hdf5_run = (
   warnings: readonly string[],
 ): TrajectoryRun => {
   const { frame_count, time_step, atom_masses, signals, metadata } = source
-  if (frame_count < 1) throw new Error(`HDF5 trajectory has no frames`)
-  const preview = source.read_frame(0)
-  let disposed = false
-  const live = (): LazyTrajectorySource => {
-    if (disposed) throw disposed_error(`HDF5 trajectory`)
-    return source
-  }
-  return {
+  return sync_run({
+    label: `HDF5 trajectory`,
     frame_count,
-    preview,
+    read: source.read_frame,
     provenance: { ...provenance, format: source.format },
     properties: new TrajectoryProperties(source.properties, true),
     time_step,
@@ -32,21 +25,13 @@ export const hdf5_run = (
     signals,
     metadata,
     warnings,
-    read_frame: (frame_idx) => {
-      assert_frame_idx({ frame_count }, frame_idx)
-      return frame_idx === 0 ? preview : live().read_frame(frame_idx)
-    },
     // Sync hyperslab reads: there is no frame loop to report progress from, so the one
     // stage announces itself and the result follows
-    collect_positions: async ({ on_progress, signal, ...options } = {}) => {
+    collect_positions: async ({ on_progress, signal, ...options }) => {
       signal?.throwIfAborted()
       on_progress?.({ current: 0, total: 100, stage: `Reading HDF5 datasets` })
-      return live().collect_positions(options)
+      return source.collect_positions(options)
     },
-    dispose: () => {
-      if (disposed) return
-      disposed = true
-      source.dispose?.()
-    },
-  }
+    release: source.dispose,
+  })
 }

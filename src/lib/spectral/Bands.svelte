@@ -12,10 +12,10 @@
   import * as helpers from '$lib/spectral/helpers'
   import {
     convert_frequencies,
-    FREQUENCY_UNITS,
     frequency_unit_label,
     parse_frequency_unit,
   } from '$lib/spectral/frequency-units'
+  import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import type {
     BandLineStyle,
     BandsSpinMode,
@@ -129,20 +129,8 @@
     key: string
   }
 
-  // A single structure is recognised by its marker fields (matterviz: qpoints + branches;
-  // pymatgen: @class/@module with qpoints/kpoints + bands); anything else is a dict of them
-  let is_single = $derived.by(() => {
-    if (!band_structs) return false
-    const raw = band_structs as Record<string, unknown>
-    const has_points = [raw.qpoints, raw.kpoints].some(
-      (points) => Array.isArray(points) && points.length > 0,
-    )
-    const is_pymatgen = `@class` in raw || `@module` in raw
-    return (
-      (!is_pymatgen && has_points && `branches` in raw) ||
-      (is_pymatgen && has_points && (`bands` in raw || Array.isArray(raw.frequencies_cm)))
-    )
-  })
+  // One structure (empty label) or a dict of them keyed by label
+  let raw_structures = $derived(helpers.band_struct_entries(band_structs))
 
   // Normalized structures in plot order, each with its per-branch segment keys (aligned with
   // bs.branches). Entries whose normalization throws (pymatgen shape missing its reciprocal
@@ -151,16 +139,12 @@
   let { structures, parse_errors } = $derived.by(() => {
     const parsed: { label: string; bs: BaseBandStructure; keys: string[] }[] = []
     const errors: string[] = []
-    if (!band_structs) return { structures: parsed, parse_errors: errors }
-    const entries: [string, unknown][] = is_single
-      ? [[`default`, band_structs]]
-      : Object.entries(band_structs)
-    for (const [label, input] of entries) {
+    for (const [label, input] of raw_structures) {
       try {
         const bs = helpers.normalize_band_structure(input)
         if (bs) parsed.push({ label, bs, keys: helpers.branch_segment_keys(bs) })
       } catch (error) {
-        errors.push(`${is_single ? `` : `${label}: `}${to_error(error).message}`)
+        errors.push(`${label ? `${label}: ` : ``}${to_error(error).message}`)
       }
     }
     return { structures: parsed, parse_errors: errors }
@@ -171,8 +155,7 @@
   // range agree on which bands are electronic
   let detected_band_type = $derived.by((): BandStructureType => {
     if (band_type) return band_type
-    const source: unknown = is_single ? band_structs : Object.values(band_structs ?? {})[0]
-    return helpers.is_electronic_band_struct(source) ? `electronic` : `phonon`
+    return helpers.is_electronic_band_struct(raw_structures[0]?.[1]) ? `electronic` : `phonon`
   })
 
   let effective_fermi_level = $derived(
@@ -604,19 +587,7 @@
           </select>
         </label>
         {#if detected_band_type === `phonon`}
-          <label>
-            <span>Frequency</span>
-            <select
-              id="bands-units"
-              value={unit}
-              onchange={(event) =>
-                (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
-            >
-              {#each FREQUENCY_UNITS as option (option)}
-                <option value={option}>{frequency_unit_label(option)}</option>
-              {/each}
-            </select>
-          </label>
+          <FrequencyUnitSelect id="bands-units" bind:units />
         {/if}
         {#if detected_band_type === `electronic`}
           <label>

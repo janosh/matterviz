@@ -78,6 +78,13 @@
       opacity: 1;
       pointer-events: auto;
     }
+    /* no hover on touch screens: the row would otherwise be unreachable */
+    @media (hover: none) {
+      &.hover-visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
     /* Fingers need ~32px targets; the icons keep their size, only the hit area grows.
        The filename gives way first so the row never pushes past the viewer edge. */
     @media (pointer: coarse) {

@@ -107,46 +107,35 @@ export function find_lowest_energy_unary_refs(
   return refs
 }
 
-// Result key: entry_id, else composition|energy|structure. Composition alone collides for
-// same-stoichiometry polymorphs (last distance would win), so add energy + structure.
+// Result key of the batch calculate_e_above_hull: entry_id, else composition|energy|structure.
+// Composition alone collides for same-stoichiometry polymorphs (last distance would win),
+// so add energy + structure.
 const id_of = (entry: PhaseData): string => {
   if (entry.entry_id) return entry.entry_id
   const structure_hash = entry.structure ? JSON.stringify(entry.structure) : ``
   return `${JSON.stringify(entry.composition)}|${entry.energy}|${structure_hash}`
 }
 
-// Energy above hull (eV/atom) of entries against the hull of reference_entries. Formation
-// energies come from e_form_per_atom when present, else from the lowest-energy unary
-// references; pure elements without a reference default to E_form = 0. Entries that can't
-// be placed (missing reference element, zero atoms) get NaN.
-export function calculate_e_above_hull(
-  entry: PhaseData,
-  reference_entries: PhaseData[],
-): number
-export function calculate_e_above_hull(
+// Energy above hull (eV/atom, clamped to >= 0) of `entries` against the hull of
+// reference_entries, aligned with `entries`. Formation energies come from e_form_per_atom
+// when present, else from the lowest-energy unary references; pure elements without a
+// reference default to E_form = 0. Entries that can't be placed (missing reference element,
+// zero atoms) get NaN.
+function e_above_hull_distances(
   entries: PhaseData[],
   reference_entries: PhaseData[],
-): Record<string, number>
-export function calculate_e_above_hull(
-  input: PhaseData | PhaseData[],
-  reference_entries: PhaseData[],
-): number | Record<string, number> {
-  const is_single = !Array.isArray(input)
-  const raw_entries = is_single ? [input] : input
-
-  if (raw_entries.length === 0) return {} // Empty input → empty result (not an error)
+): number[] {
   if (reference_entries.length === 0) {
     throw new Error(`Reference entries cannot be empty`)
   }
-  // Result keys come from the caller's entries; the geometry runs on normalized copies so
-  // oxidation-state keys ("Fe3+") line up with the reference system. Zero-atom entries are
-  // kept (they yield NaN below) rather than dropped like process_hull_entries would.
-  const result_ids = raw_entries.map(id_of)
+  // The geometry runs on normalized copies so oxidation-state keys ("Fe3+") line up with the
+  // reference system. Zero-atom entries are kept (they yield NaN below) rather than dropped
+  // like process_hull_entries would.
   const normalize = (entry: PhaseData): PhaseData => ({
     ...entry,
     composition: normalize_hull_composition_keys(entry.composition),
   })
-  const entries_of_interest = raw_entries.map(normalize)
+  const entries_of_interest = entries.map(normalize)
   reference_entries = reference_entries.map(normalize)
 
   const elements = collect_hull_elements(reference_entries)
@@ -166,16 +155,14 @@ export function calculate_e_above_hull(
     typeof entry.e_form_per_atom === `number`
       ? entry.e_form_per_atom
       : compute_e_form_per_atom(entry, refs)
-  // Clamp raw distances to ≥ 0 (NaN stays NaN) and key them by entry
-  const to_result = (distances: number[]): number | Record<string, number> =>
-    is_single
-      ? Math.max(0, distances[0])
-      : Object.fromEntries(result_ids.map((id, idx) => [id, Math.max(0, distances[idx])]))
+  // Clamp raw distances to >= 0 (NaN stays NaN)
+  const clamp_dists = (distances: number[]): number[] =>
+    distances.map((dist) => Math.max(0, dist))
 
   const arity = elements.length
   // The stable element sits at E_form = 0, so E_form is the hull distance
   if (arity === 1)
-    return to_result(entries_of_interest.map((entry) => e_form_of(entry) ?? NaN))
+    return clamp_dists(entries_of_interest.map((entry) => e_form_of(entry) ?? NaN))
 
   // Hull points: reduced barycentric coords (first dropped — all N sum to 1 and would
   // confine the points to an affine subspace) + E_form. NaN E_form marks unplaceable.
@@ -208,11 +195,30 @@ export function calculate_e_above_hull(
   const query_points = entries_of_interest.map(to_point)
   // With every corner present, the points are co-hyperplanar only when all E_form are 0,
   // so the hull is the plane E = 0 and the distance is E_form itself.
-  return to_result(
+  return clamp_dists(
     facets.length === 0
       ? query_points.map((point) => point.at(-1) ?? NaN)
       : compute_e_above_hull_nd(query_points, facets, ref_points),
   )
+}
+
+// Energy above hull of one entry, or of many keyed by id_of (see e_above_hull_distances)
+export function calculate_e_above_hull(
+  entry: PhaseData,
+  reference_entries: PhaseData[],
+): number
+export function calculate_e_above_hull(
+  entries: PhaseData[],
+  reference_entries: PhaseData[],
+): Record<string, number>
+export function calculate_e_above_hull(
+  input: PhaseData | PhaseData[],
+  reference_entries: PhaseData[],
+): number | Record<string, number> {
+  if (!Array.isArray(input)) return e_above_hull_distances([input], reference_entries)[0]
+  if (input.length === 0) return {} // Empty input → empty result (not an error)
+  const distances = e_above_hull_distances(input, reference_entries)
+  return Object.fromEntries(input.map((entry, idx) => [id_of(entry), distances[idx]]))
 }
 
 export function get_convex_hull_stats(
@@ -286,10 +292,10 @@ export function process_hull_for_stats(
     e_form_per_atom:
       entry.e_form_per_atom ?? compute_e_form_per_atom(entry, el_refs) ?? undefined,
   }))
-  const hull_distances = calculate_e_above_hull(with_e_form, with_e_form)
+  const hull_distances = e_above_hull_distances(with_e_form, with_e_form)
   // x/y/z default to 0 since high-dim systems aren't plotted
-  const hull_entries = with_e_form.map((entry): ConvexHullEntry => {
-    const dist = hull_distances[id_of(entry)]
+  const hull_entries = with_e_form.map((entry, idx): ConvexHullEntry => {
+    const dist = hull_distances[idx]
     const known = Number.isFinite(dist)
     return {
       ...entry,

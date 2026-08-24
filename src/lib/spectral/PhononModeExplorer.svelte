@@ -435,10 +435,6 @@
     --traj-border-radius: 0;
     --struct-border-radius: 0;
   }
-  .panes:has(.plot-pane:hover) :global(.trajectory-controls.hover-visible) {
-    opacity: 0;
-    pointer-events: none;
-  }
   .plot-pane > :global(*),
   .trajectory-pane > :global(*) {
     width: 100%;

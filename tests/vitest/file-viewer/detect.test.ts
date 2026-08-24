@@ -373,7 +373,7 @@ describe(`scan_renderable_paths`, () => {
 
   test(`finds all expected types in test fixture`, () => {
     expect(fixture_paths.size).toBeGreaterThanOrEqual(9)
-    const types = new Set([...fixture_paths.values()].map((info) => info.type))
+    const types = new Set(fixture_paths.values())
     for (const expected of [
       `structure`,
       `fermi_surface`,
@@ -387,7 +387,7 @@ describe(`scan_renderable_paths`, () => {
   })
 
   test(`finds nested structures at correct paths without recursing into them`, () => {
-    expect(fixture_paths.get(`structures.Cu_FCC`)?.type).toBe(`structure`)
+    expect(fixture_paths.get(`structures.Cu_FCC`)).toBe(`structure`)
     // Should NOT find children like structures.Cu_FCC.sites
     expect([...fixture_paths.keys()].some((key) => key.startsWith(`structures.Cu_FCC.`))).toBe(
       false,
@@ -412,7 +412,7 @@ describe(`scan_renderable_paths`, () => {
 
   test(`scans array elements`, () => {
     const data = { items: [{ composition: { Li: 1 }, energy: -1.5 }, si_structure] }
-    expect(scan_renderable_paths(data).get(`items[1]`)?.type).toBe(`structure`)
+    expect(scan_renderable_paths(data).get(`items[1]`)).toBe(`structure`)
   })
 
   test.each([
@@ -422,7 +422,7 @@ describe(`scan_renderable_paths`, () => {
     `handles %s via bracket notation`,
     (_, data, expected_path) => {
       const paths = scan_renderable_paths(data)
-      expect(paths.get(expected_path)?.type).toBe(`structure`)
+      expect(paths.get(expected_path)).toBe(`structure`)
     },
   )
 
@@ -449,7 +449,7 @@ describe(`scan_renderable_paths`, () => {
       const resolved = resolve_path(fixture, path)
       expect(resolved, `resolve_path failed for '${path}'`).toBeDefined()
       // Re-detect should return the same type
-      expect(detect_view_type(resolved)).toBe(fixture_paths.get(path)?.type)
+      expect(detect_view_type(resolved)).toBe(fixture_paths.get(path))
     }
   })
 
@@ -459,10 +459,8 @@ describe(`scan_renderable_paths`, () => {
     [{ name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] }, [`table`]],
   ])(`%j registers badges %j`, (data, expected_types) => {
     const paths = scan_renderable_paths(data)
-    expect([...paths.values()].map((info) => info.type)).toEqual(expected_types)
-    expect(paths.get(`\u0000plot`)?.type).toBe(
-      expected_types.includes(`plot`) ? `plot` : undefined,
-    )
+    expect([...paths.values()]).toEqual(expected_types)
+    expect(paths.get(`\u0000plot`)).toBe(expected_types.includes(`plot`) ? `plot` : undefined)
   })
 })
 

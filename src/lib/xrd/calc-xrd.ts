@@ -533,41 +533,36 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   return { x: xs, y: ys, hkls: hkls_out, d_hkls: d_out }
 }
 
-// Process dropped file content and return an XRD pattern: measured data files (.xy, .brml, …)
-// are parsed, structure files (CIF, POSCAR, JSON, …) get a computed pattern.
+// Dropped file content as a plot entry: measured data files (.xy, .brml, …) are parsed,
+// structure files (CIF, POSCAR, JSON, …) get a computed pattern. Throws on anything it cannot
+// read; the drop handler that calls this reports the error with the filename.
 export async function add_xrd_pattern(
   content: string | ArrayBufferLike,
   filename: string,
   wavelength: number | null, // Probe wavelength in Angstrom for structure-based calculation
   radiation: RadiationType = `xray`, // Probe particle for structure-based calculation
-): Promise<{ pattern?: PatternEntry; error?: string }> {
-  try {
-    if (is_xrd_data_file(filename)) {
-      // SharedArrayBuffer-backed content is copied into a plain ArrayBuffer
-      const buffer_content: string | ArrayBuffer =
-        typeof content === `string` || content instanceof ArrayBuffer
-          ? content
-          : new Uint8Array(content).slice().buffer
-      const pattern = await parse_xrd_file(buffer_content, filename)
-      return { pattern: { label: filename, pattern } }
-    }
-
-    const text_content =
-      typeof content === `string` ? content : new TextDecoder().decode(content)
-    const parsed_structure = parse_structure_file(text_content, filename)
-    if (!is_crystal(parsed_structure)) {
-      return {
-        error:
-          `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
-          `Supported formats: CIF, POSCAR, JSON, XYZ`,
-      }
-    }
-    const pattern = compute_xrd_pattern(parsed_structure, {
-      wavelength: typeof wavelength === `number` ? wavelength : undefined,
-      radiation,
-    })
-    return { pattern: { label: filename || `Dropped structure`, pattern } }
-  } catch (exc) {
-    return { error: `Failed to load ${filename}: ${to_error(exc).message}` }
+): Promise<PatternEntry> {
+  if (is_xrd_data_file(filename)) {
+    // SharedArrayBuffer-backed content is copied into a plain ArrayBuffer
+    const buffer_content: string | ArrayBuffer =
+      typeof content === `string` || content instanceof ArrayBuffer
+        ? content
+        : new Uint8Array(content).slice().buffer
+    return { label: filename, pattern: await parse_xrd_file(buffer_content, filename) }
   }
+
+  const text_content =
+    typeof content === `string` ? content : new TextDecoder().decode(content)
+  const parsed_structure = parse_structure_file(text_content, filename)
+  if (!is_crystal(parsed_structure)) {
+    throw new Error(
+      `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
+        `Supported formats: CIF, POSCAR, JSON, XYZ`,
+    )
+  }
+  const pattern = compute_xrd_pattern(parsed_structure, {
+    wavelength: typeof wavelength === `number` ? wavelength : undefined,
+    radiation,
+  })
+  return { label: filename || `Dropped structure`, pattern }
 }

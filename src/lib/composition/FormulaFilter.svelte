@@ -8,7 +8,6 @@
   import { format_amount, get_alphabetical_formula } from './format'
   import type { FormulaSearchMode } from './index'
   import {
-    extract_formula_elements,
     normalize_formula_unicode,
     parse_formula,
     parse_formula_with_wildcards,
@@ -305,7 +304,8 @@
   function normalize_exact_formula(input: string): string {
     if (exact_formula_error(input) !== null) return input
     // zero amounts (H0) parse but format to nothing; keep the text rather than clear the field
-    if (!has_wildcards(input)) return get_alphabetical_formula(input, true, ``) || input
+    if (!has_wildcards(input))
+      return get_alphabetical_formula(input, { plain_text: true, delim: `` }) || input
     const tokens = parse_formula_with_wildcards(input)
     const merged = new SvelteMap<ElementSymbol, number>()
     for (const { element, amount } of tokens) {
@@ -427,7 +427,8 @@
   }
 
   // Distinct valid elements of any input format (formula, comma- or dash-separated list),
-  // alphabetical, with one trailing `*` per wildcard. Invalid formulas yield nothing.
+  // alphabetical, with one trailing `*` per wildcard. Invalid formulas yield nothing: an
+  // invalid exact formula is committed verbatim and this runs on it from a $derived.
   function extract_elements(input: string): string[] {
     const trimmed = input.trim()
     if (!trimmed) return []
@@ -436,16 +437,13 @@
       const elements = [...new SvelteSet(parts.filter(is_elem_symbol))].toSorted()
       return [...elements, ...parts.filter((part) => part === `*`)]
     }
-    if (has_wildcards(trimmed)) {
+    try {
       const tokens = parse_formula_with_wildcards(trimmed)
       const elements = [...new SvelteSet(tokens.flatMap((token) => token.element ?? []))]
       return [
         ...elements.toSorted(),
         ...tokens.filter((tok) => tok.element === null).map(() => `*`),
       ]
-    }
-    try {
-      return extract_formula_elements(trimmed)
     } catch {
       return []
     }

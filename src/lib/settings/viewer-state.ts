@@ -1,4 +1,9 @@
-import { SETTINGS_CONFIG, type DefaultSettings, type SettingType } from '../settings'
+import {
+  SETTINGS_CONFIG,
+  type DefaultSettings,
+  type SettingType,
+  validate_setting_value,
+} from '../settings'
 import { is_plain_object } from '../utils'
 
 export const STRUCTURE_VIEW_STATE_VERSION = 1 as const
@@ -48,66 +53,8 @@ type StructureViewStateParseResult =
 const is_non_portable_structure_key = (key: StructureSettingKey): boolean =>
   key === `camera_position` || key === `vector_configs`
 
-// Deep copy by hand rather than structuredClone: the values arrive through Svelte $state
-// proxies, which structuredClone rejects with DataCloneError.
-const clone_value = <Value>(value: Value): Value => {
-  if (Array.isArray(value)) return value.map(clone_value) as Value
-  if (!is_plain_object(value)) return value
-  return Object.fromEntries(
-    Object.entries(value).map(([key, nested]) => [key, clone_value(nested)]),
-  ) as Value
-}
-
 const object_value = (source: object | undefined, key: PropertyKey): unknown =>
   source && Reflect.has(source, key) ? Reflect.get(source, key) : undefined
-
-const valid_number = (value: unknown, setting: SettingType<number>): value is number => {
-  if (typeof value !== `number` || !Number.isFinite(value)) return false
-  if (setting.minimum !== undefined && value < setting.minimum) return false
-  if (setting.maximum !== undefined && value > setting.maximum) return false
-  if (setting.multipleOf !== undefined) {
-    const quotient = value / setting.multipleOf
-    const tolerance = Number.EPSILON * Math.max(1, Math.abs(quotient)) * 4
-    if (Math.abs(quotient - Math.round(quotient)) > tolerance) return false
-  }
-  return true
-}
-
-const same_primitive_type = (value: unknown, reference: unknown): boolean =>
-  typeof value === typeof reference && (typeof value !== `number` || Number.isFinite(value))
-
-const valid_array = (value: unknown, setting: SettingType<readonly unknown[]>): boolean => {
-  if (!Array.isArray(value)) return false
-  if (setting.minItems !== undefined && value.length < setting.minItems) return false
-  if (setting.maxItems !== undefined && value.length > setting.maxItems) return false
-  const reference = setting.value
-  // The only empty-array settings in the schema are element-symbol lists.
-  if (reference.length === 0) return value.every((item) => typeof item === `string`)
-  return value.every((item, item_idx) =>
-    same_primitive_type(item, reference[item_idx] ?? reference[0]),
-  )
-}
-
-const validate_setting_value = <Value>(value: unknown, setting: SettingType<Value>): Value => {
-  const fallback = clone_value(setting.value)
-  if (setting.enum) {
-    return typeof value === `string` && Object.hasOwn(setting.enum, value)
-      ? (value as Value)
-      : fallback
-  }
-  if (typeof setting.value === `number`) {
-    return valid_number(value, setting as SettingType<number>) ? (value as Value) : fallback
-  }
-  if (Array.isArray(setting.value)) {
-    return valid_array(value, setting as SettingType<readonly unknown[]>)
-      ? (clone_value(value) as Value)
-      : fallback
-  }
-  if (is_plain_object(setting.value)) {
-    return is_plain_object(value) ? (clone_value(value) as Value) : fallback
-  }
-  return same_primitive_type(value, setting.value) ? (value as Value) : fallback
-}
 
 const in_range = (value: unknown, min: number, max: number): value is number =>
   typeof value === `number` && Number.isFinite(value) && value >= min && value <= max

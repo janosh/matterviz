@@ -10,7 +10,7 @@ export const AXIS_DEFAULTS = {
   scale_type: `linear` as const,
   ticks: 5,
   label_shift: { x: 0, y: 0 },
-  tick: { label: { shift: { x: 0, y: 0 }, inside: false } },
+  tick_label: { shift: { x: 0, y: 0 }, inside: false },
   range: [null, null] as [number | null, number | null],
 }
 // The top (x2) axis title sits above the top edge by the tick-label band

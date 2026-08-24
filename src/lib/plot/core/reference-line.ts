@@ -1,5 +1,5 @@
 // Reference line utilities: helper functions and coordinate resolution
-import type { Vec2, Vec4 } from '$lib/math'
+import { array_extent, type Vec2, type Vec4 } from '$lib/math'
 import {
   decoration_placement_rects,
   get_decoration_placement,
@@ -439,10 +439,8 @@ const rotate_rect_around = (
       y: pivot.y + delta_x * sin_rotation + delta_y * cos_rotation,
     }
   })
-  const x_min = Math.min(...corners.map(({ x }) => x))
-  const x_max = Math.max(...corners.map(({ x }) => x))
-  const y_min = Math.min(...corners.map(({ y }) => y))
-  const y_max = Math.max(...corners.map(({ y }) => y))
+  const [x_min, x_max] = array_extent(corners.map(({ x }) => x))
+  const [y_min, y_max] = array_extent(corners.map(({ y }) => y))
   return { x: x_min, y: y_min, width: x_max - x_min, height: y_max - y_min }
 }
 
@@ -546,44 +544,3 @@ export const get_reference_annotation_placement = (
   line_idx: number,
 ): ReferenceAnnotationCandidate | undefined =>
   get_decoration_placement(solution, reference_annotation_id(line_idx))?.reference_annotation
-
-interface Scene3DParams {
-  scene_x: number
-  scene_y: number
-  scene_z: number
-  x_range: Vec2
-  y_range: Vec2
-  z_range: Vec2
-}
-
-// Apply span constraints or use full range as fallback
-export const span_or = (
-  span: [number | null, number | null] | undefined,
-  range: Vec2,
-): Vec2 => [span?.[0] ?? range[0], span?.[1] ?? range[1]]
-
-// Normalize a data value to scene coordinates (centered around 0)
-export function normalize_to_scene(
-  value: number,
-  [min_val, max_val]: Vec2,
-  scene_size: number,
-): number {
-  const range = max_val - min_val
-  return range === 0 ? 0 : ((value - min_val) / range - 0.5) * scene_size
-}
-
-// Create a function to convert user data coordinates to Three.js coordinates
-// Note: In Three.js, Y is vertical. We map:
-// - user X → Three.js X (horizontal)
-// - user Y → Three.js Z (depth/horizontal)
-// - user Z → Three.js Y (vertical)
-export function create_to_threejs(
-  params: Scene3DParams,
-): (user_x: number, user_y: number, user_z: number) => { x: number; y: number; z: number } {
-  const { scene_x, scene_y, scene_z, x_range, y_range, z_range } = params
-  return (user_x: number, user_y: number, user_z: number) => ({
-    x: normalize_to_scene(user_x, x_range, scene_x),
-    y: normalize_to_scene(user_z, z_range, scene_z), // z → Y
-    z: normalize_to_scene(user_y, y_range, scene_y), // y → Z
-  })
-}

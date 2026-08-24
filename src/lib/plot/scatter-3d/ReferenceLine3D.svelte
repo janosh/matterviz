@@ -6,7 +6,7 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { create_to_threejs, span_or } from '$lib/plot/core/reference-line'
+  import { create_to_threejs, span_or } from '$lib/plot/scatter-3d/scene-coords'
   import type { RefLine3D } from '$lib/plot/core/types'
 
   let {

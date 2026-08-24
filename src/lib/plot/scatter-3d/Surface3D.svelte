@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
-  import { normalize_to_scene } from '$lib/plot/core/reference-line'
+  import { normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
   import type { Surface3DConfig } from '$lib/plot/core/types'
   import { dispose_on_change } from '$lib/scene'
   import { T } from '@threlte/core'

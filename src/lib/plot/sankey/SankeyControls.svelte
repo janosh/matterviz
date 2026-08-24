@@ -2,7 +2,7 @@
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { SankeyNodeAlign, Orientation } from '$lib/plot'
   import { ControlPane } from '$lib/overlays'
-  import { DEFAULTS } from '$lib/settings'
+  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -33,6 +33,13 @@
   } = $props()
 </script>
 
+<!-- select options come from the settings schema so labels/values have a single source of truth -->
+{#snippet options(enum_map: Record<string, string>)}
+  {#each Object.entries(enum_map) as [value, label] (value)}
+    <option {value}>{label}</option>
+  {/each}
+{/snippet}
+
 {#if show_controls}
   <ControlPane bind:controls_open controls_name="sankey" {toggle_props} {pane_props}>
     {@render children?.()}
@@ -61,17 +68,13 @@
       <label>
         <span>Orientation</span>
         <select bind:value={orientation}>
-          <option value="horizontal">Horizontal</option>
-          <option value="vertical">Vertical</option>
+          {@render options(enum_labels(SETTINGS_CONFIG.sankey.orientation))}
         </select>
       </label>
       <label>
         <span>Node align</span>
         <select bind:value={node_align}>
-          <option value="justify">Justify</option>
-          <option value="left">Left</option>
-          <option value="right">Right</option>
-          <option value="center">Center</option>
+          {@render options(enum_labels(SETTINGS_CONFIG.sankey.node_align))}
         </select>
       </label>
       <NumberRangeInput min={4} max={60} step={1} bind:value={node_width}

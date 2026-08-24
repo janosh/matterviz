@@ -10,10 +10,10 @@
   import { untrack, type ComponentProps } from 'svelte'
   import {
     convert_frequencies,
-    FREQUENCY_UNITS,
     frequency_unit_label,
     parse_frequency_unit,
   } from './frequency-units'
+  import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import { NORMALIZATION_MODES, normalize_densities } from './helpers'
   import { broaden_spectrum, spectrum_sticks, to_transmittance } from './ir-raman'
   import type {
@@ -213,19 +213,7 @@
             <option value="raman" disabled={!spectrum.has_raman}>Raman</option>
           </select>
         </label>
-        <label>
-          <span>Frequency</span>
-          <select
-            id="ir-raman-units"
-            value={unit}
-            onchange={(event) =>
-              (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
-          >
-            {#each FREQUENCY_UNITS as option (option)}
-              <option value={option}>{frequency_unit_label(option)}</option>
-            {/each}
-          </select>
-        </label>
+        <FrequencyUnitSelect id="ir-raman-units" bind:units />
         {#if !is_transmittance}
           <label>
             <span>Norm</span>

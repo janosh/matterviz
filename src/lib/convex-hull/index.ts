@@ -185,7 +185,6 @@ export interface Hull3DProps {
   show_hull_faces?: boolean
   hull_face_opacity?: number
   hull_face_color_mode?: HullFaceColorMode
-  element_colors?: Record<string, string>
   // Orientation gizmo: false to disable, true for defaults, object to customize
   // Supports placement plus the appearance options in GizmoOptions ($lib/scene)
   gizmo?: boolean | ConvexHullGizmoOptions

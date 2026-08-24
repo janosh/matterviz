@@ -4,6 +4,7 @@
 // Pure geometry lives at the top; text measurement goes through the text-metrics cache.
 
 import { format_tick_values } from '$lib/labels'
+import { clamp } from '$lib/math'
 import { get_tick_label } from '$lib/plot/core/scales'
 import {
   DEFAULT_FONT_SPEC,
@@ -384,12 +385,12 @@ export const suggest_tick_count = (
   // Normalize before adding so valid but very large measurements cannot overflow to Infinity.
   const available = axis_pixels / largest + gap_pixels / largest
   const slot = widest_label / largest + gap_pixels / largest
-  return Math.min(label_count, Math.max(2, Math.floor(available / slot)))
+  return clamp(Math.floor(available / slot), 2, label_count)
 }
 
 // Evenly spaced source indices retaining both endpoints.
 export const thin_tick_indices = (item_count: number, requested_count: number): number[] => {
-  const target_count = Math.min(item_count, Math.max(requested_count, 2))
+  const target_count = clamp(requested_count, 2, item_count)
   if (target_count >= item_count) return Array.from({ length: item_count }, (_, idx) => idx)
   return Array.from({ length: target_count }, (_, idx) =>
     Math.round((idx * (item_count - 1)) / (target_count - 1)),
@@ -892,7 +893,7 @@ const upright_layout = (
 ): ResolvedTickLayout => {
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
   const anchor = default_tick_label_anchor(
-    effective_side(side, axis.tick?.label?.inside ?? false),
+    effective_side(side, axis.tick_label?.inside ?? false),
     0,
   )
   const lines = full_texts.map(explicit_tick_lines)
@@ -958,7 +959,7 @@ const compute_tick_layout = (
       `tick_positions has ${axis.tick_positions.length} entries for ${ticks.length} ticks`,
     )
   }
-  const label_config = axis.tick?.label
+  const label_config = axis.tick_label
   const configured = label_config?.rotation ?? `auto`
   const auto_layout = label_config?.auto_layout ?? {}
   const strategies = configured === `auto` ? resolved_strategies(auto_layout) : []
@@ -1035,7 +1036,7 @@ const compute_tick_layout = (
   const slot_widths = local_axis_widths(positions, axis_extent)
   const max_lines = positive_integer(
     Math.max(1, Math.floor(label_config?.max_lines ?? DEFAULT_TICK_LABEL_MAX_LINES)),
-    `tick.label.max_lines`,
+    `tick_label.max_lines`,
   )
   let wrapped: Candidate | undefined
   if (strategies.includes(`wrap`) && max_lines > 1) {
@@ -1178,7 +1179,7 @@ export const resolve_tick_layout = (
 ): ResolvedTickLayout => {
   finite_nonnegative(axis_size, `axis_size`)
   const full_texts = tick_texts(axis.tick_values ?? [], axis.format, axis.ticks)
-  const label = axis.tick?.label
+  const label = axis.tick_label
   const auto_layout = label?.auto_layout
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
   const key = [

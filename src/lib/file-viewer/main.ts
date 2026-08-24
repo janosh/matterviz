@@ -31,12 +31,10 @@ import type {
 } from './host-protocol'
 import JsonBrowser from './JsonBrowser.svelte'
 import { TYPE_LABELS } from './detect'
-import { mount_viewer } from './mount-viewer'
+import { mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { parse_in_worker } from './parse-in-worker'
 import { escape_html, is_plain_object, to_error } from '$lib/utils'
-
-export type { VSCodeAPI } from './host-bridge'
 
 export type MatterVizApp = ReturnType<typeof mount>
 
@@ -374,7 +372,6 @@ export const create_display = (
 
   // Get defaults and create props
   const defaults = merge(globalThis.matterviz_data?.defaults)
-  const common_props = { style: `height: 100%; border-radius: 0`, fullscreen_toggle: false }
 
   let app: MatterVizApp
   let log_message: string
@@ -387,7 +384,7 @@ export const create_display = (
     const trajectory_mount_props = {
       trajectory: final_trajectory,
       ...trajectory_props(defaults),
-      ...common_props,
+      ...VIEWER_COMMON_PROPS,
       ...(initial_step_idx !== undefined && { current_step_idx: initial_step_idx }),
       ...(on_step_change && {
         on_step_change: (data: TrajHandlerData) =>

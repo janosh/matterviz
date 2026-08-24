@@ -344,18 +344,13 @@ export const volume_json_to_isosurface_input = (raw: unknown): VolumetricFileDat
 
 // === Renderable Path Scanner ===
 
-export interface RenderablePath {
-  type: RenderableType
-  label: string
-}
-
 // Map of JSON path -> detected type for every renderable subtree, for the badges JsonTree nodes
 // show. A renderable value is not walked further: its children are part of the data.
 export function scan_renderable_paths(
   obj: unknown,
   max_depth: number = 10,
-): Map<string, RenderablePath> {
-  const results = new Map<string, RenderablePath>()
+): Map<string, RenderableType> {
+  const results = new Map<string, RenderableType>()
   const visited = new WeakSet<object>()
 
   function walk(value: unknown, path: string, depth: number): void {
@@ -366,11 +361,11 @@ export function scan_renderable_paths(
 
     const detected_type = detect_view_type(value)
     if (detected_type) {
-      results.set(path, { type: detected_type, label: TYPE_LABELS[detected_type] })
+      results.set(path, detected_type)
       // If tabular data is also plottable, register a plot badge too
       if (detected_type === `table` && is_plottable_data(value)) {
         const plot_path = path ? `${path}\u0000plot` : `\u0000plot`
-        results.set(plot_path, { type: `plot`, label: TYPE_LABELS.plot })
+        results.set(plot_path, `plot`)
       }
       return
     }

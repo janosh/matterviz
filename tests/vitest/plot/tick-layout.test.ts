@@ -298,7 +298,7 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
       {
         tick_values,
         tick_positions: positions,
-        tick: { label: { auto_layout: { strategies } } },
+        tick_label: { auto_layout: { strategies } },
       },
       size,
       `x`,
@@ -470,17 +470,15 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
         tick_positions: positions,
         axis_extent,
         tick_font,
-        tick: {
-          label: {
-            max_lines: 3,
-            auto_layout: {
-              strategies: TICK_STRATEGIES,
-              max_angle: 90,
-              max_band,
-              min_visible_ticks: 2,
-              edge_gap: 2,
-              endpoint_policy: `preserve`,
-            },
+        tick_label: {
+          max_lines: 3,
+          auto_layout: {
+            strategies: TICK_STRATEGIES,
+            max_angle: 90,
+            max_band,
+            min_visible_ticks: 2,
+            edge_gap: 2,
+            endpoint_policy: `preserve`,
           },
         },
       }

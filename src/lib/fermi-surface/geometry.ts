@@ -1,15 +1,9 @@
 // Three.js geometry construction for Fermi isosurfaces
-import type { D3InterpolateName } from '$lib/colors'
-import { set_vertex_colors } from '$lib/isosurface/coloring'
-import type { Vec2, Vec3 } from '$lib/math'
+import { set_vertex_colors, type VertexColorOptions } from '$lib/isosurface/coloring'
+import type { Vec3 } from '$lib/math'
 import { indexed_mesh_geometry } from '$lib/scene/geometry.svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import type { FermiIsosurface } from './types'
-
-export interface VertexColorSpec {
-  colormap: D3InterpolateName
-  color_range: Vec2
-}
 
 // Wrap a surface's typed arrays in an indexed BufferGeometry (buffers shared, not copied:
 // the surface already stores exactly the layout the GPU wants). Null when nothing is drawable.
@@ -27,7 +21,7 @@ export const has_vertex_properties = (
 export function apply_vertex_colors(
   geometry: BufferGeometry,
   surface: FermiIsosurface,
-  spec: VertexColorSpec | null,
+  spec: VertexColorOptions | null,
 ): void {
   if (spec && has_vertex_properties(surface))
     set_vertex_colors(geometry, surface.properties, spec)

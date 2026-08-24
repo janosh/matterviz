@@ -1,7 +1,5 @@
-import { is_elem_symbol } from '$lib/element/helpers'
-import type { ElementSymbol } from '$lib/element/types'
 import { transpose_3x3_matrix, type Matrix3x3 } from '$lib/math'
-import { validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type {
   PositionStreamOptions,
   TrajectoryFrame,
@@ -83,13 +81,14 @@ export const read_numeric_1d = (
 // structure convention keeps them as columns, hence the transpose
 export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matrix3x3 =>
   transpose_3x3_matrix(
-    validate_3x3_matrix(
+    matrix3x3_from_rows(
       Array.from({ length: 3 }, (_unused, row_idx) =>
         Array.from(
           { length: 3 },
           (_unused_2, column_idx) => values[offset + row_idx * 3 + column_idx],
         ),
       ),
+      `lattice matrix`,
     ),
   )
 
@@ -429,29 +428,6 @@ const assert_hdf5_stream_budget = (
 
 export const scale_matrix = (matrix: Matrix3x3, scale: number): Matrix3x3 =>
   scale === 1 ? matrix : (matrix.map((row) => row.map((val) => val * scale)) as Matrix3x3)
-
-export const expand_ion_types = (
-  ion_types: string[],
-  ion_counts: number[],
-): ElementSymbol[] => {
-  if (ion_types.length !== ion_counts.length) {
-    throw new Error(
-      `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
-    )
-  }
-  const elements: ElementSymbol[] = []
-  for (const [type_idx, symbol] of ion_types.entries()) {
-    if (!is_elem_symbol(symbol)) {
-      throw new Error(`Unknown element symbol in ion_types: ${symbol}`)
-    }
-    const ion_count = ion_counts[type_idx]
-    if (!Number.isFinite(ion_count) || !Number.isInteger(ion_count) || ion_count < 0) {
-      throw new Error(`Invalid ion count for ${symbol}: ${ion_count}`)
-    }
-    for (let count = 0; count < ion_count; count++) elements.push(symbol)
-  }
-  return elements
-}
 
 export async function with_h5_file<T>(
   buffer: ArrayBuffer,

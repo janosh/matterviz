@@ -939,7 +939,7 @@
         bind:displacement_summary
         bind:scene
         bind:camera
-        bind:hidden_elements
+        {hidden_elements}
         bind:polyhedra_rendered_elements
         bind:trajectory_lines_result
       />
@@ -952,7 +952,7 @@
         {...shared_viewport_props}
         camera_direction={view.direction}
         camera_projection={view.projection ?? scene_props.camera_projection}
-        bind:hidden_elements
+        {hidden_elements}
       />
     {/snippet}
 
@@ -1088,14 +1088,17 @@
       opacity: 0;
     }
   }
-  /* CellSelect: position at left of legend, show on hover */
+  /* CellSelect sits left of the legend and, like the legend's mode toggle, only shows while the
+    viewer is hovered or focused. Focus matters: the control is tabbable while hidden, and its
+    menu opens on focus. ViewerChrome's generic hover-visible rule only covers its own button
+    row, so this stays here. */
   .structure :global(.cell-select) {
-    order: -1; /* Move to left side of AtomLegend flex container */
+    order: -1;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
   }
-  .structure:hover :global(.cell-select) {
+  .structure:is(:hover, :focus-within) :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
   }

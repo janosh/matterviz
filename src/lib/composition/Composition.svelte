@@ -86,12 +86,12 @@
   function handle_export(export_type: (typeof export_actions)[number][`id`]) {
     try {
       if (export_type === `copy_formula`) {
-        navigator.clipboard.writeText(get_electro_neg_formula(parsed, true))
+        navigator.clipboard.writeText(get_electro_neg_formula(parsed, { plain_text: true }))
       } else if (export_type === `copy_data`) {
         navigator.clipboard.writeText(JSON.stringify(parsed, null, 2))
       } else if (!svg_node) console.warn(`Chart SVG not available for export`)
       else {
-        const filename = `${get_electro_neg_formula(parsed, true, ``)}.${export_type.slice(7)}`
+        const filename = `${get_electro_neg_formula(parsed, { plain_text: true, delim: `` })}.${export_type.slice(7)}`
         if (export_type === `export_svg`) export_svg_as_svg(svg_node, filename)
         else export_svg_as_png(svg_node, filename, DEFAULT_PNG_DPI)
       }

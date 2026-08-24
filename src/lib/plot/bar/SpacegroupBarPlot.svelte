@@ -1,7 +1,7 @@
 <script lang="ts">
   import { format_num, format_value } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
-  import type { BarHandlerProps, BarSeries, TickConfig } from '$lib/plot'
+  import type { BarHandlerProps, BarSeries, TickLabelConfig } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
   import { observe_size } from '$lib/plot/core/utils'
@@ -11,11 +11,11 @@
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
-  // Merge tick config with default rotation, preserving user overrides
-  const with_rotation = (tick: TickConfig | undefined, default_rot: number): TickConfig => ({
-    ...tick,
-    label: { ...tick?.label, rotation: tick?.label?.rotation ?? default_rot },
-  })
+  // Merge tick label config with default rotation, preserving user overrides
+  const with_rotation = (
+    tick_label: TickLabelConfig | undefined,
+    default_rot: number,
+  ): TickLabelConfig => ({ ...tick_label, rotation: tick_label?.rotation ?? default_rot })
 
   const MAX_SPACEGROUP = 230
   const TICK_LABEL_HEIGHT_PX = 14 // 12px rotated tick label plus breathing room
@@ -176,7 +176,7 @@
           label: x_axis.label ?? `International Spacegroup Number`,
           range: x_range,
           ticks: x_axis_ticks,
-          tick: with_rotation(x_axis.tick, 90), // Rotate ticks 90° to avoid overlap
+          tick_label: with_rotation(x_axis.tick_label, 90), // Rotate ticks 90° to avoid overlap
         },
   )
 
@@ -187,7 +187,7 @@
           label: y_axis.label ?? `International Spacegroup Number`,
           range: x_range,
           ticks: x_axis_ticks,
-          tick: with_rotation(y_axis.tick, 0),
+          tick_label: with_rotation(y_axis.tick_label, 0),
         }
       : { ...y_axis, label: y_axis.label ?? `Counts` },
   )

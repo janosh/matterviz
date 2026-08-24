@@ -118,7 +118,7 @@ Set `markers` to `points`, `line`, or `line+points`; series and gear controls ex
 
 ## Marginal Distributions
 
-Marginal distribution plots summarize the data projected onto each axis as a thin strip alongside the plot. The `marginals` prop is a layered API: pass a boolean for sensible defaults, a single type string, or a per-side map for full control. Built-in types are `histogram`, `kde`, `cdf`, and `rug`, plus a `snippet` escape hatch for anything else. Marginals reuse the main plot's positional scale, so they stay pixel-aligned and update live with zoom/pan. The same `marginals` API works on every 2D plot (`Histogram`, `BarPlot`, `BoxPlot`, `Violin`, `BinnedScatterPlot`).
+Marginal distribution plots summarize the data projected onto each axis as a thin strip alongside the plot. The `marginals` prop is a layered API: pass a boolean for sensible defaults, a single type string, or a per-side map for full control. Built-in types are `histogram`, `kde`, `cdf`, and `rug`, plus a `snippet` escape hatch for anything else. Marginals reuse the main plot's positional scale, so they stay pixel-aligned and update live with zoom/pan. The same `marginals` API works on every 2D plot (`Histogram`, `BarPlot`, `BoxPlot`, `BinnedScatterPlot`).
 
 The example below combines the common controls: per-side `type`, `per_series` (one curve per series vs. one merged curve), and `placement` (`auto` hugs tick-free sides like top/right and sits outside the ticks on axis sides; force `flush`/`outer`).
 
@@ -614,7 +614,7 @@ Categorized data with color coding, custom tick intervals, and negative values:
 
 ## Time-Based Data with Custom Formatting
 
-Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels inside the plot for a tighter layout.
+Time on the x-axis with custom formatting. `tick_label.inside` puts tick labels inside the plot for a tighter layout.
 
 Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format and raise the tick count until the labels stop fitting side by side. They tilt to the shallowest angle that keeps them apart (and the plot area shrinks to make room) rather than overlapping. `rotation: 0` opts out and keeps them upright:
 
@@ -709,9 +709,9 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
       format: date_format,
       ticks: n_ticks,
       label: 'Date',
-      tick: { label: { inside, rotation } },
+      tick_label: { inside, rotation },
     }}
-    y_axis={{ format: y_format, ticks: 5, label: 'Value', tick: { label: { inside } } }}
+    y_axis={{ format: y_format, ticks: 5, label: 'Value', tick_label: { inside } }}
     style="height: 350px"
     legend={{
       layout: `horizontal`,

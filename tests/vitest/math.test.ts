@@ -1035,17 +1035,6 @@ it.each<[Vec3]>([[[0, 0, 1]], [[1, 0, 0]], [[0.95, 0.2, 0.1]], [[-0.6, 0.48, 0.6
   },
 )
 
-// oxfmt-ignore
-it.each([
-  [`empty array → zero box`, [], [0, 0, 0], [0, 0, 0]],
-  [`single vertex`, [[5, 10, 15]], [5, 10, 15], [5, 10, 15]],
-  [`multiple vertices`, [[0, 0, 0], [10, 5, 3], [-5, 20, -10], [3, -3, 15]],
-    [-5, -3, -10], [10, 20, 15]],
-  [`all negative`, [[-10, -20, -30], [-5, -10, -15]], [-10, -20, -30], [-5, -10, -15]],
-] as [string, Vec3[], Vec3, Vec3][])(`compute_bounding_box: %s`, (_name, vertices, min, max) => {
-  expect(math.compute_bounding_box(vertices)).toEqual({ min, max })
-})
-
 describe(`create_frac_to_cart and create_cart_to_frac`, () => {
   // oxfmt-ignore
   const cubic: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
@@ -1434,22 +1423,18 @@ describe(`array_min, array_max and array_extent`, () => {
   })
 })
 
-describe(`quantile_sorted and quantile_unordered`, () => {
+describe(`quantile_unordered`, () => {
   const sorted = Array.from({ length: 11 }, (_, idx) => idx * 3)
 
-  // Both must agree with d3's type-7 interpolation (numpy/pandas default) and with each
-  // other, since quantile_unordered only differs in how it locates the order statistics.
-  test.each([0, 0.05, 0.25, 0.5, 0.75, 0.95, 1])(`match d3 at p=%s`, (prob) => {
+  // Must agree with d3's type-7 interpolation (numpy/pandas default)
+  test.each([0, 0.05, 0.25, 0.5, 0.75, 0.95, 1])(`matches d3 at p=%s`, (prob) => {
     const expected = d3_quantile(sorted, prob) as number
-    expect(math.quantile_sorted(sorted, prob)).toBeCloseTo(expected, 12)
     expect(math.quantile_unordered(sorted.toReversed(), prob)).toBeCloseTo(expected, 12)
   })
 
   // Interpolating as lo + (hi - lo) * frac overflows here: the difference is 2 * MAX_VALUE,
   // i.e. Infinity, so the median of a symmetric pair would come back Infinity instead of 0.
-  test(`stay finite when the bracketing values straddle zero at MAX_VALUE`, () => {
-    const extremes = [-Number.MAX_VALUE, Number.MAX_VALUE]
-    expect(math.quantile_sorted(extremes, 0.5)).toBe(0)
-    expect(math.quantile_unordered([...extremes], 0.5)).toBe(0)
+  test(`stays finite when the bracketing values straddle zero at MAX_VALUE`, () => {
+    expect(math.quantile_unordered([-Number.MAX_VALUE, Number.MAX_VALUE], 0.5)).toBe(0)
   })
 })

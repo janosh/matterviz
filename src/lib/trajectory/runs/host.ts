@@ -22,8 +22,8 @@ export const host_run = (
     provenance: { ...summary.provenance, format: summary.provenance.format ?? `host` },
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)
-      if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))
       if (frame_idx === 0) return summary.preview
+      if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))
       return request_frame(frame_idx, signal)
     },
     dispose: () => {

@@ -587,6 +587,21 @@ export function filter_entries_at_temperature(
   })
 }
 
+// Copy of `entry` holding only `composition` (cloned) and the listed keys, so worker
+// payloads and fingerprints carry the fields the computation reads and never the structures
+// or calculation metadata. Undefined fields are left out rather than copied as `undefined`.
+export function slim_phase_entry<Key extends keyof PhaseData>(
+  entry: PhaseData,
+  keys: readonly Key[],
+): Pick<PhaseData, Key | `composition`> {
+  const slim = { composition: { ...entry.composition } } as Pick<
+    PhaseData,
+    Key | `composition`
+  >
+  for (const key of keys) if (entry[key] !== undefined) slim[key] = entry[key]
+  return slim
+}
+
 // Derive a display label for a convex hull entry, falling back to composition
 // when reduced_formula and name are both missing.
 export function get_entry_label(

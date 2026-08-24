@@ -242,7 +242,7 @@ export const ELEMENT_CATEGORIES = [
   `transition metal`,
 ] as const
 
-export const SUPERSCRIPT_MAP = {
+const SUPERSCRIPT_MAP = {
   '0': `⁰`,
   '1': `¹`,
   '2': `²`,

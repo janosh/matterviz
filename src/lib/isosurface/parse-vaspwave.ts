@@ -1,8 +1,8 @@
 // Parser for VASP vaspwave.h5 charge density: charge/charge on charge/grid
 // plus the embedded structure under structure/positions (dataset paths follow
-// ferrox's VASPWAVE_* constants / py4vasp's VASP 6.x schema). Full files are
-// hundreds of MB, so embedding hosts are expected to prune them server-side
-// first; this parser sees only charge/{charge,grid} + structure/positions.
+// py4vasp's VASP 6.x schema). Full files are hundreds of MB, so embedding hosts
+// are expected to prune them server-side first; this parser sees only
+// charge/{charge,grid} + structure/positions.
 //
 // Prototype scope: charge (+ magnetization) isosurfaces only — wavefunctions
 // are out of scope. The "charge density RMS per SCF step" convergence signal
@@ -15,9 +15,9 @@ import type { Crystal, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import type * as h5wasm from 'h5wasm'
-import { validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import { expand_ion_types } from '$lib/trajectory/helpers'
 import {
-  expand_ion_types,
   is_hdf5_dataset,
   read_dataset,
   scale_matrix,
@@ -49,7 +49,7 @@ const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
     )
   }
   const scale = to_scalar_number(read_dataset(h5_file, `${STRUCTURE_PREFIX}/scale`)) ?? 1
-  const lattice = scale_matrix(validate_3x3_matrix(lattice_data), scale)
+  const lattice = scale_matrix(matrix3x3_from_rows(lattice_data, `lattice matrix`), scale)
 
   // Sites are optional for rendering (the isosurface needs only the lattice),
   // so a pruned/torn file missing ion data still opens with an empty cell.
@@ -79,8 +79,7 @@ const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
 }
 
 // VASP writes volumetric data C-order [components, nz, ny, nx]; the grid
-// dataset [nx, ny, nz] disambiguates (same logic as ferrox's
-// volumetric_grid_shape_and_order — when nx == nz both layouts match, so
+// dataset [nx, ny, nz] disambiguates (when nx == nz both layouts match, so
 // default to the canonical zyx order).
 const charge_axis_order = (spatial_shape: number[], grid_dims: number[]): `zyx` | `xyz` => {
   const [nx, ny, nz] = grid_dims

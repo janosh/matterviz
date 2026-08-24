@@ -6,7 +6,7 @@
 // LEPSILON finite-difference workflow, vasp_raman.py, phonopy-spectroscopy, ...) or
 // precomputed activities. Nothing in this file invents Raman data from eigenvectors.
 
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
 import { broaden_peaks } from '$lib/lineshape'
 import { SvelteSet } from 'svelte/reactivity'
 import { convert_frequencies } from './frequency-units'
@@ -313,8 +313,8 @@ export function broaden_spectrum(
     }
     return width
   })
-  const [min_width, max_width] = [Math.min(...widths), Math.max(...widths)]
-  const [min_stick, max_stick] = [Math.min(...sticks.x), Math.max(...sticks.x)]
+  const [min_width, max_width] = array_extent(widths)
+  const [min_stick, max_stick] = array_extent(sticks.x)
   const [range_lo, range_hi] =
     options.range ?? ([min_stick - 10 * max_width, max_stick + 10 * max_width] as Vec2)
   const step_size = options.step_size ?? min_width / 20

@@ -437,6 +437,14 @@ export const log_floor_scale = (
   return (val) => scale(Math.max(val, floor))
 }
 
+// Ascending log domain floored at LOG_EPS. The upper bound is widened from the *floored* lower
+// bound, so a non-positive `lo` (explicit negative range bound, all-zero data) cannot leave an
+// inverted [LOG_EPS, hi <= 0] domain behind; equal bounds widen by 10% so the scale isn't degenerate.
+const positive_log_domain = (lo: number, hi: number): Vec2 => {
+  const floor = Math.max(lo, math.LOG_EPS)
+  return [floor, Math.max(hi, floor * 1.1)]
+}
+
 export const nice_range_from_extent = (
   { min, max, n_finite }: RunningExtent,
   limits: [number | null, number | null],
@@ -529,10 +537,7 @@ function nice_range(
   // Create the scale with the *padded* data domain
   const scale =
     type_name === `log`
-      ? scaleLog().domain([
-          Math.max(data_min, math.LOG_EPS),
-          Math.max(data_max, data_min * 1.1),
-        ]) // Ensure log domain > 0
+      ? scaleLog().domain(positive_log_domain(data_min, data_max))
       : scaleLinear().domain([data_min, data_max])
 
   scale.nice()
@@ -682,7 +687,7 @@ export function create_size_scale(
 
   if (type_name === `log`) {
     return scaleLog()
-      .domain([Math.max(safe_min, math.LOG_EPS), Math.max(safe_max, safe_min * 1.1)])
+      .domain(positive_log_domain(safe_min, safe_max))
       .range([min_radius, max_radius])
       .clamp(true)
   }

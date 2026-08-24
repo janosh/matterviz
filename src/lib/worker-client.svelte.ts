@@ -32,10 +32,6 @@ export interface WorkerRequestOptions<Progress = unknown> {
   signal?: AbortSignal
   // Receives every `{ id, progress }` message the worker posts for this request
   on_progress?: (progress: Progress) => void
-  // Buffers inside the payload to move instead of copy. They are detached on the main
-  // thread afterwards, so the caller must not read them again (nor rely on identity dedupe
-  // re-posting the same input later).
-  transfer?: Transferable[]
 }
 
 // The module's async entry point: modules export the client itself (e.g. `compute_vacf_async`)
@@ -339,13 +335,10 @@ export function create_worker_client<
     const id = ++next_id
     const request = track(request_key, id)
     try {
-      // Empty transfer list by default: callers keep ownership of typed-array buffers
-      // (dedupe reuses the same input). Transferring would detach them.
+      // Copied, never transferred: identity dedupe re-posts the same input later, and a
+      // transferred typed-array buffer would be detached by then.
       // oxlint-disable-next-line unicorn/require-post-message-target-origin
-      wkr.postMessage(
-        { id, input: payload, options: $state.snapshot(options) },
-        request_options.transfer ?? [],
-      )
+      wkr.postMessage({ id, input: payload, options: $state.snapshot(options) })
     } catch (err) {
       request.reject(to_error(err))
     }

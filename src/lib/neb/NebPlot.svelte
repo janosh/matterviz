@@ -4,6 +4,7 @@
   import { plot_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
+  import { clamp } from '$lib/math'
   import { ScatterPlot, type DataSeries } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
@@ -87,7 +88,7 @@
   )
   const energy_unit = $derived(path_energy_unit(active.path))
   const max_image_idx = $derived(active.path.images.length - 1)
-  const clamped_idx = $derived(Math.min(Math.max(active_image_idx, 0), max_image_idx))
+  const clamped_idx = $derived(clamp(active_image_idx, 0, max_image_idx))
 
   const select_image = (path_key: string, image_idx: number) => {
     active_path_key = path_key

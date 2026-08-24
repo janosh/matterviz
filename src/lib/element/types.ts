@@ -65,8 +65,8 @@ export type ChemicalElement = {
 }
 
 // How a multi-segment ElementTile is carved up. Which layouts exist depends on the
-// segment count, so SPLIT_LAYOUTS_BY_COUNT in ElementTile.svelte is the source of truth
-// for valid pairings and rejects the rest.
+// segment count, so SPLIT_LAYOUTS in ElementTile.svelte is the source of truth for valid
+// pairings and rejects the rest.
 export type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
 
 // One slice of an ElementTile's fill; color and value travel together so they cannot get

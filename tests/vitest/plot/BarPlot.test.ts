@@ -421,7 +421,7 @@ describe(`BarPlot`, () => {
           mount_sized_bar_plot({
             series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
             x_axis: {
-              tick: { label: { auto_layout: { strategies: [`thin`] } } },
+              tick_label: { auto_layout: { strategies: [`thin`] } },
             },
           }),
         )

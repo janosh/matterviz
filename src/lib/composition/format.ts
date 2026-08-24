@@ -25,13 +25,24 @@ export const format_amount = (amount: number, amount_format = AMOUNT_FORMAT): st
   )
 }
 
+export type FormulaFormatOptions = {
+  // `Fe2O3` instead of `Fe<sub>2</sub>O<sub>3</sub>` (for ids, filenames, clipboard)
+  plain_text?: boolean
+  // Between element groups; default one space, `` for compact formulas
+  delim?: string
+  // d3 format for the amounts, see format_amount
+  amount_format?: string
+}
+
 // Format composition into chemical formula string
 export const format_composition_formula = (
   composition: CompositionType,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
-  plain_text = false,
-  delim = ` `,
-  amount_format = AMOUNT_FORMAT,
+  {
+    plain_text = false,
+    delim = ` `,
+    amount_format = AMOUNT_FORMAT,
+  }: FormulaFormatOptions = {},
 ): string => {
   const symbols = Object.keys(composition).filter(is_elem_symbol)
 
@@ -46,12 +57,12 @@ export const format_composition_formula = (
     .join(delim)
 }
 
+type FormulaInput = string | CompositionType | AnyStructure
+
 const format_formula_generic = (
-  input: string | CompositionType | AnyStructure,
+  input: FormulaInput,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
-  plain_text = false,
-  delim = ` `,
-  amount_format = AMOUNT_FORMAT,
+  options: FormulaFormatOptions,
 ): string => {
   const composition =
     typeof input === `string`
@@ -59,23 +70,14 @@ const format_formula_generic = (
       : is_structure_like(input)
         ? get_element_counts(input)
         : input
-  return format_composition_formula(composition, sort_fn, plain_text, delim, amount_format)
+  return format_composition_formula(composition, sort_fn, options)
 }
 
 // Create alphabetical formula
 export const get_alphabetical_formula = (
-  input: string | CompositionType | AnyStructure,
-  plain_text = false,
-  delim = ` `,
-  amount_format = AMOUNT_FORMAT,
-): string =>
-  format_formula_generic(
-    input,
-    (symbols) => symbols.toSorted(),
-    plain_text,
-    delim,
-    amount_format,
-  )
+  input: FormulaInput,
+  options: FormulaFormatOptions = {},
+): string => format_formula_generic(input, (symbols) => symbols.toSorted(), options)
 
 const electronegativity = (symbol: ElementSymbol): number =>
   element_by_symbol.get(symbol)?.electronegativity ?? 0
@@ -97,12 +99,9 @@ export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[]
 
 // Create electronegativity-sorted formula
 export const get_electro_neg_formula = (
-  input: string | CompositionType | AnyStructure,
-  plain_text = false,
-  delim = ` `,
-  amount_format = AMOUNT_FORMAT,
-): string =>
-  format_formula_generic(input, sort_by_electronegativity, plain_text, delim, amount_format)
+  input: FormulaInput,
+  options: FormulaFormatOptions = {},
+): string => format_formula_generic(input, sort_by_electronegativity, options)
 
 // === Formula markup (subscripts/superscripts) ===
 

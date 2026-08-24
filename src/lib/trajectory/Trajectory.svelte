@@ -321,9 +321,8 @@
     trail_stream = null
     if (!enabled) return
     const trail_controller = new AbortController()
-    // The stride budget and the collect entry point throw synchronously (a single frame
-    // over budget, a host-served run without a full pass); the async wrapper turns those
-    // into rejections so one catch covers them and the stream failures alike
+    // The stride budget throws synchronously (a single frame over budget); the async wrapper
+    // turns that into a rejection so one catch covers it and the stream failures alike
     const collect_trails = async () => {
       const frame_stride = suggest_frame_stride(
         owner.frame_count,
@@ -745,8 +744,6 @@
             run={trajectory}
             {current_frame}
             {current_step_idx}
-            current_filename={trajectory.provenance.filename}
-            file_size={trajectory.provenance.source_bytes}
             bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
             pane_props={{ style: pane_max_height }}
           />

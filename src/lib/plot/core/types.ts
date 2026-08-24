@@ -362,7 +362,6 @@ export type LegendConfig = Omit<
 > & {
   tween?: TweenOptions<Point2D>
   responsive?: boolean // Allow legend to move if density changes (default: false)
-  draggable?: boolean // Allow legend to be dragged (default: true)
   // Minimum distance from plot edges to avoid axis label overlap (default: 40)
   axis_clearance?: number
 }
@@ -466,7 +465,7 @@ export interface TickAutoLayoutConfig {
 }
 
 // Tick label configuration
-interface TickLabelConfig {
+export interface TickLabelConfig {
   inside?: boolean // Render tick labels inside the plot area (default: false/outside)
   shift?: XyShift
   // Angle in degrees, or `auto` (default on x/x2) to wrap/rotate. Pass 0 for upright/unwrapped.
@@ -474,11 +473,6 @@ interface TickLabelConfig {
   // Maximum auto-wrapped lines (default: 3). Pass 1 to disable wrapping.
   max_lines?: number
   auto_layout?: TickAutoLayoutConfig
-}
-
-// Tick configuration
-export interface TickConfig {
-  label?: TickLabelConfig
 }
 
 // Option for axis property dropdown (enables interactive axis switching)
@@ -509,7 +503,7 @@ export interface AxisConfig {
   label?: string
   format?: string
   ticks?: TicksOption
-  tick?: TickConfig
+  tick_label?: TickLabelConfig
   scale_type?: ScaleType
   range?: [number | null, number | null]
   unit?: string

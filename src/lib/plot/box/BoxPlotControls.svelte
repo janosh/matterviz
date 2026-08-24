@@ -3,7 +3,7 @@
   import type { Orientation, PlotConfig, ViolinKind, ViolinSide, WhiskerMode } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
-  import { DEFAULTS } from '$lib/settings'
+  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '$lib/settings'
   import type { Snippet } from 'svelte'
 
   let {
@@ -34,6 +34,13 @@
     children?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
   } = $props()
 </script>
+
+<!-- select options come from the settings schema so labels/values have a single source of truth -->
+{#snippet options(enum_map: Record<string, string>)}
+  {#each Object.entries(enum_map) as [value, label] (value)}
+    <option {value}>{label}</option>
+  {/each}
+{/snippet}
 
 <PlotControls
   bind:show_controls
@@ -66,28 +73,21 @@
       <label>
         <span>Glyph</span>
         <select bind:value={kind}>
-          <option value="box">Box</option>
-          <option value="violin">Violin</option>
-          <option value="violin+box">Violin + box</option>
+          {@render options(enum_labels(SETTINGS_CONFIG.box.kind))}
         </select>
       </label>
       {#if kind !== `box`}
         <label>
           <span>Side</span>
           <select bind:value={side}>
-            <option value="both">Both</option>
-            <option value="positive">Positive</option>
-            <option value="negative">Negative</option>
+            {@render options(enum_labels(SETTINGS_CONFIG.box.side))}
           </select>
         </label>
       {/if}
       <label>
         <span>Whiskers</span>
         <select bind:value={whisker_mode}>
-          <option value="tukey">Tukey (1.5·IQR)</option>
-          <option value="minmax">Min/max</option>
-          <option value="percentile">Percentile</option>
-          <option value="std">Std dev</option>
+          {@render options(enum_labels(SETTINGS_CONFIG.box.whisker_mode))}
         </select>
       </label>
     </div>

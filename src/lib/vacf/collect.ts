@@ -60,17 +60,13 @@ export async function collect_vacf_input(
   run: TrajectoryRun,
   options: AnalysisStreamOptions = {},
 ): Promise<VacfInput> {
-  // 3 rather than MSD's 2: central differences drop the first and last frame, so a
-  // 2-frame run leaves no velocity at all
-  if (run.frame_count < 3) {
-    throw new Error(
-      `collect_vacf_input: need at least 3 frames to differentiate velocities, got ${run.frame_count}`,
-    )
-  }
   const stream = await collect_trajectory_positions(run, {
     ...options,
     ...(has_velocities(run.preview) ? { vector_keys: [VELOCITY_SITE_PROPERTY] } : {}),
     analysis_name: `VACF`,
+    // 3 rather than MSD's 2: central differences drop the first and last frame, so a
+    // 2-frame run leaves no velocity at all
+    min_frames: 3,
   })
   return {
     ...stream,

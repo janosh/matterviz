@@ -33,7 +33,7 @@ import {
   type VisibleDomainLabel,
 } from '$lib/chempot-diagram/compute'
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
-import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
+import { filter_entries_at_temperature, slim_phase_entry } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -1907,6 +1907,21 @@ describe(`get_visible_domain_labels`, () => {
       expected,
     )
   })
+})
+
+// The worker payload: listed keys only, composition cloned, undefined fields left out
+test(`slim_phase_entry keeps the listed keys and drops structures and undefined fields`, () => {
+  const entry: PhaseData = {
+    composition: { Li: 2, O: 1 },
+    energy: -14,
+    entry_id: `mp-1`,
+    structure: { lattice: { volume: 42 }, sites: [{}] },
+    data: { volume: 42 },
+  }
+  const slim = slim_phase_entry(entry, [`energy`, `entry_id`, `correction`])
+  expect(slim).toEqual({ composition: { Li: 2, O: 1 }, energy: -14, entry_id: `mp-1` })
+  expect(`correction` in slim).toBe(false)
+  expect(slim.composition).not.toBe(entry.composition)
 })
 
 describe(`compute_chempot_async`, () => {

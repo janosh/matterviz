@@ -50,6 +50,7 @@
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
+    is_atom_color_mode_available,
     next_atom_color_config,
     structure_has_selective_dynamics,
     type AtomColorConfig,
@@ -512,7 +513,11 @@
 
   // Selective-dynamics coloring needs at least one site declaring the property (POSCAR
   // "Selective dynamics" block); without it every atom would land in one `unknown` bucket.
-  let has_selective_dynamics = $derived(structure_has_selective_dynamics(structure))
+  let color_mode_context = $derived({
+    has_sym_data: Boolean(sym_data),
+    has_selective_dynamics: structure_has_selective_dynamics(structure),
+    colorable_property_keys,
+  })
 
   // A newly loaded structure may not carry the property being colored by, in which case
   // the mode drops back to element colors.
@@ -767,6 +772,28 @@
   {/each}
 {/snippet}
 
+<!-- One checkbox chip per element (polyhedra centers, trail species) -->
+{#snippet element_chips(
+  key: SettingKey,
+  label: string,
+  elements: readonly ElementSymbol[],
+  is_on: (element: ElementSymbol) => boolean,
+  toggle: (element: ElementSymbol) => void,
+  tip?: string,
+)}
+  <div class="setting" {...setting_row(key, tip)}>
+    <span>{label}</span>
+    <div class="chip-row">
+      {#each elements as element (element)}
+        <label>
+          <input type="checkbox" checked={is_on(element)} onchange={() => toggle(element)} />
+          {element}
+        </label>
+      {/each}
+    </div>
+  </div>
+{/snippet}
+
 {#snippet setting_rows(rows: readonly Row[])}
   {#each rows as current (current.key)}
     {@const { key, label, step, aria_label, pair } = current}
@@ -989,10 +1016,10 @@
               set_atom_color_mode(event.currentTarget.value as AtomColorMode)}
           >
             {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
-              {@const disabled =
-                (value === `wyckoff` && !sym_data) ||
-                (value === `selective_dynamics` && !has_selective_dynamics) ||
-                (value === `property` && colorable_property_keys.length === 0)}
+              {@const disabled = !is_atom_color_mode_available(
+                value as AtomColorMode,
+                color_mode_context,
+              )}
               <option
                 {value}
                 {disabled}
@@ -1050,29 +1077,16 @@
         >
           {@render setting_rows(polyhedra_rows)}
           {#if structure_elements.length > 0}
-            <div
-              class="setting"
-              {...setting_row(
-                `polyhedra_centers`,
-                `${description_for(`polyhedra_excluded_elements`)}. Force-including a spectator ` +
-                  `center (alkali or heavy alkaline-earth, e.g. Li, Na, Ba) may render its ` +
-                  `polyhedra truncated at cell boundaries.`,
-              )}
-            >
-              <span>Centers</span>
-              <div class="chip-row">
-                {#each structure_elements as element (element)}
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={is_polyhedra_center_enabled(element)}
-                      onchange={() => toggle_polyhedra_element(element)}
-                    />
-                    {element}
-                  </label>
-                {/each}
-              </div>
-            </div>
+            {@render element_chips(
+              `polyhedra_centers`,
+              `Centers`,
+              structure_elements,
+              is_polyhedra_center_enabled,
+              toggle_polyhedra_element,
+              `${description_for(`polyhedra_excluded_elements`)}. Force-including a spectator ` +
+                `center (alkali or heavy alkaline-earth, e.g. Li, Na, Ba) may render its ` +
+                `polyhedra truncated at cell boundaries.`,
+            )}
           {/if}
         </SettingsSection>
       {/if}
@@ -1367,11 +1381,9 @@
           />
         </label>
         <NumberRangeInput
-          data-key="background_opacity"
-          min={0}
-          max={1}
+          setting="background_opacity"
+          schema={{ background_opacity: SETTINGS_CONFIG.background_opacity }}
           step={0.02}
-          title={description_for(`background_opacity`)}
           bind:value={background_opacity}>Opacity</NumberRangeInput
         >
       </SettingsSection>
@@ -1430,21 +1442,13 @@
             {@render setting_rows([trail_toggle_row])}
             {#if show_trajectory_lines && scene_props.trajectory_position_stream}
               {#if trail_elements.length > 1}
-                <div class="setting" {...setting_row(`trajectory_line_elements`)}>
-                  <span>Species</span>
-                  <div class="chip-row">
-                    {#each trail_elements as element (element)}
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={is_trail_element_on(element)}
-                          onchange={() => toggle_trail_element(element)}
-                        />
-                        {element}
-                      </label>
-                    {/each}
-                  </div>
-                </div>
+                {@render element_chips(
+                  `trajectory_line_elements`,
+                  `Species`,
+                  trail_elements,
+                  is_trail_element_on,
+                  toggle_trail_element,
+                )}
               {/if}
               <NumberRangeInput
                 setting="trajectory_line_trail_frames"

@@ -140,7 +140,6 @@ describe(`package.json exports`, () => {
     >()
     expectTypeOf<WorkerRequestOptions>().toHaveProperty(`signal`)
     expectTypeOf<WorkerRequestOptions>().toHaveProperty(`on_progress`)
-    expectTypeOf<WorkerRequestOptions>().toHaveProperty(`transfer`)
   })
 
   test.skipIf(!has_dist)(`worker-backed parser ships its sibling worker entry`, () => {

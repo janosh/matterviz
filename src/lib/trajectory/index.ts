@@ -45,9 +45,6 @@ export type {
   TrajectoryXQuantity,
 } from './plotting'
 
-// Tabs of TrajectoryDataInspectorPane: per-frame scalars vs per-atom rows
-export type TrajectoryInspectorTab = `frames` | `atoms`
-
 // LAMMPS atom type -> element symbol, e.g. { 1: 'Na', 2: 'Cl' }
 export type AtomTypeMapping = Record<number, ElementSymbol>
 

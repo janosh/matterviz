@@ -10,6 +10,7 @@
     segment_suffix,
     segment_title,
   } from './chart'
+  import SegmentLabel from './SegmentLabel.svelte'
 
   let {
     composition,
@@ -87,19 +88,14 @@
 
   {#if show_labels}
     {#each bubbles as bubble (bubble.element)}
-      {@const [width, height] = [size * 0.15, size * 0.075].map(
-        (len) => len * bubble.font_scale,
-      )}
-      <foreignObject x={bubble.x - width / 2} y={bubble.y - height / 2} {width} {height}>
-        <div class="bubble-label" style:color={bubble.text_color}>
-          <span style:font-size="{14 * bubble.font_scale}px">{bubble.element}</span>
-          {#if show_amounts || show_percentages}
-            <sub style:font-size="{8 * bubble.font_scale}px"
-              >{segment_suffix(bubble, label_opts)}</sub
-            >
-          {/if}
-        </div>
-      </foreignObject>
+      <SegmentLabel
+        x={bubble.x}
+        y={bubble.y}
+        segment={bubble}
+        font_scale={bubble.font_scale}
+        text_color={bubble.text_color}
+        {label_opts}
+      />
     {/each}
   {/if}
 </svg>
@@ -110,25 +106,5 @@
   }
   .bubble:hover {
     filter: brightness(1.1);
-  }
-  foreignobject {
-    pointer-events: none;
-    overflow: visible;
-  }
-  .bubble-label {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    white-space: nowrap;
-    span {
-      font-weight: 700;
-    }
-    sub {
-      font-weight: 500;
-      margin-left: 1px;
-      transform: translateY(5px);
-    }
   }
 </style>

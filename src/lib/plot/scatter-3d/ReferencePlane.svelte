@@ -4,7 +4,7 @@
   import { cross_3d, normalize_vec } from '$lib/math'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
-  import { create_to_threejs, span_or } from '$lib/plot/core/reference-line'
+  import { create_to_threejs, span_or } from '$lib/plot/scatter-3d/scene-coords'
   import type { RefPlane } from '$lib/plot/core/types'
 
   let {

@@ -845,12 +845,20 @@ export function is_electronic_band_struct(band_struct: unknown): boolean {
   )
 }
 
-// A single object (recognised by any of `marker_keys`) as a one-element list, a dict of
-// objects as its values, anything else as empty
-const single_or_dict_values = (input: unknown, marker_keys: string[]): unknown[] => {
+// Band structure / DOS props take one object or a dict of them keyed by label. A single
+// object is recognised by a marker key on the object itself and gets the empty label;
+// anything that is not an object yields no entries.
+const single_or_dict_entries = (
+  input: unknown,
+  marker_keys: string[],
+): [label: string, value: unknown][] => {
   if (typeof input !== `object` || input === null) return []
-  return marker_keys.some((key) => key in input) ? [input] : Object.values(input)
+  return marker_keys.some((key) => key in input) ? [[``, input]] : Object.entries(input)
 }
+// matterviz and pymatgen phonon band structures carry `qpoints`, electronic pymatgen `kpoints`
+export const band_struct_entries = (input: unknown) =>
+  single_or_dict_entries(input, [`qpoints`, `kpoints`])
+export const dos_entries = (input: unknown) => single_or_dict_entries(input, [`densities`])
 
 // Min/max of the finite `values` padded by `padding_factor` of the span; a phonon range whose
 // negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0
@@ -880,7 +888,7 @@ export function compute_frequency_range(
 
   // Electronic markers are read from the raw input: normalization strips them (every
   // normalized structure has qpoints). Bands that aren't electronic are phonon bands.
-  const raw_band_structs = single_or_dict_values(band_structs, [`qpoints`, `kpoints`])
+  const raw_band_structs = band_struct_entries(band_structs).map(([, raw]) => raw)
   // A malformed pymatgen entry throws from normalization; Bands reports it, the range just
   // skips it
   const bs_list = raw_band_structs.flatMap((raw) => {
@@ -893,7 +901,7 @@ export function compute_frequency_range(
   if (bs_list.length > 0 && !raw_band_structs.some(is_electronic_band_struct)) is_phonon = true
   for (const bs of bs_list) frequency_lists.push(...bs.bands)
 
-  for (const raw of single_or_dict_values(doses, [`densities`])) {
+  for (const [, raw] of dos_entries(doses)) {
     const dos = normalize_dos(raw)
     if (!dos) continue
     // DOS type detection: explicit type field is authoritative

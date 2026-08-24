@@ -4,6 +4,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 import { is_plain_object } from '$lib/utils'
+import { get_element_counts } from './density'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
 // underscore runs condensed, no leading or trailing underscore
@@ -17,7 +18,7 @@ const sanitize_filename_part = (text: string): string =>
 // Plain-text formula (HTML subscripts would land in filenames and file headers), or undefined
 // when the composition is unknown
 const plain_formula = (structure: AnyStructure): string | undefined => {
-  const formula = get_electro_neg_formula(structure, true)
+  const formula = get_electro_neg_formula(structure, { plain_text: true })
   return formula && formula !== `Unknown` ? formula : undefined
 }
 
@@ -163,16 +164,10 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
 // (`FeLiO4P`), else the id reduced to the alphanumerics and underscores a block name allows,
 // else `structure`
 function get_cif_block_name(structure: AnyStructure): string {
-  const element_counts: Record<string, number> = {}
-  for (const site of structure.sites) {
-    for (const { element, occu } of site.species) {
-      if (element) element_counts[element] = (element_counts[element] ?? 0) + (occu ?? 1)
-    }
-  }
-  const formula = Object.keys(element_counts)
-    .toSorted()
-    .map((element) => {
-      const count = Math.round(element_counts[element])
+  const formula = Object.entries(get_element_counts(structure))
+    .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+    .map(([element, amount]) => {
+      const count = Math.round(amount ?? 0)
       return count === 0 ? `` : count === 1 ? element : `${element}${count}`
     })
     .join(``)

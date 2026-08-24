@@ -41,8 +41,6 @@ const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
   phase_diagram: `phase_diagram`,
 }
 
-export type { ViewType } from './types'
-
 export interface ParseResult {
   type: ViewType
   data: unknown

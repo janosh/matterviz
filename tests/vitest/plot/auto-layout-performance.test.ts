@@ -23,12 +23,10 @@ const generated_axis = (tick_count: number, axis_size = AXIS_SIZE): MeasuredAxis
   tick_values: generated_labels(tick_count),
   tick_positions: generated_positions(tick_count, axis_size),
   axis_extent: { start: 0, end: axis_size },
-  tick: {
-    label: {
-      max_lines: 3,
-      // Exercise the real default strategy set, including bounded thin+rotate composition.
-      auto_layout: { endpoint_policy: `preserve` },
-    },
+  tick_label: {
+    max_lines: 3,
+    // Exercise the real default strategy set, including bounded thin+rotate composition.
+    auto_layout: { endpoint_policy: `preserve` },
   },
 })
 

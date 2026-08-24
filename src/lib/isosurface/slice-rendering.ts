@@ -1,5 +1,6 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { Vec2 } from '$lib/math'
+import { clamp, type Vec2 } from '$lib/math'
+import { clamp01 } from '$lib/utils'
 import { rgb } from 'd3-color'
 import type { ColorRangeSymmetry } from './coloring'
 import { build_colormap_lut, COLORMAP_LUT_SIZE, fit_color_range } from './coloring'
@@ -57,9 +58,7 @@ export function slice_to_rgba(
         continue
       }
       const normalized =
-        span === 0
-          ? 0.5
-          : Math.max(0, Math.min(1, (slice.data[source_idx] - range_min) * inv_span))
+        span === 0 ? 0.5 : clamp01((slice.data[source_idx] - range_min) * inv_span)
       const lut_idx = Math.round(normalized * (COLORMAP_LUT_SIZE - 1)) * 3
       pixels[pixel_idx] = lut[lut_idx]
       pixels[pixel_idx + 1] = lut[lut_idx + 1]
@@ -84,7 +83,7 @@ export function resolve_contour_thresholds(
     return thresholds.slice(0, MAX_CONTOUR_LEVELS)
   }
   const count = Number.isFinite(contour_levels)
-    ? Math.min(MAX_CONTOUR_LEVELS, Math.max(0, Math.floor(contour_levels)))
+    ? clamp(Math.floor(contour_levels), 0, MAX_CONTOUR_LEVELS)
     : 0
   const [range_min, range_max] = color_range
   if (count === 0 || range_min === range_max) return []

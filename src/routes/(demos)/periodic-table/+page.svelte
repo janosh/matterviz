@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation'
   import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib'
   import { element_data, PeriodicTable } from '$lib'
-  import type { Vec2 } from '$lib/math'
+  import { array_max, array_min, type Vec2 } from '$lib/math'
   import { TableInset } from '$lib/periodic-table'
   import { ColorBar } from '$lib/plot'
   import { MultiValueHeatmapDemo, PeriodicTableDemo } from '$site'
@@ -22,7 +22,7 @@
   )
   const four_fold_ranges = four_fold_quadrants.map(([title], quadrant_idx): [string, Vec2] => {
     const values = four_fold_data.map((quadrants) => quadrants[quadrant_idx])
-    return [title, [Math.min(...values.filter((val) => val > 0)), Math.max(...values)]]
+    return [title, [array_min(values.filter((val) => val > 0)), array_max(values)]]
   })
 
   const on_activate = (element: ChemicalElement) => {
@@ -230,8 +230,8 @@
         tile_props={{ show_name: false, show_number: false, show_symbol: false }}
         heatmap_values={element_data.map((el) => el[property] || 0)}
         {color_scale}
-        inner_transition_metal_offset={0.3}
         gap="1px"
+        style="--ptable-inner-transition-offset: 0.3"
       />
     </div>
   {/each}

@@ -1,13 +1,12 @@
 import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
-import { coerce_elem_symbol } from '$lib/element/helpers'
-import { capitalize_symbol } from '$lib/structure/parsers/shared'
+import { parse_float_token } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
+  elem_symbol_from_token,
   iter_xyz_frames,
-  parse_float_token,
   type XyzFrameSpec,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
@@ -238,8 +237,7 @@ function parse_xyz_atom_lines(
       )
     }
     const symbol = parts[species_col]
-    const element_symbol =
-      coerce_elem_symbol(symbol) ?? coerce_elem_symbol(capitalize_symbol(symbol))
+    const element_symbol = elem_symbol_from_token(symbol)
     if (!element_symbol) {
       warn(
         `Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label} at line ${line_number}`,

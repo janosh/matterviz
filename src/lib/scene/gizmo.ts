@@ -46,7 +46,7 @@ export function gizmo_rect(
 ): GizmoRect {
   if (placement === `fill`) return { x: 0, y: 0, width, height }
   // Unsized gizmos scale with the viewport, as the old DOM gizmo did via CSS clamp()
-  const responsive = Math.min(100, Math.max(70, 0.18 * Math.min(width, height)))
+  const responsive = clamp(0.18 * Math.min(width, height), 70, 100)
   const box = Math.min(size ?? responsive, width, height)
   const gap = 5
   const x = placement.endsWith(`-left`)
@@ -62,8 +62,7 @@ export function gizmo_rect(
 // single-view size would dominate them: scale with the pane's short side instead, clamped to
 // stay legible when small and below the single-view size when large.
 export const responsive_gizmo_size = (width: number, height: number): number => {
-  const fifth_of_short_side = Math.min(width, height) * 0.2
-  return Math.round(Math.max(34, Math.min(72, fifth_of_short_side)))
+  return Math.round(clamp(Math.min(width, height) * 0.2, 34, 72))
 }
 
 export const GIZMO_AXES: readonly (readonly [GizmoAxisKey, Vec3, boolean])[] = [

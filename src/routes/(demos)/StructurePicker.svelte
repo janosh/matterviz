@@ -11,7 +11,7 @@
     const struct = structure_map.get(struct_id)
     if (!struct) return ``
     try {
-      return get_electro_neg_formula(struct, false)
+      return get_electro_neg_formula(struct)
     } catch {
       return ``
     }

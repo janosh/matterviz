@@ -14,7 +14,7 @@ export type ChartSegment = {
   text_color: string // contrast color for text drawn on top of the segment fill
 }
 
-type ChartLabelOptions = { show_amounts: boolean; show_percentages: boolean }
+export type ChartLabelOptions = { show_amounts: boolean; show_percentages: boolean }
 
 // Positive-amount elements in insertion order with their atomic fraction and scheme color
 export const composition_segments = (

@@ -9,7 +9,7 @@ import type {
   PositionedArc,
   SunburstLabelRotation,
   SunburstShape,
-} from '$lib/plot/sunburst/sunburst'
+} from '$lib/plot/core/utils/hierarchy-layout'
 
 const TWO_PI = 2 * Math.PI
 

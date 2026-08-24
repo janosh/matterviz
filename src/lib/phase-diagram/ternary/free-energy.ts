@@ -21,7 +21,7 @@ import {
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
-import { array_extent, type Vec2 } from '$lib/math'
+import { array_extent, array_max, array_min, type Vec2 } from '$lib/math'
 import { G_ELEMENT_TEMPERATURES, G_ELEMENTS } from './g-els-data'
 import type { FreeEnergyOptions, FreeEnergySource, PhaseFreeEnergy } from './types'
 
@@ -212,7 +212,7 @@ const tabulated_range = ({ temperatures = [] }: PhaseData): Vec2 => array_extent
 const intersect_ranges = (ranges: (Vec2 | null)[]): Vec2 | null => {
   const defined = ranges.filter((range) => range !== null)
   return defined.length
-    ? [Math.max(...defined.map(([lo]) => lo)), Math.min(...defined.map(([, hi]) => hi))]
+    ? [array_max(defined.map(([lo]) => lo)), array_min(defined.map(([, hi]) => hi))]
     : null
 }
 
@@ -328,6 +328,6 @@ export function default_t_range(model: FreeEnergyModel): Vec2 {
   if (model.reference_t_range) return model.reference_t_range
   const ranges = model.phases.map((phase) => phase.t_range).filter((range) => range !== null)
   return ranges.length
-    ? [Math.min(...ranges.map(([lo]) => lo)), Math.max(...ranges.map(([, hi]) => hi))]
+    ? [array_min(ranges.map(([lo]) => lo)), array_max(ranges.map(([, hi]) => hi))]
     : [300, 1500]
 }

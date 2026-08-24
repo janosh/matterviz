@@ -2,19 +2,12 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let {
-    as = `aside`,
-    children,
-    ...rest
-  }: HTMLAttributes<HTMLElementTagNameMap[`aside`]> & {
-    as?: keyof HTMLElementTagNameMap
-    children?: Snippet
-  } = $props()
+  let { children, ...rest }: HTMLAttributes<HTMLElement> & { children?: Snippet } = $props()
 </script>
 
-<svelte:element this={as} {...rest} class={[`table-inset`, rest.class]}>
+<aside {...rest} class={[`table-inset`, rest.class]}>
   {@render children?.()}
-</svelte:element>
+</aside>
 
 <style>
   .table-inset {

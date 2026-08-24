@@ -2,7 +2,7 @@
 // Parses phase diagram SVGs (matplotlib or simple/Gemini format) into DiagramInput JSON
 // for immediate rendering by IsobaricBinaryPhaseDiagram
 
-import type { Vec2, Vec4 } from '$lib/math'
+import { array_extent, type Vec2, type Vec4 } from '$lib/math'
 import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
 
 // Round to 6 decimal places for clean floating-point output
@@ -277,7 +277,9 @@ function shape_bbox(el: Element): Vec4 | null {
   if (points.length < 4) return null
   const xs = points.filter((_, idx) => idx % 2 === 0)
   const ys = points.filter((_, idx) => idx % 2 === 1)
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+  const [x_min, x_max] = array_extent(xs)
+  const [y_min, y_max] = array_extent(ys)
+  return [x_min, y_min, x_max, y_max]
 }
 
 // Collect all non-background filled shapes (candidate phase region fills). Transformed shapes

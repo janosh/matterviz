@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition/format'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
@@ -7,42 +6,30 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+  import { SettingsSection } from '$lib/layout'
   import { ScatterPlot } from '$lib/plot'
   import type { DataSeries, UserContentProps } from '$lib/plot/core/types'
-  import { compute_chempot_async } from './async-compute.svelte'
+  import ChemPotControls from './ChemPotControls.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
-  import { get_domain_color_data } from './color'
-  import {
-    CHEMPOT_COLOR_MODE_OPTIONS,
-    CHEMPOT_COLOR_SCALE_OPTIONS,
-    create_chempot_overrides,
-  } from './controls-state.svelte'
+  import { container_pointer, create_chempot_state } from './controls-state.svelte'
   import {
     apply_element_padding,
     build_axis_ranges,
-    get_energy_stats_by_formula,
-    get_min_entries_and_el_refs,
     orthonormal_2d,
     pad_domain_points,
   } from './compute'
   import { export_json_file, get_json_string } from './export'
-  import { with_hover_pointer } from './pointer'
-  import { get_temp_filter_payload, get_valid_temperature } from './temperature'
-  import type { ChemPotDiagramConfig, ChemPotDiagramData, ChemPotHoverInfo } from './types'
-  import { CHEMPOT_DEFAULTS } from './types'
+  import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
 
   let {
     entries = [],
     config = {},
-    width = $bindable(800),
-    height = $bindable(600),
+    width = 800,
+    height = 600,
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    wrapper = $bindable(),
-    fullscreen = $bindable(false),
-    export_pane_open = $bindable(false),
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -50,87 +37,39 @@
     height?: number
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
-    // bindable: plot wrapper element (used for export and pointer hit-testing)
-    wrapper?: HTMLDivElement
-    // bindable: fullscreen state (managed by the internal ScatterPlot)
-    fullscreen?: boolean
-    // bindable: whether the export pane is currently open
-    export_pane_open?: boolean
   } = $props()
+  // Plot wrapper element (export and pointer hit-testing), bound from the ScatterPlot
+  let wrapper = $state<HTMLDivElement>()
+  let export_pane_open = $state(false)
   let container_width = $state(0)
   const base_aspect_ratio = $derived(height > 0 && width > 0 ? height / width : 1)
   const render_width = $derived(container_width > 0 ? container_width : width)
   const render_height = $derived(Math.round(render_width * base_aspect_ratio))
 
-  // === Control overrides (override ?? config ?? default, cleared by Reset) ===
-  const overrides = create_chempot_overrides(
-    () => config,
-    [
-      `formal_chempots`,
-      `label_stable`,
-      `element_padding`,
-      `default_min_limit`,
-      `color_mode`,
-      `color_scale`,
-      `reverse_color_scale`,
-    ],
-  )
-  const formal_chempots = $derived(overrides.resolve(`formal_chempots`))
-  const label_stable = $derived(overrides.resolve(`label_stable`))
-  const element_padding = $derived(overrides.resolve(`element_padding`))
-  const default_min_limit = $derived(overrides.resolve(`default_min_limit`))
-  const color_mode = $derived(overrides.resolve(`color_mode`))
-  const color_scale = $derived(overrides.resolve(`color_scale`))
-  const reverse_color_scale = $derived(overrides.resolve(`reverse_color_scale`))
-  const show_tooltip = $derived(config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip)
-  const effective_config = $derived({
-    ...config,
+  const chempot = create_chempot_state({
+    entries: () => entries,
+    config: () => config,
+    temperature: { get: () => temperature, set: (value) => (temperature = value) },
+    min_elements: 2,
+    formulas: () => Object.keys(draw_domains),
+    label: `ChemPotDiagram2D`,
+  })
+  const {
     formal_chempots,
     label_stable,
     element_padding,
     default_min_limit,
-  })
-  const { has_temp_data, available_temperatures, temp_filtered_entries } = $derived(
-    get_temp_filter_payload(entries, temperature, config),
-  )
-
-  // Keep bound temperature aligned with available data points.
-  $effect(() => {
-    const next_temperature = get_valid_temperature(temperature, available_temperatures)
-    if (next_temperature !== temperature) temperature = next_temperature
-  })
-
-  // === Diagram computation (off main thread via Web Worker) ===
-  let diagram_data = $state<ChemPotDiagramData | null>(null)
-  let diagram_computing = $state(false)
-  $effect(() => {
-    if (temp_filtered_entries.length < 2) {
-      diagram_data = null
-      diagram_computing = false
-      return
-    }
-    let cancelled = false
-    diagram_computing = true
-    compute_chempot_async(temp_filtered_entries, effective_config)
-      .then((data) => {
-        if (cancelled) return
-        diagram_data = data
-        diagram_computing = false
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.error(`ChemPotDiagram2D:`, err)
-        diagram_data = null
-        diagram_computing = false
-      })
-    return () => {
-      cancelled = true
-    }
-  })
+    color_mode,
+    color_scale,
+    reverse_color_scale,
+    diagram_data,
+    domain_colors,
+    color_range,
+  } = $derived(chempot)
 
   const plot_elements = $derived((diagram_data?.elements ?? config.elements ?? []).slice(0, 2))
 
-  const draw_domains = $derived.by(() => {
+  const draw_domains = $derived.by((): Record<string, number[][]> => {
     if (!diagram_data || plot_elements.length < 2) return {}
     const indices = [0, 1]
     if (element_padding <= 0) {
@@ -159,22 +98,6 @@
   })
   const domain_entries = $derived(Object.entries(draw_domains))
 
-  // Raw (non-renormalized) elemental refs for true formation energies
-  const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
-  // Memoize separately so color-control toggles don't re-scan all entries
-  const energy_stats = $derived(get_energy_stats_by_formula(temp_filtered_entries))
-  const { colors: domain_colors, color_range } = $derived(
-    get_domain_color_data({
-      formulas: Object.keys(draw_domains),
-      color_mode,
-      color_scale,
-      reverse_color_scale,
-      entries: temp_filtered_entries,
-      el_refs: raw_el_refs,
-      energy_stats,
-    }),
-  )
-
   // === Convert domains to ScatterPlot DataSeries ===
   const series = $derived<DataSeries[]>(
     domain_entries.map(([formula, pts]) => ({
@@ -190,8 +113,8 @@
 
   // Axis label text
   function axis_label(element: string): string {
-    const prefix = formal_chempots ? `\u0394` : ``
-    return `${prefix}\u03BC<sub>${element}</sub> (eV)`
+    const prefix = formal_chempots ? `Δ` : ``
+    return `${prefix}μ<sub>${element}</sub> (eV)`
   }
 
   let x_axis = $state({ label: ``, label_shift: { y: -45 } })
@@ -232,17 +155,13 @@
   let locked_hover_formula = $state<string | null>(null)
 
   function set_hover_info(formula: string, pts: number[][], event: MouseEvent): void {
-    const bounds = wrapper?.getBoundingClientRect()
-    hover_info = with_hover_pointer<ChemPotHoverInfo>(
-      {
-        formula,
-        view: `2d`,
-        n_points: pts.length,
-        axis_ranges: build_axis_ranges(pts, plot_elements),
-      },
-      event,
-      bounds,
-    )
+    hover_info = {
+      formula,
+      view: `2d`,
+      n_points: pts.length,
+      axis_ranges: build_axis_ranges(pts, plot_elements),
+      pointer: container_pointer(event, wrapper),
+    }
   }
 
   function clear_hover_lock(): void {
@@ -328,7 +247,11 @@
       text-anchor="middle"
       class="domain-label"
     >
-      {get_electro_neg_formula(formula, true, ``, `.3~s`)}
+      {get_electro_neg_formula(formula, {
+        plain_text: true,
+        delim: ``,
+        amount_format: `.3~s`,
+      })}
     </text>
   {/each}
 {/snippet}
@@ -347,89 +270,12 @@
 {/snippet}
 
 {#snippet chempot_controls(_props: unknown)}
-  <h4>ChemPot</h4>
-  <label>
-    <span>Formal chempots:</span>
-    <input
-      type="checkbox"
-      checked={formal_chempots}
-      onchange={() => overrides.set(`formal_chempots`, !formal_chempots)}
-    />
-  </label>
-  <label>
-    <span>Label stable:</span>
-    <input
-      type="checkbox"
-      checked={label_stable}
-      onchange={() => overrides.set(`label_stable`, !label_stable)}
-    />
-  </label>
-  <label>
-    <span>Element padding (eV):</span>
-    <input
-      type="number"
-      min="0"
-      step="0.1"
-      value={element_padding}
-      oninput={(event) =>
-        overrides.set(`element_padding`, Number(event.currentTarget.value) || 0)}
-    />
-  </label>
-  <label>
-    <span>Default min limit (eV):</span>
-    <input
-      type="number"
-      max="0"
-      step="1"
-      value={default_min_limit}
-      oninput={(event) => {
-        const raw = event.currentTarget.value
-        const parsed = parseFloat(raw)
-        overrides.set(
-          `default_min_limit`,
-          raw === `` || isNaN(parsed) ? default_min_limit : parsed,
-        )
-      }}
-    />
-  </label>
-  <label>
-    <span>Color mode:</span>
-    <select
-      value={color_mode}
-      onchange={(event) =>
-        overrides.set(`color_mode`, event.currentTarget.value as typeof color_mode)}
-    >
-      {#each CHEMPOT_COLOR_MODE_OPTIONS as [value, label] (value)}
-        <option {value}>{label}</option>
-      {/each}
-    </select>
-  </label>
-  {#if color_mode !== `none` && color_mode !== `arity`}
-    <label>
-      <span>Color scale:</span>
-      <select
-        value={color_scale}
-        onchange={(event) =>
-          overrides.set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
-      >
-        {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
-          <option {value}>{label}</option>
-        {/each}
-      </select>
-      <span class="reverse-scale-toggle">
-        <span>Reverse:</span>
-        <input
-          type="checkbox"
-          checked={reverse_color_scale}
-          onchange={() => overrides.set(`reverse_color_scale`, !reverse_color_scale)}
-        />
-      </span>
-    </label>
-  {/if}
-  <button type="button" onclick={overrides.reset}>Reset defaults</button>
+  <SettingsSection title="ChemPot" current_values={chempot.values} on_reset={chempot.reset}>
+    <ChemPotControls values={chempot} set={chempot.set} />
+  </SettingsSection>
 {/snippet}
 
-{#if diagram_computing}
+{#if chempot.computing}
   <Spinner
     text="Computing chemical potential domains..."
     style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
@@ -437,7 +283,7 @@
 {:else if !diagram_data}
   <div class="error-state" role="alert" aria-live="polite">
     <p>Cannot compute chemical potential diagram.</p>
-    <p>Need at least 2 elements with elemental reference entries.</p>
+    <p>{chempot.error ?? `Need at least 2 elements with elemental reference entries.`}</p>
   </div>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -464,7 +310,6 @@
     {@render export_toggle()}
     <ScatterPlot
       bind:wrapper
-      bind:fullscreen
       {series}
       bind:x_axis
       bind:y_axis
@@ -484,18 +329,18 @@
       formulas={Object.keys(draw_domains)}
       style="bottom: 60px; left: 50px"
     />
-    {#if show_tooltip && hover_info?.view === `2d`}
+    {#if chempot.show_tooltip && hover_info?.view === `2d`}
       <ChemPotTooltip
         {hover_info}
         pinned={locked_hover_formula === hover_info.formula}
-        detail_level={config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level}
+        detail_level={chempot.tooltip_detail_level}
         constrain_to={{ width: render_width, height: render_height }}
       />
     {/if}
-    {#if has_temp_data && temperature !== undefined}
+    {#if chempot.has_temp_data && temperature !== undefined}
       <TemperatureSlider
         class="chempot-temp-slider"
-        {available_temperatures}
+        available_temperatures={chempot.available_temperatures}
         bind:temperature
       />
     {/if}
@@ -519,23 +364,10 @@
   .chempot-diagram-2d > :global(.pane-toggle[aria-expanded='true']) {
     opacity: 1;
   }
-  .chempot-diagram-2d :global(.draggable-pane label) {
-    display: flex;
-    align-items: center;
-    gap: 6pt;
-    margin: 4pt 0;
-    font-size: 0.95em;
-  }
   .chempot-diagram-2d :global(.chempot-temp-slider) {
     top: var(--chempot-temp-slider-top, calc(1ex + 108px));
     right: 4px;
     z-index: 11;
-  }
-  .chempot-diagram-2d :global(.reverse-scale-toggle) {
-    display: flex;
-    align-items: center;
-    gap: 4pt;
-    margin-left: 4pt;
   }
   .error-state {
     display: flex;

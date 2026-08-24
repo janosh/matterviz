@@ -17,6 +17,7 @@
   import { BarPlot, ScatterPlot } from '$lib/plot'
   import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps } from 'svelte'
+  import { SvelteSet } from 'svelte/reactivity'
   import type { RadiationType } from '$lib/scattering'
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
@@ -168,12 +169,13 @@
           if (!too_close) selected_indices.push(idx)
         }
       }
+      const selected = new SvelteSet(selected_indices)
 
       for (let idx = 0; idx < xs.length; idx++) {
         const hkls: Hkl[] = entry.pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? []
         metadata.push({ hkls, d: entry.pattern.d_hkls?.[idx], label: entry.label })
 
-        if (selected_indices.includes(idx)) {
+        if (selected.has(idx)) {
           // Angles are shown by default only while the plot holds at most two patterns
           const with_angle = show_angles ?? pattern_entries.length <= 2
           const angle_text = with_angle ? `${format_value(xs[idx], `.2f`)}°` : ``
@@ -224,11 +226,11 @@
   // Dropped files: measured patterns are parsed, structure files get a computed pattern
   const drop_zone = io.file_drop_zone({
     allow: () => allow_file_drop,
+    // a throwing add_xrd_pattern is reported through on_error by the drop handler itself
     on_drop: async (content, filename, metadata) => {
       if (on_file_drop) return on_file_drop(content, filename, metadata)
-      const result = await add_xrd_pattern(content, filename, wavelength, radiation)
-      if (result.error) error_msg = result.error
-      else if (result.pattern) dropped_entries = [result.pattern, ...dropped_entries]
+      const entry = await add_xrd_pattern(content, filename, wavelength, radiation)
+      dropped_entries = [entry, ...dropped_entries]
     },
     on_error: (msg) => (error_msg = msg),
     set_loading: (val) => {

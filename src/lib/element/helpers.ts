@@ -24,17 +24,3 @@ export const symbol_to_atomic_number = (symbol: string): number | undefined =>
 // type resolves to a symbol; types below 1 clamp to H rather than indexing `ELEM_SYMBOLS[-1]`
 export const element_from_lammps_type = (atom_type: number): ElementSymbol =>
   ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
-
-// Default element symbols used when a file omits or mangles element info
-export const FALLBACK_ELEMENTS = [
-  `H`,
-  `He`,
-  `Li`,
-  `Be`,
-  `B`,
-  `C`,
-  `N`,
-  `O`,
-  `F`,
-  `Ne`,
-] as const

@@ -14,6 +14,7 @@
     apply_gaussian_smearing,
     calculate_sigma_step,
     closed_edge_path,
+    dos_entries,
     extract_efermi,
     extract_pdos,
     format_dos_tooltip,
@@ -28,10 +29,10 @@
   } from './helpers'
   import {
     convert_frequencies,
-    FREQUENCY_UNITS,
     frequency_unit_label,
     parse_frequency_unit,
   } from './frequency-units'
+  import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import type {
     DosData,
     DosInput,
@@ -95,22 +96,15 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
-  // Normalize input to dict format - converts any DosInput format to DosData
-  // If pdos_type is set, extract projected DOS from the input instead
+  // Normalized DOS by label (`` for a single DOS). With pdos_type set, the projected DOS of
+  // the input (a single CompleteDos) or of the first dict entry replace the totals.
   let doses_dict = $derived.by((): Record<string, DosData> => {
-    if (!doses) return {}
-
-    // If pdos_type is set, try to extract projected DOS
+    const entries = dos_entries(doses)
     if (pdos_type) {
-      // Try extracting from the doses object directly (single CompleteDos)
-      const pdos = extract_pdos(doses, pdos_type, pdos_filter)
-      if (pdos) return pdos
-
-      // Try extracting from first entry if doses is a dict
-      if (typeof doses === `object` && !(`densities` in doses)) {
-        const first_dos = Object.values(doses)[0]
-        const pdos_from_first = extract_pdos(first_dos, pdos_type, pdos_filter)
-        if (pdos_from_first) return pdos_from_first
+      const first_entry = entries[0]?.[1]
+      for (const candidate of first_entry === doses ? [doses] : [doses, first_entry]) {
+        const pdos = extract_pdos(candidate, pdos_type, pdos_filter)
+        if (pdos) return pdos
       }
       // PDOS extraction was requested but failed - warn and revert to normal processing
       console.warn(
@@ -118,16 +112,8 @@
           `Falling back to total DOS. Ensure input has atom_dos (for atom) or spd_dos (for orbital) data.`,
       )
     }
-
-    if (`densities` in doses && (`frequencies` in doses || `energies` in doses)) {
-      // Single DOS
-      const normalized = normalize_dos(doses)
-      return normalized ? { '': normalized } : {}
-    }
-
-    // Already a dict - normalize each DOS
     const result: Record<string, DosData> = {}
-    for (const [key, dos] of Object.entries(doses as Record<string, DosInput>)) {
+    for (const [key, dos] of entries) {
       const normalized = normalize_dos(dos)
       if (normalized) result[key] = normalized
     }
@@ -462,19 +448,7 @@
             </label>
           {/if}
           {#if show_units_control && is_phonon}
-            <label>
-              <span>Frequency</span>
-              <select
-                id="dos-units"
-                value={unit}
-                onchange={(event) =>
-                  (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
-              >
-                {#each FREQUENCY_UNITS as option (option)}
-                  <option value={option}>{frequency_unit_label(option)}</option>
-                {/each}
-              </select>
-            </label>
+            <FrequencyUnitSelect id="dos-units" bind:units />
           {/if}
         </SettingsSection>
       {/if}

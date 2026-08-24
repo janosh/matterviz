@@ -22,14 +22,14 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       await expect(temp_slider).toBeVisible()
 
       // Should display temperature input with K unit
-      const temp_label = temp_slider.locator(`.temp-label`)
+      const temp_label = temp_slider.locator(`.slider-header`)
       await expect(temp_label).toBeVisible()
       await expect(temp_label).toContainText(`K`)
       const temp_input = temp_label.locator(`input[type="number"]`)
       await expect(temp_input).toBeVisible()
 
       // Should display temperature range
-      const temp_range = temp_slider.locator(`.temp-range`)
+      const temp_range = temp_slider.locator(`.slider-range`)
       await expect(temp_range).toBeVisible()
       await expect(temp_range).toContainText(`300`)
       await expect(temp_range).toContainText(`1500`)
@@ -40,7 +40,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       await expect(diagram).toBeVisible()
 
       const temp_slider = diagram.locator(`.temperature-slider`)
-      const temp_input = temp_slider.locator(`.temp-label input[type="number"]`)
+      const temp_input = temp_slider.locator(`.slider-header input[type="number"]`)
       const range_input = temp_slider.locator(`input[type="range"]`)
 
       // Get initial temperature
@@ -81,7 +81,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const range_input = temp_slider.locator(`input[type="range"]`)
 
       // Get initial temperature
-      const temp_input = temp_slider.locator(`.temp-label input[type="number"]`)
+      const temp_input = temp_slider.locator(`.slider-header input[type="number"]`)
       const initial_temp = await temp_input.inputValue()
 
       // Change temperature to a different value
@@ -139,14 +139,18 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const temp_slider = diagram.locator(`.temperature-slider`)
       await expect(temp_slider).toBeVisible()
 
-      // Verify positioning via computed styles
-      const position = await temp_slider.evaluate((el) => {
-        const style = getComputedStyle(el)
-        return { position: style.position, right: style.right, top: style.top }
-      })
-
-      expect(position.position).toBe(`absolute`)
-      expect(position.right).toMatch(/\d/) // Has a right value
+      // The slider sits in the right half of the diagram, below the control-button row
+      const [slider_box, diagram_box] = await Promise.all([
+        temp_slider.boundingBox(),
+        diagram.boundingBox(),
+      ])
+      if (!slider_box || !diagram_box) throw new Error(`missing bounding boxes`)
+      expect(slider_box.x).toBeGreaterThan(diagram_box.x + diagram_box.width / 2)
+      expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(
+        diagram_box.x + diagram_box.width,
+      )
+      expect(slider_box.y).toBeGreaterThan(diagram_box.y)
+      expect(slider_box.y).toBeLessThan(diagram_box.y + diagram_box.height / 2)
     })
   })
 
@@ -159,7 +163,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       await expect(temp_slider).toBeVisible()
 
       // Should show full temperature range
-      const temp_range = temp_slider.locator(`.temp-range`)
+      const temp_range = temp_slider.locator(`.slider-range`)
       await expect(temp_range).toContainText(`300`)
       await expect(temp_range).toContainText(`1500`)
     })
@@ -169,7 +173,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       await expect(diagram).toBeVisible()
 
       const temp_slider = diagram.locator(`.temperature-slider`)
-      const temp_input = temp_slider.locator(`.temp-label input[type="number"]`)
+      const temp_input = temp_slider.locator(`.slider-header input[type="number"]`)
       const range_input = temp_slider.locator(`input[type="range"]`)
 
       // Test first, middle, and last temperature values (sequential testing required)

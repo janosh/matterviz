@@ -394,6 +394,9 @@ describe(`edit-atoms`, () => {
     expect(host.structure?.sites).toHaveLength(2)
     expect(session.undo()).toBe(true)
     expect(session.undo(), `nothing left`).toBe(false)
+    expect(session.history.redo_stack).toHaveLength(1)
+    session.push_undo()
+    expect(session.history.redo_stack, `a new edit invalidates redo`).toHaveLength(0)
     destroy()
   })
 

@@ -145,10 +145,6 @@ test.describe(`ScatterPlot3D`, () => {
 
   test(`controls pane opens on toggle click`, async ({ page }) => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await expect(page.locator(`${CONTAINER_SELECTOR} button.pane-toggle`)).toHaveCSS(
-      `right`,
-      `32px`,
-    )
     await open_controls_pane(page) // asserts the toggle appears and the pane opens
   })
 })

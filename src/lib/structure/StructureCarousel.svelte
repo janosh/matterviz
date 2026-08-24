@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clamp } from '$lib/math'
   import type { StructureCarouselItem } from '$lib/structure'
   import GlassChip from '$lib/overlays/GlassChip.svelte'
   import { portal } from 'svelte-widgets/attachments'
@@ -126,7 +127,7 @@
   )
   const window_size = $derived(Math.min(items.length, page_size + 2 + 2 * overscan_cards))
   const window_start = $derived(
-    Math.max(0, Math.min(first_visible_idx - overscan_cards, items.length - window_size)),
+    clamp(first_visible_idx - overscan_cards, 0, Math.max(0, items.length - window_size)),
   )
   const rendered_items = $derived(
     items.slice(window_start, window_start + window_size).map((item, offset) => ({
@@ -276,8 +277,7 @@
           : 1
     // unclamped while the track is unmeasured (max 0); the browser clamps anyway
     const limit = max_scroll() || Infinity
-    const next = Math.min(limit, Math.max(0, current_scroll_pos + wheel_delta * delta_scale))
-    if (!scroll_to(next)) return
+    if (!scroll_to(clamp(current_scroll_pos + wheel_delta * delta_scale, 0, limit))) return
     event.preventDefault()
     if (is_horizontal) event.stopPropagation()
   }
@@ -290,10 +290,7 @@
   }
 
   const scroll_page = (direction: -1 | 1): void => {
-    const target_start = Math.min(
-      max_page_start,
-      Math.max(0, first_visible_idx + direction * page_size),
-    )
+    const target_start = clamp(first_visible_idx + direction * page_size, 0, max_page_start)
     scroll_to(target_start * item_stride)
     settle_now()
   }
@@ -320,7 +317,7 @@
     }
     const delta = deltas[event.key]
     if (delta === undefined) return
-    if (!scroll_to(Math.min(limit, Math.max(0, current + delta)))) return
+    if (!scroll_to(clamp(current + delta, 0, limit))) return
     event.preventDefault()
     settle_now()
   }

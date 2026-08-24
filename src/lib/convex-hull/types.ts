@@ -234,6 +234,3 @@ export interface GasAnalysis {
   // Gas species that are relevant for this system
   relevant_gases: GasSpecies[]
 }
-
-// Corner a standalone GasPressureControls panel is pinned to
-export type GasControlPosition = `top-left` | `top-right` | `bottom-left` | `bottom-right`

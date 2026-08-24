@@ -236,8 +236,8 @@ export function y_axis_label_x(
   pad_l: number,
   max_tick_width: number,
 ): number {
-  const inside = axis.tick?.label?.inside ?? false
-  const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0)
+  const inside = axis.tick_label?.inside ?? false
+  const tick_shift = inside ? 0 : (axis.tick_label?.shift?.x ?? 0)
   const tick_extent = inside ? 0 : max_tick_width + 8 - tick_shift
   const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
   const title_center = title_height / 2
@@ -254,8 +254,8 @@ export function y2_axis_label_x(
   pad_r: number,
   max_tick_width: number,
 ): number {
-  const inside = axis.tick?.label?.inside ?? false
-  const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0) + 8
+  const inside = axis.tick_label?.inside ?? false
+  const tick_shift = inside ? 0 : (axis.tick_label?.shift?.x ?? 0) + 8
   const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
   const label_offset =
     (inside ? 0 : max_tick_width) +
@@ -417,8 +417,8 @@ export const calc_auto_padding = ({
     const ticks = axis.tick_values ?? []
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_side
-    const inside = axis.tick?.label?.inside ?? false
-    const tick_shift = axis.tick?.label?.shift?.x ?? 0
+    const inside = axis.tick_label?.inside ?? false
+    const tick_shift = axis.tick_label?.shift?.x ?? 0
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_width = has_outside_ticks
       ? resolve_tick_layout(
@@ -466,9 +466,9 @@ export const calc_auto_padding = ({
     const title_layout = title_layout_for(x2_axis, available_width)
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_padding.t
-    const inside = x2_axis.tick?.label?.inside ?? false
+    const inside = x2_axis.tick_label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
-    const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
+    const tick_shift = x2_axis.tick_label?.shift?.y ?? 0
     const tick_band = has_outside_ticks
       ? horizontal_tick_layout(x2_axis, available_width, `x2`).band
       : 0
@@ -489,7 +489,7 @@ export const calc_auto_padding = ({
   // its own width downward. Reserving exactly what the title placement will use is what
   // keeps the surplus from becoming dead space.
   const bottom_pad = (available_width: number): number => {
-    const inside = x_axis.tick?.label?.inside ?? false
+    const inside = x_axis.tick_label?.inside ?? false
     const tick_values = x_axis.tick_values ?? []
     const has_outside_ticks = tick_values.length > 0 && !inside
     const title_layout = title_layout_for(x_axis, available_width)
@@ -498,7 +498,7 @@ export const calc_auto_padding = ({
     const band = has_outside_ticks
       ? horizontal_tick_layout(x_axis, available_width, `x`).band
       : TICK_LABEL_HEIGHT
-    const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
+    const tick_shift = Math.max(0, x_axis.tick_label?.shift?.y ?? 0)
     // The title's first line sits one gap past the labels and is centered there, so half a
     // line reaches further still; wrapped lines stack below it in full. LABEL_GAP_DEFAULT,
     // not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.

@@ -16,70 +16,72 @@ import { describe, expect, test } from 'vitest'
 describe(`get_alphabetical_formula`, () => {
   test.each([
     // Basic string / composition inputs
-    [`Fe2O3`, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [`H2O`, undefined, undefined, undefined, `H<sub>2</sub> O`],
-    [`CaCO3`, undefined, undefined, undefined, `C Ca O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [{ H: 2, O: 1 }, undefined, undefined, undefined, `H<sub>2</sub> O`],
-    [{ Ca: 1, C: 1, O: 3 }, undefined, undefined, undefined, `C Ca O<sub>3</sub>`],
+    [`Fe2O3`, {}, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [`H2O`, {}, `H<sub>2</sub> O`],
+    [`CaCO3`, {}, `C Ca O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, {}, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [{ H: 2, O: 1 }, {}, `H<sub>2</sub> O`],
+    [{ Ca: 1, C: 1, O: 3 }, {}, `C Ca O<sub>3</sub>`],
     // plain_text
-    [{ Fe: 2, O: 3 }, true, undefined, undefined, `Fe2 O3`],
-    [`Fe2O3`, true, undefined, undefined, `Fe2 O3`],
-    [{ H: 1, O: 1 }, true, undefined, undefined, `H O`],
-    [`H2O`, true, undefined, undefined, `H2 O`],
+    [{ Fe: 2, O: 3 }, { plain_text: true }, `Fe2 O3`],
+    [`Fe2O3`, { plain_text: true }, `Fe2 O3`],
+    [{ H: 1, O: 1 }, { plain_text: true }, `H O`],
+    [`H2O`, { plain_text: true }, `H2 O`],
     // delim
-    [{ Fe: 2, O: 3 }, false, ``, undefined, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, false, `-`, undefined, `Fe<sub>2</sub>-O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, true, ``, undefined, `Fe2O3`],
-    [{ Fe: 2, O: 3 }, true, `-`, undefined, `Fe2-O3`],
-    [`Fe2O3`, false, ``, undefined, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [`Fe2O3`, true, ``, undefined, `Fe2O3`],
-    [`H2O`, false, ``, undefined, `H<sub>2</sub>O`],
-    [`H2O`, true, ``, undefined, `H2O`],
+    [{ Fe: 2, O: 3 }, { delim: `` }, `Fe<sub>2</sub>O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, { delim: `-` }, `Fe<sub>2</sub>-O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, { plain_text: true, delim: `` }, `Fe2O3`],
+    [{ Fe: 2, O: 3 }, { plain_text: true, delim: `-` }, `Fe2-O3`],
+    [`Fe2O3`, { delim: `` }, `Fe<sub>2</sub>O<sub>3</sub>`],
+    [`Fe2O3`, { plain_text: true, delim: `` }, `Fe2O3`],
+    [`H2O`, { delim: `` }, `H<sub>2</sub>O`],
+    [`H2O`, { plain_text: true, delim: `` }, `H2O`],
     // amount_format
-    [{ Fe: 2.5, O: 3.75 }, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
-    [{ Fe: 2.5, O: 3.75 }, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
-    [{ Fe: 2.5, O: 3.75 }, false, ` `, `.0f`, `Fe<sub>3</sub> O<sub>4</sub>`],
-    [{ Fe: 1000, O: 1500 }, false, ` `, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
-    [{ Fe: 0.001, O: 0.002 }, false, ` `, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
-    [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
-    [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
+    [{ Fe: 2.5, O: 3.75 }, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
+    [{ Fe: 2.5, O: 3.75 }, { amount_format: `.2f` }, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
+    [{ Fe: 2.5, O: 3.75 }, { amount_format: `.0f` }, `Fe<sub>3</sub> O<sub>4</sub>`],
+    [{ Fe: 1000, O: 1500 }, { amount_format: `.3~s` }, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
+    [
+      { Fe: 0.001, O: 0.002 },
+      { amount_format: `.3~g` },
+      `Fe<sub>0.001</sub> O<sub>0.002</sub>`,
+    ],
+    [`Fe2.5O3.75`, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
+    [`Fe2.5O3.75`, { amount_format: `.2f` }, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
     // an explicit SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
-    [`Li0.5FeO2`, true, ``, undefined, `FeLi0.5O2`],
-    [{ Li: 0.001, Fe: 1, O: 2 }, true, ``, `.3~s`, `FeLi0.001O2`],
+    [`Li0.5FeO2`, { plain_text: true, delim: `` }, `FeLi0.5O2`],
+    [
+      { Li: 0.001, Fe: 1, O: 2 },
+      { plain_text: true, delim: ``, amount_format: `.3~s` },
+      `FeLi0.001O2`,
+    ],
     // the default keeps large counts as plain digits (C1k would not parse back) and trims
     // float noise to 3 decimals
-    [`C1000H2000`, true, ``, undefined, `C1000H2000`],
-    [{ H: 0.1 + 0.2, O: 1 }, true, ``, undefined, `H0.3O`],
-  ])(
-    `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
-    (input, plain_text, delim, amount_format, expected) => {
-      expect(get_alphabetical_formula(input, plain_text, delim, amount_format)).toBe(expected)
-    },
-  )
+    [`C1000H2000`, { plain_text: true, delim: `` }, `C1000H2000`],
+    [{ H: 0.1 + 0.2, O: 1 }, { plain_text: true, delim: `` }, `H0.3O`],
+  ])(`input=%p, options=%p → %p`, (input, options, expected) => {
+    expect(get_alphabetical_formula(input, options)).toBe(expected)
+  })
 })
 
 describe(`get_electro_neg_formula`, () => {
   test.each([
     // Electronegativity-specific ordering
-    [`O2Ti`, undefined, undefined, undefined, `Ti O<sub>2</sub>`],
-    [`NaCl`, undefined, undefined, undefined, `Na Cl`],
-    [{ Na: 1, Cl: 1 }, undefined, undefined, undefined, `Na Cl`],
-    [`O2Ti`, true, ``, undefined, `TiO2`],
+    [`O2Ti`, {}, `Ti O<sub>2</sub>`],
+    [`NaCl`, {}, `Na Cl`],
+    [{ Na: 1, Cl: 1 }, {}, `Na Cl`],
+    [`O2Ti`, { plain_text: true, delim: `` }, `TiO2`],
     // Shared formatting behavior (same as alphabetical for these compositions)
-    [`Fe2O3`, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [`H2O`, undefined, undefined, undefined, `H<sub>2</sub> O`],
-    [{ Fe: 2, O: 3 }, true, undefined, undefined, `Fe2 O3`],
-    [{ Fe: 2, O: 3 }, false, ``, undefined, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, true, `-`, undefined, `Fe2-O3`],
-    [{ Fe: 2.5, O: 3.75 }, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
-    [{ Fe: 1000, O: 1500 }, false, ` `, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
-  ])(
-    `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
-    (input, plain_text, delim, amount_format, expected) => {
-      expect(get_electro_neg_formula(input, plain_text, delim, amount_format)).toBe(expected)
-    },
-  )
+    [`Fe2O3`, {}, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [`H2O`, {}, `H<sub>2</sub> O`],
+    [{ Fe: 2, O: 3 }, { plain_text: true }, `Fe2 O3`],
+    [{ Fe: 2, O: 3 }, { delim: `` }, `Fe<sub>2</sub>O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, { plain_text: true, delim: `-` }, `Fe2-O3`],
+    [{ Fe: 2.5, O: 3.75 }, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
+    [{ Fe: 1000, O: 1500 }, { amount_format: `.3~s` }, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
+  ])(`input=%p, options=%p → %p`, (input, options, expected) => {
+    expect(get_electro_neg_formula(input, options)).toBe(expected)
+  })
 })
 
 describe(`get_formula_label_segments`, () => {

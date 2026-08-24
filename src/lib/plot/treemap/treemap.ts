@@ -8,7 +8,7 @@
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
 import { clamp } from '$lib/math'
 import type { Rect } from '$lib/plot/core/layout'
-import type { PositionedArc, SunburstNode } from '$lib/plot/sunburst/sunburst'
+import type { PositionedArc, SunburstNode } from '$lib/plot/core/utils/hierarchy-layout'
 
 // Treemaps consume the same node trees as Sunburst (shared data builders)
 export type TreemapNode<Metadata = Record<string, unknown>> = SunburstNode<Metadata>

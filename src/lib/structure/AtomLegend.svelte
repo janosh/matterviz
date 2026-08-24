@@ -20,7 +20,9 @@
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
+    is_atom_color_mode_available,
     next_atom_color_config,
+    structure_has_selective_dynamics,
   } from '$lib/structure/atom-properties'
   import type { SymmetryDataset } from '$lib/symmetry'
   import { type Snippet, untrack } from 'svelte'
@@ -70,6 +72,11 @@
   }
 
   let colorable_property_keys = $derived(get_colorable_property_keys(structure))
+  let color_mode_context = $derived({
+    has_sym_data: Boolean(sym_data),
+    has_selective_dynamics: structure_has_selective_dynamics(structure),
+    colorable_property_keys,
+  })
 
   let show_element_legend = $derived(
     atom_color_config.mode === `element` && elements && Object.keys(elements).length > 0,
@@ -255,9 +262,10 @@
     {#if mode_menu_open}
       <div class="mode-dropdown">
         {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
-          {@const disabled =
-            (value === `wyckoff` && !sym_data) ||
-            (value === `property` && colorable_property_keys.length === 0)}
+          {@const disabled = !is_atom_color_mode_available(
+            value as AtomColorMode,
+            color_mode_context,
+          )}
           <button
             class={['mode-option', { selected: atom_color_config.mode === value, disabled }]}
             {disabled}

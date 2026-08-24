@@ -1,4 +1,4 @@
-import { create_orthographic_zoom } from '$lib/scene'
+import { create_orthographic_zoom, create_scene_camera } from '$lib/scene'
 import { flushSync } from 'svelte'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 import { expect, test } from 'vitest'
@@ -147,4 +147,54 @@ test(`reset_to_fit snaps to the new fit in the same flush instead of rescaling b
     set({ fit: 40 })
     expect(zoom.zoom).toBe(40)
   })
+})
+
+// The bundle the four scenes use: orbit props follow the controls, and the zoom limits handed
+// to OrbitControls are the fit-aware bounds rather than the raw min/max
+test(`create_scene_camera derives orbit props from controls, target and fit-aware zoom bounds`, () => {
+  const cleanup = $effect.root(() => {
+    const controls = $state({
+      camera_projection: `orthographic` as const,
+      rotate_speed: 1,
+      zoom_speed: 1,
+      zoom_to_cursor: false,
+      pan_speed: 1,
+      auto_rotate: 0,
+      rotation_damping: 0,
+      min_zoom: 10,
+      max_zoom: 50,
+    })
+    const inputs = $state({ fit: 100, target: [1, 2, 3] as [number, number, number] })
+    const camera = new OrthographicCamera()
+    const scene_camera = create_scene_camera({
+      controls: () => controls,
+      target: () => inputs.target,
+      fit_zoom: () => inputs.fit,
+      measured: () => true,
+      camera: () => camera,
+    })
+    flushSync()
+    expect(scene_camera.zoom).toBe(100)
+    expect(scene_camera.orbit_props.target).toEqual([1, 2, 3])
+    // the fit lies above max_zoom, so the ceiling lifts to keep it reachable
+    expect([scene_camera.orbit_props.minZoom, scene_camera.orbit_props.maxZoom]).toEqual([
+      10, 100,
+    ])
+    expect(scene_camera.orbit_props.zoomSpeed).toBe(2) // orthographic doubling
+
+    controls.rotate_speed = 0
+    inputs.target = [0, 0, 0]
+    flushSync()
+    expect(scene_camera.orbit_props.enableRotate).toBe(false)
+    expect(scene_camera.orbit_props.target).toEqual([0, 0, 0])
+
+    camera.zoom = 40
+    scene_camera.orbit_props.onend() // gesture end stores the wheeled zoom
+    inputs.fit = 200
+    flushSync()
+    expect(scene_camera.zoom).toBe(80) // user zoom keeps its ratio to the fit
+    scene_camera.reset_to_fit()
+    expect(scene_camera.zoom).toBe(200)
+  })
+  cleanup()
 })

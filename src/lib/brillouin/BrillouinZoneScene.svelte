@@ -3,9 +3,9 @@
   import * as math from '$lib/math'
   import {
     bind_renderer,
-    build_orbit_props,
-    create_orthographic_zoom,
+    create_scene_camera,
     HOVER_THROTTLE_MS,
+    resolve_scene_controls,
     SceneCamera,
     SceneLights,
   } from '$lib/scene'
@@ -33,31 +33,18 @@
   } from './types'
 
   let {
-    bz_data = $bindable(),
-    camera_projection = $bindable(DEFAULTS.brillouin.camera_projection),
-    surface_color = $bindable(DEFAULTS.brillouin.surface_color),
-    surface_opacity = $bindable(DEFAULTS.brillouin.surface_opacity),
-    edge_color = $bindable(DEFAULTS.brillouin.edge_color),
-    edge_width = $bindable(DEFAULTS.brillouin.edge_width),
-    show_vectors = $bindable(DEFAULTS.brillouin.show_vectors),
-    vector_scale = $bindable(DEFAULTS.brillouin.vector_scale),
+    bz_data,
+    camera_projection = DEFAULTS.brillouin.camera_projection,
+    surface_color = DEFAULTS.brillouin.surface_color,
+    surface_opacity = DEFAULTS.brillouin.surface_opacity,
+    edge_color = DEFAULTS.brillouin.edge_color,
+    edge_width = DEFAULTS.brillouin.edge_width,
+    show_vectors = DEFAULTS.brillouin.show_vectors,
+    vector_scale = DEFAULTS.brillouin.vector_scale,
     show_ibz = DEFAULTS.brillouin.show_ibz,
-    ibz_data = null as IrreducibleBZData | null,
+    ibz_data = null,
     ibz_color = DEFAULTS.brillouin.ibz_color,
     ibz_opacity = DEFAULTS.brillouin.ibz_opacity,
-    rotation_damping = DEFAULTS.structure.rotation_damping,
-    max_zoom = DEFAULTS.structure.max_zoom,
-    min_zoom = DEFAULTS.structure.min_zoom,
-    rotate_speed = DEFAULTS.structure.rotate_speed,
-    zoom_speed = DEFAULTS.structure.zoom_speed,
-    pan_speed = DEFAULTS.structure.pan_speed,
-    zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor,
-    fov = DEFAULTS.structure.fov,
-    initial_zoom = DEFAULTS.structure.initial_zoom,
-    ambient_light = DEFAULTS.structure.ambient_light,
-    directional_light = DEFAULTS.structure.directional_light,
-    gizmo = DEFAULTS.structure.gizmo,
-    auto_rotate = DEFAULTS.structure.auto_rotate,
     scene = $bindable(),
     camera = $bindable(),
     k_path_points = [],
@@ -68,6 +55,8 @@
     on_kpath_hover,
     width = 0,
     height = 0,
+    // camera/lighting/interaction props, resolved against the shared defaults below
+    ...scene_controls
   }: SceneControlProps &
     Partial<Omit<BrillouinZoneSettings, `bz_order`>> & {
       bz_data?: BrillouinZoneData
@@ -81,6 +70,8 @@
       hover_data?: BZHoverData | null
       on_kpath_hover?: (qpoint_index: number | null) => void
     } = $props()
+
+  const controls = $derived(resolve_scene_controls(scene_controls))
 
   bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
@@ -97,37 +88,22 @@
   // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
   // renders the zone several times too small.
-  const fit_zoom = $derived(
-    width > 0 && height > 0
-      ? ortho_zoom_for_extent(
-          bz_fit_extent(bz_data?.vertices, bz_data?.k_lattice),
-          width,
-          height,
-          initial_zoom,
-        )
-      : initial_zoom,
-  )
-  const ortho_zoom = create_orthographic_zoom({
-    fit_zoom: () => fit_zoom,
-    min_zoom: () => min_zoom,
-    max_zoom: () => max_zoom,
-    measured: () => width > 0 && height > 0,
+  const measured = $derived(width > 0 && height > 0)
+  const scene_camera = create_scene_camera({
+    controls: () => ({ ...controls, camera_projection }),
+    target: () => rotation_target,
+    fit_zoom: () =>
+      measured
+        ? ortho_zoom_for_extent(
+            bz_fit_extent(bz_data?.vertices, bz_data?.k_lattice),
+            width,
+            height,
+            controls.initial_zoom,
+          )
+        : controls.initial_zoom,
+    measured: () => measured,
     camera: () => camera,
   })
-
-  const orbit_controls_props = $derived(
-    build_orbit_props({
-      camera_projection,
-      target: rotation_target,
-      rotate_speed,
-      zoom_speed,
-      zoom_to_cursor,
-      pan_speed,
-      auto_rotate,
-      rotation_damping,
-      ...ortho_zoom.orbit_zoom_props(),
-    }),
-  )
 
   // K-path styling. The invisible hover proxy is twice the visible thickness so the cursor
   // snaps to the path even when it isn't directly over the thin visible segment.
@@ -152,14 +128,6 @@
   // Throttle state for pointer move events
   let last_hover_time = 0
   let last_hover_mesh: `bz` | `ibz` | null = null
-
-  // Reset throttle when bz_data changes to ensure immediate response
-  $effect(() => {
-    if (bz_data) {
-      last_hover_time = 0
-      last_hover_mesh = null
-    }
-  })
 
   // Track IBZ hover state - IBZ takes priority over BZ
   let ibz_hovered = false
@@ -231,13 +199,13 @@
 <SceneCamera
   {camera_projection}
   position={computed_camera_position}
-  {fov}
-  zoom={ortho_zoom.zoom}
-  orbit_props={orbit_controls_props}
-  {gizmo}
+  fov={controls.fov}
+  zoom={scene_camera.zoom}
+  orbit_props={scene_camera.orbit_props}
+  gizmo={controls.gizmo}
 />
 
-<SceneLights ambient={ambient_light} directional={directional_light} />
+<SceneLights ambient={controls.ambient_light} directional={controls.directional_light} />
 
 <T.Group position={rotation_target}>
   {#if bz_data}

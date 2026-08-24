@@ -50,8 +50,7 @@ type RangeLimit = [number | null, number | null]
 
 // How bar heights are scaled: raw counts, fraction of in-domain samples, or probability density
 // (count / (total * bin width in data units), so the bars integrate to 1 even on log-spaced bins)
-export const HISTOGRAM_NORMALIZE = [`count`, `probability`, `density`] as const
-export type HistogramNormalize = (typeof HISTOGRAM_NORMALIZE)[number]
+export type HistogramNormalize = `count` | `probability` | `density`
 
 export interface HistogramBin {
   x0: number // lower edge (data units)

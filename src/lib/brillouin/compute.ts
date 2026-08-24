@@ -242,7 +242,7 @@ function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
         `Brillouin zone has ${vertices.length} vertices (need ≥4) for k_lattice ${JSON.stringify(k_lattice)}`,
       )
     }
-    const radius = Math.max(...vertices.map((vertex) => Math.hypot(...vertex)))
+    const radius = math.array_max(vertices.map((vertex) => Math.hypot(...vertex)))
     const max_len = 2 * radius * (1 + 1e-9)
     const ranges = dual_norms.map((norm) => Math.floor(max_len * norm)) as Vec3
     const have = new Set(planes.map((plane) => plane.key))

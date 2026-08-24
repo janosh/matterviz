@@ -2,7 +2,8 @@
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import { reciprocal_lattice, scale_lattice_matrix } from '$lib/math'
+import { clamp, reciprocal_lattice, scale_lattice_matrix } from '$lib/math'
+import { clamp01 } from '$lib/utils'
 import type { ScalarGrid3D } from './grid'
 import {
   downsample_grid,
@@ -18,7 +19,7 @@ const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 // both corners to 0 so the n - 2 clamp never goes negative.
 const lower_corner = (n: number, floor_g: number, periodic: boolean): number => {
   if (n === 1) return 0
-  return periodic ? safe_mod(floor_g, n) : Math.max(0, Math.min(floor_g, n - 2))
+  return periodic ? safe_mod(floor_g, n) : clamp(floor_g, 0, n - 2)
 }
 const upper_corner = (n: number, lower: number, periodic: boolean): number => {
   if (n === 1) return 0
@@ -154,9 +155,9 @@ function volume_sampler_xyz(
         return NaN
       // Clamp both genuine out-of-bounds ('clamp' policy = nearest edge value)
       // and tiny numerical overshoot at the boundary
-      fx = Math.min(1, Math.max(0, fx))
-      fy = Math.min(1, Math.max(0, fy))
-      fz = Math.min(1, Math.max(0, fz))
+      fx = clamp01(fx)
+      fy = clamp01(fy)
+      fz = clamp01(fz)
     }
     return trilinear_interpolate(volume, fx, fy, fz, periodic)
   }
@@ -348,7 +349,7 @@ const precompute_axis_interpolation = (
       upper[sample_idx] = (lower[sample_idx] + 1) % source_dim
       weight[sample_idx] = grid_coord - grid_floor
     } else {
-      lower[sample_idx] = Math.max(0, Math.min(grid_floor, source_dim - 2))
+      lower[sample_idx] = clamp(grid_floor, 0, source_dim - 2)
       upper[sample_idx] = Math.min(lower[sample_idx] + 1, source_dim - 1)
       weight[sample_idx] = grid_coord - lower[sample_idx]
     }

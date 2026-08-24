@@ -2,22 +2,20 @@
   import { goto } from '$app/navigation'
   import type { ChemicalElement } from '$lib'
   import { element_data, PeriodicTable } from '$lib'
-  import type { Vec2 } from '$lib/math'
+  import { array_extent, array_max, array_min, type Vec2 } from '$lib/math'
   import { TableInset } from '$lib/periodic-table'
   import { ColorBar } from '$lib/plot'
 
   // Each element shows two values as diagonal triangles (atomic mass + density)
   const two_fold_data = element_data.map((el) => [el.atomic_mass, el.density || 0])
 
-  const atomic_mass_range = [
-    Math.min(...element_data.map((el) => el.atomic_mass)),
-    Math.max(...element_data.map((el) => el.atomic_mass)),
-  ] as Vec2
+  const atomic_mass_range = array_extent(element_data.map((el) => el.atomic_mass))
 
-  const density_range = [
-    Math.min(...element_data.map((el) => el.density || 0).filter((dens) => dens > 0)),
-    Math.max(...element_data.map((el) => el.density || 0)),
-  ] as Vec2
+  const densities = element_data.map((el) => el.density || 0)
+  const density_range: Vec2 = [
+    array_min(densities.filter((dens) => dens > 0)),
+    array_max(densities),
+  ]
 
   const on_activate = (element: ChemicalElement) => {
     if (!element?.name) return

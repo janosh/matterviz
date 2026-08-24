@@ -2,11 +2,12 @@
 // [element symbols] / atom counts / [Selective dynamics] / coordinate mode.
 // Callers supply either an array or text cursor and adapt the result to their error contract.
 import type { ElementSymbol } from '$lib/element'
-import { FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element/helpers'
+import { is_elem_symbol } from '$lib/element/helpers'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   diag_warn,
+  FALLBACK_ELEMENTS,
   parse_coordinate,
   parse_float_token,
   validate_element_symbol,

@@ -11,6 +11,7 @@
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
+  import { clamp } from '$lib/math'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
   import { Structure } from '$lib/structure'
   import { to_error } from '$lib/utils'
@@ -101,9 +102,7 @@
   )
   const profile = $derived(active ? profiles[active.key] : null)
   const n_images = $derived(active?.path.images.length ?? 0)
-  const image_idx = $derived(
-    Math.min(Math.max(active_image_idx, 0), Math.max(n_images - 1, 0)),
-  )
+  const image_idx = $derived(clamp(active_image_idx, 0, Math.max(n_images - 1, 0)))
   const current_image = $derived(active?.path.images[image_idx])
   const image_caption = $derived(current_image?.label ?? `image ${image_idx}`)
   const energy_unit = $derived(active ? path_energy_unit(active.path) : `eV`)

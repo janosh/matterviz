@@ -88,7 +88,7 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 export const ext_regex = (exts: readonly string[]): RegExp =>
   new RegExp(`\\.(${exts.map((ext) => ext.replace(/^\./, ``)).join(`|`)})$`, `i`)
 
-const filename_token_regex = (filenames: readonly string[]): RegExp =>
+export const filename_token_regex = (filenames: readonly string[]): RegExp =>
   new RegExp(`(?:^|[\\\\/_.-])(?:${filenames.join(`|`)})(?:[\\\\/_.-]|$)`, `i`)
 
 // File extensions for different file types
@@ -112,7 +112,7 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex([
 // Bare VASP filenames that the structure parser supports. OUTCAR, INCAR, KPOINTS and
 // POTCAR are left out because advertising unparsable run inputs only earns the caller
 // `Unable to determine file format`.
-const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
+export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
 export const VASP_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
 // oxfmt-ignore
 export const VASP_VOLUMETRIC_FILES = Object.freeze([

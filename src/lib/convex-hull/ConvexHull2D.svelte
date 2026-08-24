@@ -373,6 +373,7 @@
       {label_threshold}
       bind:fullscreen
       {fullscreen_toggle}
+      {wrapper}
       {merged_controls}
       {stable_entries}
       {unstable_entries}

@@ -14,7 +14,13 @@ import type {
   WebviewToHostMessage,
 } from '$lib/file-viewer/host-protocol'
 import { format_bytes, is_plain_object, to_error } from '$lib/utils'
-import { DEFAULTS, type DefaultSettings, merge, SETTINGS_CONFIG } from '$lib/settings'
+import {
+  type DefaultSettings,
+  is_valid_setting_value,
+  merge,
+  SETTINGS_CONFIG,
+  type SettingType,
+} from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 // Deep imports: the $lib/trajectory barrel re-exports Svelte components and worker-backed
 // modules, none of which belong in the Node host bundle
@@ -197,20 +203,23 @@ export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
   throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
 }
 
-// Detect VSCode theme and user preference
+// The user's matterviz.theme, with `auto` resolved from VS Code's active color theme. The
+// setting is an enum in package.json, so an invalid value only arrives through a hand-edited
+// settings.json; surface it rather than silently rendering some other theme.
 export const get_theme = (): ThemeName => {
-  const config = vscode.workspace.getConfiguration(`matterviz`)
-  const theme_setting = config.get<string>(`theme`, AUTO_THEME)
-
-  // Validate theme setting
+  const theme_setting = vscode.workspace
+    .getConfiguration(`matterviz`)
+    .get<string>(`theme`, AUTO_THEME)
+  // Same policy as read_explicit_overrides: a bad settings.json value is reported and the
+  // default (follow VS Code's color theme) applies instead of breaking the viewer
   if (!is_valid_theme_mode(theme_setting)) {
-    console.warn(`Invalid theme setting: ${theme_setting}, falling back to auto`)
+    const allowed = [AUTO_THEME, ...Object.keys(COLOR_THEMES)].join(`, `)
+    console.warn(
+      `Ignoring invalid matterviz.theme = ${JSON.stringify(theme_setting)}; expected one of ${allowed}, following the VS Code theme`,
+    )
     return get_system_theme()
   }
-
-  if (theme_setting !== AUTO_THEME) return theme_setting // Handle manual theme selection
-
-  return get_system_theme() // Auto-detect from VSCode color theme
+  return theme_setting === AUTO_THEME ? get_system_theme() : theme_setting
 }
 
 // Get system theme by mapping VSCode's current color theme kind to our theme names
@@ -223,6 +232,10 @@ const get_system_theme = (): ThemeName => {
   return theme_by_kind[vscode.window.activeColorTheme.kind] ?? COLOR_THEMES.light
 }
 
+// A schema node is a leaf (one setting) when it carries a `value`, else a group to recurse into
+const is_setting_leaf = (node: Record<string, unknown>): node is SettingType & typeof node =>
+  `value` in node
+
 // Collect user/workspace overrides via config.inspect() (ignores package defaults)
 const read_explicit_overrides = (
   config: vscode.WorkspaceConfiguration,
@@ -234,44 +247,37 @@ const read_explicit_overrides = (
   for (const [key, setting] of Object.entries(schema)) {
     if (!is_plain_object(setting)) continue
     const full_key = prefix ? `${prefix}.${key}` : key
-    if (!(`value` in setting)) {
+    if (!is_setting_leaf(setting)) {
       const nested = read_explicit_overrides(config, setting, full_key)
       if (Object.keys(nested).length > 0) overrides[key] = nested
       continue
     }
     const inspected = config.inspect(full_key)
     // Prefer more specific scope: folder > workspace > global
-    let value = [
+    const value = [
       inspected?.workspaceFolderValue,
       inspected?.workspaceValue,
       inspected?.globalValue,
     ].find((candidate) => candidate !== undefined)
-    const configured_value = value
-    if (typeof value === `number`) {
-      const minimum = typeof setting.minimum === `number` ? setting.minimum : -Infinity
-      const maximum = typeof setting.maximum === `number` ? setting.maximum : Infinity
-      value = Math.min(maximum, Math.max(minimum, value))
-    }
-    if (!Object.is(value, configured_value)) {
+    if (value === undefined) continue
+    // Same admissibility rule as the persisted viewer state: an out-of-range or mistyped
+    // settings.json value is reported and the schema default applies through merge()
+    if (!is_valid_setting_value(value, setting)) {
       console.warn(
-        `Clamped matterviz.${full_key} from ${String(configured_value)} to ${value}`,
+        `Ignoring invalid matterviz.${full_key} = ${JSON.stringify(value)}; using the default ${JSON.stringify(setting.value)}`,
       )
+      continue
     }
-    if (value !== undefined) overrides[key] = value
+    overrides[key] = value
   }
   return overrides
 }
 
-// Settings reader with nested structure support and built-in error handling
-export const get_defaults = (): DefaultSettings => {
-  try {
-    const config = vscode.workspace.getConfiguration(`matterviz`)
-    return merge(read_explicit_overrides(config, SETTINGS_CONFIG))
-  } catch (error) {
-    console.error(`Failed to get defaults:`, error)
-    return DEFAULTS
-  }
-}
+// Schema defaults overlaid with the user's explicit matterviz.* settings
+export const get_defaults = (): DefaultSettings =>
+  merge(
+    read_explicit_overrides(vscode.workspace.getConfiguration(`matterviz`), SETTINGS_CONFIG),
+  )
 
 // Create HTML content for webview
 export const create_html = (

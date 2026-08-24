@@ -180,17 +180,18 @@ const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
 
 export type CellType = `original` | `conventional` | `primitive`
 
-// The structure in the requested cell. Unchanged for `original`, when no symmetry data is
-// available yet, or for an unknown runtime cell_type (stale persisted settings).
+// The structure in the requested cell. Unchanged for `original` and while no symmetry data is
+// available yet. Persisted settings are validated in $lib/settings/viewer-state, so any other
+// cell_type reaching here is a caller bug.
 export const transform_cell = (
   structure: Crystal,
   cell_type: CellType,
   sym_data: MoyoDataset | null,
 ): Crystal => {
-  if (!sym_data) return structure
-  if (cell_type === `conventional`) return moyo_cell_to_structure(sym_data.std_cell, structure)
-  if (cell_type === `primitive`) {
-    return moyo_cell_to_structure(sym_data.prim_std_cell, structure)
-  }
-  return structure
+  if (!sym_data || cell_type === `original`) return structure
+  const cell = { conventional: sym_data.std_cell, primitive: sym_data.prim_std_cell }[
+    cell_type
+  ]
+  if (!cell) throw new Error(`Unknown cell_type "${cell_type}"`)
+  return moyo_cell_to_structure(cell, structure)
 }

@@ -40,7 +40,9 @@
   } = $props()
 
   const formula_html = $derived(
-    sanitize_formula(get_electro_neg_formula(stats?.formula ?? structure, true)),
+    sanitize_formula(
+      get_electro_neg_formula(stats?.formula ?? structure, { plain_text: true }),
+    ),
   )
   const context = $derived({ structure, stats, formula_html })
 </script>

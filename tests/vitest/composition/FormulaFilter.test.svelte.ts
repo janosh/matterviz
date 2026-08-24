@@ -88,6 +88,8 @@ describe(`FormulaFilter`, () => {
     [`LiFe*2*`, `exact`, `FeLi*2*`],
     [`*2O3`, `exact`, `O3*2`],
     [`H0`, `exact`, `H0`], // zero amount formats to nothing; the text survives
+    // invalid wildcard formula: kept verbatim, and the mode-hint preview must not throw
+    [`Li*2x`, `exact`, `Li*2x`],
   ] as const)(
     `"%s" infers mode %s, shows its hint and normalizes to "%s" on blur`,
     async (input, mode, normalized) => {

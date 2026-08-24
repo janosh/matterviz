@@ -403,7 +403,7 @@ describe(`cartesian frame`, () => {
       const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
         const plot = await mount_chart(chart, {
           ...chart.props(),
-          x_axis: { ticks, tick: { label: { rotation: 45 } } },
+          x_axis: { ticks, tick_label: { rotation: 45 } },
         })
         const transform = plot.querySelector(`g.x-axis g.tick`)?.getAttribute(`transform`)
         return Number(/,\s*(?<axis_y>[\d.]+)\)/.exec(transform ?? ``)?.groups?.axis_y)
@@ -648,7 +648,7 @@ describe(`cartesian frame`, () => {
         with_measured_text(() =>
           mount_chart(chart, {
             ...chart.props(cats, `vertical`),
-            x_axis: { label: `state`, tick: { label: { auto_layout: { strategies } } } },
+            x_axis: { label: `state`, tick_label: { auto_layout: { strategies } } },
           }),
         )
       const x_tick_labels = (plot: HTMLElement) => [

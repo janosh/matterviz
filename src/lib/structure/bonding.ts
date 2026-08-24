@@ -12,7 +12,7 @@ import type {
   Site,
   StructureBond,
 } from '$lib/structure'
-import { get_orig_site_idx } from '$lib/structure/site'
+import { get_image_source_idx, get_orig_site_idx } from '$lib/structure/site'
 
 const covalent_radii = new Map<string, number>(
   element_data.flatMap((el) =>
@@ -211,11 +211,6 @@ const site_image_shift = (sites: Site[] | undefined, site_idx: number): Vec3 => 
   ]
 }
 
-const original_site_idx = (sites: Site[] | undefined, site_idx: number): number => {
-  const orig_site_idx = sites?.[site_idx]?.properties?.orig_site_idx
-  return typeof orig_site_idx === `number` ? orig_site_idx : site_idx
-}
-
 export const canonicalize_bond_target = (
   bond: BondKeyTarget,
   sites: Site[] | undefined,
@@ -229,8 +224,8 @@ export const canonicalize_bond_target = (
     base_shift[2] + shift_2[2] - shift_1[2],
   ]
   return normalize_bond_endpoints(
-    original_site_idx(sites, bond.site_idx_1),
-    original_site_idx(sites, bond.site_idx_2),
+    get_image_source_idx(sites?.[bond.site_idx_1], bond.site_idx_1),
+    get_image_source_idx(sites?.[bond.site_idx_2], bond.site_idx_2),
     cell_shift,
   )
 }

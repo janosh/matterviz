@@ -2,9 +2,8 @@ import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { AtomTypeMapping, TrajectoryFrame } from '$lib/trajectory/index'
-import { coerce_elem_symbol, element_from_lammps_type } from '$lib/element/helpers'
-import { capitalize_symbol } from '$lib/structure/parsers/shared'
-import { create_trajectory_frame } from '$lib/trajectory/helpers'
+import { element_from_lammps_type } from '$lib/element/helpers'
+import { create_trajectory_frame, elem_symbol_from_token } from '$lib/trajectory/helpers'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
@@ -116,8 +115,6 @@ export function parse_lammps_trajectory(
   // read_lammps_dump and the LAMMPS data parser; the guess warns once per file so a Si/O dump
   // showing up as H/He is traceable.
   const guessed_types = new Set<number>()
-  const coerce_symbol = (raw: string): ElementSymbol | undefined =>
-    coerce_elem_symbol(raw) ?? coerce_elem_symbol(capitalize_symbol(raw))
 
   const parse_frame = (): void => {
     let time: number | null = null
@@ -259,7 +256,7 @@ export function parse_lammps_trajectory(
       }
       let element_symbol = atom_type === undefined ? undefined : atom_type_mapping?.[atom_type]
       if (!element_symbol && element_col !== undefined) {
-        element_symbol = coerce_symbol(parts[element_col])
+        element_symbol = elem_symbol_from_token(parts[element_col])
         // Some tools fill `element` with type labels (`Type1`, `2`); with a type column to
         // fall back on that is a guess, not a corrupt file
         if (!element_symbol && atom_type === undefined) {

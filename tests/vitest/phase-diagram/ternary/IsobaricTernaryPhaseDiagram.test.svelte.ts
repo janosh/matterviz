@@ -164,7 +164,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       show_controls: false,
     })
     expect(document.querySelector(`.side-panel`)).toBeNull()
-    expect(document.querySelector(`.header-controls`)).toBeNull()
+    // show_controls false: the chrome renders neither the controls toggle nor fullscreen
+    expect(document.querySelector(`.control-buttons`)?.childElementCount).toBe(0)
     // happy-dom has no navigator.gpu, so the prism shows its WebGPU notice instead of a canvas
     expect(doc_query(`.prism-fallback`).textContent).toContain(`WebGPU is required`)
     doc_query<HTMLButtonElement>(`.view-toggle button`).click()

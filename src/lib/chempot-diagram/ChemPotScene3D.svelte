@@ -11,6 +11,7 @@
     line_geometry,
     SceneCamera,
     SceneLights,
+    type ThreltePointerEvent,
   } from '$lib/scene'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -80,8 +81,8 @@
     hull_opacity: number
     edge_geometry: BufferGeometry
     hover_meshes: HoverMesh[]
-    on_domain_hover: (mesh: HoverMesh, event: unknown) => void
-    on_domain_press: (mesh: HoverMesh, event: unknown) => void
+    on_domain_hover: (mesh: HoverMesh, event: ThreltePointerEvent) => void
+    on_domain_press: (mesh: HoverMesh, event: ThreltePointerEvent) => void
     on_domain_leave: (mesh: HoverMesh) => void
     formula_meshes: OverlayGeometry[]
     formula_edges: OverlayGeometry[]
@@ -90,6 +91,7 @@
   } = $props()
 
   extras.interactivity()
+  const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
   const swiz = $derived(swizzle_to_render(render_axis_scale))
 
@@ -400,9 +402,9 @@
 {#each hover_meshes as hover_mesh (hover_mesh.formula)}
   <T.Mesh
     geometry={hover_mesh.geometry}
-    onpointerenter={(event: unknown) => on_domain_hover(hover_mesh, event)}
-    onpointermove={(event: unknown) => on_domain_hover(hover_mesh, event)}
-    onpointerdown={(event: unknown) => on_domain_press(hover_mesh, event)}
+    onpointerenter={(event: unknown) => on_domain_hover(hover_mesh, pointer_of(event))}
+    onpointermove={(event: unknown) => on_domain_hover(hover_mesh, pointer_of(event))}
+    onpointerdown={(event: unknown) => on_domain_press(hover_mesh, pointer_of(event))}
     onpointerleave={() => on_domain_leave(hover_mesh)}
   >
     <T.MeshBasicMaterial transparent opacity={0} side={DoubleSide} depthWrite={false} />

@@ -134,7 +134,7 @@ describe(`PlotAxis`, () => {
     const svg = await mount_axis({
       side: `y`,
       ticks: [50],
-      axis: { tick: { label: { inside: true } } },
+      axis: { tick_label: { inside: true } },
     })
     const tick_group = query(svg, `g.tick`)
     const text = query(tick_group, `text`)
@@ -185,7 +185,7 @@ describe(`PlotAxis`, () => {
       ticks: [40, 60, 80, 100],
       place: (value: number) =>
         value === 60 ? Number.NaN : value === 80 ? Number.POSITIVE_INFINITY : value,
-      tick_label: (value: number) => `tick-${value}`,
+      label_ticks: { 40: `tick-40`, 60: `tick-60`, 80: `tick-80`, 100: `tick-100` },
     })
 
     const tick_groups = svg.querySelectorAll(`g.tick`)
@@ -197,11 +197,11 @@ describe(`PlotAxis`, () => {
     ])
   })
 
-  test(`tick_label overrides the formatted value`, async () => {
+  test(`label_ticks overrides the formatted value`, async () => {
     const svg = await mount_axis({
       side: `x`,
       ticks: [0, 1],
-      tick_label: (value: number) => [`α`, `β`][value] ?? null,
+      label_ticks: { 0: `α`, 1: `β` },
     })
     const texts = [...svg.querySelectorAll(`g.tick text`)].map((node) =>
       node.textContent?.trim(),
@@ -354,7 +354,7 @@ describe(`PlotAxis`, () => {
     const svg = await mount_axis({
       side,
       ticks: [100],
-      axis: { tick: { label: { rotation: 45 } } },
+      axis: { tick_label: { rotation: 45 } },
     })
     const text = query(svg, `g.tick text`)
     expect(text.getAttribute(`text-anchor`)).toBe(anchor)
@@ -367,7 +367,7 @@ describe(`PlotAxis`, () => {
     mock_text_measurement()
     return mount_axis({
       ticks: cats.map((_cat, idx) => 50 + idx * 20),
-      tick_label: (value: number) => cats[(value - 50) / 20] ?? null,
+      label_ticks: Object.fromEntries(cats.map((cat, idx) => [50 + idx * 20, cat])),
       ...props,
     })
   }
@@ -381,9 +381,7 @@ describe(`PlotAxis`, () => {
     const svg = await mount_measured_axis({
       side,
       axis: {
-        tick: {
-          label: { inside, auto_layout: { strategies: [`rotate`] } },
-        },
+        tick_label: { inside, auto_layout: { strategies: [`rotate`] } },
       },
     })
     const text = query(svg, `g.tick:nth-of-type(3) text`)
@@ -401,8 +399,8 @@ describe(`PlotAxis`, () => {
     const svg = await mount_measured_axis({
       side,
       ticks: [50, 150],
-      tick_label: (value: number) => labels[value === 50 ? 0 : 1],
-      axis: { tick: { label: { auto_layout: { strategies: [`wrap`] } } } },
+      label_ticks: { 50: labels[0], 150: labels[1] },
+      axis: { tick_label: { auto_layout: { strategies: [`wrap`] } } },
     })
     const texts = svg.querySelectorAll(`g.tick text`)
     expect(texts).toHaveLength(2)
@@ -429,15 +427,15 @@ describe(`PlotAxis`, () => {
     const svg = await mount_axis({
       side: `x`,
       ticks: [40, 75, 80, 180],
-      tick_label: (value: number) => labels[[40, 75, 80, 180].indexOf(value)],
+      label_ticks: Object.fromEntries(
+        [40, 75, 80, 180].map((tick_value, idx) => [tick_value, labels[idx]]),
+      ),
       axis: {
-        tick: {
-          label: {
-            auto_layout: {
-              strategies: [`thin`],
-              min_visible_ticks: 2,
-              endpoint_policy: `preserve`,
-            },
+        tick_label: {
+          auto_layout: {
+            strategies: [`thin`],
+            min_visible_ticks: 2,
+            endpoint_policy: `preserve`,
           },
         },
       },
@@ -455,13 +453,11 @@ describe(`PlotAxis`, () => {
     const svg = await mount_axis({
       side: `y`,
       ticks: [50],
-      tick_label: () => `Formation Energy`,
+      label_ticks: { 50: `Formation Energy` },
       axis: {
-        tick: {
-          label: {
-            max_lines: 2,
-            auto_layout: { strategies: [`wrap`], max_band: 70 },
-          },
+        tick_label: {
+          max_lines: 2,
+          auto_layout: { strategies: [`wrap`], max_band: 70 },
         },
       },
     })
@@ -481,9 +477,9 @@ describe(`PlotAxis`, () => {
     const svg = await mount_axis({
       side: `x`,
       ticks: [0, width],
-      tick_label: (value: number) => (value === 0 ? `Leading` : `Trailing`),
+      label_ticks: { 0: `Leading`, [width]: `Trailing` },
       axis: {
-        tick: { label: { auto_layout: { strategies: [`upright`] } } },
+        tick_label: { auto_layout: { strategies: [`upright`] } },
       },
     })
     expect(
@@ -502,9 +498,11 @@ describe(`PlotAxis`, () => {
         side,
         ticks: [40, 120, 200, 280],
         width: 380,
-        tick_label: () => label,
+        label_ticks: Object.fromEntries(
+          [40, 120, 200, 280].map((tick_value) => [tick_value, label]),
+        ),
         axis: {
-          tick: { label: { rotation: rotation_sign * 45 } },
+          tick_label: { rotation: rotation_sign * 45 },
         },
       })
       const text = query(svg, `g.tick text`)
@@ -524,9 +522,7 @@ describe(`PlotAxis`, () => {
         side: `x`,
         axis: {
           label: `state`,
-          tick: {
-            label: { inside, auto_layout: { strategies: [`rotate`] } },
-          },
+          tick_label: { inside, auto_layout: { strategies: [`rotate`] } },
         },
         label_x: 100,
         label_y,

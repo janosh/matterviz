@@ -29,17 +29,18 @@
   let columns = $derived(extract_columns(data))
   let suggestion = $derived(suggest_mapping(columns))
 
-  // Writable: the toolbar overrides both until the columns (and so the suggestion) change.
-  // mapping stays $state so the per-axis selects can bind into it
+  // Writable: the toolbar overrides these until the columns (and so the suggestion) change
   let plot_type = $derived.by(() => {
     // read the suggestion even when initial_type wins, so new columns still clear an override
     const { plot_type: suggested } = suggestion
     return initial_type ?? suggested
   })
-  let mapping = $state<AxisMapping>({})
-  $effect(() => {
-    mapping = { ...suggestion.mapping }
-    zoom_level = 1
+  let mapping = $derived(suggestion.mapping)
+  // Pinch-to-zoom level (trackpad pinch fires wheel events with ctrlKey=true); reading
+  // `suggestion` only re-derives it, resetting the zoom whenever new columns arrive
+  let zoom_level = $derived.by(() => {
+    void suggestion
+    return 1
   })
 
   let numeric_keys = $derived(col_keys(columns, `numeric`))
@@ -118,8 +119,6 @@
     return first_col?.values.length ?? 0
   })
 
-  // Pinch-to-zoom: trackpad pinch fires wheel events with ctrlKey=true
-  let zoom_level = $state(1)
   function on_pinch_zoom(event: WheelEvent): void {
     if (!event.ctrlKey) return
     event.preventDefault()
@@ -148,7 +147,9 @@
       {#snippet axis_select(label: string, axis: keyof AxisMapping, keys: string[])}
         <label>
           {label}
-          <select bind:value={mapping[axis]}>
+          <select
+            bind:value={() => mapping[axis], (key) => (mapping = { ...mapping, [axis]: key })}
+          >
             <option value={undefined}>--</option>
             {#each keys as key (key)}
               <option value={key}>{col_label(key)}</option>

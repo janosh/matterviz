@@ -16,14 +16,12 @@
   const src = $derived(
     `https://github.com/janosh/matterviz/raw/main/static/elements/${element.number}-${element.name.toLowerCase()}.avif`,
   )
-  // set by onerror; reset whenever the photo URL changes
-  let hidden = $state(false)
-  $effect.pre(() => {
-    if (src) hidden = false
-  })
+  // URL whose load failed; a new element (new URL) is shown again until it fails too
+  let failed_src = $state<string | null>(null)
+  const hidden = $derived(failed_src === src)
 </script>
 
-<img {src} alt={element.name} onerror={() => (hidden = true)} {hidden} {...rest} />
+<img {src} alt={element.name} onerror={() => (failed_src = src)} {hidden} {...rest} />
 {#if hidden && missing_msg}
   <div {...rest}>
     <span>

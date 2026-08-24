@@ -2,6 +2,7 @@ import {
   build_structure_props_from_settings,
   DEFAULTS,
   get_convex_hull_defaults,
+  is_valid_setting_value,
   merge,
   type PartialSettings,
   SETTINGS_CONFIG,
@@ -49,6 +50,38 @@ describe(`Settings`, () => {
         threshold,
       ),
   )
+
+  // The one admissibility rule behind the persisted viewer state and the VS Code settings reader
+  test.each([
+    [`enum member`, SETTINGS_CONFIG.structure.show_bonds, `never`, true],
+    [`off-enum string`, SETTINGS_CONFIG.structure.show_bonds, `sometimes`, false],
+    [`number in range`, SETTINGS_CONFIG.structure.atom_radius, 1.5, true],
+    [`number above maximum`, SETTINGS_CONFIG.structure.atom_radius, 99, false],
+    [`non-finite number`, SETTINGS_CONFIG.structure.atom_radius, NaN, false],
+    [`off-grid multipleOf`, SETTINGS_CONFIG.trajectory.fps, 7.25, false],
+    [`on-grid multipleOf`, SETTINGS_CONFIG.trajectory.fps, 7.3, true],
+    [`Vec3 of numbers`, SETTINGS_CONFIG.structure.rotation, [0, 1, 2], true],
+    [`Vec3 with a string`, SETTINGS_CONFIG.structure.rotation, [0, `bad`, 0], false],
+    [`too-short tuple`, SETTINGS_CONFIG.structure.rotation, [0, 1], false],
+    [`element list`, SETTINGS_CONFIG.structure.polyhedra_excluded_elements, [`Li`, `O`], true],
+    [
+      `element list with a number`,
+      SETTINGS_CONFIG.structure.polyhedra_excluded_elements,
+      [8],
+      false,
+    ],
+    [
+      `free-form map`,
+      SETTINGS_CONFIG.structure.vector_configs,
+      { force: { visible: true } },
+      true,
+    ],
+    [`array for a map`, SETTINGS_CONFIG.structure.vector_configs, [], false],
+    [`boolean`, SETTINGS_CONFIG.structure.show_atoms, false, true],
+    [`string for a boolean`, SETTINGS_CONFIG.structure.show_atoms, `yes`, false],
+  ] as const)(`is_valid_setting_value: %s`, (_label, setting, value, valid) => {
+    expect(is_valid_setting_value(value, setting)).toBe(valid)
+  })
 
   describe(`merge function`, () => {
     test(`returns DEFAULTS for empty inputs`, () => {

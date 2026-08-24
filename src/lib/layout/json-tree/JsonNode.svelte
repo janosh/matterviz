@@ -8,11 +8,16 @@
   import {
     estimate_byte_size,
     format_preview,
+    get_ancestor_paths,
     get_child_count,
     get_children,
     get_value_type,
     is_expandable_type,
   } from './utils'
+
+  // Children mount in pages: a 50k-entry container would otherwise render 50k rows (and
+  // their DOM) the moment it is expanded. The bound is per node and grows on demand.
+  const CHILD_PAGE_SIZE = 100
 
   let {
     node_key = null,
@@ -63,6 +68,18 @@
   }
 
   const children = $derived(expandable ? get_children(value, ctx.settings.sort_keys) : [])
+  let shown_count = $state(CHILD_PAGE_SIZE)
+  // The current search match (or the ancestor holding it) may sit past the bound: extend it
+  // to that child so JsonTree can scroll the match into view
+  const revealed_count = $derived.by(() => {
+    const match = ctx.current_match_path
+    if (!match || children.length <= shown_count || !match.startsWith(path)) return shown_count
+    const on_match_path = new Set([match, ...get_ancestor_paths(match)])
+    const idx = children.findIndex((child) => on_match_path.has(build_path(path, child.key)))
+    return idx === -1 ? shown_count : Math.max(shown_count, idx + 1)
+  })
+  const visible_children = $derived(children.slice(0, revealed_count))
+  const hidden_count = $derived(children.length - visible_children.length)
 
   // Removed entries from the diff (pre-computed in JsonTree) not shadowed by a live child
   const ghost_children = $derived.by(() => {
@@ -221,7 +238,7 @@
 
   {#if expandable && !is_collapsed}
     <div class="children" role="group">
-      {#each children as child, idx (child.key)}
+      {#each visible_children as child, idx (child.key)}
         <JsonNode
           node_key={child.key}
           value={child.value}
@@ -230,6 +247,30 @@
           is_last={idx === children.length - 1 && ghost_children.length === 0}
         />
       {/each}
+      {#if hidden_count > 0}
+        <div class="more-children">
+          <button
+            type="button"
+            onclick={(event) => {
+              event.stopPropagation()
+              shown_count = revealed_count + CHILD_PAGE_SIZE
+            }}
+          >
+            Show {Math.min(CHILD_PAGE_SIZE, hidden_count)} more
+          </button>
+          {#if hidden_count > CHILD_PAGE_SIZE}
+            <button
+              type="button"
+              onclick={(event) => {
+                event.stopPropagation()
+                shown_count = children.length
+              }}
+            >
+              Show all {children.length}
+            </button>
+          {/if}
+        </div>
+      {/if}
       {#each ghost_children as ghost (ghost.key)}
         <div
           class="json-node ghost"
@@ -412,6 +453,16 @@
     color: var(--jt-preview, light-dark(#808080, #808080));
     margin-left: 4px;
     opacity: 0.6;
+  }
+  .more-children {
+    display: flex;
+    gap: 8px;
+    padding-left: 1em;
+    color: var(--jt-preview, light-dark(#808080, #808080));
+    font-style: italic;
+    button:hover {
+      text-decoration: underline;
+    }
   }
   .collapse-level-btn {
     opacity: 0;
