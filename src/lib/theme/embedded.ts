@@ -37,12 +37,12 @@ const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`
 // `data-theme` (JupyterLab `jp-theme-dark`, VS Code `vscode-dark`, marimo `dark`/`data-theme`).
 // Computed color-scheme is `normal` when nothing declared it and may list both schemes
 // (`light dark`), in which case the first is the preferred one.
-const THEME_WORD = /(?:^|[\s_-])(?<scheme>dark|light)(?=$|[\s_-])/
+const THEME_WORD = /(?:^|[\s_-])(?<scheme>dark|light)(?=$|[\s_-])/i
 const declared_theme = (element: Element): ThemeType | null => {
   const scheme = declared_color_scheme(element)
   if (scheme) return scheme
   const markers = `${element.className} ${element.getAttribute(`data-theme`) ?? ``}`
-  const word = THEME_WORD.exec(markers)?.groups?.scheme
+  const word = THEME_WORD.exec(markers)?.groups?.scheme.toLowerCase()
   return word === `dark` || word === `light` ? word : null
 }
 

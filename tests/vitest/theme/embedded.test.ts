@@ -111,6 +111,7 @@ describe(`embedded theme helpers`, () => {
     [`vscode-dark`, `dark`],
     [`jp-theme-light`, `light`],
     [`theme-dark`, `dark`],
+    [`JupyterLab Dark`, `dark`], // title-cased theme names count too
     [`darkmode`, null], // not a token: no statement
   ])(`reads the class marker %j as %j`, async (class_name, expected) => {
     prefers_dark = expected !== `dark` // the OS says the opposite, to prove the marker decides
