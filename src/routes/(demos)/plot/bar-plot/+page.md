@@ -591,7 +591,7 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
 
   let x_axis = $state({ label: `Year`, format: `d`, ticks: 7 })
   let y_axis = $state({ label: `Number of Materials`, format: `.2s`, ticks: 6 })
-  let y2_axis = $state({ label: `Compute Power (TFLOPS)`, format: `.0r`, ticks: 6 })
+  let y2_axis = $state({ label: `Compute Power (TFLOPS)`, format: `.2s`, ticks: 6 })
 </script>
 
 <div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap">

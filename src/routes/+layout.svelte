@@ -136,9 +136,7 @@
     '/reciprocal/ir-raman': `IR + Raman`,
     '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
   }}
-  menu_props={{
-    style: `display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;`,
-  }}
+  menu_props={{ style: `max-width: 80vw; margin: auto;` }}
   aria-label="Main navigation"
   {page}
   --nav-dropdown-z-index="var(--z-index-overlay-nav)"
@@ -151,6 +149,7 @@
       cmd_palette_open = true
     }}
     aria-label="Open search"
+    class="site-search-btn"
     style="background: transparent"
     {@attach tooltip({ content: `Search (⌘K)` })}
   >
@@ -179,9 +178,41 @@
     top: 0.5rem;
     inset-inline-start: 0.5rem;
   }
+  /* The widget's own mobile rules carry its scoping class, so a plain `padding` override here
+     loses on specificity. Only properties the widget never sets on these rows are used below:
+     min-height + flex centering give finger-sized rows without fighting its padding. */
   :global(nav.mobile .menu > span > a),
-  :global(nav.mobile .dropdown > div:first-child > :is(a, span)) {
-    padding-block: 5pt;
+  :global(nav.mobile .dropdown > div:first-child > :is(a, span)),
+  :global(nav.mobile .dropdown > div:last-child a) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    box-sizing: border-box;
+  }
+  :global(nav.mobile .dropdown > div:first-child > button) {
+    min-height: 2rem;
+    min-width: 2.5rem;
+  }
+  /* The menu is a fixed panel with no height cap, so once a few submenus are expanded its lower
+     entries sit below the fold and nothing can scroll them into view. 100dvh (not vh) tracks the
+     shrinking browser bar; overscroll-behavior keeps a flick at the end from scrolling the page. */
+  :global(nav.mobile .menu) {
+    max-height: calc(100dvh - 4rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* the widget's desktop rule wraps items; in a capped column that spills a long submenu
+       into a second column beside the first instead of scrolling */
+    flex-wrap: nowrap;
+  }
+  :global(nav.mobile .site-search-btn) {
+    min-height: 2rem;
+  }
+  /* iOS Safari zooms the page when a focused input's font is under 16px; phones get a
+     finger-sized field, the desktop palette keeps the widget's compact size */
+  @media (pointer: coarse) {
+    :global(dialog.site-search-dialog input) {
+      font-size: 16px;
+    }
   }
   /* The fixed corner sits exactly where viewers put their fullscreen/controls toggles; on a
      phone a tap there opens GitHub instead. The footer still links to the repo. */
@@ -191,8 +222,9 @@
     }
   }
   /* On phones the fixed theme select covers demo content (treemap tiles, hover readouts);
-     `auto` follows the OS there and the control returns on wider screens */
-  @media (max-width: 480px) {
+     `auto` follows the OS there and the control returns on wider screens. A landscape phone
+     is wide but only ~390px tall, so the select sits on whatever is on screen there too. */
+  @media (max-width: 480px), (max-height: 480px) {
     :global(.theme-control) {
       display: none;
     }

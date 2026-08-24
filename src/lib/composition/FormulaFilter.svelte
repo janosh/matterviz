@@ -1140,16 +1140,26 @@
   }
   @media (max-width: 700px) {
     .icon-btn {
-      min-width: 28px;
-      min-height: 28px;
+      min-width: 32px;
+      min-height: 32px;
       padding: 5pt;
     }
     :is(.history-remove, .history-pin) {
-      min-width: 28px;
-      min-height: 28px;
+      min-width: 32px;
+      min-height: 32px;
     }
     .history-value {
       padding: 6pt 10pt;
+    }
+    /* token chips double as remove buttons; 19px tall is too thin for a finger */
+    .token-chip {
+      min-height: 28px;
+    }
+  }
+  /* iOS Safari zooms the page when a focused input's font is below 16px */
+  @media (pointer: coarse) {
+    input {
+      font-size: 16px;
     }
   }
 </style>

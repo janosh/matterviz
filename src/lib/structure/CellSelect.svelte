@@ -46,6 +46,11 @@
     menu_open = false
   }
 
+  // A press focuses the button (focusin) before its click fires. Opening on that focusin
+  // and then toggling on the click closed the menu again on every tap, so pointer-caused
+  // focus leaves the decision to the click; keyboard focus still opens instantly.
+  let pointer_press_pending = false
+
   $effect(() => () => clearTimeout(hover_timer))
 
   const supercell_presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
@@ -108,13 +113,17 @@
   {@attach click_outside({ callback: close_menu })}
   onmouseenter={schedule_hover_open}
   onmouseleave={close_menu}
-  onfocusin={() => (menu_open = !suppress_hover)}
+  onpointerdown={() => (pointer_press_pending = true)}
+  onfocusin={() => {
+    if (!pointer_press_pending) menu_open = !suppress_hover
+  }}
   onfocusout={handle_focus_out}
 >
   <button
     type="button"
     onclick={() => {
       clearTimeout(hover_timer)
+      pointer_press_pending = false
       menu_open = !suppress_hover && !menu_open
     }}
     onkeydown={handle_key_down}

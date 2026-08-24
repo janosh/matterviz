@@ -6,7 +6,7 @@
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import { compute_frequency_range, extract_efermi } from './helpers'
-  import { create_synced_y_axes } from './synced-axes.svelte'
+  import { create_synced_y_axes, shared_resolved_padding_floor } from './synced-axes.svelte'
   import type { BaseBandStructure, DosInput, HoveredData } from './types'
 
   let {
@@ -67,11 +67,20 @@
 
   let hovered_frequency = $state<number | null>(null)
 
-  // Side-wise maxima preserve caller padding while keeping y-scale pixel spans identical.
-  let shared_tb_padding = $derived(
-    max_side_padding([{ t: 20, b: 50 }, bands_props.padding, dos_props.padding], [`t`, `b`]),
+  // Side-wise maxima preserve caller padding while keeping y-scale pixel spans identical. The
+  // padding each panel settled on is fed back in: a DOS legend pushed below its plot widens
+  // that panel's bottom margin, which must reach the bands panel too or the shared energy
+  // axis drifts. ScatterPlot stacks outside reservations on the axis pad with max(), so this
+  // converges after one round instead of ratcheting.
+  const resolved_floor = shared_resolved_padding_floor()
+  let side_by_side_padding = $derived(
+    stacked
+      ? {}
+      : max_side_padding(
+          [{ t: 20, b: 50 }, bands_props.padding, dos_props.padding, resolved_floor.value],
+          [`t`, `b`],
+        ),
   )
-  let side_by_side_padding = $derived(stacked ? {} : shared_tb_padding)
 </script>
 
 <div
@@ -86,6 +95,7 @@
     {band_structs}
     {fermi_level}
     bind:y_axis={synced.y_axes[0]}
+    bind:resolved_padding={() => undefined, resolved_floor.raise}
     reference_frequency={hovered_frequency}
     padding={{ r: 15, ...bands_props.padding, ...side_by_side_padding }}
   />
@@ -102,6 +112,7 @@
       ...dos_props.x_axis,
     }}
     bind:y_axis={synced.y_axes[1]}
+    bind:resolved_padding={() => undefined, resolved_floor.raise}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{

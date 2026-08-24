@@ -1134,7 +1134,7 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
 </script>
 
 <div
-  style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1em; margin-bottom: 1em"
+  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11em), 1fr)); gap: 1em; margin-bottom: 1em"
 >
   <fieldset>
     <legend>X Axis Scale</legend>
@@ -1357,7 +1357,7 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
   </label>
 
   <!-- Legend with toggles -->
-  <div style="display: flex; margin-left: 2em;">
+  <div style="display: flex; flex-wrap: wrap; margin-left: 2em;">
     {#each categories as category, idx (category)}
       <label style="margin-right: 1em; display: flex; align-items: center;">
         <input type="checkbox" bind:checked={visible_series[category]} />
@@ -2440,7 +2440,9 @@ When series have non-overlapping x-ranges, the fill utility extrapolates from th
   ]
 </script>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1em">
+<div
+  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 1em"
+>
   {#each curve_types as curve_type, idx (curve_type)}
     <div>
       <strong style="text-transform: capitalize">{curve_type}</strong>

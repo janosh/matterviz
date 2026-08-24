@@ -243,6 +243,9 @@
   .file-item {
     display: flex;
     align-items: center;
+    /* a long fixture name wraps inside its chip instead of widening a phone page */
+    max-width: 100%;
+    min-width: 0;
     padding: 2pt 8pt;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
     border-radius: 9px;
@@ -280,5 +283,7 @@
     font-size: 0.7em;
     line-height: 1.1;
     white-space: pre-line;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 </style>

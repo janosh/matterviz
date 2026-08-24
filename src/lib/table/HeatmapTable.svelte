@@ -1869,6 +1869,17 @@
     cursor: pointer;
     line-height: 1;
   }
+  /* the 14px glyph stays put; on touch screens an invisible halo makes it a ~32px target */
+  @media (pointer: coarse) {
+    :global(.header-popover > button) {
+      position: relative;
+    }
+    :global(.header-popover > button::before) {
+      content: '';
+      position: absolute;
+      inset: -9px;
+    }
+  }
   :global(.header-popover > button:is(:hover, [aria-expanded='true'])) {
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
   }

@@ -272,7 +272,7 @@
   let content_size = $state({ width: 0, height: 0 })
   // Cap panes to .content-area (controls bar is a flex sibling above it)
   let pane_max_height = $derived(
-    content_size.height > 0 ? `max-height: ${content_size.height}px` : undefined,
+    content_size.height > 0 ? `--pane-max-height: ${content_size.height}px` : undefined,
   )
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
   // wrapper's height that no pane ever gets

@@ -81,10 +81,15 @@ const standard_items = (
 // frame, a long series list) covers too much data to sit inside whatever the obstacle test
 // says. A too-wide one also cannot take the right margin without leaving no plot width, so
 // it goes below; a too-tall one is placed by the usual right/bottom economy.
-export const LEGEND_MAX_INTERIOR_FRACTION = 0.45
+const LEGEND_MAX_INTERIOR_FRACTION = 0.45
+// A horizontal colorbar is a short strip, so it may span more of the width before it blankets
+// the data: ~80% of a phone-width plot (it leaves the top margin, which costs only its height),
+// ~30% of a desktop one.
+const COLORBAR_MAX_INTERIOR_FRACTION = 0.7
 
 export function place_outside_decorations(scene: DecorationScene): OutsideLayout {
   const { base_pad, width, height, obstacles_norm, gap = DEFAULT_DECORATION_GAP } = scene
+  const axis_pad = scene.axis_pad ?? base_pad
   const { legend, colorbar } = standard_items(scene.items)
   const base_w = width - base_pad.l - base_pad.r
   const base_h = height - base_pad.t - base_pad.b
@@ -94,12 +99,15 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
     legend_width > LEGEND_MAX_INTERIOR_FRACTION * base_w && legend_width + 2 * gap > base_pad.r
   const too_tall = legend_height > LEGEND_MAX_INTERIOR_FRACTION * base_h
 
+  const colorbar_horizontal = colorbar?.horizontal ?? false
+  const { width: colorbar_width = 0, height: colorbar_height = 0 } = colorbar?.footprint ?? {}
+  const colorbar_too_wide =
+    colorbar_horizontal && colorbar_width > COLORBAR_MAX_INTERIOR_FRACTION * base_w
   const colorbar_outside =
     colorbar != null &&
-    is_crowded(obstacles_norm, colorbar.footprint, base_w, base_h, colorbar.clearance ?? 15)
-  const colorbar_horizontal = colorbar?.horizontal ?? false
+    (colorbar_too_wide ||
+      is_crowded(obstacles_norm, colorbar.footprint, base_w, base_h, colorbar.clearance ?? 15))
   const colorbar_takes_right = colorbar_outside && !colorbar_horizontal
-  const { width: colorbar_width = 0, height: colorbar_height = 0 } = colorbar?.footprint ?? {}
 
   const legend_outside =
     legend != null &&
@@ -116,13 +124,20 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
     legend_height * base_w > legend_width * base_h
   const legend_bottom = legend_outside && !legend_right
 
+  // Top/bottom/colorbar-right reservations sit just past the axis band; a caller's larger
+  // padding absorbs them rather than growing further (see DecorationScene.axis_pad)
   const pad: Required<Sides> = {
-    t: base_pad.t + (colorbar_outside && colorbar_horizontal ? colorbar_height + gap : 0),
+    t:
+      colorbar_outside && colorbar_horizontal
+        ? Math.max(base_pad.t, axis_pad.t + colorbar_height + gap)
+        : base_pad.t,
     l: base_pad.l,
-    b: base_pad.b + (legend_bottom ? legend_height + gap : 0),
+    b: legend_bottom ? Math.max(base_pad.b, axis_pad.b + legend_height + gap) : base_pad.b,
     r: legend_right
       ? Math.max(base_pad.r, legend_width + 2 * gap)
-      : base_pad.r + (colorbar_takes_right ? colorbar_width + gap : 0),
+      : colorbar_takes_right
+        ? Math.max(base_pad.r, axis_pad.r + colorbar_width + gap)
+        : base_pad.r,
   }
   const legend_pos: DecorationPoint = legend_right
     ? { x: width - legend_width - gap, y: base_pad.t + (base_h - legend_height) / 2 }

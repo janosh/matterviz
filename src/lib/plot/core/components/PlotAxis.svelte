@@ -24,7 +24,12 @@
   import type { Vec2 } from '$lib/math'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
-  import { resolve_tick_layout, type Sides, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
+  import {
+    resolve_axis_title_layout,
+    resolve_tick_layout,
+    type Sides,
+    TICK_LABEL_HEIGHT,
+  } from '$lib/plot/core/layout'
   import {
     DEFAULT_FONT_SPEC,
     resolve_font_spec,
@@ -144,6 +149,19 @@
   const tick_title_shift = $derived(
     is_x && !inside ? Math.max(0, tick_layout.band - TICK_LABEL_HEIGHT) : 0,
   )
+  // Same wrap width AxisLabel gets below, so both resolve the same line count
+  const title_wrap_width = $derived(
+    is_x ? Math.max(plot_w, AXIS_LABEL_CONTAINER.width) : undefined,
+  )
+  // AxisLabel centers its block on the title point, which calc_auto_padding reserves for the
+  // first line only; a wrapped x/x2 title is therefore pushed outward by the extra lines so
+  // its first line stays where a single line sits instead of climbing into the tick labels.
+  const wrapped_title_shift = $derived.by(() => {
+    if (!is_x || !show_label) return 0
+    const title_layout = resolve_axis_title_layout(axis, title_wrap_width)
+    return Math.max(0, (title_layout.height - title_layout.line_height) / 2)
+  })
+  const title_shift = $derived(tick_title_shift + wrapped_title_shift)
 
   // `flipped` means above the baseline on x/x2 and right of the spine on y/y2.
   const flipped = $derived((side === `x2` || side === `y2`) !== inside)
@@ -255,7 +273,7 @@
   {#if show_label}
     <AxisLabel
       x={label_x ?? 0}
-      y={(label_y ?? 0) + (side === `x` ? tick_title_shift : -tick_title_shift)}
+      y={(label_y ?? 0) + (side === `x` ? title_shift : -title_shift)}
       rotate={side === `y` || side === `y2`}
       label={axis.label ?? ``}
       options={axis.options}
@@ -264,7 +282,7 @@
       axis_type={side}
       color={axis.color}
       on_select={(key) => on_axis_change?.(key)}
-      width={is_x ? Math.max(plot_w, AXIS_LABEL_CONTAINER.width) : undefined}
+      width={title_wrap_width}
     />
   {/if}
 </g>

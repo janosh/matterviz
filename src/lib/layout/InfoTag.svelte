@@ -163,6 +163,13 @@
     border-radius: 50%;
     color: inherit;
     opacity: 0.5;
+    position: relative;
+    /* the visible x is ~15px; an invisible halo widens the tap target without growing the tag */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -8px;
+    }
     &:hover {
       opacity: 1;
       background: rgba(239, 68, 68, 0.2);

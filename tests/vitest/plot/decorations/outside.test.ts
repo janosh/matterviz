@@ -84,6 +84,23 @@ describe(`place_outside_decorations`, () => {
     expect(layout).toMatchObject({ legend_outside: true, pad, legend_pos })
   })
 
+  // BandsAndDos pads both panels to the larger resolved bottom; without this the panel that
+  // owns the legend would add it again on top and the shared axis could never converge
+  test(`a bottom legend fits inside caller padding that already clears the axis band`, () => {
+    const legend = { footprint: { width: 120, height: 60 } }
+    const stacked = place({ legend })
+    expect(stacked.pad.b).toBe(base_pad.b + 60 + 8)
+    const roomy = place({
+      legend,
+      base_pad: { ...base_pad, b: stacked.pad.b },
+      axis_pad: base_pad,
+    })
+    expect(roomy.pad.b).toBe(stacked.pad.b)
+    // a caller padding short of the band still grows to fit the legend
+    const short = place({ legend, base_pad: { ...base_pad, b: 60 }, axis_pad: base_pad })
+    expect(short.pad.b).toBe(stacked.pad.b)
+  })
+
   test(`decorations stay interior when a sparse region is available`, () => {
     const layout = place({
       obstacles_norm: [{ x: 0.05, y: 0.95 }], // single point in a corner

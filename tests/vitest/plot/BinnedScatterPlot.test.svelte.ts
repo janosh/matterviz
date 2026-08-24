@@ -303,9 +303,11 @@ describe(`BinnedScatterPlot`, () => {
     expect(document.querySelector(`.colorbar`)).toBeNull()
   })
 
+  // An outside colorbar stacks on the axis band (default 20 top / 12 right), not on the caller's
+  // larger padding, whose surplus is absorbed: 20 + 56 + 8 above, 12 + 56 + 8 to the right
   test.each([
-    [`horizontal`, `dense`, `outside`, `top`, { x: 80, y: 94, width: 700, height: 446 }],
-    [`vertical`, `dense`, `outside`, `right`, { x: 80, y: 30, width: 636, height: 510 }],
+    [`horizontal`, `dense`, `outside`, `top`, { x: 80, y: 84, width: 700, height: 456 }],
+    [`vertical`, `dense`, `outside`, `right`, { x: 80, y: 30, width: 644, height: 510 }],
     [`horizontal`, `sparse`, `interior`, null, { x: 80, y: 30, width: 700, height: 510 }],
     [`vertical`, `sparse`, `interior`, null, { x: 80, y: 30, width: 700, height: 510 }],
   ] as const)(

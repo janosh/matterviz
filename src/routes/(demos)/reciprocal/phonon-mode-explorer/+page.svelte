@@ -382,10 +382,15 @@
     gap: clamp(1.5em, 5vw, 4em);
     margin: 2em auto;
   }
-  @media (max-width: 900px) {
+  /* Same condition under which PhononModeExplorer stacks its panes: only the stacked layout
+     needs to outgrow the fixed height; the side-by-side one must keep it so the panes have a
+     definite height to fill */
+  @media (max-width: 699px), (max-width: 900px) and (orientation: portrait) {
     :global(.phonon-mode-explorer) {
       height: auto !important;
     }
+  }
+  @media (max-width: 900px) {
     .fixture-picker p {
       flex-wrap: wrap;
     }

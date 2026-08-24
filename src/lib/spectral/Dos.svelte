@@ -65,6 +65,9 @@
     show_normalize_control = false,
     show_units_control = false,
     sigma_range = undefined,
+    // bindable: the frame padding the plot actually settled on (axes + outside decorations),
+    // read by BandsAndDos/BrillouinBandsDos to give both panels the same vertical extent
+    resolved_padding = $bindable(),
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     doses: DosInput | Record<string, DosInput>
@@ -365,6 +368,7 @@
     x_axis={final_x_axis}
     bind:y_axis={internal_y_axis}
     bind:display
+    bind:resolved_padding
     {show_legend}
     hover_config={{ threshold_px: 50 }}
     on_point_hover={(event) => {
@@ -518,11 +522,15 @@
         />
         <!-- Fermi level label -->
         {#if is_horizontal}
+          <!-- The tag sits in the right margin only when the caller padded for it, otherwise
+               just inside the plot edge so the SVG does not clip it -->
+          {@const label_fits_right = pad.r >= 20}
           <text
             class="fermi-level-label"
-            x={width - pad.r + 4}
+            x={width - pad.r + (label_fits_right ? 4 : -4)}
             y={fermi_pos}
             dy="0.35em"
+            text-anchor={label_fits_right ? `start` : `end`}
             font-size="10"
             fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
             opacity="0.9"

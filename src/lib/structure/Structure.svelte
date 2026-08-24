@@ -859,7 +859,7 @@
             : undefined}
           enable_3d_export={display_mode === `structure`}
           bind:png_dpi
-          pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
+          pane_props={{ style: `--pane-max-height: calc(${height}px - 50px)` }}
         />
       {/if}
 
@@ -1107,5 +1107,13 @@
   .structure:hover :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
+  }
+  /* touch screens cannot hover, so the supercell picker would otherwise only appear after
+     a tap left a sticky :hover on the viewer */
+  @media (hover: none) {
+    .structure :global(.cell-select) {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
 </style>

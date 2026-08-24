@@ -331,8 +331,12 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     drag_started = false
     if (was_drag) return // a drag ending over a point isn't a click on it
     const entry = find_entry_at_mouse(event)
-    if (entry) selection.select_entry(entry)
-    else if (selection.modal_open) selection.close_structure_popup()
+    if (entry) {
+      // mousedown cleared the hover; restore it so a touch tap (which never hovers) also
+      // gets the tooltip. Under a mouse the next mousemove would restore it anyway.
+      selection.set_hover({ entry, position: { x: event.clientX, y: event.clientY } })
+      selection.select_entry(entry)
+    } else if (selection.modal_open) selection.close_structure_popup()
   }
 
   const handle_double_click = (event: MouseEvent) => {

@@ -218,7 +218,8 @@
 </section>
 
 <section class="properties">
-  {#each key_vals as [label, value, icon], idx ([label, value, icon])}
+  <!-- keyed by label: an array literal is a new identity every render and trips each_key_volatile -->
+  {#each key_vals as [label, value, icon], idx (label)}
     <!-- skip last item if index is uneven to avoid single dangling item on last row -->
     {#if idx % 2 === 1 || idx < key_vals.length - 1}
       <div>
@@ -261,6 +262,20 @@
     display: grid;
     gap: 1em;
     grid-template-columns: 1fr 2fr;
+  }
+  /* phones: a 1/3 + 2/3 split leaves the scatter ~240px wide with its axis title over the
+     ticks; stack the photo above the plot instead (main is the inline-size container) */
+  @container (max-width: 500px) {
+    section.viz {
+      grid-template-columns: 1fr;
+      /* the scatter's height comes from stretching beside the photo; stacked, its row would
+         otherwise collapse to zero (it sets min-height: initial) */
+      grid-template-rows: auto 15rem;
+    }
+    section.viz :global(img) {
+      max-width: 60%;
+      margin: 0 auto;
+    }
   }
   section.flex-wrap {
     margin: 3em auto;
@@ -311,6 +326,8 @@
   }
   form {
     display: flex;
+    /* two ~20em selects side by side overflow a phone; let the second drop to its own row */
+    flex-wrap: wrap;
     place-content: center;
     gap: 1em;
   }

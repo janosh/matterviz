@@ -676,6 +676,12 @@
   .structure-carousel.resizing .structure-carousel-resize-handle::before {
     opacity: 1;
   }
+  /* no hover on touch screens: keep the grip discoverable */
+  @media (hover: none) {
+    .structure-carousel-resize-handle::before {
+      opacity: 1;
+    }
+  }
   .structure-carousel-resize-handle:hover::before,
   .structure-carousel.resizing .structure-carousel-resize-handle::before {
     background: color-mix(in srgb, var(--active-color, #6ea8ff) 75%, white 10%);

@@ -154,6 +154,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
 
   // base_pad reserves space for tick labels/axis titles; `pad` adds decoration reservations
   let base_pad = $derived(filter_padding(opts.padding(), DEFAULT_PLOT_PADDING))
+  // The same without the caller's padding: what the axes themselves need. Outside decorations
+  // stack on this, so a caller who pads past the axis band (BandsAndDos matching a sibling
+  // panel's legend room) gets the decoration inside that room rather than on top of it.
+  let axis_pad = $derived(DEFAULT_PLOT_PADDING)
   const title_config = $derived(normalize_plot_title(opts.title()))
   const axis_shown = (axis: FacetAxis): boolean =>
     axis === `x2` ? opts.has_x2() : axis === `y2` ? opts.has_y2() : true
@@ -280,21 +284,31 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         axis === `x` || axis === `x2` ? x_extent : y_extent,
         tick_font,
       )
-    const axis_pad =
-      width && height
-        ? calc_auto_padding({
-            padding: opts.padding(),
-            default_padding: DEFAULT_PLOT_PADDING,
-            width,
-            height,
-            x_axis: measure(`x`),
-            x2_axis: measure(`x2`),
-            y_axis: measure(`y`),
-            y2_axis: measure(`y2`),
-          })
-        : filter_padding(opts.padding(), DEFAULT_PLOT_PADDING)
-    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
+    const measured_axes = {
+      x_axis: measure(`x`),
+      x2_axis: measure(`x2`),
+      y_axis: measure(`y`),
+      y2_axis: measure(`y2`),
+    }
+    const auto_pad = (padding: Sides): Required<Sides> =>
+      pad_for_plot_title(
+        width && height
+          ? calc_auto_padding({
+              padding,
+              default_padding: DEFAULT_PLOT_PADDING,
+              width,
+              height,
+              ...measured_axes,
+            })
+          : filter_padding(padding, DEFAULT_PLOT_PADDING),
+        title_config,
+        width,
+        height,
+      )
+    const new_pad = auto_pad(opts.padding())
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
+    const new_axis_pad = auto_pad({})
+    if (!sides_equal(axis_pad, new_axis_pad)) axis_pad = new_axis_pad
   })
 
   const legend_has_explicit_pos = $derived(has_explicit_position(opts.legend()?.style))
@@ -404,6 +418,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const base_decoration_solution = $derived(
     solve_decorations({
       base_pad: effective_base_pad,
+      axis_pad: facet.padding(axis_pad),
       width,
       height,
       obstacles_norm: opts.obstacles(),

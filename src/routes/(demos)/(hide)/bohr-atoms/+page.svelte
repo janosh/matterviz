@@ -76,10 +76,19 @@
   strong {
     position: absolute;
     margin: 0;
-    padding: 3pt 6pt;
     background-color: rgba(255, 255, 255, 0.06);
     border-bottom-right-radius: 1ex;
     border-top-left-radius: 1ex;
+  }
+  /* the atomic number is the only link to the element page; a 2-digit label alone is a
+     ~10px target, so the link box is padded out to a finger-sized square */
+  strong a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    min-height: 2rem;
+    padding: 0 4pt;
   }
   strong a:focus {
     color: orange;

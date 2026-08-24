@@ -160,13 +160,15 @@
   }
   .icon-card .name-btn {
     align-self: start;
-    padding: 0;
+    /* block padding lifts the 15px text row to a tappable height */
+    padding: 4pt 0;
     max-width: 100%;
     overflow: hidden;
   }
   .icon-card .name-btn code {
     display: block;
-    font-size: 0.75em;
+    /* 0.75em lands under 10px on phones, below the legibility floor */
+    font-size: max(0.8em, 11px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

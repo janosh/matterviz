@@ -34,6 +34,23 @@
     gizmo?: boolean | GizmoOptions
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
   } = $props()
+
+  // OrbitControls sets touch-action: none on its canvas, so on a phone a one-finger swipe
+  // over a 500px-tall viewer orbits instead of scrolling and the page is stuck under the
+  // thumb. pan-y hands vertical one-finger swipes to the browser (page scroll) while
+  // horizontal swipes and pinches still orbit/zoom; once a gesture has gone to the viewer
+  // it keeps it. Fullscreen has no page to scroll, so full capture comes back there.
+  $effect(() => {
+    const dom_element = orbit_controls?.domElement
+    if (!(dom_element instanceof HTMLElement)) return
+    const apply_touch_policy = () => {
+      const fullscreen = document.fullscreenElement?.contains(dom_element) ?? false
+      dom_element.style.touchAction = fullscreen ? `none` : `pan-y`
+    }
+    apply_touch_policy()
+    document.addEventListener(`fullscreenchange`, apply_touch_policy)
+    return () => document.removeEventListener(`fullscreenchange`, apply_touch_policy)
+  })
 </script>
 
 {#snippet camera_contents()}

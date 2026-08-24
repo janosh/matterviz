@@ -401,4 +401,22 @@
   div.scatter-3d .header-controls:focus-within {
     opacity: 1;
   }
+  /* touch screens have no hover to reveal the chrome, so it stays visible */
+  @media (hover: none) {
+    div.scatter-3d :global(.pane-toggle),
+    div.scatter-3d .header-controls {
+      opacity: 1;
+    }
+  }
+  /* finger-sized chrome: the toggles are ~20px on pointer screens, too small to hit reliably */
+  @media (pointer: coarse) {
+    div.scatter-3d {
+      --pane-toggle-font-size: 1.1rem;
+      --pane-toggle-padding: 5pt;
+      --fullscreen-btn-padding: 7pt;
+    }
+    div.scatter-3d .header-controls {
+      font-size: 1.2rem;
+    }
+  }
 </style>

@@ -543,6 +543,12 @@
   .chempot-diagram-2d > :global(.pane-toggle[aria-expanded='true']) {
     opacity: 1;
   }
+  /* touch screens never hover, so the toggle would be unreachable */
+  @media (hover: none) {
+    .chempot-diagram-2d > :global(.pane-toggle) {
+      opacity: 1;
+    }
+  }
   .chempot-diagram-2d :global(.draggable-pane label) {
     display: flex;
     align-items: center;

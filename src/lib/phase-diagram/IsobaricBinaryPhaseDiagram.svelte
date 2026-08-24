@@ -897,6 +897,12 @@
   .header-controls:has(:global(.pane-open)) {
     opacity: 1;
   }
+  /* touch screens never hover, so the controls would be unreachable */
+  @media (hover: none) {
+    .binary-phase-diagram :global(:is(.pane-toggle, .header-controls)) {
+      opacity: 1;
+    }
+  }
   .phase-regions path {
     transition: opacity 0.15s ease;
 

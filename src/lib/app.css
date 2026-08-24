@@ -223,6 +223,13 @@
     pointer-events: auto !important;
   }
 }
+/* Range tracks render ~7px tall; on touch the thumb needs a finger-sized strip to land on
+   (amplitude, opacity, slice-depth sliders in viewer panes and toolbars) */
+@media (pointer: coarse) {
+  input[type='range'] {
+    min-height: 24px;
+  }
+}
 body.fullscreen .draggable-pane {
   position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
   top: 3.3em !important;

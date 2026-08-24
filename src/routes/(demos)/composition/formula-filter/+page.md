@@ -153,7 +153,9 @@ An interactive search filter for chemical formulas. The search mode is automatic
   }}
 />
 
-<div>
+<div
+  style="display: flex; flex-wrap: wrap; align-items: center; gap: 4pt 12pt; margin-top: 6pt"
+>
   <label title="Lock search mode to prevent auto-inference while typing" {@attach tooltip()}>
     <input type="checkbox" bind:checked={mode_locked} />
     lock mode
@@ -180,7 +182,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
 
 {#if parse_preview}
   <pre
-    style="margin-top: 8pt; max-height: 180px; overflow: auto; padding: 6pt 8pt; border-radius: 6px; background: rgba(128, 128, 128, 0.08); font-size: 0.72em">{parse_preview}</pre>
+    style="margin-top: 8pt; max-height: 180px; overflow: auto; padding: 6pt 8pt; border-radius: 6px; background: rgba(128, 128, 128, 0.08); font-size: max(0.8em, 11px)">{parse_preview}</pre>
 {/if}
 
 <div style="margin-top: 1em">

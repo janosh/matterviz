@@ -42,6 +42,16 @@
     // Called after the frame's hovered series is updated (charts with fill entries)
     on_item_hover?: (item: LegendItem | null) => void
   } = $props()
+
+  // A strip below/above the plot scrolls past half the frame height rather than leaving a
+  // sliver of plot. 50% stays above the solver's too-tall fraction of the plot area, so a
+  // capped legend never shrinks enough to flip back inside and re-expand.
+  const strip_style = $derived(
+    frame.legend_placement?.location === `outside` &&
+      (frame.legend_placement.side === `bottom` || frame.legend_placement.side === `top`)
+      ? `max-height: min(var(--plot-legend-max-height, 80%), 50%); `
+      : ``,
+  )
 </script>
 
 {#if legend && frame.legend_visible}
@@ -83,6 +93,6 @@
       frame.hovered_series_idx = item != null && item.series_idx >= 0 ? item.series_idx : null
       on_item_hover?.(item)
     }}
-    style={`position: absolute; ${placed_style}pointer-events: auto; ${legend.style || ``}`}
+    style={`position: absolute; ${placed_style}${strip_style}pointer-events: auto; ${legend.style || ``}`}
   />
 {/if}

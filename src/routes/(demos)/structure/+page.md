@@ -57,7 +57,10 @@
     set_file_param(source_filename)
   }}
 >
-  <h3 style="position: absolute; margin: 1ex 1em; font-family: monospace; z-index: 1">
+  <!-- max-width keeps the name clear of the toolbar, which widens to finger-sized buttons on phones -->
+  <h3
+    style="position: absolute; margin: 1ex 1em; font-family: monospace; z-index: 1; max-width: calc(100% - 2em - 240px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+  >
     {display_filename}
   </h3>
 </Structure>

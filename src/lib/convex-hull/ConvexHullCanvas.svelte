@@ -231,6 +231,8 @@
       project: project_point,
       elements,
       text_color: interactions.text_color,
+      width: interactions.canvas_dims.width,
+      height: interactions.canvas_dims.height,
       ...strategy.corner_labels,
     })
   }
@@ -326,7 +328,7 @@
         title="Energy above hull (eV/atom)"
         range={hull_distance_range(plot_entries)}
         scale={color_scale}
-        wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 1.5em);"
+        wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 2.5em);"
         bar_style="height: 12px;"
         title_style="margin-bottom: 4px;"
       />
@@ -337,7 +339,7 @@
         title="Formation energy (eV/atom)"
         scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
         range={e_form_range}
-        wrapper_style="position: absolute; bottom: 1em; right: 1em; width: min(200px, 50cqw - 1.5em);"
+        wrapper_style="position: absolute; bottom: 1em; right: 1em; width: min(200px, 50cqw - 2.5em);"
         bar_style="height: 12px;"
         title_style="margin-bottom: 4px;"
       />
@@ -481,5 +483,11 @@
   .convex-hull-canvas:is(:hover, :focus-within) .gizmo-wrapper.hover-visible {
     opacity: 1;
     pointer-events: auto;
+  }
+  @media (hover: none) {
+    .gizmo-wrapper.hover-visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
 </style>

@@ -48,10 +48,17 @@
      384px tables of a two-column grid in a 50em main column keep their inset. */
   @container (max-width: 380px) {
     .table-inset:not(.auto-colorbar-inset) {
-      position: static;
       grid-row: 11;
       grid-column: 1 / -1;
       margin-top: 1em;
+      /* The table pans sideways at this width (see PeriodicTable), so a row spanning every
+         track would be wider than the screen: size it to the visible table and stick it to
+         the left edge so it stays put while the tiles scroll underneath. */
+      position: sticky;
+      inset: auto;
+      left: 0;
+      width: 100cqw;
+      justify-self: start;
     }
   }
 </style>

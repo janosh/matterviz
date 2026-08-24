@@ -583,6 +583,24 @@
   .sankey .header-controls:focus-within {
     opacity: 1;
   }
+  /* touch screens have no hover to reveal the chrome, so it stays visible */
+  @media (hover: none) {
+    .sankey :global(.pane-toggle),
+    .sankey .header-controls {
+      opacity: 1;
+    }
+  }
+  /* finger-sized chrome: the toggles are ~20px on pointer screens, too small to hit reliably */
+  @media (pointer: coarse) {
+    .sankey {
+      --pane-toggle-font-size: 1.1rem;
+      --pane-toggle-padding: 5pt;
+      --fullscreen-btn-padding: 7pt;
+    }
+    .sankey .header-controls {
+      font-size: 1.2rem;
+    }
+  }
   svg {
     width: var(--sankey-svg-width, 100%);
     height: var(--sankey-svg-height, 100%);

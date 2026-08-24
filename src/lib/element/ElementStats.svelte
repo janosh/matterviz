@@ -52,7 +52,7 @@
     </section>
   </div>
 {:else}
-  <h3 style="text-align: center">Try hovering an element!</h3>
+  <h3 style="text-align: center">Hover or tap an element!</h3>
 {/if}
 
 <style>

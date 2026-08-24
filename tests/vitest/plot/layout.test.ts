@@ -306,12 +306,22 @@ describe(`layout utility functions`, () => {
         x2_axis: x2_axis ? project_axis(x2_axis, []) : undefined,
       })
     }
+    // The frame scores edge labels against the whole SVG, so a rotated edge label trails into
+    // the side padding (it can no longer flip its anchor and climb into the plot). Tests about
+    // the angle chosen give the axis that overhang; tests about wrapping keep a tight extent.
+    const overhang = (width: number, room = DEFAULT_PLOT_PADDING.l) => ({
+      axis_extent: { start: -room, end: width + room },
+    })
+    const framed = (axis: MeasuredAxis, width: number): MeasuredAxis => ({
+      ...overhang(width),
+      ...axis,
+    })
     const rotation_for = (
       axis: Partial<MeasuredAxis>,
       side: `x` | `x2` | `y` | `y2`,
     ): number =>
       resolve_tick_layout(
-        slot_axis(axis.tick_values ?? crowded, axis, plot_width),
+        framed(slot_axis(axis.tick_values ?? crowded, axis, plot_width), plot_width),
         plot_width,
         side,
       ).rotation
@@ -336,6 +346,7 @@ describe(`layout utility functions`, () => {
       [`no pitch at all to work with`, 0, 0],
     ])(`crowding at %s`, (_label, pitch, expected) => {
       const layout = x_layout(crowded, pitch * crowded.length, {
+        ...overhang(pitch * crowded.length),
         tick: {
           label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
         },
@@ -407,6 +418,7 @@ describe(`layout utility functions`, () => {
       expect(resolved_lines(wide)).toEqual(state_labels.map((label) => [label]))
 
       const wrapping_disabled = x_layout(state_labels, 160, {
+        ...overhang(160),
         tick: {
           label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
         },
@@ -446,7 +458,11 @@ describe(`layout utility functions`, () => {
 
     it(`keeps a shallower unwrapped angle for only a marginal band saving`, () => {
       const labels = Array.from({ length: 12 }, () => `Formation Energy`)
-      const layout = x_layout(labels, 680)
+      // no stagger: two upright rows would fit here and win on band; this case is about the angle
+      const layout = x_layout(labels, 680, {
+        ...overhang(680, 100),
+        tick: { label: { auto_layout: { strategies: [`upright`, `wrap`, `rotate`] } } },
+      })
       expect(layout.rotation).toBe(-30)
       expect(resolved_lines(layout)).toEqual(labels.map((label) => [label]))
     })
@@ -494,6 +510,7 @@ describe(`layout utility functions`, () => {
         [`abcdefghij\nklmnopqrst`, `abcdefghij\nklmnopqrst`],
         100,
         {
+          ...overhang(100),
           tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] as const } } },
         },
       )
@@ -507,6 +524,7 @@ describe(`layout utility functions`, () => {
     it(`keeps an unbreakable word intact and rotates it when crowded`, () => {
       const label = `SUPERCALIFRAGILISTIC`
       const layout = x_layout([label, label], 220, {
+        ...overhang(220, 100),
         tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] } } },
       })
       expect(layout.rotation).toBe(-30)
@@ -560,8 +578,12 @@ describe(`layout utility functions`, () => {
         } = pad_for({
           x_axis: slot_axis(tick_values, axis, plot_width),
         })
+        // same SVG-wide extent the padding pass scored the labels against
         const { band } = resolve_tick_layout(
-          slot_axis(tick_values, axis, 400 - l - r),
+          {
+            ...slot_axis(tick_values, axis, 400 - l - r),
+            axis_extent: { start: -l, end: 400 - l },
+          },
           400 - l - r,
           `x`,
         )
@@ -720,6 +742,11 @@ describe(`layout utility functions`, () => {
       const layout = resolve_tick_layout(
         {
           ...uniform_axis(tick_values, axis_size, 20),
+          // side-padding overhang, as in a frame; without it only 90° keeps the first label in
+          axis_extent: {
+            start: -DEFAULT_PLOT_PADDING.l,
+            end: axis_size + DEFAULT_PLOT_PADDING.r,
+          },
           tick: {
             label: {
               auto_layout: {
@@ -1099,10 +1126,12 @@ describe(`layout utility functions`, () => {
       }
       const padding_for = (axis_key: `x_axis` | `y_axis`, label: string) =>
         calc_auto_padding({ ...base, [axis_key]: slot_axis([], { label }) })
+      // a wrapped x title keeps its first line in place and stacks the rest below, so each extra
+      // line costs a full line of padding (centering the block would lift it into the ticks)
       expect(
         padding_for(`x_axis`, `Formation energy\nper atom`).b -
           padding_for(`x_axis`, `Formation energy`).b,
-      ).toBe(AXIS_LABEL_HEIGHT / 2)
+      ).toBe(AXIS_LABEL_HEIGHT)
       expect(
         padding_for(`y_axis`, `Formation energy\nper atom`).l -
           padding_for(`y_axis`, `Formation energy`).l,

@@ -109,7 +109,10 @@
   </div>
 {/snippet}
 
-<form style="display: flex; place-content: center; gap: 1em; margin-block: 0 2em">
+<!-- flex-wrap: two 20em selects side by side overflow a phone -->
+<form
+  style="display: flex; flex-wrap: wrap; place-content: center; gap: 1em; margin-block: 0 2em"
+>
   <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
   {#if heatmap_key}
     <ColorScaleSelect

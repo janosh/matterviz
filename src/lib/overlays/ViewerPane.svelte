@@ -31,6 +31,12 @@
   const container_gap_px = 4
   // Leave room for the pane's protruding control tab plus a small inset on both sides.
   const container_width_reserve_px = 32
+  // Phone-width screens: the pane also gets capped to the viewer so the whole pane is on
+  // screen whenever the viewer is (see constrain_to_container). Desktop keeps the plain
+  // viewport cap from the stylesheet below.
+  const phone_width_px = 640
+  const viewport_margin_px = 64
+  const min_pane_height_px = 150
 
   $effect(() => {
     if (!open || !pane || position === `fixed` || dragging) return
@@ -51,6 +57,16 @@
           .querySelector<HTMLElement>(`:scope > .control-tab`)
           ?.getBoundingClientRect().right ?? pane_rect.right
       const container_rect = container.getBoundingClientRect()
+      // Measured in JS rather than with 100cqh: a viewer whose height comes from min-height
+      // (Trajectory in portrait) reports 100cqh as 0px, which collapsed the pane entirely.
+      if (globalThis.innerWidth <= phone_width_px) {
+        const below_pane_top = container_rect.bottom - pane_rect.top - container_gap_px
+        const cap = Math.min(below_pane_top, globalThis.innerHeight - viewport_margin_px)
+        pane_element.style.setProperty(
+          `--pane-viewport-clamp`,
+          `${Math.max(cap, min_pane_height_px)}px`,
+        )
+      } else pane_element.style.removeProperty(`--pane-viewport-clamp`)
       const min_left = container_rect.left + container_gap_px
       const max_right = container_rect.right - container_gap_px
       const shift_px = Math.min(
@@ -81,11 +97,16 @@
   toggle_props={{
     title: `${open ? `Close` : `Open`} ${pane_name}`,
     ...toggle_props,
-    class: [`${class_prefix}-toggle`, toggle_props.class],
+    class: [`${class_prefix}-toggle`, `viewer-pane-toggle`, toggle_props.class],
   }}
   pane_props={{
     ...pane_props,
-    class: [`${class_prefix}-pane`, pane_props.class, open && `viewer-pane-open`],
+    class: [
+      `${class_prefix}-pane`,
+      `viewer-pane`,
+      pane_props.class,
+      open && `viewer-pane-open`,
+    ],
   }}
   {open_icon}
   {closed_icon}
@@ -100,6 +121,24 @@
 </DraggablePane>
 
 <style>
+  /* These panes scroll with the page (position: absolute), so DraggablePane's own viewport
+     clamp (fixed panes only) never applies. A pane taller than the screen can then only be
+     read by scrolling the page while touches inside it scroll the pane content instead, so
+     cap it to the viewport. Phone-width screens get a tighter inline cap from the effect
+     above; fixed panes override this var inline as well. */
+  :global(.draggable-pane.viewer-pane) {
+    --pane-viewport-clamp: calc(100dvh - 4em);
+  }
+  /* finger-sized toggles and drag/reset/close tab on touch screens; icons keep their size */
+  @media (pointer: coarse) {
+    :global(button.viewer-pane-toggle) {
+      min-width: 32px;
+      min-height: 32px;
+    }
+    :global(.draggable-pane.viewer-pane > .control-tab) {
+      font-size: 1.5em;
+    }
+  }
   :global(.analysis-controls) {
     display: flex;
     flex-direction: column;

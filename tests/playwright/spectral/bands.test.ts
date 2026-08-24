@@ -2,8 +2,9 @@ import { expect, type Locator, test } from '@playwright/test'
 import { require_bbox } from '../helpers'
 
 const band_paths = (plot: Locator) => plot.locator(`svg path[fill="none"]`)
+// Discontinuity labels join their points with no-break spaces so the axis never wraps them
 const x_axis_labels = async (plot: Locator) =>
-  (await plot.locator(`g.x-axis text`).allTextContents()).join(`,`)
+  (await plot.locator(`g.x-axis text`).allTextContents()).join(`,`).replaceAll(`\u00A0`, ` `)
 
 // SVG path elements have zero-size bounding boxes, so force: true is needed for hover. The
 // nearest point can resolve to a neighbouring band, so re-hover until the tooltip matches.
