@@ -49,7 +49,7 @@ export function create_chempot_overrides<Key extends keyof ChemPotDiagramConfig>
 }
 
 // The controls both panes expose (ChemPotControls.svelte renders them)
-export const CHEMPOT_CONTROL_KEYS = [
+const CHEMPOT_CONTROL_KEYS = [
   `formal_chempots`,
   `label_stable`,
   `element_padding`,
