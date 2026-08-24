@@ -15,7 +15,10 @@ const expect_redraw = (canvas: Locator, act: () => Promise<unknown>) =>
 
 const demo_canvas = (page: Page) => wait_for_3d_canvas(page, `.bleed-1400`)
 const control_checkbox = (page: Page, label: string): Locator =>
-  page.locator(`.controls label`).filter({ hasText: label }).locator(`input[type="checkbox"]`)
+  page
+    .locator(`.demo-controls label`)
+    .filter({ hasText: label })
+    .locator(`input[type="checkbox"]`)
 
 test.describe(`Coordination Polyhedra Demo`, () => {
   let console_errors: string[]
@@ -48,7 +51,7 @@ test.describe(`Coordination Polyhedra Demo`, () => {
   test(`opacity slider and edge/hide-center toggles re-render the scene`, async ({ page }) => {
     test.slow()
     await expect_redraw(canvas, () =>
-      page.locator(`.controls input[type="range"]`).fill(`0.1`),
+      page.locator(`.demo-controls input[type="range"]`).fill(`0.1`),
     )
     await expect_redraw(canvas, () => control_checkbox(page, `Edges`).uncheck())
     await expect_redraw(canvas, () => control_checkbox(page, `Hide center atoms`).check())

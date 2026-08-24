@@ -15,7 +15,6 @@ const element_data = ${JSON.stringify(json)};
 export const element_by_symbol = new Map(
   element_data.map((element) => [element.symbol, element]),
 );
-export * from './groups.js';
 export default element_data;
 `,
 )

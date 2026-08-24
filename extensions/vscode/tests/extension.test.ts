@@ -693,7 +693,7 @@ describe(`MatterViz Extension`, () => {
     `saveAs writes text content verbatim: %s`,
     async (content) => {
       mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/save.cif` })
-      await handle_msg({ command: `saveAs`, content, filename: `test.cif` })
+      await handle_msg({ command: `saveAs`, content, filename: `test.cif`, is_binary: false })
       expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
         { fsPath: `/test/save.cif` },
         new TextEncoder().encode(content),
@@ -728,6 +728,7 @@ describe(`MatterViz Extension`, () => {
       write_error: `Write failed`,
       content: `content`,
       filename: `test.cif`,
+      is_binary: false,
       error: `Failed to save text file: Write failed`,
     },
     {
@@ -735,6 +736,7 @@ describe(`MatterViz Extension`, () => {
       dialog: undefined,
       content: `content`,
       filename: `test.cif`,
+      is_binary: false,
     },
     {
       label: `empty base64`,
