@@ -83,9 +83,8 @@ const standard_items = (
 // says. A too-wide one also cannot take the right margin without leaving no plot width, so
 // it goes below; a too-tall one is placed by the usual right/bottom economy.
 const LEGEND_MAX_INTERIOR_FRACTION = 0.45
-// A horizontal colorbar is a short strip, so it may span more of the width before it blankets
-// the data: ~80% of a phone-width plot (it leaves the top margin, which costs only its height),
-// ~30% of a desktop one.
+// A horizontal colorbar is a short strip that only costs the top margin its height, so it may
+// span more of the width (~80% of a phone-width plot, ~30% of a desktop one) before moving out.
 const COLORBAR_MAX_INTERIOR_FRACTION = 0.7
 
 export function place_outside_decorations(scene: DecorationScene): OutsideLayout {
@@ -102,11 +101,9 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
 
   const colorbar_horizontal = colorbar?.horizontal ?? false
   const { width: colorbar_width = 0, height: colorbar_height = 0 } = colorbar?.footprint ?? {}
-  const colorbar_too_wide =
-    colorbar_horizontal && colorbar_width > COLORBAR_MAX_INTERIOR_FRACTION * base_w
   const colorbar_outside =
     colorbar != null &&
-    (colorbar_too_wide ||
+    ((colorbar_horizontal && colorbar_width > COLORBAR_MAX_INTERIOR_FRACTION * base_w) ||
       is_crowded(obstacles_norm, colorbar.footprint, base_w, base_h, colorbar.clearance ?? 15))
   const colorbar_takes_right = colorbar_outside && !colorbar_horizontal
 
@@ -127,17 +124,16 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
 
   // Top/bottom/colorbar-right reservations sit just past the axis band; a caller's larger
   // padding absorbs them rather than growing further (see DecorationScene.axis_pad)
+  const past_axis = (side: keyof Sides, size: number) =>
+    Math.max(base_pad[side], axis_pad[side] + size + gap)
   const pad: Required<Sides> = {
-    t:
-      colorbar_outside && colorbar_horizontal
-        ? Math.max(base_pad.t, axis_pad.t + colorbar_height + gap)
-        : base_pad.t,
+    t: colorbar_outside && colorbar_horizontal ? past_axis(`t`, colorbar_height) : base_pad.t,
     l: base_pad.l,
-    b: legend_bottom ? Math.max(base_pad.b, axis_pad.b + legend_height + gap) : base_pad.b,
+    b: legend_bottom ? past_axis(`b`, legend_height) : base_pad.b,
     r: legend_right
       ? Math.max(base_pad.r, legend_width + 2 * gap)
       : colorbar_takes_right
-        ? Math.max(base_pad.r, axis_pad.r + colorbar_width + gap)
+        ? past_axis(`r`, colorbar_width)
         : base_pad.r,
   }
   const legend_pos: DecorationPoint = legend_right

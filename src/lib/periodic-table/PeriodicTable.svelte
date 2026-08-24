@@ -77,7 +77,7 @@
     heatmap_values?: Partial<Record<ElementSymbol, HeatValue | null>> | (HeatValue | null)[]
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
-    links?: keyof ChemicalElement | Record<ElementSymbol, string> | null
+    links?: keyof ChemicalElement | Partial<Record<ElementSymbol, string>> | null
     log?: boolean
     color_scale?: D3InterpolateName | ((num: number) => string)
     active_element?: ChemicalElement | null
@@ -547,9 +547,10 @@
     grid-row: 8;
   }
   .tooltip {
+    --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     position: absolute;
     transform: translate(-50%, -10%);
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    background: var(--_bg);
     color: var(--tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
@@ -571,8 +572,7 @@
     transform: translateX(-50%);
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
-    border-bottom: 8px solid
-      var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    border-bottom: 8px solid var(--_bg);
     box-sizing: border-box;
     margin: 0 auto;
   }
@@ -583,7 +583,6 @@
     top: auto;
     bottom: -15%;
     border-bottom: none;
-    border-top: 8px solid
-      var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    border-top: 8px solid var(--_bg);
   }
 </style>

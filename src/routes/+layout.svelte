@@ -110,11 +110,7 @@
     style: `left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog); --sms-width: min(42em, 90vw); --sms-options-li-padding: 2pt 1ex`,
   }}
 />
-<GitHubCorner
-  id="github-corner"
-  href={pkg.repository}
-  --github-corner-bg-hover="var(--github-corner-bg-hover)"
-/>
+<GitHubCorner id="github-corner" href={pkg.repository} />
 <CopyButton
   global
   style="top: 9pt; inset-inline-end: 9pt; background: var(--btn-bg); color: var(--btn-color)"

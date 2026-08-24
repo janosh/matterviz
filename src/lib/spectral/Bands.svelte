@@ -53,8 +53,7 @@
     id = undefined,
     'data-testid': data_testid = undefined,
     point_hit_padding = 3,
-    // bindable: the frame padding the plot actually settled on (axes + outside decorations),
-    // read by BandsAndDos/BrillouinBandsDos to give both panels the same vertical extent
+    // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
     resolved_padding = $bindable(),
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
@@ -720,8 +719,8 @@
         : fermi_y}
 
       <!-- Fermi level line for electronic bands -->
-      <!-- Like the gap label: the E_F tag sits in the right margin only when the caller
-           padded for it, otherwise just inside the plot edge so the SVG does not clip it -->
+      <!-- E_F and gap labels sit in the right margin only when the caller padded for it,
+           otherwise just inside the plot edge so the SVG does not clip them -->
       {@const ef_label_fits_right = width - bands_x_end >= 20}
       {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
         <line
@@ -791,8 +790,6 @@
             opacity="0.7"
           />
         {/each}
-        <!-- The ~60px label only fits in the right margin when the caller padded for it;
-             otherwise anchor it inside the plot so it is not clipped by the SVG edge -->
         {@const gap_label_fits_right = width - bands_x_end >= 70}
         <text
           x={gap_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}

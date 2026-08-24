@@ -940,6 +940,10 @@
     &::placeholder {
       opacity: 0.4;
     }
+    /* iOS Safari zooms the page when a focused input's font is below 16px */
+    @media (pointer: coarse) {
+      font-size: 16px;
+    }
   }
   .mode-hint {
     opacity: 0.5;
@@ -1140,14 +1144,12 @@
     }
   }
   @media (max-width: 700px) {
-    .icon-btn {
+    :is(.icon-btn, .history-remove, .history-pin) {
       min-width: 32px;
       min-height: 32px;
-      padding: 5pt;
     }
-    :is(.history-remove, .history-pin) {
-      min-width: 32px;
-      min-height: 32px;
+    .icon-btn {
+      padding: 5pt;
     }
     .history-value {
       padding: 6pt 10pt;
@@ -1155,12 +1157,6 @@
     /* token chips double as remove buttons; 19px tall is too thin for a finger */
     .token-chip {
       min-height: 28px;
-    }
-  }
-  /* iOS Safari zooms the page when a focused input's font is below 16px */
-  @media (pointer: coarse) {
-    input {
-      font-size: 16px;
     }
   }
 </style>

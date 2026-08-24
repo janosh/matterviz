@@ -43,12 +43,12 @@
   // A vertical DOS puts density on y, so the shared frequency range only binds both y axes
   // in the side-by-side layout
   const default_y_axes = (): AxisConfig[] => [
-    shared_y_axis
-      ? axis_with_range(bands_props.y_axis, shared_frequency_range)
-      : { ...bands_props.y_axis },
-    shared_y_axis && !stacked
-      ? axis_with_range(dos_props.y_axis, shared_frequency_range, ``)
-      : { ...(stacked ? {} : { label: `` }), ...dos_props.y_axis },
+    axis_with_range(bands_props.y_axis, shared_frequency_range),
+    stacked
+      ? { ...dos_props.y_axis }
+      : shared_y_axis
+        ? axis_with_range(dos_props.y_axis, shared_frequency_range, ``)
+        : { label: ``, ...dos_props.y_axis },
   ]
 
   const synced = create_synced_y_axes({
@@ -83,12 +83,7 @@
   )
 </script>
 
-<div
-  {...rest}
-  class={[`bands-and-dos`, { stacked }, rest.class]}
-  style={`display: grid; gap: 0;` + (rest.style ?? ``)}
-  bind:clientWidth
->
+<div {...rest} class={[`bands-and-dos`, { stacked }, rest.class]} bind:clientWidth>
   {@render children?.({ hovered_frequency })}
   <Bands
     {...bands_props}
@@ -115,16 +110,13 @@
     bind:resolved_padding={() => undefined, resolved_floor.raise}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
-    padding={{
-      ...(stacked ? {} : { l: 15 }),
-      ...dos_props.padding,
-      ...side_by_side_padding,
-    }}
+    padding={{ l: stacked ? undefined : 15, ...dos_props.padding, ...side_by_side_padding }}
   />
 </div>
 
 <style>
   .bands-and-dos {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) 200px;
   }
   .bands-and-dos.stacked {

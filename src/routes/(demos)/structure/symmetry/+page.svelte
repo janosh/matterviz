@@ -216,10 +216,7 @@
     > * {
       min-width: 0;
     }
-  }
-  /* nested so it outranks the base rule regardless of declaration order */
-  @media (max-width: 900px) {
-    .symmetry-grid {
+    @media (max-width: 900px) {
       grid-template-columns: minmax(0, 1fr);
     }
   }

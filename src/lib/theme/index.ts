@@ -43,16 +43,11 @@ export const THEME_OPTIONS: ThemeOption[] = [
 ]
 
 // Type guards and utilities
-export const is_valid_theme_mode = (value: string): value is ThemeMode =>
-  Object.keys(COLOR_THEMES).includes(value) || value === AUTO_THEME
-
 export const is_valid_theme_name = (value: string): value is ThemeName =>
-  Object.keys(COLOR_THEMES).includes(value)
+  Object.hasOwn(COLOR_THEMES, value)
 
-export const resolve_theme_mode = (
-  mode: ThemeMode,
-  system_preference: ThemeType = COLOR_THEMES.light,
-): ThemeName => (mode === AUTO_THEME ? system_preference : mode)
+export const is_valid_theme_mode = (value: string): value is ThemeMode =>
+  value === AUTO_THEME || is_valid_theme_name(value)
 
 // Theme preference management
 export const get_theme_preference = (): ThemeMode => {
@@ -84,11 +79,15 @@ export const declared_color_scheme = (element: Element): ThemeType | null => {
   return scheme === `dark` || scheme === `light` ? scheme : null
 }
 
-// Nearest declared color-scheme at or above `element`, crossing shadow roots. Browsers inherit
-// the computed value so the first read normally answers; the walk covers DOMs that don't
-export const inherited_color_scheme = (element: Element | null): ThemeType | null => {
+// Nearest theme `read` finds at or above `element`, crossing shadow roots. Browsers inherit the
+// computed color-scheme so the first read normally answers; the walk covers DOMs that don't and
+// the host markers embedded widgets scan for
+export const nearest_declared = (
+  element: Element | null,
+  read: (element: Element) => ThemeType | null = declared_color_scheme,
+): ThemeType | null => {
   for (let current = element; current;) {
-    const scheme = declared_color_scheme(current)
+    const scheme = read(current)
     if (scheme) return scheme
     const root = current.getRootNode()
     current = current.parentElement ?? (root instanceof ShadowRoot ? root.host : null)
@@ -103,7 +102,7 @@ export const get_system_mode = (): ThemeType =>
 
 export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
-  const resolved = resolve_theme_mode(mode, get_system_mode())
+  const resolved = mode === AUTO_THEME ? get_system_mode() : mode
   if (!(resolved in THEME_TYPE)) throw new Error(`Invalid theme mode: ${resolved}`)
   const root = document.documentElement
   root.dataset.theme = resolved

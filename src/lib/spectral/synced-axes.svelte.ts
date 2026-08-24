@@ -67,15 +67,11 @@ export function shared_resolved_padding_floor() {
     },
     raise(resolved: Required<Sides> | undefined): void {
       if (!resolved) return
-      const next = { ...value }
-      let raised = false
-      for (const side of [`t`, `b`] as const) {
-        if (resolved[side] > (next[side] ?? 0) + 0.5) {
-          next[side] = resolved[side]
-          raised = true
-        }
+      const next = {
+        t: Math.max(value.t ?? 0, resolved.t),
+        b: Math.max(value.b ?? 0, resolved.b),
       }
-      if (raised) value = next
+      if (next.t > (value.t ?? 0) + 0.5 || next.b > (value.b ?? 0) + 0.5) value = next
     },
   }
 }

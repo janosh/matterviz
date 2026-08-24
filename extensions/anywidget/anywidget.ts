@@ -31,8 +31,7 @@ import {
 } from 'matterviz'
 import app_css from 'matterviz/app.css?raw'
 import { DEFAULTS } from 'matterviz/settings'
-import type { ThemeType } from 'matterviz/theme'
-import { detect_parent_theme, watch_theme } from 'matterviz/theme/embedded'
+import { watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
 import type { DrivenProp } from './reactive.svelte'
 import {
@@ -50,7 +49,7 @@ import {
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
 // Widget chrome + bundled app styles. Theme-independent: every token in app.css is
-// light-dark(), resolved against the widget element's own color-scheme (see apply_theme).
+// light-dark(), resolved against the widget element's own color-scheme (set in render).
 const widget_base_css = `
     .cell-output-ipywidget-background { background: transparent !important; }
     :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select) {
@@ -81,13 +80,6 @@ function inject_app_css(target_element: HTMLElement): void {
   style.id = style_id
   style.textContent = widget_base_css
   document.head.append(style)
-}
-
-// The widget's theme is its own color-scheme: light-dark() tokens, native form controls and
-// svelte-widgets all resolve against it, and setting it on the element (not the host page's
-// root) leaves the notebook's own scheme alone
-const apply_theme = (element: HTMLElement, theme: ThemeType): void => {
-  element.style.colorScheme = theme
 }
 
 const instances = new WeakMap<HTMLElement, ReturnType<typeof mount>>()
@@ -691,13 +683,13 @@ const render: Render = (props) => {
 
   cleanup_element(el)
   inject_app_css(el)
-  apply_theme(el, detect_parent_theme(el))
-
-  // Follow the host's theme. The returned disposer (invoked by cleanup_element) unregisters
-  // this widget and tears down the shared DOM/media observers once the last widget is gone.
+  // The widget's theme is its own color-scheme, now and as the host's changes: light-dark()
+  // tokens, native form controls and svelte-widgets all resolve against it, and setting it on
+  // the element (not the host page's root) leaves the notebook's own scheme alone. The disposer
+  // (invoked by cleanup_element) tears down this widget's theme observers.
   theme_unsubs.set(
     el,
-    watch_theme(el, (theme) => apply_theme(el, theme)),
+    watch_theme(el, (theme) => (el.style.colorScheme = theme)),
   )
   mount_spec(model, el, spec)
   return () => cleanup_element(el)

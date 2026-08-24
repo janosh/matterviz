@@ -350,6 +350,7 @@ describe(`add_alpha`, () => {
 })
 
 describe(`is_dark_mode + watch_dark_mode`, () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0)) // observers report async
   beforeEach(() => {
     document.documentElement.removeAttribute(`style`)
     delete document.documentElement.dataset.theme
@@ -387,7 +388,7 @@ describe(`is_dark_mode + watch_dark_mode`, () => {
     expect(widget_calls).toEqual([])
     widget.style.colorScheme = `dark` // the element's own scheme is not watched, its roots are
     document.documentElement.style.colorScheme = `light`
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await settle()
     expect(widget_calls.at(-1)).toBe(true) // re-read from the element, not the (light) root
     stop_widget()
     widget.remove()
@@ -396,12 +397,12 @@ describe(`is_dark_mode + watch_dark_mode`, () => {
     const cleanup = watch_dark_mode((dark) => calls.push(dark))
     expect(calls).toEqual([])
     document.documentElement.style.colorScheme = `dark`
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await settle()
     expect(calls.at(-1)).toBe(true)
     cleanup()
     const count = calls.length
     document.documentElement.style.colorScheme = `light`
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await settle()
     expect(calls).toHaveLength(count)
   })
 })

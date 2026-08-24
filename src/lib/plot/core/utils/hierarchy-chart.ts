@@ -377,20 +377,6 @@ export function color_bar_layout(opts: {
   }
 }
 
-// Attachment factory reporting an element's rendered size (immediately, on
-// resize, and zeroed on unmount) without an extra measuring wrapper div.
-export const observe_size =
-  (on_size: (size: { height: number; width: number }) => void) => (element: Element) => {
-    const update = () => on_size({ height: element.clientHeight, width: element.clientWidth })
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    update()
-    return () => {
-      observer.disconnect()
-      on_size({ height: 0, width: 0 })
-    }
-  }
-
 // === Export ===
 
 // Styles these components apply via CSS that exported standalone SVGs must carry

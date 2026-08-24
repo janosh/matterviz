@@ -7,11 +7,17 @@ import {
   get_theme_preference,
   is_valid_theme_mode,
   is_valid_theme_name,
-  resolve_theme_mode,
   save_theme_preference,
   THEME_TYPE,
 } from '$lib/theme'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+const mock_match_media = (matches: boolean) => {
+  Object.defineProperty(window, `matchMedia`, {
+    writable: true,
+    value: vi.fn(() => ({ matches, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+  })
+}
 
 describe(`Theme System`, () => {
   beforeEach(() => {
@@ -36,60 +42,20 @@ describe(`Theme System`, () => {
     })
 
     test.each([
-      ...Object.keys(COLOR_THEMES).map((theme) => [theme, true] as const),
-      [`auto`, true],
-      [`invalid`, false],
-      [``, false],
-      [null, false],
-      [undefined, false],
-    ] as const)(`is_valid_theme_mode("%s") returns %s`, (input, expected) => {
-      expect(is_valid_theme_mode(input as string)).toBe(expected)
-    })
-
-    test.each([
-      ...Object.keys(COLOR_THEMES).map((theme) => [theme, true] as const),
-      [`auto`, false],
-      [`invalid`, false],
-      [``, false],
-      [null, false],
-      [undefined, false],
-    ] as const)(`is_valid_theme_name("%s") returns %s`, (input, expected) => {
-      expect(is_valid_theme_name(input as string)).toBe(expected)
-    })
-  })
-
-  describe(`Theme resolution`, () => {
-    test.each([
-      [`auto`, `light`, `light`],
-      [`auto`, `dark`, `dark`],
-      [`light`, `dark`, `light`],
-      [`dark`, `light`, `dark`],
-      [`white`, `dark`, `white`],
-      [`black`, `light`, `black`],
+      ...Object.keys(COLOR_THEMES).map((theme) => [theme, true, true] as const),
+      [`auto`, false, true],
+      [`invalid`, false, false],
+      [``, false, false],
+      [`toString`, false, false], // inherited object keys are not themes
+      [null, false, false],
+      [undefined, false, false],
     ] as const)(
-      `resolve_theme_mode("%s", "%s") returns "%s"`,
-      (theme_mode, system_mode, expected) => {
-        expect(resolve_theme_mode(theme_mode, system_mode)).toBe(expected)
+      `"%s": is_valid_theme_name=%s, is_valid_theme_mode=%s`,
+      (input, is_name, is_mode) => {
+        expect(is_valid_theme_name(input as string)).toBe(is_name)
+        expect(is_valid_theme_mode(input as string)).toBe(is_mode)
       },
     )
-  })
-
-  describe(`System preference detection`, () => {
-    test.each([
-      [true, `dark`],
-      [false, `light`],
-    ])(`get_system_mode with matchMedia.matches=%s returns "%s"`, (matches, expected) => {
-      Object.defineProperty(window, `matchMedia`, {
-        writable: true,
-        value: vi.fn().mockImplementation(() => ({
-          matches,
-          addEventListener: vi.fn(),
-          removeEventListener: vi.fn(),
-        })),
-      })
-
-      expect(get_system_mode()).toBe(expected)
-    })
   })
 
   describe(`Theme preference storage`, () => {
@@ -103,12 +69,8 @@ describe(`Theme System`, () => {
       },
     )
 
-    test(`get_theme_preference defaults to auto when no preference stored`, () => {
+    test(`get_theme_preference defaults to auto when nothing is stored or localStorage throws`, () => {
       expect(get_theme_preference()).toBe(`auto`)
-    })
-
-    test(`get_theme_preference handles localStorage errors gracefully`, () => {
-      // Temporarily replace localStorage with a throwing proxy
       const orig_localStorage = globalThis.localStorage
       Object.defineProperty(globalThis, `localStorage`, {
         get() {
@@ -116,10 +78,7 @@ describe(`Theme System`, () => {
         },
         configurable: true,
       })
-
       expect(get_theme_preference()).toBe(`auto`)
-
-      // Restore
       const attrs = { writable: true, configurable: true, value: orig_localStorage }
       Object.defineProperty(globalThis, `localStorage`, attrs)
     })
@@ -164,22 +123,14 @@ describe(`Theme System`, () => {
     test.each([
       [true, `dark`],
       [false, `light`],
-    ])(
-      `apply_theme_to_dom("auto") with system preference %s resolves to "%s"`,
+    ] as const)(
+      `OS prefers dark=%s: get_system_mode and apply_theme_to_dom("auto") resolve to "%s"`,
       (dark_preference, expected_theme) => {
-        Object.defineProperty(window, `matchMedia`, {
-          writable: true,
-          value: vi.fn().mockImplementation(() => ({
-            matches: dark_preference,
-            addEventListener: vi.fn(),
-          })),
-        })
-
+        mock_match_media(dark_preference)
+        expect(get_system_mode()).toBe(expected_theme)
         apply_theme_to_dom(`auto`)
-        expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
-        expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-          THEME_TYPE[expected_theme as ThemeName],
-        )
+        expect(document.documentElement.dataset.theme).toBe(expected_theme)
+        expect(document.documentElement.style.colorScheme).toBe(expected_theme)
       },
     )
 

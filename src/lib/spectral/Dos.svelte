@@ -65,8 +65,7 @@
     show_normalize_control = false,
     show_units_control = false,
     sigma_range = undefined,
-    // bindable: the frame padding the plot actually settled on (axes + outside decorations),
-    // read by BandsAndDos/BrillouinBandsDos to give both panels the same vertical extent
+    // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
     resolved_padding = $bindable(),
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
@@ -522,8 +521,7 @@
         />
         <!-- Fermi level label -->
         {#if is_horizontal}
-          <!-- The tag sits in the right margin only when the caller padded for it, otherwise
-               just inside the plot edge so the SVG does not clip it -->
+          <!-- in the right margin only when the caller padded for it, else inside the plot edge -->
           {@const label_fits_right = pad.r >= 20}
           <text
             class="fermi-level-label"

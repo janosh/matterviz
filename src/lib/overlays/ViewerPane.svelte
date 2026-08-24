@@ -31,12 +31,6 @@
   const container_gap_px = 4
   // Leave room for the pane's protruding control tab plus a small inset on both sides.
   const container_width_reserve_px = 32
-  // Phone-width screens: the pane also gets capped to the viewer so the whole pane is on
-  // screen whenever the viewer is (see constrain_to_container). Desktop keeps the plain
-  // viewport cap from the stylesheet below.
-  const phone_width_px = 640
-  const viewport_margin_px = 64
-  const min_pane_height_px = 150
 
   $effect(() => {
     if (!open || !pane || position === `fixed` || dragging) return
@@ -57,15 +51,14 @@
           .querySelector<HTMLElement>(`:scope > .control-tab`)
           ?.getBoundingClientRect().right ?? pane_rect.right
       const container_rect = container.getBoundingClientRect()
-      // Measured in JS rather than with 100cqh: a viewer whose height comes from min-height
-      // (Trajectory in portrait) reports 100cqh as 0px, which collapsed the pane entirely.
-      if (globalThis.innerWidth <= phone_width_px) {
+      // Phone widths also cap the pane to the viewer so the whole pane is on screen whenever
+      // the viewer is; desktop keeps the stylesheet's viewport cap. Measured in JS rather than
+      // with 100cqh: a viewer whose height comes from min-height (Trajectory in portrait)
+      // reports 100cqh as 0px, which collapsed the pane entirely.
+      if (globalThis.innerWidth <= 640) {
         const below_pane_top = container_rect.bottom - pane_rect.top - container_gap_px
-        const cap = Math.min(below_pane_top, globalThis.innerHeight - viewport_margin_px)
-        pane_element.style.setProperty(
-          `--pane-viewport-clamp`,
-          `${Math.max(cap, min_pane_height_px)}px`,
-        )
+        const cap = Math.min(below_pane_top, globalThis.innerHeight - 64)
+        pane_element.style.setProperty(`--pane-viewport-clamp`, `${Math.max(cap, 150)}px`)
       } else pane_element.style.removeProperty(`--pane-viewport-clamp`)
       const min_left = container_rect.left + container_gap_px
       const max_right = container_rect.right - container_gap_px
@@ -101,12 +94,7 @@
   }}
   pane_props={{
     ...pane_props,
-    class: [
-      `${class_prefix}-pane`,
-      `viewer-pane`,
-      pane_props.class,
-      open && `viewer-pane-open`,
-    ],
+    class: [`${class_prefix}-pane`, pane_props.class, open && `viewer-pane-open`],
   }}
   {open_icon}
   {closed_icon}
@@ -126,7 +114,7 @@
      read by scrolling the page while touches inside it scroll the pane content instead, so
      cap it to the viewport. Phone-width screens get a tighter inline cap from the effect
      above; fixed panes override this var inline as well. */
-  :global(.draggable-pane.viewer-pane) {
+  :global(.draggable-pane.viewer-pane-open) {
     --pane-viewport-clamp: calc(100dvh - 4em);
   }
   /* finger-sized toggles and drag/reset/close tab on touch screens; icons keep their size */
@@ -135,7 +123,7 @@
       min-width: 32px;
       min-height: 32px;
     }
-    :global(.draggable-pane.viewer-pane > .control-tab) {
+    :global(.draggable-pane.viewer-pane-open > .control-tab) {
       font-size: 1.5em;
     }
   }

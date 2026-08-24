@@ -535,13 +535,8 @@
   // Caller padding is honoured as a floor: the y2 axis needs its right margin whatever the
   // caller asked for, and a caller cannot know whether a y2 series is currently visible
   let trajectory_scatter_padding = $derived.by(() => {
-    const user = scatter_props.padding ?? {}
-    return {
-      ...user,
-      t: user.t ?? 20,
-      b: user.b ?? 60,
-      r: Math.max(user.r ?? 0, has_y2_series ? 100 : 20),
-    }
+    const { t = 20, b = 60, r = 0, ...user } = scatter_props.padding ?? {}
+    return { ...user, t, b, r: Math.max(r, has_y2_series ? 100 : 20) }
   })
   let trajectory_scatter_legend = $derived({
     ...scatter_props.legend,

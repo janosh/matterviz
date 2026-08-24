@@ -312,16 +312,15 @@ describe(`layout utility functions`, () => {
     const overhang = (width: number, room = DEFAULT_PLOT_PADDING.l) => ({
       axis_extent: { start: -room, end: width + room },
     })
-    const framed = (axis: MeasuredAxis, width: number): MeasuredAxis => ({
-      ...overhang(width),
-      ...axis,
-    })
     const rotation_for = (
       axis: Partial<MeasuredAxis>,
       side: `x` | `x2` | `y` | `y2`,
     ): number =>
       resolve_tick_layout(
-        framed(slot_axis(axis.tick_values ?? crowded, axis, plot_width), plot_width),
+        {
+          ...overhang(plot_width),
+          ...slot_axis(axis.tick_values ?? crowded, axis, plot_width),
+        },
         plot_width,
         side,
       ).rotation

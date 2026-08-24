@@ -253,13 +253,16 @@ describe(`PeriodicTable`, () => {
   })
 
   // a tap is a pointerdown then the click; the compat mouseenter a browser adds is left out so
-  // the tile has to be selected by the pointerdown itself
-  const tap = (tile: HTMLElement, pointerType: string) => {
+  // the tile has to be selected by the pointerdown itself. Returns whether the click's default
+  // (link navigation) was prevented
+  const tap = (tile: HTMLElement, pointerType: string): boolean => {
     tile.dispatchEvent(
       Object.assign(new MouseEvent(`pointerdown`, { bubbles: true }), { pointerType }),
     )
-    tile.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
+    const click = new MouseEvent(`click`, { bubbles: true, cancelable: true })
+    tile.dispatchEvent(click)
     flushSync()
+    return click.defaultPrevented
   }
 
   test(`a touch tap previews a tile first and only a second tap on it activates`, () => {
@@ -280,19 +283,14 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`a touch tap on a linked tile holds the link until the second tap`, () => {
-    mount(PeriodicTable, { target: document.body, props: { links: `symbol` } })
-    // the component's click handler runs on the tile before this bubbling listener, which
-    // records its decision and then blocks happy-dom from navigating
-    const prevented: boolean[] = []
-    document.body.addEventListener(`click`, (event) => {
-      prevented.push(event.defaultPrevented)
-      event.preventDefault()
-    })
+    // a hash link keeps happy-dom from navigating away on the unprevented clicks
+    mount(PeriodicTable, { target: document.body, props: { links: { H: `#h` } } })
     const tile = doc_query<HTMLAnchorElement>(`[data-element-symbol="H"]`)
-    tap(tile, `touch`)
-    tap(tile, `touch`)
-    tap(tile, `mouse`)
-    expect(prevented).toEqual([true, false, false])
+    expect([tap(tile, `touch`), tap(tile, `touch`), tap(tile, `mouse`)]).toEqual([
+      true,
+      false,
+      false,
+    ])
   })
 
   test(`links keep native semantics when an activation callback is also supplied`, async () => {

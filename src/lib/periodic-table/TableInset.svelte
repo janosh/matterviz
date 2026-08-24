@@ -55,8 +55,7 @@
          track would be wider than the screen: size it to the visible table and stick it to
          the left edge so it stays put while the tiles scroll underneath. */
       position: sticky;
-      inset: auto;
-      left: 0;
+      inset: auto auto auto 0;
       width: 100cqw;
       justify-self: start;
     }

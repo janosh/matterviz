@@ -4,6 +4,7 @@
   import type { BarHandlerProps, BarSeries, TickConfig } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
+  import { observe_size } from '$lib/plot/core/utils'
   import type { CrystalSystem } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import * as spg from '$lib/symmetry/spacegroups'
@@ -66,11 +67,7 @@
   // Rendered width of the plot, observed on the root element. Tick thinning and count
   // annotation rows depend on pixel spacing, which the data alone can't tell us.
   let plot_width = $state(0)
-  const observe_width = (node: HTMLElement) => {
-    const observer = new ResizeObserver(() => (plot_width = node.clientWidth))
-    observer.observe(node)
-    return () => observer.disconnect()
-  }
+  const observe_width = observe_size(({ width }) => (plot_width = width))
   // Approximate data-space width of one px along the spacegroup axis, from the default
   // frame padding; the real scale only enters in user_content. Worst case the estimate
   // is off by a few px per label, which the collision gap absorbs.
@@ -168,7 +165,7 @@
     }
     return rows
   })
-  const n_count_rows = $derived(Math.max(0, ...count_label_rows.values()) + 1)
+  const extra_count_rows = $derived(Math.max(0, ...count_label_rows.values()))
 
   // Build axis configurations based on orientation
   const x_axis_config = $derived(
@@ -319,13 +316,12 @@
   mode="overlay"
   padding={{
     ...padding,
-    // room above the plot area for the stacked count annotations: the caller's top padding is
-    // a floor, never a cap, or the rows it was computed for would overlap the bars
+    // room above the plot area for the stacked count annotations (rows are only computed for
+    // vertical plots): the caller's top padding is a floor, never a cap, or the rows it was
+    // computed for would overlap the bars
     t: Math.max(
       padding.t ?? 0,
-      show_counts && orientation === `vertical`
-        ? DEFAULT_PLOT_PADDING.t + COUNT_LABEL_ROW_PX * (n_count_rows - 1)
-        : DEFAULT_PLOT_PADDING.t,
+      DEFAULT_PLOT_PADDING.t + (show_counts ? COUNT_LABEL_ROW_PX * extra_count_rows : 0),
     ),
   }}
   x_axis={x_axis_config}

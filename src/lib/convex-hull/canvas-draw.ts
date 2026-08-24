@@ -301,8 +301,8 @@ export function draw_corner_labels(
     // the symbols in half; pull them back inside instead.
     if (width && height) {
       const half_w = ctx.measureText(label).width / 2
-      label_x = Math.min(Math.max(label_x, half_w), width - half_w)
-      label_y = Math.min(Math.max(label_y, font_size / 2), height - font_size / 2)
+      label_x = clamp(label_x, half_w, width - half_w)
+      label_y = clamp(label_y, font_size / 2, height - font_size / 2)
     }
     ctx.fillText(label, label_x, label_y)
   }

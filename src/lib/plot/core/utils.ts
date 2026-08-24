@@ -37,3 +37,22 @@ export function calc_auto_range<Item>(
   const padding = (max_value - min_value) * 0.05 || 0.5
   return [min_value - padding, max_value + padding]
 }
+
+// Attachment factory reporting an element's rendered size (immediately, on resize, and zeroed
+// on unmount) without an extra measuring wrapper div. The element is passed along for callers
+// that also read its computed style.
+export const observe_size =
+  <El extends Element>(
+    on_size: (size: { height: number; width: number }, element: El) => void,
+  ) =>
+  (element: El) => {
+    const update = () =>
+      on_size({ height: element.clientHeight, width: element.clientWidth }, element)
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    update()
+    return () => {
+      observer.disconnect()
+      on_size({ height: 0, width: 0 }, element)
+    }
+  }

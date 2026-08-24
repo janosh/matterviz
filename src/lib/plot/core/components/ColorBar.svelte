@@ -10,6 +10,7 @@
   } from '$lib/plot/core/color-ramp'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
   import { generate_arcsinh_ticks } from '$lib/plot/core/scales'
+  import { observe_size } from '$lib/plot/core/utils'
   import {
     DEFAULT_FONT_SPEC,
     measure_text_line,
@@ -172,20 +173,15 @@
   // (and in environments without layout), which leaves the tick list untouched.
   let bar_px = $state(0)
   let bar_font = $state(DEFAULT_FONT_SPEC)
-  const observe_bar = (node: HTMLDivElement) => {
-    const observer = new ResizeObserver(() => {
-      bar_px = node.clientWidth
-      bar_font = resolve_font_spec(node)
-    })
-    observer.observe(node)
-    return () => observer.disconnect()
-  }
+  const observe_bar = observe_size<HTMLDivElement>(({ width }, node) => {
+    bar_px = width
+    bar_font = resolve_font_spec(node)
+  })
   // Tick values are unique (deduped above, or generated), so they key the rendered labels
   const visible_ticks = $derived.by(() => {
     const base = tick_side === `inside` ? ticks.slice(1, -1) : ticks
     // explicit tick arrays are the caller's choice; vertical labels stack and never collide
     if (Array.isArray(tick_labels) || orientation !== `horizontal` || !bar_px) return base
-    if (base.length < 3) return base
     // labels are centered on their tick, so n labels need ~(n - 1) label widths of bar
     const label_px =
       Math.max(...base.map((tick) => measure_text_line(format_tick(tick), bar_font).width)) + 8 // breathing room between neighbours

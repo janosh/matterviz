@@ -1,8 +1,9 @@
 /* === Theme tokens ===
    One definition per token: light-dark() resolves against the root's color-scheme, which is
    the only thing the runtime sets (apply_theme_to_dom / the app.html bootstrap / widgets).
-   :host covers widgets whose styles are adopted into a shadow root. The white and black
-   high-contrast variants override only the tokens that differ from light and dark. */
+   :host covers widgets whose styles are adopted into a shadow root. Tokens that equal another
+   in every theme alias it with var(). The white and black high-contrast variants override only
+   the tokens that differ from light and dark. */
 :root,
 :host {
   color-scheme: light dark;
@@ -28,13 +29,10 @@
   --tooltip-bg: light-dark(rgba(243, 244, 246, 0.95), rgba(0, 40, 60, 0.95));
   --canvas-tooltip-bg: light-dark(rgba(226, 232, 240, 0.96), rgba(15, 23, 42, 0.96));
   --canvas-tooltip-text-color: light-dark(#0f172a, #f8fafc);
-  --tooltip-border: light-dark(
-    1px solid rgba(0, 0, 0, 0.15),
-    1px solid rgba(255, 255, 255, 0.15)
-  );
+  --tooltip-border: var(--pane-border);
   --plot-bg: transparent;
   --struct-bg: light-dark(rgba(0, 0, 0, 0.03), rgba(255, 255, 255, 0.07));
-  --struct-bg-fullscreen: light-dark(#f1f3f5, #18171c);
+  --struct-bg-fullscreen: var(--page-bg);
   --pane-bg: light-dark(rgb(229, 231, 235), rgb(28 29 33));
   --pane-border: light-dark(
     1px solid rgba(0, 0, 0, 0.15),
@@ -53,10 +51,10 @@
     1px solid rgba(0, 0, 0, 0.2),
     1px solid rgba(255, 255, 255, 0.2)
   );
-  --plot-legend-item-color: light-dark(#374151, #eee);
+  --plot-legend-item-color: var(--text-color);
   --plot-legend-item-hover-bg-color: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1));
-  --github-corner-color: light-dark(#f1f3f5, #18171c);
-  --github-corner-bg: light-dark(#374151, #eee);
+  --github-corner-color: var(--page-bg);
+  --github-corner-bg: var(--text-color);
   --github-corner-bg-hover: light-dark(#1e40af, #60a5fa);
 }
 :root[data-theme='white'],
@@ -78,9 +76,7 @@
   --text-color-muted: #374151;
   --tooltip-bg: rgba(255, 255, 255, 0.98);
   --canvas-tooltip-bg: rgba(241, 245, 249, 0.98);
-  --tooltip-border: 1px solid rgba(0, 0, 0, 0.075);
   --struct-bg: rgba(0, 0, 0, 0.025);
-  --struct-bg-fullscreen: #ffffff;
   --pane-bg: rgb(248, 250, 252);
   --pane-border: 1px solid rgba(0, 0, 0, 0.075);
   --pane-bg-hover: rgba(0, 0, 0, 0.03);
@@ -91,9 +87,6 @@
   --nav-link-active-color: coral;
   --plot-legend-bg-color: rgba(255, 255, 255, 0.9);
   --plot-legend-border: 1px solid rgba(0, 0, 0, 0.1);
-  --plot-legend-item-color: #000000;
-  --github-corner-color: #ffffff;
-  --github-corner-bg: #000000;
   --github-corner-bg-hover: #1e3a8a;
 }
 :root[data-theme='black'],
@@ -113,9 +106,7 @@
   --text-color-muted: #d1d5db;
   --tooltip-bg: rgba(20, 20, 20, 0.98);
   --canvas-tooltip-bg: rgba(20, 20, 20, 0.98);
-  --tooltip-border: 1px solid rgba(255, 255, 255, 0.075);
   --struct-bg: rgba(255, 255, 255, 0.1);
-  --struct-bg-fullscreen: #000000;
   --pane-bg: rgb(26, 26, 26);
   --pane-border: 1px solid rgba(255, 255, 255, 0.075);
   --dropzone-border: 1px solid #374151;
@@ -125,9 +116,6 @@
   --nav-link-active-color: lightseagreen;
   --plot-legend-bg-color: rgba(0, 0, 0, 0.3);
   --plot-legend-border: 1px solid rgba(255, 255, 255, 0.1);
-  --plot-legend-item-color: #f5f5f5;
-  --github-corner-color: #000000;
-  --github-corner-bg: #f5f5f5;
   --github-corner-bg-hover: #38bdf8;
 }
 
