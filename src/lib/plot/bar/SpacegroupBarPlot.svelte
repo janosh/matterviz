@@ -312,12 +312,15 @@
   {orientation}
   mode="overlay"
   padding={{
-    // room above the plot area for the stacked count annotations
-    t:
+    ...padding,
+    // room above the plot area for the stacked count annotations: the caller's top padding is
+    // a floor, never a cap, or the rows it was computed for would overlap the bars
+    t: Math.max(
+      padding.t ?? 0,
       show_counts && orientation === `vertical`
         ? DEFAULT_PLOT_PADDING.t + COUNT_LABEL_ROW_PX * (n_count_rows - 1)
         : DEFAULT_PLOT_PADDING.t,
-    ...padding,
+    ),
   }}
   x_axis={x_axis_config}
   y_axis={y_axis_config}
