@@ -31,7 +31,10 @@ import { beforeEach, expect, onTestFinished, vi } from 'vitest'
 // DOMPurify >= 3.4.13 reads nodeName through that base getter (so a clobbering child named
 // "nodeName" cannot shadow it), which makes every element look like an unknown tag here and
 // the sanitizer strip all markup. Dispatch the base getter to the subclass getter instead;
-// browsers and jsdom define it once on Node.prototype and need nothing.
+// browsers and jsdom define it once on Node.prototype and need nothing. Delete once
+// https://github.com/capricorn86/happy-dom/issues/2182 is fixed (its NodeIterator also stops
+// after a removal, https://github.com/capricorn86/happy-dom/issues/2310, which DOMPurify's
+// element-dropping paths hit; the sanitizer tests only exercise ours with allowed markup).
 const node_proto = globalThis.Node?.prototype
 const base_node_name =
   node_proto && Object.getOwnPropertyDescriptor(node_proto, `nodeName`)?.get
