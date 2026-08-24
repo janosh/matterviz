@@ -81,15 +81,15 @@ describe(`embedded theme helpers`, () => {
     expect(detect_parent_theme(inner)).toBe(`dark`)
   })
 
-  // A declared marker further up the hierarchy beats colour sniffing lower down: a shadow host
-  // (marimo cell) with its own panel background inside a data-theme page takes the page's
-  // theme. Regression: each ancestor used to be sniffed before the walk reached the marker
+  // A declared marker anywhere up a shadow host's chain decides; a host's own background
+  // colour is never sniffed, so without a marker the OS preference applies
   test.each([
-    [`dark`, `#fff`, `light`],
-    [`light`, `#000`, `dark`],
+    [`dark`, `#fff`],
+    [`light`, `#000`],
   ] as const)(
     `data-theme=%s ancestor beats a %s shadow host background`,
-    async (declared, host_bg, sniffed) => {
+    async (declared, host_bg) => {
+      prefers_dark = declared === `light`
       const { detect_parent_theme } = await import(`$lib/theme/embedded`)
       const page = document.createElement(`div`)
       page.dataset.theme = declared
@@ -101,11 +101,23 @@ describe(`embedded theme helpers`, () => {
       host.attachShadow({ mode: `open` }).append(inner)
 
       expect(detect_parent_theme(inner)).toBe(declared)
-      // without a declared marker above, the host's own background decides
       delete page.dataset.theme
-      expect(detect_parent_theme(inner)).toBe(sniffed)
+      expect(detect_parent_theme(inner)).toBe(prefers_dark ? `dark` : `light`)
     },
   )
+
+  // Marker words are matched as tokens, so every host convention reads the same way
+  test.each([
+    [`vscode-dark`, `dark`],
+    [`jp-theme-light`, `light`],
+    [`theme-dark`, `dark`],
+    [`darkmode`, null], // not a token: no statement
+  ])(`reads the class marker %j as %j`, async (class_name, expected) => {
+    prefers_dark = expected !== `dark` // the OS says the opposite, to prove the marker decides
+    document.body.className = class_name
+    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+    expect(detect_parent_theme()).toBe(expected ?? (prefers_dark ? `dark` : `light`))
+  })
 
   // Host signals must beat the OS preference: a dark JupyterLab on a light OS is dark.
   // Regression: matchMedia used to be consulted before the host branches, making them dead.
@@ -127,17 +139,6 @@ describe(`embedded theme helpers`, () => {
     expect(detect_parent_theme()).toBe(`dark`)
   })
 
-  // A plain page background is weaker than the OS preference (a site styling its body dark on
-  // a light OS is not a themed host); it only decides when matchMedia is unavailable
-  test(`document background decides only when matchMedia is unavailable`, async () => {
-    prefers_dark = false
-    document.documentElement.style.backgroundColor = `#000`
-    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
-    expect(detect_parent_theme()).toBe(`light`)
-    globalThis.matchMedia = undefined as unknown as typeof matchMedia
-    expect(detect_parent_theme()).toBe(`dark`)
-  })
-
   // A host that declares `color-scheme` in CSS has stated its theme through the standard API;
   // it outranks the OS preference like a class marker does, and `light dark` means light
   test.each([
@@ -150,35 +151,16 @@ describe(`embedded theme helpers`, () => {
     document.documentElement.style.colorScheme = scheme
     const { detect_parent_theme } = await import(`$lib/theme/embedded`)
     expect(detect_parent_theme()).toBe(expected)
-    // and on a shadow host, where it beats the host's own background colour
+    // and on a shadow host
     const { host, inner } = make_shadow_element()
     host.style.colorScheme = scheme
-    host.style.backgroundColor = `#000`
-    expect(detect_parent_theme(inner)).toBe(scheme === `normal` ? `dark` : expected)
+    expect(detect_parent_theme(inner)).toBe(expected)
   })
 
   test(`falls back to the system preference when the host declares nothing`, async () => {
     prefers_dark = true
     const { detect_parent_theme } = await import(`$lib/theme/embedded`)
     expect(detect_parent_theme()).toBe(`dark`)
-  })
-
-  test(`ignores transparent rgba document backgrounds`, async () => {
-    globalThis.matchMedia = undefined as unknown as typeof matchMedia
-    document.body.style.backgroundColor = `rgba(0, 0, 0, 0)`
-    document.documentElement.style.backgroundColor = `rgba(0, 0, 0, 0)`
-    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
-
-    expect(detect_parent_theme()).toBe(`light`)
-  })
-
-  test.each([
-    [false, `:root`],
-    [true, `:host`],
-  ])(`theme CSS pins only the color-scheme (shadow=%s)`, async (is_shadow_dom, selector) => {
-    const { get_theme_css } = await import(`$lib/theme/embedded`)
-    // every token in app.css is light-dark(), so this one rule themes the whole widget
-    expect(get_theme_css(`dark`, is_shadow_dom)).toBe(`${selector} { color-scheme: dark; }`)
   })
 })
 

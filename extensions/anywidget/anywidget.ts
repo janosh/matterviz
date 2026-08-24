@@ -32,7 +32,7 @@ import {
 import app_css from 'matterviz/app.css?raw'
 import { DEFAULTS } from 'matterviz/settings'
 import type { ThemeType } from 'matterviz/theme'
-import { detect_parent_theme, get_theme_css, watch_theme } from 'matterviz/theme/embedded'
+import { detect_parent_theme, watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
 import type { DrivenProp } from './reactive.svelte'
 import {
@@ -49,9 +49,8 @@ import {
 
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
-// Static widget chrome + bundled app styles. Only the color-scheme rule (get_theme_css)
-// changes between calls, so keep this constant rather than rebuilding the full ~150 KB string
-// on every theme change.
+// Widget chrome + bundled app styles. Theme-independent: every token in app.css is
+// light-dark(), resolved against the widget element's own color-scheme (see apply_theme).
 const widget_base_css = `
     .cell-output-ipywidget-background { background: transparent !important; }
     :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select) {
@@ -65,38 +64,30 @@ const widget_base_css = `
     ${app_css}
   `
 
-function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): void {
-  const style_id = `matterviz-widget-styles`
-  const detected_theme = theme_type ?? detect_parent_theme(target_element)
-
-  // Determine if we're in Shadow DOM (used by marimo cells) and get the appropriate root
-  const root_node = target_element?.getRootNode() ?? document
-  const in_shadow = root_node instanceof ShadowRoot
-
-  // Remove existing style element (if any)
-  ;(in_shadow ? root_node : document).querySelector(`#${style_id}`)?.remove()
-
-  // Only the color-scheme rule varies per call; the rest is widget_base_css
-  const style_content = `${widget_base_css}${get_theme_css(detected_theme, in_shadow)}`
-
-  // Apply styles via adoptedStyleSheets (reuse existing sheet to avoid accumulation)
-  if (in_shadow && `adoptedStyleSheets` in root_node) {
-    let sheet = adopted_sheets.get(root_node)
-    if (!sheet) {
-      sheet = new CSSStyleSheet()
-      root_node.adoptedStyleSheets = [...root_node.adoptedStyleSheets, sheet]
-      adopted_sheets.set(root_node, sheet)
-    }
-    sheet.replaceSync(style_content)
+// Install the app styles once per root (document head, or the widget's shadow root)
+function inject_app_css(target_element: HTMLElement): void {
+  const root_node = target_element.getRootNode()
+  if (root_node instanceof ShadowRoot) {
+    if (adopted_sheets.has(root_node)) return
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(widget_base_css)
+    root_node.adoptedStyleSheets = [...root_node.adoptedStyleSheets, sheet]
+    adopted_sheets.set(root_node, sheet)
     return
   }
-
-  // Fallback: create style element
+  const style_id = `matterviz-widget-styles`
+  if (document.getElementById(style_id)) return
   const style = document.createElement(`style`)
   style.id = style_id
-  style.textContent = style_content
-  if (in_shadow) root_node.append(style)
-  else document.head.append(style)
+  style.textContent = widget_base_css
+  document.head.append(style)
+}
+
+// The widget's theme is its own color-scheme: light-dark() tokens, native form controls and
+// svelte-widgets all resolve against it, and setting it on the element (not the host page's
+// root) leaves the notebook's own scheme alone
+const apply_theme = (element: HTMLElement, theme: ThemeType): void => {
+  element.style.colorScheme = theme
 }
 
 const instances = new WeakMap<HTMLElement, ReturnType<typeof mount>>()
@@ -699,14 +690,14 @@ const render: Render = (props) => {
   if (!spec) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
 
   cleanup_element(el)
-  inject_app_css(undefined, el)
+  inject_app_css(el)
+  apply_theme(el, detect_parent_theme(el))
 
-  // Watch this element's theme and re-inject CSS on change. The returned disposer
-  // (invoked by cleanup_element) unregisters this widget and tears down the shared
-  // DOM/media observers once the last widget is gone.
+  // Follow the host's theme. The returned disposer (invoked by cleanup_element) unregisters
+  // this widget and tears down the shared DOM/media observers once the last widget is gone.
   theme_unsubs.set(
     el,
-    watch_theme(el, () => inject_app_css(undefined, el)),
+    watch_theme(el, (theme) => apply_theme(el, theme)),
   )
   mount_spec(model, el, spec)
   return () => cleanup_element(el)

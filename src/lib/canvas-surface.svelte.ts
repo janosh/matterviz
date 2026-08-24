@@ -13,16 +13,16 @@ export interface CanvasFrame {
   dark_mode: boolean
 }
 
-// Canvas text colour. Canvas takes a colour value, not a CSS variable, so the theme is read
-// in JS (dark-mode fallbacks for unsupported light-dark()/var() values) and the canvas
-// repainted on every flip.
-export function canvas_text_color(dark_mode: boolean): string {
-  const fallback = dark_mode ? `#ffffff` : `#212121`
-  if (typeof document === `undefined`) return fallback
-  const css_value = getComputedStyle(document.documentElement)
-    .getPropertyValue(`--text-color`)
-    .trim()
-  return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
+// Canvas text colour. Canvas takes a colour value, not a CSS variable, so read the colour the
+// canvas element itself inherits (already resolved through light-dark()/var()); the fallback
+// only applies before the canvas exists.
+export function canvas_text_color(canvas: Element | undefined, dark_mode: boolean): string {
+  const inherited = canvas && getComputedStyle(canvas).color
+  return inherited && inherited !== `rgba(0, 0, 0, 0)`
+    ? inherited
+    : dark_mode
+      ? `#ffffff`
+      : `#212121`
 }
 
 // Backing store at `width`×`height` CSS px times `dpr`, with the context transformed so draw
@@ -62,9 +62,9 @@ export function create_canvas_surface(inputs: {
   draw_overlay?: (frame: CanvasFrame) => void // overlay layer, every frame; clears itself
   repaint_deps: () => unknown // reactive values the draw code reads (rAF reads are untracked)
 }) {
-  let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
-  const text_color = $derived(canvas_text_color(dark_mode))
+  let dark_mode = $state(is_dark_mode(untrack(inputs.canvas)))
+  $effect(() => watch_dark_mode((dark) => (dark_mode = dark), inputs.canvas()))
+  const text_color = $derived(canvas_text_color(inputs.canvas(), dark_mode))
   let ctx: CanvasRenderingContext2D | null = null
   let overlay_ctx: CanvasRenderingContext2D | null = null
   let dims = $state({ width: 0, height: 0 })

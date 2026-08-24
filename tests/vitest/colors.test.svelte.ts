@@ -1,5 +1,4 @@
 import { resolve_backdrop, resolve_css_color } from '$lib/colors'
-import { THEME_STORAGE_KEY } from '$lib/theme'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test } from 'vitest'
 
@@ -10,6 +9,7 @@ afterEach(() => {
   roots = []
   document.body.innerHTML = ``
   delete document.documentElement.dataset.theme
+  document.documentElement.removeAttribute(`style`)
 })
 
 // Let the observer/storage callback land, then flush the effect it invalidated
@@ -48,17 +48,18 @@ test(`resolve_backdrop re-reads its token when the theme changes`, async () => {
   expect(backdrop.current).toBe(`#ffffff`)
 })
 
-// The ancestor observer only sees attribute mutations. Watching the theme separately is
-// what catches a preference written by another tab or an OS-level dark mode flip, and a
-// function fallback is how PeriodicTable's tooltip re-resolves its light-dark() default.
-test(`theme-dependent fallback re-resolves without any attribute mutation`, async () => {
+// The ancestor observer only sees the node's own attribute mutations. Watching the theme
+// separately is what catches the root's color-scheme flipping (apply_theme_to_dom, another tab's
+// saved preference, an OS dark-mode change), and a function fallback is how PeriodicTable's
+// tooltip re-resolves its light-dark() default.
+test(`theme-dependent fallback re-resolves when the root scheme changes`, async () => {
   const node = make_node() // no token, so the fallback supplies the color
   let theme_color = `#000000`
   const backdrop = observe(() => resolve_backdrop(() => node, { fallback: () => theme_color }))
   expect(backdrop.current).toBe(`#000000`)
 
   theme_color = `#ffffff`
-  globalThis.dispatchEvent(new StorageEvent(`storage`, { key: THEME_STORAGE_KEY }))
+  document.documentElement.style.colorScheme = `dark`
   await settle()
 
   expect(backdrop.current).toBe(`#ffffff`)

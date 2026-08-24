@@ -73,6 +73,25 @@ export const save_theme_preference = (mode: ThemeMode): void => {
   }
 }
 
+// The scheme an element declares through the CSS API, or null for `normal`/nothing. A
+// two-scheme value (`light dark`) names its preferred scheme first.
+export const declared_color_scheme = (element: Element): ThemeType | null => {
+  const scheme = getComputedStyle(element).colorScheme?.trim().split(/\s+/)[0]
+  return scheme === `dark` || scheme === `light` ? scheme : null
+}
+
+// Nearest declared color-scheme at or above `element`, crossing shadow roots. Browsers inherit
+// the computed value so the first read normally answers; the walk covers DOMs that don't
+export const inherited_color_scheme = (element: Element | null): ThemeType | null => {
+  for (let current = element; current;) {
+    const scheme = declared_color_scheme(current)
+    if (scheme) return scheme
+    const root = current.getRootNode()
+    current = current.parentElement ?? (root instanceof ShadowRoot ? root.host : null)
+  }
+  return null
+}
+
 export const get_system_mode = (): ThemeType =>
   is_browser && globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
     ? COLOR_THEMES.dark

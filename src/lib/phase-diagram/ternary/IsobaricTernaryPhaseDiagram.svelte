@@ -112,8 +112,9 @@
   const controls_config = $derived(normalize_show_controls(show_controls))
   let mounted = $state(false)
   onMount(() => (mounted = true))
+  // Read the scheme the wrapper inherits (a widget's own color-scheme in a notebook)
   let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
+  $effect(() => watch_dark_mode((dark) => (dark_mode = dark), wrapper))
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
   let hover = $state<Hover | null>(null)
   let hovered_phase = $state<number | null>(null)
@@ -435,7 +436,7 @@
                 bind:temperature={() => current_t, scrub_temperature}
                 bind:selected_phase
                 bind:hovered_phase
-                text_color={canvas_text_color(dark_mode)}
+                text_color={canvas_text_color(wrapper, dark_mode)}
                 on_hover={(data) => (hover = data && { kind: `phase_t`, data })}
               />
             </Canvas>

@@ -1,7 +1,7 @@
 // Theme Detection for Embedded MatterViz Views
 
 import { perceived_brightness } from '$lib/colors'
-import type { ThemeType } from '$lib/theme'
+import { declared_color_scheme, type ThemeType } from '$lib/theme'
 
 // Extend globalThis with our custom properties
 declare global {
@@ -29,117 +29,56 @@ let media_query_listener: MediaQueryList | null = null
 // reschedule so bursts of mutations collapse into a single notify_theme_change.
 let notify_timer: ReturnType<typeof setTimeout> | null = null
 
-const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`] }
+const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`, `style`] }
 
-// Theme declared by an element's own class list / data-theme attribute (JupyterLab,
-// VS Code and marimo all mark their roots this way), or null when it carries none
-const DARK_MARKERS = [`dark-theme`, `vscode-dark`, `dark`]
-const LIGHT_MARKERS = [`light-theme`, `vscode-light`, `light`]
-const declared_theme = (element: Element): ThemeType | null => {
-  const data_theme = element.getAttribute(`data-theme`)
-  if (DARK_MARKERS.some((cls) => element.classList.contains(cls)) || data_theme === `dark`)
-    return `dark`
-  if (LIGHT_MARKERS.some((cls) => element.classList.contains(cls)) || data_theme === `light`)
-    return `light`
-  return null
-}
-
-// The standard signal: a host that declares `color-scheme: dark` (or `light`) in CSS has told
-// the browser its theme, and that is what every light-dark() token on the page resolves
-// against. Computed values are `normal` when nothing declared it and may list both schemes
+// A theme the host states about itself, read through the standard API first — a declared
+// `color-scheme` is what every light-dark() token on the page resolves against — and then
+// through the marker conventions hosts use: a `dark`/`light` word in a class token or in
+// `data-theme` (JupyterLab `jp-theme-dark`, VS Code `vscode-dark`, marimo `dark`/`data-theme`).
+// Computed color-scheme is `normal` when nothing declared it and may list both schemes
 // (`light dark`), in which case the first is the preferred one.
-const declared_color_scheme = (element: Element): ThemeType | null => {
-  const scheme = getComputedStyle(element).colorScheme?.trim().split(/\s+/)[0]
-  return scheme === `dark` || scheme === `light` ? scheme : null
+const THEME_WORD = /(?:^|[\s_-])(?<scheme>dark|light)(?=$|[\s_-])/
+const declared_theme = (element: Element): ThemeType | null => {
+  const scheme = declared_color_scheme(element)
+  if (scheme) return scheme
+  const markers = `${element.className} ${element.getAttribute(`data-theme`) ?? ``}`
+  const word = THEME_WORD.exec(markers)?.groups?.scheme
+  return word === `dark` || word === `light` ? word : null
 }
 
 export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
   try {
-    // Check Shadow DOM context
-    if (target_element) {
-      const root_node = target_element.getRootNode()
-      if (root_node !== document && root_node instanceof ShadowRoot) {
-        const theme = check_element_hierarchy(root_node.host)
-        if (theme) return theme
-      }
+    // A widget in a shadow tree (marimo cells) reads its host chain first: a marker anywhere
+    // up the chain (the page's data-theme, a host's theme class) is the nearest statement
+    const root_node = target_element?.getRootNode()
+    for (
+      let current: Element | null = root_node instanceof ShadowRoot ? root_node.host : null;
+      current;
+      current = current.parentElement
+    ) {
+      const declared = declared_theme(current)
+      if (declared) return declared
     }
-
     // Hosts mark either root: VS Code/marimo put the theme class on <body>, JupyterLab and
-    // many sites on <html> (data-theme); a declared color-scheme is the same statement made
-    // through the CSS API, so it ranks with them
-    const declared =
-      declared_theme(document.documentElement) ??
-      declared_theme(document.body) ??
-      declared_color_scheme(document.documentElement) ??
-      declared_color_scheme(document.body)
+    // many sites on <html>
+    const declared = declared_theme(document.documentElement) ?? declared_theme(document.body)
     if (declared) return declared
 
-    // Jupyter Lab theme API
+    // JupyterLab: the shell's theme name, or the layout colour its theme CSS defines
     const jupyter_theme = globalThis.jupyterlab?.application?.shell?.dataset?.theme
-    // Theme names are title-cased (`JupyterLab Dark`), so match case-insensitively
     if (jupyter_theme) return /dark/i.test(jupyter_theme) ? `dark` : `light`
-
-    // Jupyter CSS custom properties
     const jp_bg = getComputedStyle(document.documentElement).getPropertyValue(
       `--jp-layout-color0`,
     )
-    if (jp_bg) {
-      const is_dark = is_dark_color(jp_bg)
-      if (is_dark !== null) return is_dark ? `dark` : `light`
-    }
+    if (jp_bg.trim()) return perceived_brightness(jp_bg) < 0.5 ? `dark` : `light`
 
-    // Explicit host signals above win over the OS preference (dark JupyterLab on a light OS
-    // is dark), but the OS preference is still an explicit choice, so it beats the generic
-    // page-background sniff below: a page styling its body must not override the user's OS theme
-    if (globalThis.matchMedia) {
-      if (globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches) return `dark`
-      if (globalThis.matchMedia(`(prefers-color-scheme: light)`).matches) return `light`
-    }
-
-    // Weakest signal: the page's own background color
-    const backgrounds = [
-      getComputedStyle(document.body).backgroundColor,
-      getComputedStyle(document.documentElement).backgroundColor,
-    ]
-    for (const bg of backgrounds) {
-      const is_dark = is_dark_color(bg)
-      if (is_dark !== null) return is_dark ? `dark` : `light`
-    }
-
-    return `light`
+    // Nothing declared: the OS preference. A page that merely styles its body dark has not
+    // stated a theme, so its colours are not sniffed.
+    return globalThis.matchMedia?.(`(prefers-color-scheme: dark)`).matches ? `dark` : `light`
   } catch (error) {
     console.warn(`Theme detection failed, defaulting to light:`, error)
     return `light`
   }
-}
-
-// Theme of a shadow host and its ancestors. A declared marker anywhere up the chain (the
-// page's `data-theme`, a host's theme class) beats colour sniffing at every level: a shadow
-// host styled with its own light panel background must not out-vote the dark page above it
-function check_element_hierarchy(element: Element): ThemeType | null {
-  const chain: Element[] = []
-  for (let current: Element | null = element; current; current = current.parentElement) {
-    chain.push(current)
-  }
-  for (const current of chain) {
-    const declared = declared_theme(current) ?? declared_color_scheme(current)
-    if (declared) return declared
-  }
-  for (const current of chain) {
-    const computed_style = getComputedStyle(current)
-    const is_dark = is_dark_color(computed_style.backgroundColor)
-    if (is_dark !== null) return is_dark ? `dark` : `light`
-    const text_is_dark = is_dark_color(computed_style.color)
-    if (text_is_dark !== null) return text_is_dark ? `light` : `dark`
-  }
-  return null
-}
-
-function is_dark_color(color: string): boolean | null {
-  if (!color || [`transparent`, `rgba(0, 0, 0, 0)`, `initial`, `inherit`].includes(color)) {
-    return null
-  }
-  return perceived_brightness(color) < 0.5
 }
 
 function notify_theme_change(): void {
@@ -165,7 +104,7 @@ function on_dom_mutation(mutations: MutationRecord[]): void {
     mutations.some(
       (mut) =>
         mut.type === `attributes` &&
-        (mut.attributeName === `class` || mut.attributeName === `data-theme`),
+        [`class`, `data-theme`, `style`].includes(mut.attributeName ?? ``),
     )
   )
     schedule_notify()
@@ -222,9 +161,3 @@ export function watch_theme(target_element: HTMLElement, callback: ThemeCallback
     media_query_listener = null
   }
 }
-
-// The one rule an embedded widget needs on top of app.css: every token there is light-dark(),
-// so pinning the root's color-scheme to the detected theme themes the whole widget (and the
-// browser's own menus, inputs and scrollbars) regardless of the host page's scheme.
-export const get_theme_css = (theme_type: ThemeType, is_shadow_dom = false): string =>
-  `${is_shadow_dom ? `:host` : `:root`} { color-scheme: ${theme_type}; }`

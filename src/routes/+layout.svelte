@@ -10,7 +10,13 @@
   import '@wooorm/starry-night/style/both'
   import { element_data } from '$lib/element'
   import { theme_state } from '$lib/state.svelte'
-  import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES, THEME_OPTIONS } from '$lib/theme'
+  import {
+    apply_theme_to_dom,
+    AUTO_THEME,
+    get_theme_preference,
+    THEME_OPTIONS,
+    THEME_STORAGE_KEY,
+  } from '$lib/theme'
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
   import { Footer } from '$site'
@@ -28,29 +34,22 @@
   let cmd_palette_open = $state(false)
   let theme_mode = $derived(theme_state.mode)
 
+  // Apply the chosen mode; re-resolve `auto` when the OS preference flips and follow a
+  // preference saved by another tab. Everything else reads the root's resulting color-scheme.
   $effect(() => {
-    // Apply theme changes when mode changes (after SSR)
-    if (typeof window !== `undefined`) apply_theme_to_dom(theme_state.mode)
-  })
-
-  $effect(() => {
-    // Update system preference when it changes
-    if (typeof window !== `undefined`) {
-      const media_query = window.matchMedia(`(prefers-color-scheme: dark)`)
-
-      const update_system_mode = () => {
-        const new_preference = media_query.matches ? COLOR_THEMES.dark : COLOR_THEMES.light
-        theme_state.system_mode = new_preference
-
-        // If user is on auto mode, update the theme
-        if (theme_state.mode === AUTO_THEME) apply_theme_to_dom(AUTO_THEME)
-      }
-
-      // Set initial value
-      update_system_mode()
-
-      media_query.addEventListener(`change`, update_system_mode)
-      return () => media_query.removeEventListener(`change`, update_system_mode)
+    apply_theme_to_dom(theme_state.mode)
+    const media_query = window.matchMedia(`(prefers-color-scheme: dark)`)
+    const follow_system = () => {
+      if (theme_state.mode === AUTO_THEME) apply_theme_to_dom(AUTO_THEME)
+    }
+    const follow_other_tabs = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY) theme_state.mode = get_theme_preference()
+    }
+    media_query.addEventListener(`change`, follow_system)
+    window.addEventListener(`storage`, follow_other_tabs)
+    return () => {
+      media_query.removeEventListener(`change`, follow_system)
+      window.removeEventListener(`storage`, follow_other_tabs)
     }
   })
 

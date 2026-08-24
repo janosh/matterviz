@@ -48,7 +48,6 @@ vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 vi.mock(`matterviz/theme/embedded`, () => ({
   detect_parent_theme: () => `light`,
-  get_theme_css: () => ``,
   watch_theme: () => () => {},
 }))
 
