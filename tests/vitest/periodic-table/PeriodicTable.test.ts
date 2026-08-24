@@ -252,6 +252,29 @@ describe(`PeriodicTable`, () => {
     expect(callback.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `H`, `H`])
   })
 
+  test(`a touch tap previews a tile first and only a second tap on it activates`, () => {
+    const on_activate = vi.fn<(element: ChemicalElement) => void>()
+    mount(PeriodicTable, { target: document.body, props: { on_activate } })
+    const [hydrogen, helium] = document.querySelectorAll<HTMLElement>(`.element-tile`)
+    // a tap is a pointerdown, the browser's compat mouseenter, then the click
+    const tap = (tile: HTMLElement, pointerType: string) => {
+      tile.dispatchEvent(
+        Object.assign(new MouseEvent(`pointerdown`, { bubbles: true }), { pointerType }),
+      )
+      tile.dispatchEvent(mouseenter)
+      const click = new MouseEvent(`click`, { bubbles: true, cancelable: true })
+      tile.dispatchEvent(click)
+      return click.defaultPrevented
+    }
+    expect(tap(hydrogen, `touch`)).toBe(true) // first tap: select only, link must not follow
+    expect(on_activate).not.toHaveBeenCalled()
+    expect(tap(hydrogen, `touch`)).toBe(false) // same tile again: activate
+    expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`])
+    expect(tap(helium, `touch`)).toBe(true) // another tile: back to preview
+    expect(tap(helium, `mouse`)).toBe(false) // a mouse click never previews
+    expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `He`])
+  })
+
   test(`links keep native semantics when an activation callback is also supplied`, async () => {
     const on_activate = vi.fn<(element: ChemicalElement) => void>()
     const warning = vi.spyOn(console, `warn`).mockImplementation(() => {})

@@ -583,13 +583,6 @@
   .sankey .header-controls:focus-within {
     opacity: 1;
   }
-  /* touch screens have no hover to reveal the chrome, so it stays visible */
-  @media (hover: none) {
-    .sankey :global(.pane-toggle),
-    .sankey .header-controls {
-      opacity: 1;
-    }
-  }
   /* finger-sized chrome: the toggles are ~20px on pointer screens, too small to hit reliably */
   @media (pointer: coarse) {
     .sankey {

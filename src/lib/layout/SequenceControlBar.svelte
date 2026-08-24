@@ -79,14 +79,6 @@
     opacity: 1;
     pointer-events: auto;
   }
-  /* Touch screens never hover, so the bar stays up there (also covered by app.css on the
-     docs site; repeated here for embedded viewers) */
-  @media (hover: none) {
-    .sequence-control-bar.hover-visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-  }
   /* Finger-sized hit areas for every control in the bar. Icons and text keep their size;
      the bar grows from ~20px to 32px rows only on coarse pointers. */
   @media (pointer: coarse) {

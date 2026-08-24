@@ -813,12 +813,6 @@
   .header-controls:has(:global([aria-expanded='true'])) {
     opacity: 1;
   }
-  /* touch screens never hover (mirrors app.css for embedded viewers) */
-  @media (hover: none) {
-    .header-controls.hover-visible {
-      opacity: 1;
-    }
-  }
   .error {
     margin: 0.5em;
     padding: 0.4em 0.8em;

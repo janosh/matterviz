@@ -319,13 +319,6 @@
   .plot-frame .header-controls:focus-within {
     opacity: 1;
   }
-  /* touch screens have no hover to reveal the chrome, so it stays visible */
-  @media (hover: none) {
-    .plot-frame :global(.pane-toggle),
-    .plot-frame .header-controls {
-      opacity: 1;
-    }
-  }
   /* finger-sized chrome: the toggles are ~20px on pointer screens, too small to hit reliably */
   @media (pointer: coarse) {
     .plot-frame {

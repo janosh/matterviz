@@ -218,7 +218,9 @@
    the viewer would never appear. Keep them shown there; !important beats the hashed
    component selectors that hide them. */
 @media (hover: none) {
-  .hover-visible {
+  .hover-visible,
+  .header-controls,
+  .pane-toggle {
     opacity: 1 !important;
     pointer-events: auto !important;
   }
@@ -655,7 +657,7 @@ body.fullscreen .draggable-pane {
     );
     border-radius: 50%;
     background: var(--range-thumb-bg);
-    box-shadow: 0 0 0 2px var(--surface-bg, #1f242d);
+    box-shadow: 0 0 0 1px var(--surface-bg, #1f242d);
   }
   input[type='range']::-moz-range-track {
     height: var(--range-track-height, 0.45rem);
@@ -674,7 +676,7 @@ body.fullscreen .draggable-pane {
     border: 0;
     border-radius: 50%;
     background: var(--range-thumb-bg);
-    box-shadow: 0 0 0 2px var(--surface-bg, #1f242d);
+    box-shadow: 0 0 0 1px var(--surface-bg, #1f242d);
   }
   input[type='number'] {
     min-width: 40px;

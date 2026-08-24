@@ -79,14 +79,6 @@
       opacity: 1;
       pointer-events: auto;
     }
-    /* No hover on touch screens, so hover-gated chrome would be unreachable. Kept here as
-       well as in app.css so embedded viewers (notebooks, VS Code) behave the same. */
-    @media (hover: none) {
-      &.hover-visible {
-        opacity: 1;
-        pointer-events: auto;
-      }
-    }
     /* Fingers need ~32px targets; the icons keep their size, only the hit area grows.
        The filename gives way first so the row never pushes past the viewer edge. */
     @media (pointer: coarse) {

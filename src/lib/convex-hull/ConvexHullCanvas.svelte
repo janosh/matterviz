@@ -484,10 +484,4 @@
     opacity: 1;
     pointer-events: auto;
   }
-  @media (hover: none) {
-    .gizmo-wrapper.hover-visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-  }
 </style>

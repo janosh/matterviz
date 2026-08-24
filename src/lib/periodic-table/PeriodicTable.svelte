@@ -195,19 +195,15 @@
       event.pointerType === `touch` && !disabled && active_element?.symbol !== element.symbol
   }
   const handle_tile_click = (
-    activation: ((element: ChemicalElement) => void) | undefined,
-    fallback: ((data: { element: ChemicalElement; event: MouseEvent }) => void) | undefined,
     data: { element: ChemicalElement; event: MouseEvent },
+    activation?: (element: ChemicalElement) => void,
   ): void => {
-    const { element, event } = data
     const preview = tap_is_preview
     tap_is_preview = false
-    if (preview) {
-      event.preventDefault() // keep the link from navigating on the first tap
-      return
-    }
-    if (activation) activation(element)
-    else fallback?.(data)
+    if (preview)
+      data.event.preventDefault() // keep the link from navigating on the first tap
+    else if (activation) activation(data.element)
+    else tile_props?.onclick?.(data)
   }
 
   function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }): void {
@@ -438,7 +434,7 @@
       onpointerdown={(event: PointerEvent) => handle_tile_pointerdown(element, event)}
       onclick={element_is_interactive(element)
         ? (data: { element: ChemicalElement; event: MouseEvent }) =>
-            handle_tile_click(tile_activation, tile_props?.onclick, data)
+            handle_tile_click(data, tile_activation)
         : tile_props?.onclick}
       onkeydown={tile_activation
         ? (event: KeyboardEvent) => {
