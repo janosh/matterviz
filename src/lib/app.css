@@ -231,6 +231,14 @@
   input[type='range'] {
     min-height: 24px;
   }
+  /* plot chrome (pane toggles, fullscreen button) is ~20px on pointer screens, too small to
+     hit reliably; the icons keep their size, the hit area grows */
+  .header-controls {
+    font-size: 1.2rem;
+    --pane-toggle-font-size: 1.1rem;
+    --pane-toggle-padding: 5pt;
+    --fullscreen-btn-padding: 7pt;
+  }
 }
 body.fullscreen .draggable-pane {
   position: fixed !important; /* In fullscreen, we want viewport-relative positioning */

@@ -319,17 +319,6 @@
   .plot-frame .header-controls:focus-within {
     opacity: 1;
   }
-  /* finger-sized chrome: the toggles are ~20px on pointer screens, too small to hit reliably */
-  @media (pointer: coarse) {
-    .plot-frame {
-      --pane-toggle-font-size: 1.1rem;
-      --pane-toggle-padding: 5pt;
-      --fullscreen-btn-padding: 7pt;
-    }
-    .plot-frame .header-controls {
-      font-size: 1.2rem;
-    }
-  }
   svg {
     width: var(--plot-frame-svg-width);
     height: var(--plot-frame-svg-height);
