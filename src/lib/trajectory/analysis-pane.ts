@@ -12,7 +12,6 @@ export type AnalysisPaneContext<Input> = {
   has_valid_dt: boolean
   dt_collected: number
   time_unit: string
-  safe_stride: number
   collected_frames: number
   n_atoms: number
   // True while `collect` is running, for plots that show their own in-progress state

@@ -13,7 +13,7 @@
   import Structure from '$lib/structure/Structure.svelte'
   import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
-  import type { ComponentProps } from 'svelte'
+  import { type ComponentProps, untrack } from 'svelte'
 
   let active_pane = $state<StructurePane | null>(null)
   let background_color = $state(`#1e1e1e`)
@@ -66,7 +66,8 @@
     enable_measure_mode = url_params.get(`enable_measure_mode`) === `true`
   }
   for (const key of [`show_site_labels`, `show_site_indices`] as const) {
-    if (url_params.has(key)) scene_props[key] = url_params.get(key) === `true`
+    // untrack: this is one-off seeding from the URL, not a reactive read of scene_props
+    if (url_params.has(key)) untrack(() => (scene_props[key] = url_params.get(key) === `true`))
   }
 
   // Custom-event hooks the specs dispatch on window (see tests/playwright/helpers.ts)

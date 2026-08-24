@@ -36,6 +36,8 @@ test(`renders a typed phonon dataset`, async () => {
   await vi.waitFor(() => {
     const summary = target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
     expect(summary).toContain(`Mode 4`)
+    expect(summary).toContain(`cm⁻¹`)
+    expect(summary).toMatch(/Na \d+% · Cl \d+%|Cl \d+% · Na \d+%/)
     expect(summary).toContain(`NaCl-band.yaml`)
     expect(target.querySelector(`[aria-label="Phonon explorer plot"]`)?.textContent).toContain(
       `IR`,
@@ -141,7 +143,7 @@ test.each([
     { dataset: { modes: { ...modes, lattice: null } } },
     `animation needs a real-space lattice`,
   ],
-  [`oversized trajectory`, { supercell: [400, 400, 1] }, `exceeding the 500000 limit`],
+  [`oversized supercell`, { supercell: [400, 400, 1] }, `exceeding the 200000 limit`],
 ] as [string, Partial<ExplorerProps>, string][])(
   `reports %s errors in the UI`,
   async (_name, props, message) => {

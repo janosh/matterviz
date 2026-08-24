@@ -1,14 +1,25 @@
 <script lang="ts">
-  // Summary table plus provenance note under an analysis plot (MSD, VACF): one place for
-  // the column headers, the compact styling and the faint note line each plot used to copy
+  // Summary table plus provenance note under an analysis plot (MSD, VACF, RDF): one place
+  // for the column headers, the compact styling, the faint note line each plot used to copy
+  // and the CSV download of the curves behind the plot
+  import { download } from '$lib/io/fetch'
+  import { columns_to_csv } from '$lib/trajectory/analysis'
   import type { Snippet } from 'svelte'
 
   let {
     headers,
+    downloads = [],
     children,
     note,
   }: {
     headers: string[]
+    // One CSV per entry: the columns are built on click so no pane pays for a string it
+    // never downloads
+    downloads?: {
+      label: string
+      filename: string
+      columns: () => Record<string, ArrayLike<number>>
+    }[]
     // Table rows (<tr>…</tr>)
     children: Snippet
     // Provenance line rendered below the table
@@ -30,6 +41,16 @@
 </table>
 <p class="analysis-note">
   {@render note()}
+  {#each downloads as { label, filename, columns } (label)}
+    <button
+      type="button"
+      class="analysis-download"
+      title="Download {label} as CSV"
+      onclick={() => download(columns_to_csv(columns()), filename, `text/csv`)}
+    >
+      ⬇ {label}
+    </button>
+  {/each}
 </p>
 
 <style>
@@ -50,5 +71,12 @@
     font-size: 0.75em;
     opacity: 0.7;
     margin: 4pt 0 0;
+  }
+  .analysis-download {
+    font-size: inherit;
+    padding: 0 4pt;
+    margin-left: 4pt;
+    background: var(--surface-bg-hover, rgba(128, 128, 128, 0.2));
+    border-radius: 3pt;
   }
 </style>

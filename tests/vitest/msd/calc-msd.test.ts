@@ -294,6 +294,26 @@ describe(`Einstein fit`, () => {
     expect(fit.intercept).toBeCloseTo(0.3, 12)
     expect(fit.r_squared).toBeCloseTo(1, 14)
     expect(fit.units).toBe(`Å²/frame`)
+    // frames have no length in seconds, so no cm²/s
+    expect(fit.diffusion_coefficient_cm2_s).toBeNull()
+  })
+
+  it.each([
+    [`fs`, 1e-1],
+    [`ps`, 1e-4],
+    [`ns`, 1e-7],
+    [`steps`, null],
+  ])(`converts D in Å²/%s to cm²/s`, (time_unit, factor) => {
+    const lags = Array.from({ length: 20 }, (_unused, idx) => idx + 1)
+    const fit = fit_einstein_diffusion(
+      lags,
+      lags,
+      lags.map((lag) => 6 * lag),
+      { time_unit },
+    )
+    expect(fit?.diffusion_coefficient).toBeCloseTo(1, 12)
+    if (factor === null) expect(fit?.diffusion_coefficient_cm2_s).toBeNull()
+    else expect(fit?.diffusion_coefficient_cm2_s).toBeCloseTo(factor, 15)
   })
 
   it.each([

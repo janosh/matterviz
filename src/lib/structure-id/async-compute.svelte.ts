@@ -2,12 +2,12 @@
 // Async wrapper for calc_structure_id via a persistent Web Worker.
 // Falls back to synchronous main-thread computation during SSR / where Worker is missing.
 import type { AnyStructure } from '$lib/structure'
-import { create_worker_client, type WorkerRequestOptions } from '$lib/worker-client.svelte'
+import { create_worker_client } from '$lib/worker-client.svelte'
 import { calc_structure_id } from './calc-structure-id'
 import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 import { to_structure_id_payload } from './worker-payload'
 
-const run_structure_id = create_worker_client<
+export const calc_structure_id_async = create_worker_client<
   AnyStructure,
   StructureIdOptions,
   StructureIdResult
@@ -20,9 +20,3 @@ const run_structure_id = create_worker_client<
   // non-cloneable values (functions, DOM nodes) and nothing in the analysis reads them
   build_payload: to_structure_id_payload,
 })
-
-export const calc_structure_id_async = (
-  structure: AnyStructure,
-  options: StructureIdOptions = {},
-  request_options?: WorkerRequestOptions,
-): Promise<StructureIdResult> => run_structure_id(structure, options, request_options)

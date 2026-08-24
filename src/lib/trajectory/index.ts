@@ -14,6 +14,7 @@ export {
   open_trajectory,
   type OpenTrajectoryOptions,
   source_byte_size,
+  trajectory_from_frame_source,
   trajectory_from_frames,
   trajectory_from_json,
   VaspoutElectronicOnlyError,

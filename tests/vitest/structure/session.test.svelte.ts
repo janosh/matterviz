@@ -298,13 +298,29 @@ describe(`selection validity`, () => {
     host.hovered_site_idx = 1
     session.site_radius_overrides.set(0, 2)
     flushSync()
+    // Parsers allocate fresh species arrays per frame: equal content is the same topology
     host.structure = {
       ...base,
-      sites: base.sites.map((site) => ({ ...site, xyz: [...site.xyz] as Vec3 })),
+      sites: base.sites.map((site) => ({
+        ...site,
+        xyz: [...site.xyz] as Vec3,
+        species: site.species.map((entry) => ({ ...entry })),
+      })),
     }
     flushSync()
     expect(host.selected_sites).toEqual([0])
     expect(session.site_radius_overrides.get(0)).toBe(2)
+    // Same site count and labels, one element swapped: a different topology
+    host.structure = {
+      ...base,
+      sites: base.sites.map((site, idx) =>
+        idx === 0 ? { ...site, species: [{ ...site.species[0], element: `Xe` }] } : site,
+      ),
+    }
+    flushSync()
+    expect(host.selected_sites).toEqual([])
+    host.selected_sites = [0]
+    flushSync()
     host.structure = { ...base, sites: base.sites.slice(1) }
     flushSync()
     expect(host.selected_sites).toEqual([])

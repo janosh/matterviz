@@ -12,7 +12,7 @@
   import { format_num } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
-  import { analysis_pane_setup } from '$lib/trajectory/analysis'
+  import { analysis_pane_setup, no_full_pass_message } from '$lib/trajectory/analysis'
   import type {
     AnalysisCollectOptions,
     AnalysisPaneContext,
@@ -174,9 +174,6 @@
     get time_unit() {
       return time_unit
     },
-    get safe_stride() {
-      return safe_stride
-    },
     get collected_frames() {
       return collected_frames
     },
@@ -256,10 +253,10 @@
   {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
-    {#if suggest_stride && !can_collect}
+    {#if suggest_stride && !can_collect && run}
       <StatusMessage
         type="warning"
-        message="{analysis_name} needs a full pass over all {total_frames} frames, but this trajectory only serves individual frames."
+        message={no_full_pass_message(run, analysis_name)}
         style="font-size: 0.8em"
       />
     {/if}

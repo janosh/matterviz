@@ -4,7 +4,11 @@ import {
   is_commensurate_phonon_supercell,
   PHONON_VECTOR_KEY,
   phonon_band_structure_from_modes,
+  phonon_mode_character,
+  phonon_mode_pattern,
+  phonon_mode_run,
   phonon_mode_trajectory as create_phonon_mode_run,
+  phonon_supercell,
   parse_phonon_modes,
   type Complex,
   type PhononModeData,
@@ -288,14 +292,9 @@ describe(`phonon_mode_trajectory`, () => {
     [`one frame`, { n_frames: 1 }, /at least 2 integer frames/],
     [`invalid supercell`, { supercell: [1, 0, 1] as Vec3 }, /positive integers/],
     [
-      `oversized trajectory`,
-      { supercell: [400, 400, 1] as Vec3 },
-      /would generate 160000 sites × 48 frames.*exceeding the 500000 limit/,
-    ],
-    [
-      `oversized face-closed trajectory`,
-      { supercell: [2, 2, 2] as Vec3, n_frames: 62_500 },
-      /would generate 27 sites × 62500 frames.*exceeding the 500000 limit/,
+      `oversized supercell`,
+      { supercell: [500, 500, 1] as Vec3 },
+      /would display 502002 sites.*exceeding the 200000 limit/,
     ],
   ])(`rejects %s`, (_name, options, error) => {
     expect(() =>
@@ -333,6 +332,72 @@ describe(`phonon_mode_trajectory`, () => {
     expect(() => phonon_mode_trajectory(invalid_mass, { qpoint_idx: 0, mode_idx: 0 })).toThrow(
       /invalid mass 0/,
     )
+  })
+})
+
+describe(`staged phonon runs`, () => {
+  const data = parse_phonon_modes(nacl_band_yaml)
+
+  it(`shares one supercell across modes and synthesises frames on read`, () => {
+    const cell = phonon_supercell(data, [2, 2, 2])
+    const [pattern_a, pattern_b] = [3, 4].map((mode_idx) =>
+      phonon_mode_pattern(cell, { qpoint_idx: 0, mode_idx }),
+    )
+    expect(pattern_a.supercell).toBe(cell)
+    expect(pattern_b.supercell).toBe(cell)
+    expect(pattern_a.displacements).toHaveLength(cell.structure.sites.length * 6)
+    // Normalised pattern: the largest cyclic excursion is exactly 1 Å
+    const excursions = Array.from({ length: 360 }, (_unused, deg) => {
+      const phase = (deg * Math.PI) / 180
+      let max_sq = 0
+      for (let site = 0; site < cell.structure.sites.length; site++) {
+        let norm_sq = 0
+        for (let axis = 0; axis < 3; axis++) {
+          const re_part = pattern_a.displacements[site * 6 + axis * 2]
+          const im_part = pattern_a.displacements[site * 6 + axis * 2 + 1]
+          norm_sq += (re_part * Math.cos(phase) + im_part * Math.sin(phase)) ** 2
+        }
+        max_sq = Math.max(max_sq, norm_sq)
+      }
+      return Math.sqrt(max_sq)
+    })
+    expect(Math.max(...excursions)).toBeCloseTo(1, 6)
+
+    const short_run = phonon_mode_run(pattern_a, { amplitude: 0.5, n_frames: 4 })
+    const long_run = phonon_mode_run(pattern_a, { amplitude: 0.5, n_frames: 4000 })
+    expect(long_run.frame_count).toBe(4000)
+    expect(long_run.properties.rows).toHaveLength(4000)
+    // Frame 1000 of 4000 is a quarter cycle, like frame 1 of 4; sites are the shared cell's
+    const quarter_a = short_run.read_frame(1)
+    const quarter_b = long_run.read_frame(1000)
+    if (quarter_a instanceof Promise || quarter_b instanceof Promise) throw new Error(`sync`)
+    for (const [site_idx, { xyz }] of quarter_b.structure.sites.entries()) {
+      xyz.forEach((coord, axis) =>
+        expect(coord).toBeCloseTo(quarter_a.structure.sites[site_idx].xyz[axis], 12),
+      )
+    }
+    expect(quarter_a.structure.sites[0].species).toBe(cell.structure.sites[0].species)
+    expect(
+      Math.hypot(
+        ...(quarter_a.structure.sites[0].xyz.map(
+          (coord, axis) => coord - cell.structure.sites[0].xyz[axis],
+        ) as Vec3),
+      ),
+    ).toBeLessThanOrEqual(0.5 + 1e-12)
+    expect(() => short_run.read_frame(4)).toThrow(RangeError)
+  })
+
+  it(`reports mass-weighted mode character per element`, () => {
+    const optical = data.qpoints[0].modes[3].eigenvector
+    if (!optical) throw new Error(`fixture mode has no eigenvector`)
+    const { element_weights, participation_ratio } = phonon_mode_character(data, optical)
+    expect(element_weights.map(([symbol]) => symbol).toSorted()).toEqual([`Cl`, `Na`])
+    expect(element_weights.reduce((sum, [, weight]) => sum + weight, 0)).toBeCloseTo(1, 12)
+    expect(element_weights[0][1]).toBeGreaterThanOrEqual(element_weights[1][1])
+    expect(participation_ratio).toBeGreaterThan(0.5)
+    expect(participation_ratio).toBeLessThanOrEqual(1)
+    const lone = phonon_mode_character(make_mode_data(real_x), real_x)
+    expect(lone).toEqual({ element_weights: [[`H`, 1]], participation_ratio: 1 })
   })
 })
 

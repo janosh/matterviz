@@ -77,11 +77,11 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test(`analysis pane toggles stay hidden anchors behind the Analysis menu`, async () => {
-    // The MSD/VACF/structure-id/data-inspector panes keep their ViewerPane toggles inside
+    // The MSD/VACF/RDF/structure-id/data-inspector panes keep their ViewerPane toggles inside
     // the Analysis ToolbarMenu only as layout anchors; #439 moved the wrapper into a child
-    // component and a scoped selector stopped hiding them (four stray toolbar icons)
+    // component and a scoped selector stopped hiding them (stray toolbar icons)
     const anchors = controls.locator(`.analysis-dropdown-wrapper .analysis-toggle-anchor`)
-    await expect(anchors).toHaveCount(4)
+    await expect(anchors).toHaveCount(5)
     for (const anchor of await anchors.all()) {
       await expect(anchor).toHaveCSS(`opacity`, `0`)
       await expect(anchor).toHaveCSS(`pointer-events`, `none`)

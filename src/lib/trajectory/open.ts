@@ -30,7 +30,7 @@ import type { AtomTypeMapping } from './types'
 
 export { Hdf5GroupSelectionRequiredError } from './parse/h5-utils'
 export { VaspoutElectronicOnlyError } from './parse/vaspout-h5'
-export { trajectory_from_frames } from './runs/memory'
+export { trajectory_from_frame_source, trajectory_from_frames } from './runs/memory'
 
 export interface OpenTrajectoryOptions {
   filename?: string

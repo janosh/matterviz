@@ -115,8 +115,9 @@ describe(`frame loading`, () => {
     flushSync()
     expect(session.loading).toBe(true)
     expect(session.current_frame).toBeNull()
-    // the 3D view keeps the last structure of this run while the new frame loads
-    expect(session.current_structure).toBe(run.preview.structure)
+    // the 3D view keeps this run's structure while the new frame loads (toEqual: the host
+    // holds the run in deep $state, so the preview read through it is a proxy)
+    expect(session.current_structure).toEqual(run.preview.structure)
     host.index = 5
     flushSync()
     // the read for frame 3 was aborted (removed from pending) before a newer one started
@@ -158,9 +159,9 @@ describe(`frame loading`, () => {
     const second = make_async_run(frames(10, 2))
     host.run = second.run
     flushSync()
-    // index 3 of the new run is not loaded yet: nothing stale is shown meanwhile
+    // index 3 of the new run is not loaded yet: its preview shows meanwhile, never the old run
     expect(session.cached_frames).toBe(0)
-    expect(session.current_structure).toBeUndefined()
+    expect(session.current_structure?.sites).toHaveLength(2)
     expect(session.current_frame).toBeNull()
     await second.resolve_next()
     expect(session.current_frame?.structure.sites).toHaveLength(2)

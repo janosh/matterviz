@@ -610,16 +610,14 @@ describe(`normalize_band_structure`, () => {
         ],
       ],
     ])(
-      `infers branches from discontinuities for %s (with a warning)`,
+      `infers branches from discontinuities for %s (silently: pymatgen phonon JSON never has them)`,
       (_label, qpoints, labels_dict, expected) => {
         const spy = warn()
         const result = normalize_band_structure(
           pmg({ qpoints, bands: [qpoints.map((_, idx) => idx)], labels_dict }),
         )
         expect(result?.branches).toEqual(expected)
-        expect(spy).toHaveBeenCalledWith(
-          expect.stringContaining(`inferring from labeled q-points and path discontinuities`),
-        )
+        expect(spy).not.toHaveBeenCalled()
         spy.mockRestore()
       },
     )
@@ -649,7 +647,7 @@ describe(`normalize_band_structure`, () => {
         }),
       )
       expect(invalid?.branches).toEqual([{ start_index: 0, end_index: 1, name: `?-?` }])
-      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy).not.toHaveBeenCalled()
       spy.mockRestore()
     })
   })

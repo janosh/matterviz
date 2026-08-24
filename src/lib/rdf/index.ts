@@ -5,8 +5,10 @@ import { is_crystal } from '$lib/structure/validation'
 
 export * from './calc-pdf'
 export * from './calc-rdf'
+export * from './calc-trajectory-rdf'
 export { default as PdfPlot } from './PdfPlot.svelte'
 export { default as RdfPlot } from './RdfPlot.svelte'
+export { default as TrajectoryRdfPane } from './TrajectoryRdfPane.svelte'
 
 // Dashed guide every RDF/PDF is read against: g(r) = 1 (ideal gas) or the reduced G(r) = 0
 export const rdf_baseline = (quantity: `g_r` | `reduced_g_r`): RefLine => {

@@ -7,7 +7,6 @@ import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { to_error } from '$lib/utils'
 import { untrack } from 'svelte'
-import { SvelteMap } from 'svelte/reactivity'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'
 import type { TrajectoryRun } from './run'
 
@@ -72,7 +71,8 @@ export function create_trajectory_session(
   })
 
   // === frame cache (per run; swapping runs drops it) ===
-  const cache = new SvelteMap<number, TrajectoryFrame>()
+  // Plain Map: nothing reactive reads it, and a SvelteMap would mint a signal per frame index
+  const cache = new Map<number, TrajectoryFrame>()
   let cache_owner: TrajectoryRun | undefined
   let cache_atoms = 0
   const claim_cache = (run: TrajectoryRun): void => {
@@ -237,20 +237,20 @@ export function create_trajectory_session(
   })
 
   // Structure on display: holds the last resolved structure of the SAME run so the 3D view
-  // does not blank while an uncached frame loads, and resets on a swap so the scene never
-  // fits its camera to stale coordinates.
-  let current_structure = $state.raw<AnyStructure | undefined>(undefined)
-  let displayed_run: TrajectoryRun | undefined
-  $effect(() => {
+  // does not blank while an uncached frame loads. A swapped run shows its preview frame until
+  // the requested frame lands — derived, not effect-written, so the scene fits its camera to
+  // the new run's coordinates in the same pass that changes its series key, never to the old
+  // run's.
+  let displayed: { run: TrajectoryRun | undefined; structure: AnyStructure | undefined } = {
+    run: undefined,
+    structure: undefined,
+  }
+  const current_structure = $derived.by((): AnyStructure | undefined => {
     const run = inputs.run()
     const frame = current_frame
-    untrack(() => {
-      if (displayed_run !== run) {
-        displayed_run = run
-        current_structure = undefined
-      }
-      if (frame) current_structure = frame.structure
-    })
+    if (frame) displayed = { run, structure: frame.structure }
+    else if (displayed.run !== run) displayed = { run, structure: run?.preview.structure }
+    return displayed.structure
   })
 
   // === scrub vs commit ===

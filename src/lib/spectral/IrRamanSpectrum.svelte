@@ -74,11 +74,8 @@
   let raman_unavailable = $derived(kind === `raman` && !spectrum?.has_raman)
   let sticks = $derived(
     !spectrum?.modes?.length || raman_unavailable
-      ? { x: [], y: [] }
+      ? { x: [], y: [], modes: [] }
       : spectrum_sticks(spectrum, kind, { unit }),
-  )
-  let stick_modes = $derived(
-    spectrum?.modes?.filter((mode) => !mode.is_acoustic && !mode.is_imaginary) ?? [],
   )
   let has_signal = $derived(sticks.x.length > 0 && sticks.y.some((val) => val > 0))
 
@@ -286,7 +283,7 @@
           {#if height > 0}
             {@const x_px = x_scale_fn(position)}
             {@const tip = y_scale_fn(is_transmittance ? 1 - height : height)}
-            {@const mode = stick_modes[stick_idx]}
+            {@const mode = sticks.modes[stick_idx]}
             <line
               class="mode-stick"
               class:selected={mode.mode_idx === selected_mode_idx}

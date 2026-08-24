@@ -33,8 +33,10 @@ import {
   TIME_UNIT_TO_THZ,
 } from '$lib/spectral/frequency-units'
 import {
+  analysis_fail,
   curve_slots,
   group_atoms_by_element,
+  lag_axis_label,
   lag_range,
   resolve_lag_time_unit,
   unwrapped_positions_of,
@@ -57,9 +59,7 @@ export const VACF_FREQUENCY_UNITS = [...MD_FREQUENCY_UNITS, `1/frame`] as const
 // not resolution — and 4x keeps peak positions within a quarter bin of the continuum value.
 const VDOS_ZERO_PAD_FACTOR = 4
 
-const fail = (message: string): never => {
-  throw new Error(`calc_vacf: ${message}`)
-}
+const fail = analysis_fail(`calc_vacf`)
 
 // Central differences of a flat frame-major position buffer: v(t) = (r(t+1) - r(t-1)) / 2dt.
 // The endpoints have no central difference, so the velocity series is 2 frames shorter and
@@ -322,7 +322,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     curves: curve_slots(labels).map(make_curve),
     dt,
     time_unit,
-    x_label: time_unit === `frame` ? `Lag (frames)` : `Lag time (${time_unit})`,
+    x_label: lag_axis_label(time_unit),
     frequencies,
     frequency_unit,
     frequency_label: `Frequency (${frequency_unit_label(frequency_unit)})`,

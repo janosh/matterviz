@@ -1,7 +1,10 @@
 import { is_finite_vec3_like } from '$lib/math'
-import { collect_trajectory_positions } from '$lib/trajectory/analysis'
+import {
+  type AnalysisStreamOptions,
+  collect_trajectory_positions,
+} from '$lib/trajectory/analysis'
 import { values_per_sample } from '$lib/trajectory/helpers'
-import type { CollectPositionsOptions, TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
+import type { TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
 import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory/run'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,
@@ -20,10 +23,7 @@ import {
 export const INFRARED_SIGNAL_KEYS = [`dipole`, `polarization`, `current`] as const
 export const RAMAN_SIGNAL_KEYS = [`polarizability`] as const
 
-type SpectroscopyCollectOptions = Pick<
-  CollectPositionsOptions,
-  `frame_stride` | `max_bytes` | `on_progress` | `signal`
-> & {
+type SpectroscopyCollectOptions = AnalysisStreamOptions & {
   velocity_key?: string | null
   infrared_key?: string | null
   infrared_kind?: InfraredSignal[`kind`]
@@ -221,6 +221,11 @@ export async function collect_trajectory_spectroscopy_input(
       ? align_signal_to_steps(series, stream.steps, key, frame_stride)
       : series
   }
+  const require_signal = (key: string, align: boolean): TrajectorySignal => {
+    const series = signal_of(key, align)
+    if (!series) throw new Error(`No trajectory signal named '${key}'`)
+    return series
+  }
   const align_responses = preprocessing === `body_fixed`
 
   const declared_velocity = velocity_key ? run.signals?.[velocity_key] : undefined
@@ -257,8 +262,7 @@ export async function collect_trajectory_spectroscopy_input(
 
   let infrared_signal: InfraredSignal | null = null
   if (infrared_key) {
-    const series = signal_of(infrared_key, align_responses)
-    if (!series) throw new Error(`No trajectory signal named '${infrared_key}'`)
+    const series = require_signal(infrared_key, align_responses)
     const kind = options.infrared_kind ?? infrared_kind_from_key(infrared_key)
     if (kind === `polarization` && options.polarization_branch_continuous !== true) {
       throw new Error(
@@ -266,21 +270,11 @@ export async function collect_trajectory_spectroscopy_input(
       )
     }
     infrared_signal =
-      kind === `polarization`
-        ? {
-            kind,
-            series,
-            branch_continuous: true,
-          }
-        : { kind, series }
+      kind === `polarization` ? { kind, series, branch_continuous: true } : { kind, series }
   }
-
-  let raman_signal: TrajectorySpectroscopyInput[`raman_signal`] = null
-  if (raman_key) {
-    const series = signal_of(raman_key, align_responses)
-    if (!series) throw new Error(`No trajectory signal named '${raman_key}'`)
-    raman_signal = { kind: `polarizability`, series }
-  }
+  const raman_signal: TrajectorySpectroscopyInput[`raman_signal`] = raman_key
+    ? { kind: `polarizability`, series: require_signal(raman_key, align_responses) }
+    : null
   return {
     positions: stream,
     masses,

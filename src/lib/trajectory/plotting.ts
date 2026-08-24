@@ -2,7 +2,13 @@
 import { PLOT_COLORS } from '$lib/colors'
 import { SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
-import { first_non_increasing_index, get_coefficient_of_variation } from '$lib/math'
+import {
+  array_extent,
+  first_non_increasing_index,
+  get_coefficient_of_variation,
+  mean,
+  sample_std,
+} from '$lib/math'
 import {
   assign_axes,
   axis_group_key,
@@ -302,6 +308,53 @@ const cached_property_statistics = (rows: readonly TrajectoryMetadata[]): Proper
   return stats
 }
 
+export interface PropertySummary {
+  key: string
+  n_samples: number
+  mean: number
+  // Sample standard deviation over the sampled frames
+  std: number
+  min: number
+  max: number
+  // Least-squares slope of value against x times the x span: the systematic change over the
+  // run, separated from the fluctuation `std` measures. A well-equilibrated NVT run has a
+  // temperature drift far below its std; a relaxation has an energy drift that IS the story.
+  drift: number
+}
+
+// Run-level statistics of every plottable property (see filter_plottable), keyed by property.
+// `x_of` maps a row to the abscissa the drift is taken against (frame number by default; a
+// time axis gives the same drift with the slope in per-time units).
+export function summarize_properties(
+  rows: readonly TrajectoryMetadata[],
+  x_of: (row: TrajectoryMetadata) => number = (row) => row.frame_number,
+): PropertySummary[] {
+  const by_frame = new Map(rows.map((row) => [row.frame_number, x_of(row)]))
+  return [...cached_property_statistics(rows)].map(([key, { values, frame_indices }]) => {
+    const n_samples = values.length
+    const xs = frame_indices.map((frame_number) => by_frame.get(frame_number) ?? frame_number)
+    const mean_x = mean(xs)
+    const mean_y = mean(values)
+    let [sxx, sxy] = [0, 0]
+    for (const [idx, value] of values.entries()) {
+      const dx = xs[idx] - mean_x
+      sxx += dx * dx
+      sxy += dx * (value - mean_y)
+    }
+    const [min, max] = array_extent(values)
+    const span = xs.length > 1 ? xs[xs.length - 1] - xs[0] : 0
+    return {
+      key,
+      n_samples,
+      mean: mean_y,
+      std: sample_std(values),
+      min,
+      max,
+      drift: sxx > 0 ? (sxy / sxx) * span : 0,
+    }
+  })
+}
+
 export function extract_label_and_unit(
   key: string,
   property_config: Record<string, TrajPropertyConfig>,
@@ -347,11 +400,6 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSer
     const n_values = stat.values.length
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
     const color = colors[series.length % colors.length]
-    // shared per-series metadata (consumers only read metadata[0]); one object, not n copies
-    const series_metadata = {
-      series_label: unit ? `${clean_label} (${unit})` : clean_label,
-      property_key: key, // Store original property key for robust lookups
-    }
     series.push({
       x: stat.frame_indices.map(x_map.to_x),
       y: stat.values,
@@ -359,7 +407,11 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSer
       unit,
       ...(axis_group ? { axis_group } : {}),
       markers: n_values < 30 ? `line+points` : `line`,
-      metadata: Array.from({ length: n_values }, () => series_metadata),
+      // Series-level (not per point): every consumer resolves a scalar metadata object
+      metadata: {
+        series_label: unit ? `${clean_label} (${unit})` : clean_label,
+        property_key: key, // original property key for robust lookups
+      },
       line_style: { stroke: color, stroke_width: 2 },
       point_style: { fill: color, stroke: color, stroke_width: 1 },
     })
@@ -388,7 +440,7 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSer
     .toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
 }
 
-const property_key = (series: DataSeries): string | undefined => {
+export const property_key = (series: DataSeries): string | undefined => {
   const metadata = Array.isArray(series.metadata) ? series.metadata[0] : series.metadata
   const key = metadata?.property_key
   return typeof key === `string` ? key : undefined
@@ -412,18 +464,10 @@ export function should_hide_plot(
   const visible_series = plot_series.filter((srs) => srs.visible)
   if (visible_series.length === 0) return false // Show empty plot with legend
 
+  // Hide when every visible series is constant (ignoring NaN) or has nothing to plot
   return visible_series.every((srs) => {
-    if (srs.y.length <= 1) return true
-
-    // Check if all values are NaN
-    if (srs.y.every(isNaN)) return true
-
-    // Check if values are constant (ignoring NaN values)
-    const valid_values = srs.y.filter((val) => !isNaN(val))
-    if (valid_values.length <= 1) return true
-
-    const first_valid = valid_values[0]
-    return valid_values.every((value) => Math.abs(value - first_valid) <= tolerance)
+    const valid = srs.y.filter((val) => !isNaN(val))
+    return valid.length <= 1 || valid.every((val) => Math.abs(val - valid[0]) <= tolerance)
   })
 }
 
@@ -477,9 +521,7 @@ export function prepare_trajectory_scatter_series(
       y: sampled_points.map(({ source_idx }) => smoothed_y[source_idx]),
       raw_y: sampled_raw_y,
       markers: `line`,
-      metadata: Array.isArray(data_series.metadata)
-        ? data_series.metadata[0]
-        : data_series.metadata,
+      metadata: data_series.metadata,
       line_underlays: [
         {
           x: sampled_x,

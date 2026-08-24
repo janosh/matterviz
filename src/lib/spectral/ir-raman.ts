@@ -229,7 +229,7 @@ export function spectrum_sticks(
     include_acoustic?: boolean
     include_imaginary?: boolean
   } = {},
-): SpectrumCurve {
+): SpectrumCurve & { modes: VibrationalMode[] } {
   const { unit = `cm^-1`, include_acoustic = false, include_imaginary = false } = options
   if (kind === `raman` && !spectrum.has_raman) {
     throw new Error(
@@ -250,6 +250,8 @@ export function spectrum_sticks(
     y: selected.map((mode) =>
       kind === `ir` ? mode.ir_intensity : (mode.raman_activity ?? 0),
     ),
+    // the modes behind each stick, in stick order, so a plot can map sticks back to modes
+    modes: selected,
   }
 }
 

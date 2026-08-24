@@ -6,11 +6,16 @@
     type ViewerPaneOptions,
   } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import { format_num } from '$lib/labels'
+  import { format_num, trajectory_property_config } from '$lib/labels'
   import { format_bytes } from '$lib/utils'
   import { array_extent } from '$lib/math'
   import type { TrajectoryFrame, TrajectoryRun } from './index'
-  import { get_frame_step_samples, get_frame_time_step } from './plotting'
+  import {
+    extract_label_and_unit,
+    get_frame_step_samples,
+    get_frame_time_step,
+    summarize_properties,
+  } from './plotting'
 
   let {
     run,
@@ -62,10 +67,16 @@
     return valid_items.length > 0 ? { title, items: valid_items } : null
   }
 
-  const RANGE_SECTIONS = [
-    { title: `Energy`, prop: `energy`, unit: `eV`, key: `energy`, label: `Energy` },
-    { title: `Forces`, prop: `force_max`, unit: `eV/Å`, key: `force`, label: `Force` },
-  ] as const
+  // Properties lead the statistics in this order (substring match on the lower-cased key);
+  // anything else follows alphabetically, capped so a 30-column LAMMPS log stays readable here
+  // and the data inspector carries the rest
+  const STAT_PRIORITY = [`energy`, `temperature`, `pressure`, `volume`, `density`, `force`]
+  const MAX_STAT_SECTIONS = 8
+  const stat_rank = (key: string): number => {
+    const rank = STAT_PRIORITY.findIndex((token) => key.toLowerCase().includes(token))
+    return rank === -1 ? STAT_PRIORITY.length : rank
+  }
+  const strip_tags = (label: string): string => label.replaceAll(/<[^>]*>/g, ``)
 
   let total_frames = $derived(run.frame_count)
   let step_samples = $derived(get_frame_step_samples(run.properties.rows))
@@ -92,48 +103,64 @@
         ? `${format_num(frame_time_step * (total_frames - 1), `.3~s`)} ${simulation_time_unit}`
         : null
 
-    const metadata = run.properties.rows
-    const covered_frames = metadata.length
+    const covered_frames = run.properties.rows.length
     const is_sample = covered_frames < total_frames
-    const can_aggregate = total_frames > 1 && metadata.length > 1
     const sampled_note = is_sample
       ? `Min/max over ${format_num(covered_frames, `.3~s`)} sampled frames of ${format_num(
           total_frames,
           `.3~s`,
         )} total, so the true extremum may lie outside this range`
       : undefined
-    const aggregate_values = (prop: string): number[] =>
-      metadata.map(({ properties }) => properties[prop]).filter(is_valid_number)
-    const range_item = (label: string, values: number[], unit: string, key: string) => {
-      const range = format_range(values, unit)
-      if (!range) return null
-      const suffix = is_sample ? ` (${format_num(covered_frames, `.3~s`)} sampled)` : ``
-      return safe_item(label, `${range}${suffix}`, key, sampled_note)
-    }
-
-    const ranges = RANGE_SECTIONS.map(({ prop, unit, key, label }) => {
-      const values = can_aggregate ? aggregate_values(prop) : []
-      return values.length > 1
-        ? range_item(`${label} Range`, values, unit, `${key}-range`)
-        : null
-    })
-
-    let volume_section: Section | null = null
-    if (can_aggregate) {
-      const volumes = aggregate_values(`volume`).filter((volume) => volume > 0)
-      if (volumes.length > 1) {
-        const [min_volume, max_volume] = array_extent(volumes)
-        // A fixed cell would otherwise render a zero-width `125 - 125 Å³` range. volumes is
-        // already filtered to finite positives, so the ratio is finite and non-negative.
-        const vol_change = (max_volume - min_volume) / min_volume
-        volume_section = section(`Volume`, [
-          min_volume < max_volume && range_item(`Volume Range`, volumes, `Å³`, `volume-range`),
-          vol_change > 0.1 &&
-            safe_item(`Volume Change`, `${format_num(vol_change, `.2~%`)}`, `vol-change`),
-        ])
-      }
-    }
-    return { step_span, duration, ranges, volume_section }
+    const suffix = is_sample ? ` (${format_num(covered_frames, `.3~s`)} sampled)` : ``
+    // Drift against the run's own step axis, so a dump written every 500 steps and one written
+    // every step agree; fluctuation and drift are what tell equilibration from relaxation
+    const statistics =
+      total_frames > 1 ? summarize_properties(run.properties.rows, (row) => row.step) : []
+    const stat_sections = statistics
+      .filter((stat) => stat.n_samples > 1)
+      .toSorted(
+        (left, right) =>
+          stat_rank(left.key) - stat_rank(right.key) || left.key.localeCompare(right.key),
+      )
+      .slice(0, MAX_STAT_SECTIONS)
+      .map((stat) => {
+        const { clean_label, unit } = extract_label_and_unit(
+          stat.key,
+          trajectory_property_config,
+        )
+        const label = strip_tags(clean_label)
+        const relative_drift =
+          Math.abs(stat.mean) > 1e-12
+            ? ` (${format_num(stat.drift / Math.abs(stat.mean), `+.2~%`)})`
+            : ``
+        return {
+          key: stat.key,
+          title: label,
+          unit,
+          items: [
+            safe_item(
+              `${label} Range`,
+              `${format_range([stat.min, stat.max], unit)}${suffix}`,
+              `${stat.key}-range`,
+              sampled_note,
+            ),
+            safe_item(
+              `Mean ± σ`,
+              `${format_num(stat.mean, `.3~s`)} ± ${format_num(stat.std, `.3~s`)} ${unit}`.trim(),
+              `${stat.key}-mean`,
+              `Mean and sample standard deviation over ${format_num(stat.n_samples, `.3~s`)} frames`,
+            ),
+            stat.std > 0 &&
+              safe_item(
+                `Drift`,
+                `${format_num(stat.drift, `+.3~s`)} ${unit}${relative_drift}`.trim(),
+                `${stat.key}-drift`,
+                `Least-squares slope × run length: the systematic change over the run, as opposed to the fluctuation σ`,
+              ),
+          ],
+        }
+      })
+    return { step_span, duration, stat_sections }
   })
 
   let info_pane_data = $derived.by((): Section[] => {
@@ -145,7 +172,7 @@
       displayed_frame && simulation_time_step
         ? displayed_frame.step * simulation_time_step
         : null
-    const { step_span, duration, ranges, volume_section } = run_summary
+    const { step_span, duration, stat_sections } = run_summary
 
     return [
       section(`File`, [
@@ -201,21 +228,19 @@
             `Frame properties available for plotting and export`,
           ),
       ]),
-      ...RANGE_SECTIONS.map(({ title, prop, unit, key, label }, range_idx) => {
-        const range = ranges[range_idx]
-        if (!range) return null
-        const current = displayed_frame?.metadata?.[prop]
+      // Per-property cards: the displayed frame's value first, then the run statistics
+      ...stat_sections.map(({ key, title, unit, items }) => {
+        const current = displayed_frame?.metadata?.[key]
         return section(title, [
           is_valid_number(current) &&
             safe_item(
-              prop === `energy` ? `Current Energy` : `Max ${label}`,
-              `${format_num(current, `.3~s`)} ${unit}`,
+              `Current ${title}`,
+              `${format_num(current, `.3~s`)} ${unit}`.trim(),
               `${key}-current`,
             ),
-          range,
+          ...items,
         ])
       }),
-      volume_section,
     ].filter((entry): entry is Section => entry !== null)
   })
 

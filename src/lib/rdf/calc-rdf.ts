@@ -2,8 +2,9 @@
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
 // N_a · N_b · 4π r² Δr / V, so g(r) → 1 for an uncorrelated system.
 import { calc_lattice_params } from '$lib/math'
-import type { Crystal, Site } from '$lib/structure'
+import type { AnyStructure, Crystal, Site } from '$lib/structure'
 import { neighbor_query } from '$lib/structure/bonding'
+import { is_crystal } from '$lib/structure/validation'
 import type { RdfOptions, RdfPattern } from './index'
 
 // Occupancy of `element` on every site (0 where absent); every site with weight 1 when no
@@ -96,6 +97,21 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     species_weights(structure.sites, neighbor_species),
     center_species && neighbor_species ? [center_species, neighbor_species] : undefined,
   )
+}
+
+export type FrameRdfOptions = Pick<RdfOptions, `cutoff` | `n_bins`>
+
+// Partial g_ab(r) of every element pair in one MD frame: the trajectory RDF worker's compute.
+// Same as calculate_all_pair_rdfs, but rejects a lattice-less frame with a message that says
+// why (an ideal-gas normalisation needs a cell volume).
+export const calc_frame_rdfs = (
+  structure: AnyStructure,
+  options: FrameRdfOptions = {},
+): RdfPattern[] => {
+  if (!is_crystal(structure)) {
+    throw new Error(`calc_frame_rdfs: g(r) needs a periodic cell to normalise against`)
+  }
+  return calculate_all_pair_rdfs(structure, options)
 }
 
 // Partial g_ab(r) for every unordered element pair, elements sorted alphabetically. Mixed

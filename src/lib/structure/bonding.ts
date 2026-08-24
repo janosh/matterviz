@@ -1,7 +1,7 @@
 // Bonding algorithms for structure visualization
 
 import element_data, { element_by_symbol } from '../element/data'
-import type { ElementSymbol } from '$lib/element'
+import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type {
@@ -235,8 +235,10 @@ export const canonicalize_bond_target = (
   )
 }
 
-const bond_key_for = (bond: BondKeyTarget): string =>
+// Key of a bond exactly as its endpoints are given (no canonicalisation)
+export const rendered_bond_key_for = (bond: BondKeyTarget): string =>
   get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+const bond_key_for = rendered_bond_key_for
 
 const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
   bond_key_for(bond) === key
@@ -459,7 +461,11 @@ export function structure_bond_to_bond_pair(
     )
   }
   const pos_1 = site_1.xyz
-  const pos_2 = math.add(site_2.xyz, lattice_translation(structure, cell_shift))
+  // In-cell bonds (the vast majority) skip the translation allocation
+  const pos_2 =
+    cell_shift === undefined || is_zero_cell_shift(cell_shift)
+      ? site_2.xyz
+      : math.add(site_2.xyz, lattice_translation(structure, cell_shift))
   return {
     pos_1,
     pos_2,
@@ -471,6 +477,14 @@ export function structure_bond_to_bond_pair(
   }
 }
 
+// Validated bonds per raw `properties.bonds` array: trajectory frames (and synthesised phonon
+// frames) share one bonds array across thousands of structures, and only the site count and
+// lattice presence can change what passes validation.
+const explicit_bond_memo = new WeakMap<
+  object,
+  { n_sites: number; has_lattice: boolean; bonds: StructureBond[] }
+>()
+
 export function get_explicit_bond_metadata(structure: AnyStructure): StructureBond[] {
   const raw_bonds = structure.properties?.bonds
   if (raw_bonds === undefined) return []
@@ -478,6 +492,10 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
     console.warn(`Ignoring structure.properties.bonds because it is not an array`)
     return []
   }
+  const n_sites = structure.sites.length
+  const has_lattice = `lattice` in structure
+  const memo = explicit_bond_memo.get(raw_bonds)
+  if (memo?.n_sites === n_sites && memo.has_lattice === has_lattice) return memo.bonds
 
   const explicit_bonds = new Map<string, StructureBond>()
   for (const [entry_idx, raw_bond] of raw_bonds.entries()) {
@@ -553,7 +571,9 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
       normalize_structure_bond(site_idx_1, site_idx_2, bond_order, cell_shift),
     )
   }
-  return [...explicit_bonds.values()]
+  const bonds = [...explicit_bonds.values()]
+  explicit_bond_memo.set(raw_bonds, { n_sites, has_lattice, bonds })
+  return bonds
 }
 
 export function apply_explicit_bond_metadata(
@@ -1214,39 +1234,19 @@ export function electroneg_ratio(
   // Per-site properties in flat typed arrays - the candidate loop below visits every
   // contact within reach in large supercells, so object property chains and Map lookups
   // are replaced with indexed array reads.
-  const electronegs = new Float64Array(n_sites)
-  const radii = new Float64Array(n_sites) // 0 = no covalent radius known
-  const metal_flags = new Uint8Array(n_sites)
-  const nonmetal_flags = new Uint8Array(n_sites)
   const elem_ids = new Int32Array(n_sites) // same-species check via integer ids
   const orig_idxs = new Int32Array(n_sites)
   const elem_id_lookup = new Map<string, number>()
-  // Highest electronegativity among anion-formers (nonmetals/metalloids) present. Atoms
-  // below it are cation-like; -Infinity in an all-metal composition, so nothing is.
-  let max_anion_en = -Infinity
-  for (const site of sites) {
-    const elem = get_majority_element(site)
-    const data = elem ? element_by_symbol.get(elem) : undefined
-    if (!data?.nonmetal && !data?.metalloid) continue
-    const en = data.electronegativity
-    if (en != null && en > max_anion_en) max_anion_en = en
-  }
-  const cation_flags = new Uint8Array(n_sites)
+  // Element data resolved once per distinct element, not once per site: an MD frame of
+  // 10k atoms has a handful of elements and this runs on every frame
+  const elem_data: (ChemicalElement | undefined)[] = []
   for (let idx = 0; idx < n_sites; idx++) {
     const elem = get_majority_element(sites[idx])
-    const data = elem ? element_by_symbol.get(elem) : undefined
-    electronegs[idx] = data?.electronegativity ?? 2.0
-    // Metal only, like is_anion_vertex in polyhedra.ts: "less electronegative than the
-    // most electronegative element present" alone would brand C and H as cations in an
-    // organic molecule and delete every C-H bond.
-    cation_flags[idx] = data?.metal && electronegs[idx] < max_anion_en ? 1 : 0
-    metal_flags[idx] = data?.metal ? 1 : 0
-    nonmetal_flags[idx] = data?.nonmetal ? 1 : 0
-    radii[idx] = (elem ? covalent_radii.get(elem) : undefined) ?? 0
     let elem_id = elem_id_lookup.get(elem ?? ``)
     if (elem_id === undefined) {
       elem_id = elem_id_lookup.size
       elem_id_lookup.set(elem ?? ``, elem_id)
+      elem_data[elem_id] = elem ? element_by_symbol.get(elem) : undefined
     }
     elem_ids[idx] = elem_id
     // Valid orig indices always reference a site in this structure; fall back to
@@ -1254,6 +1254,37 @@ export function electroneg_ratio(
     // `closest` array below stays bounded by n_sites
     const orig_idx = get_orig_site_idx(sites[idx], idx)
     orig_idxs[idx] = orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
+  }
+  // Highest electronegativity among anion-formers (nonmetals/metalloids) present. Atoms
+  // below it are cation-like; -Infinity in an all-metal composition, so nothing is.
+  let max_anion_en = -Infinity
+  for (const data of elem_data) {
+    if (!data?.nonmetal && !data?.metalloid) continue
+    const en = data.electronegativity
+    if (en != null && en > max_anion_en) max_anion_en = en
+  }
+  const n_elem = elem_id_lookup.size
+  const elem_radius = new Float64Array(n_elem) // 0 = no covalent radius known
+  const elem_en = new Float64Array(n_elem)
+  const elem_metal = new Uint8Array(n_elem)
+  const elem_nonmetal = new Uint8Array(n_elem)
+  const elem_cation = new Uint8Array(n_elem)
+  for (const [symbol, elem_id] of elem_id_lookup) {
+    const data = elem_data[elem_id]
+    elem_en[elem_id] = data?.electronegativity ?? 2.0
+    // Metal only, like is_anion_vertex in polyhedra.ts: "less electronegative than the
+    // most electronegative element present" alone would brand C and H as cations in an
+    // organic molecule and delete every C-H bond.
+    elem_cation[elem_id] = data?.metal && elem_en[elem_id] < max_anion_en ? 1 : 0
+    elem_metal[elem_id] = data?.metal ? 1 : 0
+    elem_nonmetal[elem_id] = data?.nonmetal ? 1 : 0
+    elem_radius[elem_id] = covalent_radii.get(symbol) ?? 0
+  }
+  const radii = new Float64Array(n_sites)
+  const cation_flags = new Uint8Array(n_sites)
+  for (let idx = 0; idx < n_sites; idx++) {
+    radii[idx] = elem_radius[elem_ids[idx]]
+    cation_flags[idx] = elem_cation[elem_ids[idx]]
   }
   // Closest normalized bond distance per original atom (typed array instead of Map).
   // Filled by each sweep, so no initial fill here.
@@ -1271,20 +1302,6 @@ export function electroneg_ratio(
   // distances turns the candidate loop's cutoff into two array reads and lets the neighbor
   // search run at the true reach instead of max_distance_ratio. For rocksalt that is
   // 4.2 A rather than 6.6, and Na-Na becomes unreachable outright.
-  const n_elem = elem_id_lookup.size
-  const elem_radius = new Float64Array(n_elem)
-  const elem_en = new Float64Array(n_elem)
-  const elem_metal = new Uint8Array(n_elem)
-  const elem_nonmetal = new Uint8Array(n_elem)
-  const elem_cation = new Uint8Array(n_elem)
-  for (let idx = 0; idx < n_sites; idx++) {
-    const elem_id = elem_ids[idx]
-    elem_radius[elem_id] = radii[idx]
-    elem_en[elem_id] = electronegs[idx]
-    elem_metal[elem_id] = metal_flags[idx]
-    elem_nonmetal[elem_id] = nonmetal_flags[idx]
-    elem_cation[elem_id] = cation_flags[idx]
-  }
   // expected bond length, the distance-independent strength factor, and the acceptance
   // band, per ordered pair (symmetric, but indexing both ways is cheaper)
   const pair_expected = new Float64Array(n_elem * n_elem)

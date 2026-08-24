@@ -4,9 +4,12 @@
 // Longer lags have fewer origins, so `n_origins` and `std_error` are reported per lag
 // and callers are expected to show that the tail is statistically weak.
 import { mean as mean_of } from '$lib/math'
+import { thz_per_inverse_time } from '$lib/spectral/frequency-units'
 import {
+  analysis_fail,
   curve_slots,
   group_atoms_by_element,
+  lag_axis_label,
   lag_range,
   resolve_lag_time_unit,
   unwrapped_positions_of,
@@ -27,11 +30,7 @@ import type {
 // full one.
 const WORK_BUDGET = 2e8
 
-// Prefixes every guard message with the function that raised it, so most guards stay on
-// one line
-const fail = (message: string): never => {
-  throw new Error(`fit_einstein_diffusion: ${message}`)
-}
+const fail = analysis_fail(`fit_einstein_diffusion`)
 
 // One Welford step for slot `idx` of a running mean / sum-of-squared-deviations pair.
 // `count` is the sample number including this one.
@@ -98,9 +97,13 @@ export function fit_einstein_diffusion(
   // R² = 1 for a perfectly flat MSD too (syy == 0 means every residual is 0).
   // The squared ratio cannot go negative, so only the upper clamp is reachable.
   const r_squared = syy === 0 ? 1 : Math.min(1, (sxy * sxy) / (sxx * syy))
+  const diffusion_coefficient = slope / (2 * dimensionality)
+  // Å²/<unit> -> cm²/s: 1 Å² = 1e-16 cm², and a time unit worth `thz` THz is 1e-12/thz s
+  const thz = thz_per_inverse_time(time_unit)
 
   return {
-    diffusion_coefficient: slope / (2 * dimensionality),
+    diffusion_coefficient,
+    diffusion_coefficient_cm2_s: thz === undefined ? null : diffusion_coefficient * thz * 1e-4,
     slope,
     intercept,
     r_squared,
@@ -216,7 +219,7 @@ export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResu
     curves: curve_slots(labels).map(make_curve),
     dt,
     time_unit,
-    x_label: time_unit === `frame` ? `Lag (frames)` : `Lag time (${time_unit})`,
+    x_label: lag_axis_label(time_unit),
     n_frames,
     n_atoms,
     unwrapped,

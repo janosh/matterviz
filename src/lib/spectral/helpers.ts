@@ -166,13 +166,9 @@ export function apply_gaussian_smearing(
   const cutoff = 4 * sigma
   const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
 
-  let ascending = true
-  for (let idx = 1; idx < n_pts; idx++) {
-    if (freqs_or_energies[idx] < freqs_or_energies[idx - 1]) {
-      ascending = false
-      break
-    }
-  }
+  const ascending = freqs_or_energies.every(
+    (value, idx) => idx === 0 || value >= freqs_or_energies[idx - 1],
+  )
 
   let window_start = 0
   let window_end = 0
@@ -370,10 +366,9 @@ function convert_pymatgen_band_structure(
       branch.end_index < qpoints.length &&
       branch.start_index <= branch.end_index,
   )
+  // No valid branches is the normal case, not a degraded one: pymatgen's phonon band
+  // structures never serialise `branches` (only the electronic one does), so infer them.
   if (branches.length === 0) {
-    console.warn(
-      `Band structure missing 'branches' field - inferring from labeled q-points and path discontinuities`,
-    )
     // Branch boundaries are the path ends, every labeled q-point (Bands only draws tick labels
     // at branch ends, so a label mid-branch would vanish) and both sides of every jump. The
     // jump itself (the two-point span ending on a discontinuity index) is not a branch.
@@ -933,7 +928,7 @@ export function compute_frequency_range(
 }
 
 // Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
-function parse_axis_label(label: string): { name: string; unit?: string } {
+export function parse_axis_label(label: string): { name: string; unit?: string } {
   const match = /^(?<name>.+?)\s*\((?<unit>[^)]+)\)$/.exec(label)
   return match ? { name: match[1], unit: match[2] } : { name: label }
 }

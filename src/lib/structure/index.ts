@@ -167,8 +167,20 @@ const VECTOR_KEY_PREFIXES = [
   `phonon`,
 ] as const
 
-export const is_vector_key = (key: string): boolean =>
-  VECTOR_KEY_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
+// Memoised: the scan below asks this for every property key of every site on every
+// trajectory frame, and the set of distinct key names in a session is tiny
+const vector_key_memo = new Map<string, boolean>()
+export const is_vector_key = (key: string): boolean => {
+  let is_vector = vector_key_memo.get(key)
+  if (is_vector === undefined) {
+    is_vector = VECTOR_KEY_PREFIXES.some(
+      (prefix) => key === prefix || key.startsWith(`${prefix}_`),
+    )
+    if (vector_key_memo.size >= 1024) vector_key_memo.clear()
+    vector_key_memo.set(key, is_vector)
+  }
+  return is_vector
+}
 
 // Default color palette for distinguishing multiple vector layers
 export const VECTOR_PALETTE = [
@@ -254,17 +266,25 @@ export function get_all_site_vectors(
 }
 
 // Collect the union of all vector property keys across all sites in a structure,
-// preserving VECTOR_KEY_PREFIXES priority order.
+// preserving VECTOR_KEY_PREFIXES priority order. Memoised per structure: Structure, its
+// controls and every scene pane ask for the same answer on every trajectory frame.
+const vector_keys_memo = new WeakMap<AnyStructure, string[]>()
 export function get_structure_vector_keys(structure: AnyStructure): string[] {
+  const memo = vector_keys_memo.get(structure)
+  if (memo) return memo
   const seen = new Set<string>()
   for (const site of structure.sites) {
-    const props = site.properties ?? {}
+    const props = site.properties
+    if (!props) continue
+    // a key already seen skips its prefix and vector checks
     for (const key of Object.keys(props)) {
-      if (is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
+      if (!seen.has(key) && is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
     }
   }
   // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
-  return [...seen].sort(compare_vector_keys)
+  const keys = [...seen].sort(compare_vector_keys)
+  vector_keys_memo.set(structure, keys)
+  return keys
 }
 
 // Payload of Structure's on_file_load / on_error / on_fullscreen_change / on_camera_move /

@@ -22,6 +22,7 @@
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
+  import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
@@ -69,6 +70,7 @@
     get_frame_step_samples,
     get_frame_time_step,
     prepare_trajectory_scatter_series,
+    property_key,
     should_hide_plot,
     X_QUANTITY_LABELS,
   } from './plotting'
@@ -80,6 +82,7 @@
     | `info`
     | `msd`
     | `vacf`
+    | `rdf`
     | `spectroscopy`
     | `structure-id`
     | `data-inspector`
@@ -99,6 +102,7 @@
     | `export-pane`
     | `msd-pane`
     | `vacf-pane`
+    | `rdf-pane`
     | `spectroscopy-pane`
     | `structure-id-pane`
     | `data-inspector-pane`
@@ -460,10 +464,8 @@
   $effect(() => {
     if (plot_series.length === 0) return
     const visible_keys = plot_series.flatMap((srs) => {
-      if (!srs.visible) return []
-      const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
-      const key = metadata?.property_key
-      return typeof key === `string` ? [key] : []
+      const key = srs.visible ? property_key(srs) : undefined
+      return key === undefined ? [] : [key]
     })
     const current = untrack(() => visible_properties) || []
     const has_changed =
@@ -612,6 +614,12 @@
       pane: `vacf`,
       control_name: `vacf-pane`,
       label: `Velocity autocorrelation & VDOS`,
+      icon: Graph,
+    },
+    {
+      pane: `rdf`,
+      control_name: `rdf-pane`,
+      label: `Radial distribution function`,
       icon: Graph,
     },
     {
@@ -792,6 +800,12 @@
                 {...correlation_pane_props}
                 bind:pane_open={
                   () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
+                }
+              />
+              <TrajectoryRdfPane
+                {...analysis_pane_props}
+                bind:pane_open={
+                  () => is_pane_open(`rdf`), (open) => set_pane_open(`rdf`, open)
                 }
               />
               <TrajectoryStructureIdPane

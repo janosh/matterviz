@@ -212,7 +212,7 @@ describe(`trajectory state`, () => {
     expect(text).toContain(`Stub analysis`)
     expect(
       text.includes(
-        `Stub needs a full pass over all 20 frames, but this trajectory only serves individual frames`,
+        `Stub needs a pass over all 20 frames, but this host-served trajectory only serves frames one at a time`,
       ),
     ).toBe(expects_warning)
   })
