@@ -80,6 +80,7 @@ const plugins = [
   json_gz_plugin() as unknown,
   raw_text_plugin as unknown,
   starry_night_theme_plugin as unknown,
+  shared.vite_plugin_source_symbols() as unknown,
   sveltekit() as unknown,
   live_examples() as unknown,
 ] as PluginOption[]

@@ -1,5 +1,8 @@
-import { link_source_mentions, source_href, source_path } from '$site/source-links'
+import { link_source_mentions, source_href, source_location } from '$site/source-links'
+import { ref } from 'virtual:source-symbols'
 import { describe, expect, it } from 'vitest'
+
+const REPO = `https://github.com/janosh/matterviz/blob/${ref}`
 
 describe(`source links`, () => {
   it.each([
@@ -9,11 +12,22 @@ describe(`source links`, () => {
     [`index.ts`, undefined], // one per folder: ambiguous
     [`src`, undefined], // a prop, not a file
     [`structure`, undefined], // folders and lower-case names never link
-  ])(`resolves %j to %j`, (name, path) => {
-    expect(source_path(name)).toBe(path)
-    expect(source_href(name)).toBe(
-      path && `https://github.com/janosh/matterviz/blob/main${path}`,
+  ])(`resolves %j to %j`, (name, location) => {
+    expect(source_location(name)).toBe(location)
+    expect(source_href(name)).toBe(location && `${REPO}${location}`)
+  })
+
+  it(`links exported definitions to their line and pins the build commit`, () => {
+    expect(ref).toMatch(/^(?:[0-9a-f]{40}|main)$/)
+    expect(source_location(`TrajectoryRun`)).toMatch(/^\/src\/lib\/trajectory\/run\.ts#L\d+$/)
+    expect(source_location(`open_trajectory`)).toMatch(
+      /^\/src\/lib\/trajectory\/open\.ts#L\d+$/,
     )
+    expect(source_location(`PhononModeExplorer`)).toBe(
+      `/src/lib/spectral/PhononModeExplorer.svelte`,
+    )
+    // defined in several files, so deliberately unlinked
+    expect(source_location(`dot`)).toBeUndefined()
   })
 
   it(`links matching code spans in place, skipping pre blocks and existing links`, async () => {
@@ -26,15 +40,13 @@ describe(`source links`, () => {
     await new Promise(requestAnimationFrame)
     const links = root.querySelectorAll(`code > a`)
     expect(links).toHaveLength(1)
-    expect(links[0].getAttribute(`href`)).toBe(
-      `https://github.com/janosh/matterviz/blob/main/src/lib/structure/Structure.svelte`,
-    )
+    expect(links[0].getAttribute(`href`)).toBe(`${REPO}/src/lib/structure/Structure.svelte`)
     expect(links[0].textContent).toBe(`Structure`)
     // late-arriving content is picked up too
-    root.insertAdjacentHTML(`beforeend`, `<p><code>Trajectory</code></p>`)
+    root.insertAdjacentHTML(`beforeend`, `<p><code>TrajectoryRun</code></p>`)
     await new Promise(requestAnimationFrame)
     await new Promise(requestAnimationFrame)
-    expect(root.querySelectorAll(`code > a`)).toHaveLength(2)
+    expect(root.querySelectorAll(`code > a`)[1]?.getAttribute(`href`)).toMatch(/run\.ts#L\d+$/)
     detach()
     root.remove()
   })

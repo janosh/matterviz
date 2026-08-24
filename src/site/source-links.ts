@@ -1,15 +1,17 @@
-// Turns inline code spans that name a MatterViz source file (`Structure`, `Trajectory.svelte`,
-// `bonding.ts`) into links to that file on GitHub, so docs pages never hand-maintain source
-// URLs. Only exact, unambiguous names match: `index.ts` exists in many folders and `src` is a
-// prop, so neither links.
+// Turns inline code spans that name MatterViz source into GitHub links so docs pages never
+// hand-maintain source URLs: a file (`Structure`, `Trajectory.svelte`, `bonding.ts`) links to
+// the file, an exported definition (`TrajectoryRun`, `open_trajectory`) to its line. Only
+// exact, unambiguous names match: `index.ts` exists in many folders and `src` is a prop, so
+// neither links. Links pin the commit the site was built from so line numbers stay right.
 import pkg from '$root/package.json'
+import { ref, symbols } from 'virtual:source-symbols'
 
 const SOURCE_PATHS = Object.keys(import.meta.glob(`$lib/**/*.{svelte,ts}`))
 
-// name → repo path, or null once two files claim the same name
-const path_by_name = new Map<string, string | null>()
-const register = (name: string, path: string): void => {
-  path_by_name.set(name, path_by_name.has(name) ? null : path)
+// name → repo path (with `#Lline` for definitions), or null once two files claim the name
+const location_by_name = new Map<string, string | null>()
+const register = (name: string, location: string): void => {
+  location_by_name.set(name, location_by_name.has(name) ? null : location)
 }
 for (const path of SOURCE_PATHS) {
   const basename = path.split(`/`).pop() ?? path
@@ -17,13 +19,16 @@ for (const path of SOURCE_PATHS) {
   // Components are referred to by bare name far more often than by file name
   if (basename.endsWith(`.svelte`)) register(basename.slice(0, -`.svelte`.length), path)
 }
+for (const [name, location] of Object.entries(symbols)) {
+  if (!location_by_name.has(name)) location_by_name.set(name, location)
+}
 
-export const source_path = (name: string): string | undefined =>
-  path_by_name.get(name.trim()) ?? undefined
+export const source_location = (name: string): string | undefined =>
+  location_by_name.get(name.trim()) ?? undefined
 
 export const source_href = (name: string): string | undefined => {
-  const path = source_path(name)
-  return path && `${pkg.repository}/blob/main${path}`
+  const location = source_location(name)
+  return location && `${pkg.repository}/blob/${ref}${location}`
 }
 
 // Svelte attachment: links every matching <code> under `root`, now and as content arrives
@@ -35,14 +40,14 @@ export function link_source_mentions(root: HTMLElement): () => void {
   const scan = (): void => {
     for (const code of root.querySelectorAll(`code`)) {
       if (linked.has(code) || code.closest(`a, pre`)) continue
-      const path = source_path(code.textContent ?? ``)
-      if (!path) continue
+      const location = source_location(code.textContent ?? ``)
+      if (!location) continue
       linked.add(code)
       const link = document.createElement(`a`)
-      link.href = `${pkg.repository}/blob/main${path}`
+      link.href = `${pkg.repository}/blob/${ref}${location}`
       link.target = `_blank`
       link.rel = `noopener`
-      link.title = `Source: ${path.replace(/^\//, ``)}`
+      link.title = `Source: ${location.replace(/^\//, ``)}`
       link.append(...code.childNodes)
       code.append(link)
     }
