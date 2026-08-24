@@ -75,7 +75,13 @@
   // frame padding; the real scale only enters in user_content. Worst case the estimate
   // is off by a few px per label, which the collision gap absorbs.
   const sg_per_px = $derived(
-    MAX_SPACEGROUP / Math.max(plot_width - DEFAULT_PLOT_PADDING.l - DEFAULT_PLOT_PADDING.r, 1),
+    MAX_SPACEGROUP /
+      Math.max(
+        plot_width -
+          (padding.l ?? DEFAULT_PLOT_PADDING.l) -
+          (padding.r ?? DEFAULT_PLOT_PADDING.r),
+        1,
+      ),
   )
 
   // Smart tick selection: thin out ticks for dense data

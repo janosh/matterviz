@@ -191,8 +191,13 @@
       Math.max(...base.map((tick) => measure_text_line(format_tick(tick), bar_font).width)) + 8 // breathing room between neighbours
     const max_fit = Math.floor(bar_px / label_px) + 1
     if (base.length <= max_fit) return base
-    const stride = Math.ceil((base.length - 1) / Math.max(max_fit - 1, 1))
-    return base.filter((_, idx) => idx % stride === 0)
+    // evenly spaced picks that always include both ends, so the range stays readable
+    const n_keep = Math.max(max_fit, 2)
+    const last = base.length - 1
+    const picks = new Set(
+      Array.from({ length: n_keep }, (_, idx) => Math.round((idx * last) / (n_keep - 1))),
+    )
+    return base.filter((_, idx) => picks.has(idx))
   })
 
   const wrapper_flex_dir = $derived(

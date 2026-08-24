@@ -120,11 +120,12 @@
   }
   .projection-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* as many 280px sub-diagrams per row as the component's own width allows (a 500px
+       diagram inside a desktop layout stacks too), never more than two */
+    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
     gap: 0.4em;
-    /* two 280px sub-diagrams need ~600px; below that stack them */
-    @media (max-width: 640px) {
-      grid-template-columns: minmax(0, 1fr);
+    > div {
+      max-width: calc(50% - 0.2em);
     }
   }
   .projection-label {

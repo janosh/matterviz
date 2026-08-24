@@ -96,6 +96,8 @@
     {fermi_level}
     orientation={stacked ? `vertical` : `horizontal`}
     x_axis={{
+      // a vertical Dos plots frequency along x (density along y), so the shared frequency
+      // range belongs on x when stacked and on y (synced above) side by side
       ...axis_with_range(undefined, stacked ? shared_frequency_range : undefined),
       ...dos_props.x_axis,
     }}
