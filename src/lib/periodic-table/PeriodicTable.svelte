@@ -193,6 +193,12 @@
   const handle_tile_pointerdown = (element: ChemicalElement, event: PointerEvent): void => {
     tap_is_preview =
       event.pointerType === `touch` && !disabled && active_element?.symbol !== element.symbol
+    // select here rather than relying on the compat mouseenter a tap usually emits: without
+    // it the second tap would still see another tile active and preview again
+    if (tap_is_preview) {
+      set_active_element(element)
+      handle_tooltip_enter(element, event)
+    }
   }
   const handle_tile_click = (
     data: { element: ChemicalElement; event: MouseEvent },

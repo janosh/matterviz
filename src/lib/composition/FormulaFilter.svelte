@@ -915,6 +915,7 @@
     border-radius: var(--formula-filter-border-radius, var(--border-radius, 3pt));
     background: var(--formula-filter-bg, rgba(128, 128, 128, 0.05));
     transition: background 0.15s;
+    /* validation state lives on the .formula-filter root, the row's direct parent */
     .invalid > & {
       outline: 1px solid rgba(239, 68, 68, 0.65);
       background: rgba(239, 68, 68, 0.08);
