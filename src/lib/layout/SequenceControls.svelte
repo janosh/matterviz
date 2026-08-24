@@ -179,6 +179,12 @@
     align-items: center;
     gap: clamp(0.25rem, 1.5cqw, 0.5rem);
     min-width: 0;
+    /* SequenceControlBar wraps at this width, but flex: 1 shrinks the slider to nothing
+       instead of wrapping, so claim a whole row below the nav/fps/pane buttons */
+    @container (max-width: 520px) {
+      flex-basis: 100%;
+      order: 1;
+    }
     > span {
       opacity: 0.75;
       font-variant-numeric: tabular-nums;

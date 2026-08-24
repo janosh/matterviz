@@ -203,7 +203,7 @@
   // Axis label text
   function axis_label(element: string): string {
     const prefix = formal_chempots ? `\u0394` : ``
-    return `${prefix}\u03BC<sub>${element}</sub> <span style="font-weight:300;opacity:0.7">(eV)</span>`
+    return `${prefix}\u03BC<sub>${element}</sub> (eV)`
   }
 
   let x_axis = $state({ label: ``, label_shift: { y: -45 } })

@@ -180,7 +180,8 @@
   .grid {
     text-align: center;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    /* min(400px, 100%) keeps a single column from forcing horizontal page scroll on phones */
+    grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));
     gap: 2em;
     margin-block: 2em;
   }

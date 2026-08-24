@@ -74,14 +74,23 @@ const with_auto_legend_tracks = (
 ): DecorationPlacement => {
   if (item.kind !== `legend` || !item.auto_tracks) return placement
   const { available_edge_length, ...track_config } = item.auto_tracks
+  // A strip below/above the plot fills its width with columns, one beside it fills the height
+  // with rows, whatever layout the legend would use inside the plot
+  const orientation =
+    placement.location === `outside` && placement.side
+      ? [`top`, `bottom`].includes(placement.side)
+        ? `horizontal`
+        : `vertical`
+      : track_config.orientation
   const base_edge_length =
-    track_config.orientation === `horizontal`
+    orientation === `horizontal`
       ? scene.width - scene.base_pad.l - scene.base_pad.r
       : scene.height - scene.base_pad.t - scene.base_pad.b
   return {
     ...placement,
     layout_tracks: suggest_legend_tracks({
       ...track_config,
+      orientation,
       available_edge_length: available_edge_length ?? Math.max(0, base_edge_length),
     }),
   }

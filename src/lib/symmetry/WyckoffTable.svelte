@@ -141,6 +141,9 @@
 
 <style>
   .wyckoff-table {
+    display: block; /* lets the table scroll sideways in narrow hosts instead of widening them */
+    max-width: 100%;
+    overflow-x: auto;
     margin-top: 0.5em;
     border-collapse: collapse;
   }

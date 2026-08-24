@@ -229,6 +229,7 @@
 <style>
   .controls {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--sym-stats-controls-gap, 1em);
     background: var(--sym-stats-controls-bg, var(--surface-bg));
     padding: var(--sym-stats-controls-padding, 4pt 6pt);
@@ -247,7 +248,10 @@
   }
   .stats-grid {
     display: var(--sym-stats-display, grid);
-    grid-template-columns: var(--sym-stats-grid-columns, repeat(auto-fit, minmax(275px, 1fr)));
+    grid-template-columns: var(
+      --sym-stats-grid-columns,
+      repeat(auto-fit, minmax(min(275px, 100%), 1fr))
+    );
     gap: var(--sym-stats-grid-gap, 1ex 1em);
     margin-block: var(--sym-stats-grid-margin-block, 1ex);
     align-items: var(--sym-stats-grid-align, start);
@@ -257,6 +261,7 @@
   }
   .settings-explorer {
     margin-block: var(--sym-stats-grid-margin-block, 1ex);
+    overflow-x: auto;
   }
   .settings-explorer summary {
     cursor: pointer;

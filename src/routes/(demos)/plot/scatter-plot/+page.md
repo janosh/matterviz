@@ -598,7 +598,7 @@ Categorized data with color coding, custom tick intervals, and negative values:
 </ScatterPlot>
 
 <!-- Legend -->
-<div style="display: flex; justify-content: center; margin: 1em; gap: 3ex;">
+<div style="display: flex; flex-wrap: wrap; justify-content: center; margin: 1em; gap: 3ex;">
   {#each categories as category, idx (category)}
     <div style="display: flex; align-items: center;">
       <span
@@ -967,7 +967,9 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
 </script>
 
 <div>
-  <div style="display: flex; justify-content: center; gap: 2em; margin-bottom: 1em">
+  <div
+    style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2em; margin-bottom: 1em"
+  >
     <label>
       <input type="checkbox" bind:checked={x_is_log} />
       Log X-Axis
@@ -978,7 +980,9 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
     </label>
   </div>
 
-  <div style="display: flex; justify-content: center; gap: 2em; margin-bottom: 1em">
+  <div
+    style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2em; margin-bottom: 1em"
+  >
     <label>
       Min Size (px):
       <input
@@ -1432,12 +1436,14 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
     x_axis={{ label: axis_labels.x, range: [-15, 15], ticks: ticks.x }}
     y_axis={{ label: axis_labels.y, range: [-15, 15], ticks: ticks.y }}
     bind:display
+    class="external-legend-plot"
     style="height: 400px; position: relative;"
     legend={{
       style: `
         position: absolute;
         top: 3pt;
-        left: 100%;
+        left: var(--legend-left, 100%);
+        right: var(--legend-right, auto);
         background: rgba(255, 255, 255, 0.1);
         padding: 5px 5px 5px 0;
         border-radius: 3px;
@@ -1452,6 +1458,17 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
     {/snippet}
   </ScatterPlot>
 </div>
+
+<style>
+  /* the legend hangs off the chart's right edge into the page margin, which only exists
+     on wide viewports; below that it tucks into the top-right corner of the chart */
+  @media (max-width: 1000px) {
+    :global(.external-legend-plot .legend) {
+      --legend-left: auto;
+      --legend-right: 4px;
+    }
+  }
+</style>
 ```
 
 ## Automatic Color Bar Placement
@@ -1542,7 +1559,7 @@ The color bar picks the corner with the least data density (top-left, top-right,
 </script>
 
 <div
-  style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1em 2em; place-content: center; margin: 1em"
+  style="display: flex; flex-wrap: wrap; gap: 1em 2em; justify-content: center; margin: 1em"
 >
   {#each [['top_left', 'Top Left'], ['top_right', 'Top Right'], ['bottom_left', 'Bottom Left'], ['bottom_right', 'Bottom Right']] as [quadrant, label] (quadrant)}
     <label

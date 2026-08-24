@@ -326,7 +326,7 @@
         title="Energy above hull (eV/atom)"
         range={hull_distance_range(plot_entries)}
         scale={color_scale}
-        wrapper_style="position: absolute; bottom: 1em; left: 1em; width: 200px;"
+        wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 1.5em);"
         bar_style="height: 12px;"
         title_style="margin-bottom: 4px;"
       />
@@ -337,7 +337,7 @@
         title="Formation energy (eV/atom)"
         scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
         range={e_form_range}
-        wrapper_style="position: absolute; bottom: 1em; right: 1em; width: 200px;"
+        wrapper_style="position: absolute; bottom: 1em; right: 1em; width: min(200px, 50cqw - 1.5em);"
         bar_style="height: 12px;"
         title_style="margin-bottom: 4px;"
       />

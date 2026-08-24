@@ -123,6 +123,15 @@
     max-width: 50cqw;
     margin: auto;
   }
+  /* narrow screens: no inset gap to center into, so stack the heading above the table */
+  @container (max-width: 600px) {
+    section {
+      margin: 2em 0 0;
+    }
+    .subtitle {
+      max-width: none;
+    }
+  }
 </style>
 ```
 

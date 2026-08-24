@@ -48,6 +48,8 @@
     color: var(--text-color);
     border-radius: var(--theme-control-border-radius, var(--border-radius, 3pt));
     padding: var(--theme-control-padding, 1pt 2pt);
+    /* a finger-sized target; the fixed corner otherwise lands on viewer toolbars on phones */
+    min-height: 2em;
     backdrop-filter: blur(10px);
     transition: all 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -59,5 +61,11 @@
   }
   .theme-control:focus {
     outline: 0.5px solid var(--accent-color);
+  }
+  @media (max-width: 600px) {
+    .theme-control {
+      bottom: 0.5em;
+      left: 0.5em;
+    }
   }
 </style>

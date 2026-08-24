@@ -214,6 +214,15 @@
   opacity: 1;
   pointer-events: auto;
 }
+/* Touch devices have no hover, so viewer controls that only fade in while the pointer is over
+   the viewer would never appear. Keep them shown there; !important beats the hashed
+   component selectors that hide them. */
+@media (hover: none) {
+  .hover-visible {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+}
 body.fullscreen .draggable-pane {
   position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
   top: 3.3em !important;

@@ -77,11 +77,22 @@ const standard_items = (
 }
 
 // Horizontal colorbar -> top; vertical colorbar -> right; legend -> right or bottom.
+// A legend spanning more than this fraction of the plot's width or height (a phone-width
+// frame, a long series list) covers too much data to sit inside whatever the obstacle test
+// says. A too-wide one also cannot take the right margin without leaving no plot width, so
+// it goes below; a too-tall one is placed by the usual right/bottom economy.
+export const LEGEND_MAX_INTERIOR_FRACTION = 0.45
+
 export function place_outside_decorations(scene: DecorationScene): OutsideLayout {
   const { base_pad, width, height, obstacles_norm, gap = DEFAULT_DECORATION_GAP } = scene
   const { legend, colorbar } = standard_items(scene.items)
   const base_w = width - base_pad.l - base_pad.r
   const base_h = height - base_pad.t - base_pad.b
+  const { width: legend_width = 0, height: legend_height = 0 } = legend?.footprint ?? {}
+  // (unless the caller's right padding already has room for it, which costs no plot width)
+  const too_wide =
+    legend_width > LEGEND_MAX_INTERIOR_FRACTION * base_w && legend_width + 2 * gap > base_pad.r
+  const too_tall = legend_height > LEGEND_MAX_INTERIOR_FRACTION * base_h
 
   const colorbar_outside =
     colorbar != null &&
@@ -92,12 +103,17 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
 
   const legend_outside =
     legend != null &&
-    is_crowded(obstacles_norm, legend.footprint, base_w, base_h, legend.clearance ?? 12)
-  const { width: legend_width = 0, height: legend_height = 0 } = legend?.footprint ?? {}
+    (too_wide ||
+      too_tall ||
+      is_crowded(obstacles_norm, legend.footprint, base_w, base_h, legend.clearance ?? 12))
   // Put a narrow/tall legend on the right (wastes less reserved margin than a wide bottom strip);
-  // a wide/short legend goes below. Skip the right side if a vertical colorbar already took it.
+  // a wide/short legend goes below. Skip the right side if a vertical colorbar already took it
+  // or the frame is too narrow to give any width away.
   const legend_right =
-    legend_outside && !colorbar_takes_right && legend_height * base_w > legend_width * base_h
+    legend_outside &&
+    !too_wide &&
+    !colorbar_takes_right &&
+    legend_height * base_w > legend_width * base_h
   const legend_bottom = legend_outside && !legend_right
 
   const pad: Required<Sides> = {
