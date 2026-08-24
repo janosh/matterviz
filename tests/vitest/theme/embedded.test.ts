@@ -142,6 +142,25 @@ describe(`embedded theme helpers`, () => {
     expect(detect_parent_theme()).toBe(`dark`)
   })
 
+  // A host that declares `color-scheme` in CSS has stated its theme through the standard API;
+  // it outranks the OS preference like a class marker does, and `light dark` means light
+  test.each([
+    [`dark`, true, `dark`],
+    [`light`, true, `light`],
+    [`light dark`, true, `light`],
+    [`normal`, true, `dark`], // nothing declared: the OS preference decides
+  ])(`reads a declared color-scheme %j`, async (scheme, prefers, expected) => {
+    prefers_dark = prefers
+    document.documentElement.style.colorScheme = scheme
+    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+    expect(detect_parent_theme()).toBe(expected)
+    // and on a shadow host, where it beats the host's own background colour
+    const { host, inner } = make_shadow_element()
+    host.style.colorScheme = scheme
+    host.style.backgroundColor = `#000`
+    expect(detect_parent_theme(inner)).toBe(scheme === `normal` ? `dark` : expected)
+  })
+
   test(`falls back to the system preference when the host declares nothing`, async () => {
     prefers_dark = true
     const { detect_parent_theme } = await import(`$lib/theme/embedded`)
@@ -165,8 +184,9 @@ describe(`embedded theme helpers`, () => {
     globalThis.MATTERVIZ_THEMES = { dark: { surface: `#000` } }
     globalThis.MATTERVIZ_CSS_MAP = { surface: `--surface-bg` }
 
+    // color-scheme first: the library's light-dark() tokens and native form controls follow it
     expect(get_theme_css(`dark`, is_shadow_dom)).toBe(
-      `${selector} {\n\t--surface-bg: #000;\n}`,
+      `${selector} {\n\tcolor-scheme: dark;\n\t--surface-bg: #000;\n}`,
     )
   })
 })

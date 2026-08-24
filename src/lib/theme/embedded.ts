@@ -46,6 +46,15 @@ const declared_theme = (element: Element): ThemeType | null => {
   return null
 }
 
+// The standard signal: a host that declares `color-scheme: dark` (or `light`) in CSS has told
+// the browser its theme, and that is what every light-dark() token on the page resolves
+// against. Computed values are `normal` when nothing declared it and may list both schemes
+// (`light dark`), in which case the first is the preferred one.
+const declared_color_scheme = (element: Element): ThemeType | null => {
+  const scheme = getComputedStyle(element).colorScheme?.trim().split(/\s+/)[0]
+  return scheme === `dark` || scheme === `light` ? scheme : null
+}
+
 export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
   try {
     // Check Shadow DOM context
@@ -58,8 +67,13 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
     }
 
     // Hosts mark either root: VS Code/marimo put the theme class on <body>, JupyterLab and
-    // many sites on <html> (data-theme)
-    const declared = declared_theme(document.documentElement) ?? declared_theme(document.body)
+    // many sites on <html> (data-theme); a declared color-scheme is the same statement made
+    // through the CSS API, so it ranks with them
+    const declared =
+      declared_theme(document.documentElement) ??
+      declared_theme(document.body) ??
+      declared_color_scheme(document.documentElement) ??
+      declared_color_scheme(document.body)
     if (declared) return declared
 
     // Jupyter Lab theme API
@@ -110,7 +124,7 @@ function check_element_hierarchy(element: Element): ThemeType | null {
     chain.push(current)
   }
   for (const current of chain) {
-    const declared = declared_theme(current)
+    const declared = declared_theme(current) ?? declared_color_scheme(current)
     if (declared) return declared
   }
   for (const current of chain) {
@@ -228,7 +242,9 @@ export function get_theme_css(theme_type: ThemeType, is_shadow_dom = false): str
     .filter(Boolean)
     .join(`\n\t`)
 
-  // Use :host for Shadow DOM, :root for regular DOM
+  // Use :host for Shadow DOM, :root for regular DOM. `color-scheme` is what the library's
+  // light-dark() tokens and the browser's form controls resolve against: without it a widget
+  // in a dark notebook would carry dark theme variables but light menus, inputs and scrollbars.
   const selector = is_shadow_dom ? `:host` : `:root`
-  return `${selector} {\n\t${css_vars}\n}`
+  return `${selector} {\n\tcolor-scheme: ${theme_type};\n\t${css_vars}\n}`
 }
