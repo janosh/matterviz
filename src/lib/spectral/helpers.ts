@@ -366,10 +366,9 @@ function convert_pymatgen_band_structure(
       branch.end_index < qpoints.length &&
       branch.start_index <= branch.end_index,
   )
+  // No valid branches is the normal case, not a degraded one: pymatgen's phonon band
+  // structures never serialise `branches` (only the electronic one does), so infer them.
   if (branches.length === 0) {
-    console.warn(
-      `Band structure missing 'branches' field - inferring from labeled q-points and path discontinuities`,
-    )
     // Branch boundaries are the path ends, every labeled q-point (Bands only draws tick labels
     // at branch ends, so a label mid-branch would vanish) and both sides of every jump. The
     // jump itself (the two-point span ending on a discontinuity index) is not a branch.
