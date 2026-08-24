@@ -114,20 +114,17 @@ export function parse_lammps_trajectory(
   }
 
   // LAMMPS atom types are bare integers whose meaning lives in the input script, not the
-  // dump. With no element column and no mapping they fall back to atomic number N like
-  // ASE's read_lammps_dump and the LAMMPS data parser; warn once per file so a Si/O dump
+  // dump. An element per atom resolves as: the caller's atom_type_mapping (explicit intent),
+  // then an `element` column (`dump_modify element Si O`), then atomic number N like ASE's
+  // read_lammps_dump and the LAMMPS data parser; the guess warns once per file so a Si/O dump
   // showing up as H/He is traceable.
   // Types are validated to be >= 1 before lookup; the clamp keeps the lookup total (H rather
   // than `ELEM_SYMBOLS[-1]` = undefined) should a future column path skip that check.
   const guessed_types = new Set<number>()
   const guess_element = (atom_type: number): ElementSymbol =>
     ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
-  const get_element = (atom_type: number): ElementSymbol => {
-    const mapped = atom_type_mapping?.[atom_type]
-    if (mapped) return mapped
-    guessed_types.add(atom_type)
-    return guess_element(atom_type)
-  }
+  const coerce_symbol = (raw: string): ElementSymbol | undefined =>
+    coerce_elem_symbol(raw) ?? coerce_elem_symbol(capitalize_symbol(raw))
 
   const parse_frame = (): void => {
     let time: number | null = null
@@ -252,29 +249,32 @@ export function parse_lammps_trajectory(
       const xyz: Vec3 = frac_to_cart
         ? frac_to_cart(coords)
         : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
-      let element_symbol: ElementSymbol | undefined
+      let atom_type: number | undefined
       if (type_col !== undefined) {
         const raw_atom_type = parts[type_col]
-        const atom_type = Number(raw_atom_type)
+        atom_type = Number(raw_atom_type)
         if (!Number.isInteger(atom_type) || atom_type <= 0) {
           throw new TypeError(
             `LAMMPS atom line ${line_number} (timestep ${timestep}) has invalid type "${raw_atom_type}"`,
           )
         }
         atom_types_found.add(atom_type)
-        element_symbol =
-          element_col === undefined ? get_element(atom_type) : atom_type_mapping?.[atom_type]
       }
-      if (!element_symbol) {
-        const raw_symbol = parts[element_col]
-        const coerced =
-          coerce_elem_symbol(raw_symbol) ?? coerce_elem_symbol(capitalize_symbol(raw_symbol))
-        if (!coerced) {
+      let element_symbol = atom_type === undefined ? undefined : atom_type_mapping?.[atom_type]
+      if (!element_symbol && element_col !== undefined) {
+        element_symbol = coerce_symbol(parts[element_col])
+        // Some tools fill `element` with type labels (`Type1`, `2`); with a type column to
+        // fall back on that is a guess, not a corrupt file
+        if (!element_symbol && atom_type === undefined) {
           throw new Error(
-            `LAMMPS atom line ${line_number} (timestep ${timestep}) has unknown element symbol "${raw_symbol}"`,
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) has unknown element symbol "${parts[element_col]}"`,
           )
         }
-        element_symbol = coerced
+      }
+      if (!element_symbol) {
+        // atom_type is set: a frame with neither column was rejected at the header
+        guessed_types.add(atom_type as number)
+        element_symbol = guess_element(atom_type as number)
       }
       positions.push(xyz)
       elements.push(element_symbol)
@@ -384,7 +384,7 @@ export function parse_lammps_trajectory(
       .toSorted((left, right) => left - right)
       .map((atom_type) => `${atom_type}→${guess_element(atom_type)}`)
     warn(
-      `LAMMPS dump has no element column; read atom types as atomic numbers (${guesses.join(`, `)}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`,
+      `LAMMPS dump names no element for some atom types; read them as atomic numbers (${guesses.join(`, `)}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`,
     )
   }
   if (frames.length > 1 && identity_uses_ids === false) {

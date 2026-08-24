@@ -360,17 +360,39 @@ describe(`LAMMPS`, () => {
   })
 
   // A dump written by `dump_modify element` names its species, so those names beat guessing
-  // an element from the type number
-  it(`reads the element column when a type column is also present`, async () => {
-    const run = await open(
-      lammps_frame(`id type element x y z`, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`]),
-      `t.lammpstrj`,
-      { atom_type_mapping: undefined },
-    )
-    expect(elements_of(run.preview)).toEqual([`Si`, `O`])
-    expect(run.metadata).toMatchObject({ atom_types: [1, 2], element_counts: { Si: 1, O: 1 } })
-    expect(run.warnings).toEqual([])
-  })
+  // an element from the type number; an explicit mapping still beats the file, and an element
+  // column holding type labels falls back to the guess instead of rejecting the file
+  it.each([
+    [`element column`, undefined, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Si`, `O`], 0],
+    [
+      `mapping over column`,
+      { 1: `Ge`, 2: `O` },
+      [`1 1 Si 0 0 0`, `2 2 O 1 1 1`],
+      [`Ge`, `O`],
+      0,
+    ],
+    [
+      `type labels in column`,
+      undefined,
+      [`1 1 Type1 0 0 0`, `2 2 Type2 1 1 1`],
+      [`H`, `He`],
+      1,
+    ],
+  ] as const)(
+    `resolves elements with a type and an element column: %s`,
+    async (_name, atom_type_mapping, atom_lines, expected, n_warnings) => {
+      const run = await open(
+        lammps_frame(`id type element x y z`, [...atom_lines]),
+        `t.lammpstrj`,
+        {
+          atom_type_mapping,
+        },
+      )
+      expect(elements_of(run.preview)).toEqual(expected)
+      expect(run.metadata).toMatchObject({ atom_types: [1, 2] })
+      expect(run.warnings).toHaveLength(n_warnings)
+    },
+  )
 
   // Corruption inside a frame is an error naming its line and timestep; it used to skip the
   // atom or frame silently and surface only as "No valid frames found"
@@ -583,7 +605,7 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
     for (const frame of await frames_of(run))
       expect(elements_of(frame)).toEqual(expected_elements)
     expect(run.warnings).toEqual(guesses
-      ? [`LAMMPS dump has no element column; read atom types as atomic numbers (${guesses}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`]
+      ? [`LAMMPS dump names no element for some atom types; read them as atomic numbers (${guesses}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`]
       : [])
   })
 })
