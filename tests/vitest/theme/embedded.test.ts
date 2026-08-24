@@ -146,6 +146,7 @@ describe(`embedded theme helpers`, () => {
     [`dark`, true, `dark`],
     [`light`, true, `light`],
     [`light dark`, true, `light`],
+    [`only dark`, false, `dark`], // `only` is a modifier, not a scheme
     [`normal`, true, `dark`], // nothing declared: the OS preference decides
   ])(`reads a declared color-scheme %j`, async (scheme, prefers, expected) => {
     prefers_dark = prefers

@@ -74,9 +74,13 @@ export const save_theme_preference = (mode: ThemeMode): void => {
 }
 
 // The scheme an element declares through the CSS API, or null for `normal`/nothing. A
-// two-scheme value (`light dark`) names its preferred scheme first.
+// two-scheme value (`light dark`) names its preferred scheme first; `only` is a modifier
+// (`only dark`), not a scheme.
 export const declared_color_scheme = (element: Element): ThemeType | null => {
-  const scheme = getComputedStyle(element).colorScheme?.trim().split(/\s+/)[0]
+  const scheme = getComputedStyle(element)
+    .colorScheme?.trim()
+    .split(/\s+/)
+    .find((token) => token !== `only`)
   return scheme === `dark` || scheme === `light` ? scheme : null
 }
 
