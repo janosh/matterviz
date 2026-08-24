@@ -108,7 +108,7 @@
 </script>
 
 <div
-  class="cell-select"
+  class="cell-select hover-visible"
   role="group"
   {@attach click_outside({ callback: close_menu })}
   onmouseenter={schedule_hover_open}

@@ -1108,12 +1108,4 @@
     opacity: 1;
     pointer-events: auto;
   }
-  /* touch screens cannot hover, so the supercell picker would otherwise only appear after
-     a tap left a sticky :hover on the viewer */
-  @media (hover: none) {
-    .structure :global(.cell-select) {
-      opacity: 1;
-      pointer-events: auto;
-    }
-  }
 </style>
