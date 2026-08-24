@@ -76,8 +76,10 @@ function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): v
   // Remove existing style element (if any)
   ;(in_shadow ? root_node : document).querySelector(`#${style_id}`)?.remove()
 
-  // Only the theme-variable block varies per call; the rest is widget_base_css.
-  const style_content = `${get_theme_css(detected_theme, in_shadow)}${widget_base_css}`
+  // Only the theme-variable block varies per call; the rest is widget_base_css. The theme
+  // block comes last: app.css carries dark :root defaults (--text-color: #eee, ...) at the
+  // same specificity, and emitting it after the theme would have those win in light hosts.
+  const style_content = `${widget_base_css}${get_theme_css(detected_theme, in_shadow)}`
 
   // Apply styles via adoptedStyleSheets (reuse existing sheet to avoid accumulation)
   if (in_shadow && `adoptedStyleSheets` in root_node) {
