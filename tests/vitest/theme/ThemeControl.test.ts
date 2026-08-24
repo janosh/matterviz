@@ -24,14 +24,12 @@ describe(`ThemeControl`, () => {
     expect(select).toBeInstanceOf(HTMLSelectElement)
     expect(select.getAttribute(`aria-label`)).toBe(`Color theme`)
 
-    const options = select.querySelectorAll(`option`)
-    expect(options).toHaveLength(3)
-    expect(options[0].value).toBe(`light`)
-    expect(options[0].textContent).toMatch(/^☀️\s+Light/u)
-    expect(options[1].value).toBe(`dark`)
-    expect(options[1].textContent).toMatch(/^🌙\s+Dark/u)
-    expect(options[2].value).toBe(`auto`)
-    expect(options[2].textContent).toMatch(/^🔄\s+Auto/u)
+    const options = [...select.querySelectorAll(`option`)]
+    expect(options.map((opt) => [opt.value, opt.textContent?.replace(/\s+/u, ` `)])).toEqual([
+      [`light`, `☀️ Light`],
+      [`dark`, `🌙 Dark`],
+      [`auto`, `🔄 Auto`],
+    ])
   })
 
   test(`forwards class, aria-label and other props to select element`, () => {

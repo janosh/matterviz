@@ -1,9 +1,7 @@
-// Theme System for MatterViz
-
-declare global {
-  var MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
-  var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
-}
+// Theme system: every color token is defined once in app.css as light-dark(), so the whole
+// runtime contract is two attributes on the root — `data-theme` (names the palette, incl. the
+// white/black high-contrast overrides) and `color-scheme` (what light-dark() and native form
+// controls resolve against).
 
 const is_browser = typeof window !== `undefined`
 export const THEME_STORAGE_KEY = `matterviz-theme`
@@ -45,16 +43,11 @@ export const THEME_OPTIONS: ThemeOption[] = [
 ]
 
 // Type guards and utilities
-export const is_valid_theme_mode = (value: string): value is ThemeMode =>
-  Object.keys(COLOR_THEMES).includes(value) || value === AUTO_THEME
-
 export const is_valid_theme_name = (value: string): value is ThemeName =>
-  Object.keys(COLOR_THEMES).includes(value)
+  Object.hasOwn(COLOR_THEMES, value)
 
-export const resolve_theme_mode = (
-  mode: ThemeMode,
-  system_preference: ThemeType = COLOR_THEMES.light,
-): ThemeName => (mode === AUTO_THEME ? system_preference : mode)
+export const is_valid_theme_mode = (value: string): value is ThemeMode =>
+  value === AUTO_THEME || is_valid_theme_name(value)
 
 // Theme preference management
 export const get_theme_preference = (): ThemeMode => {
@@ -75,6 +68,33 @@ export const save_theme_preference = (mode: ThemeMode): void => {
   }
 }
 
+// The scheme an element declares through the CSS API, or null for `normal`/nothing. A
+// two-scheme value (`light dark`) names its preferred scheme first; `only` is a modifier
+// (`only dark`), not a scheme.
+export const declared_color_scheme = (element: Element): ThemeType | null => {
+  const scheme = getComputedStyle(element)
+    .colorScheme?.trim()
+    .split(/\s+/)
+    .find((token) => token !== `only`)
+  return scheme === `dark` || scheme === `light` ? scheme : null
+}
+
+// Nearest theme `read` finds at or above `element`, crossing shadow roots. Browsers inherit the
+// computed color-scheme so the first read normally answers; the walk covers DOMs that don't and
+// the host markers embedded widgets scan for
+export const nearest_declared = (
+  element: Element | null,
+  read: (element: Element) => ThemeType | null = declared_color_scheme,
+): ThemeType | null => {
+  for (let current = element; current;) {
+    const scheme = read(current)
+    if (scheme) return scheme
+    const root = current.getRootNode()
+    current = current.parentElement ?? (root instanceof ShadowRoot ? root.host : null)
+  }
+  return null
+}
+
 export const get_system_mode = (): ThemeType =>
   is_browser && globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
     ? COLOR_THEMES.dark
@@ -82,23 +102,9 @@ export const get_system_mode = (): ThemeType =>
 
 export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
-
-  const resolved = resolve_theme_mode(mode, get_system_mode())
-  if (!resolved || !(resolved in THEME_TYPE)) {
-    throw new Error(`Invalid theme mode: ${resolved}`)
-  }
-  const theme = globalThis.MATTERVIZ_THEMES?.[resolved] ?? {}
-  const css_vars = globalThis.MATTERVIZ_CSS_MAP ?? {}
-
+  const resolved = mode === AUTO_THEME ? get_system_mode() : mode
+  if (!(resolved in THEME_TYPE)) throw new Error(`Invalid theme mode: ${resolved}`)
   const root = document.documentElement
-  Object.entries(theme).forEach(([key, value]) => {
-    const css_var = css_vars[key]
-    if (css_var && value && typeof value === `string`) {
-      root.style.setProperty(css_var, value)
-    }
-  })
-
-  root.setAttribute(`data-theme`, resolved)
-  // Set color-scheme to ensure form elements respect the theme
-  root.style.setProperty(`color-scheme`, THEME_TYPE[resolved])
+  root.dataset.theme = resolved
+  root.style.colorScheme = THEME_TYPE[resolved]
 }

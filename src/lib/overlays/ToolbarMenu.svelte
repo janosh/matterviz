@@ -49,7 +49,18 @@
   </button>
   {@render trailing?.()}
   {#if open}
-    <div class={[`view-mode-dropdown`, menu_class]}>
+    <div
+      class={[`view-mode-dropdown`, menu_class]}
+      {@attach (menu) => {
+        // The menu hangs off the toggle's right edge, which runs it off the left of narrow
+        // screens once the toolbar wraps and the toggle sits near the left. Anchor it to
+        // the toggle's left edge instead when that happens.
+        const { left, width } = menu.getBoundingClientRect()
+        if (left >= 0 || width >= globalThis.innerWidth) return
+        menu.style.right = `auto`
+        menu.style.left = `0`
+      }}
+    >
       {@render children()}
     </div>
   {/if}
@@ -74,6 +85,16 @@
     }
     > button.active {
       color: var(--accent-color, #4a9eff);
+    }
+    /* finger-sized toggle and rows on touch screens; icon size is unchanged */
+    @media (pointer: coarse) {
+      > :global(button) {
+        min-width: 32px;
+        min-height: 32px;
+      }
+      .view-mode-dropdown > :global(.view-mode-option) {
+        min-height: 36px;
+      }
     }
   }
   .view-mode-dropdown {

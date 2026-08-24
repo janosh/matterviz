@@ -1,6 +1,7 @@
 // Side-by-side plots (bands + DOS) that share a frequency / energy axis: one y_axis config per
 // panel, reset whenever the data or caller axes change, and linked so a zoom in either panel
 // moves the other while a reset returns both to the shared range.
+import type { Sides } from '$lib/plot/core/layout'
 import type { Vec2 } from '$lib/math'
 import { reconcile_shared_axis_ranges } from '$lib/plot/core/shared-axes'
 import type { AxisConfig } from '$lib/plot/core/types'
@@ -52,4 +53,25 @@ export function create_synced_y_axes(config: SyncedYAxesConfig): { y_axes: AxisC
     state.y_axes = [...update.axes, ...state.y_axes.slice(linked)]
   })
   return state
+}
+
+// Floor for the vertical padding two side-by-side panels share. A panel that moves its
+// legend/colorbar outside widens its own bottom margin, and the other panel must follow or the
+// shared frequency axis drifts; the panels report what they settled on and the floor is only
+// ever raised (half-pixel tolerance), so the feedback through the plot solver cannot oscillate.
+export function shared_resolved_padding_floor() {
+  let value = $state<Sides>({})
+  return {
+    get value(): Sides {
+      return value
+    },
+    raise(resolved: Required<Sides> | undefined): void {
+      if (!resolved) return
+      const next = {
+        t: Math.max(value.t ?? 0, resolved.t),
+        b: Math.max(value.b ?? 0, resolved.b),
+      }
+      if (next.t > (value.t ?? 0) + 0.5 || next.b > (value.b ?? 0) + 0.5) value = next
+    },
+  }
 }

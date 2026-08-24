@@ -875,6 +875,12 @@
     select_edit_bonds_site(site_idx, event)
   }
   const handle_atom_click = (site_idx: number, event: MouseEvent) => {
+    // Touch cannot hover, so a tap is the only way to surface the atom tooltip; it stays
+    // until the next orbit or tap (the pointerleave-driven clear never fires for touch).
+    // On click rather than pointerdown: OrbitControls' `start` fires on pointerdown and
+    // wipes the hover. Threlte wraps the DOM event, so pointerType lives on nativeEvent.
+    const native_event = (event as BondContextMenuEvent).nativeEvent ?? event
+    if ((native_event as PointerEvent).pointerType === `touch`) set_atom_hover(site_idx)
     if (measure_mode === `edit-bonds`) {
       if (bond_edit_mode !== `add`) return
       if (skip_duplicate_edit_bonds_click(site_idx)) {

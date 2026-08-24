@@ -336,8 +336,16 @@
     margin: 0;
     color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
     flex-shrink: 0;
+    position: relative;
     &:hover {
       color: light-dark(#000, #fff);
+    }
+    /* the arrow is ~13px; an invisible halo gives fingers a ~23px target while the
+       indent stays one em (larger would steal taps from the rows above and below) */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -5px;
     }
   }
   .arrow {

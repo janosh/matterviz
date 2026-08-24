@@ -294,20 +294,24 @@
         >
       </div>
     {:else if energy_info?.has_precomputed_e_form && energy_info.has_precomputed_hull && energy_info.can_compute}
-      {@render toggle_row(`Energy source`, [
+      {@render toggle_row(
+        `Energy source`,
         [
-          `Precomputed`,
-          `Use precomputed formation energies (E<sub>form</sub>)`,
-          energy_source_mode === `precomputed`,
-          () => (energy_source_mode = `precomputed`),
+          [
+            `Precomputed`,
+            `Use precomputed formation energies (E<sub>form</sub>)`,
+            energy_source_mode === `precomputed`,
+            () => (energy_source_mode = `precomputed`),
+          ],
+          [
+            `On the fly`,
+            `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
+            energy_source_mode === `on-the-fly`,
+            () => (energy_source_mode = `on-the-fly`),
+          ],
         ],
-        [
-          `On the fly`,
-          `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
-          energy_source_mode === `on-the-fly`,
-          () => (energy_source_mode = `on-the-fly`),
-        ],
-      ])}
+        `energy-source-buttons`,
+      )}
     {/if}
 
     {@render toggle_row(`Color mode`, [
@@ -444,9 +448,9 @@
             aria-label="Hull face opacity"
             bind:value={hull_face_opacity}
             {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
-            style="flex: 1; min-width: 80px"
+            style="flex: 1; min-width: 60px"
           />
-          <span style="font-size: 0.9em; min-width: 2em; text-align: right"
+          <span style="font-size: 0.9em; min-width: 2.6em; text-align: right"
             >{format_num(hull_face_opacity ?? 0, `.1%`)}</span
           >
         </div>
@@ -458,24 +462,26 @@
     {#if camera}
       <div class="setting">
         <span class="control-label">Camera</span>
-        {#each camera_fields as [key, label, tip, step, digits, suffix, min, max] (key)}
-          <label {@attach tooltip({ content: tip })}>
-            <span>{label}</span>
-            <input
-              type="number"
-              value={(camera[key] ?? 0).toFixed(digits)}
-              {step}
-              {min}
-              {max}
-              oninput={(event) => {
-                const camera_value = event.currentTarget.valueAsNumber
-                if (camera && Number.isFinite(camera_value)) camera[key] = camera_value
-              }}
-              style="width: 3em"
-            />
-            {#if suffix}<span>{suffix}</span>{/if}
-          </label>
-        {/each}
+        <div class="camera-fields">
+          {#each camera_fields as [key, label, tip, step, digits, suffix, min, max] (key)}
+            <label {@attach tooltip({ content: tip })}>
+              <span>{label}</span>
+              <input
+                type="number"
+                value={(camera[key] ?? 0).toFixed(digits)}
+                {step}
+                {min}
+                {max}
+                oninput={(event) => {
+                  const camera_value = event.currentTarget.valueAsNumber
+                  if (camera && Number.isFinite(camera_value)) camera[key] = camera_value
+                }}
+                style="width: 3em"
+              />
+              {#if suffix}<span>{suffix}</span>{/if}
+            </label>
+          {/each}
+        </div>
       </div>
     {/if}
   </SettingsSection>
@@ -542,7 +548,12 @@
   .marker.unstable {
     background: var(--hull-unstable-color, #e69f00);
   }
-  .face-color-mode-buttons {
+  /* Button groups and paired inputs do not fit the 4em value track, so they take the value
+     and wide tracks together and wrap inside that span when the pane is narrow */
+  .face-color-mode-buttons,
+  .energy-source-buttons,
+  .camera-fields {
+    grid-column: 2 / -1;
     display: flex;
     gap: 4px;
     flex: 1;
@@ -550,6 +561,14 @@
     button {
       min-width: auto;
       flex: 0 1 auto;
+    }
+  }
+  .camera-fields {
+    gap: 4px 10px;
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
   }
   .color-scale-row {

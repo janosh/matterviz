@@ -872,8 +872,8 @@ function parse_torch_sim_h5_file(
       const item = parent.get(name)
       const full_path = path ? `${path}/${name}` : `/${name}`
       if (is_hdf5_dataset(item) && STRUCTURAL_ALIASES.has(name)) {
-        const paths = (found_paths[name] ??= [])
-        paths.push(full_path)
+        found_paths[name] ??= []
+        found_paths[name].push(full_path)
       } else if (is_hdf5_group(item)) {
         discover(item, full_path)
       }

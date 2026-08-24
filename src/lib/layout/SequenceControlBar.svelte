@@ -79,4 +79,18 @@
     opacity: 1;
     pointer-events: auto;
   }
+  /* Finger-sized hit areas for every control in the bar. Icons and text keep their size;
+     the bar grows from ~20px to 32px rows only on coarse pointers. */
+  @media (pointer: coarse) {
+    .sequence-control-bar :global(:is(button, select, input[type='number'])) {
+      min-height: 32px;
+      box-sizing: border-box;
+    }
+    .sequence-control-bar :global(button) {
+      min-width: 32px;
+    }
+    .sequence-control-bar :global(input[type='range']) {
+      height: 32px; /* the track stays thin; this is the touchable strip around it */
+    }
+  }
 </style>

@@ -213,6 +213,12 @@
     grid-template-columns: auto 1fr;
     gap: 2em;
     margin-block: 2em;
+    > * {
+      min-width: 0;
+    }
+    @media (max-width: 900px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .loading-placeholder {
     display: flex;
@@ -246,6 +252,9 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 2em;
+    @media (max-width: 900px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .stacked-layout {
     max-width: 900px;

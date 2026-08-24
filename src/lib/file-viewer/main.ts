@@ -16,8 +16,6 @@ import Dos from '$lib/spectral/Dos.svelte'
 import type { AnyStructure } from '$lib/structure'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
-// oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
-import '$lib/theme/themes.mjs'
 import type { TrajectoryController, TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'

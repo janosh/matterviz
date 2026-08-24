@@ -1,4 +1,7 @@
-import { create_synced_y_axes } from '$lib/spectral/synced-axes.svelte'
+import {
+  create_synced_y_axes,
+  shared_resolved_padding_floor,
+} from '$lib/spectral/synced-axes.svelte'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 
@@ -40,4 +43,18 @@ test(`axes rebuild only when a source changes identity or the source list grows`
   sources.list = [`other`, `dos`]
   flushSync()
   expect(default_axes).toHaveBeenCalledTimes(3)
+})
+
+test(`padding floor only ever rises, ignores sub-pixel creep and undefined reports`, () => {
+  const floor = shared_resolved_padding_floor()
+  floor.raise(undefined)
+  expect(floor.value).toEqual({})
+  floor.raise({ t: 20, b: 50, l: 40, r: 10 })
+  const raised = floor.value
+  expect(raised).toEqual({ t: 20, b: 50 })
+  // within the half-pixel tolerance and lower values keep the same object (no re-render churn)
+  floor.raise({ t: 20.4, b: 30, l: 0, r: 0 })
+  expect(floor.value).toBe(raised)
+  floor.raise({ t: 5, b: 58, l: 0, r: 0 })
+  expect(floor.value).toEqual({ t: 20, b: 58 })
 })

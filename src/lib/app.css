@@ -1,10 +1,129 @@
+/* === Theme tokens ===
+   One definition per token: light-dark() resolves against the root's color-scheme, which is
+   the only thing the runtime sets (apply_theme_to_dom / the app.html bootstrap / widgets).
+   :host covers widgets whose styles are adopted into a shadow root. Tokens that equal another
+   in every theme alias it with var(). The white and black high-contrast variants override only
+   the tokens that differ from light and dark. */
+:root,
+:host {
+  color-scheme: light dark;
+  --page-bg: light-dark(#f1f3f5, #18171c);
+  --text-color: light-dark(#374151, #eee);
+  --surface-bg: light-dark(rgb(237, 238, 239), rgb(33, 36, 43));
+  --border-color: light-dark(#d1d5db, #404040);
+  --accent-color: light-dark(#4f46e5, cornflowerblue);
+  --surface-bg-hover: light-dark(#e5e7eb, #3a3a3a);
+  --accent-hover-color: light-dark(#3730a3, #3b82f6);
+  --code-bg: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
+  --pre-bg: light-dark(rgba(0, 0, 0, 0.03), rgba(255, 255, 255, 0.05));
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --error-btn-bg: light-dark(#dc2626, #7f1d1d);
+  --error-btn-bg-hover: light-dark(#b91c1c, #991b1b);
+  --error-border: light-dark(1px solid #fca5a5, 1px solid #dc2626);
+  --text-color-muted: light-dark(#6b7280, #9ca3af);
+  --btn-bg: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.09));
+  --btn-bg-hover: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.17));
+  --btn-disabled-bg: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.04));
+  --tooltip-bg: light-dark(rgba(243, 244, 246, 0.95), rgba(0, 40, 60, 0.95));
+  --canvas-tooltip-bg: light-dark(rgba(226, 232, 240, 0.96), rgba(15, 23, 42, 0.96));
+  --canvas-tooltip-text-color: light-dark(#0f172a, #f8fafc);
+  --tooltip-border: var(--pane-border);
+  --plot-bg: transparent;
+  --struct-bg: light-dark(rgba(0, 0, 0, 0.03), rgba(255, 255, 255, 0.07));
+  --struct-bg-fullscreen: var(--page-bg);
+  --pane-bg: light-dark(rgb(229, 231, 235), rgb(28 29 33));
+  --pane-border: light-dark(
+    1px solid rgba(0, 0, 0, 0.15),
+    1px solid rgba(255, 255, 255, 0.15)
+  );
+  --pane-bg-hover: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
+  --dropzone-border: light-dark(1px solid #9ca3af, 1px solid #4a5568);
+  --dropzone-bg: light-dark(rgba(0, 0, 0, 0.02), rgba(45, 55, 72, 0.5));
+  --dragover-border: light-dark(1px solid #4f46e5, 1px solid #007acc);
+  --dragover-bg: light-dark(rgba(79, 70, 229, 0.1), rgba(0, 122, 204, 0.1));
+  --nav-link-bg: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15));
+  --nav-link-bg-hover: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
+  --nav-link-active-color: light-dark(darkseagreen, mediumseagreen);
+  --plot-legend-bg-color: light-dark(rgba(255, 255, 255, 0.6), rgba(0, 0, 0, 0.2));
+  --plot-legend-border: light-dark(
+    1px solid rgba(0, 0, 0, 0.2),
+    1px solid rgba(255, 255, 255, 0.2)
+  );
+  --plot-legend-item-color: var(--text-color);
+  --plot-legend-item-hover-bg-color: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1));
+  --github-corner-color: var(--page-bg);
+  --github-corner-bg: var(--text-color);
+  --github-corner-bg-hover: light-dark(#1e40af, #60a5fa);
+}
+:root[data-theme='white'],
+:host([data-theme='white']) {
+  --page-bg: #ffffff;
+  --text-color: #000000;
+  --surface-bg: rgb(250, 250, 250);
+  --accent-color: #2563eb;
+  --surface-bg-hover: #f3f3f3;
+  --accent-hover-color: #1d4ed8;
+  --code-bg: rgba(0, 0, 0, 0.02);
+  --pre-bg: rgba(0, 0, 0, 0.02);
+  --success-color: #059669;
+  --warning-color: #d97706;
+  --error-color: #dc2626;
+  --error-btn-bg: #b91c1c;
+  --error-btn-bg-hover: #991b1b;
+  --error-border: 1px solid #fecaca;
+  --text-color-muted: #374151;
+  --tooltip-bg: rgba(255, 255, 255, 0.98);
+  --canvas-tooltip-bg: rgba(241, 245, 249, 0.98);
+  --struct-bg: rgba(0, 0, 0, 0.025);
+  --pane-bg: rgb(248, 250, 252);
+  --pane-border: 1px solid rgba(0, 0, 0, 0.075);
+  --pane-bg-hover: rgba(0, 0, 0, 0.03);
+  --dropzone-border: 1px solid #e5e7eb;
+  --dropzone-bg: rgba(0, 0, 0, 0.01);
+  --dragover-border: 1px solid #2563eb;
+  --dragover-bg: rgba(37, 99, 235, 0.05);
+  --nav-link-active-color: coral;
+  --plot-legend-bg-color: rgba(255, 255, 255, 0.9);
+  --plot-legend-border: 1px solid rgba(0, 0, 0, 0.1);
+  --github-corner-bg-hover: #1e3a8a;
+}
+:root[data-theme='black'],
+:host([data-theme='black']) {
+  --page-bg: #000000;
+  --text-color: #f5f5f5;
+  --surface-bg: rgb(19, 19, 19);
+  --surface-bg-hover: #1f1f1f;
+  --accent-hover-color: #0ea5e9;
+  --pre-bg: rgba(255, 255, 255, 0.1);
+  --success-color: #34d399;
+  --warning-color: #fbbf24;
+  --error-color: #f87171;
+  --error-btn-bg: #991b1b;
+  --error-btn-bg-hover: #7f1d1d;
+  --error-border: 1px solid #991b1b;
+  --text-color-muted: #d1d5db;
+  --tooltip-bg: rgba(20, 20, 20, 0.98);
+  --canvas-tooltip-bg: rgba(20, 20, 20, 0.98);
+  --struct-bg: rgba(255, 255, 255, 0.1);
+  --pane-bg: rgb(26, 26, 26);
+  --pane-border: 1px solid rgba(255, 255, 255, 0.075);
+  --dropzone-border: 1px solid #374151;
+  --dropzone-bg: rgba(15, 15, 15, 0.7);
+  --dragover-border: 1px solid #0ea5e9;
+  --dragover-bg: rgba(14, 165, 233, 0.05);
+  --nav-link-active-color: lightseagreen;
+  --plot-legend-bg-color: rgba(0, 0, 0, 0.3);
+  --plot-legend-border: 1px solid rgba(255, 255, 255, 0.1);
+  --github-corner-bg-hover: #38bdf8;
+}
+
 /* CSS variables are unlayered so they're available to both layers and to
    components that reference them via var(). Custom properties inherit
    naturally regardless of layer ordering. */
 :root {
   --theme-transition-duration: 0.3s;
-  --text-color: #eee;
-  --page-bg: #090019;
   --max-text-width: 50em;
 
   --sms-max-width: 20em;
@@ -82,6 +201,32 @@
 .hover-visible:has(.draggable-pane.pane-open) {
   opacity: 1;
   pointer-events: auto;
+}
+/* Touch devices have no hover, so viewer controls that only fade in while the pointer is over
+   the viewer would never appear. Keep them shown there; !important beats the hashed
+   component selectors that hide them. */
+@media (hover: none) {
+  .hover-visible,
+  .header-controls,
+  .pane-toggle {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+}
+/* Range tracks render ~7px tall; on touch the thumb needs a finger-sized strip to land on
+   (amplitude, opacity, slice-depth sliders in viewer panes and toolbars) */
+@media (pointer: coarse) {
+  input[type='range'] {
+    min-height: 24px;
+  }
+  /* plot chrome (pane toggles, fullscreen button) is ~20px on pointer screens, too small to
+     hit reliably; the icons keep their size, the hit area grows */
+  .header-controls {
+    font-size: 1.2rem;
+    --pane-toggle-font-size: 1.1rem;
+    --pane-toggle-padding: 5pt;
+    --fullscreen-btn-padding: 7pt;
+  }
 }
 body.fullscreen .draggable-pane {
   position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
@@ -508,7 +653,7 @@ body.fullscreen .draggable-pane {
     );
     border-radius: 50%;
     background: var(--range-thumb-bg);
-    box-shadow: 0 0 0 2px var(--surface-bg, #1f242d);
+    box-shadow: 0 0 0 1px var(--surface-bg, #1f242d);
   }
   input[type='range']::-moz-range-track {
     height: var(--range-track-height, 0.45rem);
@@ -527,7 +672,7 @@ body.fullscreen .draggable-pane {
     border: 0;
     border-radius: 50%;
     background: var(--range-thumb-bg);
-    box-shadow: 0 0 0 2px var(--surface-bg, #1f242d);
+    box-shadow: 0 0 0 1px var(--surface-bg, #1f242d);
   }
   input[type='number'] {
     min-width: 40px;

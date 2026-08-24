@@ -53,6 +53,8 @@
     id = undefined,
     'data-testid': data_testid = undefined,
     point_hit_padding = 3,
+    // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
+    resolved_padding = $bindable(),
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -356,8 +358,8 @@
     const add_label = (pos: number, label: string | null | undefined) => {
       if (!label) return
       const pretty = helpers.pretty_sym_point(label)
-      const labels = (labels_at[pos] ??= [])
-      if (!labels.includes(pretty)) labels.push(pretty)
+      labels_at[pos] ??= []
+      if (!labels_at[pos].includes(pretty)) labels_at[pos].push(pretty)
     }
     for (const [segment_key, [x_start, x_end]] of Object.entries(internal_x_positions)) {
       const [bs, branch] = all_segments[segment_key][0]
@@ -365,7 +367,9 @@
       add_label(x_end, bs.qpoints[branch.end_index]?.label)
     }
     return Object.fromEntries(
-      Object.entries(labels_at).map(([pos, labels]) => [pos, labels.join(` | `)]),
+      // Non-breaking spaces keep a discontinuity label (`K | U`) on one line; the axis wraps
+      // long tick labels at ordinary spaces when they crowd each other on narrow plots
+      Object.entries(labels_at).map(([pos, labels]) => [pos, labels.join(`\u00A0|\u00A0`)]),
     )
   })
 
@@ -520,6 +524,7 @@
     {...rest}
     bind:show_controls
     bind:controls_open
+    bind:resolved_padding
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const { name: y_label, unit: y_unit } = helpers.parse_axis_label(
@@ -644,7 +649,7 @@
       </SettingsSection>
     {/snippet}
 
-    {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
+    {#snippet user_content({ height, width, x_scale_fn, y_scale_fn, pad })}
       <!-- Fat band ribbons (rendered behind band lines) -->
       {#each ribbon_data as ribbon (ribbon.key)}
         {@const path_d = helpers.generate_ribbon_path(
@@ -714,6 +719,9 @@
         : fermi_y}
 
       <!-- Fermi level line for electronic bands -->
+      <!-- E_F and gap labels sit in the right margin only when the caller padded for it,
+           otherwise just inside the plot edge so the SVG does not clip them -->
+      {@const ef_label_fits_right = width - bands_x_end >= 20}
       {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
         <line
           class="fermi-level-line"
@@ -730,7 +738,7 @@
           <line
             x1={bands_x_end}
             y1={fermi_y}
-            x2={bands_x_end + 3}
+            x2={bands_x_end + (ef_label_fits_right ? 3 : -3)}
             y2={ef_label_y}
             stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
             stroke-width="0.7"
@@ -739,9 +747,10 @@
         {/if}
         <text
           class="fermi-level-label"
-          x={bands_x_end + 4}
+          x={ef_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}
           y={ef_label_y}
           dy="0.35em"
+          text-anchor={ef_label_fits_right ? `start` : `end`}
           font-size="10"
           fill="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
           opacity="0.9"
@@ -781,11 +790,13 @@
             opacity="0.7"
           />
         {/each}
+        {@const gap_label_fits_right = width - bands_x_end >= 70}
         <text
-          x={bands_x_end + 4}
+          x={gap_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}
           y={gap_mid_y}
           dy="0.35em"
           font-size="10"
+          text-anchor={gap_label_fits_right ? `start` : `end`}
           fill="var(--text-color)"
         >
           E<tspan dy="2" font-size="8">g:</tspan>

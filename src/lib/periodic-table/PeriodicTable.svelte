@@ -77,7 +77,7 @@
     heatmap_values?: Partial<Record<ElementSymbol, HeatValue | null>> | (HeatValue | null)[]
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
-    links?: keyof ChemicalElement | Record<ElementSymbol, string> | null
+    links?: keyof ChemicalElement | Partial<Record<ElementSymbol, string>> | null
     log?: boolean
     color_scale?: D3InterpolateName | ((num: number) => string)
     active_element?: ChemicalElement | null
@@ -181,6 +181,36 @@
 
   let tooltip_element = $state<ChemicalElement | null>(null)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
+  // tooltip hangs below the tile by default; flipped above for the f-block rows when the
+  // table clips its overflow (phone pan mode), where a tooltip below them would be cut off
+  let tooltip_above = $state(false)
+
+  // Touch has no hover, so a tap must serve as both "look" and "go": the first tap on a tile
+  // only selects it (active ring, tooltip, inset), a second tap on the same tile follows its
+  // link or fires on_activate. Mouse clicks are unaffected: hover already made the tile active
+  // before the click lands. Plain (non-state) flag: it's consumed by the click of the same tap.
+  let tap_is_preview = false
+  const handle_tile_pointerdown = (element: ChemicalElement, event: PointerEvent): void => {
+    tap_is_preview =
+      event.pointerType === `touch` && !disabled && active_element?.symbol !== element.symbol
+    // select here rather than relying on the compat mouseenter a tap usually emits: without
+    // it the second tap would still see another tile active and preview again
+    if (tap_is_preview) {
+      set_active_element(element)
+      handle_tooltip_enter(element, event)
+    }
+  }
+  const handle_tile_click = (
+    data: { element: ChemicalElement; event: MouseEvent },
+    activation?: (element: ChemicalElement) => void,
+  ): void => {
+    const preview = tap_is_preview
+    tap_is_preview = false
+    if (preview)
+      data.event.preventDefault() // keep the link from navigating on the first tap
+    else if (activation) activation(data.element)
+    else tile_props?.onclick?.(data)
+  }
 
   function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }): void {
     on_table_keydown?.(event)
@@ -234,9 +264,12 @@
     if (!(target instanceof HTMLElement) || !table_node) return
     const rect = target.getBoundingClientRect()
     const container_rect = table_node.getBoundingClientRect()
+    tooltip_above = element.row > 7 && getComputedStyle(table_node).overflowY !== `visible`
     tooltip_pos = {
       x: rect.left - container_rect.left + rect.width / 2,
-      y: rect.bottom - container_rect.top + 8,
+      y: tooltip_above
+        ? rect.top - container_rect.top - 8
+        : rect.bottom - container_rect.top + 8,
     }
   }
 
@@ -404,7 +437,11 @@
           ? 0
           : -1
         : tile_props?.tabindex}
-      onclick={tile_activation ? () => tile_activation(element) : tile_props?.onclick}
+      onpointerdown={(event: PointerEvent) => handle_tile_pointerdown(element, event)}
+      onclick={element_is_interactive(element)
+        ? (data: { element: ChemicalElement; event: MouseEvent }) =>
+            handle_tile_click(data, tile_activation)
+        : tile_props?.onclick}
       onkeydown={tile_activation
         ? (event: KeyboardEvent) => {
             if (event.key !== `Enter` && event.key !== ` `) return
@@ -446,7 +483,7 @@
     {@const el = tooltip_element}
     {@const tooltip_value = heat_values[el.number - 1]}
     <div
-      class="tooltip"
+      class={[`tooltip`, tooltip_above && `above`]}
       style:left="{tooltip_pos.x}px"
       style:top="{tooltip_pos.y}px"
       bind:this={tooltip_node}
@@ -479,9 +516,23 @@
     container-type: inline-size; /* for gap: 0.3cqw */
     width: 100%; /* prevent collapse in shrink-to-fit contexts */
     display: grid;
-    grid-template-columns: repeat(18, minmax(0, 1fr));
+    grid-template-columns: repeat(18, minmax(var(--ptable-min-tile-size, 0px), 1fr));
     position: relative;
     gap: var(--ptable-gap, 0.3cqw);
+  }
+  /* Phones: a table squeezed to ~370px has 20px tiles, too small to read or tap. Below this
+     width the tiles keep a finger-sized floor and the table pans sideways instead. The query
+     resolves against the nearest ancestor container (the docs site's <main>); with none the
+     rule never applies and the table keeps fitting its box. An inline
+     `--ptable-min-tile-size: 0` on the table opts a decorative mini-table out. */
+  @container (max-width: 600px) {
+    .periodic-table {
+      --ptable-min-tile-size: 2rem;
+      overflow-x: auto;
+      overflow-y: hidden;
+      /* a sideways flick at either end must not drag the whole page */
+      overscroll-behavior-x: contain;
+    }
   }
   .periodic-table :global(.auto-colorbar-inset) {
     place-items: center;
@@ -496,9 +547,10 @@
     grid-row: 8;
   }
   .tooltip {
+    --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     position: absolute;
     transform: translate(-50%, -10%);
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    background: var(--_bg);
     color: var(--tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
@@ -520,9 +572,17 @@
     transform: translateX(-50%);
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
-    border-bottom: 8px solid
-      var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    border-bottom: 8px solid var(--_bg);
     box-sizing: border-box;
     margin: 0 auto;
+  }
+  .tooltip.above {
+    transform: translate(-50%, -100%);
+  }
+  .tooltip.above::before {
+    top: auto;
+    bottom: -15%;
+    border-bottom: none;
+    border-top: 8px solid var(--_bg);
   }
 </style>

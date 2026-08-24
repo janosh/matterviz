@@ -5,7 +5,7 @@ import { ELEM_HEATMAP_LABELS } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
 import { colors, selected } from '$lib/state.svelte'
 import PeriodicTableDemo from '$site/PeriodicTableDemo.svelte'
-import { createRawSnippet, mount, tick } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { CATEGORY_COUNTS, doc_query } from '../setup'
 
@@ -250,6 +250,47 @@ describe(`PeriodicTable`, () => {
     expect(tile.getAttribute(`tabindex`)).toBe(`0`)
     expect(document.querySelectorAll<HTMLElement>(`.element-tile`)[1].tabIndex).toBe(-1)
     expect(callback.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `H`, `H`])
+  })
+
+  // a tap is a pointerdown then the click; the compat mouseenter a browser adds is left out so
+  // the tile has to be selected by the pointerdown itself. Returns whether the click's default
+  // (link navigation) was prevented
+  const tap = (tile: HTMLElement, pointerType: string): boolean => {
+    tile.dispatchEvent(
+      Object.assign(new MouseEvent(`pointerdown`, { bubbles: true }), { pointerType }),
+    )
+    const click = new MouseEvent(`click`, { bubbles: true, cancelable: true })
+    tile.dispatchEvent(click)
+    flushSync()
+    return click.defaultPrevented
+  }
+
+  test(`a touch tap previews a tile first and only a second tap on it activates`, () => {
+    const on_activate = vi.fn<(element: ChemicalElement) => void>()
+    mount(PeriodicTable, { target: document.body, props: { on_activate, tooltip: true } })
+    const [hydrogen, helium] = document.querySelectorAll<HTMLElement>(`.element-tile`)
+    tap(hydrogen, `touch`) // first tap: select only
+    expect(hydrogen.classList.contains(`active`)).toBe(true)
+    expect(doc_query(`.tooltip`).textContent).toContain(`Hydrogen`)
+    expect(on_activate).not.toHaveBeenCalled()
+    tap(hydrogen, `touch`) // same tile again: activate
+    expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`])
+    tap(helium, `touch`) // another tile: back to preview
+    expect(helium.classList.contains(`active`)).toBe(true)
+    expect(on_activate).toHaveBeenCalledTimes(1)
+    tap(helium, `mouse`) // a mouse click never previews
+    expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `He`])
+  })
+
+  test(`a touch tap on a linked tile holds the link until the second tap`, () => {
+    // a hash link keeps happy-dom from navigating away on the unprevented clicks
+    mount(PeriodicTable, { target: document.body, props: { links: { H: `#h` } } })
+    const tile = doc_query<HTMLAnchorElement>(`[data-element-symbol="H"]`)
+    expect([tap(tile, `touch`), tap(tile, `touch`), tap(tile, `mouse`)]).toEqual([
+      true,
+      false,
+      false,
+    ])
   })
 
   test(`links keep native semantics when an activation callback is also supplied`, async () => {

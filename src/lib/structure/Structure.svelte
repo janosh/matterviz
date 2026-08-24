@@ -859,7 +859,7 @@
             : undefined}
           enable_3d_export={display_mode === `structure`}
           bind:png_dpi
-          pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
+          pane_props={{ style: `--pane-max-height: calc(${height}px - 50px)` }}
         />
       {/if}
 

@@ -490,7 +490,10 @@
       }
     }
   }
-  @media (max-width: 900px) {
+  /* Stack the panes on phones and portrait tablets. A landscape phone (e.g. 844×390) keeps
+     them side by side: stacking there would put ~940px of panes into a 390px-tall viewport,
+     so the structure and the plot could never be on screen together. */
+  @media (max-width: 699px), (max-width: 900px) and (orientation: portrait) {
     .phonon-mode-explorer {
       min-height: 940px;
     }

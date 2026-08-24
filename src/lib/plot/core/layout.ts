@@ -484,10 +484,12 @@ export const calc_auto_padding = ({
     const tick_reach = has_outside_ticks ? tick_band + 8 + Math.max(0, -tick_shift) : 0
     // PlotAxis treats the x2 title shift as its distance from the baseline. Rotated or
     // wrapped ticks push the title farther out by the excess tick band.
+    // Extra wrapped lines stack outward from that first line, so they count in full.
     const title_reach = has_title
       ? Math.max(0, x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET) +
         Math.max(0, tick_band - TICK_LABEL_HEIGHT) +
-        title_layout.height / 2
+        title_layout.height -
+        title_layout.line_height / 2
       : 0
     return Math.max(default_padding.t, Math.max(tick_reach, title_reach))
   }
@@ -499,16 +501,20 @@ export const calc_auto_padding = ({
     const inside = x_axis.tick?.label?.inside ?? false
     const tick_values = x_axis.tick_values ?? []
     const has_outside_ticks = tick_values.length > 0 && !inside
-    const title_height = title_layout_for(x_axis, available_width).height
+    const title_layout = title_layout_for(x_axis, available_width)
+    const title_height = title_layout.height
     if (!has_outside_ticks && title_height === 0) return default_padding.b
     const band = has_outside_ticks
       ? horizontal_tick_layout(x_axis, available_width, `x`).band
       : TICK_LABEL_HEIGHT
     const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
-    // The title sits one gap past the labels and is centered, so half of it reaches further
-    // still. LABEL_GAP_DEFAULT, not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
+    // The title's first line sits one gap past the labels and is centered there, so half a
+    // line reaches further still; wrapped lines stack below it in full. LABEL_GAP_DEFAULT,
+    // not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
     const below_baseline =
-      title_height > 0 ? band + LABEL_GAP_DEFAULT + title_height / 2 : band
+      title_height > 0
+        ? band + LABEL_GAP_DEFAULT + title_height - title_layout.line_height / 2
+        : band
     const title_shift = title_height > 0 ? Math.max(0, x_axis.label_shift?.y ?? 0) : 0
     const content_reach = below_baseline + tick_shift + title_shift
     return Math.max(default_padding.b, content_reach)

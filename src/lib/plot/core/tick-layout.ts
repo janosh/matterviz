@@ -229,6 +229,12 @@ const best_anchor = (
 ): { anchor: TickLabelAnchor; aabb: TickAabb } => {
   let anchor = default_tick_label_anchor(side, rotation)
   let aabb = tick_label_aabb({ position, side, anchor, rotation, dimensions })
+  // An anchor can only trade overflow along the axis when the text runs along it: upright on
+  // x/x2, rotated on y/y2. A rotated x label trails away from the plot only with its default
+  // anchor (flipping it sends the text up through the bars); an upright y anchor points at
+  // the spine and never changes the vertical extent.
+  const rotated = normalized_rotation(rotation) !== 0
+  if (is_horizontal_side(side) === rotated) return { anchor, aabb }
   let least_overflow = axis_edge_overflow(aabb, side, axis_extent, edge_gap).total
   if (least_overflow === 0) return { anchor, aabb }
   for (const candidate of ANCHORS) {
@@ -1052,7 +1058,14 @@ const compute_tick_layout = (
     )
     candidates.push(wrapped)
   }
-  if (strategies.includes(`stagger`) && renderable_indices.length > 1) {
+  // Vertical sides stagger only under an explicit band cap: a second column of y labels grows
+  // outward into room the padding pass never reserved (it measured upright labels against the
+  // plot height before outside decorations shrank it), so it spills past the frame edge.
+  if (
+    strategies.includes(`stagger`) &&
+    renderable_indices.length > 1 &&
+    (is_horizontal || max_band != null)
+  ) {
     upright_geometry ??= measure_candidate(upright, config)
     if (upright_geometry.colliding_label_count > 0) {
       candidates.push(stagger_candidate(upright, `stagger`))

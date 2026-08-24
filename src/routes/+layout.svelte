@@ -10,7 +10,13 @@
   import '@wooorm/starry-night/style/both'
   import { element_data } from '$lib/element'
   import { theme_state } from '$lib/state.svelte'
-  import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES, THEME_OPTIONS } from '$lib/theme'
+  import {
+    apply_theme_to_dom,
+    AUTO_THEME,
+    get_theme_preference,
+    THEME_OPTIONS,
+    THEME_STORAGE_KEY,
+  } from '$lib/theme'
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
   import { Footer } from '$site'
@@ -28,29 +34,22 @@
   let cmd_palette_open = $state(false)
   let theme_mode = $derived(theme_state.mode)
 
+  // Apply the chosen mode; re-resolve `auto` when the OS preference flips and follow a
+  // preference saved by another tab. Everything else reads the root's resulting color-scheme.
   $effect(() => {
-    // Apply theme changes when mode changes (after SSR)
-    if (typeof window !== `undefined`) apply_theme_to_dom(theme_state.mode)
-  })
-
-  $effect(() => {
-    // Update system preference when it changes
-    if (typeof window !== `undefined`) {
-      const media_query = window.matchMedia(`(prefers-color-scheme: dark)`)
-
-      const update_system_mode = () => {
-        const new_preference = media_query.matches ? COLOR_THEMES.dark : COLOR_THEMES.light
-        theme_state.system_mode = new_preference
-
-        // If user is on auto mode, update the theme
-        if (theme_state.mode === AUTO_THEME) apply_theme_to_dom(AUTO_THEME)
-      }
-
-      // Set initial value
-      update_system_mode()
-
-      media_query.addEventListener(`change`, update_system_mode)
-      return () => media_query.removeEventListener(`change`, update_system_mode)
+    apply_theme_to_dom(theme_state.mode)
+    const media_query = window.matchMedia(`(prefers-color-scheme: dark)`)
+    const follow_system = () => {
+      if (theme_state.mode === AUTO_THEME) apply_theme_to_dom(AUTO_THEME)
+    }
+    const follow_other_tabs = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY) theme_state.mode = get_theme_preference()
+    }
+    media_query.addEventListener(`change`, follow_system)
+    window.addEventListener(`storage`, follow_other_tabs)
+    return () => {
+      media_query.removeEventListener(`change`, follow_system)
+      window.removeEventListener(`storage`, follow_other_tabs)
     }
   })
 
@@ -95,7 +94,9 @@
   )
 </script>
 
-<!-- z-index: above nav dropdown and Structure control toggles -->
+<!-- z-index: above nav dropdown and Structure control toggles.
+     --text: svelte-widgets paints the mobile burger bars with var(--text), which matterviz
+     does not define (it uses --text-color), leaving the burger invisible on phones. -->
 <CommandMenu
   bind:open={cmd_palette_open}
   {actions}
@@ -109,7 +110,7 @@
     style: `left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog); --sms-width: min(42em, 90vw); --sms-options-li-padding: 2pt 1ex`,
   }}
 />
-<GitHubCorner href={pkg.repository} --github-corner-bg-hover="var(--github-corner-bg-hover)" />
+<GitHubCorner id="github-corner" href={pkg.repository} />
 <CopyButton
   global
   style="top: 9pt; inset-inline-end: 9pt; background: var(--btn-bg); color: var(--btn-color)"
@@ -131,12 +132,11 @@
     '/reciprocal/ir-raman': `IR + Raman`,
     '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
   }}
-  menu_props={{
-    style: `display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;`,
-  }}
+  menu_props={{ style: `max-width: 80vw; margin: auto;` }}
   aria-label="Main navigation"
   {page}
   --nav-dropdown-z-index="var(--z-index-overlay-nav)"
+  --text="var(--text-color)"
 >
   <!-- Nav dropdown uses --z-index-overlay-nav to sit above overlay controls. -->
   <button
@@ -145,6 +145,7 @@
       cmd_palette_open = true
     }}
     aria-label="Open search"
+    class="site-search-btn"
     style="background: transparent"
     {@attach tooltip({ content: `Search (⌘K)` })}
   >
@@ -165,6 +166,65 @@
 <Footer />
 
 <style>
+  /* Mobile nav: svelte-widgets ships a 1.4rem burger and 2pt-tall menu rows, both well under
+     the ~32px touch-target floor. Padding grows the hit area without moving the bars. */
+  :global(nav.mobile .burger) {
+    box-sizing: content-box;
+    padding: 0.5rem;
+    top: 0.5rem;
+    inset-inline-start: 0.5rem;
+  }
+  /* The widget's own mobile rules carry its scoping class, so a plain `padding` override here
+     loses on specificity. Only properties the widget never sets on these rows are used below:
+     min-height + flex centering give finger-sized rows without fighting its padding. */
+  :global(nav.mobile .menu > span > a),
+  :global(nav.mobile .dropdown > div:first-child > :is(a, span)),
+  :global(nav.mobile .dropdown > div:last-child a) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    box-sizing: border-box;
+  }
+  :global(nav.mobile .dropdown > div:first-child > button) {
+    min-height: 2rem;
+    min-width: 2.5rem;
+  }
+  /* The menu is a fixed panel with no height cap, so once a few submenus are expanded its lower
+     entries sit below the fold and nothing can scroll them into view. 100dvh (not vh) tracks the
+     shrinking browser bar; overscroll-behavior keeps a flick at the end from scrolling the page. */
+  :global(nav.mobile .menu) {
+    max-height: calc(100dvh - 4rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* the widget's desktop rule wraps items; in a capped column that spills a long submenu
+       into a second column beside the first instead of scrolling */
+    flex-wrap: nowrap;
+  }
+  :global(nav.mobile .site-search-btn) {
+    min-height: 2rem;
+  }
+  /* iOS Safari zooms the page when a focused input's font is under 16px; phones get a
+     finger-sized field, the desktop palette keeps the widget's compact size */
+  @media (pointer: coarse) {
+    :global(dialog.site-search-dialog input) {
+      font-size: 16px;
+    }
+  }
+  /* The fixed corner sits exactly where viewers put their fullscreen/controls toggles; on a
+     phone a tap there opens GitHub instead. The footer still links to the repo. */
+  @media (max-width: 600px) {
+    :global(#github-corner) {
+      display: none;
+    }
+  }
+  /* On phones the fixed theme select covers demo content (treemap tiles, hover readouts);
+     `auto` follows the OS there and the control returns on wider screens. A landscape phone
+     is wide but only ~390px tall, so the select sits on whatever is on screen there too. */
+  @media (max-width: 480px), (max-height: 480px) {
+    :global(.theme-control) {
+      display: none;
+    }
+  }
   :global(dialog.site-search-dialog :is(.cmd-label, .cmd-description)) {
     min-width: 0;
     overflow: hidden;

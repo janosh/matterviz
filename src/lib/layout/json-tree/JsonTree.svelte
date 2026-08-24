@@ -758,6 +758,19 @@
     margin: 0 4px;
     align-self: center;
   }
+  /* touch: 20-24px header buttons are under the finger-target floor, and iOS Safari zooms
+     the page when a focused input's font is below 16px */
+  @media (pointer: coarse) {
+    .nav-btn,
+    .clear-search,
+    .controls button {
+      min-width: 2rem;
+      min-height: 2rem;
+    }
+    .search-input {
+      font-size: 16px;
+    }
+  }
   .match-nav {
     display: flex;
     align-items: center;

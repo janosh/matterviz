@@ -137,6 +137,7 @@
     border-radius: 6px;
     position: relative;
     margin-block: 1.5rem;
+    container-type: inline-size;
   }
   section.slice-section header {
     display: flex;
@@ -148,6 +149,14 @@
     gap: 1rem;
     z-index: 10;
     pointer-events: auto;
+  }
+  /* The floating header covers the slice once it wraps to several lines, so put it in flow
+     above the plot in narrow embeds (after the base rule: same specificity, later wins) */
+  @container (max-width: 480px) {
+    section.slice-section header {
+      position: static;
+      padding: 1ex 1em 0;
+    }
   }
   section.slice-section label {
     display: flex;

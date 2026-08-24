@@ -32,30 +32,19 @@
       href="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css"
     />
 
-    <script src="/themes.mjs"></script>
     <script>
-      // SSR Theme initialization - runs immediately after themes.mjs
-      // Get stored theme preference
+      // Theme before first paint: app.css defines every token as light-dark(), so the only
+      // state to restore is which palette (data-theme) and which scheme the root resolves with
       let mode = 'auto'
       try {
         mode = localStorage['matterviz-theme'] || 'auto'
       } catch {}
-
-      // Resolve theme (auto = system preference)
       const system = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       const resolved = mode === 'auto' ? system : mode
-
-      // Apply theme CSS variables
-      const theme = window.MATTERVIZ_THEMES[resolved]
-      const css_map = window.MATTERVIZ_CSS_MAP
-      const root = document.documentElement
-
-      for (const key in theme) {
-        if (css_map[key]) root.style.setProperty(css_map[key], theme[key])
-      }
-
-      // Set theme attribute and store resolved theme
-      root.setAttribute('data-theme', resolved)
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.style.colorScheme = ['dark', 'black'].includes(resolved)
+        ? 'dark'
+        : 'light'
     </script>
     %sveltekit.head%
   </head>

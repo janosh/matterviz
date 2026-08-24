@@ -427,6 +427,8 @@
   }
   .convex-hull-stats.side-by-side {
     display: flex;
+    /* the table drops below the stats once the host is too narrow for both */
+    flex-wrap: wrap;
     gap: var(--hull-stats-gap, 1.5em);
     align-items: stretch;
     width: fit-content;
@@ -440,7 +442,7 @@
     max-width: var(--hull-stats-pane-max-width, 320px);
   }
   .table-pane {
-    flex: 1 1 0;
+    flex: 1 1 var(--hull-stats-table-min-width, 300px);
     max-width: 100%;
     min-width: 0;
     overflow: auto;

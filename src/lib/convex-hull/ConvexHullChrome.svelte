@@ -307,6 +307,12 @@
     opacity: 1;
     pointer-events: auto;
   }
+  @media (pointer: coarse) {
+    .control-buttons > :global(button) {
+      min-width: 32px;
+      min-height: 32px;
+    }
+  }
   .control-buttons :global(.draggable-pane) {
     z-index: 1001 !important;
   }

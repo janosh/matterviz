@@ -286,7 +286,7 @@
 
 <h2>2×2 Grid Layout</h2>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2em">
+<div class="two-by-two-grid">
   {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolateBlues` }, { title: `Density`, property: `density`, color_scale: `interpolateReds` }, { title: `Melting Point`, property: `melting_point`, color_scale: `interpolateOranges` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateGreens` }] as const as { title, property, color_scale } (title)}
     <PeriodicTable
       tile_props={{ show_name: false, show_number: false }}
@@ -308,5 +308,11 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1.5em;
+  }
+  /* two columns on desktop (main is 50em wide), one below ~640px */
+  .two-by-two-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: 2em;
   }
 </style>

@@ -2,15 +2,7 @@ import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { ColorSchemeName } from '$lib/constants'
 import { clamp } from '$lib/math'
-import {
-  COLOR_THEMES,
-  get_system_mode,
-  get_theme_preference,
-  is_valid_theme_name,
-  resolve_theme_mode,
-  THEME_STORAGE_KEY,
-  THEME_TYPE,
-} from '$lib/theme'
+import { get_system_mode, nearest_declared } from '$lib/theme'
 import { clamp01 } from '$lib/utils'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
@@ -140,9 +132,10 @@ function to_rendered_rgb(color: string): RGBColor | undefined {
     /^(?:var\(|currentcolor$)/i.test(color)
   )
     return undefined
-  const context = (color_canvas_context ??= document
+  color_canvas_context ??= document
     .createElement(`canvas`)
-    .getContext(`2d`, { willReadFrequently: true }))
+    .getContext(`2d`, { willReadFrequently: true })
+  const context = color_canvas_context
   if (!context) return undefined
   context.fillStyle = `black`
   context.fillStyle = color
@@ -320,40 +313,36 @@ export const contrast_color_memo = (
   }
 }
 
-// Detect dark mode: checks data-theme attribute, then the persisted theme
-// preference (resolving `auto` against the OS), then falls back to OS preference.
-export function is_dark_mode(): boolean {
-  if (typeof document === `undefined`) return false
-  const data_theme = document.documentElement.dataset.theme
-  const theme_name =
-    data_theme && is_valid_theme_name(data_theme)
-      ? data_theme
-      : resolve_theme_mode(get_theme_preference(), get_system_mode())
-  return THEME_TYPE[theme_name] === COLOR_THEMES.dark
+// Whether `element` renders in the dark scheme: its computed color-scheme, which every
+// light-dark() token around it resolves against (the root's data-theme/inline scheme on the
+// site, a widget element's own scheme in a notebook). `normal`/`light dark` mean nothing was
+// declared, so the OS preference decides.
+export function is_dark_mode(
+  element: Element | undefined = globalThis.document?.documentElement,
+): boolean {
+  return element !== undefined && (nearest_declared(element) ?? get_system_mode()) === `dark`
 }
 
-// Watch for dark mode changes and call callback on each change. Returns cleanup function.
-export function watch_dark_mode(on_change: (dark: boolean) => void): () => void {
-  if (typeof document === `undefined`) return () => {} // No-op in SSR
-  const notify = () => on_change(is_dark_mode())
-
+// Call `on_change` whenever the scheme `element` renders in may have changed: the root's
+// theme attributes/inline style (apply_theme_to_dom), a shadow host's (embedded widgets), or
+// the OS preference. Not on subscribe — callers subscribe inside effects whose callback writes
+// state, and a synchronous first call would re-trigger that effect. Read is_dark_mode(element)
+// for the initial value. Returns the cleanup function.
+export function watch_dark_mode(
+  on_change: (dark: boolean) => void,
+  element: Element | undefined = globalThis.document?.documentElement,
+): () => void {
+  if (!element) return () => {} // No-op in SSR
+  const notify = () => on_change(is_dark_mode(element))
   const observer = new MutationObserver(notify)
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: [`data-theme`],
-  })
-
-  const on_storage = (event: StorageEvent) => {
-    if (event.key === THEME_STORAGE_KEY) notify()
-  }
-  globalThis.addEventListener(`storage`, on_storage)
-
+  const options = { attributes: true, attributeFilter: [`data-theme`, `style`, `class`] }
+  observer.observe(document.documentElement, options)
+  const root = element.getRootNode()
+  if (root instanceof ShadowRoot) observer.observe(root.host, options)
   const media_query = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
   media_query?.addEventListener(`change`, notify)
-
   return () => {
     observer.disconnect()
-    globalThis.removeEventListener(`storage`, on_storage)
     media_query?.removeEventListener(`change`, notify)
   }
 }

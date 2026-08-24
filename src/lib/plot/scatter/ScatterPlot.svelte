@@ -155,6 +155,7 @@
     on_ref_line_hover,
     selected_series_idx = $bindable(0),
     wrapper = $bindable(),
+    resolved_padding = $bindable(),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     children,
@@ -215,6 +216,10 @@
       on_ref_line_hover?: (event: RefLineEvent | null) => void
       selected_series_idx?: number
       wrapper?: HTMLDivElement
+      // Read-only: the padding actually in effect (auto axis bands, caller padding, outside
+      // decorations), so hosts laying out several plots (BandsAndDos) can feed the maximum
+      // back as a shared `padding` and keep their chart areas aligned
+      resolved_padding?: Required<Sides>
       // Interactive axis props
       data_loader?: DataLoaderFn<Metadata>
       on_axis_change?: (
@@ -447,6 +452,10 @@
   let [x2_min, x2_max] = $derived(frame.ranges.current.x2)
   let [y_min, y_max] = $derived(frame.ranges.current.y)
   let [y2_min, y2_max] = $derived(frame.ranges.current.y2)
+
+  $effect(() => {
+    resolved_padding = frame.pad
+  })
 
   // === Colorbar: the frame owns the legend item, the colorbar is ScatterPlot's own decoration ===
   // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too.

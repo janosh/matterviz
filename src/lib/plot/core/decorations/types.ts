@@ -71,6 +71,11 @@ export type DecorationScene = {
   width: number
   height: number
   base_pad: Required<Sides>
+  // What the axes alone need per side (tick labels, titles), before any caller padding.
+  // Outside reservations stack on this rather than on base_pad, so a caller whose padding
+  // already leaves room beyond the axis (a sibling panel's legend band) gets the decoration
+  // in that room instead of on top of it. Defaults to base_pad.
+  axis_pad?: Required<Sides>
   obstacles_norm: readonly DecorationPoint[]
   // Pixel obstacles are already expressed in the final SVG coordinate system.
   obstacles_px?: readonly DecorationPoint[]

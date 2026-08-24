@@ -79,6 +79,14 @@
       opacity: 1;
       pointer-events: auto;
     }
+    /* Fingers need ~32px targets; the icons keep their size, only the hit area grows.
+       The filename gives way first so the row never pushes past the viewer edge. */
+    @media (pointer: coarse) {
+      > :global(button) {
+        min-width: 32px;
+        min-height: 32px;
+      }
+    }
     > :global(button) {
       background-color: transparent;
       display: flex;
@@ -106,6 +114,8 @@
     padding: 3pt 6pt;
     border-radius: 3pt;
     max-width: 200px;
+    flex: 0 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

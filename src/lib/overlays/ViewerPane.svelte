@@ -51,6 +51,15 @@
           .querySelector<HTMLElement>(`:scope > .control-tab`)
           ?.getBoundingClientRect().right ?? pane_rect.right
       const container_rect = container.getBoundingClientRect()
+      // Phone widths also cap the pane to the viewer so the whole pane is on screen whenever
+      // the viewer is; desktop keeps the stylesheet's viewport cap. Measured in JS rather than
+      // with 100cqh: a viewer whose height comes from min-height (Trajectory in portrait)
+      // reports 100cqh as 0px, which collapsed the pane entirely.
+      if (globalThis.innerWidth <= 640) {
+        const below_pane_top = container_rect.bottom - pane_rect.top - container_gap_px
+        const cap = Math.min(below_pane_top, globalThis.innerHeight - 64)
+        pane_element.style.setProperty(`--pane-viewport-clamp`, `${Math.max(cap, 150)}px`)
+      } else pane_element.style.removeProperty(`--pane-viewport-clamp`)
       const min_left = container_rect.left + container_gap_px
       const max_right = container_rect.right - container_gap_px
       const shift_px = Math.min(
@@ -81,7 +90,7 @@
   toggle_props={{
     title: `${open ? `Close` : `Open`} ${pane_name}`,
     ...toggle_props,
-    class: [`${class_prefix}-toggle`, toggle_props.class],
+    class: [`${class_prefix}-toggle`, `viewer-pane-toggle`, toggle_props.class],
   }}
   pane_props={{
     ...pane_props,
@@ -100,6 +109,24 @@
 </DraggablePane>
 
 <style>
+  /* These panes scroll with the page (position: absolute), so DraggablePane's own viewport
+     clamp (fixed panes only) never applies. A pane taller than the screen can then only be
+     read by scrolling the page while touches inside it scroll the pane content instead, so
+     cap it to the viewport. Phone-width screens get a tighter inline cap from the effect
+     above; fixed panes override this var inline as well. */
+  :global(.draggable-pane.viewer-pane-open) {
+    --pane-viewport-clamp: calc(100dvh - 4em);
+  }
+  /* finger-sized toggles and drag/reset/close tab on touch screens; icons keep their size */
+  @media (pointer: coarse) {
+    :global(button.viewer-pane-toggle) {
+      min-width: 32px;
+      min-height: 32px;
+    }
+    :global(.draggable-pane.viewer-pane-open > .control-tab) {
+      font-size: 1.5em;
+    }
+  }
   :global(.analysis-controls) {
     display: flex;
     flex-direction: column;

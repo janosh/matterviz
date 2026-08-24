@@ -350,7 +350,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 </script>
 
 <div
-  style="display: flex; align-items: center; gap: 1em; margin-bottom: 1em; white-space: nowrap; font-size: 0.9em"
+  style="display: flex; flex-wrap: wrap; align-items: center; gap: 1em; margin-bottom: 1em; font-size: 0.9em"
 >
   <fieldset>
     <legend>X-axis Scale</legend>
@@ -579,7 +579,9 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   {/each}
 </div>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0">
+<div
+  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 0"
+>
   {#each bin_counts as bins, idx (idx)}
     <Histogram
       series={[{ values: base_data, label: `${bins} bins`, color: colors[idx] }]}

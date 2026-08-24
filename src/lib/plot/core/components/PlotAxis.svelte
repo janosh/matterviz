@@ -24,7 +24,12 @@
   import type { Vec2 } from '$lib/math'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
-  import { resolve_tick_layout, type Sides, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
+  import {
+    resolve_axis_title_layout,
+    resolve_tick_layout,
+    type Sides,
+    TICK_LABEL_HEIGHT,
+  } from '$lib/plot/core/layout'
   import {
     DEFAULT_FONT_SPEC,
     resolve_font_spec,
@@ -140,10 +145,20 @@
     Boolean(axis.label || axis.options?.length) && label_x != null && label_y != null,
   )
 
-  // Outside x-axis titles move past the rendered tick-label band.
-  const tick_title_shift = $derived(
-    is_x && !inside ? Math.max(0, tick_layout.band - TICK_LABEL_HEIGHT) : 0,
+  // Same wrap width AxisLabel gets below, so both resolve the same line count
+  const title_wrap_width = $derived(
+    is_x ? Math.max(plot_w, AXIS_LABEL_CONTAINER.width) : undefined,
   )
+  // Outside x-axis titles move past the rendered tick-label band. AxisLabel also centers its
+  // block on the title point, which calc_auto_padding reserves for the first line only, so a
+  // wrapped title is pushed outward by the extra lines and its first line stays where a single
+  // line sits instead of climbing into the tick labels.
+  const title_shift = $derived.by(() => {
+    if (!is_x) return 0
+    const band_shift = inside ? 0 : Math.max(0, tick_layout.band - TICK_LABEL_HEIGHT)
+    const title = resolve_axis_title_layout(axis, title_wrap_width)
+    return band_shift + Math.max(0, (title.height - title.line_height) / 2)
+  })
 
   // `flipped` means above the baseline on x/x2 and right of the spine on y/y2.
   const flipped = $derived((side === `x2` || side === `y2`) !== inside)
@@ -255,7 +270,7 @@
   {#if show_label}
     <AxisLabel
       x={label_x ?? 0}
-      y={(label_y ?? 0) + (side === `x` ? tick_title_shift : -tick_title_shift)}
+      y={(label_y ?? 0) + (side === `x` ? title_shift : -title_shift)}
       rotate={side === `y` || side === `y2`}
       label={axis.label ?? ``}
       options={axis.options}
@@ -264,7 +279,7 @@
       axis_type={side}
       color={axis.color}
       on_select={(key) => on_axis_change?.(key)}
-      width={is_x ? Math.max(plot_w, AXIS_LABEL_CONTAINER.width) : undefined}
+      width={title_wrap_width}
     />
   {/if}
 </g>

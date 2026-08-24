@@ -605,8 +605,11 @@
     opacity: 0;
     position: absolute;
     visibility: hidden;
-    top: 7pt;
-    left: 0;
+    /* cover the chip instead of protruding past it: a hidden input still widens the
+       page's scrollable overflow when the legend sits at the viewer's right edge */
+    inset: 0;
+    width: 100%;
+    height: 100%;
   }
   /* Toggle visibility button - shared between element and property legends */
   .atom-legend button.toggle-visibility {

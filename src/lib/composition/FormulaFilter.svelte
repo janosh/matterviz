@@ -706,197 +706,208 @@
   class:warning={validation.state === `warning`}
   {...rest}
 >
-  <input
-    bind:this={input_element}
-    bind:value={input_value}
-    onblur={() => {
-      // mousedown preventDefault on history items prevents blur, so this only
-      // fires when focus genuinely leaves (tab out, click outside, etc.)
-      // sync_value → set_value → close_history, so no separate close needed
-      sync_value()
-    }}
-    onfocus={open_history}
-    {oninput}
-    onpaste={() => {
-      requestAnimationFrame(() => {
-        input_value = normalize_formula_unicode(input_value)
-        oninput()
-      })
-    }}
-    {onkeydown}
-    {placeholder}
-    {disabled}
-    aria-label="Formula filter"
-  />
-  {#if history_open && visible_history.length > 0}
-    <div class="history-dropdown" role="listbox" aria-label="Recent searches">
-      <div class="history-header-row">
-        <span class="history-header">Recent</span>
-        <button
-          type="button"
-          class="history-clear-all"
-          title="Clear history"
-          aria-label="Clear all history"
-          onmousedown={(event) => {
-            event.preventDefault()
-            clear_history()
-          }}
-        >
-          Clear
-        </button>
-      </div>
-      {#each visible_history as entry, idx (entry)}
-        <div class="history-item" class:focused={idx === focused_history_idx}>
+  <!-- Chips and validation live inside the root: as siblings they became separate grid/flex
+       items in any host that lays filters out side by side -->
+  <div class="filter-row">
+    <input
+      bind:this={input_element}
+      bind:value={input_value}
+      onblur={() => {
+        // mousedown preventDefault on history items prevents blur, so this only
+        // fires when focus genuinely leaves (tab out, click outside, etc.)
+        // sync_value → set_value → close_history, so no separate close needed
+        sync_value()
+      }}
+      onfocus={open_history}
+      {oninput}
+      onpaste={() => {
+        requestAnimationFrame(() => {
+          input_value = normalize_formula_unicode(input_value)
+          oninput()
+        })
+      }}
+      {onkeydown}
+      {placeholder}
+      {disabled}
+      aria-label="Formula filter"
+    />
+    {#if history_open && visible_history.length > 0}
+      <div class="history-dropdown" role="listbox" aria-label="Recent searches">
+        <div class="history-header-row">
+          <span class="history-header">Recent</span>
           <button
             type="button"
-            class="history-value"
-            role="option"
-            aria-selected={idx === focused_history_idx}
+            class="history-clear-all"
+            title="Clear history"
+            aria-label="Clear all history"
             onmousedown={(event) => {
               event.preventDefault()
-              set_value(entry)
+              clear_history()
             }}
           >
-            {entry}
-          </button>
-          <button
-            type="button"
-            class="history-pin"
-            title={is_pinned(entry) ? `Unpin entry` : `Pin entry`}
-            aria-label={is_pinned(entry) ? `Unpin ${entry}` : `Pin ${entry}`}
-            onmousedown={(event) => {
-              event.preventDefault()
-              toggle_pin_history(entry)
-            }}
-          >
-            <Icon
-              icon={is_pinned(entry) ? Star : Circle}
-              style="width: 0.8em; height: 0.8em"
-            />
-          </button>
-          <button
-            type="button"
-            class="history-remove"
-            title="Remove from history"
-            aria-label="Remove {entry} from history"
-            onmousedown={(event) => {
-              event.preventDefault()
-              remove_from_history(entry)
-            }}
-          >
-            <Icon icon={Close} style="width: 0.7em; height: 0.7em" />
+            Clear
           </button>
         </div>
+        {#each visible_history as entry, idx (entry)}
+          <div class="history-item" class:focused={idx === focused_history_idx}>
+            <button
+              type="button"
+              class="history-value"
+              role="option"
+              aria-selected={idx === focused_history_idx}
+              onmousedown={(event) => {
+                event.preventDefault()
+                set_value(entry)
+              }}
+            >
+              {entry}
+            </button>
+            <button
+              type="button"
+              class="history-pin"
+              title={is_pinned(entry) ? `Unpin entry` : `Pin entry`}
+              aria-label={is_pinned(entry) ? `Unpin ${entry}` : `Pin ${entry}`}
+              onmousedown={(event) => {
+                event.preventDefault()
+                toggle_pin_history(entry)
+              }}
+            >
+              <Icon
+                icon={is_pinned(entry) ? Star : Circle}
+                style="width: 0.8em; height: 0.8em"
+              />
+            </button>
+            <button
+              type="button"
+              class="history-remove"
+              title="Remove from history"
+              aria-label="Remove {entry} from history"
+              onmousedown={(event) => {
+                event.preventDefault()
+                remove_from_history(entry)
+              }}
+            >
+              <Icon icon={Close} style="width: 0.7em; height: 0.7em" />
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    {#if input_value}
+      <button
+        type="button"
+        class={['mode-hint clickable', { locked: mode_locked }]}
+        onclick={cycle_mode}
+        title={mode_locked
+          ? `Mode is locked`
+          : `Click to switch to '${next_mode.mode}' → ${next_mode.value}`}
+        {@attach tooltip()}
+        aria-label="Change search mode"
+      >
+        {mode_hint}
+      </button>
+    {/if}
+    {#if show_mode_lock && !disabled}
+      <button
+        type="button"
+        class={['icon-btn lock-btn', { active: mode_locked }]}
+        onclick={toggle_mode_lock}
+        title={mode_locked ? `Unlock mode inference` : `Lock current mode`}
+        {@attach tooltip()}
+        aria-label={mode_locked ? `Unlock mode` : `Lock mode`}
+      >
+        <Icon icon={mode_locked ? Lock : Unlock} style="width: 1em; height: 1em" />
+      </button>
+    {/if}
+    {#if show_clear_button && value && !disabled}
+      <button
+        type="button"
+        class="icon-btn clear-btn"
+        onclick={clear_filter}
+        title="Clear (Escape)"
+        {@attach tooltip()}
+        aria-label="Clear filter"
+      >
+        <Icon icon={Close} style="width: 1em; height: 1em" />
+      </button>
+    {/if}
+    {#if show_examples && !disabled}
+      <div bind:this={examples_wrapper} style="position: relative">
+        <button
+          type="button"
+          class={['icon-btn help-btn', { active: examples_open }]}
+          onclick={toggle_examples}
+          title="Show search examples"
+          aria-label="Show search examples"
+          aria-expanded={examples_open}
+          aria-haspopup="menu"
+        >
+          <Icon icon={Info} style="width: 1.1em; height: 1.1em" />
+        </button>
+        {#if examples_open}
+          <div
+            class={['examples-dropdown', { 'anchor-left': anchor_left }]}
+            role="menu"
+            tabindex="-1"
+            onkeydown={handle_menu_keydown}
+          >
+            {#each examples as category (category.label)}
+              <div class="example-category">
+                <div class="category-label">{category.label}:</div>
+                {#each category.examples as example (example)}
+                  <button
+                    type="button"
+                    class="example-tag"
+                    data-example-item
+                    onclick={() => apply_example(example)}
+                    title={category.description}
+                    role="menuitem"
+                    tabindex="-1"
+                  >
+                    {example}
+                  </button>
+                {/each}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
+  {#if show_chip_row}
+    <div class="token-chip-row">
+      {#each parsed_tokens as token, idx (`${token.operator}:${token.element}:${token.constraint ?? ``}:${idx}`)}
+        <button
+          type="button"
+          class="token-chip"
+          class:exclude={token.operator === `exclude`}
+          class:invalid={!token.is_valid}
+          onclick={() => remove_token(idx)}
+          title="Click to remove token"
+          aria-label="Remove token {token.raw}"
+        >
+          {token_chip_label(token)}
+        </button>
       {/each}
     </div>
   {/if}
-  {#if input_value}
-    <button
-      type="button"
-      class={['mode-hint clickable', { locked: mode_locked }]}
-      onclick={cycle_mode}
-      title={mode_locked
-        ? `Mode is locked`
-        : `Click to switch to '${next_mode.mode}' → ${next_mode.value}`}
-      {@attach tooltip()}
-      aria-label="Change search mode"
-    >
-      {mode_hint}
-    </button>
-  {/if}
-  {#if show_mode_lock && !disabled}
-    <button
-      type="button"
-      class={['icon-btn lock-btn', { active: mode_locked }]}
-      onclick={toggle_mode_lock}
-      title={mode_locked ? `Unlock mode inference` : `Lock current mode`}
-      {@attach tooltip()}
-      aria-label={mode_locked ? `Unlock mode` : `Lock mode`}
-    >
-      <Icon icon={mode_locked ? Lock : Unlock} style="width: 1em; height: 1em" />
-    </button>
-  {/if}
-  {#if show_clear_button && value && !disabled}
-    <button
-      type="button"
-      class="icon-btn clear-btn"
-      onclick={clear_filter}
-      title="Clear (Escape)"
-      {@attach tooltip()}
-      aria-label="Clear filter"
-    >
-      <Icon icon={Close} style="width: 1em; height: 1em" />
-    </button>
-  {/if}
-  {#if show_examples && !disabled}
-    <div bind:this={examples_wrapper} style="position: relative">
-      <button
-        type="button"
-        class={['icon-btn help-btn', { active: examples_open }]}
-        onclick={toggle_examples}
-        title="Show search examples"
-        aria-label="Show search examples"
-        aria-expanded={examples_open}
-        aria-haspopup="menu"
-      >
-        <Icon icon={Info} style="width: 1.1em; height: 1.1em" />
-      </button>
-      {#if examples_open}
-        <div
-          class={['examples-dropdown', { 'anchor-left': anchor_left }]}
-          role="menu"
-          tabindex="-1"
-          onkeydown={handle_menu_keydown}
-        >
-          {#each examples as category (category.label)}
-            <div class="example-category">
-              <div class="category-label">{category.label}:</div>
-              {#each category.examples as example (example)}
-                <button
-                  type="button"
-                  class="example-tag"
-                  data-example-item
-                  onclick={() => apply_example(example)}
-                  title={category.description}
-                  role="menuitem"
-                  tabindex="-1"
-                >
-                  {example}
-                </button>
-              {/each}
-            </div>
-          {/each}
-        </div>
-      {/if}
+  {#if validation.message}
+    <div class="validation-message" class:invalid={validation.state === `invalid`}>
+      {validation.message}
     </div>
   {/if}
 </div>
-{#if show_chip_row}
-  <div class="token-chip-row">
-    {#each parsed_tokens as token, idx (`${token.operator}:${token.element}:${token.constraint ?? ``}:${idx}`)}
-      <button
-        type="button"
-        class="token-chip"
-        class:exclude={token.operator === `exclude`}
-        class:invalid={!token.is_valid}
-        onclick={() => remove_token(idx)}
-        title="Click to remove token"
-        aria-label="Remove token {token.raw}"
-      >
-        {token_chip_label(token)}
-      </button>
-    {/each}
-  </div>
-{/if}
-{#if validation.message}
-  <div class="validation-message" class:invalid={validation.state === `invalid`}>
-    {validation.message}
-  </div>
-{/if}
 
 <style>
   .formula-filter {
-    position: relative;
+    min-width: 0;
+    &.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+  }
+  .filter-row {
+    position: relative; /* anchors the history dropdown to the input row, not the chips */
     display: flex;
     align-items: center;
     gap: var(--formula-filter-gap, 1pt);
@@ -904,20 +915,17 @@
     border-radius: var(--formula-filter-border-radius, var(--border-radius, 3pt));
     background: var(--formula-filter-bg, rgba(128, 128, 128, 0.05));
     transition: background 0.15s;
-    &.invalid {
+    /* validation state lives on the .formula-filter root, the row's direct parent */
+    .invalid > & {
       outline: 1px solid rgba(239, 68, 68, 0.65);
       background: rgba(239, 68, 68, 0.08);
     }
-    &.warning {
+    .warning > & {
       outline: 1px solid rgba(245, 158, 11, 0.6);
       background: rgba(245, 158, 11, 0.08);
     }
     &:focus-within {
       background: rgba(77, 182, 255, 0.08);
-    }
-    &.disabled {
-      opacity: 0.5;
-      pointer-events: none;
     }
   }
   input {
@@ -931,6 +939,10 @@
     font-family: var(--mono-font, monospace);
     &::placeholder {
       opacity: 0.4;
+    }
+    /* iOS Safari zooms the page when a focused input's font is below 16px */
+    @media (pointer: coarse) {
+      font-size: 16px;
     }
   }
   .mode-hint {
@@ -1132,17 +1144,19 @@
     }
   }
   @media (max-width: 700px) {
-    .icon-btn {
-      min-width: 28px;
-      min-height: 28px;
-      padding: 5pt;
+    :is(.icon-btn, .history-remove, .history-pin) {
+      min-width: 32px;
+      min-height: 32px;
     }
-    :is(.history-remove, .history-pin) {
-      min-width: 28px;
-      min-height: 28px;
+    .icon-btn {
+      padding: 5pt;
     }
     .history-value {
       padding: 6pt 10pt;
+    }
+    /* token chips double as remove buttons; 19px tall is too thin for a finger */
+    .token-chip {
+      min-height: 28px;
     }
   }
 </style>

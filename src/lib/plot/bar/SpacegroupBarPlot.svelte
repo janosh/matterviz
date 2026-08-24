@@ -3,6 +3,8 @@
   import type { Vec2 } from '$lib/math'
   import type { BarHandlerProps, BarSeries, TickConfig } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
+  import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
+  import { observe_size } from '$lib/plot/core/utils'
   import type { CrystalSystem } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import * as spg from '$lib/symmetry/spacegroups'
@@ -16,6 +18,10 @@
   })
 
   const MAX_SPACEGROUP = 230
+  const TICK_LABEL_HEIGHT_PX = 14 // 12px rotated tick label plus breathing room
+  const COUNT_LABEL_CHAR_PX = 6.4 // mean glyph advance of the 12px count annotation
+  const COUNT_LABEL_ROW_PX = 14
+  const COUNT_LABEL_MAX_ROWS = 3
   let {
     data,
     show_counts = true,
@@ -23,6 +29,7 @@
     orientation = `vertical`,
     x_axis = {},
     y_axis = {},
+    padding = {},
     ...rest
   }: ComponentProps<typeof BarPlot> & {
     data: (number | string)[]
@@ -54,6 +61,26 @@
   // Create sorted list of space groups for x-axis
   const sorted_spacegroups = $derived(Array.from(histogram.keys()).toSorted((a, b) => a - b))
 
+  // Always show full space group range (1-230)
+  const x_range: Vec2 = [0.5, MAX_SPACEGROUP + 0.5]
+
+  // Rendered width of the plot, observed on the root element. Tick thinning and count
+  // annotation rows depend on pixel spacing, which the data alone can't tell us.
+  let plot_width = $state(0)
+  const observe_width = observe_size(({ width }) => (plot_width = width))
+  // Approximate data-space width of one px along the spacegroup axis, from the default
+  // frame padding; the real scale only enters in user_content. Worst case the estimate
+  // is off by a few px per label, which the collision gap absorbs.
+  const sg_per_px = $derived(
+    MAX_SPACEGROUP /
+      Math.max(
+        plot_width -
+          (padding.l ?? DEFAULT_PLOT_PADDING.l) -
+          (padding.r ?? DEFAULT_PLOT_PADDING.r),
+        1,
+      ),
+  )
+
   // Smart tick selection: thin out ticks for dense data
   const x_axis_ticks = $derived.by(() => {
     const non_zero_count = sorted_spacegroups.filter(
@@ -61,9 +88,21 @@
     ).length
 
     // If data is dense (>40 space groups with data), show only multiples of 5
-    return non_zero_count > 40
-      ? sorted_spacegroups.filter((sg) => sg % 5 === 0)
-      : sorted_spacegroups
+    const candidates =
+      non_zero_count > 40
+        ? sorted_spacegroups.filter((sg) => sg % 5 === 0)
+        : sorted_spacegroups
+    // Vertical ticks are rotated 90°, so each label needs ~one line height along the
+    // axis. Greedily drop ticks that would land on the previous kept label. (Horizontal
+    // puts spacegroups on the y axis, whose length we don't observe.)
+    const min_gap =
+      orientation === `vertical` && plot_width ? TICK_LABEL_HEIGHT_PX * sg_per_px : 0
+    let last_kept = -Infinity
+    return candidates.filter((sg) => {
+      if (sg - last_kept < min_gap) return false
+      last_kept = sg
+      return true
+    })
   })
 
   // Build BarSeries - one series per crystal system for proper coloring
@@ -89,9 +128,6 @@
     })
   })
 
-  // Always show full space group range (1-230)
-  const x_range: Vec2 = [0.5, MAX_SPACEGROUP + 0.5]
-
   // Calculate crystal system region boundaries using full theoretical ranges
   const crystal_system_regions = $derived.by(() => {
     const [range_min, range_max] = x_range
@@ -107,6 +143,29 @@
   })
 
   const total_count = $derived(normalized_data.length)
+  const count_label = (count: number) =>
+    `${format_num(count, `,~`)} (${format_num(count / total_count, `.1~%`)})`
+
+  // Count annotations sit above their crystal-system band. Narrow bands (triclinic is
+  // 2 of 230 spacegroups) and narrow plots make neighbouring labels overlap, so each
+  // label is bumped to the first of a few stacked rows where it doesn't collide with
+  // the labels already placed. Returns system -> row, omitting labels that fit nowhere.
+  const count_label_rows = $derived.by(() => {
+    const rows = new SvelteMap<CrystalSystem, number>()
+    if (orientation !== `vertical`) return rows
+    const row_right_edges: number[] = Array(COUNT_LABEL_MAX_ROWS).fill(-Infinity)
+    for (const region of crystal_system_regions) {
+      const label = count_label(region.count)
+      const half_width = (label.length * COUNT_LABEL_CHAR_PX) / 2
+      const center = (region.sg_start + region.sg_end) / 2 / sg_per_px
+      const row = row_right_edges.findIndex((right) => center - half_width > right)
+      if (row === -1) continue
+      row_right_edges[row] = center + half_width
+      rows.set(region.system, row)
+    }
+    return rows
+  })
+  const extra_count_rows = $derived(Math.max(0, ...count_label_rows.values()))
 
   // Build axis configurations based on orientation
   const x_axis_config = $derived(
@@ -188,17 +247,18 @@
         >
           {region.system}
         </text>
-        <!-- Count annotation at top -->
-        {#if show_counts && total_count > 0}
-          {@const y_offset = region.system === `triclinic` ? -20 : -5}
+        <!-- Count annotation at top, stacked into rows where neighbours would overlap -->
+        {#if show_counts && total_count > 0 && count_label_rows.has(region.system)}
+          {@const label = count_label(region.count)}
+          {@const half_width = (label.length * COUNT_LABEL_CHAR_PX) / 2}
           <text
-            x={x_center}
-            y={pad.t + y_offset}
+            x={Math.min(Math.max(x_center, half_width), width - half_width)}
+            y={pad.t - 5 - COUNT_LABEL_ROW_PX * (count_label_rows.get(region.system) ?? 0)}
             text-anchor="middle"
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {format_num(region.count, `,~`)} ({format_num(region.count / total_count, `.1~%`)})
+            {label}
           </text>
         {/if}
       {:else}
@@ -240,7 +300,7 @@
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {format_num(region.count, `,~`)} ({format_num(region.count / total_count, `.1~%`)})
+            {count_label(region.count)}
           </text>
         {/if}
       {/if}
@@ -249,10 +309,21 @@
 {/snippet}
 
 <BarPlot
+  {@attach observe_width}
   {...rest}
   series={bar_series}
   {orientation}
   mode="overlay"
+  padding={{
+    ...padding,
+    // room above the plot area for the stacked count annotations (rows are only computed for
+    // vertical plots): the caller's top padding is a floor, never a cap, or the rows it was
+    // computed for would overlap the bars
+    t: Math.max(
+      padding.t ?? 0,
+      DEFAULT_PLOT_PADDING.t + (show_counts ? COUNT_LABEL_ROW_PX * extra_count_rows : 0),
+    ),
+  }}
   x_axis={x_axis_config}
   y_axis={y_axis_config}
   {show_legend}

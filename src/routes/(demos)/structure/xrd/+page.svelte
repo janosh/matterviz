@@ -342,12 +342,16 @@
   }
   .bleed-1400 > section {
     display: grid;
-    grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1em;
+    /* Structure has a 300px floor, so two columns overflow phone widths */
+    @media (max-width: 700px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .selected-structures-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
     gap: 0.5em;
     align-content: start;
   }

@@ -5,6 +5,7 @@ import {
   type DecorationItem,
   type DecorationScene,
   type DecorationSize,
+  get_outside_placement,
   place_outside_decorations,
 } from '$lib/plot/core/decorations'
 import { describe, expect, test } from 'vitest'
@@ -44,6 +45,18 @@ const place = ({
   })
 }
 
+// A legend wider than ~45% of the plot (a phone-width frame) goes below the plot even when
+// nothing is crowded: inside it would cover most of the data, on the right it would leave no
+// plot width
+test(`a legend too wide for its frame always goes below the plot`, () => {
+  const legend = { footprint: { width: 140, height: 40 } }
+  const roomy = place({ legend, obstacles_norm: [] }) // 140 / 330 = 42%: stays interior
+  expect(roomy.pad).toEqual(base_pad)
+  const narrow = place({ legend, obstacles_norm: [], width: 360 }) // 140 / 290 = 48%
+  expect(narrow.pad.b).toBeGreaterThan(base_pad.b)
+  expect(narrow.pad.r).toBe(base_pad.r)
+})
+
 describe(`place_outside_decorations`, () => {
   test.each([
     { horizontal: true, edge: `top` },
@@ -70,6 +83,33 @@ describe(`place_outside_decorations`, () => {
   ])(`crowded %s legend reserves its cheaper margin`, (_name, footprint, pad, legend_pos) => {
     const layout = place({ legend: { footprint } })
     expect(layout).toMatchObject({ legend_outside: true, pad, legend_pos })
+  })
+
+  // BandsAndDos pads both panels to the larger resolved bottom; without this the panel that
+  // owns the legend would add it again on top and the shared axis could never converge
+  test(`a bottom legend fits inside caller padding that already clears the axis band`, () => {
+    const legend = { footprint: { width: 120, height: 60 } }
+    const stacked = place({ legend })
+    expect(stacked.pad.b).toBe(base_pad.b + 60 + 8)
+    const roomy = place({
+      legend,
+      base_pad: { ...base_pad, b: stacked.pad.b },
+      axis_pad: base_pad,
+    })
+    expect(roomy.pad.b).toBe(stacked.pad.b)
+    // the padding did not grow, yet the legend still sits below: the side is not inferred from it
+    const roomy_scene: DecorationScene = {
+      base_pad: { ...base_pad, b: stacked.pad.b },
+      width,
+      height,
+      obstacles_norm: dense,
+      items: [{ id: `legend`, kind: `legend`, ...legend }],
+    }
+    const placement = get_outside_placement(roomy_scene.items[0], roomy_scene, roomy)
+    expect(placement).toMatchObject({ side: `bottom`, ...roomy.legend_pos })
+    // a caller padding short of the band still grows to fit the legend
+    const short = place({ legend, base_pad: { ...base_pad, b: 60 }, axis_pad: base_pad })
+    expect(short.pad.b).toBe(stacked.pad.b)
   })
 
   test(`decorations stay interior when a sparse region is available`, () => {

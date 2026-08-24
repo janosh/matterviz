@@ -11,7 +11,7 @@
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import * as helpers from './helpers'
-  import { create_synced_y_axes } from './synced-axes.svelte'
+  import { create_synced_y_axes, shared_resolved_padding_floor } from './synced-axes.svelte'
   import type { BaseBandStructure, DosData, HoveredData } from './types'
 
   let {
@@ -111,8 +111,14 @@
 
   // Match ScatterPlot's baseline and honor the larger caller value on each side.
   // Only desktop panels share the vertical frequency/energy dimension.
+  // The padding each panel settled on is fed back (see BandsAndDos) so a DOS legend pushed
+  // below its plot widens the bands panel's bottom margin as well
+  const resolved_floor = shared_resolved_padding_floor()
   let shared_tb_padding = $derived(
-    max_side_padding([{ t: 5, b: 50 }, bands_props.padding, dos_props.padding], [`t`, `b`]),
+    max_side_padding(
+      [{ t: 5, b: 50 }, bands_props.padding, dos_props.padding, resolved_floor.value],
+      [`t`, `b`],
+    ),
   )
 </script>
 
@@ -133,6 +139,7 @@
       ...(is_desktop ? shared_tb_padding : {}),
     }}
     bind:y_axis={synced.y_axes[0]}
+    bind:resolved_padding={() => undefined, resolved_floor.raise}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
     highlighted_qpoint_index={active_qpoint_index}
@@ -173,6 +180,7 @@
       ...dos_props.x_axis,
     }}
     bind:y_axis={synced.y_axes[1]}
+    bind:resolved_padding={() => undefined, resolved_floor.raise}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{
@@ -192,22 +200,31 @@
     display: grid;
     gap: var(--bz-bands-dos-gap, 1em);
   }
+  /* Tracks are fr-based (not percentages) so the gaps come out of the tracks instead of
+     pushing the last panel past the container edge, and minmax(0, …) lets the SVG plots shrink
+     below their intrinsic width */
   .bands-dos-brillouin.desktop {
     /* layout: BZ | bands | DOS side by side */
-    grid-template-columns: 30% 55% 15%;
+    grid-template-columns: minmax(0, 6fr) minmax(0, 11fr) minmax(0, 3fr);
     grid-template-areas: 'bz bands dos';
   }
   .bands-dos-brillouin.tablet {
     /* layout: bands on top, BZ and DOS below */
-    grid-template-columns: 40% 60%;
-    grid-template-rows: 50% 50%;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
       'bands bands'
       'bz dos';
   }
   .bands-dos-brillouin.phone {
-    /* layout: all stacked vertically */
-    grid-template-columns: 1fr;
+    /* layout: all stacked vertically. The shared height budget would squeeze three panels
+       into ~200px each, so the stack grows past it and each panel keeps a readable height */
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(
+      --bz-bands-dos-phone-rows,
+      minmax(340px, auto) minmax(260px, auto) minmax(320px, auto)
+    );
     grid-template-areas: 'bands' 'dos' 'bz';
   }
 </style>

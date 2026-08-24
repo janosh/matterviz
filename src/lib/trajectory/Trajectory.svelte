@@ -272,7 +272,7 @@
   let content_size = $state({ width: 0, height: 0 })
   // Cap panes to .content-area (controls bar is a flex sibling above it)
   let pane_max_height = $derived(
-    content_size.height > 0 ? `max-height: ${content_size.height}px` : undefined,
+    content_size.height > 0 ? `--pane-max-height: ${content_size.height}px` : undefined,
   )
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
   // wrapper's height that no pane ever gets
@@ -532,7 +532,12 @@
   )
   // Keep plot configuration referentially stable while only the active frame changes:
   // recreating these objects would invalidate ScatterPlot's scales and hover index per frame
-  let trajectory_scatter_padding = $derived({ t: 20, b: 60, r: has_y2_series ? 100 : 20 })
+  // Caller padding is honoured as a floor: the y2 axis needs its right margin whatever the
+  // caller asked for, and a caller cannot know whether a y2 series is currently visible
+  let trajectory_scatter_padding = $derived.by(() => {
+    const { t = 20, b = 60, r = 0, ...user } = scatter_props.padding ?? {}
+    return { ...user, t, b, r: Math.max(r, has_y2_series ? 100 : 20) }
+  })
   let trajectory_scatter_legend = $derived({
     ...scatter_props.legend,
     on_toggle: (series_idx: number) => {
@@ -952,10 +957,10 @@
           bind:controls_open={scatter_controls_open}
           current_x_value={x_map.to_x(settled_plot_step_idx)}
           on_plot_click={plot_skimming ? handle_plot_click : undefined}
-          padding={trajectory_scatter_padding}
           range_padding={0}
           style="height: 100%"
           {...scatter_props}
+          padding={trajectory_scatter_padding}
           hover_config={trajectory_hover_config}
           legend={trajectory_scatter_legend}
         >

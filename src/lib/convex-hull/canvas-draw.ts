@@ -273,6 +273,8 @@ type CornerLabelOpts = {
   text_color: string
   font_size: number
   offset: number
+  width?: number // canvas CSS px; labels are kept inside when given
+  height?: number
 }
 
 // Element symbols just outside each simplex corner, along the centroid-to-corner direction
@@ -280,7 +282,7 @@ export function draw_corner_labels(
   ctx: CanvasRenderingContext2D,
   corners: readonly (readonly number[])[],
   centroid: number[],
-  { project, elements, text_color, font_size, offset }: CornerLabelOpts,
+  { project, elements, text_color, font_size, offset, width, height }: CornerLabelOpts,
 ): void {
   ctx.save()
   ctx.fillStyle = text_color
@@ -293,8 +295,16 @@ export function draw_corner_labels(
     const [x = 0, y = 0, z = 0] = corner.map(
       (coord, axis) => coord + (direction[axis] / length) * offset,
     )
-    const projected = project(x, y, z)
-    ctx.fillText(elements[corner_idx], projected.x, projected.y)
+    const label = elements[corner_idx]
+    let { x: label_x, y: label_y } = project(x, y, z)
+    // Narrow canvases (phones) put the simplex corners at the very edge, which would cut
+    // the symbols in half; pull them back inside instead.
+    if (width && height) {
+      const half_w = ctx.measureText(label).width / 2
+      label_x = clamp(label_x, half_w, width - half_w)
+      label_y = clamp(label_y, font_size / 2, height - font_size / 2)
+    }
+    ctx.fillText(label, label_x, label_y)
   }
   ctx.restore()
 }

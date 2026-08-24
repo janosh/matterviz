@@ -500,6 +500,13 @@
   .legend-item.hidden {
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
+  /* ~21px rows are hard to tap; taller rows cost legend height, which the solver measures */
+  @media (pointer: coarse) {
+    .legend-item,
+    .legend-group-header {
+      padding-block: 4px;
+    }
+  }
   .legend-item:hover,
   .legend-item:focus,
   .legend-item.active {

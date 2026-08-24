@@ -193,7 +193,8 @@ const uncached_line_metrics = (
 ): TextLineMetrics => {
   const fallback = fallback_line_metrics(text, font)
   const context = get_canvas_context()
-  if (!context) return fallback
+  // no DOM, or a stubbed canvas (test doubles, headless shims) without text measurement
+  if (typeof context?.measureText !== `function`) return fallback
 
   context.font = font_css
   const measured = context.measureText(text)

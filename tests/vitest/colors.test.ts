@@ -350,47 +350,59 @@ describe(`add_alpha`, () => {
 })
 
 describe(`is_dark_mode + watch_dark_mode`, () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0)) // observers report async
   beforeEach(() => {
+    document.documentElement.removeAttribute(`style`)
     delete document.documentElement.dataset.theme
-    localStorage.clear()
   })
 
-  it(`ignores the obsolete theme storage key`, () => {
-    localStorage.setItem(`theme`, `dark`)
-    expect(is_dark_mode()).toBe(false)
-    localStorage.setItem(`matterviz-theme`, `dark`)
-    expect(is_dark_mode()).toBe(true)
-  })
-
+  // The element's computed color-scheme is the single source: the root's inline scheme on the
+  // site, a widget element's own scheme in a notebook; nothing declared → the OS preference
   it.each([
     [`dark`, true],
     [`light`, false],
-    [`black`, true],
-    [`white`, false],
-  ])(`resolves stored theme %s -> dark=%s`, (mode, expected) => {
-    localStorage.setItem(`matterviz-theme`, mode)
+    [`light dark`, false],
+  ])(`reads a declared color-scheme %j -> dark=%s`, (scheme, expected) => {
+    document.documentElement.style.colorScheme = scheme
     expect(is_dark_mode()).toBe(expected)
   })
 
-  it.each([
-    [`black`, true],
-    [`white`, false],
-  ])(`data-theme=%s takes precedence -> dark=%s`, (theme, expected) => {
-    document.documentElement.dataset.theme = theme
-    // opposite stored mode to prove the attribute wins
-    localStorage.setItem(`matterviz-theme`, expected ? `light` : `dark`)
-    expect(is_dark_mode()).toBe(expected)
+  it(`a widget element's own scheme wins over the page root's`, () => {
+    document.documentElement.style.colorScheme = `light`
+    const widget = document.createElement(`div`)
+    widget.style.colorScheme = `dark`
+    document.body.append(widget)
+    const canvas = document.createElement(`canvas`)
+    widget.append(canvas)
+    expect(is_dark_mode(canvas)).toBe(true)
+    expect(is_dark_mode()).toBe(false)
+    widget.remove()
   })
 
-  it(`watch_dark_mode fires on matterviz-theme storage events`, () => {
+  it(`watch_dark_mode reports changes for the element's scheme, never on subscribe, and stops after cleanup`, async () => {
+    // silent on subscribe: callers subscribe inside effects that write state in the callback
+    const widget = document.createElement(`div`)
+    document.body.append(widget)
+    const widget_calls: boolean[] = []
+    const stop_widget = watch_dark_mode((dark) => widget_calls.push(dark), widget)
+    expect(widget_calls).toEqual([])
+    widget.style.colorScheme = `dark` // the element's own scheme is not watched, its roots are
+    document.documentElement.style.colorScheme = `light`
+    await settle()
+    expect(widget_calls.at(-1)).toBe(true) // re-read from the element, not the (light) root
+    stop_widget()
+    widget.remove()
+
     const calls: boolean[] = []
     const cleanup = watch_dark_mode((dark) => calls.push(dark))
-    localStorage.setItem(`matterviz-theme`, `dark`)
-    globalThis.dispatchEvent(new StorageEvent(`storage`, { key: `matterviz-theme` }))
+    expect(calls).toEqual([])
+    document.documentElement.style.colorScheme = `dark`
+    await settle()
     expect(calls.at(-1)).toBe(true)
-    const count_before = calls.length
-    globalThis.dispatchEvent(new StorageEvent(`storage`, { key: `theme` }))
-    expect(calls).toHaveLength(count_before)
     cleanup()
+    const count = calls.length
+    document.documentElement.style.colorScheme = `light`
+    await settle()
+    expect(calls).toHaveLength(count)
   })
 })

@@ -252,6 +252,17 @@
     font-size: var(--elem-name-font-size, 12cqw);
   }
 
+  /* Under ~36px the number (22cqw) and name/value (12-18cqw) labels are below 8px and read
+     as specks; drop them so the symbol has the tile. Tiles in a desktop-width table are
+     wider than this and keep every label. */
+  @container (max-width: 36px) {
+    .number,
+    span.name,
+    span.value {
+      display: none;
+    }
+  }
+
   /* Multi-value positioning */
   .multi-value {
     position: absolute;

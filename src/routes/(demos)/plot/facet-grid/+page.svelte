@@ -57,6 +57,10 @@
   }
 
   let point_radius = $state(4)
+  // below this width two side-by-side panels leave no room for axis titles; stack them
+  // and move the shared legend from its side band to below the grid
+  let demo_width = $state(1000)
+  const columns = $derived(demo_width < 640 ? 1 : 2)
   let plot_type = $state<keyof typeof plot_configs>(`scatter`)
   let panels = $derived(
     panel_specs.map(({ key, title, offset, curvature }, panel_idx) => ({
@@ -119,31 +123,38 @@
   {/if}
 </div>
 
-<div data-testid="facet-grid-demo" style="height: 720px; min-width: 0">
+{#snippet shared_legend()}
+  <div class={[`shared-legend`, { below: columns === 1 }]} aria-label="Shared method legend">
+    <strong>Method</strong>
+    {#each method_configs as { label, color } (label)}
+      <span><i style:background={color}></i>{label}</span>
+    {/each}
+    <small style="opacity: 0.7"
+      >Drag to zoom; focus and Shift+wheel to pan; double-click to reset all linked panels.</small
+    >
+  </div>
+{/snippet}
+
+<div
+  data-testid="facet-grid-demo"
+  style:height="{columns === 1 ? 1100 : 720}px"
+  style="min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 1em"
+  bind:clientWidth={demo_width}
+>
   <FacetGrid
     {panels}
-    columns={2}
+    {columns}
     gap={8}
     axis_modes={{ x: `shared`, y: `shared` }}
     axis_visibility={{ x: `outer`, x2: `none`, y: `outer`, y2: `none` }}
     shared_bands={{ title_height: 62, legend_width: 126, gap: 10 }}
+    legend={columns === 1 ? undefined : shared_legend}
   >
     {#snippet title()}
       <div class="shared-title">
         <strong style="font-size: 1.15em">Equation-of-state comparison · {plot_type}</strong>
         <span style="opacity: 0.7"
           >Shared x/y ranges, padding, and linked zoom across four materials</span
-        >
-      </div>
-    {/snippet}
-    {#snippet legend()}
-      <div class="shared-legend" aria-label="Shared method legend">
-        <strong>Method</strong>
-        {#each method_configs as { label, color } (label)}
-          <span><i style:background={color}></i>{label}</span>
-        {/each}
-        <small style="opacity: 0.7"
-          >Drag to zoom; focus and Shift+wheel to pan; double-click to reset all linked panels.</small
         >
       </div>
     {/snippet}
@@ -161,6 +172,9 @@
       </div>
     {/snippet}
   </FacetGrid>
+  {#if columns === 1}
+    {@render shared_legend()}
+  {/if}
 </div>
 
 <style>
@@ -187,6 +201,12 @@
     gap: 0.7em;
     height: 100%;
     padding-inline: 0.3em;
+  }
+  .shared-legend.below {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5em 1.5em;
   }
   .shared-legend span {
     display: flex;
