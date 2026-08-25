@@ -2,13 +2,8 @@
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import type { SVGAttributes } from 'svelte/elements'
-  import {
-    type ChartSegment,
-    composition_segments,
-    fit_font_scale,
-    segment_suffix,
-    segment_title,
-  } from './chart'
+  import type { ChartSegment } from './chart'
+  import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
 
   const LABEL_HEIGHT = 20 // px rows above and below the bar for external labels
   const GAP = 2 // px between bar and label rows

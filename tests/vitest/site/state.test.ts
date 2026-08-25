@@ -1,5 +1,10 @@
 import { goto } from '$app/navigation'
-import { file_param, group_demo_routes, set_file_param } from '$site/state.svelte'
+import {
+  file_param,
+  group_demo_routes,
+  normalize_static_url,
+  set_file_param,
+} from '$site/state.svelte'
 import { describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$app/navigation`, () => ({ goto: vi.fn() }))
@@ -7,6 +12,16 @@ vi.mock(`$app/environment`, () => ({ browser: true }))
 vi.mock(`$app/state`, () => ({
   page: { url: new URL(`https://example.test/structure/index.html?file=old.cif&view=slice`) },
 }))
+
+test.each([
+  [`/phase-diagram.html#section`, `/phase-diagram#section`],
+  [`/plot/histogram.html?bins=20`, `/plot/histogram?bins=20`],
+  [`/index.html#overview`, `/#overview`],
+  [`https://matterviz.janosh.dev/structure.html`, `https://matterviz.janosh.dev/structure`],
+  [`/already-extensionless`, `/already-extensionless`],
+])(`normalize_static_url(%s)`, (url, expected) =>
+  expect(normalize_static_url(url)).toBe(expected),
+)
 
 describe(`?file= helpers`, () => {
   test(`file_param reads, set_file_param replaces on a copy of page.url`, () => {

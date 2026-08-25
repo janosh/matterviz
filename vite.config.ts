@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { vite_plugin as live_examples } from 'svelte-widgets/live-examples'
+import source_links from 'svelte-widgets/source-links/vite-plugin'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 import { configDefaults } from 'vitest/config'
@@ -80,7 +81,7 @@ const plugins = [
   json_gz_plugin() as unknown,
   raw_text_plugin as unknown,
   starry_night_theme_plugin as unknown,
-  shared.vite_plugin_source_symbols() as unknown,
+  source_links() as unknown,
   sveltekit() as unknown,
   live_examples() as unknown,
 ] as PluginOption[]

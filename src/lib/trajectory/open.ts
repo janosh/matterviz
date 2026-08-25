@@ -20,11 +20,8 @@ import { parse_ase_trajectory } from './parse/ase'
 import { open_hdf5_trajectory } from './parse/hdf5'
 import { parse_lammps_trajectory } from './parse/lammps'
 import { parse_pymatgen_trajectory } from './parse/pymatgen'
-import {
-  create_warning_collector,
-  type ParsedTrajectory,
-  type WarningCollector,
-} from './parse/shared'
+import type { ParsedTrajectory, WarningCollector } from './parse/shared'
+import { create_warning_collector } from './parse/shared'
 import { parse_vasp_xdatcar } from './parse/vasp'
 import { parse_xyz_trajectory } from './parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from './run'

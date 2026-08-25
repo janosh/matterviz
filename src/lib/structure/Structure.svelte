@@ -10,10 +10,12 @@
   import type { ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon } from 'svelte-widgets'
+  import { Icon, Toast } from 'svelte-widgets'
+  import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import * as io from '$lib/io'
-  import { handle_and_prevent, is_editable_target } from '$lib/utils'
+  import { handle_and_prevent } from '$lib/utils'
+  import { is_editable_event_target } from 'svelte-widgets/utils'
   import { create_viewer_loader, webgpu_available } from '$lib/scene'
   import { set_isosurface_error_handler } from '$lib/isosurface/context'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
@@ -53,11 +55,8 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
-  import {
-    DEFAULT_ATOM_COLOR_CONFIG,
-    normalize_atom_color_config,
-    type AtomColorConfig,
-  } from './atom-properties'
+  import type { AtomColorConfig } from './atom-properties'
+  import { DEFAULT_ATOM_COLOR_CONFIG, normalize_atom_color_config } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
   import { open_structure_text } from './loader'
@@ -255,12 +254,11 @@
   } = $props()
 
   // === toast ===
-  let toast_msg = $state<string | null>(null)
-  let toast_timer: ReturnType<typeof setTimeout> | undefined
-  function show_toast(msg: string, duration_ms = 2000): void {
-    clearTimeout(toast_timer)
-    toast_msg = msg
-    toast_timer = setTimeout(() => (toast_msg = null), duration_ms)
+  // One notice at a time: a newer message replaces the current one rather than queueing
+  const toast_store = new ToastStore({ duration_ms: 2000 })
+  function show_toast(msg: string): void {
+    toast_store.clear()
+    toast_store.show(msg)
   }
 
   // === acquisition: data_url, structure_string, drops ===
@@ -616,14 +614,14 @@
   })
 
   $effect(() => () => {
-    clearTimeout(toast_timer)
+    toast_store.destroy()
     symmetry_run_id += 1 // a run landing after unmount must not write into dead bindings
   })
 
   // === keyboard ===
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
-    const is_input_focused = is_editable_target(event)
+    const is_input_focused = is_editable_event_target(event.target)
     // Escape leaves add-atom mode even from its element input
     if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {
       session.add_atom_mode = false
@@ -974,9 +972,14 @@
       </div>
     {/if}
 
-    {#if toast_msg}
-      <div class="edit-toast">{toast_msg}</div>
-    {/if}
+    <Toast
+      store={toast_store}
+      position="bottom-center"
+      dismissible={false}
+      pause_on_hover={false}
+      focus_hotkey={null}
+      class="edit-toast"
+    />
 
     {#if analyze_symmetry && symmetry_error}
       <StatusMessage
@@ -1063,29 +1066,15 @@
     display: grid;
     place-content: center;
   }
-  .edit-toast {
-    position: absolute;
-    bottom: 3rem;
-    left: 50%;
-    transform: translateX(-50%);
-    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
-    color: var(--text-color, currentColor);
-    padding: 0.4rem 0.8rem;
-    border-radius: var(--border-radius, 3pt);
-    font-size: 0.8rem;
-    z-index: var(--z-index-viewer-dropdown, 100);
-    pointer-events: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-    animation: toast-fade 2s ease-in-out;
-    opacity: 0;
-  }
-  @keyframes toast-fade {
-    0%,
-    70% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
+  /* Transient notices sit inside the viewer (so they follow it into fullscreen) and never
+    intercept pointer events meant for the canvas beneath */
+  .structure :global(.edit-toast) {
+    --toast-stack-position: absolute;
+    --toast-inset: 3rem;
+    --toast-z-index: var(--z-index-viewer-dropdown, 100);
+    --toast-font-size: 0.8rem;
+    :global(.toast) {
+      pointer-events: none;
     }
   }
   /* CellSelect sits left of the legend and, like the legend's mode toggle, only shows while the

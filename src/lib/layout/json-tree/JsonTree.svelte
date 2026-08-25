@@ -17,12 +17,8 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import JsonNode from './JsonNode.svelte'
-  import {
-    set_json_tree_context,
-    type CopyEventPosition,
-    type JsonTreeContext,
-    type JsonTreeProps,
-  } from './types'
+  import type { CopyEventPosition, JsonTreeContext, JsonTreeProps } from './types'
+  import { set_json_tree_context } from './types'
   import {
     build_ghost_map,
     collect_all_paths,

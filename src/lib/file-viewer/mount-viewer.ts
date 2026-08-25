@@ -5,11 +5,8 @@ import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
 import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
 import type { PhaseData } from '$lib/convex-hull/types'
 import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
-import {
-  type BandGridData,
-  type FermiSurfaceData,
-  is_fermi_surface_data,
-} from '$lib/fermi-surface/types'
+import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
+import { is_fermi_surface_data } from '$lib/fermi-surface/types'
 import type { VolumetricFileData } from '$lib/isosurface/types'
 import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { PhaseDiagramData } from '$lib/phase-diagram/types'

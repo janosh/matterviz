@@ -12,12 +12,8 @@
   import { to_error } from '$lib/utils'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { ParseProgress, TrajectorySource, TrajHandlerData } from './index'
-  import {
-    Hdf5GroupSelectionRequiredError,
-    open_trajectory,
-    type OpenTrajectoryOptions,
-    source_byte_size,
-  } from './open'
+  import type { OpenTrajectoryOptions } from './open'
+  import { Hdf5GroupSelectionRequiredError, open_trajectory, source_byte_size } from './open'
   import { get_unsupported_format_message } from './parse'
   import type { TrajectoryRun } from './run'
   import Trajectory from './Trajectory.svelte'

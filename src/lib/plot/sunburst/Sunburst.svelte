@@ -18,16 +18,10 @@
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { node_display_name } from '$lib/plot/core/utils/hierarchy-chart'
-  import {
-    HierarchyChartState,
-    type HierarchyChartProps,
-  } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import {
-    arc_label_transform,
-    project_arcs,
-    type ScreenArc as ScreenArcOf,
-    type ViewWindow,
-  } from '$lib/plot/sunburst/render'
+  import type { HierarchyChartProps } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import type { ScreenArc as ScreenArcOf, ViewWindow } from '$lib/plot/sunburst/render'
+  import { arc_label_transform, project_arcs } from '$lib/plot/sunburst/render'
   import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
   import { DEFAULTS } from '$lib/settings'
   import { arc as d3_arc } from 'd3-shape'

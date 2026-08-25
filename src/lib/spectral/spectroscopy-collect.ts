@@ -1,20 +1,17 @@
 import { is_finite_vec3_like } from '$lib/math'
-import {
-  type AnalysisStreamOptions,
-  collect_trajectory_positions,
-} from '$lib/trajectory/analysis'
+import type { AnalysisStreamOptions } from '$lib/trajectory/analysis'
+import { collect_trajectory_positions } from '$lib/trajectory/analysis'
 import { values_per_sample } from '$lib/trajectory/helpers'
 import type { TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
 import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory/run'
 import { parse_frame_signal } from '$lib/trajectory/runs/accumulate'
 import { SvelteSet } from 'svelte/reactivity'
-import {
-  arrays_equal,
-  standard_masses_for_elements,
-  type InfraredSignal,
-  type SpectroscopyPreprocessing,
-  type TrajectorySpectroscopyInput,
+import type {
+  InfraredSignal,
+  SpectroscopyPreprocessing,
+  TrajectorySpectroscopyInput,
 } from './trajectory-spectroscopy'
+import { arrays_equal, standard_masses_for_elements } from './trajectory-spectroscopy'
 
 // Signal keys a trajectory may carry for each response; the first present is the default
 export const INFRARED_SIGNAL_KEYS = [`dipole`, `polarization`, `current`] as const

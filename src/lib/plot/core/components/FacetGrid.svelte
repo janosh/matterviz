@@ -1,4 +1,16 @@
 <script lang="ts" generics="Datum = unknown">
+  import type {
+    FacetAxisModes,
+    FacetAxisRanges,
+    FacetAxisVisibilityModes,
+    FacetKey,
+    FacetPanel,
+    FacetPanelContext,
+    FacetPanelLayoutReport,
+    FacetSharedBandContext,
+    FacetSharedBandSizes,
+    ResolvedFacetGridGeometry,
+  } from '$lib/plot/core/facets'
   import {
     FACET_AXES,
     assign_facet_panels,
@@ -7,16 +19,6 @@
     reconcile_facet_padding,
     reconcile_facet_ranges,
     resolve_facet_axis_visibility,
-    type FacetAxisModes,
-    type FacetAxisRanges,
-    type FacetAxisVisibilityModes,
-    type FacetKey,
-    type FacetPanel,
-    type FacetPanelContext,
-    type FacetPanelLayoutReport,
-    type FacetSharedBandContext,
-    type FacetSharedBandSizes,
-    type ResolvedFacetGridGeometry,
   } from '$lib/plot/core/facets'
   import { is_valid_range } from '$lib/plot/core/shared-axes'
   import { observe_size } from '$lib/plot/core/utils'

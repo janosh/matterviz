@@ -4,12 +4,8 @@ import {
   spectroscopy_stream_channels,
   trajectory_signal_keys,
 } from '$lib/spectral'
-import {
-  is_signal_descriptor,
-  type MemoryRunExtras,
-  type TrajectoryFrame,
-  type TrajectoryRun,
-} from '$lib/trajectory'
+import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
+import { is_signal_descriptor } from '$lib/trajectory'
 import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
 import { describe, expect, it } from 'vitest'
 import { make_torch_sim_signal_buffer } from '../trajectory/fixtures'

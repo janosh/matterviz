@@ -7,11 +7,8 @@
     IsobaricBinaryPhaseDiagram,
     parse_phase_diagram_svg,
   } from '$lib/phase-diagram'
-  import {
-    get_system_name,
-    parse_tdb,
-    type TdbParseResult,
-  } from '$site/phase-diagrams/tdb-parse'
+  import type { TdbParseResult } from '$site/phase-diagrams/tdb-parse'
+  import { get_system_name, parse_tdb } from '$site/phase-diagrams/tdb-parse'
   import TdbInfoPanel from '$site/phase-diagrams/TdbInfoPanel.svelte'
   import { to_error } from '$lib/utils'
   import { all_phase_diagram_files, find_precomputed_diagram } from '$site/phase-diagrams'

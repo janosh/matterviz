@@ -3,13 +3,8 @@
   import type { CompositionType } from '$lib/composition'
   import { hierarchy, pack } from 'd3-hierarchy'
   import type { SVGAttributes } from 'svelte/elements'
-  import {
-    type ChartSegment,
-    composition_segments,
-    fit_font_scale,
-    segment_suffix,
-    segment_title,
-  } from './chart'
+  import type { ChartSegment } from './chart'
+  import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
 
   let {

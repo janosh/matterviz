@@ -4,6 +4,7 @@
   // its tie-triangle (lever rule); drawing reuses the convex-hull canvas helpers.
   import { add_alpha, default_element_colors } from '$lib/colors'
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
+  import type { LabelOpts, Projected } from '$lib/convex-hull/canvas-draw'
   import {
     build_hull_faces,
     draw_corner_labels,
@@ -12,8 +13,6 @@
     draw_hull_points,
     face_color_resolver,
     find_hull_entry_at_mouse,
-    type LabelOpts,
-    type Projected,
   } from '$lib/convex-hull/canvas-draw'
   import { get_energy_color_scale, merge_highlight_style } from '$lib/convex-hull/helpers'
   import type { ConvexHullEntry } from '$lib/convex-hull/types'
@@ -21,13 +20,8 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { type CanvasFrame, create_canvas_surface } from '$lib/canvas-surface.svelte'
   import { decompose_composition, type DiagramModel } from './compute'
-  import {
-    type Decomposition,
-    type IsothermalSection,
-    type SectionHover,
-    TERNARY_COLORS,
-    type TernaryDisplay,
-  } from './types'
+  import type { Decomposition, IsothermalSection, SectionHover, TernaryDisplay } from './types'
+  import { TERNARY_COLORS } from './types'
 
   let {
     model,

@@ -3,11 +3,8 @@
 // Worker, or a custom gas provider, which is a function and cannot cross the thread boundary).
 import { slim_phase_entry } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
-import {
-  abort_error,
-  create_worker_client,
-  type WorkerRequestOptions,
-} from '$lib/worker-client.svelte'
+import type { WorkerRequestOptions } from '$lib/worker-client.svelte'
+import { abort_error, create_worker_client } from '$lib/worker-client.svelte'
 import { compute_ternary_phase_diagram } from './compute'
 import { get_volume_per_atom } from './free-energy'
 import type { DiagramProgress, TernaryPhaseDiagram, TernaryPhaseDiagramOptions } from './types'

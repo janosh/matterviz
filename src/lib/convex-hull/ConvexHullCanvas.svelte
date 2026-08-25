@@ -14,6 +14,7 @@
   import * as extras from '@threlte/extras'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { PerspectiveCamera } from 'three/webgpu'
+  import type { Projected } from './canvas-draw'
   import {
     build_hull_faces,
     draw_corner_labels,
@@ -21,7 +22,6 @@
     draw_hull_faces,
     energy_range_of,
     HULL_CANVAS_STRATEGIES,
-    type Projected,
     simplex_centroid,
   } from './canvas-draw'
   import { create_canvas_interactions } from './canvas-interactions.svelte'

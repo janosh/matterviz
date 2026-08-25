@@ -17,11 +17,11 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { create_colorbar_decoration } from '$lib/plot/core/colorbar-decoration.svelte'
+  import type { DecorationItem } from '$lib/plot/core/decorations'
   import {
     decoration_data_attrs,
     decoration_placement_revision,
     get_decoration_placement,
-    type DecorationItem,
   } from '$lib/plot/core/decorations'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import { get_relative_coords, range_bounds } from '$lib/plot/core/interactions'

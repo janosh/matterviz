@@ -8,7 +8,6 @@ import {
   compute_column_stats,
   discover_columns,
   format_datetime,
-  fuzzy_match,
   get_column_id,
   infer_datetime_kind,
   make_cell_color_scale,
@@ -407,21 +406,15 @@ describe(`compare_rows`, () => {
 })
 
 describe(`search and filters`, () => {
-  it.each([
-    [`model a`, `mdla`, true], // callers lower-case both sides
-    [`model a`, `alm`, false],
-    [`abc`, ``, true],
-  ])(`fuzzy_match(%j, %j) = %j`, (text, query, expected) => {
-    expect(fuzzy_match(text, query)).toBe(expected)
-  })
-
   it(`matches the query against all values or only the given keys, optionally fuzzily`, () => {
     const row = { Model: `<b>Alpha</b>`, Score: 0.5, Note: null }
     expect(row_matches_query(row, `alp`)).toBe(true)
     expect(row_matches_query(row, `0.5`)).toBe(true)
     expect(row_matches_query(row, `0.5`, { keys: [`Model`] })).toBe(false)
     expect(row_matches_query(row, `aph`)).toBe(false)
+    // fuzzy = in-order character subsequence, so `apl` matches but reordered `pal` does not
     expect(row_matches_query(row, `aph`, { fuzzy: true })).toBe(true)
+    expect(row_matches_query(row, `pal`, { fuzzy: true })).toBe(false)
   })
 
   it.each<[CellVal, ColumnFilter, boolean]>([

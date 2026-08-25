@@ -559,7 +559,7 @@ describe(`Structure`, () => {
       })
       expect(state.measure_mode).toBe(`edit-bonds`)
       // a build that already fails at mount is reported, not only one that starts failing
-      expect(doc_query(`.edit-toast`).textContent).toBe(
+      expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
         `Failed to create supercell: malformed scaling matrix`,
       )
     } finally {
@@ -621,11 +621,13 @@ describe(`Structure`, () => {
     // the mount-time analysis reset has run; hand the viewer its symmetry data now
     props.sym_data = sym_data
     flushSync()
-    expect(document.querySelector(`.edit-toast`)).toBeNull()
+    expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
 
     props.cell_type = `conventional`
     flushSync()
-    expect(doc_query(`.edit-toast`).textContent).toBe(symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE)
+    expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
+      symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE,
+    )
   })
 
   test(`shows safe bond editing controls by default`, async () => {

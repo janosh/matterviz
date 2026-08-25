@@ -2,9 +2,9 @@
   // 2D reference line (horizontal, vertical, diagonal, segment, line) with an optional
   // annotation whose placement the host plot solves together with its other decorations.
   import type { ReferenceAnnotationCandidate } from '$lib/plot/core/decorations'
+  import type { RefLineAxes } from '$lib/plot/core/reference-line'
   import {
     estimate_reference_annotation_metrics,
-    type RefLineAxes,
     reference_annotation_text_rect,
     resolve_line_endpoints,
   } from '$lib/plot/core/reference-line'

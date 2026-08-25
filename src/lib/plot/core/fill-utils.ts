@@ -20,17 +20,16 @@ import {
   curveStepBefore,
   line,
 } from 'd3-shape'
-import {
-  assert_aligned_lengths,
-  assert_series_lengths,
-  type DataSeries,
-  type ErrorBand,
-  type FillBoundary,
-  type FillCurveType,
-  type FillGradient,
-  type FillRegion,
-  type LineCurve,
+import type {
+  DataSeries,
+  ErrorBand,
+  FillBoundary,
+  FillCurveType,
+  FillGradient,
+  FillRegion,
+  LineCurve,
 } from '$lib/plot/core/types'
+import { assert_aligned_lengths, assert_series_lengths } from '$lib/plot/core/types'
 
 // A 2D point in data (or pixel) coordinates
 export interface Pt {

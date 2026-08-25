@@ -1,11 +1,8 @@
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
-import {
-  type AtomColorConfig,
-  type AtomPropertyColors,
-  DEFAULT_ATOM_COLOR_CONFIG,
-} from '$lib/structure/atom-properties'
+import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
+import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, onTestFinished, test } from 'vitest'

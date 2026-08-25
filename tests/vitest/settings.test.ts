@@ -1,12 +1,13 @@
+import type { PartialSettings } from '$lib/settings'
 import {
   build_structure_props_from_settings,
   DEFAULTS,
   get_convex_hull_defaults,
   is_valid_setting_value,
   merge,
-  type PartialSettings,
   SETTINGS_CONFIG,
 } from '$lib/settings'
+import type { StructureViewState } from '$lib/settings/viewer-state'
 import {
   clear_structure_view_state,
   create_structure_view_state,
@@ -16,12 +17,9 @@ import {
   serialize_structure_view_state,
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
   STRUCTURE_VIEW_STATE_VERSION,
-  type StructureViewState,
 } from '$lib/settings/viewer-state'
-import {
-  legend_mode_to_prop,
-  type LegendVisibilityMode,
-} from '$lib/plot/core/utils/series-visibility'
+import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
+import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SvelteSet } from 'svelte/reactivity'
@@ -727,16 +725,16 @@ describe(`Structure viewer state serialization`, () => {
     const customized = create_structure_view_state({
       scene_props: { atom_radius: 1.5 },
     })
-    expect(save_structure_view_state(customized)).toBe(true)
+    save_structure_view_state(customized)
     expect(load_structure_view_state()?.settings.structure.atom_radius).toBe(1.5)
 
-    expect(save_structure_view_state(create_structure_view_state())).toBe(true)
+    save_structure_view_state(create_structure_view_state())
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
 
     // backs "Reset all" in the controls pane: the next load must not resurrect old settings
     save_structure_view_state(customized)
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).not.toBeNull()
-    expect(clear_structure_view_state()).toBe(true)
+    clear_structure_view_state()
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
   })
 })

@@ -2,6 +2,7 @@
 // search/filter predicates and date-time parsing/formatting. No DOM, so it's unit-testable
 // and the component only wires these to events and markup.
 import { normalize_unicode_minus } from '$lib/utils'
+import { fuzzy_match } from 'svelte-widgets/utils'
 import { SvelteSet } from 'svelte/reactivity'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Label, RowData } from './index'
 
@@ -112,18 +113,8 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
 
 // === Search and per-column filters ===
 
-// True when every char of query appears in text in order (subsequence match),
-// e.g. "mdla" matches "Model A". Cheap fuzzy matching for short filter queries.
-export const fuzzy_match = (text: string, query: string): boolean => {
-  let query_idx = 0
-  for (const char of text) {
-    if (char === query[query_idx] && ++query_idx === query.length) return true
-  }
-  return query.length === 0
-}
-
-// Case-insensitive substring (optionally subsequence) match of a lower-cased query against
-// the row's values, or only the given keys.
+// Case-insensitive substring (optionally subsequence, e.g. "mdla" matches "Model A") match of
+// a lower-cased query against the row's values, or only the given keys.
 export const row_matches_query = (
   row: RowData,
   query: string,
@@ -132,7 +123,7 @@ export const row_matches_query = (
   (keys ? keys.map((key) => row[key]) : Object.values(row)).some((val) => {
     if (val == null) return false
     const clean_val = cell_text(val).toLowerCase()
-    return clean_val.includes(query) || (fuzzy && fuzzy_match(clean_val, query))
+    return clean_val.includes(query) || (fuzzy && fuzzy_match(query, clean_val))
   })
 
 export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {

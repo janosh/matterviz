@@ -1,10 +1,7 @@
-import {
-  SETTINGS_CONFIG,
-  type DefaultSettings,
-  type SettingType,
-  validate_setting_value,
-} from '../settings'
+import type { DefaultSettings, SettingType } from '../settings'
+import { SETTINGS_CONFIG, validate_setting_value } from '../settings'
 import { is_plain_object } from '../utils'
+import { storage_get, storage_remove, storage_set } from 'svelte-widgets/storage'
 
 export const STRUCTURE_VIEW_STATE_VERSION = 1 as const
 export const STRUCTURE_VIEW_STATE_STORAGE_KEY = `matterviz:structure-view:v1`
@@ -176,56 +173,24 @@ export const serialize_structure_view_state = (state: StructureViewState): strin
   return JSON.stringify(normalize_structure_view_state(state), null, 2)
 }
 
-const get_storage = (): Storage | null => {
-  try {
-    const storage = globalThis.localStorage
-    return storage && typeof storage.getItem === `function` ? storage : null
-  } catch {
-    return null
-  }
-}
-
-// Storage is untrusted browser input; failures must not break the viewer.
-const try_storage_action = (action: () => void): boolean => {
-  try {
-    action()
-    return true
-  } catch {
-    return false
-  }
-}
-const discard_stored_state = (storage: Storage): boolean =>
-  try_storage_action(() => storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY))
+// Storage is untrusted browser input (and best-effort: the svelte-widgets helpers swallow
+// disabled/full stores), so a failure never breaks the viewer.
+export const clear_structure_view_state = (): void =>
+  storage_remove(STRUCTURE_VIEW_STATE_STORAGE_KEY)
 
 export const load_structure_view_state = (): StructureViewState | null => {
-  const storage = get_storage()
-  if (!storage) return null
-  try {
-    const stored = storage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
-    if (stored === null) return null
-    const { state } = deserialize_structure_view_state(stored)
-    if (state) return state
-  } catch {
-    // fall through and purge whatever we could not read back
-  }
-  discard_stored_state(storage)
-  return null
+  const stored = storage_get(STRUCTURE_VIEW_STATE_STORAGE_KEY)
+  if (stored === null) return null
+  const { state } = deserialize_structure_view_state(stored)
+  if (!state) clear_structure_view_state() // purge what we could not read back
+  return state ?? null
 }
 
-export const save_structure_view_state = (state: StructureViewState): boolean => {
-  const storage = get_storage()
-  if (!storage) return false
+export const save_structure_view_state = (state: StructureViewState): void => {
   const serialized = serialize_structure_view_state(state)
   // Storing a state identical to the defaults would pin today's defaults for good, so drop it.
-  if (serialized === DEFAULT_VIEW_STATE_JSON) return discard_stored_state(storage)
-  return try_storage_action(() =>
-    storage.setItem(STRUCTURE_VIEW_STATE_STORAGE_KEY, serialized),
-  )
-}
-
-export const clear_structure_view_state = (): boolean => {
-  const storage = get_storage()
-  return storage ? discard_stored_state(storage) : false
+  if (serialized === DEFAULT_VIEW_STATE_JSON) clear_structure_view_state()
+  else storage_set(STRUCTURE_VIEW_STATE_STORAGE_KEY, serialized)
 }
 
 export const DEFAULT_STRUCTURE_VIEW_STATE = create_structure_view_state()

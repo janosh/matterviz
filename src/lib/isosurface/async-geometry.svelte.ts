@@ -2,11 +2,8 @@
 // Async wrapper for compute_isosurface_geometries via the shared persistent-worker client.
 // Falls back to synchronous main-thread extraction during SSR / where Worker is missing.
 import { create_worker_client, type WorkerRequestOptions } from '$lib/worker-client.svelte'
-import {
-  compute_isosurface_geometries,
-  type GeometryInput,
-  type GeometryResult,
-} from './geometry'
+import type { GeometryInput, GeometryResult } from './geometry'
+import { compute_isosurface_geometries } from './geometry'
 
 const run_geometry = create_worker_client<
   GeometryInput,

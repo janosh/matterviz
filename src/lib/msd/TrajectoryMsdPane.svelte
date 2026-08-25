@@ -1,10 +1,8 @@
 <script lang="ts">
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
-  import {
-    type AnalysisPaneContext,
-    suggest_analysis_frame_stride,
-  } from '$lib/trajectory/analysis'
+  import type { AnalysisPaneContext } from '$lib/trajectory/analysis'
+  import { suggest_analysis_frame_stride } from '$lib/trajectory/analysis'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { collect_msd_positions } from './collect'
   import type { MsdOptions, MsdResult } from './index'

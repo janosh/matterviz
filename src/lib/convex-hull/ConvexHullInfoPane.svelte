@@ -1,10 +1,6 @@
 <script lang="ts">
-  import {
-    ViewerPane,
-    info_pane_icon,
-    type PaneProps,
-    type PaneToggleProps,
-  } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { ViewerPane, info_pane_icon } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'

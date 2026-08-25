@@ -1,23 +1,22 @@
-import {
-  clear_text_metrics_cache,
-  DEFAULT_FONT_SPEC,
-  type FontSpec,
-} from '$lib/plot/core/text-metrics'
+import type { FontSpec } from '$lib/plot/core/text-metrics'
+import { clear_text_metrics_cache, DEFAULT_FONT_SPEC } from '$lib/plot/core/text-metrics'
+import type {
+  MeasuredAxis,
+  TickLabelDimensions,
+  TickLabelItem,
+  TickLayoutSide,
+} from '$lib/plot/core/tick-layout'
 import {
   analyze_tick_label_geometry,
   axis_edge_overflow,
   default_tick_label_anchor,
   measure_text_width,
-  type MeasuredAxis,
   resolve_tick_layout,
   suggest_tick_count,
   thin_tick_indices,
   TICK_LABEL_GAP,
   TICK_STRATEGIES,
   tick_label_aabb,
-  type TickLabelDimensions,
-  type TickLabelItem,
-  type TickLayoutSide,
 } from '$lib/plot/core/tick-layout'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 

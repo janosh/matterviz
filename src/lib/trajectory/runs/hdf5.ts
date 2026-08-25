@@ -1,12 +1,8 @@
 // Run over an open h5wasm file (TorchSim / Reference MD layouts). The parser hands over a
 // LazyTrajectorySource whose `dispose` closes the handle; this wraps it in the run contract.
 import type { LazyTrajectorySource } from '../parse/shared'
-import {
-  sync_run,
-  TrajectoryProperties,
-  type TrajectoryProvenance,
-  type TrajectoryRun,
-} from '../run'
+import type { TrajectoryProvenance, TrajectoryRun } from '../run'
+import { sync_run, TrajectoryProperties } from '../run'
 
 export const hdf5_run = (
   source: LazyTrajectorySource,

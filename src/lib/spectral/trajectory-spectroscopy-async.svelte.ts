@@ -5,12 +5,12 @@
 import type { TrajectorySignal } from '$lib/trajectory'
 import { plain_position_stream } from '$lib/trajectory/async-result.svelte'
 import { create_worker_client } from '$lib/worker-client.svelte'
-import {
-  calc_trajectory_spectroscopy,
-  type TrajectorySpectroscopyInput,
-  type TrajectorySpectroscopyOptions,
-  type TrajectorySpectroscopyResult,
+import type {
+  TrajectorySpectroscopyInput,
+  TrajectorySpectroscopyOptions,
+  TrajectorySpectroscopyResult,
 } from './trajectory-spectroscopy'
+import { calc_trajectory_spectroscopy } from './trajectory-spectroscopy'
 
 // Same field-by-field rebuild as plain_position_stream: raw typed arrays straight to
 // structured clone, only the small plain parts snapshotted

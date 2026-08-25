@@ -1,10 +1,12 @@
+import type {
+  DecorationItem,
+  DecorationScene,
+  DecorationSize,
+} from '$lib/plot/core/decorations'
 import {
   build_obstacles_norm,
   clip_bar,
   clip_segment_to_unit_square,
-  type DecorationItem,
-  type DecorationScene,
-  type DecorationSize,
   get_outside_placement,
   place_outside_decorations,
 } from '$lib/plot/core/decorations'

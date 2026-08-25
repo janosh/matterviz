@@ -9,10 +9,8 @@
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import {
-    HierarchyChartState,
-    type HierarchyChartProps,
-  } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import type { HierarchyChartProps } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
   import {
     measure_treemap_label_block,

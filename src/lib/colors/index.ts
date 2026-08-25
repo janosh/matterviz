@@ -2,7 +2,8 @@ import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { ColorSchemeName } from '$lib/constants'
 import { clamp } from '$lib/math'
-import { get_system_mode, nearest_declared } from '$lib/theme'
+import { nearest_declared } from '$lib/theme'
+import { system_preference } from 'svelte-widgets/theme'
 import { clamp01 } from '$lib/utils'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
@@ -320,7 +321,7 @@ export const contrast_color_memo = (
 export function is_dark_mode(
   element: Element | undefined = globalThis.document?.documentElement,
 ): boolean {
-  return element !== undefined && (nearest_declared(element) ?? get_system_mode()) === `dark`
+  return element !== undefined && (nearest_declared(element) ?? system_preference()) === `dark`
 }
 
 // Call `on_change` whenever the scheme `element` renders in may have changed: the root's

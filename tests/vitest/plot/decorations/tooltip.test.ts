@@ -1,8 +1,5 @@
-import {
-  get_tooltip_placement_candidates,
-  place_tooltip,
-  type TooltipPlacementConfig,
-} from '$lib/plot/core/decorations'
+import type { TooltipPlacementConfig } from '$lib/plot/core/decorations'
+import { get_tooltip_placement_candidates, place_tooltip } from '$lib/plot/core/decorations'
 import { describe, expect, test } from 'vitest'
 
 const base_config: TooltipPlacementConfig = {

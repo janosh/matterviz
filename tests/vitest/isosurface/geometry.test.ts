@@ -2,9 +2,9 @@
 // the create_worker_client wiring (happy-dom has no Worker, so a stub is installed before
 // the client module is imported to exercise the real postMessage plumbing)
 import type { compute_geometries_async as ComputeGeometriesAsync } from '$lib/isosurface/async-geometry.svelte'
+import type { GeometryInput } from '$lib/isosurface/geometry'
 import {
   compute_isosurface_geometries,
-  type GeometryInput,
   geometry_result_transferables,
 } from '$lib/isosurface/geometry'
 import { create_volume_sampler } from '$lib/isosurface/sampling'

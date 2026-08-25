@@ -1,10 +1,6 @@
 <script lang="ts">
-  import {
-    info_pane_icon,
-    type InfoPaneRow,
-    ViewerPane,
-    type ViewerPaneOptions,
-  } from '$lib/overlays'
+  import type { InfoPaneRow, ViewerPaneOptions } from '$lib/overlays'
+  import { info_pane_icon, ViewerPane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import { format_bytes } from '$lib/utils'

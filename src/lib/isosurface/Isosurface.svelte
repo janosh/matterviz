@@ -20,11 +20,8 @@
     set_vertex_colors,
   } from './coloring'
   import { compute_geometries_async } from './async-geometry.svelte'
-  import {
-    compute_isosurface_geometries,
-    type GeometryResult,
-    type GeometryVolumeJob,
-  } from './geometry'
+  import type { GeometryResult, GeometryVolumeJob } from './geometry'
+  import { compute_isosurface_geometries } from './geometry'
   import type { ScalarGrid3D } from './grid'
   import { get_isosurface_error_handler, type IsosurfaceErrorHandler } from './context'
   import { record_stage, time_stage } from './profile'

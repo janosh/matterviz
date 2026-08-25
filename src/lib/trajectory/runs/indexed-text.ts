@@ -12,12 +12,8 @@ import {
   parse_extxyz_lattice,
   parse_xyz_comment_metadata,
 } from '../parse/xyz'
-import {
-  sync_run,
-  TrajectoryProperties,
-  type TrajectoryProvenance,
-  type TrajectoryRun,
-} from '../run'
+import type { TrajectoryProvenance, TrajectoryRun } from '../run'
+import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
 
 // Rows per batch pushed into `properties` before yielding to the event loop

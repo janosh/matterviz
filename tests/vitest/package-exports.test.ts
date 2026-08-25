@@ -6,12 +6,12 @@ import type {
   WorkerClient,
   WorkerRequestOptions,
 } from '$lib'
-import {
-  resolve_plot_title,
-  type DecorationSide,
-  type FreeAnnotationDecorationItem,
-  type PlotTitleLineKind,
+import type {
+  DecorationSide,
+  FreeAnnotationDecorationItem,
+  PlotTitleLineKind,
 } from '$lib/plot'
+import { resolve_plot_title } from '$lib/plot'
 import { execFileSync } from 'node:child_process'
 import {
   cpSync,

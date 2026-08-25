@@ -2,12 +2,8 @@
 // carry a File plus a text/plain path to ignore, FilePicker drags a URL), worker parsing with
 // progress, superseded loads, run ownership, the HDF5 group picker, errors and the empty state.
 import * as parse_worker from '$lib/file-viewer/parse-in-worker'
-import {
-  Hdf5GroupSelectionRequiredError,
-  open_trajectory,
-  type TrajectoryRun,
-  type TrajHandlerData,
-} from '$lib/trajectory'
+import type { TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
+import { Hdf5GroupSelectionRequiredError, open_trajectory } from '$lib/trajectory'
 import TrajectoryFileViewer from '$lib/trajectory/TrajectoryFileViewer.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'

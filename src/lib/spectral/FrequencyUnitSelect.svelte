@@ -2,9 +2,9 @@
   // Frequency-unit selector shared by the Bands, Dos and IrRamanSpectrum control panes. The
   // bound `units` may arrive in a spelling found in the wild (`cm-1`, `cm⁻¹`); the select
   // shows the canonical unit and writes the canonical spelling back.
+  import type { FrequencyUnit } from './frequency-units'
   import {
     FREQUENCY_UNITS,
-    type FrequencyUnit,
     frequency_unit_label,
     parse_frequency_unit,
   } from './frequency-units'

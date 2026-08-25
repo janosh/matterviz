@@ -2,15 +2,14 @@
 // main thread receives a TrajectoryRun backed by its MessagePort.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 // oxlint-disable eslint-plugin-unicorn/relative-url-style
-import {
-  Hdf5GroupSelectionRequiredError,
-  open_trajectory,
-  type OpenTrajectoryOptions,
-  type ParseProgress,
-  type TrajectoryRun,
-  type TrajectoryRunSummary,
-  type TrajectorySource,
+import type {
+  OpenTrajectoryOptions,
+  ParseProgress,
+  TrajectoryRun,
+  TrajectoryRunSummary,
+  TrajectorySource,
 } from '$lib/trajectory'
+import { Hdf5GroupSelectionRequiredError, open_trajectory } from '$lib/trajectory'
 import { dispose_run_port, worker_run } from '$lib/trajectory/runs/worker'
 import { to_error } from '$lib/utils'
 import { parse_file_content, type ParseResult, type TrajectoryLoadOptions } from './parse'

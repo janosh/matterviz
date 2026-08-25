@@ -1,8 +1,5 @@
-import {
-  TrajectorySpectroscopyPane,
-  TrajectorySpectrumPlot,
-  type TrajectorySpectroscopyResult,
-} from '$lib/spectral'
+import type { TrajectorySpectroscopyResult } from '$lib/spectral'
+import { TrajectorySpectroscopyPane, TrajectorySpectrumPlot } from '$lib/spectral'
 import { trajectory_from_frames } from '$lib/trajectory'
 import { flushSync, mount, tick, unmount, type Component } from 'svelte'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'

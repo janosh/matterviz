@@ -1,10 +1,6 @@
 <script lang="ts">
-  import {
-    ControlPane,
-    create_clipboard_feedback,
-    type PaneProps,
-    type PaneToggleProps,
-  } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ColorSchemeName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
@@ -28,6 +24,7 @@
   import { ColorScaleSelect } from '$lib/plot'
   import type { AtomColorMode, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  import type { StructurePaneSize, StructureViewState } from '$lib/settings/viewer-state'
   import {
     clear_structure_view_state,
     create_structure_view_state,
@@ -36,8 +33,6 @@
     load_structure_view_state,
     save_structure_view_state,
     serialize_structure_view_state,
-    type StructurePaneSize,
-    type StructureViewState,
   } from '$lib/settings/viewer-state'
   import type { AnyStructure, StructureDisplayMode } from '$lib/structure'
   import {
@@ -47,13 +42,13 @@
     VECTOR_PALETTE,
   } from '$lib/structure'
   import type { ElementSymbol } from '$lib/element'
+  import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
     is_atom_color_mode_available,
     next_atom_color_config,
     structure_has_selective_dynamics,
-    type AtomColorConfig,
   } from '$lib/structure/atom-properties'
   import type { DisplacementSummary } from '$lib/structure/measure'
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
@@ -213,7 +208,8 @@
     last_saved_view_state_json ??= serialized
     if (!persist_settings || serialized === last_saved_view_state_json) return
     const save_timeout = setTimeout(() => {
-      if (save_structure_view_state(state)) last_saved_view_state_json = serialized
+      save_structure_view_state(state)
+      last_saved_view_state_json = serialized
     }, 150)
     return () => clearTimeout(save_timeout)
   })

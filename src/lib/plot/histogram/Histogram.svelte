@@ -47,14 +47,16 @@
     PlotConfig,
     UserContentProps,
   } from '$lib/plot/core/types'
+  import type {
+    BinnedSeries,
+    HistogramBin,
+    HistogramNormalize,
+    HistogramSeries,
+    HistogramSeriesInput,
+  } from '$lib/plot/histogram/histogram'
   import {
-    type BinnedSeries,
     compute_count_range,
     compute_histogram_bins,
-    type HistogramBin,
-    type HistogramNormalize,
-    type HistogramSeries,
-    type HistogramSeriesInput,
     log_safe_range,
     to_histogram_series,
   } from '$lib/plot/histogram/histogram'

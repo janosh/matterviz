@@ -2,12 +2,12 @@ import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
 import { parse_float_token } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
+import type { XyzFrameSpec } from '$lib/trajectory/helpers'
 import {
   calc_force_stats,
   create_trajectory_frame,
   elem_symbol_from_token,
   iter_xyz_frames,
-  type XyzFrameSpec,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'

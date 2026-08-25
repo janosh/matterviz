@@ -1,10 +1,10 @@
 <script lang="ts">
   import { add_alpha } from '$lib/colors'
   import type { LegendItem, Orientation } from '$lib/plot'
+  import type { LegendItemExtent } from '$lib/plot/core/decorations/tracks'
   import {
     get_legend_grid_cells,
     suggest_legend_tracks,
-    type LegendItemExtent,
   } from '$lib/plot/core/decorations/tracks'
   import { unique_id } from '$lib/plot/core/utils'
   import { sanitize_html } from '$lib/sanitize'

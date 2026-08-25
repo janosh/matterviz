@@ -5,13 +5,8 @@ import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { clamp, reciprocal_lattice, scale_lattice_matrix } from '$lib/math'
 import { clamp01 } from '$lib/utils'
 import type { ScalarGrid3D } from './grid'
-import {
-  downsample_grid,
-  make_volume,
-  MAX_GRID_POINTS,
-  type VolumeGrid,
-  type VolumetricData,
-} from './types'
+import type { VolumeGrid, VolumetricData } from './types'
+import { downsample_grid, make_volume, MAX_GRID_POINTS } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 

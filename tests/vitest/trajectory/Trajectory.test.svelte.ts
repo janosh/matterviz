@@ -1,13 +1,13 @@
 // Rendering, props, panes and events of the pure <Trajectory> viewer over a TrajectoryRun.
 // Playback mechanics live in sequence-player.test, frame loading/caching in session.test and
 // file acquisition in TrajectoryFileViewer.test; none of that is re-tested here.
-import {
-  Trajectory,
-  type TrajectoryController,
-  type TrajectoryRun,
-  type TrajectoryXQuantity,
-  type TrajHandlerData,
+import type {
+  TrajectoryController,
+  TrajectoryRun,
+  TrajectoryXQuantity,
+  TrajHandlerData,
 } from '$lib/trajectory'
+import { Trajectory } from '$lib/trajectory'
 import { summarize_run } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
 import { bind_props, doc_query, make_run as make_shared_run } from '../setup'

@@ -9,13 +9,8 @@
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
   import { format_num } from '$lib/labels'
   import { clamp, type Vec2, type Vec3 } from '$lib/math'
-  import {
-    build_orbit_props,
-    dispose_on_change,
-    SceneCamera,
-    SceneLights,
-    type ThreltePointerEvent,
-  } from '$lib/scene'
+  import type { ThreltePointerEvent } from '$lib/scene'
+  import { build_orbit_props, dispose_on_change, SceneCamera, SceneLights } from '$lib/scene'
   import { T, useThrelte } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import * as extras from '@threlte/extras'
@@ -30,13 +25,13 @@
     SphereGeometry,
     Vector3,
   } from 'three/webgpu'
-  import {
-    type IsothermalSection,
-    type PhaseTemperatureHover,
-    TERNARY_COLORS,
-    type TernaryDisplay,
-    type TernaryPhaseDiagram,
+  import type {
+    IsothermalSection,
+    PhaseTemperatureHover,
+    TernaryDisplay,
+    TernaryPhaseDiagram,
   } from './types'
+  import { TERNARY_COLORS } from './types'
 
   let {
     diagram,

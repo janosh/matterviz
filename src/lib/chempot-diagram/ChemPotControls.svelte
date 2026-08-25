@@ -4,11 +4,10 @@
   // checkboxes next to the built-in ones (the 3D overlay toggles).
   import type { D3InterpolateName } from '$lib/colors'
   import type { Snippet } from 'svelte'
+  import type { ChemPotControlKey, ChemPotControlValues } from './controls-state.svelte'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
-    type ChemPotControlKey,
-    type ChemPotControlValues,
   } from './controls-state.svelte'
   import type { ChemPotColorMode } from './types'
 

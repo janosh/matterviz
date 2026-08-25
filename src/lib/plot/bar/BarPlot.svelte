@@ -35,9 +35,9 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
+  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import {
     AXIS_DEFAULTS,
-    type AxisChangeState,
     category_tick_labels,
     create_axis_loader,
     X2_AXIS_DEFAULTS,

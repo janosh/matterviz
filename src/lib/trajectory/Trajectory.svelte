@@ -18,7 +18,8 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, is_editable_target, to_error } from '$lib/utils'
+  import { handle_and_prevent, to_error } from '$lib/utils'
+  import { is_editable_event_target } from 'svelte-widgets/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
@@ -567,7 +568,7 @@
     // the viewer shortcuts they do not use bubble here
     const target = event.target instanceof HTMLElement ? event.target : null
     const is_sequence_slider = target?.classList.contains(`step-slider`)
-    if (!is_sequence_slider && target && is_editable_target(event)) {
+    if (!is_sequence_slider && target && is_editable_event_target(event.target)) {
       if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
         target.blur()
       }

@@ -1,9 +1,5 @@
-import {
-  calc_lattice_params,
-  first_non_increasing_index,
-  partition_point,
-  type Matrix3x3,
-} from '$lib/math'
+import type { Matrix3x3 } from '$lib/math'
+import { calc_lattice_params, first_non_increasing_index, partition_point } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import { to_error } from '$lib/utils'
 import type { Dataset, Group } from 'h5wasm'

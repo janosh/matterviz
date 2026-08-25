@@ -1,9 +1,9 @@
+import type { PhononModeDataset } from '$lib/spectral'
 import {
   parse_born,
   PhononModeExplorer,
   parse_phonon_modes,
   spectrum_from_phonon_data,
-  type PhononModeDataset,
 } from '$lib/spectral'
 import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
 import band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'

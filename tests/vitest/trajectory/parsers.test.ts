@@ -30,6 +30,7 @@ import { Dataset as H5Dataset } from 'h5wasm'
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { make_crystal, read_binary_test_file, read_maybe_gz, rejection_of } from '../setup'
+import type { H5Spec } from './fixtures'
 import {
   ds,
   flat_frames,
@@ -38,7 +39,6 @@ import {
   make_h5_buffer,
   make_reference_md_h5_buffer,
   make_torch_sim_signal_buffer,
-  type H5Spec,
 } from './fixtures'
 
 const read_fixture = (filename: string): string | ArrayBuffer =>

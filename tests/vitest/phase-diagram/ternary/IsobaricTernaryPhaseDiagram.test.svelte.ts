@@ -1,5 +1,6 @@
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
+import type { SectionHover, TernaryDisplay, TernaryPhaseDiagram } from '$lib/phase-diagram'
 import {
   compute_section,
   compute_ternary_phase_diagram,
@@ -7,11 +8,8 @@ import {
   PhaseEventList,
   PhaseStabilityMap,
   prepare_diagram,
-  type SectionHover,
   TERNARY_DISPLAY_DEFAULTS,
   TernaryPhaseDiagramControls,
-  type TernaryDisplay,
-  type TernaryPhaseDiagram,
 } from '$lib/phase-diagram'
 import TernarySectionCanvas from '$lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'

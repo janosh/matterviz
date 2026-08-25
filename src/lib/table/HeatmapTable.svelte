@@ -1,8 +1,8 @@
 <script lang="ts">
+  import type { D3InterpolateName } from '$lib/colors'
   import {
     contrast_color_memo,
     contrast_text_color,
-    type D3InterpolateName,
     resolve_backdrop,
     resolve_css_color,
   } from '$lib/colors'
@@ -42,6 +42,7 @@
   } from '$lib/table'
   import ColumnFilterMenu from './ColumnFilter.svelte'
   import DateTimeFormatMenu from './DateTimeFormatMenu.svelte'
+  import type { SortCriterion } from './data'
   import {
     cell_matches_filter,
     cell_text,
@@ -57,17 +58,15 @@
     parse_datetime_val,
     parse_numeric_val,
     row_matches_query,
-    type SortCriterion,
     strip_html,
   } from './data'
+  import type { ExportFormat, TableMatrix } from './export'
   import {
     EXPORT_MIME_TYPES,
-    type ExportFormat,
     table_to_delimited,
     table_to_json,
     table_to_latex,
     table_to_markdown,
-    type TableMatrix,
   } from './export'
   import { type CellPos, CellSelection } from './selection.svelte'
   import ToggleMenu from './ToggleMenu.svelte'

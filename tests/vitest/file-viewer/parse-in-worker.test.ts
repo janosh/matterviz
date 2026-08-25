@@ -1,20 +1,18 @@
 import type { ParseResult } from '$lib/file-viewer/parse'
+import type {
+  ParseWorkerRequest,
+  ParseWorkerResponse,
+  WorkerLike,
+} from '$lib/file-viewer/parse-in-worker'
 import {
   MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES,
   MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
   parse_in_worker,
   parse_trajectory_in_worker,
-  type ParseWorkerRequest,
-  type ParseWorkerResponse,
-  type WorkerLike,
 } from '$lib/file-viewer/parse-in-worker'
 import { handle_parse_worker_request } from '$lib/file-viewer/parse-worker'
-import {
-  summarize_run,
-  trajectory_from_frames,
-  type Hdf5GroupSelectionRequiredError,
-  type TrajectoryFrame,
-} from '$lib/trajectory'
+import type { Hdf5GroupSelectionRequiredError, TrajectoryFrame } from '$lib/trajectory'
+import { summarize_run, trajectory_from_frames } from '$lib/trajectory'
 import { serve_run_over_port } from '$lib/trajectory/runs/worker'
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest'
 

@@ -1,13 +1,6 @@
 <script lang="ts">
-  import {
-    ViewerPane,
-    create_clipboard_feedback,
-    info_pane_icon,
-    type InfoPaneCard,
-    type InfoPaneRow,
-    type PaneProps,
-    type PaneToggleProps,
-  } from '$lib/overlays'
+  import type { InfoPaneCard, InfoPaneRow, PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { ViewerPane, create_clipboard_feedback, info_pane_icon } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'

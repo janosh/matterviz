@@ -5,11 +5,10 @@
 // ColorBarDecoration.svelte.
 
 import type { Point2D } from '$lib/math'
+import type { DecorationItem, DecorationSolution } from '$lib/plot/core/decorations'
 import {
   decoration_data_attrs,
   decoration_placement_revision,
-  type DecorationItem,
-  type DecorationSolution,
   get_decoration_placement,
 } from '$lib/plot/core/decorations'
 import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'

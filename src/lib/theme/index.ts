@@ -2,6 +2,8 @@
 // runtime contract is two attributes on the root — `data-theme` (names the palette, incl. the
 // white/black high-contrast overrides) and `color-scheme` (what light-dark() and native form
 // controls resolve against).
+import { persisted_choice, storage_set } from 'svelte-widgets/storage'
+import { system_preference } from 'svelte-widgets/theme'
 
 const is_browser = typeof window !== `undefined`
 export const THEME_STORAGE_KEY = `matterviz-theme`
@@ -49,24 +51,13 @@ export const is_valid_theme_name = (value: string): value is ThemeName =>
 export const is_valid_theme_mode = (value: string): value is ThemeMode =>
   value === AUTO_THEME || is_valid_theme_name(value)
 
-// Theme preference management
-export const get_theme_preference = (): ThemeMode => {
-  if (!is_browser) return AUTO_THEME
-  try {
-    const saved = localStorage[THEME_STORAGE_KEY]
-    return is_valid_theme_mode(saved ?? ``) ? (saved as ThemeMode) : AUTO_THEME
-  } catch {
-    return AUTO_THEME
-  }
-}
+// Theme preference management (best-effort storage: SSR, disabled or full stores fall back to auto)
+const THEME_MODES = THEME_OPTIONS.map((option) => option.value)
+export const get_theme_preference = (): ThemeMode =>
+  persisted_choice(THEME_STORAGE_KEY, THEME_MODES, AUTO_THEME)
 
-export const save_theme_preference = (mode: ThemeMode): void => {
-  try {
-    localStorage[THEME_STORAGE_KEY] = mode
-  } catch {
-    // Silently fail if localStorage is unavailable
-  }
-}
+export const save_theme_preference = (mode: ThemeMode): void =>
+  storage_set(THEME_STORAGE_KEY, mode)
 
 // The scheme an element declares through the CSS API, or null for `normal`/nothing. A
 // two-scheme value (`light dark`) names its preferred scheme first; `only` is a modifier
@@ -95,14 +86,9 @@ export const nearest_declared = (
   return null
 }
 
-export const get_system_mode = (): ThemeType =>
-  is_browser && globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
-    ? COLOR_THEMES.dark
-    : COLOR_THEMES.light
-
 export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
-  const resolved = mode === AUTO_THEME ? get_system_mode() : mode
+  const resolved = mode === AUTO_THEME ? system_preference() : mode
   if (!(resolved in THEME_TYPE)) throw new Error(`Invalid theme mode: ${resolved}`)
   const root = document.documentElement
   root.dataset.theme = resolved

@@ -2,14 +2,16 @@
   import { FullscreenButton } from '$lib/layout'
   import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetAxis } from '$lib/plot/core/facets'
+  import type {
+    MarginalAxis,
+    MarginalAxisBinding,
+    MarginalSeriesInput,
+    ResolvedMarginals,
+  } from '$lib/plot/core/marginals'
   import {
     marginal_axis,
     marginal_axis_presence,
     outer_strip_reservation,
-    type MarginalAxis,
-    type MarginalAxisBinding,
-    type MarginalSeriesInput,
-    type ResolvedMarginals,
   } from '$lib/plot/core/marginals'
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'

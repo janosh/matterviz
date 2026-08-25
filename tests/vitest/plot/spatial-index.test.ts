@@ -1,9 +1,6 @@
 import type { Point2D } from '$lib/math'
-import {
-  build_spatial_index,
-  type Positioned,
-  query_nearest,
-} from '$lib/plot/core/spatial-index'
+import type { Positioned } from '$lib/plot/core/spatial-index'
+import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
 import { describe, expect, test } from 'vitest'
 
 const linear_nearest = <T extends Positioned>(

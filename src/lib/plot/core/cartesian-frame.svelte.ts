@@ -6,11 +6,11 @@
 // component init. Render the returned state with CartesianFrame.svelte.
 
 import { clamp, type Vec2 } from '$lib/math'
+import type { DecorationItem } from '$lib/plot/core/decorations'
 import {
   create_legend_decoration_item,
   decoration_placement_revision,
   decoration_placement_rects,
-  type DecorationItem,
   get_decoration_placement,
   has_explicit_position,
   measured_footprint,
@@ -27,26 +27,19 @@ import {
   sync_y2_range,
   vec2_equal,
 } from '$lib/plot/core/interactions'
+import type { Rect, Sides } from '$lib/plot/core/layout'
 import {
   calc_auto_padding,
   DEFAULT_PLOT_PADDING,
   filter_padding,
-  type Rect,
   sides_equal,
-  type Sides,
 } from '$lib/plot/core/layout'
-import {
-  add_sides,
-  reserve_marginal_pad,
-  type ResolvedMarginals,
-} from '$lib/plot/core/marginals'
+import type { ResolvedMarginals } from '$lib/plot/core/marginals'
+import { add_sides, reserve_marginal_pad } from '$lib/plot/core/marginals'
 import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
 import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
-import {
-  normalize_plot_title,
-  pad_for_plot_title,
-  type PlotTitleProp,
-} from '$lib/plot/core/plot-title'
+import type { PlotTitleProp } from '$lib/plot/core/plot-title'
+import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
 import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import { solve_reference_annotations } from '$lib/plot/core/reference-line'
 import { create_axis_scales, generate_ticks } from '$lib/plot/core/scales'

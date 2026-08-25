@@ -1,13 +1,13 @@
 <script lang="ts">
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import PlotControls from '$lib/plot/core/components/PlotControls.svelte'
-  import {
-    type DataSeries,
-    DEFAULT_MARKERS,
-    type PlotConfig,
-    type PlotControlsProps,
-    type StyleOverrides,
+  import type {
+    DataSeries,
+    PlotConfig,
+    PlotControlsProps,
+    StyleOverrides,
   } from '$lib/plot/core/types'
+  import { DEFAULT_MARKERS } from '$lib/plot/core/types'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
