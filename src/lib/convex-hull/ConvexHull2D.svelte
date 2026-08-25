@@ -34,6 +34,7 @@
   const defaults = DEFAULTS.convex_hull.binary
   let {
     entries: entries_prop,
+    components,
     controls = {},
     config = {},
     show_controls,
@@ -102,6 +103,7 @@
   const hull_data = create_hull_data_pipeline({
     dim: 2,
     entries: () => entries,
+    components: () => components,
     temperature: () => temperature,
     interpolate_temperature: () => interpolate_temperature,
     max_interpolation_gap: () => max_interpolation_gap,

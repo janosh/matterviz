@@ -65,15 +65,16 @@ const run_from_source = (
 // === XYZ / EXTXYZ ===
 
 const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
-  let lines = data.trim().split(/\r?\n/)
+  // Offsets into the untouched text, never an array of line strings (see iter_xyz_frames);
   // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
-  const frames = index_xyz_frames(lines, collector.warn)
+  let text = data
+  const frames = index_xyz_frames(text, collector.warn)
   return {
     format: `xyz`,
     frame_count: frames.length,
     decode: (frame_idx): TrajectoryFrame =>
       build_xyz_frame(
-        lines,
+        text,
         frames[frame_idx],
         { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
         collector,
@@ -89,7 +90,7 @@ const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
     },
     // sync_run refuses reads after dispose, so dropping the text here only frees it
     release: () => {
-      lines = []
+      text = ``
       frames.length = 0
     },
   }

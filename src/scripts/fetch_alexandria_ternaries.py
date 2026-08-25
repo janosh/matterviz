@@ -2,15 +2,16 @@
 # requires-python = ">=3.11"
 # dependencies = ["requests>=2.31"]
 # ///
-"""Fetch ternary chemical systems from the Alexandria PBE database through its OPTIMADE API
-(no API key needed) for the /phase-diagram/ternary demo.
+"""Fetch chemical systems from the Alexandria PBE database through its OPTIMADE API (no API key
+needed): ternaries for the /phase-diagram/ternary demo and carbonate-containing quaternaries for
+the /synthesis-planning demo.
 
-Each system file holds every binary and ternary entry within HULL_CUTOFF eV/atom of the
-Alexandria hull as slim convex-hull entries: composition, formation energy, hull distance,
-volume per atom (for the SISSO G(T) estimate) and a few descriptors. Unary entries are not
-exported (Alexandria's OPTIMADE backend times out on nelements=1 queries), so `energy` is the
-formation energy per cell relative to Alexandria's elemental references, which places the pure
-elements at 0 eV/atom exactly as the viewer's synthetic corners assume.
+Each system file holds every sub-system entry within the hull cutoff of the Alexandria hull as
+slim convex-hull entries: composition, formation energy, hull distance, volume per atom (for the
+SISSO G(T) estimate) and a few descriptors. Unary entries are not exported (Alexandria's OPTIMADE
+backend times out on nelements=1 queries), so `energy` is the formation energy per cell relative
+to Alexandria's elemental references, which places the pure elements at 0 eV/atom exactly as the
+viewer's synthetic corners assume.
 
 Run with: uv run src/scripts/fetch_alexandria_ternaries.py
 """
@@ -51,16 +52,27 @@ SYSTEMS = (
     "Ti-N-O",
     "Cu-Zn-O",
 )
-out_dir = f"{os.path.dirname(os.path.abspath(__file__))}/../site/phase-diagrams/ternary"
+site_dir = f"{os.path.dirname(os.path.abspath(__file__))}/../site"
+out_dir = f"{site_dir}/phase-diagrams/ternary"
+# Quaternaries with carbonate/oxide precursors for the synthesis planner demo. The tighter hull
+# cutoff keeps the files small; the planner only considers near-hull phases anyway.
+SYNTHESIS_SYSTEMS = ("Ba-Ti-C-O", "Li-Co-C-O")
+SYNTHESIS_HULL_CUTOFF = 0.1
+# Raw PBE overbinds O2, so O2-molecular-crystal-like entries (CoO8, LiO8, ...) sit on the Alexandria
+# hull. They are artefacts for synthesis purposes; drop anything more O-rich than a superoxide.
+MAX_O_FRACTION = 0.75
+synthesis_out_dir = f"{site_dir}/synthesis-planning"
 
 
-def fetch_subsystem(elements: tuple[str, ...]) -> list[dict[str, Any]]:
-    """All entries of exactly these elements within HULL_CUTOFF of the hull."""
+def fetch_subsystem(
+    elements: tuple[str, ...], hull_cutoff: float = HULL_CUTOFF
+) -> list[dict[str, Any]]:
+    """All entries of exactly these elements within hull_cutoff of the hull."""
     element_list = ",".join(f'"{el}"' for el in elements)
     params: dict[str, Any] = {
         "filter": (
             f"elements HAS ALL {element_list} AND nelements={len(elements)} "
-            f"AND _alexandria_hull_distance<{HULL_CUTOFF}"
+            f"AND _alexandria_hull_distance<{hull_cutoff}"
         ),
         "page_limit": PAGE_LIMIT,
         "response_fields": RESPONSE_FIELDS,
@@ -132,29 +144,42 @@ def to_entry(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def o_fraction(entry: dict[str, Any]) -> float:
+    """Atom fraction of oxygen in an entry's composition."""
+    composition = entry["composition"]
+    return composition.get("O", 0) / sum(composition.values())
+
+
+def fetch_system(
+    system: str, directory: str, hull_cutoff: float, max_o_fraction: float = 1.0
+) -> None:
+    """Fetch every binary..N-ary sub-system of `system` into <directory>/<system>.json.gz."""
+    elements = tuple(system.split("-"))
+    filename = f"{directory}/{system}.json.gz"
+    if os.path.isfile(filename):
+        print(f"{system}: exists, skipping")
+        return
+    entries: list[dict[str, Any]] = []
+    for size in range(2, len(elements) + 1):
+        for subset in itertools.combinations(elements, size):
+            items = fetch_subsystem(subset, hull_cutoff)
+            converted = [to_entry(item) for item in items]
+            entries.extend(entry for entry in converted if o_fraction(entry) <= max_o_fraction)
+            print(f"{system}: {'-'.join(subset)} -> {len(items)} entries")
+    entries.sort(key=lambda entry: (len(entry["composition"]), entry["e_above_hull"]))
+    os.makedirs(directory, exist_ok=True)
+    with gzip.open(filename, mode="wt", encoding="utf-8") as file:
+        json.dump(entries, file, separators=(",", ":"))
+    n_stable = sum(entry["is_stable"] for entry in entries)
+    print(f"{system}: wrote {len(entries)} entries ({n_stable} stable) to {filename}")
+
+
 def main() -> None:
-    """Fetch every system into <A-B-C>.json.gz under src/site/phase-diagrams/ternary."""
+    """Fetch the ternary demo systems and the synthesis-planner quaternaries."""
     for system in SYSTEMS:
-        elements = tuple(system.split("-"))
-        filename = f"{out_dir}/{system}.json.gz"
-        if os.path.isfile(filename):
-            print(f"{system}: exists, skipping")
-            continue
-        entries: list[dict[str, Any]] = []
-        for size in (2, 3):
-            for subset in itertools.combinations(elements, size):
-                items = fetch_subsystem(subset)
-                entries.extend(to_entry(item) for item in items)
-                print(f"{system}: {'-'.join(subset)} -> {len(items)} entries")
-        entries.sort(
-            key=lambda entry: (len(entry["composition"]), entry["e_above_hull"])
-        )
-        with gzip.open(filename, mode="wt", encoding="utf-8") as file:
-            json.dump(entries, file, separators=(",", ":"))
-        n_stable = sum(entry["is_stable"] for entry in entries)
-        print(
-            f"{system}: wrote {len(entries)} entries ({n_stable} stable) to {filename}"
-        )
+        fetch_system(system, out_dir, HULL_CUTOFF)
+    for system in SYNTHESIS_SYSTEMS:
+        fetch_system(system, synthesis_out_dir, SYNTHESIS_HULL_CUTOFF, MAX_O_FRACTION)
 
 
 if __name__ == "__main__":

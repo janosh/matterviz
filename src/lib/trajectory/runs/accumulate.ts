@@ -97,6 +97,10 @@ class PositionAccumulator {
   private readonly lattice_matrices: (Matrix3x3 | null)[] = []
   private readonly steps: number[] = []
   private readonly elements: ElementSymbol[] = []
+  // Per-site `id` property of the first frame (LAMMPS dumps sorted by atom ID); null when the
+  // format carries none. Catches a GCMC/deposition frame that swapped atoms without changing
+  // the count, which the element check alone cannot see.
+  private atom_ids: (number | null)[] | null = null
   private pbc: Pbc | null = null
   private coords_unwrapped = false
   private frame_count = 0
@@ -175,13 +179,25 @@ class PositionAccumulator {
           `Frame ${source_frame_number} site ${atom_idx} has no species; cannot identify the atom`,
         )
       }
-      if (is_first_frame) this.elements.push(element)
-      else if (this.elements[atom_idx] !== element) {
+      const atom_id = site.properties?.id
+      const id = typeof atom_id === `number` ? atom_id : null
+      if (is_first_frame) {
+        this.elements.push(element)
+        if (atom_idx === 0) this.atom_ids = id === null ? null : []
+        this.atom_ids?.push(id)
+      } else if (this.elements[atom_idx] !== element) {
         throw new Error(
           `Atom ordering changed at frame ${source_frame_number}: site ${atom_idx} was ` +
             `${this.elements[atom_idx]} in the first frame but is ${element} here. Displacement ` +
             `analysis tracks atoms by index, so the ordering must be stable. LAMMPS dumps ` +
             `are unsorted unless the run used "dump_modify <id> sort id".`,
+        )
+      } else if (this.atom_ids && this.atom_ids[atom_idx] !== id) {
+        throw new Error(
+          `Atom identity changed at frame ${source_frame_number}: site ${atom_idx} had ` +
+            `atom ID ${this.atom_ids[atom_idx]} in the first frame but ${id} here. The atom ` +
+            `set changed (GCMC, deposition), so displacement analysis cannot pair atoms ` +
+            `across frames.`,
         )
       }
       const off = base + atom_idx * 3

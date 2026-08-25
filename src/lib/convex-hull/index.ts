@@ -101,6 +101,10 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   `entries` | `children`
 > {
   entries?: PhaseData[]
+  // Treat these strings as the composition keys instead of element symbols, e.g. precursor
+  // formulas for a pseudo-binary/ternary reaction hull. Entries then hold pseudo-compositions
+  // such as { BaO: 0.4, TiO2: 0.6 } and the corners are the components.
+  components?: readonly string[]
   controls?: Partial<ConvexHullControlsType>
   config?: Partial<ConvexHullConfig>
   // Controls visibility configuration.

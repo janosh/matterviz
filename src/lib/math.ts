@@ -1151,3 +1151,150 @@ export function quantile_unordered(values: number[], p: number): number {
   const lo_val = quickselect(values, lo)
   return hi === lo ? lo_val : lerp_quantile(lo_val, quickselect(values, hi), idx - lo)
 }
+
+// === Linear programming ===
+
+export type LinearProgramStatus = `optimal` | `infeasible` | `unbounded`
+
+export interface LinearProgramResult {
+  status: LinearProgramStatus
+  // Primal solution (length = number of columns); all zeros unless status is `optimal`
+  solution: number[]
+  // Objective value c · x at the solution (NaN unless `optimal`)
+  objective: number
+}
+
+// Solve the linear program `minimize c · x subject to A x = b, x >= 0` with a dense two-phase
+// tableau simplex using Bland's rule (smallest-index entering/leaving variable), which cannot
+// cycle. Sized for small problems (a few constraints, up to a few thousand columns) such as
+// convex-hull decompositions and reaction balancing. Rows of `A` that turn out linearly
+// dependent are dropped during phase 1 when consistent and flagged infeasible otherwise.
+export function solve_linear_program(
+  objective: number[], // c, one entry per column
+  constraints: number[][], // A, one row per equality constraint
+  rhs: number[], // b, one entry per row
+  tolerance = 1e-9,
+): LinearProgramResult {
+  const n_cols = objective.length
+  const n_rows = constraints.length
+  if (rhs.length !== n_rows || constraints.some((row) => row.length !== n_cols)) {
+    throw new Error(
+      `solve_linear_program: shape mismatch (c: ${n_cols}, A: ${n_rows}x${
+        constraints[0]?.length ?? 0
+      }, b: ${rhs.length})`,
+    )
+  }
+  const zeros = () => Array.from({ length: n_cols }, () => 0)
+  if (n_rows === 0) {
+    // Only x >= 0 remains: unbounded if any cost is negative, else x = 0 is optimal
+    if (objective.some((cost) => cost < -tolerance)) {
+      return { status: `unbounded`, solution: zeros(), objective: NaN }
+    }
+    return { status: `optimal`, solution: zeros(), objective: 0 }
+  }
+
+  // Tableau columns: [original (n_cols) | artificial (n_rows) | rhs]. Rows flipped so b >= 0.
+  const n_art = n_rows
+  const rhs_col = n_cols + n_art
+  const tableau = constraints.map((row, row_idx) => {
+    const sign = rhs[row_idx] < 0 ? -1 : 1
+    const full = Array.from({ length: rhs_col + 1 }, () => 0)
+    for (let col = 0; col < n_cols; col++) full[col] = sign * row[col]
+    full[n_cols + row_idx] = 1
+    full[rhs_col] = sign * rhs[row_idx]
+    return full
+  })
+  const basis = Array.from({ length: n_rows }, (_, row_idx) => n_cols + row_idx)
+
+  const pivot = (pivot_row: number, pivot_col: number): void => {
+    const row = tableau[pivot_row]
+    const inv = 1 / row[pivot_col]
+    for (let col = 0; col <= rhs_col; col++) row[col] *= inv
+    for (let other_idx = 0; other_idx < tableau.length; other_idx++) {
+      if (other_idx === pivot_row) continue
+      const other = tableau[other_idx]
+      const factor = other[pivot_col]
+      if (factor === 0) continue
+      for (let col = 0; col <= rhs_col; col++) other[col] -= factor * row[col]
+    }
+    basis[pivot_row] = pivot_col
+  }
+
+  // Reduced costs for a cost vector over the active columns: z_j = c_j - c_B · B^-1 A_j
+  const reduced_costs = (costs: number[], active_cols: number): number[] => {
+    const reduced = costs.slice(0, active_cols)
+    for (let row_idx = 0; row_idx < tableau.length; row_idx++) {
+      const basic_cost = costs[basis[row_idx]]
+      if (basic_cost === 0) continue
+      const row = tableau[row_idx]
+      for (let col = 0; col < active_cols; col++) reduced[col] -= basic_cost * row[col]
+    }
+    return reduced
+  }
+
+  // Run simplex iterations for `costs` over the first `active_cols` columns (Bland's rule).
+  // Returns false if the problem is unbounded in that direction.
+  const iterate = (costs: number[], active_cols: number): boolean => {
+    for (let iteration = 0; iteration < 50_000; iteration++) {
+      const reduced = reduced_costs(costs, active_cols)
+      const entering = reduced.findIndex((cost) => cost < -tolerance)
+      if (entering === -1) return true
+      let leaving = -1
+      let best_ratio = Infinity
+      for (let row_idx = 0; row_idx < tableau.length; row_idx++) {
+        const coeff = tableau[row_idx][entering]
+        if (coeff <= tolerance) continue
+        const ratio = tableau[row_idx][rhs_col] / coeff
+        if (
+          ratio < best_ratio - tolerance ||
+          (leaving !== -1 &&
+            Math.abs(ratio - best_ratio) <= tolerance &&
+            basis[row_idx] < basis[leaving])
+        ) {
+          best_ratio = ratio
+          leaving = row_idx
+        }
+      }
+      if (leaving === -1) return false
+      pivot(leaving, entering)
+    }
+    throw new Error(`solve_linear_program: simplex did not converge within 50000 pivots`)
+  }
+
+  // Phase 1: minimize the sum of artificial variables
+  const phase1_costs = Array.from({ length: rhs_col }, (_, col) => (col >= n_cols ? 1 : 0))
+  iterate(phase1_costs, rhs_col)
+  const infeasibility = tableau.reduce(
+    (sum, row, row_idx) => sum + (basis[row_idx] >= n_cols ? row[rhs_col] : 0),
+    0,
+  )
+  if (infeasibility > tolerance * Math.max(1, n_rows)) {
+    return { status: `infeasible`, solution: zeros(), objective: NaN }
+  }
+
+  // Drive remaining (zero-level) artificials out of the basis; rows with no original column to
+  // pivot on are linearly dependent on the others and can be dropped.
+  for (let row_idx = tableau.length - 1; row_idx >= 0; row_idx--) {
+    if (basis[row_idx] < n_cols) continue
+    const pivot_col = tableau[row_idx].findIndex(
+      (value, col) => col < n_cols && Math.abs(value) > tolerance,
+    )
+    if (pivot_col === -1) {
+      tableau.splice(row_idx, 1)
+      basis.splice(row_idx, 1)
+    } else pivot(row_idx, pivot_col)
+  }
+
+  // Phase 2: minimize the real objective over the original columns only
+  const phase2_costs = [...objective, ...Array.from({ length: n_art }, () => 0)]
+  if (!iterate(phase2_costs, n_cols)) {
+    return { status: `unbounded`, solution: zeros(), objective: NaN }
+  }
+  const solution = zeros()
+  for (let row_idx = 0; row_idx < tableau.length; row_idx++) {
+    const value = tableau[row_idx][rhs_col]
+    solution[basis[row_idx]] = Math.abs(value) <= tolerance ? 0 : value
+  }
+  const objective_value = solution.reduce((sum, value, col) => sum + value * objective[col], 0)
+  return { status: `optimal`, solution, objective: objective_value }
+}

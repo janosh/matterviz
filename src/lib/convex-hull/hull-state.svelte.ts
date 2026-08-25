@@ -47,6 +47,8 @@ interface HullDataPipelineInputs {
   gas_config: () => GasThermodynamicsConfig | undefined
   gas_pressures: () => Partial<Record<GasSpecies, number>>
   energy_source_mode: () => EnergySourceMode
+  // Pseudo-component keys (e.g. precursor formulas) in place of element symbols
+  components?: () => readonly string[] | undefined
   max_hull_dist_show_phases: () => number
   show_stable: () => boolean
   show_unstable: () => boolean
@@ -154,7 +156,10 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // instead of propagating out of a $derived mid-render.
   const normalized_source = $derived.by((): { entries: PhaseData[]; error: string | null } => {
     try {
-      return { entries: thermo.process_hull_entries(inputs.entries()).entries, error: null }
+      return {
+        entries: thermo.process_hull_entries(inputs.entries(), inputs.components?.()).entries,
+        error: null,
+      }
     } catch (err) {
       return { entries: [], error: to_error(err).message }
     }

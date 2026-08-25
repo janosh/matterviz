@@ -10,6 +10,7 @@ import type {
   TrajectorySource,
 } from '$lib/trajectory'
 import { Hdf5GroupSelectionRequiredError, open_trajectory } from '$lib/trajectory'
+import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import { dispose_run_port, worker_run } from '$lib/trajectory/runs/worker'
 import { to_error } from '$lib/utils'
 import { parse_file_content, type ParseResult, type TrajectoryLoadOptions } from './parse'
@@ -40,6 +41,10 @@ interface ParseTrajectoryInWorkerOptions {
 }
 
 const BYTES_PER_MIB = 1024 ** 2
+// Ceilings for parsing on the main thread when no worker can be had, so an eager parse never
+// freezes the page for tens of seconds. Text an indexed run can open (multi-frame XYZ, ASE
+// .traj) is exempt: above the indexing threshold it is located frame by frame without
+// decoding, which is what the host's large-file path does on the main thread anyway.
 export const MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES = 25 * BYTES_PER_MIB
 export const MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES = 50 * BYTES_PER_MIB
 
@@ -182,7 +187,10 @@ export const parse_in_worker = async (
     const max_bytes = is_base64
       ? (MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES * 4) / 3
       : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
-    if (utf8_size_exceeds(content, max_bytes)) throw fallback_disabled_error(filename, error)
+    const indexable = !is_base64 && is_indexable_trajectory_filename(filename)
+    if (!indexable && utf8_size_exceeds(content, max_bytes)) {
+      throw fallback_disabled_error(filename, error)
+    }
     console.warn(
       `parse_in_worker: no worker for ${filename}, parsing on the main thread:`,
       error,
@@ -248,7 +256,7 @@ export const parse_trajectory_in_worker = async (
         ? `Blob-backed HDF5 parsing failed for ${filename}; reload after checking Web Worker and WebAssembly support`
         : transfer_buffer
           ? `Trajectory parse worker failed after taking ownership of ${filename}; reload the source file to retry`
-          : byte_size > max_bytes
+          : byte_size > max_bytes && !is_indexable_trajectory_filename(filename)
             ? `Trajectory parse worker failed for ${filename}; main-thread fallback is disabled for ${byte_size} bytes above the ${max_bytes}-byte limit`
             : null
     if (blocked_reason) throw new Error(blocked_reason, { cause: error })

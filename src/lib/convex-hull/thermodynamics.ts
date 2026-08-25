@@ -18,13 +18,24 @@ const ISOTOPE_TO_ELEMENT: Record<string, ElementSymbol> = { D: `H`, T: `H` }
 // to the same element. Filters non-positive amounts. pymatgen DummySpecies ("X0+", "Xa") carry
 // no element and are skipped with a warning. Throws on keys that are not a single element
 // species ("Fe2O3", "12345"): silently mapping a compound key to its first element would
-// corrupt every downstream formation energy.
+// corrupt every downstream formation energy. With `components` (pseudo-components such as
+// precursor formulas for a pseudo-binary/ternary hull) keys must instead match one of them exactly.
 export function normalize_hull_composition_keys(
   composition: Record<string, number>,
+  components?: readonly string[],
 ): Partial<Record<ElementSymbol, number>> {
   const normalized: Partial<Record<ElementSymbol, number>> = {}
   for (const [key, amount] of Object.entries(composition)) {
     if (typeof amount !== `number` || !Number.isFinite(amount) || amount <= 0) continue
+    if (components) {
+      if (!components.includes(key)) {
+        throw new Error(
+          `Unrecognized composition key "${key}" in ${JSON.stringify(composition)}: expected one of the components ${components.join(`, `)}`,
+        )
+      }
+      normalized[key as ElementSymbol] = (normalized[key as ElementSymbol] ?? 0) + amount
+      continue
+    }
     const raw_symbol = SPECIES_KEY_REGEX.exec(key)?.groups?.symbol ?? ``
     const symbol = ISOTOPE_TO_ELEMENT[raw_symbol] ?? raw_symbol
     if (is_elem_symbol(symbol)) normalized[symbol] = (normalized[symbol] ?? 0) + amount
@@ -49,11 +60,14 @@ export const collect_hull_elements = (entries: PhaseData[]): ElementSymbol[] =>
   ].toSorted() as ElementSymbol[]
 
 // Normalize composition keys and drop entries whose composition normalizes to {}.
-export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
+export function process_hull_entries(
+  entries: PhaseData[],
+  components?: readonly string[],
+): ProcessedPhaseData {
   const normalized = entries
     .map((entry) => ({
       ...entry,
-      composition: normalize_hull_composition_keys(entry.composition),
+      composition: normalize_hull_composition_keys(entry.composition, components),
     }))
     .filter((entry) => Object.keys(entry.composition).length > 0)
   return { entries: normalized, elements: collect_hull_elements(normalized) }

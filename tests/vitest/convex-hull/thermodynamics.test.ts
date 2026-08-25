@@ -70,6 +70,23 @@ describe(`normalize_hull_composition_keys`, () => {
       )
     },
   )
+
+  test(`pseudo-components replace element validation when given`, () => {
+    const components = [`BaO`, `TiO2`]
+    expect(normalize_hull_composition_keys({ BaO: 0.4, TiO2: 0.6 }, components)).toEqual({
+      BaO: 0.4,
+      TiO2: 0.6,
+    })
+    expect(() => normalize_hull_composition_keys({ Ba: 1 }, components)).toThrow(
+      /expected one of the components BaO, TiO2/,
+    )
+    const pseudo_compositions: Record<string, number>[] = [{ BaO: 1 }, { BaO: 0.5, TiO2: 0.5 }]
+    const processed = process_hull_entries(
+      pseudo_compositions.map((composition, idx) => ({ composition, energy: -0.3 * idx })),
+      components,
+    )
+    expect(processed.elements).toEqual([`BaO`, `TiO2`])
+  })
 })
 
 describe(`process_hull_entries`, () => {

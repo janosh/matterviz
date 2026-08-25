@@ -298,18 +298,6 @@ describe(`TrajectoryProperties`, () => {
 describe(`trajectory_from_frames validation`, () => {
   it.each([
     [`no frames`, [] as TrajectoryFrame[], {}, /at least one frame/],
-    [
-      `atom count change`,
-      [
-        reference_frames[0],
-        {
-          ...reference_frames[1],
-          structure: { sites: reference_frames[1].structure.sites.slice(1) },
-        },
-      ],
-      {},
-      /atoms, expected/,
-    ],
     [`bad step`, [{ ...reference_frames[0], step: NaN }], {}, /invalid step/],
     [
       `wrong mass count`,
@@ -331,6 +319,18 @@ describe(`trajectory_from_frames validation`, () => {
     ],
   ])(`rejects %s`, (_label, frames, extras, pattern) => {
     expect(() => trajectory_from_frames(frames, extras)).toThrow(pattern)
+  })
+
+  // Issue #449: a bag of generated structures in one XYZ loads and scrubs; only the
+  // displacement analyses need a constant atom count and reject it when asked
+  it(`accepts frames with differing atom counts and defers the check to collect_positions`, async () => {
+    const [first, second] = reference_frames
+    const shrunk = { ...second, structure: { sites: second.structure.sites.slice(1) } }
+    const run = trajectory_from_frames([first, shrunk])
+    expect((await run.read_frame(1)).structure.sites).toHaveLength(N_ATOMS - 1)
+    await expect(run.collect_positions?.()).rejects.toThrow(
+      `Atom count changed at frame 1: expected ${N_ATOMS} atoms, got ${N_ATOMS - 1}`,
+    )
   })
 
   it(`fills property rows from the frames and exposes extras`, () => {

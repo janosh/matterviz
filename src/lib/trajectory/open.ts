@@ -9,7 +9,7 @@ import type { AnyStructure } from '$lib/structure/index'
 import { is_structure_like, parse_xyz, structure_from_json } from '$lib/structure/parse'
 import { get_parse_errors, reset_parse_diagnostics } from '$lib/structure/parsers/shared'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
-import { count_xyz_frames } from './helpers'
+import { count_xyz_frames, has_multiple_xyz_frames } from './helpers'
 import type {
   AtomTypeMapping,
   ParseProgress,
@@ -45,8 +45,8 @@ export interface OpenTrajectoryOptions {
   index_above_bytes?: number
 }
 
-// Bytes a detection sniff reads from the head of a text payload. A single frame of 30k atoms
-// is ~1.5 MB, so the head must hold at least two of those to recognise a multi-frame XYZ.
+// Bytes of a text payload the VASP/LAMMPS/single-XYZ detectors look at. A single frame of 30k
+// atoms is ~1.5 MB, so this must hold one whole frame to recognise a lone XYZ structure.
 const SNIFF_BYTES = 8 * 1024 * 1024
 
 // UTF-8 size of a payload without encoding it: a 400 MB string would otherwise be copied
@@ -139,18 +139,15 @@ const parse_text = (
   index_above_bytes: number,
 ): TrajectoryRun => {
   const { filename, atom_type_mapping } = options
-  const head = data.length > SNIFF_BYTES ? data.slice(0, SNIFF_BYTES) : data
-  const xyz_frames_in_head = count_xyz_frames(head, 2)
-  const is_multi_xyz =
-    xyz_ext_hint(filename) !== false &&
-    (xyz_frames_in_head >= 2 ||
-      (xyz_frames_in_head === 1 && head !== data && count_xyz_frames(data, 2) >= 2))
+  const xyz_hint = xyz_ext_hint(filename)
+  const is_multi_xyz = xyz_hint !== false && has_multiple_xyz_frames(data)
   if (is_multi_xyz) {
     if ((provenance.source_bytes ?? 0) > index_above_bytes) {
       return indexed_text_run(data, `xyz`, provenance, collector)
     }
     return run_from_parsed(parse_xyz_trajectory(data, collector), provenance, collector)
   }
+  const head = data.length > SNIFF_BYTES ? data.slice(0, SNIFF_BYTES) : data
   if (FORMAT_PATTERNS.vasp(head, filename)) {
     return run_from_parsed(parse_vasp_xdatcar(data, collector.warn), provenance, collector)
   }
@@ -161,8 +158,7 @@ const parse_text = (
       collector,
     )
   }
-  const xyz_hint = xyz_ext_hint(filename)
-  if (xyz_hint || (xyz_hint === null && xyz_frames_in_head === 1)) {
+  if (xyz_hint || (xyz_hint === null && count_xyz_frames(head, 1) === 1)) {
     reset_parse_diagnostics()
     const structure = parse_xyz(data)
     if (structure) {

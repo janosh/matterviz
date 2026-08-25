@@ -63,32 +63,32 @@ declare global {
 const vscode_api: VSCodeAPI | null = get_vscode_api()
 
 // VS Code serves the bundle from a resource origin (https://*.vscode-cdn.net) that differs
-// from the webview document's origin, and `new Worker(cross_origin_url)` throws a
-// SecurityError, so every worker (parsing, MSD, VACF, structure-id, isosurface geometry)
-// would fail to construct. A same-origin blob module that imports the real script is what the
-// webview CSP's `worker-src blob:` permits; the imported module keeps its own import.meta.url,
-// so its nested asset URLs still resolve. The import must be dynamic: a static `import` inside
-// the blob is blocked by the webview CSP (verified in Chromium). Same-origin URLs (Hive, the
-// docs site) construct as-is.
-const install_cross_origin_worker_shim = (): void => {
+// from the webview document's origin, and nothing a worker fetches from that origin can load:
+// webview resources are served by a service worker that only intercepts the document's own
+// requests, so a `new Worker(cross_origin_url)` or a blob worker that `import()`s the real
+// script resolves the fake host over DNS and hangs ~20 s before failing (#451). Every worker
+// client here (parsing, MSD, VACF, RDF, structure-id, isosurface geometry) falls back to the
+// main thread when the constructor throws, so throw synchronously and make that fallback
+// instant. Real off-thread work in a webview needs self-contained single-file worker bundles
+// fetched on the main thread and handed over as blob URLs under a Trusted Types policy.
+// Same-origin URLs (Hive, the docs site) construct as-is.
+const install_cross_origin_worker_guard = (): void => {
   if (typeof Worker === `undefined`) return
   const NativeWorker = Worker
   globalThis.Worker = class extends NativeWorker {
     constructor(script_url: string | URL, options?: WorkerOptions) {
       const href = String(script_url)
-      const cross_origin =
-        /^https?:/i.test(href) && new URL(href).origin !== globalThis.location.origin
-      const blob_url = cross_origin
-        ? URL.createObjectURL(
-            new Blob([`await import(${JSON.stringify(href)})`], { type: `text/javascript` }),
-          )
-        : null
-      super(blob_url ?? script_url, blob_url ? { ...options, type: `module` } : options)
-      if (blob_url) URL.revokeObjectURL(blob_url)
+      if (/^https?:/i.test(href) && new URL(href).origin !== globalThis.location.origin) {
+        throw new DOMException(
+          `Workers cannot load ${href} inside a VS Code webview; computing on the main thread`,
+          `SecurityError`,
+        )
+      }
+      super(script_url, options)
     }
   }
 }
-if (vscode_api) install_cross_origin_worker_shim()
+if (vscode_api) install_cross_origin_worker_guard()
 // Display state, with the invariant current_result ⇒ current_app ⇒ current_file:
 // - current_file: the file the host last asked to show (bootstrap payload or a fileUpdated
 //   body); null after fileDeleted/cleanup

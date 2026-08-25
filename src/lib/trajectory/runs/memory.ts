@@ -28,28 +28,32 @@ export interface MemoryRunExtras {
 const is_finite_number = (value: unknown): value is number =>
   typeof value === `number` && Number.isFinite(value)
 
-// Structural invariants every consumer relies on: at least one frame, a constant atom count,
-// finite steps and coordinates, masses and signals that match the atoms.
+// Structural invariants every consumer relies on: at least one frame, finite steps and
+// coordinates, masses and signals that match frame 0's atoms. The atom count may vary between
+// frames (a bag of generated structures dumped into one XYZ); only collect_positions needs it
+// constant and rejects such runs itself when an analysis asks.
 function validate_frames(
   frames: readonly TrajectoryFrame[],
   extras: Pick<MemoryRunExtras, `atom_masses` | `signals`> = {},
 ): void {
   if (frames.length === 0) throw new Error(`Trajectory must have at least one frame`)
-  const reference = frames[0].structure?.sites
-  if (!reference?.length) throw new Error(`Frame 0 has no sites`)
-  const n_atoms = reference.length
-  for (const [frame_idx, frame] of frames.entries()) {
+  const n_atoms = frames[0].structure?.sites?.length ?? 0
+  for (let frame_idx = 0; frame_idx < frames.length; frame_idx++) {
+    const frame = frames[frame_idx]
     if (!is_finite_number(frame.step)) {
       throw new TypeError(`Frame ${frame_idx} has invalid step ${frame.step}`)
     }
     const sites = frame.structure?.sites
-    if (sites?.length !== n_atoms) {
-      throw new Error(
-        `Frame ${frame_idx} has ${sites?.length ?? 0} atoms, expected ${n_atoms}`,
-      )
-    }
-    for (const [atom_idx, site] of sites.entries()) {
-      if (site.xyz.length !== 3 || !site.xyz.every(is_finite_number)) {
+    if (!sites?.length) throw new Error(`Frame ${frame_idx} has no sites`)
+    // indexed loop, no iterator or closure: this runs over every site of every frame
+    for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
+      const { xyz } = sites[atom_idx]
+      if (
+        xyz.length !== 3 ||
+        !Number.isFinite(xyz[0]) ||
+        !Number.isFinite(xyz[1]) ||
+        !Number.isFinite(xyz[2])
+      ) {
         throw new Error(
           `Frame ${frame_idx} atom ${atom_idx} has invalid Cartesian coordinates`,
         )

@@ -15,7 +15,11 @@ import {
   parse_xyz,
 } from '$lib/structure/parse'
 import { structure_to_cif_str } from '$lib/structure/export'
-import { parse_coordinate, parse_float_token } from '$lib/structure/parsers/shared'
+import {
+  LineScanner,
+  parse_coordinate,
+  parse_float_token,
+} from '$lib/structure/parsers/shared'
 import benzene_mol2 from '$site/molecules/benzene.mol2?raw'
 import benzene_sdf from '$site/molecules/benzene.sdf?raw'
 import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
@@ -1953,6 +1957,65 @@ describe(`shared numeric coercion`, () => {
 
   test.each([`   `, ``, `abc`, `Infinity`, `NaN`])(`parse_coordinate(%j) throws`, (token) => {
     expect(() => parse_coordinate(token)).toThrow(`Invalid coordinate value: '${token}'`)
+  })
+
+  // The char-code fast path must round exactly like Number(): every token below is compared
+  // bit for bit against parse_float_token, including the ones that must take the slow path
+  test(`LineScanner tokenizes like split(/\\s+/) and decodes like parse_float_token`, () => {
+    const tokens = [
+      `0`,
+      `-0`,
+      `+5`,
+      `1.`,
+      `.5`,
+      `-.5`,
+      `.`,
+      `-`,
+      `+`,
+      `1e3`,
+      `1E-3`,
+      `-2.5e+2`,
+      `1.0D-3`,
+      `0x10`,
+      `Infinity`,
+      `NaN`,
+      `abc`,
+      `1,5`,
+      `1.0abc`,
+      `0.000123`,
+      `123456789012345`,
+      `1234567890123456`,
+      `0.1234567890123456789`,
+      `1e400`,
+      `9.87654321e-300`,
+      `Fe`,
+      `T`,
+      `00012`,
+      `1e`,
+      `1e+`,
+      `--1`,
+      `1.2.3`,
+      `0.30000000000000004`,
+      `-0.0000000000000000000001`,
+    ]
+    const rng = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
+    const random = rng(3)
+    for (let idx = 0; idx < 2000; idx++) {
+      const digits = Math.floor(random() * 12)
+      const magnitude = (random() - 0.5) * 10 ** Math.floor(random() * 40 - 20)
+      tokens.push(magnitude.toFixed(digits), magnitude.toExponential(digits))
+    }
+    const scanner = new LineScanner()
+    for (let start = 0; start < tokens.length; start += 7) {
+      const chunk = tokens.slice(start, start + 7)
+      const line = `  ${chunk.join(`\t `)}\r`
+      expect(scanner.scan(line)).toBe(chunk.length)
+      for (const [token_idx, token] of chunk.entries()) {
+        expect(scanner.str(token_idx)).toBe(token)
+        expect(scanner.num(token_idx)).toBe(parse_float_token(token))
+      }
+      expect(scanner.num(chunk.length)).toBeNaN()
+    }
   })
 })
 

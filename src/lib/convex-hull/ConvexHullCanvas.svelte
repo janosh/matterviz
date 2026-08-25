@@ -39,6 +39,7 @@
   let {
     dim,
     entries: entries_prop,
+    components,
     controls = {},
     config = {},
     show_controls,
@@ -103,6 +104,7 @@
   const hull_data = create_hull_data_pipeline({
     dim: strategy.dim,
     entries: () => entries,
+    components: () => components,
     temperature: () => temperature,
     interpolate_temperature: () => interpolate_temperature,
     max_interpolation_gap: () => max_interpolation_gap,
