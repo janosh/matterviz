@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
-import { parse_float_token } from '$lib/structure/parsers/shared'
+import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import type { XyzFrameSpec } from '$lib/trajectory/helpers'
 import {
@@ -8,6 +8,7 @@ import {
   create_trajectory_frame,
   elem_symbol_from_token,
   iter_xyz_frames,
+  split_lines,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
@@ -76,21 +77,21 @@ function lookup_extxyz_bools(tokens: string[]): Pbc | undefined {
 const MOVE_FLAG_COLUMNS = [`move_mask`, `selective_dynamics`] as const
 
 function read_extxyz_move_flags(
-  tokens: string[],
+  scanner: LineScanner,
   layout: Record<string, ExtxyzColumn> | null,
 ): [boolean, boolean, boolean] | undefined {
   for (const name of MOVE_FLAG_COLUMNS) {
     const column = layout?.[name]
-    if (!column || tokens.length < column.offset + Math.min(column.ncols, 3)) continue
+    if (!column || scanner.count < column.offset + Math.min(column.ncols, 3)) continue
     if (column.ncols >= 3) {
-      const flags = tokens
-        .slice(column.offset, column.offset + 3)
-        .map((token) => EXTXYZ_BOOL.get(token.toLowerCase()))
+      const flags = [0, 1, 2].map((axis) =>
+        EXTXYZ_BOOL.get(scanner.str(column.offset + axis).toLowerCase()),
+      )
       if (flags.every((flag) => flag !== undefined)) {
         return flags as [boolean, boolean, boolean]
       }
     } else {
-      const flag = EXTXYZ_BOOL.get(tokens[column.offset].toLowerCase())
+      const flag = EXTXYZ_BOOL.get(scanner.str(column.offset).toLowerCase())
       if (flag !== undefined) return [flag, flag, flag]
     }
   }
@@ -106,17 +107,21 @@ const EXTXYZ_COLUMN_ALIASES: Record<string, string> = {
   masses: `mass`,
 }
 
-function read_extxyz_column(tokens: string[], column: ExtxyzColumn): unknown {
+function read_extxyz_column(scanner: LineScanner, column: ExtxyzColumn): unknown {
   const { offset, ncols, type } = column
-  if (tokens.length < offset + ncols) return undefined
-  const read_token = (token: string): number | string | boolean | undefined => {
-    if (type === `s`) return token
-    if (type === `l`) return EXTXYZ_BOOL.get(token.toLowerCase())
-    const num = parse_float_token(token)
-    return Number.isFinite(num) ? num : undefined
+  if (scanner.count < offset + ncols) return undefined
+  const values: (number | string | boolean)[] = []
+  for (let col = offset; col < offset + ncols; col++) {
+    let value: number | string | boolean | undefined
+    if (type === `s`) value = scanner.str(col)
+    else if (type === `l`) value = EXTXYZ_BOOL.get(scanner.str(col).toLowerCase())
+    else {
+      const num = scanner.num(col)
+      value = Number.isFinite(num) ? num : undefined
+    }
+    if (value === undefined) return undefined
+    values.push(value)
   }
-  const values = tokens.slice(offset, offset + ncols).map(read_token)
-  if (values.includes(undefined)) return undefined
   return ncols === 1 ? values[0] : values
 }
 
@@ -218,25 +223,22 @@ function parse_xyz_atom_lines(
   const has_move_flags = MOVE_FLAG_COLUMNS.some((name) => layout?.[name])
   let move_flag_count = 0
 
+  const scanner = new LineScanner()
   for (let idx = 0; idx < num_atoms; idx++) {
     const line_number = start + idx + 1
-    const parts = lines[start + idx].trim().split(/\s+/)
-    if (parts.length < min_cols) {
+    const n_cols = scanner.scan(lines[start + idx])
+    if (n_cols < min_cols) {
       throw new Error(
-        `XYZ ${frame_label} line ${line_number} has ${parts.length} columns, expected at least ${min_cols}: "${lines[start + idx]}"`,
+        `XYZ ${frame_label} line ${line_number} has ${n_cols} columns, expected at least ${min_cols}: "${lines[start + idx]}"`,
       )
     }
-    const pos = [
-      parse_float_token(parts[pos_col]),
-      parse_float_token(parts[pos_col + 1]),
-      parse_float_token(parts[pos_col + 2]),
-    ]
+    const pos = [scanner.num(pos_col), scanner.num(pos_col + 1), scanner.num(pos_col + 2)]
     if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1]) || !Number.isFinite(pos[2])) {
       throw new TypeError(
         `XYZ ${frame_label} line ${line_number} has non-numeric coordinates: "${lines[start + idx]}"`,
       )
     }
-    const symbol = parts[species_col]
+    const symbol = scanner.str(species_col)
     const element_symbol = elem_symbol_from_token(symbol)
     if (!element_symbol) {
       warn(
@@ -247,11 +249,11 @@ function parse_xyz_atom_lines(
     elements.push(element_symbol)
     positions.push(pos)
     const props: Record<string, unknown> = {}
-    if (forces_col >= 0 && parts.length >= forces_col + 3) {
+    if (forces_col >= 0 && n_cols >= forces_col + 3) {
       const force_vec = [
-        parse_float_token(parts[forces_col]),
-        parse_float_token(parts[forces_col + 1]),
-        parse_float_token(parts[forces_col + 2]),
+        scanner.num(forces_col),
+        scanner.num(forces_col + 1),
+        scanner.num(forces_col + 2),
       ]
       if (
         Number.isFinite(force_vec[0]) &&
@@ -263,11 +265,11 @@ function parse_xyz_atom_lines(
       }
     }
     for (const [name, column] of extra_columns) {
-      const value = read_extxyz_column(parts, column)
+      const value = read_extxyz_column(scanner, column)
       if (value !== undefined) props[name] = value
     }
     if (has_move_flags) {
-      const flags = read_extxyz_move_flags(parts, layout)
+      const flags = read_extxyz_move_flags(scanner, layout)
       if (flags) {
         props.selective_dynamics = flags
         move_flag_count++
@@ -371,7 +373,7 @@ export function parse_xyz_trajectory(
   content: string,
   collector: WarningCollector,
 ): ParsedTrajectory {
-  const lines = content.trim().split(/\r?\n/)
+  const lines = split_lines(content)
   const frames = index_xyz_frames(lines, collector.warn).map((spec, frame_idx) =>
     build_xyz_frame(
       lines,

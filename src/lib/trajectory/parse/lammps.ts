@@ -1,9 +1,14 @@
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
+import { LineScanner } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import type { AtomTypeMapping, TrajectoryFrame } from '$lib/trajectory/index'
 import { element_from_lammps_type } from '$lib/element/helpers'
-import { create_trajectory_frame, elem_symbol_from_token } from '$lib/trajectory/helpers'
+import {
+  create_trajectory_frame,
+  elem_symbol_from_token,
+  split_lines,
+} from '$lib/trajectory/helpers'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
@@ -87,7 +92,7 @@ export function parse_lammps_trajectory(
   warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
 ): ParsedTrajectory {
-  const lines = content.trim().split(/\r?\n/)
+  const lines = split_lines(content)
   const frames: TrajectoryFrame[] = []
   const atom_types_found = new Set<number>()
   let identity_uses_ids: boolean | undefined
@@ -114,6 +119,7 @@ export function parse_lammps_trajectory(
   // read_lammps_dump and the LAMMPS data parser; the guess warns once per file so a Si/O dump
   // showing up as H/He is traceable.
   const guessed_types = new Set<number>()
+  const scanner = new LineScanner()
 
   const parse_frame = (): void => {
     let time: number | null = null
@@ -218,19 +224,15 @@ export function parse_lammps_trajectory(
         )
       }
       const line_number = idx + 1
-      const parts = read_line().split(/\s+/)
+      const n_cols = scanner.scan(lines[idx++])
       // A malformed last line after at least one complete frame is a half-written tail, not
       // corruption; a lone frame still reports the line so the problem is visible
       const torn_tail = idx >= lines.length && frames.length > 0
-      if (parts.length < cols.length) {
-        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${parts.length} columns, expected ${cols.length}`
+      if (n_cols < cols.length) {
+        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${n_cols} columns, expected ${cols.length}`
         throw torn_tail ? new TornLammpsFrameError(message) : new Error(message)
       }
-      const coords: math.Vec3 = [
-        Number(parts[x_col]),
-        Number(parts[y_col]),
-        Number(parts[z_col]),
-      ]
+      const coords: math.Vec3 = [scanner.num(x_col), scanner.num(y_col), scanner.num(z_col)]
       if (
         !Number.isFinite(coords[0]) ||
         !Number.isFinite(coords[1]) ||
@@ -244,23 +246,22 @@ export function parse_lammps_trajectory(
         : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
       let atom_type: number | undefined
       if (type_col !== undefined) {
-        const raw_atom_type = parts[type_col]
-        atom_type = Number(raw_atom_type)
+        atom_type = scanner.num(type_col)
         if (!Number.isInteger(atom_type) || atom_type <= 0) {
           throw new TypeError(
-            `LAMMPS atom line ${line_number} (timestep ${timestep}) has invalid type "${raw_atom_type}"`,
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) has invalid type "${scanner.str(type_col)}"`,
           )
         }
         atom_types_found.add(atom_type)
       }
       let element_symbol = atom_type === undefined ? undefined : atom_type_mapping?.[atom_type]
       if (!element_symbol && element_col !== undefined) {
-        element_symbol = elem_symbol_from_token(parts[element_col])
+        element_symbol = elem_symbol_from_token(scanner.str(element_col))
         // Some tools fill `element` with type labels (`Type1`, `2`); with a type column to
         // fall back on that is a guess, not a corrupt file
         if (!element_symbol && atom_type === undefined) {
           throw new Error(
-            `LAMMPS atom line ${line_number} (timestep ${timestep}) has unknown element symbol "${parts[element_col]}"`,
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) has unknown element symbol "${scanner.str(element_col)}"`,
           )
         }
       }
@@ -274,19 +275,13 @@ export function parse_lammps_trajectory(
 
       const props: Record<string, unknown> = {}
       for (const { key, indices } of vector_props) {
-        const vec = [
-          Number(parts[indices[0]]),
-          Number(parts[indices[1]]),
-          Number(parts[indices[2]]),
-        ]
+        const vec = [scanner.num(indices[0]), scanner.num(indices[1]), scanner.num(indices[2])]
         if (Number.isFinite(vec[0]) && Number.isFinite(vec[1]) && Number.isFinite(vec[2])) {
           props[key] = vec
         }
       }
       for (const { key, col_idx } of scalar_props) {
-        const raw = parts[col_idx]
-        if (raw === ``) continue
-        const value = Number(raw)
+        const value = scanner.num(col_idx)
         if (Number.isFinite(value)) props[key] = value
       }
       site_properties.push(props)

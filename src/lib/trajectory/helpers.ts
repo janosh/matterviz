@@ -171,11 +171,19 @@ export function calc_force_stats(
   let force_max = -Infinity
   let sum_sq = 0
   for (const force of forces) {
-    const magnitude = Math.hypot(...force)
+    // three explicit args: a spread call is several times slower in this per-atom loop
+    const magnitude = Math.hypot(force[0], force[1], force[2])
     if (magnitude > force_max) force_max = magnitude
     sum_sq += magnitude ** 2
   }
   return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
+}
+
+// Lines of a text payload. A plain `\n` split is several times faster than the `\r?\n`
+// regex on a 100 MB file, so the regex only runs when a `\r` exists at all.
+export const split_lines = (content: string): string[] => {
+  const trimmed = content.trim()
+  return trimmed.includes(`\r`) ? trimmed.split(/\r?\n/) : trimmed.split(`\n`)
 }
 
 // Symbol (<= 3 chars, non-numeric) followed by three numeric coordinates. Coordinates go
@@ -241,7 +249,27 @@ export function* iter_xyz_frames(
 export function count_xyz_frames(data: string, limit = Number.POSITIVE_INFINITY): number {
   if (!data) return 0
   let frame_count = 0
-  const frames = iter_xyz_frames(data.trim().split(/\r?\n/))
+  const frames = iter_xyz_frames(split_lines(data))
   while (frame_count < limit && !frames.next().done) frame_count += 1
   return frame_count
+}
+
+// Whether `data` holds at least two XYZ frames, splitting as little of it into lines as
+// settles the answer: a head is conclusive unless its cut fell inside a frame (the torn frame
+// is the generator's return value), in which case the next larger head is tried. Sized so a
+// single frame of 30k atoms (~1.5 MB) still leaves room for two frames in the largest head.
+const SNIFF_HEADS = [64 * 1024, 8 * 1024 * 1024]
+export function has_multiple_xyz_frames(data: string): boolean {
+  for (const head_bytes of [...SNIFF_HEADS, data.length]) {
+    const frames = iter_xyz_frames(split_lines(data.slice(0, head_bytes)))
+    let frame_count = 0
+    let next = frames.next()
+    while (!next.done && frame_count < 2) {
+      frame_count++
+      next = frames.next()
+    }
+    if (frame_count >= 2) return true
+    if (head_bytes >= data.length || next.value === null) return false
+  }
+  return false
 }

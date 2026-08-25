@@ -3,6 +3,7 @@
 // frames are decoded on read and cached by the session, never all at once. Per-frame scalars
 // for the plot are extracted progressively in chunks so a 100k-frame open stays responsive.
 import * as math from '$lib/math'
+import { split_lines } from '../helpers'
 import type { TrajectoryFrame, TrajectoryMetadata } from '../index'
 import { type AseFrames, open_ase_frames } from '../parse/ase'
 import type { WarningCollector } from '../parse/shared'
@@ -65,7 +66,7 @@ const run_from_source = (
 // === XYZ / EXTXYZ ===
 
 const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
-  let lines = data.trim().split(/\r?\n/)
+  let lines = split_lines(data)
   // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
   const frames = index_xyz_frames(lines, collector.warn)
   return {

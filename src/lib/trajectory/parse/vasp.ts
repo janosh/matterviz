@@ -4,7 +4,11 @@ import * as math from '$lib/math'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { parse_float_token } from '$lib/structure/parsers/shared'
 import { lines_cursor, parse_vasp_header } from '$lib/structure/parsers/vasp-header'
-import { create_trajectory_frame, expand_ion_types } from '$lib/trajectory/helpers'
+import {
+  create_trajectory_frame,
+  expand_ion_types,
+  split_lines,
+} from '$lib/trajectory/helpers'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 // The XDATCAR header is the POSCAR one minus the coordinate-mode line, because its
@@ -24,7 +28,7 @@ const parse_xdatcar_header = (lines: string[], start: number) => {
 }
 
 export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTrajectory {
-  const lines = content.trim().split(/\r?\n/)
+  const lines = split_lines(content)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
   const { result: parsed, end: header_end } = parse_xdatcar_header(lines, 0)

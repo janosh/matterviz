@@ -59,6 +59,99 @@ export const parse_float_token = (token: string | undefined): number => {
   return Number.isNaN(num) ? Number(normalize_scientific_notation(token)) : num
 }
 
+// Whitespace tokenizer for the hot atom-line loops of the trajectory parsers.
+// `trim().split(/\s+/)` allocates an array plus one substring per column on every line; this
+// records token bounds and values in reusable typed arrays and decodes numbers straight off
+// the char codes, so a 20 MB XYZ/LAMMPS file allocates nothing per coordinate. One instance
+// per parse call.
+const CH_0 = 48
+const CH_9 = 57
+const grow = <T extends Int32Array | Float64Array>(old: T): T => {
+  const next = new (old.constructor as new (length: number) => T)(old.length * 2)
+  next.set(old)
+  return next
+}
+export class LineScanner {
+  private starts = new Int32Array(64)
+  private ends = new Int32Array(64)
+  private values = new Float64Array(64)
+  private line = ``
+  count = 0
+
+  // Tokenizes `line` on ASCII whitespace and returns the token count. Each token's numeric
+  // value is decoded in the same pass: a plain decimal with at most 15 significant digits is
+  // an exact integer mantissa scaled by one exact power of ten, which rounds exactly like
+  // Number(); anything else (exponents, long mantissas, `1.0D-3`, symbols) is marked for the
+  // slow path that num() takes on demand.
+  scan(line: string): number {
+    this.line = line
+    let { starts, ends, values } = this
+    let count = 0
+    const len = line.length
+    let idx = 0
+    while (idx < len) {
+      let code = line.charCodeAt(idx)
+      if (code <= 32) {
+        idx++
+        continue
+      }
+      const start = idx
+      let negative = false
+      if (code === 45 /* - */ || code === 43 /* + */) {
+        negative = code === 45
+        idx++
+        code = idx < len ? line.charCodeAt(idx) : 0
+      }
+      let mantissa = 0
+      let digits = 0 // significant digits, leading zeros excluded
+      let any_digit = false
+      let scale = 0
+      let seen_dot = false
+      while (idx < len) {
+        if (code >= CH_0 && code <= CH_9) {
+          any_digit = true
+          if (digits > 0 || code !== CH_0) digits++
+          mantissa = mantissa * 10 + (code - CH_0)
+          if (seen_dot) scale--
+        } else if (code === 46 /* . */ && !seen_dot) seen_dot = true
+        else break
+        idx++
+        code = idx < len ? line.charCodeAt(idx) : 0
+      }
+      let value = NaN
+      if (any_digit && digits <= 15 && scale >= -22 && (idx >= len || code <= 32)) {
+        value = scale === 0 ? mantissa : mantissa / POW10[-scale]
+        if (negative) value = -value
+      } else while (idx < len && line.charCodeAt(idx) > 32) idx++
+      if (count === starts.length) {
+        this.starts = grow(starts)
+        this.ends = grow(ends)
+        this.values = grow(values)
+        ;({ starts, ends, values } = this)
+      }
+      starts[count] = start
+      ends[count] = idx
+      values[count] = value
+      count++
+    }
+    this.count = count
+    return count
+  }
+
+  str(token_idx: number): string {
+    return this.line.slice(this.starts[token_idx], this.ends[token_idx])
+  }
+
+  // Numeric value of token `token_idx`: NaN if absent or non-numeric, otherwise identical to
+  // parse_float_token on the same substring
+  num(token_idx: number): number {
+    if (token_idx >= this.count) return NaN
+    const value = this.values[token_idx]
+    return Number.isNaN(value) ? parse_float_token(this.str(token_idx)) : value
+  }
+}
+const POW10 = Array.from({ length: 23 }, (_unused, exp) => 10 ** exp)
+
 // A coordinate token: like parse_float_token, but a blank, non-numeric or non-finite
 // value is an error rather than NaN/Infinity for the caller to trip over later
 export const parse_coordinate = (token: string): number => {

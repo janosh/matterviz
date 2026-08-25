@@ -38,14 +38,22 @@ function validate_frames(
 ): void {
   if (frames.length === 0) throw new Error(`Trajectory must have at least one frame`)
   const n_atoms = frames[0].structure?.sites?.length ?? 0
-  for (const [frame_idx, frame] of frames.entries()) {
+  for (let frame_idx = 0; frame_idx < frames.length; frame_idx++) {
+    const frame = frames[frame_idx]
     if (!is_finite_number(frame.step)) {
       throw new TypeError(`Frame ${frame_idx} has invalid step ${frame.step}`)
     }
     const sites = frame.structure?.sites
     if (!sites?.length) throw new Error(`Frame ${frame_idx} has no sites`)
-    for (const [atom_idx, site] of sites.entries()) {
-      if (site.xyz.length !== 3 || !site.xyz.every(is_finite_number)) {
+    // indexed loop, no iterator or closure: this runs over every site of every frame
+    for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
+      const { xyz } = sites[atom_idx]
+      if (
+        xyz.length !== 3 ||
+        !Number.isFinite(xyz[0]) ||
+        !Number.isFinite(xyz[1]) ||
+        !Number.isFinite(xyz[2])
+      ) {
         throw new Error(
           `Frame ${frame_idx} atom ${atom_idx} has invalid Cartesian coordinates`,
         )
