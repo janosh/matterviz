@@ -90,7 +90,6 @@ export function parse_lammps_trajectory(
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
   const atom_types_found = new Set<number>()
-  let reference_atom_ids: number[] | undefined
   let identity_uses_ids: boolean | undefined
   let idx = 0
 
@@ -319,21 +318,6 @@ export function parse_lammps_trajectory(
       ).toSorted(
         (left_idx, right_idx) => numeric_atom_ids[left_idx] - numeric_atom_ids[right_idx],
       )
-      const sorted_atom_ids = order.map((atom_idx) => numeric_atom_ids[atom_idx])
-      const expected_atom_ids = reference_atom_ids
-      if (
-        expected_atom_ids &&
-        (sorted_atom_ids.length !== expected_atom_ids.length ||
-          sorted_atom_ids.some((atom_id, atom_idx) => atom_id !== expected_atom_ids[atom_idx]))
-      ) {
-        // Variable atom counts (GCMC, deposition) are real dumps the viewer cannot show as one
-        // trajectory; keep the frames that share the first frame's atoms and say what was lost.
-        warn(
-          `Skipping LAMMPS frame at timestep ${timestep}: atom ID set changed (${sorted_atom_ids.length} atoms vs ${expected_atom_ids.length} in the first frame)`,
-        )
-        return
-      }
-      reference_atom_ids ??= sorted_atom_ids
       positions = order.map((atom_idx) => positions[atom_idx])
       elements = order.map((atom_idx) => elements[atom_idx])
       site_properties = order.map((atom_idx) => site_properties[atom_idx])
@@ -380,8 +364,8 @@ export function parse_lammps_trajectory(
     )
   }
   if (frames.length > 1 && identity_uses_ids === false) {
-    throw new Error(
-      `Multi-frame LAMMPS trajectories must include an atom ID column so atom identity can be verified across frames`,
+    warn(
+      `LAMMPS dump has no atom ID column; frames display as written but atom identity cannot be verified across frames, so displacement analyses may be meaningless`,
     )
   }
   for (let frame_idx = 1; frame_idx < frames.length; frame_idx++) {

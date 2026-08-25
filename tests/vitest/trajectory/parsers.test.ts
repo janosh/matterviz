@@ -418,8 +418,6 @@ describe(`LAMMPS`, () => {
     // An interior frame shorter than its atom count runs into the next header
     [`an interior frame missing atoms`, `${lammps_frame(`id type x y z`, [`1 1 1 0 0`], { n_atoms: 2 })}\n${lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS atom line 11 (timestep 0) has 2 columns, expected 5`],
-    [`no ID column across frames`, [lammps_frame(`type x y z`, [`1 1 0 0`]), lammps_frame(`type x y z`, [`1 1.5 0 0`], { timestep: 1 })].join(`\n`),
-      `Multi-frame LAMMPS trajectories must include an atom ID column`],
     [`descending timesteps`, [lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 1 }), lammps_frame(`id type x y z`, [`1 1 2 0 0`])].join(`\n`),
       `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`],
   ])(`rejects %s with line/frame context`, async (_label, content, error) => {
@@ -449,13 +447,13 @@ describe(`LAMMPS`, () => {
     expect(run.warnings).toEqual([`Dropping truncated final LAMMPS frame: ${detail}`])
   })
 
-  it(`sorts every frame by atom ID and skips frames whose atom set changed (GCMC)`, async () => {
+  // Issue #449: a GCMC/deposition dump whose atom set changes is still a browsable
+  // trajectory; only displacement analysis needs a constant atom set and says so itself
+  it(`sorts every frame by atom ID and keeps frames whose atom set changed (GCMC)`, async () => {
     const content = [
       frame_0,
       lammps_frame(`id type x y z`, [`2 1 7.5 0 0`, `1 1 1.5 0 0`], { timestep: 1 }),
       lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`, `3 1 4 0 0`], { timestep: 2 }),
-      lammps_frame(`id type x y z`, [`1 1 2 0 0`, `3 1 8 0 0`], { timestep: 3 }),
-      lammps_frame(`id type x y z`, [`2 1 8.5 0 0`, `1 1 2 0 0`], { timestep: 4 }),
     ].join(`\n`)
     const run = await open(content, `unsorted.lammpstrj`)
     expect(
@@ -466,11 +464,23 @@ describe(`LAMMPS`, () => {
     ).toEqual([
       [0, [1, 1], [2, 8]],
       [1, [1, 1.5], [2, 7.5]],
-      [4, [1, 2], [2, 8.5]],
+      [2, [1, 1], [2, 8], [3, 4]],
     ])
+    expect(run.warnings).toEqual([])
+    await expect(run.collect_positions?.()).rejects.toThrow(
+      `Atom count changed at frame 2: expected 2 atoms, got 3`,
+    )
+  })
+
+  it(`warns instead of rejecting a multi-frame dump without an ID column`, async () => {
+    const content = [
+      lammps_frame(`type x y z`, [`1 1 0 0`]),
+      lammps_frame(`type x y z`, [`1 1.5 0 0`], { timestep: 1 }),
+    ].join(`\n`)
+    const run = await open(content, `no-ids.lammpstrj`)
+    expect(run.frame_count).toBe(2)
     expect(run.warnings).toEqual([
-      `Skipping LAMMPS frame at timestep 2: atom ID set changed (3 atoms vs 2 in the first frame)`,
-      `Skipping LAMMPS frame at timestep 3: atom ID set changed (2 atoms vs 2 in the first frame)`,
+      `LAMMPS dump has no atom ID column; frames display as written but atom identity cannot be verified across frames, so displacement analyses may be meaningless`,
     ])
   })
 
@@ -615,6 +625,15 @@ describe(`XYZ`, () => {
       `Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}`,
     )
   const four_atoms = (last = `H 1 1 1`) => [`H 0 0 0`, `H 1 0 0`, `H 0 1 0`, last]
+
+  // Issue #449: generated structures of different sizes dumped into one XYZ must browse
+  it(`loads frames with differing atom counts`, async () => {
+    const run = await open(
+      [xyz_frame([`H 0 0 0`]), xyz_frame(four_atoms())].join(`\n`),
+      `bag.xyz`,
+    )
+    expect((await frames_of(run)).map((frame) => frame.structure.sites.length)).toEqual([1, 4])
+  })
 
   it(`extracts comment-line properties, step and per-frame lattices`, async () => {
     const content = [
@@ -1031,10 +1050,19 @@ describe(`JSON`, () => {
     [[], /at least one frame/],
     [{ frames: [{ step: 0 }] }, /Invalid structure in trajectory frame 0/],
     [{ sites: [] }, /Invalid structure in single structure/],
-    [{ frames: [{ structure: { sites: [h_site] }, step: 0 }, { structure: { sites: [h_site, h_site] }, step: 1 }] }, `Frame 1 has 2 atoms, expected 1`],
     [{ frames: [{ structure: { sites: [{ ...h_site, xyz: [Number.NaN, 0, 0] }] }, step: 0 }] }, `Frame 0 atom 0 has invalid Cartesian coordinates`],
   ])(`trajectory_from_json rejects %j`, (value, error) => {
     expect(() => trajectory_from_json(value)).toThrow(error)
+  })
+
+  it(`accepts frames with differing atom counts (#449)`, async () => {
+    const frames = [
+      { structure: { sites: [h_site] }, step: 0 },
+      { structure: { sites: [h_site, h_site] }, step: 1 },
+    ]
+    expect(
+      (await trajectory_from_json({ frames }).read_frame(1)).structure.sites,
+    ).toHaveLength(2)
   })
 })
 
