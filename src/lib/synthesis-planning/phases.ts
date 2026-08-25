@@ -51,14 +51,14 @@ const plain_formula = (composition: CompositionType): string =>
 export const formula_of = (composition: CompositionType): string =>
   plain_formula(get_reduced_formula(composition))
 
-export const molar_mass_of = (composition: CompositionType): number =>
+const molar_mass_of = (composition: CompositionType): number =>
   Object.entries(composition).reduce((sum, [symbol, amount]) => {
     const element = element_by_symbol.get(symbol as ElementSymbol)
     if (!element) throw new Error(`Unknown element ${symbol} in composition`)
     return sum + element.atomic_mass * amount
   }, 0)
 
-export const fraction_vector = (
+const fraction_vector = (
   composition: CompositionType,
   elements: ElementSymbol[],
 ): number[] => {
@@ -102,7 +102,7 @@ function make_phase(
 
 // Gas species as phases in the formation-energy frame: μ(T, p) per atom relative to the
 // elemental references at 0 K, so O2 sits at 0 at 0 K and drops by T·S at temperature.
-export function gas_phases(
+function gas_phases(
   conditions: SynthesisConditions,
   elements: ElementSymbol[],
 ): PlannerPhase[] {

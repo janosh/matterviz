@@ -28,7 +28,7 @@ const ENERGY_SCALE = 0.1
 // Smooth saturation of an energy onto (-1, 1)
 const saturate = (energy: number): number => energy / (Math.abs(energy) + ENERGY_SCALE)
 
-export const solid_precursors = (reaction: SynthesisReaction) =>
+const solid_precursors = (reaction: SynthesisReaction) =>
   reaction.reactants.filter(({ phase }) => !phase.is_gas)
 
 // Furnace atmosphere a reaction needs. Releasing gas just needs an open crucible; taking up O2

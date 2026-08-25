@@ -44,7 +44,7 @@ export interface BalancedReaction {
 
 // Driving force per atom of the reacting mixture (pymatgen InterfacialReactivity convention),
 // which keeps decomposition and formation products comparable
-export const driving_force_of = (balanced: BalancedReaction): number =>
+const driving_force_of = (balanced: BalancedReaction): number =>
   balanced.energy_per_fu / balanced.reactant_atoms
 
 export type BalanceFailure = `unbalanced` | `redundant_precursor`
@@ -153,7 +153,7 @@ export function make_reaction(
 // === Selectivity ===
 
 // Atom fraction of each solid precursor in the reacting mixture of a balanced reaction
-export const mixture_fractions = (
+const mixture_fractions = (
   precursors: PlannerPhase[],
   balanced: BalancedReaction,
 ): Record<string, number> => {
@@ -248,7 +248,7 @@ function pairwise_interface(
 
 // Depth of the target below the open-system hull of every other phase reachable from the
 // precursors, at the target's composition (eV/atom). Gas exchange with the reservoir is free.
-export function inverse_hull_energy(
+function inverse_hull_energy(
   precursors: PlannerPhase[],
   target: PlannerPhase,
   gases: PlannerPhase[],
