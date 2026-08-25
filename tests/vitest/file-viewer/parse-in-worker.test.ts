@@ -174,6 +174,22 @@ describe(`parse_in_worker`, () => {
     ).rejects.toThrow(`main-thread fallback is disabled`)
   })
 
+  // Indexed formats open frame by frame, so the main thread can take any size of them
+  it(`lets an oversized indexable trajectory fall back to the main thread`, async () => {
+    silence_warnings()
+    const fallback_parse = vi.fn().mockResolvedValue(structure_result)
+    const content = `x`.repeat(MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES + 1)
+    await expect(
+      parse_in_worker(content, `huge.extxyz`, false, {
+        worker_factory: () => {
+          throw new Error(`blocked`)
+        },
+        fallback_parse,
+      }),
+    ).resolves.toEqual(structure_result)
+    expect(fallback_parse).toHaveBeenCalledOnce()
+  })
+
   it(`aborting terminates the worker`, async () => {
     const worker = make_fake_worker(() => null)
     const controller = new AbortController()
