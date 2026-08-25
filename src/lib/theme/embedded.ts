@@ -2,8 +2,7 @@
 
 import { perceived_brightness } from '$lib/colors'
 import type { ThemeType } from '$lib/theme'
-import { declared_color_scheme, nearest_declared } from '$lib/theme'
-import { system_preference } from 'svelte-widgets/theme'
+import { declared_color_scheme, get_system_mode, nearest_declared } from '$lib/theme'
 
 // Extend globalThis with our custom properties
 declare global {
@@ -50,7 +49,7 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
 
   // Nothing declared: the OS preference. A page that merely styles its body dark has not
   // stated a theme, so its colours are not sniffed.
-  return system_preference()
+  return get_system_mode()
 }
 
 // Report the widget's host theme now and whenever it changes — the theme attributes of <html>,

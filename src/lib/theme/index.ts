@@ -3,7 +3,6 @@
 // white/black high-contrast overrides) and `color-scheme` (what light-dark() and native form
 // controls resolve against).
 import { persisted_choice, storage_set } from 'svelte-widgets/storage'
-import { system_preference } from 'svelte-widgets/theme'
 
 const is_browser = typeof window !== `undefined`
 export const THEME_STORAGE_KEY = `matterviz-theme`
@@ -86,9 +85,17 @@ export const nearest_declared = (
   return null
 }
 
+// Not svelte-widgets' system_preference: that lives in a runes module (`theme.svelte.js`
+// holds a module-level $state), which workers and the embedded theme bootstrap load
+// without the Svelte compiler and so cannot import.
+export const get_system_mode = (): ThemeType =>
+  is_browser && globalThis.matchMedia?.(`(prefers-color-scheme: dark)`).matches
+    ? COLOR_THEMES.dark
+    : COLOR_THEMES.light
+
 export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
-  const resolved = mode === AUTO_THEME ? system_preference() : mode
+  const resolved = mode === AUTO_THEME ? get_system_mode() : mode
   if (!(resolved in THEME_TYPE)) throw new Error(`Invalid theme mode: ${resolved}`)
   const root = document.documentElement
   root.dataset.theme = resolved
