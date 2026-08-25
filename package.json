@@ -221,6 +221,10 @@
       "types": "./dist/symmetry/index.d.ts",
       "default": "./dist/symmetry/index.js"
     },
+    "./synthesis-planning": {
+      "types": "./dist/synthesis-planning/index.d.ts",
+      "default": "./dist/synthesis-planning/index.js"
+    },
     "./table": {
       "types": "./dist/table/index.d.ts",
       "default": "./dist/table/index.js"

@@ -20,6 +20,7 @@
 
   let {
     entries: entries_prop,
+    components,
     // bindable props not part of rest because Svelte 5 doesn't support spreading bindable props.
     fullscreen = $bindable(false),
     wrapper = $bindable(),
@@ -64,7 +65,10 @@
   // state.
   const parsed = $derived.by((): { elements: ElementSymbol[]; invalid: boolean } => {
     try {
-      return { elements: process_hull_entries(entries ?? []).elements, invalid: false }
+      return {
+        elements: process_hull_entries(entries ?? [], components).elements,
+        invalid: false,
+      }
     } catch {
       return { elements: [], invalid: true }
     }
@@ -144,6 +148,7 @@
   {#key canvas_dim}
     <ConvexHullComponent
       {entries}
+      {components}
       dim={canvas_dim ?? undefined}
       {...rest}
       bind:fullscreen

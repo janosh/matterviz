@@ -1438,3 +1438,81 @@ describe(`quantile_unordered`, () => {
     expect(math.quantile_unordered([-Number.MAX_VALUE, Number.MAX_VALUE], 0.5)).toBe(0)
   })
 })
+
+describe(`solve_linear_program`, () => {
+  test(`finds the optimal vertex of a small LP`, () => {
+    // min -x - 2y  s.t. x + y + s1 = 4, x + 3y + s2 = 6, all >= 0  → x = 3, y = 1, obj = -5
+    const result = math.solve_linear_program(
+      [-1, -2, 0, 0],
+      [
+        [1, 1, 1, 0],
+        [1, 3, 0, 1],
+      ],
+      [4, 6],
+    )
+    expect(result.status).toBe(`optimal`)
+    expect(result.solution[0]).toBeCloseTo(3, 9)
+    expect(result.solution[1]).toBeCloseTo(1, 9)
+    expect(result.objective).toBeCloseTo(-5, 9)
+  })
+
+  test(`reports infeasible and unbounded problems`, () => {
+    // x + y = -1 with x, y >= 0 has no solution
+    expect(math.solve_linear_program([1, 1], [[1, 1]], [-1]).status).toBe(`infeasible`)
+    // min -x s.t. y = 1: x is free to grow
+    expect(math.solve_linear_program([-1, 0], [[0, 1]], [1]).status).toBe(`unbounded`)
+  })
+
+  test(`drops linearly dependent but consistent rows`, () => {
+    const result = math.solve_linear_program(
+      [1, 2],
+      [
+        [1, 1],
+        [2, 2],
+      ],
+      [1, 2],
+    )
+    expect(result.status).toBe(`optimal`)
+    expect(result.solution).toEqual([1, 0])
+    expect(result.objective).toBeCloseTo(1, 12)
+  })
+
+  test(`convex-hull decomposition: lowest-energy mixture reproducing a composition`, () => {
+    // Phases as atom-fraction columns (A, B) with energies; query composition A0.5 B0.5
+    // AB at -1 eV/atom beats the A + B mixture (0) and the A3B + AB3 mixture (-0.5)
+    const compositions = [
+      [1, 0],
+      [0, 1],
+      [0.5, 0.5],
+      [0.75, 0.25],
+      [0.25, 0.75],
+    ]
+    const energies = [0, 0, -1, -0.5, -0.5]
+    const result = math.solve_linear_program(
+      energies,
+      [0, 1].map((el_idx) => compositions.map((comp) => comp[el_idx])),
+      [0.5, 0.5],
+    )
+    expect(result.status).toBe(`optimal`)
+    expect(result.solution[2]).toBeCloseTo(1, 9)
+    expect(result.objective).toBeCloseTo(-1, 9)
+  })
+
+  test(`handles degenerate ties without cycling`, () => {
+    const n_cols = 40
+    const objective = Array.from({ length: n_cols }, (_, idx) => (idx % 7) - 3)
+    const constraints = [
+      Array.from({ length: n_cols }, () => 1),
+      Array.from({ length: n_cols }, (_, idx) => idx % 2),
+      Array.from({ length: n_cols }, (_, idx) => (idx % 3 === 0 ? 1 : 0)),
+    ]
+    const result = math.solve_linear_program(objective, constraints, [1, 0.5, 0.25])
+    expect(result.status).toBe(`optimal`)
+    expect(result.solution.every((value) => value >= 0)).toBe(true)
+    for (const [row_idx, row] of constraints.entries()) {
+      const lhs = row.reduce((sum, coeff, col) => sum + coeff * result.solution[col], 0)
+      expect(lhs).toBeCloseTo([1, 0.5, 0.25][row_idx], 9)
+    }
+    expect(result.objective).toBeCloseTo(-3, 9) // scipy linprog reference
+  })
+})
