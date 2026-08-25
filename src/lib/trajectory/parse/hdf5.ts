@@ -383,25 +383,6 @@ const parse_torch_sim_datasets = (
     static_atomic_numbers ??
     read_numeric_hyperslab(atomic_numbers_dataset, atomic_number_path, [[0, 1]])
   const elements = convert_atomic_numbers(first_atomic_numbers)
-  const cells_dataset = dataset_at(h5_file, cell_path)
-  const cell_layout =
-    cells_dataset && cell_path
-      ? frame_axis_layout(dataset_shape(cells_dataset, cell_path), [3, 3], `cells`)
-      : null
-  const dynamic_cells = cell_layout === `dynamic`
-  const static_lattice =
-    cells_dataset && cell_path && cell_layout && !dynamic_cells
-      ? lattice_from_values(
-          read_numeric_hyperslab(
-            cells_dataset,
-            cell_path,
-            cell_layout === `static_with_frame_axis` ? [[0, 1]] : [[]],
-          ),
-        )
-      : undefined
-  if (static_lattice && !(calc_lattice_params(static_lattice).volume > 0)) {
-    throw new Error(`HDF5 static cell volume must be positive`)
-  }
   const data_group_path = structural_parent.endsWith(`/data`) ? structural_parent : undefined
   const steps_group_path = data_group_path ? `${parent_path(data_group_path)}/steps` : `/steps`
   const position_name = position_path.split(`/`).at(-1) ?? `positions`
@@ -421,6 +402,32 @@ const parse_torch_sim_datasets = (
   if (pbc_values?.some((value) => value !== 0 && value !== 1)) {
     const source = pbc_dataset ? `dataset ${pbc_path}` : `attribute ${PBC_ALIASES.join(`/`)}`
     throw new Error(`HDF5 PBC ${source} must contain only 0/1 values`)
+  }
+  // A cell is only ever *needed* when some axis is periodic; without PBC information
+  // the fully-periodic default applies. Non-periodic trajectories may still carry a
+  // decorative cell (cluster MD written by ASE/TorchSim): it renders fine when valid,
+  // but TorchSim molecules write all-zero cells, which must be ignored rather than
+  // rejected as torn writes (`cell volume is zero`) or inverted as singular matrices.
+  const cell_required = pbc_values ? pbc_values.some(Boolean) : true
+  const cells_dataset = dataset_at(h5_file, cell_path)
+  const cell_layout =
+    cells_dataset && cell_path
+      ? frame_axis_layout(dataset_shape(cells_dataset, cell_path), [3, 3], `cells`)
+      : null
+  const dynamic_cells = cell_required && cell_layout === `dynamic`
+  let static_lattice =
+    cells_dataset && cell_path && cell_layout && !dynamic_cells
+      ? lattice_from_values(
+          read_numeric_hyperslab(
+            cells_dataset,
+            cell_path,
+            cell_layout === `static_with_frame_axis` ? [[0, 1]] : [[]],
+          ),
+        )
+      : undefined
+  if (static_lattice && !(calc_lattice_params(static_lattice).volume > 0)) {
+    if (cell_required) throw new Error(`HDF5 static cell volume must be positive`)
+    static_lattice = undefined // decorative zero cell on a non-periodic trajectory
   }
   const static_pbc: Pbc | null =
     pbc_values?.length === 1
