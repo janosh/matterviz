@@ -1,12 +1,8 @@
 // Theme Detection for Embedded MatterViz Views
 
 import { perceived_brightness } from '$lib/colors'
-import {
-  declared_color_scheme,
-  get_system_mode,
-  nearest_declared,
-  type ThemeType,
-} from '$lib/theme'
+import type { ThemeType } from '$lib/theme'
+import { declared_color_scheme, get_system_mode, nearest_declared } from '$lib/theme'
 
 // Extend globalThis with our custom properties
 declare global {

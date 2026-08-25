@@ -1,13 +1,12 @@
 import { calc_msd, collect_msd_positions, MsdPlot } from '$lib/msd'
 import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
-import {
-  type CollectPositionsOptions,
-  type ParseProgress,
-  suggest_analysis_frame_stride,
-  trajectory_from_frames,
-  type TrajectoryPositionStream,
-  type TrajectoryRun,
+import type {
+  CollectPositionsOptions,
+  ParseProgress,
+  TrajectoryPositionStream,
+  TrajectoryRun,
 } from '$lib/trajectory'
+import { suggest_analysis_frame_stride, trajectory_from_frames } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { make_frame } from '../setup'

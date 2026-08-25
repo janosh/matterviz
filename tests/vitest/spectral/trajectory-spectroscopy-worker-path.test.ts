@@ -1,11 +1,11 @@
 // Exercises the real spectroscopy Web Worker request path, including structured cloning
 // of every typed-array signal. Generic client rules live in worker-client.test.ts.
 import type { compute_trajectory_spectroscopy_async } from '$lib/spectral/trajectory-spectroscopy-async.svelte'
-import {
-  calc_trajectory_spectroscopy,
-  type TrajectorySpectroscopyInput,
-  type TrajectorySpectroscopyOptions,
+import type {
+  TrajectorySpectroscopyInput,
+  TrajectorySpectroscopyOptions,
 } from '$lib/spectral/trajectory-spectroscopy'
+import { calc_trajectory_spectroscopy } from '$lib/spectral/trajectory-spectroscopy'
 import type { TrajectorySignal } from '$lib/trajectory'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'

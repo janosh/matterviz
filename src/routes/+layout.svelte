@@ -20,12 +20,12 @@
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
   import { Footer } from '$site'
-  import { create_site_search_loader, type SiteSearchAction } from '$site/search'
   import { link_source_mentions } from '$site/source-links'
   import type { RouteEntry } from '$site/state.svelte'
   import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
-  import { CommandMenu, CopyButton, GitHubCorner, Icon, Nav } from 'svelte-widgets'
+  import type { CmdAction } from 'svelte-widgets'
+  import { CopyButton, GitHubCorner, Icon, Nav, PageSearch } from 'svelte-widgets'
   import { Search } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
   import { heading_anchors } from 'svelte-widgets/heading-anchors'
@@ -53,7 +53,9 @@
     }
   })
 
-  const route_actions: SiteSearchAction[] = routes
+  // Matched locally by the palette, so page navigation works in dev where the Pagefind index
+  // (generated after production builds) is absent.
+  const route_actions: CmdAction[] = routes
     .filter(
       ({ filename, route }) =>
         !filename.includes(`/test/`) && route !== `/404` && route !== `/[slug]`,
@@ -64,21 +66,14 @@
       id: `route:${url}`,
       label: url,
       description: `Open page`,
-      url,
-      action: (_label) => void goto(url),
+      action: () => void goto(url),
     }))
-  const theme_actions = THEME_OPTIONS.map(({ icon, label, value }) => ({
+  const theme_actions: CmdAction[] = THEME_OPTIONS.map(({ icon, label, value }) => ({
     id: `theme:${value}`,
     label: `${icon} ${label} color theme`,
     keywords: [`mode`, `colour`, `appearance`],
     action: () => (theme_mode = value),
   }))
-  // Routes come from loadOptions; adding them here duplicates fallback results in dev.
-  const actions: ((typeof theme_actions)[number] | SiteSearchAction)[] = theme_actions
-  const load_search_options = create_site_search_loader({
-    route_actions,
-    navigate: goto,
-  })
 
   const route_path = (route_entry: RouteEntry): string =>
     typeof route_entry === `string` ? route_entry : route_entry[0]
@@ -97,12 +92,13 @@
 <!-- z-index: above nav dropdown and Structure control toggles.
      --text: svelte-widgets paints the mobile burger bars with var(--text), which matterviz
      does not define (it uses --text-color), leaving the burger invisible on phones. -->
-<CommandMenu
+<PageSearch
   bind:open={cmd_palette_open}
-  {actions}
+  fallback_actions={[...route_actions, ...theme_actions]}
+  navigate={(url) => goto(url)}
+  strip_html_suffix
   aria_label="Search the MatterViz site"
   placeholder="Search pages and commands..."
-  loadOptions={{ fetch: load_search_options, debounceMs: 120, batchSize: 12 }}
   noMatchingOptionsMsg="No matches"
   maxOptions={12}
   dialog_props={{

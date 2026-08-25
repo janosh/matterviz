@@ -2,10 +2,8 @@ import type { AnyStructure, ElementCategory, ElementSymbol, Vec3 } from '$lib'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { FermiIsosurface, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { flatten_grid } from '$lib/isosurface/grid'
-import {
-  make_volume as make_volume_from_values,
-  type VolumetricData,
-} from '$lib/isosurface/types'
+import type { VolumetricData } from '$lib/isosurface/types'
+import { make_volume as make_volume_from_values } from '$lib/isosurface/types'
 import * as math from '$lib/math'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import type { Crystal, Molecule, Pbc, Site } from '$lib/structure'

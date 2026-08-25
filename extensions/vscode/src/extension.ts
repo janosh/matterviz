@@ -14,13 +14,8 @@ import type {
   WebviewToHostMessage,
 } from '$lib/file-viewer/host-protocol'
 import { format_bytes, is_plain_object, to_error } from '$lib/utils'
-import {
-  type DefaultSettings,
-  is_valid_setting_value,
-  merge,
-  SETTINGS_CONFIG,
-  type SettingType,
-} from '$lib/settings'
+import type { DefaultSettings, SettingType } from '$lib/settings'
+import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 // Deep imports: the $lib/trajectory barrel re-exports Svelte components and worker-backed
 // modules, none of which belong in the Node host bundle

@@ -1,5 +1,5 @@
+import type { AutoPaddingConfig, Sides } from '$lib/plot/core/layout'
 import {
-  type AutoPaddingConfig,
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
   calc_auto_padding,
@@ -14,17 +14,13 @@ import {
   rect_within_rect,
   resolve_axis_title_layout,
   sample_series_obstacle_points,
-  type Sides,
   stride_sample,
   y_axis_label_x,
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
-import {
-  type MeasuredAxis,
-  resolve_tick_layout,
-  TICK_LABEL_HEIGHT,
-} from '$lib/plot/core/tick-layout'
+import type { MeasuredAxis } from '$lib/plot/core/tick-layout'
+import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 

@@ -1,11 +1,8 @@
 // Extract phonon band structures and DOS from full phonon objects
 
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import {
-  normalize_band_structure,
-  type PhononBandStructure,
-  type PhononDos,
-} from '$lib/spectral'
+import type { PhononBandStructure, PhononDos } from '$lib/spectral'
+import { normalize_band_structure } from '$lib/spectral'
 import type { Crystal } from '$lib/structure'
 import { SvelteMap } from 'svelte/reactivity'
 

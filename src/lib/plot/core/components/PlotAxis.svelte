@@ -1,14 +1,11 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
-  import {
-    AXIS_TITLE_WRAP_WIDTH,
-    resolve_axis_title_layout,
-    type Sides,
-  } from '$lib/plot/core/layout'
+  import type { Sides } from '$lib/plot/core/layout'
+  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
   import {
     DEFAULT_FONT_SPEC,
-    type FontSpec,
     invalidate_text_metrics_after_fonts_ready,
     resolve_font_spec,
   } from '$lib/plot/core/text-metrics'

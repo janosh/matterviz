@@ -1,19 +1,18 @@
-import {
-  project_obstacles,
-  solve_decorations,
-  type DecorationItem,
-  type DecorationPlacement,
-  type DecorationScene,
-  type LegendAutoTrackConfig,
-  type LegendDecorationItem,
-  type ReferenceAnnotationCandidate,
-  type ReferenceAnnotationDecorationItem,
+import type {
+  DecorationItem,
+  DecorationPlacement,
+  DecorationScene,
+  LegendAutoTrackConfig,
+  LegendDecorationItem,
+  ReferenceAnnotationCandidate,
+  ReferenceAnnotationDecorationItem,
 } from '$lib/plot/core/decorations'
+import { project_obstacles, solve_decorations } from '$lib/plot/core/decorations'
+import type { Rect } from '$lib/plot/core/layout'
 import {
   compute_element_placement,
   rect_within_rect,
   rects_overlap,
-  type Rect,
 } from '$lib/plot/core/layout'
 import { describe, expect, test } from 'vitest'
 

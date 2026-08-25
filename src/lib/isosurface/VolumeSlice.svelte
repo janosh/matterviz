@@ -1,9 +1,6 @@
 <script lang="ts">
-  import {
-    type D3InterpolateName,
-    get_d3_interpolator,
-    resolve_computed_color,
-  } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
+  import { get_d3_interpolator, resolve_computed_color } from '$lib/colors'
   import type { Vec2 } from '$lib/math'
   import { clamp01 } from '$lib/utils'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'

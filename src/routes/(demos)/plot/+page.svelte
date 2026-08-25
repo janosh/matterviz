@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ComponentProps } from 'svelte'
   import {
     ColorBar,
     ColorPalette,
@@ -11,111 +12,111 @@
     ScatterPlot3D,
     SpacegroupBarPlot,
   } from 'svelte-widgets/icons'
-  import SubpageGrid from '$site/SubpageGrid.svelte'
+  import { SubpageGrid } from 'svelte-widgets'
 
-  const subpages = [
-    {
-      href: `/plot/scatter-plot`,
-      title: `Scatter Plot`,
-      description: `2D scatter with multiple display modes, styling controls, and multi-series support.`,
-      icon: ScatterPlot,
-    },
-    {
-      href: `/plot/binned-scatter`,
-      title: `Binned Scatter Plot`,
-      description: `Adaptive density rendering for crowded point clouds with point picking and structure popups.`,
-      icon: ScatterPlot,
-    },
-    {
-      href: `/plot/facet-grid`,
-      title: `Facet Grid`,
-      description: `Coordinated plot panels with shared ranges, padding, linked interactions, outer axes, and shared chrome bands.`,
-      icon: Graph,
-    },
-    {
-      href: `/plot/scatter-plot-3d`,
-      title: `3D Scatter Plot`,
-      description: `Three.js-powered 3D scatter with instanced rendering, colored surfaces, and camera controls.`,
-      icon: ScatterPlot3D,
-    },
-    {
-      href: `/plot/bar-plot`,
-      title: `Bar Plot`,
-      description: `Vertical/horizontal bars with rounded corners, borders, stacked/grouped modes, and grid display.`,
-      icon: Graph,
-    },
-    {
-      href: `/plot/histogram`,
-      title: `Histogram`,
-      description: `Frequency distribution bars with configurable binning, border radius, and stroke styling.`,
-      icon: Histogram,
-    },
-    {
-      href: `/plot/box-plot`,
-      title: `Box Plot`,
-      description: `Distribution summaries with quartile boxes, medians, whiskers, and outliers from raw data.`,
-      icon: Graph,
-    },
-    {
-      href: `/plot/violin`,
-      title: `Violin Plot`,
-      description: `KDE density shapes (optionally with inner box): one-sided, two-sided, and split violins.`,
-      icon: Graph,
-    },
-    {
-      href: `/plot/sankey`,
-      title: `Sankey`,
-      description: `Flow diagrams for weighted transitions between categories with horizontal/vertical layout and link highlighting.`,
-      icon: Graph,
-    },
-    {
-      href: `/plot/sunburst`,
-      title: `Sunburst & Icicle`,
-      description: `Zoomable hierarchical rings or stacked rows with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
-      icon: Graph,
-    },
-    {
-      href: `/plot/treemap`,
-      title: `Treemap`,
-      description: `Zoomable squarified rectangles for hierarchical part-of-whole data, e.g. arity/chemical-system breakdowns.`,
-      icon: Graph,
-    },
-    {
-      href: `/plot/spacegroup-bar-plot`,
-      title: `Spacegroup Bar Plot`,
-      description: `Crystallographic space group distributions with automatic crystal system coloring.`,
-      icon: SpacegroupBarPlot,
-    },
-    {
-      href: `/plot/heatmap-matrix`,
-      title: `Heatmap Matrix`,
-      description: `Interactive pairwise heatmap with symmetric modes, search, axis ordering, and cell values.`,
-      icon: HeatmapMatrix,
-    },
-    {
-      href: `/plot/heatmap-table`,
-      title: `Heatmap Table`,
-      description: `Sortable data table with heatmap cell coloring, column grouping, and drag-and-drop reordering.`,
-      icon: HeatmapTable,
-    },
-    {
-      href: `/plot/color-bar`,
-      title: `Color Bar`,
-      description: `Standalone color scale legend with configurable tick labels, orientation, and scale types.`,
-      icon: ColorBar,
-    },
-    {
-      href: `/plot/color-scales`,
-      title: `Color Scales`,
-      description: `Browse and compare D3 color scales with live previews on a periodic table.`,
-      icon: ColorPalette,
-    },
-    {
-      href: `/plot/data-cleaning`,
-      title: `Data Cleaning`,
-      description: `Utilities for filtering NaN/Infinity values, deduplication, and multi-series normalization.`,
-      icon: Filter,
-    },
+  const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [
+    [
+      `Scatter Plot`,
+      `/plot/scatter-plot`,
+      `2D scatter with multiple display modes, styling controls, and multi-series support.`,
+      ScatterPlot,
+    ],
+    [
+      `Binned Scatter Plot`,
+      `/plot/binned-scatter`,
+      `Adaptive density rendering for crowded point clouds with point picking and structure popups.`,
+      ScatterPlot,
+    ],
+    [
+      `Facet Grid`,
+      `/plot/facet-grid`,
+      `Coordinated plot panels with shared ranges, padding, linked interactions, outer axes, and shared chrome bands.`,
+      Graph,
+    ],
+    [
+      `3D Scatter Plot`,
+      `/plot/scatter-plot-3d`,
+      `Three.js-powered 3D scatter with instanced rendering, colored surfaces, and camera controls.`,
+      ScatterPlot3D,
+    ],
+    [
+      `Bar Plot`,
+      `/plot/bar-plot`,
+      `Vertical/horizontal bars with rounded corners, borders, stacked/grouped modes, and grid display.`,
+      Graph,
+    ],
+    [
+      `Histogram`,
+      `/plot/histogram`,
+      `Frequency distribution bars with configurable binning, border radius, and stroke styling.`,
+      Histogram,
+    ],
+    [
+      `Box Plot`,
+      `/plot/box-plot`,
+      `Distribution summaries with quartile boxes, medians, whiskers, and outliers from raw data.`,
+      Graph,
+    ],
+    [
+      `Violin Plot`,
+      `/plot/violin`,
+      `KDE density shapes (optionally with inner box): one-sided, two-sided, and split violins.`,
+      Graph,
+    ],
+    [
+      `Sankey`,
+      `/plot/sankey`,
+      `Flow diagrams for weighted transitions between categories with horizontal/vertical layout and link highlighting.`,
+      Graph,
+    ],
+    [
+      `Sunburst & Icicle`,
+      `/plot/sunburst`,
+      `Zoomable hierarchical rings or stacked rows with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
+      Graph,
+    ],
+    [
+      `Treemap`,
+      `/plot/treemap`,
+      `Zoomable squarified rectangles for hierarchical part-of-whole data, e.g. arity/chemical-system breakdowns.`,
+      Graph,
+    ],
+    [
+      `Spacegroup Bar Plot`,
+      `/plot/spacegroup-bar-plot`,
+      `Crystallographic space group distributions with automatic crystal system coloring.`,
+      SpacegroupBarPlot,
+    ],
+    [
+      `Heatmap Matrix`,
+      `/plot/heatmap-matrix`,
+      `Interactive pairwise heatmap with symmetric modes, search, axis ordering, and cell values.`,
+      HeatmapMatrix,
+    ],
+    [
+      `Heatmap Table`,
+      `/plot/heatmap-table`,
+      `Sortable data table with heatmap cell coloring, column grouping, and drag-and-drop reordering.`,
+      HeatmapTable,
+    ],
+    [
+      `Color Bar`,
+      `/plot/color-bar`,
+      `Standalone color scale legend with configurable tick labels, orientation, and scale types.`,
+      ColorBar,
+    ],
+    [
+      `Color Scales`,
+      `/plot/color-scales`,
+      `Browse and compare D3 color scales with live previews on a periodic table.`,
+      ColorPalette,
+    ],
+    [
+      `Data Cleaning`,
+      `/plot/data-cleaning`,
+      `Utilities for filtering NaN/Infinity values, deduplication, and multi-series normalization.`,
+      Filter,
+    ],
   ]
 </script>
 

@@ -6,6 +6,7 @@
 // - Formula keys: pymatgen uses Hill notation (Li2FeO3), we sort alphabetically (FeLi2O3)
 // - O2 reduced formula: pymatgen keeps "O2", our get_reduced_formula reduces {O:6} to {O:1} → "O"
 
+import type { VisibleDomainLabel } from '$lib/chempot-diagram/compute'
 import {
   apply_element_padding,
   bbox_diagonal,
@@ -30,7 +31,6 @@ import {
   safe_energy_per_atom,
   scale_to_font_range,
   simple_pca,
-  type VisibleDomainLabel,
 } from '$lib/chempot-diagram/compute'
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
 import { filter_entries_at_temperature, slim_phase_entry } from '$lib/convex-hull/helpers'

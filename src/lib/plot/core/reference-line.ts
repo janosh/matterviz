@@ -1,18 +1,20 @@
 // Reference line utilities: helper functions and coordinate resolution
 import { array_extent, type Vec2, type Vec4 } from '$lib/math'
+import type {
+  DecorationPoint,
+  DecorationScene,
+  DecorationSolution,
+  ReferenceAnnotationBaseline,
+  ReferenceAnnotationCandidate,
+  ReferenceAnnotationDecorationItem,
+  ReferenceAnnotationPosition,
+  ReferenceAnnotationSide,
+  ReferenceAnnotationTextAnchor,
+} from '$lib/plot/core/decorations'
 import {
   decoration_placement_rects,
   get_decoration_placement,
   solve_decorations,
-  type DecorationPoint,
-  type DecorationScene,
-  type DecorationSolution,
-  type ReferenceAnnotationBaseline,
-  type ReferenceAnnotationCandidate,
-  type ReferenceAnnotationDecorationItem,
-  type ReferenceAnnotationPosition,
-  type ReferenceAnnotationSide,
-  type ReferenceAnnotationTextAnchor,
 } from '$lib/plot/core/decorations'
 import { range_bounds } from '$lib/plot/core/interactions'
 import type { Rect } from '$lib/plot/core/layout'

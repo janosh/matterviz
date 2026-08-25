@@ -1,6 +1,6 @@
 <script lang="ts">
+  import type { D3InterpolateName } from '$lib/colors'
   import {
-    type D3InterpolateName,
     is_color,
     is_dark_mode,
     pick_contrast_color,

@@ -19,7 +19,8 @@
     optimade_to_structure,
     structure_from_json,
   } from '$lib/structure/parse'
-  import { is_editable_target, to_error } from '$lib/utils'
+  import { to_error } from '$lib/utils'
+  import { is_editable_event_target } from 'svelte-widgets/utils'
   import { type mount, onDestroy, unmount } from 'svelte'
   import {
     detect_view_type,
@@ -235,7 +236,7 @@
     if (panels.length === 0) return
     function on_keydown(event: KeyboardEvent): void {
       if (event.key !== `Escape`) return
-      if (is_editable_target(event)) return
+      if (is_editable_event_target(event.target)) return
       close_all_panels()
     }
     globalThis.addEventListener(`keydown`, on_keydown)

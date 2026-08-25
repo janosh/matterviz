@@ -9,16 +9,15 @@ import {
   get_series_symbol,
 } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
-import {
-  assert_series_lengths,
-  type AxisRanges,
-  type DataSeries,
-  DEFAULT_MARKERS,
-  type FillRegion,
-  type InternalPoint,
-  type LegendItem,
-  type PointStyle,
+import type {
+  AxisRanges,
+  DataSeries,
+  FillRegion,
+  InternalPoint,
+  LegendItem,
+  PointStyle,
 } from '$lib/plot/core/types'
+import { assert_series_lengths, DEFAULT_MARKERS } from '$lib/plot/core/types'
 
 // Sort a possibly-inverted range (axes may be reversed, e.g. [3.5, 1.4]) into [lo, hi]
 // once per series so the per-point test is two bare comparisons.

@@ -30,6 +30,7 @@ import { Dataset as H5Dataset } from 'h5wasm'
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { make_crystal, read_binary_test_file, read_maybe_gz, rejection_of } from '../setup'
+import type { H5Spec } from './fixtures'
 import {
   ds,
   flat_frames,
@@ -38,7 +39,6 @@ import {
   make_h5_buffer,
   make_reference_md_h5_buffer,
   make_torch_sim_signal_buffer,
-  type H5Spec,
 } from './fixtures'
 
 const read_fixture = (filename: string): string | ArrayBuffer =>
@@ -1208,6 +1208,51 @@ describe(`HDF5`, () => {
       )
       extra(data, file.create_group(`steps`))
     })
+
+  // TorchSim writes an all-zero cell with pbc=false for non-periodic states (molecules): it
+  // must not become a lattice (downstream inverts it and hits a singular matrix). A real cell
+  // keeps its lattice whether periodic or decorative, per frame when the cell is dynamic.
+  const cube = (edge: number) => [edge, 0, 0, 0, edge, 0, 0, 0, edge]
+  it.each([
+    {
+      label: `all-zero dynamic cell, pbc=false`,
+      cells: [cube(0), cube(0)],
+      pbc: [0, 0, 0],
+      edges: [undefined, undefined],
+    },
+    { label: `static cubic cell, pbc=true`, cells: [cube(3.4)], pbc: [1, 1, 1], edges: [3.4] },
+    {
+      label: `growing decorative cell, pbc=false`,
+      cells: [cube(3.4), cube(3.6)],
+      pbc: [0, 0, 0],
+      edges: [3.4, 3.6],
+    },
+  ])(`TorchSim $label → per-frame lattice edges $edges`, async ({ cells, pbc, edges }) => {
+    const n_frames = cells.length
+    const buffer = await h5_bytes(`torch-sim-cell`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      const frame_steps = Array.from({ length: n_frames }, (_unused, idx) => idx)
+      ds(
+        data,
+        `positions`,
+        flat_frames(n_frames, () => [0, 0, 0, 1.4, 1.4, 1.4]),
+        [n_frames, 2, 3],
+      )
+      ds(data, `atomic_numbers`, [6, 6], [2])
+      ds(data, `cell`, cells.flat(), [n_frames, 3, 3])
+      ds(data, `pbc`, pbc, [3])
+      ds(steps, `positions`, frame_steps, [n_frames])
+      ds(steps, `cell`, frame_steps, [n_frames])
+    })
+    const run = await open(buffer, `torch-sim.h5`)
+    expect(run.frame_count).toBe(n_frames)
+    for (const [frame_idx, edge] of edges.entries()) {
+      const { structure } = await run.read_frame(frame_idx)
+      expect(`lattice` in structure ? structure.lattice.matrix[0][0] : undefined).toBe(edge)
+      expect(structure.sites[1].xyz).toEqual([1.4, 1.4, 1.4])
+    }
+  })
 
   it(`collects TorchSim signals with independent steps, shapes, units, and provenance`, async () => {
     const run = await open(await make_torch_sim_signal_buffer(), `torch-sim.h5`)

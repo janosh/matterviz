@@ -10,11 +10,8 @@ import {
   transpose_3x3_matrix,
 } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import {
-  frequency_unit_per_thz,
-  parse_frequency_unit,
-  type FrequencyUnit,
-} from './frequency-units'
+import type { FrequencyUnit } from './frequency-units'
+import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
 import type * as types from './types'
 
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>

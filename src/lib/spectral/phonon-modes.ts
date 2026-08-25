@@ -1,12 +1,12 @@
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { Crystal } from '$lib/structure'
 import {
   get_orig_site_idx,
   make_site,
   make_supercell,
   parse_supercell_scaling,
-  type Crystal,
 } from '$lib/structure'
 import { compute_bonds, normalize_structure_bond } from '$lib/structure/bonding'
 import { trajectory_from_frame_source, type TrajectoryRun } from '$lib/trajectory'

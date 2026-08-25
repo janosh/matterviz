@@ -1,9 +1,6 @@
 <script lang="ts">
-  import {
-    DEFAULT_PNG_DPI,
-    ELEMENT_COLOR_SCHEME_NAMES,
-    type ColorSchemeName,
-  } from '$lib/constants'
+  import type { ColorSchemeName } from '$lib/constants'
+  import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
   import type { CompositionType } from '$lib/composition'
   import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
   import {

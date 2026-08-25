@@ -94,14 +94,6 @@ export function decode_url_safe_base64(encoded: string): string | undefined {
   }
 }
 
-// True when a keyboard event originates from a text-editing element (form field or
-// contenteditable), so viewer shortcuts leave typing alone.
-export const is_editable_target = (event: Event): boolean => {
-  const { target } = event
-  if (!(target instanceof HTMLElement)) return false
-  return [`INPUT`, `TEXTAREA`, `SELECT`].includes(target.tagName) || target.isContentEditable
-}
-
 // Viewer keyboard convention: a handler returns `true` when it handled the event, so
 // handle_and_prevent can suppress the browser default (page scroll, find, ...) in one place
 // instead of scattered preventDefault() calls in every `onkeydown` binding.

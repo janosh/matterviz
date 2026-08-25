@@ -13,13 +13,8 @@ import type {
   TrajectoryMetadata,
   TrajectoryPositionStream,
 } from '../index'
-import {
-  assert_frame_idx,
-  disposed_error,
-  run_fields_from_summary,
-  type TrajectoryRun,
-  type TrajectoryRunSummary,
-} from '../run'
+import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
+import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
 
 type RunPortMethod = `read_frame` | `collect_positions` | `abort` | `dispose`
 

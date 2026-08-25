@@ -3,6 +3,12 @@
   import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
   import { is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { tooltip } from 'svelte-widgets/attachments'
+  import {
+    create_recent_list,
+    storage_get_json,
+    storage_set_json,
+  } from 'svelte-widgets/storage'
+  import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { HTMLAttributes } from 'svelte/elements'
   import { format_amount, get_alphabetical_formula } from './format'
@@ -135,53 +141,38 @@
   let all_examples = $derived(examples.flatMap((cat) => cat.examples))
 
   // === History Management ===
-  const has_storage = typeof localStorage !== `undefined`
+  // Persisted MRU list (max_history=0 loads nothing, so the dropdown never opens and
+  // storage is never written); pins live in a sibling key, ordered most recently pinned first
+  const is_string = (entry: unknown): entry is string => typeof entry === `string`
+  const recent = $derived(
+    create_recent_list<string>({
+      storage_key: history_key,
+      max_items: max_history,
+      key_of: (entry) => entry,
+      is_valid: is_string,
+    }),
+  )
   const history_pins_key = $derived(`${history_key}-pins`)
-
-  function load_entries(key: string): string[] {
-    if (max_history <= 0 || !has_storage) return []
-    try {
-      const parsed: unknown = JSON.parse(localStorage.getItem(key) ?? `null`)
-      if (!Array.isArray(parsed)) return []
-      return parsed.filter((item): item is string => typeof item === `string`)
-    } catch {
-      return []
-    }
+  const load_pinned = (): string[] => {
+    const parsed = storage_get_json(history_pins_key, [])
+    return Array.isArray(parsed) ? parsed.filter(is_string) : []
   }
+  const save_pinned = (entries: string[]) => storage_set_json(history_pins_key, entries)
 
-  function save_entries(key: string, entries: string[]): void {
-    if (max_history <= 0 || !has_storage) return
-    try {
-      localStorage.setItem(key, JSON.stringify(entries))
-    } catch {
-      // localStorage may be unavailable (e.g. private browsing)
-    }
-  }
-
-  const load_history = () => load_entries(history_key).slice(0, max_history)
-  const load_pinned = () => load_entries(history_pins_key)
-  const save_history = (entries: string[]) =>
-    save_entries(history_key, entries.slice(0, max_history))
-  const save_pinned = (entries: string[]) => save_entries(history_pins_key, entries)
-
-  let history = $state<string[]>(load_history())
+  let history = $state<string[]>(untrack(() => recent.load()))
   let pinned_history = $state<string[]>(load_pinned())
 
   function add_to_history(entry: string): void {
     if (max_history <= 0 || !entry.trim()) return
-    // Remove duplicate if present, then prepend
-    const filtered = history.filter((item) => item !== entry)
-    history = [entry, ...filtered].slice(0, max_history)
+    history = recent.remember(entry, history)
     // Keep pin state for retained entries only
     pinned_history = pinned_history.filter((item) => history.includes(item))
-    save_history(history)
     save_pinned(pinned_history)
   }
 
   function remove_from_history(entry: string): void {
-    history = history.filter((item) => item !== entry)
+    history = recent.forget(entry, history)
     pinned_history = pinned_history.filter((item) => item !== entry)
-    save_history(history)
     save_pinned(pinned_history)
     // Clamp focused index to prevent out-of-bounds access on Enter
     if (history.length === 0) history_open = false
@@ -200,7 +191,7 @@
   function clear_history(): void {
     history = []
     pinned_history = []
-    save_history(history)
+    storage_set_json(history_key, history)
     save_pinned(pinned_history)
     close_history()
   }

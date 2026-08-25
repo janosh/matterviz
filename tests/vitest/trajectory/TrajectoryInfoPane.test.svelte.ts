@@ -1,10 +1,6 @@
 import TrajectoryInfoPane from '$lib/trajectory/TrajectoryInfoPane.svelte'
-import {
-  trajectory_from_frames,
-  type TrajectoryFrame,
-  type TrajectoryMetadata,
-  type TrajectoryRun,
-} from '$lib/trajectory'
+import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from '$lib/trajectory'
+import { trajectory_from_frames } from '$lib/trajectory'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { doc_query, make_crystal, with_property_rows } from '../setup'

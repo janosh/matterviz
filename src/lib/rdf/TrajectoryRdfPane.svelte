@@ -5,20 +5,16 @@
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryRun } from '$lib/trajectory'
-  import {
-    type AnalysisCollectOptions,
-    positive_int,
-    sweep_frame_plan,
-    sweep_progress,
-  } from '$lib/trajectory/analysis'
+  import type { AnalysisCollectOptions } from '$lib/trajectory/analysis'
+  import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
+  import type { TrajectoryRdf } from './calc-trajectory-rdf'
   import {
     collect_trajectory_rdf,
     DEFAULT_RDF_BINS,
     DEFAULT_RDF_CUTOFF,
     DEFAULT_RDF_MAX_FRAMES,
-    type TrajectoryRdf,
   } from './calc-trajectory-rdf'
   import type { RdfEntry } from './index'
   import RdfPlot from './RdfPlot.svelte'

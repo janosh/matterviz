@@ -12,12 +12,8 @@
   import { format_num } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
-  import {
-    type AnalysisCollectOptions,
-    type AnalysisPaneContext,
-    analysis_pane_setup,
-    no_full_pass_message,
-  } from '$lib/trajectory/analysis'
+  import type { AnalysisCollectOptions, AnalysisPaneContext } from '$lib/trajectory/analysis'
+  import { analysis_pane_setup, no_full_pass_message } from '$lib/trajectory/analysis'
   import { format_bytes, to_error } from '$lib/utils'
   import { type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'

@@ -1,5 +1,6 @@
 import type { Vec2 } from '$lib/math'
 import { place_reference_annotation, solve_decorations } from '$lib/plot/core/decorations'
+import type { ReferenceLineAxes } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
   create_reference_annotation_candidates,
@@ -9,7 +10,6 @@ import {
   normalize_value,
   resolve_ref_line_axes,
   reference_annotation_text_rect,
-  type ReferenceLineAxes,
   resolve_line_endpoints,
   solve_reference_annotations,
 } from '$lib/plot/core/reference-line'

@@ -1,11 +1,6 @@
 <script lang="ts">
-  import {
-    info_pane_icon,
-    type InfoPaneCard,
-    type InfoPaneRow,
-    type PaneProps,
-    ViewerPane,
-  } from '$lib/overlays'
+  import type { InfoPaneCard, InfoPaneRow, PaneProps } from '$lib/overlays'
+  import { info_pane_icon, ViewerPane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { Crystal } from '$lib/structure'

@@ -1,9 +1,9 @@
+import type { FileLoadMeta } from '$lib/io'
 import {
   basename_from_url,
   dropped_file_url,
   load_from_url,
   load_trajectory_from_url,
-  type FileLoadMeta,
 } from '$lib/io'
 import { gzipSync, zipSync } from 'fflate'
 import { beforeEach, describe, expect, test, vi } from 'vitest'

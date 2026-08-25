@@ -1,7 +1,7 @@
 // Gather whole-trajectory velocities (or the positions to differentiate) for VACF/VDOS.
 import { is_finite_vec3_like } from '$lib/math'
+import type { AnalysisStreamOptions } from '$lib/trajectory/analysis'
 import {
-  type AnalysisStreamOptions,
   collect_trajectory_positions,
   suggest_analysis_frame_stride,
 } from '$lib/trajectory/analysis'

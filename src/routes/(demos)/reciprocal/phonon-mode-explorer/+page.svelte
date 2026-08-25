@@ -5,6 +5,12 @@
   import { StatusMessage } from '$lib/feedback'
   import * as io from '$lib/io'
   import type { Vec3 } from '$lib/math'
+  import type {
+    PhononExplorerView,
+    IrRamanOptions,
+    PhononModeDataset,
+    PhononModeSelection,
+  } from '$lib/spectral'
   import {
     DEFAULT_PHONON_AMPLITUDE,
     DEFAULT_PHONON_FPS,
@@ -16,18 +22,10 @@
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
-    type PhononExplorerView,
-    type IrRamanOptions,
-    type PhononModeDataset,
-    type PhononModeSelection,
   } from '$lib/spectral'
   import { parse_supercell_scaling } from '$lib/structure'
-  import {
-    bool_from_param,
-    bool_url_entry,
-    sync_url_params,
-    type UrlParamEntry,
-  } from '$lib/url-params'
+  import type { UrlParamEntry } from '$lib/url-params'
+  import { bool_from_param, bool_url_entry, sync_url_params } from '$lib/url-params'
   import { glob_default } from '$site/imports'
   import { untrack } from 'svelte'
 

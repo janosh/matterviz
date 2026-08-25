@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { is_editable_target } from '$lib/utils'
+  import { is_editable_event_target } from 'svelte-widgets/utils'
   import { Filter } from 'svelte-widgets/icons'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
@@ -22,12 +22,8 @@
     subtract,
   } from '$lib/math'
   import { ScatterPlot3DControls } from '$lib/plot'
-  import {
-    create_renderer,
-    dispose_on_change,
-    type ThreltePointerEvent,
-    webgpu_available,
-  } from '$lib/scene'
+  import type { ThreltePointerEvent } from '$lib/scene'
+  import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -60,6 +56,7 @@
     get_json_string,
     get_view_settings,
   } from './export'
+  import type { VisibleDomainLabel } from './compute'
   import {
     apply_element_padding,
     bbox_diagonal,
@@ -72,7 +69,6 @@
     pad_domain_points,
     scale_to_font_range,
     swizzle_to_render,
-    type VisibleDomainLabel,
   } from './compute'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotHoverInfo3D } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
@@ -1385,7 +1381,7 @@
   role="application"
   tabindex="0"
   onkeydown={(event) => {
-    if (is_editable_target(event)) return
+    if (is_editable_event_target(event.target)) return
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
     else if (event.key === `f`) fullscreen = !fullscreen

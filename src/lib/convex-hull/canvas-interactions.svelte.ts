@@ -9,7 +9,7 @@ import type { ElementSymbol } from '$lib/element'
 import { as_text, file_drop_zone } from '$lib/io'
 import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import { is_editable_target } from '$lib/utils'
+import { is_editable_event_target } from 'svelte-widgets/utils'
 import { createAttachmentKey } from 'svelte/attachments'
 import * as draw from './canvas-draw'
 import {
@@ -143,7 +143,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    if (is_editable_target(event)) return
+    if (is_editable_event_target(event.target)) return
     // A canvas-originated keydown bubbles to the wrapper (both listen); handle it once
     if (event.target !== inputs.wrapper()) event.stopPropagation()
 

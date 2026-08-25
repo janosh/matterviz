@@ -15,20 +15,17 @@ import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/par
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import { to_error } from '$lib/utils'
+import type { OpenTrajectoryOptions } from '$lib/trajectory/parse'
 import {
   is_trajectory_file,
   open_trajectory,
-  type OpenTrajectoryOptions,
   VaspoutElectronicOnlyError,
 } from '$lib/trajectory/parse'
 import { type LargeFileMarker, parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from './types'
-import {
-  detect_view_type,
-  type RenderableType,
-  volume_json_to_isosurface_input,
-} from './detect'
+import type { RenderableType } from './detect'
+import { detect_view_type, volume_json_to_isosurface_input } from './detect'
 
 // Maps detect.ts RenderableType to ViewType for direct rendering.
 // Types not listed here fall through to json_browser (which can render all types

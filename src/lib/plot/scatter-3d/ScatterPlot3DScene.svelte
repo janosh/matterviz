@@ -40,13 +40,13 @@
   import ReferenceLine3D from '$lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
   import { normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
+  import type { RunningExtent } from '$lib/plot/core/scales'
   import {
     accumulate_extent,
     collect_size_values,
     create_size_scale,
     empty_extent,
     nice_range_from_extent,
-    type RunningExtent,
   } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 

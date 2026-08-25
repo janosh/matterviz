@@ -30,7 +30,8 @@
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { normalize_band_grid, normalize_fermi_surface, parse_fermi_file } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
-  import { is_editable_target, to_error } from '$lib/utils'
+  import { to_error } from '$lib/utils'
+  import { is_editable_event_target } from 'svelte-widgets/utils'
   import type {
     BandGridData,
     FermiErrorData,
@@ -293,7 +294,7 @@
   })
 
   function handle_keydown(event: KeyboardEvent) {
-    if (is_editable_target(event)) return
+    if (is_editable_event_target(event.target)) return
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return
 

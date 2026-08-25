@@ -1,10 +1,9 @@
 import { Histogram, type Vec2 } from '$lib'
+import type { HistogramSeries, HistogramSeriesInput } from '$lib/plot/histogram/histogram'
 import {
   bin_values,
   compute_count_range,
   compute_histogram_bins,
-  type HistogramSeries,
-  type HistogramSeriesInput,
   log_safe_range,
   normalize_counts,
   to_histogram_series,

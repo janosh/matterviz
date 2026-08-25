@@ -2,11 +2,8 @@
   import type { PhaseData } from '$lib/convex-hull/types'
   import FilePicker from '$lib/FilePicker.svelte'
   import { format_num } from '$lib/labels'
-  import {
-    format_reaction,
-    IsobaricTernaryPhaseDiagram,
-    type TernaryPhaseDiagram,
-  } from '$lib/phase-diagram'
+  import type { TernaryPhaseDiagram } from '$lib/phase-diagram'
+  import { format_reaction, IsobaricTernaryPhaseDiagram } from '$lib/phase-diagram'
   import { to_error } from '$lib/utils'
   import { ternary_system_files } from '$site/phase-diagrams/ternary'
   import { file_param, set_file_param } from '$site/state.svelte'

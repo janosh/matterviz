@@ -5,13 +5,13 @@
   import type { Vec2, Vec3 } from '$lib/math'
   import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '$lib/plot/core/types'
   import { sanitize_html } from '$lib/sanitize'
+  import type { ThreltePointerEvent } from '$lib/scene'
   import {
     build_orbit_props,
     dispose_on_change,
     line_geometry,
     SceneCamera,
     SceneLights,
-    type ThreltePointerEvent,
   } from '$lib/scene'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'

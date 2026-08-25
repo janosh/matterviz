@@ -1,20 +1,21 @@
 <script lang="ts">
+  import type { ComponentProps } from 'svelte'
   import { API, Code } from 'svelte-widgets/icons'
-  import SubpageGrid from '$site/SubpageGrid.svelte'
+  import { SubpageGrid } from 'svelte-widgets'
 
-  const subpages = [
-    {
-      href: `/how-to/hook-up-to-external-api`,
-      title: `Hook up to External API`,
-      description: `Fetch phase diagram data from the Materials Project API and render interactive convex hulls.`,
-      icon: API,
-    },
-    {
-      href: `/how-to/use-without-svelte`,
-      title: `Use without Svelte`,
-      description: `Embed matterviz components in vanilla JS, React, Vue, or any framework via web components.`,
-      icon: Code,
-    },
+  const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [
+    [
+      `Hook up to External API`,
+      `/how-to/hook-up-to-external-api`,
+      `Fetch phase diagram data from the Materials Project API and render interactive convex hulls.`,
+      API,
+    ],
+    [
+      `Use without Svelte`,
+      `/how-to/use-without-svelte`,
+      `Embed matterviz components in vanilla JS, React, Vue, or any framework via web components.`,
+      Code,
+    ],
   ]
 </script>
 

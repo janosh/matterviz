@@ -9,12 +9,8 @@ import type {
   TrajectoryMetadata,
   TrajectorySignal,
 } from '../index'
-import {
-  sync_run,
-  TrajectoryProperties,
-  type TrajectoryProvenance,
-  type TrajectoryRun,
-} from '../run'
+import type { TrajectoryProvenance, TrajectoryRun } from '../run'
+import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
 
 export interface MemoryRunExtras {

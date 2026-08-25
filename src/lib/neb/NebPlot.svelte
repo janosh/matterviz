@@ -8,13 +8,12 @@
   import { ScatterPlot, type DataSeries } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
+  import type { PathProfile, PathSplineOptions } from './reaction-path'
   import {
     nearest_image_idx,
     normalize_paths,
     path_energy_unit,
     path_profile,
-    type PathProfile,
-    type PathSplineOptions,
   } from './reaction-path'
 
   // Metadata carried by every image point so hover/click can map back to an image

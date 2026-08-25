@@ -10,12 +10,8 @@
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
   import { type CanvasFrame, create_canvas_surface } from '$lib/canvas-surface.svelte'
-  import {
-    type PhaseTemperatureHover,
-    TERNARY_COLORS,
-    type TernaryDisplay,
-    type TernaryPhaseDiagram,
-  } from './types'
+  import type { PhaseTemperatureHover, TernaryDisplay, TernaryPhaseDiagram } from './types'
+  import { TERNARY_COLORS } from './types'
 
   let {
     diagram,

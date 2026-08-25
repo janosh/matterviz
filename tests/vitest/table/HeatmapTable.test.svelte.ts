@@ -1,12 +1,12 @@
-import {
-  type CellSnippetArgs,
-  type ColumnFilter,
-  type ColumnPrefs,
-  HeatmapTable,
-  type Label,
-  type RowData,
-  type SummaryStat,
+import type {
+  CellSnippetArgs,
+  ColumnFilter,
+  ColumnPrefs,
+  Label,
+  RowData,
+  SummaryStat,
 } from '$lib/table'
+import { HeatmapTable } from '$lib/table'
 import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'

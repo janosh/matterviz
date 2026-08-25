@@ -2,13 +2,8 @@
 // indexed the file, sent a summary, and answers one frame per request. Progressive plot
 // rows arrive through `properties.push()` from whoever owns the host channel.
 import type { TrajectoryFrame } from '../index'
-import {
-  assert_frame_idx,
-  disposed_error,
-  run_fields_from_summary,
-  type TrajectoryRun,
-  type TrajectoryRunSummary,
-} from '../run'
+import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
+import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
 
 export const host_run = (
   summary: TrajectoryRunSummary,

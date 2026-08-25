@@ -1,7 +1,9 @@
+import type {
+  TrajectorySpectroscopyInput,
+  TrajectorySpectroscopyOptions,
+} from '$lib/spectral/trajectory-spectroscopy'
 import {
   calc_trajectory_spectroscopy,
-  type TrajectorySpectroscopyInput,
-  type TrajectorySpectroscopyOptions,
   validate_trajectory_signal,
 } from '$lib/spectral/trajectory-spectroscopy'
 import { THZ_TO_INVERSE_CM } from '$lib/constants'

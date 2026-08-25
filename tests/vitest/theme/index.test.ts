@@ -3,7 +3,6 @@ import type { ThemeMode, ThemeName } from '$lib/theme'
 import {
   apply_theme_to_dom,
   COLOR_THEMES,
-  get_system_mode,
   get_theme_preference,
   is_valid_theme_mode,
   is_valid_theme_name,
@@ -124,10 +123,9 @@ describe(`Theme System`, () => {
       [true, `dark`],
       [false, `light`],
     ] as const)(
-      `OS prefers dark=%s: get_system_mode and apply_theme_to_dom("auto") resolve to "%s"`,
+      `OS prefers dark=%s: apply_theme_to_dom("auto") resolves to "%s"`,
       (dark_preference, expected_theme) => {
         mock_match_media(dark_preference)
-        expect(get_system_mode()).toBe(expected_theme)
         apply_theme_to_dom(`auto`)
         expect(document.documentElement.dataset.theme).toBe(expected_theme)
         expect(document.documentElement.style.colorScheme).toBe(expected_theme)

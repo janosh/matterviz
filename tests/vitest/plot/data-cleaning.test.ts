@@ -1,10 +1,10 @@
 import type { DataSeries } from '$lib/plot'
+import type { InvalidValueMode } from '$lib/plot/core/data-cleaning'
 import {
   clean_multi_series,
   clean_series,
   clean_xyz,
   detect_instability,
-  type InvalidValueMode,
   smooth_moving_average,
 } from '$lib/plot/core/data-cleaning'
 import { describe, expect, it } from 'vitest'

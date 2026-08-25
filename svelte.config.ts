@@ -5,8 +5,6 @@ import svelte_grammar from '@wooorm/starry-night/source.svelte'
 import tsx_grammar from '@wooorm/starry-night/source.tsx'
 import vue_grammar from '@wooorm/starry-night/text.html.vue'
 import { mdsvex } from 'mdsvex'
-import katex from 'rehype-katex'
-import math from 'remark-math' // remark-math@3.0.0 pinned due to mdsvex https://github.com/kwshi/rehype-katex-svelte#usage
 import { heading_ids } from 'svelte-widgets/heading-anchors'
 import { mdsvex_transform } from 'svelte-widgets/live-examples'
 import {
@@ -34,8 +32,7 @@ export default {
 
   preprocess: [
     mdsvex({
-      remarkPlugins: [[mdsvex_transform, { defaults }], math],
-      rehypePlugins: [katex],
+      remarkPlugins: [[mdsvex_transform, { defaults }]],
       extensions: [`.svx`, `.md`],
       highlight: { highlighter: (code, lang) => render_block(starry_night, code, lang) },
     }),

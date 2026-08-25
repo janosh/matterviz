@@ -5,12 +5,8 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { ColorBar } from '$lib/plot'
   import type { HTMLAttributes } from 'svelte/elements'
-  import {
-    ARITY_COLORS,
-    arity_legend_labels,
-    type ChemPotColorRange,
-    get_chempot_interpolator,
-  } from './color'
+  import type { ChemPotColorRange } from './color'
+  import { ARITY_COLORS, arity_legend_labels, get_chempot_interpolator } from './color'
   import type { ChemPotColorMode } from './types'
 
   let {

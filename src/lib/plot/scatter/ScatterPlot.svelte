@@ -35,6 +35,7 @@
   import { FillArea, Line, PlotTooltip, ZeroLines } from '$lib/plot/core/components'
   import ScatterPlotControls from './ScatterPlotControls.svelte'
   import ScatterPoint from './ScatterPoint.svelte'
+  import type { RunningExtent } from '$lib/plot/core/scales'
   import {
     accumulate_extent,
     collect_scale_values,
@@ -44,7 +45,6 @@
     empty_extent,
     log_floor_scale,
     nice_range_from_extent,
-    type RunningExtent,
   } from '$lib/plot/core/scales'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
