@@ -399,32 +399,35 @@ const parse_torch_sim_datasets = (
     const source = pbc_dataset ? `dataset ${pbc_path}` : `attribute ${PBC_ALIASES.join(`/`)}`
     throw new Error(`HDF5 PBC ${source} must contain only 0/1 values`)
   }
-  // A cell is only ever *needed* when some axis is periodic; without PBC information
-  // the fully-periodic default applies. Non-periodic trajectories may still carry a
-  // decorative cell (cluster MD written by ASE/TorchSim): it renders fine when valid,
-  // but TorchSim molecules write all-zero cells, which must be ignored rather than
-  // rejected as torn writes (`cell volume is zero`) or inverted as singular matrices.
+  // A cell is only needed when some axis is periodic (no PBC info means fully periodic).
+  // Non-periodic trajectories may still carry a decorative cell (cluster MD from ASE/TorchSim)
+  // that renders when valid, but TorchSim molecules write all-zero cells: those yield no
+  // lattice instead of being rejected as torn writes or inverted as singular matrices.
   const cell_required = pbc_values ? pbc_values.some(Boolean) : true
+  const lattice_or_none = (matrix: Matrix3x3, context: string): Matrix3x3 | undefined => {
+    if (calc_lattice_params(matrix).volume > 0) return matrix
+    if (cell_required) throw new Error(`HDF5 ${context} cell volume must be positive`)
+    return undefined
+  }
   const cells_dataset = dataset_at(h5_file, cell_path)
   const cell_layout =
     cells_dataset && cell_path
       ? frame_axis_layout(dataset_shape(cells_dataset, cell_path), [3, 3], `cells`)
       : null
-  const dynamic_cells = cell_required && cell_layout === `dynamic`
-  let static_lattice =
+  const dynamic_cells = cell_layout === `dynamic`
+  const static_lattice =
     cells_dataset && cell_path && cell_layout && !dynamic_cells
-      ? lattice_from_values(
-          read_numeric_hyperslab(
-            cells_dataset,
-            cell_path,
-            cell_layout === `static_with_frame_axis` ? [[0, 1]] : [[]],
+      ? lattice_or_none(
+          lattice_from_values(
+            read_numeric_hyperslab(
+              cells_dataset,
+              cell_path,
+              cell_layout === `static_with_frame_axis` ? [[0, 1]] : [[]],
+            ),
           ),
+          `static`,
         )
       : undefined
-  if (static_lattice && !(calc_lattice_params(static_lattice).volume > 0)) {
-    if (cell_required) throw new Error(`HDF5 static cell volume must be positive`)
-    static_lattice = undefined // decorative zero cell on a non-periodic trajectory
-  }
   const static_pbc: Pbc | null =
     pbc_values?.length === 1
       ? [Boolean(pbc_values[0]), Boolean(pbc_values[0]), Boolean(pbc_values[0])]
@@ -485,7 +488,8 @@ const parse_torch_sim_datasets = (
               throw new Error(`frame changes atom ordering`)
             }
           }
-          if (cell_chunk) {
+          // a zero cell is a torn write only where a cell is needed at all
+          if (cell_chunk && cell_required) {
             const matrix = lattice_from_values(cell_chunk, local_idx * 9)
             if (!(calc_lattice_params(matrix).volume > 0))
               throw new Error(`cell volume is zero`)
@@ -662,7 +666,7 @@ const parse_torch_sim_datasets = (
   const lattice_for_frame = (frame_idx: number): Matrix3x3 | undefined => {
     if (static_lattice) return static_lattice
     const values = read_cells(frame_idx, frame_idx + 1)
-    return values ? lattice_from_values(values) : undefined
+    return values ? lattice_or_none(lattice_from_values(values), `frame`) : undefined
   }
   const load_frame = (frame_idx: number) => {
     if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= valid_frame_count) {
