@@ -8,7 +8,7 @@ import {
   create_trajectory_frame,
   elem_symbol_from_token,
   iter_xyz_frames,
-  split_lines,
+  line_end,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
@@ -200,10 +200,8 @@ function parse_xyz_comment_signals(comment: string): Record<string, number[] | n
 // `X` for ghost/dummy atoms and some codes emit placeholder species. A frame with no
 // recognised atom at all, or a malformed coordinate, is corruption and names its line.
 function parse_xyz_atom_lines(
-  lines: string[],
-  start: number,
-  num_atoms: number,
-  comment: string,
+  text: string,
+  { atoms_start, end, line, num_atoms, comment }: XyzFrameSpec,
   frame_label: string,
   warn: WarningCollector[`warn`],
 ): {
@@ -224,18 +222,24 @@ function parse_xyz_atom_lines(
   let move_flag_count = 0
 
   const scanner = new LineScanner()
+  let cursor = atoms_start
   for (let idx = 0; idx < num_atoms; idx++) {
-    const line_number = start + idx + 1
-    const n_cols = scanner.scan(lines[start + idx])
+    const line_number = line + 2 + idx
+    const line_start = cursor
+    const eol = line_end(text, line_start, end)
+    cursor = eol + 1
+    const n_cols = scanner.scan(text, line_start, eol)
+    // the quoted line is only built on error, so a `\r` is stripped there rather than per line
+    const quoted = () => text.slice(line_start, eol).replace(/\r$/, ``)
     if (n_cols < min_cols) {
       throw new Error(
-        `XYZ ${frame_label} line ${line_number} has ${n_cols} columns, expected at least ${min_cols}: "${lines[start + idx]}"`,
+        `XYZ ${frame_label} line ${line_number} has ${n_cols} columns, expected at least ${min_cols}: "${quoted()}"`,
       )
     }
     const pos = [scanner.num(pos_col), scanner.num(pos_col + 1), scanner.num(pos_col + 2)]
     if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1]) || !Number.isFinite(pos[2])) {
       throw new TypeError(
-        `XYZ ${frame_label} line ${line_number} has non-numeric coordinates: "${lines[start + idx]}"`,
+        `XYZ ${frame_label} line ${line_number} has non-numeric coordinates: "${quoted()}"`,
       )
     }
     const symbol = scanner.str(species_col)
@@ -278,8 +282,9 @@ function parse_xyz_atom_lines(
     site_properties.push(props)
   }
   if (positions.length === 0) {
+    scanner.scan(text, atoms_start, line_end(text, atoms_start, end))
     throw new TypeError(
-      `XYZ ${frame_label} has no atom with a recognised element symbol in its ${num_atoms} atom lines (first species column: "${lines[start].trim().split(/\s+/)[species_col]}")`,
+      `XYZ ${frame_label} has no atom with a recognised element symbol in its ${num_atoms} atom lines (first species column: "${scanner.str(species_col)}")`,
     )
   }
   // Forces and move flags are only meaningful when every kept atom has them
@@ -294,12 +299,12 @@ function parse_xyz_atom_lines(
 }
 
 export function build_xyz_frame(
-  lines: string[],
+  text: string,
   frame: XyzFrameSpec,
   opts: { frame_label: string; default_step: number },
   collector: WarningCollector,
 ): TrajectoryFrame {
-  const { start, num_atoms, comment } = frame
+  const { comment } = frame
   const { step, properties } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
   const parsed_pbc = parse_extxyz_pbc(comment)
@@ -311,10 +316,8 @@ export function build_xyz_frame(
   }
   const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
   const { elements, positions, forces, site_properties } = parse_xyz_atom_lines(
-    lines,
-    start + 2,
-    num_atoms,
-    comment,
+    text,
+    frame,
     opts.frame_label,
     collector.warn,
   )
@@ -341,31 +344,38 @@ export function build_xyz_frame(
 // instead of yielding it) or a final frame whose last atom line, the file's last line, is
 // half-written. Either is dropped with a warning. Any other defect in a complete final frame
 // is corruption and throws like in every other frame.
-export function index_xyz_frames(lines: string[], warn: WarnFn): XyzFrameSpec[] {
+export function index_xyz_frames(text: string, warn: WarnFn): XyzFrameSpec[] {
   const specs: XyzFrameSpec[] = []
-  const frames = iter_xyz_frames(lines)
+  const frames = iter_xyz_frames(text)
   let next = frames.next()
   for (; !next.done; next = frames.next()) specs.push(next.value)
   const torn = next.value
   const drop = (spec: XyzFrameSpec, reason: string) =>
-    warn(
-      `Dropping truncated final XYZ frame ${specs.length} (line ${spec.start + 1}): ${reason}`,
-    )
+    warn(`Dropping truncated final XYZ frame ${specs.length} (line ${spec.line}): ${reason}`)
   if (torn) {
-    const atom_lines = Math.max(0, lines.length - torn.start - 2)
+    let atom_lines = 0
+    for (let pos = torn.atoms_start; pos < torn.end; pos = line_end(text, pos, torn.end) + 1) {
+      atom_lines++
+    }
     drop(torn, `${atom_lines} of ${torn.num_atoms} atom lines`)
     return specs
   }
   const last = specs.at(-1)
-  if (!last || last.start + last.num_atoms + 2 !== lines.length) return specs
+  // only a frame that reaches the end of the text can have a half-written last line
+  if (!last || text.slice(last.end).trim() !== ``) return specs
   const { pos_col, min_cols } = parse_extxyz_columns(last.comment)
-  const parts = lines[lines.length - 1].trim().split(/\s+/)
+  let last_line_start = last.atoms_start
+  for (let idx = 1; idx < last.num_atoms; idx++) {
+    last_line_start = line_end(text, last_line_start, last.end) + 1
+  }
+  const last_line = text.slice(last_line_start, last.end).trimEnd()
+  const scanner = new LineScanner()
   const complete =
-    parts.length >= min_cols &&
-    [0, 1, 2].every((axis) => Number.isFinite(parse_float_token(parts[pos_col + axis])))
+    scanner.scan(last_line) >= min_cols &&
+    [0, 1, 2].every((axis) => Number.isFinite(scanner.num(pos_col + axis)))
   if (complete) return specs
   specs.pop()
-  drop(last, `partial atom line ${lines.length} "${lines[lines.length - 1]}"`)
+  drop(last, `partial atom line ${last.line + 1 + last.num_atoms} "${last_line}"`)
   return specs
 }
 
@@ -373,12 +383,11 @@ export function parse_xyz_trajectory(
   content: string,
   collector: WarningCollector,
 ): ParsedTrajectory {
-  const lines = split_lines(content)
-  const frames = index_xyz_frames(lines, collector.warn).map((spec, frame_idx) =>
+  const frames = index_xyz_frames(content, collector.warn).map((spec, frame_idx) =>
     build_xyz_frame(
-      lines,
+      content,
       spec,
-      { frame_label: `frame ${frame_idx} (line ${spec.start + 1})`, default_step: frame_idx },
+      { frame_label: `frame ${frame_idx} (line ${spec.line})`, default_step: frame_idx },
       collector,
     ),
   )

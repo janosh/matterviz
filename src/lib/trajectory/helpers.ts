@@ -6,8 +6,8 @@ import type { AnyStructure } from '$lib/structure/index'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
+  LineScanner,
   make_lattice,
-  parse_float_token,
 } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
@@ -186,60 +186,136 @@ export const split_lines = (content: string): string[] => {
   return trimmed.includes(`\r`) ? trimmed.split(/\r?\n/) : trimmed.split(`\n`)
 }
 
+// === XYZ frame index ===
+// Frames are located by character offset into the untouched text, never by splitting it into
+// an array of line strings: a 500 MB dump is ~10M lines, and one string object per line
+// costs more memory than the text itself and a full copy pass before a single frame is read.
+
+// Offset just past the end of the line that starts at `from` (the index of its `\n`, or `to`)
+export const line_end = (text: string, from: number, to = text.length): number => {
+  const idx = text.indexOf(`\n`, from)
+  return idx === -1 || idx > to ? to : idx
+}
+
+// Bounds of the text with surrounding whitespace removed, as `content.trim()` would leave it
+const trimmed_bounds = (text: string): [number, number] => {
+  let from = 0
+  let to = text.length
+  while (from < to && text.charCodeAt(from) <= 32) from++
+  while (to > from && text.charCodeAt(to - 1) <= 32) to--
+  return [from, to]
+}
+
+// Non-negative integer written alone on the line (whitespace around it allowed), else -1
+const parse_count_line = (text: string, from: number, to: number): number => {
+  let idx = from
+  while (idx < to && text.charCodeAt(idx) <= 32) idx++
+  let count = 0
+  let digits = 0
+  for (; idx < to; idx++) {
+    const code = text.charCodeAt(idx)
+    if (code < 48 || code > 57) break
+    count = count * 10 + (code - 48)
+    digits++
+  }
+  while (idx < to && text.charCodeAt(idx) <= 32) idx++
+  return digits > 0 && idx === to ? count : -1
+}
+
+const atom_line_scanner = new LineScanner()
+
 // Symbol (<= 3 chars, non-numeric) followed by three numeric coordinates. Coordinates go
 // through the same strict parser as the frame reader so a Fortran `1.0D-3` token counts.
-export const is_xyz_atom_line = (parts: string[] | undefined): boolean =>
-  parts !== undefined &&
-  parts.length >= 4 &&
-  Number.isNaN(Number(parts[0])) &&
-  parts[0].length <= 3 &&
-  !Number.isNaN(parse_float_token(parts[1])) &&
-  !Number.isNaN(parse_float_token(parts[2])) &&
-  !Number.isNaN(parse_float_token(parts[3]))
+export const is_xyz_atom_line = (text: string, from = 0, to = text.length): boolean => {
+  const scanner = atom_line_scanner
+  if (scanner.scan(text, from, to) < 4) return false
+  const symbol_len = scanner.token_length(0)
+  return (
+    symbol_len <= 3 &&
+    Number.isNaN(scanner.num(0)) &&
+    !Number.isNaN(scanner.num(1)) &&
+    !Number.isNaN(scanner.num(2)) &&
+    !Number.isNaN(scanner.num(3))
+  )
+}
 
-// Location of one XYZ frame in a split file: `start` is the 0-based index of its atom-count line
-export type XyzFrameSpec = { start: number; num_atoms: number; comment: string }
+// Location of one XYZ frame in the text: `start` is the offset of its atom-count line, `line`
+// that line's 1-based number, `atoms_start` the offset of the first atom line and `end` the
+// offset just past the last atom line's newline (or the text end)
+export type XyzFrameSpec = {
+  start: number
+  line: number
+  num_atoms: number
+  comment: string
+  atoms_start: number
+  end: number
+}
+
+// Frame header at `start`: the count line plus the comment line that follows it, with no
+// check of the atom block. null when the line is not a bare positive atom count.
+const read_xyz_header = (
+  text: string,
+  start: number,
+  line: number,
+  to = text.length,
+): Omit<XyzFrameSpec, `end`> | null => {
+  const count_end = line_end(text, start, to)
+  const num_atoms = parse_count_line(text, start, count_end)
+  if (num_atoms <= 0) return null
+  const comment_start = Math.min(count_end + 1, to)
+  const comment_end = line_end(text, comment_start, to)
+  const comment = text.slice(comment_start, comment_end).replace(/\r$/, ``)
+  return { start, line, num_atoms, comment, atoms_start: Math.min(comment_end + 1, to) }
+}
 
 // Walk XYZ frames by their atom-count lines, sampling the first three atom lines of each
 // candidate so stray numeric lines are not mistaken for a frame header. A frame whose atom
 // block runs past the end of the input (a writer still appending) is not yielded; the first
 // such candidate after the final complete frame is the generator's return value (a later one
 // is a numeric comment line or stray number inside that frame's own block).
-export function* iter_xyz_frames(
-  lines: string[],
-): Generator<XyzFrameSpec, XyzFrameSpec | null> {
-  let line_idx = 0
+export function* iter_xyz_frames(text: string): Generator<XyzFrameSpec, XyzFrameSpec | null> {
+  const [from, to] = trimmed_bounds(text)
+  let pos = from
+  let line = 1
   let torn: XyzFrameSpec | null = null
-  while (line_idx < lines.length) {
-    const num_atoms = Math.trunc(Number(lines[line_idx].trim()))
-    if (Number.isNaN(num_atoms) || num_atoms <= 0) {
-      line_idx++
+  while (pos < to) {
+    const header = read_xyz_header(text, pos, line, to)
+    if (!header) {
+      pos = line_end(text, pos, to) + 1
+      line++
       continue
     }
-    const atom_lines = Math.max(0, Math.min(num_atoms, lines.length - line_idx - 2))
-    const sample = Math.min(atom_lines, 3)
+    const { num_atoms, atoms_start } = header
+    // Walk the atom block line by line: the first three are checked for the
+    // `symbol x y z` shape, the rest only counted
+    let atom_lines = 0
     let valid_coords = 0
-    for (let idx = 0; idx < sample; idx++) {
-      const line_at = line_idx + 2 + idx
+    let cursor = atoms_start
+    while (atom_lines < num_atoms && cursor < to) {
+      const eol = line_end(text, cursor, to)
       // The input's last line may be half-written by a writer still appending. A frame of
       // three atoms or fewer samples it, so it never disqualifies the frame here; the caller
       // decodes or drops it (index_xyz_frames), which a frame never indexed cannot be.
-      if (line_at === lines.length - 1) valid_coords++
-      else if (is_xyz_atom_line(lines[line_at].trim().split(/\s+/))) valid_coords++
+      if (atom_lines < 3 && (eol >= to || is_xyz_atom_line(text, cursor, eol))) valid_coords++
+      atom_lines++
+      cursor = eol + 1
     }
-    if (valid_coords < sample) {
-      line_idx++
+    if (valid_coords < Math.min(atom_lines, 3)) {
+      pos = line_end(text, pos, to) + 1
+      line++
       continue
     }
-    const spec = { start: line_idx, num_atoms, comment: lines[line_idx + 1] ?? `` }
+    const spec: XyzFrameSpec = { ...header, end: Math.min(cursor, to) }
     if (atom_lines < num_atoms) {
       torn ??= spec
-      line_idx++
+      pos = line_end(text, pos, to) + 1
+      line++
       continue
     }
     torn = null
     yield spec
-    line_idx += num_atoms + 2
+    pos = spec.end
+    line += num_atoms + 2
   }
   return torn
 }
@@ -249,19 +325,19 @@ export function* iter_xyz_frames(
 export function count_xyz_frames(data: string, limit = Number.POSITIVE_INFINITY): number {
   if (!data) return 0
   let frame_count = 0
-  const frames = iter_xyz_frames(split_lines(data))
+  const frames = iter_xyz_frames(data)
   while (frame_count < limit && !frames.next().done) frame_count += 1
   return frame_count
 }
 
-// Whether `data` holds at least two XYZ frames, splitting as little of it into lines as
-// settles the answer: a head is conclusive unless its cut fell inside a frame (the torn frame
-// is the generator's return value), in which case the next larger head is tried. Sized so a
-// single frame of 30k atoms (~1.5 MB) still leaves room for two frames in the largest head.
+// Whether `data` holds at least two XYZ frames, reading as little of it as settles the
+// answer: a head is conclusive unless its cut fell inside a frame (the torn frame is the
+// generator's return value), in which case the next larger head is tried. Sized so a single
+// frame of 30k atoms (~1.5 MB) still leaves room for two frames in the largest head.
 const SNIFF_HEADS = [64 * 1024, 8 * 1024 * 1024]
 export function has_multiple_xyz_frames(data: string): boolean {
   for (const head_bytes of [...SNIFF_HEADS, data.length]) {
-    const frames = iter_xyz_frames(split_lines(data.slice(0, head_bytes)))
+    const frames = iter_xyz_frames(data.slice(0, head_bytes))
     let frame_count = 0
     let next = frames.next()
     while (!next.done && frame_count < 2) {

@@ -78,17 +78,17 @@ export class LineScanner {
   private line = ``
   count = 0
 
-  // Tokenizes `line` on ASCII whitespace and returns the token count. Each token's numeric
+  // Tokenizes `line[from, to)` on ASCII whitespace and returns the token count. Each token's numeric
   // value is decoded in the same pass: a plain decimal with at most 15 significant digits is
   // an exact integer mantissa scaled by one exact power of ten, which rounds exactly like
   // Number(); anything else (exponents, long mantissas, `1.0D-3`, symbols) is marked for the
   // slow path that num() takes on demand.
-  scan(line: string): number {
+  scan(line: string, from = 0, to = line.length): number {
     this.line = line
     let { starts, ends, values } = this
     let count = 0
-    const len = line.length
-    let idx = 0
+    const len = to
+    let idx = from
     while (idx < len) {
       let code = line.charCodeAt(idx)
       if (code <= 32) {
@@ -140,6 +140,10 @@ export class LineScanner {
 
   str(token_idx: number): string {
     return this.line.slice(this.starts[token_idx], this.ends[token_idx])
+  }
+
+  token_length(token_idx: number): number {
+    return this.ends[token_idx] - this.starts[token_idx]
   }
 
   // Numeric value of token `token_idx`: NaN if absent or non-numeric, otherwise identical to
