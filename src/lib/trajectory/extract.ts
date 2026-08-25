@@ -29,7 +29,9 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
   const data: Record<string, number> = { Step: frame.step }
   const { metadata } = frame
   if (!metadata) return data
-  if (typeof metadata.force_max === `number` || !Array.isArray(metadata.forces)) {
+  const recorded =
+    typeof metadata.force_max === `number` && typeof metadata.force_norm === `number`
+  if (recorded || !Array.isArray(metadata.forces)) {
     copy_numeric_fields(data, metadata, [`force_max`, `force_norm`])
   } else {
     // Object.assign ignores the null calc_force_stats returns for empty forces

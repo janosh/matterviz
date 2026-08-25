@@ -453,7 +453,9 @@ describe(`LAMMPS`, () => {
     const content = [
       frame_0,
       lammps_frame(`id type x y z`, [`2 1 7.5 0 0`, `1 1 1.5 0 0`], { timestep: 1 }),
-      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`, `3 1 4 0 0`], { timestep: 2 }),
+      // same count, different atom set: only the IDs reveal the swap
+      lammps_frame(`id type x y z`, [`1 1 2 0 0`, `3 1 8 0 0`], { timestep: 2 }),
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`, `3 1 4 0 0`], { timestep: 3 }),
     ].join(`\n`)
     const run = await open(content, `unsorted.lammpstrj`)
     expect(
@@ -464,11 +466,15 @@ describe(`LAMMPS`, () => {
     ).toEqual([
       [0, [1, 1], [2, 8]],
       [1, [1, 1.5], [2, 7.5]],
-      [2, [1, 1], [2, 8], [3, 4]],
+      [2, [1, 2], [3, 8]],
+      [3, [1, 1], [2, 8], [3, 4]],
     ])
     expect(run.warnings).toEqual([])
     await expect(run.collect_positions?.()).rejects.toThrow(
-      `Atom count changed at frame 2: expected 2 atoms, got 3`,
+      `Atom identity changed at frame 2: site 1 had atom ID 2 in the first frame but 3 here`,
+    )
+    await expect(run.collect_positions?.({ frame_stride: 3 })).rejects.toThrow(
+      `Atom count changed at frame 3: expected 2 atoms, got 3`,
     )
   })
 
