@@ -14,7 +14,7 @@ import type { Pbc } from '$lib/structure/pbc'
 import { open_structure_text } from '$lib/structure/loader'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   assertHoverScopedShortcut,
@@ -44,10 +44,16 @@ vi.mock(`$lib/structure/supercell`, async (import_original) => {
 
 const structure = structures[0]
 
-// Mount Structure into document.body (queries are left to each test via doc_query)
+// Mount Structure into document.body (queries are left to each test via doc_query). Every
+// mount is unmounted after its test so component cleanup runs before happy-dom tears down:
+// the edit toast's dismiss timer would otherwise fire into a vanished `document`.
+const mounted: Record<string, unknown>[] = []
 const mount_structure = (props: ComponentProps<typeof Structure>): void => {
-  mount(Structure, { target: document.body, props })
+  mounted.push(mount(Structure, { target: document.body, props }))
 }
+afterEach(() => {
+  for (const component of mounted.splice(0)) void unmount(component)
+})
 const mount_bound_structure = (
   props: ComponentProps<typeof Structure>,
 ): { displayed_structure?: AnyStructure } => {
