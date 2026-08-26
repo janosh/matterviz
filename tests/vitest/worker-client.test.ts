@@ -158,8 +158,18 @@ describe(`request dedupe`, () => {
 
 test(`falls back to compute_sync when Worker is missing`, async () => {
   vi.stubGlobal(`Worker`, undefined)
-  const run = make_client()
-  await expect(run({ tag: `a` }, {})).resolves.toBe(`sync`)
+  const progress = vi.fn()
+  const run = create_worker_client<{ tag: string }, Record<string, unknown>, string, number>({
+    label: `Test`,
+    create_worker: () => new Worker(`stub`),
+    compute_sync: (_input, _options, on_progress) => {
+      on_progress?.(0.5)
+      return `sync`
+    },
+    build_payload: (input) => input,
+  })
+  await expect(run({ tag: `a` }, {}, { on_progress: progress })).resolves.toBe(`sync`)
+  expect(progress).toHaveBeenCalledExactlyOnceWith(0.5)
   expect(workers()).toHaveLength(0)
 })
 

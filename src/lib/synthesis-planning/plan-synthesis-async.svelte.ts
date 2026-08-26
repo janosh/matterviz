@@ -4,7 +4,7 @@
 import type { WorkerRequestOptions } from '$lib/worker-client.svelte'
 import { abort_error, create_worker_client } from '$lib/worker-client.svelte'
 import { to_error } from '$lib/utils'
-import { plan_synthesis, plan_synthesis_with_progress } from './plan'
+import { plan_synthesis_with_progress } from './plan'
 import type { SynthesisPlan, SynthesisPlanProgress, SynthesisPlanRequest } from './types'
 import { validate_synthesis_plan_request } from './validation'
 
@@ -17,7 +17,8 @@ const run_plan = create_worker_client<
   label: `Synthesis planner`,
   create_worker: () =>
     new Worker(new URL(`./plan-synthesis-worker.js`, import.meta.url), { type: `module` }),
-  compute_sync: plan_synthesis,
+  compute_sync: (request, _options, on_progress) =>
+    plan_synthesis_with_progress(request, { on_progress }),
   build_payload: (request) => $state.snapshot(request),
 })
 

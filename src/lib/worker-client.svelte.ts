@@ -6,7 +6,7 @@
 // messages before that for callers that passed `on_progress`.
 import { to_error } from '$lib/utils'
 
-interface WorkerClientConfig<Input, Options, Result> {
+interface WorkerClientConfig<Input, Options, Result, Progress> {
   // Names the module in error messages, e.g. `MSD`
   label: string
   // Must inline `new URL('./x-worker.js', import.meta.url)` at the call site: Vite detects
@@ -14,8 +14,12 @@ interface WorkerClientConfig<Input, Options, Result> {
   create_worker: () => Worker
   // SSR / no-Worker fallback, run on the main thread. Receives `undefined` when the caller
   // omitted options, exactly as the worker's compute does, so a defaulted `options = {}`
-  // parameter serves both paths.
-  compute_sync: (input: Input, options: Options | undefined) => Result
+  // parameter serves both paths. The progress callback stays outside cloneable worker options.
+  compute_sync: (
+    input: Input,
+    options: Options | undefined,
+    on_progress?: (progress: Progress) => void,
+  ) => Result
   // Plain, structured-cloneable stand-in for `input`. Svelte 5 $state proxies are not
   // cloneable, so callers rebuild field by field rather than deep-snapshotting - a proxied
   // typed array still reads back as its raw buffer, which keeps megabyte payloads cheap.
@@ -62,7 +66,7 @@ export function create_worker_client<
   Result,
   Progress = unknown,
 >(
-  config: WorkerClientConfig<Input, Options, Result>,
+  config: WorkerClientConfig<Input, Options, Result, Progress>,
 ): WorkerClient<Input, Options, Result, Progress> {
   const {
     label,
@@ -326,7 +330,7 @@ export function create_worker_client<
     if (!wkr) {
       const request = track(request_key, null)
       Promise.resolve()
-        .then(() => compute_sync(input, options))
+        .then(() => compute_sync(input, options, request_options.on_progress))
         .then(request.resolve, (err: unknown) => request.reject(to_error(err)))
       return join(request, request_options)
     }

@@ -58,9 +58,9 @@ function assert_finite_number(
 function assert_integer(
   value: unknown,
   path: string,
-  { minimum = -Infinity, maximum = Infinity }: NumberBounds = {},
+  bounds: NumberBounds = {},
 ): asserts value is number {
-  assert_finite_number(value, path, { minimum, maximum })
+  assert_finite_number(value, path, bounds)
   if (!Number.isInteger(value)) {
     throw new TypeError(`plan_synthesis: ${path} must be an integer, got ${value}`)
   }
