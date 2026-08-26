@@ -1,7 +1,7 @@
 // Entry point: enumerate precursor sets, balance and evaluate every candidate reaction, rank them
 // and attach recipes. Pure function of its JSON-serializable request, so agents and UIs share it.
-import type { GasSpecies } from '$lib/convex-hull'
-import { DEFAULT_GAS_PRESSURES } from '$lib/convex-hull'
+import { DEFAULT_GAS_PRESSURES } from '$lib/convex-hull/types'
+import type { GasSpecies } from '$lib/convex-hull/types'
 import { combinations } from '$lib/math'
 import type { PhaseSet, PlannerPhase } from './phases'
 import {
@@ -12,7 +12,7 @@ import {
   resolve_phase,
   to_phase_ref,
 } from './phases'
-import { format_mev } from './format'
+import { format_mev } from './format-mev'
 import { lookup_precursor_info } from './precursor-library'
 import { build_recipe } from './recipe'
 import {
@@ -33,9 +33,11 @@ import type {
   ScoreWeights,
   SynthesisConditions,
   SynthesisPlan,
+  SynthesisPlanProgress,
   SynthesisPlanRequest,
   SynthesisRoute,
 } from './types'
+import { validate_synthesis_plan_request } from './validation'
 
 export const DEFAULT_MAX_E_ABOVE_HULL = 0.03
 // Phases further above the hull than this are ignored as competitors: the analysis of https://doi.org/10.1038/s44160-024-00502-y uses the hull
@@ -58,6 +60,10 @@ interface PlannerContext {
   target_mass_g: number
   rejected: Record<RejectReason, number>
   warnings: string[]
+}
+
+interface SynthesisPlanComputeOptions {
+  on_progress?: (progress: SynthesisPlanProgress) => void
 }
 
 const empty_rejections = (): Record<RejectReason, number> => ({
@@ -199,9 +205,18 @@ function direct_routes(
   pool: PlannerPhase[],
   product: PlannerPhase,
   max_precursors: number,
+  on_progress?: (progress: SynthesisPlanProgress) => void,
 ): { routes: SynthesisRoute[]; n_candidates: number } {
   const routes: SynthesisRoute[] = []
   let n_candidates = 0
+  let total_candidates = 0
+  for (let size = 1; size <= Math.min(max_precursors, pool.length); size++) {
+    const n_subsets = binomial(pool.length, size)
+    if (total_candidates + n_subsets > MAX_CANDIDATES) break
+    total_candidates += n_subsets
+  }
+  const progress_interval = Math.max(1, Math.ceil(total_candidates / 100))
+  on_progress?.({ stage: `direct_routes`, current: 0, total: total_candidates })
   for (let size = 1; size <= Math.min(max_precursors, pool.length); size++) {
     const n_subsets = binomial(pool.length, size)
     if (n_candidates + n_subsets > MAX_CANDIDATES) {
@@ -212,6 +227,13 @@ function direct_routes(
     }
     for (const subset of combinations(pool, size)) {
       n_candidates++
+      if (n_candidates % progress_interval === 0 || n_candidates === total_candidates) {
+        on_progress?.({
+          stage: `direct_routes`,
+          current: n_candidates,
+          total: total_candidates,
+        })
+      }
       // Every target element must come from a precursor or an open gas
       const covered = product.fractions.every(
         (fraction, el_idx) =>
@@ -245,6 +267,7 @@ function two_step_routes(
   ctx: PlannerContext,
   pool: PlannerPhase[],
   max_precursors: number,
+  on_progress?: (progress: SynthesisPlanProgress) => void,
 ): SynthesisRoute[] {
   const { target } = ctx
   const pool_ids = new Set(pool.map((phase) => phase.id))
@@ -262,7 +285,9 @@ function two_step_routes(
   const sub_ctx: PlannerContext = { ...ctx, rejected: empty_rejections(), warnings: [] }
   const best = (routes: SynthesisRoute[]) =>
     routes.toSorted((route_a, route_b) => route_b.score - route_a.score)[0]
-  return intermediates.flatMap((intermediate) => {
+  const routes: SynthesisRoute[] = []
+  on_progress?.({ stage: `two_step_routes`, current: 0, total: intermediates.length })
+  for (const [intermediate_idx, intermediate] of intermediates.entries()) {
     const step2 = best(
       [[intermediate], ...pool.map((phase) => [intermediate, phase])]
         .map((precursors) => evaluate_route(sub_ctx, precursors, target, `two_step`))
@@ -271,9 +296,8 @@ function two_step_routes(
     const step1 =
       step2 &&
       direct_routes(sub_ctx, pool, intermediate, Math.min(max_precursors, 2)).routes[0]
-    if (!step1) return []
-    return [
-      {
+    if (step1) {
+      routes.push({
         ...step2,
         id: `${step2.id}<<${step1.id}`,
         intermediate_step: step1.reaction,
@@ -283,21 +307,27 @@ function two_step_routes(
           `Two-step route via ${intermediate.formula}: first ${step1.reaction.equation} (${step1.rationale[0]}), then ${step2.reaction.equation}`,
           ...step2.rationale,
         ],
-      },
-    ]
-  })
+      })
+    }
+    on_progress?.({
+      stage: `two_step_routes`,
+      current: intermediate_idx + 1,
+      total: intermediates.length,
+    })
+  }
+  return routes
 }
 
-export function plan_synthesis(request: SynthesisPlanRequest): SynthesisPlan {
-  if (!request.entries?.length)
-    throw new Error(`plan_synthesis: entries must be a non-empty array`)
-  if (!request.target) throw new Error(`plan_synthesis: target is required`)
+// Internal worker entry with progress reporting. Keep plan_synthesis as the deterministic public
+// kernel: progress is observational and never changes enumeration, scoring or result ordering.
+export function plan_synthesis_with_progress(
+  request: SynthesisPlanRequest,
+  options: SynthesisPlanComputeOptions = {},
+): SynthesisPlan {
+  validate_synthesis_plan_request(request)
+  const { on_progress } = options
+  on_progress?.({ stage: `preparing`, current: 0, total: 1 })
   const max_precursors = request.max_precursors ?? 2
-  if (!Number.isInteger(max_precursors) || max_precursors < 1 || max_precursors > 4) {
-    throw new Error(
-      `plan_synthesis: max_precursors must be an integer in 1..4, got ${max_precursors}`,
-    )
-  }
   const conditions: SynthesisConditions = {
     temperature: request.conditions?.temperature ?? 0,
     open_species: request.conditions?.open_species ?? [],
@@ -307,6 +337,7 @@ export function plan_synthesis(request: SynthesisPlanRequest): SynthesisPlan {
   const weights = { ...DEFAULT_SCORE_WEIGHTS, ...request.scoring }
 
   const phase_set = prepare_phase_set(request.entries, conditions)
+  on_progress?.({ stage: `preparing`, current: 1, total: 1 })
   const resolved = resolve_phase(phase_set, request.target)
   if (!resolved) {
     const examples = phase_set.phases
@@ -374,9 +405,19 @@ export function plan_synthesis(request: SynthesisPlanRequest): SynthesisPlan {
       `Precursor pool is empty: relax max_e_above_hull, allow/block filters or only_common`,
     )
   }
-  const { routes, n_candidates } = direct_routes(ctx, pool, target, max_precursors)
-  if (request.two_step) routes.push(...two_step_routes(ctx, pool, max_precursors))
+  const { routes, n_candidates } = direct_routes(
+    ctx,
+    pool,
+    target,
+    max_precursors,
+    on_progress,
+  )
+  if (request.two_step) {
+    routes.push(...two_step_routes(ctx, pool, max_precursors, on_progress))
+  }
+  on_progress?.({ stage: `ranking`, current: 0, total: 1 })
   routes.sort((route_a, route_b) => route_b.score - route_a.score)
+  on_progress?.({ stage: `ranking`, current: 1, total: 1 })
 
   const partial_pressures = Object.fromEntries(
     gas_species.map((species) => [
@@ -413,3 +454,6 @@ export function plan_synthesis(request: SynthesisPlanRequest): SynthesisPlan {
     warnings: ctx.warnings,
   }
 }
+
+export const plan_synthesis = (request: SynthesisPlanRequest): SynthesisPlan =>
+  plan_synthesis_with_progress(request)

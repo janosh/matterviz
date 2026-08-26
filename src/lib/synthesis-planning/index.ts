@@ -9,6 +9,8 @@ export {
 } from './phases'
 export type { HullPoint, PhaseSet, PlannerPhase } from './phases'
 export { COMPETITOR_E_ABOVE_HULL, DEFAULT_MAX_E_ABOVE_HULL, plan_synthesis } from './plan'
+export { plan_synthesis_async } from './plan-synthesis-async.svelte'
+export type { PlanSynthesisAsync } from './plan-synthesis-async.svelte'
 export { lookup_precursor_info, PRECURSOR_LIBRARY, precursor_key } from './precursor-library'
 export type { PrecursorInfo } from './precursor-library'
 export { build_recipe } from './recipe'
@@ -26,3 +28,4 @@ export {
 } from './thermo'
 export type { BalancedReaction, BalanceFailure } from './thermo'
 export type * from './types'
+export { validate_synthesis_plan_request } from './validation'

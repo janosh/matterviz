@@ -13,26 +13,16 @@ import type {
   PhaseData,
 } from './types'
 import { DEFAULT_HULL_COLORS, MAGNETIC_ORDERING_CATEGORY } from './types'
+import { entry_is_stable, is_unary_entry } from './entry-stability'
 
-// Tolerance for classifying a phase as on the convex hull (eV/atom)
-export const HULL_STABILITY_TOL = 1e-6
-
-// Clamp raw hull distance and compute stability for a single entry.
-// Excluded entries keep their raw (possibly negative) distance and are never stable.
-export function compute_hull_stability(
-  raw_distance: number | null | undefined,
-  exclude_from_hull?: boolean,
-  tol: number = HULL_STABILITY_TOL,
-): { e_above_hull: number | undefined; is_stable: boolean | undefined } {
-  // unknown distance (degenerate hull / point outside hull projection / missing energy):
-  // not 0/stable — leave both undefined so it isn't mislabeled on-hull
-  if (raw_distance == null || !Number.isFinite(raw_distance)) {
-    return { e_above_hull: undefined, is_stable: undefined }
-  }
-  if (exclude_from_hull) return { e_above_hull: raw_distance, is_stable: false }
-  const e_above_hull = Math.abs(raw_distance) < tol ? 0 : Math.max(0, raw_distance)
-  return { e_above_hull, is_stable: e_above_hull <= tol }
-}
+export {
+  compute_hull_stability,
+  entry_is_stable,
+  get_arity,
+  HULL_STABILITY_TOL,
+  is_on_hull,
+  is_unary_entry,
+} from './entry-stability'
 
 type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
 
@@ -51,27 +41,11 @@ export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
   return [min_dist, Math.max(max_dist, 0.1)]
 }
 
-export const entry_is_stable = (
-  entry: StabilityEntry,
-  tol: number = HULL_STABILITY_TOL,
-): boolean =>
-  entry.is_stable === true ||
-  (entry.is_stable !== false && Math.abs(entry.e_above_hull ?? Infinity) <= tol)
-
 // Whether to plot an entry at a given max hull distance: stable, or a finite distance
 // within max_dist. Unknown distance (undefined) is excluded, not treated as 0/stable.
 export const entry_within_hull_dist = (entry: StabilityEntry, max_dist: number): boolean =>
   entry_is_stable(entry) ||
   (typeof entry.e_above_hull === `number` && entry.e_above_hull <= max_dist)
-
-// Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
-export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
-  !entry.exclude_from_hull && entry_is_stable(entry, tol)
-
-export const get_arity = (entry: PhaseData): number =>
-  Object.values(entry.composition).filter((count) => count > 0).length
-
-export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
 
 // === Entry category helpers (generic categorical classification) ===
 

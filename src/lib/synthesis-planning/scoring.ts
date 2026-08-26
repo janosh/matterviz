@@ -1,7 +1,7 @@
 // Route scoring: every term is mapped to roughly [-1, 1] before weighting so weights are
 // comparable, and each term's contribution is reported so rankings stay explainable.
-import type { GasSpecies } from '$lib/convex-hull'
-import { format_mev } from './format'
+import type { GasSpecies } from '$lib/convex-hull/types'
+import { format_mev } from './format-mev'
 import { lookup_precursor_info } from './precursor-library'
 import type {
   CompetingPhase,

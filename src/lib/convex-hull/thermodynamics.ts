@@ -4,7 +4,7 @@ import { count_atoms_in_composition } from '$lib/composition/reduce'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
 import { composition_to_barycentric_nd } from './barycentric-coords'
-import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './helpers'
+import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './entry-stability'
 import type { ConvexHullEntry, PhaseData, PhaseStats, ProcessedPhaseData } from './types'
 
 // A pymatgen species key as emitted by Composition.as_dict(): an element symbol with optional

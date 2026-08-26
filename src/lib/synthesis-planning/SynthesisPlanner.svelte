@@ -9,8 +9,8 @@
   import { sanitize_formula } from '$lib/sanitize'
   import { format_plan_text } from './agent'
   import { format_equation_html, format_mev } from './format'
-  import { prepare_phase_set } from './phases'
-  import { plan_synthesis } from './plan'
+  import { prepare_phase_set, resolve_phase } from './phases'
+  import { plan_synthesis_async } from './plan-synthesis-async.svelte'
   import ReactionSlicePlot from './ReactionSlicePlot.svelte'
   import RecipeCard from './RecipeCard.svelte'
   import RouteTable from './RouteTable.svelte'
@@ -20,8 +20,10 @@
     ScoreWeights,
     SynthesisConditions,
     SynthesisPlan,
+    SynthesisPlanProgress,
     SynthesisRoute,
   } from './types'
+  import { onDestroy } from 'svelte'
 
   let {
     entries = [],
@@ -35,6 +37,8 @@
     max_routes = 50,
     selected_route_id = $bindable(null),
     plan = $bindable(null),
+    planning = $bindable(false),
+    progress = $bindable(null),
     show_hull = true,
     show_controls = true,
     ...rest
@@ -52,50 +56,88 @@
     selected_route_id?: string | null
     // Bindable output: the full plan for the current inputs
     plan?: SynthesisPlan | null
+    // Bindable async state for host applications embedding the planner
+    planning?: boolean
+    progress?: SynthesisPlanProgress | null
     show_hull?: boolean
     show_controls?: boolean
     [key: string]: unknown
   } = $props()
 
-  // Target choices: every non-gas formula, multi-element and stable first
+  // Target choices: every non-gas multi-element formula, stable phases first
   const phase_set = $derived(entries.length ? prepare_phase_set(entries) : null)
   const target_options = $derived(
     (phase_set?.phases ?? [])
       .filter((phase) => !phase.is_gas && Object.keys(phase.composition).length > 1)
       .toSorted(
         (phase_a, phase_b) =>
+          phase_a.e_above_hull_0K - phase_b.e_above_hull_0K ||
           Object.keys(phase_b.composition).length - Object.keys(phase_a.composition).length ||
           phase_a.formula.localeCompare(phase_b.formula),
       ),
+  )
+  const explicit_target = $derived(
+    phase_set && target && !target_options.some((phase) => phase.formula === target)
+      ? resolve_phase(phase_set, target)
+      : null,
   )
   $effect(() => {
     if (!target && target_options.length) target = target_options[0].formula
   })
 
-  const result = $derived.by((): { plan: SynthesisPlan | null; error: string | null } => {
-    if (!entries.length || !target) return { plan: null, error: null }
-    try {
-      const computed = plan_synthesis({
-        entries,
-        target,
-        conditions,
-        precursors,
-        max_precursors,
-        two_step,
-        scoring: weights,
-        max_routes,
-        target_mass_g,
-      })
-      return { plan: computed, error: null }
-    } catch (err) {
-      return { plan: null, error: err instanceof Error ? err.message : String(err) }
-    }
-  })
-  const computed_plan = $derived(result.plan)
-  const error = $derived(result.error)
+  let computed_plan = $state<SynthesisPlan | null>(plan)
+  let error = $state<string | null>(null)
   $effect(() => {
-    plan = computed_plan
+    const request = {
+      entries,
+      target,
+      conditions,
+      precursors,
+      max_precursors,
+      two_step,
+      scoring: weights,
+      max_routes,
+      target_mass_g,
+    }
+    if (!entries.length || !target) {
+      computed_plan = null
+      plan = null
+      planning = false
+      progress = null
+      error = null
+      return
+    }
+    const controller = new AbortController()
+    computed_plan = null
+    plan = null
+    planning = true
+    progress = { stage: `preparing`, current: 0, total: 1 }
+    error = null
+    void plan_synthesis_async(request, {
+      signal: controller.signal,
+      on_progress: (update) => {
+        if (!controller.signal.aborted) progress = update
+      },
+    })
+      .then((result) => {
+        if (controller.signal.aborted) return
+        computed_plan = result
+        plan = result
+      })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          error = err instanceof Error ? err.message : String(err)
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          planning = false
+          progress = null
+        }
+      })
+    return () => controller.abort()
   })
+  onDestroy(plan_synthesis_async.release)
   const routes = $derived(computed_plan?.routes ?? [])
   const selected_route = $derived<SynthesisRoute | null>(
     routes.find((route) => route.id === selected_route_id) ?? routes[0] ?? null,
@@ -150,6 +192,11 @@
       })
       .join(`, `)
   })
+  const progress_text = $derived.by(() => {
+    if (!progress) return `Planning synthesis routes…`
+    const stage = progress.stage.replaceAll(`_`, ` `)
+    return progress.total > 1 ? `${stage}: ${progress.current}/${progress.total}` : `${stage}…`
+  })
 
   const score_tooltip = $derived(
     Object.entries(selected_route?.score_breakdown ?? {})
@@ -194,6 +241,9 @@
       <label>
         Target
         <select bind:value={target}>
+          {#if explicit_target}
+            <option value={target}>{explicit_target.formula} ({explicit_target.id})</option>
+          {/if}
           {#each target_options as phase (phase.id)}
             <option value={phase.formula}>{phase.formula}</option>
           {/each}
@@ -305,6 +355,8 @@
 
   {#if error}
     <p class="error">{error}</p>
+  {:else if planning}
+    <p class="progress" role="status">{progress_text}</p>
   {:else if computed_plan}
     <p class="summary">
       <strong>{@html sanitize_formula(computed_plan.target.formula)}</strong>
@@ -355,6 +407,14 @@
             <ul class="rationale">
               {#each selected_route.rationale as reason (reason)}<li>{reason}</li>{/each}
             </ul>
+            {#if show_hull && n_elements >= 2 && n_elements <= 4}
+              <ConvexHull
+                {entries}
+                {highlighted_entries}
+                show_unstable_labels={false}
+                style="height: 520px"
+              />
+            {/if}
           </div>
           <div class="detail-right">
             <ReactionSlicePlot route={selected_route} />
@@ -384,15 +444,6 @@
         </section>
       {/if}
     </div>
-
-    {#if show_hull && n_elements >= 2 && n_elements <= 4}
-      <ConvexHull
-        {entries}
-        {highlighted_entries}
-        show_unstable_labels={false}
-        style="height: 520px"
-      />
-    {/if}
   {:else}
     <p class="empty">Provide thermodynamic entries and a target to plan a synthesis.</p>
   {/if}
@@ -462,6 +513,7 @@
   .summary,
   .warn,
   .error,
+  .progress,
   .empty {
     margin: 0;
   }
