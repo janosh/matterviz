@@ -16,7 +16,6 @@ export const SYNTHESIS_PLAN_REQUEST_SCHEMA = {
   properties: {
     target: {
       type: `string`,
-      minLength: 1,
       pattern: `\\S`,
       description: `Target phase as a formula (e.g. "LiCoO2", "BaTiO3") or an entry id present in the thermodynamic data. A formula picks the lowest-energy matching entry.`,
     },

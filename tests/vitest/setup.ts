@@ -17,8 +17,8 @@ import { type MemoryRunExtras, trajectory_from_frames } from '$lib/trajectory/ru
 import { ensure_moyo_wasm_ready } from '$lib/symmetry/analyze'
 import { to_error } from '$lib/utils'
 import type { SymmetryDataset } from '$lib/symmetry'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -1288,6 +1288,63 @@ export const complex_structure: AnyStructure = {
     gamma: 90.0,
     volume: 125.0,
   },
+}
+
+// Walk repo-local runtime imports and fail if an entry reaches Svelte or another forbidden
+// browser-only module. Type-only imports are erased before traversal.
+export function expect_worker_safe_import_graph(
+  entry_paths: readonly string[],
+  min_modules: number,
+  forbidden_modules: readonly string[] = [],
+): void {
+  const repo_root = resolve(current_dir, `../..`)
+  const entry_files = entry_paths.map((entry_path) => resolve(repo_root, entry_path))
+  const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
+  const resolve_specifier = (specifier: string, from_file: string): string | null => {
+    let base: string
+    if (specifier.startsWith(`$lib`)) {
+      base = resolve(repo_root, `src/lib`, specifier.slice(`$lib`.length).replace(/^\//, ``))
+    } else if (specifier.startsWith(`.`)) base = resolve(dirname(from_file), specifier)
+    else return null
+    const candidates = source_extensions.some((extension) => base.endsWith(extension))
+      ? [base]
+      : source_extensions.flatMap((extension) => [
+          `${base}${extension}`,
+          resolve(base, `index${extension}`),
+        ])
+    return candidates.find(existsSync) ?? null
+  }
+  const queue = [...entry_files]
+  const visited = new Set<string>()
+  const violations: string[] = []
+  while (queue.length) {
+    const file = queue.pop()
+    if (!file || visited.has(file)) continue
+    visited.add(file)
+    const source = readFileSync(file, `utf-8`).replaceAll(
+      /(?:import|export)\s+(?:\{\s*(?:type\s+[^,}]+,?\s*)+\}|type\s+[^;]*?)\s+from\s*['"`][^'"`]+['"`]\s*;?/g,
+      ``,
+    )
+    for (const match of source.matchAll(
+      /(?:from|import)\s*\(?\s*['"`](?<specifier>[^'"`]+)['"`]/g,
+    )) {
+      const specifier = match.groups?.specifier ?? ``
+      if (
+        specifier === `svelte` ||
+        specifier.startsWith(`svelte/`) ||
+        specifier.endsWith(`.svelte`) ||
+        forbidden_modules.includes(specifier)
+      ) {
+        violations.push(`${file} imports "${specifier}"`)
+        continue
+      }
+      const resolved = resolve_specifier(specifier, file)
+      if (resolved) queue.push(resolved)
+    }
+  }
+  expect(visited.size).toBeGreaterThan(min_modules)
+  expect(entry_files.every((entry_file) => visited.has(entry_file))).toBe(true)
+  expect(violations).toEqual([])
 }
 
 // === Worker stub ===

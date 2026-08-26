@@ -11,6 +11,7 @@
   import { format_equation_html, format_mev } from './format'
   import { prepare_phase_set, resolve_phase } from './phases'
   import { plan_synthesis_async } from './plan-synthesis-async.svelte'
+  import { build_recipe } from './recipe'
   import ReactionSlicePlot from './ReactionSlicePlot.svelte'
   import RecipeCard from './RecipeCard.svelte'
   import RouteTable from './RouteTable.svelte'
@@ -85,8 +86,30 @@
     if (!target && target_options.length) target = target_options[0].formula
   })
 
-  let computed_plan = $state<SynthesisPlan | null>(plan)
-  let error = $state<string | null>(null)
+  let worker_plan = $state<SynthesisPlan | null>(plan)
+  let planning_error = $state<string | null>(null)
+  let active_controller: AbortController | undefined
+  const target_mass_error = $derived(
+    typeof target_mass_g !== `number` || !Number.isFinite(target_mass_g) || target_mass_g <= 0
+      ? `plan_synthesis: target_mass_g must be a finite number > 0, got ${String(target_mass_g)}`
+      : null,
+  )
+  const computed_plan = $derived.by(() => {
+    if (!worker_plan || target_mass_error) return null
+    if (worker_plan.routes.every((route) => route.recipe.target_mass_g === target_mass_g))
+      return worker_plan
+    return {
+      ...worker_plan,
+      routes: worker_plan.routes.map((route) => ({
+        ...route,
+        recipe: build_recipe(route.reaction, route.thermodynamics, target_mass_g),
+      })),
+    }
+  })
+  const error = $derived(target_mass_error ?? planning_error)
+  $effect(() => {
+    plan = computed_plan
+  })
   $effect(() => {
     const request = {
       entries,
@@ -97,22 +120,20 @@
       two_step,
       scoring: weights,
       max_routes,
-      target_mass_g,
     }
     if (!entries.length || !target) {
-      computed_plan = null
-      plan = null
+      worker_plan = null
       planning = false
       progress = null
-      error = null
+      planning_error = null
       return
     }
     const controller = new AbortController()
-    computed_plan = null
-    plan = null
+    active_controller = controller
+    worker_plan = null
     planning = true
     progress = { stage: `preparing`, current: 0, total: 1 }
-    error = null
+    planning_error = null
     void plan_synthesis_async(request, {
       signal: controller.signal,
       on_progress: (update) => {
@@ -121,12 +142,11 @@
     })
       .then((result) => {
         if (controller.signal.aborted) return
-        computed_plan = result
-        plan = result
+        worker_plan = result
       })
       .catch((err: unknown) => {
         if (!controller.signal.aborted) {
-          error = err instanceof Error ? err.message : String(err)
+          planning_error = err instanceof Error ? err.message : String(err)
         }
       })
       .finally(() => {
@@ -137,7 +157,10 @@
       })
     return () => controller.abort()
   })
-  onDestroy(plan_synthesis_async.release)
+  onDestroy(() => {
+    active_controller?.abort()
+    plan_synthesis_async.release()
+  })
   const routes = $derived(computed_plan?.routes ?? [])
   const selected_route = $derived<SynthesisRoute | null>(
     routes.find((route) => route.id === selected_route_id) ?? routes[0] ?? null,

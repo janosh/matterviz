@@ -62,10 +62,6 @@ interface PlannerContext {
   warnings: string[]
 }
 
-interface SynthesisPlanComputeOptions {
-  on_progress?: (progress: SynthesisPlanProgress) => void
-}
-
 const empty_rejections = (): Record<RejectReason, number> => ({
   unbalanced: 0,
   redundant_precursor: 0,
@@ -210,21 +206,21 @@ function direct_routes(
   const routes: SynthesisRoute[] = []
   let n_candidates = 0
   let total_candidates = 0
+  const candidate_sizes: number[] = []
   for (let size = 1; size <= Math.min(max_precursors, pool.length); size++) {
     const n_subsets = binomial(pool.length, size)
-    if (total_candidates + n_subsets > MAX_CANDIDATES) break
-    total_candidates += n_subsets
-  }
-  const progress_interval = Math.max(1, Math.ceil(total_candidates / 100))
-  on_progress?.({ stage: `direct_routes`, current: 0, total: total_candidates })
-  for (let size = 1; size <= Math.min(max_precursors, pool.length); size++) {
-    const n_subsets = binomial(pool.length, size)
-    if (n_candidates + n_subsets > MAX_CANDIDATES) {
+    if (total_candidates + n_subsets > MAX_CANDIDATES) {
       ctx.warnings.push(
         `Skipped ${size}-precursor sets for ${product.formula}: ${n_subsets} combinations exceed the ${MAX_CANDIDATES} candidate budget. Narrow the precursor pool.`,
       )
       break
     }
+    candidate_sizes.push(size)
+    total_candidates += n_subsets
+  }
+  const progress_interval = Math.max(1, Math.ceil(total_candidates / 100))
+  on_progress?.({ stage: `direct_routes`, current: 0, total: total_candidates })
+  for (const size of candidate_sizes) {
     for (const subset of combinations(pool, size)) {
       n_candidates++
       if (n_candidates % progress_interval === 0 || n_candidates === total_candidates) {
@@ -322,7 +318,7 @@ function two_step_routes(
 // kernel: progress is observational and never changes enumeration, scoring or result ordering.
 export function plan_synthesis_with_progress(
   request: SynthesisPlanRequest,
-  options: SynthesisPlanComputeOptions = {},
+  options: { on_progress?: (progress: SynthesisPlanProgress) => void } = {},
 ): SynthesisPlan {
   validate_synthesis_plan_request(request)
   const { on_progress } = options
@@ -416,7 +412,7 @@ export function plan_synthesis_with_progress(
     routes.push(...two_step_routes(ctx, pool, max_precursors, on_progress))
   }
   on_progress?.({ stage: `ranking`, current: 0, total: 1 })
-  routes.sort((route_a, route_b) => route_b.score - route_a.score)
+  if (request.two_step) routes.sort((route_a, route_b) => route_b.score - route_a.score)
   on_progress?.({ stage: `ranking`, current: 1, total: 1 })
 
   const partial_pressures = Object.fromEntries(

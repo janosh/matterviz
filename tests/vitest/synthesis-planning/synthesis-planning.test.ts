@@ -16,9 +16,12 @@ import {
   resolve_phase,
   SYNTHESIS_PLAN_REQUEST_SCHEMA,
   SYNTHESIS_PLANNER_TOOL,
-  validate_synthesis_plan_request,
 } from '$lib/synthesis-planning'
-import type { PlannerPhase, SynthesisPlanRequest } from '$lib/synthesis-planning'
+import type {
+  PlannerPhase,
+  SynthesisPlanProgress,
+  SynthesisPlanRequest,
+} from '$lib/synthesis-planning'
 import { plan_synthesis_with_progress } from '$lib/synthesis-planning/plan'
 import { describe, expect, test } from 'vitest'
 import { make_phase, read_maybe_gz } from '../setup'
@@ -462,15 +465,10 @@ describe(`plan_synthesis`, () => {
   })
 
   test.each([
-    [{ entries: [], target: `BaTiO3` }, /entries must be/],
-    [{ entries: ba_ti_c_o, target: `` }, /target must be a non-empty string/],
-    [{ entries: ba_ti_c_o, target: `BaTiO3`, max_precursors: 7 }, /max_precursors/],
-    [{ entries: ba_ti_c_o, target: `NaCl` }, /matches no entry id or formula/],
-  ])(`rejects invalid request %o`, (request, message) => {
-    expect(() => plan_synthesis(request as SynthesisPlanRequest)).toThrow(message)
-  })
-
-  test.each([
+    [{ entries: [] }, /entries must be/],
+    [{ target: `` }, /target must be a non-empty string/],
+    [{ max_precursors: 7 }, /max_precursors/],
+    [{ target: `NaCl` }, /matches no entry id or formula/],
     [{ conditions: { temperature: -1 } }, /conditions.temperature/],
     [{ conditions: { temperature: 2001 } }, /conditions.temperature/],
     [{ conditions: { open_species: [`Ar`] } }, /unsupported Ar/],
@@ -486,14 +484,14 @@ describe(`plan_synthesis`, () => {
     [{ target_mass_g: 0 }, /target_mass_g/],
     [{ two_step: `yes` }, /two_step must be a boolean/],
     [{ mystery: true }, /unknown property mystery/],
-  ])(`runtime validator rejects schema violation %o`, (override, message) => {
-    expect(() => validate_synthesis_plan_request({ ...base_request, ...override })).toThrow(
-      message,
-    )
+  ])(`rejects invalid request override %o`, (override, message) => {
+    expect(() =>
+      plan_synthesis({ ...base_request, ...override } as SynthesisPlanRequest),
+    ).toThrow(message)
   })
 
   test(`progress-capable kernel preserves the exact synchronous result`, () => {
-    const progress: { stage: string; current: number; total: number }[] = []
+    const progress: SynthesisPlanProgress[] = []
     const result = plan_synthesis_with_progress(base_request, {
       on_progress: (update) => progress.push(update),
     })

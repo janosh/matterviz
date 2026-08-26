@@ -22,16 +22,7 @@ const run_plan = create_worker_client<
   build_payload: (request) => $state.snapshot(request),
 })
 
-export interface PlanSynthesisAsync {
-  (
-    request: SynthesisPlanRequest,
-    options?: WorkerRequestOptions<SynthesisPlanProgress>,
-  ): Promise<SynthesisPlan>
-  cancel: (reason?: string) => void
-  release: () => void
-}
-
-export const plan_synthesis_async: PlanSynthesisAsync = Object.assign(
+export const plan_synthesis_async = Object.assign(
   (
     request: SynthesisPlanRequest,
     options: WorkerRequestOptions<SynthesisPlanProgress> = {},
@@ -55,3 +46,5 @@ export const plan_synthesis_async: PlanSynthesisAsync = Object.assign(
   },
   { cancel: run_plan.cancel, release: run_plan.release },
 )
+
+export type PlanSynthesisAsync = typeof plan_synthesis_async
