@@ -2,11 +2,9 @@
   import { browser } from '$app/environment'
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
+  import { open_material, type OpenedMaterial } from '$lib/file-viewer/open'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { as_text, load_from_url, type FileLoadMeta } from '$lib/io'
-  import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { format_num } from '$lib/labels'
-  import { parse_structure_file } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
   import { file_param, replace_url } from '$site/state.svelte'
   import type {
@@ -14,6 +12,7 @@
     IsosurfaceSettings,
     StructureDisplayMode,
     VolumetricData,
+    VolumetricFileData,
   } from 'matterviz'
   import {
     auto_isosurface_settings,
@@ -47,23 +46,20 @@
     active_volume_idx = 0
   }
 
-  function parse_and_apply(text: string, filename: string) {
-    try {
-      const vol_result = parse_volumetric_file(text, filename)
-      if (vol_result) {
-        structure = vol_result.structure as AnyStructure
-        volumetric_data = vol_result.volumes
-        active_volume_idx = 0
-        const vol = vol_result.volumes[0]
-        if (vol) isosurface_settings = auto_isosurface_settings(vol)
-        return
-      }
-
-      structure = parse_structure_file(text, filename)
+  function apply_material(opened: OpenedMaterial) {
+    if (opened.type === `structure`) {
+      structure = opened.data
       volumetric_data = undefined
-    } catch (exc) {
-      error_msg = `Failed to parse ${filename}: ${to_error(exc).message}`
+      return
     }
+    if (opened.type !== `isosurface`)
+      throw new Error(`Expected structure data, got ${opened.type}`)
+    const parsed = opened.data
+    structure = parsed.structure as AnyStructure
+    volumetric_data = parsed.volumes
+    active_volume_idx = 0
+    const volume = parsed.volumes[0]
+    if (volume) isosurface_settings = auto_isosurface_settings(volume)
   }
 
   function update_url() {
@@ -98,9 +94,12 @@
 
     try {
       const parse_start = performance.now()
-      await load_from_url(url, (content, filename) => {
-        parse_and_apply(as_text(content), filename)
-      })
+      const opened = await open_material(url)
+      try {
+        apply_material(opened)
+      } finally {
+        opened.dispose()
+      }
       parse_time_ms = Math.round(performance.now() - parse_start)
     } catch (error) {
       error_msg = to_error(error).message
@@ -134,20 +133,6 @@
       })
     }
   })
-
-  function handle_dropped_file(
-    content: string | ArrayBuffer,
-    filename: string,
-    metadata: FileLoadMeta,
-  ) {
-    active_file = metadata.source_filename
-    error_msg = undefined
-    parse_time_ms = undefined
-    reset_loaded_content()
-    const parse_start = performance.now()
-    parse_and_apply(as_text(content), filename)
-    parse_time_ms = Math.round(performance.now() - parse_start)
-  }
 </script>
 
 <svelte:head>
@@ -184,7 +169,10 @@
   bind:error_msg
   bind:dragover={dragover_hint}
   show_controls="always"
-  on_file_drop={handle_dropped_file}
+  on_file_load={({ source_filename }) => {
+    active_file = source_filename
+    parse_time_ms = undefined
+  }}
   style="height: 500px"
 >
   <DragOverlay

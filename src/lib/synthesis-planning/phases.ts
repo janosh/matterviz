@@ -2,24 +2,23 @@
 // per formula, gas species at their chemical potentials for the requested conditions, elemental
 // references at 0 eV/atom, and atom-fraction vectors over a shared element list.
 import type { CompositionType } from '$lib/composition'
+import { get_electro_neg_formula } from '$lib/composition/format'
+import { parse_composition } from '$lib/composition/parse'
+import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
 import {
-  count_atoms_in_composition,
-  get_electro_neg_formula,
-  get_reduced_formula,
-  parse_composition,
-} from '$lib/composition'
-import type { GasSpecies, PhaseData } from '$lib/convex-hull'
-import {
-  compute_e_form_per_atom,
   compute_gas_chemical_potential,
-  DEFAULT_GAS_PRESSURES,
-  find_lowest_energy_unary_refs,
   GAS_STOICHIOMETRY,
   get_default_gas_provider,
+} from '$lib/convex-hull/gas-thermodynamics'
+import {
+  compute_e_form_per_atom,
+  find_lowest_energy_unary_refs,
   normalize_hull_composition_keys,
-} from '$lib/convex-hull'
-import { element_by_symbol } from '$lib/element'
-import type { ElementSymbol } from '$lib/element'
+} from '$lib/convex-hull/thermodynamics'
+import { DEFAULT_GAS_PRESSURES } from '$lib/convex-hull/types'
+import type { GasSpecies, PhaseData } from '$lib/convex-hull/types'
+import { element_by_symbol } from '$lib/element/data'
+import type { ElementSymbol } from '$lib/element/types'
 import { solve_linear_program } from '$lib/math'
 import { lookup_precursor_info } from './precursor-library'
 import type { PhaseRef, SynthesisConditions } from './types'

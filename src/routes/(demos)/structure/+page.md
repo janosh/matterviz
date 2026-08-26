@@ -8,7 +8,7 @@
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { decode_url_safe_base64, get_electro_neg_formula } from '$lib'
+  import { decode_url_safe_base64 } from '$lib'
   import { file_param, set_file_param } from '$site/state.svelte'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
@@ -70,7 +70,7 @@
 
 ## Anatomy
 
-`Structure` is a viewer over a structure you pass in (`structure`), fetch (`data_url`) or parse from text (`structure_string`). Its state is split in three: the shared `scene/viewer-loader.svelte.ts` acquires files (URL, drop, decompression) and `loader.ts` parses them into the next document (including volumetric merges), the headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), the selection it validates against what is on screen, atom/bond editing with undo/redo and the multi-pane camera bookkeeping, and the component itself renders panes, toolbar, keyboard shortcuts and the single or 2×2 viewport layout. One bindable `active_pane: 'controls' | 'info' | 'export' | null` says which floating pane is open.
+`Structure` renders a typed structure directly and retains convenience inputs for URLs, strings, and file drops. Those convenience paths delegate acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
 
 ## Explicit Bond Orders
 

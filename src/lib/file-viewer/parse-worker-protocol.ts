@@ -6,12 +6,12 @@
 // unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import type { OpenTrajectoryOptions, ParseProgress, TrajectorySource } from '$lib/trajectory'
-import type { ParseResult, TrajectoryLoadOptions } from './parse'
+import type { TrajectoryLoadOptions, WireParseResult } from './parse'
 
 interface FileParseWorkerRequest {
   kind: `file`
   id: number
-  content: string
+  content: TrajectorySource
   filename: string
   is_base64: boolean
   load_options?: TrajectoryLoadOptions
@@ -29,11 +29,11 @@ export type ParseWorkerRequest = FileParseWorkerRequest | TrajectoryParseWorkerR
 
 export interface ParseWorkerResponse {
   id: number
-  result?: ParseResult
+  result?: WireParseResult
   error?: string
   progress?: ParseProgress
   hdf5_group_paths?: string[]
-  // A trajectory result carries a serializable summary here; the live run stays in the
-  // worker and is served through run_port.
+  // A trajectory result's data is a summary (see WireParseResult); the live run stays in
+  // the worker and is served through run_port.
   run_port?: MessagePort
 }

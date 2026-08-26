@@ -104,7 +104,13 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   if (CONFIG_DIRS_REGEX.test(filename)) return false
   const base_name = strip_compression_extensions(filename)
 
-  if (XYZ_EXTXYZ_REGEX.test(base_name)) return count_xyz_frames(content, 2) >= 2
+  // An XYZ-named file is a trajectory iff it holds several frames; a name that gives no hint
+  // (blob: URLs, extensionless endpoints) may still be recognized by its frames
+  const xyz_hint = xyz_ext_hint(base_name)
+  if (xyz_hint !== false) {
+    if (count_xyz_frames(content, 2) >= 2) return true
+    if (xyz_hint) return false
+  }
 
   // `.data` is a fallback trajectory extension but also the LAMMPS structure extension,
   // and md.data/nvt.data/nve.data are among the most common LAMMPS names — so a real

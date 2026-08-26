@@ -1,12 +1,13 @@
 // Shared interaction scaffolds (runes-in-closure factories) for the convex hull components:
 // create_hull_selection covers what 2D/3D/4D all do (selection, hover, structure popup,
-// clipboard copy, keyboard, file drop); create_canvas_interactions adds the canvas-specific
+// clipboard copy, keyboard and file drop); create_canvas_interactions adds the canvas-specific
 // mouse handling, sizing and render scheduling behind ConvexHullCanvas.
 import { create_canvas_surface } from '$lib/canvas-surface.svelte'
 import type { D3InterpolateName } from '$lib/colors'
 import { create_pulse_animation } from '$lib/effects.svelte'
 import type { ElementSymbol } from '$lib/element'
-import { as_text, file_drop_zone } from '$lib/io'
+import { open_material } from '$lib/file-viewer/open'
+import { raw_file_drop_zone } from '$lib/io'
 import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { is_editable_event_target } from 'svelte-widgets/utils'
@@ -46,19 +47,6 @@ interface HullSelectionInputs {
   entry_category: () => EntryCategoryConfig | null
   wrapper: () => HTMLElement | undefined
   actions: () => Record<string, () => void> // keydown actions map (thunk avoids TDZ)
-}
-
-// Dropped JSON is accepted when it is a non-empty array of entries with a composition.
-// Composition keys are validated here so a bad file ("Fe2O3" as a key) fails inside the
-// drop handler's try/catch instead of throwing from the hull pipeline's $derived mid-render.
-function parse_hull_entries(text: string): PhaseData[] | null {
-  const data: unknown = JSON.parse(text)
-  if (!Array.isArray(data) || data.length === 0) return null
-  const first: unknown = data[0]
-  if (typeof first !== `object` || first === null || !(`composition` in first)) return null
-  const entries = data as PhaseData[]
-  process_hull_entries(entries)
-  return entries
 }
 
 export function create_hull_selection(inputs: HullSelectionInputs) {
@@ -157,16 +145,26 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     inputs.actions()[event.key.toLowerCase()]?.()
   }
 
-  // Drop zone attachment (JSON, .json.gz and FilePicker URL drops); spread onto the wrapper
   const drop_zone = {
-    [createAttachmentKey()]: file_drop_zone({
+    [createAttachmentKey()]: raw_file_drop_zone({
       allow: inputs.allow_file_drop,
-      on_drop: (content, filename) => {
-        const entries = parse_hull_entries(as_text(content))
-        if (!entries) throw new Error(`${filename} is not a convex hull entries array`)
-        inputs.on_file_drop()?.(entries)
+      on_drop: async (source) => {
+        const opened = await open_material(source)
+        try {
+          if (
+            ![`convex_hull`, `json_browser`].includes(opened.type) ||
+            !Array.isArray(opened.data)
+          ) {
+            throw new Error(`${opened.filename} is not a convex hull entries array`)
+          }
+          const entries = opened.data
+          process_hull_entries(entries)
+          inputs.on_file_drop()?.(entries)
+        } finally {
+          opened.dispose()
+        }
       },
-      on_error: (msg) => console.error(msg),
+      on_error: (message) => console.error(message),
       on_dragover: (over) => (dragover = over),
     }),
   }

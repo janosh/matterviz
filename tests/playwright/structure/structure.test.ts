@@ -582,104 +582,11 @@ test.describe(`Structure Component Tests`, () => {
 })
 
 test.describe(`File Drop Functionality Tests`, () => {
-  // File drop tests use synthetic DataTransfer events which are unreliable in headless CI
-  // Keep skipped - these work locally but not in CI due to browser security restrictions
+  // Synthetic DataTransfer events are unreliable in headless CI; these work locally
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Synthetic file drop events unreliable in headless CI`)
     await goto_structure_test(page)
   })
-
-  const drop_cases: {
-    name: string
-    filename: string
-    content: string
-    mime?: string
-    expect_load_event?: boolean
-  }[] = [
-    {
-      name: `drops POSCAR file onto structure viewer and updates structure`,
-      filename: `test.poscar`,
-      content: batio3_poscar(4.1),
-    },
-    {
-      name: `drops XYZ file onto structure viewer and updates structure`,
-      filename: `cyclohexane.xyz`,
-      content: `18
-Cyclohexane molecule
-C    1.261   -0.728    0.000
-C    0.000   -1.456    0.000
-C   -1.261   -0.728    0.000
-C   -1.261    0.728    0.000
-C    0.000    1.456    0.000
-C    1.261    0.728    0.000
-H    2.178   -1.258    0.000
-H    2.178    1.258    0.000
-H    0.000   -2.516    0.000
-H   -2.178   -1.258    0.000
-H   -2.178    1.258    0.000
-H    0.000    2.516    0.000
-H    1.261   -0.728    0.890
-H    1.261   -0.728   -0.890
-H   -1.261   -0.728    0.890
-H   -1.261   -0.728   -0.890
-H    1.261    0.728    0.890
-H    1.261    0.728   -0.890`,
-    },
-    {
-      name: `drops JSON structure file and updates structure`,
-      filename: `nacl.json`,
-      mime: `application/json`,
-      expect_load_event: true,
-      content: JSON.stringify(
-        {
-          sites: [
-            {
-              species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-              xyz: [0, 0, 0],
-              abc: [0, 0, 0],
-              label: `Na`,
-              properties: {},
-            },
-            {
-              species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
-              xyz: [1.4, 1.4, 1.4],
-              abc: [0.5, 0.5, 0.5],
-              label: `Cl`,
-              properties: {},
-            },
-          ],
-          lattice: {
-            matrix: [
-              [2.8, 0, 0],
-              [0, 2.8, 0],
-              [0, 0, 2.8],
-            ],
-            pbc: [true, true, true],
-            a: 2.8,
-            b: 2.8,
-            c: 2.8,
-            alpha: 90,
-            beta: 90,
-            gamma: 90,
-            volume: 21.952,
-          },
-          charge: 0,
-        },
-        null,
-        2,
-      ),
-    },
-  ]
-
-  for (const { name, filename, content, mime, expect_load_event } of drop_cases) {
-    test(name, async ({ page }) => {
-      const structure_div = page.locator(`#test-structure`)
-      await expect_canvas_changed_by(structure_div.locator(`canvas`), async () => {
-        await drop_file(page, structure_div, content, filename, mime)
-        if (expect_load_event) await wait_for_event(page, `on_file_load`, [])
-      })
-    })
-  }
 
   // Regression: commit 10477bb9 added scene_props.camera_target for comparison-view
   // sync. It persisted across structure loads, causing the orbit center to shift to a

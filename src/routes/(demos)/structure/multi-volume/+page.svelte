@@ -2,10 +2,9 @@
   import { browser } from '$app/environment'
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
+  import { open_material } from '$lib/file-viewer/open'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { as_text, load_from_url } from '$lib/io'
   import { auto_color_config } from '$lib/isosurface/coloring'
-  import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,
@@ -45,12 +44,15 @@
   async function fetch_volumetric(name: string): Promise<VolumetricFileData> {
     const file = volumetric_files.find((entry) => entry.name === name)
     if (!file) throw new Error(`Unknown demo file ${name}`)
-    let parsed: VolumetricFileData | null = null
-    await load_from_url(file.url, (content, filename) => {
-      parsed = parse_volumetric_file(as_text(content), filename)
-    })
-    if (!parsed) throw new Error(`Failed to parse ${name}`)
-    return parsed
+    const opened = await open_material(file.url)
+    try {
+      if (opened.type !== `isosurface`) {
+        throw new Error(`Expected volumetric data, got ${opened.type}`)
+      }
+      return opened.data
+    } finally {
+      opened.dispose()
+    }
   }
 
   // Load several files into one scene: first file provides the structure, all

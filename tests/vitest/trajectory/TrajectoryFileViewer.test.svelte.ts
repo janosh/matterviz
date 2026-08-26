@@ -60,7 +60,15 @@ const stub_fetch = (content: string, headers = new Headers()) =>
     .spyOn(globalThis, `fetch`)
     .mockImplementation(() => Promise.resolve(new Response(content, { headers })))
 const stub_worker = (implementation: WorkerParse) =>
-  vi.spyOn(parse_worker, `parse_trajectory_in_worker`).mockImplementation(implementation)
+  vi
+    .spyOn(parse_worker, `parse_in_worker`)
+    .mockImplementation(async (data, filename, _is_base64, options = {}) => ({
+      type: `trajectory`,
+      filename,
+      data: await implementation(data, filename, options.on_progress, options.load_options, {
+        signal: options.signal,
+      }),
+    }))
 // Parses on this thread what production would hand to the worker (Blob HDF5, large payloads)
 const passthrough_worker = (): ReturnType<typeof stub_worker> =>
   stub_worker(async (data, filename, on_progress, options) =>
@@ -141,9 +149,11 @@ describe(`src`, () => {
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
     mount_viewer({ src: `https://example.com/missing.xyz`, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
-    expect(on_error.mock.calls[0][0]).toEqual({
+    expect(on_error.mock.calls[0][0]).toMatchObject({
       error_msg: expect.stringContaining(`HTTP 404 Not Found`),
       filename: `missing.xyz`,
+      source_filename: `missing.xyz`,
+      source_url: `https://example.com/missing.xyz`,
     })
     expect(doc_query(`h3`).textContent).toBe(`Error`)
   })
@@ -225,13 +235,14 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({ src: bytes, filename: `mystery.bin`, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
-    expect(on_error.mock.calls[0][0]).toEqual({
-      error_msg: `Failed to parse trajectory: Unsupported binary format: mystery.bin`,
+    expect(on_error.mock.calls[0][0]).toMatchObject({
+      error_msg: `🚫 Binary format not supported: mystery.bin`,
       filename: `mystery.bin`,
       file_size: 4,
+      source_filename: `mystery.bin`,
     })
     expect(doc_query(`h3`).textContent).toBe(`Error`)
-    expect(doc_query(`p`).textContent).toContain(`Unsupported binary format: mystery.bin`)
+    expect(doc_query(`p`).textContent).toContain(`Binary format not supported: mystery.bin`)
     expect(target.querySelector(`.trajectory-empty-state`)).toBeNull()
     doc_query<HTMLButtonElement>(`button`).click()
     await tick()
@@ -462,9 +473,11 @@ describe(`drops`, () => {
     const target = mount_viewer({ on_error })
     drop(target, new File([`not gzip data`], `broken.xyz.gz`))
     await vi.waitFor(() =>
-      expect(on_error).toHaveBeenCalledWith({
-        error_msg: expect.stringContaining(`broken.xyz.gz: Failed to decompress gzip file`),
-      }),
+      expect(on_error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error_msg: expect.stringContaining(`broken.xyz.gz: Failed to decompress gzip file`),
+        }),
+      ),
     )
     expect(doc_query(`p`).textContent).toContain(`broken.xyz.gz`)
   })
@@ -565,6 +578,31 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
     expect(first_dispose).toHaveBeenCalledOnce()
   })
 
+  // Picking a group re-parses the payload already in hand: re-fetching (and re-inflating) a
+  // multi-GB HDF5 just to read a different group would double the wait
+  test(`a group pick reuses the fetched payload instead of downloading again`, async () => {
+    passthrough_worker()
+    const gz = await new Response(
+      new Blob([ambiguous_bytes]).stream().pipeThrough(new CompressionStream(`gzip`)),
+    ).arrayBuffer()
+    const fetch_spy = vi
+      .spyOn(globalThis, `fetch`)
+      .mockImplementation(() => Promise.resolve(new Response(gz)))
+    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
+    const target = mount_viewer({ src: `https://example.com/ambiguous.h5.gz`, on_file_load })
+    await vi.waitFor(() =>
+      expect(target.querySelectorAll(`button[data-hdf5-group]`)).toHaveLength(8),
+    )
+    expect(fetch_spy).toHaveBeenCalledOnce()
+
+    hdf5_group_option(target, `/molecules/nh3/replicas/0`).click()
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    expect(fetch_spy).toHaveBeenCalledOnce()
+    expect(on_file_load.mock.calls[0][0].trajectory?.provenance).toMatchObject({
+      hdf5_group: `/molecules/nh3/replicas/0`,
+    })
+  })
+
   test(`Cancel without a loaded run returns to the empty state`, async () => {
     const { target, on_file_load } = await drop_ambiguous()
     cancel_button(target).click()
@@ -615,7 +653,7 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
     expect(target.querySelectorAll(`button[data-hdf5-group]`)).toHaveLength(2)
     expect(on_error).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        error_msg: `Failed to parse trajectory: broken group /run/1`,
+        error_msg: `Failed to parse trajectory: groups.h5: broken group /run/1`,
         filename: `groups.h5`,
       }),
     )

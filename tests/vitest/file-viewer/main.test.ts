@@ -1,6 +1,7 @@
 import { create_display } from '$lib/file-viewer/main'
 import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
+import { is_fermi_surface_data } from '$lib/fermi-surface/types'
 import { parse_structure_file } from '$lib/structure/parse'
 import type * as structure_parse_module from '$lib/structure/parse'
 import type { TrajectoryRun } from '$lib/trajectory'
@@ -17,7 +18,7 @@ import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { make_crystal, read_binary_test_file } from '../setup'
+import { IDENTITY_MATRIX3, make_crystal, read_binary_test_file } from '../setup'
 
 // parse_structure_file throws on parse failure but can still return a structure with
 // zero atoms (e.g. a CIF with cell params but no _atom_site records). Wrap it in a spy that
@@ -166,6 +167,32 @@ test(`parse_file_content renders convex hull JSON whose filename contains convex
   })
 })
 
+test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, async () => {
+  const ifermi_surface = {
+    '@class': `FermiSurface`,
+    isosurfaces: {
+      1: [
+        {
+          vertices: [
+            [0, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+          ],
+          faces: [[0, 1, 2]],
+          band_idx: 1,
+        },
+      ],
+    },
+    reciprocal_space: { reciprocal_lattice: IDENTITY_MATRIX3 },
+  }
+
+  const result = await parse_file_content(JSON.stringify(ifermi_surface), `surface.json`)
+
+  if (result.type !== `fermi_surface`) throw new Error(`expected Fermi surface result`)
+  if (!is_fermi_surface_data(result.data)) throw new Error(`expected Fermi surface data`)
+  expect(result.data.isosurfaces[0]?.positions).toBeInstanceOf(Float32Array)
+})
+
 // Regression: the site-less structure wrapping a volumetric JSON carried the bare 3x3 matrix
 // as `lattice`, so StructureScene crashed on lattice.matrix (JsonBrowser panels shared it)
 test.each([true, false])(
@@ -281,15 +308,15 @@ describe(`vaspout.h5 electronic routing`, () => {
   )
 })
 
-// allow_file_drop goes only to viewers that declare it (the phase diagram has no drop zone,
-// so the prop would land on its wrapper div)
 test.each([
   [`fermi_surface`, { energies: [] }, `band_data`, false],
   [`convex_hull`, [], `entries`, false],
   [`phase_diagram`, {}, `data`, undefined],
   [`structure`, { sites: [] }, `structure`, false],
 ] as const)(`create_display mounts %s data`, (type, data, prop_name, allow_file_drop) => {
-  create_display(make_container(), { type, data, filename: `test.json` })
+  // Minimal stubs: this asserts which prop create_display forwards data to, not that the
+  // payload is a well-formed member of its view type
+  create_display(make_container(), { type, data, filename: `test.json` } as ParseResult)
   const mount_props = last_mount_props()
   expect(mount_props[prop_name]).toBe(data)
   expect(mount_props.allow_file_drop).toBe(allow_file_drop)

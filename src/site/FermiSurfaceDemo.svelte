@@ -1,15 +1,10 @@
 <script lang="ts">
   import { to_error } from '$lib/utils'
-  import type { FileInfo } from '$lib'
+  import { open_material, type FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface'
-  import {
-    FermiSlice,
-    FermiSurface,
-    is_fermi_surface_data,
-    parse_fermi_file,
-  } from '$lib/fermi-surface'
+  import { FermiSlice, FermiSurface, is_fermi_surface_data } from '$lib/fermi-surface'
   import type { Vec3 } from '$lib/math'
   import { fermi_file_paints, fermi_surface_files } from '$site/fermi-surfaces'
   import { file_param, set_file_param } from '$site/state.svelte'
@@ -45,12 +40,12 @@
     if (sync_url) set_file_param(file.name)
 
     try {
-      const { as_text, load_from_url } = await import(`$lib/io`)
-
-      await load_from_url(file.url, (content, filename) => {
-        // Pre-computed meshes render directly; band grids are extracted by FermiSurface
-        // itself (at its current mu / interpolation settings) and written back via bind
-        const parsed = parse_fermi_file(as_text(content), filename)
+      const opened = await open_material(file.url)
+      try {
+        if (opened.type !== `fermi_surface`) {
+          throw new Error(`Expected Fermi surface data, got ${opened.type}`)
+        }
+        const parsed = opened.data
         if (is_fermi_surface_data(parsed)) {
           fermi_data = parsed
           band_data = undefined
@@ -58,7 +53,9 @@
           band_data = parsed
           fermi_data = undefined
         }
-      })
+      } finally {
+        opened.dispose()
+      }
     } catch (error) {
       error_msg = to_error(error).message
     } finally {

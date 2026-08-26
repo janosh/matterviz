@@ -1,6 +1,6 @@
 import type { CompositionType } from '$lib/composition'
-import type { GasSpecies, GasThermodynamicsProvider, PhaseData } from '$lib/convex-hull'
-import type { ElementSymbol } from '$lib/element'
+import type { GasSpecies, GasThermodynamicsProvider, PhaseData } from '$lib/convex-hull/types'
+import type { ElementSymbol } from '$lib/element/types'
 
 // === Request ===
 
@@ -71,6 +71,12 @@ export interface SynthesisPlanRequest {
   max_routes?: number
   // Target mass the recipe is scaled to (grams, default 1).
   target_mass_g?: number
+}
+
+export interface SynthesisPlanProgress {
+  stage: `preparing` | `direct_routes` | `two_step_routes` | `ranking`
+  current: number
+  total: number
 }
 
 // === Result ===

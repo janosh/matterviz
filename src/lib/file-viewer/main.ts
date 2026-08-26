@@ -5,7 +5,6 @@
 // Import MatterViz parsing functions and components
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/app.css'
-import type { PhaseData } from '$lib/convex-hull/types'
 import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
 import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
 import type { DefaultSettings } from '$lib/settings'
@@ -13,10 +12,9 @@ import type { DosInput } from '$lib/spectral'
 import Bands from '$lib/spectral/Bands.svelte'
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
 import Dos from '$lib/spectral/Dos.svelte'
-import type { AnyStructure } from '$lib/structure'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
-import type { TrajectoryController, TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
+import type { TrajectoryController, TrajHandlerData } from '$lib/trajectory'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
@@ -33,7 +31,7 @@ import JsonBrowser from './JsonBrowser.svelte'
 import { TYPE_LABELS } from './detect'
 import { mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
-import { parse_in_worker } from './parse-in-worker'
+import { open_material, type OpenedMaterial } from './open'
 import { escape_html, is_plain_object, to_error } from '$lib/utils'
 
 export type MatterVizApp = ReturnType<typeof mount>
@@ -100,7 +98,7 @@ if (vscode_api) install_cross_origin_worker_guard()
 // - current_app: the mounted component; outlives current_result after a failed reload so the
 //   previous file stays on screen
 let current_app: MatterVizApp | null = null
-let current_result: ParseResult | null = null
+let current_result: OpenedMaterial | null = null
 let current_file: FileData | null = null
 // Bumped on init, cleanup and every host file change; in-flight work captures the value it
 // started under and bails once superseded (a stale parse, a remount after cleanup, ...)
@@ -163,11 +161,11 @@ export const setup_vscode_download = (): void => {
 
 // Runs behind mounted trajectory displays: a worker-served run holds a worker and a port, a
 // host-served one a message listener, so unmounting the display must dispose it too
-const display_runs = new WeakMap<MatterVizApp, TrajectoryRun>()
+const display_disposers = new WeakMap<MatterVizApp, () => void>()
 
 export const unmount_display = async (app: MatterVizApp): Promise<void> => {
-  display_runs.get(app)?.dispose()
-  display_runs.delete(app)
+  display_disposers.get(app)?.()
+  display_disposers.delete(app)
   await unmount(app)
 }
 
@@ -179,9 +177,14 @@ async function unmount_current_app(): Promise<void> {
   if (app) await unmount_display(app)
 }
 
-const mount_result = (container: HTMLElement, result: ParseResult): void => {
-  current_app = create_display(container, result)
-  current_result = result
+const mount_result = (container: HTMLElement, result: OpenedMaterial): void => {
+  try {
+    current_app = create_display(container, result)
+    current_result = result
+  } catch (error) {
+    result.dispose()
+    throw error
+  }
 }
 
 // Run `task` after the queued host work, unless the viewer moved on in the meantime; a
@@ -209,9 +212,9 @@ const display_file = async (
   current_result = null // whatever is on screen is no longer the host's file
   try {
     const result = await parse_file_data(file_data, signal)
-    if (!is_current(gen)) return
+    if (!is_current(gen)) return result.dispose()
     await unmount_current_app()
-    if (!is_current(gen)) return
+    if (!is_current(gen)) return result.dispose()
     mount_result(container, result)
   } catch (error) {
     if (is_current(gen)) report_display_error(container, to_error(error), file_data.filename)
@@ -228,17 +231,16 @@ const remount_current = async (container: HTMLElement, gen: number): Promise<voi
   // display must outlive the unmount, and until then nothing else owns it
   current_app = null
   current_result = null
-  const run = display_runs.get(app)
-  display_runs.delete(app)
+  const dispose = display_disposers.get(app)
+  display_disposers.delete(app)
   await unmount(app)
   if (!is_current(gen)) {
-    run?.dispose()
+    dispose?.()
     return
   }
   try {
     mount_result(container, result)
   } catch (error) {
-    run?.dispose()
     report_display_error(container, to_error(error), result.filename)
   }
 }
@@ -308,7 +310,7 @@ const process_file_change = (message: FileChangeMessage): void => {
 const parse_file_data = (
   { content, filename, is_base64 }: FileData,
   signal: AbortSignal,
-): Promise<ParseResult> => {
+): Promise<OpenedMaterial> => {
   const { index_above_bytes, atom_type_mapping } = merge(
     globalThis.matterviz_data?.defaults,
   ).trajectory
@@ -318,7 +320,10 @@ const parse_file_data = (
   if (is_plain_object(atom_type_mapping) && Object.keys(atom_type_mapping).length > 0) {
     load_options.atom_type_mapping = atom_type_mapping
   }
-  return parse_in_worker(content, filename, is_base64, { signal, load_options })
+  return open_material(
+    { data: content, filename, is_base64, source_filename: filename },
+    { ...load_options, signal },
+  )
 }
 
 // Create error display in container
@@ -350,7 +355,7 @@ const create_error_display = (
 // Mount Svelte component and create display
 export const create_display = (
   container: HTMLElement,
-  result: ParseResult,
+  result: ParseResult | OpenedMaterial,
   display_options?: DisplayOptions,
 ): MatterVizApp => {
   const { filename } = result
@@ -377,7 +382,7 @@ export const create_display = (
   let log_message: string
 
   if (result.type === `trajectory`) {
-    const final_trajectory = result.data as TrajectoryRun
+    const final_trajectory = result.data
 
     const { initial_step_idx, on_step_change, on_trajectory_controller } =
       display_options ?? {}
@@ -404,10 +409,9 @@ export const create_display = (
     } else {
       app = mount(Trajectory, { target: container, props: trajectory_mount_props })
     }
-    display_runs.set(app, final_trajectory)
     log_message = `Trajectory rendered: ${filename} (${final_trajectory.frame_count} frames)`
   } else if (result.type === `vaspout_electronic`) {
-    const { dos, bands } = result.data as VaspoutElectronicData
+    const { dos, bands } = result.data
     const spectral_props = { style: `height: 100%`, class: `vaspout-electronic` }
     if (bands && dos) {
       app = mount(BandsAndDos, {
@@ -443,9 +447,9 @@ export const create_display = (
     app = mount_viewer(container, result.type, result.data, { defaults })
     const detail =
       result.type === `convex_hull`
-        ? ` (${(result.data as PhaseData[]).length} entries)`
+        ? ` (${result.data.length} entries)`
         : result.type === `structure`
-          ? ` (${(result.data as AnyStructure).sites?.length ?? 0} sites)`
+          ? ` (${result.data.sites?.length ?? 0} sites)`
           : ``
     // isosurface is the mounted form of the `volumetric` JSON shape
     const label = TYPE_LABELS[result.type === `isosurface` ? `volumetric` : result.type]
@@ -453,6 +457,13 @@ export const create_display = (
   }
 
   post_to_host(`info`, log_message)
+  const dispose =
+    `dispose` in result
+      ? result.dispose
+      : result.type === `trajectory`
+        ? () => result.data.dispose()
+        : undefined
+  if (dispose) display_disposers.set(app, dispose)
   return app
 }
 

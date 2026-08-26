@@ -1,7 +1,7 @@
 // Module worker for file parsing. TrajectoryRun instances stay in this worker and cross the
 // boundary as a summary plus a MessagePort implementing read_frame/collect_positions.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
+import type { ParseProgress } from '$lib/trajectory'
 import { open_trajectory } from '$lib/trajectory/open'
 import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory/parse'
 import { summarize_run } from '$lib/trajectory/run'
@@ -15,7 +15,7 @@ const prepare_parse_result = (
   result: ParseResult,
 ): { response: ParseWorkerResponse; transfer: Transferable[] } => {
   if (result.type !== `trajectory`) return { response: { id, result }, transfer: [] }
-  const run = result.data as TrajectoryRun
+  const run = result.data
   const run_port = serve_run_over_port(run)
   return {
     response: { id, result: { ...result, data: summarize_run(run) }, run_port },
@@ -45,6 +45,7 @@ export const handle_parse_worker_request = async (
             filename,
             request.is_base64,
             request.load_options,
+            on_progress,
           )
     return prepare_parse_result(id, result)
   } catch (error) {

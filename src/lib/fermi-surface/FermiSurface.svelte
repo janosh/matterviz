@@ -6,15 +6,11 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import * as io from '$lib/io'
+  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
+  import type { FileLoadCallback } from '$lib/io'
   import { ViewerChrome } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
-  import {
-    create_renderer,
-    create_viewer_loader,
-    export_scene_as,
-    webgpu_available,
-  } from '$lib/scene'
+  import { create_renderer, export_scene_as, webgpu_available } from '$lib/scene'
   import type { SceneExportFormat } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
@@ -28,7 +24,7 @@
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
 
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
-  import { normalize_band_grid, normalize_fermi_surface, parse_fermi_file } from './parse'
+  import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
@@ -120,7 +116,7 @@
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
-    on_file_drop?: io.FileLoadCallback
+    on_file_drop?: FileLoadCallback
     on_file_load?: (data: FermiFileLoadData) => void
     on_error?: (data: FermiErrorData) => void
     on_fullscreen_change?: (data: FermiFullscreenData) => void
@@ -157,7 +153,7 @@
   const grid_data = $derived(normalized.grid)
   // The notice this effect raised is cleared once a later payload normalises, so a host that
   // sends a bad then a good `fermi_data` sees the surface rather than a sticky error. Errors
-  // from other sources (file parse, URL load) are left alone.
+  // supplied by the caller are left alone.
   let reported_normalize_error: string | undefined
   $effect(() => {
     const { error } = normalized
@@ -177,8 +173,7 @@
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     )
 
-  // data_url / drag-and-drop acquisition
-  const loader = create_viewer_loader<FermiSurfaceData | BandGridData>({
+  const drop_zone = create_material_loader<FermiSurfaceData | BandGridData>({
     data_url: () => data_url,
     current_value: () => surface_data ?? grid_data,
     allow_file_drop: () => allow_file_drop,
@@ -186,23 +181,23 @@
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
-    parse: async (content, filename) => {
-      await tick() // let the spinner paint before the synchronous parse
-      return parse_fermi_file(io.as_text(content), filename)
-    },
-    commit: (parsed, filename, metadata, file_size) => {
-      current_filename = filename
+    commit: (opened) => {
+      if (opened.type !== `fermi_surface`) {
+        throw new Error(`${opened.filename} is ${opened.type}, not Fermi surface data`)
+      }
+      const parsed = opened.data
+      current_filename = opened.filename
       // A band grid leaves fermi_data unset; the extraction effect below derives it
       const loaded = is_fermi_surface_data(parsed)
         ? { fermi_data: parsed, band_data: undefined }
         : { fermi_data: undefined, band_data: parsed }
       fermi_data = loaded.fermi_data
       band_data = loaded.band_data
-      on_file_load?.({ ...loaded, filename, ...metadata, file_size })
+      on_file_load?.({ ...loaded, ...opened.provenance })
     },
-    report_error: (message, filename, metadata) => {
+    report_error: (message, metadata) => {
       error_msg = message
-      on_error?.({ error_msg: message, filename, ...metadata })
+      on_error?.({ error_msg: message, ...metadata })
     },
   })
 
@@ -211,7 +206,7 @@
   // mu-slider drag does not run marching cubes on every tick; a monotonic job id drops
   // results of superseded runs (bumped on every rerun, including one that clears band_data,
   // so an in-flight job cannot commit a surface for a grid that is gone). `extracting` is
-  // separate from `loading` so the spinner overlays the Canvas instead of unmounting it.
+  // tracked separately so the spinner overlays the Canvas instead of unmounting it.
   let extraction_job_id = 0
   let extracting = $state(false)
   $effect(() => {
@@ -231,10 +226,6 @@
       try {
         fermi_data = extract_fermi_surface(grid, options)
         error_msg = undefined
-        // Re-extraction edits URL-loaded data in place; without re-claiming the surface (as read
-        // back through the prop) the loader would see a caller-supplied object and stop
-        // defending its URL
-        loader.claim()
       } catch (err) {
         const message = `Fermi surface extraction failed: ${to_error(err).message}`
         error_msg = message
@@ -315,7 +306,7 @@
   onmouseleave={() => (hovered = false)}
   {...rest}
   class={[`fermi-surface`, rest.class, { active: controls_open }]}
-  {@attach loader.drop_zone}
+  {@attach drop_zone}
 >
   {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}

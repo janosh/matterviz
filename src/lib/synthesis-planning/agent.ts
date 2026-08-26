@@ -2,8 +2,8 @@
 // text rendering of a plan for the model channel, and a ready-made tool definition. The full
 // SynthesisPlan object is the structured channel; `format_plan_text` deliberately repeats only
 // what a model needs to reason and reply.
-import { GAS_SPECIES } from '$lib/convex-hull'
-import { format_mev } from './format'
+import { GAS_SPECIES } from '$lib/convex-hull/types'
+import { format_mev } from './format-mev'
 import { DEFAULT_SCORE_WEIGHTS } from './scoring'
 import type { SynthesisPlan, SynthesisRoute } from './types'
 
@@ -16,6 +16,7 @@ export const SYNTHESIS_PLAN_REQUEST_SCHEMA = {
   properties: {
     target: {
       type: `string`,
+      pattern: `\\S`,
       description: `Target phase as a formula (e.g. "LiCoO2", "BaTiO3") or an entry id present in the thermodynamic data. A formula picks the lowest-energy matching entry.`,
     },
     max_precursors: {

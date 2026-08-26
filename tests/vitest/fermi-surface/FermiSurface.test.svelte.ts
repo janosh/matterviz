@@ -6,23 +6,6 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, create_drop_event, IDENTITY_MATRIX3, make_bxsf } from '../setup'
 
 const mounted: ReturnType<typeof mount>[] = []
-const mock_animation_frames = (): FrameRequestCallback[] => {
-  const callbacks: FrameRequestCallback[] = []
-  vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) =>
-    callbacks.push(callback),
-  )
-  return callbacks
-}
-const drop_file = async (
-  file: File,
-  props: ComponentProps<typeof FermiSurface> = {},
-): Promise<void> => {
-  mounted.push(mount(FermiSurface, { target: document.body, props }))
-  await tick() // the drop-zone attachment is wired one flush after mount
-  const drop_zone = document.querySelector<HTMLElement>(`.fermi-surface`)
-  if (!drop_zone) throw new Error(`Fermi surface drop zone not found`)
-  drop_zone.dispatchEvent(create_drop_event(file))
-}
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -30,91 +13,46 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component)
 })
 
-test(`custom file drop handler receives content and bypasses default parsing`, async () => {
-  const drop_deferred = Promise.withResolvers<undefined>()
-  const on_file_drop = vi.fn(() => drop_deferred.promise)
-  const on_error = vi.fn()
-  const content = `custom Fermi surface content`
-  const file = new File([content], `custom.txt`)
-  await drop_file(file, { on_file_drop, on_error })
-
-  await vi.waitFor(() => {
-    expect(on_file_drop).toHaveBeenCalledWith(content, file.name, {
-      source_filename: file.name,
-      file,
-    })
-    expect(document.body.textContent).toContain(`Loading Fermi surface...`)
+test(`custom drops receive raw content while loading remains visible`, async () => {
+  const pending = Promise.withResolvers<undefined>()
+  const on_file_drop = vi.fn(() => pending.promise)
+  const props = $state({ loading: false, on_file_drop })
+  mounted.push(mount(FermiSurface, { target: document.body, props }))
+  await tick()
+  const file = new File([`custom surface`], `custom.txt`)
+  document.querySelector(`.fermi-surface`)?.dispatchEvent(create_drop_event(file))
+  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
+  expect(on_file_drop).toHaveBeenCalledWith(`custom surface`, file.name, {
+    source_filename: file.name,
+    file,
   })
-  drop_deferred.resolve(undefined)
-  await vi.waitFor(() =>
-    expect(document.body.textContent).toContain(`Drop Fermi Surface File`),
-  )
-  expect(on_error).not.toHaveBeenCalled()
+  expect(props.loading).toBe(true)
+  pending.resolve(undefined)
+  await vi.waitFor(() => expect(props.loading).toBe(false))
 })
 
-test(`default file parsing yields while loading state renders`, async () => {
-  const frame_callbacks = mock_animation_frames()
-  const on_file_load = vi.fn()
-  const content = JSON.stringify({
+test(`built-in drops load typed Fermi surface data and provenance`, async () => {
+  const payload = JSON.stringify({
     isosurfaces: [],
     k_lattice: IDENTITY_MATRIX3,
     fermi_energy: 0,
     reciprocal_cell: `wigner_seitz`,
     metadata: { n_bands: 1, n_surfaces: 0 },
   })
-  const file = new File([content], `fermi.json`)
-  await drop_file(file, { on_file_load })
-
-  await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
-  expect(document.body.textContent).toContain(`Loading Fermi surface...`)
-  expect(on_file_load).not.toHaveBeenCalled()
-  frame_callbacks.shift()?.(0)
-  frame_callbacks.shift()?.(0)
-
-  await vi.waitFor(() =>
-    expect(on_file_load).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filename: file.name,
-        source_filename: file.name,
-      }),
-    ),
-  )
-})
-
-// safe_parse awaits a tick before committing. Without an is_current() check there, a slow
-// URL A finishes after URL B and overwrites B's surface (or reports A's parse error over it).
-test(`a slow first data_url cannot overwrite a newer one`, async () => {
-  const frame_callbacks = mock_animation_frames()
-  const responses = new Map<string, (response: Response) => void>()
-  vi.spyOn(globalThis, `fetch`).mockImplementation((input) => {
-    const url = input instanceof Request ? input.url : input.toString()
-    return new Promise((resolve) => responses.set(url, resolve))
-  })
-
-  const url_a = `http://x/a.bxsf`
-  const url_b = `http://x/b.bxsf`
   const on_file_load = vi.fn()
-  const props = $state({ data_url: url_a, on_file_load })
+  const props = $state<{ fermi_data?: FermiSurfaceData; on_file_load: typeof on_file_load }>({
+    fermi_data: undefined,
+    on_file_load,
+  })
   mounted.push(mount(FermiSurface, { target: document.body, props }))
-
-  await vi.waitFor(() => expect(responses.has(url_a)).toBe(true))
-  responses.get(url_a)?.(new Response(make_bxsf(1)))
-  await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
-
-  props.data_url = url_b
-  await vi.waitFor(() => expect(responses.has(url_b)).toBe(true))
-  frame_callbacks.shift()?.(0)
-  frame_callbacks.shift()?.(0)
-
-  responses.get(url_b)?.(new Response(make_bxsf(2)))
-  await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
-  frame_callbacks.shift()?.(0)
-  frame_callbacks.shift()?.(0)
-
-  await vi.waitFor(() =>
-    expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ filename: `b.bxsf` })),
+  await tick()
+  const file = new File([payload], `fermi.json`)
+  document.querySelector(`.fermi-surface`)?.dispatchEvent(create_drop_event(file))
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+  expect(props.fermi_data?.metadata).toEqual({ n_bands: 1, n_surfaces: 0 })
+  expect(on_file_load).toHaveBeenCalledWith(
+    expect.objectContaining({ filename: file.name, source_filename: file.name, file }),
   )
-  expect(on_file_load.mock.calls.map(([arg]) => arg.filename)).toEqual([`b.bxsf`])
 })
 
 // Extracting a surface from a URL-loaded grid stores a new fermi_data. A bound parent hands
@@ -143,9 +81,6 @@ test(`a second data_url still loads after re-extraction with a bound fermi_data`
   expect(on_file_load.mock.calls[1][0].filename).toBe(`b.bxsf`)
 })
 
-// Regression: with only `band_data` supplied (no parse path), the viewer used to render nothing
-// because extraction ran solely inside safe_parse. The extraction effect must also react to
-// mu / interpolation_factor changes.
 test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`, async () => {
   // Faking rAF too keeps the extraction's yield-to-paint tick on the fake clock, so the test
   // can observe the viewer mid-extraction (150 ms debounce, then two ~16 ms frames)

@@ -49,7 +49,7 @@ export function mount_viewer(
   target.innerHTML = ``
   void target.offsetHeight // force layout so Three.js measures real dimensions
   const common_props = VIEWER_COMMON_PROPS
-  // Only viewers with a drop zone declare allow_file_drop; elsewhere it would land on the div
+  // The outer FileViewer owns drops; nested viewers still expose their drop API standalone
   const no_file_drop = { ...common_props, allow_file_drop: false }
   const structure_props = {
     ...build_structure_props_from_settings(defaults),

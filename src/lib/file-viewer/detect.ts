@@ -55,10 +55,11 @@ const has_array = (data: Record<string, unknown>, key: string, len?: number): bo
   return Array.isArray(val) && (len === undefined || val.length === len)
 }
 
-// FermiSurfaceData: pre-computed isosurfaces with reciprocal lattice info
+// FermiSurfaceData: pre-computed Matterviz meshes or IFermi's band-keyed mesh object
 function is_fermi_surface(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
+  if (data[`@class`] === `FermiSurface`) return Boolean(as_record(data.isosurfaces))
   return (
     has_array(data, `isosurfaces`) &&
     has_array(data, `k_lattice`, 3) &&

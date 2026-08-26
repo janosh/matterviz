@@ -1,8 +1,6 @@
 <script lang="ts">
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
-  // layout. Selection, editing, undo/redo and the display pipeline live in session.svelte.ts;
-  // data_url / structure_string / drop acquisition in the shared scene/viewer-loader, fed by
-  // loader.ts's document parser.
+  // layout. Acquisition is shared with the other material viewers through open_material.
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
@@ -10,13 +8,14 @@
   import type { ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
+  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
+  import type { FileLoadCallback } from '$lib/io'
   import { Icon, Toast } from 'svelte-widgets'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
-  import * as io from '$lib/io'
   import { handle_and_prevent } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { create_viewer_loader, webgpu_available } from '$lib/scene'
+  import { webgpu_available } from '$lib/scene'
   import { set_isosurface_error_handler } from '$lib/isosurface/context'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
@@ -59,7 +58,6 @@
   import { DEFAULT_ATOM_COLOR_CONFIG, normalize_atom_color_config } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
-  import { open_structure_text } from './loader'
   import type { DisplacementSummary } from './measure'
   import { mirror_scene_props } from '$lib/scene/props.svelte'
   import { StructureSession } from './session.svelte'
@@ -70,6 +68,7 @@
   import type StructureScene from './StructureScene.svelte'
   import StructureViewport from './StructureViewport.svelte'
   import type { TrajectoryLinesStats } from './trajectory-lines'
+  import { apply_structure_material } from './material'
 
   export type StructureControlName =
     | `reset-camera`
@@ -207,12 +206,8 @@
     allow_file_drop?: boolean
     data_url?: string // fetched and parsed when no structure is supplied
     structure_string?: string // parsed when neither structure nor data_url is supplied
-    // Host takes over dropped/fetched content (and owns `structure`) instead of the parsers
-    on_file_drop?: (
-      content: string | ArrayBuffer,
-      filename: string,
-      metadata: io.FileLoadMeta,
-    ) => Promise<void> | void
+    // Host takes over dropped/fetched content (and owns `structure`) instead of the parser
+    on_file_drop?: FileLoadCallback
     on_file_load?: EventHandler
     on_error?: EventHandler
     loading?: boolean
@@ -262,37 +257,32 @@
   }
 
   // === acquisition: data_url, structure_string, drops ===
-  const loader = create_viewer_loader<AnyStructure, ReturnType<typeof open_structure_text>>({
+  const drop_zone = create_material_loader<AnyStructure>({
     data_url: () => data_url,
-    inline_string: () => structure_string,
+    inline_source: () =>
+      structure_string ? { data: structure_string, filename: `string` } : undefined,
     current_value: () => structure,
     allow_file_drop: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
-    // Merges volumes into the cell on screen, so it reads the current document
-    parse: (content, filename, metadata) =>
-      open_structure_text(
+    commit: (opened) => {
+      const { document, notice } = apply_structure_material(
         { structure, volumetric_data, isosurface_settings, active_volume_idx },
-        io.as_text(content),
-        filename,
-        metadata?.source_filename,
-      ),
-    commit: ({ document, notice }, filename, metadata, file_size) => {
+        opened,
+      )
       ;({ structure, volumetric_data, isosurface_settings, active_volume_idx } = document)
       if (notice) show_toast(notice)
       on_file_load?.({
         structure: document.structure,
-        filename,
-        ...metadata,
-        file_size,
+        ...opened.provenance,
         total_atoms: document.structure?.sites.length ?? 0,
       })
     },
-    report_error: (message, filename, metadata) => {
+    report_error: (message, metadata) => {
       error_msg = message
-      on_error?.({ error_msg: message, filename, ...metadata })
+      on_error?.({ error_msg: message, ...metadata })
     },
   })
 
@@ -301,11 +291,7 @@
   let series_key = $derived(structure_series_key ?? structure)
   const session = new StructureSession({
     structure: () => structure,
-    set_structure: (value) => {
-      structure = value
-      // An edit of a URL-loaded structure stays attributed to its URL
-      loader.claim()
-    },
+    set_structure: (value) => (structure = value),
     bonds: () => bonds,
     set_bonds: (value) => (bonds = value),
     series_key: () => series_key,
@@ -755,7 +741,7 @@
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
-  {@attach loader.drop_zone}
+  {@attach drop_zone}
   {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}

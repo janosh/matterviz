@@ -16,6 +16,7 @@ export { default as Lattice } from './Lattice.svelte'
 export * from './camera-fit'
 export * from './density'
 export * from './measure'
+export * from './material'
 export { StructureSession, type StructureSessionInputs } from './session.svelte'
 export * from './pbc'
 export * from './polyhedra'
@@ -280,8 +281,7 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
   return keys
 }
 
-// Payload of Structure's on_file_load / on_error / on_fullscreen_change / on_camera_move /
-// on_camera_reset callbacks; each emitter fills the fields it knows
+// Payload of Structure's file, fullscreen and camera callbacks; each emitter fills what it knows
 export interface StructureHandlerData extends FileLoadData {
   structure?: AnyStructure
   file_size?: number

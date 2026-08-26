@@ -3,6 +3,7 @@ import {
   create_file_drop_handler,
   drag_over_handlers,
   file_drop_zone,
+  raw_file_drop_zone,
 } from '$lib/io/file-drop'
 import type * as DecompressModule from '$lib/io/decompress'
 import { decompress_file } from '$lib/io/decompress'
@@ -332,6 +333,35 @@ describe(`create_file_drop_handler`, () => {
 // zero-byte File named after the directory, which used to surface as "file is empty".
 // The entry API is the only way inside, so these go through the real expansion rather
 // than a mock of it.
+// Overlapping drops must serialize here too: the raw zone hands sources straight to
+// open_material, whose commit mutates viewer state the same way the reading zone's does.
+test(`raw_file_drop_zone queues overlapping drops`, async () => {
+  // this test sits outside the describe that clears mocks, so pin the URL probe
+  vi.mocked(dropped_file_url).mockReturnValue(undefined)
+  const order: string[] = []
+  const on_drop = vi.fn(async (source: string | File) => {
+    const name = typeof source === `string` ? source : source.name
+    order.push(`start ${name}`)
+    await Promise.resolve()
+    order.push(`end ${name}`)
+  })
+  const node = document.createElement(`div`)
+  const detach = raw_file_drop_zone({ allow: () => true, on_drop })(node) as () => void
+  node.dispatchEvent(
+    Object.assign(new Event(`drop`), {
+      dataTransfer: { files: [new File([`x`], `a.cif`)], items: [], getData: vi.fn() },
+    }),
+  )
+  node.dispatchEvent(
+    Object.assign(new Event(`drop`), {
+      dataTransfer: { files: [new File([`y`], `b.cif`)], items: [], getData: vi.fn() },
+    }),
+  )
+  await vi.waitFor(() => expect(order).toHaveLength(4))
+  expect(order).toEqual([`start a.cif`, `end a.cif`, `start b.cif`, `end b.cif`])
+  detach()
+})
+
 describe(`drag_over_handlers`, () => {
   test.each([
     { desc: `sets dragover when allowed`, allow: () => true, expected: [true] },

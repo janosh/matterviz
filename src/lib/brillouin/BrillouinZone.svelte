@@ -4,14 +4,14 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import * as io from '$lib/io'
+  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
+  import type { FileLoadCallback, FileLoadData } from '$lib/io'
   import { ViewerChrome } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
-  import { create_renderer, create_viewer_loader, webgpu_available } from '$lib/scene'
+  import { create_renderer, webgpu_available } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
-  import { parse_structure_file } from '$lib/structure/parse'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -47,7 +47,7 @@
     | `export-pane`
     | `controls`
 
-  type BZHandlerData = io.FileLoadData & {
+  type BZHandlerData = FileLoadData & {
     structure?: Crystal
     bz_data?: BrillouinZoneData
     bz_order?: number
@@ -122,11 +122,11 @@
     allow_file_drop?: boolean
     fullscreen_toggle?: boolean
     data_url?: string
-    on_file_drop?: io.FileLoadCallback
+    structure_string?: string
+    on_file_drop?: FileLoadCallback
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
-    structure_string?: string
     // K-path points in Cartesian reciprocal space coordinates (not fractional coords)
     // Should be computed using the reciprocal lattice matrix (includes 2π factor)
     k_path_points?: Vec3[]
@@ -156,29 +156,32 @@
   // Normalize show_controls prop into consistent config
   let controls_config = $derived(normalize_show_controls(show_controls))
 
-  // data_url / structure_string / drag-and-drop acquisition
-  const loader = create_viewer_loader<Crystal>({
+  const drop_zone = create_material_loader<Crystal>({
     data_url: () => data_url,
-    inline_string: () => structure_string,
+    inline_source: () =>
+      structure_string ? { data: structure_string, filename: `string` } : undefined,
     current_value: () => structure,
     allow_file_drop: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
-    parse: (content, filename) => {
-      const parsed = parse_structure_file(io.as_text(content), filename)
-      if (!parsed) throw new Error(`no structure recognized`)
-      return parsed as Crystal
+    commit: (opened) => {
+      if (opened.type !== `structure`) {
+        throw new Error(`${opened.filename} is ${opened.type}, not a structure`)
+      }
+      structure = opened.data as Crystal // the zone needs a lattice; AnyStructure is wider
+      current_filename = opened.filename
+      on_file_load?.({
+        structure,
+        bz_data: zone,
+        bz_order,
+        ...opened.provenance,
+      })
     },
-    commit: (parsed, filename, metadata, file_size) => {
-      structure = parsed
-      current_filename = filename
-      on_file_load?.({ structure, bz_data: zone, bz_order, filename, ...metadata, file_size })
-    },
-    report_error: (message, filename, metadata) => {
+    report_error: (message, metadata) => {
       error_msg = message
-      on_error?.({ error_msg: message, filename, ...metadata })
+      on_error?.({ error_msg: message, ...metadata })
     },
   })
 
@@ -269,7 +272,7 @@
   {onkeydown}
   {...rest}
   class={[`brillouin-zone`, rest.class]}
-  {@attach loader.drop_zone}
+  {@attach drop_zone}
 >
   {@render children?.({ structure, bz_data: zone })}
   {#if loading}

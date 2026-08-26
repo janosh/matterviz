@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { drop_file, IS_CI, wait_for_3d_canvas } from './helpers'
+import { IS_CI, wait_for_3d_canvas } from './helpers'
 
 const BZ_SELECTOR = `#test-brillouin-zone`
 const status_locator = (page: Page, test_id: string) =>
@@ -162,30 +162,6 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await page.locator(BZ_SELECTOR).click()
     await page.keyboard.press(`Escape`)
     await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
-  })
-})
-
-test.describe(`BrillouinZone File Drop Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `BrillouinZone file drop tests timeout in CI`)
-    await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, BZ_SELECTOR)
-  })
-
-  test(`handles file drops`, async ({ page }) => {
-    const poscar = `Test Structure
-1.0
-3.0 0.0 0.0
-0.0 3.0 0.0
-0.0 0.0 3.0
-Si
-1
-Direct
-0.0 0.0 0.0`
-
-    await drop_file(page, page.locator(BZ_SELECTOR), poscar, `test.poscar`)
-    // Wait for canvas to be ready after file drop
-    await expect(page.locator(`${BZ_SELECTOR} canvas`)).toBeVisible()
   })
 })
 

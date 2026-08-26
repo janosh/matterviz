@@ -1,7 +1,7 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
-import type { IsosurfaceLayer, VolumetricData } from '$lib/isosurface'
-import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
+import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from '$lib/isosurface'
+import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface'
 import { DEFAULTS } from '$lib/settings'
 import {
   create_structure_view_state,
@@ -11,7 +11,6 @@ import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
-import { open_structure_text } from '$lib/structure/loader'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
@@ -53,6 +52,8 @@ const mount_structure = (props: ComponentProps<typeof Structure>): void => {
 }
 afterEach(() => {
   for (const component of mounted.splice(0)) void unmount(component)
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 const mount_bound_structure = (
   props: ComponentProps<typeof Structure>,
@@ -87,7 +88,6 @@ const set_aria_input = (aria_label: string, value: string): void => {
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
 }
 
-// Shared test utilities to reduce duplication
 const SAMPLE_POSCAR_CONTENT = `BaTiO3 tetragonal
 1.0
 4.0 0.0 0.0
@@ -113,6 +113,159 @@ Direct
 
 2 2 2
 1 2 3 4 5 6 7 8`
+
+test(`loads strings, URLs and dropped files through the component API`, async () => {
+  vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(SAMPLE_POSCAR_CONTENT)))
+  const string_load = vi.fn<(data: StructureHandlerData) => void>()
+  const url_load = vi.fn<(data: StructureHandlerData) => void>()
+  const drop_load = vi.fn<(data: StructureHandlerData) => void>()
+  mount_structure({ structure_string: SAMPLE_POSCAR_CONTENT, on_file_load: string_load })
+  mount_structure({ data_url: `/loaded.poscar`, on_file_load: url_load })
+  const drop_state = $state<{ structure?: AnyStructure }>({ structure: undefined })
+  mount_structure(bind_props({ on_file_load: drop_load }, drop_state))
+  await tick()
+  document
+    .querySelectorAll(`.structure`)
+    .item(2)
+    .dispatchEvent(create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `dropped.poscar`)))
+
+  await vi.waitFor(() => {
+    expect(string_load).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: `string`, total_atoms: 5 }),
+    )
+    expect(url_load).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: `loaded.poscar`, source_url: `/loaded.poscar` }),
+    )
+    expect(drop_load).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: `dropped.poscar`, total_atoms: 5 }),
+    )
+  })
+  expect(drop_state.structure?.sites).toHaveLength(5)
+})
+
+test(`data URLs win over inline text while caller-owned structures prevent fetching`, async () => {
+  const fetch_spy = vi
+    .fn()
+    .mockImplementation(() => Promise.resolve(new Response(SAMPLE_POSCAR_CONTENT)))
+  vi.stubGlobal(`fetch`, fetch_spy)
+  const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
+  mount_structure({
+    data_url: `/priority.poscar`,
+    structure_string: `ignored invalid text`,
+    on_file_load,
+  })
+  mount_structure({ data_url: `/blocked.poscar`, structure })
+  await vi.waitFor(() =>
+    expect(on_file_load).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ filename: `priority.poscar`, total_atoms: 5 }),
+    ),
+  )
+  expect(fetch_spy).toHaveBeenCalledOnce()
+})
+
+test(`drag hover state remains bindable and respects allow_file_drop`, async () => {
+  const enabled = $state({ dragover: false })
+  const disabled = $state({ dragover: false })
+  mount_structure(bind_props({}, enabled))
+  mount_structure(bind_props({ allow_file_drop: false }, disabled))
+  await tick()
+  const [enabled_zone, disabled_zone] = document.querySelectorAll(`.structure`)
+  enabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+  disabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+  expect(enabled.dragover).toBe(true)
+  expect(enabled_zone?.classList.contains(`dragover`)).toBe(true)
+  expect(disabled.dragover).toBe(false)
+  expect(disabled_zone?.classList.contains(`dragover`)).toBe(false)
+  enabled_zone?.dispatchEvent(new DragEvent(`dragleave`, { bubbles: true }))
+  expect(enabled.dragover).toBe(false)
+})
+
+test(`custom drop handlers retain raw content and source metadata`, async () => {
+  const on_file_drop = vi.fn()
+  mount_structure({ on_file_drop })
+  await tick()
+  const file = new File([SAMPLE_POSCAR_CONTENT], `custom.poscar`)
+  doc_query(`.structure`).dispatchEvent(create_drop_event(file))
+  await vi.waitFor(() =>
+    expect(on_file_drop).toHaveBeenCalledWith(SAMPLE_POSCAR_CONTENT, file.name, {
+      source_filename: file.name,
+      file,
+    }),
+  )
+})
+
+test(`same-cell volumetric drops append volumes through the shared runtime`, async () => {
+  const state = $state<{ volumetric_data?: VolumetricData[] }>({
+    volumetric_data: undefined,
+  })
+  mount_structure(bind_props({}, state))
+  await tick()
+  const drop_zone = doc_query(`.structure`)
+  drop_zone.dispatchEvent(create_drop_event(new File([SAMPLE_CHGCAR_CONTENT], `A.CHGCAR`)))
+  await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+  drop_zone.dispatchEvent(create_drop_event(new File([SAMPLE_CHGCAR_CONTENT], `B.CHGCAR`)))
+  await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(2))
+  expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual([
+    `A.CHGCAR`,
+    `B.CHGCAR`,
+  ])
+})
+
+// Layers index the volumes they were made for: a structure in a different cell drops the
+// volumes AND their layers, so the next volume gets its own automatic layer instead of
+// inheriting one scaled to the previous field (CHGCAR values are hundreds, cube values ~0.01)
+test(`layers die with the volumes an unrelated structure replaces`, async () => {
+  const other_cell = SAMPLE_CHGCAR_CONTENT.replace(
+    `1 0 0\n0 1 0\n0 0 1`,
+    `2 0 0\n0 2 0\n0 0 2`,
+  )
+  const state = $state<{
+    volumetric_data?: VolumetricData[]
+    isosurface_settings: IsosurfaceSettings
+  }>({
+    volumetric_data: undefined,
+    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.2 },
+  })
+  mount_structure(bind_props({}, state))
+  await tick()
+  const drop_zone = doc_query(`.structure`)
+  const drop = (content: string, filename: string) =>
+    drop_zone.dispatchEvent(create_drop_event(new File([content], filename)))
+
+  drop(SAMPLE_CHGCAR_CONTENT, `a.CHGCAR`)
+  await vi.waitFor(() => expect(state.isosurface_settings.layers).toHaveLength(1))
+  const settings_with_a = state.isosurface_settings
+
+  drop(other_cell.split(`\n\n`)[0], `b.poscar`)
+  await vi.waitFor(() => expect(state.volumetric_data).toEqual([]))
+  expect(state.isosurface_settings).toEqual({ ...settings_with_a, layers: [] })
+
+  drop(other_cell, `c.CHGCAR`)
+  await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+  expect(state.isosurface_settings.layers).toEqual([
+    auto_volume_layer(state.volumetric_data?.[0] as VolumetricData, 0),
+  ])
+})
+
+test(`multi-file drops continue after failures and report one batch error`, async () => {
+  const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
+  const state = $state<{ error_msg?: string }>({ error_msg: undefined })
+  mount_structure(bind_props({ on_file_load }, state))
+  await tick()
+  doc_query(`.structure`).dispatchEvent(
+    create_drop_event([
+      new File([`garbage`], `bad.poscar`),
+      new File([SAMPLE_POSCAR_CONTENT], `good.poscar`),
+      new File([`more garbage`], `worse.cif`),
+    ]),
+  )
+  await vi.waitFor(() => expect(state.error_msg).toMatch(/^Failed to load 2 files — /))
+  expect(state.error_msg).toMatch(/bad\.poscar: .*; worse\.cif: /)
+  expect(on_file_load).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ filename: `good.poscar`, total_atoms: 5 }),
+  )
+})
+
 const volumetric_data = [
   make_volume(
     make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
@@ -138,10 +291,6 @@ const mount_volumetric = (
   })
   mount_structure(props)
   return props
-}
-
-const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
-  vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(content, { headers })))
 }
 
 // Stub the Fullscreen API on the mounted viewer; `set_fullscreen_element` plays the browser
@@ -1013,49 +1162,6 @@ describe(`Structure`, () => {
     expect(document.querySelector(`.edit-mode-toolbar`)).toBeNull()
   })
 
-  test(`drag and drop passes content and metadata to on_file_drop`, async () => {
-    const filename = `test.poscar`
-    const on_file_drop = vi.fn()
-    mount_structure({
-      structure: undefined,
-      show_controls: true,
-      on_file_drop,
-    })
-    await tick() // the drop-zone attachment is wired one flush after mount
-
-    doc_query(`.structure`).dispatchEvent(
-      create_drop_event(new File([SAMPLE_POSCAR_CONTENT], filename)),
-    )
-    await vi.waitFor(() =>
-      expect(on_file_drop).toHaveBeenCalledWith(
-        SAMPLE_POSCAR_CONTENT,
-        filename,
-        expect.objectContaining({ source_filename: filename }),
-      ),
-    )
-  })
-
-  test(`drag and drop without on_file_drop handler parses the file internally`, async () => {
-    // No on_file_drop → component parses the dropped file itself and emits on_file_load.
-    // Awaiting the callback is deterministic (no DOM polling), unlike a rendered-text race.
-    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-    mount_structure({
-      structure: undefined,
-      show_controls: true,
-      on_file_load,
-    })
-
-    await tick()
-    const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
-    doc_query(`.structure`).dispatchEvent(create_drop_event(file))
-
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    const loaded = on_file_load.mock.calls[0][0]
-    expect(loaded).toMatchObject({ filename: `test.poscar`, total_atoms: 5 })
-    const elements = loaded.structure?.sites.map((site) => site.species[0].element)
-    expect(elements).toEqual(expect.arrayContaining([`Ba`, `Ti`, `O`]))
-  })
-
   test(`info pane site hover updates highlighted sites`, async () => {
     const state = {
       highlighted_sites: [] as number[],
@@ -1243,355 +1349,6 @@ describe(`atom label controls`, () => {
   })
 })
 
-describe(`Structure string parsing`, () => {
-  afterEach(() => vi.unstubAllGlobals())
-
-  test(`loads structure_string and emits parsed structure metadata`, async () => {
-    const state = $state<{ structure?: AnyStructure; loading: boolean }>({
-      structure: undefined,
-      loading: false,
-    })
-    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-    mount_structure(
-      bind_props({ structure_string: SAMPLE_POSCAR_CONTENT, on_file_load }, state),
-    )
-
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    const load_data = on_file_load.mock.calls[0][0]
-    expect(state.structure?.sites).toHaveLength(5)
-    expect(new Set(state.structure?.sites.map((site) => site.species[0].element))).toEqual(
-      new Set([`Ba`, `Ti`, `O`]),
-    )
-    expect(state.structure).toHaveProperty(`lattice`)
-    expect(state.loading).toBe(false)
-    expect(load_data).toMatchObject({
-      total_atoms: 5,
-      filename: `string`,
-      file_size: new Blob([SAMPLE_POSCAR_CONTENT]).size,
-    })
-  })
-
-  test(`reports invalid structure_string content`, async () => {
-    const on_error = vi.fn()
-    mount_structure({
-      structure_string: `not parseable`,
-      on_error,
-    })
-    await vi.waitFor(() =>
-      expect(on_error).toHaveBeenCalledWith({
-        error_msg: expect.stringMatching(/^Failed to parse string: /),
-        filename: `string`,
-      }),
-    )
-  })
-
-  test(`prioritizes data_url over structure_string`, async () => {
-    let load_data: StructureHandlerData | undefined
-    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
-    mount_structure({
-      data_url: `/test.poscar`,
-      structure_string: `ignored`,
-      on_file_load: (data: StructureHandlerData) => (load_data = data),
-    })
-    await vi.waitFor(() => expect(load_data).toBeDefined())
-    expect(load_data?.filename).toBe(`test.poscar`)
-    expect(load_data?.source_filename).toBe(`test.poscar`)
-    expect(load_data?.source_url).toBe(`/test.poscar`)
-  })
-
-  test(`keeps loading active until async data_url handlers finish`, async () => {
-    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
-    let resolve_drop!: () => void
-    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
-    const on_file_drop = vi.fn(() => drop_done)
-    const state = { loading: false }
-    mount_structure(bind_props({ data_url: `/test.poscar`, on_file_drop }, state))
-
-    await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
-    expect(state.loading).toBe(true)
-    resolve_drop()
-    await vi.waitFor(() => expect(state.loading).toBe(false))
-  })
-
-  // A host handler's failure is reported in its own words, with the payload's source identity
-  test(`reports async data_url handler failures`, async () => {
-    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
-    const on_error = vi.fn()
-    mount_structure({
-      data_url: `/test.poscar`,
-      on_file_drop: async () => {
-        throw new Error(`handler failed`)
-      },
-      on_error,
-    })
-    await vi.waitFor(() =>
-      expect(on_error).toHaveBeenCalledWith({
-        error_msg: `handler failed`,
-        filename: `test.poscar`,
-        source_filename: `test.poscar`,
-        source_url: `/test.poscar`,
-      }),
-    )
-  })
-
-  // Dropping several files at once reports every failure in one message (and still loads the
-  // good ones) instead of each parse error overwriting the last
-  test(`a multi-file drop aggregates parse failures and keeps the parsable file`, async () => {
-    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-    const state = { error_msg: undefined as string | undefined }
-    mount_structure(bind_props({ structure: undefined, on_file_load }, state))
-    await tick()
-    doc_query(`.structure`).dispatchEvent(
-      create_drop_event([
-        new File([`garbage`], `bad.poscar`),
-        new File([SAMPLE_POSCAR_CONTENT], `good.poscar`),
-        new File([`more garbage`], `worse.cif`),
-      ]),
-    )
-    await vi.waitFor(() => expect(state.error_msg).toMatch(/^Failed to load 2 files — /))
-    expect(state.error_msg).toMatch(/bad\.poscar: .*; worse\.cif: /)
-    expect(on_file_load).toHaveBeenCalledOnce()
-    expect(on_file_load.mock.calls[0][0]).toMatchObject({
-      filename: `good.poscar`,
-      total_atoms: 5,
-    })
-  })
-
-  test(`keeps compressed source identity separate from the logical filename`, async () => {
-    mock_fetch_response(SAMPLE_POSCAR_CONTENT, { 'content-encoding': `gzip` })
-    let load_data: StructureHandlerData | undefined
-    mount_structure({
-      data_url: `/test.poscar.gz`,
-      on_file_load: (data: StructureHandlerData) => (load_data = data),
-    })
-
-    await vi.waitFor(() => expect(load_data).toBeDefined())
-    expect(load_data?.filename).toBe(`test.poscar`)
-    expect(load_data?.source_filename).toBe(`test.poscar.gz`)
-    expect(load_data?.source_url).toBe(`/test.poscar.gz`)
-  })
-
-  test(`keeps compressed volumetric source identity separate from its dedupe key`, async () => {
-    mock_fetch_response(SAMPLE_CHGCAR_CONTENT, { 'content-encoding': `gzip` })
-    const state = { volumetric_data: undefined as VolumetricData[] | undefined }
-    mount_structure(bind_props({ data_url: `/density.CHGCAR.gz` }, state))
-
-    await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
-    expect(state.volumetric_data?.[0]).toMatchObject({
-      source: `density.CHGCAR`,
-      source_filename: `density.CHGCAR.gz`,
-    })
-  })
-
-  // A host that passes isosurface_settings alongside data_url (pymatviz) wants its layers on
-  // the loaded volume, not the automatic 20 %-of-|max| layer
-  const caller_layer = {
-    isovalue: 0.05,
-    color: `#3b82f6`,
-    opacity: 0.6,
-    visible: true,
-    show_negative: false,
-    negative_color: `#ef4444`,
-  }
-  test.each<[string, IsosurfaceLayer[], (volumes: VolumetricData[]) => IsosurfaceLayer[]]>([
-    [`caller layers`, [caller_layer], () => [caller_layer]],
-    [`no layers`, [], (volumes) => [auto_volume_layer(volumes[0], 0)]],
-  ])(
-    `a data_url volume keeps %s supplied before it loaded`,
-    async (_label, layers, expected_layers) => {
-      mock_fetch_response(SAMPLE_CHGCAR_CONTENT)
-      const state = {
-        volumetric_data: undefined as VolumetricData[] | undefined,
-        isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
-      }
-      mount_structure(bind_props({ data_url: `/density.CHGCAR` }, state))
-
-      await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
-      expect(state.isosurface_settings.layers).toEqual(
-        expected_layers(state.volumetric_data ?? []),
-      )
-    },
-  )
-
-  // Layers index the volumes they were made for: a structure in a different cell drops the
-  // volumes AND their layers, so the next volume gets its own automatic layer instead of
-  // inheriting one scaled to the previous field (CHGCAR values are hundreds, cube values ~0.01)
-  test(`layers die with the volumes an unrelated structure replaces`, () => {
-    const empty = {
-      structure: undefined,
-      volumetric_data: undefined,
-      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.2 },
-      active_volume_idx: 0,
-    }
-    const with_a = open_structure_text(empty, SAMPLE_CHGCAR_CONTENT, `a.CHGCAR`).document
-    expect(with_a.isosurface_settings.layers).toHaveLength(1)
-    const other_cell = SAMPLE_CHGCAR_CONTENT.replace(
-      `1 0 0\n0 1 0\n0 0 1`,
-      `2 0 0\n0 2 0\n0 0 2`,
-    )
-    const with_b = open_structure_text(
-      with_a,
-      other_cell.split(`\n\n`)[0],
-      `b.poscar`,
-    ).document
-    expect(with_b.volumetric_data).toEqual([])
-    expect(with_b.isosurface_settings).toEqual({ ...with_a.isosurface_settings, layers: [] })
-    const with_c = open_structure_text(with_b, other_cell, `c.CHGCAR`).document
-    expect(with_c.isosurface_settings.layers).toEqual([
-      auto_volume_layer(with_c.volumetric_data?.[0] as VolumetricData, 0),
-    ])
-  })
-
-  const structure_json = (element: string, count = 1) =>
-    JSON.stringify({
-      sites: Array.from({ length: count }, (_, idx) => ({
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [idx, 0, 0],
-        label: `${element}${idx + 1}`,
-        properties: {},
-      })),
-    })
-  const request_url = (url: string | URL | Request) =>
-    typeof url === `string` ? url : url instanceof URL ? url.href : url.url
-
-  test(`reloads URL-owned structure when data_url changes`, async () => {
-    const loaded_elements: string[] = []
-    const fetch_mock = vi.fn(async (url: string | URL | Request) => {
-      const href = request_url(url)
-      return new Response(structure_json(href.includes(`b.json`) ? `He` : `H`))
-    })
-    vi.stubGlobal(`fetch`, fetch_mock)
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
-      on_file_load: (data: StructureHandlerData) =>
-        loaded_elements.push(data.structure?.sites[0]?.species[0]?.element ?? ``),
-    })
-    mount_structure(props)
-    await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
-
-    props.data_url = `/b.json`
-    await vi.waitFor(() =>
-      expect(fetch_mock).toHaveBeenLastCalledWith(`/b.json`, {
-        signal: expect.any(AbortSignal),
-      }),
-    )
-    await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
-  })
-
-  test(`caller-supplied structure takes precedence over data_url`, async () => {
-    const fetch_mock = vi.fn()
-    vi.stubGlobal(`fetch`, fetch_mock)
-    mount_structure({ data_url: `/ignored.json`, structure })
-    await tick()
-    expect(fetch_mock).not.toHaveBeenCalled()
-  })
-
-  // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
-  const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
-    const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof Structure>>({ data_url: `/a.json`, ...extra })
-    mount_structure(props)
-    await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
-    return { responses, props }
-  }
-
-  test(`ignores a stale structure URL completion`, async () => {
-    const on_file_load = vi.fn()
-    const { responses, props } = await mount_pending_url({ on_file_load })
-
-    props.data_url = `/b.json`
-    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    const current_response = responses.get(`/b.json`)?.shift()
-    current_response?.resolve(new Response(structure_json(`He`)))
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-
-    const stale_response = responses.get(`/a.json`)?.shift()
-    stale_response?.resolve(new Response(structure_json(`H`)))
-    await tick()
-    expect(on_file_load).toHaveBeenCalledTimes(1)
-    expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
-  })
-
-  test(`an unrelated prop change does not abort and restart an in-flight data_url fetch`, async () => {
-    const { responses, props } = await mount_pending_url({
-      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
-      active_volume_idx: 0,
-    })
-    props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
-    props.active_volume_idx = 2
-    await tick()
-    await tick()
-    expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
-  })
-
-  test(`on_error reports the requested URL, not a superseded data_url`, async () => {
-    const on_error = vi.fn()
-    const { responses, props } = await mount_pending_url({ on_error })
-
-    props.data_url = `/b.json`
-    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    responses.get(`/a.json`)?.shift()?.reject(new Error(`network down`))
-    await tick()
-    expect(on_error).not.toHaveBeenCalled()
-
-    responses.get(`/b.json`)?.shift()?.reject(new Error(`gone`))
-    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-    expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
-  })
-
-  test(`load error state renders StatusMessage`, async () => {
-    vi.stubGlobal(
-      `fetch`,
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        text: () => Promise.resolve(``),
-      }),
-    )
-    mount_structure({ data_url: `/missing-structure.json` })
-    await vi.waitFor(() =>
-      expect(document.querySelector(`.status-message.error`)).toBeInstanceOf(HTMLElement),
-    )
-    const status_msg = doc_query(`.status-message.error`)
-    expect(status_msg.getAttribute(`role`)).toBe(`alert`)
-    expect(status_msg.textContent).toContain(
-      `Failed to fetch /missing-structure.json: HTTP 404`,
-    )
-  })
-
-  // Deleting an atom writes a new structure object through the binding. Without re-claiming it
-  // for the URL the loader reads it as caller-supplied and never fetches the next data_url.
-  test(`an edited URL-loaded structure still follows a data_url change`, async () => {
-    const fetch_mock = vi.fn(
-      async (url: string | URL | Request) =>
-        new Response(structure_json(request_url(url).includes(`b.json`) ? `He` : `H`, 3)),
-    )
-    vi.stubGlobal(`fetch`, fetch_mock)
-    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
-      structure: undefined,
-      selected_sites: [],
-      measure_mode: `edit-atoms`,
-      on_file_load,
-    })
-    mount_structure(props)
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-    await tick()
-    props.selected_sites = [0]
-    doc_query(`.structure`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Delete`, cancelable: true, bubbles: true }),
-    )
-    await tick()
-    expect(props.structure?.sites).toHaveLength(2)
-
-    props.data_url = `/b.json`
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
-    expect(props.structure?.sites[0]?.species[0]?.element).toBe(`He`)
-  })
-})
-
 // Multi-side view (2x2 grid). The canvas grid itself is gated behind a
 // `typeof WebGLRenderingContext !== 'undefined'` guard so it doesn't render in
 // happy-dom; these cover the toggle button + wrapper class. The 4-canvas render
@@ -1678,3 +1435,224 @@ describe(`Multi-side view`, () => {
 
 // Camera target reset on supercell change and structure reload requires WebGL +
 // OrbitControls — tested via Playwright E2E (tests/playwright/structure/).
+
+describe(`data_url acquisition`, () => {
+  const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
+    vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(content, { headers })))
+  }
+  const structure_json = (element: string, count = 1) =>
+    JSON.stringify({
+      sites: Array.from({ length: count }, (_, idx) => ({
+        species: [{ element, occu: 1, oxidation_state: 0 }],
+        abc: [0, 0, 0],
+        xyz: [idx, 0, 0],
+        label: `${element}${idx + 1}`,
+        properties: {},
+      })),
+    })
+  const request_url = (url: string | URL | Request) =>
+    typeof url === `string` ? url : url instanceof URL ? url.href : url.url
+
+  test(`reports invalid structure_string content`, async () => {
+    const on_error = vi.fn()
+    mount_structure({ structure_string: `not parseable`, on_error })
+    await vi.waitFor(() =>
+      expect(on_error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error_msg: expect.stringMatching(/^Failed to parse string: /),
+          filename: `string`,
+        }),
+      ),
+    )
+  })
+
+  test(`keeps loading active until async data_url handlers finish`, async () => {
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
+    let resolve_drop!: () => void
+    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
+    const on_file_drop = vi.fn(() => drop_done)
+    const state = { loading: false }
+    mount_structure(bind_props({ data_url: `/test.poscar`, on_file_drop }, state))
+
+    await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
+    expect(state.loading).toBe(true)
+    resolve_drop()
+    await vi.waitFor(() => expect(state.loading).toBe(false))
+  })
+
+  // A host handler's failure is reported in its own words, with the payload's source identity
+  test(`reports async data_url handler failures`, async () => {
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
+    const on_error = vi.fn()
+    mount_structure({
+      data_url: `/test.poscar`,
+      on_file_drop: () => Promise.reject(new Error(`handler failed`)),
+      on_error,
+    })
+    await vi.waitFor(() =>
+      expect(on_error).toHaveBeenCalledWith(
+        expect.objectContaining({ error_msg: `handler failed` }),
+      ),
+    )
+  })
+
+  test(`keeps compressed source identity separate from the logical filename`, async () => {
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT, { 'content-encoding': `gzip` })
+    let load_data: StructureHandlerData | undefined
+    mount_structure({
+      data_url: `/test.poscar.gz`,
+      on_file_load: (data: StructureHandlerData) => (load_data = data),
+    })
+
+    await vi.waitFor(() => expect(load_data).toBeDefined())
+    expect(load_data?.filename).toBe(`test.poscar`)
+    expect(load_data?.source_filename).toBe(`test.poscar.gz`)
+    expect(load_data?.source_url).toBe(`/test.poscar.gz`)
+  })
+
+  test(`keeps compressed volumetric source identity separate from its dedupe key`, async () => {
+    mock_fetch_response(SAMPLE_CHGCAR_CONTENT, { 'content-encoding': `gzip` })
+    const state = { volumetric_data: undefined as VolumetricData[] | undefined }
+    mount_structure(bind_props({ data_url: `/density.CHGCAR.gz` }, state))
+
+    await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+    expect(state.volumetric_data?.[0]).toMatchObject({
+      source: `density.CHGCAR`,
+      source_filename: `density.CHGCAR.gz`,
+    })
+  })
+
+  // A host that passes isosurface_settings alongside data_url (pymatviz) wants its layers on
+  // the loaded volume, not the automatic 20 %-of-|max| layer
+  const caller_layer = {
+    isovalue: 0.05,
+    color: `#3b82f6`,
+    opacity: 0.6,
+    visible: true,
+    show_negative: false,
+    negative_color: `#ef4444`,
+  }
+  test.each<[string, IsosurfaceLayer[], (volumes: VolumetricData[]) => IsosurfaceLayer[]]>([
+    [`caller layers`, [caller_layer], () => [caller_layer]],
+    [`no layers`, [], (volumes) => [auto_volume_layer(volumes[0], 0)]],
+  ])(
+    `a data_url volume keeps %s supplied before it loaded`,
+    async (_label, layers, expected_layers) => {
+      mock_fetch_response(SAMPLE_CHGCAR_CONTENT)
+      const state = {
+        volumetric_data: undefined as VolumetricData[] | undefined,
+        isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
+      }
+      mount_structure(bind_props({ data_url: `/density.CHGCAR` }, state))
+
+      await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+      expect(state.isosurface_settings.layers).toEqual(
+        expected_layers(state.volumetric_data ?? []),
+      )
+    },
+  )
+
+  // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
+  const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
+    const responses = deferred_fetch_responses()
+    const props = $state<ComponentProps<typeof Structure>>({ data_url: `/a.json`, ...extra })
+    mount_structure(props)
+    await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+    return { responses, props }
+  }
+
+  test(`ignores a stale structure URL completion`, async () => {
+    const on_file_load = vi.fn()
+    const { responses, props } = await mount_pending_url({ on_file_load })
+
+    props.data_url = `/b.json`
+    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+    responses
+      .get(`/b.json`)
+      ?.shift()
+      ?.resolve(new Response(structure_json(`He`)))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+
+    responses
+      .get(`/a.json`)
+      ?.shift()
+      ?.resolve(new Response(structure_json(`H`)))
+    await tick()
+    expect(on_file_load).toHaveBeenCalledTimes(1)
+    expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+  })
+
+  test(`an unrelated prop change does not abort and restart an in-flight data_url fetch`, async () => {
+    const { responses, props } = await mount_pending_url({
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
+      active_volume_idx: 0,
+    })
+    props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
+    props.active_volume_idx = 2
+    await tick()
+    await tick()
+    expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
+  })
+
+  test(`on_error reports the requested URL, not a superseded data_url`, async () => {
+    const on_error = vi.fn()
+    const { responses, props } = await mount_pending_url({ on_error })
+
+    props.data_url = `/b.json`
+    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+    responses.get(`/a.json`)?.shift()?.reject(new Error(`network down`))
+    await tick()
+    expect(on_error).not.toHaveBeenCalled()
+
+    responses.get(`/b.json`)?.shift()?.reject(new Error(`gone`))
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+    expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
+  })
+
+  test(`load error state renders StatusMessage`, async () => {
+    vi.stubGlobal(
+      `fetch`,
+      vi.fn().mockResolvedValue({ ok: false, status: 404, text: () => Promise.resolve(``) }),
+    )
+    mount_structure({ data_url: `/missing-structure.json` })
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.status-message.error`)).toBeInstanceOf(HTMLElement),
+    )
+    const status_msg = doc_query(`.status-message.error`)
+    expect(status_msg.getAttribute(`role`)).toBe(`alert`)
+    expect(status_msg.textContent).toContain(
+      `Failed to fetch /missing-structure.json: HTTP 404`,
+    )
+  })
+
+  // Deleting an atom writes a new structure object through the binding. Without re-claiming it
+  // for the URL the loader reads it as caller-supplied and never fetches the next data_url.
+  test(`an edited URL-loaded structure still follows a data_url change`, async () => {
+    const fetch_mock = vi.fn((url: string | URL | Request) => {
+      const element = request_url(url).includes(`b.json`) ? `He` : `H`
+      return Promise.resolve(new Response(structure_json(element, 3)))
+    })
+    vi.stubGlobal(`fetch`, fetch_mock)
+    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      structure: undefined,
+      selected_sites: [],
+      measure_mode: `edit-atoms`,
+      on_file_load,
+    })
+    mount_structure(props)
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    await tick()
+    props.selected_sites = [0]
+    doc_query(`.structure`).dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Delete`, cancelable: true, bubbles: true }),
+    )
+    await tick()
+    expect(props.structure?.sites).toHaveLength(2)
+
+    props.data_url = `/b.json`
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+    expect(props.structure?.sites[0]?.species[0]?.element).toBe(`He`)
+  })
+})

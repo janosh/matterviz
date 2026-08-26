@@ -6,14 +6,14 @@ import type {
   OpenTrajectoryOptions,
   ParseProgress,
   TrajectoryRun,
-  TrajectoryRunSummary,
   TrajectorySource,
 } from '$lib/trajectory'
 import { Hdf5GroupSelectionRequiredError, open_trajectory } from '$lib/trajectory'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import { dispose_run_port, worker_run } from '$lib/trajectory/runs/worker'
 import { to_error } from '$lib/utils'
-import { parse_file_content, type ParseResult, type TrajectoryLoadOptions } from './parse'
+import { parse_file_content } from './parse'
+import type { ParseResult, TrajectoryLoadOptions, WireParseResult } from './parse'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 
 export type * from './parse-worker-protocol'
@@ -26,6 +26,10 @@ interface ParseInWorkerOptions {
   fallback_parse?: typeof parse_file_content
   signal?: AbortSignal
   load_options?: TrajectoryLoadOptions
+  on_progress?: (progress: ParseProgress) => void
+  // The caller allocated `content` and will not read it again, so an oversized binary
+  // payload can be transferred to the worker instead of cloned
+  owns_content?: boolean
 }
 
 type TrajectoryWorkerOptions = Omit<
@@ -68,7 +72,7 @@ const worker_event_error = (event: Event, fallback: string): WorkerUnavailableEr
   )
 
 interface WorkerParseOutcome {
-  result: ParseResult
+  result: WireParseResult
   run_port?: MessagePort
   worker: WorkerLike
 }
@@ -144,12 +148,16 @@ const bind_worker_run = ({ result, run_port, worker }: WorkerParseOutcome): Pars
   }
   return {
     ...result,
-    data: worker_run(run_port, result.data as TrajectoryRunSummary, () => worker.terminate()),
+    data: worker_run(run_port, result.data, () => worker.terminate()),
   }
 }
 
-const utf8_size_exceeds = (text: string, max_bytes: number): boolean =>
-  text.length > max_bytes || new Blob([text]).size > max_bytes
+const source_byte_size = (source: TrajectorySource): number =>
+  source instanceof Blob
+    ? source.size
+    : source instanceof ArrayBuffer
+      ? source.byteLength
+      : new Blob([source]).size
 
 const fallback_disabled_error = (filename: string, cause: Error): Error =>
   new Error(
@@ -160,9 +168,9 @@ const fallback_disabled_error = (filename: string, cause: Error): Error =>
   )
 
 export const parse_in_worker = async (
-  content: string,
+  content: TrajectorySource,
   filename: string,
-  is_base64: boolean,
+  is_base64: boolean = false,
   options: ParseInWorkerOptions = {},
 ): Promise<ParseResult> => {
   const {
@@ -170,32 +178,42 @@ export const parse_in_worker = async (
     worker_factory = default_worker_factory,
     fallback_parse = parse_file_content,
     load_options,
+    on_progress,
+    owns_content = false,
   } = options
   signal?.throwIfAborted()
-  if (content.startsWith(`LARGE_FILE:`)) {
-    return fallback_parse(content, filename, is_base64, load_options)
+  if (typeof content === `string` && content.startsWith(`LARGE_FILE:`)) {
+    return fallback_parse(content, filename, is_base64, load_options, on_progress)
   }
+  const max_bytes =
+    is_base64 || typeof content !== `string`
+      ? MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
+      : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
+  const byte_size = source_byte_size(content)
+  const decoded_size = is_base64 ? (byte_size * 3) / 4 : byte_size
+  const can_fall_back =
+    (!is_base64 && is_indexable_trajectory_filename(filename)) || decoded_size <= max_bytes
+  // Transferring detaches the caller's buffer, so it needs both their consent and a payload
+  // the main-thread fallback could never have accepted anyway — which is exactly the
+  // oversized-binary case where cloning costs the most. Everything else is cloned.
+  const transfer =
+    owns_content && !can_fall_back && content instanceof ArrayBuffer ? [content] : []
   try {
     return bind_worker_run(
       await run_in_worker(
         { kind: `file`, id: next_request_id++, content, filename, is_base64, load_options },
-        { worker_factory, signal },
+        { worker_factory, signal, on_progress, transfer },
       ),
     )
   } catch (error) {
     if (!(error instanceof WorkerUnavailableError)) throw error
-    const max_bytes = is_base64
-      ? (MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES * 4) / 3
-      : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
-    const indexable = !is_base64 && is_indexable_trajectory_filename(filename)
-    if (!indexable && utf8_size_exceeds(content, max_bytes)) {
-      throw fallback_disabled_error(filename, error)
-    }
+    // A transferred payload is detached, so there is nothing left to parse here either way
+    if (!can_fall_back) throw fallback_disabled_error(filename, error)
     console.warn(
       `parse_in_worker: no worker for ${filename}, parsing on the main thread:`,
       error,
     )
-    return fallback_parse(content, filename, is_base64, load_options)
+    return fallback_parse(content, filename, is_base64, load_options, on_progress)
   }
 }
 
@@ -244,7 +262,10 @@ export const parse_trajectory_in_worker = async (
         },
       ),
     )
-    return result.data as TrajectoryRun
+    // A `trajectory` request can only come back as a trajectory result
+    if (result.type !== `trajectory`)
+      throw new Error(`Expected a trajectory, got ${result.type}`)
+    return result.data
   } catch (error) {
     if (!(error instanceof WorkerUnavailableError)) throw error
     const max_bytes =

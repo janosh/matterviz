@@ -1,5 +1,4 @@
 export { default as ExportPane } from './ExportPane.svelte'
-export * from './data-url'
 export * from './decompress'
 export * from './export'
 export * from './fetch'

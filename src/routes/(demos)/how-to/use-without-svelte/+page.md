@@ -70,7 +70,7 @@ onMounted(() => {
 </script>
 ```
 
-Assign callback functions directly to element properties (like `on_file_load` above) rather than listening for DOM CustomEvents: MatterViz components call their `on_*` props with plain data objects, so there is no `event.detail` to unwrap. For richer typing in React, use [`@lit-labs/react`](https://www.npmjs.com/package/@lit-labs/react) to generate typed wrappers.
+The component delegates loading to `open_material()` internally. Assign callback functions directly to element properties (like `on_file_load` above) rather than listening for DOM CustomEvents: MatterViz components call their `on_*` props with plain data objects, so there is no `event.detail` to unwrap. For richer typing in React, use [`@lit-labs/react`](https://www.npmjs.com/package/@lit-labs/react) to generate typed wrappers.
 
 ## VS Code Extension
 

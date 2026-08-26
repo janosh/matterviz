@@ -17,7 +17,12 @@ import {
   SYNTHESIS_PLAN_REQUEST_SCHEMA,
   SYNTHESIS_PLANNER_TOOL,
 } from '$lib/synthesis-planning'
-import type { PlannerPhase, SynthesisPlanRequest } from '$lib/synthesis-planning'
+import type {
+  PlannerPhase,
+  SynthesisPlanProgress,
+  SynthesisPlanRequest,
+} from '$lib/synthesis-planning'
+import { plan_synthesis_with_progress } from '$lib/synthesis-planning/plan'
 import { describe, expect, test } from 'vitest'
 import { make_phase, read_maybe_gz } from '../setup'
 import pymatgen_reference from './fixtures/ba_ti_o_pymatgen_reference.json' with { type: 'json' }
@@ -460,12 +465,40 @@ describe(`plan_synthesis`, () => {
   })
 
   test.each([
-    [{ entries: [], target: `BaTiO3` }, /entries must be/],
-    [{ entries: ba_ti_c_o, target: `` }, /target is required/],
-    [{ entries: ba_ti_c_o, target: `BaTiO3`, max_precursors: 7 }, /max_precursors/],
-    [{ entries: ba_ti_c_o, target: `NaCl` }, /matches no entry id or formula/],
-  ])(`rejects invalid request %o`, (request, message) => {
-    expect(() => plan_synthesis(request as SynthesisPlanRequest)).toThrow(message)
+    [{ entries: [] }, /entries must be/],
+    [{ target: `` }, /target must be a non-empty string/],
+    [{ max_precursors: 7 }, /max_precursors/],
+    [{ target: `NaCl` }, /matches no entry id or formula/],
+    [{ conditions: { temperature: -1 } }, /conditions.temperature/],
+    [{ conditions: { temperature: 2001 } }, /conditions.temperature/],
+    [{ conditions: { open_species: [`Ar`] } }, /unsupported Ar/],
+    [{ conditions: { partial_pressures: { O2: 0 } } }, /partial_pressures.O2/],
+    [{ conditions: { partial_pressures: { Ar: 1 } } }, /unknown property Ar/],
+    [{ precursors: { max_e_above_hull: -0.1 } }, /max_e_above_hull/],
+    [{ precursors: { max_elements: 1.5 } }, /max_elements must be an integer/],
+    [{ scoring: { selectivity: -1 } }, /scoring.selectivity/],
+    [{ scoring: { mystery: 1 } }, /unknown property mystery/],
+    [{ max_routes: 0 }, /max_routes/],
+    [{ max_routes: 201 }, /max_routes/],
+    [{ max_routes: 1.5 }, /max_routes must be an integer/],
+    [{ target_mass_g: 0 }, /target_mass_g/],
+    [{ two_step: `yes` }, /two_step must be a boolean/],
+    [{ mystery: true }, /unknown property mystery/],
+  ])(`rejects invalid request override %o`, (override, message) => {
+    expect(() =>
+      plan_synthesis({ ...base_request, ...override } as SynthesisPlanRequest),
+    ).toThrow(message)
+  })
+
+  test(`progress-capable kernel preserves the exact synchronous result`, () => {
+    const progress: SynthesisPlanProgress[] = []
+    const result = plan_synthesis_with_progress(base_request, {
+      on_progress: (update) => progress.push(update),
+    })
+    expect(result).toEqual(plan_synthesis(base_request))
+    expect(progress[0]).toEqual({ stage: `preparing`, current: 0, total: 1 })
+    expect(progress.some((update) => update.stage === `direct_routes`)).toBe(true)
+    expect(progress.at(-1)).toEqual({ stage: `ranking`, current: 1, total: 1 })
   })
 })
 

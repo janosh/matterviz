@@ -1,19 +1,23 @@
 <script lang="ts">
-  // Acquisition shell around <Trajectory>: URL / File / binary sources, drag-and-drop,
-  // decompression, worker parsing with progress, HDF5 group choice, errors, and the run
-  // lifecycle (a new run is opened before the one it replaces is disposed).
+  // Convenience shell around <Trajectory>: source/drop UI, HDF5 group choice and errors.
+  // open_material owns acquisition, parsing, workers, provenance and resource disposal.
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { parse_trajectory_in_worker } from '$lib/file-viewer/parse-in-worker'
+  import {
+    open_material,
+    MaterialOpenError,
+    type MaterialPayload,
+    type MaterialSource,
+    type OpenedMaterial,
+  } from '$lib/file-viewer/open'
   import * as io from '$lib/io'
-  import type { FileLoadMeta } from '$lib/io/types'
   import { DEFAULTS } from '$lib/settings'
   import { to_error } from '$lib/utils'
   import type { ComponentProps, Snippet } from 'svelte'
-  import type { ParseProgress, TrajectorySource, TrajHandlerData } from './index'
+  import type { ParseProgress, TrajHandlerData } from './index'
   import type { OpenTrajectoryOptions } from './open'
-  import { Hdf5GroupSelectionRequiredError, open_trajectory, source_byte_size } from './open'
+  import { Hdf5GroupSelectionRequiredError } from './open'
   import { get_unsupported_format_message } from './parse'
   import type { TrajectoryRun } from './run'
   import Trajectory from './Trajectory.svelte'
@@ -22,9 +26,11 @@
   type ViewerProps = Omit<ComponentProps<typeof Trajectory>, `trajectory`>
   type Hdf5PathGroup = { trunk: string; paths: string[] }
   type PendingSource = {
-    data: TrajectorySource
-    filename: string
-    meta: Partial<FileLoadMeta>
+    source: MaterialSource | ArrayBuffer | Blob
+    filename?: string
+    // Set once the source has been fetched/inflated, so an HDF5 group pick re-parses the
+    // payload already in hand instead of downloading and inflating the file again
+    payload?: MaterialPayload
   }
 
   let {
@@ -73,12 +79,11 @@
   } = $props()
 
   let loading = $state(false)
-  // True while a dropped file is still being read/inflated, before its bytes reach open_source
-  let drop_reading = $state(false)
   let progress = $state<ParseProgress | null>(null)
   let error_msg = $state<string | null>(null)
   // The run this component opened (vs one the caller passed in); disposed on replacement
-  let owned_run: TrajectoryRun | undefined
+  let owned_material = $state.raw<OpenedMaterial | undefined>()
+  let owned_run = $state.raw<TrajectoryRun | undefined>()
   let load_controller: AbortController | undefined
   // HDF5 files holding several trajectories wait here for the user's pick
   let hdf5_selection = $state.raw<{ groups: string[]; source: PendingSource } | undefined>(
@@ -106,22 +111,25 @@
 
   // Adopt `run` as the one on display; the previous owned run is disposed only now, so a
   // failed or superseded load never leaves the viewer empty
-  const adopt = (run: TrajectoryRun): void => {
-    const previous = owned_run
+  const adopt = (opened: Extract<OpenedMaterial, { type: `trajectory` }>): void => {
+    const previous = owned_material
+    const run = opened.data
     trajectory = run
     // Read back rather than keep `run`: writes to an unbound $bindable (and to a parent's
     // $state) store a proxy of the run, and the ownership effect below compares identities
+    owned_material = opened
     owned_run = trajectory
     current_step_idx = 0
-    if (previous && previous !== owned_run) previous.dispose()
+    if (previous !== opened) previous?.dispose()
   }
 
   // A caller can replace a run opened here through bind:trajectory. Release only the run
   // this shell owns; caller-supplied runs remain the caller's responsibility.
   $effect(() => {
     const displayed_run = trajectory
-    if (owned_run && displayed_run !== owned_run) {
-      owned_run.dispose()
+    if (owned_material && displayed_run !== owned_run) {
+      owned_material.dispose()
+      owned_material = undefined
       owned_run = undefined
     }
   })
@@ -148,58 +156,88 @@
     error_msg = message
     on_error?.({ error_msg: message, ...details })
   }
+  const source_name = ({ source, filename: source_filename }: PendingSource): string => {
+    if (source_filename) return source_filename
+    if (typeof source === `string` || source instanceof URL) {
+      return io.basename_from_url(String(source))
+    }
+    if (typeof File !== `undefined` && source instanceof File) return source.name
+    return `filename` in source ? source.filename : ``
+  }
 
-  // Open a source and adopt the result. Payloads above the indexing threshold (and Blob-backed
-  // HDF5, which h5wasm mounts in a worker) parse off the main thread and come back as a
-  // worker-served run; everything else opens here with synchronous frame reads.
   async function open_source(
-    source: PendingSource,
+    pending: PendingSource,
     controller: AbortController,
     hdf5_group_path: string | undefined = loading_options.hdf5_group_path,
   ): Promise<void> {
-    const { data, filename: name, meta } = source
-    const index_above_bytes =
-      loading_options.index_above_bytes ?? DEFAULTS.trajectory.index_above_bytes
-    const file_size = source_byte_size(data, index_above_bytes)
-    const options = { ...loading_options, hdf5_group_path }
+    const { source } = pending
+    const is_file = typeof File !== `undefined` && source instanceof File
+    const material_source: MaterialSource =
+      pending.payload ??
+      (source instanceof ArrayBuffer || (source instanceof Blob && !is_file)
+        ? { data: source, filename: pending.filename ?? `` }
+        : (source as MaterialSource))
     const on_progress = (update: ParseProgress): void => {
       if (load_controller === controller) progress = update
     }
+    // Inflating a gzipped HDF5 into browser-managed storage happens before any parse progress
+    // arrives and can take a while, so say so instead of showing a bare spinner
+    if (!pending.payload && io.hdf5_compression_format(source_name(pending)) === `gzip`) {
+      progress = {
+        current: 0,
+        total: 100,
+        stage: `Decompressing HDF5 into temporary browser-managed storage…`,
+      }
+    }
     try {
-      const run =
-        data instanceof Blob || file_size > index_above_bytes
-          ? await parse_trajectory_in_worker(data, name, on_progress, options, {
-              signal: controller.signal,
-              transfer_source: data instanceof ArrayBuffer && Boolean(meta.file),
-            })
-          : await open_trajectory(data, { ...options, filename: name, on_progress })
-      if (load_controller !== controller || controller.signal.aborted) return run.dispose()
-      adopt(run)
+      const opened = await open_material(material_source, {
+        ...loading_options,
+        hdf5_group_path,
+        signal: controller.signal,
+        on_progress,
+        on_acquired: (payload) => (pending.payload = payload),
+      })
+      if (load_controller !== controller || controller.signal.aborted) return opened.dispose()
+      if (opened.type !== `trajectory`) {
+        opened.dispose()
+        throw new Error(`${opened.filename} is ${opened.type}, not a trajectory`)
+      }
+      const run = opened.data
+      adopt(opened)
       on_file_load?.({
         trajectory: run,
         frame_count: run.frame_count,
         total_atoms: run.preview.structure.sites.length,
-        filename: name,
-        file_size,
-        source_filename: meta.source_filename ?? name,
-        ...meta,
+        ...opened.provenance,
       })
     } catch (error) {
       if (load_controller !== controller || controller.signal.aborted) return
       if (error instanceof Hdf5GroupSelectionRequiredError) {
-        hdf5_selection = { groups: error.groups, source }
+        hdf5_selection = { groups: error.groups, source: pending }
         hdf5_picker_open = true
         return
       }
-      const unsupported = get_unsupported_format_message(
-        name,
-        typeof data === `string` ? data : ``,
+      const name = source_name(pending)
+      // Enough of the payload for the binary sniff behind get_unsupported_format_message
+      const acquired = pending.payload?.data ?? pending.source
+      const head =
+        acquired instanceof ArrayBuffer
+          ? new TextDecoder().decode(acquired.slice(0, 8192))
+          : typeof acquired === `string`
+            ? acquired
+            : ``
+      const unsupported = get_unsupported_format_message(name, head)
+      const prefix =
+        error instanceof MaterialOpenError && error.stage === `acquire`
+          ? `Failed to load trajectory`
+          : `Failed to parse trajectory`
+      report_error(
+        unsupported || `${prefix}: ${name ? `${name}: ` : ``}${to_error(error).message}`,
+        {
+          filename: name,
+          ...(error instanceof MaterialOpenError && error.provenance),
+        },
       )
-      report_error(unsupported || `Failed to parse trajectory: ${to_error(error).message}`, {
-        filename: name,
-        file_size,
-        ...meta,
-      })
     } finally {
       end_load(controller)
     }
@@ -225,40 +263,7 @@
     // Hosts that clear a URL trait often send `` or null rather than undefined
     if (!source) return
     const controller = begin_load()
-    const load = async (): Promise<void> => {
-      if (typeof source === `string`) {
-        if (io.hdf5_compression_format(source) === `gzip`) progress = decompressing_hdf5()
-        await io.load_trajectory_from_url(
-          source,
-          (content, name, meta) =>
-            open_source({ data: content, filename: name, meta }, controller),
-          controller.signal,
-        )
-      } else if (typeof File !== `undefined` && source instanceof File) {
-        const { content, filename: name } = await io.decompress_trajectory_file(
-          source,
-          controller.signal,
-        )
-        await open_source(
-          {
-            data: content,
-            filename: name,
-            meta: { source_filename: source.name, file: source },
-          },
-          controller,
-        )
-      } else {
-        await open_source({ data: source, filename: filename ?? ``, meta: {} }, controller)
-      }
-    }
-    load().catch((error: unknown) => {
-      if (load_controller !== controller || controller.signal.aborted) return
-      console.error(`Failed to load trajectory:`, error)
-      report_error(`Failed to load trajectory: ${to_error(error).message}`, {
-        filename: typeof source === `string` ? io.basename_from_url(source) : filename,
-      })
-      end_load(controller)
-    })
+    void open_source({ source, filename }, controller)
     return () => {
       if (load_controller === controller) {
         controller.abort(new DOMException(`Source changed`, `AbortError`))
@@ -266,15 +271,10 @@
       }
     }
   })
-  const decompressing_hdf5 = (): ParseProgress => ({
-    current: 0,
-    total: 100,
-    stage: `Decompressing HDF5 into temporary browser-managed storage…`,
-  })
-
   $effect(() => () => {
     load_controller?.abort(new DOMException(`Viewer unmounted`, `AbortError`))
-    owned_run?.dispose()
+    owned_material?.dispose()
+    owned_material = undefined
     owned_run = undefined
   })
 </script>
@@ -285,19 +285,14 @@
   {id}
   role="region"
   aria-label="Drop trajectory file here to load"
-  {@attach io.file_drop_zone({
+  {@attach io.raw_file_drop_zone({
     allow: () => allow_file_drop,
-    hdf5_as_blob: true,
     max_files: 1,
-    on_drop: (content, name, meta) => {
+    on_drop: (source) => {
       const controller = begin_load()
-      if (io.hdf5_compression_format(meta.source_filename) === `gzip`) {
-        progress = decompressing_hdf5()
-      }
-      return open_source({ data: content, filename: name, meta }, controller)
+      return open_source({ source }, controller)
     },
     on_error: (message) => report_error(message),
-    set_loading: (reading) => (drop_reading = reading),
   })}
 >
   {#if hdf5_selection && hdf5_picker_open}
@@ -310,8 +305,8 @@
     >
       <h3>Choose trajectory</h3>
       <p>
-        <code>{hdf5_selection.source.filename}</code> contains multiple trajectories; choose one
-        to load.
+        <code>{source_name(hdf5_selection.source)}</code> contains multiple trajectories; choose
+        one to load.
       </p>
       {#if error_msg}
         <StatusMessage bind:message={error_msg} type="error" dismissible />
@@ -357,7 +352,7 @@
         Cancel
       </button>
     </EmptyState>
-  {:else if loading || drop_reading}
+  {:else if loading}
     <Spinner
       text={progress
         ? `${progress.stage} (${Math.round(progress.current)}%)`

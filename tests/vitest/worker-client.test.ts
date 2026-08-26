@@ -12,7 +12,11 @@ const workers = (): StubWorkerInstance[] => stub.instances
 const first_post = (worker: StubWorkerInstance) => worker.posted[0].message
 
 const make_client = <Result = string>(
-  compute_sync: () => Result = (() => `sync`) as () => Result,
+  compute_sync: (
+    input: { tag: string },
+    options: Record<string, unknown> | undefined,
+    on_progress?: (progress: unknown) => void,
+  ) => Result = (() => `sync`) as () => Result,
 ) =>
   create_worker_client<{ tag: string }, Record<string, unknown>, Result>({
     label: `Test`,
@@ -158,8 +162,13 @@ describe(`request dedupe`, () => {
 
 test(`falls back to compute_sync when Worker is missing`, async () => {
   vi.stubGlobal(`Worker`, undefined)
-  const run = make_client()
-  await expect(run({ tag: `a` }, {})).resolves.toBe(`sync`)
+  const progress = vi.fn()
+  const run = make_client((_input, _options, on_progress) => {
+    on_progress?.(0.5)
+    return `sync`
+  })
+  await expect(run({ tag: `a` }, {}, { on_progress: progress })).resolves.toBe(`sync`)
+  expect(progress).toHaveBeenCalledExactlyOnceWith(0.5)
   expect(workers()).toHaveLength(0)
 })
 

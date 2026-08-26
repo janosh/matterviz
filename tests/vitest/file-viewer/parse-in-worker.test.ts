@@ -155,9 +155,15 @@ describe(`parse_in_worker`, () => {
         load_options: { index_above_bytes: 4096 },
       }),
     ).resolves.toEqual(structure_result)
-    expect(fallback_parse).toHaveBeenCalledExactlyOnceWith(`data`, `si.cif`, false, {
-      index_above_bytes: 4096,
-    })
+    expect(fallback_parse).toHaveBeenCalledExactlyOnceWith(
+      `data`,
+      `si.cif`,
+      false,
+      {
+        index_above_bytes: 4096,
+      },
+      undefined,
+    )
   })
 
   it.each([
@@ -243,6 +249,27 @@ describe(`parse_trajectory_in_worker`, () => {
     })
     expect(worker.posted[0].transfer).toHaveLength(1)
     run.dispose()
+  })
+
+  // Cloning is the default so the main-thread fallback still has the bytes; a payload the
+  // fallback would refuse anyway is handed over instead, which is where the copy costs most.
+  it.each([
+    [`clones a payload the fallback could still parse`, 1024, true, 0],
+    [`clones when the caller keeps ownership`, 60 * 1024 * 1024, false, 0],
+    [`transfers an oversized payload the caller gave up`, 60 * 1024 * 1024, true, 1],
+  ])(`%s`, async (_label, size, owns_content, expected_transfers) => {
+    const worker = make_fake_worker((request) => ({
+      id: request.id,
+      result: { type: `structure`, data: { sites: [] }, filename: `x.bin` },
+    }))
+    const content = new ArrayBuffer(size)
+    await parse_in_worker(content, `x.bin`, false, {
+      worker_factory: () => worker,
+      owns_content,
+    })
+    expect(worker.posted[0].transfer).toHaveLength(expected_transfers)
+    // a cloned buffer stays readable here; a transferred one is detached
+    expect(content.byteLength).toBe(expected_transfers === 0 ? size : 0)
   })
 
   it(`surfaces an ambiguous HDF5 group choice as a typed error`, async () => {

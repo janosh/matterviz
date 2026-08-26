@@ -396,17 +396,31 @@ describe(`convex hull replacement state`, () => {
     },
   )
 
+  test.each([`2d`, `3d`, `4d`] as const)(
+    `loads dropped JSON entries in the %s viewer`,
+    async (dim) => {
+      await mount_harness({ dim })
+      const elements = {
+        '2d': [`Li`, `O`],
+        '3d': [`Li`, `O`, `Na`],
+        '4d': [`Li`, `O`, `Na`, `Cl`],
+      }[dim]
+      const dropped = elements.map((element) => make_phase({ [element]: 1 }))
+      const json = JSON.stringify(dropped)
+      doc_query(`.convex-hull-${dim}`).dispatchEvent(
+        create_drop_event(new File([json], `hull.json`)),
+      )
+      await vi.waitFor(() => expect(test_text(`stable-count`)).toBe(`${dropped.length}`))
+    },
+  )
+
   // Composition keys are validated inside the drop handler, so a compound-like key ("Fe2O3")
-  // reports through on_error instead of throwing from the hull pipeline's $derived mid-render
-  // (and, via the auto-dimension wrapper, instead of being mis-counted as a binary system).
-  test.each([
-    [`2d`, false],
-    [`3d`, false],
-    [`4d`, false],
-    [`2d`, true],
-  ] as const)(
-    `dropping entries with compound-like composition keys reports an error (%s, wrapper=%s)`,
-    async (dim, use_wrapper) => {
+  // reports through console.error instead of throwing from the hull pipeline's $derived
+  // mid-render (and, via the auto-dimension wrapper, instead of being mis-counted as binary).
+  test.each([false, true])(
+    `invalid dropped entries report their filename without replacing the hull (wrapper=%s)`,
+    async (use_wrapper) => {
+      const dim = `2d`
       await mount_harness({ dim, use_wrapper })
       const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
       const stable_before = test_text(`stable-count`)
@@ -424,7 +438,6 @@ describe(`convex hull replacement state`, () => {
     },
   )
 
-  // Regression: hovering a point stored hover_data in a deeply-proxied $state, so
   // current_entry() returned the raw plot entry while hover_data.entry was its proxy.
   // The identity comparison was always unequal -> reassign -> effect_update_depth_exceeded.
   test.each([`3d`, `4d`] as const)(

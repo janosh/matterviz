@@ -22,8 +22,17 @@ afterEach(async () => {
   mounted_component = undefined
 })
 
-const poscar = `cubic\n1.0\n3 0 0\n0 3 0\n0 0 3\nSi\n1\nDirect\n0 0 0\n`
 const si_site: SimpleSite[] = [[`Si`, [0, 0, 0]]]
+const poscar = `cubic
+1.0
+3 0 0
+0 3 0
+0 0 3
+Si
+1
+Direct
+0 0 0
+`
 const cubic = make_crystal(3, si_site)
 // A coplanar lattice has no reciprocal lattice, so no zone can be derived from it
 const coplanar = make_crystal(
@@ -40,25 +49,88 @@ const external = compute_brillouin_zone(
   1,
 )
 
-// Without mark_owned, the first parsed structure looks caller-supplied and prevents the
-// loader from fetching a second URL.
-test(`loads a second data_url after the first has produced a structure`, async () => {
-  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
+test(`loads dropped structures and reports their provenance`, async () => {
+  const on_file_load = vi.fn()
+  const props = $state({
+    structure: undefined as typeof cubic | undefined,
+    on_file_load,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await tick()
+  const file = new File([poscar], `cubic.poscar`)
+  document.querySelector(`.brillouin-zone`)?.dispatchEvent(create_drop_event(file))
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+  expect(props.structure?.lattice.a).toBe(3)
+  expect(on_file_load).toHaveBeenCalledWith(
+    expect.objectContaining({
+      filename: file.name,
+      source_filename: file.name,
+      file,
+      bz_data: expect.objectContaining({ order: 1 }),
+    }),
+  )
+})
 
+test(`loads later data URLs after the first URL-owned structure`, async () => {
+  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
   const on_file_load = vi.fn()
   const props = $state({ data_url: `http://x/a.poscar`, on_file_load })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-
   props.data_url = `http://x/b.poscar`
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
   expect(on_file_load.mock.calls.map(([payload]) => payload.filename)).toEqual([
     `a.poscar`,
     `b.poscar`,
   ])
-  // The payload carries the zone freshly derived from the loaded structure
-  expect(on_file_load.mock.calls[0][0].bz_data?.order).toBe(1)
-  expect(on_file_load.mock.calls[1][0].bz_data?.order).toBe(1)
+})
+
+test(`a stale URL response cannot overwrite a newer structure`, async () => {
+  const responses = new Map<string, (response: Response) => void>()
+  vi.spyOn(globalThis, `fetch`).mockImplementation((input) => {
+    const url = input instanceof Request ? input.url : input.toString()
+    return new Promise((resolve) => responses.set(url, resolve))
+  })
+  const on_file_load = vi.fn()
+  const props = $state({ data_url: `http://x/a.poscar`, on_file_load })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(responses.has(`http://x/a.poscar`)).toBe(true))
+  props.data_url = `http://x/b.poscar`
+  await vi.waitFor(() => expect(responses.has(`http://x/b.poscar`)).toBe(true))
+  responses.get(`http://x/b.poscar`)?.(new Response(poscar))
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+  responses.get(`http://x/a.poscar`)?.(new Response(poscar))
+  await tick()
+  expect(on_file_load.mock.calls.map(([payload]) => payload.filename)).toEqual([`b.poscar`])
+})
+
+test(`a failing load callback keeps the parsed value and URL ownership`, async () => {
+  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
+  const on_file_load = vi.fn((data: { filename?: string }) => {
+    if (data.filename === `a.poscar`) throw new Error(`host exploded`)
+  })
+  const on_error = vi.fn()
+  const props = $state({
+    data_url: `http://x/a.poscar`,
+    structure: undefined as typeof cubic | undefined,
+    on_file_load,
+    on_error,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() =>
+    expect(on_error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: `a.poscar`,
+        error_msg: `on_file_load failed for a.poscar: host exploded`,
+      }),
+    ),
+  )
+  expect(props.structure?.sites).toHaveLength(1)
+  props.data_url = `http://x/b.poscar`
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+  expect(on_file_load).toHaveBeenLastCalledWith(
+    expect.objectContaining({ filename: `b.poscar` }),
+  )
 })
 
 // A host on_file_drop owns whatever it stores in `structure`; that value must not read as a
@@ -87,55 +159,35 @@ test(`reports loading while a structure_string is parsed`, async () => {
   const props = $state({ structure_string: poscar, loading: false, on_file_load })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   flushSync()
-  // The parser is awaited, so the spinner covers at least one microtask
+  // Parsing is asynchronous, so the spinner covers at least one microtask
   expect(props.loading).toBe(true)
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
   expect(props.loading).toBe(false)
   expect(on_file_load.mock.calls[0][0].bz_data?.order).toBe(1)
 })
 
-// The structure is stored before the host is notified, so a throwing on_file_load is the
-// host's failure, not a parse error — and the URL still owns the stored structure
-test(`a throwing on_file_load keeps the parsed structure and the URL's ownership of it`, async () => {
+test(`ignores a stale async on_file_drop failure`, async () => {
   vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
-  const on_file_load = vi.fn(() => {
-    throw new Error(`host exploded`)
+  const first_drop = Promise.withResolvers<undefined>()
+  const second_drop = Promise.withResolvers<undefined>()
+  const completed_filenames: string[] = []
+  const on_file_drop = vi.fn(async (_content: string | ArrayBuffer, filename: string) => {
+    await (filename === `a.poscar` ? first_drop.promise : second_drop.promise)
+    completed_filenames.push(filename)
   })
   const on_error = vi.fn()
-  const props = $state({
-    data_url: `http://x/a.poscar`,
-    structure: undefined as typeof cubic | undefined,
-    error_msg: undefined as string | undefined,
-    on_file_load,
-    on_error,
-  })
+  const props = $state({ data_url: `http://x/a.poscar`, on_file_drop, on_error })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-  expect(props.structure?.sites).toHaveLength(1)
-  expect(props.error_msg).toMatch(/host exploded/)
-  expect(props.error_msg).not.toMatch(/Failed to parse/)
-  expect(on_error).toHaveBeenCalledWith(expect.objectContaining({ filename: `a.poscar` }))
+  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
 
   props.data_url = `http://x/b.poscar`
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
-  expect(on_file_load).toHaveBeenLastCalledWith(
-    expect.objectContaining({ filename: `b.poscar` }),
-  )
-})
-
-// Dropped files report through the drop zone's per-batch summary, like every viewer; a parse
-// failure must not be swallowed into a per-file message first
-test(`a dropped file that fails to parse is reported by the drop zone`, async () => {
-  const on_error = vi.fn()
-  const props = $state({ error_msg: undefined as string | undefined, on_error })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await tick() // the drop-zone attachment is wired one flush after mount
-  document.body
-    .querySelector(`.brillouin-zone`)
-    ?.dispatchEvent(create_drop_event(new File([`garbage`], `bad.poscar`)))
-  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-  expect(props.error_msg).toMatch(/^Failed to load 1 file — bad\.poscar: /)
-  expect(props.error_msg).not.toMatch(/Failed to parse bad\.poscar/)
+  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
+  first_drop.reject(new Error(`stale parse failure`))
+  second_drop.resolve(undefined)
+  await vi.waitFor(() => {
+    expect(completed_filenames).toEqual([`b.poscar`])
+    expect(on_error).not.toHaveBeenCalled()
+  })
 })
 
 // The file viewer mounts the component with only {k_lattice, vertices, faces}: the zone renders
@@ -171,34 +223,6 @@ test(`reports a singular lattice instead of computing a zone`, async () => {
   expect(on_error.mock.calls[0][0].error_msg).toMatch(/BZ computation failed: .*singular/)
   expect(props.error_msg).toMatch(/singular/)
   expect(document.body.querySelector(`.brillouin-zone`)?.textContent).toMatch(/singular/)
-})
-
-test(`ignores a stale async on_file_drop failure`, async () => {
-  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
-  const first_drop = Promise.withResolvers<undefined>()
-  const second_drop = Promise.withResolvers<undefined>()
-  const completed_filenames: string[] = []
-  const on_file_drop = vi.fn(async (_content: string | ArrayBuffer, filename: string) => {
-    await (filename === `a.poscar` ? first_drop.promise : second_drop.promise)
-    completed_filenames.push(filename)
-  })
-  const on_error = vi.fn()
-  const props = $state({
-    data_url: `http://x/a.poscar`,
-    on_file_drop,
-    on_error,
-  })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
-
-  props.data_url = `http://x/b.poscar`
-  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
-  first_drop.reject(new Error(`stale parse failure`))
-  second_drop.resolve(undefined)
-  await vi.waitFor(() => {
-    expect(completed_filenames).toEqual([`b.poscar`])
-    expect(on_error).not.toHaveBeenCalled()
-  })
 })
 
 // The zone the component renders, observed through its `children` snippet (the derived zone

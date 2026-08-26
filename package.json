@@ -89,6 +89,10 @@
       "types": "./dist/file-viewer/parse-in-worker.d.ts",
       "default": "./dist/file-viewer/parse-in-worker.js"
     },
+    "./file-viewer/open": {
+      "types": "./dist/file-viewer/open.d.ts",
+      "default": "./dist/file-viewer/open.js"
+    },
     "./file-viewer/host-protocol": {
       "types": "./dist/file-viewer/host-protocol.d.ts",
       "default": "./dist/file-viewer/host-protocol.js"

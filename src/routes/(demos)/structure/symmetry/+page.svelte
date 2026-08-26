@@ -71,7 +71,6 @@
       display_filename = file
     }
   })
-
   // Full Wyckoff-position database of the detected space-group setting: adds ITA
   // representative coordinates and lets the table list unoccupied positions
   const wyckoff_db = $derived(
