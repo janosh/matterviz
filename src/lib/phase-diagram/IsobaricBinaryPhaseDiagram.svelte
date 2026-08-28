@@ -390,7 +390,7 @@
   // below rather than the whole document, which is what forced a chord here before.
   function handle_keydown(event: KeyboardEvent): boolean {
     if (is_editable_event_target(event.target) || is_modifier_chord(event)) return false
-    if (event.key === `e`) {
+    if (event.key === `e` && !event.repeat) {
       export_pane_open = !export_pane_open
       return true
     }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
   import { is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -500,7 +501,8 @@
       if (history_open) close_history()
       else if (examples_open) examples_open = false
       else if (input_value) clear_filter()
-    } else if (history_open && visible_history.length > 0) {
+      // Cmd/Ctrl+Arrow jumps within the input's text; only bare arrows walk history
+    } else if (history_open && visible_history.length > 0 && !is_modifier_chord(event)) {
       const len = visible_history.length
       if (event.key === `ArrowDown`) {
         event.preventDefault()

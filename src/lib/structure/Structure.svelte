@@ -617,6 +617,8 @@
     const key = event.key.toLowerCase()
     const has_modifier = event.ctrlKey || event.metaKey
     const plain = !has_modifier && !event.altKey
+    // autorepeat must not flip a toggle over and over while a key is held down
+    const plain_press = plain && !event.repeat
     const is_undo = has_modifier && key === `z` && !event.shiftKey
     const is_redo = has_modifier && (key === `y` || (key === `z` && event.shiftKey))
     const editing_bonds = measure_mode === `edit-bonds`
@@ -641,11 +643,11 @@
     }
     if (editing_atoms) {
       if (event.key === `Delete` || event.key === `Backspace`) return session.delete_selected()
-      if (key === `a` && plain) {
+      if (key === `a` && plain_press) {
         session.add_atom_mode = !session.add_atom_mode
         return true
       }
-      if (key === `e` && plain && selected_sites.length > 0) {
+      if (key === `e` && plain_press && selected_sites.length > 0) {
         session.change_element_mode = !session.change_element_mode
         return true
       }
@@ -671,13 +673,13 @@
     // View toggles are plain letters everywhere; typing is already excluded by the editable
     // guard above. `f` is owned by FullscreenButton, which arbitrates it between nested
     // viewers. Chords stay the browser's and the host's.
-    if (key === `i` && plain && display_mode === `structure` && enable_info_pane) {
+    if (key === `i` && plain_press && display_mode === `structure` && enable_info_pane) {
       set_pane_open(`info`, !is_pane_open(`info`))
       return true
     }
     if (
       key === `g` &&
-      plain &&
+      plain_press &&
       display_mode === `structure` &&
       controls_config.visible(`multi-view`) &&
       (multi_view_available || multi_view)

@@ -1010,6 +1010,7 @@ test.each([
   [`Cmd+E is the browser's`, { key: `e`, metaKey: true }, undefined, 0],
   [`Ctrl+E is the browser's`, { key: `e`, ctrlKey: true }, undefined, 0],
   [`typing e in an input never exports`, { key: `e` }, `input`, 0],
+  [`a held e does not re-download`, { key: `e`, repeat: true }, undefined, 0],
 ])(`%s`, async (_name, init, target_tag, calls) => {
   const on_export = vi.fn()
   mount_matrix({ on_export, export_formats: [`csv`] })

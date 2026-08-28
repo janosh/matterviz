@@ -1383,6 +1383,7 @@
   onkeydown={(event) => {
     // `f` is owned by FullscreenButton; chords stay the browser's (Cmd/Ctrl+F = find)
     if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
+    if (event.repeat) return // holding `c` would spin through color modes
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
   }}

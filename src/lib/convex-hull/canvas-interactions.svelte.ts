@@ -134,6 +134,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     // Chords stay the browser's and the host's, Cmd+Enter and Cmd/Ctrl+S/R/B/L/U alike.
     // Guarded up front like the other viewers, so no branch below can claim one first.
     if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
+    if (event.repeat) return // every hull action is a toggle; holding one would flicker it
 
     let handled = true
     if (event.key === `Escape`) {

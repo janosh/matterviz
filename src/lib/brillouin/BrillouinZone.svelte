@@ -251,6 +251,7 @@
   function onkeydown(event: KeyboardEvent) {
     // `f` is owned by FullscreenButton; chords stay the browser's (Cmd/Ctrl+F = find)
     if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
+    if (event.repeat) return // holding `i` would flicker the pane
 
     if (event.key === `i`) info_pane_open = !info_pane_open
     else if (event.key === `Escape`) {
