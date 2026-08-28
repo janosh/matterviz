@@ -383,6 +383,121 @@ describe(`min_fraction 'Other' bucketing`, () => {
     depth1.sort((arc_a, arc_b) => arc_a.x0 - arc_b.x0)
     expect(depth1.map((arc) => arc.label)).toEqual([`big`, `s3`, `Other`])
   })
+
+  // A leaf is small next to the root by construction, so one absolute threshold
+  // applied at every depth takes the whole leaf ring and leaves 'Other (100%)'
+  // wherever the tree is deep — the deeper the ring, the less it can say.
+  test(`'parent' measures each node against its own parent, not the root`, () => {
+    const deep: SunburstNode[] = [
+      {
+        label: `cluster`,
+        children: [
+          {
+            label: `user`,
+            children: [
+              { label: `job-a`, value: 60 },
+              { label: `job-b`, value: 30 },
+              { label: `job-c`, value: 5 },
+              { label: `job-d`, value: 5 },
+            ],
+          },
+        ],
+      },
+    ]
+    const leaf_labels = (basis: `total` | `parent`) =>
+      compute_sunburst_layout(deep, { min_fraction: 0.5, min_fraction_of: basis })
+        .arcs.filter((arc) => arc.depth === 3)
+        .map((arc) => arc.label)
+
+    // 0.5 * 100 = 50 against the root: only `job-a` clears it, and against the
+    // 100-valued parent the same threshold keeps exactly the same one.
+    expect(leaf_labels(`total`)).toEqual([`job-a`, `Other`])
+    expect(leaf_labels(`parent`)).toEqual([`job-a`, `Other`])
+
+    // The bases part company once the parent is a fraction of the root: every
+    // leaf is now under 50 absolute, so 'total' takes the entire ring.
+    const smaller: SunburstNode[] = [{ label: `other-cluster`, value: 900 }, ...deep]
+    expect(
+      compute_sunburst_layout(smaller, { min_fraction: 0.5, min_fraction_of: `total` })
+        .arcs.filter((arc) => arc.depth === 3)
+        .map((arc) => arc.label),
+    ).toEqual([`Other`])
+    expect(
+      compute_sunburst_layout(smaller, { min_fraction: 0.5, min_fraction_of: `parent` })
+        .arcs.filter((arc) => arc.depth === 3)
+        .map((arc) => arc.label),
+    ).toEqual([`job-a`, `Other`])
+  })
+
+  // What a threshold cannot promise: that anything survives it. `max_children`
+  // ranks siblings instead of measuring them, so the ring is never empty.
+  test(`max_children keeps the largest N per parent whatever the spread`, () => {
+    const flat: SunburstNode[] = Array.from({ length: 50 }, (_item, idx) => ({
+      label: `job-${idx}`,
+      value: idx + 1,
+    }))
+    const { arcs } = compute_sunburst_layout(flat, { max_children: 3 })
+    const depth1 = arcs.filter((arc) => arc.depth === 1)
+    expect(depth1.map((arc) => arc.label)).toEqual([`job-47`, `job-48`, `job-49`, `Other`])
+    // Kept children hold their input order; only the bucket moves to the end.
+    expect(depth1.slice(0, 3).map((arc) => arc.x0)).toEqual(
+      depth1
+        .slice(0, 3)
+        .map((arc) => arc.x0)
+        .toSorted((left, right) => left - right),
+    )
+    const bucket = depth1.at(-1)
+    expect(bucket).toMatchObject({ is_other: true, other_count: 47 })
+    // 1..50 sums to 1275; the three kept are 48 + 49 + 50.
+    expect(bucket?.value).toBe(1275 - 147)
+  })
+
+  test(`a child has to clear both max_children and min_fraction`, () => {
+    const mixed: SunburstNode[] = [
+      { label: `a`, value: 50 },
+      { label: `b`, value: 40 },
+      { label: `c`, value: 8 },
+      { label: `d`, value: 2 },
+    ]
+    // max_children alone would keep `c`; min_fraction 0.1 rules it out.
+    expect(
+      compute_sunburst_layout(mixed, { max_children: 3, min_fraction: 0.1 })
+        .arcs.filter((arc) => arc.depth === 1)
+        .map((arc) => arc.label),
+    ).toEqual([`a`, `b`, `Other`])
+  })
+
+  test(`a callable other_label names what was folded away`, () => {
+    const { arcs } = compute_sunburst_layout(
+      [
+        {
+          label: `a100-80-shared`,
+          children: [
+            { label: `keep`, value: 60 },
+            { label: `t1`, value: 1 },
+            { label: `t2`, value: 1 },
+            { label: `t3`, value: 1 },
+          ],
+        },
+      ],
+      {
+        min_fraction: 0.05,
+        other_label: ({ count, parent_label }) => `${count} smaller in ${parent_label}`,
+      },
+    )
+    expect(arcs.find((arc) => arc.is_other)).toMatchObject({
+      label: `3 smaller in a100-80-shared`,
+      id: `a100-80-shared/3 smaller in a100-80-shared`,
+      other_count: 3,
+      value: 3,
+    })
+  })
+
+  test(`other_count is set only on bucketed arcs`, () => {
+    const { arcs } = compute_sunburst_layout(long_tail, { min_fraction: 0.05 })
+    expect(arcs.filter((arc) => arc.other_count !== undefined)).toHaveLength(1)
+    expect(arcs.find((arc) => arc.label === `big`)?.other_count).toBeUndefined()
+  })
 })
 
 describe(`scale`, () => {

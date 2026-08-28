@@ -1,5 +1,9 @@
 import type { TooltipPlacementConfig } from '$lib/plot/core/decorations'
-import { get_tooltip_placement_candidates, place_tooltip } from '$lib/plot/core/decorations'
+import {
+  DEFAULT_CURSOR_SIZE,
+  get_tooltip_placement_candidates,
+  place_tooltip,
+} from '$lib/plot/core/decorations'
 import { describe, expect, test } from 'vitest'
 
 const base_config: TooltipPlacementConfig = {
@@ -74,6 +78,52 @@ describe(`tooltip decoration placement`, () => {
     const candidates = get_tooltip_placement_candidates(config)
     expect(candidates.every(({ x, y }) => x === 10 && y === 20)).toBe(true)
     expect(place_tooltip(config)).toMatchObject({ x: 10, y: 20 })
+  })
+
+  // A tooltip too wide to sit beside its anchor clamps to nearly the same box from
+  // either side, and that box runs under the pointer — which for a hover tooltip
+  // is the cursor, so it covers the text it just summoned. Nothing in the scoring
+  // objected: `exclusion_rects` only ever held the legend and the color bar.
+  test(`a clamped wide tooltip is kept out from under the cursor`, () => {
+    // The Usage sunburst that reported this: a long breadcrumb in a ~1135px pane.
+    const config: TooltipPlacementConfig = {
+      anchor: { x: 900, y: 400 },
+      tooltip_size: { width: 1030, height: 44 },
+      bounds: { x: 0, y: 0, width: 1135, height: 700 },
+      offset: { x: 20, y: 5 },
+    }
+    // The glyph hangs down-right of the hotspot, so it can lie on the tooltip
+    // while the hotspot itself sits just outside it.
+    const cursor = { x: 900, y: 400, ...DEFAULT_CURSOR_SIZE }
+    const cursor_overlap = ({ x, y }: { x: number; y: number }) =>
+      Math.max(0, Math.min(x + 1030, cursor.x + cursor.width) - Math.max(x, cursor.x)) *
+      Math.max(0, Math.min(y + 44, cursor.y + cursor.height) - Math.max(y, cursor.y))
+
+    // Both horizontal candidates clamp to the full width, so the choice comes
+    // down to above/below — and below lands the cursor on the first line.
+    const before = place_tooltip(config)
+    expect(before.direction).toBe(`left-below`)
+    expect(cursor_overlap(before)).toBeGreaterThan(0)
+
+    const after = place_tooltip({ ...config, cursor_size: DEFAULT_CURSOR_SIZE })
+    expect(after.direction).toBe(`left-above`)
+    expect(cursor_overlap(after)).toBe(0)
+    expect(after.y + 44).toBeLessThanOrEqual(400)
+  })
+
+  // The offset has to clear a cursor's width on its own, or the preferred
+  // placement overlaps from the start and the term flips every tooltip.
+  test(`the cursor term is inert when the tooltip already sits clear`, () => {
+    const config: TooltipPlacementConfig = {
+      anchor: { x: 100, y: 100 },
+      tooltip_size: { width: 140, height: 44 },
+      bounds: { x: 0, y: 0, width: 800, height: 600 },
+      offset: { x: 20, y: 5 },
+    }
+    const before = place_tooltip(config)
+    const after = place_tooltip({ ...config, cursor_size: DEFAULT_CURSOR_SIZE })
+    expect(after).toMatchObject({ x: before.x, y: before.y, direction: before.direction })
+    expect(after.overlap_area).toBe(0)
   })
 
   test(`breaks exact score ties by candidate order deterministically`, () => {

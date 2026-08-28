@@ -10,7 +10,16 @@ export type TooltipPlacementConfig = {
   bounds: Rect
   exclusion_rects?: readonly Rect[]
   offset?: { x: number; y: number }
+  // Keep the pointer glyph itself clear, treating the anchor as its hotspot. Off
+  // by default: it only matters where the anchor is a live cursor, and only
+  // helps when `offset.x` already clears this width, or every candidate starts
+  // out overlapping and the term decides nothing.
+  cursor_size?: { width: number; height: number } | null
 }
+
+// A pointer hangs down and right from its hotspot, so the rect it occupies is not
+// centered on the anchor. Generous enough for the arrow and the hand.
+export const DEFAULT_CURSOR_SIZE = { width: 18, height: 24 } as const
 
 type TooltipPlacementCandidate = {
   direction: TooltipPlacementDirection
@@ -58,6 +67,7 @@ export function get_tooltip_placement_candidates({
   bounds,
   exclusion_rects = [],
   offset = { x: 10, y: 10 },
+  cursor_size = null,
 }: TooltipPlacementConfig): TooltipPlacementCandidate[] {
   const { width, height } = tooltip_size
   if (
@@ -77,11 +87,20 @@ export function get_tooltip_placement_candidates({
   for (const [rect_idx, rect] of exclusion_rects.entries()) {
     validate_rect(rect, `Tooltip exclusion rectangle ${rect_idx}`)
   }
+  if (cursor_size)
+    validate_rect({ x: anchor.x, y: anchor.y, ...cursor_size }, `Tooltip cursor`)
 
   const offset_x = Math.abs(offset.x)
   const offset_y = Math.abs(offset.y)
   const preferred_right = offset.x >= 0
   const preferred_below = offset.y >= 0
+  // Scored alongside the decorations, because a tooltip too wide to sit beside
+  // the anchor within `bounds` gets clamped to the same box whichever side it
+  // was offered — and that box covers the anchor. Nothing else here objects to
+  // a tooltip landing under the cursor that summoned it.
+  const avoid: readonly Rect[] = cursor_size
+    ? [...exclusion_rects, { x: anchor.x, y: anchor.y, ...cursor_size }]
+    : exclusion_rects
 
   return DIRECTIONS.map((direction) => {
     const right = direction.startsWith(`right`)
@@ -91,7 +110,7 @@ export function get_tooltip_placement_candidates({
     const x = clamp_axis(raw_x, width, bounds.x, bounds.width)
     const y = clamp_axis(raw_y, height, bounds.y, bounds.height)
     const rect = { x, y, width, height }
-    const overlap_area = exclusion_rects.reduce(
+    const overlap_area = avoid.reduce(
       (total, exclusion_rect) => total + intersection_area(rect, exclusion_rect),
       0,
     )

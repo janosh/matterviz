@@ -1,6 +1,6 @@
 <script lang="ts">
   import { contrast_text_color, resolve_backdrop, resolve_computed_color } from '$lib/colors'
-  import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
+  import { DEFAULT_CURSOR_SIZE, place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import type { Rect } from '$lib/plot/core/layout'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -13,6 +13,7 @@
     fixed = false,
     constrain_to,
     exclusion_rects = [],
+    avoid_cursor = false,
     fallback_size,
     wrapper = $bindable(),
     children,
@@ -27,6 +28,9 @@
     // Flip/clamp inside this box (defaults to the viewport when `fixed`); omit for raw placement
     constrain_to?: { width: number; height: number }
     exclusion_rects?: readonly Rect[] // decorations (legend, colorbar) to keep clear of
+    // Keep the pointer glyph clear too, for anchors that track a live cursor.
+    // Only meaningful when `offset.x` already clears a cursor's width.
+    avoid_cursor?: boolean
     fallback_size?: { width: number; height: number } // size estimate before first measure
     wrapper?: HTMLDivElement // bindable reference for measuring tooltip size
     children: Snippet
@@ -61,6 +65,7 @@
       bounds: { x: 0, y: 0, ...bounds },
       exclusion_rects,
       offset,
+      cursor_size: avoid_cursor ? DEFAULT_CURSOR_SIZE : null,
     })
   })
 

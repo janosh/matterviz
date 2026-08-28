@@ -7,7 +7,7 @@
 // maps these to screen space per frame (zoomable-sunburst trick), Treemap re-tiles them.
 
 import { hsl } from 'd3-color'
-import type { HierarchyRectangularNode } from 'd3-hierarchy'
+import type { HierarchyNode, HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
 import { PLOT_COLORS } from '$lib/colors'
 import { DEFAULTS } from '$lib/settings'
@@ -23,6 +23,8 @@ export type SunburstValueMode = `leaf-sum` | `total` | `remainder`
 export type SunburstLabelRotation = `auto` | `radial` | `tangential` | `horizontal`
 // Sibling ordering: 'none' preserves input order (e.g. spacegroup number order)
 export type SunburstSort = `descending` | `ascending` | `none`
+// Whether `min_fraction` measures a node against the root total or its own parent
+export type SunburstBucketBasis = `total` | `parent`
 // What arc labels display (plotly textinfo equivalent); percent is of the root total
 export type SunburstLabelText =
   | `label`
@@ -79,6 +81,7 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   fraction: number // value / root total
   parent_fraction: number // value / parent value (1 for root)
   is_other?: boolean // synthetic arc aggregating small siblings (min_fraction bucketing)
+  other_count?: number // siblings folded into an `is_other` arc (undefined elsewhere)
   hatch?: boolean // diagonal-hatch overlay from SunburstNode.hatch (not inherited)
   x0: number // angular extent as fraction of the full circle, in [0, 1]
   x1: number
@@ -106,11 +109,32 @@ export interface SunburstLayoutOptions {
   // Brighten inherited (non-explicit) colors by depth: hsl.brighter(level_lighten * (depth - 1)).
   // 0 (default) keeps every descendant exactly its depth-1 ancestor's color (plotly-style).
   level_lighten?: number
-  // Aggregate sibling arcs smaller than this fraction of the root total into one
-  // synthetic 'Other' leaf per parent (only when >= 2 qualify). Keeps long-tail
-  // distributions readable. 0 (default) disables bucketing.
+  // Aggregate sibling arcs smaller than this fraction into one synthetic 'Other'
+  // leaf per parent (only when >= 2 qualify). Keeps long-tail distributions
+  // readable. 0 (default) disables bucketing.
   min_fraction?: number
-  other_label?: string // label for bucketed arcs, default 'Other'
+  // What `min_fraction` is a fraction of. 'total' (default) measures every depth
+  // against the root, so one threshold in absolute units applies throughout —
+  // which sweeps away whole leaf rings in a deep tree, because a leaf is small
+  // next to the root by construction. 'parent' measures each node against its own
+  // parent, so a threshold means the same thing at every depth.
+  min_fraction_of?: SunburstBucketBasis
+  // Keep at most this many children per parent, largest first, bucketing the
+  // rest. Unlike `min_fraction` it guarantees a populated ring however the values
+  // are distributed. 0 (default) is unlimited. Applied with `min_fraction`: a
+  // child has to clear both to be kept.
+  max_children?: number
+  // Label for bucketed arcs, default 'Other'. A function is called once per
+  // bucket, so it can name what was folded away ('312 smaller jobs').
+  other_label?: string | ((bucket: OtherBucketInfo) => string)
+}
+
+// What a bucketed arc stands for, passed to a callable `other_label`.
+export interface OtherBucketInfo {
+  count: number // siblings folded in (always >= 2)
+  value: number // their summed value
+  depth: number // ring the bucket sits on
+  parent_label?: string // label of the parent whose children were folded
 }
 
 export interface SunburstLayoutResult<Metadata = Record<string, unknown>> {
@@ -132,6 +156,8 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     sort = `none`,
     level_lighten = 0,
     min_fraction = DEFAULTS.sunburst.min_fraction,
+    min_fraction_of = `total`,
+    max_children = 0,
     other_label = `Other`,
   } = opts
   // Fresh object each call (not a shared constant) so callers can't corrupt each other
@@ -178,18 +204,36 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     root.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
   }
 
-  // 'Other' bucketing: move sub-threshold children to the end of each sibling list
-  // (after sorting, before partition) so the smalls occupy one contiguous angular run
+  // 'Other' bucketing: move bucketed children to the end of each sibling list
+  // (after sorting, before partition) so they occupy one contiguous angular run
   // that flatten() below can merge into a single synthetic arc.
-  const bucket_threshold = min_fraction > 0 ? min_fraction * (root.value ?? 0) : 0
-  if (bucket_threshold > 0) {
+  //
+  // Which children those are is decided once, here, and read back during flatten.
+  // Re-deriving it there from a value threshold only worked while the rule was a
+  // pure comparison; `max_children` ranks siblings against each other, so the cut
+  // is no longer a property any single child carries.
+  const bucket_cut = new Map<HierarchyNode<SunburstNode<Metadata>>, number>()
+  if (min_fraction > 0 || max_children > 0) {
     root.each((node) => {
-      if (!node.children) return
-      const small = node.children.filter((child) => (child.value ?? 0) < bucket_threshold)
-      if (small.length >= 2) {
-        const kept = node.children.filter((child) => (child.value ?? 0) >= bucket_threshold)
-        node.children = [...kept, ...small]
-      }
+      const kids = node.children
+      if (!kids) return
+      const basis = min_fraction_of === `parent` ? (node.value ?? 0) : (root.value ?? 0)
+      const threshold = min_fraction > 0 ? min_fraction * basis : 0
+      // Ranked by value so `max_children` keeps the largest, while the children it
+      // keeps stay in the caller's own order.
+      const ranked = kids.toSorted((left, right) => (right.value ?? 0) - (left.value ?? 0))
+      const keep = new Set(
+        ranked
+          .filter((kid) => (kid.value ?? 0) >= threshold)
+          .slice(0, max_children > 0 ? max_children : undefined),
+      )
+      // A bucket of one is just that child under a worse name.
+      if (kids.length - keep.size < 2) return
+      node.children = [
+        ...kids.filter((kid) => keep.has(kid)),
+        ...kids.filter((kid) => !keep.has(kid)),
+      ]
+      bucket_cut.set(node, keep.size)
     })
   }
 
@@ -283,27 +327,34 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       metadata: node.data.metadata,
     })
 
-    // Children below the bucket threshold form a contiguous trailing run (reordered
-    // above); merge runs of >= 2 into one synthetic 'Other' leaf instead of recursing
+    // Bucketed children form a contiguous trailing run (reordered above); merge
+    // them into one synthetic 'Other' leaf instead of recursing
     const kids = node.children ?? []
-    let cut = kids.length
-    if (bucket_threshold > 0) {
-      const first_small = kids.findLastIndex((kid) => (kid.value ?? 0) >= bucket_threshold) + 1
-      if (kids.length - first_small >= 2) cut = first_small
-    }
+    const cut = bucket_cut.get(node) ?? kids.length
     kids.forEach((child, idx) => {
       if (idx < cut) flatten(child, arc, explicit ?? base, idx)
     })
     if (cut < kids.length) {
       const smalls = kids.slice(cut)
+      const bucket_value = smalls.reduce((sum, child) => sum + (child.value ?? 0), 0)
+      const label =
+        typeof other_label === `function`
+          ? other_label({
+              count: smalls.length,
+              value: bucket_value,
+              depth: depth + 1,
+              parent_label: arc.label,
+            })
+          : other_label
       push_arc(arc, {
-        id: `${arc.id !== `` ? `${arc.id}/` : ``}${other_label}`,
-        label: other_label,
-        value: smalls.reduce((sum, child) => sum + (child.value ?? 0), 0),
+        id: `${arc.id !== `` ? `${arc.id}/` : ``}${label}`,
+        label,
+        value: bucket_value,
         color: resolve_color(depth + 1, undefined, explicit ?? base).color,
         depth: depth + 1,
         is_leaf: true,
         is_other: true,
+        other_count: smalls.length,
         x0: smalls[0].x0,
         x1: smalls[smalls.length - 1].x1,
         y0: depth + 1,

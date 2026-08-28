@@ -31,7 +31,9 @@ import {
 } from '$lib/plot/core/utils/hierarchy-chart'
 import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
 import type {
+  OtherBucketInfo,
   PositionedArc,
+  SunburstBucketBasis,
   SunburstLabelText,
   SunburstLayoutOptions,
   SunburstNode,
@@ -56,7 +58,13 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   // Aggregate sibling nodes below this fraction of the total into one 'Other'
   // node per parent (only when >= 2 qualify); 0 disables
   min_fraction?: number
-  other_label?: string
+  // What `min_fraction` measures against: the root total (default) or each
+  // node's own parent, so one threshold means the same thing at every depth
+  min_fraction_of?: SunburstBucketBasis
+  // Cap on children kept per parent, largest first; 0 (default) is unlimited.
+  // Unlike `min_fraction` it guarantees a populated ring at any depth
+  max_children?: number
+  other_label?: string | ((bucket: OtherBucketInfo) => string)
   max_depth?: number // levels shown below the current zoom root (0 = all)
   show_labels?: boolean
   label_text?: SunburstLabelText // what labels display (plotly textinfo equivalent)
