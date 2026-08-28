@@ -665,6 +665,23 @@ describe(`MatterViz Extension`, () => {
     expect(html).toContain(`matterviz-app`)
   })
 
+  // Guards against the white-flash/wrong-theme regression: color-scheme must be set as a
+  // style attribute (outranks main-*.css's own color-scheme rule) before the CSS link.
+  test.each([
+    [`dark`, `dark`],
+    [`black`, `dark`],
+    [`light`, `light`],
+    [`white`, `light`],
+  ] as const)(`HTML declares color-scheme before CSS loads: theme=%s`, (theme, scheme) => {
+    const html = create_html(mock_webview, mock_context, {
+      data: { filename: `test.cif`, content: `content`, is_base64: false },
+      theme,
+    })
+    expect(html).toMatch(/^<!DOCTYPE html>\s*<html style="/)
+    expect(html).toContain(`color-scheme: ${scheme};`)
+    expect(html).toContain(`background-color: var(--vscode-editor-background, Canvas);`)
+  })
+
   // `error` stays a toast; `info` (one per successful render, so every auto-save) goes to the
   // MatterViz output channel instead of a notification
   test.each([

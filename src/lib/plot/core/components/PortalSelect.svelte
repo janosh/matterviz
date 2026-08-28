@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import { sanitize_html } from '$lib/sanitize'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import { click_outside, float, portal } from 'svelte-widgets/attachments'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
@@ -62,7 +63,8 @@
   // Arrow/Enter stay on window (focus may be on the trigger, outside the portalled list).
   // Escape is handled by click_outside({ escape: true }) below — not duplicated here.
   function handle_keydown(evt: KeyboardEvent) {
-    if (!dropdown_el) return
+    // Cmd/Ctrl+Arrow scrolls the page; the list only answers bare keys
+    if (!dropdown_el || is_modifier_chord(evt)) return
     const buttons = [...dropdown_el.querySelectorAll(`button`)]
     const idx = buttons.indexOf(document.activeElement as HTMLButtonElement)
     const len = buttons.length

@@ -289,24 +289,27 @@ test.describe(`Structure Component Tests`, () => {
     )
   })
 
-  test(`keyboard shortcuts require modifier keys`, async ({ page }) => {
+  test(`claims plain-letter view toggles and leaves their chords to the browser`, async ({
+    page,
+  }) => {
     const structure_div = page.locator(`#test-structure`)
     await structure_div.click()
+    // a handled key is the one the viewer preventDefaults
+    const handles = (init: Parameters<typeof dispatch_cancelable_keydown>[1]) =>
+      dispatch_cancelable_keydown(structure_div, init).then((not_prevented) => !not_prevented)
 
-    // single keys don't trigger actions: not fullscreen after 'f'
-    await page.keyboard.press(`f`)
-    await page.keyboard.press(`i`)
-    expect(await page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false)
-
-    for (const key of [`f`, `i`]) {
-      await expect(
-        dispatch_cancelable_keydown(structure_div, { key, [primary_modifier]: true }),
-      ).resolves.toBe(false)
+    // view toggles are plain letters; the same key as a chord is left to browser and host
+    for (const key of [`f`, `i`, `g`]) {
+      await expect(handles({ key }), `plain ${key}`).resolves.toBe(true)
+      await expect(handles({ key, [primary_modifier]: true }), `mod+${key}`).resolves.toBe(
+        false,
+      )
     }
 
     // The renderer remains mounted after the keyboard interactions. Do not assert on unrelated
     // page errors here: CI's SwiftShader adapter can report transient GPU allocation failures.
-    await expect(structure_div.locator(`canvas`)).toBeVisible()
+    // `g` left the viewer in the 2x2 grid, so there are four canvases by now.
+    await expect(structure_div.locator(`canvas`).first()).toBeVisible()
   })
 
   test(`dragging the canvas orbits the camera`, async ({ page }) => {
@@ -1217,18 +1220,30 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
   })
 
-  test(`Cmd/Ctrl+G toggles between grid and single view`, async ({ page }) => {
+  // A real click leaves the viewer focused *and* hovered, so the root handler and the
+  // window forwarder both see the key. Clicking first would double-toggle without a guard.
+  test(`g toggles once from a clicked viewer`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+    await structure_div.click()
+    await page.keyboard.press(`g`)
+    await expect(structure_div).toHaveClass(/multi-view/)
+  })
+
+  test(`g toggles between grid and single view`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const cells = structure_div.locator(`.viewport-cell`)
     await structure_div.focus() // viewer must be focused to receive the shortcut
     await expect(cells).toHaveCount(1)
 
-    const grid_shortcut = `${primary_modifier_key}+g`
-    await page.keyboard.press(grid_shortcut)
+    // the chord is the browser's; only the plain letter is ours
+    await page.keyboard.press(`${primary_modifier_key}+g`)
+    await expect(structure_div).not.toHaveClass(/multi-view/)
+
+    await page.keyboard.press(`g`)
     await expect(structure_div).toHaveClass(/multi-view/)
     await expect(cells).toHaveCount(4)
 
-    await page.keyboard.press(grid_shortcut)
+    await page.keyboard.press(`g`)
     await expect(structure_div).not.toHaveClass(/multi-view/)
     await expect(cells).toHaveCount(1)
   })

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { clamp } from '$lib/math'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
 
   type Orientation = `horizontal` | `vertical`
   const min_ratio = 0.15
@@ -149,6 +150,7 @@
     const [decrease_key, increase_key] =
       orientation === `horizontal` ? horizontal_keys : [`ArrowUp`, `ArrowDown`]
     if (event.key !== decrease_key && event.key !== increase_key) return
+    if (is_modifier_chord(event)) return // Cmd/Ctrl+Arrow scrolls the page
     event.preventDefault()
     const direction = event.key === decrease_key ? -1 : 1
     if (px_mode) {

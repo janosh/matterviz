@@ -1003,3 +1003,44 @@ describe(`virtualized keyboard navigation`, () => {
     expect(Number(focused?.dataset?.[fixed_axis])).toBe(fixed)
   })
 })
+
+// `e` downloads a file, so it must reach neither a chord nor a typed character
+test.each([
+  [`plain e exports`, { key: `e` }, undefined, 1],
+  [`Cmd+E is the browser's`, { key: `e`, metaKey: true }, undefined, 0],
+  [`Ctrl+E is the browser's`, { key: `e`, ctrlKey: true }, undefined, 0],
+  [`typing e in an input never exports`, { key: `e` }, `input`, 0],
+  [`a held e does not re-download`, { key: `e`, repeat: true }, undefined, 0],
+])(`%s`, async (_name, init, target_tag, calls) => {
+  const on_export = vi.fn()
+  mount_matrix({ on_export, export_formats: [`csv`] })
+  await tick()
+  const grid = doc_query(`.grid`)
+  const input = document.createElement(`input`)
+  if (target_tag) grid.append(input)
+  const target = target_tag ? input : grid
+  target.dispatchEvent(new KeyboardEvent(`keydown`, { ...init, bubbles: true }))
+  await tick()
+  expect(on_export).toHaveBeenCalledTimes(calls)
+})
+
+// Cmd/Ctrl+Arrow is the browser's (scroll to end); only bare arrows walk cells
+test.each([
+  [`bare ArrowRight walks a cell`, {}, true],
+  [`Cmd+ArrowRight is the browser's`, { metaKey: true }, false],
+  [`Ctrl+ArrowRight is the browser's`, { ctrlKey: true }, false],
+])(`%s`, async (_name, modifiers, expect_handled) => {
+  mount_matrix()
+  await tick()
+  const cell = doc_query(`.grid [data-x="0"][data-y="0"]`)
+  cell.focus()
+  const event = new KeyboardEvent(`keydown`, {
+    key: `ArrowRight`,
+    bubbles: true,
+    cancelable: true,
+  })
+  Object.assign(event, modifiers)
+  doc_query(`.grid`).dispatchEvent(event)
+  await tick()
+  expect(event.defaultPrevented).toBe(expect_handled)
+})

@@ -10,7 +10,9 @@
   import { array_extent, compute_bounding_box_2d, polygon_centroid } from '$lib/math'
   import { type AxisConfig, PlotTooltip } from '$lib/plot'
   import { unique_id } from '$lib/plot/core/utils'
-  import { to_error } from '$lib/utils'
+  import { handle_and_prevent, to_error } from '$lib/utils'
+  import { forward_window_keydown } from 'svelte-widgets/attachments'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -384,13 +386,23 @@
     clear_hover()
   }
 
-  function handle_doc_keydown(event: KeyboardEvent) {
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === `E`) {
-      event.preventDefault()
+  // Plain letters like every other viewer, scoped to this one rather than the whole
+  // document, which is what forced a chord here before. Bound twice: on the root for keys
+  // from a focused descendant (clicking a region focuses the SVG, and the window forwarder
+  // ignores those), and on the window for the hover-without-focus case. The root fires
+  // first and prevents the default, so the forwarder's pass is a no-op.
+  function handle_keydown(event: KeyboardEvent): boolean {
+    if (event.defaultPrevented) return false
+    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return false
+    if (event.key === `e` && !event.repeat) {
       export_pane_open = !export_pane_open
-    } else if (event.key === `Escape` && locked_hover_info) {
-      locked_hover_info = null
+      return true
     }
+    if (event.key === `Escape` && locked_hover_info) {
+      locked_hover_info = null
+      return true
+    }
+    return false
   }
 
   function handle_svg_keydown(event: KeyboardEvent) {
@@ -434,12 +446,12 @@
   {/each}
 {/snippet}
 
-<svelte:document onkeydown={handle_doc_keydown} />
-
 <div
   {...rest}
   class={[`binary-phase-diagram`, rest.class, { fullscreen }]}
   bind:this={wrapper}
+  onkeydown={handle_and_prevent(handle_keydown)}
+  {@attach forward_window_keydown({ handle: handle_keydown })}
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"
@@ -521,7 +533,7 @@
         ? `crosshair`
         : `default`}; touch-action: none"
       role="application"
-      aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl/Cmd+Shift+E to export."
+      aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press E to export."
     >
       <!-- Gradient definitions for multi-phase regions (2+ phases) -->
       <defs>

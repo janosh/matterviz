@@ -5,7 +5,13 @@ import { reciprocal_lattice } from '$lib/math'
 import type * as symmetry from '$lib/symmetry'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { create_drop_event, cubic_matrix, make_crystal, type SimpleSite } from '../setup'
+import {
+  create_drop_event,
+  cubic_matrix,
+  doc_query,
+  make_crystal,
+  type SimpleSite,
+} from '../setup'
 
 // The IBZ needs moyo's point group; stand in for the WASM analysis so a test can make it fail
 const analyze_structure_symmetry = vi.hoisted(() => vi.fn())
@@ -363,4 +369,17 @@ test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, a
 
   props.show_ibz = false
   await vi.waitFor(() => expect(viewer?.querySelector(`.status-message`)).toBeNull())
+})
+
+// Wiring check that a real viewer picks up the shared shortcut; the full key contract
+// (chords, repeats, nesting) is covered in layout/FullscreenButton.test
+test(`hovering the zone and pressing f fullscreens it`, async () => {
+  const props = $state({ structure: cubic, fullscreen: false })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await tick()
+  const zone = doc_query(`.brillouin-zone`)
+  zone.dispatchEvent(new PointerEvent(`pointerenter`))
+  globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
+  await tick()
+  expect(props.fullscreen).toBe(true)
 })

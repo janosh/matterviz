@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { Filter } from 'svelte-widgets/icons'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
@@ -1381,10 +1381,11 @@
   role="application"
   tabindex="0"
   onkeydown={(event) => {
-    if (is_editable_event_target(event.target)) return
+    // `f` is owned by FullscreenButton; chords stay the browser's (Cmd/Ctrl+F = find)
+    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
+    if (event.repeat) return // holding `c` would spin through color modes
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
-    else if (event.key === `f`) fullscreen = !fullscreen
   }}
   onpointerdown={(event) => {
     const target = event.target

@@ -7,6 +7,7 @@
 
 import type { D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
+import { is_modifier_chord } from 'svelte-widgets/utils'
 import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
 import { closest_data_idx, is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
 import type { Sides } from '$lib/plot/core/layout'
@@ -377,6 +378,7 @@ export class HierarchyChartState<
   // lives in hierarchy-chart.ts (arrow_nav_target); this supplies the event's
   // node and the chart's current screen-space visibility.
   handle_keydown = (event: KeyboardEvent): void => {
+    if (is_modifier_chord(event)) return // Cmd/Ctrl+Arrow scrolls the page
     const current_idx = this.#node_idx_from_event(event)
     const navigation_target =
       current_idx == null

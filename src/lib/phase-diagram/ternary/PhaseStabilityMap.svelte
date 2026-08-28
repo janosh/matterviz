@@ -6,6 +6,7 @@
   import { add_alpha, get_d3_interpolator } from '$lib/colors'
   import { get_formula_label_segments } from '$lib/composition/format'
   import { clamp } from '$lib/math'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import { clamp01 } from '$lib/utils'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -313,7 +314,7 @@
     onkeydown={(event) => {
       // Plain arrows step here; shift+arrows bubble to a host that jumps between transitions
       const dir = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: 1, ArrowDown: -1 }[event.key]
-      if (!dir || event.shiftKey) return
+      if (!dir || event.shiftKey || is_modifier_chord(event)) return
       temperature = Math.min(
         t_max,
         Math.max(t_min, temperature + (dir * (t_max - t_min)) / 100),

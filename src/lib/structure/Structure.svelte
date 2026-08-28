@@ -607,6 +607,10 @@
   // === keyboard ===
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
+    // Bound on the root and on the window: a click leaves the viewer focused *and*
+    // hovered, so both would run and a toggle would cancel itself out. The root fires
+    // first and prevents the default, which makes the window pass a no-op.
+    if (event.defaultPrevented) return false
     const is_input_focused = is_editable_event_target(event.target)
     // Escape leaves add-atom mode even from its element input
     if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {
@@ -617,6 +621,8 @@
     const key = event.key.toLowerCase()
     const has_modifier = event.ctrlKey || event.metaKey
     const plain = !has_modifier && !event.altKey
+    // autorepeat must not flip a toggle over and over while a key is held down
+    const plain_press = plain && !event.repeat
     const is_undo = has_modifier && key === `z` && !event.shiftKey
     const is_redo = has_modifier && (key === `y` || (key === `z` && event.shiftKey))
     const editing_bonds = measure_mode === `edit-bonds`
@@ -641,11 +647,11 @@
     }
     if (editing_atoms) {
       if (event.key === `Delete` || event.key === `Backspace`) return session.delete_selected()
-      if (key === `a` && plain) {
+      if (key === `a` && plain_press) {
         session.add_atom_mode = !session.add_atom_mode
         return true
       }
-      if (key === `e` && plain && selected_sites.length > 0) {
+      if (key === `e` && plain_press && selected_sites.length > 0) {
         session.change_element_mode = !session.change_element_mode
         return true
       }
@@ -668,23 +674,16 @@
       session.reset_all_cameras()
       return true
     }
-    // Interface shortcuts need Ctrl/Cmd so typing cannot trigger them
-    if (event.key === `f` && has_modifier && fullscreen_toggle) {
-      fullscreen = !fullscreen
-      return true
-    }
-    if (
-      event.key === `i` &&
-      has_modifier &&
-      display_mode === `structure` &&
-      enable_info_pane
-    ) {
+    // View toggles are plain letters everywhere; typing is already excluded by the editable
+    // guard above. `f` is owned by FullscreenButton, which arbitrates it between nested
+    // viewers. Chords stay the browser's and the host's.
+    if (key === `i` && plain_press && display_mode === `structure` && enable_info_pane) {
       set_pane_open(`info`, !is_pane_open(`info`))
       return true
     }
     if (
-      event.key === `g` &&
-      has_modifier &&
+      key === `g` &&
+      plain_press &&
       display_mode === `structure` &&
       controls_config.visible(`multi-view`) &&
       (multi_view_available || multi_view)
@@ -775,8 +774,8 @@
               <button
                 type="button"
                 class={['view-mode-option', { selected: current_layout.mode === mode }]}
-                title={mode === `multi` ? `${label} (Cmd/Ctrl+G)` : label}
-                aria-keyshortcuts={mode === `multi` ? `Control+G Meta+G` : undefined}
+                title={mode === `multi` ? `${label} (G)` : label}
+                aria-keyshortcuts={mode === `multi` ? `G` : undefined}
                 aria-pressed={current_layout.mode === mode}
                 onclick={() => select_structure_layout(mode)}
               >

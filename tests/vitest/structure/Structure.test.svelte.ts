@@ -505,7 +505,7 @@ describe(`Structure`, () => {
 
     await assertHoverScopedShortcut({
       viewer: doc_query(`.structure`),
-      fire: () => press_window_key({ key: `i`, ctrlKey: true }),
+      fire: () => press_window_key({ key: `i` }),
       read_state: () => state.active_pane === `info`,
     })
   })
@@ -524,7 +524,7 @@ describe(`Structure`, () => {
     doc_query(`.structure`).dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
     // hovered (not focused) + edit mode → window forwarder ignores the key
-    press_window_key({ key: `i`, ctrlKey: true })
+    press_window_key({ key: `i` })
     expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
   })
 
@@ -1426,7 +1426,7 @@ describe(`Multi-side view`, () => {
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
     doc_query(`.structure`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `g`, ctrlKey: true, bubbles: true }),
+      new KeyboardEvent(`keydown`, { key: `g`, bubbles: true }),
     )
     await tick()
     expect(state.multi_view).toBe(false)

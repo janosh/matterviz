@@ -672,3 +672,31 @@ describe(`StructureCarousel`, () => {
     }
   })
 })
+
+// The resize handle owns bare arrows; Cmd/Ctrl/Alt+Arrow belongs to the page (scroll to end)
+test.each([
+  [`bare ArrowDown resizes`, {}, true],
+  [`Cmd+ArrowDown is the browser's`, { metaKey: true }, false],
+  [`Ctrl+ArrowDown is the browser's`, { ctrlKey: true }, false],
+  [`Alt+ArrowDown is the browser's`, { altKey: true }, false],
+])(`%s`, (_name, modifiers, expect_handled) => {
+  mount_carousel({
+    items,
+    resizable: true,
+    layout: `horizontal`,
+    height: 210,
+    min_card_width: 180,
+  })
+  const handle = doc_query(`.structure-carousel-resize-handle.horizontal`)
+  const before = doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
+  const event = new KeyboardEvent(`keydown`, {
+    key: `ArrowDown`,
+    bubbles: true,
+    cancelable: true,
+    ...modifiers,
+  })
+  handle.dispatchEvent(event)
+  flushSync()
+  const after = doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
+  expect([event.defaultPrevented, after !== before]).toEqual([expect_handled, expect_handled])
+})

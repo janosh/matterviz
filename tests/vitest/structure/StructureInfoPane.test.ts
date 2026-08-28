@@ -130,11 +130,11 @@ describe(`StructureInfoPane`, () => {
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(n_cards)
   })
 
-  // Tips stay in the DOM even when closed; must match Structure.svelte Ctrl/Cmd handlers.
-  test(`Keyboard tip documents Ctrl/Cmd for f/i and plain r`, () => {
+  // Tips stay in the DOM even when closed; must match Structure.svelte's plain-letter handlers.
+  test(`Keyboard tip documents the plain-letter shortcuts`, () => {
     mount_info_pane({ structure: get_dummy_structure(`H`, 1, true), pane_open: false })
     expect(document.body.textContent).toContain(
-      `Press Ctrl/Cmd+f for fullscreen, Ctrl/Cmd+i to toggle this pane, r to reset the view`,
+      `Press f for fullscreen, i to toggle this pane, g for multi-view, r to reset the view`,
     )
     expect(document.querySelector(`.structure-info-toggle path`)?.getAttribute(`d`)).toBe(
       info_pane_icon.d,

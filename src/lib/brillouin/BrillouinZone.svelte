@@ -31,7 +31,7 @@
   } from './compute'
   import { clamp, reciprocal_lattice } from '$lib/math'
   import { to_error } from '$lib/utils'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
@@ -249,10 +249,11 @@
   })
 
   function onkeydown(event: KeyboardEvent) {
-    if (is_editable_event_target(event.target)) return
+    // `f` is owned by FullscreenButton; chords stay the browser's (Cmd/Ctrl+F = find)
+    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
+    if (event.repeat) return // holding `i` would flicker the pane
 
-    if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
-    else if (event.key === `i`) info_pane_open = !info_pane_open
+    if (event.key === `i`) info_pane_open = !info_pane_open
     else if (event.key === `Escape`) {
       if (info_pane_open) info_pane_open = false
       else controls_open = false

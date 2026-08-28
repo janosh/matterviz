@@ -385,20 +385,22 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(tooltip).not.toHaveClass(/locked/)
   })
 
-  for (const modifier of [`Control`, `Meta`]) {
-    test(`${modifier}+Shift+E toggles export pane`, async ({ page }) => {
-      const { diagram } = get_diagram_elements(page)
-      const pane = diagram.locator(`.export-pane`)
+  test(`e toggles the export pane, its chords stay the browser's`, async ({ page }) => {
+    const { diagram } = get_diagram_elements(page)
+    const pane = diagram.locator(`.export-pane`)
+    await expect(pane).toBeHidden()
+    await diagram.hover() // the shortcut follows the pointer
 
-      await expect(pane).toBeHidden()
+    for (const chord of [`Control+Shift+E`, `Meta+Shift+E`, `Control+E`, `Meta+E`]) {
+      await page.keyboard.press(chord)
+      await expect(pane, chord).toBeHidden()
+    }
 
-      await page.keyboard.press(`${modifier}+Shift+E`)
-      await expect(pane).toBeVisible()
-
-      await page.keyboard.press(`${modifier}+Shift+E`)
-      await expect(pane).toBeHidden()
-    })
-  }
+    await page.keyboard.press(`e`)
+    await expect(pane).toBeVisible()
+    await page.keyboard.press(`e`)
+    await expect(pane).toBeHidden()
+  })
 
   test(`special points have labels and correct styling`, async ({ page }) => {
     const { svg } = get_diagram_elements(page)

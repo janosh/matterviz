@@ -564,6 +564,10 @@
   // === keyboard ===
   // Returns true if the key was handled, so the caller can suppress the browser default
   function onkeydown(event: KeyboardEvent): boolean {
+    // Bound on the root and on the window: a click leaves the viewer focused *and*
+    // hovered, so both would run and a toggle would cancel itself out. The root fires
+    // first and prevents the default, which makes the window pass a no-op.
+    if (event.defaultPrevented) return false
     // Leave form fields alone; sequence controls handle their own navigation keys and let
     // the viewer shortcuts they do not use bubble here
     const target = event.target instanceof HTMLElement ? event.target : null
@@ -577,14 +581,12 @@
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
-    if (key === `f` && fullscreen_toggle) {
-      if (!event.repeat) fullscreen = !fullscreen
-      return true
-    }
-    // 'i' is handled by the TrajectoryInfoPane's own toggle, Escape on panes by ViewerPane
+    // `f` is owned by FullscreenButton; panes dismiss themselves via ViewerPane. Escape
+    // leaves fullscreen to the browser, which exits on its own and lets the flag follow
+    // fullscreenchange — exiting here would steal it from a host that owns it (a slide
+    // deck embedding the viewer) and swallow the key.
     if (key !== `Escape`) return false
-    if (document.fullscreenElement) document.exitFullscreen()
-    else if (view_mode_dropdown_open) view_mode_dropdown_open = false
+    if (view_mode_dropdown_open) view_mode_dropdown_open = false
     else if (analysis_menu_open) analysis_menu_open = false
     else return false
     return true

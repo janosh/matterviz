@@ -289,8 +289,8 @@
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return
 
-    if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
-    else if (event.key === `Escape`) controls_open = false
+    // `f` is owned by FullscreenButton, which arbitrates it between nested viewers
+    if (event.key === `Escape`) controls_open = false
   }
 </script>
 
