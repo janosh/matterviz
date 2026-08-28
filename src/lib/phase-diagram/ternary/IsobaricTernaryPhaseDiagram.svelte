@@ -21,6 +21,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { create_renderer, webgpu_available } from '$lib/scene'
   import { to_error } from '$lib/utils'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import { onMount, untrack } from 'svelte'
@@ -282,6 +283,8 @@
   function handle_keydown(event: KeyboardEvent): void {
     // Focused controls keep their own keys (space activates a button, arrows move a slider)
     if ((event.target as Element).closest(`button, input, textarea, select`)) return
+    // Shift+arrow jumps between transitions; Cmd/Ctrl/Alt chords stay the browser's
+    if (is_modifier_chord(event)) return
     const dir = { ArrowRight: 1, ArrowLeft: -1 }[event.key]
     if (dir) {
       const target = dir > 0 ? next_event : prev_event

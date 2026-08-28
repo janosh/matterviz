@@ -685,9 +685,10 @@
     ArrowUp: [0, -1],
   }
   function handle_keydown(event: KeyboardEvent): void {
-    // `e` downloads a file, so typing must never reach it. Chords stay the browser's.
-    if (is_editable_event_target(event.target)) return
-    if (event.key.toLowerCase() === `e` && !is_modifier_chord(event)) {
+    // `e` downloads a file, so typing must never reach it. Chords stay the browser's:
+    // guarded up front, or Cmd+Arrow would move a cell instead of scrolling the page.
+    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
+    if (event.key.toLowerCase() === `e`) {
       const format = export_formats[0]
       if (format && on_export) on_export(format, build_export_payload(format))
       return

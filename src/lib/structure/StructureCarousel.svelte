@@ -1,5 +1,6 @@
 <script lang="ts">
   import { clamp } from '$lib/math'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import type { StructureCarouselItem } from '$lib/structure'
   import GlassChip from '$lib/overlays/GlassChip.svelte'
   import { portal } from 'svelte-widgets/attachments'
@@ -301,7 +302,7 @@
   // (e.g. the info pane's site table) and must not be hijacked. Boundary no-ops
   // fall through to the page, matching the wheel handler.
   const on_track_keydown = (event: KeyboardEvent): void => {
-    if (!track || event.target !== track) return
+    if (!track || event.target !== track || is_modifier_chord(event)) return
     const [back_key, fwd_key] = is_horizontal
       ? [`ArrowLeft`, `ArrowRight`]
       : [`ArrowUp`, `ArrowDown`]

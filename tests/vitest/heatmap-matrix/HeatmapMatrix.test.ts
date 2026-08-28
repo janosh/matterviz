@@ -1022,3 +1022,24 @@ test.each([
   await tick()
   expect(on_export).toHaveBeenCalledTimes(calls)
 })
+
+// Cmd/Ctrl+Arrow is the browser's (scroll to end); only bare arrows walk cells
+test.each([
+  [`bare ArrowRight walks a cell`, {}, true],
+  [`Cmd+ArrowRight is the browser's`, { metaKey: true }, false],
+  [`Ctrl+ArrowRight is the browser's`, { ctrlKey: true }, false],
+])(`%s`, async (_name, modifiers, expect_handled) => {
+  mount_matrix()
+  await tick()
+  const cell = doc_query(`.grid [data-x="0"][data-y="0"]`)
+  cell.focus()
+  const event = new KeyboardEvent(`keydown`, {
+    key: `ArrowRight`,
+    bubbles: true,
+    cancelable: true,
+  })
+  Object.assign(event, modifiers)
+  doc_query(`.grid`).dispatchEvent(event)
+  await tick()
+  expect(event.defaultPrevented).toBe(expect_handled)
+})

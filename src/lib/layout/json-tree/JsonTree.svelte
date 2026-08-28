@@ -11,6 +11,7 @@
     Search,
   } from 'svelte-widgets/icons'
   import { download } from '$lib/io/fetch'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import { make_change_detector } from '$lib/utils'
   import { tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-widgets/attachments'
@@ -384,7 +385,7 @@
     }
     // Any arrow key focuses the first node (index -1 clamps to 0); afterwards Up/Down step
     // (clamped) and Left/Right are left to the focused node's own fold/unfold handler
-    if (!ARROW_KEYS.has(event.key)) return
+    if (!ARROW_KEYS.has(event.key) || is_modifier_chord(event)) return
     const paths = rendered_paths()
     const current_index = focused_path === null ? -1 : paths.indexOf(focused_path)
     const step = event.key === `ArrowDown` ? 1 : event.key === `ArrowUp` ? -1 : 0

@@ -99,7 +99,7 @@
     } else if (event.key === `c` && plain_key) {
       event.preventDefault()
       copy(`${card.title}: ${site_summary(card)}`, `site-${card.idx}-summary`)
-    } else if ([`ArrowDown`, `ArrowUp`].includes(event.key)) {
+    } else if (plain_key && [`ArrowDown`, `ArrowUp`].includes(event.key)) {
       event.preventDefault()
       const current_card = event.currentTarget
       if (!(current_card instanceof HTMLElement)) return

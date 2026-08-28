@@ -491,6 +491,27 @@ describe(`convex hull replacement state`, () => {
     await let_frames_run()
     expect(clears.base).toBeGreaterThan(before)
   })
+
+  // Enter selects the hovered entry, but the chord belongs to the browser (Cmd+Enter is
+  // open-in-new-tab). The chord guard has to run before the Enter branch, not after it.
+  test.each([
+    [`Enter selects the hovered entry`, {}, `old-compound`],
+    [`Cmd+Enter is left to the browser`, { metaKey: true }, `none`],
+    [`Ctrl+Enter is left to the browser`, { ctrlKey: true }, `none`],
+  ])(`%s`, async (_name, modifiers, expected) => {
+    await mount_harness({ dim: `3d` })
+    const canvas = doc_query<HTMLCanvasElement>(`canvas`)
+    canvas.dispatchEvent(
+      new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
+    )
+    flushSync()
+
+    canvas.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true, ...modifiers }),
+    )
+    await tick()
+    expect(doc_query(`[data-testid="selected-entry"]`).textContent).toBe(expected)
+  })
 })
 
 // End-to-end: magnetic_ordering -> pipeline marker assignment -> 2D SVG symbol rendering,

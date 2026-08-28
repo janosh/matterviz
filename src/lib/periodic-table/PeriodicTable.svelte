@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import {
     is_color,
     is_dark_mode,
@@ -210,7 +211,8 @@
     on_table_keydown?.(event)
     if (disabled || event.defaultPrevented) return
     const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
-    if (!arrow_keys.includes(event.key)) return
+    // Cmd/Ctrl+Arrow scrolls the page; only bare arrows walk tiles
+    if (!arrow_keys.includes(event.key) || is_modifier_chord(event)) return
 
     const event_target = event.target
     const tile =

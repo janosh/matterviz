@@ -131,7 +131,9 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    if (is_editable_event_target(event.target)) return
+    // Chords stay the browser's and the host's, Cmd+Enter and Cmd/Ctrl+S/R/B/L/U alike.
+    // Guarded up front like the other viewers, so no branch below can claim one first.
+    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
 
     let handled = true
     if (event.key === `Escape`) {
@@ -142,8 +144,6 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
       if (entry) select_entry(entry)
       else if (modal_open) close_structure_popup()
       else handled = false
-    } else if (is_modifier_chord(event)) {
-      handled = false // Cmd+S/R/B/L/U and friends stay the browser's
     } else {
       const action = inputs.actions()[event.key.toLowerCase()]
       if (action) action()
