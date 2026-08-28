@@ -73,4 +73,21 @@ describe(`FullscreenButton`, () => {
     expect(state.fullscreen).toBe(false)
     expect(on_change.mock.calls).toEqual([[true], [false]])
   })
+
+  test(`preserves fullscreen owned by a parent when mounted`, async () => {
+    const parent = document.createElement(`div`)
+    const wrapper = document.createElement(`div`)
+    parent.append(wrapper)
+    document.body.append(parent)
+    await parent.requestFullscreen()
+    const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
+
+    const { state, on_change } = mount_button(wrapper)
+    await tick()
+
+    expect(document.fullscreenElement).toBe(parent)
+    expect(exit_fullscreen).not.toHaveBeenCalled()
+    expect(state.fullscreen).toBe(false)
+    expect(on_change).not.toHaveBeenCalled()
+  })
 })
