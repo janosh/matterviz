@@ -308,7 +308,8 @@ test.describe(`Structure Component Tests`, () => {
 
     // The renderer remains mounted after the keyboard interactions. Do not assert on unrelated
     // page errors here: CI's SwiftShader adapter can report transient GPU allocation failures.
-    await expect(structure_div.locator(`canvas`)).toBeVisible()
+    // `g` left the viewer in the 2x2 grid, so there are four canvases by now.
+    await expect(structure_div.locator(`canvas`).first()).toBeVisible()
   })
 
   test(`dragging the canvas orbits the camera`, async ({ page }) => {
@@ -1217,6 +1218,15 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     expect(await receives_pointer_at_center(element_badge)).toBe(true)
     await cell_toggle.click()
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
+  })
+
+  // A real click leaves the viewer focused *and* hovered, so the root handler and the
+  // window forwarder both see the key. Clicking first would double-toggle without a guard.
+  test(`g toggles once from a clicked viewer`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+    await structure_div.click()
+    await page.keyboard.press(`g`)
+    await expect(structure_div).toHaveClass(/multi-view/)
   })
 
   test(`g toggles between grid and single view`, async ({ page }) => {

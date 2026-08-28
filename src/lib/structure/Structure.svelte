@@ -607,6 +607,10 @@
   // === keyboard ===
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
+    // Bound on the root and on the window: a click leaves the viewer focused *and*
+    // hovered, so both would run and a toggle would cancel itself out. The root fires
+    // first and prevents the default, which makes the window pass a no-op.
+    if (event.defaultPrevented) return false
     const is_input_focused = is_editable_event_target(event.target)
     // Escape leaves add-atom mode even from its element input
     if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {

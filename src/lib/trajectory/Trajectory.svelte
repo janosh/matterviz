@@ -564,6 +564,10 @@
   // === keyboard ===
   // Returns true if the key was handled, so the caller can suppress the browser default
   function onkeydown(event: KeyboardEvent): boolean {
+    // Bound on the root and on the window: a click leaves the viewer focused *and*
+    // hovered, so both would run and a toggle would cancel itself out. The root fires
+    // first and prevents the default, which makes the window pass a no-op.
+    if (event.defaultPrevented) return false
     // Leave form fields alone; sequence controls handle their own navigation keys and let
     // the viewer shortcuts they do not use bubble here
     const target = event.target instanceof HTMLElement ? event.target : null
