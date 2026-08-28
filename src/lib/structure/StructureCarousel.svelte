@@ -360,6 +360,7 @@
       ? [`ArrowDown`, `ArrowUp`]
       : [`ArrowRight`, `ArrowLeft`]
     if (event.key !== grow && event.key !== shrink) return
+    if (is_modifier_chord(event)) return // Cmd/Ctrl+Arrow scrolls the page
     event.preventDefault()
     const step = event.key === grow ? keyboard_resize_step_px : -keyboard_resize_step_px
     if (is_horizontal) set_resized_size(`height`, effective_height + step)
