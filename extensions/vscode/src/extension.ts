@@ -297,9 +297,14 @@ export const create_html = (
   const moyo_wasm_url = wasm_filename && dist_uri(`assets`, wasm_filename)
 
   const webview_data = { ...data, moyo_wasm_url }
+  // Set color-scheme before main-*.css loads, or its light-dark() tokens flash white/light
+  // until JS applies the theme. Must be a style attribute, not a <style> rule: it needs to
+  // outrank main-*.css's own same-specificity `:root, :host { color-scheme: light dark }`.
+  const color_scheme = data.theme === `dark` || data.theme === `black` ? `dark` : `light`
+  const root_style = `color-scheme: ${color_scheme}; background-color: var(--vscode-editor-background, Canvas);`
 
   return `<!DOCTYPE html>
-<html>
+<html style="${root_style}">
   <head>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' 'wasm-unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

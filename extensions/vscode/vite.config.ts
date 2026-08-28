@@ -38,6 +38,11 @@ export default defineConfig(({ mode }) => ({
     },
     emptyOutDir: false,
     chunkSizeWarningLimit: 6000,
+    // Without this, LightningCSS downlevels light-dark() into an OS-prefers-color-scheme
+    // polyfill, ignoring the color-scheme the webview sets from VS Code's theme. VS Code's
+    // Electron/Chromium supports light-dark() natively, so esnext is safe (matches the root
+    // build's `svelte-widgets/vite-config` cssTarget).
+    cssTarget: `esnext`,
   },
   resolve: { alias: lib_aliases },
 }))
