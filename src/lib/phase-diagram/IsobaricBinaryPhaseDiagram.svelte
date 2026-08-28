@@ -11,6 +11,8 @@
   import { type AxisConfig, PlotTooltip } from '$lib/plot'
   import { unique_id } from '$lib/plot/core/utils'
   import { to_error } from '$lib/utils'
+  import { forward_window_keydown } from 'svelte-widgets/attachments'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -384,13 +386,19 @@
     clear_hover()
   }
 
-  function handle_doc_keydown(event: KeyboardEvent) {
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === `E`) {
-      event.preventDefault()
+  // Plain letters like every other viewer, scoped to this one by the hover/focus forwarder
+  // below rather than the whole document, which is what forced a chord here before.
+  function handle_keydown(event: KeyboardEvent): boolean {
+    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return false
+    if (event.key === `e`) {
       export_pane_open = !export_pane_open
-    } else if (event.key === `Escape` && locked_hover_info) {
-      locked_hover_info = null
+      return true
     }
+    if (event.key === `Escape` && locked_hover_info) {
+      locked_hover_info = null
+      return true
+    }
+    return false
   }
 
   function handle_svg_keydown(event: KeyboardEvent) {
@@ -434,12 +442,11 @@
   {/each}
 {/snippet}
 
-<svelte:document onkeydown={handle_doc_keydown} />
-
 <div
   {...rest}
   class={[`binary-phase-diagram`, rest.class, { fullscreen }]}
   bind:this={wrapper}
+  {@attach forward_window_keydown({ handle: handle_keydown })}
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"

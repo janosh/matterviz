@@ -10,7 +10,7 @@ import { open_material } from '$lib/file-viewer/open'
 import { raw_file_drop_zone } from '$lib/io'
 import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import { is_editable_event_target } from 'svelte-widgets/utils'
+import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
 import { createAttachmentKey } from 'svelte/attachments'
 import * as draw from './canvas-draw'
 import {
@@ -132,17 +132,26 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
 
   const handle_keydown = (event: KeyboardEvent) => {
     if (is_editable_event_target(event.target)) return
-    // A canvas-originated keydown bubbles to the wrapper (both listen); handle it once
-    if (event.target !== inputs.wrapper()) event.stopPropagation()
 
-    if (event.key === `Escape` && modal_open) return close_structure_popup()
-    if (event.key === `Enter`) {
+    let handled = true
+    if (event.key === `Escape`) {
+      if (modal_open) close_structure_popup()
+      else handled = false
+    } else if (event.key === `Enter`) {
       const entry = hover_data?.entry
       if (entry) select_entry(entry)
       else if (modal_open) close_structure_popup()
-      return
+      else handled = false
+    } else if (is_modifier_chord(event)) {
+      handled = false // Cmd+S/R/B/L/U and friends stay the browser's
+    } else {
+      const action = inputs.actions()[event.key.toLowerCase()]
+      if (action) action()
+      else handled = false
     }
-    inputs.actions()[event.key.toLowerCase()]?.()
+    // A canvas-originated keydown bubbles to the wrapper (both listen); swallow it once we
+    // handled it so it runs once, but let keys we ignore through to the host
+    if (handled && event.target !== inputs.wrapper()) event.stopPropagation()
   }
 
   const drop_zone = {

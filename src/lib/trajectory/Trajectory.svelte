@@ -577,14 +577,12 @@
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
-    if (key === `f` && fullscreen_toggle) {
-      if (!event.repeat) fullscreen = !fullscreen
-      return true
-    }
-    // 'i' is handled by the TrajectoryInfoPane's own toggle, Escape on panes by ViewerPane
+    // `f` is owned by FullscreenButton; panes dismiss themselves via ViewerPane. Escape
+    // leaves fullscreen to the browser, which exits on its own and lets the flag follow
+    // fullscreenchange — exiting here would steal it from a host that owns it (a slide
+    // deck embedding the viewer) and swallow the key.
     if (key !== `Escape`) return false
-    if (document.fullscreenElement) document.exitFullscreen()
-    else if (view_mode_dropdown_open) view_mode_dropdown_open = false
+    if (view_mode_dropdown_open) view_mode_dropdown_open = false
     else if (analysis_menu_open) analysis_menu_open = false
     else return false
     return true

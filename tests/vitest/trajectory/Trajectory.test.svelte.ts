@@ -602,6 +602,26 @@ describe(`events`, () => {
     expect(document.fullscreenElement).toBe(doc_query(`.trajectory`))
   })
 
+  test(`Escape closes the open menu and leaves parent-owned fullscreen alone`, async () => {
+    const target = mount_trajectory(default_props())
+    await tick()
+    // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it
+    await target.requestFullscreen()
+    const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
+    const toggle = doc_query<HTMLButtonElement>(`${CONTROLS} .analysis-button`)
+    toggle.click()
+    await tick()
+    expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
+
+    doc_query(`.trajectory`).dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
+    )
+    await tick()
+    expect(exit_fullscreen).not.toHaveBeenCalled()
+    expect(document.fullscreenElement).toBe(target)
+    expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
+  })
+
   test(`on_controller hands out the controller and nulls it on unmount`, async () => {
     const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
     const target = document.createElement(`div`)

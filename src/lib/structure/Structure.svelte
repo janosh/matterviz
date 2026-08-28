@@ -668,23 +668,16 @@
       session.reset_all_cameras()
       return true
     }
-    // Interface shortcuts need Ctrl/Cmd so typing cannot trigger them
-    if (event.key === `f` && has_modifier && fullscreen_toggle) {
-      fullscreen = !fullscreen
-      return true
-    }
-    if (
-      event.key === `i` &&
-      has_modifier &&
-      display_mode === `structure` &&
-      enable_info_pane
-    ) {
+    // View toggles are plain letters everywhere; typing is already excluded by the editable
+    // guard above. `f` is owned by FullscreenButton, which arbitrates it between nested
+    // viewers. Chords stay the browser's and the host's.
+    if (key === `i` && plain && display_mode === `structure` && enable_info_pane) {
       set_pane_open(`info`, !is_pane_open(`info`))
       return true
     }
     if (
-      event.key === `g` &&
-      has_modifier &&
+      key === `g` &&
+      plain &&
       display_mode === `structure` &&
       controls_config.visible(`multi-view`) &&
       (multi_view_available || multi_view)
@@ -775,8 +768,8 @@
               <button
                 type="button"
                 class={['view-mode-option', { selected: current_layout.mode === mode }]}
-                title={mode === `multi` ? `${label} (Cmd/Ctrl+G)` : label}
-                aria-keyshortcuts={mode === `multi` ? `Control+G Meta+G` : undefined}
+                title={mode === `multi` ? `${label} (G)` : label}
+                aria-keyshortcuts={mode === `multi` ? `G` : undefined}
                 aria-pressed={current_layout.mode === mode}
                 onclick={() => select_structure_layout(mode)}
               >

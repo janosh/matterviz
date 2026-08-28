@@ -1003,3 +1003,22 @@ describe(`virtualized keyboard navigation`, () => {
     expect(Number(focused?.dataset?.[fixed_axis])).toBe(fixed)
   })
 })
+
+// `e` downloads a file, so it must reach neither a chord nor a typed character
+test.each([
+  [`plain e exports`, { key: `e` }, undefined, 1],
+  [`Cmd+E is the browser's`, { key: `e`, metaKey: true }, undefined, 0],
+  [`Ctrl+E is the browser's`, { key: `e`, ctrlKey: true }, undefined, 0],
+  [`typing e in an input never exports`, { key: `e` }, `input`, 0],
+])(`%s`, async (_name, init, target_tag, calls) => {
+  const on_export = vi.fn()
+  mount_matrix({ on_export, export_formats: [`csv`] })
+  await tick()
+  const grid = doc_query(`.grid`)
+  const input = document.createElement(`input`)
+  if (target_tag) grid.append(input)
+  const target = target_tag ? input : grid
+  target.dispatchEvent(new KeyboardEvent(`keydown`, { ...init, bubbles: true }))
+  await tick()
+  expect(on_export).toHaveBeenCalledTimes(calls)
+})

@@ -211,7 +211,9 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     await hover_at(wrapper, 0.5, 750)
     svg.dispatchEvent(new MouseEvent(`click`, { bubbles: true })) // re-lock
     await tick()
-    document.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    // keys reach the diagram through the hover forwarder, not the whole document
+    wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
+    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
     await tick()
     expect(wrapper.querySelector(`.tooltip-lock-indicator`)).toBeNull()
   })

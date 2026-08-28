@@ -1,5 +1,6 @@
 <script lang="ts">
   import { get_electro_neg_formula } from '$lib/composition/format'
+  import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
@@ -294,6 +295,8 @@
     role="application"
     tabindex="0"
     onkeydown={(event) => {
+      // Escape inside a pane input belongs to that input, as in the 3D sibling
+      if (is_editable_event_target(event.target)) return
       if (event.key === `Escape`) clear_hover_lock()
     }}
     onpointerdown={(event) => {

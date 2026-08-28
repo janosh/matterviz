@@ -34,7 +34,7 @@
     ],
     [
       `Keyboard`,
-      `Press Ctrl/Cmd+f for fullscreen, Ctrl/Cmd+i to toggle this pane, r to reset the view`,
+      `Press f for fullscreen, i to toggle this pane, g for multi-view, r to reset the view`,
     ],
   ] as const
 

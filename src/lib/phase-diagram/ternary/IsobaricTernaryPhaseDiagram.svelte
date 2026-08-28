@@ -288,7 +288,8 @@
       if (!event.shiftKey) set_temperature(current_t + dir * (t_max - t_min) * 0.01)
       else if (target) set_temperature(target.temperature + dir)
     } else if (event.key === ` `) toggle_play()
-    else if (event.key === `Escape`) selected_phase = null
+    // only claim Escape when there is a selection to clear, else the host keeps the key
+    else if (event.key === `Escape` && selected_phase !== null) selected_phase = null
     else return
     event.preventDefault()
   }

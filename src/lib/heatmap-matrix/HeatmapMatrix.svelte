@@ -8,6 +8,7 @@
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { virtual_window } from '$lib/table/virtual'
   import { rows_to_csv } from '$lib/utils'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -684,7 +685,9 @@
     ArrowUp: [0, -1],
   }
   function handle_keydown(event: KeyboardEvent): void {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === `e`) {
+    // `e` downloads a file, so typing must never reach it. Chords stay the browser's.
+    if (is_editable_event_target(event.target)) return
+    if (event.key.toLowerCase() === `e` && !is_modifier_chord(event)) {
       const format = export_formats[0]
       if (format && on_export) on_export(format, build_export_payload(format))
       return
