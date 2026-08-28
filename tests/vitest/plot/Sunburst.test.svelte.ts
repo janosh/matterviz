@@ -51,11 +51,14 @@ const mount_sized_sunburst = (
 // Pre-order node indices for the `tree` fixture (root=0)
 const IDX = { A: 1, A1: 2, A2: 3, B: 4 } as const
 
-const arc_path = (plot: HTMLElement, label: keyof typeof IDX): SVGPathElement => {
-  const path = plot.querySelector<SVGPathElement>(`[data-sunburst-node-idx="${IDX[label]}"]`)
-  if (!path) throw new Error(`no arc path for label ${label}`)
+const node_at = (plot: HTMLElement, node_idx: number): SVGPathElement => {
+  const path = plot.querySelector<SVGPathElement>(`[data-sunburst-node-idx="${node_idx}"]`)
+  if (!path) throw new Error(`no arc path at node index ${node_idx}`)
   return path
 }
+
+const arc_path = (plot: HTMLElement, label: keyof typeof IDX): SVGPathElement =>
+  node_at(plot, IDX[label])
 
 const mouse = (type: string) => new MouseEvent(type, { bubbles: true })
 const key = (key_name: string) =>
@@ -607,6 +610,22 @@ describe(`Sunburst display options`, () => {
     ]
     const plot = await mount_sized_sunburst({ data, min_fraction: 0.07 })
     expect(n_arcs(plot)).toBe(2) // big + Other
+    // 'Other' by itself cannot say how much it swallowed; the tooltip can.
+    await fire(node_at(plot, 2), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(
+      /Other[\s\S]*10% of total, 2 grouped/,
+    )
+  })
+
+  test(`max_children prop keeps the largest N arcs per parent`, async () => {
+    const data: SunburstNode[] = Array.from({ length: 8 }, (_item, idx) => ({
+      label: `job-${idx}`,
+      value: idx + 1,
+    }))
+    const plot = await mount_sized_sunburst({ data, max_children: 2 })
+    expect(n_arcs(plot)).toBe(3) // job-6 + job-7 + Other
+    await fire(node_at(plot, 3), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(/6 grouped/)
   })
 })
 

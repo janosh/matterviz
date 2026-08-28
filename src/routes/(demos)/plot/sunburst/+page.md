@@ -268,7 +268,7 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 
 ## Spacegroup sunburst
 
-`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from a list of spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), using the same colors and `"system/number"` ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real spacegroup distributions have long tails. `min_fraction` groups every spacegroup below a threshold share into one "Other" slice per crystal system, and `label_text` switches labels to include percentages.
+`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from a list of spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), using the same colors and `"system/number"` ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real spacegroup distributions have long tails. `min_fraction` groups every spacegroup below a threshold share into one "Other" slice per crystal system, and `label_text` switches labels to include percentages. `min_fraction` measures against the root total by default, which takes the whole outer ring once a tree is deep enough that no leaf clears the threshold — pass `min_fraction_of="parent"` to measure each node against its own parent instead, or `max_children={n}` to keep the largest n per parent whatever the spread. A callable `other_label` receives `{ count, value, depth, parent_label }`, so a grouped slice can name what it swallowed.
 
 ```svelte example
 <script lang="ts">

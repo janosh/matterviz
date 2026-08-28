@@ -1,5 +1,5 @@
 import { PLOT_COLORS } from '$lib/colors'
-import type { SunburstNode } from '$lib/plot'
+import type { OtherBucketInfo, SunburstNode } from '$lib/plot'
 import {
   compute_sunburst_layout,
   sunburst_from_labels_parents,
@@ -452,6 +452,124 @@ describe(`min_fraction 'Other' bucketing`, () => {
     expect(bucket?.value).toBe(1275 - 147)
   })
 
+  // Not a hard cap: the >= 2 rule wins, because one child under a bucket's name
+  // says strictly less than the child itself does.
+  test(`max_children lets a lone over-the-limit child through`, () => {
+    const four: SunburstNode[] = [
+      { label: `a`, value: 4 },
+      { label: `b`, value: 3 },
+      { label: `c`, value: 2 },
+      { label: `d`, value: 1 },
+    ]
+    expect(
+      compute_sunburst_layout(four, { max_children: 3 })
+        .arcs.filter((arc) => arc.depth === 1)
+        .map((arc) => arc.label),
+    ).toEqual([`a`, `b`, `c`, `d`])
+    // Two over the limit and the bucket appears.
+    expect(
+      compute_sunburst_layout(four, { max_children: 2 })
+        .arcs.filter((arc) => arc.depth === 1)
+        .map((arc) => arc.label),
+    ).toEqual([`a`, `b`, `Other`])
+  })
+
+  // A rank has to break ties somehow, and the answer has to be the same twice.
+  test(`max_children breaks value ties by input order, reproducibly`, () => {
+    const tied: SunburstNode[] = [`a`, `b`, `c`, `d`, `e`].map((label) => ({
+      label,
+      value: 5,
+    }))
+    const labels = () =>
+      compute_sunburst_layout(tied, { max_children: 2 })
+        .arcs.filter((arc) => arc.depth === 1)
+        .map((arc) => arc.label)
+    expect(labels()).toEqual([`a`, `b`, `Other`])
+    expect(labels()).toEqual(labels())
+  })
+
+  // The pass reorders `node.children` while d3's `each` is still walking the tree.
+  // If that traversal were unsound, a level would come out unbucketed or short.
+  test(`buckets every depth in one traversal`, () => {
+    const deep_tree: SunburstNode[] = [1, 2, 3].map((top) => ({
+      label: `t${top}`,
+      children: [1, 2, 3].map((mid) => ({
+        label: `t${top}m${mid}`,
+        children: [1, 2, 3].map((leaf) => ({
+          label: `t${top}m${mid}l${leaf}`,
+          value: top * 100 + mid * 10 + leaf,
+        })),
+      })),
+    }))
+    const { arcs } = compute_sunburst_layout(deep_tree, { max_children: 1 })
+    // One kept child plus one bucket at each of the three levels below the root.
+    expect(arcs.map((arc) => arc.label)).toEqual([
+      undefined,
+      `t3`,
+      `t3m3`,
+      `t3m3l3`,
+      `Other`,
+      `Other`,
+      `Other`,
+    ])
+    const buckets = arcs.filter((arc) => arc.is_other)
+    expect(buckets.map((arc) => [arc.depth, arc.other_count, arc.id])).toEqual([
+      [3, 2, `t3/t3m3/Other`],
+      [2, 2, `t3/Other`],
+      [1, 2, `Other`],
+    ])
+    // No value escapes: every bucket plus its kept sibling covers the parent.
+    for (const bucket of buckets) {
+      const parent = arcs[bucket.parent_idx ?? 0]
+      expect(bucket.x1).toEqual(close(parent.x1))
+      expect(bucket.value + arcs[(bucket.parent_idx ?? 0) + 1].value).toBe(parent.value)
+    }
+  })
+
+  test(`a parent whose children all fall below the threshold keeps one full bucket`, () => {
+    const { arcs } = compute_sunburst_layout(
+      [{ label: `p`, children: [`s1`, `s2`, `s3`].map((label) => ({ label, value: 1 })) }],
+      { min_fraction: 0.9 },
+    )
+    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `p`, `Other`])
+    expect(arcs[1].is_leaf).toBe(false) // still a branch, with the bucket as its child
+    expect(arcs[2]).toMatchObject({
+      is_other: true,
+      other_count: 3,
+      value: 3,
+      parent_fraction: 1,
+      x0: close(0),
+      x1: close(1),
+    })
+  })
+
+  // 'total' values are authoritative, so a parent's shortfall shows as a trailing
+  // gap — the bucket has to sit before it, not absorb it.
+  test(`bucketing under value_mode 'total' leaves the parent's shortfall as a gap`, () => {
+    const { arcs } = compute_sunburst_layout(
+      [
+        {
+          label: `p`,
+          value: 100,
+          children: [
+            { label: `a`, value: 50 },
+            { label: `b`, value: 2 },
+            { label: `c`, value: 2 },
+          ],
+        },
+      ],
+      { value_mode: `total`, min_fraction: 0.1 },
+    )
+    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `p`, `a`, `Other`])
+    expect(arcs[3]).toMatchObject({
+      is_other: true,
+      other_count: 2,
+      value: 4,
+      x0: close(0.5),
+      x1: close(0.54), // the remaining 46% of p stays empty
+    })
+  })
+
   test(`a child has to clear both max_children and min_fraction`, () => {
     const mixed: SunburstNode[] = [
       { label: `a`, value: 50 },
@@ -468,6 +586,7 @@ describe(`min_fraction 'Other' bucketing`, () => {
   })
 
   test(`a callable other_label names what was folded away`, () => {
+    const seen: OtherBucketInfo[] = []
     const { arcs } = compute_sunburst_layout(
       [
         {
@@ -482,15 +601,31 @@ describe(`min_fraction 'Other' bucketing`, () => {
       ],
       {
         min_fraction: 0.05,
-        other_label: ({ count, parent_label }) => `${count} smaller in ${parent_label}`,
+        other_label: (bucket) => {
+          seen.push(bucket)
+          return `${bucket.count} smaller in ${bucket.parent_label}`
+        },
       },
     )
+    // Called once per bucket, with the ring it lands on (not its parent's).
+    expect(seen).toEqual([{ count: 3, value: 3, depth: 2, parent_label: `a100-80-shared` }])
     expect(arcs.find((arc) => arc.is_other)).toMatchObject({
       label: `3 smaller in a100-80-shared`,
       id: `a100-80-shared/3 smaller in a100-80-shared`,
       other_count: 3,
       value: 3,
     })
+
+    // Under the synthetic root of an array input there is no parent to name.
+    const at_root: OtherBucketInfo[] = []
+    compute_sunburst_layout(long_tail, {
+      min_fraction: 0.05,
+      other_label: (bucket) => {
+        at_root.push(bucket)
+        return `Other`
+      },
+    })
+    expect(at_root).toEqual([{ count: 2, value: 6, depth: 1, parent_label: undefined }])
   })
 
   test(`other_count is set only on bucketed arcs`, () => {

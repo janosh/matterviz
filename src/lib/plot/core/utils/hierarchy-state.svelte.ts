@@ -61,8 +61,9 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   // What `min_fraction` measures against: the root total (default) or each
   // node's own parent, so one threshold means the same thing at every depth
   min_fraction_of?: SunburstBucketBasis
-  // Cap on children kept per parent, largest first; 0 (default) is unlimited.
-  // Unlike `min_fraction` it guarantees a populated ring at any depth
+  // Children kept per parent, largest first; 0 (default) is unlimited. Unlike
+  // `min_fraction` it guarantees a populated ring at any depth. Not a hard cap: a
+  // parent one child over the limit keeps it rather than bucket a single sibling
   max_children?: number
   other_label?: string | ((bucket: OtherBucketInfo) => string)
   max_depth?: number // levels shown below the current zoom root (0 = all)

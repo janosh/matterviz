@@ -119,10 +119,12 @@ export interface SunburstLayoutOptions {
   // next to the root by construction. 'parent' measures each node against its own
   // parent, so a threshold means the same thing at every depth.
   min_fraction_of?: SunburstBucketBasis
-  // Keep at most this many children per parent, largest first, bucketing the
-  // rest. Unlike `min_fraction` it guarantees a populated ring however the values
-  // are distributed. 0 (default) is unlimited. Applied with `min_fraction`: a
-  // child has to clear both to be kept.
+  // Keep this many children per parent, largest first, bucketing the rest. Unlike
+  // `min_fraction` it guarantees a populated ring however the values are
+  // distributed. 0 (default) is unlimited. Applied with `min_fraction`: a child has
+  // to clear both to be kept. Not a hard cap — the >= 2 rule wins, so a parent with
+  // one child over the limit keeps it under its own name rather than as a bucket of
+  // one (`max_children: 3` shows all four children of a four-child parent).
   max_children?: number
   // Label for bucketed arcs, default 'Other'. A function is called once per
   // bucket, so it can name what was folded away ('312 smaller jobs').
@@ -214,6 +216,11 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   // is no longer a property any single child carries.
   const bucket_cut = new Map<HierarchyNode<SunburstNode<Metadata>>, number>()
   if (min_fraction > 0 || max_children > 0) {
+    // Reordering `node.children` from inside `each` is safe: d3's traversal is a
+    // generator that reads a node's children only after yielding it, so the
+    // callback runs first and the queue picks up the reordered array. Each node is
+    // still visited exactly once, and the decision below depends only on that
+    // node's own values, so the visit order among siblings cannot change it.
     root.each((node) => {
       const kids = node.children
       if (!kids) return
