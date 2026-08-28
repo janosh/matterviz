@@ -1,5 +1,6 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
+import { make_config } from 'svelte-widgets/vite-config'
 import { defineConfig, type PluginOption } from 'vite'
 import {
   json_gz_worker_plugins,
@@ -38,11 +39,11 @@ export default defineConfig(({ mode }) => ({
     },
     emptyOutDir: false,
     chunkSizeWarningLimit: 6000,
-    // Without this, LightningCSS downlevels light-dark() into an OS-prefers-color-scheme
-    // polyfill, ignoring the color-scheme the webview sets from VS Code's theme. VS Code's
-    // Electron/Chromium supports light-dark() natively, so esnext is safe (matches the root
-    // build's `svelte-widgets/vite-config` cssTarget).
-    cssTarget: `esnext`,
+    // Taken from the shared config rather than repeated: vite's default target lacks
+    // light-dark(), so LightningCSS downlevels app.css's tokens into an OS-prefers-color-scheme
+    // polyfill that ignores the color-scheme the webview sets from VS Code's theme. This build
+    // drifted from the root's precisely because the value was declared in two places.
+    cssTarget: make_config().build.cssTarget,
   },
   resolve: { alias: lib_aliases },
 }))

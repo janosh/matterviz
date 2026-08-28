@@ -16,7 +16,13 @@ import type {
 import { format_bytes, is_plain_object, to_error } from '$lib/utils'
 import type { DefaultSettings, SettingType } from '$lib/settings'
 import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '$lib/settings'
-import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
+import {
+  AUTO_THEME,
+  COLOR_THEMES,
+  is_valid_theme_mode,
+  THEME_TYPE,
+  type ThemeName,
+} from '$lib/theme'
 // Deep imports: the $lib/trajectory barrel re-exports Svelte components and worker-backed
 // modules, none of which belong in the Node host bundle
 import { open_trajectory } from '$lib/trajectory/open'
@@ -300,7 +306,9 @@ export const create_html = (
   // Set color-scheme before main-*.css loads, or its light-dark() tokens flash white/light
   // until JS applies the theme. Must be a style attribute, not a <style> rule: it needs to
   // outrank main-*.css's own same-specificity `:root, :host { color-scheme: light dark }`.
-  const color_scheme = data.theme === `dark` || data.theme === `black` ? `dark` : `light`
+  // THEME_TYPE, not a ternary: it is a Record over ThemeName, so a new theme is a type
+  // error there rather than silently rendering light here.
+  const color_scheme = THEME_TYPE[data.theme]
   const root_style = `color-scheme: ${color_scheme}; background-color: var(--vscode-editor-background, Canvas);`
 
   return `<!DOCTYPE html>

@@ -1,15 +1,12 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { make_config } from 'svelte-widgets/vite-config'
 import { expect, test } from 'vitest'
 
-// Checked as source text, not by importing vite.config.ts: that file sits outside
-// tsconfig.json's `include` glob, and importing it here would pull its (pre-existing,
-// unrelated) top-level `.ts`-extension imports into this project's type-check.
-//
-// Without esnext, LightningCSS downlevels light-dark() into an OS-preference polyfill
-// that ignores the webview's declared color-scheme (see create_html in extension.ts).
-test(`webview build targets esnext so LightningCSS keeps native light-dark()`, () => {
-  const config_path = fileURLToPath(new URL(`../vite.config.ts`, import.meta.url))
-  const config_source = readFileSync(config_path, `utf8`)
-  expect(config_source).toMatch(/^\s*cssTarget:\s*`esnext`,$/m)
+// vite.config.ts takes its cssTarget from this shared config, so the two builds cannot drift
+// apart again — what is left to guard is the shared value itself. A target without native
+// light-dark() makes LightningCSS downlevel app.css's theme tokens into an OS-preference
+// polyfill that ignores the color-scheme the webview declares from VS Code's theme.
+// (vite.config.ts is not imported here: it sits outside tsconfig's `include` and its
+// pre-existing `.ts`-extension imports would fail `tsc --noEmit` from this file.)
+test(`shared cssTarget keeps native light-dark()`, () => {
+  expect(make_config().build.cssTarget).toBe(`esnext`)
 })
