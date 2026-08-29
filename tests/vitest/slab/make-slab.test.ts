@@ -14,7 +14,7 @@ import { detect_layers } from '$lib/slab/terminations'
 import type { Crystal, Pbc, Site } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal, make_rocksalt } from '../setup'
 
 // Conventional cubic cells: exact fractional coordinates, so every expectation below can
 // be compared against a hand-derived analytic value rather than a stored number.
@@ -34,12 +34,9 @@ const on_sites = (element: string, positions: Vec3[]) =>
 
 // oxfmt-ignore
 const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-// oxfmt-ignore
-const EDGE_CENTRES: Vec3[] = [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5], [0.5, 0.5, 0.5]]
 
 const fcc = (): Crystal => make_crystal(FCC_A, on_sites(`Cu`, FACE_CENTRES))
-const rocksalt = (): Crystal =>
-  make_crystal(ROCKSALT_A, [...on_sites(`Na`, FACE_CENTRES), ...on_sites(`Cl`, EDGE_CENTRES)])
+const rocksalt = (): Crystal => make_rocksalt(ROCKSALT_A)
 // the three perovskite O sit on the cube faces, i.e. the fcc face centres bar the origin
 const perovskite = (): Crystal =>
   make_crystal(PEROVSKITE_A, [
@@ -76,14 +73,13 @@ const species_key = (atom: Site): string =>
   atom.species.map(({ element, occu }) => `${element}:${occu}`).toSorted().join(`,`)
 
 // The slab must occupy exactly the height slab_info claims and the rest of the cell must
-// be vacuum. Returns the measured extent along the normal so callers can reuse it.
-function expect_thickness_and_vacuum(slab: Slab, vacuum: number): number {
+// be vacuum.
+function expect_thickness_and_vacuum(slab: Slab, vacuum: number): void {
   const heights = normal_coords(slab, slab.slab_info.normal)
   const extent = Math.max(...heights) - Math.min(...heights)
   expect(extent).toBeCloseTo(slab.slab_info.slab_thickness, 9)
   expect(math.cell_heights(slab.lattice.matrix)[2] - extent).toBeCloseTo(vacuum, 9)
   expect(slab.lattice.pbc).toEqual([true, true, false])
-  return extent
 }
 
 // Worst distance, in Å, by which a slab atom misses the nearest atom of the input crystal
@@ -511,11 +507,9 @@ describe(`terminations`, () => {
     expect(layer_idxs).toEqual([...layer_idxs].toSorted((left, right) => left - right))
   })
 
-  test(`rocksalt (111) terminations differ in surface composition`, () => {
+  test(`rocksalt (111) cleaves at the layer its termination names`, () => {
+    // formulas themselves are pinned by the `distinct` cases below
     const terminations = enumerate_terminations(rocksalt(), [1, 1, 1])
-    expect(new Set(terminations.map((term) => term.formula)).size).toBe(2)
-    expect(terminations.map((term) => term.formula).toSorted()).toEqual([`Cl`, `Na`])
-
     for (const [idx, termination] of terminations.entries()) {
       const opts = { termination_idx: idx, min_slab_thickness: 6 }
       const slab = make_slab(rocksalt(), [1, 1, 1], opts)
@@ -523,11 +517,6 @@ describe(`terminations`, () => {
       const lowest = heights.indexOf(Math.min(...heights))
       expect(slab.sites[lowest].species[0].element).toBe(termination.formula)
     }
-  })
-
-  test(`perovskite (001) surface layers are SrO and TiO2`, () => {
-    const terminations = enumerate_terminations(perovskite(), [0, 0, 1])
-    expect(terminations.map((term) => term.formula).toSorted()).toEqual([`SrO`, `TiO2`])
   })
 
   test(`layer detection groups sites within the tolerance`, () => {
@@ -575,56 +564,40 @@ describe(`terminations`, () => {
     expect(slab.slab_info.min_layer_gap).toBeLessThan(2 * layer_tolerance)
   })
 
-  test(`layers related by a 2-fold rotation about the normal are merged`, () => {
-    // All four Ac layers of this cell expose the same surface, and the translation dedup
-    // alone misses half of it: layers 0 and 2 are a lattice translation apart, but 0 and 1
-    // only map onto each other under (x, y, z) -> (-x, -y, z) + (0.3, 0.3, 0.25). The demo
-    // showed four indistinguishable "Ac (2.62 Å gap)" options that built congruent slabs.
-    const cell = math.cell_to_lattice_matrix(4, 4, 12, 90, 90, 90)
-    // oxfmt-ignore
-    const stack: Vec3[] = [[0, 0, 0], [0.3, 0.3, 0.25], [0, 0, 0.5], [0.3, 0.3, 0.75]]
-    const four_fold = make_crystal(cell, on_sites(`Ac`, stack))
-    const opts = { primitive_in_plane: false }
-    const terminations = enumerate_terminations(four_fold, [0, 0, 1], opts)
-    expect(terminations).toHaveLength(1)
-    expect(terminations[0].equivalent_layer_idxs).toEqual([1, 2, 3])
-  })
-
-  test(`layers related by a mirror through the normal are merged`, () => {
+  // Single-species stacks whose layers can only be told apart by their in-plane registry:
+  // one row per stack, with the equivalent_layer_idxs every surviving termination must
+  // report. The lengths of that list of lists are the distinct termination counts.
+  // oxfmt-ignore
+  const l_shape: Vec3[] = [[0, 0, 0], [0.3, 0, 0], [0, 0.25, 0]]
+  // oxfmt-ignore
+  const registry: [string, Vec3, Vec3[], number[][]][] = [
+    // All four layers expose the same surface, and the translation dedup alone misses half
+    // of it: layers 0 and 2 are a lattice translation apart, but 0 and 1 only map onto each
+    // other under (x, y, z) -> (-x, -y, z) + (0.3, 0.3, 0.25). The demo showed four
+    // indistinguishable "Ac (2.62 Å gap)" options that built congruent slabs.
+    [`a 2-fold rotation about the normal merges all four layers`, [4, 4, 12],
+      [[0, 0, 0], [0.3, 0.3, 0.25], [0, 0, 0.5], [0.3, 0.3, 0.75]], [[1, 2, 3]]],
     // An L-shaped Cu3 motif has no 2-fold axis, so its mirror image in the layer above
-    // (glide-related: reflect x, shift by (a + b + c)/2) is reached by no rotation about the
-    // normal. The control layer carries an L with a longer arm, which nothing maps onto.
-    const cell = math.cell_to_lattice_matrix(5, 6, 8, 90, 90, 90)
-    // oxfmt-ignore
-    const lower: Vec3[] = [[0, 0, 0], [0.3, 0, 0], [0, 0.25, 0]]
-    // oxfmt-ignore
-    const mirrored: Vec3[] = [[0.5, 0.5, 0.5], [0.2, 0.5, 0.5], [0.5, 0.75, 0.5]]
-    // oxfmt-ignore
-    const longer_arm: Vec3[] = [[0.5, 0.5, 0.5], [0.9, 0.5, 0.5], [0.5, 0.75, 0.5]]
-    const opts = { primitive_in_plane: false }
-    const glide = make_crystal(cell, on_sites(`Cu`, [...lower, ...mirrored]))
-    const glide_terminations = enumerate_terminations(glide, [0, 0, 1], opts)
-    expect(glide_terminations).toHaveLength(1)
-    expect(glide_terminations[0].equivalent_layer_idxs).toEqual([1])
-    const control = make_crystal(cell, on_sites(`Cu`, [...lower, ...longer_arm]))
-    expect(enumerate_terminations(control, [0, 0, 1], opts)).toHaveLength(2)
-  })
-
-  test(`equal-gap layers of one species stay distinct without a relating symmetry`, () => {
-    // Same species, same gaps, but the in-plane offsets 0, 0.1a, 0.4a are not the orbit
-    // of any translation or 2-fold rotation, so cleaving at each layer exposes a different
-    // registry of the layers below it. A merge that only compares (formula, gap) stacks
-    // would collapse these into one.
-    const cell = math.cell_to_lattice_matrix(4, 4, 9, 90, 90, 90)
-    // oxfmt-ignore
-    const stack: Vec3[] = [[0, 0, 0], [0.1, 0, 1 / 3], [0.4, 0, 2 / 3]]
-    const offset_stack = make_crystal(cell, on_sites(`Cu`, stack))
-    const opts = { primitive_in_plane: false }
-    const terminations = enumerate_terminations(offset_stack, [0, 0, 1], opts)
-    expect(terminations).toHaveLength(3)
-    for (const termination of terminations) {
-      expect(termination.equivalent_layer_idxs).toEqual([])
-    }
+    // (glide-related: reflect x, shift by (a + b + c)/2) is reached by no rotation about
+    // the normal.
+    [`a mirror through the normal merges the glide-related layers`, [5, 6, 8],
+      [...l_shape, [0.5, 0.5, 0.5], [0.2, 0.5, 0.5], [0.5, 0.75, 0.5]], [[1]]],
+    // Control: the same L with a longer arm, which no normal-preserving operation reaches.
+    [`an L with a longer arm above stays distinct`, [5, 6, 8],
+      [...l_shape, [0.5, 0.5, 0.5], [0.9, 0.5, 0.5], [0.5, 0.75, 0.5]], [[], []]],
+    // Same species, same gaps, but the in-plane offsets 0, 0.1a, 0.4a are not the orbit of
+    // any translation or 2-fold rotation, so cleaving at each layer exposes a different
+    // registry of the layers below it. A merge on (formula, gap) alone collapses these.
+    [`equal-gap layers at unrelated in-plane offsets stay distinct`, [4, 4, 9],
+      [[0, 0, 0], [0.1, 0, 1 / 3], [0.4, 0, 2 / 3]], [[], [], []]],
+  ]
+  test.each(registry)(`%s`, (_name, [len_a, len_b, len_c], positions, want) => {
+    const cell = math.cell_to_lattice_matrix(len_a, len_b, len_c, 90, 90, 90)
+    const crystal = make_crystal(cell, on_sites(`Cu`, positions))
+    const terminations = enumerate_terminations(crystal, [0, 0, 1], {
+      primitive_in_plane: false,
+    })
+    expect(terminations.map((term) => term.equivalent_layer_idxs)).toEqual(want)
   })
 
   // oxfmt-ignore
@@ -665,7 +638,8 @@ const FIXTURES: [string, string][] = [
 // detect_layers does it — against the layer's lowest member, so a layer never spans more
 // than the tolerance — which is what makes the comparison against the reported spacings a
 // measurement rather than a restatement.
-const measured_layer_heights = (heights: number[], layer_tolerance = 0.1): number[] => {
+const measured_layer_heights = (heights: number[]): number[] => {
+  const layer_tolerance = 0.1 // SLAB_LAYER_TOLERANCE, the default make_slab ran with
   const sorted = [...heights].toSorted((left, right) => left - right)
   const starts = [sorted[0]]
   for (const height of sorted) {

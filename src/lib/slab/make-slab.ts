@@ -4,18 +4,9 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
 import { wrap_frac_coord } from '$lib/structure/pbc'
-import {
-  assemble_crystal,
-  in_plane_reduction_multiples,
-  make_oriented_bulk,
-} from './lattice-basis'
+import { assemble_crystal, make_oriented_bulk, shorten_in_plane } from './lattice-basis'
 import { detect_layers, layer_spacings, terminations_of_oriented_bulk } from './terminations'
-import {
-  MAX_SLAB_SITES,
-  SLAB_DEFAULT_THICKNESS,
-  SLAB_DEFAULT_VACUUM,
-  SLAB_LAYER_TOLERANCE,
-} from './types'
+import { MAX_SLAB_SITES, SLAB_DEFAULT_THICKNESS, SLAB_DEFAULT_VACUUM } from './types'
 import type { Slab, SlabOptions } from './types'
 
 function assert_non_negative(value: number, name: string): void {
@@ -44,7 +35,8 @@ export function make_slab(
     center_slab = true,
     reorient_lattice = true,
     primitive_in_plane = true,
-    layer_tolerance = SLAB_LAYER_TOLERANCE,
+    // left undefined so detect_layers stays the single source of the SLAB_LAYER_TOLERANCE default
+    layer_tolerance,
   } = options
   assert_non_negative(min_slab_thickness, `min_slab_thickness`)
   assert_non_negative(min_vacuum_thickness, `min_vacuum_thickness`)
@@ -66,7 +58,7 @@ export function make_slab(
   // above it stacks on top, so the gap below that layer becomes the surface.
   const shift_c = layers[termination.layer_idx].frac_c_start
   const shifted_frac = bulk.crystal.sites.map((site) => wrap_frac_coord(site.abc[2] - shift_c))
-  const period_extent = shifted_frac.reduce((top, frac) => Math.max(top, frac), 0) * height_c
+  const period_extent = math.array_max(shifted_frac) * height_c
 
   // Thickness is measured between the outermost atomic planes, so the first repeat only
   // contributes the spread of one cell's atoms, each further repeat a full c period.
@@ -97,9 +89,11 @@ export function make_slab(
   const stacked_c = math.scale(bulk_matrix[2], n_repeats)
   const grow_c = slab_thickness + min_vacuum_thickness - n_repeats * height_c
   const raw_c = math.add(stacked_c, math.scale(normal, grow_c))
-  const [mult_a, mult_b] = in_plane_reduction_multiples(raw_c, in_plane_a, in_plane_b)
-  const shift_ab = math.add(math.scale(in_plane_a, mult_a), math.scale(in_plane_b, mult_b))
-  const slab_matrix: Matrix3x3 = [in_plane_a, in_plane_b, math.subtract(raw_c, shift_ab)]
+  const slab_matrix: Matrix3x3 = [
+    in_plane_a,
+    in_plane_b,
+    shorten_in_plane(raw_c, in_plane_a, in_plane_b),
+  ]
 
   // Rebuilding the matrix from its own lattice parameters puts a along +x, b in the xy
   // plane and hence the surface normal along +z, leaving fractional coordinates intact.
@@ -107,7 +101,7 @@ export function make_slab(
   const final_matrix = reorient_lattice
     ? math.cell_to_lattice_matrix(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma)
     : slab_matrix
-  const final_normal = reorient_lattice ? ([0, 0, 1] as Vec3) : normal
+  const final_normal: Vec3 = reorient_lattice ? [0, 0, 1] : normal
   const surface_area = Math.hypot(...math.cross_3d(final_matrix[0], final_matrix[1]))
 
   // Vacuum split evenly above and below when centering, all of it above otherwise
@@ -155,7 +149,7 @@ export function make_slab(
       // rebased at the cleaved layer: the slab was shifted so termination.layer_idx sits
       // at the bottom, so its gaps are the cell's list rotated by that same amount
       layer_spacings: layer_spacings(layers, bulk.d_hkl, termination.layer_idx),
-      min_layer_gap: Math.min(...layers.map((layer) => layer.gap_below)),
+      min_layer_gap: math.array_min(layers.map((layer) => layer.gap_below)),
       slab_thickness,
       vacuum_thickness: min_vacuum_thickness,
       surface_area,

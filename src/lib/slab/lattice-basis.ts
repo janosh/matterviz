@@ -6,7 +6,7 @@ import * as math from '$lib/math'
 import type { Crystal, Pbc, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { find_lattice_translations, make_site_grid, species_keys_of } from './translations'
-import type { OrientedBulk } from './types'
+import type { OrientedBulk, SlabOptions } from './types'
 import { SLAB_POSITION_TOLERANCE } from './types'
 
 // Lagrange reduction converges in a handful of steps; a cap turns a hypothetical
@@ -15,15 +15,16 @@ const MAX_REDUCTION_STEPS = 64
 
 // (hkl) reduced by its gcd, after rejecting inputs that pick out no plane. Called once
 // per public entry point; everything below it takes indices that are already reduced.
-export function validate_miller_indices(miller_indices: Vec3): Vec3 {
+function validate_miller_indices(miller_indices: Vec3): Vec3 {
   if (miller_indices?.length !== 3) {
     throw new Error(`Miller indices must be 3 numbers, got ${JSON.stringify(miller_indices)}`)
   }
   const non_integer = miller_indices.filter((val) => !Number.isSafeInteger(val))
   if (non_integer.length > 0) {
-    const offenders = JSON.stringify(non_integer)
     throw new Error(
-      `Miller indices must be integers, got ${offenders} in ${JSON.stringify(miller_indices)}`,
+      `Miller indices must be integers, got ${JSON.stringify(non_integer)} in ${JSON.stringify(
+        miller_indices,
+      )}`,
     )
   }
   if (miller_indices.every((val) => val === 0)) {
@@ -73,7 +74,7 @@ function gauss_reduce_pair(
 // Integer multiples (m_1, m_2) that make cart_out − m_1·cart_1 − m_2·cart_2 as short as
 // possible: the real least-squares solution rounded, plus its immediate neighbours since
 // rounding each coefficient separately is not always optimal in an oblique basis.
-export function in_plane_reduction_multiples(
+function in_plane_reduction_multiples(
   cart_out: Vec3,
   cart_1: Vec3,
   cart_2: Vec3,
@@ -105,12 +106,21 @@ export function in_plane_reduction_multiples(
   return best
 }
 
+// `cart_out` with as much of the plane spanned by `cart_1` and `cart_2` subtracted off as
+// integer multiples allow: the same lattice vector modulo in-plane translations, only
+// shorter, which keeps the cell as close to orthogonal as the lattice permits.
+export const shorten_in_plane = (cart_out: Vec3, cart_1: Vec3, cart_2: Vec3): Vec3 => {
+  const [mult_1, mult_2] = in_plane_reduction_multiples(cart_out, cart_1, cart_2)
+  const shift = math.add(math.scale(cart_1, mult_1), math.scale(cart_2, mult_2))
+  return math.subtract(cart_out, shift)
+}
+
 // Unimodular integer matrix U with U · hkl = (1, 0, 0): row 0 crosses a single (hkl)
 // plane and rows 1, 2 lie in the plane. Built by the extended Euclidean algorithm: every
 // integer row operation that shrinks the working copy of hkl is mirrored on U (starting
 // from the identity), so U · hkl tracks the working copy at all times and det U = ±1.
 // `miller` must be reduced, otherwise the pivot ends at gcd(h, k, l) instead of 1.
-export function unimodular_completion(miller: Vec3): Matrix3x3 {
+function unimodular_completion(miller: Vec3): Matrix3x3 {
   const working: Vec3 = [...miller]
   const rows: Matrix3x3 = [
     [1, 0, 0],
@@ -208,22 +218,20 @@ function primitivize_in_plane(
   // to reach them, the index check below rejects the result rather than shrinking the cell
   // by the wrong amount.
   const frac_to_cart = math.create_frac_to_cart(matrix)
-  const candidates: { cart: Vec3; len: number }[] = []
-  for (const [trans_a, trans_b] of [[0, 0], ...translations]) {
-    for (const mult_a of [-2, -1, 0, 1, 2]) {
-      for (const mult_b of [-2, -1, 0, 1, 2]) {
-        const cart = frac_to_cart([trans_a + mult_a, trans_b + mult_b, 0])
-        candidates.push({ cart, len: Math.hypot(...cart) })
-      }
-    }
-  }
-  candidates.sort((left, right) => left.len - right.len)
-  const first = candidates.find(({ len }) => len > math.EPS)
+  const offsets = [-2, -1, 0, 1, 2]
+  const candidates = [[0, 0], ...translations]
+    .flatMap(([trans_a, trans_b]) =>
+      offsets.flatMap((mult_a) =>
+        offsets.map((mult_b) => frac_to_cart([trans_a + mult_a, trans_b + mult_b, 0])),
+      ),
+    )
+    .toSorted((left, right) => Math.hypot(...left) - Math.hypot(...right))
+  const first = candidates.find((cart) => Math.hypot(...cart) > math.EPS)
   if (!first) {
     throw new Error(`All in-plane candidate vectors of ${JSON.stringify(matrix)} are zero`)
   }
   const second = candidates.find(
-    ({ cart }) => Math.hypot(...math.cross_3d(first.cart, cart)) > math.EPS,
+    (cart) => Math.hypot(...math.cross_3d(first, cart)) > math.EPS,
   )
   if (!second) {
     throw new Error(
@@ -234,9 +242,7 @@ function primitivize_in_plane(
 
   // Shorten c against the new, smaller in-plane cell — it stays the same lattice vector
   // plus in-plane lattice translations, so the lattice and the spacing are untouched.
-  const [mult_1, mult_2] = in_plane_reduction_multiples(matrix[2], first.cart, second.cart)
-  const shift = math.add(math.scale(first.cart, mult_1), math.scale(second.cart, mult_2))
-  const reduced: Matrix3x3 = [first.cart, second.cart, math.subtract(matrix[2], shift)]
+  const reduced: Matrix3x3 = [first, second, shorten_in_plane(matrix[2], first, second)]
   if (math.det_3x3(reduced) < 0) [reduced[0], reduced[1]] = [reduced[1], reduced[0]]
 
   const index = Math.abs(math.det_3x3(matrix) / math.det_3x3(reduced))
@@ -268,7 +274,7 @@ function primitivize_in_plane(
   return { matrix: reduced, sites: kept, index: expected_index }
 }
 
-export type OrientedBulkOptions = { primitive_in_plane?: boolean }
+export type OrientedBulkOptions = Pick<SlabOptions, `primitive_in_plane`>
 
 // Re-express `crystal` in the cell whose c crosses the (hkl) planes once. The result is
 // still bulk (periodic in all three directions) — make_slab cleaves and adds the vacuum.
@@ -299,11 +305,11 @@ export function make_oriented_bulk(
 
   const transform = slab_basis_transform(parent_matrix, miller)
   // Row-vector convention: new lattice rows are integer combinations of the old rows
-  let matrix = math.dot(transform, parent_matrix)
+  const matrix = math.dot(transform, parent_matrix)
   // and abc_new · P = abc_old, i.e. abc_new = transpose(P⁻¹) · abc_old
   const to_new_frac = math.transpose_3x3_matrix(math.matrix_inverse_3x3(transform))
   const frac_to_cart = math.create_frac_to_cart(matrix)
-  let sites: Site[] = crystal.sites.map((site) => {
+  const sites: Site[] = crystal.sites.map((site) => {
     const abc = wrap_to_unit_cell(math.mat3x3_vec3_multiply(to_new_frac, site.abc))
     return { ...site, abc, xyz: frac_to_cart(abc) }
   })
@@ -325,14 +331,12 @@ export function make_oriented_bulk(
     occupied.add(site.abc, keys[idx], idx)
   }
 
-  let in_plane_index = 1
-  if (primitive_in_plane) {
-    const reduced = primitivize_in_plane(matrix, sites)
-    ;({ matrix, sites } = reduced)
-    in_plane_index = reduced.index
-  }
+  const oriented = primitive_in_plane
+    ? primitivize_in_plane(matrix, sites)
+    : { matrix, sites, index: 1 }
+  const in_plane_index = oriented.index
   // c · hkl = 1 makes the perpendicular height of the oriented cell exactly d_hkl
-  const d_hkl = math.cell_heights(matrix)[2]
+  const d_hkl = math.cell_heights(oriented.matrix)[2]
 
   // The transform is unimodular, so the oriented cell holds exactly the input atoms and
   // keeps its charge. primitive_in_plane then divides the cell — and the charge it
@@ -340,7 +344,7 @@ export function make_oriented_bulk(
   const charge = crystal.charge === undefined ? undefined : crystal.charge / in_plane_index
 
   return {
-    crystal: assemble_crystal(crystal, matrix, sites, pbc, charge),
+    crystal: assemble_crystal(crystal, oriented.matrix, oriented.sites, pbc, charge),
     transform,
     miller_indices: miller,
     d_hkl,

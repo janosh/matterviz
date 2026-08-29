@@ -42,13 +42,21 @@
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   // The termination list belongs to one (structure, hkl, mesh) combination; a stale index
-  // from the previous surface would be out of range or point at a different layer. The
-  // derived object is rebuilt exactly when one of those three inputs changes.
-  const surface = $derived({ structure, hkl: miller_indices.join(`,`), primitive_in_plane })
-  let last_surface: typeof surface | null = null
+  // from the previous surface would be out of range or point at a different layer. hkl and
+  // the mesh flag are compared as a string so a parent reassigning an equal miller_indices
+  // array does not reset the pick; the structure is compared by identity.
+  const surface_key = $derived(`${miller_indices.join(`,`)}|${primitive_in_plane}`)
+  let last_structure: Crystal | null = null
+  let last_surface_key = ``
   $effect.pre(() => {
-    if (last_surface !== null && surface !== last_surface) termination_idx = 0
-    last_surface = surface
+    if (
+      last_structure !== null &&
+      (structure !== last_structure || surface_key !== last_surface_key)
+    ) {
+      termination_idx = 0
+    }
+    last_structure = structure
+    last_surface_key = surface_key
   })
 
   // the slab carries the full termination list, so one pass covers the dropdown too
@@ -70,18 +78,16 @@
   $effect(() => {
     ;({ slab, error } = result)
   })
-  const info = $derived(result.slab?.slab_info ?? null)
+  const info = $derived(result.slab?.slab_info)
   const rows = $derived.by((): [string, string][] => {
     if (!result.slab || !info) return []
     const { lattice, sites } = result.slab
+    const spacings = info.layer_spacings.map((val) => format_num(val, `.3~f`)).join(`, `)
     return [
       [`Miller indices`, `(${info.miller_indices.join(` `)})`],
       [`Interplanar spacing d`, `${format_num(info.d_hkl, `.4~f`)} Å`],
       [`Layers`, `${info.n_layers} in ${info.n_repeats} repeat(s)`],
-      [
-        `Layer spacings`,
-        `${info.layer_spacings.map((val) => format_num(val, `.3~f`)).join(`, `)} Å`,
-      ],
+      [`Layer spacings`, `${spacings} Å`],
       [`Min layer gap`, `${format_num(info.min_layer_gap, `.3~f`)} Å`],
       [`Slab thickness`, `${format_num(info.slab_thickness, `.3~f`)} Å`],
       [`Vacuum`, `${format_num(info.vacuum_thickness, `.3~f`)} Å`],

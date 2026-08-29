@@ -4,7 +4,7 @@ import { SlabBuilder } from '$lib/slab'
 import type { Crystal } from '$lib/structure'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
-import { doc_query, make_crystal } from '../setup'
+import { bind_props, doc_query, make_crystal, make_rocksalt } from '../setup'
 
 // oxfmt-ignore
 const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
@@ -13,14 +13,13 @@ const fcc = (): Crystal =>
     3.615,
     FACE_CENTRES.map((abc) => ({ element: `Cu`, abc })),
   )
-// rocksalt (111) alternates Na and Cl planes, so it has two distinct terminations
-// oxfmt-ignore
-const EDGE_CENTRES: Vec3[] = [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5], [0.5, 0.5, 0.5]]
-const rocksalt = (): Crystal =>
-  make_crystal(5.64, [
-    ...FACE_CENTRES.map((abc) => ({ element: `Na`, abc })),
-    ...EDGE_CENTRES.map((abc) => ({ element: `Cl`, abc })),
-  ])
+
+type BuilderState = {
+  slab: Slab | null
+  error: string | null
+  miller_indices: Vec3
+  termination_idx: number
+}
 
 describe(`SlabBuilder`, () => {
   let mounted: ReturnType<typeof mount> | null = null
@@ -30,59 +29,19 @@ describe(`SlabBuilder`, () => {
     document.body.innerHTML = ``
   })
 
-  const mount_builder = (structure: Crystal, initial_hkl: Vec3 = [1, 1, 1]) => {
-    let slab = $state<Slab | null>(null)
-    let error = $state<string | null>(null)
-    let miller_indices = $state<Vec3>(initial_hkl)
-    let termination_idx = $state(0)
+  const mount_builder = (structure: Crystal) => {
+    const state = $state<BuilderState>({
+      slab: null,
+      error: null,
+      miller_indices: [1, 1, 1],
+      termination_idx: 0,
+    })
     mounted = mount(SlabBuilder, {
       target: document.body,
-      props: {
-        structure,
-        get slab() {
-          return slab
-        },
-        set slab(val) {
-          slab = val
-        },
-        get error() {
-          return error
-        },
-        set error(val) {
-          error = val
-        },
-        get miller_indices() {
-          return miller_indices
-        },
-        set miller_indices(val) {
-          miller_indices = val
-        },
-        get termination_idx() {
-          return termination_idx
-        },
-        set termination_idx(val) {
-          termination_idx = val
-        },
-      },
+      props: bind_props({ structure }, state),
     })
     flushSync()
-    return {
-      get slab() {
-        return slab
-      },
-      get error() {
-        return error
-      },
-      get termination_idx() {
-        return termination_idx
-      },
-      set termination_idx(val: number) {
-        termination_idx = val
-      },
-      set miller_indices(val: Vec3) {
-        miller_indices = val
-      },
-    }
+    return state
   }
 
   test(`builds a slab on mount and reports its geometry`, () => {
@@ -97,7 +56,8 @@ describe(`SlabBuilder`, () => {
   })
 
   test(`lists every distinct termination and rebuilds when one is picked`, () => {
-    const built = mount_builder(rocksalt())
+    // rocksalt (111) alternates Na and Cl planes, so it has two distinct terminations
+    const built = mount_builder(make_rocksalt())
     const options = doc_query(`.slab-builder select`).querySelectorAll(`option`)
     expect(options).toHaveLength(2)
     const first_formula = built.slab?.slab_info.termination.formula
@@ -108,7 +68,7 @@ describe(`SlabBuilder`, () => {
   })
 
   test(`changing the surface resets the termination to the first one`, () => {
-    const built = mount_builder(rocksalt())
+    const built = mount_builder(make_rocksalt())
     built.termination_idx = 1
     flushSync()
     expect(built.termination_idx).toBe(1)
@@ -116,6 +76,14 @@ describe(`SlabBuilder`, () => {
     flushSync()
     expect(built.termination_idx).toBe(0)
     expect(built.slab?.slab_info.miller_indices).toEqual([1, 0, 0])
+  })
+
+  test(`reassigning equal miller indices keeps the picked termination`, () => {
+    const built = mount_builder(make_rocksalt())
+    built.termination_idx = 1
+    built.miller_indices = [1, 1, 1]
+    flushSync()
+    expect(built.termination_idx).toBe(1)
   })
 
   test(`invalid Miller indices surface as an error instead of throwing`, () => {

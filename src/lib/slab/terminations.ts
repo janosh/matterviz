@@ -5,15 +5,14 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
-import type { OrientedBulkOptions } from './lattice-basis'
 import { make_oriented_bulk } from './lattice-basis'
 import {
   find_lattice_translations,
   image_distance,
-  site_grid_of,
+  make_site_grid,
   species_keys_of,
 } from './translations'
-import type { OrientedBulk, SlabLayer, SlabTermination } from './types'
+import type { OrientedBulk, SlabLayer, SlabOptions, SlabTermination } from './types'
 import { SLAB_LAYER_TOLERANCE, SLAB_POSITION_TOLERANCE } from './types'
 
 // Sites of an oriented bulk cell grouped by height along the surface normal. In-plane
@@ -36,7 +35,7 @@ export function detect_layers(
     const below = idx === 0 ? order[order.length - 1].frac_c - 1 : order[idx - 1].frac_c
     return (entry.frac_c - below) * height_c
   })
-  const widest = gaps.indexOf(Math.max(...gaps))
+  const widest = gaps.indexOf(math.array_max(gaps))
 
   // Group site indices by height, then describe each group
   const groups: { site_idxs: number[]; height: number; pos: number }[] = []
@@ -104,31 +103,30 @@ function normal_preserving_images(bulk: OrientedBulk): Site[][] {
   const tol = SLAB_POSITION_TOLERANCE
   const same_length = (vec: Vec3, len: number) => Math.abs(Math.hypot(...vec) - len) <= tol
 
-  const images: Site[][] = []
+  // the 9 rows an integer 2x2 matrix with entries in {-1, 0, 1} can have
   const coeffs = [-1, 0, 1]
-  for (const m_aa of coeffs) {
-    for (const m_ab of coeffs) {
-      for (const m_ba of coeffs) {
-        for (const m_bb of coeffs) {
-          if (m_aa === 1 && m_bb === 1 && m_ab === 0 && m_ba === 0) continue
-          if (Math.abs(m_aa * m_bb - m_ab * m_ba) !== 1) continue
-          const image_a = math.add(math.scale(vec_a, m_aa), math.scale(vec_b, m_ab))
-          const image_b = math.add(math.scale(vec_a, m_ba), math.scale(vec_b, m_bb))
-          if (!same_length(image_a, len_a) || !same_length(image_b, len_b)) continue
-          if (Math.abs(math.dot(image_a, image_b) - dot_ab) > tol * (len_a + len_b)) continue
-          const from_frame = math.create_frac_to_cart([image_a, image_b, normal])
-          const apply = (vec: Vec3): Vec3 => from_frame(to_frame(vec))
-          const image_c = cart_to_frac(apply(vec_c))
-          const nearest_lattice_vec = image_c.map(Math.round) as Vec3
-          if (image_distance(image_c, nearest_lattice_vec, frac_to_cart) > tol) continue
-          images.push(
-            bulk.crystal.sites.map((site) => ({
-              ...site,
-              abc: wrap_to_unit_cell(cart_to_frac(apply(site.xyz))),
-            })),
-          )
-        }
-      }
+  const rows = coeffs.flatMap((first) => coeffs.map((second) => [first, second]))
+
+  const images: Site[][] = []
+  for (const [m_aa, m_ab] of rows) {
+    for (const [m_ba, m_bb] of rows) {
+      if (m_aa === 1 && m_bb === 1 && m_ab === 0 && m_ba === 0) continue
+      if (Math.abs(m_aa * m_bb - m_ab * m_ba) !== 1) continue
+      const image_a = math.add(math.scale(vec_a, m_aa), math.scale(vec_b, m_ab))
+      const image_b = math.add(math.scale(vec_a, m_ba), math.scale(vec_b, m_bb))
+      if (!same_length(image_a, len_a) || !same_length(image_b, len_b)) continue
+      if (Math.abs(math.dot(image_a, image_b) - dot_ab) > tol * (len_a + len_b)) continue
+      const from_frame = math.create_frac_to_cart([image_a, image_b, normal])
+      const apply = (vec: Vec3): Vec3 => from_frame(to_frame(vec))
+      const image_c = cart_to_frac(apply(vec_c))
+      const nearest_lattice_vec = image_c.map(Math.round) as Vec3
+      if (image_distance(image_c, nearest_lattice_vec, frac_to_cart) > tol) continue
+      images.push(
+        bulk.crystal.sites.map((site) => ({
+          ...site,
+          abc: wrap_to_unit_cell(cart_to_frac(apply(site.xyz))),
+        })),
+      )
     }
   }
   return images
@@ -142,14 +140,14 @@ function equivalent_layer_shifts(bulk: OrientedBulk, layers: SlabLayer[]): numbe
   if (layers.length < 2) return []
   const { sites, lattice } = bulk.crystal
   const keys = species_keys_of(sites)
-  const grid = site_grid_of(sites, keys, lattice.matrix)
+  const grid = make_site_grid(lattice.matrix, sites, keys)
   const layer_of_site: number[] = Array(sites.length).fill(-1)
   for (const [layer_idx, layer] of layers.entries()) {
     for (const site_idx of layer.site_idxs) layer_of_site[site_idx] = layer_idx
   }
 
   const anchor_idx = layers[0].site_idxs[0]
-  const shifts: number[] = []
+  const shifts = new Set<number>()
   for (const images of [sites, ...normal_preserving_images(bulk)]) {
     const translations = find_lattice_translations(sites, lattice.matrix, { images })
     for (const translation of translations) {
@@ -162,13 +160,16 @@ function equivalent_layer_shifts(bulk: OrientedBulk, layers: SlabLayer[]): numbe
         )
       }
       const shift = layer_of_site[image_idx]
-      if (shift > 0 && !shifts.includes(shift)) shifts.push(shift)
+      if (shift > 0) shifts.add(shift)
     }
   }
-  return shifts
+  return [...shifts]
 }
 
-export type SlabTerminationOptions = OrientedBulkOptions & { layer_tolerance?: number }
+export type SlabTerminationOptions = Pick<
+  SlabOptions,
+  `primitive_in_plane` | `layer_tolerance`
+>
 
 // Distinct terminations of an already oriented bulk cell: one per layer, minus the ones a
 // normal-preserving symmetry maps onto an earlier layer.

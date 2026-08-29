@@ -9,13 +9,13 @@ import { SLAB_POSITION_TOLERANCE } from './types'
 
 // Two sites are interchangeable when they carry the same species at the same
 // occupancies. Sorted so the ordering inside a disordered site cannot change the key.
-const species_key = (site: Site): string =>
-  site.species
-    .map(({ element, occu }) => `${element}:${occu}`)
-    .toSorted()
-    .join(`,`)
-
-export const species_keys_of = (sites: Site[]): string[] => sites.map(species_key)
+export const species_keys_of = (sites: Site[]): string[] =>
+  sites.map((site) =>
+    site.species
+      .map(({ element, occu }) => `${element}:${occu}`)
+      .toSorted()
+      .join(`,`),
+  )
 
 // Fractional offset folded into [-0.5, 0.5): the nearest periodic image of a coordinate
 // difference along one axis.
@@ -56,7 +56,13 @@ export type SiteGrid = {
   add: (abc: Vec3, key: string, idx: number) => void
 }
 
-export function make_site_grid(matrix: Matrix3x3): SiteGrid {
+// Pass `sites` and their `keys` to index a fixed site set up front; callers that build the
+// set as they go start from an empty grid and add(...) to it instead.
+export function make_site_grid(
+  matrix: Matrix3x3,
+  sites: Site[] = [],
+  keys: string[] = [],
+): SiteGrid {
   const tolerance = SLAB_POSITION_TOLERANCE
   const frac_to_cart = math.create_frac_to_cart(matrix)
   // Moving a Cartesian distance `tolerance` changes fractional coordinate i by at most
@@ -69,15 +75,15 @@ export function make_site_grid(matrix: Matrix3x3): SiteGrid {
   // a query never has to build a string.
   const by_species = new Map<string, Map<number, { idx: number; abc: Vec3 }[]>>()
   // fractional coords are not always wrapped into [0, 1), so fold the bucket index
-  const bucket_idxs = (abc: Vec3): Vec3 =>
+  const bucket_idxs = (abc: Vec3): number[] =>
     [0, 1, 2].map((axis) => {
       const raw = Math.floor(abc[axis] * counts[axis]) % counts[axis]
       return raw < 0 ? raw + counts[axis] : raw
-    }) as Vec3
+    })
   const flat_idx = (bin_a: number, bin_b: number, bin_c: number): number =>
     (bin_a * counts[1] + bin_b) * counts[2] + bin_c
 
-  return {
+  const grid: SiteGrid = {
     add(abc, key, idx) {
       const [bin_a, bin_b, bin_c] = bucket_idxs(abc)
       let buckets = by_species.get(key)
@@ -105,11 +111,6 @@ export function make_site_grid(matrix: Matrix3x3): SiteGrid {
       return -1
     },
   }
-}
-
-// Grid holding every site of `sites`, for callers that query a fixed site set.
-export function site_grid_of(sites: Site[], keys: string[], matrix: Matrix3x3): SiteGrid {
-  const grid = make_site_grid(matrix)
   for (const [idx, site] of sites.entries()) grid.add(site.abc, keys[idx], idx)
   return grid
 }
@@ -143,9 +144,9 @@ export function find_lattice_translations(
   const keys = species_keys_of(sites)
   const counts = new Map<string, number>()
   for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1)
-  let rarest_key = keys[0]
+  let [rarest_key, rarest_count] = [keys[0], Infinity]
   for (const [key, count] of counts) {
-    if (count < (counts.get(rarest_key) ?? Infinity)) rarest_key = key
+    if (count < rarest_count) [rarest_key, rarest_count] = [key, count]
   }
   const target_idxs = keys.flatMap((key, idx) => (key === rarest_key ? [idx] : []))
   const anchor = images[target_idxs[0]]
@@ -153,7 +154,7 @@ export function find_lattice_translations(
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const height_c = math.cell_heights(matrix)[2]
   // The site set is the same for every candidate shift, so index it once
-  const grid = site_grid_of(sites, keys, matrix)
+  const grid = make_site_grid(matrix, sites, keys)
   const is_identity = (shift: Vec3) =>
     image_distance(shift, [0, 0, 0], frac_to_cart) <= SLAB_POSITION_TOLERANCE
 
