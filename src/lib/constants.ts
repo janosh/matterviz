@@ -123,7 +123,7 @@ export const VASP_VOLUMETRIC_REGEX = filename_token_regex(VASP_VOLUMETRIC_FILES)
 export const VASP_TRAJECTORY_FILES = Object.freeze([`xdatcar`, `outcar`])
 export const VASP_TRAJECTORY_REGEX = filename_token_regex(VASP_TRAJECTORY_FILES)
 // vasprun.xml plus decorated names such as vasprun_relax.xml or run1.vasprun.xml
-export const VASPRUN_REGEX = /vasprun[^/\\]*\.xml$/i
+export const VASPRUN_REGEX = /(?:^|[\\/_.-])vasprun[^/\\]*\.xml$/i
 export const CONFIG_DIRS_REGEX =
   /(?:^|[\\/])(?:\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
 export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(?:out|txt|yml|py|csv|html|css|md|js|ts)$/i

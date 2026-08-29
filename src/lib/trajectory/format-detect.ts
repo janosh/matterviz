@@ -45,6 +45,9 @@ const KNOWN_FORMAT_EXT_REGEX = ext_regex([
   `yml`, `xml`, `csv`,
 ])
 const INDEXABLE_EXT_REGEX = ext_regex([...XYZ_EXTENSIONS, `traj`])
+// `outcar` anywhere in the basename (OUTCAR, OUTCAR_step2, relax.outcar), never in a
+// directory name — an `outcar/` folder must not claim the files inside it
+const OUTCAR_NAME_REGEX = /outcar[^/\\]*$/i
 
 // Classify the filename hint for a format whose extensions match ext_regex:
 // true = filename matches, false = filename names a different known format,
@@ -99,25 +102,21 @@ export const FORMAT_PATTERNS = {
     )
   },
 
-  // <modeling> is vasprun.xml's root element; any other .xml (phonopy, XRDML) lacks it
+  // <modeling> is vasprun.xml's root element; any other .xml (phonopy, XRDML) lacks it, so a
+  // renamed run still sniffs as one while a foreign .xml does not
   vasprun: (data: string, filename?: string) => {
-    if (filename && VASPRUN_REGEX.test(strip_compression_extensions(filename))) return true
+    if (ext_hint(filename, VASPRUN_REGEX)) return true
     if (ext_hint(filename, /\.xml$/i) === false) return false
     return data.slice(0, 4096).includes(`<modeling>`)
   },
 
   // OUTCARs open with the `vasp.6.4.2 ...` build banner; the position table proves the run
   // got as far as one ionic step, without which there is nothing to show
-  outcar: (data: string, filename?: string) => {
-    const basename = strip_compression_extensions(filename?.split(`/`).pop() ?? ``)
-    if (/outcar/i.test(basename)) return true
-    if (KNOWN_FORMAT_EXT_REGEX.test(basename)) return false
-    return (
-      /^\s*vasp\.\d/.test(data.slice(0, 256)) &&
+  outcar: (data: string, filename?: string) =>
+    ext_hint(filename, OUTCAR_NAME_REGEX) ??
+    (/^\s*vasp\.\d/.test(data.slice(0, 256)) &&
       data.includes(`POSITION`) &&
-      data.includes(`TOTAL-FORCE`)
-    )
-  },
+      data.includes(`TOTAL-FORCE`)),
 
   lammpstrj: (data: string, filename?: string) => {
     if (ext_hint(filename, /\.lammpstrj$/i) === false) return false

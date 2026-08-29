@@ -87,19 +87,15 @@ export const vasp_stress_metadata = (
   return { stress, pressure: (stress[0][0] + stress[1][1] + stress[2][2]) / 3 }
 }
 
-export type VaspRunParameters = {
-  ibrion: number | null
-  // Time step (fs) when IBRION = 0; relaxations reuse the tag as a step scale
-  potim: number | null
-  version: string | undefined
-}
+// POTIM is the time step (fs) only when IBRION = 0; relaxations reuse the tag as a step scale
+type VaspRunTags = { ibrion: number | null; potim: number | null; version?: string }
 
 // The run-level facts every VASP output records, in ParsedTrajectory shape
 export const vasp_run = (
   format: string,
   frames: TrajectoryFrame[],
   atom_masses: number[] | undefined,
-  { ibrion, potim, version }: VaspRunParameters,
+  { ibrion, potim, version }: VaspRunTags,
 ): ParsedTrajectory => {
   const metadata: Record<string, unknown> = {}
   if (ibrion !== null) metadata.ibrion = ibrion

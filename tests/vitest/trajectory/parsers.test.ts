@@ -378,32 +378,14 @@ describe(`vasprun.xml`, () => {
       ...calculations,
       `</modeling>`,
     ].join(`\n`)
+  // oxfmt-ignore
+  const frac_si_o = [[0, 0, 0], [0.5, 0.5, 0.5]]
+  // oxfmt-ignore
+  const zero_forces = [[0, 0, 0], [0, 0, 0]]
+  // oxfmt-ignore
   const two_steps = [
-    calculation(
-      5,
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-      [
-        [0.1, 0, 0],
-        [-0.1, 0, 0],
-      ],
-      -10,
-    ),
-    calculation(
-      5.2,
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.52],
-      ],
-      [
-        [0.01, 0, 0],
-        [-0.01, 0, 0],
-      ],
-      -10.5,
-      { n_scf: 3 },
-    ),
+    calculation(5, frac_si_o, [[0.1, 0, 0], [-0.1, 0, 0]], -10),
+    calculation(5.2, [[0, 0, 0], [0.5, 0.5, 0.52]], [[0.01, 0, 0], [-0.01, 0, 0]], -10.5, { n_scf: 3 }),
   ]
 
   it(`reads one frame per <calculation> with structure, forces, stress and energies`, async () => {
@@ -447,19 +429,7 @@ describe(`vasprun.xml`, () => {
   })
 
   it(`treats POTIM as the MD time step and keeps thermostat energies for IBRION = 0`, async () => {
-    const md_step = calculation(
-      5,
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-      [
-        [0, 0, 0],
-        [0, 0, 0],
-      ],
-      -10,
-      { md: true },
-    )
+    const md_step = calculation(5, frac_si_o, zero_forces, -10, { md: true })
     const run = await open(vasprun([md_step], { ibrion: 0, potim: 2 }), `vasprun.xml`)
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })
     expect((await run.read_frame(0)).metadata).toMatchObject({
@@ -468,25 +438,19 @@ describe(`vasprun.xml`, () => {
     })
   })
 
-  it(`drops an unclosed final <calculation> with a warning`, async () => {
-    const torn = calculation(
-      5,
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-      [
-        [0, 0, 0],
-        [0, 0, 0],
-      ],
-      -9,
-      { close: false },
-    )
-    const run = await open(vasprun([...two_steps, torn]), `vasprun.xml`)
-    expect(await steps_of(run)).toEqual([1, 2])
+  it(`drops mismatched force rows and an unclosed final <calculation> with warnings`, async () => {
+    const short_forces = calculation(5, frac_si_o, [[0.1, 0, 0]], -9.5)
+    const torn = calculation(5, frac_si_o, zero_forces, -9, { close: false })
+    const run = await open(vasprun([...two_steps, short_forces, torn]), `vasprun.xml`)
+    expect(await steps_of(run)).toEqual([1, 2, 3])
     expect(run.warnings).toEqual([
-      `Dropping incomplete final vasprun.xml <calculation> block (ionic step 3)`,
+      `vasprun.xml ionic step 3: 1 force rows for 2 atoms, forces dropped`,
+      `Dropping incomplete final vasprun.xml <calculation> block (ionic step 4)`,
     ])
+    // the frame survives without forces, on neither the metadata nor the sites
+    const frame = await run.read_frame(2)
+    expect(frame.metadata).not.toHaveProperty(`forces`)
+    expect(frame.structure.sites[0].properties?.force).toBeUndefined()
   })
 
   it(`is recognised by content when the filename gives no hint`, async () => {
@@ -500,7 +464,7 @@ describe(`vasprun.xml`, () => {
     [`no <modeling> root`, `<?xml version="1.0"?><phonopy></phonopy>`, `missing <modeling> root element`],
     [`no <atominfo>`, `<modeling>${two_steps[0]}</modeling>`, `no complete <atominfo>`],
     [`an unknown element`, vasprun(two_steps, { atoms: atominfo([[`Xx`, 1], [`O`, 2]], []) }), `Unknown element symbol in vasprun.xml <atominfo>: "Xx"`],
-    [`only torn calculations`, vasprun([calculation(5, [[0, 0, 0], [0.5, 0.5, 0.5]], [], -9, { close: false })]), `contains no complete <calculation>`],
+    [`only torn calculations`, vasprun([calculation(5, frac_si_o, [], -9, { close: false })]), `contains no complete <calculation>`],
     [`a position count that does not match the atoms`, vasprun([calculation(5, [[0, 0, 0]], [], -9)]), `ionic step 1: 1 positions for 2 atoms`],
     [`a malformed position row`, vasprun([calculation(5, [[0, 0], [0.5, 0.5, 0.5]], [], -9)]), `<varray name="positions"> row is not a triple`],
   ])(`rejects a vasprun.xml with %s`, async (_label, content, error) => {
@@ -690,6 +654,7 @@ describe(`OUTCAR`, () => {
     [`no vasp banner`, `some log\nPOSITION TOTAL-FORCE`, `Not an OUTCAR file`],
     [`no ions per type line`, ` vasp.6.4.2\n VRHFIN =Si:\n${ionic_step(1, 5, rows_1, -20)}`, `no "ions per type" line`],
     [`more species than counts`, header({ types: [[`Si`, 28, 1], [`O`, 16, 1], [`H`, 1, 1]] }).replace(/ions per type =.*/, `ions per type = 1 2`), `lists 3 species (Si, O, H) but 2 ion counts`],
+    [`an unknown element`, [header({ types: [[`Xx`, 28, 1], [`O`, 16, 2]] }), ionic_step(1, 5, rows_1, -20)].join(`\n`), `Unknown element symbol in OUTCAR: "Xx"`],
     [`no position table`, header(), `contains no POSITION / TOTAL-FORCE table`],
     [`a corrupt position row`, [header(), ionic_step(1, 5, [[0, 0, 0, 0, 0, 0], [1, 1, `x`, 0, 0, 0], [2, 2, 2, 0, 0, 0]] as unknown as number[][], -20), ionic_step(2, 5, rows_2, -20)].join(`\n`), `is not a position + force sextet`],
   ])(`rejects an OUTCAR with %s`, async (_label, content, error) => {
@@ -721,6 +686,7 @@ describe(`VASP run output detection`, () => {
     [`vasprun`, modeling, undefined, true],
     [`vasprun`, modeling, `blob:uuid`, true],
     [`vasprun`, `<?xml version="1.0"?><phonopy/>`, `phonopy.xml`, false],
+    [`vasprun`, modeling, `run_final.xml`, true], // a renamed vasprun still sniffs by content
     [`vasprun`, modeling, `md.lammpstrj`, false],
     [`vasprun`, `nothing`, `vasprun.xml`, true],
     [`outcar`, banner, undefined, true],

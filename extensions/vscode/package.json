@@ -83,6 +83,12 @@
             "filenamePattern": "*{CONTCAR,OUTCAR,POSCAR,XDATCAR,contcar,outcar,poscar,xdatcar}.gz"
           },
           {
+            "filenamePattern": "{vasprun,*[._-]vasprun}*.xml"
+          },
+          {
+            "filenamePattern": "{vasprun,*[._-]vasprun}*.xml.gz"
+          },
+          {
             "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}"
           },
           {

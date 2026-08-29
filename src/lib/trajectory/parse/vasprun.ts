@@ -13,19 +13,17 @@ import { calc_force_stats, create_trajectory_frame } from '$lib/trajectory/helpe
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { vasp_run, vasp_stress_metadata } from './shared'
 
-// Inner text of the first `<tag ...>…</tag>` after `from`, or null when the tag is absent or
-// unclosed. The close tag is looked up after the open tag, so a torn file never matches an
-// earlier close tag by accident.
+// Inner text of the first `<tag ... name="name">…</tag>` after `from`, or null when the tag
+// is absent or unclosed. The close tag is looked up after the open tag, so a torn file never
+// matches an earlier close tag by accident.
 type TagBody = { body: string; end: number }
-const tag_body = (
-  text: string,
-  open_pattern: RegExp,
-  close_tag: string,
-  from = 0,
-): TagBody | null => {
+const tag_body = (text: string, tag: string, name = ``, from = 0): TagBody | null => {
+  const attrs = name ? `[^>]*name="${name}"` : ``
+  const open_pattern = new RegExp(`<${tag}${attrs}[^>]*>`, `g`)
   open_pattern.lastIndex = from
   const open = open_pattern.exec(text)
   if (!open) return null
+  const close_tag = `</${tag}>`
   const body_start = open.index + open[0].length
   const close = text.indexOf(close_tag, body_start)
   if (close === -1) return null
@@ -35,17 +33,12 @@ const tag_body = (
 // The last `<tag ...>…</tag>` in `text`, e.g. the final <structure> of an ionic step
 const last_tag_body = (text: string, tag: string): TagBody | null => {
   const last_open = text.lastIndexOf(`<${tag}`)
-  if (last_open === -1) return null
-  return tag_body(text, new RegExp(`<${tag}[^>]*>`, `g`), `</${tag}>`, last_open)
+  return last_open === -1 ? null : tag_body(text, tag, ``, last_open)
 }
 
 // Rows of a `<varray name="…">`: every `<v>` line as a number triple
 const parse_varray = (text: string, name: string): Vec3[] | null => {
-  const found = tag_body(
-    text,
-    new RegExp(`<varray[^>]*name="${name}"[^>]*>`, `g`),
-    `</varray>`,
-  )
+  const found = tag_body(text, `varray`, name)
   if (!found) return null
   const rows: Vec3[] = []
   for (const match of found.body.matchAll(/<v>(?<row>[^<]*)<\/v>/g)) {
@@ -65,15 +58,13 @@ const parse_varray = (text: string, name: string): Vec3[] | null => {
 
 // `<i name="key">value</i>` anywhere in `text`, as a number or null
 const scalar_of = (text: string, key: string): number | null => {
-  const raw = new RegExp(`<i[^>]*name="${key}"[^>]*>(?<value>[^<]*)</i>`).exec(text)?.groups
-    ?.value
-  const value = parse_float_token(raw)
+  const value = parse_float_token(tag_body(text, `i`, key)?.body)
   return Number.isFinite(value) ? value : null
 }
 
 // `<rc><c>a</c><c>b</c>…</rc>` rows of an <array>, as their cell strings
 const array_rows = (text: string, name: string): string[][] | null => {
-  const found = tag_body(text, new RegExp(`<array[^>]*name="${name}"[^>]*>`, `g`), `</array>`)
+  const found = tag_body(text, `array`, name)
   if (!found) return null
   return [...found.body.matchAll(/<rc>(?<row>.*?)<\/rc>/gs)].map((row) =>
     [...(row.groups?.row ?? ``).matchAll(/<c>(?<cell>[^<]*)<\/c>/g)].map((cell) =>
@@ -86,7 +77,7 @@ const array_rows = (text: string, name: string): string[][] | null => {
 const parse_atominfo = (
   content: string,
 ): { elements: ElementSymbol[]; atom_masses: number[] | undefined } => {
-  const atominfo = tag_body(content, /<atominfo>/g, `</atominfo>`)
+  const atominfo = tag_body(content, `atominfo`)
   if (!atominfo) throw new Error(`vasprun.xml has no complete <atominfo> block`)
   const atoms = array_rows(atominfo.body, `atoms`)
   if (!atoms || atoms.length === 0) {
@@ -102,10 +93,10 @@ const parse_atominfo = (
   const masses_by_type = (array_rows(atominfo.body, `atomtypes`) ?? []).map((row) =>
     parse_float_token(row[2]),
   )
-  const type_idxs = atoms.map(([_symbol, type_idx]) => parse_float_token(type_idx) - 1)
-  const atom_masses = type_idxs.map((type_idx) => masses_by_type[type_idx])
-  const masses_ok =
-    masses_by_type.length > 0 && atom_masses.every((mass) => Number.isFinite(mass) && mass > 0)
+  const atom_masses = atoms.map(
+    ([_symbol, type_idx]) => masses_by_type[parse_float_token(type_idx) - 1],
+  )
+  const masses_ok = atom_masses.every((mass) => Number.isFinite(mass) && mass > 0)
   return { elements, atom_masses: masses_ok ? atom_masses : undefined }
 }
 
@@ -164,17 +155,15 @@ export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajecto
     // Forces and stress sit after the structure; energies of the step are the last
     // <energy> block, the earlier ones belong to individual <scstep>s
     const after_structure = block.slice(structure.end)
-    const forces = parse_varray(after_structure, `forces`)
-    let site_properties: Record<string, unknown>[] | undefined
-    if (forces && forces.length === elements.length) {
-      site_properties = forces.map((force) => ({ force }))
-      metadata.forces = forces
-      Object.assign(metadata, calc_force_stats(forces))
-    } else if (forces) {
+    let forces = parse_varray(after_structure, `forces`)
+    if (forces && forces.length !== elements.length) {
       warn(
         `vasprun.xml ionic step ${step}: ${forces.length} force rows for ${elements.length} atoms, forces dropped`,
       )
+      forces = null
     }
+    const site_properties = forces?.map((force) => ({ force }))
+    if (forces) Object.assign(metadata, { forces }, calc_force_stats(forces))
     const stress = parse_varray(after_structure, `stress`)
     if (stress?.length === 3)
       Object.assign(metadata, vasp_stress_metadata(stress as Matrix3x3))
@@ -201,12 +190,10 @@ export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajecto
   }
   if (frames.length === 0) throw new Error(`vasprun.xml contains no complete <calculation>`)
 
-  const version = /<i name="version"[^>]*>(?<version>[^<]*)<\/i>/
-    .exec(content)
-    ?.groups?.version.trim()
+  const version = tag_body(content, `i`, `version`)?.body.trim()
   // The <parameters> echo carries every INCAR tag with its default, the <incar> echo only
   // what the user set, so the tags are read from the former and fall back to the whole file
-  const parameters = tag_body(content, /<parameters>/g, `</parameters>`)?.body ?? content
+  const parameters = tag_body(content, `parameters`)?.body ?? content
   return vasp_run(`vasprun`, frames, atom_masses, {
     ibrion: scalar_of(parameters, `IBRION`),
     potim: scalar_of(parameters, `POTIM`),

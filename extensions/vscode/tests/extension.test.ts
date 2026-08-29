@@ -256,6 +256,10 @@ describe(`MatterViz Extension`, () => {
       [`XDATCAR`, `VASP`],
       [`OUTCAR`, `VASP`],
       [`OUTCAR.gz`, `VASP`],
+      [`vasprun.xml`, `VASP`],
+      [`vasprun.xml.gz`, `VASP`],
+      [`vasprun_relax.xml`, `VASP`],
+      [`run1.vasprun.xml.gz`, `VASP`],
       [`simulation.h5`, `HDF5`],
       [`data.hdf5`, `HDF5`],
       [`dynamics.dcd`, `DCD`],
@@ -284,6 +288,7 @@ describe(`MatterViz Extension`, () => {
 
     test.each([
       [`INCAR`],
+      [`notvasprun.xml`],
       [`myCHGCARfile`],
       [`prefixPARCHGsuffix`],
       [`notes_ELFCARbackup`],

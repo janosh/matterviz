@@ -49,6 +49,8 @@ test.each([
   [`OUTCAR`, true],
   [`relax/OUTCAR.gz`, true],
   [`vasprun.xml`, true],
+  [`run1.vasprun.xml.gz`, true],
+  [`notvasprun.xml`, false],
   [`CHGCAR`, true],
   [`density.cube`, true],
   [`band.bxsf.gz`, true],
