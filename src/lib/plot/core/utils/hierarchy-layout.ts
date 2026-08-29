@@ -124,6 +124,11 @@ export interface SunburstLayoutOptions {
   // read to pick what `min_fraction` measures against; the layout itself always covers
   // the whole tree and zoom is applied downstream.
   zoom_root_id?: string | number | null
+  // Ids of parents whose children are exempt from bucketing. `max_children` is a rank
+  // cap, not a threshold, so it re-applies identically at every zoom and re-creates the
+  // bucket just drilled into; the same holds for a bucket whose parent is already the
+  // view root. Naming the parent explicitly is what lets those open at all.
+  expanded_parents?: ReadonlySet<string | number>
   // Label for bucketed arcs, default 'Other'. A function is called once per bucket,
   // so it can name what was folded away ('312 smaller jobs'); its result is display
   // text only — a callable leaves the bucket's id (and `label_short`) at 'Other', so
@@ -163,6 +168,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     min_fraction = DEFAULTS.sunburst.min_fraction,
     max_children = 0,
     zoom_root_id = null,
+    expanded_parents,
     other_label = `Other`,
   } = opts
   // Fresh object each call (not a shared constant) so callers can't corrupt each other
@@ -219,23 +225,24 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   // Mirrors flatten's id rule below; children are still in the caller's order at this
   // point, which is what makes the ids it derives match the ones flatten will assign.
   let zoom_node: HierarchyNode<SunburstNode<Metadata>> | null = null
-  if (zoom_root_id != null && (min_fraction > 0 || max_children > 0)) {
+  const exempt = new Set<HierarchyNode<SunburstNode<Metadata>>>()
+  if (
+    (min_fraction > 0 || max_children > 0) &&
+    (zoom_root_id != null || expanded_parents?.size)
+  ) {
     const walk = (
       node: HierarchyNode<SunburstNode<Metadata>>,
       parent_id: string,
       child_idx: number,
     ): void => {
-      if (zoom_node) return
       const segment = node.data.label ?? `${child_idx}`
       const own =
         node.data.id ??
         (node.depth === 0
           ? (node.data.label ?? ``)
           : `${parent_id !== `` ? `${parent_id}/` : ``}${segment}`)
-      if (own === zoom_root_id) {
-        zoom_node = node
-        return
-      }
+      if (own === zoom_root_id) zoom_node = node
+      if (expanded_parents?.has(own)) exempt.add(node)
       node.children?.forEach((kid, idx) => walk(kid, `${own}`, idx))
     }
     walk(root, ``, 0)
@@ -270,7 +277,8 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     // node's own values, so the visit order among siblings cannot change it.
     root.each((node) => {
       const kids = node.children
-      if (!kids) return
+      // An explicitly expanded parent keeps every child under its own name
+      if (!kids || exempt.has(node)) return
       // Guarded, not just multiplied: a non-finite `min_fraction` would make every
       // `value >= threshold` false and collapse the parent's whole child list into
       // one bucket, silently discarding a `max_children` ranking that still works.

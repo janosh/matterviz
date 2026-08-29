@@ -213,6 +213,34 @@ describe(`Treemap`, () => {
     expect(shown.some((label) => label.startsWith(`Other`))).toBe(false)
   })
 
+  // `max_children` is a rank cap, not a threshold: re-measuring against the zoom root
+  // re-applies it identically, so the bucket would reappear and the click do nothing
+  test(`clicking a max_children bucket opens it`, async () => {
+    const wide: TreemapNode[] = [
+      {
+        label: `p`,
+        children: [
+          { label: `a`, value: 5 },
+          { label: `b`, value: 4 },
+          { label: `c`, value: 3 },
+          { label: `d`, value: 2 },
+          { label: `e`, value: 1 },
+        ],
+      },
+    ]
+    const plot = await mount_sized_treemap({ data: wide, max_children: 3 })
+    const label_of = (rect: Element) => rect.getAttribute(`aria-label`) ?? ``
+    const cells = () => [...plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)]
+    const bucket = cells().find((rect) => label_of(rect).startsWith(`Other`))
+    expect(bucket).toBeDefined()
+
+    await fire(bucket)
+    await tick()
+    const shown = cells().map((rect) => label_of(rect).split(`:`)[0])
+    expect(shown).toEqual(expect.arrayContaining([`a`, `b`, `c`, `d`, `e`]))
+    expect(shown.some((label) => label.startsWith(`Other`))).toBe(false)
+  })
+
   // Zoom-aware bucketing rebuilds the arcs on every zoom, so the tween can no longer
   // tell a zoom from a data swap by array identity - it would classify every zoom as a
   // swap and snap. It compares arc ids instead.

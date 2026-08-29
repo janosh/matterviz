@@ -132,6 +132,7 @@
       // Plain prop, never derived from the layout it feeds - the arcs depend on it,
       // so reading it back off them would close a cycle
       zoom_root_id,
+      expanded_parents: chart_state.expanded_parents,
       other_label,
     }),
     label_text: () => label_text,

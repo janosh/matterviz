@@ -158,6 +158,10 @@ export class HierarchyChartState<
   hovered_idx: number | null = $state(null)
   hover_info: NodeProps<Metadata> | null = $state(null)
   hover_pos: Point = $state({ x: 0, y: 0 })
+  // Parents whose bucket the user opened. Read by the layout, which then leaves that
+  // parent's children unbucketed; cleared on a reset so the chart returns to its
+  // configured thresholds rather than staying permanently unfolded.
+  expanded_parents = new SvelteSet<string | number>()
   // Whether `hover_pos` is a live cursor or a node center (keyboard focus). Only the
   // former has a pointer glyph for the tooltip to keep clear of.
   hover_at_pointer = $state(false)
@@ -344,6 +348,8 @@ export class HierarchyChartState<
   // Re-root the view on the given node (or the data root when null) and notify
   zoom_to = (arc: PositionedArc<Metadata> | null): void => {
     const root = arc && arc.depth > 0 ? arc : null
+    // Returning to the data root drops every manual expansion with it
+    if (!root) this.expanded_parents.clear()
     this.#opts.set_zoom_root_id(root?.id ?? null)
     // The clicked node collapses into the hole / expands to fill the viewport -
     // drop the now-stale hover/tooltip
@@ -370,7 +376,13 @@ export class HierarchyChartState<
     // view root, that re-measures its siblings and dissolves the bucket into the real
     // nodes it stood for - clicking 'Other' shows you what is inside it.
     if (arc.is_other) {
-      this.zoom_to(arc.parent_idx == null ? null : (this.arcs[arc.parent_idx] ?? null))
+      const parent = arc.parent_idx == null ? null : (this.arcs[arc.parent_idx] ?? null)
+      // Exempt the parent as well as zooming to it. Re-measuring against the new view
+      // root dissolves a `min_fraction` bucket, but `max_children` is a rank cap that
+      // re-applies identically at any zoom, and a parent that is already the view root
+      // does not move at all - in both cases the click would otherwise do nothing.
+      if (parent) this.expanded_parents.add(parent.id)
+      this.zoom_to(parent)
       return
     }
     if (this.chart === `sunburst`) {
