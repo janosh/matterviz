@@ -7,6 +7,7 @@ export * from './sankey'
 export * from './scatter'
 export * from './scatter-3d'
 export * from './sunburst'
+export * from './ternary'
 export * from './treemap'
 
 // core/ is deliberately NOT re-exported in bulk. It holds tick math, layout solvers,

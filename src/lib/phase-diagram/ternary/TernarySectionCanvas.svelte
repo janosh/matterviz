@@ -16,7 +16,8 @@
   } from '$lib/convex-hull/canvas-draw'
   import { get_energy_color_scale, merge_highlight_style } from '$lib/convex-hull/helpers'
   import type { ConvexHullEntry } from '$lib/convex-hull/types'
-  import { lerp, type Vec2, type Vec3 } from '$lib/math'
+  import { lerp, type Vec2 } from '$lib/math'
+  import { TRIANGLE_HEIGHT, xy_to_ternary } from '$lib/plot/ternary/ternary'
   import type { HTMLAttributes } from 'svelte/elements'
   import { type CanvasFrame, create_canvas_surface } from '$lib/canvas-surface.svelte'
   import { decompose_composition, type DiagramModel } from './compute'
@@ -49,7 +50,6 @@
 
   // === Geometry: triangle frame xy ↔ canvas px ===
 
-  const TRIANGLE_HEIGHT = Math.sqrt(3) / 2
   const PAD = 34 // px around the triangle for corner labels
   const layout = $derived.by(() => {
     const { width, height } = surface.dims
@@ -70,10 +70,6 @@
     (px - layout.origin_x) / layout.size,
     (layout.origin_y - py) / layout.size,
   ]
-  const barycentric_of = ([x_pos, y_pos]: Vec2): Vec3 => {
-    const x_b = y_pos / TRIANGLE_HEIGHT
-    return [x_pos - 0.5 * x_b, x_b, 1 - x_pos - 0.5 * x_b]
-  }
 
   // === Entries in ConvexHullEntry shape for the shared canvas helpers ===
 
@@ -362,7 +358,7 @@
     }
     const rect = canvas.getBoundingClientRect()
     const xy = xy_at(event.clientX - rect.left, event.clientY - rect.top)
-    const barycentric = barycentric_of(xy)
+    const barycentric = xy_to_ternary(xy)
     if (barycentric.some((frac) => frac < -1e-6)) return handle_pointer_leave()
     const decomposition = decompose_composition(model, section, xy)
     hover_composition = decomposition && { xy, decomposition }

@@ -70,6 +70,12 @@
       Graph,
     ],
     [
+      `Ternary Plot`,
+      `/plot/ternary`,
+      `Three-component compositions in a barycentric triangle with grid, edge ticks, paths, and per-point coloring.`,
+      Graph,
+    ],
+    [
       `Sunburst & Icicle`,
       `/plot/sunburst`,
       `Zoomable hierarchical rings or stacked rows with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
