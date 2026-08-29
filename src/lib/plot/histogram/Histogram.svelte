@@ -1,8 +1,7 @@
 <script lang="ts">
   import {
-    type ChartExportFormat,
     export_chart_image,
-    export_csv,
+    create_chart_exporter,
     export_filename,
   } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
@@ -458,6 +457,12 @@
     hover_info = null
     on_bar_hover?.(null)
   }
+
+  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
+  // is not. Defined once rather than inline, so every mark shares one handler.
+  const clear_hover_on_exit = (event: FocusEvent) => {
+    if (focus_left(event, frame.svg_element)) clear_hover()
+  }
   const handle_bar_click =
     (hist: BinnedSeries, bin: HistogramBin) => (event: MouseEvent | KeyboardEvent) => {
       if (event instanceof KeyboardEvent) {
@@ -490,24 +495,22 @@
   // === Export ===
   // Bins have an extent, so CSV reports edges rather than the (x, y) the shared long
   // format would collapse them to.
-  const handle_export = (format: ChartExportFormat) => {
-    const name = export_filename(frame.title_config?.text, final_x_axis.label)
-    if (format === `csv`) {
-      export_csv(
-        [`series`, `bin_start`, `bin_end`, `count`, `value`],
-        histogram_bins.flatMap((hist) =>
-          hist.bins.map((bin) => [
-            hist.label ?? `series ${hist.series_idx + 1}`,
-            bin.x0,
-            bin.x1,
-            bin.count,
-            bin.value,
-          ]),
-        ),
-        name,
-      )
-    } else export_chart_image(frame.svg_element, name, format)
-  }
+  const handle_export = create_chart_exporter({
+    svg: () => frame.svg_element,
+    filename: () => export_filename(frame.title_config?.text, final_x_axis.label),
+    csv: () => ({
+      header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
+      rows: histogram_bins.flatMap((hist) =>
+        hist.bins.map((bin) => [
+          hist.label ?? `series ${hist.series_idx + 1}`,
+          bin.x0,
+          bin.x1,
+          bin.count,
+          bin.value,
+        ]),
+      ),
+    }),
+  })
 </script>
 
 {#snippet ref_lines_layer(z: LayerZIndex)}
@@ -597,9 +600,7 @@
                 // Focus is the keyboard's hover; without it the tooltip never opens
                 handle_bar_hover(hist, bin)(evt)
               }}
-              onfocusout={(evt) => {
-                if (focus_left(evt, frame.svg_element)) clear_hover()
-              }}
+              onfocusout={clear_hover_on_exit}
               onclick={handle_bar_click(hist, bin)}
               onkeydown={(evt) => {
                 if (roving.handle_keydown(evt)) return

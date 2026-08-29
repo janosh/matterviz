@@ -4,9 +4,8 @@
 >
   import { error_bounds } from '$lib/plot/core/error-bars'
   import {
-    type ChartExportFormat,
     export_chart_image,
-    export_csv,
+    create_chart_exporter,
     export_filename,
     series_to_csv_rows,
   } from '$lib/plot/core/utils/chart-export'
@@ -1527,13 +1526,11 @@
         }),
       },
     }))
-  const handle_export = (format: ChartExportFormat) => {
-    const name = export_filename(frame.title_config?.text, x_axis.label, y_axis.label)
-    if (format === `csv`) {
-      const { header, rows } = series_to_csv_rows(csv_series())
-      export_csv(header, rows, name)
-    } else export_chart_image(frame.svg_element, name, format)
-  }
+  const handle_export = create_chart_exporter({
+    svg: () => frame.svg_element,
+    filename: () => export_filename(frame.title_config?.text, x_axis.label, y_axis.label),
+    csv: () => series_to_csv_rows(csv_series()),
+  })
 </script>
 
 {#snippet fill_regions_layer(fills: typeof computed_fills)}

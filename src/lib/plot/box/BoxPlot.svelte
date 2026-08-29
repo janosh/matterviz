@@ -3,9 +3,8 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import {
-    type ChartExportFormat,
     export_chart_image,
-    export_csv,
+    create_chart_exporter,
     export_filename,
   } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
@@ -607,6 +606,12 @@
     on_box_hover?.(null)
   }
 
+  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
+  // is not. Defined once rather than inline, so every mark shares one handler.
+  const clear_hover_on_exit = (event: FocusEvent) => {
+    if (focus_left(event, frame.svg_element)) clear_hover()
+  }
+
   // Value label helper
   const value_label_for = (stats: Box[`stats`]): string =>
     format_value_or_num(
@@ -617,41 +622,39 @@
   // === Export ===
   // A box is a five-number summary, not an (x, y) pair, so CSV gets its own columns
   // rather than being forced through the shared long format.
-  const handle_export = (format: ChartExportFormat) => {
-    const name = export_filename(frame.title_config?.text, x_axis.label, y_axis.label)
-    if (format === `csv`) {
-      export_csv(
-        // whisker_low/high are what the chart draws; min/max are the raw extremes
-        [
-          `series`,
-          `n`,
-          `min`,
-          `whisker_low`,
-          `q1`,
-          `median`,
-          `mean`,
-          `q3`,
-          `whisker_high`,
-          `max`,
-          `outliers`,
-        ],
-        visible_boxes.map(({ series: srs, idx, stats }) => [
-          srs.label ?? `box ${idx + 1}`,
-          stats.n,
-          stats.min,
-          stats.whisker_low,
-          stats.q1,
-          stats.median,
-          stats.mean,
-          stats.q3,
-          stats.whisker_high,
-          stats.max,
-          stats.outliers.join(` `),
-        ]),
-        name,
-      )
-    } else export_chart_image(frame.svg_element, name, format)
-  }
+  const handle_export = create_chart_exporter({
+    svg: () => frame.svg_element,
+    filename: () => export_filename(frame.title_config?.text, x_axis.label, y_axis.label),
+    // whisker_low/high are what the chart draws; min/max are the raw extremes
+    csv: () => ({
+      header: [
+        `series`,
+        `n`,
+        `min`,
+        `whisker_low`,
+        `q1`,
+        `median`,
+        `mean`,
+        `q3`,
+        `whisker_high`,
+        `max`,
+        `outliers`,
+      ],
+      rows: visible_boxes.map(({ series: srs, idx, stats }) => [
+        srs.label ?? `box ${idx + 1}`,
+        stats.n,
+        stats.min,
+        stats.whisker_low,
+        stats.q1,
+        stats.median,
+        stats.mean,
+        stats.q3,
+        stats.whisker_high,
+        stats.max,
+        stats.outliers.join(` `),
+      ]),
+    }),
+  })
 </script>
 
 {#snippet seg(p1: Vec2, p2: Vec2, stroke: string, sw: number, dash?: string)}
@@ -777,9 +780,7 @@
               roving.focusin(evt)
               handle_box_hover(box_item, color)(evt)
             }}
-            onfocusout={(evt) => {
-              if (focus_left(evt, frame.svg_element)) clear_hover()
-            }}
+            onfocusout={clear_hover_on_exit}
             style:cursor={on_box_click ? `pointer` : undefined}
             opacity={frame.hovered_series_idx !== null &&
             frame.hovered_series_idx !== box_item.idx

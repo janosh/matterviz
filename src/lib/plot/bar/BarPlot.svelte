@@ -3,9 +3,8 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import {
-    type ChartExportFormat,
     export_chart_image,
-    export_csv,
+    create_chart_exporter,
     export_filename,
     series_to_csv_rows,
   } from '$lib/plot/core/utils/chart-export'
@@ -566,6 +565,12 @@
     hover_info = null
     on_bar_hover?.(null)
   }
+
+  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
+  // is not. Defined once rather than inline, so every mark shares one handler.
+  const clear_hover_on_exit = (event: FocusEvent) => {
+    if (focus_left(event, frame.svg_element)) clear_hover()
+  }
   const clear_point_hover = () => {
     hover_info = null
     on_point_hover?.(null)
@@ -600,19 +605,18 @@
   $effect(try_auto_load)
 
   // === Export ===
-  const handle_export = (format: ChartExportFormat) => {
-    const name = export_filename(frame.title_config?.text, x_axis.label, y_axis.label)
-    if (format === `csv`) {
-      const { header, rows } = series_to_csv_rows(
+  const handle_export = create_chart_exporter({
+    svg: () => frame.svg_element,
+    filename: () => export_filename(frame.title_config?.text, x_axis.label, y_axis.label),
+    csv: () =>
+      series_to_csv_rows(
         internal_series.map((srs, series_idx) => ({
           label: srs?.label ?? `series ${series_idx + 1}`,
           x: srs?.x ?? [],
           y: srs?.y ?? [],
         })),
-      )
-      export_csv(header, rows, name)
-    } else export_chart_image(frame.svg_element, name, format)
-  }
+      ),
+  })
 </script>
 
 {#snippet ref_lines_layer(z: LayerZIndex)}
@@ -899,9 +903,7 @@
                       // opens and on_bar_hover never fires for a keyboard user
                       handle_bar_hover(series_idx, bar_idx, color)(evt)
                     }}
-                    onfocusout={(evt) => {
-                      if (focus_left(evt, frame.svg_element)) clear_hover()
-                    }}
+                    onfocusout={clear_hover_on_exit}
                     style:cursor={on_bar_click ? `pointer` : undefined}
                     onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={clear_hover}

@@ -1,5 +1,18 @@
-import { export_filename, series_to_csv_rows, to_csv } from '$lib/plot/core/utils/chart-export'
-import { describe, expect, test } from 'vitest'
+import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+import { download } from '$lib/io/fetch'
+import {
+  create_chart_exporter,
+  export_filename,
+  series_to_csv_rows,
+  to_csv,
+} from '$lib/plot/core/utils/chart-export'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+vi.mock('$lib/io/fetch', () => ({ download: vi.fn() }))
+vi.mock('$lib/io/export', () => ({
+  export_svg_as_png: vi.fn(),
+  export_svg_as_svg: vi.fn(),
+}))
 
 describe(`to_csv`, () => {
   test.each([
@@ -57,5 +70,39 @@ describe(`export_filename`, () => {
     [[`///`], `chart`],
   ])(`%j -> %s`, (parts, expected) => {
     expect(export_filename(...parts)).toBe(expected)
+  })
+})
+
+// Every chart shares this branch, so it is tested once here rather than per chart
+describe(`create_chart_exporter`, () => {
+  const svg = {} as SVGElement
+  const make = () =>
+    create_chart_exporter({
+      svg: () => svg,
+      filename: () => `my-chart`,
+      csv: () => ({ header: [`a`], rows: [[1]] }),
+    })
+
+  beforeEach(() => vi.clearAllMocks())
+
+  test(`csv writes the table under the .csv name and draws no image`, () => {
+    make()(`csv`)
+    expect(download).toHaveBeenCalledWith(
+      `a\n1`,
+      `my-chart.csv`,
+      expect.stringContaining(`csv`),
+    )
+    expect(export_svg_as_png).not.toHaveBeenCalled()
+    expect(export_svg_as_svg).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [`png`, export_svg_as_png],
+    [`svg`, export_svg_as_svg],
+  ] as const)(`%s renders the image and writes no csv`, (format, exporter) => {
+    make()(format)
+    // Only the leading args are the contract here; styles/dpi belong to the io helpers
+    expect(vi.mocked(exporter).mock.calls[0].slice(0, 2)).toEqual([svg, `my-chart.${format}`])
+    expect(download).not.toHaveBeenCalled()
   })
 })

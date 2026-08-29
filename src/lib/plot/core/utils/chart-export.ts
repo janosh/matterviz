@@ -59,13 +59,28 @@ const csv_cell = (cell: CsvCell): string => {
 export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): string =>
   [header, ...rows].map((row) => row.map(csv_cell).join(`,`)).join(`\n`)
 
-export function export_csv(
+function export_csv(
   header: readonly string[],
   rows: readonly CsvCell[][],
   base_filename: string,
 ): void {
   download(to_csv(header, rows), `${base_filename}.csv`, `text/csv;charset=utf-8`)
 }
+
+// Charts differ only in the table they write: the filename, the csv/image branch and the
+// image path are the same everywhere, so they live here rather than once per chart.
+export const create_chart_exporter =
+  (opts: {
+    svg: () => SVGElement | null
+    filename: () => string
+    csv: () => { header: readonly string[]; rows: CsvCell[][] }
+  }) =>
+  (format: ChartExportFormat): void => {
+    const name = opts.filename()
+    if (format !== `csv`) return export_chart_image(opts.svg(), name, format)
+    const { header, rows } = opts.csv()
+    export_csv(header, rows, name)
+  }
 
 // Long format (one row per point, series named in a column) rather than wide: series
 // can differ in length, sit on different axes and carry different extra channels, none
