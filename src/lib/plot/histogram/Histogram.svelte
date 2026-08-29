@@ -1,4 +1,10 @@
 <script lang="ts">
+  import {
+    type ChartExportFormat,
+    export_chart_image,
+    export_csv,
+    export_filename,
+  } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type {
     AxisLoadError,
@@ -66,6 +72,11 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '$lib/math'
   import { is_activation_key, vec2_equal } from '$lib/plot/core/interactions'
+  import {
+    create_roving_focus,
+    ROVING_ATTR,
+    roving_key,
+  } from '$lib/plot/core/utils/roving-focus.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
 
@@ -397,6 +408,13 @@
     return bin_over(x, x2)
   })
 
+  // One tab stop for all bins instead of one per bin: a 100-bin histogram would
+  // otherwise take 100 presses to tab past. Arrow keys walk the bars.
+  const roving = create_roving_focus({
+    container: () => frame.svg_element,
+    marks: () => histogram_bins,
+  })
+
   let legend_data = $derived(
     build_legend_items(series, (series_data, series_idx) => ({
       symbol_type: `Square`,
@@ -463,6 +481,28 @@
     on_error,
   }))
   $effect(try_auto_load)
+
+  // === Export ===
+  // Bins have an extent, so CSV reports edges rather than the (x, y) the shared long
+  // format would collapse them to.
+  const handle_export = (format: ChartExportFormat) => {
+    const name = export_filename(frame.title_config?.text, final_x_axis.label)
+    if (format === `csv`) {
+      export_csv(
+        [`series`, `bin_start`, `bin_end`, `count`, `value`],
+        histogram_bins.flatMap((hist) =>
+          hist.bins.map((bin) => [
+            hist.label ?? `series ${hist.series_idx + 1}`,
+            bin.x0,
+            bin.x1,
+            bin.count,
+            bin.value,
+          ]),
+        ),
+        name,
+      )
+    } else export_chart_image(frame.svg_element, name, format)
+  }
 </script>
 
 {#snippet ref_lines_layer(z: LayerZIndex)}
@@ -540,11 +580,17 @@
               stroke-opacity={resolved_bar.stroke_opacity}
               stroke-width={resolved_bar.stroke_width}
               role="button"
-              tabindex="0"
+              tabindex={roving.tabindex(roving_key(hist.series_idx, bin_idx))}
+              {...{ [ROVING_ATTR]: roving_key(hist.series_idx, bin_idx) }}
+              aria-label={`bin ${bin_idx + 1} of ${hist.label ?? `series`}`}
               onmousemove={handle_bar_hover(hist, bin)}
               onmouseleave={clear_hover}
+              onfocusin={roving.focusin}
               onclick={handle_bar_click(hist, bin)}
-              onkeydown={handle_bar_click(hist, bin)}
+              onkeydown={(evt) => {
+                if (roving.handle_keydown(evt)) return
+                handle_bar_click(hist, bin)(evt)
+              }}
               style:cursor={on_bar_click ? `pointer` : undefined}
             />
           {/if}
@@ -586,6 +632,7 @@
 
     {#if show_controls}
       <HistogramControls
+        on_export={handle_export}
         toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls

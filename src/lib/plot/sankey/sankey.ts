@@ -182,6 +182,119 @@ function horizontal_link_path(link: D3Link<NodeExtra, LinkExtra>): string {
   return `M${x0},${y0}C${xm},${y0} ${xm},${y1} ${x1},${y1}`
 }
 
+// === Long-tail bucketing ===
+
+export interface SankeyBucketOptions {
+  // Fold an outgoing link carrying less than this fraction of its source's outflow
+  min_fraction?: number
+  // Keep at most this many outgoing links per source, largest first (0 = unlimited)
+  max_links?: number
+  other_label?: string // label of the synthetic node, default 'Other'
+}
+
+// Fold a node's small outgoing links into one link to a synthetic 'Other' node, the
+// Sankey analogue of the hierarchy charts' `min_fraction`/`max_children`.
+//
+// Only links whose target is *terminal* (has no outgoing links of its own) are ever
+// folded. Merging a target that carries flow onward would silently delete that flow
+// downstream, turning a readability aid into a wrong diagram; terminal targets have
+// nothing downstream to lose, and a long tail of small terminal categories is the shape
+// that actually needs this. Nodes left with no links are dropped.
+export function bucket_sankey_data<Metadata = Record<string, unknown>>(
+  data: SankeyData<Metadata>,
+  { min_fraction = 0, max_links = 0, other_label = `Other` }: SankeyBucketOptions,
+): SankeyData<Metadata> {
+  if (!(min_fraction > 0) && !(max_links > 0)) return data
+
+  const key_of = (node: SankeyNode<Metadata>, idx: number) => node.id ?? node.label ?? idx
+  const keys = data.nodes.map(key_of)
+  const idx_of = new Map(keys.map((key, idx) => [key, idx]))
+  const resolve = (ref: number | string): number =>
+    idx_of.get(ref) ?? (typeof ref === `number` ? ref : -1)
+
+  const outgoing: number[][] = data.nodes.map(() => [])
+  data.links.forEach((link, link_idx) => {
+    const source = resolve(link.source)
+    if (source >= 0) outgoing[source]?.push(link_idx)
+  })
+  const is_terminal = (node_idx: number) => (outgoing[node_idx]?.length ?? 0) === 0
+
+  const folded = new Set<number>() // link indices replaced by a bucket
+  const buckets: { source: number; value: number; count: number }[] = []
+
+  outgoing.forEach((link_idxs, source) => {
+    if (link_idxs.length < 2) return
+    const outflow = link_idxs.reduce((sum, idx) => sum + (data.links[idx]?.value ?? 0), 0)
+    if (!(outflow > 0)) return
+    // A link with a non-terminal target is never a candidate, but still counts toward
+    // the outflow it is measured against and toward the `max_links` budget it occupies
+    const candidates = link_idxs.filter((idx) => is_terminal(resolve(data.links[idx].target)))
+    const threshold = min_fraction > 0 ? min_fraction * outflow : 0
+    let small = candidates.filter((idx) => (data.links[idx]?.value ?? 0) < threshold)
+    if (max_links > 0 && link_idxs.length - small.length > max_links) {
+      // Rank the survivors and demote the smallest until the cap is met; `toSorted` is
+      // stable, so value ties break by input order, reproducibly
+      const kept = link_idxs
+        .filter((idx) => !small.includes(idx))
+        .toSorted(
+          (left, right) => (data.links[right].value ?? 0) - (data.links[left].value ?? 0),
+        )
+      const demoted = kept
+        .slice(max_links)
+        .filter((idx) => is_terminal(resolve(data.links[idx].target)))
+      small = [...small, ...demoted]
+    }
+    if (small.length < 2) return // a bucket of one is that link under a worse name
+    small.forEach((idx) => folded.add(idx))
+    buckets.push({
+      source,
+      value: small.reduce((sum, idx) => sum + (data.links[idx]?.value ?? 0), 0),
+      count: small.length,
+    })
+  })
+
+  if (buckets.length === 0) return data
+
+  // Targets that only ever received folded flow have nothing left to draw
+  const still_referenced = new Set<number>()
+  data.links.forEach((link, link_idx) => {
+    if (folded.has(link_idx)) return
+    for (const ref of [link.source, link.target]) still_referenced.add(resolve(ref))
+  })
+  for (const { source } of buckets) still_referenced.add(source)
+
+  const nodes: SankeyNode<Metadata>[] = []
+  const remapped = new Map<number, string | number>()
+  data.nodes.forEach((node, idx) => {
+    if (!still_referenced.has(idx)) return
+    const id = keys[idx]
+    remapped.set(idx, id)
+    nodes.push({ ...node, id })
+  })
+
+  const links: SankeyLink<Metadata>[] = data.links
+    .filter((_, link_idx) => !folded.has(link_idx))
+    .map((link) => ({
+      ...link,
+      source: remapped.get(resolve(link.source)) ?? link.source,
+      target: remapped.get(resolve(link.target)) ?? link.target,
+    }))
+
+  buckets.forEach(({ source, value, count }) => {
+    // One bucket node per source, so two sources' tails never merge into one blob
+    const bucket_id = `${String(keys[source])}/${other_label}`
+    nodes.push({ id: bucket_id, label: other_label })
+    links.push({
+      source: remapped.get(source) ?? keys[source],
+      target: bucket_id,
+      value,
+      label: `${other_label} (${count} flows)`,
+    })
+  })
+
+  return { nodes, links }
+}
+
 // Compute node boxes and link ribbon paths in screen space.
 // Clones input so the (reactive) user data is never mutated by d3-sankey.
 export function compute_sankey_layout<Metadata = Record<string, unknown>>(

@@ -2,6 +2,12 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import {
+    type ChartExportFormat,
+    export_chart_image,
+    export_csv,
+    export_filename,
+  } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type {
@@ -49,6 +55,11 @@
   } from '$lib/plot/core/axis-utils'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
+  import {
+    create_roving_focus,
+    ROVING_ATTR,
+    roving_key,
+  } from '$lib/plot/core/utils/roving-focus.svelte'
   import {
     accumulate_extent,
     empty_extent,
@@ -311,6 +322,12 @@
     slot: number
     stats: (typeof box_stats)[number]
   }
+  // One tab stop for the whole group; arrow keys move between boxes
+  const roving = create_roving_focus({
+    container: () => frame.svg_element,
+    marks: () => visible_boxes,
+  })
+
   let visible_boxes = $derived<Box[]>(
     series
       .map((srs, idx) => ({ series: srs, idx, slot: slot_of(idx), stats: box_stats[idx] }))
@@ -593,6 +610,45 @@
       value_label_stat === `mean` ? stats.mean : stats.median,
       value_label_format,
     )
+
+  // === Export ===
+  // A box is a five-number summary, not an (x, y) pair, so CSV gets its own columns
+  // rather than being forced through the shared long format.
+  const handle_export = (format: ChartExportFormat) => {
+    const name = export_filename(frame.title_config?.text, x_axis.label, y_axis.label)
+    if (format === `csv`) {
+      export_csv(
+        // whisker_low/high are what the chart draws; min/max are the raw extremes
+        [
+          `series`,
+          `n`,
+          `min`,
+          `whisker_low`,
+          `q1`,
+          `median`,
+          `mean`,
+          `q3`,
+          `whisker_high`,
+          `max`,
+          `outliers`,
+        ],
+        visible_boxes.map(({ series: srs, idx, stats }) => [
+          srs.label ?? `box ${idx + 1}`,
+          stats.n,
+          stats.min,
+          stats.whisker_low,
+          stats.q1,
+          stats.median,
+          stats.mean,
+          stats.q3,
+          stats.whisker_high,
+          stats.max,
+          stats.outliers.join(` `),
+        ]),
+        name,
+      )
+    } else export_chart_image(frame.svg_element, name, format)
+  }
 </script>
 
 {#snippet seg(p1: Vec2, p2: Vec2, stroke: string, sw: number, dash?: string)}
@@ -709,8 +765,10 @@
             class="box-series"
             data-box-idx={box_item.idx}
             role="button"
-            tabindex="0"
+            tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
+            {...{ [ROVING_ATTR]: roving_key(box_item.idx, 0) }}
             aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}`}
+            onfocusin={roving.focusin}
             style:cursor={on_box_click ? `pointer` : undefined}
             opacity={frame.hovered_series_idx !== null &&
             frame.hovered_series_idx !== box_item.idx
@@ -720,6 +778,7 @@
             onmouseleave={clear_hover}
             onclick={(evt) => on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
             onkeydown={(evt) => {
+              if (roving.handle_keydown(evt)) return
               if (is_activation_key(evt)) {
                 evt.preventDefault()
                 on_box_click?.({ ...get_box_data(box_item, color), event: evt })
@@ -887,6 +946,7 @@
 
     {#if show_controls}
       <BoxPlotControls
+        on_export={handle_export}
         toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls

@@ -4,8 +4,9 @@ import type { DataSeries, FillRegion } from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
+import { materialize_series_points } from '$lib/plot/scatter/scatter-data'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
@@ -98,6 +99,62 @@ const mock_decoration_measurements = (width = 100, height = 60) => {
 }
 
 describe(`ScatterPlot`, () => {
+  describe(`error bars`, () => {
+    const bars = (plot: HTMLElement) => [...plot.querySelectorAll(`.error-bars path`)]
+    // mount_sized resolves to the first .scatter in the document, so a plot left behind
+    // by an earlier test would be measured instead of this one's
+    beforeEach(() => {
+      document.body.innerHTML = ``
+    })
+
+    test.each([
+      [`symmetric scalar`, { y_error: 1 }, 5],
+      [`per-point array`, { y_error: [1, 2, 3, 4, 5] }, 5],
+      [`asymmetric`, { y_error: { lower: 1, upper: 2 } }, 5],
+      [`both axes`, { x_error: 1, y_error: 1 }, 10],
+      [`no error declared`, {}, 0],
+      // A zero-width bar is not drawn at all, rather than a degenerate zero-length path
+      [`all-zero error`, { y_error: 0 }, 0],
+    ])(`%s renders %i bars`, async (_name, error_props, expected) => {
+      const plot = await mount_sized_scatter_plot({ series: [{ ...basic, ...error_props }] })
+      expect(bars(plot)).toHaveLength(expected)
+    })
+
+    test(`bar spans the point's value +/- its error and the axis reaches it`, async () => {
+      // Single point at y=5 with +/-100 forces the y range to include 105
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: [1], y: [5], y_error: 100 }],
+      })
+      const [bar] = bars(plot)
+      const nums = (bar.getAttribute(`d`) ?? ``).match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+      expect(nums.length).toBeGreaterThan(0)
+      // The bar must have non-zero pixel height, i.e. both ends are on the canvas
+      const ys = nums.filter((_, idx) => idx % 2 === 1)
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(1)
+    })
+
+    // Mismatched lengths are a data bug that silently mislabels uncertainty otherwise
+    test(`per-point error array of the wrong length throws`, () => {
+      expect(() => materialize_series_points([{ ...basic, y_error: [1, 2] }])).toThrow(
+        /equal lengths/,
+      )
+    })
+  })
+
+  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
+  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  test(`marks are reachable by Tab exactly once`, async () => {
+    document.body.innerHTML = ``
+    const plot = await mount_sized_scatter_plot({ series: [basic], on_point_click: () => {} })
+    const marks = [...plot.querySelectorAll(`[data-roving-key]`)]
+    expect(marks.length).toBeGreaterThan(1)
+    // The stop is the first mark in DOM order, not whichever Svelte re-rendered first
+    expect(marks.map((el) => el.getAttribute(`tabindex`))).toEqual([
+      `0`,
+      ...marks.slice(1).map(() => `-1`),
+    ])
+  })
+
   test(`reports intrinsic layout before applying facet ranges, padding, and visibility`, async () => {
     const report_layout = vi.fn()
     const update_range = vi.fn()

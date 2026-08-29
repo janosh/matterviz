@@ -19,6 +19,39 @@ const mount_sized_bar_plot = (
 describe(`BarPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
 
+  // Both mark kinds regressed the same policy in opposite directions: every bar was
+  // tabindex=0 (230 tab stops on a spacegroup plot), while the line-point group put
+  // its only 0 on the *hovered* point - so with nothing hovered every point was -1
+  // and Tab could not enter the group at all.
+  test.each([
+    [`bars`, { series: [basic] }],
+    [
+      `line points`,
+      { series: [{ ...basic, render_mode: `line` as const }], on_point_click: () => {} },
+    ],
+  ])(`%s are reachable by Tab exactly once`, async (_name, props) => {
+    const plot = await mount_sized_bar_plot(props)
+    const marks = [...plot.querySelectorAll(`[data-roving-key]`)]
+    expect(marks.length).toBeGreaterThan(1)
+    // Exactly one way in: neither a stop per mark nor (with nothing hovered) none at all,
+    // and it is the first mark in DOM order - Svelte re-evaluates marks in no guaranteed
+    // order, so a stop chosen by whoever rendered first would wander between renders
+    expect(marks.map((el) => el.getAttribute(`tabindex`))).toEqual([
+      `0`,
+      ...marks.slice(1).map(() => `-1`),
+    ])
+  })
+
+  test(`arrow keys move the tab stop between marks`, async () => {
+    const plot = await mount_sized_bar_plot({ series: [basic] })
+    const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
+    bars[0].focus()
+    bars[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+    await tick()
+    expect(bars[1].getAttribute(`tabindex`)).toBe(`0`)
+    expect(bars[0].getAttribute(`tabindex`)).toBe(`-1`)
+  })
+
   test.each([
     { name: `empty data`, series: [], expected_series: 0, expected_bars: 0 },
     {

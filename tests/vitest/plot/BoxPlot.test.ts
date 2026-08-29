@@ -32,6 +32,19 @@ const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
     .length
 
 describe(`BoxPlot`, () => {
+  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
+  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  test(`marks are reachable by Tab exactly once`, async () => {
+    const plot = await mount_sized_box_plot({ series: [basic, { ...basic, label: `Box B` }] })
+    const marks = [...plot.querySelectorAll(`[data-roving-key]`)]
+    expect(marks.length).toBeGreaterThan(1)
+    // The stop is the first mark in DOM order, not whichever Svelte re-rendered first
+    expect(marks.map((el) => el.getAttribute(`tabindex`))).toEqual([
+      `0`,
+      ...marks.slice(1).map(() => `-1`),
+    ])
+  })
+
   // Smoke matrix: every one of these must still draw one box (and one hit target) per
   // series with finite data. Named per row so a failure says which config broke.
   test.each([

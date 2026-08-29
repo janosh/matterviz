@@ -2,6 +2,7 @@ import { Sankey } from '$lib'
 import type { SankeyData, SankeyLinkHandlerProps, SankeyNodeHandlerProps } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
+import { bucket_sankey_data } from '$lib/plot/sankey/sankey'
 import { mount_sized } from '../setup'
 
 const data: SankeyData = {
@@ -180,5 +181,75 @@ describe(`Sankey`, () => {
   ])(`renders without error for empty/degenerate data %#`, async (props) => {
     const plot = await mount_sized_sankey(props)
     expect(plot.querySelectorAll(`.links path`)).toHaveLength(0)
+  })
+})
+
+describe(`bucket_sankey_data`, () => {
+  // One big flow plus a long tail of small terminal ones - the shape this exists for
+  const tail = {
+    nodes: [{ id: `src` }, { id: `big` }, { id: `a` }, { id: `b` }, { id: `c` }],
+    links: [
+      { source: `src`, target: `big`, value: 90 },
+      { source: `src`, target: `a`, value: 4 },
+      { source: `src`, target: `b`, value: 3 },
+      { source: `src`, target: `c`, value: 3 },
+    ],
+  }
+
+  test(`folds the small terminal tail into one Other link`, () => {
+    const { nodes, links } = bucket_sankey_data(tail, { min_fraction: 0.05 })
+    expect(links.map((link) => [link.source, link.target, link.value])).toEqual([
+      [`src`, `big`, 90],
+      [`src`, `src/Other`, 10],
+    ])
+    // The folded targets are gone, replaced by one bucket node
+    expect(nodes.map((node) => node.id)).toEqual([`src`, `big`, `src/Other`])
+  })
+
+  test.each([
+    [`threshold below every link`, { min_fraction: 0.01 }, 4],
+    [`max_links keeps the largest`, { max_links: 2 }, 3],
+    [`disabled by default`, {}, 4],
+  ])(`%s -> %i links`, (_name, opts, expected) => {
+    expect(bucket_sankey_data(tail, opts).links).toHaveLength(expected)
+  })
+
+  // A bucket of one is just that link renamed, so it is left alone
+  test(`a single qualifying link is not bucketed`, () => {
+    const one_small = {
+      nodes: [{ id: `src` }, { id: `big` }, { id: `a` }],
+      links: [
+        { source: `src`, target: `big`, value: 99 },
+        { source: `src`, target: `a`, value: 1 },
+      ],
+    }
+    expect(bucket_sankey_data(one_small, { min_fraction: 0.1 })).toBe(one_small)
+  })
+
+  // Folding a target that carries flow onward would delete that flow from the diagram
+  test(`never folds a link whose target has outgoing flow`, () => {
+    const passthrough = {
+      nodes: [{ id: `src` }, { id: `big` }, { id: `mid` }, { id: `sink` }, { id: `t` }],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `mid`, value: 5 },
+        { source: `mid`, target: `sink`, value: 5 },
+        { source: `src`, target: `t`, value: 5 },
+      ],
+    }
+    const { links } = bucket_sankey_data(passthrough, { min_fraction: 0.5 })
+    // `mid` survives (it has downstream flow); only one terminal link qualifies, so
+    // the >= 2 rule leaves the graph untouched rather than bucketing `t` alone
+    expect(links).toEqual(passthrough.links)
+  })
+
+  test(`total flow out of a bucketed source is conserved`, () => {
+    const outflow = (graph: typeof tail) =>
+      graph.links
+        .filter((link) => link.source === `src`)
+        .reduce((sum, link) => sum + link.value, 0)
+    expect(outflow(bucket_sankey_data(tail, { min_fraction: 0.05 }) as typeof tail)).toBe(
+      outflow(tail),
+    )
   })
 })

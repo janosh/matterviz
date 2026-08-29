@@ -29,13 +29,13 @@ const plot_cases = [
   ],
 ] satisfies [string, () => Promise<HTMLElement>][]
 
-type DragOptions = { shift?: boolean; mid_drag?: () => void }
+type DragOptions = { shift?: boolean; alt?: boolean; mid_drag?: () => void }
 
 async function drag(
   svg: SVGSVGElement,
   start: LocalPoint,
   end: LocalPoint,
-  { shift = false, mid_drag }: DragOptions = {},
+  { shift = false, alt = false, mid_drag }: DragOptions = {},
 ): Promise<boolean> {
   const bounds = svg.getBoundingClientRect()
   const event_init = ({ x, y, button = 0 }: LocalPoint): MouseEventInit => ({
@@ -44,6 +44,7 @@ async function drag(
     clientX: bounds.left + x,
     clientY: bounds.top + y,
     shiftKey: shift,
+    altKey: alt,
   })
   svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...event_init(start) }))
   window.dispatchEvent(new MouseEvent(`mousemove`, event_init(end)))
@@ -82,6 +83,78 @@ const slow_tween_props = {
   point_tween: { duration: 60_000 },
   x_axis: { range: [-2, 4] as [number, number] },
 }
+
+describe(`alt+drag rect selection`, () => {
+  test(`selects the points inside the rect and leaves the axis range alone`, async () => {
+    const on_select = vi.fn()
+    const x_range: [number, number] = [-2, 4]
+    const svg = await mount_scatter({ on_select, x_axis: { range: x_range } })
+    const before = marker_xs(svg)
+
+    await drag(svg, { x: 60, y: 40 }, { x: 380, y: 240 }, { alt: true })
+
+    expect(on_select).toHaveBeenCalledOnce()
+    const [{ points, rect }] = on_select.mock.calls[0]
+    expect(points.length).toBeGreaterThan(0)
+    expect(rect).toEqual({ x: [60, 380], y: [40, 240] })
+    // Alt+drag must not also zoom - markers stay exactly where they were
+    expect(marker_xs(svg)).toEqual(before)
+  })
+
+  // A host filtering a linked view needs to hear "nothing" as clearly as it hears a list
+  test(`an empty rect still reports the selection`, async () => {
+    const on_select = vi.fn()
+    // Top-left corner of the plot area, above every point in the series
+    const svg = await mount_scatter({ on_select, y_axis: { range: [0, 100] } })
+    await drag(svg, { x: 60, y: 40 }, { x: 120, y: 70 }, { alt: true })
+    expect(on_select).toHaveBeenCalledWith(expect.objectContaining({ points: [] }))
+  })
+
+  // Scatter always offers selection (selected_points is bindable with or without a
+  // callback), so the rect's mode follows the modifier alone
+  test(`alt+drag draws the select rect, plain drag the zoom rect`, async () => {
+    const svg = await mount_scatter()
+    const rect_class = async (alt: boolean) => {
+      let seen = ``
+      await drag(
+        svg,
+        { x: 60, y: 40 },
+        { x: 300, y: 200 },
+        {
+          alt,
+          mid_drag: () => {
+            seen = svg.querySelector(`.zoom-rect`)?.getAttribute(`class`) ?? ``
+          },
+        },
+      )
+      return seen
+    }
+    expect(await rect_class(true)).toContain(`select`)
+    expect(await rect_class(false)).not.toContain(`select`)
+  })
+
+  // A chart with no marks to enumerate implements no on_rect_select, and there the
+  // gesture must stay a zoom rather than being swallowed
+  test(`alt+drag stays a zoom on a chart that cannot select`, async () => {
+    const svg = plot_svg(
+      await mount_sized(BarPlot, { series: xy_series() }, { selector: `.bar-plot` }),
+    )
+    let seen = ``
+    await drag(
+      svg,
+      { x: 60, y: 40 },
+      { x: 300, y: 200 },
+      {
+        alt: true,
+        mid_drag: () => {
+          seen = svg.querySelector(`.zoom-rect`)?.getAttribute(`class`) ?? ``
+        },
+      },
+    )
+    expect(seen).toContain(`zoom-rect`)
+    expect(seen).not.toContain(`select`)
+  })
+})
 
 describe(`shared plot drag zoom bounds`, () => {
   test.each(plot_cases)(

@@ -1,5 +1,6 @@
 // Pure data-transform helpers extracted from ScatterPlot.svelte. Everything here is
 // stateless: component $state/$derived values are passed in as parameters.
+import { error_getter } from '$lib/plot/core/error-bars'
 import type { D3SymbolName } from '$lib/labels'
 import { plot_color } from '$lib/colors'
 import { symbol_names } from '$lib/labels'
@@ -60,6 +61,8 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     assert_series_lengths(data_series, series_idx)
     if (!(data_series.visible ?? true)) continue
 
+    const get_x_error = error_getter(data_series.x_error)
+    const get_y_error = error_getter(data_series.y_error)
     const get_metadata = prop_getter(data_series.metadata)
     const get_point_style = prop_getter(data_series.point_style)
     const get_point_hover = prop_getter(data_series.point_hover)
@@ -83,6 +86,8 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
         series_idx,
         point_idx,
         size_value: size_values?.[point_idx],
+        ...(get_x_error && { x_error: get_x_error(point_idx) }),
+        ...(get_y_error && { y_error: get_y_error(point_idx) }),
       })
     }
     // orig_series_idx keeps auto-cycled colors/symbols stable across filtering

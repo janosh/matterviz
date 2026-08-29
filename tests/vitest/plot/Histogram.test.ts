@@ -74,6 +74,20 @@ const counts_of = (...args: Parameters<typeof bin_values>) =>
 
 describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
+  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
+  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  test(`marks are reachable by Tab exactly once`, async () => {
+    const plot = await mount_histogram({
+      series: [{ values: [1, 2, 2, 3, 3, 3, 4, 5, 6, 7], label: `H` }],
+    })
+    const marks = [...plot.querySelectorAll(`[data-roving-key]`)]
+    expect(marks.length).toBeGreaterThan(1)
+    // The stop is the first mark in DOM order, not whichever Svelte re-rendered first
+    expect(marks.map((el) => el.getAttribute(`tabindex`))).toEqual([
+      `0`,
+      ...marks.slice(1).map(() => `-1`),
+    ])
+  })
 
   // oxfmt-ignore
   test.each([

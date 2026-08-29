@@ -11,6 +11,8 @@ import type { PlotTitleConfig } from '$lib/plot/core/plot-title'
 import type { TicksOption } from '$lib/plot/core/scales'
 import type { TickStrategy } from '$lib/plot/core/tick-layout'
 import type { FillGradient } from '$lib/plot/core/types/fills'
+import { type ErrorValues, error_length, type PointError } from '$lib/plot/core/error-bars'
+import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
 
 export type { TweenOptions } from 'svelte/motion'
 
@@ -100,6 +102,11 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   y_axis?: `y1` | `y2`
   color_values?: (number | null)[] | null
   size_values?: readonly (number | null)[] | null
+  // Per-point uncertainty, drawn as capped bars. Scalar, per-point array, or
+  // {upper, lower}. Unlike `error_bands` (a ribbon over a connected series) these are
+  // pointwise, so they suit scattered data, and x_error has no band equivalent at all.
+  x_error?: ErrorValues
+  y_error?: ErrorValues
   metadata?: Metadata[] | Metadata // Can be array or single object
   point_style?: PointStyle[] | PointStyle // Can be array or single object
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
@@ -147,6 +154,8 @@ type AlignedSeries = {
   y: ArrayLike<unknown>
   z?: ArrayLike<unknown>
   raw_y?: ArrayLike<unknown>
+  x_error?: ErrorValues
+  y_error?: ErrorValues
   line_underlays?: readonly { x: ArrayLike<unknown>; y: ArrayLike<unknown> }[]
 }
 
@@ -157,7 +166,14 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
     name === undefined
       ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
       : `Series "${name}"`
-  assert_aligned_lengths(where, { x, y, z, raw_y })
+  // Errors are scalar-or-array; only their array form is indexed in lockstep with x/y
+  const error_arrays = Object.fromEntries(
+    ([`x_error`, `y_error`] as const).flatMap((key) => {
+      const length = error_length(series[key])
+      return length === null ? [] : [[key, { length }] as const]
+    }),
+  )
+  assert_aligned_lengths(where, { x, y, z, raw_y, ...error_arrays })
   series.line_underlays?.forEach((underlay, idx) =>
     assert_aligned_lengths(`${where} line_underlays[${idx}]`, {
       x: underlay.x,
@@ -176,6 +192,9 @@ export interface InternalPoint<Metadata = Record<string, unknown>> extends Point
   point_hover?: HoverStyle
   point_label?: LabelStyle
   point_offset?: Point2D // Individual point offset (distinct from label offset)
+  // Resolved [below, above] magnitudes; absent when the series declares no error
+  x_error?: PointError
+  y_error?: PointError
 }
 
 export interface HandlerProps<Metadata = Record<string, unknown>> {
@@ -647,6 +666,10 @@ export interface PlotControlsProps extends PlotConfig {
   // Helper flags
   has_x2_points?: boolean
   has_y2_points?: boolean
+  // Saves the figure or the numbers behind it. Omit to hide the Export section - a
+  // chart that can't serialize its data should not offer a CSV button that does nothing.
+  on_export?: (format: ChartExportFormat) => void
+  export_formats?: readonly ChartExportFormat[]
   // Component props
   controls_title?: string
   controls_name?: string

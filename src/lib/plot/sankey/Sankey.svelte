@@ -16,7 +16,7 @@
   import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
-  import { compute_sankey_layout } from '$lib/plot/sankey/sankey'
+  import { bucket_sankey_data, compute_sankey_layout } from '$lib/plot/sankey/sankey'
   import type { PositionedLink, PositionedNode } from '$lib/plot/sankey/sankey'
   import type {
     SankeyData,
@@ -40,6 +40,8 @@
     node_width = $bindable(DEFAULTS.sankey.node_width),
     node_padding = $bindable(DEFAULTS.sankey.node_padding),
     node_align = $bindable(DEFAULTS.sankey.node_align),
+    min_fraction = $bindable(DEFAULTS.sankey.min_fraction),
+    max_links = $bindable(DEFAULTS.sankey.max_links),
     iterations = DEFAULTS.sankey.iterations,
     link_opacity = $bindable(DEFAULTS.sankey.link_opacity),
     link_color_mode = `source`,
@@ -76,6 +78,9 @@
       node_width?: number
       node_padding?: number
       node_align?: SankeyNodeAlign
+      // Fold each node's small outgoing links into one 'Other' link; see bucket_sankey_data
+      min_fraction?: number
+      max_links?: number
       iterations?: number
       link_opacity?: number
       link_color_mode?: SankeyLinkColorMode
@@ -132,12 +137,16 @@
   let node_colors = $derived(data.nodes.map((node, idx) => node.color ?? plot_color(idx)))
 
   // Invalid graphs (cycles, unknown node refs) render an error message in place
+  // Long-tail folding runs before layout, so d3-sankey only ever sees the graph the
+  // user will actually look at (positions stay stable under the fold)
+  let bucketed_data = $derived(bucket_sankey_data(data, { min_fraction, max_links }))
+
   // of the diagram instead of crashing the host page
   let layout = $derived.by(() => {
     try {
       return {
         error: null,
-        ...compute_sankey_layout(data, {
+        ...compute_sankey_layout(bucketed_data, {
           width: inner_width,
           height: inner_height,
           node_width,
@@ -370,6 +379,8 @@
       bind:node_width
       bind:node_padding
       bind:node_align
+      bind:min_fraction
+      bind:max_links
       bind:link_opacity
       bind:show_node_labels
     >
