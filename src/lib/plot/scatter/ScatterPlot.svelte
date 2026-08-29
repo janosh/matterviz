@@ -1368,22 +1368,21 @@
       const { marker_of } = series_appearance(series_data)
       const cap = error_bar_cap
       const segments: string[] = []
+      // A capped bar is the same three strokes on either axis, with the roles of the two
+      // coordinates swapped, so the shape is written once and read along each axis
+      const bar = (along: Vec2, across: number, vertical: boolean) => {
+        const [lo, hi] = along
+        const [near, far] = [across - cap, across + cap]
+        return vertical
+          ? `M${near},${lo}H${far}M${across},${lo}V${hi}M${near},${hi}H${far}`
+          : `M${lo},${near}V${far}M${lo},${across}H${hi}M${hi},${near}V${far}`
+      }
       for (const point of series_data.filtered_data) {
         const [cx, cy] = project.point(point)
         const x_span = project.error_span(point, `x`)
-        if (x_span) {
-          const [lo, hi] = x_span
-          segments.push(
-            `M${lo},${cy - cap}V${cy + cap}M${lo},${cy}H${hi}M${hi},${cy - cap}V${cy + cap}`,
-          )
-        }
+        if (x_span) segments.push(bar(x_span, cy, false))
         const y_span = project.error_span(point, `y`)
-        if (y_span) {
-          const [lo, hi] = y_span
-          segments.push(
-            `M${cx - cap},${lo}H${cx + cap}M${cx},${lo}V${hi}M${cx - cap},${hi}H${cx + cap}`,
-          )
-        }
+        if (y_span) segments.push(bar(y_span, cx, true))
       }
       if (segments.length === 0) return []
       const first = series_data.filtered_data[0]

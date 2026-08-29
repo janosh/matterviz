@@ -18,17 +18,19 @@ export type ErrorValues =
 // Resolved magnitudes below and above the point, both non-negative
 export type PointError = Vec2
 
-const side_getter = (
-  side: number | readonly number[] | undefined,
-): ((idx: number) => number) => {
+// Narrowing on the object shape, not on Array.isArray: that widens a `readonly number[]`
+// to `any[]` and forces a cast at every use.
+const is_asymmetric = (
+  error: ErrorValues,
+): error is { upper: number | readonly number[]; lower: number | readonly number[] } =>
+  typeof error === `object` && !Array.isArray(error)
+
+const side_getter = (side: number | readonly number[]): ((idx: number) => number) => {
   if (typeof side === `number`) return () => (Number.isFinite(side) ? Math.abs(side) : 0)
-  if (Array.isArray(side)) {
-    return (idx) => {
-      const value = side[idx]
-      return typeof value === `number` && Number.isFinite(value) ? Math.abs(value) : 0
-    }
+  return (idx) => {
+    const value = side[idx]
+    return typeof value === `number` && Number.isFinite(value) ? Math.abs(value) : 0
   }
-  return () => 0
 }
 
 // Hoist the scalar/array/asymmetric branch out of the point loop: resolving it per point
@@ -38,19 +40,15 @@ export function error_getter(
   error: ErrorValues | undefined | null,
 ): ((idx: number) => PointError) | null {
   if (error == null) return null
-  if (typeof error === `number` || Array.isArray(error)) {
-    const get = side_getter(error as number | readonly number[])
-    return (idx) => {
-      const magnitude = get(idx)
-      return [magnitude, magnitude]
-    }
+  if (is_asymmetric(error)) {
+    const [get_lower, get_upper] = [side_getter(error.lower), side_getter(error.upper)]
+    return (idx) => [get_lower(idx), get_upper(idx)]
   }
-  const { upper, lower } = error as {
-    upper: number | readonly number[]
-    lower: number | readonly number[]
+  const get = side_getter(error)
+  return (idx) => {
+    const magnitude = get(idx)
+    return [magnitude, magnitude]
   }
-  const [get_lower, get_upper] = [side_getter(lower), side_getter(upper)]
-  return (idx) => [get_lower(idx), get_upper(idx)]
 }
 
 // Lengths of the per-point arrays an ErrorValues carries: none for a scalar or absent
@@ -60,12 +58,8 @@ export function error_getter(
 // silently mislabeling that point's uncertainty.
 export function error_lengths(error: ErrorValues | undefined | null): number[] {
   if (error == null || typeof error === `number`) return []
-  if (Array.isArray(error)) return [error.length]
-  const { upper, lower } = error as {
-    upper: number | readonly number[]
-    lower: number | readonly number[]
-  }
-  return [upper, lower].filter(Array.isArray).map((side) => side.length)
+  const sides = is_asymmetric(error) ? [error.upper, error.lower] : [error]
+  return sides.filter((side) => Array.isArray(side)).map((side) => side.length)
 }
 
 // The reach of the bars, so an axis can be ranged to include them: a point at 10 ± 5

@@ -22,13 +22,13 @@ import {
   compute_metric_colors,
   compute_node_dim,
   compute_node_infos,
-  export_hierarchy_chart,
   hierarchy_legend_items,
   node_handler_props,
   resolve_label_font,
   selection_within,
   toggle_muted,
 } from '$lib/plot/core/utils/hierarchy-chart'
+import { export_chart_image } from '$lib/plot/core/utils/chart-export'
 import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
 import type {
   OtherBucketInfo,
@@ -460,5 +460,5 @@ export class HierarchyChartState<
   }
 
   export_chart = (format: `svg` | `png`): void =>
-    export_hierarchy_chart(this.svg_element, this.#opts.export_filename(), format)
+    export_chart_image(this.svg_element, this.#opts.export_filename(), format)
 }
