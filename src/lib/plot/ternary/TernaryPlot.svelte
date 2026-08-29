@@ -6,6 +6,7 @@
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
   import { StatusMessage } from '$lib/feedback'
   import { format_value } from '$lib/labels'
+  import { array_extent } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { BasePlotProps, ColorBarScale, LegendConfig, PointStyle } from '$lib/plot'
   import { ColorBar, PlotLegend, PlotTooltip } from '$lib/plot'
@@ -48,7 +49,6 @@
   // the tick labels written outside each edge
   const DEFAULT_PADDING: Required<Sides> = { t: 30, b: 34, l: 50, r: 50 }
   const COLOR_BAR_GAP = 8
-  const DEFAULT_RADIUS = 4
 
   let {
     series: series_in = $bindable([]),
@@ -91,7 +91,6 @@
       color_scale?: ColorBarScale
       color_range?: Vec2 // defaults to the min/max of every series' color_values
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
-      padding?: Sides
       legend?: LegendConfig | null
       show_legend?: boolean
       tooltip?: Snippet<[TernaryPointProps<Metadata>]>
@@ -141,28 +140,28 @@
     style: PointStyle
   }
   // `point_style` is one style for the series or one per point
-  const style_at = (ser: TernarySeries<Metadata>, point_idx: number): PointStyle =>
-    (Array.isArray(ser.point_style) ? ser.point_style[point_idx] : ser.point_style) ?? {}
+  const style_at = (srs: TernarySeries<Metadata>, point_idx: number): PointStyle =>
+    (Array.isArray(srs.point_style) ? srs.point_style[point_idx] : srs.point_style) ?? {}
+  // a NaN color value has no color: fall back to the series color like null does
+  const color_value_at = (srs: TernarySeries<Metadata>, point_idx: number): number | null => {
+    const value = srs.color_values?.[point_idx]
+    return typeof value === `number` && Number.isFinite(value) ? value : null
+  }
   let placed = $derived.by(() => {
     try {
-      const points = series.flatMap((ser, series_idx) =>
-        ser.points.map((triple, point_idx): PlacedPoint => {
+      const points = series.flatMap((srs, series_idx) =>
+        srs.points.map((triple, point_idx): PlacedPoint => {
           const fractions = ternary_fractions(
             triple,
             `${series_label(series_idx)} point ${point_idx}`,
           )
-          const color_value = ser.color_values?.[point_idx]
           return {
             series_idx,
             point_idx,
             fractions,
             xy: ternary_to_xy(fractions),
-            // a NaN value has no color: fall back to the series color like null does
-            color_value:
-              typeof color_value === `number` && Number.isFinite(color_value)
-                ? color_value
-                : null,
-            style: style_at(ser, point_idx),
+            color_value: color_value_at(srs, point_idx),
+            style: style_at(srs, point_idx),
           }
         }),
       )
@@ -178,9 +177,7 @@
     rendered.flatMap((point) => (point.color_value === null ? [] : [point.color_value])),
   )
   let color_bar_visible = $derived(color_bar !== null && color_values.length > 0)
-  let effective_color_range = $derived<Vec2>(
-    color_range ?? [Math.min(...color_values), Math.max(...color_values)],
-  )
+  let effective_color_range = $derived<Vec2>(color_range ?? array_extent(color_values))
   let color_ramp = $derived(
     resolve_color_ramp(color_scale, effective_color_range, color_bar?.scale_type),
   )
@@ -211,16 +208,21 @@
   const is_hovered = (point: PlacedPoint): boolean =>
     hover_info?.series_idx === point.series_idx && hover_info.point_idx === point.point_idx
 
-  // Lines connect a series' points in order
+  // Lines connect a series' points in order. Hidden series contribute no rendered points,
+  // so they drop out on the length check rather than needing a visibility test.
   let line_paths = $derived(
-    series.flatMap((ser, series_idx) => {
-      if (!is_visible(series_idx) || !ser.markers?.includes(`line`)) return []
+    series.flatMap((srs, series_idx) => {
+      if (!srs.markers?.includes(`line`)) return []
       const points = rendered.filter((point) => point.series_idx === series_idx).map(pixel)
       if (points.length < 2) return []
+      const line_style = srs.line_style ?? {}
       return [
         {
-          series_idx,
           d: points.map(([px_x, px_y], idx) => `${idx ? `L` : `M`}${px_x} ${px_y}`).join(``),
+          series_idx,
+          stroke: line_style.color ?? series_color(series_idx),
+          stroke_width: line_style.width ?? 1.5,
+          dash: line_style.dash,
         },
       ]
     }),
@@ -229,19 +231,19 @@
     (series[series_idx]?.markers ?? `points`).includes(`points`)
 
   const point_props = (point: PlacedPoint): TernaryPointProps<Metadata> => {
-    const ser = series[point.series_idx]
+    const srs = series[point.series_idx]
     return {
       series_idx: point.series_idx,
       point_idx: point.point_idx,
-      series_id: ser?.id ?? point.series_idx,
+      series_id: srs?.id ?? point.series_idx,
       series_label: series_label(point.series_idx),
-      amounts: ser?.points[point.point_idx] ?? [0, 0, 0],
+      amounts: srs?.points[point.point_idx] ?? [0, 0, 0],
       fractions: point.fractions,
       color: point_color(point),
       color_value: point.color_value,
-      metadata: Array.isArray(ser?.metadata)
-        ? (ser.metadata[point.point_idx] as Metadata | undefined)
-        : (ser?.metadata as Metadata | undefined),
+      metadata: Array.isArray(srs?.metadata)
+        ? (srs.metadata[point.point_idx] as Metadata | undefined)
+        : (srs?.metadata as Metadata | undefined),
     }
   }
   const accessible_label = (point: PlacedPoint): string =>
@@ -293,15 +295,15 @@
   // Legend: one entry per series, toggling hides the series
   let legend_element = $state<HTMLDivElement | undefined>()
   let legend_data = $derived(
-    series.map((ser, series_idx) => ({
+    series.map((srs, series_idx) => ({
       series_idx,
       label: series_label(series_idx),
       visible: is_visible(series_idx),
       display_style: {
-        symbol_type: style_at(ser, 0).symbol_type ?? `Circle`,
+        symbol_type: style_at(srs, 0).symbol_type ?? `Circle`,
         symbol_color: series_color(series_idx),
-        line_color: ser.markers?.includes(`line`) ? series_color(series_idx) : undefined,
-        line_dash: ser.line_style?.dash,
+        line_color: srs.markers?.includes(`line`) ? series_color(series_idx) : undefined,
+        line_dash: srs.line_style?.dash,
       },
     })),
   )
@@ -320,17 +322,18 @@
   const is_dimmed = (series_idx: number): boolean =>
     legend_hover_idx !== null && legend_hover_idx !== series_idx
 
-  // Text anchoring per edge (tick labels: below the bottom edge, beside the slanted
-  // edges) and per corner (component labels: right, top, left)
+  // Text placement per edge (tick labels: below the bottom edge, beside the slanted
+  // edges) and per corner (component labels: right, top, left), spread onto the <text>
+  // elements - dx/dy nudge the corner labels clear of the triangle
   const tick_text_attrs = [
-    { anchor: `middle`, baseline: `hanging` },
-    { anchor: `start`, baseline: `middle` },
-    { anchor: `end`, baseline: `middle` },
+    { 'text-anchor': `middle`, 'dominant-baseline': `hanging` },
+    { 'text-anchor': `start`, 'dominant-baseline': `middle` },
+    { 'text-anchor': `end`, 'dominant-baseline': `middle` },
   ] as const
   const corner_text_attrs = [
-    { dx: 8, dy: 0, anchor: `start`, baseline: `middle` },
-    { dx: 0, dy: -10, anchor: `middle`, baseline: `auto` },
-    { dx: -8, dy: 0, anchor: `end`, baseline: `middle` },
+    { dx: 8, 'text-anchor': `start`, 'dominant-baseline': `middle` },
+    { dy: -10, 'text-anchor': `middle`, 'dominant-baseline': `auto` },
+    { dx: -8, 'text-anchor': `end`, 'dominant-baseline': `middle` },
   ] as const
 
   const export_chart = (format: ChartExportFormat) =>
@@ -404,14 +407,14 @@
           <g class="ticks">
             {#each grid as line (`${line.component}-${line.value}`)}
               {@const [tick_x, tick_y] = layout.to_px(line.from)}
+              <!-- `outward` points away from the triangle in unit space, pixels grow down -->
               {@const [out_x, out_y] = [line.outward[0], -line.outward[1]]}
-              {@const { anchor, baseline } = tick_text_attrs[line.component]}
               <line x1={tick_x} y1={tick_y} x2={tick_x + 5 * out_x} y2={tick_y + 5 * out_y} />
               <text
                 x={tick_x + 9 * out_x}
                 y={tick_y + 9 * out_y}
-                text-anchor={anchor}
-                dominant-baseline={baseline}>{format_value(line.value, tick_format)}</text
+                {...tick_text_attrs[line.component]}
+                >{format_value(line.value, tick_format)}</text
               >
             {/each}
           </g>
@@ -419,24 +422,17 @@
         <g class="corner-labels">
           {#each labels as label, idx (idx)}
             {@const [corner_x, corner_y] = corners[idx]}
-            {@const { dx, dy, anchor, baseline } = corner_text_attrs[idx]}
-            <text
-              x={corner_x + dx}
-              y={corner_y + dy}
-              text-anchor={anchor}
-              dominant-baseline={baseline}>{label}</text
-            >
+            <text x={corner_x} y={corner_y} {...corner_text_attrs[idx]}>{label}</text>
           {/each}
         </g>
 
         <g class="lines" fill="none">
           {#each line_paths as path (path.series_idx)}
-            {@const line_style = series[path.series_idx]?.line_style}
             <path
               d={path.d}
-              stroke={line_style?.color ?? series_color(path.series_idx)}
-              stroke-width={line_style?.width ?? 1.5}
-              stroke-dasharray={line_style?.dash}
+              stroke={path.stroke}
+              stroke-width={path.stroke_width}
+              stroke-dasharray={path.dash}
               style:opacity={is_dimmed(path.series_idx) ? 0.25 : 1}
             />
           {/each}
@@ -466,7 +462,7 @@
                 x={px_x}
                 y={px_y}
                 style={{
-                  radius: DEFAULT_RADIUS,
+                  radius: 4,
                   ...point.style,
                   fill: point.style.fill ?? point_color(point),
                   cursor: on_point_click ? `pointer` : undefined,

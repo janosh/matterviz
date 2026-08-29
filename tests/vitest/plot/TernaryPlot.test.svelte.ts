@@ -45,9 +45,18 @@ describe(`TernaryPlot`, () => {
   test(`renders one marker per point, corner labels and a line for line series`, async () => {
     const plot = await mount_ternary({ series, labels: [`Fe`, `Ni`, `Cr`] })
     expect(markers(plot)).toHaveLength(5)
+    const corner_labels = [...plot.querySelectorAll(`.corner-labels text`)]
+    expect(corner_labels.map((text) => text.textContent)).toEqual([`Fe`, `Ni`, `Cr`])
+    // each label is nudged clear of its corner: right beside, apex above, left beside
     expect(
-      [...plot.querySelectorAll(`.corner-labels text`)].map((text) => text.textContent),
-    ).toEqual([`Fe`, `Ni`, `Cr`])
+      corner_labels.map((text) =>
+        [`dx`, `dy`, `text-anchor`].map((attr) => text.getAttribute(attr)),
+      ),
+    ).toEqual([
+      [`8`, null, `start`],
+      [null, `-10`, `middle`],
+      [`-8`, null, `end`],
+    ])
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1)
     expect(plot.querySelector(`.lines path`)?.getAttribute(`stroke`)).toBe(`#4e79a7`)
     expect(plot.querySelector(`svg[role="application"]`)?.getAttribute(`aria-label`)).toBe(
@@ -73,29 +82,35 @@ describe(`TernaryPlot`, () => {
   })
 
   test.each([
-    [0.1, 27, true],
-    [0.25, 9, true],
-    [0.25, 9, false],
-    [0, 0, true],
-  ])(
-    `grid_step %d draws %d grid lines (ticks: %s)`,
-    async (grid_step, n_lines, show_ticks) => {
-      const plot = await mount_ternary({ series, grid_step, show_ticks })
-      expect(plot.querySelectorAll(`.grid line`)).toHaveLength(n_lines)
-      expect(plot.querySelectorAll(`.ticks text`)).toHaveLength(show_ticks ? n_lines : 0)
-      if (grid_step === 0.25 && show_ticks) {
-        const tick_labels = [...plot.querySelectorAll(`.ticks text`)].map(
-          (text) => text.textContent,
-        )
-        expect(tick_labels.slice(0, 3)).toEqual([`25%`, `50%`, `75%`])
-      }
-    },
-  )
+    [{ grid_step: 0.1 }, 27, 27],
+    [{ grid_step: 0.25 }, 9, 9],
+    [{ grid_step: 0.25, show_ticks: false }, 9, 0],
+    [{ grid_step: 0.5, show_grid: false }, 0, 3], // ticks survive without grid lines
+    [{ grid_step: 0 }, 0, 0],
+  ])(`%j draws %d grid lines and %d tick labels`, async (props, n_lines, n_ticks) => {
+    const plot = await mount_ternary({ series, ...props })
+    expect(plot.querySelectorAll(`.grid line`)).toHaveLength(n_lines)
+    const tick_labels = [...plot.querySelectorAll(`.ticks text`)].map(
+      (text) => text.textContent,
+    )
+    expect(tick_labels).toHaveLength(n_ticks)
+    // ticks of the first component read along the base, ascending
+    if (props.grid_step === 0.25 && n_ticks) {
+      expect(tick_labels.slice(0, 3)).toEqual([`25%`, `50%`, `75%`])
+    }
+  })
 
-  test(`show_grid=false keeps the ticks`, async () => {
-    const plot = await mount_ternary({ series, show_grid: false, grid_step: 0.5 })
+  test(`the controls pane toggles the grid off and Reset puts it back`, async () => {
+    const plot = await mount_ternary({ series, controls_open: true })
+    const [show_grid] = plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
+    show_grid.click()
+    await tick()
     expect(plot.querySelectorAll(`.grid line`)).toHaveLength(0)
-    expect(plot.querySelectorAll(`.ticks text`)).toHaveLength(3)
+    plot
+      .querySelector<HTMLButtonElement>(`button[aria-label="Reset grid to defaults"]`)
+      ?.click()
+    await tick()
+    expect(plot.querySelectorAll(`.grid line`)).toHaveLength(27)
   })
 
   test(`an invalid triple renders an error naming the point instead of a chart`, async () => {
@@ -196,18 +211,6 @@ describe(`TernaryPlot`, () => {
     expect(markers(plot)[1].getAttribute(`aria-label`)).toBe(`Oxides: Fe 20%, Ni 30%, Cr 50%`)
   })
 
-  test(`legend toggles a series off and on`, async () => {
-    const plot = await mount_ternary({ series })
-    expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
-    plot.querySelector<HTMLElement>(`.legend-item`)?.click() // hide Oxides
-    await tick()
-    expect(markers(plot)).toHaveLength(2)
-    expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1)
-    plot.querySelector<HTMLElement>(`.legend-item`)?.click()
-    await tick()
-    expect(markers(plot)).toHaveLength(5)
-  })
-
   test.each([
     [{ series: [series[0]] }, false], // single series: auto-hidden
     [{ series, legend: null }, false],
@@ -218,7 +221,7 @@ describe(`TernaryPlot`, () => {
   })
 
   test(`legend toggles write visible into the bound series and yield to host changes`, async () => {
-    let bound = $state<TernarySeries[]>(series.map((ser) => ({ ...ser })))
+    let bound = $state<TernarySeries[]>(series.map((srs) => ({ ...srs })))
     const plot = await mount_ternary({
       get series() {
         return bound
@@ -227,12 +230,14 @@ describe(`TernaryPlot`, () => {
         bound = val
       },
     })
+    expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
     plot.querySelector<HTMLElement>(`.legend-item`)?.click() // hide Oxides
     await tick()
     expect(bound[0].visible).toBe(false)
     expect(markers(plot)).toHaveLength(2)
+    expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1) // Path keeps its line
     // the host overrides the toggle
-    bound = bound.map((ser, idx) => (idx === 0 ? { ...ser, visible: true } : ser))
+    bound = bound.map((srs, idx) => (idx === 0 ? { ...srs, visible: true } : srs))
     await tick()
     expect(markers(plot)).toHaveLength(5)
   })
@@ -240,9 +245,11 @@ describe(`TernaryPlot`, () => {
   test(`visible: false hides a series until the legend re-enables it`, async () => {
     const plot = await mount_ternary({ series: [series[0], { ...series[1], visible: false }] })
     expect(markers(plot)).toHaveLength(3)
+    expect(plot.querySelectorAll(`.lines path`)).toHaveLength(0) // the hidden line goes too
     plot.querySelectorAll<HTMLElement>(`.legend-item`)[1]?.click()
     await tick()
     expect(markers(plot)).toHaveLength(5)
+    expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1)
   })
 
   test(`color_values paint markers through the color scale and show a color bar`, async () => {
@@ -268,7 +275,9 @@ describe(`TernaryPlot`, () => {
     expect(fills[0]).toContain(`rgb(0, 0, 255)`)
     expect(fills[1]).toContain(`rgb(255, 0, 0)`)
     expect(fills[2]).not.toContain(`rgb`) // null value: palette color
-    expect(plot.querySelector(`.colorbar`)?.textContent).toContain(`E (eV)`)
+    const colorbar = plot.querySelector(`.colorbar`)?.textContent
+    expect(colorbar).toContain(`E (eV)`)
+    expect(colorbar).toContain(`5`) // spans the min/max of the non-null color values
   })
 
   test.each<Partial<ComponentProps<typeof TernaryPlot>>>([

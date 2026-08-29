@@ -360,7 +360,8 @@
           {@const color = series.display_style.symbol_color ?? `currentColor`}
           {@const shape = symbol_map[series.display_style.symbol_type] ?? symbolCircle}
           {@const stroke_only = open_symbols.has(shape)}
-          <svg width="10" height="10" viewBox="-5 -5 10 10">
+          <!-- size(50) reaches +-6.7 for the star and diamond, so the box is 14 wide -->
+          <svg width="12" height="12" viewBox="-7 -7 14 14">
             <path
               d={d3_symbol().type(shape).size(50)() ?? ``}
               fill={stroke_only ? `none` : color}

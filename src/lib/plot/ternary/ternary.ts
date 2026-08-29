@@ -45,20 +45,19 @@ export interface TernaryPointProps<Metadata = Record<string, unknown>> {
   metadata: Metadata | undefined
 }
 
+// Anything this close to a fraction boundary is round-off, not data: a negative amount
+// this small (from computing one fraction as `1 - a - b`) clamps to zero instead of
+// throwing, and a grid value this close to 1 is a step overshooting the last multiple
+const TOLERANCE = 1e-9
+
 // Fractions of a triple. Amounts need not sum to 1 (raw counts work); negative, NaN or
-// all-zero amounts throw since they have no position in the triangle. Negative amounts
-// within `tolerance` of the total are round-off from computing one fraction as
-// `1 - a - b` and clamp to zero instead.
-export function ternary_fractions(
-  triple: TernaryTriple,
-  label = `ternary point`,
-  tolerance = 1e-9,
-): Vec3 {
+// all-zero amounts throw since they have no position in the triangle.
+export function ternary_fractions(triple: TernaryTriple, label = `ternary point`): Vec3 {
   if (triple.length !== 3 || triple.some((amt) => !Number.isFinite(amt))) {
     throw new Error(`${label} must be three finite numbers, got [${triple.join(`, `)}]`)
   }
   const raw_total = triple[0] + triple[1] + triple[2]
-  if (triple.some((amt) => amt < -tolerance * Math.abs(raw_total))) {
+  if (triple.some((amt) => amt < -TOLERANCE * Math.abs(raw_total))) {
     throw new Error(`${label} has a negative amount: [${triple.join(`, `)}]`)
   }
   const [amt_a, amt_b, amt_c] = triple.map((amt) => Math.max(0, amt))
@@ -68,11 +67,7 @@ export function ternary_fractions(
 }
 
 // Fractions -> [x, y] in the unit triangle (side 1, y up, base on y = 0)
-export const ternary_to_xy = ([frac_a, frac_b, frac_c]: readonly [
-  number,
-  number,
-  number,
-]): Vec2 => {
+export const ternary_to_xy = ([frac_a, frac_b, frac_c]: TernaryTriple): Vec2 => {
   const [corner_a, corner_b, corner_c] = TRIANGLE_VERTICES
   return [
     frac_a * corner_a[0] + frac_b * corner_b[0] + frac_c * corner_c[0],
@@ -88,7 +83,7 @@ export const xy_to_ternary = ([x_pos, y_pos]: Vec2): Vec3 => {
   return [frac_a, frac_b, 1 - frac_a - frac_b]
 }
 
-export const inside_triangle = (fractions: Vec3, tolerance = 1e-9): boolean =>
+export const inside_triangle = (fractions: Vec3, tolerance = TOLERANCE): boolean =>
   fractions.every((frac) => frac >= -tolerance)
 
 // One grid line: the locus of `component` = `value`, from one edge of the triangle to the
@@ -110,56 +105,60 @@ const EDGE_OUTWARD: readonly Vec2[] = [
   [-TRIANGLE_HEIGHT, 0.5], // left edge, component 2 ticks
 ]
 
+// Finest grid the plot will draw: 100 lines per component. Below that the lines merge into
+// a solid fill and the line count explodes (1e-9 would ask for three billion objects).
+const MIN_GRID_STEP = 0.01
+
 // Grid lines at every multiple of `step` strictly inside (0, 1). Steps that do not divide
 // 1 evenly stop at the last multiple below 1; a non-positive step yields no lines.
 export function ternary_grid_lines(step: number): TernaryGridLine[] {
   if (!(step > 0) || step >= 1) return []
-  const n_lines = Math.ceil(1 / step) - 1
-  const lines: TernaryGridLine[] = []
-  for (const component of [0, 1, 2] as const) {
-    for (let idx = 1; idx <= n_lines; idx++) {
-      const value = Number((idx * step).toPrecision(12))
-      if (value >= 1 - 1e-9) break
+  if (step < MIN_GRID_STEP) {
+    throw new Error(`grid_step=${step} is below the minimum of ${MIN_GRID_STEP}`)
+  }
+  // A step like 1/3 rounds 1/step up to 4, so the last multiple can land on 1 and drop out
+  const values = Array.from({ length: Math.ceil(1 / step) - 1 }, (_, idx) =>
+    Number(((idx + 1) * step).toPrecision(12)),
+  ).filter((value) => value < 1 - TOLERANCE)
+
+  return ([0, 1, 2] as const).flatMap((component) =>
+    values.map((value): TernaryGridLine => {
       const rest = 1 - value
       // The two other components (cyclic order) trade `rest` between them along the line.
       // The ticked end lies on the edge where the next component is zero: component 0
       // ticks where component 1 is zero, i.e. on the bottom edge
-      const next = (component + 1) % 3
-      const prev = (component + 2) % 3
       const endpoint = (share_next: number): Vec2 => {
         const fractions: Vec3 = [0, 0, 0]
         fractions[component] = value
-        fractions[next] = share_next
-        fractions[prev] = rest - share_next
+        fractions[(component + 1) % 3] = share_next
+        fractions[(component + 2) % 3] = rest - share_next
         return ternary_to_xy(fractions)
       }
-      lines.push({
+      return {
         component,
         value,
         from: endpoint(0),
         to: endpoint(rest),
         outward: EDGE_OUTWARD[component],
-      })
-    }
-  }
-  return lines
+      }
+    }),
+  )
 }
 
 // Pixel fit of the unit triangle into a `width` x `height` box, centered, preserving the
 // equilateral shape. `to_px` flips y since SVG grows downwards.
 export interface TernaryLayout {
   scale: number // px per unit of triangle side
-  origin: Vec2 // px position of the unit triangle's (0, 0), the left corner
   to_px: (xy: readonly [number, number]) => Vec2
   from_px: (px: Vec2) => Vec2
 }
 
 export function ternary_layout(width: number, height: number): TernaryLayout {
   const scale = Math.max(0, Math.min(width, height / TRIANGLE_HEIGHT))
+  // px position of the unit triangle's (0, 0), its left corner
   const origin: Vec2 = [(width - scale) / 2, height - (height - scale * TRIANGLE_HEIGHT) / 2]
   return {
     scale,
-    origin,
     to_px: ([x_pos, y_pos]) => [origin[0] + x_pos * scale, origin[1] - y_pos * scale],
     from_px: ([px_x, px_y]) => [(px_x - origin[0]) / scale, (origin[1] - px_y) / scale],
   }

@@ -118,6 +118,10 @@ describe(`ternary_grid_lines`, () => {
     expect(ternary_grid_lines(step)).toEqual([])
   })
 
+  test.each([1e-9, Number.MIN_VALUE, 0.0099])(`step %d is rejected as too fine`, (step) => {
+    expect(() => ternary_grid_lines(step)).toThrow(`below the minimum of 0.01`)
+  })
+
   test(`each line is the locus of its component and ticks on the next component's zero edge`, () => {
     for (const line of ternary_grid_lines(0.2)) {
       const from = xy_to_ternary(line.from)

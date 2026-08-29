@@ -6,13 +6,15 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   const EXPORT_FORMATS: ChartExportFormat[] = [`png`, `svg`, `csv`]
+  // single source for the initial values and what Reset restores
+  const GRID_DEFAULTS = { grid_step: 0.1, show_grid: true, show_ticks: true }
 
   let {
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    grid_step = $bindable(0.1),
-    show_grid = $bindable(true),
-    show_ticks = $bindable(true),
+    grid_step = $bindable(GRID_DEFAULTS.grid_step),
+    show_grid = $bindable(GRID_DEFAULTS.show_grid),
+    show_ticks = $bindable(GRID_DEFAULTS.show_ticks),
     on_export,
     toggle_props = {},
     pane_props = {},
@@ -37,9 +39,7 @@
       title="Grid"
       current_values={{ grid_step, show_grid, show_ticks }}
       on_reset={() => {
-        grid_step = 0.1
-        show_grid = true
-        show_ticks = true
+        ;({ grid_step, show_grid, show_ticks } = GRID_DEFAULTS)
       }}
       layout="grid"
     >
