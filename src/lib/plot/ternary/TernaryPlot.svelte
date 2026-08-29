@@ -302,7 +302,9 @@
       display_style: {
         symbol_type: style_at(srs, 0).symbol_type ?? `Circle`,
         symbol_color: series_color(series_idx),
-        line_color: srs.markers?.includes(`line`) ? series_color(series_idx) : undefined,
+        line_color: srs.markers?.includes(`line`)
+          ? (srs.line_style?.color ?? series_color(series_idx))
+          : undefined,
         line_dash: srs.line_style?.dash,
       },
     })),

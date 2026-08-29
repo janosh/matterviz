@@ -220,6 +220,13 @@ describe(`TernaryPlot`, () => {
     expect(plot.querySelector(`.legend`) !== null).toBe(visible)
   })
 
+  test(`legend line swatch uses line_style.color like the rendered path`, async () => {
+    const styled = [series[0], { ...series[1], line_style: { color: `#00ff00` } }]
+    const plot = await mount_ternary({ series: styled })
+    expect(plot.querySelector(`.lines path`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
+    expect(plot.querySelector(`.legend-item line`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
+  })
+
   test(`legend toggles write visible into the bound series and yield to host changes`, async () => {
     let bound = $state<TernarySeries[]>(series.map((srs) => ({ ...srs })))
     const plot = await mount_ternary({
