@@ -1,6 +1,6 @@
 {
   "name": "matterviz-jupyterlab",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "JupyterLab file viewer for MatterViz: open crystal structures, MD trajectories, band structures and volumetric data straight from the Lab file browser.",
   "keywords": [
     "crystal-structure",

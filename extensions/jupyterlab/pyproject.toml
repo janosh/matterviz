@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "matterviz-jupyterlab"
-version = "0.6.0"
+version = "0.7.0"
 description = "JupyterLab file viewer for crystal structures, MD trajectories and volumetric data"
 readme = "readme.md"
 license = "MIT"
