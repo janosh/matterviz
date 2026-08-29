@@ -197,6 +197,10 @@
       "types": "./dist/settings.d.ts",
       "default": "./dist/settings.js"
     },
+    "./slab": {
+      "types": "./dist/slab/index.d.ts",
+      "default": "./dist/slab/index.js"
+    },
     "./spectral": {
       "types": "./dist/spectral/index.d.ts",
       "default": "./dist/spectral/index.js"
