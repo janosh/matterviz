@@ -1,18 +1,26 @@
 // Periodic boundary conditions utilities
 import { element_by_symbol } from '$lib/element/data'
+import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
+import {
+  expected_bond_length,
+  get_majority_element,
+  has_framework_potential,
+  is_spectator_center,
+} from './bonding'
 import type { AnyStructure, Site } from './index'
 
 export type Pbc = readonly [boolean, boolean, boolean]
 
-// Distance slack added to the covalent-radii sum when deciding whether a candidate image
-// atom bonds a base atom (VESTA-like additive criterion). Must cover the longest bond the
-// perception strategies draw, else a drawn bond loses its far atom at the cell boundary:
-// metallic bonds run past the radii sum, fcc Al at 2.864 Å against a 2.42 Å sum, Pb 3.50
-// vs 2.92. Additive not multiplicative — a ratio big enough for Pb would make a 5 Å Na-Na
-// second neighbour look bonded, since Na's radius is large.
+// Distance slack added to the bond detector's expected length (expected_bond_length) when
+// deciding whether a candidate image atom bonds a base atom (VESTA-like additive
+// criterion). Must cover the longest bond the perception strategies draw, else a drawn
+// bond loses its far atom at the cell boundary: ionic bonds stretch ~0.2 Å past the
+// covalent sum (Ba-O 2.99 vs 2.81), and metals without a tabulated metallic radius still
+// measure against covalent radii (Pb 3.50 vs 2.92). Additive not multiplicative — a ratio
+// big enough for Pb would make a 5 Å Na-Na second neighbour look bonded, since Na's radius
+// is large.
 const BOND_SLACK = 0.7 // Å
 // Below this separation two sites are overlapping copies, not a bond (matches
 // the min_bond_dist default in bonding.ts)
@@ -120,20 +128,37 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
     }
   }
 
-  // Per-site element data for the phase-2 completion pass. present_elements is the tiny
-  // composition (so has_framework_potential doesn't re-scan every site in big supercells).
-  const site_elements: (string | null)[] = []
-  const site_radii: (number | null)[] = []
-  const present_elements = new Set<string>()
-  let max_radius = 0
-  for (const site of structure.sites) {
-    const elem = get_majority_element(site)
-    const radius =
-      (elem === null ? undefined : element_by_symbol.get(elem))?.covalent_radius ?? null
-    site_elements.push(elem)
-    if (elem !== null) present_elements.add(elem)
-    site_radii.push(radius)
-    if (radius !== null && radius > max_radius) max_radius = radius
+  // Per-site element ids for the phase-2 completion pass; the composition is the tiny
+  // per-element list (so has_framework_potential and the pair table below don't re-scan
+  // every site in big supercells).
+  const elem_ids = new Map<string, number>()
+  const present_elements: string[] = []
+  const site_elem_ids = new Int32Array(structure.sites.length)
+  for (const [idx, site] of structure.sites.entries()) {
+    const elem = get_majority_element(site) ?? ``
+    let elem_id = elem_ids.get(elem)
+    if (elem_id === undefined) {
+      elem_id = elem_ids.size
+      elem_ids.set(elem, elem_id)
+      present_elements.push(elem)
+    }
+    site_elem_ids[idx] = elem_id
+  }
+  // Per-element-pair bond reach: the bond detector's expected length plus slack, 0 when the
+  // pair cannot bond (unknown radius). One read in the hot loop below instead of a radius
+  // sum, and the same metallic-vs-covalent choice electroneg_ratio makes.
+  const n_elem = present_elements.length
+  const pair_reach = new Float64Array(n_elem * n_elem)
+  let max_bond_dist = 0
+  for (let id_a = 0; id_a < n_elem; id_a++) {
+    const elem_a = element_by_symbol.get(present_elements[id_a] as ElementSymbol)
+    for (let id_b = 0; id_b < n_elem; id_b++) {
+      const elem_b = element_by_symbol.get(present_elements[id_b] as ElementSymbol)
+      const expected = expected_bond_length(elem_a, elem_b)
+      if (expected === null) continue
+      pair_reach[id_a * n_elem + id_b] = expected + BOND_SLACK
+      if (expected + BOND_SLACK > max_bond_dist) max_bond_dist = expected + BOND_SLACK
+    }
   }
 
   // Skip spectator A-site cations (Li/Na, heavy alkaline earths) when a framework cation
@@ -145,10 +170,9 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
   const skip_spectators = has_framework_potential(present_elements)
   // resolved per element, not per site: is_spectator_center does two lookups and a
   // supercell repeats the same handful of elements thousands of times
-  const spectators = new Set(
-    skip_spectators ? [...present_elements].filter(is_spectator_center) : [],
+  const elem_skipped = present_elements.map(
+    (elem) => skip_spectators && is_spectator_center(elem),
   )
-  const site_skipped = site_elements.map((elem) => elem !== null && spectators.has(elem))
 
   // Phase 2: images that complete bonds / coordination polyhedra at cell faces. Phase 1's
   // ~0.5 Å face tolerance misses an atom just beyond a face that still bonds one near it,
@@ -157,8 +181,7 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
   // restricted this to anions completing cation shells, which left anions at cell faces
   // visibly under-coordinated (Cl in rocksalt drew 4 bonds where Na drew 6) and skipped
   // elemental and equal-EN structures entirely (diamond corners drew a single bond).
-  const max_bond_dist = 2 * max_radius + BOND_SLACK
-  if (max_bond_dist > BOND_SLACK) {
+  if (max_bond_dist > 0) {
     // Per-axis fractional bond reach via perpendicular cell heights (correct for oblique
     // cells; 0 for degenerate cells → no images). The + face tolerance covers phase-1
     // anchors sitting slightly outside the cell.
@@ -193,24 +216,24 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
     }
     // True when a copy of the candidate at `pos` would bond some displayed anchor,
     // i.e. it completes that anchor's coordination shell
-    const bonds_an_anchor = (pos: Vec3, radius: number): boolean => {
+    const bonds_an_anchor = (pos: Vec3, elem_id: number): boolean => {
       const [cx, cy, cz] = pos.map((coord) => Math.floor(coord / max_bond_dist))
+      const pair_row = elem_id * n_elem
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dz = -1; dz <= 1; dz++) {
             const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
             if (!cell) continue
             for (const anchor_idx of cell) {
-              const src_idx = anchor_src[anchor_idx]
-              const anchor_radius = site_radii[src_idx]
-              if (site_skipped[src_idx] || anchor_radius === null) continue
+              const anchor_elem = site_elem_ids[anchor_src[anchor_idx]]
+              const max_dist = pair_reach[pair_row + anchor_elem] // 0 = pair cannot bond
+              if (max_dist === 0 || elem_skipped[anchor_elem]) continue
               // squared compare: this runs hundreds of thousands of times per supercell
               const anchor_pos = anchor_positions[anchor_idx]
               const diff_x = pos[0] - anchor_pos[0]
               const diff_y = pos[1] - anchor_pos[1]
               const diff_z = pos[2] - anchor_pos[2]
               const dist_sq = diff_x * diff_x + diff_y * diff_y + diff_z * diff_z
-              const max_dist = radius + anchor_radius + BOND_SLACK
               if (dist_sq > MIN_BOND_DIST ** 2 && dist_sq <= max_dist * max_dist) return true
             }
           }
@@ -238,10 +261,10 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
     ]
     const counts = [1, 1, 1]
     for (const [idx, site] of structure.sites.entries()) {
-      const radius = site_radii[idx]
+      const elem_id = site_elem_ids[idx]
       // Spectator A-site cations stay excluded (see skip_spectators above); everything
       // else is a candidate, since any atom can be the missing end of a boundary bond
-      if (radius === null || site_skipped[idx]) continue
+      if (elem_skipped[elem_id]) continue
       // Per-axis shifts that could land a copy of this atom within bonding reach of the
       // cell: {0} plus +1/-1 when the atom is within max_bond_dist of the boundary.
       // Counted into the reused scratch above instead of building four arrays per site.
@@ -268,7 +291,7 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
               site.abc[2] + shift_c,
             ]
             const img_xyz = frac_to_cart(img_abc)
-            if (!bonds_an_anchor(img_xyz, radius)) continue
+            if (!bonds_an_anchor(img_xyz, elem_id)) continue
             seen_images.add(key)
             image_sites.push([idx, img_xyz, img_abc, true])
           }
