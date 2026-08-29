@@ -437,10 +437,10 @@
 {/snippet}
 
 <div
-  class="json-tree"
   role="tree"
   aria-label="JSON tree viewer"
   {...rest}
+  class={[`json-tree`, rest.class]}
   onkeydown={handle_tree_keydown}
 >
   {#if show_header}

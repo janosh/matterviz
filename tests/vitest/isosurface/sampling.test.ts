@@ -9,6 +9,7 @@ import {
   sanitize_display_range,
 } from '$lib/isosurface/sampling'
 import type { DisplayRange } from '$lib/isosurface/sampling'
+import type { VolumetricData } from '$lib/isosurface/types'
 import { marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { create_frac_to_cart } from '$lib/math'
@@ -171,35 +172,50 @@ describe(`sample_volume_at_positions`, () => {
 describe(`create_volume_sampler reads the current volume fields`, () => {
   // Pin lattice, origin, and periodic so a future cache keyed on volume identity
   // that misses one of them fails a test
-  test(`follows a lattice change on the same volume object`, () => {
-    const vol = linear_volume(11, cubic, false)
-    // frac (0.5, 0.5, 0.5) → 3.5
-    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(3.5, 10) // frac 0.5³
-    vol.lattice = [
-      [20, 0, 0],
-      [0, 20, 0],
-      [0, 0, 20],
-    ]
-    // frac (0.25, 0.25, 0.25) → 1.75
-    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(1.75, 10) // frac 0.25³
-  })
-
-  test(`follows an origin change on the same volume object`, () => {
-    const vol = linear_volume(11, cubic, false)
-    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(3.5, 10)
-    vol.origin = [5, 5, 5]
-    // cart [5,5,5] − origin [5,5,5] → frac (0, 0, 0) → 0
-    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(0, 10) // frac 0
-  })
-
-  test(`follows a periodic change on the same volume object`, () => {
-    const vol = linear_volume(10, cubic, true)
-    // frac (1.5, 0.5, 0.5) wraps to (0.5, 0.5, 0.5) → index (5, 5, 5) → 3.5
-    expect(create_volume_sampler(vol)([15, 5, 5])).toBeCloseTo(3.5, 10) // wraps
-    vol.periodic = false
-    // clamped frac (1, 0.5, 0.5) → index (9, 4.5, 4.5) → 3.6
-    expect(create_volume_sampler(vol)([15, 5, 5])).toBeCloseTo(3.6, 10) // clamps
-  })
+  test.each([
+    [
+      `lattice`,
+      () => linear_volume(11, cubic, false),
+      [5, 5, 5],
+      3.5, // frac (0.5, 0.5, 0.5)
+      (vol: VolumetricData) =>
+        (vol.lattice = [
+          [20, 0, 0],
+          [0, 20, 0],
+          [0, 0, 20],
+        ]),
+      1.75, // frac (0.25, 0.25, 0.25)
+    ],
+    [
+      `origin`,
+      () => linear_volume(11, cubic, false),
+      [5, 5, 5],
+      3.5,
+      (vol: VolumetricData): void => {
+        vol.origin = [5, 5, 5]
+      },
+      0, // cart [5,5,5] - origin [5,5,5] -> frac (0, 0, 0)
+    ],
+    [
+      `periodic`,
+      () => linear_volume(10, cubic, true),
+      [15, 5, 5],
+      3.5, // frac (1.5, .5, .5) wraps to (.5, .5, .5) -> index (5, 5, 5)
+      (vol: VolumetricData): void => {
+        vol.periodic = false
+      },
+      3.6, // clamped frac (1, .5, .5) -> index (9, 4.5, 4.5)
+    ],
+  ] as const)(
+    `follows a %s change on the same volume object`,
+    (_field, make, at, before, mutate, after) => {
+      const vol = make()
+      const point = at as [number, number, number]
+      expect(create_volume_sampler(vol)(point)).toBeCloseTo(before, 10)
+      mutate(vol)
+      expect(create_volume_sampler(vol)(point)).toBeCloseTo(after, 10)
+    },
+  )
 })
 
 describe(`compare_volume_grids`, () => {

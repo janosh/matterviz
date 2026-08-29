@@ -266,6 +266,32 @@ function inline_computed_styles(
   }
 }
 
+// A <canvas> inside a <foreignObject> is a live bitmap, not markup: the serializer emits
+// the empty element and the pixels are lost, so an exported dense scatter comes out with
+// no points at all. Swap each one for an <image> carrying the same pixels.
+function inline_foreign_canvases(source: SVGElement, clone: SVGElement): void {
+  const originals = [...source.querySelectorAll(`foreignObject`)]
+  const copies = [...clone.querySelectorAll(`foreignObject`)]
+  originals.forEach((original, idx) => {
+    const canvas = original.querySelector(`canvas`)
+    const copy = copies[idx]
+    if (!canvas?.width || !canvas.height || !copy) return
+    let href: string
+    try {
+      href = canvas.toDataURL(`image/png`)
+    } catch {
+      return // tainted by a cross-origin draw; leaving the blank foreignObject is all we can do
+    }
+    const image = document.createElementNS(`http://www.w3.org/2000/svg`, `image`)
+    for (const attr of [`x`, `y`, `width`, `height`]) {
+      const value = copy.getAttribute(attr)
+      if (value != null) image.setAttribute(attr, value)
+    }
+    image.setAttribute(`href`, href)
+    copy.replaceWith(image)
+  })
+}
+
 // Clone, inline the given computed-style props, ensure font-family + xmlns, then serialize
 // to a standalone SVG string. Never mutates the live element.
 function serialize_svg_for_export(
@@ -276,6 +302,8 @@ function serialize_svg_for_export(
 ): string {
   const clone = svg_element.cloneNode(true) as SVGElement
   if (inline_styles.length) inline_computed_styles(svg_element, clone, inline_styles)
+  // After the style pass, which walks source and clone in parallel by index
+  inline_foreign_canvases(svg_element, clone)
   const padded_viewbox = viewbox_padding > 0 ? svg_viewbox(clone, viewbox_padding) : null
   if (padded_viewbox) clone.setAttribute(`viewBox`, padded_viewbox.join(` `))
   if (strip_dimensions) {

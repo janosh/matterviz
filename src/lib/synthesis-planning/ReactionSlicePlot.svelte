@@ -64,7 +64,7 @@
     enable_info_pane={false}
     enable_structure_preview={false}
     allow_file_drop={false}
-    style="height: 400px"
     {...rest}
+    style="height: 400px; {rest.style ?? ``}"
   />
 {/if}

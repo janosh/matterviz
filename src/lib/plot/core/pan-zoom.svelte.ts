@@ -16,7 +16,15 @@ import { point_in_rect, type Rect } from '$lib/plot/core/layout'
 import type { AxisRanges, PanConfig, ScaleType } from '$lib/plot/core/types'
 
 type Axis = `x` | `x2` | `y` | `y2`
-type RectDragState = { start: Point2D; current: Point2D; bounds: DOMRect }
+// `select` marks the rect out for the caller's selection handler instead of a zoom; the
+// gesture is otherwise identical, so it shares all the drag bookkeeping below.
+export type RectDragMode = `zoom` | `select`
+type RectDragState = {
+  start: Point2D
+  current: Point2D
+  bounds: DOMRect
+  mode: RectDragMode
+}
 const AXES = [`x`, `x2`, `y`, `y2`] as const
 // How long after the last wheel notch a wheel pan still counts as in progress. Long enough to
 // bridge the gap between notches of one gesture, short enough that animation resumes promptly.
@@ -33,6 +41,10 @@ interface PanZoomOptions {
   svg: () => SVGElement | null
   // Only fired when the drag rect exceeds 5px in both dimensions
   on_rect_zoom: (start: Point2D, current: Point2D) => void
+  // Alt+drag instead of plain drag. Absent means the chart cannot enumerate its marks
+  // (bars, bins, boxes), and Alt+drag falls back to zooming rather than dropping the
+  // gesture on the floor.
+  on_rect_select?: (start: Point2D, current: Point2D) => void
   on_reset: () => void
   // Optional live hook while rect-dragging (ScatterPlot updates its tooltip)
   on_drag_move?: (coords: Point2D, inside_svg: boolean) => void
@@ -41,6 +53,7 @@ interface PanZoomOptions {
 export function create_pan_zoom(opts: PanZoomOptions): {
   readonly drag_start: Point2D | null
   readonly drag_current: Point2D | null
+  readonly drag_mode: RectDragMode
   readonly suppress_click: boolean
   readonly is_panning: boolean
   readonly cursor: string
@@ -97,7 +110,11 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
       if (dx > 5 && dy > 5) {
         suppress_click = true
-        opts.on_rect_zoom(drag_state.start, drag_state.current)
+        const finish =
+          drag_state.mode === `select` && opts.on_rect_select
+            ? opts.on_rect_select
+            : opts.on_rect_zoom
+        finish(drag_state.start, drag_state.current)
         setTimeout(() => (suppress_click = false), 0)
       }
     }
@@ -171,7 +188,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     const coords = { x: evt.clientX - svg_bounds.left, y: evt.clientY - svg_bounds.top }
     if (!point_in_rect(coords, opts.plot_bounds())) return
 
-    // Shift+drag pans (when enabled); plain drag draws the zoom rect
+    // Shift+drag pans (when enabled), Alt+drag selects, plain drag draws the zoom rect
     const pan_enabled = opts.pan()?.enabled !== false
     if (pan_enabled && evt.shiftKey) {
       evt.preventDefault()
@@ -186,7 +203,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     }
 
     // Cache bounds at drag start so window mousemove can compute relative coords
-    drag_state = { start: coords, current: coords, bounds: svg_bounds }
+    const mode: RectDragMode = evt.altKey && opts.on_rect_select ? `select` : `zoom`
+    drag_state = { start: coords, current: coords, bounds: svg_bounds, mode }
     window.addEventListener(`mousemove`, on_window_mouse_move)
     window.addEventListener(`mouseup`, on_window_mouse_up)
     document.body.style.cursor = `crosshair`
@@ -299,6 +317,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   return {
     get drag_start() {
       return drag_state?.start ?? null
+    },
+    get drag_mode(): RectDragMode {
+      return drag_state?.mode ?? `zoom`
     },
     get drag_current() {
       return drag_state?.current ?? null

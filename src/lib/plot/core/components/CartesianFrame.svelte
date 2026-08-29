@@ -69,6 +69,13 @@
     on_mouse_leave?: () => void
     on_mouse_move?: (event: MouseEvent) => void
     on_mouse_click?: (event: MouseEvent) => void
+    // Chart-supplied key handling on the plot SVG, run before pan/zoom's own. Return
+    // true to consume the key. Canvas-rendered marks have no focusable DOM of their
+    // own, so this is the only keyboard route into them.
+    on_key_down?: (event: KeyboardEvent) => boolean
+    // Announced to screen readers via a polite live region. Charts whose marks aren't
+    // individually focusable use it to report where a keyboard cursor landed.
+    live_message?: string
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     // Caller-drawn SVG rendered first inside the plot SVG, with the scales and ranges
     user_content?: Snippet<[UserContentProps]>
@@ -97,6 +104,8 @@
     on_mouse_leave,
     on_mouse_move,
     on_mouse_click,
+    on_key_down,
+    live_message,
     header_controls,
     user_content,
     layers,
@@ -184,7 +193,10 @@
       onfocusout={() => pan_zoom.set_focused(false)}
       onmousedown={pan_zoom.on_mouse_down}
       ondblclick={pan_zoom.reset_view}
-      onkeydown={pan_zoom.on_key_down}
+      onkeydown={(event) => {
+        if (on_key_down?.(event)) return
+        pan_zoom.on_key_down(event)
+      }}
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}
@@ -234,7 +246,11 @@
       {@render layers?.()}
 
       <!-- After the marks so the drag rect stays visible over dense points and canvases -->
-      <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
+      <ZoomRect
+        start={pan_zoom.drag_start}
+        current={pan_zoom.drag_current}
+        mode={pan_zoom.drag_mode}
+      />
 
       <!-- Marginal distribution strips -->
       <PlotMarginals
@@ -252,11 +268,25 @@
     {@render overlays?.()}
   {/if}
 
+  <!-- Where a keyboard cursor landed, for marks with no focusable element of their own -->
+  {#if live_message}
+    <span class="sr-only" aria-live="polite">{live_message}</span>
+  {/if}
+
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
   {@render children?.(dims)}
 </div>
 
 <style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
   .plot-frame {
     --ctrl-btn-default-right: 30px;
     position: relative;

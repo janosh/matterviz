@@ -64,9 +64,9 @@
   onkeydown={handle_keydown}
   title={sanitize_html(title)}
   {@attach tooltip({ allow_html: true })}
-  class={[`info-tag`, variant, size, { disabled }]}
   aria-disabled={disabled}
   {...rest}
+  class={[`info-tag`, variant, size, { disabled }, rest.class]}
 >
   {@html sanitize_html(label)}
   <em>{@html sanitize_html(value)}</em>

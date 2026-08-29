@@ -12,6 +12,11 @@ export type TooltipPlacementConfig = {
   offset?: { x: number; y: number }
 }
 
+// A pointer hangs down and right from its hotspot, so the rect it occupies is not
+// centered on the anchor. Generous enough for the arrow and the hand. Callers tracking
+// a live cursor pass this as an exclusion rect (see PlotTooltip's `avoid_cursor`).
+export const DEFAULT_CURSOR_SIZE = { width: 18, height: 24 } as const
+
 type TooltipPlacementCandidate = {
   direction: TooltipPlacementDirection
   x: number

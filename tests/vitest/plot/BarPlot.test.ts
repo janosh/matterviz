@@ -2,7 +2,13 @@ import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { inside_clip_path, mount_sized, with_measured_text } from '../setup'
+import {
+  inside_clip_path,
+  mount_sized,
+  one_tab_stop,
+  roving_tabindexes,
+  with_measured_text,
+} from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -18,6 +24,58 @@ const mount_sized_bar_plot = (
 
 describe(`BarPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
+
+  // Both mark kinds regressed the same policy in opposite directions: every bar was
+  // tabindex=0 (230 tab stops on a spacegroup plot), while the line-point group put
+  // its only 0 on the *hovered* point - so with nothing hovered every point was -1
+  // and Tab could not enter the group at all.
+  test.each([
+    [`bars`, { series: [basic] }],
+    [
+      `line points`,
+      { series: [{ ...basic, render_mode: `line` as const }], on_point_click: () => {} },
+    ],
+  ])(`%s are reachable by Tab exactly once`, async (_name, props) => {
+    const tabindexes = roving_tabindexes(await mount_sized_bar_plot(props))
+    expect(tabindexes.length).toBeGreaterThan(1)
+    expect(tabindexes).toEqual(one_tab_stop(tabindexes.length))
+  })
+
+  // Focus is the keyboard's hover, so leaving the chart is the keyboard's mouseleave.
+  // Arrowing between marks must not clear it, though - that is sliding along, not leaving.
+  test(`focus opens the tooltip, and only leaving the chart closes it`, async () => {
+    const on_bar_hover = vi.fn()
+    const plot = await mount_sized_bar_plot({ series: [basic], on_bar_hover })
+    const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
+
+    bars[0].dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenCalledOnce()
+
+    // Focus moving to a sibling mark keeps the hover
+    bars[0].dispatchEvent(
+      new FocusEvent(`focusout`, { bubbles: true, relatedTarget: bars[1] }),
+    )
+    await tick()
+    expect(on_bar_hover).not.toHaveBeenLastCalledWith(null)
+
+    // Focus leaving the chart clears it
+    bars[1].dispatchEvent(
+      new FocusEvent(`focusout`, { bubbles: true, relatedTarget: document.body }),
+    )
+    await tick()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  test(`arrow keys move the tab stop between marks`, async () => {
+    const plot = await mount_sized_bar_plot({ series: [basic] })
+    const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
+    bars[0].focus()
+    bars[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+    await tick()
+    expect(bars[1].getAttribute(`tabindex`)).toBe(`0`)
+    expect(bars[0].getAttribute(`tabindex`)).toBe(`-1`)
+  })
 
   test.each([
     { name: `empty data`, series: [], expected_series: 0, expected_bars: 0 },

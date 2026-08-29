@@ -258,7 +258,7 @@
   }
 </script>
 
-<div class="synthesis-planner" {...rest}>
+<div {...rest} class={[`synthesis-planner`, rest.class]}>
   {#if show_controls}
     <section class="controls">
       <label>

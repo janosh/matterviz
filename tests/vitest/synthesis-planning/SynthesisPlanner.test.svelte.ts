@@ -15,14 +15,21 @@ const mount_planner = (props: Partial<ComponentProps<typeof SynthesisPlanner>> =
   onTestFinished(() => unmount(component))
 }
 
-test(`renders the selected route hull inside the detail-left pane`, async () => {
-  mount_planner()
+// First mount pays for planning plus the 3D hull's threlte setup: ~1.3 s locally but ~5 s on
+// a loaded CI runner, so the default 5 s test timeout is not enough headroom
+test(
+  `renders the selected route hull inside the detail-left pane`,
+  { timeout: 20_000 },
+  async () => {
+    mount_planner()
 
-  await vi.waitFor(
-    () => expect(document.querySelector(`.detail-left > [role="application"]`)).not.toBeNull(),
-    { timeout: 5000 },
-  )
-})
+    await vi.waitFor(
+      () =>
+        expect(document.querySelector(`.detail-left > [role="application"]`)).not.toBeNull(),
+      { timeout: 15_000 },
+    )
+  },
+)
 
 test.each([
   [{ max_routes: 0 }, `max_routes`],

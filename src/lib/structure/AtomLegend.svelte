@@ -472,11 +472,11 @@
   </div>
 {:else if show_property_legend}
   <div
-    class="atom-legend property-legend atom-color-legend"
     class:categorical-legend={atom_color_config.scale_type === `categorical`}
-    style="font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt))"
     bind:this={property_legend_node}
     {...rest}
+    class={[`atom-legend property-legend atom-color-legend`, rest.class]}
+    style="font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt)); {rest.style ?? ``}"
   >
     {@render mode_selector_snippet()}
     {#if legend_title}

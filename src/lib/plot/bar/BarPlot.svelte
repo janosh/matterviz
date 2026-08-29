@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { create_chart_exporter, series_to_csv_rows } from '$lib/plot/core/utils/chart-export'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -48,7 +49,16 @@
     create_legend_visibility,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
+  import {
+    focus_left,
+    get_relative_coords,
+    is_activation_key,
+  } from '$lib/plot/core/interactions'
+  import {
+    create_roving_focus,
+    ROVING_ATTR,
+    roving_key,
+  } from '$lib/plot/core/utils/roving-focus.svelte'
   import { assign_axes } from '$lib/plot/core/axis-assignment'
   import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
@@ -239,6 +249,15 @@
       else y2_axis_prop = { ...y2_axis_prop, range }
     },
     clip_id_prefix: `chart-clip`,
+  })
+
+  // One tab stop for the whole mark group instead of one per bar/point: a 230-bar
+  // spacegroup plot would otherwise take 230 presses to tab past, and the line-point
+  // group was worse - its only tab stop was the *hovered* point, so with nothing
+  // hovered every point was tabindex=-1 and keyboard users could not enter at all.
+  const roving = create_roving_focus({
+    container: () => frame.svg_element,
+    marks: () => [internal_series, frame.ranges.current],
   })
 
   // Interactive axis loading state
@@ -528,8 +547,10 @@
       ? color_scale_fn(pt.color_value)
       : (pt.point_style?.fill ?? series_color)
 
+  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
-    (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
+    (series_idx: number, bar_idx: number, color: string) =>
+    (event: MouseEvent | FocusEvent) => {
       hovered = true
       hover_info = get_bar_data(series_idx, bar_idx, color)
       on_bar_hover?.({ ...hover_info, event })
@@ -538,6 +559,12 @@
   const clear_hover = () => {
     hover_info = null
     on_bar_hover?.(null)
+  }
+
+  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
+  // is not. Defined once rather than inline, so every mark shares one handler.
+  const clear_hover_on_exit = (event: FocusEvent) => {
+    if (focus_left(event, frame.svg_element)) clear_hover()
   }
   const clear_point_hover = () => {
     hover_info = null
@@ -571,6 +598,17 @@
     on_error,
   }))
   $effect(try_auto_load)
+
+  // === Export ===
+  const handle_export = create_chart_exporter(frame, () =>
+    series_to_csv_rows(
+      internal_series.map((srs, series_idx) => ({
+        label: srs?.label ?? `series ${series_idx + 1}`,
+        x: srs?.x ?? [],
+        y: srs?.y ?? [],
+      })),
+    ),
+  )
 </script>
 
 {#snippet ref_lines_layer(z: LayerZIndex)}
@@ -741,6 +779,7 @@
                     if (pt) set_hover(pt, evt)
                   }}
                   onfocusin={(evt) => {
+                    roving.focusin(evt)
                     const pt = get_pt(evt)
                     if (pt) set_hover(pt, evt)
                   }}
@@ -755,6 +794,7 @@
                     if (pt && clickable) do_click(pt, evt)
                   }}
                   onkeydown={(evt) => {
+                    if (roving.handle_keydown(evt)) return
                     const pt = get_pt(evt)
                     if (pt && clickable && is_activation_key(evt)) {
                       evt.preventDefault()
@@ -790,7 +830,8 @@
                       offset={pt.point_offset ?? { x: 0, y: 0 }}
                       --point-fill-color={fl}
                       data-bar-idx={pt.idx}
-                      tabindex={clickable ? (hov ? 0 : -1) : undefined}
+                      {...{ [ROVING_ATTR]: roving_key(series_idx, pt.idx) }}
+                      tabindex={roving.tabindex(roving_key(series_idx, pt.idx))}
                     />
                   {/each}
                 </g>
@@ -843,8 +884,18 @@
                     stroke-width={bar_state.stroke_width}
                     clip-path="url(#{frame.clip_path_id})"
                     role="button"
-                    tabindex="0"
-                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
+                    tabindex={roving.tabindex(roving_key(series_idx, bar_idx))}
+                    {...{ [ROVING_ATTR]: roving_key(series_idx, bar_idx) }}
+                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}: ${
+                      srs.y[bar_idx]
+                    }`}
+                    onfocusin={(evt) => {
+                      roving.focusin(evt)
+                      // Focus is the keyboard's hover: without this the tooltip never
+                      // opens and on_bar_hover never fires for a keyboard user
+                      handle_bar_hover(series_idx, bar_idx, color)(evt)
+                    }}
+                    onfocusout={clear_hover_on_exit}
                     style:cursor={on_bar_click ? `pointer` : undefined}
                     onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={clear_hover}
@@ -854,6 +905,7 @@
                         event: evt,
                       })}
                     onkeydown={(evt) => {
+                      if (roving.handle_keydown(evt)) return
                       if (is_activation_key(evt)) {
                         evt.preventDefault()
                         on_bar_click?.({
@@ -924,9 +976,11 @@
       {@const cy = (hover_info.active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(
         hover_info.orient_y + (orientation === `vertical` ? stack_base : 0),
       )}
+      <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip
         x={cx}
         y={cy}
+        avoid_cursor={false}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
@@ -958,6 +1012,7 @@
 
     {#if show_controls}
       <BarPlotControls
+        on_export={handle_export}
         toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls

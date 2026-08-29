@@ -15,10 +15,10 @@
 
 {#if message}
   <div
-    class={[`status-message`, type]}
     role={type === `error` ? `alert` : `status`}
     aria-live={type === `error` ? `assertive` : `polite`}
     {...rest}
+    class={[`status-message`, type, rest.class]}
   >
     {message}
     {#if dismissible}

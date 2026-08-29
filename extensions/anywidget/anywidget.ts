@@ -617,6 +617,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `sort`,
         `level_lighten`,
         `min_fraction`,
+        `max_children`,
         `other_label`,
         `max_depth`,
         `padding_inner`,

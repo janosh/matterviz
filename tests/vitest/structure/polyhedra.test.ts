@@ -95,37 +95,40 @@ const tetrahedron_sites = (center: string, vertex: string, origin: Vec3, dist: n
 }
 
 describe(`convex_hull_3d`, () => {
-  test(`tetrahedron: 4 faces, correct volume`, () => {
-    const hull = convex_hull_3d([
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ])
-    expect(hull.faces).toHaveLength(4)
-    expect(hull.vertices).toHaveLength(4)
-    expect(hull.volume).toBeCloseTo(1 / 6, 10)
-  })
-
-  test(`octahedron: 8 faces, volume 4/3`, () => {
-    const hull = convex_hull_3d(octahedron_points)
-    expect(hull.faces).toHaveLength(8)
-    expect(hull.vertices).toHaveLength(6)
-    expect(hull.volume).toBeCloseTo(4 / 3, 10)
-  })
-
-  test(`cube: 12 triangles, volume = side^3`, () => {
-    const hull = convex_hull_3d(cube_points(2.5))
-    expect(hull.faces).toHaveLength(12)
-    expect(hull.vertices).toHaveLength(8)
-    expect(hull.volume).toBeCloseTo(2.5 ** 3, 8)
-  })
-
-  test(`interior points are excluded from hull`, () => {
-    const hull = convex_hull_3d([...octahedron_points, [0, 0, 0], [0.1, 0.1, 0.1]])
-    expect(hull.vertices).toHaveLength(6)
-    expect(hull.volume).toBeCloseTo(4 / 3, 10)
-  })
+  test.each([
+    [
+      `tetrahedron`,
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      4,
+      4,
+      1 / 6,
+      10,
+    ],
+    [`octahedron`, octahedron_points, 8, 6, 4 / 3, 10],
+    [`cube (side 2.5)`, cube_points(2.5), 12, 8, 2.5 ** 3, 8],
+    // interior points must not survive as hull vertices
+    [
+      `octahedron + interior points`,
+      [...octahedron_points, [0, 0, 0], [0.1, 0.1, 0.1]],
+      8,
+      6,
+      4 / 3,
+      10,
+    ],
+  ] as const)(
+    `%s hulls to %i faces / %i vertices`,
+    (_name, points, faces, vertices, volume, precision) => {
+      const hull = convex_hull_3d(points as [number, number, number][])
+      expect(hull.faces).toHaveLength(faces)
+      expect(hull.vertices).toHaveLength(vertices)
+      expect(hull.volume).toBeCloseTo(volume, precision)
+    },
+  )
 
   test.each([
     [

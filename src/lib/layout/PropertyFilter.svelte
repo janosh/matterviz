@@ -106,7 +106,7 @@
   {#if log}<span class="log-label">log</span>{/if}
 {/snippet}
 
-<div class="filter-container" class:active class:disabled {...rest}>
+<div class:active class:disabled {...rest} class={[`filter-container`, rest.class]}>
   {#if histogram_at === `top`}
     {@render histogram_snippet()}
   {/if}

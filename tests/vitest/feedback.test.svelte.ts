@@ -3,6 +3,21 @@ import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from './setup'
 
+// A `class` in a spread replaces the element's own class attribute rather than merging,
+// so `class="spinner" {...rest}` silently dropped the component's own styling whenever a
+// caller passed one. The fix is to spread first and fold `rest.class` into the attribute.
+describe(`caller class does not replace a component's own class`, () => {
+  test.each([
+    [`Spinner`, Spinner, {}, `spinner`],
+    [`StatusMessage`, StatusMessage, { message: `hi` }, `status-message`],
+  ])(`%s`, (_name, Component, props, own_class) => {
+    document.body.innerHTML = ``
+    mount(Component, { target: document.body, props: { ...props, class: `caller-class` } })
+    const el = doc_query(`.${own_class}`)
+    expect([...el.classList]).toEqual(expect.arrayContaining([own_class, `caller-class`]))
+  })
+})
+
 describe(`DragOverlay`, () => {
   test(`renders only when visible, with its default/custom messages and forwarded style`, () => {
     mount(DragOverlay, { target: document.body, props: { visible: false } })

@@ -37,6 +37,52 @@ const make_props = (overrides: Record<string, unknown> = {}) => ({
 })
 
 describe(`FillArea`, () => {
+  // A region with only a hover handler was in the DOM but out of the tab order, so a
+  // keyboard user could never reach it - the same shape as BarPlot's line points
+  test.each([
+    [`click handler`, { on_click: () => {} }, `0`],
+    [`hover handler only`, { on_hover: () => {} }, `0`],
+    [`no handlers`, {}, `-1`],
+  ])(`a region with a %s has tabindex %s`, (_name, handlers, expected) => {
+    document.body.innerHTML = ``
+    mount(FillArea, { target: document.body, props: make_props(handlers) })
+    expect(doc_query(`g.fill-region`).getAttribute(`tabindex`)).toBe(expected)
+  })
+
+  // A region split by gaps renders one FillArea per segment. They are one logical
+  // region, so N segments must not become N identical tab stops.
+  test.each([
+    [`first segment`, true, `0`, null],
+    [`later segment`, false, `-1`, `true`],
+  ])(`a %s carries tabindex %s`, (_name, is_first_segment, tabindex, hidden) => {
+    document.body.innerHTML = ``
+    mount(FillArea, {
+      target: document.body,
+      props: make_props({ on_hover: () => {}, is_first_segment }),
+    })
+    const region = doc_query(`g.fill-region`)
+    expect(region.getAttribute(`tabindex`)).toBe(tabindex)
+    expect(region.getAttribute(`aria-hidden`)).toBe(hidden)
+  })
+
+  // Every hover payload comes from a pointer event, so without this a keyboard user
+  // reaches the region and sees nothing
+  test(`focus reports a hover at the region center, blur clears it`, async () => {
+    const on_hover = vi.fn()
+    document.body.innerHTML = ``
+    mount(FillArea, { target: document.body, props: make_props({ on_hover }) })
+    const region = doc_query(`g.fill-region`)
+
+    region.dispatchEvent(new FocusEvent(`focus`))
+    await tick()
+    expect(on_hover).toHaveBeenCalledOnce()
+    expect(on_hover.mock.calls[0][0]).toMatchObject({ region_idx: 0 })
+
+    region.dispatchEvent(new FocusEvent(`blur`))
+    await tick()
+    expect(on_hover).toHaveBeenLastCalledWith(null)
+  })
+
   test(`renders basic fill region with correct attributes`, () => {
     mount(FillArea, { target: document.body, props: make_props() })
 

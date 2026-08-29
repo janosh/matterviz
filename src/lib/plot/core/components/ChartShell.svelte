@@ -34,6 +34,7 @@
     height = $bindable(0),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
+    chrome_color,
     controls_toggle_props,
     header_controls,
     controls,
@@ -53,6 +54,11 @@
     height?: number
     fullscreen?: boolean
     fullscreen_toggle?: boolean
+    // Color for the chrome icons, from whatever the chart paints under the top-right
+    // corner. A prop, not a CSS var passed through `style`: charts spread the caller's
+    // rest props after their own, so a `style` they set would be clobbered by any caller
+    // that passes one - which every sized mount does.
+    chrome_color?: string
     controls_toggle_props?: PaneToggleProps
     header_controls?: Snippet<[Dims]>
     // The controls pane; receives the toggle props that seat its toggle in the header row
@@ -87,7 +93,7 @@
   style={`${css_vars} ${rest.style ?? ``}`}
 >
   {#if width && height}
-    <div class="header-controls">
+    <div class="header-controls" style:--chart-chrome-color={chrome_color}>
       {@render header_controls?.(dims)}
       {@render controls?.(toggle_props)}
       {#if fullscreen_toggle}
@@ -136,16 +142,26 @@
   }
   .header-controls {
     position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
+    /* tucked into the corner: the chrome floats over the chart itself, and further in
+       it straddles cell boundaries and header labels instead of clearing them */
+    top: var(--ctrl-btn-top, 2px);
+    right: var(--fullscreen-btn-right, 2px);
     z-index: var(--fullscreen-btn-z-index, 10);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--chart-chrome-gap, 3px);
     opacity: 0;
     transition:
       opacity 0.2s,
       background-color 0.2s;
+  }
+  /* Applied to the buttons, not inherited from the row: a <button> does not inherit
+     `color` (the UA stylesheet sets `buttontext`), so the gear kept its default while the
+     fullscreen button - which declares `color: inherit` itself - followed along. Scoping
+     to direct-child buttons also keeps it out of the controls pane, which is a child of
+     this row and would otherwise render its whole contents in the contrast color. */
+  .header-controls > :global(button) {
+    color: var(--chart-chrome-color, inherit);
   }
   /* revealed on hover, while focused, and while the controls pane is open */
   .chart-shell:hover .header-controls,

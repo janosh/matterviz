@@ -16,7 +16,7 @@
   import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
-  import { compute_sankey_layout } from '$lib/plot/sankey/sankey'
+  import { bucket_sankey_data, compute_sankey_layout } from '$lib/plot/sankey/sankey'
   import type { PositionedLink, PositionedNode } from '$lib/plot/sankey/sankey'
   import type {
     SankeyData,
@@ -40,6 +40,8 @@
     node_width = $bindable(DEFAULTS.sankey.node_width),
     node_padding = $bindable(DEFAULTS.sankey.node_padding),
     node_align = $bindable(DEFAULTS.sankey.node_align),
+    min_fraction = $bindable(DEFAULTS.sankey.min_fraction),
+    max_links = $bindable(DEFAULTS.sankey.max_links),
     iterations = DEFAULTS.sankey.iterations,
     link_opacity = $bindable(DEFAULTS.sankey.link_opacity),
     link_color_mode = `source`,
@@ -76,6 +78,9 @@
       node_width?: number
       node_padding?: number
       node_align?: SankeyNodeAlign
+      // Fold each node's small outgoing links into one 'Other' link; see bucket_sankey_data
+      min_fraction?: number
+      max_links?: number
       iterations?: number
       link_opacity?: number
       link_color_mode?: SankeyLinkColorMode
@@ -116,6 +121,8 @@
   // The hovered node or link (its public handler payload) + the tooltip anchor
   let hover_info = $state<SankeyHandlerProps<Metadata> | null>(null)
   let hover_pos = $state({ x: 0, y: 0 })
+  // Keyboard focus anchors at a shape center, where there is no pointer glyph to dodge
+  let hover_at_pointer = $state(false)
   // Legend hover dims like a node hover but shows no tooltip
   let legend_hover_idx = $state<number | null>(null)
   // Nodes muted via legend toggle (dimmed, not removed - keeps layout stable).
@@ -126,16 +133,29 @@
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
   let inner_height = $derived(Math.max(0, height - pad.t - pad.b))
 
-  // Resolved node colors (per node_idx), explicit color or cycled palette
-  let node_colors = $derived(data.nodes.map((node, idx) => node.color ?? plot_color(idx)))
+  // Palette colors are resolved before folding, so a node keeps its color when the fold
+  // drops its neighbours and shifts every later index
+  let colored_data = $derived({
+    nodes: data.nodes.map((node, idx) => ({ ...node, color: node.color ?? plot_color(idx) })),
+    links: data.links,
+  })
 
   // Invalid graphs (cycles, unknown node refs) render an error message in place
+  // Long-tail folding runs before layout, so d3-sankey only ever sees the graph the
+  // user will actually look at (positions stay stable under the fold)
+  let bucketed_data = $derived(bucket_sankey_data(colored_data, { min_fraction, max_links }))
+  // Indexed by the folded graph's node_idx, which is what the layout reports; reading
+  // the pre-fold arrays here attached colors and metadata to the wrong records
+  let node_colors = $derived(
+    bucketed_data.nodes.map((node, idx) => node.color ?? plot_color(idx)),
+  )
+
   // of the diagram instead of crashing the host page
   let layout = $derived.by(() => {
     try {
       return {
         error: null,
-        ...compute_sankey_layout(data, {
+        ...compute_sankey_layout(bucketed_data, {
           width: inner_width,
           height: inner_height,
           node_width,
@@ -222,7 +242,7 @@
     label: node.label,
     value: node.value,
     color: node_colors[node.node_idx],
-    metadata: data.nodes[node.node_idx]?.metadata,
+    metadata: bucketed_data.nodes[node.node_idx]?.metadata,
   })
 
   const link_props = (link: PositionedLink): SankeyLinkHandlerProps<Metadata> => ({
@@ -234,7 +254,7 @@
     target_label: link.target.label,
     value: link.value,
     color: link_color(link),
-    metadata: data.links[link.link_idx]?.metadata,
+    metadata: bucketed_data.links[link.link_idx]?.metadata,
   })
 
   const link_from_event = (event: Event): PositionedLink | null =>
@@ -251,6 +271,7 @@
     if (!node && !link) return clear_hover()
     hovered = true
     const cursor = pointer_pos(event, svg_element)
+    hover_at_pointer = Boolean(cursor)
     const prev = hover_info
     if (node) {
       hover_pos = cursor ?? node_center(node)
@@ -367,6 +388,8 @@
       bind:node_width
       bind:node_padding
       bind:node_align
+      bind:min_fraction
+      bind:max_links
       bind:link_opacity
       bind:show_node_labels
     >
@@ -488,6 +511,7 @@
         x={hover_pos.x}
         y={hover_pos.y}
         offset={{ x: 10, y: 5 }}
+        avoid_cursor={hover_at_pointer}
         constrain_to={{ width, height }}
         fallback_size={{ width: 140, height: 44 }}
         bg_color={hover_info.type === `node`

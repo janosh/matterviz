@@ -132,6 +132,23 @@ beforeEach(() => {
 
 type Element_constructor<T extends Element> = abstract new (...args: never[]) => T
 
+// `tabindex` of every data mark, in DOM order. Marks used to be one tab stop each (a
+// 10k-point scatter took 10k Tab presses), and BarPlot's line points had the mirror bug -
+// the only stop sat on the *hovered* point, so with nothing hovered Tab could not enter
+// the group at all. Pair with `one_tab_stop`.
+export const roving_tabindexes = (root: ParentNode): string[] =>
+  [...root.querySelectorAll(`[data-roving-key]`)].map(
+    (el) => el.getAttribute(`tabindex`) ?? ``,
+  )
+
+// The expected shape: the first mark in DOM order holds the group's only tab stop. DOM
+// order matters because Svelte re-evaluates marks in no guaranteed order, so a stop
+// claimed by whoever rendered first would wander between renders.
+export const one_tab_stop = (n_marks: number): string[] => [
+  `0`,
+  ...Array<string>(n_marks - 1).fill(`-1`),
+]
+
 export function doc_query<T extends Element = HTMLElement>(
   selector: string,
   element_constructor?: Element_constructor<T>,

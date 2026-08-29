@@ -13,6 +13,8 @@
     node_width = $bindable(DEFAULTS.sankey.node_width),
     node_padding = $bindable(DEFAULTS.sankey.node_padding),
     node_align = $bindable(DEFAULTS.sankey.node_align),
+    min_fraction = $bindable(DEFAULTS.sankey.min_fraction),
+    max_links = $bindable(DEFAULTS.sankey.max_links),
     link_opacity = $bindable(DEFAULTS.sankey.link_opacity),
     show_node_labels = $bindable(DEFAULTS.sankey.show_node_labels),
     toggle_props = {},
@@ -25,6 +27,8 @@
     node_width?: number
     node_padding?: number
     node_align?: SankeyNodeAlign
+    min_fraction?: number
+    max_links?: number
     link_opacity?: number
     show_node_labels?: boolean
     toggle_props?: HTMLAttributes<HTMLButtonElement>
@@ -52,6 +56,8 @@
         node_padding,
         link_opacity,
         show_node_labels,
+        min_fraction,
+        max_links,
       }}
       on_reset={() => {
         ;({
@@ -61,6 +67,8 @@
           node_padding,
           link_opacity,
           show_node_labels,
+          min_fraction,
+          max_links,
         } = DEFAULTS.sankey)
       }}
       layout="grid"
@@ -82,6 +90,12 @@
       >
       <NumberRangeInput min={0} max={40} step={1} bind:value={node_padding}
         >Node padding</NumberRangeInput
+      >
+      <NumberRangeInput min={0} max={0.2} step={0.005} bind:value={min_fraction}
+        >Group links below (fraction of outflow)</NumberRangeInput
+      >
+      <NumberRangeInput min={0} max={20} step={1} bind:value={max_links}
+        >Max links per node (0 = all)</NumberRangeInput
       >
       <NumberRangeInput min={0.05} max={1} step={0.05} bind:value={link_opacity}
         >Link opacity</NumberRangeInput

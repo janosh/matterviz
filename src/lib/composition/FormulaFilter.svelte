@@ -588,12 +588,12 @@
 <svelte:document onclick={handle_document_click} />
 
 <div
-  class="formula-filter"
   bind:this={wrapper}
   class:disabled
   class:invalid={validation.state === `invalid`}
   class:warning={validation.state === `warning`}
   {...rest}
+  class={[`formula-filter`, rest.class]}
 >
   <!-- Chips and validation live inside the root: as siblings they became separate grid/flex
        items in any host that lays filters out side by side -->

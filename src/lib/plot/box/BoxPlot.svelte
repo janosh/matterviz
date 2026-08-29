@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type {
@@ -48,7 +49,12 @@
     X2_AXIS_DEFAULTS,
   } from '$lib/plot/core/axis-utils'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
-  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
+  import { focus_left, is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
+  import {
+    create_roving_focus,
+    ROVING_ATTR,
+    roving_key,
+  } from '$lib/plot/core/utils/roving-focus.svelte'
   import {
     accumulate_extent,
     empty_extent,
@@ -311,6 +317,12 @@
     slot: number
     stats: (typeof box_stats)[number]
   }
+  // One tab stop for the whole group; arrow keys move between boxes
+  const roving = create_roving_focus({
+    container: () => frame.svg_element,
+    marks: () => visible_boxes,
+  })
+
   let visible_boxes = $derived<Box[]>(
     series
       .map((srs, idx) => ({ series: srs, idx, slot: slot_of(idx), stats: box_stats[idx] }))
@@ -535,6 +547,7 @@
 
   // === Tooltip / hover ===
   let hover_info = $state<BoxHover | null>(null)
+  let hover_at_pointer = $state(false)
 
   function get_box_data(box_item: Box, color: string): BoxHover {
     const vertical = orientation === `vertical`
@@ -567,21 +580,32 @@
     }
   }
 
-  const handle_box_hover = (box_item: Box, color: string) => (event: MouseEvent) => {
-    hovered = true
-    // Anchor the tooltip at the cursor (cx/cy default to the whisker tip) so it follows the
-    // mouse — boxes/violins are wide, and a fixed anchor lands far from the pointer.
-    const pointer = get_relative_coords(event, frame.svg_element)
-    hover_info = {
-      ...get_box_data(box_item, color),
-      ...(pointer && { cx: pointer.x, cy: pointer.y }),
+  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover, and it simply has
+  // no pointer, which is the case the whisker-tip anchor below already covers
+  const handle_box_hover =
+    (box_item: Box, color: string) => (event: MouseEvent | FocusEvent) => {
+      hovered = true
+      // Anchor the tooltip at the cursor (cx/cy default to the whisker tip) so it follows the
+      // mouse — boxes/violins are wide, and a fixed anchor lands far from the pointer.
+      const pointer = pointer_pos(event, frame.svg_element)
+      // The whisker-tip fallback has no pointer glyph for the tooltip to dodge
+      hover_at_pointer = Boolean(pointer)
+      hover_info = {
+        ...get_box_data(box_item, color),
+        ...(pointer && { cx: pointer.x, cy: pointer.y }),
+      }
+      on_box_hover?.({ ...hover_info, event })
     }
-    on_box_hover?.({ ...hover_info, event })
-  }
 
   const clear_hover = () => {
     hover_info = null
     on_box_hover?.(null)
+  }
+
+  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
+  // is not. Defined once rather than inline, so every mark shares one handler.
+  const clear_hover_on_exit = (event: FocusEvent) => {
+    if (focus_left(event, frame.svg_element)) clear_hover()
   }
 
   // Value label helper
@@ -590,6 +614,39 @@
       value_label_stat === `mean` ? stats.mean : stats.median,
       value_label_format,
     )
+
+  // === Export ===
+  // A box is a five-number summary, not an (x, y) pair, so CSV gets its own columns
+  // rather than being forced through the shared long format.
+  // whisker_low/high are what the chart draws; min/max are the raw extremes
+  const handle_export = create_chart_exporter(frame, () => ({
+    header: [
+      `series`,
+      `n`,
+      `min`,
+      `whisker_low`,
+      `q1`,
+      `median`,
+      `mean`,
+      `q3`,
+      `whisker_high`,
+      `max`,
+      `outliers`,
+    ],
+    rows: visible_boxes.map(({ series: srs, idx, stats }) => [
+      srs.label ?? `box ${idx + 1}`,
+      stats.n,
+      stats.min,
+      stats.whisker_low,
+      stats.q1,
+      stats.median,
+      stats.mean,
+      stats.q3,
+      stats.whisker_high,
+      stats.max,
+      stats.outliers.join(` `),
+    ]),
+  }))
 </script>
 
 {#snippet seg(p1: Vec2, p2: Vec2, stroke: string, sw: number, dash?: string)}
@@ -706,8 +763,16 @@
             class="box-series"
             data-box-idx={box_item.idx}
             role="button"
-            tabindex="0"
-            aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}`}
+            tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
+            {...{ [ROVING_ATTR]: roving_key(box_item.idx, 0) }}
+            aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}, median ${
+              box_item.stats.median
+            }`}
+            onfocusin={(evt) => {
+              roving.focusin(evt)
+              handle_box_hover(box_item, color)(evt)
+            }}
+            onfocusout={clear_hover_on_exit}
             style:cursor={on_box_click ? `pointer` : undefined}
             opacity={frame.hovered_series_idx !== null &&
             frame.hovered_series_idx !== box_item.idx
@@ -717,6 +782,7 @@
             onmouseleave={clear_hover}
             onclick={(evt) => on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
             onkeydown={(evt) => {
+              if (roving.handle_keydown(evt)) return
               if (is_activation_key(evt)) {
                 evt.preventDefault()
                 on_box_click?.({ ...get_box_data(box_item, color), event: evt })
@@ -849,6 +915,7 @@
         x={hover_info.cx}
         y={hover_info.cy}
         offset={{ x: 10, y: 5 }}
+        avoid_cursor={hover_at_pointer}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
@@ -883,6 +950,7 @@
 
     {#if show_controls}
       <BoxPlotControls
+        on_export={handle_export}
         toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls

@@ -756,7 +756,9 @@
       clear_hover()
       return
     }
-    tooltip_pos = { x: coords.x + 12, y: coords.y + 8 }
+    // The raw cursor, not a pre-offset point: PlotTooltip needs the true anchor to
+    // flip and to keep the pointer glyph clear (see its `offset`/`avoid_cursor`).
+    tooltip_pos = coords
     hovered = true
     if (render_mode === `density`) {
       hovered_point = null
@@ -933,7 +935,7 @@
       <PlotTooltip
         x={tooltip_pos.x}
         y={tooltip_pos.y}
-        offset={{ x: 0, y: 0 }}
+        offset={{ x: 12, y: 8 }}
         constrain_to={{ width, height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 150, height: 64 }}
@@ -950,7 +952,7 @@
       <PlotTooltip
         x={tooltip_pos.x}
         y={tooltip_pos.y}
-        offset={{ x: 0, y: 0 }}
+        offset={{ x: 12, y: 8 }}
         constrain_to={{ width, height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 120, height: 44 }}

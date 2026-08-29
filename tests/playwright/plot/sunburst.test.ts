@@ -82,7 +82,7 @@ test.describe(`Sunburst Component Tests`, () => {
     await expect(plot).toBeVisible()
     // 7 crystal systems + 9 spacegroup leaves
     await expect(plot.locator(`.arcs path`)).toHaveCount(16)
-    // branch arcs are clickable -> carry "<system>: <count>" aria-labels
+    // every arc carries a "<label>: <value>" aria-label, branches included
     for (const system of [
       `triclinic`,
       `monoclinic`,

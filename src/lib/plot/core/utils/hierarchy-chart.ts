@@ -6,8 +6,6 @@
 
 import type { D3InterpolateName } from '$lib/colors'
 import { is_opaque_color, pick_contrast_color } from '$lib/colors'
-import { DEFAULT_PNG_DPI } from '$lib/constants'
-import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import { format_value } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
 import { create_color_scale } from '$lib/plot/core/scales'
@@ -132,7 +130,11 @@ export function compute_node_infos<Metadata>(
     )
     return {
       variants,
-      aria: `${node_display_name(arc)}: ${arc.value}`,
+      // What a bucket folded away is the one thing its name can't carry, and a
+      // screen reader has no tooltip to fall back on
+      aria: `${node_display_name(arc)}: ${arc.value}${
+        arc.other_count ? ` (${arc.other_count} grouped)` : ``
+      }`,
       fill,
       label_fill: contrast(fill),
       ...(clickable ? { clickable: clickable(arc) } : {}),
@@ -378,38 +380,3 @@ export function color_bar_layout(opts: {
 }
 
 // === Export ===
-
-// Styles these components apply via CSS that exported standalone SVGs must carry
-// as presentation attributes (inlined onto a clone by the io/export helpers)
-const EXPORT_INLINE_STYLES = [
-  `fill`,
-  `stroke`,
-  `stroke-width`,
-  `text-anchor`,
-  `dominant-baseline`,
-  `font-size`,
-  `font-family`,
-  `font-weight`,
-  `opacity`,
-]
-const EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
-
-export function export_hierarchy_chart(
-  svg_element: SVGSVGElement | null,
-  base_filename: string,
-  format: `svg` | `png`,
-): void {
-  if (!svg_element) return
-  const filename = `${base_filename}.${format}`
-  if (format === `svg`) {
-    export_svg_as_svg(svg_element, filename, EXPORT_INLINE_STYLES, EXPORT_OPTIONS)
-  } else {
-    export_svg_as_png(
-      svg_element,
-      filename,
-      DEFAULT_PNG_DPI,
-      EXPORT_INLINE_STYLES,
-      EXPORT_OPTIONS,
-    )
-  }
-}

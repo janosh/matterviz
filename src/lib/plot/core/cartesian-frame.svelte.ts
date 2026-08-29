@@ -106,6 +106,9 @@ interface CartesianFrameOptions {
   tick_counts?: PerAxis<number>
   // Forwarded to the pan/zoom controller so charts can track a live rect drag
   on_drag_move?: (coords: { x: number; y: number }, inside_svg: boolean) => void
+  // Alt+drag rect, in svg pixel space. Charts that can enumerate their marks implement
+  // this to turn the gesture into a selection; omitting it leaves Alt+drag as a zoom.
+  on_rect_select?: (start: { x: number; y: number }, current: { x: number; y: number }) => void
   // Replace an axis's generated ticks (categorical axes plot one tick per category). An
   // empty array falls back to generated ticks, since a categorical axis with no categories
   // has nothing to label.
@@ -501,6 +504,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       facet.update_range(axis, axis === `y2` && y2_sync.mode !== `none` ? synced_y2() : range),
     svg: () => svg_element,
     on_drag_move: opts.on_drag_move,
+    on_rect_select: opts.on_rect_select,
     on_rect_zoom: (start, current) => {
       // Write the inverted rect back into the axis props so the range sync effect can't
       // override it. Gate x2/y2 on real data: their scales are [0, 1] sentinels

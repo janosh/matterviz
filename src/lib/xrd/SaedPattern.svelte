@@ -81,7 +81,12 @@
   const zone_text = $derived(`[${pattern.zone_axis.join(` `)}]`)
 </script>
 
-<div class="saed-pattern" bind:clientWidth={width} bind:clientHeight={height} {...rest}>
+<div
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  {...rest}
+  class={[`saed-pattern`, rest.class]}
+>
   <svg {width} {height} role="img" aria-label="Electron diffraction pattern down {zone_text}">
     <!-- Direct beam (000), drawn as a ring so it is not mistaken for a reflection -->
     <circle class="direct-beam" cx={center.x} cy={center.y} r={max_radius * 0.9} />

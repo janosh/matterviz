@@ -2,7 +2,14 @@ import { BoxPlot, type Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_plot_controls, mount_sized, with_measured_text } from '../setup'
+import {
+  bind_props,
+  expect_plot_controls,
+  mount_sized,
+  one_tab_stop,
+  roving_tabindexes,
+  with_measured_text,
+} from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -32,6 +39,16 @@ const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
     .length
 
 describe(`BoxPlot`, () => {
+  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
+  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  test(`marks are reachable by Tab exactly once`, async () => {
+    const tabindexes = roving_tabindexes(
+      await mount_sized_box_plot({ series: [basic, { ...basic, label: `Box B` }] }),
+    )
+    expect(tabindexes.length).toBeGreaterThan(1)
+    expect(tabindexes).toEqual(one_tab_stop(tabindexes.length))
+  })
+
   // Smoke matrix: every one of these must still draw one box (and one hit target) per
   // series with finite data. Named per row so a failure says which config broke.
   test.each([

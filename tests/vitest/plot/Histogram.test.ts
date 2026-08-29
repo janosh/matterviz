@@ -10,7 +10,7 @@ import {
 } from '$lib/plot/histogram/histogram'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, mount_sized } from '../setup'
+import { bind_props, mount_sized, one_tab_stop, roving_tabindexes } from '../setup'
 
 // Controls and legend are off unless a test asks for them. Props are mutated in place (not
 // spread) so bind_props accessors survive.
@@ -74,6 +74,17 @@ const counts_of = (...args: Parameters<typeof bin_values>) =>
 
 describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
+  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
+  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  test(`marks are reachable by Tab exactly once`, async () => {
+    const tabindexes = roving_tabindexes(
+      await mount_histogram({
+        series: [{ values: [1, 2, 2, 3, 3, 3, 4, 5, 6, 7], label: `H` }],
+      }),
+    )
+    expect(tabindexes.length).toBeGreaterThan(1)
+    expect(tabindexes).toEqual(one_tab_stop(tabindexes.length))
+  })
 
   // oxfmt-ignore
   test.each([

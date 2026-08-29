@@ -53,7 +53,7 @@
   }
 </script>
 
-<section class="recipe-card" {...rest}>
+<section {...rest} class={[`recipe-card`, rest.class]}>
   <header>
     <h4>Recipe</h4>
     <label>

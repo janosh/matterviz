@@ -76,6 +76,17 @@ describe(`tooltip decoration placement`, () => {
     expect(place_tooltip(config)).toMatchObject({ x: 10, y: 20 })
   })
 
+  test.each([
+    [`bounds`, { bounds: { x: 0, y: 0, width: -1, height: 10 } }, /Tooltip bounds/],
+    [
+      `an exclusion rectangle`,
+      { exclusion_rects: [{ x: 0, y: 0, width: 5, height: NaN }] },
+      /Tooltip exclusion rectangle 0/,
+    ],
+  ])(`rejects invalid geometry on %s`, (_desc, overrides, regex) => {
+    expect(() => place_tooltip({ ...base_config, ...overrides })).toThrow(regex)
+  })
+
   test(`breaks exact score ties by candidate order deterministically`, () => {
     const config: TooltipPlacementConfig = {
       anchor: { x: 50, y: 50 },

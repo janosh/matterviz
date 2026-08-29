@@ -108,7 +108,7 @@
   </button>
 {/snippet}
 
-<div bind:this={root} class="file-picker" {...rest}>
+<div bind:this={root} {...rest} class={[`file-picker`, rest.class]}>
   <div class="legend" role="group" aria-label="Filter files">
     {#each show_category_filters ? uniq_categories : [] as category (category)}
       {@render filter_button(`category`, category)}

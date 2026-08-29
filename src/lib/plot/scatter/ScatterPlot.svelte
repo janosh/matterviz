@@ -2,6 +2,8 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { error_bounds } from '$lib/plot/core/error-bars'
+  import { create_chart_exporter, series_to_csv_rows } from '$lib/plot/core/utils/chart-export'
   import { type D3InterpolateName, plot_color, resolve_computed_color } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -72,6 +74,11 @@
   } from '$lib/plot/core/types'
   import { compute_label_positions } from '$lib/plot/core/utils/label-placement'
   import {
+    create_roving_focus,
+    ROVING_ATTR,
+    roving_key,
+  } from '$lib/plot/core/utils/roving-focus.svelte'
+  import {
     create_legend_visibility,
     legend_mode_to_prop,
     resolve_legend_visibility,
@@ -88,7 +95,11 @@
     convert_error_band_to_fill_region,
     generate_fill_path,
   } from '$lib/plot/core/fill-utils'
-  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
+  import {
+    get_relative_coords,
+    is_activation_key,
+    sorted_range,
+  } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { resolve_plot_display } from '$lib/plot/core/display.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
@@ -132,6 +143,8 @@
     current_x_value = null,
     tooltip_point = $bindable(null),
     selected_point = null,
+    selected_points = $bindable([]),
+    on_select,
     hovered = $bindable(false),
     tooltip,
     user_content,
@@ -170,6 +183,7 @@
     marginals = false,
     facet_layout,
     marker_renderer = `auto`,
+    error_bar_cap = 4,
     point_hit_padding = 0,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
@@ -180,6 +194,15 @@
       current_x_value?: number | null
       tooltip_point?: InternalPoint<Metadata> | null
       selected_point?: { series_idx: number; point_idx: number } | null
+      // Points inside the last Alt+drag rect. Bindable so a host can drive linked views
+      // (or clear it); the chart renders them with the same treatment as selected_point.
+      selected_points?: { series_idx: number; point_idx: number }[]
+      // Fires on every Alt+drag, including one that selected nothing - a host filtering
+      // another view needs to hear "empty" as much as it needs to hear a list
+      on_select?: (selection: {
+        points: InternalPoint<Metadata>[]
+        rect: { x: Vec2; y: Vec2 }
+      }) => void
       tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
@@ -235,6 +258,8 @@
       // `auto` switches from SVG to canvas past CANVAS_MARKER_THRESHOLD visible markers.
       // Canvas keeps labelled, hovered, and selected points in an SVG overlay.
       marker_renderer?: `auto` | `svg` | `canvas`
+      // Half-width of the T caps on error bars, in px (0 draws bare lines)
+      error_bar_cap?: number
       // Extra invisible SVG radius around interactive markers, in screen pixels.
       point_hit_padding?: number
     } = $props()
@@ -361,6 +386,22 @@
         const y_extent = series_y_axis === `y2` ? y2 : y1
         accumulate_extent(y_extent, layer_y, n_points)
         if (x_ax === `x2`) accumulate_extent(x2, layer_x, n_points)
+        // Error bars reach past their point, so the axis has to reach with them or the
+        // caps get clipped. Underlays carry no error of their own, hence the identity
+        // check: only the series itself contributes.
+        if (layer_x === srs.x) {
+          const x_bounds = error_bounds(srs.x, srs.x_error, n_points)
+          const y_bounds = error_bounds(srs.y, srs.y_error, n_points)
+          for (const bound of [x_bounds?.lo, x_bounds?.hi]) {
+            if (bound) {
+              accumulate_extent(all_x, bound, n_points)
+              if (x_ax === `x2`) accumulate_extent(x2, bound, n_points)
+            }
+          }
+          for (const bound of [y_bounds?.lo, y_bounds?.hi]) {
+            if (bound) accumulate_extent(y_extent, bound, n_points)
+          }
+        }
         const needs_axis_probe: boolean =
           (x_ax === `x2` && !has_x2_points) || (series_y_axis === `y2` && !has_y2_points)
         const has_drawable_point: boolean =
@@ -429,6 +470,27 @@
       else if (axis === `x2`) x2_axis = { ...x2_axis, range }
       else if (axis === `y`) y_axis = { ...y_axis, range }
       else y2_axis = { ...y2_axis, range }
+    },
+    // Alt+drag selects instead of zooming. Hit-tested in screen space (not by inverting
+    // the rect into data space) so the same test works on both axes whatever their scale
+    // types, and so a point's own offset counts - the user selects what they see.
+    on_rect_select: (start, current) => {
+      const [x_lo, x_hi] = sorted_range(start.x, current.x)
+      const [y_lo, y_hi] = sorted_range(start.y, current.y)
+      const picked: InternalPoint<Metadata>[] = []
+      for (const series_data of filtered_series) {
+        if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
+        const project = series_projector(series_data)
+        for (const point of series_data.filtered_data) {
+          const [cx, cy] = project.point(point)
+          if (cx >= x_lo && cx <= x_hi && cy >= y_lo && cy <= y_hi) picked.push(point)
+        }
+      }
+      selected_points = picked.map(({ series_idx, point_idx }) => ({ series_idx, point_idx }))
+      on_select?.({
+        points: picked,
+        rect: { x: [x_lo, x_hi], y: [y_lo, y_hi] },
+      })
     },
     // Live tooltip while rect-dragging: update for the closest point inside the plot
     // bounds, clear when the cursor leaves the svg
@@ -709,12 +771,30 @@
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const y_axis_config = use_y2 ? final_y2_axis : final_y_axis
     const y_line_scale = log_floor_scale(y_scale, y_axis_config.scale_type, y_scale.domain())
+    // x needs the same floor as y for error bars: a lower end at or below zero on a log
+    // x axis has no finite pixel, and one non-finite end drops the whole bar
+    const x_axis_config = series_data.x_axis === `x2` ? final_x2_axis : final_x_axis
+    const x_line_scale = log_floor_scale(x_scale, x_axis_config.scale_type, x_scale.domain())
     return {
       x_scale,
       point: (point: InternalPoint<Metadata>): Vec2 => [
         x_scale(point.x) + (point.point_offset?.x ?? 0),
         y_scale(point.y) + (point.point_offset?.y ?? 0),
       ],
+      // Error-bar ends, in the same offset frame as the point so the bar stays centred
+      // on the marker the caller moved. Held at the log domain floor rather than
+      // vanishing to NaN when a lower end runs non-positive on a log axis.
+      error_span: (point: InternalPoint<Metadata>, axis: `x` | `y`): Vec2 | null => {
+        const error = axis === `x` ? point.x_error : point.y_error
+        if (!error || (error[0] === 0 && error[1] === 0)) return null
+        const [value, offset] =
+          axis === `x`
+            ? [point.x, point.point_offset?.x ?? 0]
+            : [point.y, point.point_offset?.y ?? 0]
+        const scale = axis === `x` ? x_line_scale : y_line_scale
+        const [lo, hi] = [scale(value - error[0]) + offset, scale(value + error[1]) + offset]
+        return Number.isFinite(lo) && Number.isFinite(hi) ? [lo, hi] : null
+      },
       line: (line: Pick<DataSeries, `x` | `y`>): Vec2[] => {
         const screen: Vec2[] = []
         for (let idx = 0; idx < line.x.length; idx++) {
@@ -741,6 +821,10 @@
   ): boolean =>
     point.point_label?.text != null ||
     same_logical_point(point, selected) ||
+    // Rect-selected points get the same treatment as `selected_point`, so they must be
+    // lifted out of the canvas bitmap too - otherwise a selection past the marker
+    // threshold silently paints nothing
+    selected_keys.has(roving_key(point.series_idx, point.point_idx)) ||
     Boolean(point.point_style?.is_highlighted && point.point_style.highlight_effect)
 
   // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
@@ -1261,6 +1345,143 @@
   )
   let points_interactive = $derived(Boolean(on_point_click || point_events?.onclick))
 
+  // Set, not a scan per point: a rect drag can select thousands, and the membership test
+  // runs once per rendered marker on every frame
+  let selected_keys = $derived(
+    new Set(selected_points.map((sel) => roving_key(sel.series_idx, sel.point_idx))),
+  )
+
+  // One path per series, not per point: a dense scatter with errors would otherwise
+  // remount thousands of DOM nodes and undo the canvas marker threshold entirely. That
+  // costs per-point coloring, so bars take the series' own color - which reads better
+  // anyway, since a hairball of individually tinted bars is noise rather than signal.
+  let error_bar_paths = $derived.by(() =>
+    filtered_series.flatMap((series_data, series_pos) => {
+      if (series_data.x_error == null && series_data.y_error == null) return []
+      const project = series_projector(series_data)
+      const { marker_of } = series_appearance(series_data)
+      const cap = error_bar_cap
+      const segments: string[] = []
+      // A capped bar is the same three strokes on either axis, with the roles of the two
+      // coordinates swapped, so the shape is written once and read along each axis
+      const bar = (along: Vec2, across: number, vertical: boolean) => {
+        const [lo, hi] = along
+        const [near, far] = [across - cap, across + cap]
+        return vertical
+          ? `M${near},${lo}H${far}M${across},${lo}V${hi}M${near},${hi}H${far}`
+          : `M${lo},${near}V${far}M${lo},${across}H${hi}M${hi},${near}V${far}`
+      }
+      for (const point of series_data.filtered_data) {
+        const [cx, cy] = project.point(point)
+        const x_span = project.error_span(point, `x`)
+        if (x_span) segments.push(bar(x_span, cy, false))
+        const y_span = project.error_span(point, `y`)
+        if (y_span) segments.push(bar(y_span, cx, true))
+      }
+      if (segments.length === 0) return []
+      const first = series_data.filtered_data[0]
+      return [
+        {
+          series_pos,
+          d: segments.join(``),
+          stroke: first ? marker_of(first).fill : undefined,
+        },
+      ]
+    }),
+  )
+
+  // === Canvas-mode keyboard cursor ===
+  // Past CANVAS_MARKER_THRESHOLD the points stop being SVG nodes, taking their
+  // tabindex, role and aria-label with them - the chart silently degrades from
+  // navigable to a picture. Arrow keys therefore drive a cursor through the data
+  // itself; the point it lands on becomes the hovered one, which the SVG overlay
+  // draws back on top of the canvas (so it is focusable and shows a tooltip again).
+  let kbd_cursor = $state<number | null>(null)
+
+  // Per-series point lists plus the offsets that flatten them into one index space.
+  // Only the offsets are materialised - flattening 100k points on every keystroke
+  // would cost more than the whole canvas render it exists to compensate for.
+  let kbd_nav = $derived.by(() => {
+    const lists = filtered_series.map((series_data) => series_data.filtered_data ?? [])
+    const offsets: number[] = []
+    let total = 0
+    for (const list of lists) {
+      offsets.push(total)
+      total += list.length
+    }
+    return { lists, offsets, total }
+  })
+
+  // Offsets ascend, so the first series whose run ends past the index owns it
+  const kbd_point = (global_idx: number): InternalPoint<Metadata> | null => {
+    const { lists, offsets } = kbd_nav
+    for (const [series_pos, list] of lists.entries()) {
+      const start = offsets[series_pos]
+      if (global_idx < start + list.length) return list[global_idx - start] ?? null
+    }
+    return null
+  }
+
+  function move_kbd_cursor(event: KeyboardEvent): boolean {
+    const { total } = kbd_nav
+    if (total === 0) return false
+    const forward = event.key === `ArrowRight` || event.key === `ArrowDown`
+    const backward = event.key === `ArrowLeft` || event.key === `ArrowUp`
+    let next: number
+    if (event.key === `Home`) next = 0
+    else if (event.key === `End`) next = total - 1
+    else if (forward || backward) {
+      const step = forward ? 1 : -1
+      next =
+        kbd_cursor == null ? (forward ? 0 : total - 1) : (kbd_cursor + step + total) % total
+    } else return false
+    event.preventDefault()
+    kbd_cursor = next
+    const point = kbd_point(next)
+    if (!point) return true
+    hovered = true
+    tooltip_point = point
+    return true
+  }
+
+  // Runs before pan/zoom's own key handling, which claims Enter/Space for reset
+  function handle_plot_key_down(event: KeyboardEvent): boolean {
+    if (!use_canvas_markers || event.metaKey || event.ctrlKey || event.altKey) return false
+    if (event.key === `Escape` && kbd_cursor != null) {
+      kbd_cursor = null
+      tooltip_point = null
+      hovered = false
+      return true
+    }
+    const cursor_point = kbd_cursor == null ? null : kbd_point(kbd_cursor)
+    if (cursor_point && points_interactive && is_activation_key(event)) {
+      event.preventDefault()
+      activate_point(cursor_point, new MouseEvent(`click`))
+      return true
+    }
+    return move_kbd_cursor(event)
+  }
+
+  // Reads the cursor's own point, not the hovered one: `tooltip_point` also tracks the
+  // mouse, so announcing that would re-announce every point the pointer swept over once
+  // the cursor had been used at all.
+  let live_message = $derived.by(() => {
+    const point = kbd_cursor == null ? null : kbd_point(kbd_cursor)
+    return point ? point_accessible_label(point) : ``
+  })
+
+  // One tab stop for the whole point cloud instead of one per point: a 10k-point
+  // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
+  const roving = create_roving_focus({
+    container: () => frame.svg_element,
+    marks: () => [
+      filtered_series,
+      use_canvas_markers,
+      svg_overlay_points_by_series,
+      frame.ranges.current,
+    ],
+  })
+
   // State accessors for shared axis change handler
   const axis_state: AxisChangeState<DataSeries<Metadata>> = {
     axes: {
@@ -1280,6 +1501,27 @@
     on_error,
   }))
   $effect(try_auto_load)
+
+  // === Export ===
+  const csv_series = () =>
+    filtered_series.map((series_data, series_idx) => ({
+      label: series_data.label ?? `series ${series_idx + 1}`,
+      x: series_data.filtered_data?.map((point) => point.x) ?? [],
+      y: series_data.filtered_data?.map((point) => point.y) ?? [],
+      extras: {
+        color_value: series_data.filtered_data?.map((point) => point.color_value ?? null),
+        size_value: series_data.filtered_data?.map((point) => point.size_value ?? null),
+        ...(series_data.x_error != null && {
+          x_error_lower: series_data.filtered_data?.map((pt) => pt.x_error?.[0] ?? null),
+          x_error_upper: series_data.filtered_data?.map((pt) => pt.x_error?.[1] ?? null),
+        }),
+        ...(series_data.y_error != null && {
+          y_error_lower: series_data.filtered_data?.map((pt) => pt.y_error?.[0] ?? null),
+          y_error_upper: series_data.filtered_data?.map((pt) => pt.y_error?.[1] ?? null),
+        }),
+      },
+    }))
+  const handle_export = create_chart_exporter(frame, () => series_to_csv_rows(csv_series()))
 </script>
 
 {#snippet fill_regions_layer(fills: typeof computed_fills)}
@@ -1288,6 +1530,7 @@
       <FillArea
         region={fill}
         region_idx={fill.idx}
+        is_first_segment={segment_idx === 0}
         path={path_d}
         {clip_path_id}
         {x_scale_fn}
@@ -1327,6 +1570,8 @@
       }
     : undefined}
   on_mouse_click={handle_plot_click}
+  on_key_down={handle_plot_key_down}
+  {live_message}
   on_mouse_leave={() => {
     end_queued_mouse_move(false)
     hovered = false
@@ -1437,6 +1682,17 @@
     {/if}
 
     <!-- Fill regions: below points -->
+    <!-- Error bars sit under the markers so a cap never hides the point it belongs to -->
+    {#each error_bar_paths as { series_pos, d, stroke } (series_pos)}
+      <path
+        class="error-bars"
+        clip-path="url(#{frame.clip_path_id})"
+        opacity={is_legend_dimmed(filtered_series[series_pos]?.orig_series_idx) ? 0.25 : 1}
+        {d}
+        {stroke}
+      />
+    {/each}
+
     {@render fill_regions_layer(fills_by_z.below_points)}
     {@render ref_lines_layer(`below-points`)}
 
@@ -1464,7 +1720,13 @@
             : series_data.filtered_data}
           {@const { marker_of } = series_appearance(series_data)}
           {@const project = series_projector(series_data)}
-          <g data-series-id={series_data._id}>
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <g
+            data-series-id={series_data._id}
+            role="group"
+            onfocusin={roving.focusin}
+            onkeydown={roving.handle_keydown}
+          >
             {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
               {@const [cx, cy] = project.point(point)}
               {@const offset = point.point_offset ?? ZERO_OFFSET}
@@ -1474,7 +1736,8 @@
                 y={cy - offset.y}
                 is_dimmed={is_legend_dimmed(point.series_idx)}
                 is_hovered={same_logical_point(point, tooltip_point)}
-                is_selected={same_logical_point(point, selected_point)}
+                is_selected={same_logical_point(point, selected_point) ||
+                  selected_keys.has(roving_key(point.series_idx, point.point_idx))}
                 leader_line_threshold={actual_label_config.leader_line_threshold}
                 overlay_only={use_canvas_markers &&
                   !needs_static_svg_overlay(point, selected_point)}
@@ -1494,7 +1757,12 @@
                 point_tween={effective_point_tween}
                 hit_padding={points_interactive ? point_hit_padding : 0}
                 role={points_interactive ? `button` : undefined}
-                tabindex={points_interactive ? 0 : undefined}
+                tabindex={points_interactive
+                  ? roving.tabindex(roving_key(point.series_idx, point.point_idx))
+                  : undefined}
+                {...points_interactive
+                  ? { [ROVING_ATTR]: roving_key(point.series_idx, point.point_idx) }
+                  : {}}
                 aria-label={points_interactive ? point_accessible_label(point) : undefined}
                 --point-fill-color={appearance.fill}
                 {...point_events &&
@@ -1534,9 +1802,11 @@
         series_with_ids[series_idx],
         color_scale_fn,
       )}
+      <!-- avoid_cursor off: the anchor is the projected point, not the pointer -->
       <PlotTooltip
         x={handler_props.cx}
         y={handler_props.cy}
+        avoid_cursor={false}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
         fallback_size={{ width: 120, height: 50 }}
@@ -1564,6 +1834,7 @@
     <!-- Control Pane -->
     {#if show_controls}
       <ScatterPlotControls
+        on_export={handle_export}
         toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls
@@ -1650,6 +1921,11 @@
 </CartesianFrame>
 
 <style>
+  path.error-bars {
+    fill: none;
+    stroke-width: var(--scatter-error-bar-width, 1);
+    stroke-opacity: var(--scatter-error-bar-opacity, 0.7);
+  }
   :global(.scatter.fullscreen svg),
   :global(.scatter.fullscreen .axis-label) {
     font-size: var(--scatter-fullscreen-font-size, var(--scatter-font-size, inherit));

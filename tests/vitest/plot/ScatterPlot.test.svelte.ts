@@ -4,14 +4,17 @@ import type { DataSeries, FillRegion } from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
+import { materialize_series_points } from '$lib/plot/scatter/scatter-data'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
   mock_canvas_context,
   mount_sized,
+  one_tab_stop,
   resize_element,
+  roving_tabindexes,
   svg_query,
 } from '../setup'
 
@@ -98,6 +101,153 @@ const mock_decoration_measurements = (width = 100, height = 60) => {
 }
 
 describe(`ScatterPlot`, () => {
+  // Past the marker threshold the SVG points that carry role/tabindex/aria-label are
+  // gone, so arrow keys drive a cursor through the data instead
+  describe(`canvas keyboard cursor`, () => {
+    const dense = {
+      x: Array.from({ length: 40 }, (_, idx) => idx),
+      y: Array.from({ length: 40 }, (_, idx) => idx % 7),
+    }
+    const arrow = async (svg: Element, key: string) => {
+      svg.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      await tick()
+    }
+    const mount_dense = async () => {
+      document.body.innerHTML = ``
+      const plot = await mount_sized_scatter_plot({
+        series: [dense],
+        marker_renderer: `canvas`,
+      })
+      const svg = plot.querySelector(`svg[role="application"]`)
+      if (!svg) throw new Error(`no plot svg`)
+      return { plot, svg }
+    }
+    const announced = (plot: HTMLElement) =>
+      plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
+
+    test.each([
+      [`ArrowRight`, 1],
+      [`End`, 40],
+    ])(`%s announces point %i`, async (key, point_number) => {
+      const { plot, svg } = await mount_dense()
+      await arrow(svg, key)
+      expect(announced(plot)).toContain(`point ${point_number}`)
+    })
+
+    // Two series exercise the offset arithmetic: the cursor is one flat index across
+    // both, so the series boundary is where an off-by-one shows up
+    test(`the cursor crosses the series boundary into the second series`, async () => {
+      document.body.innerHTML = ``
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          { x: [0, 1], y: [1, 2], label: `first` },
+          { x: [2, 3], y: [3, 4], label: `second` },
+        ],
+        marker_renderer: `canvas`,
+      })
+      const svg = plot.querySelector(`svg[role="application"]`)
+      if (!svg) throw new Error(`no plot svg`)
+      const live = () => plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
+
+      for (const expected of [`first point 1`, `first point 2`, `second point 1`]) {
+        svg.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+        await tick()
+        expect(live()).toContain(expected)
+      }
+      // End lands on the last point of the last series, not past it
+      svg.dispatchEvent(new KeyboardEvent(`keydown`, { key: `End`, bubbles: true }))
+      await tick()
+      expect(live()).toContain(`second point 2`)
+    })
+
+    test(`arrows step and wrap, Escape clears the announcement`, async () => {
+      const { plot, svg } = await mount_dense()
+      await arrow(svg, `ArrowRight`)
+      await arrow(svg, `ArrowRight`)
+      expect(announced(plot)).toContain(`point 2`)
+      // Backwards off the start wraps to the end rather than dead-ending
+      await arrow(svg, `ArrowLeft`)
+      await arrow(svg, `ArrowLeft`)
+      expect(announced(plot)).toContain(`point 40`)
+      await arrow(svg, `Escape`)
+      expect(announced(plot)).toBe(``)
+    })
+  })
+
+  describe(`error bars`, () => {
+    // One path per series holds every bar, so bars are counted by their subpaths:
+    // each bar emits exactly three M commands (two caps and the shaft).
+    const n_bars = (plot: HTMLElement) =>
+      [...plot.querySelectorAll(`path.error-bars`)]
+        .map((path) => (path.getAttribute(`d`) ?? ``).match(/M/g)?.length ?? 0)
+        .reduce((sum, n_moves) => sum + n_moves, 0) / 3
+    beforeEach(() => {
+      document.body.innerHTML = ``
+    })
+
+    test.each([
+      [`symmetric scalar`, { y_error: 1 }, 5],
+      [`per-point array`, { y_error: [1, 2, 3, 4, 5] }, 5],
+      [`asymmetric`, { y_error: { lower: 1, upper: 2 } }, 5],
+      [`both axes`, { x_error: 1, y_error: 1 }, 10],
+      [`no error declared`, {}, 0],
+      // A zero-width bar is not drawn at all, rather than a degenerate zero-length path
+      [`all-zero error`, { y_error: 0 }, 0],
+    ])(`%s renders %i bars`, async (_name, error_props, expected) => {
+      const plot = await mount_sized_scatter_plot({ series: [{ ...basic, ...error_props }] })
+      expect(n_bars(plot)).toBe(expected)
+    })
+
+    // Thousands of points must not remount thousands of nodes and undo the canvas threshold
+    test(`a series emits a single path however many points carry errors`, async () => {
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          { ...basic, y_error: 1 },
+          { ...basic, y: [1, 2, 3, 4, 5], y_error: 2 },
+        ],
+      })
+      expect(plot.querySelectorAll(`path.error-bars`)).toHaveLength(2)
+      expect(n_bars(plot)).toBe(10)
+    })
+
+    test(`bar spans the point's value +/- its error and the axis reaches it`, async () => {
+      // Single point at y=5 with +/-100 forces the y range to include 105
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: [1], y: [5], y_error: 100 }],
+      })
+      const bar = plot.querySelector(`path.error-bars`)
+      const nums = (bar?.getAttribute(`d`) ?? ``).match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+      expect(nums.length).toBeGreaterThan(0)
+      // The bar must have non-zero pixel height, i.e. both ends are on the canvas
+      const ys = nums.filter((_, idx) => idx % 2 === 1)
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(1)
+    })
+
+    // Mismatched lengths are a data bug that silently mislabels uncertainty otherwise
+    test.each([
+      [`symmetric array`, { y_error: [1, 2] }],
+      [`asymmetric upper`, { y_error: { upper: [1, 2], lower: 1 } }],
+      // The side that used to escape the check: only `upper` was measured
+      [`asymmetric lower`, { y_error: { upper: 1, lower: [1, 2] } }],
+      [`asymmetric both, unequal`, { y_error: { upper: [1, 2], lower: [1, 2, 3] } }],
+    ])(`a %s of the wrong length throws`, (_name, error_props) => {
+      expect(() => materialize_series_points([{ ...basic, ...error_props }])).toThrow(
+        /equal lengths/,
+      )
+    })
+  })
+
+  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
+  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  test(`marks are reachable by Tab exactly once`, async () => {
+    document.body.innerHTML = ``
+    const tabindexes = roving_tabindexes(
+      await mount_sized_scatter_plot({ series: [basic], on_point_click: () => {} }),
+    )
+    expect(tabindexes.length).toBeGreaterThan(1)
+    expect(tabindexes).toEqual(one_tab_stop(tabindexes.length))
+  })
+
   test(`reports intrinsic layout before applying facet ranges, padding, and visibility`, async () => {
     const report_layout = vi.fn()
     const update_range = vi.fn()

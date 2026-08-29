@@ -98,7 +98,7 @@
   }
 </script>
 
-<div class="route-table" {...rest}>
+<div {...rest} class={[`route-table`, rest.class]}>
   <HeatmapTable
     {data}
     {columns}

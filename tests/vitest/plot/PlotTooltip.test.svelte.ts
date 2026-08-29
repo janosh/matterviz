@@ -1,4 +1,5 @@
 import { PlotTooltip } from '$lib/plot'
+import { DEFAULT_CURSOR_SIZE } from '$lib/plot/core/decorations'
 import { color as d3_color } from 'd3-color'
 import { createRawSnippet, flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -9,6 +10,9 @@ const make_children = (text: string = `Test`) =>
     render: () => `<span>${text}</span>`,
   }))
 
+// avoid_cursor defaults to true on the component (most anchors are the pointer), which
+// widens offset.x to the glyph's width. These tests are about offset/flip/clamp
+// arithmetic, so they opt out; the default itself is pinned in its own test below.
 const mount_tooltip = (
   props: Partial<ComponentProps<typeof PlotTooltip>> & {
     children?: ReturnType<typeof make_children>
@@ -16,7 +20,7 @@ const mount_tooltip = (
 ): HTMLElement => {
   mount(PlotTooltip, {
     target: document.body,
-    props: { x: 0, y: 0, children: make_children(), ...props },
+    props: { x: 0, y: 0, avoid_cursor: false, children: make_children(), ...props },
   })
   flushSync()
   return doc_query(`.plot-tooltip`)
@@ -256,5 +260,49 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.position).toBe(`fixed`)
     expect(tooltip.style.left).toBe(`70px`)
     expect(tooltip.style.top).toBe(`55px`)
+  })
+
+  // Most anchors track the pointer, so clearing its glyph is the default and only
+  // mark-anchored charts (scatter/bar/histogram) opt out. A caller's narrower
+  // offset.x is widened to the glyph's width rather than left under the cursor.
+  // undefined lets the component's own default apply, so this pins the default itself
+  test.each([
+    [`off`, false, `55px`],
+    [`on`, true, `${50 + DEFAULT_CURSOR_SIZE.width}px`],
+    [`left to its default`, undefined, `${50 + DEFAULT_CURSOR_SIZE.width}px`],
+  ])(`widens a narrower offset to the glyph with avoid_cursor %s`, (_desc, flag, left) => {
+    expect(
+      mount_tooltip({
+        x: 50,
+        y: 50,
+        avoid_cursor: flag,
+        offset: { x: 5, y: 5 },
+        constrain_to: { width: 400, height: 400 },
+        fallback_size: { width: 20, height: 10 },
+      }).style.left,
+    ).toBe(left)
+  })
+
+  // The bug `avoid_cursor` exists for: a tooltip too wide to sit beside its anchor
+  // clamps to nearly the same box from either side, and that box runs under the
+  // pointer that summoned it. Widening cannot help — only the glyph's own rect can
+  // push the choice to the one direction that clears it.
+  // 405 puts the 24px-tall glyph on the tooltip's first line; 351 ends it (+44 high)
+  // exactly at the hotspot, the only one of the four candidates that clears it.
+  test.each([
+    [false, `405px`],
+    [true, `351px`],
+  ])(`avoid_cursor=%s places a clamped wide tooltip at top %s`, (avoid_cursor, top) => {
+    // The usage sunburst that reported this: a long breadcrumb in a ~1135px pane
+    expect(
+      mount_tooltip({
+        x: 900,
+        y: 400,
+        avoid_cursor,
+        offset: { x: 20, y: 5 },
+        constrain_to: { width: 1135, height: 700 },
+        fallback_size: { width: 1030, height: 44 },
+      }).style.top,
+    ).toBe(top)
   })
 })

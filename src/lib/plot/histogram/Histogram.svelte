@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type {
     AxisLoadError,
@@ -65,7 +66,12 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '$lib/math'
-  import { is_activation_key, vec2_equal } from '$lib/plot/core/interactions'
+  import { focus_left, is_activation_key, vec2_equal } from '$lib/plot/core/interactions'
+  import {
+    create_roving_focus,
+    ROVING_ATTR,
+    roving_key,
+  } from '$lib/plot/core/utils/roving-focus.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
 
@@ -135,7 +141,10 @@
       on_bar_click?: (
         data: HistogramHandlerProps & { event: MouseEvent | KeyboardEvent },
       ) => void
-      on_bar_hover?: (data: (HistogramHandlerProps & { event: MouseEvent }) | null) => void
+      // FocusEvent for keyboard focus, which reaches a bar the same way a hover does
+      on_bar_hover?: (
+        data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
+      ) => void
       ref_lines?: RefLine[]
       on_ref_line_click?: (event: RefLineEvent) => void
       on_ref_line_hover?: (event: RefLineEvent | null) => void
@@ -397,6 +406,13 @@
     return bin_over(x, x2)
   })
 
+  // One tab stop for all bins instead of one per bin: a 100-bin histogram would
+  // otherwise take 100 presses to tab past. Arrow keys walk the bars.
+  const roving = create_roving_focus({
+    container: () => frame.svg_element,
+    marks: () => histogram_bins,
+  })
+
   let legend_data = $derived(
     build_legend_items(series, (series_data, series_idx) => ({
       symbol_type: `Square`,
@@ -426,14 +442,22 @@
       y2_axis: final_y2_axis,
     } satisfies HistogramHandlerProps
   }
-  const handle_bar_hover = (hist: BinnedSeries, bin: HistogramBin) => (evt: MouseEvent) => {
-    hovered = true
-    hover_info = bar_data(hist, bin)
-    on_bar_hover?.({ ...hover_info, event: evt })
-  }
+  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
+  const handle_bar_hover =
+    (hist: BinnedSeries, bin: HistogramBin) => (evt: MouseEvent | FocusEvent) => {
+      hovered = true
+      hover_info = bar_data(hist, bin)
+      on_bar_hover?.({ ...hover_info, event: evt })
+    }
   const clear_hover = () => {
     hover_info = null
     on_bar_hover?.(null)
+  }
+
+  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
+  // is not. Defined once rather than inline, so every mark shares one handler.
+  const clear_hover_on_exit = (event: FocusEvent) => {
+    if (focus_left(event, frame.svg_element)) clear_hover()
   }
   const handle_bar_click =
     (hist: BinnedSeries, bin: HistogramBin) => (event: MouseEvent | KeyboardEvent) => {
@@ -463,6 +487,22 @@
     on_error,
   }))
   $effect(try_auto_load)
+
+  // === Export ===
+  // Bins have an extent, so CSV reports edges rather than the (x, y) the shared long
+  // format would collapse them to.
+  const handle_export = create_chart_exporter(frame, () => ({
+    header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
+    rows: histogram_bins.flatMap((hist) =>
+      hist.bins.map((bin) => [
+        hist.label ?? `series ${hist.series_idx + 1}`,
+        bin.x0,
+        bin.x1,
+        bin.count,
+        bin.value,
+      ]),
+    ),
+  }))
 </script>
 
 {#snippet ref_lines_layer(z: LayerZIndex)}
@@ -540,11 +580,24 @@
               stroke-opacity={resolved_bar.stroke_opacity}
               stroke-width={resolved_bar.stroke_width}
               role="button"
-              tabindex="0"
+              tabindex={roving.tabindex(roving_key(hist.series_idx, bin_idx))}
+              {...{ [ROVING_ATTR]: roving_key(hist.series_idx, bin_idx) }}
+              aria-label={`${hist.label ?? `series`} bin ${bin_idx + 1}: ${bin.x0} to ${
+                bin.x1
+              }, count ${bin.count}${normalize === `count` ? `` : `, value ${bin.value}`}`}
               onmousemove={handle_bar_hover(hist, bin)}
               onmouseleave={clear_hover}
+              onfocusin={(evt) => {
+                roving.focusin(evt)
+                // Focus is the keyboard's hover; without it the tooltip never opens
+                handle_bar_hover(hist, bin)(evt)
+              }}
+              onfocusout={clear_hover_on_exit}
               onclick={handle_bar_click(hist, bin)}
-              onkeydown={handle_bar_click(hist, bin)}
+              onkeydown={(evt) => {
+                if (roving.handle_keydown(evt)) return
+                handle_bar_click(hist, bin)(evt)
+              }}
               style:cursor={on_bar_click ? `pointer` : undefined}
             />
           {/if}
@@ -561,9 +614,11 @@
       {@const { value, count, y, property, active_y_axis, active_x_axis } = hover_info}
       {@const tooltip_x = (active_x_axis === `x2` ? frame.scales.x2 : frame.scales.x)(value)}
       {@const tooltip_y = (active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(y)}
+      <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip
         x={tooltip_x}
         y={tooltip_y}
+        avoid_cursor={false}
         offset={{ x: 5, y: -10 }}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
@@ -584,6 +639,7 @@
 
     {#if show_controls}
       <HistogramControls
+        on_export={handle_export}
         toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls

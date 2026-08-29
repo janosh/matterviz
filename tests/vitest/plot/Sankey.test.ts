@@ -2,6 +2,7 @@ import { Sankey } from '$lib'
 import type { SankeyData, SankeyLinkHandlerProps, SankeyNodeHandlerProps } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
+import { bucket_sankey_data } from '$lib/plot/sankey/sankey'
 import { mount_sized } from '../setup'
 
 const data: SankeyData = {
@@ -86,8 +87,10 @@ describe(`Sankey`, () => {
     await hover(rect, 30, 40)
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
     expect(tooltip()?.textContent).toMatch(/A.*8/)
-    // anchored at the cursor + offset (10, 5), constrained to the 500x360 chart
-    expect([tooltip()?.style.left, tooltip()?.style.top]).toEqual([`40px`, `45px`])
+    // Anchored at the cursor, constrained to the 500x360 chart. `avoid_cursor`
+    // widens the 10px x offset to the pointer glyph's width so the tooltip abuts
+    // the cursor instead of starting under it; y keeps its 5px offset.
+    expect([tooltip()?.style.left, tooltip()?.style.top]).toEqual([`48px`, `45px`])
     expect(on_node_hover).toHaveBeenCalledOnce()
     expect(on_node_hover.mock.calls[0][0] as SankeyNodeHandlerProps).toMatchObject({
       type: `node`,
@@ -100,7 +103,7 @@ describe(`Sankey`, () => {
     expect(on_node_hover).toHaveBeenCalledOnce()
     // a cursor near the right edge flips the chip to the left of the anchor
     await hover(rect, 490, 40)
-    expect(tooltip()?.style.left).toBe(`340px`) // 490 - 10 - 140 (flipped left)
+    expect(tooltip()?.style.left).toBe(`332px`) // 490 - 18 - 140 (flipped left)
 
     await hover(plot.querySelector(`.links path`), 200, 100)
     expect(on_node_hover).toHaveBeenLastCalledWith(null)
@@ -178,5 +181,185 @@ describe(`Sankey`, () => {
   ])(`renders without error for empty/degenerate data %#`, async (props) => {
     const plot = await mount_sized_sankey(props)
     expect(plot.querySelectorAll(`.links path`)).toHaveLength(0)
+  })
+})
+
+describe(`bucket_sankey_data`, () => {
+  // One big flow plus a long tail of small terminal ones - the shape this exists for
+  const tail = {
+    nodes: [{ id: `src` }, { id: `big` }, { id: `a` }, { id: `b` }, { id: `c` }],
+    links: [
+      { source: `src`, target: `big`, value: 90 },
+      { source: `src`, target: `a`, value: 4 },
+      { source: `src`, target: `b`, value: 3 },
+      { source: `src`, target: `c`, value: 3 },
+    ],
+  }
+
+  test(`folds the small terminal tail into one Other link`, () => {
+    const { nodes, links } = bucket_sankey_data(tail, { min_fraction: 0.05 })
+    expect(links.map((link) => [link.source, link.target, link.value])).toEqual([
+      [`src`, `big`, 90],
+      [`src`, `src/Other`, 10],
+    ])
+    // The folded targets are gone, replaced by one bucket node
+    expect(nodes.map((node) => node.id)).toEqual([`src`, `big`, `src/Other`])
+  })
+
+  test.each([
+    [`threshold below every link`, { min_fraction: 0.01 }, 4],
+    [`max_links keeps the largest`, { max_links: 2 }, 3],
+    [`disabled by default`, {}, 4],
+  ])(`%s -> %i links`, (_name, opts, expected) => {
+    expect(bucket_sankey_data(tail, opts).links).toHaveLength(expected)
+  })
+
+  // A bucket of one is just that link renamed, so it is left alone
+  test(`a single qualifying link is not bucketed`, () => {
+    const one_small = {
+      nodes: [{ id: `src` }, { id: `big` }, { id: `a` }],
+      links: [
+        { source: `src`, target: `big`, value: 99 },
+        { source: `src`, target: `a`, value: 1 },
+      ],
+    }
+    expect(bucket_sankey_data(one_small, { min_fraction: 0.1 })).toBe(one_small)
+  })
+
+  // Folding a target that carries flow onward would delete that flow from the diagram
+  test(`never folds a link whose target has outgoing flow`, () => {
+    const passthrough = {
+      nodes: [{ id: `src` }, { id: `big` }, { id: `mid` }, { id: `sink` }, { id: `t` }],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `mid`, value: 5 },
+        { source: `mid`, target: `sink`, value: 5 },
+        { source: `src`, target: `t`, value: 5 },
+      ],
+    }
+    const { links } = bucket_sankey_data(passthrough, { min_fraction: 0.5 })
+    // `mid` survives (it has downstream flow); only one terminal link qualifies, so
+    // the >= 2 rule leaves the graph untouched rather than bucketing `t` alone
+    expect(links).toEqual(passthrough.links)
+  })
+
+  // `max_links` bounds the links kept under their own name, not the total drawn: the
+  // bucket is additional, and a non-terminal overflow link cannot be folded away at all.
+  // Same contract as `max_children` on the hierarchy charts.
+  test.each([
+    [
+      `bucket is additional to the kept links`,
+      [
+        { source: `src`, target: `a`, value: 5 },
+        { source: `src`, target: `b`, value: 4 },
+        { source: `src`, target: `c`, value: 3 },
+        { source: `src`, target: `d`, value: 2 },
+        { source: `src`, target: `e`, value: 1 },
+      ],
+      4,
+    ], // 3 kept + 1 bucket
+    [
+      `non-terminal overflow is kept under its own name`,
+      [
+        { source: `src`, target: `a`, value: 5 },
+        { source: `src`, target: `b`, value: 4 },
+        { source: `src`, target: `c`, value: 3 },
+        { source: `src`, target: `mid`, value: 2 },
+        { source: `src`, target: `e`, value: 1 },
+        { source: `mid`, target: `sink`, value: 2 },
+      ],
+      6,
+    ], // nothing folds: only `e` is a foldable overflow, and a bucket of one is not made
+  ])(`max_links: %s`, (_name, links, expected) => {
+    const graph = {
+      nodes: [`src`, `a`, `b`, `c`, `d`, `e`, `mid`, `sink`].map((id) => ({ id })),
+      links,
+    }
+    expect(bucket_sankey_data(graph, { max_links: 3 }).links).toHaveLength(expected)
+  })
+
+  // Labels are not identity: two nodes may share one, and keying on it would merge them
+  test(`duplicate labels with index references resolve to distinct nodes`, () => {
+    const dup = {
+      nodes: [{ label: `src` }, { label: `dup` }, { label: `dup` }, { label: `dup` }],
+      links: [
+        { source: 0, target: 1, value: 90 },
+        { source: 0, target: 2, value: 1 },
+        { source: 0, target: 3, value: 1 },
+      ],
+    }
+    const { nodes, links } = bucket_sankey_data(dup, { min_fraction: 0.1 })
+    // Nodes 2 and 3 fold; node 1 survives under its own index-derived id
+    expect(nodes.map((node) => node.id)).toEqual([0, 1, `0/Other`])
+    expect(links.map((link) => [link.source, link.target, link.value])).toEqual([
+      [0, 1, 90],
+      [0, `0/Other`, 2],
+    ])
+  })
+
+  // An earlier label must not shadow a later node's explicit id. Here the shadowing node
+  // carries flow onward while the id node is terminal, so resolving to the wrong one
+  // changes whether the link may be folded at all.
+  test(`an explicit id outranks an earlier node's matching label`, () => {
+    const shadowed = {
+      nodes: [
+        { id: `src` },
+        { label: `X` }, // shadows node 3's id, and is NOT terminal
+        { id: `big` },
+        { id: `X` }, // terminal, so a link naming `X` is foldable
+        { id: `t` },
+        { id: `downstream` },
+      ],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `X`, value: 1 },
+        { source: `src`, target: `t`, value: 1 },
+        { source: 1, target: `downstream`, value: 1 }, // makes the label node non-terminal
+      ],
+    }
+    const { nodes } = bucket_sankey_data(shadowed, { min_fraction: 0.1 })
+    // Resolving `X` to the terminal node 3 lets both small links fold into one bucket;
+    // resolving it to the non-terminal node 1 would leave the graph untouched
+    expect(nodes.map((node) => node.id)).toContain(`src/Other`)
+  })
+
+  test(`a bucket id that collides with a real node is made unique`, () => {
+    const collide = {
+      nodes: [{ id: `src` }, { id: `big` }, { id: `src/Other` }, { id: `t` }],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `src/Other`, value: 1 },
+        { source: `src`, target: `t`, value: 1 },
+      ],
+    }
+    const { nodes } = bucket_sankey_data(collide, { min_fraction: 0.1 })
+    // The real `src/Other` was folded away here, but the synthetic id must still not
+    // reuse an id held by any retained node
+    const ids = nodes.map((node) => node.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  // An unknown target is a broken reference, not a terminal node: folding it would
+  // replace it with a valid link and hide the error compute_sankey_layout reports
+  test(`links with unresolved targets are never folded`, () => {
+    const broken = {
+      nodes: [{ id: `src` }, { id: `big` }],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `ghost`, value: 1 },
+        { source: `src`, target: `phantom`, value: 1 },
+      ],
+    }
+    expect(bucket_sankey_data(broken, { min_fraction: 0.1 }).links).toEqual(broken.links)
+  })
+
+  test(`total flow out of a bucketed source is conserved`, () => {
+    const outflow = (graph: typeof tail) =>
+      graph.links
+        .filter((link) => link.source === `src`)
+        .reduce((sum, link) => sum + link.value, 0)
+    expect(outflow(bucket_sankey_data(tail, { min_fraction: 0.05 }) as typeof tail)).toBe(
+      outflow(tail),
+    )
   })
 })

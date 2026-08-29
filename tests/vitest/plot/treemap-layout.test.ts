@@ -1,5 +1,6 @@
 import type { SunburstLayoutOptions, SunburstSort, TreemapNode } from '$lib/plot'
 import {
+  align_tiling,
   compute_sunburst_layout,
   lerp_rects,
   sunburst_from_paths,
@@ -360,5 +361,43 @@ describe(`place_treemap_label`, () => {
     // block height = (0.5 + 1) * 10 * 1.1 = 16.5, centered on y=25:
     // line 1 spans [16.75, 22.25] (center 19.5), line 2 [22.25, 33.25] (center 27.75)
     expect(placement?.lines.map((line) => line.y)).toEqual([19.5, 27.75])
+  })
+})
+
+describe(`align_tiling`, () => {
+  const rect = (x: number) => ({ x, y: 0, width: 10, height: 10 })
+  // parent P (idx 0) with children; ids are what alignment matches on
+  const arcs = (ids: string[]) =>
+    ids.map((id, idx) => ({ id, parent_idx: idx === 0 ? null : 0 }))
+
+  test(`matches by id, not position`, () => {
+    // `b` moved from index 1 to index 2 between the two tilings
+    const prev = { rects: [rect(0), rect(10), rect(20)], arcs: arcs([`P`, `b`, `c`]) }
+    const next = { rects: [rect(0), rect(50), rect(60)], arcs: arcs([`P`, `c`, `b`]) }
+    expect(align_tiling(prev, next)).toEqual([rect(0), rect(20), rect(10)])
+  })
+
+  // Nodes revealed by a dissolved bucket have no counterpart; starting them at their
+  // parent's old rect makes them unfold out of the region the bucket occupied
+  test(`a new cell starts from its nearest surviving ancestor`, () => {
+    const prev = { rects: [rect(0), rect(10)], arcs: arcs([`P`, `P/Other`]) }
+    const next = {
+      rects: [rect(0), rect(30), rect(40)],
+      arcs: arcs([`P`, `P/a`, `P/b`]),
+    }
+    expect(align_tiling(prev, next)).toEqual([rect(0), rect(0), rect(0)])
+  })
+
+  test(`a cell with no ancestor in the previous tiling starts where it lands`, () => {
+    const prev = { rects: [rect(0)], arcs: arcs([`Q`]) }
+    const next = { rects: [rect(5), rect(6)], arcs: arcs([`P`, `P/a`]) }
+    expect(align_tiling(prev, next)).toEqual([rect(5), rect(6)])
+  })
+
+  // The realigned array is what lerp_rects consumes, and it bails on a length mismatch
+  test(`always returns one rect per cell of the new tiling`, () => {
+    const prev = { rects: [rect(0), rect(10), rect(20)], arcs: arcs([`P`, `x`, `y`]) }
+    const next = { rects: [rect(0)], arcs: arcs([`P`]) }
+    expect(align_tiling(prev, next)).toHaveLength(1)
   })
 })

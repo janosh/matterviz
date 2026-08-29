@@ -135,6 +135,7 @@
     x={chart_state.hover_pos.x}
     y={chart_state.hover_pos.y}
     offset={{ x: 10, y: 5 }}
+    avoid_cursor={chart_state.hover_at_pointer}
     constrain_to={{ width: chart_state.width, height: chart_state.height }}
     fallback_size={{ width: 140, height: 44 }}
     bg_color={info.color}
@@ -142,13 +143,15 @@
     {#if tooltip}
       {@render tooltip(info)}
     {:else}
+      <!-- A bucket's own label can only say what fits inside a thin outer ring, so
+      the count of what it folded away belongs here, where there is room for it. -->
       <strong>{info.label_path.join(` › `)}</strong>: {format_value(
         info.value,
         chart_state.value_format,
       )}
       ({format_value(info.fraction, `.1%`)} of total{info.depth > 1
         ? `, ${format_value(info.parent_fraction, `.1%`)} of parent`
-        : ``})
+        : ``}{info.other_count ? `, ${info.other_count} grouped` : ``})
     {/if}
   </PlotTooltip>
 {/if}

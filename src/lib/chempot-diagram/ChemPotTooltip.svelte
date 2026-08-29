@@ -28,7 +28,6 @@
 <PlotTooltip
   x={hover_info.pointer?.x ?? 4}
   y={hover_info.pointer?.y ?? 4}
-  offset={{ x: 0, y: 0 }}
   {constrain_to}
   fallback_size={{ width: 200, height: 100 }}
   class="chempot-tooltip"

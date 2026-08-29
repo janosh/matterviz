@@ -41,6 +41,8 @@
     controls_name = `plot`,
     toggle_props = {},
     pane_props = {},
+    on_export,
+    export_formats = [`png`, `svg`, `csv`],
   }: PlotControlsProps = $props()
 
   // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
@@ -427,10 +429,24 @@
     </SettingsSection>
 
     {@render post_children?.()}
+
+    {#if on_export}
+      <SettingsSection title="Export" layout="flow">
+        {#each export_formats as format (format)}
+          <button type="button" class="export-btn" onclick={() => on_export?.(format)}>
+            {format.toUpperCase()}
+          </button>
+        {/each}
+      </SettingsSection>
+    {/if}
   </ControlPane>
 {/if}
 
 <style>
+  .export-btn {
+    padding: 2pt 8pt;
+    cursor: pointer;
+  }
   :is(.control-options, .range-pair) {
     display: flex;
     align-items: center;

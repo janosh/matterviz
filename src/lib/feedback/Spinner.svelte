@@ -4,7 +4,13 @@
   let { text, ...rest }: { text?: string } & HTMLAttributes<HTMLDivElement> = $props()
 </script>
 
-<div class="spinner" role="status" aria-live="polite" aria-busy="true" {...rest}>
+<div
+  role="status"
+  aria-live="polite"
+  aria-busy="true"
+  {...rest}
+  class={[`spinner`, rest.class]}
+>
   {#if text}
     <span>{text}</span>
   {/if}

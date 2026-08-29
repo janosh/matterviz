@@ -111,7 +111,7 @@ Leaves carry `value`; cell areas are proportional to it and parents sum their le
 
 ## Spacegroup treemap
 
-`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from spacegroup numbers or Hermann-Mauguin symbols (one entry per structure). Real spacegroup distributions have long tails. `min_fraction` groups every spacegroup below a threshold share into one "Other" cell per crystal system. Header strips label each crystal system, so no legend is needed.
+`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from spacegroup numbers or Hermann-Mauguin symbols (one entry per structure). Real spacegroup distributions have long tails. `min_fraction` groups every spacegroup below that share of the current view's total into one "Other" cell per crystal system (zoom into a crystal system, or click its "Other" cell, and the threshold re-measures against it, dissolving the bucket); `max_children={n}` instead keeps the largest n per parent, which is what guarantees a populated level however the values are spread. See [the sunburst docs](/plot/sunburst#spacegroup-sunburst) for how the two interact. Header strips label each crystal system, so no legend is needed.
 
 ```svelte example
 <script lang="ts">
