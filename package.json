@@ -1,6 +1,6 @@
 {
   "name": "matterviz",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Interactive visualizations for materials science: periodic tables, 3D structures, MD trajectories, heatmaps, scatter plots.",
   "keywords": [
     "chemistry",
@@ -196,6 +196,10 @@
     "./settings": {
       "types": "./dist/settings.d.ts",
       "default": "./dist/settings.js"
+    },
+    "./slab": {
+      "types": "./dist/slab/index.d.ts",
+      "default": "./dist/slab/index.js"
     },
     "./spectral": {
       "types": "./dist/spectral/index.d.ts",

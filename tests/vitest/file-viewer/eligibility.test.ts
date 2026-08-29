@@ -46,6 +46,11 @@ test.each([
   [`run.xtc`, true],
   [`POSCAR`, true],
   [`XDATCAR`, true],
+  [`OUTCAR`, true],
+  [`relax/OUTCAR.gz`, true],
+  [`vasprun.xml`, true],
+  [`run1.vasprun.xml.gz`, true],
+  [`notvasprun.xml`, false],
   [`CHGCAR`, true],
   [`density.cube`, true],
   [`band.bxsf.gz`, true],
@@ -114,7 +119,7 @@ test.each(VASP_VIEWER_STEMS.map((filename) => filename.toUpperCase()))(
 
 // Unsupported VASP outputs and run inputs only send the host to a parser that answers
 // `Unable to determine file format`, so the predicate must not offer them.
-test.each([`OUTCAR`, `INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`])(
+test.each([`INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`, `run.xml`])(
   `%s is not offered to the viewer`,
   (filename) => {
     expect(is_matterviz_filename(filename)).toBe(false)

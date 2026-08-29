@@ -21,8 +21,7 @@
   import pkg from '$root/package.json'
   import { Footer } from '$site'
   import { link_source_mentions } from '$site/source-links'
-  import type { RouteEntry } from '$site/state.svelte'
-  import { demo_routes, routes } from '$site/state.svelte'
+  import { nav_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
   import type { CmdAction } from 'svelte-widgets'
   import { CopyButton, GitHubCorner, Icon, Nav, PageSearch } from 'svelte-widgets'
@@ -75,15 +74,6 @@
     action: () => (theme_mode = value),
   }))
 
-  const route_path = (route_entry: RouteEntry): string =>
-    typeof route_entry === `string` ? route_entry : route_entry[0]
-
-  const nav_routes = $derived(
-    demo_routes.filter((route_entry) => {
-      const path = route_path(route_entry)
-      return !path.startsWith(`/layout`)
-    }),
-  )
   const pagefind_enabled = $derived(
     !page.url.pathname.startsWith(`/test`) && page.url.pathname !== `/404`,
   )

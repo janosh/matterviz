@@ -1902,9 +1902,11 @@ describe(`Structure File Detection`, () => {
     [`POSCAR`, true], [`CONTCAR`, true], [`BaTiO3-tetragonal.poscar`, true], [`日本語.xyz`, true],
     [`${`a`.repeat(1000)}.cif`, true],
     // unsupported VASP run files
-    [`OUTCAR`, false], [`INCAR`, false],
-    // trajectory extensions and keywords never count, even with a structure extension
-    [`test.traj`, false], [`test.h5`, false], [`XDATCAR`, false], [`md.xyz.gz`, false],
+    [`INCAR`, false],
+    // trajectory extensions, keywords and VASP run outputs never count, even with a structure
+    // extension or keyword (vasprun.xml carries `vasp` + .xml)
+    [`test.traj`, false], [`test.h5`, false], [`XDATCAR`, false], [`OUTCAR`, false],
+    [`vasprun.xml`, false], [`vasprun_relax.xml.gz`, false], [`md.xyz.gz`, false],
     [`relax.extxyz`, false],
     // YAML/XML: structure keyword required
     [`structure.yaml`, true], [`phonopy.yml`, true], [`structure.xml.gz`, true],

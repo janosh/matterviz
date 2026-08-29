@@ -7,7 +7,8 @@ import {
   TRAJ_EXTENSIONS_REGEX,
   TRAJ_FALLBACK_EXTENSIONS_REGEX,
   TRAJ_KEYWORDS_REGEX,
-  XDATCAR_REGEX,
+  VASP_TRAJECTORY_REGEX,
+  VASPRUN_REGEX,
   XYZ_EXTENSIONS,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
@@ -22,7 +23,13 @@ export const is_trajectory_filename = (filename: string): boolean => {
   const base_name = strip_compression_extensions(filename)
 
   if (XYZ_EXTXYZ_REGEX.test(base_name)) return TRAJ_KEYWORDS_REGEX.test(base_name)
-  if (TRAJ_EXTENSIONS_REGEX.test(base_name) || XDATCAR_REGEX.test(base_name)) return true
+  if (
+    TRAJ_EXTENSIONS_REGEX.test(base_name) ||
+    VASP_TRAJECTORY_REGEX.test(base_name) ||
+    VASPRUN_REGEX.test(base_name)
+  ) {
+    return true
+  }
   if (MD_SIM_EXCLUDE_REGEX.test(base_name)) return false
   if (HDF5_EXT_REGEX.test(base_name)) {
     return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_REGEX.test(base_name)
@@ -38,6 +45,9 @@ const KNOWN_FORMAT_EXT_REGEX = ext_regex([
   `yml`, `xml`, `csv`,
 ])
 const INDEXABLE_EXT_REGEX = ext_regex([...XYZ_EXTENSIONS, `traj`])
+// `outcar` anywhere in the basename (OUTCAR, OUTCAR_step2, relax.outcar), never in a
+// directory name — an `outcar/` folder must not claim the files inside it
+const OUTCAR_NAME_REGEX = /outcar[^/\\]*$/i
 
 // Classify the filename hint for a format whose extensions match ext_regex:
 // true = filename matches, false = filename names a different known format,
@@ -91,6 +101,22 @@ export const FORMAT_PATTERNS = {
       lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
     )
   },
+
+  // <modeling> is vasprun.xml's root element; any other .xml (phonopy, XRDML) lacks it, so a
+  // renamed run still sniffs as one while a foreign .xml does not
+  vasprun: (data: string, filename?: string) => {
+    if (ext_hint(filename, VASPRUN_REGEX)) return true
+    if (ext_hint(filename, /\.xml$/i) === false) return false
+    return data.slice(0, 4096).includes(`<modeling>`)
+  },
+
+  // OUTCARs open with the `vasp.6.4.2 ...` build banner; the position table proves the run
+  // got as far as one ionic step, without which there is nothing to show
+  outcar: (data: string, filename?: string) =>
+    ext_hint(filename, OUTCAR_NAME_REGEX) ??
+    (/^\s*vasp\.\d/.test(data.slice(0, 256)) &&
+      data.includes(`POSITION`) &&
+      data.includes(`TOTAL-FORCE`)),
 
   lammpstrj: (data: string, filename?: string) => {
     if (ext_hint(filename, /\.lammpstrj$/i) === false) return false

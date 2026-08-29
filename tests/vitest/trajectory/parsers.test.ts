@@ -12,6 +12,7 @@ import {
   open_trajectory,
   trajectory_from_json,
 } from '$lib/trajectory/open'
+import { FORMAT_PATTERNS, is_trajectory_file } from '$lib/trajectory/format-detect'
 import { get_unsupported_format_message } from '$lib/trajectory/parse'
 import { ase_calculator_data, read_ase_header } from '$lib/trajectory/parse/ase'
 import {
@@ -309,6 +310,393 @@ describe(`XDATCAR`, () => {
     expect(frames[1].structure.sites[0].xyz).toEqual([10, 10, 10])
     expect(frames[1].metadata?.volume).toBe(8000)
     expect(elements_of(frames[1])).toEqual([`H`, `He`])
+  })
+})
+
+// === VASP vasprun.xml ===
+
+describe(`vasprun.xml`, () => {
+  const varray = (name: string, rows: number[][]): string =>
+    [
+      `<varray name="${name}" >`,
+      ...rows.map((row) => `<v> ${row.join(`  `)} </v>`),
+      `</varray>`,
+    ].join(`\n`)
+  // One <calculation> ionic step: `n_scf` SCF steps, then the step's structure, forces,
+  // stress and summary energies in VASP's order
+  const calculation = (
+    lat_a: number,
+    frac: number[][],
+    forces: number[][],
+    energy: number,
+    { n_scf = 2, md = false, close = true } = {},
+  ): string =>
+    [
+      `<calculation>`,
+      ...Array<string>(n_scf).fill(
+        `<scstep>\n<energy>\n<i name="e_fr_energy"> ${energy - 1} </i>\n</energy>\n</scstep>`,
+      ),
+      `<structure>\n<crystal>\n${varray(`basis`, [
+        [lat_a, 0, 0],
+        [0, lat_a, 0],
+        [0, 0, lat_a],
+      ])}\n</crystal>\n${varray(`positions`, frac)}\n</structure>`,
+      varray(`forces`, forces),
+      varray(`stress`, [
+        [-3, 0, 0],
+        [0, -6, 0],
+        [0, 0, -9],
+      ]),
+      `<energy>\n<i name="e_fr_energy"> ${energy} </i>\n<i name="e_wo_entrp"> ${energy + 0.001} </i>\n<i name="e_0_energy"> ${energy + 0.002} </i>${md ? `\n<i name="kinetic"> 0.5 </i>\n<i name="total"> ${energy + 0.5} </i>` : ``}\n</energy>`,
+      ...(close ? [`</calculation>`] : []),
+    ].join(`\n`)
+  const atominfo = (rows: [string, number][], types: [number, string, number][]) =>
+    `<atominfo>\n<atoms> ${rows.length} </atoms>\n<array name="atoms" >\n<set>\n${rows.map(([symbol, type_idx]) => `<rc><c>${symbol}</c><c> ${type_idx}</c></rc>`).join(`\n`)}\n</set>\n</array>\n<array name="atomtypes" >\n<set>\n${types.map(([count, symbol, mass]) => `<rc><c> ${count}</c><c>${symbol}</c><c> ${mass}</c><c> 4.0</c><c> PAW_PBE ${symbol}</c></rc>`).join(`\n`)}\n</set>\n</array>\n</atominfo>`
+  const vasprun = (
+    calculations: string[],
+    {
+      ibrion = 2,
+      potim = 0.5,
+      atoms = atominfo(
+        [
+          [`Si`, 1],
+          [`O`, 2],
+        ],
+        [
+          [1, `Si`, 28.085],
+          [1, `O`, 15.999],
+        ],
+      ),
+    } = {},
+  ): string =>
+    [
+      `<?xml version="1.0" encoding="ISO-8859-1"?>`,
+      `<modeling>`,
+      `<generator>\n<i name="version" type="string">6.4.2 </i>\n</generator>`,
+      `<parameters>\n<i type="int" name="IBRION"> ${ibrion}</i>\n<i name="POTIM"> ${potim}</i>\n</parameters>`,
+      atoms,
+      ...calculations,
+      `</modeling>`,
+    ].join(`\n`)
+  // oxfmt-ignore
+  const frac_si_o = [[0, 0, 0], [0.5, 0.5, 0.5]]
+  // oxfmt-ignore
+  const zero_forces = [[0, 0, 0], [0, 0, 0]]
+  // oxfmt-ignore
+  const two_steps = [
+    calculation(5, frac_si_o, [[0.1, 0, 0], [-0.1, 0, 0]], -10),
+    calculation(5.2, [[0, 0, 0], [0.5, 0.5, 0.52]], [[0.01, 0, 0], [-0.01, 0, 0]], -10.5, { n_scf: 3 }),
+  ]
+
+  it(`reads one frame per <calculation> with structure, forces, stress and energies`, async () => {
+    const run = await open(vasprun(two_steps), `vasprun.xml`)
+    expect(run.provenance.format).toBe(`vasprun`)
+    expect(run.warnings).toEqual([])
+    const frames = await frames_of(run)
+    expect(frames.map(({ step }) => step)).toEqual([1, 2])
+    expect(elements_of(frames[0])).toEqual([`Si`, `O`])
+    expect(frames[0].structure.sites[1].xyz).toEqual([2.5, 2.5, 2.5])
+    expect(lattice_of(frames[1]).a).toBeCloseTo(5.2, 12)
+    expect(frames[1].structure.sites[1].xyz[2]).toBeCloseTo(0.52 * 5.2, 12)
+    expect(frames[0].metadata).toMatchObject({
+      energy: -10,
+      energy_wo_entropy: -9.999,
+      energy_sigma_0: -9.998,
+      n_scf_steps: 2,
+      force_max: 0.1,
+      force_norm: 0.1,
+      volume: 125,
+      forces: [
+        [0.1, 0, 0],
+        [-0.1, 0, 0],
+      ],
+    })
+    // VASP prints kB, the labels declare GPa
+    expect(frames[0].metadata?.pressure).toBeCloseTo(-0.6, 12)
+    expect(frames[0].metadata?.stress).toEqual(
+      [
+        [-0.3, 0, 0],
+        [0, -0.6, 0],
+        [0, 0, -0.9],
+      ].map((row) => row.map((val) => expect.closeTo(val, 12))),
+    )
+    expect(frames[1].metadata?.n_scf_steps).toBe(3)
+    expect(frames[0].structure.sites[0].properties?.force).toEqual([0.1, 0, 0])
+    expect(run.atom_masses).toEqual([28.085, 15.999])
+    // POTIM is only a time step for MD (IBRION = 0)
+    expect(run.time_step).toBeUndefined()
+    expect(run.metadata).toMatchObject({ ibrion: 2, vasp_version: `6.4.2` })
+  })
+
+  it(`treats POTIM as the MD time step and keeps thermostat energies for IBRION = 0`, async () => {
+    const md_step = calculation(5, frac_si_o, zero_forces, -10, { md: true })
+    const run = await open(vasprun([md_step], { ibrion: 0, potim: 2 }), `vasprun.xml`)
+    expect(run.time_step).toEqual({ value: 2, unit: `fs` })
+    expect((await run.read_frame(0)).metadata).toMatchObject({
+      kinetic_energy: 0.5,
+      total_energy: -9.5,
+    })
+  })
+
+  it(`drops mismatched force rows and an unclosed final <calculation> with warnings`, async () => {
+    const short_forces = calculation(5, frac_si_o, [[0.1, 0, 0]], -9.5)
+    const torn = calculation(5, frac_si_o, zero_forces, -9, { close: false })
+    const run = await open(vasprun([...two_steps, short_forces, torn]), `vasprun.xml`)
+    expect(await steps_of(run)).toEqual([1, 2, 3])
+    expect(run.warnings).toEqual([
+      `vasprun.xml ionic step 3: 1 force rows for 2 atoms, forces dropped`,
+      `Dropping incomplete final vasprun.xml <calculation> block (ionic step 4)`,
+    ])
+    // the frame survives without forces, on neither the metadata nor the sites
+    const frame = await run.read_frame(2)
+    expect(frame.metadata).not.toHaveProperty(`forces`)
+    expect(frame.structure.sites[0].properties?.force).toBeUndefined()
+  })
+
+  it(`is recognised by content when the filename gives no hint`, async () => {
+    const run = await open(vasprun(two_steps))
+    expect(run.provenance.format).toBe(`vasprun`)
+    expect(run.frame_count).toBe(2)
+  })
+
+  // oxfmt-ignore
+  it.each([
+    [`no <modeling> root`, `<?xml version="1.0"?><phonopy></phonopy>`, `missing <modeling> root element`],
+    [`no <atominfo>`, `<modeling>${two_steps[0]}</modeling>`, `no complete <atominfo>`],
+    [`an unknown element`, vasprun(two_steps, { atoms: atominfo([[`Xx`, 1], [`O`, 2]], []) }), `Unknown element symbol in vasprun.xml <atominfo>: "Xx"`],
+    [`only torn calculations`, vasprun([calculation(5, frac_si_o, [], -9, { close: false })]), `contains no complete <calculation>`],
+    [`a position count that does not match the atoms`, vasprun([calculation(5, [[0, 0, 0]], [], -9)]), `ionic step 1: 1 positions for 2 atoms`],
+    [`a malformed position row`, vasprun([calculation(5, [[0, 0], [0.5, 0.5, 0.5]], [], -9)]), `<varray name="positions"> row is not a triple`],
+  ])(`rejects a vasprun.xml with %s`, async (_label, content, error) => {
+    await expect(open(content, `vasprun.xml`)).rejects.toThrow(error)
+  })
+})
+
+// === VASP OUTCAR ===
+
+describe(`OUTCAR`, () => {
+  const lattice_block = (lat_a: number): string =>
+    [
+      `  direct lattice vectors                 reciprocal lattice vectors`,
+      `    ${lat_a} 0.000000000  0.000000000     ${1 / lat_a}  0.000000000  0.000000000`,
+      `     0.000000000 ${lat_a}  0.000000000     0.000000000  ${1 / lat_a}  0.000000000`,
+      `     0.000000000  0.000000000 ${lat_a}     0.000000000  0.000000000  ${1 / lat_a}`,
+    ].join(`\n`)
+  // One ionic step in OUTCAR order: SCF iterations, stress, cell, position/force table,
+  // energies, then (MD) the thermostat block
+  const ionic_step = (
+    step: number,
+    lat_a: number,
+    rows: number[][],
+    energy: number,
+    { n_scf = 4, md = false, ml = false, truncate_rows = 0 } = {},
+  ): string =>
+    [
+      // every SCF iteration prints its own (unconverged) TOTEN, which must not leak into
+      // the previous ionic step's frame
+      ...Array.from(
+        { length: n_scf },
+        (_val, scf_idx) =>
+          `----- Iteration ${step}(${scf_idx + 1}) -----\n  free energy    TOTEN  =  ${energy + 1} eV`,
+      ),
+      `  ${ml ? `ML ` : ``}FORCE on cell =-STRESS in cart. coord. units (eV/cell)`,
+      `  in kB      -1.00000    -2.00000    -3.00000     0.10000     0.20000     0.30000`,
+      `  external pressure =       -2.00 kB  Pullay stress =        0.00 kB`,
+      lattice_block(lat_a),
+      ``,
+      `  POSITION                                       TOTAL-FORCE (eV/Angst)${ml ? ` (ML)` : ``}`,
+      ` -----------------------------------------------------------------------------------`,
+      ...rows
+        .slice(0, rows.length - truncate_rows)
+        .map((row) => `      ${row.join(`      `)}`),
+      ...(truncate_rows > 0
+        ? []
+        : [
+            ` -----------------------------------------------------------------------------------`,
+            `    total drift:                                0.000000      0.000000      0.000000`,
+            ``,
+            `  free  energy   ${ml ? `ML ` : ``}TOTEN  =       ${energy} eV`,
+            ``,
+            `  ${ml ? `ML ` : ``}energy  without entropy=      ${energy + 0.001}  ${ml ? `ML ` : ``}energy(sigma->0) =      ${energy + 0.002}`,
+            ...(md
+              ? [
+                  `  kinetic energy EKIN   =         0.250000`,
+                  `  kin. lattice  EKIN_LAT=         0.000000  (temperature  300.50 K)`,
+                  `  total energy   ETOTAL =        ${energy + 0.25} eV`,
+                ]
+              : []),
+          ]),
+    ].join(`\n`)
+  const header = ({
+    ibrion = 2,
+    potim = 0.5,
+    species = `VRHFIN`,
+    types = [
+      [`Si`, 28.085, 1],
+      [`O`, 15.999, 2],
+    ] as [string, number, number][],
+  } = {}): string =>
+    [
+      ` vasp.6.4.2 18Apr23 (build Jan 01 2024) complex`,
+      ` executed on LinuxGNU date 2024.01.01`,
+      ` INCAR:`,
+      `   IBRION = ${ibrion}`,
+      ...types.map(([symbol]) => ` POTCAR:    PAW_PBE ${symbol}_pv 06Sep2000`),
+      ...types.flatMap(([symbol, mass]) =>
+        species === `VRHFIN`
+          ? [
+              ` POTCAR:    PAW_PBE ${symbol}_pv 06Sep2000`,
+              `   VRHFIN =${symbol}: s2p2`,
+              `   POMASS =   ${mass}; ZVAL   =    4.000    mass and valenz`,
+            ]
+          : [` POTCAR:    PAW_PBE ${symbol}_pv 06Sep2000`],
+      ),
+      lattice_block(5),
+      `   ions per type =               ${types.map(([_symbol, _mass, count]) => count).join(`   `)}`,
+      `   POTIM  = ${potim}    time-step for ionic-motion`,
+    ].join(`\n`)
+  const rows_1 = [
+    [0, 0, 0, 0.1, 0, 0],
+    [2.5, 2.5, 2.5, -0.05, 0, 0],
+    [2.5, 2.5, 0, -0.05, 0, 0],
+  ]
+  const rows_2 = [
+    [0, 0, 0, 0.01, 0, 0],
+    [2.6, 2.6, 2.6, -0.005, 0, 0],
+    [2.6, 2.6, 0, -0.005, 0, 0],
+  ]
+  const relaxation = [
+    header(),
+    ionic_step(1, 5, rows_1, -20),
+    ionic_step(2, 5.2, rows_2, -20.5, { n_scf: 6 }),
+  ].join(`\n`)
+
+  it(`reads one frame per POSITION / TOTAL-FORCE table with the cell, stress and energies around it`, async () => {
+    const run = await open(relaxation, `OUTCAR`)
+    expect(run.provenance.format).toBe(`outcar`)
+    expect(run.warnings).toEqual([])
+    const frames = await frames_of(run)
+    expect(frames.map(({ step }) => step)).toEqual([1, 2])
+    expect(elements_of(frames[0])).toEqual([`Si`, `O`, `O`])
+    expect(frames[0].structure.sites[1].xyz).toEqual([2.5, 2.5, 2.5])
+    expect(lattice_of(frames[1]).a).toBeCloseTo(5.2, 12)
+    expect(frames[0].metadata).toMatchObject({
+      energy: -20,
+      energy_wo_entropy: -19.999,
+      energy_sigma_0: -19.998,
+      n_scf_steps: 4,
+      force_max: 0.1,
+      volume: 125,
+    })
+    // VASP prints kB, the labels declare GPa
+    expect(frames[0].metadata?.pressure).toBeCloseTo(-0.2, 12)
+    expect(frames[0].metadata?.stress).toEqual(
+      [
+        [-0.1, 0.01, 0.03],
+        [0.01, -0.2, 0.02],
+        [0.03, 0.02, -0.3],
+      ].map((row) => row.map((val) => expect.closeTo(val, 12))),
+    )
+    expect(frames[0].metadata?.force_norm).toBeCloseTo(
+      Math.sqrt((0.01 + 0.0025 + 0.0025) / 3),
+      12,
+    )
+    expect(frames[1].metadata).toMatchObject({ energy: -20.5, n_scf_steps: 6 })
+    expect(frames[0].structure.sites[0].properties?.force).toEqual([0.1, 0, 0])
+    expect(run.atom_masses).toEqual([28.085, 15.999, 15.999])
+    expect(run.time_step).toBeUndefined()
+    expect(run.metadata).toMatchObject({ ibrion: 2, vasp_version: `vasp.6.4.2` })
+  })
+
+  it(`reads MD thermostat lines, ML-labelled tables and POTIM as the time step`, async () => {
+    const content = [
+      header({ ibrion: 0, potim: 1.5 }),
+      ionic_step(1, 5, rows_1, -20, { md: true, ml: true, n_scf: 0 }),
+    ].join(`\n`)
+    const run = await open(content, `md/OUTCAR`)
+    expect(run.time_step).toEqual({ value: 1.5, unit: `fs` })
+    expect((await run.read_frame(0)).metadata).toMatchObject({
+      energy: -20,
+      energy_wo_entropy: -19.999,
+      kinetic_energy: 0.25,
+      temperature: 300.5,
+      total_energy: -19.75,
+    })
+    expect((await run.read_frame(0)).metadata).not.toHaveProperty(`n_scf_steps`)
+  })
+
+  it(`falls back to the POTCAR echo for species when VRHFIN lines are absent`, async () => {
+    const run = await open(
+      [header({ species: `POTCAR` }), ionic_step(1, 5, rows_1, -20)].join(`\n`),
+      `OUTCAR`,
+    )
+    expect(elements_of(await run.read_frame(0))).toEqual([`Si`, `O`, `O`])
+    expect(run.atom_masses).toBeUndefined()
+  })
+
+  it(`drops a truncated final position table with a warning`, async () => {
+    const torn = ionic_step(3, 5.2, rows_2, -20.6, { truncate_rows: 2 })
+    const run = await open(`${relaxation}\n${torn}`, `OUTCAR`)
+    expect(await steps_of(run)).toEqual([1, 2])
+    expect(run.warnings).toEqual([
+      expect.stringContaining(`Dropping truncated final OUTCAR frame 3`),
+    ])
+  })
+
+  it(`is recognised by content when the filename gives no hint`, async () => {
+    const run = await open(relaxation)
+    expect(run.provenance.format).toBe(`outcar`)
+    expect(run.frame_count).toBe(2)
+  })
+
+  // oxfmt-ignore
+  it.each([
+    [`no vasp banner`, `some log\nPOSITION TOTAL-FORCE`, `Not an OUTCAR file`],
+    [`no ions per type line`, ` vasp.6.4.2\n VRHFIN =Si:\n${ionic_step(1, 5, rows_1, -20)}`, `no "ions per type" line`],
+    [`more species than counts`, header({ types: [[`Si`, 28, 1], [`O`, 16, 1], [`H`, 1, 1]] }).replace(/ions per type =.*/, `ions per type = 1 2`), `lists 3 species (Si, O, H) but 2 ion counts`],
+    [`an unknown element`, [header({ types: [[`Xx`, 28, 1], [`O`, 16, 2]] }), ionic_step(1, 5, rows_1, -20)].join(`\n`), `Unknown element symbol in OUTCAR: "Xx"`],
+    [`no position table`, header(), `contains no POSITION / TOTAL-FORCE table`],
+    [`a corrupt position row`, [header(), ionic_step(1, 5, [[0, 0, 0, 0, 0, 0], [1, 1, `x`, 0, 0, 0], [2, 2, 2, 0, 0, 0]] as unknown as number[][], -20), ionic_step(2, 5, rows_2, -20)].join(`\n`), `is not a position + force sextet`],
+  ])(`rejects an OUTCAR with %s`, async (_label, content, error) => {
+    await expect(open(content, `OUTCAR`)).rejects.toThrow(error)
+  })
+})
+
+// === VASP run output detection ===
+
+describe(`VASP run output detection`, () => {
+  it.each([
+    [`OUTCAR`, true],
+    [`relax/outcar.gz`, true],
+    [`OUTCAR_step2`, true],
+    [`vasprun.xml`, true],
+    [`run1.vasprun.xml.gz`, true],
+    [`vasprun_relax.xml`, true],
+    [`vasprun.h5`, false],
+    [`phonopy.xml`, false],
+    [`INCAR`, false],
+  ])(`is_trajectory_file(%s) -> %s`, (filename, expected) => {
+    expect(is_trajectory_file(filename)).toBe(expected)
+  })
+
+  const modeling = `<?xml version="1.0"?>\n<modeling>\n<generator/>`
+  const banner = ` vasp.6.4.2 18Apr23\n POSITION TOTAL-FORCE`
+  // oxfmt-ignore
+  it.each([
+    [`vasprun`, modeling, undefined, true],
+    [`vasprun`, modeling, `blob:uuid`, true],
+    [`vasprun`, `<?xml version="1.0"?><phonopy/>`, `phonopy.xml`, false],
+    [`vasprun`, modeling, `run_final.xml`, true], // a renamed vasprun still sniffs by content
+    [`vasprun`, modeling, `md.lammpstrj`, false],
+    [`vasprun`, `nothing`, `vasprun.xml`, true],
+    [`outcar`, banner, undefined, true],
+    [`outcar`, banner, `run.log`, true],
+    [`outcar`, banner, `md.xyz`, false],
+    [`outcar`, `POSITION TOTAL-FORCE without banner`, undefined, false],
+    [`outcar`, ` vasp.6.4.2 killed before any ionic step`, undefined, false],
+    [`outcar`, `nothing`, `OUTCAR`, true],
+  ] as const)(`FORMAT_PATTERNS.%s(%j, %s) -> %s`, (format, data, filename, expected) => {
+    expect(FORMAT_PATTERNS[format](data, filename)).toBe(expected)
   })
 })
 

@@ -655,11 +655,7 @@ describe(`explicit_only strategy`, () => {
 
 describe(`Molecular Bonding Analysis`, () => {
   // Lower strength threshold to ensure all bond types (incl. C-C) are captured
-  const loose_opts = {
-    max_distance_ratio: 2,
-    strength_threshold: 0.2,
-    same_species_penalty: 0.8,
-  }
+  const loose_opts = { max_distance_ratio: 2, strength_threshold: 0.2 }
 
   test.each([
     [`water`, test_molecules.water, 2, 0.8, 1.2, undefined],
@@ -698,6 +694,9 @@ describe(`Molecular Bonding Analysis`, () => {
 // interior ones), which also pins the PBC boundary completion in find_image_atoms.
 
 const wrap_frac = (val: number) => val - Math.floor(val)
+// sites of one element at the given fractional coordinates
+const sites_at = (element: ElementSymbol, abcs: Vec3[]) =>
+  abcs.map((abc) => ({ element, abc }))
 const fcc_offsets: Vec3[] = [
   [0, 0, 0],
   [0.5, 0.5, 0],
@@ -716,6 +715,32 @@ const fcc = (element: ElementSymbol, basis: Vec3[] = [[0, 0, 0]]) =>
       ] as Vec3,
     })),
   )
+const bcc = (element: ElementSymbol) =>
+  sites_at(element, [
+    [0, 0, 0],
+    [0.5, 0.5, 0.5],
+  ])
+// Expand Wyckoff representatives through the 8 operations of Pnma (No. 62), deduping
+// the special positions (4a, 4c) that fewer ops map to distinct sites
+const pnma = (element: ElementSymbol, [x, y, z]: Vec3) => {
+  const images: Vec3[] = [
+    [x, y, z],
+    [-x + 0.5, -y, z + 0.5],
+    [-x, y + 0.5, -z],
+    [x + 0.5, -y + 0.5, -z + 0.5],
+    [-x, -y, -z],
+    [x + 0.5, y, -z + 0.5],
+    [x, -y + 0.5, z],
+    [-x + 0.5, y + 0.5, z + 0.5],
+  ]
+  const unique = new Map<string, Vec3>()
+  for (const image of images) {
+    const abc = image.map(wrap_frac) as Vec3
+    const key = abc.map((val) => val.toFixed(5)).join(`,`)
+    if (!unique.has(key)) unique.set(key, abc)
+  }
+  return sites_at(element, [...unique.values()])
+}
 const tetragonal = (a: number, c: number): Vec3[] => [
   [a, 0, 0],
   [0, a, 0],
@@ -756,6 +781,70 @@ const cn_benchmark: [
   [`fcc Al`, 4.05, fcc(`Al`), { Al: 12 }],
   [`fcc Pb`, 4.95, fcc(`Pb`), { Pb: 12 }],
   [`fcc Ag`, 4.085, fcc(`Ag`), { Ag: 12 }],
+  // bcc: 8 nearest at a*sqrt(3)/2, then 6 at a - only 15.5% further, so the first-shell
+  // window must be tight. Cs is the stress case: its covalent radius (2.44) undershoots the
+  // 5.32 A contact by 9%, the 12-coordinate metallic radius (2.65) fits it
+  [`bcc Fe`, 2.866, bcc(`Fe`), { Fe: 8 }],
+  [`bcc Cs`, 6.141, bcc(`Cs`), { Cs: 8 }],
+  [
+    // MgCu2-type Laves phase: Lu on the diamond sublattice (8a), Al on the 16d
+    // tetrahedra. Al has 6 Al at 2.74 A and 6 Lu at 3.21 A; Lu has 12 Al and 4 Lu at 3.35 A.
+    // Covalent radii called the Al-Al contact stretched and dropped it (Al CN 6), and Lu-Lu
+    // fell to a same-species penalty; the metallic radii (1.43 / 1.74) recover both shells
+    `LuAl2 Laves`,
+    7.742,
+    [
+      ...fcc(`Lu`, [
+        [0, 0, 0],
+        [0.25, 0.25, 0.25],
+      ]),
+      ...fcc(`Al`, [
+        [0.625, 0.625, 0.625],
+        [0.375, 0.875, 0.125],
+        [0.875, 0.125, 0.375],
+        [0.125, 0.375, 0.875],
+      ]),
+    ],
+    { Al: 12, Lu: 16 },
+  ],
+  [
+    // Cuprite: linear O-Cu-O (Cu-O 1.85 A) with a Cu-Cu contact at 3.02 A, 1.18x the
+    // covalent-radii sum but 1.18x the metallic sum too. Both Cu carry an anion, so the
+    // Cu-Cu contact is a stretched cation-cation pair and must not be drawn
+    `Cu2O cuprite`,
+    4.27,
+    [
+      { element: `O`, abc: [0, 0, 0] as Vec3 },
+      { element: `O`, abc: [0.5, 0.5, 0.5] as Vec3 },
+      { element: `Cu`, abc: [0.25, 0.25, 0.25] as Vec3 },
+      { element: `Cu`, abc: [0.75, 0.75, 0.25] as Vec3 },
+      { element: `Cu`, abc: [0.75, 0.25, 0.75] as Vec3 },
+      { element: `Cu`, abc: [0.25, 0.75, 0.75] as Vec3 },
+    ],
+    { Cu: 2, O: 4 },
+  ],
+  [
+    // Olivine LiFePO4 (Pnma). P sits 2.64-2.68 A from Li and 2.83-2.86 A from Fe - well
+    // inside 2x the covalent radii - so a metal-only cation test bonded P to its cation
+    // neighbors (P CN 7). Both ends of Li-P / Fe-P carry anions: the tight stretch rule
+    // rejects them and leaves the PO4 tetrahedra and FeO6 octahedra. Li is unchecked: as a
+    // spectator it gets no boundary images (see find_image_atoms), so corner Li stay at CN 3
+    `LiFePO4 olivine`,
+    [
+      [10.329, 0, 0],
+      [0, 6.0065, 0],
+      [0, 0, 4.6908],
+    ] as Vec3[],
+    [
+      ...pnma(`Li`, [0, 0, 0]),
+      ...pnma(`Fe`, [0.28222, 0.25, 0.97472]),
+      ...pnma(`P`, [0.09486, 0.25, 0.4182]),
+      ...pnma(`O`, [0.09678, 0.25, 0.74279]),
+      ...pnma(`O`, [0.4571, 0.25, 0.20602]),
+      ...pnma(`O`, [0.16558, 0.04646, 0.28478]),
+    ],
+    { Fe: 6, P: 4 },
+  ],
   [`NaCl rocksalt`, 5.64, [...fcc(`Na`), ...fcc(`Cl`, [[0.5, 0, 0]])], { Na: 6, Cl: 6 }],
   [`MgO rocksalt`, 4.212, [...fcc(`Mg`), ...fcc(`O`, [[0.5, 0, 0]])], { Mg: 6, O: 6 }],
   [
@@ -774,9 +863,23 @@ const cn_benchmark: [
     { Ca: 8, F: 4 },
   ],
   [
+    // Pa-3 (No. 205) with S on 8c (x,x,x): S2 dimers at 2.16 A, next S...S at 3.08 A. An
+    // fcc-translated (x,x,x)+(1-x,1-x,1-x) stand-in puts non-bonded S...S at 2.41 A.
     `pyrite FeS2`,
     5.416,
-    [...fcc(`Fe`), ...fcc(`S`, [[0.385, 0.385, 0.385]]), ...fcc(`S`, [[0.615, 0.615, 0.615]])],
+    [
+      ...fcc(`Fe`),
+      ...sites_at(`S`, [
+        [0.385, 0.385, 0.385],
+        [0.615, 0.615, 0.615],
+        [0.885, 0.115, 0.615],
+        [0.115, 0.615, 0.885],
+        [0.615, 0.885, 0.115],
+        [0.115, 0.885, 0.385],
+        [0.885, 0.385, 0.115],
+        [0.385, 0.115, 0.885],
+      ]),
+    ],
     { Fe: 6, S: 4 },
   ],
   [
@@ -1382,8 +1485,8 @@ describe(`neighbor_query`, () => {
   })
 
   test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {
-    const bcc = make_crystal(3, [{ element: `Fe`, abc: [0, 0, 0] }])
-    const list = bonding.neighbor_query(bcc, { cutoff: 3.01 })
+    const simple_cubic = make_crystal(3, [{ element: `Fe`, abc: [0, 0, 0] }])
+    const list = bonding.neighbor_query(simple_cubic, { cutoff: 3.01 })
     expect(list.neighbors).toHaveLength(6)
     expect(Array.from(list.neighbors)).toEqual([0, 0, 0, 0, 0, 0])
     expect(Array.from(list.distances).every((dist) => Math.abs(dist - 3) < 1e-12)).toBe(true)

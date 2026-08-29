@@ -72,6 +72,9 @@ const decorated_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpperCas
 
 const vasp_selectors = [
   ...with_gzip(`*${structure_glob}`),
+  // vasprun.xml and decorated names (vasprun_relax.xml, run1.vasprun.xml), same boundary
+  // rule as VASPRUN_REGEX so notvasprun.xml stays out
+  ...with_gzip(`{vasprun,*[._-]vasprun}*.xml`),
   ...with_gzip(volumetric_glob),
   ...with_gzip(`*[._-]${volumetric_glob}`),
   `${decorated_glob}[._-]*`,

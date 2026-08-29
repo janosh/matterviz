@@ -31,6 +31,7 @@ export const DEFAULT_FILE_TYPE_PAINTS: Record<string, FileTypePaint> = Object.fr
     md: `rgba(255, 215, 0, 0.8)`,
     yaml: `rgba(255, 0, 255, 0.8)`,
     xdatcar: `rgba(255, 215, 0, 0.8)`,
+    outcar: `rgba(255, 180, 0, 0.8)`,
     tdb: `rgba(0, 188, 212, 0.8)`,
     chgcar: `rgba(59, 130, 246, 0.8)`,
     parchg: `rgba(99, 102, 241, 0.8)`,

@@ -19,10 +19,12 @@ import type {
 import { parse_ase_trajectory } from './parse/ase'
 import { open_hdf5_trajectory } from './parse/hdf5'
 import { parse_lammps_trajectory } from './parse/lammps'
+import { parse_vasp_outcar } from './parse/outcar'
 import { parse_pymatgen_trajectory } from './parse/pymatgen'
 import type { ParsedTrajectory, WarningCollector } from './parse/shared'
 import { create_warning_collector } from './parse/shared'
 import { parse_vasp_xdatcar } from './parse/vasp'
+import { parse_vasprun_xml } from './parse/vasprun'
 import { parse_xyz_trajectory } from './parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from './run'
 import { hdf5_run } from './runs/hdf5'
@@ -150,6 +152,12 @@ const parse_text = (
   const head = data.length > SNIFF_BYTES ? data.slice(0, SNIFF_BYTES) : data
   if (FORMAT_PATTERNS.vasp(head, filename)) {
     return run_from_parsed(parse_vasp_xdatcar(data, collector.warn), provenance, collector)
+  }
+  if (FORMAT_PATTERNS.vasprun(head, filename)) {
+    return run_from_parsed(parse_vasprun_xml(data, collector.warn), provenance, collector)
+  }
+  if (FORMAT_PATTERNS.outcar(head, filename)) {
+    return run_from_parsed(parse_vasp_outcar(data, collector.warn), provenance, collector)
   }
   if (FORMAT_PATTERNS.lammpstrj(head, filename)) {
     return run_from_parsed(

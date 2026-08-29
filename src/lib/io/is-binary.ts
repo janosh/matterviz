@@ -2,7 +2,11 @@
 // decompress.ts and url-drop.ts): (1) is_binary string heuristic, (2) has_*_magic byte
 // signatures, (3) extension/filename classification.
 
-import { BINARY_VIEWER_EXTENSIONS } from '$lib/constants'
+import {
+  BINARY_VIEWER_EXTENSIONS,
+  VASP_STRUCTURE_FILES,
+  VASP_TRAJECTORY_FILES,
+} from '$lib/constants'
 
 // === (1) string-content heuristic ===
 // Detect binary from decoded text: a NUL byte or a high ratio of non-printable chars. Only
@@ -80,7 +84,10 @@ export const is_binary_data_extension = (ext: string): boolean =>
 const TEXT_EXTENSIONS = new Set(
   `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `),
 )
-const VASP_BASENAME_RE = /^(?:poscar|xdatcar|contcar)$/i
+const VASP_BASENAME_RE = new RegExp(
+  `^(?:${[...VASP_STRUCTURE_FILES, ...VASP_TRAJECTORY_FILES].join(`|`)})$`,
+  `i`,
+)
 export const is_known_text_file = (basename: string): boolean =>
   TEXT_EXTENSIONS.has(ext_of(basename)) || VASP_BASENAME_RE.test(basename)
 

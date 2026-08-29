@@ -62,6 +62,7 @@ export type ChemicalElement = {
   icsd_oxidation_states?: number[]
   ionic_radii?: Record<string, number> // oxidation_state (as string) -> radius in Angstrom
   shannon_radii?: ShannonRadii
+  metallic_radius?: number // 12-coordinate metallic radius in Angstrom, metals only
 }
 
 // How a multi-segment ElementTile is carved up. Which layouts exist depends on the

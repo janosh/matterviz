@@ -7,7 +7,8 @@ import {
   TRAJ_EXTENSIONS_REGEX,
   TRAJ_KEYWORDS_REGEX,
   VASP_FILES_REGEX,
-  XDATCAR_REGEX,
+  VASP_TRAJECTORY_REGEX,
+  VASPRUN_REGEX,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
@@ -29,7 +30,8 @@ export function is_structure_file(filename: string): boolean {
   if (
     TRAJ_EXTENSIONS_REGEX.test(name) ||
     HDF5_EXT_REGEX.test(name) ||
-    XDATCAR_REGEX.test(name)
+    VASP_TRAJECTORY_REGEX.test(name) ||
+    VASPRUN_REGEX.test(name)
   ) {
     return false
   }

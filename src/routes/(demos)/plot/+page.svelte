@@ -1,16 +1,24 @@
 <script lang="ts">
   import type { ComponentProps } from 'svelte'
   import {
+    BarPlot,
+    BinnedScatterPlot,
+    BoxPlot,
     ColorBar,
     ColorPalette,
-    Filter,
-    Graph,
+    DataClean,
+    FacetGrid,
     HeatmapMatrix,
     HeatmapTable,
     Histogram,
+    Sankey,
     ScatterPlot,
     ScatterPlot3D,
     SpacegroupBarPlot,
+    Sunburst,
+    TernaryPlot,
+    Treemap,
+    ViolinPlot,
   } from 'svelte-widgets/icons'
   import { SubpageGrid } from 'svelte-widgets'
 
@@ -25,13 +33,13 @@
       `Binned Scatter Plot`,
       `/plot/binned-scatter`,
       `Adaptive density rendering for crowded point clouds with point picking and structure popups.`,
-      ScatterPlot,
+      BinnedScatterPlot,
     ],
     [
       `Facet Grid`,
       `/plot/facet-grid`,
       `Coordinated plot panels with shared ranges, padding, linked interactions, outer axes, and shared chrome bands.`,
-      Graph,
+      FacetGrid,
     ],
     [
       `3D Scatter Plot`,
@@ -43,7 +51,7 @@
       `Bar Plot`,
       `/plot/bar-plot`,
       `Vertical/horizontal bars with rounded corners, borders, stacked/grouped modes, and grid display.`,
-      Graph,
+      BarPlot,
     ],
     [
       `Histogram`,
@@ -55,31 +63,37 @@
       `Box Plot`,
       `/plot/box-plot`,
       `Distribution summaries with quartile boxes, medians, whiskers, and outliers from raw data.`,
-      Graph,
+      BoxPlot,
     ],
     [
       `Violin Plot`,
       `/plot/violin`,
       `KDE density shapes (optionally with inner box): one-sided, two-sided, and split violins.`,
-      Graph,
+      ViolinPlot,
     ],
     [
       `Sankey`,
       `/plot/sankey`,
       `Flow diagrams for weighted transitions between categories with horizontal/vertical layout and link highlighting.`,
-      Graph,
+      Sankey,
+    ],
+    [
+      `Ternary Plot`,
+      `/plot/ternary`,
+      `Three-component compositions in a barycentric triangle with grid, edge ticks, paths, and per-point coloring.`,
+      TernaryPlot,
     ],
     [
       `Sunburst & Icicle`,
       `/plot/sunburst`,
       `Zoomable hierarchical rings or stacked rows with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
-      Graph,
+      Sunburst,
     ],
     [
       `Treemap`,
       `/plot/treemap`,
       `Zoomable squarified rectangles for hierarchical part-of-whole data, e.g. arity/chemical-system breakdowns.`,
-      Graph,
+      Treemap,
     ],
     [
       `Spacegroup Bar Plot`,
@@ -115,7 +129,7 @@
       `Data Cleaning`,
       `/plot/data-cleaning`,
       `Utilities for filtering NaN/Infinity values, deduplication, and multi-series normalization.`,
-      Filter,
+      DataClean,
     ],
   ]
 </script>

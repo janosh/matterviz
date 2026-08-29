@@ -3,10 +3,7 @@
 // changes, the balanced reactions behind each transition, and O(n) sections at any T in between.
 import { format_composition_formula, sort_by_electronegativity } from '$lib/composition/format'
 import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
-import {
-  composition_to_barycentric_nd,
-  TRIANGLE_VERTICES,
-} from '$lib/convex-hull/barycentric-coords'
+import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coords'
 import { is_unary_entry } from '$lib/convex-hull/helpers'
 import {
   compute_lower_hull_nd,
@@ -16,6 +13,7 @@ import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import { format_num } from '$lib/labels'
 import { array_min, partition_point, type Vec2, type Vec3 } from '$lib/math'
+import { ternary_to_xy } from '$lib/plot/ternary/ternary'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
   Decomposition,
@@ -104,12 +102,7 @@ export function prepare_diagram(
             delim: ``,
           }),
         barycentric,
-        xy: [0, 1].map((axis) =>
-          barycentric.reduce(
-            (sum, frac, corner) => sum + frac * TRIANGLE_VERTICES[corner][axis],
-            0,
-          ),
-        ) as Vec2,
+        xy: ternary_to_xy(barycentric),
         n_atoms: count_atoms_in_composition(reduced),
         is_element: is_unary_entry(entry),
         source: model.phases[idx].source,

@@ -3,7 +3,7 @@ import * as math from '$lib/math'
 import { create_frac_to_cart, euclidean_dist } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
-import { get_majority_element } from '$lib/structure/bonding'
+import { electroneg_ratio, get_majority_element } from '$lib/structure/bonding'
 import { parse_structure_file } from '$lib/structure/parse'
 import { open_trajectory } from '$lib/trajectory/open'
 import { structure_map } from '$site/structures'
@@ -146,6 +146,22 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
     // the second atom's image at x=-2 is 2.5 Å from the first, within bonding range
     expect(find_image_atoms(metal).filter(([idx]) => idx === 1)).toHaveLength(1)
   }
+
+  // Completion measures metal-metal contacts the way the bond detector does, against the
+  // metallic radii (expected_bond_length). Cs-Cs at 5.63 Å is 1.06x the metallic sum and
+  // bonds, but lies past the covalent sum + slack (4.88 + 0.7), which used to leave the
+  // corner Cs of a bcc cell with fewer than its 8 body-center neighbours
+  const stretched_cs = get_pbc_image_sites(
+    make_crystal(6.5, [
+      [`Cs`, [0, 0, 0]],
+      [`Cs`, [0.5, 0.5, 0.5]],
+    ]),
+  )
+  const corner_bonds = electroneg_ratio(stretched_cs).filter(
+    ({ site_idx_1, site_idx_2 }) => site_idx_1 === 0 || site_idx_2 === 0,
+  )
+  expect(corner_bonds).toHaveLength(8)
+  for (const { bond_length } of corner_bonds) expect(bond_length).toBeCloseTo(5.629, 3)
 })
 
 test(`phase-2 doesn't float framework cation-formers beyond the cell to complete spectator shells`, () => {
@@ -401,7 +417,9 @@ test.each([
     content: nacl_poscar,
     filename: `NaCl-cubic.poscar`,
     expected_min_images: 19,
-    expected_max_images: 90, // phase 2 also completes shells of boundary-image copies
+    // phase 2 also completes shells of boundary-image copies, and reaches Na-Na contacts
+    // (4.02 A) against the metallic radii; every image still carries a drawn Na-Cl bond
+    expected_max_images: 100,
     description: `8 atoms (4 Na + 4 Cl) in cubic structure`,
   },
   {

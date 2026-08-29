@@ -393,8 +393,8 @@ describe(`compute_polyhedra`, () => {
   test(`explicit bonds with cell_shift close polyhedra across the cell boundary`, () => {
     // Ti near the x=0 face, octahedrally coordinated by 6 O at 1.8 Å. The 6th O sits in
     // the -x neighbor cell, reachable only through a bond cell_shift. Placing that vertex
-    // at the in-cell O instead put it 4.2 Å away, where the distance_factor trim dropped
-    // it and left a square pyramid of half the volume.
+    // at the in-cell O instead put it 4.2 Å away, which skewed the octahedron into a
+    // lopsided hull of the wrong volume.
     const structure = make_crystal(6, [
       { element: `Ti`, abc: [0.1, 0.5, 0.5] },
       { element: `O`, abc: [0.4, 0.5, 0.5] },
@@ -482,12 +482,16 @@ describe(`compute_polyhedra`, () => {
 
   test(`recomputes when same structure coordinates mutate`, () => {
     const structure = make_nacl_cluster()
-    expect(compute_polyhedra(structure, octahedral_bonds)).toHaveLength(1)
+    expect(compute_polyhedra(structure, octahedral_bonds)[0].volume).toBeCloseTo(
+      (4 / 3) * 8,
+      12,
+    )
 
-    structure.sites[1].xyz = [100, 100, 100] as Vec3
-    structure.sites[2].xyz = [-100, -100, -100] as Vec3
-    structure.sites[3].xyz = [100, -100, 100] as Vec3
-    expect(compute_polyhedra(structure, octahedral_bonds)).toHaveLength(0)
+    // stretch the +x Cl to 4 Å: a square bipyramid with apices 4 and 2 above/below the base
+    structure.sites[1].xyz = [9, 5, 5] as Vec3
+    const [poly] = compute_polyhedra(structure, octahedral_bonds)
+    expect(poly.volume).toBeCloseTo((1 / 3) * 8 * (4 + 2), 12)
+    expect(poly.vertices).toContainEqual([9, 5, 5])
   })
 
   // Timing lives in perf-baselines.test.ts (its 2x band on the 8000-site detect also catches a
@@ -503,18 +507,26 @@ describe(`compute_polyhedra`, () => {
 })
 
 describe(`VESTA-style detection rules`, () => {
-  test(`distance trim: over-long bonds don't inflate PO4 tetrahedra`, () => {
+  test(`every bonded anion is a vertex, even a long one (tetragonal BaTiO3 Ti-O)`, () => {
+    // Ferroelectric BaTiO3 has Ti off-center in its octahedron: 5 O at 1.83-2.0 Å and the
+    // 6th at 2.39 Å (1.31x the shortest). The bond detector keeps that bond, so the
+    // polyhedron must close into an octahedron rather than a square pyramid - a 30%
+    // distance trim used to drop the 6th vertex and halve the volume.
     const structure = make_crystal(12, [
-      ...tetrahedron_sites(`P`, `O`, [6, 6, 6], 1.55),
-      // two spurious long bonds at 2.5 Å that a noisy bond graph might contain
-      { element: `O`, xyz: [8.5, 6, 6] as Vec3 },
-      { element: `O`, xyz: [6, 8.5, 6] as Vec3 },
+      { element: `Ti`, xyz: [6, 6, 6] as Vec3 },
+      { element: `O`, xyz: [6, 6, 4.17] as Vec3 }, // 1.83 Å
+      { element: `O`, xyz: [8, 6, 6] as Vec3 }, // 2.0 Å
+      { element: `O`, xyz: [4, 6, 6] as Vec3 },
+      { element: `O`, xyz: [6, 8, 6] as Vec3 },
+      { element: `O`, xyz: [6, 4, 6] as Vec3 },
+      { element: `O`, xyz: [6, 6, 8.39] as Vec3 }, // 2.39 Å
     ])
-    const polyhedra = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4, 5, 6]))
-    expect(polyhedra).toHaveLength(1)
-    // trimmed to the true tetrahedron
-    expect([...polyhedra[0].vertex_site_idxs].toSorted((a, b) => a - b)).toEqual([1, 2, 3, 4])
-    expect(polyhedra[0].faces).toHaveLength(4)
+    const [poly, ...rest] = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4, 5, 6]))
+    expect(rest).toHaveLength(0)
+    expect([...poly.vertex_site_idxs].toSorted((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(poly.faces).toHaveLength(8)
+    // square base of side 2*sqrt(2) with apices 1.83 and 2.39 above/below it
+    expect(poly.volume).toBeCloseTo((1 / 3) * 8 * (1.83 + 2.39), 10)
   })
 
   test(`cation-cation bonds don't contaminate vertices (Ti-Ba in perovskites)`, () => {

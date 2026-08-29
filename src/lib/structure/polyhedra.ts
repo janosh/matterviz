@@ -23,8 +23,6 @@ interface PolyhedraOptions {
   electronegativity_margin?: number // vertex must be > center EN + margin
 }
 
-// Vertices are kept within shortest-bond * (1 + DISTANCE_FACTOR) of the center
-const DISTANCE_FACTOR = 0.3
 // Species whose mean bond dist / covalent-radii sum exceeds this are hidden when a
 // strongly-bound framework species exists (e.g. lone-pair Bi3+)
 const WEAK_BOND_NORM = 1.15
@@ -414,9 +412,9 @@ function is_anion_vertex(
 // === Top-level polyhedra computation ===
 
 // Detect coordination polyhedra from the rendered bond graph, VESTA-style:
-// vertices are anion-former neighbors (nonmetals/metalloids more electronegative
-// than the center) within `1 + distance_factor` of the shortest such bond, so
-// over-long bond-graph noise doesn't inflate e.g. PO4 tetrahedra. Spectator A-site
+// vertices are every bonded anion-former neighbor (nonmetals/metalloids more
+// electronegative than the center) - rejecting an over-long contact is the bond
+// detector's job, so there is no extra distance trim here. Spectator A-site
 // cations (alkali, heavy alkaline-earth) are skipped when framework cations exist,
 // CN > max_neighbors hulls (e.g. CN-12 cuboctahedra) are skipped, and
 // boundary-truncated copies only render when their vertex count matches the max
@@ -459,7 +457,7 @@ export function compute_polyhedra(
   // loop (one entry per element, shared by all centers of that element).
   type CenterInfo = {
     accepts: Set<ElementSymbol>
-    radii_sums: Map<ElementSymbol, number | null>
+    radii_sums: Map<ElementSymbol, number> // covalent-radii sums, only where both known
   }
   const center_info_cache = new Map<ElementSymbol, CenterInfo>()
   const center_info = (element: ElementSymbol): CenterInfo => {
@@ -473,12 +471,11 @@ export function compute_polyhedra(
           is_anion_vertex(center_en, data?.metal === true, n_elem, electronegativity_margin),
         ),
       )
-      const radii_sums = new Map(
-        unique_elements.map((n_elem) => {
-          const r_n = element_by_symbol.get(n_elem)?.covalent_radius ?? null
-          return [n_elem, r_center !== null && r_n !== null ? r_center + r_n : null] as const
-        }),
-      )
+      const radii_sums = new Map<ElementSymbol, number>()
+      for (const n_elem of unique_elements) {
+        const r_n = element_by_symbol.get(n_elem)?.covalent_radius ?? null
+        if (r_center !== null && r_n !== null) radii_sums.set(n_elem, r_center + r_n)
+      }
       info = { accepts, radii_sums }
       center_info_cache.set(element, info)
     }
@@ -503,11 +500,12 @@ export function compute_polyhedra(
     if (accepts.size === 0) continue
     const [cx, cy, cz] = sites[site_idx].xyz
 
-    // Bonded anion vertices (parallel arrays to avoid per-vertex object churn)
-    const vert_idxs: number[] = []
-    const vert_positions: Vec3[] = []
-    const vert_dists: number[] = []
-    let min_dist = Infinity
+    // Every bonded anion is a vertex, deliberately without a distance trim (see the shell
+    // penalties in electroneg_ratio): the 2.39 A Ti-O bond of tetragonal BaTiO3 (1.31x the
+    // shortest) closes the octahedron the way the drawn bonds do, not a square pyramid.
+    const vertex_site_idxs: number[] = []
+    const vertex_positions: Vec3[] = []
+    let [norm_sum, norm_count] = [0, 0]
     for (const { site_idx: idx, offset } of neighbors) {
       const n_elem = site_elements[idx]
       if (!n_elem || !accepts.has(n_elem)) continue
@@ -520,7 +518,7 @@ export function compute_polyhedra(
       // and disagree at ~1e-15, six orders below any real neighbor separation.
       if (
         has_shifted_bonds &&
-        vert_positions.some(
+        vertex_positions.some(
           (prev) =>
             Math.abs(prev[0] - pos[0]) < 1e-6 &&
             Math.abs(prev[1] - pos[1]) < 1e-6 &&
@@ -528,31 +526,12 @@ export function compute_polyhedra(
         )
       )
         continue
-      const dist = Math.hypot(pos[0] - cx, pos[1] - cy, pos[2] - cz)
-      vert_idxs.push(idx)
-      vert_positions.push(pos)
-      vert_dists.push(dist)
-      if (dist < min_dist) min_dist = dist
-    }
-    if (vert_idxs.length < min_neighbors) continue
-
-    // Trim over-long bonds relative to the shortest anion bond (VESTA-like local
-    // cutoff): keeps distorted/Jahn-Teller octahedra intact but rejects e.g. a 5th
-    // oxygen at 2.5 Å around P whose true tetrahedron has 1.5 Å bonds
-    const cutoff = min_dist * (1 + DISTANCE_FACTOR)
-    const vertex_site_idxs: number[] = []
-    const vertex_positions: Vec3[] = []
-    let [norm_sum, norm_count] = [0, 0]
-    for (let pos = 0; pos < vert_idxs.length; pos++) {
-      if (vert_dists[pos] > cutoff) continue
-      const idx = vert_idxs[pos]
       vertex_site_idxs.push(idx)
-      vertex_positions.push(vert_positions[pos])
-      // Bond softness: how stretched the kept bonds are vs the covalent-radii sum
-      const n_elem = site_elements[idx]
-      const r_sum = n_elem ? (radii_sums.get(n_elem) ?? null) : null
-      if (r_sum !== null) {
-        norm_sum += vert_dists[pos] / r_sum
+      vertex_positions.push(pos)
+      // Bond softness: how stretched the bonds are vs the covalent-radii sum
+      const r_sum = radii_sums.get(n_elem)
+      if (r_sum !== undefined) {
+        norm_sum += Math.hypot(pos[0] - cx, pos[1] - cy, pos[2] - cz) / r_sum
         norm_count++
       }
     }

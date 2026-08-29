@@ -14,6 +14,7 @@ KEY_MAP = {
     "ICSD oxidation states": "icsd_oxidation_states",
     "Ionic radii": "ionic_radii",
     "Shannon radii": "shannon_radii",
+    "Metallic radius": "metallic_radius",
 }
 
 

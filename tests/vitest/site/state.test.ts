@@ -1,7 +1,10 @@
 import { goto } from '$app/navigation'
+import type { NavGroup } from '$site/state.svelte'
 import {
   file_param,
-  group_demo_routes,
+  group_nav_routes,
+  NAV_GROUPS,
+  nav_routes,
   normalize_static_url,
   set_file_param,
 } from '$site/state.svelte'
@@ -41,54 +44,51 @@ describe(`?file= helpers`, () => {
   })
 })
 
-describe(`group_demo_routes`, () => {
-  test.each([
-    [`parent first`, [`/plot`, `/plot/color-bar`, `/plot/scatter`]],
-    [`parent last`, [`/plot/color-bar`, `/plot/scatter`, `/plot`]],
-    [`parent in middle`, [`/plot/color-bar`, `/plot`, `/plot/scatter`]],
-  ])(`includes parent in dropdown (%s)`, (_desc, demos) => {
-    const result = group_demo_routes(demos)
-    const [parent, children] = result[0] as [string, string[]]
+describe(`group_nav_routes`, () => {
+  const groups: NavGroup[] = [
+    { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/neb`] },
+    { label: `Plots`, href: `/plot`, prefixes: [`/plot`] },
+  ]
 
-    expect(result).toHaveLength(1)
-    expect(parent).toBe(`/plot`)
-    expect(children).toContain(`/plot`)
-    expect(children).toHaveLength(3)
+  test(`orders children by prefix, then path, and drops empty groups`, () => {
+    const result = group_nav_routes(
+      [`/plot/scatter`, `/neb`, `/structure/slab`, `/structure`, `/plot`],
+      groups,
+    )
+    expect(result).toEqual([
+      {
+        label: `Structure`,
+        href: `/structure`,
+        children: [`/structure`, `/structure/slab`, `/neb`],
+      },
+      { label: `Plots`, href: `/plot`, children: [`/plot`, `/plot/scatter`] },
+    ])
+    expect(group_nav_routes([`/neb`], groups)).toHaveLength(1)
+    expect(group_nav_routes([], groups)).toEqual([])
   })
 
-  test.each([
-    [`standalone routes only`, [`/about`, `/contact`], [`/about`, `/contact`]],
-    [
-      `mixed standalone and grouped`,
-      [`/about`, `/plot`, `/plot/color-bar`, `/contact`],
-      [`/about`, `/contact`, [`/plot`, [`/plot`, `/plot/color-bar`]]],
-    ],
-    [
-      `parent without own route file`,
-      [`/structure/viewer`, `/structure/builder`],
-      [[`/structure`, [`/structure/builder`, `/structure/viewer`]]],
-    ],
-    [
-      `deeply nested routes`,
-      [`/plot`, `/plot/scatter`, `/plot/scatter/3d`],
-      [[`/plot`, [`/plot`, `/plot/scatter`, `/plot/scatter/3d`]]],
-    ],
-    [
-      `alphabetically sorted`,
-      [`/zebra`, `/alpha`, `/beta/child`, `/beta`],
-      [`/alpha`, [`/beta`, [`/beta`, `/beta/child`]], `/zebra`],
-    ],
-    [`empty input`, [], []],
-    [
-      `multiple parent routes with children`,
-      [`/plot`, `/plot/scatter`, `/structure`, `/structure/viewer`, `/about`],
-      [
-        `/about`,
-        [`/plot`, [`/plot`, `/plot/scatter`]],
-        [`/structure`, [`/structure`, `/structure/viewer`]],
-      ],
-    ],
-  ])(`handles %s`, (_desc, demos, expected) => {
-    expect(group_demo_routes(demos)).toEqual(expected)
+  test(`a prefix matches whole segments only`, () => {
+    expect(() => group_nav_routes([`/plotter`], groups)).toThrow(
+      `routes not in any NAV_GROUPS entry: /plotter`,
+    )
+  })
+
+  test(`the first group claims a route shared by two prefixes`, () => {
+    const overlapping = [...groups, { label: `Again`, href: `/again`, prefixes: [`/neb`] }]
+    const result = group_nav_routes([`/neb`, `/neb/demo`], overlapping)
+    expect(result).toEqual([
+      { label: `Structure`, href: `/structure`, children: [`/neb`, `/neb/demo`] },
+    ])
+  })
+
+  test(`every real route is either hidden or in a group`, () => {
+    // nav_routes is built at import time from the route glob and throws on unclaimed routes
+    const all_children = nav_routes.flatMap(({ children }) => children ?? [])
+    expect(all_children).toContain(`/structure/slab`)
+    expect(all_children).toContain(`/acknowledgements`)
+    expect(all_children.some((route) => route.startsWith(`/layout`))).toBe(false)
+    expect(all_children.some((route) => route.startsWith(`/test`))).toBe(false)
+    expect(new Set(all_children).size).toBe(all_children.length)
+    expect(nav_routes.map(({ label }) => label)).toEqual(NAV_GROUPS.map(({ label }) => label))
   })
 })

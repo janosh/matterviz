@@ -674,12 +674,13 @@
   class:spectroscopy-mode={spectroscopy_open}
   {@attach forward_window_keydown({ handle: onkeydown })}
 >
+  <!-- z-index 3: above the structure viewer's AtomLegend (2), which shares the bottom edge -->
   {#if warning_msg}
     <StatusMessage
       bind:message={warning_msg}
       type="warning"
       dismissible
-      style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 2; font-size: 0.85em"
+      style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
     />
   {/if}
   {#if frame_error_msg}
@@ -687,7 +688,7 @@
       bind:message={frame_error_msg}
       type="error"
       dismissible
-      style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 2; font-size: 0.85em"
+      style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
     />
   {/if}
   <SequenceControlBar

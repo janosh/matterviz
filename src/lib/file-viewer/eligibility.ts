@@ -9,7 +9,9 @@ import {
   TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS_REGEX,
   VASP_STRUCTURE_FILES,
+  VASP_TRAJECTORY_FILES,
   VASP_VOLUMETRIC_REGEX,
+  VASPRUN_REGEX,
   XYZ_EXTENSIONS,
 } from '$lib/constants'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '$lib/file-viewer/types'
@@ -55,14 +57,18 @@ export const is_matterviz_filename = (filename: unknown): boolean => {
 }
 
 // Conservative auto-open list: only unambiguous structure / trajectory / volumetric /
-// Fermi filenames. No JSON/YAML/XML, no keyword+.log/.out/.dat/.data heuristics; `.data` is
-// left out because it is as often a LAMMPS data file as anything else.
+// Fermi filenames. No JSON/YAML/XML (vasprun.xml excepted: the name is unambiguous), no
+// keyword+.log/.out/.dat/.data heuristics; `.data` is left out because it is as often a
+// LAMMPS data file as anything else.
 const AUTO_RENDER_EXT_RE = ext_regex([
   ...STRUCTURE_EXTENSIONS.filter((ext) => ext !== `.data`),
   ...XYZ_EXTENSIONS,
   ...TRAJ_EXTENSIONS,
 ])
-const AUTO_RENDER_VASP_NAME_RE = filename_token_regex([...VASP_STRUCTURE_FILES, `xdatcar`])
+const AUTO_RENDER_VASP_NAME_RE = filename_token_regex([
+  ...VASP_STRUCTURE_FILES,
+  ...VASP_TRAJECTORY_FILES,
+])
 
 export const is_auto_renderable_filename = (filename: unknown): boolean => {
   const normalized = normalize_eligible_filename(filename)
@@ -71,6 +77,7 @@ export const is_auto_renderable_filename = (filename: unknown): boolean => {
   return (
     is_fermi_or_volumetric(normalized) ||
     AUTO_RENDER_VASP_NAME_RE.test(normalized) ||
+    VASPRUN_REGEX.test(normalized) ||
     AUTO_RENDER_EXT_RE.test(normalized) ||
     (HDF5_EXT_REGEX.test(normalized) &&
       (/vaspout/i.test(normalized) || TRAJ_KEYWORDS_REGEX.test(normalized)))
