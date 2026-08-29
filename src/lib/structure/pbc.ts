@@ -148,16 +148,16 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
   // pair cannot bond (unknown radius). One read in the hot loop below instead of a radius
   // sum, and the same metallic-vs-covalent choice electroneg_ratio makes.
   const n_elem = present_elements.length
+  const elem_data = present_elements.map((sym) => element_by_symbol.get(sym as ElementSymbol))
   const pair_reach = new Float64Array(n_elem * n_elem)
   let max_bond_dist = 0
   for (let id_a = 0; id_a < n_elem; id_a++) {
-    const elem_a = element_by_symbol.get(present_elements[id_a] as ElementSymbol)
     for (let id_b = 0; id_b < n_elem; id_b++) {
-      const elem_b = element_by_symbol.get(present_elements[id_b] as ElementSymbol)
-      const expected = expected_bond_length(elem_a, elem_b)
+      const expected = expected_bond_length(elem_data[id_a], elem_data[id_b])
       if (expected === null) continue
-      pair_reach[id_a * n_elem + id_b] = expected + BOND_SLACK
-      if (expected + BOND_SLACK > max_bond_dist) max_bond_dist = expected + BOND_SLACK
+      const reach = expected + BOND_SLACK
+      pair_reach[id_a * n_elem + id_b] = reach
+      if (reach > max_bond_dist) max_bond_dist = reach
     }
   }
 
@@ -193,7 +193,7 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
     // Bond-test anchors = base atoms + phase-1 boundary images, so every displayed
     // boundary cation gets its shell completed (VESTA-like; e.g. all 8 rutile corners).
     // Anchor = base atom or phase-1 image; anchor_src maps each back to the site it copies
-    // so radius/EN/skipped stay single-sourced instead of being duplicated per anchor.
+    // so its element id (and with it the pair reach and skip flag) stays single-sourced.
     const anchor_positions: Vec3[] = structure.sites.map((site) => site.xyz)
     const anchor_src: number[] = structure.sites.map((_site, idx) => idx)
     for (const [src_idx, img_xyz] of image_sites) {

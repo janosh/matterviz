@@ -694,6 +694,9 @@ describe(`Molecular Bonding Analysis`, () => {
 // interior ones), which also pins the PBC boundary completion in find_image_atoms.
 
 const wrap_frac = (val: number) => val - Math.floor(val)
+// sites of one element at the given fractional coordinates
+const sites_at = (element: ElementSymbol, abcs: Vec3[]) =>
+  abcs.map((abc) => ({ element, abc }))
 const fcc_offsets: Vec3[] = [
   [0, 0, 0],
   [0.5, 0.5, 0],
@@ -713,12 +716,10 @@ const fcc = (element: ElementSymbol, basis: Vec3[] = [[0, 0, 0]]) =>
     })),
   )
 const bcc = (element: ElementSymbol) =>
-  (
-    [
-      [0, 0, 0],
-      [0.5, 0.5, 0.5],
-    ] as Vec3[]
-  ).map((abc) => ({ element, abc }))
+  sites_at(element, [
+    [0, 0, 0],
+    [0.5, 0.5, 0.5],
+  ])
 // Expand Wyckoff representatives through the 8 operations of Pnma (No. 62), deduping
 // the special positions (4a, 4c) that fewer ops map to distinct sites
 const pnma = (element: ElementSymbol, [x, y, z]: Vec3) => {
@@ -732,14 +733,13 @@ const pnma = (element: ElementSymbol, [x, y, z]: Vec3) => {
     [x, -y + 0.5, z],
     [-x + 0.5, y + 0.5, z + 0.5],
   ]
-  const seen = new Set<string>()
-  return images.flatMap((abc) => {
-    const wrapped = abc.map(wrap_frac) as Vec3
-    const key = wrapped.map((val) => val.toFixed(5)).join(`,`)
-    if (seen.has(key)) return []
-    seen.add(key)
-    return [{ element, abc: wrapped }]
-  })
+  const unique = new Map<string, Vec3>()
+  for (const image of images) {
+    const abc = image.map(wrap_frac) as Vec3
+    const key = abc.map((val) => val.toFixed(5)).join(`,`)
+    if (!unique.has(key)) unique.set(key, abc)
+  }
+  return sites_at(element, [...unique.values()])
 }
 const tetragonal = (a: number, c: number): Vec3[] => [
   [a, 0, 0],
@@ -869,18 +869,16 @@ const cn_benchmark: [
     5.416,
     [
       ...fcc(`Fe`),
-      ...(
-        [
-          [0.385, 0.385, 0.385],
-          [0.615, 0.615, 0.615],
-          [0.885, 0.115, 0.615],
-          [0.115, 0.615, 0.885],
-          [0.615, 0.885, 0.115],
-          [0.115, 0.885, 0.385],
-          [0.885, 0.385, 0.115],
-          [0.385, 0.115, 0.885],
-        ] as Vec3[]
-      ).map((abc) => ({ element: `S` as const, abc })),
+      ...sites_at(`S`, [
+        [0.385, 0.385, 0.385],
+        [0.615, 0.615, 0.615],
+        [0.885, 0.115, 0.615],
+        [0.115, 0.615, 0.885],
+        [0.615, 0.885, 0.115],
+        [0.115, 0.885, 0.385],
+        [0.885, 0.385, 0.115],
+        [0.385, 0.115, 0.885],
+      ]),
     ],
     { Fe: 6, S: 4 },
   ],

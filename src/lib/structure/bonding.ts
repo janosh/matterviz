@@ -1283,17 +1283,17 @@ export function electroneg_ratio(
     elem_spectator[elem_id] = is_spectator_center(symbol) ? 1 : 0
   }
 
-  // Per-element-pair acceptance table. bond_strength and electroneg_weight depend only on
-  // the element pair, and dist_weight = exp(-((d/expected - 1)^2)/0.18) is at most 1, so
-  // the whole pair is unreachable when bond_strength * electroneg_weight <= threshold, and
-  // otherwise passes only while (d/expected - 1)^2 < -0.18*ln(threshold / that product).
-  // That is a band around `expected`, not just a ceiling: dist_weight is a Gaussian in
-  // (ratio - 1), so an over-SHORT contact fails too, and dropping the floor would let one
-  // into `closest` and over-penalize every real bond on that atom. Inverting both edges to
-  // distances turns the candidate loop's cutoff into two array reads and lets the neighbor
-  // search run at the true reach instead of max_distance_ratio. For rocksalt that is
-  // 4.2 A rather than 6.6. Both bounds stay zero for pairs with an unknown radius, so those
-  // fall out of the ceiling test in pass 1 without a special case.
+  // Per-element-pair acceptance table. pair_factor depends only on the element pair, and
+  // dist_weight = exp(-((d/expected - 1)^2)/0.18) is at most 1, so the whole pair is
+  // unreachable when pair_factor <= threshold, and otherwise passes only while
+  // (d/expected - 1)^2 < -0.18*ln(threshold / pair_factor). That is a band around
+  // `expected`, not just a ceiling: dist_weight is a Gaussian in (ratio - 1), so an
+  // over-SHORT contact fails too, and dropping the floor would let one into `closest` and
+  // over-penalize every real bond on that atom. Inverting both edges to distances turns the
+  // candidate loop's cutoff into two array reads and lets the neighbor search run at the
+  // true reach instead of max_distance_ratio: 4.2 A rather than 6.6 for rocksalt. Both
+  // bounds stay zero for a pair with an unknown radius, so it falls out of the ceiling test
+  // in pass 1 without a special case.
   const pair_expected = new Float64Array(n_elem * n_elem)
   const pair_factor = new Float64Array(n_elem * n_elem)
   const pair_metallic = new Uint8Array(n_elem * n_elem)
@@ -1336,10 +1336,13 @@ export function electroneg_ratio(
     sorted: false, // every contact is filtered through the reach band below regardless
   })
 
-  // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, strength):
-  // no per-candidate object in the hot loop
+  // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, normalized
+  // distance, metallic-pair flag, strength): no per-candidate object in the hot loop, and
+  // passes 2-4 read the pair's class and normalized distance instead of recomputing them
   let cand_slot: Int32Array = new Int32Array(Math.max(256, n_sites * 4))
   let cand_center: Int32Array = new Int32Array(cand_slot.length)
+  let cand_norm: Float64Array = new Float64Array(cand_slot.length)
+  let cand_metallic: Int32Array = new Int32Array(cand_slot.length)
   let cand_strength: Float64Array = new Float64Array(cand_slot.length)
   let n_cand = 0
   // Closest normalized contact per ORIGINAL atom, so image atoms and their originals see
@@ -1362,8 +1365,7 @@ export function electroneg_ratio(
       const dist = distances[slot]
       if (dist < min_bond_dist) continue
       // Two table reads replace the radius sum, the ratio cutoff and the whole
-      // metal/nonmetal/electronegativity branch chain. Both bounds are zero for pairs no
-      // distance can save, so a missing covalent radius falls out of the ceiling test too.
+      // metal/nonmetal/electronegativity branch chain
       const pair = pair_row + elem_ids[partner]
       if (dist > reach_hi[pair] || dist < reach_lo[pair]) continue
 
@@ -1377,10 +1379,14 @@ export function electroneg_ratio(
       if (n_cand === cand_slot.length) {
         cand_slot = grow_i32(cand_slot, n_cand + 1)
         cand_center = grow_i32(cand_center, n_cand + 1)
+        cand_norm = grow_f64(cand_norm, n_cand + 1)
+        cand_metallic = grow_i32(cand_metallic, n_cand + 1)
         cand_strength = grow_f64(cand_strength, n_cand + 1)
       }
       cand_slot[n_cand] = slot
       cand_center[n_cand] = center
+      cand_norm[n_cand] = norm_dist
+      cand_metallic[n_cand] = pair_metallic[pair]
       cand_strength[n_cand] = pair_factor[pair] * Math.exp(-((norm_dist - 1) ** 2) / 0.18)
       n_cand++
     }
@@ -1391,19 +1397,15 @@ export function electroneg_ratio(
   // across that environment. One-sided so short multiple bonds (M-CO, C=C) pass untouched.
   const stretch = (norm_dist: number): number =>
     norm_dist <= 1 ? 1 : Math.exp(-(((norm_dist - 1) / STRETCH_WIDTH) ** 2))
-  const pair_of = (cand: number): number =>
-    elem_ids[cand_center[cand]] * n_elem + elem_ids[neighbors[cand_slot[cand]]]
-  const norm_of = (cand: number): number =>
-    distances[cand_slot[cand]] / pair_expected[pair_of(cand)]
 
   // Pass 2: shell-aware strength for every non-metallic contact. A contact much longer
   // (relative to radii) than the atom's closest one is penalized at each end. Provisional:
   // pass 3 tightens contacts between inner atoms once it knows which atoms those are.
   for (let cand = 0; cand < n_cand; cand++) {
-    if (pair_metallic[pair_of(cand)]) continue
+    if (cand_metallic[cand]) continue
     const orig_a = orig_idxs[cand_center[cand]]
     const orig_b = orig_idxs[neighbors[cand_slot[cand]]]
-    const norm_dist = norm_of(cand)
+    const norm_dist = cand_norm[cand]
     let strength = cand_strength[cand]
     if (norm_dist > closest[orig_a]) {
       strength *= Math.exp(-(norm_dist / closest[orig_a] - 1) / 0.5)
@@ -1441,11 +1443,11 @@ export function electroneg_ratio(
   // aggregated over every periodic image of an atom would multiply by the copy count.
   const site_n_anion = new Int32Array(n_sites)
   for (let cand = 0; cand < n_cand; cand++) {
-    if (pair_metallic[pair_of(cand)]) continue
+    if (cand_metallic[cand]) continue
     const site_a = cand_center[cand]
     const site_b = neighbors[cand_slot[cand]]
     if (!is_terminal(site_a) && !is_terminal(site_b)) {
-      cand_strength[cand] *= stretch(norm_of(cand))
+      cand_strength[cand] *= stretch(cand_norm[cand])
     }
     if (cand_strength[cand] <= strength_threshold) continue
     if (elem_anion_former[elem_ids[site_b]]) site_n_anion[site_a]++
@@ -1464,12 +1466,12 @@ export function electroneg_ratio(
   // than in the element" test as pass 3 (Ti-Ti in Ti2O is 1.01x the metallic sum and
   // bonds, Cu-Cu in Cu2O is 1.18x and does not).
   for (let cand = 0; cand < n_cand; cand++) {
-    if (!pair_metallic[pair_of(cand)]) continue
+    if (!cand_metallic[cand]) continue
     const site_a = cand_center[cand]
     const site_b = neighbors[cand_slot[cand]]
     const orig_a = orig_idxs[site_a]
     const orig_b = orig_idxs[site_b]
-    const norm_dist = norm_of(cand)
+    const norm_dist = cand_norm[cand]
     let strength = cand_strength[cand]
     const shell_a = norm_dist / closest_metallic[orig_a] - 1
     const shell_b = norm_dist / closest_metallic[orig_b] - 1

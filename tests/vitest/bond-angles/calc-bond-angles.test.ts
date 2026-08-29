@@ -204,11 +204,10 @@ describe(`periodic bonding`, () => {
   test.each([
     [`mp-1`, 56, 0],
     [`mp-2`, 264, 12],
-    // LuAl2 is a MgCu2-type Laves phase: Al-Al (2.727 Å) is the shortest bond in the
-    // structure and forms the tetrahedral B-site network. It used to be suppressed by a
-    // flat same-species penalty, which is now applied only to contacts that sit behind a
-    // shorter one, so those angles are counted (303 -> 339 in the finite box).
-    [`mp-1234`, 1200, 339],
+    // LuAl2 is a MgCu2-type Laves phase. With metallic radii every Al sees its full
+    // 6 Al + 6 Lu shell and every Lu its 12 Al + 4 Lu shell, so the periodic count is
+    // exactly 16 * C(12, 2) + 8 * C(16, 2) = 2016.
+    [`mp-1234`, 2016, 564],
   ])(
     `%s has %s angles across periodic boundaries but only %s in the finite box`,
     (id, periodic, bare) => {

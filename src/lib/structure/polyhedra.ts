@@ -412,9 +412,9 @@ function is_anion_vertex(
 // === Top-level polyhedra computation ===
 
 // Detect coordination polyhedra from the rendered bond graph, VESTA-style:
-// vertices are anion-former neighbors (nonmetals/metalloids more electronegative
-// than the center) within `1 + distance_factor` of the shortest such bond, so
-// over-long bond-graph noise doesn't inflate e.g. PO4 tetrahedra. Spectator A-site
+// vertices are every bonded anion-former neighbor (nonmetals/metalloids more
+// electronegative than the center) - rejecting an over-long contact is the bond
+// detector's job, so there is no extra distance trim here. Spectator A-site
 // cations (alkali, heavy alkaline-earth) are skipped when framework cations exist,
 // CN > max_neighbors hulls (e.g. CN-12 cuboctahedra) are skipped, and
 // boundary-truncated copies only render when their vertex count matches the max
@@ -500,11 +500,9 @@ export function compute_polyhedra(
     if (accepts.size === 0) continue
     const [cx, cy, cz] = sites[site_idx].xyz
 
-    // Every bonded anion is a vertex. There is deliberately no distance trim here: the
-    // bond graph is the single source of truth, so the 2.39 A Ti-O bond of tetragonal
-    // BaTiO3 (1.31x the shortest) closes the octahedron the way the drawn bonds do,
-    // rather than leaving a square pyramid. Rejecting a too-long contact is the bond
-    // detector's job (see the shell penalties in electroneg_ratio).
+    // Every bonded anion is a vertex, deliberately without a distance trim (see the shell
+    // penalties in electroneg_ratio): the 2.39 A Ti-O bond of tetragonal BaTiO3 (1.31x the
+    // shortest) closes the octahedron the way the drawn bonds do, not a square pyramid.
     const vertex_site_idxs: number[] = []
     const vertex_positions: Vec3[] = []
     let [norm_sum, norm_count] = [0, 0]
