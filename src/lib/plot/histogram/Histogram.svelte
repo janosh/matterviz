@@ -71,7 +71,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '$lib/math'
-  import { is_activation_key, vec2_equal } from '$lib/plot/core/interactions'
+  import { focus_left, is_activation_key, vec2_equal } from '$lib/plot/core/interactions'
   import {
     create_roving_focus,
     ROVING_ATTR,
@@ -596,6 +596,9 @@
                 roving.focusin(evt)
                 // Focus is the keyboard's hover; without it the tooltip never opens
                 handle_bar_hover(hist, bin)(evt)
+              }}
+              onfocusout={(evt) => {
+                if (focus_left(evt, frame.svg_element)) clear_hover()
               }}
               onclick={handle_bar_click(hist, bin)}
               onkeydown={(evt) => {

@@ -212,10 +212,14 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   // accepts both, id first, mirroring resolve_node_ref.
   const keys: (string | number)[] = data.nodes.map((node, idx) => node.id ?? idx)
   const by_ref = new Map<string | number, number>()
+  // Explicit ids claim their key across the whole graph before any label is considered:
+  // otherwise an earlier node's label shadows a later node's id, and a link naming that
+  // id resolves to the wrong node - which the fold would then remap or swallow.
   data.nodes.forEach((node, idx) => {
-    for (const ref of [node.label, node.id]) {
-      if (ref !== undefined && !by_ref.has(ref)) by_ref.set(ref, idx)
-    }
+    if (node.id !== undefined && !by_ref.has(node.id)) by_ref.set(node.id, idx)
+  })
+  data.nodes.forEach((node, idx) => {
+    if (node.label !== undefined && !by_ref.has(node.label)) by_ref.set(node.label, idx)
   })
   const in_range = (idx: number) => idx >= 0 && idx < data.nodes.length
   // -1 for a reference that names no node; such a link is left for the layout to report

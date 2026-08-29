@@ -54,7 +54,7 @@
     X2_AXIS_DEFAULTS,
   } from '$lib/plot/core/axis-utils'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
-  import { is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
+  import { focus_left, is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
   import {
     create_roving_focus,
     ROVING_ATTR,
@@ -776,6 +776,9 @@
             onfocusin={(evt) => {
               roving.focusin(evt)
               handle_box_hover(box_item, color)(evt)
+            }}
+            onfocusout={(evt) => {
+              if (focus_left(evt, frame.svg_element)) clear_hover()
             }}
             style:cursor={on_box_click ? `pointer` : undefined}
             opacity={frame.hovered_series_idx !== null &&

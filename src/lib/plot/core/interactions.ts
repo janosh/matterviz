@@ -25,6 +25,14 @@ export const pointer_pos = (
 export const is_activation_key = (evt: KeyboardEvent): boolean =>
   evt.key === `Enter` || evt.key === ` `
 
+// True when focus is leaving `root` entirely rather than moving between marks inside it.
+// Charts treat focus as the keyboard's hover, so a focusout that lands on the next mark is
+// the equivalent of sliding the pointer along and must not clear the tooltip; one that
+// leaves the chart is the equivalent of mouseleave and must. A null relatedTarget (focus
+// going nowhere) counts as leaving.
+export const focus_left = (event: FocusEvent, root: Element | null | undefined): boolean =>
+  !root || !(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)
+
 // Resolve a delegated event to the integer value of the nearest ancestor's data
 // attribute (e.g. data-sunburst-node-idx), scoped to `root` so targets outside the
 // component don't leak in. Returns null when the event didn't hit an indexed element.

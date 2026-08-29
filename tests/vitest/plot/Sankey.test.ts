@@ -262,6 +262,32 @@ describe(`bucket_sankey_data`, () => {
     ])
   })
 
+  // An earlier label must not shadow a later node's explicit id. Here the shadowing node
+  // carries flow onward while the id node is terminal, so resolving to the wrong one
+  // changes whether the link may be folded at all.
+  test(`an explicit id outranks an earlier node's matching label`, () => {
+    const shadowed = {
+      nodes: [
+        { id: `src` },
+        { label: `X` }, // shadows node 3's id, and is NOT terminal
+        { id: `big` },
+        { id: `X` }, // terminal, so a link naming `X` is foldable
+        { id: `t` },
+        { id: `downstream` },
+      ],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `X`, value: 1 },
+        { source: `src`, target: `t`, value: 1 },
+        { source: 1, target: `downstream`, value: 1 }, // makes the label node non-terminal
+      ],
+    }
+    const { nodes } = bucket_sankey_data(shadowed, { min_fraction: 0.1 })
+    // Resolving `X` to the terminal node 3 lets both small links fold into one bucket;
+    // resolving it to the non-terminal node 1 would leave the graph untouched
+    expect(nodes.map((node) => node.id)).toContain(`src/Other`)
+  })
+
   test(`a bucket id that collides with a real node is made unique`, () => {
     const collide = {
       nodes: [{ id: `src` }, { id: `big` }, { id: `src/Other` }, { id: `t` }],

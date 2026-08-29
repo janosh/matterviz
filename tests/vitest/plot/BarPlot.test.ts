@@ -42,6 +42,32 @@ describe(`BarPlot`, () => {
     ])
   })
 
+  // Focus is the keyboard's hover, so leaving the chart is the keyboard's mouseleave.
+  // Arrowing between marks must not clear it, though - that is sliding along, not leaving.
+  test(`focus opens the tooltip, and only leaving the chart closes it`, async () => {
+    const on_bar_hover = vi.fn()
+    const plot = await mount_sized_bar_plot({ series: [basic], on_bar_hover })
+    const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
+
+    bars[0].dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenCalledOnce()
+
+    // Focus moving to a sibling mark keeps the hover
+    bars[0].dispatchEvent(
+      new FocusEvent(`focusout`, { bubbles: true, relatedTarget: bars[1] }),
+    )
+    await tick()
+    expect(on_bar_hover).not.toHaveBeenLastCalledWith(null)
+
+    // Focus leaving the chart clears it
+    bars[1].dispatchEvent(
+      new FocusEvent(`focusout`, { bubbles: true, relatedTarget: document.body }),
+    )
+    await tick()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+  })
+
   test(`arrow keys move the tab stop between marks`, async () => {
     const plot = await mount_sized_bar_plot({ series: [basic] })
     const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]

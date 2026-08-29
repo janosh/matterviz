@@ -55,7 +55,11 @@
     create_legend_visibility,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
+  import {
+    focus_left,
+    get_relative_coords,
+    is_activation_key,
+  } from '$lib/plot/core/interactions'
   import {
     create_roving_focus,
     ROVING_ATTR,
@@ -894,6 +898,9 @@
                       // Focus is the keyboard's hover: without this the tooltip never
                       // opens and on_bar_hover never fires for a keyboard user
                       handle_bar_hover(series_idx, bar_idx, color)(evt)
+                    }}
+                    onfocusout={(evt) => {
+                      if (focus_left(evt, frame.svg_element)) clear_hover()
                     }}
                     style:cursor={on_bar_click ? `pointer` : undefined}
                     onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
