@@ -23,6 +23,7 @@
     value_mode = $bindable(DEFAULTS[chart].value_mode),
     max_depth = $bindable(DEFAULTS[chart].max_depth),
     min_fraction = $bindable(DEFAULTS[chart].min_fraction),
+    max_children = $bindable(DEFAULTS[chart].max_children),
     show_labels = $bindable(DEFAULTS[chart].show_labels),
     label_text = $bindable(DEFAULTS[chart].label_text),
     zoom_on_click = $bindable(DEFAULTS[chart].zoom_on_click),
@@ -46,6 +47,7 @@
     value_mode?: SunburstValueMode
     max_depth?: number
     min_fraction?: number
+    max_children?: number
     show_labels?: boolean
     label_text?: SunburstLabelText
     zoom_on_click?: boolean
@@ -70,6 +72,7 @@
     value_mode,
     max_depth,
     min_fraction,
+    max_children,
     show_labels,
     label_text,
     zoom_on_click,
@@ -84,6 +87,7 @@
       value_mode,
       max_depth,
       min_fraction,
+      max_children,
       show_labels,
       label_text,
       zoom_on_click,
@@ -164,7 +168,10 @@
         >
       {/if}
       <NumberRangeInput min={0} max={0.2} step={0.005} bind:value={min_fraction}
-        >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction of total)</NumberRangeInput
+        >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction)</NumberRangeInput
+      >
+      <NumberRangeInput min={0} max={20} step={1} bind:value={max_children}
+        >Max children per parent (0 = all)</NumberRangeInput
       >
       <label>
         <span>Show {chart === `sunburst` ? `arc` : `cell`} labels</span>

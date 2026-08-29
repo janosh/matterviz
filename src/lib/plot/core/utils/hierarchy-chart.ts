@@ -132,7 +132,11 @@ export function compute_node_infos<Metadata>(
     )
     return {
       variants,
-      aria: `${node_display_name(arc)}: ${arc.value}`,
+      // What a bucket folded away is the one thing its name can't carry, and a
+      // screen reader has no tooltip to fall back on
+      aria: `${node_display_name(arc)}: ${arc.value}${
+        arc.other_count ? ` (${arc.other_count} grouped)` : ``
+      }`,
       fill,
       label_fill: contrast(fill),
       ...(clickable ? { clickable: clickable(arc) } : {}),

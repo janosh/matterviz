@@ -131,13 +131,11 @@
 
 {#if chart_state.hover_info}
   {@const info = chart_state.hover_info}
-  <!-- The x offset clears a pointer glyph, so the preferred placement never starts
-  out under the cursor and `avoid_cursor` only has to rule out the clamped ones. -->
   <PlotTooltip
     x={chart_state.hover_pos.x}
     y={chart_state.hover_pos.y}
-    offset={{ x: 20, y: 5 }}
-    avoid_cursor
+    offset={{ x: 10, y: 5 }}
+    avoid_cursor={chart_state.hover_at_pointer}
     constrain_to={{ width: chart_state.width, height: chart_state.height }}
     fallback_size={{ width: 140, height: 44 }}
     bg_color={info.color}

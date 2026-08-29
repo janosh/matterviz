@@ -45,8 +45,7 @@
     sort = `descending`,
     level_lighten = 0,
     min_fraction = $bindable(DEFAULTS.treemap.min_fraction),
-    min_fraction_of = `total`,
-    max_children = 0,
+    max_children = $bindable(DEFAULTS.treemap.max_children),
     other_label = `Other`,
     max_depth = $bindable(DEFAULTS.treemap.max_depth),
     padding_inner = $bindable(DEFAULTS.treemap.padding_inner),
@@ -134,7 +133,6 @@
       sort,
       level_lighten,
       min_fraction,
-      min_fraction_of,
       max_children,
       other_label,
     }),
@@ -381,6 +379,7 @@
       bind:padding_top
       bind:padding_outer
       bind:min_fraction
+      bind:max_children
       bind:show_labels
       bind:label_text
       bind:zoom_on_click

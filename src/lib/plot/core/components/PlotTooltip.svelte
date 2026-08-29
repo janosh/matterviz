@@ -13,7 +13,7 @@
     fixed = false,
     constrain_to,
     exclusion_rects = [],
-    avoid_cursor = false,
+    avoid_cursor = true,
     fallback_size,
     wrapper = $bindable(),
     children,
@@ -28,8 +28,9 @@
     // Flip/clamp inside this box (defaults to the viewport when `fixed`); omit for raw placement
     constrain_to?: { width: number; height: number }
     exclusion_rects?: readonly Rect[] // decorations (legend, colorbar) to keep clear of
-    // Keep the pointer glyph clear too, for anchors that track a live cursor.
-    // Only meaningful when `offset.x` already clears a cursor's width.
+    // Keep the pointer glyph clear too, widening a narrower `offset.x` to its width
+    // (keeping the sign). On by default because most tooltips track the cursor; pass
+    // false when `x`/`y` snap to a mark instead, so no glyph sits on the anchor.
     avoid_cursor?: boolean
     fallback_size?: { width: number; height: number } // size estimate before first measure
     wrapper?: HTMLDivElement // bindable reference for measuring tooltip size
@@ -59,13 +60,20 @@
       width: measured_width || fallback_size?.width || 0,
       height: measured_height || fallback_size?.height || 0,
     }
+    // The glyph is just another rect to keep clear of — except that a gap narrower
+    // than its width leaves the right-hand candidates overlapping it from the start,
+    // so the scoring has nothing to tell them apart by. Widen to its width, keeping
+    // the sign that picks the preferred side; the left side is clear at any gap but
+    // matches so a flip keeps its distance.
+    const gap = Math.max(Math.abs(offset.x), DEFAULT_CURSOR_SIZE.width)
     return place_tooltip({
       anchor: { x, y },
       tooltip_size,
       bounds: { x: 0, y: 0, ...bounds },
-      exclusion_rects,
-      offset,
-      cursor_size: avoid_cursor ? DEFAULT_CURSOR_SIZE : null,
+      exclusion_rects: avoid_cursor
+        ? [...exclusion_rects, { x, y, ...DEFAULT_CURSOR_SIZE }]
+        : exclusion_rects,
+      offset: avoid_cursor ? { x: offset.x >= 0 ? gap : -gap, y: offset.y } : offset,
     })
   })
 

@@ -561,9 +561,11 @@
       {@const { value, count, y, property, active_y_axis, active_x_axis } = hover_info}
       {@const tooltip_x = (active_x_axis === `x2` ? frame.scales.x2 : frame.scales.x)(value)}
       {@const tooltip_y = (active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(y)}
+      <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip
         x={tooltip_x}
         y={tooltip_y}
+        avoid_cursor={false}
         offset={{ x: 5, y: -10 }}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}

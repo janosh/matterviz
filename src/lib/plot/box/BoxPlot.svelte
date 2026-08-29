@@ -535,6 +535,7 @@
 
   // === Tooltip / hover ===
   let hover_info = $state<BoxHover | null>(null)
+  let hover_at_pointer = $state(false)
 
   function get_box_data(box_item: Box, color: string): BoxHover {
     const vertical = orientation === `vertical`
@@ -572,6 +573,8 @@
     // Anchor the tooltip at the cursor (cx/cy default to the whisker tip) so it follows the
     // mouse — boxes/violins are wide, and a fixed anchor lands far from the pointer.
     const pointer = get_relative_coords(event, frame.svg_element)
+    // The whisker-tip fallback has no pointer glyph for the tooltip to dodge
+    hover_at_pointer = Boolean(pointer)
     hover_info = {
       ...get_box_data(box_item, color),
       ...(pointer && { cx: pointer.x, cy: pointer.y }),
@@ -849,6 +852,7 @@
         x={hover_info.cx}
         y={hover_info.cy}
         offset={{ x: 10, y: 5 }}
+        avoid_cursor={hover_at_pointer}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}

@@ -18,6 +18,12 @@ const tree: SunburstNode[] = [
   { label: `B`, value: 10 },
 ]
 
+// 8 siblings spanning 1..8, for the 'Other' bucketing options
+const long_tail: SunburstNode[] = Array.from({ length: 8 }, (_item, idx) => ({
+  label: `job-${idx}`,
+  value: idx + 1,
+}))
+
 // 3-level chain for zoom-depth tests: L1 -> L2 -> {L3a, L3b}
 const deep: SunburstNode[] = [
   {
@@ -500,16 +506,28 @@ describe(`Sunburst zoom navigation`, () => {
     }
   })
 
+  // Leaves are focusable and labelled even though they never zoom, so keyboard users
+  // can reach their tooltips and arrow keys don't dead-end (as Treemap already does)
   test(`roving tabindex keeps exactly one arc in the tab order and follows focus`, async () => {
-    // on_node_click makes every arc (including leaves) clickable/focusable
-    const plot = await mount_sized_sunburst({ data: tree, on_node_click: vi.fn() })
+    const plot = await mount_sized_sunburst({ data: tree })
     const tab_stops = () =>
       [...plot.querySelectorAll(`.arcs path`)].filter(
         (el) => el.getAttribute(`tabindex`) === `0`,
       )
-    expect(tab_stops()).toEqual([arc_path(plot, `A`)]) // first clickable arc
-    await fire(arc_path(plot, `B`), new FocusEvent(`focusin`, { bubbles: true }))
-    expect(tab_stops()).toEqual([arc_path(plot, `B`)]) // tab stop follows focus
+    expect(tab_stops()).toEqual([arc_path(plot, `A`)]) // first visible arc
+    // B is a leaf: not clickable, still focusable and labelled
+    const leaf = arc_path(plot, `B`)
+    expect(leaf.getAttribute(`role`)).toBeNull()
+    expect(leaf.getAttribute(`aria-label`)).toBe(`B: 10`)
+    await fire(leaf, new FocusEvent(`focusin`, { bubbles: true }))
+    expect(tab_stops()).toEqual([leaf]) // tab stop follows focus
+
+    // A focused node anchors its tooltip at the node center, where there is no
+    // pointer glyph — dodging one would push the chip off the arc it describes.
+    const tip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
+    const focus_left = tip()?.style.left
+    await fire(leaf, mouse(`mousemove`)) // same node, now via the cursor
+    expect(tip()?.style.left).not.toBe(focus_left)
   })
 })
 
@@ -618,14 +636,12 @@ describe(`Sunburst display options`, () => {
   })
 
   test(`max_children prop keeps the largest N arcs per parent`, async () => {
-    const data: SunburstNode[] = Array.from({ length: 8 }, (_item, idx) => ({
-      label: `job-${idx}`,
-      value: idx + 1,
-    }))
-    const plot = await mount_sized_sunburst({ data, max_children: 2 })
+    const plot = await mount_sized_sunburst({ data: long_tail, max_children: 2 })
     expect(n_arcs(plot)).toBe(3) // job-6 + job-7 + Other
     await fire(node_at(plot, 3), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(/6 grouped/)
+    // A screen reader has no tooltip to fall back on, so the count goes in the label
+    expect(node_at(plot, 3).getAttribute(`aria-label`)).toMatch(/Other: 21 \(6 grouped\)/)
   })
 })
 
@@ -640,6 +656,26 @@ describe(`controls pane`, () => {
     max_depth_input.value = `1`
     await fire(max_depth_input, new Event(`input`, { bubbles: true }))
     expect(n_arcs(plot)).toBe(2) // only depth-1 ring left
+  })
+
+  // A threshold alone cannot promise a populated ring, so the rank-based cap that
+  // can has to be reachable from the pane too.
+  test(`exposes max_children alongside min_fraction`, async () => {
+    const plot = await mount_sized_sunburst({ data: long_tail, controls_open: true })
+    expect(n_arcs(plot)).toBe(8)
+    // number inputs are identified by their schema-derived max
+    const set = async (max: string, value: string) => {
+      const input = [...plot.querySelectorAll<HTMLInputElement>(`input[type="number"]`)].find(
+        (el) => el.min === `0` && el.max === max,
+      )
+      if (!input) throw new Error(`no number input with max ${max}`)
+      input.value = value
+      await fire(input, new Event(`input`, { bubbles: true }))
+    }
+    await set(`20`, `2`) // max_children
+    expect(n_arcs(plot)).toBe(3) // two largest + Other
+    await set(`0.2`, `0.2`) // min_fraction composes: a child must clear both
+    expect(n_arcs(plot)).toBe(2) // only job-7 (8/36) clears 0.2, plus Other
   })
 })
 

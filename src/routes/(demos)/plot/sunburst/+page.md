@@ -268,13 +268,20 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 
 ## Spacegroup sunburst
 
-`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from a list of spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), using the same colors and `"system/number"` ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real spacegroup distributions have long tails. `min_fraction` groups every spacegroup below a threshold share into one "Other" slice per crystal system, and `label_text` switches labels to include percentages. `min_fraction` measures against the root total by default, which takes the whole outer ring once a tree is deep enough that no leaf clears the threshold — pass `min_fraction_of="parent"` to measure each node against its own parent instead, or `max_children={n}` to keep the largest n per parent whatever the spread. A callable `other_label` receives `{ count, value, depth, parent_label }`, so a grouped slice can name what it swallowed.
+`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from a list of spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), using the same colors and `"system/number"` ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real spacegroup distributions have long tails, so this is where the grouping options earn their keep:
+
+- **`min_fraction`** folds every sibling below that share of the root total into one "Other" slice per parent (only when at least two qualify — a bucket of one is just that child under a worse name). An arc's angular width _is_ its fraction of the root, so this reads directly as "hide slices thinner than this".
+- **`max_children`** keeps the largest _n_ children per parent and groups the rest. A threshold cannot promise that anything survives it — a parent whose children split evenly fails it all at once, leaving a ring of nothing but "Other". Ranking siblings against each other instead of measuring each alone is what guarantees a populated ring. Combine the two and a child has to clear both.
+- **`other_label`** names the grouped slice. Pass a function to name what it swallowed: it receives `{ count, value, depth, parent_label }` once per bucket. The generated text is display-only — the bucket's id stays `"Other"` so `zoom_root_id` and legend muting survive a data update.
+
+Hovering a grouped slice reports how many siblings it folded in, which its own label has no room to say.
 
 ```svelte example
 <script lang="ts">
   import { spacegroup_sunburst_data, Sunburst, type Vec2 } from 'matterviz'
 
   let min_fraction = $state(0.02)
+  let max_children = $state(0)
 
   // synthetic MP-like spacegroup distribution: [spacegroup, structure count]
   const distribution: Vec2[] = [
@@ -319,10 +326,21 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
   </select>
   of all structures into 'Other'
 </label>
+<label>
+  Keep at most
+  <select bind:value={max_children}>
+    <option value={0}>all</option>
+    <option value={3}>3</option>
+    <option value={5}>5</option>
+  </select>
+  spacegroups per crystal system
+</label>
 
 <Sunburst
   data={spacegroup_sunburst_data(spacegroups)}
   {min_fraction}
+  {max_children}
+  other_label={(bucket) => `${bucket.count} rarer`}
   label_text="label+percent"
   show_legend
   style="height: 500px"

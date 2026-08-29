@@ -218,13 +218,15 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   }
 }
 
-// Pointer position relative to `container` (nudged off the cursor) for tooltip placement
+// Pointer position relative to `container`, for tooltip placement. The true hotspot,
+// not a nudged one: PlotTooltip needs it to flip correctly and to size the gap that
+// keeps the pointer glyph clear (its `offset`/`avoid_cursor`).
 export const container_pointer = (
   event: MouseEvent,
   container: HTMLElement | undefined,
 ): Point2D => {
   const rect = container?.getBoundingClientRect()
-  return { x: event.clientX - (rect?.left ?? 0) + 4, y: event.clientY - (rect?.top ?? 0) + 4 }
+  return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
 }
 
 // [value, label] pairs for the color-mode and color-scale <select>s in both panes

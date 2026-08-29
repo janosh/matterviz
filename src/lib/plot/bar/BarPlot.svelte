@@ -924,9 +924,11 @@
       {@const cy = (hover_info.active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(
         hover_info.orient_y + (orientation === `vertical` ? stack_base : 0),
       )}
+      <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip
         x={cx}
         y={cy}
+        avoid_cursor={false}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}

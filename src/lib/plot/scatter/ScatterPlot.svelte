@@ -1534,9 +1534,11 @@
         series_with_ids[series_idx],
         color_scale_fn,
       )}
+      <!-- avoid_cursor off: the anchor is the projected point, not the pointer -->
       <PlotTooltip
         x={handler_props.cx}
         y={handler_props.cy}
+        avoid_cursor={false}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
         fallback_size={{ width: 120, height: 50 }}

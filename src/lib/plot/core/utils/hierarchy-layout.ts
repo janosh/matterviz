@@ -23,8 +23,6 @@ export type SunburstValueMode = `leaf-sum` | `total` | `remainder`
 export type SunburstLabelRotation = `auto` | `radial` | `tangential` | `horizontal`
 // Sibling ordering: 'none' preserves input order (e.g. spacegroup number order)
 export type SunburstSort = `descending` | `ascending` | `none`
-// Whether `min_fraction` measures a node against the root total or its own parent
-export type SunburstBucketBasis = `total` | `parent`
 // What arc labels display (plotly textinfo equivalent); percent is of the root total
 export type SunburstLabelText =
   | `label`
@@ -109,16 +107,12 @@ export interface SunburstLayoutOptions {
   // Brighten inherited (non-explicit) colors by depth: hsl.brighter(level_lighten * (depth - 1)).
   // 0 (default) keeps every descendant exactly its depth-1 ancestor's color (plotly-style).
   level_lighten?: number
-  // Aggregate sibling arcs smaller than this fraction into one synthetic 'Other'
-  // leaf per parent (only when >= 2 qualify). Keeps long-tail distributions
-  // readable. 0 (default) disables bucketing.
+  // Aggregate sibling arcs smaller than this fraction of the root total into one
+  // synthetic 'Other' leaf per parent (only when >= 2 qualify). A node's angular
+  // width IS its fraction of the root, so this reads directly as "hide arcs thinner
+  // than X". 0 (default) disables bucketing. It cannot promise survivors, though —
+  // evenly-split children all fail one threshold together; `max_children` can.
   min_fraction?: number
-  // What `min_fraction` is a fraction of. 'total' (default) measures every depth
-  // against the root, so one threshold in absolute units applies throughout —
-  // which sweeps away whole leaf rings in a deep tree, because a leaf is small
-  // next to the root by construction. 'parent' measures each node against its own
-  // parent, so a threshold means the same thing at every depth.
-  min_fraction_of?: SunburstBucketBasis
   // Keep this many children per parent, largest first, bucketing the rest. Unlike
   // `min_fraction` it guarantees a populated ring however the values are
   // distributed. 0 (default) is unlimited. Applied with `min_fraction`: a child has
@@ -126,10 +120,15 @@ export interface SunburstLayoutOptions {
   // one child over the limit keeps it under its own name rather than as a bucket of
   // one (`max_children: 3` shows all four children of a four-child parent).
   max_children?: number
-  // Label for bucketed arcs, default 'Other'. A function is called once per
-  // bucket, so it can name what was folded away ('312 smaller jobs').
+  // Label for bucketed arcs, default 'Other'. A function is called once per bucket,
+  // so it can name what was folded away ('312 smaller jobs'); its result is display
+  // text only — a callable leaves the bucket's id (and `label_short`) at 'Other', so
+  // ids stay stable across data updates.
   other_label?: string | ((bucket: OtherBucketInfo) => string)
 }
+
+// Id segment (and compact label) for buckets whose `other_label` is callable
+const OTHER_ID_SEGMENT = `Other`
 
 // What a bucketed arc stands for, passed to a callable `other_label`.
 export interface OtherBucketInfo {
@@ -158,7 +157,6 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     sort = `none`,
     level_lighten = 0,
     min_fraction = DEFAULTS.sunburst.min_fraction,
-    min_fraction_of = `total`,
     max_children = 0,
     other_label = `Other`,
   } = opts
@@ -201,6 +199,16 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     })
   } else root.sum((node) => (node.children?.length ? 0 : clean_value(node.value)))
 
+  // Sibling index in the caller's own order, captured before `sort` and bucketing
+  // rewrite `node.children`. An unlabeled node's id falls back to this index, so
+  // reading it off the live array instead would move ids whenever those options
+  // change — silently re-pointing a persisted `zoom_root_id` at a different node.
+  // Only built when something actually reorders; the map is one entry per node.
+  const input_idx = new Map<HierarchyNode<SunburstNode<Metadata>>, number>()
+  if (sort !== `none` || min_fraction > 0 || max_children > 0) {
+    root.each((node) => node.children?.forEach((kid, idx) => input_idx.set(kid, idx)))
+  }
+
   if (sort !== `none`) {
     const sign = sort === `descending` ? -1 : 1
     root.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
@@ -224,18 +232,25 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     root.each((node) => {
       const kids = node.children
       if (!kids) return
-      const basis = min_fraction_of === `parent` ? (node.value ?? 0) : (root.value ?? 0)
-      const threshold = min_fraction > 0 ? min_fraction * basis : 0
-      // Ranked by value so `max_children` keeps the largest, while the children it
-      // keeps stay in the caller's own order.
-      const ranked = kids.toSorted((left, right) => (right.value ?? 0) - (left.value ?? 0))
+      // Guarded, not just multiplied: a non-finite `min_fraction` would make every
+      // `value >= threshold` false and collapse the parent's whole child list into
+      // one bucket, silently discarding a `max_children` ranking that still works.
+      const threshold = min_fraction > 0 ? min_fraction * (root.value ?? 0) : 0
+      const eligible = kids.filter((kid) => (kid.value ?? 0) >= threshold)
+      // `min_fraction` measures each child on its own, but `max_children` ranks them
+      // against each other — so only a cap that actually bites pays for the sort.
+      // `toSorted` is stable, so value ties break by input order, reproducibly.
       const keep = new Set(
-        ranked
-          .filter((kid) => (kid.value ?? 0) >= threshold)
-          .slice(0, max_children > 0 ? max_children : undefined),
+        max_children > 0 && eligible.length > max_children
+          ? eligible
+              .toSorted((left, right) => (right.value ?? 0) - (left.value ?? 0))
+              .slice(0, max_children)
+          : eligible,
       )
       // A bucket of one is just that child under a worse name.
       if (kids.length - keep.size < 2) return
+      // Both passes read `kids`, so the children that stay keep the caller's order
+      // however they were ranked; only the bucketed run moves to the end.
       node.children = [
         ...kids.filter((kid) => keep.has(kid)),
         ...kids.filter((kid) => !keep.has(kid)),
@@ -339,23 +354,29 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     const kids = node.children ?? []
     const cut = bucket_cut.get(node) ?? kids.length
     kids.forEach((child, idx) => {
-      if (idx < cut) flatten(child, arc, explicit ?? base, idx)
+      if (idx < cut) flatten(child, arc, explicit ?? base, input_idx.get(child) ?? idx)
     })
     if (cut < kids.length) {
       const smalls = kids.slice(cut)
       const bucket_value = smalls.reduce((sum, child) => sum + (child.value ?? 0), 0)
-      const label =
-        typeof other_label === `function`
-          ? other_label({
-              count: smalls.length,
-              value: bucket_value,
-              depth: depth + 1,
-              parent_label: arc.label,
-            })
-          : other_label
+      const callable = typeof other_label === `function`
+      const label = callable
+        ? other_label({
+            count: smalls.length,
+            value: bucket_value,
+            depth: depth + 1,
+            parent_label: arc.label,
+          })
+        : other_label
       push_arc(arc, {
-        id: `${arc.id !== `` ? `${arc.id}/` : ``}${label}`,
+        // Ids are lookup keys (zoom root, legend muting, the `zoom_root_id` a caller
+        // may persist), so they must hold still while the data moves. A callable
+        // label can encode the count, so only a literal one is allowed into the id.
+        id: `${arc.id !== `` ? `${arc.id}/` : ``}${callable ? OTHER_ID_SEGMENT : label}`,
         label,
+        // A generated name ('312 smaller jobs') rarely fits a thin outer ring, and
+        // without a compact form the label is dropped rather than shortened.
+        label_short: callable ? OTHER_ID_SEGMENT : undefined,
         value: bucket_value,
         color: resolve_color(depth + 1, undefined, explicit ?? base).color,
         depth: depth + 1,

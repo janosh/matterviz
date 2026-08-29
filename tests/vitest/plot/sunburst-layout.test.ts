@@ -80,6 +80,24 @@ describe(`compute_sunburst_layout`, () => {
     expect(arcs.map((arc) => arc.label_short)).toEqual([undefined, undefined, `5%`])
   })
 
+  // An unlabeled node's id falls back to its sibling index, so it must be the index the
+  // caller wrote — not the position left by `sort` or by bucketing's reordering. Reading
+  // the live array re-pointed a persisted `zoom_root_id` at a different node.
+  test(`auto ids follow input order, not the order sort/bucketing leave behind`, () => {
+    const data: SunburstNode[] = [
+      { label: `p`, children: [{ value: 1 }, { value: 1 }, { value: 100 }] },
+    ]
+    const leaf_ids = (opts: object) =>
+      compute_sunburst_layout(data, opts)
+        .arcs.filter((arc) => arc.depth === 2)
+        .map((arc) => arc.id)
+    expect(leaf_ids({})).toEqual([`p/0`, `p/1`, `p/2`])
+    // the 100-valued child was written third and keeps `p/2` however it is reordered
+    expect(leaf_ids({ min_fraction: 0.1 })).toEqual([`p/2`, `p/Other`])
+    expect(leaf_ids({ max_children: 1 })).toEqual([`p/2`, `p/Other`])
+    expect(leaf_ids({ sort: `descending` })).toEqual([`p/2`, `p/0`, `p/1`])
+  })
+
   test(`explicit ids win over auto-generated ones; duplicates warn`, () => {
     const { arcs } = compute_sunburst_layout([
       { id: `sys`, label: `A`, children: [{ id: `sys/1`, label: `A1`, value: 2 }] },
@@ -384,53 +402,28 @@ describe(`min_fraction 'Other' bucketing`, () => {
     expect(depth1.map((arc) => arc.label)).toEqual([`big`, `s3`, `Other`])
   })
 
-  // A leaf is small next to the root by construction, so one absolute threshold
-  // applied at every depth takes the whole leaf ring and leaves 'Other (100%)'
-  // wherever the tree is deep — the deeper the ring, the less it can say.
-  test(`'parent' measures each node against its own parent, not the root`, () => {
-    const deep: SunburstNode[] = [
+  // What a threshold cannot promise: that anything survives it. Children that split
+  // their parent evenly all fail one together, whatever the threshold is measured
+  // against — so no choice of basis rescues the ring; only ranking siblings does.
+  test(`only max_children can guarantee a populated ring`, () => {
+    const even: SunburstNode[] = [
+      { label: `big`, value: 9000 },
       {
-        label: `cluster`,
-        children: [
-          {
-            label: `user`,
-            children: [
-              { label: `job-a`, value: 60 },
-              { label: `job-b`, value: 30 },
-              { label: `job-c`, value: 5 },
-              { label: `job-d`, value: 5 },
-            ],
-          },
-        ],
+        label: `branch`,
+        children: Array.from({ length: 100 }, (_item, idx) => ({
+          label: `c${idx}`,
+          value: 10,
+        })),
       },
     ]
-    const leaf_labels = (basis: `total` | `parent`) =>
-      compute_sunburst_layout(deep, { min_fraction: 0.5, min_fraction_of: basis })
-        .arcs.filter((arc) => arc.depth === 3)
+    const ring2 = (opts: object) =>
+      compute_sunburst_layout(even, opts)
+        .arcs.filter((arc) => arc.depth === 2)
         .map((arc) => arc.label)
-
-    // 0.5 * 100 = 50 against the root: only `job-a` clears it, and against the
-    // 100-valued parent the same threshold keeps exactly the same one.
-    expect(leaf_labels(`total`)).toEqual([`job-a`, `Other`])
-    expect(leaf_labels(`parent`)).toEqual([`job-a`, `Other`])
-
-    // The bases part company once the parent is a fraction of the root: every
-    // leaf is now under 50 absolute, so 'total' takes the entire ring.
-    const smaller: SunburstNode[] = [{ label: `other-cluster`, value: 900 }, ...deep]
-    expect(
-      compute_sunburst_layout(smaller, { min_fraction: 0.5, min_fraction_of: `total` })
-        .arcs.filter((arc) => arc.depth === 3)
-        .map((arc) => arc.label),
-    ).toEqual([`Other`])
-    expect(
-      compute_sunburst_layout(smaller, { min_fraction: 0.5, min_fraction_of: `parent` })
-        .arcs.filter((arc) => arc.depth === 3)
-        .map((arc) => arc.label),
-    ).toEqual([`job-a`, `Other`])
+    expect(ring2({ min_fraction: 0.05 })).toEqual([`Other`]) // nothing left to read
+    expect(ring2({ max_children: 3 })).toEqual([`c0`, `c1`, `c2`, `Other`])
   })
 
-  // What a threshold cannot promise: that anything survives it. `max_children`
-  // ranks siblings instead of measuring them, so the ring is never empty.
   test(`max_children keeps the largest N per parent whatever the spread`, () => {
     const flat: SunburstNode[] = Array.from({ length: 50 }, (_item, idx) => ({
       label: `job-${idx}`,
@@ -609,12 +602,38 @@ describe(`min_fraction 'Other' bucketing`, () => {
     )
     // Called once per bucket, with the ring it lands on (not its parent's).
     expect(seen).toEqual([{ count: 3, value: 3, depth: 2, parent_label: `a100-80-shared` }])
+    // The generated name is display text only. The id is a lookup key (zoom root,
+    // legend muting) and a compact form is what a thin ring can actually show, so
+    // neither may carry a count that moves with the data.
     expect(arcs.find((arc) => arc.is_other)).toMatchObject({
       label: `3 smaller in a100-80-shared`,
-      id: `a100-80-shared/3 smaller in a100-80-shared`,
+      label_short: `Other`,
+      id: `a100-80-shared/Other`,
       other_count: 3,
       value: 3,
     })
+    // Fold one more sibling in: the label follows, the id does not move.
+    const relabelled = compute_sunburst_layout(
+      [
+        {
+          label: `a100-80-shared`,
+          children: [
+            { label: `keep`, value: 60 },
+            ...[`t1`, `t2`, `t3`, `t4`].map((label) => ({ label, value: 1 })),
+          ],
+        },
+      ],
+      { min_fraction: 0.05, other_label: (bucket) => `${bucket.count} smaller` },
+    ).arcs.find((arc) => arc.is_other)
+    expect(relabelled).toMatchObject({ label: `4 smaller`, id: `a100-80-shared/Other` })
+
+    // A literal label still names the id, as it always has.
+    expect(
+      compute_sunburst_layout(long_tail, {
+        min_fraction: 0.05,
+        other_label: `Rest`,
+      }).arcs.find((arc) => arc.is_other),
+    ).toMatchObject({ id: `Rest`, label: `Rest`, label_short: undefined })
 
     // Under the synthetic root of an array input there is no parent to name.
     const at_root: OtherBucketInfo[] = []

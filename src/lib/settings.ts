@@ -152,11 +152,20 @@ const hierarchy_chart_settings = (
   },
   min_fraction: {
     value: 0,
-    description: `Group sibling ${node}s smaller than this fraction of the total into one 'Other' ${
+    description: `Group sibling ${node}s smaller than this fraction into one 'Other' ${
       node === `arc` ? `slice` : `cell`
     } per parent (0 = off)`,
     minimum: 0,
     maximum: 0.2,
+  },
+  max_children: {
+    value: 0,
+    description: `Keep at most this many children per parent, largest first, grouping the rest (0 = unlimited). Unlike min_fraction it guarantees a populated ${levels.slice(
+      0,
+      -1,
+    )} however the values are spread`,
+    minimum: 0,
+    maximum: 20,
   },
   show_labels: {
     value: true,
@@ -1000,6 +1009,18 @@ export const SETTINGS_CONFIG = define_settings({
 
   // Sankey diagram specific
   sankey: {
+    min_fraction: {
+      value: 0,
+      description: `Fold a node's outgoing links carrying less than this fraction of its outflow into one 'Other' link (0 = off). Only links to terminal targets are folded, so no downstream flow is lost`,
+      minimum: 0,
+      maximum: 0.2,
+    },
+    max_links: {
+      value: 0,
+      description: `Keep at most this many outgoing links per node, largest first, folding the rest (0 = unlimited)`,
+      minimum: 0,
+      maximum: 20,
+    },
     orientation: {
       value: `horizontal` as const,
       description: `Flow direction of the Sankey diagram`,

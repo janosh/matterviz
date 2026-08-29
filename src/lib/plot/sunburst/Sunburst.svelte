@@ -43,8 +43,7 @@
     sort = `none`,
     level_lighten = 0,
     min_fraction = $bindable(DEFAULTS.sunburst.min_fraction),
-    min_fraction_of = `total`,
-    max_children = 0,
+    max_children = $bindable(DEFAULTS.sunburst.max_children),
     other_label = `Other`,
     max_depth = $bindable(DEFAULTS.sunburst.max_depth),
     inner_radius = $bindable(DEFAULTS.sunburst.inner_radius),
@@ -129,7 +128,6 @@
       sort,
       level_lighten,
       min_fraction,
-      min_fraction_of,
       max_children,
       other_label,
     }),
@@ -240,13 +238,16 @@
   let visible_arcs = $derived(projection.visible)
 
   // Roving tabindex: exactly one arc is in the tab order (the last-focused one, else
-  // the first visible clickable arc); arrow keys move focus between arcs. Without
-  // this, tabbing through a large chart would visit every single arc.
-  let roving_idx = $derived.by(() => {
-    const { focused_idx } = chart_state
-    if (focused_idx != null && screen_arcs[focused_idx]?.visible) return focused_idx
-    return visible_arcs.find((screen) => arc_clickable(screen.arc))?.arc.node_idx ?? null
-  })
+  // the first visible arc); arrow keys move focus between arcs. Without this, tabbing
+  // through a large chart would visit every single arc. Every visible arc is focusable
+  // and labelled, not just the clickable ones, so keyboard users can reach leaf
+  // tooltips and arrow keys don't dead-end on a leaf (as Treemap already does).
+  // role="button" stays limited to clickable arcs.
+  let roving_idx = $derived(
+    chart_state.focused_idx != null && screen_arcs[chart_state.focused_idx]?.visible
+      ? chart_state.focused_idx
+      : (visible_arcs[0]?.arc.node_idx ?? null),
+  )
 
   let arc_gen = $derived(
     d3_arc<ScreenArc>()
@@ -360,6 +361,7 @@
       bind:inner_radius
       bind:pad_angle
       bind:min_fraction
+      bind:max_children
       bind:show_labels
       bind:label_rotation
       bind:label_text
@@ -401,12 +403,8 @@
                 fill={info.fill}
                 fill-opacity={opacity}
                 role={info.clickable ? `button` : undefined}
-                tabindex={info.clickable
-                  ? screen.arc.node_idx === roving_idx
-                    ? 0
-                    : -1
-                  : undefined}
-                aria-label={info.clickable ? info.aria : undefined}
+                tabindex={screen.arc.node_idx === roving_idx ? 0 : -1}
+                aria-label={info.aria}
                 style:cursor={info.clickable ? `pointer` : `default`}
               />
               {#if screen.arc.hatch}

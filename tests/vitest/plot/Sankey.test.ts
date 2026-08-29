@@ -86,8 +86,10 @@ describe(`Sankey`, () => {
     await hover(rect, 30, 40)
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
     expect(tooltip()?.textContent).toMatch(/A.*8/)
-    // anchored at the cursor + offset (10, 5), constrained to the 500x360 chart
-    expect([tooltip()?.style.left, tooltip()?.style.top]).toEqual([`40px`, `45px`])
+    // Anchored at the cursor, constrained to the 500x360 chart. `avoid_cursor`
+    // widens the 10px x offset to the pointer glyph's width so the tooltip abuts
+    // the cursor instead of starting under it; y keeps its 5px offset.
+    expect([tooltip()?.style.left, tooltip()?.style.top]).toEqual([`48px`, `45px`])
     expect(on_node_hover).toHaveBeenCalledOnce()
     expect(on_node_hover.mock.calls[0][0] as SankeyNodeHandlerProps).toMatchObject({
       type: `node`,
@@ -100,7 +102,7 @@ describe(`Sankey`, () => {
     expect(on_node_hover).toHaveBeenCalledOnce()
     // a cursor near the right edge flips the chip to the left of the anchor
     await hover(rect, 490, 40)
-    expect(tooltip()?.style.left).toBe(`340px`) // 490 - 10 - 140 (flipped left)
+    expect(tooltip()?.style.left).toBe(`332px`) // 490 - 18 - 140 (flipped left)
 
     await hover(plot.querySelector(`.links path`), 200, 100)
     expect(on_node_hover).toHaveBeenLastCalledWith(null)

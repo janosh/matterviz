@@ -33,7 +33,6 @@ import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibilit
 import type {
   OtherBucketInfo,
   PositionedArc,
-  SunburstBucketBasis,
   SunburstLabelText,
   SunburstLayoutOptions,
   SunburstNode,
@@ -58,9 +57,6 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   // Aggregate sibling nodes below this fraction of the total into one 'Other'
   // node per parent (only when >= 2 qualify); 0 disables
   min_fraction?: number
-  // What `min_fraction` measures against: the root total (default) or each
-  // node's own parent, so one threshold means the same thing at every depth
-  min_fraction_of?: SunburstBucketBasis
   // Children kept per parent, largest first; 0 (default) is unlimited. Unlike
   // `min_fraction` it guarantees a populated ring at any depth. Not a hard cap: a
   // parent one child over the limit keeps it rather than bucket a single sibling
@@ -162,6 +158,9 @@ export class HierarchyChartState<
   hovered_idx: number | null = $state(null)
   hover_info: NodeProps<Metadata> | null = $state(null)
   hover_pos: Point = $state({ x: 0, y: 0 })
+  // Whether `hover_pos` is a live cursor or a node center (keyboard focus). Only the
+  // former has a pointer glyph for the tooltip to keep clear of.
+  hover_at_pointer = $state(false)
   focused_idx: number | null = $state(null)
   colorbar_size: { width: number; height: number } = $state({ width: 0, height: 0 })
   // Bumped once webfonts resolve so labels measured against fallback fonts re-fit
@@ -305,20 +304,22 @@ export class HierarchyChartState<
       this.#opts.on_node_hover(null)
       return
     }
+    // null for a FocusEvent (keyboard), where the node center stands in below
+    const pointer = pointer_pos(event, this.svg_element)
+    this.hover_at_pointer = Boolean(pointer)
     // Same node as before: only the cursor anchor moves - skip rebuilding the
     // handler payload and re-firing on_node_hover on every mousemove
     // within a node. Requires hover_info: legend item hover sets hovered_idx
     // alone (for dimming), and skipping then would leave the node's own tooltip
     // permanently suppressed.
     if (idx === this.hovered_idx && this.hover_info) {
-      this.hover_pos = pointer_pos(event, this.svg_element) ?? this.hover_pos
+      this.hover_pos = pointer ?? this.hover_pos
       return
     }
     this.#opts.set_hovered(true)
     this.hovered_idx = idx
     this.hover_info = this.#node_props(this.arcs[idx])
-    this.hover_pos =
-      pointer_pos(event, this.svg_element) ?? this.#opts.node_center(idx) ?? this.hover_pos
+    this.hover_pos = pointer ?? this.#opts.node_center(idx) ?? this.hover_pos
     if (event) this.#opts.on_node_hover({ ...this.hover_info, event })
   }
 

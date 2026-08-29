@@ -116,6 +116,8 @@
   // The hovered node or link (its public handler payload) + the tooltip anchor
   let hover_info = $state<SankeyHandlerProps<Metadata> | null>(null)
   let hover_pos = $state({ x: 0, y: 0 })
+  // Keyboard focus anchors at a shape center, where there is no pointer glyph to dodge
+  let hover_at_pointer = $state(false)
   // Legend hover dims like a node hover but shows no tooltip
   let legend_hover_idx = $state<number | null>(null)
   // Nodes muted via legend toggle (dimmed, not removed - keeps layout stable).
@@ -251,6 +253,7 @@
     if (!node && !link) return clear_hover()
     hovered = true
     const cursor = pointer_pos(event, svg_element)
+    hover_at_pointer = Boolean(cursor)
     const prev = hover_info
     if (node) {
       hover_pos = cursor ?? node_center(node)
@@ -488,6 +491,7 @@
         x={hover_pos.x}
         y={hover_pos.y}
         offset={{ x: 10, y: 5 }}
+        avoid_cursor={hover_at_pointer}
         constrain_to={{ width, height }}
         fallback_size={{ width: 140, height: 44 }}
         bg_color={hover_info.type === `node`

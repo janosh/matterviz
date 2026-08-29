@@ -1277,9 +1277,16 @@
         "matterviz.sunburst.min_fraction": {
           "type": "number",
           "default": 0,
-          "description": "Group sibling arcs smaller than this fraction of the total into one 'Other' slice per parent (0 = off)",
+          "description": "Group sibling arcs smaller than this fraction into one 'Other' slice per parent (0 = off)",
           "minimum": 0,
           "maximum": 0.2
+        },
+        "matterviz.sunburst.max_children": {
+          "type": "number",
+          "default": 0,
+          "description": "Keep at most this many children per parent, largest first, grouping the rest (0 = unlimited). Unlike min_fraction it guarantees a populated ring however the values are spread",
+          "minimum": 0,
+          "maximum": 20
         },
         "matterviz.sunburst.show_labels": {
           "type": "boolean",
@@ -1363,9 +1370,16 @@
         "matterviz.treemap.min_fraction": {
           "type": "number",
           "default": 0,
-          "description": "Group sibling cells smaller than this fraction of the total into one 'Other' cell per parent (0 = off)",
+          "description": "Group sibling cells smaller than this fraction into one 'Other' cell per parent (0 = off)",
           "minimum": 0,
           "maximum": 0.2
+        },
+        "matterviz.treemap.max_children": {
+          "type": "number",
+          "default": 0,
+          "description": "Keep at most this many children per parent, largest first, grouping the rest (0 = unlimited). Unlike min_fraction it guarantees a populated level however the values are spread",
+          "minimum": 0,
+          "maximum": 20
         },
         "matterviz.treemap.show_labels": {
           "type": "boolean",
