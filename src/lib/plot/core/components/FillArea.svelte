@@ -55,6 +55,8 @@
   // outline drawn only on hover when the user opted in via hover_style.stroke
   let hover_stroke = $derived(is_hovered ? region.hover_style?.stroke : undefined)
   let is_clickable = $derived(Boolean(on_click || region.on_click))
+  // Reachable whenever the region reports anything, not only when it is clickable
+  let is_interactive = $derived(is_clickable || Boolean(on_hover || region.on_hover))
   let cursor_style = $derived(
     region.hover_style?.cursor ?? (is_clickable ? `pointer` : `default`),
   )
@@ -78,7 +80,8 @@
 
   // Client position -> svg-relative pixels -> data coords (time x axes invert to Date)
   const make_event = (
-    event: MouseEvent | KeyboardEvent,
+    // FocusEvent for keyboard focus, which carries no pointer and uses the center
+    event: MouseEvent | KeyboardEvent | FocusEvent,
     client_x: number,
     client_y: number,
   ): FillHandlerEvent => {
@@ -106,14 +109,24 @@
     event.stopPropagation()
     emit_click(mouse_event(event))
   }
-  // Keyboard activation has no pointer position: report the region's center
+  // Keyboard has no pointer position: report the region's center
+  const center_of = (target: EventTarget | null): [number, number] | null => {
+    if (!(target instanceof SVGElement)) return null
+    const { left, right, top, bottom } = target.getBoundingClientRect()
+    return [(left + right) / 2, (top + bottom) / 2]
+  }
   const handle_keydown = (event: KeyboardEvent) => {
     if (event.key !== `Enter` && event.key !== ` `) return
     event.preventDefault()
-    const target = event.currentTarget
-    if (!is_clickable || !(target instanceof SVGElement)) return
-    const { left, right, top, bottom } = target.getBoundingClientRect()
-    emit_click(make_event(event, (left + right) / 2, (top + bottom) / 2))
+    const center = center_of(event.currentTarget)
+    if (!is_clickable || !center) return
+    emit_click(make_event(event, ...center))
+  }
+  // Focus is the keyboard's hover: without it a keyboard user reaches the region but
+  // sees nothing, since every hover payload here comes from a pointer event
+  const handle_focus = (event: FocusEvent) => {
+    const center = center_of(event.currentTarget)
+    if (center) emit_hover(make_event(event, ...center))
   }
 </script>
 
@@ -128,8 +141,10 @@
   onmousemove={(event) => is_hovered && emit_hover(mouse_event(event))}
   onclick={handle_click}
   onkeydown={handle_keydown}
+  onfocus={handle_focus}
+  onblur={() => emit_hover(null)}
   role="img"
-  tabindex={is_clickable ? 0 : -1}
+  tabindex={is_interactive ? 0 : -1}
   aria-label={region.label ?? `Fill region ${region_idx}`}
 >
   {#snippet gradient_stops(stops: readonly [number, string][])}

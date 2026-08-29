@@ -45,7 +45,9 @@ interface FillHoverStyle {
 
 // Event type for fill region interactions
 export interface FillHandlerEvent {
-  event: MouseEvent | KeyboardEvent
+  // FocusEvent when the region was reached by keyboard, where the payload's
+  // coordinates are the region's center rather than a pointer position
+  event: MouseEvent | KeyboardEvent | FocusEvent
   region_idx: number
   region_id?: string | number
   x: number // Data x-coordinate
