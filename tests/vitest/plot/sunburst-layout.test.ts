@@ -98,6 +98,74 @@ describe(`compute_sunburst_layout`, () => {
     expect(leaf_ids({ sort: `descending` })).toEqual([`p/2`, `p/0`, `p/1`])
   })
 
+  describe(`zoom-aware bucketing`, () => {
+    // One fat branch plus a thin one whose children are all tiny next to the root but
+    // comparable to each other - the shape a root-relative threshold flattens away
+    const data: SunburstNode[] = [
+      { label: `fat`, value: 900 },
+      {
+        label: `thin`,
+        children: [
+          { label: `a`, value: 40 },
+          { label: `b`, value: 30 },
+          { label: `c`, value: 30 },
+        ],
+      },
+    ]
+    const ids_under_thin = (zoom_root_id: string | null) =>
+      compute_sunburst_layout(data, { min_fraction: 0.1, zoom_root_id })
+        .arcs.filter((arc) => arc.depth === 2)
+        .map((arc) => arc.id)
+
+    test(`at the data root, every child of the thin branch is below the threshold`, () => {
+      expect(ids_under_thin(null)).toEqual([`thin/Other`])
+    })
+
+    test(`zooming the thin branch re-measures its children against it`, () => {
+      // 40/30/30 of 100 all clear 10%, so the bucket dissolves into the real nodes
+      expect(ids_under_thin(`thin`)).toEqual([`thin/a`, `thin/b`, `thin/c`])
+    })
+
+    // Rings outside the zoomed subtree must not move, or an unrelated branch unfolding
+    // would deepen the tree and add empty rings to the view
+    test(`bucketing outside the zoomed subtree is unchanged`, () => {
+      const nested: SunburstNode[] = [
+        {
+          label: `zoomed`,
+          children: [
+            { label: `x`, value: 50 },
+            { label: `y`, value: 50 },
+          ],
+        },
+        {
+          label: `other`,
+          children: [
+            { label: `p`, value: 1 },
+            { label: `q`, value: 1 },
+            { label: `r`, value: 1 },
+          ],
+        },
+      ]
+      const under_other = (zoom_root_id: string | null) =>
+        compute_sunburst_layout(nested, { min_fraction: 0.1, zoom_root_id })
+          .arcs.filter((arc) => arc.id.toString().startsWith(`other/`))
+          .map((arc) => arc.id)
+      expect(under_other(null)).toEqual([`other/Other`])
+      expect(under_other(`zoomed`)).toEqual([`other/Other`])
+    })
+
+    test(`an unresolvable zoom_root_id falls back to the root total`, () => {
+      expect(ids_under_thin(`ghost`)).toEqual(ids_under_thin(null))
+    })
+
+    // Bucketing off means no basis lookup at all, so the option cannot perturb anything
+    test.each([null, `thin`])(`zoom_root_id %s is inert without bucketing`, (zoom_root_id) => {
+      expect(
+        compute_sunburst_layout(data, { zoom_root_id }).arcs.map((arc) => arc.id),
+      ).toEqual(compute_sunburst_layout(data, {}).arcs.map((arc) => arc.id))
+    })
+  })
+
   test(`explicit ids win over auto-generated ones; duplicates warn`, () => {
     const { arcs } = compute_sunburst_layout([
       { id: `sys`, label: `A`, children: [{ id: `sys/1`, label: `A1`, value: 2 }] },

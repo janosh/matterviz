@@ -100,6 +100,47 @@ export function tile_rects<Metadata>(
   return rects
 }
 
+// A tiling plus the arcs it was computed from, so the two can be realigned when the
+// arc set changes between them.
+export interface Tiling {
+  rects: readonly Rect[]
+  arcs: readonly { id: string | number; parent_idx: number | null }[]
+}
+
+// Re-express `prev`'s rects in `next`'s index space, matching arcs by id.
+//
+// Position is not a stable identity across a zoom: bucketing measures its threshold
+// against the zoom root, so drilling in can dissolve an 'Other' cell into the nodes it
+// stood for, shifting every later index. Interpolating positionally would then morph
+// unrelated cells into each other, and bailing out instead (what a plain length check
+// does) drops the animation entirely - including for the cells that *do* correspond.
+//
+// A cell with no counterpart in `prev` starts from its nearest ancestor that had one, so
+// nodes revealed by a dissolved bucket unfold out of the region that bucket occupied
+// rather than appearing from nowhere. Cells that vanish simply aren't in the new space.
+export function align_tiling(prev: Tiling, next: Tiling): Rect[] {
+  const by_id = new Map<string | number, Rect>()
+  prev.arcs.forEach((arc, idx) => {
+    const rect = prev.rects[idx]
+    if (rect) by_id.set(arc.id, rect)
+  })
+  return next.arcs.map((arc, idx) => {
+    const own = by_id.get(arc.id)
+    if (own) return own
+    // Walk `next`'s parent chain; parents precede children in pre-order, so this
+    // terminates without a visited set
+    let parent_idx = arc.parent_idx
+    while (parent_idx != null) {
+      const ancestor = next.arcs[parent_idx]
+      if (!ancestor) break
+      const ancestor_rect = by_id.get(ancestor.id)
+      if (ancestor_rect) return ancestor_rect
+      parent_idx = ancestor.parent_idx
+    }
+    return next.rects[idx] // nothing to animate from: start where it lands
+  })
+}
+
 // Interpolate between two tilings (zoom animation). Rects are aligned by
 // node_idx; frames allocate one array but reuse rect objects at t = 0/1.
 export function lerp_rects(prev: readonly Rect[], next: readonly Rect[], t: number): Rect[] {

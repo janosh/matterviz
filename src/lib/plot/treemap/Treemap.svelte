@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { contrast_text_color } from '$lib/colors'
   import type { BasePlotProps } from '$lib/plot'
   import { TreemapControls } from '$lib/plot'
   import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
@@ -24,7 +25,7 @@
     TreemapLabelFormatter,
     TreemapLabelPlacement,
   } from '$lib/plot/treemap/labels'
-  import { lerp_rects, tile_rects } from '$lib/plot/treemap/treemap'
+  import { align_tiling, lerp_rects, tile_rects, type Tiling } from '$lib/plot/treemap/treemap'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -109,7 +110,9 @@
       // Zoom transition timing (resizes/data swaps snap instantly, plotly-style).
       // interpolate is not overridable: the component's rect interpolator also
       // handles rect-array length changes on data swaps (default would throw)
-      tween?: Omit<TweenOptions<Rect[]>, `interpolate`>
+      // `interpolate` and `duration`-as-function are the component's own: the tweened
+      // value is a tiling (rects keyed by their arcs), not a bare rect list
+      tween?: Omit<TweenOptions<Rect[]>, `interpolate` | `duration`> & { duration?: number }
       // Fully replace the default cell rect + labels. NOTE: this also replaces the
       // built-in hover/focus/click + tooltip wiring, so re-implement any
       // interactivity you need inside the snippet.
@@ -134,6 +137,9 @@
       level_lighten,
       min_fraction,
       max_children,
+      // Plain prop, never derived from the layout it feeds - the arcs depend on it,
+      // so reading it back off them would close a cycle
+      zoom_root_id,
       other_label,
     }),
     label_text: () => label_text,
@@ -195,24 +201,33 @@
       { padding_inner, padding_top, padding_outer },
     ),
   )
+  // The rects travel with the arcs they were computed from: a zoom can change the arc
+  // set (bucketing measures its threshold against the zoom root), and the two tilings
+  // then have to be matched by id rather than by position.
+  let tiling = $derived<Tiling>({ rects: target_rects, arcs: chart_state.arcs })
   // Animate only zoom transitions; resizes, data swaps and padding tweaks snap
   // instantly (animating a container drag-resize would chase the pointer with a
   // 400ms lerp on every width change, and morphing between unrelated datasets
-  // is meaningless). `live` compares against the previous zoom root/data to classify
-  // the change. untrack reads the options once at init.
-  let prev_zoom_idx = untrack(() => zoom_idx)
-  let prev_arcs = untrack(() => chart_state.arcs)
-  const rects_tween = create_settling_tween<Rect[]>(
-    () => target_rects,
+  // is meaningless). Keyed on the zoom root's id, not its node_idx, which shifts
+  // whenever bucketing changes the arc set without the view having moved.
+  // untrack reads the options once at init.
+  let prev_zoom_id = untrack(() => chart_state.zoom_root?.id ?? null)
+  let prev_data = untrack(() => data)
+  const rects_tween = create_settling_tween<Tiling>(
+    () => tiling,
     untrack(() => ({
       duration: 400,
       easing: cubicInOut,
       ...tween,
-      interpolate: (from: Rect[], to: Rect[]) => (t: number) => lerp_rects(from, to, t),
+      interpolate: (from: Tiling, to: Tiling) => {
+        // Realigned once per transition, not per frame
+        const start = align_tiling(from, to)
+        return (t: number) => ({ rects: lerp_rects(start, to.rects, t), arcs: to.arcs })
+      },
     })),
     {
       live: () =>
-        zoom_idx !== prev_zoom_idx && chart_state.arcs === prev_arcs
+        (chart_state.zoom_root?.id ?? null) !== prev_zoom_id && data === prev_data
           ? undefined
           : { duration: 0 },
     },
@@ -221,9 +236,9 @@
   // a zoom inside that window would otherwise leave prev_* stale and snap the next zoom back.
   // Created after the tween so it runs after `live` has read the previous values.
   $effect.pre(() => {
-    ;[prev_zoom_idx, prev_arcs] = [zoom_idx, chart_state.arcs]
+    ;[prev_zoom_id, prev_data] = [chart_state.zoom_root?.id ?? null, data]
   })
-  let rects = $derived(rects_tween.current)
+  let rects = $derived(rects_tween.current.rects)
 
   // Deepest level rendered below the current zoom root (0 = unlimited)
   let depth_cutoff = $derived(
@@ -350,11 +365,32 @@
   // Defs and visible text share these placements, avoiding duplicate fitting
   // work on every frame of a zoom tween.
   let label_placements = $derived(new Map(visible_idxs.map((idx) => [idx, place_label(idx)])))
+
+  // The chrome floats over the cells, so its icons take their color from whatever is
+  // painted under the top-right corner rather than from the page. Cells are drawn
+  // parents-first, so the last visible one containing the point is the one on top.
+  let chrome_color = $derived.by(() => {
+    const probe = { x: chart_state.inner_width - 1, y: 1 }
+    let fill: string | undefined
+    for (const idx of visible_idxs) {
+      const rect = rects[idx]
+      if (
+        rect &&
+        probe.x >= rect.x &&
+        probe.x <= rect.x + rect.width &&
+        probe.y >= rect.y &&
+        probe.y <= rect.y + rect.height
+      )
+        fill = chart_state.node_infos[idx]?.fill
+    }
+    return fill ? contrast_text_color({ background: fill }) : undefined
+  })
 </script>
 
 <ChartShell
   chart_class="treemap"
   css_prefix="treemap"
+  style={chrome_color ? `--chart-chrome-color: ${chrome_color}` : undefined}
   css_var_fallbacks={{ flex: `1 1 auto`, bg: `transparent` }}
   bind:wrapper={chart_state.wrapper}
   bind:width

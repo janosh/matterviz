@@ -136,12 +136,16 @@
   }
   .header-controls {
     position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
+    /* tucked into the corner: the chrome floats over the chart itself, and further in
+       it straddles cell boundaries and header labels instead of clearing them */
+    top: var(--ctrl-btn-top, 2px);
+    right: var(--fullscreen-btn-right, 2px);
     z-index: var(--fullscreen-btn-z-index, 10);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--chart-chrome-gap, 3px);
+    /* charts that paint under the corner set this to a color that reads against it */
+    color: var(--chart-chrome-color, inherit);
     opacity: 0;
     transition:
       opacity 0.2s,

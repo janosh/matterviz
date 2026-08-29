@@ -361,6 +361,15 @@ export class HierarchyChartState<
     const arc = this.arcs[idx]
     this.#opts.on_node_click({ ...this.#node_props(arc), event })
     if (!this.#opts.zoom_on_click()) return
+    // A bucket stands for nodes it does not itself contain, so zooming into it shows
+    // one meaningless cell (Treemap did) or nothing at all (Sunburst, which refuses to
+    // zoom leaves). Zoom to its parent instead: with the threshold measured against the
+    // view root, that re-measures its siblings and dissolves the bucket into the real
+    // nodes it stood for - clicking 'Other' shows you what is inside it.
+    if (arc.is_other) {
+      this.zoom_to(arc.parent_idx == null ? null : (this.arcs[arc.parent_idx] ?? null))
+      return
+    }
     if (this.chart === `sunburst`) {
       if (!arc.is_leaf && arc.id !== this.zoom_root?.id) this.zoom_to(arc)
     } else if (arc.id === this.zoom_root?.id) this.zoom_out()

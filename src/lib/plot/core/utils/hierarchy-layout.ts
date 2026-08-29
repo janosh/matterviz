@@ -120,6 +120,10 @@ export interface SunburstLayoutOptions {
   // one child over the limit keeps it under its own name rather than as a bucket of
   // one (`max_children: 3` shows all four children of a four-child parent).
   max_children?: number
+  // Id of the node the view is currently rooted at, or null at the data root. Only
+  // read to pick what `min_fraction` measures against; the layout itself always covers
+  // the whole tree and zoom is applied downstream.
+  zoom_root_id?: string | number | null
   // Label for bucketed arcs, default 'Other'. A function is called once per bucket,
   // so it can name what was folded away ('312 smaller jobs'); its result is display
   // text only — a callable leaves the bucket's id (and `label_short`) at 'Other', so
@@ -158,6 +162,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     level_lighten = 0,
     min_fraction = DEFAULTS.sunburst.min_fraction,
     max_children = 0,
+    zoom_root_id = null,
     other_label = `Other`,
   } = opts
   // Fresh object each call (not a shared constant) so callers can't corrupt each other
@@ -209,6 +214,40 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     root.each((node) => node.children?.forEach((kid, idx) => input_idx.set(kid, idx)))
   }
 
+  // The node the view is rooted at, resolved here rather than read off the finished
+  // arcs because bucketing decides what those arcs are - the lookup has to come first.
+  // Mirrors flatten's id rule below; children are still in the caller's order at this
+  // point, which is what makes the ids it derives match the ones flatten will assign.
+  let zoom_node: HierarchyNode<SunburstNode<Metadata>> | null = null
+  if (zoom_root_id != null && (min_fraction > 0 || max_children > 0)) {
+    const walk = (
+      node: HierarchyNode<SunburstNode<Metadata>>,
+      parent_id: string,
+      child_idx: number,
+    ): void => {
+      if (zoom_node) return
+      const segment = node.data.label ?? `${child_idx}`
+      const own =
+        node.data.id ??
+        (node.depth === 0
+          ? (node.data.label ?? ``)
+          : `${parent_id !== `` ? `${parent_id}/` : ``}${segment}`)
+      if (own === zoom_root_id) {
+        zoom_node = node
+        return
+      }
+      node.children?.forEach((kid, idx) => walk(kid, `${own}`, idx))
+    }
+    walk(root, ``, 0)
+  }
+  // Only the zoomed subtree re-measures. Bucketing elsewhere must not move, or an
+  // unrelated branch unfolding would deepen the tree and add empty rings to the view.
+  const in_zoom_subtree = new Set<HierarchyNode<SunburstNode<Metadata>>>()
+  if (zoom_node)
+    (zoom_node as HierarchyNode<SunburstNode<Metadata>>).each((node) =>
+      in_zoom_subtree.add(node),
+    )
+
   if (sort !== `none`) {
     const sign = sort === `descending` ? -1 : 1
     root.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
@@ -235,7 +274,12 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       // Guarded, not just multiplied: a non-finite `min_fraction` would make every
       // `value >= threshold` false and collapse the parent's whole child list into
       // one bucket, silently discarding a `max_children` ranking that still works.
-      const threshold = min_fraction > 0 ? min_fraction * (root.value ?? 0) : 0
+      // Measured against the total of whatever the view is rooted at, so drilling in
+      // re-measures a parent's children against the smaller total - which is what
+      // dissolves a bucket into the real nodes it stood for. At the data root this is
+      // the root total, so an unzoomed chart buckets exactly as it did before.
+      const basis = (in_zoom_subtree.has(node) ? zoom_node?.value : root.value) ?? 0
+      const threshold = min_fraction > 0 ? min_fraction * basis : 0
       const eligible = kids.filter((kid) => (kid.value ?? 0) >= threshold)
       // `min_fraction` measures each child on its own, but `max_children` ranks them
       // against each other — so only a cap that actually bites pays for the sort.

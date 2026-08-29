@@ -182,6 +182,56 @@ describe(`Treemap`, () => {
     expect(plot.querySelector(`.breadcrumbs`)).toBeNull()
   })
 
+  // Clicking a bucket used to zoom *into* it, landing on one meaningless full-viewport
+  // cell, because a bucket stands for nodes it does not itself contain.
+  test(`clicking an 'Other' bucket reveals the nodes it stood for`, async () => {
+    // Every child of `thin` is tiny next to the root total, so all three bucket
+    const long_tail: TreemapNode[] = [
+      { label: `fat`, value: 900 },
+      {
+        label: `thin`,
+        children: [
+          { label: `a`, value: 40 },
+          { label: `b`, value: 30 },
+          { label: `c`, value: 30 },
+        ],
+      },
+    ]
+    const plot = await mount_sized_treemap({ data: long_tail, min_fraction: 0.1 })
+    const label_of = (rect: Element) => rect.getAttribute(`aria-label`) ?? ``
+    const cells = () => [...plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)]
+    const bucket = cells().find((rect) => label_of(rect).startsWith(`Other`))
+    expect(bucket).toBeDefined()
+
+    await fire(bucket)
+    await tick()
+    // Re-rooted on `thin`, whose children now clear the threshold measured against it
+    const shown = cells()
+      .map(label_of)
+      .map((label) => label.split(`:`)[0])
+    expect(shown).toEqual(expect.arrayContaining([`a`, `b`, `c`]))
+    expect(shown.some((label) => label.startsWith(`Other`))).toBe(false)
+  })
+
+  // Zoom-aware bucketing rebuilds the arcs on every zoom, so the tween can no longer
+  // tell a zoom from a data swap by array identity - it would classify every zoom as a
+  // swap and snap. It compares arc ids instead.
+  test(`a zoom still animates when the relayout rebuilt the arcs`, async () => {
+    let now = 0
+    vi.spyOn(performance, `now`).mockImplementation(() => now)
+    const plot = await mount_sized(
+      Treemap,
+      { data: tree, min_fraction: 0.001 }, // bucketing on: zoom re-runs the layout
+      { selector: `.treemap`, width: 500, height: 360 },
+    )
+    now = 2000 // past the settle window, so a genuine change must animate
+    await fire(cell_rect(plot, `A`))
+    flushSync()
+    // Animating: B has not yet collapsed to zero size on the first frame
+    expect(shown_idxs(plot)).toContain(IDX.B)
+    vi.restoreAllMocks()
+  })
+
   test(`a zoom inside the settle window does not make the next zoom-out snap`, async () => {
     let now = 0
     vi.spyOn(performance, `now`).mockImplementation(() => now)
