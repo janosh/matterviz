@@ -1418,13 +1418,12 @@
     return { lists, offsets, total }
   })
 
+  // Offsets ascend, so the first series whose run ends past the index owns it
   const kbd_point = (global_idx: number): InternalPoint<Metadata> | null => {
     const { lists, offsets } = kbd_nav
-    for (let series_pos = lists.length - 1; series_pos >= 0; series_pos--) {
-      const list = lists[series_pos]
-      if (list.length > 0 && global_idx >= offsets[series_pos]) {
-        return list[global_idx - offsets[series_pos]] ?? null
-      }
+    for (const [series_pos, list] of lists.entries()) {
+      const start = offsets[series_pos]
+      if (global_idx < start + list.length) return list[global_idx - start] ?? null
     }
     return null
   }

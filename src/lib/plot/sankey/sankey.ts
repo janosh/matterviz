@@ -237,34 +237,37 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   const folded = new Set<number>() // link indices replaced by a bucket
   const buckets: { source: number; value: number; count: number }[] = []
 
+  const value_of = (link_idx: number) => data.links[link_idx]?.value ?? 0
+  const foldable = (link_idx: number) => is_terminal(resolve(data.links[link_idx].target))
+
   outgoing.forEach((link_idxs, source) => {
     if (link_idxs.length < 2) return
-    const outflow = link_idxs.reduce((sum, idx) => sum + (data.links[idx]?.value ?? 0), 0)
+    const outflow = link_idxs.reduce((sum, idx) => sum + value_of(idx), 0)
     if (!(outflow > 0)) return
     // A link with a non-terminal target is never a candidate, but still counts toward
     // the outflow it is measured against and toward the `max_links` budget it occupies
-    const candidates = link_idxs.filter((idx) => is_terminal(resolve(data.links[idx].target)))
     const threshold = min_fraction > 0 ? min_fraction * outflow : 0
-    let small = candidates.filter((idx) => (data.links[idx]?.value ?? 0) < threshold)
-    if (max_links > 0 && link_idxs.length - small.length > max_links) {
+    // A Set, not a list: `max_links` below tests membership once per sibling, which on a
+    // wide fan is the difference between linear and quadratic
+    const small = new Set(
+      link_idxs.filter((idx) => foldable(idx) && value_of(idx) < threshold),
+    )
+    if (max_links > 0 && link_idxs.length - small.size > max_links) {
       // Rank the survivors and demote the smallest until the cap is met; `toSorted` is
       // stable, so value ties break by input order, reproducibly
-      const kept = link_idxs
-        .filter((idx) => !small.includes(idx))
-        .toSorted(
-          (left, right) => (data.links[right].value ?? 0) - (data.links[left].value ?? 0),
-        )
-      const demoted = kept
+      link_idxs
+        .filter((idx) => !small.has(idx))
+        .toSorted((left, right) => value_of(right) - value_of(left))
         .slice(max_links)
-        .filter((idx) => is_terminal(resolve(data.links[idx].target)))
-      small = [...small, ...demoted]
+        .filter(foldable)
+        .forEach((idx) => small.add(idx))
     }
-    if (small.length < 2) return // a bucket of one is that link under a worse name
+    if (small.size < 2) return // a bucket of one is that link under a worse name
     small.forEach((idx) => folded.add(idx))
     buckets.push({
       source,
-      value: small.reduce((sum, idx) => sum + (data.links[idx]?.value ?? 0), 0),
-      count: small.length,
+      value: [...small].reduce((sum, idx) => sum + value_of(idx), 0),
+      count: small.size,
     })
   })
 

@@ -99,6 +99,79 @@ const mock_decoration_measurements = (width = 100, height = 60) => {
 }
 
 describe(`ScatterPlot`, () => {
+  // Past the marker threshold the SVG points that carry role/tabindex/aria-label are
+  // gone, so arrow keys drive a cursor through the data instead
+  describe(`canvas keyboard cursor`, () => {
+    const dense = {
+      x: Array.from({ length: 40 }, (_, idx) => idx),
+      y: Array.from({ length: 40 }, (_, idx) => idx % 7),
+    }
+    const arrow = async (svg: Element, key: string) => {
+      svg.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      await tick()
+    }
+    const mount_dense = async () => {
+      document.body.innerHTML = ``
+      const plot = await mount_sized_scatter_plot({
+        series: [dense],
+        marker_renderer: `canvas`,
+      })
+      const svg = plot.querySelector(`svg[role="application"]`)
+      if (!svg) throw new Error(`no plot svg`)
+      return { plot, svg }
+    }
+    const announced = (plot: HTMLElement) =>
+      plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
+
+    test.each([
+      [`ArrowRight`, 1],
+      [`End`, 40],
+    ])(`%s announces point %i`, async (key, point_number) => {
+      const { plot, svg } = await mount_dense()
+      await arrow(svg, key)
+      expect(announced(plot)).toContain(`point ${point_number}`)
+    })
+
+    // Two series exercise the offset arithmetic: the cursor is one flat index across
+    // both, so the series boundary is where an off-by-one shows up
+    test(`the cursor crosses the series boundary into the second series`, async () => {
+      document.body.innerHTML = ``
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          { x: [0, 1], y: [1, 2], label: `first` },
+          { x: [2, 3], y: [3, 4], label: `second` },
+        ],
+        marker_renderer: `canvas`,
+      })
+      const svg = plot.querySelector(`svg[role="application"]`)
+      if (!svg) throw new Error(`no plot svg`)
+      const live = () => plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
+
+      for (const expected of [`first point 1`, `first point 2`, `second point 1`]) {
+        svg.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+        await tick()
+        expect(live()).toContain(expected)
+      }
+      // End lands on the last point of the last series, not past it
+      svg.dispatchEvent(new KeyboardEvent(`keydown`, { key: `End`, bubbles: true }))
+      await tick()
+      expect(live()).toContain(`second point 2`)
+    })
+
+    test(`arrows step and wrap, Escape clears the announcement`, async () => {
+      const { plot, svg } = await mount_dense()
+      await arrow(svg, `ArrowRight`)
+      await arrow(svg, `ArrowRight`)
+      expect(announced(plot)).toContain(`point 2`)
+      // Backwards off the start wraps to the end rather than dead-ending
+      await arrow(svg, `ArrowLeft`)
+      await arrow(svg, `ArrowLeft`)
+      expect(announced(plot)).toContain(`point 40`)
+      await arrow(svg, `Escape`)
+      expect(announced(plot)).toBe(``)
+    })
+  })
+
   describe(`error bars`, () => {
     // One path per series holds every bar, so bars are counted by their subpaths:
     // each bar emits exactly three M commands (two caps and the shaft).
