@@ -1,5 +1,6 @@
 <script lang="ts">
   import { add_alpha } from '$lib/colors'
+  import { symbol_map } from '$lib/labels'
   import type { LegendItem, Orientation } from '$lib/plot'
   import type { LegendItemExtent } from '$lib/plot/core/decorations/tracks'
   import {
@@ -9,12 +10,21 @@
   import { unique_id } from '$lib/plot/core/utils'
   import { sanitize_html } from '$lib/sanitize'
   import { strip_html } from '$lib/table'
+  import {
+    symbol as d3_symbol,
+    symbolAsterisk,
+    symbolCircle,
+    symbolPlus,
+    symbolTimes,
+  } from 'd3-shape'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   // Unique instance ID to prevent gradient ID collisions when multiple legends render on the same page
   const instance_id = unique_id()
+  // d3 symbols with no interior: the plot paints them by stroke, a fill would be invisible
+  const open_symbols = new Set([symbolPlus, symbolTimes, symbolAsterisk])
 
   let {
     series_data = [],
@@ -344,27 +354,19 @@
           </svg>
         {/if}
 
-        <!-- Marker symbol -->
+        <!-- Marker symbol: the same d3 outline the plot draws, filled unless the shape is
+             a bare set of strokes -->
         {#if series.display_style.symbol_type}
           {@const color = series.display_style.symbol_color ?? `currentColor`}
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            {#if series.display_style.symbol_type === `Circle`}
-              <circle cx="5" cy="5" r="4" fill={color} />
-            {:else if series.display_style.symbol_type === `Square`}
-              <rect x="1" y="1" width="8" height="8" fill={color} />
-            {:else if series.display_style.symbol_type === `Triangle`}
-              <polygon points="5,1 9,9 1,9" fill={color} />
-            {:else if series.display_style.symbol_type === `Cross`}
-              <polygon
-                points="4,0 6,0 6,4 10,4 10,6 6,6 6,10 4,10 4,6 0,6 0,4 4,4"
-                fill={color}
-              />
-            {:else if series.display_style.symbol_type === `Star`}
-              <polygon
-                points="5,0 6.1,3.5 9.8,4.1 7.4,6.7 7.9,10 5,8.3 2.1,10 2.6,6.7 0.2,4.1 3.9,3.5"
-                fill={color}
-              />
-            {/if}
+          {@const shape = symbol_map[series.display_style.symbol_type] ?? symbolCircle}
+          {@const stroke_only = open_symbols.has(shape)}
+          <svg width="10" height="10" viewBox="-5 -5 10 10">
+            <path
+              d={d3_symbol().type(shape).size(50)() ?? ``}
+              fill={stroke_only ? `none` : color}
+              stroke={stroke_only ? color : `none`}
+              stroke-width="1.5"
+            />
           </svg>
         {/if}
       {/if}

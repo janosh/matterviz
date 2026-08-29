@@ -1156,12 +1156,9 @@ describe(`ScatterPlot`, () => {
   // styles.point.symbol_type (the VS Code scatter.symbol_type setting) replaces the per-series
   // Circle/Square/Triangle cycle for markers and legend swatches alike; a point's own
   // point_style.symbol_type still wins
-  test.each([
-    [undefined, [`circle`, `rect`]],
-    [`Triangle`, [`polygon`, `polygon`]],
-  ] as const)(
+  test.each([undefined, `Triangle`] as const)(
     `styles.point.symbol_type=%s shapes markers and legend swatches`,
-    async (symbol_type, legend_tags) => {
+    async (symbol_type) => {
       const series = [
         { x: [1, 2], y: [1, 2], label: `A` },
         { x: [1, 2], y: [2, 3], label: `B` },
@@ -1182,10 +1179,12 @@ describe(`ScatterPlot`, () => {
       // the authored Diamond survives the override
       expect(marker_path(2)).not.toBe(marker_path(1))
       expect(marker_path(2)).not.toContain(`A`)
-      const swatches = [...plot.querySelectorAll(`.legend-marker > svg`)].flatMap((svg) =>
-        [...svg.querySelectorAll(`circle, rect, polygon`)].map((el) => el.tagName),
+      // the legend swatch is the marker's own d3 outline, drawn at a fixed swatch size
+      const outline = (path: string) => path.replaceAll(/[-\d.]+/g, ``)
+      const swatches = [...plot.querySelectorAll(`.legend-marker path`)].map((path) =>
+        outline(path.getAttribute(`d`) ?? ``),
       )
-      expect(swatches.slice(0, 2)).toEqual(legend_tags)
+      expect(swatches).toEqual([0, 1, 2].map((idx) => outline(marker_path(idx))))
     },
   )
 

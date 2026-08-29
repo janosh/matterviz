@@ -1,5 +1,18 @@
 // @vitest-environment happy-dom
 import { type FillGradient, type LegendItem, PlotLegend } from '$lib/plot'
+import {
+  symbol as d3_symbol,
+  symbolAsterisk,
+  symbolCircle,
+  symbolCross,
+  symbolDiamond,
+  symbolPlus,
+  symbolSquare,
+  symbolStar,
+  symbolTimes,
+  symbolTriangle,
+  symbolWye,
+} from 'd3-shape'
 import { flushSync, mount, tick } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
@@ -72,7 +85,7 @@ describe(`PlotLegend`, () => {
       hidden: false,
       svgs: 2,
       line: [`red`, `solid`],
-      symbol: [`circle`, `red`],
+      symbol: `red`,
     },
     {
       idx: 1,
@@ -80,7 +93,7 @@ describe(`PlotLegend`, () => {
       hidden: true,
       svgs: 2,
       line: [`blue`, `dashed`],
-      symbol: [`rect`, `blue`],
+      symbol: `blue`,
     },
     {
       idx: 2,
@@ -88,7 +101,7 @@ describe(`PlotLegend`, () => {
       hidden: false,
       svgs: 1,
       line: null,
-      symbol: [`polygon`, `green`],
+      symbol: `green`,
     },
     {
       idx: 3,
@@ -123,11 +136,9 @@ describe(`PlotLegend`, () => {
       expect(line_el?.getAttribute(`stroke`)).toBe(line[0])
       expect(line_el?.getAttribute(`stroke-dasharray`)).toBe(line[1])
     } else expect(line_el).toBeNull()
-    if (symbol) {
-      expect(item.querySelector(`.legend-marker ${symbol[0]}`)?.getAttribute(`fill`)).toBe(
-        symbol[1],
-      )
-    } else expect(item.querySelector(`.legend-marker :is(circle, rect, polygon)`)).toBeNull()
+    const path = item.querySelector(`.legend-marker path`)
+    if (symbol) expect(path?.getAttribute(`fill`)).toBe(symbol)
+    else expect(path).toBeNull()
   })
 
   test.each([
@@ -311,48 +322,34 @@ describe(`PlotLegend`, () => {
     expect(items[0].textContent).toContain(`Target series`)
   })
 
-  // Regression tests for legend symbol SVG elements matching D3 symbol shapes
+  // The legend glyph is the plot's own d3 outline: filled symbols carry the color as
+  // fill, d3's stroke-only ones (Asterisk, Plus, Times) as stroke
   test.each([
-    [`Circle`, `circle`, { cx: `5`, cy: `5`, r: `4` }],
-    [`Square`, `rect`, { x: `1`, y: `1`, width: `8`, height: `8` }],
-    [`Triangle`, `polygon`, { points: `5,1 9,9 1,9` }],
-    [
-      `Cross`,
-      `polygon`,
+    [`Circle`, symbolCircle, false],
+    [`Square`, symbolSquare, false],
+    [`Triangle`, symbolTriangle, false],
+    [`Cross`, symbolCross, false],
+    [`Star`, symbolStar, false],
+    [`Diamond`, symbolDiamond, false],
+    [`Wye`, symbolWye, false],
+    [`Plus`, symbolPlus, true],
+    [`Times`, symbolTimes, true],
+    [`Asterisk`, symbolAsterisk, true],
+  ] as const)(`renders the %s symbol as its d3 path`, (symbol_type, shape, stroke_only) => {
+    const data: LegendItem[] = [
       {
-        points: `4,0 6,0 6,4 10,4 10,6 6,6 6,10 4,10 4,6 0,6 0,4 4,4`,
+        label: `Test ${symbol_type}`,
+        visible: true,
+        series_idx: 0,
+        display_style: { symbol_type, symbol_color: `#123456` },
       },
-    ],
-    [`Star`, `polygon`, {}], // Star has complex points, just check element exists
-  ] as const)(
-    `renders %s symbol as correct SVG element`,
-    (symbol_type, element_tag, attrs) => {
-      const data: LegendItem[] = [
-        {
-          label: `Test ${symbol_type}`,
-          visible: true,
-          series_idx: 0,
-          display_style: { symbol_type, symbol_color: `#123456` },
-        },
-      ]
-      mount(PlotLegend, { target: document.body, props: { series_data: data } })
-
-      const svg = doc_query(`.legend-marker > svg`)
-      const svg_ctors: Record<string, typeof Element> = {
-        circle: SVGCircleElement,
-        rect: SVGRectElement,
-        polygon: SVGPolygonElement,
-      }
-      const element = svg.querySelector(element_tag)
-      expect(element).toBeInstanceOf(svg_ctors[element_tag] ?? SVGElement)
-      expect(element?.getAttribute(`fill`)).toBe(`#123456`)
-
-      // Verify specific attributes for each symbol type
-      for (const [attr, value] of Object.entries(attrs)) {
-        expect(element?.getAttribute(attr), `${symbol_type} ${attr}`).toBe(value)
-      }
-    },
-  )
+    ]
+    mount(PlotLegend, { target: document.body, props: { series_data: data } })
+    const path = doc_query(`.legend-marker > svg > path`, SVGPathElement)
+    expect(path.getAttribute(`d`)).toBe(d3_symbol().type(shape).size(50)())
+    expect(path.getAttribute(`fill`)).toBe(stroke_only ? `none` : `#123456`)
+    expect(path.getAttribute(`stroke`)).toBe(stroke_only ? `#123456` : `none`)
+  })
 
   test(`calls on_toggle with the series_idx on click and Enter/Space (other keys ignored)`, () => {
     const mock_toggle = vi.fn()
