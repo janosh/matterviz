@@ -1542,6 +1542,7 @@
       <FillArea
         region={fill}
         region_idx={fill.idx}
+        is_first_segment={segment_idx === 0}
         path={path_d}
         {clip_path_id}
         {x_scale_fn}

@@ -49,6 +49,22 @@ describe(`FillArea`, () => {
     expect(doc_query(`g.fill-region`).getAttribute(`tabindex`)).toBe(expected)
   })
 
+  // A region split by gaps renders one FillArea per segment. They are one logical
+  // region, so N segments must not become N identical tab stops.
+  test.each([
+    [`first segment`, true, `0`, null],
+    [`later segment`, false, `-1`, `true`],
+  ])(`a %s carries tabindex %s`, (_name, is_first_segment, tabindex, hidden) => {
+    document.body.innerHTML = ``
+    mount(FillArea, {
+      target: document.body,
+      props: make_props({ on_hover: () => {}, is_first_segment }),
+    })
+    const region = doc_query(`g.fill-region`)
+    expect(region.getAttribute(`tabindex`)).toBe(tabindex)
+    expect(region.getAttribute(`aria-hidden`)).toBe(hidden)
+  })
+
   // Every hover payload comes from a pointer event, so without this a keyboard user
   // reaches the region and sees nothing
   test(`focus reports a hover at the region center, blur clears it`, async () => {

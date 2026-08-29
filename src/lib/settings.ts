@@ -166,6 +166,7 @@ const hierarchy_chart_settings = (
     )} however the values are spread`,
     minimum: 0,
     maximum: 20,
+    multipleOf: 1,
   },
   show_labels: {
     value: true,
@@ -1017,9 +1018,10 @@ export const SETTINGS_CONFIG = define_settings({
     },
     max_links: {
       value: 0,
-      description: `Keep at most this many outgoing links per node, largest first, folding the rest (0 = unlimited)`,
+      description: `Keep at most this many outgoing links per node, largest first, folding the rest into one 'Other' link (0 = unlimited). Not a hard cap on what is drawn: only links to terminal targets can be folded, and the 'Other' link itself is additional`,
       minimum: 0,
       maximum: 20,
+      multipleOf: 1,
     },
     orientation: {
       value: `horizontal` as const,

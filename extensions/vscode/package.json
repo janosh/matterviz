@@ -1214,9 +1214,10 @@
         "matterviz.sankey.max_links": {
           "type": "number",
           "default": 0,
-          "description": "Keep at most this many outgoing links per node, largest first, folding the rest (0 = unlimited)",
+          "description": "Keep at most this many outgoing links per node, largest first, folding the rest into one 'Other' link (0 = unlimited). Not a hard cap on what is drawn: only links to terminal targets can be folded, and the 'Other' link itself is additional",
           "minimum": 0,
-          "maximum": 20
+          "maximum": 20,
+          "multipleOf": 1
         },
         "matterviz.sankey.orientation": {
           "type": "string",
@@ -1300,7 +1301,8 @@
           "default": 0,
           "description": "Keep at most this many children per parent, largest first, grouping the rest (0 = unlimited). Unlike min_fraction it guarantees a populated ring however the values are spread",
           "minimum": 0,
-          "maximum": 20
+          "maximum": 20,
+          "multipleOf": 1
         },
         "matterviz.sunburst.show_labels": {
           "type": "boolean",
@@ -1393,7 +1395,8 @@
           "default": 0,
           "description": "Keep at most this many children per parent, largest first, grouping the rest (0 = unlimited). Unlike min_fraction it guarantees a populated level however the values are spread",
           "minimum": 0,
-          "maximum": 20
+          "maximum": 20,
+          "multipleOf": 1
         },
         "matterviz.treemap.show_labels": {
           "type": "boolean",

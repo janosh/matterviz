@@ -243,6 +243,41 @@ describe(`bucket_sankey_data`, () => {
     expect(links).toEqual(passthrough.links)
   })
 
+  // `max_links` bounds the links kept under their own name, not the total drawn: the
+  // bucket is additional, and a non-terminal overflow link cannot be folded away at all.
+  // Same contract as `max_children` on the hierarchy charts.
+  test.each([
+    [
+      `bucket is additional to the kept links`,
+      [
+        { source: `src`, target: `a`, value: 5 },
+        { source: `src`, target: `b`, value: 4 },
+        { source: `src`, target: `c`, value: 3 },
+        { source: `src`, target: `d`, value: 2 },
+        { source: `src`, target: `e`, value: 1 },
+      ],
+      4,
+    ], // 3 kept + 1 bucket
+    [
+      `non-terminal overflow is kept under its own name`,
+      [
+        { source: `src`, target: `a`, value: 5 },
+        { source: `src`, target: `b`, value: 4 },
+        { source: `src`, target: `c`, value: 3 },
+        { source: `src`, target: `mid`, value: 2 },
+        { source: `src`, target: `e`, value: 1 },
+        { source: `mid`, target: `sink`, value: 2 },
+      ],
+      6,
+    ], // nothing folds: only `e` is a foldable overflow, and a bucket of one is not made
+  ])(`max_links: %s`, (_name, links, expected) => {
+    const graph = {
+      nodes: [`src`, `a`, `b`, `c`, `d`, `e`, `mid`, `sink`].map((id) => ({ id })),
+      links,
+    }
+    expect(bucket_sankey_data(graph, { max_links: 3 }).links).toHaveLength(expected)
+  })
+
   // Labels are not identity: two nodes may share one, and keying on it would merge them
   test(`duplicate labels with index references resolve to distinct nodes`, () => {
     const dup = {

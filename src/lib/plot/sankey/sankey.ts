@@ -187,7 +187,10 @@ function horizontal_link_path(link: D3Link<NodeExtra, LinkExtra>): string {
 export interface SankeyBucketOptions {
   // Fold an outgoing link carrying less than this fraction of its source's outflow
   min_fraction?: number
-  // Keep at most this many outgoing links per source, largest first (0 = unlimited)
+  // Keep at most this many outgoing links per source, largest first (0 = unlimited).
+  // Not a hard cap on what is drawn, matching `max_children` on the hierarchy charts:
+  // only links to terminal targets can be folded, so a node whose overflow carries flow
+  // onward keeps it, and the synthetic 'Other' link is additional to the kept ones.
   max_links?: number
   other_label?: string // label of the synthetic node, default 'Other'
 }

@@ -11,6 +11,7 @@
   let {
     region,
     region_idx,
+    is_first_segment = true,
     path,
     clip_path_id,
     x_scale_fn,
@@ -22,6 +23,10 @@
   }: {
     region: FillRegion
     region_idx: number
+    // A region split by gaps or crossings renders one FillArea per segment. They are one
+    // logical region, so only the first joins the tab order and carries the label - the
+    // rest would otherwise be N identical tab stops announcing the same thing.
+    is_first_segment?: boolean
     path: string
     clip_path_id: string
     x_scale_fn: ((x: number) => number) & { invert?: (y: number) => number | Date }
@@ -144,7 +149,8 @@
   onfocus={handle_focus}
   onblur={() => emit_hover(null)}
   role="img"
-  tabindex={is_interactive ? 0 : -1}
+  tabindex={is_interactive && is_first_segment ? 0 : -1}
+  aria-hidden={is_first_segment ? undefined : `true`}
   aria-label={region.label ?? `Fill region ${region_idx}`}
 >
   {#snippet gradient_stops(stops: readonly [number, string][])}
