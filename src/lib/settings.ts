@@ -152,9 +152,9 @@ const hierarchy_chart_settings = (
   },
   min_fraction: {
     value: 0,
-    description: `Group sibling ${node}s smaller than this fraction into one 'Other' ${
+    description: `Group sibling ${node}s smaller than this fraction of the current view's total into one 'Other' ${
       node === `arc` ? `slice` : `cell`
-    } per parent (0 = off)`,
+    } per parent (0 = off). Zooming into a parent re-measures its children against it, dissolving the group`,
     minimum: 0,
     maximum: 0.2,
   },

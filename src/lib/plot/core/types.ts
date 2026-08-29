@@ -11,7 +11,7 @@ import type { PlotTitleConfig } from '$lib/plot/core/plot-title'
 import type { TicksOption } from '$lib/plot/core/scales'
 import type { TickStrategy } from '$lib/plot/core/tick-layout'
 import type { FillGradient } from '$lib/plot/core/types/fills'
-import { type ErrorValues, error_length, type PointError } from '$lib/plot/core/error-bars'
+import { type ErrorValues, error_lengths, type PointError } from '$lib/plot/core/error-bars'
 import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
 
 export type { TweenOptions } from 'svelte/motion'
@@ -166,12 +166,15 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
     name === undefined
       ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
       : `Series "${name}"`
-  // Errors are scalar-or-array; only their array form is indexed in lockstep with x/y
+  // Errors are scalar-or-array; only their array form is indexed in lockstep with x/y.
+  // An asymmetric error contributes both sides separately - they are indexed
+  // independently, so checking only one lets the other run short unnoticed.
   const error_arrays = Object.fromEntries(
-    ([`x_error`, `y_error`] as const).flatMap((key) => {
-      const length = error_length(series[key])
-      return length === null ? [] : [[key, { length }] as const]
-    }),
+    ([`x_error`, `y_error`] as const).flatMap((key) =>
+      error_lengths(series[key]).map(
+        (length, side) => [`${key}[${side}]`, { length }] as const,
+      ),
+    ),
   )
   assert_aligned_lengths(where, { x, y, z, raw_y, ...error_arrays })
   series.line_underlays?.forEach((underlay, idx) =>

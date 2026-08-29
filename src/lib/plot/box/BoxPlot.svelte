@@ -54,7 +54,7 @@
     X2_AXIS_DEFAULTS,
   } from '$lib/plot/core/axis-utils'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
-  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
+  import { is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
   import {
     create_roving_focus,
     ROVING_ATTR,
@@ -585,19 +585,22 @@
     }
   }
 
-  const handle_box_hover = (box_item: Box, color: string) => (event: MouseEvent) => {
-    hovered = true
-    // Anchor the tooltip at the cursor (cx/cy default to the whisker tip) so it follows the
-    // mouse — boxes/violins are wide, and a fixed anchor lands far from the pointer.
-    const pointer = get_relative_coords(event, frame.svg_element)
-    // The whisker-tip fallback has no pointer glyph for the tooltip to dodge
-    hover_at_pointer = Boolean(pointer)
-    hover_info = {
-      ...get_box_data(box_item, color),
-      ...(pointer && { cx: pointer.x, cy: pointer.y }),
+  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover, and it simply has
+  // no pointer, which is the case the whisker-tip anchor below already covers
+  const handle_box_hover =
+    (box_item: Box, color: string) => (event: MouseEvent | FocusEvent) => {
+      hovered = true
+      // Anchor the tooltip at the cursor (cx/cy default to the whisker tip) so it follows the
+      // mouse — boxes/violins are wide, and a fixed anchor lands far from the pointer.
+      const pointer = pointer_pos(event, frame.svg_element)
+      // The whisker-tip fallback has no pointer glyph for the tooltip to dodge
+      hover_at_pointer = Boolean(pointer)
+      hover_info = {
+        ...get_box_data(box_item, color),
+        ...(pointer && { cx: pointer.x, cy: pointer.y }),
+      }
+      on_box_hover?.({ ...hover_info, event })
     }
-    on_box_hover?.({ ...hover_info, event })
-  }
 
   const clear_hover = () => {
     hover_info = null
@@ -767,8 +770,13 @@
             role="button"
             tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
             {...{ [ROVING_ATTR]: roving_key(box_item.idx, 0) }}
-            aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}`}
-            onfocusin={roving.focusin}
+            aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}, median ${
+              box_item.stats.median
+            }`}
+            onfocusin={(evt) => {
+              roving.focusin(evt)
+              handle_box_hover(box_item, color)(evt)
+            }}
             style:cursor={on_box_click ? `pointer` : undefined}
             opacity={frame.hovered_series_idx !== null &&
             frame.hovered_series_idx !== box_item.idx

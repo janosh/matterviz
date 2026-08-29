@@ -777,6 +777,10 @@
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const y_axis_config = use_y2 ? final_y2_axis : final_y_axis
     const y_line_scale = log_floor_scale(y_scale, y_axis_config.scale_type, y_scale.domain())
+    // x needs the same floor as y for error bars: a lower end at or below zero on a log
+    // x axis has no finite pixel, and one non-finite end drops the whole bar
+    const x_axis_config = series_data.x_axis === `x2` ? final_x2_axis : final_x_axis
+    const x_line_scale = log_floor_scale(x_scale, x_axis_config.scale_type, x_scale.domain())
     return {
       x_scale,
       point: (point: InternalPoint<Metadata>): Vec2 => [
@@ -793,7 +797,7 @@
           axis === `x`
             ? [point.x, point.point_offset?.x ?? 0]
             : [point.y, point.point_offset?.y ?? 0]
-        const scale = axis === `x` ? x_scale : y_line_scale
+        const scale = axis === `x` ? x_line_scale : y_line_scale
         const [lo, hi] = [scale(value - error[0]) + offset, scale(value + error[1]) + offset]
         return Number.isFinite(lo) && Number.isFinite(hi) ? [lo, hi] : null
       },
@@ -823,6 +827,10 @@
   ): boolean =>
     point.point_label?.text != null ||
     same_logical_point(point, selected) ||
+    // Rect-selected points get the same treatment as `selected_point`, so they must be
+    // lifted out of the canvas bitmap too - otherwise a selection past the marker
+    // threshold silently paints nothing
+    selected_keys.has(roving_key(point.series_idx, point.point_idx)) ||
     Boolean(point.point_style?.is_highlighted && point.point_style.highlight_effect)
 
   // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
@@ -1349,6 +1357,46 @@
     new Set(selected_points.map((sel) => roving_key(sel.series_idx, sel.point_idx))),
   )
 
+  // One path per series, not per point: a dense scatter with errors would otherwise
+  // remount thousands of DOM nodes and undo the canvas marker threshold entirely. That
+  // costs per-point coloring, so bars take the series' own color - which reads better
+  // anyway, since a hairball of individually tinted bars is noise rather than signal.
+  let error_bar_paths = $derived.by(() =>
+    filtered_series.flatMap((series_data, series_pos) => {
+      if (series_data.x_error == null && series_data.y_error == null) return []
+      const project = series_projector(series_data)
+      const { marker_of } = series_appearance(series_data)
+      const cap = error_bar_cap
+      const segments: string[] = []
+      for (const point of series_data.filtered_data) {
+        const [cx, cy] = project.point(point)
+        const x_span = project.error_span(point, `x`)
+        if (x_span) {
+          const [lo, hi] = x_span
+          segments.push(
+            `M${lo},${cy - cap}V${cy + cap}M${lo},${cy}H${hi}M${hi},${cy - cap}V${cy + cap}`,
+          )
+        }
+        const y_span = project.error_span(point, `y`)
+        if (y_span) {
+          const [lo, hi] = y_span
+          segments.push(
+            `M${cx - cap},${lo}H${cx + cap}M${cx},${lo}V${hi}M${cx - cap},${hi}H${cx + cap}`,
+          )
+        }
+      }
+      if (segments.length === 0) return []
+      const first = series_data.filtered_data[0]
+      return [
+        {
+          series_pos,
+          d: segments.join(``),
+          stroke: first ? marker_of(first).fill : undefined,
+        },
+      ]
+    }),
+  )
+
   // === Canvas-mode keyboard cursor ===
   // Past CANVAS_MARKER_THRESHOLD the points stop being SVG nodes, taking their
   // tabindex, role and aria-label with them - the chart silently degrades from
@@ -1422,11 +1470,13 @@
     return move_kbd_cursor(event)
   }
 
-  // Only while the cursor is driving: a mouse hover already shows a visible tooltip,
-  // and re-announcing every point the pointer sweeps over would be noise.
-  let live_message = $derived(
-    kbd_cursor != null && tooltip_point ? point_accessible_label(tooltip_point) : ``,
-  )
+  // Reads the cursor's own point, not the hovered one: `tooltip_point` also tracks the
+  // mouse, so announcing that would re-announce every point the pointer swept over once
+  // the cursor had been used at all.
+  let live_message = $derived.by(() => {
+    const point = kbd_cursor == null ? null : kbd_point(kbd_cursor)
+    return point ? point_accessible_label(point) : ``
+  })
 
   // One tab stop for the whole point cloud instead of one per point: a 10k-point
   // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
@@ -1646,34 +1696,14 @@
 
     <!-- Fill regions: below points -->
     <!-- Error bars sit under the markers so a cap never hides the point it belongs to -->
-    {#each filtered_series as series_data (series_data._id)}
-      {#if series_data.x_error != null || series_data.y_error != null}
-        {@const project = series_projector(series_data)}
-        {@const { marker_of } = series_appearance(series_data)}
-        <g
-          class="error-bars"
-          clip-path="url(#{frame.clip_path_id})"
-          opacity={is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1}
-        >
-          {#each series_data.filtered_data as point (`${point.series_idx}-${point.point_idx}`)}
-            {@const [cx, cy] = project.point(point)}
-            {@const stroke = marker_of(point).fill}
-            {@const cap = error_bar_cap}
-            {#each [`x`, `y`] as const as axis (axis)}
-              {@const span = project.error_span(point, axis)}
-              {#if span}
-                {@const [lo, hi] = span}
-                <path
-                  d={axis === `x`
-                    ? `M${lo},${cy - cap}V${cy + cap}M${lo},${cy}H${hi}M${hi},${cy - cap}V${cy + cap}`
-                    : `M${cx - cap},${lo}H${cx + cap}M${cx},${lo}V${hi}M${cx - cap},${hi}H${cx + cap}`}
-                  {stroke}
-                />
-              {/if}
-            {/each}
-          {/each}
-        </g>
-      {/if}
+    {#each error_bar_paths as { series_pos, d, stroke } (series_pos)}
+      <path
+        class="error-bars"
+        clip-path="url(#{frame.clip_path_id})"
+        opacity={is_legend_dimmed(filtered_series[series_pos]?.orig_series_idx) ? 0.25 : 1}
+        {d}
+        {stroke}
+      />
     {/each}
 
     {@render fill_regions_layer(fills_by_z.below_points)}
@@ -1904,7 +1934,7 @@
 </CartesianFrame>
 
 <style>
-  .error-bars path {
+  path.error-bars {
     fill: none;
     stroke-width: var(--scatter-error-bar-width, 1);
     stroke-opacity: var(--scatter-error-bar-opacity, 0.7);

@@ -146,7 +146,10 @@
       on_bar_click?: (
         data: HistogramHandlerProps & { event: MouseEvent | KeyboardEvent },
       ) => void
-      on_bar_hover?: (data: (HistogramHandlerProps & { event: MouseEvent }) | null) => void
+      // FocusEvent for keyboard focus, which reaches a bar the same way a hover does
+      on_bar_hover?: (
+        data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
+      ) => void
       ref_lines?: RefLine[]
       on_ref_line_click?: (event: RefLineEvent) => void
       on_ref_line_hover?: (event: RefLineEvent | null) => void
@@ -444,11 +447,13 @@
       y2_axis: final_y2_axis,
     } satisfies HistogramHandlerProps
   }
-  const handle_bar_hover = (hist: BinnedSeries, bin: HistogramBin) => (evt: MouseEvent) => {
-    hovered = true
-    hover_info = bar_data(hist, bin)
-    on_bar_hover?.({ ...hover_info, event: evt })
-  }
+  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
+  const handle_bar_hover =
+    (hist: BinnedSeries, bin: HistogramBin) => (evt: MouseEvent | FocusEvent) => {
+      hovered = true
+      hover_info = bar_data(hist, bin)
+      on_bar_hover?.({ ...hover_info, event: evt })
+    }
   const clear_hover = () => {
     hover_info = null
     on_bar_hover?.(null)
@@ -582,10 +587,16 @@
               role="button"
               tabindex={roving.tabindex(roving_key(hist.series_idx, bin_idx))}
               {...{ [ROVING_ATTR]: roving_key(hist.series_idx, bin_idx) }}
-              aria-label={`bin ${bin_idx + 1} of ${hist.label ?? `series`}`}
+              aria-label={`${hist.label ?? `series`} bin ${bin_idx + 1}: ${bin.x0} to ${
+                bin.x1
+              }, count ${bin.count}${normalize === `count` ? `` : `, value ${bin.value}`}`}
               onmousemove={handle_bar_hover(hist, bin)}
               onmouseleave={clear_hover}
-              onfocusin={roving.focusin}
+              onfocusin={(evt) => {
+                roving.focusin(evt)
+                // Focus is the keyboard's hover; without it the tooltip never opens
+                handle_bar_hover(hist, bin)(evt)
+              }}
               onclick={handle_bar_click(hist, bin)}
               onkeydown={(evt) => {
                 if (roving.handle_keydown(evt)) return

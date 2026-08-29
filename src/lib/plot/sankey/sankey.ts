@@ -206,18 +206,33 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
 ): SankeyData<Metadata> {
   if (!(min_fraction > 0) && !(max_links > 0)) return data
 
-  const key_of = (node: SankeyNode<Metadata>, idx: number) => node.id ?? node.label ?? idx
-  const keys = data.nodes.map(key_of)
-  const idx_of = new Map(keys.map((key, idx) => [key, idx]))
-  const resolve = (ref: number | string): number =>
-    idx_of.get(ref) ?? (typeof ref === `number` ? ref : -1)
+  // Identity is `id ?? index`, matching what compute_sankey_layout emits. A label is
+  // *not* identity - labels need not be unique, so keying on one would silently merge
+  // two distinct nodes - but links may still reference a node by label, so lookup
+  // accepts both, id first, mirroring resolve_node_ref.
+  const keys: (string | number)[] = data.nodes.map((node, idx) => node.id ?? idx)
+  const by_ref = new Map<string | number, number>()
+  data.nodes.forEach((node, idx) => {
+    for (const ref of [node.label, node.id]) {
+      if (ref !== undefined && !by_ref.has(ref)) by_ref.set(ref, idx)
+    }
+  })
+  const in_range = (idx: number) => idx >= 0 && idx < data.nodes.length
+  // -1 for a reference that names no node; such a link is left for the layout to report
+  const resolve = (ref: number | string): number => {
+    const found = by_ref.get(ref) ?? (typeof ref === `number` ? ref : -1)
+    return in_range(found) ? found : -1
+  }
 
   const outgoing: number[][] = data.nodes.map(() => [])
   data.links.forEach((link, link_idx) => {
     const source = resolve(link.source)
     if (source >= 0) outgoing[source]?.push(link_idx)
   })
-  const is_terminal = (node_idx: number) => (outgoing[node_idx]?.length ?? 0) === 0
+  // A reference that resolves to nothing is not terminal, it is broken: folding those
+  // links would replace them with a valid bucket and hide the error the layout reports.
+  const is_terminal = (node_idx: number) =>
+    in_range(node_idx) && (outgoing[node_idx]?.length ?? 0) === 0
 
   const folded = new Set<number>() // link indices replaced by a bucket
   const buckets: { source: number; value: number; count: number }[] = []
@@ -280,9 +295,15 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
       target: remapped.get(resolve(link.target)) ?? link.target,
     }))
 
+  // Every id in the folded graph, so a synthetic one cannot collide with a real node
+  // that happens to be called `src/Other` and steal its links
+  const taken = new Set<string | number>(nodes.map((node) => node.id ?? ``))
   buckets.forEach(({ source, value, count }) => {
     // One bucket node per source, so two sources' tails never merge into one blob
-    const bucket_id = `${String(keys[source])}/${other_label}`
+    const base_id = `${String(keys[source])}/${other_label}`
+    let bucket_id = base_id
+    for (let suffix = 2; taken.has(bucket_id); suffix++) bucket_id = `${base_id}~${suffix}`
+    taken.add(bucket_id)
     nodes.push({ id: bucket_id, label: other_label })
     links.push({
       source: remapped.get(source) ?? keys[source],

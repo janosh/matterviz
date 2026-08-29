@@ -100,9 +100,12 @@ const mock_decoration_measurements = (width = 100, height = 60) => {
 
 describe(`ScatterPlot`, () => {
   describe(`error bars`, () => {
-    const bars = (plot: HTMLElement) => [...plot.querySelectorAll(`.error-bars path`)]
-    // mount_sized resolves to the first .scatter in the document, so a plot left behind
-    // by an earlier test would be measured instead of this one's
+    // One path per series holds every bar, so bars are counted by their subpaths:
+    // each bar emits exactly three M commands (two caps and the shaft).
+    const n_bars = (plot: HTMLElement) =>
+      [...plot.querySelectorAll(`path.error-bars`)]
+        .map((path) => (path.getAttribute(`d`) ?? ``).match(/M/g)?.length ?? 0)
+        .reduce((sum, n_moves) => sum + n_moves, 0) / 3
     beforeEach(() => {
       document.body.innerHTML = ``
     })
@@ -117,7 +120,19 @@ describe(`ScatterPlot`, () => {
       [`all-zero error`, { y_error: 0 }, 0],
     ])(`%s renders %i bars`, async (_name, error_props, expected) => {
       const plot = await mount_sized_scatter_plot({ series: [{ ...basic, ...error_props }] })
-      expect(bars(plot)).toHaveLength(expected)
+      expect(n_bars(plot)).toBe(expected)
+    })
+
+    // Thousands of points must not remount thousands of nodes and undo the canvas threshold
+    test(`a series emits a single path however many points carry errors`, async () => {
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          { ...basic, y_error: 1 },
+          { ...basic, y: [1, 2, 3, 4, 5], y_error: 2 },
+        ],
+      })
+      expect(plot.querySelectorAll(`path.error-bars`)).toHaveLength(2)
+      expect(n_bars(plot)).toBe(10)
     })
 
     test(`bar spans the point's value +/- its error and the axis reaches it`, async () => {
@@ -125,8 +140,8 @@ describe(`ScatterPlot`, () => {
       const plot = await mount_sized_scatter_plot({
         series: [{ x: [1], y: [5], y_error: 100 }],
       })
-      const [bar] = bars(plot)
-      const nums = (bar.getAttribute(`d`) ?? ``).match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+      const bar = plot.querySelector(`path.error-bars`)
+      const nums = (bar?.getAttribute(`d`) ?? ``).match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
       expect(nums.length).toBeGreaterThan(0)
       // The bar must have non-zero pixel height, i.e. both ends are on the canvas
       const ys = nums.filter((_, idx) => idx % 2 === 1)
@@ -134,8 +149,14 @@ describe(`ScatterPlot`, () => {
     })
 
     // Mismatched lengths are a data bug that silently mislabels uncertainty otherwise
-    test(`per-point error array of the wrong length throws`, () => {
-      expect(() => materialize_series_points([{ ...basic, y_error: [1, 2] }])).toThrow(
+    test.each([
+      [`symmetric array`, { y_error: [1, 2] }],
+      [`asymmetric upper`, { y_error: { upper: [1, 2], lower: 1 } }],
+      // The side that used to escape the check: only `upper` was measured
+      [`asymmetric lower`, { y_error: { upper: 1, lower: [1, 2] } }],
+      [`asymmetric both, unequal`, { y_error: { upper: [1, 2], lower: [1, 2, 3] } }],
+    ])(`a %s of the wrong length throws`, (_name, error_props) => {
+      expect(() => materialize_series_points([{ ...basic, ...error_props }])).toThrow(
         /equal lengths/,
       )
     })

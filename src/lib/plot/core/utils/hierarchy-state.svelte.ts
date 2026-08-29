@@ -313,7 +313,10 @@ export class HierarchyChartState<
     // alone (for dimming), and skipping then would leave the node's own tooltip
     // permanently suppressed.
     if (idx === this.hovered_idx && this.hover_info) {
-      this.hover_pos = pointer ?? this.hover_pos
+      // Keyboard focus on the node the mouse last hovered has no pointer of its own;
+      // keeping the old cursor position would anchor the tooltip wherever the mouse
+      // happened to leave it, so fall back to the node's center as a fresh focus does
+      this.hover_pos = pointer ?? this.#opts.node_center(idx) ?? this.hover_pos
       return
     }
     this.#opts.set_hovered(true)

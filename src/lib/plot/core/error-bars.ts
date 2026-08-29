@@ -53,16 +53,19 @@ export function error_getter(
   return (idx) => [get_lower(idx), get_upper(idx)]
 }
 
-// Number of per-point entries an ErrorValues carries, or null when it is scalar/absent.
-// Used to length-check it against x/y like every other indexed series prop.
-export function error_length(error: ErrorValues | undefined | null): number | null {
-  if (error == null || typeof error === `number`) return null
-  if (Array.isArray(error)) return error.length
+// Lengths of the per-point arrays an ErrorValues carries: none for a scalar or absent
+// error, one for a symmetric array, and up to two for an asymmetric pair. Both sides are
+// reported because they are indexed independently - a `lower` one entry short of `upper`
+// would otherwise pass the alignment check and read as zero for the missing point,
+// silently mislabeling that point's uncertainty.
+export function error_lengths(error: ErrorValues | undefined | null): number[] {
+  if (error == null || typeof error === `number`) return []
+  if (Array.isArray(error)) return [error.length]
   const { upper, lower } = error as {
     upper: number | readonly number[]
     lower: number | readonly number[]
   }
-  return Array.isArray(upper) ? upper.length : Array.isArray(lower) ? lower.length : null
+  return [upper, lower].filter(Array.isArray).map((side) => side.length)
 }
 
 // The reach of the bars, so an axis can be ranged to include them: a point at 10 ± 5

@@ -243,6 +243,55 @@ describe(`bucket_sankey_data`, () => {
     expect(links).toEqual(passthrough.links)
   })
 
+  // Labels are not identity: two nodes may share one, and keying on it would merge them
+  test(`duplicate labels with index references resolve to distinct nodes`, () => {
+    const dup = {
+      nodes: [{ label: `src` }, { label: `dup` }, { label: `dup` }, { label: `dup` }],
+      links: [
+        { source: 0, target: 1, value: 90 },
+        { source: 0, target: 2, value: 1 },
+        { source: 0, target: 3, value: 1 },
+      ],
+    }
+    const { nodes, links } = bucket_sankey_data(dup, { min_fraction: 0.1 })
+    // Nodes 2 and 3 fold; node 1 survives under its own index-derived id
+    expect(nodes.map((node) => node.id)).toEqual([0, 1, `0/Other`])
+    expect(links.map((link) => [link.source, link.target, link.value])).toEqual([
+      [0, 1, 90],
+      [0, `0/Other`, 2],
+    ])
+  })
+
+  test(`a bucket id that collides with a real node is made unique`, () => {
+    const collide = {
+      nodes: [{ id: `src` }, { id: `big` }, { id: `src/Other` }, { id: `t` }],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `src/Other`, value: 1 },
+        { source: `src`, target: `t`, value: 1 },
+      ],
+    }
+    const { nodes } = bucket_sankey_data(collide, { min_fraction: 0.1 })
+    // The real `src/Other` was folded away here, but the synthetic id must still not
+    // reuse an id held by any retained node
+    const ids = nodes.map((node) => node.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  // An unknown target is a broken reference, not a terminal node: folding it would
+  // replace it with a valid link and hide the error compute_sankey_layout reports
+  test(`links with unresolved targets are never folded`, () => {
+    const broken = {
+      nodes: [{ id: `src` }, { id: `big` }],
+      links: [
+        { source: `src`, target: `big`, value: 90 },
+        { source: `src`, target: `ghost`, value: 1 },
+        { source: `src`, target: `phantom`, value: 1 },
+      ],
+    }
+    expect(bucket_sankey_data(broken, { min_fraction: 0.1 }).links).toEqual(broken.links)
+  })
+
   test(`total flow out of a bucketed source is conserved`, () => {
     const outflow = (graph: typeof tail) =>
       graph.links

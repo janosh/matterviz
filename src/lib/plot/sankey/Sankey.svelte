@@ -133,13 +133,22 @@
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
   let inner_height = $derived(Math.max(0, height - pad.t - pad.b))
 
-  // Resolved node colors (per node_idx), explicit color or cycled palette
-  let node_colors = $derived(data.nodes.map((node, idx) => node.color ?? plot_color(idx)))
+  // Palette colors are resolved before folding, so a node keeps its color when the fold
+  // drops its neighbours and shifts every later index
+  let colored_data = $derived({
+    nodes: data.nodes.map((node, idx) => ({ ...node, color: node.color ?? plot_color(idx) })),
+    links: data.links,
+  })
 
   // Invalid graphs (cycles, unknown node refs) render an error message in place
   // Long-tail folding runs before layout, so d3-sankey only ever sees the graph the
   // user will actually look at (positions stay stable under the fold)
-  let bucketed_data = $derived(bucket_sankey_data(data, { min_fraction, max_links }))
+  let bucketed_data = $derived(bucket_sankey_data(colored_data, { min_fraction, max_links }))
+  // Indexed by the folded graph's node_idx, which is what the layout reports; reading
+  // the pre-fold arrays here attached colors and metadata to the wrong records
+  let node_colors = $derived(
+    bucketed_data.nodes.map((node, idx) => node.color ?? plot_color(idx)),
+  )
 
   // of the diagram instead of crashing the host page
   let layout = $derived.by(() => {
@@ -233,7 +242,7 @@
     label: node.label,
     value: node.value,
     color: node_colors[node.node_idx],
-    metadata: data.nodes[node.node_idx]?.metadata,
+    metadata: bucketed_data.nodes[node.node_idx]?.metadata,
   })
 
   const link_props = (link: PositionedLink): SankeyLinkHandlerProps<Metadata> => ({
@@ -245,7 +254,7 @@
     target_label: link.target.label,
     value: link.value,
     color: link_color(link),
-    metadata: data.links[link.link_idx]?.metadata,
+    metadata: bucketed_data.links[link.link_idx]?.metadata,
   })
 
   const link_from_event = (event: Event): PositionedLink | null =>

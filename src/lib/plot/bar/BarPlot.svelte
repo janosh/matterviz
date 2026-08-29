@@ -549,8 +549,10 @@
       ? color_scale_fn(pt.color_value)
       : (pt.point_style?.fill ?? series_color)
 
+  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
-    (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
+    (series_idx: number, bar_idx: number, color: string) =>
+    (event: MouseEvent | FocusEvent) => {
       hovered = true
       hover_info = get_bar_data(series_idx, bar_idx, color)
       on_bar_hover?.({ ...hover_info, event })
@@ -828,10 +830,8 @@
                       offset={pt.point_offset ?? { x: 0, y: 0 }}
                       --point-fill-color={fl}
                       data-bar-idx={pt.idx}
-                      {...clickable ? { [ROVING_ATTR]: roving_key(series_idx, pt.idx) } : {}}
-                      tabindex={clickable
-                        ? roving.tabindex(roving_key(series_idx, pt.idx))
-                        : undefined}
+                      {...{ [ROVING_ATTR]: roving_key(series_idx, pt.idx) }}
+                      tabindex={roving.tabindex(roving_key(series_idx, pt.idx))}
                     />
                   {/each}
                 </g>
@@ -886,8 +886,15 @@
                     role="button"
                     tabindex={roving.tabindex(roving_key(series_idx, bar_idx))}
                     {...{ [ROVING_ATTR]: roving_key(series_idx, bar_idx) }}
-                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
-                    onfocusin={roving.focusin}
+                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}: ${
+                      srs.y[bar_idx]
+                    }`}
+                    onfocusin={(evt) => {
+                      roving.focusin(evt)
+                      // Focus is the keyboard's hover: without this the tooltip never
+                      // opens and on_bar_hover never fires for a keyboard user
+                      handle_bar_hover(series_idx, bar_idx, color)(evt)
+                    }}
                     style:cursor={on_bar_click ? `pointer` : undefined}
                     onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={clear_hover}

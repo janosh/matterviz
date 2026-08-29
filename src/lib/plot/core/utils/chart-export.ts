@@ -11,7 +11,7 @@ export type ChartExportFormat = `png` | `svg` | `csv`
 // Styles these components apply via CSS that an exported standalone SVG must carry as
 // presentation attributes (inlined onto a clone by the io/export helpers), since a
 // detached SVG drops the page stylesheets that Svelte component styles live in.
-export const CHART_EXPORT_INLINE_STYLES = [
+const CHART_EXPORT_INLINE_STYLES = [
   `fill`,
   `stroke`,
   `stroke-width`,
@@ -22,7 +22,7 @@ export const CHART_EXPORT_INLINE_STYLES = [
   `font-weight`,
   `opacity`,
 ]
-export const CHART_EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
+const CHART_EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
 
 export function export_chart_image(
   svg_element: SVGElement | null,
