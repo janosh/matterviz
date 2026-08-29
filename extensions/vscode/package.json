@@ -77,10 +77,10 @@
             "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md_,_md,-md,md-,md.,dynamics,simulation}*"
           },
           {
-            "filenamePattern": "*{CONTCAR,POSCAR,XDATCAR,contcar,poscar,xdatcar}"
+            "filenamePattern": "*{CONTCAR,OUTCAR,POSCAR,XDATCAR,contcar,outcar,poscar,xdatcar}"
           },
           {
-            "filenamePattern": "*{CONTCAR,POSCAR,XDATCAR,contcar,poscar,xdatcar}.gz"
+            "filenamePattern": "*{CONTCAR,OUTCAR,POSCAR,XDATCAR,contcar,outcar,poscar,xdatcar}.gz"
           },
           {
             "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}"

@@ -7,7 +7,8 @@ import {
   TRAJ_EXTENSIONS_REGEX,
   TRAJ_FALLBACK_EXTENSIONS_REGEX,
   TRAJ_KEYWORDS_REGEX,
-  XDATCAR_REGEX,
+  VASP_TRAJECTORY_REGEX,
+  VASPRUN_REGEX,
   XYZ_EXTENSIONS,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
@@ -22,7 +23,13 @@ export const is_trajectory_filename = (filename: string): boolean => {
   const base_name = strip_compression_extensions(filename)
 
   if (XYZ_EXTXYZ_REGEX.test(base_name)) return TRAJ_KEYWORDS_REGEX.test(base_name)
-  if (TRAJ_EXTENSIONS_REGEX.test(base_name) || XDATCAR_REGEX.test(base_name)) return true
+  if (
+    TRAJ_EXTENSIONS_REGEX.test(base_name) ||
+    VASP_TRAJECTORY_REGEX.test(base_name) ||
+    VASPRUN_REGEX.test(base_name)
+  ) {
+    return true
+  }
   if (MD_SIM_EXCLUDE_REGEX.test(base_name)) return false
   if (HDF5_EXT_REGEX.test(base_name)) {
     return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_REGEX.test(base_name)
@@ -89,6 +96,26 @@ export const FORMAT_PATTERNS = {
       lines.length === 10 &&
       !Number.isNaN(parse_leading_num(lines[1])) &&
       lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
+    )
+  },
+
+  // <modeling> is vasprun.xml's root element; any other .xml (phonopy, XRDML) lacks it
+  vasprun: (data: string, filename?: string) => {
+    if (filename && VASPRUN_REGEX.test(strip_compression_extensions(filename))) return true
+    if (ext_hint(filename, /\.xml$/i) === false) return false
+    return data.slice(0, 4096).includes(`<modeling>`)
+  },
+
+  // OUTCARs open with the `vasp.6.4.2 ...` build banner; the position table proves the run
+  // got as far as one ionic step, without which there is nothing to show
+  outcar: (data: string, filename?: string) => {
+    const basename = strip_compression_extensions(filename?.split(`/`).pop() ?? ``)
+    if (/outcar/i.test(basename)) return true
+    if (KNOWN_FORMAT_EXT_REGEX.test(basename)) return false
+    return (
+      /^\s*vasp\.\d/.test(data.slice(0, 256)) &&
+      data.includes(`POSITION`) &&
+      data.includes(`TOTAL-FORCE`)
     )
   },
 

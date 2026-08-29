@@ -395,8 +395,8 @@
     <EmptyState class="trajectory-empty-state">
       <h3>Load Trajectory</h3>
       <p>
-        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, .traj, .h5) or
-        provide trajectory data via props
+        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, OUTCAR,
+        vasprun.xml, .traj, .h5) or provide trajectory data via props
       </p>
       <strong style="display: block; margin-block: 1em 1ex">Supported formats:</strong>
       <ul>
@@ -404,7 +404,8 @@
         <li>ASE trajectory files (.traj)</li>
         <li>Pymatgen trajectory JSON</li>
         <li>Array of structures with metadata</li>
-        <li>VASP XDATCAR and LAMMPS dump files</li>
+        <li>VASP XDATCAR, OUTCAR and vasprun.xml files</li>
+        <li>LAMMPS dump files (.lammpstrj)</li>
         <li>HDF5 trajectory files (.h5, .hdf5)</li>
         <li>Compressed files (.gz)</li>
       </ul>

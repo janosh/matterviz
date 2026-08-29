@@ -32,6 +32,7 @@ describe(`file type patterns`, () => {
     `POSCAR`,
     `CONTCAR`,
     `XDATCAR`,
+    `OUTCAR`,
     `CHGCAR`,
     `LOCPOT`,
     `ELFCAR`,

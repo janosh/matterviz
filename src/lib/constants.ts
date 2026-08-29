@@ -109,9 +109,9 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex([
 ])
 
 // Special regex patterns
-// Bare VASP filenames that the structure parser supports. OUTCAR, INCAR, KPOINTS and
-// POTCAR are left out because advertising unparsable run inputs only earns the caller
-// `Unable to determine file format`.
+// Bare VASP filenames that the structure parser supports. INCAR, KPOINTS and POTCAR are
+// left out because advertising unparsable run inputs only earns the caller `Unable to
+// determine file format`; OUTCAR, XDATCAR and vasprun.xml are trajectories, not structures.
 export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
 export const VASP_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
 // oxfmt-ignore
@@ -119,7 +119,11 @@ export const VASP_VOLUMETRIC_FILES = Object.freeze([
   `chgcar`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`, `elfcar`, `locpot`, `parchg`,
 ])
 export const VASP_VOLUMETRIC_REGEX = filename_token_regex(VASP_VOLUMETRIC_FILES)
-export const XDATCAR_REGEX = /xdatcar/i
+// Bare VASP run outputs the trajectory parsers read
+export const VASP_TRAJECTORY_FILES = Object.freeze([`xdatcar`, `outcar`])
+export const VASP_TRAJECTORY_REGEX = filename_token_regex(VASP_TRAJECTORY_FILES)
+// vasprun.xml plus decorated names such as vasprun_relax.xml or run1.vasprun.xml
+export const VASPRUN_REGEX = /vasprun[^/\\]*\.xml$/i
 export const CONFIG_DIRS_REGEX =
   /(?:^|[\\/])(?:\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
 export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(?:out|txt|yml|py|csv|html|css|md|js|ts)$/i
@@ -153,7 +157,9 @@ export const BINARY_VIEWER_EXT_REGEX = ext_regex(BINARY_VIEWER_EXTENSIONS)
 
 // VASP's canonical filenames carry no extension, so hosts have to match them as name stems.
 export const VASP_VIEWER_STEMS = Object.freeze([
-  ...new Set([...VASP_STRUCTURE_FILES, `xdatcar`, ...VASP_VOLUMETRIC_FILES]),
+  ...VASP_STRUCTURE_FILES,
+  ...VASP_TRAJECTORY_FILES,
+  ...VASP_VOLUMETRIC_FILES,
 ])
 
 // Compression extensions regex (shared across files)

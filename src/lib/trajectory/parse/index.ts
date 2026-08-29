@@ -20,6 +20,7 @@ export {
 export { parse_ase_trajectory } from './ase'
 export { open_hdf5_trajectory } from './hdf5'
 export { parse_lammps_trajectory } from './lammps'
+export { parse_vasp_outcar } from './outcar'
 export { parse_pymatgen_trajectory } from './pymatgen'
 export {
   create_warning_collector,
@@ -29,6 +30,7 @@ export {
   type WarnFn,
 } from './shared'
 export { parse_vasp_xdatcar } from './vasp'
+export { parse_vasprun_xml } from './vasprun'
 export { parse_xyz_trajectory } from './xyz'
 
 export function get_unsupported_format_message(

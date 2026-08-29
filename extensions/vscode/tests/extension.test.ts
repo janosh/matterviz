@@ -254,6 +254,8 @@ describe(`MatterViz Extension`, () => {
       [`POSCAR`, `VASP`],
       [`CONTCAR`, `VASP`],
       [`XDATCAR`, `VASP`],
+      [`OUTCAR`, `VASP`],
+      [`OUTCAR.gz`, `VASP`],
       [`simulation.h5`, `HDF5`],
       [`data.hdf5`, `HDF5`],
       [`dynamics.dcd`, `DCD`],
@@ -281,7 +283,7 @@ describe(`MatterViz Extension`, () => {
     })
 
     test.each([
-      [`OUTCAR`],
+      [`INCAR`],
       [`myCHGCARfile`],
       [`prefixPARCHGsuffix`],
       [`notes_ELFCARbackup`],

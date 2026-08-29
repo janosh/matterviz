@@ -1,5 +1,6 @@
 // Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
 // they reach the UI on the run instead of living in module-global state. Fatal failures throw.
+import type { Matrix3x3 } from '$lib/math'
 import { to_error } from '$lib/utils'
 import type {
   PositionStreamOptions,
@@ -70,4 +71,46 @@ export interface LazyTrajectorySource extends ParsedRunFacts {
   // Descriptors for what collect_positions can stream, plus any signal read eagerly
   signals?: Record<string, TrajectoryRunSignal>
   dispose?: () => void
+}
+
+// === VASP text outputs (OUTCAR, vasprun.xml) ===
+
+// VASP prints stress in kB; the trajectory labels declare pressure and stress in GPa
+const KBAR_TO_GPA = 0.1
+
+// Frame metadata for a stress tensor as VASP prints it: kB, positive = compressive. The
+// pressure is the trace mean, which is what OUTCAR's `external pressure` line reports.
+export const vasp_stress_metadata = (
+  stress_kbar: Matrix3x3,
+): { stress: Matrix3x3; pressure: number } => {
+  const stress = stress_kbar.map((row) => row.map((val) => val * KBAR_TO_GPA)) as Matrix3x3
+  return { stress, pressure: (stress[0][0] + stress[1][1] + stress[2][2]) / 3 }
+}
+
+export type VaspRunParameters = {
+  ibrion: number | null
+  // Time step (fs) when IBRION = 0; relaxations reuse the tag as a step scale
+  potim: number | null
+  version: string | undefined
+}
+
+// The run-level facts every VASP output records, in ParsedTrajectory shape
+export const vasp_run = (
+  format: string,
+  frames: TrajectoryFrame[],
+  atom_masses: number[] | undefined,
+  { ibrion, potim, version }: VaspRunParameters,
+): ParsedTrajectory => {
+  const metadata: Record<string, unknown> = {}
+  if (ibrion !== null) metadata.ibrion = ibrion
+  if (version) metadata.vasp_version = version
+  return {
+    format,
+    frames,
+    metadata,
+    ...(ibrion === 0 && potim !== null && potim > 0
+      ? { time_step: { value: potim, unit: `fs` } }
+      : {}),
+    ...(atom_masses ? { atom_masses } : {}),
+  }
 }
