@@ -185,7 +185,7 @@ test.describe(`ThemeControl`, () => {
     // Test persistence across navigation to a different (also lightweight) route
     // -- not the heavy /bohr-atoms page (~118 animated SVG atoms) that was timing
     // out under CI's software renderer.
-    await page.goto(`/how-to`)
+    await page.goto(`/acknowledgements`)
     const nav_theme_control = page.locator(`.theme-control`)
     await expect(nav_theme_control).toBeVisible({ timeout: 15_000 })
     await expect(nav_theme_control).toHaveValue(`dark`, { timeout: 15_000 })
