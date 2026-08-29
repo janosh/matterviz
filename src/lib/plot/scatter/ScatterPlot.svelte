@@ -3,12 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { error_bounds } from '$lib/plot/core/error-bars'
-  import {
-    export_chart_image,
-    create_chart_exporter,
-    export_filename,
-    series_to_csv_rows,
-  } from '$lib/plot/core/utils/chart-export'
+  import { create_chart_exporter, series_to_csv_rows } from '$lib/plot/core/utils/chart-export'
   import { type D3InterpolateName, plot_color, resolve_computed_color } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -1526,11 +1521,7 @@
         }),
       },
     }))
-  const handle_export = create_chart_exporter({
-    svg: () => frame.svg_element,
-    filename: () => export_filename(frame.title_config?.text, x_axis.label, y_axis.label),
-    csv: () => series_to_csv_rows(csv_series()),
-  })
+  const handle_export = create_chart_exporter(frame, () => series_to_csv_rows(csv_series()))
 </script>
 
 {#snippet fill_regions_layer(fills: typeof computed_fills)}

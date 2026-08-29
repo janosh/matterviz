@@ -2,11 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import {
-    export_chart_image,
-    create_chart_exporter,
-    export_filename,
-  } from '$lib/plot/core/utils/chart-export'
+  import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type {
@@ -622,39 +618,35 @@
   // === Export ===
   // A box is a five-number summary, not an (x, y) pair, so CSV gets its own columns
   // rather than being forced through the shared long format.
-  const handle_export = create_chart_exporter({
-    svg: () => frame.svg_element,
-    filename: () => export_filename(frame.title_config?.text, x_axis.label, y_axis.label),
-    // whisker_low/high are what the chart draws; min/max are the raw extremes
-    csv: () => ({
-      header: [
-        `series`,
-        `n`,
-        `min`,
-        `whisker_low`,
-        `q1`,
-        `median`,
-        `mean`,
-        `q3`,
-        `whisker_high`,
-        `max`,
-        `outliers`,
-      ],
-      rows: visible_boxes.map(({ series: srs, idx, stats }) => [
-        srs.label ?? `box ${idx + 1}`,
-        stats.n,
-        stats.min,
-        stats.whisker_low,
-        stats.q1,
-        stats.median,
-        stats.mean,
-        stats.q3,
-        stats.whisker_high,
-        stats.max,
-        stats.outliers.join(` `),
-      ]),
-    }),
-  })
+  // whisker_low/high are what the chart draws; min/max are the raw extremes
+  const handle_export = create_chart_exporter(frame, () => ({
+    header: [
+      `series`,
+      `n`,
+      `min`,
+      `whisker_low`,
+      `q1`,
+      `median`,
+      `mean`,
+      `q3`,
+      `whisker_high`,
+      `max`,
+      `outliers`,
+    ],
+    rows: visible_boxes.map(({ series: srs, idx, stats }) => [
+      srs.label ?? `box ${idx + 1}`,
+      stats.n,
+      stats.min,
+      stats.whisker_low,
+      stats.q1,
+      stats.median,
+      stats.mean,
+      stats.q3,
+      stats.whisker_high,
+      stats.max,
+      stats.outliers.join(` `),
+    ]),
+  }))
 </script>
 
 {#snippet seg(p1: Vec2, p2: Vec2, stroke: string, sw: number, dash?: string)}

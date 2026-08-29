@@ -2,12 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import {
-    export_chart_image,
-    create_chart_exporter,
-    export_filename,
-    series_to_csv_rows,
-  } from '$lib/plot/core/utils/chart-export'
+  import { create_chart_exporter, series_to_csv_rows } from '$lib/plot/core/utils/chart-export'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -605,18 +600,15 @@
   $effect(try_auto_load)
 
   // === Export ===
-  const handle_export = create_chart_exporter({
-    svg: () => frame.svg_element,
-    filename: () => export_filename(frame.title_config?.text, x_axis.label, y_axis.label),
-    csv: () =>
-      series_to_csv_rows(
-        internal_series.map((srs, series_idx) => ({
-          label: srs?.label ?? `series ${series_idx + 1}`,
-          x: srs?.x ?? [],
-          y: srs?.y ?? [],
-        })),
-      ),
-  })
+  const handle_export = create_chart_exporter(frame, () =>
+    series_to_csv_rows(
+      internal_series.map((srs, series_idx) => ({
+        label: srs?.label ?? `series ${series_idx + 1}`,
+        x: srs?.x ?? [],
+        y: srs?.y ?? [],
+      })),
+    ),
+  )
 </script>
 
 {#snippet ref_lines_layer(z: LayerZIndex)}

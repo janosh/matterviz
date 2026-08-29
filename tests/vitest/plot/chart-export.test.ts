@@ -76,12 +76,12 @@ describe(`export_filename`, () => {
 // Every chart shares this branch, so it is tested once here rather than per chart
 describe(`create_chart_exporter`, () => {
   const svg = {} as SVGElement
-  const make = () =>
-    create_chart_exporter({
-      svg: () => svg,
-      filename: () => `my-chart`,
-      csv: () => ({ header: [`a`], rows: [[1]] }),
-    })
+  const frame = {
+    svg_element: svg,
+    title_config: { text: `My Chart` },
+    axes: { x: { label: `E (eV)` }, y: { label: `n` } },
+  }
+  const make = () => create_chart_exporter(frame, () => ({ header: [`a`], rows: [[1]] }))
 
   beforeEach(() => vi.clearAllMocks())
 
@@ -89,7 +89,7 @@ describe(`create_chart_exporter`, () => {
     make()(`csv`)
     expect(download).toHaveBeenCalledWith(
       `a\n1`,
-      `my-chart.csv`,
+      `My-Chart-E-eV-n.csv`,
       expect.stringContaining(`csv`),
     )
     expect(export_svg_as_png).not.toHaveBeenCalled()
@@ -102,7 +102,10 @@ describe(`create_chart_exporter`, () => {
   ] as const)(`%s renders the image and writes no csv`, (format, exporter) => {
     make()(format)
     // Only the leading args are the contract here; styles/dpi belong to the io helpers
-    expect(vi.mocked(exporter).mock.calls[0].slice(0, 2)).toEqual([svg, `my-chart.${format}`])
+    expect(vi.mocked(exporter).mock.calls[0].slice(0, 2)).toEqual([
+      svg,
+      `My-Chart-E-eV-n.${format}`,
+    ])
     expect(download).not.toHaveBeenCalled()
   })
 })

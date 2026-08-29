@@ -1,9 +1,5 @@
 <script lang="ts">
-  import {
-    export_chart_image,
-    create_chart_exporter,
-    export_filename,
-  } from '$lib/plot/core/utils/chart-export'
+  import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type {
     AxisLoadError,
@@ -495,22 +491,18 @@
   // === Export ===
   // Bins have an extent, so CSV reports edges rather than the (x, y) the shared long
   // format would collapse them to.
-  const handle_export = create_chart_exporter({
-    svg: () => frame.svg_element,
-    filename: () => export_filename(frame.title_config?.text, final_x_axis.label),
-    csv: () => ({
-      header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
-      rows: histogram_bins.flatMap((hist) =>
-        hist.bins.map((bin) => [
-          hist.label ?? `series ${hist.series_idx + 1}`,
-          bin.x0,
-          bin.x1,
-          bin.count,
-          bin.value,
-        ]),
-      ),
-    }),
-  })
+  const handle_export = create_chart_exporter(frame, () => ({
+    header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
+    rows: histogram_bins.flatMap((hist) =>
+      hist.bins.map((bin) => [
+        hist.label ?? `series ${hist.series_idx + 1}`,
+        bin.x0,
+        bin.x1,
+        bin.count,
+        bin.value,
+      ]),
+    ),
+  }))
 </script>
 
 {#snippet ref_lines_layer(z: LayerZIndex)}
