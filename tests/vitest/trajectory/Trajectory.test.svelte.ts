@@ -369,6 +369,8 @@ describe(`banners`, () => {
     )
     const banner = doc_query(`.status-message.warning`)
     expect(banner.textContent).toContain(`2 parse warnings: odd header; missing cell`)
+    // bottom-anchored like the AtomLegend (z-index 2), so it must stack above it
+    expect(Number(banner.style.zIndex)).toBeGreaterThan(2)
     banner.querySelector<HTMLButtonElement>(`button[aria-label="Dismiss message"]`)?.click()
     await tick()
     expect(target.querySelector(`.status-message.warning`)).toBeNull()
