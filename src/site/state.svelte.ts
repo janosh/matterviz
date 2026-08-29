@@ -1,7 +1,7 @@
 import { browser } from '$app/environment'
 import { goto } from '$app/navigation'
 import { page } from '$app/state'
-import { SvelteMap } from 'svelte/reactivity'
+import type { NavRouteObject } from 'svelte-widgets'
 
 // Remove adapter-static HTML filenames before SvelteKit client navigation.
 export const normalize_static_url = (url: string): string =>
@@ -39,46 +39,58 @@ export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svel
 
 if (routes.length === 0) console.error(`No routes found`)
 
-export type RouteEntry = string | [string, string] | [string, string[]]
+export type NavGroup = { label: string; href: string; prefixes: string[] }
 
-// Group demo routes by parent/child structure
-export function group_demo_routes(demos: string[]): RouteEntry[] {
-  const grouped = new SvelteMap<string, string[]>()
-  const standalone: string[] = []
+// Top-level nav dropdowns in display order. A route belongs to the first group whose prefix
+// matches it exactly or as a parent path; children keep prefix order, then path order. The
+// href is the dropdown key: where it is itself a page (/structure, /plot) the group label
+// links there and that page leaves the list, otherwise the label is a plain heading.
+// oxfmt-ignore
+export const NAV_GROUPS: NavGroup[] = [
+  { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`] },
+  { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/convex-hull`, `/phase-diagram`] },
+  { label: `Electronic & Phonons`, href: `/electronic`, prefixes: [`/reciprocal`] },
+  { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
+  { label: `Plots`, href: `/plot`, prefixes: [`/plot`] },
+  { label: `Guides`, href: `/guides`, prefixes: [`/how-to`, `/acknowledgements`] },
+]
 
-  for (const route of demos) {
-    const parts = route.split(`/`).filter(Boolean)
-    if (parts.length > 1) {
-      // Nested route like /plot/color-bar
-      const parent = `/${parts[0]}`
-      if (!grouped.has(parent)) {
-        // Initialize with parent route if it exists
-        grouped.set(parent, demos.includes(parent) ? [parent] : [])
-      }
-      grouped.get(parent)?.push(route)
-    } else {
-      // Top-level route: group it (as its own first child) if it has children
-      const has_children = demos.some((demo_route) => demo_route.startsWith(`${route}/`))
-      if (has_children) {
-        if (!grouped.has(route)) grouped.set(route, [route])
-      } else {
-        standalone.push(route)
-      }
-    }
+// Routes that exist but stay out of the dropdowns: the layout adds `/` as Home itself, the
+// rest are reachable via search and direct links only
+const HIDDEN_NAV_PREFIXES = [`/`, `/layout`, `/test`, `/404`, `/[slug]`]
+
+const has_prefix = (route: string, prefix: string) =>
+  route === prefix || (prefix !== `/` && route.startsWith(`${prefix}/`))
+
+// Sort `nav_routes` into NAV_GROUPS dropdowns. Throws on a route no group claims so a new demo
+// directory gets placed deliberately instead of silently disappearing from the nav.
+export function group_nav_routes(
+  nav_routes: string[],
+  groups: NavGroup[] = NAV_GROUPS,
+): NavRouteObject[] {
+  const prefix_idx = (route: string, { prefixes }: NavGroup) =>
+    prefixes.findIndex((prefix) => has_prefix(route, prefix))
+  const unclaimed = nav_routes.filter((route) =>
+    groups.every((group) => prefix_idx(route, group) === -1),
+  )
+  if (unclaimed.length > 0) {
+    throw new Error(`routes not in any NAV_GROUPS entry: ${unclaimed.join(`, `)}`)
   }
-
-  const result: RouteEntry[] = [...standalone]
-  for (const [parent, children] of grouped) {
-    if (children.length > 0) result.push([parent, children.toSorted()])
-  }
-
-  return result.toSorted((r1, r2) => {
-    const r1_str = typeof r1 === `string` ? r1 : r1[0]
-    const r2_str = typeof r2 === `string` ? r2 : r2[0]
-    return r1_str.localeCompare(r2_str)
+  return groups.flatMap((group) => {
+    // first matching group wins, so a prefix repeated across groups claims a route only once
+    const children = nav_routes
+      .filter((route) => prefix_idx(route, group) !== -1)
+      .filter((route) => groups.find((other) => prefix_idx(route, other) !== -1) === group)
+      .toSorted(
+        (r1, r2) => prefix_idx(r1, group) - prefix_idx(r2, group) || r1.localeCompare(r2),
+      )
+    if (children.length === 0) return []
+    return [{ label: group.label, href: group.href, children }]
   })
 }
 
-export const demo_routes = group_demo_routes(
-  routes.filter(({ filename }) => filename.includes(`/(demos)/`)).map(({ route }) => route),
+export const nav_routes = group_nav_routes(
+  routes
+    .map(({ route }) => route)
+    .filter((route) => !HIDDEN_NAV_PREFIXES.some((prefix) => has_prefix(route, prefix))),
 )
