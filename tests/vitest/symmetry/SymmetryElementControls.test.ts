@@ -2,11 +2,9 @@
 import type { ShowSymmetryKinds, SymmetryElement } from '$lib/symmetry'
 import {
   count_symmetry_elements,
-  DEFAULT_SHOW_SYM_KINDS,
   has_visible_symmetry_overlay,
   SYM_ELEM_COLORS,
   SYM_ELEM_KIND_INFO,
-  SYM_ELEM_KINDS,
   SYM_ELEMENTS_INPUT_FRAME_NOTE,
   SymmetryElementControls,
 } from '$lib/symmetry'
@@ -40,25 +38,17 @@ const SAMPLE_ELEMENTS: SymmetryElement[] = [
 ]
 
 describe(`count_symmetry_elements`, () => {
-  test(`tallies per kind`, () => {
-    expect(count_symmetry_elements(SAMPLE_ELEMENTS)).toEqual({
-      rotation: 2,
-      screw: 1,
-      rotoinversion: 1,
-      mirror: 1,
-      glide: 1,
-      inversion: 3,
-    })
-  })
-
-  test(`omits absent kinds (only present keys appear)`, () => {
-    const counts = count_symmetry_elements([make_elem(`inversion`)])
-    expect(counts).toEqual({ inversion: 1 })
-    expect(`rotation` in counts).toBe(false)
-  })
-
-  test(`empty input gives empty record`, () => {
-    expect(count_symmetry_elements([])).toEqual({})
+  // Only present kinds appear as keys (no zero entries), so the legend can iterate them
+  test.each([
+    [
+      `mixed sample`,
+      SAMPLE_ELEMENTS,
+      { rotation: 2, screw: 1, rotoinversion: 1, mirror: 1, glide: 1, inversion: 3 },
+    ],
+    [`single kind`, [make_elem(`inversion`)], { inversion: 1 }],
+    [`empty input`, [], {}],
+  ])(`tallies per present kind: %s`, (_label, elements, expected) => {
+    expect(count_symmetry_elements(elements)).toStrictEqual(expected)
   })
 })
 
@@ -68,6 +58,9 @@ describe(`has_visible_symmetry_overlay`, () => {
     // [label, elements, show_kinds, expected]
     [`no elements`, [], { rotation: true }, false],
     [`rotation present + enabled`, SAMPLE_ELEMENTS, { rotation: true }, true],
+    // show_kinds omitted → DEFAULT_SHOW_SYM_KINDS (rotation only)
+    [`rotation present, default show_kinds`, SAMPLE_ELEMENTS, undefined, true],
+    [`mirror-only cell, default show_kinds`, [make_elem(`mirror`)], undefined, false],
     // regression: enabled kind absent from elements must NOT count as visible
     [`rotation-only default on inversion-only cell`, inversion_only, undefined, false],
     [`inversion present + enabled`, inversion_only, { inversion: true }, true],
@@ -76,27 +69,13 @@ describe(`has_visible_symmetry_overlay`, () => {
   ] as const)(`%s`, (_label, elements, show_kinds, expected) => {
     expect(has_visible_symmetry_overlay(elements, show_kinds)).toBe(expected)
   })
-
-  test(`defaults to rotation-only when show_kinds omitted`, () => {
-    expect(has_visible_symmetry_overlay(SAMPLE_ELEMENTS)).toBe(true) // has rotations
-    expect(has_visible_symmetry_overlay([make_elem(`mirror`)])).toBe(false)
-  })
-})
-
-describe(`DEFAULT_SHOW_SYM_KINDS`, () => {
-  test(`shows exactly one kind by default (rotation axes) to avoid overplotting`, () => {
-    const enabled = SYM_ELEM_KINDS.filter((kind) => DEFAULT_SHOW_SYM_KINDS[kind])
-    expect(enabled).toEqual([`rotation`])
-  })
 })
 
 describe(`SYM_ELEM_KIND_INFO`, () => {
   // Swatches must show what the overlay renders: planes/centers their exact color, the
   // order-colored axis kinds the whole order palette
-  test(`covers every kind with a label and a swatch matching the render colors`, () => {
+  test(`gives every kind a swatch matching the render colors`, () => {
     const hex = /^#[0-9a-f]{6}$/i
-    for (const kind of SYM_ELEM_KINDS)
-      expect(SYM_ELEM_KIND_INFO[kind].label.length).toBeGreaterThan(0)
     for (const kind of [`mirror`, `glide`, `inversion`] as const) {
       expect(SYM_ELEM_KIND_INFO[kind].color).toBe(SYM_ELEM_COLORS[kind])
       expect(SYM_ELEM_KIND_INFO[kind].color).toMatch(hex)

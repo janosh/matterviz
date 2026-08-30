@@ -17,6 +17,7 @@
 //   part of (W, w_loc)ⁿ vanishes, the average of {0, (W,w_loc)·0, …} is exactly fixed
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { clip_frac_plane_to_cell } from '$lib/structure/lattice-planes'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 
@@ -116,25 +117,6 @@ export const has_visible_symmetry_overlay = (
 ): boolean => elements.some((elem) => show_kinds[elem.kind] ?? false)
 
 const ELEM_TOL = 1e-6
-
-// The 12 edges of the unit cube [0,1]³ (corner pairs differing in exactly one coord)
-const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = (() => {
-  const corners: Vec3[] = []
-  for (let x = 0; x <= 1; x++) {
-    for (let y = 0; y <= 1; y++) for (let z = 0; z <= 1; z++) corners.push([x, y, z])
-  }
-  const edges: [Vec3, Vec3][] = []
-  for (let idx_a = 0; idx_a < corners.length; idx_a++) {
-    for (let idx_b = idx_a + 1; idx_b < corners.length; idx_b++) {
-      const manhattan = corners[idx_a].reduce(
-        (sum, val, dim) => sum + Math.abs(val - corners[idx_b][dim]),
-        0,
-      )
-      if (manhattan === 1) edges.push([corners[idx_a], corners[idx_b]])
-    }
-  }
-  return edges
-})()
 
 // moyo-wasm serializes nalgebra matrices as flat 9-arrays in COLUMN-major order
 export const mat3_from_flat_col_major = (flat: readonly number[]): Matrix3x3 => [
@@ -682,55 +664,7 @@ export function clip_plane_to_cell(
   normal_frac: Vec3,
   lattice: Matrix3x3,
 ): Vec3[] {
-  const to_cart = math.create_frac_to_cart(lattice)
-  const normal_cart = to_cart(normal_frac)
-  const n_eq: Vec3 = [
-    math.dot(lattice[0], normal_cart),
-    math.dot(lattice[1], normal_cart),
-    math.dot(lattice[2], normal_cart),
-  ]
-  const signed_dist = (frac: Vec3) =>
-    n_eq[0] * (frac[0] - point[0]) +
-    n_eq[1] * (frac[1] - point[1]) +
-    n_eq[2] * (frac[2] - point[2])
-
-  const frac_points: Vec3[] = []
-  const tol = 1e-7
-  // Intersect the plane with the 12 unit-cube edges (corners on the plane included)
-  for (const [edge_a, edge_b] of UNIT_CUBE_EDGES) {
-    const dist_a = signed_dist(edge_a)
-    const dist_b = signed_dist(edge_b)
-    if (Math.abs(dist_a) < tol) frac_points.push(edge_a)
-    if (Math.abs(dist_b) < tol) frac_points.push(edge_b)
-    if (dist_a * dist_b < -tol * tol) {
-      const frac_t = dist_a / (dist_a - dist_b)
-      frac_points.push(edge_a.map((val, dim) => val + frac_t * (edge_b[dim] - val)) as Vec3)
-    }
-  }
-
-  // Dedup and convert to Cartesian
-  const seen = new Set<string>()
-  const cart_points: Vec3[] = []
-  for (const frac of frac_points) {
-    const key = frac.map((val) => val.toFixed(6)).join(`,`)
-    if (seen.has(key)) continue
-    seen.add(key)
-    cart_points.push(to_cart(frac))
-  }
-  if (cart_points.length < 3) return []
-
-  // Order vertices by angle around the centroid within the plane
-  const centroid = cart_points
-    .reduce<Vec3>((acc, vert) => math.add(acc, vert), [0, 0, 0])
-    .map((val) => val / cart_points.length) as Vec3
-  const normal_unit = math.normalize_vec(normal_cart)
-  const ref_vec = math.normalize_vec(math.subtract(cart_points[0], centroid))
-  const cross_ref = math.cross_3d(normal_unit, ref_vec)
-  return cart_points
-    .map((vert) => {
-      const rel = math.subtract(vert, centroid)
-      return { vert, angle: Math.atan2(math.dot(rel, cross_ref), math.dot(rel, ref_vec)) }
-    })
-    .toSorted((pt_a, pt_b) => pt_a.angle - pt_b.angle)
-    .map(({ vert }) => vert)
+  const normal_cart = math.create_frac_to_cart(lattice)(normal_frac)
+  const n_eq = math.dot(lattice, normal_cart)
+  return clip_frac_plane_to_cell(n_eq, math.dot(n_eq, point), lattice)
 }

@@ -245,8 +245,10 @@
   h1 {
     margin-bottom: 0.5em;
   }
+  /* Headings and blurbs centered like the page title; the fixed-width diagrams center too */
   section {
     margin: 2em 0;
+    text-align: center;
   }
   h2 {
     margin-bottom: 0.3em;
@@ -254,8 +256,10 @@
   p {
     max-width: 70ch;
     line-height: 1.5;
+    margin-inline: auto;
   }
   .deferred-diagram {
     max-width: min(100%, 900px);
+    margin-inline: auto;
   }
 </style>

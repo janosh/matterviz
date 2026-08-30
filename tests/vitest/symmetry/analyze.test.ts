@@ -72,15 +72,6 @@ describe(`moyo cell → structure`, () => {
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Si`, `O`])
   })
 
-  test(`converts fractional to Cartesian coordinates correctly`, () => {
-    const moyo_cell = make_moyo_cell([4, 0, 0, 0, 4, 0, 0, 0, 4], [[0.5, 0.5, 0.5]], [26])
-
-    const result = to_structure(moyo_cell)
-
-    expect(result.sites[0].abc).toEqual([0.5, 0.5, 0.5])
-    result.sites[0].xyz.forEach((coord) => expect(coord).toBeCloseTo(2, 5)) // 0.5 * 4
-  })
-
   test(`handles non-orthogonal lattice`, () => {
     // Hexagonal cell: a=3, b=3, c=5, gamma=120°
     const moyo_cell = make_moyo_cell([3, 0, 0, -1.5, 2.598, 0, 0, 0, 5], [[0, 0, 0]], [6])

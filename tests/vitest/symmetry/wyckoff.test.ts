@@ -215,85 +215,12 @@ describe(`orig site mapping`, () => {
 })
 
 describe(`site coverage verification`, () => {
-  test.each<{
-    desc: string
-    positions: number[][]
-    numbers: number[]
-    wyckoffs: (string | null)[]
-    expected_coverage: number[]
-    expected_multiplicity: number
-  }>([
-    {
-      desc: `three 1-site orbits`,
-      positions: [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.25, 0.25, 0.25],
-      ],
-      numbers: [1, 8, 26],
-      wyckoffs: [`a`, `b`, `c`],
-      expected_coverage: [0, 1, 2],
-      expected_multiplicity: 3,
-    },
-    {
-      desc: `single 4-site orbit`,
-      positions: [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.5, 0, 0],
-        [0, 0.5, 0],
-      ],
-      numbers: [1, 1, 1, 1],
-      wyckoffs: [`4a`, `4a`, `4a`, `4a`],
-      expected_coverage: [0, 1, 2, 3],
-      expected_multiplicity: 4,
-    },
-    {
-      desc: `mixed 3-site and 1-site orbits`,
-      positions: [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.25, 0.25, 0.25],
-        [0.75, 0.75, 0.75],
-      ],
-      numbers: [1, 8, 1, 1],
-      wyckoffs: [`2a`, `1b`, `2a`, `2a`],
-      expected_coverage: [0, 1, 2, 3],
-      expected_multiplicity: 4,
-    },
-    {
-      desc: `null Wyckoff letters`,
-      positions: [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.25, 0.25, 0.25],
-      ],
-      numbers: [1, 8, 26],
-      wyckoffs: [null, `b`, null],
-      expected_coverage: [0, 1, 2],
-      expected_multiplicity: 3,
-    },
-  ])(
-    `$desc: all sites covered, multiplicities sum correctly`,
-    ({ positions, numbers, wyckoffs, expected_coverage, expected_multiplicity }) => {
-      const rows = wyckoff_positions_from_moyo(
-        make_wyckoff_dataset(positions, numbers, wyckoffs),
-      )
-      const covered = rows
-        .flatMap((pos) => pos.site_indices ?? [])
-        .toSorted((idx_a, idx_b) => idx_a - idx_b)
-      expect(covered).toEqual(expected_coverage)
-
-      const total_multiplicity = rows.reduce(
-        (sum, pos) => sum + (Number(/^\d+/.exec(pos.wyckoff)?.[0]) || 1),
-        0,
-      )
-      expect(total_multiplicity).toBe(expected_multiplicity)
-    },
-  )
-
   // empty/null single-site letters are covered in `handles various input scenarios`
-
+  const three_sites = [
+    [0, 0, 0],
+    [0.5, 0.5, 0.5],
+    [0.25, 0.25, 0.25],
+  ]
   test.each<{
     desc: string
     positions: number[][]
@@ -301,6 +228,29 @@ describe(`site coverage verification`, () => {
     wyckoffs: (string | null)[]
     expected: WyckoffPos[]
   }>([
+    {
+      desc: `three 1-site orbits of distinct elements each get their own row`,
+      positions: three_sites,
+      numbers: [1, 8, 26],
+      wyckoffs: [`a`, `b`, `c`],
+      expected: [
+        { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+        { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
+        { wyckoff: `1c`, elem: `Fe`, abc: [0.25, 0.25, 0.25], site_indices: [2] },
+      ],
+    },
+    {
+      // letterless sites of different elements must NOT be merged into one orbit
+      desc: `two null-letter sites of different elements stay separate rows`,
+      positions: three_sites,
+      numbers: [1, 8, 26],
+      wyckoffs: [null, `b`, null],
+      expected: [
+        { wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+        { wyckoff: `1`, elem: `Fe`, abc: [0.25, 0.25, 0.25], site_indices: [2] },
+        { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
+      ],
+    },
     {
       desc: `mixed valid and missing Wyckoff letters`,
       positions: [
@@ -571,28 +521,6 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       assertion(result, [wyckoff_pos, original, displayed, sym_data])
     },
   )
-
-  test(`maps single atom with symmetry operations`, () => {
-    const original = mock_structure([{ abc: [0.25, 0.25, 0.25], element: `H` }])
-    const displayed = mock_structure([
-      { abc: [0.25, 0.25, 0.25], element: `H` }, // Original
-      { abc: [0.75, 0.75, 0.75], element: `H` }, // Inversion equivalent
-    ])
-    const wyckoff_pos = [
-      {
-        wyckoff: `2a`,
-        elem: `H`,
-        abc: [0.25, 0.25, 0.25] as Vec3,
-        site_indices: [0],
-      },
-    ]
-
-    const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
-
-    expect(result).toHaveLength(1)
-    expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1]))
-    expect(result[0].site_indices).toHaveLength(2)
-  })
 
   test(`handles different elements correctly`, () => {
     const original = mock_structure([

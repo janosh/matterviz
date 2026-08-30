@@ -146,9 +146,8 @@ export class HierarchyChartState<
   readonly #opts: HierarchyChartOptions<Metadata>
   readonly chart: `sunburst` | `treemap`
   readonly node_attr: string
-  // Unique per instance so multiple charts on one page don't collide on the
-  // hatch pattern's SVG id
-  readonly hatch_pattern_id: string
+  // Unique per instance so multiple charts on one page don't collide on pattern SVG ids
+  readonly uid: string
   // Depth-1 category ids muted via legend toggle (dimmed, not removed - keeps
   // the layout stable). Ids of nodes absent from the current data are inert.
   readonly muted_ids = new SvelteSet<string | number>()
@@ -176,7 +175,7 @@ export class HierarchyChartState<
     this.#opts = opts
     this.chart = opts.chart
     this.node_attr = `data-${opts.chart}-node-idx`
-    this.hatch_pattern_id = `${opts.chart}-hatch-${opts.uid}`
+    this.uid = opts.uid
     // Data changed: clear the index-based hover/focus state, which would otherwise
     // leave a stale tooltip and highlight whatever unrelated node now occupies the
     // old index. untrack: writing hover state must not re-trigger this effect.
@@ -259,10 +258,10 @@ export class HierarchyChartState<
       value_format: this.value_format,
       font: this.label_font,
       color_for: this.color_for,
+      pattern_prefix: `${this.chart}-${this.uid}`,
       clickable: this.#opts.clickable,
     })
   })
-
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than
   // removes. Nodes are labelled in place, so a legend stays opt-in here.
   depth1_arcs = $derived(this.arcs.filter((arc) => arc.depth === 1))

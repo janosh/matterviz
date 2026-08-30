@@ -457,13 +457,10 @@ describe(`FormulaFilter`, () => {
       // Remove middle item — list shrinks from 3→2, focused_history_idx should clamp
       remove_btns()[1].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
       flushSync()
-      // Enter should select the clamped item, not crash
+      // Enter selects the item the focus clamped onto (the new last one), not crash
       keydown(`Enter`)
       flushSync()
-      expect(on_change).toHaveBeenCalled()
-      expect([`Fe,O`, `Si,O`]).toContain(
-        on_change.mock.calls[on_change.mock.calls.length - 1][0],
-      )
+      expect(on_change).toHaveBeenLastCalledWith(`Si,O`, `elements`)
     })
 
     test(`removing last entry closes dropdown`, () => {
@@ -615,12 +612,19 @@ describe(`FormulaFilter`, () => {
       mount_filter({ value: ``, on_parse })
       submit_input(`+Li,-O`)
 
-      expect(on_parse).toHaveBeenCalled()
-      const last = on_parse.mock.calls[on_parse.mock.calls.length - 1][0]
-      expect(last.tokens.length).toBeGreaterThan(0)
-      expect(last.tokens.some((tok: { operator: string }) => tok.operator === `exclude`)).toBe(
-        true,
-      )
+      // the committed value is the normalized one (explicit + dropped), tokenized per element
+      const token = { constraint: null, is_wildcard: false, is_valid: true }
+      expect(on_parse).toHaveBeenLastCalledWith({
+        value: `Li,-O`,
+        search_mode: `elements`,
+        has_wildcards: false,
+        is_valid: true,
+        error_message: null,
+        tokens: [
+          { raw: `Li`, element: `Li`, operator: `include`, ...token },
+          { raw: `-O`, element: `O`, operator: `exclude`, ...token },
+        ],
+      })
     })
 
     test(`custom validate hook controls validation message`, () => {

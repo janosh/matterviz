@@ -7,6 +7,7 @@ import {
   expect_plot_controls,
   mount_sized,
   one_tab_stop,
+  pattern_id_of,
   roving_tabindexes,
   with_measured_text,
 } from '../setup'
@@ -279,7 +280,9 @@ describe(`BoxPlot`, () => {
     expect(on_box_click).toHaveBeenCalledOnce()
     const arg = on_box_click.mock.calls[0][0]
     expect(arg.box_idx).toBe(0)
-    expect(arg.stats.median).toBeTypeOf(`number`)
+    // type-7 median of the 80 clicked values: mean of the two middle order statistics
+    const sorted = [...basic.y].toSorted((val_a, val_b) => val_a - val_b)
+    expect(arg.stats.median).toBeCloseTo((sorted[39] + sorted[40]) / 2, 12)
     expect(arg.category_label).toBe(`Box A`)
   })
 
@@ -367,13 +370,6 @@ describe(`BoxPlot`, () => {
     })
     expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(1) // only the violin series
     expect(iqr_box(plot)).toHaveLength(1) // only the box series
-  })
-
-  test(`renders a finite violin path`, async () => {
-    const plot = await mount_sized_box_plot({ series: [basic], kind: `violin` })
-    const path = plot.querySelector<SVGPathElement>(`.violin-area`)
-    expect(path?.getAttribute(`d`)).toMatch(/^M[\d.\-,]/)
-    expect(path?.getAttribute(`d`)).not.toContain(`NaN`)
   })
 
   // the KDE grid covers exactly the observed support (no tail extension), so with min/max
@@ -475,6 +471,21 @@ describe(`BoxPlot`, () => {
     expect(path).not.toContain(`NaN`)
     const { ys } = path_coords(path)
     expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(100)
+  })
+
+  test(`series pattern fills the box body from a scoped <pattern> def`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [
+        { ...basic, pattern: `/` },
+        { ...basic, label: `plain`, color: `tomato` },
+      ],
+    })
+    const body = (idx: number) => plot.querySelector(`.box-series[data-box-idx="${idx}"] rect`)
+    expect(body(1)?.getAttribute(`fill`)).toBe(`tomato`)
+    const defs = plot.querySelectorAll(`.box-plot svg defs pattern`)
+    expect(defs).toHaveLength(1)
+    expect(defs[0].id).toBe(pattern_id_of(body(0), `box`))
+    expect(defs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
   })
 
   test(`forwards controls props and the controls_open binding`, async () => {

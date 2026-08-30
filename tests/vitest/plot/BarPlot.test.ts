@@ -6,6 +6,7 @@ import {
   inside_clip_path,
   mount_sized,
   one_tab_stop,
+  pattern_id_of,
   roving_tabindexes,
   with_measured_text,
 } from '../setup'
@@ -551,6 +552,37 @@ describe(`BarPlot`, () => {
     for (const label of [`DFT`, `ML`, `Experiment`]) {
       expect(plot.textContent).toContain(label)
     }
+  })
+
+  test(`series pattern fills bars and the legend swatch from scoped <pattern> defs`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [
+        { ...basic, label: `hatched`, pattern: `/` },
+        { ...basic, label: `hatched-too`, pattern: `/` }, // same tile -> shares the def
+        { ...basic, label: `plain`, color: `tomato` },
+        // line series never texture: there is no area to fill
+        { ...basic, label: `line`, pattern: `.`, render_mode: `line` },
+      ],
+    })
+    const bar = (idx: number) =>
+      plot.querySelector(`.bar-series[data-series-idx="${idx}"] path[role="button"]`)
+    const pattern_id = pattern_id_of(bar(0), `bar`)
+    expect(pattern_id_of(bar(1), `bar`)).toBe(pattern_id)
+    expect(bar(2)?.getAttribute(`fill`)).toBe(`tomato`)
+    // legend swatches carry their own `legend-` defs, so count only the chart's `bar-` ones
+    const chart_defs = plot.querySelectorAll(`.bar-plot svg defs pattern[id^="bar-"]`)
+    expect(chart_defs).toHaveLength(1)
+    expect(chart_defs[0].id).toBe(pattern_id)
+    expect(chart_defs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
+    // the legend renders its own half-scale copy of the tile inside the swatch svg
+    const items = [...plot.querySelectorAll<HTMLElement>(`.legend-item`)]
+    expect(items.map((item) => item.querySelectorAll(`pattern`).length)).toEqual([1, 1, 0, 0])
+    const swatch_def = items[0].querySelector(`pattern`)
+    expect(swatch_def?.getAttribute(`width`)).toBe(`4`)
+    expect(items[0].querySelector(`.legend-marker > svg > path`)?.getAttribute(`fill`)).toBe(
+      `url(#${swatch_def?.id})`,
+    )
+    expect(swatch_def?.id).not.toBe(pattern_id)
   })
 
   const legend_position = (plot: HTMLElement): { x: number; y: number } => {

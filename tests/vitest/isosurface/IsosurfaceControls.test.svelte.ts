@@ -286,14 +286,14 @@ describe(`IsosurfaceControls multi-volume`, () => {
     ).toBe(true)
   })
 
-  test(`editing one bound of an auto range materializes an explicit range`, () => {
+  test(`editing one bound of an auto range seeds the other from the color volume's data range`, () => {
     const props = mount_colored({ colormap: `interpolateViridis` })
     const range_input = doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`)
     range_input.value = `2.5`
     range_input.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(props.settings.layers[0].color_range?.[0]).toBe(2.5)
-    expect(props.settings.layers[0].color_range?.[1]).toBeTypeOf(`number`)
+    // color volume data_range is [1, 8] → the untouched max bound comes from there
+    expect(props.settings.layers[0].color_range).toEqual([2.5, 8])
   })
 
   test(`display range inputs materialize, update, and reset; hidden when non-periodic`, () => {

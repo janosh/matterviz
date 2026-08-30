@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import type { ChartSegment } from './chart'
+  import type { ChartSegment, ElementPatterns } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
 
   const LABEL_HEIGHT = 20 // px rows above and below the bar for external labels
@@ -26,6 +27,7 @@
     show_percentages = false,
     show_amounts = true,
     color_scheme = `Vesta`,
+    patterns = {},
     svg_node = $bindable(null),
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
@@ -36,8 +38,13 @@
     show_percentages?: boolean
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
+    patterns?: ElementPatterns // hatch/texture fill per element symbol
     svg_node?: SVGSVGElement | null
   } = $props()
+
+  const uid = $props.id()
+  const clip_path_id = `bar-clip-${uid}`
+  const pattern_uid = `bar-${uid}`
 
   let label_opts = $derived({ show_amounts, show_percentages })
   const bar_y = LABEL_HEIGHT + GAP
@@ -50,7 +57,8 @@
 
   let segments = $derived.by((): BarSegment[] => {
     let [cursor, n_above, n_below] = [0, 0, 0]
-    return composition_segments(composition, color_scheme).map((segment) => {
+    const raw_segments = composition_segments(composition, color_scheme, patterns, pattern_uid)
+    return raw_segments.map((segment) => {
       const width = segment.fraction * size
       const x = cursor
       cursor += width
@@ -69,9 +77,6 @@
       return { ...segment, x, width, font_scale, label_pos }
     })
   })
-
-  const uid = $props.id()
-  const clip_path_id = `bar-clip-${uid}`
 </script>
 
 <svg
@@ -85,6 +90,7 @@
     <clipPath id={clip_path_id}>
       <rect x="0" y={bar_y} width={size} height={bar_height} rx="2" ry="2" />
     </clipPath>
+    <PatternDefs patterns={segments.map((seg) => seg.pattern)} />
   </defs>
   <rect
     x="0"
@@ -101,7 +107,7 @@
         y={bar_y}
         width={segment.width}
         height={bar_height}
-        fill={segment.color}
+        fill={segment.pattern?.url ?? segment.color}
         stroke="white"
         role="img"
         aria-label={segment_title(segment)}
@@ -156,6 +162,10 @@
   }
   text {
     pointer-events: none;
+  }
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
+  tspan {
+    dominant-baseline: inherit;
   }
   .element-symbol {
     font-weight: 700;

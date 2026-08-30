@@ -70,6 +70,16 @@ export type {
   MarginalsProp,
   MarginalType,
 } from './core/marginals'
+// Hatch/texture fills: the `pattern` accepted by bars, hierarchy nodes, fill regions, …
+export { PATTERN_SHAPES } from './core/patterns'
+export type {
+  FillPattern,
+  PatternDash,
+  PatternOptions,
+  PatternShape,
+  PatternShorthand,
+  ResolvedPattern,
+} from './core/patterns'
 export * from './core/plot-title'
 export type { TicksOption } from './core/scales'
 // to_structure_entries shapes the headline prop of CoordinationBarPlot/BondAnglePlot

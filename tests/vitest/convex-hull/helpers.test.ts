@@ -206,25 +206,16 @@ describe(`helpers: thresholds and tooltips`, () => {
       n_entries: 62,
       max_hull_dist: 0.5,
       static_default: 0.1,
-      // t = (62 - 25) / (100 - 25) = 37/75 ≈ 0.4933
-      // result = 0.5 * (1 - t) + 0.1 * t ≈ 0.3027
-      expected: 0.5 * (1 - 37 / 75) + 0.1 * (37 / 75),
+      // t = (62 - 25) / (100 - 25) = 37/75; result = 0.5 * (1 - t) + 0.1 * t
+      expected: 0.302667,
     },
     {
       name: `linear interpolation at 50 entries`,
       n_entries: 50,
       max_hull_dist: 0.6,
       static_default: 0.2,
-      // t = (50 - 25) / (100 - 25) = 25/75 = 1/3
-      // result = 0.6 * (1 - 1/3) + 0.2 * 1/3 = 0.6 * 2/3 + 0.2/3 = 0.4 + 0.0667 = 0.4667
-      expected: 0.6 * (2 / 3) + 0.2 * (1 / 3),
-    },
-    {
-      name: `handles edge case where max_hull_dist equals static_default`,
-      n_entries: 50,
-      max_hull_dist: 0.1,
-      static_default: 0.1,
-      expected: 0.1,
+      // t = 1/3; result = 0.6 * 2/3 + 0.2 * 1/3
+      expected: 0.466667,
     },
   ])(
     `compute_auto_hull_dist_threshold: $name`,

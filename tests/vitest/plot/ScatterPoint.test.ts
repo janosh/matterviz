@@ -1,6 +1,7 @@
-import { symbol_names } from '$lib/labels'
+import { symbol_map, symbol_names } from '$lib/labels'
 import type { PointStyle } from '$lib/plot/core/types'
 import ScatterPoint from '$lib/plot/scatter/ScatterPoint.svelte'
+import { symbol, symbolCircle } from 'd3-shape'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { doc_query, expect_transition_properties } from '../setup'
@@ -74,27 +75,24 @@ describe(`ScatterPoint`, () => {
     expect(hit_target.getAttribute(`r`)).toBe(`8`)
     expect(hit_target.getAttribute(`fill`)).toBe(`transparent`)
     expect(hit_target.getAttribute(`pointer-events`)).toBe(`all`)
-    expect(doc_query(`path.marker`).getAttribute(`d`)).not.toBeNull()
+    // without symbol_size the marker area comes from the radius: pi * r^2
+    const circle_path = symbol()
+      .type(symbolCircle)
+      .size(Math.PI * 25)()
+    expect(doc_query(`path.marker`).getAttribute(`d`)).toBe(circle_path)
   })
 
-  test.each(symbol_names)(`renders $symbol_type marker correctly`, (symbol_type) => {
-    const style: PointStyle = {
-      fill: `purple`,
-      stroke: `green`,
-      stroke_width: 1.5,
-      radius: 6,
-      symbol_type,
-      symbol_size: 100,
-    }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
-
-    const element = doc_query(`path`)
-    expect(element).toBeInstanceOf(SVGPathElement)
-    expect(element.getAttribute(`stroke`)).toBe(style.stroke)
-    expect(element.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
-    expect(element.getAttribute(`d`)).not.toBeNull() // Verify path data exists
-  })
+  test.each(symbol_names)(
+    `renders the d3 %s path at the requested symbol_size`,
+    (symbol_type) => {
+      const style: PointStyle = { radius: 6, symbol_type, symbol_size: 100 }
+      mount(ScatterPoint, { target: doc_query(`div`), props: { x: 100, y: 100, style } })
+      const shape = symbol_map[symbol_type]
+      if (shape === undefined) throw new Error(`symbol_map lacks ${symbol_type}`)
+      // symbol_size wins over radius (which would give pi * 36)
+      expect(doc_query(`path`).getAttribute(`d`)).toBe(symbol().type(shape).size(100)())
+    },
+  )
 
   // partial configs fall back to default stroke (white) and width (0px)
   test.each([

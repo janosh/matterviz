@@ -535,21 +535,18 @@ describe(`ToggleMenu`, () => {
     })
   })
 
-  describe(`Edge cases`, () => {
-    it(`handles empty columns array`, () => {
-      mount_menu([], { column_panel_open: true })
-
-      const checkboxes = document.querySelectorAll(`input[type="checkbox"]`)
-      expect(checkboxes).toHaveLength(0)
-    })
-
-    it(`renders columns with same label but different keys`, () => {
-      const columns: Label[] = [
+  it.each([
+    { desc: `empty columns`, columns: [] as Label[], n_checkboxes: 0 },
+    {
+      desc: `same label, different keys`,
+      columns: [
         { key: `value_a`, label: `Value`, group: `A` },
         { key: `value_b`, label: `Value`, group: `B` },
-      ]
-      mount_menu(columns, { column_panel_open: true })
-      expect(document.querySelectorAll(`input[type="checkbox"]`)).toHaveLength(2)
-    })
+      ] as Label[],
+      n_checkboxes: 2,
+    },
+  ])(`renders one toggle per column for $desc`, ({ columns, n_checkboxes }) => {
+    mount_menu(columns, { column_panel_open: true })
+    expect(document.querySelectorAll(`input[type="checkbox"]`)).toHaveLength(n_checkboxes)
   })
 })

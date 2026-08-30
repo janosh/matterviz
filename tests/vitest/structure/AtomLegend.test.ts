@@ -1,4 +1,5 @@
 import { default_element_colors } from '$lib/colors'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
 import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
@@ -335,19 +336,19 @@ describe(`AtomLegend Component`, () => {
     test.each([
       [`empty unique_values`, [], [], []],
       [`single value`, [42], [`rgb(255, 128, 0)`], [`black`]],
-      [`two values`, [1, 2], [`red`, `blue`], [`black`, `white`]],
+      [`two values`, [1, 2], [`red`, `blue`], [`white`, `white`]],
       [
         `multiple values`,
         [1, 2, 3, 4],
         [`red`, `yellow`, `green`, `blue`],
-        [`black`, `black`, `white`, `white`],
+        [`white`, `black`, `white`, `white`],
       ],
       // translucent override composites against the page backdrop (white in jsdom) rather
-      // than throwing; opaque black would have picked white text
+      // than throwing; a faint wash reads as a light cell, half black as mid grey
       [
         `translucent override`,
         [1, 2],
-        [`rgba(0, 0, 0, 0.5)`, `rgba(0, 0, 0, 0.9)`],
+        [`rgba(0, 0, 0, 0.1)`, `rgba(0, 0, 0, 0.5)`],
         [`black`, `white`],
       ],
     ])(
@@ -392,8 +393,8 @@ describe(`AtomLegend Component`, () => {
         `rgba(0, 0, 0, 0.5)`,
       ])
       // translucent swatch composites against the page backdrop (white in jsdom) instead of
-      // throwing, so half-transparent black reads as mid grey and takes black text
-      expect(labels.map((label) => label.style.color)).toEqual([`black`, `black`, `black`])
+      // throwing, so half-transparent black reads as mid grey and takes white text
+      expect(labels.map((label) => label.style.color)).toEqual([`white`, `black`, `white`])
     })
 
     test(`formats Wyckoff orbit IDs correctly`, () => {
@@ -471,15 +472,17 @@ describe(`AtomLegend Component`, () => {
 
       const search_input = await open_remap_menu()
       expect(search_input.placeholder).toBe(`Search elements...`)
-      const initial_options_count = document.querySelectorAll(`.remap-option`).length
-      expect(initial_options_count).toBeGreaterThan(0)
+      // unfiltered: one option per element, no reset row while H is still displayed as H
+      expect(document.querySelectorAll(`.remap-option`)).toHaveLength(ELEM_SYMBOLS.length)
 
       search_input.value = `sodium`
       search_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
       const filtered_options = document.querySelectorAll(`.remap-option`)
-      expect(filtered_options.length).toBeLessThan(initial_options_count)
-      expect(filtered_options.length).toBeGreaterThan(0)
+      expect(filtered_options).toHaveLength(1)
+      expect(filtered_options[0].textContent?.replaceAll(/\s+/g, ` `).trim()).toBe(
+        `11 Na Sodium`,
+      )
 
       search_input.dispatchEvent(
         new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),

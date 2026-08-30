@@ -9,7 +9,7 @@ import {
 } from '$lib/slab'
 import type { Slab } from '$lib/slab'
 // internals are deliberately not re-exported from $lib/slab, so reach for them directly
-import { miller_plane_normal, slab_basis_transform } from '$lib/slab/lattice-basis'
+import { slab_basis_transform } from '$lib/slab/lattice-basis'
 import { detect_layers } from '$lib/slab/terminations'
 import type { Crystal, Pbc, Site } from '$lib/structure'
 import { structure_map } from '$site/structures'
@@ -387,7 +387,7 @@ describe(`slab geometry`, () => {
     const miller: Vec3 = [1, 1, 1]
     const slab = make_slab(fcc(), miller, { reorient_lattice: false })
     // normal still points along the (111) reciprocal vector of the input cell
-    const plane_normal = miller_plane_normal(fcc().lattice.matrix, miller)
+    const plane_normal = math.miller_plane_normal(fcc().lattice.matrix, miller)
     const expected_normal = math.normalize_vec(plane_normal)
     for (const axis of [0, 1, 2]) {
       expect(slab.slab_info.normal[axis]).toBeCloseTo(expected_normal[axis], 12)

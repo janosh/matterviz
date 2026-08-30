@@ -1,8 +1,14 @@
 // Segment data and label helpers shared by PieChart, BubbleChart and BarChart
-import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
+import {
+  type ColorSchemeName,
+  ELEMENT_COLOR_SCHEMES,
+  opaque_contrast_color,
+} from '$lib/colors'
 import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import { format_num } from '$lib/labels'
+import type { FillPattern, ResolvedPattern } from '$lib/plot/core/patterns'
+import { resolve_pattern } from '$lib/plot/core/patterns'
 import { format_amount } from './format'
 import { fractional_composition } from './parse'
 
@@ -12,26 +18,37 @@ export type ChartSegment = {
   fraction: number
   color: string
   text_color: string // contrast color for text drawn on top of the segment fill
+  pattern?: ResolvedPattern // hatch/texture fill drawn over `color`, see ElementPatterns
 }
+
+// Per-element hatch/texture fills for the composition charts, e.g. { Fe: 'diagonal', O: '.' }
+export type ElementPatterns = Partial<Record<ElementSymbol, FillPattern>>
 
 export type ChartLabelOptions = { show_amounts: boolean; show_percentages: boolean }
 
-// Positive-amount elements in insertion order with their atomic fraction and scheme color
+// Positive-amount elements in insertion order with their atomic fraction and scheme color.
+// `pattern_prefix` scopes the SVG <pattern> ids so several charts can share a page.
 export const composition_segments = (
   composition: CompositionType,
   color_scheme: ColorSchemeName,
+  patterns: ElementPatterns,
+  pattern_prefix: string,
 ): ChartSegment[] => {
   const fractions = fractional_composition(composition)
   const colors = ELEMENT_COLOR_SCHEMES[color_scheme] ?? ELEMENT_COLOR_SCHEMES.Vesta
   return (Object.entries(fractions) as [ElementSymbol, number][]).map(
     ([element, fraction]) => {
       const color = colors[element] ?? `#cccccc`
+      const spec = patterns[element]
+      const pattern = spec && resolve_pattern(spec, color, pattern_prefix)
       return {
         element,
         amount: composition[element] ?? 0,
         fraction,
         color,
-        text_color: pick_contrast_color({ background: color }),
+        // Labels sit on the tile backdrop: the segment color, or the page in `replace` mode
+        text_color: opaque_contrast_color(pattern?.bg ?? color),
+        pattern,
       }
     },
   )

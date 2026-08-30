@@ -73,6 +73,10 @@
       "types": "./dist/element/index.d.ts",
       "default": "./dist/element/index.js"
     },
+    "./eos": {
+      "types": "./dist/eos/index.d.ts",
+      "default": "./dist/eos/index.js"
+    },
     "./feedback": {
       "types": "./dist/feedback/index.d.ts",
       "default": "./dist/feedback/index.js"

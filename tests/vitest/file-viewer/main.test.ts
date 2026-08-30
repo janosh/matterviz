@@ -190,7 +190,18 @@ test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, asyn
 
   if (result.type !== `fermi_surface`) throw new Error(`expected Fermi surface result`)
   if (!is_fermi_surface_data(result.data)) throw new Error(`expected Fermi surface data`)
-  expect(result.data.isosurfaces[0]?.positions).toBeInstanceOf(Float32Array)
+  // Positive band key → spin up; the mesh lands in renderer-ready typed arrays
+  expect(result.data).toMatchObject({
+    k_lattice: IDENTITY_MATRIX3,
+    fermi_energy: 0,
+    reciprocal_cell: `wigner_seitz`,
+    metadata: { n_bands: 1, n_surfaces: 1, source_format: `ifermi-json` },
+  })
+  expect(result.data.isosurfaces).toHaveLength(1)
+  const [sheet] = result.data.isosurfaces
+  expect(sheet.positions).toEqual(Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+  expect(sheet.indices).toEqual(Uint32Array.from([0, 1, 2]))
+  expect([sheet.band_index, sheet.spin]).toEqual([1, `up`])
 })
 
 // Regression: the site-less structure wrapping a volumetric JSON carried the bare 3x3 matrix
@@ -263,7 +274,10 @@ describe(`vaspout.h5 electronic routing`, () => {
       dos?: unknown
       trajectory_props?: { trajectory: unknown; property_labels: Record<string, string> }
     }
-    expect(mount_props.dos).toBeDefined()
+    // the DOS panel is fed the run's own electronic metadata, not a re-parsed copy
+    const electronic = run.metadata?.electronic as { dos: unknown } | undefined
+    if (!electronic?.dos) throw new Error(`fixture run carries no electronic DOS`)
+    expect(mount_props.dos).toBe(electronic.dos)
     expect(mount_props.trajectory_props?.trajectory).toBe(run)
     expect(mount_props.trajectory_props?.property_labels).toEqual({})
     run.dispose()

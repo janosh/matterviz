@@ -274,6 +274,9 @@ describe(`moyo-wasm integration`, () => {
     [`Po-simple-cubic`, 221, `P m -3 m`, [`1aPo`]],
     [`mp-862690-Ac4-hexagonal`, 194, `P 6_3/m m c`, [`2aAc`, `2cAc`]],
     [`mp-1207297-Ac2Br2O1-tetragonal`, 123, `P 4/m m m`, [`1cO`, `2hAc`, `2hBr`]],
+    [`mp-1`, 229, `I m -3 m`, [`2aCs`]],
+    [`mp-2`, 225, `F m -3 m`, [`4aPd`]],
+    [`mp-1234`, 227, `F d -3 m`, [`8bLu`, `16cAl`]],
   ])(`%s has space group %i`, async (id, expected_sg, hm_symbol, rows) => {
     const sym_data = await analyze(id)
     expect(sym_data.number).toBe(expected_sg)
@@ -281,14 +284,6 @@ describe(`moyo-wasm integration`, () => {
     expect(wyckoff_positions_from_moyo(sym_data).map((row) => row.wyckoff + row.elem)).toEqual(
       rows,
     )
-  })
-
-  test.each([
-    [`mp-1`, 1],
-    [`mp-2`, 1],
-    [`mp-1234`, 2],
-  ])(`%s has %i unique Wyckoff positions`, async (id, expected_count) => {
-    expect(wyckoff_positions_from_moyo(await analyze(id))).toHaveLength(expected_count)
   })
 
   // Regression: moyo-wasm serializes operation.rotation as a flat 9-array in COLUMN-major

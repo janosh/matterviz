@@ -147,23 +147,18 @@ describe(`build_diagram`, () => {
       },
     }
     const result = build_diagram(input_with_pseudo)
-    expect(result.pseudo_binary?.parent_system).toEqual([`Fe`, `C`])
+    expect(result.pseudo_binary).toEqual(input_with_pseudo.meta.pseudo_binary)
     expect(result.x_axis_label).toBe(`wt% C`)
-  })
 
-  test(`handles missing optional fields`, () => {
-    const minimal: DiagramInput = {
-      meta: {
-        components: [`X`, `Y`],
-        temp_range: [0, 100],
-      },
+    // Unset optional metadata leaves the keys absent, not undefined-valued
+    const bare = build_diagram({
+      meta: { components: [`X`, `Y`], temp_range: [0, 100] },
       curves: {},
       regions: [],
-    }
-    const result = build_diagram(minimal)
-    expect(result.special_points).toBeUndefined()
-    expect(result.pseudo_binary).toBeUndefined()
-    expect(result.x_axis_label).toBeUndefined()
+    })
+    expect(bare.special_points).toBeUndefined()
+    expect(`pseudo_binary` in bare).toBe(false)
+    expect(`x_axis_label` in bare).toBe(false)
   })
 
   test(`deduplicates consecutive vertices`, () => {

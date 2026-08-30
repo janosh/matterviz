@@ -3,6 +3,7 @@
 // into typed arrays, so a million samples bin in a few milliseconds.
 
 import { LOG_EPS, type Vec2 } from '$lib/math'
+import type { FillPattern } from '$lib/plot/core/patterns'
 import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/plot/core/scales'
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
@@ -15,6 +16,7 @@ export interface HistogramSeries {
   label?: string
   // Bar fill; defaults to the auto-cycled series palette (a lone series uses `bar.color`)
   color?: string
+  pattern?: FillPattern // hatch/texture over the bar fill
   visible?: boolean
   legend_group?: string
   // Which value axis the samples bin on (`x2`: top) and which count axis the bars use

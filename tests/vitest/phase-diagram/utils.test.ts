@@ -481,11 +481,7 @@ describe(`compute_label_properties`, () => {
   test(`wrapped labels join words with spaces, not underscores`, () => {
     // Bounds force chars_per_line=3 so "α" and "+" join on one line
     const result = compute_label_properties(`α + β`, { width: 30, height: 40 }, 12)
-    expect(result.lines.length).toBeGreaterThan(1)
-    expect(result.lines[0]).toBe(`α +`)
-    for (const line of result.lines) {
-      expect(line).not.toContain(`_`)
-    }
+    expect(result.lines).toEqual([`α +`, `β`])
   })
 })
 

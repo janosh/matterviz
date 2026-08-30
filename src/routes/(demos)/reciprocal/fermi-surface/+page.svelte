@@ -8,7 +8,7 @@
 
 <h1>Fermi Surface</h1>
 
-<p>
+<p class="demo-intro">
   Load <code>BXSF</code>
   (<a href="http://www.xcrysden.org/" target="_blank" rel="noopener">XCrySDen</a>/<a
     href="https://www.quantum-espresso.org/"
@@ -21,4 +21,6 @@
   <a href="https://github.com/fermisurfaces/IFermi">IFermi</a> JSON by dropping it onto the viewer.
 </p>
 
-<FermiSurfaceDemo show_slice sync_url />
+<div class="bleed-1400">
+  <FermiSurfaceDemo show_slice sync_url />
+</div>

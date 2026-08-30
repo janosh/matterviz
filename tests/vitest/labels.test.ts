@@ -15,7 +15,6 @@ import {
   symbol_names,
   trajectory_property_config,
 } from '$lib/labels'
-import { format as d3_format } from 'd3-format'
 import * as d3_symbols from 'd3-shape'
 import { describe, expect, test } from 'vitest'
 
@@ -43,10 +42,10 @@ test(`trajectory_property_config keys are lowercase`, () => {
 const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
 test.each([
   // no explicit format: DEFAULT_FMT picks the SI form at |x| >= 1 and plain decimals below
-  [1234, undefined, d3_format(gt_1_fmt)(1234)],
-  [0.123, undefined, d3_format(lt_1_fmt)(0.123)],
-  [1234, gt_1_fmt, d3_format(gt_1_fmt)(1234)],
-  [0.123, lt_1_fmt, d3_format(lt_1_fmt)(0.123)],
+  [1234, undefined, `1.23k`],
+  [0.123, undefined, `0.123`],
+  [1234, gt_1_fmt, `1.23k`],
+  [0.123, lt_1_fmt, `0.123`],
   [1.2, `.3f`, `1.200`],
   [0, undefined, `0`],
   [0, lt_1_fmt, `0`],

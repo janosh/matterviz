@@ -537,8 +537,8 @@
   let zone_axis = $derived.by(() => {
     // Molecules have no crystallographic directions; the button's own title already says so
     if (!lattice_matrix) return { direction: null, error: `` }
-    // MillerIndexInput accepts `000` (and the prop can be set programmatically to anything),
-    // which would otherwise grey the button out with no reason given.
+    // The indices can be set programmatically to anything, which would otherwise grey the
+    // button out with no reason given.
     if (!is_valid_zone_axis(zone_axis_indices)) {
       const error = `${zone_axis_mode} indices must be finite and not all zero`
       return { direction: null, error }

@@ -19,6 +19,12 @@ test.each<[string | OxiComposition, string[], string[]]>([
   [`Fe[2+]O3`, [`Fe`, `O`], [`+2`]],
   [`Fe^2+O^2-`, [`Fe`, `O`], [`+2`, `-2`]],
   [`Fe^2+Fe^3+2O^2-4`, [`Fe`, `Fe`, `O`], [`+2`, `+3`, `-2`]],
+  [`Fe^3+2O^2-3`, [`Fe`, `O`], [`+3`, `-2`]],
+  // bare +/- charges, in both syntaxes, render as +1/-1
+  [`Ca[2+]Cl[-]2`, [`Ca`, `Cl`], [`+2`, `-1`]],
+  [`Na^+Cl^-`, [`Na`, `Cl`], [`+1`, `-1`]],
+  // a charge on only one element leaves the other without a superscript
+  [`SO^2-4`, [`S`, `O`], [`-2`]],
   [
     { Fe: { amount: 2, oxidation_state: 3 }, O: { amount: 3, oxidation_state: -2 } },
     [`Fe`, `O`],
@@ -69,46 +75,6 @@ test.each([`span`, `div`, `h1`, `strong`, `p`])(`Formula renders with as="%s"`, 
   expect(element?.textContent).toContain(`O`)
 })
 
-test.each([`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const)(
-  `Formula renders with color scheme "%s" applied to element symbols`,
-  (scheme) => {
-    const element = mount_formula({ formula: `H2O`, color_scheme: scheme })
-    expect(element).toBeInstanceOf(HTMLElement)
-    const symbols = element?.querySelectorAll<HTMLElement>(`.element-symbol`) ?? []
-    expect(symbols).toHaveLength(2)
-    expect(Array.from(symbols).some((symbol) => symbol.style.color)).toBe(true)
-  },
-)
-
-test(`Formula formats amounts with custom format string`, () => {
-  mount_formula({ formula: `H2O`, amount_format: `.2f` })
-  const subscript = document.querySelector(`sub`)
-  expect(subscript?.textContent).toBe(`2.00`)
-})
-
-test.each([
-  { formula: `Ca[2+]Cl[-]2`, expected_elements: [`Ca`, `Cl`], expected_superscripts: 2 },
-  { formula: `Fe^3+2O^2-3`, expected_elements: [`Fe`, `O`], expected_superscripts: 2 },
-  { formula: `Na^+Cl^-`, expected_elements: [`Na`, `Cl`], expected_superscripts: 2 },
-  { formula: `SO^2-4`, expected_elements: [`S`, `O`], expected_superscripts: 1 },
-  { formula: `NH^+4`, expected_elements: [`N`, `H`], expected_superscripts: 1 },
-])(
-  `Formula handles complex formula "$formula"`,
-  ({ formula, expected_elements, expected_superscripts }) => {
-    const element = mount_formula({ formula })
-    expect(element).toBeInstanceOf(HTMLElement)
-
-    // Check that all expected elements are present
-    for (const elem of expected_elements) {
-      expect(element?.textContent).toContain(elem)
-    }
-
-    // Check correct number of oxidation state superscripts
-    const superscripts = element?.querySelectorAll(`sup`) ?? []
-    expect(superscripts).toHaveLength(expected_superscripts)
-  },
-)
-
 // Normalize any color format to lowercase hex
 function normalize_to_hex(color: string): string {
   if (color.startsWith(`#`)) return color.toLowerCase()
@@ -118,6 +84,24 @@ function normalize_to_hex(color: string): string {
   const to_hex = (num_str: string) => Number(num_str).toString(16).padStart(2, `0`)
   return `#${to_hex(red)}${to_hex(green)}${to_hex(blue)}`
 }
+
+test.each([`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const)(
+  `Formula renders with color scheme "%s" applied to element symbols`,
+  (scheme) => {
+    const element = mount_formula({ formula: `H2O`, color_scheme: scheme })
+    const symbols = element?.querySelectorAll<HTMLElement>(`.element-symbol`) ?? []
+    // each symbol is painted with the scheme's color for its own element
+    expect([...symbols].map((symbol) => normalize_to_hex(symbol.style.color))).toEqual(
+      [`H`, `O`].map((symbol) => ELEMENT_COLOR_SCHEMES[scheme][symbol].toLowerCase()),
+    )
+  },
+)
+
+test(`Formula formats amounts with custom format string`, () => {
+  mount_formula({ formula: `H2O`, amount_format: `.2f` })
+  const subscript = document.querySelector(`sub`)
+  expect(subscript?.textContent).toBe(`2.00`)
+})
 
 test.each([`Vesta`, `Jmol`] as const)(
   `Formula tooltip ElementTile uses same color scheme as symbol text (%s)`,

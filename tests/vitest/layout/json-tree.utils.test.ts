@@ -404,24 +404,15 @@ describe(`values_equal`, () => {
     [{ a: 1 }, [1], false], // object vs array subtypes differ
     [new Date(`2024-01-01`), {}, false], // date vs object
     [/a/, {}, false], // regexp vs object
+    [new Date(`2024-01-15`), new Date(`2024-01-15`), true], // dates compare by timestamp
+    [new Date(`2024-01-15`), new Date(`2024-01-16`), false],
+    // NaN === NaN is false in JS, but for change detection we want NaN to equal NaN
+    [NaN, NaN, true],
+    [NaN, 0, false],
+    [0, NaN, false],
+    [NaN, null, false],
   ])(`values_equal(%p, %p) = %p`, (val_a, val_b, expected) => {
     expect(values_equal(val_a, val_b)).toBe(expected)
-  })
-
-  it(`compares dates by timestamp`, () => {
-    const date1 = new Date(`2024-01-15`)
-    const date2 = new Date(`2024-01-15`)
-    const date3 = new Date(`2024-01-16`)
-    expect(values_equal(date1, date2)).toBe(true)
-    expect(values_equal(date1, date3)).toBe(false)
-  })
-
-  it(`treats NaN as equal to NaN`, () => {
-    // NaN === NaN is false in JS, but for change detection we want NaN === NaN
-    expect(values_equal(NaN, NaN)).toBe(true)
-    expect(values_equal(NaN, 0)).toBe(false)
-    expect(values_equal(0, NaN)).toBe(false)
-    expect(values_equal(NaN, null)).toBe(false)
   })
 })
 

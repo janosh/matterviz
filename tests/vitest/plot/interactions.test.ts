@@ -34,8 +34,11 @@ describe(`pan_range_by_pixels`, () => {
   })
 
   it(`log pan cannot cross zero, no matter how far`, () => {
+    // -10000 px over a 200 px span of 2 decades shifts by -100 decades: still positive
     const result = pan_range_by_pixels([1, 100], -10_000, 200, `log`)
     expect(result.every((val) => Number.isFinite(val) && val > 0)).toBe(true)
+    expect(Math.log10(result[0])).toBeCloseTo(-100, 9)
+    expect(Math.log10(result[1])).toBeCloseTo(-98, 9)
   })
 
   it(`log pan preserves the ratio between bounds (screen-uniform)`, () => {
@@ -44,8 +47,11 @@ describe(`pan_range_by_pixels`, () => {
   })
 
   it(`log recovers a stale non-positive bound instead of NaN`, () => {
-    const result = pan_range_by_pixels([-5, 100], 10, 200, `log`)
-    expect(result.every((val) => Number.isFinite(val) && val >= LOG_EPS)).toBe(true)
+    // the -5 bound is clamped to LOG_EPS before panning, so the panned range keeps the
+    // clamped ratio 100 / LOG_EPS and its lower bound moved up from LOG_EPS
+    const [lo, hi] = pan_range_by_pixels([-5, 100], 10, 200, `log`)
+    expect(lo).toBeGreaterThan(LOG_EPS)
+    expect(Math.log(hi / lo)).toBeCloseTo(Math.log(100 / LOG_EPS), 9)
   })
 
   it(`arcsinh pan stays finite across zero`, () => {
@@ -223,6 +229,7 @@ describe(`expand_range_if_needed`, () => {
     [[5, 15], [8, 20], [8, 20], true, `shrinks min + expands max`],
     [[5, 15], [5, 15], [5, 15], false, `identical`],
     [[0, 6000], [0, 3], [0, 3], true, `large→small (property switch)`],
+    [[0.5, 1.5], [0.3, 1.8], [0.3, 1.8], true, `decimal bounds`],
     // Negative / edge cases
     [[-10, -5], [-15, -3], [-15, -3], true, `negative ranges`],
     [[-5, 5], [-10, 10], [-10, 10], true, `crossing zero`],
@@ -254,13 +261,6 @@ describe(`expand_range_if_needed`, () => {
       range: [...expected],
       changed,
     })
-  })
-
-  it(`handles decimal precision`, () => {
-    const result = expand_range_if_needed([0.5, 1.5], [0.3, 1.8])
-    expect(result.range[0]).toBeCloseTo(0.3)
-    expect(result.range[1]).toBeCloseTo(1.8)
-    expect(result.changed).toBe(true)
   })
 })
 

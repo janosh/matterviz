@@ -5,10 +5,15 @@ import { describe, expect, it } from 'vitest'
 describe(`Phonon Module Tests`, () => {
   const band_entries = Object.entries(phonon_bands)
 
-  it(`exports all three phonon data records`, () => {
-    expect(phonon_data).not.toEqual({})
-    expect(phonon_bands).not.toEqual({})
-    expect(phonon_dos).not.toEqual({})
+  it(`keys every fixture by its file stem and derives bands and DOS for each`, () => {
+    const ids = Object.keys(phonon_data)
+    expect(ids).toHaveLength(13)
+    // one DFT reference per material plus the ML potentials it is compared against
+    expect(ids).toContain(`mp-23907-H2-pbe`)
+    expect(ids).toContain(`mp-2667-Cs1Au1-mace-y7uhwpje`)
+    expect(ids.every((id) => /^mp-\d+-[A-Za-z0-9]+-/.test(id))).toBe(true)
+    expect(Object.keys(phonon_bands)).toEqual(ids)
+    expect(Object.keys(phonon_dos)).toEqual(ids)
   })
 
   // Minimum qpoints threshold: band structure calculations typically sample 100+ k-points
@@ -167,9 +172,7 @@ describe(`Phonon Module Tests`, () => {
     (id) => {
       const raw = phonon_data[id].phonon_bandstructure
       const transformed = phonon_bands[id]
-      expect(raw, `${id}: should have phonon_bandstructure`).toBeDefined()
-      expect(transformed, `${id}: transformed data should exist`).toBeDefined()
-      if (!raw || !transformed) return // Guard for TypeScript
+      if (!raw || !transformed) throw new Error(`${id}: missing raw or transformed bands`)
 
       // Transformation preserves data dimensions, labels and the phonon flags
       expect(transformed.qpoints, id).toHaveLength(raw.qpoints.length)

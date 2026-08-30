@@ -78,12 +78,13 @@ const get_table_filter_select = (label_text: string): HTMLSelectElement | null =
   )
   return (matching_label?.querySelector(`select`) as HTMLSelectElement | null) ?? null
 }
+// Svelte's select binding reads the chosen option via querySelector(':checked'), which
+// happy-dom doesn't match on <option> (the binding would stick on the first option)
 const set_select_value = (select_element: HTMLSelectElement, value: string) => {
-  const option_idx = Array.from(select_element.options).findIndex(
-    (option_element) => option_element.value === value,
-  )
-  if (option_idx !== -1) select_element.selectedIndex = option_idx
   select_element.value = value
+  vi.spyOn(select_element, `querySelector`).mockImplementation(
+    () => select_element.selectedOptions[0],
+  )
   select_element.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
 }
@@ -330,6 +331,7 @@ describe(`ConvexHullStats`, () => {
 
       const rows = Array.from(document.querySelectorAll(`tbody tr`))
       expect(rows).toHaveLength(4)
+      expect(doc_query(`.filter-count`).textContent?.trim()).toBe(`4 entries`)
       const headers = get_headers()
       expect(headers).toEqual(expect.arrayContaining([`#`, `Formula`]))
       expect(headers.length).toBeGreaterThanOrEqual(6)
@@ -448,11 +450,6 @@ describe(`ConvexHullStats`, () => {
       doc_query(`tbody tr`).click() // first row under the default E_hull ascending sort
       flushSync()
       expect(clicked.map((entry) => entry.reduced_formula)).toEqual([`Li2O`])
-    })
-
-    test(`shows entry count in filter bar`, () => {
-      mount_stats_table({ stable_entries: stable, unstable_entries: unstable })
-      expect(doc_query(`.filter-count`).textContent?.trim()).toBe(`4 entries`)
     })
   })
 
@@ -758,38 +755,28 @@ describe(`ConvexHullStats`, () => {
       expect(document.body.textContent).not.toContain(`Polymorphs`)
     })
 
-    test(`appears with correct options when polymorphs exist`, () => {
-      mount_stats_table({ stable_entries: polymorph_entries })
-
-      const options = Array.from(get_polymorph_select().options).map((opt) =>
-        opt.textContent?.trim(),
-      )
-      expect(options[0]).toBe(`all`)
-      // Fe2O3 has 2 polymorphs → option shows count
-      expect(options.some((opt) => opt?.includes(`2`))).toBe(true)
-      // Li2O has only 1 entry → not in dropdown
-      expect(options.some((opt) => opt?.includes(`Li`))).toBe(false)
-    })
-
-    test(`ignores invalid polymorph filter values`, () => {
+    test(`lists only polymorph groups with counts; selecting one filters the table, an invalid value shows all`, () => {
       mount_stats_table({ stable_entries: polymorph_entries })
 
       const poly_select = get_polymorph_select()
-      const first_polymorph_option = Array.from(poly_select.options).find(
-        (option) => option.value !== ``,
-      )
-      if (!first_polymorph_option) throw new Error(`no polymorph option rendered`)
+      // Li2O has only 1 entry → not in dropdown
+      expect(
+        Array.from(poly_select.options).map((opt) => [opt.value, opt.textContent?.trim()]),
+      ).toEqual([
+        [``, `all`],
+        [`Fe2O3`, `Fe2O3 (2)`],
+      ])
 
-      set_select_value(poly_select, first_polymorph_option.value)
-      expect(poly_select.value).toBe(first_polymorph_option.value)
-      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
+      set_select_value(poly_select, `Fe2O3`)
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
+      expect(doc_query(`.filter-count`).textContent?.trim()).toBe(`2 entries`)
+      expect(doc_query(`tbody`).textContent).not.toContain(`Li`)
 
       const invalid_option = document.createElement(`option`)
       invalid_option.value = `nonexistent-formula`
       invalid_option.textContent = `invalid`
       poly_select.append(invalid_option)
       set_select_value(poly_select, invalid_option.value)
-
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
     })
   })

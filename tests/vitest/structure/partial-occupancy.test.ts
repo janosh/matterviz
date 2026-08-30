@@ -109,8 +109,14 @@ describe(`partial occupancy slice flags`, () => {
       { element: `O`, occu: 0.8, oxidation_state: 0 },
       { element: `F`, occu: 0.8, oxidation_state: 0 },
     ])
-    expect(slices[0].render_start_cap).toBe(false)
-    expect(slices[1].render_end_cap).toBe(false)
-    expect(slices[1].end_phi).toBeLessThanOrEqual(2 * Math.PI + 1e-6)
+    // 0.8 + 0.8 is rescaled to a full turn split evenly, with no vacancy caps and only the
+    // half-gap (1e-3 / 2) trimmed off each wedge end
+    expect(slices.map((slice) => slice.occupancy)).toEqual([0.5, 0.5])
+    expect(slices.map((slice) => slice.render_start_cap)).toEqual([false, false])
+    expect(slices.map((slice) => slice.render_end_cap)).toEqual([false, false])
+    expect(slices[0].start_phi).toBeCloseTo(5e-4, 12)
+    expect(slices[0].end_phi).toBeCloseTo(Math.PI - 5e-4, 12)
+    expect(slices[1].start_phi).toBeCloseTo(Math.PI + 5e-4, 12)
+    expect(slices[1].end_phi).toBeCloseTo(2 * Math.PI - 5e-4, 12)
   })
 })

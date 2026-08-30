@@ -95,8 +95,10 @@ describe(`scale_lattice_matrix`, () => {
 
 describe(`make_supercell`, () => {
   test.each([
+    [[1, 1, 1], 2, 64.0, [4.0, 4.0, 4.0]], // identity scaling
     [[2, 2, 2], 16, 512.0, [8.0, 8.0, 8.0]],
     [[3, 1, 2], 12, 384.0, [12.0, 4.0, 8.0]],
+    [[5, 1, 1], 10, 320.0, [20.0, 4.0, 4.0]],
     [2, 16, 512.0, [8.0, 8.0, 8.0]],
     [`2x2x2`, 16, 512.0, [8.0, 8.0, 8.0]],
   ])(
@@ -156,29 +158,6 @@ describe(`make_supercell`, () => {
     ])
   })
 
-  test(`folds coordinates to unit cell by default`, () => {
-    const supercell = make_supercell(sample_structure, [2, 2, 2])
-
-    for (const site of supercell.sites) {
-      for (const coord of site.abc) {
-        expect(coord).toBeGreaterThanOrEqual(0)
-        expect(coord).toBeLessThan(1)
-      }
-    }
-  })
-
-  test(`handles edge cases`, () => {
-    // Identity scaling
-    const identity = make_supercell(sample_structure, [1, 1, 1])
-    expect(identity.sites).toHaveLength(2)
-    expect(identity.lattice.matrix).toEqual(sample_structure.lattice.matrix)
-
-    // Large scaling
-    const large = make_supercell(sample_structure, [5, 1, 1])
-    expect(large.sites).toHaveLength(10)
-    expect(large.lattice.matrix[0]).toEqual([20.0, 0.0, 0.0])
-  })
-
   test(`does not modify original structure`, () => {
     const original = structuredClone(sample_structure)
     const supercell = make_supercell(original, [2, 2, 2])
@@ -217,7 +196,11 @@ describe(`integration tests`, () => {
 
     expect(supercell.sites).toHaveLength(12) // 3 original × 4 cells
     expect(supercell.charge).toBe(8) // 2 × 4
-    expect(supercell.sites.some((site) => site.properties.force)).toBe(true)
+    // every O copy keeps the per-site force vector
+    const o_forces = supercell.sites
+      .filter((site) => site.species[0].element === `O`)
+      .map((site) => site.properties.force)
+    expect(o_forces).toEqual(Array.from({ length: 4 }, () => [0.1, 0.2, 0.3]))
   })
 
   test(`works with different lattice shapes`, () => {
@@ -359,5 +342,9 @@ test(`constructs a 64k-site supercell with xyz and abc on every site`, () => {
   )
   const supercell = make_supercell(test_structure, `4x4x4`)
   expect(supercell.sites).toHaveLength(64_000)
-  expect(supercell.sites.every((site) => site.xyz && site.abc)).toBe(true)
+  const finite_xyz = supercell.sites.every((site) => site.xyz.every(Number.isFinite))
+  const abc_in_cell = supercell.sites.every((site) =>
+    site.abc.every((coord) => coord >= 0 && coord < 1),
+  )
+  expect({ finite_xyz, abc_in_cell }).toEqual({ finite_xyz: true, abc_in_cell: true })
 })

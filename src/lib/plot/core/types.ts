@@ -10,6 +10,7 @@ import type PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
 import type { PlotTitleConfig } from '$lib/plot/core/plot-title'
 import type { TicksOption } from '$lib/plot/core/scales'
 import type { TickStrategy } from '$lib/plot/core/tick-layout'
+import type { FillPattern } from '$lib/plot/core/patterns'
 import type { FillGradient } from '$lib/plot/core/types/fills'
 import { type ErrorValues, error_lengths, type PointError } from '$lib/plot/core/error-bars'
 import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
@@ -412,6 +413,8 @@ export interface LegendItem {
     edge_color?: string
     // Gradient fill for legend swatch (when fill is a gradient, not a solid color)
     fill_gradient?: FillGradient
+    // Hatch/texture the series paints with, drawn over the swatch's symbol/fill color
+    pattern?: FillPattern
   }
 }
 
@@ -446,6 +449,8 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   // Override unit-based automatic axis grouping (e.g. a separately scaled residual).
   axis_group?: string
   color?: string
+  // Hatch/texture over the bar fill: a shape name, plotly-style shorthand or PatternOptions
+  pattern?: FillPattern
   bar_width?: number | readonly number[]
   visible?: boolean
   metadata?: Metadata[] | Metadata

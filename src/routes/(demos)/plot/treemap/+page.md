@@ -39,6 +39,39 @@ Leaves carry `value`; cell areas are proportional to it and parents sum their le
 <Treemap {data} style="height: 420px" />
 ```
 
+## Pattern fills
+
+Any node can carry a `pattern` to hatch or texture its cell on top of its color, e.g. to flag estimated, predicted or otherwise special entries. Patterns are per node and not inherited by children. Pass a shape name (`diagonal`, `dots`, `cross`, `waves`, `bricks`, `hexagons`, …), a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a full options object with `size`, `solidity`, `angle`, `dash` (`solid`, `dashed` or `dotted`), `fg`/`bg` colors and `mode: 'replace'` to draw the texture in the node's color on a transparent background. The legend swatch picks up the same pattern.
+
+```svelte example
+<script lang="ts">
+  import { Treemap, type TreemapNode } from 'matterviz'
+
+  const data: TreemapNode[] = [
+    {
+      label: `Measured`,
+      children: [
+        { label: `XRD`, value: 24 },
+        { label: `Neutron`, value: 9 },
+        { label: `Estimated`, value: 12, pattern: `/` },
+      ],
+    },
+    {
+      label: `Simulated`,
+      pattern: { shape: `dots`, size: 7, solidity: 0.15 },
+      children: [
+        { label: `Relaxed`, value: 28, pattern: `x` },
+        { label: `Unrelaxed`, value: 11, pattern: { shape: `diagonal`, dash: `dashed` } },
+        { label: `Extrapolated`, value: 6, pattern: { shape: `waves`, mode: `replace` } },
+      ],
+    },
+    { label: `Literature`, value: 18, pattern: { shape: `hexagons`, size: 12, fg: `white` } },
+  ]
+</script>
+
+<Treemap {data} style="height: 420px" />
+```
+
 ## Multiline labels and fitting
 
 `label_formatter` returns one or more independently styled lines while preserving the default cell hover, focus, click, zoom, and tooltip behavior. Parent header labels default to 14 px (`parent_label_font_size`) while leaf labels use `--treemap-font-size` (11 px by default). `label_fit="shrink"` is the default and scales the label block's base font size between `label_min_font_size` and `label_max_font_size`. Use `"hide"` to omit labels that do not fit at full size, or `"clip"` to keep the maximum size and clip overflow (per-line `font_scale` multiplies on top of the fitted base size, so scaled lines can render outside those bounds). Parent headers use `parent_label_font_size` as their ceiling. Shrink and clip modes use an unrotated clipping wrapper, so even rotated labels stay inside their cells.

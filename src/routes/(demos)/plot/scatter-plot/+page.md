@@ -2206,6 +2206,68 @@ Display multiple scatter plots in a responsive 2×2 grid:
 </div>
 ```
 
+Fill regions and error bands accept a `pattern` (a shape name, plotly-style shorthand like `/` or `x`, or a `PatternOptions` object) to hatch the area so overlapping bands stay legible where they intersect and in grayscale print. The texture is tiled in screen space, so it stays crisp under zoom, and the legend swatch repeats it:
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  const x_values = Array.from({ length: 40 }, (_, idx) => idx / 4)
+  const model_a = {
+    x: x_values,
+    y: x_values.map((val) => 4 + 2 * Math.sin(val)),
+    label: `Model A`,
+    line_style: { stroke: `#4c6ef5`, stroke_width: 2 },
+    markers: `line`,
+  }
+  const model_b = {
+    x: x_values,
+    y: x_values.map((val) => 4.5 + 1.5 * Math.cos(val * 0.8)),
+    label: `Model B`,
+    line_style: { stroke: `#e8590c`, stroke_width: 2 },
+    markers: `line`,
+  }
+
+  const error_bands = [
+    {
+      series: { type: `series`, series_idx: 0 },
+      error: 0.8,
+      fill: `#4c6ef5`,
+      fill_opacity: 0.35,
+      label: `A ± σ`,
+      pattern: { shape: `diagonal`, size: 7 },
+    },
+    {
+      series: { type: `series`, series_idx: 1 },
+      error: 0.6,
+      fill: `#e8590c`,
+      fill_opacity: 0.35,
+      label: `B ± σ`,
+      pattern: { shape: `diagonal-reverse`, size: 7 },
+    },
+  ]
+  const fill_regions = [
+    {
+      upper: { type: `constant`, value: 1.5 },
+      lower: { type: `constant`, value: 0 },
+      fill: `#868e96`,
+      fill_opacity: 0.3,
+      label: `Excluded`,
+      pattern: { shape: `cross-diagonal`, mode: `replace`, size: 10 },
+    },
+  ]
+</script>
+
+<ScatterPlot
+  series={[model_a, model_b]}
+  {error_bands}
+  {fill_regions}
+  x_axis={{ label: `Time (ps)` }}
+  y_axis={{ label: `Energy (eV)`, range: [0, 8] }}
+  style="height: 400px"
+/>
+```
+
 ## Conditional Fills and Function Boundaries
 
 Use the `where` condition to fill only where a condition is true, e.g. highlighting regions where one series exceeds another. Boundaries can also be defined as functions for dynamic fills like confidence intervals or thresholds.

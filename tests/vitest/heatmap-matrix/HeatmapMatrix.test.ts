@@ -135,23 +135,18 @@ describe(`symmetric mode`, () => {
 })
 
 describe(`values and colors`, () => {
-  test(`numeric values produce distinct colors from scale`, () => {
+  test(`numeric values map linearly onto the auto [min, max] domain, row by row`, () => {
     mount_matrix({
       values: [
         [0, 0.5, 1],
         [0.25, 0.75, 0],
         [1, 0, 0.5],
       ],
+      color_scale: red_scale,
     })
-    const cells = get_data_cells()
-    // All cells should have a background color
-    for (const cell of cells) {
-      expect(cell.style.backgroundColor).not.toBe(``)
-    }
-    // Same values (0) should produce same color, different values should differ
-    expect(cells[0].style.backgroundColor).toBe(cells[5].style.backgroundColor) // both value 0
-    expect(cells[0].style.backgroundColor).not.toBe(cells[1].style.backgroundColor) // 0 vs 0.5
-    expect(cells[2].style.backgroundColor).toBe(cells[6].style.backgroundColor) // both value 1
+    // cells are laid out y-row by y-row, so the ramp position is each value's own share of
+    // the 0..1 data range (0.25 -> 64, 0.75 -> 191 after rounding)
+    expect(get_data_cells().map(red_of)).toEqual([0, 128, 255, 64, 191, 0, 255, 0, 128])
   })
 
   test(`null values get the missing color, non-null values don't`, () => {
@@ -190,15 +185,14 @@ describe(`values and colors`, () => {
       y: [`X`, `Y`],
       values: { X: { A: 0, B: 1 }, Y: { A: 0.5, B: null } },
       missing: { color: `red` },
+      color_scale: red_scale,
     })
     const cells = get_data_cells()
     expect(cells).toHaveLength(4)
-    // X.A=0 and X.B=1 should have different colors (different values)
-    expect(cells[0].style.backgroundColor).not.toBe(cells[1].style.backgroundColor)
-    // Y.B=null should get the missing color
+    // X.A=0, X.B=1, Y.A=0.5 land at the bottom, top and middle of the ramp; the null Y.B
+    // cell takes the missing color and does not shrink the [0, 1] domain
+    expect(cells.slice(0, 3).map(red_of)).toEqual([0, 255, 128])
     expect(cells[3].style.backgroundColor).toBe(`red`)
-    // Y.A=0.5 should NOT be the missing color
-    expect(cells[2].style.backgroundColor).not.toBe(`red`)
   })
 
   test(`custom color_scale function is applied`, () => {
@@ -310,22 +304,16 @@ describe(`values and colors`, () => {
     expect(stops.at(-1)).toBe(`rgb(0, 0, 0)`)
   })
 
-  test(`log mode safely handles non-positive color range minimum`, () => {
-    mount_matrix({
-      x: [`A`],
-      y: [`X`],
-      values: [[1]],
-      log: true,
-      color_scale_range: [-10, 10],
-    })
-    const cell = doc_query(`.cell:not(.empty)`)
-    expect(cell.style.backgroundColor).not.toBe(``)
-    expect(cell.style.backgroundColor).not.toBe(`transparent`)
-  })
-
-  // a degenerate domain paints every mappable cell the midpoint color (also when the lifted
-  // log floor lands on the max); a log domain entirely <= 0 maps nothing
+  // a non-positive log floor is lifted to the smallest positive value so the data still spans
+  // the ramp; a degenerate domain paints every mappable cell the midpoint color (also when
+  // the lifted log floor lands on the max); a log domain entirely <= 0 maps nothing
   test.each<[string, Partial<ComponentProps<typeof HeatmapMatrix>>, number[], number[]]>([
+    [
+      `log floor lifted to the min positive value`,
+      { log: true, color_scale_range: [-10, 10] },
+      [1, 10],
+      [0, 255],
+    ],
     [`zero-width range`, { color_scale_range: [2, 2] }, [1, 2, 3], [128, 128, 128]],
     [
       `log floor lifted onto the max`,
@@ -819,8 +807,14 @@ describe(`milestone feature props`, () => {
     const handler = vi.fn()
     mount_matrix({ on_context_menu: handler, values: [[1]] })
     const first_cell = get_data_cells()[0]
-    first_cell.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-    expect(handler).toHaveBeenCalledOnce()
+    const event = new MouseEvent(`contextmenu`, { bubbles: true, cancelable: true })
+    first_cell.dispatchEvent(event)
+    // the handler gets the cell's context plus the raw event, whose native menu is suppressed
+    expect(handler).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ x_idx: 0, y_idx: 0, value: 1 }),
+      event,
+    )
+    expect(event.defaultPrevented).toBe(true)
   })
 
   test(`tooltip_mode=both hides hover tooltip when no pinned cell`, async () => {

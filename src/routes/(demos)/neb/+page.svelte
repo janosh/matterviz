@@ -75,7 +75,6 @@
 </div>
 
 <style>
-  h2,
   p {
     text-align: center;
     max-width: 60em;

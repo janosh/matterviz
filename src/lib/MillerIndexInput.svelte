@@ -22,7 +22,8 @@
 
   // Parse Miller indices typed as compact single digits ("001", "-101", "1̄01") or as three
   // whitespace/comma-separated integers ("10 0 1", "10, 0, -1", "1̄2̄ 0 1"). Returns null for
-  // anything that is not exactly three integers, so partial input never emits a value.
+  // anything that is not exactly three integers or for (000), which picks out no plane, so
+  // partial input never emits a value.
   function parse_hkl(input: string): Vec3 | null {
     const text = input.trim()
     const parts = /[\s,]/.test(text)
@@ -34,7 +35,8 @@
           ?.slice(1)
           .map(unbar) ?? [])
     if (parts.length !== 3 || !parts.every((part) => /^-?\d+$/.test(part))) return null
-    return parts.map(Number) as Vec3
+    const hkl = parts.map(Number) as Vec3
+    return hkl.every((idx) => idx === 0) ? null : hkl
   }
 
   // Compact "001" when every index is a single digit, else spaced "10 0 1"

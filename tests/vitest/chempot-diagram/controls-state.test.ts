@@ -60,10 +60,10 @@ describe(`create_chempot_overrides`, () => {
     expect(() => create_chempot_overrides(() => ({}), [`elements`])).toThrow(
       /key 'elements' is missing from both/,
     )
-    // same key is fine when a custom default covers it
-    expect(() =>
-      create_chempot_overrides(() => ({}), [`elements`], { elements: [] }),
-    ).not.toThrow()
+    // same key is fine when a custom default covers it, and resolves to that default
+    expect(
+      create_chempot_overrides(() => ({}), [`elements`], { elements: [] }).resolve(`elements`),
+    ).toEqual([])
   })
 })
 

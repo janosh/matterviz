@@ -44,6 +44,7 @@ const node_info_opts = {
   value_format: `.2~f`,
   font: { ...DEFAULT_FONT_SPEC, font_size: 10 },
   color_for: () => `#336699`,
+  pattern_prefix: `test`,
 }
 
 describe(`hierarchy chart helpers`, () => {
@@ -180,6 +181,55 @@ describe(`hierarchy chart helpers`, () => {
       { text: `alpha 100%`, width: 60 },
       { text: `alpha`, width: 30 },
       { text: `A`, width: 6 },
+    ])
+  })
+
+  test(`pattern nodes resolve a scoped <pattern> id while fill stays the label-contrast color`, () => {
+    const patterned = compute_sunburst_layout(
+      {
+        label: `root`,
+        children: [
+          { label: `plain`, value: 1 },
+          { label: `hatched`, value: 1, pattern: `/` },
+          { label: `dotted`, value: 1, pattern: { shape: `dots`, size: 6 } },
+          { label: `replaced`, value: 1, pattern: { shape: `/`, mode: `replace` } },
+          { label: `on-black`, value: 1, pattern: { mode: `replace`, bg: `#000` } },
+        ],
+      },
+      {},
+    ).arcs
+    const infos = compute_node_infos(patterned, node_info_opts)
+    const [plain, hatched, dotted, replaced, on_black] = [1, 2, 3, 4, 5].map(
+      (idx) => infos[idx],
+    )
+    expect(plain.pattern).toBeUndefined()
+    expect(hatched.fill).toBe(`#336699`)
+    expect(hatched.pattern?.id).toMatch(/^test-pat-[0-9a-z]+$/)
+    expect(hatched.pattern?.url).toBe(`url(#${hatched.pattern?.id})`)
+    // each spec resolves to its own tile (tile geometry itself is covered in patterns.test.ts)
+    expect(dotted.pattern?.id).not.toBe(hatched.pattern?.id)
+    // overlay tiles keep the node color under the texture -> label contrasts against it;
+    // replace mode leaves the tile transparent -> label inherits, or contrasts a custom bg
+    expect(hatched.label_fill).toBe(`white`)
+    expect(replaced.label_fill).toBe(`currentColor`)
+    expect(on_black.label_fill).toBe(`white`)
+    // only patterned nodes get a label halo, painted in whatever sits under the texture
+    expect(plain.label_halo).toBeUndefined()
+    expect(hatched.label_halo).toBe(`#336699`)
+    expect(replaced.label_halo).toBe(`var(--page-bg, white)`)
+    expect(on_black.label_halo).toBe(`#000`)
+    // legend swatches carry the raw pattern spec for the legend to resolve at its own scale
+    const legend = hierarchy_legend_items(
+      patterned.filter((arc) => arc.depth === 1),
+      new SvelteSet(),
+      () => `#336699`,
+    )
+    expect(legend.map((item) => item.display_style.pattern)).toEqual([
+      undefined,
+      `/`,
+      { shape: `dots`, size: 6 },
+      { shape: `/`, mode: `replace` },
+      { mode: `replace`, bg: `#000` },
     ])
   })
 

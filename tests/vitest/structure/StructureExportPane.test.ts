@@ -92,10 +92,7 @@ describe(`StructureExportPane`, () => {
 
     expect(export_funcs.export_structure_as).not.toHaveBeenCalled()
 
-    const download_btn = get_button(`Download ${label}`)
-    expect(download_btn).toBeDefined()
-
-    download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+    get_button(`Download ${label}`).dispatchEvent(new Event(`click`, { bubbles: true }))
     await vi.waitFor(() =>
       expect(export_funcs.export_structure_as).toHaveBeenCalledWith(format, simple_structure),
     )
@@ -128,10 +125,7 @@ describe(`StructureExportPane`, () => {
       mount_pane({ structure: simple_structure })
 
       const str_fn = export_funcs[str_fn_name as keyof typeof export_funcs]
-      const copy_btn = get_button(`Copy ${label}`)
-      expect(copy_btn).toBeDefined()
-
-      copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+      get_button(`Copy ${label}`).dispatchEvent(new Event(`click`, { bubbles: true }))
 
       await vi.waitFor(() => {
         expect(str_fn).toHaveBeenCalledWith(simple_structure)
@@ -239,10 +233,9 @@ describe(`StructureExportPane`, () => {
       mount_pane({ structure: simple_structure, scene: mock_scene })
 
       const download_btn = get_button(`Download ${label}`)
-      expect(download_btn).toBeDefined()
-      expect(download_btn?.disabled).toBe(false)
+      expect(download_btn.disabled).toBe(false)
 
-      download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+      download_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
       await vi.waitFor(() =>
         expect(export_scene_as).toHaveBeenCalledWith(mock_scene, format, `structure-basename`),
       )
@@ -252,13 +245,8 @@ describe(`StructureExportPane`, () => {
 
   test(`3D export buttons are disabled without scene`, () => {
     mount_pane({ structure: simple_structure, scene: undefined })
-
-    const models_section = Array.from(document.querySelectorAll(`h4`)).find((h4) =>
-      h4.textContent?.includes(`Export as 3D model`),
-    )?.nextElementSibling
-
-    const buttons = models_section?.querySelectorAll(`button`)
-    buttons?.forEach((btn) => expect(btn.disabled).toBe(true))
+    expect(get_button(`Download GLB`).disabled).toBe(true)
+    expect(get_button(`Download OBJ`).disabled).toBe(true)
   })
 
   test.each([

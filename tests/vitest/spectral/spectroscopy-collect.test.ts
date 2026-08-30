@@ -320,12 +320,15 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
       })
       expect(input.infrared_signal?.series.steps).toEqual(dipole_steps)
       expect(input.infrared_signal?.series.values).toHaveLength(3 * dipole_steps.length)
-      expect(() =>
-        calc_trajectory_spectroscopy(input, {
-          preprocessing: preprocessing ?? `remove_com`,
-          frequency_unit: `1/step`,
-        }),
-      ).not.toThrow()
+      // ...and the spectrum built from it uses the stored velocities and the dipole's own
+      // step spacing (1 at native cadence, 2 once restricted to the kept steps)
+      const result = calc_trajectory_spectroscopy(input, {
+        preprocessing: preprocessing ?? `remove_com`,
+        frequency_unit: `1/step`,
+      })
+      expect(result.velocity_source).toBe(`stored`)
+      expect(result.vdos.sample_interval).toBe(2)
+      expect(result.ir?.sample_interval).toBe(dipole_steps[1] - dipole_steps[0])
     },
   )
 

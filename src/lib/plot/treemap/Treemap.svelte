@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { contrast_text_color } from '$lib/colors'
   import type { BasePlotProps } from '$lib/plot'
   import { TreemapControls } from '$lib/plot'
   import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
@@ -372,7 +371,7 @@
   // parents-first, so the last visible one containing the point is the one on top.
   let chrome_color = $derived.by(() => {
     const probe = { x: chart_state.inner_width - 1, y: 1 }
-    let fill: string | undefined
+    let label_fill: string | undefined
     for (const idx of visible_idxs) {
       const rect = rects[idx]
       if (
@@ -382,9 +381,11 @@
         probe.y >= rect.y &&
         probe.y <= rect.y + rect.height
       )
-        fill = chart_state.node_infos[idx]?.fill
+        label_fill = chart_state.node_infos[idx]?.label_fill
     }
-    return fill ? contrast_text_color({ background: fill }) : undefined
+    // label_fill already accounts for a pattern's backdrop (transparent in `replace` mode)
+    // and for translucent fills, where inheriting is the only honest answer
+    return label_fill === `currentColor` ? undefined : label_fill
   })
 </script>
 
@@ -467,26 +468,13 @@
                 width={rect.width}
                 height={rect.height}
                 data-treemap-node-idx={idx}
-                fill={info.fill}
+                fill={info.pattern?.url ?? info.fill}
                 fill-opacity={opacity}
                 role={cells_clickable ? `button` : undefined}
                 tabindex={idx === roving_idx ? 0 : -1}
                 aria-label={info.aria}
                 style:cursor={cells_clickable ? `pointer` : `default`}
               />
-              {#if chart_state.arcs[idx].hatch}
-                <!-- Decorative texture overlay; ignores pointer events -->
-                <rect
-                  class="cell-hatch"
-                  aria-hidden="true"
-                  x={rect.x}
-                  y={rect.y}
-                  width={rect.width}
-                  height={rect.height}
-                  fill="url(#{chart_state.hatch_pattern_id})"
-                  fill-opacity={opacity}
-                />
-              {/if}
             {/if}
           {/each}
         </g>
@@ -500,7 +488,41 @@
               {#if lbl}
                 <!-- Keep the clip on this untransformed wrapper. Applying it to
               rotated text rotates the clipping region and crops the wrong area. -->
+                {@const { label_fill, label_halo } = chart_state.node_infos[idx]}
+                {@const label_opacity = chart_state.node_dim[idx].label_opacity}
+                {#snippet label_lines(halo: boolean)}
+                  {#each lbl.lines as line}
+                    <tspan
+                      class={line.class}
+                      x={lbl.x}
+                      y={line.y}
+                      font-size={lbl.font_size * (line.font_scale ?? 1)}
+                      font-weight={line.font_weight}
+                      opacity={line.opacity}
+                      fill={halo ? undefined : line.fill}
+                    >
+                      {line.text}
+                    </tspan>
+                  {/each}
+                {/snippet}
                 <g clip-path={clip_labels ? `url(#${label_clip_id(idx)})` : undefined}>
+                  {#if label_halo}
+                    <!-- Blurred halo in the tile backdrop color so the label stays legible
+                    over hatch/dot strokes; style not attributes since it may be a CSS var -->
+                    <text
+                      class={['cell-label', 'halo', { header: lbl.header }]}
+                      aria-hidden="true"
+                      x={lbl.x}
+                      y={lbl.lines[0].y}
+                      dominant-baseline={lbl.dominant_baseline}
+                      transform={lbl.transform}
+                      font-size={lbl.font_size}
+                      style="fill: {label_halo}; stroke: {label_halo}"
+                      style:opacity={label_opacity}
+                    >
+                      {@render label_lines(true)}
+                    </text>
+                  {/if}
                   <text
                     class={['cell-label', { header: lbl.header }]}
                     data-treemap-node-idx={idx}
@@ -508,24 +530,12 @@
                     y={lbl.lines[0].y}
                     dominant-baseline={lbl.dominant_baseline}
                     transform={lbl.transform}
-                    fill={chart_state.node_infos[idx].label_fill}
-                    fill-opacity={chart_state.node_dim[idx].label_opacity}
+                    fill={label_fill}
+                    fill-opacity={label_opacity}
                     font-size={lbl.font_size}
                     style:cursor={cells_clickable ? `pointer` : `text`}
                   >
-                    {#each lbl.lines as line}
-                      <tspan
-                        class={line.class}
-                        x={lbl.x}
-                        y={line.y}
-                        font-size={lbl.font_size * (line.font_scale ?? 1)}
-                        font-weight={line.font_weight}
-                        opacity={line.opacity}
-                        fill={line.fill}
-                      >
-                        {line.text}
-                      </tspan>
-                    {/each}
+                    {@render label_lines(false)}
                   </text>
                 </g>
               {/if}
@@ -538,9 +548,9 @@
 </ChartShell>
 
 <style>
-  /* fully :global: the wrapper is ChartShell's element and breadcrumbs, chart svg and
-  hatch pattern are HierarchyShell's, so none carry this component's scope - but
-  their theming stays in the chart's variable namespace.
+  /* fully :global: the wrapper is ChartShell's element and breadcrumbs and chart svg
+  are HierarchyShell's, so none carry this component's scope - but their theming stays
+  in the chart's variable namespace.
   plotly-pathbar look: right-pointing chevron segments with a matching left
   notch on all but the first, slightly overlapped so they read as one bar.
   Opaque background: the pathbar overlays arbitrarily-colored cells, and a
@@ -620,25 +630,6 @@
   .cells rect:hover {
     filter: brightness(var(--treemap-hover-brightness, 1.08));
   }
-  /* decorative overlay: never intercepts pointer events, no hover effect */
-  .cells rect.cell-hatch {
-    stroke: none;
-    pointer-events: none;
-  }
-  /* subtle by default: thin stripes inheriting the cell border color (itself
-  defaulting to the chart bg) at low opacity, so hatching matches the gaps
-  between cells instead of reading as solid white */
-  :global(.treemap .hatch-pattern-line) {
-    stroke: var(
-      --treemap-hatch-stroke,
-      color-mix(
-        in srgb,
-        var(--treemap-cell-stroke, light-dark(white, #16181d)) 30%,
-        transparent
-      )
-    );
-    stroke-width: var(--treemap-hatch-stroke-width, 0.35);
-  }
   .cell-label {
     text-anchor: middle;
     /* selectable so labels can be copied; clicks/hover still reach the underlying
@@ -646,8 +637,23 @@
     -webkit-user-select: text;
     user-select: text;
   }
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan>, so lines
+  would sit on the alphabetic baseline and crop at the top of the clip strip */
+  .cell-label tspan {
+    dominant-baseline: inherit;
+  }
   .cell-label.header {
     text-anchor: start;
     font-weight: 600;
+  }
+  .cell-label.halo {
+    /* slightly see-through so the texture still reads as continuing under the label */
+    opacity: 0.9;
+    filter: blur(var(--treemap-label-halo-blur, 1px));
+    stroke-width: 0.4em;
+    stroke-linejoin: round;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 </style>

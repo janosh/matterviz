@@ -97,7 +97,7 @@
 </svelte:head>
 
 <h1>Facet Grid</h1>
-<p>
+<p class="demo-intro">
   <code>FacetGrid</code> coordinates Cartesian child plots without hiding their APIs. Each plot
   reports intrinsic ranges and padding through <code>facet_layout</code>; the grid reconciles
   them, renders only outer axes, and propagates pan, zoom, and reset updates across shared axis
@@ -137,6 +137,7 @@
 
 <div
   data-testid="facet-grid-demo"
+  class="bleed-1400"
   style:height="{columns === 1 ? 1100 : 720}px"
   style="min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 1em"
   bind:clientWidth={demo_width}

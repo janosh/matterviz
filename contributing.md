@@ -71,5 +71,5 @@ git checkout -b bug-fix-for-something
    git push
    ```
 
-1. Run the [Publish workflow](https://github.com/janosh/matterviz/actions/workflows/publish.yml) from `main` with the release version and `dry_run` disabled. It builds and validates all artifacts, publishes to npm and Open VSX, then creates the tag and GitHub release.
+1. Create a GitHub release tagged `vX.Y.Z` (no pre-release flag) targeting the release commit on `main`, e.g. `gh release create v1.2.3 --generate-notes`. The [Publish workflow](https://github.com/janosh/matterviz/actions/workflows/publish.yml) runs automatically: it builds and validates all artifacts, publishes to npm and Open VSX and uploads the VSIX to the release. Run the workflow by hand (`workflow_dispatch`) only for dry runs or to recover a partially published release.
 1. Upload the `matterviz.vsix` asset from the GitHub release to the [VS Code Marketplace](https://marketplace.visualstudio.com/manage).

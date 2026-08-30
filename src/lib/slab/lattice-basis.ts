@@ -15,34 +15,17 @@ const MAX_REDUCTION_STEPS = 64
 
 // (hkl) reduced by its gcd, after rejecting inputs that pick out no plane. Called once
 // per public entry point; everything below it takes indices that are already reduced.
-function validate_miller_indices(miller_indices: Vec3): Vec3 {
-  if (miller_indices?.length !== 3) {
-    throw new Error(`Miller indices must be 3 numbers, got ${JSON.stringify(miller_indices)}`)
-  }
-  const non_integer = miller_indices.filter((val) => !Number.isSafeInteger(val))
-  if (non_integer.length > 0) {
-    throw new Error(
-      `Miller indices must be integers, got ${JSON.stringify(non_integer)} in ${JSON.stringify(
-        miller_indices,
-      )}`,
-    )
-  }
-  if (miller_indices.every((val) => val === 0)) {
-    throw new Error(`Miller indices (0, 0, 0) do not define a plane`)
-  }
+function reduced_miller_indices(miller_indices: Vec3): Vec3 {
+  math.validate_miller_indices(miller_indices)
   return math.reduce_miller_indices(miller_indices)
 }
-
-// Plane normal G = h·b1 + k·b2 + l·b3 with the reciprocal rows b_i of transpose(inv(A)).
-// Summing hkl over the reciprocal rows is the same as inv(A) · hkl, which skips the
-// transpose. Not normalized: |G| = 1 / d_hkl.
-export const miller_plane_normal = (lattice_matrix: Matrix3x3, miller: Vec3): Vec3 =>
-  math.dot(math.matrix_inverse_3x3(lattice_matrix), miller)
 
 // Perpendicular distance between neighbouring (hkl) lattice planes, Å.
 export const interplanar_spacing = (lattice_matrix: Matrix3x3, miller_indices: Vec3): number =>
   1 /
-  Math.hypot(...miller_plane_normal(lattice_matrix, validate_miller_indices(miller_indices)))
+  Math.hypot(
+    ...math.miller_plane_normal(lattice_matrix, reduced_miller_indices(miller_indices)),
+  )
 
 // Shortest basis of the 2D lattice spanned by two integer lattice rows, measured with
 // the Cartesian metric of the parent lattice (Lagrange/Gauss reduction, which is optimal
@@ -158,7 +141,7 @@ function unimodular_completion(miller: Vec3): Matrix3x3 {
 // (p · hkl = 0) and row 2 crosses exactly one interplanar spacing (p · hkl = 1), so the
 // perpendicular height of the transformed c is d_hkl. |det P| = 1 means the transformed
 // cell holds the same lattice points, hence the same atoms, as the input cell.
-// `miller` must already be reduced by validate_miller_indices.
+// `miller` must already be reduced by reduced_miller_indices.
 export function slab_basis_transform(lattice_matrix: Matrix3x3, miller: Vec3): Matrix3x3 {
   const [out_of_plane, plane_row_1, plane_row_2] = unimodular_completion(miller)
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
@@ -301,7 +284,7 @@ export function make_oriented_bulk(
         `got pbc ${JSON.stringify(pbc)}`,
     )
   }
-  const miller = validate_miller_indices(miller_indices)
+  const miller = reduced_miller_indices(miller_indices)
 
   const transform = slab_basis_transform(parent_matrix, miller)
   // Row-vector convention: new lattice rows are integer combinations of the old rows
@@ -348,7 +331,7 @@ export function make_oriented_bulk(
     transform,
     miller_indices: miller,
     d_hkl,
-    normal: math.normalize_vec(miller_plane_normal(parent_matrix, miller)),
+    normal: math.normalize_vec(math.miller_plane_normal(parent_matrix, miller)),
     in_plane_index,
   }
 }

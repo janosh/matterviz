@@ -2,8 +2,9 @@
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { hierarchy, pack } from 'd3-hierarchy'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import type { ChartSegment } from './chart'
+  import type { ChartSegment, ElementPatterns } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
 
@@ -15,6 +16,7 @@
     show_amounts = true,
     show_percentages = false,
     color_scheme = `Vesta`,
+    patterns = {},
     svg_node = $bindable(null),
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
@@ -25,14 +27,17 @@
     show_amounts?: boolean
     show_percentages?: boolean
     color_scheme?: ColorSchemeName
+    patterns?: ElementPatterns // hatch/texture fill per element symbol
     svg_node?: SVGSVGElement | null
   } = $props()
+
+  const uid = $props.id()
 
   let label_opts = $derived({ show_amounts, show_percentages })
 
   // d3 circle packing: bubble area ∝ amount
   let bubbles = $derived.by(() => {
-    const segments = composition_segments(composition, color_scheme)
+    const segments = composition_segments(composition, color_scheme, patterns, `bubble-${uid}`)
     if (segments.length === 0) return []
     const root = hierarchy<{ children: ChartSegment[] } | ChartSegment>({
       children: segments,
@@ -65,12 +70,13 @@
   class={[`bubble-chart`, rest.class]}
   bind:this={svg_node}
 >
+  <defs><PatternDefs patterns={bubbles.map((bubble) => bubble.pattern)} /></defs>
   {#each bubbles as bubble (bubble.element)}
     <circle
       cx={bubble.x}
       cy={bubble.y}
       r={bubble.radius}
-      fill={bubble.color}
+      fill={bubble.pattern?.url ?? bubble.color}
       stroke="white"
       role="img"
       aria-label={segment_title(bubble)}

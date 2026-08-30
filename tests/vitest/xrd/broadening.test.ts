@@ -120,7 +120,15 @@ describe(`compute_broadened_pattern`, () => {
 
     const max_y = Math.max(...result.y)
     expect(result.x[result.y.indexOf(max_y)]).toBeCloseTo(20.1, 0)
-    expect(max_y).toBeGreaterThan(0)
+    // Broadening is linear: the merged hump is the pointwise sum of the two single-peak
+    // curves (the faint-peak cut cannot bite at equal intensities)
+    const single = (two_theta: number) =>
+      compute_broadened_pattern({ x: [two_theta], y: [100] }, broad_params, [15, 25], 0.1)
+    const [peak_a, peak_b] = [single(20), single(20.2)]
+    expect(result.x).toEqual(peak_a.x)
+    result.y.forEach((y_val, idx) =>
+      expect(y_val).toBeCloseTo(peak_a.y[idx] + peak_b.y[idx], 10),
+    )
   })
 
   // Regression guard for the fwhm_fn injection refactor and the f32 -> f64 grid change.

@@ -2,11 +2,14 @@
   import { add_alpha } from '$lib/colors'
   import { symbol_map } from '$lib/labels'
   import type { LegendItem, Orientation } from '$lib/plot'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { LegendItemExtent } from '$lib/plot/core/decorations/tracks'
   import {
     get_legend_grid_cells,
     suggest_legend_tracks,
   } from '$lib/plot/core/decorations/tracks'
+  import type { FillPattern } from '$lib/plot/core/patterns'
+  import { resolve_pattern } from '$lib/plot/core/patterns'
   import { unique_id } from '$lib/plot/core/utils'
   import { sanitize_html } from '$lib/sanitize'
   import { strip_html } from '$lib/table'
@@ -25,6 +28,10 @@
   const instance_id = unique_id()
   // d3 symbols with no interior: the plot paints them by stroke, a fill would be invisible
   const open_symbols = new Set([symbolPlus, symbolTimes, symbolAsterisk])
+  // Swatch-sized copy of a series' hatch/texture (half the plot's tile so a 12px box shows
+  // a few repeats); ids are scoped per legend instance and item
+  const swatch_pattern = (pattern: FillPattern | undefined, color: string, key: string) =>
+    pattern ? resolve_pattern(pattern, color, `legend-${instance_id}-${key}`, 0.5) : undefined
 
   let {
     series_data = [],
@@ -298,7 +305,19 @@
       {#if is_fill_item && (series.display_style.fill_color || series.display_style.fill_gradient)}
         {@const gradient = series.display_style.fill_gradient}
         {@const gradient_id = `legend-grad-${instance_id}-${series.fill_idx}`}
+        {@const fill_color = add_alpha(series.display_style.fill_color ?? `steelblue`, 1)}
+        <!-- as in FillArea, the swatch tint goes into the tile so the texture stays legible -->
+        {@const pattern = gradient
+          ? undefined
+          : swatch_pattern(
+              series.display_style.pattern,
+              add_alpha(fill_color, 0.7),
+              `fill-${series.fill_idx}`,
+            )}
         <svg width="16" height="12" viewBox="0 0 16 12" class="fill-swatch">
+          {#if pattern}
+            <defs><PatternDefs patterns={[pattern]} /></defs>
+          {/if}
           {#if gradient}
             <defs>
               {#if gradient.type === `linear`}
@@ -330,10 +349,8 @@
             width="14"
             height="10"
             rx="2"
-            fill={gradient
-              ? `url(#${gradient_id})`
-              : add_alpha(series.display_style.fill_color ?? `steelblue`, 1)}
-            fill-opacity="0.7"
+            fill={gradient ? `url(#${gradient_id})` : (pattern?.url ?? fill_color)}
+            fill-opacity={pattern ? 1 : 0.7}
             stroke={series.display_style.edge_color ?? `none`}
             stroke-width="1"
           />
@@ -360,11 +377,17 @@
           {@const color = series.display_style.symbol_color ?? `currentColor`}
           {@const shape = symbol_map[series.display_style.symbol_type] ?? symbolCircle}
           {@const stroke_only = open_symbols.has(shape)}
+          {@const pattern = stroke_only
+            ? undefined
+            : swatch_pattern(series.display_style.pattern, color, `${series.series_idx}`)}
           <!-- size(50) reaches +-6.7 for the star and diamond, so the box is 14 wide -->
           <svg width="12" height="12" viewBox="-7 -7 14 14">
+            {#if pattern}
+              <defs><PatternDefs patterns={[pattern]} /></defs>
+            {/if}
             <path
               d={d3_symbol().type(shape).size(50)() ?? ``}
-              fill={stroke_only ? `none` : color}
+              fill={stroke_only ? `none` : (pattern?.url ?? color)}
               stroke={stroke_only ? color : `none`}
               stroke-width="1.5"
             />

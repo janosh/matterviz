@@ -1,3 +1,4 @@
+import { extract_fermi_surface } from '$lib/fermi-surface/compute'
 import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
 import { type BandGridJson, normalize_fermi_surface } from '$lib/fermi-surface/parse'
 import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
@@ -292,7 +293,24 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
   )
   await vi.advanceTimersByTimeAsync(200)
   expect(props.fermi_data?.isosurfaces).toHaveLength(1)
-  expect(props.fermi_data?.isosurfaces[0].positions.length).toBeGreaterThan(0)
+  // the nested [kx][ky][kz] JSON must flatten z-fastest to the same mesh the typed grid
+  // (default mu = 0, interpolation_factor = 1) extracts
+  const typed_grid: BandGridData = {
+    ...band_data,
+    energies: [
+      [
+        {
+          values: Float64Array.from(nested.flat(2)),
+          dims: [grid_n, grid_n, grid_n],
+          order: `z_fastest`,
+        },
+      ],
+    ],
+  }
+  const expected = extract_fermi_surface(typed_grid).isosurfaces[0]
+  expect(expected.positions.length).toBeGreaterThan(0)
+  expect(props.fermi_data?.isosurfaces[0].positions).toEqual(expected.positions)
+  expect(props.fermi_data?.isosurfaces[0].indices).toEqual(expected.indices)
   expect(document.body.textContent).not.toContain(`Invalid Fermi surface data`)
   vi.useRealTimers()
 })

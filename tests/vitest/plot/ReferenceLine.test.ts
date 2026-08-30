@@ -1,4 +1,3 @@
-// ReferenceLine component tests
 import ReferenceLine from '$lib/plot/core/components/ReferenceLine.svelte'
 import type { Vec4 } from '$lib/math'
 import type { RefLine } from '$lib/plot'
@@ -52,7 +51,11 @@ describe(`ReferenceLine`, () => {
       ref_line: { type: `horizontal`, y: 50, x_span: [20, 80] },
       expected: { x1: x_scale(20), x2: x_scale(80) },
     },
-    { ref_line: { type: `line`, p1: [20, 20], p2: [80, 80] }, expected: {} },
+    {
+      // slope 1 / intercept 0 through the two points extends across the whole axes rect
+      ref_line: { type: `line`, p1: [20, 20], p2: [80, 80] },
+      expected: { x1: x_scale(0), y1: y_scale(0), x2: x_scale(100), y2: y_scale(100) },
+    },
   ])(`renders $ref_line.type line at the scaled position`, ({ ref_line, expected }) => {
     mount_line(ref_line)
     expect(doc_query(`.reference-line`)).toBeInstanceOf(SVGGElement)

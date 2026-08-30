@@ -5,9 +5,11 @@
 // produces, so each chart keeps only its geometry (polar projection vs tiling).
 
 import type { D3InterpolateName } from '$lib/colors'
-import { is_opaque_color, pick_contrast_color } from '$lib/colors'
+import { is_opaque_color, opaque_contrast_color } from '$lib/colors'
 import { format_value } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
+import type { ResolvedPattern } from '$lib/plot/core/patterns'
+import { resolve_pattern } from '$lib/plot/core/patterns'
 import { create_color_scale } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
 import {
@@ -85,8 +87,13 @@ export interface HierarchyNodeInfo {
   // width fits its node; empty when the node has no base label at all.
   variants: { text: string; width: number }[]
   aria: string
-  fill: string
+  fill: string // the node's color, also the backdrop of its pattern (label contrast keys off it)
   label_fill: string
+  // Hatch/texture tile the node paints with instead of its flat `fill` (undefined: none)
+  pattern?: ResolvedPattern
+  // Color of the blurred halo painted behind the label so it stays legible over the
+  // pattern's strokes: the tile backdrop, or the page where the pattern replaces the fill
+  label_halo?: string
   clickable?: boolean
 }
 
@@ -102,10 +109,11 @@ export function compute_node_infos<Metadata>(
     value_format: string
     font: Readonly<FontSpec>
     color_for: (arc: PositionedArc<Metadata>) => string
+    pattern_prefix: string // scopes pattern ids to the chart instance
     clickable?: (arc: PositionedArc<Metadata>) => boolean
   },
 ): HierarchyNodeInfo[] {
-  const { label_text, value_format, font, color_for, clickable } = opts
+  const { label_text, value_format, font, color_for, pattern_prefix, clickable } = opts
   // Black/white label text for opaque fills; unresolved/translucent fills inherit.
   // Memoized per fill: categorical coloring repeats a handful of fills across thousands
   // of nodes, and parsing + luminance per node would dominate this pass.
@@ -113,9 +121,7 @@ export function compute_node_infos<Metadata>(
   const contrast = (fill: string): string => {
     let label_fill = contrast_cache.get(fill)
     if (label_fill === undefined) {
-      label_fill = is_opaque_color(fill)
-        ? pick_contrast_color({ background: fill })
-        : `currentColor`
+      label_fill = opaque_contrast_color(fill)
       contrast_cache.set(fill, label_fill)
     }
     return label_fill
@@ -123,6 +129,7 @@ export function compute_node_infos<Metadata>(
   return arcs.map((arc) => {
     const { text, extended, short } = node_label_variants(arc, label_text, value_format)
     const fill = color_for(arc)
+    const pattern = arc.pattern && resolve_pattern(arc.pattern, fill, pattern_prefix)
     const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
       variant === undefined
         ? []
@@ -136,7 +143,11 @@ export function compute_node_infos<Metadata>(
         arc.other_count ? ` (${arc.other_count} grouped)` : ``
       }`,
       fill,
-      label_fill: contrast(fill),
+      // Labels sit on the tile backdrop: the node color, or the page in `replace` mode
+      label_fill: contrast(pattern?.bg ?? fill),
+      pattern,
+      label_halo:
+        pattern && (is_opaque_color(pattern.bg) ? pattern.bg : `var(--page-bg, white)`),
       ...(clickable ? { clickable: clickable(arc) } : {}),
     }
   })
@@ -222,7 +233,11 @@ export function hierarchy_legend_items<Metadata>(
     series_idx: idx,
     label: node_display_name(arc),
     visible: !muted_ids.has(arc.id),
-    display_style: { symbol_type: `Square` as const, symbol_color: color_for(arc) },
+    display_style: {
+      symbol_type: `Square` as const,
+      symbol_color: color_for(arc),
+      pattern: arc.pattern,
+    },
   }))
 }
 

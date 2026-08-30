@@ -23,7 +23,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 <script lang="ts">
   import type { Matrix3x3, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
+  import { dispose_on_change, positions_geometry } from '$lib/scene/geometry.svelte'
   import { quaternion_from_direction } from '$lib/structure/geometry'
+  import { polygon_edge_vertices, polygon_fan_vertices } from '$lib/structure/lattice-planes'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     clip_line_to_cell,
@@ -222,18 +224,14 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       // Stripe coordinate: Cartesian distance along the glide direction / period
       const stripe_u = (vert: Vec3): number =>
         stripe_dir ? math.dot(vert, stripe_dir) / GLIDE_STRIPE_PERIOD : 0
-      // Fan triangulation of the convex polygon
-      for (let idx = 1; idx < polygon.length - 1; idx++) {
-        for (const vert of [polygon[0], polygon[idx], polygon[idx + 1]]) {
-          group.positions.push(...vert)
-          group.uvs.push(stripe_u(vert), 0.5)
-        }
+      for (const vert of polygon_fan_vertices(polygon)) {
+        group.positions.push(...vert)
+        group.uvs.push(stripe_u(vert), 0.5)
       }
       groups.set(group_key, group)
     }
     return [...groups.entries()].map(([group_key, { positions, uvs }]) => {
-      const geometry = new BufferGeometry()
-      geometry.setAttribute(`position`, new BufferAttribute(new Float32Array(positions), 3))
+      const geometry = positions_geometry(positions)
       geometry.setAttribute(`uv`, new BufferAttribute(new Float32Array(uvs), 2))
       geometry.computeVertexNormals()
       const [color, opacity, striped] = group_key.split(`|`)
@@ -247,16 +245,13 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     const segments_by_color = new Map<string, number[]>()
     for (const { polygon, color } of visible_planes) {
       const positions = segments_by_color.get(color) ?? []
-      for (let idx = 0; idx < polygon.length; idx++) {
-        positions.push(...polygon[idx], ...polygon[(idx + 1) % polygon.length])
-      }
+      positions.push(...polygon_edge_vertices(polygon).flat())
       segments_by_color.set(color, positions)
     }
-    return [...segments_by_color.entries()].map(([color, positions]) => {
-      const geometry = new BufferGeometry()
-      geometry.setAttribute(`position`, new BufferAttribute(new Float32Array(positions), 3))
-      return { geometry, color }
-    })
+    return [...segments_by_color.entries()].map(([color, positions]) => ({
+      geometry: positions_geometry(positions),
+      color,
+    }))
   })
 
   // Inversion centers: faceted octahedra (centrosymmetric, unlike the smooth spheres
@@ -279,12 +274,11 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // $effect per group (rather than a single combined one): the deriveds recompute
   // independently — e.g. tweaking a plane-only prop rebuilds plane_groups but not
   // axis_groups — and a combined effect would dispose the still-mounted axis geometry.
-  const dispose_geometries = (groups: { geometry: BufferGeometry }[]) => () =>
-    groups.forEach((group) => group.geometry.dispose())
-  $effect(() => dispose_geometries(axis_groups))
-  $effect(() => dispose_geometries(plane_groups))
-  $effect(() => dispose_geometries(plane_edge_groups))
-  $effect(() => dispose_geometries(inversion_group ? [inversion_group] : []))
+  const geometries_of = (groups: MaterialGroup[]) => groups.map((group) => group.geometry)
+  dispose_on_change(() => geometries_of(axis_groups))
+  dispose_on_change(() => geometries_of(plane_groups))
+  dispose_on_change(() => geometries_of(plane_edge_groups))
+  dispose_on_change(() => [inversion_group?.geometry])
 
   // Dispose the (non-reactive) stripe texture on unmount
   $effect(() => () => stripe_texture.dispose())

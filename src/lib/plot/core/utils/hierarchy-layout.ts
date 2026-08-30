@@ -10,6 +10,7 @@ import { hsl } from 'd3-color'
 import type { HierarchyNode, HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
 import { PLOT_COLORS } from '$lib/colors'
+import type { FillPattern } from '$lib/plot/core/patterns'
 import { DEFAULTS } from '$lib/settings'
 
 // === Sunburst chart types ===
@@ -42,10 +43,10 @@ export interface SunburstNode<Metadata = Record<string, unknown>> {
   label_short?: string
   value?: number // required on leaves ('leaf-sum') / authoritative on all nodes ('total')
   color?: string // explicit color, inherited by descendants without their own
-  // Overlay a diagonal-hatch texture on this node's arc (not inherited), e.g. to
-  // mark a categorical flag like preemptible jobs. Styled via the
-  // --sunburst-hatch-* CSS vars.
-  hatch?: boolean
+  // Hatch/texture over this node's fill (not inherited), e.g. to mark a categorical flag
+  // like preemptible jobs: a shape name (`diagonal`, `dots`, …), a plotly-style shorthand
+  // (`/`, `x`, `.`, …) or full PatternOptions
+  pattern?: FillPattern
   children?: SunburstNode<Metadata>[]
   metadata?: Metadata
 }
@@ -80,7 +81,7 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   parent_fraction: number // value / parent value (1 for root)
   is_other?: boolean // synthetic arc aggregating small siblings (min_fraction bucketing)
   other_count?: number // siblings folded into an `is_other` arc (undefined elsewhere)
-  hatch?: boolean // diagonal-hatch overlay from SunburstNode.hatch (not inherited)
+  pattern?: FillPattern // hatch/texture from SunburstNode.pattern (not inherited)
   x0: number // angular extent as fraction of the full circle, in [0, 1]
   x1: number
   y0: number // radial extent in ring units: y0 === depth, y1 === depth + 1
@@ -393,7 +394,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       color,
       depth,
       is_leaf: !node.children?.length,
-      hatch: node.data.hatch,
+      pattern: node.data.pattern,
       x0,
       x1,
       y0,

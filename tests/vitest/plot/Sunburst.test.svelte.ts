@@ -189,13 +189,43 @@ describe(`Sunburst`, () => {
     expect(hidden.querySelectorAll(selector)).toHaveLength(0)
   })
 
-  // labels auto-contrast with the arc fill (white labels would vanish on light arcs)
+  // labels auto-contrast with the arc fill (white labels would vanish on light arcs, black
+  // ones read poorly on the mid-tone steelblue that the WCAG ratio alone would give black)
   test.each([
     [`#ffe0b3`, `black`],
     [`#1f3a5f`, `white`],
+    [`#4e79a7`, `white`],
   ])(`arc label on %s renders %s text for contrast`, async (color, expected_fill) => {
     const plot = await mount_sized_sunburst({ data: [{ label: `N`, color, value: 10 }] })
     expect(plot.querySelector(`.arc-label`)?.getAttribute(`fill`)).toBe(expected_fill)
+    // a flat fill needs no halo behind the label
+    expect(plot.querySelector(`.arc-label.halo`)).toBeNull()
+  })
+
+  test(`patterned arcs draw a blurred halo in the tile backdrop color behind the label`, async () => {
+    const plot = await mount_sized_sunburst({
+      data: [
+        { label: `dotted`, color: `#4e79a7`, value: 10, pattern: `dots` },
+        { label: `replaced`, value: 10, pattern: { shape: `/`, mode: `replace` } },
+        { label: `plain`, value: 10 },
+      ],
+    })
+    const halos = [...plot.querySelectorAll<SVGTextElement>(`.arc-label.halo`)]
+    expect(halos.map((el) => el.textContent?.trim())).toEqual([`dotted`, `replaced`])
+    // stroke + fill via style (the replace-mode halo is a CSS var, unreliable as attribute);
+    // the halo is decorative and must not steal hover/click from the arc underneath
+    expect(halos.map((el) => el.style.fill)).toEqual([`#4e79a7`, `var(--page-bg, white)`])
+    expect(halos.map((el) => el.style.stroke)).toEqual([`#4e79a7`, `var(--page-bg, white)`])
+    for (const halo of halos) {
+      expect(halo.getAttribute(`aria-hidden`)).toBe(`true`)
+      expect(halo.hasAttribute(`data-sunburst-node-idx`)).toBe(false)
+    }
+    // the halo mirrors its label's placement and sits directly under it in paint order
+    const dotted_label = plot.querySelector(
+      `.arc-label:not(.halo)[data-sunburst-node-idx="1"]`,
+    )
+    expect(halos[0].nextElementSibling).toBe(dotted_label)
+    expect(halos[0].getAttribute(`transform`)).toBe(dotted_label?.getAttribute(`transform`))
   })
 
   test(`legend renders categories and toggles subtree and label opacity`, async () => {

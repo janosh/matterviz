@@ -10,14 +10,14 @@ import { describe, expect, test, vi } from 'vitest'
 
 const close = (val: number) => expect.closeTo(val, 9)
 
-// Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20. A and A1 are
-// hatched to check hatch passes through per-node without inheriting (A2/B stay unhatched).
+// Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20. A and A1 carry a fill
+// pattern to check it passes through per-node without inheriting (A2/B stay plain).
 const tree: SunburstNode[] = [
   {
     label: `A`,
-    hatch: true,
+    pattern: `/`,
     children: [
-      { label: `A1`, value: 4, hatch: true },
+      { label: `A1`, value: 4, pattern: { shape: `dots`, size: 6 } },
       { label: `A2`, value: 6 },
     ],
   },
@@ -30,9 +30,9 @@ describe(`compute_sunburst_layout`, () => {
     expect(root).toBe(arcs[0])
     expect(max_depth).toBe(2)
     const [c0, c1] = PLOT_COLORS
-    // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color, hatch] per
+    // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color, pattern] per
     // arc: pre-order indexing gives contiguous subtree ranges, auto-ids slash-join
-    // labels, descendants inherit their depth-1 ancestor's palette color, and hatch
+    // labels, descendants inherit their depth-1 ancestor's palette color, and pattern
     // passes through per-node without inheriting
     const fields = ({ id, node_idx, subtree_end, parent_idx, ...arc }: (typeof arcs)[0]) => [
       id,
@@ -43,14 +43,14 @@ describe(`compute_sunburst_layout`, () => {
       arc.value,
       arc.is_leaf,
       arc.color,
-      arc.hatch ?? false,
+      arc.pattern ?? null,
     ]
     expect(arcs.map(fields)).toEqual([
-      [``, 0, 4, null, 0, 20, false, `transparent`, false],
-      [`A`, 1, 3, 0, 1, 10, false, c0, true],
-      [`A/A1`, 2, 2, 1, 2, 4, true, c0, true],
-      [`A/A2`, 3, 3, 1, 2, 6, true, c0, false],
-      [`B`, 4, 4, 0, 1, 10, true, c1, false],
+      [``, 0, 4, null, 0, 20, false, `transparent`, null],
+      [`A`, 1, 3, 0, 1, 10, false, c0, `/`],
+      [`A/A1`, 2, 2, 1, 2, 4, true, c0, { shape: `dots`, size: 6 }],
+      [`A/A2`, 3, 3, 1, 2, 6, true, c0, null],
+      [`B`, 4, 4, 0, 1, 10, true, c1, null],
     ])
     // sort 'none' preserves input order (A first half, B second, closing the circle);
     // children subdivide the parent span proportionally (4:6); y0 === depth

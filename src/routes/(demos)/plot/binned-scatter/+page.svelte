@@ -238,6 +238,7 @@
 </label>
 
 <BinnedScatterPlot
+  class="bleed-1400"
   {series}
   {x_axis}
   {y_axis}

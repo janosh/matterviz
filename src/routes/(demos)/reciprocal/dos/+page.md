@@ -73,6 +73,33 @@ Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`ma
 <Dos {doses} normalize="max" sigma={0.1} stack />
 ```
 
+## Thermal Properties
+
+`thermal_properties(dos, temperatures, unit)` integrates the Bose–Einstein occupation over a phonon DOS to give the harmonic free energy F, internal energy U, entropy S and heat capacity C<sub>v</sub> (eV and eV/K per whatever the DOS integrates to, 3N modes per cell here). `PhononThermalPlot` draws them against temperature, in phonopy's kJ/mol and J/(K·mol) by default, with F and U on the left axis and S and C<sub>v</sub> on the right. For this simulated Sr<sub>4</sub>Se<sub>4</sub> DOS (2 atoms in the primitive cell) C<sub>v</sub> tends to the classical limit of 6 k<sub>B</sub> ≈ 49.9 J/(K·mol), reaching 49.5 by 500 K:
+
+```svelte example
+<script lang="ts">
+  import { PhononThermalPlot, format_num, thermal_properties } from 'matterviz'
+  import { phonon_dos } from '$site/phonons'
+
+  let energy_unit = $state<'kJ/mol' | 'eV'>(`kJ/mol`)
+  const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
+  const temperatures = Array.from({ length: 81 }, (_, idx) => 10 * idx)
+  const { zero_point_energy } = thermal_properties(dos, temperatures)
+</script>
+
+<label style="display: block; margin-bottom: 1ex">
+  Units
+  <select bind:value={energy_unit}>
+    <option value="kJ/mol">kJ/mol, J/(K·mol)</option>
+    <option value="eV">eV, meV/K</option>
+  </select>
+  · zero-point energy {format_num(zero_point_energy, `.4f`)} eV/cell
+</label>
+
+<PhononThermalPlot {dos} {temperatures} {energy_unit} />
+```
+
 ## Interactive Explorer
 
 Browse all available DOS files. Click to load, use controls to adjust visualization:

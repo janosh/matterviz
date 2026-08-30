@@ -113,7 +113,9 @@ describe(`Export functionality`, () => {
     ])(`round-trips $name export and parse`, ({ structure, preserves_id }) => {
       const content = structure_to_json_str(structure as AnyStructure)
       const parsed = parse_structure_file(content, `test.json`)
-      expect(parsed?.sites).toHaveLength(structure.sites.length)
+      const elements = (sites: AnyStructure[`sites`]) =>
+        sites.map((site) => site.species.map(({ element }) => element))
+      expect(elements(parsed.sites)).toEqual(elements(structure.sites))
       if (preserves_id && structure.id) {
         expect(parsed.id).toBe(structure.id)
       }

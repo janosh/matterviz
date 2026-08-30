@@ -263,7 +263,14 @@ test.each([
 describe(`pick_contrast_color`, () => {
   it.each<[Paint, string]>([
     [{ background: `#000000` }, `white`],
-    [{ background: `#4fc3f7` }, `black`], // black has 10.48:1 contrast vs white's 2.00:1
+    [{ background: `#4fc3f7` }, `black`], // light cyan: black wins under WCAG and APCA alike
+    // mid-tones where the WCAG 2 ratio picks black (4.8:1 vs 4.4:1 on the steelblue) but the
+    // pair reads worse than white: APCA flips near luminance 0.32 instead of 0.18
+    [{ background: `#4e79a7` }, `white`], // PLOT_COLORS[0] steelblue, luminance 0.18
+    [{ background: `#e15759` }, `white`], // PLOT_COLORS[2] red, luminance 0.24
+    [{ background: `#59a14f` }, `white`], // PLOT_COLORS[4] green, luminance 0.28
+    [{ background: `#f28e2c` }, `black`], // PLOT_COLORS[1] orange, luminance 0.38
+    [{ background: `#808080` }, `white`], // mid gray, luminance 0.22
     [{ background: `#ffffff`, choices: [`red`, `blue`] }, `blue`],
     [{ background: `rgba(255, 255, 255, 0.1)`, backdrop: `black` }, `white`],
     [{ background: `rgba(0, 0, 0, 0.1)`, backdrop: `white` }, `black`],

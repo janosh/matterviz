@@ -407,7 +407,7 @@ export function chebyshev_centre(
 // then assigned to every entry whose hyperplane is active there, which also handles
 // degenerate vertices where more than `dim` planes meet (e.g. an element hyperplane
 // coinciding with the mu = 0 border in formal mode).
-export function compute_domains(
+function compute_domains(
   hyperplanes: number[][],
   lims: Vec2[],
   hyperplane_entries: PhaseData[],

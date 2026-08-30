@@ -1,5 +1,5 @@
 import type { ElementAxisOrderingKey } from '$lib/heatmap-matrix'
-import { HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
+import { ELEMENT_ORDERINGS, HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, expect_labelled_settings_grid } from '../setup'
@@ -34,11 +34,14 @@ describe(`HeatmapMatrixControls`, () => {
     expect(toggle.style.cssText).toContain(`pointer-events: none`)
     expect(doc_query(`.draggable-pane.heatmap-controls`)).toBeInstanceOf(HTMLElement)
     expect_labelled_settings_grid()
+    // one option per ordering, in ELEMENT_ORDERINGS order, labelled and bound to the prop
     const ordering_select = doc_query<HTMLSelectElement>(`.heatmap-controls select`)
-    const option_values = Array.from(ordering_select.options).map((opt) => opt.value)
-    expect(option_values).toHaveLength(Object.keys(ORDERING_LABELS).length)
-    expect(option_values).toContain(`atomic_number`)
-    expect(option_values).toContain(`mendeleev_number`)
+    const options = Array.from(ordering_select.options)
+    expect(options.map((opt) => opt.value)).toEqual(ELEMENT_ORDERINGS)
+    expect(options.map((opt) => opt.textContent)).toEqual(
+      ELEMENT_ORDERINGS.map((key) => ORDERING_LABELS[key]),
+    )
+    expect(ordering_select.value).toBe(`atomic_number`)
   })
 
   test(`show_pane=false hides toggle and pane`, () => {
@@ -104,17 +107,25 @@ describe(`HeatmapMatrixControls`, () => {
     expect(search_input.getAttribute(`type`)).toBeNull()
   })
 
-  test(`normalize and domain selects present with correct options`, () => {
+  test(`normalize and domain selects offer every mode and reflect the bound value`, async () => {
     mount_controls({ normalize: `log`, domain_mode: `robust` })
-    const selects = document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`)
-    const all_options = [...selects].flatMap((select) =>
-      [...select.options].map((option) => option.value),
-    )
-    expect(all_options).toContain(`linear`)
-    expect(all_options).toContain(`log`)
-    expect(all_options).toContain(`auto`)
-    expect(all_options).toContain(`robust`)
-    expect(all_options).toContain(`fixed`)
+    await tick()
+    const selects = [
+      ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
+    ]
+    const select_with = (value: string) =>
+      selects.find((select) => select.querySelector(`option[value="${value}"]`))
+    const normalize_select = select_with(`log`)
+    const domain_select = select_with(`robust`)
+    if (!normalize_select || !domain_select) throw new Error(`normalize/domain select missing`)
+    expect([...normalize_select.options].map((opt) => opt.value)).toEqual([`linear`, `log`])
+    expect(normalize_select.value).toBe(`log`)
+    expect([...domain_select.options].map((opt) => opt.value)).toEqual([
+      `auto`,
+      `robust`,
+      `fixed`,
+    ])
+    expect(domain_select.value).toBe(`robust`)
   })
 
   test(`color bar position select only visible when show_color_bar is true`, async () => {

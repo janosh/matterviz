@@ -48,8 +48,9 @@ describe(`FermiSlice`, () => {
       props: { fermi_data, miller_indices: [1, 0, 0], on_error: mock_error },
     })
     await tick()
-    expect(mock_error).toHaveBeenCalled()
-    expect(mock_error.mock.calls[0][0]).toBeInstanceOf(Error)
+    // the compute error is forwarded once, as an Error naming the actual problem
+    expect(mock_error).toHaveBeenCalledExactlyOnceWith(expect.any(Error))
+    expect(mock_error.mock.calls[0][0].message).toMatch(/Degenerate plane normal/)
   })
 
   test(`passes class and style to wrapper`, () => {

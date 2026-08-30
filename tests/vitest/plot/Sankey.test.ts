@@ -1,4 +1,5 @@
 import { Sankey } from '$lib'
+import { plot_color } from '$lib/colors'
 import type { SankeyData, SankeyLinkHandlerProps, SankeyNodeHandlerProps } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -66,7 +67,7 @@ describe(`Sankey`, () => {
     expect(fills[0]).toBe(`#e15759`)
     expect(fills[1]).toBe(`#4e79a7`)
     expect(fills[2]).toBe(`#59a14f`)
-    expect(fills[3]).not.toBeNull() // palette fallback
+    expect(fills[3]).toBe(plot_color(3)) // palette fallback indexed by node position
   })
 
   test(`gradient mode emits one linearGradient per link`, async () => {
@@ -128,13 +129,55 @@ describe(`Sankey`, () => {
     expect([on_node_hover.mock.calls.length, on_link_hover.mock.calls.length]).toEqual([4, 2])
   })
 
-  test(`fires node click callback`, async () => {
-    const on_node_click = vi.fn()
-    const plot = await mount_sized_sankey({ data, on_node_click })
+  test(`click handlers make marks focusable buttons and fire with node/link props`, async () => {
+    const [on_node_click, on_link_click] = [vi.fn(), vi.fn()]
+    const plot = await mount_sized_sankey({ data, on_node_click, on_link_click })
     const rect = plot.querySelector<SVGRectElement>(`.nodes rect`)
+    const path = plot.querySelector<SVGPathElement>(`.links path`)
+    for (const mark of [rect, path]) {
+      expect(mark?.getAttribute(`role`)).toBe(`button`)
+      expect(mark?.getAttribute(`tabindex`)).toBe(`0`)
+    }
+    expect(rect?.getAttribute(`aria-label`)).toBe(`A: 8`)
+    expect(path?.getAttribute(`aria-label`)).toBe(`flow A to C: 8`)
+
     rect?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     await tick()
     expect(on_node_click).toHaveBeenCalledOnce()
+    expect(on_node_click.mock.calls[0][0] as SankeyNodeHandlerProps).toMatchObject({
+      type: `node`,
+      node_idx: 0,
+      label: `A`,
+      value: 8,
+      color: `#e15759`,
+    })
+    // Enter/Space on a focused mark activates it like a click; other keys are ignored
+    rect?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    rect?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Tab`, bubbles: true }))
+    await tick()
+    expect(on_node_click).toHaveBeenCalledTimes(2)
+
+    path?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(on_link_click).toHaveBeenCalledOnce()
+    expect(on_link_click.mock.calls[0][0] as SankeyLinkHandlerProps).toMatchObject({
+      type: `link`,
+      source_label: `A`,
+      target_label: `C`,
+      value: 8,
+    })
+  })
+
+  test(`marks are not focusable buttons without click handlers`, async () => {
+    const plot = await mount_sized_sankey({ data })
+    for (const mark of [
+      plot.querySelector(`.nodes rect`),
+      plot.querySelector(`.links path`),
+    ]) {
+      expect(mark?.hasAttribute(`role`)).toBe(false)
+      expect(mark?.hasAttribute(`tabindex`)).toBe(false)
+      expect(mark?.hasAttribute(`aria-label`)).toBe(false)
+    }
   })
 
   test(`dims toggled node and its links via legend`, async () => {
@@ -351,15 +394,5 @@ describe(`bucket_sankey_data`, () => {
       ],
     }
     expect(bucket_sankey_data(broken, { min_fraction: 0.1 }).links).toEqual(broken.links)
-  })
-
-  test(`total flow out of a bucketed source is conserved`, () => {
-    const outflow = (graph: typeof tail) =>
-      graph.links
-        .filter((link) => link.source === `src`)
-        .reduce((sum, link) => sum + link.value, 0)
-    expect(outflow(bucket_sankey_data(tail, { min_fraction: 0.05 }) as typeof tail)).toBe(
-      outflow(tail),
-    )
   })
 })

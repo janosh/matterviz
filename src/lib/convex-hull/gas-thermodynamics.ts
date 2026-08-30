@@ -2,6 +2,7 @@
 // Enables atmosphere-controlled phase diagram analysis
 
 import { count_atoms_in_composition } from '$lib/composition/reduce'
+import { BOLTZMANN_EV_PER_K } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2 } from '$lib/math'
 import type {
@@ -13,8 +14,6 @@ import type {
 } from './types'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from './types'
 
-// Physical constants
-export const R_EV_PER_K = 8.617333262e-5 // Gas constant in eV/K (k_B)
 export const P_REF = 1.0 // Reference pressure in bar
 
 // Default element-to-gas mapping (which element comes from which gas)
@@ -107,16 +106,18 @@ export const get_default_gas_provider = (): GasThermodynamicsProvider => DEFAULT
 
 // Gas Chemical Potential Calculations
 
-// Number of atoms in each gas molecule
-const GAS_NUM_ATOMS: Readonly<Record<GasSpecies, number>> = {
-  O2: 2,
-  N2: 2,
-  H2: 2,
-  F2: 2,
-  CO: 2,
-  CO2: 3,
-  H2O: 3,
-}
+// Number of atoms in one gas molecule, summed from the stoichiometry so the two can't drift
+const gas_num_atoms = (gas: GasSpecies): number =>
+  Object.values(GAS_STOICHIOMETRY[gas]).reduce((sum, count) => sum + count, 0)
+
+// Pressure part of the gas chemical potential, k_B·T·ln(P/P₀) / num_atoms in eV/atom: the
+// k_B·T·ln(P/P₀) term is per molecule, hence divided by the atoms per molecule
+export const gas_pressure_term = (
+  gas: GasSpecies,
+  temperature: number,
+  pressure: number,
+): number =>
+  (BOLTZMANN_EV_PER_K * temperature * Math.log(pressure / P_REF)) / gas_num_atoms(gas)
 
 // Gas chemical potential per atom at temperature (K) and pressure (bar), PIRO's convention:
 // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms, in eV/atom. An invalid or
@@ -129,9 +130,7 @@ export function compute_gas_chemical_potential(
 ): number {
   const mu_standard = provider.get_standard_chemical_potential(gas, temperature)
   const effective_pressure = Number.isFinite(pressure) && pressure > 0 ? pressure : P_REF
-  // The RT·ln(P) term is per molecule, hence divided by the atoms per molecule
-  const pressure_term = R_EV_PER_K * temperature * Math.log(effective_pressure / P_REF)
-  return mu_standard + pressure_term / GAS_NUM_ATOMS[gas]
+  return mu_standard + gas_pressure_term(gas, temperature, effective_pressure)
 }
 
 // Gas Analysis and Corrections
@@ -226,7 +225,7 @@ export function compute_gas_correction(
     if (!gas || !enabled_gases.has(gas)) continue
 
     const stoich = GAS_STOICHIOMETRY[gas][el] ?? 1
-    const num_atoms = GAS_NUM_ATOMS[gas]
+    const num_atoms = gas_num_atoms(gas)
 
     // Per atom of gas at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
     const mu_at_conditions = compute_gas_chemical_potential(

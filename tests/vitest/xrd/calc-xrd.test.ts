@@ -608,6 +608,8 @@ describe(`radiation types`, () => {
 
 describe(`add_xrd_pattern`, () => {
   const cubic_json = JSON.stringify(make_simple_cubic_structure(3))
+  // Bragg angle of the (100) line of the a = 3 Å simple cubic cell: 2θ = 2·asin(λ / 2a)
+  const two_theta_100 = (wavelength: number) => (2 * Math.asin(wavelength / 6) * 180) / Math.PI
 
   test.each([
     [`JSON string`, cubic_json],
@@ -615,7 +617,8 @@ describe(`add_xrd_pattern`, () => {
   ])(`computes a pattern from a %s`, async (_label, content) => {
     const entry = await add_xrd_pattern(content, `test.json`, null)
     expect(entry.label).toBe(`test.json`)
-    expect(entry.pattern.x.length).toBeGreaterThan(0)
+    // null wavelength → compute_xrd_pattern's CuKa default
+    expect(entry.pattern.x[0]).toBeCloseTo(two_theta_100(WAVELENGTHS.CuKa), 6)
   })
 
   test.each([
@@ -633,13 +636,10 @@ describe(`add_xrd_pattern`, () => {
   test(`respects wavelength parameter`, async () => {
     const res_cu = await add_xrd_pattern(cubic_json, `cu.json`, WAVELENGTHS.CuKa)
     const res_mo = await add_xrd_pattern(cubic_json, `mo.json`, WAVELENGTHS.MoKa)
-    const peaks_cu = res_cu.pattern.x
-    const peaks_mo = res_mo.pattern.x
-
-    // Bragg: 2θ = 2·asin(λ/2d), so halving λ has to move the first (100) line of a = 3 Å
-    expect(peaks_cu.length).toBeGreaterThan(0)
-    expect(peaks_mo.length).toBeGreaterThan(0)
-    expect(peaks_cu[0]).not.toBeCloseTo(peaks_mo[0], 1)
+    // Bragg: 2θ = 2·asin(λ/2d), so halving λ moves the first (100) line of a = 3 Å from
+    // ~29.8° (Cu) to ~13.6° (Mo)
+    expect(res_cu.pattern.x[0]).toBeCloseTo(two_theta_100(WAVELENGTHS.CuKa), 6)
+    expect(res_mo.pattern.x[0]).toBeCloseTo(two_theta_100(WAVELENGTHS.MoKa), 6)
   })
 })
 

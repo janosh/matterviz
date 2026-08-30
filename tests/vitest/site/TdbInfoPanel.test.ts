@@ -1,7 +1,8 @@
 import TdbInfoPanel from '$site/phase-diagrams/TdbInfoPanel.svelte'
 import type { TdbParseResult } from '$site/phase-diagrams/tdb-parse'
 import { type ComponentProps, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 const create_tdb_result = (
   overrides: Partial<TdbParseResult[`data`]> = {},
@@ -123,16 +124,13 @@ describe(`TdbInfoPanel`, () => {
     })
 
     test(`available → shows load button that works`, () => {
-      let load_called = false
-      mount_panel({
-        has_precomputed: true,
-        is_precomputed_loaded: false,
-        on_load_precomputed: () => (load_called = true),
-      })
-      const btn = document.querySelector(`.load-btn`) as HTMLButtonElement
-      expect(btn).not.toBeNull()
-      btn?.click()
-      expect(load_called).toBe(true)
+      const on_load_precomputed = vi.fn()
+      mount_panel({ has_precomputed: true, is_precomputed_loaded: false, on_load_precomputed })
+      const notice = document.querySelector(`.notice.success`)
+      expect(notice?.textContent).toContain(`Pre-computed diagram available`)
+      expect(notice?.textContent).not.toContain(`Phase diagram loaded`)
+      doc_query(`.load-btn`, HTMLButtonElement).click()
+      expect(on_load_precomputed).toHaveBeenCalledOnce()
     })
 
     test(`not available → shows pycalphad code snippet`, () => {

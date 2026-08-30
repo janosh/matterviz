@@ -77,7 +77,7 @@
 </script>
 
 <h1>Heatmap Matrix</h1>
-<p>
+<p class="demo-intro">
   This demo is based on the
   <a href="https://viz.whsunresearch.group/gliquid/interactive-matrix.html">
     Binary Phase Diagram Map
@@ -94,7 +94,7 @@
 </p>
 
 <div
-  class="heatmap-controls-anchor"
+  class="heatmap-controls-anchor bleed-1400"
   role="group"
   onmouseenter={() => (show_primary_controls_toggle = true)}
   onmouseleave={() => (show_primary_controls_toggle = false)}
@@ -255,9 +255,6 @@
 </HeatmapMatrix>
 
 <style>
-  h1 {
-    text-align: center;
-  }
   h2 {
     margin: 2em 0 0.5em;
   }

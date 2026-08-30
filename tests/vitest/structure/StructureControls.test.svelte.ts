@@ -143,17 +143,17 @@ describe(`StructureControls inputs`, () => {
   const view_button = () =>
     [...document.querySelectorAll(`button`)].find((btn) => btn.textContent?.trim() === `View`)
 
-  // zone_axis_direction throws on a cell it cannot resolve a direction in, and
-  // MillerIndexInput accepts `000`. Resolving both in a $derived means the button is
-  // disabled and the reason shown BEFORE any click, so the throw can never escape the
-  // handler. The hkl/singular variant is covered directly in
-  // scene/camera-orientation.test.ts — the mode is just an argument to the identical
-  // guarded call, and happy-dom cannot drive a Svelte <select> binding.
+  // zone_axis_direction throws on a cell it cannot resolve a direction in. Resolving it in a
+  // $derived means the button is disabled and the reason shown BEFORE any click, so the throw
+  // can never escape the handler. `000` never reaches the guard: MillerIndexInput does not
+  // emit it, so the previous direction stays usable. The hkl/singular variant is covered
+  // directly in scene/camera-orientation.test.ts — the mode is just an argument to the
+  // identical guarded call, and happy-dom cannot drive a Svelte <select> binding.
   // oxfmt-ignore
   test.each([
     [`a well-formed cell`, cubic_matrix(10), `001`, null],
     [`a cell with a zero c vector`, [[10, 0, 0], [0, 10, 0], [0, 0, 0]], `001`, /Degenerate uvw direction/],
-    [`all-zero indices`, cubic_matrix(10), `000`, /uvw indices must be finite and not all zero/],
+    [`all-zero indices`, cubic_matrix(10), `000`, null],
   ] as [string, Matrix3x3, string, RegExp | null][])(
     `zone axis View button on %s`,
     async (_name, matrix, typed, expected_error) => {
@@ -164,15 +164,6 @@ describe(`StructureControls inputs`, () => {
       else expect(zone_axis_error()).toBeNull()
     },
   )
-
-  // ...and typing a usable direction clears it again, since the message is derived
-  test(`zone axis error clears when the indices become valid`, async () => {
-    const type_indices = await mount_zone_axis()
-    await type_indices(`000`)
-    expect(zone_axis_error()).not.toBeNull()
-    await type_indices(`110`)
-    expect(zone_axis_error()).toBeNull()
-  })
 
   test.each([
     {

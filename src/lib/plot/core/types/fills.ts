@@ -1,5 +1,7 @@
 // Fill-region and error-band types for 2D plots (shaded areas between boundaries).
-// Self-contained leaf module re-exported via $lib/plot/core/types.
+// Re-exported via $lib/plot/core/types.
+
+import type { FillPattern } from '$lib/plot/core/patterns'
 
 // FillBoundary - references to data sources for fill regions
 // Can reference series by index, by id, or specify constant/axis/function/data values
@@ -94,6 +96,8 @@ export interface FillRegion {
 
   // Styling
   fill?: string | FillGradient
+  // Hatch/texture over a solid `fill` color (ignored for gradient fills)
+  pattern?: FillPattern
   fill_opacity?: number
   edge_upper?: FillEdgeStyle
   edge_lower?: FillEdgeStyle
@@ -134,6 +138,7 @@ export interface ErrorBand {
 
   // Styling (defaults applied if not specified)
   fill?: string // Defaults to series color with reduced opacity
+  pattern?: FillPattern // hatch/texture over the band fill
   fill_opacity?: number // Defaults to 0.3
   edge_style?: FillEdgeStyle
 

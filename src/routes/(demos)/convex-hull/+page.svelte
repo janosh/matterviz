@@ -387,6 +387,8 @@
   />
 </svelte:head>
 
+<h1>Convex Hulls</h1>
+
 <div class="full-bleed">
   {#snippet feature_list(feature_items: string[])}
     <ul class="feature-list">
@@ -398,8 +400,6 @@
       {/each}
     </ul>
   {/snippet}
-
-  <h1>Convex Hulls</h1>
 
   <section class="demo-section">
     <h2>Ternary Chemical Systems</h2>

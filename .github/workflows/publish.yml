@@ -1,7 +1,8 @@
 name: Publish
 
-# Manually build every release artifact, publish the verified artifacts, then create the tag
-# and GitHub release. A tag therefore certifies a completed release instead of triggering one.
+# Build every release artifact, publish the verified artifacts, then create (or complete) the
+# tag and GitHub release. Runs when a GitHub release `vX.Y.Z` is published from a commit on main
+# (version read from the tag), or by workflow_dispatch for dry runs and partial-release recovery.
 #
 # npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
 # both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
@@ -15,10 +16,12 @@ name: Publish
 #   OVSX_PAT - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish, e.g. 0.4.0
+        description: Version to publish without the v prefix, e.g. 0.4.0 (the prefix would split the concurrency group from a release run)
         required: true
         type: string
       dry_run:
@@ -31,7 +34,7 @@ permissions:
 
 # One publish per version, but never cancel an in-flight one: a half-published release is worse.
 concurrency:
-  group: publish-v${{ inputs.version }}
+  group: publish-${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
   cancel-in-progress: false
 
 jobs:
@@ -49,16 +52,24 @@ jobs:
       - name: Validate version and tag
         id: resolve
         env:
-          INPUT_VERSION: ${{ inputs.version }}
-          DRY_RUN: ${{ inputs.dry_run }}
+          # a release event carries its version in the tag; a dispatch types it in
+          INPUT_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }} # empty (never a dry run) on a release event
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
           version="${INPUT_VERSION#v}"
-          # plain X.Y.Z only: a prerelease would land on the npm 'latest' tag (no --tag passed)
+          # plain X.Y.Z only: a prerelease would land on the npm 'latest' tag (no --tag passed).
+          # The tag regex alone doesn't catch a release ticked "pre-release" under a plain tag.
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
             echo "Invalid version: $version (expected X.Y.Z)"; exit 1; }
+          if [ "$IS_PRERELEASE" = true ]; then
+            echo "::error::release v$version is flagged pre-release; only full releases are published"; exit 1
+          fi
 
-          if [ "$DRY_RUN" != true ] && [ "$GITHUB_REF" != refs/heads/main ]; then
-            echo "::error::releases must run from main, got $GITHUB_REF"; exit 1
+          # A dispatch runs on main itself; a release runs on its tag, which must sit on main.
+          if [ "$DRY_RUN" != true ] && [ "$GITHUB_REF" != refs/heads/main ] &&
+            ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::releases must run from a commit on main, got $GITHUB_REF at $GITHUB_SHA"; exit 1
           fi
 
           py_version() { sed -n 's/^version = "\(.*\)"$/\1/p' "$1"; }
@@ -85,7 +96,7 @@ jobs:
             else
               echo "::error::$tag_ref already points to $tag_sha, not $GITHUB_SHA"; exit 1
             fi
-          elif [ -n "$tag_sha" ]; then
+          elif [ -n "$tag_sha" ] && [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             echo "::notice::$tag_ref already points to this commit; treating this run as recovery"
           fi
 

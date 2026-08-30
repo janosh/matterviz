@@ -87,7 +87,8 @@ describe(`PropertyFilter`, () => {
     flushSync()
     inputs()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
     flushSync()
-    expect(calls).toHaveLength(4)
+    // Escape clears exactly like the button: on_clear, then on_change with both bounds unset
+    expect(calls.slice(2)).toEqual([`clear`, `change:undefined:undefined`])
     expect(state.min_value).toBeUndefined()
     // Escape with nothing set is a no-op
     inputs()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))

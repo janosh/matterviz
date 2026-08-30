@@ -1531,6 +1531,7 @@
         region={fill}
         region_idx={fill.idx}
         is_first_segment={segment_idx === 0}
+        defs_id="{clip_path_id}-fill-{fill.idx}"
         path={path_d}
         {clip_path_id}
         {x_scale_fn}

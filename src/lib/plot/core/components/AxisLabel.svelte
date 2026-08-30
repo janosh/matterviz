@@ -126,4 +126,8 @@
       pointer-events: none;
     }
   }
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
+  .axis-label tspan {
+    dominant-baseline: inherit;
+  }
 </style>

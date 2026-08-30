@@ -118,7 +118,7 @@ describe(`ColorBar tick_side='inside'`, () => {
       [
         [`20`, `20%`, `white`],
         [`40`, `40%`, `white`],
-        [`60`, `60%`, `black`],
+        [`60`, `60%`, `white`], // viridis(0.6) is a mid-tone teal (luminance 0.28)
         [`80`, `80%`, `black`],
       ],
     ],
@@ -130,8 +130,8 @@ describe(`ColorBar tick_side='inside'`, () => {
         [`20`, `87.5%`, `white`],
         [`30`, `75%`, `white`],
         [`40`, `62.5%`, `white`],
-        [`50`, `50%`, `black`],
-        [`60`, `37.5%`, `black`],
+        [`50`, `50%`, `white`], // viridis' mid-tone teals (luminance 0.22–0.28) take white
+        [`60`, `37.5%`, `white`],
         [`70`, `25%`, `black`],
         [`80`, `12.5%`, `black`],
       ],
@@ -349,7 +349,8 @@ describe(`ColorBar Interactive Selects`, () => {
     })
     const trigger = document.body.querySelector(selector)
     expect(trigger).not.toBeNull()
-    expect(trigger?.textContent).toContain(expected)
+    // exact label after the dropdown arrow: no `interpolate` scale-name prefix or other leak
+    expect(trigger?.textContent?.replace(`▾`, ``).trim()).toBe(expected)
     void unmount(component)
   })
 
@@ -382,17 +383,6 @@ describe(`ColorBar Interactive Selects`, () => {
     expect(document.body.querySelector(`.title-row > .label`)).toBeNull()
     expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
     void unmount(comp2)
-  })
-
-  test(`color scale shows only label (no interpolate prefix)`, () => {
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: { color_scale_options, selected_color_scale_key: `plasma`, range: [0, 10] },
-    })
-    const trigger = document.body.querySelector(`button.color-scale-select`)
-    expect(trigger?.textContent).toContain(`Plasma`)
-    expect(trigger?.textContent).not.toContain(`interpolate`)
-    void unmount(component)
   })
 
   test(`accepts custom interpolators in color scale options`, async () => {

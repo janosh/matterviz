@@ -462,10 +462,12 @@ describe(`HeatmapTable`, () => {
     ]
     const data = [0, 10, 100, 1000].map((val) => ({ Linear: val, Log: val }))
 
+    // a faint wash so the page shows through: viridis' dark purple at 50% would be a
+    // mid-tone that takes white text over either page
     mount_table({
       data,
       columns,
-      heatmap_opacity: 0.5,
+      heatmap_opacity: 0.2,
       style: `--page-bg: ${page_bg}`,
     })
     await tick()
@@ -960,7 +962,7 @@ describe(`HeatmapTable`, () => {
       ])
       const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
       expect(badge?.textContent).toBe(`3`)
-      expect(badge?.style.color).toBe(`black`)
+      expect(badge?.style.color).toBe(`white`) // accent #4a9eff is a mid-tone blue
 
       doc_query<HTMLButtonElement>(`.selection-badge`).click()
       await tick()

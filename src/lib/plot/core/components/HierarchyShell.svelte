@@ -8,6 +8,7 @@
   // `marks` snippet; all shared state lives on the HierarchyChartState it passes in.
   import { format_value } from '$lib/labels'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { compute_element_placement } from '$lib/plot/core/layout'
@@ -100,15 +101,7 @@
   ondblclick={dblclick_target === `svg` ? chart_state.handle_dblclick : undefined}
 >
   <defs>
-    <!-- inert unless some node references it via fill -->
-    <pattern
-      id={chart_state.hatch_pattern_id}
-      patternUnits="userSpaceOnUse"
-      width="8"
-      height="8"
-    >
-      <path class="hatch-pattern-line" d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" />
-    </pattern>
+    <PatternDefs patterns={chart_state.node_infos.map((info) => info.pattern)} />
     {@render extra_defs?.()}
   </defs>
   <!-- Hover/click delegation sits on the chart group (not the node group) so

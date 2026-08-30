@@ -10,7 +10,13 @@ import {
 } from '$lib/plot/histogram/histogram'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, mount_sized, one_tab_stop, roving_tabindexes } from '../setup'
+import {
+  bind_props,
+  mount_sized,
+  one_tab_stop,
+  pattern_id_of,
+  roving_tabindexes,
+} from '../setup'
 
 // Controls and legend are off unless a test asks for them. Props are mutated in place (not
 // spread) so bind_props accessors survive.
@@ -503,6 +509,24 @@ describe(`Histogram`, () => {
     const quarter = bin_values([], [0, 100], 4, { type: `arcsinh`, threshold: 1 }).edges[1]
     expect(quarter).toBeCloseTo(Math.sinh(Math.asinh(100) / 4), 12)
     expect(quarter).toBeLessThan(25)
+  })
+
+  test(`series pattern fills bars from a scoped <pattern> def`, async () => {
+    const values = [1, 2, 2, 3, 3, 3, 4, 5]
+    const plot = await mount_histogram({
+      series: [
+        { values, label: `hatched`, color: `steelblue`, pattern: `/` },
+        { values, label: `plain`, color: `tomato` },
+      ],
+      bins: 4,
+    })
+    const bar = (idx: number) =>
+      plot.querySelector(`.histogram-series[data-series-idx="${idx}"] path[role="button"]`)
+    expect(bar(1)?.getAttribute(`fill`)).toBe(`tomato`)
+    const defs = plot.querySelectorAll(`.histogram svg defs pattern`)
+    expect(defs).toHaveLength(1)
+    expect(defs[0].id).toBe(pattern_id_of(bar(0), `histogram`))
+    expect(defs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
   })
 
   test(`normalize_counts: probability sums to 1, density integrates to 1 on uneven bins`, () => {

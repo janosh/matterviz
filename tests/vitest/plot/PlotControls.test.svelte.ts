@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import { PlotControls } from '$lib/plot'
 import { DEFAULTS } from '$lib/settings'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
@@ -15,21 +16,26 @@ describe(`PlotControls`, () => {
   }
 
   describe(`range input handling`, () => {
+    // finite values replace the min; empty or non-finite input clears it so the auto min applies
     test.each([
-      { value: `42`, desc: `valid integer` },
-      { value: `3.14`, desc: `valid float` },
-      { value: `-10`, desc: `negative number` },
-      { value: ``, desc: `empty string` },
-      { value: `1e`, desc: `partial exponential (NaN)` },
-      { value: `1e999`, desc: `overflow (Infinity)` },
-      { value: `-1e999`, desc: `overflow (-Infinity)` },
-      { value: `abc`, desc: `non-numeric (NaN)` },
-    ])(`sanitizes $desc: "$value"`, ({ value }) => {
-      mount_controls({ auto_x_range: [0, 100] })
+      { value: `42`, desc: `valid integer`, expected_range: [42, 50] },
+      { value: `3.14`, desc: `valid float`, expected_range: [3.14, 50] },
+      { value: `-10`, desc: `negative number`, expected_range: [-10, 50] },
+      { value: ``, desc: `empty string`, expected_range: [0, 50] },
+      { value: `1e`, desc: `partial exponential (NaN)`, expected_range: [0, 50] },
+      { value: `1e999`, desc: `overflow (Infinity)`, expected_range: [0, 50] },
+      { value: `-1e999`, desc: `overflow (-Infinity)`, expected_range: [0, 50] },
+      { value: `abc`, desc: `non-numeric (NaN)`, expected_range: [0, 50] },
+    ])(`sanitizes $desc: "$value"`, ({ value, expected_range }) => {
+      const state = $state<{ x_axis: { range?: Vec2 } }>({ x_axis: { range: [5, 50] } })
+      const auto_x_range: Vec2 = [0, 100]
+      mount_controls(bind_props({ auto_x_range }, state))
       const input = doc_query<HTMLInputElement>(`input.range-input`)
       input.value = value
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
       expect(input.classList.contains(`invalid`)).toBe(false)
+      expect(state.x_axis.range).toEqual(expected_range)
     })
   })
 

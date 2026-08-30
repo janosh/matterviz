@@ -99,9 +99,14 @@ describe(`detect_instability`, () => {
 
   // Regression: `combined_score >= 1.0` was hard-coded instead of the configured threshold
   it(`compares the combined score against oscillation_threshold`, () => {
+    // a clean ramp scores 0 on derivative variance (flat baseline) and sign changes, and
+    // exactly 1x baseline amplitude (score 1/10), so combined = (0 + 0.1 + 0) / 3. No
+    // method reports an onset, so only the threshold comparison can flag it
     const { x, y } = linear(100, 0.5)
     const low = detect_instability(x, y, { oscillation_threshold: 0.0001 })
-    expect(low.detected).toBe(low.combined_score >= 0.0001)
+    expect(low.combined_score).toBeCloseTo(0.1 / 3, 9)
+    expect(low).toMatchObject({ detected: true, onset_index: -1 })
+    expect(detect_instability(x, y, { oscillation_threshold: 0.05 }).detected).toBe(false)
   })
 })
 

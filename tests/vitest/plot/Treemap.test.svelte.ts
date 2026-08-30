@@ -518,15 +518,52 @@ describe(`Treemap`, () => {
     expect(cell_rect(plot, `B`).getAttribute(`fill`)).not.toBe(PLOT_COLORS[0])
   })
 
-  test(`hatch flag overlays a pattern rect on that cell only`, async () => {
-    const hatched: TreemapNode[] = [
-      { label: `flagged`, value: 5, hatch: true },
+  test(`pattern nodes fill from a <pattern> def in the chart's own <defs>`, async () => {
+    const patterned: TreemapNode[] = [
+      { label: `hatched`, value: 5, pattern: `/` },
+      { label: `dotted`, value: 5, pattern: { shape: `dots`, size: 6 } },
       { label: `plain`, value: 5 },
     ]
-    const plot = await mount_sized_treemap({ data: hatched })
-    const overlays = plot.querySelectorAll(`.cells rect.cell-hatch`)
-    expect(overlays).toHaveLength(1)
-    expect(overlays[0].getAttribute(`fill`)).toContain(`treemap-hatch`)
+    const plot = await mount_sized_treemap({ data: patterned })
+    // equal values keep input order -> pre-order node indices 1, 2, 3
+    const fill_of = (node_idx: number) =>
+      plot
+        .querySelector(`.cells [data-treemap-node-idx="${node_idx}"]`)
+        ?.getAttribute(`fill`) ?? ``
+    expect(fill_of(3)).toBe(PLOT_COLORS[2])
+    const pattern_ids = [1, 2].map((node_idx) => {
+      const match = /^url\(#(?<id>treemap-.+-pat-[0-9a-z]+)\)$/.exec(fill_of(node_idx))
+      if (!match?.groups)
+        throw new Error(`node ${node_idx} fill is no pattern: ${fill_of(node_idx)}`)
+      return match.groups.id
+    })
+    expect(new Set(pattern_ids).size).toBe(2)
+    // one <pattern> per distinct spec, each tiled with a bg rect under the texture path
+    const defs = plot.querySelectorAll<SVGPatternElement>(`defs pattern`)
+    expect([...defs].map((def) => def.id).toSorted()).toEqual(pattern_ids.toSorted())
+    for (const def of defs) {
+      expect(def.getAttribute(`patternUnits`)).toBe(`userSpaceOnUse`)
+      expect(def.querySelector(`rect`)).not.toBeNull()
+      expect(def.querySelector(`path`)?.getAttribute(`d`)?.length).toBeGreaterThan(0)
+    }
+    // "/" is a stroked line tile rotated -45°; dots are a filled tile with no stroke
+    const [hatched_def, dotted_def] = pattern_ids.map((id) => plot.querySelector(`#${id}`))
+    expect(hatched_def?.getAttribute(`patternTransform`)).toBe(`rotate(-45)`)
+    expect(hatched_def?.querySelector(`path`)?.getAttribute(`fill`)).toBe(`none`)
+    expect(dotted_def?.querySelector(`path`)?.getAttribute(`stroke`)).toBe(`none`)
+    // patterned cells get a blurred halo in the node color behind the label, plain ones
+    // don't; the halo repeats the label's lines but is decorative (no node idx, aria-hidden)
+    const halos = [...plot.querySelectorAll<SVGTextElement>(`.cell-label.halo`)]
+    expect(halos.map((el) => el.style.fill)).toEqual([PLOT_COLORS[0], PLOT_COLORS[1]])
+    const label_of = (node_idx: number) =>
+      plot.querySelector(`.cell-label:not(.halo)[data-treemap-node-idx="${node_idx}"]`)
+    for (const [idx, halo] of halos.entries()) {
+      expect(halo.getAttribute(`aria-hidden`)).toBe(`true`)
+      expect(halo.hasAttribute(`data-treemap-node-idx`)).toBe(false)
+      expect(halo.nextElementSibling).toBe(label_of(idx + 1))
+      expect(halo.textContent).toBe(label_of(idx + 1)?.textContent)
+    }
+    expect(label_of(3)?.previousElementSibling).toBeNull()
   })
 
   test(`swapping data clears stale hover/tooltip state`, async () => {

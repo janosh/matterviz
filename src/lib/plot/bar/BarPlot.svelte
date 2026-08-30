@@ -31,6 +31,7 @@
   } from '$lib/plot'
   import { BarPlotControls, ScatterPoint } from '$lib/plot'
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '$lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
@@ -78,6 +79,8 @@
   import { create_category_display } from '$lib/plot/core/display.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
+  import { resolve_pattern } from '$lib/plot/core/patterns'
+  import { unique_id } from '$lib/plot/core/utils'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
   import {
     compute_bar_auto_ranges,
@@ -315,6 +318,17 @@
   let cat_tick_indices = $derived(category_list.map((_, idx) => idx))
 
   let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
+
+  // Per-series hatch/texture tiles resolved against the bar color (null: plain fill); ids
+  // are scoped to this instance so several bar plots on a page never share <pattern>s
+  const pattern_uid = unique_id(`bar`)
+  let series_patterns = $derived(
+    internal_series.map((srs) =>
+      srs?.pattern && srs.render_mode !== `line`
+        ? resolve_pattern(srs.pattern, srs.color ?? bar_state.color, pattern_uid)
+        : null,
+    ),
+  )
   const has_finite_point = ({ x, y }: BarSeries<Metadata>) =>
     x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(y[idx]))
   // Only show secondary axes for series with at least one drawable bar. Horizontal bars put
@@ -474,8 +488,9 @@
   const legend_swatch = (srs: BarSeries<Metadata>): LegendItem[`display_style`] => {
     const series_color =
       srs.color ?? (srs.render_mode === `line` ? line_state.color : bar_state.color)
-    if (srs.render_mode !== `line`)
-      return { symbol_type: `Square`, symbol_color: series_color }
+    if (srs.render_mode !== `line`) {
+      return { symbol_type: `Square`, symbol_color: series_color, pattern: srs.pattern }
+    }
     const series_markers = srs.markers ?? DEFAULT_MARKERS
     const point_style = first_point_style(srs)
     const first_color_value = srs.color_values?.[0]
@@ -666,6 +681,7 @@
     <!-- Continuous line/bar geometry stays clipped to the plot. Discrete line markers are
          range-filtered by center and may extend into the padding without losing part of the icon. -->
     <g>
+      <defs><PatternDefs patterns={series_patterns} /></defs>
       {#each internal_series as srs, series_idx (srs?.id ?? series_idx)}
         {#if srs?.visible ?? true}
           {@const is_line = srs.render_mode === `line`}
@@ -877,7 +893,7 @@
                       is_vertical,
                       is_vertical ? v1 > v0 : v1 < v0,
                     )}
-                    fill={color}
+                    fill={series_patterns[series_idx]?.url ?? color}
                     opacity={mode === `overlay` ? bar_state.opacity : 1}
                     stroke={bar_state.stroke_color}
                     stroke-opacity={bar_state.stroke_opacity}

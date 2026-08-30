@@ -34,4 +34,8 @@ SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export.
   text {
     pointer-events: none;
   }
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
+  tspan {
+    dominant-baseline: inherit;
+  }
 </style>

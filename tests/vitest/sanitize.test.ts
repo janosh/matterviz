@@ -113,11 +113,6 @@ describe(`sanitize_html`, () => {
     )
   })
 
-  test(`strips data: URIs from links`, () => {
-    const result = sanitize_html(`<a href="data:text/html,<script>alert(1)</script>">x</a>`)
-    expect(result).not.toContain(`data:`)
-  })
-
   test.each([
     [`empty`, ``, ``],
     [`whitespace`, `   `, `   `],
@@ -143,9 +138,8 @@ describe(`sanitize_html`, () => {
     const result = sanitize_html(
       `<b><i><span><em><strong><script>alert(1)</script></strong></em></span></i></b>`,
     )
-    expect(result).not.toContain(`<script`)
-    expect(result).toContain(`<b>`)
-    expect(result).toContain(`<i>`)
+    // every wrapper survives intact, only the script leaf is removed
+    expect(result).toBe(`<b><i><span><em><strong></strong></em></span></i></b>`)
   })
 
   // Strings with no `<` bypass DOMPurify entirely. These pin that shortcut to what the

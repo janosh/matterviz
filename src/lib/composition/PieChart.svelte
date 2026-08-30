@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { SVGAttributes } from 'svelte/elements'
+  import type { ElementPatterns } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
 
@@ -19,6 +21,7 @@
     show_percentages = false,
     show_amounts = true,
     color_scheme = `Vesta`,
+    patterns = {},
     svg_node = $bindable(null),
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
@@ -30,8 +33,12 @@
     show_percentages?: boolean
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
+    patterns?: ElementPatterns // hatch/texture fill per element symbol
     svg_node?: SVGSVGElement | null
   } = $props()
+
+  const uid = $props.id()
+  const pattern_uid = `pie-${uid}`
 
   let label_opts = $derived({ show_amounts, show_percentages })
   let center = $derived(size / 2)
@@ -45,7 +52,8 @@
 
   let segments = $derived.by(() => {
     let angle = -90 // start at 12 o'clock, sweep clockwise
-    return composition_segments(composition, color_scheme).map((segment) => {
+    const raw_segments = composition_segments(composition, color_scheme, patterns, pattern_uid)
+    return raw_segments.map((segment) => {
       const label = segment.element + segment_suffix(segment, label_opts)
       if (segment.fraction === 1) {
         // single element: two semicircles per ring (an SVG arc can't sweep a full 360°)
@@ -106,10 +114,11 @@
   class={[`pie-chart`, rest.class]}
   bind:this={svg_node}
 >
+  <defs><PatternDefs patterns={segments.map((seg) => seg.pattern)} /></defs>
   {#each segments as segment (segment.element)}
     <path
       d={segment.path}
-      fill={segment.color}
+      fill={segment.pattern?.url ?? segment.color}
       stroke="white"
       role="img"
       aria-label={segment_title(segment)}

@@ -40,7 +40,7 @@
 
 <h1>Bond-Angle Distributions (ADF)</h1>
 
-<p>
+<p class="demo-intro">
   Periodic image atoms are included in the bond search, so boundary sites remain correctly
   coordinated.
 </p>
@@ -112,7 +112,6 @@
 </div>
 
 <style>
-  h2,
   p {
     text-align: center;
   }

@@ -19,7 +19,8 @@ const base_region: FillRegion = {
   label: `Test Fill Region`,
   upper: { type: `constant`, value: 10 },
   lower: { type: `constant`, value: 0 },
-  fill: `steelblue`,
+  // not the component default (steelblue) so the explicit-fill test can tell them apart
+  fill: `tomato`,
   fill_opacity: 0.3,
 }
 
@@ -50,19 +51,29 @@ describe(`FillArea`, () => {
   })
 
   // A region split by gaps renders one FillArea per segment. They are one logical
-  // region, so N segments must not become N identical tab stops.
+  // region, so N segments must not become N identical tab stops or N identical pattern tiles:
+  // only the first emits the <defs>, the rest reference them through the shared defs_id.
   test.each([
-    [`first segment`, true, `0`, null],
-    [`later segment`, false, `-1`, `true`],
-  ])(`a %s carries tabindex %s`, (_name, is_first_segment, tabindex, hidden) => {
+    [`first segment`, true, `0`, null, 1],
+    [`later segment`, false, `-1`, `true`, 0],
+  ])(`a %s carries tabindex %s`, (_name, is_first_segment, tabindex, hidden, n_defs) => {
     document.body.innerHTML = ``
     mount(FillArea, {
       target: document.body,
-      props: make_props({ on_hover: () => {}, is_first_segment }),
+      props: make_props({
+        on_hover: () => {},
+        is_first_segment,
+        defs_id: `plot-fill-3`,
+        region: { ...base_region, pattern: `/` },
+      }),
     })
     const region = doc_query(`g.fill-region`)
     expect(region.getAttribute(`tabindex`)).toBe(tabindex)
     expect(region.getAttribute(`aria-hidden`)).toBe(hidden)
+    expect(region.querySelectorAll(`defs pattern`)).toHaveLength(n_defs)
+    expect(doc_query(`.fill-region > path`).getAttribute(`fill`)).toMatch(
+      /^url\(#plot-fill-3-pat-[0-9a-z]+\)$/,
+    )
   })
 
   // Every hover payload comes from a pointer event, so without this a keyboard user
@@ -91,7 +102,7 @@ describe(`FillArea`, () => {
     expect(group.getAttribute(`aria-label`)).toBe(`Test Fill Region`)
 
     const path = group.querySelector(`path`)
-    expect(path?.getAttribute(`fill`)).toBe(`steelblue`)
+    expect(path?.getAttribute(`fill`)).toBe(`tomato`)
     expect(path?.getAttribute(`fill-opacity`)).toBe(`0.3`)
   })
 
@@ -101,6 +112,53 @@ describe(`FillArea`, () => {
       props: make_props({ region: { ...base_region, fill: undefined } }),
     })
     expect(doc_query(`.fill-region path`).getAttribute(`fill`)).toBe(`steelblue`)
+  })
+
+  test(`pattern bakes the fill opacity into the tile so the texture stays legible`, () => {
+    mount(FillArea, {
+      target: document.body,
+      props: make_props({
+        region: {
+          ...base_region,
+          fill: `rgb(70, 130, 180)`,
+          pattern: { shape: `x`, size: 6 },
+        },
+      }),
+    })
+    const group = doc_query(`.fill-region`)
+    const def = group.querySelector(`defs pattern`)
+    expect(def?.id).toMatch(/^fill-[0-9a-f-]+-pat-[0-9a-z]+$/)
+    // the tile backdrop is the region color at the region's fill opacity and the mark is
+    // painted at full opacity; the texture inherits currentColor over the translucent tint
+    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgba(70, 130, 180, 0.3)`)
+    expect(def?.querySelector(`path`)?.getAttribute(`stroke`)).toBe(`currentColor`)
+    expect(def?.getAttribute(`patternTransform`)).toBe(`rotate(45)`)
+    const path = group.querySelector(`:scope > path`)
+    expect(path?.getAttribute(`fill`)).toBe(`url(#${def?.id})`)
+    expect(path?.getAttribute(`fill-opacity`)).toBe(`1`)
+  })
+
+  const gradient_fill: FillGradient = {
+    type: `linear`,
+    stops: [
+      [0, `red`],
+      [1, `blue`],
+    ],
+  }
+  test.each([
+    // a gradient has no single color to texture
+    [gradient_fill, /^url\(#fill-[0-9a-f-]+-gradient\)$/, false],
+    // a CSS variable cannot carry the opacity in the tile, so the mark keeps its 0.3
+    [`var(--accent)`, /^url\(#fill-[0-9a-f-]+-pat-/, true],
+  ])(`pattern with fill %j`, (fill, fill_attr, has_pattern) => {
+    mount(FillArea, {
+      target: document.body,
+      props: make_props({ region: { ...base_region, fill, pattern: `/` } }),
+    })
+    const path = doc_query(`.fill-region > path`)
+    expect(path.getAttribute(`fill`)).toMatch(fill_attr)
+    expect(path.getAttribute(`fill-opacity`)).toBe(`0.3`)
+    expect(document.querySelector(`pattern`) !== null).toBe(has_pattern)
   })
 
   test(`renders linear gradient with correct transform and stops`, () => {
@@ -224,24 +282,27 @@ describe(`FillArea`, () => {
     expect(doc_query(`.fill-region`).style.cursor).toBe(expected)
   })
 
-  test(`keyboard Enter triggers click handler`, async () => {
+  // Enter and Space activate like a button; any other key must not fire a click
+  test.each([
+    [`Enter`, 1],
+    [` `, 1],
+    [`a`, 0],
+  ])(`keydown %j fires the click handler %i times`, async (key, n_calls) => {
     const on_click = vi.fn()
+    document.body.innerHTML = ``
     mount(FillArea, { target: document.body, props: make_props({ on_click }) })
 
     doc_query(`.fill-region`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+      new KeyboardEvent(`keydown`, { key, bubbles: true }),
     )
     await tick()
 
-    expect(on_click).toHaveBeenCalled()
-  })
-
-  test.each<[string, Record<string, unknown>, string]>([
-    [`-1 without on_click`, {}, `-1`],
-    [`0 with on_click`, { on_click: () => {} }, `0`],
-  ])(`tabindex is %s`, (_, extra, expected) => {
-    mount(FillArea, { target: document.body, props: make_props(extra) })
-    expect(doc_query(`.fill-region`).getAttribute(`tabindex`)).toBe(expected)
+    expect(on_click).toHaveBeenCalledTimes(n_calls)
+    if (n_calls > 0) {
+      expect(on_click).toHaveBeenCalledWith(
+        expect.objectContaining({ region_idx: 0, region_id: `test-fill` }),
+      )
+    }
   })
 
   test.each<[string, FillRegion, number, string]>([
