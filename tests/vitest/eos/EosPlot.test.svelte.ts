@@ -72,5 +72,10 @@ describe(`EosPlot`, () => {
     expect(result.fits).toEqual([])
     expect(result.error).toMatch(message)
     expect(result.n_markers).toBe(n_markers)
+    // error_msg is a writable $derived: dismissing overrides it until the inputs change
+    document.querySelector<HTMLButtonElement>(`.status-message button`)?.click()
+    flushSync()
+    await tick()
+    expect(document.querySelector(`.status-message`)).toBeNull()
   })
 })
