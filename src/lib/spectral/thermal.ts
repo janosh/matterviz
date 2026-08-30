@@ -44,15 +44,15 @@ export function thermal_properties(
   temperatures: readonly number[],
   unit: FrequencyUnit = `THz`,
 ): ThermalProperties {
-  if (dos.frequencies.length !== dos.densities.length) {
+  const { frequencies, densities } = dos
+  if (frequencies.length !== densities.length) {
     throw new Error(
-      `Phonon DOS has ${dos.frequencies.length} frequencies but ${dos.densities.length} densities`,
+      `Phonon DOS has ${frequencies.length} frequencies but ${densities.length} densities`,
     )
   }
-  if (!dos.frequencies.every(Number.isFinite)) {
+  if (!frequencies.every(Number.isFinite))
     throw new Error(`Phonon DOS frequencies must all be finite`)
-  }
-  if (!dos.densities.every((density) => Number.isFinite(density) && density >= 0)) {
+  if (!densities.every((density) => Number.isFinite(density) && density >= 0)) {
     throw new Error(`Phonon DOS densities must all be finite and ≥ 0`)
   }
   if (!temperatures.every((temp) => Number.isFinite(temp) && temp >= 0)) {
@@ -62,22 +62,22 @@ export function thermal_properties(
   }
   // The DOS is a density per `unit` of frequency, so integrate over the original grid (sorted,
   // positive frequencies only) and only convert the mode energies ħω to eV
-  const order = dos.frequencies
+  const order = frequencies
     .map((_, idx) => idx)
-    .filter((idx) => dos.frequencies[idx] > 0)
-    .toSorted((idx_a, idx_b) => dos.frequencies[idx_a] - dos.frequencies[idx_b])
+    .filter((idx) => frequencies[idx] > 0)
+    .toSorted((idx_a, idx_b) => frequencies[idx_a] - frequencies[idx_b])
   if (order.length < 2) {
     throw new Error(
       `Phonon DOS needs at least 2 positive frequencies to integrate over, got ${order.length}`,
     )
   }
-  const grid = order.map((idx) => dos.frequencies[idx])
+  const grid = order.map((idx) => frequencies[idx])
   const mode_energies = convert_frequencies(grid, `eV`, unit)
   // trapezoid weights folded with the density, so every integral is one weighted sum
   const last = grid.length - 1
   const weights = order.map((idx, pos) => {
     const segment = grid[Math.min(pos + 1, last)] - grid[Math.max(pos - 1, 0)]
-    return (dos.densities[idx] * segment) / 2
+    return (densities[idx] * segment) / 2
   })
   const integrate = (integrand: (idx: number) => number): number =>
     weights.reduce((total, weight, idx) => total + weight * integrand(idx), 0)
