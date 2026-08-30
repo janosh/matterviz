@@ -9,7 +9,7 @@ import {
 } from '$lib/settings/viewer-state'
 import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
-import { get_element_counts } from '$lib/structure'
+import { get_element_counts, LATTICE_PLANES_INPUT_FRAME_NOTE } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
@@ -755,41 +755,47 @@ describe(`Structure`, () => {
     }
   })
 
-  // The symmetry-element overlay only exists in the analyzed (input) cell and is blanked for
-  // conventional/primitive views; that must be said (toast), not happen silently
-  test(`toasts why the symmetry overlay vanishes when the cell leaves the input frame`, async () => {
-    await init_moyo_for_tests()
-    const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
-      { element: `Cu`, abc: [0, 0, 0] },
-    ])
-    const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
-    const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
-    expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure: prim_fcc_cu,
-      scene_props: { symmetry_elements },
-      cell_type: `original`,
-      sym_data: null,
-    })
-    mount_structure(props)
-    flushSync()
-    // the mount-time analysis reset has run; hand the viewer its symmetry data now
-    props.sym_data = sym_data
-    flushSync()
-    expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
+  // The symmetry-element and lattice-plane overlays only exist in the analyzed (input) cell and
+  // are blanked for conventional/primitive views; that must be said (toast), not happen silently
+  test.each([
+    [`symmetry`, symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE],
+    [`lattice planes`, LATTICE_PLANES_INPUT_FRAME_NOTE],
+  ])(
+    `toasts why the %s overlay vanishes when the cell leaves the input frame`,
+    async (overlay, note) => {
+      await init_moyo_for_tests()
+      const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
+        { element: `Cu`, abc: [0, 0, 0] },
+      ])
+      const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
+      const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
+      expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
+      const props = $state<ComponentProps<typeof Structure>>({
+        structure: prim_fcc_cu,
+        scene_props:
+          overlay === `symmetry`
+            ? { symmetry_elements }
+            : { lattice_planes: [{ hkl: [1, 1, 1] }] },
+        cell_type: `original`,
+        sym_data: null,
+      })
+      mount_structure(props)
+      flushSync()
+      // the mount-time analysis reset has run; hand the viewer its symmetry data now
+      props.sym_data = sym_data
+      flushSync()
+      expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
 
-    props.cell_type = `conventional`
-    flushSync()
-    expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
-      symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE,
-    )
-  })
+      props.cell_type = `conventional`
+      flushSync()
+      expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(note)
+    },
+  )
 
   test(`shows safe bond editing controls by default`, async () => {
     mount_structure({ structure, measure_mode: `edit-bonds`, show_controls: true })
     await tick()
 
-    expect(doc_query(`.bond-edit-toolbar`)).toBeInstanceOf(HTMLElement)
     const selector = `.bond-edit-mode-toggle button[aria-pressed="true"]`
     const active_button = doc_query<HTMLButtonElement>(selector)
     const order_select = doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`)
@@ -1174,10 +1180,9 @@ describe(`Structure`, () => {
     )
     await tick()
 
-    const first_site_row = document.querySelector(
+    const first_site_row = doc_query(
       `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
-    ) as HTMLElement
-    expect(first_site_row).toBeInstanceOf(HTMLElement)
+    )
 
     first_site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     expect(state.highlighted_sites).toEqual([0])

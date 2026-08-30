@@ -1,4 +1,5 @@
 import { default_element_colors } from '$lib/colors'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
 import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
@@ -471,15 +472,17 @@ describe(`AtomLegend Component`, () => {
 
       const search_input = await open_remap_menu()
       expect(search_input.placeholder).toBe(`Search elements...`)
-      const initial_options_count = document.querySelectorAll(`.remap-option`).length
-      expect(initial_options_count).toBeGreaterThan(0)
+      // unfiltered: one option per element, no reset row while H is still displayed as H
+      expect(document.querySelectorAll(`.remap-option`)).toHaveLength(ELEM_SYMBOLS.length)
 
       search_input.value = `sodium`
       search_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
       const filtered_options = document.querySelectorAll(`.remap-option`)
-      expect(filtered_options.length).toBeLessThan(initial_options_count)
-      expect(filtered_options.length).toBeGreaterThan(0)
+      expect(filtered_options).toHaveLength(1)
+      expect(filtered_options[0].textContent?.replaceAll(/\s+/g, ` `).trim()).toBe(
+        `11 Na Sodium`,
+      )
 
       search_input.dispatchEvent(
         new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),

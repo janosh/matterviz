@@ -60,7 +60,6 @@ describe(`StructureCarousel`, () => {
       `overflow-x: auto`,
     )
     expect(doc_query(`.structure-card`).getAttribute(`style`)).toContain(`translate3d(0px`)
-    expect(doc_query(`.structure-card .card-info`)).not.toBeNull()
     expect(doc_query(`.structure-card strong`).textContent).toBe(`Structure 0`)
     expect(doc_query(`.structure-card .card-info`).getAttribute(`role`)).toBeNull()
   })

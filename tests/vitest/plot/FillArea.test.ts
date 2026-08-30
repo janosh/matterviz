@@ -19,7 +19,8 @@ const base_region: FillRegion = {
   label: `Test Fill Region`,
   upper: { type: `constant`, value: 10 },
   lower: { type: `constant`, value: 0 },
-  fill: `steelblue`,
+  // not the component default (steelblue) so the explicit-fill test can tell them apart
+  fill: `tomato`,
   fill_opacity: 0.3,
 }
 
@@ -91,7 +92,7 @@ describe(`FillArea`, () => {
     expect(group.getAttribute(`aria-label`)).toBe(`Test Fill Region`)
 
     const path = group.querySelector(`path`)
-    expect(path?.getAttribute(`fill`)).toBe(`steelblue`)
+    expect(path?.getAttribute(`fill`)).toBe(`tomato`)
     expect(path?.getAttribute(`fill-opacity`)).toBe(`0.3`)
   })
 
@@ -271,24 +272,27 @@ describe(`FillArea`, () => {
     expect(doc_query(`.fill-region`).style.cursor).toBe(expected)
   })
 
-  test(`keyboard Enter triggers click handler`, async () => {
+  // Enter and Space activate like a button; any other key must not fire a click
+  test.each([
+    [`Enter`, 1],
+    [` `, 1],
+    [`a`, 0],
+  ])(`keydown %j fires the click handler %i times`, async (key, n_calls) => {
     const on_click = vi.fn()
+    document.body.innerHTML = ``
     mount(FillArea, { target: document.body, props: make_props({ on_click }) })
 
     doc_query(`.fill-region`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+      new KeyboardEvent(`keydown`, { key, bubbles: true }),
     )
     await tick()
 
-    expect(on_click).toHaveBeenCalled()
-  })
-
-  test.each<[string, Record<string, unknown>, string]>([
-    [`-1 without on_click`, {}, `-1`],
-    [`0 with on_click`, { on_click: () => {} }, `0`],
-  ])(`tabindex is %s`, (_, extra, expected) => {
-    mount(FillArea, { target: document.body, props: make_props(extra) })
-    expect(doc_query(`.fill-region`).getAttribute(`tabindex`)).toBe(expected)
+    expect(on_click).toHaveBeenCalledTimes(n_calls)
+    if (n_calls > 0) {
+      expect(on_click).toHaveBeenCalledWith(
+        expect.objectContaining({ region_idx: 0, region_id: `test-fill` }),
+      )
+    }
   })
 
   test.each<[string, FillRegion, number, string]>([

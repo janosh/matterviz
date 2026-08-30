@@ -137,8 +137,10 @@ describe(`canvas_to_png_blob`, () => {
   test(`returns a valid PNG Blob from plain canvas (no renderer)`, async () => {
     const canvas = make_mock_canvas()
     const blob = await canvas_to_png_blob(canvas, 72)
-    expect(blob).toBeInstanceOf(Blob)
     expect(blob.type).toBe(`image/png`)
+    expect(await blob.text()).toBe(`test`)
+    // at native resolution the canvas itself is encoded, with no offscreen rescale
+    expect(canvas.toBlob).toHaveBeenCalledExactlyOnceWith(expect.any(Function), `image/png`)
   })
 
   test(`scales plain 2D canvases for high-DPI export`, async () => {
@@ -320,11 +322,11 @@ describe(`svg_to_svg_string`, () => {
     expect(xmlns_count).toBe(1)
   })
 
-  test(`works with SVG that has no viewBox`, () => {
-    const svg = make_svg()
-    const result = svg_to_svg_string(svg)
-    expect(result).toContain(`<?xml version`)
-    expect(result).toContain(`xmlns`)
+  test(`works with SVG that has no viewBox and does not invent one`, () => {
+    const result = svg_to_svg_string(make_svg())
+    expect(result).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>\n<!DOCTYPE svg /)
+    expect(result).toContain(`xmlns="http://www.w3.org/2000/svg"`)
+    expect(result).not.toContain(`viewBox=`)
   })
 })
 
@@ -459,12 +461,22 @@ describe(`export_canvas_as_png`, () => {
 
   test(`delegates to canvas_to_png_blob for high-DPI with renderer`, async () => {
     const { canvas, renderer } = make_canvas_with_renderer()
-    export_canvas_as_png(canvas, `test.png`, 150, {} as Scene, {} as Camera)
+    const scene = {} as Scene
+    const camera = {} as Camera
+    export_canvas_as_png(canvas, `test.png`, 150, scene, camera)
     await vi.waitFor(() => {
-      expect(renderer.setPixelRatio).toHaveBeenCalled()
-      expect(renderer.render).toHaveBeenCalled()
-      expect(download).toHaveBeenCalled()
+      expect(download).toHaveBeenCalledExactlyOnceWith(
+        expect.any(Blob),
+        `test-150dpi.png`,
+        `image/png`,
+      )
     })
+    // the renderer was bumped to the 150 dpi ratio, re-rendered with the given scene and
+    // camera, then restored to its original ratio
+    expect(renderer.setPixelRatio).toHaveBeenCalledTimes(2)
+    expect(renderer.setPixelRatio).toHaveBeenNthCalledWith(1, dpi_to_scale(150))
+    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera)
   })
 })
 

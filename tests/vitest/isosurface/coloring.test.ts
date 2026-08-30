@@ -21,20 +21,17 @@ const rgb_at = (colors: Float32Array, idx: number): number[] => [
 ]
 
 describe(`scalars_to_vertex_colors`, () => {
-  test.each([`interpolateViridis`, `interpolateRdBu`] as const)(
-    `produces valid RGB triplets for %s`,
-    (cmap) => {
-      const colors = scalars_to_vertex_colors(new Float32Array([0, 5, 10]), {
-        ...viridis_opts,
-        colormap: cmap,
-      })
-      expect(colors).toHaveLength(9)
-      for (const channel of colors) {
-        expect(channel).toBeGreaterThanOrEqual(0)
-        expect(channel).toBeLessThanOrEqual(1)
-      }
-    },
-  )
+  test(`RdBu runs red → near-white → blue across the range, one triplet per scalar`, () => {
+    const colors = scalars_to_vertex_colors(new Float32Array([0, 5, 10]), {
+      ...viridis_opts,
+      colormap: `interpolateRdBu`,
+    })
+    expect(colors).toHaveLength(9)
+    const [low, mid, high] = [0, 1, 2].map((idx) => rgb_at(colors, idx))
+    expect(low[0]).toBeGreaterThan(5 * low[2]) // red end
+    expect(mid.every((channel) => channel > 0.8)).toBe(true) // diverging midpoint
+    expect(high[2]).toBeGreaterThan(5 * high[0]) // blue end
+  })
 
   test(`outputs linear-space RGB (sRGB values from d3 are converted)`, () => {
     // Viridis start is #440154 in sRGB; Three.js vertex colors must be linear.

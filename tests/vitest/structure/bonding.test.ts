@@ -39,16 +39,14 @@ describe(`Bonding Algorithms`, () => {
       { xyz: [2, 0, 0], element: `O` },
       { xyz: [4, 0, 0], element: `C` },
     ])
-    for (const bond of bonding.electroneg_ratio(structure)) {
-      expect(bond.pos_1).toHaveLength(3)
-      expect(bond.pos_2).toHaveLength(3)
-      expect(bond.site_idx_1).toBeTypeOf(`number`)
-      expect(bond.site_idx_2).toBeTypeOf(`number`)
-      expect(bond.bond_length).toBeGreaterThan(0)
-      // positions correspond to their site indices
-      expect(bond.pos_1).toEqual(structure.sites[bond.site_idx_1].xyz)
-      expect(bond.pos_2).toEqual(structure.sites[bond.site_idx_2].xyz)
-    }
+    const bonds = bonding.electroneg_ratio(structure)
+    // Fe-O at 2.0 A (covalent sum 1.98) bonds; O-C at 2.0 A is 1.4x its covalent sum and Fe-C
+    // at 4.0 A is far out of range
+    expect(bonds.map((bond) => [bond.site_idx_1, bond.site_idx_2])).toEqual([[0, 1]])
+    expect(bonds[0].bond_length).toBeCloseTo(2, 12)
+    // positions correspond to their site indices
+    expect(bonds[0].pos_1).toEqual(structure.sites[0].xyz)
+    expect(bonds[0].pos_2).toEqual(structure.sites[1].xyz)
   })
 
   test(`electroneg_ratio generates unique bonds`, () => {

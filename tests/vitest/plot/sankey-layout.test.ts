@@ -305,8 +305,13 @@ describe(`sankey_from_links`, () => {
     const data = sankey_from_links([0, 1], [2, 2], [10, 20], [`A`, `B`])
     expect(data.nodes).toHaveLength(3)
     expect(data.nodes.map((node) => node.label)).toEqual([`A`, `B`, `2`])
-    // the layout must resolve the highest-indexed link without throwing
-    expect(() => compute_sankey_layout(data, dims)).not.toThrow()
+    // the layout resolves the highest-indexed link: node 2 collects both inflows
+    const { nodes } = compute_sankey_layout(data, dims)
+    expect(nodes.map((nd) => [nd.label, nd.value])).toEqual([
+      [`A`, 10],
+      [`B`, 20],
+      [`2`, 30],
+    ])
   })
 
   test(`surplus labels beyond linked indices are dropped by the layout`, () => {

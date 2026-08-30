@@ -57,7 +57,7 @@ describe(`EosPlot`, () => {
     const { fits, params_box, legend, error, n_markers } = await render({ kinds: [] })
     expect(fits).toEqual([])
     expect(params_box).toBeUndefined()
-    expect(legend).toBeDefined()
+    expect(legend).toBe(`E(V) data`)
     expect(error).toBeUndefined()
     expect(n_markers).toBe(volumes.length)
   })

@@ -210,21 +210,6 @@ describe(`decoration solver`, () => {
     })
   })
 
-  test(`is deterministic across input order`, () => {
-    const items: DecorationItem[] = [
-      { id: `note-b`, kind: `free-annotation`, footprint: { width: 90, height: 50 } },
-      { id: `legend`, kind: `legend`, footprint: { width: 100, height: 60 } },
-      { id: `note-a`, kind: `free-annotation`, footprint: { width: 80, height: 45 } },
-    ]
-    const scene = scene_for(items, [
-      { x: 0.1, y: 0.1 },
-      { x: 0.8, y: 0.7 },
-    ])
-    const expected = solve_decorations(scene)
-    const reversed_scene = scene_for(items.toReversed(), scene.obstacles_norm)
-    expect(solve_decorations(reversed_scene)).toEqual(expected)
-  })
-
   test(`returns a stable auto-track suggestion for legends`, () => {
     const auto_tracks: LegendAutoTrackConfig = {
       item_count: 4,

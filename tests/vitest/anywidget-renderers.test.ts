@@ -144,7 +144,6 @@ describe(`scatter_plot wiring`, () => {
     const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
     const stub = run_widget(`scatter_plot`, model)
     const on_point_click = stub.read().on_point_click as (data: unknown) => void
-    expect(typeof on_point_click).toBe(`function`)
 
     on_point_click({ point: { series_idx: 0, point_idx: 2, x: 1.5, y: 3.5 } })
     expect(model.state.active_point).toEqual({
@@ -164,7 +163,6 @@ describe(`scatter_plot wiring`, () => {
     const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
     const stub = run_widget(`scatter_plot`, model)
     const on_point_hover = stub.read().on_point_hover as (data: unknown) => void
-    expect(typeof on_point_hover).toBe(`function`)
 
     on_point_hover({ point: { series_idx: 1, point_idx: 4, x: 2, y: 6 } })
     expect(model.state.hovered_point).toEqual({ series_idx: 1, point_idx: 4, x: 2, y: 6 })

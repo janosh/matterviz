@@ -79,16 +79,18 @@ describe(`PhaseDiagramControls`, () => {
 
   test(`renders with custom config values`, () => {
     const target = mount_controls({
+      data: sample_data, // special points present → the radius input renders
       config: {
         font_size: 16,
         special_point_radius: 8,
       },
     })
-
-    const font_size_input = target.querySelector<HTMLInputElement>(
-      `input[type="number"][min="8"][max="20"]`,
-    )
-    expect(font_size_input?.value).toBe(`16`)
+    const number_value = (min: number, max: number) =>
+      target.querySelector<HTMLInputElement>(
+        `input[type="number"][min="${min}"][max="${max}"]`,
+      )?.value
+    expect(number_value(8, 20)).toBe(`16`) // font size
+    expect(number_value(2, 12)).toBe(`8`) // special point radius
   })
 
   test(`keeps the DPI input and readout inline while de-emphasizing only the readout`, () => {

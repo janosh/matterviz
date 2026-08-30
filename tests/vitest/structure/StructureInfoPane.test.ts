@@ -141,16 +141,6 @@ describe(`StructureInfoPane`, () => {
     )
   })
 
-  test(`omits sites section entirely above max threshold`, () => {
-    const structure = get_dummy_structure(`H`, 600, true)
-    mount_info_pane({ structure, pane_open: true })
-
-    const content = document.body.textContent || ``
-    expect(content).not.toContain(`Frac.`)
-    expect(content).not.toContain(`Cart.`)
-    expect(document.querySelector(`.sites`)).toBeNull()
-  })
-
   // `atom_count_thresholds` = [expanded_below, listed_up_to]: the defaults (50, 500) can be
   // raised so a large structure still lists its sites, or lowered to collapse small ones
   test.each<[number, [number, number] | undefined, boolean, boolean]>([
@@ -199,7 +189,6 @@ describe(`StructureInfoPane`, () => {
       expect(document.querySelector(`.site-color`)).toBeNull()
 
       const site_row = site_cards()[1]
-      expect(site_row).toBeInstanceOf(HTMLElement)
       site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       expect(state.highlighted_sites).toEqual([1])
       expect(state.hovered_site_idx).toBe(1)

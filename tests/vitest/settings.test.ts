@@ -172,9 +172,11 @@ describe(`Settings`, () => {
 
   describe(`Edge cases and robustness`, () => {
     test(`merge preserves immutability of DEFAULTS`, () => {
-      const original = { ...DEFAULTS }
+      // deep clone: a shallow spread shares the nested objects and would miss an in-place write
+      const original = structuredClone(DEFAULTS)
       merge({ structure: { atom_radius: 999 } })
       expect(DEFAULTS).toEqual(original)
+      expect(DEFAULTS.structure.atom_radius).not.toBe(999)
     })
 
     // Locks the shipped structure-viewer defaults. The clone test below deliberately does

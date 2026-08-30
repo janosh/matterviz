@@ -198,7 +198,8 @@ describe(`TrajectoryVacfPane`, () => {
     const text = document.body.textContent ?? ``
     expect(text).toContain(`velocities read from the file`)
     expect(text).toContain(`Recollect velocities`)
-    expect(document.querySelectorAll(`.scatter`).length).toBeGreaterThan(0)
+    // both the VACF and the VDOS panel are drawn by default
+    expect(document.querySelectorAll(`.scatter`)).toHaveLength(2)
   })
 
   it(`keeps an unrecognized time unit for lag while using inverse-frame VDOS`, async () => {

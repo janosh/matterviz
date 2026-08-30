@@ -20,11 +20,11 @@ describe(`elements_to_axis`, () => {
     expect(axis.map((item) => item.sort_value)).toEqual(
       Array.from({ length: 118 }, (_, idx) => idx),
     )
-    // every item has required fields
+    // every item is keyed by its symbol and carries that element's own record and category
     for (const item of axis) {
       expect(item.key).toBe(item.label)
-      expect(item.category).toBeDefined()
-      expect(item.data).toBeDefined()
+      expect(item.data?.symbol).toBe(item.label)
+      expect(item.category).toBe(item.data?.category)
     }
     // data is typed ChemicalElement
     const fe = axis.find((item) => item.label === `Fe`)

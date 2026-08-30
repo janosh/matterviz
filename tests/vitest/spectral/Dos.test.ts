@@ -74,21 +74,22 @@ const pymatgen_complete_dos: PymatgenCompleteDos = {
 }
 
 describe(`Dos component`, () => {
-  // Combine all "renders successfully" tests into parameterized test
+  // One line series per DOS per drawn spin channel: spin-polarized inputs default to
+  // `mirror`, `up_only`/`down_only` keep one channel, pDOS draws one per kept atom/orbital
   it.each([
-    [`phonon DOS`, { doses: phonon_dos }],
-    [`electronic DOS`, { doses: electronic_dos }],
-    [`multiple DOS dict`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos } }],
-    [`stacked DOS`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos }, stack: true }],
-    [`horizontal orientation`, { doses: phonon_dos, orientation: `horizontal` as const }],
+    [`phonon DOS`, { doses: phonon_dos }, 1],
+    [`electronic DOS`, { doses: electronic_dos }, 1],
+    [`multiple DOS dict`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos } }, 2],
+    [`stacked DOS`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos }, stack: true }, 2],
+    [`horizontal orientation`, { doses: phonon_dos, orientation: `horizontal` as const }, 1],
     // conversion factors and per-mode normalization maths are pinned in helpers.test.ts
-    [`cm^-1 units`, { doses: phonon_dos, units: `cm^-1` as const }],
-    [`normalized to max`, { doses: phonon_dos, normalize: `max` as const }],
-    [`mirror spin mode`, { doses: spin_polarized_dos, spin_mode: `mirror` as const }],
-    [`up_only spin mode`, { doses: spin_polarized_dos, spin_mode: `up_only` as const }],
-    [`down_only spin mode`, { doses: spin_polarized_dos, spin_mode: `down_only` as const }],
-    [`atom pDOS`, { doses: pymatgen_complete_dos, pdos_type: `atom` as const }],
-    [`orbital pDOS`, { doses: pymatgen_complete_dos, pdos_type: `orbital` as const }],
+    [`cm^-1 units`, { doses: phonon_dos, units: `cm^-1` as const }, 1],
+    [`normalized to max`, { doses: phonon_dos, normalize: `max` as const }, 1],
+    [`mirror spin mode`, { doses: spin_polarized_dos, spin_mode: `mirror` as const }, 2],
+    [`up_only spin mode`, { doses: spin_polarized_dos, spin_mode: `up_only` as const }, 1],
+    [`down_only spin mode`, { doses: spin_polarized_dos, spin_mode: `down_only` as const }, 1],
+    [`atom pDOS`, { doses: pymatgen_complete_dos, pdos_type: `atom` as const }, 4],
+    [`orbital pDOS`, { doses: pymatgen_complete_dos, pdos_type: `orbital` as const }, 3],
     [
       `filtered pDOS`,
       {
@@ -96,6 +97,7 @@ describe(`Dos component`, () => {
         pdos_type: `atom` as const,
         pdos_filter: [`Fe`],
       },
+      2,
     ],
     [
       `all controls enabled`,
@@ -107,10 +109,13 @@ describe(`Dos component`, () => {
         sigma: 0.5,
         sigma_range: [0, 2] as Vec2,
       },
+      1,
     ],
-  ])(`renders %s`, (_desc, props) => {
+  ])(`renders %s`, async (_desc, props, n_lines) => {
     mount(Dos, { target: document.body, props })
+    await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(n_lines)
   })
 
   // `cm-1`/`cm⁻¹` are the spellings found in the wild; they must map to cm^-1 at the prop
@@ -243,8 +248,7 @@ describe(`extract_pdos`, () => {
     [`orbital`, [`s`, `p`, `d`]],
   ] as const)(`extracts %s DOS with expected keys`, (pdos_type, expected_keys) => {
     const result = extract_pdos(pymatgen_complete_dos, pdos_type)
-    expect(result).not.toBeNull()
-    expected_keys.forEach((key) => expect(Object.keys(result ?? {})).toContain(key))
+    expect(Object.keys(result ?? {})).toEqual(expected_keys)
   })
 
   it(`filters by specified keys`, () => {

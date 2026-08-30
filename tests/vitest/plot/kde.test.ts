@@ -64,8 +64,11 @@ describe(`gaussian_kde`, () => {
   )
 
   test(`respects clip bounds (RMSD >= 0)`, () => {
+    // unclipped the grid would start at data_min - cut * bandwidth < 0; the lower clip
+    // pins it at exactly 0 while the open upper bound still extends past the data max
     const { grid } = gaussian_kde([0.1, 0.5, 1, 2], { clip: [0, null], n_points: 50 })
-    expect(grid[0]).toBeGreaterThanOrEqual(0)
+    expect(grid[0]).toBe(0)
+    expect(grid.at(-1)).toBeGreaterThan(2)
   })
 
   test.each<{ label: string; clip: [number | null, number | null] }>([

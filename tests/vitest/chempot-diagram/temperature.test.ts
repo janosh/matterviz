@@ -3,7 +3,6 @@ import {
   get_temp_filter_payload,
   get_valid_temperature,
 } from '$lib/chempot-diagram/temperature'
-import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
@@ -83,22 +82,13 @@ describe(`get_temp_filter_payload`, () => {
     { config: { interpolate_temperature: true, max_interpolation_gap: 599 }, li: false },
     { config: { interpolate_temperature: true, max_interpolation_gap: 600 }, li: true }, // inclusive
     { config: { interpolate_temperature: true, max_interpolation_gap: 1000 }, li: true },
+    // unset keys fall back to CHEMPOT_DEFAULTS (interpolate across at most 500 K < 600 K)
+    { config: {}, li: false },
   ])(`$config keeps Li: $li`, ({ config, li }) => {
     const payload = get_payload_at_700(config)
     expect(has_formula(payload.temp_filtered_entries, `Li`)).toBe(li)
     // Guard against creating spurious formulas during temperature filtering/interpolation.
     expect(has_formula(payload.temp_filtered_entries, `LiO2`)).toBe(false)
-  })
-
-  test(`unset config keys fall back to CHEMPOT_DEFAULTS`, () => {
-    const defaults_used = get_payload_at_700()
-    const explicit_defaults = get_payload_at_700({
-      interpolate_temperature: CHEMPOT_DEFAULTS.interpolate_temperature,
-      max_interpolation_gap: CHEMPOT_DEFAULTS.max_interpolation_gap,
-    })
-    expect(get_formula_set(defaults_used.temp_filtered_entries)).toEqual(
-      get_formula_set(explicit_defaults.temp_filtered_entries),
-    )
   })
 
   // filter_entries_at_temperature writes the per-atom G(T) into energy_per_atom and the
@@ -114,9 +104,10 @@ describe(`get_temp_filter_payload`, () => {
       max_interpolation_gap: 1000,
     })
     const entry = get_formula_entry(payload.temp_filtered_entries, formula)
-    expect(entry).toBeDefined()
-    expect(entry?.energy).toBeCloseTo(energy, 8)
-    expect(entry?.energy_per_atom).toBeCloseTo(energy_per_atom, 8)
+    expect(entry).toMatchObject({
+      energy: expect.closeTo(energy, 8),
+      energy_per_atom: expect.closeTo(energy_per_atom, 8),
+    })
   })
 })
 

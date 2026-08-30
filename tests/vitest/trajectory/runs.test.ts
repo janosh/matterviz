@@ -1,7 +1,7 @@
 // Every TrajectoryRun implementation against one contract table: frame_count, preview,
 // read_frame (sync vs async, range, abort), collect_positions parity with the memory run on
 // identical data, progressive properties and dispose semantics.
-import type { TrajectoryFrame } from '$lib/trajectory'
+import type { ParseProgress, TrajectoryFrame } from '$lib/trajectory'
 import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
 import { summarize_run, TrajectoryProperties, type TrajectoryRun } from '$lib/trajectory/run'
 import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
@@ -11,7 +11,7 @@ import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
 import { describe, expect, it, test } from 'vitest'
 import { max_abs_error } from '../numeric-helpers'
-import { read_binary_test_file } from '../setup'
+import { make_trajectory_frame, read_binary_test_file } from '../setup'
 import { synthetic_extxyz } from './fixtures'
 
 const N_FRAMES = 40
@@ -210,12 +210,28 @@ describe(`collect_positions parity with the memory run`, () => {
     await expect(run.collect_positions?.({ signal: controller.signal })).rejects.toThrow(
       /abort/i,
     )
-    const progress: number[] = []
-    const stream = await run.collect_positions?.({
-      on_progress: (step) => progress.push(step.current),
-    })
-    expect(stream?.n_frames).toBe(N_FRAMES)
     run.dispose()
+
+    // accumulate_positions reports once per 500 collected frames, so a 1000-frame run must
+    // deliver exactly two progress messages across the port, at frames 499 and 999
+    const n_frames = 1000
+    const served = trajectory_from_frames(
+      Array.from({ length: n_frames }, (_unused, frame_idx) =>
+        make_trajectory_frame(frame_idx, 1),
+      ),
+    )
+    const long_run = worker_run(serve_run_over_port(served), summarize_run(served), () => {})
+    const progress: ParseProgress[] = []
+    const stream = await long_run.collect_positions?.({
+      on_progress: (step) => progress.push(step),
+    })
+    expect(stream?.n_frames).toBe(n_frames)
+    expect(progress.map(({ current }) => current)).toEqual([49.9, 99.9])
+    expect(progress.map(({ total, stage }) => [total, stage])).toEqual([
+      [100, `Reading positions: 499/1000`],
+      [100, `Reading positions: 999/1000`],
+    ])
+    long_run.dispose()
   })
 
   it(`hdf5 collect_positions matches its own read_frame positions`, async () => {

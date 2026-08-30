@@ -109,24 +109,13 @@ describe(`PhaseDiagramExportPane`, () => {
       copy_title: `Copy JSON`,
       expected_clipboard: JSON.stringify(mock_phase_data, null, 2),
     },
-  ])(
-    `$copy_title button copies content and remains stable after timeout`,
-    async ({ copy_title, expected_clipboard }) => {
-      vi.useFakeTimers()
-      mount_pane({ data: mock_phase_data, wrapper: wrapper_div })
-
-      const copy_btn = get_button(copy_title)
-      click(copy_btn)
-
-      await vi.waitFor(() => {
-        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_clipboard)
-      })
-
-      vi.advanceTimersByTime(1500)
-      expect(copy_btn).toBeInstanceOf(HTMLButtonElement)
-      vi.useRealTimers()
-    },
-  )
+  ])(`$copy_title button copies content`, async ({ copy_title, expected_clipboard }) => {
+    mount_pane({ data: mock_phase_data, wrapper: wrapper_div })
+    click(get_button(copy_title))
+    await vi.waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_clipboard)
+    })
+  })
 
   test(`JSON buttons disabled and copy is a no-op when data is undefined`, async () => {
     mount_pane({ data: undefined, wrapper: wrapper_div })

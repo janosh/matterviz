@@ -568,8 +568,13 @@ describe(`3x3 matrix and lattice utilities`, () => {
 
       // Third vector has all three components
       expect(matrix[2][0]).toBeCloseTo(7 * Math.cos((85 * Math.PI) / 180), 6)
-      expect(matrix[2][1]).not.toBeCloseTo(0, 3) // Should have y-component
-      expect(matrix[2][2]).not.toBeCloseTo(0, 3) // Should have z-component
+      // |c| = 7, c·b = b·c·cos(alpha), and c_z > 0 keeps the cell right-handed
+      expect(Math.hypot(...matrix[2])).toBeCloseTo(7, 10)
+      expect(math.dot(matrix[1], matrix[2])).toBeCloseTo(
+        6 * 7 * Math.cos((80 * Math.PI) / 180),
+        10,
+      )
+      expect(matrix[2][2]).toBeGreaterThan(0)
     })
 
     it(`round-trip consistency with calc_lattice_params`, () => {
@@ -811,8 +816,11 @@ describe(`det_nxn`, () => {
       [1, 1, 1, 1, 1], [1, 1.0001, 1, 1, 1], [1, 1, 1.0001, 1, 1],
       [1, 1, 1, 1.0001, 1], [1, 1, 1, 1, 1.0001],
     ]
-    // Should be small but non-zero
-    expect(Math.abs(math.det_nxn(near_singular))).toBeLessThan(1e-10)
+    // matrix = ones + diag(0, d, d, d, d) with d = 1e-4; matrix determinant lemma with the
+    // singular diagonal gives det = d^4 = 1e-16 exactly. LU with cond ~ 5e4 lands within
+    // ~eps*cond ~ 1e-11 relative (observed 4e-13), so 5e-27 absolute is a loose bound that
+    // still rejects both 0 and any O(eps) garbage
+    expect(math.det_nxn(near_singular)).toBeCloseTo(1e-16, 26)
   })
 })
 
@@ -1145,13 +1153,10 @@ describe(`convex_hull_2d`, () => {
     [`duplicate points`, [[0, 0], [1, 0], [1, 0], [0, 1], [0, 1]], 3],
     // collinear interior points have zero cross product and are dropped from the chain
     [`collinear points`, [[0, 0], [1, 1], [3, 3], [2, 2]], 2],
+    // fully degenerate input collapses to a zero-length segment (both chain endpoints)
+    [`all same point`, [[3, 3], [3, 3], [3, 3]], 2],
   ] as [string, Vec2[], number][])(`%s -> %i vertices`, (_name, pts, expected_len) => {
     expect(math.convex_hull_2d(pts)).toHaveLength(expected_len)
-  })
-
-  test(`all same point`, () => {
-    // oxfmt-ignore
-    expect(math.convex_hull_2d([[3, 3], [3, 3], [3, 3]]).length).toBeLessThanOrEqual(3)
   })
 
   test(`counter-clockwise winding`, () => {

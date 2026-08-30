@@ -529,7 +529,13 @@ describe(`calc_trajectory_spectroscopy`, () => {
     const input = make_input()
     input.positions.steps = input.positions.steps.map(transform)
     if (input.velocities) input.velocities.steps = [...input.positions.steps]
-    expect(() => calc_trajectory_spectroscopy(input, RAW_SPECTRUM)).not.toThrow()
+    const { vdos } = calc_trajectory_spectroscopy(input, RAW_SPECTRUM)
+    // the spacing is read off the first two steps: 0.1 up to the ulp of 1e12 (1.2e-4)
+    expect(vdos.sample_interval).toBeCloseTo(0.1, 3)
+    // 0.125 cycles per frame on a 0.1-step grid is 1.25 cycles per step unit, bin 16 of 128
+    const maximum_idx = vdos.power.indexOf(Math.max(...vdos.power))
+    expect(maximum_idx).toBe(16)
+    expect(vdos.frequencies[maximum_idx]).toBeCloseTo(1.25, 2)
   })
 
   it(`rejects a one-percent cadence mismatch at a large step origin`, () => {
@@ -704,7 +710,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     },
   ])(
     `$label two-tone peak ratio is $expected_ratio`,
-    ({ expected_ratio, kind, components, channels = [], unpolarized_weights }) => {
+    ({ label, expected_ratio, kind, components, channels = [], unpolarized_weights }) => {
       // 512 frames at 400/1024 fs (exact in binary): Rayleigh width 5 THz, 4x zero padding
       // gives a 1.25 THz grid, so 10 THz (bin 8) and 40 THz (bin 32) sit exactly on it,
       // 6 Rayleigh widths apart. The symmetric Hann main lobes (±2 Rayleigh) do not overlap;
@@ -734,8 +740,9 @@ describe(`calc_trajectory_spectroscopy`, () => {
         ? channels.map((channel) => result.raman?.[channel])
         : [result.ir]
       for (const curve of curves) {
-        expect(curve).toBeDefined()
-        if (!curve) return
+        // `result.ir` is null (not undefined) when absent, so a missing curve must fail loudly
+        // rather than slip past toBeDefined and skip every assertion below
+        if (!curve) throw new Error(`${label} produced no spectrum curve`)
         const bin_1 = curve.frequencies.findIndex((value) => Math.abs(value - 10) < 1e-9)
         const bin_2 = curve.frequencies.findIndex((value) => Math.abs(value - 40) < 1e-9)
         expect(bin_1).toBe(8)

@@ -185,22 +185,24 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
     expect(apply_gas_corrections(entries, config, 500)).toBe(entries)
   })
 
-  test(`only applies correction to unary (elemental) entries`, () => {
+  test(`only corrects unary references of enabled gases, each by its own -T*S at P_REF`, () => {
     const entries = [
-      make_phase({ O: 1 }), // Unary O - should be corrected
-      make_phase({ Fe: 1 }), // Unary Fe - no O, no correction
-      make_phase({ Fe: 2, O: 3 }, -2), // Binary Fe2O3 - should NOT be corrected
+      make_phase({ O: 1 }), // -T*S(O2, 500 K) per atom
+      make_phase({ N: 1 }), // -T*S(N2, 500 K) per atom
+      make_phase({ Fe: 1 }), // not a gas element
+      make_phase({ Fe: 2, O: 3 }, -2), // compounds are never corrected
     ]
     const config: GasThermodynamicsConfig = {
-      enabled_gases: [`O2`],
-      pressures: { O2: 0.21 },
+      enabled_gases: [`O2`, `N2`],
+      pressures: { O2: 1, N2: 1 },
     }
     const result = apply_gas_corrections(entries, config, 500)
-
-    expect(result).toHaveLength(3)
-    expect(result[0].energy).not.toBe(0) // O reference modified
-    expect(result[1].energy).toBe(0) // Fe reference unchanged (no O)
-    expect(result[2].energy).toBe(-10) // Compound unchanged
+    expect(result.map((entry) => entry.energy)).toEqual([
+      expect.closeTo(-0.5718, 4),
+      expect.closeTo(-0.5356, 4),
+      0,
+      -10,
+    ])
   })
 
   test(`per-atom correction scales total energy by atom count for O2-style refs`, () => {
@@ -246,24 +248,6 @@ describe(`gas-thermodynamics: formatting`, () => {
     [-1.23456, 4, `-1.2346 eV`],
   ])(`format_chemical_potential(%s, %s) = %s`, (mu, decimals, expected) => {
     expect(format_chemical_potential(mu, decimals)).toBe(expected)
-  })
-})
-
-describe(`gas-thermodynamics: multi-gas scenarios`, () => {
-  test(`apply_gas_corrections applies to both O and N unary references`, () => {
-    const entries = [make_phase({ O: 1 }), make_phase({ N: 1 }), make_phase({ Fe: 1 })]
-    const config: GasThermodynamicsConfig = {
-      enabled_gases: [`O2`, `N2`],
-      pressures: { O2: 0.21, N2: 0.78 },
-    }
-    const T = 500
-    const result = apply_gas_corrections(entries, config, T)
-
-    // Both O and N references should be corrected
-    expect(result[0].energy).not.toBe(0) // O reference
-    expect(result[1].energy).not.toBe(0) // N reference
-    // Fe should remain unchanged (not a gas element)
-    expect(result[2].energy).toBe(0)
   })
 })
 

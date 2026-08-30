@@ -83,41 +83,36 @@ describe(`sample_hkl_slice`, () => {
     expect(sample_hkl_slice(z_gradient, [0, 0, 0], 0.5)).toBeNull()
   })
 
-  test(`(001) slice at d=0.2 has lower values than d=0.8 for z-gradient`, () => {
-    const low = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.2))
-    const high = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.8))
-    // Mean of low slice should be less than mean of high slice (z-gradient increases with z)
-    const mean = (data: Float64Array) => data.reduce((sum, val) => sum + val, 0) / data.length
-    expect(mean(low.data)).toBeLessThan(mean(high.data))
+  // A (001) plane at fractional distance d reads the periodic z ramp at z = 4d, so d=0.8
+  // (z=3.2) interpolates between iz=3 and the wrapped iz=0
+  test.each([
+    [0.2, 0.8],
+    [0.5, 2],
+    [0.8, 2.4],
+  ])(`(001) slice at d=%s is constant at %s`, (distance, value) => {
+    const result = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], distance))
+    expect([result.width, result.height]).toEqual([4, 4])
+    expect([...result.data].map((val) => Number(val.toFixed(10)))).toEqual(
+      Array(16).fill(value),
+    )
+    expect([result.min, result.max]).toEqual([
+      expect.closeTo(value, 10),
+      expect.closeTo(value, 10),
+    ])
   })
 
-  test(`(100) slice produces different values than (001) for z-gradient`, () => {
-    const z_slice = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.5))
-    const x_slice = expect_slice(sample_hkl_slice(z_gradient, [1, 0, 0], 0.5))
-    // z-gradient sampled along z should be ~constant (same z for all points)
-    // z-gradient sampled along x should show variation (different z values visible)
-    const std_dev = (data: Float64Array) => {
-      const avg = data.reduce((sum, val) => sum + val, 0) / data.length
-      return Math.sqrt(data.reduce((sum, val) => sum + (val - avg) ** 2, 0) / data.length)
-    }
-    // x-slice should have more variation since it cuts across z values
-    expect(std_dev(x_slice.data)).toBeGreaterThan(std_dev(z_slice.data))
+  // Planes containing the z axis sample the ramp at z = 0, 1/3, 2/3, 1 (wrapping to 0) at
+  // the max(nx, ny, nz) = 4 resolution
+  test.each([[[1, 0, 0]], [[1, 1, 0]]] as [Vec3][])(`%j slice sees the full z ramp`, (hkl) => {
+    const result = expect_slice(sample_hkl_slice(z_gradient, hkl, 0.5))
+    expect([result.width, result.height]).toEqual([4, 4])
+    const rounded = [...result.data].map((val) => Number(val.toFixed(10)))
+    const distinct = [...new Set(rounded)].toSorted((val_a, val_b) => val_a - val_b)
+    expect(distinct).toEqual([0, expect.closeTo(4 / 3, 10), expect.closeTo(8 / 3, 10)])
+    expect([result.min, result.max]).toEqual([0, expect.closeTo(8 / 3, 10)])
   })
 
-  test(`min and max are the extremes of the sampled data`, () => {
-    const result = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.5))
-    expect(result.min).toBe(Math.min(...result.data))
-    expect(result.max).toBe(Math.max(...result.data))
-  })
-
-  test(`(110) diagonal slice has correct dimensions`, () => {
-    const result = expect_slice(sample_hkl_slice(z_gradient, [1, 1, 0], 0.5))
-    // Resolution should be max(nx, ny, nz) = 4
-    expect(result.width).toBe(4)
-    expect(result.height).toBe(4)
-  })
-
-  test(`works with non-cubic lattice`, () => {
+  test(`non-cubic lattice: samples outside the cell cross-section are masked as NaN and skipped by min/max`, () => {
     const hex_lattice: Matrix3x3 = [
       [2.5, 0, 0],
       [1.25, 2.165, 0],
@@ -129,6 +124,10 @@ describe(`sample_hkl_slice`, () => {
     )
     const result = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))
     expect(result.data).toHaveLength(result.width * result.height)
+    // the sheared cell only fills part of its rectangular u/v bounding box
+    expect([...result.mask]).toContain(0)
+    expect([...result.data].map(Number.isFinite)).toEqual([...result.mask].map(Boolean))
+    expect([result.min, result.max]).toEqual([0, expect.closeTo(8 / 3, 10)])
   })
 
   test(`an in-cell plane through a non-periodic constant volume reads the constant everywhere`, () => {

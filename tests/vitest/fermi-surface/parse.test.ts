@@ -296,8 +296,11 @@ END_BLOCK_BANDGRID_3D
       }
 
       const result = parse_fermi_file(content, `test.json`)
-      expect(result).not.toBeNull()
-      expect(`isosurfaces` in (result ?? {})).toBe(true)
+      if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
+      expect(result.fermi_energy).toBe(5)
+      // the lone vertex survives and the empty face list becomes an empty index buffer
+      expect(Array.from(result.isosurfaces[0].positions)).toEqual([0, 0, 0])
+      expect(result.isosurfaces[0].indices).toHaveLength(0)
     })
 
     test(`flattens nested BandGridData JSON energies into z-fastest Float64Array grids`, () => {

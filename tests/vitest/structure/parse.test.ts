@@ -502,7 +502,7 @@ describe(`Auto-detection & Error Handling`, () => {
     // A blank line 6 must not become atom_counts=[0] via Number(``) === 0
     const result = parse_poscar(`Test\n1.0\n5 0 0\n0 5 0\n0 0 5\n\n1\nDirect\n0 0 0`)
     assert(result, `Failed to parse POSCAR with blank element line`)
-    expect(result.sites.length).toBeGreaterThan(0)
+    expect(result.sites).toHaveLength(1)
   })
 
   it(`should handle non-orthogonal lattices with matrix inversion`, () => {
@@ -1294,15 +1294,16 @@ loop_
       `x+1/2, y+1/2-, z+1/2`,
       `x+1/2, y+1/2, z+1/2-`,
     ]
-    // Parsing must succeed, treating dangling operators as 0 (ops may be filtered out)
+    // Dangling operators contribute 0, so every op is either the identity or the body-center
+    // translation: exactly the original site plus one translated copy, no NaN sites
     const result = parse_cif(p1_cif(symops, `Na Na 0.000 0.000 0.000`))
-    expect(result?.sites.length).toBeGreaterThan(0)
-
-    // Original site preserved and at least one valid translated site generated
-    const orig_site = result?.sites.find((site) => site.abc.every((coord) => coord === 0))
-    expect(orig_site).toBeDefined()
-    const translated = result?.sites.filter((site) => site.abc.some((coord) => coord === 0.5))
-    expect(translated?.length).toBeGreaterThan(0)
+    const abcs = result?.sites
+      .map((site) => site.abc)
+      .toSorted((abc_1, abc_2) => abc_1[0] - abc_2[0])
+    expect(abcs).toEqual([
+      [0, 0, 0],
+      [0.5, 0.5, 0.5],
+    ])
   })
 
   test(`parses PF-sd-1601634 CIF with correct oxygen count`, () => {
@@ -1479,6 +1480,8 @@ describe(`parse_structure_file`, () => {
   ])(`detects %s content with blob-URL UUID filename`, (_label, fixture) => {
     const content = read_maybe_gz(`./src/site/structures/${fixture}`)
     const result = parse_structure_file(content, `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
+    // content sniffing must land on the same parser the real extension selects
+    expect(result).toEqual(parse_structure_file(content, fixture))
     expect(result.sites.length).toBeGreaterThan(0)
   })
 

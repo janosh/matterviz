@@ -496,69 +496,55 @@ describe(`scales`, () => {
       )
     })
 
-    test(`logarithmic ticks`, () => {
-      const domain: Vec2 = [1, 1000]
-      const scale = scaleLog().domain(domain).range([0, 500])
-
-      const result = generate_ticks(domain, `log`, 5, scale)
-      expect(result.length).toBeGreaterThan(0)
-      expect(result).toContain(1)
-      expect(result).toContain(10)
-      expect(result).toContain(100)
-      expect(result).toContain(1000)
-    })
-
-    test(`interval ticks - negative number indicates interval`, () => {
-      const domain: Vec2 = [0, 100]
-      const scale = scaleLinear().domain(domain).range([0, 500])
-
-      const result = generate_ticks(domain, `linear`, -10, scale) // interval of 10
-      expect(result.length).toBeGreaterThan(0)
-      expect(result).toContain(0)
-      expect(result).toContain(10)
-      expect(result).toContain(20)
-      expect(result).toContain(30)
-      // Check that ticks are spaced by the interval
-      for (let idx = 1; idx < result.length; idx++) {
-        expect(result[idx] - result[idx - 1]).toBe(10)
-      }
-    })
-
-    test.each([
-      { domain: [0, 100] as Vec2, tick_count: 5, opts: { default_count: 8 } },
-      { domain: [0, 50] as Vec2, tick_count: 6, opts: {} },
-      { domain: [0, 0] as Vec2, tick_count: 5, opts: {} },
-    ])(`linear ticks for domain $domain`, ({ domain, tick_count, opts }) => {
-      const scale = scaleLinear().domain(domain).range([0, 500])
-      const result = generate_ticks(domain, `linear`, tick_count, scale, opts)
-      expect(result.length).toBeGreaterThan(0)
-      expect(result.every((tick) => typeof tick === `number`)).toBe(true)
-    })
-
-    test(`handles very small intervals`, () => {
-      const domain: Vec2 = [0, 1]
-      const scale = scaleLinear().domain(domain).range([0, 500])
-
-      const result = generate_ticks(domain, `linear`, -0.2, scale) // interval of 0.2
-      expect(result.length).toBeGreaterThan(0)
-      expect(result).toContain(0)
-      expect(result).toContain(0.2)
-      expect(result).toContain(0.4)
-      // Use approximate equality for floating point numbers
-      expect(result.some((tick) => Math.abs(tick - 0.6) < 1e-10)).toBe(true)
-      expect(result).toContain(0.8)
-      expect(result).toContain(1)
-    })
-
-    test(`arcsinh ticks`, () => {
-      const domain: Vec2 = [-1000, 1000]
-      const scale = scale_arcsinh(1).domain(domain).range([0, 500])
-
-      const result = generate_ticks(domain, `arcsinh`, 10, scale)
-      expect(result.length).toBeGreaterThan(0)
-      expect(result).toContain(0)
-      expect(result.filter((tick) => tick > 0).length).toBeGreaterThan(0)
-      expect(result.filter((tick) => tick < 0).length).toBeGreaterThan(0)
+    // Ticks are rounded to 12 places so 0.6000000000000001 from interval stepping compares as 0.6
+    test.each<[string, Vec2, ScaleType, number | undefined, number | undefined, number[]]>([
+      [`log powers of 10`, [1, 1000], `log`, 5, undefined, [1, 10, 100, 1000]],
+      [
+        `negative count is a fixed interval`,
+        [0, 100],
+        `linear`,
+        -10,
+        undefined,
+        [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+      ],
+      [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
+      [
+        `explicit count wins over default_count`,
+        [0, 100],
+        `linear`,
+        5,
+        2,
+        [0, 20, 40, 60, 80, 100],
+      ],
+      [
+        `default_count applies without a ticks option`,
+        [0, 100],
+        `linear`,
+        undefined,
+        2,
+        [0, 50, 100],
+      ],
+      [`linear count`, [0, 50], `linear`, 6, undefined, [0, 10, 20, 30, 40, 50]],
+      [`degenerate linear domain`, [0, 0], `linear`, 5, undefined, [0]],
+      [
+        `arcsinh mixed range is symmetric around 0`,
+        [-1000, 1000],
+        `arcsinh`,
+        10,
+        undefined,
+        [-1000, -100, -10, -1, 0, 1, 10, 100, 1000],
+      ],
+    ])(`%s`, (_name, domain, type, ticks, default_count, expected) => {
+      const range: Vec2 = [0, 500]
+      const scale =
+        type === `log`
+          ? scaleLog().domain(domain).range(range)
+          : type === `arcsinh`
+            ? scale_arcsinh(1).domain(domain).range(range)
+            : scaleLinear().domain(domain).range(range)
+      const opts = default_count === undefined ? undefined : { default_count }
+      const result = generate_ticks(domain, type, ticks, scale, opts)
+      expect(result.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
     })
   })
 
@@ -624,13 +610,11 @@ describe(`scales`, () => {
       expect(pos_1).toBeGreaterThan(pos_100)
     })
 
-    test(`ticks method`, () => {
+    test(`ticks method delegates to generate_arcsinh_ticks with the scale threshold`, () => {
       const scale = scale_arcsinh(1).domain([-100, 100]).range([0, 500])
-      const ticks = scale.ticks(10)
-
-      expect(ticks.length).toBeGreaterThan(0)
-      expect(ticks).toContain(0)
-      expect(ticks.every((tick) => tick >= -100 && tick <= 100)).toBe(true)
+      const expected = [-100, -50, -20, -10, -5, 0, 5, 10, 20, 50, 100]
+      expect(scale.ticks(10)).toEqual(expected)
+      expect(generate_arcsinh_ticks(-100, 100, 1, 10)).toEqual(expected)
     })
 
     // scale_arcsinh and get_arcsinh_threshold share the validation, so one table covers both
@@ -649,22 +633,36 @@ describe(`scales`, () => {
   })
 
   describe(`generate_arcsinh_ticks`, () => {
-    test.each([
-      { min: 0, max: 1000, threshold: 1, count: 10, name: `positive range` },
-      { min: -1000, max: 0, threshold: 1, count: 10, name: `negative range` },
-      { min: 0, max: 1, threshold: 1, count: 5, name: `small range (linear-like)` },
-      { min: 0, max: 100, threshold: 100, count: 8, name: `large threshold` },
-    ])(`$name: [$min, $max]`, ({ min, max, threshold, count }) => {
+    // Ticks are rounded to 12 places so 0.6000000000000001 from linear stepping compares as 0.6
+    test.each<[string, number, number, number, number, number[]]>([
+      [
+        `positive range: decades plus 2x/5x fill to reach count`,
+        0,
+        1000,
+        1,
+        10,
+        [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000],
+      ],
+      [
+        `negative range mirrors the positive path`,
+        -1000,
+        0,
+        1,
+        10,
+        [-1000, -500, -200, -100, -50, -20, -10, -5, -2, -1],
+      ],
+      [`range within 2x threshold is spaced linearly`, 0, 1, 1, 5, [0, 0.2, 0.4, 0.6, 0.8, 1]],
+      [
+        `large threshold keeps the whole range linear`,
+        0,
+        100,
+        100,
+        8,
+        [0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100],
+      ],
+    ])(`%s`, (_name, min, max, threshold, count, expected) => {
       const ticks = generate_arcsinh_ticks(min, max, threshold, count)
-      expect(ticks.length).toBeGreaterThan(0)
-      expect(ticks.every((tick) => tick >= min && tick <= max)).toBe(true)
-    })
-
-    test(`positive range includes powers of 10`, () => {
-      const ticks = generate_arcsinh_ticks(0, 1000, 1, 10)
-      expect(
-        ticks.some((tick) => tick === 1 || tick === 10 || tick === 100 || tick === 1000),
-      ).toBe(true)
+      expect(ticks.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
     })
 
     test(`emits clean round ticks for non-round domain (no raw endpoints)`, () => {
@@ -697,13 +695,6 @@ describe(`scales`, () => {
       expect(ticks_from_zero.length).toBeGreaterThanOrEqual(ticks_from_positive.length - 1)
       expect(ticks_from_zero.every((tick) => tick >= 0)).toBe(true)
       expect(ticks_from_zero[0]).toBeLessThanOrEqual(1)
-    })
-
-    test(`mixed range includes zero with symmetric ticks`, () => {
-      const ticks = generate_arcsinh_ticks(-100, 100, 1, 10)
-      expect(ticks).toContain(0)
-      expect(ticks.filter((tick) => tick > 0).length).toBeGreaterThan(0)
-      expect(ticks.filter((tick) => tick < 0).length).toBeGreaterThan(0)
     })
 
     test(`omits sub-threshold powers that would overlap the zero tick`, () => {
@@ -798,12 +789,15 @@ describe(`scales`, () => {
       expect(color_at_mid).toBe(color_at_max)
     })
 
-    test.each([1e10, -1e10, 1e-10])(`handles extreme value %s`, (value) => {
+    test(`maps extreme values to distinct hex colors and near-zero to the midpoint`, () => {
       const scale = create_color_scale(
         { type: { type: `arcsinh`, threshold: 1 } },
         [-1e12, 1e12],
       )
-      expect(typeof scale(value)).toBe(`string`)
+      const [high, low, tiny, zero] = [1e10, -1e10, 1e-10, 0].map((val) => scale(val))
+      for (const color of [high, low, tiny]) expect(color).toMatch(/^#[0-9a-f]{6}$/)
+      expect(high).not.toBe(low)
+      expect(tiny).toBe(zero) // 1e-10 is indistinguishable from 0 in arcsinh space
     })
 
     test.each([1e-10, 1e10, 0.001, 1000])(`handles threshold=%s`, (threshold) => {

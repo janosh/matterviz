@@ -227,7 +227,6 @@ describe(`force projection`, () => {
   test(`projected slope is minus the force along the tangent`, () => {
     // Straight-line path: the tangent is +x everywhere, so dE/ds = -F_x
     const slopes = projected_force_slopes(walk_path([0, 1, 2], [0, 0.1, 0.2], [-0.3, 0, 0.4]))
-    expect(slopes).not.toBeNull()
     expect(slopes).toEqual([0.3, -0, -0.4])
   })
 

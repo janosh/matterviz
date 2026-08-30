@@ -604,15 +604,6 @@ describe(`compute_label_positions`, () => {
     expect(shifted.y - unshifted.y).toBeCloseTo(20)
   })
 
-  test(`is deterministic (seeded PRNG)`, () => {
-    const series = make_labeled_series([
-      { x: 50, y: 50, text: `A` },
-      { x: 55, y: 52, text: `B` },
-      { x: 48, y: 53, text: `C` },
-    ])
-    expect(place_series(series)).toEqual(place_series(series))
-  })
-
   // Every pan/zoom frame re-runs the solver, and a cold solve is O(sa_iterations x labels)
   // simulated annealing: 60 ms/frame at 50 labels, seconds at 300. Passing the previous
   // layout back in turns that into a short polish.

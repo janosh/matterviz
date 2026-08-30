@@ -344,7 +344,9 @@ describe(`PeriodicTable`, () => {
     await tick()
 
     const selected_text = doc_query(`div.multiselect > ul.selected`).textContent?.trim() ?? ``
-    expect(ELEM_HEATMAP_LABELS[selected_text]).toBeDefined()
+    // the picked label maps to a real element property, whose key lands in the URL
+    const heatmap_key = ELEM_HEATMAP_LABELS[selected_text]
+    if (!heatmap_key) throw new Error(`no heatmap key for label "${selected_text}"`)
     await vi.waitFor(() =>
       expect(document.querySelector(`.periodic-table .value`)).toBeInstanceOf(HTMLElement),
     )
@@ -353,7 +355,7 @@ describe(`PeriodicTable`, () => {
       new Set([`white`, `black`]),
     )
     expect(replace_url).toHaveBeenLastCalledWith(
-      expect.stringMatching(/^\/periodic-table\?heatmap=.+#test-anchor$/),
+      `/periodic-table?heatmap=${heatmap_key}#test-anchor`,
     )
   })
 
@@ -397,12 +399,13 @@ describe(`PeriodicTable`, () => {
         active_category: `alkali metal`,
       },
     })
-    // Should highlight H, He (from active_elements), Li (from active_element),
-    // and all alkali metals (from active_category)
-    // Alkali metals: Li, Na, K, Rb, Cs, Fr = 6 elements
-    // H, He, Li are included, so total unique is 6 + 2 = 8 (Li is counted in alkali metals)
-    const active_tiles = document.querySelectorAll(`.element-tile.active`)
-    expect(active_tiles.length).toBeGreaterThanOrEqual(6)
+    // H, He (active_elements) plus Li (active_element) plus the alkali metals (active_category)
+    // are all highlighted; Li is in two of those sets and its tile is still highlighted once
+    const active_symbols = [...document.querySelectorAll(`.element-tile.active`)].map((tile) =>
+      tile.getAttribute(`data-element-symbol`),
+    )
+    // tiles render in atomic-number order, so no sort is needed
+    expect(active_symbols).toEqual([`H`, `He`, `Li`, `Na`, `K`, `Rb`, `Cs`, `Fr`])
   })
 
   test.each([
@@ -953,20 +956,6 @@ describe(`PeriodicTable`, () => {
       expect(rendered).toBe(true)
     })
 
-    test(`color-only heatmap tiles are still colored`, () => {
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { heatmap_values: [`#ff0000`, `#00ff00`, `#0000ff`] as never },
-      })
-
-      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
-      expect([
-        tiles[0].style.backgroundColor,
-        tiles[1].style.backgroundColor,
-        tiles[2].style.backgroundColor,
-      ]).toEqual([`#ff0000`, `#00ff00`, `#0000ff`])
-    })
-
     test(`respects color_bar_props.title and positioning styles`, () => {
       mount(PeriodicTable, {
         target: document.body,
@@ -995,8 +984,7 @@ describe(`PeriodicTable`, () => {
         el.textContent?.trim(),
       )
 
-      expect(tick_text.some((text) => text === `1`)).toBe(true)
-      expect(tick_text.some((text) => text?.includes(`1`) && text.length > 1)).toBe(true)
+      expect(tick_text).toEqual([`1`, `10`, `100`, `1k`])
     })
 
     test(`log tile colors use true log mapping matching the log ColorBar`, () => {

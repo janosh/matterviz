@@ -1,4 +1,6 @@
-import { create_display } from '$lib/file-viewer/main'
+// Side-effect import: main.ts installs window.initializeMatterViz / cleanupMatterViz
+// oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
+import '$lib/file-viewer/main'
 import type * as ParseModule from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
 import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
@@ -117,7 +119,6 @@ const post_settings = (theme: string, defaults?: unknown): boolean =>
   })
 
 test(`serializes reloads and guards cleanup, markers, and initialization`, async () => {
-  expect(create_display).toBeTypeOf(`function`)
   const stale_parse = Promise.withResolvers<ParseResult>()
   parse_file_content
     .mockResolvedValueOnce(result(`initial`))

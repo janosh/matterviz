@@ -388,13 +388,6 @@ describe(`generate_fill_path`, () => {
     expect(path.endsWith(`${lower_reversed.slice(1)}Z`)).toBe(true)
   })
 
-  it(`produces a closed path with cubic segments for monotoneX`, () => {
-    const path = generate_fill_path(upper, lower, `monotoneX`, `monotoneX`)
-    expect(path).toMatch(/^M/)
-    expect(path).toMatch(/Z$/)
-    expect(path).toContain(`C`)
-  })
-
   it.each([
     `linear`,
     `monotoneX`,

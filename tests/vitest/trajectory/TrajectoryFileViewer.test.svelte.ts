@@ -394,7 +394,7 @@ describe(`run ownership`, () => {
     if (!run) throw new Error(`on_file_load carried no run`)
     const dispose = vi.spyOn(run, `dispose`)
     await tick()
-    expect(() => run.read_frame(1)).not.toThrow()
+    // stepping reads frame 1 from the run, which would surface an error if it were disposed
     target.querySelector<HTMLButtonElement>(`[aria-label="Next step"]`)?.click()
     await tick()
     expect(target.querySelector(`.status-message.error`)).toBeNull()

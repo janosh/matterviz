@@ -884,13 +884,18 @@ describe(`IrRamanSpectrum component`, () => {
       props: { spectrum: co2_spectrum, ...props },
     })
 
+  // One stick per active optical mode: NaCl's triply degenerate TO mode, CO2's 2 bends + nu3
+  // (the 3 acoustic modes are excluded and the gerade modes carry exactly zero intensity, so
+  // they draw no stick), and only nu1 is Raman active.
   it.each([
-    [`NaCl IR`, { spectrum: nacl_spectrum, fwhm: 8 }],
-    [`CO2 IR`, { fwhm: 25 }],
-    [`CO2 Raman`, { fwhm: 25, kind: `raman` } as const],
-  ])(`renders %s`, (_name, props) => {
+    [`NaCl IR`, { spectrum: nacl_spectrum, fwhm: 8 }, 3],
+    [`CO2 IR`, { fwhm: 25 }, 3],
+    [`CO2 Raman`, { fwhm: 25, kind: `raman` } as const, 1],
+  ])(`renders %s with one stick per active mode`, async (_name, props, n_sticks) => {
     render(props)
+    await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(n_sticks)
   })
 
   it(`forwards flat control props and controls_open binding`, async () => {
@@ -917,14 +922,6 @@ describe(`IrRamanSpectrum component`, () => {
     await tick()
     expect(controls_state.units).toBe(`THz`)
     await expect_plot_controls(document, controls_state, `ir-raman`)
-  })
-
-  it(`draws one stick per IR-active optical mode`, async () => {
-    render({ fwhm: 25 })
-    await tick()
-    // CO2 has 3 IR-active optical modes (2 bends + nu3); the 3 acoustic modes are excluded
-    // and the 3 gerade modes have exactly zero intensity, so they draw no stick.
-    expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(3)
   })
 
   it(`hides sticks when show_sticks is false`, async () => {

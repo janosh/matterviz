@@ -521,9 +521,13 @@ describe(`compute_vertex_normals`, () => {
         Uint32Array.from([0, 1, 2, 0, 1, 3]),
       ),
     )
-    const shared = normals[0]
-    expect(Math.hypot(...shared)).toBeCloseTo(1, 5)
-    expect(shared[1]).toBeLessThan(-0.1)
-    expect(shared[2]).toBeGreaterThan(0.1)
+    // face normals are +z (tri 0) and -y (tri 1); vertices 0 and 1 sit on both faces so their
+    // normal is the normalized sum, vertices 2 and 3 each keep their single face normal
+    const shared = [0, -Math.SQRT1_2, Math.SQRT1_2]
+    expect(normals).toEqual(
+      [shared, shared, [0, 0, 1], [0, -1, 0]].map((vec) =>
+        vec.map((val) => expect.closeTo(val, 6)),
+      ),
+    )
   })
 })

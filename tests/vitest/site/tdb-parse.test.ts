@@ -194,9 +194,13 @@ $ Date: 2024-01-01
 $ Reference: Test Reference
 ELEMENT AL FCC_A1 0.02698 4577.3 28.32!
 `
-    const result = parse_tdb(content)
-    expect(result.data.comments.length).toBeGreaterThanOrEqual(4)
-    expect(result.data.comments.some((cmt) => cmt.includes(`Author`))).toBe(true)
+    // every $ line is kept in order with its marker and surrounding whitespace stripped
+    expect(parse_tdb(content).data.comments).toEqual([
+      `Database: Test TDB v1.0`,
+      `Author: Test Author`,
+      `Date: 2024-01-01`,
+      `Reference: Test Reference`,
+    ])
   })
 
   test(`handles scientific notation with lowercase e`, () => {
@@ -280,20 +284,20 @@ PHASE CU2MG  %  2 2 1 !
 // === extract_tdb_reference ===
 
 describe(`extract_tdb_reference`, () => {
-  test(`extracts reference containing keyword`, () => {
+  test(`returns the first keyword comment verbatim, minus its $ marker`, () => {
     const ref = extract_tdb_reference([
       `$ Some comment`,
       `$ Reference: A. Author, Journal of Alloys, Vol 100, 2020, pp 1-10`,
+      `$ Citation: a later one that must not win`,
     ])
-    expect(ref).toContain(`Author`)
-    expect(ref).toContain(`Journal`)
+    expect(ref).toBe(`Reference: A. Author, Journal of Alloys, Vol 100, 2020, pp 1-10`)
   })
 
-  test.each([`reference`, `citation`, `database`, `assessed by`])(
+  test.each([`reference`, `Citation`, `DATABASE`, `assessed by`])(
     `matches keyword "%s" case-insensitively`,
     (keyword) => {
-      const comment = `$ This ${keyword} was from X. Author, Some Long Journal Name, Vol 42, 2019`
-      expect(extract_tdb_reference([comment])).not.toBeNull()
+      const text = `This ${keyword} was from X. Author, Some Long Journal Name, Vol 42, 2019`
+      expect(extract_tdb_reference([`$ ${text}`])).toBe(text)
     },
   )
 
@@ -304,13 +308,6 @@ describe(`extract_tdb_reference`, () => {
     [`a reference ending with "from"`, [`$ Reference data was extracted from`]],
   ])(`returns null for %s`, (_desc, comments) => {
     expect(extract_tdb_reference(comments)).toBeNull()
-  })
-
-  test(`strips leading $ from reference text`, () => {
-    const ref = extract_tdb_reference([
-      `$ Database entry: Thermodynamic data assessed by J. Author et al. 2021`,
-    ])
-    expect(ref).not.toMatch(/^\$/)
   })
 })
 

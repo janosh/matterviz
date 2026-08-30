@@ -318,76 +318,54 @@ describe(`load_from_url`, () => {
     expect(received_filename).toBe(`data.h5`)
   })
 
+  // A .bin URL says nothing about the format, so the payload's magic bytes decide: known
+  // binary signatures stay ArrayBuffer (byte for byte), anything else is decoded as text
+  const binary_payload = (magic_bytes: number[]) =>
+    new Uint8Array([...magic_bytes, ...Array(100 - magic_bytes.length).fill(0)])
   test.each([
-    [
-      `HDF5 magic bytes with callback rejection`,
-      [0x89, 0x48, 0x44, 0x46],
-      `ArrayBuffer`,
-      undefined,
-      `callback failed`,
-    ],
-    [`HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], `ArrayBuffer`, undefined, undefined],
-    [
-      `ASE Ulm magic bytes`,
-      [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d],
-      `ArrayBuffer`,
-      undefined,
-      undefined,
-    ],
-    [
-      `unknown format`,
-      [0x12, 0x34, 0x56, 0x78],
-      `string`,
+    [`HDF5`, binary_payload([0x89, 0x48, 0x44, 0x46])],
+    [`ASE Ulm`, binary_payload([0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d])],
+  ])(`%s magic bytes on a .bin URL keep the payload binary`, async (_format, payload) => {
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/data.bin`,
+      payload.buffer,
+      { 'content-type': `application/octet-stream` },
+    )
+    expect(received_content).toBeInstanceOf(ArrayBuffer)
+    expect(await as_bytes(received_content)).toEqual(payload)
+    expect(received_filename).toBe(`data.bin`)
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
+  })
+
+  test(`a .bin URL without a known magic decodes to text`, async () => {
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/data.bin`,
       `unknown format content`,
-      undefined,
-    ],
-  ] as const)(
-    `magic bytes detection: %s`,
-    async (_, magic_bytes, expected_type, expected_content, callback_error) => {
-      const header = new Uint8Array([
-        ...magic_bytes,
-        ...Array(16 - magic_bytes.length).fill(0),
-      ])
-      const response_body =
-        expected_content ??
-        new Uint8Array([...header, ...Array(100 - header.length).fill(0)]).buffer
-      const mock_response = create_mock_response(response_body, {
-        'content-type': expected_content ? `text/plain` : `application/octet-stream`,
-      })
+      { 'content-type': `text/plain` },
+    )
+    expect(received_content).toBe(`unknown format content`)
+    expect(received_filename).toBe(`data.bin`)
+  })
 
-      globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
-
-      let received_content: string | ArrayBuffer | null = null
-      let received_filename: string | null = null
-
-      const callback = async (content: string | ArrayBuffer, filename: string) => {
-        received_content = content
-        received_filename = filename
-        if (callback_error && content instanceof ArrayBuffer) {
-          throw new TypeError(callback_error)
-        }
-      }
-
-      if (callback_error) {
-        await expect(load_from_url(`https://example.com/data.bin`, callback)).rejects.toThrow(
-          callback_error,
-        )
-        expect(globalThis.fetch).toHaveBeenCalledOnce()
-        return
-      }
-
-      await load_from_url(`https://example.com/data.bin`, callback)
-
-      if (expected_type === `string`) {
-        expect(typeof received_content).toBe(`string`)
-        if (expected_content) expect(received_content).toBe(expected_content)
-      } else {
-        expect(received_content).toBeInstanceOf(ArrayBuffer)
-      }
-      expect(received_filename).toBe(`data.bin`)
-      expect(globalThis.fetch).toHaveBeenCalledOnce()
-    },
-  )
+  test(`a rejecting callback rejects load_from_url itself`, async () => {
+    const mock_response = create_mock_response(
+      binary_payload([0x89, 0x48, 0x44, 0x46]).buffer,
+      {
+        'content-type': `application/octet-stream`,
+      },
+    )
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
+    const callback = vi.fn().mockRejectedValue(new TypeError(`callback failed`))
+    await expect(load_from_url(`https://example.com/data.bin`, callback)).rejects.toThrow(
+      `callback failed`,
+    )
+    expect(callback).toHaveBeenCalledExactlyOnceWith(
+      expect.any(ArrayBuffer),
+      `data.bin`,
+      expect.objectContaining({ source_filename: `data.bin` }),
+    )
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
+  })
 
   // Sniffed gzip magic on a URL without .gz extension is decompressed; a binary inner
   // extension from Content-Disposition (relax.traj.gz) keeps the payload an ArrayBuffer
@@ -524,7 +502,7 @@ describe(`load_from_url`, () => {
       processed_files.push(filename)
     })
 
-    expect(processed_files).toContain(`test.xyz`)
+    expect(processed_files).toEqual([`test.xyz`])
   })
 
   test(`gzip content-encoding on binary extension stays ArrayBuffer`, async () => {

@@ -70,10 +70,6 @@ describe(`Coordination`, () => {
   })
 
   describe(`PBC-aware coordination`, () => {
-    type CnCheck = (vals: (number | string)[]) => boolean
-    const all_positive: CnCheck = (vals) =>
-      vals.every((cn) => typeof cn === `number` && cn > 0)
-    const all_finite: CnCheck = (vals) => vals.every((cn) => typeof cn === `number` && cn >= 0)
     const nacl_corner_sites: { abc: Vec3; element: ElementSymbol }[] = [
       { abc: [0, 0, 0], element: `Na` },
       { abc: [0.5, 0, 0], element: `Cl` },
@@ -88,30 +84,30 @@ describe(`Coordination`, () => {
       sites: { abc: Vec3; element?: ElementSymbol }[]
       lattice_size: number
       pbc?: [boolean, boolean, boolean]
-      check: CnCheck
+      expected: number[]
     }>([
-      { name: `BCC symmetry`, lattice_size: 5, check: (vals) => vals[0] === 8 && vals[1] === 8,
+      { name: `BCC symmetry`, lattice_size: 5, expected: [8, 8],
         sites: [{ abc: [0, 0, 0], element: `Cs` }, { abc: [0.5, 0.5, 0.5], element: `Cs` }] },
-      { name: `NaCl corner`, lattice_size: 5, sites: nacl_corner_sites,
-        check: (vals) => all_positive(vals) && typeof vals[0] === `number` && vals[0] >= 3 },
+      // Na sees all 6 Cl through the wrap; each face-center Cl sees the Na at both ends
+      { name: `NaCl corner`, lattice_size: 5, sites: nacl_corner_sites, expected: [6, 2, 2, 2] },
       { name: `non-periodic (molecular) structure`, lattice_size: 10, pbc: [false, false, false],
-        check: all_positive, sites: [{ abc: [0, 0, 0] }, { abc: [0.12, 0, 0], element: `O` }] },
+        expected: [1, 1], sites: [{ abc: [0, 0, 0] }, { abc: [0.12, 0, 0], element: `O` }] },
       // atoms at 0.1 and 0.9 bond across the wrap (1 Å apart through the boundary)
-      { name: `atoms just inside opposite faces bond through PBC`, lattice_size: 5, check: all_positive,
+      { name: `atoms just inside opposite faces bond through PBC`, lattice_size: 5, expected: [1, 1],
         sites: [{ abc: [0.1, 0.5, 0.5] }, { abc: [0.9, 0.5, 0.5] }] },
-      { name: `very large cell with sparse atoms`, lattice_size: 50, check: all_finite,
+      // C-O 5 Å apart and N 35 Å away: nothing bonds, and no image is mistaken for a neighbor
+      { name: `very large cell with sparse atoms`, lattice_size: 50, expected: [0, 0, 0],
         sites: [
           { abc: [0.1, 0.1, 0.1] },
           { abc: [0.2, 0.1, 0.1], element: `O` },
           { abc: [0.9, 0.9, 0.9], element: `N` },
         ] },
-    ])(`$name`, ({ sites, lattice_size, pbc = cubic_pbc, check }) => {
+    ])(`$name`, ({ sites, lattice_size, pbc = cubic_pbc, expected }) => {
       const structure = make_cubic_structure(sites, lattice_size, pbc)
       const { values, colors } = ap.get_coordination_colors(structure)
 
-      expect(values).toHaveLength(sites.length)
+      expect(values).toEqual(expected)
       expect(colors).toHaveLength(sites.length)
-      expect(check(values)).toBe(true)
     })
 
     // CoordinationBarPlot and the 3D viewer both call calc_coordination_nums under the

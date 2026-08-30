@@ -33,7 +33,7 @@ describe(`WyckoffTable`, () => {
       },
     ]
 
-    expect(() => mount_table(duplicate_semantic_rows)).not.toThrow()
+    mount_table(duplicate_semantic_rows)
 
     const rendered_rows = document.querySelectorAll(`tbody tr`)
     expect(rendered_rows).toHaveLength(2)

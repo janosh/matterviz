@@ -116,8 +116,7 @@ describe(`compute_saed_pattern geometry`, () => {
         const angle = saed_spot_angle(first.position_2d, spot.position_2d)
         return angle > 1 && angle < 179
       })
-      expect(second).toBeDefined()
-      if (!second) return
+      if (!second) throw new Error(`no spot independent of ${first.hkl.join(``)}`)
       expect(saed_spot_angle(first.position_2d, second.position_2d)).toBeCloseTo(expected, 8)
     },
   )
@@ -158,8 +157,8 @@ describe(`compute_saed_pattern structure factor`, () => {
       const all_odd = parities.every((parity) => parity === 1)
       expect(all_even || all_odd, `hkl ${hkl.join(` `)} has mixed parity`).toBe(true)
     }
-    // Sanity: the allowed 200 is present while the forbidden 100 and 110 are not
-    expect(() => find_spot(pattern.spots, [2, 0, 0])).not.toThrow()
+    // Sanity: the allowed 200 is present (d = a/2) while the forbidden 100 and 110 are not
+    expect(find_spot(pattern.spots, [2, 0, 0]).d_spacing).toBeCloseTo(3.615 / 2, 10)
     expect(() => find_spot(pattern.spots, [1, 0, 0])).toThrow(/no spot 100/)
     expect(() => find_spot(pattern.spots, [1, 1, 0])).toThrow(/no spot 110/)
   })

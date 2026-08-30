@@ -1608,8 +1608,6 @@ describe(`ScatterPlot`, () => {
     expect({ left: legend.style.left, top: legend.style.top }).toEqual(initial_position)
   })
 
-  // rect-zoom must zoom y2 series too when sync is 'none' (the default) - BarPlot,
-  // Histogram and BoxPlot all do; only the synced/align modes derive y2 from y1
   // NaN/null colour and size values must neither widen the scales nor paint a NaN colour:
   // those points fall back to the series colour and default radius.
   test(`color_values and size_values with NaN fall back per point without widening the scales`, async () => {

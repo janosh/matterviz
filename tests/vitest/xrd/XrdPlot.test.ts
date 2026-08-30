@@ -269,20 +269,13 @@ describe(`XrdPlot`, () => {
       hkl_format: null,
     })
 
-    const bar_labels = target.querySelectorAll(`.bar-label`)
-    const label_texts = Array.from(bar_labels)
+    const label_texts = Array.from(target.querySelectorAll(`.bar-label`))
       .map((el) => el.textContent?.trim())
       .filter(Boolean)
 
-    // Should have filtered out nearby peaks, keeping only highest
-    // The 45.8x cluster should only show ONE label (45.82° - the highest)
-    const labels_in_45_range = label_texts.filter((text) => text?.includes(`45.8`))
-    expect(labels_in_45_range.length).toBeLessThanOrEqual(1)
-
-    // But the 45.82° peak (highest in cluster) should be labeled
-    if (labels_in_45_range.length > 0) {
-      expect(labels_in_45_range[0]).toContain(`45.82`)
-    }
+    // The 5 most intense peaks are all in the 45.8x cluster, so overlap filtering leaves a
+    // single label: the tallest one (45.82°). The 10° and 60° peaks are outside the top 5.
+    expect(label_texts).toEqual([`45.82°`])
   })
 
   // Computed stick patterns carry hkls and every reflection is a labelled peak, so they must
@@ -312,7 +305,10 @@ describe(`XrdPlot`, () => {
     const text_content = target.textContent || ``
     expect(text_content).toContain(`Pattern A`)
     expect(text_content).toContain(`Pattern B`)
-    expect(target.querySelectorAll(`.bar-series`).length).toBeGreaterThanOrEqual(2)
+    const series = target.querySelectorAll(`.bar-series`)
+    expect(series).toHaveLength(2)
+    // the per-pattern color override reaches the second series' bars
+    expect(series[1].querySelector(`path`)?.getAttribute(`fill`)).toContain(`rgba(255, 0, 0`)
   })
 
   test(`broadening controls bind one number input per Caglioti parameter`, async () => {

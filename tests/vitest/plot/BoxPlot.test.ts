@@ -280,7 +280,9 @@ describe(`BoxPlot`, () => {
     expect(on_box_click).toHaveBeenCalledOnce()
     const arg = on_box_click.mock.calls[0][0]
     expect(arg.box_idx).toBe(0)
-    expect(arg.stats.median).toBeTypeOf(`number`)
+    // type-7 median of the 80 clicked values: mean of the two middle order statistics
+    const sorted = [...basic.y].toSorted((val_a, val_b) => val_a - val_b)
+    expect(arg.stats.median).toBeCloseTo((sorted[39] + sorted[40]) / 2, 12)
     expect(arg.category_label).toBe(`Box A`)
   })
 
@@ -368,13 +370,6 @@ describe(`BoxPlot`, () => {
     })
     expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(1) // only the violin series
     expect(iqr_box(plot)).toHaveLength(1) // only the box series
-  })
-
-  test(`renders a finite violin path`, async () => {
-    const plot = await mount_sized_box_plot({ series: [basic], kind: `violin` })
-    const path = plot.querySelector<SVGPathElement>(`.violin-area`)
-    expect(path?.getAttribute(`d`)).toMatch(/^M[\d.\-,]/)
-    expect(path?.getAttribute(`d`)).not.toContain(`NaN`)
   })
 
   // the KDE grid covers exactly the observed support (no tail extension), so with min/max

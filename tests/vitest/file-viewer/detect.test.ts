@@ -371,27 +371,20 @@ describe(`scan_renderable_paths`, () => {
   // The smallest value detect_view_type accepts as a structure
   const si_structure = { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] }
 
-  test(`finds all expected types in test fixture`, () => {
-    expect(fixture_paths.size).toBeGreaterThanOrEqual(9)
-    const types = new Set(fixture_paths.values())
-    for (const expected of [
-      `structure`,
-      `fermi_surface`,
-      `phase_diagram`,
-      `band_structure`,
-      `dos`,
-      `convex_hull`,
-    ]) {
-      expect(types, `missing type: ${expected}`).toContain(expected)
-    }
-  })
-
-  test(`finds nested structures at correct paths without recursing into them`, () => {
-    expect(fixture_paths.get(`structures.Cu_FCC`)).toBe(`structure`)
-    // Should NOT find children like structures.Cu_FCC.sites
-    expect([...fixture_paths.keys()].some((key) => key.startsWith(`structures.Cu_FCC.`))).toBe(
-      false,
-    )
+  // Exact path → type map: nested structures are found at their own path and not recursed
+  // into (no `structures.Cu_FCC.sites` entry), every fixture type is discovered once
+  test(`finds every renderable path in the fixture without recursing into them`, () => {
+    expect([...fixture_paths]).toEqual([
+      [`structures.Cu_FCC`, `structure`],
+      [`structures.Bi2Zr2O8_fluorite`, `structure`],
+      [`fermi_surface`, `fermi_surface`],
+      [`phase_diagram`, `phase_diagram`],
+      [`band_structure`, `band_structure`],
+      [`dos`, `dos`],
+      [`convex_hull_Li_Fe`, `convex_hull`],
+      [`convex_hull_Li_Fe_O`, `convex_hull`],
+      [`convex_hull_Li_Fe_P_O`, `convex_hull`],
+    ])
   })
 
   test.each([

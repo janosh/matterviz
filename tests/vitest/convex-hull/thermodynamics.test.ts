@@ -1,4 +1,3 @@
-import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coords'
 import {
   calculate_e_above_hull,
   compute_e_above_hull_nd,
@@ -12,7 +11,6 @@ import {
   process_hull_for_stats,
 } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
 import { solve_linear_system } from '$lib/math'
 import { describe, expect, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
@@ -505,19 +503,6 @@ describe(`pymatgen cross-validation`, () => {
     for (const entry of quinary) {
       expect(calculate_e_above_hull(entry, quinary)).toBe(batch[entry.entry_id as string])
     }
-  })
-
-  // Timing of the 4D quickhull lives in perf-baselines.test.ts
-  test(`Li-Co-Ni-O: quickhull builds a many-facet 4D hull from 775 entries`, () => {
-    const entries = fixtures[1][1]
-    const elements = [
-      ...new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
-    ].toSorted() as ElementSymbol[]
-    const points = entries.map((entry) => [
-      ...composition_to_barycentric_nd(entry.composition, elements).slice(1),
-      entry.e_form_per_atom as number,
-    ])
-    expect(compute_lower_hull_nd(points).length).toBeGreaterThan(20)
   })
 })
 

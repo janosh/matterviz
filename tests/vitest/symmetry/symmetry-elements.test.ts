@@ -241,8 +241,9 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
 
   test(`P2_12_12_1 (#19) is chiral: only 2_1 screw axes`, () => {
     const elements = elements_for(19)
-    expect(elements.length).toBeGreaterThan(0)
-    expect(elements.every((elem) => elem.kind === `screw` && elem.label === `2_1`)).toBe(true)
+    // 4 screw axes per direction x 3 directions; nothing but 2_1 screws
+    expect(count_by(elements, `label`)).toEqual({ '2_1': 12 })
+    expect(count_by(elements, `kind`)).toEqual({ screw: 12 })
     const directions = new Set(elements.map((elem) => String(elem.axis)))
     expect(directions).toEqual(new Set([`1,0,0`, `0,1,0`, `0,0,1`]))
   })
@@ -311,7 +312,8 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
   // off `axis` gave rotation:2 = 22, screw:2_1 = 20, m = 5 and g = 5 — orbits split
   // inconsistently — against 18/18/3/3 once the covariant normal is used.
   test(`R-3m (#166) element counts respect the 3-fold R-centering multiplicity`, () => {
-    const by_kind = count_by(elements_for(166), `label`)
+    const elements = elements_for(166)
+    const by_kind = count_by(elements, `label`)
     expect(by_kind).toEqual({
       '3': 3,
       '2': 18,
@@ -326,6 +328,16 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     for (const [label, count] of Object.entries(by_kind)) {
       expect(count % 3, `${label} count ${count} is not a multiple of 3`).toBe(0)
     }
+    // The 3 label-`g` elements are the rhombohedral diagonal glides: reduced glide vector
+    // (1/6, 1/3, 1/3) is no half cell-axis (a/b/c), half diagonal (n) or quarter diagonal
+    // (d), so glide_letter must fall back to its otherwise-untested catch-all "g" — and
+    // they must still classify as order-2 glide planes, not something mislabeled
+    const g_glides = elements.filter((elem) => elem.label === `g`)
+    expect(g_glides.map((elem) => [elem.kind, elem.order])).toEqual([
+      [`glide`, 2],
+      [`glide`, 2],
+      [`glide`, 2],
+    ])
   })
 
   test(`hexagonal mirror x, x-y, z: lattice-equivalent planes collapse to one family`, () => {
@@ -347,15 +359,6 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     )
     const planes = elements.filter((el) => el.kind === `mirror` || el.kind === `glide`)
     expect(planes).toHaveLength(2)
-  })
-
-  test(`R-3m (#166) emits a g-glide: rhombohedral diagonal glides reduce to no a/b/c/n/d letter in the hexagonal-axes basis, so glide_letter must fall back to "g"`, () => {
-    // The reduced glide vector (1/6, 1/3, 1/3) — no half cell-axis (a/b/c), half diagonal
-    // (n), or quarter diagonal (d) — hits glide_letter's otherwise-untested catch-all "g".
-    const g_glides = elements_for(166).filter((elem) => elem.label === `g`)
-    expect(g_glides).toHaveLength(3) // non-empty, so the every() below cannot pass vacuously
-    // and they really are glide planes, not mislabeled as something else
-    expect(g_glides.every((elem) => elem.kind === `glide` && elem.order === 2)).toBe(true)
   })
 
   test(`every space group yields classifiable operations`, () => {
@@ -560,7 +563,8 @@ describe(`cell clipping helpers`, () => {
 describe(`dash_segments`, () => {
   test(`dashes touch both segment ends and never overlap`, () => {
     const segs = dash_segments(10, 0.45, 0.3)
-    expect(segs.length).toBeGreaterThan(2)
+    // floor((10 + 0.3) / (0.45 + 0.3)) = 13 dashes fit
+    expect(segs).toHaveLength(13)
     // first dash starts at 0, last dash ends exactly at the segment length
     expect(segs[0].center - segs[0].length / 2).toBeCloseTo(0, 10)
     const last = segs[segs.length - 1]

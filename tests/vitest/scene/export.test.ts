@@ -384,19 +384,29 @@ describe(`3D Export Color Preservation`, () => {
       const geom = new SphereGeometry(1)
 
       // Add two meshes with same material name
-      const mat1 = new MeshStandardMaterial({ color: new Color(1, 0, 0) })
+      const mat1 = new MeshStandardMaterial({ color: new Color(1, 0, 0), opacity: 0.5 })
       mat1.name = `shared`
       scene.add(new Mesh(geom, mat1))
       const mat2 = new MeshStandardMaterial({ color: new Color(0, 1, 0) })
       mat2.name = `shared`
       scene.add(new Mesh(geom, mat2))
 
+      // the first material of a name wins and is written as one complete block: sRGB diffuse
+      // and ambient, fixed specular term and exponent, its opacity as d, highlight shading
       const mtl = generate_mtl_content(scene)
-      expect(mtl.match(/newmtl shared/g)).toHaveLength(1) // deduplicated
-      expect(mtl).toContain(`Ks`) // specular
-      expect(mtl).toContain(`Ns`) // specular exponent
-      expect(mtl).toContain(`Ka`) // ambient
-      expect(mtl).toContain(`illum`) // illumination
+      expect(mtl.match(/newmtl /g)).toHaveLength(1)
+      expect(mtl).toContain(
+        [
+          `newmtl shared`,
+          `Kd 1.000000 0.000000 0.000000`,
+          `Ka 0.484535 0.000000 0.000000`,
+          `Ks 0.500000 0.500000 0.500000`,
+          `Ns 96.078431`,
+          `d 0.500000`,
+          `illum 2`,
+        ].join(`\n`),
+      )
+      expect(mtl).not.toContain(`Kd 0.000000 1.000000 0.000000`)
     })
 
     // unnamed materials and materials without a color (ShaderMaterial) both fall back

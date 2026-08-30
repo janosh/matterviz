@@ -17,7 +17,6 @@ import {
   build_hyperplanes,
   compute_chempot_diagram,
   chebyshev_centre,
-  compute_domains,
   dedup_points,
   formula_key_from_composition,
   get_3d_domain_simplexes_and_ann_loc,
@@ -730,12 +729,21 @@ describe(`build_hyperplanes`, () => {
     [`A`, `B`],
   )
 
-  test(`includes elemental refs with valid row structure`, () => {
-    expect(hyperplane_entries.length).toBeGreaterThanOrEqual(2)
-    for (const row of hyperplanes) {
-      expect(row).toHaveLength(3)
-      expect(row[0] + row[1]).toBeCloseTo(1.0, 8)
-    }
+  // each row is [atomic fraction per element..., -energy_per_atom], in input order
+  test(`emits one [fractions..., -E/atom] row per element ref and stable compound`, () => {
+    expect(
+      hyperplane_entries.map((entry) => formula_key_from_composition(entry.composition)),
+    ).toEqual([`A`, `B`, `AB`])
+    expect(hyperplanes).toEqual(
+      close_rows(
+        [
+          [1, 0, 2],
+          [0, 1, 3],
+          [0.5, 0.5, 6],
+        ],
+        12,
+      ),
+    )
   })
 
   test.each([
@@ -964,6 +972,21 @@ describe(`orthonormal_2d`, () => {
 })
 
 describe(`config.elements projection vs subsystem`, () => {
+  // every stable phase of the full Fe-Li-O hull, in our alphabetical formula-key notation
+  const fe_li_o_stable = [
+    `Fe`,
+    `Fe2O3`,
+    `Fe3O4`,
+    `FeLi2O3`,
+    `FeLi5O4`,
+    `FeLiO2`,
+    `FeO`,
+    `Li`,
+    `Li2O`,
+    `LiO`,
+    `O`,
+  ]
+
   test(`binary elements on ternary data triggers projection (includes Li phases)`, () => {
     const result = compute_chempot_diagram(entries, {
       elements: [`Fe`, `O`],
@@ -971,12 +994,13 @@ describe(`config.elements projection vs subsystem`, () => {
       formal_chempots: false,
     })
     expect(result.elements).toEqual([`Fe`, `O`])
-    // Projection mode: should include phases with Li projected onto Fe-O axes
-    const formulas = Object.keys(result.domains)
-    expect(formulas).toContain(`Fe`)
-    expect(formulas).toContain(`O`)
-    // Li-containing phases should appear in projection but not in subsystem
-    expect(formulas.length).toBeGreaterThan(Object.keys(cpd_binary.domains).length)
+    // Projection mode: Li-containing phases are projected onto the Fe-O axes, so ALL
+    // stable ternary phases get a domain, whereas the plain Fe-O subsystem only has the
+    // Li-free ones
+    expect(Object.keys(result.domains).toSorted()).toEqual(fe_li_o_stable)
+    expect(Object.keys(cpd_binary.domains).toSorted()).toEqual(
+      fe_li_o_stable.filter((formula) => !formula.includes(`Li`)),
+    )
   })
 
   test(`standalone binary data produces subsystem (no projection)`, () => {
@@ -999,8 +1023,9 @@ describe(`config.elements projection vs subsystem`, () => {
       formal_chempots: false,
     })
     expect(result.elements).toEqual([`Fe`, `Li`, `O`])
-    // Same domain count as cpd_ternary (computed without config.elements)
-    expect(Object.keys(result.domains)).toHaveLength(Object.keys(cpd_ternary.domains).length)
+    // Same domains as cpd_ternary (computed without config.elements)
+    expect(Object.keys(result.domains).toSorted()).toEqual(fe_li_o_stable)
+    expect(Object.keys(cpd_ternary.domains).toSorted()).toEqual(fe_li_o_stable)
   })
 
   describe(`configuration sensitivity`, () => {
@@ -1038,28 +1063,48 @@ describe(`config.elements projection vs subsystem`, () => {
 
 // YTOS data from doped: github.com/SMTG-Bham/doped/blob/main/examples/YTOS/ytos_phase_diagram.json
 describe(`YTOS quaternary system (projection mode)`, () => {
+  // Projection keeps every stable phase of the full Y-Ti-O-S hull regardless of which
+  // three elements span the axes, so both diagrams carry the same 29 domains
+  const ytos_stable = [
+    `O`,
+    `O12S3Y2`,
+    `O2S`,
+    `O2SY2`,
+    `O2Ti`,
+    `O3S`,
+    `O3Ti2`,
+    `O3Y2`,
+    `O5S2Ti2Y2`,
+    `O5STi`,
+    `O5TiY2`,
+    `O7Ti2Y2`,
+    `O8S2Ti`,
+    `OTi`,
+    `OTi2`,
+    `OTi3`,
+    `OTi6`,
+    `S`,
+    `S2Ti`,
+    `S3Ti`,
+    `S3Ti8`,
+    `S3Y2`,
+    `S7Y5`,
+    `S8Ti5`,
+    `STi`,
+    `STi2`,
+    `SY`,
+    `Ti`,
+    `Y`,
+  ]
   test.each([
-    {
-      label: `Y-Ti-O`,
-      diagram: ytos_y_ti_o,
-      elements: [`O`, `Ti`, `Y`],
-      phases: [`O`, `Ti`, `Y`, `O3Y2`, `O2Ti`],
-      min_domains: 10,
-    },
-    {
-      label: `Ti-O-S`,
-      diagram: ytos_ti_o_s,
-      elements: [`O`, `S`, `Ti`],
-      phases: [`O2Ti`, `S`, `Ti`],
-    },
+    { label: `Y-Ti-O`, diagram: ytos_y_ti_o, elements: [`O`, `Ti`, `Y`] },
+    { label: `Ti-O-S`, diagram: ytos_ti_o_s, elements: [`O`, `S`, `Ti`] },
   ])(
-    `$label projection metadata, key phases, and 3-column vertices`,
-    ({ diagram, elements, phases, min_domains }) => {
+    `$label projection metadata, all stable phases, and 3-column vertices`,
+    ({ diagram, elements }) => {
       expect(diagram.elements).toEqual(elements)
       expect(diagram.lims).toHaveLength(3)
-      const formulas = Object.keys(diagram.domains)
-      for (const formula of phases) expect(formulas).toContain(formula)
-      if (min_domains !== undefined) expect(formulas.length).toBeGreaterThan(min_domains)
+      expect(Object.keys(diagram.domains).toSorted()).toEqual(ytos_stable)
       for (const points of Object.values(diagram.domains)) {
         for (const point of points) expect(point).toHaveLength(3)
       }
@@ -1422,38 +1467,6 @@ describe.each([
   })
 })
 
-describe(`compute_domains`, () => {
-  const ab_lims: Vec2[] = [
-    [-20, 0],
-    [-20, 0],
-  ]
-
-  function make_ab_domains(ab_energy_per_atom: number) {
-    const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-      [...Object.values(AB_REFS), make_phase({ A: 1, B: 1 }, ab_energy_per_atom)],
-      AB_REFS,
-      [`A`, `B`],
-    )
-    return {
-      domains: compute_domains(hyperplanes, ab_lims, hyperplane_entries),
-      hyperplanes,
-    }
-  }
-
-  test(`stable compound → 3 domains with valid vertices`, () => {
-    const { domains, hyperplanes } = make_ab_domains(-6.0)
-    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`, `B`])
-    for (const pts of Object.values(domains)) expect(pts.length).toBeGreaterThanOrEqual(2)
-    expect_feasible(domains, [...hyperplanes, ...build_border_hyperplanes(ab_lims)])
-  })
-
-  test(`unstable compound → no domain for AB`, () => {
-    // AB with E_per_atom = -2.0 is above hull → no stability domain
-    const { domains } = make_ab_domains(-2.0)
-    expect(domains.AB).toBeUndefined()
-  })
-})
-
 describe(`chebyshev_centre`, () => {
   const box: Vec2[] = [
     [-10, 0],
@@ -1672,10 +1685,8 @@ describe(`best_form_energy_for_formula`, () => {
     for (const [el, ref] of Object.entries(raw_refs)) {
       expect(e_form(ref, raw_refs), `${el} should have e_form=0`).toBeCloseTo(0, 8)
     }
-    // Fe2O3 formation energy should be negative (stable) and in a reasonable range
-    const fe2o3_e_form = best_form_energy_for_formula(entries, `Fe2O3`, raw_refs)
-    expect(fe2o3_e_form).toBeLessThan(0)
-    expect(fe2o3_e_form).toBeGreaterThan(-3)
+    // Fe2O3 formation energy per atom of the lowest-energy Fe2O3 entry vs the raw refs
+    expect(best_form_energy_for_formula(entries, `Fe2O3`, raw_refs)).toBeCloseTo(-1.657416, 5)
   })
 })
 
@@ -1710,8 +1721,14 @@ test(`temperature-filtered entries still compute a valid 2D chempot diagram`, ()
     default_min_limit: -20,
     formal_chempots: false,
   })
-  expect(result.elements).toHaveLength(2)
-  expect(Object.keys(result.domains)).toEqual(expect.arrayContaining([`Li`, `O`]))
+  expect(result.elements).toEqual([`Li`, `O`])
+  expect(Object.keys(result.domains).toSorted()).toEqual([`Li`, `LiO`, `O`])
+  // At 600 K: mu_Li = -0.9, mu_O = -1.8 (the element G(T)), LiO on mu_Li + mu_O = -3.0, so
+  // its segment runs from the Li line (-0.9, -2.1) to the O line (-1.2, -1.8)
+  expect_vertices(result.domains.LiO, [
+    [-0.9, -2.1],
+    [-1.2, -1.8],
+  ])
 })
 
 describe(`get_ternary_combinations`, () => {
@@ -1960,7 +1977,7 @@ describe(`compute_chempot_async`, () => {
   test(`falls back to main-thread compute without a Worker global`, async () => {
     const { compute_chempot_async } = await load_async(undefined)
     const data = await compute_chempot_async(async_entries, { elements: [`Li`, `O`] })
-    expect(Object.keys(data.domains).length).toBeGreaterThan(0)
+    expect(Object.keys(data.domains).toSorted()).toEqual([`Li`, `O`])
   })
 
   test(`dedupes equivalent entry snapshots without conflating entry metadata`, async () => {

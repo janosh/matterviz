@@ -46,15 +46,32 @@ describe(`vaspout.h5 parsing`, () => {
     for (const frame of trajectory.frames) {
       expect(Array.isArray(frame.metadata?.forces)).toBe(true)
       expect(frame.metadata?.volume).toBeCloseTo(5.43 ** 3, 6)
-      expect(frame.metadata?.scf_energy_delta).toBeGreaterThan(0)
-      expect(frame.metadata?.scf_rms).toBeGreaterThan(0)
-      expect(frame.metadata?.scf_charge_rms).toBeGreaterThan(0)
     }
-    // SCF summaries flow through the shared extractor into plot series
-    const extracted = full_data_extractor(trajectory.frames[0])
-    for (const key of [`n_scf_steps`, `scf_energy_delta`, `scf_rms`, `scf_charge_rms`]) {
-      expect(extracted[key], key).toBeGreaterThan(0)
+    // The fixture stores the final SCF residuals per ionic step as decades: charge RMS
+    // 10^-7, 10^-5, 10^-4, 10^-3.5, 10^-3 and the energy RMS sqrt(10) above each of them
+    const charge_rms = [1e-7, 1e-5, 1e-4, 10 ** -3.5, 1e-3]
+    for (const [frame_idx, frame] of trajectory.frames.entries()) {
+      const label = `frame ${frame_idx}`
+      expect(frame.metadata?.scf_charge_rms, label).toBeCloseTo(charge_rms[frame_idx], 12)
+      expect(frame.metadata?.scf_rms, label).toBeCloseTo(
+        Math.sqrt(10) * charge_rms[frame_idx],
+        12,
+      )
     }
+    // ...while the last |ΔE| grows step over step, as fewer SCF iterations converge less far
+    const energy_deltas = trajectory.frames.map((frame) =>
+      Number(frame.metadata?.scf_energy_delta),
+    )
+    expect(energy_deltas[0]).toBeCloseTo(3.009464147218921e-5, 15)
+    expect(energy_deltas).toEqual(energy_deltas.toSorted((low, high) => low - high))
+    // SCF summaries flow through the shared extractor into plot series unchanged
+    const frame_0_metadata = trajectory.frames[0].metadata
+    expect(full_data_extractor(trajectory.frames[0])).toMatchObject({
+      n_scf_steps: 12,
+      scf_energy_delta: frame_0_metadata?.scf_energy_delta,
+      scf_rms: frame_0_metadata?.scf_rms,
+      scf_charge_rms: frame_0_metadata?.scf_charge_rms,
+    })
 
     // Cubic 5.43 Å lattice survives the round trip
     const structure = trajectory.frames.at(-1)?.structure

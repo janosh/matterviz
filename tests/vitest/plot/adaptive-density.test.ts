@@ -129,14 +129,8 @@ describe(`adaptive density utilities`, () => {
     ).toBe(`boundary`)
   })
 
-  it(`computes series extents without materializing dense input arrays`, () => {
-    expect(series_extents(series)).toEqual({
-      x: [-0.10500000000000001, 2.205],
-      y: [-0.11000000000000001, 2.31],
-    })
-  })
-
   it.each([
+    { range_padding: undefined, x: [-0.105, 2.205], y: [-0.11, 2.31] }, // default 5%
     { range_padding: 0, x: [0, 2.1], y: [0, 2.2] },
     { range_padding: 0.1, x: [-0.21, 2.31], y: [-0.22, 2.42] },
   ])(`honours range_padding=$range_padding`, ({ range_padding, x, y }) => {
