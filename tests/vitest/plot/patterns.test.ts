@@ -141,6 +141,10 @@ describe(`resolve_pattern`, () => {
     [{ solidity: NaN }, /solidity must be in \[0, 1\]/],
     [{ angle: NaN }, /angle must be finite/],
     [{ angle: Infinity }, /angle must be finite/],
+    [{ line_width: -1 }, /line_width must be finite and ≥ 0/],
+    [{ line_width: NaN }, /line_width must be finite and ≥ 0/],
+    [{ dash: [4, -2] }, /dash lengths must be finite and ≥ 0/],
+    [{ dash: [Infinity, 2] }, /dash lengths must be finite and ≥ 0/],
     // shorthand lookup must not pick up inherited Object properties
     [`toString` as PatternShape, /Unknown pattern shape: toString/],
   ])(`rejects invalid options %j`, (opts, message) => {

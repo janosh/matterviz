@@ -297,6 +297,15 @@ export function resolve_pattern(
     throw new Error(`pattern solidity must be in [0, 1], got ${solidity}`)
   }
   if (!Number.isFinite(angle)) throw new Error(`pattern angle must be finite, got ${angle}`)
+  const non_negative = (val: number) => Number.isFinite(val) && val >= 0
+  if (opts.line_width != null && !non_negative(opts.line_width)) {
+    throw new Error(`pattern line_width must be finite and ≥ 0, got ${opts.line_width}`)
+  }
+  if (Array.isArray(opts.dash) && !opts.dash.every(non_negative)) {
+    throw new Error(
+      `pattern dash lengths must be finite and ≥ 0, got ${JSON.stringify(opts.dash)}`,
+    )
+  }
   const geometry = tile_geometry(shape, size, solidity)
   const replace = opts.mode === `replace`
   // Auto-contrast against the color the texture is painted over; CSS-variable or otherwise
