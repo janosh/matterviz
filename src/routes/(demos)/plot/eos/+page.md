@@ -1,6 +1,6 @@
 # Equation of State
 
-`fit_eos(volumes, energies, kind)` fits the four parameters E<sub>0</sub>, V<sub>0</sub>, B<sub>0</sub>, B<sub>0</sub>' of a Birch–Murnaghan, Murnaghan or Vinet equation of state to an energy–volume scan (Levenberg–Marquardt, seeded from a parabola through the data). `EosPlot` does the fit and draws the data points, the fitted curve(s) and the parameters in one go. The forms and their parameterization are identical to `pymatgen.analysis.eos`, so fits agree with pymatgen to ~1e-6 in E<sub>0</sub>/V<sub>0</sub> and ~1e-4 in B<sub>0</sub>/B<sub>0</sub>'.
+`fit_eos(volumes, energies, kind)` fits the four parameters E<sub>0</sub>, V<sub>0</sub>, B<sub>0</sub>, B<sub>0</sub>' of a Birch–Murnaghan, Murnaghan or Vinet equation of state to an energy–volume scan (Levenberg–Marquardt, seeded from a parabola through the data). `EosPlot` does the fit and draws the data points, the fitted curve(s) and the parameters in one go. The forms and their parameterization are identical to `pymatgen.analysis.eos`, so fits agree with pymatgen to better than 1e-7 (relative) in E<sub>0</sub>/V<sub>0</sub> and 1e-5 in B<sub>0</sub>/B<sub>0</sub>'.
 
 ## Fitting a Scan
 
@@ -52,7 +52,7 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 
 ## Sparse or Noisy Data
 
-`fit_eos` needs at least four distinct volumes that bracket the energy minimum (a scan entirely on one side of V<sub>0</sub> is refused, as in pymatgen); the ASE equation-of-state tutorial's five-point fcc Ag scan is enough. Its two central points share the lowest energy (to the 10 meV the tutorial quotes), so the minimum is located only by the curvature of their neighbours. Beyond the fit itself, `eos_pressure(kind, fit, volume)` gives P(V) = −dE/dV in eV/Å³ (× `EV_PER_A3_TO_GPA` for GPa):
+`fit_eos` needs at least four volumes that bracket the energy minimum (a scan entirely on one side of V<sub>0</sub> is refused, as in pymatgen); the ASE equation-of-state tutorial's five-point fcc Ag scan is enough. Its two central points share the lowest energy (to the 10 meV the tutorial quotes), so the minimum is located only by the curvature of their neighbours. Beyond the fit itself, `eos_pressure(kind, fit, volume)` gives P(V) = −dE/dV in eV/Å³ (× `EV_PER_A3_TO_GPA` for GPa):
 
 ```svelte example
 <script lang="ts">

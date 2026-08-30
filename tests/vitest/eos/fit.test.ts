@@ -1,4 +1,3 @@
-import { EV_PER_A3_TO_GPA } from '$lib/constants'
 import type { EosKind, EosParams } from '$lib/eos'
 import {
   EOS_KINDS,
@@ -59,7 +58,6 @@ describe(`fit_eos`, () => {
     for (const [idx, key] of PARAM_KEYS.entries()) {
       expect(rel_err(fit[key], ref[key])).toBeLessThan(idx < 2 ? 1e-7 : 1e-5)
     }
-    expect(fit.b0_gpa).toBeCloseTo(fit.b0 * EV_PER_A3_TO_GPA, 10)
     // the fit is a least-squares optimum: the pymatgen parameters cannot do better
     expect(fit.rmse).toBeCloseTo(rmse(kind, fit, volumes, energies), 12)
     expect(fit.rmse).toBeLessThanOrEqual(rmse(kind, ref, volumes, energies) * (1 + 1e-9))
@@ -116,12 +114,15 @@ describe(`fit_eos`, () => {
 
   test.each([
     [[1, 2, 3], [1, 2], /3 volumes but 2 energies/],
-    [[1, 1, 2, 3], [1, 2, 3, 4], /at least 4 distinct volumes, got 3/],
+    [[1, 2, 3], [1, 2, 3], /at least 4 volumes, got 3/],
+    [[1, 1, 2, 3], [1, 2, 3, 4], /volumes must be distinct/],
     [[1, 2, 3, 4], [1, 2, Number.NaN, 4], /energies finite, got V=3, E=NaN at index 2/],
-    [[Number.NaN, Number.NaN, Number.NaN, 1], [1, 2, 3, 4], /volumes must be positive/], // not "distinct"
-    [[-1, 2, 3, 4], [1, 2, 3, 4], /volumes must be positive.*V=-1, E=1 at index 0/],
-    [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5], /no minimum/], // straight line
-    [[1, 2, 3, 4, 5], [0, 3, 4, 3, 0], /no minimum/], // concave-down parabola
+    [[Number.NaN, Number.NaN, Number.NaN, 1], [1, 2, 3, 4], /volumes must be finite/], // not "distinct"
+    [[-1, 2, 3, 4], [1, 2, 3, 4], /volumes must be finite and positive.*V=-1, E=1 at index 0/],
+    [[1, 2, 3, Infinity], [3, 1, 2, 4], /volumes must be finite.*V=Infinity, E=4 at index 3/],
+    [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5], /must bracket the energy minimum/], // straight line
+    [[1, 2, 3, 4, 5], [0, 3, 4, 3, 0], /must bracket the energy minimum/], // concave-down
+    [[2, 1, 3, 4], [0, 0, 0, 1], /no minimum in volume/], // flat around the lowest point
   ])(`rejects bad input %j %j`, (volumes, energies, message) => {
     expect(() => fit_eos(volumes, energies)).toThrow(message)
   })

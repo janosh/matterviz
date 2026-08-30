@@ -79,13 +79,13 @@ Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`ma
 
 ```svelte example
 <script lang="ts">
-  import { PhononThermalPlot, format_num } from 'matterviz'
-  import type { ThermalProperties } from 'matterviz'
+  import { PhononThermalPlot, format_num, thermal_properties } from 'matterviz'
   import { phonon_dos } from '$site/phonons'
 
   let energy_unit = $state<'kJ/mol' | 'eV'>(`kJ/mol`)
-  let thermal = $state<ThermalProperties>()
+  const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
   const temperatures = Array.from({ length: 81 }, (_, idx) => 10 * idx)
+  const { zero_point_energy } = thermal_properties(dos, temperatures)
 </script>
 
 <label style="display: block; margin-bottom: 1ex">
@@ -94,17 +94,10 @@ Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`ma
     <option value="kJ/mol">kJ/mol, J/(K·mol)</option>
     <option value="eV">eV, meV/K</option>
   </select>
-  {#if thermal}
-    · zero-point energy {format_num(thermal.zero_point_energy, `.4f`)} eV/cell
-  {/if}
+  · zero-point energy {format_num(zero_point_energy, `.4f`)} eV/cell
 </label>
 
-<PhononThermalPlot
-  dos={phonon_dos['mp-2758-Sr4Se4-pbe']}
-  {temperatures}
-  {energy_unit}
-  bind:thermal
-/>
+<PhononThermalPlot {dos} {temperatures} {energy_unit} />
 ```
 
 ## Interactive Explorer

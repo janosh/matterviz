@@ -66,7 +66,7 @@ describe(`EosPlot`, () => {
   // before the fit error could be shown
   test.each([
     [{ energies: energies.slice(0, 5) }, /9 volumes but 5 energies/, 0],
-    [{ volumes: [1, 2, 3, 4], energies: [1, 2, 3, 4] }, /no minimum/, 4],
+    [{ volumes: [1, 2, 3, 4], energies: [1, 2, 3, 4] }, /must bracket/, 4],
   ])(`shows fit errors for %j and keeps rendering`, async (props, message, n_markers) => {
     const result = await render(props)
     expect(result.fits).toEqual([])

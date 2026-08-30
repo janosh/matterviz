@@ -10,7 +10,6 @@
   import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
   import type { FrequencyUnit } from './frequency-units'
-  import type { ThermalProperties } from './thermal'
   import { thermal_properties } from './thermal'
   import type { PhononDos } from './types'
 
@@ -25,9 +24,8 @@
   let {
     dos,
     temperatures = Array.from({ length: 101 }, (_, idx) => 10 * idx),
-    units = `THz`,
+    frequency_unit = `THz`,
     energy_unit = `kJ/mol`,
-    thermal = $bindable(),
     x_axis = {},
     y_axis = {},
     y2_axis = {},
@@ -35,22 +33,21 @@
   }: {
     dos: PhononDos
     temperatures?: number[] // K
-    units?: FrequencyUnit // of dos.frequencies, named as in Dos.svelte
-    energy_unit?: `eV` | `kJ/mol` // eV and meV/K, or kJ/mol and J/(K·mol); named as in NebPlot
-    thermal?: ThermalProperties | null // read-only output, always in eV and eV/K; null on error
+    frequency_unit?: FrequencyUnit // of dos.frequencies
+    energy_unit?: `eV` | `kJ/mol` // eV and meV/K, or kJ/mol and J/(K·mol)
   } & Omit<ComponentProps<typeof ScatterPlot>, `series`> = $props()
 
   // Invalid input (mismatched DOS arrays, negative temperatures, no positive frequencies) is
   // shown as a dismissible error over an empty plot rather than taking the component down
   const result = $derived.by(() => {
     try {
-      return { computed: thermal_properties(dos, temperatures, units), error_msg: undefined }
+      return {
+        computed: thermal_properties(dos, temperatures, frequency_unit),
+        error_msg: undefined,
+      }
     } catch (exc) {
       return { computed: null, error_msg: to_error(exc).message }
     }
-  })
-  $effect(() => {
-    thermal = result.computed
   })
   let error_msg = $derived(result.error_msg)
 

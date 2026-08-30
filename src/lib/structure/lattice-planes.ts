@@ -7,8 +7,9 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 
-// Like symmetry elements, planes are indexed in the input cell and blanked in other frames
-export const LATTICE_PLANES_INPUT_FRAME_NOTE = `Lattice planes are drawn only in the original (input) cell`
+// Like symmetry elements, planes are indexed in the input cell and blanked in other frames;
+// the structure viewer toasts this whenever either overlay is on and the cell leaves that frame
+export const OVERLAYS_INPUT_FRAME_NOTE = `Symmetry elements and lattice planes are drawn only in the original (input) cell`
 
 export interface LatticePlane {
   hkl: Vec3
@@ -18,13 +19,23 @@ export interface LatticePlane {
   opacity?: number
 }
 
+// A whole family is drawn by default, and the family of (hkl) has |h|+|k|+|l|+1 planes in the
+// cell: past this many the translucent fills merge into a solid block anyway, and a typo like
+// (100000) would otherwise clip and mesh that many polygons (or exceed the max array length)
+export const MAX_AUTO_PLANES = 1000
+
 // Integer offsets whose plane crosses the unit cell: the extreme values of h·x + k·y + l·z
 // over the cell are reached at corners, i.e. the sums of the negative and positive indices.
-export function lattice_plane_offsets(hkl: Vec3): number[] {
-  math.validate_miller_indices(hkl)
+function lattice_plane_offsets(hkl: Vec3): number[] {
   const lo = hkl.reduce((sum, val) => sum + Math.min(val, 0), 0)
   const hi = hkl.reduce((sum, val) => sum + Math.max(val, 0), 0)
-  return Array.from({ length: hi - lo + 1 }, (_, idx) => lo + idx)
+  const n_planes = hi - lo + 1
+  if (n_planes > MAX_AUTO_PLANES) {
+    throw new Error(
+      `(${hkl.join(` `)}) has ${n_planes} lattice planes in the cell, more than the ${MAX_AUTO_PLANES} drawn automatically; pass explicit offsets to pick a subset`,
+    )
+  }
+  return Array.from({ length: n_planes }, (_, idx) => lo + idx)
 }
 
 // Cartesian polygons of the planes in `plane` clipped to the cell. Planes that miss the cell

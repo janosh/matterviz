@@ -9,7 +9,7 @@ import {
 } from '$lib/settings/viewer-state'
 import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
-import { get_element_counts, LATTICE_PLANES_INPUT_FRAME_NOTE } from '$lib/structure'
+import { get_element_counts, OVERLAYS_INPUT_FRAME_NOTE } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
@@ -757,12 +757,9 @@ describe(`Structure`, () => {
 
   // The symmetry-element and lattice-plane overlays only exist in the analyzed (input) cell and
   // are blanked for conventional/primitive views; that must be said (toast), not happen silently
-  test.each([
-    [`symmetry`, symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE],
-    [`lattice planes`, LATTICE_PLANES_INPUT_FRAME_NOTE],
-  ])(
+  test.each([`symmetry`, `lattice planes`])(
     `toasts why the %s overlay vanishes when the cell leaves the input frame`,
-    async (overlay, note) => {
+    async (overlay) => {
       await init_moyo_for_tests()
       const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
         { element: `Cu`, abc: [0, 0, 0] },
@@ -788,7 +785,9 @@ describe(`Structure`, () => {
 
       props.cell_type = `conventional`
       flushSync()
-      expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(note)
+      expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
+        OVERLAYS_INPUT_FRAME_NOTE,
+      )
     },
   )
 

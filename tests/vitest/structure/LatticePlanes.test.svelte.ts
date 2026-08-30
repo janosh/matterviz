@@ -1,6 +1,5 @@
 // Mounts LatticePlanes against the recording Threlte stub: one fill mesh and one outline per
-// family, and a family with invalid Miller indices is logged and skipped instead of taking the
-// whole scene down (the indices come from a bound text input, so (000) is a transient state).
+// family, disposed when the families change
 import type { Matrix3x3 } from '$lib/math'
 import LatticePlanes from '$lib/structure/LatticePlanes.svelte'
 import type { LatticePlane } from '$lib/structure/lattice-planes'
@@ -26,7 +25,6 @@ afterEach(() => {
   teardown?.()
   teardown = undefined
   threlte_stub.reset()
-  vi.restoreAllMocks()
 })
 
 const mount_planes = (planes: LatticePlane[]) => {
@@ -54,17 +52,4 @@ test(`draws one fan-triangulated fill and one outline per family and disposes th
   flushSync()
   expect(dispose).toHaveBeenCalledOnce()
   expect(vertex_counts(`Mesh`)).toEqual([12])
-})
-
-test(`an invalid family is logged and skipped, the valid ones still render`, () => {
-  const error = vi.spyOn(console, `error`).mockImplementation(() => {})
-  const props = mount_planes([{ hkl: [0, 0, 0] }, { hkl: [1, 0, 0] }])
-  expect(vertex_counts(`Mesh`)).toEqual([12])
-  expect(error).toHaveBeenCalledOnce()
-  expect(error.mock.calls[0][0]).toBe(`Skipping lattice plane [0,0,0]:`)
-  expect(String(error.mock.calls[0][1])).toContain(`do not define a plane`)
-  // and it recovers as soon as the indices become valid again
-  props.planes = [{ hkl: [0, 0, 1] }, { hkl: [1, 0, 0] }]
-  flushSync()
-  expect(vertex_counts(`Mesh`)).toEqual([12, 12])
 })

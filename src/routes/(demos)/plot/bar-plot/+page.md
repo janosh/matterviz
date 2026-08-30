@@ -94,12 +94,12 @@ Series can have **different categories**: DFT (PBE) includes CdTe while GW only 
 
 ## Pattern Fills
 
-Every bar series (and `Histogram`, `BoxPlot`, fill regions, treemap/sunburst nodes and the composition charts) accepts a `pattern` that hatches or textures the fill so series stay distinguishable in grayscale print or for color-blind readers. Below, one bar per shape in `PATTERN_SHAPES` (the order `plot_pattern(idx)` cycles through), each tuned via the controls. Pass a shape name, a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a `PatternOptions` object:
+Every bar series (and `Histogram`, `BoxPlot`, fill regions, treemap/sunburst nodes and the composition charts) accepts a `pattern` that hatches or textures the fill so series stay distinguishable in grayscale print or for color-blind readers. Below, one bar per shape in `PATTERN_SHAPES`, each tuned via the controls. Pass a shape name, a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a `PatternOptions` object:
 
-- `size`: tile period in px (default 8), `solidity`: fraction of the tile the texture covers (default 0.25), `line_width`: explicit stroke width for line shapes
-- `angle`: extra rotation on top of the shape's own orientation, `dash`: `solid` | `dashed` | `dotted` | custom dash array for line shapes
+- `size`: tile period in px (default 8), `solidity`: fraction of the tile the texture covers (default 0.25), which sets the line width of stroked shapes and the marker size of filled ones
+- `angle`: extra rotation on top of the shape's own orientation, `dash`: `solid` | `dashed` | `dotted` for line shapes
 - `mode: 'overlay'` (default) draws the texture in an auto-contrasting color over the bar color; `mode: 'replace'` draws it in the bar color on a transparent background (plotly's `fillmode`)
-- `fg`, `bg`, `fg_opacity` override the colors
+- `fg`, `bg` override the texture and backdrop colors
 
 ```svelte example
 <script lang="ts">

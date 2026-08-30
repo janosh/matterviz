@@ -15,8 +15,10 @@ const MAX_REDUCTION_STEPS = 64
 
 // (hkl) reduced by its gcd, after rejecting inputs that pick out no plane. Called once
 // per public entry point; everything below it takes indices that are already reduced.
-const reduced_miller_indices = (miller_indices: Vec3): Vec3 =>
-  math.reduce_miller_indices(math.validate_miller_indices(miller_indices))
+function reduced_miller_indices(miller_indices: Vec3): Vec3 {
+  math.validate_miller_indices(miller_indices)
+  return math.reduce_miller_indices(miller_indices)
+}
 
 // Perpendicular distance between neighbouring (hkl) lattice planes, Å.
 export const interplanar_spacing = (lattice_matrix: Matrix3x3, miller_indices: Vec3): number =>

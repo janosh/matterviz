@@ -48,7 +48,7 @@
   } from '$lib/structure'
   import type { CellType, SymmetryDataset, SymmetrySettings, WyckoffPos } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
-  import { LATTICE_PLANES_INPUT_FRAME_NOTE } from './lattice-planes'
+  import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
@@ -430,15 +430,8 @@
     )
     const planes_on = (scene_props.lattice_planes?.length ?? 0) > 0
     const hidden = (symmetry_on || planes_on) && !session.shows_input_frame
-    if (hidden && !overlay_hidden_by_frame) {
-      untrack(() =>
-        show_toast(
-          symmetry_on
-            ? symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE
-            : LATTICE_PLANES_INPUT_FRAME_NOTE,
-        ),
-      )
-    }
+    if (hidden && !overlay_hidden_by_frame)
+      untrack(() => show_toast(OVERLAYS_INPUT_FRAME_NOTE))
     overlay_hidden_by_frame = hidden
   })
 

@@ -8,7 +8,7 @@ import type { D3InterpolateName } from '$lib/colors'
 import { opaque_contrast_color } from '$lib/colors'
 import { format_value } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
-import type { FillPattern, ResolvedPattern } from '$lib/plot/core/patterns'
+import type { ResolvedPattern } from '$lib/plot/core/patterns'
 import { resolve_pattern } from '$lib/plot/core/patterns'
 import { create_color_scale } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
@@ -123,21 +123,10 @@ export function compute_node_infos<Metadata>(
     }
     return label_fill
   }
-  // Same memo idea for patterns: a flag pattern typically repeats one spec over many nodes
-  const pattern_cache = new Map<string, ResolvedPattern>()
-  const pattern_for = (spec: FillPattern, fill: string) => {
-    const key = `${fill}|${JSON.stringify(spec)}`
-    let pattern = pattern_cache.get(key)
-    if (!pattern) {
-      pattern = resolve_pattern(spec, fill, pattern_prefix)
-      pattern_cache.set(key, pattern)
-    }
-    return pattern
-  }
   return arcs.map((arc) => {
     const { text, extended, short } = node_label_variants(arc, label_text, value_format)
     const fill = color_for(arc)
-    const pattern = arc.pattern && pattern_for(arc.pattern, fill)
+    const pattern = arc.pattern && resolve_pattern(arc.pattern, fill, pattern_prefix)
     const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
       variant === undefined
         ? []
@@ -152,7 +141,7 @@ export function compute_node_infos<Metadata>(
       }`,
       fill,
       // Labels sit on the tile backdrop: the node color, or the page in `replace` mode
-      label_fill: contrast(pattern ? (pattern.bg ?? `transparent`) : fill),
+      label_fill: contrast(pattern?.bg ?? fill),
       pattern,
       ...(clickable ? { clickable: clickable(arc) } : {}),
     }

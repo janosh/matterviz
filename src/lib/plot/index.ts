@@ -71,7 +71,7 @@ export type {
   MarginalType,
 } from './core/marginals'
 // Hatch/texture fills: the `pattern` accepted by bars, hierarchy nodes, fill regions, …
-export { PATTERN_SHAPES, plot_pattern } from './core/patterns'
+export { PATTERN_SHAPES } from './core/patterns'
 export type {
   FillPattern,
   PatternDash,

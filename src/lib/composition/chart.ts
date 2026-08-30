@@ -47,7 +47,7 @@ export const composition_segments = (
         fraction,
         color,
         // Labels sit on the tile backdrop: the segment color, or the page in `replace` mode
-        text_color: opaque_contrast_color(pattern ? (pattern.bg ?? `transparent`) : color),
+        text_color: opaque_contrast_color(pattern?.bg ?? color),
         pattern,
       }
     },

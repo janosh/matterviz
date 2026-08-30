@@ -41,7 +41,7 @@ Leaves carry `value`; cell areas are proportional to it and parents sum their le
 
 ## Pattern fills
 
-Any node can carry a `pattern` to hatch or texture its cell on top of its color, e.g. to flag estimated, predicted or otherwise special entries. Patterns are per node and not inherited by children. Pass a shape name (`diagonal`, `dots`, `cross`, `waves`, `bricks`, `hexagons`, …), a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a full options object with `size`, `solidity`, `angle`, `dash` (`solid`, `dashed`, `dotted` or a custom dash array), `fg`/`bg` colors and `mode: 'replace'` to draw the texture in the node's color on a transparent background. The legend swatch picks up the same pattern.
+Any node can carry a `pattern` to hatch or texture its cell on top of its color, e.g. to flag estimated, predicted or otherwise special entries. Patterns are per node and not inherited by children. Pass a shape name (`diagonal`, `dots`, `cross`, `waves`, `bricks`, `hexagons`, …), a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a full options object with `size`, `solidity`, `angle`, `dash` (`solid`, `dashed` or `dotted`), `fg`/`bg` colors and `mode: 'replace'` to draw the texture in the node's color on a transparent background. The legend swatch picks up the same pattern.
 
 ```svelte example
 <script lang="ts">

@@ -2,7 +2,6 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   clip_frac_plane_to_cell,
-  lattice_plane_offsets,
   lattice_plane_polygons,
   polygon_edge_vertices,
   polygon_fan_vertices,
@@ -49,22 +48,6 @@ const expect_valid_polygon = (
   expect(turns.has(0)).toBe(false)
 }
 
-describe(`lattice_plane_offsets`, () => {
-  test.each<{ hkl: Vec3; offsets: number[] }>([
-    { hkl: [1, 0, 0], offsets: [0, 1] },
-    { hkl: [1, 1, 1], offsets: [0, 1, 2, 3] },
-    { hkl: [1, -1, 0], offsets: [-1, 0, 1] },
-    { hkl: [2, 1, 0], offsets: [0, 1, 2, 3] },
-    { hkl: [0, 0, -2], offsets: [-2, -1, 0] },
-  ])(`$hkl → $offsets`, ({ hkl, offsets }) => {
-    expect(lattice_plane_offsets(hkl)).toEqual(offsets)
-  })
-
-  test(`rejects (000), which would otherwise yield the lone offset 0`, () => {
-    expect(() => lattice_plane_offsets([0, 0, 0])).toThrow(`do not define a plane`)
-  })
-})
-
 describe(`lattice_plane_polygons`, () => {
   test(`(100) in a cubic cell is the two faces x = 0 and x = a`, () => {
     const polys = lattice_plane_polygons({ hkl: [1, 0, 0] }, cubic)
@@ -83,21 +66,24 @@ describe(`lattice_plane_polygons`, () => {
     expect(faces([-1, 0, 0]).toReversed()).toEqual(faces([1, 0, 0]))
   })
 
-  // every polygon of a family is valid, and the whole family has the expected vertex counts:
-  // corner and edge touches are dropped, faces and diagonals appear exactly once
-  test.each<[string, Matrix3x3, Vec3, number[]]>([
-    [`cubic`, cubic, [1, 1, 0], [4]],
-    [`cubic`, cubic, [1, -1, 0], [4]],
-    [`cubic`, cubic, [1, 1, 1], [3, 3]],
+  // every polygon of a family is valid and the family has the expected offsets (the integer
+  // levels h·x + k·y + l·z reaches over the cell, minus corner and edge touches) and vertex
+  // counts: faces and diagonals appear exactly once
+  test.each<[string, Matrix3x3, Vec3, number[], number[]]>([
+    [`cubic`, cubic, [1, 1, 0], [1], [4]],
+    [`cubic`, cubic, [1, -1, 0], [0], [4]],
+    [`cubic`, cubic, [1, 1, 1], [1, 2], [3, 3]],
     // (222) is the half-spacing stack: indices are used as given, not gcd-reduced
-    [`cubic`, cubic, [2, 2, 2], [3, 3, 6, 3, 3]],
-    [`cubic`, cubic, [5, 3, 1], [3, 4, 4, 4, 4, 4, 4, 3]],
-    [`triclinic`, triclinic, [1, 0, 0], [4, 4]],
-    [`triclinic`, triclinic, [1, 1, 0], [4]],
-    [`triclinic`, triclinic, [5, 3, 1], [3, 4, 4, 4, 4, 4, 4, 3]],
-    [`triclinic`, triclinic, [-2, 3, -1], [3, 4, 4, 4, 3]],
-  ])(`%s %j family`, (_label, lattice, hkl, vertex_counts) => {
+    [`cubic`, cubic, [2, 2, 2], [1, 2, 3, 4, 5], [3, 3, 6, 3, 3]],
+    [`cubic`, cubic, [0, 0, -2], [-2, -1, 0], [4, 4, 4]],
+    [`cubic`, cubic, [5, 3, 1], [1, 2, 3, 4, 5, 6, 7, 8], [3, 4, 4, 4, 4, 4, 4, 3]],
+    [`triclinic`, triclinic, [1, 0, 0], [0, 1], [4, 4]],
+    [`triclinic`, triclinic, [1, 1, 0], [1], [4]],
+    [`triclinic`, triclinic, [5, 3, 1], [1, 2, 3, 4, 5, 6, 7, 8], [3, 4, 4, 4, 4, 4, 4, 3]],
+    [`triclinic`, triclinic, [-2, 3, -1], [-2, -1, 0, 1, 2], [3, 4, 4, 4, 3]],
+  ])(`%s %j family`, (_label, lattice, hkl, offsets, vertex_counts) => {
     const polys = lattice_plane_polygons({ hkl }, lattice)
+    expect(polys.map(({ offset }) => offset)).toEqual(offsets)
     expect(polys.map(({ polygon }) => polygon.length)).toEqual(vertex_counts)
     for (const { offset, polygon } of polys)
       expect_valid_polygon(polygon, hkl, offset, lattice)
@@ -152,8 +138,15 @@ describe(`lattice_plane_polygons`, () => {
     [[1, 0.5, 0], `must be integers`],
     [[1, Number.NaN, 0], `must be integers`],
     [[1, 0, 0, 1] as unknown as Vec3, `must be 3 numbers`],
+    [[600, -600, 0], `1201 lattice planes in the cell, more than the 1000`], // would mesh 1201 polygons
+    [[10 ** 12, 0, 0], `more than the 1000`], // would exceed the max array length
   ])(`rejects invalid Miller indices %j`, (hkl, message) => {
     expect(() => lattice_plane_polygons({ hkl }, cubic)).toThrow(message)
+  })
+
+  test(`explicit offsets bypass the automatic plane-count limit`, () => {
+    const polys = lattice_plane_polygons({ hkl: [2000, 0, 0], offsets: [1000] }, cubic)
+    expect(polys.map(({ offset }) => offset)).toEqual([1000])
   })
 })
 

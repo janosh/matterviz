@@ -2,7 +2,6 @@
 // Birch–Murnaghan (3rd order), Murnaghan and Vinet forms, and a least-squares fit of their four
 // parameters (E0, V0, B0, B0') by Levenberg–Marquardt seeded from a parabola through the data.
 // Energies in eV, volumes in A^3, so B0 comes out in eV/A^3 (× EV_PER_A3_TO_GPA for GPa).
-import { EV_PER_A3_TO_GPA } from '$lib/constants'
 import { dot, solve_linear_system } from '$lib/math'
 
 export const EOS_KINDS = [`birch_murnaghan`, `murnaghan`, `vinet`] as const
@@ -23,7 +22,6 @@ export interface EosParams {
 
 export interface EosFit extends EosParams {
   kind: EosKind
-  b0_gpa: number
   rmse: number // root-mean-square energy residual, eV
 }
 
@@ -34,6 +32,9 @@ export interface EosFit extends EosParams {
 //   Murnaghan: E = E0 + (B0 V / B0') (r^B0' / (B0' − 1) + 1) − B0 V0 / (B0' − 1),  r = V0/V
 //   Vinet:     E = E0 + (4 B0 V0 / (B0' − 1)²) · G(t), t = 3 (B0' − 1)(η − 1) / 2, η = (V/V0)^(1/3),
 //              G = 1 − (1 + t) e^(−t)
+// Murnaghan and Vinet divide by B0' − 1 (Murnaghan also by B0'): removable singularities far
+// from physical B0' ≈ 3–6, so they are left as NaN rather than special-cased. The fitter never
+// lands on them (a NaN trial cost is rejected as "not downhill").
 export function eos_energy(kind: EosKind, params: EosParams, volume: number): number {
   const { e0, v0, b0, b0_prime } = params
   if (kind === `birch_murnaghan`) {
@@ -109,47 +110,37 @@ export function eos_pressure(kind: EosKind, params: EosParams, volume: number): 
 
 export const PARAM_KEYS = [`e0`, `v0`, `b0`, `b0_prime`] as const
 
-// Parabola through the data in the centred, scaled variable u = (V − mean) / std (the raw
-// V^4 moments of a 10–100 A^3 scan make the normal equations near-singular), read off as an EOS
-// guess: V0 at the vertex, E0 = E(V0), B0 = V0·d²E/dV² and the near-universal B0' ≈ 4.
+// Parabola through the lowest-energy point and its two neighbours in volume, read off as an
+// EOS guess: V0 at the vertex, E0 = E(V0), B0 = V0·d²E/dV² and the near-universal B0' ≈ 4.
 function parabola_guess(volumes: readonly number[], energies: readonly number[]): EosParams {
-  const mean = volumes.reduce((sum, vol) => sum + vol, 0) / volumes.length
-  const std = Math.sqrt(
-    volumes.reduce((sum, vol) => sum + (vol - mean) ** 2, 0) / volumes.length,
-  )
-  const scaled = volumes.map((vol) => (vol - mean) / std)
-  // normal equations of the quadratic fit: Σ u^(row+col) on the left, Σ u^row E on the right
-  const power_sum = (power: number, weights?: readonly number[]) =>
-    scaled.reduce((sum, val, idx) => sum + val ** power * (weights?.[idx] ?? 1), 0)
-  const powers = [0, 1, 2]
-  const coeffs = solve_linear_system(
-    powers.map((row) => powers.map((col) => power_sum(row + col))),
-    powers.map((power) => power_sum(power, energies)),
-  )
-  if (!coeffs) throw new Error(`EOS fit: volumes ${JSON.stringify(volumes)} are degenerate`)
-  const [c_coef, b_coef, a_coef] = coeffs
-  if (a_coef <= 0) {
-    throw new Error(
-      `EOS fit: energies have no minimum in volume (parabola curvature ${a_coef})`,
-    )
-  }
+  const order = volumes
+    .map((_, idx) => idx)
+    .toSorted((idx_a, idx_b) => volumes[idx_a] - volumes[idx_b])
+  const min_pos = order.indexOf(energies.indexOf(Math.min(...energies)))
   // Same guard as pymatgen's EOS: a scan that does not bracket its minimum starts the
   // 4-parameter fit far from the truth and can settle in a wrong local minimum without any
   // symptom other than a large RMSE, so refuse it up front. Judged by the lowest-energy point,
   // not the parabola vertex: anharmonicity biases the vertex low, so a scan with more expansion
   // than compression can put the vertex outside the range while V0 itself is well inside.
-  const [v_min, v_max] = [Math.min(...volumes), Math.max(...volumes)]
-  const v_at_min_energy = volumes[energies.indexOf(Math.min(...energies))]
-  if (v_at_min_energy === v_min || v_at_min_energy === v_max) {
+  if (min_pos === 0 || min_pos === order.length - 1) {
     throw new Error(
-      `EOS fit: lowest energy is at the edge of the scan (V=${v_at_min_energy} of [${v_min}, ${v_max}]); the scan must bracket the energy minimum`,
+      `EOS fit: lowest energy is at the edge of the scan (V=${volumes[order[min_pos]]} of [${volumes[order[0]]}, ${volumes[order.at(-1) ?? 0]}]); the scan must bracket the energy minimum`,
     )
   }
-  const v0 = Math.min(Math.max(mean - (std * b_coef) / (2 * a_coef), v_min), v_max)
+  const [[v_a, e_a], [v_b, e_b], [v_c, e_c]] = order
+    .slice(min_pos - 1, min_pos + 2)
+    .map((idx) => [volumes[idx], energies[idx]])
+  // Newton form E = e_a + slope (V − v_a) + curvature (V − v_a)(V − v_b)
+  const slope = (e_b - e_a) / (v_b - v_a)
+  const curvature = ((e_c - e_b) / (v_c - v_b) - slope) / (v_c - v_a)
+  if (!(curvature > 0)) {
+    throw new Error(`EOS fit: energies have no minimum in volume (curvature ${curvature})`)
+  }
+  const v0 = (v_a + v_b) / 2 - slope / (2 * curvature)
   return {
-    e0: c_coef - b_coef ** 2 / (4 * a_coef),
+    e0: e_a + slope * (v0 - v_a) + curvature * (v0 - v_a) * (v0 - v_b),
     v0,
-    b0: (2 * a_coef * v0) / std ** 2,
+    b0: 2 * curvature * v0,
     b0_prime: 4,
   }
 }
@@ -158,8 +149,8 @@ const MAX_ITERATIONS = 500
 const REL_STEP_TOL = 1e-12
 
 // Fit the four EOS parameters to an energy–volume scan. Throws on malformed input (mismatched
-// lengths, fewer than four distinct volumes, non-finite values), a scan that does not bracket
-// its energy minimum, or a fit that diverges.
+// lengths, fewer than four volumes, repeated volumes, non-finite values), a scan that does not
+// bracket its energy minimum, or a fit that diverges.
 export function fit_eos(
   volumes: readonly number[],
   energies: readonly number[],
@@ -169,18 +160,19 @@ export function fit_eos(
   if (volumes.length !== energies.length) {
     throw new Error(`EOS fit: ${volumes.length} volumes but ${energies.length} energies`)
   }
-  // Finiteness first: NaN volumes are all "distinct" to a Set and would report a misleading count
+  // Finiteness first: NaN volumes are all "distinct" to a Set and would pass as such
   const bad_idx = volumes.findIndex(
-    (vol, idx) => !(vol > 0) || !Number.isFinite(energies[idx]),
+    (vol, idx) => !(Number.isFinite(vol) && vol > 0) || !Number.isFinite(energies[idx]),
   )
   if (bad_idx !== -1) {
     throw new Error(
-      `EOS fit: volumes must be positive and energies finite, got V=${volumes[bad_idx]}, E=${energies[bad_idx]} at index ${bad_idx}`,
+      `EOS fit: volumes must be finite and positive and energies finite, got V=${volumes[bad_idx]}, E=${energies[bad_idx]} at index ${bad_idx}`,
     )
   }
-  const n_distinct = new Set(volumes).size
-  if (n_distinct < 4) {
-    throw new Error(`EOS fit needs at least 4 distinct volumes, got ${n_distinct}`)
+  if (volumes.length < 4)
+    throw new Error(`EOS fit needs at least 4 volumes, got ${volumes.length}`)
+  if (new Set(volumes).size !== volumes.length) {
+    throw new Error(`EOS fit: volumes must be distinct, got ${JSON.stringify(volumes)}`)
   }
 
   const residuals = (params: EosParams): number[] =>
@@ -246,10 +238,5 @@ export function fit_eos(
       `EOS fit (${kind}) did not converge in ${MAX_ITERATIONS} iterations: ${JSON.stringify(params)}`,
     )
   }
-  return {
-    kind,
-    ...params,
-    b0_gpa: b0 * EV_PER_A3_TO_GPA,
-    rmse: Math.sqrt(current_cost / volumes.length),
-  }
+  return { kind, ...params, rmse: Math.sqrt(current_cost / volumes.length) }
 }

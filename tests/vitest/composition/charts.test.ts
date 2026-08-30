@@ -80,9 +80,11 @@ describe(`shared segment helpers`, () => {
     expect(
       [...document.querySelectorAll(`defs pattern`)].map((def) => def.id).toSorted(),
     ).toEqual(ids.toSorted())
-    // replace mode paints no background rect inside the tile
-    expect(document.querySelector(`#${ids[1]} rect`)).toBeNull()
-    expect(document.querySelector(`#${ids[0]} rect`)).not.toBeNull()
+    // replace mode leaves the tile backdrop transparent
+    expect(document.querySelector(`#${ids[1]} rect`)?.getAttribute(`fill`)).toBe(`transparent`)
+    expect(document.querySelector(`#${ids[0]} rect`)?.getAttribute(`fill`)).not.toBe(
+      `transparent`,
+    )
   })
 
   test.each([

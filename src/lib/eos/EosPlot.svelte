@@ -3,6 +3,7 @@
   // fitted E0, V0, B0, B0' shown in a corner. Fitting happens here, so callers pass raw
   // (volumes, energies) and read the results back through the bindable `fits`.
   import { plot_color } from '$lib/colors'
+  import { EV_PER_A3_TO_GPA } from '$lib/constants'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import type { DataSeries } from '$lib/plot'
@@ -19,8 +20,6 @@
     fits = $bindable([]),
     show_fit_params = true,
     data_label = `E(V) data`,
-    x_axis = {},
-    y_axis = {},
     ...rest
   }: {
     volumes: number[]
@@ -82,8 +81,8 @@
 <ScatterPlot
   {...rest}
   {series}
-  x_axis={{ label: `V (Å³)`, ...x_axis }}
-  y_axis={{ label: `E (eV)`, ...y_axis }}
+  x_axis={{ label: `V (Å³)`, ...rest.x_axis }}
+  y_axis={{ label: `E (eV)`, ...rest.y_axis }}
   show_legend={rest.show_legend ?? !(show_fit_params && fit_result.fits.length > 0)}
   style={rest.style ?? `height: 400px;`}
 >
@@ -96,7 +95,7 @@
           <strong>— {EOS_KIND_LABELS[fit.kind]} fit</strong>
           <span>E<sub>0</sub> = {format_num(fit.e0, `.4f`)} eV</span>
           <span>V<sub>0</sub> = {format_num(fit.v0, `.3f`)} Å³</span>
-          <span>B<sub>0</sub> = {format_num(fit.b0_gpa, `.1f`)} GPa</span>
+          <span>B<sub>0</sub> = {format_num(fit.b0 * EV_PER_A3_TO_GPA, `.1f`)} GPa</span>
           <span>B<sub>0</sub>' = {format_num(fit.b0_prime, `.2f`)}</span>
           <span>RMSE = {format_num(fit.rmse * 1e3, `.2f`)} meV</span>
         </div>

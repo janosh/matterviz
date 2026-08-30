@@ -1,7 +1,7 @@
 <script lang="ts">
   // Translucent (hkl) lattice planes clipped to the unit cell, with opaque outlines so
   // overlapping planes stay legible (same treatment as the mirror planes in SymmetryElements).
-  import type { Matrix3x3, Vec3 } from '$lib/math'
+  import type { Matrix3x3 } from '$lib/math'
   import { dispose_on_change, positions_geometry } from '$lib/scene/geometry.svelte'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'
@@ -18,21 +18,10 @@
   const DEFAULT_OPACITY = 0.3
   const EDGE_OPACITY = 0.9
 
-  // One fill mesh (fan-triangulated) and one outline per plane family. A family with invalid
-  // Miller indices (e.g. (000) typed transiently into a bound input) is logged and skipped
-  // rather than taking down the whole scene with it.
-  const clipped_polygons = (plane: LatticePlane): Vec3[][] | null => {
-    try {
-      return lattice_plane_polygons(plane, lattice).map(({ polygon }) => polygon)
-    } catch (error) {
-      console.error(`Skipping lattice plane ${JSON.stringify(plane.hkl)}:`, error)
-      return null
-    }
-  }
+  // One fill mesh (fan-triangulated) and one outline per plane family
   const groups = $derived(
-    planes.flatMap((plane) => {
-      const polygons = clipped_polygons(plane)
-      if (!polygons) return []
+    planes.map((plane) => {
+      const polygons = lattice_plane_polygons(plane, lattice).map(({ polygon }) => polygon)
       const fill_geometry = positions_geometry(polygons.flatMap(polygon_fan_vertices).flat())
       fill_geometry.computeVertexNormals()
       return {

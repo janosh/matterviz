@@ -39,7 +39,7 @@ describe(`MillerIndexInput`, () => {
   }
 
   // Every accepted spelling emits exactly three integers; anything else leaves the bound
-  // value untouched (null) — partial input, non-integers and stray separators included.
+  // value untouched (null) — partial input, non-integers, stray separators and (000) included.
   test.each<[string, Vec3 | null]>([
     // compact single digits, optional leading minus per index
     [`001`, [0, 0, 1]],
@@ -47,7 +47,6 @@ describe(`MillerIndexInput`, () => {
     [`1-10`, [1, -1, 0]],
     [`-1-1-1`, [-1, -1, -1]],
     [` 110 `, [1, 1, 0]],
-    [`000`, [0, 0, 0]],
     // bar notation (combining macron U+0304 / overline U+0305) means negative
     [`1̄01`, [-1, 0, 1]],
     [`1̅01`, [-1, 0, 1]],
@@ -64,6 +63,8 @@ describe(`MillerIndexInput`, () => {
     // rejected
     [``, null],
     [`  `, null],
+    [`000`, null],
+    [`0 0 0`, null],
     [`1`, null],
     [`10`, null],
     [`1 0`, null],

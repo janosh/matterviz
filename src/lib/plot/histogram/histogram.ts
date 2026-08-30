@@ -66,7 +66,6 @@ export interface BinnedSeries {
   series_idx: number
   label: string
   color: string
-  pattern?: FillPattern
   bins: HistogramBin[]
   x_axis?: `x1` | `x2`
   y_axis?: `y1` | `y2`
@@ -218,7 +217,6 @@ export function compute_histogram_bins(
       series_idx,
       label: series_data.label ?? `Series ${series_idx + 1}`,
       color: series_color(series_data, series_idx),
-      pattern: series_data.pattern,
       bins,
       x_axis: series_data.x_axis,
       y_axis: series_data.y_axis,

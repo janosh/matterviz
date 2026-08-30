@@ -39,8 +39,7 @@ export const PATTERN_SHORTHANDS: Readonly<Record<PatternShorthand, PatternShape>
   o: `circles`,
 }
 
-// Every shape, ordered so consecutive entries stay visually distinct when auto-cycled
-// by series index (see plot_pattern)
+// Every shape, ordered so consecutive entries stay visually distinct when assigned by index
 export const PATTERN_SHAPES = [
   `diagonal`,
   `dots`,
@@ -59,28 +58,25 @@ export const PATTERN_SHAPES = [
   `hexagons`,
 ] as const satisfies readonly PatternShape[]
 
-// Stroke dashing for line shapes: named presets tile seamlessly on straight lines; a custom
-// dash array is used verbatim (make its sum divide `size` to avoid seams)
-export type PatternDash = `solid` | `dashed` | `dotted` | readonly number[]
+// Stroke dashing for line shapes; the presets tile seamlessly on straight lines
+export type PatternDash = `solid` | `dashed` | `dotted`
 
 export interface PatternOptions {
   shape?: PatternShape | PatternShorthand // default `diagonal`
   size?: number // tile period in px (spacing between repeats), default 8
   // Fraction of the tile the foreground covers, 0-1 (default 0.25). Sets line widths and
-  // marker sizes consistently across shapes; `line_width` overrides it for stroked shapes.
-  // Filled markers saturate at the largest marker that fits the tile (π/4 for dots, 3√3/16 for
-  // triangles) since a bigger one would be clipped at the tile edges.
+  // marker sizes consistently across shapes. Filled markers saturate at the largest marker
+  // that fits the tile (π/4 for dots, 3√3/16 for triangles) since a bigger one would be
+  // clipped at the tile edges.
   solidity?: number
-  line_width?: number // explicit stroke width in px for stroked shapes
   angle?: number // extra rotation in degrees on top of the shape's own orientation
   dash?: PatternDash
   // `overlay` (default) paints the texture over the mark's own fill color; `replace` draws the
   // texture in the mark's color on a transparent background (plotly's fillmode)
   mode?: `overlay` | `replace`
   // Texture color. Defaults to black/white for contrast against the fill (overlay) or to the
-  // mark's own color (replace)
+  // mark's own color (replace). Use an rgba/alpha color to tune the texture strength.
   fg?: string
-  fg_opacity?: number // default 0.5 (overlay) / 1 (replace)
   // Background behind the texture. Defaults to the mark's color (overlay) or transparent
   // (replace)
   bg?: string
@@ -89,18 +85,8 @@ export interface PatternOptions {
 // What marks accept: a shape name, a plotly-style shorthand, or full options
 export type FillPattern = PatternShape | PatternShorthand | PatternOptions
 
-// Pattern shape for the idx-th series, cycling through PATTERN_SHAPES (like plot_color)
-export const plot_pattern = (idx: number): PatternShape =>
-  PATTERN_SHAPES[idx % PATTERN_SHAPES.length]
-
-const normalize_pattern = (pattern: FillPattern): PatternOptions =>
-  typeof pattern === `string` ? { shape: pattern } : pattern
-
 const is_shorthand = (shape: string): shape is PatternShorthand =>
   Object.hasOwn(PATTERN_SHORTHANDS, shape)
-
-const pattern_shape = (shape: PatternShape | PatternShorthand): PatternShape =>
-  is_shorthand(shape) ? PATTERN_SHORTHANDS[shape] : shape
 
 // One `<pattern>` tile, fully resolved: geometry plus the paint the mark uses
 export interface ResolvedPattern {
@@ -109,7 +95,7 @@ export interface ResolvedPattern {
   width: number
   height: number
   transform: string | undefined // patternTransform
-  bg: string | undefined // tile background; undefined leaves it transparent
+  bg: string // tile background; `transparent` in replace mode
   fg: string
   fg_opacity: number
   d: string // tile geometry as one path (stroked or filled per `stroked`)
@@ -261,13 +247,11 @@ function tile_geometry(shape: PatternShape, size: number, solidity: number): Til
   throw new Error(`Unknown pattern shape: ${shape}`)
 }
 
-// Custom dash lengths are in unscaled px like `size`, so they shrink with the tile too
-const dash_array = (dash: PatternDash, size: number, scale: number): string | undefined => {
+const dash_array = (dash: PatternDash, size: number): string | undefined => {
   if (dash === `solid`) return undefined
   if (dash === `dashed`) return `${num(size / 2)} ${num(size / 2)}`
   // zero-length dashes with round caps render as dots of the line's width
-  if (dash === `dotted`) return `0 ${num(size / 2)}`
-  return dash.map((len) => num(len * scale)).join(` `)
+  return `0 ${num(size / 2)}`
 }
 
 // djb2 over the resolved fields -> short stable id suffix, so identical patterns within one
@@ -289,8 +273,11 @@ export function resolve_pattern(
   prefix: string,
   scale = 1,
 ): ResolvedPattern {
-  const opts = normalize_pattern(pattern)
-  const shape = pattern_shape(opts.shape ?? `diagonal`)
+  const opts: PatternOptions = typeof pattern === `string` ? { shape: pattern } : pattern
+  const shape_or_alias = opts.shape ?? `diagonal`
+  const shape = is_shorthand(shape_or_alias)
+    ? PATTERN_SHORTHANDS[shape_or_alias]
+    : shape_or_alias
   const size = (opts.size ?? DEFAULT_SIZE) * scale
   const solidity = opts.solidity ?? DEFAULT_SOLIDITY
   const angle = opts.angle ?? 0
@@ -304,43 +291,27 @@ export function resolve_pattern(
     throw new Error(`pattern solidity must be in [0, 1], got ${solidity}`)
   }
   if (!Number.isFinite(angle)) throw new Error(`pattern angle must be finite, got ${angle}`)
-  const non_negative = (val: number) => Number.isFinite(val) && val >= 0
-  if (opts.line_width != null && !non_negative(opts.line_width)) {
-    throw new Error(`pattern line_width must be finite and ≥ 0, got ${opts.line_width}`)
-  }
-  if (Array.isArray(opts.dash) && !(opts.dash.length > 0 && opts.dash.every(non_negative))) {
-    throw new Error(
-      `pattern dash lengths must be finite and ≥ 0, got ${JSON.stringify(opts.dash)}`,
-    )
-  }
-  if (opts.fg_opacity != null && !(opts.fg_opacity >= 0 && opts.fg_opacity <= 1)) {
-    throw new Error(`pattern fg_opacity must be in [0, 1], got ${opts.fg_opacity}`)
-  }
   const geometry = tile_geometry(shape, size, solidity)
   const replace = opts.mode === `replace`
   // Auto-contrast against the color the texture is painted over; translucent, CSS-variable
   // or otherwise unparsable colors fall back to currentColor so the texture still shows
   const fg = opts.fg ?? (replace ? base_color : opaque_contrast_color(base_color))
-  const bg = opts.bg ?? (replace ? undefined : base_color)
-  const fg_opacity = opts.fg_opacity ?? (replace ? 1 : 0.5)
-  const line_width = geometry.stroked
-    ? opts.line_width != null
-      ? opts.line_width * scale
-      : (solidity * geometry.width * geometry.height) / geometry.stroke_length
-    : 0
   const rotation = geometry.rotation + angle
   const dash = opts.dash ?? `solid`
   const resolved = {
     width: geometry.width,
     height: geometry.height,
     transform: rotation ? `rotate(${num(rotation)})` : undefined,
-    bg,
+    bg: opts.bg ?? (replace ? `transparent` : base_color),
     fg,
-    fg_opacity,
+    fg_opacity: replace ? 1 : 0.5,
     d: geometry.d,
     stroked: geometry.stroked,
-    line_width,
-    dasharray: geometry.stroked ? dash_array(dash, size, scale) : undefined,
+    // coverage ≈ stroke_length × line_width / tile area
+    line_width: geometry.stroked
+      ? (solidity * geometry.width * geometry.height) / geometry.stroke_length
+      : 0,
+    dasharray: geometry.stroked ? dash_array(dash, size) : undefined,
     linecap: dash === `dotted` ? (`round` as const) : undefined,
     // `0 size/2` puts dots at 0, size/2 and size, and the dot on the far edge is not drawn
     // (renderers skip a zero-length dash at the path end), so the seam shows half dots.
@@ -351,19 +322,11 @@ export function resolve_pattern(
   return { id, url: `url(#${id})`, ...resolved }
 }
 
-// Distinct patterns among a chart's marks (by id), for one PatternDefs render
+// Distinct patterns among a chart's marks (by id, first-seen order), for one PatternDefs render
 export const unique_patterns = (
   patterns: Iterable<ResolvedPattern | null | undefined>,
 ): ResolvedPattern[] => {
   const by_id = new Map<string, ResolvedPattern>()
-  for (const pat of patterns) {
-    if (!pat) continue
-    const seen = by_id.get(pat.id)
-    if (!seen) by_id.set(pat.id, pat)
-    // the id is a 32-bit hash: a collision would silently paint one mark with another's tile
-    else if (seen.d !== pat.d || seen.fg !== pat.fg || seen.bg !== pat.bg) {
-      throw new Error(`pattern id collision: ${pat.id} resolves to two different tiles`)
-    }
-  }
+  for (const pat of patterns) if (pat && !by_id.has(pat.id)) by_id.set(pat.id, pat)
   return [...by_id.values()]
 }

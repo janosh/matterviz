@@ -1371,8 +1371,8 @@ describe(`gcd and Miller index reduction`, () => {
     expect(() => math.validate_miller_indices(hkl)).toThrow(message)
   })
 
-  it(`validate_miller_indices returns valid indices unreduced`, () => {
-    expect(math.validate_miller_indices([2, 2, 0])).toEqual([2, 2, 0])
+  it(`validate_miller_indices accepts unreduced indices`, () => {
+    expect(() => math.validate_miller_indices([2, 2, 0])).not.toThrow()
   })
 
   // hexagonal a = 3, c = 5: d_100 = a·√3/2, d_001 = c, and the (100) normal is 30° off a

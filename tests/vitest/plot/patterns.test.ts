@@ -2,7 +2,6 @@ import type { PatternDash, PatternShape, PatternShorthand } from '$lib/plot/core
 import {
   PATTERN_SHAPES,
   PATTERN_SHORTHANDS,
-  plot_pattern,
   resolve_pattern,
   unique_patterns,
 } from '$lib/plot/core/patterns'
@@ -20,6 +19,10 @@ describe(`resolve_pattern`, () => {
       expect(from_shorthand).toEqual(resolve_pattern({ shape }, BLUE, `p`))
     },
   )
+
+  test(`every shape name is a distinct entry`, () => {
+    expect(new Set(PATTERN_SHAPES).size).toBe(PATTERN_SHAPES.length)
+  })
 
   test.each(PATTERN_SHAPES)(`%s yields a non-empty tile with a stable scoped id`, (shape) => {
     const pat = resolve_pattern(shape, BLUE, `chart-1`)
@@ -53,14 +56,14 @@ describe(`resolve_pattern`, () => {
 
   test(`replace mode: transparent bg, texture in the mark color at full opacity`, () => {
     expect(resolve_pattern({ mode: `replace` }, BLUE, `p`)).toMatchObject({
-      bg: undefined,
+      bg: `transparent`,
       fg: BLUE,
       fg_opacity: 1,
     })
-    // explicit fg/bg/fg_opacity always win
+    // explicit fg/bg always win
     expect(
-      resolve_pattern({ mode: `replace`, fg: `red`, bg: `#eee`, fg_opacity: 0.3 }, BLUE, `p`),
-    ).toMatchObject({ bg: `#eee`, fg: `red`, fg_opacity: 0.3 })
+      resolve_pattern({ mode: `replace`, fg: `red`, bg: `#eee` }, BLUE, `p`),
+    ).toMatchObject({ bg: `#eee`, fg: `red` })
   })
 
   test.each([
@@ -87,10 +90,6 @@ describe(`resolve_pattern`, () => {
     expect(
       resolve_pattern({ shape: `cross`, size: 10, solidity: 0.3 }, BLUE, `p`).line_width,
     ).toBeCloseTo(1.5)
-    // explicit line_width overrides solidity
-    expect(
-      resolve_pattern({ shape: `cross`, solidity: 0.3, line_width: 2 }, BLUE, `p`),
-    ).toMatchObject({ line_width: 2 })
     // filled markers: dots of area solidity*size² -> radius = size*sqrt(solidity/pi)
     const dots = resolve_pattern({ shape: `dots`, size: 10, solidity: 0.25 }, BLUE, `p`)
     expect(dots.d).toContain(`a2.821 2.821`)
@@ -109,12 +108,14 @@ describe(`resolve_pattern`, () => {
     expect(at(max_solidity - 0.01)).not.toBe(at(max_solidity))
   })
 
-  test(`scale shrinks tile, line width and custom dashes alike`, () => {
-    const opts = { shape: `cross`, size: 12, line_width: 2, dash: [4, 2] } as const
+  test(`scale shrinks tile, line width and dashes alike`, () => {
+    const opts = { shape: `cross`, size: 12, dash: `dashed` } as const
     const full = resolve_pattern(opts, BLUE, `p`)
     const half = resolve_pattern(opts, BLUE, `p`, 0.5)
-    expect([half.width, half.height, half.line_width]).toEqual([6, 6, 1])
-    expect([full.dasharray, half.dasharray]).toEqual([`4 2`, `2 1`])
+    expect([full.width, full.line_width, half.width, half.height, half.line_width]).toEqual([
+      12, 1.5, 6, 6, 0.75,
+    ])
+    expect([full.dasharray, half.dasharray]).toEqual([`6 6`, `3 3`])
     expect(half.id).not.toBe(full.id)
   })
 
@@ -124,7 +125,6 @@ describe(`resolve_pattern`, () => {
     // round caps turn zero-length dashes into dots; the quarter-period offset keeps both
     // dots inside the tile instead of half a dot on each edge
     [`dotted`, `0 4`, `round`, `2`],
-    [[2, 1, 1], `2 1 1`, undefined, undefined],
   ])(`dash %j -> dasharray %s, %s caps, offset %s`, (dash, dasharray, linecap, dashoffset) => {
     const pat = resolve_pattern({ shape: `horizontal`, size: 8, dash }, BLUE, `p`)
     expect([pat.dasharray, pat.linecap, pat.dashoffset]).toEqual([
@@ -174,27 +174,10 @@ describe(`resolve_pattern`, () => {
     [{ solidity: NaN }, /solidity must be in \[0, 1\]/],
     [{ angle: NaN }, /angle must be finite/],
     [{ angle: Infinity }, /angle must be finite/],
-    [{ line_width: -1 }, /line_width must be finite and ≥ 0/],
-    [{ line_width: NaN }, /line_width must be finite and ≥ 0/],
-    [{ dash: [4, -2] }, /dash lengths must be finite and ≥ 0/],
-    [{ dash: [Infinity, 2] }, /dash lengths must be finite and ≥ 0/],
-    [{ dash: [] }, /dash lengths must be finite and ≥ 0/],
-    [{ fg_opacity: 1.5 }, /fg_opacity must be in \[0, 1\]/],
-    [{ fg_opacity: NaN }, /fg_opacity must be in \[0, 1\]/],
     // shorthand lookup must not pick up inherited Object properties
     [`toString` as PatternShape, /Unknown pattern shape: toString/],
   ])(`rejects invalid options %j`, (opts, message) => {
     expect(() => resolve_pattern(opts, BLUE, `p`)).toThrow(message)
-  })
-})
-
-describe(`plot_pattern`, () => {
-  test(`cycles through PATTERN_SHAPES by index`, () => {
-    expect(plot_pattern(0)).toBe(PATTERN_SHAPES[0])
-    expect(plot_pattern(PATTERN_SHAPES.length)).toBe(PATTERN_SHAPES[0])
-    expect(plot_pattern(PATTERN_SHAPES.length + 2)).toBe(PATTERN_SHAPES[2])
-    // every shape name is a distinct entry
-    expect(new Set(PATTERN_SHAPES).size).toBe(PATTERN_SHAPES.length)
   })
 })
 
@@ -211,7 +194,5 @@ describe(`unique_patterns`, () => {
     ])
     expect(result.map((pat) => pat.id)).toEqual([diag.id, dots.id])
     expect(unique_patterns([])).toEqual([])
-    // two different tiles under one id would silently swap textures between marks
-    expect(() => unique_patterns([diag, { ...dots, id: diag.id }])).toThrow(/id collision/)
   })
 })

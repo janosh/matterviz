@@ -19,9 +19,7 @@
     height={pat.height}
     patternTransform={pat.transform}
   >
-    {#if pat.bg}
-      <rect width={pat.width} height={pat.height} fill={pat.bg} />
-    {/if}
+    <rect width={pat.width} height={pat.height} fill={pat.bg} />
     <path
       d={pat.d}
       fill={pat.stroked ? `none` : pat.fg}
