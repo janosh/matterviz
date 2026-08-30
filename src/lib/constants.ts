@@ -14,11 +14,11 @@ export const PLANCK_J_S = 6.62607015e-34 // J*s
 export const ELEMENTARY_CHARGE_C = 1.602176634e-19 // C (numerically also 1 eV in J)
 export const SPEED_OF_LIGHT_M_S = 299792458 // m/s
 export const BOLTZMANN_J_PER_K = 1.380649e-23 // J/K
-export const AVOGADRO = 6.02214076e23 // 1/mol
+export const AVOGADRO_PER_MOL = 6.02214076e23 // 1/mol
 // k_B in eV/K (8.617333262e-5) for gas and phonon thermodynamics; 1 eV per particle
 // in kJ/mol (96.485332) for the phonon thermal plot's molar units
 export const BOLTZMANN_EV_PER_K = BOLTZMANN_J_PER_K / ELEMENTARY_CHARGE_C
-export const EV_TO_KJ_PER_MOL = (ELEMENTARY_CHARGE_C * AVOGADRO) / 1000
+export const EV_TO_KJ_PER_MOL = (ELEMENTARY_CHARGE_C * AVOGADRO_PER_MOL) / 1000
 // 1 eV/A^3 in GPa (160.2176634): bulk moduli from equation-of-state fits (eos/fit.ts)
 export const EV_PER_A3_TO_GPA = ELEMENTARY_CHARGE_C * 1e21
 

@@ -15,6 +15,7 @@
     region,
     region_idx,
     is_first_segment = true,
+    defs_id = unique_id(`fill`),
     path,
     clip_path_id,
     x_scale_fn,
@@ -27,9 +28,11 @@
     region: FillRegion
     region_idx: number
     // A region split by gaps or crossings renders one FillArea per segment. They are one
-    // logical region, so only the first joins the tab order and carries the label - the
-    // rest would otherwise be N identical tab stops announcing the same thing.
+    // logical region, so only the first joins the tab order, carries the label and emits the
+    // gradient/pattern <defs> - the rest would otherwise be N identical tab stops announcing
+    // the same thing and N identical tiles. Segments of one region must share `defs_id`.
     is_first_segment?: boolean
+    defs_id?: string
     path: string
     clip_path_id: string
     x_scale_fn: ((x: number) => number) & { invert?: (y: number) => number | Date }
@@ -40,10 +43,9 @@
     tween_options?: TweenOptions<string>
   } = $props()
 
-  // Scopes gradient/pattern ids to this instance; `region.id` is user text and may not be a
-  // valid id fragment, and the uuid alone is already unique
-  const instance_id = unique_id(`fill`)
-  const gradient_id = `${instance_id}-gradient`
+  // Scopes gradient/pattern ids to this region; `region.id` is user text and may not be a
+  // valid id fragment
+  let gradient_id = $derived(`${defs_id}-gradient`)
 
   // On hover (without an explicit hover_style), noticeably raise opacity. A faint fill (e.g. a
   // low-alpha rgba color at the default 0.3 fill-opacity) is otherwise nearly invisible, so a mere
@@ -68,7 +70,7 @@
   )
   let pattern = $derived(
     region.pattern && typeof effective_fill === `string`
-      ? resolve_pattern(region.pattern, tile_bg, instance_id)
+      ? resolve_pattern(region.pattern, tile_bg, defs_id)
       : undefined,
   )
   // add_alpha leaves colors it cannot parse (CSS vars) alone; then the mark keeps its opacity
@@ -180,11 +182,11 @@
     {/each}
   {/snippet}
 
-  {#if pattern}
+  {#if pattern && is_first_segment}
     <defs><PatternDefs patterns={[pattern]} /></defs>
   {/if}
   <!-- Gradient defs -->
-  {#if is_fill_gradient(region.fill)}
+  {#if is_fill_gradient(region.fill) && is_first_segment}
     <defs>
       {#if region.fill.type === `linear`}
         <linearGradient

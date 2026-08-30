@@ -4,8 +4,10 @@
   // of ~T. Defaults to phonopy's kJ/mol and J/(K·mol) so plots compare directly.
   import { plot_color } from '$lib/colors'
   import { EV_TO_KJ_PER_MOL } from '$lib/constants'
+  import { StatusMessage } from '$lib/feedback'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
+  import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
   import type { FrequencyUnit } from './frequency-units'
   import type { ThermalProperties } from './thermal'
@@ -34,14 +36,23 @@
     dos: PhononDos
     temperatures?: number[] // K
     units?: FrequencyUnit // of dos.frequencies, named as in Dos.svelte
-    energy_unit?: `eV` | `kJ/mol` // eV and meV/K, or kJ/mol and J/(K·mol)
-    thermal?: ThermalProperties // read-only output, always in eV and eV/K
+    energy_unit?: `eV` | `kJ/mol` // eV and meV/K, or kJ/mol and J/(K·mol); named as in NebPlot
+    thermal?: ThermalProperties | null // read-only output, always in eV and eV/K; null on error
   } & Omit<ComponentProps<typeof ScatterPlot>, `series`> = $props()
 
-  const computed = $derived(thermal_properties(dos, temperatures, units))
-  $effect(() => {
-    thermal = computed
+  // Invalid input (mismatched DOS arrays, negative temperatures, no positive frequencies) is
+  // shown as a dismissible error over an empty plot rather than taking the component down
+  const result = $derived.by(() => {
+    try {
+      return { computed: thermal_properties(dos, temperatures, units), error_msg: undefined }
+    } catch (exc) {
+      return { computed: null, error_msg: to_error(exc).message }
+    }
   })
+  $effect(() => {
+    thermal = result.computed
+  })
+  let error_msg = $derived(result.error_msg)
 
   // scale factors from eV and eV/K to the displayed units, per axis
   const axis_units = $derived(
@@ -53,8 +64,10 @@
       : { y1: { scale: 1, label: `eV` }, y2: { scale: 1000, label: `meV/K` } },
   )
 
-  const series = $derived<DataSeries[]>(
-    QUANTITIES.map(({ key, label, axis }, idx) => ({
+  const series = $derived.by((): DataSeries[] => {
+    const { computed } = result
+    if (!computed) return []
+    return QUANTITIES.map(({ key, label, axis }, idx) => ({
       x: computed.temperatures,
       y: computed[key].map((val) => val * axis_units[axis].scale),
       label,
@@ -62,9 +75,11 @@
       y_axis: axis,
       markers: `line`,
       line_style: { stroke: plot_color(idx), stroke_width: 2 },
-    })),
-  )
+    }))
+  })
 </script>
+
+<StatusMessage bind:message={error_msg} type="error" dismissible />
 
 <ScatterPlot
   {...rest}

@@ -52,59 +52,58 @@
 
   let segments = $derived.by(() => {
     let angle = -90 // start at 12 o'clock, sweep clockwise
-    return composition_segments(composition, color_scheme, patterns, pattern_uid).map(
-      (segment) => {
-        const label = segment.element + segment_suffix(segment, label_opts)
-        if (segment.fraction === 1) {
-          // single element: two semicircles per ring (an SVG arc can't sweep a full 360°)
-          const circle = (radius: number, sweep: 0 | 1) =>
-            `M ${center} ${center - radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center + radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center - radius} Z`
-          return {
-            ...segment,
-            path: circle(outer_radius, 1) + (ring_inner > 0 ? circle(ring_inner, 0) : ``),
-            label_x: center,
-            label_y: center,
-            outside: false,
-            font_scale: fit_font_scale(2.6, label.length, outer_radius * 2),
-          }
-        }
-        const span = segment.fraction * 360
-        const [start, end] = [angle, angle + span]
-        angle = end
-        const large_arc = span > 180 ? 1 : 0
-        const [x1, y1] = polar(outer_radius, start)
-        const [x2, y2] = polar(outer_radius, end)
-        const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2} ${y2}`
-        let path: string
-        if (ring_inner > 0) {
-          const [x3, y3] = polar(ring_inner, end)
-          const [x4, y4] = polar(ring_inner, start)
-          path = `M ${x1} ${y1} ${outer_arc} L ${x3} ${y3} A ${ring_inner} ${ring_inner} 0 ${large_arc} 0 ${x4} ${y4} Z`
-        } else path = `M ${center} ${center} L ${x1} ${y1} ${outer_arc} Z`
-
-        const outside = span < THIN_SLICE
-        const label_radius = outside
-          ? outer_radius * 1.2
-          : span < MEDIUM_SLICE
-            ? outer_radius * 0.7
-            : (outer_radius + ring_inner) / 2
-        const [label_x, label_y] = polar(label_radius, (start + end) / 2)
-        // font grows with slice angle, then shrinks to fit radial/arc space at the label radius
-        const base_scale = 1.4 + Math.min(span / FULL_SCALE_ANGLE, 1) * 0.6
-        const available = outside
-          ? outer_radius * 0.8
-          : Math.min(outer_radius - ring_inner, ((span * Math.PI) / 180) * label_radius * 0.8)
+    const raw_segments = composition_segments(composition, color_scheme, patterns, pattern_uid)
+    return raw_segments.map((segment) => {
+      const label = segment.element + segment_suffix(segment, label_opts)
+      if (segment.fraction === 1) {
+        // single element: two semicircles per ring (an SVG arc can't sweep a full 360°)
+        const circle = (radius: number, sweep: 0 | 1) =>
+          `M ${center} ${center - radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center + radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center - radius} Z`
         return {
           ...segment,
-          path,
-          label_x,
-          label_y,
-          outside,
-          font_scale: fit_font_scale(base_scale, label.length, available),
-          text_color: outside ? `var(--text-color, #333)` : segment.text_color,
+          path: circle(outer_radius, 1) + (ring_inner > 0 ? circle(ring_inner, 0) : ``),
+          label_x: center,
+          label_y: center,
+          outside: false,
+          font_scale: fit_font_scale(2.6, label.length, outer_radius * 2),
         }
-      },
-    )
+      }
+      const span = segment.fraction * 360
+      const [start, end] = [angle, angle + span]
+      angle = end
+      const large_arc = span > 180 ? 1 : 0
+      const [x1, y1] = polar(outer_radius, start)
+      const [x2, y2] = polar(outer_radius, end)
+      const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2} ${y2}`
+      let path: string
+      if (ring_inner > 0) {
+        const [x3, y3] = polar(ring_inner, end)
+        const [x4, y4] = polar(ring_inner, start)
+        path = `M ${x1} ${y1} ${outer_arc} L ${x3} ${y3} A ${ring_inner} ${ring_inner} 0 ${large_arc} 0 ${x4} ${y4} Z`
+      } else path = `M ${center} ${center} L ${x1} ${y1} ${outer_arc} Z`
+
+      const outside = span < THIN_SLICE
+      const label_radius = outside
+        ? outer_radius * 1.2
+        : span < MEDIUM_SLICE
+          ? outer_radius * 0.7
+          : (outer_radius + ring_inner) / 2
+      const [label_x, label_y] = polar(label_radius, (start + end) / 2)
+      // font grows with slice angle, then shrinks to fit radial/arc space at the label radius
+      const base_scale = 1.4 + Math.min(span / FULL_SCALE_ANGLE, 1) * 0.6
+      const available = outside
+        ? outer_radius * 0.8
+        : Math.min(outer_radius - ring_inner, ((span * Math.PI) / 180) * label_radius * 0.8)
+      return {
+        ...segment,
+        path,
+        label_x,
+        label_y,
+        outside,
+        font_scale: fit_font_scale(base_scale, label.length, available),
+        text_color: outside ? `var(--text-color, #333)` : segment.text_color,
+      }
+    })
   })
 </script>
 

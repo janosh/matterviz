@@ -1361,6 +1361,36 @@ describe(`gcd and Miller index reduction`, () => {
   ])(`reduce_miller_indices($hkl) = $expected`, ({ hkl, expected }) => {
     expect(math.reduce_miller_indices(hkl)).toEqual(expected)
   })
+
+  it.each([
+    { hkl: [0, 0, 0] as Vec3, message: `do not define a plane` },
+    { hkl: [1, 0.5, 0] as Vec3, message: `must be integers, got [0.5]` },
+    { hkl: [1, Number.NaN, 0] as Vec3, message: `must be integers, got [null]` },
+    { hkl: [1, 0] as unknown as Vec3, message: `must be 3 numbers` },
+  ])(`validate_miller_indices($hkl) throws "$message"`, ({ hkl, message }) => {
+    expect(() => math.validate_miller_indices(hkl)).toThrow(message)
+  })
+
+  it(`validate_miller_indices returns valid indices unreduced`, () => {
+    expect(math.validate_miller_indices([2, 2, 0])).toEqual([2, 2, 0])
+  })
+
+  // hexagonal a = 3, c = 5: d_100 = a·√3/2, d_001 = c, and the (100) normal is 30° off a
+  it(`miller_plane_normal is the reciprocal vector with |G| = 1 / d_hkl`, () => {
+    const hexagonal: math.Matrix3x3 = [
+      [3, 0, 0],
+      [-1.5, (3 * Math.sqrt(3)) / 2, 0],
+      [0, 0, 5],
+    ]
+    const normal_100 = math.miller_plane_normal(hexagonal, [1, 0, 0])
+    expect(1 / Math.hypot(...normal_100)).toBeCloseTo((3 * Math.sqrt(3)) / 2, 12)
+    const cos_to_a = math.dot(normal_100, [1, 0, 0]) / Math.hypot(...normal_100)
+    expect(cos_to_a).toBeCloseTo(Math.cos(Math.PI / 6), 12)
+    const normal_001 = math.miller_plane_normal(hexagonal, [0, 0, 1])
+    expect(normal_001[0]).toBe(0)
+    expect(normal_001[1]).toBe(0)
+    expect(normal_001[2]).toBeCloseTo(1 / 5, 15)
+  })
 })
 
 // === Test helpers for merge_coplanar_triangles ===

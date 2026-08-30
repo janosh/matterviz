@@ -44,6 +44,7 @@
 
   const uid = $props.id()
   const clip_path_id = `bar-clip-${uid}`
+  const pattern_uid = `bar-${uid}`
 
   let label_opts = $derived({ show_amounts, show_percentages })
   const bar_y = LABEL_HEIGHT + GAP
@@ -56,26 +57,25 @@
 
   let segments = $derived.by((): BarSegment[] => {
     let [cursor, n_above, n_below] = [0, 0, 0]
-    return composition_segments(composition, color_scheme, patterns, `bar-${uid}`).map(
-      (segment) => {
-        const width = segment.fraction * size
-        const x = cursor
-        cursor += width
-        const label = segment.element + segment_suffix(segment, label_opts)
-        const base_scale = Math.min(2, Math.max(1, width / 40))
-        const font_scale = fit_font_scale(base_scale, label.length, width * 0.9, 0.6, 12)
-        // thin segments get external labels, alternating above/below to avoid overlap
-        let label_pos: BarSegment[`label_pos`] = null
-        if (segment.fraction < THIN_FRACTION) {
-          if (width >= MIN_EXTERNAL_WIDTH) {
-            label_pos = n_above <= n_below ? `above` : `below`
-            if (label_pos === `above`) n_above++
-            else n_below++
-          }
-        } else if (width >= MIN_LABEL_WIDTH) label_pos = `inside`
-        return { ...segment, x, width, font_scale, label_pos }
-      },
-    )
+    const raw_segments = composition_segments(composition, color_scheme, patterns, pattern_uid)
+    return raw_segments.map((segment) => {
+      const width = segment.fraction * size
+      const x = cursor
+      cursor += width
+      const label = segment.element + segment_suffix(segment, label_opts)
+      const base_scale = Math.min(2, Math.max(1, width / 40))
+      const font_scale = fit_font_scale(base_scale, label.length, width * 0.9, 0.6, 12)
+      // thin segments get external labels, alternating above/below to avoid overlap
+      let label_pos: BarSegment[`label_pos`] = null
+      if (segment.fraction < THIN_FRACTION) {
+        if (width >= MIN_EXTERNAL_WIDTH) {
+          label_pos = n_above <= n_below ? `above` : `below`
+          if (label_pos === `above`) n_above++
+          else n_below++
+        }
+      } else if (width >= MIN_LABEL_WIDTH) label_pos = `inside`
+      return { ...segment, x, width, font_scale, label_pos }
+    })
   })
 </script>
 

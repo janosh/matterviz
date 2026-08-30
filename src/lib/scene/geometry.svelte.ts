@@ -20,14 +20,16 @@ export function indexed_mesh_geometry(
   return geometry
 }
 
-export function line_geometry(start: Vec3, end: Vec3): BufferGeometry {
-  const geometry = new BufferGeometry()
-  geometry.setAttribute(
+// Non-indexed geometry from flat xyz positions (triangle soup for meshes, vertex pairs for
+// LineSegments)
+export const positions_geometry = (positions: ArrayLike<number>): BufferGeometry =>
+  new BufferGeometry().setAttribute(
     `position`,
-    new BufferAttribute(new Float32Array([...start, ...end]), 3),
+    new BufferAttribute(new Float32Array(positions), 3),
   )
-  return geometry
-}
+
+export const line_geometry = (start: Vec3, end: Vec3): BufferGeometry =>
+  positions_geometry([...start, ...end])
 
 // Dispose geometries on dependency changes and unmount to release their GPU buffers.
 // The getter transfers ownership: do not return geometries still used outside this effect.

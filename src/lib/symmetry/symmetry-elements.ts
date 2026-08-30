@@ -17,6 +17,7 @@
 //   part of (W, w_loc)ⁿ vanishes, the average of {0, (W,w_loc)·0, …} is exactly fixed
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { clip_frac_plane_to_cell } from '$lib/structure/lattice-planes'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 
@@ -116,25 +117,6 @@ export const has_visible_symmetry_overlay = (
 ): boolean => elements.some((elem) => show_kinds[elem.kind] ?? false)
 
 const ELEM_TOL = 1e-6
-
-// The 12 edges of the unit cube [0,1]³ (corner pairs differing in exactly one coord)
-const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = (() => {
-  const corners: Vec3[] = []
-  for (let x = 0; x <= 1; x++) {
-    for (let y = 0; y <= 1; y++) for (let z = 0; z <= 1; z++) corners.push([x, y, z])
-  }
-  const edges: [Vec3, Vec3][] = []
-  for (let idx_a = 0; idx_a < corners.length; idx_a++) {
-    for (let idx_b = idx_a + 1; idx_b < corners.length; idx_b++) {
-      const manhattan = corners[idx_a].reduce(
-        (sum, val, dim) => sum + Math.abs(val - corners[idx_b][dim]),
-        0,
-      )
-      if (manhattan === 1) edges.push([corners[idx_a], corners[idx_b]])
-    }
-  }
-  return edges
-})()
 
 // moyo-wasm serializes nalgebra matrices as flat 9-arrays in COLUMN-major order
 export const mat3_from_flat_col_major = (flat: readonly number[]): Matrix3x3 => [
@@ -686,62 +668,3 @@ export function clip_plane_to_cell(
   const n_eq = math.dot(lattice, normal_cart)
   return clip_frac_plane_to_cell(n_eq, math.dot(n_eq, point), lattice)
 }
-
-// Clip the plane `coeffs · frac = level` (fractional coordinates, so integer coeffs are
-// Miller indices and integer levels are the lattice planes of that family) to the unit
-// cell, returning the Cartesian polygon vertices in winding order (empty if the plane
-// misses the cell or only touches a corner or an edge).
-export function clip_frac_plane_to_cell(
-  coeffs: Vec3,
-  level: number,
-  lattice: Matrix3x3,
-): Vec3[] {
-  const tol = 1e-7
-  // Vertices closer than this (fractional) collapse into one: a plane passing just outside
-  // `tol` of a corner would otherwise cross all three of its edges and yield a sliver triangle
-  const dedup_tol = 1e-6
-  const signed_dist = (frac: Vec3) => math.dot(coeffs, frac) - level
-  const frac_points: Vec3[] = []
-  const push_unique = (frac: Vec3) => {
-    if (!frac_points.some((seen) => math.euclidean_dist(seen, frac) < dedup_tol)) {
-      frac_points.push(frac)
-    }
-  }
-  // Corners on the plane, plus interior crossings of the 12 cell edges
-  for (const [corner_a, corner_b] of UNIT_CUBE_EDGES) {
-    const [dist_a, dist_b] = [signed_dist(corner_a), signed_dist(corner_b)]
-    const [on_a, on_b] = [Math.abs(dist_a) < tol, Math.abs(dist_b) < tol]
-    if (on_a) push_unique(corner_a)
-    if (on_b) push_unique(corner_b)
-    if (!on_a && !on_b && dist_a * dist_b < 0) {
-      const frac_t = dist_a / (dist_a - dist_b)
-      push_unique(corner_a.map((val, dim) => val + frac_t * (corner_b[dim] - val)) as Vec3)
-    }
-  }
-  if (frac_points.length < 3) return []
-  const cart_points = frac_points.map(math.create_frac_to_cart(lattice))
-
-  // Order vertices by angle around the centroid within the plane. The Cartesian normal of
-  // `coeffs · frac = level` is the reciprocal-lattice vector inv(A) · coeffs (see
-  // slab/lattice-basis.ts `miller_plane_normal`); only its direction matters here.
-  const centroid = math.scale(math.add(...cart_points), 1 / cart_points.length)
-  const normal_unit = math.normalize_vec(math.dot(math.matrix_inverse_3x3(lattice), coeffs))
-  const ref_vec = math.normalize_vec(math.subtract(cart_points[0], centroid))
-  const cross_ref = math.cross_3d(normal_unit, ref_vec)
-  return cart_points
-    .map((vert) => {
-      const rel = math.subtract(vert, centroid)
-      return { vert, angle: Math.atan2(math.dot(rel, cross_ref), math.dot(rel, ref_vec)) }
-    })
-    .toSorted((pt_a, pt_b) => pt_a.angle - pt_b.angle)
-    .map(({ vert }) => vert)
-}
-
-// Vertices of the fan triangulation of a convex polygon, three per triangle, for a
-// non-indexed BufferGeometry position attribute
-export const polygon_fan_vertices = (polygon: Vec3[]): Vec3[] =>
-  polygon.slice(1, -1).flatMap((vert, idx) => [polygon[0], vert, polygon[idx + 2]])
-
-// Vertex pairs of the polygon outline, one pair per edge, for a LineSegments geometry
-export const polygon_edge_vertices = (polygon: Vec3[]): Vec3[] =>
-  polygon.flatMap((vert, idx) => [vert, polygon[(idx + 1) % polygon.length]])

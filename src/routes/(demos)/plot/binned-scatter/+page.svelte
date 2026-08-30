@@ -237,53 +237,52 @@
   </select>
 </label>
 
-<div class="bleed-1400">
-  <BinnedScatterPlot
-    {series}
-    {x_axis}
-    {y_axis}
-    {density}
-    title={{
-      text: `Materials landscape across three chemical families`,
-      subtitle: `Adaptive density bins with coordinated annotation and colorbar placement`,
-      align: `start`,
-      max_lines: 2,
-    }}
-    marginals={{ top: { type: `histogram`, size: 64 }, right: { type: `kde`, size: 64 } }}
-    tooltip={point_tooltip}
-    bind:render_mode
-    bind:wrapper={plot_host}
-    {selected_point_id}
-    on_point_click={handle_point_click}
-    style="height: 640px"
-  >
-    {#snippet annotation()}
-      {@const n_points = series.reduce((sum, srs) => sum + srs.x.length, 0)}
-      <div class="stats-badge">
-        <strong>{n_points.toLocaleString()}</strong> materials<br />
-        {family_configs.length} families
-      </div>
-    {/snippet}
-    {#if clicked_point}
-      <StructurePopup
-        structure={make_structure(clicked_point.elements, clicked_point.lattice_a)}
-        place_right={popup_place_right}
-        stats={{
-          id: clicked_point.material_id,
-          formula: clicked_point.formula,
-          e_form: clicked_point.e_form,
-          e_above_hull: clicked_point.e_above_hull,
-        }}
-        on_close={clear_selection}
-        style={popup_place_right
-          ? `left: ${popup_pos.x}px; top: ${popup_pos.y}px`
-          : `right: ${(plot_host?.clientWidth ?? 0) - popup_pos.x}px; top: ${popup_pos.y}px`}
-        width={popup_width}
-        height={360}
-      />
-    {/if}
-  </BinnedScatterPlot>
-</div>
+<BinnedScatterPlot
+  class="bleed-1400"
+  {series}
+  {x_axis}
+  {y_axis}
+  {density}
+  title={{
+    text: `Materials landscape across three chemical families`,
+    subtitle: `Adaptive density bins with coordinated annotation and colorbar placement`,
+    align: `start`,
+    max_lines: 2,
+  }}
+  marginals={{ top: { type: `histogram`, size: 64 }, right: { type: `kde`, size: 64 } }}
+  tooltip={point_tooltip}
+  bind:render_mode
+  bind:wrapper={plot_host}
+  {selected_point_id}
+  on_point_click={handle_point_click}
+  style="height: 640px"
+>
+  {#snippet annotation()}
+    {@const n_points = series.reduce((sum, srs) => sum + srs.x.length, 0)}
+    <div class="stats-badge">
+      <strong>{n_points.toLocaleString()}</strong> materials<br />
+      {family_configs.length} families
+    </div>
+  {/snippet}
+  {#if clicked_point}
+    <StructurePopup
+      structure={make_structure(clicked_point.elements, clicked_point.lattice_a)}
+      place_right={popup_place_right}
+      stats={{
+        id: clicked_point.material_id,
+        formula: clicked_point.formula,
+        e_form: clicked_point.e_form,
+        e_above_hull: clicked_point.e_above_hull,
+      }}
+      on_close={clear_selection}
+      style={popup_place_right
+        ? `left: ${popup_pos.x}px; top: ${popup_pos.y}px`
+        : `right: ${(plot_host?.clientWidth ?? 0) - popup_pos.x}px; top: ${popup_pos.y}px`}
+      width={popup_width}
+      height={360}
+    />
+  {/if}
+</BinnedScatterPlot>
 
 <p>
   The stats badge and density color bar share the decoration placer, avoiding occupied bins and

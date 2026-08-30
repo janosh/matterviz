@@ -1,11 +1,12 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { lattice_plane_offsets, lattice_plane_polygons } from '$lib/structure/lattice-planes'
 import {
   clip_frac_plane_to_cell,
+  lattice_plane_offsets,
+  lattice_plane_polygons,
   polygon_edge_vertices,
   polygon_fan_vertices,
-} from '$lib/symmetry/symmetry-elements'
+} from '$lib/structure/lattice-planes'
 import { describe, expect, test } from 'vitest'
 
 const cubic: Matrix3x3 = [
@@ -21,10 +22,6 @@ const hexagonal: Matrix3x3 = [
 ]
 const triclinic = math.cell_to_lattice_matrix(4, 5, 6, 70, 80, 100)
 
-// The Cartesian normal of h·x + k·y + l·z = offset is the reciprocal vector inv(A)·hkl
-const plane_normal = (hkl: Vec3, lattice: Matrix3x3): Vec3 =>
-  math.dot(math.matrix_inverse_3x3(lattice), hkl)
-
 // A valid clipped polygon: every vertex on the plane and inside the cell (fractional), no
 // near-duplicate vertices, convex winding order
 const expect_valid_polygon = (
@@ -35,7 +32,7 @@ const expect_valid_polygon = (
 ) => {
   expect(polygon.length).toBeGreaterThanOrEqual(3)
   const to_frac = math.create_cart_to_frac(lattice)
-  const normal = math.normalize_vec(plane_normal(hkl, lattice))
+  const normal = math.normalize_vec(math.miller_plane_normal(lattice, hkl))
   const turns = new Set<number>()
   for (const [idx, vert] of polygon.entries()) {
     const frac = to_frac(vert)
@@ -61,6 +58,10 @@ describe(`lattice_plane_offsets`, () => {
     { hkl: [0, 0, -2], offsets: [-2, -1, 0] },
   ])(`$hkl → $offsets`, ({ hkl, offsets }) => {
     expect(lattice_plane_offsets(hkl)).toEqual(offsets)
+  })
+
+  test(`rejects (000), which would otherwise yield the lone offset 0`, () => {
+    expect(() => lattice_plane_offsets([0, 0, 0])).toThrow(`do not define a plane`)
   })
 })
 
@@ -141,13 +142,18 @@ describe(`lattice_plane_polygons`, () => {
     expect(lattice_plane_polygons({ hkl, offsets: [] }, cubic)).toEqual([])
   })
 
-  test.each<[Vec3]>([
-    [[0, 0, 0]],
-    [[1, 0.5, 0]],
-    [[1, Number.NaN, 0]],
-    [[1, 0, 0, 1] as unknown as Vec3],
-  ])(`rejects invalid Miller indices %j`, (hkl) => {
-    expect(() => lattice_plane_polygons({ hkl }, cubic)).toThrow(`Invalid Miller indices`)
+  test(`a repeated offset is drawn once so coincident fills do not stack up`, () => {
+    const polys = lattice_plane_polygons({ hkl: [1, 0, 0], offsets: [0.5, 0.5, 0] }, cubic)
+    expect(polys.map(({ offset }) => offset)).toEqual([0.5, 0])
+  })
+
+  test.each<[Vec3, string]>([
+    [[0, 0, 0], `do not define a plane`],
+    [[1, 0.5, 0], `must be integers`],
+    [[1, Number.NaN, 0], `must be integers`],
+    [[1, 0, 0, 1] as unknown as Vec3, `must be 3 numbers`],
+  ])(`rejects invalid Miller indices %j`, (hkl, message) => {
+    expect(() => lattice_plane_polygons({ hkl }, cubic)).toThrow(message)
   })
 })
 

@@ -96,6 +96,19 @@ describe(`resolve_pattern`, () => {
     expect(dots.d).toContain(`a2.821 2.821`)
   })
 
+  // a marker larger than the tile would be clipped at the edges into a blob, so filled markers
+  // saturate at the largest one that fits: dot radius size/2, triangle apex on the top edge
+  test.each<[PatternShape, number, string]>([
+    [`dots`, Math.PI / 4, `M0 5a5 5 0 1 0 10 0`],
+    [`triangles`, (3 * Math.sqrt(3)) / 16, `M5 0L`],
+  ])(`%s saturate at solidity %f`, (shape, max_solidity, edge_touching_start) => {
+    const at = (solidity: number) =>
+      resolve_pattern({ shape, size: 10, solidity }, BLUE, `p`).d
+    expect(at(1)).toBe(at(max_solidity))
+    expect(at(1).startsWith(edge_touching_start)).toBe(true)
+    expect(at(max_solidity - 0.01)).not.toBe(at(max_solidity))
+  })
+
   test(`scale shrinks tile, line width and custom dashes alike`, () => {
     const opts = { shape: `cross`, size: 12, line_width: 2, dash: [4, 2] } as const
     const full = resolve_pattern(opts, BLUE, `p`)

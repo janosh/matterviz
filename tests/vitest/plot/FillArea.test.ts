@@ -51,19 +51,29 @@ describe(`FillArea`, () => {
   })
 
   // A region split by gaps renders one FillArea per segment. They are one logical
-  // region, so N segments must not become N identical tab stops.
+  // region, so N segments must not become N identical tab stops or N identical pattern tiles:
+  // only the first emits the <defs>, the rest reference them through the shared defs_id.
   test.each([
-    [`first segment`, true, `0`, null],
-    [`later segment`, false, `-1`, `true`],
-  ])(`a %s carries tabindex %s`, (_name, is_first_segment, tabindex, hidden) => {
+    [`first segment`, true, `0`, null, 1],
+    [`later segment`, false, `-1`, `true`, 0],
+  ])(`a %s carries tabindex %s`, (_name, is_first_segment, tabindex, hidden, n_defs) => {
     document.body.innerHTML = ``
     mount(FillArea, {
       target: document.body,
-      props: make_props({ on_hover: () => {}, is_first_segment }),
+      props: make_props({
+        on_hover: () => {},
+        is_first_segment,
+        defs_id: `plot-fill-3`,
+        region: { ...base_region, pattern: `/` },
+      }),
     })
     const region = doc_query(`g.fill-region`)
     expect(region.getAttribute(`tabindex`)).toBe(tabindex)
     expect(region.getAttribute(`aria-hidden`)).toBe(hidden)
+    expect(region.querySelectorAll(`defs pattern`)).toHaveLength(n_defs)
+    expect(doc_query(`.fill-region > path`).getAttribute(`fill`)).toMatch(
+      /^url\(#plot-fill-3-pat-[0-9a-z]+\)$/,
+    )
   })
 
   // Every hover payload comes from a pointer event, so without this a keyboard user

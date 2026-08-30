@@ -540,6 +540,30 @@ export function reduce_miller_indices(hkl: Vec3): Vec3 {
   return [hkl[0] / divisor, hkl[1] / divisor, hkl[2] / divisor]
 }
 
+// Miller indices that pick out a plane: three safe integers, not all zero. Returned as given
+// (not gcd-reduced: (222) is a valid half-spacing stack) so callers can chain.
+export function validate_miller_indices(hkl: Vec3): Vec3 {
+  if (hkl?.length !== 3) {
+    throw new Error(`Miller indices must be 3 numbers, got ${JSON.stringify(hkl)}`)
+  }
+  const non_integer = hkl.filter((val) => !Number.isSafeInteger(val))
+  if (non_integer.length > 0) {
+    throw new Error(
+      `Miller indices must be integers, got ${JSON.stringify(non_integer)} in ${JSON.stringify(hkl)}`,
+    )
+  }
+  if (hkl.every((val) => val === 0)) {
+    throw new Error(`Miller indices (0, 0, 0) do not define a plane`)
+  }
+  return hkl
+}
+
+// Normal of the (hkl) planes of a row-vector lattice A: the reciprocal vector
+// G = h·b1 + k·b2 + l·b3, which with the rows b_i of transpose(inv(A)) is inv(A) · hkl. Not
+// normalized: |G| = 1 / d_hkl.
+export const miller_plane_normal = (lattice: Matrix3x3, hkl: Vec3): Vec3 =>
+  dot(matrix_inverse_3x3(lattice), hkl)
+
 // === Descriptive statistics ===
 // Plain loops, not reduce: these run over per-frame trajectory series and box-plot samples.
 

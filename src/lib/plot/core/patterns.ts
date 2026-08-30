@@ -67,7 +67,9 @@ export interface PatternOptions {
   shape?: PatternShape | PatternShorthand // default `diagonal`
   size?: number // tile period in px (spacing between repeats), default 8
   // Fraction of the tile the foreground covers, 0-1 (default 0.25). Sets line widths and
-  // marker sizes consistently across shapes; `line_width` overrides it for stroked shapes
+  // marker sizes consistently across shapes; `line_width` overrides it for stroked shapes.
+  // Filled markers saturate at the largest marker that fits the tile (π/4 for dots, 3√3/16 for
+  // triangles) since a bigger one would be clipped at the tile edges.
   solidity?: number
   line_width?: number // explicit stroke width in px for stroked shapes
   angle?: number // extra rotation in degrees on top of the shape's own orientation
@@ -228,7 +230,8 @@ function tile_geometry(shape: PatternShape, size: number, solidity: number): Til
     return stroked(circle_path(half, half, radius), 2 * Math.PI * radius)
   }
   if (shape === `dots`) {
-    return filled(circle_path(half, half, size * Math.sqrt(solidity / Math.PI)))
+    const radius = size * Math.sqrt(Math.min(solidity, Math.PI / 4) / Math.PI)
+    return filled(circle_path(half, half, radius))
   }
   if (shape === `squares`) {
     const side = size * Math.sqrt(solidity)
@@ -236,8 +239,9 @@ function tile_geometry(shape: PatternShape, size: number, solidity: number): Til
     return filled(`M${num(origin)} ${num(origin)}h${num(side)}v${num(side)}h${num(-side)}Z`)
   }
   if (shape === `triangles`) {
-    // equilateral, up-pointing, area = solidity * tile area, centroid at the tile center
-    const side = Math.sqrt((4 * solidity * size * size) / SQRT3)
+    // equilateral, up-pointing, area = solidity * tile area, centroid at the tile center; the
+    // apex reaches the tile's top edge at solidity 3√3/16
+    const side = Math.sqrt((4 * Math.min(solidity, (3 * SQRT3) / 16) * size * size) / SQRT3)
     const tri_height = (SQRT3 / 2) * side
     const apex_y = half - (2 / 3) * tri_height
     const base_y = half + tri_height / 3
