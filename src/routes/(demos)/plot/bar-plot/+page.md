@@ -92,6 +92,111 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
 
 Series can have **different categories**: DFT (PBE) includes CdTe while GW only covers three materials. Missing categories are zero-height bars in stacked mode, and absent in grouped mode.
 
+## Pattern Fills
+
+Every bar series (and `Histogram`, `BoxPlot`, fill regions, treemap/sunburst nodes and the composition charts) accepts a `pattern` that hatches or textures the fill so series stay distinguishable in grayscale print or for color-blind readers. Below, one bar per shape in `PATTERN_SHAPES` (the order `plot_pattern(idx)` cycles through), each tuned via the controls. Pass a shape name, a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a `PatternOptions` object:
+
+- `size`: tile period in px (default 8), `solidity`: fraction of the tile the texture covers (default 0.25), `line_width`: explicit stroke width for line shapes
+- `angle`: extra rotation on top of the shape's own orientation, `dash`: `solid` | `dashed` | `dotted` | custom dash array for line shapes
+- `mode: 'overlay'` (default) draws the texture in an auto-contrasting color over the bar color; `mode: 'replace'` draws it in the bar color on a transparent background (plotly's `fillmode`)
+- `fg`, `bg`, `fg_opacity` override the colors
+
+```svelte example
+<script lang="ts">
+  import { BarPlot, PATTERN_SHAPES } from 'matterviz'
+
+  let size = $state(8)
+  let solidity = $state(0.25)
+  let angle = $state(0)
+  let dash = $state(`solid`)
+  let mode = $state(`overlay`)
+
+  let series = $derived(
+    PATTERN_SHAPES.map((shape, idx) => ({
+      x: [shape],
+      y: [10 + ((idx * 7) % 11)],
+      label: shape,
+      pattern: { shape, size, solidity, angle, dash, mode },
+    })),
+  )
+</script>
+
+<div
+  style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
+>
+  <label
+    >size <input type="range" min="4" max="20" step="1" bind:value={size} /> {size}px</label
+  >
+  <label>
+    solidity <input type="range" min="0.05" max="0.6" step="0.05" bind:value={solidity} />
+    {solidity}
+  </label>
+  <label
+    >angle <input type="range" min="-90" max="90" step="5" bind:value={angle} />
+    {angle}°</label
+  >
+  <label>
+    dash
+    <select bind:value={dash}>
+      {#each [`solid`, `dashed`, `dotted`] as opt (opt)}<option>{opt}</option>{/each}
+    </select>
+  </label>
+  {#each [`overlay`, `replace`] as m (m)}
+    <label><input type="radio" bind:group={mode} value={m} /> {m}</label>
+  {/each}
+</div>
+
+<BarPlot
+  {series}
+  x_axis={{ label: `Pattern shape` }}
+  y_axis={{ label: `Value` }}
+  legend={null}
+  style="height: 380px"
+/>
+```
+
+Patterns are the natural way to mark measured vs. predicted values within one color family, or to distinguish stacked series that share a hue:
+
+```svelte example
+<script lang="ts">
+  import { BarPlot } from 'matterviz'
+
+  const materials = [`LiCoO2`, `LiFePO4`, `LiMn2O4`, `NMC811`, `LTO`]
+  const series = [
+    {
+      x: materials,
+      y: [140, 160, 120, 200, 165],
+      label: `Measured capacity`,
+      color: `#4c6ef5`,
+    },
+    {
+      x: materials,
+      y: [274, 170, 148, 275, 175],
+      label: `Theoretical capacity`,
+      color: `#4c6ef5`,
+      pattern: `/`,
+    },
+    {
+      x: materials,
+      y: [3.9, 3.4, 4.0, 3.8, 1.55],
+      label: `Voltage (V)`,
+      color: `#e8590c`,
+      y_axis: `y2`,
+      pattern: { shape: `dots`, size: 6, mode: `replace` },
+    },
+  ]
+</script>
+
+<BarPlot
+  {series}
+  mode="grouped"
+  x_axis={{ label: `Cathode` }}
+  y_axis={{ label: `Capacity (mAh/g)` }}
+  y2_axis={{ label: `Voltage (V)` }}
+  style="height: 380px"
+/>
+```
+
 ## Automatic Tick Label Layout
 
 Long category names no longer collide or waste most of the chart on a deep rotated-label gutter. `x`/`x2` tick labels default to `rotation: 'auto'`, which balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.

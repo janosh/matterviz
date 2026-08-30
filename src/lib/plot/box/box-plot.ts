@@ -4,6 +4,7 @@
 import { ascending } from 'd3-array'
 import type { Vec2 } from '$lib/math'
 import { array_extent, mean as mean_of, quantile_unordered, sample_std } from '$lib/math'
+import type { FillPattern } from '$lib/plot/core/patterns'
 import type { HandlerProps } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
 import { clamp01 } from '$lib/utils'
@@ -26,6 +27,7 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   y: readonly number[] // raw distribution for THIS box (quantiles/KDE computed internally)
   label?: string // category label (axis tick + legend + tooltip title)
   color?: string
+  pattern?: FillPattern // hatch/texture over the box and violin fill
   box_width?: number // fraction of the category slot (0..1), default from settings
   visible?: boolean
   // Group name for organizing legend items (same semantics as BarSeries.legend_group)

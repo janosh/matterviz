@@ -553,6 +553,40 @@ describe(`BarPlot`, () => {
     }
   })
 
+  test(`series pattern fills bars and the legend swatch from scoped <pattern> defs`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [
+        { ...basic, label: `hatched`, pattern: `/` },
+        { ...basic, label: `hatched-too`, pattern: `/` }, // same tile -> shares the def
+        { ...basic, label: `plain`, color: `tomato` },
+        // line series never texture: there is no area to fill
+        { ...basic, label: `line`, pattern: `.`, render_mode: `line` },
+      ],
+    })
+    const bar_fill = (idx: number) =>
+      plot
+        .querySelector(`.bar-series[data-series-idx="${idx}"] path[role="button"]`)
+        ?.getAttribute(`fill`) ?? ``
+    expect(bar_fill(1)).toBe(bar_fill(0))
+    expect(bar_fill(2)).toBe(`tomato`)
+    const match = /^url\(#(?<id>bar-.+-pat-[0-9a-z]+)\)$/.exec(bar_fill(0))
+    if (!match?.groups) throw new Error(`bar fill is not a pattern url: ${bar_fill(0)}`)
+    // legend swatches carry their own `legend-` defs, so count only the chart's `bar-` ones
+    const chart_defs = plot.querySelectorAll(`.bar-plot svg defs pattern[id^="bar-"]`)
+    expect(chart_defs).toHaveLength(1)
+    expect(chart_defs[0].id).toBe(match.groups.id)
+    expect(chart_defs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
+    // the legend renders its own half-scale copy of the tile inside the swatch svg
+    const items = [...plot.querySelectorAll<HTMLElement>(`.legend-item`)]
+    expect(items.map((item) => item.querySelectorAll(`pattern`).length)).toEqual([1, 1, 0, 0])
+    const swatch_def = items[0].querySelector(`pattern`)
+    expect(swatch_def?.getAttribute(`width`)).toBe(`4`)
+    expect(items[0].querySelector(`.legend-marker > svg > path`)?.getAttribute(`fill`)).toBe(
+      `url(#${swatch_def?.id})`,
+    )
+    expect(swatch_def?.id).not.toBe(match.groups.id)
+  })
+
   const legend_position = (plot: HTMLElement): { x: number; y: number } => {
     const legend = plot.querySelector<HTMLElement>(`.legend`)
     if (!legend) throw new Error(`legend not found`)

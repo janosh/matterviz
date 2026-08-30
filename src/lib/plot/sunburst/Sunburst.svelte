@@ -395,33 +395,19 @@
             {#if arc_content}
               {@render arc_content(screen)}
             {:else}
-              <!-- @const so the path is generated (and info looked up) once per
-            arc per frame, shared by the base path and the hatch overlay -->
               {@const info = chart_state.node_infos[screen.arc.node_idx]}
               {@const opacity = chart_state.node_dim[screen.arc.node_idx].opacity}
-              {@const path_d = screen_path(screen)}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <path
-                d={path_d}
+                d={screen_path(screen)}
                 data-sunburst-node-idx={screen.arc.node_idx}
-                fill={info.fill}
+                fill={info.pattern?.url ?? info.fill}
                 fill-opacity={opacity}
                 role={info.clickable ? `button` : undefined}
                 tabindex={screen.arc.node_idx === roving_idx ? 0 : -1}
                 aria-label={info.aria}
                 style:cursor={info.clickable ? `pointer` : `default`}
               />
-              {#if screen.arc.hatch}
-                <!-- Decorative texture overlay (e.g. preemptible jobs); rendered as
-              the base path's next sibling so the hover 'pull' can track it -->
-                <path
-                  class="arc-hatch"
-                  aria-hidden="true"
-                  d={path_d}
-                  fill="url(#{chart_state.hatch_pattern_id})"
-                  fill-opacity={opacity}
-                />
-              {/if}
             {/if}
           {/each}
         </g>
@@ -499,9 +485,9 @@
 </ChartShell>
 
 <style>
-  /* fully :global: the wrapper is ChartShell's element and breadcrumbs, chart svg and
-  hatch pattern are HierarchyShell's, so none carry this component's scope - but
-  their theming stays in the chart's variable namespace */
+  /* fully :global: the wrapper is ChartShell's element and breadcrumbs and chart svg
+  are HierarchyShell's, so none carry this component's scope - but their theming stays
+  in the chart's variable namespace */
   :global(.sunburst .breadcrumb) {
     background: var(--sunburst-btn-bg, rgba(128, 128, 128, 0.15));
     color: inherit;
@@ -550,25 +536,8 @@
     /* hover 'pull': scaling about the chart center offsets the arc radially */
     transform-origin: 0 0;
   }
-  /* the hatch overlay (an arc's next sibling) rides along with its hover 'pull' */
-  :global(.sunburst:not(.icicle)) .arcs path:hover,
-  :global(.sunburst:not(.icicle)) .arcs path:hover + path.arc-hatch {
+  :global(.sunburst:not(.icicle)) .arcs path:hover {
     transform: scale(var(--sunburst-hover-scale, 1.02));
-  }
-  /* decorative overlay: never intercepts pointer events, no border of its own */
-  .arcs path.arc-hatch {
-    stroke: none;
-    pointer-events: none;
-  }
-  /* subtle by default: thin stripes inheriting the arc border color (itself
-  defaulting to the chart bg) at low opacity, so hatching matches the gaps
-  between slices instead of reading as solid white */
-  :global(.sunburst .hatch-pattern-line) {
-    stroke: var(
-      --sunburst-hatch-stroke,
-      color-mix(in srgb, var(--sunburst-arc-stroke, var(--page-bg, white)) 30%, transparent)
-    );
-    stroke-width: var(--sunburst-hatch-stroke-width, 0.35);
   }
   .arc-label {
     text-anchor: middle;

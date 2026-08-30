@@ -1,4 +1,4 @@
-import { R_EV_PER_K } from '$lib/convex-hull/gas-thermodynamics'
+import { BOLTZMANN_EV_PER_K } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import {
   build_free_energy_model,
@@ -164,7 +164,7 @@ describe(`build_free_energy_model`, () => {
     ).toBe(0)
     // Lower pO2 destabilizes oxides by x_O k_B T ln(p) / 2
     expect(at(1e-10).dg_form(1000) - at(1).dg_form(1000)).toBeCloseTo(
-      ((1 / 3) * R_EV_PER_K * 1000 * Math.log(1e10)) / 2,
+      ((1 / 3) * BOLTZMANN_EV_PER_K * 1000 * Math.log(1e10)) / 2,
       8,
     )
     // SISSO references already hold the 1 bar gas, so only the pressure term remains
@@ -177,7 +177,7 @@ describe(`build_free_energy_model`, () => {
     const plain = dg([li, co, o2, li2o_vol], { mode: `sisso` }).dg_form(1000)
     expect(sisso(1)).toBeCloseTo(plain, 10)
     expect(sisso(1e-6) - plain).toBeCloseTo(
-      ((1 / 3) * R_EV_PER_K * 1000 * Math.log(1e6)) / 2,
+      ((1 / 3) * BOLTZMANN_EV_PER_K * 1000 * Math.log(1e6)) / 2,
       8,
     )
     // A tabulated O reference already carries its own entropy: pressure term only, no matter
@@ -187,7 +187,7 @@ describe(`build_free_energy_model`, () => {
       dg([li, co, o2_tab, li2o], { gas_config, gas_pressures: { O2: pressure } }).dg_form(1000)
     expect(tab_at(1)).toBeCloseTo(dg([li, co, o2_tab, li2o]).dg_form(1000), 10)
     expect(tab_at(1e-6) - tab_at(1)).toBeCloseTo(
-      ((1 / 3) * R_EV_PER_K * 1000 * Math.log(1e6)) / 2,
+      ((1 / 3) * BOLTZMANN_EV_PER_K * 1000 * Math.log(1e6)) / 2,
       8,
     )
   })

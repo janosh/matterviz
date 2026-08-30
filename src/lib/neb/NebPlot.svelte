@@ -271,3 +271,10 @@
     {/if}
   {/snippet}
 </ScatterPlot>
+
+<style>
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
+  tspan {
+    dominant-baseline: inherit;
+  }
+</style>

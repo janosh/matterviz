@@ -31,6 +31,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     dash_segments,
     DEFAULT_SHOW_SYM_KINDS,
     frac_to_cart_direction,
+    polygon_edge_vertices,
+    polygon_fan_vertices,
     SYM_ELEM_COLORS,
   } from './symmetry-elements'
 
@@ -222,12 +224,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       // Stripe coordinate: Cartesian distance along the glide direction / period
       const stripe_u = (vert: Vec3): number =>
         stripe_dir ? math.dot(vert, stripe_dir) / GLIDE_STRIPE_PERIOD : 0
-      // Fan triangulation of the convex polygon
-      for (let idx = 1; idx < polygon.length - 1; idx++) {
-        for (const vert of [polygon[0], polygon[idx], polygon[idx + 1]]) {
-          group.positions.push(...vert)
-          group.uvs.push(stripe_u(vert), 0.5)
-        }
+      for (const vert of polygon_fan_vertices(polygon)) {
+        group.positions.push(...vert)
+        group.uvs.push(stripe_u(vert), 0.5)
       }
       groups.set(group_key, group)
     }
@@ -247,9 +246,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     const segments_by_color = new Map<string, number[]>()
     for (const { polygon, color } of visible_planes) {
       const positions = segments_by_color.get(color) ?? []
-      for (let idx = 0; idx < polygon.length; idx++) {
-        positions.push(...polygon[idx], ...polygon[(idx + 1) % polygon.length])
-      }
+      positions.push(...polygon_edge_vertices(polygon).flat())
       segments_by_color.set(color, positions)
     }
     return [...segments_by_color.entries()].map(([color, positions]) => {

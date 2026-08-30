@@ -39,6 +39,42 @@ Leaves carry `value`; branch angles sum their leaves by default. Top-level categ
 <Sunburst {data} style="height: 420px" />
 ```
 
+## Pattern fills
+
+Nodes accept a `pattern` (shape name, plotly-style shorthand like `/`, `x`, `.`, or a `PatternOptions` object) that hatches the arc over its color. Patterns apply per node without inheriting, so a hatched branch can hold plain children and vice versa. Here estimated and simulated entries are marked so the eye can separate them from measured ones at any zoom level; the legend swatches repeat the texture.
+
+```svelte example
+<script lang="ts">
+  import { Sunburst, type SunburstNode } from 'matterviz'
+
+  const data: SunburstNode[] = [
+    {
+      label: `Oxides`,
+      children: [
+        { label: `Measured`, value: 32 },
+        { label: `Estimated`, value: 14, pattern: `/` },
+        { label: `Simulated`, value: 21, pattern: { shape: `dots`, size: 6 } },
+      ],
+    },
+    {
+      label: `Sulfides`,
+      pattern: { shape: `cross-diagonal`, solidity: 0.15 },
+      children: [
+        { label: `Measured`, value: 18 },
+        {
+          label: `Estimated`,
+          value: 9,
+          pattern: { shape: `diagonal`, dash: `dotted`, size: 6 },
+        },
+      ],
+    },
+    { label: `Halides`, value: 16, pattern: { shape: `zigzag`, mode: `replace`, size: 10 } },
+  ]
+</script>
+
+<Sunburst {data} style="height: 420px" />
+```
+
 ## Crystal-structure taxonomy (5 levels)
 
 `sunburst_from_paths` builds deep trees from path rows. Bind `zoom_root_id` to track drill-down state and use `max_depth` to limit rings below it. Arrow keys move focus between siblings (left/right), children (down) and parents (up); the breadcrumb trail and <kbd>Escape</kbd> zoom back out.

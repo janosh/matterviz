@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import type { ChartSegment } from './chart'
+  import type { ChartSegment, ElementPatterns } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
 
   const LABEL_HEIGHT = 20 // px rows above and below the bar for external labels
@@ -26,6 +27,7 @@
     show_percentages = false,
     show_amounts = true,
     color_scheme = `Vesta`,
+    patterns = {},
     svg_node = $bindable(null),
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
@@ -36,8 +38,12 @@
     show_percentages?: boolean
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
+    patterns?: ElementPatterns // hatch/texture fill per element symbol
     svg_node?: SVGSVGElement | null
   } = $props()
+
+  const uid = $props.id()
+  const clip_path_id = `bar-clip-${uid}`
 
   let label_opts = $derived({ show_amounts, show_percentages })
   const bar_y = LABEL_HEIGHT + GAP
@@ -50,28 +56,27 @@
 
   let segments = $derived.by((): BarSegment[] => {
     let [cursor, n_above, n_below] = [0, 0, 0]
-    return composition_segments(composition, color_scheme).map((segment) => {
-      const width = segment.fraction * size
-      const x = cursor
-      cursor += width
-      const label = segment.element + segment_suffix(segment, label_opts)
-      const base_scale = Math.min(2, Math.max(1, width / 40))
-      const font_scale = fit_font_scale(base_scale, label.length, width * 0.9, 0.6, 12)
-      // thin segments get external labels, alternating above/below to avoid overlap
-      let label_pos: BarSegment[`label_pos`] = null
-      if (segment.fraction < THIN_FRACTION) {
-        if (width >= MIN_EXTERNAL_WIDTH) {
-          label_pos = n_above <= n_below ? `above` : `below`
-          if (label_pos === `above`) n_above++
-          else n_below++
-        }
-      } else if (width >= MIN_LABEL_WIDTH) label_pos = `inside`
-      return { ...segment, x, width, font_scale, label_pos }
-    })
+    return composition_segments(composition, color_scheme, patterns, `bar-${uid}`).map(
+      (segment) => {
+        const width = segment.fraction * size
+        const x = cursor
+        cursor += width
+        const label = segment.element + segment_suffix(segment, label_opts)
+        const base_scale = Math.min(2, Math.max(1, width / 40))
+        const font_scale = fit_font_scale(base_scale, label.length, width * 0.9, 0.6, 12)
+        // thin segments get external labels, alternating above/below to avoid overlap
+        let label_pos: BarSegment[`label_pos`] = null
+        if (segment.fraction < THIN_FRACTION) {
+          if (width >= MIN_EXTERNAL_WIDTH) {
+            label_pos = n_above <= n_below ? `above` : `below`
+            if (label_pos === `above`) n_above++
+            else n_below++
+          }
+        } else if (width >= MIN_LABEL_WIDTH) label_pos = `inside`
+        return { ...segment, x, width, font_scale, label_pos }
+      },
+    )
   })
-
-  const uid = $props.id()
-  const clip_path_id = `bar-clip-${uid}`
 </script>
 
 <svg
@@ -85,6 +90,7 @@
     <clipPath id={clip_path_id}>
       <rect x="0" y={bar_y} width={size} height={bar_height} rx="2" ry="2" />
     </clipPath>
+    <PatternDefs patterns={segments.map((seg) => seg.pattern)} />
   </defs>
   <rect
     x="0"
@@ -101,7 +107,7 @@
         y={bar_y}
         width={segment.width}
         height={bar_height}
-        fill={segment.color}
+        fill={segment.pattern?.url ?? segment.color}
         stroke="white"
         role="img"
         aria-label={segment_title(segment)}
@@ -156,6 +162,10 @@
   }
   text {
     pointer-events: none;
+  }
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
+  tspan {
+    dominant-baseline: inherit;
   }
   .element-symbol {
     font-weight: 700;

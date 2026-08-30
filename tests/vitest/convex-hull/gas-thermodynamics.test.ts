@@ -1,3 +1,4 @@
+import { BOLTZMANN_EV_PER_K, EV_PER_A3_TO_GPA, EV_TO_KJ_PER_MOL } from '$lib/constants'
 import {
   analyze_gas_data,
   apply_gas_corrections,
@@ -6,10 +7,10 @@ import {
   DEFAULT_ELEMENT_TO_GAS,
   format_chemical_potential,
   GAS_STOICHIOMETRY,
+  gas_pressure_term,
   get_default_gas_provider,
   get_effective_pressures,
   P_REF,
-  R_EV_PER_K,
 } from '$lib/convex-hull/gas-thermodynamics'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
@@ -86,8 +87,24 @@ describe(`gas-thermodynamics: chemical potential calculations`, () => {
 
     // μ_per_atom(T,P) - μ°_per_atom(T) = RT*ln(P/P_REF) / num_atoms
     // For O2, num_atoms = 2
-    const expected_delta = (R_EV_PER_K * T * Math.log(P / P_REF)) / 2
+    const expected_delta = (BOLTZMANN_EV_PER_K * T * Math.log(P / P_REF)) / 2
     expect(mu - mu_ref).toBeCloseTo(expected_delta, 10)
+    expect(gas_pressure_term(`O2`, T, P)).toBeCloseTo(expected_delta, 14)
+    // per atom: a triatomic gas spreads the same molecular term over three atoms
+    expect(gas_pressure_term(`CO2`, T, P)).toBeCloseTo((expected_delta * 2) / 3, 14)
+    expect(gas_pressure_term(`O2`, T, P_REF)).toBe(0)
+  })
+})
+
+describe(`physical constants`, () => {
+  // Pin the derived constants to their CODATA 2018 values: every consumer test derives its
+  // expectation from the same constant, so a wrong derivation would otherwise pass
+  test.each([
+    [`k_B eV/K`, BOLTZMANN_EV_PER_K, 8.617333262e-5],
+    [`eV -> kJ/mol`, EV_TO_KJ_PER_MOL, 96.485332],
+    [`eV/A^3 -> GPa`, EV_PER_A3_TO_GPA, 160.2176634],
+  ])(`%s = %f`, (_name, value, reference) => {
+    expect(Math.abs(value / reference - 1)).toBeLessThan(1e-8)
   })
 })
 

@@ -51,6 +51,8 @@
   } from '$lib/structure'
   import ArrowInstances from './ArrowInstances.svelte'
   import InstancedAtoms from './InstancedAtoms.svelte'
+  import type { LatticePlane } from './lattice-planes'
+  import LatticePlanes from './LatticePlanes.svelte'
   import SiteLabels from './SiteLabels.svelte'
   import type { AtomPropertyColors } from '$lib/structure/atom-properties'
   import type { SymmetryElement } from '$lib/symmetry'
@@ -203,6 +205,7 @@
     cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
     show_cell_vectors = DEFAULTS.structure.show_cell_vectors,
+    lattice_planes = [],
     symmetry_elements = [],
     symmetry_elements_props = {},
     symmetry_declutter = true,
@@ -318,6 +321,10 @@
     cell_edge_opacity?: number
     cell_surface_opacity?: number
     show_cell_vectors?: boolean
+    // (hkl) lattice planes drawn inside the cell. Miller indices refer to the input cell;
+    // like symmetry_elements, StructureViewport hides them when a different cell is shown.
+    // Indices are used as given, so (222) draws the half-spacing stack, not the (111) planes.
+    lattice_planes?: LatticePlane[]
     // Symmetry elements (from symmetry_elements_from_ops) to overlay on the structure.
     // Fractional coords must refer to the SAME cell as the rendered lattice (moyo
     // operations are in the input-cell frame, i.e. the original untransformed cell).
@@ -2288,6 +2295,9 @@
           {cell_surface_opacity}
           {show_cell_vectors}
         />
+        {#if lattice_planes.length > 0}
+          <LatticePlanes planes={lattice_planes} lattice={visual_lattice.matrix} />
+        {/if}
         {#if symmetry_elements.length > 0}
           <SymmetryElements
             elements={symmetry_elements}

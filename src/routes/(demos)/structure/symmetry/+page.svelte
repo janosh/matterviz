@@ -82,7 +82,7 @@
 
 <h1>Symmetry</h1>
 
-<p style="text-align: center">
+<p class="demo-intro">
   Purely client-side interactive symmetry analysis. Powered by
   <a href="https://github.com/spglib/moyo">Moyo</a> WASM bindings.
 </p>

@@ -8,6 +8,8 @@ import type { D3InterpolateName } from '$lib/colors'
 import { is_opaque_color, pick_contrast_color } from '$lib/colors'
 import { format_value } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
+import type { FillPattern, ResolvedPattern } from '$lib/plot/core/patterns'
+import { resolve_pattern } from '$lib/plot/core/patterns'
 import { create_color_scale } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
 import {
@@ -85,8 +87,10 @@ export interface HierarchyNodeInfo {
   // width fits its node; empty when the node has no base label at all.
   variants: { text: string; width: number }[]
   aria: string
-  fill: string
+  fill: string // the node's color, also the backdrop of its pattern (label contrast keys off it)
   label_fill: string
+  // Hatch/texture tile the node paints with instead of its flat `fill` (undefined: none)
+  pattern?: ResolvedPattern
   clickable?: boolean
 }
 
@@ -102,10 +106,11 @@ export function compute_node_infos<Metadata>(
     value_format: string
     font: Readonly<FontSpec>
     color_for: (arc: PositionedArc<Metadata>) => string
+    pattern_prefix: string // scopes pattern ids to the chart instance
     clickable?: (arc: PositionedArc<Metadata>) => boolean
   },
 ): HierarchyNodeInfo[] {
-  const { label_text, value_format, font, color_for, clickable } = opts
+  const { label_text, value_format, font, color_for, pattern_prefix, clickable } = opts
   // Black/white label text for opaque fills; unresolved/translucent fills inherit.
   // Memoized per fill: categorical coloring repeats a handful of fills across thousands
   // of nodes, and parsing + luminance per node would dominate this pass.
@@ -120,9 +125,21 @@ export function compute_node_infos<Metadata>(
     }
     return label_fill
   }
+  // Same memo idea for patterns: a flag pattern typically repeats one spec over many nodes
+  const pattern_cache = new Map<string, ResolvedPattern>()
+  const pattern_for = (spec: FillPattern, fill: string) => {
+    const key = `${fill}|${JSON.stringify(spec)}`
+    let pattern = pattern_cache.get(key)
+    if (!pattern) {
+      pattern = resolve_pattern(spec, fill, pattern_prefix)
+      pattern_cache.set(key, pattern)
+    }
+    return pattern
+  }
   return arcs.map((arc) => {
     const { text, extended, short } = node_label_variants(arc, label_text, value_format)
     const fill = color_for(arc)
+    const pattern = arc.pattern && pattern_for(arc.pattern, fill)
     const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
       variant === undefined
         ? []
@@ -136,7 +153,9 @@ export function compute_node_infos<Metadata>(
         arc.other_count ? ` (${arc.other_count} grouped)` : ``
       }`,
       fill,
-      label_fill: contrast(fill),
+      // Labels sit on the tile backdrop: the node color, or the page in `replace` mode
+      label_fill: contrast(pattern ? (pattern.bg ?? `transparent`) : fill),
+      pattern,
       ...(clickable ? { clickable: clickable(arc) } : {}),
     }
   })
@@ -222,7 +241,11 @@ export function hierarchy_legend_items<Metadata>(
     series_idx: idx,
     label: node_display_name(arc),
     visible: !muted_ids.has(arc.id),
-    display_style: { symbol_type: `Square` as const, symbol_color: color_for(arc) },
+    display_style: {
+      symbol_type: `Square` as const,
+      symbol_color: color_for(arc),
+      pattern: arc.pattern,
+    },
   }))
 }
 

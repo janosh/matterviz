@@ -262,4 +262,8 @@
   .tick text {
     font-size: var(--tick-font-size, 0.8em);
   }
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
+  .tick tspan {
+    dominant-baseline: inherit;
+  }
 </style>

@@ -505,6 +505,28 @@ describe(`Histogram`, () => {
     expect(quarter).toBeLessThan(25)
   })
 
+  test(`series pattern fills bars from a scoped <pattern> def`, async () => {
+    const values = [1, 2, 2, 3, 3, 3, 4, 5]
+    const plot = await mount_histogram({
+      series: [
+        { values, label: `hatched`, color: `steelblue`, pattern: `/` },
+        { values, label: `plain`, color: `tomato` },
+      ],
+      bins: 4,
+    })
+    const bar_fill = (idx: number) =>
+      plot
+        .querySelector(`.histogram-series[data-series-idx="${idx}"] path[role="button"]`)
+        ?.getAttribute(`fill`) ?? ``
+    expect(bar_fill(1)).toBe(`tomato`)
+    const match = /^url\(#(?<id>histogram-.+-pat-[0-9a-z]+)\)$/.exec(bar_fill(0))
+    if (!match?.groups) throw new Error(`bar fill is not a pattern url: ${bar_fill(0)}`)
+    const def = plot.querySelector(`.histogram svg defs #${match.groups.id}`)
+    expect(def?.tagName.toLowerCase()).toBe(`pattern`)
+    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
+    expect(plot.querySelectorAll(`.histogram svg defs pattern`)).toHaveLength(1)
+  })
+
   test(`normalize_counts: probability sums to 1, density integrates to 1 on uneven bins`, () => {
     const values = [1, 2, 3, 10, 30, 50, 70, 90, 100, 400, 900, 1000]
     const { edges, counts } = bin_values(values, [1, 1000], 3, `log`)

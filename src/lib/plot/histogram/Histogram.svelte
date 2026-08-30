@@ -13,6 +13,7 @@
   } from '$lib/plot'
   import { HistogramControls } from '$lib/plot'
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '$lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
@@ -74,6 +75,8 @@
   } from '$lib/plot/core/utils/roving-focus.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
+  import { resolve_pattern } from '$lib/plot/core/patterns'
+  import { unique_id } from '$lib/plot/core/utils'
 
   let {
     series: series_in = $bindable([]),
@@ -417,7 +420,17 @@
     build_legend_items(series, (series_data, series_idx) => ({
       symbol_type: `Square`,
       symbol_color: series_color(series_data, series_idx),
+      pattern: series_data.pattern,
     })),
+  )
+
+  // Per-series hatch/texture tiles resolved against the bar color, parallel to
+  // histogram_bins (null: plain fill); ids scoped to this instance
+  const pattern_uid = unique_id(`histogram`)
+  let hist_patterns = $derived(
+    histogram_bins.map((hist) =>
+      hist.pattern ? resolve_pattern(hist.pattern, hist.color, pattern_uid) : null,
+    ),
   )
 
   // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height
@@ -544,7 +557,8 @@
     />
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
-    {#each histogram_bins as hist (hist.id)}
+    <defs><PatternDefs patterns={hist_patterns} /></defs>
+    {#each histogram_bins as hist, hist_idx (hist.id)}
       {@const x_scale = hist.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
       {@const y_scale = hist.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
       <!-- Bars grow from zero, or from the range floor when zero is off-axis (log, pinned range) -->
@@ -574,7 +588,7 @@
                 bar_height,
                 resolved_bar.border_radius ?? 0,
               )}
-              fill={hist.color}
+              fill={hist_patterns[hist_idx]?.url ?? hist.color}
               opacity={resolved_bar.opacity}
               stroke={resolved_bar.stroke_color}
               stroke-opacity={resolved_bar.stroke_opacity}

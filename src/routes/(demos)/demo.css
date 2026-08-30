@@ -2,6 +2,19 @@
    layout. Class names are demo- prefixed so they can't leak into the scoped .controls
    and .grid rules that library components and test pages define for themselves. */
 
+/* Short one-paragraph intro under the page title, centered like the h1. Multi-paragraph
+   prose stays a plain left-aligned <p>. */
+.demo-intro {
+  max-width: 60em;
+  margin: 1ex auto 1em;
+  text-align: center;
+}
+/* Section headings inside a widened demo block stay centered like the page title, which the
+   root layout only centers for headings that are direct children of <main> */
+.bleed-1400 > h2,
+.full-bleed > h2 {
+  text-align: center;
+}
 /* Centered row of sliders, selects and checkboxes above a plot */
 .demo-controls {
   display: flex;

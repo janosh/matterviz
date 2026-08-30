@@ -173,7 +173,8 @@
     active_file = source_filename
     parse_time_ms = undefined
   }}
-  style="height: 500px"
+  class="bleed-1400"
+  style="height: 600px"
 >
   <DragOverlay
     visible={dragover_hint}

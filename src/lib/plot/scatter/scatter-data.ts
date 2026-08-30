@@ -265,6 +265,7 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
           fill_opacity: fill.fill_opacity ?? 0.3,
           edge_color: fill.edge_upper?.color,
           fill_gradient,
+          pattern: fill.pattern,
         },
       }
     })

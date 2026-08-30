@@ -3,7 +3,9 @@
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
   import type { TweenOptions } from 'svelte/motion'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import { is_fill_gradient } from '$lib/plot/core/fill-utils'
+  import { resolve_pattern } from '$lib/plot/core/patterns'
   import type { FillHandlerEvent, FillRegion } from '$lib/plot/core/types'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { unique_id } from '$lib/plot/core/utils'
@@ -54,8 +56,20 @@
       ? region.hover_style.fill
       : (region.fill ?? `steelblue`),
   )
+  // Hatch/texture over a solid fill color; a gradient fill has no single color to texture
+  let pattern = $derived(
+    region.pattern && typeof effective_fill === `string`
+      ? resolve_pattern(
+          region.pattern,
+          effective_fill,
+          `fill-${region.id ?? region_idx}-${instance_id}`,
+        )
+      : undefined,
+  )
   let path_fill = $derived(
-    typeof effective_fill === `object` ? `url(#${gradient_id})` : effective_fill,
+    typeof effective_fill === `object`
+      ? `url(#${gradient_id})`
+      : (pattern?.url ?? effective_fill),
   )
   // outline drawn only on hover when the user opted in via hover_style.stroke
   let hover_stroke = $derived(is_hovered ? region.hover_style?.stroke : undefined)
@@ -159,6 +173,9 @@
     {/each}
   {/snippet}
 
+  {#if pattern}
+    <defs><PatternDefs patterns={[pattern]} /></defs>
+  {/if}
   <!-- Gradient defs -->
   {#if is_fill_gradient(region.fill)}
     <defs>

@@ -412,6 +412,7 @@
         {...scene_props}
         auto_rotate={in_grid ? 0 : scene_props.auto_rotate}
         symmetry_elements={session.shows_input_frame ? scene_props.symmetry_elements : []}
+        lattice_planes={session.shows_input_frame ? scene_props.lattice_planes : []}
         bind:camera_position
         bind:camera_target
         bind:fly_to_request

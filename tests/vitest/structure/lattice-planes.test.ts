@@ -1,0 +1,205 @@
+import type { Matrix3x3, Vec3 } from '$lib/math'
+import * as math from '$lib/math'
+import { lattice_plane_offsets, lattice_plane_polygons } from '$lib/structure/lattice-planes'
+import {
+  clip_frac_plane_to_cell,
+  polygon_edge_vertices,
+  polygon_fan_vertices,
+} from '$lib/symmetry/symmetry-elements'
+import { describe, expect, test } from 'vitest'
+
+const cubic: Matrix3x3 = [
+  [4, 0, 0],
+  [0, 4, 0],
+  [0, 0, 4],
+]
+// hexagonal a = 3, c = 5 (gamma = 120°), so plane normals are not along cell vectors
+const hexagonal: Matrix3x3 = [
+  [3, 0, 0],
+  [-1.5, (3 * Math.sqrt(3)) / 2, 0],
+  [0, 0, 5],
+]
+const triclinic = math.cell_to_lattice_matrix(4, 5, 6, 70, 80, 100)
+
+// The Cartesian normal of h·x + k·y + l·z = offset is the reciprocal vector inv(A)·hkl
+const plane_normal = (hkl: Vec3, lattice: Matrix3x3): Vec3 =>
+  math.dot(math.matrix_inverse_3x3(lattice), hkl)
+
+// A valid clipped polygon: every vertex on the plane and inside the cell (fractional), all
+// vertices coplanar in Cartesian space, no near-duplicate vertices, convex winding order
+const expect_valid_polygon = (
+  polygon: Vec3[],
+  hkl: Vec3,
+  offset: number,
+  lattice: Matrix3x3,
+) => {
+  expect(polygon.length).toBeGreaterThanOrEqual(3)
+  const to_frac = math.create_cart_to_frac(lattice)
+  const normal = math.normalize_vec(plane_normal(hkl, lattice))
+  const plane_const = math.dot(polygon[0], normal)
+  const turns = new Set<number>()
+  for (const [idx, vert] of polygon.entries()) {
+    const frac = to_frac(vert)
+    expect(math.dot(hkl, frac)).toBeCloseTo(offset, 8)
+    for (const coord of frac) expect(coord).toBeGreaterThanOrEqual(-1e-12)
+    for (const coord of frac) expect(coord).toBeLessThanOrEqual(1 + 1e-12)
+    expect(Math.abs(math.dot(vert, normal) - plane_const)).toBeLessThan(1e-12)
+    const prev = polygon[(idx + polygon.length - 1) % polygon.length]
+    const next = polygon[(idx + 1) % polygon.length]
+    expect(math.euclidean_dist(vert, next)).toBeGreaterThan(1e-6)
+    const turn = math.cross_3d(math.subtract(vert, prev), math.subtract(next, vert))
+    turns.add(Math.sign(math.dot(turn, normal)))
+  }
+  expect(turns.size).toBe(1)
+  expect(turns.has(0)).toBe(false)
+}
+
+describe(`lattice_plane_offsets`, () => {
+  test.each<{ hkl: Vec3; offsets: number[] }>([
+    { hkl: [1, 0, 0], offsets: [0, 1] },
+    { hkl: [1, 1, 1], offsets: [0, 1, 2, 3] },
+    { hkl: [1, -1, 0], offsets: [-1, 0, 1] },
+    { hkl: [2, 1, 0], offsets: [0, 1, 2, 3] },
+    { hkl: [0, 0, -2], offsets: [-2, -1, 0] },
+  ])(`$hkl → $offsets`, ({ hkl, offsets }) => {
+    expect(lattice_plane_offsets(hkl)).toEqual(offsets)
+  })
+})
+
+describe(`lattice_plane_polygons`, () => {
+  test(`(100) in a cubic cell is the two faces x = 0 and x = a`, () => {
+    const polys = lattice_plane_polygons({ hkl: [1, 0, 0] }, cubic)
+    expect(polys.map((poly) => poly.offset)).toEqual([0, 1])
+    for (const { offset, polygon } of polys) {
+      expect(polygon).toHaveLength(4)
+      for (const vert of polygon) expect(vert[0]).toBeCloseTo(4 * offset, 10)
+    }
+  })
+
+  test(`(-100) draws the same two faces as (100)`, () => {
+    const faces = (hkl: Vec3) =>
+      lattice_plane_polygons({ hkl }, cubic).map(({ polygon }) =>
+        polygon.map((vert) => vert[0]).toSorted((val_a, val_b) => val_a - val_b),
+      )
+    expect(faces([-1, 0, 0]).toReversed()).toEqual(faces([1, 0, 0]))
+  })
+
+  // every polygon of a family is valid, and the whole family has the expected vertex counts:
+  // corner and edge touches are dropped, faces and diagonals appear exactly once
+  test.each<[string, Matrix3x3, Vec3, number[]]>([
+    [`cubic`, cubic, [1, 1, 0], [4]],
+    [`cubic`, cubic, [1, -1, 0], [4]],
+    [`cubic`, cubic, [1, 1, 1], [3, 3]],
+    // (222) is the half-spacing stack: indices are used as given, not gcd-reduced
+    [`cubic`, cubic, [2, 2, 2], [3, 3, 6, 3, 3]],
+    [`cubic`, cubic, [5, 3, 1], [3, 4, 4, 4, 4, 4, 4, 3]],
+    [`triclinic`, triclinic, [1, 0, 0], [4, 4]],
+    [`triclinic`, triclinic, [1, 1, 0], [4]],
+    [`triclinic`, triclinic, [5, 3, 1], [3, 4, 4, 4, 4, 4, 4, 3]],
+    [`triclinic`, triclinic, [-2, 3, -1], [3, 4, 4, 4, 3]],
+  ])(`%s %j family`, (_label, lattice, hkl, vertex_counts) => {
+    const polys = lattice_plane_polygons({ hkl }, lattice)
+    expect(polys.map(({ polygon }) => polygon.length)).toEqual(vertex_counts)
+    for (const { offset, polygon } of polys)
+      expect_valid_polygon(polygon, hkl, offset, lattice)
+  })
+
+  test.each<[string, Matrix3x3]>([
+    [`cubic`, cubic],
+    [`triclinic`, triclinic],
+  ])(`explicit offset: (111) through the %s cell center is a hexagon`, (_label, lattice) => {
+    const [{ offset, polygon }] = lattice_plane_polygons(
+      { hkl: [1, 1, 1], offsets: [1.5] },
+      lattice,
+    )
+    expect(offset).toBe(1.5)
+    expect(polygon).toHaveLength(6)
+    expect_valid_polygon(polygon, [1, 1, 1], 1.5, lattice)
+  })
+
+  test(`cubic (111) center hexagon is regular`, () => {
+    const [{ polygon }] = lattice_plane_polygons({ hkl: [1, 1, 1], offsets: [1.5] }, cubic)
+    const center = math.scale(math.add(...cubic), 0.5)
+    const radii = polygon.map((vert) => math.euclidean_dist(vert, center))
+    for (const radius of radii) expect(radius).toBeCloseTo(radii[0], 10)
+    const edges = polygon.map((vert, idx) =>
+      math.euclidean_dist(vert, polygon[(idx + 1) % polygon.length]),
+    )
+    for (const edge of edges) expect(edge).toBeCloseTo(edges[0], 10)
+  })
+
+  test(`non-orthogonal cell: (110) planes lie in the true Cartesian plane`, () => {
+    const hkl: Vec3 = [1, 1, 0]
+    // offsets 0 and 2 are the two c-edges of the cell (a single line), so only 1 survives
+    expect(lattice_plane_polygons({ hkl }, hexagonal).map((poly) => poly.offset)).toEqual([1])
+    const polys = lattice_plane_polygons({ hkl, offsets: [0.5, 1.5] }, hexagonal)
+    const normal = plane_normal(hkl, hexagonal)
+    for (const { offset, polygon } of polys) {
+      expect_valid_polygon(polygon, hkl, offset, hexagonal)
+      for (const vert of polygon) expect(math.dot(vert, normal)).toBeCloseTo(offset, 8)
+    }
+    // planes one interplanar spacing apart: distance between offsets 0.5 and 1.5 is 1 / |G|
+    const d_hkl = 1 / Math.hypot(...normal)
+    const [plane_0, plane_1] = polys
+    const gap = math.dot(math.subtract(plane_1.polygon[0], plane_0.polygon[0]), normal) * d_hkl
+    expect(gap).toBeCloseTo(d_hkl, 10)
+  })
+
+  test(`offsets outside the cell, NaN or empty yield no polygons`, () => {
+    const hkl: Vec3 = [1, 0, 0]
+    expect(lattice_plane_polygons({ hkl, offsets: [2, -0.5] }, cubic)).toEqual([])
+    expect(lattice_plane_polygons({ hkl, offsets: [Number.NaN, Infinity] }, cubic)).toEqual([])
+    expect(lattice_plane_polygons({ hkl, offsets: [] }, cubic)).toEqual([])
+  })
+
+  test.each<[Vec3]>([
+    [[0, 0, 0]],
+    [[1, 0.5, 0]],
+    [[1, Number.NaN, 0]],
+    [[1, 0, 0, 1] as unknown as Vec3],
+  ])(`rejects invalid Miller indices %j`, (hkl) => {
+    expect(() => lattice_plane_polygons({ hkl }, cubic)).toThrow(`Invalid Miller indices`)
+  })
+})
+
+describe(`clip_frac_plane_to_cell`, () => {
+  test(`a corner within tolerance of the plane is one vertex, not a sliver`, () => {
+    // Plane through the corner (0,0,1) up to float noise, nearly parallel to b so the corner
+    // (0,1,1) is close too: the crossing on that edge lies 5e-6 from the snapped corner and
+    // used to survive a string-rounding dedup as a near-duplicate vertex.
+    const coeffs: Vec3 = [-1.8798189163208008, 0.0006400197744369507, -0.4217844009399414]
+    const level = math.dot(coeffs, [0, 0, 1]) - 3.29e-9
+    const polygon = clip_frac_plane_to_cell(coeffs, level, cubic)
+    expect(polygon).toHaveLength(4)
+    expect(polygon).toContainEqual([0, 0, 4])
+    for (const [idx, vert] of polygon.entries()) {
+      expect(math.euclidean_dist(vert, polygon[(idx + 1) % 4])).toBeGreaterThan(1e-3)
+    }
+  })
+
+  test(`a plane just outside tolerance of a corner yields no sliver triangle`, () => {
+    // (111) at level 3 - 5e-7 misses the corner (1,1,1) by more than the on-plane tolerance,
+    // so it crosses all three edges meeting there ~5e-7 apart: one vertex, not a polygon
+    expect(clip_frac_plane_to_cell([1, 1, 1], 3 - 5e-7, cubic)).toEqual([])
+    // the same plane through the cell interior is unaffected
+    expect(clip_frac_plane_to_cell([1, 1, 1], 2.5, cubic)).toHaveLength(3)
+  })
+})
+
+describe(`polygon_fan_vertices / polygon_edge_vertices`, () => {
+  const square: Vec3[] = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [1, 1, 0],
+    [0, 1, 0],
+  ]
+  test(`fan of an n-gon is n − 2 triangles sharing vertex 0, outline is n edges`, () => {
+    const from_indices = (indices: number[]) => indices.map((idx) => square[idx])
+    expect(polygon_fan_vertices(square)).toEqual(from_indices([0, 1, 2, 0, 2, 3]))
+    expect(polygon_edge_vertices(square)).toEqual(from_indices([0, 1, 1, 2, 2, 3, 3, 0]))
+    // the 6-vertex (111) hexagon: 4 triangles, 6 edges
+    const hexagon = clip_frac_plane_to_cell([1, 1, 1], 1.5, cubic)
+    expect(polygon_fan_vertices(hexagon)).toHaveLength(12)
+    expect(polygon_edge_vertices(hexagon)).toHaveLength(12)
+  })
+})

@@ -26,6 +26,7 @@
   } from '$lib/plot'
   import { BoxPlotControls } from '$lib/plot'
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
+  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '$lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
@@ -69,6 +70,8 @@
   import { SvelteMap } from 'svelte/reactivity'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { violin_path } from '$lib/plot/core/svg'
+  import { resolve_pattern } from '$lib/plot/core/patterns'
+  import { unique_id } from '$lib/plot/core/utils'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
 
   // Box style props
@@ -259,6 +262,14 @@
 
   // === Box stats + slot model ===
   const box_color = (idx: number): string => series[idx]?.color ?? plot_color(idx)
+  // Per-series hatch/texture tiles over the box/violin fill (null: plain); ids scoped to
+  // this instance so several box plots on a page never share <pattern>s
+  const pattern_uid = unique_id(`box`)
+  let series_patterns = $derived(
+    series.map((srs, idx) =>
+      srs.pattern ? resolve_pattern(srs.pattern, box_color(idx), pattern_uid) : null,
+    ),
+  )
 
   // Which glyph(s) a series draws (per-series kind overrides the component default)
   const effective_kind = (srs: BoxPlotSeries<Metadata>): ViolinKind => srs.kind ?? kind
@@ -540,7 +551,11 @@
   let legend_data = $derived(
     build_legend_items(
       series,
-      (_srs, idx) => ({ symbol_type: `Square` as const, symbol_color: box_color(idx) }),
+      (srs, idx) => ({
+        symbol_type: `Square` as const,
+        symbol_color: box_color(idx),
+        pattern: srs.pattern,
+      }),
       { default_label: (idx) => `Box ${idx + 1}` },
     ),
   )
@@ -712,6 +727,7 @@
     <!-- Continuous box/violin geometry clips to the chart. Outlier marker centers are
          range-bounded, but their complete circles may extend into the plot padding. -->
     <g>
+      <defs><PatternDefs patterns={series_patterns} /></defs>
       {#each visible_boxes as box_item (box_item.series.id ?? box_item.idx)}
         {@const stats = box_item.stats}
         {#if Number.isFinite(stats.median)}
@@ -719,6 +735,7 @@
           {@const cat_scale = vertical ? frame.scales.x : frame.scales.y}
           {@const val_scale = box_val_scale(box_item.series)}
           {@const color = box_color(box_item.idx)}
+          {@const fill = series_patterns[box_item.idx]?.url ?? color}
           {@const draw_box = draws_box(box_item.series)}
           {@const kde = violin_kdes.get(box_item.idx)}
           {@const eff_side = box_item.series.side ?? side}
@@ -799,7 +816,7 @@
               <path
                 class="violin-area"
                 d={violin_path(grid_px, offsets, c_center, screen_side, pt)}
-                fill={color}
+                {fill}
                 fill-opacity={violin_state.opacity}
                 stroke={color}
                 stroke-width={violin_state.stroke_width}
@@ -825,7 +842,7 @@
                 height={Math.max(1, box_h)}
                 rx={box_state.border_radius}
                 ry={box_state.border_radius}
-                fill={color}
+                {fill}
                 fill-opacity={box_state.opacity}
                 stroke={box_state.stroke_color}
                 stroke-width={box_state.stroke_width}

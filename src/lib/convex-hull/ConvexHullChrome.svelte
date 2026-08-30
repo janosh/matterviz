@@ -21,7 +21,6 @@
   import GasPressureControls from './GasPressureControls.svelte'
   import type { create_hull_data_pipeline } from './hull-state.svelte'
   import type { ConvexHullTooltipProp } from './index'
-  import { CONVEX_HULL_STYLE } from './index'
   import StructurePopup from './StructurePopup.svelte'
   import TemperatureSlider from './TemperatureSlider.svelte'
   import type { ConvexHullEntry, GasSpecies, HighlightStyle, HullFaceColorMode } from './types'
@@ -154,6 +153,7 @@
   {wrapper}
   fullscreen_bg_css_var="--hull-bg-fullscreen"
   {on_fullscreen_change}
+  style="--viewer-buttons-gap: 0"
 >
   {#if controls_config.visible(`reset`)}
     <button
@@ -214,14 +214,14 @@
 
 {#if show_tooltip && selection.hover_data}
   {@const { entry, position } = selection.hover_data}
+  <!-- one above the control buttons so a tooltip near the top-right corner covers them -->
   <PlotTooltip
     x={position.x}
     y={position.y}
     offset={{ x: 10, y: -10 }}
     bg_color={get_point_color(entry)}
     fixed
-    style="z-index: {CONVEX_HULL_STYLE.z_index
-      .tooltip}; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+    style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
   >
     <ConvexHullTooltip
       {entry}

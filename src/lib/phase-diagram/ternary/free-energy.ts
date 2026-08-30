@@ -10,8 +10,8 @@ import {
   compute_gas_correction,
   DEFAULT_ELEMENT_TO_GAS,
   GAS_STOICHIOMETRY,
+  gas_pressure_term,
   get_effective_pressures,
-  R_EV_PER_K,
 } from '$lib/convex-hull/gas-thermodynamics'
 import { interpolate_energy_at_temperature } from '$lib/convex-hull/helpers'
 import {
@@ -152,9 +152,9 @@ function build_gas_shift(
     const gas = element_to_gas[element]
     if (!gas || !enabled.has(gas)) return 0
     if (reference_has_entropy) {
-      const stoich = GAS_STOICHIOMETRY[gas]
-      return Object.keys(stoich).length === 1
-        ? (R_EV_PER_K * temperature * Math.log(pressures[gas])) / (stoich[element] ?? 1)
+      // Only elemental gases (O2, N2, ...) map one element to one pressure term
+      return Object.keys(GAS_STOICHIOMETRY[gas]).length === 1
+        ? gas_pressure_term(gas, temperature, pressures[gas])
         : 0
     }
     const memo = last.get(element)

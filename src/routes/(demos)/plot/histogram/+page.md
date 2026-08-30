@@ -700,6 +700,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 
 ## Performance Test
 
+Binning is a single pass over the samples (100k values into 200 bins takes ~3 ms), so the render cost is set by how the data is held. Keep large sample arrays out of deep `$state`: a `$state([...])` wraps every element in a reactive proxy, and each read then goes through a trap and registers a dependency, which makes the same 100k-sample update ~10x slower (130 ms vs 13 ms). Use `$state.raw`, `$derived` (as below) or a plain `const`, and replace the array to update.
+
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'

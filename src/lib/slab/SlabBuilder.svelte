@@ -7,6 +7,7 @@
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import type { Crystal } from '$lib/structure'
   import { to_error } from '$lib/utils'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { make_slab } from './make-slab'
   import type { Slab } from './types'
@@ -24,6 +25,7 @@
     slab = $bindable(null),
     error = $bindable(null),
     show_info = true,
+    children,
     ...rest
   }: {
     structure: Crystal
@@ -39,6 +41,8 @@
     error?: string | null
     // Render the summary table (d_hkl, layers, thickness, ...) below the controls
     show_info?: boolean
+    // Extra controls rendered at the start of the controls row, e.g. a bulk-structure picker
+    children?: Snippet
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   // The termination list belongs to one (structure, hkl, mesh) combination; a stale index
@@ -107,6 +111,7 @@
 
 <div {...rest} class={[`slab-builder`, rest.class]}>
   <div class="controls">
+    {@render children?.()}
     <MillerIndexInput bind:value={miller_indices} />
     <label>
       Slab <input type="range" min="2" max="30" step="0.5" bind:value={min_slab_thickness} />
@@ -147,7 +152,7 @@
       {#each rows as [term, value] (term)}
         <div>
           <dt>{term}</dt>
-          <dd>{value}</dd>
+          <dd title={value}>{value}</dd>
         </div>
       {/each}
     </dl>
@@ -177,24 +182,32 @@
     font-family: monospace;
     white-space: pre-wrap;
   }
+  /* Every row stays on one line: labels never wrap and long values (e.g. a dozen layer
+     spacings) are clipped with an ellipsis, the full text living in the dd title. */
   dl {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15em, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 26em), 1fr));
     gap: 4pt 2em;
     margin: 1em 0;
     div {
       display: flex;
       justify-content: space-between;
       gap: 1em;
+      min-width: 0;
       border-bottom: 1px solid var(--border-color, #3339);
       padding: 2pt 0;
     }
     dt {
       opacity: 0.7;
+      white-space: nowrap;
     }
     dd {
       margin: 0;
       font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 </style>

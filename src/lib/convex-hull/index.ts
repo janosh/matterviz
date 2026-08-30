@@ -237,5 +237,4 @@ export const CONVEX_HULL_STYLE = Object.freeze({
     dash: [3, 3],
     line_width: 2,
   }),
-  z_index: Object.freeze({ tooltip: 6, copy_feedback: 10 }),
 })

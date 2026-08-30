@@ -2,6 +2,7 @@
 // Enables atmosphere-controlled phase diagram analysis
 
 import { count_atoms_in_composition } from '$lib/composition/reduce'
+import { BOLTZMANN_EV_PER_K } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2 } from '$lib/math'
 import type {
@@ -13,8 +14,6 @@ import type {
 } from './types'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from './types'
 
-// Physical constants
-export const R_EV_PER_K = 8.617333262e-5 // Gas constant in eV/K (k_B)
 export const P_REF = 1.0 // Reference pressure in bar
 
 // Default element-to-gas mapping (which element comes from which gas)
@@ -118,6 +117,15 @@ const GAS_NUM_ATOMS: Readonly<Record<GasSpecies, number>> = {
   H2O: 3,
 }
 
+// Pressure part of the gas chemical potential, k_B·T·ln(P/P₀) / num_atoms in eV/atom: the
+// RT·ln(P) term is per molecule, hence divided by the atoms per molecule
+export const gas_pressure_term = (
+  gas: GasSpecies,
+  temperature: number,
+  pressure: number,
+): number =>
+  (BOLTZMANN_EV_PER_K * temperature * Math.log(pressure / P_REF)) / GAS_NUM_ATOMS[gas]
+
 // Gas chemical potential per atom at temperature (K) and pressure (bar), PIRO's convention:
 // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms, in eV/atom. An invalid or
 // non-finite pressure counts as the reference pressure.
@@ -129,9 +137,7 @@ export function compute_gas_chemical_potential(
 ): number {
   const mu_standard = provider.get_standard_chemical_potential(gas, temperature)
   const effective_pressure = Number.isFinite(pressure) && pressure > 0 ? pressure : P_REF
-  // The RT·ln(P) term is per molecule, hence divided by the atoms per molecule
-  const pressure_term = R_EV_PER_K * temperature * Math.log(effective_pressure / P_REF)
-  return mu_standard + pressure_term / GAS_NUM_ATOMS[gas]
+  return mu_standard + gas_pressure_term(gas, temperature, effective_pressure)
 }
 
 // Gas Analysis and Corrections

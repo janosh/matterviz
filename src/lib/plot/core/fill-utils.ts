@@ -552,6 +552,7 @@ export function convert_error_band_to_fill_region(
     upper: { type: `data`, x, values: y.map((val, idx) => val + upper_err[idx]) },
     lower: { type: `data`, x, values: y.map((val, idx) => val - lower_err[idx]) },
     fill: error_band.fill ?? default_color ?? `#4e79a7`,
+    pattern: error_band.pattern,
     fill_opacity: error_band.fill_opacity ?? 0.3,
     edge_upper: error_band.edge_style,
     edge_lower: error_band.edge_style,

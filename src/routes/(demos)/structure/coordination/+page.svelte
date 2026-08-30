@@ -56,7 +56,7 @@
 
 <h1>Coordination Number Histograms</h1>
 
-<p>
+<p class="demo-intro">
   Histograms and structure colors share the selected bonding strategy. Click a discrete
   color-bar segment to hide that coordination number.
 </p>

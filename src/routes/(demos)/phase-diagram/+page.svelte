@@ -110,7 +110,7 @@
 
 <h1>Isobaric Binary Phase Diagram</h1>
 
-<p>
+<p class="demo-intro">
   Drop <code>.json</code>, <code>.json.gz</code>, <code>.svg</code>, or <code>.tdb</code> files onto
   the viewer.
 </p>
@@ -136,7 +136,7 @@
 </details>
 
 <div
-  class={['diagram-container', { loading }]}
+  class={['diagram-container bleed-1400', { loading }]}
   ondropcapture={handle_builtin_drop}
   {@attach file_drop_zone({
     allow: () => true,
@@ -181,7 +181,7 @@
 
 <style>
   .diagram-container {
-    margin: 2em 0;
+    margin-block: 2em; /* not margin shorthand: .bleed-1400 sets margin-left */
     position: relative;
   }
   .diagram-container.loading {

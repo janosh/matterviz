@@ -28,41 +28,53 @@
 
 <h1>Surface Slabs</h1>
 
-<p>
+<p class="demo-intro">
   Cut a bulk crystal along a set of (hkl) lattice planes. The cell is rebuilt so that c crosses
   the planes exactly once, the atoms are grouped into layers, the crystal is cleaved at the
   chosen termination and vacuum is opened up along the surface normal. Miller indices refer to
-  the axes of the bulk cell shown on the left.
+  the axes of the bulk cell shown on the left, where the (hkl) lattice planes are drawn in
+  orange.
 </p>
 
-<div class="demo-controls">
-  <label>
-    Bulk
-    <select bind:value={selected}>
-      {#each Object.keys(bulk_structures) as key (key)}
-        <option value={key}>{key}</option>
-      {/each}
-    </select>
-  </label>
+<div class="bleed-1400">
+  <SlabBuilder structure={bulk} bind:slab>
+    <label>
+      Bulk
+      <select bind:value={selected}>
+        {#each Object.keys(bulk_structures) as key (key)}
+          <option value={key}>{key}</option>
+        {/each}
+      </select>
+    </label>
+  </SlabBuilder>
+
+  <section class="demo-2col">
+    <!-- planes follow the slab's validated, gcd-reduced indices so invalid input (000) draws
+      nothing instead of throwing inside the scene and (222) shows the same planes as the
+      (111) slab it builds -->
+    <Structure
+      structure={bulk}
+      scene_props={{
+        lattice_planes: slab ? [{ hkl: slab.slab_info.miller_indices }] : [],
+      }}
+    >
+      <p class="demo-overlay-label">Bulk · {selected}</p>
+    </Structure>
+    {#if slab}
+      <Structure structure={slab}>
+        <p class="demo-overlay-label">Slab · ({slab.slab_info.miller_indices.join(` `)})</p>
+      </Structure>
+    {/if}
+  </section>
 </div>
 
-<SlabBuilder structure={bulk} bind:slab />
-
-<section class="demo-2col">
-  <Structure structure={bulk} />
-  {#if slab}
-    <Structure structure={slab} />
-  {/if}
-</section>
-
 <style>
-  p {
-    max-width: 60em;
-    margin: 1ex auto;
-    text-align: center;
+  .bleed-1400 :global(.slab-builder .controls) {
+    justify-content: center;
+    margin: 1em 0;
   }
   .demo-2col {
-    gap: 2em;
-    min-height: 500px;
+    gap: 1.5em;
+    --struct-height: 600px;
   }
 </style>

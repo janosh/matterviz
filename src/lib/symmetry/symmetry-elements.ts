@@ -682,48 +682,50 @@ export function clip_plane_to_cell(
   normal_frac: Vec3,
   lattice: Matrix3x3,
 ): Vec3[] {
-  const to_cart = math.create_frac_to_cart(lattice)
-  const normal_cart = to_cart(normal_frac)
-  const n_eq: Vec3 = [
-    math.dot(lattice[0], normal_cart),
-    math.dot(lattice[1], normal_cart),
-    math.dot(lattice[2], normal_cart),
-  ]
-  const signed_dist = (frac: Vec3) =>
-    n_eq[0] * (frac[0] - point[0]) +
-    n_eq[1] * (frac[1] - point[1]) +
-    n_eq[2] * (frac[2] - point[2])
+  const normal_cart = math.create_frac_to_cart(lattice)(normal_frac)
+  const n_eq = math.dot(lattice, normal_cart)
+  return clip_frac_plane_to_cell(n_eq, math.dot(n_eq, point), lattice)
+}
 
-  const frac_points: Vec3[] = []
+// Clip the plane `coeffs · frac = level` (fractional coordinates, so integer coeffs are
+// Miller indices and integer levels are the lattice planes of that family) to the unit
+// cell, returning the Cartesian polygon vertices in winding order (empty if the plane
+// misses the cell or only touches a corner or an edge).
+export function clip_frac_plane_to_cell(
+  coeffs: Vec3,
+  level: number,
+  lattice: Matrix3x3,
+): Vec3[] {
   const tol = 1e-7
-  // Intersect the plane with the 12 unit-cube edges (corners on the plane included)
-  for (const [edge_a, edge_b] of UNIT_CUBE_EDGES) {
-    const dist_a = signed_dist(edge_a)
-    const dist_b = signed_dist(edge_b)
-    if (Math.abs(dist_a) < tol) frac_points.push(edge_a)
-    if (Math.abs(dist_b) < tol) frac_points.push(edge_b)
-    if (dist_a * dist_b < -tol * tol) {
-      const frac_t = dist_a / (dist_a - dist_b)
-      frac_points.push(edge_a.map((val, dim) => val + frac_t * (edge_b[dim] - val)) as Vec3)
+  // Vertices closer than this (fractional) collapse into one: a plane passing just outside
+  // `tol` of a corner would otherwise cross all three of its edges and yield a sliver triangle
+  const dedup_tol = 1e-6
+  const signed_dist = (frac: Vec3) => math.dot(coeffs, frac) - level
+  const frac_points: Vec3[] = []
+  const push_unique = (frac: Vec3) => {
+    if (!frac_points.some((seen) => math.euclidean_dist(seen, frac) < dedup_tol)) {
+      frac_points.push(frac)
     }
   }
-
-  // Dedup and convert to Cartesian
-  const seen = new Set<string>()
-  const cart_points: Vec3[] = []
-  for (const frac of frac_points) {
-    const key = frac.map((val) => val.toFixed(6)).join(`,`)
-    if (seen.has(key)) continue
-    seen.add(key)
-    cart_points.push(to_cart(frac))
+  // Corners on the plane, plus interior crossings of the 12 cell edges
+  for (const [corner_a, corner_b] of UNIT_CUBE_EDGES) {
+    const [dist_a, dist_b] = [signed_dist(corner_a), signed_dist(corner_b)]
+    const [on_a, on_b] = [Math.abs(dist_a) < tol, Math.abs(dist_b) < tol]
+    if (on_a) push_unique(corner_a)
+    if (on_b) push_unique(corner_b)
+    if (!on_a && !on_b && dist_a * dist_b < 0) {
+      const frac_t = dist_a / (dist_a - dist_b)
+      push_unique(corner_a.map((val, dim) => val + frac_t * (corner_b[dim] - val)) as Vec3)
+    }
   }
-  if (cart_points.length < 3) return []
+  if (frac_points.length < 3) return []
+  const cart_points = frac_points.map(math.create_frac_to_cart(lattice))
 
-  // Order vertices by angle around the centroid within the plane
-  const centroid = cart_points
-    .reduce<Vec3>((acc, vert) => math.add(acc, vert), [0, 0, 0])
-    .map((val) => val / cart_points.length) as Vec3
-  const normal_unit = math.normalize_vec(normal_cart)
+  // Order vertices by angle around the centroid within the plane. The Cartesian normal of
+  // `coeffs · frac = level` is the reciprocal-lattice vector inv(A) · coeffs (see
+  // slab/lattice-basis.ts `miller_plane_normal`); only its direction matters here.
+  const centroid = math.scale(math.add(...cart_points), 1 / cart_points.length)
+  const normal_unit = math.normalize_vec(math.dot(math.matrix_inverse_3x3(lattice), coeffs))
   const ref_vec = math.normalize_vec(math.subtract(cart_points[0], centroid))
   const cross_ref = math.cross_3d(normal_unit, ref_vec)
   return cart_points
@@ -734,3 +736,12 @@ export function clip_plane_to_cell(
     .toSorted((pt_a, pt_b) => pt_a.angle - pt_b.angle)
     .map(({ vert }) => vert)
 }
+
+// Vertices of the fan triangulation of a convex polygon, three per triangle, for a
+// non-indexed BufferGeometry position attribute
+export const polygon_fan_vertices = (polygon: Vec3[]): Vec3[] =>
+  polygon.slice(1, -1).flatMap((vert, idx) => [polygon[0], vert, polygon[idx + 2]])
+
+// Vertex pairs of the polygon outline, one pair per edge, for a LineSegments geometry
+export const polygon_edge_vertices = (polygon: Vec3[]): Vec3[] =>
+  polygon.flatMap((vert, idx) => [vert, polygon[(idx + 1) % polygon.length]])

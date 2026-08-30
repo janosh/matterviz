@@ -103,6 +103,39 @@ describe(`FillArea`, () => {
     expect(doc_query(`.fill-region path`).getAttribute(`fill`)).toBe(`steelblue`)
   })
 
+  test(`pattern textures a solid fill but is ignored for gradient fills`, () => {
+    mount(FillArea, {
+      target: document.body,
+      props: make_props({ region: { ...base_region, pattern: { shape: `x`, size: 6 } } }),
+    })
+    const group = doc_query(`.fill-region`)
+    const def = group.querySelector(`defs pattern`)
+    expect(def?.id).toMatch(/^fill-test-fill-.+-pat-[0-9a-z]+$/)
+    // the texture tile carries the region's own color; the mark keeps its fill-opacity
+    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
+    expect(def?.getAttribute(`patternTransform`)).toBe(`rotate(45)`)
+    const path = group.querySelector(`:scope > path`)
+    expect(path?.getAttribute(`fill`)).toBe(`url(#${def?.id})`)
+    expect(path?.getAttribute(`fill-opacity`)).toBe(`0.3`)
+
+    document.body.innerHTML = ``
+    const gradient: FillGradient = {
+      type: `linear`,
+      stops: [
+        [0, `red`],
+        [1, `blue`],
+      ],
+    }
+    mount(FillArea, {
+      target: document.body,
+      props: make_props({ region: { ...base_region, fill: gradient, pattern: `/` } }),
+    })
+    expect(document.querySelector(`pattern`)).toBeNull()
+    expect(doc_query(`.fill-region > path`).getAttribute(`fill`)).toMatch(
+      /^url\(#fill-gradient-/,
+    )
+  })
+
   test(`renders linear gradient with correct transform and stops`, () => {
     const gradient: FillGradient = {
       type: `linear`,

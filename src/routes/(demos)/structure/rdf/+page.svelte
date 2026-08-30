@@ -244,7 +244,6 @@
   .bleed-1400 > section {
     margin: 2em 0;
   }
-  h2,
   p {
     text-align: center;
   }

@@ -30,6 +30,50 @@ describe(`shared segment helpers`, () => {
     expect([`black`, `white`]).toContain(segments[0].text_color)
   })
 
+  test(`composition_segments resolves per-element patterns and label contrast against the tile`, () => {
+    const [fe, o] = composition_segments({ Fe: 2, O: 3 }, `Jmol`, { Fe: `/` }, `chart-7`)
+    expect(o.pattern).toBeUndefined()
+    expect(fe.pattern?.id).toMatch(/^chart-7-pat-[0-9a-z]+$/)
+    expect(fe.pattern?.bg).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
+    // overlay keeps the element color as the tile backdrop, so the label contrasts against it
+    expect(fe.color).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
+    expect([`black`, `white`]).toContain(fe.text_color)
+    // replace mode leaves the tile transparent -> label inherits the page text color
+    const [replace] = composition_segments({ Fe: 1 }, `Jmol`, { Fe: { mode: `replace` } })
+    expect(replace.text_color).toBe(`currentColor`)
+    // an explicit opaque bg is what the label actually sits on
+    const [custom] = composition_segments({ Fe: 1 }, `Jmol`, {
+      Fe: { mode: `replace`, bg: `#000` },
+    })
+    expect(custom.text_color).toBe(`white`)
+  })
+
+  test.each([
+    [PieChart, `path.pie-segment`],
+    [BarChart, `rect.bar-segment`],
+    [BubbleChart, `circle.bubble`],
+  ] as const)(`%o fills patterned elements from its own <defs>`, (component, selector) => {
+    mount_chart(component, {
+      composition: { Fe: 2, O: 3 },
+      patterns: { Fe: `x`, O: { shape: `dots`, mode: `replace` } },
+    })
+    const marks = [...document.querySelectorAll(selector)]
+    expect(marks).toHaveLength(2)
+    const ids = marks.map((mark) => {
+      const match = /^url\(#(?<id>.+)\)$/.exec(mark.getAttribute(`fill`) ?? ``)
+      if (!match?.groups)
+        throw new Error(`fill is not a pattern url: ${mark.getAttribute(`fill`)}`)
+      return match.groups.id
+    })
+    expect(new Set(ids).size).toBe(2)
+    expect(
+      [...document.querySelectorAll(`defs pattern`)].map((def) => def.id).toSorted(),
+    ).toEqual(ids.toSorted())
+    // replace mode paints no background rect inside the tile
+    expect(document.querySelector(`#${ids[1]} rect`)).toBeNull()
+    expect(document.querySelector(`#${ids[0]} rect`)).not.toBeNull()
+  })
+
   test.each([
     [{ show_amounts: true, show_percentages: false }, `2`],
     [{ show_amounts: false, show_percentages: true }, `40%`],

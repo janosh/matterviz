@@ -477,6 +477,24 @@ describe(`BoxPlot`, () => {
     expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(100)
   })
 
+  test(`series pattern fills the box body from a scoped <pattern> def`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [
+        { ...basic, pattern: `/` },
+        { ...basic, label: `plain`, color: `tomato` },
+      ],
+    })
+    const body_fill = (idx: number) =>
+      plot.querySelector(`.box-series[data-box-idx="${idx}"] rect`)?.getAttribute(`fill`) ?? ``
+    expect(body_fill(1)).toBe(`tomato`)
+    const match = /^url\(#(?<id>box-.+-pat-[0-9a-z]+)\)$/.exec(body_fill(0))
+    if (!match?.groups) throw new Error(`box fill is not a pattern url: ${body_fill(0)}`)
+    const def = plot.querySelector(`.box-plot svg defs #${match.groups.id}`)
+    expect(def?.tagName.toLowerCase()).toBe(`pattern`)
+    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
+    expect(plot.querySelectorAll(`.box-plot svg defs pattern`)).toHaveLength(1)
+  })
+
   test(`forwards controls props and the controls_open binding`, async () => {
     expect.hasAssertions()
     const controls_state = { controls_open: true }

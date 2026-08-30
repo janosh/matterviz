@@ -467,26 +467,13 @@
                 width={rect.width}
                 height={rect.height}
                 data-treemap-node-idx={idx}
-                fill={info.fill}
+                fill={info.pattern?.url ?? info.fill}
                 fill-opacity={opacity}
                 role={cells_clickable ? `button` : undefined}
                 tabindex={idx === roving_idx ? 0 : -1}
                 aria-label={info.aria}
                 style:cursor={cells_clickable ? `pointer` : `default`}
               />
-              {#if chart_state.arcs[idx].hatch}
-                <!-- Decorative texture overlay; ignores pointer events -->
-                <rect
-                  class="cell-hatch"
-                  aria-hidden="true"
-                  x={rect.x}
-                  y={rect.y}
-                  width={rect.width}
-                  height={rect.height}
-                  fill="url(#{chart_state.hatch_pattern_id})"
-                  fill-opacity={opacity}
-                />
-              {/if}
             {/if}
           {/each}
         </g>
@@ -538,9 +525,9 @@
 </ChartShell>
 
 <style>
-  /* fully :global: the wrapper is ChartShell's element and breadcrumbs, chart svg and
-  hatch pattern are HierarchyShell's, so none carry this component's scope - but
-  their theming stays in the chart's variable namespace.
+  /* fully :global: the wrapper is ChartShell's element and breadcrumbs and chart svg
+  are HierarchyShell's, so none carry this component's scope - but their theming stays
+  in the chart's variable namespace.
   plotly-pathbar look: right-pointing chevron segments with a matching left
   notch on all but the first, slightly overlapped so they read as one bar.
   Opaque background: the pathbar overlays arbitrarily-colored cells, and a
@@ -620,31 +607,17 @@
   .cells rect:hover {
     filter: brightness(var(--treemap-hover-brightness, 1.08));
   }
-  /* decorative overlay: never intercepts pointer events, no hover effect */
-  .cells rect.cell-hatch {
-    stroke: none;
-    pointer-events: none;
-  }
-  /* subtle by default: thin stripes inheriting the cell border color (itself
-  defaulting to the chart bg) at low opacity, so hatching matches the gaps
-  between cells instead of reading as solid white */
-  :global(.treemap .hatch-pattern-line) {
-    stroke: var(
-      --treemap-hatch-stroke,
-      color-mix(
-        in srgb,
-        var(--treemap-cell-stroke, light-dark(white, #16181d)) 30%,
-        transparent
-      )
-    );
-    stroke-width: var(--treemap-hatch-stroke-width, 0.35);
-  }
   .cell-label {
     text-anchor: middle;
     /* selectable so labels can be copied; clicks/hover still reach the underlying
     cell via data-treemap-node-idx + delegation on the chart group */
     -webkit-user-select: text;
     user-select: text;
+  }
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan>, so lines
+  would sit on the alphabetic baseline and crop at the top of the clip strip */
+  .cell-label tspan {
+    dominant-baseline: inherit;
   }
   .cell-label.header {
     text-anchor: start;
