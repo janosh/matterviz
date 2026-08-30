@@ -20,9 +20,12 @@ export interface LatticePlane {
 }
 
 // A whole family is drawn by default, and the family of (hkl) has |h|+|k|+|l|+1 planes in the
-// cell: past this many the translucent fills merge into a solid block anyway, and a typo like
-// (100000) would otherwise clip and mesh that many polygons (or exceed the max array length)
-export const MAX_AUTO_PLANES = 1000
+// cell. Past a few hundred the translucent fills merge into a solid block, but the bound is set
+// where the cost bites (measured: 1e5 planes clip and mesh in ~250 ms and 600k vertices, 1e6 in
+// seconds) so that every family the slab builder can produce (MAX_SLAB_SITES caps |h|+|k|+|l|
+// at a few 1e4) still draws, while a typo like (1000000) fails fast instead of hanging the
+// scene (or exceeding the max array length)
+export const MAX_AUTO_PLANES = 100_000
 
 // Integer offsets whose plane crosses the unit cell: the extreme values of h·x + k·y + l·z
 // over the cell are reached at corners, i.e. the sums of the negative and positive indices.

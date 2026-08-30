@@ -138,14 +138,14 @@ describe(`lattice_plane_polygons`, () => {
     [[1, 0.5, 0], `must be integers`],
     [[1, Number.NaN, 0], `must be integers`],
     [[1, 0, 0, 1] as unknown as Vec3, `must be 3 numbers`],
-    [[600, -600, 0], `1201 lattice planes in the cell, more than the 1000`], // would mesh 1201 polygons
-    [[10 ** 12, 0, 0], `more than the 1000`], // would exceed the max array length
+    [[60_000, -60_000, 0], `120001 lattice planes in the cell, more than the 100000`],
+    [[10 ** 12, 0, 0], `more than the 100000`], // would exceed the max array length
   ])(`rejects invalid Miller indices %j`, (hkl, message) => {
     expect(() => lattice_plane_polygons({ hkl }, cubic)).toThrow(message)
   })
 
   test(`explicit offsets bypass the automatic plane-count limit`, () => {
-    const polys = lattice_plane_polygons({ hkl: [2000, 0, 0], offsets: [1000] }, cubic)
+    const polys = lattice_plane_polygons({ hkl: [200_000, 0, 0], offsets: [1000] }, cubic)
     expect(polys.map(({ offset }) => offset)).toEqual([1000])
   })
 })
