@@ -26,8 +26,9 @@
       d={pat.d}
       fill={pat.stroked ? `none` : pat.fg}
       stroke={pat.stroked ? pat.fg : `none`}
-      stroke-width={pat.stroked ? pat.line_width : undefined}
+      stroke-width={pat.line_width}
       stroke-dasharray={pat.dasharray}
+      stroke-dashoffset={pat.dashoffset}
       stroke-linecap={pat.linecap}
       opacity={pat.fg_opacity}
     />

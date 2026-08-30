@@ -2216,44 +2216,44 @@ Fill regions and error bands accept a `pattern` (a shape name, plotly-style shor
   const model_a = {
     x: x_values,
     y: x_values.map((val) => 4 + 2 * Math.sin(val)),
-    label: 'Model A',
-    line_style: { stroke: '#4c6ef5', stroke_width: 2 },
-    markers: 'line',
+    label: `Model A`,
+    line_style: { stroke: `#4c6ef5`, stroke_width: 2 },
+    markers: `line`,
   }
   const model_b = {
     x: x_values,
     y: x_values.map((val) => 4.5 + 1.5 * Math.cos(val * 0.8)),
-    label: 'Model B',
-    line_style: { stroke: '#e8590c', stroke_width: 2 },
-    markers: 'line',
+    label: `Model B`,
+    line_style: { stroke: `#e8590c`, stroke_width: 2 },
+    markers: `line`,
   }
 
   const error_bands = [
     {
-      series: { type: 'series', series_idx: 0 },
+      series: { type: `series`, series_idx: 0 },
       error: 0.8,
-      fill: '#4c6ef5',
+      fill: `#4c6ef5`,
       fill_opacity: 0.35,
-      label: 'A ± σ',
-      pattern: { shape: 'diagonal', size: 7 },
+      label: `A ± σ`,
+      pattern: { shape: `diagonal`, size: 7 },
     },
     {
-      series: { type: 'series', series_idx: 1 },
+      series: { type: `series`, series_idx: 1 },
       error: 0.6,
-      fill: '#e8590c',
+      fill: `#e8590c`,
       fill_opacity: 0.35,
-      label: 'B ± σ',
-      pattern: { shape: 'diagonal-reverse', size: 7 },
+      label: `B ± σ`,
+      pattern: { shape: `diagonal-reverse`, size: 7 },
     },
   ]
   const fill_regions = [
     {
-      upper: { type: 'constant', value: 1.5 },
-      lower: { type: 'constant', value: 0 },
-      fill: '#868e96',
+      upper: { type: `constant`, value: 1.5 },
+      lower: { type: `constant`, value: 0 },
+      fill: `#868e96`,
       fill_opacity: 0.3,
-      label: 'Excluded',
-      pattern: { shape: 'cross-diagonal', mode: 'replace', size: 10 },
+      label: `Excluded`,
+      pattern: { shape: `cross-diagonal`, mode: `replace`, size: 10 },
     },
   ]
 </script>
@@ -2262,8 +2262,8 @@ Fill regions and error bands accept a `pattern` (a shape name, plotly-style shor
   series={[model_a, model_b]}
   {error_bands}
   {fill_regions}
-  x_axis={{ label: 'Time (ps)' }}
-  y_axis={{ label: 'Energy (eV)', range: [0, 8] }}
+  x_axis={{ label: `Time (ps)` }}
+  y_axis={{ label: `Energy (eV)`, range: [0, 8] }}
   style="height: 400px"
 />
 ```

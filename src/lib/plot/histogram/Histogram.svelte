@@ -424,12 +424,26 @@
     })),
   )
 
-  // Per-series hatch/texture tiles resolved against the bar color, parallel to
-  // histogram_bins (null: plain fill); ids scoped to this instance
+  // Per-series hatch/texture tiles resolved against the bar color, keyed by series index
+  // (ids scoped to this instance). Derived from the series, not the bins, so pan/zoom
+  // frames that rebin do not re-resolve tiles and re-diff the <defs>.
   const pattern_uid = unique_id(`histogram`)
   let hist_patterns = $derived(
-    histogram_bins.map((hist) =>
-      hist.pattern ? resolve_pattern(hist.pattern, hist.color, pattern_uid) : null,
+    new Map(
+      selected_series_entries.flatMap(({ series_data, series_idx }) =>
+        series_data.pattern
+          ? [
+              [
+                series_idx,
+                resolve_pattern(
+                  series_data.pattern,
+                  series_color(series_data, series_idx),
+                  pattern_uid,
+                ),
+              ] as const,
+            ]
+          : [],
+      ),
     ),
   )
 
@@ -557,8 +571,8 @@
     />
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
-    <defs><PatternDefs patterns={hist_patterns} /></defs>
-    {#each histogram_bins as hist, hist_idx (hist.id)}
+    <defs><PatternDefs patterns={hist_patterns.values()} /></defs>
+    {#each histogram_bins as hist (hist.id)}
       {@const x_scale = hist.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
       {@const y_scale = hist.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
       <!-- Bars grow from zero, or from the range floor when zero is off-axis (log, pinned range) -->
@@ -588,7 +602,7 @@
                 bar_height,
                 resolved_bar.border_radius ?? 0,
               )}
-              fill={hist_patterns[hist_idx]?.url ?? hist.color}
+              fill={hist_patterns.get(hist.series_idx)?.url ?? hist.color}
               opacity={resolved_bar.opacity}
               stroke={resolved_bar.stroke_color}
               stroke-opacity={resolved_bar.stroke_opacity}

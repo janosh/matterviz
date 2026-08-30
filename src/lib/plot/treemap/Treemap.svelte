@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { contrast_text_color } from '$lib/colors'
   import type { BasePlotProps } from '$lib/plot'
   import { TreemapControls } from '$lib/plot'
   import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
@@ -372,7 +371,7 @@
   // parents-first, so the last visible one containing the point is the one on top.
   let chrome_color = $derived.by(() => {
     const probe = { x: chart_state.inner_width - 1, y: 1 }
-    let fill: string | undefined
+    let label_fill: string | undefined
     for (const idx of visible_idxs) {
       const rect = rects[idx]
       if (
@@ -382,9 +381,11 @@
         probe.y >= rect.y &&
         probe.y <= rect.y + rect.height
       )
-        fill = chart_state.node_infos[idx]?.fill
+        label_fill = chart_state.node_infos[idx]?.label_fill
     }
-    return fill ? contrast_text_color({ background: fill }) : undefined
+    // label_fill already accounts for a pattern's backdrop (transparent in `replace` mode)
+    // and for translucent fills, where inheriting is the only honest answer
+    return label_fill === `currentColor` ? undefined : label_fill
   })
 </script>
 

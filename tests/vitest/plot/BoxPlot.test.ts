@@ -7,6 +7,7 @@ import {
   expect_plot_controls,
   mount_sized,
   one_tab_stop,
+  pattern_id_of,
   roving_tabindexes,
   with_measured_text,
 } from '../setup'
@@ -484,15 +485,12 @@ describe(`BoxPlot`, () => {
         { ...basic, label: `plain`, color: `tomato` },
       ],
     })
-    const body_fill = (idx: number) =>
-      plot.querySelector(`.box-series[data-box-idx="${idx}"] rect`)?.getAttribute(`fill`) ?? ``
-    expect(body_fill(1)).toBe(`tomato`)
-    const match = /^url\(#(?<id>box-.+-pat-[0-9a-z]+)\)$/.exec(body_fill(0))
-    if (!match?.groups) throw new Error(`box fill is not a pattern url: ${body_fill(0)}`)
-    const def = plot.querySelector(`.box-plot svg defs #${match.groups.id}`)
-    expect(def?.tagName.toLowerCase()).toBe(`pattern`)
-    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
-    expect(plot.querySelectorAll(`.box-plot svg defs pattern`)).toHaveLength(1)
+    const body = (idx: number) => plot.querySelector(`.box-series[data-box-idx="${idx}"] rect`)
+    expect(body(1)?.getAttribute(`fill`)).toBe(`tomato`)
+    const defs = plot.querySelectorAll(`.box-plot svg defs pattern`)
+    expect(defs).toHaveLength(1)
+    expect(defs[0].id).toBe(pattern_id_of(body(0), `box`))
+    expect(defs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
   })
 
   test(`forwards controls props and the controls_open binding`, async () => {

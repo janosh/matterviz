@@ -262,6 +262,48 @@ describe(`PlotLegend`, () => {
     expect(on_item_hover).toHaveBeenLastCalledWith(null)
   })
 
+  test(`patterned swatches paint a half-scale tile in the item color, translucent colors included`, () => {
+    const series_data: LegendItem[] = [
+      {
+        label: `Marker`,
+        visible: true,
+        series_idx: 0,
+        display_style: {
+          symbol_type: `Square`,
+          symbol_color: `rgba(70, 130, 180, 0.5)`,
+          pattern: `/`,
+        },
+      },
+      {
+        label: `Fill`,
+        visible: true,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 0,
+        display_style: { fill_color: `steelblue`, pattern: { shape: `dots`, size: 8 } },
+      },
+    ]
+    mount(PlotLegend, { target: document.body, props: { series_data } })
+    const [marker_def, fill_def] = document.querySelectorAll(`.legend-item pattern`)
+    // 8px tile at legend scale 0.5 -> 4px swatch tile
+    expect(marker_def.getAttribute(`width`)).toBe(`4`)
+    // a translucent mark color has no known backdrop: the texture inherits instead of throwing
+    expect(marker_def.querySelector(`rect`)?.getAttribute(`fill`)).toBe(
+      `rgba(70, 130, 180, 0.5)`,
+    )
+    expect(marker_def.querySelector(`path`)?.getAttribute(`stroke`)).toBe(`currentColor`)
+    expect(doc_query(`.legend-item path[fill^="url(#"]`).getAttribute(`fill`)).toBe(
+      `url(#${marker_def.id})`,
+    )
+    // the fill swatch bakes its 0.7 tint into the tile and paints the rect at full opacity
+    const swatch = doc_query(`.fill-swatch rect[fill^="url(#"]`)
+    expect(swatch.getAttribute(`fill`)).toBe(`url(#${fill_def.id})`)
+    expect(swatch.getAttribute(`fill-opacity`)).toBe(`1`)
+    expect(fill_def.querySelector(`rect`)?.getAttribute(`fill`)).toBe(
+      `rgba(70, 130, 180, 0.7)`,
+    )
+  })
+
   test(`fill legend items report the fill item on hover and honor active_fill_idx`, () => {
     const on_item_hover = vi.fn()
     const series_data: LegendItem[] = [

@@ -243,6 +243,15 @@ export const settle = async (rounds = 3): Promise<void> => {
 
 export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
 
+// The <pattern> id a mark's `fill="url(#…)"` points at, scoped by `prefix`; throws when the
+// mark is painted with a plain color instead
+export const pattern_id_of = (mark: Element | null, prefix: string): string => {
+  const fill = mark?.getAttribute(`fill`) ?? ``
+  const match = new RegExp(`^url\\(#(?<id>${prefix}-.+-pat-[0-9a-z]+)\\)$`).exec(fill)
+  if (!match?.groups) throw new Error(`mark fill is not a ${prefix} pattern url: ${fill}`)
+  return match.groups.id
+}
+
 export function expect_transition_properties(
   element: Element,
   properties: readonly string[],

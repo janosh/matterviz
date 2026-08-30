@@ -4,7 +4,7 @@
 // PatternDefs.svelte) and the `url(#id)` paint the mark fills with. Tiles live in user space
 // so adjacent marks share one continuous texture, like plotly's pattern fills.
 
-import { contrast_text_color } from '$lib/colors'
+import { opaque_contrast_color } from '$lib/colors'
 
 // Stroked line families (`diagonal` … `hexagons`) and filled marker families
 // (`dots` … `checkerboard`)
@@ -115,6 +115,7 @@ export interface ResolvedPattern {
   line_width: number
   dasharray: string | undefined
   linecap: `round` | undefined // round caps turn dotted dashes into dots; else SVG default
+  dashoffset: string | undefined
 }
 
 const DEFAULT_SIZE = 8
@@ -124,6 +125,11 @@ const SQRT3 = Math.sqrt(3)
 // Numbers in path data trimmed to 3 decimals so ids/hashes stay short and stable
 const num = (val: number): string =>
   Number.isInteger(val) ? `${val}` : `${Number(val.toFixed(3))}`
+
+// Circle of `radius` centered at (cx, cy) as two arcs
+const circle_path = (cx: number, cy: number, radius: number): string =>
+  `M${num(cx - radius)} ${num(cy)}a${num(radius)} ${num(radius)} 0 1 0 ${num(2 * radius)} 0` +
+  `a${num(radius)} ${num(radius)} 0 1 0 ${num(-2 * radius)} 0Z`
 
 // Regular hexagon outline (pointy-top) with circumradius `radius` centered at (cx, cy)
 const hexagon_path = (cx: number, cy: number, radius: number): string => {
@@ -177,18 +183,22 @@ function tile_geometry(shape: PatternShape, size: number, solidity: number): Til
   if (shape === `diagonal-reverse`) return stroked(line, size, 45)
   if (shape === `cross`) return stroked(cross, 2 * size)
   if (shape === `cross-diagonal`) return stroked(cross, 2 * size, 45)
+  // Zigzag and waves cross the tile edges at an angle, so a path that stops on the edge
+  // leaves a butt-cap wedge at every seam. Overshooting half a period on both sides lets
+  // the clipped tile carry the full stroke width through the edge (stroke_length stays
+  // per tile).
+  const [lo, hi] = [size * 0.25, size * 0.75]
   if (shape === `zigzag`) {
-    // peaks at the tile edges and center, so neighbouring tiles continue the line
-    const d = `M0 ${num(size * 0.75)}L${num(half)} ${num(size * 0.25)}L${num(size)} ${num(
-      size * 0.75,
-    )}`
+    const d =
+      `M${num(-half)} ${num(lo)}L0 ${num(hi)}L${num(half)} ${num(lo)}` +
+      `L${num(size)} ${num(hi)}L${num(1.5 * size)} ${num(lo)}`
     return stroked(d, 2 * Math.hypot(half, half))
   }
   if (shape === `waves`) {
-    // Q + T (reflected control) gives matching tangents at both edges -> seamless sine
-    const d = `M0 ${num(half)}Q${num(size / 4)} ${num(size * 0.1)} ${num(half)} ${num(
-      half,
-    )}T${num(size)} ${num(half)}`
+    // Q + T (reflected control) gives matching tangents at each joint -> smooth sine
+    const d =
+      `M${num(-half)} ${num(half)}Q${num(-size / 4)} ${num(size * 0.9)} 0 ${num(half)}` +
+      `T${num(half)} ${num(half)}T${num(size)} ${num(half)}T${num(1.5 * size)} ${num(half)}`
     return stroked(d, size * 1.2)
   }
   if (shape === `bricks`) {
@@ -215,18 +225,10 @@ function tile_geometry(shape: PatternShape, size: number, solidity: number): Til
   }
   if (shape === `circles`) {
     const radius = size * 0.3
-    const d = `M${num(half - radius)} ${num(half)}a${num(radius)} ${num(radius)} 0 1 0 ${num(
-      2 * radius,
-    )} 0a${num(radius)} ${num(radius)} 0 1 0 ${num(-2 * radius)} 0Z`
-    return stroked(d, 2 * Math.PI * radius)
+    return stroked(circle_path(half, half, radius), 2 * Math.PI * radius)
   }
   if (shape === `dots`) {
-    const radius = size * Math.sqrt(solidity / Math.PI)
-    return filled(
-      `M${num(half - radius)} ${num(half)}a${num(radius)} ${num(radius)} 0 1 0 ${num(
-        2 * radius,
-      )} 0a${num(radius)} ${num(radius)} 0 1 0 ${num(-2 * radius)} 0Z`,
-    )
+    return filled(circle_path(half, half, size * Math.sqrt(solidity / Math.PI)))
   }
   if (shape === `squares`) {
     const side = size * Math.sqrt(solidity)
@@ -255,12 +257,13 @@ function tile_geometry(shape: PatternShape, size: number, solidity: number): Til
   throw new Error(`Unknown pattern shape: ${shape}`)
 }
 
-const dash_array = (dash: PatternDash, size: number): string | undefined => {
+// Custom dash lengths are in unscaled px like `size`, so they shrink with the tile too
+const dash_array = (dash: PatternDash, size: number, scale: number): string | undefined => {
   if (dash === `solid`) return undefined
   if (dash === `dashed`) return `${num(size / 2)} ${num(size / 2)}`
   // zero-length dashes with round caps render as dots of the line's width
   if (dash === `dotted`) return `0 ${num(size / 2)}`
-  return dash.map(num).join(` `)
+  return dash.map((len) => num(len * scale)).join(` `)
 }
 
 // djb2 over the resolved fields -> short stable id suffix, so identical patterns within one
@@ -301,17 +304,19 @@ export function resolve_pattern(
   if (opts.line_width != null && !non_negative(opts.line_width)) {
     throw new Error(`pattern line_width must be finite and ≥ 0, got ${opts.line_width}`)
   }
-  if (Array.isArray(opts.dash) && !opts.dash.every(non_negative)) {
+  if (Array.isArray(opts.dash) && !(opts.dash.length > 0 && opts.dash.every(non_negative))) {
     throw new Error(
       `pattern dash lengths must be finite and ≥ 0, got ${JSON.stringify(opts.dash)}`,
     )
   }
+  if (opts.fg_opacity != null && !(opts.fg_opacity >= 0 && opts.fg_opacity <= 1)) {
+    throw new Error(`pattern fg_opacity must be in [0, 1], got ${opts.fg_opacity}`)
+  }
   const geometry = tile_geometry(shape, size, solidity)
   const replace = opts.mode === `replace`
-  // Auto-contrast against the color the texture is painted over; CSS-variable or otherwise
-  // unparsable colors fall back to currentColor so the texture still shows
-  const fg =
-    opts.fg ?? (replace ? base_color : contrast_text_color({ background: base_color }))
+  // Auto-contrast against the color the texture is painted over; translucent, CSS-variable
+  // or otherwise unparsable colors fall back to currentColor so the texture still shows
+  const fg = opts.fg ?? (replace ? base_color : opaque_contrast_color(base_color))
   const bg = opts.bg ?? (replace ? undefined : base_color)
   const fg_opacity = opts.fg_opacity ?? (replace ? 1 : 0.5)
   const line_width = geometry.stroked
@@ -331,8 +336,12 @@ export function resolve_pattern(
     d: geometry.d,
     stroked: geometry.stroked,
     line_width,
-    dasharray: geometry.stroked ? dash_array(dash, size) : undefined,
+    dasharray: geometry.stroked ? dash_array(dash, size, scale) : undefined,
     linecap: dash === `dotted` ? (`round` as const) : undefined,
+    // `0 size/2` puts dots at 0, size/2 and size, and the dot on the far edge is not drawn
+    // (renderers skip a zero-length dash at the path end), so the seam shows half dots.
+    // Shifting by a quarter period puts both dots fully inside the tile.
+    dashoffset: geometry.stroked && dash === `dotted` ? num(size / 4) : undefined,
   }
   const id = `${prefix}-pat-${hash_str(JSON.stringify(resolved))}`
   return { id, url: `url(#${id})`, ...resolved }
@@ -343,6 +352,14 @@ export const unique_patterns = (
   patterns: Iterable<ResolvedPattern | null | undefined>,
 ): ResolvedPattern[] => {
   const by_id = new Map<string, ResolvedPattern>()
-  for (const pat of patterns) if (pat && !by_id.has(pat.id)) by_id.set(pat.id, pat)
+  for (const pat of patterns) {
+    if (!pat) continue
+    const seen = by_id.get(pat.id)
+    if (!seen) by_id.set(pat.id, pat)
+    // the id is a 32-bit hash: a collision would silently paint one mark with another's tile
+    else if (seen.d !== pat.d || seen.fg !== pat.fg || seen.bg !== pat.bg) {
+      throw new Error(`pattern id collision: ${pat.id} resolves to two different tiles`)
+    }
+  }
   return [...by_id.values()]
 }

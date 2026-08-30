@@ -306,11 +306,12 @@
         {@const gradient = series.display_style.fill_gradient}
         {@const gradient_id = `legend-grad-${instance_id}-${series.fill_idx}`}
         {@const fill_color = add_alpha(series.display_style.fill_color ?? `steelblue`, 1)}
+        <!-- as in FillArea, the swatch tint goes into the tile so the texture stays legible -->
         {@const pattern = gradient
           ? undefined
           : swatch_pattern(
               series.display_style.pattern,
-              fill_color,
+              add_alpha(fill_color, 0.7),
               `fill-${series.fill_idx}`,
             )}
         <svg width="16" height="12" viewBox="0 0 16 12" class="fill-swatch">
@@ -349,7 +350,7 @@
             height="10"
             rx="2"
             fill={gradient ? `url(#${gradient_id})` : (pattern?.url ?? fill_color)}
-            fill-opacity="0.7"
+            fill-opacity={pattern ? 1 : 0.7}
             stroke={series.display_style.edge_color ?? `none`}
             stroke-width="1"
           />

@@ -1,5 +1,5 @@
 // Fill-region and error-band types for 2D plots (shaded areas between boundaries).
-// Self-contained leaf module re-exported via $lib/plot/core/types.
+// Re-exported via $lib/plot/core/types.
 
 import type { FillPattern } from '$lib/plot/core/patterns'
 

@@ -21,7 +21,7 @@ const mount_chart = <T extends Component<{ composition: CompositionType }>>(
 
 describe(`shared segment helpers`, () => {
   test(`composition_segments keeps insertion order with fractions and scheme colors`, () => {
-    const segments = composition_segments({ Fe: 2, O: 3, N: 0 }, `Jmol`)
+    const segments = composition_segments({ Fe: 2, O: 3, N: 0 }, `Jmol`, {}, `p`)
     expect(segments.map((seg) => [seg.element, seg.amount, seg.fraction])).toEqual([
       [`Fe`, 2, 0.4],
       [`O`, 3, 0.6],
@@ -39,13 +39,24 @@ describe(`shared segment helpers`, () => {
     expect(fe.color).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
     expect([`black`, `white`]).toContain(fe.text_color)
     // replace mode leaves the tile transparent -> label inherits the page text color
-    const [replace] = composition_segments({ Fe: 1 }, `Jmol`, { Fe: { mode: `replace` } })
+    const [replace] = composition_segments({ Fe: 1 }, `Jmol`, { Fe: { mode: `replace` } }, `p`)
     expect(replace.text_color).toBe(`currentColor`)
     // an explicit opaque bg is what the label actually sits on
-    const [custom] = composition_segments({ Fe: 1 }, `Jmol`, {
-      Fe: { mode: `replace`, bg: `#000` },
-    })
+    const [custom] = composition_segments(
+      { Fe: 1 },
+      `Jmol`,
+      { Fe: { mode: `replace`, bg: `#000` } },
+      `p`,
+    )
     expect(custom.text_color).toBe(`white`)
+    // a translucent custom bg has no known backdrop -> inherit rather than throw
+    const [translucent] = composition_segments(
+      { Fe: 1 },
+      `Jmol`,
+      { Fe: { bg: `rgba(0, 0, 0, 0.5)` } },
+      `p`,
+    )
+    expect(translucent.text_color).toBe(`currentColor`)
   })
 
   test.each([
@@ -80,12 +91,12 @@ describe(`shared segment helpers`, () => {
     [{ show_amounts: true, show_percentages: true }, `2=40%`],
     [{ show_amounts: false, show_percentages: false }, ``],
   ])(`segment_suffix %j -> %s`, (opts, expected) => {
-    const [fe] = composition_segments({ Fe: 2, O: 3 }, `Vesta`)
+    const [fe] = composition_segments({ Fe: 2, O: 3 }, `Vesta`, {}, `p`)
     expect(segment_suffix(fe, opts)).toBe(expected)
   })
 
   test(`segment_suffix avoids SI prefixes and float noise for sub-1 amounts`, () => {
-    const [li] = composition_segments({ Li: 0.1 + 0.2, O: 1 }, `Vesta`)
+    const [li] = composition_segments({ Li: 0.1 + 0.2, O: 1 }, `Vesta`, {}, `p`)
     expect(segment_suffix(li, { show_amounts: true, show_percentages: false })).toBe(`0.3`)
   })
 
@@ -93,7 +104,9 @@ describe(`shared segment helpers`, () => {
     [{ H: 1 }, `H: 1 atom (100%)`],
     [{ H: 2, O: 1 }, `H: 2 atoms (66.7%)`],
   ])(`segment_title for %j`, (composition, expected) => {
-    expect(segment_title(composition_segments(composition, `Vesta`)[0])).toBe(expected)
+    expect(segment_title(composition_segments(composition, `Vesta`, {}, `p`)[0])).toBe(
+      expected,
+    )
   })
 
   test.each([

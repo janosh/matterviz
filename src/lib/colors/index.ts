@@ -262,6 +262,12 @@ export function pick_contrast_color(paint: Paint): string {
 export const contrast_text_color = (paint: Paint): string =>
   is_concrete_color(paint.background) ? pick_contrast_color(paint) : `currentColor`
 
+// Black/white against an opaque background; translucent or unresolvable (CSS var,
+// currentcolor, transparent) backgrounds inherit, since without a known backdrop there is
+// nothing to contrast against. For marks whose color the user supplies verbatim.
+export const opaque_contrast_color = (background: string): string =>
+  is_opaque_color(background) ? pick_contrast_color({ background }) : `currentColor`
+
 // Distinct backgrounds a memo holds at once. A continuous colour scale yields a new string
 // per distinct value, so a long-lived grid fed changing data would otherwise grow the cache
 // without bound; past this many the oldest entry goes (FIFO), so a working set just over the

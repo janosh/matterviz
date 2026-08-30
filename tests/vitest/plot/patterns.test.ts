@@ -44,8 +44,11 @@ describe(`resolve_pattern`, () => {
       transform: `rotate(-45)`,
     })
     expect(resolve_pattern(`/`, YELLOW, `p`).fg).toBe(`black`)
-    // CSS variables can't be parsed for contrast -> currentColor keeps the texture visible
+    // CSS variables can't be parsed for contrast and translucent colors have no known
+    // backdrop -> currentColor keeps the texture visible instead of throwing
     expect(resolve_pattern(`/`, `var(--accent)`, `p`).fg).toBe(`currentColor`)
+    expect(resolve_pattern(`/`, `rgba(70, 130, 180, 0.5)`, `p`).fg).toBe(`currentColor`)
+    expect(resolve_pattern(`/`, `#4e79a780`, `p`).fg).toBe(`currentColor`)
   })
 
   test(`replace mode: transparent bg, texture in the mark color at full opacity`, () => {
@@ -93,25 +96,42 @@ describe(`resolve_pattern`, () => {
     expect(dots.d).toContain(`a2.821 2.821`)
   })
 
-  test(`scale shrinks tile and line width but not solidity-derived proportions`, () => {
-    const full = resolve_pattern({ shape: `cross`, size: 12, line_width: 2 }, BLUE, `p`)
-    const half = resolve_pattern({ shape: `cross`, size: 12, line_width: 2 }, BLUE, `p`, 0.5)
+  test(`scale shrinks tile, line width and custom dashes alike`, () => {
+    const opts = { shape: `cross`, size: 12, line_width: 2, dash: [4, 2] } as const
+    const full = resolve_pattern(opts, BLUE, `p`)
+    const half = resolve_pattern(opts, BLUE, `p`, 0.5)
     expect([half.width, half.height, half.line_width]).toEqual([6, 6, 1])
+    expect([full.dasharray, half.dasharray]).toEqual([`4 2`, `2 1`])
     expect(half.id).not.toBe(full.id)
   })
 
-  test.each<[PatternDash, string | undefined, string | undefined]>([
-    [`solid`, undefined, undefined],
-    [`dashed`, `4 4`, undefined],
-    [`dotted`, `0 4`, `round`], // round caps turn zero-length dashes into dots
-    [[2, 1, 1], `2 1 1`, undefined],
-  ])(`dash %j -> dasharray %s with %s caps`, (dash, dasharray, linecap) => {
+  test.each<[PatternDash, string | undefined, string | undefined, string | undefined]>([
+    [`solid`, undefined, undefined, undefined],
+    [`dashed`, `4 4`, undefined, undefined],
+    // round caps turn zero-length dashes into dots; the quarter-period offset keeps both
+    // dots inside the tile instead of half a dot on each edge
+    [`dotted`, `0 4`, `round`, `2`],
+    [[2, 1, 1], `2 1 1`, undefined, undefined],
+  ])(`dash %j -> dasharray %s, %s caps, offset %s`, (dash, dasharray, linecap, dashoffset) => {
     const pat = resolve_pattern({ shape: `horizontal`, size: 8, dash }, BLUE, `p`)
-    expect(pat.dasharray).toBe(dasharray)
-    expect(pat.linecap).toBe(linecap)
+    expect([pat.dasharray, pat.linecap, pat.dashoffset]).toEqual([
+      dasharray,
+      linecap,
+      dashoffset,
+    ])
     // dashing is a stroke property: filled shapes ignore it
-    expect(resolve_pattern({ shape: `dots`, dash }, BLUE, `p`).dasharray).toBeUndefined()
+    const filled = resolve_pattern({ shape: `dots`, dash }, BLUE, `p`)
+    expect([filled.dasharray, filled.dashoffset]).toEqual([undefined, undefined])
   })
+
+  test.each([`zigzag`, `waves`] as const)(
+    `%s overshoots both tile edges by half a tile so seams carry the full stroke`,
+    (shape) => {
+      const { d, width } = resolve_pattern({ shape, size: 8 }, BLUE, `p`)
+      expect(d.startsWith(`M-4 `)).toBe(true)
+      expect(d).toContain(`${1.5 * width} `)
+    },
+  )
 
   test(`hexagon tile is a honeycomb period of sqrt(3)R × 3R`, () => {
     const pat = resolve_pattern({ shape: `hexagons`, size: 10 }, BLUE, `p`)
@@ -145,6 +165,9 @@ describe(`resolve_pattern`, () => {
     [{ line_width: NaN }, /line_width must be finite and ≥ 0/],
     [{ dash: [4, -2] }, /dash lengths must be finite and ≥ 0/],
     [{ dash: [Infinity, 2] }, /dash lengths must be finite and ≥ 0/],
+    [{ dash: [] }, /dash lengths must be finite and ≥ 0/],
+    [{ fg_opacity: 1.5 }, /fg_opacity must be in \[0, 1\]/],
+    [{ fg_opacity: NaN }, /fg_opacity must be in \[0, 1\]/],
     // shorthand lookup must not pick up inherited Object properties
     [`toString` as PatternShape, /Unknown pattern shape: toString/],
   ])(`rejects invalid options %j`, (opts, message) => {
@@ -175,5 +198,7 @@ describe(`unique_patterns`, () => {
     ])
     expect(result.map((pat) => pat.id)).toEqual([diag.id, dots.id])
     expect(unique_patterns([])).toEqual([])
+    // two different tiles under one id would silently swap textures between marks
+    expect(() => unique_patterns([diag, { ...dots, id: diag.id }])).toThrow(/id collision/)
   })
 })

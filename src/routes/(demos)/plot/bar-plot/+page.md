@@ -72,8 +72,8 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
 <div
   style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
 >
-  {#each [`grouped`, `stacked`, `overlay`] as m (m)}
-    <label><input type="radio" bind:group={mode} value={m} /> {m}</label>
+  {#each [`grouped`, `stacked`, `overlay`] as opt (opt)}
+    <label><input type="radio" bind:group={mode} value={opt} /> {opt}</label>
   {/each}
   <label style="margin-left: 1em">
     <input type="checkbox" bind:checked={custom_order} /> Sort by band gap
@@ -141,8 +141,8 @@ Every bar series (and `Histogram`, `BoxPlot`, fill regions, treemap/sunburst nod
       {#each [`solid`, `dashed`, `dotted`] as opt (opt)}<option>{opt}</option>{/each}
     </select>
   </label>
-  {#each [`overlay`, `replace`] as m (m)}
-    <label><input type="radio" bind:group={mode} value={m} /> {m}</label>
+  {#each [`overlay`, `replace`] as opt (opt)}
+    <label><input type="radio" bind:group={mode} value={opt} /> {opt}</label>
   {/each}
 </div>
 

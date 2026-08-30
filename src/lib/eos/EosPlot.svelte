@@ -50,8 +50,8 @@
   })
   let error_msg = $derived(fit_result.error_msg)
 
-  // 200 points from 5% below the smallest to 5% above the largest volume so the minimum is
-  // visible even when the scan stops short of V0
+  // 200 points from 5% below the smallest to 5% above the largest volume so the fitted curve
+  // visibly extrapolates past the scanned points
   const curve_volumes = $derived.by(() => {
     const [v_min, v_max] = [Math.min(...volumes), Math.max(...volumes)]
     const [start, span] = [v_min - 0.05 * (v_max - v_min), 1.1 * (v_max - v_min)]

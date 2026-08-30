@@ -54,12 +54,12 @@ describe(`fit_eos`, () => {
     const fit = fit_eos(volumes, energies, kind)
     const ref = to_params(fits[kind])
     // scipy's leastsq and our LM stop at slightly different points on a flat 4-parameter
-    // surface; E0/V0 agree to 1e-6 relative, B0 and B0' (the weakly determined pair) to 1e-4
+    // surface; measured max relative gaps are 3e-8 for E0/V0 and 2.2e-6 for B0 and B0' (the
+    // weakly determined pair)
     for (const [idx, key] of PARAM_KEYS.entries()) {
-      expect(rel_err(fit[key], ref[key])).toBeLessThan(idx < 2 ? 1e-6 : 1e-4)
+      expect(rel_err(fit[key], ref[key])).toBeLessThan(idx < 2 ? 1e-7 : 1e-5)
     }
     expect(fit.b0_gpa).toBeCloseTo(fit.b0 * EV_PER_A3_TO_GPA, 10)
-    expect(fit.n_points).toBe(volumes.length)
     // the fit is a least-squares optimum: the pymatgen parameters cannot do better
     expect(fit.rmse).toBeCloseTo(rmse(kind, fit, volumes, energies), 12)
     expect(fit.rmse).toBeLessThanOrEqual(rmse(kind, ref, volumes, energies) * (1 + 1e-9))
@@ -86,6 +86,16 @@ describe(`fit_eos`, () => {
     expect(fit.rmse).toBeLessThan(1e-9)
   })
 
+  // Expansion-heavy scan (0.95–1.6·V0): anharmonicity pulls the parabola vertex below the
+  // smallest volume although V0 is bracketed, so a vertex-in-range guard rejected it
+  test.each(EOS_KINDS)(`%s fits a bracketed but lopsided scan`, (kind) => {
+    const truth: EosParams = { e0: -10.5, v0: 40, b0: 0.6, b0_prime: 4.5 }
+    const volumes = Array.from({ length: 14 }, (_, idx) => 40 * (0.95 + 0.05 * idx))
+    const energies = volumes.map((vol) => eos_energy(kind, truth, vol))
+    const fit = fit_eos(volumes, energies, kind)
+    for (const key of PARAM_KEYS) expect(rel_err(fit[key], truth[key])).toBeLessThan(1e-8)
+  })
+
   // 8 exact points from 1.2·V0 (or 1.3·V0) outward: before the bracket check, Vinet returned
   // V0 off by 27× and Murnaghan by 100% with no error, only a 0.3–2.5 eV RMSE
   test.each(EOS_KINDS.flatMap((kind) => [1.2, 1.3].map((start) => [kind, start] as const)))(
@@ -107,9 +117,9 @@ describe(`fit_eos`, () => {
   test.each([
     [[1, 2, 3], [1, 2], /3 volumes but 2 energies/],
     [[1, 1, 2, 3], [1, 2, 3, 4], /at least 4 distinct volumes, got 3/],
-    [[1, 2, 3, 4], [1, 2, Number.NaN, 4], /energies finite/],
+    [[1, 2, 3, 4], [1, 2, Number.NaN, 4], /energies finite, got V=3, E=NaN at index 2/],
     [[Number.NaN, Number.NaN, Number.NaN, 1], [1, 2, 3, 4], /volumes must be positive/], // not "distinct"
-    [[-1, 2, 3, 4], [1, 2, 3, 4], /volumes must be positive/],
+    [[-1, 2, 3, 4], [1, 2, 3, 4], /volumes must be positive.*V=-1, E=1 at index 0/],
     [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5], /no minimum/], // straight line
     [[1, 2, 3, 4, 5], [0, 3, 4, 3, 0], /no minimum/], // concave-down parabola
   ])(`rejects bad input %j %j`, (volumes, energies, message) => {

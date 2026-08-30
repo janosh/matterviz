@@ -78,6 +78,7 @@ export type {
   PatternOptions,
   PatternShape,
   PatternShorthand,
+  ResolvedPattern,
 } from './core/patterns'
 export * from './core/plot-title'
 export type { TicksOption } from './core/scales'

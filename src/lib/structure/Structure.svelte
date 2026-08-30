@@ -48,6 +48,7 @@
   } from '$lib/structure'
   import type { CellType, SymmetryDataset, SymmetrySettings, WyckoffPos } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
+  import { LATTICE_PLANES_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
@@ -417,19 +418,26 @@
       })
   })
 
-  // The symmetry-element overlay is blanked outside the input frame (StructureViewport), which
-  // would otherwise look like the overlay silently vanished: say why whenever the overlay is
-  // on and the rendered cell stops being the input cell (cell switch, or overlay enabled
-  // while a conventional/primitive cell is shown)
+  // The symmetry-element and lattice-plane overlays are blanked outside the input frame
+  // (StructureViewport), which would otherwise look like the overlay silently vanished: say
+  // why whenever an overlay is on and the rendered cell stops being the input cell (cell
+  // switch, or overlay enabled while a conventional/primitive cell is shown)
   let overlay_hidden_by_frame = false
   $effect(() => {
-    const hidden =
-      symmetry.has_visible_symmetry_overlay(
-        scene_props.symmetry_elements ?? [],
-        scene_props.symmetry_elements_props?.show_kinds,
-      ) && !session.shows_input_frame
+    const symmetry_on = symmetry.has_visible_symmetry_overlay(
+      scene_props.symmetry_elements ?? [],
+      scene_props.symmetry_elements_props?.show_kinds,
+    )
+    const planes_on = (scene_props.lattice_planes?.length ?? 0) > 0
+    const hidden = (symmetry_on || planes_on) && !session.shows_input_frame
     if (hidden && !overlay_hidden_by_frame) {
-      untrack(() => show_toast(symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE))
+      untrack(() =>
+        show_toast(
+          symmetry_on
+            ? symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE
+            : LATTICE_PLANES_INPUT_FRAME_NOTE,
+        ),
+      )
     }
     overlay_hidden_by_frame = hidden
   })

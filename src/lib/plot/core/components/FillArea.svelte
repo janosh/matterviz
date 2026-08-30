@@ -3,6 +3,7 @@
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
   import type { TweenOptions } from 'svelte/motion'
+  import { add_alpha } from '$lib/colors'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import { is_fill_gradient } from '$lib/plot/core/fill-utils'
   import { resolve_pattern } from '$lib/plot/core/patterns'
@@ -39,9 +40,10 @@
     tween_options?: TweenOptions<string>
   } = $props()
 
-  // Stable instance ID for gradient uniqueness (generated once per component instance)
-  const instance_id = unique_id()
-  let gradient_id = $derived(`fill-gradient-${region.id ?? region_idx}-${instance_id}`)
+  // Scopes gradient/pattern ids to this instance; `region.id` is user text and may not be a
+  // valid id fragment, and the uuid alone is already unique
+  const instance_id = unique_id(`fill`)
+  const gradient_id = `${instance_id}-gradient`
 
   // On hover (without an explicit hover_style), noticeably raise opacity. A faint fill (e.g. a
   // low-alpha rgba color at the default 0.3 fill-opacity) is otherwise nearly invisible, so a mere
@@ -56,16 +58,21 @@
       ? region.hover_style.fill
       : (region.fill ?? `steelblue`),
   )
-  // Hatch/texture over a solid fill color; a gradient fill has no single color to texture
+  // Hatch/texture over a solid fill color; a gradient fill has no single color to texture.
+  // The fill opacity is baked into the tile backdrop instead of applied to the mark: a 0.3
+  // fill-opacity on top of the tile would fade the texture below visibility and its
+  // auto-contrast (chosen against the opaque color) would be wrong for the rendered tint.
+  // The translucent backdrop makes the texture inherit currentColor, which reads on any tint.
+  let tile_bg = $derived(
+    typeof effective_fill === `string` ? add_alpha(effective_fill, effective_opacity) : ``,
+  )
   let pattern = $derived(
     region.pattern && typeof effective_fill === `string`
-      ? resolve_pattern(
-          region.pattern,
-          effective_fill,
-          `fill-${region.id ?? region_idx}-${instance_id}`,
-        )
+      ? resolve_pattern(region.pattern, tile_bg, instance_id)
       : undefined,
   )
+  // add_alpha leaves colors it cannot parse (CSS vars) alone; then the mark keeps its opacity
+  let path_opacity = $derived(pattern && tile_bg !== effective_fill ? 1 : effective_opacity)
   let path_fill = $derived(
     typeof effective_fill === `object`
       ? `url(#${gradient_id})`
@@ -206,7 +213,7 @@
   <path
     d={tweened_path.current}
     fill={path_fill}
-    fill-opacity={effective_opacity}
+    fill-opacity={path_opacity}
     stroke={hover_stroke ?? `none`}
     stroke-width={hover_stroke ? (region.hover_style?.stroke_width ?? 1.5) : 0}
   />

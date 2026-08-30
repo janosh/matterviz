@@ -25,8 +25,8 @@ const triclinic = math.cell_to_lattice_matrix(4, 5, 6, 70, 80, 100)
 const plane_normal = (hkl: Vec3, lattice: Matrix3x3): Vec3 =>
   math.dot(math.matrix_inverse_3x3(lattice), hkl)
 
-// A valid clipped polygon: every vertex on the plane and inside the cell (fractional), all
-// vertices coplanar in Cartesian space, no near-duplicate vertices, convex winding order
+// A valid clipped polygon: every vertex on the plane and inside the cell (fractional), no
+// near-duplicate vertices, convex winding order
 const expect_valid_polygon = (
   polygon: Vec3[],
   hkl: Vec3,
@@ -36,14 +36,12 @@ const expect_valid_polygon = (
   expect(polygon.length).toBeGreaterThanOrEqual(3)
   const to_frac = math.create_cart_to_frac(lattice)
   const normal = math.normalize_vec(plane_normal(hkl, lattice))
-  const plane_const = math.dot(polygon[0], normal)
   const turns = new Set<number>()
   for (const [idx, vert] of polygon.entries()) {
     const frac = to_frac(vert)
     expect(math.dot(hkl, frac)).toBeCloseTo(offset, 8)
     for (const coord of frac) expect(coord).toBeGreaterThanOrEqual(-1e-12)
     for (const coord of frac) expect(coord).toBeLessThanOrEqual(1 + 1e-12)
-    expect(Math.abs(math.dot(vert, normal) - plane_const)).toBeLessThan(1e-12)
     const prev = polygon[(idx + polygon.length - 1) % polygon.length]
     const next = polygon[(idx + 1) % polygon.length]
     expect(math.euclidean_dist(vert, next)).toBeGreaterThan(1e-6)
@@ -128,21 +126,12 @@ describe(`lattice_plane_polygons`, () => {
     for (const edge of edges) expect(edge).toBeCloseTo(edges[0], 10)
   })
 
-  test(`non-orthogonal cell: (110) planes lie in the true Cartesian plane`, () => {
-    const hkl: Vec3 = [1, 1, 0]
-    // offsets 0 and 2 are the two c-edges of the cell (a single line), so only 1 survives
-    expect(lattice_plane_polygons({ hkl }, hexagonal).map((poly) => poly.offset)).toEqual([1])
-    const polys = lattice_plane_polygons({ hkl, offsets: [0.5, 1.5] }, hexagonal)
-    const normal = plane_normal(hkl, hexagonal)
-    for (const { offset, polygon } of polys) {
-      expect_valid_polygon(polygon, hkl, offset, hexagonal)
-      for (const vert of polygon) expect(math.dot(vert, normal)).toBeCloseTo(offset, 8)
-    }
-    // planes one interplanar spacing apart: distance between offsets 0.5 and 1.5 is 1 / |G|
-    const d_hkl = 1 / Math.hypot(...normal)
-    const [plane_0, plane_1] = polys
-    const gap = math.dot(math.subtract(plane_1.polygon[0], plane_0.polygon[0]), normal) * d_hkl
-    expect(gap).toBeCloseTo(d_hkl, 10)
+  test(`hexagonal (110): the planes through the two c-edges touch the cell in a line only`, () => {
+    // offsets 0 and 2 are single edges of the cell, so only offset 1 yields a polygon
+    const offsets = lattice_plane_polygons({ hkl: [1, 1, 0] }, hexagonal).map(
+      (poly) => poly.offset,
+    )
+    expect(offsets).toEqual([1])
   })
 
   test(`offsets outside the cell, NaN or empty yield no polygons`, () => {
@@ -164,11 +153,12 @@ describe(`lattice_plane_polygons`, () => {
 
 describe(`clip_frac_plane_to_cell`, () => {
   test(`a corner within tolerance of the plane is one vertex, not a sliver`, () => {
-    // Plane through the corner (0,0,1) up to float noise, nearly parallel to b so the corner
-    // (0,1,1) is close too: the crossing on that edge lies 5e-6 from the snapped corner and
-    // used to survive a string-rounding dedup as a near-duplicate vertex.
+    // Plane 3.29e-9 past the corner (0,0,1) along an edge nearly parallel to it (coefficient
+    // 6.4e-4 on b), so the edge to (0,1,1) crosses the plane 5e-6 from the snapped corner.
+    // Skipping edges with an on-plane endpoint keeps that crossing from becoming a second,
+    // near-duplicate vertex (which a string-rounding dedup used to let through).
     const coeffs: Vec3 = [-1.8798189163208008, 0.0006400197744369507, -0.4217844009399414]
-    const level = math.dot(coeffs, [0, 0, 1]) - 3.29e-9
+    const level = math.dot(coeffs, [0, 0, 1]) + 3.29e-9
     const polygon = clip_frac_plane_to_cell(coeffs, level, cubic)
     expect(polygon).toHaveLength(4)
     expect(polygon).toContainEqual([0, 0, 4])

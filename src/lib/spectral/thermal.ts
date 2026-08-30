@@ -61,7 +61,9 @@ export function thermal_properties(
     )
   }
   // The DOS is a density per `unit` of frequency, so integrate over the original grid (sorted,
-  // positive frequencies only) and only convert the mode energies ħω to eV
+  // positive frequencies only) and only convert the mode energies ħω to eV. Dropping the
+  // non-positive points also drops the grid segment between the last of them and the first
+  // positive frequency, as pymatgen's PhononDos does; the integrands vanish at ω → 0 anyway.
   const order = frequencies
     .map((_, idx) => idx)
     .filter((idx) => frequencies[idx] > 0)
@@ -85,7 +87,9 @@ export function thermal_properties(
   const zero_point_energy = integrate((idx) => mode_energies[idx] / 2)
   const [free_energy, internal_energy, entropy, heat_capacity]: number[][] = [[], [], [], []]
   for (const temp of temperatures) {
-    const kt = BOLTZMANN_EV_PER_K * temp // 0 K gives x = ∞ for every mode: the ground state
+    // 0 K gives x = ∞ for every mode: the ground state. `|| 0` turns a -0 (which passes the
+    // ≥ 0 check) into +0, since x = -∞ would make every mode function NaN
+    const kt = BOLTZMANN_EV_PER_K * temp || 0
     const xs = mode_energies.map((energy) => energy / kt)
     const s_val = BOLTZMANN_EV_PER_K * integrate((idx) => mode_entropy(xs[idx]))
     // F = ZPE + k_B T ∫ g ln(1 − e^{−x}); U follows as F + TS

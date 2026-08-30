@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish, e.g. 0.4.0
+        description: Version to publish without the v prefix, e.g. 0.4.0 (the prefix would split the concurrency group from a release run)
         required: true
         type: string
       dry_run:

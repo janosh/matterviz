@@ -1,5 +1,9 @@
 // Segment data and label helpers shared by PieChart, BubbleChart and BarChart
-import { type ColorSchemeName, contrast_text_color, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
+import {
+  type ColorSchemeName,
+  ELEMENT_COLOR_SCHEMES,
+  opaque_contrast_color,
+} from '$lib/colors'
 import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import { format_num } from '$lib/labels'
@@ -27,8 +31,8 @@ export type ChartLabelOptions = { show_amounts: boolean; show_percentages: boole
 export const composition_segments = (
   composition: CompositionType,
   color_scheme: ColorSchemeName,
-  patterns: ElementPatterns = {},
-  pattern_prefix = `composition`,
+  patterns: ElementPatterns,
+  pattern_prefix: string,
 ): ChartSegment[] => {
   const fractions = fractional_composition(composition)
   const colors = ELEMENT_COLOR_SCHEMES[color_scheme] ?? ELEMENT_COLOR_SCHEMES.Vesta
@@ -43,9 +47,7 @@ export const composition_segments = (
         fraction,
         color,
         // Labels sit on the tile backdrop: the segment color, or the page in `replace` mode
-        text_color: contrast_text_color({
-          background: pattern ? (pattern.bg ?? `transparent`) : color,
-        }),
+        text_color: opaque_contrast_color(pattern ? (pattern.bg ?? `transparent`) : color),
         pattern,
       }
     },

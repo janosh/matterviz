@@ -118,7 +118,7 @@ const GAS_NUM_ATOMS: Readonly<Record<GasSpecies, number>> = {
 }
 
 // Pressure part of the gas chemical potential, k_B·T·ln(P/P₀) / num_atoms in eV/atom: the
-// RT·ln(P) term is per molecule, hence divided by the atoms per molecule
+// k_B·T·ln(P/P₀) term is per molecule, hence divided by the atoms per molecule
 export const gas_pressure_term = (
   gas: GasSpecies,
   temperature: number,

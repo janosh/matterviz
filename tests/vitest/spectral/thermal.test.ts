@@ -4,8 +4,10 @@ import type { PhononDos } from '$lib/spectral'
 import { describe, expect, test } from 'vitest'
 import { load_json } from '../setup'
 
-// phonopy's own thermal properties (J/mol and J/(K·mol) per primitive cell) stored alongside the
-// DOS in the fixture, computed from the same DOS grid
+// Reference F, U, S, C_v (J/mol and J/(K·mol) per primitive cell) stored alongside the DOS in
+// the atomate2 fixture. They come from the same trapezoid integration over this DOS grid (the
+// ZPE agrees to 16 digits), so the fixture test is a regression check; the Einstein-solid
+// closed forms below are the independent validation.
 const fixture = load_json<{
   phonon_dos: PhononDos
   temps: number[]
@@ -31,7 +33,7 @@ const rel = (ours: number, ref: number, floor = 0) =>
 const QUANTITIES = [`free_energy`, `internal_energy`, `entropy`, `heat_capacity`] as const
 
 describe(`thermal_properties`, () => {
-  test(`matches phonopy for a simulated Sr4Se4 phonon DOS`, () => {
+  test(`reproduces the fixture's reference values for a simulated Sr4Se4 phonon DOS`, () => {
     const { phonon_dos, temps } = fixture
     const thermal = thermal_properties(phonon_dos, temps)
     const j_per_mol = EV_TO_KJ_PER_MOL * 1000
@@ -41,8 +43,8 @@ describe(`thermal_properties`, () => {
       entropy: fixture.entropies,
       heat_capacity: fixture.heat_capacities,
     }
-    // both integrate the same grid with the trapezoid rule; measured max relative gap is 9e-9
-    // (F, from the physical constants phonopy uses) and < 1e-9 for U, S, C_v
+    // measured max relative gap is 9e-9 for F (the reference forms it as kT ∫ g ln(2 sinh(x/2))
+    // rather than ZPE + kT ∫ g ln(1 − e^{−x})) and < 1e-9 for U, S, C_v
     for (const key of QUANTITIES) {
       for (const [idx, val] of thermal[key].entries()) {
         expect(rel(val * j_per_mol, refs[key][idx], 1)).toBeLessThan(1e-7)
@@ -56,7 +58,6 @@ describe(`thermal_properties`, () => {
         12,
       )
     }
-    expect(thermal.zero_point_energy * j_per_mol).toBeCloseTo(fixture.free_energies[0], 2)
   })
 
   test.each([
@@ -74,15 +75,18 @@ describe(`thermal_properties`, () => {
       const occupation = 1 / (Math.exp(x) - 1)
       const log_term = Math.log(1 - Math.exp(-x))
       const k_b = BOLTZMANN_EV_PER_K
-      // the trapezoid over a 3-point triangle integrates x·g(x) to ~1e-8 relative; 1e-6 is generous
-      expect(rel(zero_point_energy, (n_modes * energy) / 2)).toBeLessThan(1e-6)
-      expect(rel(internal_energy[0], n_modes * energy * (0.5 + occupation))).toBeLessThan(1e-6)
-      expect(rel(free_energy[0], n_modes * (energy / 2 + k_b * temp * log_term))).toBeLessThan(
-        1e-6,
+      // only the peak has a nonzero trapezoid weight (n_modes / h · 2h / 2 = n_modes), so every
+      // integral is exactly n_modes · f(ω0) up to rounding in (ω0 + h) − (ω0 − h): measured 2e-12
+      expect(rel(zero_point_energy, (n_modes * energy) / 2)).toBeLessThan(1e-10)
+      expect(rel(internal_energy[0], n_modes * energy * (0.5 + occupation))).toBeLessThan(
+        1e-10,
       )
-      expect(rel(entropy[0], n_modes * k_b * (x * occupation - log_term))).toBeLessThan(1e-6)
+      expect(rel(free_energy[0], n_modes * (energy / 2 + k_b * temp * log_term))).toBeLessThan(
+        1e-10,
+      )
+      expect(rel(entropy[0], n_modes * k_b * (x * occupation - log_term))).toBeLessThan(1e-10)
       const cv_ref = (n_modes * k_b * x ** 2 * Math.exp(x)) / (Math.exp(x) - 1) ** 2
-      expect(rel(heat_capacity[0], cv_ref)).toBeLessThan(1e-6)
+      expect(rel(heat_capacity[0], cv_ref)).toBeLessThan(1e-10)
     },
   )
 
@@ -103,18 +107,21 @@ describe(`thermal_properties`, () => {
     expect(internal_energy[3] / (n_kb * 1e300)).toBeCloseTo(1, 8)
   })
 
-  test(`T = 0 is the ground state and low T underflows cleanly`, () => {
+  test(`T = 0 (either sign) is the ground state and low T underflows cleanly`, () => {
     const dos = einstein_dos(5, 3)
     const { zero_point_energy, free_energy, internal_energy, entropy, heat_capacity } =
-      thermal_properties(dos, [0, 1e-3, 1, 1e-200, 1e-310, 5e-324])
-    expect(free_energy[0]).toBe(zero_point_energy)
-    expect(internal_energy[0]).toBe(zero_point_energy)
-    expect(entropy[0]).toBe(0)
-    expect(heat_capacity[0]).toBe(0)
+      thermal_properties(dos, [0, -0, 1e-3, 1, 1e-200, 1e-310, 5e-324])
+    // -0 passes the ≥ 0 check and would give x = -∞ (NaN everywhere) if not folded into +0
+    for (const idx of [0, 1]) {
+      expect(free_energy[idx]).toBe(zero_point_energy)
+      expect(internal_energy[idx]).toBe(zero_point_energy)
+      expect(entropy[idx]).toBe(0)
+      expect(heat_capacity[idx]).toBe(0)
+    }
     // x ≈ 2.4e5 at 1 mK: e^x overflows a double, the exp(−x) forms must not; at 1e-200 K
     // even x² overflows, so x·e^{−x} has to be formed before the second factor of x; at
     // denormal T, k_B T underflows and x = ∞ must still give frozen modes, not NaN
-    for (const idx of [1, 2, 3, 4, 5]) {
+    for (const idx of [2, 3, 4, 5, 6]) {
       expect(free_energy[idx]).toBeCloseTo(zero_point_energy, 12)
       expect(internal_energy[idx]).toBeCloseTo(zero_point_energy, 12)
       expect(entropy[idx]).toBeLessThan(1e-100)

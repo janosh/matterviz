@@ -75,7 +75,7 @@ Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`ma
 
 ## Thermal Properties
 
-`thermal_properties(dos, temperatures, unit)` integrates the Bose–Einstein occupation over a phonon DOS to give the harmonic free energy F, internal energy U, entropy S and heat capacity C<sub>v</sub> (eV and eV/K per whatever the DOS integrates to, 3N modes per cell here). `PhononThermalPlot` draws them against temperature, in phonopy's kJ/mol and J/(K·mol) by default, with F and U on the left axis and S and C<sub>v</sub> on the right. For this simulated Sr<sub>4</sub>Se<sub>4</sub> DOS (2 atoms in the primitive cell) C<sub>v</sub> approaches the classical limit of 6 k<sub>B</sub> = 49.9 J/(K·mol), reaching 49.5 by 500 K:
+`thermal_properties(dos, temperatures, unit)` integrates the Bose–Einstein occupation over a phonon DOS to give the harmonic free energy F, internal energy U, entropy S and heat capacity C<sub>v</sub> (eV and eV/K per whatever the DOS integrates to, 3N modes per cell here). `PhononThermalPlot` draws them against temperature, in phonopy's kJ/mol and J/(K·mol) by default, with F and U on the left axis and S and C<sub>v</sub> on the right. For this simulated Sr<sub>4</sub>Se<sub>4</sub> DOS (2 atoms in the primitive cell) C<sub>v</sub> tends to the classical limit of 6 k<sub>B</sub> ≈ 49.9 J/(K·mol), reaching 49.5 by 500 K:
 
 ```svelte example
 <script lang="ts">

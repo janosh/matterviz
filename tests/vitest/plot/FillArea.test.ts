@@ -103,37 +103,51 @@ describe(`FillArea`, () => {
     expect(doc_query(`.fill-region path`).getAttribute(`fill`)).toBe(`steelblue`)
   })
 
-  test(`pattern textures a solid fill but is ignored for gradient fills`, () => {
+  test(`pattern bakes the fill opacity into the tile so the texture stays legible`, () => {
     mount(FillArea, {
       target: document.body,
-      props: make_props({ region: { ...base_region, pattern: { shape: `x`, size: 6 } } }),
+      props: make_props({
+        region: {
+          ...base_region,
+          fill: `rgb(70, 130, 180)`,
+          pattern: { shape: `x`, size: 6 },
+        },
+      }),
     })
     const group = doc_query(`.fill-region`)
     const def = group.querySelector(`defs pattern`)
-    expect(def?.id).toMatch(/^fill-test-fill-.+-pat-[0-9a-z]+$/)
-    // the texture tile carries the region's own color; the mark keeps its fill-opacity
-    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
+    expect(def?.id).toMatch(/^fill-[0-9a-f-]+-pat-[0-9a-z]+$/)
+    // the tile backdrop is the region color at the region's fill opacity and the mark is
+    // painted at full opacity; the texture inherits currentColor over the translucent tint
+    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgba(70, 130, 180, 0.3)`)
+    expect(def?.querySelector(`path`)?.getAttribute(`stroke`)).toBe(`currentColor`)
     expect(def?.getAttribute(`patternTransform`)).toBe(`rotate(45)`)
     const path = group.querySelector(`:scope > path`)
     expect(path?.getAttribute(`fill`)).toBe(`url(#${def?.id})`)
-    expect(path?.getAttribute(`fill-opacity`)).toBe(`0.3`)
+    expect(path?.getAttribute(`fill-opacity`)).toBe(`1`)
+  })
 
-    document.body.innerHTML = ``
-    const gradient: FillGradient = {
-      type: `linear`,
-      stops: [
-        [0, `red`],
-        [1, `blue`],
-      ],
-    }
+  const gradient_fill: FillGradient = {
+    type: `linear`,
+    stops: [
+      [0, `red`],
+      [1, `blue`],
+    ],
+  }
+  test.each([
+    // a gradient has no single color to texture
+    [gradient_fill, /^url\(#fill-[0-9a-f-]+-gradient\)$/, false],
+    // a CSS variable cannot carry the opacity in the tile, so the mark keeps its 0.3
+    [`var(--accent)`, /^url\(#fill-[0-9a-f-]+-pat-/, true],
+  ])(`pattern with fill %j`, (fill, fill_attr, has_pattern) => {
     mount(FillArea, {
       target: document.body,
-      props: make_props({ region: { ...base_region, fill: gradient, pattern: `/` } }),
+      props: make_props({ region: { ...base_region, fill, pattern: `/` } }),
     })
-    expect(document.querySelector(`pattern`)).toBeNull()
-    expect(doc_query(`.fill-region > path`).getAttribute(`fill`)).toMatch(
-      /^url\(#fill-gradient-/,
-    )
+    const path = doc_query(`.fill-region > path`)
+    expect(path.getAttribute(`fill`)).toMatch(fill_attr)
+    expect(path.getAttribute(`fill-opacity`)).toBe(`0.3`)
+    expect(document.querySelector(`pattern`) !== null).toBe(has_pattern)
   })
 
   test(`renders linear gradient with correct transform and stops`, () => {

@@ -5,7 +5,7 @@
 // produces, so each chart keeps only its geometry (polar projection vs tiling).
 
 import type { D3InterpolateName } from '$lib/colors'
-import { is_opaque_color, pick_contrast_color } from '$lib/colors'
+import { opaque_contrast_color } from '$lib/colors'
 import { format_value } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
 import type { FillPattern, ResolvedPattern } from '$lib/plot/core/patterns'
@@ -118,9 +118,7 @@ export function compute_node_infos<Metadata>(
   const contrast = (fill: string): string => {
     let label_fill = contrast_cache.get(fill)
     if (label_fill === undefined) {
-      label_fill = is_opaque_color(fill)
-        ? pick_contrast_color({ background: fill })
-        : `currentColor`
+      label_fill = opaque_contrast_color(fill)
       contrast_cache.set(fill, label_fill)
     }
     return label_fill

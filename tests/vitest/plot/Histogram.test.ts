@@ -10,7 +10,13 @@ import {
 } from '$lib/plot/histogram/histogram'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, mount_sized, one_tab_stop, roving_tabindexes } from '../setup'
+import {
+  bind_props,
+  mount_sized,
+  one_tab_stop,
+  pattern_id_of,
+  roving_tabindexes,
+} from '../setup'
 
 // Controls and legend are off unless a test asks for them. Props are mutated in place (not
 // spread) so bind_props accessors survive.
@@ -514,17 +520,13 @@ describe(`Histogram`, () => {
       ],
       bins: 4,
     })
-    const bar_fill = (idx: number) =>
-      plot
-        .querySelector(`.histogram-series[data-series-idx="${idx}"] path[role="button"]`)
-        ?.getAttribute(`fill`) ?? ``
-    expect(bar_fill(1)).toBe(`tomato`)
-    const match = /^url\(#(?<id>histogram-.+-pat-[0-9a-z]+)\)$/.exec(bar_fill(0))
-    if (!match?.groups) throw new Error(`bar fill is not a pattern url: ${bar_fill(0)}`)
-    const def = plot.querySelector(`.histogram svg defs #${match.groups.id}`)
-    expect(def?.tagName.toLowerCase()).toBe(`pattern`)
-    expect(def?.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
-    expect(plot.querySelectorAll(`.histogram svg defs pattern`)).toHaveLength(1)
+    const bar = (idx: number) =>
+      plot.querySelector(`.histogram-series[data-series-idx="${idx}"] path[role="button"]`)
+    expect(bar(1)?.getAttribute(`fill`)).toBe(`tomato`)
+    const defs = plot.querySelectorAll(`.histogram svg defs pattern`)
+    expect(defs).toHaveLength(1)
+    expect(defs[0].id).toBe(pattern_id_of(bar(0), `histogram`))
+    expect(defs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`steelblue`)
   })
 
   test(`normalize_counts: probability sums to 1, density integrates to 1 on uneven bins`, () => {

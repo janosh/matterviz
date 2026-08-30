@@ -5,6 +5,9 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { clip_frac_plane_to_cell } from '$lib/symmetry/symmetry-elements'
 
+// Like symmetry elements, planes are indexed in the input cell and blanked in other frames
+export const LATTICE_PLANES_INPUT_FRAME_NOTE = `Lattice planes are drawn only in the original (input) cell`
+
 export interface LatticePlane {
   hkl: Vec3
   // Plane positions in units of d_hkl. Default: every lattice plane that cuts the cell.
@@ -21,17 +24,17 @@ export function lattice_plane_offsets(hkl: Vec3): number[] {
   return Array.from({ length: hi - lo + 1 }, (_, idx) => lo + idx)
 }
 
-// Cartesian polygons of the planes in `plane` clipped to the cell; planes that only touch a
-// corner or an edge (fewer than 3 vertices) are dropped.
+// Cartesian polygons of the planes in `plane` clipped to the cell. Planes that miss the cell
+// or only touch a corner or an edge come back empty from the clipper and are dropped.
 export function lattice_plane_polygons(
   plane: LatticePlane,
   lattice: Matrix3x3,
 ): { offset: number; polygon: Vec3[] }[] {
-  const { hkl } = plane
+  const { hkl, offsets } = plane
   if (hkl.length !== 3 || hkl.every((val) => val === 0) || !hkl.every(Number.isInteger)) {
     throw new Error(`Invalid Miller indices ${JSON.stringify(hkl)}`)
   }
-  return (plane.offsets ?? lattice_plane_offsets(hkl))
+  return (offsets ?? lattice_plane_offsets(hkl))
     .map((offset) => ({ offset, polygon: clip_frac_plane_to_cell(hkl, offset, lattice) }))
-    .filter(({ polygon }) => polygon.length >= 3)
+    .filter(({ polygon }) => polygon.length > 0)
 }

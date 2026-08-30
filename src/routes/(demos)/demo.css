@@ -11,8 +11,7 @@
 }
 /* Section headings inside a widened demo block stay centered like the page title, which the
    root layout only centers for headings that are direct children of <main> */
-.bleed-1400 > h2,
-.full-bleed > h2 {
+.bleed-1400 > h2 {
   text-align: center;
 }
 /* Centered row of sliders, selects and checkboxes above a plot */

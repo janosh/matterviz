@@ -25,7 +25,6 @@ export interface EosFit extends EosParams {
   kind: EosKind
   b0_gpa: number
   rmse: number // root-mean-square energy residual, eV
-  n_points: number
 }
 
 // E(V) of each form. Birch–Murnaghan is the Eulerian-strain series to 3rd order, Murnaghan
@@ -134,16 +133,19 @@ function parabola_guess(volumes: readonly number[], energies: readonly number[])
       `EOS fit: energies have no minimum in volume (parabola curvature ${a_coef})`,
     )
   }
-  const v0 = mean - (std * b_coef) / (2 * a_coef)
   // Same guard as pymatgen's EOS: a scan that does not bracket its minimum starts the
   // 4-parameter fit far from the truth and can settle in a wrong local minimum without any
-  // symptom other than a large RMSE, so refuse it up front
+  // symptom other than a large RMSE, so refuse it up front. Judged by the lowest-energy point,
+  // not the parabola vertex: anharmonicity biases the vertex low, so a scan with more expansion
+  // than compression can put the vertex outside the range while V0 itself is well inside.
   const [v_min, v_max] = [Math.min(...volumes), Math.max(...volumes)]
-  if (v0 < v_min || v0 > v_max) {
+  const v_at_min_energy = volumes[energies.indexOf(Math.min(...energies))]
+  if (v_at_min_energy === v_min || v_at_min_energy === v_max) {
     throw new Error(
-      `EOS fit: parabola minimum V=${v0} lies outside the scanned volumes [${v_min}, ${v_max}]; the scan must bracket the energy minimum`,
+      `EOS fit: lowest energy is at the edge of the scan (V=${v_at_min_energy} of [${v_min}, ${v_max}]); the scan must bracket the energy minimum`,
     )
   }
+  const v0 = Math.min(Math.max(mean - (std * b_coef) / (2 * a_coef), v_min), v_max)
   return {
     e0: c_coef - b_coef ** 2 / (4 * a_coef),
     v0,
@@ -168,8 +170,13 @@ export function fit_eos(
     throw new Error(`EOS fit: ${volumes.length} volumes but ${energies.length} energies`)
   }
   // Finiteness first: NaN volumes are all "distinct" to a Set and would report a misleading count
-  if (![...volumes, ...energies].every(Number.isFinite) || volumes.some((vol) => vol <= 0)) {
-    throw new Error(`EOS fit: volumes must be positive and energies finite`)
+  const bad_idx = volumes.findIndex(
+    (vol, idx) => !(vol > 0) || !Number.isFinite(energies[idx]),
+  )
+  if (bad_idx !== -1) {
+    throw new Error(
+      `EOS fit: volumes must be positive and energies finite, got V=${volumes[bad_idx]}, E=${energies[bad_idx]} at index ${bad_idx}`,
+    )
   }
   const n_distinct = new Set(volumes).size
   if (n_distinct < 4) {
@@ -183,7 +190,8 @@ export function fit_eos(
   let res = residuals(params)
   let current_cost = dot(res, res)
   let damping = 1e-3
-  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+  let converged = false
+  for (let iter = 0; iter < MAX_ITERATIONS && !converged; iter++) {
     // Jacobian of the residuals, one column per parameter, with Marquardt scaling: each column
     // is normalized so the normal matrix has a unit diagonal. The eV, A^3 and eV/A^3 columns can
     // differ by 1e10 (soft materials, tiny cells), which the solver's largest-entry pivot test
@@ -200,12 +208,16 @@ export function fit_eos(
     let moved = false
     while (damping < 1e12) {
       const damped = normal.map((row, idx) => row.with(idx, 1 + damping))
-      const step = solve_linear_system(damped, rhs)?.map((val, idx) => val / scale[idx]) ?? []
+      const step = solve_linear_system(damped, rhs)?.map((val, idx) => val / scale[idx])
+      if (!step) {
+        damping *= 4
+        continue
+      }
       const [e0, v0, b0, b0_prime] = PARAM_KEYS.map((key, idx) => params[key] + step[idx])
       const trial = { e0, v0, b0, b0_prime }
       const trial_res = residuals(trial)
       const trial_cost = dot(trial_res, trial_res)
-      // uphill, non-finite and unsolvable (empty step → NaN) trials all raise the damping
+      // uphill and non-finite trials raise the damping
       if (!(trial_cost < current_cost)) {
         damping *= 4
         continue
@@ -222,18 +234,22 @@ export function fit_eos(
       damping = Math.max(damping / 3, 1e-15)
       break
     }
-    if (!moved) break // converged (tiny step) or no downhill direction left
+    converged = !moved // tiny step, or no downhill direction left
   }
 
   const { v0, b0 } = params
   if (!Object.values(params).every(Number.isFinite) || v0 <= 0 || b0 <= 0) {
     throw new Error(`EOS fit (${kind}) diverged: ${JSON.stringify(params)}`)
   }
+  if (!converged) {
+    throw new Error(
+      `EOS fit (${kind}) did not converge in ${MAX_ITERATIONS} iterations: ${JSON.stringify(params)}`,
+    )
+  }
   return {
     kind,
     ...params,
     b0_gpa: b0 * EV_PER_A3_TO_GPA,
     rmse: Math.sqrt(current_cost / volumes.length),
-    n_points: volumes.length,
   }
 }
