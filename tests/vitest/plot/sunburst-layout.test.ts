@@ -448,18 +448,103 @@ describe(`min_fraction 'Other' bucketing`, () => {
     })
   })
 
-  test(`drops descendants of bucketed small branches`, () => {
-    // s1 (3) and s2 (4) fall below 0.05 * 97 = 4.85 -> bucketed; s1's child must vanish
+  test(`keeps descendants of bucketed small branches under the bucket`, () => {
+    // s1 (3) and s2 (4) fall below 0.05 * 97 = 4.85 -> bucketed; s1's child moves
+    // under the bucket (a leaf member like s2 has nothing to contribute, so the
+    // bucket's children sum to less than the bucket and the rest stays empty)
     const { arcs } = compute_sunburst_layout(
       [
         { label: `big`, value: 90 },
-        { label: `s1`, children: [{ label: `s1a`, value: 3 }] },
+        { label: `s1`, children: [{ label: `s1a`, value: 3, metadata: { job: 1 } }] },
         { label: `s2`, value: 4 },
       ],
       { min_fraction: 0.05 },
     )
-    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `big`, `Other`])
-    expect(arcs[2]).toMatchObject({ is_other: true, is_leaf: true, value: 7 })
+    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `big`, `Other`, `s1a`])
+    expect(arcs[2]).toMatchObject({ is_other: true, is_leaf: false, value: 7, subtree_end: 3 })
+    expect(arcs[3]).toMatchObject({
+      id: `Other/s1a`,
+      parent_idx: 2,
+      depth: 2,
+      value: 3,
+      is_leaf: true,
+      metadata: { job: 1 }, // a group of one keeps the folded node's data verbatim
+      x0: close(arcs[2].x0),
+      x1: close(arcs[2].x0 + (3 / 7) * (arcs[2].x1 - arcs[2].x0)),
+    })
+  })
+
+  // The Hive usage case: cluster -> user -> partition -> job, where folding small
+  // users must not empty the partition and job rings under them. Bucketing recurses
+  // into the merged subtree with the same threshold, so a merged partition that is
+  // itself too thin folds again (`Other/Other`) rather than leaking through.
+  test(`merges the folded siblings' descendants by label`, () => {
+    const user = (name: string, gpu: number, cpu: number): SunburstNode => ({
+      label: name,
+      children: [
+        {
+          label: `gpu`,
+          color: `red`,
+          children: [{ label: `vasp`, value: gpu, metadata: { user: name } }],
+        },
+        {
+          label: `cpu`,
+          color: name === `bob` ? `blue` : `red`,
+          children: [{ label: `shared`, value: cpu }],
+        },
+      ],
+    })
+    const users = [user(`alice`, 800, 100), user(`bob`, 30, 15), user(`carol`, 25, 15)]
+    const { arcs } = compute_sunburst_layout(users, { min_fraction: 0.05 })
+    const by_id = new Map(arcs.map((arc) => [arc.id, arc]))
+    // bob (45) and carol (40) fall under 0.05 * 985 and fold into one bucket of 85
+    // whose children are their partitions merged: gpu 55 clears the threshold, cpu
+    // 30 stays as the lone small sibling (a bucket of one is never made)
+    expect(by_id.get(`Other`)).toMatchObject({ other_count: 2, value: 85, is_leaf: false })
+    expect(
+      arcs
+        .filter((arc) => arc.parent_idx === by_id.get(`Other`)?.node_idx)
+        .map((arc) => [arc.id, arc.value, arc.color]),
+    ).toEqual([
+      [`Other/gpu`, 55, `red`], // unanimous color survives the merge
+      [`Other/cpu`, 30, PLOT_COLORS[1]], // disagreeing colors fall back to inheritance
+    ])
+    // Same-label leaves merge into one synthetic leaf carrying no single job's metadata
+    expect(by_id.get(`Other/gpu/vasp`)).toMatchObject({ value: 55, is_leaf: true })
+    expect(by_id.get(`Other/gpu/vasp`)?.metadata).toBeUndefined()
+    expect(by_id.get(`Other/cpu/shared`)).toMatchObject({ value: 30, is_leaf: true })
+    // Every ring is complete: the bucket's children fill it exactly, as do theirs
+    expect(arcs.filter((arc) => arc.depth === 3)).toHaveLength(4)
+    for (const branch of arcs.filter((arc) => !arc.is_leaf)) {
+      const kids = arcs.filter((arc) => arc.parent_idx === branch.node_idx)
+      expect(kids.reduce((sum, kid) => sum + kid.value, 0)).toBe(branch.value)
+      expect(kids.at(-1)?.x1).toEqual(close(branch.x1))
+    }
+    // Merged nodes below the threshold fold again, ring by ring: both partitions
+    // into one bucket, then both leaves under it
+    const thin = compute_sunburst_layout(users, { min_fraction: 0.06 }).arcs // thr 59.1
+    expect(thin.slice(6).map((arc) => [arc.id, arc.other_count, arc.is_leaf])).toEqual([
+      [`Other`, 2, false],
+      [`Other/Other`, 2, false],
+      [`Other/Other/Other`, 2, true],
+    ])
+    expect(thin.slice(6).every((arc) => arc.value === 85)).toBe(true)
+  })
+
+  test(`a bucket takes the pattern its members share, else none`, () => {
+    const jobs = (pattern?: (idx: number) => SunburstNode[`pattern`]) => [
+      { label: `big`, value: 90 },
+      ...[1, 2, 3].map((idx) => ({ label: `j${idx}`, value: 1, pattern: pattern?.(idx) })),
+    ]
+    const bucket = (nodes: SunburstNode[]) =>
+      compute_sunburst_layout(nodes, { min_fraction: 0.05 }).arcs.find((arc) => arc.is_other)
+    expect(bucket(jobs(() => `/`))?.pattern).toBe(`/`)
+    expect(bucket(jobs(() => ({ shape: `dots`, size: 4 })))?.pattern).toEqual({
+      shape: `dots`,
+      size: 4,
+    })
+    expect(bucket(jobs((idx) => (idx === 2 ? `x` : `/`)))?.pattern).toBeUndefined()
+    expect(bucket(jobs())?.pattern).toBeUndefined()
   })
 
   test(`composes with sort descending (smalls still trail)`, () => {
@@ -563,28 +648,38 @@ describe(`min_fraction 'Other' bucketing`, () => {
       })),
     }))
     const { arcs } = compute_sunburst_layout(deep_tree, { max_children: 1 })
-    // One kept child plus one bucket at each of the three levels below the root.
-    expect(arcs.map((arc) => arc.label)).toEqual([
-      undefined,
-      `t3`,
-      `t3m3`,
-      `t3m3l3`,
-      `Other`,
-      `Other`,
-      `Other`,
-    ])
+    // One kept child plus one bucket under every branch, the buckets' merged
+    // subtrees included: t3's bucket folds t3m1/t3m2 and keeps their largest leaf,
+    // the root bucket folds t1/t2, keeps t2m3 and buckets the other five mids.
     const buckets = arcs.filter((arc) => arc.is_other)
     expect(buckets.map((arc) => [arc.depth, arc.other_count, arc.id])).toEqual([
       [3, 2, `t3/t3m3/Other`],
       [2, 2, `t3/Other`],
+      [3, 5, `t3/Other/Other`],
       [1, 2, `Other`],
+      [3, 2, `Other/t2m3/Other`],
+      [2, 5, `Other/Other`],
+      [3, 14, `Other/Other/Other`],
     ])
-    // No value escapes: every bucket plus its kept sibling covers the parent.
-    for (const bucket of buckets) {
-      const parent = arcs[bucket.parent_idx ?? 0]
-      expect(bucket.x1).toEqual(close(parent.x1))
-      expect(bucket.value + arcs[(bucket.parent_idx ?? 0) + 1].value).toBe(parent.value)
+    expect(arcs.filter((arc) => arc.depth === 3).map((arc) => arc.label)).toEqual([
+      `t3m3l3`,
+      `Other`,
+      `t3m2l3`,
+      `Other`,
+      `t2m3l3`,
+      `Other`,
+      `t2m2l3`,
+      `Other`,
+    ])
+    // Rings stay complete to the last level and no value escapes: every branch's
+    // children (kept plus bucket) cover it exactly.
+    for (const branch of arcs.filter((arc) => arc.depth < 3)) {
+      expect(branch.is_leaf).toBe(false)
+      const kids = arcs.filter((arc) => arc.parent_idx === branch.node_idx)
+      expect(kids.at(-1)?.x1).toEqual(close(branch.x1))
+      expect(kids.reduce((sum, kid) => sum + kid.value, 0)).toBe(branch.value)
     }
+    expect(arcs[0].value).toBe(5994)
   })
 
   test(`a parent whose children all fall below the threshold keeps one full bucket`, () => {

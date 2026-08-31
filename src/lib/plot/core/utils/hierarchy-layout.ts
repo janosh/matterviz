@@ -79,7 +79,9 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   label_path: string[] // display labels along the same chain
   fraction: number // value / root total
   parent_fraction: number // value / parent value (1 for root)
-  is_other?: boolean // synthetic arc aggregating small siblings (min_fraction bucketing)
+  // Synthetic arc standing for folded siblings (min_fraction/max_children bucketing);
+  // its descendants are theirs, merged by label
+  is_other?: boolean
   other_count?: number // siblings folded into an `is_other` arc (undefined elsewhere)
   pattern?: FillPattern // hatch/texture from SunburstNode.pattern (not inherited)
   x0: number // angular extent as fraction of the full circle, in [0, 1]
@@ -109,7 +111,9 @@ export interface SunburstLayoutOptions {
   // 0 (default) keeps every descendant exactly its depth-1 ancestor's color (plotly-style).
   level_lighten?: number
   // Aggregate sibling arcs smaller than this fraction of the root total into one
-  // synthetic 'Other' leaf per parent (only when >= 2 qualify). A node's angular
+  // synthetic 'Other' bucket per parent (only when >= 2 qualify). The bucket keeps
+  // the folded siblings' descendants under it, merged by label, so the rings below
+  // stay populated; it takes the pattern its members share. A node's angular
   // width IS its fraction of the root, so this reads directly as "hide arcs thinner
   // than X". 0 (default) disables bucketing. It cannot promise survivors, though —
   // evenly-split children all fail one threshold together; `max_children` can.
@@ -261,19 +265,63 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     root.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
   }
 
-  // 'Other' bucketing: move bucketed children to the end of each sibling list
-  // (after sorting, before partition) so they occupy one contiguous angular run
-  // that flatten() below can merge into a single synthetic arc.
+  type Node = HierarchyNode<SunburstNode<Metadata>>
+  // The value every member of `group` shares for `field`, or undefined if they disagree
+  const shared_field = <Field extends `color` | `pattern`>(
+    group: Node[],
+    field: Field,
+  ): SunburstNode<Metadata>[Field] => {
+    const first = group[0].data[field]
+    const first_json = JSON.stringify(first)
+    return group.every((member) => JSON.stringify(member.data[field]) === first_json)
+      ? first
+      : undefined
+  }
+  // The children of several folded siblings as one child list, merged where they
+  // share a label (a partition every folded user runs on becomes one arc holding
+  // all their jobs). A group of one keeps its data verbatim - id, color, pattern,
+  // metadata - since the node it copies is never emitted itself; a merged group is
+  // synthetic: no metadata, and color/pattern only where the members agree. Every
+  // node carries its summed value so the subtree needs no re-aggregation.
+  const merge_children = (members: Node[]): SunburstNode<Metadata>[] | undefined => {
+    const kids = members.flatMap((member) => member.children ?? [])
+    if (kids.length === 0) return undefined
+    const groups = new Map<string | number, Node[]>()
+    kids.forEach((kid, idx) => {
+      const key = kid.data.label ?? kid.data.id ?? `#${idx}`
+      groups.set(key, [...(groups.get(key) ?? []), kid])
+    })
+    return [...groups.values()].map((group) => {
+      const value = group.reduce((sum, kid) => sum + (kid.value ?? 0), 0)
+      const children = merge_children(group)
+      if (group.length === 1) return { ...group[0].data, value, children }
+      return {
+        label: group[0].data.label,
+        value,
+        children,
+        color: shared_field(group, `color`),
+        pattern: shared_field(group, `pattern`),
+      }
+    })
+  }
+
+  // 'Other' bucketing: replace the bucketed children at the end of each sibling
+  // list (after sorting, before partition) with one synthetic bucket node that
+  // holds their merged descendants, so the rings below a bucket stay as populated
+  // as they were under the nodes it stands for. The bucket's own pattern is the one
+  // its members share (a hatch marking a whole subtree survives folding), else none.
   //
-  // Which children those are is decided once, here, and read back during flatten.
+  // Which children fold is decided once, here, and read back during flatten.
   // Re-deriving it there from a value threshold only worked while the rule was a
   // pure comparison; `max_children` ranks siblings against each other, so the cut
   // is no longer a property any single child carries.
-  const bucket_cut = new Map<HierarchyNode<SunburstNode<Metadata>>, number>()
+  const buckets = new Map<Node, number>() // synthetic bucket node -> siblings folded
   if (min_fraction > 0 || max_children > 0) {
-    // Reordering `node.children` from inside `each` is safe: d3's traversal is a
+    const sign = sort === `descending` ? -1 : 1
+    // Rewriting `node.children` from inside `each` is safe: d3's traversal is a
     // generator that reads a node's children only after yielding it, so the
-    // callback runs first and the queue picks up the reordered array. Each node is
+    // callback runs first and the queue picks up the new array - including the
+    // bucket's merged subtree, which is what buckets it recursively. Each node is
     // still visited exactly once, and the decision below depends only on that
     // node's own values, so the visit order among siblings cannot change it.
     root.each((node) => {
@@ -302,13 +350,32 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       )
       // A bucket of one is just that child under a worse name.
       if (kids.length - keep.size < 2) return
-      // Both passes read `kids`, so the children that stay keep the caller's order
-      // however they were ranked; only the bucketed run moves to the end.
-      node.children = [
-        ...kids.filter((kid) => keep.has(kid)),
-        ...kids.filter((kid) => !keep.has(kid)),
-      ]
-      bucket_cut.set(node, keep.size)
+      const smalls = kids.filter((kid) => !keep.has(kid))
+      const bucket = hierarchy<SunburstNode<Metadata>>(
+        {
+          value: smalls.reduce((sum, kid) => sum + (kid.value ?? 0), 0),
+          children: merge_children(smalls),
+          pattern: shared_field(smalls, `pattern`),
+        },
+        (entry) => entry.children,
+      )
+      // Graft the bucket in as `node`'s last child: partition positions by depth and
+      // value, and the merged data already carries every summed value.
+      bucket.parent = node
+      bucket.each((member) => {
+        // Both typed readonly (d3 sets them from its own root) but plain fields
+        const writable = member as { depth: number; value?: number }
+        writable.depth += node.depth + 1
+        writable.value = member.data.value
+        if (in_zoom_subtree.has(node)) in_zoom_subtree.add(member)
+      })
+      if (sort !== `none`) {
+        bucket.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
+      }
+      // The children that stay keep the caller's order however they were ranked;
+      // only the folded run moves to the end, as the bucket.
+      node.children = [...kids.filter((kid) => keep.has(kid)), bucket]
+      buckets.set(bucket, smalls.length)
     })
   }
 
@@ -343,7 +410,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   }
 
   // Construct + append an arc, deriving indices, breadcrumbs and fractions from the
-  // parent (shared by regular nodes and synthetic 'Other' arcs)
+  // parent
   const push_arc = (
     parent: PositionedArc<Metadata> | null,
     fields: ArcSeed<Metadata>,
@@ -376,24 +443,40 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     child_idx: number, // index among siblings (fallback id segment for unlabeled nodes)
   ): void => {
     const { depth } = node
+    const value = node.value ?? 0
     const explicit = node.data.color
     const { base, color } = resolve_color(depth, explicit, parent_base)
 
     // Stable id: explicit, else slash-joined label path (e.g. "cubic/Fm-3m")
     const parent_prefix = parent && parent.id !== `` ? `${parent.id}/` : ``
-    const segment = node.data.label ?? `${child_idx}`
-    const id =
-      node.data.id ?? (depth === 0 ? (node.data.label ?? ``) : `${parent_prefix}${segment}`)
+    const other_count = buckets.get(node)
+    let { label, label_short } = node.data
+    let segment = label ?? `${child_idx}`
+    if (other_count) {
+      const callable = typeof other_label === `function`
+      label = callable
+        ? other_label({ count: other_count, value, depth, parent_label: parent?.label })
+        : other_label
+      // Ids are lookup keys (zoom root, legend muting, the `zoom_root_id` a caller
+      // may persist), so they must hold still while the data moves. A callable
+      // label can encode the count, so only a literal one is allowed into the id.
+      segment = callable ? OTHER_ID_SEGMENT : label
+      // A generated name ('312 smaller jobs') rarely fits a thin outer ring, and
+      // without a compact form the label is dropped rather than shortened.
+      label_short = callable ? OTHER_ID_SEGMENT : undefined
+    }
+    const id = node.data.id ?? (depth === 0 ? (label ?? ``) : `${parent_prefix}${segment}`)
 
     const { x0, x1, y0, y1 } = node
     const arc = push_arc(parent, {
       id,
-      label: node.data.label,
-      label_short: node.data.label_short,
-      value: node.value ?? 0,
+      label,
+      label_short,
+      value,
       color,
       depth,
       is_leaf: !node.children?.length,
+      ...(other_count && { is_other: true, other_count }),
       pattern: node.data.pattern,
       x0,
       x1,
@@ -401,47 +484,9 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       y1,
       metadata: node.data.metadata,
     })
-
-    // Bucketed children form a contiguous trailing run (reordered above); merge
-    // them into one synthetic 'Other' leaf instead of recursing
-    const kids = node.children ?? []
-    const cut = bucket_cut.get(node) ?? kids.length
-    kids.forEach((child, idx) => {
-      if (idx < cut) flatten(child, arc, explicit ?? base, input_idx.get(child) ?? idx)
+    node.children?.forEach((child, idx) => {
+      flatten(child, arc, explicit ?? base, input_idx.get(child) ?? idx)
     })
-    if (cut < kids.length) {
-      const smalls = kids.slice(cut)
-      const bucket_value = smalls.reduce((sum, child) => sum + (child.value ?? 0), 0)
-      const callable = typeof other_label === `function`
-      const label = callable
-        ? other_label({
-            count: smalls.length,
-            value: bucket_value,
-            depth: depth + 1,
-            parent_label: arc.label,
-          })
-        : other_label
-      push_arc(arc, {
-        // Ids are lookup keys (zoom root, legend muting, the `zoom_root_id` a caller
-        // may persist), so they must hold still while the data moves. A callable
-        // label can encode the count, so only a literal one is allowed into the id.
-        id: `${arc.id !== `` ? `${arc.id}/` : ``}${callable ? OTHER_ID_SEGMENT : label}`,
-        label,
-        // A generated name ('312 smaller jobs') rarely fits a thin outer ring, and
-        // without a compact form the label is dropped rather than shortened.
-        label_short: callable ? OTHER_ID_SEGMENT : undefined,
-        value: bucket_value,
-        color: resolve_color(depth + 1, undefined, explicit ?? base).color,
-        depth: depth + 1,
-        is_leaf: true,
-        is_other: true,
-        other_count: smalls.length,
-        x0: smalls[0].x0,
-        x1: smalls[smalls.length - 1].x1,
-        y0: depth + 1,
-        y1: depth + 2,
-      })
-    }
     arc.subtree_end = arcs.length - 1
   }
   flatten(part_root, null, null, 0)
