@@ -1,10 +1,10 @@
-import type { Vec2 } from '$lib/math'
+import type { Matrix3x3, Vec2 } from '$lib/math'
 import Bands from '$lib/spectral/Bands.svelte'
 import type { BaseBandStructure, FrequencyUnit } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
-import { bind_props, expect_plot_controls, mount_sized } from '../setup'
+import { bind_props, expect_plot_controls, make_crystal, mount_sized } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
   qpoints: [
@@ -365,5 +365,157 @@ describe(`Bands component`, () => {
     expect(document.body.textContent).toContain(`Energy (eV)`)
     expect(document.body.textContent).toContain(`Eg:`)
     expect(document.body.textContent).toContain(`0.3 eV`)
+  })
+
+  const tick_labels = () => [
+    ...document.querySelectorAll<SVGTextElement>(`.x-axis .tick text`),
+  ]
+
+  // Reciprocal lattice of the cubic a=3 cell, as pymatgen/phonopy inputs carry it
+  const recip_lattice_a3: Matrix3x3 = [
+    [(2 * Math.PI) / 3, 0, 0],
+    [0, (2 * Math.PI) / 3, 0],
+    [0, 0, (2 * Math.PI) / 3],
+  ]
+
+  it.each([
+    [`no reciprocal lattice`, {}, false],
+    [`a structure prop`, { structure: make_crystal(3, [[`Si`, [0, 0, 0]]]) }, true],
+  ])(
+    `symmetry-point tick labels are buttons only with a k lattice (%s)`,
+    async (_name, props, clickable) => {
+      await mount_sized(
+        Bands,
+        { band_structs: base_band_structure, ...props },
+        { selector: `.scatter` },
+      )
+      const labels = tick_labels()
+      expect(labels.map((label) => label.textContent?.trim())).toEqual([`Γ`, `X`])
+      expect(labels.every((label) => label.hasAttribute(`role`) === clickable)).toBe(true)
+    },
+  )
+
+  it(`opens a Brillouin zone popup marking the clicked symmetry point`, async () => {
+    // the band data's own reciprocal lattice is enough, no structure needed
+    await mount_sized(
+      Bands,
+      { band_structs: { ...base_band_structure, recip_lattice: recip_lattice_a3 } },
+      { selector: `.scatter` },
+    )
+    const labels = tick_labels()
+    expect(labels.every((label) => label.getAttribute(`role`) === `button`)).toBe(true)
+    expect(document.querySelector(`.bz-popup`)).toBeNull()
+
+    labels[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    const popup = document.querySelector(`.bz-popup`)
+    expect(popup).not.toBeNull()
+    expect(popup?.classList.contains(`manual`)).toBe(true)
+    // the popup sits inside the plot wrapper so it scrolls/clips with the plot
+    expect(popup?.closest(`.scatter`)).not.toBeNull()
+    const stats = popup?.querySelector(`.bz-popup-stats`)
+    expect(stats?.querySelector(`strong`)?.textContent).toBe(`X`)
+    // fractional coords of X in the fixture; its Cartesian position is folded into the first
+    // BZ of the cubic a=3 lattice, so [0.75, 0, 0] -> [-0.25, 0, 0] with k_x = -0.25 * 2π/3
+    expect(stats?.textContent).toContain(`(0.75, 0, 0)`)
+    expect(stats?.textContent).toContain(`(−${((0.25 * 2 * Math.PI) / 3).toFixed(3)}, 0, 0)`)
+    // the BZ viewer is embedded without its own chrome, sized by the popup
+    expect(popup?.querySelector(`.brillouin-zone`)).not.toBeNull()
+    expect(popup?.querySelector(`.brillouin-zone .control-buttons`)?.children).toHaveLength(0)
+    expect(popup?.querySelector(`.bz-popup-close .close-btn`)).not.toBeNull()
+    // anchored on the x axis at the tick's scaled x (clamped to half the default popup width
+    // from the right edge), not at a rect captured on click
+    const [tick_x, axis_y] =
+      (labels[1].closest(`.tick`)?.getAttribute(`transform`) ?? ``)
+        .match(/[\d.]+/g)
+        ?.map(Number) ?? []
+    expect(tick_x).toBeGreaterThan(400 - 160)
+    expect((popup as HTMLElement).style.left).toBe(`${400 - 160}px`)
+    expect((popup as HTMLElement).style.top).toBe(`${axis_y}px`)
+    // the bottom arrow still points at the tick after the clamp shifted the popup left of it
+    // (tick offset within the popup, capped 12px inside the rounded corners)
+    const arrow_left = () =>
+      Number(popup?.querySelector<HTMLElement>(`.popup-arrow`)?.style.left.replace(`px`, ``))
+    expect(arrow_left()).toBeCloseTo(Math.min(tick_x - (400 - 160) + 160, 320 - 12), 6)
+    // the clicked label reads as pressed and is styled active; the other does not
+    expect(labels[1].classList.contains(`active`)).toBe(true)
+    expect(labels[1].getAttribute(`aria-pressed`)).toBe(`true`)
+    expect(labels[0].getAttribute(`aria-pressed`)).toBe(`false`)
+
+    // clicking another symmetry point re-targets the same popup
+    labels[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(document.querySelectorAll(`.bz-popup`)).toHaveLength(1)
+    expect(document.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
+    expect(labels[0].classList.contains(`active`)).toBe(true)
+    expect(labels[1].classList.contains(`active`)).toBe(false)
+
+    // the popup is anchored through the live x scale: a shift-drag pan by half the plot width
+    // scrolls Γ (x=0) out of the view, hiding the popup; panning back restores it in place
+    const svg = document.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    const clip = document.querySelector(`defs clipPath rect`)
+    if (!svg || !clip) throw new Error(`plot svg or clip rect not found`)
+    const clip_x = Number(clip.getAttribute(`x`))
+    const clip_width = Number(clip.getAttribute(`width`))
+    const pan = async (from_x: number, to_x: number) => {
+      const y = 100
+      svg.dispatchEvent(
+        new MouseEvent(`mousedown`, {
+          bubbles: true,
+          button: 0,
+          shiftKey: true,
+          clientX: from_x,
+          clientY: y,
+        }),
+      )
+      window.dispatchEvent(
+        new MouseEvent(`mousemove`, { buttons: 1, clientX: to_x, clientY: y }),
+      )
+      await tick()
+      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: to_x, clientY: y }))
+      await tick()
+    }
+    const mid = clip_x + clip_width / 2
+    await pan(mid, mid - clip_width / 2)
+    expect(document.querySelector(`.bz-popup`)).toBeNull()
+    await pan(mid, mid + clip_width / 2)
+    expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`160px`)
+
+    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    await tick()
+    expect(document.querySelector(`.bz-popup`)).toBeNull()
+    expect(document.querySelector(`text.active`)).toBeNull()
+  })
+
+  it(`opens the popup from the keyboard and lets bz_popup_props extend without breaking close`, async () => {
+    const on_close = vi.fn()
+    await mount_sized(
+      Bands,
+      {
+        band_structs: base_band_structure,
+        structure: make_crystal(3, [[`Si`, [0, 0, 0]]]),
+        bz_popup_props: { width: 200, on_close, style: `border: 1px solid red` },
+      },
+      { selector: `.scatter` },
+    )
+    tick_labels()[0].dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+    )
+    await tick()
+    const popup = document.querySelector<HTMLElement>(`.bz-popup`)
+    expect(popup?.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
+    // Γ sits at the plot's left padding, so the caller's width sets the clamp; the caller's
+    // style is appended to the anchor
+    expect(popup?.style.left).toBe(`100px`)
+    expect(popup?.style.border).toBe(`1px solid red`)
+    expect(popup?.querySelector(`.brillouin-zone`)?.getAttribute(`style`)).toContain(
+      `--bz-width: 200px`,
+    )
+
+    // Bands still owns closing; the caller's on_close is notified
+    popup?.querySelector<HTMLButtonElement>(`.bz-popup-close .close-btn`)?.click()
+    await tick()
+    expect(document.querySelector(`.bz-popup`)).toBeNull()
+    expect(on_close).toHaveBeenCalledOnce()
   })
 })

@@ -4,6 +4,8 @@
 
 ## Phonon Bands with Custom Styling
 
+The symmetry-point labels on the x axis are clickable: each opens a small Brillouin zone marking that point on the k-path. The zone comes from the reciprocal lattice the band data carries (pymatgen's `lattice_rec`, phonopy's `recip_lattice`); pass a `structure` to build it from a crystal's lattice instead.
+
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
@@ -249,10 +251,10 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
 
 The `Bands` component automatically detects and handles:
 
-| Format              | Key Fields                                                                         | Description                                                                          |
-| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Pymatgen Electronic | `@class: "BandStructureSymmLine"`, `kpoints`, `bands` (dict), `lattice_rec`        | Standard pymatgen electronic band structure                                          |
-| Pymatgen Phonon     | `@class: "PhononBandStructureSymmLine"`, `qpoints`, `bands` (array), `lattice_rec` | Pymatgen phonon band structure (`recip_lattice` is accepted for the lattice as well) |
-| Native matterviz    | `qpoints`, `bands` (array), `branches`, `distance`                                 | Internal matterviz format                                                            |
+| Format              | Key Fields                                                                         | Description                                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Pymatgen Electronic | `@class: "BandStructureSymmLine"`, `kpoints`, `bands` (dict), `lattice_rec`        | Standard pymatgen electronic band structure                                                            |
+| Pymatgen Phonon     | `@class: "PhononBandStructureSymmLine"`, `qpoints`, `bands` (array), `lattice_rec` | Pymatgen phonon band structure (phonopy-convention `recip_lattice`, no 2π, is accepted too and scaled) |
+| Native matterviz    | `qpoints`, `bands` (array), `branches`, `distance`                                 | Internal matterviz format                                                                              |
 
 Pymatgen inputs need the reciprocal lattice because k-path distances are measured in Cartesian reciprocal space (`|Mᵀ·Δq|`, like pymatgen and phonopy); the native format carries precomputed `distance` values instead. A pymatgen-shaped input without `lattice_rec.matrix` (or `recip_lattice.matrix`) is rejected with an error naming the missing key, which `Bands` shows in place of the plot.

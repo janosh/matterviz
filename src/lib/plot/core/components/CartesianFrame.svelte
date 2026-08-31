@@ -83,7 +83,9 @@
     layers?: Snippet
     // Legend, tooltip and controls pane, rendered after the SVG
     overlays?: Snippet
-    children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    // HTML overlays after the SVG, given the same scales/padding as user_content so they can
+    // anchor to data coordinates (the .plot-frame is position: relative)
+    children?: Snippet<[UserContentProps]>
   }
 
   let {
@@ -135,6 +137,18 @@
   // Container measured by bind:clientWidth/Height; 0 until the first layout pass
   const measured = $derived(Boolean(frame.width && frame.height))
   const dims = $derived({ width: frame.width, height: frame.height, fullscreen })
+  const content_ctx = $derived<UserContentProps>({
+    ...dims,
+    x_scale_fn: frame.scales.x,
+    x2_scale_fn: frame.scales.x2,
+    y_scale_fn: frame.scales.y,
+    y2_scale_fn: frame.scales.y2,
+    pad: frame.pad,
+    x_range: frame.ranges.current.x,
+    x2_range: frame.ranges.current.x2,
+    y_range: frame.ranges.current.y,
+    y2_range: frame.ranges.current.y2,
+  })
   const title_pad = $derived(frame.effective_base_pad)
   const get_marginal_axis = (axis: FacetAxis, binding: MarginalAxisBinding): MarginalAxis =>
     marginal_axis(
@@ -229,20 +243,7 @@
         </clipPath>
       </defs>
 
-      {@render user_content?.({
-        height: frame.height,
-        width: frame.width,
-        x_scale_fn: frame.scales.x,
-        x2_scale_fn: frame.scales.x2,
-        y_scale_fn: frame.scales.y,
-        y2_scale_fn: frame.scales.y2,
-        pad: frame.pad,
-        x_range: frame.ranges.current.x,
-        x2_range: frame.ranges.current.x2,
-        y_range: frame.ranges.current.y,
-        y2_range: frame.ranges.current.y2,
-        fullscreen,
-      })}
+      {@render user_content?.(content_ctx)}
       {@render layers?.()}
 
       <!-- After the marks so the drag rect stays visible over dense points and canvases -->
@@ -274,7 +275,7 @@
   {/if}
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
-  {@render children?.(dims)}
+  {@render children?.(content_ctx)}
 </div>
 
 <style>

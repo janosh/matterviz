@@ -540,6 +540,12 @@ export interface AxisConfig {
   // Interactive axis options (enables clickable axis labels)
   options?: AxisOption[] // available properties for this axis
   selected_key?: string // currently selected property key
+  // Makes tick labels buttons; called with the tick's data value (Bands opens a Brillouin zone
+  // popup for the clicked symmetry point)
+  on_tick_click?: (tick: number, event: MouseEvent | KeyboardEvent) => void
+  // Tick whose label is drawn in the active (pressed) state, e.g. the one whose popup is open;
+  // colored by --tick-active-fill
+  active_tick?: number | null
   // Synchronization with y1 axis (only applicable when used as y2_axis)
   // - 'synced': Y2 has exact same range as Y1
   // - 'align': Y2 expands to show all data, align_value (default 0) at same position

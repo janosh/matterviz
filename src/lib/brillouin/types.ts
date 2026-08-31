@@ -6,6 +6,10 @@ import type { TooltipProp } from '$lib/tooltip'
 // BrillouinZoneScene (read-only); defaults live in DEFAULTS.brillouin
 export type BrillouinZoneSettings = Omit<DefaultSettings[`brillouin`], `fullscreen_toggle`>
 
+// A symmetry point BrillouinZonePopup marks: label plus its fractional and Cartesian
+// (2π-included) k-coords
+export type BZPopupPoint = { label: string; frac_coords: Vec3; position: Vec3 }
+
 // Hover data for BZ tooltip
 export type BZHoverData = {
   position_cartesian: Vec3 // k-point in Cartesian coords (Å⁻¹)

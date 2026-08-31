@@ -186,10 +186,12 @@
     error_bar_cap = 4,
     point_hit_padding = 0,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
-    BasePlotProps &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
+    Omit<BasePlotProps, `children`> &
     PlotConfig & {
       series?: DataSeries<Metadata>[]
+      // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
+      children?: Snippet<[UserContentProps]>
       styles?: StyleOverrides
       current_x_value?: number | null
       tooltip_point?: InternalPoint<Metadata> | null

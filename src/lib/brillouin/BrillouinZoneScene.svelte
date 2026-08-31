@@ -50,6 +50,7 @@
     k_path_points = [],
     k_path_labels = [],
     hovered_k_point = null,
+    highlighted_k_points = [],
     hovered_qpoint_index = null,
     hover_data = $bindable<BZHoverData | null>(null),
     on_kpath_hover,
@@ -66,6 +67,8 @@
       k_path_points?: Vec3[]
       k_path_labels?: { position: Vec3; label: string | null }[]
       hovered_k_point?: Vec3 | null
+      // Persistently marked k-points (Cartesian), e.g. the symmetry point a popup was opened for
+      highlighted_k_points?: Vec3[]
       hovered_qpoint_index?: number | null
       hover_data?: BZHoverData | null
       on_kpath_hover?: (qpoint_index: number | null) => void
@@ -84,6 +87,11 @@
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
   const bz_size = $derived(k_space_size(bz_data?.k_lattice))
   const computed_camera_position = $derived(default_camera_position(bz_size))
+  // Label chips are HTML drawn over the canvas and cover the sphere at their point, so a
+  // highlighted point also tints its chip (tolerance scaled to the zone: positions come from
+  // the same fold but may be recomputed by the caller)
+  const is_highlighted = (position: Vec3) =>
+    highlighted_k_points.some((point) => math.euclidean_dist(point, position) < 1e-6 * bz_size)
 
   // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
@@ -276,13 +284,16 @@
     <!-- Symmetry point spheres + labels at labeled k-path points -->
     {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
       {#if label}
+        {@const highlighted = is_highlighted(position)}
         <T.Mesh position={[position[0], position[1], position[2]]}>
           <T.SphereGeometry args={[0.015, 16, 16]} />
           <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
         </T.Mesh>
         <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
           <span
-            style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px; color: white"
+            style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.3)`}
+            style:font-weight={highlighted ? `bold` : null}
+            style="padding: 0 3px; border-radius: 2px; color: white"
           >
             {label}
           </span>
@@ -297,5 +308,20 @@
         <T.MeshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
       </T.Mesh>
     {/if}
+
+    <!-- Pinned k-points: sized with the zone and drawn over its faces, edges and labels so they
+    stay legible at popup scale (symmetry points sit on the zone surface, half inside it) -->
+    {#each highlighted_k_points as k_point}
+      <T.Mesh position={k_point} renderOrder={999}>
+        <T.SphereGeometry args={[bz_size * 0.045, 24, 24]} />
+        <T.MeshStandardMaterial
+          color="#ff2020"
+          emissive="#ff2020"
+          emissiveIntensity={1.5}
+          transparent
+          depthTest={false}
+        />
+      </T.Mesh>
+    {/each}
   {/if}
 </T.Group>
