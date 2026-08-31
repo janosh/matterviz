@@ -11,7 +11,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import { frequency_unit_per_thz } from './frequency-units'
-  import { are_qpoints_equivalent, phonon_explorer_views } from './helpers'
+  import { are_qpoints_equivalent, phonon_explorer_views, pretty_sym_point } from './helpers'
   import IrRamanSpectrum from './IrRamanSpectrum.svelte'
   import {
     DEFAULT_PHONON_AMPLITUDE,
@@ -21,11 +21,15 @@
     DEFAULT_PHONON_SUPERCELL,
     PHONON_VECTOR_KEY,
     default_phonon_mode_selection,
+    is_imaginary_frequency,
+    nearest_qpoint_with_eigenvector,
     phonon_band_structure_from_modes,
     phonon_mode_character,
     phonon_mode_pattern,
     phonon_mode_run,
+    phonon_qpoint_labels,
     phonon_supercell,
+    qpoint_has_eigenvectors,
   } from './phonon-modes'
   import type {
     PhononExplorerView,
@@ -125,6 +129,14 @@
   )
   let selected_qpoint = $derived(selection && mode_data.qpoints[selection.qpoint_idx])
   let selected_mode = $derived(selection && selected_qpoint?.modes[selection.mode_idx])
+  let qpoint_labels = $derived(phonon_qpoint_labels(mode_data))
+  let n_animatable_qpoints = $derived(mode_data.qpoints.filter(qpoint_has_eigenvectors).length)
+  // Mode indices at the selected q-point that can be animated, for prev/next stepping
+  let animatable_mode_indices = $derived(
+    (selected_qpoint?.modes ?? []).flatMap((mode, mode_idx) =>
+      mode.eigenvector ? [mode_idx] : [],
+    ),
+  )
   let commensurate = $derived(pattern_result.value?.is_commensurate ?? true)
   let character = $derived(
     selected_mode?.eigenvector && phonon_mode_character(mode_data, selected_mode.eigenvector),
@@ -161,10 +173,24 @@
     if (mode_idx !== -1) set_selection({ qpoint_idx, mode_idx })
   }
 
+  // Band files may carry eigenvectors at only some q-points; a click elsewhere snaps to the
+  // nearest one along the path that can animate this band
   const handle_band_click = (event: ScatterHandlerEvent): void => {
     const { band_idx, qpoint_idx } = event.metadata ?? {}
     if (typeof band_idx !== `number` || typeof qpoint_idx !== `number`) return
-    set_selection({ qpoint_idx, mode_idx: band_idx })
+    const snapped_idx = nearest_qpoint_with_eigenvector(mode_data, qpoint_idx, band_idx)
+    if (snapped_idx === -1) {
+      report_error(`Band ${band_idx + 1} has no eigenvector at any q-point`)
+      return
+    }
+    set_selection({ qpoint_idx: snapped_idx, mode_idx: band_idx })
+  }
+
+  const step_mode = (direction: 1 | -1): void => {
+    if (!selection) return
+    const position = animatable_mode_indices.indexOf(selection.mode_idx)
+    const mode_idx = animatable_mode_indices[position + direction]
+    if (mode_idx !== undefined) set_selection({ ...selection, mode_idx })
   }
 
   const select_spectrum_mode = (mode_idx: number): void => {
@@ -206,6 +232,11 @@
           >{format_num(selected_mode.frequency, `.5~`)} THz
           <small>{wavenumber(selected_mode.frequency)}</small></span
         >
+        {#if qpoint_labels[selection.qpoint_idx]}
+          <span class="qpoint-label"
+            >{pretty_sym_point(qpoint_labels[selection.qpoint_idx])}</span
+          >
+        {/if}
         <span class="qpoint">q = [{format_qpoint(selected_qpoint.q_position, `.4~`)}]</span>
         {#if character}
           <span
@@ -219,9 +250,17 @@
               .join(` · `)}</span
           >
         {/if}
-        {#if selected_mode.frequency < 0}<span class="unstable"
+        {#if is_imaginary_frequency(selected_mode.frequency)}<span class="unstable"
             >Unstable mode · periodic mode-shape preview</span
           >{/if}
+        {#if n_animatable_qpoints < mode_data.qpoints.length}
+          <span
+            class="sparse"
+            title="This file stores eigenvectors at {n_animatable_qpoints} of its {mode_data
+              .qpoints.length} q-points; band clicks snap to the nearest one that can animate"
+            >eigenvectors at {n_animatable_qpoints}/{mode_data.qpoints.length} q-points</span
+          >
+        {/if}
         {#if dataset.filename}<span class="source">{dataset.filename}</span>{/if}
       </div>
     {/if}
@@ -326,22 +365,34 @@
     </section>
   </div>
   <div class="toolbar" aria-label="Phonon animation controls">
-    <label
-      >q-point
-      <select
-        aria-label="q-point"
-        value={selection?.qpoint_idx ?? 0}
-        onchange={(event) => select_qpoint(Number(event.currentTarget.value))}
+    {#if mode_data.qpoints.length > 1}
+      <label
+        >q-point
+        <select
+          aria-label="q-point"
+          value={selection?.qpoint_idx ?? 0}
+          onchange={(event) => select_qpoint(Number(event.currentTarget.value))}
+        >
+          {#each mode_data.qpoints as qpoint, qpoint_idx (qpoint_idx)}
+            <option value={qpoint_idx} disabled={!qpoint_has_eigenvectors(qpoint)}
+              >{qpoint_idx + 1}: {qpoint_labels[qpoint_idx]
+                ? `${pretty_sym_point(qpoint_labels[qpoint_idx])} `
+                : ``}[{format_qpoint(qpoint.q_position, `.3~`)}]</option
+            >
+          {/each}
+        </select>
+      </label>
+    {/if}
+    <div class="mode-control">
+      Mode
+      <button
+        type="button"
+        class="step-mode"
+        aria-label="Previous mode"
+        title="Previous mode with an eigenvector"
+        disabled={!selection || animatable_mode_indices[0] === selection.mode_idx}
+        onclick={() => step_mode(-1)}>‹</button
       >
-        {#each mode_data.qpoints as qpoint, qpoint_idx (qpoint_idx)}
-          <option value={qpoint_idx}
-            >{qpoint_idx + 1}: [{format_qpoint(qpoint.q_position, `.3~`)}]</option
-          >
-        {/each}
-      </select>
-    </label>
-    <label
-      >Mode
       <select
         aria-label="Mode"
         value={selection?.mode_idx ?? 0}
@@ -355,7 +406,15 @@
           >
         {/each}
       </select>
-    </label>
+      <button
+        type="button"
+        class="step-mode"
+        aria-label="Next mode"
+        title="Next mode with an eigenvector"
+        disabled={!selection || animatable_mode_indices.at(-1) === selection.mode_idx}
+        onclick={() => step_mode(1)}>›</button
+      >
+    </div>
     <label class="amplitude-control">
       Amplitude
       <input type="range" min="0.02" max="1" step="0.02" bind:value={amplitude} />
@@ -390,10 +449,16 @@
     .frequency {
       color: var(--accent-color, #2878c8);
     }
+    .qpoint-label {
+      font-weight: 600;
+      /* the label reads as a prefix of the q-vector it names */
+      margin-right: -0.3em;
+    }
     .unstable {
       color: var(--warning-color, #b45309);
     }
-    .character {
+    .character,
+    .sparse {
       color: var(--text-muted, #6b7280);
       font-size: 0.9em;
     }
@@ -455,7 +520,8 @@
     flex-wrap: wrap;
     gap: 0.35em 1.2em;
     padding: 0.35em 0 0;
-    label {
+    label,
+    .mode-control {
       display: flex;
       align-items: center;
       gap: 0.4em;
@@ -463,6 +529,11 @@
     }
     select {
       max-width: 18em;
+    }
+    .step-mode {
+      padding: 0 0.45em;
+      line-height: 1.4;
+      font-size: 1.1em;
     }
   }
   .amplitude-control {

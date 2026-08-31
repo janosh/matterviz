@@ -24,7 +24,7 @@ Eigenvectors follow phonopy's convention: eigenvectors of the mass-weighted dyna
 
 `PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. Away from Γ it applies the Bloch phase across a configurable diagonal supercell and renders the resulting coordinates without periodic wrapping. The trajectory controls provide playback, frame scrubbing, fullscreen, and video export.
 
-For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/reciprocal/phonon-mode-explorer). The embedded example below exposes the same public component alongside its source.
+For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/reciprocal/phonon-mode-explorer). It bundles nine phonopy calculations recomputed from published force constants (PhononDB and the phonopy example set), from the two-atom NaCl path shown below to the ferroelectric soft mode of cubic BaTiO₃, the 60 low-frequency branches of the 20-atom δ-CsPbI₃ cell, the flexural ZA branch of layered h-BN and the E₂g mode of MgB₂. The larger files store eigenvectors only at every second or third q-point; a band click between them snaps to the nearest q-point that can animate. The embedded example below exposes the same public component alongside its source.
 
 This compact NaCl Γ→X path was generated from the same published PhononDB force constants as the Γ-only example below. Click a band, an IR stick, or a row in the mode list to change the animation.
 

@@ -73,8 +73,15 @@
       return file_value === active_filter.value
     }),
   )
-  let uniq_formats = $derived([...new Set(files.map(get_base_file_type))].toSorted())
-  let uniq_categories = $derived([...new Set(files.map(get_category_id))].toSorted())
+  // A filter with a single option can't narrow anything, so it isn't offered
+  const filter_options = (values: string[]): string[] => {
+    const uniq = [...new Set(values)].toSorted()
+    return uniq.length > 1 ? uniq : []
+  }
+  let format_filters = $derived(filter_options(files.map(get_base_file_type)))
+  let category_filters = $derived(
+    show_category_filters ? filter_options(files.map(get_category_id)) : [],
+  )
 
   const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
     const url = file.url || file.name
@@ -109,29 +116,30 @@
 {/snippet}
 
 <div bind:this={root} {...rest} class={[`file-picker`, rest.class]}>
-  <div class="legend" role="group" aria-label="Filter files">
-    {#each show_category_filters ? uniq_categories : [] as category (category)}
-      {@render filter_button(`category`, category)}
-    {/each}
-    {#if show_category_filters && uniq_categories.length > 0 && uniq_formats.length > 0}
-      <span class="divider"></span>
-    {/if}
-    {#each uniq_formats as format (format)}
-      {@render filter_button(`type`, format, format.toUpperCase())}
-    {/each}
-
-    {#if active_filter}
-      <button
-        type="button"
-        class="clear-filter"
-        aria-label="Clear file filter"
-        onclick={() => (active_filter = null)}
-        {@attach tooltip({ content: `Clear all filters` })}
-      >
-        ✕
-      </button>
-    {/if}
-  </div>
+  {#if category_filters.length > 0 || format_filters.length > 0 || active_filter}
+    <div class="legend" role="group" aria-label="Filter files">
+      {#each category_filters as category (category)}
+        {@render filter_button(`category`, category)}
+      {/each}
+      {#if category_filters.length > 0 && format_filters.length > 0}
+        <span class="divider"></span>
+      {/if}
+      {#each format_filters as format (format)}
+        {@render filter_button(`type`, format, format.toUpperCase())}
+      {/each}
+      {#if active_filter}
+        <button
+          type="button"
+          class="clear-filter"
+          aria-label="Clear file filter"
+          onclick={() => (active_filter = null)}
+          {@attach tooltip({ content: `Clear all filters` })}
+        >
+          ✕
+        </button>
+      {/if}
+    </div>
+  {/if}
 
   {#each filtered_files as file (file.name)}
     {@const base_type = get_base_file_type(file)}

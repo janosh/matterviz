@@ -36,7 +36,7 @@ describe(`FilePicker`, () => {
   const file_items = () => [...document.querySelectorAll<HTMLElement>(`.file-item`)]
 
   it.each([
-    [`only the legend when there are no files`, [], 1],
+    [`nothing when there are no files`, [], 0],
     [`one row per file plus the legend`, mock_files, mock_files.length + 1],
   ])(`renders %s`, (_desc, files: FileInfo[], expected_children: number) => {
     mount(FilePicker, { target: document.body, props: { files } })
@@ -82,15 +82,48 @@ describe(`FilePicker`, () => {
       target: document.body,
       props: { files: [{ name, url: `` }], file_type_paints },
     })
-    expect(legend_text().trim()).toBe(expected_type)
+    expect(doc_query(`.file-item`).title).toBe(`Drag this ${expected_type} file`)
     expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
   })
 
   it(`renders the chip from an explicit FileInfo.type over the extension`, () => {
     const files = [{ ...mock_file(`foo.custom`), type: `xyz` }]
     mount(FilePicker, { target: document.body, props: { files } })
-    expect(legend_text().trim()).toBe(`XYZ`)
+    expect(doc_query(`.file-item`).title).toBe(`Drag this XYZ file`)
     expect(doc_query(`.file-item`).style.backgroundColor).toContain(`50, 205, 50`) // xyz green
+  })
+
+  it.each([
+    [`a single type`, false, [mock_file(`a.cif`, `crystal`), mock_file(`b.cif`, `molecule`)]],
+    [
+      `a single category`,
+      true,
+      [mock_file(`a.cif`, `crystal`), mock_file(`b.cif`, `crystal`)],
+    ],
+  ])(
+    `offers no filter for %s since it could not narrow the list`,
+    (_desc, show_cats, files) => {
+      mount(FilePicker, {
+        target: document.body,
+        props: { files, show_category_filters: show_cats },
+      })
+      expect(document.querySelector(`.legend`)).toBeNull()
+      expect(file_items()).toHaveLength(2)
+    },
+  )
+
+  it(`hides the type filters but keeps the category filters when only categories differ`, () => {
+    const files = [mock_file(`a.cif`, `crystal`), mock_file(`b.cif`, `molecule`)]
+    mount(FilePicker, {
+      target: document.body,
+      props: { files, show_category_filters: true },
+    })
+    expect(
+      [...document.querySelectorAll(`button.legend-item`)].map((btn) =>
+        btn.textContent?.trim(),
+      ),
+    ).toEqual([`crystal`, `molecule`])
+    expect(document.querySelectorAll(`.divider, .format-circle`)).toHaveLength(0)
   })
 
   it(`shows and updates contrasting file type badges only when labels are set`, () => {
