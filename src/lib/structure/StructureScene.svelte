@@ -1045,7 +1045,7 @@
     cursor = canvas_cursor
   })
 
-  extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity()
   let hovered_site = $derived(structure?.sites?.[hovered_idx ?? -1] ?? null)
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
 
@@ -1152,7 +1152,12 @@
     fit_zoom: () => fit_zoom,
     measured: () => width > 0 && height > 0,
     camera: () => camera,
-    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+    // No hover raycasts while orbiting: the highlight hopping between atoms under the cursor
+    // reads as flicker. Pointerdown reaches the meshes before OrbitControls' start, so presses work
+    set_camera_is_moving: (moving) => {
+      camera_is_moving = moving
+      hover_enabled.set(!moving)
+    },
     // Close hover tooltips + bond context menu while the camera moves. Only hide the
     // VISIBLE menu (not bond_context_target): clicking a menu button fires this
     // orbit-controls start handler before the button's own handler runs, which still

@@ -131,7 +131,7 @@
     camera = threlte_camera
   })
 
-  extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity()
 
   type AxisKey = `x` | `y` | `z`
 
@@ -162,6 +162,15 @@
     fit_zoom: () => fit_zoom,
     measured: () => width > 0 && height > 0,
     camera: () => camera,
+    // No point hover while orbiting: a drag would raycast every instance on each pointermove,
+    // and the highlight sphere + tooltip hopping between points under the cursor reads as flicker
+    set_camera_is_moving: (moving) => {
+      hover_enabled.set(!moving)
+      if (moving && hovered_point) {
+        hovered_point = null
+        on_point_hover?.(null)
+      }
+    },
   })
 
   // Dynamic backside positions - axes/grids/planes always face away from camera

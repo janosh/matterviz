@@ -2,7 +2,7 @@
 import {
   apply_vertex_colors,
   build_isosurface_geometry,
-  nearest_vertex_index,
+  nearest_face_vertex,
 } from '$lib/fermi-surface/geometry'
 import type { FermiIsosurface } from '$lib/fermi-surface/types'
 import type { VertexColorOptions } from '$lib/isosurface/coloring'
@@ -109,15 +109,17 @@ describe(`apply_vertex_colors`, () => {
   })
 })
 
-describe(`nearest_vertex_index`, () => {
+describe(`nearest_face_vertex`, () => {
+  // Only the hit triangle's corners are candidates: vertex 4 (lifted apex) is nearer to the
+  // last point than any corner of face [0, 2, 3] but is not part of it
   test.each([
-    { point: [0.9, 0.1, 0] as Vec3, expected: 1 },
-    { point: [0.5, 0.5, 0.8] as Vec3, expected: 4 },
-    { point: [-5, 10, 0] as Vec3, expected: 3 },
-  ])(`finds vertex $expected nearest to $point`, ({ point, expected }) => {
+    { face: { a: 0, b: 1, c: 2 }, point: { x: 0.9, y: 0.1, z: 0 }, expected: 1 },
+    { face: { a: 0, b: 2, c: 3 }, point: { x: -5, y: 10, z: 0 }, expected: 3 },
+    { face: { a: 0, b: 2, c: 3 }, point: { x: 0.2, y: 0.7, z: 0.8 }, expected: 3 },
+  ])(`picks corner $expected of $face nearest to $point`, ({ face, point, expected }) => {
     const geometry = build_isosurface_geometry(make_surface())
     if (!geometry) throw new Error(`expected geometry`)
-    expect(nearest_vertex_index(geometry, point)).toBe(expected)
+    expect(nearest_face_vertex(geometry, face, point)).toBe(expected)
     geometry.dispose()
   })
 })

@@ -2,10 +2,10 @@
 // meshes must survive an opacity-slider tick (they are shared per surface/pass and recompiled
 // on rebuild) and a surface whose geometry cannot be built must not get any.
 import FermiSurfaceScene from '$lib/fermi-surface/FermiSurfaceScene.svelte'
-import type { FermiIsosurface } from '$lib/fermi-surface/types'
+import type { FermiHoverData, FermiIsosurface } from '$lib/fermi-surface/types'
 import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
-import type { Material } from 'three/webgpu'
+import type { MeshStandardMaterial } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props, make_fermi_surface } from '../setup'
@@ -24,13 +24,15 @@ vi.mock(`@threlte/core`, async (original) => {
     }),
   }
 })
-// OrbitControls is a Threlte component; interactivity() registers pointer plugins on a renderer
+// OrbitControls is a Threlte component; interactivity() registers pointer plugins on a renderer,
+// so it is replaced by a recording `enabled` switch
+const hover_enabled = vi.hoisted(() => ({ set: vi.fn() }))
 vi.mock(`@threlte/extras`, async () => ({
   OrbitControls: Reflect.get(
     (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
     `OrbitControls`,
   ),
-  interactivity: vi.fn(),
+  interactivity: () => ({ enabled: hover_enabled }),
 }))
 
 let teardown: (() => void) | undefined
@@ -55,10 +57,11 @@ const sheet = (band_index: number, n_vertices = 3): FermiIsosurface => ({
 })
 const fermi_data = make_fermi_surface([sheet(0), sheet(1, 0), sheet(2)])
 
-const mesh_materials = (): Material[] =>
+// Materials of the sheet meshes in mount order (surface-major, back pass before front pass)
+const mesh_materials = () =>
   threlte_stub.nodes
     .filter(({ tag }) => tag === `Mesh`)
-    .map(({ props }) => props.material as Material)
+    .map(({ props }) => props.material as MeshStandardMaterial)
 
 test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () => {
   const props = $state({ surface_opacity: 0.6 })
@@ -76,20 +79,32 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   const transparent = mesh_materials()
   expect(transparent).toHaveLength(4)
   expect(new Set(transparent).size).toBe(4)
-  expect(transparent.map((material) => material.opacity)).toEqual([0.6, 0.6, 0.6, 0.6])
-  expect(transparent.every((material) => material.transparent)).toBe(true)
+  for (const material of transparent) {
+    // depth writes stay on: they hide an outer sheet behind an inner one instead of blending it
+    expect(material).toMatchObject({ transparent: true, opacity: 0.6, depthWrite: true })
+    expect(material.polygonOffset).toBe(true)
+    expect(Number.isInteger(material.polygonOffsetUnits)).toBe(true) // WebGPU truncates the bias
+    expect(material.stencilWrite).toBe(false)
+  }
+  // Coincident sheets (spin-up/-down copies of one band) must not z-fight: each surface sits at
+  // its own depth bias (both passes on the same step) with a shared slope factor so genuinely
+  // different sheets keep their order at grazing angles
+  const [back_0, front_0, back_1, front_1] = transparent
+  expect(back_1.polygonOffsetUnits - back_0.polygonOffsetUnits).toBeGreaterThanOrEqual(4)
+  expect(front_0.polygonOffsetUnits).toBe(back_0.polygonOffsetUnits)
+  expect(front_1.polygonOffsetUnits).toBe(back_1.polygonOffsetUnits)
+  expect(new Set(transparent.map((material) => material.polygonOffsetFactor)).size).toBe(1)
+  // three's WebGPU pipeline cache key ignores the polygon offset (mrdoob/three.js#34405); a
+  // per-surface stencil read mask (keyed but inert) keeps the surfaces from sharing one pipeline
+  expect(back_0.stencilFuncMask).not.toBe(back_1.stencilFuncMask)
+  expect(front_0.stencilFuncMask).toBe(back_0.stencilFuncMask)
   const dispose_spies = transparent.map((material) => vi.spyOn(material, `dispose`))
 
   invalidate.mockClear()
   props.surface_opacity = 0.7
   flushSync()
   // Same instances, written in place
-  expect(mesh_materials().map((material, idx) => material === transparent[idx])).toEqual([
-    true,
-    true,
-    true,
-    true,
-  ])
+  expect(mesh_materials()).toEqual(transparent)
   expect(transparent.map((material) => material.opacity)).toEqual([0.7, 0.7, 0.7, 0.7])
   expect(invalidate).toHaveBeenCalled() // on-demand renderer repaints the new uniform
   for (const spy of dispose_spies) expect(spy).not.toHaveBeenCalled()
@@ -99,9 +114,41 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   flushSync()
   const opaque = mesh_materials()
   expect(opaque).toHaveLength(2)
-  for (const material of opaque) expect(transparent).not.toContain(material)
-  expect(opaque.every((material) => !material.transparent && material.opacity === 1)).toBe(
-    true,
-  )
+  for (const material of opaque) {
+    expect(transparent).not.toContain(material)
+    expect(material).toMatchObject({ transparent: false, opacity: 1, depthWrite: true })
+  }
   for (const spy of dispose_spies) expect(spy).toHaveBeenCalledTimes(1)
+})
+
+// A drag or wheel zoom used to keep raycasting the sheets on every pointermove, and the tooltip
+// popping in and out under the cursor flickered over the surface
+test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, () => {
+  // only nullness of the tooltip is asserted, so a stub stands in for the full hover record
+  const props = $state<{ hover_data: FermiHoverData | null }>({
+    hover_data: { band_index: 0 } as FermiHoverData,
+  })
+  const component = mount(FermiSurfaceScene, {
+    target: document.body,
+    props: bind_props(
+      { fermi_data, tile_bz: false, show_bz: false, show_vectors: false, gizmo: false },
+      props,
+    ),
+  })
+  teardown = () => void unmount(component)
+  flushSync()
+
+  const orbit = threlte_stub.nodes.find(({ tag }) => tag === `OrbitControls`)
+  if (!orbit) throw new Error(`OrbitControls not mounted`)
+  const { onstart, onend } = orbit.props as { onstart: () => void; onend: () => void }
+  hover_enabled.set.mockClear()
+
+  onstart()
+  flushSync()
+  expect(hover_enabled.set).toHaveBeenLastCalledWith(false)
+  expect(props.hover_data).toBeNull()
+
+  onend()
+  expect(hover_enabled.set).toHaveBeenLastCalledWith(true)
+  expect(hover_enabled.set).toHaveBeenCalledTimes(2)
 })

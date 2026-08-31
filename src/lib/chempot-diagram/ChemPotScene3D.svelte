@@ -90,7 +90,7 @@
     label_scale: number
   } = $props()
 
-  extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
   const swiz = $derived(swizzle_to_render(render_axis_scale))
@@ -358,6 +358,10 @@
       max_zoom: Number.POSITIVE_INFINITY,
       auto_rotate,
       rotation_damping: 0,
+      // No domain hover while orbiting: the tooltip popping between domains under the cursor
+      // reads as flicker. Threlte fires pointerleave on the first drag move, clearing an unpinned
+      // tooltip; pointerdown reaches the mesh before OrbitControls' start so click-to-pin works
+      set_camera_is_moving: (moving) => hover_enabled.set(!moving),
     }),
   )
 </script>

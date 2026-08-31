@@ -78,7 +78,7 @@
     camera = threlte_camera
   })
 
-  extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity()
 
   // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
@@ -103,6 +103,15 @@
         : controls.initial_zoom,
     measured: () => measured,
     camera: () => camera,
+    // No hover while orbiting: a drag would raycast the zone, wedge and every k-path proxy on
+    // each pointermove, and the tooltip popping in and out under the cursor reads as flicker
+    set_camera_is_moving: (moving) => {
+      hover_enabled.set(!moving)
+      if (!moving) return
+      ibz_hovered = false
+      hover_data = null
+      on_kpath_hover?.(null)
+    },
   })
 
   // K-path styling. The invisible hover proxy is twice the visible thickness so the cursor
