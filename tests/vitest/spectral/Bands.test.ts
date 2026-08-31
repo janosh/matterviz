@@ -291,6 +291,26 @@ describe(`Bands component`, () => {
     },
   )
 
+  it(`rescales the y axis when the units change`, async () => {
+    await mount_sized(
+      Bands,
+      { band_structs: base_band_structure, show_controls: true, controls_open: true },
+      { selector: `.scatter` },
+    )
+    const y_ticks = () =>
+      [...document.querySelectorAll(`.y-axis .tick text`)].map((el) => Number(el.textContent))
+    // 0..3.9 THz
+    expect(Math.max(...y_ticks())).toBeLessThan(5)
+    const select = document.querySelector<HTMLSelectElement>(`#bands-units`)
+    if (!select) throw new Error(`units select not rendered`)
+    select.value = `meV`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    // 0..16 meV: the default range must follow the data instead of the THz copy the zoom
+    // sync mirrored into the y_axis prop
+    expect(Math.max(...y_ticks())).toBeGreaterThan(10)
+  })
+
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()
     const controls_state = { controls_open: true }
@@ -370,6 +390,37 @@ describe(`Bands component`, () => {
   const tick_labels = () => [
     ...document.querySelectorAll<SVGTextElement>(`.x-axis .tick text`),
   ]
+
+  it(`keeps the x range pinned to the k-path after a double-click view reset`, async () => {
+    // a path end D3's nice() would round up (3.3 -> 3.5), unlike the fixture's 0..3
+    const band_structs = { ...spin_polarized_electronic, distance: [0, 1.1, 2.2, 3.3] }
+    await mount_sized(
+      Bands,
+      { band_structs, band_type: `electronic` },
+      { selector: `.scatter` },
+    )
+    const svg = document.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    if (!svg) throw new Error(`bands plot svg not found`)
+    // x of the last symmetry-point tick (X) and where the Fermi line stops
+    const last_tick_x = () =>
+      Number(
+        (tick_labels().at(-1)?.closest(`.tick`)?.getAttribute(`transform`) ?? ``).match(
+          /[\d.]+/g,
+        )?.[0],
+      )
+    const fermi_x_end = () =>
+      Number(document.querySelector(`.fermi-level-line`)?.getAttribute(`x2`))
+    const before = last_tick_x()
+    expect(before).toBeGreaterThan(300)
+    expect(fermi_x_end()).toBeCloseTo(before, 6)
+
+    // the reset must restore the k-path range Bands pinned via x_axis.range; clearing it would
+    // drop the plot to a nice-rounded auto range with the k-path ending short of the frame
+    svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await tick()
+    expect(last_tick_x()).toBeCloseTo(before, 6)
+    expect(fermi_x_end()).toBeCloseTo(before, 6)
+  })
 
   // Reciprocal lattice of the cubic a=3 cell, as pymatgen/phonopy inputs carry it
   const recip_lattice_a3: Matrix3x3 = [

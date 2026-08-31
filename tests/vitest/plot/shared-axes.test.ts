@@ -117,6 +117,10 @@ describe(`shared axis range propagation`, () => {
       range: shared_range,
     })
     expect(sync_axis_range(axis, undefined)).toEqual({ label: `Y` })
+    // the data-driven default is not stored either, only deviations from it (zooms, pins)
+    expect(sync_axis_range(axis, shared_range, shared_range)).toEqual({ label: `Y` })
+    expect(sync_axis_range({ label: `Y` }, shared_range, shared_range)).toEqual({ label: `Y` })
+    expect(sync_axis_range(axis, zoomed_range, shared_range)).toBe(axis)
   })
 
   it(`propagates only after a child resets its valid range`, () => {

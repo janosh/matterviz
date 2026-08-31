@@ -323,6 +323,19 @@ describe(`cartesian frame`, () => {
       }
       // BoxPlot's vertical boxes carry no x2 data, so the sentinel x2 scale is never inverted
       if (!chart.secondary_axes.includes(`x2`)) expect(zoomed(`x2`)).toEqual(pinned)
+
+      // Pinning the zoom the frame just wrote hands in a fresh tuple with identical bounds; it
+      // used to be mistaken for the frame's own write, so a reset dropped it to the auto range.
+      // y is left alone, so the reset restores the caller's original pin there.
+      const zoomed_x = [...(zoomed(`x`) ?? [])] as Vec2
+      bound.x_axis = { range: zoomed_x }
+      await tick()
+      doc_query(`svg[role="application"]`).dispatchEvent(
+        new MouseEvent(`dblclick`, { bubbles: true }),
+      )
+      await tick()
+      expect(zoomed(`x`)).toEqual(zoomed_x)
+      expect(zoomed(`y`)).toEqual(pinned)
     },
   )
 

@@ -287,7 +287,7 @@
     ...y_axis,
   })
   $effect(() => {
-    const next = sync_axis_range(y_axis, internal_y_axis.range)
+    const next = sync_axis_range(y_axis, internal_y_axis.range, y_range)
     if (next !== y_axis) y_axis = next
   })
 

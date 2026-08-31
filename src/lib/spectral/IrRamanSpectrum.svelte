@@ -137,14 +137,17 @@
     range: plot_range,
     ...x_axis,
   })
+  let default_y_range = $derived(
+    (is_transmittance ? [0, 1.05] : undefined) as Vec2 | undefined,
+  )
   let internal_y_axis = $derived({
     label: intensity_label,
     format: `.3~`,
-    range: (is_transmittance ? [0, 1.05] : undefined) as Vec2 | undefined,
+    range: default_y_range,
     ...y_axis,
   })
   $effect(() => {
-    const next = sync_axis_range(y_axis, internal_y_axis.range)
+    const next = sync_axis_range(y_axis, internal_y_axis.range, default_y_range)
     if (next !== y_axis) y_axis = next
   })
 

@@ -70,9 +70,17 @@ export const axis_with_range = (
 })
 
 // Sync a child plot's internal range back to a parent axis. Stable references avoid
-// reactive churn; an invalid incoming range clears an existing explicit range.
-export function sync_axis_range(axis: AxisConfig, range: unknown): AxisConfig {
-  if (is_valid_range(range)) {
+// reactive churn; an invalid incoming range clears an existing explicit range, and so does
+// one equal to `default_range`: the data-driven default a wrapper derives (Bands' padded
+// frequency range) must keep flowing from the data, so it is never frozen into the axis prop
+// where it would outrank the next default after a units or data change. Only zooms and
+// caller pins, i.e. deviations from the default, are worth keeping there.
+export function sync_axis_range(
+  axis: AxisConfig,
+  range: unknown,
+  default_range?: Vec2,
+): AxisConfig {
+  if (is_valid_range(range) && !ranges_equal(range, default_range)) {
     if (axis.range?.[0] === range[0] && axis.range?.[1] === range[1]) return axis
     return { ...axis, range }
   }
