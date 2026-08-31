@@ -225,47 +225,41 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     root.each((node) => node.children?.forEach((kid, idx) => input_idx.set(kid, idx)))
   }
 
+  type Node = HierarchyNode<SunburstNode<Metadata>>
   // The node the view is rooted at, resolved here rather than read off the finished
   // arcs because bucketing decides what those arcs are - the lookup has to come first.
   // Mirrors flatten's id rule below; children are still in the caller's order at this
   // point, which is what makes the ids it derives match the ones flatten will assign.
-  let zoom_node: HierarchyNode<SunburstNode<Metadata>> | null = null
-  const exempt = new Set<HierarchyNode<SunburstNode<Metadata>>>()
-  if (
-    (min_fraction > 0 || max_children > 0) &&
-    (zoom_root_id != null || expanded_parents?.size)
-  ) {
-    const walk = (
-      node: HierarchyNode<SunburstNode<Metadata>>,
-      parent_id: string,
-      child_idx: number,
-    ): void => {
-      const segment = node.data.label ?? `${child_idx}`
-      const own =
-        node.data.id ??
-        (node.depth === 0
-          ? (node.data.label ?? ``)
-          : `${parent_id !== `` ? `${parent_id}/` : ``}${segment}`)
-      if (own === zoom_root_id) zoom_node = node
-      if (expanded_parents?.has(own)) exempt.add(node)
-      node.children?.forEach((kid, idx) => walk(kid, `${own}`, idx))
-    }
-    walk(root, ``, 0)
-  }
   // Only the zoomed subtree re-measures. Bucketing elsewhere must not move, or an
   // unrelated branch unfolding would deepen the tree and add empty rings to the view.
-  const in_zoom_subtree = new Set<HierarchyNode<SunburstNode<Metadata>>>()
-  if (zoom_node)
-    (zoom_node as HierarchyNode<SunburstNode<Metadata>>).each((node) =>
-      in_zoom_subtree.add(node),
-    )
+  let zoom_node: Node | null = null
+  const exempt = new Set<Node>()
+  const in_zoom_subtree = new Set<Node>()
+  const node_ids = new Map<Node, string | number>()
+  const has_lookups =
+    (min_fraction > 0 || max_children > 0) &&
+    (zoom_root_id != null || Boolean(expanded_parents?.size))
+  const resolve_ids = (node: Node, parent_id: string | number, segment: string): void => {
+    const own =
+      node.data.id ??
+      (node.depth === 0
+        ? (node.data.label ?? ``)
+        : `${parent_id !== `` ? `${parent_id}/` : ``}${segment}`)
+    node_ids.set(node, own)
+    if (own === zoom_root_id) {
+      zoom_node = node
+      node.each((member) => in_zoom_subtree.add(member))
+    }
+    if (expanded_parents?.has(own)) exempt.add(node)
+    node.children?.forEach((kid, idx) => resolve_ids(kid, own, `${kid.data.label ?? idx}`))
+  }
+  if (has_lookups) resolve_ids(root, ``, ``)
 
   if (sort !== `none`) {
     const sign = sort === `descending` ? -1 : 1
     root.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
   }
 
-  type Node = HierarchyNode<SunburstNode<Metadata>>
   // The value every member of `group` shares for `field`, or undefined if they disagree
   const shared_field = <Field extends `color` | `pattern`>(
     group: Node[],
@@ -371,6 +365,18 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       })
       if (sort !== `none`) {
         bucket.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
+      }
+      // Synthetic nodes exist only from here on, so the lookup above could not see them: a
+      // caller may have zoomed to or expanded a merged node (`Other/gpu`). Resolve their ids
+      // now (after the sort, which fixes unlabeled kids' index segments) and before `each`
+      // reaches them, so they re-measure and unfold like real nodes.
+      const parent_id = node_ids.get(node)
+      if (parent_id !== undefined) {
+        resolve_ids(
+          bucket,
+          parent_id,
+          typeof other_label === `function` ? OTHER_ID_SEGMENT : other_label,
+        )
       }
       // The children that stay keep the caller's order however they were ranked;
       // only the folded run moves to the end, as the bucket.

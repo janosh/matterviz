@@ -1,5 +1,5 @@
 import { PLOT_COLORS } from '$lib/colors'
-import type { OtherBucketInfo, SunburstNode } from '$lib/plot'
+import type { OtherBucketInfo, SunburstLayoutOptions, SunburstNode } from '$lib/plot'
 import {
   compute_sunburst_layout,
   sunburst_from_labels_parents,
@@ -152,6 +152,38 @@ describe(`compute_sunburst_layout`, () => {
           .map((arc) => arc.id)
       expect(under_other(null)).toEqual([`other/Other`])
       expect(under_other(`zoomed`)).toEqual([`other/Other`])
+    })
+
+    // Merged nodes under a bucket are synthetic: they exist only once bucketing has run,
+    // so a persisted zoom root or expansion naming one must still be honoured
+    test(`zoom_root_id and expanded_parents resolve synthetic merged nodes`, () => {
+      const user = (name: string, vasp: number, qe: number): SunburstNode => ({
+        label: name,
+        children: [
+          {
+            label: `gpu`,
+            children: [
+              { label: `vasp`, value: vasp },
+              { label: `qe`, value: qe },
+            ],
+          },
+          { label: `cpu`, value: 15 },
+        ],
+      })
+      // alice 915 keeps; bob 45 + carol 40 fold under 0.05 * 1000 into Other/{gpu 55, cpu 30}
+      const users = [user(`alice`, 800, 100), user(`bob`, 20, 10), user(`carol`, 15, 10)]
+      const ids = (opts: SunburstLayoutOptions) =>
+        compute_sunburst_layout(users, { min_fraction: 0.05, ...opts })
+          .arcs.filter((arc) => arc.id.toString().startsWith(`Other/`))
+          .map((arc) => arc.id)
+          .toSorted((left, right) => `${left}`.localeCompare(`${right}`))
+      // the merged gpu's jobs (35, 20) are below the root threshold and fold again
+      expect(ids({})).toEqual([`Other/cpu`, `Other/gpu`, `Other/gpu/Other`])
+      // zoomed to the merged gpu node they measure against its 55 and both clear it;
+      // clicking Other/gpu/Other expands that same (synthetic) parent by id
+      const unfolded = [`Other/cpu`, `Other/gpu`, `Other/gpu/qe`, `Other/gpu/vasp`]
+      expect(ids({ zoom_root_id: `Other/gpu` })).toEqual(unfolded)
+      expect(ids({ expanded_parents: new Set([`Other/gpu`]) })).toEqual(unfolded)
     })
 
     test(`an unresolvable zoom_root_id falls back to the root total`, () => {
