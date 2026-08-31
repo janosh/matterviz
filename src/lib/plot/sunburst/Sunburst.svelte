@@ -21,7 +21,12 @@
   import type { HierarchyChartProps } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import type { ScreenArc as ScreenArcOf, ViewWindow } from '$lib/plot/sunburst/render'
-  import { arc_label_transform, project_arcs } from '$lib/plot/sunburst/render'
+  import {
+    arc_label_transform,
+    hover_veil_path,
+    project_arcs,
+    rect_path,
+  } from '$lib/plot/sunburst/render'
   import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
   import { DEFAULTS } from '$lib/settings'
   import { arc as d3_arc } from 'd3-shape'
@@ -130,8 +135,10 @@
       min_fraction,
       max_children,
       // Plain prop, never derived from the layout it feeds - the arcs depend on it,
-      // so reading it back off them would close a cycle
-      zoom_root_id,
+      // so reading it back off them would close a cycle. Read only while bucketing
+      // measures against the view root: otherwise a zoom would rebuild the layout
+      // (and re-measure every label) for an identical result
+      zoom_root_id: min_fraction > 0 || max_children > 0 ? zoom_root_id : null,
       expanded_parents: chart_state.expanded_parents,
       other_label,
     }),
@@ -158,6 +165,7 @@
     on_node_hover: (payload) => on_node_hover?.(payload),
     on_zoom: (payload) => on_zoom?.(payload),
     clickable: (arc) => arc_clickable(arc),
+    per_node_hover_dim: false, // hover dimming is the veil path below
     visible: (idx) => screen_arcs[idx]?.visible ?? false,
     node_center: (idx) => {
       const screen = screen_arcs[idx]
@@ -266,8 +274,16 @@
   // Path data for one arc/rect in the current shape
   const screen_path = (screen: ScreenArc): string =>
     shape === `icicle`
-      ? `M${screen.a0},${screen.r0}H${screen.a1}V${screen.r1}H${screen.a0}Z`
+      ? rect_path(screen.a0, screen.a1, screen.r0, screen.r1)
       : (arc_gen(screen) ?? ``)
+
+  // Hover dimming as one path with holes for the hovered subtree and its ancestors (see
+  // hover_veil_path). Re-derives per frame while zooming, but only walks the ancestry.
+  let hover_veil = $derived(
+    chart_state.hovered_idx == null
+      ? null
+      : hover_veil_path(screen_arcs, chart_state.hovered_idx, screen_geom),
+  )
 
   // The chart group's transform: sunburst draws around the center, icicle from the
   // top-left of the padded plot area
@@ -412,6 +428,10 @@
           {/each}
         </g>
 
+        {#if hover_veil}
+          <path class="hover-veil" d={hover_veil} />
+        {/if}
+
         <!-- Arc labels: selectable text; data-sunburst-node-idx forwards hover/click
       to the underlying arc via the chart-group delegation in the shell -->
         {#if show_labels}
@@ -553,6 +573,13 @@
   }
   :global(.sunburst:not(.icicle)) .arcs path:hover {
     transform: scale(var(--sunburst-hover-scale, 1.02));
+  }
+  .hover-veil {
+    /* page background at 70% over an arc reads as the arc at 30% fill-opacity */
+    fill: var(--sunburst-dim-veil, var(--page-bg, white));
+    fill-opacity: var(--sunburst-dim-veil-opacity, 0.7);
+    fill-rule: evenodd;
+    pointer-events: none;
   }
   .arc-label {
     text-anchor: middle;

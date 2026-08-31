@@ -257,11 +257,19 @@ describe(`Sunburst`, () => {
     expect(label_opacity(`A`)).toBeNull()
   })
 
-  test(`hovering an arc dims unrelated arcs but keeps its ancestors opaque`, async () => {
+  // Hover dimming is one evenodd veil path with holes over the hovered subtree and its
+  // ancestors, so a hover never rewrites per-arc fill-opacity (thousands of arcs otherwise)
+  test(`hovering an arc draws a veil with holes for it and its ancestors`, async () => {
     const plot = await mount_sized_sunburst({ data: tree })
+    const veil = () => plot.querySelector<SVGPathElement>(`.hover-veil`)
+    expect(veil()).toBeNull()
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
     const opacity = (lbl: keyof typeof IDX) => arc_path(plot, lbl).getAttribute(`fill-opacity`)
-    expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `0.3`])
+    expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `1`])
+    // disk + hovered wedge (A1, out to the rim) + ancestor A; the root is collapsed
+    expect(veil()?.getAttribute(`d`)?.match(/M/g)).toHaveLength(3)
+    await fire(plot.querySelector(`svg[role="application"]`), mouse(`mouseleave`))
+    expect(veil()).toBeNull()
   })
 
   test(`value_mode total respects authoritative parent values`, async () => {

@@ -1,6 +1,7 @@
 import type { SunburstNode } from '$lib/plot'
 import { arc_label_transform, compute_sunburst_layout, project_arcs } from '$lib/plot'
 import type { ScreenArc, ScreenGeometry, ViewWindow } from '$lib/plot/sunburst/render'
+import { annular_sector_path, hover_veil_path, rect_path } from '$lib/plot/sunburst/render'
 import { describe, expect, test, vi } from 'vitest'
 
 const TWO_PI = 2 * Math.PI
@@ -206,6 +207,129 @@ describe(`project_arcs`, () => {
       [`a1`, 0, 100, 150, 300],
       [`b`, 100, 400, 0, 150],
     ])
+  })
+})
+
+describe(`annular_sector_path`, () => {
+  // Split path data into its command letters and numbers (rounded to kill trig round-off;
+  // the `+ 0` turns -0 into 0 so toEqual matches)
+  const tokens = (path: string) =>
+    path
+      .match(/[A-Z]|-?[\d.e-]+/g)
+      ?.map((tok) => (/[A-Z]/.test(tok) ? tok : Number(Number(tok).toFixed(9)) + 0))
+
+  test.each([
+    [
+      `quarter sector`,
+      [0, Math.PI / 2, 20, 100],
+      [
+        `M`,
+        0,
+        -100,
+        `A`,
+        100,
+        100,
+        0,
+        0,
+        1,
+        100,
+        0,
+        `L`,
+        20,
+        0,
+        `A`,
+        20,
+        20,
+        0,
+        0,
+        0,
+        0,
+        -20,
+        `Z`,
+      ],
+    ],
+    [
+      // sweeps past 180° set the large-arc flag on both boundaries
+      `three-quarter sector`,
+      [0, 1.5 * Math.PI, 20, 100],
+      [
+        `M`,
+        0,
+        -100,
+        `A`,
+        100,
+        100,
+        0,
+        1,
+        1,
+        -100,
+        0,
+        `L`,
+        -20,
+        0,
+        `A`,
+        20,
+        20,
+        0,
+        1,
+        0,
+        0,
+        -20,
+        `Z`,
+      ],
+    ],
+    [
+      `wedge from the center`,
+      [0, Math.PI / 2, 0, 100],
+      [`M`, 0, -100, `A`, 100, 100, 0, 0, 1, 100, 0, `L`, 0, 0, `A`, 0, 0, 0, 0, 0, 0, 0, `Z`],
+    ],
+  ])(`%s`, (_label, [a0, a1, r0, r1], expected) => {
+    expect(tokens(annular_sector_path(a0, a1, r0, r1))).toEqual(expected)
+  })
+
+  test(`full ring: two half-circle outer arcs plus a counter-clockwise inner hole`, () => {
+    const ring = annular_sector_path(0, TWO_PI, 20, 100)
+    // outer: two sweep=1 arcs of radius 100; inner: two sweep=0 arcs of radius 20
+    expect(ring.match(/A100,100,0,1,1/g)).toHaveLength(2)
+    expect(ring.match(/A20,20,0,1,0/g)).toHaveLength(2)
+    expect(ring.match(/M/g)).toHaveLength(2)
+    // no hole for a disk
+    expect(annular_sector_path(0, TWO_PI, 0, 100).match(/M/g)).toHaveLength(1)
+  })
+})
+
+describe(`hover_veil_path`, () => {
+  const subpaths = (path: string | null) => path?.match(/M/g)?.length ?? 0
+
+  test(`sunburst: disk minus hovered wedge (to the rim) minus visible ancestors`, () => {
+    const { all } = project_arcs(arcs, full_win, sun_geom)
+    // hovering the leaf a1 (idx 2): disk + wedge + parent a; the collapsed root is skipped
+    const veil = hover_veil_path(all, 2, sun_geom)
+    expect(subpaths(veil)).toBe(3)
+    // the hovered wedge spans from its own inner radius out to the chart rim
+    expect(veil).toContain(annular_sector_path(all[2].a0, all[2].a1, all[2].r0, 200))
+    expect(veil).toContain(annular_sector_path(all[1].a0, all[1].a1, all[1].r0, all[1].r1))
+    // hovering a depth-1 node cuts out only that wedge
+    expect(subpaths(hover_veil_path(all, 3, sun_geom))).toBe(2)
+  })
+
+  test(`icicle: rectangles instead of sectors`, () => {
+    const geom: ScreenGeometry = {
+      shape: `icicle`,
+      inner_width: 400,
+      inner_height: 300,
+      radius: 0,
+      hole_r: 0,
+    }
+    const { all } = project_arcs(arcs, full_win, geom)
+    expect(hover_veil_path(all, 2, geom)).toBe(
+      rect_path(0, 400, 0, 300) + rect_path(0, 100, 150, 300) + rect_path(0, 100, 0, 150),
+    )
+  })
+
+  test(`returns null for an index that is not projected (stale hover after a data swap)`, () => {
+    const { all } = project_arcs(arcs, full_win, sun_geom)
+    expect(hover_veil_path(all, 99, sun_geom)).toBeNull()
   })
 })
 

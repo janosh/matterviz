@@ -142,6 +142,55 @@ export function project_arcs<Metadata>(
   return { all, visible }
 }
 
+// Point at (angle clockwise from 12 o'clock, radius) as path data
+const polar = (angle: number, radius: number): string =>
+  `${Math.sin(angle) * radius},${-Math.cos(angle) * radius}`
+
+// Path data for the ring sector between angles a0..a1 (radians, clockwise from 12 o'clock)
+// and radii r0..r1. A full ring is drawn as two half-circle arcs per boundary (an SVG arc
+// can't end where it starts), the inner one counter-clockwise so it is a hole under either
+// fill rule; r0 = 0 gives a plain disk/wedge.
+export function annular_sector_path(a0: number, a1: number, r0: number, r1: number): string {
+  if (a1 - a0 >= TWO_PI - 1e-9) {
+    const circle = (radius: number, sweep: 0 | 1) =>
+      `M${polar(0, radius)}A${radius},${radius},0,1,${sweep},${polar(Math.PI, radius)}A${radius},${radius},0,1,${sweep},${polar(0, radius)}Z`
+    return circle(r1, 1) + (r0 > 0 ? circle(r0, 0) : ``)
+  }
+  const large = a1 - a0 > Math.PI ? 1 : 0
+  return `M${polar(a0, r1)}A${r1},${r1},0,${large},1,${polar(a1, r1)}L${polar(a1, r0)}A${r0},${r0},0,${large},0,${polar(a0, r0)}Z`
+}
+
+export const rect_path = (x0: number, x1: number, y0: number, y1: number): string =>
+  `M${x0},${y0}H${x1}V${y1}H${x0}Z`
+
+// One evenodd path that dims everything but the hovered node's subtree and ancestors: the
+// chart area minus the hovered arc's wedge (its descendants partition that wedge outward)
+// minus each ancestor's own arc. Drawn between the arcs and their labels, this single
+// element carries the hover dimming instead of a fill-opacity write (and CSS transition)
+// per arc, which is what keeps hovering O(depth) at thousands of arcs. Null when the
+// hovered index isn't projected (stale index right after a data swap).
+export function hover_veil_path<Metadata>(
+  screen_arcs: readonly ScreenArc<Metadata>[],
+  hovered_idx: number,
+  geom: ScreenGeometry,
+): string | null {
+  const hovered = screen_arcs[hovered_idx]
+  if (!hovered) return null
+  const icicle = geom.shape === `icicle`
+  const cell = icicle ? rect_path : annular_sector_path
+  const outer = icicle ? geom.inner_height : geom.radius
+  let path = icicle
+    ? rect_path(0, geom.inner_width, 0, geom.inner_height)
+    : annular_sector_path(0, TWO_PI, 0, geom.radius)
+  path += cell(hovered.a0, hovered.a1, hovered.r0, outer)
+  for (let idx = hovered.arc.parent_idx; idx != null; idx = screen_arcs[idx].arc.parent_idx) {
+    const { a0, a1, r0, r1 } = screen_arcs[idx]
+    // ancestors at or above the zoom root are collapsed into the hole: nothing to cut out
+    if (a1 > a0 && r1 > r0) path += cell(a0, a1, r0, r1)
+  }
+  return path
+}
+
 // Arc label placement: fit the text radially or tangentially (whichever has more room
 // in 'auto' mode); null = doesn't fit, hide the label. Angles are clockwise from 12
 // o'clock, so the point at (a, r) is (sin(a)*r, -cos(a)*r). Icicle cells label

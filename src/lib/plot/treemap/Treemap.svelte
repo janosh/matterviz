@@ -137,8 +137,10 @@
       min_fraction,
       max_children,
       // Plain prop, never derived from the layout it feeds - the arcs depend on it,
-      // so reading it back off them would close a cycle
-      zoom_root_id,
+      // so reading it back off them would close a cycle. Read only while bucketing
+      // measures against the view root: otherwise a zoom would rebuild the layout
+      // (and re-measure every label) for an identical result
+      zoom_root_id: min_fraction > 0 || max_children > 0 ? zoom_root_id : null,
       expanded_parents: chart_state.expanded_parents,
       other_label,
     }),
@@ -164,6 +166,7 @@
     on_node_click: (payload) => on_node_click?.(payload),
     on_node_hover: (payload) => on_node_hover?.(payload),
     on_zoom: (payload) => on_zoom?.(payload),
+    per_node_hover_dim: true,
     visible: (idx) => idx_visible(idx),
     node_center: (idx) => (rects[idx] ? rect_center(rects[idx]) : null),
     // Place against the settled (target) tiling, not the animated one - placement
