@@ -2,7 +2,10 @@ import type { StructurePopupContext } from '$lib/convex-hull'
 import StructurePopup from '$lib/convex-hull/StructurePopup.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, make_crystal, svg_query } from '../setup'
+import { doc_query, make_crystal } from '../setup'
+
+// The shared shell (Escape/click-outside dismissal, dragging, drag tab) is covered by
+// tests/vitest/overlays/FloatingPopup.test.ts; these cover what StructurePopup adds
 
 const mock_structure = make_crystal(3, [[`Li`, [0, 0, 0], 1]])
 
@@ -16,47 +19,23 @@ const mount_popup = (props: Partial<ComponentProps<typeof StructurePopup>> = {})
 
 describe(`StructurePopup`, () => {
   test.each([
-    {
-      name: `closes on Escape key`,
-      act: () => globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` })),
-      expect_close: true,
-    },
-    {
-      name: `closes on click outside`,
-      act: () => document.body.dispatchEvent(new MouseEvent(`click`, { bubbles: true })),
-      expect_close: true,
-    },
-    {
-      name: `can keep popups open on outside click`,
-      props: { close_on_outside: false },
-      act: () => document.body.dispatchEvent(new MouseEvent(`click`, { bubbles: true })),
-      expect_close: false,
-    },
-    {
-      name: `does not close on click inside`,
-      act: () =>
-        doc_query(`.structure-popup`).dispatchEvent(
-          new MouseEvent(`click`, { bubbles: true }),
-        ),
-      expect_close: false,
-    },
-    {
-      // the popup is draggable, so a press that starts outside must not close it before
-      // the drag even begins; only the completed click does
-      name: `ignores a bare mousedown outside`,
-      act: () => document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true })),
-      expect_close: false,
-    },
-  ])(`$name`, ({ props = {}, act, expect_close }) => {
-    const on_close = vi.fn()
-    mount_popup({ on_close, ...props })
-    act()
-    if (expect_close) expect(on_close).toHaveBeenCalledOnce()
-    else expect(on_close).not.toHaveBeenCalled()
-  })
+    { place_right: true, side_class: `right` },
+    { place_right: false, side_class: `left` },
+  ])(
+    `place_right=$place_right maps to the shell's $side_class placement`,
+    ({ place_right, side_class }) => {
+      mount_popup({ place_right, class: `custom-popup-class` })
 
-  test(`requests hover-visible structure controls`, () => {
-    mount_popup({ width: 360, height: 360 })
+      const popup = doc_query(`.structure-popup`)
+      expect(popup.classList.contains(`floating-popup`)).toBe(true)
+      expect(popup.classList.contains(side_class)).toBe(true)
+      expect(popup.classList.contains(`custom-popup-class`)).toBe(true)
+    },
+  )
+
+  test(`requests hover-visible structure controls and forwards on_close to the shell`, () => {
+    const on_close = vi.fn()
+    mount_popup({ width: 360, height: 360, on_close })
 
     const controls = doc_query(`.structure-popup .control-buttons`)
     expect(controls.classList.contains(`hover-visible`)).toBe(true)
@@ -64,58 +43,12 @@ describe(`StructurePopup`, () => {
     const structure_style = doc_query(`.structure-popup .structure`).style
     expect(structure_style.getPropertyValue(`--struct-width`)).toBe(`360px`)
     expect(structure_style.getPropertyValue(`--struct-height`)).toBe(`360px`)
-  })
 
-  test(`preserves custom popup classes`, () => {
-    mount_popup({ class: `custom-popup-class` })
-
-    expect(doc_query(`.structure-popup`).classList.contains(`custom-popup-class`)).toBe(true)
-  })
-
-  test(`reuses draggable pane handle for dragging`, () => {
-    mount_popup()
-
-    const popup = doc_query(`.structure-popup`)
-    const handle = svg_query(`.structure-popup .control-tab .drag-handle`)
-    expect(handle).toBeInstanceOf(SVGSVGElement)
-
-    // svelte-widgets' draggable follows the captured pointer on the handle itself, so the
-    // move and release have to be dispatched there rather than on window
-    const drag = (type: string, coords?: { clientX: number; clientY: number }) =>
-      handle.dispatchEvent(
-        new PointerEvent(type, {
-          bubbles: true,
-          isPrimary: true,
-          button: 0,
-          pointerId: 1,
-          ...coords,
-        }),
-      )
-    drag(`pointerdown`, { clientX: 10, clientY: 20 })
-    drag(`pointermove`, { clientX: 35, clientY: 50 })
-    drag(`pointerup`)
-
-    expect(popup.style.left).toBe(`25px`)
-    expect(popup.style.top).toBe(`30px`)
-    expect(popup.style.right).toBe(`auto`)
-    expect(popup.style.transform).toBe(``)
-  })
-
-  test(`can hide the drag handle`, () => {
-    mount_popup({ show_drag_handle: false })
-
-    const popups = [...document.querySelectorAll(`.structure-popup`)]
-    const popup_children = [...(popups.at(-1)?.children ?? [])]
-    expect(popup_children.some((child) => child.classList.contains(`control-tab`))).toBe(false)
-  })
-
-  test(`clips popup content while leaving drag handle visible`, () => {
-    mount_popup()
-
-    expect(getComputedStyle(doc_query(`.structure-popup`)).overflow).toBe(`visible`)
-    const content_style = getComputedStyle(doc_query(`.structure-popup-content`))
-    expect(content_style.overflow).toBe(`hidden`)
-    expect(content_style.borderRadius).toBe(`8px`)
+    // the shell's close button in the viewer's control row, and its Escape handling
+    doc_query<HTMLButtonElement>(`.structure-popup .control-buttons .close-btn`).click()
+    expect(on_close).toHaveBeenCalledOnce()
+    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    expect(on_close).toHaveBeenCalledTimes(2)
   })
 
   test.each([
@@ -164,7 +97,7 @@ describe(`StructurePopup`, () => {
 
     mount_popup({ stats: { id: `mp-1` }, children })
 
-    const extra = doc_query(`.structure-popup-content .popup-children`)
+    const extra = doc_query(`.floating-popup-content .popup-children`)
     expect(extra.textContent).toBe(`mp-1 extra`)
   })
 })
