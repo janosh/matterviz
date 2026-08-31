@@ -224,6 +224,7 @@ export function build_orbit_props(opts: {
     enableZoom: opts.zoom_speed > 0,
     zoomSpeed: is_ortho ? opts.zoom_speed * 2 : opts.zoom_speed,
     zoomToCursor: opts.zoom_to_cursor,
+    // consumed by SceneCamera's view-offset pan (pan.ts), which disables OrbitControls' own
     enablePan: opts.pan_speed > 0,
     panSpeed: opts.pan_speed,
     maxZoom: opts.max_zoom,

@@ -23,7 +23,12 @@
   } from '$lib/math'
   import { ScatterPlot3DControls } from '$lib/plot'
   import type { ThreltePointerEvent } from '$lib/scene'
-  import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
+  import {
+    clear_pan_offset,
+    create_renderer,
+    dispose_on_change,
+    webgpu_available,
+  } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -1130,6 +1135,7 @@
       controls_camera.zoom = default_orthographic_zoom
       controls_camera.updateProjectionMatrix()
     }
+    clear_pan_offset(controls_camera)
     controls.update()
   }
 

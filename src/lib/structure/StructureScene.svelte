@@ -12,6 +12,7 @@
   import {
     bind_renderer,
     brighten_hex,
+    clear_pan_offset,
     create_fly_to,
     create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
@@ -1195,6 +1196,8 @@
       if (view_changed || camera_target === undefined) camera_target = target
       rotation_target_ref = target
       camera_position = camera_position_for_target(target, distance, camera_direction)
+      // a fresh framing starts unpanned; the pan lives on the camera, not in camera_target
+      clear_pan_offset(untrack(() => camera))
     }
   })
   // Whether a never|always|crystals|molecules setting applies to the current structure

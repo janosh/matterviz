@@ -10,7 +10,7 @@
   import type { ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import type { CameraProjection } from '$lib/settings'
   import type { AnyStructure, StructureHandlerData } from '$lib/structure'
   import type { DisplacementSummary } from '$lib/structure/measure'
@@ -19,7 +19,12 @@
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
-  import { create_renderer, responsive_gizmo_size } from '$lib/scene'
+  import {
+    clear_pan_offset,
+    create_renderer,
+    read_pan_offset,
+    responsive_gizmo_size,
+  } from '$lib/scene'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'
@@ -174,6 +179,8 @@
   // Perspective controls dolly instead of changing camera.zoom.
   const read_zoom = (): number | undefined =>
     camera instanceof OrthographicCamera ? camera.zoom : undefined
+  // Pans are a view offset on the camera (see scene/pan.ts), not a target move
+  const read_pan = (): Vec2 => read_pan_offset(camera)
 
   // Both optional keys can be absent — a perspective camera has no zoom, and the orbit target
   // is unknown until the controls bind. Omit rather than emit undefined: JSON.stringify drops
@@ -204,6 +211,7 @@
         camera.zoom = initial_computed_zoom
         camera.updateProjectionMatrix()
       }
+      clear_pan_offset(camera)
       orbit_controls.update()
       camera_position = read_camera_position()
       camera_target = read_orbit_target()
@@ -213,8 +221,8 @@
   }
 
   // Last view written or captured here; differing bindable props came from the caller.
-  // Zoom is included because an orthographic wheel changes nothing else.
-  let self_written: { position?: Vec3; target?: Vec3; zoom?: number } = {}
+  // Zoom and pan are included because a wheel or a pan changes nothing else.
+  let self_written: { position?: Vec3; target?: Vec3; zoom?: number; pan?: Vec2 } = {}
   // Damping decays geometrically, so a released camera keeps creeping for seconds after
   // OrbitControls stops dispatching `change` (whose floor is a 1e-3 displacement). Exact
   // equality would read that residue as motion and emit a duplicate move for a mere click.
@@ -242,16 +250,18 @@
     const pos = read_camera_position()
     const target = read_orbit_target()
     const zoom = read_zoom()
+    const pan = read_pan()
     // Interactions that end where they started (a click, or the effect cleanup below running
     // after the end listener already synced) would otherwise emit a second, identical move.
     const unmoved =
       same_pose(pos, self_written.position) &&
       same_pose(target, self_written.target) &&
-      same_camera_value(zoom, self_written.zoom)
+      same_camera_value(zoom, self_written.zoom) &&
+      pan.every((coord, idx) => coord === self_written.pan?.[idx])
     if (unmoved) return
     camera_position = pos
     camera_target = target
-    self_written = { position: pos, target, zoom }
+    self_written = { position: pos, target, zoom, pan }
     report_moved?.(true)
     on_camera_move?.(camera_event(true, pos, target, zoom))
   }
@@ -262,6 +272,7 @@
       position: read_camera_position(),
       target: read_orbit_target(),
       zoom: read_zoom(),
+      pan: read_pan(),
     }
   }
   // Only a fresh gesture may cancel a pending settle. Rebaselining alone must not: the push
