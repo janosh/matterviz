@@ -142,6 +142,22 @@ test.describe(`PhononModeExplorer`, () => {
 
     const initial_extxyz = await download_extxyz(page, explorer)
 
+    // markers are only a few px wide, so a click a few px off one still selects it, and the
+    // cursor turns into a hand there. The LA branch is well separated from its neighbours
+    const la_point = explorer.getByRole(`button`, { name: `Select band 3, q-point 4` })
+    const la_box = await la_point.boundingBox()
+    if (!la_box) throw new Error(`band 3 q-point 4 marker has no bounding box`)
+    const plot_svg = explorer.getByRole(`application`, { name: /Wave Vector/ })
+    const near_miss = [la_box.x + la_box.width + 3, la_box.y + la_box.height / 2] as const
+    await page.mouse.move(...near_miss)
+    await expect(plot_svg).toHaveCSS(`cursor`, `pointer`)
+    // far from every marker the click would select nothing, so the crosshair returns
+    await page.mouse.move(la_box.x + la_box.width + 40, la_box.y + la_box.height / 2 + 40)
+    await expect(plot_svg).toHaveCSS(`cursor`, `crosshair`)
+    await page.mouse.click(...near_miss)
+    await expect(summary).toContainText(`Mode 3`)
+    await expect(summary).toContainText(`q = [0.375, 0, 0.375]`)
+
     const band_point = explorer.getByRole(`button`, {
       name: `Select band 4, q-point 4`,
     })

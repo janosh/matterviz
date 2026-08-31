@@ -1099,7 +1099,8 @@
     }),
   )
 
-  const x_hover_candidate = (x_rel: number, y_rel: number): InternalPoint<Metadata> | null => {
+  // Nearest point along x within the hover radius, plus that x distance for the click radius
+  const x_hover_candidate = (x_rel: number, y_rel: number) => {
     let best_point: InternalPoint<Metadata> | null = null
     let best_x_distance = Number.POSITIVE_INFINITY
     let best_y_distance = Number.POSITIVE_INFINITY
@@ -1143,20 +1144,31 @@
         }
       }
     }
-    return best_x_distance <= hover_radius ? best_point : null
+    return best_point && best_x_distance <= hover_radius
+      ? { point: best_point, distance: best_x_distance }
+      : null
   }
 
-  const closest_point_at = (x_rel: number, y_rel: number) =>
-    hover_config.mode === `x`
-      ? x_hover_candidate(x_rel, y_rel)
-      : hover_index
-        ? query_nearest(hover_index, { x: x_rel, y: y_rel })?.point
-        : null
+  // Nearest point within the hover radius and its screen distance (along x only in `x` mode)
+  const closest_hit_at = (x_rel: number, y_rel: number) => {
+    if (hover_config.mode === `x`) return x_hover_candidate(x_rel, y_rel)
+    const hit = hover_index && query_nearest(hover_index, { x: x_rel, y: y_rel })
+    return hit && { point: hit.point, distance: Math.hypot(hit.cx - x_rel, hit.cy - y_rel) }
+  }
+  // Point an on_plot_click at these coords would reach: the tooltip's candidate, but only
+  // within the (usually tighter) click radius
+  const plot_click_target = (hit: ReturnType<typeof closest_hit_at>) =>
+    hit && hit.distance <= (hover_config.click_threshold_px ?? hover_radius) ? hit.point : null
+  // Whether a click on the plot surface right now would reach on_plot_click, from the same
+  // lookup handle_plot_click runs, so the pointer cursor promises exactly the clicks that land
+  let plot_click_armed = $state(false)
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
-    const closest_point = closest_point_at(x_rel, y_rel)
+    const hit = closest_hit_at(x_rel, y_rel)
+    const closest_point = hit?.point ?? null
+    plot_click_armed = Boolean(on_plot_click && plot_click_target(hit))
 
     if (closest_point) {
       // Construct handler props synchronously to avoid stale derived reads
@@ -1206,7 +1218,7 @@
     }
     const coords = get_relative_coords(evt)
     if (!coords) return
-    const point = closest_point_at(coords.x, coords.y)
+    const point = plot_click_target(closest_hit_at(coords.x, coords.y))
     const props = point && construct_handler_props(point)
     if (point && props) on_plot_click({ ...props, event: evt, point })
   }
@@ -1566,7 +1578,8 @@
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
-  on_mouse_move={hover_config.show_tooltip !== false || on_point_hover
+  idle_cursor={plot_click_armed ? `pointer` : `crosshair`}
+  on_mouse_move={hover_config.show_tooltip !== false || on_point_hover || on_plot_click
     ? (evt) => {
         // Only find the closest point when not actively dragging
         if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
@@ -1578,6 +1591,7 @@
   on_mouse_leave={() => {
     end_queued_mouse_move(false)
     hovered = false
+    plot_click_armed = false
     tooltip_point = null
     on_point_hover?.(null)
   }}

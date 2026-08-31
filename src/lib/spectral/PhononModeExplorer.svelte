@@ -174,7 +174,8 @@
   }
 
   // Band files may carry eigenvectors at only some q-points; a click elsewhere snaps to the
-  // nearest one along the path that can animate this band
+  // nearest one along the path that can animate this band. Wired to both the markers and the
+  // plot background: markers are a few px wide, so a near miss selects the point under the tooltip
   const handle_band_click = (event: ScatterHandlerEvent): void => {
     const { band_idx, qpoint_idx } = event.metadata ?? {}
     if (typeof band_idx !== `number` || typeof qpoint_idx !== `number`) return
@@ -337,6 +338,7 @@
           highlighted_qpoint_index={selection?.qpoint_idx ?? null}
           highlighted_band_index={selection?.mode_idx ?? null}
           on_point_click={handle_band_click}
+          on_plot_click={handle_band_click}
           show_controls={false}
         />
       {:else if (view === `ir` || view === `raman`) && active_spectrum}

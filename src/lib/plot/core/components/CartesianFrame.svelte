@@ -69,6 +69,9 @@
     on_mouse_leave?: () => void
     on_mouse_move?: (event: MouseEvent) => void
     on_mouse_click?: (event: MouseEvent) => void
+    // Cursor while no pan gesture claims it. Charts switch it to `pointer` when a click on
+    // the plot surface would land on a mark, so the hand shows before the user commits.
+    idle_cursor?: string
     // Chart-supplied key handling on the plot SVG, run before pan/zoom's own. Return
     // true to consume the key. Canvas-rendered marks have no focusable DOM of their
     // own, so this is the only keyboard route into them.
@@ -106,6 +109,7 @@
     on_mouse_leave,
     on_mouse_move,
     on_mouse_click,
+    idle_cursor = `crosshair`,
     on_key_down,
     live_message,
     header_controls,
@@ -220,7 +224,7 @@
       ontouchmove={pan_zoom.on_touch_move}
       ontouchend={pan_zoom.on_touch_end}
       ontouchcancel={pan_zoom.on_touch_end}
-      style:cursor={pan_zoom.cursor}
+      style:cursor={pan_zoom.cursor ?? idle_cursor}
     >
       <!-- An outer top marginal strip sits at the container edge, so the title moves below it -->
       <PlotTitle

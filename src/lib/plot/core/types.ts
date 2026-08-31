@@ -369,6 +369,9 @@ export interface LabelPlacementConfig {
 }
 export type HoverConfig = {
   threshold_px: number // Max screen distance (pixels) to trigger hover
+  // Max screen distance (pixels) for a plot-surface click to select the hovered point; defaults
+  // to threshold_px. A tooltip can afford a generous reach where a click should not.
+  click_threshold_px?: number
   // `x` ignores vertical distance and binary-searches monotonic series. This is useful for
   // time-series scrubbers where the horizontal coordinate selects a frame and avoids building
   // a full 2D spatial index for tens of thousands of samples.

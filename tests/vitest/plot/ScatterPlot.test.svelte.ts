@@ -50,27 +50,36 @@ const hover = async (element: Element): Promise<void> => {
 }
 const next_animation_frame = (): Promise<void> =>
   new Promise((resolve) => requestAnimationFrame(() => resolve()))
+const plot_svg = (plot: HTMLElement): SVGSVGElement => {
+  const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+  if (!svg) throw new Error(`scatter SVG not found`)
+  return svg
+}
+const click_at = (svg: SVGSVGElement, at: { x: number; y: number }) =>
+  svg.dispatchEvent(
+    new MouseEvent(`click`, { bubbles: true, detail: 1, clientX: at.x, clientY: at.y }),
+  )
+// Moves the pointer `dx`/`dy` px off the nth marker and returns where it landed
 const move_to_marker = async (
   plot: HTMLElement,
   marker_idx: number,
-  client_y?: number,
-): Promise<void> => {
-  const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+  { dx = 0, dy = 0 } = {},
+): Promise<{ x: number; y: number }> => {
+  const svg = plot_svg(plot)
   const marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(marker_idx)
-  const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
+  const transform = marker?.parentElement?.getAttribute(`transform`) ?? ``
   const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
-  if (!svg || !match?.groups) throw new Error(`Expected marker ${marker_idx}`)
+  if (!match?.groups) throw new Error(`Expected marker ${marker_idx}`)
   Object.defineProperty(svg, `getBoundingClientRect`, {
     value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+    configurable: true, // a test may move to several markers of one plot
   })
+  const at = { x: Number(match.groups.x) + dx, y: Number(match.groups.y) + dy }
   svg.dispatchEvent(
-    new MouseEvent(`mousemove`, {
-      bubbles: true,
-      clientX: Number(match.groups.x),
-      clientY: client_y ?? Number(match.groups.y),
-    }),
+    new MouseEvent(`mousemove`, { bubbles: true, clientX: at.x, clientY: at.y }),
   )
   await next_animation_frame()
+  return at
 }
 const scatter_clip_rect = (element: ParentNode): Rect => {
   const rect = element.querySelector(`defs clipPath rect`)
@@ -666,6 +675,59 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
   })
 
+  test(`shows a pointer cursor only where a plot click would reach a point`, async () => {
+    const on_plot_click = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      on_plot_click,
+      point_tween: { duration: 0 },
+    })
+    const svg = plot_svg(plot)
+    expect(svg.style.cursor).toBe(`crosshair`)
+
+    // a near miss: 8px below the marker, outside its own hit area but inside the hover radius
+    click_at(svg, await move_to_marker(plot, 1, { dy: 8 }))
+    expect(svg.style.cursor).toBe(`pointer`)
+    expect(on_plot_click).toHaveBeenCalledOnce()
+    expect(on_plot_click.mock.calls[0][0]).toMatchObject({ x: 2, y: 3 })
+
+    // far from every point the click would land on nothing, so the crosshair returns
+    svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: 0, clientY: 0 }))
+    await next_animation_frame()
+    expect(svg.style.cursor).toBe(`crosshair`)
+
+    // without a plot click handler the hand never shows on the background
+    const passive = await mount_sized_scatter_plot({ series: [basic] })
+    await move_to_marker(passive, 1, { dy: 8 })
+    expect(plot_svg(passive).style.cursor).toBe(`crosshair`)
+
+    // a tighter click radius keeps the tooltip's reach but not the click's: 8px off the marker
+    // hovers (within 20px) but must not click (outside 5px). `x` mode measures along x only and
+    // used to report every candidate at distance 0, so the click radius never applied there
+    for (const [mode, offset] of [
+      [undefined, `dy`],
+      [`x`, `dx`],
+    ] as const) {
+      const on_tight_click = vi.fn()
+      const tight = await mount_sized_scatter_plot({
+        series: [basic],
+        on_plot_click: on_tight_click,
+        hover_config: { mode, threshold_px: 20, click_threshold_px: 5 },
+        point_tween: { duration: 0 },
+      })
+      const tight_svg = plot_svg(tight)
+      click_at(tight_svg, await move_to_marker(tight, 1, { [offset]: 8 }))
+      expect(tight.querySelector(`.plot-tooltip`), mode).not.toBeNull()
+      expect(tight_svg.style.cursor, mode).toBe(`crosshair`)
+      expect(on_tight_click, mode).not.toHaveBeenCalled()
+      click_at(tight_svg, await move_to_marker(tight, 1, { [offset]: 3 }))
+      expect(tight_svg.style.cursor, mode).toBe(`pointer`)
+      expect(on_tight_click.mock.calls, mode).toEqual([
+        [expect.objectContaining({ x: 2, y: 3 })],
+      ])
+    }
+  })
+
   test(`child marks and rectangle zoom do not trigger plot clicks`, async () => {
     const on_plot_click = vi.fn()
     const on_fill_click = vi.fn()
@@ -692,9 +754,8 @@ describe(`ScatterPlot`, () => {
     expect(on_ref_line_click).toHaveBeenCalledOnce()
     expect(on_plot_click).not.toHaveBeenCalled()
 
-    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    const svg = plot_svg(plot)
     const clip = scatter_clip_rect(plot)
-    if (!svg) throw new Error(`scatter SVG not found`)
     svg.dispatchEvent(
       new MouseEvent(`mousedown`, {
         bubbles: true,
@@ -713,14 +774,7 @@ describe(`ScatterPlot`, () => {
     window.dispatchEvent(
       new MouseEvent(`mouseup`, { clientX: clip.x + 80, clientY: clip.y + 80 }),
     )
-    svg.dispatchEvent(
-      new MouseEvent(`click`, {
-        bubbles: true,
-        detail: 1,
-        clientX: clip.x + 80,
-        clientY: clip.y + 80,
-      }),
-    )
+    click_at(svg, { x: clip.x + 80, y: clip.y + 80 })
     expect(on_plot_click).not.toHaveBeenCalled()
   })
 

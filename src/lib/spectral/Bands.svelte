@@ -551,7 +551,7 @@
     bind:display
     {show_legend}
     legend={num_structures > 1 ? {} : null}
-    hover_config={{ threshold_px: 50 }}
+    hover_config={{ threshold_px: 50, click_threshold_px: 10 }}
     {selected_point}
     {...rest}
     style="--tick-active-fill: var(--bands-active-tick-color, #ff2020); {rest.style ?? ``}"
