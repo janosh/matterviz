@@ -238,15 +238,20 @@ const is_matrix3x3 = (val: unknown): val is Matrix3x3 =>
   val.length === 3 &&
   val.every((row) => is_vec3(row) && row.length === 3)
 
-// pymatgen's `as_dict()` stores the reciprocal lattice as `lattice_rec`, the phonon JSON dumped
-// by phonopy/atomate2-style workflows as `recip_lattice`. Both are producer formats, so both
-// are read. A band structure that is recognisably pymatgen-shaped but lacks either cannot
-// measure its k-path: unlike an unrecognised shape (null) this is a named, fixable defect in
-// the input, so it throws and Bands shows the message in place of the generic empty state.
+// pymatgen's `as_dict()` stores the reciprocal lattice as `lattice_rec` in the physics
+// convention (2π included), the phonon JSON dumped by phonopy/atomate2-style workflows as
+// `recip_lattice` in phonopy's crystallographic convention (no 2π). Both are producer formats,
+// so both are read, and the latter is scaled so the returned matrix always includes 2π. A band
+// structure that is recognisably pymatgen-shaped but lacks either cannot measure its k-path:
+// unlike an unrecognised shape (null) this is a named, fixable defect in the input, so it
+// throws and Bands shows the message in place of the generic empty state.
 const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
-  const lattice = [`lattice_rec`, `recip_lattice`].map((key) => pmg[key]).find(is_plain_object)
+  const scale = is_plain_object(pmg.lattice_rec) ? 1 : 2 * Math.PI
+  const lattice = [pmg.lattice_rec, pmg.recip_lattice].find(is_plain_object)
   const matrix = lattice?.matrix
-  if (is_matrix3x3(matrix)) return matrix
+  if (is_matrix3x3(matrix)) {
+    return matrix.map((row) => row.map((val) => val * scale)) as Matrix3x3
+  }
   throw new Error(
     `pymatgen band structure needs a finite 3x3 reciprocal lattice under 'lattice_rec.matrix' (or 'recip_lattice.matrix') to measure k-path distances; got keys [${Object.keys(pmg).join(`, `)}]`,
   )
@@ -305,7 +310,8 @@ function convert_pymatgen_band_structure(
 
   // Step lengths are Cartesian reciprocal-space distances |Mᵀ·Δq| (like pymatgen/phonopy);
   // a fractional metric would distort every non-cubic path. Transpose once, not per step.
-  const recip_T = transpose_3x3_matrix(read_recip_lattice(pmg))
+  const recip_lattice = read_recip_lattice(pmg)
+  const recip_T = transpose_3x3_matrix(recip_lattice)
   const steps = qpoints
     .slice(1)
     .map((qpoint, idx) =>
@@ -377,6 +383,7 @@ function convert_pymatgen_band_structure(
 
   return {
     qpoints,
+    recip_lattice,
     branches,
     distance,
     bands: raw_bands.map(to_thz),
@@ -515,6 +522,21 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   return null
 }
 
+// Fractional k-point -> Cartesian reciprocal coordinates (the lattice should carry the 2π
+// factor to match the rendered BZ), by default folded into the first (Wigner-Seitz) BZ so
+// the point lands inside the rendered zone. Folding in Cartesian space (vs per-axis on the
+// fractional coords, which only yields the parallelepiped cell) handles non-orthogonal
+// lattices and preserves path continuity: points already inside the zone are left untouched.
+export function frac_k_to_cartesian(
+  frac_coords: Vec3,
+  recip_lattice_matrix: Matrix3x3,
+  wrap_to_bz = true,
+): Vec3 {
+  // k = Σ f_i b_i, i.e. Bᵀ·f with the b_i as rows of B
+  const cart = mat3x3_vec3_multiply(transpose_3x3_matrix(recip_lattice_matrix), frac_coords)
+  return wrap_to_bz ? fold_to_first_bz(cart, recip_lattice_matrix) : cart
+}
+
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 // Handles both matterviz format (qpoints as objects) and normalized pymatgen format
@@ -533,22 +555,20 @@ export function extract_k_path_points(
   )
     throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
 
-  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
-
-  return band_struct.qpoints.map((qpoint): Vec3 => {
-    const [x, y, z] = qpoint.frac_coords
-    const cart: Vec3 = [
-      x * m00 + y * m10 + z * m20,
-      x * m01 + y * m11 + z * m21,
-      x * m02 + y * m12 + z * m22,
-    ]
-    // Fold into the first (Wigner-Seitz) BZ so points stay inside the rendered zone.
-    // Folding in Cartesian space (vs per-axis on fractional coords, which only yields
-    // the parallelepiped cell) handles non-orthogonal lattices and preserves path
-    // continuity: points already inside the zone are left untouched.
-    return wrap_to_bz ? fold_to_first_bz(cart, recip_lattice_matrix) : cart
-  })
+  return band_struct.qpoints.map((qpoint) =>
+    frac_k_to_cartesian(qpoint.frac_coords, recip_lattice_matrix, wrap_to_bz),
+  )
 }
+
+// Labeled k-path points for BrillouinZone's `k_path_labels`, aligned with extract_k_path_points
+export const k_path_labels = (
+  band_struct: types.BaseBandStructure,
+  k_path_points: Vec3[],
+): { position: Vec3; label: string | null }[] =>
+  k_path_points.map((position, idx) => {
+    const label = band_struct.qpoints[idx]?.label
+    return { position, label: label ? pretty_sym_point(label) : null }
+  })
 
 // Fold a Cartesian reciprocal-space point into the first (Wigner-Seitz) Brillouin zone
 // by choosing the periodic image with the smallest norm (minimum-image convention).
