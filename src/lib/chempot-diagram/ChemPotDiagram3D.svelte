@@ -1366,6 +1366,11 @@
     if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
   }
 
+  // A wheel zoom shifts the domains under a still cursor with no pointerleave to clear the tooltip
+  function handle_camera_start(): void {
+    if (!locked_hover_formula) hover_info = null
+  }
+
   // Color mode cycling (keyboard shortcut 'c')
   const color_modes = CHEMPOT_COLOR_MODE_OPTIONS.map(([value]) => value)
   function cycle_color_mode(): void {
@@ -1605,6 +1610,7 @@
           on_domain_hover={handle_phase_hover}
           on_domain_press={toggle_phase_lock}
           on_domain_leave={handle_phase_leave}
+          on_camera_start={handle_camera_start}
           formula_meshes={formula_mesh_data}
           formula_edges={formula_edge_data}
           domain_labels={scene_domain_labels}

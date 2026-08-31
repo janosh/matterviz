@@ -1,4 +1,5 @@
 import ChemPotDiagram3D from '$lib/chempot-diagram/ChemPotDiagram3D.svelte'
+import type { ChemPotHoverInfo } from '$lib/chempot-diagram/types'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type * as scene_module from '$lib/scene'
 import type * as threlte_core from '@threlte/core'
@@ -6,7 +7,7 @@ import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometr
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { load_json } from '../setup'
+import { bind_props, load_json } from '../setup'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
 // the component's live deriveds) and every ConvexGeometry build is counted
@@ -153,4 +154,45 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   expect(document.querySelector(`.spinner`)).toBeNull()
   expect(document.querySelector(`.error-state`)).toBeNull()
   expect(scene_labels()).toBe(0) // labels hidden without touching the geometry
+})
+
+// A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave): the
+// camera-start callback must drop an unpinned tooltip while a click-pinned one survives
+test(`camera start clears an unpinned domain tooltip but keeps a pinned one`, async () => {
+  vi.spyOn(console, `error`).mockImplementation(() => undefined)
+  // plain object: the test only reads the bound value back, no reactivity needed
+  const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
+  mounted = mount(ChemPotDiagram3D, {
+    target: document.body,
+    props: bind_props({ entries, config: { default_min_limit: -25 } }, bound),
+  })
+  await tick()
+  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
+  const node = threlte_stub.nodes.find(({ tag }) => tag === `Scene`)
+  if (!node) throw new Error(`scene stub not mounted`)
+  const scene = node.props as {
+    hover_meshes: { formula: string }[]
+    on_domain_hover: (mesh: unknown, event: unknown) => void
+    on_domain_press: (mesh: unknown, event: unknown) => void
+    on_camera_start: () => void
+  }
+  const [domain] = scene.hover_meshes
+  const event = {
+    nativeEvent: new PointerEvent(`pointerdown`),
+    stopPropagation: () => undefined,
+  }
+
+  scene.on_domain_hover(domain, event)
+  flushSync()
+  expect(bound.hover_info?.formula).toBe(domain.formula)
+  scene.on_camera_start() // wheel zoom: start with no pointer movement
+  flushSync()
+  expect(bound.hover_info).toBeNull()
+
+  scene.on_domain_press(domain, event) // click pins the tooltip
+  flushSync()
+  expect(bound.hover_info?.formula).toBe(domain.formula)
+  scene.on_camera_start()
+  flushSync()
+  expect(bound.hover_info?.formula).toBe(domain.formula)
 })
