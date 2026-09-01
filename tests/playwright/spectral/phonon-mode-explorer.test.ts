@@ -316,8 +316,12 @@ test(`a fixture picked before the initial one finishes loading still reaches the
   }).toPass()
   await expect.poll(() => url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
   await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
+  const default_response = page.waitForResponse(`**/NaCl-Gamma-X-band.yaml*`)
   release_default()
-  // the late default response must not clobber the user's choice
+  await default_response
+  // the late default response must not clobber the user's choice; networkidle gives the page
+  // time to parse and (wrongly) apply it before checking
+  await page.waitForLoadState(`networkidle`)
   await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
   expect(url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
 })
