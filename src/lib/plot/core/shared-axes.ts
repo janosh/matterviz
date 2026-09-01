@@ -71,18 +71,25 @@ export const axis_with_range = (
 
 // Sync a child plot's internal range back to a parent axis. Stable references avoid
 // reactive churn; an invalid incoming range clears an existing explicit range, and so does
-// one equal to `default_range`: the data-driven default a wrapper derives (Bands' padded
-// frequency range) must keep flowing from the data, so it is never frozen into the axis prop
-// where it would outrank the next default after a units or data change. Only zooms and
-// caller pins, i.e. deviations from the default, are worth keeping there.
+// one equal to `default_range` unless the axis already pins it: the data-driven default a
+// wrapper derives (Bands' padded frequency range) must keep flowing from the data, so it is
+// never frozen into the axis prop where it would outrank the next default after a units or
+// data change. Only zooms and caller pins, i.e. deviations from the default, are worth keeping
+// there. A caller pin that happens to equal the default (BandsAndDos' shared range when the DOS
+// lies inside the bands range) is left alone: clearing it would make the parent re-pin it,
+// looping the two effects until Svelte's update depth trips.
 export function sync_axis_range(
   axis: AxisConfig,
   range: unknown,
   default_range?: Vec2,
 ): AxisConfig {
-  if (is_valid_range(range) && !ranges_equal(range, default_range)) {
+  if (is_valid_range(range)) {
     if (axis.range?.[0] === range[0] && axis.range?.[1] === range[1]) return axis
-    return { ...axis, range }
+    const at_default = ranges_equal(range, default_range)
+    if (at_default && is_valid_range(axis.range) && ranges_equal(axis.range, range)) {
+      return axis
+    }
+    if (!at_default) return { ...axis, range }
   }
   if (`range` in axis) {
     const { range: _omitted, ...rest } = axis

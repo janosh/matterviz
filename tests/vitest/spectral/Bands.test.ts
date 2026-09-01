@@ -569,4 +569,16 @@ describe(`Bands component`, () => {
     expect(document.querySelector(`.bz-popup`)).toBeNull()
     expect(on_close).toHaveBeenCalledOnce()
   })
+
+  it(`centers the popup on a plot narrower than the popup instead of clamping past the edges`, async () => {
+    // 240px plot vs the 320px default popup: clamp(tick_x, 160, 80) would flip its bounds
+    await mount_sized(
+      Bands,
+      { band_structs: { ...base_band_structure, recip_lattice: recip_lattice_a3 } },
+      { selector: `.scatter`, width: 240 },
+    )
+    tick_labels()[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`120px`)
+  })
 })

@@ -51,7 +51,6 @@ import { untrack } from 'svelte'
 
 type FrameAxes = Record<FacetAxis, AxisConfig>
 type PerAxis<Value> = Partial<Record<FacetAxis, Value>>
-type RangeOverride = NonNullable<AxisConfig[`range`]>
 
 // Tick counts each axis asks for when the axis config leaves `ticks` unset
 const DEFAULT_TICK_COUNTS: Record<FacetAxis, number> = { x: 8, x2: 8, y: 5, y2: 5 }
@@ -86,10 +85,11 @@ interface CartesianFrameOptions {
   ref_lines: () => readonly IndexedRefLine[]
   pan: () => PanConfig | undefined
   facet_layout: () => FacetLayoutContext | undefined
-  // Write a resolved range back to the chart's (bindable) axis prop: a rect zoom's range, or
-  // on reset the range the caller pinned (`[null, null]` when there was none, so later data
-  // changes recompute the auto range).
-  write_range: (axis: FacetAxis, range: RangeOverride) => void
+  // Write a resolved range back to the chart's (bindable) axis prop. `[null, null]` on reset
+  // hands the axis back to the caller: a wrapper relaying a parent's range (Bands inside
+  // BandsAndDos) reads it as the reset signal and clears its own prop, a plain caller's auto
+  // range recomputes on later data changes.
+  write_range: (axis: FacetAxis, range: Vec2 | [null, null]) => void
   // Ranges the padding pass measures against inside a facet grid. Defaults to
   // `auto_ranges`; Histogram re-bins against the reconciled x domain first.
   facet_ranges?: () => AxisRanges
@@ -217,40 +217,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       y2_sync.mode === `none` ? ([...untrack(() => ranges.initial.y2)] as Vec2) : synced_y2()
   })
 
-  // Ranges the caller pinned through axis.range, kept apart from the frame's own rect-zoom
-  // writes (which come back through the same bindable prop) so a reset can restore the pinned
-  // range instead of dropping to the auto range. Plain objects: written by the range effect,
-  // read by on_reset, never rendered.
-  const pinned_ranges: PerAxis<RangeOverride> = {}
-  // Own writes are recognised by tuple identity, not bounds: a caller pinning the very zoom the
-  // frame just wrote passes a fresh tuple with identical bounds. The bindable hands the tuple
-  // back state-proxied, so the identity kept is the one the range effect first sees after the
-  // write (matched to the pending write by bounds)
-  const pending_writes: PerAxis<RangeOverride> = {}
-  const own_tuples: PerAxis<RangeOverride> = {}
-  const write_range = (axis: FacetAxis, range: RangeOverride) => {
-    pending_writes[axis] = range
-    opts.write_range(axis, range)
-  }
-  const is_own_write = (axis: FacetAxis, range: RangeOverride | undefined): boolean => {
-    const pending = pending_writes[axis]
-    pending_writes[axis] = undefined
-    if (range && pending && range[0] === pending[0] && range[1] === pending[1]) {
-      own_tuples[axis] = range
-      return true
-    }
-    return Boolean(range) && range === own_tuples[axis]
-  }
-
   // Sync ranges from axis.range overrides and auto ranges. resolve_axis_ranges returns
   // null for transient non-finite bounds (skip: writing NaN breaks scales and, since
   // NaN !== NaN, loops the effect).
   $effect(() => {
     const sources = opts.range_sources?.() ?? opts.axes()
-    for (const axis of FACET_AXES) {
-      const { range } = opts.axes()[axis]
-      if (!is_own_write(axis, range)) pinned_ranges[axis] = range
-    }
     const next = resolve_axis_ranges(sources, opts.auto_ranges())
     if (!next) return
     // untrack the read of `ranges` so the writes below can't re-trigger this effect
@@ -541,7 +512,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       // override it. Gate x2/y2 on real data: their scales are [0, 1] sentinels
       // otherwise, so inverting would store a phantom range in the bindable prop.
       const commit = (axis: FacetAxis, range: Vec2 | null) => {
-        if (range && !facet.update_range(axis, range)) write_range(axis, range)
+        if (range && !facet.update_range(axis, range)) opts.write_range(axis, range)
       }
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
@@ -555,11 +526,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     on_reset: () => {
       if (facet.reset_ranges()) return
-      // Undo any pan/zoom, then put the caller's pinned ranges back in the axis props; an
-      // axis without one is cleared so future data changes recalculate its auto range
+      // Undo any pan/zoom, then clear the axis range overrides so future data
+      // changes recalculate auto ranges
       ranges.current = copy_axis_ranges(ranges.initial)
       apply_y2_sync()
-      for (const axis of FACET_AXES) write_range(axis, pinned_ranges[axis] ?? [null, null])
+      for (const axis of FACET_AXES) opts.write_range(axis, [null, null])
     },
   })
 

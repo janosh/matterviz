@@ -9,6 +9,9 @@ export type BrillouinZoneSettings = Omit<DefaultSettings[`brillouin`], `fullscre
 // A symmetry point BrillouinZonePopup marks: label plus its fractional and Cartesian
 // (2π-included) k-coords
 export type BZPopupPoint = { label: string; frac_coords: Vec3; position: Vec3 }
+// Canvas width the popup renders at unless a caller sets `width`; Bands reads it to keep the
+// popup inside the plot before it has measured anything
+export const BZ_POPUP_DEFAULT_WIDTH = 320
 
 // Hover data for BZ tooltip
 export type BZHoverData = {

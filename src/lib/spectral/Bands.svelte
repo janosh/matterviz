@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BrillouinZonePopup } from '$lib/brillouin'
+  import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '$lib/brillouin'
   import type { BZPopupPoint } from '$lib/brillouin'
   import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
@@ -10,7 +10,7 @@
   import { clamp, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-  import { sync_axis_range } from '$lib/plot/core/shared-axes'
+  import { is_valid_range, sync_axis_range } from '$lib/plot/core/shared-axes'
   import type {
     AxisConfig,
     DataSeries,
@@ -406,6 +406,23 @@
     const flat = Object.values(internal_x_positions).flat()
     return [flat[0] ?? 0, flat.at(-1) ?? 1]
   })
+  // Pinned to the k-path: the auto range would nice() the path end (3.3 -> 3.5) and leave the
+  // bands short of the frame
+  let default_x_axis = $derived<AxisConfig>({
+    label: `Wave Vector`,
+    ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
+    format: ``,
+    range: x_range,
+    on_tick_click: k_lattice ? (tick) => (bz_popup_x = tick) : undefined,
+    active_tick: bz_popup_x,
+    ...x_axis,
+  })
+  // ScatterPlot writes rect zooms back here and clears the range on a double-click reset;
+  // the reset returns to the k-path range rather than the auto range
+  let internal_x_axis = $derived(default_x_axis)
+  $effect(() => {
+    if (!is_valid_range(internal_x_axis.range)) internal_x_axis = default_x_axis
+  })
 
   // Range in the data's own unit; unit conversion is a positive scale factor, which commutes
   // with extent, the noise clamp and the proportional padding, so a units change converts the
@@ -538,15 +555,7 @@
     series={series_data}
     {point_hit_padding}
     {fill_regions}
-    x_axis={{
-      label: `Wave Vector`,
-      ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
-      format: ``,
-      range: x_range,
-      on_tick_click: k_lattice ? (tick) => (bz_popup_x = tick) : undefined,
-      active_tick: bz_popup_x,
-      ...x_axis,
-    }}
+    bind:x_axis={internal_x_axis}
     bind:y_axis={internal_y_axis}
     bind:display
     {show_legend}
@@ -831,11 +840,15 @@
     {@render user_children?.(ctx)}
     <!-- hidden while zoomed away from its tick -->
     {#if k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}
-      <!-- centered above the tick on the x axis, kept inside the plot; 320 is the popup's default
-      width. The bottom arrow tracks the tick even when clamping shifts the popup off-center -->
+      <!-- centered above the tick on the x axis, kept inside the plot (centered on a plot
+      narrower than itself). The bottom arrow tracks the tick even when clamping shifts the popup
+      off-center -->
       {@const tick_x = ctx.x_scale_fn(bz_popup_x)}
-      {@const half_width = (bz_popup_props.width ?? 320) / 2}
-      {@const left = clamp(tick_x, half_width, ctx.width - half_width)}
+      {@const half_width = (bz_popup_props.width ?? BZ_POPUP_DEFAULT_WIDTH) / 2}
+      {@const left =
+        ctx.width < 2 * half_width
+          ? ctx.width / 2
+          : clamp(tick_x, half_width, ctx.width - half_width)}
       <BrillouinZonePopup
         {k_lattice}
         points={bz_popup_points}

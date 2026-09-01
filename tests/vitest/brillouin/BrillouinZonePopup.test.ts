@@ -51,3 +51,24 @@ test(`lists every marked point and closes from its own button`, () => {
   doc_query<HTMLButtonElement>(`.bz-popup-close .close-btn`).click()
   expect(on_close).toHaveBeenCalledOnce()
 })
+
+test(`a singular reciprocal lattice shows the error where the zone would be`, () => {
+  const on_close = vi.fn()
+  // parsers only check for finite entries, so a degenerate lattice can reach the popup
+  const singular: Matrix3x3 = [
+    [1, 0, 0],
+    [2, 0, 0],
+    [0, 0, 1],
+  ]
+  mount(BrillouinZonePopup, {
+    target: document.body,
+    props: { k_lattice: singular, points, on_close },
+  })
+  flushSync()
+  expect(document.querySelector(`.bz-popup .brillouin-zone`)).toBeNull()
+  expect(doc_query(`.bz-popup-error`).textContent).toMatch(/singular|lattice/i)
+  // the point list and close button still work
+  expect(doc_query(`.bz-popup-stats`).querySelectorAll(`strong`)).toHaveLength(3)
+  doc_query<HTMLButtonElement>(`.bz-popup-close .close-btn`).click()
+  expect(on_close).toHaveBeenCalledOnce()
+})

@@ -121,6 +121,13 @@ describe(`shared axis range propagation`, () => {
     expect(sync_axis_range(axis, shared_range, shared_range)).toEqual({ label: `Y` })
     expect(sync_axis_range({ label: `Y` }, shared_range, shared_range)).toEqual({ label: `Y` })
     expect(sync_axis_range(axis, zoomed_range, shared_range)).toBe(axis)
+    // a caller pin equal to the default stays (exactly or within tolerance): dropping it would
+    // have the parent re-pin it and loop
+    const pinned: AxisConfig = { label: `Y`, range: shared_range }
+    expect(sync_axis_range(pinned, shared_range, shared_range)).toBe(pinned)
+    const near_default: Vec2 = [shared_range[0], shared_range[1] + 1e-6]
+    expect(sync_axis_range(pinned, near_default, shared_range)).toBe(pinned)
+    expect(sync_axis_range(pinned, [...shared_range], near_default)).toBe(pinned)
   })
 
   it(`propagates only after a child resets its valid range`, () => {
