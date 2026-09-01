@@ -3,7 +3,7 @@ import { JsonTree } from '$lib/layout'
 import { serialize_for_copy } from '$lib/layout/json-tree/utils'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, test, vi } from 'vitest'
-import { doc_query, mock_clipboard_write } from '../setup'
+import { doc_query, keydown, mock_clipboard_write, mouse } from '../setup'
 import JsonTreeReplacementHarness from './JsonTreeReplacementHarness.svelte'
 
 const mount_tree = (props: ComponentProps<typeof JsonTree>): void => {
@@ -22,10 +22,6 @@ const fire = (target: Element | null | undefined, event: Event): void => {
   target?.dispatchEvent(event)
   flushSync()
 }
-const keydown = (key: string, init: KeyboardEventInit = {}) =>
-  new KeyboardEvent(`keydown`, { key, bubbles: true, ...init })
-const mouse = (type: string, init: MouseEventInit = {}) =>
-  new MouseEvent(type, { bubbles: true, ...init })
 
 const node_at = (path: string) =>
   document.querySelector<HTMLElement>(`.json-node[data-path="${CSS.escape(path)}"]`)

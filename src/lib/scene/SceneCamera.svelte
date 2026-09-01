@@ -2,11 +2,12 @@
   // Dual perspective/orthographic camera with OrbitControls + axis Gizmo, shared by BrillouinZoneScene, FermiSurfaceScene, ChemPotScene3D and StructureScene
   import type { Vec3 } from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
-  import { T } from '@threlte/core'
+  import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import type { ComponentProps } from 'svelte'
+  import { type ComponentProps, untrack } from 'svelte'
   import type { GizmoOptions } from './gizmo'
   import Gizmo from './Gizmo.svelte'
+  import { attach_pan_gesture, read_pan_offset, set_pan_offset } from './pan'
   import type { build_orbit_props } from './props.svelte'
 
   let {
@@ -51,10 +52,31 @@
     document.addEventListener(`fullscreenchange`, apply_touch_policy)
     return () => document.removeEventListener(`fullscreenchange`, apply_touch_policy)
   })
+
+  // Pan as a view offset on the camera (see pan.ts) so the orbit target stays the pivot;
+  // OrbitControls' own pan is disabled below and its enablePan/panSpeed drive this gesture.
+  const { size } = useThrelte()
+  $effect(() => {
+    const dom_element = orbit_controls?.domElement
+    if (!(dom_element instanceof HTMLElement)) return
+    return attach_pan_gesture(dom_element, {
+      controls: () => orbit_controls,
+      speed: () => (orbit_props.enablePan ? orbit_props.panSpeed : 0),
+      size: () => size.current,
+    })
+  })
+  // A resize changes the pixel grid the offset is defined on; re-apply it at the new size
+  $effect(() => {
+    const { width, height } = $size
+    const camera = untrack(() => orbit_controls?.object)
+    if (!camera) return
+    const offset = read_pan_offset(camera)
+    if (offset[0] !== 0 || offset[1] !== 0) set_pan_offset(camera, offset, width, height)
+  })
 </script>
 
 {#snippet camera_contents()}
-  <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props}>
+  <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props} enablePan={false}>
     {#if gizmo}
       <Gizmo
         {...typeof gizmo === `object` ? gizmo : {}}

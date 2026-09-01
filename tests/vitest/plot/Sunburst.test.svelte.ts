@@ -3,7 +3,7 @@ import type { PositionedArc, SunburstNode, SunburstNodeHandlerProps } from '$lib
 import { PLOT_COLORS } from '$lib/colors'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized, resize_element } from '../setup'
+import { fire, keydown, mount_sized, mouse, query, resize_element } from '../setup'
 
 // A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
 const tree: SunburstNode[] = [
@@ -58,27 +58,12 @@ const mount_sized_sunburst = (
 const IDX = { A: 1, A1: 2, A2: 3, B: 4 } as const
 
 const node_at = (plot: HTMLElement, node_idx: number): SVGPathElement => {
-  const path = plot.querySelector<SVGPathElement>(`[data-sunburst-node-idx="${node_idx}"]`)
-  if (!path) throw new Error(`no arc path at node index ${node_idx}`)
+  const path = query<SVGPathElement>(plot, `[data-sunburst-node-idx="${node_idx}"]`)
   return path
 }
 
 const arc_path = (plot: HTMLElement, label: keyof typeof IDX): SVGPathElement =>
   node_at(plot, IDX[label])
-
-const mouse = (type: string) => new MouseEvent(type, { bubbles: true })
-const key = (key_name: string) =>
-  new KeyboardEvent(`keydown`, { key: key_name, bubbles: true })
-
-// Dispatch a bubbling event on a node (defaults to a click) and flush the update
-const fire = async (
-  node: Element | null | undefined,
-  event: Event = mouse(`click`),
-): Promise<void> => {
-  if (!node) throw new Error(`event target not found`)
-  node.dispatchEvent(event)
-  await tick()
-}
 
 const n_arcs = (plot: HTMLElement) => plot.querySelectorAll(`.arcs path`).length
 
@@ -228,6 +213,44 @@ describe(`Sunburst`, () => {
     expect(halos[0].getAttribute(`transform`)).toBe(dotted_label?.getAttribute(`transform`))
   })
 
+  test(`a name too long for its arc is ellipsized at the smallest font instead of hidden`, async () => {
+    const name = `pretrain-llama-70b-stage2-resume-from-checkpoint`
+    const plot = await mount_sized_sunburst({
+      data: [
+        { label: `wide`, value: 90 },
+        { label: name, value: 10 },
+      ],
+    })
+    const labels = [...plot.querySelectorAll<SVGTextElement>(`.arc-label`)]
+    const label = labels.find((el) => el.textContent?.trim().startsWith(`pretrain`))
+    const text = label?.textContent?.trim() ?? ``
+    expect(text.endsWith(`…`)).toBe(true)
+    expect(text.length).toBeLessThan(name.length)
+    expect(label?.getAttribute(`style`)).toContain(`font-size: 0.7em`)
+    // the roomy sibling keeps its full name at full size
+    const wide = labels.find((el) => el.textContent?.trim() === `wide`)
+    expect(wide?.getAttribute(`style`) ?? ``).not.toContain(`font-size`)
+    // a value-only label is never cropped: on a chart small enough that this 10%
+    // slice cannot hold "90,000,000,000.1" even at 0.7em, the value stays hidden
+    // rather than posing as "90,000,000,0…"
+    const values_only = await mount_sized(
+      Sunburst,
+      {
+        tween: { duration: 0 },
+        data: [
+          { label: `wide`, value: 8.1e11 },
+          { label: name, value: 9e10 + 0.1 },
+        ],
+        label_text: `value`,
+      },
+      { selector: `.sunburst`, width: 260, height: 200 },
+    )
+    const texts = [...values_only.querySelectorAll(`.arc-label`)].map((el) =>
+      el.textContent?.trim(),
+    )
+    expect(texts).toEqual([`810,000,000,000`])
+  })
+
   test(`legend renders categories and toggles subtree and label opacity`, async () => {
     const plot = await mount_sized_sunburst({
       data: tree,
@@ -257,11 +280,19 @@ describe(`Sunburst`, () => {
     expect(label_opacity(`A`)).toBeNull()
   })
 
-  test(`hovering an arc dims unrelated arcs but keeps its ancestors opaque`, async () => {
+  // Hover dimming is one evenodd veil path with holes over the hovered subtree and its
+  // ancestors, so a hover never rewrites per-arc fill-opacity (thousands of arcs otherwise)
+  test(`hovering an arc draws a veil with holes for it and its ancestors`, async () => {
     const plot = await mount_sized_sunburst({ data: tree })
+    const veil = () => plot.querySelector<SVGPathElement>(`.hover-veil`)
+    expect(veil()).toBeNull()
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
     const opacity = (lbl: keyof typeof IDX) => arc_path(plot, lbl).getAttribute(`fill-opacity`)
-    expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `0.3`])
+    expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `1`])
+    // disk + hovered wedge (A1, out to the rim) + ancestor A; the root is collapsed
+    expect(veil()?.getAttribute(`d`)?.match(/M/g)).toHaveLength(3)
+    await fire(plot.querySelector(`svg[role="application"]`), mouse(`mouseleave`))
+    expect(veil()).toBeNull()
   })
 
   test(`value_mode total respects authoritative parent values`, async () => {
@@ -307,8 +338,7 @@ describe(`Sunburst`, () => {
             style: `width: 500px; height: 360px`,
           },
         })
-        const plot = target.querySelector<HTMLElement>(`.sunburst`)
-        if (!plot) throw new Error(`Sunburst root element not found`)
+        const plot = query(target, `.sunburst`)
         await resize_element(plot, 500, 360)
         expect(n_arcs(plot)).toBe(7 * 35) // 7 roots x (34 children + 1 root arc)
       }
@@ -324,7 +354,7 @@ describe(`Sunburst`, () => {
     async (key_name) => {
       const on_node_click = vi.fn()
       const plot = await mount_sized_sunburst({ data: tree, on_node_click })
-      await fire(arc_path(plot, `B`), key(key_name))
+      await fire(arc_path(plot, `B`), keydown(key_name))
       expect(on_node_click).toHaveBeenCalledOnce()
     },
   )
@@ -335,12 +365,12 @@ describe(`Sunburst`, () => {
     const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
-    await fire(plot.querySelector(`svg[role="application"]`), new MouseEvent(`mouseleave`))
+    await fire(plot.querySelector(`svg[role="application"]`), mouse(`mouseleave`))
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
     expect(on_node_hover).toHaveBeenLastCalledWith(null)
     // leaving the chart fires mouseleave on both the chart <g> and the <svg>; a hover
     // clear must only report null once (and not at all when nothing was hovered)
-    await fire(plot.querySelector(`svg[role="application"]`), new MouseEvent(`mouseleave`))
+    await fire(plot.querySelector(`svg[role="application"]`), mouse(`mouseleave`))
     expect(on_node_hover.mock.calls.map((args) => args[0] && `info`)).toEqual([`info`, null])
   })
 
@@ -355,8 +385,7 @@ describe(`Sunburst`, () => {
     const target = document.createElement(`div`)
     document.body.append(target)
     mount(Sunburst, { target, props })
-    const plot = target.querySelector<HTMLElement>(`.sunburst`)
-    if (!plot) throw new Error(`Sunburst root element not found`)
+    const plot = query(target, `.sunburst`)
     await resize_element(plot, 500, 360)
     await fire(arc_path(plot, `B`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
@@ -428,7 +457,7 @@ describe(`Sunburst`, () => {
     })
     const l1 = plot.querySelector<SVGPathElement>(`[data-sunburst-node-idx="1"]`)
     l1?.focus()
-    await fire(l1, key(`Enter`)) // zoom to L1
+    await fire(l1, keydown(`Enter`)) // zoom to L1
     await tick() // focus handoff runs in tick().then()
     await tick()
     expect(document.activeElement?.getAttribute(`data-sunburst-node-idx`)).toBe(`2`)
@@ -444,7 +473,7 @@ describe(`Sunburst`, () => {
 
   test(`keyboard zoom moves focus to the center circle`, async () => {
     const plot = await mount_sized_sunburst({ data: tree })
-    await fire(arc_path(plot, `A`), key(`Enter`))
+    await fire(arc_path(plot, `A`), keydown(`Enter`))
     await tick() // focus is deferred one extra tick (center tabindex appears after zoom)
     expect(document.activeElement?.classList.contains(`center-circle`)).toBe(true)
   })
@@ -501,7 +530,7 @@ describe(`Sunburst zoom navigation`, () => {
       `Escape key`,
       async (plot) => {
         plot.querySelector<SVGCircleElement>(`.center-circle`)?.focus()
-        await fire(globalThis as unknown as Element, key(`Escape`))
+        await fire(globalThis, keydown(`Escape`))
       },
     ],
     [
@@ -531,7 +560,7 @@ describe(`Sunburst zoom navigation`, () => {
       [`ArrowDown`, `A`, `A1`], // first child
       [`ArrowUp`, `A1`, `A`], // back to parent
     ] as const) {
-      await fire(arc_path(plot, from), key(arrow))
+      await fire(arc_path(plot, from), keydown(arrow))
       expect(document.activeElement, `${arrow} ${from}->${to}`).toBe(arc_path(plot, to))
     }
   })

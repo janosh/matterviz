@@ -1,7 +1,7 @@
 import PaneDivider from '$lib/layout/PaneDivider.svelte'
 import { flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { trigger_resize_observer } from '../setup'
+import { query, trigger_resize_observer } from '../setup'
 
 const pointer_event = (
   type: string,
@@ -38,8 +38,7 @@ const mount_divider = (
   const component = mount(PaneDivider, { target: parent, props })
   onTestFinished(() => unmount(component).finally(() => parent.remove()))
   flushSync()
-  const divider = parent.querySelector<HTMLElement>(`[role="separator"]`)
-  if (!divider) throw new Error(`Pane divider not found`)
+  const divider = query(parent, `[role="separator"]`)
   return { divider, parent }
 }
 // A bound first_px readable through a plain accessor (Svelte writes bindable props through the

@@ -1,7 +1,7 @@
 // Three.js geometry construction for Fermi isosurfaces
 import { set_vertex_colors, type VertexColorOptions } from '$lib/isosurface/coloring'
-import type { Vec3 } from '$lib/math'
 import { indexed_mesh_geometry } from '$lib/scene/geometry.svelte'
+import type { HitFace } from '$lib/scene/props.svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import type { FermiIsosurface } from './types'
 
@@ -28,22 +28,19 @@ export function apply_vertex_colors(
   else if (geometry.hasAttribute(`color`)) geometry.deleteAttribute(`color`)
 }
 
-// Index of the mesh vertex nearest to `point` (local geometry space), read straight from the
-// Float32 position buffer so hover lookups need no Vec3 allocation
-export function nearest_vertex_index(geometry: BufferGeometry, point: Vec3): number {
+// Index of the hit triangle's corner nearest to `point` (local geometry space): three distance
+// checks against the Float32 position buffer instead of a scan over every vertex of the sheet
+export function nearest_face_vertex(
+  geometry: BufferGeometry,
+  face: HitFace,
+  point: { x: number; y: number; z: number },
+): number {
   const positions = geometry.getAttribute(`position`).array
-  const [px, py, pz] = point
-  let nearest_idx = 0
-  let min_dist_sq = Infinity
-  for (let idx = 0; idx < positions.length; idx += 3) {
-    const dx = positions[idx] - px
-    const dy = positions[idx + 1] - py
-    const dz = positions[idx + 2] - pz
-    const dist_sq = dx * dx + dy * dy + dz * dz
-    if (dist_sq < min_dist_sq) {
-      min_dist_sq = dist_sq
-      nearest_idx = idx / 3
-    }
-  }
-  return nearest_idx
+  const dist_sq = (vertex_idx: number) =>
+    (positions[vertex_idx * 3] - point.x) ** 2 +
+    (positions[vertex_idx * 3 + 1] - point.y) ** 2 +
+    (positions[vertex_idx * 3 + 2] - point.z) ** 2
+  return [face.a, face.b, face.c].reduce((best, idx) =>
+    dist_sq(idx) < dist_sq(best) ? idx : best,
+  )
 }

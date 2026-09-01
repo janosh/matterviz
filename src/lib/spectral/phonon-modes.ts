@@ -10,13 +10,14 @@ import {
 } from '$lib/structure'
 import { compute_bonds, normalize_structure_bond } from '$lib/structure/bonding'
 import { trajectory_from_frame_source, type TrajectoryRun } from '$lib/trajectory'
-import { is_gamma_point } from './helpers'
+import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import { acoustic_mode_indices } from './ir-raman'
 import type {
   Complex,
   PhononBandStructure,
   PhononModeData,
   PhononModeSelection,
+  PhononQPointModes,
   QPoint,
 } from './types'
 
@@ -165,8 +166,51 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
     distance: distances,
     nb_bands: bands.length,
     bands,
-    has_imaginary_modes: bands.some((band) => band.some((frequency) => frequency < 0)),
+    has_imaginary_modes: bands.some((band) => band.some(is_imaginary_frequency)),
   }
+}
+
+// A genuine instability, as opposed to the ~-1e-7 THz acoustic modes at Γ that every
+// finite-difference force constant matrix carries.
+export const is_imaginary_frequency = (frequency: number): boolean =>
+  frequency < -ACOUSTIC_FREQ_THRESHOLD
+
+// Whether any mode at this q-point can be animated (band files may store frequencies only)
+export const qpoint_has_eigenvectors = (qpoint: PhononQPointModes): boolean =>
+  qpoint.modes.some((mode) => mode.eigenvector !== null)
+
+// High-symmetry label of each q-point from the band path metadata, e.g. { 0: `GAMMA`, 10: `X` }.
+export function phonon_qpoint_labels(data: PhononModeData): Record<number, string> {
+  const labels: Record<number, string> = {}
+  for (const { start_index, end_index, start_label, end_label } of data.path_segments) {
+    if (start_label) labels[start_index] = start_label
+    if (end_label) labels[end_index] = end_label
+  }
+  return labels
+}
+
+// Nearest q-point (by path distance, else by index) whose `mode_idx` carries an eigenvector.
+// Band files may store eigenvectors only at a subset of q-points to stay small, so a click on
+// a frequency-only point snaps to the closest animatable one. Returns -1 if none exists.
+export function nearest_qpoint_with_eigenvector(
+  data: PhononModeData,
+  qpoint_idx: number,
+  mode_idx: number,
+): number {
+  const origin = data.qpoints[qpoint_idx]
+  if (!origin) return -1
+  if (origin.modes[mode_idx]?.eigenvector) return qpoint_idx
+  let best_idx = -1
+  let best_gap = Infinity
+  for (const [candidate_idx, candidate] of data.qpoints.entries()) {
+    if (!candidate.modes[mode_idx]?.eigenvector) continue
+    const gap =
+      origin.distance !== null && candidate.distance !== null
+        ? Math.abs(candidate.distance - origin.distance)
+        : Math.abs(candidate_idx - qpoint_idx)
+    if (gap < best_gap) [best_idx, best_gap] = [candidate_idx, gap]
+  }
+  return best_idx
 }
 
 function validate_selection(

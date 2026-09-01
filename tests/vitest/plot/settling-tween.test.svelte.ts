@@ -4,6 +4,7 @@ import { create_settling_tween, SETTLE_MS } from '$lib/plot/core/settling-tween.
 import { flushSync, mount, unmount } from 'svelte'
 import type { TweenOptions } from 'svelte/motion'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { translate_of } from '../setup'
 
 // Long enough that any animated step is still far from its target when we assert.
 const SLOW = { duration: 60_000 }
@@ -148,12 +149,7 @@ describe(`create_settling_tween`, () => {
     const target = document.createElement(`div`)
     document.body.append(target)
     const component = mount(ScatterPoint, { target, props })
-    const marker_x = () =>
-      Number(
-        /translate\((?<x>[-\d.]+)/.exec(
-          target.querySelector(`g`)?.getAttribute(`transform`) ?? ``,
-        )?.groups?.x,
-      )
+    const marker_x = () => translate_of(target.querySelector(`g`)).x
     flushSync()
     expect(marker_x()).toBe(100)
 

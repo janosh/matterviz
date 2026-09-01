@@ -12,6 +12,7 @@
   import {
     bind_renderer,
     brighten_hex,
+    clear_pan_offset,
     create_fly_to,
     create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
@@ -1045,7 +1046,7 @@
     cursor = canvas_cursor
   })
 
-  extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity()
   let hovered_site = $derived(structure?.sites?.[hovered_idx ?? -1] ?? null)
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
 
@@ -1152,7 +1153,12 @@
     fit_zoom: () => fit_zoom,
     measured: () => width > 0 && height > 0,
     camera: () => camera,
-    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+    // No hover raycasts while orbiting: the highlight hopping between atoms under the cursor
+    // reads as flicker. Pointerdown reaches the meshes before OrbitControls' start, so presses work
+    set_camera_is_moving: (moving) => {
+      camera_is_moving = moving
+      hover_enabled.set(!moving)
+    },
     // Close hover tooltips + bond context menu while the camera moves. Only hide the
     // VISIBLE menu (not bond_context_target): clicking a menu button fires this
     // orbit-controls start handler before the button's own handler runs, which still
@@ -1190,6 +1196,8 @@
       if (view_changed || camera_target === undefined) camera_target = target
       rotation_target_ref = target
       camera_position = camera_position_for_target(target, distance, camera_direction)
+      // a fresh framing starts unpanned; the pan lives on the camera, not in camera_target
+      clear_pan_offset(untrack(() => camera))
     }
   })
   // Whether a never|always|crystals|molecules setting applies to the current structure

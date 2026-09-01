@@ -10,10 +10,13 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   CANVAS_NOOP_METHODS,
+  clip_rect,
   doc_query,
   mock_canvas_context,
+  query,
   resize_element,
   svg_query,
+  svg_rect,
   trigger_intersection,
   trigger_resize_observer,
 } from '../setup'
@@ -60,9 +63,8 @@ const unit_axes = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] a
 // Plot-area centre in client coords, read off the rendered chart rect rather than hardcoded
 // so tuning the default padding can't silently move these hit tests off their target.
 const plot_center = (): { x: number; y: number } => {
-  const clip = doc_query(`clipPath rect`)
-  const num = (attr: string) => Number(clip.getAttribute(attr))
-  return { x: num(`x`) + num(`width`) / 2, y: num(`y`) + num(`height`) / 2 }
+  const { x, y, width, height } = clip_rect()
+  return { x: x + width / 2, y: y + height / 2 }
 }
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
@@ -463,12 +465,16 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const clip_path = document.querySelector(`clipPath[id^="binned-scatter-plot-area-"]`)
-    expect(clip_path).toBeInstanceOf(SVGClipPathElement)
-    const clip_rect = clip_path?.querySelector(`rect`)
-    expect([`x`, `y`, `width`, `height`].map((attr) => clip_rect?.getAttribute(attr))).toEqual(
-      [`80`, `30`, `700`, `510`],
+    const clip_path = doc_query(
+      `clipPath[id^="binned-scatter-plot-area-"]`,
+      SVGClipPathElement,
     )
+    expect(svg_rect(query(clip_path, `rect`))).toEqual({
+      x: 80,
+      y: 30,
+      width: 700,
+      height: 510,
+    })
 
     const ref_group = document.querySelector(`.reference-lines`)
     expect(ref_group?.querySelector(`g[clip-path]`)?.getAttribute(`clip-path`)).toBe(
@@ -717,9 +723,9 @@ describe(`BinnedScatterPlot`, () => {
     expect(request_frame).not.toHaveBeenCalled()
   })
 
-  test(`rect zoom writes axis ranges, swallows its trailing click, and double-click resets`, async () => {
+  test(`rect zoom moves the view, swallows its trailing click, and double-click resets`, async () => {
     const on_density_zoom = vi.fn()
-    // $state so the parent's later range writes propagate in, not only write-backs out
+    // $state so the parent's later range writes propagate in
     const state = $state({
       x_axis: { range: [0, 1] as Vec2 },
       y_axis: { range: [0, 1] as Vec2 },
@@ -753,18 +759,36 @@ describe(`BinnedScatterPlot`, () => {
       await tick()
     }
 
+    // [min, max] of the numeric tick labels: the view the axis currently shows
+    const tick_span = (axis: `x` | `y`): Vec2 => {
+      const values = tick_labels(axis).map(Number)
+      expect(values.length, axis).toBeGreaterThan(1)
+      return [Math.min(...values), Math.max(...values)]
+    }
+    const within = (span: Vec2, [lo, hi]: Vec2) => span[0] >= lo && span[1] <= hi
+    const full_view = () => {
+      expect(tick_span(`x`)).toEqual([0, 1])
+      expect(tick_span(`y`)).toEqual([0, 1])
+    }
+    // the axis props are the caller's; no gesture below may write them
+    const props_untouched = () => {
+      expect(state.x_axis).toEqual({ range: [0, 1] })
+      expect(state.y_axis).toEqual({ range: [0, 1] })
+    }
+    full_view()
+
     // A drag starting in the x-label margin below the plot area must not zoom
     await drag([400, area.y + area.height + 20], [200, 200])
-    expect(state.x_axis.range).toEqual([0, 1])
+    full_view()
 
     // A drag inside the plot area zooms both axes to the dragged fraction of the unit range
     const [x0, x1] = [area.x + 0.25 * area.width, area.x + 0.75 * area.width]
     const [y0, y1] = [area.y + 0.25 * area.height, area.y + 0.75 * area.height]
     await drag([x0, y0], [x1, y1])
-    expect(state.x_axis.range[0]).toBeCloseTo(0.25, 2)
-    expect(state.x_axis.range[1]).toBeCloseTo(0.75, 2)
-    expect(state.y_axis.range[0]).toBeCloseTo(0.25, 2)
-    expect(state.y_axis.range[1]).toBeCloseTo(0.75, 2)
+    expect(within(tick_span(`x`), [0.25, 0.75])).toBe(true)
+    expect(within(tick_span(`y`), [0.25, 0.75])).toBe(true)
+    expect(tick_span(`x`)[1] - tick_span(`x`)[0]).toBeLessThan(0.5)
+    props_untouched()
 
     // The drag's trailing click is swallowed rather than zooming the bin under it. Nudge off
     // the exact centre: data at 0.5 falls in the upper-right of the two bins meeting there.
@@ -773,11 +797,11 @@ describe(`BinnedScatterPlot`, () => {
     click_plot(bin_x, bin_y)
     expect(on_density_zoom).not.toHaveBeenCalled()
 
-    // Double-click clears the overrides; the auto range of a single (0.5, 0.5) bin is [0, 1]
+    // Double-click restores the pinned unit range
     svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     await settle()
-    expect(state.x_axis.range).toEqual([null, null])
-    expect(state.y_axis.range).toEqual([null, null])
+    full_view()
+    props_untouched()
     expect(plot_rect()).toEqual(area)
 
     // With the view restored, clicking the populated bin zooms into it
@@ -786,12 +810,13 @@ describe(`BinnedScatterPlot`, () => {
     await tick()
     expect(on_density_zoom).toHaveBeenCalledOnce()
     const { bin } = on_density_zoom.mock.calls[0][0]
-    expect(state.x_axis.range).toEqual(bin.x_range)
-    expect(state.y_axis.range).toEqual(bin.y_range)
     // the bin is the one just right of and above the (0.5, 0.5) data point
     expect(bin.x_range[0]).toBe(0.5)
     expect(bin.x_range[1]).toBeGreaterThan(0.5)
     expect(bin.y_range[0]).toBe(0.5)
+    expect(within(tick_span(`x`), bin.x_range)).toBe(true)
+    expect(within(tick_span(`y`), bin.y_range)).toBe(true)
+    props_untouched()
 
     // A range the parent writes after a user zoom replaces the zoomed view
     state.x_axis = { range: [2, 4] }

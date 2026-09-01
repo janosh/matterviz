@@ -23,7 +23,12 @@
   } from '$lib/math'
   import { ScatterPlot3DControls } from '$lib/plot'
   import type { ThreltePointerEvent } from '$lib/scene'
-  import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
+  import {
+    clear_pan_offset,
+    create_renderer,
+    dispose_on_change,
+    webgpu_available,
+  } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -1130,6 +1135,7 @@
       controls_camera.zoom = default_orthographic_zoom
       controls_camera.updateProjectionMatrix()
     }
+    clear_pan_offset(controls_camera)
     controls.update()
   }
 
@@ -1358,6 +1364,11 @@
 
   function handle_phase_leave(domain_data: HoverMesh): void {
     if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
+  }
+
+  // A wheel zoom shifts the domains under a still cursor with no pointerleave to clear the tooltip
+  function handle_camera_start(): void {
+    if (!locked_hover_formula) hover_info = null
   }
 
   // Color mode cycling (keyboard shortcut 'c')
@@ -1599,6 +1610,7 @@
           on_domain_hover={handle_phase_hover}
           on_domain_press={toggle_phase_lock}
           on_domain_leave={handle_phase_leave}
+          on_camera_start={handle_camera_start}
           formula_meshes={formula_mesh_data}
           formula_edges={formula_edge_data}
           domain_labels={scene_domain_labels}

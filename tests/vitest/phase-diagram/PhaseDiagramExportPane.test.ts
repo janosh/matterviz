@@ -18,8 +18,6 @@ vi.mock(`$lib/io/export`, () => ({
 const mock_phase_data = al_cu_data as unknown as PhaseDiagramData
 const mount_pane = (props: ComponentProps<typeof PhaseDiagramExportPane>) =>
   mount(PhaseDiagramExportPane, { target: document.body, props })
-const click = (button: HTMLButtonElement) =>
-  button.dispatchEvent(new Event(`click`, { bubbles: true }))
 
 describe(`PhaseDiagramExportPane`, () => {
   let wrapper_div: HTMLDivElement
@@ -78,7 +76,7 @@ describe(`PhaseDiagramExportPane`, () => {
     },
   ])(`Download SVG uses $desc`, async ({ props, expected }) => {
     mount_pane({ data: mock_phase_data, wrapper: wrapper_div, ...props })
-    click(get_button(`Download SVG`))
+    get_button(`Download SVG`).click()
     await vi.waitFor(() => {
       expect(export_svg_as_svg).toHaveBeenCalledWith(mock_svg, expected)
     })
@@ -89,7 +87,7 @@ describe(`PhaseDiagramExportPane`, () => {
 
     mount_pane({ data: mock_phase_data, wrapper: wrapper_div, png_dpi })
 
-    click(get_button(`PNG`))
+    get_button(`PNG`).click()
 
     await vi.waitFor(() => {
       expect(export_svg_as_png).toHaveBeenCalledWith(
@@ -111,7 +109,7 @@ describe(`PhaseDiagramExportPane`, () => {
     },
   ])(`$copy_title button copies content`, async ({ copy_title, expected_clipboard }) => {
     mount_pane({ data: mock_phase_data, wrapper: wrapper_div })
-    click(get_button(copy_title))
+    get_button(copy_title).click()
     await vi.waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_clipboard)
     })
@@ -125,7 +123,7 @@ describe(`PhaseDiagramExportPane`, () => {
     expect(copy_btn.disabled).toBe(true)
 
     vi.mocked(navigator.clipboard.writeText).mockClear()
-    click(copy_btn)
+    copy_btn.click()
     await new Promise<void>((resolve) => queueMicrotask(resolve))
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
@@ -161,7 +159,7 @@ describe(`PhaseDiagramExportPane`, () => {
 
       mount_pane({ data: mock_phase_data, wrapper: empty_wrapper })
 
-      click(get_button(button_title))
+      get_button(button_title).click()
 
       // Flush microtasks then verify export/clipboard was not called
       await new Promise<void>((resolve) => queueMicrotask(resolve))
@@ -174,7 +172,7 @@ describe(`PhaseDiagramExportPane`, () => {
     mount_pane({ data: mock_phase_data, wrapper: wrapper_div })
     const download_btn = get_button(`Download JSON`)
     expect(download_btn.disabled).toBe(false)
-    click(download_btn)
+    download_btn.click()
     await vi.waitFor(() => {
       expect(create).toHaveBeenCalledWith(expect.any(Blob))
       expect(revoke).toHaveBeenCalledWith(`blob:test-url`)

@@ -5,7 +5,6 @@
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '$lib/plot/core/scales'
-  import { sync_axis_range } from '$lib/plot/core/shared-axes'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import { extent } from 'd3-array'
   import type { ComponentProps } from 'svelte'
@@ -52,7 +51,8 @@
     orientation = `vertical`,
     show_legend,
     x_axis = {},
-    y_axis = $bindable({}),
+    y_axis = {},
+    view = $bindable(),
     hovered_frequency = $bindable(null),
     reference_frequency = null,
     fermi_level = undefined,
@@ -270,7 +270,7 @@
   let x_label = $derived(is_horizontal ? `Density of States` : value_label)
   let y_label = $derived(is_horizontal ? value_label : `Density of States`)
 
-  let final_x_axis = $derived({
+  const internal_x_axis = $derived<AxisConfig>({
     label: x_label,
     format: `.2f`,
     range: x_range,
@@ -279,16 +279,11 @@
     ...(is_horizontal && { ticks: 4 }),
     ...x_axis,
   })
-  // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
-  let internal_y_axis = $derived({
+  const internal_y_axis = $derived<AxisConfig>({
     label: y_label,
     format: `.2f`,
     range: y_range,
     ...y_axis,
-  })
-  $effect(() => {
-    const next = sync_axis_range(y_axis, internal_y_axis.range)
-    if (next !== y_axis) y_axis = next
   })
 
   let display = $state({
@@ -348,8 +343,9 @@
 {#if has_valid_data}
   <ScatterPlot
     series={series_data}
-    x_axis={final_x_axis}
-    bind:y_axis={internal_y_axis}
+    x_axis={internal_x_axis}
+    y_axis={internal_y_axis}
+    bind:view
     bind:display
     bind:resolved_padding
     {show_legend}
@@ -369,7 +365,7 @@
         is_horizontal,
         is_phonon,
         units: unit,
-        x_axis_label: final_x_axis.label ?? ``,
+        x_axis_label: internal_x_axis.label ?? ``,
         y_axis_label: internal_y_axis.label ?? ``,
         num_series: Object.keys(doses_dict).length,
       })}

@@ -3,19 +3,24 @@ import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
 import type { Complex, PhononModeData } from '$lib/spectral'
 import {
   is_commensurate_phonon_supercell,
+  is_imaginary_frequency,
+  nearest_qpoint_with_eigenvector,
   PHONON_VECTOR_KEY,
   phonon_band_structure_from_modes,
   phonon_mode_character,
   phonon_mode_pattern,
   phonon_mode_run,
   phonon_mode_trajectory as create_phonon_mode_run,
+  phonon_qpoint_labels,
   phonon_supercell,
   parse_phonon_modes,
+  qpoint_has_eigenvectors,
 } from '$lib/spectral'
 import { get_structure_vector_keys } from '$lib/structure'
 import { compute_bonds, get_bond_key } from '$lib/structure/bonding'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
+import cspbi3_band_yaml from '$site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
 import nacl_band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { IDENTITY_MATRIX3 } from '../setup'
 
@@ -475,5 +480,77 @@ describe(`phonon band helpers`, () => {
     expect(() => phonon_band_structure_from_modes(make_mode_data())).toThrow(
       /no band path metadata/,
     )
+  })
+
+  it(`labels only the segment endpoints, last segment winning at shared indices`, () => {
+    const data = make_mode_data()
+    data.path_segments = [
+      { start_index: 0, end_index: 2, start_label: `GAMMA`, end_label: `X` },
+      { start_index: 2, end_index: 4, start_label: `X`, end_label: `M` },
+      { start_index: 5, end_index: 7, start_label: `R`, end_label: `` },
+    ]
+    expect(phonon_qpoint_labels(data)).toEqual({ 0: `GAMMA`, 2: `X`, 4: `M`, 5: `R` })
+    expect(phonon_qpoint_labels(make_mode_data())).toEqual({})
+  })
+
+  it.each([
+    [-0.6, true],
+    [-0.5, false],
+    [-1e-7, false],
+    [0, false],
+    [3, false],
+  ])(`is_imaginary_frequency(%s) tolerates acoustic sum rule noise`, (freq, expected) => {
+    expect(is_imaginary_frequency(freq)).toBe(expected)
+  })
+
+  it(`snaps to the nearest q-point carrying an eigenvector for that mode`, () => {
+    const data = make_mode_data()
+    const sparse = { frequency: 1, eigenvector: null }
+    const dense = { frequency: 1, eigenvector: real_x }
+    // eigenvectors only at indices 0 and 3; distances are uneven so index and distance differ
+    data.qpoints = [
+      { q_position: [0, 0, 0], distance: 0, modes: [dense, dense] },
+      { q_position: [0.1, 0, 0], distance: 0.1, modes: [sparse, sparse] },
+      { q_position: [0.4, 0, 0], distance: 2.9, modes: [sparse, sparse] },
+      { q_position: [0.5, 0, 0], distance: 3, modes: [dense, sparse] },
+    ]
+    expect(nearest_qpoint_with_eigenvector(data, 0, 0)).toBe(0)
+    expect(nearest_qpoint_with_eigenvector(data, 1, 0)).toBe(0)
+    // index 2 is nearer to 3 by distance even though it is equidistant by index
+    expect(nearest_qpoint_with_eigenvector(data, 2, 0)).toBe(3)
+    // mode 1 has no eigenvector at index 3, so the snap falls back to Γ
+    expect(nearest_qpoint_with_eigenvector(data, 2, 1)).toBe(0)
+    expect(nearest_qpoint_with_eigenvector(data, 9, 0)).toBe(-1)
+    for (const qpoint of data.qpoints) qpoint.modes = [sparse]
+    expect(nearest_qpoint_with_eigenvector(data, 1, 0)).toBe(-1)
+    // without path distances the nearest index wins
+    for (const qpoint of data.qpoints) qpoint.distance = null
+    data.qpoints[3].modes = [dense]
+    expect(nearest_qpoint_with_eigenvector(data, 2, 0)).toBe(3)
+  })
+
+  it(`parses the sparse-eigenvector CsPbI3 fixture and snaps every q-point`, () => {
+    const data = parse_phonon_modes(cspbi3_band_yaml)
+    expect(data.n_atoms).toBe(20)
+    expect(data.qpoints).toHaveLength(35)
+    expect(data.qpoints[0].modes).toHaveLength(60)
+    expect(data.qpoints.filter(qpoint_has_eigenvectors)).toHaveLength(15)
+    // segment endpoints always carry eigenvectors so labelled points are animatable
+    for (const idx of Object.keys(phonon_qpoint_labels(data)).map(Number)) {
+      expect(data.qpoints[idx].modes[0].eigenvector).not.toBeNull()
+    }
+    for (const [idx, qpoint] of data.qpoints.entries()) {
+      const snapped = nearest_qpoint_with_eigenvector(data, idx, 0)
+      expect(snapped).toBeGreaterThanOrEqual(0)
+      const gap = Math.abs((data.qpoints[snapped].distance ?? 0) - (qpoint.distance ?? 0))
+      // stride 3 on 7-point segments: never more than one neighbour away
+      expect(gap).toBeLessThan(0.2)
+    }
+    expect(phonon_band_structure_from_modes(data).bands).toHaveLength(60)
+    // all 60 branches lie below 3.6 THz (soft, heavy-atom perovskite)
+    const frequencies = data.qpoints.flatMap((qpoint) =>
+      qpoint.modes.map((mode) => mode.frequency),
+    )
+    expect(Math.max(...frequencies)).toBeLessThan(3.6)
   })
 })

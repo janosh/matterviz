@@ -102,20 +102,15 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  lint:
-    name: Code quality
+  ci:
+    name: Lint, type-check and test
     needs: prepare
-    uses: ./.github/workflows/lint.yml
-
-  tests:
-    name: Test suite
-    needs: prepare
-    uses: ./.github/workflows/test.yml
+    uses: ./.github/workflows/ci.yml
 
   # === Build every immutable release artifact before publishing anything ===
   package_matterviz:
     name: Build matterviz npm package
-    needs: [prepare, lint, tests]
+    needs: [prepare, ci]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -140,7 +135,7 @@ jobs:
 
   package_vscode:
     name: Build VS Code extension
-    needs: [prepare, lint, tests]
+    needs: [prepare, ci]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -164,7 +159,7 @@ jobs:
 
   package_anywidget:
     name: Build anywidget npm package
-    needs: [prepare, lint, tests]
+    needs: [prepare, ci]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -199,7 +194,7 @@ jobs:
 
   package_jupyterlab:
     name: Build JupyterLab extension
-    needs: [prepare, lint, tests]
+    needs: [prepare, ci]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -214,7 +209,7 @@ jobs:
         working-directory: extensions/jupyterlab
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          # Match lint.yml: ignored fontawesome scripts trip pnpm's pre-run verification.
+          # Match ci.yml: ignored fontawesome scripts trip pnpm's pre-run verification.
           PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
         run: |
           # --no-project: uv would otherwise try to install this package, which

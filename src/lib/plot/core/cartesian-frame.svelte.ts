@@ -85,9 +85,6 @@ interface CartesianFrameOptions {
   ref_lines: () => readonly IndexedRefLine[]
   pan: () => PanConfig | undefined
   facet_layout: () => FacetLayoutContext | undefined
-  // Write a resolved range back to the chart's (bindable) axis prop. `[null, null]`
-  // clears the override so later data changes recompute the auto range.
-  write_range: (axis: FacetAxis, range: Vec2 | [null, null]) => void
   // Ranges the padding pass measures against inside a facet grid. Defaults to
   // `auto_ranges`; Histogram re-bins against the reconciled x domain first.
   facet_ranges?: () => AxisRanges
@@ -137,8 +134,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   let legend_filter_query = $state(opts.legend()?.filter_query ?? ``)
   const clip_path_id = unique_id(opts.clip_id_prefix ?? `plot-clip`)
 
-  // `initial` and `current` must never share a Vec2: on_reset restores current from initial,
-  // so one in-place edit of a current range would silently rewrite the reset target too.
+  // `initial` is what the caller configured (axis.range pins over auto ranges) and doubles as
+  // the reset target; `current` is the live view every gesture (pan, wheel, rect zoom) edits.
+  // The frame never writes the chart's axis props, so a pinned range survives any gesture and
+  // a reset lands back on it. The two must never share a Vec2: on_reset restores current from
+  // initial, so one in-place edit of a current range would silently rewrite the reset target.
   const copy_axis_ranges = (src: AxisRanges): AxisRanges =>
     Object.fromEntries(FACET_AXES.map((axis) => [axis, [...src[axis]] as Vec2])) as AxisRanges
 
@@ -506,11 +506,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     on_drag_move: opts.on_drag_move,
     on_rect_select: opts.on_rect_select,
     on_rect_zoom: (start, current) => {
-      // Write the inverted rect back into the axis props so the range sync effect can't
-      // override it. Gate x2/y2 on real data: their scales are [0, 1] sentinels
-      // otherwise, so inverting would store a phantom range in the bindable prop.
+      // Gate x2/y2 on real data: their scales are [0, 1] sentinels otherwise, so inverting
+      // would store a phantom range.
       const commit = (axis: FacetAxis, range: Vec2 | null) => {
-        if (range && !facet.update_range(axis, range)) opts.write_range(axis, range)
+        if (range) facet.update_range(axis, range)
       }
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
@@ -524,11 +523,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     on_reset: () => {
       if (facet.reset_ranges()) return
-      // Undo any pan/zoom, then clear the axis range overrides so future data
-      // changes recalculate auto ranges
       ranges.current = copy_axis_ranges(ranges.initial)
       apply_y2_sync()
-      for (const axis of FACET_AXES) opts.write_range(axis, [null, null])
     },
   })
 

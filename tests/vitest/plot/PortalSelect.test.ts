@@ -110,6 +110,22 @@ describe(`PortalSelect`, () => {
     void unmount(comp)
   })
 
+  // under showModal() the rest of the document is inert, so a <body> portal would leave
+  // the list unclickable behind the dialog
+  test(`inside an open dialog the listbox portals into the dialog, not <body>`, async () => {
+    const dialog = document.createElement(`dialog`)
+    dialog.setAttribute(`open`, ``)
+    document.body.append(dialog)
+    const comp = mount(PortalSelect, { target: dialog, props: { options } })
+    await tick()
+    get_trigger()?.click()
+    await tick()
+    const dropdown = document.querySelector(`.portal-select-dropdown`)
+    expect(dropdown?.parentElement).toBe(dialog)
+    void unmount(comp)
+    dialog.remove()
+  })
+
   test(`a press outside closes the dropdown`, async () => {
     const comp = mount(PortalSelect, { target: document.body, props: { options } })
     await tick() // let bind:this land before the handler reads the trigger

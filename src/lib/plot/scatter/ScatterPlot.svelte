@@ -10,6 +10,7 @@
   import { partition_point, type Point2D, type Vec2 } from '$lib/math'
   import type {
     AxisLoadError,
+    AxisRanges,
     BasePlotProps,
     ColorScaleConfig,
     DataLoaderFn,
@@ -64,7 +65,7 @@
   } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
-  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { build_obstacles_norm } from '$lib/plot/core/decorations'
   import {
     COLOR_BAR_DEFAULTS,
@@ -99,6 +100,7 @@
     get_relative_coords,
     is_activation_key,
     sorted_range,
+    vec2_equal,
   } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { resolve_plot_display } from '$lib/plot/core/display.svelte'
@@ -171,6 +173,7 @@
     selected_series_idx = $bindable(0),
     wrapper = $bindable(),
     resolved_padding = $bindable(),
+    view = $bindable(),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     children,
@@ -186,10 +189,12 @@
     error_bar_cap = 4,
     point_hit_padding = 0,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
-    BasePlotProps &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
+    Omit<BasePlotProps, `children`> &
     PlotConfig & {
       series?: DataSeries<Metadata>[]
+      // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
+      children?: Snippet<[UserContentProps]>
       styles?: StyleOverrides
       current_x_value?: number | null
       tooltip_point?: InternalPoint<Metadata> | null
@@ -244,6 +249,10 @@
       // decorations), so hosts laying out several plots (BandsAndDos) can feed the maximum
       // back as a shared `padding` and keep their chart areas aligned
       resolved_padding?: Required<Sides>
+      // The range each axis currently shows, after pan/zoom. The chart writes every change;
+      // a host writing an axis moves the view without touching the axis config, so linked
+      // panels (BandsAndDos) share one zoom while each keeps its own pins and reset target.
+      view?: Partial<AxisRanges>
       // Interactive axis props
       data_loader?: DataLoaderFn<Metadata>
       on_axis_change?: (
@@ -465,12 +474,6 @@
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
     facet_layout: () => facet_layout,
-    write_range: (axis, range) => {
-      if (axis === `x`) x_axis = { ...x_axis, range }
-      else if (axis === `x2`) x2_axis = { ...x2_axis, range }
-      else if (axis === `y`) y_axis = { ...y_axis, range }
-      else y2_axis = { ...y2_axis, range }
-    },
     // Alt+drag selects instead of zooming. Hit-tested in screen space (not by inverting
     // the rect into data space) so the same test works on both axes whatever their scale
     // types, and so a point's own offset counts - the user selects what they see.
@@ -518,6 +521,28 @@
 
   $effect(() => {
     resolved_padding = frame.pad
+  })
+
+  // Two-way `view` sync. Value comparison on both legs keeps the pair from ping-ponging:
+  // the frame's write lands as a fresh Vec2 per axis, and a host mirroring it back must
+  // not count as a new zoom.
+  $effect(() => {
+    const current = frame.ranges.current
+    const shown = untrack(() => view)
+    const in_sync = (axis: FacetAxis) =>
+      shown?.[axis] && vec2_equal(shown[axis], current[axis])
+    if (FACET_AXES.every(in_sync)) return
+    view = Object.fromEntries(FACET_AXES.map((axis) => [axis, [...current[axis]] as Vec2]))
+  })
+  $effect(() => {
+    if (!view) return
+    for (const axis of FACET_AXES) {
+      const range = view[axis]
+      const current = untrack(() => frame.ranges.current[axis])
+      if (range && !vec2_equal(range, current)) {
+        frame.facet.update_range(axis, [...range] as Vec2)
+      }
+    }
   })
 
   // === Colorbar: the frame owns the legend item, the colorbar is ScatterPlot's own decoration ===
@@ -1097,7 +1122,8 @@
     }),
   )
 
-  const x_hover_candidate = (x_rel: number, y_rel: number): InternalPoint<Metadata> | null => {
+  // Nearest point along x within the hover radius, plus that x distance for the click radius
+  const x_hover_candidate = (x_rel: number, y_rel: number) => {
     let best_point: InternalPoint<Metadata> | null = null
     let best_x_distance = Number.POSITIVE_INFINITY
     let best_y_distance = Number.POSITIVE_INFINITY
@@ -1141,20 +1167,31 @@
         }
       }
     }
-    return best_x_distance <= hover_radius ? best_point : null
+    return best_point && best_x_distance <= hover_radius
+      ? { point: best_point, distance: best_x_distance }
+      : null
   }
 
-  const closest_point_at = (x_rel: number, y_rel: number) =>
-    hover_config.mode === `x`
-      ? x_hover_candidate(x_rel, y_rel)
-      : hover_index
-        ? query_nearest(hover_index, { x: x_rel, y: y_rel })?.point
-        : null
+  // Nearest point within the hover radius and its screen distance (along x only in `x` mode)
+  const closest_hit_at = (x_rel: number, y_rel: number) => {
+    if (hover_config.mode === `x`) return x_hover_candidate(x_rel, y_rel)
+    const hit = hover_index && query_nearest(hover_index, { x: x_rel, y: y_rel })
+    return hit && { point: hit.point, distance: Math.hypot(hit.cx - x_rel, hit.cy - y_rel) }
+  }
+  // Point an on_plot_click at these coords would reach: the tooltip's candidate, but only
+  // within the (usually tighter) click radius
+  const plot_click_target = (hit: ReturnType<typeof closest_hit_at>) =>
+    hit && hit.distance <= (hover_config.click_threshold_px ?? hover_radius) ? hit.point : null
+  // Whether a click on the plot surface right now would reach on_plot_click, from the same
+  // lookup handle_plot_click runs, so the pointer cursor promises exactly the clicks that land
+  let plot_click_armed = $state(false)
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
-    const closest_point = closest_point_at(x_rel, y_rel)
+    const hit = closest_hit_at(x_rel, y_rel)
+    const closest_point = hit?.point ?? null
+    plot_click_armed = Boolean(on_plot_click && plot_click_target(hit))
 
     if (closest_point) {
       // Construct handler props synchronously to avoid stale derived reads
@@ -1204,7 +1241,7 @@
     }
     const coords = get_relative_coords(evt)
     if (!coords) return
-    const point = closest_point_at(coords.x, coords.y)
+    const point = plot_click_target(closest_hit_at(coords.x, coords.y))
     const props = point && construct_handler_props(point)
     if (point && props) on_plot_click({ ...props, event: evt, point })
   }
@@ -1564,7 +1601,8 @@
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
-  on_mouse_move={hover_config.show_tooltip !== false || on_point_hover
+  idle_cursor={plot_click_armed ? `pointer` : `crosshair`}
+  on_mouse_move={hover_config.show_tooltip !== false || on_point_hover || on_plot_click
     ? (evt) => {
         // Only find the closest point when not actively dragging
         if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
@@ -1576,6 +1614,7 @@
   on_mouse_leave={() => {
     end_queued_mouse_move(false)
     hovered = false
+    plot_click_armed = false
     tooltip_point = null
     on_point_hover?.(null)
   }}

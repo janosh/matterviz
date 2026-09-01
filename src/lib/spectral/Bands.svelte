@@ -1,14 +1,21 @@
 <script lang="ts">
+  import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '$lib/brillouin'
+  import type { BZPopupPoint } from '$lib/brillouin'
   import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { to_error } from '$lib/utils'
   import { SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { clamp, reciprocal_lattice } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-  import { sync_axis_range } from '$lib/plot/core/shared-axes'
-  import type { AxisConfig, DataSeries, FillRegion } from '$lib/plot/core/types'
+  import type {
+    AxisConfig,
+    DataSeries,
+    FillRegion,
+    UserContentProps,
+  } from '$lib/plot/core/types'
   import * as helpers from '$lib/spectral/helpers'
   import {
     convert_frequencies,
@@ -25,20 +32,25 @@
     FrequencyUnit,
     LineKwargs,
     PathMode,
+    QPoint,
     RibbonConfig,
   } from '$lib/spectral/types'
+  import type { Crystal } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
     band_structs,
+    structure = undefined,
+    bz_popup_props = {},
     line_kwargs = {},
     path_mode = `strict`,
     band_type = undefined,
     show_legend,
     x_axis = {},
-    y_axis = $bindable({}),
+    y_axis = {},
     x_positions = $bindable(),
+    view = $bindable(),
     reference_frequency = null,
     highlighted_qpoint_index = null,
     highlighted_band_index = null,
@@ -56,9 +68,15 @@
     point_hit_padding = 3,
     // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
     resolved_padding = $bindable(),
+    children: user_children,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
+    // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the
+    // clicked point whenever a reciprocal lattice is known: from the band data itself (pymatgen
+    // and phonopy inputs carry one) or, overriding it, from this crystal's lattice
+    structure?: Crystal
+    bz_popup_props?: Partial<ComponentProps<typeof BrillouinZonePopup>>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     line_kwargs?: LineKwargs
@@ -324,31 +342,80 @@
     return { series_data: all_series, ribbon_data: all_ribbons, max_abs_slope: max_slope || 1 }
   })
 
-  // Symmetry-point tick labels keyed by x position; labels meeting at one x (discontinuities)
-  // are joined with a pipe
-  let x_axis_ticks = $derived.by(() => {
-    const labels_at: Record<number, string[]> = {}
-    const add_label = (pos: number, label: string | null | undefined) => {
-      if (!label) return
-      const pretty = helpers.pretty_sym_point(label)
-      labels_at[pos] ??= []
-      if (!labels_at[pos].includes(pretty)) labels_at[pos].push(pretty)
+  // Labeled symmetry points keyed by x position (several meet at one x at a discontinuity),
+  // from the first structure plotting each segment
+  let sym_points_at_x = $derived.by(() => {
+    const points_at: Record<number, { label: string; frac_coords: Vec3 }[]> = {}
+    const add_point = (pos: number, qpoint: QPoint | undefined) => {
+      if (!qpoint?.label) return
+      const label = helpers.pretty_sym_point(qpoint.label)
+      points_at[pos] ??= []
+      if (!points_at[pos].some((point) => point.label === label)) {
+        points_at[pos].push({ label, frac_coords: qpoint.frac_coords })
+      }
     }
     for (const [segment_key, [x_start, x_end]] of Object.entries(internal_x_positions)) {
       const [bs, branch] = all_segments[segment_key][0]
-      add_label(x_start, bs.qpoints[branch.start_index]?.label)
-      add_label(x_end, bs.qpoints[branch.end_index]?.label)
+      add_point(x_start, bs.qpoints[branch.start_index])
+      add_point(x_end, bs.qpoints[branch.end_index])
     }
-    return Object.fromEntries(
-      // Non-breaking spaces keep a discontinuity label (`K | U`) on one line; the axis wraps
-      // long tick labels at ordinary spaces when they crowd each other on narrow plots
-      Object.entries(labels_at).map(([pos, labels]) => [pos, labels.join(`\u00A0|\u00A0`)]),
-    )
+    return points_at
+  })
+  // Tick labels; labels meeting at one x are joined with a pipe. Non-breaking spaces keep a
+  // discontinuity label (`K | U`) on one line; the axis wraps long tick labels at ordinary
+  // spaces when they crowd each other on narrow plots
+  let x_axis_ticks = $derived(
+    Object.fromEntries(
+      Object.entries(sym_points_at_x).map(([pos, points]) => [
+        pos,
+        points.map(({ label }) => label).join(`\u00A0|\u00A0`),
+      ]),
+    ),
+  )
+
+  // === Brillouin zone popup for a clicked symmetry point ===
+  // A passed structure wins; else the reciprocal lattice the band data itself carries
+  let k_lattice = $derived(
+    structure?.lattice?.matrix
+      ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+      : (structures[0]?.bs.recip_lattice ?? null),
+  )
+  // The first structure's k-path (Cartesian), drawn in the popup for context
+  let k_path_points = $derived(
+    k_lattice && structures[0]
+      ? helpers.extract_k_path_points(structures[0].bs, k_lattice)
+      : [],
+  )
+  let k_path_labels = $derived(
+    structures[0] ? helpers.k_path_labels(structures[0].bs, k_path_points) : [],
+  )
+  // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
+  // scale, so it follows zoom, resize and fullscreen
+  let bz_popup_x = $state<number | null>(null)
+  const in_range = (value: number, [lo, hi]: Vec2) =>
+    value >= Math.min(lo, hi) && value <= Math.max(lo, hi)
+  let bz_popup_points = $derived.by((): BZPopupPoint[] => {
+    if (bz_popup_x === null || !k_lattice) return []
+    return (sym_points_at_x[bz_popup_x] ?? []).map((point) => ({
+      ...point,
+      position: helpers.frac_k_to_cartesian(point.frac_coords, k_lattice),
+    }))
   })
 
   let x_range = $derived.by((): Vec2 => {
     const flat = Object.values(internal_x_positions).flat()
     return [flat[0] ?? 0, flat.at(-1) ?? 1]
+  })
+  // Pinned to the k-path: the auto range would nice() the path end (3.3 -> 3.5) and leave the
+  // bands short of the frame
+  const internal_x_axis = $derived<AxisConfig>({
+    label: `Wave Vector`,
+    ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
+    format: ``,
+    range: x_range,
+    on_tick_click: k_lattice ? (tick) => (bz_popup_x = tick) : undefined,
+    active_tick: bz_popup_x,
+    ...x_axis,
   })
 
   // Range in the data's own unit; unit conversion is a positive scale factor, which commutes
@@ -365,8 +432,7 @@
   )
   let y_range = $derived(raw_y_range && (convert_band_values(raw_y_range) as Vec2))
 
-  // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
-  let internal_y_axis = $derived({
+  const internal_y_axis = $derived<AxisConfig>({
     label:
       detected_band_type === `phonon`
         ? `Frequency (${frequency_unit_label(unit)})`
@@ -375,11 +441,6 @@
     label_shift: { y: 15 },
     range: y_range,
     ...y_axis,
-  })
-
-  $effect(() => {
-    const next = sync_axis_range(y_axis, internal_y_axis.range)
-    if (next !== y_axis) y_axis = next
   })
 
   let fill_regions = $derived.by((): FillRegion[] => {
@@ -475,29 +536,27 @@
 </script>
 
 {#if series_data.length > 0 && !strict_path_error}
+  <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {id}
     data-testid={data_testid}
     series={series_data}
     {point_hit_padding}
     {fill_regions}
-    x_axis={{
-      label: `Wave Vector`,
-      ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
-      format: ``,
-      range: x_range,
-      ...x_axis,
-    }}
-    bind:y_axis={internal_y_axis}
+    x_axis={internal_x_axis}
+    y_axis={internal_y_axis}
+    bind:view
     bind:display
     {show_legend}
     legend={num_structures > 1 ? {} : null}
-    hover_config={{ threshold_px: 50 }}
+    hover_config={{ threshold_px: 50, click_threshold_px: 10 }}
     {selected_point}
     {...rest}
+    style="--tick-active-fill: var(--bands-active-tick-color, #ff2020); {rest.style ?? ``}"
     bind:show_controls
     bind:controls_open
     bind:resolved_padding
+    children={frame_children}
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const { name: y_label, unit: y_unit } = helpers.parse_axis_label(
@@ -766,6 +825,37 @@
       {/if}
     {/snippet}
   </ScatterPlot>
+  {#snippet frame_children(ctx: UserContentProps)}
+    {@render user_children?.(ctx)}
+    <!-- hidden while zoomed away from its tick -->
+    {#if k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}
+      <!-- centered above the tick on the x axis, kept inside the plot (centered on a plot
+      narrower than itself). The bottom arrow tracks the tick even when clamping shifts the popup
+      off-center -->
+      {@const tick_x = ctx.x_scale_fn(bz_popup_x)}
+      {@const half_width = (bz_popup_props.width ?? BZ_POPUP_DEFAULT_WIDTH) / 2}
+      {@const left =
+        ctx.width < 2 * half_width
+          ? ctx.width / 2
+          : clamp(tick_x, half_width, ctx.width - half_width)}
+      <BrillouinZonePopup
+        {k_lattice}
+        points={bz_popup_points}
+        {k_path_points}
+        {k_path_labels}
+        place="manual"
+        arrow_x={clamp(tick_x - left + half_width, 12, 2 * half_width - 12)}
+        {...bz_popup_props}
+        style="left: {left}px; top: {ctx.height -
+          ctx.pad.b}px; transform: translate(-50%, calc(-100% - 8px)); {bz_popup_props.style ??
+          ``}"
+        on_close={() => {
+          bz_popup_x = null
+          bz_popup_props.on_close?.()
+        }}
+      />
+    {/if}
+  {/snippet}
 {:else}
   <EmptyState
     {id}

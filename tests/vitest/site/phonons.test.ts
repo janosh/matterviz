@@ -103,8 +103,17 @@ describe(`Phonon Module Tests`, () => {
       // fixtures store q-points to 7 decimals, which zig-zags the path by up to ~1e-7 and
       // lengthens the H2 M-K leg by 7.3e-11 over its chord, hence the 5e-10 tolerance.
       const raw = phonon_data[id].phonon_bandstructure
-      if (!raw) throw new Error(`${id}: missing phonon_bandstructure`)
-      const recip_T = transpose_3x3_matrix(raw.recip_lattice.matrix)
+      if (!raw || !band_struct.recip_lattice) throw new Error(`${id}: missing recip lattice`)
+      // the kept lattice is the fixture's phonopy-convention recip_lattice scaled by the 2π it lacks
+      band_struct.recip_lattice.forEach((row, row_idx) =>
+        row.forEach((val, col_idx) =>
+          expect(val, id).toBeCloseTo(
+            raw.recip_lattice.matrix[row_idx][col_idx] * 2 * Math.PI,
+            12,
+          ),
+        ),
+      )
+      const recip_T = transpose_3x3_matrix(band_struct.recip_lattice)
       for (const { start_index, end_index, name } of band_struct.branches) {
         const delta_q = subtract(
           band_struct.qpoints[end_index].frac_coords,

@@ -94,6 +94,7 @@
     k_path_points = [],
     k_path_labels = [],
     hovered_k_point = null,
+    highlighted_k_points = [],
     hovered_qpoint_index = null,
     on_kpath_hover,
     children,
@@ -135,6 +136,9 @@
     k_path_labels?: { position: Vec3; label: string | null }[]
     // Currently hovered k-point in Cartesian reciprocal space coordinates
     hovered_k_point?: Vec3 | null
+    // Persistently marked k-points in Cartesian reciprocal coordinates (same treatment as the
+    // hovered point; BrillouinZonePopup pins the clicked symmetry point this way)
+    highlighted_k_points?: Vec3[]
     // Index of the currently hovered q-point in the band structure
     hovered_qpoint_index?: number | null
     // Called with the q-point index when the user hovers the k-path in the BZ (null on leave)
@@ -346,6 +350,7 @@
           {k_path_points}
           {k_path_labels}
           {hovered_k_point}
+          {highlighted_k_points}
           {hovered_qpoint_index}
           {on_kpath_hover}
           {show_ibz}

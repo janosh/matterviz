@@ -107,13 +107,15 @@
 {/if}
 
 {#if dropdown_open}
-  <!-- portalled to <body> to escape the plot's overflow clipping, then parked under the
-  trigger by `float`. Scoped CSS survives the move, so no inline styles are needed. -->
+  <!-- portalled out of the plot to escape its overflow clipping, then parked under the
+  trigger by `float`. Scoped CSS survives the move, so no inline styles are needed. Inside
+  an open <dialog> the list stays in the dialog: under showModal() everything outside is
+  inert and painted below the top layer, so a <body> portal would be unclickable. -->
   <div
     bind:this={dropdown_el}
     class="portal-select-dropdown"
     role="listbox"
-    {@attach portal(document.body)}
+    {@attach portal(trigger_el?.closest(`dialog[open]`) ?? document.body)}
     {@attach float({
       anchor: trigger_el,
       placement: `bottom`,

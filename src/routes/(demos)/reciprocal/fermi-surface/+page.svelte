@@ -21,6 +21,5 @@
   <a href="https://github.com/fermisurfaces/IFermi">IFermi</a> JSON by dropping it onto the viewer.
 </p>
 
-<div class="bleed-1400">
-  <FermiSurfaceDemo show_slice sync_url />
-</div>
+<!-- Only the 3D viewer bleeds past the text column; the file picker and slice plot stay in it -->
+<FermiSurfaceDemo show_slice sync_url class="bleed-1400" />

@@ -17,14 +17,19 @@ if (typeof document !== `undefined`) {
   })
 }
 
-// Pointer-move throttle (~60 fps) for hover handlers whose per-event work is O(mesh), e.g.
-// the nearest-vertex lookup on a Fermi sheet
+// Pointer-move throttle (~60 fps) for hover handlers that would otherwise rebuild tooltip
+// state on every event
 export const HOVER_THROTTLE_MS = 16
+
+// Corner indices of the triangle a raycast hit (three's Intersection.face)
+export type HitFace = { a: number; b: number; c: number }
 
 // Threlte pointer event type for mesh interactions. stopPropagation() stops Threlte's own
 // dispatch to farther hits along the ray (nativeEvent.stopPropagation only stops the DOM event)
 export type ThreltePointerEvent = {
   point: Vector3
+  // Absent for non-mesh hits (points, lines)
+  face?: HitFace | null
   nativeEvent: PointerEvent
   stopPropagation: () => void
 }
@@ -219,6 +224,7 @@ export function build_orbit_props(opts: {
     enableZoom: opts.zoom_speed > 0,
     zoomSpeed: is_ortho ? opts.zoom_speed * 2 : opts.zoom_speed,
     zoomToCursor: opts.zoom_to_cursor,
+    // consumed by SceneCamera's view-offset pan (pan.ts), which disables OrbitControls' own
     enablePan: opts.pan_speed > 0,
     panSpeed: opts.pan_speed,
     maxZoom: opts.max_zoom,

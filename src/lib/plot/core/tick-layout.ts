@@ -10,6 +10,7 @@ import {
   DEFAULT_FONT_SPEC,
   get_text_metrics_revision,
   measure_text_line,
+  graphemes,
 } from '$lib/plot/core/text-metrics'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
 import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
@@ -482,9 +483,6 @@ const thinned_candidate = (
   )
 
 const MIN_RETAINED_INFORMATION_FRACTION = 0.25
-const grapheme_segmenter = new Intl.Segmenter(`en`, { granularity: `grapheme` })
-const graphemes = (text: string): string[] =>
-  Array.from(grapheme_segmenter.segment(text), ({ segment }) => segment)
 const information_count = (text: string): number =>
   graphemes(text).filter((character) => /[\p{L}\p{N}]/u.test(character)).length
 

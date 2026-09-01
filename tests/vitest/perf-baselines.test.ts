@@ -3,7 +3,7 @@
 // above 2x that baseline, after scaling by how much slower than the baseline machine this one
 // proves on a fixed reference workload. That keeps 2x meaningful on a throttled CI runner
 // without loosening it into a band no real regression would ever hit. Sub-2x slowdowns pass.
-// Opt in locally with MATTERVIZ_PERF=1; CI runs it in its own job (see test.yml). The file is
+// Opt in locally with MATTERVIZ_PERF=1; CI runs it in its own job (see ci.yml). The file is
 // excluded from the default run in vite.config.ts, so it never pays its import cost there.
 import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coords'
 import { calculate_e_above_hull, compute_lower_hull_nd } from '$lib/convex-hull/thermodynamics'

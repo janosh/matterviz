@@ -3,6 +3,7 @@ import * as math from '$lib/math'
 import {
   clip_frac_plane_to_cell,
   lattice_plane_polygons,
+  MAX_AUTO_PLANES,
   polygon_edge_vertices,
   polygon_fan_vertices,
 } from '$lib/structure/lattice-planes'
@@ -138,14 +139,15 @@ describe(`lattice_plane_polygons`, () => {
     [[1, 0.5, 0], `must be integers`],
     [[1, Number.NaN, 0], `must be integers`],
     [[1, 0, 0, 1] as unknown as Vec3, `must be 3 numbers`],
-    [[60_000, -60_000, 0], `120001 lattice planes in the cell, more than the 100000`],
-    [[10 ** 12, 0, 0], `more than the 100000`], // would exceed the max array length
+    [[60_000, -60_000, 0], `120001 lattice planes in the cell`],
+    [[10 ** 12, 0, 0], `more than the ${MAX_AUTO_PLANES}`], // would exceed the max array length
   ])(`rejects invalid Miller indices %j`, (hkl, message) => {
     expect(() => lattice_plane_polygons({ hkl }, cubic)).toThrow(message)
   })
 
   test(`explicit offsets bypass the automatic plane-count limit`, () => {
-    const polys = lattice_plane_polygons({ hkl: [200_000, 0, 0], offsets: [1000] }, cubic)
+    const hkl: Vec3 = [2 * MAX_AUTO_PLANES, 0, 0]
+    const polys = lattice_plane_polygons({ hkl, offsets: [1000] }, cubic)
     expect(polys.map(({ offset }) => offset)).toEqual([1000])
   })
 })

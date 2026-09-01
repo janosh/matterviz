@@ -1,48 +1,94 @@
 import {
-  create_synced_y_axes,
+  create_bands_dos_sync,
   shared_resolved_padding_floor,
 } from '$lib/spectral/synced-axes.svelte'
+import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
 import { flushSync } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test } from 'vitest'
 
 const roots: (() => void)[] = []
 afterEach(() => {
   for (const destroy of roots.splice(0)) destroy()
 })
 
-test(`axes rebuild only when a source changes identity or the source list grows`, () => {
-  const sources = $state<{ list: unknown[] }>({ list: [`bands`] })
-  const default_axes = vi.fn(() => [{ label: `y` }])
-  let synced: ReturnType<typeof create_synced_y_axes> | undefined
+const band_structs: BaseBandStructure = {
+  qpoints: [
+    { label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 },
+    { label: `X`, frac_coords: [0.5, 0, 0], distance: 1 },
+  ],
+  branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
+  labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+  distance: [0, 1],
+  nb_bands: 2,
+  bands: [
+    [0, 1],
+    [2, 4],
+  ],
+}
+const doses: PhononDos = { type: `phonon`, frequencies: [0, 2, 4], densities: [0, 1, 0] }
+
+// Each panel binds its `view`; the sync mirrors the y view of whichever panel moved into
+// the other, so a zoom or reset in either panel reaches both
+test(`side-by-side panels mirror y view changes, stacked panels don't`, () => {
+  const inputs = $state({ side_by_side: true, sync_zoom: true })
+  let sync: ReturnType<typeof create_bands_dos_sync> | undefined
   roots.push(
     $effect.root(() => {
-      synced = create_synced_y_axes({
-        default_axes,
-        sources: () => sources.list,
-        shared_range: () => undefined,
-        sync_zoom: () => false,
+      sync = create_bands_dos_sync({
+        band_structs: () => band_structs,
+        doses: () => doses,
+        bands_y_axis: () => undefined,
+        dos_y_axis: () => undefined,
+        bands_padding: () => undefined,
+        dos_padding: () => undefined,
+        side_by_side: () => inputs.side_by_side,
+        sync_zoom: () => inputs.sync_zoom,
+        base_padding: { t: 20, b: 50 },
       })
     }),
   )
   flushSync()
-  // Construction built the axes; the first effect run must not build them again
-  expect(default_axes).toHaveBeenCalledOnce()
-  const initial_axes = synced?.y_axes
+  if (!sync) throw new Error(`sync not created`)
+  const shared = sync.shared_range
+  if (!shared) throw new Error(`no shared range`)
+  expect(sync.y_axes.map((axis) => axis.range)).toEqual([shared, shared])
+  expect(sync.y_axes[1].label).toBe(``)
 
-  // Same identities: nothing happens
-  sources.list = [`bands`]
+  // both panels report their initial view (the shared pin); nothing to mirror yet
+  sync.views[0] = { x: [0, 1], y: [...shared] }
+  sync.views[1] = { x: [0, 5], y: [...shared] }
   flushSync()
-  expect(default_axes).toHaveBeenCalledOnce()
-  expect(synced?.y_axes).toBe(initial_axes)
+  expect(sync.views[1]).toEqual({ x: [0, 5], y: shared })
 
-  // A longer list whose leading entries match used to be missed entirely
-  sources.list = [`bands`, `dos`]
+  // a zoom in the bands panel reaches the DOS panel's y view, and only y
+  sync.views[0] = { x: [0, 1], y: [1, 3] }
   flushSync()
-  expect(default_axes).toHaveBeenCalledTimes(2)
+  expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 3] })
+  // a reset of the DOS panel (back to the shared range) reaches the bands panel
+  sync.views[1] = { x: [0, 5], y: [...shared] }
+  flushSync()
+  expect(sync.views[0]).toEqual({ x: [0, 1], y: shared })
+  // the mirrored range is copied, never aliased between the two panels' views
+  expect(sync.views[0]?.y).not.toBe(sync.views[1]?.y)
 
-  sources.list = [`other`, `dos`]
+  // with the link off, panels zoom independently
+  inputs.sync_zoom = false
   flushSync()
-  expect(default_axes).toHaveBeenCalledTimes(3)
+  sync.views[1] = { x: [0, 5], y: [1, 2] }
+  flushSync()
+  expect(sync.views[0]).toEqual({ x: [0, 1], y: shared })
+  // re-enabling the link lets the panel that left the shared range lead
+  inputs.sync_zoom = true
+  flushSync()
+  expect(sync.views[0]).toEqual({ x: [0, 1], y: [1, 2] })
+
+  // stacked, the DOS plots density on y: its view no longer takes part
+  inputs.side_by_side = false
+  flushSync()
+  expect(sync.y_axes[1]).toEqual({})
+  sync.views[0] = { x: [0, 1], y: [2, 3] }
+  flushSync()
+  expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 2] })
 })
 
 test(`padding floor only ever rises, ignores sub-pixel creep and undefined reports`, () => {

@@ -3,6 +3,7 @@ import { TrajectorySpectroscopyPane, TrajectorySpectrumPlot } from '$lib/spectra
 import { trajectory_from_frames } from '$lib/trajectory'
 import { flushSync, mount, tick, unmount, type Component } from 'svelte'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { query } from '../setup'
 
 const curve = {
   frequencies: [0, 1, 2, 3, 4],
@@ -103,8 +104,7 @@ describe(`TrajectorySpectrumPlot`, () => {
       style: `height: 240px`,
     })
     await tick()
-    const spectrum_plots = target.querySelector<HTMLElement>(`.trajectory-spectrum-plots`)
-    if (!spectrum_plots) throw new Error(`spectrum plot container not rendered`)
+    const spectrum_plots = query(target, `.trajectory-spectrum-plots`)
     expect(spectrum_plots.style.height).toBe(`240px`)
     expect(target.querySelectorAll(`.scatter`)).toHaveLength(2)
     expect(target.textContent).toContain(`Relative IR intensity`)
@@ -288,8 +288,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   set_select(ir_select, `polarization`)
   expect(ir_select.value).toBe(`polarization`)
   expect(kind_select.value).toBe(`polarization`)
-  const continuous_checkbox = target.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
-  if (!continuous_checkbox) throw new Error(`missing branch-continuous polarization control`)
+  const continuous_checkbox = query<HTMLInputElement>(target, `input[type="checkbox"]`)
   continuous_checkbox.checked = true
   continuous_checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
@@ -337,19 +336,16 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
     expect(settings_idx).toBeLessThan(display_idx)
   })
   expect(labeled_select(inline_target, `Preprocessing`).value).toBe(`body_fixed`)
-  const details_toggle = inline_target.querySelector<HTMLButtonElement>(
+  const details_toggle = query<HTMLButtonElement>(
+    inline_target,
     `.spectroscopy-details-toggle`,
   )
-  if (!details_toggle) throw new Error(`missing spectroscopy details toggle`)
   details_toggle.click()
   await tick()
   expect(inline_target.querySelector(`.spectroscopy-details-pane`)?.textContent).toContain(
     `VDOS is derived from atomic velocities`,
   )
-  const inline_spectrum_plots = inline_target.querySelector<HTMLElement>(
-    `.trajectory-spectrum-plots`,
-  )
-  if (!inline_spectrum_plots) throw new Error(`inline spectrum plot container not rendered`)
+  const inline_spectrum_plots = query(inline_target, `.trajectory-spectrum-plots`)
   expect(inline_spectrum_plots.style.height).toBe(`100%`)
   expect(inline_target.querySelector<HTMLElement>(`.facet-grid`)?.style.height).toBe(`100%`)
   expect(inline_target.querySelector(`.trajectory`)).toBeNull()

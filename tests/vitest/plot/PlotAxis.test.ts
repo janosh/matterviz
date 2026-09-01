@@ -209,6 +209,54 @@ describe(`PlotAxis`, () => {
     expect(texts).toEqual([`α`, `β`])
   })
 
+  test(`axis.on_tick_click turns labels into buttons that report the tick value`, async () => {
+    const on_tick_click = vi.fn()
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [50, 100],
+      axis: { ticks: { 50: `Γ`, 100: `X` }, on_tick_click, active_tick: 100 },
+    })
+    const [gamma, x_label] = [...svg.querySelectorAll<SVGTextElement>(`g.tick text`)]
+    expect(gamma.getAttribute(`role`)).toBe(`button`)
+    expect(gamma.getAttribute(`tabindex`)).toBe(`0`)
+    expect(gamma.classList.contains(`clickable`)).toBe(true)
+    // only the active tick reads as pressed
+    expect(gamma.getAttribute(`aria-pressed`)).toBe(`false`)
+    expect(gamma.classList.contains(`active`)).toBe(false)
+    expect(x_label.getAttribute(`aria-pressed`)).toBe(`true`)
+    expect(x_label.classList.contains(`active`)).toBe(true)
+
+    // the click stays on the label: the plot frame's delegated click handler (selection, pan)
+    // must not also see it. Svelte handlers are delegated to the mount root, so propagation
+    // is observed past it, at the document
+    const bubbled = vi.fn()
+    document.addEventListener(`click`, bubbled)
+    document.addEventListener(`keydown`, bubbled)
+    x_label.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_tick_click).toHaveBeenCalledWith(100, expect.any(MouseEvent))
+    expect(bubbled).not.toHaveBeenCalled()
+
+    // keyboard activation: Enter and Space, other keys ignored
+    for (const key of [`Enter`, ` `, `a`]) {
+      gamma.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    }
+    expect(on_tick_click).toHaveBeenCalledTimes(3)
+    expect(on_tick_click).toHaveBeenLastCalledWith(50, expect.any(KeyboardEvent))
+    // Enter/Space are also kept from the frame's keydown (point activation); other keys pass
+    expect(bubbled).toHaveBeenCalledTimes(1)
+    expect((bubbled.mock.calls[0][0] as KeyboardEvent).key).toBe(`a`)
+    document.removeEventListener(`click`, bubbled)
+    document.removeEventListener(`keydown`, bubbled)
+
+    // without on_tick_click the labels stay plain text
+    const plain = await mount_axis({ side: `x`, ticks: [50], axis: { ticks: { 50: `Γ` } } })
+    const label = query(plain, `g.tick text`)
+    for (const attr of [`role`, `tabindex`, `aria-pressed`]) {
+      expect(label.hasAttribute(attr)).toBe(false)
+    }
+    expect(label.classList.contains(`clickable`)).toBe(false)
+  })
+
   test(`AxisLabel renders only with a label and coordinates`, async () => {
     const with_label = await mount_axis({
       side: `x`,

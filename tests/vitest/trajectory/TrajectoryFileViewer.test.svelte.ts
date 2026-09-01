@@ -16,6 +16,7 @@ import {
   make_ambiguous_hdf5,
   make_run as make_shared_run,
   MULTI_FRAME_XYZ,
+  query,
   read_binary_test_file,
 } from '../setup'
 
@@ -49,8 +50,7 @@ const mount_viewer = (props: Props = {}): HTMLElement => {
   return target
 }
 const drop = (target: ParentNode, file: File, text_plain = ``): void => {
-  const zone = target.querySelector<HTMLElement>(`.trajectory-file-viewer`)
-  if (!zone) throw new Error(`drop zone not rendered`)
+  const zone = query(target, `.trajectory-file-viewer`)
   zone.dispatchEvent(create_drop_event(file, { text_plain }))
 }
 
@@ -527,6 +527,8 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
     })
     const picker = doc_query(`.hdf5-group-picker`)
     expect(picker.getAttribute(`role`)).toBe(`dialog`)
+    // an inline panel, not an overlay: nothing else on the page is inert while it shows
+    expect(picker.hasAttribute(`aria-modal`)).toBe(false)
     expect(picker.textContent).toContain(`ambiguous.h5`)
     expect(
       [...target.querySelectorAll(`.hdf5-path-trunk`)].map((trunk) => trunk.textContent),

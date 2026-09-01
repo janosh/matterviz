@@ -44,12 +44,10 @@ export function create_facet_plot_adapter<Axis extends FacetAxis>(
         }
       }
     },
-    update_range: (axis: Axis, range: Vec2): boolean => {
-      const facet_layout = options.facet_layout()
+    // Set the live view of one axis, and share it with the grid inside a facet layout
+    update_range: (axis: Axis, range: Vec2): void => {
       options.ranges()[axis] = range
-      if (!facet_layout) return false
-      facet_layout.update_range(axis, range)
-      return true
+      options.facet_layout()?.update_range(axis, range)
     },
     reset_ranges: (): boolean => {
       const facet_layout = options.facet_layout()

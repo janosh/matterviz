@@ -1,64 +1,12 @@
 // Side-by-side plots (bands + DOS) that share a frequency / energy axis: one y_axis config per
-// panel, reset whenever the data or caller axes change, and linked so a zoom in either panel
-// moves the other while a reset returns both to the shared range.
+// panel and the live view of each, linked so a zoom in either panel moves the other while a
+// reset returns both to the shared range.
 import type { Sides } from '$lib/plot/core/layout'
 import type { Vec2 } from '$lib/math'
-import {
-  axis_with_range,
-  max_side_padding,
-  reconcile_shared_axis_ranges,
-} from '$lib/plot/core/shared-axes'
-import type { AxisConfig } from '$lib/plot/core/types'
+import { vec2_equal } from '$lib/plot/core/interactions'
+import { axis_with_range, max_side_padding } from '$lib/plot/core/shared-axes'
+import type { AxisConfig, AxisRanges } from '$lib/plot/core/types'
 import { compute_frequency_range, extract_efermi } from './helpers'
-
-interface SyncedYAxesConfig {
-  // Fresh per-panel axes; re-evaluated whenever `sources` change
-  default_axes: () => AxisConfig[]
-  // Identity-compared inputs whose change discards the current zoom and rebuilds the axes
-  sources: () => unknown[]
-  // Data range both panels span; undefined disables the zoom link
-  shared_range: () => Vec2 | undefined
-  sync_zoom: () => boolean
-  // How many leading axes take part in the zoom link (a vertical DOS puts density on y,
-  // so a stacked layout only links the bands panel). Default: every axis.
-  linked_count?: () => number
-}
-
-export function create_synced_y_axes(config: SyncedYAxesConfig): { y_axes: AxisConfig[] } {
-  const state = $state({ y_axes: config.default_axes() })
-  let synced_zoom_range: Vec2 | null = null
-  // Seeded from the same sources the initial axes were built from, so the first effect run
-  // is a no-op rather than a second default_axes() call
-  let prev_sources = config.sources()
-  $effect(() => {
-    const sources = config.sources()
-    if (
-      sources.length === prev_sources.length &&
-      sources.every((source, idx) => source === prev_sources[idx])
-    ) {
-      return
-    }
-    prev_sources = sources
-    state.y_axes = config.default_axes()
-    synced_zoom_range = null
-  })
-  // Detect zoom changes and sync between panels (runs first to capture child updates)
-  $effect(() => {
-    const shared_range = config.shared_range()
-    if (!config.sync_zoom()) synced_zoom_range = null
-    if (!config.sync_zoom() || !shared_range) return
-    const linked = config.linked_count?.() ?? state.y_axes.length
-    const update = reconcile_shared_axis_ranges(
-      state.y_axes.slice(0, linked),
-      shared_range,
-      synced_zoom_range,
-    )
-    if (!update) return
-    synced_zoom_range = update.synced_range
-    state.y_axes = [...update.axes, ...state.y_axes.slice(linked)]
-  })
-  return state
-}
 
 // Floor for the vertical padding two side-by-side panels share. A panel that moves its
 // legend/colorbar outside widens its own bottom margin, and the other panel must follow or the
@@ -99,8 +47,9 @@ interface BandsDosSyncInputs {
 }
 
 // Everything a bands panel and a DOS panel need to share one frequency / energy axis: the
-// data range both span, the Fermi level, a linked y_axis config per panel and the vertical
-// padding that keeps their y scales pixel-aligned (BandsAndDos, BrillouinBandsDos).
+// data range both span, the Fermi level, a y_axis config per panel, the two panels' live views
+// linked on y, and the vertical padding that keeps their y scales pixel-aligned (BandsAndDos,
+// BrillouinBandsDos).
 export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const shared = () => inputs.shared_axis?.() ?? true
   const shared_range = $derived(
@@ -111,25 +60,32 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   )
   // Side by side, the DOS axis label defaults to empty since the bands axis already names
   // the quantity; a caller's label still wins
-  const default_axes = (): AxisConfig[] => [
+  const y_axes = $derived<AxisConfig[]>([
     axis_with_range(inputs.bands_y_axis(), shared_range),
     inputs.side_by_side()
       ? axis_with_range({ label: ``, ...inputs.dos_y_axis() }, shared_range)
       : { ...inputs.dos_y_axis() },
-  ]
-  const synced = create_synced_y_axes({
-    default_axes,
-    // axis configs by value: callers commonly pass fresh object literals
-    sources: () => [
-      inputs.band_structs(),
-      inputs.doses(),
-      inputs.side_by_side(),
-      shared(),
-      JSON.stringify({ bands: inputs.bands_y_axis(), dos: inputs.dos_y_axis() }),
-    ],
-    shared_range: () => shared_range,
-    sync_zoom: inputs.sync_zoom,
-    linked_count: () => (inputs.side_by_side() ? 2 : 1),
+  ])
+  // Each panel's `view` (bind:view). Side by side both y axes carry the frequency, so the
+  // panel whose y view moved since the last agreed range leads and the other follows; a
+  // reset in one panel shows up as a move back to the shared range and resets the other too.
+  // Until the panels agree on a zoom (mount, link re-enabled) the shared range is the
+  // baseline, so a panel left zoomed while the link was off leads once it is back on.
+  const views = $state<(Partial<AxisRanges> | undefined)[]>([undefined, undefined])
+  let synced_y: Vec2 | undefined
+  $effect(() => {
+    if (!inputs.sync_zoom() || !inputs.side_by_side() || !shared_range) {
+      synced_y = undefined
+      return
+    }
+    const baseline = synced_y ?? shared_range
+    const panel_y = views.map((view) => view?.y)
+    const lead = panel_y.find((range) => range && !vec2_equal(range, baseline))
+    if (!lead) return
+    synced_y = [...lead]
+    for (const [idx, range] of panel_y.entries()) {
+      if (!range || !vec2_equal(range, lead)) views[idx] = { ...views[idx], y: [...lead] }
+    }
   })
   // Side-wise maxima preserve caller padding while keeping y-scale pixel spans identical. The
   // padding each panel settled on is fed back in: a DOS legend pushed below its plot widens
@@ -153,8 +109,9 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
       return fermi_level
     },
     get y_axes() {
-      return synced.y_axes
+      return y_axes
     },
+    views,
     get shared_padding() {
       return shared_padding
     },

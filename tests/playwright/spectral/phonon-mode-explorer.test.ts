@@ -142,6 +142,22 @@ test.describe(`PhononModeExplorer`, () => {
 
     const initial_extxyz = await download_extxyz(page, explorer)
 
+    // markers are only a few px wide, so a click a few px off one still selects it, and the
+    // cursor turns into a hand there. The LA branch is well separated from its neighbours
+    const la_point = explorer.getByRole(`button`, { name: `Select band 3, q-point 4` })
+    const la_box = await la_point.boundingBox()
+    if (!la_box) throw new Error(`band 3 q-point 4 marker has no bounding box`)
+    const plot_svg = explorer.getByRole(`application`, { name: /Wave Vector/ })
+    const near_miss = [la_box.x + la_box.width + 3, la_box.y + la_box.height / 2] as const
+    await page.mouse.move(...near_miss)
+    await expect(plot_svg).toHaveCSS(`cursor`, `pointer`)
+    // far from every marker the click would select nothing, so the crosshair returns
+    await page.mouse.move(la_box.x + la_box.width + 40, la_box.y + la_box.height / 2 + 40)
+    await expect(plot_svg).toHaveCSS(`cursor`, `crosshair`)
+    await page.mouse.click(...near_miss)
+    await expect(summary).toContainText(`Mode 3`)
+    await expect(summary).toContainText(`q = [0.375, 0, 0.375]`)
+
     const band_point = explorer.getByRole(`button`, {
       name: `Select band 4, q-point 4`,
     })
@@ -175,19 +191,38 @@ test.describe(`PhononModeExplorer`, () => {
 
   test(`picker swaps mode datasets and accepts local phonopy output`, async ({ page }) => {
     const picker = page.getByRole(`region`, { name: `Demo fixtures` })
-    await expect(picker.locator(`.file-item`)).toHaveCount(4)
-    await expect(picker.getByRole(`button`, { name: `NaCl-Gamma-X-band.yaml` })).toHaveClass(
-      /active/,
-    )
+    await expect(picker.locator(`.file-item`)).toHaveCount(9)
+    await expect(picker.getByRole(`button`, { name: /NaCl rock salt/ })).toHaveClass(/active/)
+    const detail = page.getByTestId(`phonon-fixture-detail`)
+    await expect(detail).toContainText(`2 atoms · 6 branches · eigenvectors at all 5 q-points`)
 
-    await picker.getByRole(`button`, { name: `SiO2-gamma.yaml.gz` }).click()
-    await expect.poll(() => url_params(page).file).toBe(`SiO2-gamma.yaml.gz`)
+    // Fixtures load lazily; the sparse CsPbI3 file stores eigenvectors at every third q-point
+    // and a band click between them snaps to the nearest one that can animate
+    await picker.getByRole(`button`, { name: /CsPbI3/ }).click()
+    await expect.poll(() => url_params(page).file).toBe(`CsPbI3-Pnma-band.yaml.gz`)
     await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
     const explorer = page.locator(`#phonon-mode-explorer`)
-    await expect(page.getByTestId(`phonon-fixture-detail`)).toContainText(
-      `Interactive Γ-point spectra and atomic motion`,
-    )
-    await expect(explorer.getByTestId(`phonon-mode-summary`)).toContainText(`q = [0, 0, 0]`)
+    const summary = explorer.getByTestId(`phonon-mode-summary`)
+    await expect(detail).toContainText(`eigenvectors at 15 of 35 q-points`)
+    await expect(summary).toContainText(`eigenvectors at 15/35 q-points`)
+    await expect(summary).toContainText(`Γ q = [0, 0, 0]`)
+    await expect(
+      explorer.getByLabel(`q-point`, { exact: true }).locator(`option:disabled`),
+    ).toHaveCount(20)
+    await explorer
+      .getByRole(`button`, { name: `Select band 1, q-point 3`, exact: true })
+      .press(`Enter`)
+    await expect(summary).toContainText(`Mode 1`)
+    await expect(summary).toContainText(`q = [0.25, 0, 0]`)
+    await expect.poll(() => url_params(page)).toMatchObject({ qpoint: `4`, mode: `1` })
+    await explorer.getByRole(`button`, { name: `Next mode` }).click()
+    await expect(summary).toContainText(`Mode 2`)
+
+    await picker.getByRole(`button`, { name: /α-quartz/ }).click()
+    await expect.poll(() => url_params(page).file).toBe(`SiO2-gamma.yaml.gz`)
+    await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
+    await expect(detail).toContainText(`Γ-only file with Born charges and Raman tensors`)
+    await expect(summary).toContainText(`q = [0, 0, 0]`)
     await expect(explorer.getByRole(`button`, { name: `Raman`, exact: true })).toBeVisible()
 
     const co2_yaml = gunzip_sync(
@@ -258,4 +293,35 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(restored.getByLabel(`Eigenvectors`)).toBeChecked()
     await expect(restored.locator(`.cell-select .toggle-btn`)).toContainText(`2`)
   })
+})
+
+test(`a fixture picked before the initial one finishes loading still reaches the URL`, async ({
+  page,
+}) => {
+  // hold the default fixture's chunk so the click below supersedes the URL-driven load
+  let release_default = (): void => {}
+  const default_held = new Promise<void>((resolve) => (release_default = resolve))
+  await page.route(`**/NaCl-Gamma-X-band.yaml*`, async (route) => {
+    await default_held
+    await route.continue()
+  })
+  await page.goto(`/reciprocal/phonon-mode-explorer`)
+  // the SSR picker is visible before hydration, so retry the click until it takes effect
+  await expect(async () => {
+    await page.getByRole(`button`, { name: /MgB2/ }).click()
+    await expect(page.getByTestId(`phonon-fixture-detail`)).toContainText(
+      `Metal without Born charges`,
+      { timeout: 500 },
+    )
+  }).toPass()
+  await expect.poll(() => url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
+  await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
+  const default_response = page.waitForResponse(`**/NaCl-Gamma-X-band.yaml*`)
+  release_default()
+  await default_response
+  // the late default response must not clobber the user's choice; networkidle gives the page
+  // time to parse and (wrongly) apply it before checking
+  await page.waitForLoadState(`networkidle`)
+  await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
+  expect(url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
 })

@@ -111,8 +111,11 @@ test(`updates views atomically with the dataset`, async () => {
     ]),
   )
 
+  expect(target.querySelector(`[aria-label="q-point"]`)).not.toBeNull()
+
+  // a Γ-only file has nothing to pick between, so the q-point chooser disappears
   props.dataset = {
-    modes: { ...modes, path_segments: [] },
+    modes: { ...modes, qpoints: modes.qpoints.slice(0, 1), path_segments: [] },
     filename: `modes-only.yaml`,
   }
   await vi.waitFor(() => {
@@ -121,6 +124,7 @@ test(`updates views atomically with the dataset`, async () => {
     expect(target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent).toContain(
       `modes-only.yaml`,
     )
+    expect(target.querySelector(`[aria-label="q-point"]`)).toBeNull()
   })
 })
 
@@ -135,6 +139,56 @@ test(`reinitializes an invalid selection when the dataset changes`, async () => 
   props.selection = { qpoint_idx: 99, mode_idx: 99 }
   props.dataset = { ...dataset, modes: { ...modes } }
   await vi.waitFor(() => expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 3 }))
+})
+
+test(`steps through animatable modes and disables eigenvector-less q-points`, async () => {
+  // eigenvectors only at every other q-point, as the larger bundled fixtures store them
+  const sparse_modes = {
+    ...modes,
+    qpoints: modes.qpoints.map((qpoint, qpoint_idx) =>
+      qpoint_idx % 2 === 0
+        ? qpoint
+        : { ...qpoint, modes: qpoint.modes.map((mode) => ({ ...mode, eigenvector: null })) },
+    ),
+  }
+  const props = $state<ExplorerProps>({
+    ...explorer_defaults,
+    dataset: { modes: sparse_modes, filename: `sparse.yaml` },
+    // bindable props only write back when passed, so seed with an out-of-range selection
+    selection: { qpoint_idx: 99, mode_idx: 99 },
+  })
+  const target = mount_explorer(props)
+  const summary = () =>
+    target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
+  const prev_button = () =>
+    target.querySelector<HTMLButtonElement>(`[aria-label="Previous mode"]`)
+  const next_button = () => target.querySelector<HTMLButtonElement>(`[aria-label="Next mode"]`)
+  await vi.waitFor(() => {
+    expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 3 })
+    expect(summary()).toContain(`eigenvectors at 3/5 q-points`)
+    // path endpoint labels are shown next to the q-point coordinates
+    expect(summary()).toMatch(/Γ\s*q = \[0, 0, 0\]/)
+  })
+  const qpoint_options = [
+    ...target.querySelectorAll<HTMLOptionElement>(`[aria-label="q-point"] option`),
+  ]
+  expect(qpoint_options.map(({ disabled }) => disabled)).toEqual([0, 1, 0, 1, 0].map(Boolean))
+  expect(qpoint_options[0].textContent).toContain(`1: Γ [0, 0, 0]`)
+  expect(qpoint_options[4].textContent).toContain(`5: X [`)
+
+  next_button()?.click()
+  await vi.waitFor(() => expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 4 }))
+  next_button()?.click()
+  await vi.waitFor(() => {
+    expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 5 })
+    expect(next_button()?.disabled).toBe(true)
+    expect(prev_button()?.disabled).toBe(false)
+  })
+  for (let step = 0; step < 5; step++) prev_button()?.click()
+  await vi.waitFor(() => {
+    expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 0 })
+    expect(prev_button()?.disabled).toBe(true)
+  })
 })
 
 test.each([

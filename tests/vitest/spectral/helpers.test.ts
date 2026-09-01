@@ -13,8 +13,10 @@ import {
   extract_k_path_points,
   find_gamma_indices,
   find_qpoint_at_rescaled_x,
+  frac_k_to_cartesian,
   generate_ribbon_path,
   is_electronic_band_struct,
+  k_path_labels,
   negative_fraction,
   normalize_band_structure,
   normalize_densities,
@@ -257,6 +259,26 @@ describe(`extract_k_path_points`, () => {
     expect(k_point[1]).toBeCloseTo(0.5 / 3 + 2 / 3, 12)
     expect(extract_k_path_points(make_bs([], { qpoints: [] }), recip)).toEqual([])
     expect(() => extract_k_path_points(bs, [[1, 0]] as never)).toThrow(/3×3/)
+    // the per-point conversion Bands uses for a clicked symmetry point agrees exactly
+    expect(frac_k_to_cartesian([1 / 3, 1 / 3, 0], recip, false)).toEqual(k_point)
+  })
+
+  it(`k_path_labels pairs labeled q-points with their Cartesian positions`, () => {
+    const bs = make_bs([`GAMMA`, null, `X`])
+    const points: Vec3[] = [
+      [0, 0, 0],
+      [0.5, 0, 0],
+      [1, 0, 0],
+    ]
+    expect(k_path_labels(bs, points)).toEqual([
+      { position: [0, 0, 0], label: `Γ` },
+      { position: [0.5, 0, 0], label: null },
+      { position: [1, 0, 0], label: `X` },
+    ])
+    // points missing from a shorter path are skipped rather than paired with undefined
+    expect(k_path_labels(bs, points.slice(0, 1))).toEqual([
+      { position: [0, 0, 0], label: `Γ` },
+    ])
   })
 
   it(`folds to the minimum-image point of the first Brillouin zone`, () => {
@@ -473,27 +495,37 @@ describe(`normalize_band_structure`, () => {
     0.5 + Math.sqrt(3) / 6 + 1 / Math.sqrt(3) + 0.2,
   ]
 
-  it.each([`lattice_rec`, `recip_lattice`])(
-    `measures k-path distance in Cartesian reciprocal space from %s.matrix`,
-    (key) => {
-      const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-      const result = normalize_band_structure({
-        '@class': `PhononBandStructureSymmLine`,
-        ...hex_path,
-        [key]: { matrix: hex_matrix },
-      })
-      spy.mockRestore()
-      expect(result?.distance).toHaveLength(5)
-      result?.distance.forEach((val, idx) => expect(val).toBeCloseTo(hex_distance[idx], 12))
-      // every labeled q-point bounds a branch, so all four legs get axis labels
-      expect(result?.branches.map((branch) => branch.name)).toEqual([
-        `GAMMA-M`,
-        `M-K`,
-        `K-GAMMA`,
-        `GAMMA-A`,
-      ])
-    },
-  )
+  // pymatgen's lattice_rec already includes 2π; phonopy's recip_lattice does not and is scaled
+  // so the kept reciprocal lattice (and the distances measured in it) share one convention
+  it.each([
+    [`lattice_rec`, 1],
+    [`recip_lattice`, 2 * Math.PI],
+  ])(`measures k-path distance in Cartesian reciprocal space from %s.matrix`, (key, scale) => {
+    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const result = normalize_band_structure({
+      '@class': `PhononBandStructureSymmLine`,
+      ...hex_path,
+      [key]: { matrix: hex_matrix },
+    })
+    spy.mockRestore()
+    expect(result?.distance).toHaveLength(5)
+    result?.distance.forEach((val, idx) =>
+      expect(val).toBeCloseTo(hex_distance[idx] * scale, 12),
+    )
+    result?.recip_lattice?.forEach((row, row_idx) =>
+      row.forEach((val, col_idx) =>
+        expect(val).toBeCloseTo(hex_matrix[row_idx][col_idx] * scale, 12),
+      ),
+    )
+    expect(result?.recip_lattice).toHaveLength(3)
+    // every labeled q-point bounds a branch, so all four legs get axis labels
+    expect(result?.branches.map((branch) => branch.name)).toEqual([
+      `GAMMA-M`,
+      `M-K`,
+      `K-GAMMA`,
+      `GAMMA-A`,
+    ])
+  })
 
   it.each([
     [`no reciprocal lattice`, {}],

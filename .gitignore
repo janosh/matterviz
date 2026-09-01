@@ -1,31 +1,27 @@
-# dependencies
 node_modules
+__pycache__/
 
-# production build
+# build outputs (svelte-kit, docs site, svelte-package)
 .svelte-kit
 build
 dist
 
-# screen recordings
-*.mp4
-coverage
-
 # secrets
 .env
 
-# coverage and large test files
-test-results*
-src/site/trajectories/large
+# vitest coverage and playwright output
+coverage
+test-results
+
+# decompressed copies of the shipped .json.gz phonon data
 src/site/phonons/*.json
 
 # temp files
 tmp
-static/tmp
 
-# vscode extension
+# vsce output; the negation keeps extensions/vscode/.vscode/ addable despite a global .vscode ignore
 *.vsix
 !extensions/vscode/.vscode/
 
 # agent worktrees / local config
 .claude
-__pycache__/

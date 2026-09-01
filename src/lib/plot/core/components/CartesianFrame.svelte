@@ -69,6 +69,9 @@
     on_mouse_leave?: () => void
     on_mouse_move?: (event: MouseEvent) => void
     on_mouse_click?: (event: MouseEvent) => void
+    // Cursor while no pan gesture claims it. Charts switch it to `pointer` when a click on
+    // the plot surface would land on a mark, so the hand shows before the user commits.
+    idle_cursor?: string
     // Chart-supplied key handling on the plot SVG, run before pan/zoom's own. Return
     // true to consume the key. Canvas-rendered marks have no focusable DOM of their
     // own, so this is the only keyboard route into them.
@@ -83,7 +86,9 @@
     layers?: Snippet
     // Legend, tooltip and controls pane, rendered after the SVG
     overlays?: Snippet
-    children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    // HTML overlays after the SVG, given the same scales/padding as user_content so they can
+    // anchor to data coordinates (the .plot-frame is position: relative)
+    children?: Snippet<[UserContentProps]>
   }
 
   let {
@@ -104,6 +109,7 @@
     on_mouse_leave,
     on_mouse_move,
     on_mouse_click,
+    idle_cursor = `crosshair`,
     on_key_down,
     live_message,
     header_controls,
@@ -135,6 +141,18 @@
   // Container measured by bind:clientWidth/Height; 0 until the first layout pass
   const measured = $derived(Boolean(frame.width && frame.height))
   const dims = $derived({ width: frame.width, height: frame.height, fullscreen })
+  const content_ctx = $derived<UserContentProps>({
+    ...dims,
+    x_scale_fn: frame.scales.x,
+    x2_scale_fn: frame.scales.x2,
+    y_scale_fn: frame.scales.y,
+    y2_scale_fn: frame.scales.y2,
+    pad: frame.pad,
+    x_range: frame.ranges.current.x,
+    x2_range: frame.ranges.current.x2,
+    y_range: frame.ranges.current.y,
+    y2_range: frame.ranges.current.y2,
+  })
   const title_pad = $derived(frame.effective_base_pad)
   const get_marginal_axis = (axis: FacetAxis, binding: MarginalAxisBinding): MarginalAxis =>
     marginal_axis(
@@ -206,7 +224,7 @@
       ontouchmove={pan_zoom.on_touch_move}
       ontouchend={pan_zoom.on_touch_end}
       ontouchcancel={pan_zoom.on_touch_end}
-      style:cursor={pan_zoom.cursor}
+      style:cursor={pan_zoom.cursor ?? idle_cursor}
     >
       <!-- An outer top marginal strip sits at the container edge, so the title moves below it -->
       <PlotTitle
@@ -229,20 +247,7 @@
         </clipPath>
       </defs>
 
-      {@render user_content?.({
-        height: frame.height,
-        width: frame.width,
-        x_scale_fn: frame.scales.x,
-        x2_scale_fn: frame.scales.x2,
-        y_scale_fn: frame.scales.y,
-        y2_scale_fn: frame.scales.y2,
-        pad: frame.pad,
-        x_range: frame.ranges.current.x,
-        x2_range: frame.ranges.current.x2,
-        y_range: frame.ranges.current.y,
-        y2_range: frame.ranges.current.y2,
-        fullscreen,
-      })}
+      {@render user_content?.(content_ctx)}
       {@render layers?.()}
 
       <!-- After the marks so the drag rect stays visible over dense points and canvases -->
@@ -274,7 +279,7 @@
   {/if}
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
-  {@render children?.(dims)}
+  {@render children?.(content_ctx)}
 </div>
 
 <style>

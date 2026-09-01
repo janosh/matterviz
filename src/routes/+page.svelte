@@ -160,7 +160,7 @@
   Pick an example below or drag your own file onto the viewer.
 </p>
 
-<FermiSurfaceDemo class="full-bleed" />
+<FermiSurfaceDemo class="bleed-1400" />
 
 <h2><a href="/convex-hull">Convex Hull</a></h2>
 

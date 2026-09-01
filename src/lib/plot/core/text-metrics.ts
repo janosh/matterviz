@@ -244,6 +244,12 @@ const canonical_font_css = (font: Readonly<FontSpec>): string => {
   return font_css
 }
 
+// User-perceived characters, so cutting a string never splits an emoji or a
+// combining mark.
+const grapheme_segmenter = new Intl.Segmenter(`en`, { granularity: `grapheme` })
+export const graphemes = (text: string): string[] =>
+  Array.from(grapheme_segmenter.segment(text), ({ segment }) => segment)
+
 // Cache each line under its canonical canvas font. Multiline blocks therefore reuse repeated
 // lines and fonts while still applying their own line-height.
 export function measure_text_line(

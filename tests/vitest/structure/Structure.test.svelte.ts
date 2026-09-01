@@ -24,10 +24,12 @@ import {
   fcc_primitive_matrix,
   IDENTITY_MATRIX3,
   init_moyo_for_tests,
+  keydown,
   make_crystal,
   make_grid,
   make_position_stream,
   make_volume,
+  mouse,
   press_window_key,
   trigger_resize_observer,
 } from '../setup'
@@ -505,7 +507,7 @@ describe(`Structure`, () => {
 
     await assertHoverScopedShortcut({
       viewer: doc_query(`.structure`),
-      fire: () => press_window_key({ key: `i` }),
+      trigger: () => press_window_key({ key: `i` }),
       read_state: () => state.active_pane === `info`,
     })
   })
@@ -533,9 +535,7 @@ describe(`Structure`, () => {
     mount_structure(bind_props(edit_props, { structure: structures[0] }))
     await tick()
     const press = (target: Element, key: string) =>
-      target.dispatchEvent(
-        new KeyboardEvent(`keydown`, { key, cancelable: true, bubbles: true }),
-      )
+      target.dispatchEvent(keydown(key, { cancelable: true }))
     press(doc_query(`.structure`), `a`)
     await tick()
     const add_input = doc_query<HTMLInputElement>(`.add-atom-input input`)
@@ -1183,11 +1183,11 @@ describe(`Structure`, () => {
       `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
     )
 
-    first_site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    first_site_row.dispatchEvent(mouse(`mouseenter`))
     expect(state.highlighted_sites).toEqual([0])
     expect(state.hovered_site_idx).toBe(0)
 
-    first_site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    first_site_row.dispatchEvent(mouse(`mouseleave`))
     expect(state.highlighted_sites).toEqual([])
     expect(state.hovered_site_idx).toBeNull()
 
@@ -1429,9 +1429,7 @@ describe(`Multi-side view`, () => {
     await tick()
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
-    doc_query(`.structure`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `g`, bubbles: true }),
-    )
+    doc_query(`.structure`).dispatchEvent(keydown(`g`))
     await tick()
     expect(state.multi_view).toBe(false)
   })
@@ -1649,9 +1647,7 @@ describe(`data_url acquisition`, () => {
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
     await tick()
     props.selected_sites = [0]
-    doc_query(`.structure`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Delete`, cancelable: true, bubbles: true }),
-    )
+    doc_query(`.structure`).dispatchEvent(keydown(`Delete`, { cancelable: true }))
     await tick()
     expect(props.structure?.sites).toHaveLength(2)
 

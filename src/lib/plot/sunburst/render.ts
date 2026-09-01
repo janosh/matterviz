@@ -142,55 +142,102 @@ export function project_arcs<Metadata>(
   return { all, visible }
 }
 
-// Arc label placement: fit the text radially or tangentially (whichever has more room
-// in 'auto' mode); null = doesn't fit, hide the label. Angles are clockwise from 12
-// o'clock, so the point at (a, r) is (sin(a)*r, -cos(a)*r). Icicle cells label
-// horizontally, or rotated 90° when too narrow but tall enough to fit upright.
-// `max_radius` (chart outer radius) additionally keeps straight-line labels inside
-// the chart circle: tangential text on a wide arc has plenty of arc length but
-// renders as a straight tangent line whose ends would otherwise shoot past the
-// plot border.
-// `font_scale` < 1 relaxes the fit for downscaled text: callers pass the already
-// scaled text width, and the one-line-height across-requirement shrinks with it.
-export function arc_label_transform(
+// Point at (angle clockwise from 12 o'clock, radius) as path data
+const polar = (angle: number, radius: number): string =>
+  `${Math.sin(angle) * radius},${-Math.cos(angle) * radius}`
+
+// Path data for the ring sector between angles a0..a1 (radians, clockwise from 12 o'clock)
+// and radii r0..r1. A full ring is drawn as two half-circle arcs per boundary (an SVG arc
+// can't end where it starts), the inner one counter-clockwise so it is a hole under either
+// fill rule; r0 = 0 gives a plain disk/wedge.
+export function annular_sector_path(a0: number, a1: number, r0: number, r1: number): string {
+  if (a1 - a0 >= TWO_PI - 1e-9) {
+    const circle = (radius: number, sweep: 0 | 1) =>
+      `M${polar(0, radius)}A${radius},${radius},0,1,${sweep},${polar(Math.PI, radius)}A${radius},${radius},0,1,${sweep},${polar(0, radius)}Z`
+    return circle(r1, 1) + (r0 > 0 ? circle(r0, 0) : ``)
+  }
+  const large = a1 - a0 > Math.PI ? 1 : 0
+  return `M${polar(a0, r1)}A${r1},${r1},0,${large},1,${polar(a1, r1)}L${polar(a1, r0)}A${r0},${r0},0,${large},0,${polar(a0, r0)}Z`
+}
+
+export const rect_path = (x0: number, x1: number, y0: number, y1: number): string =>
+  `M${x0},${y0}H${x1}V${y1}H${x0}Z`
+
+// One evenodd path that dims everything but the hovered node's subtree and ancestors: the
+// chart area minus the hovered arc's wedge (its descendants partition that wedge outward)
+// minus each ancestor's own arc. Drawn between the arcs and their labels, this single
+// element carries the hover dimming instead of a fill-opacity write (and CSS transition)
+// per arc, which is what keeps hovering O(depth) at thousands of arcs. Null when the
+// hovered index isn't projected (stale index right after a data swap).
+export function hover_veil_path<Metadata>(
+  screen_arcs: readonly ScreenArc<Metadata>[],
+  hovered_idx: number,
+  geom: ScreenGeometry,
+): string | null {
+  const hovered = screen_arcs[hovered_idx]
+  if (!hovered) return null
+  const icicle = geom.shape === `icicle`
+  const cell = icicle ? rect_path : annular_sector_path
+  const outer = icicle ? geom.inner_height : geom.radius
+  let path = icicle
+    ? rect_path(0, geom.inner_width, 0, geom.inner_height)
+    : annular_sector_path(0, TWO_PI, 0, geom.radius)
+  path += cell(hovered.a0, hovered.a1, hovered.r0, outer)
+  for (let idx = hovered.arc.parent_idx; idx != null; idx = screen_arcs[idx].arc.parent_idx) {
+    const { a0, a1, r0, r1 } = screen_arcs[idx]
+    // ancestors at or above the zoom root are collapsed into the hole: nothing to cut out
+    if (a1 > a0 && r1 > r0) path += cell(a0, a1, r0, r1)
+  }
+  return path
+}
+
+// Where a label can sit in an arc: `room` is the longest text (px) the slot holds
+// along its reading direction, `transform` places that text. Angles are clockwise
+// from 12 o'clock, so the point at (a, r) is (sin(a)*r, -cos(a)*r). Sunburst arcs
+// offer radial and tangential slots, roomier first in 'auto' mode, since a
+// wide-but-shallow arc whose text overflows the tangent line may still fit reading
+// radially (and vice versa); icicle cells read horizontally, or rotated 90° when too
+// narrow but tall enough upright. `max_radius` (chart outer radius) keeps straight-line labels
+// inside the chart circle: tangential text on a wide arc has plenty of arc length
+// but renders as a straight tangent whose ends would otherwise shoot past the plot
+// border. `font_scale` < 1 relaxes the fit for downscaled text: callers pass the
+// already scaled text width, and the one-line-height requirement shrinks with it.
+export function arc_label_slots(
   d: { a0: number; a1: number; r0: number; r1: number },
-  text_w: number, // rendered text width in px (pre-multiplied by font_scale)
   shape: SunburstShape,
   rotation: SunburstLabelRotation,
   max_radius?: number,
   font_scale = 1,
-): string | null {
-  // Text fits when it's shorter than the space along its reading direction and the
-  // cell is at least one line-height across
-  const fits = (along: number, across: number) =>
-    text_w <= along - 6 && across >= 12 * font_scale
-  // Farthest endpoint of a straight label centered `center_dist` from the chart
-  // center: text_w/2 perpendicular to the radius (tangential text, exact) plus an
-  // optional component along it (horizontal text at 3/9 o'clock reads radially)
-  const inside_chart = (center_dist: number, along_radius = 0) =>
-    max_radius === undefined ||
-    Math.sqrt(center_dist ** 2 + (text_w / 2) ** 2 + text_w * center_dist * along_radius) <=
-      max_radius
+): { room: number; transform: string }[] {
+  const line_height = 12 * font_scale
+  // Text length that keeps a straight label centered `center_dist` from the chart
+  // center inside the circle: text_w/2 perpendicular to the radius (tangential text,
+  // exact) plus an optional component along it (horizontal text at 3/9 o'clock reads
+  // radially). Solves sqrt(c² + (w/2)² + w·c·s) <= R for w.
+  const inside_chart = (center_dist: number, along_radius = 0): number => {
+    if (max_radius === undefined) return Infinity
+    const offset = center_dist * along_radius
+    const radicand = offset ** 2 + max_radius ** 2 - center_dist ** 2
+    return 2 * (Math.sqrt(Math.max(0, radicand)) - offset)
+  }
+  // Slots with no room (arc past the chart edge, too short after the 6px margin) or
+  // thinner than one line height across are left out
+  const slot = (along: number, across: number, transform: string, limit = Infinity) => {
+    const room = Math.min(along - 6, limit)
+    return across >= line_height && room > 0 ? [{ room, transform }] : []
+  }
 
   if (shape === `icicle`) {
     const cell_w = d.a1 - d.a0
     const cell_h = d.r1 - d.r0
     const center = `translate(${(d.a0 + d.a1) / 2}, ${(d.r0 + d.r1) / 2})`
-    // Horizontal when the text fits the row width; otherwise rotate 90° (read
-    // bottom-up) to use a thin-but-tall cell's height. Only cells too small in both
-    // dimensions stay unlabeled.
-    if (fits(cell_w, cell_h)) return center
-    if (fits(cell_h, cell_w)) return `${center} rotate(-90)`
-    return null
+    return [...slot(cell_w, cell_h, center), ...slot(cell_h, cell_w, `${center} rotate(-90)`)]
   }
 
   const mid_a = (d.a0 + d.a1) / 2
   const mid_r = (d.r0 + d.r1) / 2
   const angular_px = (d.a1 - d.a0) * mid_r // arc length at mid radius
   const radial_px = d.r1 - d.r0
-  // 'auto' prefers the roomier orientation but falls back to the other one:
-  // a wide-but-shallow arc whose text overflows the tangent line may still
-  // fit reading radially (and vice versa), which beats hiding the label.
   const modes: SunburstLabelRotation[] =
     rotation === `auto`
       ? radial_px >= angular_px
@@ -198,28 +245,49 @@ export function arc_label_transform(
         : [`tangential`, `radial`]
       : [rotation]
 
-  for (const mode of modes) {
+  return modes.flatMap((mode) => {
     if (mode === `horizontal`) {
-      if (!fits(Math.max(angular_px, radial_px), Math.min(angular_px, radial_px))) {
-        continue
-      }
-      if (!inside_chart(mid_r, Math.abs(Math.sin(mid_a)))) continue
-      return `translate(${Math.sin(mid_a) * mid_r}, ${-Math.cos(mid_a) * mid_r})`
+      const along_radius = Math.abs(Math.sin(mid_a))
+      return slot(
+        Math.max(angular_px, radial_px),
+        Math.min(angular_px, radial_px),
+        `translate(${Math.sin(mid_a) * mid_r}, ${-Math.cos(mid_a) * mid_r})`,
+        inside_chart(mid_r, along_radius),
+      )
     }
     if (mode === `radial`) {
-      // fits() bounds the text by the ring thickness, so it stays inside r1
-      if (!fits(radial_px, angular_px)) continue
-      // Read outward, flipped on the left half so text is never upside down
+      // Bounded by the ring thickness, so it stays inside r1. Read outward, flipped
+      // on the left half so text is never upside down.
       const deg = to_degrees(mid_a) - 90
       const flip = mid_a > Math.PI ? 180 : 0
-      return `rotate(${deg}) translate(${mid_r}, 0) rotate(${flip})`
+      return slot(
+        radial_px,
+        angular_px,
+        `rotate(${deg}) translate(${mid_r}, 0) rotate(${flip})`,
+      )
     }
     // tangential: follow the circumference, flipped on the bottom half
-    if (!fits(angular_px, radial_px) || !inside_chart(mid_r)) continue
     const upside_down = mid_a > Math.PI / 2 && mid_a < (3 * Math.PI) / 2
-    return `rotate(${to_degrees(mid_a)}) translate(0, ${-mid_r}) rotate(${
-      upside_down ? 180 : 0
-    })`
-  }
-  return null
+    return slot(
+      angular_px,
+      radial_px,
+      `rotate(${to_degrees(mid_a)}) translate(0, ${-mid_r}) rotate(${upside_down ? 180 : 0})`,
+      inside_chart(mid_r),
+    )
+  })
 }
+
+// Placement for a label of `text_w` px (pre-multiplied by `font_scale`): the first
+// slot with room for it, null when none has (hide the label, or cut it to a slot's
+// `room`).
+export const arc_label_transform = (
+  d: { a0: number; a1: number; r0: number; r1: number },
+  text_w: number,
+  shape: SunburstShape,
+  rotation: SunburstLabelRotation,
+  max_radius?: number,
+  font_scale = 1,
+): string | null =>
+  arc_label_slots(d, shape, rotation, max_radius, font_scale).find(
+    (slot) => text_w <= slot.room,
+  )?.transform ?? null

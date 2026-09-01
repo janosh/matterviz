@@ -14,6 +14,7 @@ import { create_color_scale } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
 import {
   DEFAULT_FONT_SPEC,
+  graphemes,
   measure_text_line,
   resolve_font_spec,
 } from '$lib/plot/core/text-metrics'
@@ -71,6 +72,33 @@ export function node_label_variants(
   const text = node_label_str(node, label_text, value_format)
   if (!label_text.startsWith(`label+`)) return { text, short }
   return { text: node_display_name(node), extended: text, short }
+}
+
+// `text` if it measures within `max_width` px in `font`, else its longest prefix
+// that does with an ellipsis, keeping at least `min_chars` of the text so a lone
+// initial does not pose as a name. Null when even that is too wide. Widths come
+// from the text-metrics cache, so re-fitting the same arcs per frame costs no
+// measuring.
+export function ellipsize_to_width(
+  text: string,
+  max_width: number,
+  font: Readonly<FontSpec>,
+  min_chars = 2,
+): string | null {
+  if (measure_text_line(text, font).width <= max_width) return text
+  const chars = graphemes(text)
+  const width_of = (count: number) =>
+    measure_text_line(`${chars.slice(0, count).join(``)}…`, font).width
+  if (chars.length <= min_chars || width_of(min_chars) > max_width) return null
+  // Binary search the longest fitting prefix: widths grow with the prefix.
+  let fits = min_chars
+  let too_wide = chars.length
+  while (too_wide - fits > 1) {
+    const mid = (fits + too_wide) >> 1
+    if (width_of(mid) <= max_width) fits = mid
+    else too_wide = mid
+  }
+  return `${chars.slice(0, fits).join(``)}…`
 }
 
 // Chart svgs default to 11px labels (--<chart>-font-size); text-metrics' 12px default

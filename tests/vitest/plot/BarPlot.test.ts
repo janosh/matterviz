@@ -4,9 +4,12 @@ import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   inside_clip_path,
+  keydown,
   mount_sized,
+  mouse,
   one_tab_stop,
   pattern_id_of,
+  query,
   roving_tabindexes,
   with_measured_text,
 } from '../setup'
@@ -72,7 +75,7 @@ describe(`BarPlot`, () => {
     const plot = await mount_sized_bar_plot({ series: [basic] })
     const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
     bars[0].focus()
-    bars[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+    bars[0].dispatchEvent(keydown(`ArrowRight`))
     await tick()
     expect(bars[1].getAttribute(`tabindex`)).toBe(`0`)
     expect(bars[0].getAttribute(`tabindex`)).toBe(`-1`)
@@ -286,8 +289,8 @@ describe(`BarPlot`, () => {
     expect(markers).toHaveLength(5)
     expect(markers.every((marker) => !marker.getAttribute(`d`)?.includes(`NaN`))).toBe(true)
     expect(markers.every((marker) => marker.closest(`[clip-path]`) === null)).toBe(true)
-    markers[0].dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
-    markers[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    markers[0].dispatchEvent(mouse(`mouseover`))
+    markers[0].dispatchEvent(mouse(`click`))
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_click).toHaveBeenCalledOnce()
   })
@@ -319,7 +322,7 @@ describe(`BarPlot`, () => {
         point: { data_x: 1 },
       })
     }
-    hit_target?.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    hit_target?.dispatchEvent(mouse(`mouseleave`))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
@@ -368,7 +371,7 @@ describe(`BarPlot`, () => {
     // Hovering B's x=2 bar anchors the tooltip at its stacked top (above A's bar), not at the
     // unstacked value 5 near the baseline
     const b_bar = plot.querySelector(`.bar-series[data-series-idx="1"] path[role="button"]`)
-    b_bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    b_bar?.dispatchEvent(mouse(`mousemove`))
     await tick()
     const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
     expect(tooltip).not.toBeNull()
@@ -430,7 +433,7 @@ describe(`BarPlot`, () => {
     })
     const bar = plot.querySelector(`path[role="button"]`)
     expect(bar).toBeInstanceOf(SVGPathElement)
-    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    bar?.dispatchEvent(mouse(`mousemove`))
     await tick()
     const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
     expect(text).toContain(`Group A`)
@@ -446,7 +449,7 @@ describe(`BarPlot`, () => {
     })
     const first_bar = plot.querySelector(`path[role="button"]`)
     expect(first_bar).toBeInstanceOf(SVGPathElement)
-    first_bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    first_bar?.dispatchEvent(mouse(`mousemove`))
     await tick()
     expect(plot.querySelector(`.custom-tooltip`)?.textContent).toBe(`x: 1, y: 10`)
   })
@@ -518,9 +521,8 @@ describe(`BarPlot`, () => {
         x_axis: { label: `Greek` },
         on_bar_hover: hover_fn,
       })
-      const bar = plot.querySelector(`path[role="button"]`)
-      if (!bar) throw new Error(`bar element not found`)
-      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+      const bar = query(plot, `path[role="button"]`)
+      bar.dispatchEvent(mouse(`mousemove`))
       await tick()
       expect(hover_fn).toHaveBeenCalled()
       const data = hover_fn.mock.calls[0][0]
@@ -586,8 +588,7 @@ describe(`BarPlot`, () => {
   })
 
   const legend_position = (plot: HTMLElement): { x: number; y: number } => {
-    const legend = plot.querySelector<HTMLElement>(`.legend`)
-    if (!legend) throw new Error(`legend not found`)
+    const legend = query(plot, `.legend`)
     return {
       x: Number(legend.style.left.replace(`px`, ``)),
       y: Number(legend.style.top.replace(`px`, ``)),
@@ -686,19 +687,17 @@ describe(`BarPlot`, () => {
       })
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
       const first_legend_item = plot.querySelector(`.legend-item`)
-      first_legend_item?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      first_legend_item?.dispatchEvent(mouse(`mouseenter`))
       await tick()
       expect(plot.querySelectorAll(`.bar-series`)[1]?.getAttribute(`opacity`)).toBe(`0.25`)
-      first_legend_item?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      first_legend_item?.dispatchEvent(mouse(`click`))
       await tick()
       expect(plot.querySelector(`.legend-item`)?.classList.contains(`hidden`)).toBe(true)
       expect(orientation === `vertical` ? input[1].y_axis : input[1].x_axis).toBeUndefined()
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeNull()
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
       expect(plot.querySelector(`.bar-series`)?.getAttribute(`opacity`)).toBe(`1`)
-      plot
-        .querySelector(`.legend-item`)
-        ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      plot.querySelector(`.legend-item`)?.dispatchEvent(mouse(`click`))
       await tick()
       expect(
         [...plot.querySelectorAll(`.legend-item`)].every(

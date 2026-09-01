@@ -1,42 +1,31 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib/structure'
   import { get_electro_neg_formula } from '$lib/composition'
-  import { Icon } from 'svelte-widgets'
-  import { Cross } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
-  import { DragControlTab, GlassChip } from '$lib/overlays'
+  import { FloatingPopup, GlassChip } from '$lib/overlays'
   import { sanitize_formula } from '$lib/sanitize'
   import { Structure } from '$lib/structure'
   import type { StructurePopupContext, StructurePopupStats } from './types'
-  import type { Snippet } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
-  import { click_outside, draggable } from 'svelte-widgets/attachments'
+  import type { ComponentProps, Snippet } from 'svelte'
 
   let {
     structure,
     place_right = true,
     width = 500,
     height = 400,
-    on_close,
-    close_on_outside = true,
-    show_drag_handle = true,
     stats,
     top_left,
     children,
     popup_div = $bindable(),
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, 'children'> & {
+  }: Omit<ComponentProps<typeof FloatingPopup>, `children` | `place`> & {
     structure: AnyStructure
     place_right?: boolean
     width?: number
     height?: number
-    on_close?: () => void
-    close_on_outside?: boolean
-    show_drag_handle?: boolean
     stats?: StructurePopupStats
     top_left?: Snippet<[StructurePopupContext]>
     children?: Snippet<[StructurePopupContext]>
-    popup_div?: HTMLDivElement
   } = $props()
 
   const formula_html = $derived(
@@ -47,105 +36,45 @@
   const context = $derived({ structure, stats, formula_html })
 </script>
 
-{#snippet close_button()}
-  <button class="close-btn" onclick={() => on_close?.()} title="Close (Esc)">
-    <Icon icon={Cross} />
-  </button>
+<!-- named popup_body, not children: the outer `children` prop renders inside it -->
+{#snippet popup_body({ close_button }: { close_button: Snippet })}
+  {#if top_left || stats}
+    <GlassChip class="structure-stats">
+      {#if top_left}
+        {@render top_left(context)}
+      {:else if stats}
+        {#if stats.id}
+          ID = {stats.id}<br />
+        {/if}
+        {#if formula_html}
+          {@html formula_html}<br />
+        {/if}
+        {#if stats.e_above_hull != null}
+          E<sub>above hull</sub> = {format_num(stats.e_above_hull, `.3~`)} eV/atom<br />
+        {/if}
+        {#if stats.e_form != null}
+          E<sub>form</sub> = {format_num(stats.e_form, `.3~`)}
+          eV/atom
+        {/if}
+      {/if}
+    </GlassChip>
+  {/if}
+
+  <Structure
+    {structure}
+    {width}
+    {height}
+    top_right_controls={close_button}
+    show_controls="hover"
+    style="--struct-width: {width}px; --struct-height: {height}px; --struct-min-width: 0"
+  />
+  {@render children?.(context)}
 {/snippet}
 
-<svelte:window onkeydown={(event) => event.key === `Escape` && on_close?.()} />
-
-<!-- dismiss_on release, not the default press: this floats over a pannable convex-hull
-plot, so starting a pan behind it must not make it vanish under the cursor -->
-<div
-  {@attach click_outside({
-    enabled: close_on_outside,
-    dismiss_on: `release`,
-    callback: () => on_close?.(),
-  })}
-  {@attach draggable({
-    handle_selector: `.drag-handle`,
-  })}
+<FloatingPopup
   {...rest}
-  class={[`structure-popup`, place_right ? `right` : `left`, rest.class]}
-  role="dialog"
-  aria-modal="true"
-  tabindex="-1"
-  bind:this={popup_div}
->
-  {#if show_drag_handle}
-    <DragControlTab />
-  {/if}
-  <div class="structure-popup-content">
-    {#if top_left || stats}
-      <GlassChip class="structure-stats">
-        {#if top_left}
-          {@render top_left(context)}
-        {:else if stats}
-          {#if stats.id}
-            ID = {stats.id}<br />
-          {/if}
-          {#if formula_html}
-            {@html formula_html}<br />
-          {/if}
-          {#if stats.e_above_hull != null}
-            E<sub>above hull</sub> = {format_num(stats.e_above_hull, `.3~`)} eV/atom<br />
-          {/if}
-          {#if stats.e_form != null}
-            E<sub>form</sub> = {format_num(stats.e_form, `.3~`)}
-            eV/atom
-          {/if}
-        {/if}
-      </GlassChip>
-    {/if}
-
-    <Structure
-      {structure}
-      {width}
-      {height}
-      top_right_controls={close_button}
-      show_controls="hover"
-      style="--struct-width: {width}px; --struct-height: {height}px; --struct-min-width: 0"
-    />
-    {@render children?.(context)}
-  </div>
-</div>
-
-<style>
-  .structure-popup {
-    position: absolute;
-    box-sizing: border-box;
-    width: max-content;
-    z-index: 10000;
-    overflow: visible;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-  .structure-popup-content {
-    display: flex;
-    gap: 8px;
-    background: var(--structure-popup-bg, var(--menu-bg));
-    color: var(--structure-popup-color, var(--menu-color));
-    border: 1px solid var(--structure-popup-border, var(--menu-border));
-    border-radius: 8px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
-    overflow: hidden;
-  }
-  .structure-popup.right {
-    left: calc(100% + var(--structure-popup-gap, 1em));
-  }
-  .structure-popup.left {
-    right: calc(100% + var(--structure-popup-gap, 1em));
-  }
-  .close-btn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    padding: 0;
-    font-size: inherit;
-  }
-  .close-btn:hover {
-    background: var(--pane-btn-bg-hover);
-  }
-</style>
+  class={[`structure-popup`, rest.class]}
+  place={place_right ? `right` : `left`}
+  bind:popup_div
+  children={popup_body}
+/>

@@ -53,6 +53,7 @@
     on_domain_hover,
     on_domain_press,
     on_domain_leave,
+    on_camera_start,
     formula_meshes,
     formula_edges,
     domain_labels,
@@ -84,13 +85,15 @@
     on_domain_hover: (mesh: HoverMesh, event: ThreltePointerEvent) => void
     on_domain_press: (mesh: HoverMesh, event: ThreltePointerEvent) => void
     on_domain_leave: (mesh: HoverMesh) => void
+    // fires when OrbitControls starts a gesture (drag or wheel zoom)
+    on_camera_start: () => void
     formula_meshes: OverlayGeometry[]
     formula_edges: OverlayGeometry[]
     domain_labels: DomainLabel[]
     label_scale: number
   } = $props()
 
-  extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
   const swiz = $derived(swizzle_to_render(render_axis_scale))
@@ -358,6 +361,11 @@
       max_zoom: Number.POSITIVE_INFINITY,
       auto_rotate,
       rotation_damping: 0,
+      // No domain hover while orbiting: the tooltip popping between domains under the cursor
+      // reads as flicker. A wheel zoom moves no pointer (no pointerleave), so the parent drops an
+      // unpinned tooltip itself; pointerdown reaches the mesh before OrbitControls' start
+      set_camera_is_moving: (moving) => hover_enabled.set(!moving),
+      on_start_extra: on_camera_start,
     }),
   )
 </script>

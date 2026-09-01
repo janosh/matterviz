@@ -25,11 +25,13 @@ export interface Branch {
   is_discontinuity?: boolean
 }
 
-// Base band structure interface. Carries no reciprocal lattice: q-points are fractional and
-// path distances are precomputed, so consumers that need Cartesian k (BrillouinBandsDos)
-// derive it from the structure's lattice instead.
+// Base band structure interface. q-points are fractional and path distances precomputed; the
+// reciprocal lattice (rows b_i, 2π included) is kept when the input carries one (pymatgen's
+// `lattice_rec`, phonopy's `recip_lattice`) so Cartesian k and the Brillouin zone follow from
+// the band data alone. Without it, consumers derive k from a structure's lattice.
 export interface BaseBandStructure {
   qpoints: QPoint[]
+  recip_lattice?: Matrix3x3
   branches: Branch[]
   labels_dict: Record<string, Vec3>
   distance: number[]

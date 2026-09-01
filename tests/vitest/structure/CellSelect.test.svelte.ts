@@ -2,7 +2,7 @@ import CellSelect from '$lib/structure/CellSelect.svelte'
 import type { CellType, SymmetryDataset } from '$lib/symmetry'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, keydown, mouse } from '../setup'
 
 // Mock sym_data for testing cell type buttons
 const mock_sym_data = {
@@ -73,12 +73,12 @@ describe(`CellSelect`, () => {
       expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
 
       // Close by mouseleave
-      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseleave`))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
 
       // mouseenter alone doesn't open it (hover-intent delay pending)...
-      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
 
@@ -92,8 +92,8 @@ describe(`CellSelect`, () => {
       vi.useFakeTimers()
       mount_select({ supercell_scaling: `1x1x1` })
 
-      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
+      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseleave`))
       vi.advanceTimersByTime(250)
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
@@ -110,7 +110,7 @@ describe(`CellSelect`, () => {
       })
 
       // sustained hover opens normally
-      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
       vi.advanceTimersByTime(250)
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
@@ -121,14 +121,14 @@ describe(`CellSelect`, () => {
       expect(document.querySelector(`.dropdown`)).toBeNull()
 
       // ...and hover/focus no longer reopen it while suppressed
-      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
       doc_query(`.cell-select`).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
       vi.advanceTimersByTime(250)
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
 
       // a manual toggle click must not reopen it either while suppressed
-      doc_query(`.toggle-btn`).dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      doc_query(`.toggle-btn`).dispatchEvent(mouse(`click`))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
     })
@@ -289,7 +289,7 @@ describe(`CellSelect`, () => {
         if (method === `click`) {
           doc_query<HTMLButtonElement>(`.apply-btn`).click()
         } else {
-          input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+          input.dispatchEvent(keydown(`Enter`))
         }
         await tick()
 

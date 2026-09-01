@@ -3,6 +3,7 @@ import ToggleMenu from '$lib/table/ToggleMenu.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ToggleMenuHarness from './ToggleMenuHarness.svelte'
+import { doc_query } from '../setup'
 
 afterEach(() => {
   document.body.innerHTML = ``
@@ -184,10 +185,7 @@ describe(`ToggleMenu`, () => {
       const columns = make_many_columns(21)
       mount_menu(columns, { column_panel_open: true })
 
-      const filter = document.querySelector<HTMLInputElement>(
-        `input[aria-label="Filter columns"]`,
-      )
-      if (!filter) throw new Error(`missing column filter`)
+      const filter = doc_query<HTMLInputElement>(`input[aria-label="Filter columns"]`)
       filter.value = `column 21`
       filter.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()

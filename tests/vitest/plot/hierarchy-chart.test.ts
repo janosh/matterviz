@@ -1,4 +1,4 @@
-import { DEFAULT_FONT_SPEC } from '$lib/plot/core/text-metrics'
+import { DEFAULT_FONT_SPEC, measure_text_line } from '$lib/plot/core/text-metrics'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -7,6 +7,7 @@ import {
   compute_metric_colors,
   compute_node_dim,
   compute_node_infos,
+  ellipsize_to_width,
   hierarchy_legend_items,
   node_handler_props,
   node_label_str,
@@ -272,6 +273,38 @@ describe(`hierarchy chart helpers`, () => {
     for (const tick_labels of [0, []]) {
       expect(layout({ orientation: `vertical`, tick_labels }).tick_padding).toBe(`0`)
     }
+  })
+})
+
+describe(`ellipsize_to_width`, () => {
+  const width = (text: string) => measure_text_line(text, DEFAULT_FONT_SPEC).width
+  const name = `pretrain-llama-70b-stage2`
+
+  test(`keeps the longest prefix whose ellipsis form fits`, () => {
+    const max_width = width(name) / 2
+    const cut = ellipsize_to_width(name, max_width, DEFAULT_FONT_SPEC)
+    expect(cut).toMatch(/^pretrain.*…$/u)
+    expect(width(cut ?? ``)).toBeLessThanOrEqual(max_width)
+    // one more character would not have fit
+    const kept = (cut ?? ``).length - 1
+    expect(width(`${name.slice(0, kept + 1)}…`)).toBeGreaterThan(max_width)
+  })
+
+  test.each([
+    [`too narrow for two characters and the ellipsis`, name, 5, 2],
+    [`text no longer than min_chars that does not fit`, `ab`, 1, 2],
+  ])(`%s -> null`, (_name, text, max_width, min_chars) => {
+    expect(ellipsize_to_width(text, max_width, DEFAULT_FONT_SPEC, min_chars)).toBeNull()
+  })
+
+  test(`text that already fits is returned uncut`, () => {
+    expect(ellipsize_to_width(name, width(name), DEFAULT_FONT_SPEC)).toBe(name)
+  })
+
+  test(`cuts on graphemes, never inside an emoji`, () => {
+    const text = `👩‍🔬👩‍🔬👩‍🔬👩‍🔬`
+    const cut = ellipsize_to_width(text, width(`👩‍🔬👩‍🔬👩‍🔬`), DEFAULT_FONT_SPEC)
+    expect(cut).toBe(`👩‍🔬👩‍🔬…`)
   })
 })
 

@@ -56,7 +56,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   readonly drag_mode: RectDragMode
   readonly suppress_click: boolean
   readonly is_panning: boolean
-  readonly cursor: string
+  // `grabbing`/`grab` during and before a pan; null when no gesture claims the cursor
+  readonly cursor: string | null
   set_focused: (focused: boolean) => void
   on_mouse_down: (evt: MouseEvent) => void
   on_wheel: (evt: WheelEvent) => void
@@ -335,7 +336,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     },
     get cursor() {
       if (pan_drag_state) return `grabbing`
-      return shift_held && opts.pan()?.enabled !== false ? `grab` : `crosshair`
+      return shift_held && opts.pan()?.enabled !== false ? `grab` : null
     },
     set_focused: (focused: boolean) => {
       is_focused = focused

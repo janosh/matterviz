@@ -12,9 +12,11 @@ import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  doc_query,
   mount_sized,
   one_tab_stop,
   pattern_id_of,
+  plot_svg,
   roving_tabindexes,
 } from '../setup'
 
@@ -42,12 +44,6 @@ const y_ticks_after = async (props: Record<string, unknown>) => {
 }
 const max_y_tick = async (props: Record<string, unknown>) =>
   Math.max(...(await y_ticks_after(props)))
-
-const get_svg = () => {
-  const svg = document.querySelector(`svg[role="application"]`)
-  if (!svg) throw new Error(`histogram plot area not found`)
-  return svg
-}
 
 const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
   const evt = new Event(type, { bubbles: true, cancelable: true })
@@ -160,7 +156,7 @@ describe(`Histogram`, () => {
       series: [{ values: [1, 2, 3, 4, 5], label: `A` }],
       y_axis: { scale_type: `log`, range: [1, 100] },
     })
-    const plot = get_svg()
+    const plot = plot_svg()
     plot.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
     window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
     await tick()
@@ -314,8 +310,7 @@ describe(`Histogram`, () => {
         state,
       ),
     )
-    const fill_input = document.querySelector<HTMLInputElement>(`input[type="color"]`)
-    if (!fill_input) throw new Error(`Histogram fill control not found`)
+    const fill_input = doc_query<HTMLInputElement>(`input[type="color"]`)
     fill_input.value = `#abcdef`
     fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     expect(state.bar).toEqual({ color: `#abcdef` })
@@ -396,7 +391,7 @@ describe(`Histogram`, () => {
     [`a pinch from the plot edge`, [[`touchstart`, [[10, 100], [100, 100]]], [`touchmove`, [[100, 100], [300, 100]]]]],
   ] as const)(`%s keeps finite axis ranges`, async (_name, events) => {
     await mount_histogram({ series: [{ values: [1, 2, 3, 4, 5], label: `A` }] })
-    const svg = get_svg()
+    const svg = plot_svg()
     const ticks_before = { x: get_tick_numbers(`x`), y: get_tick_numbers(`y`) }
     expect(ticks_before.x.length).toBeGreaterThan(0)
     for (const [type, touches] of events) svg.dispatchEvent(touch_event(type, touches))
@@ -427,10 +422,9 @@ describe(`Histogram`, () => {
     legend_checkbox.click()
     await tick()
     expect(legend_checkbox.checked).toBe(true)
-    const reset_legend = document.querySelector<HTMLButtonElement>(
+    const reset_legend = doc_query<HTMLButtonElement>(
       `button[title="Reset histogram to defaults"]`,
     )
-    if (!reset_legend) throw new Error(`Histogram reset button not found`)
     reset_legend.click()
     await tick()
     expect(document.querySelector(`button[title="Reset histogram to defaults"]`)).toBeNull()

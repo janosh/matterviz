@@ -2,7 +2,7 @@ import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib'
 import { tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized } from '../setup'
+import { mount_sized, plot_svg, translate_of } from '../setup'
 
 type LocalPoint = { x: number; y: number; button?: number }
 
@@ -56,18 +56,9 @@ async function drag(
   return active
 }
 
-const plot_svg = (root: HTMLElement): SVGSVGElement => {
-  const svg = root.querySelector<SVGSVGElement>(`svg[role="application"]`)
-  if (!svg) throw new Error(`plot SVG not found`)
-  return svg
-}
-
 const marker_xs = (svg: SVGSVGElement): number[] =>
-  [...svg.querySelectorAll(`path.marker`)].map((marker) =>
-    Number(
-      /translate\((?<x>[-\d.]+)/.exec(marker.parentElement?.getAttribute(`transform`) ?? ``)
-        ?.groups?.x,
-    ),
+  [...svg.querySelectorAll(`path.marker`)].map(
+    (marker) => translate_of(marker.parentElement).x,
   )
 
 const mount_scatter = async (props: Partial<ComponentProps<typeof ScatterPlot>> = {}) =>

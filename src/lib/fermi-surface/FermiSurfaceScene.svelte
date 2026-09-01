@@ -15,7 +15,6 @@
   import {
     bind_renderer,
     create_scene_camera,
-    HOVER_THROTTLE_MS,
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
@@ -42,7 +41,7 @@
     apply_vertex_colors,
     build_isosurface_geometry,
     has_vertex_properties,
-    nearest_vertex_index,
+    nearest_face_vertex,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
   import type {
@@ -133,7 +132,7 @@
     threlte.invalidate()
   })
 
-  extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity()
 
   // Filter surfaces based on selected bands
   let visible_surfaces = $derived(
@@ -277,6 +276,13 @@
         : controls.initial_zoom,
     measured: () => measured,
     camera: () => camera,
+    // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
+    // a drag would raycast up to 96 tiled meshes per pointermove, and the tooltip popping in
+    // and out as the sheets sweep under the cursor reads as the surface flickering
+    set_camera_is_moving: (moving) => {
+      hover_enabled.set(!moving)
+      if (moving) hover_data = null
+    },
   })
 
   // Render passes per surface: transparent surfaces draw back faces first and front faces on
@@ -292,6 +298,12 @@
         ? [`back`, `front`]
         : [`front`],
   )
+  // Translucent sheets keep writing depth, which layers inner and outer bands but makes
+  // (nearly) coincident sheets — up and down channels of a non-magnetic calculation exported as
+  // two spin surfaces — z-fight, so each surface gets its own depth bias. WebGPU truncates the
+  // bias to an integer, hence whole-number steps wide enough to cover the numeric mismatch. The
+  // slope term stays shared: a per-surface slope would reorder distinct sheets at grazing angles
+  const SURFACE_DEPTH_BIAS_STEP = 8
   const make_material = (
     surface: FermiIsosurface,
     surface_idx: number,
@@ -303,10 +315,14 @@
         : new MeshStandardMaterial({
             metalness: 0.1,
             roughness: 0.6,
-            // Polygon offset helps separate overlapping geometry
             polygonOffset: true,
-            polygonOffsetFactor: 1 + surface_idx * 0.5,
-            polygonOffsetUnits: 1 + surface_idx * 0.5,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: SURFACE_DEPTH_BIAS_STEP * (surface_idx + 1),
+            // three's WebGPU backend (r174–r185, mrdoob/three.js#34405) omits the polygon
+            // offset from its pipeline cache key, so materials differing only in bias would share
+            // one pipeline. The stencil mask is in the key and inert with the stencil buffer off
+            // (three's default), so a distinct mask forces one pipeline per surface. Drop once fixed
+            stencilFuncMask: surface_idx + 1,
           })
     // A surface without per-vertex properties keeps its flat colour even in property mode,
     // otherwise vertexColors would read a missing attribute
@@ -359,11 +375,8 @@
     symmetry_ops.map((sym_matrix) => new Matrix4().fromArray(sym_matrix).invert()),
   )
 
-  // Throttle state for pointer move events to avoid O(n) vertex lookups causing jank
-  let last_hover_time = 0
-
-  // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh,
-  // skipping the O(n) nearest-vertex lookup when called too frequently
+  // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh. The
+  // per-vertex property comes from the hit triangle's nearest corner, so no throttle is needed
   function handle_pointer_move(
     event: ThreltePointerEvent,
     surface: FermiIsosurface,
@@ -371,23 +384,18 @@
     surface_color: string,
     sym_idx: number,
   ): void {
-    const now = performance.now()
-    if (now - last_hover_time < HOVER_THROTTLE_MS) return
-    last_hover_time = now
-
     // event.point is in world space (after sym_matrix transformation)
     const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
     const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
 
-    // Nearest vertex for the property lookup is found in local space: the geometry's
-    // positions are the raw surface vertices before sym_matrix
-    const local_point = event.point.clone().applyMatrix4(inverse_symmetry_ops[sym_idx])
-    const nearest_idx = nearest_vertex_index(geometry, [
-      local_point.x,
-      local_point.y,
-      local_point.z,
-    ])
-    const property_value = surface.properties?.[nearest_idx]
+    // The corner lookup happens in local space: the geometry's positions are the raw surface
+    // vertices before sym_matrix
+    let property_value: number | undefined
+    if (surface.properties && event.face) {
+      const local_point = event.point.clone().applyMatrix4(inverse_symmetry_ops[sym_idx])
+      property_value =
+        surface.properties[nearest_face_vertex(geometry, event.face, local_point)]
+    }
 
     const { clientX, clientY } = event.nativeEvent
     hover_data = {
@@ -453,6 +461,8 @@
         <!-- Passes of one surface draw consecutively (back before front) and inner surfaces
              before outer ones -->
         {#each material_passes as pass, pass_idx (pass)}
+          <!-- Both passes stay pickable: the raycast honours material.side, and an open sheet
+               seen from its concave side only hits the back-face pass -->
           <T.Mesh
             {geometry}
             material={materials[surface_idx]?.[pass_idx]}

@@ -5,6 +5,7 @@ import { flatten_grid } from '$lib/isosurface/grid'
 import type { VolumetricData } from '$lib/isosurface/types'
 import { make_volume as make_volume_from_values } from '$lib/isosurface/types'
 import * as math from '$lib/math'
+import type { Rect } from '$lib/plot/core/layout'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import type { Crystal, Molecule, Pbc, Site } from '$lib/structure'
 import type {
@@ -149,17 +150,69 @@ export const one_tab_stop = (n_marks: number): string[] => [
   ...Array<string>(n_marks - 1).fill(`-1`),
 ]
 
-export function doc_query<T extends Element = HTMLElement>(
+// querySelector that throws instead of returning null, so a stale selector fails loudly
+export function query<T extends Element = HTMLElement>(
+  root: ParentNode,
   selector: string,
   element_constructor?: Element_constructor<T>,
 ): T {
-  const node = document.querySelector(selector)
+  const node = root.querySelector(selector)
   if (!node) throw new Error(`No element found for selector: ${selector}`)
   if (element_constructor && !(node instanceof element_constructor)) {
     throw new Error(`Element found for selector ${selector} has the wrong type`)
   }
   return node as T
 }
+export const doc_query = <T extends Element = HTMLElement>(
+  selector: string,
+  element_constructor?: Element_constructor<T>,
+): T => query(document, selector, element_constructor)
+
+export const mouse = (type: string, init: MouseEventInit = {}): MouseEvent =>
+  new MouseEvent(type, { bubbles: true, ...init })
+export const keydown = (key: string, init: KeyboardEventInit = {}): KeyboardEvent =>
+  new KeyboardEvent(`keydown`, { key, bubbles: true, ...init })
+
+// Dispatch a bubbling event on a node (defaults to a click) and flush the update. Throws on
+// a missing target so a stale selector cannot pass as a no-op
+export const fire = async (
+  target: EventTarget | null | undefined,
+  event: Event = mouse(`click`),
+): Promise<void> => {
+  if (!target) throw new Error(`event target for ${event.type} not found`)
+  target.dispatchEvent(event)
+  await tick()
+}
+
+// The interactive plot area: the frame's <svg role="application"> under `root`
+export const plot_svg = (root: ParentNode = document): SVGSVGElement =>
+  query(root, `svg[role="application"]`)
+
+// x/y/width/height attributes of an SVG rect (or any element carrying them) as numbers
+export const svg_rect = (el: Element): Rect => ({
+  x: Number(el.getAttribute(`x`)),
+  y: Number(el.getAttribute(`y`)),
+  width: Number(el.getAttribute(`width`)),
+  height: Number(el.getAttribute(`height`)),
+})
+// The plot-area clip rect of a Cartesian chart, i.e. where its data can be hit
+export const clip_rect = (root: ParentNode = document): Rect =>
+  svg_rect(query(root, `defs clipPath rect`))
+
+// Pixel position an element is translate()d to
+export const translate_of = (el: Element | null | undefined): { x: number; y: number } => {
+  const transform = el?.getAttribute(`transform`) ?? ``
+  const match = /translate\((?<x>[-\d.e]+)[ ,]+(?<y>[-\d.e]+)\)/.exec(transform)
+  if (!match?.groups) throw new Error(`no translate in transform="${transform}"`)
+  return { x: Number(match.groups.x), y: Number(match.groups.y) }
+}
+
+// Screen position of the nth `.marker`, read from its group's translate
+export const marker_position = (
+  root: ParentNode,
+  marker_idx: number,
+): { x: number; y: number } =>
+  translate_of(root.querySelectorAll(`.marker`).item(marker_idx)?.parentElement)
 
 export const hdf5_group_option = (
   target: ParentNode,
@@ -373,10 +426,10 @@ export const press_window_key = (event_init: KeyboardEventInit): KeyboardEvent =
 // counters and toggles.
 export async function assertHoverScopedShortcut(opts: {
   viewer: HTMLElement
-  fire: () => void
+  trigger: () => void
   read_state: () => unknown
 }): Promise<void> {
-  const { viewer, fire, read_state } = opts
+  const { viewer, trigger, read_state } = opts
   let last = read_state()
   const took_effect = (): boolean => {
     const current = read_state()
@@ -385,30 +438,30 @@ export async function assertHoverScopedShortcut(opts: {
     return changed
   }
 
-  fire()
+  trigger()
   expect(took_effect(), `not hovered → ignored`).toBe(false)
 
   viewer.dispatchEvent(new PointerEvent(`pointerenter`))
   await tick()
-  fire()
+  trigger()
   expect(took_effect(), `hovered → fires without a prior click`).toBe(true)
 
   const input = document.createElement(`input`)
   document.body.append(input)
   input.focus()
-  fire()
+  trigger()
   expect(took_effect(), `input focused → bails`).toBe(false)
   // blur before removing so activeElement deterministically returns to <body> (happy-dom doesn't
   // reliably reset focus when a focused element is detached), making the "resumes" check stable
   input.blur()
   input.remove()
 
-  fire()
+  trigger()
   expect(took_effect(), `focus back on <body> → resumes`).toBe(true)
 
   viewer.dispatchEvent(new PointerEvent(`pointerleave`))
   await tick()
-  fire()
+  trigger()
   expect(took_effect(), `pointer left → stops firing`).toBe(false)
 }
 
@@ -505,8 +558,7 @@ export async function mount_sized<Comp extends Component<any>>(
     }),
   })
   options.on_mount?.(mounted)
-  const root = target.querySelector<HTMLElement>(selector)
-  if (!root) throw new Error(`No element found for selector: ${selector}`)
+  const root = query(target, selector)
   await resize_element(root, width, height)
   return root
 }
@@ -1182,9 +1234,9 @@ Element.prototype.animate = vi.fn().mockImplementation(() => {
 // Mock getAnimations for Svelte's animate:flip directive (not available in happy-dom)
 Element.prototype.getAnimations = vi.fn().mockReturnValue([])
 
-globalThis.matchMedia = vi.fn().mockImplementation((query) => ({
+globalThis.matchMedia = vi.fn().mockImplementation((media_query) => ({
   matches: false,
-  media: query,
+  media: media_query,
   onchange: null,
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),

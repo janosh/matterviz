@@ -211,7 +211,10 @@
         {/if}
         <line {...tick_mark} {stroke} stroke-width="1" pointer-events="none" />
         {#if in_domain(tick)}
+          {@const on_tick_click = axis.on_tick_click}
           <!-- aria-label: wrapping drops the break character, so the tspans read as one word -->
+          <!-- role/tabindex are conditional, so the linter can't see the button -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <text
             x={label_x_offset}
             y={label_y_offset}
@@ -220,6 +223,22 @@
             fill={tick_color?.(tick) ?? text_fill}
             transform={label_transform}
             aria-label={tick_unit ? `${label.full_text} ${tick_unit}` : label.full_text}
+            class={{ clickable: on_tick_click, active: tick === axis.active_tick }}
+            role={on_tick_click ? `button` : undefined}
+            aria-pressed={on_tick_click ? tick === axis.active_tick : undefined}
+            tabindex={on_tick_click ? 0 : undefined}
+            onclick={on_tick_click &&
+              ((event) => {
+                event.stopPropagation() // not a plot-area click (selection, pan)
+                on_tick_click(tick, event)
+              })}
+            onkeydown={on_tick_click &&
+              ((event) => {
+                if (event.key !== `Enter` && event.key !== ` `) return
+                event.preventDefault()
+                event.stopPropagation() // not a plot-area key (point activation)
+                on_tick_click(tick, event)
+              })}
           >
             {#each label_lines as line, line_idx}
               <tspan
@@ -261,6 +280,20 @@
 <style>
   .tick text {
     font-size: var(--tick-font-size, 0.8em);
+  }
+  /* No focus ring: the popup a click opens is the feedback (Safari draws one on click); the
+  underline keeps keyboard focus visible */
+  .tick text.clickable {
+    cursor: pointer;
+    outline: none;
+    &:hover,
+    &:focus-visible {
+      text-decoration: underline;
+    }
+  }
+  .tick text.active {
+    font-weight: bold;
+    fill: var(--tick-active-fill, var(--accent-color, #1976d2));
   }
   /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
   .tick tspan {

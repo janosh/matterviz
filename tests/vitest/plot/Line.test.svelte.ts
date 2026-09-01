@@ -4,7 +4,7 @@ import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { resolve_line_tween } from '$lib/plot/core/utils'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_transition_properties } from '../setup'
+import { bind_props, doc_query, expect_transition_properties } from '../setup'
 
 describe(`resolve_line_tween (path-morph budget)`, () => {
   test.each([
@@ -114,8 +114,7 @@ describe(`Line`, () => {
       target: document.body,
       props: { points: [[0, 0]], origin: [0, 0] },
     })
-    const path = document.querySelector(`path`)
-    if (!path) throw new Error(`Line path not found`)
+    const path = doc_query(`path`)
     expect(path).toBeInstanceOf(SVGElement)
     expect_transition_properties(path, [
       `stroke`,

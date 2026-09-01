@@ -9,7 +9,7 @@ import type {
 import { HeatmapTable } from '$lib/table'
 import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { bind_props, doc_query, trigger_resize_observer } from '../setup'
+import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
 
 const mount_table = (props: ComponentProps<typeof HeatmapTable>): ReturnType<typeof mount> =>
   mount(HeatmapTable, { target: document.body, props })
@@ -989,7 +989,7 @@ describe(`HeatmapTable`, () => {
       mount_table({ data: sample_data, columns: sample_columns })
       const headers = document.querySelectorAll(`th`)
       const shift_click = async (idx: number) => {
-        headers[idx].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
+        headers[idx].dispatchEvent(mouse(`click`, { shiftKey: true }))
         await tick()
       }
 
@@ -1140,7 +1140,7 @@ describe(`HeatmapTable`, () => {
     expect(state.column_prefs.Score?.width).toBe(500)
     expect(state.column_prefs.Model).toBeUndefined()
     // the click that follows the release lands on the handle inside the sortable header
-    handle.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    handle.dispatchEvent(mouse(`click`))
     await tick()
     expect(doc_query(`th[data-col-id="Score"]`).getAttribute(`aria-sort`)).toBe(`none`)
   })
@@ -1489,7 +1489,7 @@ describe(`HeatmapTable`, () => {
         })
 
         const first_row = document.querySelector(`tbody tr`) as HTMLElement
-        first_row.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+        first_row.dispatchEvent(keydown(key))
         await tick()
 
         expect(clicked).toHaveLength(1)
@@ -1523,9 +1523,9 @@ describe(`HeatmapTable`, () => {
       )
       await tick()
       const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[1]
-      inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-      inner.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-      inner.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      inner.dispatchEvent(mouse(`click`))
+      inner.dispatchEvent(mouse(`dblclick`))
+      inner.dispatchEvent(keydown(`Enter`))
       expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[1], data[1]])
       expect(on_row_double_click.mock.calls.map((call) => call[1])).toEqual([data[1]])
 
@@ -1534,7 +1534,7 @@ describe(`HeatmapTable`, () => {
       await tick()
       const last_row = doc_query(`tbody tr[data-row-idx="1"]`)
       expect(last_row.querySelector(`td[data-row-idx]`)).toBeNull()
-      last_row.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      last_row.dispatchEvent(mouse(`click`))
       expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[1]])
     })
 
@@ -1558,7 +1558,7 @@ describe(`HeatmapTable`, () => {
       })
       await tick()
       const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[2]
-      inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      inner.dispatchEvent(mouse(`click`))
       expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[2]])
 
       // a drag started in the inner cell selects the outer cell it sits in, not (0, 0)
@@ -1571,9 +1571,7 @@ describe(`HeatmapTable`, () => {
 
       // keyboard: ArrowUp from the outer row 2 cell lands on the outer row 1 cell
       cell_at(2, 0).focus()
-      cell_at(2, 0).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowUp`, bubbles: true }),
-      )
+      cell_at(2, 0).dispatchEvent(keydown(`ArrowUp`))
       await tick()
       expect(document.activeElement).toBe(cell_at(1, 0))
     })
@@ -1751,7 +1749,7 @@ describe(`HeatmapTable`, () => {
       await tick()
       const options = document.querySelectorAll(`.column-filter-options label`)
       expect(options).toHaveLength(60)
-      const event = new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true })
+      const event = keydown(`Escape`)
       vi.spyOn(event, `stopPropagation`)
       document.querySelector<HTMLElement>(`.column-filter-panel`)?.dispatchEvent(event)
       await tick()
@@ -1848,24 +1846,18 @@ describe(`HeatmapTable`, () => {
       expect(cell_at(0, 0).getAttribute(`tabindex`)).toBe(`0`)
       expect([...document.querySelectorAll(`td[tabindex="0"]`)]).toHaveLength(1)
 
-      cell_at(0, 0).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
-      )
+      cell_at(0, 0).dispatchEvent(keydown(`ArrowDown`))
       await tick()
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
       expect(cell_at(1, 0).classList.contains(`cell-selected`)).toBe(true)
       expect(cell_at(1, 0).getAttribute(`tabindex`)).toBe(`0`)
       expect(document.activeElement).toBe(cell_at(1, 0))
 
-      cell_at(1, 0).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowRight`, shiftKey: true, bubbles: true }),
-      )
+      cell_at(1, 0).dispatchEvent(keydown(`ArrowRight`, { shiftKey: true }))
       await tick()
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(2)
 
-      cell_at(1, 1).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowLeft`, altKey: true, bubbles: true }),
-      )
+      cell_at(1, 1).dispatchEvent(keydown(`ArrowLeft`, { altKey: true }))
       await tick()
       expect(props.column_order).toEqual([`Score`, `Model`, `Tier`])
     })
@@ -2037,7 +2029,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`cell range selection and column copy`, () => {
     const pointer = (type: string, init: MouseEventInit = {}) =>
-      new MouseEvent(type, { button: 0, bubbles: true, ...init })
+      mouse(type, { button: 0, ...init })
     const drag_cells = (
       from: [number, number],
       to: [number, number],
@@ -2262,15 +2254,11 @@ describe(`HeatmapTable`, () => {
       expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
       expect(col_values(`Model`)[0]).toBe(`Model 20`)
 
-      cell_at(start, 0).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }),
-      )
+      cell_at(start, 0).dispatchEvent(keydown(`ArrowRight`))
       await tick()
       expect(scroller.scrollTop).toBe(30 * row_height_px)
 
-      cell_at(end - 1, 0).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
-      )
+      cell_at(end - 1, 0).dispatchEvent(keydown(`ArrowDown`))
       await tick()
       expect(scroller.scrollTop).toBe(end * row_height_px)
       expect(document.activeElement).toBe(
@@ -2354,17 +2342,13 @@ describe(`HeatmapTable`, () => {
 
       const last_rendered = row_at(min_window - 1)
       assert(last_rendered)
-      last_rendered.dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
-      )
+      last_rendered.dispatchEvent(keydown(`ArrowDown`))
       await tick()
 
       expect(scroller.scrollTop).toBeGreaterThan(0) // pulled the next row into the window
       expect(document.activeElement).toBe(row_at(min_window))
 
-      row_at(min_window)?.dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowUp`, bubbles: true }),
-      )
+      row_at(min_window)?.dispatchEvent(keydown(`ArrowUp`))
       await tick()
       expect(document.activeElement).toBe(row_at(min_window - 1))
     })

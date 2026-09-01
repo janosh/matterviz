@@ -7,6 +7,7 @@ import {
   create_drop_event,
   expect_plot_controls,
   gzip_bytes,
+  query,
   resize_element,
 } from '../setup'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
@@ -369,8 +370,7 @@ describe(`XrdPlot`, () => {
         ? await gzip_bytes(content)
         : content
       const file = new File([payload], source_filename)
-      const drop_zone = target.querySelector<HTMLElement>(`.xrd-empty-state`)
-      if (!drop_zone) throw new Error(`XRD drop zone not found`)
+      const drop_zone = query(target, `.xrd-empty-state`)
       drop_zone.dispatchEvent(create_drop_event(file))
 
       await vi.waitFor(() =>
@@ -386,8 +386,7 @@ describe(`XrdPlot`, () => {
   test(`an empty dropped file is reported, not forwarded`, async () => {
     const on_file_drop = vi.fn()
     const target = await mount_xrd({ patterns: [], on_file_drop })
-    const drop_zone = target.querySelector<HTMLElement>(`.xrd-empty-state`)
-    if (!drop_zone) throw new Error(`XRD drop zone not found`)
+    const drop_zone = query(target, `.xrd-empty-state`)
     drop_zone.dispatchEvent(create_drop_event(new File([``], `empty.xy`)))
     await vi.waitFor(() => expect(target.textContent).toContain(`empty.xy: file is empty`))
     expect(on_file_drop).not.toHaveBeenCalled()

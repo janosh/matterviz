@@ -346,12 +346,6 @@
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
     facet_layout: () => facet_layout,
-    write_range: (axis, range) => {
-      if (axis === `x`) x_axis = { ...x_axis, range }
-      else if (axis === `x2`) x2_axis = { ...x2_axis, range }
-      else if (axis === `y`) y_axis = { ...y_axis, range }
-      else y2_axis = { ...y2_axis, range }
-    },
     clip_id_prefix: `histogram-clip`,
   })
 

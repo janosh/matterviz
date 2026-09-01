@@ -509,7 +509,8 @@ body.fullscreen .draggable-pane {
   blockquote {
     border-left: 3pt solid var(--accent-color, cornflowerblue);
     padding: 3pt 7pt;
-    background: rgba(255, 255, 255, 0.2);
+    /* Text-color tint stays faint in both themes, unlike a fixed white wash. */
+    background: color-mix(in srgb, currentColor 5%, transparent);
     margin: 1em 0;
   }
   blockquote p:first-child {

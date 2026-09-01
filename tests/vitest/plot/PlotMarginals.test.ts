@@ -2,7 +2,7 @@ import type { DataSeries, MarginalSideInput } from '$lib/plot'
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { mount_sized } from '../setup'
+import { clip_rect, mount_sized, query, svg_rect } from '../setup'
 
 const scatter_series: DataSeries = {
   x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -23,9 +23,6 @@ const mount_bar = (props: Partial<ComponentProps<typeof BarPlot>>): Promise<HTML
 
 const mount_box = (props: Partial<ComponentProps<typeof BoxPlot>>): Promise<HTMLElement> =>
   mount_sized(BoxPlot, props, { selector: `.box-plot` })
-
-const clip_rect_height = (root: HTMLElement): number =>
-  Number(root.querySelector(`clipPath rect`)?.getAttribute(`height`) ?? 0)
 
 const marker_snippet = createRawSnippet(() => ({
   render: () => `<circle class="custom-marker" cx="20" cy="20" r="4" />`,
@@ -52,7 +49,7 @@ describe(`PlotMarginals integration`, () => {
       marginals: { top: { type: `histogram`, size: 90 } },
     })
     const without = await mount_scatter({ series: [scatter_series] })
-    expect(clip_rect_height(with_margin)).toBeLessThan(clip_rect_height(without))
+    expect(clip_rect(with_margin).height).toBeLessThan(clip_rect(without).height)
   })
 
   test.each([`kde`, `rug`] as const)(`%s marginal renders path elements`, async (type) => {
@@ -121,8 +118,7 @@ describe(`PlotMarginals integration`, () => {
       y_axis: { range: [0, 2] },
       marginals: { top: { type: `histogram`, bins: 10, per_series: false } },
     })
-    const hit = root.querySelector(`.marginal-hit-top`)
-    if (!hit) throw new Error(`expected top marginal hit rect`)
+    const hit = query(root, `.marginal-hit-top`)
     const mid = Number(hit.getAttribute(`x`)) + Number(hit.getAttribute(`width`)) / 2
     const bar_xs = [...root.querySelectorAll(`.marginal-top rect`)].map((rect) =>
       Number(rect.getAttribute(`x`)),
@@ -262,8 +258,7 @@ describe(`PlotMarginals integration`, () => {
       series: [{ x: [`A`, `B`, `C`, `D`], y: [10, -8, 6, -4], color: `slateblue` }],
       marginals: { top: { type: `cdf`, curve: `linear` } },
     })
-    const line_path = root.querySelector(`.marginal-top path[fill="none"]`)
-    if (!line_path) throw new Error(`expected a CDF line path`)
+    const line_path = query(root, `.marginal-top path[fill="none"]`)
     const nums = (line_path.getAttribute(`d`) ?? ``).match(/-?\d+\.?\d*/g)?.map(Number) ?? []
     const ys = nums.filter((_, idx) => idx % 2 === 1)
     expect(ys.length).toBeGreaterThan(2)
@@ -280,12 +275,8 @@ describe(`marginal hover tooltips`, () => {
   // to wrapper px. Pick a coordinate just inside the plot-facing baseline where filled marginals
   // are rendered, not merely inside the transparent hit-rect.
   const hover_strip = async (root: HTMLElement): Promise<Element | null> => {
-    const hit = root.querySelector(`.marginal-hit`)
-    if (!hit) throw new Error(`expected a .marginal-hit rect`)
-    const x = Number(hit.getAttribute(`x`))
-    const y = Number(hit.getAttribute(`y`))
-    const width = Number(hit.getAttribute(`width`))
-    const height = Number(hit.getAttribute(`height`))
+    const hit = query(root, `.marginal-hit`)
+    const { x, y, width, height } = svg_rect(hit)
     const side = /marginal-hit-(?<side>top|right|bottom|left)/.exec(
       hit.getAttribute(`class`) ?? ``,
     )?.groups?.side
@@ -309,8 +300,7 @@ describe(`marginal hover tooltips`, () => {
       marginals: { top: { type: `histogram`, value_range: [0, 1000] } },
     })
     expect(root.querySelector(`.plot-tooltip`)).toBeNull() // none before hover
-    const hit = root.querySelector(`.marginal-hit`)
-    if (!hit) throw new Error(`expected a .marginal-hit rect`)
+    const hit = query(root, `.marginal-hit`)
     const [hit_x, hit_y, hit_width] = [`x`, `y`, `width`].map((attr) =>
       Number(hit.getAttribute(attr)),
     )
@@ -451,8 +441,7 @@ describe(`marginal value-axis`, () => {
   test(`Histogram default top CDF value-axis: title, percent ticks, and x-strip geometry`, async () => {
     const root = await mount_histogram({ series: hist_series, marginals: true })
     expect(root.querySelectorAll(`.marginal-top path`).length).toBeGreaterThan(0) // cdf line
-    const axis = root.querySelector(`.marginal-axis-top`)
-    if (!axis) throw new Error(`expected a top value-axis`)
+    const axis = query(root, `.marginal-axis-top`)
     expect(axis.querySelector(`.marginal-axis-title`)?.textContent).toBe(`CDF`)
     // CDF domain is [0,1] -> nice ticks [0,0.5,1] as percentages; the baseline 0% tick is dropped
     // (it would overlap the host plot's top y-tick), leaving 50% and 100%

@@ -1,6 +1,7 @@
 import PlotPanel from '$lib/file-viewer/PlotPanel.svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { expect, test } from 'vitest'
+import { doc_query } from '../setup'
 
 // one string + two numeric columns: both `bar` and `scatter` are offered
 const rows = (prefix: string) =>
@@ -14,8 +15,7 @@ test(`new data clears a toolbar plot-type override back to initial_type`, async 
   const props = $state({ data: rows(`x`), initial_type: `bar` as const })
   mount(PlotPanel, { target: document.body, props })
   flushSync()
-  const select = document.querySelector<HTMLSelectElement>(`.toolbar > select`)
-  if (!select) throw new Error(`plot type select missing`)
+  const select = doc_query<HTMLSelectElement>(`.toolbar > select`)
   expect(select.value).toBe(`bar`)
 
   select.value = `scatter`

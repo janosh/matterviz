@@ -9,7 +9,7 @@ import type {
 import { suggest_analysis_frame_stride, trajectory_from_frames } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { make_frame } from '../setup'
+import { doc_query, make_frame } from '../setup'
 import { drift_positions, max_rel_error, on_x_axis } from './helpers'
 
 const drift_per_frame = 0.13
@@ -129,8 +129,7 @@ describe(`MSD components`, () => {
       }),
     )
     await tick()
-    const button = document.querySelector<HTMLButtonElement>(`.trajectory-msd-controls button`)
-    if (!button) throw new Error(`No MSD compute button`)
+    const button = doc_query<HTMLButtonElement>(`.trajectory-msd-controls button`)
     button.click()
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Å²/fs`))
     expect(button.disabled).toBe(false)

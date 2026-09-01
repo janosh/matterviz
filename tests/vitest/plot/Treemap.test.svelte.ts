@@ -3,7 +3,16 @@ import type { SunburstNodeHandlerProps, TreemapArc, TreemapNode } from '$lib/plo
 import { PLOT_COLORS } from '$lib/colors'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized, resize_element, trigger_resize_observer } from '../setup'
+import {
+  fire,
+  keydown,
+  mount_sized,
+  mouse,
+  query,
+  resize_element,
+  translate_of,
+  trigger_resize_observer,
+} from '../setup'
 
 // A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
 const tree: TreemapNode[] = [
@@ -34,18 +43,8 @@ const mount_sized_treemap = (
 const IDX = { A: 1, A2: 2, A1: 3, B: 4 } as const
 
 const cell_rect = (plot: HTMLElement, label: keyof typeof IDX): SVGRectElement => {
-  const rect = plot.querySelector<SVGRectElement>(
-    `.cells [data-treemap-node-idx="${IDX[label]}"]`,
-  )
-  if (!rect) throw new Error(`no cell rect for label ${label}`)
+  const rect = query<SVGRectElement>(plot, `.cells [data-treemap-node-idx="${IDX[label]}"]`)
   return rect
-}
-
-const mouse = (type: string) => new MouseEvent(type, { bubbles: true })
-
-const fire = async (node: Element | null | undefined, event: Event = mouse(`click`)) => {
-  node?.dispatchEvent(event)
-  await tick()
 }
 
 const n_cells = (plot: HTMLElement) => plot.querySelectorAll(`.cells rect`).length
@@ -164,7 +163,7 @@ describe(`Treemap`, () => {
       const plot = await mount_sized_treemap({ data: tree })
       const cell = cell_rect(plot, label)
       cell.focus()
-      await fire(cell, new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      await fire(cell, keydown(`Enter`))
       await tick()
       await tick()
       expect(n_cells(plot)).toBe(cells_after)
@@ -196,8 +195,7 @@ describe(`Treemap`, () => {
         { label: `corner`, color, children: [{ label: `c1`, value: 6 }] },
       ],
     })
-    const row = plot.querySelector(`.header-controls`)
-    if (!row) throw new Error(`no header controls`)
+    const row = query(plot, `.header-controls`)
     const buttons = [...row.children].filter((el) => el.tagName === `BUTTON`)
     expect(buttons.length).toBeGreaterThan(1) // gear + fullscreen
     for (const btn of buttons) expect(getComputedStyle(btn).color).toBe(expected)
@@ -335,14 +333,7 @@ describe(`Treemap`, () => {
   })
 
   test.each([
-    [
-      `Escape key`,
-      (_plot: HTMLElement): Promise<void> =>
-        fire(
-          globalThis as unknown as Element,
-          new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
-        ),
-    ],
+    [`Escape key`, (_plot: HTMLElement): Promise<void> => fire(globalThis, keydown(`Escape`))],
     [
       `background double-click on the svg`,
       // role selector: plot.querySelector('svg') would match an icon svg in the
@@ -492,17 +483,14 @@ describe(`Treemap`, () => {
         arc.is_leaf ? arc.value : null,
       color_bar: { title: `count`, orientation: `vertical` },
     })
-    const colorbar = plot.querySelector<HTMLElement>(`.colorbar`)
-    if (!colorbar) throw new Error(`vertical color bar not found`)
+    const colorbar = query(plot, `.colorbar`)
     expect(colorbar.style.getPropertyValue(`--cbar-height`)).toBe(
       `var(--treemap-colorbar-height, 150px)`,
     )
     await resize_element(colorbar, 80, 150)
     trigger_resize_observer(colorbar)
     await tick()
-    const transform =
-      plot.querySelector(`.cells`)?.parentElement?.getAttribute(`transform`) ?? ``
-    const group_x = Number(/translate\((?<x>[-\d.]+)/.exec(transform)?.groups?.x)
+    const group_x = translate_of(plot.querySelector(`.cells`)?.parentElement).x
     const cell_rects = plot.querySelectorAll<SVGRectElement>(`.cells rect`)
     expect(cell_rects.length).toBeGreaterThan(0)
     const right_edges = [...cell_rects].map(
@@ -576,8 +564,7 @@ describe(`Treemap`, () => {
     const target = document.createElement(`div`)
     document.body.append(target)
     mount(Treemap, { target, props })
-    const plot = target.querySelector<HTMLElement>(`.treemap`)
-    if (!plot) throw new Error(`Treemap root element not found`)
+    const plot = query(target, `.treemap`)
     await resize_element(plot, 500, 360)
     await fire(cell_rect(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
