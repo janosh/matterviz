@@ -10,7 +10,7 @@ import {
 import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '$lib/spectral/types'
 import { mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
-import { bind_props, expect_plot_controls, mount_sized } from '../setup'
+import { bind_props, expect_plot_controls, mount_sized, plot_svg } from '../setup'
 
 // Test fixtures
 const phonon_dos: PhononDos = {
@@ -162,6 +162,25 @@ describe(`Dos component`, () => {
       { selector: `.scatter` },
     )
     expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
+  })
+
+  // both axes carry Dos' own ranges (density from zero, the padded frequency range), which
+  // differ from ScatterPlot's nice()-rounded auto ranges a reset would otherwise fall back to
+  it(`returns both axes to their pinned ranges after a double-click view reset`, async () => {
+    // extents nice() would round (9.3 -> 10, 0.87 -> 0.9 or 1)
+    const doses: PhononDos = {
+      ...phonon_dos,
+      frequencies: phonon_dos.frequencies.map((freq) => freq * 0.93),
+      densities: phonon_dos.densities.map((density) => density * 0.87),
+    }
+    const plot = await mount_sized(Dos, { doses }, { selector: `.scatter` })
+    const ticks = (axis: string) =>
+      [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map((el) => el.textContent)
+    const [x_before, y_before] = [ticks(`x`), ticks(`y`)]
+    expect(x_before.length + y_before.length).toBeGreaterThan(4)
+    plot_svg(plot).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await tick()
+    expect([ticks(`x`), ticks(`y`)]).toEqual([x_before, y_before])
   })
 
   it(`forwards flat control props and controls_open binding`, async () => {

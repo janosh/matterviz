@@ -10,7 +10,7 @@
   import { clamp, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-  import { is_valid_range, sync_axis_range } from '$lib/plot/core/shared-axes'
+  import { wrapped_axis } from '$lib/plot/core/wrapped-axis.svelte'
   import type {
     AxisConfig,
     DataSeries,
@@ -408,20 +408,16 @@
   })
   // Pinned to the k-path: the auto range would nice() the path end (3.3 -> 3.5) and leave the
   // bands short of the frame
-  let default_x_axis = $derived<AxisConfig>({
-    label: `Wave Vector`,
-    ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
-    format: ``,
-    range: x_range,
-    on_tick_click: k_lattice ? (tick) => (bz_popup_x = tick) : undefined,
-    active_tick: bz_popup_x,
-    ...x_axis,
-  })
-  // ScatterPlot writes rect zooms back here and clears the range on a double-click reset;
-  // the reset returns to the k-path range rather than the auto range
-  let internal_x_axis = $derived(default_x_axis)
-  $effect(() => {
-    if (!is_valid_range(internal_x_axis.range)) internal_x_axis = default_x_axis
+  const internal_x_axis = wrapped_axis({
+    default_axis: () => ({
+      label: `Wave Vector`,
+      ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
+      format: ``,
+      range: x_range,
+      on_tick_click: k_lattice ? (tick) => (bz_popup_x = tick) : undefined,
+      active_tick: bz_popup_x,
+      ...x_axis,
+    }),
   })
 
   // Range in the data's own unit; unit conversion is a positive scale factor, which commutes
@@ -438,21 +434,20 @@
   )
   let y_range = $derived(raw_y_range && (convert_band_values(raw_y_range) as Vec2))
 
-  // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
-  let internal_y_axis = $derived({
-    label:
-      detected_band_type === `phonon`
-        ? `Frequency (${frequency_unit_label(unit)})`
-        : `Energy (eV)`,
-    format: `.2f`,
-    label_shift: { y: 15 },
-    range: y_range,
-    ...y_axis,
-  })
-
-  $effect(() => {
-    const next = sync_axis_range(y_axis, internal_y_axis.range, y_range)
-    if (next !== y_axis) y_axis = next
+  // zooms are relayed to the bindable y_axis so BandsAndDos can link its panels
+  const internal_y_axis = wrapped_axis({
+    default_axis: () => ({
+      label:
+        detected_band_type === `phonon`
+          ? `Frequency (${frequency_unit_label(unit)})`
+          : `Energy (eV)`,
+      format: `.2f`,
+      label_shift: { y: 15 },
+      range: y_range,
+      ...y_axis,
+    }),
+    default_range: () => y_range,
+    prop: { get: () => y_axis, set: (next) => (y_axis = next) },
   })
 
   let fill_regions = $derived.by((): FillRegion[] => {
@@ -555,8 +550,8 @@
     series={series_data}
     {point_hit_padding}
     {fill_regions}
-    bind:x_axis={internal_x_axis}
-    bind:y_axis={internal_y_axis}
+    bind:x_axis={internal_x_axis.value}
+    bind:y_axis={internal_y_axis.value}
     bind:display
     {show_legend}
     legend={num_structures > 1 ? {} : null}
@@ -571,7 +566,7 @@
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const { name: y_label, unit: y_unit } = helpers.parse_axis_label(
-        internal_y_axis.label ?? ``,
+        internal_y_axis.value.label ?? ``,
       )}
       {@const segment = Object.entries(internal_x_positions).find(
         ([, [start, end]]) => x >= start && x <= end,

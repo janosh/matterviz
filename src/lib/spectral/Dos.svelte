@@ -5,7 +5,7 @@
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '$lib/plot/core/scales'
-  import { sync_axis_range } from '$lib/plot/core/shared-axes'
+  import { wrapped_axis } from '$lib/plot/core/wrapped-axis.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import { extent } from 'd3-array'
   import type { ComponentProps } from 'svelte'
@@ -270,25 +270,22 @@
   let x_label = $derived(is_horizontal ? `Density of States` : value_label)
   let y_label = $derived(is_horizontal ? value_label : `Density of States`)
 
-  let final_x_axis = $derived({
-    label: x_label,
-    format: `.2f`,
-    range: x_range,
-    // Keep label standoff identical to Bands' x-axis so the side-by-side
-    // "Density of States" and "Wave Vector" labels align (ScatterPlot default y: -40)
-    ...(is_horizontal && { ticks: 4 }),
-    ...x_axis,
+  const internal_x_axis = wrapped_axis({
+    default_axis: () => ({
+      label: x_label,
+      format: `.2f`,
+      range: x_range,
+      // Keep label standoff identical to Bands' x-axis so the side-by-side
+      // "Density of States" and "Wave Vector" labels align (ScatterPlot default y: -40)
+      ...(is_horizontal && { ticks: 4 }),
+      ...x_axis,
+    }),
   })
-  // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
-  let internal_y_axis = $derived({
-    label: y_label,
-    format: `.2f`,
-    range: y_range,
-    ...y_axis,
-  })
-  $effect(() => {
-    const next = sync_axis_range(y_axis, internal_y_axis.range, y_range)
-    if (next !== y_axis) y_axis = next
+  // zooms are relayed to the bindable y_axis so BandsAndDos can link its panels
+  const internal_y_axis = wrapped_axis({
+    default_axis: () => ({ label: y_label, format: `.2f`, range: y_range, ...y_axis }),
+    default_range: () => y_range,
+    prop: { get: () => y_axis, set: (next) => (y_axis = next) },
   })
 
   let display = $state({
@@ -348,8 +345,8 @@
 {#if has_valid_data}
   <ScatterPlot
     series={series_data}
-    x_axis={final_x_axis}
-    bind:y_axis={internal_y_axis}
+    bind:x_axis={internal_x_axis.value}
+    bind:y_axis={internal_y_axis.value}
     bind:display
     bind:resolved_padding
     {show_legend}
@@ -369,8 +366,8 @@
         is_horizontal,
         is_phonon,
         units: unit,
-        x_axis_label: final_x_axis.label ?? ``,
-        y_axis_label: internal_y_axis.label ?? ``,
+        x_axis_label: internal_x_axis.value.label ?? ``,
+        y_axis_label: internal_y_axis.value.label ?? ``,
         num_series: Object.keys(doses_dict).length,
       })}
       {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}

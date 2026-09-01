@@ -161,6 +161,28 @@ export function doc_query<T extends Element = HTMLElement>(
   return node as T
 }
 
+// The interactive plot area: the frame's <svg role="application"> under `root`
+export const plot_svg = (root: ParentNode = document): SVGSVGElement => {
+  const svg = root.querySelector<SVGSVGElement>(`svg[role="application"]`)
+  if (!svg) throw new Error(`plot svg not found`)
+  return svg
+}
+
+// Pixel position an element is translate()d to
+export const translate_of = (el: Element | null | undefined): { x: number; y: number } => {
+  const transform = el?.getAttribute(`transform`) ?? ``
+  const match = /translate\((?<x>[-\d.e]+)[ ,]+(?<y>[-\d.e]+)\)/.exec(transform)
+  if (!match?.groups) throw new Error(`no translate in transform="${transform}"`)
+  return { x: Number(match.groups.x), y: Number(match.groups.y) }
+}
+
+// Screen position of the nth `.marker`, read from its group's translate
+export const marker_position = (
+  root: ParentNode,
+  marker_idx: number,
+): { x: number; y: number } =>
+  translate_of(root.querySelectorAll(`.marker`).item(marker_idx)?.parentElement)
+
 export const hdf5_group_option = (
   target: ParentNode,
   group_path: string,

@@ -2,9 +2,16 @@ import type { Matrix3x3, Vec2 } from '$lib/math'
 import Bands from '$lib/spectral/Bands.svelte'
 import type { BaseBandStructure, FrequencyUnit } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
-import { mount, tick } from 'svelte'
+import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
-import { bind_props, expect_plot_controls, make_crystal, mount_sized } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  expect_plot_controls,
+  make_crystal,
+  mount_sized,
+  plot_svg,
+} from '../setup'
 
 const base_band_structure: BaseBandStructure = {
   qpoints: [
@@ -391,7 +398,7 @@ describe(`Bands component`, () => {
     ...document.querySelectorAll<SVGTextElement>(`.x-axis .tick text`),
   ]
 
-  it(`keeps the x range pinned to the k-path after a double-click view reset`, async () => {
+  it(`returns both axes to their pinned ranges after a double-click view reset`, async () => {
     // a path end D3's nice() would round up (3.3 -> 3.5), unlike the fixture's 0..3
     const band_structs = { ...spin_polarized_electronic, distance: [0, 1.1, 2.2, 3.3] }
     await mount_sized(
@@ -399,8 +406,11 @@ describe(`Bands component`, () => {
       { band_structs, band_type: `electronic` },
       { selector: `.scatter` },
     )
-    const svg = document.querySelector<SVGSVGElement>(`svg[role="application"]`)
-    if (!svg) throw new Error(`bands plot svg not found`)
+    const svg = plot_svg()
+    // the padded energy range differs from the nice()-rounded auto range too
+    const y_ticks = () =>
+      [...document.querySelectorAll(`.y-axis .tick text`)].map((el) => el.textContent)
+    const y_before = y_ticks()
     // x of the last symmetry-point tick (X) and where the Fermi line stops
     const last_tick_x = () =>
       Number(
@@ -420,6 +430,18 @@ describe(`Bands component`, () => {
     await tick()
     expect(last_tick_x()).toBeCloseTo(before, 6)
     expect(fermi_x_end()).toBeCloseTo(before, 6)
+    expect(y_ticks()).toEqual(y_before)
+  })
+
+  it(`renders with a caller range that is itself unset without looping`, async () => {
+    // the reset restore must not re-assign a default whose own range is invalid forever
+    await mount_sized(
+      Bands,
+      { band_structs: base_band_structure, x_axis: { range: [null, null] } },
+      { selector: `.scatter` },
+    )
+    expect(() => flushSync()).not.toThrow()
+    expect(tick_labels()).toHaveLength(2)
   })
 
   // Reciprocal lattice of the cubic a=3 cell, as pymatgen/phonopy inputs carry it
@@ -503,9 +525,8 @@ describe(`Bands component`, () => {
 
     // the popup is anchored through the live x scale: a shift-drag pan by half the plot width
     // scrolls Γ (x=0) out of the view, hiding the popup; panning back restores it in place
-    const svg = document.querySelector<SVGSVGElement>(`svg[role="application"]`)
-    const clip = document.querySelector(`defs clipPath rect`)
-    if (!svg || !clip) throw new Error(`plot svg or clip rect not found`)
+    const svg = plot_svg()
+    const clip = doc_query(`defs clipPath rect`)
     const clip_x = Number(clip.getAttribute(`x`))
     const clip_width = Number(clip.getAttribute(`width`))
     const pan = async (from_x: number, to_x: number) => {

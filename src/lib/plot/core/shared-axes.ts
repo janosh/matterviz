@@ -70,23 +70,22 @@ export const axis_with_range = (
   ...(is_valid_range(range) && { range }),
 })
 
-// Sync a child plot's internal range back to a parent axis. Stable references avoid
-// reactive churn; an invalid incoming range clears an existing explicit range, and so does
-// one equal to `default_range`: the data-driven default a wrapper derives (Bands' padded
-// frequency range) must keep flowing from the data, so it is never frozen into the axis prop
-// where it would outrank the next default after a units or data change. Only zooms and
-// caller pins, i.e. deviations from the default, are worth keeping there. The exception is a
-// caller pin already equal to the default (BandsAndDos' shared range when the DOS lies inside
-// the bands range): clearing it would make the parent re-pin it and loop the two effects.
+// Sync a child plot's internal range back to a parent axis. An axis already showing the range
+// is returned as is (stable references avoid reactive churn; this includes a caller pin equal
+// to the default, which BandsAndDos re-pins if cleared, looping the two effects). An invalid
+// incoming range clears an existing explicit range, and so does one equal to `default_range`:
+// the data-driven default a wrapper derives (Bands' padded frequency range) must keep flowing
+// from the data, so it is never frozen into the axis prop where it would outrank the next
+// default after a units or data change. Only zooms and caller pins, i.e. deviations from the
+// default, are worth keeping there.
 export function sync_axis_range(
   axis: AxisConfig,
   range: unknown,
   default_range?: Vec2,
 ): AxisConfig {
   if (is_valid_range(range)) {
-    if (axis.range?.[0] === range[0] && axis.range?.[1] === range[1]) return axis
-    if (!ranges_equal(range, default_range)) return { ...axis, range }
     if (ranges_equal(axis.range, range)) return axis
+    if (!ranges_equal(range, default_range)) return { ...axis, range }
   }
   if (`range` in axis) {
     const { range: _omitted, ...rest } = axis

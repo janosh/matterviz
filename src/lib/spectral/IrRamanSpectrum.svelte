@@ -5,7 +5,7 @@
   import { array_max, type Vec2 } from '$lib/math'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-  import { sync_axis_range } from '$lib/plot/core/shared-axes'
+  import { wrapped_axis } from '$lib/plot/core/wrapped-axis.svelte'
   import { extent } from 'd3-array'
   import { untrack, type ComponentProps } from 'svelte'
   import {
@@ -131,24 +131,24 @@
     return [{ x: broadened.x, y: curve_y, markers: `line`, label, line_style }]
   })
 
-  let final_x_axis = $derived({
-    label: `Frequency (${frequency_unit_label(unit)})`,
-    format: `.4~s`,
-    range: plot_range,
-    ...x_axis,
+  const internal_x_axis = wrapped_axis({
+    default_axis: () => ({
+      label: `Frequency (${frequency_unit_label(unit)})`,
+      format: `.4~s`,
+      range: plot_range,
+      ...x_axis,
+    }),
   })
-  let default_y_range = $derived(
-    (is_transmittance ? [0, 1.05] : undefined) as Vec2 | undefined,
-  )
-  let internal_y_axis = $derived({
-    label: intensity_label,
-    format: `.3~`,
-    range: default_y_range,
-    ...y_axis,
-  })
-  $effect(() => {
-    const next = sync_axis_range(y_axis, internal_y_axis.range, default_y_range)
-    if (next !== y_axis) y_axis = next
+  let default_y_range = $derived<Vec2 | undefined>(is_transmittance ? [0, 1.05] : undefined)
+  const internal_y_axis = wrapped_axis({
+    default_axis: () => ({
+      label: intensity_label,
+      format: `.3~`,
+      range: default_y_range,
+      ...y_axis,
+    }),
+    default_range: () => default_y_range,
+    prop: { get: () => y_axis, set: (next) => (y_axis = next) },
   })
 
   let display = $state({ x_grid: true, y_grid: true, x_zero_line: false, y_zero_line: true })
@@ -172,8 +172,8 @@
 {:else if has_signal}
   <ScatterPlot
     series={series_data}
-    x_axis={final_x_axis}
-    bind:y_axis={internal_y_axis}
+    bind:x_axis={internal_x_axis.value}
+    bind:y_axis={internal_y_axis.value}
     bind:display
     legend={null}
     hover_config={{ threshold_px: 30 }}
