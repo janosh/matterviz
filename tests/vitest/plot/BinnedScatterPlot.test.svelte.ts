@@ -773,11 +773,11 @@ describe(`BinnedScatterPlot`, () => {
     click_plot(bin_x, bin_y)
     expect(on_density_zoom).not.toHaveBeenCalled()
 
-    // Double-click restores the ranges the parent pinned before the zoom, not the auto range
+    // Double-click clears the overrides; the auto range of a single (0.5, 0.5) bin is [0, 1]
     svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     await settle()
-    expect(state.x_axis.range).toEqual([0, 1])
-    expect(state.y_axis.range).toEqual([0, 1])
+    expect(state.x_axis.range).toEqual([null, null])
+    expect(state.y_axis.range).toEqual([null, null])
     expect(plot_rect()).toEqual(area)
 
     // With the view restored, clicking the populated bin zooms into it
