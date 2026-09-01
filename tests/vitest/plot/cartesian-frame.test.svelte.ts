@@ -280,11 +280,11 @@ describe(`cartesian frame`, () => {
     },
   )
 
-  // Rect zoom inverts the drag rect and writes it into each bindable axis prop, so the range
-  // sync effect can't snap the view straight back to the auto range. A secondary axis is only
-  // written when data sits on it: otherwise its [0, 1] sentinel scale must stay out of the props
+  // Rect zoom inverts the drag rect into the live view and leaves the axis props alone, so a
+  // caller's pin survives the gesture and a reset lands back on it. A secondary axis only
+  // zooms with data on it: otherwise its [0, 1] sentinel scale must not be inverted
   test.each(frame_charts)(
-    `$name rect zoom writes the dragged ranges into the bound axis props`,
+    `$name rect zoom moves the view, not the bound axis props, and reset restores the pin`,
     async (chart) => {
       const pinned: Vec2 = [0, 400]
       const bound = $state<Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig>>({
@@ -297,6 +297,21 @@ describe(`cartesian frame`, () => {
         chart,
         bind_props(chart.secondary_props([100, 200, 300]), bound),
       )
+      const tick_values = (axis: `x` | `x2` | `y` | `y2`): number[] =>
+        [...plot.querySelectorAll(`g.${axis}-axis g.tick text`)]
+          .map((el) => Number(el.textContent))
+          .filter(Number.isFinite)
+      const tick_span = (axis: `x` | `x2` | `y` | `y2`): Vec2 => {
+        const values = tick_values(axis)
+        expect(values.length, axis).toBeGreaterThan(1)
+        return [Math.min(...values), Math.max(...values)]
+      }
+      // numeric axes only: BoxPlot's categorical x labels its boxes, not the range
+      const shown_axes = ([`x`, `y`, ...chart.secondary_axes] as const).filter(
+        (axis) => tick_values(axis).length > 1,
+      )
+      expect(shown_axes).toContain(`y`)
+      const initial = Object.fromEntries(shown_axes.map((axis) => [axis, tick_span(axis)]))
       // jsdom reports a zero-origin bounding rect, so client coords are plot-local; drag the
       // middle half of the plot width and the second quarter of its height
       const clip = clip_rect(plot)
@@ -312,28 +327,26 @@ describe(`cartesian frame`, () => {
       window.dispatchEvent(new MouseEvent(`mouseup`, at(0.75, 0.5)))
       await tick()
 
-      const zoomed = (axis: `x` | `x2` | `y` | `y2`) => bound[`${axis}_axis`].range
-      for (const axis of [`x`, `y`, ...chart.secondary_axes] as const) {
-        const [min, max] = zoomed(axis) ?? []
-        expect(min, axis).toBeGreaterThan(pinned[0])
+      for (const axis of shown_axes) {
+        const [min, max] = tick_span(axis)
+        expect(min, axis).toBeGreaterThanOrEqual(pinned[0])
         expect(max, axis).toBeLessThan(pinned[1])
         // the dragged rect spans at most half the pinned range on either axis
-        expect((max ?? 0) - (min ?? 0), axis).toBeLessThan((pinned[1] - pinned[0]) / 2)
-        expect(max, axis).toBeGreaterThan(min ?? Infinity)
+        expect(max - min, axis).toBeLessThan((pinned[1] - pinned[0]) / 2)
       }
-      // BoxPlot's vertical boxes carry no x2 data, so the sentinel x2 scale is never inverted
-      if (!chart.secondary_axes.includes(`x2`)) expect(zoomed(`x2`)).toEqual(pinned)
+      const props_unchanged = () => {
+        for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
+          expect(bound[`${axis}_axis`], axis).toEqual({ range: pinned })
+        }
+      }
+      props_unchanged()
 
-      // A reset hands every axis back to the caller as [null, null] rather than restoring the
-      // pin: wrappers relaying a parent's range (Bands inside BandsAndDos) read that as the
-      // reset signal and re-pin or fall back to their default themselves
       doc_query(`svg[role="application"]`).dispatchEvent(
         new MouseEvent(`dblclick`, { bubbles: true }),
       )
       await tick()
-      for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
-        expect(zoomed(axis), axis).toEqual([null, null])
-      }
+      for (const axis of shown_axes) expect(tick_span(axis), axis).toEqual(initial[axis])
+      props_unchanged()
     },
   )
 

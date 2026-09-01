@@ -1,6 +1,6 @@
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '$lib/math'
-import type { DataSeries, FillRegion } from '$lib/plot/core/types'
+import type { AxisConfig, AxisRanges, DataSeries, FillRegion } from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
@@ -10,9 +10,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  marker_position,
   mock_canvas_context,
   mount_sized,
   one_tab_stop,
+  plot_svg,
   resize_element,
   roving_tabindexes,
   svg_query,
@@ -50,10 +52,9 @@ const hover = async (element: Element): Promise<void> => {
 }
 const next_animation_frame = (): Promise<void> =>
   new Promise((resolve) => requestAnimationFrame(() => resolve()))
-const plot_svg = (plot: HTMLElement): SVGSVGElement => {
-  const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
-  if (!svg) throw new Error(`scatter SVG not found`)
-  return svg
+// happy-dom reports a zero rect, so client coords are plot-local
+const stub_svg_rect = (svg: SVGSVGElement) => {
+  svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 300 })
 }
 const click_at = (svg: SVGSVGElement, at: { x: number; y: number }) =>
   svg.dispatchEvent(
@@ -66,15 +67,9 @@ const move_to_marker = async (
   { dx = 0, dy = 0 } = {},
 ): Promise<{ x: number; y: number }> => {
   const svg = plot_svg(plot)
-  const marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(marker_idx)
-  const transform = marker?.parentElement?.getAttribute(`transform`) ?? ``
-  const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
-  if (!match?.groups) throw new Error(`Expected marker ${marker_idx}`)
-  Object.defineProperty(svg, `getBoundingClientRect`, {
-    value: () => DOMRect.fromRect({ width: 500, height: 300 }),
-    configurable: true, // a test may move to several markers of one plot
-  })
-  const at = { x: Number(match.groups.x) + dx, y: Number(match.groups.y) + dy }
+  stub_svg_rect(svg)
+  const { x, y } = marker_position(plot, marker_idx)
+  const at = { x: x + dx, y: y + dy }
   svg.dispatchEvent(
     new MouseEvent(`mousemove`, { bubbles: true, clientX: at.x, clientY: at.y }),
   )
@@ -127,9 +122,7 @@ describe(`ScatterPlot`, () => {
         series: [dense],
         marker_renderer: `canvas`,
       })
-      const svg = plot.querySelector(`svg[role="application"]`)
-      if (!svg) throw new Error(`no plot svg`)
-      return { plot, svg }
+      return { plot, svg: plot_svg(plot) }
     }
     const announced = (plot: HTMLElement) =>
       plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
@@ -154,8 +147,7 @@ describe(`ScatterPlot`, () => {
         ],
         marker_renderer: `canvas`,
       })
-      const svg = plot.querySelector(`svg[role="application"]`)
-      if (!svg) throw new Error(`no plot svg`)
+      const svg = plot_svg(plot)
       const live = () => plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
 
       for (const expected of [`first point 1`, `first point 2`, `second point 1`]) {
@@ -348,13 +340,6 @@ describe(`ScatterPlot`, () => {
     })
     const mount_canvas = (props: Partial<ComponentProps<typeof ScatterPlot>> = {}) =>
       mount_sized_scatter_plot({ series: [dense], marker_renderer: `canvas`, ...props })
-    const marker_coords = (plot: ParentNode): { x: number; y: number } => {
-      const transform =
-        plot.querySelector(`path.marker`)?.parentElement?.getAttribute(`transform`) ?? ``
-      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
-      if (!match?.groups) throw new Error(`Could not parse marker transform "${transform}"`)
-      return { x: Number(match.groups.x), y: Number(match.groups.y) }
-    }
     test.each([
       [`auto`, false, 40],
       [`svg`, false, 40],
@@ -433,7 +418,7 @@ describe(`ScatterPlot`, () => {
         point_tween: { duration: 60_000 },
       })
       const clip = scatter_clip_rect(tweened)
-      const { x, y } = marker_coords(tweened)
+      const { x, y } = marker_position(tweened, 0)
       expect(
         Math.hypot(x - (clip.x + clip.width / 2), y - (clip.y + clip.height / 2)),
       ).toBeGreaterThan(10)
@@ -508,7 +493,7 @@ describe(`ScatterPlot`, () => {
       })
       await tick()
       const marker = plot.querySelector(`path.marker`)
-      const { x, y } = marker_coords(plot)
+      const { x, y } = marker_position(plot, 0)
       marker?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       const handler_props = on_point_click.mock.calls[0]?.[0]
       expect(handler_props?.cx).toBeCloseTo(x)
@@ -922,12 +907,9 @@ describe(`ScatterPlot`, () => {
       ],
       point_tween: { duration: 0 },
     })
-    const marker_y = [...plot.querySelectorAll(`.marker`)].map((marker) => {
-      const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
-      const match = /translate\([^ ]+ (?<y>[-\d.]+)\)/.exec(transform)
-      if (!match?.groups?.y) throw new Error(`Could not parse marker transform "${transform}"`)
-      return Number(match.groups.y)
-    })
+    const marker_y = [...plot.querySelectorAll(`.marker`)].map(
+      (_, idx) => marker_position(plot, idx).y,
+    )
     const spacing = marker_y.slice(1).map((value, idx) => Math.abs(value - marker_y[idx]))
 
     expect(spacing[0] / spacing[1]).toBeCloseTo(1, 1)
@@ -1304,22 +1286,17 @@ describe(`ScatterPlot`, () => {
       on_point_hover,
       legend: null,
     })
-    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
-    const markers = [...plot.querySelectorAll<SVGPathElement>(`.marker`)]
-    if (!svg || markers.length !== 2) throw new Error(`expected chart SVG with two markers`)
-    Object.defineProperty(svg, `getBoundingClientRect`, {
-      value: () => DOMRect.fromRect({ width: 500, height: 300 }),
-    })
-    const marker_coords = markers.map((marker) => {
-      const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
-      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
-      if (!match?.groups) throw new Error(`could not parse marker transform "${transform}"`)
-      return { x: Number(match.groups.x), y: Number(match.groups.y) }
-    })
-
-    for (const { x, y } of marker_coords) {
-      svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
+    const svg = plot_svg(plot)
+    stub_svg_rect(svg)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(2)
+    const sweep_markers = () => {
+      for (const { x, y } of [0, 1].map((idx) => marker_position(plot, idx))) {
+        svg.dispatchEvent(
+          new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }),
+        )
+      }
     }
+    sweep_markers()
     expect(on_point_hover).not.toHaveBeenCalled()
     await next_animation_frame()
     expect(on_point_hover).toHaveBeenCalledTimes(1)
@@ -1329,9 +1306,7 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
 
     on_point_hover.mockClear()
-    for (const { x, y } of marker_coords) {
-      svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
-    }
+    sweep_markers()
     svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
@@ -1357,24 +1332,9 @@ describe(`ScatterPlot`, () => {
         on_point_hover,
         legend: null,
       })
-      const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
-      const target_marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(target_idx)
-      const transform = target_marker.parentElement?.getAttribute(`transform`) ?? ``
-      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
-      if (!svg || !match?.groups) throw new Error(`expected the middle scatter marker`)
-      Object.defineProperty(svg, `getBoundingClientRect`, {
-        value: () => DOMRect.fromRect({ width: 500, height: 300 }),
-      })
-
-      const far_y = Number(match.groups.y) < 150 ? 290 : 10
-      svg.dispatchEvent(
-        new MouseEvent(`mousemove`, {
-          bubbles: true,
-          clientX: Number(match.groups.x),
-          clientY: far_y,
-        }),
-      )
-      await next_animation_frame()
+      // hover far above/below the target marker: x mode ignores the vertical distance
+      const { y } = marker_position(plot, target_idx)
+      await move_to_marker(plot, target_idx, { dy: (y < 150 ? 290 : 10) - y })
 
       expect(on_point_hover).toHaveBeenCalledOnce()
       expect(on_point_hover.mock.calls[0][0]).toMatchObject({
@@ -1730,10 +1690,15 @@ describe(`ScatterPlot`, () => {
   })
 
   // Shift-drag pans by a constant data offset: moving the cursor by a quarter of the plot
-  // width shifts the view by a quarter of the x span. Unlike rect zoom, a pan only moves the
-  // live view; the bound axis props keep the pre-pan range (so a later reset has a target).
+  // width shifts the view by a quarter of the x span. Gestures only move the live view, which
+  // the bindable `view` mirrors; the bound axis props keep the pre-pan range (so a later reset
+  // has a target), and a host writing `view` moves the plot without touching them either.
   test(`shift-drag pan shifts the view by the dragged data span`, async () => {
-    const state = { x_axis: { range: [0, 100] as Vec2 }, y_axis: { range: [0, 10] as Vec2 } }
+    const state = $state<{
+      x_axis: AxisConfig
+      y_axis: AxisConfig
+      view: Partial<AxisRanges> | undefined
+    }>({ x_axis: { range: [0, 100] }, y_axis: { range: [0, 10] }, view: undefined })
     const plot = await mount_sized_scatter_plot(
       bind_props(
         {
@@ -1745,8 +1710,7 @@ describe(`ScatterPlot`, () => {
         state,
       ),
     )
-    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
-    if (!svg) throw new Error(`scatter SVG not found`)
+    const svg = plot_svg(plot)
     const clip = scatter_clip_rect(plot)
     const start = { x: clip.x + clip.width / 2, y: clip.y + clip.height / 2 }
     svg.dispatchEvent(
@@ -1782,11 +1746,20 @@ describe(`ScatterPlot`, () => {
     expect(marker_xs).toHaveLength(2)
     expect(marker_xs[0]).toBeCloseTo(clip.x + clip.width * 0.25, 6)
     expect(marker_xs[1]).toBeCloseTo(clip.x + clip.width * 0.65, 6)
-    const tick_labels = [...plot.querySelectorAll(`.x-axis .tick text`)].map(
-      (label) => label.textContent,
-    )
-    expect(tick_labels).toContain(`120`)
-    expect(tick_labels).not.toContain(`0`)
+    const tick_labels = () =>
+      [...plot.querySelectorAll(`.x-axis .tick text`)].map((label) => label.textContent)
+    expect(tick_labels()).toContain(`120`)
+    expect(tick_labels()).not.toContain(`0`)
+    expect(state.view?.x?.[0]).toBeCloseTo(25, 6)
+    expect(state.view?.x?.[1]).toBeCloseTo(125, 6)
+    expect(state.view?.y).toEqual([0, 10])
+
+    // the host scrolls the view back through the same prop
+    state.view = { ...state.view, x: [0, 100] }
+    await tick()
+    expect(tick_labels()).toContain(`0`)
+    expect(tick_labels()).not.toContain(`120`)
+    expect(state.x_axis.range).toEqual([0, 100])
   })
 
   // Regression guard for effect_update_depth_exceeded: with an explicit y range the

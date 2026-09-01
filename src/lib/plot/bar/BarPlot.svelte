@@ -243,14 +243,6 @@
         ticks: effective_cat_ticks ?? plot_axes[cat_axis].ticks,
       },
     }),
-    // Secondary axes write the raw $bindable props so library defaults aren't pushed
-    // into the parent's bound state
-    write_range: (axis, range) => {
-      if (axis === `x`) x_axis = { ...x_axis, range }
-      else if (axis === `x2`) x2_axis_prop = { ...x2_axis_prop, range }
-      else if (axis === `y`) y_axis = { ...y_axis, range }
-      else y2_axis_prop = { ...y2_axis_prop, range }
-    },
     clip_id_prefix: `chart-clip`,
   })
 

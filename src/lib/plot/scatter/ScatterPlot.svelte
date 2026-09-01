@@ -10,6 +10,7 @@
   import { partition_point, type Point2D, type Vec2 } from '$lib/math'
   import type {
     AxisLoadError,
+    AxisRanges,
     BasePlotProps,
     ColorScaleConfig,
     DataLoaderFn,
@@ -64,7 +65,7 @@
   } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
-  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { build_obstacles_norm } from '$lib/plot/core/decorations'
   import {
     COLOR_BAR_DEFAULTS,
@@ -99,6 +100,7 @@
     get_relative_coords,
     is_activation_key,
     sorted_range,
+    vec2_equal,
   } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { resolve_plot_display } from '$lib/plot/core/display.svelte'
@@ -171,6 +173,7 @@
     selected_series_idx = $bindable(0),
     wrapper = $bindable(),
     resolved_padding = $bindable(),
+    view = $bindable(),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     children,
@@ -246,6 +249,10 @@
       // decorations), so hosts laying out several plots (BandsAndDos) can feed the maximum
       // back as a shared `padding` and keep their chart areas aligned
       resolved_padding?: Required<Sides>
+      // The range each axis currently shows, after pan/zoom. The chart writes every change;
+      // a host writing an axis moves the view without touching the axis config, so linked
+      // panels (BandsAndDos) share one zoom while each keeps its own pins and reset target.
+      view?: Partial<AxisRanges>
       // Interactive axis props
       data_loader?: DataLoaderFn<Metadata>
       on_axis_change?: (
@@ -467,12 +474,6 @@
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
     facet_layout: () => facet_layout,
-    write_range: (axis, range) => {
-      if (axis === `x`) x_axis = { ...x_axis, range }
-      else if (axis === `x2`) x2_axis = { ...x2_axis, range }
-      else if (axis === `y`) y_axis = { ...y_axis, range }
-      else y2_axis = { ...y2_axis, range }
-    },
     // Alt+drag selects instead of zooming. Hit-tested in screen space (not by inverting
     // the rect into data space) so the same test works on both axes whatever their scale
     // types, and so a point's own offset counts - the user selects what they see.
@@ -520,6 +521,28 @@
 
   $effect(() => {
     resolved_padding = frame.pad
+  })
+
+  // Two-way `view` sync. Value comparison on both legs keeps the pair from ping-ponging:
+  // the frame's write lands as a fresh Vec2 per axis, and a host mirroring it back must
+  // not count as a new zoom.
+  $effect(() => {
+    const current = frame.ranges.current
+    const shown = untrack(() => view)
+    const in_sync = (axis: FacetAxis) =>
+      shown?.[axis] && vec2_equal(shown[axis], current[axis])
+    if (FACET_AXES.every(in_sync)) return
+    view = Object.fromEntries(FACET_AXES.map((axis) => [axis, [...current[axis]] as Vec2]))
+  })
+  $effect(() => {
+    if (!view) return
+    for (const axis of FACET_AXES) {
+      const range = view[axis]
+      const current = untrack(() => frame.ranges.current[axis])
+      if (range && !vec2_equal(range, current)) {
+        frame.facet.update_range(axis, [...range] as Vec2)
+      }
+    }
   })
 
   // === Colorbar: the frame owns the legend item, the colorbar is ScatterPlot's own decoration ===

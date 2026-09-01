@@ -242,11 +242,6 @@
     pan: () => pan,
     facet_layout: () => facet_layout,
     tick_counts: { x: 7, y: 5 },
-    // Rect zoom and reset write back into the bindable axis props; x2/y2 have no data here
-    write_range: (axis, range) => {
-      if (axis === `x`) x_axis = { ...x_axis, range }
-      else if (axis === `y`) y_axis = { ...y_axis, range }
-    },
     clip_id_prefix: `binned-scatter-plot-area`,
   })
   const width = $derived(frame.width)
@@ -801,10 +796,8 @@
     const bin = bin_at(coords)
     if (!bin || density_settings.bin_click === `none`) return
     if (bin.count > 1 && density_settings.bin_click === `zoom`) {
-      // Outside a facet grid, persist the zoom in the axis props like the frame's rect zoom
-      // does, so the range-sync effect can't snap back to the auto range
-      if (!facet.update_range(`x`, bin.x_range)) x_axis = { ...x_axis, range: bin.x_range }
-      if (!facet.update_range(`y`, bin.y_range)) y_axis = { ...y_axis, range: bin.y_range }
+      facet.update_range(`x`, bin.x_range)
+      facet.update_range(`y`, bin.y_range)
       hovered_bin = null
       on_density_zoom?.({ bin, event })
       return

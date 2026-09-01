@@ -108,7 +108,8 @@
     fermi_level={sync.fermi_level}
     {...bands_props}
     padding={{ r: is_desktop ? 10 : 5, ...bands_props.padding, ...sync.shared_padding }}
-    bind:y_axis={sync.y_axes[0]}
+    y_axis={sync.y_axes[0]}
+    bind:view={sync.views[0]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
@@ -142,7 +143,8 @@
       ...axis_with_range(undefined, is_desktop ? undefined : sync.shared_range),
       ...dos_props.x_axis,
     }}
-    bind:y_axis={sync.y_axes[1]}
+    y_axis={sync.y_axes[1]}
+    bind:view={sync.views[1]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
