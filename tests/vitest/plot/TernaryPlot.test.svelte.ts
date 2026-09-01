@@ -2,7 +2,13 @@ import { TernaryPlot } from '$lib'
 import type { TernaryPointProps, TernarySeries } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized, one_tab_stop, roving_tabindexes } from '../setup'
+import {
+  bind_props,
+  mount_sized,
+  one_tab_stop,
+  roving_tabindexes,
+  translate_of,
+} from '../setup'
 
 const series: TernarySeries[] = [
   {
@@ -33,13 +39,6 @@ const mount_ternary = (
 const markers = (plot: HTMLElement) => [
   ...plot.querySelectorAll<SVGGElement>(`.points [data-ternary-idx]`),
 ]
-// The marker <g> is translated to its pixel position
-const marker_pos = (marker: Element): [number, number] => {
-  const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(
-    marker.getAttribute(`transform`) ?? ``,
-  )
-  return [Number(match?.groups?.x), Number(match?.groups?.y)]
-}
 
 describe(`TernaryPlot`, () => {
   test(`renders one marker per point, corner labels and a line for line series`, async () => {
@@ -66,19 +65,19 @@ describe(`TernaryPlot`, () => {
 
   test(`places pure components at the corners: first right, second top, third left`, async () => {
     const plot = await mount_ternary({ series, padding: { t: 0, b: 0, l: 0, r: 0 } })
-    const [pure_a, mixed, counts, pure_b, pure_c] = markers(plot).map(marker_pos)
+    const [pure_a, mixed, counts, pure_b, pure_c] = markers(plot).map(translate_of)
     // 500x400 box: the height bounds the triangle, side = 400 / (√3/2), centered in x
     const side = 400 / (Math.sqrt(3) / 2)
     const left_x = (500 - side) / 2
-    expect(pure_a[0]).toBeCloseTo(left_x + side, 6)
-    expect(pure_c[0]).toBeCloseTo(left_x, 6)
-    expect(pure_a[1]).toBeCloseTo(pure_c[1], 6) // base is level
-    expect(pure_b[0]).toBeCloseTo(250, 6)
-    expect(pure_b[1]).toBeLessThan(pure_a[1]) // apex above the base (SVG y grows down)
-    expect(pure_a[1] - pure_b[1]).toBeCloseTo(400, 6)
+    expect(pure_a.x).toBeCloseTo(left_x + side, 6)
+    expect(pure_c.x).toBeCloseTo(left_x, 6)
+    expect(pure_a.y).toBeCloseTo(pure_c.y, 6) // base is level
+    expect(pure_b.x).toBeCloseTo(250, 6)
+    expect(pure_b.y).toBeLessThan(pure_a.y) // apex above the base (SVG y grows down)
+    expect(pure_a.y - pure_b.y).toBeCloseTo(400, 6)
     // [2, 2, 6] normalizes to [0.2, 0.2, 0.6], a different spot than [0.2, 0.3, 0.5]
     expect(counts).not.toEqual(mixed)
-    expect(counts[0]).toBeCloseTo(left_x + 0.2 * side + (0.2 * side) / 2, 6)
+    expect(counts.x).toBeCloseTo(left_x + 0.2 * side + (0.2 * side) / 2, 6)
   })
 
   test.each([
@@ -176,7 +175,7 @@ describe(`TernaryPlot`, () => {
       return tick()
     }
     const pure_c = markers(plot)[4] // left corner: the marker sits at x = 0 inside the padded <g>
-    const [marker_x] = marker_pos(pure_c)
+    const { x: marker_x } = translate_of(pure_c)
     expect(marker_x).toBeCloseTo(0, 6)
     await focus(pure_c, `focusin`)
     // anchor = padding + marker, then the 10px tooltip offset to the right
@@ -228,23 +227,18 @@ describe(`TernaryPlot`, () => {
   })
 
   test(`legend toggles write visible into the bound series and yield to host changes`, async () => {
-    let bound = $state<TernarySeries[]>(series.map((srs) => ({ ...srs })))
-    const plot = await mount_ternary({
-      get series() {
-        return bound
-      },
-      set series(val) {
-        bound = val
-      },
-    })
+    const bound = $state({ series: series.map((srs) => ({ ...srs })) })
+    const plot = await mount_ternary(bind_props({}, bound))
     expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
     plot.querySelector<HTMLElement>(`.legend-item`)?.click() // hide Oxides
     await tick()
-    expect(bound[0].visible).toBe(false)
+    expect(bound.series[0].visible).toBe(false)
     expect(markers(plot)).toHaveLength(2)
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1) // Path keeps its line
     // the host overrides the toggle
-    bound = bound.map((srs, idx) => (idx === 0 ? { ...srs, visible: true } : srs))
+    bound.series = bound.series.map((srs, idx) =>
+      idx === 0 ? { ...srs, visible: true } : srs,
+    )
     await tick()
     expect(markers(plot)).toHaveLength(5)
   })

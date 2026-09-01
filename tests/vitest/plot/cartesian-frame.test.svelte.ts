@@ -12,9 +12,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
   bind_props,
+  clip_rect,
   doc_query,
   inside_clip_path,
   mount_sized,
+  query,
   with_measured_text,
 } from '../setup'
 
@@ -230,16 +232,8 @@ const mount_chart = (
 ): Promise<HTMLElement> =>
   mount_sized(chart.component, props, { selector: chart.selector, ...size })
 
-const clip_rect = (plot: HTMLElement): Record<`x` | `y` | `width` | `height`, number> => {
-  const rect = plot.querySelector(`clipPath rect`)
-  if (!rect) throw new Error(`clip rectangle not found`)
-  return Object.fromEntries(
-    [`x`, `y`, `width`, `height`].map((attr) => [attr, Number(rect.getAttribute(attr))]),
-  ) as Record<`x` | `y` | `width` | `height`, number>
-}
 const legend_px = (plot: HTMLElement, prop: `left` | `top`): number => {
-  const legend = plot.querySelector<HTMLElement>(`.legend`)
-  if (!legend) throw new Error(`legend not found`)
+  const legend = query(plot, `.legend`)
   return Number(legend.style[prop].replace(`px`, ``))
 }
 const legend_outside = (plot: HTMLElement): boolean => {
@@ -733,8 +727,7 @@ describe(`cartesian frame`, () => {
       })
       await tick()
       const label_of = (text: string) => annotation_of(plot, text)
-      const marks = plot.querySelector(`svg ${chart.series_selector}`)
-      if (!marks) throw new Error(`missing series marks`)
+      const marks = query(plot, `svg ${chart.series_selector}`)
       for (const text of [`behind`, `front`]) {
         expect(inside_clip_path(label_of(text)), `annotation must escape the clip-path`).toBe(
           false,

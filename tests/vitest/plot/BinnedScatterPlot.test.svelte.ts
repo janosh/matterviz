@@ -10,10 +10,13 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   CANVAS_NOOP_METHODS,
+  clip_rect,
   doc_query,
   mock_canvas_context,
+  query,
   resize_element,
   svg_query,
+  svg_rect,
   trigger_intersection,
   trigger_resize_observer,
 } from '../setup'
@@ -60,9 +63,8 @@ const unit_axes = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] a
 // Plot-area centre in client coords, read off the rendered chart rect rather than hardcoded
 // so tuning the default padding can't silently move these hit tests off their target.
 const plot_center = (): { x: number; y: number } => {
-  const clip = doc_query(`clipPath rect`)
-  const num = (attr: string) => Number(clip.getAttribute(attr))
-  return { x: num(`x`) + num(`width`) / 2, y: num(`y`) + num(`height`) / 2 }
+  const { x, y, width, height } = clip_rect()
+  return { x: x + width / 2, y: y + height / 2 }
 }
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
@@ -463,12 +465,16 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const clip_path = document.querySelector(`clipPath[id^="binned-scatter-plot-area-"]`)
-    expect(clip_path).toBeInstanceOf(SVGClipPathElement)
-    const clip_rect = clip_path?.querySelector(`rect`)
-    expect([`x`, `y`, `width`, `height`].map((attr) => clip_rect?.getAttribute(attr))).toEqual(
-      [`80`, `30`, `700`, `510`],
+    const clip_path = doc_query(
+      `clipPath[id^="binned-scatter-plot-area-"]`,
+      SVGClipPathElement,
     )
+    expect(svg_rect(query(clip_path, `rect`))).toEqual({
+      x: 80,
+      y: 30,
+      width: 700,
+      height: 510,
+    })
 
     const ref_group = document.querySelector(`.reference-lines`)
     expect(ref_group?.querySelector(`g[clip-path]`)?.getAttribute(`clip-path`)).toBe(
