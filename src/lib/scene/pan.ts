@@ -48,6 +48,8 @@ export type PanControls = {
 // with shift/ctrl/meta, or a two-finger touch drag (its pinch still dollies through OrbitControls,
 // whose own pan is disabled by SceneCamera). One pointer's motion moves a two-finger centroid by
 // half of it. `speed` is OrbitControls' panSpeed (px moved per px dragged); 0 disables the gesture.
+// `start` is dispatched on the first motion, not the press: hosts disable hover raycasts for the
+// duration of a gesture, and a right click that never moves must still reach a mesh's contextmenu.
 export function attach_pan_gesture(
   element: HTMLElement,
   opts: {
@@ -60,15 +62,6 @@ export function attach_pan_gesture(
   let mouse_pointer: { id: number; x: number; y: number } | null = null
   let panning = false
 
-  const pan_by = (dx: number, dy: number) => {
-    const controls = opts.controls()
-    if (!controls) return
-    const [pan_x, pan_y] = read_pan_offset(controls.object)
-    const { width, height } = opts.size()
-    const speed = opts.speed()
-    set_pan_offset(controls.object, [pan_x + dx * speed, pan_y + dy * speed], width, height)
-    controls.dispatchEvent({ type: `change` })
-  }
   const begin = () => {
     if (panning) return
     panning = true
@@ -79,12 +72,21 @@ export function attach_pan_gesture(
     panning = false
     opts.controls()?.dispatchEvent({ type: `end` })
   }
+  const pan_by = (dx: number, dy: number) => {
+    const controls = opts.controls()
+    if (!controls) return
+    begin()
+    const [pan_x, pan_y] = read_pan_offset(controls.object)
+    const { width, height } = opts.size()
+    const speed = opts.speed()
+    set_pan_offset(controls.object, [pan_x + dx * speed, pan_y + dy * speed], width, height)
+    controls.dispatchEvent({ type: `change` })
+  }
 
   const on_pointer_down = (event: PointerEvent) => {
     if (!(opts.controls()?.enabled ?? false) || opts.speed() <= 0) return
     if (event.pointerType === `touch`) {
       touch_pointers.set(event.pointerId, [event.clientX, event.clientY])
-      if (touch_pointers.size === 2) begin()
       return
     }
     const is_pan =
@@ -92,7 +94,6 @@ export function attach_pan_gesture(
       (event.button === 0 && (event.ctrlKey || event.metaKey || event.shiftKey))
     if (!is_pan) return
     mouse_pointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
-    begin()
   }
   const on_pointer_move = (event: PointerEvent) => {
     const touch = touch_pointers.get(event.pointerId)

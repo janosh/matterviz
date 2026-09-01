@@ -156,20 +156,30 @@ describe(`attach_pan_gesture`, () => {
     expect(controls.events).toEqual([])
   })
 
+  // a right click that never moves must not start a gesture: hosts disable hover raycasts on
+  // `start`, which would swallow the contextmenu the click is about to fire on a mesh
+  test(`a press without motion dispatches nothing`, () => {
+    const { element, controls } = setup()
+    element.dispatchEvent(pointer(`pointerdown`, { x: 10, y: 10, button: 2 }))
+    window.dispatchEvent(pointer(`pointerup`, { x: 10, y: 10 }))
+    expect(controls.events).toEqual([])
+  })
+
   test(`cleanup removes listeners and ends an in-flight gesture`, () => {
     const { element, controls } = setup()
     const remove_spy = vi.spyOn(window, `removeEventListener`)
     element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, button: 2 }))
+    window.dispatchEvent(pointer(`pointermove`, { x: 5, y: 5 }))
     detach?.()
     detach = undefined
-    expect(controls.events).toEqual([`start`, `end`])
+    expect(controls.events).toEqual([`start`, `change`, `end`])
     expect(remove_spy.mock.calls.map(([type]) => type)).toEqual(
       expect.arrayContaining([`pointermove`, `pointerup`, `pointercancel`]),
     )
-    window.dispatchEvent(pointer(`pointermove`, { x: 50, y: 50 }))
     element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, button: 2 }))
-    expect(read_pan_offset(controls.object)).toEqual([0, 0])
-    expect(controls.events).toEqual([`start`, `end`])
+    window.dispatchEvent(pointer(`pointermove`, { x: 50, y: 50 }))
+    expect(read_pan_offset(controls.object)).toEqual([5, 5])
+    expect(controls.events).toEqual([`start`, `change`, `end`])
     remove_spy.mockRestore()
   })
 })

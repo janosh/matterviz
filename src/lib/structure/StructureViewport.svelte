@@ -277,7 +277,13 @@
   }
   // Only a fresh gesture may cancel a pending settle. Rebaselining alone must not: the push
   // effect below also rebaselines, and cancelling there drops the sync that reports a drag.
+  // OrbitControls dispatches `end` on every pointer release, also for presses it never turned
+  // into a gesture (a right click: its pan lives in scene/pan.ts, which starts on the first
+  // motion). Without a `start` the baseline predates writes the controls never saw, e.g. the
+  // auto-fit zoom, and syncing would report a mere click as a camera move.
+  let gesture_active = false
   const start_camera_interaction = () => {
+    gesture_active = true
     clearTimeout(settle_sync_timeout)
     settle_sync_timeout = undefined
     remember_current_view()
@@ -294,6 +300,8 @@
     if (settle_sync_timeout !== undefined) schedule_settled_sync()
   }
   const end_camera_interaction = () => {
+    if (!gesture_active) return
+    gesture_active = false
     sync_camera()
     if (!in_grid && (scene_props.auto_rotate ?? 0) > 0) return
     schedule_settled_sync()
