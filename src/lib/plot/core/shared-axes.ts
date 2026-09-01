@@ -21,10 +21,11 @@ export const is_valid_range = (range: unknown): range is Vec2 =>
   Number.isFinite(range[1])
 
 // Compare finite ranges endpoint-by-endpoint with absolute + span-relative tolerance.
-// A numeric tolerance remains an absolute threshold; negative values clamp to zero.
+// A numeric tolerance remains an absolute threshold; negative values clamp to zero. Accepts
+// the `[null, null]` reset sentinel of axis props (never equal to anything).
 export const ranges_equal = (
-  left: Vec2 | undefined | null,
-  right: Vec2 | undefined | null,
+  left: AxisConfig[`range`] | null,
+  right: AxisConfig[`range`] | null,
   tolerance: number | RangeTolerance = DEFAULT_RANGE_TOLERANCE,
 ): boolean => {
   if (!is_valid_range(left) || !is_valid_range(right)) return false
@@ -71,13 +72,12 @@ export const axis_with_range = (
 
 // Sync a child plot's internal range back to a parent axis. Stable references avoid
 // reactive churn; an invalid incoming range clears an existing explicit range, and so does
-// one equal to `default_range` unless the axis already pins it: the data-driven default a
-// wrapper derives (Bands' padded frequency range) must keep flowing from the data, so it is
-// never frozen into the axis prop where it would outrank the next default after a units or
-// data change. Only zooms and caller pins, i.e. deviations from the default, are worth keeping
-// there. A caller pin that happens to equal the default (BandsAndDos' shared range when the DOS
-// lies inside the bands range) is left alone: clearing it would make the parent re-pin it,
-// looping the two effects until Svelte's update depth trips.
+// one equal to `default_range`: the data-driven default a wrapper derives (Bands' padded
+// frequency range) must keep flowing from the data, so it is never frozen into the axis prop
+// where it would outrank the next default after a units or data change. Only zooms and
+// caller pins, i.e. deviations from the default, are worth keeping there. The exception is a
+// caller pin already equal to the default (BandsAndDos' shared range when the DOS lies inside
+// the bands range): clearing it would make the parent re-pin it and loop the two effects.
 export function sync_axis_range(
   axis: AxisConfig,
   range: unknown,
@@ -85,11 +85,8 @@ export function sync_axis_range(
 ): AxisConfig {
   if (is_valid_range(range)) {
     if (axis.range?.[0] === range[0] && axis.range?.[1] === range[1]) return axis
-    const at_default = ranges_equal(range, default_range)
-    if (at_default && is_valid_range(axis.range) && ranges_equal(axis.range, range)) {
-      return axis
-    }
-    if (!at_default) return { ...axis, range }
+    if (!ranges_equal(range, default_range)) return { ...axis, range }
+    if (ranges_equal(axis.range, range)) return axis
   }
   if (`range` in axis) {
     const { range: _omitted, ...rest } = axis
