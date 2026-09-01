@@ -299,7 +299,6 @@
     <EmptyState
       class="hdf5-group-picker"
       role="dialog"
-      aria-modal="true"
       aria-label="Choose HDF5 trajectory"
       style="justify-content: flex-start"
     >

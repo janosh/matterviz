@@ -6,10 +6,13 @@ import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 import {
   bind_props,
+  clip_rect,
   doc_query,
   expect_plot_controls,
+  keydown,
   make_crystal,
   mount_sized,
+  mouse,
   plot_svg,
 } from '../setup'
 
@@ -286,8 +289,7 @@ describe(`Bands component`, () => {
         controls_open: true,
       })
       expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
-      const select = document.querySelector<HTMLSelectElement>(`#bands-units`)
-      if (!select) throw new Error(`units select not rendered`)
+      const select = doc_query<HTMLSelectElement>(`#bands-units`)
       expect(select.value).toBe(`cm^-1`)
       // picking an option writes the canonical unit back to `units` (the handler is delegated, so
       // the synthetic change event must bubble like a real one)
@@ -308,8 +310,7 @@ describe(`Bands component`, () => {
       [...document.querySelectorAll(`.y-axis .tick text`)].map((el) => Number(el.textContent))
     // 0..3.9 THz
     expect(Math.max(...y_ticks())).toBeLessThan(5)
-    const select = document.querySelector<HTMLSelectElement>(`#bands-units`)
-    if (!select) throw new Error(`units select not rendered`)
+    const select = doc_query<HTMLSelectElement>(`#bands-units`)
     select.value = `meV`
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
@@ -377,7 +378,7 @@ describe(`Bands component`, () => {
     const hit_target = document.querySelector<SVGCircleElement>(`.marker-hit-target`)
     expect(hit_target).not.toBeNull()
     expect(Number(hit_target?.getAttribute(`r`))).toBeGreaterThan(3)
-    hit_target?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    hit_target?.dispatchEvent(mouse(`click`))
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
@@ -426,7 +427,7 @@ describe(`Bands component`, () => {
 
     // the reset must restore the k-path range Bands pinned via x_axis.range; clearing it would
     // drop the plot to a nice-rounded auto range with the k-path ending short of the frame
-    svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    svg.dispatchEvent(mouse(`dblclick`))
     await tick()
     expect(last_tick_x()).toBeCloseTo(before, 6)
     expect(fermi_x_end()).toBeCloseTo(before, 6)
@@ -479,7 +480,7 @@ describe(`Bands component`, () => {
     expect(labels.every((label) => label.getAttribute(`role`) === `button`)).toBe(true)
     expect(document.querySelector(`.bz-popup`)).toBeNull()
 
-    labels[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    labels[1].dispatchEvent(mouse(`click`))
     await tick()
     const popup = document.querySelector(`.bz-popup`)
     expect(popup).not.toBeNull()
@@ -516,7 +517,7 @@ describe(`Bands component`, () => {
     expect(labels[0].getAttribute(`aria-pressed`)).toBe(`false`)
 
     // clicking another symmetry point re-targets the same popup
-    labels[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    labels[0].dispatchEvent(mouse(`click`))
     await tick()
     expect(document.querySelectorAll(`.bz-popup`)).toHaveLength(1)
     expect(document.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
@@ -526,19 +527,11 @@ describe(`Bands component`, () => {
     // the popup is anchored through the live x scale: a shift-drag pan by half the plot width
     // scrolls Γ (x=0) out of the view, hiding the popup; panning back restores it in place
     const svg = plot_svg()
-    const clip = doc_query(`defs clipPath rect`)
-    const clip_x = Number(clip.getAttribute(`x`))
-    const clip_width = Number(clip.getAttribute(`width`))
+    const { x: clip_x, width: clip_width } = clip_rect()
     const pan = async (from_x: number, to_x: number) => {
       const y = 100
       svg.dispatchEvent(
-        new MouseEvent(`mousedown`, {
-          bubbles: true,
-          button: 0,
-          shiftKey: true,
-          clientX: from_x,
-          clientY: y,
-        }),
+        mouse(`mousedown`, { button: 0, shiftKey: true, clientX: from_x, clientY: y }),
       )
       window.dispatchEvent(
         new MouseEvent(`mousemove`, { buttons: 1, clientX: to_x, clientY: y }),
@@ -570,9 +563,7 @@ describe(`Bands component`, () => {
       },
       { selector: `.scatter` },
     )
-    tick_labels()[0].dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-    )
+    tick_labels()[0].dispatchEvent(keydown(`Enter`))
     await tick()
     const popup = document.querySelector<HTMLElement>(`.bz-popup`)
     expect(popup?.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
@@ -598,7 +589,7 @@ describe(`Bands component`, () => {
       { band_structs: { ...base_band_structure, recip_lattice: recip_lattice_a3 } },
       { selector: `.scatter`, width: 240 },
     )
-    tick_labels()[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    tick_labels()[1].dispatchEvent(mouse(`click`))
     await tick()
     expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`120px`)
   })

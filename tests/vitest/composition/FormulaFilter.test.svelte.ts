@@ -1,7 +1,7 @@
 import { FormulaFilter, type FormulaSearchMode } from '$lib/composition'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, keydown, mouse } from '../setup'
 
 describe(`FormulaFilter`, () => {
   const get_input = (): HTMLInputElement => doc_query(`input`)
@@ -34,8 +34,7 @@ describe(`FormulaFilter`, () => {
     flushSync()
   }
   const blur = () => fire_input(new Event(`blur`, { bubbles: true }))
-  const keydown = (key: string) =>
-    fire_input(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+  const press = (key: string) => fire_input(keydown(key))
   // No flush between typing and the commit: the value prop would sync back over the input
   const type_value = (value: string): void => {
     get_input().value = value
@@ -109,7 +108,7 @@ describe(`FormulaFilter`, () => {
   ] as const)(`Enter normalizes "%s" like blur`, async (input, mode, normalized) => {
     const on_change = vi.fn()
     await mount_bound(input, { on_change })
-    keydown(`Enter`)
+    press(`Enter`)
     expect(on_change).toHaveBeenCalledWith(normalized, mode)
   })
 
@@ -190,7 +189,7 @@ describe(`FormulaFilter`, () => {
     document.body.innerHTML = ``
     const onclear2 = vi.fn()
     mount_filter({ value: `Fe`, on_clear: onclear2 })
-    keydown(`Escape`)
+    press(`Escape`)
     expect(get_input().value).toBe(``)
     expect(onclear2).toHaveBeenCalled()
   })
@@ -299,13 +298,13 @@ describe(`FormulaFilter`, () => {
       expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
 
       // First Escape closes dropdown
-      keydown(`Escape`)
+      press(`Escape`)
       expect(document.querySelector(`.examples-dropdown`)).toBeNull()
       expect(get_input().value).toBe(`Fe`)
       expect(on_clear).not.toHaveBeenCalled()
 
       // Second Escape clears value
-      keydown(`Escape`)
+      press(`Escape`)
       expect(get_input().value).toBe(``)
       expect(on_clear).toHaveBeenCalled()
     })
@@ -362,7 +361,7 @@ describe(`FormulaFilter`, () => {
     // Type a value and commit it with Enter
     const submit = (value: string): void => {
       type_value(value)
-      keydown(`Enter`)
+      press(`Enter`)
     }
 
     test(`loads prepopulated history, shows header and ARIA attributes`, () => {
@@ -428,9 +427,7 @@ describe(`FormulaFilter`, () => {
     test(`clicking a history item sets value and closes dropdown`, () => {
       const on_change = vi.fn()
       seed_mount_focus([`Fe,O`, `Li,Na`], { on_change })
-      doc_query<HTMLButtonElement>(`.history-value`).dispatchEvent(
-        new MouseEvent(`mousedown`, { bubbles: true }),
-      )
+      doc_query<HTMLButtonElement>(`.history-value`).dispatchEvent(mouse(`mousedown`))
       flushSync()
       expect(on_change).toHaveBeenCalledWith(`Fe,O`, `elements`)
       expect(history_dropdown()).toBeNull()
@@ -439,7 +436,7 @@ describe(`FormulaFilter`, () => {
     test(`remove button removes entry and updates localStorage`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
       expect(history_items()).toHaveLength(3)
-      remove_btns()[1].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      remove_btns()[1].dispatchEvent(mouse(`mousedown`))
       flushSync()
       expect(history_values()).toHaveLength(2)
       expect(history_values()[0].textContent?.trim()).toBe(`Fe,O`)
@@ -451,14 +448,14 @@ describe(`FormulaFilter`, () => {
       const on_change = vi.fn()
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`], { on_change })
       // Navigate to last item (index 2)
-      for (let step = 0; step < 3; step++) keydown(`ArrowDown`)
+      for (let step = 0; step < 3; step++) press(`ArrowDown`)
       flushSync()
       expect(history_items()[2].classList.contains(`focused`)).toBe(true)
       // Remove middle item — list shrinks from 3→2, focused_history_idx should clamp
-      remove_btns()[1].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      remove_btns()[1].dispatchEvent(mouse(`mousedown`))
       flushSync()
       // Enter selects the item the focus clamped onto (the new last one), not crash
-      keydown(`Enter`)
+      press(`Enter`)
       flushSync()
       expect(on_change).toHaveBeenLastCalledWith(`Si,O`, `elements`)
     })
@@ -466,7 +463,7 @@ describe(`FormulaFilter`, () => {
     test(`removing last entry closes dropdown`, () => {
       seed_mount_focus([`Fe,O`])
       expect(history_dropdown()).toBeInstanceOf(HTMLElement)
-      remove_btns()[0].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      remove_btns()[0].dispatchEvent(mouse(`mousedown`))
       flushSync()
       expect(history_dropdown()).toBeNull()
     })
@@ -474,22 +471,22 @@ describe(`FormulaFilter`, () => {
     test(`ArrowDown cycles through items, ArrowUp from no selection goes to last`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
       // ArrowDown: -1 → 0 → 1
-      keydown(`ArrowDown`)
+      press(`ArrowDown`)
       flushSync()
       expect(history_items()[0].classList.contains(`focused`)).toBe(true)
-      keydown(`ArrowDown`)
+      press(`ArrowDown`)
       flushSync()
       expect(history_items()[1].classList.contains(`focused`)).toBe(true)
       // ArrowDown wraps: 1 → 2 → 0
-      keydown(`ArrowDown`)
-      keydown(`ArrowDown`)
+      press(`ArrowDown`)
+      press(`ArrowDown`)
       flushSync()
       expect(history_items()[0].classList.contains(`focused`)).toBe(true)
 
       // Reset: re-mount to test ArrowUp from no selection
       document.body.innerHTML = ``
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
-      keydown(`ArrowUp`)
+      press(`ArrowUp`)
       flushSync()
       expect(history_items()[2].classList.contains(`focused`)).toBe(true)
       expect(history_items()[0].classList.contains(`focused`)).toBe(false)
@@ -498,9 +495,9 @@ describe(`FormulaFilter`, () => {
     test(`Enter selects focused history item`, () => {
       const on_change = vi.fn()
       seed_mount_focus([`Fe,O`, `Li,Na`], { on_change })
-      keydown(`ArrowDown`)
-      keydown(`ArrowDown`)
-      keydown(`Enter`)
+      press(`ArrowDown`)
+      press(`ArrowDown`)
+      press(`Enter`)
       flushSync()
       expect(on_change).toHaveBeenCalledWith(`Li,Na`, `elements`)
     })
@@ -510,13 +507,13 @@ describe(`FormulaFilter`, () => {
       seed_mount_focus([`Fe,O`], { value: `Li`, on_clear })
       expect(history_dropdown()).toBeInstanceOf(HTMLElement)
       // First Escape closes history
-      keydown(`Escape`)
+      press(`Escape`)
       flushSync()
       expect(history_dropdown()).toBeNull()
       expect(get_input().value).toBe(`Li`)
       expect(on_clear).not.toHaveBeenCalled()
       // Second Escape clears value
-      keydown(`Escape`)
+      press(`Escape`)
       flushSync()
       expect(on_clear).toHaveBeenCalled()
     })
@@ -577,7 +574,7 @@ describe(`FormulaFilter`, () => {
       // Pin second entry
       document
         .querySelectorAll<HTMLButtonElement>(`.history-pin`)[1]
-        .dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+        .dispatchEvent(mouse(`mousedown`))
       flushSync()
 
       const values = Array.from(history_values()).map((item) => item.textContent?.trim())
@@ -586,9 +583,7 @@ describe(`FormulaFilter`, () => {
 
     test(`clear-all button clears dropdown and persisted history`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
-      doc_query<HTMLButtonElement>(`.history-clear-all`).dispatchEvent(
-        new MouseEvent(`mousedown`, { bubbles: true }),
-      )
+      doc_query<HTMLButtonElement>(`.history-clear-all`).dispatchEvent(mouse(`mousedown`))
       flushSync()
       expect(history_dropdown()).toBeNull()
       expect(localStorage.getItem(HISTORY_KEY)).toBe(JSON.stringify([]))

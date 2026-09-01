@@ -50,9 +50,9 @@ describe(`Trajectory keyboard shortcuts`, () => {
     const state = { current_step_idx: 0 }
     const viewer = await mount_trajectory(state)
 
-    const fire = () => press_window_key({ key: `ArrowRight` })
+    const trigger = () => press_window_key({ key: `ArrowRight` })
     const read_state = () => state.current_step_idx
-    await assertHoverScopedShortcut({ viewer, fire, read_state })
+    await assertHoverScopedShortcut({ viewer, trigger, read_state })
   })
 
   test(`suppresses browser defaults only for handled keys outside editing contexts`, async () => {

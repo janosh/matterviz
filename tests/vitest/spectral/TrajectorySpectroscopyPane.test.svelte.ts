@@ -3,7 +3,7 @@ import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane
 import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, query } from '../setup'
 
 const mocks = vi.hoisted(() => {
   const cancel = vi.fn()
@@ -142,10 +142,7 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
   expect(target.textContent).toContain(`24001 total frames · timestep 1 fs`)
   const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
   expect(fieldset?.disabled).toBe(false)
-  const timestep = target.querySelector<HTMLInputElement>(
-    `input[aria-label="Simulation timestep"]`,
-  )
-  if (!timestep) throw new Error(`missing timestep input`)
+  const timestep = query<HTMLInputElement>(target, `input[aria-label="Simulation timestep"]`)
   timestep.value = `2`
   timestep.dispatchEvent(new Event(`input`, { bubbles: true }))
 

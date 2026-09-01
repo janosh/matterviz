@@ -8,7 +8,7 @@ import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { DataSeries } from '$lib/plot'
 import { type Component, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { trigger_resize_observer } from '../setup'
+import { clip_rect, query, trigger_resize_observer } from '../setup'
 
 interface PanelDatum {
   series: DataSeries[]
@@ -128,8 +128,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
   })
   mounted_grids.push({ component, target })
   await tick()
-  const root = target.querySelector<HTMLElement>(`.facet-grid`)
-  if (!root) throw new Error(`FacetGrid root not found`)
+  const root = query(target, `.facet-grid`)
 
   const context_for = (key: string): FacetPanelContext<PanelDatum> => {
     const getter = context_getters.find((get_context) => get_context().key === key)
@@ -137,25 +136,13 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
     return getter()
   }
   const panel_for = (key: string): HTMLElement => {
-    const panel = root.querySelector<HTMLElement>(`[data-facet-key="${key}"]`)
-    if (!panel) throw new Error(`No rendered facet panel for key "${key}"`)
+    const panel = query(root, `[data-facet-key="${key}"]`)
     return panel
   }
   return {
     context_for,
     panel_for,
     plot_mounts: () => plot_mounts,
-  }
-}
-
-const clip_rect = (panel: ParentNode): Record<`x` | `y` | `width` | `height`, number> => {
-  const rect = panel.querySelector(`defs clipPath rect`)
-  if (!rect) throw new Error(`Plot clip rectangle not found`)
-  return {
-    x: Number(rect.getAttribute(`x`)),
-    y: Number(rect.getAttribute(`y`)),
-    width: Number(rect.getAttribute(`width`)),
-    height: Number(rect.getAttribute(`height`)),
   }
 }
 
@@ -279,9 +266,7 @@ describe(`FacetGrid + Cartesian plots`, () => {
       const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
 
       if (svg) {
-        Object.defineProperty(svg, `getBoundingClientRect`, {
-          value: () => DOMRect.fromRect({ width: 800, height: 600 }),
-        })
+        svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
         svg.dispatchEvent(
           new MouseEvent(`mousedown`, {
             bubbles: true,
@@ -294,8 +279,7 @@ describe(`FacetGrid + Cartesian plots`, () => {
         window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 600, clientY: 420 }))
         window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 600, clientY: 420 }))
       } else {
-        const canvas = plot.querySelector(`canvas`)
-        if (!canvas) throw new Error(`${plot_case.name} canvas not found`)
+        const canvas = query(plot, `canvas`)
         vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(
           DOMRect.fromRect({ width: 800, height: 600 }),
         )

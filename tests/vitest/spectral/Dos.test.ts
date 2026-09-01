@@ -10,7 +10,7 @@ import {
 import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '$lib/spectral/types'
 import { mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
-import { bind_props, expect_plot_controls, mount_sized, plot_svg } from '../setup'
+import { bind_props, doc_query, expect_plot_controls, mount_sized, plot_svg } from '../setup'
 
 // Test fixtures
 const phonon_dos: PhononDos = {
@@ -133,8 +133,7 @@ describe(`Dos component`, () => {
     })
     await tick()
     expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
-    const select = document.querySelector<HTMLSelectElement>(`#dos-units`)
-    if (!select) throw new Error(`units select not rendered`)
+    const select = doc_query<HTMLSelectElement>(`#dos-units`)
     expect(select.value).toBe(`cm^-1`)
     // picking an option writes the canonical unit back to `units` (the handler is delegated, so
     // the synthetic change event must bubble like a real one)

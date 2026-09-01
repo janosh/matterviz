@@ -8,6 +8,7 @@ import {
   create_drop_event,
   doc_query,
   flush_render,
+  query,
   resize_element,
 } from '../setup'
 
@@ -244,8 +245,7 @@ describe(`NebViewer`, () => {
   test(`updates path and image bindings through shared navigation`, async () => {
     const state = $state({ active_path_key: `direct hop`, active_image_idx: 0 })
     const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
-    const slider = viewer.querySelector<HTMLInputElement>(`.step-slider`)
-    if (!slider) throw new Error(`NEB image slider not found`)
+    const slider = query<HTMLInputElement>(viewer, `.step-slider`)
     slider.value = `2`
     slider.dispatchEvent(new Event(`input`, { bubbles: true }))
     await flush_render()
@@ -266,8 +266,7 @@ describe(`NebViewer`, () => {
       )
     }
 
-    const path_select = viewer.querySelector<HTMLSelectElement>(`.path-control select`)
-    if (!path_select) throw new Error(`NEB path selector not found`)
+    const path_select = query<HTMLSelectElement>(viewer, `.path-control select`)
     path_select.value = `curved hop`
     path_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await flush_render()
@@ -367,8 +366,7 @@ describe(`NebViewer`, () => {
     const viewer = await mount_viewer(
       bind_props({ paths: direct_path, on_fullscreen_change }, state),
     )
-    const button = viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)
-    if (!button) throw new Error(`NEB fullscreen button not found`)
+    const button = query<HTMLButtonElement>(viewer, `.fullscreen-button`)
     viewer.requestFullscreen = vi.fn(async () => {
       fullscreen_element = viewer
       document.dispatchEvent(new Event(`fullscreenchange`))

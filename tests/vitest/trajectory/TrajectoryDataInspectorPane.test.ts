@@ -4,7 +4,7 @@ import { trajectory_from_frames, type TrajectoryFrame } from '$lib/trajectory'
 import TrajectoryDataInspectorPane from '$lib/trajectory/TrajectoryDataInspectorPane.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { make_run as make_shared_run, with_property_rows } from '../setup'
+import { doc_query, make_run as make_shared_run, with_property_rows } from '../setup'
 
 let mounted_pane: ReturnType<typeof mount> | undefined
 afterEach(async () => {
@@ -56,10 +56,7 @@ const cell_texts = (row: HTMLTableRowElement) =>
     (cell.textContent?.trim() ?? ``).replaceAll(`\u2212`, `-`),
   )
 const open_atoms = async () => {
-  const tab = document.querySelector<HTMLButtonElement>(
-    `button[role="tab"][data-value="atoms"]`,
-  )
-  if (!tab) throw new Error(`No atoms tab`)
+  const tab = doc_query<HTMLButtonElement>(`button[role="tab"][data-value="atoms"]`)
   tab.click()
   await tick()
 }

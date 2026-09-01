@@ -16,7 +16,7 @@ import {
 import { flushSync, mount, tick } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, keydown, mouse } from '../setup'
 
 const default_series_data: LegendItem[] = [
   {
@@ -72,7 +72,7 @@ const default_series_data: LegendItem[] = [
 // Helper to simulate keyboard events
 function simulate_keyboard_event(element: Element | null, key: string): void {
   if (!element) return
-  const event = new KeyboardEvent(`keydown`, { key, bubbles: true })
+  const event = keydown(key)
   element.dispatchEvent(event)
 }
 
@@ -255,10 +255,10 @@ describe(`PlotLegend`, () => {
     const items = document.querySelectorAll(`.legend-item`)
     expect(items[1].classList.contains(`active`)).toBe(true)
 
-    items[2].dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    items[2].dispatchEvent(mouse(`mouseenter`))
     expect(on_item_hover).toHaveBeenLastCalledWith(expect.objectContaining({ series_idx: 2 }))
 
-    items[2].dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    items[2].dispatchEvent(mouse(`mouseleave`))
     expect(on_item_hover).toHaveBeenLastCalledWith(null)
   })
 
@@ -339,7 +339,7 @@ describe(`PlotLegend`, () => {
     ])
 
     // hovering a fill item reports the full item (with fill_idx) so the plot can highlight it
-    items[1].dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    items[1].dispatchEvent(mouse(`mouseenter`))
     expect(on_item_hover).toHaveBeenLastCalledWith(
       expect.objectContaining({ item_type: `fill`, fill_idx: 0 }),
     )
@@ -415,7 +415,7 @@ describe(`PlotLegend`, () => {
       props: { series_data: default_series_data, on_drag_start, on_drag, on_drag_end },
     })
     const legend = doc_query(`.legend`)
-    legend.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+    legend.dispatchEvent(mouse(`mousedown`))
     flushSync()
     expect(on_drag_start).toHaveBeenCalledTimes(1)
     expect(legend.classList.contains(`is-dragging`)).toBe(true)
@@ -527,7 +527,7 @@ describe(`PlotLegend`, () => {
         (header) => header.querySelector(`.group-label`)?.textContent,
       )
       expect(group_labels).toEqual([`Li₂O`, `NaCl`])
-      doc_query(`.group-chevron`).dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      doc_query(`.group-chevron`).dispatchEvent(mouse(`mousedown`))
       expect(on_drag_start).not.toHaveBeenCalled()
     })
 
@@ -588,7 +588,7 @@ describe(`PlotLegend`, () => {
         }
 
         const headers = document.querySelectorAll<HTMLElement>(`.legend-group-header`)
-        headers[group_idx].dispatchEvent(new MouseEvent(event_type, { bubbles: true }))
+        headers[group_idx].dispatchEvent(mouse(event_type))
 
         expect(mock_handler).toHaveBeenCalledWith(expected_group, expected_indices)
       },
@@ -605,13 +605,13 @@ describe(`PlotLegend`, () => {
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
 
       // Click to collapse
-      chevron.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      chevron.dispatchEvent(mouse(`click`))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(true)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3) // 6 - 3 Li₂O items
 
       // Keyboard (Enter) to expand
-      chevron.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      chevron.dispatchEvent(keydown(`Enter`))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
@@ -634,7 +634,7 @@ describe(`PlotLegend`, () => {
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3)
 
       // Clicking chevron updates the bound set
-      chevrons[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      chevrons[0].dispatchEvent(mouse(`click`))
       await tick()
       expect(collapsed.has(`Li₂O`)).toBe(false) // Removed from set
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
@@ -664,7 +664,7 @@ describe(`PlotLegend`, () => {
         })
 
         const headers = document.querySelectorAll<HTMLElement>(`.legend-group-header`)
-        headers[group_idx].dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+        headers[group_idx].dispatchEvent(keydown(key))
 
         expect(mock_handler).toHaveBeenCalledWith(expected_group, expected_indices)
       },
@@ -686,7 +686,7 @@ describe(`PlotLegend`, () => {
       // Chevron aria updates on collapse
       const chevron = doc_query(`.group-chevron`)
       expect(chevron.getAttribute(`aria-label`)).toBe(`Collapse group Li₂O`)
-      chevron.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      chevron.dispatchEvent(mouse(`click`))
       await tick()
       expect(chevron.getAttribute(`aria-label`)).toBe(`Expand group Li₂O`)
     })
@@ -726,7 +726,7 @@ describe(`PlotLegend`, () => {
       const header = doc_query(`.legend-group-header`)
       const chevron = doc_query(`.group-chevron`)
 
-      header.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      header.dispatchEvent(mouse(`click`))
 
       expect(mock_toggle).toHaveBeenCalled()
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
@@ -806,9 +806,9 @@ describe(`PlotLegend`, () => {
       on_fill_toggle.mockClear()
 
       // Fill item keyboard → on_fill_toggle
-      items[1].dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      items[1].dispatchEvent(keydown(`Enter`))
       expect(on_fill_toggle).toHaveBeenCalledWith(`fill_region`, 0)
-      items[1].dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      items[1].dispatchEvent(mouse(`dblclick`))
       expect(on_fill_double_click).toHaveBeenCalledWith(`fill_region`, 0)
     })
 

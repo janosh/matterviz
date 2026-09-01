@@ -8,7 +8,7 @@ import PeriodicTableControls from '$site/PeriodicTableControls.svelte'
 import PeriodicTableDemo from '$site/PeriodicTableDemo.svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { CATEGORY_COUNTS, doc_query } from '../setup'
+import { CATEGORY_COUNTS, doc_query, keydown, mouse } from '../setup'
 
 const { page, replace_url } = vi.hoisted(() => ({
   page: { url: new URL(`http://localhost/periodic-table`) },
@@ -163,7 +163,7 @@ describe(`PeriodicTable`, () => {
     const hydrogen = doc_query(`[data-element-symbol="H"]`)
     const lithium = doc_query(`[data-element-symbol="Li"]`)
     hydrogen.focus()
-    hydrogen.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))
+    hydrogen.dispatchEvent(keydown(`ArrowDown`))
     await tick()
 
     expect(active_element).toMatchObject({ symbol: `Li` })
@@ -171,7 +171,7 @@ describe(`PeriodicTable`, () => {
     expect(hydrogen.tabIndex).toBe(-1)
     expect(lithium.tabIndex).toBe(0)
 
-    lithium.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    lithium.dispatchEvent(keydown(`Enter`))
     expect(on_activate).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ symbol: `Li` }),
     )
@@ -202,7 +202,7 @@ describe(`PeriodicTable`, () => {
     const input = document.createElement(`input`)
     document.body.append(input)
     input.focus()
-    input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))
+    input.dispatchEvent(keydown(`ArrowDown`))
 
     expect(active_element).toBeNull()
     expect(document.activeElement).toBe(input)
@@ -242,7 +242,7 @@ describe(`PeriodicTable`, () => {
     const tile = doc_query(`.element-tile`)
     tile.click()
     for (const key of [`Enter`, ` `]) {
-      tile.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      tile.dispatchEvent(keydown(key))
     }
     expect(tile.getAttribute(`role`)).toBe(`button`)
     expect(tile.getAttribute(`tabindex`)).toBe(`0`)
@@ -254,10 +254,8 @@ describe(`PeriodicTable`, () => {
   // the tile has to be selected by the pointerdown itself. Returns whether the click's default
   // (link navigation) was prevented
   const tap = (tile: HTMLElement, pointerType: string): boolean => {
-    tile.dispatchEvent(
-      Object.assign(new MouseEvent(`pointerdown`, { bubbles: true }), { pointerType }),
-    )
-    const click = new MouseEvent(`click`, { bubbles: true, cancelable: true })
+    tile.dispatchEvent(Object.assign(mouse(`pointerdown`), { pointerType }))
+    const click = mouse(`click`, { cancelable: true })
     tile.dispatchEvent(click)
     flushSync()
     return click.defaultPrevented
@@ -303,7 +301,7 @@ describe(`PeriodicTable`, () => {
     tile.addEventListener(`click`, (event) => event.preventDefault())
     tile.click()
     for (const key of [`Enter`, ` `]) {
-      tile.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      tile.dispatchEvent(keydown(key))
     }
 
     expect(tile.tagName).toBe(`A`)
@@ -324,7 +322,7 @@ describe(`PeriodicTable`, () => {
     })
     const tile = doc_query(`.element-tile`)
     tile.click()
-    tile.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    tile.dispatchEvent(keydown(`Enter`))
     expect(onclick).toHaveBeenCalledOnce()
     expect(onkeydown).toHaveBeenCalledOnce()
     expect(tile.getAttribute(`role`)).toBe(`checkbox`)

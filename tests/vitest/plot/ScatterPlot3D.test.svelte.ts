@@ -3,7 +3,7 @@ import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
 import { normalize_to_scene, span_or } from '$lib/plot/scatter-3d/scene-coords'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_plot_controls } from '../setup'
+import { bind_props, expect_plot_controls, query } from '../setup'
 
 // Smoke tests to ensure component mounts without errors.
 // Meaningful 3D rendering tests require Playwright visual regression testing,
@@ -148,8 +148,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
   test(`legend click hides the series and writes visible=false into a bound series`, async () => {
     const click_first_item = () => {
-      const first_item = container.querySelector<HTMLElement>(`.legend-item`)
-      if (!first_item) throw new Error(`legend item not rendered`)
+      const first_item = query(container, `.legend-item`)
       first_item.click()
       flushSync()
       return first_item

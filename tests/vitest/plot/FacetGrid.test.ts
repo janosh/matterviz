@@ -8,6 +8,7 @@ import type {
 import { createRawSnippet, mount, tick, unmount, type Snippet } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterAll, afterEach, describe, expect, test } from 'vitest'
+import { query } from '../setup'
 
 const original_resize_observer = globalThis.ResizeObserver
 class ControlledResizeObserver implements ResizeObserver {
@@ -117,8 +118,7 @@ const mount_grid = async (
   mounted_grids.push({ component, target })
   await Promise.resolve()
   await tick()
-  const root = target.querySelector<HTMLElement>(`.facet-grid`)
-  if (!root) throw new Error(`FacetGrid root not found`)
+  const root = query(target, `.facet-grid`)
   return {
     root,
     context_getters,

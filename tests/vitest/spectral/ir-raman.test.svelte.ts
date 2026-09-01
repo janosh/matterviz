@@ -40,7 +40,7 @@ import sio2_raman_json from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
 import sio2_yaml from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
-import { bind_props, expect_plot_controls } from '../setup'
+import { bind_props, doc_query, expect_plot_controls } from '../setup'
 
 const co2_data = parse_phonon_modes(co2_yaml)
 const co2_born_data = parse_born(co2_born)
@@ -915,8 +915,7 @@ describe(`IrRamanSpectrum component`, () => {
     await tick()
     // picking a unit writes back to the bound `units` (the handler is delegated, so the
     // synthetic change event must bubble like a real one)
-    const select = document.querySelector<HTMLSelectElement>(`#ir-raman-units`)
-    if (!select) throw new Error(`units select not rendered`)
+    const select = doc_query<HTMLSelectElement>(`#ir-raman-units`)
     select.value = `THz`
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()

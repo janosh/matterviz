@@ -3,6 +3,7 @@ import type { OxiComposition } from '$lib/composition'
 import { Formula } from '$lib/composition'
 import { type ComponentProps, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 // Mount Formula into document.body and return its rendered `.formula` root (or null)
 const mount_formula = (props: ComponentProps<typeof Formula>): HTMLElement | null => {
@@ -137,8 +138,7 @@ function simulate_copy(
   is_collapsed = false,
   selection_outside = false,
 ): { text: string; type: string; prevented: boolean } {
-  const formula_el = document.querySelector(`.formula`)
-  if (!formula_el) throw new Error(`Formula element not found`)
+  const formula_el = doc_query(`.formula`)
   // Mock selection with anchorNode/focusNode inside or outside formula
   const node_inside = formula_el.firstChild
   const node_outside = document.body

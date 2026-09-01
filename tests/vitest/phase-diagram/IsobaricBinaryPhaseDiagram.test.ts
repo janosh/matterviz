@@ -2,7 +2,7 @@ import { format_hover_info_text, IsobaricBinaryPhaseDiagram } from '$lib/phase-d
 import type { LeverRuleResult, PhaseDiagramData } from '$lib/phase-diagram/types'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { create_drop_event, doc_query, mount_sized } from '../setup'
+import { create_drop_event, doc_query, keydown, mount_sized, mouse, plot_svg } from '../setup'
 import { create_hover_info } from './fixtures/test-data'
 import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
 
@@ -67,18 +67,12 @@ const mount_diagram = (
     },
   )
 
-const diagram_svg = (wrapper: HTMLElement): SVGElement => {
-  const svg = wrapper.querySelector<SVGElement>(`svg[role="application"]`)
-  if (!svg) throw new Error(`diagram svg not found`)
-  return svg
-}
-
 const hover_at = async (
   wrapper: HTMLElement,
   composition: number,
   temperature: number,
 ): Promise<SVGElement> => {
-  const svg = diagram_svg(wrapper)
+  const svg = plot_svg(wrapper)
   svg.dispatchEvent(
     new PointerEvent(`pointermove`, { ...to_client(composition, temperature), bubbles: true }),
   )
@@ -112,18 +106,18 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       document.querySelectorAll<HTMLElement>(`.json-value.string`),
     ).find((element) => element.textContent?.trim() === `"Al"`)
     if (!component_value) throw new Error(`Editable Al component value not found`)
-    component_value.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    component_value.dispatchEvent(mouse(`dblclick`))
     await tick()
     const edit_input = doc_query<HTMLInputElement>(`.edit-input`)
     edit_input.value = `Edited`
     edit_input.dispatchEvent(new InputEvent(`input`, { bubbles: true }))
-    edit_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    edit_input.dispatchEvent(keydown(`Enter`))
     await tick()
     expect(wrapper.getAttribute(`aria-label`)).toBe(`Edited-Cu binary phase diagram`)
 
     const svg = await hover_at(wrapper, 0.5, 750)
     expect(doc_query(`[data-testid="hovered-region"]`).textContent).toBe(`liq`)
-    svg.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    svg.dispatchEvent(mouse(`click`))
     await tick()
     expect(wrapper.querySelector(`.tooltip-container.locked`)).not.toBeNull()
 
@@ -163,7 +157,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`Liquid`)
 
     // outside the plot area (left of the y-axis) -> hover cleared
-    diagram_svg(wrapper).dispatchEvent(
+    plot_svg(wrapper).dispatchEvent(
       new PointerEvent(`pointermove`, { clientX: 10, clientY: 100, bubbles: true }),
     )
     await tick()
@@ -196,20 +190,20 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       svg.dispatchEvent(new PointerEvent(`pointerleave`))
       return tick()
     }
-    svg.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    svg.dispatchEvent(mouse(`click`))
     await tick()
     expect(wrapper.querySelector(`.tooltip-lock-indicator`)).not.toBeNull()
     await leave() // locked tooltips survive the pointer leaving
     expect(wrapper.querySelector(`.tooltip-container.locked`)).not.toBeNull()
 
-    svg.dispatchEvent(new MouseEvent(`click`, { bubbles: true })) // unlock
+    svg.dispatchEvent(mouse(`click`)) // unlock
     await tick()
     expect(wrapper.querySelector(`.tooltip-lock-indicator`)).toBeNull()
     await leave()
     expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
 
     await hover_at(wrapper, 0.5, 750)
-    svg.dispatchEvent(new MouseEvent(`click`, { bubbles: true })) // re-lock
+    svg.dispatchEvent(mouse(`click`)) // re-lock
     await tick()
     // keys reach the diagram through the hover forwarder, not the whole document
     wrapper.dispatchEvent(new PointerEvent(`pointerenter`))

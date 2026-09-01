@@ -6,7 +6,7 @@ import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, keydown, mouse } from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
 const make_items = (labels: readonly string[]): AxisItem[] =>
@@ -369,7 +369,7 @@ describe(`click and dblclick handlers`, () => {
     const handler = vi.fn()
     mount_matrix({ values: [[10, 20, 30]], on_double_click: handler })
     const cell = doc_query(`.cell:not(.empty)`)
-    cell.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    cell.dispatchEvent(mouse(`dblclick`))
     expect(handler).toHaveBeenCalledOnce()
     expect(handler.mock.calls[0][0]).toMatchObject({ x_idx: 0, y_idx: 0, value: 10 })
   })
@@ -382,7 +382,7 @@ describe(`click and dblclick handlers`, () => {
       mount_matrix({ values: [[10, 20, 30]], on_click, on_double_click: on_dblclick })
       const cells = get_data_cells()
       const fire = (el: HTMLElement, type: `click` | `dblclick`) => {
-        el.dispatchEvent(new MouseEvent(type, { bubbles: true }))
+        el.dispatchEvent(mouse(type))
       }
 
       // Matching click + dblclick → dblclick only
@@ -423,8 +423,8 @@ describe(`click and dblclick handlers`, () => {
       const cell = doc_query(`.cell:not(.empty)`)
       expect(cell.tagName).toBe(`BUTTON`)
       // Approximate native button activation: keydown then synthesized click.
-      cell.dispatchEvent(new KeyboardEvent(`keydown`, { key: key_name, bubbles: true }))
-      cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      cell.dispatchEvent(keydown(key_name))
+      cell.dispatchEvent(mouse(`click`))
       expect(click_handler).toHaveBeenCalledOnce()
     },
   )
@@ -446,18 +446,12 @@ describe(`click and dblclick handlers`, () => {
     await tick()
     const start = doc_query(`.cell[data-x="1"][data-y="1"]`)
     start.focus()
-    const arrow_right = new KeyboardEvent(`keydown`, {
-      key: `ArrowRight`,
-      bubbles: true,
-      cancelable: true,
-    })
+    const arrow_right = keydown(`ArrowRight`, { cancelable: true })
     start.dispatchEvent(arrow_right)
     expect(arrow_right.defaultPrevented).toBe(true)
     await tick()
     expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="1"]`))
-    document.activeElement?.dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
-    )
+    document.activeElement?.dispatchEvent(keydown(`ArrowDown`))
     await tick()
     expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="0"]`))
   })
@@ -475,7 +469,7 @@ describe(`click and dblclick handlers`, () => {
 
     // Hovering a cell should not make subsequent label clicks trigger on_click
     const first_cell = doc_query(`.cell:not(.empty)`)
-    first_cell.dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
+    first_cell.dispatchEvent(mouse(`mouseover`))
     doc_query(`.x-label`).click()
     expect(handler).not.toHaveBeenCalled()
   })
@@ -717,10 +711,10 @@ describe(`milestone feature props`, () => {
       on_select: select_handler,
     })
     const cells = get_data_cells()
-    cells[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
+    cells[0].dispatchEvent(mouse(`click`, { ctrlKey: true }))
     await tick()
     expect(cells[0].classList.contains(`selected`)).toBe(true)
-    cells[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
+    cells[1].dispatchEvent(mouse(`click`, { ctrlKey: true }))
     await tick()
     expect(cells[1].classList.contains(`selected`)).toBe(true)
     // Both cells selected, handler receives exact array
@@ -750,8 +744,8 @@ describe(`milestone feature props`, () => {
     })
     const cell_at = (x_idx: number, y_idx: number) =>
       doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
-    cell_at(0, 0).dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    cell_at(1, 2).dispatchEvent(new MouseEvent(`click`, { bubbles: true, shiftKey: true }))
+    cell_at(0, 0).dispatchEvent(mouse(`click`))
+    cell_at(1, 2).dispatchEvent(mouse(`click`, { shiftKey: true }))
     expect(select_handler.mock.calls.at(-1)?.[0]).toEqual([
       { x_idx: 0, y_idx: 0 },
       { x_idx: 0, y_idx: 1 },
@@ -775,8 +769,8 @@ describe(`milestone feature props`, () => {
     const cell_at = (x_idx: number, y_idx: number) =>
       doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
     // drag from bottom-right to top-left so the ranges have to be sorted
-    cell_at(2, 1).dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
-    cell_at(1, 0).dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
+    cell_at(2, 1).dispatchEvent(mouse(`mousedown`))
+    cell_at(1, 0).dispatchEvent(mouse(`mouseover`))
     window.dispatchEvent(new MouseEvent(`mouseup`))
     expect(brush_handler).toHaveBeenCalledOnce()
     const payload = brush_handler.mock.calls[0][0]
@@ -798,7 +792,7 @@ describe(`milestone feature props`, () => {
     const first_cell = get_data_cells()[0]
     // only selected cells carry the token (contrast is resolved on demand)
     expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(``)
-    first_cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    first_cell.dispatchEvent(mouse(`click`))
     flushSync()
     expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(`white`)
   })
@@ -807,7 +801,7 @@ describe(`milestone feature props`, () => {
     const handler = vi.fn()
     mount_matrix({ on_context_menu: handler, values: [[1]] })
     const first_cell = get_data_cells()[0]
-    const event = new MouseEvent(`contextmenu`, { bubbles: true, cancelable: true })
+    const event = mouse(`contextmenu`, { cancelable: true })
     first_cell.dispatchEvent(event)
     // the handler gets the cell's context plus the raw event, whose native menu is suppressed
     expect(handler).toHaveBeenCalledExactlyOnceWith(
@@ -826,11 +820,9 @@ describe(`milestone feature props`, () => {
     await Promise.resolve()
     const first_cell = get_data_cells()[0]
     const tooltip_el = doc_query(`.tooltip`)
-    first_cell.dispatchEvent(
-      new MouseEvent(`mouseover`, { bubbles: true, clientX: 10, clientY: 10 }),
-    )
+    first_cell.dispatchEvent(mouse(`mouseover`, { clientX: 10, clientY: 10 }))
     await Promise.resolve()
-    first_cell.dispatchEvent(new MouseEvent(`mouseout`, { bubbles: true }))
+    first_cell.dispatchEvent(mouse(`mouseout`))
     await Promise.resolve()
     expect(tooltip_el.classList.contains(`visible`)).toBe(false)
   })
@@ -988,7 +980,7 @@ describe(`virtualized keyboard navigation`, () => {
     const start = axis === `x` ? cell_at(from, fixed) : cell_at(fixed, from)
     if (!start) throw new Error(`edge cell ${from} was not rendered`)
     start.focus()
-    start.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    start.dispatchEvent(keydown(key))
     await tick()
     await tick()
 
@@ -1028,11 +1020,7 @@ test.each([
   await tick()
   const cell = doc_query(`.grid [data-x="0"][data-y="0"]`)
   cell.focus()
-  const event = new KeyboardEvent(`keydown`, {
-    key: `ArrowRight`,
-    bubbles: true,
-    cancelable: true,
-  })
+  const event = keydown(`ArrowRight`, { cancelable: true })
   Object.assign(event, modifiers)
   doc_query(`.grid`).dispatchEvent(event)
   await tick()

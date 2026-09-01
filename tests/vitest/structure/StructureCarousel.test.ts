@@ -1,7 +1,7 @@
 import StructureCarousel from '$lib/structure/StructureCarousel.svelte'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, make_crystal } from '../setup'
+import { doc_query, keydown, make_crystal, mouse } from '../setup'
 import StructureCarouselHarness from './StructureCarouselHarness.svelte'
 
 const items = Array.from({ length: 5 }, (_, idx) => ({
@@ -70,7 +70,7 @@ describe(`StructureCarousel`, () => {
     const chip = doc_query(`.structure-card .card-info`)
     chip.click()
     for (const key of [`Enter`, ` `]) {
-      chip.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      chip.dispatchEvent(keydown(key))
     }
     expect(chip.getAttribute(`role`)).toBe(`button`)
     expect(chip.getAttribute(`tabindex`)).toBe(`0`)
@@ -344,7 +344,7 @@ describe(`StructureCarousel`, () => {
     )
   }
   const press = (target: HTMLElement, key: string): KeyboardEvent => {
-    const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
+    const event = keydown(key, { cancelable: true })
     target.dispatchEvent(event)
     return event
   }
@@ -504,9 +504,7 @@ describe(`StructureCarousel`, () => {
   test(`opens the cell selector menu inside carousel cards`, () => {
     mount_carousel({ items, layout: `horizontal`, height: 210 })
 
-    doc_query(`.structure-card .cell-select .toggle-btn`).dispatchEvent(
-      new MouseEvent(`click`, { bubbles: true }),
-    )
+    doc_query(`.structure-card .cell-select .toggle-btn`).dispatchEvent(mouse(`click`))
     flushSync()
 
     expect(doc_query(`.structure-card .cell-select .dropdown`)).not.toBeNull()
@@ -688,12 +686,7 @@ test.each([
   })
   const handle = doc_query(`.structure-carousel-resize-handle.horizontal`)
   const before = doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
-  const event = new KeyboardEvent(`keydown`, {
-    key: `ArrowDown`,
-    bubbles: true,
-    cancelable: true,
-    ...modifiers,
-  })
+  const event = keydown(`ArrowDown`, { cancelable: true, ...modifiers })
   handle.dispatchEvent(event)
   flushSync()
   const after = doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
