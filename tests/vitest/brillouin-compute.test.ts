@@ -400,6 +400,49 @@ describe(`generate_bz_vertices`, () => {
 })
 
 describe(`compute_convex_hull`, () => {
+  // The count check ran before dedup and never looked at rank, so a vertex set that cannot
+  // define a solid slipped through: 4 coincident points came back as a silently empty hull,
+  // and 4 collinear ones reached three.js and surfaced as a bare
+  // "Cannot read properties of undefined (reading 'point')". An IBZ clip can produce either.
+  test.each([
+    [
+      `coincident`,
+      [
+        [1, 1, 1],
+        [1, 1, 1],
+        [1, 1, 1],
+        [1, 1, 1],
+      ],
+      /≥4 distinct vertices/,
+    ],
+    [
+      `collinear`,
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+        [2, 0, 0],
+        [3, 0, 0],
+      ],
+      /vertices spanning 3D/,
+    ],
+  ] as [string, Vec3[], RegExp][])(
+    `throws a descriptive error for 4 %s vertices`,
+    (_case, vertices, message) => {
+      expect(() => compute_convex_hull(vertices)).toThrow(message)
+    },
+  )
+
+  // a flat but genuinely 2D set still builds, as the IBZ code relies on
+  test(`still accepts a coplanar quad`, () => {
+    const hull = compute_convex_hull([
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+      [0, 1, 0],
+    ])
+    expect(hull.vertices).toHaveLength(4)
+  })
+
   test(`throws for <4 vertices`, () => {
     expect(() =>
       compute_convex_hull([

@@ -212,3 +212,13 @@ describe(`spacegroup_sunburst_data`, () => {
     expect(n_leaves).toBe(230)
   })
 })
+
+// A plain-object lookup inherits Object.prototype, so these passed the `!== undefined` test and
+// came back as a function or object where the signature promises `number | null`. Downstream
+// they slipped past `num == null` checks and vanished without reaching the invalid-entry count.
+test.each([`constructor`, `toString`, `__proto__`, `valueOf`, `hasOwnProperty`])(
+  `rejects the prototype member %s`,
+  (key) => {
+    expect(spg.normalize_spacegroup(key)).toBeNull()
+  },
+)

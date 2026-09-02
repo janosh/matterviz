@@ -32,6 +32,11 @@ export type Matrix4Tuple = [
 
 // Generate all k-element combinations from an array.
 export function combinations<T>(arr: T[], k: number): T[][] {
+  // Neither base case catches a negative k (`arr.length < k` is false for one), so the
+  // recursion ran away into a stack overflow instead of reporting the caller's bad argument
+  if (!Number.isInteger(k) || k < 0) {
+    throw new RangeError(`combinations needs a non-negative integer k, got ${k}`)
+  }
   if (k === 0) return [[]]
   if (arr.length < k) return []
   const [first, ...rest] = arr

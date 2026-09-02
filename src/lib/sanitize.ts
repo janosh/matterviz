@@ -41,8 +41,13 @@ function get_purify(): ReturnType<typeof DOMPurify> | null {
 }
 
 // Strip void / raw-text blocks that must not leak content when tags are removed
+// `[^<>]*` for the attribute run, not `[^>]*`: the latter rescans to end of input from every
+// `<` that never gets a `>`, which is quadratic (a 64 kB run of `<script ` blocked the thread
+// for 0.6 s, a 1 MB one for minutes). Stopping at the next `<` fails each start position at
+// once. An attribute value literally containing `<` no longer reads as a tag, which for an
+// allowlist sanitizer is the safe direction: it gets escaped rather than passed through.
 const DANGEROUS_BLOCK_RE =
-  /<(?<block>script|style|iframe|object|embed|textarea|noscript|template)\b[^>]*>[\s\S]*?<\/\k<block>\s*>/gi
+  /<(?<block>script|style|iframe|object|embed|textarea|noscript|template)\b[^<>]*>[\s\S]*?<\/\k<block>\s*>/gi
 const ATTR_RE =
   /(?<name>[^\s=]+)(?:\s*=\s*(?:"(?<dq>[^"]*)"|'(?<sq>[^']*)'|(?<bare>[^\s"'=<>`]+)))?/g
 const SAFE_HREF_RE = /^(?:\/|#|https?:|mailto:)/i
@@ -86,11 +91,16 @@ function sanitize_allowlist_ssr(
   const without_blocks = html
     .replace(DANGEROUS_BLOCK_RE, ``)
     .replaceAll(/<!--[\s\S]*?-->/g, ``)
-  const tag_re = /<\/?(?<tag>[A-Za-z][\w:-]*)\b(?<attrs>[^>]*)\/?>/g
+  const tag_re = /<\/?(?<tag>[A-Za-z][\w:-]*)\b(?<attrs>[^<>]*)\/?>/g
+  // Text between the tags is escaped, never copied verbatim. `tag_re` needs a closing `>`, so
+  // an unterminated tag was not seen as one and survived byte for byte - and SSR emits this
+  // into the middle of a page, where the following markup supplies the `>`. That turned
+  // `<img src=x onerror=alert(1)` into a live img element with a working handler.
+  const escape_markup = (text: string) => text.replaceAll(`<`, `&lt;`)
   let out = ``
   let last = 0
   for (const match of without_blocks.matchAll(tag_re)) {
-    out += without_blocks.slice(last, match.index)
+    out += escape_markup(without_blocks.slice(last, match.index))
     last = match.index + match[0].length
     const name = (match.groups?.tag ?? ``).toLowerCase()
     if (!tags.has(name)) continue
@@ -104,7 +114,7 @@ function sanitize_allowlist_ssr(
         ? `<${name}${filtered} />`
         : `<${name}${filtered}>`
   }
-  return out + without_blocks.slice(last)
+  return out + escape_markup(without_blocks.slice(last))
 }
 
 // Wrap in <svg>, sanitize with allowlist, then unwrap. Required because DOMPurify

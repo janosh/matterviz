@@ -21,6 +21,12 @@ describe(`combinations`, () => {
     expect(math.combinations(arr as unknown[], k)).toEqual(expected)
   })
 
+  // Neither base case catches a negative k - `k === 0` never fires and `arr.length < k` is
+  // false - so the recursion ran away and blew the stack instead of naming the bad argument
+  test.each([-1, -5, 1.5])(`rejects k=%s instead of recursing forever`, (bad_k) => {
+    expect(() => math.combinations([1, 2, 3], bad_k)).toThrow(/non-negative integer k/)
+  })
+
   test(`C(5,3) returns 10 unique 3-element combos`, () => {
     const result = math.combinations([`A`, `B`, `C`, `D`, `E`], 3)
     expect(result).toHaveLength(10)

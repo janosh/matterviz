@@ -300,3 +300,40 @@ describe(`sanitizers without a browser DOM`, () => {
     })
   })
 })
+
+// The SSR sanitizer copied anything its tag regex did not match straight to the output, and
+// that regex needs a closing `>`. So an UNTERMINATED tag was never seen as a tag and survived
+// byte for byte - and SSR emits this into the middle of a page, where the following markup
+// supplies the `>`. `<img src=x onerror=alert(1)` became a live img with a working handler.
+// The DOMPurify path was always fine, so this was also an SSR/client divergence.
+describe(`sanitize_html_ssr escapes unterminated markup`, () => {
+  test.each([
+    `<img src=x onerror=alert(1)`,
+    `<script src=//evil.example/x.js`,
+    `<svg/onload=alert(1)`,
+    `<iframe srcdoc=<script>`,
+  ])(`neutralises %s`, (payload) => {
+    const sanitized = sanitize_html_ssr(payload)
+    expect(sanitized).not.toContain(`<`)
+    // parsed where SSR actually puts it: inside a page, with markup following
+    const page = `<!doctype html><html><body><span>${sanitized}</span><p>rest</p></body></html>`
+    const doc = new DOMParser().parseFromString(page, `text/html`)
+    expect(doc.querySelectorAll(`img, script, svg, iframe`)).toHaveLength(0)
+  })
+
+  test(`still passes allowlisted tags through`, () => {
+    expect(sanitize_html_ssr(`<b>bold</b> and <i>it</i>`)).toBe(`<b>bold</b> and <i>it</i>`)
+    expect(sanitize_html_ssr(`plain & text > here`)).toBe(`plain & text > here`)
+  })
+
+  // `[^>]*` rescanned to end of input from every `<` that never got a `>`, so a run of them was
+  // quadratic: 20k `<a` took 312 ms and a 1 MB payload would have blocked the thread for minutes
+  test(`stays linear on a long run of unterminated tags`, () => {
+    const timings = [10_000, 20_000, 40_000].map((count) => {
+      const start = performance.now()
+      sanitize_html_ssr(`<a`.repeat(count))
+      return performance.now() - start
+    })
+    expect(Math.max(...timings)).toBeLessThan(100) // quadratic would put 40k well past this
+  })
+})
