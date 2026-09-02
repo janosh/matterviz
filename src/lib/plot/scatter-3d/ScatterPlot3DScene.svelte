@@ -402,8 +402,12 @@
     prev.positions.length === next.positions.length &&
     prev.positions.every((coord, idx) => coord === next.positions[idx])
 
-  // Track previous lines for reuse/cleanup
-  let series_lines: SeriesLineData[] = $state([])
+  // Track previous lines for reuse/cleanup. `.raw`, since the array is only ever reassigned:
+  // a deep proxy put a signal behind every coordinate, and `same_line_input` reads every index
+  // on each diff - 227 ms instead of 5.8 ms at 50k points, plus 31 MB of signal objects held
+  // for the component's life. It also makes the `line === series_lines[idx]` reuse check below
+  // honest, which only worked before because the reused entries were the proxies themselves.
+  let series_lines: SeriesLineData[] = $state.raw([])
 
   $effect(() => {
     const inputs = line_inputs

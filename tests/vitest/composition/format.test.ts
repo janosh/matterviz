@@ -104,6 +104,21 @@ describe(`get_electro_neg_formula`, () => {
   })
 })
 
+// The number after a hydrate separator counts whole water molecules, not atoms in the group
+// before it, so it belongs at full size. Every digit run was classified as a subscript, which
+// printed sodium carbonate decahydrate as Na₂CO₃·₁₀H₂O.
+describe(`hydrate coefficients`, () => {
+  test.each([
+    [`CuSO4·5H2O`, `CuSO<sub>4</sub>·5H<sub>2</sub>O`],
+    [`Na2CO3·10H2O`, `Na<sub>2</sub>CO<sub>3</sub>·10H<sub>2</sub>O`],
+    [`CaSO4·0.5H2O`, `CaSO<sub>4</sub>·0.5H<sub>2</sub>O`],
+    [`Fe2O3`, `Fe<sub>2</sub>O<sub>3</sub>`], // an ordinary subscript is untouched
+    [`Li0.5CoO2`, `Li<sub>0.5</sub>CoO<sub>2</sub>`],
+  ])(`renders %s`, (formula, expected) => {
+    expect(format_formula_html(formula)).toBe(expected)
+  })
+})
+
 describe(`get_formula_label_segments`, () => {
   const plain = (text: string) => ({ text, subscript: false })
   const subscript = (text: string) => ({ text, subscript: true })

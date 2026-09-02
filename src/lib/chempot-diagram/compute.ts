@@ -520,6 +520,24 @@ export function build_axis_ranges(
 
 // Simple PCA: center data, compute covariance, eigendecompose, project to top-k.
 // Used in 3D for finding domain polygon orientation for label placement.
+// Unit vector orthogonal to every vector in `basis`: the standard-basis direction with the
+// largest residual after projecting the others out. Null when the basis already spans the space.
+const orthogonal_unit_vec = (basis: number[][], n_cols: number): number[] | null => {
+  let best: number[] | null = null
+  let best_norm = EPS
+  for (let axis = 0; axis < n_cols; axis++) {
+    const candidate = Array(n_cols).fill(0).with(axis, 1)
+    for (const prev_ev of basis) {
+      let proj = 0
+      for (let idx = 0; idx < n_cols; idx++) proj += candidate[idx] * prev_ev[idx]
+      for (let idx = 0; idx < n_cols; idx++) candidate[idx] -= proj * prev_ev[idx]
+    }
+    const norm = Math.hypot(...candidate)
+    if (norm > best_norm) [best_norm, best] = [norm, candidate.map((val) => val / norm)]
+  }
+  return best
+}
+
 export function simple_pca(
   data: number[][],
   k: number = 2,
@@ -591,7 +609,17 @@ export function simple_pca(
 
       // Normalize
       const norm = Math.hypot(...new_vec)
-      if (norm < EPS) break
+      if (norm < EPS) {
+        // Nothing left in the deflated covariance to converge to (rank-deficient input:
+        // collinear or coincident points), and `vec` is still the raw seed, which is not
+        // orthogonal to what was already found. Returning it gave a non-orthonormal basis -
+        // for 3 collinear points, literally the same vector twice - and the reconstruction
+        // check behind `is_planar` then judged a trivially planar domain non-planar, so
+        // ChemPotDiagram3D handed it to hull_crease_edges, which threw, and the domain
+        // rendered with no outline at all. Any unit vector orthogonal to the rest will do.
+        vec = orthogonal_unit_vec(eigenvectors, n_cols) ?? vec
+        break
+      }
       const prev = vec
       vec = new_vec.map((val) => val / norm)
       // Early exit when eigenvector has converged

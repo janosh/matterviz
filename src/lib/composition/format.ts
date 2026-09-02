@@ -138,8 +138,11 @@ export function is_compound(name: string): boolean {
 // hyphen ("Fe-Fe3C"); element symbols (uppercase + lowercase run) are separate text tokens; any
 // other run of characters merges into the preceding text token. '+' never gets here (early
 // return in tokenize_formula_markup).
+// `coeff` comes first so it wins over `sub`: the number after a hydrate separator counts whole
+// water molecules, not atoms in the preceding group, so `CuSO4·5H2O` must render its 5 full
+// size. Every digit run classified as a subscript printed it as CuSO4·₅H₂O.
 const FORMULA_TOKEN_RE =
-  /(?<sub>\d+(?:\.\d+)?)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
+  /(?<coeff>(?<=[·⋅*])\d+(?:\.\d+)?)|(?<sub>\d+(?:\.\d+)?)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
 // Multi-phase labels ("La2NiO4 + NiO") split on their " + " separators, which are kept
 const PHASE_SEPARATOR_RE = /(?<separator>\s*\+\s*)/
 
@@ -152,9 +155,12 @@ export function tokenize_formula_markup(formula: string): FormulaMarkupToken[] {
 
   const tokens: FormulaMarkupToken[] = []
   for (const { groups } of formula.matchAll(FORMULA_TOKEN_RE)) {
-    const { sub, sup, element, other } = groups ?? {}
+    const { coeff, sub, sup, element, other } = groups ?? {}
     const prev = tokens.at(-1)
-    if (sub) tokens.push({ sub })
+    if (coeff) {
+      if (prev?.text !== undefined) prev.text += coeff
+      else tokens.push({ text: coeff })
+    } else if (sub) tokens.push({ sub })
     else if (sup) tokens.push({ sup })
     else if (element) tokens.push({ text: element })
     else if (other !== `-` && prev?.text !== undefined) prev.text += other
