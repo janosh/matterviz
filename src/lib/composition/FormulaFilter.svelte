@@ -254,10 +254,12 @@
     }
   })
 
-  // Detect if dropdown would exit viewport on the right and adjust anchor
+  // Detect if dropdown would exit viewport on the right and adjust anchor. The frame is
+  // cancelled on teardown: closing or unmounting within the same frame otherwise left the
+  // callback to measure a dropdown that is on its way out and write state behind it.
   $effect(() => {
-    if (!examples_open || !examples_wrapper) return
-    requestAnimationFrame(() => {
+    if (!examples_open || !examples_wrapper) return undefined
+    const frame = requestAnimationFrame(() => {
       const dropdown = examples_wrapper?.querySelector(
         `.examples-dropdown`,
       ) as HTMLElement | null
@@ -265,6 +267,7 @@
       const rect = dropdown.getBoundingClientRect()
       if (rect.right > window.innerWidth && !anchor_left) anchor_left = true
     })
+    return () => cancelAnimationFrame(frame)
   })
 
   // Infer search mode from input format: a leading +/-/! operator, any +/! or a comma means a

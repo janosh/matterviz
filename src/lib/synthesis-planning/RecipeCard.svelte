@@ -36,6 +36,10 @@
   })
 
   let copied = $state(false)
+  // Held so a rapid second copy restarts the window rather than stacking a timer, and
+  // so an unmount inside it does not leave one running against a destroyed component
+  let reset_copied: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(reset_copied))
   async function copy_recipe(): Promise<void> {
     const lines = [
       route.reaction.equation,
@@ -49,7 +53,8 @@
     ]
     await navigator.clipboard.writeText(lines.join(`\n`))
     copied = true
-    setTimeout(() => (copied = false), 1500)
+    clearTimeout(reset_copied)
+    reset_copied = setTimeout(() => (copied = false), 1500)
   }
 </script>
 

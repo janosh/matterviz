@@ -246,6 +246,10 @@
   })
 
   let copied = $state<`text` | `json` | null>(null)
+  // Held so a rapid second copy restarts the window rather than stacking a timer, and
+  // so an unmount inside it does not leave one running against a destroyed component
+  let reset_copied: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(reset_copied))
   async function copy(kind: `text` | `json`): Promise<void> {
     if (!computed_plan) return
     const content =
@@ -254,7 +258,8 @@
         : JSON.stringify(computed_plan, null, 2)
     await navigator.clipboard.writeText(content)
     copied = kind
-    setTimeout(() => (copied = null), 1500)
+    clearTimeout(reset_copied)
+    reset_copied = setTimeout(() => (copied = null), 1500)
   }
 </script>
 
