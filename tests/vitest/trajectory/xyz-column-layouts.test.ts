@@ -91,6 +91,27 @@ test(`indexed run publishes no force stats for a frame whose spec is unusable`, 
   expect(second).toBeUndefined() // read the tail of the position columns before the fix
 })
 
+// The frame walk's atom-line test rules out a NaN coordinate but not an overflowing one, so
+// `1e999` reaches the force scan while the frame builder still refuses the atom as non-finite.
+test(`indexed run publishes no force stats for a frame with a non-finite coordinate`, async () => {
+  const sound = `species:S:1:pos:R:3:forces:R:3`
+  const text = two_frames(sound, [[`Si`], [`Si`]])
+    .split(`\n`)
+    .map((line) => (line.startsWith(`Si`) ? `${line} 0.1 0.2 0.2` : line))
+    .join(`\n`)
+    // frame 1's FIRST atom line: frame 0 is decoded eagerly, and a bad LAST line of the file
+    // is already caught by the torn-frame guard, which drops the frame instead
+    .replace(`Si 0.0 0.0 0.1 `, `Si 1e999 0.0 0.1 `)
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
+    /non-numeric coordinates/,
+  )
+  const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
+  await run.properties.done
+  const [first, second] = run.properties.rows.map((row) => row.properties.force_max)
+  expect(first).toBeCloseTo(0.3, 12)
+  expect(second).toBeUndefined() // 0.3 before the fix, for a frame that cannot be built
+})
+
 // A malformed `Properties=` must fail loudly. Each of these used to yield a plausible wrong
 // atom: an unusable spec was discarded and read as "no Properties= at all", so the plain
 // `symbol x y z` fallback took columns 1-3 — the very ones the bad spec would have misread.
@@ -107,12 +128,33 @@ test.each([
   [`a field count that is not a multiple of 3`, `species:S:1:pos:R`],
   // extXYZ requires `pos`; without it column 1 is not the x coordinate but the first force
   [`no pos field at all`, `species:S:1:forces:R:3`],
-])(`rejects %s instead of guessing`, (_name, properties) => {
-  const text = `1\nProperties=${properties} Lattice="5 0 0 0 5 0 0 0 5"\nSi 1.0 2.0 9.9 8.8 7.7\n`
-  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
-    `Properties=${properties} does not declare a 3-column pos field`,
-  )
+  // a repeat overwrote the first entry and moved its offset: this read columns 4-6 as the
+  // coordinates, and no count anywhere in the spec is wrong enough to notice
+  [`pos declared twice`, `species:S:1:pos:R:3:pos:R:3`],
+  [`another field declared twice`, `species:S:1:pos:R:3:forces:R:3:forces:R:3`],
+])(`rejects %s instead of guessing`, (name, properties) => {
+  // long enough for every layout under test, so a case fails on its spec rather than on a
+  // short line: the duplicate-`pos` layout alone reads out to column 6
+  const text = `1\nProperties=${properties} Lattice="5 0 0 0 5 0 0 0 5"\nSi 1.0 2.0 9.9 8.8 7.7 6.6 5.5\n`
+  const reason = name.includes(`twice`)
+    ? /declares '(?:pos|forces)' more than once/
+    : `Properties=${properties} does not declare a 3-column pos field`
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(reason)
 })
+
+// A `Properties=` that declares nothing is not the same as no `Properties=` at all, and the
+// plain `symbol x y z` fallback is a guess either way. The value also has to be read as the
+// one token it is: allowing whitespace after `=` let the match run on into the next key, so
+// `Properties= Lattice="..."` reported `Lattice=` as the offending spec.
+test.each([`Properties=""`, `Properties=`])(
+  `rejects the empty declaration %s`,
+  (declaration) => {
+    const text = `1\n${declaration} Lattice="5 0 0 0 5 0 0 0 5"\nSi 1.0 2.0 3.0\n`
+    expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
+      `Properties= does not declare a 3-column pos field`,
+    )
+  },
+)
 
 test(`rejects a non-integer atomic number instead of truncating it to an element`, () => {
   const text = `1\nProperties=Z:I:1:pos:R:3 Lattice="5 0 0 0 5 0 0 0 5"\n14.9 0.0 0.0 0.0\n`

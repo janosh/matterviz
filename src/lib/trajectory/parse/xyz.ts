@@ -333,7 +333,7 @@ export function xyz_frame_force_stats(
   text: string,
   { atoms_start, end, num_atoms, comment }: XyzFrameSpec,
 ): { force_max: number; force_norm: number } | null {
-  const { atomic_number_col, symbol_col, forces_col, min_cols, spec_error } =
+  const { atomic_number_col, symbol_col, forces_col, min_cols, pos_col, spec_error } =
     parse_extxyz_columns(comment)
   // An unusable spec establishes no offsets, and the materialized path rejects the frame over
   // it. Scanning `forces_col` anyway published a force curve point for a frame that cannot be
@@ -349,6 +349,10 @@ export function xyz_frame_force_stats(
     const n_cols = scanner.scan(text, cursor, eol)
     cursor = eol + 1
     if (n_cols < min_cols) return null
+    // The frame builder rejects an atom whose coordinates are not finite. The frame walk's
+    // atom-line test only rules out NaN, so an overflowing `1e999` reaches here and used to
+    // contribute a force-curve point to a frame that cannot be built.
+    if (![0, 1, 2].every((axis) => Number.isFinite(scanner.num(pos_col + axis)))) return null
     // An atom whose species the frame builder skips does not count toward the stats either
     if (!scanned_element(scanner, symbol_col, atomic_number_col)) continue
     if (n_cols < forces_col + 3) return null

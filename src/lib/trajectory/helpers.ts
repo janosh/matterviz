@@ -261,8 +261,16 @@ export function parse_extxyz_columns(comment: string): {
   // reject the frame outright rather than pick between two guesses.
   spec_error: string | null
 } {
-  const spec = /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.groups?.properties
+  // The whole value, quotes included and empty allowed, so a declared-but-empty `Properties=""`
+  // is told apart from no `Properties=` at all. Nothing may sit between `=` and the value: with
+  // `\s*` there, `Properties= Lattice="..."` skipped the gap and captured `Lattice=` instead.
+  const spec_match = /(?:^|\s)Properties\s*=(?<properties>"[^"]*"|\S*)/i.exec(comment)
+  const spec = spec_match?.groups?.properties.replaceAll(/^"|"$/gu, ``)
   const fields = spec?.split(`:`) ?? []
+  // Every third field is a name. A repeat silently overwrote the first entry and moved its
+  // offset, so `species:S:1:pos:R:3:pos:R:3` read the coordinates from columns 4-6.
+  const names = fields.filter((_field, idx) => idx % 3 === 0).map((name) => name.toLowerCase())
+  const duplicate = names.find((name, idx) => names.indexOf(name) !== idx)
   let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
     // Not truncated first: `Number.isInteger` then passes anything finite, so `forces:R:3.7`
@@ -281,6 +289,15 @@ export function parse_extxyz_columns(comment: string): {
   const atomic_number_col = !layout?.species && layout?.z?.ncols === 1 ? layout.z.offset : -1
   const pos_col = layout?.pos?.offset ?? 1
   const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
+  // Keyed off the spec, not `layout.pos`: one bad count anywhere (`pos:R:0`, or an earlier
+  // `id:I:x`) discards `layout` wholesale, which used to read as "no spec at all"
+  let spec_error: string | null = null
+  if (spec !== undefined) {
+    if (duplicate) spec_error = `Properties=${spec} declares '${duplicate}' more than once`
+    else if (layout?.pos?.ncols !== 3) {
+      spec_error = `Properties=${spec} does not declare a 3-column pos field`
+    }
+  }
   return {
     atomic_number_col,
     symbol_col: atomic_number_col >= 0 ? atomic_number_col : species_col,
@@ -288,12 +305,7 @@ export function parse_extxyz_columns(comment: string): {
     forces_col,
     min_cols: Math.max(pos_col + 3, species_col + 1),
     layout: layout && Object.keys(layout).length > 0 ? layout : null,
-    // Keyed off the spec, not `layout.pos`: one bad count anywhere (`pos:R:0`, or an earlier
-    // `id:I:x`) discards `layout` wholesale, which used to read as "no spec at all"
-    spec_error:
-      spec === undefined || layout?.pos?.ncols === 3
-        ? null
-        : `Properties=${spec} does not declare a 3-column pos field`,
+    spec_error,
   }
 }
 
