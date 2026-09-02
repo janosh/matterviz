@@ -1733,11 +1733,45 @@ describe(`ScatterPlot`, () => {
     await mount_sized_scatter_plot({
       series: [
         { x: [1, 2, 3], y: [1, 2, 3] },
-        { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` },
+        { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
       ],
       y_axis: { range: [0, 5] as Vec2 },
-      y2_axis: { sync: `synced` },
+      y2_axis: { sync: `synced` as const },
     })
     expect(error_spy).not.toHaveBeenCalled()
+  })
+
+  // A synced y2 is derived from y, so every writer of y has to re-derive it. Panning, rect
+  // zoom and reset all do; the `view` prop reached ranges.current.y through the raw facet
+  // bridge and skipped the sync, leaving y2 stale until something unrelated (new data, a
+  // tick-count edit) re-ran the range effect and snapped it over in one jump.
+  test(`a host writing view.y re-derives a synced y2`, async () => {
+    const state = $state<{ view: Partial<AxisRanges> | undefined }>({ view: undefined })
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
+        {
+          series: [
+            { x: [1, 2, 3], y: [1, 2, 3] },
+            { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
+          ],
+          y_axis: { range: [0, 10] as Vec2 },
+          y2_axis: { sync: `synced` as const },
+          point_tween: { duration: 0 },
+          legend: null,
+          show_controls: false,
+        },
+        state,
+      ),
+    )
+    const ticks = (side: `y` | `y2`) =>
+      [...plot.querySelectorAll(`.${side}-axis .tick text`)].map((label) => label.textContent)
+    expect(ticks(`y2`)).toEqual(ticks(`y`))
+
+    // the host scrolls only y; y2 has to come along in the same flush
+    state.view = { y: [0, 5] }
+    await tick()
+    expect(ticks(`y`)).toContain(`5`)
+    expect(ticks(`y`)).not.toContain(`10`)
+    expect(ticks(`y2`)).toEqual(ticks(`y`))
   })
 })
