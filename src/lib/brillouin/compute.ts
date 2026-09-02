@@ -299,6 +299,27 @@ function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
 // Build convex hull from vertices and extract topology. Runs three's quickhull on the f64
 // points directly (ConvexGeometry would round them through a Float32Array, costing ~1e-7
 // relative in every vertex and volume) and keeps only the points that end up on the hull.
+// Every point on one line through the first: the longest offset from it defines the axis, and
+// a point off that axis has a cross product with it proportional to its distance away
+const points_are_collinear = (points: Vec3[]): boolean => {
+  const [origin] = points
+  const offset = (point: Vec3): Vec3 => [
+    point[0] - origin[0],
+    point[1] - origin[1],
+    point[2] - origin[2],
+  ]
+  let axis: Vec3 = [0, 0, 0]
+  let axis_len = 0
+  for (const point of points) {
+    const len = math.euclidean_dist(point, origin)
+    if (len > axis_len) [axis_len, axis] = [len, offset(point)]
+  }
+  if (axis_len <= TOL) return true // every point coincides with the first
+  return points.every(
+    (point) => Math.hypot(...math.cross_3d(offset(point), axis)) <= TOL * axis_len,
+  )
+}
+
 export function compute_convex_hull(
   vertices: Vec3[],
   edge_sharp_angle_deg = 5, // Angle threshold for edge detection: edges between faces with angle > this are rendered
@@ -314,6 +335,21 @@ export function compute_convex_hull(
     if (dedup.has_duplicate(vertex)) continue
     dedup.add(vertex)
     distinct.push(vertex)
+  }
+
+  // Rank checks belong after dedup: counting raw vertices let 4 coincident points through as a
+  // silently empty hull, and 4 collinear ones through to a bare three.js TypeError from inside
+  // ConvexHull ("Cannot read properties of undefined (reading 'point')"). A clip that leaves a
+  // degenerate vertex set should say so, not surface as either of those.
+  if (distinct.length < 4) {
+    throw new Error(
+      `Need ≥4 distinct vertices for convex hull, got ${distinct.length} of ${vertices.length}`,
+    )
+  }
+  if (points_are_collinear(distinct)) {
+    throw new Error(
+      `Convex hull needs vertices spanning 3D, got ${distinct.length} collinear ones`,
+    )
   }
 
   const hull = new ConvexHull().setFromPoints(distinct.map((vertex) => new Vector3(...vertex)))

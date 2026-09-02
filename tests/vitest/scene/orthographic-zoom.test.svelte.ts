@@ -1,4 +1,4 @@
-import { create_orthographic_zoom, create_scene_camera } from '$lib/scene'
+import { create_fit_zoom, create_orthographic_zoom, create_scene_camera } from '$lib/scene'
 import { flushSync } from 'svelte'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 import { expect, test } from 'vitest'
@@ -147,6 +147,68 @@ test(`reset_to_fit snaps to the new fit in the same flush instead of rescaling b
     set({ fit: 40 })
     expect(zoom.zoom).toBe(40)
   })
+})
+
+// Regression guard for #459: a trajectory frame change left the camera fit stale until the
+// pointer entered the viewport, because the fit effect untracked the extent (so a frame could
+// not schedule it) but still read the live extent whenever something else re-ran it — hover
+// revealing the gizmo hands StructureScene a fresh scene_props object, which does exactly that.
+// A resize stands in for that re-run here.
+type FitInputs = { extent: number; width: number; measured: boolean }
+
+const with_fit_zoom = (
+  run: (
+    fit: ReturnType<typeof create_fit_zoom>,
+    set: (patch: Partial<FitInputs>) => void,
+  ) => void,
+  { initial_zoom = 1, measured = true } = {},
+) => {
+  const cleanup = $effect.root(() => {
+    const inputs: FitInputs = $state({ extent: 10, width: 600, measured })
+    const fit = create_fit_zoom({
+      extent: () => inputs.extent,
+      zoom_for: (extent) => inputs.width / extent,
+      measured: () => inputs.measured,
+      initial_zoom: () => initial_zoom,
+    })
+    flushSync()
+    run(fit, (patch) => flushSync(() => Object.assign(inputs, patch)))
+  })
+  cleanup()
+}
+
+test(`the fit is pinned to its extent: only refit() adopts new content`, () => {
+  with_fit_zoom((fit, set) => {
+    expect(fit.zoom).toBe(60)
+
+    // next trajectory frame, cell 3x larger: the framing must hold
+    set({ extent: 30 })
+    expect(fit.zoom).toBe(60)
+
+    // and must still hold when a resize re-runs the effect: it rescales against the pinned
+    // extent, so a round trip lands back on the original zoom rather than on 900/30 = 30
+    set({ width: 900 })
+    expect(fit.zoom).toBe(90)
+    set({ width: 600 })
+    expect(fit.zoom).toBe(60)
+
+    // an explicit re-frame (new series, camera reset, projection change) adopts the extent
+    fit.refit()
+    expect(fit.zoom).toBe(20)
+    set({ width: 900 })
+    expect(fit.zoom).toBe(30)
+  })
+})
+
+test(`an unmeasured container holds the initial zoom until it has a size`, () => {
+  with_fit_zoom(
+    (fit, set) => {
+      expect(fit.zoom).toBe(42)
+      set({ measured: true })
+      expect(fit.zoom).toBe(60)
+    },
+    { initial_zoom: 42, measured: false },
+  )
 })
 
 // The bundle the four scenes use: orbit props follow the controls, and the zoom limits handed

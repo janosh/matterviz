@@ -84,6 +84,10 @@ export function resolve_path(root: unknown, path: string): unknown {
   let current: unknown = root
   for (const key of parse_path(path)) {
     if (current == null || typeof current !== `object`) return undefined
+    // hasOwn, not a bare lookup: a path segment naming an inherited member walks onto the
+    // prototype chain, so `__proto__` resolved to Object.prototype and `constructor` to the
+    // Object function, where the caller expects a value from the data it passed in
+    if (!Object.hasOwn(current, key)) return undefined
     current = (current as Record<string | number, unknown>)[key]
   }
   return current

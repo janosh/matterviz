@@ -8,6 +8,7 @@ import '$lib/app.css'
 import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
 import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
 import type { DefaultSettings } from '$lib/settings'
+import type { DownloadData } from '$lib/io/fetch'
 import type { DosInput } from '$lib/spectral'
 import Bands from '$lib/spectral/Bands.svelte'
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
@@ -124,7 +125,7 @@ const post_to_host = (command: `info` | `error`, text: string): void => {
 // Route `download` ($lib/io/fetch checks for this global override) through the host's save dialog
 export const setup_vscode_download = (): void => {
   if (!vscode_api) return
-  const download = (data: string | Blob, filename: string): void => {
+  const download = (data: DownloadData, filename: string, type: string): void => {
     if (!filename?.trim()) {
       console.error(`Invalid filename provided to download`)
       return
@@ -149,7 +150,10 @@ export const setup_vscode_download = (): void => {
           console.error(`Failed to read binary data for download`)
           post_to_host(`error`, `Failed to read binary data for download`)
         })
-        reader.readAsDataURL(data)
+        // readAsDataURL takes a Blob only, and the shared `download` contract also admits an
+        // ArrayBuffer / view - which is exactly what the STL and GLB scene exports pass, so
+        // both failed in the extension with a raw "parameter 1 is not of type 'Blob'" toast.
+        reader.readAsDataURL(data instanceof Blob ? data : new Blob([data], { type }))
       }
     } catch (error) {
       console.error(`VSCode download failed:`, error)

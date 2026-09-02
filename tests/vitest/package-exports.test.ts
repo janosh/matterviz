@@ -26,6 +26,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
+import svelte_config from '../../svelte.config'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
@@ -256,6 +257,36 @@ describe(`package.json exports`, () => {
   })
 })
 
+// Preprocessors run over src/lib as well as the site, so whatever they inject ships in the
+// package. heading_ids is scoped to site files in svelte.config.ts: its slugs are never
+// referenced from library components, and a heading inside an {#each} (ChemPotDiagram's
+// per-projection <h4>) would repeat one id per iteration in a consumer's DOM.
+describe(`svelte.config preprocessors`, () => {
+  const { markup } = svelte_config.preprocess.find((pre) => pre.name === `heading-ids`) ?? {}
+  if (!markup) throw new Error(`no heading-ids preprocessor in svelte.config preprocess`)
+  const content = `<h3>Drop Structure File</h3>`
+
+  test.each([
+    [`src/lib/brillouin/BrillouinZone.svelte`, false],
+    [`src/routes/acknowledgements/+page.md`, true],
+    [`src/routes/(demos)/structure/+page.md`, true],
+    // Windows hands the preprocessor a back-slashed absolute path, which a `/`-only pattern
+    // reads as a site file — the packaged components would then ship injected ids
+    [String.raw`C:\repo\src\lib\brillouin\BrillouinZone.svelte`, false],
+  ])(`%s gets injected heading ids: %s`, async (path, expected) => {
+    const filename = path.startsWith(`src/`) ? join(repo_root, path) : path
+    const result = await markup({ content, filename })
+    expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(expected)
+  })
+
+  test.skipIf(!has_dist)(`packaged components carry no injected heading ids`, () => {
+    const with_ids = readdirSync(dist_dir, { recursive: true, encoding: `utf8` })
+      .filter((entry) => entry.endsWith(`.svelte`))
+      .filter((entry) => /<h[1-6][^>]*\bid=/.test(readFileSync(join(dist_dir, entry), `utf8`)))
+    expect(with_ids, `heading ids leaked into the published package`).toEqual([])
+  })
+})
+
 // A `github:janosh/matterviz#main` dependency has no dist/ (gitignored), so the root `prepare`
 // hook must build it there, while dev-checkout and CI installs (dist present or
 // MATTERVIZ_SKIP_PREPARE set) must stay at a bare `svelte-kit sync`. The script resolves the
@@ -305,5 +336,44 @@ describe(`prepare hook`, () => {
     } finally {
       rmSync(dist_entry, { force: true })
     }
+  })
+})
+
+// A directory sharing its name with a sibling `.ts` file is a trap for the packaged types:
+// svelte-package rewrites a `$lib/...` alias to a relative specifier, and from inside that
+// directory the specifier becomes `./` - the directory itself, which has no index - so the
+// import does not resolve. `plot/core/types/plot-3d.ts` did exactly this, and it broke
+// `import type` from the root entry and most subpaths with TS2307 for every consumer of the
+// published package. Two such pairs remain (`settings`, `plot/core/utils`), so keep the rule.
+describe(`packaged type declarations resolve`, () => {
+  // every directory under src/lib that has a sibling file of the same name
+  const shadowed_dirs = (dir: string, out: string[] = []): string[] => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const full = join(dir, entry.name)
+      if (existsSync(`${full}.ts`)) out.push(full)
+      shadowed_dirs(full, out)
+    }
+    return out
+  }
+
+  test(`no file imports the $lib alias of the directory it lives in`, () => {
+    const dirs = shadowed_dirs(lib_dir)
+    expect(dirs.length).toBeGreaterThan(0) // the rule is worth nothing if it scans nothing
+    const offenders: string[] = []
+    for (const dir of dirs) {
+      const alias = `$lib/${dir.slice(lib_dir.length + 1).replaceAll(`\\`, `/`)}`
+      for (const file of readdirSync(dir)) {
+        if (!file.endsWith(`.ts`) && !file.endsWith(`.svelte`)) continue
+        const source = readFileSync(join(dir, file), `utf8`)
+        // the alias as a whole specifier, in either quote style, not as a prefix of a deeper path
+        for (const quote of [`'`, `\``]) {
+          if (source.includes(`from ${quote}${alias}${quote}`))
+            offenders.push(`${file} -> ${alias}`)
+        }
+      }
+    }
+    // import the sibling file relatively instead, e.g. `../types` rather than the alias
+    expect(offenders).toEqual([])
   })
 })

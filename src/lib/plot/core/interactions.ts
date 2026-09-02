@@ -75,30 +75,36 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
     const y1_span = y1_range[1] - y1_range[0]
     if (y1_span === 0) return y2_base_range
 
-    // Where is align_val in Y1's range? (0 = bottom, 1 = top)
-    const rel_pos = (align_val - y1_range[0]) / y1_span
+    // Where align_val sits along y1, as a fraction measured from y1's LOW end. The span math
+    // below assumes value rises with the fraction, which only holds on an ascending axis, and
+    // a descending y1 is a supported mode: measuring from y1_range[0] there both mirrored y2
+    // against it (y2 counting up while y1 counted down) and sized the range off the wrong
+    // constraint, so y1 [10, 0] against y2 data [0, 5] gave [-5, 5] instead of [5, 0]. Solve
+    // in ascending space, then hand the pair back pointing y1's way.
+    const descending = y1_span < 0
+    const frac = (align_val - Math.min(y1_range[0], y1_range[1])) / Math.abs(y1_span)
 
     // Ensure Y2 range includes both align_val and all data
     const y2_min_data = Math.min(y2_base_range[0], align_val)
     const y2_max_data = Math.max(y2_base_range[1], align_val)
 
-    // Calculate minimum span needed to fit all data while keeping align_val at rel_pos
+    // Calculate minimum span needed to fit all data while keeping align_val at frac
     // Constraints: y2_min <= y2_min_data AND y2_max >= y2_max_data
     let y2_span = y2_max_data - y2_min_data
-    if (rel_pos > 0) {
-      y2_span = Math.max(y2_span, (align_val - y2_min_data) / rel_pos)
+    if (frac > 0) {
+      y2_span = Math.max(y2_span, (align_val - y2_min_data) / frac)
     }
-    if (rel_pos < 1) {
-      y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - rel_pos))
+    if (frac < 1) {
+      y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - frac))
     }
 
-    const y2_min_computed = align_val - rel_pos * y2_span
-    const y2_max_computed = align_val + (1 - rel_pos) * y2_span
-    // When align_val is outside y1_range (rel_pos < 0 or > 1), the formula can produce
+    const y2_min_computed = align_val - frac * y2_span
+    const y2_max_computed = align_val + (1 - frac) * y2_span
+    // When align_val is outside y1_range (frac < 0 or > 1), the formula can produce
     // a range that omits y2_base_range or align_val. Ensure both are always included.
     const y2_min = Math.min(y2_min_computed, y2_base_range[0], align_val)
     const y2_max = Math.max(y2_max_computed, y2_base_range[1], align_val)
-    return [y2_min, y2_max]
+    return descending ? [y2_max, y2_min] : [y2_min, y2_max]
   }
 
   return y2_base_range
@@ -200,15 +206,20 @@ export const range_bounds = (range: Vec2): Vec2 =>
 // Invert a drag-rect edge pair through a scale to a sorted finite data range
 // (time scales invert to Dates, coerced to epoch numbers). Returns null when
 // either bound is non-finite or the range is degenerate (zero span).
+// `current` is the range being replaced: the drag arrives in either order, but the result has
+// to keep the axis pointing the way the user configured it. Sorting unconditionally wrote an
+// ascending range onto a descending axis, silently mirroring the whole plot until reset.
 export function invert_rect_range(
   scale: { invert: (px: number) => number | Date },
   a_px: number,
   b_px: number,
+  current?: Vec2,
 ): Vec2 | null {
-  const range = sorted_range(
+  const [lo, hi] = sorted_range(
     to_epoch_num(scale.invert(a_px)),
     to_epoch_num(scale.invert(b_px)),
   )
+  const range: Vec2 = current && current[0] > current[1] ? [hi, lo] : [lo, hi]
   return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
 }
 

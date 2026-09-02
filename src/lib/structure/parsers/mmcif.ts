@@ -8,11 +8,14 @@ import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import {
   cell_frame,
+  cif_block_ids,
   diag_error,
   diag_warn,
   drop_placeholder_cell,
   element_from_candidates,
   guard_parse,
+  is_cif_data_header,
+  is_cif_loop_header,
   iter_cif_loops,
   parsed_result,
   parse_cif_uncertain_number,
@@ -23,8 +26,12 @@ import {
 
 // Dot-notation atom-site tags are the distinguishing feature of mmCIF; a plain CIF (or a
 // magnetic .mcif, which uses underscore tags) never has them
+// Horizontal whitespace only, never `\s`: under /m the `^` retries at every line start and
+// `\s*` then swallows the whole remaining run of newlines before failing, which is quadratic.
+// This runs on the raw text of any dropped file, so a file of blank lines was a denial of
+// service - 80 kB of them took 631 ms. The sibling LAMMPS sniffers had the same shape.
 export const is_mmcif_content = (content: string): boolean =>
-  /^\s*_atom_site\./im.test(content)
+  /^[ \t]*_atom_site\./im.test(content)
 
 // mmCIF writes unset values as `.` (inapplicable) or `?` (unknown)
 const is_missing = (token: string | undefined): boolean =>
@@ -90,17 +97,21 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
   guard_parse(`mmCIF`, () => {
     const lines = content.split(/\r?\n/)
 
+    const block_ids = cif_block_ids(lines)
     let headers: string[] = []
     let data_rows: string[][] = []
+    let atom_block_id = 0
     for (const loop of iter_cif_loops(lines)) {
       const is_atom_site = (header: string) =>
         header.trim().toLowerCase().startsWith(`_atom_site.`)
       if (!loop.headers.some(is_atom_site)) continue
       headers = loop.headers
+      atom_block_id = block_ids[loop.data_start]
       for (let row_idx = loop.data_start; row_idx < lines.length; row_idx++) {
         const line = lines[row_idx].trim()
         // mmCIF terminates a loop with `#`, a new tag, a new loop or a new data block
-        if (!line || line === `#` || line === `loop_` || /^_|^data_/.test(line)) break
+        if (!line || line === `#` || line.startsWith(`_`)) break
+        if (is_cif_loop_header(line) || is_cif_data_header(line)) break
         data_rows.push(split_cif_tokens(line))
       }
       break
@@ -192,7 +203,12 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
       return null
     }
 
-    const symmetry_ops = lines.filter((line) =>
+    // Same scoping as parse_cif: a multi-block file declares a cell and space group per
+    // block, so reading them file-wide picks whichever came first, not the one describing
+    // these atoms. Silently gave a `data_global` header block's cell to a later phase.
+    const block_lines = lines.filter((_line, idx) => block_ids[idx] === atom_block_id)
+
+    const symmetry_ops = block_lines.filter((line) =>
       /^\s*_(?:space_group_symop|symmetry_equiv)\./i.test(line),
     )
     if (symmetry_ops.length > 0) {
@@ -201,7 +217,7 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
       )
     }
 
-    const { lattice_matrix, to_frac } = cell_frame(read_mmcif_cell(lines), `mmCIF _cell`)
+    const { lattice_matrix, to_frac } = cell_frame(read_mmcif_cell(block_lines), `mmCIF _cell`)
     if (is_fractional && !lattice_matrix) {
       diag_error(`mmCIF has fractional coordinates but no usable _cell parameters`)
       return null

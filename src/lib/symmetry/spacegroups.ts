@@ -76,8 +76,12 @@ export function normalize_spacegroup(spacegroup: number | string): number | null
       ? spacegroup
       : null
   }
-  const from_symbol = SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
-  if (from_symbol !== undefined) return from_symbol
+  // hasOwn, not a bare lookup: `constructor`, `toString`, `__proto__` and friends are
+  // inherited from Object.prototype, so they passed the `!== undefined` test and this
+  // returned a function where its signature promises a number
+  if (Object.hasOwn(SPACEGROUP_SYMBOL_TO_NUM, spacegroup)) {
+    return SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
+  }
   // Accept trailing setting qualifiers like `146:R` by parsing the leading integer
   const int_match = /^\s*(?<num>\d+)/.exec(spacegroup)
   return int_match ? normalize_spacegroup(Number(int_match[1])) : null

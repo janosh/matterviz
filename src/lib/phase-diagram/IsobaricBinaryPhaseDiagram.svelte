@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { create_flash } from '$lib/effects.svelte'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import EmptyState from '$lib/EmptyState.svelte'
   import { ClickFeedback } from '$lib/feedback'
@@ -315,8 +316,7 @@
 
   // Copy feedback position; ClickFeedback's CSS animation fades it out and the template keys
   // on the position object so back-to-back copies each remount and restart the animation
-  let copy_feedback_pos = $state<{ x: number; y: number } | null>(null)
-  let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
+  const copy_feedback_pos = create_flash<{ x: number; y: number } | null>(null, 1500)
 
   async function handle_double_click(event: MouseEvent) {
     const info = effective_hover_info
@@ -332,9 +332,7 @@
           lever_rule_mode,
         }),
       )
-      clearTimeout(copy_feedback_timeout)
-      copy_feedback_pos = { x: event.clientX, y: event.clientY }
-      copy_feedback_timeout = setTimeout(() => (copy_feedback_pos = null), 1500)
+      copy_feedback_pos.show({ x: event.clientX, y: event.clientY })
     } catch (error) {
       console.error(`Failed to copy phase data:`, error)
     }
@@ -411,8 +409,6 @@
       handle_click()
     }
   }
-
-  $effect(() => () => clearTimeout(copy_feedback_timeout))
 
   const component_a = $derived(effective_data.components[0])
   const component_b = $derived(effective_data.components[1])
@@ -836,8 +832,10 @@
       </PlotTooltip>
     {/if}
 
-    {#key copy_feedback_pos}
-      {#if copy_feedback_pos}<ClickFeedback visible position={copy_feedback_pos} />{/if}
+    {#key copy_feedback_pos.value}
+      {#if copy_feedback_pos.value}
+        <ClickFeedback visible position={copy_feedback_pos.value} />
+      {/if}
     {/key}
 
     {@render children?.({ width, height, fullscreen })}

@@ -768,3 +768,93 @@ describe(`marginal_hit`, () => {
     expect(marginal_hit(make_ctx([curve]), 50, 62)?.axis_title).toBeUndefined()
   })
 })
+
+// gaussian_kde takes no weights, so a weighted `kde` marginal silently rendered the UNWEIGHTED
+// density: positions [1, 2] weighted [1, 99] peaked at 1 rather than 2, with nothing said. The
+// histogram and cdf paths both honour weights, and `MarginalSeriesInput.weight` is documented
+// and passed in for every marginal type, so ignoring it was the one dishonest branch.
+describe(`weighted marginals`, () => {
+  const positions = [1, 2]
+  const weights = [1, 99]
+
+  test(`rejects a weighted kde instead of dropping the weights`, () => {
+    expect(() =>
+      compute_marginal_curve(positions, weights, resolved({ type: `kde` }), [0, 3], `linear`),
+    ).toThrow(/cannot weight its samples/)
+  })
+
+  test(`still accepts an unweighted kde`, () => {
+    expect(() =>
+      compute_marginal_curve(
+        positions,
+        undefined,
+        resolved({ type: `kde` }),
+        [0, 3],
+        `linear`,
+      ),
+    ).not.toThrow()
+  })
+
+  // the 99:1 mass ratio has to change the curve, which it cannot if the weights are dropped
+  test.each([`histogram`, `cdf`] as const)(`honours weights for %s`, (type) => {
+    const curve_of = (wts: number[] | undefined) =>
+      JSON.stringify(
+        compute_marginal_curve(positions, wts, resolved({ type, bins: 3 }), [0, 3], `linear`),
+      )
+    expect(curve_of(weights)).not.toBe(curve_of(undefined))
+  })
+})
+
+// A marginal sits beside the main plot and must bin the same way it does. d3's binner is
+// uniform in DATA units, so under a log axis every bin but the last was a sliver: 5000 samples
+// spread log-uniformly over five decades put two thirds of them in one bar covering two thirds
+// of the strip, while the main Histogram shows the same data flat. The kde grid was worse - 99
+// of its 100 points landed in the top decade, drawing 2.5 decades as one straight segment.
+describe(`log-axis marginals bin in the axis' own space`, () => {
+  // log-uniform over 1e-3..1e2, i.e. a flat density when viewed on a log axis
+  const samples = Array.from({ length: 5000 }, (_unused, idx) => 10 ** (-3 + 5 * (idx / 4999)))
+  const log_range: Vec2 = [1e-3, 1e2]
+
+  test(`histogram bars are equal width in log space and evenly filled`, () => {
+    const curve = compute_marginal_curve(
+      samples,
+      undefined,
+      resolved({ type: `histogram`, bins: 60 }),
+      log_range,
+      `log`,
+    )
+    const bars = as_bars(curve)
+    expect(bars.bins).toHaveLength(60) // d3's nice thresholds returned 50 for a requested 60
+    const widths = bars.bins.map((bin) => Math.log10(bin.pos1) - Math.log10(bin.pos0))
+    for (const width of widths) expect(width).toBeCloseTo(5 / 60, 10)
+    // flat within one sample of 5000/60; the widest bar used to hold 3301 of them
+    for (const bin of bars.bins) expect(bin.value).toBeGreaterThanOrEqual(83)
+    expect(bars.max).toBeLessThanOrEqual(84)
+  })
+
+  test(`the kde grid spreads evenly across the strip`, () => {
+    const curve = compute_marginal_curve(
+      samples,
+      undefined,
+      resolved({ type: `kde` }),
+      log_range,
+      `log`,
+    )
+    const points = as_line(curve).points
+    const midpoint = 10 ** (-3 + 2.5) // half way across a five-decade strip
+    const lower_half = points.filter((point) => point.pos < midpoint).length
+    expect(lower_half).toBeGreaterThan(points.length * 0.4) // was 1 of 100
+    expect(points[0].pos).toBeCloseTo(log_range[0], 12) // still spans the full range
+    expect(points.at(-1)?.pos).toBeCloseTo(log_range[1], 12)
+  })
+
+  test(`a linear axis bins in data units, unchanged`, () => {
+    const bars = as_bars(
+      compute_marginal_curve([0, 5, 10], undefined, resolved({ bins: 2 }), [0, 10], `linear`),
+    )
+    expect(bars.bins.map((bin) => [bin.pos0, bin.pos1])).toEqual([
+      [0, 5],
+      [5, 10],
+    ])
+  })
+})

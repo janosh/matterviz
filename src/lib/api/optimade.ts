@@ -182,8 +182,12 @@ export async function fetch_optimade_structure(
   const response = await fetch_with_cors_proxy(`${api_base}/structures/${encoded_id}`)
   const data = await response.json()
 
-  if (!data.data) throw new Error(`Structure ${structure_id} not found`)
-  return Array.isArray(data.data) ? data.data[0] : data.data
+  // An empty array is a valid "no such entry" answer, not a hit: `!data.data` misses it
+  // (`[]` is truthy) and `data.data[0]` then handed callers `undefined` typed as a
+  // structure, so the viewer kept showing the previously loaded one with no error.
+  const entry = Array.isArray(data.data) ? data.data[0] : data.data
+  if (!entry) throw new Error(`Structure ${structure_id} not found`)
+  return entry
 }
 
 export async function fetch_suggested_structures(

@@ -6,7 +6,13 @@ import { fuzzy_match } from 'svelte-widgets/utils'
 import { SvelteSet } from 'svelte/reactivity'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Label, RowData } from './index'
 
-export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``)
+// A tag opens with a letter, a closing slash or `!` (comment/doctype). Requiring that instead
+// of matching `<[^>]*>` keeps ordinary prose caught between a comparison pair intact: cell text
+// feeds search, the filter panels and every export, and `T < 300 K and P > 1 bar` used to read
+// back as `T  1 bar` and stop matching `300`.
+const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)[^>]*>`
+const HTML_TAG_RE = new RegExp(HTML_TAG_SRC, `gi`)
+export const strip_html = (str: string): string => str.replaceAll(HTML_TAG_RE, ``)
 
 // Columns discovered from the first rows when the caller passes none
 export const discover_columns = (rows: RowData[]): Label[] => {
@@ -31,7 +37,10 @@ export const middle_ellipsis_parts = (text: string): [string, string] => {
 export const is_invalid = (val: unknown): boolean =>
   val == null || (typeof val === `number` && Number.isNaN(val))
 
-const HTML_MARKUP_RE = /<(?:\/?[a-z]|!)[^>]*>|&(?:#\d+|#x[\da-f]+|[a-z][\da-z]+);/i
+const HTML_MARKUP_RE = new RegExp(
+  `${HTML_TAG_SRC}|&(?:#\\d+|#x[\\da-f]+|[a-z][\\da-z]+);`,
+  `i`,
+)
 // Distinguish actual tags/entities from ordinary comparison and ampersand text so plain
 // strings still receive middle ellipsis and a direct data-sort-value.
 export const is_html_str = (val: unknown): val is string =>
@@ -71,13 +80,18 @@ export function parse_numeric_val(val: CellVal): number | null {
   return num !== null && Number.isFinite(num) ? num : null
 }
 
+// Sorting reads the same rendered text search, filters and export do, so a cell cannot sort
+// by one string while showing another. Handing back the raw value instead meant `<b>Mango</b>`
+// sorted under `<` (tag name, not content), and a boolean or object cell reached compare_rows
+// as a non-string it could only answer "the other one first" to in BOTH directions - not a
+// total order, so the same rows came out differently depending on the order they went in.
 const get_sort_val = (val: CellVal): string | number => {
   if (val instanceof Date) return val.getTime()
   const num = parse_numeric_val(val)
   if (num !== null) return num
   // a data-sort-value that isn't a number still overrides the visible text
-  if (typeof val === `string`) return get_data_sort_value(val) ?? val
-  return val as string | number
+  if (typeof val === `string`) return get_data_sort_value(val) ?? cell_text(val)
+  return cell_text(val)
 }
 
 export type SortCriterion = { key: string; ascending: boolean }
@@ -89,9 +103,12 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
     const val1 = row1[key]
     const val2 = row2[key]
     if (val1 === val2) continue
-    if (is_invalid(val1) || is_invalid(val2)) {
-      return Number(is_invalid(val1)) - Number(is_invalid(val2))
-    }
+    const invalid1 = is_invalid(val1)
+    const invalid2 = is_invalid(val2)
+    // both invalid ranks them equally low, so let the next criterion break the tie —
+    // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
+    if (invalid1 && invalid2) continue
+    if (invalid1 || invalid2) return Number(invalid1) - Number(invalid2)
     const sort_val1 = get_sort_val(val1)
     const sort_val2 = get_sort_val(val2)
     const modifier = ascending ? 1 : -1
@@ -287,7 +304,8 @@ function format_since(timestamp: number, now_ms: number): string {
   ] as const
   for (const [suffix, minutes_per_unit] of units) {
     const value = Math.floor(remaining_minutes / minutes_per_unit)
-    if (value > 0 || suffix === `m`) parts.push(`${value}${suffix}`)
+    // the minutes term only fills in when no coarser unit rendered, so no trailing 0m
+    if (value > 0 || (suffix === `m` && parts.length === 0)) parts.push(`${value}${suffix}`)
     remaining_minutes -= value * minutes_per_unit
     if (parts.length >= 3) break
   }

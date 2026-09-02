@@ -9,7 +9,7 @@ import type { Rect, Sides } from '$lib/plot/core/layout'
 import type { LineCurve, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
 import { gaussian_kde } from '$lib/plot/box/kde'
-import { bin } from 'd3-array'
+import { bin_geometry, bin_index_of, bin_transform } from '$lib/plot/histogram/histogram'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
 
@@ -534,19 +534,27 @@ function compute_histogram(
   weights: number[] | undefined,
   config: ResolvedMarginalConfig,
   positional_range: Vec2,
+  scale_type: ScaleType,
 ): MarginalCurve {
-  const indices = positions.map((_, idx) => idx)
-  const binner = bin<number, number>()
-    .domain(positional_range)
-    .thresholds(config.bins)
-    .value((idx) => positions[idx])
-  const binned = binner(indices)
+  // Binned in the axis' own bin space, on the same edges the main Histogram uses. d3's binner
+  // is uniform in DATA units, so under a log axis every bin but the last was a sliver: 5000
+  // samples spread log-uniformly over 1e-3..1e2 put 3301 of them in one bar covering two thirds
+  // of the strip, while the same data in the main plot is flat at ~83 per bin. It also returns
+  // d3's nice thresholds rather than the requested count (50 for a requested 60).
+  const geometry = bin_geometry(positional_range, config.bins, scale_type)
+  const { lo, hi, edges, degenerate } = geometry
+  const n_bins = edges.length - 1
+  const totals = new Float64Array(n_bins)
+  for (const [idx, pos] of positions.entries()) {
+    if (!(pos >= lo && pos <= hi)) continue
+    totals[degenerate ? 0 : bin_index_of(pos, geometry)] += weights ? weights[idx] : 1
+  }
 
   let max = 0
-  const bins = binned.map((items) => {
-    const value = weights ? items.reduce((sum, idx) => sum + weights[idx], 0) : items.length
+  const bins = Array.from({ length: n_bins }, (_unused, idx) => {
+    const value = totals[idx]
     if (value > max) max = value
-    return { pos0: items.x0 ?? 0, pos1: items.x1 ?? 0, value }
+    return { pos0: edges[idx], pos1: edges[idx + 1], value }
   })
 
   // count: raw; probability: value/total; density: value/(total*bin_width)
@@ -607,6 +615,10 @@ function compute_kde(
     range: positional_range,
     clip,
     max_samples: 5000,
+    // Evaluated on a grid uniform in the axis' bin space. gaussian_kde's own grid is uniform in
+    // data units, so under a log axis 99 of 100 points landed in the right half of the strip
+    // and two and a half decades of curve were drawn as one straight segment.
+    grid_transform: bin_transform(scale_type),
   })
   let max = 0
   for (const density of kde.density) if (density > max) max = density
@@ -641,9 +653,18 @@ export function compute_marginal_curve(
       get_scale_type_name(scale_type) === `log` && range[0] <= 0
         ? [smallest_positive(pos), range[1]]
         : range
-    return compute_histogram(pos, wts, config, hist_range)
+    return compute_histogram(pos, wts, config, hist_range, scale_type)
   }
   if (config.type === `cdf`) return compute_cdf(pos, wts)
+  // gaussian_kde takes no weights, so a weighted `kde` marginal silently rendered the
+  // UNWEIGHTED density - positions [1, 2] weighted [1, 99] peaked at 1, not 2, with nothing
+  // said. The histogram and cdf paths above both honour `wts`. Rejecting the combination is
+  // the honest answer until the estimator itself can weight its samples.
+  if (wts) {
+    throw new Error(
+      `Marginal type 'kde' cannot weight its samples; use 'histogram' or 'cdf' for weighted data`,
+    )
+  }
   return compute_kde(pos, config, range, scale_type)
 }
 

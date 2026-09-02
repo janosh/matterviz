@@ -2,6 +2,7 @@
   // Pure viewer over a TrajectoryRun: playback, the structure + plot split, analysis panes
   // and export. It borrows the run and never parses or disposes it; acquisition (URLs, drops,
   // decompression, HDF5 group choice, errors) lives in TrajectoryFileViewer.svelte.
+  import { create_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
@@ -282,7 +283,7 @@
     const { width, height } = content_size
     return width > 0 && height > 0 ? pick_pane_orientation(width, height) : `horizontal`
   })
-  let filename_copied = $state(false)
+  const filename_copied = create_flash(false, 1000)
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)
   // Structure's own info/export panes; its controls pane is this viewer's `controls` pane
@@ -441,8 +442,11 @@
     get_frame_time_step(frame_step_samples, trajectory.time_step?.value),
   )
 
-  // Plot series state (not derived so legend toggles can update it in place)
-  let plot_series = $state<DataSeries[]>([])
+  // Plot series state (not derived so legend toggles can replace it). `.raw`, since both
+  // writers reassign the whole array: a deep proxy over N series x N frames of numbers put a
+  // signal behind every element, and smooth_moving_average's ~2M reads per series then went
+  // through the proxy trap - 4.9 s instead of 144 ms at 10k frames, on every resize tick.
+  let plot_series = $state.raw<DataSeries[]>([])
   let syncing_visible_properties = false
   // Read ALL reactive deps before the syncing guard can return: a guarded run that reads no
   // dependencies leaves the effect dep-less, and Svelte permanently unlinks such effects
@@ -597,6 +601,9 @@
   // the analysis menu owns the clicks. Spectroscopy renders inline in the plot region.
   let analysis_pane_props = $derived({
     run: trajectory,
+    // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
+    property_rows: session.property_rows,
+    properties_complete: session.properties_complete,
     pane_props: { style: pane_max_height },
     toggle_props: {
       class: `analysis-toggle-anchor`,
@@ -712,12 +719,11 @@
           {@attach tooltip({ allow_html: true })}
           onclick={() => {
             navigator.clipboard.writeText(filename)
-            filename_copied = true
-            setTimeout(() => (filename_copied = false), 1000)
+            filename_copied.show(true)
           }}
         >
           {filename}
-          {#if filename_copied}
+          {#if filename_copied.value}
             <Icon
               icon={Check}
               style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
@@ -748,6 +754,8 @@
             run={trajectory}
             {current_frame}
             {current_step_idx}
+            property_rows={session.property_rows}
+            properties_complete={session.properties_complete}
             bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
             pane_props={{ style: pane_max_height }}
           />

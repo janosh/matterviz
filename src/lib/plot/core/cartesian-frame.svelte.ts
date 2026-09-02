@@ -200,8 +200,23 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // tracked read of the ranges it is about to overwrite would loop the effect.
   const synced_y2 = (): Vec2 =>
     untrack(() => sync_y2_range(ranges.current.y, ranges.initial.y2, y2_sync))
+  // In-place recompute, for the writers that replace `current` wholesale (the range effect,
+  // reset). The bridge below goes through update_range instead so the grid sees the new y2.
   const apply_y2_sync = () => {
     if (y2_sync.mode !== `none`) ranges.current.y2 = synced_y2()
+  }
+  // The bridge every range write goes through, so a synced y2 cannot be left behind. The raw
+  // `facet` is handed to callers (ScatterPlot's `view` prop, BinnedScatterPlot's bin click)
+  // whose writes would otherwise skip the sync, and y2 would stay stale until something
+  // unrelated — new data, a tick-count edit — re-ran the range effect and snapped it over.
+  const synced_facet = {
+    ...facet,
+    update_range: (axis: FacetAxis, range: Vec2): void => {
+      if (axis === `y2` && y2_sync.mode !== `none`) return // derived from y, not settable
+      facet.update_range(axis, range)
+      // via update_range so a facet grid receives the derived y2 as well
+      if (axis === `y` && y2_sync.mode !== `none`) facet.update_range(`y2`, synced_y2())
+    },
   }
 
   // Re-derive y2 the moment the mode is toggled rather than waiting for the next data
@@ -250,8 +265,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     } else if (!axis_ranges_equal(initial, next)) {
       ranges = { initial: { ...next }, current: copy_axis_ranges(next) }
     }
-    apply_y2_sync()
+    // sync after the grid reconciles, or a facet panel derives y2 from the pre-grid y
     facet.apply_ranges()
+    apply_y2_sync()
   })
 
   // Dynamic padding from measured tick labels and the plot title. Tracks tick values so
@@ -499,27 +515,24 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
     plot_bounds: () => ({ x: pad.l, y: pad.t, width: chart_width, height: chart_height }),
     pan: opts.pan,
-    // y is written before y2, so the sync reads the just-updated y range
-    set_range: (axis, range) =>
-      facet.update_range(axis, axis === `y2` && y2_sync.mode !== `none` ? synced_y2() : range),
+    set_range: synced_facet.update_range,
     svg: () => svg_element,
     on_drag_move: opts.on_drag_move,
     on_rect_select: opts.on_rect_select,
     on_rect_zoom: (start, current) => {
-      // Gate x2/y2 on real data: their scales are [0, 1] sentinels otherwise, so inverting
-      // would store a phantom range.
-      const commit = (axis: FacetAxis, range: Vec2 | null) => {
-        if (range) facet.update_range(axis, range)
+      // Passing the live range keeps each axis pointing the way it already does, so zooming a
+      // reversed axis does not silently flip the plot. Gate x2/y2 on real data: their scales
+      // are [0, 1] sentinels otherwise, so inverting would store a phantom range.
+      const zoom_axis = (axis: FacetAxis, from_px: number, to_px: number) => {
+        const range = invert_rect_range(scales[axis], from_px, to_px, ranges.current[axis])
+        if (range) synced_facet.update_range(axis, range)
+        return range
       }
-      const next_x = invert_rect_range(scales.x, start.x, current.x)
-      if (!next_x) return
-      commit(`x`, next_x)
-      commit(`x2`, opts.has_x2() ? invert_rect_range(scales.x2, start.x, current.x) : null)
-      commit(`y`, invert_rect_range(scales.y, start.y, current.y))
-      // A synced y2 is derived from y, so let the sync pass set it instead of the rect
-      const zoom_y2 = opts.has_y2() && y2_sync.mode === `none`
-      commit(`y2`, zoom_y2 ? invert_rect_range(scales.y2, start.y, current.y) : null)
-      apply_y2_sync()
+      if (!zoom_axis(`x`, start.x, current.x)) return
+      if (opts.has_x2()) zoom_axis(`x2`, start.x, current.x)
+      zoom_axis(`y`, start.y, current.y)
+      // A synced y2 already followed the y zoom above; the bridge drops this one
+      if (opts.has_y2()) zoom_axis(`y2`, start.y, current.y)
     },
     on_reset: () => {
       if (facet.reset_ranges()) return
@@ -586,7 +599,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       return ref_line_axes
     },
     clip_path_id,
-    facet,
+    facet: synced_facet,
     pan_zoom,
     legend_tween,
     legend_drag_start,

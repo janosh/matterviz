@@ -58,14 +58,20 @@ export const get_theme_preference = (): ThemeMode =>
 export const save_theme_preference = (mode: ThemeMode): void =>
   storage_set(THEME_STORAGE_KEY, mode)
 
-// The scheme an element declares through the CSS API, or null for `normal`/nothing. A
-// two-scheme value (`light dark`) names its preferred scheme first; `only` is a modifier
-// (`only dark`), not a scheme.
+// The scheme an element declares through the CSS API, or null when it names none. `only` is a
+// modifier (`only dark`), not a scheme. A value listing BOTH schemes (`light dark`) states that
+// the element supports either and defers to the user's preference - it is not a declaration of
+// light, which is how taking the first token read it. Two things went wrong: a page declaring
+// `light dark` under a dark OS preference got the light palette, and because `color-scheme`
+// inherits and matterviz's own app.css sets `light dark` on `:root, :host`, the very first
+// element answered for every embedded widget, so the jp-theme-dark / vscode-dark markers and
+// the OS fallback below were never reached. Null lets the walk continue to a real statement.
 export const declared_color_scheme = (element: Element): ThemeType | null => {
-  const scheme = getComputedStyle(element)
-    .colorScheme?.trim()
-    .split(/\s+/)
-    .find((token) => token !== `only`)
+  const tokens = (getComputedStyle(element).colorScheme?.trim().split(/\s+/) ?? []).filter(
+    (token) => token !== `only`,
+  )
+  if (tokens.includes(`light`) && tokens.includes(`dark`)) return null
+  const [scheme] = tokens
   return scheme === `dark` || scheme === `light` ? scheme : null
 }
 

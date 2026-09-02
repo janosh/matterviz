@@ -12,12 +12,21 @@
     run,
     current_step_idx = 0,
     current_frame = null,
+    property_rows,
+    properties_complete,
     on_step_change,
     on_site_select,
     pane_open = $bindable(false),
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
+    // Runs are deliberately rune-free, so `run.properties` is a plain class instance whose
+    // `rows` are invisible to the reactivity graph. Reading them directly froze the frame tab
+    // at whatever had arrived when the pane first rendered - the notice below reads "available
+    // so far", which is exactly what it was meant to track. Trajectory.svelte passes the
+    // session's mirrored copies; the fallback keeps a standalone mount working.
+    property_rows?: readonly TrajectoryMetadata[]
+    properties_complete?: boolean
     current_step_idx?: number
     // Resolved frame for the atom tab. Lazy runs load frames on demand.
     current_frame?: TrajectoryFrame | null
@@ -83,14 +92,14 @@
   // A progressive or sampled run may expose fewer property rows than frames. Never present
   // that subset as the full trajectory.
   let frame_source = $derived.by(() => {
-    const entries = run?.properties.rows ?? ([] as TrajectoryMetadata[])
+    const entries = property_rows ?? run?.properties.rows ?? ([] as TrajectoryMetadata[])
     const covers_all =
       entries.length === total_frames &&
       entries.every(({ frame_number }, frame_idx) => frame_number === frame_idx)
     return {
       kind: covers_all ? (`full` as const) : (`sampled` as const),
       entries,
-      complete: run?.properties.complete ?? true,
+      complete: properties_complete ?? run?.properties.complete ?? true,
     }
   })
 

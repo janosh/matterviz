@@ -4,6 +4,7 @@ import { LOG_EPS } from '$lib/math'
 import {
   axis_ranges_equal,
   expand_range_if_needed,
+  invert_rect_range,
   normalize_y2_sync,
   pan_range_by_pixels,
   resolve_axis_ranges,
@@ -12,6 +13,7 @@ import {
   vec2_equal,
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
+import { create_scale } from '$lib/plot/core/scales'
 import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
 import { describe, expect, it } from 'vitest'
 
@@ -170,6 +172,29 @@ describe(`sync_y2_range`, () => {
     ])
   })
 
+  // A descending y1 is a supported mode, but the span math assumes value rises with position,
+  // which is only true going up. Taking the fraction at face value both mirrored y2 against y1
+  // (y2 counting up while y1 counted down, so the alignment contract was broken outright) and
+  // sized the range off the wrong constraint. Each case is the ascending row above it reversed,
+  // so the answer has to be that row's answer reversed too.
+  it.each([
+    { y1: [100, 0], y2_base: [0, 50], expected: [50, 0], desc: `0 at bottom` },
+    { y1: [50, -50], y2_base: [0, 100], expected: [100, -100], desc: `0 at middle` },
+    { y1: [0, -100], y2_base: [0, 50], expected: [50, -50], desc: `0 at top` },
+    { y1: [40, 0], y2_base: [60, 140], expected: [140, 0], desc: `y2 above 0` },
+    {
+      y1: [200, 0],
+      y2_base: [80, 120],
+      expected: [120, 80],
+      align_value: 100,
+      desc: `custom align 50%`,
+    },
+  ] as const)(`align on a descending y1: $desc`, ({ y1, y2_base, expected, align_value }) => {
+    expect(sync_y2_range([...y1], [...y2_base], { mode: `align`, align_value })).toEqual([
+      ...expected,
+    ])
+  })
+
   // Edge case: align_value outside y1_range — result must contain both data and align_value
   it.each<{ y1: Vec2; y2_base: Vec2; align_value: number }>([
     { y1: [10, 20], y2_base: [60, 140], align_value: 0 },
@@ -268,6 +293,22 @@ describe(`sorted_range`, () => {
   it(`sorts bounds ascending regardless of input order`, () => {
     expect(sorted_range(5, 1)).toEqual([1, 5]) // reversed
     expect(sorted_range(4, 4)).toEqual([4, 4]) // degenerate
+  })
+})
+
+describe(`invert_rect_range`, () => {
+  // A drag rect arrives in either pixel order, so its inverted bounds get sorted. Writing that
+  // ascending pair back onto a descending axis silently mirrored the whole plot on every rect
+  // zoom, so the result has to be re-oriented to match the range it replaces.
+  it.each<[string, Vec2, Vec2, Vec2 | undefined, Vec2 | null]>([
+    [`descending axis keeps its direction`, [10, 0], [20, 60], [10, 0], [8, 4]],
+    [`descending axis, drag dragged the other way`, [10, 0], [60, 20], [10, 0], [8, 4]],
+    [`ascending axis is unaffected`, [0, 10], [20, 60], [0, 10], [2, 6]],
+    [`no current range keeps the old ascending result`, [10, 0], [20, 60], undefined, [4, 8]],
+    [`zero-width drag is rejected`, [10, 0], [40, 40], [10, 0], null],
+  ])(`%s`, (_desc, domain, [a_px, b_px], current, expected) => {
+    const scale = create_scale(`linear`, domain, [0, 100])
+    expect(invert_rect_range(scale, a_px, b_px, current)).toEqual(expected)
   })
 })
 

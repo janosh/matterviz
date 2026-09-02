@@ -11,7 +11,12 @@ import type {
   Point,
   PointStyle,
   StyleOverrides,
-} from '$lib/plot/core/types'
+  // Relative, not the `$lib/plot/core/types` alias: this file lives in `types/`, a directory
+  // that shares its name with the `types.ts` beside it, and svelte-package rewrites the alias
+  // to `./` — the directory, which has no index. Every packaged declaration that reaches this
+  // file then failed to resolve, so a consumer importing types from the root entry or from
+  // most subpaths got TS2307 out of the published package.
+} from '../types'
 
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
 interface ScatterPoint3D<Metadata = Record<string, unknown>> extends Point<Metadata> {

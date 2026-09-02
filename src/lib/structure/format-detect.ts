@@ -15,11 +15,15 @@ import { strip_compression_extensions } from '$lib/io/decompress'
 
 // A LAMMPS data file always declares its atom count in the header and holds an `Atoms`
 // section; used to tell a real .data file from the many other things called `*.data`
+// Horizontal whitespace only, never `\s`: under /m the `^` retries at every line start and
+// `\s*` then swallows the whole remaining run of newlines before failing on `\d`, which is
+// quadratic. These run on the raw text of any dropped file whose extension is unrecognised, so
+// a file of blank lines was a denial of service - 80 kB of them took 826 ms, 1 MB minutes.
 export const is_lammps_data_content = (content: string): boolean =>
-  /^\s*\d+\s+atoms\s*(?:#.*)?$/im.test(content) && /^\s*Atoms\b/im.test(content)
+  /^[ \t]*\d+[ \t]+atoms[ \t\r]*(?:#.*)?$/im.test(content) && /^[ \t]*Atoms\b/im.test(content)
 
 export const is_lammps_dump_content = (content: string): boolean =>
-  /^\s*ITEM:\s*TIMESTEP/im.test(content)
+  /^[ \t]*ITEM:[ \t]*TIMESTEP/im.test(content)
 
 // Filename-only detection lives apart from the parsers so lightweight callers
 // (desktop recents, file pickers) do not load YAML, structure math, and element

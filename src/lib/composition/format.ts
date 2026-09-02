@@ -19,10 +19,17 @@ export const AMOUNT_FORMAT = `.3~f`
 // would render 0.5 as 500m.
 export const format_amount = (amount: number, amount_format = AMOUNT_FORMAT): string => {
   const sig_digits_below_one = amount_format === AMOUNT_FORMAT || amount_format.endsWith(`s`)
-  return format_num(
+  const text = format_num(
     amount,
     sig_digits_below_one && Math.abs(amount) < 1 ? `.3~g` : amount_format,
   )
+  // Both `.3~g` and `.3~f` fall back to exponent form below about 1e-6, which no formula parser
+  // reads back either - a trace dopant occupancy of 1e-7 produced `FeO1e-7`, and parsing that
+  // threw on the `e`. Fixed notation covers every small amount, which is the whole reason `s`
+  // was ruled out above; 12 decimals is past f64's significant digits, so nothing is lost.
+  // Amounts at or above 1e21 have no fixed form to fall back on (JS switches to exponent there
+  // too) and still cannot round-trip, but no real formula carries a coefficient that large.
+  return text.includes(`e`) ? format_num(amount, `.12~f`) : text
 }
 
 export type FormulaFormatOptions = {
@@ -79,8 +86,15 @@ export const get_alphabetical_formula = (
   options: FormulaFormatOptions = {},
 ): string => format_formula_generic(input, (symbols) => symbols.toSorted(), options)
 
-const electronegativity = (symbol: ElementSymbol): number =>
-  element_by_symbol.get(symbol)?.electronegativity ?? 0
+// `electronegativity` is null for 22 elements, four of which (Kr, Xe, Rn, Lr) carry the value
+// under `electronegativity_pauling` in the same record. Falling back to 0 called those more
+// electropositive than caesium, so `Na4XeO6` sorted as `XeNa4O6` and `CsXeF7` as `XeCsF7`.
+// Infinity for the ones with no value anywhere puts them last, as pymatgen does, rather than
+// leading every formula they appear in.
+const electronegativity = (symbol: ElementSymbol): number => {
+  const element = element_by_symbol.get(symbol)
+  return element?.electronegativity ?? element?.electronegativity_pauling ?? Infinity
+}
 
 // Ascending electronegativity (cations first), alphabetical tie-break
 export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
@@ -131,8 +145,11 @@ export function is_compound(name: string): boolean {
 // hyphen ("Fe-Fe3C"); element symbols (uppercase + lowercase run) are separate text tokens; any
 // other run of characters merges into the preceding text token. '+' never gets here (early
 // return in tokenize_formula_markup).
+// `coeff` comes first so it wins over `sub`: the number after a hydrate separator counts whole
+// water molecules, not atoms in the preceding group, so `CuSO4·5H2O` must render its 5 full
+// size. Every digit run classified as a subscript printed it as CuSO4·₅H₂O.
 const FORMULA_TOKEN_RE =
-  /(?<sub>\d+(?:\.\d+)?)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
+  /(?<coeff>(?<=[·⋅*])\d+(?:\.\d+)?)|(?<sub>\d+(?:\.\d+)?)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
 // Multi-phase labels ("La2NiO4 + NiO") split on their " + " separators, which are kept
 const PHASE_SEPARATOR_RE = /(?<separator>\s*\+\s*)/
 
@@ -145,9 +162,12 @@ export function tokenize_formula_markup(formula: string): FormulaMarkupToken[] {
 
   const tokens: FormulaMarkupToken[] = []
   for (const { groups } of formula.matchAll(FORMULA_TOKEN_RE)) {
-    const { sub, sup, element, other } = groups ?? {}
+    const { coeff, sub, sup, element, other } = groups ?? {}
     const prev = tokens.at(-1)
-    if (sub) tokens.push({ sub })
+    if (coeff) {
+      if (prev?.text !== undefined) prev.text += coeff
+      else tokens.push({ text: coeff })
+    } else if (sub) tokens.push({ sub })
     else if (sup) tokens.push({ sup })
     else if (element) tokens.push({ text: element })
     else if (other !== `-` && prev?.text !== undefined) prev.text += other

@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { ComponentProps } from 'svelte'
-  import { FullscreenButton } from 'svelte-widgets'
+  // Aliased: this component has the same name, and svelte2tsx emits both the import and a
+  // `declare const` of it into the packaged declaration, which is a TS2440 conflict and also
+  // collapses the props type below to `any`.
+  import { FullscreenButton as WidgetFullscreenButton } from 'svelte-widgets'
   import { forward_window_keydown } from 'svelte-widgets/attachments'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
 
@@ -13,7 +16,7 @@
     wrapper,
     on_change,
     ...rest
-  }: ComponentProps<typeof FullscreenButton> = $props()
+  }: ComponentProps<typeof WidgetFullscreenButton> = $props()
 
   // marks a wrapper as a fullscreen root so nested viewers can spot an outer owner
   const VIEWER_ATTR = `data-mv-fullscreen-root`
@@ -61,4 +64,4 @@
   })
 </script>
 
-<FullscreenButton bind:fullscreen {wrapper} {...rest} />
+<WidgetFullscreenButton bind:fullscreen {wrapper} {...rest} />

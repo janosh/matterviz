@@ -1342,15 +1342,19 @@ describe(`MatterViz Extension`, () => {
         })
       })
 
-      test(`reports watcher creation failures to the webview`, async () => {
+      // Shown in VS Code, not posted into the webview: the webview has no error surface and
+      // never read a host `error` message, so posting one left the view silently stale
+      test(`shows watcher creation failures in VS Code`, async () => {
         mock_vscode.workspace.createFileSystemWatcher.mockImplementation(() => {
           throw new Error(`File system watcher creation failed`)
         })
         const panel = await render_file(`/test/large-file.cif`)
-        expect(panel.webview.postMessage).toHaveBeenCalledWith({
-          command: `error`,
-          text: expect.stringContaining(`Failed to start watching file`),
-        })
+        expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+          expect.stringContaining(`failed to start watching file`),
+        )
+        expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+          expect.objectContaining({ command: `error` }),
+        )
       })
     })
 

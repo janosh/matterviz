@@ -862,6 +862,46 @@ describe(`simple_pca`, () => {
     expect(Math.abs(dot)).toBeLessThan(1e-6)
   })
 
+  // Rank-deficient input leaves nothing in the deflated covariance for the second component to
+  // converge to, so the loop broke with `vec` still at its raw seed - not orthogonal to the
+  // first, and for 3 collinear points literally the same vector again. `is_planar`'s
+  // reconstruction check then judged a trivially planar domain non-planar, and
+  // ChemPotDiagram3D fell through to hull_crease_edges, which threw on collinear points and
+  // left the domain with no outline at all.
+  test.each([
+    [
+      `4 collinear points`,
+      [
+        [0, 0, 0],
+        [1, 1, 1],
+        [2, 2, 2],
+        [3, 3, 3],
+      ],
+    ],
+    [
+      `3 collinear points`,
+      [
+        [0, 0, 0],
+        [1, 1, 1],
+        [2, 2, 2],
+      ],
+    ],
+    [
+      `coincident points`,
+      [
+        [2, 2, 2],
+        [2, 2, 2],
+        [2, 2, 2],
+      ],
+    ],
+  ])(`returns an orthonormal basis for %s`, (_case, data) => {
+    const { eigenvectors } = simple_pca(data, 2)
+    expect(eigenvectors).toHaveLength(2)
+    for (const ev of eigenvectors) expect(Math.hypot(...ev)).toBeCloseTo(1, 12)
+    const dot = eigenvectors[0].reduce((sum, val, idx) => sum + val * eigenvectors[1][idx], 0)
+    expect(Math.abs(dot)).toBeLessThan(1e-12) // was 0.577 for collinear, 1.0 for coincident
+  })
+
   // Regression: an elemental domain has zero variance along its own axis. Seeding power
   // iteration with e_x made the first "eigenvector" that null direction, collapsing the
   // projected polygon onto a line (1 edge instead of n, label anchor on the boundary).

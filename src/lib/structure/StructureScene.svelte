@@ -13,6 +13,7 @@
     bind_renderer,
     brighten_hex,
     clear_pan_offset,
+    create_fit_zoom,
     create_fly_to,
     create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
@@ -111,6 +112,7 @@
     TrajectoryLinesStats,
     TrajectoryLineWrapMode,
   } from './trajectory-lines'
+  import { trajectory_trail_anchors } from './trajectory-lines'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
 
   type EditableAtomHitTarget = {
@@ -1122,21 +1124,24 @@
       : DEFAULTS.structure.fov,
   )
 
-  const zoom_for = (extent: number) =>
-    ortho_zoom_for_extent(extent, width, height, initial_zoom)
-
-  // The fit follows resizes and explicit camera (re)fits only — tracking fit_extent here would
-  // make every trajectory frame jump the zoom; effect.pre below reframes camera resets.
-  let fit_zoom = $state(untrack(() => initial_zoom))
+  // False until the container has a size; a fit against 0x0 is meaningless
+  const measured = () => width > 0 && height > 0
+  // The fit follows resizes and the explicit camera (re)fits below only; a trajectory frame
+  // never moves it (see create_fit_zoom for why untracking the extent alone is not enough).
+  const fit = create_fit_zoom({
+    extent: () => fit_extent,
+    zoom_for: (extent) => ortho_zoom_for_extent(extent, width, height, initial_zoom),
+    measured,
+    initial_zoom: () => initial_zoom,
+  })
+  // Mirrored out for StructureViewport's reset button; the sole writer, so a refit below
+  // reaches it through this too rather than assigning it a second time.
+  $effect(() => {
+    initial_computed_zoom = fit.zoom
+  })
   // Non-reactive: this only compares successive effect runs and must not schedule another run.
   const camera_fit_cache: { previous_view?: string } = {}
   let camera_view = $derived(`${camera_projection}:${camera_direction?.join(`,`) ?? ``}`)
-  $effect(() => {
-    if (!(width > 0) || !(height > 0)) return
-    const next_fit_zoom = zoom_for(untrack(() => fit_extent))
-    fit_zoom = next_fit_zoom
-    initial_computed_zoom = next_fit_zoom
-  })
   const scene_camera = create_scene_camera({
     controls: () => ({
       camera_projection,
@@ -1150,8 +1155,8 @@
       max_zoom,
     }),
     target: () => camera_target ?? rotation_target,
-    fit_zoom: () => fit_zoom,
-    measured: () => width > 0 && height > 0,
+    fit_zoom: () => fit.zoom,
+    measured,
     camera: () => camera,
     // No hover raycasts while orbiting: the highlight hopping between atoms under the cursor
     // reads as flicker. Pointerdown reaches the meshes before OrbitControls' start, so presses work
@@ -1177,10 +1182,8 @@
     const should_fit = camera_needs_fit(camera_position, previous_view, camera_view)
     camera_fit_cache.previous_view = camera_view
     // Auto-place at content center; missing/zero camera_direction → default angled view.
-    if (should_fit && structure && width > 0 && height > 0) {
-      const next_fit_zoom = zoom_for(fit_extent)
-      fit_zoom = next_fit_zoom
-      initial_computed_zoom = next_fit_zoom
+    if (should_fit && structure && measured()) {
+      fit.refit()
       scene_camera.reset_to_fit()
       // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
       const distance =
@@ -1829,14 +1832,9 @@
   })
 
   // Anchor unwrapped trails to wrapped displayed sites only while atom identities still match.
-  let trajectory_line_anchors = $derived.by(() => {
-    const sites = structure?.sites
-    const n_atoms = trajectory_position_stream?.n_atoms
-    if (!sites || n_atoms !== sites.length) return null
-    const anchors = new Float64Array(n_atoms * 3)
-    for (const [site_idx, site] of sites.entries()) anchors.set(site.xyz, site_idx * 3)
-    return anchors
-  })
+  let trajectory_line_anchors = $derived(
+    trajectory_trail_anchors(structure?.sites, trajectory_position_stream?.n_atoms),
+  )
 
   let displacement_arrows = $derived.by(() => {
     const vectors = displacement_field?.vectors

@@ -119,14 +119,34 @@ export function create_canvas_surface(inputs: {
     schedule()
   }
 
-  // Parent resizes only re-size the canvas (a camera, say, is never reset by them)
+  // Parent resizes only re-size the canvas (a camera, say, is never reset by them). The pixel
+  // ratio is watched alongside them because nothing else reports it: dragging the window to a
+  // display of a different DPI, or zooming the browser, leaves the CSS size identical, so the
+  // observer never fires and the canvas keeps its old backing store and transform - rendering
+  // at half (or double) resolution until some unrelated resize happens along. The query has to
+  // be rebuilt after every change, since it names the ratio it is watching for.
   $effect(() => {
     const canvas = inputs.canvas()
     if (!canvas) return undefined
     const observer = new ResizeObserver(resize)
     if (canvas.parentElement) observer.observe(canvas.parentElement)
+    const dpr_watch = new AbortController()
+    const track_dpr = () => {
+      const query = globalThis.matchMedia?.(`(resolution: ${globalThis.devicePixelRatio}dppx)`)
+      const listen = { once: true, signal: dpr_watch.signal }
+      query?.addEventListener(
+        `change`,
+        () => {
+          resize()
+          track_dpr()
+        },
+        listen,
+      )
+    }
+    track_dpr()
     return () => {
       observer.disconnect()
+      dpr_watch.abort()
       if (frame_id) cancelAnimationFrame(frame_id)
       frame_id = 0
     }

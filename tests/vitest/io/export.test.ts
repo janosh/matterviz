@@ -172,6 +172,19 @@ describe(`canvas_to_png_blob`, () => {
     expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
   })
 
+  // The multiplier scales the LIVE pixel ratio; assigning it outright ignored the display. On a
+  // dpr-2 screen an 800x600 scene captured natively at 1600x1200, but 100 DPI (multiplier
+  // 100/96) then set the ratio to ~1.04 and exported 1111x833 - raising the DPI made the file
+  // smaller, and everything below ~144 DPI came out under screen resolution.
+  test(`scales the export by the display pixel ratio, not instead of it`, async () => {
+    const { canvas, renderer } = make_canvas_with_renderer()
+    renderer.getPixelRatio = vi.fn().mockReturnValue(2)
+    await canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
+    const [[captured]] = (renderer.setPixelRatio as ReturnType<typeof vi.fn>).mock.calls
+    expect(captured).toBeCloseTo(2 * (300 / 72), 10)
+    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(2) // restored to the live ratio
+  })
+
   test(`still resolves when the GPU device never comes up`, async () => {
     vi.useFakeTimers()
     const { canvas, renderer } = make_canvas_with_renderer()

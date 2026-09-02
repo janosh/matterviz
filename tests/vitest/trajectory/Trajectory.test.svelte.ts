@@ -8,7 +8,7 @@ import type {
   TrajHandlerData,
 } from '$lib/trajectory'
 import { Trajectory } from '$lib/trajectory'
-import { summarize_run } from '$lib/trajectory/run'
+import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
 import { bind_props, doc_query, make_run as make_shared_run } from '../setup'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -722,5 +722,56 @@ describe(`bindings`, () => {
     await unmount(component)
     expect(first_dispose).not.toHaveBeenCalled()
     expect(second_dispose).not.toHaveBeenCalled()
+  })
+})
+
+// Runs are deliberately rune-free, so `run.properties` is a plain class instance and its `rows`
+// are invisible to the reactivity graph. The session mirrors them into $state for exactly this
+// reason, but the info and data-inspector panes read the run directly and so froze at whatever
+// had arrived when they first rendered - for a progressively indexed file, the first batch.
+describe(`panes track progressively loaded property rows`, () => {
+  const rows_for = (idxs: number[]) =>
+    idxs.map((idx) => ({
+      frame_number: idx,
+      step: idx * 10,
+      properties: { energy: -1 - idx },
+    }))
+
+  test(`the info pane follows rows pushed and finished after mount`, async () => {
+    const properties = new TrajectoryProperties(rows_for([0, 1]), false)
+    const trajectory = { ...make_shared_run([0, 10, 20, 30, 40]), frame_count: 5, properties }
+    const target = mount_trajectory(default_props({ trajectory, active_pane: `info` }))
+    await tick()
+    const row_count = () =>
+      /Property Rows\s*(?<count>\d+(?: loaded)?)/.exec(target.textContent ?? ``)?.groups?.count
+
+    expect(row_count()).toBe(`2 loaded`)
+    properties.push(rows_for([2, 3, 4]))
+    flushSync()
+    await tick()
+    expect(row_count()).toBe(`5 loaded`) // used to stay at 2 for the life of the run
+
+    // finish() flips completeness, which the pane reports by dropping the `loaded` suffix
+    properties.finish()
+    flushSync()
+    await tick()
+    expect(row_count()).toBe(`5`)
+  })
+
+  test(`the data inspector follows them too`, async () => {
+    const properties = new TrajectoryProperties(rows_for([0, 1]), false)
+    const trajectory = { ...make_shared_run([0, 10, 20, 30, 40]), frame_count: 5, properties }
+    const target = mount_trajectory(
+      default_props({ trajectory, active_pane: `data-inspector` }),
+    )
+    await tick()
+    const frames_tab = () =>
+      /Frames \((?<count>\d+)\)/.exec(target.textContent ?? ``)?.groups?.count
+
+    expect(frames_tab()).toBe(`2`)
+    properties.push(rows_for([2, 3, 4]))
+    flushSync()
+    await tick()
+    expect(frames_tab()).toBe(`5`) // used to stay at 2
   })
 })

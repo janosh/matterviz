@@ -1,5 +1,5 @@
 // Unit tests for the dotted/bracketed JSON path codec
-import { build_path, format_path, parse_path } from '$lib/json-path'
+import { build_path, format_path, parse_path, resolve_path } from '$lib/json-path'
 import { describe, expect, it } from 'vitest'
 
 describe(`format_path`, () => {
@@ -112,4 +112,28 @@ describe(`parse_path`, () => {
     const path = build_path(`root`, key_with_quotes)
     expect(parse_path(path)).toEqual([`root`, key_with_quotes])
   })
+})
+
+describe(`resolve_path`, () => {
+  const data = { a: { b: [1, 2, 3] }, 'odd key': 4 }
+
+  it.each([
+    [`a.b[1]`, 2],
+    [`a`, data.a],
+    [`["odd key"]`, 4],
+    [``, data],
+    [`a.missing`, undefined],
+    [`a.b[9]`, undefined],
+  ])(`resolves %j`, (path, expected) => {
+    expect(resolve_path(data, path)).toEqual(expected)
+  })
+
+  // A bare lookup walks the prototype chain, so a segment naming an inherited member returned
+  // Object.prototype or the Object function where the caller expects a value from its own data
+  it.each([`__proto__`, `constructor`, `toString`, `hasOwnProperty`, `a.constructor`])(
+    `returns undefined for the inherited member %j`,
+    (path) => {
+      expect(resolve_path(data, path)).toBeUndefined()
+    },
+  )
 })

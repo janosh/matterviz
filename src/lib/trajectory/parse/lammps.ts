@@ -161,11 +161,15 @@ export function parse_lammps_trajectory(
       : /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(box_header)
         ? `restricted_triclinic`
         : `orthogonal`
+    // The trailing three tokens are boundary flags only when they read as flags. A triclinic
+    // header with none appended (`ITEM: BOX BOUNDS xy xz yz`) put `xy xz yz` here instead, none
+    // of which starts with `p`, so the frame came out fully aperiodic and rendered with no
+    // periodic images. Current LAMMPS always writes the flags; third-party writers need not.
     const tokens = box_header.replace(`ITEM: BOX BOUNDS`, ``).trim().split(/\s+/).slice(-3)
-    const pbc: Pbc =
-      tokens.length === 3
-        ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
-        : [true, true, true]
+    const are_flags = tokens.length === 3 && tokens.every((token) => /^[pfsm]/i.test(token))
+    const pbc: Pbc = are_flags
+      ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
+      : [true, true, true]
 
     const box_line = idx + 1
     const box_lines = [read_line(), read_line(), read_line()]
@@ -184,6 +188,16 @@ export function parse_lammps_trajectory(
 
     require_section(`ITEM: ATOMS`, timestep)
     const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
+    // A repeated name silently let the LAST index win, so `id type x y z x` read the trailing
+    // column as the x coordinate. Every other malformed header here throws rather than guess.
+    const duplicate = cols.find((name, col_idx) => cols.indexOf(name) !== col_idx)
+    if (duplicate) {
+      throw new Error(
+        `LAMMPS frame at timestep ${timestep} declares column "${duplicate}" more than once in "ITEM: ATOMS ${cols.join(
+          ` `,
+        )}"`,
+      )
+    }
     const col = Object.fromEntries(cols.map((name, col_idx) => [name, col_idx]))
 
     const pos_variant = POS_COL_VARIANTS.find(({ keys }) => keys.every((key) => key in col))

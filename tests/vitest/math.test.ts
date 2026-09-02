@@ -21,6 +21,12 @@ describe(`combinations`, () => {
     expect(math.combinations(arr as unknown[], k)).toEqual(expected)
   })
 
+  // Neither base case catches a negative k - `k === 0` never fires and `arr.length < k` is
+  // false - so the recursion ran away and blew the stack instead of naming the bad argument
+  test.each([-1, -5, 1.5])(`rejects k=%s instead of recursing forever`, (bad_k) => {
+    expect(() => math.combinations([1, 2, 3], bad_k)).toThrow(/non-negative integer k/)
+  })
+
   test(`C(5,3) returns 10 unique 3-element combos`, () => {
     const result = math.combinations([`A`, `B`, `C`, `D`, `E`], 3)
     expect(result).toHaveLength(10)
@@ -1208,6 +1214,50 @@ describe(`merge_coplanar_triangles`, () => {
       .toBe(true)
   })
 
+  // The in-plane basis is built from the plane normal AFTER it is canonicalized to lead with a
+  // positive component, so convex_hull_2d winds CCW about that rather than about the face's real
+  // outward normal. Every face of a closed mesh whose normal leads negative - the -x, -y and -z
+  // sides, half a cube's - came back wound inward. DoubleSide rendering hides it on screen, but
+  // exported geometry and anything that culls by winding gets a corrupt mesh.
+  test(`keeps every face of a closed cube wound outward`, () => {
+    // oxfmt-ignore
+    const corners: Vec3[] = [
+      [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ]
+    // oxfmt-ignore
+    const quads = [
+      [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [0, 4, 7, 3], [1, 2, 6, 5],
+    ]
+    const coords: number[] = []
+    for (const [aa, bb, cc, dd] of quads) {
+      for (const idx of [aa, bb, cc, aa, cc, dd]) coords.push(...corners[idx])
+    }
+    const input = new Float32Array(coords)
+    const outward_count = (verts: Float32Array) => {
+      let outward = 0
+      for (let base = 0; base < verts.length; base += 9) {
+        const tri = [0, 3, 6].map((off): Vec3 => [
+          verts[base + off],
+          verts[base + off + 1],
+          verts[base + off + 2],
+        ])
+        const [vert_a, vert_b, vert_c] = tri
+        const normal = math.cross_3d(
+          math.subtract(vert_b, vert_a),
+          math.subtract(vert_c, vert_a),
+        )
+        // the cube is centred on (0.5, 0.5, 0.5), so a face's centroid points away from it
+        const outward_dir = [0, 1, 2].map(
+          (axis) => (vert_a[axis] + vert_b[axis] + vert_c[axis]) / 3 - 0.5,
+        )
+        if (math.dot(normal, outward_dir) > 0) outward++
+      }
+      return outward
+    }
+    expect(outward_count(input)).toBe(12) // the input is wound correctly to begin with
+    expect(outward_count(math.merge_coplanar_triangles(input))).toBe(12)
+  })
+
   test(`two coplanar adjacent triangles forming a quad are merged`, () => {
     // Quad: A(0,0,0) B(1,0,0) C(1,1,0) D(0,1,0)
     // Input triangles start with DIFFERENT vertices (A and C), so only
@@ -1475,6 +1525,41 @@ describe(`quantile_unordered`, () => {
 })
 
 describe(`solve_linear_program`, () => {
+  // `tolerance` is an absolute cutoff in the ratio test and the linear-dependence check, so a
+  // small but perfectly good pivot read as zero. Rows are equilibrated before the tableau is
+  // built, which leaves the feasible set alone and makes the answer independent of how the
+  // caller happened to scale its constraints.
+  test.each([1, 1e-6, 1e-8, 1e-9, 1e-10, 1e-12])(
+    `solves a uniformly scaled program the same way at s=%s`,
+    (scale) => {
+      // min -x0 s.t. s*x0 + s*x1 = s, x >= 0 → x0 = 1, objective -1 for every s
+      const result = math.solve_linear_program([-1, 0], [[scale, scale]], [scale])
+      expect(result.status).toBe(`optimal`) // reported `unbounded` from s = 1e-9 down
+      expect(result.objective).toBeCloseTo(-1, 9)
+      expect(result.solution[0]).toBeCloseTo(1, 9)
+    },
+  )
+
+  test.each([1, 1e-6, 1e-9, 1e-10, 1e-12])(
+    `keeps a constraint row scaled by %s instead of dropping it`,
+    (scale) => {
+      // min -x0 s.t. x0 + x1 = 2 and s*x0 - s*x1 = 0 → x = [1, 1], objective -1
+      const result = math.solve_linear_program(
+        [-1, 0],
+        [
+          [1, 1],
+          [scale, -scale],
+        ],
+        [2, 0],
+      )
+      expect(result.status).toBe(`optimal`)
+      // the second row used to be dropped as linearly dependent, giving x = [2, 0], obj -2
+      expect(result.objective).toBeCloseTo(-1, 9)
+      expect(result.solution[0]).toBeCloseTo(1, 9)
+      expect(result.solution[1]).toBeCloseTo(1, 9)
+    },
+  )
+
   test(`finds the optimal vertex of a small LP`, () => {
     // min -x - 2y  s.t. x + y + s1 = 4, x + 3y + s2 = 6, all >= 0  → x = 3, y = 1, obj = -5
     const result = math.solve_linear_program(

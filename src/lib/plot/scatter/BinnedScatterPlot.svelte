@@ -39,6 +39,7 @@
     build_pick_index,
     bin_points,
     density_bin_at_point,
+    density_screen_cell,
     first_point_in_bin,
     scale_bin_transform,
     series_extents,
@@ -167,12 +168,9 @@
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
 
-  // Tick labels default to `.2~g` (the frame measures padding with the same config)
-  const final_x_axis = $derived({ format: `.2~g`, ...x_axis })
-  const final_y_axis = $derived({ format: `.2~g`, ...y_axis })
   const grid_display = { x_grid: true, y_grid: true }
-  const x_scale_type = $derived(final_x_axis.scale_type ?? `linear`)
-  const y_scale_type = $derived(final_y_axis.scale_type ?? `linear`)
+  const x_scale_type = $derived(x_axis.scale_type ?? `linear`)
+  const y_scale_type = $derived(y_axis.scale_type ?? `linear`)
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
@@ -221,7 +219,11 @@
   })
 
   const frame = create_cartesian_frame({
-    axes: () => ({ x: final_x_axis, x2: empty_axis, y: final_y_axis, y2: empty_axis }),
+    // No default tick format: format_tick_values short-circuits its whole duplicate-avoidance
+    // escalation the moment a formatter is supplied, so a hardcoded `.2~g` here labelled six
+    // ticks over [1000, 1010] as `1e+3` six times, and six `1`s after a density bin_click zoom.
+    // ScatterPlot supplies none either; a caller wanting a fixed format still passes one in.
+    axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({
       x: auto_ranges.x,
       x2: unit_range,
@@ -325,10 +327,17 @@
     for (let idx = 0; idx < counts.length; idx++) {
       if (!counts[idx]) continue
       if (occupied_idx++ % stride) continue
-      points.push({
-        x: ((idx % x_bins) + 0.5) / x_bins,
-        y: 1 - (Math.floor(idx / x_bins) + 0.5) / y_bins,
-      })
+      // canonical bin -> screen cell, same as draw_density: without it the obstacle field is
+      // mirrored on a reversed range and the solver drops decorations onto the dense cloud
+      const [col, row] = density_screen_cell(
+        idx % x_bins,
+        Math.floor(idx / x_bins),
+        x_bins,
+        y_bins,
+        x_range,
+        y_range,
+      )
+      points.push({ x: (col + 0.5) / x_bins, y: (row + 0.5) / y_bins })
     }
     return points
   })
@@ -487,9 +496,12 @@
         }
         ctx.fillStyle = style.fill
         ctx.globalAlpha = style.alpha
+        // bins are canonical (bin 0 = data minimum) while this grid is positional, so a
+        // descending range paints them mirrored against its own axis
+        const [col, row] = density_screen_cell(x_bin, y_bin, x_bins, y_bins, x_range, y_range)
         ctx.fillRect(
-          pad.l + x_bin * bin_w,
-          pad.t + (y_bins - y_bin - 1) * bin_h,
+          pad.l + col * bin_w,
+          pad.t + row * bin_h,
           Math.ceil(bin_w) + 0.5,
           Math.ceil(bin_h) + 0.5,
         )

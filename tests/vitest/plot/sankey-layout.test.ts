@@ -188,6 +188,39 @@ describe(`compute_sankey_layout`, () => {
     for (const link of links) expect(link.path).not.toContain(`NaN`)
   })
 
+  // The all-zero guard above covers the whole graph being empty, but one bad row in an
+  // otherwise valid graph reached d3 unchecked: a non-finite value poisoned every coordinate
+  // in the layout (`d="M24,NaN..."`), and a negative one produced an invalid negative
+  // stroke-width and silently subtracted from its source node's total, so that node's box
+  // understated its own outflow. Every sibling chart already screens its inputs.
+  test.each([
+    [`NaN`, NaN],
+    [`undefined`, undefined],
+    [`negative`, -5],
+  ])(`rejects a %s link value instead of emitting a broken layout`, (_case, bad_value) => {
+    const data = {
+      nodes: [{ id: `A` }, { id: `B` }, { id: `C` }],
+      links: [
+        { source: `A`, target: `B`, value: 10 },
+        { source: `A`, target: `C`, value: bad_value as number },
+      ],
+    } as SankeyData
+    expect(() => compute_sankey_layout(data, dims)).toThrow(/non-negative finite value/)
+  })
+
+  // zero stays legal: it is the documented all-zero-collapses-to-empty case, not bad input
+  test(`accepts a zero-valued link alongside a real one`, () => {
+    const data: SankeyData = {
+      nodes: [{ id: `A` }, { id: `B` }, { id: `C` }],
+      links: [
+        { source: `A`, target: `B`, value: 10 },
+        { source: `A`, target: `C`, value: 0 },
+      ],
+    }
+    const { links } = compute_sankey_layout(data, dims)
+    for (const link of links) expect(link.path).not.toContain(`NaN`)
+  })
+
   test(`drops link-less nodes so extra labels don't pile up below the plot`, () => {
     // orphan nodes (extra labels with no links) used to get value 0 / zero height yet
     // still stack with node_padding each, overflowing past the plot bottom edge

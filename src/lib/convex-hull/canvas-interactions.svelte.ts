@@ -4,7 +4,7 @@
 // mouse handling, sizing and render scheduling behind ConvexHullCanvas.
 import { create_canvas_surface } from '$lib/canvas-surface.svelte'
 import type { D3InterpolateName } from '$lib/colors'
-import { create_pulse_animation } from '$lib/effects.svelte'
+import { create_flash, create_pulse_animation } from '$lib/effects.svelte'
 import type { ElementSymbol } from '$lib/element'
 import { open_material } from '$lib/file-viewer/open'
 import { raw_file_drop_zone } from '$lib/io'
@@ -51,7 +51,9 @@ interface HullSelectionInputs {
 
 export function create_hull_selection(inputs: HullSelectionInputs) {
   let hover_data = $state.raw<HoverData3D | null>(null)
-  let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
+  // Hiding drops the position with it: ClickFeedback unmounts the node when `visible` goes
+  // false, so the coordinates it kept on the way out were never read
+  const copy_feedback = create_flash({ visible: false, position: { x: 0, y: 0 } }, 1500)
   let dragover = $state(false)
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
@@ -114,20 +116,11 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     inputs.set_selected_entry(null)
   }
 
-  // One pending hide at a time: a second copy restarts the 1.5 s window instead of letting the
-  // first copy's timer hide the fresh feedback early; cleared on unmount
-  let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => clearTimeout(copy_feedback_timeout))
   async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
     await navigator.clipboard.writeText(
       build_entry_tooltip_text(entry, inputs.entry_category()),
     )
-    copy_feedback = { visible: true, position }
-    clearTimeout(copy_feedback_timeout)
-    copy_feedback_timeout = setTimeout(
-      () => (copy_feedback = { visible: false, position }),
-      1500,
-    )
+    copy_feedback.show({ visible: true, position })
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -184,7 +177,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
       return hover_data
     },
     get copy_feedback() {
-      return copy_feedback
+      return copy_feedback.value
     },
     get dragover() {
       return dragover

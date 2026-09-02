@@ -33,6 +33,29 @@ const mount_histogram = (
   return mount_sized(Histogram, props, { selector: `.histogram`, ...size })
 }
 
+// Bar geometry read back out of the rendered path. radius defaults to 0, so bars render as
+// `M<x>,<y>h<width>v<height>h-<width>Z`, and bar_path is fed min/abs coords so width and
+// height are always positive. Rounded because the two scale directions differ by float dust
+// in the last ULP.
+const bar_boxes = () =>
+  [...document.querySelectorAll<SVGPathElement>(`g.histogram-series path`)].map((bar) => {
+    const path = bar.getAttribute(`d`) ?? ``
+    const match = /^M(?<x>[-\d.]+),(?<y>[-\d.]+)h(?<width>[-\d.]+)v(?<height>[-\d.]+)/.exec(
+      path,
+    )
+    if (!match?.groups) throw new Error(`unparsable bar path: ${path}`)
+    const round = (num: number) => Number(num.toFixed(6))
+    const [left, top] = [Number(match.groups.x), Number(match.groups.y)]
+    const [width, height] = [Number(match.groups.width), Number(match.groups.height)]
+    return {
+      left: round(left),
+      right: round(left + width),
+      top: round(top),
+      bottom: round(top + height),
+      height: round(height),
+    }
+  })
+
 const get_tick_numbers = (axis: `x` | `y`): number[] =>
   [...document.querySelectorAll(`g.${axis}-axis .tick text`)]
     .map((node) => Number((node.textContent || ``).trim()))
@@ -273,6 +296,77 @@ describe(`Histogram`, () => {
     // a legacy series without samples renders nothing instead of throwing mid-render
     await mount_histogram({ series: [{ x: [1, 2], label: `empty` }], bins: 4 })
     expect(bars_of()).toEqual([])
+  })
+
+  // Regression on both axes, one flip at a time against a shared ascending reference:
+  // - x: bin edges are always ascending, so on a descending x range x_scale(bin.x0) is the
+  //   bar's RIGHT edge. Using it as the left edge shifted every bar one full bin outward,
+  //   pushing the last bar past the clip rect.
+  // - y: on a descending value range the baseline sits ABOVE the bar's value pixel, so
+  //   `baseline - y_scale(value)` went negative and `Math.max(0, ...)` clamped every bar to
+  //   zero height, leaving the chart completely empty.
+  test(`bars mirror rather than shift or vanish on reversed x and y ranges`, async () => {
+    const props = { series: [{ values: [1, 3, 5, 7, 9], label: `A` }], bins: 5 }
+    const spans = (boxes: ReturnType<typeof bar_boxes>) =>
+      boxes.map(({ left, right }) => [left, right])
+
+    // oxfmt-ignore
+    await mount_histogram({ ...props, x_axis: { range: [0, 10] }, y_axis: { range: [0, 100] } })
+    const ascending = bar_boxes()
+    expect(ascending).toHaveLength(5)
+
+    // bin_idx still runs low-to-high in data, so on a flipped x axis the bars run right-to-left
+    // oxfmt-ignore
+    await mount_histogram({ ...props, x_axis: { range: [10, 0] }, y_axis: { range: [0, 100] } })
+    const flipped_x = bar_boxes()
+    expect(flipped_x).toHaveLength(5)
+    expect(spans(flipped_x)).toEqual(spans(ascending).toReversed())
+
+    // flipping the count axis leaves the bars where they are horizontally and only mirrors
+    // them vertically: same heights, but count 0 moves from the bottom of the plot to the top,
+    // so every bar hangs down from the baseline instead of standing on it
+    // oxfmt-ignore
+    await mount_histogram({ ...props, x_axis: { range: [0, 10] }, y_axis: { range: [100, 0] } })
+    const flipped_y = bar_boxes()
+    expect(flipped_y).toHaveLength(5)
+    expect(spans(flipped_y)).toEqual(spans(ascending))
+    expect(flipped_y.map((box) => box.height)).toEqual(ascending.map((box) => box.height))
+    expect(new Set(ascending.map((box) => box.bottom)).size).toBe(1)
+    expect(new Set(flipped_y.map((box) => box.top)).size).toBe(1)
+    expect(flipped_y[0].top).toBeLessThan(ascending[0].bottom)
+  })
+
+  // Regression: the obstacle field feeding automatic decoration placement rejected any
+  // reversed axis range as degenerate, so on a flipped count axis it came out empty and the
+  // auto-placed legend landed on top of the bars.
+  test(`automatic legend placement avoids the bars on a reversed y range`, async () => {
+    const [legend_width, legend_height] = [120, 60]
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(legend_width)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(legend_height)
+    const legend_overlaps_bars = async (y_range: Vec2) => {
+      await mount_histogram({
+        series: [{ values: [1, 3, 5, 7, 9], label: `A` }],
+        bins: 5,
+        show_legend: true,
+        y_axis: { range: y_range },
+      })
+      const legend = doc_query(`.legend`)
+      const left = Number(legend.style.left.replace(`px`, ``))
+      const top = Number(legend.style.top.replace(`px`, ``))
+      const bars = bar_boxes()
+      expect(bars).toHaveLength(5)
+      return bars.some(
+        (bar) =>
+          left < bar.right &&
+          left + legend_width > bar.left &&
+          top < bar.bottom &&
+          top + legend_height > bar.top,
+      )
+    }
+    // bars stand on the bottom baseline on [0, 2] and hang from the top one on [2, 0], so the
+    // solver has to see the obstacles move to keep the legend clear in both
+    expect(await legend_overlaps_bars([0, 2])).toBe(false)
+    expect(await legend_overlaps_bars([2, 0])).toBe(false)
   })
 
   test(`property options allow duplicate and empty series labels`, async () => {

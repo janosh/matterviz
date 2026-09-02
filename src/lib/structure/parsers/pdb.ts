@@ -69,7 +69,22 @@ const pdb_element = (line: string, atom_idx: number): ElementSymbol => {
 
 export const parse_pdb = (content: string): AnyStructure | null =>
   guard_parse(`PDB`, () => {
-    const lines = content.split(/\r?\n/)
+    const all_lines = content.split(/\r?\n/)
+    // `END` terminates a PDB entry, and files are concatenated (VMD multi-frame output,
+    // docking ensembles, `cat a.pdb b.pdb`). Only the first entry is parsed, as parse_mol
+    // does for `$$$$`: merging them silently fused every entry's atoms into one structure
+    // under the first CRYST1 cell, and fused their CONECT records with it. MODEL/ENDMDL
+    // inside one entry is a different thing, counted separately below.
+    const end_idx = all_lines.findIndex(
+      (line) => line.slice(0, 6).trim().toUpperCase() === `END`,
+    )
+    const lines = end_idx === -1 ? all_lines : all_lines.slice(0, end_idx)
+    const has_further_entry =
+      end_idx !== -1 &&
+      all_lines.slice(end_idx + 1).some((line) => line.slice(0, 6).trim() !== ``)
+    if (has_further_entry) {
+      diag_warn(`PDB contains multiple END-terminated entries; parsed the first`)
+    }
 
     let cell_params: readonly number[] | null = null
     let model_count = 0

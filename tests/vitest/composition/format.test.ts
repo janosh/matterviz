@@ -7,6 +7,7 @@ import {
   format_oxi_state,
   get_alphabetical_formula,
   get_electro_neg_formula,
+  parse_formula,
   get_formula_label_segments,
   is_compound,
   tokenize_formula_markup,
@@ -81,6 +82,41 @@ describe(`get_electro_neg_formula`, () => {
     [{ Fe: 1000, O: 1500 }, { amount_format: `.3~s` }, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
   ])(`input=%p, options=%p → %p`, (input, options, expected) => {
     expect(get_electro_neg_formula(input, options)).toBe(expected)
+  })
+
+  // `electronegativity` is null for 22 elements, and four of them (Kr, Xe, Rn, Lr) carry the
+  // value under `electronegativity_pauling` in the same record. The `?? 0` fallback called
+  // those more electropositive than caesium, so the noble gas led every formula it appeared in.
+  // Expected order is pymatgen's `Composition.reduced_formula`.
+  test.each([
+    [`Na4XeO6`, `Na4 Xe O6`],
+    [`Ba2XeO6`, `Ba2 Xe O6`],
+    [`CsXeF7`, `Cs Xe F7`],
+    [`XePtF6`, `Pt Xe F6`], // Xe 2.6 sits above Pt 2.28
+    [`KrF2`, `Kr F2`],
+  ])(`orders %s by real electronegativity`, (formula, expected) => {
+    const plain = get_electro_neg_formula(formula, { plain_text: true })
+    expect(plain.replaceAll(/\s+/g, ` `).trim()).toBe(expected.replaceAll(/\s+/g, ` `))
+  })
+
+  // Elements with no value anywhere (He, Ne, Ar) sort last rather than leading, as pymatgen does
+  test(`puts an element with no electronegativity data last`, () => {
+    expect(get_electro_neg_formula(`ArF2`, { plain_text: true, delim: `` })).toBe(`F2Ar`)
+  })
+})
+
+// The number after a hydrate separator counts whole water molecules, not atoms in the group
+// before it, so it belongs at full size. Every digit run was classified as a subscript, which
+// printed sodium carbonate decahydrate as Na₂CO₃·₁₀H₂O.
+describe(`hydrate coefficients`, () => {
+  test.each([
+    [`CuSO4·5H2O`, `CuSO<sub>4</sub>·5H<sub>2</sub>O`],
+    [`Na2CO3·10H2O`, `Na<sub>2</sub>CO<sub>3</sub>·10H<sub>2</sub>O`],
+    [`CaSO4·0.5H2O`, `CaSO<sub>4</sub>·0.5H<sub>2</sub>O`],
+    [`Fe2O3`, `Fe<sub>2</sub>O<sub>3</sub>`], // an ordinary subscript is untouched
+    [`Li0.5CoO2`, `Li<sub>0.5</sub>CoO<sub>2</sub>`],
+  ])(`renders %s`, (formula, expected) => {
+    expect(format_formula_html(formula)).toBe(expected)
   })
 })
 
@@ -257,5 +293,23 @@ describe(`format_oxi_state`, () => {
     [3, `+3`],
   ])(`format_oxi_state(%s) -> %s`, (input, expected) => {
     expect(format_oxi_state(input)).toBe(expected)
+  })
+})
+
+// AMOUNT_FORMAT was chosen so formulas round-trip (`s` was ruled out because `C1k` reads back
+// as nothing), but both it and the sub-1 `.3~g` fall back to exponent form below about 1e-6 -
+// a trace dopant occupancy rendered `FeO1e-7`, which parse_formula rejects on the `e`.
+describe(`amount formatting round-trips`, () => {
+  test.each([
+    [{ Fe: 1, O: 1e-7 }, `FeO0.0000001`],
+    [{ Fe: 1, O: 1e-5 }, `FeO0.00001`],
+    [{ Fe: 1, O: 0.0625 }, `FeO0.0625`], // sub-1 keeps significant digits, not 3 decimals
+    [{ Fe: 2, O: 3 }, `Fe2O3`],
+  ])(`%j renders and parses back`, (composition, expected) => {
+    const formula = get_alphabetical_formula(composition, { plain_text: true, delim: `` })
+    expect(formula).toBe(expected)
+    for (const [element, amount] of Object.entries(parse_formula(formula))) {
+      expect(amount).toBeCloseTo((composition as Record<string, number>)[element], 12)
+    }
   })
 })

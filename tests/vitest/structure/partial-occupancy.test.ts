@@ -68,6 +68,39 @@ describe(`partial occupancy render-site logic`, () => {
       expected_merged_elements,
     )
   })
+
+  // Grouping is a bucket lookup rather than a scan over every group, because this runs per
+  // trajectory frame and the scan was quadratic (218 ms a frame at 8k sites, which hiding one
+  // species of an alloy reaches at any count - that leaves one visible species summing under 1).
+  // A bucket index can only match what shares a bucket, so the case to pin is a pair closer
+  // than the merge tolerance that still rounds to opposite sides of a bucket face.
+  test(`merges a coincident pair that straddles a lookup bucket boundary`, () => {
+    const bucket = 1e-5 // MERGE_BUCKET_SIZE
+    for (const n_buckets of [1, 2, 7, 1234]) {
+      const face = n_buckets * bucket + bucket / 2 // exactly on a bucket face
+      const sites = [
+        make_site([{ element: `O`, occu: 0.5, oxidation_state: 0 }], [face - 1e-9, 0, 0], `O`),
+        make_site([{ element: `F`, occu: 0.5, oxidation_state: 0 }], [face + 1e-9, 0, 0], `F`),
+      ]
+      const [merged, ...rest] = merge_split_partial_sites(sites)
+      expect(rest).toEqual([]) // 2 Å apart in bucket terms, 2e-9 Å apart in real terms
+      expect(merged.site.species.map((sp) => sp.element).toSorted()).toEqual([`F`, `O`])
+    }
+  })
+
+  // Still O(n): the scan grew 4x per doubling, so 8k sites would blow far past this budget
+  test(`groups 8k split-partial sites in linear time`, () => {
+    const sites = Array.from({ length: 8000 }, (_unused, idx) =>
+      make_site(
+        [{ element: `Na`, occu: 0.5, oxidation_state: 0 }],
+        [idx * 3, 0, 0],
+        `Na${idx}`,
+      ),
+    )
+    const start = performance.now()
+    expect(merge_split_partial_sites(sites)).toHaveLength(8000)
+    expect(performance.now() - start).toBeLessThan(100)
+  })
 })
 
 describe(`partial occupancy slice flags`, () => {

@@ -1,8 +1,9 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { CellVal, ColumnFilter, Label, RowData } from '$lib/table'
+import type { CellVal, ColumnFilter, Label, RowData, SortCriterion } from '$lib/table'
 import {
   CATEGORY_LIMIT,
   cell_matches_filter,
+  cell_text,
   column_filter_panel,
   compare_rows,
   compute_column_stats,
@@ -339,8 +340,22 @@ describe(`strip_html`, () => {
     [``, ``],
     [`before<br/>after`, `beforeafter`],
     [`<b>bold</b> and <i>italic</i>`, `bold and italic`],
+    [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`], // a comparison pair is not a tag
+    [`<B>UPPER</B>`, `UPPER`], // tags are case-insensitive
+    [`<!-- note -->kept`, `kept`],
   ])(`strip_html(%j) = %j`, (input, expected) => {
     expect(strip_html(input)).toBe(expected)
+  })
+
+  // Cell text feeds search, the filter panels and every export. `<[^>]*>` eats ordinary prose
+  // caught between a comparison pair just as happily as a tag, so this cell read back as
+  // `T  1 bar` and no longer matched `300`. A tag has to open with a letter, `/` or `!`.
+  it(`leaves a comparison pair in prose alone, since it is not markup`, () => {
+    const prose = `T < 300 K and P > 1 bar`
+    expect(cell_text(prose)).toBe(prose)
+    expect(row_matches_query({ val: prose }, `300`)).toBe(true)
+    // a real tag in the same cell is still stripped
+    expect(cell_text(`<b>T < 300 K</b>`)).toBe(`T < 300 K`)
   })
 })
 
@@ -389,19 +404,67 @@ describe(`compare_rows`, () => {
     expect(order([`b`, `B`, `a`])).toEqual([`a`, `b`, `B`]) // case-insensitive keeps input order for ties
   })
 
-  it(`sorts dates by time and honours later criteria on ties`, () => {
-    const data: RowData[] = [
-      { when: new Date(2024, 0, 2), name: `b` },
-      { when: new Date(2024, 0, 1), name: `z` },
-      { when: new Date(2024, 0, 2), name: `a` },
+  // Sorting used to read the raw cell, so a markup cell compared by its tag name: `<b>Mango</b>`
+  // sorted under `b`, ahead of `<i>Zebra</i>` and `<span>Apple</span>`, and every markup cell
+  // sorted ahead of every plain one because `<` precedes every letter.
+  it(`orders markup cells by their visible text, not their tags`, () => {
+    // oxfmt-ignore
+    expect(order([`<span>Apple</span>`, `<i>Zebra</i>`, `<b>Mango</b>`]))
+      .toEqual([`<span>Apple</span>`, `<b>Mango</b>`, `<i>Zebra</i>`])
+    // oxfmt-ignore
+    expect(order([`<b>Beta</b>`, `Alpha`, `<i>Gamma</i>`, `Delta`]))
+      .toEqual([`Alpha`, `<b>Beta</b>`, `Delta`, `<i>Gamma</i>`])
+    // a non-numeric data-sort-value still wins over the rendered text: `Zulu` alone would
+    // sort last, `aaa` puts it first (a numeric one makes it a number, which sorts earlier still)
+    // oxfmt-ignore
+    expect(order([`<b data-sort-value="aaa">Zulu</b>`, `Alpha`]))
+      .toEqual([`<b data-sort-value="aaa">Zulu</b>`, `Alpha`])
+  })
+
+  // A boolean or object cell (both admitted by CellVal) reached the comparator as a non-string,
+  // and the type-mismatch branch answered "the other one first" in BOTH directions. That is not
+  // a total order, so the same rows came out in a different order depending on how they went in.
+  it.each([
+    [`a boolean`, true],
+    [`an object`, { a: 1 }],
+  ])(`compares a string against %s antisymmetrically`, (_case, other) => {
+    const cmp = (val1: CellVal, val2: CellVal) =>
+      compare_rows({ val: val1 }, { val: val2 }, [{ key: `val`, ascending: true }])
+    expect(cmp(`abc`, other)).toBe(-cmp(other, `abc`))
+  })
+
+  it(`sorts one multiset to one order whatever order it arrives in`, () => {
+    const permutations: CellVal[][] = [
+      [`abc`, true, 5, false, `zed`],
+      [5, false, `zed`, `abc`, true],
+      [true, `zed`, 5, `abc`, false],
+      [`zed`, `abc`, false, true, 5],
     ]
-    const sorted = data.toSorted((row1, row2) =>
-      compare_rows(row1, row2, [
-        { key: `when`, ascending: false },
-        { key: `name`, ascending: true },
-      ]),
-    )
-    expect(sorted.map((row) => row.name)).toEqual([`a`, `b`, `z`])
+    const results = permutations.map((permutation) => order(permutation))
+    for (const result of results) expect(result).toEqual(results[0])
+    expect(results[0]).toEqual([5, `abc`, false, true, `zed`]) // numbers first, then text
+  })
+
+  // Every case sorts on a primary key that ties, so only a working secondary criterion can
+  // produce the expected name order
+  const by_name: SortCriterion = { key: `name`, ascending: true }
+  const by_score: SortCriterion = { key: `score`, ascending: true }
+  // oxfmt-ignore
+  it.each<[string, RowData[], SortCriterion[], string[]]>([
+    [`dates compare by time`,
+      [{ when: new Date(2024, 0, 2), name: `b` }, { when: new Date(2024, 0, 1), name: `z` }, { when: new Date(2024, 0, 2), name: `a` }],
+      [{ key: `when`, ascending: false }, by_name], [`a`, `b`, `z`]],
+    // both-NaN rows sink together but still order by name among themselves
+    [`both primary values are invalid`,
+      [{ score: NaN, name: `b` }, { score: NaN, name: `a` }, { score: 1, name: `c` }],
+      [by_score, by_name], [`c`, `a`, `b`]],
+    // null vs undefined is equally invalid, so the secondary criterion decides
+    [`null and undefined meet`,
+      [{ score: null, name: `b` }, { score: undefined, name: `a` }],
+      [by_score, by_name], [`a`, `b`]],
+  ])(`honours later criteria when %s`, (_case, data, criteria, expected) => {
+    const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
+    expect(sorted.map((row) => row.name)).toEqual(expected)
   })
 })
 
@@ -516,6 +579,11 @@ describe(`date/time columns`, () => {
     expect(format_datetime(new Date(2017, 6, 23, 9, 57).getTime(), `relative`, now)).toBe(
       `6y 5mo 2w ago`,
     )
+    // a zero remainder adds no trailing 0m term, but a lone minutes term still renders
+    expect(format_datetime(now - 2 * 24 * 60 * 60_000, `relative`, now)).toBe(`2d ago`)
+    expect(format_datetime(now - 60 * 60_000, `relative`, now)).toBe(`1h ago`)
+    expect(format_datetime(now - 90 * 60_000, `relative`, now)).toBe(`1h 30m ago`)
+    expect(format_datetime(now - 30_000, `relative`, now)).toBe(`0m ago`)
   })
 })
 

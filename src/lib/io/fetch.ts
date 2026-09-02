@@ -1,4 +1,4 @@
-type DownloadData = string | Blob | ArrayBuffer | ArrayBufferView<ArrayBuffer>
+export type DownloadData = string | Blob | ArrayBuffer | ArrayBufferView<ArrayBuffer>
 
 // Original download implementation
 function default_download(data: DownloadData, filename: string, type: string) {

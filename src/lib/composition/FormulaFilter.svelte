@@ -254,10 +254,18 @@
     }
   })
 
-  // Detect if dropdown would exit viewport on the right and adjust anchor
+  // Paste lands the text after the event, so normalising waits a frame. Held and cancelled for
+  // the same reason the dropdown's frame below is: an unmount inside that frame otherwise
+  // leaves the callback writing to a destroyed component.
+  let paste_frame = 0
+  $effect(() => () => cancelAnimationFrame(paste_frame))
+
+  // Detect if dropdown would exit viewport on the right and adjust anchor. The frame is
+  // cancelled on teardown: closing or unmounting within the same frame otherwise left the
+  // callback to measure a dropdown that is on its way out and write state behind it.
   $effect(() => {
-    if (!examples_open || !examples_wrapper) return
-    requestAnimationFrame(() => {
+    if (!examples_open || !examples_wrapper) return undefined
+    const frame = requestAnimationFrame(() => {
       const dropdown = examples_wrapper?.querySelector(
         `.examples-dropdown`,
       ) as HTMLElement | null
@@ -265,6 +273,7 @@
       const rect = dropdown.getBoundingClientRect()
       if (rect.right > window.innerWidth && !anchor_left) anchor_left = true
     })
+    return () => cancelAnimationFrame(frame)
   })
 
   // Infer search mode from input format: a leading +/-/! operator, any +/! or a comma means a
@@ -607,7 +616,8 @@
       onfocus={open_history}
       {oninput}
       onpaste={() => {
-        requestAnimationFrame(() => {
+        cancelAnimationFrame(paste_frame)
+        paste_frame = requestAnimationFrame(() => {
           input_value = normalize_formula_unicode(input_value)
           oninput()
         })

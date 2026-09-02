@@ -132,7 +132,12 @@ export async function canvas_to_png_blob(
   }
 
   try {
-    renderer.setPixelRatio(resolution_multiplier)
+    // Multiplied by the live ratio, not set outright: on a HiDPI display the renderer is
+    // already at 2, so assigning the multiplier directly SHRANK the export. An 800x600 scene
+    // on a dpr-2 screen went from a native 1600x1200 to 1111x833 at 100 DPI, and everything
+    // below ~144 DPI exported at less than screen resolution. export_trajectory_video, a few
+    // hundred lines down, already scales the same way.
+    renderer.setPixelRatio(orig_pixel_ratio * resolution_multiplier)
     renderer.setSize(orig_size.width, orig_size.height, false)
     await render_for_capture(renderer, scene, camera)
     return await canvas_to_blob(canvas, `Failed to generate high-resolution PNG`)

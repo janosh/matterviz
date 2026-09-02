@@ -470,12 +470,39 @@ export const parse_cif_uncertain_number = (token: string): number | null => {
   return Number.isNaN(value) ? null : value
 }
 
+// CIF reserved words are case-insensitive, so `DATA_phase_2` opens a block and `LOOP_` starts
+// a loop exactly as their lowercase spellings do. Comparing raw text left an uppercase header
+// inside the previous block, letting one phase's symmetry data reshape another phase's atoms.
+export const is_cif_data_header = (line: string): boolean => /^\s*data_/i.test(line)
+export const is_cif_loop_header = (line: string): boolean => /^\s*loop_\s*$/i.test(line)
+
+// The `data_` block each line belongs to: 0 for anything before the first block header,
+// then one id per block. CIF scopes every data item to its own block, so a multi-block file
+// (a global block plus one per phase) must be read block by block. A `data_` line inside a
+// semicolon-delimited text field is content rather than a header, so text fields are
+// tracked here too.
+export const cif_block_ids = (lines: readonly string[]): number[] => {
+  const block_ids: number[] = []
+  let block_id = 0
+  let in_text_field = false
+  for (const line of lines) {
+    // A text field opens and closes ONLY on a `;` in column 1, so this tests the raw line:
+    // an indented `  ;` is content, and trimming first would end the field early and let the
+    // rest of its text be read as headers.
+    if (in_text_field) in_text_field = !line.startsWith(`;`)
+    else if (line.startsWith(`;`)) in_text_field = true
+    else if (is_cif_data_header(line)) block_id++
+    block_ids.push(block_id)
+  }
+  return block_ids
+}
+
 // Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line
 export function* iter_cif_loops(
   lines: string[],
 ): Generator<{ headers: string[]; data_start: number }> {
   for (let idx = 0; idx < lines.length; idx++) {
-    if (lines[idx].trim() !== `loop_`) continue
+    if (!is_cif_loop_header(lines[idx])) continue
     const headers: string[] = []
     let jj = idx + 1
     while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
@@ -486,9 +513,47 @@ export function* iter_cif_loops(
   }
 }
 
-// Split a CIF data line into whitespace-separated tokens, keeping quoted multi-word
-// values as single tokens and stripping the quotes
-export const split_cif_tokens = (line: string): string[] =>
-  (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []).map((token) =>
-    token.replaceAll(/['"]/g, ``),
-  )
+// Same separator test as LineScanner and parse_coordinate above, so one file has one notion of
+// whitespace. Space and tab alone let a CRLF file's trailing `\r` ride along inside the last
+// token, and left a quoted value at the end of a line unterminated, so `'x, y, z'\r` split into
+// three broken pieces. Control characters below space count as separators too, which the `\s`
+// this replaced did not do, but a CIF carrying one in a data line is malformed either way.
+const is_cif_space = (char: string): boolean => char.charCodeAt(0) <= 32
+
+// CIF closes a quoted value on a delimiter followed by whitespace or end of line, so an
+// apostrophe inside a token is ordinary content. Index of the closing delimiter, or -1.
+const cif_quote_end = (line: string, quote: string, from: number): number => {
+  for (let idx = line.indexOf(quote, from); idx !== -1; idx = line.indexOf(quote, idx + 1)) {
+    if (idx + 1 === line.length || is_cif_space(line[idx + 1])) return idx
+  }
+  return -1
+}
+
+// Split a CIF data line into whitespace-separated tokens, keeping a quoted multi-word value
+// as one token and dropping only its enclosing delimiters. Stripping every quote in the token
+// instead corrupted primed labels (`C1'` -> `C1`, and `H2'`/`H2''` both -> `H2`, though those
+// are different atoms), and letting `'[^']*'` span two unrelated apostrophes swallowed a whole
+// row into one token, which the short-row filter then dropped without a word.
+export const split_cif_tokens = (line: string): string[] => {
+  const tokens: string[] = []
+  let pos = 0
+  while (pos < line.length) {
+    if (is_cif_space(line[pos])) {
+      pos++
+      continue
+    }
+    const quote = line[pos]
+    const close = quote === `'` || quote === `"` ? cif_quote_end(line, quote, pos + 1) : -1
+    if (close !== -1) {
+      tokens.push(line.slice(pos + 1, close))
+      pos = close + 1
+      continue
+    }
+    // no closing delimiter: read it as an ordinary token rather than eating the rest of the line
+    let end = pos
+    while (end < line.length && !is_cif_space(line[end])) end++
+    tokens.push(line.slice(pos, end))
+    pos = end
+  }
+  return tokens
+}

@@ -19,6 +19,10 @@ interface KdeOptions {
   // Cap on samples used for the O(n*m) density sum. Bandwidth is always computed from the
   // full sample; only the per-grid-point evaluation subsamples (deterministic stride).
   max_samples?: number
+  // Space the grid uniformly in a transformed coordinate rather than in data units, so a curve
+  // drawn on a log axis is sampled evenly across the strip instead of piling every point into
+  // the top decade. The density is still evaluated (and normalised) in data units.
+  grid_transform?: { fwd: (val: number) => number; inv: (val: number) => number }
 }
 
 const KDE_EXACT_SAMPLE_LIMIT = 1024
@@ -120,7 +124,8 @@ function binned_density(
 
 // Estimate a smooth density from raw samples via a Gaussian kernel.
 export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}): KdeResult {
-  const { bandwidth = `silverman`, n_points = 100, cut = 2, clip, range, max_samples } = opts
+  // oxfmt-ignore
+  const { bandwidth = `silverman`, n_points = 100, cut = 2, clip, range, max_samples, grid_transform } = opts
 
   const finite = samples.filter((val) => Number.isFinite(val))
   const n_vals = finite.length
@@ -164,7 +169,17 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
 
   const points = Math.max(2, Math.floor(n_points))
   const grid = Array.from({ length: points }, () => 0)
-  for (let idx = 0; idx < points; idx++) grid[idx] = lo + ((hi - lo) * idx) / (points - 1)
+  // Spaced in the transformed coordinate when one is given and both ends survive it finite
+  // (a log transform of a non-positive bound does not), else evenly in data units
+  const [pos_lo, pos_hi] = [grid_transform?.fwd(lo) ?? NaN, grid_transform?.fwd(hi) ?? NaN]
+  const at =
+    grid_transform && Number.isFinite(pos_lo) && Number.isFinite(pos_hi)
+      ? (frac: number) => grid_transform.inv(pos_lo + (pos_hi - pos_lo) * frac)
+      : (frac: number) => lo + (hi - lo) * frac
+  for (let idx = 0; idx < points; idx++) grid[idx] = at(idx / (points - 1))
+  // the transform can round the ends off; the grid must still span exactly [lo, hi]
+  grid[0] = lo
+  grid[points - 1] = hi
   const density =
     max_samples && n_eval > KDE_EXACT_SAMPLE_LIMIT
       ? binned_density(eval_samples, grid, band)

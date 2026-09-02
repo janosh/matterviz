@@ -32,6 +32,11 @@ export type Matrix4Tuple = [
 
 // Generate all k-element combinations from an array.
 export function combinations<T>(arr: T[], k: number): T[][] {
+  // Neither base case catches a negative k (`arr.length < k` is false for one), so the
+  // recursion ran away into a stack overflow instead of reporting the caller's bad argument
+  if (!Number.isInteger(k) || k < 0) {
+    throw new RangeError(`combinations needs a non-negative integer k, got ${k}`)
+  }
   if (k === 0) return [[]]
   if (arr.length < k) return []
   const [first, ...rest] = arr
@@ -757,6 +762,8 @@ export function merge_coplanar_triangles(
     normal: Vec3
     plane_d: number
     degenerate: boolean
+    // whether canonicalizing `normal` negated it, i.e. the face's real outward normal is -normal
+    canon_flipped: boolean
   }
   const tri_planes: TriPlane[] = []
   for (let tri_idx = 0; tri_idx < n_triangles; tri_idx++) {
@@ -772,6 +779,7 @@ export function merge_coplanar_triangles(
         normal: [0, 0, 0],
         plane_d: 0,
         degenerate: true,
+        canon_flipped: false,
       })
       continue
     }
@@ -784,9 +792,11 @@ export function merge_coplanar_triangles(
         : Math.abs(normal[1]) > CANON_EPS
           ? normal[1]
           : normal[2]
-    if (first_nonzero < 0) normal = [-normal[0], -normal[1], -normal[2]]
+    const canon_flipped = first_nonzero < 0
+    if (canon_flipped) normal = [-normal[0], -normal[1], -normal[2]]
     const plane_d = dot(normal, vert_a)
-    tri_planes.push({ verts: [vert_a, vert_b, vert_c], normal, plane_d, degenerate: false })
+    // oxfmt-ignore
+    tri_planes.push({ verts: [vert_a, vert_b, vert_c], normal, plane_d, degenerate: false, canon_flipped })
   }
 
   // === Step 2: Build adjacency via edge hash map ===
@@ -927,9 +937,15 @@ export function merge_coplanar_triangles(
       continue
     }
 
-    // Fan-triangulate from hull vertex 0
+    // Fan-triangulate from hull vertex 0. Reversed when canonicalizing the plane normal negated
+    // it: the 2D basis is built from the canonical normal, so convex_hull_2d winds CCW about
+    // that rather than about the face's real outward normal. On a closed mesh that is every
+    // face whose normal leads with a negative component - half a cube's - and their fans came
+    // out wound inward. DoubleSide rendering hid it; exported geometry kept the bad winding.
+    const reverse = tri_planes[members[0]].canon_flipped
     for (let idx = 1; idx < hull_3d.length - 1; idx++) {
-      emit_tri(hull_3d[0], hull_3d[idx], hull_3d[idx + 1])
+      if (reverse) emit_tri(hull_3d[0], hull_3d[idx + 1], hull_3d[idx])
+      else emit_tri(hull_3d[0], hull_3d[idx], hull_3d[idx + 1])
     }
   }
 
@@ -1217,10 +1233,20 @@ export function solve_linear_program(
   }
 
   // Tableau columns: [original (n_cols) | artificial (n_rows) | rhs]. Rows flipped so b >= 0.
+  // Each row is also divided by its largest coefficient, which leaves the feasible set alone
+  // (scaling an equality by a positive constant is the same constraint) and puts every row on
+  // the same order of magnitude. `tolerance` is applied as an absolute cutoff in the ratio test
+  // and the linear-dependence check below, so without this a small but perfectly good pivot was
+  // read as zero: `s*x0 + s*x1 = s` reported `unbounded` from s = 1e-9 down, and a two-row
+  // problem whose second row carried 1e-10 coefficients had that row dropped as dependent and
+  // returned a confidently wrong optimum.
   const n_art = n_rows
   const rhs_col = n_cols + n_art
   const tableau = constraints.map((row, row_idx) => {
-    const sign = rhs[row_idx] < 0 ? -1 : 1
+    let row_scale = 0
+    for (const value of row) row_scale = Math.max(row_scale, Math.abs(value))
+    const sign =
+      (rhs[row_idx] < 0 ? -1 : 1) / (row_scale > 0 && isFinite(row_scale) ? row_scale : 1)
     const full = Array.from({ length: rhs_col + 1 }, () => 0)
     for (let col = 0; col < n_cols; col++) full[col] = sign * row[col]
     full[n_cols + row_idx] = 1

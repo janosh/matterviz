@@ -1,6 +1,6 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '$lib/constants'
-import { parse_float_block } from '$lib/isosurface/parse'
+import { checked_grid_points, parse_float_block } from '$lib/isosurface/parse'
 import { flatten_grid } from '$lib/isosurface/grid'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -104,7 +104,12 @@ function parse_bxsf(content: string): BandGridData {
   // BandEnergyGrid layout. parse_float_block reads the numbers straight off the string and
   // stops at the next line starting with a letter (the next BAND: or END_BANDGRID_3D).
   const energies: BandEnergyGrid[][] = [[]] // [spin=1][band]
-  const total_points = k_grid[0] * k_grid[1] * k_grid[2]
+  const total_points = checked_grid_points(
+    k_grid,
+    content.length - reader.position(),
+    `BXSF`,
+    n_bands,
+  )
 
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     let band_line = reader.next()
@@ -176,7 +181,12 @@ function parse_frmsf(content: string): BandGridData {
   // Band energies, one per line in z-fastest order (trailing columns such as FermiSurfer's
   // auxiliary colour data are dropped), converted from Hartree to eV. FRMSF has a single spin
   // channel (no spin-polarized support in the standard format).
-  const total_points = k_grid[0] * k_grid[1] * k_grid[2]
+  const total_points = checked_grid_points(
+    k_grid,
+    content.length - reader.position(),
+    `FRMSF`,
+    n_bands,
+  )
   const energies: BandEnergyGrid[][] = [[]]
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     const energy_values = new Float64Array(total_points)

@@ -2,6 +2,7 @@ import { create_display } from '$lib/file-viewer/main'
 import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
 import { is_fermi_surface_data } from '$lib/fermi-surface/types'
+import type { DownloadData } from '$lib/io/fetch'
 import { parse_structure_file } from '$lib/structure/parse'
 import type * as structure_parse_module from '$lib/structure/parse'
 import type { TrajectoryRun } from '$lib/trajectory'
@@ -36,8 +37,8 @@ vi.mock('svelte', async (import_original) => ({
 }))
 
 declare global {
-  // download function added by VSCode integration
-  var download: (content: string | Blob, filename: string, contentType: string) => void
+  // download function added by VSCode integration, typed as the shared contract it overrides
+  var download: (content: DownloadData, filename: string, contentType: string) => void
 }
 
 const uint8_as_base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
@@ -678,6 +679,26 @@ describe(`VSCode Download Integration`, () => {
       command: `saveAs`,
       content: `data:image/png;base64,ZmFrZSBwbmcgZGF0YQ==`,
       filename: `structure.png`,
+      is_binary: true,
+    })
+  })
+
+  // The shared `download` contract also admits an ArrayBuffer and a view over one, and that is
+  // exactly what the STL and GLB scene exports pass. readAsDataURL takes a Blob only, so both
+  // failed in the extension with a raw "parameter 1 is not of type 'Blob'" toast and no file.
+  test.each([
+    [`an ArrayBuffer`, () => new TextEncoder().encode(`fake stl data`).buffer],
+    [`a typed-array view`, () => new TextEncoder().encode(`fake stl data`)],
+  ])(`saves %s the way it saves a Blob`, async (_case, make_data) => {
+    stub_file_reader(`load`)
+    const mock_post_message = await init_download()
+    globalThis.download(make_data(), `structure.stl`, `model/stl`)
+    await vi.runAllTimersAsync()
+
+    expect(mock_post_message).toHaveBeenCalledWith({
+      command: `saveAs`,
+      content: `data:model/stl;base64,ZmFrZSBzdGwgZGF0YQ==`,
+      filename: `structure.stl`,
       is_binary: true,
     })
   })

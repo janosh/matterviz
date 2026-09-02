@@ -722,6 +722,20 @@ describe(`LAMMPS`, () => {
   }
   const frame_0 = lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`])
 
+  // The last three tokens of the BOX BOUNDS line are boundary flags only when they read as
+  // flags. A triclinic header with none appended puts `xy xz yz` there, none of which starts
+  // with `p`, so the frame used to come out fully aperiodic and render with no periodic images.
+  it.each([
+    [`restricted triclinic with no flags`, `xy xz yz`, `0 10 0`, [true, true, true]],
+    [`restricted triclinic with flags`, `xy xz yz pp pp ff`, `0 10 0`, [true, true, false]],
+    [`orthogonal with flags`, `pp ff pp`, `0 10`, [true, false, true]],
+  ])(`reads periodicity from a %s header`, async (_case, header, bound, expected) => {
+    const box = `${bound}\n${bound}\n${bound}`
+    const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS ${header}\n${box}\nITEM: ATOMS id type x y z\n1 1 0 0 0`
+    const run = await open(dump, `t.lammpstrj`)
+    expect(lattice_of(run.preview).pbc).toEqual(expected)
+  })
+
   // ITEM: TIME is absolute and unitless: it lands in frame metadata but never becomes a
   // time_step, which needs a unit to mean anything
   it(`parses inline frames, PBC flags, box-origin translation and ITEM: TIME`, async () => {
@@ -784,6 +798,9 @@ describe(`LAMMPS`, () => {
       `LAMMPS frame at timestep 0 has neither a type nor an element column in "ITEM: ATOMS id x y z"`],
     [`no position columns`, lammps_frame(`id type vx vy vz`, [`1 1 0 0 0`]),
       `LAMMPS frame at timestep 0 has no position columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu) in "ITEM: ATOMS id type vx vy vz"`],
+    // a repeat used to make the last index win, reading [9, 2, 3] here instead of [1, 2, 3]
+    [`a column declared twice`, lammps_frame(`id type x y z x`, [`1 1 1 2 3 9`]),
+      `LAMMPS frame at timestep 0 declares column "x" more than once in "ITEM: ATOMS id type x y z x"`],
     // non-positive types are rejected before the atomic-number lookup could index below H
     [`atom type 0`, lammps_frame(`id type x y z`, [`1 0 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "0"`],
     [`atom type -1`, lammps_frame(`id type x y z`, [`1 -1 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "-1"`],
@@ -1019,6 +1036,21 @@ describe(`XYZ`, () => {
       `Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}`,
     )
   const four_atoms = (last = `H 1 1 1`) => [`H 0 0 0`, `H 1 0 0`, `H 0 1 0`, last]
+
+  // ASE writes the cell double-quoted, but single-quoted extXYZ exists and the sibling `pbc`
+  // reader already takes both. Matching only `"` dropped the cell silently, so the frame came
+  // back with no lattice at all and every fractional coordinate sat on the origin.
+  it.each([
+    [`double`, `"`],
+    [`single`, `'`],
+  ])(`reads a %s-quoted extXYZ Lattice`, async (_case, quote) => {
+    const comment = `Lattice=${quote}4 0 0 0 4 0 0 0 4${quote} Properties=species:S:1:pos:R:3 pbc="T T T"`
+    const run = await open(xyz_frame([`Si 0 0 0`, `Si 1 1 1`], comment), `cell.xyz`)
+    const [frame] = await frames_of(run)
+    const lattice = lattice_of(frame)
+    expect([lattice.a, lattice.b, lattice.c]).toEqual([4, 4, 4])
+    expect(frame.structure.sites[1].abc).toEqual([0.25, 0.25, 0.25])
+  })
 
   // Issue #449: generated structures of different sizes dumped into one XYZ must browse
   it(`loads frames with differing atom counts`, async () => {
