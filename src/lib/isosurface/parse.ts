@@ -262,7 +262,7 @@ export function parse_chgcar(content: string): VolumetricFileData {
     pos = cur.next
 
     // Fast-parse volumetric data directly from the string
-    const total_points = ngx * ngy * ngz
+    const total_points = checked_grid_points([ngx, ngy, ngz], content.length - pos, `CHGCAR`)
     const data = new Float64Array(total_points)
     const { count: parsed_count, end_pos } = parse_float_block(
       content,
@@ -315,6 +315,32 @@ export function parse_chgcar(content: string): VolumetricFileData {
 // Parse Gaussian .cube file format.
 // Contains atomic structure and volumetric data in a single file.
 // Units: if grid dimensions are positive, coordinates are in Bohr; if negative, in Angstrom.
+// Only a grid this large is gated on the remaining byte count. A smaller one allocates little
+// even when the file is truncated, and letting it through keeps the parsers' own specific
+// "expected N values, got M" message, which says far more about an ordinary truncation.
+const GUARDED_POINT_COUNT = 1_000_000 // 8 MB as Float64
+
+// A declared grid size drives a Float64Array allocation before a single value is read, so it
+// has to be plausible for the bytes that remain: every value needs at least a digit and a
+// separator. Without this a 110-byte file declaring a 600x600x600 grid allocated 1.7 GB before
+// discovering there was no data, and a nonsensical one raised a bare RangeError.
+const checked_grid_points = (
+  dims: readonly number[],
+  remaining_bytes: number,
+  label: string,
+): number => {
+  const total = dims.reduce((product, dim) => product * dim, 1)
+  if (!Number.isSafeInteger(total) || total <= 0) {
+    throw new Error(`${label} grid ${dims.join(`×`)} is not a valid point count`)
+  }
+  if (total > GUARDED_POINT_COUNT && total > Math.floor(remaining_bytes / 2)) {
+    throw new Error(
+      `${label} declares a ${dims.join(`×`)} grid (${total} values) but only ${remaining_bytes} bytes remain`,
+    )
+  }
+  return total
+}
+
 export function parse_cube(
   content: string,
   options: { periodic?: boolean } = {},
@@ -406,6 +432,12 @@ export function parse_cube(
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+    // At EOF read_text_line returns an empty line without advancing `pos`, so an inflated
+    // n_atoms just span here warning once per iteration - 4e6 of them took 847 ms, 1e9 would
+    // never return. CHGCAR's atom loop already fails this way.
+    if (pos >= content.length) {
+      throw new Error(`.cube declares ${n_atoms} atoms but the file ends after ${atom_idx}`)
+    }
     const cur = read_text_line(content, pos)
     const atom_line = cur.line.trim().split(/\s+/).map(Number)
     pos = cur.next
@@ -451,7 +483,7 @@ export function parse_cube(
   }
 
   // Fast-parse volumetric data directly from the string
-  const total_points = n_grid[0] * n_grid[1] * n_grid[2]
+  const total_points = checked_grid_points(n_grid, content.length - pos, `.cube`)
   const data = new Float64Array(total_points)
   const { count: parsed_count } = parse_float_block(content, pos, total_points, data)
   if (parsed_count < total_points) {

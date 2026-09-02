@@ -55,6 +55,34 @@ function line_reader(content: string, start = 0) {
 
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.
 // Format specification: http://www.xcrysden.org/doc/XSF.html
+// Only a grid this large is gated on the remaining byte count. A smaller one allocates little
+// even when the file is truncated, and letting it through keeps the parsers' own specific
+// "expected N values, got M" message, which says far more about an ordinary truncation.
+const GUARDED_POINT_COUNT = 1_000_000 // 8 MB as Float64
+
+// A declared k-grid drives one Float64Array allocation per band before a single value is read,
+// so it has to be plausible for the bytes that remain: every value needs at least a digit and a
+// separator. Without this a tiny file declaring a huge grid allocated gigabytes, or raised a
+// bare RangeError, before discovering there was no data to fill it.
+const checked_grid_points = (
+  k_grid: readonly number[],
+  remaining_bytes: number,
+  n_bands: number,
+  label: string,
+): number => {
+  const total = k_grid.reduce((product, dim) => product * dim, 1)
+  if (!Number.isSafeInteger(total) || total <= 0) {
+    throw new Error(`${label}: k-grid ${k_grid.join(`×`)} is not a valid point count`)
+  }
+  const needed = total * Math.max(n_bands, 1)
+  if (needed > GUARDED_POINT_COUNT && needed > Math.floor(remaining_bytes / 2)) {
+    throw new Error(
+      `${label}: ${n_bands} band(s) on a ${k_grid.join(`×`)} k-grid need ${needed} values but only ${remaining_bytes} bytes remain`,
+    )
+  }
+  return total
+}
+
 function parse_bxsf(content: string): BandGridData {
   const block_start = content.indexOf(`BEGIN_BLOCK_BANDGRID_3D`)
   if (block_start === -1) throw new Error(`BXSF file missing BEGIN_BLOCK_BANDGRID_3D`)
@@ -104,7 +132,12 @@ function parse_bxsf(content: string): BandGridData {
   // BandEnergyGrid layout. parse_float_block reads the numbers straight off the string and
   // stops at the next line starting with a letter (the next BAND: or END_BANDGRID_3D).
   const energies: BandEnergyGrid[][] = [[]] // [spin=1][band]
-  const total_points = k_grid[0] * k_grid[1] * k_grid[2]
+  const total_points = checked_grid_points(
+    k_grid,
+    content.length - reader.position(),
+    n_bands,
+    `BXSF`,
+  )
 
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     let band_line = reader.next()
@@ -176,7 +209,12 @@ function parse_frmsf(content: string): BandGridData {
   // Band energies, one per line in z-fastest order (trailing columns such as FermiSurfer's
   // auxiliary colour data are dropped), converted from Hartree to eV. FRMSF has a single spin
   // channel (no spin-polarized support in the standard format).
-  const total_points = k_grid[0] * k_grid[1] * k_grid[2]
+  const total_points = checked_grid_points(
+    k_grid,
+    content.length - reader.position(),
+    n_bands,
+    `FRMSF`,
+  )
   const energies: BandEnergyGrid[][] = [[]]
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     const energy_values = new Float64Array(total_points)

@@ -469,6 +469,40 @@ function make_cube({
 describe(`parse_cube`, () => {
   const bohr = BOHR_TO_ANGSTROM
 
+  // A .cube header declares its atom count and grid size, and both used to be trusted before
+  // any data was read. At EOF `read_text_line` returns an empty line without advancing, so an
+  // inflated atom count just span (4e6 took 847 ms, 1e9 would never return), and the grid size
+  // sized a Float64Array outright: a 110-byte file claiming 600x600x600 allocated 1.7 GB.
+  const tiny_header = (n_atoms: number, dims: [number, number, number]) =>
+    [
+      `comment`,
+      `comment2`,
+      `  ${n_atoms} 0.0 0.0 0.0`,
+      `  ${dims[0]} 0.1 0.0 0.0`,
+      `  ${dims[1]} 0.0 0.1 0.0`,
+      `  ${dims[2]} 0.0 0.0 0.1`,
+      `1 0.0 0.0 0.0 0.0`,
+      `0.5 0.5 0.5`,
+    ].join(`\n`)
+
+  test.each([
+    [
+      `an atom count the file cannot supply`,
+      tiny_header(4_000_000, [2, 2, 2]),
+      /declares 4000000 atoms but the file ends/,
+    ],
+    [
+      `a grid the file cannot supply`,
+      tiny_header(0, [600, 600, 600]),
+      /600×600×600 grid \(216000000 values\) but only/,
+    ],
+  ])(`rejects %s without allocating for it`, (_case, content, message) => {
+    vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const start = performance.now()
+    expect(() => parse_cube(content)).toThrow(message)
+    expect(performance.now() - start).toBeLessThan(100) // the atom spin alone took 847 ms
+  })
+
   test(`parses valid .cube with correct structure, grid shape, and volume`, () => {
     const result = parse_cube(make_cube())
     expect(result).not.toBeNull()
