@@ -1291,3 +1291,22 @@ describe(`BinnedScatterPlot`, () => {
     )
   }, 10_000)
 })
+
+// The component supplied its own `.2~g` tick format, and format_tick_values short-circuits its
+// whole duplicate-avoidance escalation the moment a formatter is given. So a tight window over
+// large values labelled every tick identically with zero configuration - and the default
+// density bin_click is `zoom`, which lands in exactly such a window.
+test(`does not force a tick format that collapses distinct labels`, async () => {
+  const values = Array.from({ length: 400 }, (_unused, idx) => 1000 + (idx % 20) / 2)
+  mount_plot({ series: [{ x: values, y: values }] })
+  await tick()
+  const labels = (side: string) =>
+    [...document.querySelectorAll(`.${side}-axis .tick text`)].map(
+      (node) => node.textContent?.trim() ?? ``,
+    )
+  for (const side of [`x`, `y`]) {
+    const ticks = labels(side)
+    expect(ticks.length).toBeGreaterThan(1)
+    expect(new Set(ticks).size).toBe(ticks.length) // was six identical `1e+3`
+  }
+})

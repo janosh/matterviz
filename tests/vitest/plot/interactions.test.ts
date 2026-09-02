@@ -172,6 +172,29 @@ describe(`sync_y2_range`, () => {
     ])
   })
 
+  // A descending y1 is a supported mode, but the span math assumes value rises with position,
+  // which is only true going up. Taking the fraction at face value both mirrored y2 against y1
+  // (y2 counting up while y1 counted down, so the alignment contract was broken outright) and
+  // sized the range off the wrong constraint. Each case is the ascending row above it reversed,
+  // so the answer has to be that row's answer reversed too.
+  it.each([
+    { y1: [100, 0], y2_base: [0, 50], expected: [50, 0], desc: `0 at bottom` },
+    { y1: [50, -50], y2_base: [0, 100], expected: [100, -100], desc: `0 at middle` },
+    { y1: [0, -100], y2_base: [0, 50], expected: [50, -50], desc: `0 at top` },
+    { y1: [40, 0], y2_base: [60, 140], expected: [140, 0], desc: `y2 above 0` },
+    {
+      y1: [200, 0],
+      y2_base: [80, 120],
+      expected: [120, 80],
+      align_value: 100,
+      desc: `custom align 50%`,
+    },
+  ] as const)(`align on a descending y1: $desc`, ({ y1, y2_base, expected, align_value }) => {
+    expect(sync_y2_range([...y1], [...y2_base], { mode: `align`, align_value })).toEqual([
+      ...expected,
+    ])
+  })
+
   // Edge case: align_value outside y1_range — result must contain both data and align_value
   it.each<{ y1: Vec2; y2_base: Vec2; align_value: number }>([
     { y1: [10, 20], y2_base: [60, 140], align_value: 0 },

@@ -168,9 +168,14 @@
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
 
-  // Tick labels default to `.2~g` (the frame measures padding with the same config)
-  const final_x_axis = $derived({ format: `.2~g`, ...x_axis })
-  const final_y_axis = $derived({ format: `.2~g`, ...y_axis })
+  // No default tick format: format_tick_values short-circuits its whole duplicate-avoidance
+  // escalation the moment a formatter is supplied, so a hardcoded `.2~g` here labelled six
+  // ticks over [1000, 1010] as `1e+3` six times, with zero configuration. Worse after a
+  // density bin_click zoom, where the narrow window gave six `1`s. ScatterPlot supplies none
+  // and lets the escalation pick; a caller wanting a fixed format still passes one through.
+  // (the frame measures padding with the same config, so both stay in step)
+  const final_x_axis = $derived({ ...x_axis })
+  const final_y_axis = $derived({ ...y_axis })
   const grid_display = { x_grid: true, y_grid: true }
   const x_scale_type = $derived(final_x_axis.scale_type ?? `linear`)
   const y_scale_type = $derived(final_y_axis.scale_type ?? `linear`)

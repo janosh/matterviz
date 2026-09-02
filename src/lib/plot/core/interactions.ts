@@ -75,8 +75,15 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
     const y1_span = y1_range[1] - y1_range[0]
     if (y1_span === 0) return y2_base_range
 
-    // Where is align_val in Y1's range? (0 = bottom, 1 = top)
+    // Where is align_val along Y1, as a fraction from y1_range[0] to y1_range[1]?
     const rel_pos = (align_val - y1_range[0]) / y1_span
+    // The span math below assumes value rises with the fraction, which is only true on an
+    // ascending axis. A descending y1 is a supported mode, and taking its fraction at face
+    // value both mirrored y2 against it (y2 counting up while y1 counted down) and sized the
+    // range off the wrong constraint: y1 [10, 0] against y2 data [0, 5] gave [-5, 5] instead
+    // of [5, 0]. Solve in ascending space, then hand the pair back pointing y1's way.
+    const descending = y1_span < 0
+    const frac = descending ? 1 - rel_pos : rel_pos
 
     // Ensure Y2 range includes both align_val and all data
     const y2_min_data = Math.min(y2_base_range[0], align_val)
@@ -85,20 +92,20 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
     // Calculate minimum span needed to fit all data while keeping align_val at rel_pos
     // Constraints: y2_min <= y2_min_data AND y2_max >= y2_max_data
     let y2_span = y2_max_data - y2_min_data
-    if (rel_pos > 0) {
-      y2_span = Math.max(y2_span, (align_val - y2_min_data) / rel_pos)
+    if (frac > 0) {
+      y2_span = Math.max(y2_span, (align_val - y2_min_data) / frac)
     }
-    if (rel_pos < 1) {
-      y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - rel_pos))
+    if (frac < 1) {
+      y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - frac))
     }
 
-    const y2_min_computed = align_val - rel_pos * y2_span
-    const y2_max_computed = align_val + (1 - rel_pos) * y2_span
+    const y2_min_computed = align_val - frac * y2_span
+    const y2_max_computed = align_val + (1 - frac) * y2_span
     // When align_val is outside y1_range (rel_pos < 0 or > 1), the formula can produce
     // a range that omits y2_base_range or align_val. Ensure both are always included.
     const y2_min = Math.min(y2_min_computed, y2_base_range[0], align_val)
     const y2_max = Math.max(y2_max_computed, y2_base_range[1], align_val)
-    return [y2_min, y2_max]
+    return descending ? [y2_max, y2_min] : [y2_min, y2_max]
   }
 
   return y2_base_range
