@@ -7,6 +7,7 @@ import {
   format_oxi_state,
   get_alphabetical_formula,
   get_electro_neg_formula,
+  parse_formula,
   get_formula_label_segments,
   is_compound,
   tokenize_formula_markup,
@@ -292,5 +293,23 @@ describe(`format_oxi_state`, () => {
     [3, `+3`],
   ])(`format_oxi_state(%s) -> %s`, (input, expected) => {
     expect(format_oxi_state(input)).toBe(expected)
+  })
+})
+
+// AMOUNT_FORMAT was chosen so formulas round-trip (`s` was ruled out because `C1k` reads back
+// as nothing), but both it and the sub-1 `.3~g` fall back to exponent form below about 1e-6 -
+// a trace dopant occupancy rendered `FeO1e-7`, which parse_formula rejects on the `e`.
+describe(`amount formatting round-trips`, () => {
+  test.each([
+    [{ Fe: 1, O: 1e-7 }, `FeO0.0000001`],
+    [{ Fe: 1, O: 1e-5 }, `FeO0.00001`],
+    [{ Fe: 1, O: 0.0625 }, `FeO0.0625`], // sub-1 keeps significant digits, not 3 decimals
+    [{ Fe: 2, O: 3 }, `Fe2O3`],
+  ])(`%j renders and parses back`, (composition, expected) => {
+    const formula = get_alphabetical_formula(composition, { plain_text: true, delim: `` })
+    expect(formula).toBe(expected)
+    for (const [element, amount] of Object.entries(parse_formula(formula))) {
+      expect(amount).toBeCloseTo((composition as Record<string, number>)[element], 12)
+    }
   })
 })
