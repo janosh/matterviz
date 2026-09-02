@@ -1,10 +1,16 @@
 import { get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import { parse_linear_rgb } from '$lib/scene/colors'
-import { build_trajectory_lines, collected_frame_idx } from '$lib/structure/trajectory-lines'
+import { get_pbc_image_sites } from '$lib/structure/pbc'
+import { make_supercell } from '$lib/structure/supercell'
+import {
+  build_trajectory_lines,
+  collected_frame_idx,
+  trajectory_trail_anchors,
+} from '$lib/structure/trajectory-lines'
 import { unwrapped_positions_of } from '$lib/trajectory/positions'
 import { describe, expect, test } from 'vitest'
-import { make_position_stream } from '../setup'
+import { make_crystal, make_position_stream } from '../setup'
 
 // One atom drifting +1 Å along x per frame, wrapped into a 10 Å cell: 0,1,…,9,0,1,…
 // The wrap between frames 9 and 10 is the artefact unwrapping must remove.
@@ -290,6 +296,39 @@ describe(`anchoring trails to the displayed atoms`, () => {
         )
       }
     }
+  })
+
+  // What StructureScene feeds `anchor_positions`: image atoms are appended after the base
+  // sites (show_image_atoms defaults to on), so keying on an exact site count left every
+  // periodic structure unanchored and drew each trail a lattice vector off its sphere.
+  test(`derives anchors from the base sites of a structure carrying PBC image atoms`, () => {
+    const structure = make_crystal(5, [
+      [`Na`, [0, 0, 0]],
+      [`Cl`, [0.5, 0.5, 0.5]],
+    ])
+    const imaged = get_pbc_image_sites(structure)
+    expect(imaged.sites.length).toBeGreaterThan(structure.sites.length)
+
+    const anchors = trajectory_trail_anchors(imaged.sites, structure.sites.length)
+    expect(anchors).toEqual(new Float64Array([0, 0, 0, 2.5, 2.5, 2.5]))
+  })
+
+  test.each([
+    // [case, sites, n_atoms] -> null: nothing here can be matched to the stream's atom order
+    [`fewer displayed sites than stream atoms`, make_crystal(5, [[`Na`, [0, 0, 0]]]).sites, 2],
+    [
+      `a supercell, which renumbers every atom`,
+      make_supercell(
+        make_crystal(5, [
+          [`Na`, [0, 0, 0]],
+          [`Cl`, [0.5, 0.5, 0.5]],
+        ]),
+        [2, 1, 1],
+      ).sites,
+      2,
+    ],
+  ])(`returns null for %s`, (_case, sites, n_atoms) => {
+    expect(trajectory_trail_anchors(sites, n_atoms)).toBeNull()
   })
 
   test(`anchors each atom independently`, () => {

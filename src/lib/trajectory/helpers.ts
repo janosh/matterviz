@@ -239,6 +239,82 @@ export const is_xyz_atom_line = (text: string, from = 0, to = text.length): bool
   )
 }
 
+// One column group of an extXYZ `Properties=` spec, e.g. `pos:R:3` -> 3 columns of type `r`
+export type ExtxyzColumn = { offset: number; ncols: number; type: string }
+
+// Column layout an extXYZ comment line declares. Without a `Properties=` spec (plain XYZ)
+// `layout` is null and the caller falls back to the `symbol x y z` shape.
+export function parse_extxyz_columns(comment: string): {
+  species_col: number
+  // Column holding the atomic number when the layout names atoms that way instead of by
+  // symbol (`Properties=Z:I:1:pos:R:3`), else -1
+  atomic_number_col: number
+  // Column carrying the atom's identity, whichever of the two forms it takes
+  symbol_col: number
+  pos_col: number
+  forces_col: number
+  min_cols: number
+  layout: Record<string, ExtxyzColumn> | null
+} {
+  const fields =
+    /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
+  let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
+  for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
+    const ncols = Math.trunc(Number(fields[idx + 2]))
+    if (Number.isInteger(ncols) && ncols > 0) {
+      layout[fields[idx].toLowerCase()] = {
+        offset,
+        ncols,
+        type: fields[idx + 1].toLowerCase(),
+      }
+      offset += ncols
+    } else layout = null
+  }
+  const species_col = layout?.species?.offset ?? 0
+  const atomic_number_col = !layout?.species && layout?.z?.ncols === 1 ? layout.z.offset : -1
+  const pos_col = layout?.pos?.offset ?? 1
+  const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
+  return {
+    species_col,
+    atomic_number_col,
+    symbol_col: atomic_number_col >= 0 ? atomic_number_col : species_col,
+    pos_col,
+    forces_col,
+    min_cols: Math.max(pos_col + 3, species_col + 1),
+    layout: layout && Object.keys(layout).length > 0 ? layout : null,
+  }
+}
+
+// Atom-line test for one frame, built from that frame's own column layout: enough columns
+// and numeric coordinates where `Properties=` says the positions are. A file whose layout
+// puts another column first (`id:I:1:species:S:1:pos:R:3`, `Z:I:1:pos:R:3`) is legal extXYZ
+// and must not be hidden from the frame walk by the plain-XYZ `symbol x y z` assumption.
+function make_xyz_atom_line_test(
+  comment: string,
+): (text: string, from?: number, to?: number) => boolean {
+  const { species_col, pos_col, min_cols, layout } = parse_extxyz_columns(comment)
+  if (!layout) return is_xyz_atom_line
+  // Only a declared STRING species column can be checked for a symbol shape; `Z:I:1` names
+  // the atom with a number, so there is nothing non-numeric to assert. Deliberately not the
+  // `symbol_col` parse_extxyz_columns returns, which is whichever column names the element.
+  const text_species_col = layout.species?.type === `s` ? species_col : -1
+  return (text, from = 0, to = text.length) => {
+    const scanner = atom_line_scanner
+    if (scanner.scan(text, from, to) < min_cols) return false
+    if (
+      text_species_col >= 0 &&
+      (scanner.token_length(text_species_col) > 3 ||
+        !Number.isNaN(scanner.num(text_species_col)))
+    )
+      return false
+    return (
+      !Number.isNaN(scanner.num(pos_col)) &&
+      !Number.isNaN(scanner.num(pos_col + 1)) &&
+      !Number.isNaN(scanner.num(pos_col + 2))
+    )
+  }
+}
+
 // Location of one XYZ frame in the text: `start` is the offset of its atom-count line, `line`
 // that line's 1-based number, `atoms_start` the offset of the first atom line and `end` the
 // offset just past the last atom line's newline (or the text end)
@@ -286,8 +362,9 @@ export function* iter_xyz_frames(text: string): Generator<XyzFrameSpec, XyzFrame
       continue
     }
     const { num_atoms, atoms_start } = header
-    // Walk the atom block line by line: the first three are checked for the
-    // `symbol x y z` shape, the rest only counted
+    // Walk the atom block line by line: the first three are checked against the layout the
+    // frame's own comment declares, the rest only counted
+    const is_atom_line = make_xyz_atom_line_test(header.comment)
     let atom_lines = 0
     let valid_coords = 0
     let cursor = atoms_start
@@ -296,7 +373,7 @@ export function* iter_xyz_frames(text: string): Generator<XyzFrameSpec, XyzFrame
       // The input's last line may be half-written by a writer still appending. A frame of
       // three atoms or fewer samples it, so it never disqualifies the frame here; the caller
       // decodes or drops it (index_xyz_frames), which a frame never indexed cannot be.
-      if (atom_lines < 3 && (eol >= to || is_xyz_atom_line(text, cursor, eol))) valid_coords++
+      if (atom_lines < 3 && (eol >= to || is_atom_line(text, cursor, eol))) valid_coords++
       atom_lines++
       cursor = eol + 1
     }

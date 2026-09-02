@@ -11,6 +11,7 @@ import {
   index_xyz_frames,
   parse_extxyz_lattice,
   parse_xyz_comment_metadata,
+  xyz_frame_force_stats,
 } from '../parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
@@ -80,12 +81,19 @@ const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
         collector,
       ),
     property_row: (frame_idx) => {
-      const { comment } = frames[frame_idx]
+      const spec = frames[frame_idx]
+      const { comment } = spec
       const { step, properties } = parse_xyz_comment_metadata(comment)
       if (properties.volume === undefined) {
         const lattice = parse_extxyz_lattice(comment)
         if (lattice) properties.volume = Math.abs(math.det_3x3(lattice))
       }
+      // Per-atom `forces` columns, like build_xyz_frame reads for the materialized path (and
+      // overriding a comment-level fmax the same way). Which path opens a file is decided by
+      // its byte size alone, so leaving these to the comment lost the force curve of every
+      // file above the indexing threshold that writes forces per atom.
+      const force_stats = xyz_frame_force_stats(text, spec)
+      if (force_stats) Object.assign(properties, force_stats)
       return { frame_number: frame_idx, step: step ?? frame_idx, properties }
     },
     // sync_run refuses reads after dispose, so dropping the text here only frees it

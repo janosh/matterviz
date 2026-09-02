@@ -16,6 +16,7 @@ import { create_cart_to_frac } from '$lib/math'
 import { unwrapped_positions_of } from '$lib/trajectory/positions'
 import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
+import type { Site } from '$lib/structure'
 
 // `element` paints each trail in its atom's color (matching the spheres in the scene),
 // `time` runs a d3 ramp from the oldest sampled frame to the newest so the head of a
@@ -309,4 +310,28 @@ export function build_trajectory_lines(
     dropped_segments,
     max_segment_length,
   }
+}
+
+// === Trajectory trail anchors ===
+
+// Cartesian trail-head targets in the position stream's atom order, or null when the
+// displayed sites cannot be matched to the stream's atoms one for one. Trails are built from
+// raw (unwrapped) stream coordinates while the spheres are drawn from the displayed
+// structure, so without these anchors a trail head sits whole lattice vectors from its atom.
+// get_pbc_image_sites keeps the base sites at [0, n_atoms) in stream order and appends the
+// image copies, so those leading sites still anchor. A supercell instead renumbers every
+// atom (every site carries `orig_unit_cell_idx`), leaving nothing to anchor one-to-one.
+export function trajectory_trail_anchors(
+  sites: readonly Site[] | undefined,
+  n_atoms: number | undefined,
+): Float64Array | null {
+  if (!sites || !n_atoms || sites.length < n_atoms) return null
+  const anchors = new Float64Array(n_atoms * 3)
+  for (let site_idx = 0; site_idx < n_atoms; site_idx++) {
+    const site = sites[site_idx]
+    const { orig_site_idx, orig_unit_cell_idx } = site.properties ?? {}
+    if (orig_site_idx !== undefined || orig_unit_cell_idx !== undefined) return null
+    anchors.set(site.xyz, site_idx * 3)
+  }
+  return anchors
 }

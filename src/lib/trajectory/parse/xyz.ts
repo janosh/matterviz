@@ -1,52 +1,18 @@
-import type { ElementSymbol } from '$lib/element/types'
+import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
 import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
-import type { XyzFrameSpec } from '$lib/trajectory/helpers'
+import type { ExtxyzColumn, XyzFrameSpec } from '$lib/trajectory/helpers'
 import {
   calc_force_stats,
   create_trajectory_frame,
   elem_symbol_from_token,
   iter_xyz_frames,
   line_end,
+  parse_extxyz_columns,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
-
-type ExtxyzColumn = { offset: number; ncols: number; type: string }
-
-function parse_extxyz_columns(comment: string): {
-  species_col: number
-  pos_col: number
-  forces_col: number
-  min_cols: number
-  layout: Record<string, ExtxyzColumn> | null
-} {
-  const fields =
-    /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
-  let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
-  for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
-    const ncols = Math.trunc(Number(fields[idx + 2]))
-    if (Number.isInteger(ncols) && ncols > 0) {
-      layout[fields[idx].toLowerCase()] = {
-        offset,
-        ncols,
-        type: fields[idx + 1].toLowerCase(),
-      }
-      offset += ncols
-    } else layout = null
-  }
-  const species_col = layout?.species?.offset ?? 0
-  const pos_col = layout?.pos?.offset ?? 1
-  const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
-  return {
-    species_col,
-    pos_col,
-    forces_col,
-    min_cols: Math.max(pos_col + 3, species_col + 1),
-    layout: layout && Object.keys(layout).length > 0 ? layout : null,
-  }
-}
 
 export function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
   const raw = /Lattice\s*=\s*"(?<lattice>[^"]*)"/i.exec(comment)?.[1]
@@ -195,6 +161,17 @@ function parse_xyz_comment_signals(comment: string): Record<string, number[] | n
   return signals
 }
 
+// Element of the atom on the scanned line: the symbol token, or the atomic number when the
+// layout declares `Z` in place of a species column
+const scanned_element = (
+  scanner: LineScanner,
+  symbol_col: number,
+  atomic_number_col: number,
+): ElementSymbol | undefined =>
+  atomic_number_col >= 0
+    ? ELEM_SYMBOLS[Math.trunc(scanner.num(atomic_number_col)) - 1]
+    : elem_symbol_from_token(scanner.str(symbol_col))
+
 // Symbols are case-normalised (`FE` -> `Fe`) like the structure parsers do. Unknown symbols
 // are skipped (with a warning) rather than rejected because real files carry them: ASE writes
 // `X` for ghost/dummy atoms and some codes emit placeholder species. A frame with no
@@ -210,7 +187,8 @@ function parse_xyz_atom_lines(
   forces: number[][]
   site_properties: Record<string, unknown>[]
 } {
-  const { species_col, pos_col, forces_col, min_cols, layout } = parse_extxyz_columns(comment)
+  const { atomic_number_col, symbol_col, pos_col, forces_col, min_cols, layout } =
+    parse_extxyz_columns(comment)
   const elements: ElementSymbol[] = []
   const positions: number[][] = []
   const forces: number[][] = []
@@ -242,8 +220,8 @@ function parse_xyz_atom_lines(
         `XYZ ${frame_label} line ${line_number} has non-numeric coordinates: "${quoted()}"`,
       )
     }
-    const symbol = scanner.str(species_col)
-    const element_symbol = elem_symbol_from_token(symbol)
+    const symbol = scanner.str(symbol_col)
+    const element_symbol = scanned_element(scanner, symbol_col, atomic_number_col)
     if (!element_symbol) {
       warn(
         `Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label} at line ${line_number}`,
@@ -284,7 +262,7 @@ function parse_xyz_atom_lines(
   if (positions.length === 0) {
     scanner.scan(text, atoms_start, line_end(text, atoms_start, end))
     throw new TypeError(
-      `XYZ ${frame_label} has no atom with a recognised element symbol in its ${num_atoms} atom lines (first species column: "${scanner.str(species_col)}")`,
+      `XYZ ${frame_label} has no atom with a recognised element symbol in its ${num_atoms} atom lines (first species column: "${scanner.str(symbol_col)}")`,
     )
   }
   // Forces and move flags are only meaningful when every kept atom has them
@@ -337,6 +315,44 @@ export function build_xyz_frame(
     site_properties,
     collector.warn,
   )
+}
+
+// Force statistics straight off a frame's atom lines, without building the frame: what the
+// indexed (large-file) run needs for its plot rows. Identical arithmetic to the materialized
+// path's calc_force_stats over the same columns — including its rules that an atom whose
+// species is unrecognised does not count and that forces are dropped unless every counted
+// atom has them — so the force curve does not change with the file size that picks the path.
+export function xyz_frame_force_stats(
+  text: string,
+  { atoms_start, end, num_atoms, comment }: XyzFrameSpec,
+): { force_max: number; force_norm: number } | null {
+  const { atomic_number_col, symbol_col, forces_col, min_cols } = parse_extxyz_columns(comment)
+  if (forces_col < 0) return null
+  const scanner = new LineScanner()
+  let force_max = -Infinity
+  let sum_sq = 0
+  let counted = 0
+  let cursor = atoms_start
+  for (let idx = 0; idx < num_atoms && cursor < end; idx++) {
+    const eol = line_end(text, cursor, end)
+    const n_cols = scanner.scan(text, cursor, eol)
+    cursor = eol + 1
+    if (n_cols < min_cols) return null
+    // An atom whose species the frame builder skips does not count toward the stats either
+    if (!scanned_element(scanner, symbol_col, atomic_number_col)) continue
+    if (n_cols < forces_col + 3) return null
+    const force_x = scanner.num(forces_col)
+    const force_y = scanner.num(forces_col + 1)
+    const force_z = scanner.num(forces_col + 2)
+    if (!Number.isFinite(force_x) || !Number.isFinite(force_y) || !Number.isFinite(force_z))
+      return null
+    const magnitude = Math.hypot(force_x, force_y, force_z)
+    if (magnitude > force_max) force_max = magnitude
+    sum_sq += magnitude ** 2
+    counted++
+  }
+  if (counted === 0) return null
+  return { force_max, force_norm: Math.sqrt(sum_sq / counted) }
 }
 
 // Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:

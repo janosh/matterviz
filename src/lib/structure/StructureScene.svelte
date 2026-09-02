@@ -113,6 +113,7 @@
     TrajectoryLineWrapMode,
   } from './trajectory-lines'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
+  import { trajectory_trail_anchors } from '$lib/structure/trajectory-lines'
 
   type EditableAtomHitTarget = {
     site_idx: number
@@ -1834,14 +1835,9 @@
   })
 
   // Anchor unwrapped trails to wrapped displayed sites only while atom identities still match.
-  let trajectory_line_anchors = $derived.by(() => {
-    const sites = structure?.sites
-    const n_atoms = trajectory_position_stream?.n_atoms
-    if (!sites || n_atoms !== sites.length) return null
-    const anchors = new Float64Array(n_atoms * 3)
-    for (const [site_idx, site] of sites.entries()) anchors.set(site.xyz, site_idx * 3)
-    return anchors
-  })
+  let trajectory_line_anchors = $derived(
+    trajectory_trail_anchors(structure?.sites, trajectory_position_stream?.n_atoms),
+  )
 
   let displacement_arrows = $derived.by(() => {
     const vectors = displacement_field?.vectors

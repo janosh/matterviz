@@ -133,18 +133,41 @@
   const gray = new Color(0x999999)
   const scratch_color = new Color()
   let colored_mesh: InstancedMesh | null = null
+  // Colors last written, one entry per instance slot, plus the ghost flag they were written
+  // under. The mesh is grow-only, so a trajectory whose frames differ in composition reuses
+  // a slot for a different element: keying the scrub fast path on mesh identity alone left
+  // that slot painted the previous frame's color for the whole scrub burst.
+  let colored_css: (string | undefined)[] = []
+  let colored_ghost = false
   $effect(() => {
     const current = mesh
-    if (!current || (positions_only && current === colored_mesh)) return
-    const limit = Math.min(atoms.length, current.count)
+    // Read before any early return so a composition (or ghost) change still re-runs this
+    const current_atoms = atoms
+    const desaturate = ghost
+    if (!current) return
+    const limit = Math.min(current_atoms.length, current.count)
+    if (positions_only && current === colored_mesh && desaturate === colored_ghost) {
+      // Scrub fast path: comparing the CSS strings is a few hundred ns for 10k atoms and
+      // skips both the per-atom color math and the instanceColor upload when only the
+      // positions moved, which is the common case this flag exists for.
+      let recolor = colored_css.length !== limit
+      for (let idx = 0; !recolor && idx < limit; idx++) {
+        recolor = current_atoms[idx].color !== colored_css[idx]
+      }
+      if (!recolor) return
+    }
     // set_linear_css_color caches the CSS parse per distinct color (a handful here, >10k atoms)
+    colored_css.length = limit
     for (let idx = 0; idx < limit; idx++) {
-      set_linear_css_color(atoms[idx].color ?? `#999999`, scratch_color)
-      if (ghost) scratch_color.lerp(gray, 0.4)
+      const css_color = current_atoms[idx].color
+      set_linear_css_color(css_color ?? `#999999`, scratch_color)
+      if (desaturate) scratch_color.lerp(gray, 0.4)
       current.setColorAt(idx, scratch_color)
+      colored_css[idx] = css_color
     }
     if (current.instanceColor) current.instanceColor.needsUpdate = true
     colored_mesh = current
+    colored_ghost = desaturate
     invalidate()
   })
 </script>
