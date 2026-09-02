@@ -288,9 +288,8 @@ export function parse_extxyz_columns(comment: string): {
     forces_col,
     min_cols: Math.max(pos_col + 3, species_col + 1),
     layout: layout && Object.keys(layout).length > 0 ? layout : null,
-    // Checked on the whole spec, not on `layout.pos`: a zero, fractional or non-numeric count
-    // anywhere in the spec (`pos:R:0`, `id:I:x:species:S:1:pos:R:3`) discards `layout`
-    // altogether, which used to read as "no spec at all" and fall back silently.
+    // Keyed off the spec, not `layout.pos`: one bad count anywhere (`pos:R:0`, or an earlier
+    // `id:I:x`) discards `layout` wholesale, which used to read as "no spec at all"
     spec_error:
       spec === undefined || layout?.pos?.ncols === 3
         ? null

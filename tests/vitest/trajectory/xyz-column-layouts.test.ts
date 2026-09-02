@@ -68,11 +68,9 @@ test(`indexed run reports the same force stats as the materialized run`, async (
   expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-3, -4])
 })
 
-// A malformed `Properties=` must fail loudly. Every one of these used to produce a plausible
-// wrong atom: whatever sits in columns 1-3 became the position, and a non-integer atomic
-// number was truncated into a real element. The counts below (0, 4, fractional, non-numeric)
-// each discard the layout outright, which then read as "no Properties= at all" and fell back
-// to the plain `symbol x y z` shape — the same three columns the bad spec would have read.
+// A malformed `Properties=` must fail loudly. Each of these used to yield a plausible wrong
+// atom: an unusable spec was discarded and read as "no Properties= at all", so the plain
+// `symbol x y z` fallback took columns 1-3 — the very ones the bad spec would have misread.
 test.each([
   [`pos declaring fewer than 3 columns`, `species:S:1:pos:R:2:forces:R:3`],
   [`pos declaring more than 3 columns`, `species:S:1:pos:R:4`],
