@@ -89,9 +89,12 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
     const val1 = row1[key]
     const val2 = row2[key]
     if (val1 === val2) continue
-    if (is_invalid(val1) || is_invalid(val2)) {
-      return Number(is_invalid(val1)) - Number(is_invalid(val2))
-    }
+    const invalid1 = is_invalid(val1)
+    const invalid2 = is_invalid(val2)
+    // both invalid ranks them equally low, so let the next criterion break the tie —
+    // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
+    if (invalid1 && invalid2) continue
+    if (invalid1 || invalid2) return Number(invalid1) - Number(invalid2)
     const sort_val1 = get_sort_val(val1)
     const sort_val2 = get_sort_val(val2)
     const modifier = ascending ? 1 : -1
@@ -287,7 +290,8 @@ function format_since(timestamp: number, now_ms: number): string {
   ] as const
   for (const [suffix, minutes_per_unit] of units) {
     const value = Math.floor(remaining_minutes / minutes_per_unit)
-    if (value > 0 || suffix === `m`) parts.push(`${value}${suffix}`)
+    // the minutes term only fills in when no coarser unit rendered, so no trailing 0m
+    if (value > 0 || (suffix === `m` && parts.length === 0)) parts.push(`${value}${suffix}`)
     remaining_minutes -= value * minutes_per_unit
     if (parts.length >= 3) break
   }

@@ -1,5 +1,5 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { CellVal, ColumnFilter, Label, RowData } from '$lib/table'
+import type { CellVal, ColumnFilter, Label, RowData, SortCriterion } from '$lib/table'
 import {
   CATEGORY_LIMIT,
   cell_matches_filter,
@@ -403,6 +403,31 @@ describe(`compare_rows`, () => {
     )
     expect(sorted.map((row) => row.name)).toEqual([`a`, `b`, `z`])
   })
+
+  it(`honours later criteria when both primary values are invalid`, () => {
+    const data: RowData[] = [
+      { score: NaN, name: `b` },
+      { score: NaN, name: `a` },
+      { score: 1, name: `c` },
+    ]
+    const criteria: SortCriterion[] = [
+      { key: `score`, ascending: true },
+      { key: `name`, ascending: true },
+    ]
+    const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
+    // both-NaN rows sink together but still order by name among themselves
+    expect(sorted.map((row) => row.name)).toEqual([`c`, `a`, `b`])
+    // null vs undefined is equally invalid, so the secondary criterion decides
+    const mixed: RowData[] = [
+      { score: null, name: `b` },
+      { score: undefined, name: `a` },
+    ]
+    expect(
+      mixed
+        .toSorted((row1, row2) => compare_rows(row1, row2, criteria))
+        .map((row) => row.name),
+    ).toEqual([`a`, `b`])
+  })
 })
 
 describe(`search and filters`, () => {
@@ -516,6 +541,11 @@ describe(`date/time columns`, () => {
     expect(format_datetime(new Date(2017, 6, 23, 9, 57).getTime(), `relative`, now)).toBe(
       `6y 5mo 2w ago`,
     )
+    // a zero remainder adds no trailing 0m term, but a lone minutes term still renders
+    expect(format_datetime(now - 2 * 24 * 60 * 60_000, `relative`, now)).toBe(`2d ago`)
+    expect(format_datetime(now - 60 * 60_000, `relative`, now)).toBe(`1h ago`)
+    expect(format_datetime(now - 90 * 60_000, `relative`, now)).toBe(`1h 30m ago`)
+    expect(format_datetime(now - 30_000, `relative`, now)).toBe(`0m ago`)
   })
 })
 
