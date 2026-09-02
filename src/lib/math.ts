@@ -1233,10 +1233,20 @@ export function solve_linear_program(
   }
 
   // Tableau columns: [original (n_cols) | artificial (n_rows) | rhs]. Rows flipped so b >= 0.
+  // Each row is also divided by its largest coefficient, which leaves the feasible set alone
+  // (scaling an equality by a positive constant is the same constraint) and puts every row on
+  // the same order of magnitude. `tolerance` is applied as an absolute cutoff in the ratio test
+  // and the linear-dependence check below, so without this a small but perfectly good pivot was
+  // read as zero: `s*x0 + s*x1 = s` reported `unbounded` from s = 1e-9 down, and a two-row
+  // problem whose second row carried 1e-10 coefficients had that row dropped as dependent and
+  // returned a confidently wrong optimum.
   const n_art = n_rows
   const rhs_col = n_cols + n_art
   const tableau = constraints.map((row, row_idx) => {
-    const sign = rhs[row_idx] < 0 ? -1 : 1
+    let row_scale = 0
+    for (const value of row) row_scale = Math.max(row_scale, Math.abs(value))
+    const sign =
+      (rhs[row_idx] < 0 ? -1 : 1) / (row_scale > 0 && isFinite(row_scale) ? row_scale : 1)
     const full = Array.from({ length: rhs_col + 1 }, () => 0)
     for (let col = 0; col < n_cols; col++) full[col] = sign * row[col]
     full[n_cols + row_idx] = 1

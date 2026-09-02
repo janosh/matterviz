@@ -45,7 +45,11 @@ export const GAS_STOICHIOMETRY: Readonly<
 // oxfmt-ignore
 const TS_TEMPERATURES = [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
 
-// Default T*S values (eV/molecule) at TS_TEMPERATURES, interpolated between grid points.
+// Default T*S values in eV PER ATOM (not per molecule) at TS_TEMPERATURES, interpolated between
+// grid points. Cross-checked against NIST standard entropies: O2 at 298 K is S = 205.15 J/mol/K
+// = 0.6339 eV/molecule, and the table holds 0.317, i.e. half of it. compute_gas_correction's
+// num_atoms factor assumes this, so regenerating the table per molecule would scale every gas
+// correction by its atom count.
 // Source: Barin Thermochemical Tables and NBS Thermochemical Tables
 // Data compiled to match PIRO (https://github.com/GENESIS-EFRC/piro)
 // F2 not in Barin/NBS tables used by PIRO - approximated from similar homonuclear diatomics (O2, N2)
@@ -61,7 +65,8 @@ const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, number[]>> = {
 }
 
 // Formation enthalpies H_f at 0K in eV/molecule
-// These are the reference energies for formation from elements
+// Reference energies for formation from elements, in eV PER ATOM like DEFAULT_TS_DATA above:
+// the CO2 base of -1.3583 eV is the JANAF -4.0748 eV/molecule divided by its 3 atoms.
 const DEFAULT_ENTHALPY: Readonly<Partial<Record<GasSpecies, number>>> = {
   CO: -0.5897,
   // CO2: Base value -1.3583 eV from JANAF tables, with -0.2482 eV correction

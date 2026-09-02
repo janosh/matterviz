@@ -1525,6 +1525,41 @@ describe(`quantile_unordered`, () => {
 })
 
 describe(`solve_linear_program`, () => {
+  // `tolerance` is an absolute cutoff in the ratio test and the linear-dependence check, so a
+  // small but perfectly good pivot read as zero. Rows are equilibrated before the tableau is
+  // built, which leaves the feasible set alone and makes the answer independent of how the
+  // caller happened to scale its constraints.
+  test.each([1, 1e-6, 1e-8, 1e-9, 1e-10, 1e-12])(
+    `solves a uniformly scaled program the same way at s=%s`,
+    (scale) => {
+      // min -x0 s.t. s*x0 + s*x1 = s, x >= 0 → x0 = 1, objective -1 for every s
+      const result = math.solve_linear_program([-1, 0], [[scale, scale]], [scale])
+      expect(result.status).toBe(`optimal`) // reported `unbounded` from s = 1e-9 down
+      expect(result.objective).toBeCloseTo(-1, 9)
+      expect(result.solution[0]).toBeCloseTo(1, 9)
+    },
+  )
+
+  test.each([1, 1e-6, 1e-9, 1e-10, 1e-12])(
+    `keeps a constraint row scaled by %s instead of dropping it`,
+    (scale) => {
+      // min -x0 s.t. x0 + x1 = 2 and s*x0 - s*x1 = 0 → x = [1, 1], objective -1
+      const result = math.solve_linear_program(
+        [-1, 0],
+        [
+          [1, 1],
+          [scale, -scale],
+        ],
+        [2, 0],
+      )
+      expect(result.status).toBe(`optimal`)
+      // the second row used to be dropped as linearly dependent, giving x = [2, 0], obj -2
+      expect(result.objective).toBeCloseTo(-1, 9)
+      expect(result.solution[0]).toBeCloseTo(1, 9)
+      expect(result.solution[1]).toBeCloseTo(1, 9)
+    },
+  )
+
   test(`finds the optimal vertex of a small LP`, () => {
     // min -x - 2y  s.t. x + y + s1 = 4, x + 3y + s2 = 6, all >= 0  → x = 3, y = 1, obj = -5
     const result = math.solve_linear_program(

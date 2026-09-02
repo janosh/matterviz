@@ -722,6 +722,20 @@ describe(`LAMMPS`, () => {
   }
   const frame_0 = lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`])
 
+  // The last three tokens of the BOX BOUNDS line are boundary flags only when they read as
+  // flags. A triclinic header with none appended puts `xy xz yz` there, none of which starts
+  // with `p`, so the frame used to come out fully aperiodic and render with no periodic images.
+  it.each([
+    [`restricted triclinic with no flags`, `xy xz yz`, `0 10 0`, [true, true, true]],
+    [`restricted triclinic with flags`, `xy xz yz pp pp ff`, `0 10 0`, [true, true, false]],
+    [`orthogonal with flags`, `pp ff pp`, `0 10`, [true, false, true]],
+  ])(`reads periodicity from a %s header`, async (_case, header, bound, expected) => {
+    const box = `${bound}\n${bound}\n${bound}`
+    const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS ${header}\n${box}\nITEM: ATOMS id type x y z\n1 1 0 0 0`
+    const run = await open(dump, `t.lammpstrj`)
+    expect(lattice_of(run.preview).pbc).toEqual(expected)
+  })
+
   // ITEM: TIME is absolute and unitless: it lands in frame metadata but never becomes a
   // time_step, which needs a unit to mean anything
   it(`parses inline frames, PBC flags, box-origin translation and ITEM: TIME`, async () => {
