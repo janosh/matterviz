@@ -470,6 +470,25 @@ export const parse_cif_uncertain_number = (token: string): number | null => {
   return Number.isNaN(value) ? null : value
 }
 
+// The `data_` block each line belongs to: 0 for anything before the first block header,
+// then one id per block. CIF scopes every data item to its own block, so a multi-block file
+// (a global block plus one per phase) must be read block by block. A `data_` line inside a
+// semicolon-delimited text field is content rather than a header, so text fields are
+// tracked here too.
+export const cif_block_ids = (lines: readonly string[]): number[] => {
+  const block_ids: number[] = []
+  let block_id = 0
+  let in_text_field = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (in_text_field) in_text_field = !trimmed.startsWith(`;`)
+    else if (trimmed.startsWith(`;`)) in_text_field = true
+    else if (trimmed.startsWith(`data_`)) block_id++
+    block_ids.push(block_id)
+  }
+  return block_ids
+}
+
 // Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line
 export function* iter_cif_loops(
   lines: string[],

@@ -13,6 +13,7 @@ import {
   drop_placeholder_cell,
   element_from_candidates,
   guard_parse,
+  cif_block_ids,
   iter_cif_loops,
   parsed_result,
   parse_cif_uncertain_number,
@@ -90,13 +91,16 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
   guard_parse(`mmCIF`, () => {
     const lines = content.split(/\r?\n/)
 
+    const block_ids = cif_block_ids(lines)
     let headers: string[] = []
     let data_rows: string[][] = []
+    let atom_block_id = 0
     for (const loop of iter_cif_loops(lines)) {
       const is_atom_site = (header: string) =>
         header.trim().toLowerCase().startsWith(`_atom_site.`)
       if (!loop.headers.some(is_atom_site)) continue
       headers = loop.headers
+      atom_block_id = block_ids[loop.data_start]
       for (let row_idx = loop.data_start; row_idx < lines.length; row_idx++) {
         const line = lines[row_idx].trim()
         // mmCIF terminates a loop with `#`, a new tag, a new loop or a new data block
@@ -192,7 +196,12 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
       return null
     }
 
-    const symmetry_ops = lines.filter((line) =>
+    // Same scoping as parse_cif: a multi-block file declares a cell and space group per
+    // block, so reading them file-wide picks whichever came first, not the one describing
+    // these atoms. Silently gave a `data_global` header block's cell to a later phase.
+    const block_lines = lines.filter((_line, idx) => block_ids[idx] === atom_block_id)
+
+    const symmetry_ops = block_lines.filter((line) =>
       /^\s*_(?:space_group_symop|symmetry_equiv)\./i.test(line),
     )
     if (symmetry_ops.length > 0) {
@@ -201,7 +210,7 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
       )
     }
 
-    const { lattice_matrix, to_frac } = cell_frame(read_mmcif_cell(lines), `mmCIF _cell`)
+    const { lattice_matrix, to_frac } = cell_frame(read_mmcif_cell(block_lines), `mmCIF _cell`)
     if (is_fractional && !lattice_matrix) {
       diag_error(`mmCIF has fractional coordinates but no usable _cell parameters`)
       return null

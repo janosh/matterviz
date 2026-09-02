@@ -16,6 +16,7 @@ import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
   cell_params_to_matrix,
+  cif_block_ids,
   count_elements,
   diag_error,
   diag_warn,
@@ -544,6 +545,9 @@ const parse_cif_atom_data = (
   return { id, element, ambiguity, coords: coords_triplet, coords_type, occupancy: occu }
 }
 
+// The two spellings of the symop column tag (old `_symmetry_` and current `_space_group_`)
+const CIF_SYMOP_TAG_RE = /_symmetry_equiv_pos_as_xyz|_space_group_symop_operation_xyz/i
+
 // The symmetry operation in one row of a symop loop. Ops are usually quoted (`1 'x, y, z'`),
 // which split_cif_tokens keeps as one token; unquoted ones may be written `1 x,y,z` or,
 // sloppily, `1 x, y, z`, which splits the op across tokens. Any tokens beyond the loop's
@@ -558,14 +562,28 @@ const cif_symop_of = (row: string, n_columns: number, symop_col: number): string
 }
 
 // Data lines of the loop whose header ends before `data_start`, up to the next loop_/data_
-// block. Blank lines and `#` comments are skipped, as are semicolon text fields (multi-line
-// values are not supported, like in parse_mmcif).
+// block. Blank lines and `#` comments are skipped, and so are data names (`_tag value`),
+// which a key-value item written after the loop starts with: feeding one to the row readers
+// used to invent a symop (and with it a phantom atom). They are skipped rather than treated
+// as the loop terminator CIF says they are, because writers do interleave unknown tags with
+// a loop's rows and truncating there would lose real atoms. A semicolon-delimited text field
+// is one value whose body lines can start with anything, including `_`/`loop_`/`data_`, so
+// the whole field is skipped (multi-line values are not supported, like in parse_mmcif).
 const cif_loop_lines = (lines: readonly string[], data_start: number): string[] => {
   const rows: string[] = []
+  let in_text_field = false
   for (let idx = data_start; idx < lines.length; idx++) {
     const line = lines[idx].trim()
+    if (in_text_field) {
+      in_text_field = !line.startsWith(`;`)
+      continue
+    }
+    if (line.startsWith(`;`)) {
+      in_text_field = true
+      continue
+    }
     if (line === `loop_` || line.startsWith(`data_`)) break
-    if (line && !line.startsWith(`#`) && !line.startsWith(`;`)) rows.push(line)
+    if (line && !line.startsWith(`#`) && !line.startsWith(`_`)) rows.push(line)
   }
   return rows
 }
@@ -598,32 +616,47 @@ export const parse_cif = (content: string): Crystal | null =>
 
     // Find the first atom-site loop that has coordinates (fract or Cartn) and data rows
     const lines = text.split(`\n`)
+    const block_ids = cif_block_ids(lines)
     let header_indices: Record<string, number> = {}
     let coord_cols: ReturnType<typeof cif_coord_columns> = null
+    let atom_block_id = 0
     const atom_data_lines: string[] = []
-    const symmetry_ops: string[] = []
 
     for (const { headers, data_start } of iter_cif_loops(lines)) {
-      const symop_re = /_symmetry_equiv_pos_as_xyz|_space_group_symop_operation_xyz/i
-      const symop_col = headers.findIndex((header) => symop_re.test(header))
-      if (symop_col !== -1) {
-        for (const line of cif_loop_lines(lines, data_start)) {
-          symmetry_ops.push(cif_symop_of(line, headers.length, symop_col))
-        }
-        continue
-      }
       if (!headers.some((header) => header.includes(`_atom_site_`))) continue
-      header_indices = build_cif_atom_site_header_indices(headers)
-      coord_cols = cif_coord_columns(header_indices)
-      if (!coord_cols) continue
-      atom_data_lines.push(...cif_loop_lines(lines, data_start))
-      if (atom_data_lines.length > 0) break
+      const indices = build_cif_atom_site_header_indices(headers)
+      const columns = cif_coord_columns(indices)
+      if (!columns) continue
+      const rows = cif_loop_lines(lines, data_start)
+      if (rows.length === 0) continue
+      header_indices = indices
+      coord_cols = columns
+      atom_block_id = block_ids[data_start]
+      atom_data_lines.push(...rows)
+      break
     }
 
     if (!coord_cols || atom_data_lines.length === 0) {
       diag_error(`No valid atom site loop found in CIF file`)
       return null
     }
+    // Everything else describing these atoms — cell, space group, symops, atom-type counts —
+    // is read from the data block the atom-site loop lives in. A multi-block file (a global
+    // block plus one per phase) declares a different cell and space group in each, so
+    // reading them file-wide picked whichever came first, not the one that applies.
+    const block_lines = lines.filter((_line, idx) => block_ids[idx] === atom_block_id)
+
+    // Full pass over the block's loops: CIF imposes no ordering on data items, so a symop
+    // loop is as likely to follow the atom-site loop as to precede it
+    const symmetry_ops: string[] = []
+    for (const { headers, data_start } of iter_cif_loops(block_lines)) {
+      const symop_col = headers.findIndex((header) => CIF_SYMOP_TAG_RE.test(header))
+      if (symop_col === -1) continue
+      for (const line of cif_loop_lines(block_lines, data_start)) {
+        symmetry_ops.push(cif_symop_of(line, headers.length, symop_col))
+      }
+    }
+
     const max_required_idx = Math.max(...coord_cols.columns)
     const { disorder } = header_indices
 
@@ -662,7 +695,7 @@ export const parse_cif = (content: string): Crystal | null =>
       return null
     }
 
-    const cell_params = read_cell_params(lines, `CIF`)
+    const cell_params = read_cell_params(block_lines, `CIF`)
     if (!cell_params) {
       diag_error(`Insufficient cell parameters in CIF file`)
       return null
@@ -676,12 +709,12 @@ export const parse_cif = (content: string): Crystal | null =>
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
     const atom_type_counts: Record<string, number> = {}
-    for (const { headers, data_start } of iter_cif_loops(lines)) {
+    for (const { headers, data_start } of iter_cif_loops(block_lines)) {
       const hdrs = headers.map((hdr) => hdr.toLowerCase())
       const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
       const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
       if (sym_idx === -1 || num_idx === -1) continue
-      for (const line of cif_loop_lines(lines, data_start)) {
+      for (const line of cif_loop_lines(block_lines, data_start)) {
         const toks = split_cif_tokens(line)
         if (toks.length <= Math.max(sym_idx, num_idx)) continue
         // Rows that normalize to the same element (Fe2+ and Fe3+) sum; the count drops a
@@ -705,7 +738,7 @@ export const parse_cif = (content: string): Crystal | null =>
     // Candidate lattice-centering translations from the space-group symbol (R
     // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
     // apply them is decided below by reconciling against _atom_type_number_in_cell.
-    const centering_letter = extract_cif_centering(lines)
+    const centering_letter = extract_cif_centering(block_lines)
     const is_hexagonal_setting =
       Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
     const centering =
