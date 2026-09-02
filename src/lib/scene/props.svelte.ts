@@ -127,6 +127,47 @@ export const resize_orthographic_zoom = (
   return Math.max(bounds.min_zoom, Math.min(bounds.max_zoom, resized_zoom))
 }
 
+// The auto-fit zoom, pinned to the content extent it was last fitted for.
+//
+// Why pin, when create_orthographic_zoom below rescales against a live fit for the scenes that
+// pass it one? Because those frame a single object, while a trajectory is a time series where
+// apparent size is itself data: rescaling per frame holds a growing cell at constant apparent
+// size and hides the very thing a volume scan is showing. The two agree on new content that is
+// a new *object* — a new series, a camera reset, a projection change — which refits here too.
+//
+// So `extent` is read only by `refit()`, never by the effect below, and the fit follows nothing
+// but viewport resizes. Untracking the extent at the read site is not enough: that stops a
+// content change from *scheduling* a re-run, but any other re-run — a resize, or a prop object
+// that changed identity, e.g. a viewer revealing its gizmo on pointer enter — would still read
+// the newest extent and land the whole accumulated change as a zoom jump (issue #459). Pinning
+// makes the effect idempotent between refits, so only an explicit refit moves the framing.
+export function create_fit_zoom(opts: {
+  extent: () => number
+  // Maps an extent to a zoom. Must read the viewport size so resizes re-run the effect below.
+  zoom_for: (extent: number) => number
+  // False while the container has no size, as in create_orthographic_zoom.
+  measured: () => boolean
+  // Held until the first measured run, when there is no viewport to fit to yet.
+  initial_zoom: () => number
+}) {
+  let fitted_extent = untrack(opts.extent)
+  let zoom = $state(untrack(opts.initial_zoom))
+  $effect(() => {
+    if (!opts.measured()) return
+    zoom = opts.zoom_for(fitted_extent)
+  })
+  return {
+    get zoom() {
+      return zoom
+    },
+    // Re-frame on the current content: a new series, a camera reset, a projection/direction change
+    refit() {
+      fitted_extent = untrack(opts.extent)
+      zoom = untrack(() => opts.zoom_for(fitted_extent))
+    },
+  }
+}
+
 // Orthographic zoom that follows the auto-fit across resizes but yields to the user's wheel.
 // Pass `.zoom` to the camera and spread `orbit_zoom_props()` into build_orbit_props: the
 // gesture-end hook stores the zoom the user landed on as the baseline the next resize rescales.
