@@ -26,8 +26,12 @@ import {
 
 // Dot-notation atom-site tags are the distinguishing feature of mmCIF; a plain CIF (or a
 // magnetic .mcif, which uses underscore tags) never has them
+// Horizontal whitespace only, never `\s`: under /m the `^` retries at every line start and
+// `\s*` then swallows the whole remaining run of newlines before failing, which is quadratic.
+// This runs on the raw text of any dropped file, so a file of blank lines was a denial of
+// service - 80 kB of them took 631 ms. The sibling LAMMPS sniffers had the same shape.
 export const is_mmcif_content = (content: string): boolean =>
-  /^\s*_atom_site\./im.test(content)
+  /^[ \t]*_atom_site\./im.test(content)
 
 // mmCIF writes unset values as `.` (inapplicable) or `?` (unknown)
 const is_missing = (token: string | undefined): boolean =>

@@ -513,13 +513,12 @@ export function* iter_cif_loops(
   }
 }
 
-// Space, tab, CR, LF, FF, VT: the same set the `\s` in the old regex matched. Tab and space
-// alone let a CRLF file's trailing `\r` ride along inside the last token, and left a quoted
-// value at the end of a line unterminated, so `'x, y, z'\r` split into three broken pieces.
-const is_cif_space = (char: string): boolean => {
-  const code = char.charCodeAt(0)
-  return code === 32 || (code >= 9 && code <= 13)
-}
+// Same separator test as LineScanner and parse_coordinate above, so one file has one notion of
+// whitespace. Space and tab alone let a CRLF file's trailing `\r` ride along inside the last
+// token, and left a quoted value at the end of a line unterminated, so `'x, y, z'\r` split into
+// three broken pieces. Control characters below space count as separators too, which the `\s`
+// this replaced did not do, but a CIF carrying one in a data line is malformed either way.
+const is_cif_space = (char: string): boolean => char.charCodeAt(0) <= 32
 
 // CIF closes a quoted value on a delimiter followed by whitespace or end of line, so an
 // apostrophe inside a token is ordinary content. Index of the closing delimiter, or -1.
