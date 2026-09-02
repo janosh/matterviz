@@ -784,6 +784,9 @@ describe(`LAMMPS`, () => {
       `LAMMPS frame at timestep 0 has neither a type nor an element column in "ITEM: ATOMS id x y z"`],
     [`no position columns`, lammps_frame(`id type vx vy vz`, [`1 1 0 0 0`]),
       `LAMMPS frame at timestep 0 has no position columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu) in "ITEM: ATOMS id type vx vy vz"`],
+    // a repeat used to make the last index win, reading [9, 2, 3] here instead of [1, 2, 3]
+    [`a column declared twice`, lammps_frame(`id type x y z x`, [`1 1 1 2 3 9`]),
+      `LAMMPS frame at timestep 0 declares column "x" more than once in "ITEM: ATOMS id type x y z x"`],
     // non-positive types are rejected before the atomic-number lookup could index below H
     [`atom type 0`, lammps_frame(`id type x y z`, [`1 0 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "0"`],
     [`atom type -1`, lammps_frame(`id type x y z`, [`1 -1 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "-1"`],

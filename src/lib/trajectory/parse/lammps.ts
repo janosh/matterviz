@@ -184,6 +184,16 @@ export function parse_lammps_trajectory(
 
     require_section(`ITEM: ATOMS`, timestep)
     const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
+    // A repeated name silently let the LAST index win, so `id type x y z x` read the trailing
+    // column as the x coordinate. Every other malformed header here throws rather than guess.
+    const duplicate = cols.find((name, col_idx) => cols.indexOf(name) !== col_idx)
+    if (duplicate) {
+      throw new Error(
+        `LAMMPS frame at timestep ${timestep} declares column "${duplicate}" more than once in "ITEM: ATOMS ${cols.join(
+          ` `,
+        )}"`,
+      )
+    }
     const col = Object.fromEntries(cols.map((name, col_idx) => [name, col_idx]))
 
     const pos_variant = POS_COL_VARIANTS.find(({ keys }) => keys.every((key) => key in col))
