@@ -5,7 +5,7 @@
   import { format_num, trajectory_property_config } from '$lib/labels'
   import { format_bytes } from '$lib/utils'
   import { array_extent } from '$lib/math'
-  import type { TrajectoryFrame, TrajectoryRun } from './index'
+  import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import {
     extract_label_and_unit,
     get_frame_step_samples,
@@ -17,6 +17,8 @@
     run,
     current_step_idx,
     current_frame = null,
+    property_rows,
+    properties_complete,
     pane_open = $bindable(false),
     toggle_props,
     ...pane_options
@@ -24,8 +26,18 @@
     run: TrajectoryRun
     current_step_idx: number
     current_frame?: TrajectoryFrame | null
+    // Runs are deliberately rune-free, so `run.properties` is a plain class instance whose
+    // `rows` are invisible to the reactivity graph. Reading them directly froze this pane at
+    // whatever had arrived when it first rendered, which for a progressively indexed run is
+    // the first batch. Trajectory.svelte passes the session's mirrored copies; the fallback
+    // below keeps a standalone mount against an already-finished run working.
+    property_rows?: readonly TrajectoryMetadata[]
+    properties_complete?: boolean
     pane_open?: boolean
   } = $props()
+
+  let rows = $derived(property_rows ?? run.properties.rows)
+  let rows_complete = $derived(properties_complete ?? run.properties.complete)
 
   type Section = { title: string; items: InfoPaneRow[] }
 
@@ -67,7 +79,7 @@
   const strip_tags = (label: string): string => label.replaceAll(/<[^>]*>/g, ``)
 
   let total_frames = $derived(run.frame_count)
-  let step_samples = $derived(get_frame_step_samples(run.properties.rows))
+  let step_samples = $derived(get_frame_step_samples(rows))
   let simulation_time_step = $derived(run.time_step?.value ?? null)
   let simulation_time_unit = $derived(run.time_step?.unit ?? ``)
 
@@ -91,7 +103,7 @@
         ? `${format_num(frame_time_step * (total_frames - 1), `.3~s`)} ${simulation_time_unit}`
         : null
 
-    const covered_frames = run.properties.rows.length
+    const covered_frames = rows.length
     const is_sample = covered_frames < total_frames
     const sampled_note = is_sample
       ? `Min/max over ${format_num(covered_frames, `.3~s`)} sampled frames of ${format_num(
@@ -102,8 +114,7 @@
     const suffix = is_sample ? ` (${format_num(covered_frames, `.3~s`)} sampled)` : ``
     // Drift against the run's own step axis, so a dump written every 500 steps and one written
     // every step agree; fluctuation and drift are what tell equilibration from relaxation
-    const statistics =
-      total_frames > 1 ? summarize_properties(run.properties.rows, (row) => row.step) : []
+    const statistics = total_frames > 1 ? summarize_properties(rows, (row) => row.step) : []
     const stat_sections = statistics
       .filter((stat) => stat.n_samples > 1)
       .toSorted(
@@ -202,10 +213,10 @@
             `current-time`,
           ),
         safe_item(`Duration`, duration, `duration`),
-        run.properties.rows.length > 0 &&
+        rows.length > 0 &&
           safe_item(
             `Property Rows`,
-            `${run.properties.rows.length}${run.properties.complete ? `` : ` loaded`}`,
+            `${rows.length}${rows_complete ? `` : ` loaded`}`,
             `property-rows`,
             `Frame properties available for plotting and export`,
           ),

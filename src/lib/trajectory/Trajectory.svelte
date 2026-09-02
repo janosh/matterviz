@@ -600,6 +600,11 @@
   // the analysis menu owns the clicks. Spectroscopy renders inline in the plot region.
   let analysis_pane_props = $derived({
     run: trajectory,
+    // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
+    property_rows: session.property_rows,
+    properties_complete: session.properties_complete,
+    // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
+
     pane_props: { style: pane_max_height },
     toggle_props: {
       class: `analysis-toggle-anchor`,
@@ -751,6 +756,8 @@
             run={trajectory}
             {current_frame}
             {current_step_idx}
+            property_rows={session.property_rows}
+            properties_complete={session.properties_complete}
             bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
             pane_props={{ style: pane_max_height }}
           />

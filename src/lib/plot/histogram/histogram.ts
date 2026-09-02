@@ -75,7 +75,7 @@ export interface BinnedSeries {
 
 // Map data values into the space where bins are uniform and back. Log bins are uniform in
 // log10(x), arcsinh bins in asinh(x / threshold); linear and time scales use the identity.
-const bin_transform = (
+export const bin_transform = (
   scale_type: ScaleType,
 ): { fwd: (val: number) => number; inv: (pos: number) => number } => {
   const name = get_scale_type_name(scale_type)
@@ -101,6 +101,69 @@ export function log_safe_range(axis: Pick<AxisConfig, `range` | `scale_type`>): 
   return [drop_non_positive(lo), drop_non_positive(hi)]
 }
 
+// Bin edges uniform in the AXIS' bin space (a log axis bins by decade, not by raw value), plus
+// the scalars an indexing loop needs. Exported so the marginal histograms bin on exactly these
+// edges, which is what makes a marginal agree with the bars it sits beside instead of binning
+// the same data linearly underneath a log axis.
+export function bin_geometry(
+  domain: Vec2,
+  n_bins: number,
+  scale_type: ScaleType = `linear`,
+): {
+  lo: number
+  hi: number
+  edges: Float64Array
+  // true when the domain is collapsed, invalid, or too narrow to split: `edges` is then [lo, hi]
+  degenerate: boolean
+  is_linear: boolean
+  fwd: (val: number) => number
+  pos_lo: number
+  scale: number
+} {
+  let lo = Math.min(domain[0], domain[1])
+  let hi = Math.max(domain[0], domain[1])
+  const type_name = get_scale_type_name(scale_type)
+  if (type_name === `log`) {
+    lo = Math.max(lo, LOG_EPS)
+    hi = Math.max(hi, LOG_EPS)
+  }
+  // Identity transform inlined on the linear path: the closure call costs ~70% on 1e6 samples
+  const is_linear = type_name === `linear`
+  const { fwd, inv } = bin_transform(scale_type)
+  const pos_lo = fwd(lo)
+  const pos_hi = fwd(hi)
+  // A domain that is collapsed, invalid, or so narrow that it rounds to one point in bin space
+  // (log10 of two adjacent doubles) gets one bin holding the samples inside it
+  if (!(hi > lo) || !Number.isFinite(lo) || !Number.isFinite(hi) || !(pos_hi > pos_lo)) {
+    // oxfmt-ignore
+    return { lo, hi, edges: Float64Array.of(lo, hi), degenerate: true, is_linear, fwd, pos_lo, scale: 0 }
+  }
+  const n = Math.max(1, Math.floor(n_bins))
+  const scale = n / (pos_hi - pos_lo)
+  const edges = new Float64Array(n + 1)
+  for (let idx = 1; idx < n; idx++) {
+    edges[idx] = is_linear ? lo + idx / scale : inv(pos_lo + idx / scale)
+  }
+  edges[0] = lo
+  edges[n] = hi
+  return { lo, hi, edges, degenerate: false, is_linear, fwd, pos_lo, scale }
+}
+
+// Bin index for a value already known to sit within [lo, hi]. The clamp covers val === hi (goes
+// in the last bin), then a snap to the materialized edges keeps a value sitting exactly on one
+// in the upper bin even when fwd() rounds down (log10(1000) < 3). bin_values keeps its own copy
+// of this loop rather than calling it: measured over 1e6 samples, the call costs 9.7 ms against
+// 4.0 ms inlined, which is worth the duplication on that one path and nowhere else.
+export function bin_index_of(val: number, geometry: ReturnType<typeof bin_geometry>): number {
+  const { edges, is_linear, fwd, pos_lo, scale } = geometry
+  const n = edges.length - 1
+  const pos = is_linear ? val : fwd(val)
+  let bin_idx = Math.min(n - 1, Math.max(0, Math.floor((pos - pos_lo) * scale)))
+  if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
+  else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
+  return bin_idx
+}
+
 // Count `values` into `n_bins` uniform bins over `domain` (either order) in the scale's bin
 // space. Values outside the domain and non-finite values are dropped; the upper bound lands in
 // the last bin (numpy convention). On a log scale the domain is clamped to positive values. A
@@ -111,44 +174,23 @@ export function bin_values(
   n_bins: number,
   scale_type: ScaleType = `linear`,
 ): { edges: Float64Array; counts: Uint32Array } {
-  let lo = Math.min(domain[0], domain[1])
-  let hi = Math.max(domain[0], domain[1])
-  const type_name = get_scale_type_name(scale_type)
-  if (type_name === `log`) {
-    lo = Math.max(lo, LOG_EPS)
-    hi = Math.max(hi, LOG_EPS)
-  }
+  const geometry = bin_geometry(domain, n_bins, scale_type)
+  const { lo, hi, edges, degenerate, is_linear, fwd, pos_lo, scale } = geometry
   const n_values = values.length
-  // Identity transform inlined on the linear path: the closure call costs ~70% on 1e6 samples
-  const is_linear = type_name === `linear`
-  const { fwd, inv } = bin_transform(scale_type)
-  const pos_lo = fwd(lo)
-  const pos_hi = fwd(hi)
-  // A domain that is collapsed, invalid, or so narrow that it rounds to one point in bin space
-  // (log10 of two adjacent doubles) gets one bin holding the samples inside it
-  if (!(hi > lo) || !Number.isFinite(lo) || !Number.isFinite(hi) || !(pos_hi > pos_lo)) {
+  if (degenerate) {
     let count = 0
     for (let idx = 0; idx < n_values; idx++) {
       if (values[idx] >= lo && values[idx] <= hi) count++
     }
-    return { edges: Float64Array.of(lo, hi), counts: Uint32Array.of(count) }
+    return { edges, counts: Uint32Array.of(count) }
   }
-  const n = Math.max(1, Math.floor(n_bins))
-  const scale = n / (pos_hi - pos_lo)
-  const edges = new Float64Array(n + 1)
-  for (let idx = 1; idx < n; idx++) {
-    edges[idx] = is_linear ? lo + idx / scale : inv(pos_lo + idx / scale)
-  }
-  edges[0] = lo
-  edges[n] = hi
+  const n = edges.length - 1
   const counts = new Uint32Array(n)
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
     // NaN fails both comparisons, so this also filters non-finite input
     if (!(val >= lo && val <= hi)) continue
     const pos = is_linear ? val : fwd(val)
-    // clamp covers val === hi (-> last bin), then snap to the materialized edges so a value
-    // sitting exactly on an edge lands in the upper bin even when fwd() rounds (log10(1000) < 3)
     let bin_idx = Math.min(n - 1, Math.max(0, Math.floor((pos - pos_lo) * scale)))
     if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
     else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
