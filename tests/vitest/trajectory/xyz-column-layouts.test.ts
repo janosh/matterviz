@@ -83,3 +83,21 @@ test(`indexed run reports the same force stats as the materialized run`, async (
   )
   expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-3, -4])
 })
+
+// A malformed `Properties=` must fail loudly. Both of these used to produce a plausible
+// wrong atom: a short `pos` read the next field (forces[0]) as z, and a non-integer atomic
+// number was truncated into a real element.
+test.each([
+  [
+    `pos declaring fewer than 3 columns`,
+    `1\nProperties=species:S:1:pos:R:2:forces:R:3 Lattice="5 0 0 0 5 0 0 0 5"\nSi 1.0 2.0 9.9 8.8 7.7\n`,
+    /declares pos with 2 columns, expected 3/,
+  ],
+  [
+    `a non-integer atomic number`,
+    `1\nProperties=Z:I:1:pos:R:3 Lattice="5 0 0 0 5 0 0 0 5"\n14.9 0.0 0.0 0.0\n`,
+    /no atom with a recognised element symbol/,
+  ],
+])(`rejects %s instead of guessing`, (_name, text, message) => {
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(message)
+})

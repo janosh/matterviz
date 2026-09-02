@@ -255,6 +255,10 @@ export function parse_extxyz_columns(comment: string): {
   forces_col: number
   min_cols: number
   layout: Record<string, ExtxyzColumn> | null
+  // A declared `pos` that is not exactly 3 columns. Honouring it would read the next field
+  // (typically forces[0]) as z, and falling back to the plain `symbol x y z` shape reads the
+  // very same wrong column — so callers must reject the frame outright.
+  malformed_pos: boolean
 } {
   const fields =
     /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
@@ -282,6 +286,7 @@ export function parse_extxyz_columns(comment: string): {
     forces_col,
     min_cols: Math.max(pos_col + 3, species_col + 1),
     layout: layout && Object.keys(layout).length > 0 ? layout : null,
+    malformed_pos: Boolean(layout?.pos && layout.pos.ncols !== 3),
   }
 }
 

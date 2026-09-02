@@ -572,18 +572,37 @@ const cif_symop_of = (row: string, n_columns: number, symop_col: number): string
 const cif_loop_lines = (lines: readonly string[], data_start: number): string[] => {
   const rows: string[] = []
   let in_text_field = false
+  // A standalone `_tag` with no value on its own line takes the NEXT line as its value; that
+  // value is not a loop row, and reading one that happens to look like an op invented a
+  // phantom atom just as the tag line itself did.
+  let awaiting_value = false
   for (let idx = data_start; idx < lines.length; idx++) {
-    const line = lines[idx].trim()
+    const raw = lines[idx]
+    const line = raw.trim()
+    // Delimiters are only recognised in column 1, so an indented `  ;` is field content
     if (in_text_field) {
-      in_text_field = !line.startsWith(`;`)
+      if (raw.startsWith(`;`)) {
+        in_text_field = false
+        awaiting_value = false
+      }
       continue
     }
-    if (line.startsWith(`;`)) {
+    if (raw.startsWith(`;`)) {
       in_text_field = true
       continue
     }
     if (line === `loop_` || line.startsWith(`data_`)) break
-    if (line && !line.startsWith(`#`) && !line.startsWith(`_`)) rows.push(line)
+    if (!line || line.startsWith(`#`)) continue
+    if (line.startsWith(`_`)) {
+      // `_tag value` is self-contained; a bare `_tag` still owes us its value
+      awaiting_value = split_cif_tokens(line).length === 1
+      continue
+    }
+    if (awaiting_value) {
+      awaiting_value = false
+      continue
+    }
+    rows.push(line)
   }
   return rows
 }

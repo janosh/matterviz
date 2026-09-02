@@ -480,10 +480,12 @@ export const cif_block_ids = (lines: readonly string[]): number[] => {
   let block_id = 0
   let in_text_field = false
   for (const line of lines) {
-    const trimmed = line.trim()
-    if (in_text_field) in_text_field = !trimmed.startsWith(`;`)
-    else if (trimmed.startsWith(`;`)) in_text_field = true
-    else if (trimmed.startsWith(`data_`)) block_id++
+    // A text field opens and closes ONLY on a `;` in column 1, so this tests the raw line:
+    // an indented `  ;` is content, and trimming first would end the field early and let the
+    // rest of its text be read as headers.
+    if (in_text_field) in_text_field = !line.startsWith(`;`)
+    else if (line.startsWith(`;`)) in_text_field = true
+    else if (line.trim().startsWith(`data_`)) block_id++
     block_ids.push(block_id)
   }
   return block_ids

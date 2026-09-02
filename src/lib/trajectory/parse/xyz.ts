@@ -162,6 +162,8 @@ function parse_xyz_comment_signals(comment: string): Record<string, number[] | n
 }
 
 // Element of the atom on the scanned line: the symbol token, or the atomic number when the
+const integer_or_nan = (value: number): number => (Number.isInteger(value) ? value : NaN)
+
 // layout declares `Z` in place of a species column
 const scanned_element = (
   scanner: LineScanner,
@@ -169,7 +171,8 @@ const scanned_element = (
   atomic_number_col: number,
 ): ElementSymbol | undefined =>
   atomic_number_col >= 0
-    ? ELEM_SYMBOLS[Math.trunc(scanner.num(atomic_number_col)) - 1]
+    ? // Integer only: truncating would turn a malformed `14.9` into silicon
+      ELEM_SYMBOLS[integer_or_nan(scanner.num(atomic_number_col)) - 1]
     : elem_symbol_from_token(scanner.str(symbol_col))
 
 // Symbols are case-normalised (`FE` -> `Fe`) like the structure parsers do. Unknown symbols
@@ -187,8 +190,20 @@ function parse_xyz_atom_lines(
   forces: number[][]
   site_properties: Record<string, unknown>[]
 } {
-  const { atomic_number_col, symbol_col, pos_col, forces_col, min_cols, layout } =
-    parse_extxyz_columns(comment)
+  const {
+    atomic_number_col,
+    symbol_col,
+    pos_col,
+    forces_col,
+    min_cols,
+    layout,
+    malformed_pos,
+  } = parse_extxyz_columns(comment)
+  if (malformed_pos) {
+    throw new Error(
+      `XYZ ${frame_label}: Properties= declares pos with ${layout?.pos?.ncols} columns, expected 3`,
+    )
+  }
   const elements: ElementSymbol[] = []
   const positions: number[][] = []
   const forces: number[][] = []
