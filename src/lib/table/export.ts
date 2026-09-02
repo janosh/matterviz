@@ -1,7 +1,6 @@
 // Serializers for HeatmapTable's export menu and clipboard copy. All work from one plain-text
 // matrix (`TableMatrix`), so CSV, TSV, markdown and LaTeX can't drift apart.
-import { csv_line } from '$lib/utils'
-import { strip_html } from './data'
+import { csv_line, strip_html } from '$lib/utils'
 import type { RowData } from './index'
 
 export type ExportFormat = `csv` | `json` | `md` | `tex`

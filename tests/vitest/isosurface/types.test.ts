@@ -3,7 +3,6 @@ import {
   auto_isosurface_settings,
   auto_volume_layer,
   DEFAULT_ISOSURFACE_SETTINGS,
-  downsample_grid,
   grid_data_range,
   label_file_volumes,
   lattices_match,
@@ -16,8 +15,7 @@ import {
   volume_from_json,
 } from '$lib/isosurface/types'
 import type { IsosurfaceLayer, VolumetricData } from '$lib/isosurface/types'
-import { flatten_grid, type ScalarGrid3D } from '$lib/isosurface/grid'
-import type { Vec3 } from '$lib/math'
+import { flatten_grid } from '$lib/isosurface/grid'
 import { describe, expect, test } from 'vitest'
 import { grid_value, make_grid, make_volume as make_volume_fixture } from '../setup'
 
@@ -255,6 +253,21 @@ describe(`label_file_volumes`, () => {
     expect(labeled.source_filename).toBe(`esp.cube.gz`)
   })
 
+  // The hand-rolled suffix list carried a dead `.zst` (nothing here inflates it) and omitted
+  // `.zip`, `.z` and `.deflate`, which it does; the shared regex covers exactly what
+  // COMPRESSION_FORMATS declares, and case is preserved because this is a display label.
+  test.each([
+    [`CHGCAR.zip`, `CHGCAR`],
+    [`CHGCAR.z`, `CHGCAR`],
+    [`CHGCAR.deflate`, `CHGCAR`],
+    [`esp.cube.gz`, `esp.cube`],
+    [`esp.cube.GZ`, `esp.cube`],
+    [`esp.cube.gz.zip`, `esp.cube`],
+    [`density.zst`, `density.zst`], // not a format this repo can inflate
+  ])(`strips compression extensions: %s -> %s`, (filename, expected) => {
+    expect(label_file_volumes([vol()], filename)[0].source).toBe(expected)
+  })
+
   test(`keeps source filename separate from the logical parse filename`, () => {
     const [labeled] = label_file_volumes([vol()], `esp.cube`, `esp.cube.gz`)
     expect([labeled.source, labeled.source_filename]).toEqual([`esp.cube`, `esp.cube.gz`])
@@ -395,115 +408,6 @@ describe(`merge_imported_volumes`, () => {
     // Implicit layer pinned to esp.cube (was idx 1, now 0) + new auto CHGCAR layer
     expect(result.layers.map((layer) => layer.volume_idx)).toEqual([0, 1])
     expect(result.layers[0].isovalue).toBe(0.42) // user tuning preserved
-  })
-})
-
-// z-fastest Float64Array grid built directly (nested arrays for 10^6 points are slow)
-const flat_grid = (
-  nx: number,
-  ny: number,
-  nz: number,
-  fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
-): ScalarGrid3D<Float64Array> => {
-  const values = new Float64Array(nx * ny * nz)
-  let idx = 0
-  for (let ix = 0; ix < nx; ix++) {
-    for (let iy = 0; iy < ny; iy++) {
-      for (let iz = 0; iz < nz; iz++) {
-        values[idx++] = typeof fill === `number` ? fill : fill(ix, iy, iz)
-      }
-    }
-  }
-  return { values, dims: [nx, ny, nz], order: `z_fastest` }
-}
-
-describe(`downsample_grid`, () => {
-  test.each([
-    { dims: [10, 10, 10] as Vec3, label: `under budget (1K)` },
-    { dims: [100, 100, 50] as Vec3, label: `at exactly 500K` },
-    { dims: [10, 10, 10] as Vec3, label: `under custom budget`, max_points: 2000 },
-  ])(`$label: returns original grid reference`, ({ dims, max_points }) => {
-    const grid = flat_grid(...dims)
-    expect(downsample_grid(grid, max_points)).toBe(grid)
-  })
-
-  test.each([
-    { dims: [100, 100, 100] as Vec3, fill: 5, label: `positive uniform` },
-    { dims: [80, 80, 80] as Vec3, fill: -3, label: `negative uniform` },
-    { dims: [3, 500, 500] as Vec3, fill: 42, label: `small axis uniform` },
-  ])(`$label: preserves constant $fill after downsampling`, ({ dims, fill }) => {
-    const grid = downsample_grid(flat_grid(...dims, fill))
-    // one assertion over ~500K values (a per-element expect takes seconds)
-    expect(grid.values.every((val) => Math.abs(val - fill) < 1e-10)).toBe(true)
-  })
-
-  test(`preserves global mean of non-uniform data`, () => {
-    const grid = downsample_grid(flat_grid(100, 100, 100, (ix, iy, iz) => ix + iy + iz))
-    expect(grid_data_range(grid.values).mean).toBeCloseTo(148.5, 0)
-  })
-
-  test(`no source cells lost or double-counted`, () => {
-    const [nx, ny, nz] = [100, 80, 90]
-    const grid = flat_grid(nx, ny, nz, (ix, iy, iz) => ix + iy + iz)
-    const src_total = grid.values.reduce((acc, val) => acc + val, 0)
-    const out = downsample_grid(grid)
-    const [out_nx, out_ny, out_nz] = out.dims
-    // Weighted reconstruction: sum(block_mean * block_size) must equal source total
-    const block = (idx: number, n_out: number, n_src: number) =>
-      Math.round(((idx + 1) * n_src) / n_out) - Math.round((idx * n_src) / n_out)
-    let reconstructed = 0
-    for (let ix = 0; ix < out_nx; ix++) {
-      for (let iy = 0; iy < out_ny; iy++) {
-        for (let iz = 0; iz < out_nz; iz++) {
-          reconstructed +=
-            grid_value(out, ix, iy, iz) *
-            block(ix, out_nx, nx) *
-            block(iy, out_ny, ny) *
-            block(iz, out_nz, nz)
-        }
-      }
-    }
-    expect(reconstructed).toBeCloseTo(src_total, 5)
-  })
-
-  test(`dims >= 2 and all values finite for extreme aspect ratios`, () => {
-    const source = flat_grid(500, 500, 3, 1)
-    const result = downsample_grid(source)
-    expect(result).not.toBe(source)
-    for (const dim of result.dims) expect(dim).toBeGreaterThanOrEqual(2)
-    expect(result.values.every(Number.isFinite)).toBe(true)
-  })
-
-  test(`output dims never exceed source dims`, () => {
-    const grid = downsample_grid(flat_grid(1, 1000, 1000, 7))
-    expect(grid.dims[0]).toBe(1)
-    expect(grid.values[0]).toBeCloseTo(7)
-  })
-
-  test.each([
-    { dims: [80, 80, 96] as Vec3, label: `80x80x96 (614K)` },
-    { dims: [120, 48, 144] as Vec3, label: `120x48x144 (829K)` },
-    { dims: [1100, 1100, 2] as Vec3, label: `1100x1100x2 (anisotropic)` },
-    { dims: [50, 50, 50] as Vec3, label: `custom 10K budget`, max_points: 10_000 },
-  ])(`$label: stays within budget with correct shape`, ({ dims, max_points = 500_000 }) => {
-    const result = downsample_grid(flat_grid(...dims, 1), max_points)
-    const [rnx, rny, rnz] = result.dims
-    expect(rnx * rny * rnz).toBeLessThanOrEqual(max_points)
-    expect(rnx * rny * rnz).toBeLessThan(dims[0] * dims[1] * dims[2])
-    expect(result.values).toHaveLength(rnx * rny * rnz)
-  })
-
-  test.each([0, 1, 7])(
-    `max_points=%d below minimum output terminates without hanging`,
-    (max_points) => {
-      const result = downsample_grid(flat_grid(4, 4, 4), max_points)
-      expect(result.dims).toEqual([2, 2, 2])
-    },
-  )
-
-  test(`rejects x_fastest input instead of silently averaging the wrong neighbours`, () => {
-    const grid = { ...flat_grid(100, 100, 100), order: `x_fastest` as const }
-    expect(() => downsample_grid(grid)).toThrow(/z_fastest/)
   })
 })
 

@@ -248,10 +248,8 @@ export function compute_fermi_slice(
   }
   const unit_normal = math.normalize_vec(plane_normal)
 
-  // Compute in-plane basis vectors
   const [in_plane_u, in_plane_v] = math.compute_in_plane_basis(unit_normal)
 
-  // Slice each isosurface
   const isolines: Isoline[] = fermi_data.isosurfaces.flatMap((surface) =>
     slice_surface_with_plane(surface, unit_normal, distance, in_plane_u, in_plane_v),
   )
@@ -260,7 +258,6 @@ export function compute_fermi_slice(
     isolines,
     plane_normal: unit_normal,
     plane_distance: distance,
-    k_lattice_2d: [in_plane_u, in_plane_v],
     metadata: {
       n_lines: isolines.length,
       has_properties: isolines.some((line) => line.properties !== undefined),

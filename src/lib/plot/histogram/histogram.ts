@@ -2,7 +2,7 @@
 // uniform in the x scale's transformed space (linear, log10, arcsinh) and counted in one pass
 // into typed arrays, so a million samples bin in a few milliseconds.
 
-import { LOG_EPS, type Vec2 } from '$lib/math'
+import { clamp, LOG_EPS, type Vec2 } from '$lib/math'
 import type { FillPattern } from '$lib/plot/core/patterns'
 import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/plot/core/scales'
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
@@ -158,7 +158,7 @@ export function bin_index_of(val: number, geometry: ReturnType<typeof bin_geomet
   const { edges, is_linear, fwd, pos_lo, scale } = geometry
   const n = edges.length - 1
   const pos = is_linear ? val : fwd(val)
-  let bin_idx = Math.min(n - 1, Math.max(0, Math.floor((pos - pos_lo) * scale)))
+  let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, n - 1)
   if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
   else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
   return bin_idx
@@ -173,28 +173,31 @@ export function bin_values(
   domain: Vec2,
   n_bins: number,
   scale_type: ScaleType = `linear`,
-): { edges: Float64Array; counts: Uint32Array } {
+  // Per-value weights, index-aligned with `values`; without them each value counts as 1.
+  // Weighted totals are fractional, hence a Float64Array rather than the Uint32Array.
+  weights?: ArrayLike<number>,
+): { edges: Float64Array; counts: Uint32Array | Float64Array } {
   const geometry = bin_geometry(domain, n_bins, scale_type)
   const { lo, hi, edges, degenerate, is_linear, fwd, pos_lo, scale } = geometry
   const n_values = values.length
   if (degenerate) {
     let count = 0
     for (let idx = 0; idx < n_values; idx++) {
-      if (values[idx] >= lo && values[idx] <= hi) count++
+      if (values[idx] >= lo && values[idx] <= hi) count += weights ? weights[idx] : 1
     }
-    return { edges, counts: Uint32Array.of(count) }
+    return { edges, counts: weights ? Float64Array.of(count) : Uint32Array.of(count) }
   }
   const n = edges.length - 1
-  const counts = new Uint32Array(n)
+  const counts = weights ? new Float64Array(n) : new Uint32Array(n)
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
     // NaN fails both comparisons, so this also filters non-finite input
     if (!(val >= lo && val <= hi)) continue
     const pos = is_linear ? val : fwd(val)
-    let bin_idx = Math.min(n - 1, Math.max(0, Math.floor((pos - pos_lo) * scale)))
+    let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, n - 1)
     if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
     else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
-    counts[bin_idx]++
+    counts[bin_idx] += weights ? weights[idx] : 1
   }
   return { edges, counts }
 }
@@ -203,7 +206,7 @@ export function bin_values(
 // density additionally by each bin's width in data units.
 export function normalize_counts(
   edges: Float64Array,
-  counts: Uint32Array,
+  counts: Uint32Array | Float64Array,
   normalize: HistogramNormalize,
 ): HistogramBin[] {
   let total = 0

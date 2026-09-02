@@ -5,10 +5,11 @@ import type { D3InterpolateName } from '$lib/colors'
 import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '$lib/constants'
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element/types'
-import { symbol_names } from '$lib/labels'
+import { capitalize, symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
 import type { GizmoOptions } from '$lib/scene/gizmo'
 import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
+import { is_plain_record } from '$lib/utils'
 
 // One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration. A leaf
@@ -38,7 +39,7 @@ export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] a
 export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 // Shared enum labels for never|always|crystals|molecules settings (bonds, polyhedra)
 const SHOW_BONDS_ENUM = Object.fromEntries(
-  SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
+  SHOW_BONDS_OPTIONS.map((key) => [key, capitalize(key)]),
 ) as Readonly<Record<ShowBonds, string>>
 const self_labeled_enum = <Value extends string>(
   values: readonly Value[],
@@ -1255,14 +1256,6 @@ const extract_values = <Config extends object>(config: Config): SettingsValues<C
 
 // Runtime defaults - extracted values for use in components
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
-
-// Plain records only (object literals, JSON.parse output, null-prototype objects): a Date, Map
-// or typed array is a leaf value, not a group of settings to recurse into
-const is_plain_record = (val: unknown): val is Record<string, unknown> => {
-  if (typeof val !== `object` || val === null) return false
-  const proto: unknown = Object.getPrototypeOf(val)
-  return proto === Object.prototype || proto === null
-}
 
 // === Validation of stored / host-supplied values ===
 // One admissibility rule for every place a setting value arrives from outside the program:

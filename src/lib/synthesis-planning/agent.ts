@@ -3,6 +3,7 @@
 // SynthesisPlan object is the structured channel; `format_plan_text` deliberately repeats only
 // what a model needs to reason and reply.
 import { GAS_SPECIES } from '$lib/convex-hull/types'
+import { format_num, plural } from '$lib/labels'
 import { format_mev } from './format-mev'
 import { DEFAULT_SCORE_WEIGHTS } from './scoring'
 import type { SynthesisPlan, SynthesisRoute } from './types'
@@ -115,7 +116,7 @@ export const SYNTHESIS_PLANNER_TOOL = {
 export function format_route_text(route: SynthesisRoute, rank?: number): string {
   const { reaction, selectivity, thermodynamics, recipe, practicality } = route
   const lines: string[] = []
-  const header = `${rank === undefined ? `` : `${rank}. `}${reaction.equation}  (score ${route.score.toFixed(2)}${
+  const header = `${rank === undefined ? `` : `${rank}. `}${reaction.equation}  (score ${format_num(route.score, `.2~f`)}${
     route.kind === `two_step` ? `, two-step` : ``
   })`
   lines.push(header)
@@ -124,7 +125,7 @@ export function format_route_text(route: SynthesisRoute, rank?: number): string 
     ? `, favorable above ${thermodynamics.onset_temperature} K`
     : ``
   lines.push(
-    `   ΔE ${format_mev(reaction.energy_per_atom)} (${reaction.energy_per_fu.toFixed(2)} eV/fu)${onset_text}; atmosphere: ${thermodynamics.atmosphere}`,
+    `   ΔE ${format_mev(reaction.energy_per_atom)} (${format_num(reaction.energy_per_fu, `.2~f`)} eV/fu)${onset_text}; atmosphere: ${thermodynamics.atmosphere}`,
   )
   const competitor_text = selectivity.competitors
     .slice(0, 4)
@@ -133,10 +134,9 @@ export function format_route_text(route: SynthesisRoute, rank?: number): string 
         `${comp.phase.formula} ${format_mev(comp.driving_force)}${comp.more_favorable_than_target ? `*` : ``}`,
     )
     .join(`, `)
-  const plural = selectivity.n_more_favorable === 1 ? `` : `s`
   const competitor_list = competitor_text ? ` [${competitor_text}]` : ` (none can form)`
   lines.push(
-    `   selectivity: target ${format_mev(selectivity.target_driving_force)}, inverse hull ${format_mev(selectivity.inverse_hull_energy)}, ${selectivity.n_more_favorable} competitor${plural} more favorable${competitor_list}`,
+    `   selectivity: target ${format_mev(selectivity.target_driving_force)}, inverse hull ${format_mev(selectivity.inverse_hull_energy)}, ${plural(selectivity.n_more_favorable, `competitor`)} more favorable${competitor_list}`,
   )
   const non_target = selectivity.interfaces.filter((iface) => !iface.forms_target)
   if (selectivity.interfaces.length > 1 && non_target.length) {
@@ -151,7 +151,7 @@ export function format_route_text(route: SynthesisRoute, rank?: number): string 
   }
   const masses = recipe.items
     .filter((item) => item.role === `precursor`)
-    .map((item) => `${item.mass_g.toFixed(4)} g ${item.phase.formula}`)
+    .map((item) => `${format_num(item.mass_g, `.4~f`)} g ${item.phase.formula}`)
     .join(` + `)
   const window = recipe.temperature_window
   const window_text =
@@ -160,12 +160,12 @@ export function format_route_text(route: SynthesisRoute, rank?: number): string 
       : `fire at ${window.min_K ?? `?`}${window.max_K ? `–${window.max_K}` : `+`} K`
   const mass_text =
     Math.abs(recipe.mass_loss_percent) > 0.05
-      ? `; ${Math.abs(recipe.mass_loss_percent).toFixed(1)}% mass ${recipe.mass_loss_percent > 0 ? `loss` : `gain`}`
+      ? `; ${format_num(Math.abs(recipe.mass_loss_percent), `.1~f`)}% mass ${recipe.mass_loss_percent > 0 ? `loss` : `gain`}`
       : ``
   lines.push(`   recipe for ${recipe.target_mass_g} g: ${masses}; ${window_text}${mass_text}`)
   if (practicality.notes.length) {
     lines.push(
-      `   practicality ${practicality.score.toFixed(2)}: ${practicality.notes.slice(0, 3).join(`; `)}`,
+      `   practicality ${format_num(practicality.score, `.2~f`)}: ${practicality.notes.slice(0, 3).join(`; `)}`,
     )
   }
   return lines.join(`\n`)
@@ -189,14 +189,14 @@ export function format_plan_text(plan: SynthesisPlan, max_routes = 5): string {
       : `Target is ${format_mev(target_stability.e_above_hull)} above the hull; decomposes to ${target_stability.decomposition
           .map(
             ({ phase, atom_fraction }) =>
-              `${phase.formula} (${(100 * atom_fraction).toFixed(0)}%)`,
+              `${phase.formula} (${format_num(100 * atom_fraction, `.0f`)}%)`,
           )
           .join(` + `)}.`,
     `Precursor pool (${plan.precursor_pool.length}): ${plan.precursor_pool.map((phase) => phase.formula).join(`, `)}.`,
   )
   const n_rejected = Object.values(rejected).reduce((sum, count) => sum + count, 0)
   lines.push(
-    `Evaluated ${plan.n_candidates} precursor sets: ${routes.length} viable route${routes.length === 1 ? `` : `s`}, ${n_rejected} rejected (${
+    `Evaluated ${plan.n_candidates} precursor sets: ${plural(routes.length, `viable route`)}, ${n_rejected} rejected (${
       Object.entries(rejected)
         .filter(([, count]) => count > 0)
         .map(([reason, count]) => `${count} ${reason}`)

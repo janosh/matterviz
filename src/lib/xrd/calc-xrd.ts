@@ -1,14 +1,15 @@
 import type { CompositionType } from '$lib/composition'
 import { ELEMENTARY_CHARGE_C, PLANCK_J_S, SPEED_OF_LIGHT_M_S } from '$lib/constants'
-import { symbol_to_atomic_number } from '$lib/element/helpers'
 import * as math from '$lib/math'
 import type { Vec2 } from '$lib/math'
 import type { RadiationType } from '$lib/scattering'
 import {
   ELECTRON_FORM_FACTOR_CONST,
+  form_factor_z,
   gaussian_params,
   gaussian_turning_point,
   neutron_scattering_length,
+  scattering_length,
   XRAY_GAUSSIAN_PREFACTOR,
 } from '$lib/scattering'
 import type { Crystal } from '$lib/structure/index'
@@ -195,10 +196,18 @@ export function enumerate_reciprocal_points(
   const [h_max, k_max, l_max] = direct_rows.map(
     (row) => Math.ceil(max_radius * Math.hypot(...row)) + 1,
   )
-  // Safety cap to avoid pathological enumeration volume
-  const CAP = 512
-  if (Math.max(h_max, k_max, l_max) > CAP) {
-    throw new Error(`enumerate_reciprocal_points: max(h,k,l) exceeds cap ${CAP}`)
+  // Cap the enumeration volume, not max(h,k,l): the old index cap let electron wavelengths
+  // through (rocksalt TiC over [0, 90]° gives h_max 246 but 6.1e7 points, about 8.5 GB). The
+  // sphere holds (4/3)·π·R³·|det A| points, which bounds the real cost either way.
+  const estimated_points =
+    (4 / 3) * Math.PI * max_radius ** 3 * Math.abs(math.det_3x3(direct_rows))
+  const MAX_POINTS = 2e6
+  if (estimated_points > MAX_POINTS) {
+    throw new Error(
+      `enumerate_reciprocal_points: a sphere of radius ${max_radius.toPrecision(4)} 1/Å holds ` +
+        `~${estimated_points.toPrecision(3)} reciprocal lattice points, past the ${MAX_POINTS} ` +
+        `cap. Narrow options.two_theta_range (or max_g) or use a longer options.wavelength.`,
+    )
   }
   const [zone_u, zone_v, zone_w] = laue_bound?.zone_axis ?? [0, 0, 0]
   const max_laue = laue_bound?.max_laue ?? 0
@@ -232,6 +241,17 @@ export function enumerate_reciprocal_points(
   )
   return points
 }
+
+// Σ_j |f_j(0)|·occu_j over the cell: the largest |F(g)| any reflection can reach, so its
+// square is the absolute scale a |F|² must be judged against
+export const forward_scattering_sum = (structure: Crystal, radiation: RadiationType): number =>
+  structure.sites
+    .flatMap((site) => site.species)
+    .reduce(
+      (total, { element, occu }) =>
+        total + Math.abs(scattering_length(element, radiation, 0)) * occu,
+      0,
+    )
 
 // |F(hkl)|² for every supplied reflection, where
 //   F(hkl) = Σⱼ fⱼ(s)·occuⱼ·exp(2πi·hkl·rⱼ)·exp(−Bⱼ·s²),  s = |g|/2.
@@ -272,12 +292,9 @@ export function structure_factors_squared(
     for (const { element: element_symbol, occu } of site.species) {
       let coeffs = by_element.get(element_symbol)
       if (coeffs === undefined) {
-        // Neutrons scatter off the nucleus and read neither Z nor the electron-density fit, so
-        // only the X-ray and electron paths require them (deuterium has b_coh but no Z)
-        const z = symbol_to_atomic_number(element_symbol)
-        if (z === undefined && !is_neutron) {
-          throw new Error(`Unknown atomic number for element ${element_symbol}`)
-        }
+        // only X-rays read Z: neutrons scatter off the nucleus and the Mott-Bethe electron
+        // form cancels it analytically. form_factor_z maps deuterium onto hydrogen.
+        const z = is_neutron || is_electron ? 0 : form_factor_z(element_symbol)
         const fit = is_neutron ? [] : gaussian_params(element_symbol)
         let b_coh = 0
         if (is_neutron) {
@@ -295,7 +312,7 @@ export function structure_factors_squared(
         coeffs = {
           a: Float64Array.from(fit, (row) => row[0]),
           b: Float64Array.from(fit, (row) => row[1]),
-          z: z ?? 0,
+          z,
           dw: debye_waller_factors[element_symbol] ?? 0,
           s_sq_max: is_neutron ? Infinity : gaussian_turning_point(element_symbol),
           b_coh,
@@ -432,14 +449,15 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   // normalization maximum and pushes every real peak under scaled_intensity_tol — a cubic
   // cell with a = 1.000000001·λ puts one at 179.995° and scales its true 60° reflection to
   // 0.04. Only this default keeps that class out; pass an explicit range to go past 90°.
+  // Electrons need their own default: at 200 kV λ = 0.0251 Å, 90° means 6.1e7 reflections for
+  // rocksalt TiC, while a TEM pattern lives at a few degrees (TiC [200] sits at 0.68°).
+  const default_range: Vec2 = radiation === `electron` ? [0, 5] : [0, 90]
   const two_theta_range: Vec2 | null =
-    options.two_theta_range === null ? null : (options.two_theta_range ?? [0, 90])
+    options.two_theta_range === null ? null : (options.two_theta_range ?? default_range)
   const [min_radius, max_radius] =
     two_theta_range === null
       ? [0, 2 / wavelength]
-      : two_theta_range.map(
-          (angle) => (2 * Math.sin((angle / 2) * (Math.PI / 180))) / wavelength,
-        )
+      : two_theta_range.map((angle) => (2 * Math.sin(math.to_radians(angle / 2))) / wavelength)
 
   const recip_points = enumerate_reciprocal_points(
     recip_rows,
@@ -462,6 +480,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   // and took 50 ms of a 275 ms pattern for a 444-site cell.
   const peaks: { two_theta: number; intensity: number; hkls: Hkl[]; d_hkl: number }[] = []
   const merge_tol = options.peak_merge_tol ?? TWO_THETA_TOL
+  let max_f_squared = 0
   const scaled_tol = options.scaled_intensity_tol ?? SCALED_INTENSITY_TOL
 
   for (let point_idx = 0; point_idx < recip_points.length; point_idx++) {
@@ -475,6 +494,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     // the clamp below would invent a ~2e12 intensity that then takes the normalization max
     // and drops every real reflection. Only a range reaching 180 enumerates it.
     if (clamped_asin_arg >= 1) continue
+    if (f_squared[point_idx] > max_f_squared) max_f_squared = f_squared[point_idx]
     const theta = Math.asin(clamped_asin_arg)
 
     const sin_theta = Math.sin(theta)
@@ -503,6 +523,12 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   }
 
   if (peaks.length === 0) return { x: [], y: [] }
+  // Absolute round-off floor: tolerance filter and scaling are both relative, so a window in
+  // which every reflection is extinct normalizes cancellation error to 100% — fcc Al over
+  // [20, 33]° at Cu Kα emitted a forbidden (100) at y = 100 from a raw |F|² of 2.1e-27
+  if (max_f_squared < 1e-16 * forward_scattering_sum(structure, radiation) ** 2) {
+    return { x: [], y: [] }
+  }
 
   // Scale intensities so that the max intensity is 100, and filter by scaled tol
   const max_intensity = math.array_max(peaks.map((peak) => peak.intensity))

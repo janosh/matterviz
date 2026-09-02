@@ -271,6 +271,22 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`.plot-tooltip`)?.textContent).toContain(`median`)
   })
 
+  // In the default tukey mode the whiskers are not the series min/max once there are outliers
+  test(`tooltip labels the whisker ends, not min/max`, async () => {
+    const with_outlier = { y: [1, 2, 3, 4, 5, 100], label: `Box A` }
+    const plot = await mount_sized_box_plot({ series: [with_outlier] })
+    plot
+      .querySelector<SVGGElement>(`g.box-series[role="button"]`)
+      ?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    expect(text).toContain(`whisker high: 5`)
+    expect(text).toContain(`whisker low: 1`)
+    expect(text).not.toContain(`max`)
+    expect(text).not.toContain(`min`)
+    expect(text).toContain(`outliers: 1`)
+  })
+
   test(`click fires on_box_click with stats`, async () => {
     const on_box_click = vi.fn()
     const plot = await mount_sized_box_plot({ series: [basic], on_box_click })

@@ -305,8 +305,6 @@ export function is_plottable_data(obj: unknown): boolean {
 
 // === Main Detection Function ===
 
-// Detect the visualization type for a given JSON value.
-// Returns the type if the value matches a known format, or null if not renderable.
 // Checks are ordered from most specific to least specific to minimize false positives:
 // OPTIMADE before generic structure, combined bands+DOS before individual band/dos,
 // structure late (structures are common building blocks inside other data types),

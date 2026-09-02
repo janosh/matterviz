@@ -143,9 +143,7 @@
         }
       />
     </label>
-  {/if}
-
-  {#if resolved_settings.plane_mode === `cartesian`}
+  {:else}
     {#each CARTESIAN_VECTOR_CONTROLS as { label, name, key } (name)}
       {@const vector = key === `cartesian_point` ? cartesian_point : resolved_settings[key]}
       <label class="vector-control">

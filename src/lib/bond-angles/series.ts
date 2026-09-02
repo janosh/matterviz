@@ -1,6 +1,5 @@
 import { plot_color } from '$lib/colors'
 import type { BarSeries } from '$lib/plot/core/types'
-import { SvelteMap } from 'svelte/reactivity'
 import type { BondAngleData } from './calc-bond-angles'
 import type { BondAngleNormalizeMode, BondAngleSplitMode } from './index'
 
@@ -40,7 +39,7 @@ export function to_angle_bar_series(
   }
 
   // by_triplet keys on the triplet label, none on the single TOTAL_TRIPLET_LABEL series
-  const merged = new SvelteMap<string, number[]>()
+  const merged = new Map<string, number[]>()
   for (const entry of entries) {
     const weight = weight_of(entry.data) * (is_density ? 1 / entries.length : 1)
     for (const { triplet, counts } of split_mode === `by_triplet`

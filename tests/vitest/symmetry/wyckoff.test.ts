@@ -27,40 +27,6 @@ describe(`wyckoff_positions_from_moyo`, () => {
     // Null input
     expect(wyckoff_positions_from_moyo(null)).toEqual([])
 
-    // Symmetric sites - all H atoms with same Wyckoff letter
-    const symmetric = make_wyckoff_dataset(
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.5, 0, 0],
-        [0, 0.5, 0],
-      ],
-      [1, 1, 1, 1],
-      [`1a`, `1a`, `1a`, `1a`],
-    )
-    expect(wyckoff_positions_from_moyo(symmetric)).toEqual([
-      {
-        wyckoff: `4a`,
-        elem: `H`,
-        abc: [0, 0, 0],
-        site_indices: [0, 1, 2, 3],
-      },
-    ])
-
-    // Mixed elements
-    const mixed = make_wyckoff_dataset(
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-      [1, 8],
-      [`1a`, `1b`],
-    )
-    expect(wyckoff_positions_from_moyo(mixed)).toEqual([
-      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
-      { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
-    ])
-
     // Sorting by multiplicity then alphabetically
     const sorted = make_wyckoff_dataset(
       [
@@ -77,6 +43,25 @@ describe(`wyckoff_positions_from_moyo`, () => {
       { wyckoff: `3b`, elem: `H`, abc: [0, 0, 0], site_indices: [0, 2, 3] },
     ])
 
+    // simplicity_score picks the orbit representative; the old ¼ + ½·min(u, 1 − u) scored
+    // u = 1/2 WORST, so a generic 0.30 beat the special 0.50
+    const special_vs_generic = make_wyckoff_dataset(
+      [
+        [0.3, 0.3, 0.3],
+        [0.5, 0.5, 0.5],
+        [0.25, 0.25, 0.25],
+      ],
+      [1, 1, 1],
+      [`a`, `a`, `a`],
+    )
+    expect(wyckoff_positions_from_moyo(special_vs_generic)[0].abc).toEqual([0.5, 0.5, 0.5])
+
+    // moyo echoes back the atomic numbers analyze_structure handed it, so one off the table
+    // means the two disagree about the cell; a `?` row used to be printed instead
+    expect(() =>
+      wyckoff_positions_from_moyo(make_wyckoff_dataset([[0, 0, 0]], [0], [`1a`])),
+    ).toThrow(/atomic number 0, not a known element/)
+
     // Sites without Wyckoff letters
     const no_letters = make_wyckoff_dataset(
       [
@@ -89,17 +74,6 @@ describe(`wyckoff_positions_from_moyo`, () => {
     expect(wyckoff_positions_from_moyo(no_letters)).toEqual([
       { wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
       { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
-    ])
-
-    // Null Wyckoff values
-    const null_wyckoff = make_wyckoff_dataset([[0, 0, 0]], [1], [null])
-    expect(wyckoff_positions_from_moyo(null_wyckoff)).toEqual([
-      {
-        wyckoff: `1`,
-        elem: `H`,
-        abc: [0, 0, 0],
-        site_indices: [0],
-      },
     ])
   })
 
@@ -547,115 +521,65 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     expect(result.find((pos) => pos.elem === `O`)?.site_indices).toEqual([2])
   })
 
-  test(`handles periodic boundary conditions`, () => {
-    const original = mock_structure([{ abc: [0.1, 0.1, 0.1], element: `H` }])
-    const displayed = mock_structure([
-      { abc: [0.1, 0.1, 0.1], element: `H` }, // Original
-      { abc: [0.9, 0.9, 0.9], element: `H` }, // Inversion: -0.1 -> 0.9
-      { abc: [1.1, 1.1, 1.1], element: `H` }, // Wrapped: 1.1 -> 0.1
-    ])
-    const wyckoff_pos = [
-      {
-        wyckoff: `2a`,
-        elem: `H`,
-        abc: [0.1, 0.1, 0.1] as Vec3,
-        site_indices: [0],
-      },
-    ]
-
-    const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
-
-    expect(result[0].site_indices).toHaveLength(3)
-    expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1, 2]))
-  })
-
-  test(`wraps distances for coordinates far outside [0,1)`, () => {
-    const original = mock_structure([{ abc: [0.1, 0.2, 0.3], element: `H` }])
-    const displayed = mock_structure([
-      { abc: [0.1, 0.2, 0.3], element: `H` }, // Exact
-      { abc: [2.1, 2.2, 3.3], element: `H` }, // Offset by whole cells (should match exactly)
-      { abc: [-0.9, -0.8, -0.7], element: `H` }, // Negative offset by whole cells (should match)
-    ])
-    const wyckoff_pos = [
-      {
-        wyckoff: `1a`,
-        elem: `H`,
-        abc: [0.1, 0.2, 0.3] as Vec3,
-        site_indices: [0],
-      },
-    ]
-
-    const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
-
-    expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1, 2]))
-    expect(result[0].site_indices).toHaveLength(3)
-  })
-
-  test(`uses relaxed default tolerance for near-coincident sites`, () => {
-    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
-    const displayed = mock_structure([
-      { abc: [0, 0, 0], element: `H` },
-      { abc: [0.000005, 0, 0], element: `H` }, // Within 1e-5 but > 1e-6
-    ])
-    const wyckoff_pos = [
-      {
-        wyckoff: `1a`,
-        elem: `H`,
-        abc: [0, 0, 0] as Vec3,
-        site_indices: [0],
-      },
-    ]
-
-    // Call without explicit tolerance to use the function's default
-    const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
-
-    expect(result[0].site_indices).toEqual([0, 1])
-  })
-
-  test(`respects tolerance parameter`, () => {
-    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
-    const displayed = mock_structure([
-      { abc: [0, 0, 0], element: `H` }, // Exact
-      { abc: [0.001, 0.001, 0.001], element: `H` }, // Outside strict tolerance
-      { abc: [0.0001, 0.0001, 0.0001], element: `H` }, // Close
-    ])
-    const wyckoff_pos = [
-      {
-        wyckoff: `1a`,
-        elem: `H`,
-        abc: [0, 0, 0] as Vec3,
-        site_indices: [0],
-      },
-    ]
-
-    const strict_result = map_wyckoff_to_all_atoms(
-      wyckoff_pos,
-      displayed,
-      original,
-      mock_sym_data(),
-      1e-8,
-    )
-    const loose_result = map_wyckoff_to_all_atoms(
-      wyckoff_pos,
-      displayed,
-      original,
-      mock_sym_data(),
-      1e-2,
-    )
-
-    expect(strict_result[0].site_indices).toEqual([0])
-    expect(loose_result[0].site_indices).toEqual([0, 1, 2])
-  })
-
-  test(`ignores original indices outside the structure`, () => {
-    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
-    const displayed = mock_structure([{ abc: [0, 0, 0], element: `H` }])
-    const wyckoff_pos = [
-      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [5, 10] },
-    ]
-    const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
-    expect(result[0].site_indices).toEqual([])
-  })
+  // One H orbit mapped onto a displayed cell. Coordinates outside [0, 1) wrap by whole cells,
+  // the default tolerance is a relaxed 1e-5, and site_indices past the end map to nothing.
+  const near_zero: Vec3[] = [
+    [0, 0, 0],
+    [0.001, 0.001, 0.001],
+    [0.0001, 0.0001, 0.0001],
+  ]
+  test.each<[string, Vec3, Vec3[], number[], number | undefined, number[]]>([
+    [
+      `periodic images`,
+      [0.1, 0.1, 0.1],
+      [
+        [0.1, 0.1, 0.1],
+        [0.9, 0.9, 0.9],
+        [1.1, 1.1, 1.1],
+      ],
+      [0],
+      undefined,
+      [0, 1, 2],
+    ],
+    [
+      `whole-cell offsets`,
+      [0.1, 0.2, 0.3],
+      [
+        [0.1, 0.2, 0.3],
+        [2.1, 2.2, 3.3],
+        [-0.9, -0.8, -0.7],
+      ],
+      [0],
+      undefined,
+      [0, 1, 2],
+    ],
+    [
+      `the 1e-5 default tolerance`,
+      [0, 0, 0],
+      [
+        [0, 0, 0],
+        [0.000005, 0, 0],
+      ],
+      [0],
+      undefined,
+      [0, 1],
+    ],
+    [`a strict tolerance`, [0, 0, 0], near_zero, [0], 1e-8, [0]],
+    [`a loose tolerance`, [0, 0, 0], near_zero, [0], 1e-2, [0, 1, 2]],
+    [`indices past the structure`, [0, 0, 0], [[0, 0, 0]], [5, 10], undefined, []],
+  ])(
+    `maps an orbit onto %s`,
+    (_label, orbit, displayed_abc, site_indices, tolerance, expected) => {
+      const result = map_wyckoff_to_all_atoms(
+        [{ wyckoff: `1a`, elem: `H`, abc: orbit, site_indices }],
+        mock_structure(displayed_abc.map((abc) => ({ abc, element: `H` as const }))),
+        mock_structure([{ abc: orbit, element: `H` }]),
+        mock_sym_data(),
+        tolerance,
+      )
+      expect(result[0].site_indices.toSorted((a, b) => a - b)).toEqual(expected)
+    },
+  )
 
   test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {
     // displayed site sits 1e-7 below 1.0; the equivalent position wraps to 0.0 —

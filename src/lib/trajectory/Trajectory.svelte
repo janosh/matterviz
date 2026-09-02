@@ -21,7 +21,9 @@
   } from 'svelte-widgets/icons'
   import { handle_and_prevent, to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
+  import { format_num, plural, trajectory_property_config } from '$lib/labels'
+  import type { TrajPropertyConfig } from '$lib/labels'
+  import { clamp } from '$lib/math'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
@@ -293,7 +295,7 @@
   // Writable so the banner can be dismissed
   let warning_msg = $derived(
     trajectory.warnings.length > 0
-      ? `${trajectory.warnings.length} parse warning${trajectory.warnings.length > 1 ? `s` : ``}: ${trajectory.warnings.join(`; `)}`
+      ? `${plural(trajectory.warnings.length, `parse warning`)}: ${trajectory.warnings.join(`; `)}`
       : undefined,
   )
 
@@ -484,7 +486,7 @@
   const handle_legend_toggle = (series_idx: number): void => {
     plot_series = toggle_series_visibility(plot_series, series_idx)
   }
-  let scatter_point_limit = $derived(Math.max(128, Math.min(1000, content_size.width / 2)))
+  let scatter_point_limit = $derived(clamp(content_size.width / 2, 128, 1000))
   let scatter_series = $derived(
     prepare_trajectory_scatter_series(plot_series, scatter_point_limit),
   )
@@ -617,44 +619,22 @@
     default_dt: frame_time_step,
     default_time_unit: trajectory.time_step?.unit,
   })
-  const ANALYSES: {
-    pane: TrajectoryPane
-    control_name: TrajectoryControlName
-    label: string
-    icon: typeof Graph
-  }[] = [
-    { pane: `msd`, control_name: `msd-pane`, label: `Mean squared displacement`, icon: Graph },
-    {
-      pane: `vacf`,
-      control_name: `vacf-pane`,
-      label: `Velocity autocorrelation & VDOS`,
-      icon: Graph,
-    },
-    {
-      pane: `rdf`,
-      control_name: `rdf-pane`,
-      label: `Radial distribution function`,
-      icon: Graph,
-    },
-    {
-      pane: `spectroscopy`,
-      control_name: `spectroscopy-pane`,
-      label: `Trajectory IR/Raman & VDOS`,
-      icon: Graph,
-    },
-    {
-      pane: `structure-id`,
-      control_name: `structure-id-pane`,
-      label: `Structure identification`,
-      icon: Atom,
-    },
-    {
-      pane: `data-inspector`,
-      control_name: `data-inspector-pane`,
-      label: `Data inspector`,
-      icon: Database,
-    },
-  ]
+  // oxfmt-ignore
+  const ANALYSES = (
+    [
+      [`msd`, `Mean squared displacement`, Graph],
+      [`vacf`, `Velocity autocorrelation & VDOS`, Graph],
+      [`rdf`, `Radial distribution function`, Graph],
+      [`spectroscopy`, `Trajectory IR/Raman & VDOS`, Graph],
+      [`structure-id`, `Structure identification`, Atom],
+      [`data-inspector`, `Data inspector`, Database],
+    ] as const
+  ).map(([pane, label, icon]) => ({
+    pane: pane as TrajectoryPane,
+    control_name: `${pane}-pane` as TrajectoryControlName,
+    label,
+    icon,
+  }))
   let visible_analyses = $derived(
     ANALYSES.filter((entry) => controls_config.visible(entry.control_name)),
   )
@@ -1059,10 +1039,6 @@
     &.vertical .content-area {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
-    }
-    &:is(.horizontal, .vertical) .content-area:is(.show-structure-only, .show-plot-only) {
-      grid-template-columns: minmax(0, 1fr) !important;
-      grid-template-rows: minmax(0, 1fr) !important;
     }
   }
   .content-area {

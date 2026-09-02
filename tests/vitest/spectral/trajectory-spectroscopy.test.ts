@@ -578,6 +578,19 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(peak_near(result, 0.25).ir_score).toBeNull()
   })
 
+  // the two H atoms of make_input move antiphase along x and not at all along y or z
+  it(`extracts the antiphase x mode at the detected peak`, () => {
+    const result = calc_trajectory_spectroscopy(make_input(0.125, 1, 128), RAW_SPECTRUM)
+    const displacement = peak_near(result, 0.125).displacement
+    if (!displacement) throw new Error(`no displacement at the 0.125 1/step peak`)
+    const [atom_a, atom_b] = displacement
+    expect(atom_a[0][0]).toBeCloseTo(-atom_b[0][0], 12)
+    expect(Math.abs(atom_a[0][0])).toBeGreaterThan(1e-3)
+    for (const atom of [atom_a, atom_b]) {
+      for (const axis of [1, 2]) expect(Math.hypot(...atom[axis])).toBeLessThan(1e-12)
+    }
+  })
+
   it(`keeps response peaks above the position Nyquist without inventing MD motion`, () => {
     const input = make_input(0.1, 1, 80)
     input.positions.steps = input.positions.steps.map((step) => step * 2)

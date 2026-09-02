@@ -25,7 +25,6 @@
   import PhaseDiagramTooltip from './PhaseDiagramTooltip.svelte'
   import { parse_phase_diagram_svg } from './svg-to-diagram'
   import type {
-    LeverRuleMode,
     PhaseDiagramConfig,
     PhaseDiagramData,
     PhaseDiagramTooltipConfig,
@@ -36,7 +35,6 @@
   import { format_formula_svg, format_label_svg } from '$lib/composition/format'
   import {
     calculate_lever_rule,
-    calculate_vertical_lever_rule,
     compute_label_properties,
     compute_x_domain,
     convert_temp,
@@ -73,7 +71,6 @@
     export_pane_open = $bindable(false),
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     export_filename = `phase-diagram`,
-    lever_rule_mode = $bindable(`horizontal`),
     diagram_input = $bindable<DiagramInput | null>(null),
     editor_open = $bindable(false),
     x_axis = $bindable({}),
@@ -106,8 +103,6 @@
     export_pane_open?: boolean
     png_dpi?: number
     export_filename?: string
-    // Lever rule mode (horizontal = composition tie-line, vertical = temperature tie-line)
-    lever_rule_mode?: LeverRuleMode
     // Diagram input editor (for SVG drop editing)
     diagram_input?: DiagramInput | null
     editor_open?: boolean
@@ -288,7 +283,7 @@
 
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
 
-  // Tie-line geometry (SVG px) for the active lever-rule mode; null outside two-phase regions.
+  // Isothermal tie-line geometry (SVG px); null outside two-phase regions.
   // The line runs between the two endpoint markers, the cursor marker sits at the hover point.
   const tie_line = $derived.by(() => {
     const info = effective_hover_info
@@ -296,22 +291,13 @@
     const cursor = { cx: x_scale(info.composition), cy: y_scale(info.temperature) }
     const endpoint = (phase: string, cx: number, cy: number) =>
       ({ cx, cy, color: get_phase_color(phase, `hex`) }) as const
-    const { lever_rule: lr, vertical_lever_rule: vlr } = info
-    if (lever_rule_mode === `vertical` && vlr) {
-      const endpoints = [
-        endpoint(vlr.bottom_phase, cursor.cx, y_scale(vlr.bottom_temperature)),
-        endpoint(vlr.top_phase, cursor.cx, y_scale(vlr.top_temperature)),
-      ] as const
-      return { cursor, endpoints }
-    }
-    if (lever_rule_mode === `horizontal` && lr) {
-      const endpoints = [
-        endpoint(lr.left_phase, x_scale(lr.left_composition), cursor.cy),
-        endpoint(lr.right_phase, x_scale(lr.right_composition), cursor.cy),
-      ] as const
-      return { cursor, endpoints }
-    }
-    return null
+    const { lever_rule: lr } = info
+    if (!lr) return null
+    const endpoints = [
+      endpoint(lr.left_phase, x_scale(lr.left_composition), cursor.cy),
+      endpoint(lr.right_phase, x_scale(lr.right_composition), cursor.cy),
+    ] as const
+    return { cursor, endpoints }
   })
 
   // Copy feedback position; ClickFeedback's CSS animation fades it out and the template keys
@@ -329,7 +315,6 @@
           component_a,
           component_b,
           data_temp_unit,
-          lever_rule_mode,
         }),
       )
       copy_feedback_pos.show({ x: event.clientX, y: event.clientY })
@@ -370,9 +355,9 @@
       composition,
       temperature,
       position: { x: event.clientX, y: event.clientY },
-      lever_rule: calculate_lever_rule(region, composition, temperature) || undefined,
-      vertical_lever_rule:
-        calculate_vertical_lever_rule(region, composition, temperature) || undefined,
+      lever_rule:
+        calculate_lever_rule(region, composition, temperature, effective_data.regions) ||
+        undefined,
       special_point: nearby_special || undefined,
     }
     on_phase_hover?.(hover_info)
@@ -483,7 +468,6 @@
           bind:show_grid
           bind:show_component_labels
           bind:config
-          bind:lever_rule_mode
           bind:x_axis
           bind:y_axis
           bind:png_dpi
@@ -824,7 +808,6 @@
             {component_a}
             {component_b}
             boundaries={effective_data.boundaries}
-            {lever_rule_mode}
             {use_subscripts}
             {tooltip}
           />

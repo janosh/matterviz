@@ -175,6 +175,25 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     })
   })
 
+  // Stripping `.zip` off `bundle.zip` named the CIF `bundle`, so every extension-keyed
+  // dispatcher missed it
+  test(`names a ZIP payload after its entry, not the archive`, async () => {
+    const zip = zipSync({ 'nested/a.cif': encode(`data_zipped`) })
+    expect(await decompress_file(new File([zip], `bundle.zip`))).toEqual({
+      content: `data_zipped`,
+      filename: `a.cif`,
+    })
+  })
+
+  // Wrapping a caller's abort as a decompression failure hid its name and reason
+  test(`propagates an abort instead of wrapping it as a decompression failure`, async () => {
+    const controller = new AbortController()
+    const reason = new DOMException(`Superseded by a newer load`, `AbortError`)
+    controller.abort(reason)
+    const file = new File([new Uint8Array(8)], `a.h5.gz`)
+    await expect(decompress_trajectory_file(file, controller.signal)).rejects.toBe(reason)
+  })
+
   test(`streams compressed bytes out of the File instead of buffering them`, async () => {
     const text = `streamed`
     const file = new File([await compress(encode(text))], `a.json.gz`)

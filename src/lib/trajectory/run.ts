@@ -151,12 +151,8 @@ export const summarize_run = (run: TrajectoryRun): TrajectoryRunSummary => ({
 
 // The run fields a summary carries verbatim; host_run and worker_run add frame access and
 // disposal on top. `properties` is a fresh live instance the caller pushes later batches into.
-export const run_fields_from_summary = (
-  summary: TrajectoryRunSummary,
-): Pick<
+type SharedRunFields = Pick<
   TrajectoryRun,
-  | `frame_count`
-  | `preview`
   | `provenance`
   | `properties`
   | `time_step`
@@ -164,7 +160,11 @@ export const run_fields_from_summary = (
   | `signals`
   | `metadata`
   | `warnings`
-> => ({
+>
+
+export const run_fields_from_summary = (
+  summary: TrajectoryRunSummary,
+): SharedRunFields & Pick<TrajectoryRun, `frame_count` | `preview`> => ({
   frame_count: summary.frame_count,
   preview: summary.preview,
   provenance: summary.provenance,
@@ -187,16 +187,7 @@ export const disposed_error = (what: string): Error =>
 
 // What a same-thread run supplies on top of the shared fields: a synchronous frame decoder,
 // optionally a full-pass sweep, and the resources `release` lets go of on dispose
-export interface SyncRunSource extends Pick<
-  TrajectoryRun,
-  | `provenance`
-  | `properties`
-  | `time_step`
-  | `atom_masses`
-  | `signals`
-  | `metadata`
-  | `warnings`
-> {
+export interface SyncRunSource extends SharedRunFields {
   // Names the run in the disposed error, e.g. `HDF5 trajectory`
   label: string
   frame_count: number

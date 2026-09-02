@@ -118,8 +118,14 @@ const trajectory_result = async (
   }
 }
 
-export const base64_to_array_buffer = (base64: string): ArrayBuffer =>
-  Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)).buffer
+// Plain loop, not Uint8Array.from(str, cb): the callback form walks the iterator protocol and
+// measured 1058 ms against 35 ms on a 30 MB payload (every VS Code payload arrives base64)
+export const base64_to_array_buffer = (base64: string): ArrayBuffer => {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let idx = 0; idx < binary.length; idx++) bytes[idx] = binary.charCodeAt(idx)
+  return bytes.buffer
+}
 
 // Route file content to the parser for its format and wrap the result with its view type
 export const parse_file_content = async (

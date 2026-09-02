@@ -66,7 +66,7 @@
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
   import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
-  import { build_obstacles_norm } from '$lib/plot/core/decorations'
+  import { with_obstacle_frame } from '$lib/plot/core/decorations'
   import {
     COLOR_BAR_DEFAULTS,
     DEFAULT_MARKERS,
@@ -115,9 +115,10 @@
   import {
     build_legend_data,
     filter_series_to_ranges,
+    legend_row_dedupe,
     materialize_series_points,
     pick_tooltip_bg,
-    scatter_series_label,
+    scatter_legend_rows,
   } from './scatter-data'
 
   // Marker-density thresholds and decoration sampling cap
@@ -561,13 +562,8 @@
 
   // Plot-specific immutable obstacle field: visible series points and sampled line segments in
   // normalized [0,1] coordinates (y=0 at top). Each series uses its assigned x/y scale.
-  const obstacles_norm = $derived.by(() => {
-    const { effective_base_pad } = frame
-    if (!width || !height) return []
-    const base_w = width - effective_base_pad.l - effective_base_pad.r
-    const base_h = height - effective_base_pad.t - effective_base_pad.b
-    if (base_w <= 0 || base_h <= 0) return []
-    return build_obstacles_norm(
+  const obstacles_norm = $derived.by(() =>
+    with_obstacle_frame(frame, filtered_series.length > 0, ({ base_w, base_h }) =>
       filtered_series.map((srs) => {
         const uses_x2 = srs.x_axis === `x2`
         const uses_y2 = srs.y_axis === `y2`
@@ -586,31 +582,26 @@
           draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
         }
       }),
-      base_w,
-      base_h,
-    )
-  })
+    ),
+  )
 
   // An explicitly styled colorbar stays outside solver ownership, but its measured
   // rectangle remains an exclusion for the automatic items (the frame does this for the legend)
   const pinned_colorbar_rects = $derived.by((): Rect[] => {
     const { element, footprint } = colorbar
     if (!element || !color_bar?.wrapper_style) return []
+    const { offset_x, offset_y } = footprint
     return [
-      {
-        x: element.offsetLeft + footprint.offset_x,
-        y: element.offsetTop + footprint.offset_y,
-        ...footprint,
-      },
+      { x: element.offsetLeft + offset_x, y: element.offsetTop + offset_y, ...footprint },
     ]
   })
 
+  // Same rows, dedupe and series numbering as build_legend_data below, so the solver reserves
+  // room for exactly the rows PlotLegend draws, without depending on frame geometry.
   const legend_track_items = $derived.by(() => {
-    const candidates: { label: string; legend_group?: string }[] = [
-      ...series_with_ids.filter(Boolean).map((series_data, series_idx) => ({
-        label: scatter_series_label(series_data) ?? `Series ${series_idx + 1}`,
-        legend_group: series_data.legend_group,
-      })),
+    const first_seen = legend_row_dedupe()
+    return [
+      ...scatter_legend_rows(series_with_ids),
       ...fill_regions.flatMap((fill) =>
         fill.show_in_legend !== false && fill.label
           ? [{ label: fill.label, legend_group: fill.legend_group }]
@@ -619,14 +610,7 @@
       ...error_bands.flatMap((band) =>
         band.show_in_legend !== false && band.label ? [{ label: band.label }] : [],
       ),
-    ]
-    const seen = new SvelteSet<string>()
-    return candidates.filter(({ label, legend_group }) => {
-      const key = `${legend_group ?? ``}::${label}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+    ].filter(first_seen)
   })
 
   const resolved_marginals = $derived(
@@ -1040,7 +1024,6 @@
       .filter((fill): fill is ComputedFill => fill !== null)
   })
 
-  // Prepare data needed for the legend component
   let legend_data = $derived(
     build_legend_data(
       series_with_ids,
@@ -1057,19 +1040,14 @@
 
   // Group fills by z-index for ordered rendering (single pass instead of 4 filters)
   let fills_by_z = $derived.by(() => {
-    const groups: {
-      below_grid: typeof computed_fills
-      below_lines: typeof computed_fills
-      below_points: typeof computed_fills
-      above_all: typeof computed_fills
-    } = { below_grid: [], below_lines: [], below_points: [], above_all: [] }
-
-    for (const fill of computed_fills) {
-      if (fill.z_index === `below-grid`) groups.below_grid.push(fill)
-      else if (fill.z_index === `below-points`) groups.below_points.push(fill)
-      else if (fill.z_index === `above-all`) groups.above_all.push(fill)
-      else groups.below_lines.push(fill) // default: no z_index or 'below-lines'
+    // default bucket: no z_index or 'below-lines'
+    const groups: Record<LayerZIndex, typeof computed_fills> = {
+      [`below-grid`]: [],
+      [`below-lines`]: [],
+      [`below-points`]: [],
+      [`above-all`]: [],
     }
+    for (const fill of computed_fills) groups[fill.z_index ?? `below-lines`].push(fill)
     return groups
   })
 
@@ -1113,8 +1091,7 @@
         if (delta === 0) continue
         const next_direction = delta > 0 ? 1 : -1
         if (direction !== 0 && direction !== next_direction) {
-          direction = 0
-          return { series_data, direction }
+          return { series_data, direction: 0 as const }
         }
         direction = next_direction
       }
@@ -1185,7 +1162,6 @@
   // Whether a click on the plot surface right now would reach on_plot_click, from the same
   // lookup handle_plot_click runs, so the pointer cursor promises exactly the clicks that land
   let plot_click_armed = $state(false)
-  // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
@@ -1193,18 +1169,15 @@
     const closest_point = hit?.point ?? null
     plot_click_armed = Boolean(on_plot_click && plot_click_target(hit))
 
-    if (closest_point) {
-      // Construct handler props synchronously to avoid stale derived reads
-      const props = construct_handler_props(closest_point)
-      tooltip_point = hover_config.show_tooltip === false ? null : closest_point
-      // Call hover handler with synchronously constructed props
-      if (evt && props) {
-        on_point_hover?.({ ...props, event: evt, point: closest_point })
-      }
-    } else {
+    if (!closest_point) {
       tooltip_point = null
       on_point_hover?.(null)
+      return
     }
+    // Construct handler props synchronously to avoid stale derived reads
+    const props = construct_handler_props(closest_point)
+    tooltip_point = hover_config.show_tooltip === false ? null : closest_point
+    if (evt && props) on_point_hover?.({ ...props, event: evt, point: closest_point })
   }
 
   let hover_animation_frame: number | undefined
@@ -1261,6 +1234,9 @@
     leader_line_threshold: 15,
     ...label_placement_config,
   })
+  // The merged object (and an inline `label_placement_config={{...}}` prop) is a fresh
+  // identity per update, so the warm start below compares by value, not reference.
+  const label_config_key = $derived(JSON.stringify(actual_label_config))
 
   // The solver below scans every point and reruns per pan/zoom frame (it reads the scales),
   // so skip it entirely on plots with no auto-placed labels. Scans `series_with_ids` rather
@@ -1292,15 +1268,16 @@
   // both reads and writes it, and tracking that would re-trigger the effect forever.
   const label_offsets = new Map<string, Point2D>()
   let previous_label_series: typeof series_with_ids | undefined
-  let previous_label_config: typeof actual_label_config | undefined
+  let previous_label_config: string | undefined
 
   $effect(() => {
     const label_series = series_with_ids
     const label_config = actual_label_config
-    if (label_series !== previous_label_series || label_config !== previous_label_config) {
+    const config_key = label_config_key
+    if (label_series !== previous_label_series || config_key !== previous_label_config) {
       label_offsets.clear()
       previous_label_series = label_series
-      previous_label_config = label_config
+      previous_label_config = config_key
     }
     if (!width || !height || !has_auto_placed_labels) {
       label_positions = {}
@@ -1317,7 +1294,6 @@
     )
   })
 
-  // Helper function to construct ScatterHandlerProps synchronously from InternalPoint
   function construct_handler_props(
     point: InternalPoint<Metadata>,
   ): ScatterHandlerProps<Metadata> | null {
@@ -1368,7 +1344,6 @@
     if (props) on_point_click?.({ ...props, event, point })
   }
 
-  // Derive handler props from hovered point for both tooltip and event handlers
   let handler_props = $derived(tooltip_point ? construct_handler_props(tooltip_point) : null)
 
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
@@ -1519,7 +1494,6 @@
     ],
   })
 
-  // State accessors for shared axis change handler
   const axis_state: AxisChangeState<DataSeries<Metadata>> = {
     axes: {
       x: { get: () => x_axis, set: (config) => (x_axis = config) },
@@ -1531,7 +1505,6 @@
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
-  // Shared handler + one-shot auto-load bound to this component's state
   const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
     data_loader,
     on_axis_change,
@@ -1624,8 +1597,7 @@
   {...rest}
 >
   {#snippet layers()}
-    <!-- Fill regions: below grid -->
-    {@render fill_regions_layer(fills_by_z.below_grid)}
+    {@render fill_regions_layer(fills_by_z[`below-grid`])}
     {@render ref_lines_layer(`below-grid`)}
 
     <!-- No axis spines; the unit rides on the first y tick label -->
@@ -1638,7 +1610,6 @@
       on_axis_change={handle_axis_change}
     />
 
-    <!-- Current frame indicator -->
     {#if current_x_value != null}
       {@const current_pos = x_scale_fn(current_x_value)}
       {#if isFinite(current_pos) && current_pos >= pad.l && current_pos <= width - pad.r}
@@ -1669,11 +1640,9 @@
 
     <ZeroLines {frame} display={final_display} />
 
-    <!-- Fill regions: below lines (default z-index) -->
-    {@render fill_regions_layer(fills_by_z.below_lines)}
+    {@render fill_regions_layer(fills_by_z[`below-lines`])}
     {@render ref_lines_layer(`below-lines`)}
 
-    <!-- Lines -->
     {#if styles.show_lines}
       {#each filtered_series as series_data (series_data._id)}
         {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)}
@@ -1721,7 +1690,6 @@
       {/each}
     {/if}
 
-    <!-- Fill regions: below points -->
     <!-- Error bars sit under the markers so a cap never hides the point it belongs to -->
     {#each error_bar_paths as { series_pos, d, stroke } (series_pos)}
       <path
@@ -1733,7 +1701,7 @@
       />
     {/each}
 
-    {@render fill_regions_layer(fills_by_z.below_points)}
+    {@render fill_regions_layer(fills_by_z[`below-points`])}
     {@render ref_lines_layer(`below-points`)}
 
     {#if use_canvas_markers}
@@ -1828,8 +1796,7 @@
       {/each}
     {/if}
 
-    <!-- Fill regions: above all -->
-    {@render fill_regions_layer(fills_by_z.above_all)}
+    {@render fill_regions_layer(fills_by_z[`above-all`])}
     {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
@@ -1871,7 +1838,6 @@
       </PlotTooltip>
     {/if}
 
-    <!-- Control Pane -->
     {#if show_controls}
       <ScatterPlotControls
         on_export={handle_export}
@@ -1898,7 +1864,6 @@
       />
     {/if}
 
-    <!-- Color Bar -->
     {#if width > 0 && height > 0 && color_bar && has_color_values}
       {@const color_domain = [
         color_scale_config.value_range?.[0] ?? auto_color_range[0],

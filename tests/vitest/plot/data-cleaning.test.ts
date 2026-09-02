@@ -251,6 +251,17 @@ describe(`clean_series`, () => {
     expect(variance(series.y, 5)).toBeLessThan(variance(y, 5))
   })
 
+  it(`gaussian smoothing is exact on a constant over a clustered x grid`, () => {
+    // Nadaraya-Watson (sum(w*y)/sum(w)), not the DOS convolution: on this irregular grid a
+    // density-weighted pass ranged 0.235..1.950 and a measure-weighted one droops at the ends
+    const x = [0, 0.1, 0.2, 0.3, 0.4, 2, 4, 6, 8, 9.6, 9.7, 9.8, 9.9, 10]
+    const { series } = clean_series(
+      { x, y: x.map(() => 1) },
+      { smooth: { type: `gaussian`, sigma: 1 }, in_place: false },
+    )
+    for (const val of series.y) expect(val).toBeCloseTo(1, 12)
+  })
+
   describe(`savgol smoothing`, () => {
     const savgol = (
       y: number[],

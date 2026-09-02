@@ -44,13 +44,14 @@ export interface OptimadeProvider {
 
 // CORS proxies for fallback reliability. Query-style proxies need the target URL
 // percent-encoded; path-suffix proxies need it verbatim (encoded can never succeed).
+// Dropped: thingproxy.freeboard.io and cors.bridged.cc are NXDOMAIN, cors-anywhere.herokuapp
+// .com answers 303 behind a per-user opt-in gate — two DNS failures and a redirect per attempt.
 const CORS_PROXIES: { prefix: string; encode: boolean }[] = [
   { prefix: `https://corsproxy.io/?`, encode: true },
   { prefix: `https://api.allorigins.win/raw?url=`, encode: true },
-  { prefix: `https://cors-anywhere.herokuapp.com/`, encode: false },
-  { prefix: `https://thingproxy.freeboard.io/fetch/`, encode: false },
-  { prefix: `https://cors.bridged.cc/`, encode: false },
 ]
+
+const PROXY_TIMEOUT_MS = 8000 // else one hung proxy stalls the whole ladder
 
 let cached_providers: OptimadeProvider[] | null = null
 let providers_cache_time = 0
@@ -61,7 +62,8 @@ const resolved_provider_urls: Record<string, { url: string; time: number }> = {}
 const RESOLVED_URLS_CACHE_DURATION = 10 * 60 * 1000
 
 async function fetch_with_cors_proxy(url: string): Promise<Response> {
-  const headers = { Accept: `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` }
+  // No User-Agent: it is a forbidden header name in browsers and was silently dropped
+  const headers = { Accept: `application/vnd.api+json` }
   let direct: Response | undefined
   try {
     direct = await fetch(url, { headers })
@@ -80,6 +82,7 @@ async function fetch_with_cors_proxy(url: string): Promise<Response> {
     try {
       const response = await fetch(`${prefix}${encode ? encodeURIComponent(url) : url}`, {
         headers,
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
       })
       if (response.ok) return response
     } catch {

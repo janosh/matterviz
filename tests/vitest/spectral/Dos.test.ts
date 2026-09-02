@@ -4,7 +4,6 @@ import {
   extract_pdos,
   extract_spin_channels,
   format_dos_tooltip,
-  format_sigma,
   validate_sigma_range,
 } from '$lib/spectral/helpers'
 import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '$lib/spectral/types'
@@ -330,19 +329,6 @@ describe(`format_dos_tooltip`, () => {
     const result = format_dos_tooltip({ units: `cm^-1`, ...opts })
     expect(result.title).toBe(title)
     expect(result.lines).toEqual(lines)
-  })
-})
-
-describe(`format_sigma`, () => {
-  // Tests adaptive precision: 0→"0", <0.01→exp, <1→3dec, ≥1→2dec
-  it.each([
-    [0, `0`], // zero
-    [0.0001, `1.0e-4`], // very small → exponential
-    [0.00999, `1.0e-2`], // boundary → exponential
-    [0.01, `0.010`], // boundary → 3 decimals
-    [1, `1.00`], // boundary → 2 decimals
-  ])(`format_sigma(%s) = %s`, (input, expected) => {
-    expect(format_sigma(input)).toBe(expected)
   })
 })
 

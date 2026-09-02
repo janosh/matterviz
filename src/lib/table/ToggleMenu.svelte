@@ -3,7 +3,8 @@
   import { Columns, Reset } from 'svelte-widgets/icons'
   import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
-  import { get_column_id as col_id, type Label, strip_html } from '$lib/table'
+  import { get_column_id as col_id, type Label } from '$lib/table'
+  import { strip_html } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import { slide } from 'svelte/transition'
 

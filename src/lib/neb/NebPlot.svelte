@@ -86,8 +86,7 @@
     profiles.find((profile) => profile.key === active_path_key) ?? profiles[0],
   )
   const energy_unit = $derived(path_energy_unit(active.path))
-  const max_image_idx = $derived(active.path.images.length - 1)
-  const clamped_idx = $derived(clamp(active_image_idx, 0, max_image_idx))
+  const clamped_idx = $derived(clamp(active_image_idx, 0, active.path.images.length - 1))
 
   const select_image = (path_key: string, image_idx: number) => {
     active_path_key = path_key

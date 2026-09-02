@@ -150,8 +150,11 @@ const stringify_html_input = (html: unknown): string => {
 }
 
 const sanitize_cache = new Map<string, string>()
+// FIFO like contrast_color_memo: a wholesale clear made a working set just over the limit
+// recompute every axis label next render. Map iterates insertion order, so first key is oldest.
 const cache_sanitize = (key: string, result: string): string => {
-  if (sanitize_cache.size >= 4096) sanitize_cache.clear()
+  if (sanitize_cache.size >= 4096)
+    sanitize_cache.delete(sanitize_cache.keys().next().value ?? ``)
   sanitize_cache.set(key, result)
   return result
 }

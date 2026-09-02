@@ -26,7 +26,7 @@ export const is_stream_compression_format = (
 ): format is StreamCompressionFormat =>
   format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
 
-const is_browser_decompressible_format = (
+export const is_browser_decompressible_format = (
   format: CompressionFormat | null,
 ): format is BrowserCompressionFormat =>
   format === `zip` || is_stream_compression_format(format)
@@ -74,7 +74,9 @@ export async function decompress_data(
 
 // The one payload file of a ZIP archive. Directory entries, macOS resource forks and
 // dotfiles are ignored; anything else ambiguous is an error rather than a silent pick.
-const unzip_single_entry = async (bytes: Uint8Array): Promise<Uint8Array> => {
+const unzip_single_entry = async (
+  bytes: Uint8Array,
+): Promise<{ name: string; bytes: Uint8Array }> => {
   const { unzipSync } = await import(`fflate`)
   const entries = Object.entries(unzipSync(bytes)).filter(
     ([name]) =>
@@ -88,7 +90,8 @@ const unzip_single_entry = async (bytes: Uint8Array): Promise<Uint8Array> => {
         : `ZIP archive must contain exactly one file, found ${entries.length}: ${names}`,
     )
   }
-  return entries[0][1]
+  const [name, entry_bytes] = entries[0]
+  return { name: name.split(`/`).pop() ?? name, bytes: entry_bytes }
 }
 
 const consume_decompressed = async <Result>(
@@ -96,6 +99,7 @@ const consume_decompressed = async <Result>(
   format: CompressionFormat,
   consume: (response: Response) => Promise<Result>,
   signal?: AbortSignal,
+  on_entry_name?: (name: string) => void,
 ): Promise<Result> => {
   if (!is_browser_decompressible_format(format)) throw unsupported_format_error(format)
   try {
@@ -109,13 +113,18 @@ const consume_decompressed = async <Result>(
     if (format === `zip`) {
       const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
       signal?.throwIfAborted()
+      const entry = await unzip_single_entry(bytes)
+      on_entry_name?.(entry.name)
       // copy: fflate may hand back a view into its own scratch buffer
-      const entry = new Uint8Array(await unzip_single_entry(bytes))
-      return await consume(new Response(entry))
+      return await consume(new Response(new Uint8Array(entry.bytes)))
     }
     const decompressed = stream.pipeThrough(new DecompressionStream(format), { signal })
     return await consume(new Response(decompressed))
   } catch (error) {
+    // An abort is the caller's cancellation, not a corrupt archive; wrapping it hid both the
+    // AbortError name and the reason the caller passed
+    signal?.throwIfAborted()
+    if (error instanceof DOMException && error.name === `AbortError`) throw error
     throw new Error(`Failed to decompress ${format} file: ${error}`, { cause: error })
   }
 }
@@ -132,7 +141,9 @@ const decompress_data_blob = (
   data: CompressedSource,
   format: CompressionFormat,
   signal?: AbortSignal,
-): Promise<Blob> => consume_decompressed(data, format, (response) => response.blob(), signal)
+  on_entry_name?: (name: string) => void,
+): Promise<Blob> =>
+  consume_decompressed(data, format, (response) => response.blob(), signal, on_entry_name)
 
 // === consumers of the string | ArrayBuffer content union produced above ===
 
@@ -192,11 +203,12 @@ export async function classify_payload(
   const format = gzip_magic ? `gzip` : compression_wrapper_of(names, source)
   // In by-magic mode a named gzip/deflate wrapper without gzip bytes was inflated in transit,
   // so only ZIP is still decompressed by name there
-  if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
-    blob = await decompress_data_blob(blob, format, signal)
-  }
   // Either way the payload is now the inner file, so name it accordingly
   const stripped = names.map((name) => name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
+  if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
+    // A ZIP entry names itself, the only way `bundle.zip` holding `a.cif` reads as a CIF
+    blob = await decompress_data_blob(blob, format, signal, (name) => stripped.unshift(name))
+  }
   const magic = await head(8)
   if (
     hdf5_as_blob &&

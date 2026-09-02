@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PLOT_COLORS } from '$lib/colors'
+  import { clamp } from '$lib/math'
   import type {
     DataSeries,
     FacetPanel,
@@ -81,12 +82,10 @@
     ]
   }
   const nearest_power = (curve: TrajectorySpectrumCurve, frequency: number): number => {
-    const bin_idx = Math.max(
+    const bin_idx = clamp(
+      Math.round((frequency - (curve.frequencies[0] ?? 0)) / curve.frequency_spacing),
       0,
-      Math.min(
-        curve.frequencies.length - 1,
-        Math.round((frequency - (curve.frequencies[0] ?? 0)) / curve.frequency_spacing),
-      ),
+      curve.frequencies.length - 1,
     )
     return curve.normalized_power[bin_idx] ?? 0
   }

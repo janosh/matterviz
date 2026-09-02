@@ -30,8 +30,9 @@ export class Hdf5GroupSelectionRequiredError extends Error {
 }
 
 export const attribute_value = (entity: Dataset | Group, names: string[]): unknown => {
+  const attrs = entity.attrs // a getter that re-lists every attribute over WASM per access
   for (const name of names) {
-    const attribute = entity.attrs[name]
+    const attribute = attrs[name]
     if (attribute) return attribute.to_array()
   }
   return undefined
@@ -77,8 +78,8 @@ export const read_numeric_1d = (
   return Array.from(read_numeric_samples(dataset, path, count, 1))
 }
 
-// HDF5 stores cells as row-major [3, 3] with lattice vectors along the first axis; the
-// structure convention keeps them as columns, hence the transpose
+// HDF5 writes the cell with lattice vectors down the columns (`values[row * 3 + col]` is
+// component `row` of vector `col`); the structure convention keeps them as rows, hence transpose
 export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matrix3x3 =>
   transpose_3x3_matrix(
     matrix3x3_from_rows(
@@ -121,16 +122,30 @@ export const sampled_property_rows = (
   }))
 }
 
-export const read_dataset = (h5_file: h5wasm.File, path: string): unknown => {
-  try {
-    const entity = h5_file.get(path)
-    return is_hdf5_dataset(entity) ? entity.to_array() : null
-  } catch {
-    return null
+export const HDF5_MAX_LOGICAL_SLICE_BYTES = 8 * 1024 * 1024
+
+const assert_logical_budget = (path: string, value_count: number, what: string): void => {
+  const logical_bytes = value_count * Float64Array.BYTES_PER_ELEMENT
+  if (logical_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES) {
+    throw new Error(
+      `HDF5 dataset ${path} ${what} ${logical_bytes} logical bytes, above the ` +
+        `${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
+    )
   }
 }
 
-export const HDF5_MAX_LOGICAL_SLICE_BYTES = 8 * 1024 * 1024
+// Nested JS arrays, null for a missing path. No try/catch: it only ever reported real failures
+// (float16, missing filter, oversized alloc) as "no data". `format` applies the slice budget.
+export const read_dataset = (h5_file: h5wasm.File, path: string, format?: string): unknown => {
+  const dataset = dataset_at(h5_file, path)
+  if (!dataset) return null
+  if (format !== undefined) {
+    const shape = dataset_shape(dataset, path, format)
+    const value_count = shape.reduce((product, size) => product * size, 1)
+    assert_logical_budget(path, value_count, `requests`)
+  }
+  return dataset.to_array()
+}
 
 const requested_hyperslab_values = (
   dataset: Dataset,
@@ -171,7 +186,9 @@ const numeric_values = (data: unknown): ArrayLike<unknown> | null =>
       ? (data as unknown as ArrayLike<unknown>)
       : null
 
-const to_finite_number = (value: unknown): number | null => {
+// bigint counts only while it round-trips exactly, so a 2^60 step index fails rather than
+// landing on a neighbouring float
+export const to_finite_number = (value: unknown): number | null => {
   const number = typeof value === `bigint` ? Number(value) : value
   const valid_bigint =
     typeof value !== `bigint` || (typeof number === `number` && Number.isSafeInteger(number))
@@ -183,21 +200,15 @@ const validated_numeric_hyperslab = (
   path: string,
   ranges: Parameters<Dataset[`slice`]>[0],
 ): ArrayLike<unknown> => {
-  const requested_bytes =
-    requested_hyperslab_values(dataset, path, ranges) * Float64Array.BYTES_PER_ELEMENT
-  if (requested_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES) {
-    throw new Error(
-      `HDF5 dataset ${path} hyperslab requests ${requested_bytes} logical bytes, above the ` +
-        `${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
-    )
-  }
+  const requested = requested_hyperslab_values(dataset, path, ranges)
+  assert_logical_budget(path, requested, `hyperslab requests`)
   const values = numeric_values(dataset.slice(ranges))
   if (!values) throw new Error(`HDF5 dataset ${path} hyperslab must contain finite numbers`)
-  const logical_bytes = values.length * Float64Array.BYTES_PER_ELEMENT
-  if (logical_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES) {
+  // h5wasm hands back the raw Uint8Array for a dtype it cannot decode, so an undecoded 2-byte
+  // `masses` of shape [n_atoms] yields 2*n_atoms positive byte values that pass every value check
+  if (values.length !== requested) {
     throw new Error(
-      `HDF5 dataset ${path} hyperslab returned ${logical_bytes} logical bytes, above the ` +
-        `${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
+      `HDF5 dataset ${path} hyperslab returned ${values.length} values, expected ${requested}`,
     )
   }
   return values
@@ -272,11 +283,46 @@ export const to_string_array = (data: unknown): string[] | null => {
   return strings
 }
 
-export const to_number_array = (data: unknown): number[] | null => {
+// `deep` flattens nesting and accepts a bare scalar: an HDF5 attribute comes back as any of
+// `[[1, 0, 0]]`, `[1, 0, 0]` or `1` depending on how it was written
+export const to_number_array = (data: unknown, deep = false): number[] | null => {
   const values = numeric_values(data)
-  if (!values) return null
+  if (!values) {
+    const scalar = deep ? to_finite_number(data) : null
+    return scalar === null ? null : [scalar]
+  }
   const numbers = Array.from(values, to_finite_number)
-  return numbers.every((item): item is number => item !== null) ? numbers : null
+  if (numbers.every((item): item is number => item !== null)) return numbers
+  if (!deep) return null
+  const flattened: number[] = []
+  for (const [idx, number] of numbers.entries()) {
+    // what to_finite_number rejected may be a nested array
+    const child = number === null ? to_number_array(values[idx], deep) : [number]
+    if (!child) return null
+    flattened.push(...child)
+  }
+  return flattened
+}
+
+// Final-structure datasets may carry a leading singleton step axis ([1, 3, 3] lattices,
+// [1, n_atoms, 3] positions) depending on the VASP version that wrote them.
+export const squeeze_leading_axis = (data: unknown): unknown => {
+  if (!Array.isArray(data) || data.length !== 1) return data
+  const first: unknown = data[0]
+  return Array.isArray(first) && Array.isArray(first[0]) ? first : data
+}
+
+// Squeeze the optional leading step axis, then apply the POSCAR universal scale. The bands path
+// skipping the squeeze made a file that opens fine as a trajectory read as identity.
+export const read_scaled_lattice = (
+  h5_file: h5wasm.File,
+  lattice_path: string,
+  scale_path: string,
+): Matrix3x3 | null => {
+  const lattice_data = squeeze_leading_axis(read_dataset(h5_file, lattice_path))
+  if (!lattice_data) return null
+  const scale = to_scalar_number(read_dataset(h5_file, scale_path)) ?? 1
+  return scale_matrix(matrix3x3_from_rows(lattice_data, `lattice matrix`), scale)
 }
 
 export const to_scalar_number = (data: unknown): number | null => {

@@ -3,7 +3,11 @@
 // Reference: pymatgen/analysis/chempot_diagram.py
 
 import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
-import { compute_quickhull_nd, get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
+import {
+  compute_e_form_per_atom,
+  compute_quickhull_nd,
+  get_energy_per_atom,
+} from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import {
   array_extent,
@@ -12,6 +16,7 @@ import {
   combinations,
   convex_hull_2d,
   cross_3d,
+  dot,
   EPS,
   euclidean_dist,
   normalize_vec,
@@ -113,30 +118,6 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
   return { min_entries, el_refs }
 }
 
-// Compute formation energy per atom against elemental references.
-// NOTE: diverges from convex-hull's compute_e_form_per_atom (which returns null on
-// missing refs); kept module-private so the divergent variant can't leak into public API.
-function compute_form_energy_per_atom(
-  entry: PhaseData,
-  el_refs: Record<string, PhaseData>,
-): number {
-  const atom_count = count_atoms_in_composition(entry.composition)
-  const energy_per_atom = safe_energy_per_atom(entry)
-  if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) return Number.NaN
-  let ref_energy = 0
-  for (const [element, amount] of Object.entries(entry.composition)) {
-    if (amount <= 0) continue
-    const fraction = amount / atom_count
-    const ref_entry = el_refs[element]
-    if (ref_entry) {
-      const ref_epa = safe_energy_per_atom(ref_entry)
-      if (!Number.isFinite(ref_epa)) return Number.NaN
-      ref_energy += fraction * ref_epa
-    }
-  }
-  return energy_per_atom - ref_energy
-}
-
 // Find minimum formation energy per atom across entries of one formula.
 export function best_form_energy_for_formula(
   entries: PhaseData[],
@@ -146,8 +127,9 @@ export function best_form_energy_for_formula(
   let best_value: number | undefined
   for (const entry of entries) {
     if (formula_key_from_composition(entry.composition) !== formula) continue
-    const e_form = entry.e_form_per_atom ?? compute_form_energy_per_atom(entry, el_refs)
-    if (!Number.isFinite(e_form)) continue
+    // best-effort: a formula with no elemental reference is left uncolored, not fatal
+    const e_form = entry.e_form_per_atom ?? compute_e_form_per_atom(entry, el_refs)
+    if (e_form === null || !Number.isFinite(e_form)) continue
     if (best_value === undefined || e_form < best_value) best_value = e_form
   }
   return best_value
@@ -191,33 +173,22 @@ export function get_energy_stats_by_formula(
   return stats
 }
 
-// Renormalize entry energies to be relative to elemental references (formal chemical potentials).
-// For each entry, subtracts sum(x_i * E_ref_i) from its energy per atom.
+// Renormalize entry energies relative to elemental references (formal chemical potentials):
+// the renormalized energy per atom is exactly the formation energy per atom. Entries with no
+// defined formation energy pass through untouched.
 export const renormalize_entries = (
   entries: PhaseData[],
   el_refs: Record<string, PhaseData>,
-  elements: string[],
 ): PhaseData[] =>
   entries.map((entry) => {
+    const e_form = compute_e_form_per_atom(entry, el_refs)
+    if (e_form === null || !Number.isFinite(e_form)) return entry
     const atoms = count_atoms_in_composition(entry.composition)
-    const base_epa = safe_energy_per_atom(entry)
-    if (!(atoms > 0) || !Number.isFinite(base_epa)) return entry
-    let renorm_energy = 0
-    for (const el of elements) {
-      const frac = ((entry.composition as Record<string, number>)[el] ?? 0) / atoms
-      const ref = el_refs[el]
-      if (!ref) continue
-      const ref_epa = safe_energy_per_atom(ref)
-      if (!Number.isFinite(ref_epa)) return entry
-      renorm_energy += frac * ref_epa
-    }
-    const new_energy_per_atom = base_epa - renorm_energy
-    // base_epa already includes the MP correction, so drop it from the renormalized copy or
-    // get_energy_per_atom would apply it a second time
+    // e_form already includes the MP correction, so drop it or get_energy_per_atom re-applies
     return {
       ...entry,
-      energy: new_energy_per_atom * atoms,
-      energy_per_atom: new_energy_per_atom,
+      energy: e_form * atoms,
+      energy_per_atom: e_form,
       correction: undefined,
     }
   })
@@ -225,18 +196,16 @@ export const renormalize_entries = (
 // Build hyperplane representation for minimum entries.
 // Each row is [x_1, ..., x_n, -E_per_atom].
 // Filters to entries with negative formation energy plus all elemental refs.
+// When every entry carries `is_stable`/`e_above_hull`, those flags replace pymatgen's
+// `E_form < -tol` rule (a metastable halfspace is a convex combination of the stable ones, so
+// domains are unchanged). PRECONDITION: the flags must belong to THIS chemsys — stale ones
+// from a larger chemsys silently delete a locally stable phase's whole domain.
 export function build_hyperplanes(
   min_entries: PhaseData[],
   el_refs: Record<string, PhaseData>,
   elements: string[],
 ): { hyperplanes: number[][]; hyperplane_entries: PhaseData[] } {
   const n_elems = elements.length
-  const element_ref_energies = elements.map((element) => {
-    const ref_entry = el_refs[element]
-    if (!ref_entry) return 0
-    const epa = safe_energy_per_atom(ref_entry)
-    return Number.isFinite(epa) ? epa : 0
-  })
   const always_include = new Set<PhaseData>(Object.values(el_refs))
   const tol = 1e-6 // PhaseDiagram.formation_energy_tol
   const use_precomputed_hull = min_entries.every(
@@ -251,21 +220,21 @@ export function build_hyperplanes(
     const energy_per_atom = safe_energy_per_atom(entry)
     if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) continue
     const row = Array(n_elems + 1).fill(0)
-    let ref_energy = 0
     for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
-      const fraction = (composition[elements[elem_idx]] ?? 0) / atom_count
-      row[elem_idx] = fraction
-      ref_energy += fraction * element_ref_energies[elem_idx]
+      row[elem_idx] = (composition[elements[elem_idx]] ?? 0) / atom_count
     }
-    const form_energy = energy_per_atom - ref_energy
     const on_precomputed_hull =
       use_precomputed_hull &&
       !entry.exclude_from_hull &&
       (entry.is_stable === true ||
         (typeof entry.e_above_hull === `number` && entry.e_above_hull <= tol))
-    const include_entry = use_precomputed_hull
-      ? on_precomputed_hull || always_include.has(entry)
-      : form_energy < -tol || always_include.has(entry)
+    let include_entry = on_precomputed_hull || always_include.has(entry)
+    if (!include_entry && !use_precomputed_hull) {
+      // build_chempot_hyperplanes validated the reference set, so null here is bad input
+      const e_form = compute_e_form_per_atom(entry, el_refs)
+      if (e_form === null) throw new Error(`No E_form for ${JSON.stringify(composition)}`)
+      include_entry = e_form < -tol
+    }
     if (include_entry) {
       row[n_elems] = -energy_per_atom
       hyperplanes.push(row)
@@ -657,7 +626,9 @@ export function orthonormal_2d(line_pts: number[][]): Vec2 {
   return normalize_vec<Vec2>([-dy, dx], [0, 1])
 }
 
-// Deduplicate points within tolerance, returning unique points and index mapping
+// Deduplicate points within an L-inf ball of radius `tol`, returning unique points and index
+// mapping. Greedy (first point of a cluster wins). O(n^2), but a grid hash measured 2-4x
+// slower up to n = 15k and real inputs are hundreds of domain vertices.
 export function dedup_points(
   pts: number[][],
   tol: number = 1e-4,
@@ -678,6 +649,39 @@ export function dedup_points(
     }
   }
   return { unique, orig_indices }
+}
+
+// Two-component PCA fit, with the reconstruction from a score pair and the largest
+// out-of-plane residual (0 when exactly coplanar).
+function pca_plane(points: number[][]) {
+  const { scores, eigenvectors, means } = simple_pca(points, 2)
+  const unproject = (score_x: number, score_y: number): number[] =>
+    means.map(
+      (mean, dim) => mean + score_x * eigenvectors[0][dim] + score_y * eigenvectors[1][dim],
+    )
+  const max_residual = Math.max(
+    ...points.map((pt, idx) => euclidean_dist(pt, unproject(scores[idx][0], scores[idx][1]))),
+  )
+  return { scores, eigenvectors, means, unproject, max_residual }
+}
+
+// Plane a set of 3D points lies on, as unit `normal` and `offset` with normal . p = offset.
+// Null when they span a volume (projected quaternary+ domains are polyhedra), are collinear,
+// or number fewer than 3. `rel_tol` is relative to the bounding-box diagonal.
+export function fit_plane(
+  points: number[][],
+  rel_tol: number = 1e-6,
+): { normal: Vec3; offset: number } | null {
+  const { unique } = dedup_points(points)
+  if (unique.length < 3 || unique[0].length !== 3) return null
+  const { scores, eigenvectors, means, max_residual } = pca_plane(unique)
+  const tol = rel_tol * bbox_diagonal(unique)
+  // collinear points have a degenerate second component: any plane through the line fits
+  const [second_lo, second_hi] = array_extent(scores.map((row) => row[1]))
+  if (second_hi - second_lo <= tol || max_residual > tol) return null
+  const normal = normalize_vec<Vec3>(cross_3d(eigenvectors[0], eigenvectors[1]), [0, 0, 0])
+  if (normal.every((component) => component === 0)) return null
+  return { normal, offset: dot(normal, means) }
 }
 
 // Outline of a 3D domain: boundary edges (as index pairs into points_3d) and the label
@@ -706,21 +710,8 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
     }
   }
 
-  // simple_pca always returns k=2 components for >= 3 points
-  const { scores, eigenvectors, means } = simple_pca(unique, 2)
-  const [first_eigenvector, second_eigenvector] = eigenvectors
-  const unproject = (score_x: number, score_y: number): number[] =>
-    means.map(
-      (mean, dim) =>
-        mean + score_x * first_eigenvector[dim] + score_y * second_eigenvector[dim],
-    )
-
+  const { scores, unproject, max_residual } = pca_plane(unique)
   // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
-  const max_residual = Math.max(
-    ...unique.map((point, idx) => {
-      return euclidean_dist(point, unproject(scores[idx][0], scores[idx][1]))
-    }),
-  )
   const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
 
   // 2D convex hull of PCA-projected unique points → only boundary edges
@@ -923,7 +914,7 @@ export function build_chempot_hyperplanes(
     throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
   }
   if (formal_chempots) {
-    min_entries = renormalize_entries(min_entries, el_refs, elements)
+    min_entries = renormalize_entries(min_entries, el_refs)
     el_refs = get_min_entries_and_el_refs(min_entries).el_refs
   }
   return { min_entries, el_refs, ...build_hyperplanes(min_entries, el_refs, elements) }

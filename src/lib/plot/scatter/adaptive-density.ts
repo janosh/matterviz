@@ -119,7 +119,7 @@ const in_bounds = (value: number, min: number, max: number): boolean =>
   Number.isFinite(value) && value >= min && value <= max
 
 const value_bin = (value: number, min: number, span: number, bins: number): number =>
-  Math.min(bins - 1, Math.max(0, Math.floor(((value - min) / span) * bins)))
+  clamp(Math.floor(((value - min) / span) * bins), 0, bins - 1)
 
 const padded_extent = (
   min: number,

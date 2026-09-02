@@ -6,6 +6,7 @@
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'
+  import { create_flash } from '$lib/effects.svelte'
   import { to_error } from '$lib/utils'
 
   let {
@@ -30,15 +31,7 @@
   const root_label = `diagram`
 
   // Brief error flash when an edit is rejected by build_diagram
-  let rejection_msg = $state<string | null>(null)
-  let rejection_timer: ReturnType<typeof setTimeout> | undefined
-
-  function show_rejection(msg: string) {
-    clearTimeout(rejection_timer)
-    rejection_msg = msg
-    rejection_timer = setTimeout(() => (rejection_msg = null), 3000)
-  }
-  $effect(() => () => clearTimeout(rejection_timer))
+  const rejection = create_flash<string | null>(null, 3000)
 
   // True if obj looks like a DiagramInput rather than PhaseDiagramData
   function is_diagram_input(obj: Record<string, unknown>): boolean {
@@ -56,7 +49,7 @@
         build_diagram(updated as DiagramInput)
         diagram_input = updated as DiagramInput
       } catch (error) {
-        show_rejection(to_error(error).message)
+        rejection.show(to_error(error).message)
       }
       return
     }
@@ -76,8 +69,8 @@
   closed_icon={Edit}
   {icon_style}
 >
-  {#if rejection_msg}
-    <div class="rejection-flash">{rejection_msg}</div>
+  {#if rejection.value}
+    <div class="rejection-flash">{rejection.value}</div>
   {/if}
   {#if display_source}
     <JsonTree

@@ -129,11 +129,7 @@ export function parse_pymatgen_trajectory(
           warn(`Invalid stress tensor structure in frame ${idx}`)
         } else {
           // Normal stresses are the diagonal; pressure is minus their mean
-          const normal_stresses = [
-            stress_tensor[0][0],
-            stress_tensor[1][1],
-            stress_tensor[2][2],
-          ]
+          const normal_stresses = stress_tensor.map((row, dim) => row[dim])
           processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
           processed_properties.pressure =
             -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3

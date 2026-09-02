@@ -12,7 +12,7 @@
   import { resolve_pattern } from '$lib/plot/core/patterns'
   import { unique_id } from '$lib/plot/core/utils'
   import { sanitize_html } from '$lib/sanitize'
-  import { strip_html } from '$lib/table'
+  import { strip_html } from '$lib/utils'
   import {
     symbol as d3_symbol,
     symbolAsterisk,

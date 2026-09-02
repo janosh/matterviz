@@ -437,12 +437,22 @@ describe(`arc_label_transform`, () => {
   })
 
   test(`font_scale relaxes the one-line-height across requirement`, () => {
-    // 10px-across slice: full-size labels need >= 12px -> hidden; at 0.7 scale
-    // the requirement drops to 8.4px and the (scaled) text fits radially
+    // 10px-across slice: full-size labels need >= 12.1px -> hidden; at 0.7 scale
+    // the requirement drops to 8.47px and the (scaled) text fits radially
     const thin = { a0: 0, a1: 10 / 95, r0: 50, r1: 140 }
     expect(arc_label_transform(thin, 70, `sunburst`, `radial`)).toBeNull()
     expect(
       arc_label_transform(thin, 70 * 0.7, `sunburst`, `radial`, undefined, 0.7),
     ).not.toBeNull()
+  })
+
+  // Line height follows the rendered font size, not a hard-coded 12
+  test(`the across requirement follows the resolved font size`, () => {
+    const row = { a0: 0, a1: 200, r0: 0, r1: 15 }
+    const room_at = (font_size: number) =>
+      arc_label_slots(row, `icicle`, `auto`, undefined, 1, font_size).map((slot) => slot.room)
+    // 11px: upright (194px of room) then rotated; 20px: the upright slot is gone
+    expect(room_at(11)).toEqual([194, 9])
+    expect(room_at(20)).toEqual([9])
   })
 })

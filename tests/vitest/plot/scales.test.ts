@@ -294,6 +294,20 @@ describe(`scales`, () => {
     expect(radii([100, 1])).toEqual([10, 6, 2])
   })
 
+  // The arcsinh branch clamps by hand, not through d3's .clamp(true), so descending bounds
+  // used to collapse it to a constant
+  test.each([`linear`, `arcsinh`, `log`] as const)(
+    `%s honors a descending radius_range`,
+    (type) => {
+      const radius = create_size_scale(
+        { type, value_range: [1, 100], radius_range: [10, 2] },
+        [],
+      )
+      // the last one is out of domain: it clamps to the end, not past it
+      expect([radius(1), radius(100), radius(1000)]).toEqual([10, 2, 2])
+    },
+  )
+
   describe(`log_floor_scale`, () => {
     test(`returns non-log scales untouched`, () => {
       const scale = scaleLinear().domain([-5, 5]).range([0, 100])

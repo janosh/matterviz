@@ -88,19 +88,24 @@ export function get_energy_per_atom(entry: PhaseData): number {
   return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
 }
 
+// Formation energy per atom against elemental references (eV/atom), or null when a reference
+// is missing or an energy is non-finite. A missing reference is never treated as E = 0 — that
+// is a formation energy against a fictitious element. Zero-amount elements need no reference.
 export function compute_e_form_per_atom(
   entry: PhaseData,
   el_refs: Record<string, PhaseData>,
 ): number | null {
   const atoms = count_atoms_in_composition(entry.composition)
-  if (atoms <= 0) return null
+  const energy_per_atom = get_energy_per_atom(entry)
+  if (!(atoms > 0) || !Number.isFinite(energy_per_atom)) return null
   let ref_sum = 0
-  for (const [el, amt] of Object.entries(entry.composition)) {
-    const ref = el_refs[el]
-    if (!ref) return null
-    ref_sum += (amt / atoms) * get_energy_per_atom(ref)
+  for (const [el, amount] of Object.entries(entry.composition)) {
+    if (!(amount > 0)) continue
+    const ref_epa = el_refs[el] ? get_energy_per_atom(el_refs[el]) : Number.NaN
+    if (!Number.isFinite(ref_epa)) return null
+    ref_sum += (amount / atoms) * ref_epa
   }
-  return get_energy_per_atom(entry) - ref_sum
+  return energy_per_atom - ref_sum
 }
 
 export function find_lowest_energy_unary_refs(
@@ -248,12 +253,11 @@ export function get_convex_hull_stats(
   const [, unary, binary, ternary, quaternary, quinary_plus] = arity_counts
   const stable = processed_entries.filter((entry) => is_on_hull(entry)).length
 
-  const energies = processed_entries
-    .map(
-      (entry) => entry.e_form_per_atom ?? entry.energy_per_atom ?? get_energy_per_atom(entry),
-    )
-    .filter(Number.isFinite)
-  const [min_energy, max_energy] = math.array_extent(energies)
+  // E_form only: falling back to absolute DFT energies puts ~-8 and ~-1 eV/atom in one stat
+  const e_forms = processed_entries
+    .map((entry) => entry.e_form_per_atom)
+    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
+  const [min_e_form, max_e_form] = math.array_extent(e_forms)
   const hull_distances = processed_entries
     .map((entry) => entry.e_above_hull)
     .filter((val): val is number => typeof val === `number` && val >= 0)
@@ -269,10 +273,10 @@ export function get_convex_hull_stats(
     quinary_plus,
     stable,
     unstable: processed_entries.length - stable,
-    energy_range:
-      energies.length > 0
-        ? { min: min_energy, max: max_energy, avg: math.mean(energies) }
-        : { min: 0, max: 0, avg: 0 },
+    e_form_range:
+      e_forms.length > 0
+        ? { min: min_e_form, max: max_e_form, avg: math.mean(e_forms) }
+        : null,
     hull_distance:
       hull_distances.length > 0
         ? { max: math.array_max(hull_distances), avg: math.mean(hull_distances) }

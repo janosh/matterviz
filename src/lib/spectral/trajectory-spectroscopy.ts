@@ -1,7 +1,13 @@
 import { element_by_symbol } from '$lib/element/data'
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { PeriodogramResult, WindowType } from '$lib/fft'
-import { one_sided_periodogram, time_series_window, WINDOW_TYPES } from '$lib/fft'
+import {
+  fft_in_place,
+  next_power_of_two,
+  one_sided_periodogram,
+  time_series_window,
+  WINDOW_TYPES,
+} from '$lib/fft'
 import type { MdFrequencyUnit } from '$lib/spectral/frequency-units'
 import { md_frequency_factor, MD_FREQUENCY_UNITS } from '$lib/spectral/frequency-units'
 import type { Complex } from '$lib/spectral/types'
@@ -12,6 +18,7 @@ import {
   cross_3d,
   dot,
   first_non_increasing_index,
+  IDENTITY_3X3,
   mat3x3_vec3_multiply,
   median,
   partition_point,
@@ -339,14 +346,9 @@ const unit_axis = (vector: ArrayLike<number>): Vec3 => {
   return [vector[0] / norm, vector[1] / norm, vector[2] / norm]
 }
 
-const IDENTITY: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
 const RAMAN_ANISOTROPIC_WEIGHTS = Float64Array.from([0.5, 0.5, 0.5, 3, 3, 3])
 const identity_rotations = (count: number): Matrix3x3[] =>
-  Array.from({ length: count }, () => IDENTITY)
+  Array.from({ length: count }, () => IDENTITY_3X3)
 
 const rotate_vec = (rotation: Matrix3x3, vector: ArrayLike<number>): Vec3 =>
   mat3x3_vec3_multiply(rotation, [vector[0], vector[1], vector[2]])
@@ -555,7 +557,7 @@ const axis_rotation = (
   let rotation_axis: number[] = cross_3d(source, target)
   let sine = Math.hypot(...rotation_axis)
   if (sine <= 1e-14) {
-    if (cosine > 0) return IDENTITY
+    if (cosine > 0) return IDENTITY_3X3
     const helper: [number, number, number] = Math.abs(source[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
     rotation_axis = unit_axis(cross_3d(source, helper))
     sine = 0
@@ -636,10 +638,10 @@ const prepare_positions = (
       ? linear_anchor(first_centered, stream.n_atoms)
       : null
   let previous_axis = linear?.axis
-  let previous_rotation: Matrix3x3 = IDENTITY
+  let previous_rotation: Matrix3x3 = IDENTITY_3X3
   for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
     const centered = center_frame(unwrapped, frame_idx, stream.n_atoms, masses).centered
-    let rotation: Matrix3x3 = IDENTITY
+    let rotation: Matrix3x3 = IDENTITY_3X3
     if (preprocessing === `body_fixed` && !periodic) {
       if (linear && previous_axis) {
         const base = linear.atom_idx * 3
@@ -939,13 +941,10 @@ const curve_candidates = (
   const candidates: PeakCandidate[] = []
   for (let frequency_idx = 1; frequency_idx < normalized_power.length - 1; frequency_idx++) {
     const value = normalized_power[frequency_idx]
-    if (
-      !(
-        value > normalized_power[frequency_idx - 1] &&
-        value >= normalized_power[frequency_idx + 1]
-      )
-    )
-      continue
+    const is_local_max =
+      value > normalized_power[frequency_idx - 1] &&
+      value >= normalized_power[frequency_idx + 1]
+    if (!is_local_max) continue
     let left_minimum = value
     let right_minimum = value
     for (let offset = 1; offset <= search_bins; offset++) {
@@ -1027,35 +1026,72 @@ const extract_displacements = (
   input: TrajectorySpectroscopyInput,
   frequency_unit: TrajectoryFrequencyUnit,
   window: WindowType,
+  zero_pad_factor: number,
 ): Complex[][][] => {
   const interval = sample_interval(stream.steps, frequency_unit, input.time_step, `positions`)
   const factor = frequency_factor(frequency_unit, input.time_unit)
   const weights = time_series_window(stream.n_frames, window)
   const weight_sum = weights.reduce((total, value) => total + value, 0)
-  const component_means = new Float64Array(stream.n_atoms * 3)
+  const n_components = stream.n_atoms * 3
+  const component_means = new Float64Array(n_components)
   for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
-    const base = frame_idx * stream.n_atoms * 3
-    for (let component_idx = 0; component_idx < component_means.length; component_idx++) {
+    const base = frame_idx * n_components
+    for (let component_idx = 0; component_idx < n_components; component_idx++) {
       component_means[component_idx] += positions[base + component_idx] / stream.n_frames
     }
   }
-  return frequencies.map((frequency) => {
-    const raw_frequency = frequency / factor
-    const flat = Array.from({ length: stream.n_atoms * 3 }, () => [0, 0] satisfies Complex)
+  const windowed = (frame_idx: number, component_idx: number) =>
+    ((positions[frame_idx * n_components + component_idx] - component_means[component_idx]) *
+      weights[frame_idx]) /
+    weight_sum
+
+  const spectra: Complex[][] = frequencies.map(() =>
+    Array.from({ length: n_components }, () => [0, 0] satisfies Complex),
+  )
+
+  // One FFT per component serves every on-bin peak, vs a full-length DFT per (peak, component):
+  // 1014 ms -> 113 ms for 494 peaks over 4096 frames and 128 atoms. VDOS peaks always land on a
+  // bin; IR/Raman peaks come from separately sampled streams and fall back to the direct sum.
+  const n_fft = next_power_of_two(Math.ceil(zero_pad_factor * stream.n_frames))
+  const bins = frequencies.map((frequency) => {
+    const exact = (frequency / factor) * interval * n_fft
+    const bin = Math.round(exact)
+    return Math.abs(exact - bin) < 1e-9 && bin >= 0 && bin < n_fft ? bin : null
+  })
+  const binned = bins.flatMap((bin, freq_idx) => (bin === null ? [] : [[freq_idx, bin]]))
+  if (binned.length > 0) {
+    const real = new Float64Array(n_fft)
+    const imaginary = new Float64Array(n_fft)
+    for (let component_idx = 0; component_idx < n_components; component_idx++) {
+      real.fill(0)
+      imaginary.fill(0)
+      for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
+        real[frame_idx] = windowed(frame_idx, component_idx)
+      }
+      fft_in_place(real, imaginary)
+      for (const [freq_idx, bin] of binned) {
+        spectra[freq_idx][component_idx] = [real[bin], imaginary[bin]]
+      }
+    }
+  }
+  for (const [freq_idx, bin] of bins.entries()) {
+    if (bin !== null) continue
+    const raw_frequency = frequencies[freq_idx] / factor
+    const flat = spectra[freq_idx]
     for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
       const angle = -2 * Math.PI * raw_frequency * frame_idx * interval
       const cosine = Math.cos(angle)
       const sine = Math.sin(angle)
-      const base = frame_idx * stream.n_atoms * 3
-      for (let component_idx = 0; component_idx < flat.length; component_idx++) {
-        const amplitude =
-          ((positions[base + component_idx] - component_means[component_idx]) *
-            weights[frame_idx]) /
-          weight_sum
+      for (let component_idx = 0; component_idx < n_components; component_idx++) {
+        const amplitude = windowed(frame_idx, component_idx)
         flat[component_idx][0] += amplitude * cosine
         flat[component_idx][1] += amplitude * sine
       }
     }
+  }
+
+  // Rotate by the phase of the largest component so patterns are real-valued and comparable
+  return spectra.map((flat) => {
     let anchor_idx = 0
     for (let component_idx = 1; component_idx < flat.length; component_idx++) {
       if (Math.hypot(...flat[component_idx]) > Math.hypot(...flat[anchor_idx]))
@@ -1083,7 +1119,9 @@ const detect_peaks = (
   raman: TrajectorySpectrumCurve | null,
   prepared_positions: Float64Array,
   input: TrajectorySpectroscopyInput,
-  options: Required<Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window`>>,
+  options: Required<
+    Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
+  >,
 ): TrajectorySpectralPeak[] => {
   const candidates = [
     ...curve_candidates(vdos, `vdos`),
@@ -1125,6 +1163,7 @@ const detect_peaks = (
     input,
     options.frequency_unit,
     options.window,
+    options.zero_pad_factor,
   )
   const displacement_by_frequency = new Map(
     frequencies_with_displacements.map((frequency, frequency_idx) => [

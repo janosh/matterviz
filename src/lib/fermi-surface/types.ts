@@ -11,8 +11,6 @@ export type FermiSurfaceSettings = Omit<DefaultSettings[`fermi`], `fullscreen_to
 
 export type SpinChannel = `up` | `down` | null
 
-export type RepresentationMode = `solid` | `wireframe` | `transparent`
-
 // Property types for coloring: flat colour per band or spin channel, or the per-vertex
 // scalar `properties` (Fermi velocity, orbital character, …) mapped through a colour scale
 export type ColorProperty = `band` | `spin` | `property`
@@ -62,7 +60,6 @@ export interface BandGridData {
   fermi_energy: number
   n_bands: number
   n_spins: number // 1 or 2
-  origin?: Vec3 // k-space origin (default [0,0,0])
   // true: points sit at k=i/n with no duplicated endpoint (FRMSF); false/undefined:
   // endpoint-inclusive grid storing both equivalent k=0 and k=1 (BXSF)
   periodic?: boolean
@@ -76,7 +73,6 @@ export interface FermiSliceData {
   isolines: Isoline[]
   plane_normal: Vec3
   plane_distance: number
-  k_lattice_2d: [Vec3, Vec3] // in-plane reciprocal vectors
   metadata: {
     n_lines: number
     has_properties: boolean

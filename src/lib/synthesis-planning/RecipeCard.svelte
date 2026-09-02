@@ -42,7 +42,7 @@
       route.reaction.equation,
       ...recipe.items.map(
         (item) =>
-          `${ROLE_LABELS[item.role]}: ${item.phase.formula} ${item.mass_g.toFixed(4)} g (${(item.moles * 1000).toFixed(3)} mmol)`,
+          `${ROLE_LABELS[item.role]}: ${item.phase.formula} ${format_num(item.mass_g, `.4~f`)} g (${format_num(item.moles * 1000, `.3~f`)} mmol)`,
       ),
       `Temperature window: ${window_text}`,
       ...recipe.temperature_window.basis.map((basis) => `  - ${basis}`),

@@ -11,6 +11,7 @@
   import type { ExportSection } from '$lib/io/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
+  import { clamp } from '$lib/math'
   import type { TrajectoryRun } from '$lib/trajectory'
   import type { TrajectoryFrameResolver } from '$lib/trajectory/file-export'
   import {
@@ -67,8 +68,8 @@
   let end_frame = $derived(last_frame_idx)
   // Validate and constrain frame range
   $effect(() => {
-    start_frame = Math.min(Math.max(0, start_frame), last_frame_idx)
-    end_frame = Math.min(Math.max(start_frame, end_frame), last_frame_idx)
+    start_frame = clamp(start_frame, 0, last_frame_idx)
+    end_frame = clamp(end_frame, start_frame, last_frame_idx)
   })
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
   let range = $derived(`${start_frame}-${end_frame}`)

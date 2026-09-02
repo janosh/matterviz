@@ -16,9 +16,9 @@
   import {
     add,
     array_extent,
+    clamp,
     cross_3d,
     merge_coplanar_triangles,
-    normalize_vec,
     subtract,
   } from '$lib/math'
   import { ScatterPlot3DControls } from '$lib/plot'
@@ -68,6 +68,7 @@
     build_axis_ranges,
     dedup_points,
     entry_elements,
+    fit_plane,
     get_3d_domain_simplexes_and_ann_loc,
     get_ternary_combinations,
     get_visible_domain_labels,
@@ -372,7 +373,7 @@
       return Math.max(hi - lo, 1e-6)
     })
     const max_span = Math.max(...spans)
-    return spans.map((span) => Math.min(Math.max(max_span / span, 1), 4)) as Vec3
+    return spans.map((span) => clamp(max_span / span, 1, 4)) as Vec3
   })
 
   // Swizzle a data-coord triple to Three.js coords; ChemPotScene3D frames the axes with the same
@@ -546,145 +547,71 @@
   })
 
   // Per-face domain assignment (stable — only changes when geometry or domains change).
-  // Uses actual vertex centroid (mean of points_3d) for robust nearest-face matching.
+  // Every hull face of a true ternary lies on exactly one entry's hyperplane, so match faces
+  // to domain planes (swizzle and axis stretch are linear, so planes stay planes). The old
+  // nearest-centroid rule was a Voronoi partition that misses elongated/adjacent domains.
+  // Projected quaternary+ domains are polyhedra with no plane and keep the centroid rule.
   const face_domain_map = $derived.by((): string[] => {
     if (!hull_base_geometry) return []
     const pos = hull_base_geometry.getAttribute(`position`)
     const n_faces = pos.count / 3
 
-    // Domain vertex centroids in render coords (swizzled + axis stretch), matching hull_base_geometry.
-    const centroids = base_domains
+    // domain planes and vertex centroids in render coords, matching hull_base_geometry
+    const all_render_pts: Vec3[] = []
+    const domains = base_domains
       .filter((domain) => domain.points_3d.length > 0)
       .map((domain) => {
-        let sx = 0,
-          sy = 0,
-          sz = 0
-        for (const pt of domain.points_3d) {
-          const [x_val, y_val, z_val] = to_render_xyz(pt)
-          sx += x_val
-          sy += y_val
-          sz += z_val
+        const render_pts = domain.points_3d.map(to_render_xyz)
+        all_render_pts.push(...render_pts)
+        let [sum_x, sum_y, sum_z] = [0, 0, 0]
+        for (const [x_val, y_val, z_val] of render_pts) {
+          sum_x += x_val
+          sum_y += y_val
+          sum_z += z_val
         }
-        const n_points = domain.points_3d.length
+        const n_pts = render_pts.length
         return {
           formula: domain.formula,
-          cx: sx / n_points,
-          cy: sy / n_points,
-          cz: sz / n_points,
+          plane: fit_plane(render_pts),
+          centroid: [sum_x / n_pts, sum_y / n_pts, sum_z / n_pts] as Vec3,
         }
       })
+    // Plane membership tolerance, relative to the scene size so it survives the axis stretch
+    const plane_tol = 1e-4 * bbox_diagonal(all_render_pts) || 1e-6
 
-    // Assign each face to the nearest domain centroid
+    const nearest = (candidates: typeof domains, centroid: Vec3): string => {
+      let [best_formula, best_dist] = [``, Infinity]
+      for (const { formula, centroid: dom_centroid } of candidates) {
+        const dist =
+          (centroid[0] - dom_centroid[0]) ** 2 +
+          (centroid[1] - dom_centroid[1]) ** 2 +
+          (centroid[2] - dom_centroid[2]) ** 2
+        if (dist < best_dist) [best_dist, best_formula] = [dist, formula]
+      }
+      return best_formula
+    }
+
     const result: string[] = []
     for (let face_idx = 0; face_idx < n_faces; face_idx++) {
       const base = face_idx * 3
-      const fcx = (pos.getX(base) + pos.getX(base + 1) + pos.getX(base + 2)) / 3
-      const fcy = (pos.getY(base) + pos.getY(base + 1) + pos.getY(base + 2)) / 3
-      const fcz = (pos.getZ(base) + pos.getZ(base + 1) + pos.getZ(base + 2)) / 3
-      let best_formula = ``
-      let best_dist = Infinity
-      for (const dc of centroids) {
-        const dist = (fcx - dc.cx) ** 2 + (fcy - dc.cy) ** 2 + (fcz - dc.cz) ** 2
-        if (dist < best_dist) {
-          best_dist = dist
-          best_formula = dc.formula
-        }
-      }
-      result.push(best_formula)
+      const centroid: Vec3 = [
+        (pos.getX(base) + pos.getX(base + 1) + pos.getX(base + 2)) / 3,
+        (pos.getY(base) + pos.getY(base + 1) + pos.getY(base + 2)) / 3,
+        (pos.getZ(base) + pos.getZ(base + 1) + pos.getZ(base + 2)) / 3,
+      ]
+      const on_plane = domains.filter(({ plane }) => {
+        if (!plane) return false
+        const [norm_x, norm_y, norm_z] = plane.normal
+        const dist = norm_x * centroid[0] + norm_y * centroid[1] + norm_z * centroid[2]
+        return Math.abs(dist - plane.offset) <= plane_tol
+      })
+      // one plane through the face is the answer; ties and no-plane faces fall back to centroids
+      result.push(
+        on_plane.length === 1
+          ? on_plane[0].formula
+          : nearest(on_plane.length > 1 ? on_plane : domains, centroid),
+      )
     }
-
-    // Unify coplanar adjacent faces to the majority domain so that fan
-    // triangulation edges within a single hull face don't create visible
-    // color boundaries. Build adjacency via shared edge keys, group
-    // coplanar neighbors, then assign each group to its most-common domain.
-    if (n_faces > 1) {
-      const tol = 1e-3
-      const round = (val: number): number => Math.round(val / tol)
-      const vkey = (vert_idx: number): string =>
-        `${round(pos.getX(vert_idx))},${round(pos.getY(vert_idx))},${round(
-          pos.getZ(vert_idx),
-        )}`
-      // Compute face normals
-      const normals: Vec3[] = []
-      for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-        const base = face_idx * 3
-        const e1: Vec3 = [
-          pos.getX(base + 1) - pos.getX(base),
-          pos.getY(base + 1) - pos.getY(base),
-          pos.getZ(base + 1) - pos.getZ(base),
-        ]
-        const e2: Vec3 = [
-          pos.getX(base + 2) - pos.getX(base),
-          pos.getY(base + 2) - pos.getY(base),
-          pos.getZ(base + 2) - pos.getZ(base),
-        ]
-        normals.push(normalize_vec(cross_3d(e1, e2)))
-      }
-      // Build edge → face adjacency
-      const edge_faces = new Map<string, number[]>()
-      for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-        const base = face_idx * 3
-        const keys = [vkey(base), vkey(base + 1), vkey(base + 2)]
-        for (const ek of [
-          edge_key(keys[0], keys[1]),
-          edge_key(keys[1], keys[2]),
-          edge_key(keys[0], keys[2]),
-        ]) {
-          const list = edge_faces.get(ek)
-          if (list) list.push(face_idx)
-          else edge_faces.set(ek, [face_idx])
-        }
-      }
-      // Union-find for coplanar adjacent faces
-      const parent = Array.from({ length: n_faces }, (_, idx) => idx)
-      const find = (node: number): number => {
-        while (parent[node] !== node) {
-          parent[node] = parent[parent[node]]
-          node = parent[node]
-        }
-        return node
-      }
-      const union = (a_idx: number, b_idx: number): void => {
-        const ra = find(a_idx),
-          rb = find(b_idx)
-        if (ra !== rb) parent[ra] = rb
-      }
-      for (const pair of edge_faces.values()) {
-        if (pair.length !== 2) continue
-        const [fa, fb] = pair
-        const na = normals[fa],
-          nb = normals[fb]
-        if (Math.abs(na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2]) > 1 - tol) {
-          union(fa, fb)
-        }
-      }
-      // Assign majority domain to each coplanar group
-      const groups = new Map<number, number[]>()
-      for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-        const root = find(face_idx)
-        const grp = groups.get(root)
-        if (grp) grp.push(face_idx)
-        else groups.set(root, [face_idx])
-      }
-      for (const members of groups.values()) {
-        if (members.length < 2) continue
-        // Find most common domain in this group
-        const counts = new Map<string, number>()
-        for (const member_idx of members) {
-          counts.set(result[member_idx], (counts.get(result[member_idx]) ?? 0) + 1)
-        }
-        let majority = result[members[0]]
-        let max_count = 0
-        for (const [formula, count] of counts) {
-          if (count > max_count) {
-            max_count = count
-            majority = formula
-          }
-        }
-        for (const member_idx of members) result[member_idx] = majority
-      }
-    }
-
     return result
   })
 

@@ -20,6 +20,30 @@ export const measured_footprint = (
     ? { width: el.offsetWidth, height: el.offsetHeight }
     : fallback
 
+// One mark's contribution: its projected points, plus whether a line is drawn through them
+// (which makes the segments between them obstacles too).
+export type ObstacleSeries = { points: DecorationPoint[]; draws_line?: boolean }
+
+// Hands `build` the base plot box (frame minus decoration-independent padding) and samples
+// what it returns. Measuring against the base rather than the padded plot is what keeps a
+// decoration's own reservation out of the crowding decision.
+export function with_obstacle_frame(
+  frame: {
+    width: number
+    height: number
+    effective_base_pad: { l: number; r: number; t: number; b: number }
+  },
+  has_marks: boolean,
+  build: (base: { base_w: number; base_h: number }) => ObstacleSeries[],
+): DecorationPoint[] {
+  const { width, height, effective_base_pad: pad } = frame
+  if (!width || !height || !has_marks) return []
+  const base_w = width - pad.l - pad.r
+  const base_h = height - pad.t - pad.b
+  if (base_w <= 0 || base_h <= 0) return []
+  return build_obstacles_norm(build({ base_w, base_h }), base_w, base_h)
+}
+
 const inside_unit_square = ({ x, y }: DecorationPoint): boolean =>
   Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1
 
@@ -58,7 +82,7 @@ export const clip_segment_to_unit_square = (
 // Build normalized obstacles from data so decoration reservations cannot change the result and
 // cause a reserve -> data-shift -> re-decide loop.
 export function build_obstacles_norm(
-  series: { points: DecorationPoint[]; draws_line?: boolean }[],
+  series: ObstacleSeries[],
   base_w: number,
   base_h: number,
 ): DecorationPoint[] {

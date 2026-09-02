@@ -1,4 +1,5 @@
 import type { Vec3 } from '$lib/math'
+import { clamp } from '$lib/math'
 import { type CameraProjection, DEFAULTS } from '$lib/settings'
 import { untrack } from 'svelte'
 import { type Camera, OrthographicCamera, type Scene, type Vector3 } from 'three/webgpu'
@@ -124,7 +125,7 @@ export const resize_orthographic_zoom = (
       ? current_zoom
       : (current_zoom * next_fit_zoom) / previous_fit_zoom
   const bounds = get_orthographic_zoom_bounds(next_fit_zoom, min_zoom, max_zoom)
-  return Math.max(bounds.min_zoom, Math.min(bounds.max_zoom, resized_zoom))
+  return clamp(resized_zoom, bounds.min_zoom, bounds.max_zoom)
 }
 
 // The auto-fit zoom, pinned to the content extent it was last fitted for.

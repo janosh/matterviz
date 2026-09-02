@@ -106,6 +106,21 @@ describe(`frame loading`, () => {
     destroy()
   })
 
+  // Effects flush in creation order, so the request effect used to see the raw 2.6 and trip
+  // run.read_frame's RangeError, firing a spurious on_frame_error on every fractional write
+  it(`rounds a fractional host index down instead of erroring`, () => {
+    const { run, reads } = make_async_run(frames(5))
+    const { host, session, events, errors, destroy } = make_session({ run })
+    host.index = 2.6
+    flushSync()
+    expect(errors).toEqual([])
+    expect(reads).toEqual([2])
+    expect(host.index).toBe(2)
+    expect(events).toEqual([`step:2`])
+    expect(session.controller.set_step(3.9)).toBe(3)
+    destroy()
+  })
+
   it(`latest request wins: a superseded async read is aborted and never displayed`, async () => {
     const { run, pending, reads, resolve_next } = make_async_run(frames(6))
     const { host, session, errors, destroy } = make_session({ run })

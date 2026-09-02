@@ -8,9 +8,9 @@
   } from '$lib/colors'
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
-  import { clamp } from '$lib/math'
+  import { array_max, clamp } from '$lib/math'
   import { is_activation_key } from '$lib/plot/core/interactions'
-  import { clamp01 } from '$lib/utils'
+  import { clamp01, strip_html } from '$lib/utils'
   import { ControlPane } from '$lib/overlays'
   import { sanitize_html, sanitize_html_ssr } from '$lib/sanitize'
   import type {
@@ -38,6 +38,7 @@
     get_column_id as get_col_id,
     make_cell_color_scale,
     merge_domains,
+    NULL_CELL_COLOR,
     resolve_color_domain,
   } from '$lib/table'
   import ColumnFilterMenu from './ColumnFilter.svelte'
@@ -58,7 +59,6 @@
     parse_datetime_val,
     parse_numeric_val,
     row_matches_query,
-    strip_html,
   } from './data'
   import type { ExportFormat, TableMatrix } from './export'
   import {
@@ -82,8 +82,7 @@
     Search as SearchIcon,
   } from 'svelte-widgets/icons'
   import { onMount, type Snippet, tick, untrack } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import type { ClassValue, HTMLAttributes } from 'svelte/elements'
 
   let {
     data = $bindable([]),
@@ -96,6 +95,7 @@
     sort = $bindable({ column: ``, dir: `asc` }),
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
+    row_attrs,
     on_row_click,
     on_row_double_click,
     column_order = $bindable([]),
@@ -137,6 +137,9 @@
     sort?: TableSort
     default_num_format?: string
     show_heatmap?: boolean
+    // The <tr>'s own class and style, read off the row itself by default. Hosts whose
+    // columns are user data pass this so a column named `class`/`style` still renders.
+    row_attrs?: (row: RowData) => { class?: ClassValue; style?: string }
     on_row_click?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
     on_row_double_click?: (event: MouseEvent, row: RowData) => void
     // Column IDs (see get_column_id) in display order. Bindable so drag reorders persist.
@@ -306,8 +309,8 @@
   // IDs and row keys are separate: grouped IDs use tuple encoding, while row data may key a
   // grouped column either by its plain key or by the display-style "Label (Group)".
   let data_keys = $derived.by(() => {
-    const keys = new SvelteMap<string, string>()
-    const qualified_keys = new SvelteMap<string, string>()
+    const keys = new Map<string, string>()
+    const qualified_keys = new Map<string, string>()
     for (const col of columns) {
       const col_id = get_col_id(col)
       const plain_key = col.key ?? col.label
@@ -317,7 +320,7 @@
     // Only a grouped column can be keyed either way, so an ungrouped table skips the row
     // scan entirely — it costs O(rows x keys) and runs on every data change.
     if (qualified_keys.size === 0) return keys
-    const present_keys = new SvelteSet<string>()
+    const present_keys = new Set<string>()
     for (const row of data) for (const key of Object.keys(row)) present_keys.add(key)
     for (const [col_id, data_key] of qualified_keys) {
       if (present_keys.has(data_key)) keys.set(col_id, data_key)
@@ -329,13 +332,32 @@
 
   // column_order first (stale IDs skipped), then any column it doesn't mention
   let ordered_columns = $derived.by(() => {
-    const by_id = new SvelteMap(columns.map((col) => [get_col_id(col), col]))
+    const by_id = new Map(columns.map((col) => [get_col_id(col), col]))
     const ordered = [...new Set(column_order)]
       .map((id) => by_id.get(id))
       .filter((col) => col != null)
     const ordered_ids = new Set(ordered.map(get_col_id))
-    return [...ordered, ...columns.filter((col) => !ordered_ids.has(get_col_id(col)))]
+    const merged = [...ordered, ...columns.filter((col) => !ordered_ids.has(get_col_id(col)))]
+    return group_contiguously(merged)
   })
+  // The group header emits one colspan per group, so a group split by another column would
+  // label the wrong ones and leave its tail unlabelled. Emit each group at its first member.
+  function group_contiguously(cols_in_order: Label[]): Label[] {
+    const groups = new Map<string, Label[]>()
+    for (const col of cols_in_order) {
+      if (!col.group) continue
+      const members = groups.get(col.group)
+      if (members) members.push(col)
+      else groups.set(col.group, [col])
+    }
+    if (groups.size === 0) return cols_in_order
+    return cols_in_order.flatMap((col) => {
+      if (!col.group) return [col]
+      const members = groups.get(col.group) ?? []
+      groups.delete(col.group) // the group is emitted whole at its first member
+      return members
+    })
+  }
   // Write the resolved order back to the bindable prop so hosts persist a complete, valid list.
   // Only on a real change: a fresh array reference would re-trigger this effect forever. Left
   // alone while columns are empty, so a persisted order survives until the data arrives.
@@ -353,7 +375,6 @@
     ),
   )
   let has_group_header = $derived(visible_columns.some((col) => col.group))
-  let colored_columns = $derived(columns.filter((col) => col.color_scale != null))
   // Cells rendered before the data columns: the select checkbox and the row number
   let leading_cols = $derived((show_row_select ? 1 : 0) + (show_row_numbers ? 1 : 0))
   let body_colspan = $derived(visible_columns.length + leading_cols)
@@ -362,7 +383,7 @@
 
   // === Date/time columns ===
   let datetime_column_kinds = $derived.by(() => {
-    const kinds = new SvelteMap<string, `date` | `time` | `datetime`>()
+    const kinds = new Map<string, `date` | `time` | `datetime`>()
     const sample = data.slice(0, 25)
     for (const col of columns) {
       const row_key = cell_key(col)
@@ -408,7 +429,7 @@
   // right-aligned and offered a range filter. `every` bails on the first non-numeric value,
   // so text columns cost one cell, not a full pass.
   let numeric_columns = $derived.by(() => {
-    const col_ids = new SvelteSet<string>()
+    const col_ids = new Set<string>()
     for (const col of columns) {
       if (is_datetime_column(col) || special_cells?.[col.label]) continue
       const row_key = cell_key(col)
@@ -440,9 +461,22 @@
     return filter_cache.filters
   })
 
+  // A keystroke re-filters every row, re-parses every visible cell and rebuilds one d3 scale
+  // per column: 60 ms of JS on 10k x 30. Clearing applies at once, since waiting reads as a hang.
+  let debounced_query = $state(untrack(() => search_query))
+  $effect(() => {
+    const query = search_query
+    if (!query.trim()) {
+      debounced_query = query
+      return
+    }
+    const timer = setTimeout(() => (debounced_query = query), 150)
+    return () => clearTimeout(timer)
+  })
+
   // Rows surviving the global query and every per-column filter
   let filtered_data = $derived.by(() => {
-    const query = search_query.toLowerCase().trim()
+    const query = debounced_query.toLowerCase().trim()
     return data.filter(
       (row) =>
         Object.values(row).some((val) => val !== undefined) &&
@@ -528,7 +562,7 @@
   // edited cell) must not bounce the user back to page 1.
   let row_count = $derived(sorted_data.length)
   let current_page = $derived.by(() => {
-    void [row_count, search_query, sort, multi_sort]
+    void [row_count, debounced_query, sort, multi_sort]
     return 1
   })
   let total_pages = $derived(Math.max(1, Math.ceil(sorted_data.length / page_size)))
@@ -604,9 +638,9 @@
   // Narrowing the rows produces a new result set, which starts at its top. Without this a
   // scroll_top left over from the unfiltered rows lands the user past the end of the matches.
   // Seeded, not left empty, so the first run isn't mistaken for a filter change.
-  let prev_narrowing: unknown[] = untrack(() => [search_query, active_filters])
+  let prev_narrowing: unknown[] = untrack(() => [debounced_query, active_filters])
   $effect(() => {
-    const narrowing = [search_query, active_filters]
+    const narrowing = [debounced_query, active_filters]
     const narrowed = narrowing.some((part, idx) => part !== prev_narrowing[idx])
     prev_narrowing = narrowing
     if (!narrowed || !virtual_config || !scroll_el) return
@@ -635,8 +669,8 @@
   // Each column's stats carry the color domain they resolve to, since every consumer
   // (color scale, data bar) needs both together.
   let column_stats = $derived.by(() => {
-    const stats = new SvelteMap<string, ColumnStats & { domain: [number, number] }>()
-    const groups = new SvelteMap<string, [number, number][]>()
+    const stats = new Map<string, ColumnStats & { domain: [number, number] }>()
+    const groups = new Map<string, [number, number][]>()
     for (const col of visible_columns) {
       const parsed = filtered_data.map((row) => parse_numeric_val(row[cell_key(col)]))
       const col_stats = compute_column_stats(parsed, better_of(col), needs_quantiles)
@@ -657,7 +691,7 @@
 
   // Construct each color mapper once per visible column, not once per rendered cell
   let column_color_scales = $derived.by(() => {
-    const scales = new SvelteMap<string, (val: number | null | undefined) => CellColor>()
+    const scales = new Map<string, (val: number | null | undefined) => CellColor>()
     if (!show_heatmap) return scales
     for (const col of visible_columns) {
       const col_id = get_col_id(col)
@@ -679,6 +713,16 @@
     }
     return scales
   })
+
+  // Does the column actually paint? An unconfigured numeric column defaults to interpolateViridis
+  // (so the configured scale alone says "no"), and one with no numeric values has no stats.
+  const is_colored_column = (col: Label): boolean =>
+    color_scale_of(col) !== null && column_stats.has(get_col_id(col))
+  // Columns the color controls apply to: the colored ones, plus any with an explicit
+  // configuration — `color_scale: null` included, so turning a heatmap off can be undone
+  let colored_columns = $derived(
+    columns.filter((col) => is_colored_column(col) || color_scale_of(col) !== undefined),
+  )
 
   // === Sticky columns ===
   // Offset the second sticky header row by the first row's height
@@ -762,14 +806,13 @@
     return clamp01(oriented)
   }
 
-  const NO_COLOR: CellColor = { bg: null, text: null }
   // Text contrast against a translucent cell fill blended with the page
   const translucent_text = contrast_color_memo({
     backdrop: () => page_backdrop.current,
     alpha: () => heatmap_opacity,
   })
   function calc_color(num: number | null, view: ColumnView): CellColor {
-    if (!view.color) return NO_COLOR
+    if (!view.color) return NULL_CELL_COLOR
     const color = view.color(num)
     if (!color.bg || heatmap_opacity >= 1) return color
     return { bg: color.bg, text: translucent_text(color.bg) }
@@ -1081,9 +1124,7 @@
       ],
     },
     // Gradient direction only applies to heatmap-colored columns
-    ...(allow_better_toggle &&
-    context_menu_column &&
-    color_scale_of(context_menu_column) != null
+    ...(allow_better_toggle && context_menu_column && is_colored_column(context_menu_column)
       ? [
           {
             title: `Gradient direction`,
@@ -1110,14 +1151,11 @@
   const row_id_map = new WeakMap<RowData, string>()
   let row_id_counter = 0
   function get_row_id(row: RowData): string {
-    let id = row_id_map.get(row)
-    if (id === undefined) {
-      id = `row_${row_id_counter++}`
-      row_id_map.set(row, id)
-    }
+    const id = row_id_map.get(row) ?? `row_${row_id_counter++}`
+    row_id_map.set(row, id)
     return id
   }
-  let selected_id_set = $derived(new SvelteSet(selected_rows.map(get_row_id)))
+  let selected_id_set = $derived(new Set(selected_rows.map(get_row_id)))
   const is_row_selected = (row: RowData): boolean => selected_id_set.has(get_row_id(row))
   function append_selected_rows(rows: RowData[]) {
     const row_ids = rows.map(get_row_id)
@@ -1143,7 +1181,7 @@
   )
   function toggle_select_all() {
     if (all_page_selected) {
-      const scope_ids = new SvelteSet(select_all_rows.map(get_row_id))
+      const scope_ids = new Set(select_all_rows.map(get_row_id))
       selected_rows = selected_rows.filter((row) => !scope_ids.has(get_row_id(row)))
     } else append_selected_rows(select_all_rows.filter((row) => !is_row_selected(row)))
   }
@@ -1233,13 +1271,9 @@
         `:scope > tr > td[data-col-idx="${col_idx}"]`,
       ) ?? []),
     ]
-    let widest = 0
-    for (const element of cells) {
-      widest = Math.max(
-        widest,
-        element.scrollWidth + element.offsetWidth - element.clientWidth,
-      )
-    }
+    const widest = array_max(
+      cells.map((el) => el.scrollWidth + el.offsetWidth - el.clientWidth),
+    )
     if (widest > 0) set_pref(col_id, `width`, clamp(widest + 8, 50, 500))
   }
 
@@ -1644,9 +1678,10 @@
         {#each display_rows as row, row_idx (get_row_id(row))}
           {@const abs_idx = display_range.start + row_idx}
           {@const row_selected = show_row_select && is_row_selected(row)}
+          {@const attrs = row_attrs?.(row) ?? row}
           <tr
-            style={row.style}
-            class={[row.class, { selected: row_selected }]}
+            style={attrs.style}
+            class={[attrs.class, { selected: row_selected }]}
             data-row-idx={abs_idx}
             tabindex={on_row_click ? 0 : undefined}
           >

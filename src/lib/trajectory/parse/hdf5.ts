@@ -32,6 +32,7 @@ import {
   sampled_property_rows,
   signal_descriptors as describe_signals,
   string_value,
+  to_number_array,
   to_scalar_number,
   open_h5_source,
   trajectory_signal,
@@ -113,11 +114,14 @@ const SIGNAL_ALIASES: Record<string, string> = {
 
 const torch_sim_context = (inherited_attribute: (names: string[]) => unknown) => {
   const dt_fs = to_scalar_number(inherited_attribute([`dt_fs`]))
-  const time_step =
-    to_scalar_number(inherited_attribute([`time_step`, `timestep`, `dt`])) ?? dt_fs
-  const time_unit =
-    string_value(inherited_attribute([`time_unit`, `time_units`])) ??
-    (dt_fs != null ? `fs` : undefined)
+  const tagged_step = to_scalar_number(inherited_attribute([`time_step`, `timestep`, `dt`]))
+  const tagged_unit = string_value(inherited_attribute([`time_unit`, `time_units`]))
+  // Value and unit must come from the same attribute: resolving them independently read a
+  // file with `dt = 0.0005` (ps) and `dt_fs = 0.5` as 0.0005 fs
+  const { value: time_step, unit: time_unit } =
+    tagged_step != null && tagged_unit
+      ? { value: tagged_step, unit: tagged_unit }
+      : { value: dt_fs, unit: `fs` }
   return {
     timing:
       time_step != null && time_step > 0 && time_unit
@@ -138,30 +142,6 @@ const torch_sim_context = (inherited_attribute: (names: string[]) => unknown) =>
       ].filter((entry): entry is [string, string | number] => entry[1] != null),
     ),
   }
-}
-
-const flatten_numeric = (value: unknown): number[] | null => {
-  if (typeof value === `number`) return Number.isFinite(value) ? [value] : null
-  if (typeof value === `bigint`) {
-    const number = Number(value)
-    return Number.isSafeInteger(number) ? [number] : null
-  }
-  if (ArrayBuffer.isView(value)) {
-    const values = Array.from(value as unknown as ArrayLike<number | bigint>, (entry) => {
-      if (typeof entry !== `bigint`) return entry
-      const number = Number(entry)
-      return Number.isSafeInteger(number) ? number : Number.NaN
-    })
-    return values.every(Number.isFinite) ? values : null
-  }
-  if (!Array.isArray(value)) return null
-  const flattened: number[] = []
-  for (const entry of value) {
-    const child = flatten_numeric(entry)
-    if (!child) return null
-    flattened.push(...child)
-  }
-  return flattened
 }
 
 const FORMAT = `TorchSim HDF5`
@@ -394,7 +374,7 @@ const parse_torch_sim_datasets = (
       ? Array.from(
           read_numeric_samples(pbc_dataset, pbc_path, pbc_shape[0], pbc_sample_size, 1),
         )
-      : flatten_numeric(inherited_attribute(PBC_ALIASES))
+      : to_number_array(inherited_attribute(PBC_ALIASES), true)
   if (pbc_values?.some((value) => value !== 0 && value !== 1)) {
     const source = pbc_dataset ? `dataset ${pbc_path}` : `attribute ${PBC_ALIASES.join(`/`)}`
     throw new Error(`HDF5 PBC ${source} must contain only 0/1 values`)
@@ -495,10 +475,7 @@ const parse_torch_sim_datasets = (
               throw new Error(`cell volume is zero`)
           }
         } catch (error) {
-          return {
-            frame_idx,
-            reason: to_error(error).message,
-          }
+          return { frame_idx, reason: to_error(error).message }
         }
       }
     }
@@ -694,10 +671,11 @@ const parse_torch_sim_datasets = (
       if (!is_per_atom_vector(signal)) continue
       const signal_idx = partition_point(signal.steps, (step) => step < steps[frame_idx])
       if (signal.steps[signal_idx] !== steps[frame_idx]) continue
+      const ranges: [number, number][] = [[signal_idx, signal_idx + 1]]
       attach_site_vectors(
         frame,
         key,
-        read_numeric_hyperslab(signal.dataset, signal.path, [[signal_idx, signal_idx + 1]]),
+        read_numeric_hyperslab(signal.dataset, signal.path, ranges),
       )
     }
     return frame

@@ -7,6 +7,7 @@ import type {
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
+import { csv_line } from '$lib/utils'
 import type { TrajectoryRun } from './run'
 import { DEFAULT_POSITION_STREAM_MAX_BYTES, suggest_frame_stride } from './runs/accumulate'
 
@@ -161,11 +162,9 @@ export async function sweep_frames<Result>(
 // column), the shape every analysis result already has: a lag/r/frequency axis plus one
 // column per curve. Header fields holding a delimiter, quote or line break are quoted.
 export function columns_to_csv(columns: Record<string, ArrayLike<number>>): string {
-  const csv_field = (field: string): string =>
-    /[",\r\n]/.test(field) ? `"${field.replaceAll(`"`, `""`)}"` : field
   const keys = Object.keys(columns)
   const n_rows = Math.max(0, ...keys.map((key) => columns[key].length))
-  const header = keys.map(csv_field).join(`,`)
+  const header = csv_line(keys)
   const rows = Array.from({ length: n_rows }, (_unused, row_idx) =>
     keys.map((key) => String(columns[key][row_idx] ?? NaN)).join(`,`),
   )

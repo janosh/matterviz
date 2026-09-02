@@ -19,6 +19,16 @@ export const X2_AXIS_DEFAULTS = {
   label_shift: { x: 0, y: AXIS_TITLE_OFFSET },
 }
 
+// Secondary-axis configs with library defaults merged in. Returned rather than assigned back
+// into the $bindable props, which would push library defaults into the parent's bound state.
+export const merge_secondary_axes = (
+  y2_axis: AxisConfig | undefined,
+  x2_axis: AxisConfig | undefined,
+): { y2: AxisConfig; x2: AxisConfig } => ({
+  y2: { ...AXIS_DEFAULTS, ...y2_axis },
+  x2: { ...X2_AXIS_DEFAULTS, ...x2_axis },
+})
+
 type AxisType = `x` | `x2` | `y` | `y2`
 
 // Tick labels of a categorical axis (slot index -> category name). A user-supplied label

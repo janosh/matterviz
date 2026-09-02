@@ -167,12 +167,10 @@ export function calculate_total_pdf(
     radiation,
     pair_weights,
     mean_scattering_length: weighting.mean_scattering_length,
-    // Every returned pattern shares this one `radii` array — calculate_all_pair_rdfs builds an
-    // identical copy per pair (72 KB of duplication at 3 elements x 1500 bins). Treat the r
-    // arrays on the result as read-only; mutating one mutates all of them.
+    // every partial's `r` is the same array instance as `radii` above (one shared grid), so
+    // treat the r arrays on the result as read-only: mutating one mutates all of them
     partials: partial_rdfs.map((partial) => ({
       ...partial,
-      r: radii,
       rho_0,
       reduced_g_r: reduced_pdf(partial, rho_0),
     })),

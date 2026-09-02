@@ -1,6 +1,8 @@
 // Route scoring: every term is mapped to roughly [-1, 1] before weighting so weights are
 // comparable, and each term's contribution is reported so rankings stay explainable.
 import type { GasSpecies } from '$lib/convex-hull/types'
+import { format_num, plural } from '$lib/labels'
+import { clamp01 } from '$lib/utils'
 import { format_mev } from './format-mev'
 import { lookup_precursor_info } from './precursor-library'
 import type {
@@ -103,7 +105,7 @@ export function assess_practicality(reaction: SynthesisReaction): PracticalityAs
         : `Takes up ${phase.formula}: requires a controlled flowing ${phase.formula} atmosphere`,
     )
   }
-  return { score: Math.max(0, Math.min(1, score)), notes }
+  return { score: clamp01(score), notes }
 }
 
 const name_with_force = (comp: CompetingPhase): string =>
@@ -117,7 +119,13 @@ export function score_route(
 ): { score: number; breakdown: Record<keyof ScoreWeights, number>; rationale: string[] } {
   const downhill = reaction.energy_per_atom < 0
   const terms: Record<keyof ScoreWeights, number> = {
-    selectivity: downhill ? -saturate(selectivity.selectivity_margin) : -1,
+    // with no competitors selectivity_margin collapses to the target's own driving force, so
+    // saturating it would just echo the driving_force term; no competitor = full marks
+    selectivity: !downhill
+      ? -1
+      : selectivity.competitors.length === 0
+        ? 1
+        : -saturate(selectivity.selectivity_margin),
     inverse_hull: saturate(selectivity.inverse_hull_energy),
     driving_force: downhill ? Math.min(1, -reaction.driving_force / (2 * ENERGY_SCALE)) : -0.5,
     competition: -Math.min(1, selectivity.n_more_favorable / 3),
@@ -137,7 +145,7 @@ export function score_route(
   const worse = selectivity.competitors.filter((comp) => comp.more_favorable_than_target)
   if (worse.length) {
     rationale.push(
-      `${worse.length} competing phase${worse.length === 1 ? `` : `s`} more favorable than the target: ${worse
+      `${plural(worse.length, `competing phase`)} more favorable than the target: ${worse
         .slice(0, 3)
         .map(name_with_force)
         .join(`, `)}${worse.length > 3 ? `, …` : ``}; expect intermediates`,
@@ -165,7 +173,7 @@ export function score_route(
   }
   if (practicality.notes.length) {
     rationale.push(
-      `Practicality ${practicality.score.toFixed(2)}: ${practicality.notes.slice(0, 2).join(`; `)}`,
+      `Practicality ${format_num(practicality.score, `.2~f`)}: ${practicality.notes.slice(0, 2).join(`; `)}`,
     )
   }
   return { score, breakdown, rationale }

@@ -1,13 +1,13 @@
 // moyo-wasm bridge: the one place the WASM module is initialized and a structure is handed
 // to moyo's analyze_cell, plus thin wrappers over its space-group database lookups.
-import { symbol_to_atomic_number } from '$lib/element/helpers'
-import { ELEM_SYMBOLS } from '$lib/element/types'
+import { element_from_atomic_number, symbol_to_atomic_number } from '$lib/element/helpers'
 import * as math from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, Crystal, Site } from '$lib/structure'
 import { merge_split_partial_sites } from '$lib/structure/partial-occupancy'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
+import { is_identity, mat3_from_flat_col_major } from './symmetry-elements'
 import type {
   InitInput,
   MoyoCell,
@@ -124,9 +124,8 @@ export function count_symmetry_op_kinds(
   const counts = { translations: 0, rotations: 0, roto_translations: 0 }
   for (const { rotation, translation } of operations) {
     const has_translation = translation.some((coord) => Math.abs(coord) > 1e-10)
-    const is_identity = String(rotation) === `1,0,0,0,1,0,0,0,1`
-    if (is_identity && has_translation) counts.translations++
-    else if (!has_translation) counts.rotations++
+    if (!has_translation) counts.rotations++
+    else if (is_identity(mat3_from_flat_col_major(rotation))) counts.translations++
     else counts.roto_translations++
   }
   return counts
@@ -162,7 +161,7 @@ const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
   const matrix = math.vec9_to_mat3x3([...cell.lattice.basis])
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const sites = cell.positions.map((abc, idx) => {
-    const element = ELEM_SYMBOLS[cell.numbers[idx] - 1]
+    const element = element_from_atomic_number(cell.numbers[idx])
     if (!element) throw new Error(`Unknown atomic number: ${cell.numbers[idx]}`)
     // moyo may return coordinates outside [0, 1)
     const wrapped_abc = wrap_to_unit_cell(abc)

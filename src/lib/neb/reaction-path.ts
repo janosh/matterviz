@@ -294,24 +294,6 @@ const hermite = (p0: number, p1: number, m0: number, m1: number, t_val: number):
   )
 }
 
-// Evaluate segment `seg` of the piecewise Hermite curve at `coord`, converting the knot
-// slopes dy/dx into the t-space tangents the basis expects.
-const hermite_at = (
-  xs: readonly number[],
-  ys: readonly number[],
-  slopes: readonly number[],
-  seg: number,
-  width: number,
-  coord: number,
-): number =>
-  hermite(
-    ys[seg],
-    ys[seg + 1],
-    slopes[seg] * width,
-    slopes[seg + 1] * width,
-    clamp((coord - xs[seg]) / width, 0, 1),
-  )
-
 // Interior critical points of one Hermite segment, as t-values in (0, 1).
 function segment_critical_points(p0: number, p1: number, m0: number, m1: number): number[] {
   // d/dt of the Hermite cubic is the quadratic quad_a·t² + quad_b·t + quad_c
@@ -350,13 +332,24 @@ export type PathSpline = {
 export function fit_path_spline(
   coords: readonly number[],
   energies: readonly number[],
-  options: { slopes?: readonly number[]; n_samples?: number } = {},
+  options: {
+    slopes?: readonly number[]
+    n_samples?: number
+    // Run each supplied slope is measured against, per segment (the segment's arc length when
+    // `slopes` are dE/ds). Defaults to the coord widths, identical when coords are arc lengths.
+    slope_widths?: readonly number[]
+  } = {},
 ): PathSpline {
   const widths = knot_widths(coords, energies)
-  const { slopes: given_slopes, n_samples = 200 } = options
+  const { slopes: given_slopes, n_samples = 200, slope_widths = widths } = options
   if (given_slopes && given_slopes.length !== coords.length) {
     throw new Error(
       `Got ${given_slopes.length} knot slopes for ${coords.length} images; they must match one-to-one`,
+    )
+  }
+  if (slope_widths.length !== widths.length) {
+    throw new Error(
+      `Got ${slope_widths.length} slope widths for ${widths.length} segments; they must match one-to-one`,
     )
   }
   if (n_samples < 2) throw new Error(`fit_path_spline needs n_samples >= 2, got ${n_samples}`)
@@ -370,7 +363,8 @@ export function fit_path_spline(
     between_images: [highest_idx, highest_idx],
   }
   for (const [seg, width] of widths.entries()) {
-    const [tan_0, tan_1] = [knot_slopes[seg] * width, knot_slopes[seg + 1] * width]
+    const slope_width = slope_widths[seg]
+    const [tan_0, tan_1] = [knot_slopes[seg] * slope_width, knot_slopes[seg + 1] * slope_width]
     const criticals = segment_critical_points(energies[seg], energies[seg + 1], tan_0, tan_1)
     for (const t_val of criticals) {
       const energy = hermite(energies[seg], energies[seg + 1], tan_0, tan_1, t_val)
@@ -389,7 +383,16 @@ export function fit_path_spline(
     const coord = start + ((end - start) * sample) / (n_samples - 1)
     while (seg < widths.length - 1 && coord > coords[seg + 1]) seg++
     sample_coords.push(coord)
-    sample_energies.push(hermite_at(coords, energies, knot_slopes, seg, widths[seg], coord))
+    const slope_width = slope_widths[seg]
+    sample_energies.push(
+      hermite(
+        energies[seg],
+        energies[seg + 1],
+        knot_slopes[seg] * slope_width,
+        knot_slopes[seg + 1] * slope_width,
+        clamp((coord - coords[seg]) / widths[seg], 0, 1),
+      ),
+    )
   }
 
   // Include the analytic saddle so the plotted polyline peaks where the annotation sits. An
@@ -435,20 +438,20 @@ export function path_spline(
 ): PathSpline {
   const { ignore_forces, mode, n_samples } = options
   const energies = assert_path(path, `path_spline`).map((image) => image.energy)
-  let slopes = ignore_forces ? null : projected_force_slopes(path, options)
-  // projected_force_slopes always returns dE/ds in energy per Å of arc length. Grafting
-  // those onto the unitless bead-number axis would scale every Hermite tangent by the arc
-  // length of its segment, so apply the chain rule dE/di = (dE/ds)(ds/di) instead. The
-  // arc length per unit bead number is a central difference inside and one-sided at the
-  // endpoints, matching the tangent construction in path_tangents.
-  if (slopes && mode === `image_index`) {
-    const arc = reaction_coordinate(path, { ...options, mode: `arc_length` })
-    slopes = slopes.map((slope, idx) => {
-      const [left, right] = [Math.max(0, idx - 1), Math.min(arc.length - 1, idx + 1)]
-      return slope * ((arc[right] - arc[left]) / (right - left))
-    })
-  }
-  return fit_path_spline(coords, energies, { n_samples, slopes: slopes ?? undefined })
+  const slopes = ignore_forces ? null : projected_force_slopes(path, options)
+  // projected_force_slopes returns dE/ds per Å of arc length, so a segment's Hermite tangent
+  // is that slope times the segment's ARC width, whatever the plotted x axis is. Rescaling each
+  // knot slope by a central-difference ds/di averaged the two runs a knot sits between, making
+  // the saddle depend on the x-axis dropdown (0.99727 vs 1.02563 on a sin² path, true 1).
+  const slope_widths =
+    slopes && mode === `image_index`
+      ? knot_widths(reaction_coordinate(path, { ...options, mode: `arc_length` }), energies)
+      : undefined
+  return fit_path_spline(coords, energies, {
+    n_samples,
+    slopes: slopes ?? undefined,
+    slope_widths,
+  })
 }
 
 export type PathProfile = {

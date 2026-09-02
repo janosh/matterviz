@@ -640,6 +640,32 @@ describe(`lattice_point_group_matrices`, () => {
     expect(lattice_point_group_matrices(k_lattice)).toBe(ops)
   })
 
+  // a hexagonal a = 3.21, c = 5.21 cell written to 4 decimals is off exact hexagonal by
+  // 7.2e-6 on the worst Gram entry, which the old fixed 1e-6 rejected: 24 ops fell to 8 and
+  // the wedge tiled a third of the zone with no visible symptom
+  test(`a hexagonal lattice written to 4 decimals keeps all 24 operations`, () => {
+    const rounded = math
+      .reciprocal_lattice(
+        [
+          [3.21, 0, 0],
+          [-1.605, (3.21 * Math.sqrt(3)) / 2, 0],
+          [0, 0, 5.21],
+        ],
+        { two_pi: true },
+      )
+      .map((row) => row.map((val) => Number(val.toFixed(4)))) as Matrix3x3
+    expect(lattice_point_group_matrices(rounded)).toHaveLength(24)
+    expect(lattice_point_group_matrices(rounded, 1e-6)).toHaveLength(8)
+    // the accepted operations still tile the zone without visible seams
+    const { vertices } = compute_brillouin_zone(rounded)
+    expect(max_vertex_mismatch(lattice_point_group_matrices(rounded), vertices)).toBeLessThan(
+      1e-3,
+    )
+    for (const op of lattice_point_group_matrices(rounded)) {
+      expect(Math.abs(det_4x4_rotation(op))).toBeCloseTo(1, 12)
+    }
+  })
+
   // The cubic ops are exactly the 48 axis permutations × sign flips (Oh in Cartesian space),
   // also when the lattice arrives in a sheared (non-reduced) basis, where the {-1,0,1}
   // integer-matrix search alone finds only 4 of them

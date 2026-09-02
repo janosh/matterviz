@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
+  import { clamp } from '$lib/math'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import type { ChartSegment, ElementPatterns } from './chart'
@@ -63,7 +64,7 @@
       const x = cursor
       cursor += width
       const label = segment.element + segment_suffix(segment, label_opts)
-      const base_scale = Math.min(2, Math.max(1, width / 40))
+      const base_scale = clamp(width / 40, 1, 2)
       const font_scale = fit_font_scale(base_scale, label.length, width * 0.9, 0.6, 12)
       // thin segments get external labels, alternating above/below to avoid overlap
       let label_pos: BarSegment[`label_pos`] = null

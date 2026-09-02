@@ -10,6 +10,7 @@ import { is_crystal } from '$lib/structure/validation'
 import type { TrajectoryRun } from '$lib/trajectory'
 import { sweep_frames } from '$lib/trajectory/analysis'
 import { calc_frame_rdfs_async } from './async-compute.svelte'
+import { coordination_number } from './calc-pdf'
 import type { FrameRdfOptions } from './calc-rdf'
 
 // Default sample: neighbour lists at the 10 A cutoff cost ~30-60 ms per 2000-atom frame, so
@@ -102,10 +103,12 @@ export function rdf_shell(r: number[], g_r: number[], rho_b: number): RdfShell {
     }
   }
   if (first_min < 0) return shell
+  // far edge of the first-minimum bin: coordination_number's window is half-open [0, r_max)
   const bin_size = r[1] - r[0]
-  let integral = 0
-  for (let idx = 0; idx <= first_min; idx++) integral += g_r[idx] * r[idx] ** 2 * bin_size
-  return { ...shell, first_min_r: r[first_min], coordination: 4 * Math.PI * rho_b * integral }
+  const coordination = coordination_number({ r, g_r }, rho_b, {
+    r_max: r[first_min] + bin_size / 2,
+  })
+  return { ...shell, first_min_r: r[first_min], coordination }
 }
 
 export async function collect_trajectory_rdf(

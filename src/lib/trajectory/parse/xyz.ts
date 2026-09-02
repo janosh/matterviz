@@ -1,4 +1,5 @@
-import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
+import { element_from_atomic_number } from '$lib/element/helpers'
+import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
 import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
@@ -118,40 +119,70 @@ function parse_extxyz_pbc(comment: string): Pbc | undefined {
   return lookup_extxyz_bools(words.slice(0, 3))
 }
 
-const make_pattern = (keys: string): RegExp =>
-  new RegExp(`(?:^|\\s)(?:${keys})\\s*[=:]\\s*([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)`, `i`)
+// Every `key=value` (or `key: value`) pair of an extXYZ comment, in order. Quote-aware, and a
+// bare value is consumed whole, so `Properties=species:S:1:pos:R:3` yields no colon pairs.
+const EXTXYZ_PAIR_RE =
+  /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*[=:]\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+))/gu
 
-const METADATA_PATTERNS = {
-  energy: make_pattern(`energy|E|etot|total_energy`),
-  volume: make_pattern(`volume|vol|V`),
-  pressure: make_pattern(`pressure|press|P`),
-  temperature: make_pattern(`temperature|temp|T`),
-  force_max: make_pattern(`max_force|force_max|fmax`),
-  bandgap: make_pattern(`bandgap|E_gap|gap`),
-  time: make_pattern(`time`),
-} as const
+function* iter_extxyz_pairs(comment: string) {
+  for (const { groups } of comment.matchAll(EXTXYZ_PAIR_RE)) {
+    const quoted = groups?.double ?? groups?.single
+    if (groups?.key) yield { key: groups.key, raw: quoted ?? groups.bare ?? ``, quoted }
+  }
+}
+
+// Read back by dedicated parsers (lattice, pbc, columns) or the step regex below, so
+// re-emitting them as frame properties would duplicate or contradict the frame
+const RESERVED_COMMENT_KEY_RE = /^(?:lattice|properties|pbc|step|frame|ionic_step)$/
+
+// Spelling aliases only, so every other scalar round-trips under its own name — including
+// `coords_unwrapped`, which decides whether MSD/VACF may re-apply the minimum image. Canonical
+// names map to themselves so a writer's casing (`Time=`) normalises too.
+// oxfmt-ignore
+const METADATA_KEY_ALIASES: Record<string, string> = {
+  energy: `energy`, e: `energy`, etot: `energy`, total_energy: `energy`,
+  volume: `volume`, vol: `volume`, v: `volume`,
+  pressure: `pressure`, press: `pressure`, p: `pressure`,
+  temperature: `temperature`, temp: `temperature`, t: `temperature`,
+  force_max: `force_max`, max_force: `force_max`, fmax: `force_max`,
+  bandgap: `bandgap`, e_gap: `bandgap`, gap: `bandgap`,
+  time: `time`,
+}
+
+const comment_scalar = (raw: string): number | boolean | undefined => {
+  const token = raw.trim()
+  if (!token || /\s/u.test(token)) return undefined // multi-value: a signal, not a scalar
+  const num = Number(token) // number first so `1`/`0` stay numbers, not flags
+  return Number.isFinite(num) ? num : EXTXYZ_BOOL.get(token.toLowerCase())
+}
 
 export function parse_xyz_comment_metadata(comment: string): {
   step?: number
   properties: Record<string, number>
+  flags: Record<string, boolean>
 } {
   const properties: Record<string, number> = {}
-  for (const [key, pattern] of Object.entries(METADATA_PATTERNS)) {
-    const match = pattern.exec(comment)
-    if (match) properties[key] = Number(match[1])
+  const flags: Record<string, boolean> = {}
+  for (const pair of iter_extxyz_pairs(comment)) {
+    const lower = pair.key.toLowerCase()
+    if (RESERVED_COMMENT_KEY_RE.test(lower)) continue
+    const value = comment_scalar(pair.raw)
+    if (value === undefined) continue
+    const key = METADATA_KEY_ALIASES[lower] ?? pair.key
+    if (key in properties || key in flags) continue // leftmost wins, as the old regexes did
+    if (typeof value === `boolean`) flags[key] = value
+    else properties[key] = value
   }
   const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(?<step>\d+)/i.exec(comment)?.[1]
-  return { step: step ? Math.trunc(Number(step)) : undefined, properties }
+  return { step: step ? Math.trunc(Number(step)) : undefined, properties, flags }
 }
 
 function parse_xyz_comment_signals(comment: string): Record<string, number[] | number[][]> {
   const signals: Record<string, number[] | number[][]> = {}
-  const pattern =
-    /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/gu
-  for (const match of comment.matchAll(pattern)) {
-    const key = match.groups?.key
-    if (!key || [`properties`, `lattice`, `pbc`].includes(key.toLowerCase())) continue
-    const raw = match.groups?.double ?? match.groups?.single ?? ``
+  for (const { key, raw, quoted } of iter_extxyz_pairs(comment)) {
+    if (quoted === undefined || [`properties`, `lattice`, `pbc`].includes(key.toLowerCase())) {
+      continue
+    }
     const values = raw
       .trim()
       .split(/[\s,]+/u)
@@ -174,8 +205,7 @@ const scanned_element = (
 ): ElementSymbol | undefined => {
   if (atomic_number_col < 0) return elem_symbol_from_token(scanner.str(symbol_col))
   // Integer only: truncating would turn a malformed `14.9` into silicon
-  const atomic_number = scanner.num(atomic_number_col)
-  return Number.isInteger(atomic_number) ? ELEM_SYMBOLS[atomic_number - 1] : undefined
+  return element_from_atomic_number(scanner.num(atomic_number_col))
 }
 
 // Symbols are case-normalised (`FE` -> `Fe`) like the structure parsers do. Unknown symbols
@@ -290,7 +320,7 @@ export function build_xyz_frame(
   collector: WarningCollector,
 ): TrajectoryFrame {
   const { comment } = frame
-  const { step, properties } = parse_xyz_comment_metadata(comment)
+  const { step, properties, flags } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
   const parsed_pbc = parse_extxyz_pbc(comment)
   if (parsed_pbc === undefined && /\bpbc\s*=/iu.test(comment)) {
@@ -308,6 +338,7 @@ export function build_xyz_frame(
   )
   const metadata: Record<string, unknown> = {
     ...properties,
+    ...flags,
     ...parse_xyz_comment_signals(comment),
   }
   const force_stats = calc_force_stats(forces)

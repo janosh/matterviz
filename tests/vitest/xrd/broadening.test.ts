@@ -44,9 +44,13 @@ describe(`compute_broadened_pattern`, () => {
   })
 
   test(`generates correct grid based on range and step_size`, () => {
-    // The grid is [min, max) unless (max-min) is not a multiple of step
+    // both ends are included when the span divides evenly, otherwise the last whole step
     const grid = compute_broadened_pattern({ x: [], y: [] }, DEFAULT_BROADENING, [10, 12], 0.5)
-    expect(grid.x).toEqual([10, 10.5, 11, 11.5])
+    expect(grid.x).toEqual([10, 10.5, 11, 11.5, 12])
+    const empty = { x: [], y: [] }
+    expect(
+      compute_broadened_pattern(empty, DEFAULT_BROADENING, [10, 12], 0.7).x.at(-1),
+    ).toBeCloseTo(11.4)
   })
 
   test(`broadens a single peak correctly with intensity conservation`, () => {
@@ -73,7 +77,7 @@ describe(`compute_broadened_pattern`, () => {
 
     expect(Math.max(...result.y)).toBeGreaterThan(0)
     expect(result.x[0]).toBe(40)
-    expect(result.x.at(-1)).toBeCloseTo(60 - 0.1)
+    expect(result.x.at(-1)).toBe(60)
     // the 50 peak's own window spans only 47.2..52.8, so both grid ends stay at zero
     // unless one of the far peaks leaked in
     expect(result.y[0]).toBe(0)
@@ -149,9 +153,9 @@ describe(`compute_broadened_pattern`, () => {
       params: DEFAULT_BROADENING,
       range: [15, 90] as Vec2,
       step_size: 0.02,
-      n_steps: 3750,
-      n_nonzero: 2440,
-      sum: 1.2518077747329109e4,
+      n_steps: 3751,
+      n_nonzero: 2441,
+      sum: 1.2518131773786872e4,
       max: 5.9048636119055686e2,
     },
     {
@@ -160,7 +164,7 @@ describe(`compute_broadened_pattern`, () => {
       params: { U: 0.12, V: -0.05, W: 0.008, shape_factor: 0.8 },
       range: [25, 70] as Vec2,
       step_size: 0.05,
-      n_steps: 900,
+      n_steps: 901,
       n_nonzero: 172,
       sum: 4.6243623456644464e3,
       max: 1.2326004596246166e3,
@@ -178,6 +182,17 @@ describe(`compute_broadened_pattern`, () => {
       expect(Math.abs(Math.max(...result.y) - max) / max).toBeLessThan(rel_tol)
     },
   )
+})
+
+describe(`caglioti_fwhm`, () => {
+  // flooring a negative radicand at 1e-9 gave FWHM 3.16e-5°, far under the 0.02° grid step, so
+  // broaden_peaks dumped a peak's whole area on one grid point: 2.492e+4 at 20.000° vs
+  // 2.516e-2 at 20.050°
+  test(`throws on an unphysical U/V/W triple instead of flooring the width`, () => {
+    expect(() => caglioti_fwhm(20, 0.04, -0.02, 0)).toThrow(
+      /Caglioti FWHM² = U·tan²θ \+ V·tanθ \+ W is -?[\d.e-]+ at 2θ = 20°/,
+    )
+  })
 })
 
 describe(`broaden_peaks`, () => {

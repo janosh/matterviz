@@ -3,10 +3,11 @@
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsGroup, SettingsSection } from '$lib/layout'
+  import { clamp } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
-  import type { LeverRuleMode, PhaseDiagramConfig, PhaseDiagramData } from './types'
+  import type { PhaseDiagramConfig, PhaseDiagramData } from './types'
   import { merge_phase_diagram_config, PHASE_DIAGRAM_DEFAULTS } from './utils'
 
   let {
@@ -19,8 +20,6 @@
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
     // Configuration
     config = $bindable({}),
-    // Lever rule mode
-    lever_rule_mode = $bindable(`horizontal`),
     // Axis configuration
     x_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -40,8 +39,6 @@
     show_component_labels?: boolean
     // Configuration
     config?: Partial<PhaseDiagramConfig>
-    // Lever rule mode
-    lever_rule_mode?: LeverRuleMode
     // Axis configuration
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -218,35 +215,12 @@
   <SettingsGroup title="Interaction" open>
     <SettingsSection
       title="Tie-line display"
-      current_values={{
-        ...merged_config.tie_line,
-        lever_rule_mode,
-      }}
+      current_values={{ ...merged_config.tie_line }}
       on_reset={() => {
-        config = {
-          ...config,
-          tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line },
-        }
-        lever_rule_mode = `horizontal`
+        config = { ...config, tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line } }
       }}
       layout="grid"
     >
-      <div
-        class="setting"
-        {@attach tooltip({ content: `Direction of the lever rule tie-line` })}
-      >
-        <span>Direction</span>
-        <div class="pane-row">
-          <label>
-            <input type="radio" bind:group={lever_rule_mode} value="horizontal" />
-            Horizontal
-          </label>
-          <label>
-            <input type="radio" bind:group={lever_rule_mode} value="vertical" />
-            Vertical
-          </label>
-        </div>
-      </div>
       {#each tie_line_rows as [key, label, title, min, max, step] (key)}
         <NumberRangeInput
           {min}
@@ -284,7 +258,7 @@
             oninput={(ev) => {
               const parsed_ticks = ev.currentTarget.valueAsNumber
               if (!Number.isFinite(parsed_ticks)) return
-              const new_ticks = Math.max(2, Math.min(15, Math.round(parsed_ticks)))
+              const new_ticks = clamp(Math.round(parsed_ticks), 2, 15)
               if (axis_name === `x`) x_axis = { ...x_axis, ticks: new_ticks }
               else y_axis = { ...y_axis, ticks: new_ticks }
             }}
@@ -331,15 +305,6 @@
   }
   :global(.phase-diagram-controls-pane h4:first-of-type) {
     margin-top: 0 !important;
-  }
-  .pane-row {
-    display: flex;
-    gap: 12pt;
-    label {
-      display: flex;
-      align-items: center;
-      gap: 4pt;
-    }
   }
   input {
     font-size: inherit;

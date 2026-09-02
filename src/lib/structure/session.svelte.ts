@@ -775,6 +775,8 @@ export class StructureSession {
     if (!structure?.sites) return
     const targets = this.scene_to_structure_indices(scene_indices)
     const has_lattice = `lattice` in structure
+    // non-periodic axes stay unwrapped: a dragged slab atom must not snap back into the box
+    const pbc = has_lattice ? structure.lattice.pbc : undefined
     const to_frac = this.cart_to_frac()
     const to_cart =
       to_frac && has_lattice ? create_frac_to_cart(structure.lattice.matrix) : null
@@ -789,7 +791,7 @@ export class StructureSession {
         ]
         // molecules mirror xyz into abc; a singular lattice moves xyz and leaves abc alone
         if (!to_frac || !to_cart) return { ...site, xyz, abc: has_lattice ? site.abc : xyz }
-        const abc = wrap_to_unit_cell(to_frac(xyz))
+        const abc = wrap_to_unit_cell(to_frac(xyz), pbc)
         return { ...site, xyz: to_cart(abc), abc }
       }),
     })

@@ -2,6 +2,7 @@
 // ColorBarScale into a data→color function and sample it evenly in scale space (linear,
 // log or arcsinh spacing) for a CSS gradient.
 import { get_d3_interpolator } from '$lib/colors'
+import type { D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import { create_scale, log_color_domain } from '$lib/plot/core/scales'
 import type { ColorBarScale, ScaleType } from '$lib/plot/core/types'
@@ -21,6 +22,11 @@ export const color_ramp_scale = (scale_type: ScaleType, domain: Vec2, output: Ve
     return create_scale(scale_type, domain, output)
   return scaleLog().domain(log_color_domain(domain)).range(output)
 }
+
+// A bare interpolator function is not a ColorBarScale; wrap it.
+export const to_color_bar_scale = (
+  scale: D3InterpolateName | ((t: number) => string),
+): ColorBarScale => (typeof scale === `string` ? scale : { interpolator: scale })
 
 // A prebuilt `fn` scale maps data itself over the domain it declares (else `range`);
 // interpolator names/functions are stretched across `range` with `scale_type` spacing

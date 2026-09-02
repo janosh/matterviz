@@ -144,9 +144,6 @@ export const trajectory_signal_keys = (
   return [...new SvelteSet([...declared_keys, ...metadata_keys])].toSorted()
 }
 
-const select_default_key = (keys: string[], preferred: readonly string[]): string | null =>
-  preferred.find((key) => keys.includes(key)) ?? null
-
 const recorded_masses = (run: TrajectoryRun): number[] | null => {
   const { sites } = run.preview.structure
   const masses = run.atom_masses ?? sites.map(({ properties }) => properties?.mass)
@@ -181,14 +178,11 @@ export async function collect_trajectory_spectroscopy_input(
     preprocessing,
   } = options
   const available_keys = trajectory_signal_keys(run)
-  const infrared_key =
-    options.infrared_key === undefined
-      ? select_default_key(available_keys, INFRARED_SIGNAL_KEYS)
-      : options.infrared_key
-  const raman_key =
-    options.raman_key === undefined
-      ? select_default_key(available_keys, RAMAN_SIGNAL_KEYS)
-      : options.raman_key
+  // an explicit null key means "no signal"; only `undefined` falls back to the first default
+  const resolve_key = (key: string | null | undefined, preferred: readonly string[]) =>
+    key === undefined ? (preferred.find((pref) => available_keys.includes(pref)) ?? null) : key
+  const infrared_key = resolve_key(options.infrared_key, INFRARED_SIGNAL_KEYS)
+  const raman_key = resolve_key(options.raman_key, RAMAN_SIGNAL_KEYS)
   const { vector_keys, signal_keys } = spectroscopy_stream_channels(run, {
     velocity_key,
     infrared_key,

@@ -215,17 +215,9 @@ export function parse_chgcar(content: string): VolumetricFileData {
       const coords = parse_vasp_vec3(cur.line)
       pos = cur.next
 
-      let abc: Vec3
-      let xyz: Vec3
-
-      if (is_direct) {
-        abc = wrap_to_unit_cell(coords)
-        xyz = frac_to_cart(abc)
-      } else {
-        xyz = apply_axis_scale(coords, scale)
-        const raw = cart_to_frac(xyz)
-        abc = wrap_to_unit_cell(raw)
-      }
+      const cart = is_direct ? null : apply_axis_scale(coords, scale)
+      const abc = wrap_to_unit_cell(cart ? cart_to_frac(cart) : coords)
+      const xyz = cart ?? frac_to_cart(abc)
 
       sites.push(make_site(element, abc, xyz, `${element}${atom_idx + count_idx + 1}`))
     }
@@ -378,29 +370,17 @@ export function parse_cube(
 
   // Lines 3-5: grid dimensions and voxel vectors
   // Positive N means coordinates in Bohr, negative N means Angstrom
-  const voxel_lines = [
-    header_lines[3].split(/\s+/).map(Number),
-    header_lines[4].split(/\s+/).map(Number),
-    header_lines[5].split(/\s+/).map(Number),
-  ]
+  const voxel_lines = header_lines.slice(3, 6).map((line) => line.split(/\s+/).map(Number))
   if (voxel_lines.some((line) => line.length < 4 || line.some(isNaN))) {
     throw new Error(`.cube voxel lines malformed: expected 4 numbers per line`)
   }
 
-  const n_grid: Vec3 = [
-    Math.abs(voxel_lines[0][0]),
-    Math.abs(voxel_lines[1][0]),
-    Math.abs(voxel_lines[2][0]),
-  ]
+  const n_grid = voxel_lines.map((line) => Math.abs(line[0])) as Vec3
 
   // Per Gaussian .cube convention, the sign of the first axis N determines units
   const is_bohr = voxel_lines[0][0] > 0
   const unit_scale = is_bohr ? BOHR_TO_ANGSTROM : 1.0
 
-  // Voxel vectors (convert to Angstrom if needed)
-  const [voxel_a, voxel_b, voxel_c] = voxel_lines.map((line) =>
-    math.scale(line.slice(1, 4) as Vec3, unit_scale),
-  )
   const origin = math.scale(raw_origin, unit_scale)
 
   // Periodicity: use explicit override if provided, else heuristic based on origin.
@@ -414,11 +394,10 @@ export function parse_cube(
   // its bounding box is (N - 1) * voxel. Using N * voxel for finite grids would
   // stretch the rendered field by N / (N - 1) relative to the atoms.
   const extent = (n_points: number) => (is_periodic ? n_points : Math.max(n_points - 1, 1))
-  const lattice: Matrix3x3 = [
-    math.scale(voxel_a, extent(n_grid[0])),
-    math.scale(voxel_b, extent(n_grid[1])),
-    math.scale(voxel_c, extent(n_grid[2])),
-  ]
+  // Voxel vectors, converted to Angstrom and scaled to the cell extent along each axis
+  const lattice = voxel_lines.map((line, axis) =>
+    math.scale(math.scale(line.slice(1, 4) as Vec3, unit_scale), extent(n_grid[axis])),
+  ) as Matrix3x3
 
   // Parse atomic positions
   const sites: Site[] = []
@@ -508,9 +487,19 @@ export function parse_cube(
   return { structure, volumes }
 }
 
-// Convert atomic number to element symbol (falls back to H for unknown numbers)
-const atomic_number_to_symbol = (atomic_number: number): ElementSymbol =>
-  ELEM_SYMBOLS[atomic_number - 1] ?? `H`
+// Convert atomic number to element symbol. Z = 0 is the Gaussian-cube encoding for a
+// ghost/BSSE centre and every other Z outside the table is a malformed header: both used to
+// render as hydrogen, complete with real radii and bonds.
+const atomic_number_to_symbol = (atomic_number: number): ElementSymbol => {
+  const symbol = ELEM_SYMBOLS[atomic_number - 1]
+  if (!symbol) {
+    const ghost = atomic_number === 0 ? ` (Z = 0 marks a ghost/BSSE centre)` : ``
+    throw new Error(
+      `Cube file has atomic number ${atomic_number}, which is not a chemical element${ghost}`,
+    )
+  }
+  return symbol
+}
 
 export type VolumetricFormat = `cube` | `chgcar`
 

@@ -111,8 +111,16 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
   for (let line_idx = 0; line_idx < lines.length; line_idx++) {
     const line = lines[line_idx]
     if (line.includes(`direct lattice vectors`)) {
+      // Skipping a corrupt block (glued %13.9f columns, truncation) silently kept the PREVIOUS
+      // cell, wronging every volume and fractional coordinate of the rest of an ISIF=3 run
       const parsed = parse_lattice(lines, line_idx)
-      if (parsed) lattice = parsed
+      if (!parsed) {
+        throw new Error(
+          `OUTCAR line ${line_idx + 1}: "direct lattice vectors" is not followed by three ` +
+            `rows of finite numbers: "${lines.slice(line_idx + 1, line_idx + 4).join(` | `)}"`,
+        )
+      }
+      lattice = parsed
       continue
     }
     const iteration = ITERATION_RE.exec(line)

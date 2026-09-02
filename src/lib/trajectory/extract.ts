@@ -38,12 +38,7 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
     Object.assign(data, calc_force_stats(metadata.forces as number[][]))
   }
   // pressure lives here, not in structural_data_extractor, so full_data_extractor gets it once
-  copy_numeric_fields(data, metadata, [
-    `stress_max`,
-    `stress_frobenius`,
-    `stress_trace`,
-    `pressure`,
-  ])
+  copy_numeric_fields(data, metadata, [`stress_max`, `stress_frobenius`, `pressure`])
   return data
 }
 

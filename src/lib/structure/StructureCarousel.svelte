@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { create_flash } from '$lib/effects.svelte'
   import { clamp } from '$lib/math'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import type { StructureCarouselItem } from '$lib/structure'
@@ -143,15 +144,14 @@
   // still catches up once it covers nothing on screen — a viewport of pure
   // shells is worse than the stall skipping it avoids.
   const scroll_settle_ms = 150
-  let settle_timer: ReturnType<typeof setTimeout> | undefined
-  let is_scrolling = $state(false)
+  const scrolling = create_flash(false, scroll_settle_ms)
   let mount_start = $state(0)
   let mount_end = $state(0)
   $effect(() => {
     const [live_start, live_end] = untrack(() => [mount_start, mount_end])
     const shows_a_visible_card =
       live_end > first_visible_idx && live_start < first_visible_idx + page_size
-    if (is_scrolling && shows_a_visible_card) return
+    if (scrolling.value && shows_a_visible_card) return
     mount_start = window_start
     mount_end = window_start + window_size
   })
@@ -219,9 +219,7 @@
 
   const on_scroll = (): void => {
     if (!track) return
-    is_scrolling = true
-    clearTimeout(settle_timer)
-    settle_timer = setTimeout(() => (is_scrolling = false), scroll_settle_ms)
+    scrolling.show(true)
     scroll_pos = is_horizontal ? track.scrollLeft : track.scrollTop
     prefetch() // window_start re-derives from the offset just written
   }
@@ -285,10 +283,7 @@
 
   // Pager and arrow keys land on a definite target with no momentum behind them,
   // so there is no fling to stay clear of: mount the new page right away.
-  const settle_now = (): void => {
-    clearTimeout(settle_timer)
-    is_scrolling = false
-  }
+  const settle_now = (): void => scrolling.reset()
 
   const scroll_page = (direction: -1 | 1): void => {
     const target_start = clamp(first_visible_idx + direction * page_size, 0, max_page_start)
@@ -390,10 +385,7 @@
     return () => node.removeEventListener(`wheel`, on_wheel, true)
   })
 
-  $effect(() => () => {
-    stop_resize()
-    clearTimeout(settle_timer)
-  })
+  $effect(() => () => stop_resize())
 </script>
 
 <section

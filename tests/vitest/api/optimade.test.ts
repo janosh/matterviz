@@ -105,17 +105,20 @@ describe(`fetch_with_cors_proxy behavior (via fetch_optimade_providers)`, () => 
     },
   )
 
-  test(`path-suffix proxies receive the raw URL, query proxies the encoded one`, async () => {
+  test(`proxies percent-encode the target and carry a timeout`, async () => {
     // Network failure (thrown) triggers the proxy fallback chain
     const mock_fetch = vi.fn().mockRejectedValue(new TypeError(`Failed to fetch`))
     vi.stubGlobal(`fetch`, mock_fetch)
     await expect(fetch_optimade_providers()).rejects.toThrow(`All CORS proxies failed`)
-    const urls = mock_fetch.mock.calls.map(([url]) => url as string)
+    const calls = mock_fetch.mock.calls as [string, RequestInit][]
     const target = `https://providers.optimade.org/v1/links`
-    expect(urls[0]).toBe(target) // direct attempt first
-    // Query-style proxies must percent-encode the target; path-suffix proxies must not
-    expect(urls.some((url) => url.endsWith(encodeURIComponent(target)))).toBe(true)
-    expect(urls).toContain(`https://cors-anywhere.herokuapp.com/${target}`)
-    expect(urls).toContain(`https://thingproxy.freeboard.io/fetch/${target}`)
+    expect(calls[0][0]).toBe(target) // direct attempt first
+    const proxy_calls = calls.slice(1)
+    expect(proxy_calls.length).toBeGreaterThan(0)
+    for (const [url, init] of proxy_calls) {
+      expect(url.endsWith(encodeURIComponent(target))).toBe(true)
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      expect(init.headers).not.toHaveProperty(`User-Agent`)
+    }
   })
 })

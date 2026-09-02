@@ -12,7 +12,6 @@ export type * from './types'
 // stay module-private; these are the pieces a custom tooltip or hover handler needs.
 export {
   calculate_lever_rule,
-  calculate_vertical_lever_rule,
   convert_temp,
   find_phase_at_point,
   format_composition,

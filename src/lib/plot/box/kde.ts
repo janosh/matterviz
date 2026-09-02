@@ -2,7 +2,7 @@
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
 import type { Vec2 } from '$lib/math'
-import { quantile_unordered, sample_std } from '$lib/math'
+import { clamp, quantile_unordered, sample_std } from '$lib/math'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis
@@ -87,7 +87,7 @@ function binned_density(
   }
   if (sample_max <= sample_min) return exact_density(eval_samples, grid, band)
 
-  const bin_count = Math.min(1024, Math.max(128, grid.length * 4))
+  const bin_count = clamp(grid.length * 4, 128, 1024)
   const counts = new Float64Array(bin_count)
   const span = sample_max - sample_min
   const inv_bin_width = bin_count / span

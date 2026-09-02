@@ -1,6 +1,7 @@
 <script lang="ts">
   import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
+  import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
@@ -17,7 +18,6 @@
     extract_efermi,
     extract_pdos,
     format_dos_tooltip,
-    format_sigma,
     IMAGINARY_MODE_NOISE_THRESHOLD,
     negative_fraction,
     NORMALIZATION_MODES,
@@ -137,7 +137,6 @@
     spin_mode ?? (has_spin_polarized ? `mirror` : null),
   )
 
-  // Convert DOS data to scatter plot series and stacked area data
   let { series_data, stacked_areas } = $derived.by(
     (): { series_data: DataSeries[]; stacked_areas: StackedAreaData[] } => {
       const all_series: DataSeries[] = []
@@ -267,11 +266,9 @@
   let value_label = $derived(
     is_phonon ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
   )
-  let x_label = $derived(is_horizontal ? `Density of States` : value_label)
-  let y_label = $derived(is_horizontal ? value_label : `Density of States`)
 
   const internal_x_axis = $derived<AxisConfig>({
-    label: x_label,
+    label: is_horizontal ? `Density of States` : value_label,
     format: `.2f`,
     range: x_range,
     // Keep label standoff identical to Bands' x-axis so the side-by-side
@@ -280,7 +277,7 @@
     ...x_axis,
   })
   const internal_y_axis = $derived<AxisConfig>({
-    label: y_label,
+    label: is_horizontal ? value_label : `Density of States`,
     format: `.2f`,
     range: y_range,
     ...y_axis,
@@ -308,7 +305,6 @@
   let safe_sigma_range = $derived(validate_sigma_range(effective_sigma_range))
   let sigma_step = $derived(calculate_sigma_step(effective_sigma_range))
 
-  // Build SVG path for stacked area fill between upper and lower density curves
   function build_stacked_area_path(
     area: StackedAreaData,
     x_scale_fn: (val: number) => number,
@@ -407,7 +403,7 @@
       >
         <label title="Gaussian smearing width (σ)">
           <span>σ</span>
-          <span class="sigma-value">{format_sigma(sigma)}</span>
+          <span class="sigma-value">{format_num(sigma)}</span>
           <input
             id="dos-sigma"
             type="range"
@@ -485,35 +481,21 @@
           stroke-dasharray="var(--dos-fermi-line-dash, 6,3)"
           opacity="var(--dos-fermi-line-opacity, 0.8)"
         />
-        <!-- Fermi level label -->
-        {#if is_horizontal}
-          <!-- in the right margin only when the caller padded for it, else inside the plot edge -->
-          {@const label_fits_right = pad.r >= 20}
-          <text
-            class="fermi-level-label"
-            x={width - pad.r + (label_fits_right ? 4 : -4)}
-            y={fermi_pos}
-            dy="0.35em"
-            text-anchor={label_fits_right ? `start` : `end`}
-            font-size="10"
-            fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
-            opacity="0.9"
-          >
-            E<tspan dy="2" font-size="8">F</tspan>
-          </text>
-        {:else}
-          <text
-            class="fermi-level-label"
-            x={fermi_pos}
-            y={pad.t - 4}
-            text-anchor="middle"
-            font-size="10"
-            fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
-            opacity="0.9"
-          >
-            E<tspan dy="2" font-size="8">F</tspan>
-          </text>
-        {/if}
+        <!-- Fermi level label. Horizontal: in the right margin only when the caller padded
+        for it, else inside the plot edge. Vertical: centred above the plot. -->
+        {@const label_fits_right = pad.r >= 20}
+        <text
+          class="fermi-level-label"
+          x={is_horizontal ? width - pad.r + (label_fits_right ? 4 : -4) : fermi_pos}
+          y={is_horizontal ? fermi_pos : pad.t - 4}
+          dy={is_horizontal ? `0.35em` : undefined}
+          text-anchor={is_horizontal ? (label_fits_right ? `start` : `end`) : `middle`}
+          font-size="10"
+          fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          opacity="0.9"
+        >
+          E<tspan dy="2" font-size="8">F</tspan>
+        </text>
       {/if}
 
       <!-- Reference frequency line -->

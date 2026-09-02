@@ -82,6 +82,13 @@
   let category_filters = $derived(
     show_category_filters ? filter_options(files.map(get_category_id)) : [],
   )
+  // A new `files` set can retire the active filter's value, leaving its chip gone from the
+  // legend while the filter still hides everything: an empty picker with no way back.
+  $effect(() => {
+    if (!active_filter) return
+    const offered = active_filter.kind === `category` ? category_filters : format_filters
+    if (!offered.includes(active_filter.value)) active_filter = null
+  })
 
   const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
     const url = file.url || file.name

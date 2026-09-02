@@ -3,7 +3,7 @@
 // Pure functions (no component state) so the trickiest geometry stays unit-testable;
 // Sunburst.svelte wires them to reactive state and the DOM.
 
-import { to_degrees } from '$lib/math'
+import { clamp, to_degrees } from '$lib/math'
 import { clamp01 } from '$lib/utils'
 import type {
   PositionedArc,
@@ -12,6 +12,10 @@ import type {
 } from '$lib/plot/core/utils/hierarchy-layout'
 
 const TWO_PI = 2 * Math.PI
+// Fallback for --sunburst-font-size when a caller hands over no resolved size; 1.1 is the
+// line-height ratio the treemap labels measure with.
+const DEFAULT_LABEL_FONT_SIZE = 11
+const LINE_HEIGHT = 1.1
 
 // An arc with its current screen-space geometry.
 // Sunburst: a0/a1 = angles in radians (clockwise from 12 o'clock), r0/r1 = radii in px.
@@ -82,15 +86,14 @@ export function project_arcs<Metadata>(
   // and animate smoothly through the clamps during zoom tweens)
   const x_of = (frac: number) => clamp01((frac - win.x0) / span) * x_scale
   // Ring offset below the zoom root -> radius/y, clamped into the visible rings
-  const y_of = (ring: number) =>
-    y_offset + Math.min(Math.max(ring - win.y0 - 1, 0), win.n_rings) * y_unit
+  const y_of = (ring: number) => y_offset + clamp(ring - win.y0 - 1, 0, win.n_rings) * y_unit
 
   const gap_px = group_gap?.gap_px ?? 0
   const valid_gap_px = Number.isFinite(gap_px) ? Math.max(0, gap_px) : 0
   const requested_max_fraction = group_gap?.max_fraction ?? 0.5
   // Keep a non-zero remainder even when callers pass max_fraction >= 1.
   const max_gap_fraction = Number.isFinite(requested_max_fraction)
-    ? Math.min(Math.max(requested_max_fraction, 0), 1 - 1e-6)
+    ? clamp(requested_max_fraction, 0, 1 - 1e-6)
     : 0.5
   const target_gap = !icicle && geom.radius > 0 ? valid_gap_px / geom.radius : 0
   const descendant_transforms: AngularTransform[] | null =
@@ -202,14 +205,17 @@ export function hover_veil_path<Metadata>(
 // but renders as a straight tangent whose ends would otherwise shoot past the plot
 // border. `font_scale` < 1 relaxes the fit for downscaled text: callers pass the
 // already scaled text width, and the one-line-height requirement shrinks with it.
+// `font_size` is the size the label renders at, so the fit uses the font the widths were
+// measured in.
 export function arc_label_slots(
   d: { a0: number; a1: number; r0: number; r1: number },
   shape: SunburstShape,
   rotation: SunburstLabelRotation,
   max_radius?: number,
   font_scale = 1,
+  font_size = DEFAULT_LABEL_FONT_SIZE,
 ): { room: number; transform: string }[] {
-  const line_height = 12 * font_scale
+  const line_height = font_size * font_scale * LINE_HEIGHT
   // Text length that keeps a straight label centered `center_dist` from the chart
   // center inside the circle: text_w/2 perpendicular to the radius (tangential text,
   // exact) plus an optional component along it (horizontal text at 3/9 o'clock reads
@@ -287,7 +293,8 @@ export const arc_label_transform = (
   rotation: SunburstLabelRotation,
   max_radius?: number,
   font_scale = 1,
+  font_size = DEFAULT_LABEL_FONT_SIZE,
 ): string | null =>
-  arc_label_slots(d, shape, rotation, max_radius, font_scale).find(
+  arc_label_slots(d, shape, rotation, max_radius, font_scale, font_size).find(
     (slot) => text_w <= slot.room,
   )?.transform ?? null

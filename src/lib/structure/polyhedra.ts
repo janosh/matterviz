@@ -707,6 +707,13 @@ export function merge_polyhedra_buffers(
     // Draw an edge unless both adjacent faces are coplanar (quad diagonal)
     for (const [key, entry] of edge_normals) {
       if (entry.shared && !entry.crease) continue
+      // Float32Array drops out-of-range writes silently and the 3F/2 edge cap assumes a
+      // closed manifold, which convex_hull_3d can fail to produce on a degenerate shell
+      if (edge_offset + 6 > edge_positions.length) {
+        throw new Error(
+          `edge overflow past ${edge_positions.length / 6}: the ${poly.vertices.length}-vertex face set is not a closed manifold`,
+        )
+      }
       const from = verts[Math.floor(key / 65536)]
       const to = verts[key % 65536]
       edge_positions[edge_offset] = from[0]

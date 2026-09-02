@@ -1,11 +1,7 @@
 <script lang="ts">
-  // Split-pane browser for navigating and visualizing structured JSON data.
-  // Left sidebar shows a JsonTree for navigating the file's JSON structure.
-  // Right canvas renders one or more visualization panels in a split layout.
-  // Users can click tree nodes to render in the main panel, or drag nodes
-  // to specific edges to create horizontal/vertical splits.
   import { contrast_text_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
   import { format_path, resolve_path } from '$lib/json-path'
+  import { plural } from '$lib/labels'
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
   import { relative_path_segments } from '$lib/layout/json-tree/utils'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
@@ -70,8 +66,16 @@
   // the first paint (setTimeout rather than requestIdleCallback, which Safari lacks).
   let renderable_paths = $state(new Map<string, RenderableType>())
   let auto_rendered = false
+  let last_scanned_value: unknown
   $effect(() => {
     const current_value = value
+    // PanelInfo.val captures the subtree, so a replaced document would leave open panels
+    // showing the old one and a sticky auto_rendered would suppress auto-render of the new root
+    if (current_value !== last_scanned_value) {
+      last_scanned_value = current_value
+      auto_rendered = false
+      close_all_panels()
+    }
     const scan_handle = setTimeout(() => {
       renderable_paths = scan_renderable_paths(current_value)
       // Auto-render if the root value itself is a single renderable type
@@ -185,13 +189,9 @@
     for (const existing of sidebar_element.querySelectorAll(`.renderable-badge`)) {
       existing.remove()
     }
-    const badges_by_tree_path = new Map<string, [string, RenderableType][]>()
-    for (const entry of renderable_paths) {
-      const tree_path = data_to_tree_path(entry[0])
-      const badges = badges_by_tree_path.get(tree_path)
-      if (badges) badges.push(entry)
-      else badges_by_tree_path.set(tree_path, [entry])
-    }
+    const badges_by_tree_path = Map.groupBy(renderable_paths, ([data_path]) =>
+      data_to_tree_path(data_path),
+    )
     for (const node of sidebar_element.querySelectorAll<HTMLElement>(`[data-path]`)) {
       const tree_path = node.dataset.path ?? ``
       node.draggable = renderable_tree_paths.has(tree_path)
@@ -345,10 +345,16 @@
 
   // === Component mounting ===
 
+  // Throws rather than casting: attach_viewer turns this into a panel message naming the problem
   function prepare_structure(val: unknown): AnyStructure {
     const optimade = optimade_structure_from_raw(val)
     if (optimade) return optimade_to_structure(optimade)
-    return is_structure_like(val) ? structure_from_json(val) : (val as AnyStructure)
+    if (!is_structure_like(val)) {
+      throw new TypeError(
+        `JSON value is neither an OPTIMADE response nor a pymatgen-style structure`,
+      )
+    }
+    return structure_from_json(val)
   }
 
   // Raw JSON values need promoting to the typed inputs the viewers expect (structures get
@@ -450,13 +456,10 @@
       }
     }
     // Prevent mixed-axis splits until nested layouts are supported
-    if (split_directions.length > 0) {
-      const layout = split_directions[0]
-      if (layout === `vertical` && (drop_zone === `left` || drop_zone === `right`)) {
-        drop_zone = `center`
-      } else if (layout === `horizontal` && (drop_zone === `top` || drop_zone === `bottom`)) {
-        drop_zone = `center`
-      }
+    const cross_axis =
+      split_directions[0] === `vertical` ? [`left`, `right`] : [`top`, `bottom`]
+    if (split_directions.length > 0 && cross_axis.includes(drop_zone ?? ``)) {
+      drop_zone = `center`
     }
   }
 
@@ -610,9 +613,8 @@
         {:else}
           <p class="placeholder-title">Click or drag a data node to visualize it</p>
           <p class="placeholder-sub">
-            Found {renderable_paths.size} renderable item{renderable_paths.size === 1
-              ? ``
-              : `s`}. Click to render, or drag to an edge to create a split view.
+            Found {plural(renderable_paths.size, `renderable item`)}. Click to render, or drag
+            to an edge to create a split view.
           </p>
           <div
             style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;"

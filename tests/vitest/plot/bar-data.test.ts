@@ -360,7 +360,11 @@ describe(`bar geometry`, () => {
       cat_y_scale: scale_by(3),
       ...overrides,
     })
-  const grouped_3 = { bar_series_count: 3, bar_series_indices: [0, 1, 2] }
+  const group_info_of = (bar_series_indices: number[]) => ({
+    bar_series_count: bar_series_indices.length,
+    bar_series_indices,
+  })
+  const grouped_3 = group_info_of([0, 1, 2])
   const bar_rect = (overrides: Partial<Parameters<typeof compute_bar_rect>[0]> = {}) =>
     compute_bar_rect({
       cat_val: 5,
@@ -370,7 +374,7 @@ describe(`bar geometry`, () => {
       series_idx: 0,
       mode: `overlay`,
       orientation: `vertical`,
-      group_info: { bar_series_count: 0, bar_series_indices: [] },
+      group_info: group_info_of([]),
       cat_scale: scale_by(10),
       val_scale: scale_by(4),
       ...overrides,
@@ -450,8 +454,8 @@ describe(`bar geometry`, () => {
       { c0: 35 + series_idx * 10, c1: 45 + series_idx * 10 },
     ]),
     // a lone bar series spans the full slot, and slots come from original series indices
-    [{ mode: `grouped`, group_info: { bar_series_count: 1, bar_series_indices: [0] } }, { c0: 40, c1: 60 }],
-    [{ mode: `grouped`, series_idx: 4, group_info: { bar_series_count: 2, bar_series_indices: [1, 4] } }, { c0: 50, c1: 60 }],
+    [{ mode: `grouped`, group_info: group_info_of([0]) }, { c0: 40, c1: 60 }],
+    [{ mode: `grouped`, series_idx: 4, group_info: group_info_of([1, 4]) }, { c0: 50, c1: 60 }],
   ]
   test.each(bar_rect_cases)(`bar_rect %#`, (overrides, expected) => {
     expect(bar_rect(overrides)).toMatchObject(expected)

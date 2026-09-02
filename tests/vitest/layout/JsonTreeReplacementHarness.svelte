@@ -29,5 +29,12 @@
 >
   Replace Flat JSON
 </button>
+<button
+  type="button"
+  data-testid="mutate-leaf"
+  onclick={() => (value.nested.findme = `mutated`)}
+>
+  Mutate Leaf
+</button>
 <span data-testid="collapsed-count">{collapsed_paths.size}</span>
 <JsonTree {...rest} {value} bind:collapsed_paths default_fold_level={5} />

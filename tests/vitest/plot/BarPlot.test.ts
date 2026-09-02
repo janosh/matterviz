@@ -423,6 +423,22 @@ describe(`BarPlot`, () => {
     },
   )
 
+  // The bar renders at the 1px floor and stays hoverable, but scaleLog()(-5) is NaN
+  test(`tooltip anchors a negative bar on a log value axis at finite coords`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [1, 2], y: [-5, 100], label: `A` }],
+      y_axis: { scale_type: `log` },
+    })
+    const [neg_bar] = plot.querySelectorAll(`path[role="button"]`)
+    neg_bar?.dispatchEvent(mouse(`mousemove`))
+    await tick()
+    const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
+    expect(tooltip).not.toBeNull()
+    const edges = [tooltip?.style.top ?? ``, tooltip?.style.left ?? ``]
+    const coords = edges.map((edge) => Number(edge.replace(`px`, ``)))
+    expect(coords.every(Number.isFinite)).toBe(true)
+  })
+
   test(`default tooltip shows series label for multi-series on hover`, async () => {
     const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
     const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }

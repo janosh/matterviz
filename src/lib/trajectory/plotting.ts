@@ -1,6 +1,6 @@
 // Plotting utilities for trajectory visualization
 import { PLOT_COLORS } from '$lib/colors'
-import { SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
+import { humanize, SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
 import {
   array_extent,
@@ -18,6 +18,7 @@ import {
 } from '$lib/plot/core/axis-assignment'
 import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
+import { strip_html } from '$lib/utils'
 import type { TrajectoryMetadata } from './index'
 
 // Configuration constants
@@ -225,11 +226,8 @@ const samples_cache = new WeakMap<readonly TrajectoryMetadata[], FrameStepSample
 export function get_frame_step_samples(rows: readonly TrajectoryMetadata[]): FrameStepSamples {
   let samples = samples_cache.get(rows)
   if (!samples) {
-    samples = {
-      frame_numbers: rows.map((row) => row.frame_number),
-      steps: rows.map((row) => row.step),
-    }
-    samples_cache.set(rows, samples)
+    const frame_numbers = rows.map((row) => row.frame_number)
+    samples_cache.set(rows, (samples = { frame_numbers, steps: rows.map((row) => row.step) }))
   }
   return samples
 }
@@ -241,9 +239,7 @@ type PropertyStats = Map<string, { values: number[]; frame_indices: number[] }>
 
 // Normalize property keys for robust matching (handles case, underscores, and common aliases)
 const normalize_property_key = (key: string): string => {
-  const normalized = key
-    .toLowerCase()
-    .replaceAll(/<[^>]*>/g, ``)
+  const normalized = strip_html(key.toLowerCase())
     .replaceAll(/[_()[\]]/g, ` `)
     .replaceAll(/\s+/g, ` `)
     .trim()
@@ -264,23 +260,21 @@ const is_default_visible = (
   default_properties: Set<string>,
 ): boolean => {
   const normalized_key = normalize_property_key(property_key)
-  for (const prop of default_properties) {
-    if (normalize_property_key(prop) === normalized_key) return true
-  }
-  return false
+  return [...default_properties].some(
+    (prop) => normalize_property_key(prop) === normalized_key,
+  )
 }
 
 // Keep every property that varies (plus energy, kept even when flat so a converged run
 // still shows its energy) and was observed in at least two frames.
-const filter_plottable = (stats: PropertyStats): PropertyStats => {
-  const result: PropertyStats = new Map()
-  for (const [key, stat] of stats) {
-    if (stat.values.length <= 1) continue
-    if (!is_energy_property(key) && get_coefficient_of_variation(stat.values) < 1e-6) continue
-    result.set(key, stat)
-  }
-  return result
-}
+const filter_plottable = (stats: PropertyStats): PropertyStats =>
+  new Map(
+    [...stats].filter(
+      ([key, stat]) =>
+        stat.values.length > 1 &&
+        (is_energy_property(key) || get_coefficient_of_variation(stat.values) >= 1e-6),
+    ),
+  )
 
 // Per-property value lists from the rows, keyed by property. Rows arrive sorted and
 // deduplicated (TrajectoryProperties), so this is one linear pass.
@@ -359,13 +353,9 @@ export function extract_label_and_unit(
   property_config: Record<string, TrajPropertyConfig>,
 ): { clean_label: string; unit: string; axis_group?: string } {
   const config = property_config[key] || property_config[key.toLowerCase()]
-  if (config) {
-    return { clean_label: config.label, unit: config.unit, axis_group: config.axis_group }
-  }
-  return {
-    clean_label: key.charAt(0).toUpperCase() + key.slice(1).replaceAll(`_`, ` `),
-    unit: ``,
-  }
+  return config
+    ? { clean_label: config.label, unit: config.unit, axis_group: config.axis_group }
+    : { clean_label: humanize(key), unit: `` }
 }
 
 function calculate_priority(unit: string, group_series: readonly DataSeries[]): number {
@@ -471,12 +461,8 @@ export function should_hide_plot(
 
 const series_is_visible = (series: DataSeries): boolean => series.visible === true
 
-export const generate_axis_labels = (
-  plot_series: DataSeries[],
-): {
-  y1: string
-  y2: string
-} => get_axis_labels(plot_series, { is_visible: series_is_visible })
+export const generate_axis_labels = (plot_series: DataSeries[]) =>
+  get_axis_labels(plot_series, { is_visible: series_is_visible })
 
 // Log-scale heuristic: a y-axis defaults to log scale when every visible series on
 // it is strictly positive AND their combined values span at least three decades.

@@ -102,14 +102,15 @@ describe(`hierarchy chart helpers`, () => {
 
   test(`dims, toggles, and builds legend state for categories`, () => {
     const empty = new SvelteSet<string | number>()
-    expect(compute_node_dim(arcs, empty, null).every((dim) => dim.opacity === 1)).toBe(true)
+    const undimmed = compute_node_dim(arcs, empty, null)
+    expect(arcs.every((arc) => undimmed(arc.node_idx).opacity === 1)).toBe(true)
     const hover = compute_node_dim(arcs, empty, alpha.node_idx)
-    expect([alpha, alpha_child, root, beta].map((arc) => hover[arc.node_idx].opacity)).toEqual(
+    expect([alpha, alpha_child, root, beta].map((arc) => hover(arc.node_idx).opacity)).toEqual(
       [1, 1, 1, 0.3],
     )
     const muted = new SvelteSet([alpha.id])
-    expect(compute_node_dim(arcs, muted, null)[alpha.node_idx].opacity).toBe(0.12)
-    expect(compute_node_dim(arcs, muted, alpha.node_idx)[alpha.node_idx].opacity).toBe(0.12)
+    expect(compute_node_dim(arcs, muted, null)(alpha.node_idx).opacity).toBe(0.12)
+    expect(compute_node_dim(arcs, muted, alpha.node_idx)(alpha.node_idx).opacity).toBe(0.12)
 
     const toggled = new SvelteSet<string | number>([`x`])
     toggle_muted(toggled, `x`)

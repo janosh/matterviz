@@ -1,5 +1,6 @@
 import * as draw from '$lib/convex-hull/canvas-draw'
 import * as helpers from '$lib/convex-hull/helpers'
+import { get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
 import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull/types'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -597,6 +598,18 @@ describe(`helpers: temperature interpolation`, () => {
       for (const entry of result.filter((ent) => ent.temperatures)) {
         expect(entry.energy_per_atom).toBe(entry.energy)
       }
+    })
+
+    test(`drops correction so G(T) isn't double-counted`, () => {
+      const entry = make_entry([300, 600, 900], [-9.8, -9.6, -9.4], {
+        composition: { Fe: 2, O: 3 },
+        energy: -50,
+        correction: -2.5,
+      })
+      const [filtered] = helpers.filter_entries_at_temperature([entry], 600)
+      expect(filtered.correction).toBeUndefined()
+      // keeping the correction would make this -9.6 + (-2.5 / 5) = -10.1
+      expect(get_energy_per_atom(filtered)).toBeCloseTo(-9.6, 12)
     })
   })
 

@@ -511,6 +511,11 @@ describe(`get_convex_hull_stats`, () => {
     expect(get_convex_hull_stats([], [`Fe`], 3)).toBeNull()
   })
 
+  test(`e_form_range is null when no entry has a formation energy`, () => {
+    const stats = get_convex_hull_stats([make_phase({ Fe: 1 }, -4.0)], [`Fe`], 1)
+    expect(stats?.e_form_range).toBeNull()
+  })
+
   test(`arity counts, stability, energy stats and electronegativity-sorted system`, () => {
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0, { is_stable: true, e_form_per_atom: -1.0, e_above_hull: 0 }),
@@ -534,8 +539,8 @@ describe(`get_convex_hull_stats`, () => {
       chemical_system: `Li-Fe-O`,
       max_arity: 3,
     })
-    expect(stats?.energy_range.min).toBe(-8.0) // raw energy_per_atom fallback for the quinary
-    expect(stats?.energy_range.max).toBe(-0.5)
+    // the quinary has no e_form_per_atom; its raw -8.0 eV/atom must not leak into this range
+    expect(stats?.e_form_range).toEqual({ min: -2.0, max: -0.5, avg: -1.2 })
     expect(stats?.hull_distance.max).toBe(0.3)
     expect(stats?.hull_distance.avg).toBeCloseTo(0.6 / 5, 12)
   })

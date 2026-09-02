@@ -42,7 +42,9 @@ export function broaden_peaks(
     throw new Error(`peaks have ${peaks.x.length} positions but ${peaks.y.length} intensities`)
   }
 
-  const n_steps = Math.ceil((max_x - min_x) / step_size)
+  // +1 samples max_x itself; ceil() stopped a full step short on evenly dividing spans
+  // ([10, 90] at 0.02 ended at 89.98). Uneven spans are unaffected, floor+1 and ceil agree.
+  const n_steps = Math.floor((max_x - min_x) / step_size) + 1
   // f64, not f32: at cm^-1 values in the thousands f32 resolves to ~2.4e-4, which shows up
   // as grid-dependent noise whenever the same peaks are broadened over two different spans
   const xs = new Float64Array(n_steps)

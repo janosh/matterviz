@@ -4,7 +4,7 @@
 // Pure geometry lives at the top; text measurement goes through the text-metrics cache.
 
 import { format_tick_values } from '$lib/labels'
-import { clamp } from '$lib/math'
+import { array_max, array_min, clamp } from '$lib/math'
 import { get_tick_label } from '$lib/plot/core/scales'
 import {
   DEFAULT_FONT_SPEC,
@@ -137,17 +137,11 @@ export const default_tick_label_anchor = (
   return (side === `x2`) === normalized > 0 ? `end` : `start`
 }
 
-const anchor_x_bounds = (width: number, anchor: TickLabelAnchor): [number, number] => {
-  if (anchor === `start`) return [0, width]
-  if (anchor === `end`) return [-width, 0]
-  return [-width / 2, width / 2]
-}
+const anchor_x_bounds = (width: number, anchor: TickLabelAnchor): [number, number] =>
+  anchor === `start` ? [0, width] : anchor === `end` ? [-width, 0] : [-width / 2, width / 2]
 
-const block_y_bounds = (height: number, side: TickLayoutSide): [number, number] => {
-  if (side === `x`) return [0, height]
-  if (side === `x2`) return [-height, 0]
-  return [-height / 2, height / 2]
-}
+const block_y_bounds = (height: number, side: TickLayoutSide): [number, number] =>
+  side === `x` ? [0, height] : side === `x2` ? [-height, 0] : [-height / 2, height / 2]
 
 const snap_near_zero = (value: number): number =>
   Math.abs(value) <= TICK_GEOMETRY_EPSILON ? 0 : value
@@ -524,14 +518,11 @@ const ellipsis_candidate = (
       const display_lines = label.display_lines.map((line) =>
         ellipsize_line(line, label_max_width, measure_text),
       )
-      const before = information_count(label.display_lines.join(`\n`))
-      const after = Math.min(before, information_count(display_lines.join(`\n`)))
-      const loss =
-        display_lines.join(`\n`) === label.display_lines.join(`\n`)
-          ? 0
-          : before === 0
-            ? 1
-            : 1 - after / before
+      const before_text = label.display_lines.join(`\n`)
+      const after_text = display_lines.join(`\n`)
+      const before = information_count(before_text)
+      const after = Math.min(before, information_count(after_text))
+      const loss = after_text === before_text ? 0 : before === 0 ? 1 : 1 - after / before
       return { ...label, display_lines, information_loss: loss }
     }),
   )
@@ -554,18 +545,13 @@ interface MeasuredCandidate {
 
 // How far labels reach away from their baseline: x/x2 measure vertically, y/y2 horizontally,
 // and x2/y grow toward negative coordinates so their band is the negated minimum.
+const BAND_AABB_KEY = { x: `max_y`, x2: `min_y`, y: `min_x`, y2: `max_x` } as const
+
 const outward_band = (labels: readonly TickLabelGeometry[], side: TickLayoutSide): number => {
-  const horizontal = is_horizontal_side(side)
-  const negated = side === `x2` || side === `y`
+  const sign = side === `x2` || side === `y` ? -1 : 1
   let band = 0
   for (const { aabb } of labels) {
-    const reach = horizontal
-      ? negated
-        ? -aabb.min_y
-        : aabb.max_y
-      : negated
-        ? -aabb.min_x
-        : aabb.max_x
+    const reach = sign * aabb[BAND_AABB_KEY[side]]
     if (reach > band) band = reach
   }
   return band
@@ -845,14 +831,8 @@ const resolve_axis_extent = (
   positions: readonly number[],
 ): TickAxisExtent => {
   if (axis.axis_extent) return axis.axis_extent
-  let start = 0
-  let end = axis_size
-  for (const position of positions) {
-    if (!Number.isFinite(position)) continue
-    if (position < start) start = position
-    if (position > end) end = position
-  }
-  return { start, end }
+  const finite = positions.filter(Number.isFinite)
+  return { start: array_min([0, ...finite]), end: array_max([axis_size, ...finite]) }
 }
 
 // Width available to each label: half the distance to each spatial neighbour, minus the gap

@@ -590,6 +590,9 @@ describe(`OUTCAR`, () => {
     })
     // VASP prints kB, the labels declare GPa
     expect(frames[0].metadata?.pressure).toBeCloseTo(-0.2, 12)
+    // Without these an OUTCAR run showed pressure alone, and stress_frobenius had no producer
+    expect(frames[0].metadata?.stress_max).toBeCloseTo(0.3, 12)
+    expect(frames[0].metadata?.stress_frobenius).toBeCloseTo(Math.sqrt(0.1428), 12)
     expect(frames[0].metadata?.stress).toEqual(
       [
         [-0.1, 0.01, 0.03],
@@ -657,6 +660,7 @@ describe(`OUTCAR`, () => {
     [`an unknown element`, [header({ types: [[`Xx`, 28, 1], [`O`, 16, 2]] }), ionic_step(1, 5, rows_1, -20)].join(`\n`), `Unknown element symbol in OUTCAR: "Xx"`],
     [`no position table`, header(), `contains no POSITION / TOTAL-FORCE table`],
     [`a corrupt position row`, [header(), ionic_step(1, 5, [[0, 0, 0, 0, 0, 0], [1, 1, `x`, 0, 0, 0], [2, 2, 2, 0, 0, 0]] as unknown as number[][], -20), ionic_step(2, 5, rows_2, -20)].join(`\n`), `is not a position + force sextet`],
+    [`a truncated lattice block`, [header(), ionic_step(1, 5, rows_1, -20), ionic_step(2, 5.2, rows_2, -20.5).replace(lattice_block(5.2), lattice_block(5.2).split(`\n`).slice(0, 3).join(`\n`))].join(`\n`), `"direct lattice vectors" is not followed by three rows of finite numbers`],
   ])(`rejects an OUTCAR with %s`, async (_label, content, error) => {
     await expect(open(content, `OUTCAR`)).rejects.toThrow(error)
   })
@@ -1499,7 +1503,7 @@ describe(`unsupported format messages`, () => {
     [`test.dcd`, ``, `DCD`],
     [`test.lammpstrj.bz2`, ``, `BZ2 compression not supported`],
     [`trajectory.xyz.xz`, ``, `XZ compression not supported`],
-    [`data.json.zip`, ``, `ZIP compression not supported`],
+    [`data.json.zip`, ``, null], // single-file ZIPs inflate in the browser
     [`unknown.bin`, String.fromCharCode(0, 1, 2, 3), `Binary format not supported`],
     [`md.dump`, `ITEM: TIMESTEP\n0\n`, null],
     [`test.xyz`, ``, null],
@@ -1549,6 +1553,11 @@ describe(`HDF5 slice budgets`, () => {
       `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
     )
     expect(slice).not.toHaveBeenCalled()
+    // an undecoded 2-byte [n_atoms] masses used to yield 2*n_atoms plausible byte values
+    const undecoded = { shape: [4], slice: () => new Uint8Array(8) } as unknown as H5Dataset
+    expect(() => read_numeric_hyperslab(undecoded, `/masses`, [[]])).toThrow(
+      `HDF5 dataset /masses hyperslab returned 8 values, expected 4`,
+    )
     // and an overlong step axis is rejected before a hyperslab read could truncate it
     expect(() =>
       read_numeric_1d({ shape: [3] } as H5Dataset, `/steps/positions`, 2, `TorchSim HDF5`),

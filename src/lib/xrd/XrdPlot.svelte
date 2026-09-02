@@ -246,9 +246,10 @@
   // [key, label, tooltip, step, min?, max?]
   type BroadeningInput = [keyof BroadeningParams, string, string, number, number?, number?]
   const broadening_inputs: BroadeningInput[] = [
-    [`U`, `U`, `Caglioti U parameter`, 0.001],
+    // U and W are non-negative by construction (only V is legitimately negative)
+    [`U`, `U`, `Caglioti U parameter`, 0.001, 0],
     [`V`, `V`, `Caglioti V parameter`, 0.001],
-    [`W`, `W`, `Caglioti W parameter`, 0.001],
+    [`W`, `W`, `Caglioti W parameter`, 0.001, 0],
     [`shape_factor`, `η`, `Pseudo-Voigt shape factor (0=Gaussian, 1=Lorentzian)`, 0.05, 0, 1],
   ]
 </script>

@@ -96,7 +96,7 @@ export function place_treemap_label({
   header,
   fit,
   min_font_size,
-  padding_top,
+  header_height,
   margin,
 }: {
   rect: Rect
@@ -104,7 +104,7 @@ export function place_treemap_label({
   header: boolean // label the branch's header strip instead of the cell center
   fit: TreemapLabelFit
   min_font_size: number // px floor for shrink mode
-  padding_top: number // header strip height
+  header_height: number // header strip height (treemap.ts' header_strip)
   margin: number // px clearance between label text and cell edges
 }): TreemapLabelPlacement | null {
   if (block.lines.length === 0) return null
@@ -113,9 +113,9 @@ export function place_treemap_label({
     max_font_size,
     safe_font_size(min_font_size, MIN_FONT_SIZE),
   )
-  const header_height = Math.min(rect.height, padding_top)
+  const strip_height = Math.min(rect.height, header_height)
   const available_width = Math.max(0, rect.width - 2 * margin)
-  const label_height = header ? header_height : rect.height
+  const label_height = header ? strip_height : rect.height
   const available_height = Math.max(0, label_height - 2 * (header ? 1 : margin))
   // Single guard for all degenerate geometry (zero/negative/NaN rects, missing
   // header strips, margin-swallowed slivers): negated > 0 so NaN also bails

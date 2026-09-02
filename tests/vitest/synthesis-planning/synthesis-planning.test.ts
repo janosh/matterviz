@@ -3,6 +3,7 @@ import {
   analyze_selectivity,
   assign_e_above_hull,
   balance_reaction,
+  DEFAULT_SCORE_WEIGHTS,
   format_plan_text,
   hull_at,
   lookup_precursor_info,
@@ -14,13 +15,17 @@ import {
   prepare_phase_set,
   reaction_energy_at_temperature,
   resolve_phase,
+  score_route,
   SYNTHESIS_PLAN_REQUEST_SCHEMA,
   SYNTHESIS_PLANNER_TOOL,
 } from '$lib/synthesis-planning'
 import type {
+  CompetingPhase,
   PlannerPhase,
+  SelectivityMetrics,
   SynthesisPlanProgress,
   SynthesisPlanRequest,
+  SynthesisReaction,
 } from '$lib/synthesis-planning'
 import { plan_synthesis_with_progress } from '$lib/synthesis-planning/plan'
 import { describe, expect, test } from 'vitest'
@@ -279,6 +284,45 @@ describe(`analyze_selectivity`, () => {
     expect(selectivity.inverse_hull_energy).toBeCloseTo(1.8 / 6, 9)
     expect(selectivity.target_is_most_favorable).toBe(true)
     expect(selectivity.selectivity_margin).toBeCloseTo(-0.3, 12)
+  })
+
+  // with no competitors selectivity_margin collapses to the target driving force, so saturating
+  // it would echo the driving_force term; an empty list is perfect selectivity and scores 1
+  test(`score_route: no competitors is perfect selectivity, not a driving-force echo`, () => {
+    const reaction = {
+      reactants: [{ phase: { formula: `AO`, is_gas: false } }],
+      products: [],
+      equation: `AO → A`,
+      energy_per_atom: -0.1,
+      energy_per_fu: -0.1,
+      driving_force: -0.005,
+    } as unknown as SynthesisReaction
+    const metrics = (competitors: CompetingPhase[], margin: number): SelectivityMetrics => ({
+      target_driving_force: -0.005,
+      inverse_hull_energy: 0.05,
+      competitors,
+      selectivity_margin: margin,
+      n_more_favorable: 0,
+      target_is_most_favorable: true,
+      interfaces: [],
+    })
+    const competitor = {
+      phase: { formula: `A2O3` },
+      driving_force: -0.001,
+      more_favorable_than_target: false,
+    } as unknown as CompetingPhase
+    const scored = (competitors: CompetingPhase[], margin: number) =>
+      score_route(
+        reaction,
+        metrics(competitors, margin),
+        { score: 0.8, notes: [] },
+        DEFAULT_SCORE_WEIGHTS,
+      )
+    const none = scored([], -0.005)
+    const one = scored([competitor], -0.004)
+    expect(none.breakdown.selectivity).toBeCloseTo(3, 12)
+    expect(one.breakdown.selectivity).toBeCloseTo(3 * (0.004 / 0.104), 12)
+    expect(none.score).toBeGreaterThan(one.score) // clean route outranks one with a competitor
   })
 })
 

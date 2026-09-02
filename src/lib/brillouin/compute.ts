@@ -1,7 +1,9 @@
 // Brillouin zone generation via convex hull
 
+import { format_num } from '$lib/labels'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { mat3_from_flat_col_major } from '$lib/symmetry/symmetry-elements'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { Vector3 } from 'three/webgpu'
 import { ConvexHull, type VertexNode } from 'three/examples/jsm/math/ConvexHull.js'
@@ -26,9 +28,7 @@ export function extract_point_group_from_operations(
     if (seen.has(key)) continue
     seen.add(key)
 
-    // moyo serializes rotations COLUMN-major; vec9_to_mat3x3 reads row-major → transpose to get W
-    const rot = math.transpose_3x3_matrix(math.vec9_to_mat3x3(Array.from(rotation)))
-    unique_rotations.push(rot)
+    unique_rotations.push(mat3_from_flat_col_major(rotation))
   }
 
   return unique_rotations
@@ -541,7 +541,6 @@ function clip_polyhedron_by_plane(
   // Keep vertices inside the half-space
   const result = vertices.filter((_, idx) => signed_dists[idx] <= TOL)
 
-  // Build edge set from faces
   const edge_set = new Set<string>()
   for (const face of faces) {
     for (let idx = 0; idx < face.length; idx++) {
@@ -567,12 +566,7 @@ function clip_polyhedron_by_plane(
       const frac = d1 / denom
       // Only add intersection if it's not at an endpoint (which is already kept)
       if (frac > TOL && frac < 1 - TOL) {
-        const [v1, v2] = [vertices[i1], vertices[i2]]
-        result.push([
-          v1[0] + frac * (v2[0] - v1[0]),
-          v1[1] + frac * (v2[1] - v1[1]),
-          v1[2] + frac * (v2[2] - v1[2]),
-        ])
+        result.push(math.lerp_vec3(vertices[i1], vertices[i2], frac))
       }
     }
   }
@@ -590,7 +584,7 @@ function clipped_hull(
 ): ConvexHullData {
   if (vertices.length < 4) {
     throw new Error(
-      `IBZ clipping by plane n=[${plane.normal.map((val) => val.toFixed(4)).join(`, `)}] left ${vertices.length} vertices (need ≥ 4 for a polyhedron)`,
+      `IBZ clipping by plane n=[${plane.normal.map((val) => format_num(val)).join(`, `)}] left ${vertices.length} vertices (need ≥ 4 for a polyhedron)`,
     )
   }
   return compute_convex_hull(vertices, edge_sharp_angle_deg)

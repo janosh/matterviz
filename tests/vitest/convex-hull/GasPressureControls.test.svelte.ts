@@ -58,7 +58,7 @@ describe(`GasPressureControls`, () => {
     // log10 slider position: (log10(P) + 10) / 12 * 100
     expect(Number(slider(`CO`)?.value)).toBeCloseTo(((-6 + 10) / 12) * 100, 10)
     expect(document.querySelector(`.sr-only`)?.textContent).toMatch(
-      /O2 chemical potential: -?\d/,
+      /O2 chemical potential: [\u2212-]?\d/,
     )
   })
 

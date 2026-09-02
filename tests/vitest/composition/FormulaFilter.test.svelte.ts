@@ -1,6 +1,15 @@
 import { FormulaFilter, type FormulaSearchMode } from '$lib/composition'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
-import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type Mock,
+  onTestFinished,
+  test,
+  vi,
+} from 'vitest'
 import { bind_props, doc_query, keydown, mouse } from '../setup'
 
 describe(`FormulaFilter`, () => {
@@ -377,6 +386,33 @@ describe(`FormulaFilter`, () => {
       expect(items[1].textContent?.trim()).toBe(`Li-Fe-O`)
       expect(items[2].textContent?.trim()).toBe(`LiFePO4`)
       expect(items[0].getAttribute(`role`)).toBe(`option`)
+    })
+
+    // Live props: without a reload the old key's entries get written back under the new one,
+    // and lowering max_history never truncates the list already in memory
+    test(`reloads history when history_key or max_history changes`, () => {
+      const other_key = `${HISTORY_KEY}-other`
+      onTestFinished(() => localStorage.removeItem(other_key))
+      localStorage.setItem(other_key, JSON.stringify([`Na,Cl`]))
+      seed([`Fe,O`, `Li,Na`, `O,Si`])
+      const state = $state({ history_key: HISTORY_KEY, max_history: 5 })
+      mount(FormulaFilter, {
+        target: document.body,
+        props: bind_props({ value: `` }, state) as ComponentProps<typeof FormulaFilter>,
+      })
+      focus_input()
+      const texts = () => [...history_values()].map((item) => item.textContent?.trim())
+      expect(texts()).toHaveLength(3)
+
+      state.max_history = 2
+      flushSync()
+      expect(texts()).toEqual([`Fe,O`, `Li,Na`])
+
+      state.history_key = other_key
+      flushSync()
+      expect(texts()).toEqual([`Na,Cl`])
+      // the old key is untouched: its entries were never rewritten under the new one
+      expect(get_stored()).toEqual([`Fe,O`, `Li,Na`, `O,Si`])
     })
 
     test(`adds entries on submit and persists to localStorage`, () => {

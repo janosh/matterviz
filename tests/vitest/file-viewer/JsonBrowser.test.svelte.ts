@@ -52,10 +52,11 @@ const pointer = (element: Element, type: `pointerdown` | `pointerup`): void => {
 
 // Real rAF/MutationObserver on purpose: the badge pass mutates the subtree it observes, so a
 // stubbed no-op rAF would hide a re-schedule loop
-const mount_browser = (props: { value: unknown; filename?: string }) => {
+const mount_browser = (initial: { value: unknown; filename?: string }) => {
+  const props = $state({ ...initial })
   const component = mount(JsonBrowser, { target: document.body, props })
   onTestFinished(() => unmount(component))
-  return component
+  return { component, props }
 }
 
 const next_frames = (count: number): Promise<void> =>
@@ -205,6 +206,25 @@ test(`re-rendering the same path and value into the first panel is a no-op`, asy
   await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(2))
   expect(unmount).toHaveBeenCalledTimes(1)
   expect(doc_query(`.panel-label`).textContent).toBe(`Table: second`)
+})
+
+// PanelInfo.val captures the subtree, so a new document left open panels showing the previous
+// one and a never-reset auto_rendered suppressed auto-render of the new root
+test(`a replaced value closes the panels rendering the previous document`, async () => {
+  const { props } = mount_browser({ value: { first: table_rows(1, 3) } })
+  await click_first_chip()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(1))
+  expect(doc_query(`.panel-label`).textContent).toBe(`Table: first`)
+
+  props.value = { replacement: table_rows(9, 3) }
+  flushSync()
+  await next_frames(2)
+  expect(unmount).toHaveBeenCalledTimes(1)
+  expect(document.querySelector(`.panel-label`)).toBeNull()
+  await click_first_chip()
+  await vi.waitFor(() =>
+    expect(doc_query(`.panel-label`).textContent).toBe(`Table: replacement`),
+  )
 })
 
 // A viewer that throws while mounting must say so inside its panel (a blank panel reads as an

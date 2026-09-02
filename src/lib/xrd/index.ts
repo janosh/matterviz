@@ -32,12 +32,7 @@ export function format_hkl(hkl: Hkl, format: HklFormat): string {
   return hkl.map((val) => (val < 0 ? overbar(val) : `${val}`)).join(``)
 }
 
-export type XrdPattern = {
-  x: number[]
-  y: number[]
-  hkls?: HklObj[][]
-  d_hkls?: number[]
-}
+export type XrdPattern = { x: number[]; y: number[]; hkls?: HklObj[][]; d_hkls?: number[] }
 
 // Thin a long measured scan to at most `max_points` for rendering: uniform sampling plus
 // the strongest local maxima (up to 30% of the slots), so peaks that fall between uniform

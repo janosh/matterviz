@@ -3,7 +3,7 @@
   import { info_pane_icon, ViewerPane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num, trajectory_property_config } from '$lib/labels'
-  import { format_bytes } from '$lib/utils'
+  import { format_bytes, strip_html } from '$lib/utils'
   import { array_extent } from '$lib/math'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import {
@@ -26,11 +26,7 @@
     run: TrajectoryRun
     current_step_idx: number
     current_frame?: TrajectoryFrame | null
-    // Runs are deliberately rune-free, so `run.properties` is a plain class instance whose
-    // `rows` are invisible to the reactivity graph. Reading them directly froze this pane at
-    // whatever had arrived when it first rendered, which for a progressively indexed run is
-    // the first batch. Trajectory.svelte passes the session's mirrored copies; the fallback
-    // below keeps a standalone mount against an already-finished run working.
+    // Session-mirrored: run.properties is rune-free (see run.ts). Fallback for standalone mounts.
     property_rows?: readonly TrajectoryMetadata[]
     properties_complete?: boolean
     pane_open?: boolean
@@ -76,7 +72,6 @@
     const rank = STAT_PRIORITY.findIndex((token) => key.toLowerCase().includes(token))
     return rank === -1 ? STAT_PRIORITY.length : rank
   }
-  const strip_tags = (label: string): string => label.replaceAll(/<[^>]*>/g, ``)
 
   let total_frames = $derived(run.frame_count)
   let step_samples = $derived(get_frame_step_samples(rows))
@@ -127,7 +122,7 @@
           stat.key,
           trajectory_property_config,
         )
-        const label = strip_tags(clean_label)
+        const label = strip_html(clean_label)
         const relative_drift =
           Math.abs(stat.mean) > 1e-12
             ? ` (${format_num(stat.drift / Math.abs(stat.mean), `+.2~%`)})`

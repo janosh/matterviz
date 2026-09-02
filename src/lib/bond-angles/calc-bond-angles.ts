@@ -7,12 +7,11 @@ import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import {
   compute_bonds,
+  intern_site_elements,
   lattice_pbc_or_throw,
-  get_majority_element,
 } from '$lib/structure/bonding'
 import { angle_between_vectors } from '$lib/structure/measure'
 import type { Pbc } from '$lib/structure/pbc'
-import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
 // Angles are undirected, so the whole distribution lives in [0, 180]
 export const MAX_BOND_ANGLE = 180
@@ -126,19 +125,10 @@ export function calc_bond_angles(
   })
   // Elements as small integers so the inner loop indexes a label table instead of
   // building one `A-B-C` string per angle
-  const elements: string[] = []
-  const elem_id_of = new Map<string, number>()
-  const elem_of_site = new Int32Array(n_sites)
-  for (const [site_idx, site] of sites.entries()) {
-    const element = get_majority_element(site) ?? UNKNOWN_ELEMENT
-    let elem_id = elem_id_of.get(element)
-    if (elem_id === undefined) {
-      elem_id = elements.length
-      elements.push(element)
-      elem_id_of.set(element, elem_id)
-    }
-    elem_of_site[site_idx] = elem_id
-  }
+  const { symbols: elements, site_elem_ids: elem_of_site } = intern_site_elements(
+    sites,
+    UNKNOWN_ELEMENT,
+  )
   const n_elems = elements.length
   // Filled on first use, keyed by the packed (center, low, high) index so (center, outer_1,
   // outer_2) and (center, outer_2, outer_1) share an entry without reserving n_elems^3 slots
@@ -181,10 +171,8 @@ export function calc_bond_angles(
     })
   }
 
-  const center_filter = options.center_elements ? new SvelteSet(options.center_elements) : null
-  const neighbor_filter = options.neighbor_elements
-    ? new SvelteSet(options.neighbor_elements)
-    : null
+  const center_filter = options.center_elements ? new Set(options.center_elements) : null
+  const neighbor_filter = options.neighbor_elements ? new Set(options.neighbor_elements) : null
 
   const triplets: BondAngleTriplet[] = []
   for (let center_idx = 0; center_idx < n_sites; center_idx++) {
@@ -223,7 +211,7 @@ export function bin_bond_angles(
   const { split_by_triplet = true } = options
 
   const total_counts = Array.from({ length: n_bins }, () => 0)
-  const counts_by_triplet = new SvelteMap<string, number[]>()
+  const counts_by_triplet = new Map<string, number[]>()
   for (const { angle, triplet } of triplets) {
     const bin_idx = angle_bin_index(angle, n_bins, bin_width)
     total_counts[bin_idx] += 1

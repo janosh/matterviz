@@ -237,7 +237,6 @@
     return () => clearTimeout(timeout)
   })
 
-  // Export Fermi surface to various formats
   async function handle_export(format: SceneExportFormat) {
     if (!scene) {
       console.error(`No scene available for export`)

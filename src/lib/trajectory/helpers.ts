@@ -1,5 +1,9 @@
-import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
-import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
+import {
+  coerce_elem_symbol,
+  element_from_atomic_number,
+  is_elem_symbol,
+} from '$lib/element/helpers'
+import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import type * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
@@ -28,9 +32,10 @@ export const is_supported_trajectory_signal_shape = (
     ((sample_shape[0] === 3 && sample_shape[1] === 3) ||
       (sample_shape[0] === n_atoms && sample_shape[1] === 3)))
 
+// Throws: a trajectory whose species table is unreadable has no salvageable frames
 export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
   numbers.map((num) => {
-    const symbol = Number.isInteger(num) ? ELEM_SYMBOLS[num - 1] : undefined
+    const symbol = element_from_atomic_number(num)
     if (!symbol) throw new Error(`Unknown atomic number in trajectory data: ${num}`)
     return symbol
   })

@@ -1,11 +1,10 @@
 <script lang="ts">
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import { format_num } from '$lib/labels'
+  import { format_num, humanize } from '$lib/labels'
   import { sanitize_formula, sanitize_html } from '$lib/sanitize'
   import { TooltipContent } from '$lib/tooltip'
   import type {
     CompUnit,
-    LeverRuleMode,
     PhaseBoundary,
     PhaseDiagramTooltipProp,
     PhaseHoverInfo,
@@ -29,7 +28,6 @@
     component_a = `A`,
     component_b = `B`,
     boundaries = [],
-    lever_rule_mode = `horizontal`,
     use_subscripts = true,
     tooltip,
   }: {
@@ -41,7 +39,6 @@
     component_a?: string
     component_b?: string
     boundaries?: PhaseBoundary[]
-    lever_rule_mode?: LeverRuleMode
     use_subscripts?: boolean
     tooltip?: PhaseDiagramTooltipProp
   } = $props()
@@ -54,14 +51,23 @@
   // Convert a temperature from data unit to display unit
   const to_display = (temp: number): number => convert_temp(temp, data_unit, temperature_unit)
 
-  // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
-  const wt_fraction_b = $derived.by(() => {
+  // The complementary measure: hover_info.composition is a weight fraction under wt% and an
+  // atomic fraction otherwise, so each case converts the other way. Null without atomic masses.
+  //   wt_B = (x_B M_B) / (x_A M_A + x_B M_B),  x_B = (w_B / M_B) / (w_A / M_A + w_B / M_B)
+  const alt_composition = $derived.by(() => {
     const mass_a = element_by_symbol.get(component_a as ElementSymbol)?.atomic_mass
     const mass_b = element_by_symbol.get(component_b as ElementSymbol)?.atomic_mass
     if (!mass_a || !mass_b) return null
-    const { composition: x_b } = hover_info
-    const denom = (1 - x_b) * mass_a + x_b * mass_b
-    return denom > 0 ? (x_b * mass_b) / denom : null
+    const { composition: frac_b } = hover_info
+    const weighted_a =
+      composition_unit === `wt%` ? (1 - frac_b) / mass_a : (1 - frac_b) * mass_a
+    const weighted_b = composition_unit === `wt%` ? frac_b / mass_b : frac_b * mass_b
+    const denom = weighted_a + weighted_b
+    if (!(denom > 0)) return null
+    return {
+      label: composition_unit === `wt%` ? `Atomic` : `Weight`,
+      fraction_b: weighted_b / denom,
+    }
   })
 
   const stability = $derived(get_phase_stability_range(hover_info.region))
@@ -87,7 +93,7 @@
       peritectoid: `Two solids → different solid at ${temp}`,
       congruent: `Congruent phase change at ${temp}`,
     }
-    const badge = type.charAt(0).toUpperCase() + type.slice(1).replaceAll(`_`, ` `)
+    const badge = humanize(type)
     return { badge, description: type_descriptions[type] ?? null }
   })
 
@@ -113,16 +119,8 @@
     return min_dist
   })
 
-  // Lever rule of the active mode, one [phase, fraction, location] row per tie-line end
-  const lever_display = $derived(
-    lever_rule_rows(
-      hover_info,
-      lever_rule_mode,
-      composition_unit,
-      temperature_unit,
-      data_unit,
-    ),
-  )
+  // Lever rule: one [phase, fraction, composition] row per tie-line end
+  const lever_rows = $derived(lever_rule_rows(hover_info, composition_unit))
 </script>
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
@@ -164,13 +162,13 @@
           {@html safe_formula(component_a)})</small
         >
       </dd>
-      {#if wt_fraction_b !== null}
-        <dt>Weight</dt>
+      {#if alt_composition}
+        <dt>{alt_composition.label}</dt>
         <dd>
-          {format_num(wt_fraction_b * 100, `.1f`)}%
+          {format_num(alt_composition.fraction_b * 100, `.1f`)}%
           {@html safe_formula(component_b)}
           <small
-            >({format_num((1 - wt_fraction_b) * 100, `.1f`)}%
+            >({format_num((1 - alt_composition.fraction_b) * 100, `.1f`)}%
             {@html safe_formula(component_a)})</small
           >
         </dd>
@@ -195,22 +193,21 @@
       {/if}
     </dl>
 
-    {#if lever_display}
-      {@const { vertical, rows } = lever_display}
+    {#if lever_rows}
       <div class="lever">
-        <span>{vertical ? `Lever Rule (vertical)` : `Lever Rule`}</span>
+        <span>Lever Rule</span>
         <div class="bar">
-          {#each rows as [phase, fraction], idx (idx)}
+          {#each lever_rows as [phase, fraction], idx (idx)}
             <div
               style:width="{fraction * 100}%"
               style:background={get_phase_color(phase, `hex`)}
               title="{phase}: {format_num(fraction * 100, `.1f`)}%"
             ></div>
           {/each}
-          <i style:left="{rows[0][1] * 100}%"></i>
+          <i style:left="{lever_rows[0][1] * 100}%"></i>
         </div>
         <div class="phase-info">
-          {#each rows as [phase, fraction, location], idx (idx)}
+          {#each lever_rows as [phase, fraction, location], idx (idx)}
             <span
               >{@html safe_formula(phase)}: {format_num(fraction * 100, `.0f`)}%
               <small>at {location}</small></span

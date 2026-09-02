@@ -27,6 +27,13 @@ const col_values = (col_name: string): (string | undefined)[] =>
 const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement =>
   doc_query(`td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`, HTMLTableCellElement)
 
+// A non-empty search_query is debounced 150 ms before it reaches the filter (clearing is not)
+const settle_search = async (state: { search_query: string }, query: string) => {
+  state.search_query = query
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  await tick()
+}
+
 describe(`HeatmapTable`, () => {
   const sample_data = [
     { Model: `Model A`, Score: 0.95, Value: 100 },
@@ -654,6 +661,30 @@ describe(`HeatmapTable`, () => {
         `Value2`,
       ])
     })
+
+    // A group split by another column used to swallow it under the group's label and leave
+    // the group's tail unlabelled
+    it(`pulls a group's columns together when they are listed non-contiguously`, () => {
+      mount_table({
+        data: [{ A: 1, B: 2, C: 3 }],
+        columns: [{ label: `A`, group: `g1` }, { label: `B` }, { label: `C`, group: `g1` }],
+      })
+      const [group_row, header_row] = document.querySelectorAll(`thead tr`)
+      expect(
+        [...group_row.querySelectorAll(`th`)].map((th) => [
+          th.textContent?.trim(),
+          th.getAttribute(`colspan`),
+        ]),
+      ).toEqual([
+        [`g1`, `2`],
+        [``, null],
+      ])
+      expect(
+        [...header_row.querySelectorAll(`th`)].map((th) =>
+          th.textContent?.trim().replaceAll(/\s+|[↑↓]/g, ``),
+        ),
+      ).toEqual([`A`, `C`, `B`])
+    })
   })
 
   describe(`Style and CSS properties`, () => {
@@ -745,8 +776,11 @@ describe(`HeatmapTable`, () => {
       ]
       mount_table(bind_props({ data, columns: sample_columns, search: true }, state))
 
+      // the filter waits out the debounce: a keystroke must not re-scan the table
       state.search_query = query
       await tick()
+      if (query.trim()) expect(col_values(`Model`)).toHaveLength(3)
+      await settle_search(state, query)
 
       const model_cells = col_values(`Model`)
       expect(model_cells).toHaveLength(expected.length)
@@ -764,8 +798,7 @@ describe(`HeatmapTable`, () => {
       const columns = plain_columns(`Model`, `Note`)
       mount_table(bind_props({ data, columns, search: { keys: [`Model`] } }, state))
 
-      state.search_query = `model a`
-      await tick()
+      await settle_search(state, `model a`)
 
       // without keys, "model a lookalike" in Note would also match
       expect(col_values(`Model`)).toEqual([`Model A`])
@@ -780,8 +813,7 @@ describe(`HeatmapTable`, () => {
         bind_props({ data: sample_data, columns: sample_columns, search: { fuzzy } }, state),
       )
 
-      state.search_query = `mdla`
-      await tick()
+      await settle_search(state, `mdla`)
 
       expect(col_values(`Model`)).toEqual(expected)
     })
@@ -2179,20 +2211,25 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`.action-menu`)).not.toBeNull()
     })
 
-    it(`hides gradient controls when preferences disable the effective color scale`, async () => {
+    // An unconfigured numeric column still gets the default viridis scale, so its gradient
+    // direction is adjustable; `color_scale: null` in the prefs turns it back off.
+    it.each([
+      [`hidden when preferences disable the color scale`, [heatmap_col], 0, false],
+      [`offered on a bare numeric column`, plain_columns(`Model`, `Value`), 1, true],
+    ])(`gradient controls %s`, async (_desc, columns, th_idx, shown) => {
       mount_table({
         data: sample_data,
-        columns: [heatmap_col],
-        column_prefs: { Value: { color_scale: null } },
+        columns,
+        column_prefs: { Value: { color_scale: shown ? undefined : null } },
         allow_better_toggle: true,
       })
       await tick()
 
-      document.querySelector(`th`)?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      const headers = document.querySelectorAll(`th`)
+      headers[th_idx].dispatchEvent(pointer(`contextmenu`, { button: 2 }))
       await tick()
-      expect(document.querySelector(`.action-menu`)?.textContent).not.toMatch(
-        /Higher is better|Lower is better/,
-      )
+      const menu_text = document.querySelector(`.action-menu`)?.textContent ?? ``
+      expect(/Higher is better|Lower is better/.test(menu_text)).toBe(shown)
     })
   })
 
@@ -2377,8 +2414,7 @@ describe(`HeatmapTable`, () => {
       const scroller = await scroll_to(150 * row_height_px)
       expect(spacers()[0].style.height).toBe(`${(150 - overscan) * row_height_px}px`)
 
-      state.search_query = `Model 1` // matches 111 of the 200 rows
-      await tick()
+      await settle_search(state, `Model 1`) // matches 111 of the 200 rows
       expect(scroller.scrollTop).toBe(0)
       expect(spacers()).toHaveLength(1) // bottom only, so the window starts at row 0
     })

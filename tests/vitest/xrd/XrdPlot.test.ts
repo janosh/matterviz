@@ -322,11 +322,12 @@ describe(`XrdPlot`, () => {
     const inputs = Array.from(target.querySelectorAll<HTMLInputElement>(`.param-input`))
     // U, V, W, then the pseudo-Voigt shape factor, each showing its DEFAULT_BROADENING value
     expect(inputs.map((input) => input.value)).toEqual([`0.04`, `-0.02`, `0.02`, `0.5`])
-    // Only the mixing parameter is bounded, since eta outside [0, 1] is not a pseudo-Voigt
+    // U and W are floored at 0 (a negative FWHM² radicand throws), V is legitimately
+    // negative, and only eta is bounded above since outside [0, 1] it is not a pseudo-Voigt
     expect(inputs.map((input) => [input.min, input.max])).toEqual([
+      [`0`, ``],
       [``, ``],
-      [``, ``],
-      [``, ``],
+      [`0`, ``],
       [`0`, `1`],
     ])
   })

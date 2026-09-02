@@ -6,7 +6,7 @@ import { clamp, reciprocal_lattice, scale_lattice_matrix } from '$lib/math'
 import { clamp01 } from '$lib/utils'
 import type { ScalarGrid3D } from './grid'
 import type { VolumeGrid, VolumetricData } from './types'
-import { downsample_grid, make_volume, MAX_GRID_POINTS } from './types'
+import { make_volume, MAX_GRID_POINTS } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
@@ -450,15 +450,20 @@ export function extract_volume_range(
   })
 }
 
-// The finite grid marching cubes runs on: a VESTA-style fractional window when a
-// range is given, else the (budget-downsampled) source grid itself.
+export const UNIT_CELL_RANGE: DisplayRange = [
+  [0, 1],
+  [0, 1],
+  [0, 1],
+]
+
+// The finite grid marching cubes runs on: a VESTA-style fractional window, else the whole
+// cell. Both resample through extract_volume_range so the endpoints land exactly on the
+// requested fractions. Block-averaging the source grid instead shifted an f = x_frac
+// isosurface in a 20 Å cell from x = 6.000 Å to 5.900 Å at 51³, atoms staying put.
 export function prepare_geometry_grid(
   volume: VolumeGrid,
   range: DisplayRange | null,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3 } {
-  if (range) {
-    const extracted = extract_volume_range(volume, range)
-    return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
-  }
-  return { grid: downsample_grid(volume), lattice: volume.lattice, origin: volume.origin }
+  const extracted = extract_volume_range(volume, range ?? UNIT_CELL_RANGE)
+  return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
 }

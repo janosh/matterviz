@@ -4,6 +4,7 @@
 import { count_atoms_in_composition } from '$lib/composition/reduce'
 import { BOLTZMANN_EV_PER_K } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
+import { format_num } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
 import type {
   GasAnalysis,
@@ -298,4 +299,4 @@ export function apply_gas_corrections(
 
 // Format chemical potential for display (e.g., "-1.23 eV")
 export const format_chemical_potential = (mu: number, decimals = 3): string =>
-  `${mu >= 0 ? `+` : ``}${mu.toFixed(decimals)} eV`
+  `${mu >= 0 ? `+` : ``}${format_num(mu, `.${decimals}~f`)} eV`

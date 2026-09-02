@@ -557,7 +557,8 @@ export function filter_entries_at_temperature(
           : null
     if (energy_per_atom == null) return []
     const energy = energy_per_atom * count_atoms_in_composition(entry.composition)
-    return [{ ...entry, energy, energy_per_atom }]
+    // G(T) already carries the MP correction; keep it and get_energy_per_atom adds it twice
+    return [{ ...entry, energy, energy_per_atom, correction: undefined }]
   })
 }
 

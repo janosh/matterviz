@@ -96,12 +96,8 @@ async function capture_native(
   return canvas_to_blob(canvas, `Failed to generate PNG - canvas may be empty`)
 }
 
-// Capture a canvas as a PNG Blob at the given DPI.
-// GPU canvases temporarily adjust renderer pixel ratio; plain 2D canvases are
-// drawn into a scaled offscreen canvas.
-// Returns data directly (no browser download), suitable for programmatic capture
-// in test suites, server-side rendering, or Python widget integration via anywidget.
-// DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
+// GPU canvases temporarily adjust renderer pixel ratio; plain 2D canvases are drawn into a
+// scaled offscreen canvas. Returns the Blob rather than downloading it.
 export async function canvas_to_png_blob(
   canvas: HTMLCanvasElement,
   png_dpi = DEFAULT_PNG_DPI,
@@ -355,11 +351,7 @@ export function export_svg_as_svg(
   }
 }
 
-// Rasterize an SVG element to a PNG Blob at the given DPI.
-// Creates an offscreen canvas at the scaled resolution, draws the SVG via an
-// Image element, and returns the resulting PNG Blob. Rejects if viewBox is
-// missing or dimensions are invalid (zero width/height).
-// DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
+// Rasterize an SVG to a PNG Blob. Rejects when viewBox is missing or a dimension is zero.
 export function svg_to_png_blob(
   svg_element: SVGElement,
   png_dpi = DEFAULT_PNG_DPI,

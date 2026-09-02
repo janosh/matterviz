@@ -346,6 +346,18 @@ describe(`Custom`, () => {
   test(`site index yields distinct colors`, () => {
     expect(new Set(ap.get_custom_colors(diagonal_c, (_, idx) => idx).colors).size).toBe(3)
   })
+
+  // NaN at index 0 is the poison case: a vals[0]-seeded extent leaves min = max = NaN and the
+  // max === min guard fails (NaN !== NaN), painting every atom at t = NaN
+  test(`NaN from a color function poisons neither the extent nor the other atoms`, () => {
+    // z = 0, 1, 2 -> vals = NaN, 1, 2, so the finite extent is [1, 2]
+    const { colors } = ap.get_custom_colors(diagonal_c, (site) => site.xyz[2] || NaN)
+    // t = 0, 0.5, 1 on the same scale: the NaN site takes the midpoint, the finite pair the ends
+    const ramp = ap.apply_color_scale([1, 1.5, 2]).colors
+    expect(colors).toEqual([ramp[1], ramp[0], ramp[2]])
+    // an all-NaN column has no extent at all and must still yield the midpoint, not garbage
+    expect(ap.get_custom_colors(diagonal_c, () => NaN).colors).toEqual(ramp.map(() => ramp[1]))
+  })
 })
 
 describe(`normalize_atom_color_config`, () => {

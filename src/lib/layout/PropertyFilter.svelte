@@ -2,6 +2,7 @@
   import { Icon } from 'svelte-widgets'
   import { Close } from 'svelte-widgets/icons'
   import { sanitize_html } from '$lib/sanitize'
+  import { strip_html } from '$lib/utils'
   import type { AxisConfig, HistogramSeries } from '$lib/plot'
   import { Histogram } from '$lib/plot'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -41,7 +42,7 @@
   const histogram_at = $derived(histogram_data?.length ? histogram_position : `none`)
   // Active when either bound is set (undefined = unbounded)
   const active = $derived(min_value !== undefined || max_value !== undefined)
-  const plain_label = $derived(label.replaceAll(/<[^>]*>/g, ``))
+  const plain_label = $derived(strip_html(label))
 
   function onkeydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }): void {
     if (event.key === `Enter`) {

@@ -5,7 +5,7 @@
   import { create_flash } from '$lib/effects.svelte'
   import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull'
   import type { GasSpecies, PhaseData } from '$lib/convex-hull'
-  import { format_num } from '$lib/labels'
+  import { format_num, plural } from '$lib/labels'
   import { ToolbarMenu } from '$lib/overlays'
   import { sanitize_formula } from '$lib/sanitize'
   import { format_plan_text } from './agent'
@@ -224,7 +224,7 @@
 
   const score_tooltip = $derived(
     Object.entries(selected_route?.score_breakdown ?? {})
-      .map(([key, value]) => `${key}: ${value.toFixed(2)}`)
+      .map(([key, value]) => `${key}: ${format_num(value, `.2~f`)}`)
       .join(`\n`),
   )
   const metrics = $derived.by((): [string, string][] => {
@@ -391,8 +391,8 @@
             .join(` + `)})
         </span>
       {/if}:
-      {routes.length} route{routes.length === 1 ? `` : `s`} from {computed_plan.n_candidates} precursor
-      sets, pool of {computed_plan.precursor_pool.length}
+      {plural(routes.length, `route`)} from {computed_plan.n_candidates} precursor sets, pool of
+      {computed_plan.precursor_pool.length}
       ({computed_plan.precursor_pool.map((phase) => phase.formula).join(`, `)}).
     </p>
     {#each computed_plan.warnings as warning (warning)}

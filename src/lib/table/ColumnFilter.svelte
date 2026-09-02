@@ -5,12 +5,8 @@
   // open at a time) and persists the filter itself through `on_change`.
   import { format_num } from '$lib/labels'
   import type { ColumnFilter, Label, RowData } from '$lib/table'
-  import {
-    column_filter_panel,
-    strip_html,
-    with_category_toggled,
-    with_numeric_bound,
-  } from './data'
+  import { column_filter_panel, with_category_toggled, with_numeric_bound } from './data'
+  import { strip_html } from '$lib/utils'
   import { Icon } from 'svelte-widgets'
   import { Filter } from 'svelte-widgets/icons'
 

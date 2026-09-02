@@ -192,6 +192,25 @@ describe(`Histogram`, () => {
   })
 
   const repeated = { values: [0, 1, 2], label: `Repeated` }
+  // Keyed on the visible subset, `single` mode painted every swatch the shared bar color
+  test(`legend swatches stay per-series in single mode`, async () => {
+    const series = [`A`, `B`, `C`].map((label) => ({ values: [1, 2, 3], label }))
+    await mount_histogram({
+      series,
+      mode: `single`,
+      selected_property: `B`,
+      bins: 3,
+      show_legend: true,
+      bar: { color: `rebeccapurple` },
+    })
+    const swatches = [...document.querySelectorAll(`.legend-item .legend-marker path`)].map(
+      (path) => path.getAttribute(`fill`),
+    )
+    expect(swatches).toHaveLength(3)
+    expect(new Set(swatches).size).toBe(3)
+    expect(swatches).not.toContain(`rebeccapurple`)
+  })
+
   test.each([
     [
       `skips hidden series`,

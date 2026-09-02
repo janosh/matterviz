@@ -18,6 +18,7 @@ import {
   compute_chempot_diagram,
   chebyshev_centre,
   dedup_points,
+  fit_plane,
   formula_key_from_composition,
   get_3d_domain_simplexes_and_ann_loc,
   get_energy_stats_by_formula,
@@ -712,7 +713,7 @@ describe(`renormalize_entries`, () => {
       expected_energy: [-1.0],
     },
   ])(`$label`, ({ phase_entries, expected_epa, expected_energy }) => {
-    const renormed = renormalize_entries(phase_entries, AB_REFS, [`A`, `B`])
+    const renormed = renormalize_entries(phase_entries, AB_REFS)
     expect(renormed.map((entry) => [entry.energy_per_atom, entry.energy])).toEqual(
       close_rows(
         expected_epa.map((epa, idx) => [epa, expected_energy[idx]]),
@@ -758,6 +759,16 @@ describe(`build_hyperplanes`, () => {
         { ...make_phase({ A: 2, B: 1 }, -5), is_stable: false, e_above_hull: 0.2 },
       ],
       expected: [`A`, `B`, `AB`],
+    },
+    {
+      // AB has E_form = -3.5 eV/atom here, yet a stale `is_stable: false` deletes its domain
+      label: `stale hull flags from a larger chemsys drop a locally stable phase`,
+      refs: {
+        A: { ...make_phase({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
+        B: { ...make_phase({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
+      },
+      extra: [{ ...make_phase({ A: 1, B: 1 }, -6), is_stable: false, e_above_hull: 0.2 }],
+      expected: [`A`, `B`],
     },
     {
       label: `falls back to negative formation energy when hull stability is absent`,
@@ -1262,6 +1273,42 @@ describe(`dedup_points`, () => {
   })
 })
 
+describe(`fit_plane`, () => {
+  // n . p = d for the plane 2x + 3y + 6z = 12 (|n| = 7)
+  const on_plane = [
+    [6, 0, 0],
+    [0, 4, 0],
+    [0, 0, 2],
+    [3, 2, 0],
+    [1.5, 1, 1],
+  ]
+
+  test(`recovers a plane's unit normal and offset`, () => {
+    const plane = fit_plane(on_plane)
+    if (!plane) throw new Error(`expected a plane`)
+    const sign = Math.sign(plane.offset) || 1 // either face normal is valid
+    expect(plane.normal.map((val) => val * sign)).toEqual(
+      [2 / 7, 3 / 7, 6 / 7].map((val) => expect.closeTo(val, 9)),
+    )
+    expect(plane.offset * sign).toBeCloseTo(12 / 7, 9)
+  })
+
+  test.each([
+    [`fewer than 3 unique points`, on_plane.slice(0, 2)],
+    [`collinear points`, [0, 1, 2, 3].map((val) => [val, val, val])],
+    [`points spanning a volume`, [...on_plane, [0, 0, 0]]], // origin is 12/7 off the plane
+  ])(`returns null for %s`, (_label, points) => {
+    expect(fit_plane(points)).toBeNull()
+  })
+
+  test(`rel_tol is relative to the bounding-box diagonal`, () => {
+    // bbox diagonal of `on_plane` is ~7.5, so a 1e-3 out-of-plane nudge needs rel_tol > ~1.4e-4
+    const nudged = [...on_plane.slice(0, 4), [1.5 + 2e-3 / 7, 1 + 3e-3 / 7, 1 + 6e-3 / 7]]
+    expect(fit_plane(nudged, 1e-6)).toBeNull()
+    expect(fit_plane(nudged, 1e-2)).not.toBeNull()
+  })
+})
+
 describe(`safe_energy_per_atom`, () => {
   test.each([
     {
@@ -1710,7 +1757,7 @@ describe(`best_form_energy_for_formula`, () => {
 
   test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
     const all_entries = Object.values(AB_REFS)
-    const renormed = renormalize_entries(all_entries, AB_REFS, [`A`, `B`])
+    const renormed = renormalize_entries(all_entries, AB_REFS)
     const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
     expect(safe_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
     expect(safe_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)

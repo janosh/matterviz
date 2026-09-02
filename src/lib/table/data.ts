@@ -1,18 +1,9 @@
 // Headless row logic for HeatmapTable: one numeric reading of a cell, sort comparison,
 // search/filter predicates and date-time parsing/formatting. No DOM, so it's unit-testable
 // and the component only wires these to events and markup.
-import { normalize_unicode_minus } from '$lib/utils'
+import { HTML_TAG_SRC, normalize_unicode_minus, strip_html } from '$lib/utils'
 import { fuzzy_match } from 'svelte-widgets/utils'
-import { SvelteSet } from 'svelte/reactivity'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Label, RowData } from './index'
-
-// A tag opens with a letter, a closing slash or `!` (comment/doctype). Requiring that instead
-// of matching `<[^>]*>` keeps ordinary prose caught between a comparison pair intact: cell text
-// feeds search, the filter panels and every export, and `T < 300 K and P > 1 bar` used to read
-// back as `T  1 bar` and stop matching `300`.
-const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)[^>]*>`
-const HTML_TAG_RE = new RegExp(HTML_TAG_SRC, `gi`)
-export const strip_html = (str: string): string => str.replaceAll(HTML_TAG_RE, ``)
 
 // Columns discovered from the first rows when the caller passes none
 export const discover_columns = (rows: RowData[]): Label[] => {
@@ -58,8 +49,12 @@ export const cell_text = (val: CellVal): string => {
   return strip_html(String(val)).trim()
 }
 
-const get_data_sort_value = (val: string): string | null =>
-  DATA_SORT_VALUE_RE.exec(val)?.groups?.value ?? null
+// A blank data-sort-value="" carries no sort key: Number('') is 0, which would sort and
+// color the cell as zero and pull the column's mean toward it.
+const get_data_sort_value = (val: string): string | null => {
+  const captured = DATA_SORT_VALUE_RE.exec(val)?.groups?.value
+  return captured?.trim() ? captured : null
+}
 
 const parse_numeric_string = (val: string): number | null => {
   const numeric_str = NUMERIC_WITH_ERROR_RE.exec(val)?.[1] ?? val
@@ -171,7 +166,7 @@ export function column_filter_panel(
   is_numeric: boolean,
 ): FilterPanel {
   const capped = col.filter !== `category`
-  const seen = new SvelteSet<string>()
+  const seen = new Set<string>()
   for (const row of rows) {
     const val = row[row_key]
     if (!is_invalid(val)) seen.add(cell_text(val))

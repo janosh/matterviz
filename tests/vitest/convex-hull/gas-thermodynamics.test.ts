@@ -240,12 +240,14 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 })
 
 describe(`gas-thermodynamics: formatting`, () => {
+  // format_num renders the typographic minus (U+2212) and trims trailing zeros, so `decimals`
+  // is a maximum, not a fixed width
   test.each([
-    [-1.234, 3, `-1.234 eV`],
-    [0.5, 3, `+0.500 eV`],
-    [0, 3, `+0.000 eV`],
-    [-1.23456, 2, `-1.23 eV`],
-    [-1.23456, 4, `-1.2346 eV`],
+    [-1.234, 3, `\u22121.234 eV`],
+    [0.5, 3, `+0.5 eV`],
+    [0, 3, `+0 eV`],
+    [-1.23456, 2, `\u22121.23 eV`],
+    [-1.23456, 4, `\u22121.2346 eV`],
   ])(`format_chemical_potential(%s, %s) = %s`, (mu, decimals, expected) => {
     expect(format_chemical_potential(mu, decimals)).toBe(expected)
   })

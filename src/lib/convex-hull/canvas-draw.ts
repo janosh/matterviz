@@ -5,7 +5,7 @@ import type { D3InterpolateName } from '$lib/colors'
 import { get_formula_label_segments } from '$lib/composition/format'
 import type { FormulaLabelSegment } from '$lib/composition/format'
 import type { ElementSymbol } from '$lib/element'
-import { type D3SymbolName, format_num, symbol_map } from '$lib/labels'
+import { capitalize, type D3SymbolName, format_num, symbol_map } from '$lib/labels'
 import { array_min, clamp, mean, to_radians, type Vec3 } from '$lib/math'
 import {
   centered_rect,
@@ -48,7 +48,7 @@ export const point_radius = (entry: ConvexHullEntry): number =>
 
 // D3 symbol name of a marker (`circle` → `Circle`), undefined for unknown marker names
 export function marker_d3_name(marker: MarkerSymbol): D3SymbolName | undefined {
-  const name = marker.charAt(0).toUpperCase() + marker.slice(1)
+  const name = capitalize(marker)
   return name in symbol_map ? (name as D3SymbolName) : undefined
 }
 

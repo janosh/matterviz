@@ -102,7 +102,6 @@
   // Characteristic scene size, used for clipping and camera positioning
   const scene_size = $derived(k_space_size(fermi_data?.k_lattice))
 
-  // Compute clipping plane based on axis and position
   // Plane equation: dot(normal, point) + constant >= 0 means point is visible
   const clip_plane = $derived.by(() => {
     if (!clip_enabled) return null
@@ -134,7 +133,6 @@
 
   const { enabled: hover_enabled } = extras.interactivity()
 
-  // Filter surfaces based on selected bands
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter(
       (surface) => selected_bands === undefined || selected_bands.includes(surface.band_index),

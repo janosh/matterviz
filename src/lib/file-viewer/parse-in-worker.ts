@@ -11,6 +11,7 @@ import type {
 import { Hdf5GroupSelectionRequiredError, open_trajectory } from '$lib/trajectory'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import { dispose_run_port, worker_run } from '$lib/trajectory/runs/worker'
+import { content_byte_size } from '$lib/io/decompress'
 import { to_error } from '$lib/utils'
 import { parse_file_content } from './parse'
 import type { ParseResult, TrajectoryLoadOptions, WireParseResult } from './parse'
@@ -152,13 +153,6 @@ const bind_worker_run = ({ result, run_port, worker }: WorkerParseOutcome): Pars
   }
 }
 
-const source_byte_size = (source: TrajectorySource): number =>
-  source instanceof Blob
-    ? source.size
-    : source instanceof ArrayBuffer
-      ? source.byteLength
-      : new Blob([source]).size
-
 const fallback_disabled_error = (filename: string, cause: Error): Error =>
   new Error(
     `Parse worker failed for ${filename}; main-thread fallback is disabled above ${
@@ -189,7 +183,7 @@ export const parse_in_worker = async (
     is_base64 || typeof content !== `string`
       ? MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
       : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
-  const byte_size = source_byte_size(content)
+  const byte_size = content_byte_size(content)
   const decoded_size = is_base64 ? (byte_size * 3) / 4 : byte_size
   const can_fall_back =
     (!is_base64 && is_indexable_trajectory_filename(filename)) || decoded_size <= max_bytes
@@ -233,12 +227,7 @@ export const parse_trajectory_in_worker = async (
   signal?.throwIfAborted()
   const transfer_buffer = data instanceof ArrayBuffer && transfer_source
   const request_data = data instanceof ArrayBuffer && !transfer_buffer ? data.slice(0) : data
-  const byte_size =
-    data instanceof Blob
-      ? data.size
-      : data instanceof ArrayBuffer
-        ? data.byteLength
-        : new Blob([data]).size
+  const byte_size = content_byte_size(data)
   try {
     const result = bind_worker_run(
       await run_in_worker(

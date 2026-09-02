@@ -46,7 +46,6 @@ export type RefLineAxes = {
 const reference_annotation_id = (line_idx: number): string =>
   `reference-annotation-${line_idx}`
 
-// Create indexed ref_lines, filtering out invisible ones
 export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLine[] =>
   (ref_lines ?? [])
     .filter((line) => line.visible !== false)
@@ -92,7 +91,6 @@ export function normalize_value(value: RefLineValue): number {
   throw new TypeError(`Invalid reference line value: ${String(value)}`)
 }
 
-// Normalize a point tuple
 export const normalize_point = (point: [RefLineValue, RefLineValue]): Vec2 => [
   normalize_value(point[0]),
   normalize_value(point[1]),
@@ -144,7 +142,6 @@ function clip_segment_to_rect(
 export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Vec4 | null {
   const { x_min, x_max, y_min, y_max, x_scale, y_scale } = axes
 
-  // Check if value is within plot bounds (for visibility)
   const is_x_visible = (x_val: number): boolean => x_val >= x_min && x_val <= x_max
   const is_y_visible = (y_val: number): boolean => y_val >= y_min && y_val <= y_max
 
@@ -152,7 +149,6 @@ export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Ve
   const apply_x_span = (x1: number, x2: number) => apply_span(x1, x2, ref_line.x_span)
   const apply_y_span = (y1: number, y2: number) => apply_span(y1, y2, ref_line.y_span)
 
-  // Relative to data coordinate conversion
   const to_data_x = (rel: number): number => x_min + rel * (x_max - x_min)
   const to_data_y = (rel: number): number => y_min + rel * (y_max - y_min)
 
@@ -260,7 +256,6 @@ const SIDE_BASELINE: Record<ReferenceAnnotationSide, ReferenceAnnotationBaseline
   right: `middle`,
 }
 
-// Calculate annotation position given line endpoints and annotation config
 export function calculate_annotation_position(
   x1: number,
   y1: number,
@@ -293,7 +288,6 @@ export function calculate_annotation_position(
   let base_x = x1 + frac * dx
   let base_y = y1 + frac * dy
 
-  // Apply edge padding to pull text slightly inward from plot boundaries
   if (len > 0 && position !== `center`) {
     const dir_x = dx / len
     const dir_y = dy / len
@@ -327,9 +321,8 @@ export function calculate_annotation_position(
 
   const text_anchor =
     side === `left` ? `end` : side === `right` ? `start` : POSITION_TEXT_ANCHOR[position]
-  const dominant_baseline = SIDE_BASELINE[side]
 
-  // Calculate rotation if needed (keep text readable)
+  // Keep the text readable: never upside down
   let rotation: number | undefined
   if (annotation.rotate && len > 0) {
     const angle = Math.atan2(dy, dx) * (180 / Math.PI)
@@ -340,7 +333,7 @@ export function calculate_annotation_position(
     x: base_x + perp_x + offset_x,
     y: base_y + perp_y + offset_y,
     text_anchor,
-    dominant_baseline,
+    dominant_baseline: SIDE_BASELINE[side],
     rotation,
   }
 }
@@ -353,17 +346,8 @@ interface ReferenceAnnotationMetrics {
   padding: number
 }
 
-const AUTO_ANNOTATION_POSITIONS: readonly ReferenceAnnotationPosition[] = [
-  `end`,
-  `center`,
-  `start`,
-]
-const AUTO_ANNOTATION_SIDES: readonly ReferenceAnnotationSide[] = [
-  `above`,
-  `below`,
-  `right`,
-  `left`,
-]
+const AUTO_ANNOTATION_POSITIONS = [`end`, `center`, `start`] as const
+const AUTO_ANNOTATION_SIDES = [`above`, `below`, `right`, `left`] as const
 
 export const estimate_reference_annotation_metrics = (
   annotation: RefLineAnnotation,
