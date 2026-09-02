@@ -277,9 +277,11 @@ export const parse_xyz = (content: string): AnyStructure | null =>
 
 // Parse a single symmetry expression dimension (e.g., "x-y+1/3" or "-x+y")
 // Returns the numeric coefficient for each variable and the translation constant
+// Null when a term cannot be resolved: every dimension defaults to 0, so degrading a bad op
+// in place used to map the whole asymmetric unit onto the origin and invent an atom there.
 const parse_symmetry_expression = (
   expr_input: string,
-): { coefficients: Vec3; translation: number } => {
+): { coefficients: Vec3; translation: number } | null => {
   const coefficients: Vec3 = [0, 0, 0]
   let translation = 0
 
@@ -306,8 +308,11 @@ const parse_symmetry_expression = (
     }
     const [numerator, denominator = `1`] = parts
     const value = Number(numerator) / Number(denominator)
-    if (Number.isFinite(value)) translation += sign * value
-    else diag_warn(`Skipping non-finite symmetry term '${term}'`)
+    if (!Number.isFinite(value)) {
+      diag_warn(`Rejecting symmetry op with unresolvable term '${term}'`)
+      return null
+    }
+    translation += sign * value
   }
 
   return { coefficients, translation }
@@ -322,9 +327,12 @@ type ParsedSymOp = { coefficients: [Vec3, Vec3, Vec3]; translations: Vec3 }
 // Ops arrive pre-normalized (quotes + whitespace already stripped, see normalized_ops).
 const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
   operations.flatMap((operation) => {
-    const parts = operation.split(`,`)
+    // Lowercased first: CIF is case-insensitive for these and real files ship `'X, Y, Z'`,
+    // which used to miss the x/y/z lookup and resolve to the all-zero map onto the origin.
+    const parts = operation.toLowerCase().split(`,`)
     if (parts.length !== 3) return []
     const [x_expr, y_expr, z_expr] = parts.map(parse_symmetry_expression)
+    if (!x_expr || !y_expr || !z_expr) return []
     return [
       {
         coefficients: [x_expr.coefficients, y_expr.coefficients, z_expr.coefficients],

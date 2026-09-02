@@ -15,7 +15,11 @@ import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
 export function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
-  const raw = /Lattice\s*=\s*"(?<lattice>[^"]*)"/i.exec(comment)?.[1]
+  // Both quote styles, as parse_extxyz_pbc below already accepts: ASE writes double quotes but
+  // single-quoted cells occur, and matching only `"` dropped the cell without a word, turning
+  // a crystal into a molecule with every fractional coordinate at the origin.
+  const match = /\bLattice\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/i.exec(comment)
+  const raw = match?.groups?.double ?? match?.groups?.single
   if (raw === undefined) return undefined
   const vals = raw.trim().split(/\s+/).filter(Boolean).map(parse_float_token)
   if (vals.length !== 9 || !vals.every(Number.isFinite)) {

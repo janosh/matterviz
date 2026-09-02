@@ -953,6 +953,45 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites.map((site) => site.label)).toEqual([`Na1`, `Na1_1`])
   })
 
+  // CIF tags are case-insensitive and real files ship `'X, Y, Z'`. The x/y/z lookup was not,
+  // so every uppercase term fell through to the numeric branch, `Number('X')` was NaN and each
+  // dimension collapsed to 0 - the whole asymmetric unit mapped onto the origin, giving one
+  // fabricated atom there instead of the images the ops describe.
+  test.each([`lower`, `upper`])(`expands %scase symmetry ops alike`, (which) => {
+    const ops = [`x, y, z`, `-x, -y, z`, `-x, y, -z`, `x, -y, -z`]
+    const rows = (which === `upper` ? ops.map((op) => op.toUpperCase()) : ops)
+      .map((op) => `'${op}'`)
+      .join(`\n`)
+    const cif = `data_t\n${cell5}\nloop_\n_symmetry_equiv_pos_as_xyz\n${rows}\n${site_loop}\nSi1 Si 0.25 0.1 0.3`
+    const result = parse_cif(cif)
+    assert(result, `Failed to parse CIF with ${which}case symops`)
+    // oxfmt-ignore
+    expect(rounded_abc(result.sites)).toEqual([
+      [0.25, 0.1, 0.3], [0.75, 0.9, 0.3], [0.75, 0.1, 0.7], [0.25, 0.9, 0.7],
+    ])
+  })
+
+  // A term that cannot be resolved leaves its dimension at 0, so degrading the op in place put
+  // an atom on the origin. The op is dropped instead, leaving the asymmetric unit untouched.
+  test(`drops a symmetry op carrying an unresolvable term`, () => {
+    const cif = `data_t\n${cell5}\nloop_\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n'q, y, z'\n${site_loop}\nSi1 Si 0.25 0.1 0.3`
+    const result = parse_cif(cif)
+    assert(result, `Failed to parse CIF with an unresolvable symop term`)
+    expect(rounded_abc(result.sites)).toEqual([[0.25, 0.1, 0.3]])
+  })
+
+  // A quote closes a CIF value only when whitespace or the line end follows it, so an
+  // apostrophe inside a label is content. Stripping every quote in the token cut primed labels
+  // short (`H2'` and `H2''` are different atoms, both became `H2`), and one stray apostrophe
+  // let the quoted-value alternation swallow the whole row into a single token, which the
+  // short-row filter then discarded with no diagnostic at all.
+  test(`keeps primed atom labels and the rows that carry them`, () => {
+    const cif = `data_t\n${cell5}\n${site_loop}\nC1' C 0.1 0.2 0.3 1.0\n"O2'" O 0.4 0.5 0.6 1.0\nH3 H 0.7 0.8 0.9 1.0`
+    const result = parse_cif(cif)
+    assert(result, `Failed to parse CIF with primed labels`)
+    expect(result.sites.map((site) => site.label)).toEqual([`C1'`, `O2'`, `H3`])
+  })
+
   // CIF data items belong to the `data_` block they are written in. A multi-block file (a
   // global block plus one block per phase, as PF-sd-1601634.cif has) may declare a different
   // cell, space group and symop list in each, and only the block holding the atom-site loop

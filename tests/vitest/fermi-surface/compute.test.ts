@@ -428,6 +428,29 @@ describe(`grid/lattice conventions`, () => {
 })
 
 describe(`compute_fermi_slice`, () => {
+  // An endpoint-inclusive (BXSF) grid with an odd point count puts a grid plane exactly through
+  // the centre, so the default Γ slice cuts through mesh vertices. Those sit at distance 0 from
+  // the plane, and requiring strictly opposite signs discarded their edges: a cut triangle gave
+  // one crossing instead of two and was skipped, leaving the default view of such a file empty.
+  // The even grid has no on-plane vertex and always worked, so it pins the fix as a no-op there.
+  test.each([21, 22, 31])(
+    `slices a %i-point grid through Γ, on-plane vertices and all`,
+    (n) => {
+      const fermi_data = extract_fermi_surface(
+        make_band_data(n, sphere, { fermi_energy: 0.25 }),
+      )
+      const { isolines } = compute_fermi_slice(fermi_data, {
+        miller_indices: [0, 0, 1],
+        distance: 0,
+      })
+      // the isosurface is a sphere of radius 0.25, so its central slice is one circle of that radius
+      expect(isolines).toHaveLength(1)
+      for (const [px, py] of isolines[0].points_2d) {
+        expect(Math.hypot(px, py)).toBeCloseTo(0.25, 2)
+      }
+    },
+  )
+
   // oxfmt-ignore
   const quad_faces = [
     [0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [2, 6, 7, 3], [0, 3, 7, 4], [1, 5, 6, 2],

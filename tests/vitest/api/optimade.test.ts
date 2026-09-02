@@ -3,6 +3,7 @@ import {
   detect_provider_from_slug,
   encode_structure_id,
   fetch_optimade_providers,
+  fetch_optimade_structure,
   fetch_suggested_structures,
 } from '$lib/api/optimade'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -82,6 +83,27 @@ describe(`fetch_with_cors_proxy behavior (via fetch_optimade_providers)`, () => 
     await expect(fetch_optimade_providers()).rejects.toThrow(`404`)
     expect(mock_fetch).toHaveBeenCalledTimes(1) // no proxy fallback
   })
+
+  // A miss can come back as `data: null` or as an empty `data: []`, depending on whether the
+  // provider treats the single-entry endpoint as a filtered query. `[]` is truthy, so it used
+  // to slip past the not-found check and resolve to `undefined` typed as a structure — the
+  // viewer then kept the previously loaded structure on screen with no error.
+  test.each([
+    [`null data`, null],
+    [`an empty data array`, []],
+  ])(
+    `reports a missing structure when the provider answers with %s`,
+    async (_case, payload) => {
+      const mock_fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: payload }),
+      })
+      vi.stubGlobal(`fetch`, mock_fetch)
+      await expect(fetch_optimade_structure(`mp-0`, `mp`, MOCK_PROVIDERS)).rejects.toThrow(
+        `Structure mp-0 not found`,
+      )
+    },
+  )
 
   test(`path-suffix proxies receive the raw URL, query proxies the encoded one`, async () => {
     // Network failure (thrown) triggers the proxy fallback chain

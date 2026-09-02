@@ -513,9 +513,42 @@ export function* iter_cif_loops(
   }
 }
 
-// Split a CIF data line into whitespace-separated tokens, keeping quoted multi-word
-// values as single tokens and stripping the quotes
-export const split_cif_tokens = (line: string): string[] =>
-  (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []).map((token) =>
-    token.replaceAll(/['"]/g, ``),
-  )
+const is_cif_space = (char: string): boolean => char === ` ` || char === `\t`
+
+// CIF closes a quoted value on a delimiter followed by whitespace or end of line, so an
+// apostrophe inside a token is ordinary content. Index of the closing delimiter, or -1.
+const cif_quote_end = (line: string, quote: string, from: number): number => {
+  for (let idx = line.indexOf(quote, from); idx !== -1; idx = line.indexOf(quote, idx + 1)) {
+    if (idx + 1 === line.length || is_cif_space(line[idx + 1])) return idx
+  }
+  return -1
+}
+
+// Split a CIF data line into whitespace-separated tokens, keeping a quoted multi-word value
+// as one token and dropping only its enclosing delimiters. Stripping every quote in the token
+// instead corrupted primed labels (`C1'` -> `C1`, and `H2'`/`H2''` both -> `H2`, though those
+// are different atoms), and letting `'[^']*'` span two unrelated apostrophes swallowed a whole
+// row into one token, which the short-row filter then dropped without a word.
+export const split_cif_tokens = (line: string): string[] => {
+  const tokens: string[] = []
+  let pos = 0
+  while (pos < line.length) {
+    if (is_cif_space(line[pos])) {
+      pos++
+      continue
+    }
+    const quote = line[pos]
+    const close = quote === `'` || quote === `"` ? cif_quote_end(line, quote, pos + 1) : -1
+    if (close !== -1) {
+      tokens.push(line.slice(pos + 1, close))
+      pos = close + 1
+      continue
+    }
+    // no closing delimiter: read it as an ordinary token rather than eating the rest of the line
+    let end = pos
+    while (end < line.length && !is_cif_space(line[end])) end++
+    tokens.push(line.slice(pos, end))
+    pos = end
+  }
+  return tokens
+}

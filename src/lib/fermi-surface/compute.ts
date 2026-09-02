@@ -296,23 +296,38 @@ function slice_surface_with_plane(
   const edge_key = (v0_idx: number, v1_idx: number): number =>
     v0_idx < v1_idx ? v0_idx * n_vertices + v1_idx : v1_idx * n_vertices + v0_idx
 
-  // Crossing point (and interpolated property) of edge v0→v1, or null when it doesn't cross
+  // Crossing point (and interpolated property) of edge v0→v1, or null when it doesn't cross.
+  // A vertex lying exactly on the plane counts as the positive side rather than as no crossing:
+  // an endpoint-inclusive BXSF grid with an odd point count puts a whole grid plane through Γ,
+  // which is exactly where the default slice cuts, so `d0 * d1 >= 0` dropped those edges. Each
+  // cut triangle then produced one crossing instead of two, failed the `!== 2` test below, and
+  // the default view of such a file rendered nothing at all.
   const edge_intersection = (
     v0_idx: number,
     v1_idx: number,
   ): { point: Vec3; property: number } | null => {
     const d0 = vertex_distances[v0_idx]
     const d1 = vertex_distances[v1_idx]
-    if (d0 * d1 >= 0) return null // needs opposite signs
-    const frac = d0 / (d0 - d1)
+    if (d0 >= 0 === d1 >= 0) return null
+    const frac = d0 === 0 ? 0 : d1 === 0 ? 1 : d0 / (d0 - d1)
+    // Taken from the vertex itself at the ends, so a crossing that lands on one is bit-identical
+    // to it - that is what lets the degenerate-segment test below compare points exactly
+    const snap = frac === 0 ? v0_idx : frac === 1 ? v1_idx : -1
     const point: Vec3 = [0, 0, 0]
     for (let comp = 0; comp < 3; comp++) {
-      const from = positions[3 * v0_idx + comp]
-      point[comp] = from + frac * (positions[3 * v1_idx + comp] - from)
+      if (snap >= 0) point[comp] = positions[3 * snap + comp]
+      else {
+        const from = positions[3 * v0_idx + comp]
+        point[comp] = from + frac * (positions[3 * v1_idx + comp] - from)
+      }
     }
-    const property = properties
-      ? properties[v0_idx] + frac * (properties[v1_idx] - properties[v0_idx])
-      : 0
+    let property = 0
+    if (properties) {
+      property =
+        snap >= 0
+          ? properties[snap]
+          : properties[v0_idx] + frac * (properties[v1_idx] - properties[v0_idx])
+    }
     return { point, property }
   }
 

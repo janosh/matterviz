@@ -6,6 +6,19 @@ const PARTIAL_OCCUPANCY_SLICE_GAP_RAD = 1e-3
 const OCCUPANCY_EPS = 1e-6
 const MIN_PHI_LENGTH = 1e-4
 const MERGE_DISTANCE_TOLERANCE = 1e-8
+// Bucket edge for the merge lookup, far wider than the tolerance so a group almost never sits
+// close enough to a face for a coincident partner to land in the next bucket along
+const MERGE_BUCKET_SIZE = MERGE_DISTANCE_TOLERANCE * 1e3
+// Bucket offsets along one axis that a point within the tolerance of `coord` could fall in:
+// just [0] unless `coord` sits within the tolerance of a bucket face, which is what keeps the
+// index exact without registering all 27 neighbours for every group
+const neighbor_offsets = (coord: number, bucket: number): readonly number[] => {
+  const from_center = coord / MERGE_BUCKET_SIZE - bucket
+  const reach = MERGE_DISTANCE_TOLERANCE / MERGE_BUCKET_SIZE
+  if (from_center + reach > 0.5) return [0, 1]
+  if (from_center - reach < -0.5) return [-1, 0]
+  return [0]
+}
 type RenderSite = {
   site_idx: number
   site: Site
@@ -55,21 +68,49 @@ export const merge_split_partial_sites = (
   })
   const render_sites: RenderSite[] = []
   const groups: { center: Vec3; indices: number[] }[] = []
+  // Groups indexed by coordinate bucket, each registered under its own bucket and the 26 around
+  // it so a lookup is a single key even when two coincident sites round to opposite sides of a
+  // boundary. Scanning every group instead made this quadratic, and it runs per trajectory
+  // frame: 8k split-partial sites took 218 ms a frame, which hiding one species of an alloy
+  // reaches with any site count (that leaves one visible species summing under 1).
+  const groups_by_bucket = new Map<string, number[]>()
+  const bucket_of = (coord: number) => Math.round(coord / MERGE_BUCKET_SIZE)
   for (const [site_idx, site] of sites.entries()) {
     if (!is_split_partial_site(site, hidden_elements)) {
       render_sites.push(make_render_site(site_idx, [site_idx]))
       continue
     }
-    const group = groups.find(({ center }) => {
+    const [bx, by, bz] = site.xyz.map(bucket_of)
+    // candidates arrive in group-creation order, so the first hit is the one `find` returned
+    let group_idx = -1
+    for (const candidate of groups_by_bucket.get(`${bx},${by},${bz}`) ?? []) {
+      const { center } = groups[candidate]
       const [dx, dy, dz] = [
         center[0] - site.xyz[0],
         center[1] - site.xyz[1],
         center[2] - site.xyz[2],
       ]
-      return dx * dx + dy * dy + dz * dz <= MERGE_DISTANCE_TOLERANCE ** 2
-    })
-    if (group) group.indices.push(site_idx)
-    else groups.push({ center: site.xyz, indices: [site_idx] })
+      if (dx * dx + dy * dy + dz * dz <= MERGE_DISTANCE_TOLERANCE ** 2) {
+        group_idx = candidate
+        break
+      }
+    }
+    if (group_idx !== -1) {
+      groups[group_idx].indices.push(site_idx)
+      continue
+    }
+    const new_idx = groups.length
+    groups.push({ center: site.xyz, indices: [site_idx] })
+    for (const off_x of neighbor_offsets(site.xyz[0], bx)) {
+      for (const off_y of neighbor_offsets(site.xyz[1], by)) {
+        for (const off_z of neighbor_offsets(site.xyz[2], bz)) {
+          const key = `${bx + off_x},${by + off_y},${bz + off_z}`
+          const bucket = groups_by_bucket.get(key)
+          if (bucket) bucket.push(new_idx)
+          else groups_by_bucket.set(key, [new_idx])
+        }
+      }
+    }
   }
   for (const { indices } of groups) {
     const [representative_idx] = indices

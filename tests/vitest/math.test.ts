@@ -1208,6 +1208,50 @@ describe(`merge_coplanar_triangles`, () => {
       .toBe(true)
   })
 
+  // The in-plane basis is built from the plane normal AFTER it is canonicalized to lead with a
+  // positive component, so convex_hull_2d winds CCW about that rather than about the face's real
+  // outward normal. Every face of a closed mesh whose normal leads negative - the -x, -y and -z
+  // sides, half a cube's - came back wound inward. DoubleSide rendering hides it on screen, but
+  // exported geometry and anything that culls by winding gets a corrupt mesh.
+  test(`keeps every face of a closed cube wound outward`, () => {
+    // oxfmt-ignore
+    const corners: Vec3[] = [
+      [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ]
+    // oxfmt-ignore
+    const quads = [
+      [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [0, 4, 7, 3], [1, 2, 6, 5],
+    ]
+    const coords: number[] = []
+    for (const [aa, bb, cc, dd] of quads) {
+      for (const idx of [aa, bb, cc, aa, cc, dd]) coords.push(...corners[idx])
+    }
+    const input = new Float32Array(coords)
+    const outward_count = (verts: Float32Array) => {
+      let outward = 0
+      for (let base = 0; base < verts.length; base += 9) {
+        const tri = [0, 3, 6].map((off): Vec3 => [
+          verts[base + off],
+          verts[base + off + 1],
+          verts[base + off + 2],
+        ])
+        const [vert_a, vert_b, vert_c] = tri
+        const normal = math.cross_3d(
+          math.subtract(vert_b, vert_a),
+          math.subtract(vert_c, vert_a),
+        )
+        // the cube is centred on (0.5, 0.5, 0.5), so a face's centroid points away from it
+        const outward_dir = [0, 1, 2].map(
+          (axis) => (vert_a[axis] + vert_b[axis] + vert_c[axis]) / 3 - 0.5,
+        )
+        if (math.dot(normal, outward_dir) > 0) outward++
+      }
+      return outward
+    }
+    expect(outward_count(input)).toBe(12) // the input is wound correctly to begin with
+    expect(outward_count(math.merge_coplanar_triangles(input))).toBe(12)
+  })
+
   test(`two coplanar adjacent triangles forming a quad are merged`, () => {
     // Quad: A(0,0,0) B(1,0,0) C(1,1,0) D(0,1,0)
     // Input triangles start with DIFFERENT vertices (A and C), so only

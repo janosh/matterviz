@@ -441,8 +441,11 @@
     get_frame_time_step(frame_step_samples, trajectory.time_step?.value),
   )
 
-  // Plot series state (not derived so legend toggles can update it in place)
-  let plot_series = $state<DataSeries[]>([])
+  // Plot series state (not derived so legend toggles can replace it). `.raw`, since both
+  // writers reassign the whole array: a deep proxy over N series x N frames of numbers put a
+  // signal behind every element, and smooth_moving_average's ~2M reads per series then went
+  // through the proxy trap - 4.9 s instead of 144 ms at 10k frames, on every resize tick.
+  let plot_series = $state.raw<DataSeries[]>([])
   let syncing_visible_properties = false
   // Read ALL reactive deps before the syncing guard can return: a guarded run that reads no
   // dependencies leaves the effect dep-less, and Svelte permanently unlinks such effects

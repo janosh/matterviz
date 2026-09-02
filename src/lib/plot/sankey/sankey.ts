@@ -343,6 +343,19 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     iterations = DEFAULTS.sankey.iterations,
   } = opts
 
+  // Every value has to be a non-negative number before d3 sees it. One NaN or undefined makes
+  // the whole layout NaN (`d="M24,NaN..."`, `stroke-width="NaN"`), and one negative value gives
+  // an invalid negative stroke-width and quietly subtracts from its source node's total, so the
+  // node box understates its own outflow. Throwing matches resolve_node_ref on a bad node ref.
+  for (const link of data.links) {
+    if (!Number.isFinite(link.value) || link.value < 0) {
+      throw new Error(
+        `Sankey link ${JSON.stringify(link.source)} -> ${JSON.stringify(
+          link.target,
+        )} needs a non-negative finite value, got ${JSON.stringify(link.value)}`,
+      )
+    }
+  }
   // All-zero link values would make d3-sankey divide by zero (NaN ribbon paths)
   const has_flow = data.links.some((link) => link.value > 0)
   if (!(width > 0) || !(height > 0) || data.nodes.length === 0 || !has_flow)

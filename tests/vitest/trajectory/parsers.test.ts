@@ -1020,6 +1020,21 @@ describe(`XYZ`, () => {
     )
   const four_atoms = (last = `H 1 1 1`) => [`H 0 0 0`, `H 1 0 0`, `H 0 1 0`, last]
 
+  // ASE writes the cell double-quoted, but single-quoted extXYZ exists and the sibling `pbc`
+  // reader already takes both. Matching only `"` dropped the cell silently, so the frame came
+  // back with no lattice at all and every fractional coordinate sat on the origin.
+  it.each([
+    [`double`, `"`],
+    [`single`, `'`],
+  ])(`reads a %s-quoted extXYZ Lattice`, async (_case, quote) => {
+    const comment = `Lattice=${quote}4 0 0 0 4 0 0 0 4${quote} Properties=species:S:1:pos:R:3 pbc="T T T"`
+    const run = await open(xyz_frame([`Si 0 0 0`, `Si 1 1 1`], comment), `cell.xyz`)
+    const [frame] = await frames_of(run)
+    const lattice = lattice_of(frame)
+    expect([lattice.a, lattice.b, lattice.c]).toEqual([4, 4, 4])
+    expect(frame.structure.sites[1].abc).toEqual([0.25, 0.25, 0.25])
+  })
+
   // Issue #449: generated structures of different sizes dumped into one XYZ must browse
   it(`loads frames with differing atom counts`, async () => {
     const run = await open(

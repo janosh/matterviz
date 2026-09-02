@@ -10,6 +10,7 @@ import {
   generate_arcsinh_ticks,
   generate_log_ticks,
   generate_ticks,
+  create_size_scale,
   log_floor_scale,
   nice_range_from_extent,
   scale_arcsinh,
@@ -262,6 +263,35 @@ describe(`scales`, () => {
         }
       }
     })
+  })
+
+  // A descending range is a supported axis mode. The log branch floored domain[0] and then
+  // widened domain[1] against it, so [1000, 1] became [1000, 1000]: every value landed on one
+  // pixel and invert returned the same number for every pixel, taking hover, tooltips and
+  // rect-zoom on that axis with it. Linear axes always handled the direction correctly.
+  test(`mirrors a log axis on a descending domain instead of collapsing it`, () => {
+    const values = [1, 10, 100, 1000]
+    const ascending = create_scale(`log`, [1, 1000], [0, 300])
+    const descending = create_scale(`log`, [1000, 1], [0, 300])
+    const px_of = (scale: (val: number) => number) => values.map((val) => scale(val))
+    // decade-per-100px, to float dust: d3's log scale does not land exactly on 100
+    for (const [idx, px] of px_of(ascending).entries()) expect(px).toBeCloseTo(idx * 100, 9)
+    const mirrored = px_of(ascending).toReversed()
+    for (const [idx, px] of px_of(descending).entries())
+      expect(px).toBeCloseTo(mirrored[idx], 9)
+    // invert has to stay live too: the geometric midpoint of the decade span sits mid-range
+    expect(descending.invert(150)).toBeCloseTo(Math.sqrt(1000), 10)
+  })
+
+  // Same collapse in the size scale: an explicit descending value_range asks for the largest
+  // value to draw the smallest marker, and used to give every value the smallest radius.
+  test(`inverts the radius encoding on a descending log value_range`, () => {
+    const radii = (value_range: Vec2) =>
+      [1, 10, 100].map(
+        create_size_scale({ type: `log`, value_range, radius_range: [2, 10] }, []),
+      )
+    expect(radii([1, 100])).toEqual([2, 6, 10])
+    expect(radii([100, 1])).toEqual([10, 6, 2])
   })
 
   describe(`log_floor_scale`, () => {

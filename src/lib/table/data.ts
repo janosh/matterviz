@@ -6,7 +6,13 @@ import { fuzzy_match } from 'svelte-widgets/utils'
 import { SvelteSet } from 'svelte/reactivity'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Label, RowData } from './index'
 
-export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``)
+// A tag opens with a letter, a closing slash or `!` (comment/doctype). Requiring that instead
+// of matching `<[^>]*>` keeps ordinary prose caught between a comparison pair intact: cell text
+// feeds search, the filter panels and every export, and `T < 300 K and P > 1 bar` used to read
+// back as `T  1 bar` and stop matching `300`.
+const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)[^>]*>`
+const HTML_TAG_RE = new RegExp(HTML_TAG_SRC, `gi`)
+export const strip_html = (str: string): string => str.replaceAll(HTML_TAG_RE, ``)
 
 // Columns discovered from the first rows when the caller passes none
 export const discover_columns = (rows: RowData[]): Label[] => {
@@ -31,7 +37,10 @@ export const middle_ellipsis_parts = (text: string): [string, string] => {
 export const is_invalid = (val: unknown): boolean =>
   val == null || (typeof val === `number` && Number.isNaN(val))
 
-const HTML_MARKUP_RE = /<(?:\/?[a-z]|!)[^>]*>|&(?:#\d+|#x[\da-f]+|[a-z][\da-z]+);/i
+const HTML_MARKUP_RE = new RegExp(
+  `${HTML_TAG_SRC}|&(?:#\\d+|#x[\\da-f]+|[a-z][\\da-z]+);`,
+  `i`,
+)
 // Distinguish actual tags/entities from ordinary comparison and ampersand text so plain
 // strings still receive middle ellipsis and a direct data-sort-value.
 export const is_html_str = (val: unknown): val is string =>
@@ -71,13 +80,18 @@ export function parse_numeric_val(val: CellVal): number | null {
   return num !== null && Number.isFinite(num) ? num : null
 }
 
+// Sorting reads the same rendered text search, filters and export do, so a cell cannot sort
+// by one string while showing another. Handing back the raw value instead meant `<b>Mango</b>`
+// sorted under `<` (tag name, not content), and a boolean or object cell reached compare_rows
+// as a non-string it could only answer "the other one first" to in BOTH directions - not a
+// total order, so the same rows came out differently depending on the order they went in.
 const get_sort_val = (val: CellVal): string | number => {
   if (val instanceof Date) return val.getTime()
   const num = parse_numeric_val(val)
   if (num !== null) return num
   // a data-sort-value that isn't a number still overrides the visible text
-  if (typeof val === `string`) return get_data_sort_value(val) ?? val
-  return val as string | number
+  if (typeof val === `string`) return get_data_sort_value(val) ?? cell_text(val)
+  return cell_text(val)
 }
 
 export type SortCriterion = { key: string; ascending: boolean }

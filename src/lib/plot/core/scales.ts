@@ -245,9 +245,15 @@ export function create_scale(
     // log axis panned past zero can arrive with max <= 0 — an unclamped max makes
     // every scale output (and invert) NaN, blanking the chart and polluting axis
     // ranges. A clamped degenerate domain just renders flat and stays recoverable.
-    const lo = Math.max(min_val, math.LOG_EPS)
+    // Ordered before flooring, then handed back in the caller's direction: a descending log
+    // axis is a supported mode, and flooring domain[0] then widening domain[1] against it
+    // turned [1000, 1] into [1000, 1000] - every value on one pixel, and invert dead with it.
+    const descending = min_val > max_val
+    const [low, high] = descending ? [max_val, min_val] : [min_val, max_val]
+    const lo = Math.max(low, math.LOG_EPS)
+    const hi = Math.max(high, lo)
     return scaleLog()
-      .domain([lo, Math.max(max_val, lo)])
+      .domain(descending ? [hi, lo] : [lo, hi])
       .range(output_range)
   }
   if (type_name === `arcsinh`) {
@@ -440,12 +446,17 @@ export const log_floor_scale = (
   return (val) => scale(Math.max(val, floor))
 }
 
-// Ascending log domain floored at LOG_EPS. The upper bound is widened from the *floored* lower
-// bound, so a non-positive `lo` (explicit negative range bound, all-zero data) cannot leave an
-// inverted [LOG_EPS, hi <= 0] domain behind; equal bounds widen by 10% so the scale isn't degenerate.
+// Log domain floored at LOG_EPS, kept in the caller's direction. The upper bound is widened
+// from the *floored* lower bound, so a non-positive `lo` (explicit negative range bound,
+// all-zero data) cannot leave an inverted [LOG_EPS, hi <= 0] domain behind; equal bounds widen
+// by 10% so the scale isn't degenerate. Ordering first also keeps a deliberately descending
+// range (a size scale mapping the largest value to the smallest radius) from collapsing.
 const positive_log_domain = (lo: number, hi: number): Vec2 => {
-  const floor = Math.max(lo, math.LOG_EPS)
-  return [floor, Math.max(hi, floor * 1.1)]
+  const descending = lo > hi
+  const [low, high] = descending ? [hi, lo] : [lo, hi]
+  const floor = Math.max(low, math.LOG_EPS)
+  const ceiling = Math.max(high, floor * 1.1)
+  return descending ? [ceiling, floor] : [floor, ceiling]
 }
 
 export const nice_range_from_extent = (
