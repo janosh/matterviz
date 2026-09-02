@@ -138,12 +138,18 @@ describe(`detect_parent_theme`, () => {
     expect(detect_parent_theme()).toBe(`dark`)
   })
 
-  // A host that declares `color-scheme` in CSS has stated its theme through the standard API;
-  // it outranks the OS preference like a class marker does, and `light dark` means light
+  // A host that declares a SINGLE `color-scheme` in CSS has stated its theme through the
+  // standard API and outranks the OS preference, like a class marker does. Listing both
+  // schemes states the opposite: the element supports either and defers to the preference.
+  // Reading `light dark` as light gave a dark-preferring page the light palette, and since
+  // `color-scheme` inherits and matterviz's own app.css sets `light dark` on `:root, :host`,
+  // the first element answered for every embedded widget and masked the host markers below.
   test.each([
     [`dark`, true, `dark`],
     [`light`, true, `light`],
-    [`light dark`, true, `light`],
+    [`light dark`, true, `dark`], // supports both: the OS preference decides
+    [`light dark`, false, `light`],
+    [`dark light`, true, `dark`], // order carries no preference either
     [`only dark`, false, `dark`], // `only` is a modifier, not a scheme
     [`normal`, true, `dark`], // nothing declared: the OS preference decides
   ])(`reads a declared color-scheme %j`, (scheme, prefers, expected) => {
