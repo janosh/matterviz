@@ -1,3 +1,7 @@
+// Kept separate from vite.config.ts on purpose: @sveltejs/package only reads
+// svelte.config.{js,ts} (node_modules/@sveltejs/package/src/config.js), so moving this into
+// an inline config passed to sveltekit() would leave `pnpm package:dist` with no
+// preprocessors, extensions or aliases. Kit itself resolves inline config fine.
 import adapter from '@sveltejs/adapter-static'
 import type { Config } from '@sveltejs/kit'
 import { common } from '@wooorm/starry-night'
@@ -5,6 +9,7 @@ import svelte_grammar from '@wooorm/starry-night/source.svelte'
 import tsx_grammar from '@wooorm/starry-night/source.tsx'
 import vue_grammar from '@wooorm/starry-night/text.html.vue'
 import { mdsvex } from 'mdsvex'
+import type { PreprocessorGroup } from 'svelte/compiler'
 import { heading_ids } from 'svelte-widgets/heading-anchors'
 import { mdsvex_transform } from 'svelte-widgets/live-examples'
 import {
@@ -27,6 +32,20 @@ const defaults = {
 const grammars = [...common, svelte_grammar, tsx_grammar, vue_grammar]
 const starry_night = await create_highlighter(grammars).ready()
 
+// Heading anchors are a docs-site feature, but preprocessors run over src/lib too, where
+// the injected ids end up in the published package: nothing references them, and a heading
+// inside an {#each} (ChemPotDiagram's per-projection <h4>) repeats one id per iteration.
+// Site pages lose nothing - the heading_anchors attachment slugifies missing ids at runtime
+// with document-wide deduping.
+const site_heading_ids = (): PreprocessorGroup => {
+  const preprocessor = heading_ids()
+  return {
+    name: preprocessor.name,
+    markup: (input) =>
+      /(?:^|\/)src\/lib\//.test(input.filename ?? ``) ? undefined : preprocessor.markup(input),
+  }
+}
+
 export default {
   extensions: [`.svelte`, `.svx`, `.md`],
 
@@ -36,7 +55,7 @@ export default {
       extensions: [`.svx`, `.md`],
       highlight: { highlighter: (code, lang) => render_block(starry_night, code, lang) },
     }),
-    heading_ids(), // runs after mdsvex converts markdown to HTML
+    site_heading_ids(), // runs after mdsvex converts markdown to HTML
   ],
 
   kit: {

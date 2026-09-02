@@ -26,6 +26,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
+import svelte_config from '../../svelte.config'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
@@ -253,6 +254,32 @@ describe(`package.json exports`, () => {
       pkg.exports[`./${dir}`],
       `src/lib/${dir}/index.ts exists but "./${dir}" is missing from package.json exports`,
     ).toBeDefined()
+  })
+})
+
+// Preprocessors run over src/lib as well as the site, so whatever they inject ships in the
+// package. heading_ids is scoped to site files in svelte.config.ts: its slugs are never
+// referenced from library components, and a heading inside an {#each} (ChemPotDiagram's
+// per-projection <h4>) would repeat one id per iteration in a consumer's DOM.
+describe(`svelte.config preprocessors`, () => {
+  const { markup } = svelte_config.preprocess.find((pre) => pre.name === `heading-ids`) ?? {}
+  if (!markup) throw new Error(`no heading-ids preprocessor in svelte.config preprocess`)
+  const content = `<h3>Drop Structure File</h3>`
+
+  test.each([
+    [`src/lib/brillouin/BrillouinZone.svelte`, false],
+    [`src/routes/acknowledgements/+page.md`, true],
+    [`src/routes/(demos)/structure/+page.md`, true],
+  ])(`%s gets injected heading ids: %s`, async (filename, expected) => {
+    const result = await markup({ content, filename: join(repo_root, filename) })
+    expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(expected)
+  })
+
+  test.skipIf(!has_dist)(`packaged components carry no injected heading ids`, () => {
+    const with_ids = readdirSync(dist_dir, { recursive: true, encoding: `utf8` })
+      .filter((entry) => entry.endsWith(`.svelte`))
+      .filter((entry) => /<h[1-6][^>]*\bid=/.test(readFileSync(join(dist_dir, entry), `utf8`)))
+    expect(with_ids, `heading ids leaked into the published package`).toEqual([])
   })
 })
 
