@@ -768,3 +768,39 @@ describe(`marginal_hit`, () => {
     expect(marginal_hit(make_ctx([curve]), 50, 62)?.axis_title).toBeUndefined()
   })
 })
+
+// gaussian_kde takes no weights, so a weighted `kde` marginal silently rendered the UNWEIGHTED
+// density: positions [1, 2] weighted [1, 99] peaked at 1 rather than 2, with nothing said. The
+// histogram and cdf paths both honour weights, and `MarginalSeriesInput.weight` is documented
+// and passed in for every marginal type, so ignoring it was the one dishonest branch.
+describe(`weighted marginals`, () => {
+  const positions = [1, 2]
+  const weights = [1, 99]
+
+  test(`rejects a weighted kde instead of dropping the weights`, () => {
+    expect(() =>
+      compute_marginal_curve(positions, weights, resolved({ type: `kde` }), [0, 3], `linear`),
+    ).toThrow(/cannot weight its samples/)
+  })
+
+  test(`still accepts an unweighted kde`, () => {
+    expect(() =>
+      compute_marginal_curve(
+        positions,
+        undefined,
+        resolved({ type: `kde` }),
+        [0, 3],
+        `linear`,
+      ),
+    ).not.toThrow()
+  })
+
+  // the 99:1 mass ratio has to change the curve, which it cannot if the weights are dropped
+  test.each([`histogram`, `cdf`] as const)(`honours weights for %s`, (type) => {
+    const curve_of = (wts: number[] | undefined) =>
+      JSON.stringify(
+        compute_marginal_curve(positions, wts, resolved({ type, bins: 3 }), [0, 3], `linear`),
+      )
+    expect(curve_of(weights)).not.toBe(curve_of(undefined))
+  })
+})

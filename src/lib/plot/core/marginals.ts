@@ -644,6 +644,15 @@ export function compute_marginal_curve(
     return compute_histogram(pos, wts, config, hist_range)
   }
   if (config.type === `cdf`) return compute_cdf(pos, wts)
+  // gaussian_kde takes no weights, so a weighted `kde` marginal silently rendered the
+  // UNWEIGHTED density - positions [1, 2] weighted [1, 99] peaked at 1, not 2, with nothing
+  // said. The histogram and cdf paths above both honour `wts`. Rejecting the combination is
+  // the honest answer until the estimator itself can weight its samples.
+  if (wts) {
+    throw new Error(
+      `Marginal type 'kde' cannot weight its samples; use 'histogram' or 'cdf' for weighted data`,
+    )
+  }
   return compute_kde(pos, config, range, scale_type)
 }
 
