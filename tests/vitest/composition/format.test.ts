@@ -82,6 +82,26 @@ describe(`get_electro_neg_formula`, () => {
   ])(`input=%p, options=%p → %p`, (input, options, expected) => {
     expect(get_electro_neg_formula(input, options)).toBe(expected)
   })
+
+  // `electronegativity` is null for 22 elements, and four of them (Kr, Xe, Rn, Lr) carry the
+  // value under `electronegativity_pauling` in the same record. The `?? 0` fallback called
+  // those more electropositive than caesium, so the noble gas led every formula it appeared in.
+  // Expected order is pymatgen's `Composition.reduced_formula`.
+  test.each([
+    [`Na4XeO6`, `Na4 Xe O6`],
+    [`Ba2XeO6`, `Ba2 Xe O6`],
+    [`CsXeF7`, `Cs Xe F7`],
+    [`XePtF6`, `Pt Xe F6`], // Xe 2.6 sits above Pt 2.28
+    [`KrF2`, `Kr F2`],
+  ])(`orders %s by real electronegativity`, (formula, expected) => {
+    const plain = get_electro_neg_formula(formula, { plain_text: true })
+    expect(plain.replaceAll(/\s+/g, ` `).trim()).toBe(expected.replaceAll(/\s+/g, ` `))
+  })
+
+  // Elements with no value anywhere (He, Ne, Ar) sort last rather than leading, as pymatgen does
+  test(`puts an element with no electronegativity data last`, () => {
+    expect(get_electro_neg_formula(`ArF2`, { plain_text: true, delim: `` })).toBe(`F2Ar`)
+  })
 })
 
 describe(`get_formula_label_segments`, () => {

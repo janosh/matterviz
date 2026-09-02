@@ -79,8 +79,15 @@ export const get_alphabetical_formula = (
   options: FormulaFormatOptions = {},
 ): string => format_formula_generic(input, (symbols) => symbols.toSorted(), options)
 
-const electronegativity = (symbol: ElementSymbol): number =>
-  element_by_symbol.get(symbol)?.electronegativity ?? 0
+// `electronegativity` is null for 22 elements, four of which (Kr, Xe, Rn, Lr) carry the value
+// under `electronegativity_pauling` in the same record. Falling back to 0 called those more
+// electropositive than caesium, so `Na4XeO6` sorted as `XeNa4O6` and `CsXeF7` as `XeCsF7`.
+// Infinity for the ones with no value anywhere puts them last, as pymatgen does, rather than
+// leading every formula they appear in.
+const electronegativity = (symbol: ElementSymbol): number => {
+  const element = element_by_symbol.get(symbol)
+  return element?.electronegativity ?? element?.electronegativity_pauling ?? Infinity
+}
 
 // Ascending electronegativity (cations first), alphabetical tie-break
 export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
