@@ -41,8 +41,12 @@ const site_heading_ids = (): PreprocessorGroup => {
   const preprocessor = heading_ids()
   return {
     name: preprocessor.name,
+    // Separators normalized first: on Windows `input.filename` arrives back-slashed, so a
+    // `/`-only pattern misses src\lib and injects ids into packaged library components.
     markup: (input) =>
-      /(?:^|\/)src\/lib\//.test(input.filename ?? ``) ? undefined : preprocessor.markup(input),
+      /(?:^|\/)src\/lib\//.test(input.filename?.replaceAll(`\\`, `/`) ?? ``)
+        ? undefined
+        : preprocessor.markup(input),
   }
 }
 

@@ -275,6 +275,14 @@ describe(`svelte.config preprocessors`, () => {
     expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(expected)
   })
 
+  // Windows hands the preprocessor a back-slashed path, which a `/`-only pattern reads as a
+  // site file — the packaged components would then ship injected ids
+  test(`a Windows-style src\\lib path is still recognised as a library file`, async () => {
+    const filename = String.raw`C:\repo\src\lib\brillouin\BrillouinZone.svelte`
+    const result = await markup({ content, filename })
+    expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(false)
+  })
+
   test.skipIf(!has_dist)(`packaged components carry no injected heading ids`, () => {
     const with_ids = readdirSync(dist_dir, { recursive: true, encoding: `utf8` })
       .filter((entry) => entry.endsWith(`.svelte`))
