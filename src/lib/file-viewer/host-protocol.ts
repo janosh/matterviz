@@ -63,7 +63,6 @@ export type WebviewToHostMessage =
 export type HostToWebviewMessage =
   | FileChangeMessage
   | SettingsChangedMessage
-  | { command: `error`; text: string }
   | {
       command: `large_file_response`
       request_id: string

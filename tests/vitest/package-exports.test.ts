@@ -338,3 +338,42 @@ describe(`prepare hook`, () => {
     }
   })
 })
+
+// A directory sharing its name with a sibling `.ts` file is a trap for the packaged types:
+// svelte-package rewrites a `$lib/...` alias to a relative specifier, and from inside that
+// directory the specifier becomes `./` - the directory itself, which has no index - so the
+// import does not resolve. `plot/core/types/plot-3d.ts` did exactly this, and it broke
+// `import type` from the root entry and most subpaths with TS2307 for every consumer of the
+// published package. Two such pairs remain (`settings`, `plot/core/utils`), so keep the rule.
+describe(`packaged type declarations resolve`, () => {
+  // every directory under src/lib that has a sibling file of the same name
+  const shadowed_dirs = (dir: string, out: string[] = []): string[] => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const full = join(dir, entry.name)
+      if (existsSync(`${full}.ts`)) out.push(full)
+      shadowed_dirs(full, out)
+    }
+    return out
+  }
+
+  test(`no file imports the $lib alias of the directory it lives in`, () => {
+    const dirs = shadowed_dirs(lib_dir)
+    expect(dirs.length).toBeGreaterThan(0) // the rule is worth nothing if it scans nothing
+    const offenders: string[] = []
+    for (const dir of dirs) {
+      const alias = `$lib/${dir.slice(lib_dir.length + 1).replaceAll(`\\`, `/`)}`
+      for (const file of readdirSync(dir)) {
+        if (!file.endsWith(`.ts`) && !file.endsWith(`.svelte`)) continue
+        const source = readFileSync(join(dir, file), `utf8`)
+        // the alias as a whole specifier, in either quote style, not as a prefix of a deeper path
+        for (const quote of [`'`, `\``]) {
+          if (source.includes(`from ${quote}${alias}${quote}`))
+            offenders.push(`${file} -> ${alias}`)
+        }
+      }
+    }
+    // import the sibling file relatively instead, e.g. `../types` rather than the alias
+    expect(offenders).toEqual([])
+  })
+})

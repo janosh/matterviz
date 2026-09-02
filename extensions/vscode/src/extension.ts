@@ -471,10 +471,10 @@ function start_watching_file(file_path: string, webview: WebviewLike): void {
   } catch (error) {
     active_watcher_subscribers.delete(file_path)
     console.error(`Failed to start watching file ${file_path}:`, error)
-    webview.postMessage({
-      command: `error`,
-      text: `Failed to start watching file: ${error}`,
-    })
+    // Shown here, not posted into the webview: the webview has no error surface of its own -
+    // it reports errors TO the host for exactly this treatment - so a posted one was dropped
+    // and the user was told nothing while the view silently stopped following the file.
+    vscode.window.showErrorMessage(`MatterViz: failed to start watching file: ${error}`)
   }
 }
 
@@ -507,13 +507,9 @@ async function broadcast_file_updated(
     }
   } catch (error) {
     console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
-    for (const webview of subscribers) {
-      post_to_webview(
-        webview,
-        { command: `error`, text: `Failed to read updated file: ${error}` },
-        `error`,
-      )
-    }
+    // Once per failure, not once per subscriber, and shown rather than posted: the webview
+    // never read a host `error` message, so this left every view on a stale render in silence.
+    vscode.window.showErrorMessage(`MatterViz: failed to read updated file: ${error}`)
   }
 }
 
