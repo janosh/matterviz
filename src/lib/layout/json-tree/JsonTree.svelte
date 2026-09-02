@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { create_flash } from '$lib/effects.svelte'
   import { Icon, type IconData } from 'svelte-widgets'
   import {
     ArrowDown,
@@ -60,16 +61,14 @@
     ...rest
   }: JsonTreeProps & HTMLAttributes<HTMLDivElement> = $props()
 
+  type CopyFeedback = { error: boolean; pos: CopyEventPosition | null }
+
   let search_query = $state(``)
   let search_input_value = $state(``)
   let search_debounce_timeout: ReturnType<typeof setTimeout> | undefined
   let focused_path = $state<string | null>(null)
-  let copy_feedback = $state<{ error: boolean; pos: CopyEventPosition | null } | null>(null)
-  let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => {
-    clearTimeout(search_debounce_timeout)
-    clearTimeout(copy_feedback_timeout)
-  })
+  const copy_feedback = create_flash<CopyFeedback | null>(null, 1000)
+  $effect(() => () => clearTimeout(search_debounce_timeout))
   // Paths expanded explicitly (overrides auto-fold thresholds)
   let force_expanded = $state(new SvelteSet<string>())
   // Index into sorted_matches (-1 means no selection)
@@ -96,7 +95,7 @@
   $effect.pre(() => {
     if (!value_changed(value)) return
     focused_path = null
-    copy_feedback = null
+    copy_feedback.reset()
     context_menu_state = null
     force_expanded = new SvelteSet()
     const valid_paths = new Set(collect_all_paths(value, root_path))
@@ -234,9 +233,7 @@
     } catch {
       error = true // show feedback regardless, but flag the failure
     }
-    copy_feedback = { error, pos }
-    clearTimeout(copy_feedback_timeout)
-    copy_feedback_timeout = setTimeout(() => (copy_feedback = null), 1000)
+    copy_feedback.show({ error, pos })
   }
 
   const diff_map = $derived(
@@ -581,14 +578,15 @@
     <JsonNode node_key={root_label ?? null} {value} path={root_path} depth={0} />
   </div>
 
-  {#if copy_feedback}
+  {#if copy_feedback.value}
+    {@const feedback = copy_feedback.value}
     <div
-      class={[`copy-feedback`, { error: copy_feedback.error }]}
-      style={copy_feedback.pos
-        ? `left: ${copy_feedback.pos.clientX}px; top: ${copy_feedback.pos.clientY - 24}px`
+      class={[`copy-feedback`, { error: feedback.error }]}
+      style={feedback.pos
+        ? `left: ${feedback.pos.clientX}px; top: ${feedback.pos.clientY - 24}px`
         : `right: 8px; top: 8px`}
     >
-      {copy_feedback.error ? `Copy failed` : `Copied!`}
+      {feedback.error ? `Copy failed` : `Copied!`}
     </div>
   {/if}
 

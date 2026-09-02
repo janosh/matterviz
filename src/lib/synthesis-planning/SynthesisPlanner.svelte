@@ -2,6 +2,7 @@
   // Interactive synthesis planner: pick a target and firing conditions, browse ranked precursor
   // routes, inspect each route's competing phases, reaction slice and bench recipe. The plan
   // itself comes from `plan_synthesis`, the same pure function agents call.
+  import { create_flash } from '$lib/effects.svelte'
   import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull'
   import type { GasSpecies, PhaseData } from '$lib/convex-hull'
   import { format_num } from '$lib/labels'
@@ -245,11 +246,7 @@
     ]
   })
 
-  let copied = $state<`text` | `json` | null>(null)
-  // Held so a rapid second copy restarts the window rather than stacking a timer, and
-  // so an unmount inside it does not leave one running against a destroyed component
-  let reset_copied: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => clearTimeout(reset_copied))
+  const copied = create_flash<`text` | `json` | null>(null, 1500)
   async function copy(kind: `text` | `json`): Promise<void> {
     if (!computed_plan) return
     const content =
@@ -257,9 +254,7 @@
         ? format_plan_text(computed_plan, 10)
         : JSON.stringify(computed_plan, null, 2)
     await navigator.clipboard.writeText(content)
-    copied = kind
-    clearTimeout(reset_copied)
-    reset_copied = setTimeout(() => (copied = null), 1500)
+    copied.show(kind)
   }
 </script>
 
@@ -367,7 +362,7 @@
           disabled={!computed_plan}
           title="Copy the agent-style text summary"
         >
-          {copied === `text` ? `Copied` : `Copy summary`}
+          {copied.value === `text` ? `Copied` : `Copy summary`}
         </button>
         <button
           type="button"
@@ -375,7 +370,7 @@
           disabled={!computed_plan}
           title="Copy the full plan as JSON"
         >
-          {copied === `json` ? `Copied` : `Copy JSON`}
+          {copied.value === `json` ? `Copied` : `Copy JSON`}
         </button>
       </span>
     </section>

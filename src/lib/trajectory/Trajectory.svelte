@@ -2,6 +2,7 @@
   // Pure viewer over a TrajectoryRun: playback, the structure + plot split, analysis panes
   // and export. It borrows the run and never parses or disposes it; acquisition (URLs, drops,
   // decompression, HDF5 group choice, errors) lives in TrajectoryFileViewer.svelte.
+  import { create_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
@@ -282,7 +283,7 @@
     const { width, height } = content_size
     return width > 0 && height > 0 ? pick_pane_orientation(width, height) : `horizontal`
   })
-  let filename_copied = $state(false)
+  const filename_copied = create_flash(false, 1000)
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)
   // Structure's own info/export panes; its controls pane is this viewer's `controls` pane
@@ -718,12 +719,11 @@
           {@attach tooltip({ allow_html: true })}
           onclick={() => {
             navigator.clipboard.writeText(filename)
-            filename_copied = true
-            setTimeout(() => (filename_copied = false), 1000)
+            filename_copied.show(true)
           }}
         >
           {filename}
-          {#if filename_copied}
+          {#if filename_copied.value}
             <Icon
               icon={Check}
               style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"

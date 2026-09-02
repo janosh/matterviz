@@ -1,5 +1,6 @@
 <script lang="ts">
   // Bench quantities and heating schedule for one route, scaled to a target mass
+  import { create_flash } from '$lib/effects.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_formula } from '$lib/sanitize'
   import { build_recipe } from './recipe'
@@ -35,11 +36,7 @@
     return `≤ ${max_K} K`
   })
 
-  let copied = $state(false)
-  // Held so a rapid second copy restarts the window rather than stacking a timer, and
-  // so an unmount inside it does not leave one running against a destroyed component
-  let reset_copied: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => clearTimeout(reset_copied))
+  const copied = create_flash(false, 1500)
   async function copy_recipe(): Promise<void> {
     const lines = [
       route.reaction.equation,
@@ -52,9 +49,7 @@
       ...recipe.procedure.map((step, idx) => `${idx + 1}. ${step}`),
     ]
     await navigator.clipboard.writeText(lines.join(`\n`))
-    copied = true
-    clearTimeout(reset_copied)
-    reset_copied = setTimeout(() => (copied = false), 1500)
+    copied.show(true)
   }
 </script>
 
@@ -67,7 +62,7 @@
       <span>g {@html sanitize_formula(route.reaction.products[0].phase.formula)}</span>
     </label>
     <button type="button" onclick={copy_recipe} title="Copy recipe as text">
-      {copied ? `Copied` : `Copy`}
+      {copied.value ? `Copied` : `Copy`}
     </button>
   </header>
   <table>
