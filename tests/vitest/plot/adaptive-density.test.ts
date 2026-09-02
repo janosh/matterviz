@@ -3,6 +3,7 @@ import {
   build_pick_index,
   bin_points,
   density_bin_at_point,
+  density_screen_cell,
   first_point_in_bin,
   scale_bin_transform,
   series_extents,
@@ -50,23 +51,48 @@ describe(`adaptive density utilities`, () => {
     expect(result.first_series_idxs[3]).toBe(0)
   })
 
-  it(`maps screen coordinates back to density bins and data ranges`, () => {
-    const density = bin_points(series, [0, 2], [0, 2], 2, 2)
-    const bin = density_bin_at_point(
-      density,
-      { x: 25, y: 75 },
-      { x: 0, y: 0, width: 100, height: 100 },
-      [0, 2],
-      [0, 2],
-    )
+  // bin 0 is always the data minimum, but the pointer is hit-tested positionally, so a
+  // descending range must mirror the grid: with x_range [2, 0] the low-x bins sit on the
+  // RIGHT of the plot, and with y_range [2, 0] the low-y bins sit at the TOP.
+  it.each([
+    [`ascending ranges`, [0, 2] as Vec2, [0, 2] as Vec2, { x: 25, y: 75 }],
+    [`descending ranges`, [2, 0] as Vec2, [2, 0] as Vec2, { x: 75, y: 25 }],
+    [`descending x only`, [2, 0] as Vec2, [0, 2] as Vec2, { x: 75, y: 75 }],
+    [`descending y only`, [0, 2] as Vec2, [2, 0] as Vec2, { x: 25, y: 25 }],
+  ])(
+    `maps screen coordinates back to density bins and data ranges (%s)`,
+    (_name, x_range, y_range, pointer) => {
+      const density = bin_points(series, x_range, y_range, 2, 2)
+      const bin = density_bin_at_point(
+        density,
+        pointer,
+        { x: 0, y: 0, width: 100, height: 100 },
+        x_range,
+        y_range,
+      )
 
-    expect(bin).toEqual({
-      x_bin: 0,
-      y_bin: 0,
-      count: 3,
-      x_range: [0, 1],
-      y_range: [0, 1],
-    })
+      expect(bin).toEqual({
+        x_bin: 0,
+        y_bin: 0,
+        count: 3,
+        x_range: [0, 1],
+        y_range: [0, 1],
+      })
+    },
+  )
+
+  // The heatmap paints this mapping directly (canvas, so not assertable from the DOM): bin 0
+  // is the data minimum, which sits left/bottom on ascending ranges and right/top on
+  // descending ones. Self-inverse, so applying it twice is the identity.
+  it.each([
+    [`ascending both`, [0, 10] as Vec2, [0, 10] as Vec2, [0, 3] as Vec2],
+    [`descending x`, [10, 0] as Vec2, [0, 10] as Vec2, [3, 3] as Vec2],
+    [`descending y`, [0, 10] as Vec2, [10, 0] as Vec2, [0, 0] as Vec2],
+    [`descending both`, [10, 0] as Vec2, [10, 0] as Vec2, [3, 0] as Vec2],
+  ])(`density_screen_cell places bin 0 for %s`, (_name, x_range, y_range, expected) => {
+    expect(density_screen_cell(0, 0, 4, 4, x_range, y_range)).toEqual(expected)
+    const [col, row] = expected
+    expect(density_screen_cell(col, row, 4, 4, x_range, y_range)).toEqual([0, 0])
   })
 
   it(`switches to point rendering for sparse or small views`, () => {

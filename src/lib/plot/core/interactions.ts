@@ -200,15 +200,20 @@ export const range_bounds = (range: Vec2): Vec2 =>
 // Invert a drag-rect edge pair through a scale to a sorted finite data range
 // (time scales invert to Dates, coerced to epoch numbers). Returns null when
 // either bound is non-finite or the range is degenerate (zero span).
+// `current` is the range being replaced: the drag arrives in either order, but the result has
+// to keep the axis pointing the way the user configured it. Sorting unconditionally wrote an
+// ascending range onto a descending axis, silently mirroring the whole plot until reset.
 export function invert_rect_range(
   scale: { invert: (px: number) => number | Date },
   a_px: number,
   b_px: number,
+  current?: Vec2,
 ): Vec2 | null {
-  const range = sorted_range(
+  const [lo, hi] = sorted_range(
     to_epoch_num(scale.invert(a_px)),
     to_epoch_num(scale.invert(b_px)),
   )
+  const range: Vec2 = current && current[0] > current[1] ? [hi, lo] : [lo, hi]
   return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
 }
 

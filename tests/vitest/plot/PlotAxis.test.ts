@@ -518,6 +518,24 @@ describe(`PlotAxis`, () => {
     expect([...text.querySelectorAll(`tspan`)].map((line) => line.getAttribute(`dy`))).toEqual(
       [`-8`, `16`],
     )
+
+    // Regression: the vertical wrap width was the NARROWEST label on the axis, so the 7px `E`
+    // tick shrank the wrap target for every other label and over-wrapped them. The band cap
+    // (70px) is the wrap target; `Band Gap Ev` (77px) splits in two, not three.
+    const mixed = await mount_axis({
+      side: `y`,
+      ticks: [15, 50],
+      label_ticks: { 15: `E`, 50: `Band Gap Ev` },
+      axis: {
+        tick_label: { max_lines: 3, auto_layout: { strategies: [`wrap`], max_band: 70 } },
+      },
+    })
+    const [short_text, wide_text] = [...mixed.querySelectorAll(`g.tick text`)]
+    expect(short_text.getAttribute(`aria-label`)).toBe(`E`)
+    expect([...wide_text.querySelectorAll(`tspan`)].map((line) => line.textContent)).toEqual([
+      `Band`,
+      `Gap Ev`,
+    ])
   })
 
   test(`edge labels anchor inward`, async () => {

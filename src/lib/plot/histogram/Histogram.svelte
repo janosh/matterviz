@@ -364,7 +364,10 @@
       const [ry0, ry1] = hist.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
       const x_span = rx1 - rx0
       const y_span = ry1 - ry0
-      if (!(x_span > 0) || !(y_span > 0)) continue
+      // signed spans: the x_norm/top/baseline math below is direction-correct, and rejecting a
+      // reversed range as degenerate emptied the obstacle field, so auto-placed decorations
+      // landed on the bars. Matches BoxPlot.svelte's guard.
+      if (x_span === 0 || y_span === 0) continue
       for (const { x0, x1, value } of hist.bins) {
         if (value <= 0) continue
         const x_norm = ((x0 + x1) / 2 - rx0) / x_span
@@ -576,10 +579,17 @@
           : 1}
       >
         {#each hist.bins as bin, bin_idx (bin_idx)}
-          {@const bar_x = x_scale(bin.x0)}
-          {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1) - bar_x))}
-          {@const bar_y = y_scale(bin.value)}
-          {@const bar_height = Math.max(0, baseline - bar_y)}
+          <!-- bin edges are always ascending, so a descending x range maps x0 to the RIGHT
+               pixel: take the min (as BarPlot's geometry does) rather than assuming x0 is left -->
+          {@const x0_px = x_scale(bin.x0)}
+          {@const x1_px = x_scale(bin.x1)}
+          {@const bar_x = Math.min(x0_px, x1_px)}
+          {@const bar_width = Math.max(1, Math.abs(x1_px - x0_px))}
+          <!-- same for the value axis: a reversed count range puts the baseline ABOVE the
+               value pixel, and a signed height clamped at 0 dropped every bar -->
+          {@const value_px = y_scale(bin.value)}
+          {@const bar_y = Math.min(baseline, value_px)}
+          {@const bar_height = Math.abs(baseline - value_px)}
           {#if bar_height > 0}
             <path
               d={bar_path(

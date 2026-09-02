@@ -1038,10 +1038,10 @@ const compute_tick_layout = (
   )
   let wrapped: Candidate | undefined
   if (strategies.includes(`wrap`) && max_lines > 1) {
-    const vertical_wrap_width = Math.min(
-      max_band ?? DEFAULT_AUTO_LABEL_BAND,
-      ...full_texts.map((text) => measure_text_width(text, font)),
-    )
+    // The band cap is the wrap target for every label on the side. Folding the measured label
+    // widths into this Math.min made the NARROWEST label the target for all of them, so one
+    // short tick over-wrapped every long one next to it.
+    const vertical_wrap_width = max_band ?? DEFAULT_AUTO_LABEL_BAND
     wrapped = create_candidate(
       `wrap`,
       `wrap`,

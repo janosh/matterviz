@@ -482,6 +482,19 @@ describe(`scales`, () => {
           [2023, 0, 29],
         ],
       },
+      // reversed domain: the interval count must come from the sorted span, not domain[1]-domain[0]
+      {
+        ticks: -7,
+        start: [2023, 0, 29],
+        end: [2023, 0, 1],
+        expected: [
+          [2023, 0, 1],
+          [2023, 0, 8],
+          [2023, 0, 15],
+          [2023, 0, 22],
+          [2023, 0, 29],
+        ],
+      },
     ])(`time ticks for ticks=$ticks`, ({ ticks, start, end, expected }) => {
       const domain: Vec2 = [
         new Date(...(start as [number, number, number])).getTime(),
@@ -508,6 +521,15 @@ describe(`scales`, () => {
         [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
       ],
       [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
+      // reversed (descending) domains are first-class: an interval must still emit ticks
+      [
+        `interval on a descending domain`,
+        [10, 0],
+        `linear`,
+        -2,
+        undefined,
+        [0, 2, 4, 6, 8, 10],
+      ],
       [
         `explicit count wins over default_count`,
         [0, 100],

@@ -1,5 +1,6 @@
 import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
+import { range_bounds } from '$lib/plot/core/interactions'
 import * as math from '$lib/math'
 import type {
   ColorScaleConfig,
@@ -286,7 +287,10 @@ export function generate_ticks(
   options: { default_count?: number } = {},
 ): number[] {
   const { default_count = 8 } = options
-  const [min_val, max_val] = domain
+  // Descending domains (e.g. [10, 0]) are a supported axis mode, so canonicalize once here:
+  // every branch below wants ascending bounds (a raw max_val < min_val collapses interval
+  // counts to zero ticks). Tick order is irrelevant to rendering, so ascending output is fine.
+  const [min_val, max_val] = range_bounds(domain)
 
   // If ticks_option is an object (value-to-label mapping), extract values
   if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {

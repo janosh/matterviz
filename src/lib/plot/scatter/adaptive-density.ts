@@ -248,6 +248,23 @@ export function bin_points(
   }
 }
 
+// Bin indices are canonical — bin 0 is the DATA MINIMUM, since bin_points sorts the range
+// through range_bounds — but the canvas grid is purely positional, so a descending range
+// (e.g. [10, 0]) mirrors the bins against their own axis. Screen rows additionally run
+// opposite to ascending data Y. Self-inverse, so the same call maps a bin to its screen cell
+// and a hit-tested screen cell back to its bin.
+export const density_screen_cell = (
+  x_bin: number,
+  y_bin: number,
+  x_bins: number,
+  y_bins: number,
+  x_range: Vec2,
+  y_range: Vec2,
+): Vec2 => [
+  x_range[0] > x_range[1] ? x_bins - 1 - x_bin : x_bin,
+  y_range[0] > y_range[1] ? y_bin : y_bins - 1 - y_bin,
+]
+
 export function density_bin_at_point(
   density: DensityBinResult,
   pointer: Point2D,
@@ -262,9 +279,14 @@ export function density_bin_at_point(
     return null
   }
 
-  const x_bin = value_bin(rel_x, 0, plot_rect.width || 1, density.x_bins)
-  // Screen coordinates grow downward, while density bins use bottom-up data Y.
-  const y_bin = density.y_bins - 1 - value_bin(rel_y, 0, plot_rect.height || 1, density.y_bins)
+  const [x_bin, y_bin] = density_screen_cell(
+    value_bin(rel_x, 0, plot_rect.width || 1, density.x_bins),
+    value_bin(rel_y, 0, plot_rect.height || 1, density.y_bins),
+    density.x_bins,
+    density.y_bins,
+    x_range,
+    y_range,
+  )
   const count = density.counts[y_bin * density.x_bins + x_bin]
   if (!count) return null
 

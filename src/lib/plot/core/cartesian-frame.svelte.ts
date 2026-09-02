@@ -525,13 +525,17 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       const commit = (axis: FacetAxis, range: Vec2 | null) => {
         if (range) synced_facet.update_range(axis, range)
       }
-      const next_x = invert_rect_range(scales.x, start.x, current.x)
+      // each axis keeps the direction it currently has, so zooming a reversed axis does not
+      // silently flip the plot
+      const zoom_to = (axis: FacetAxis, from_px: number, to_px: number) =>
+        invert_rect_range(scales[axis], from_px, to_px, ranges.current[axis])
+      const next_x = zoom_to(`x`, start.x, current.x)
       if (!next_x) return
       commit(`x`, next_x)
-      commit(`x2`, opts.has_x2() ? invert_rect_range(scales.x2, start.x, current.x) : null)
-      commit(`y`, invert_rect_range(scales.y, start.y, current.y))
+      commit(`x2`, opts.has_x2() ? zoom_to(`x2`, start.x, current.x) : null)
+      commit(`y`, zoom_to(`y`, start.y, current.y))
       // A synced y2 already followed the y commit above; the bridge drops this one
-      commit(`y2`, opts.has_y2() ? invert_rect_range(scales.y2, start.y, current.y) : null)
+      commit(`y2`, opts.has_y2() ? zoom_to(`y2`, start.y, current.y) : null)
     },
     on_reset: () => {
       if (facet.reset_ranges()) return

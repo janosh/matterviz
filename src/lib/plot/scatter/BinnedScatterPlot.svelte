@@ -39,6 +39,7 @@
     build_pick_index,
     bin_points,
     density_bin_at_point,
+    density_screen_cell,
     first_point_in_bin,
     scale_bin_transform,
     series_extents,
@@ -325,10 +326,17 @@
     for (let idx = 0; idx < counts.length; idx++) {
       if (!counts[idx]) continue
       if (occupied_idx++ % stride) continue
-      points.push({
-        x: ((idx % x_bins) + 0.5) / x_bins,
-        y: 1 - (Math.floor(idx / x_bins) + 0.5) / y_bins,
-      })
+      // canonical bin -> screen cell, same as draw_density: without it the obstacle field is
+      // mirrored on a reversed range and the solver drops decorations onto the dense cloud
+      const [col, row] = density_screen_cell(
+        idx % x_bins,
+        Math.floor(idx / x_bins),
+        x_bins,
+        y_bins,
+        x_range,
+        y_range,
+      )
+      points.push({ x: (col + 0.5) / x_bins, y: (row + 0.5) / y_bins })
     }
     return points
   })
@@ -487,9 +495,12 @@
         }
         ctx.fillStyle = style.fill
         ctx.globalAlpha = style.alpha
+        // bins are canonical (bin 0 = data minimum) while this grid is positional, so a
+        // descending range paints them mirrored against its own axis
+        const [col, row] = density_screen_cell(x_bin, y_bin, x_bins, y_bins, x_range, y_range)
         ctx.fillRect(
-          pad.l + x_bin * bin_w,
-          pad.t + (y_bins - y_bin - 1) * bin_h,
+          pad.l + col * bin_w,
+          pad.t + row * bin_h,
           Math.ceil(bin_w) + 0.5,
           Math.ceil(bin_h) + 0.5,
         )

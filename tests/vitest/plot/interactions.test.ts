@@ -4,6 +4,7 @@ import { LOG_EPS } from '$lib/math'
 import {
   axis_ranges_equal,
   expand_range_if_needed,
+  invert_rect_range,
   normalize_y2_sync,
   pan_range_by_pixels,
   resolve_axis_ranges,
@@ -12,6 +13,7 @@ import {
   vec2_equal,
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
+import { create_scale } from '$lib/plot/core/scales'
 import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
 import { describe, expect, it } from 'vitest'
 
@@ -268,6 +270,22 @@ describe(`sorted_range`, () => {
   it(`sorts bounds ascending regardless of input order`, () => {
     expect(sorted_range(5, 1)).toEqual([1, 5]) // reversed
     expect(sorted_range(4, 4)).toEqual([4, 4]) // degenerate
+  })
+})
+
+describe(`invert_rect_range`, () => {
+  // A drag rect arrives in either pixel order, so its inverted bounds get sorted. Writing that
+  // ascending pair back onto a descending axis silently mirrored the whole plot on every rect
+  // zoom, so the result has to be re-oriented to match the range it replaces.
+  it.each<[string, Vec2, Vec2, Vec2 | undefined, Vec2 | null]>([
+    [`descending axis keeps its direction`, [10, 0], [20, 60], [10, 0], [8, 4]],
+    [`descending axis, drag dragged the other way`, [10, 0], [60, 20], [10, 0], [8, 4]],
+    [`ascending axis is unaffected`, [0, 10], [20, 60], [0, 10], [2, 6]],
+    [`no current range keeps the old ascending result`, [10, 0], [20, 60], undefined, [4, 8]],
+    [`zero-width drag is rejected`, [10, 0], [40, 40], [10, 0], null],
+  ])(`%s`, (_desc, domain, [a_px, b_px], current, expected) => {
+    const scale = create_scale(`linear`, domain, [0, 100])
+    expect(invert_rect_range(scale, a_px, b_px, current)).toEqual(expected)
   })
 })
 
