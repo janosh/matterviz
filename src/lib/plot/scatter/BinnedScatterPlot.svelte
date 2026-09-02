@@ -168,17 +168,9 @@
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
 
-  // No default tick format: format_tick_values short-circuits its whole duplicate-avoidance
-  // escalation the moment a formatter is supplied, so a hardcoded `.2~g` here labelled six
-  // ticks over [1000, 1010] as `1e+3` six times, with zero configuration. Worse after a
-  // density bin_click zoom, where the narrow window gave six `1`s. ScatterPlot supplies none
-  // and lets the escalation pick; a caller wanting a fixed format still passes one through.
-  // (the frame measures padding with the same config, so both stay in step)
-  const final_x_axis = $derived({ ...x_axis })
-  const final_y_axis = $derived({ ...y_axis })
   const grid_display = { x_grid: true, y_grid: true }
-  const x_scale_type = $derived(final_x_axis.scale_type ?? `linear`)
-  const y_scale_type = $derived(final_y_axis.scale_type ?? `linear`)
+  const x_scale_type = $derived(x_axis.scale_type ?? `linear`)
+  const y_scale_type = $derived(y_axis.scale_type ?? `linear`)
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
@@ -227,7 +219,11 @@
   })
 
   const frame = create_cartesian_frame({
-    axes: () => ({ x: final_x_axis, x2: empty_axis, y: final_y_axis, y2: empty_axis }),
+    // No default tick format: format_tick_values short-circuits its whole duplicate-avoidance
+    // escalation the moment a formatter is supplied, so a hardcoded `.2~g` here labelled six
+    // ticks over [1000, 1010] as `1e+3` six times, and six `1`s after a density bin_click zoom.
+    // ScatterPlot supplies none either; a caller wanting a fixed format still passes one in.
+    axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({
       x: auto_ranges.x,
       x2: unit_range,

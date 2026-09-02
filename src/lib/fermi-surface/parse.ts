@@ -1,6 +1,6 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '$lib/constants'
-import { parse_float_block } from '$lib/isosurface/parse'
+import { checked_grid_points, parse_float_block } from '$lib/isosurface/parse'
 import { flatten_grid } from '$lib/isosurface/grid'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -55,34 +55,6 @@ function line_reader(content: string, start = 0) {
 
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.
 // Format specification: http://www.xcrysden.org/doc/XSF.html
-// Only a grid this large is gated on the remaining byte count. A smaller one allocates little
-// even when the file is truncated, and letting it through keeps the parsers' own specific
-// "expected N values, got M" message, which says far more about an ordinary truncation.
-const GUARDED_POINT_COUNT = 1_000_000 // 8 MB as Float64
-
-// A declared k-grid drives one Float64Array allocation per band before a single value is read,
-// so it has to be plausible for the bytes that remain: every value needs at least a digit and a
-// separator. Without this a tiny file declaring a huge grid allocated gigabytes, or raised a
-// bare RangeError, before discovering there was no data to fill it.
-const checked_grid_points = (
-  k_grid: readonly number[],
-  remaining_bytes: number,
-  n_bands: number,
-  label: string,
-): number => {
-  const total = k_grid.reduce((product, dim) => product * dim, 1)
-  if (!Number.isSafeInteger(total) || total <= 0) {
-    throw new Error(`${label}: k-grid ${k_grid.join(`×`)} is not a valid point count`)
-  }
-  const needed = total * Math.max(n_bands, 1)
-  if (needed > GUARDED_POINT_COUNT && needed > Math.floor(remaining_bytes / 2)) {
-    throw new Error(
-      `${label}: ${n_bands} band(s) on a ${k_grid.join(`×`)} k-grid need ${needed} values but only ${remaining_bytes} bytes remain`,
-    )
-  }
-  return total
-}
-
 function parse_bxsf(content: string): BandGridData {
   const block_start = content.indexOf(`BEGIN_BLOCK_BANDGRID_3D`)
   if (block_start === -1) throw new Error(`BXSF file missing BEGIN_BLOCK_BANDGRID_3D`)
@@ -135,8 +107,8 @@ function parse_bxsf(content: string): BandGridData {
   const total_points = checked_grid_points(
     k_grid,
     content.length - reader.position(),
-    n_bands,
     `BXSF`,
+    n_bands,
   )
 
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
@@ -212,8 +184,8 @@ function parse_frmsf(content: string): BandGridData {
   const total_points = checked_grid_points(
     k_grid,
     content.length - reader.position(),
-    n_bands,
     `FRMSF`,
+    n_bands,
   )
   const energies: BandEnergyGrid[][] = [[]]
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {

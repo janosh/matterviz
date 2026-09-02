@@ -494,7 +494,7 @@ describe(`parse_cube`, () => {
     [
       `a grid the file cannot supply`,
       tiny_header(0, [600, 600, 600]),
-      /600×600×600 grid \(216000000 values\) but only/,
+      /600×600×600 grid needing 216000000 values but only/,
     ],
   ])(`rejects %s without allocating for it`, (_case, content, message) => {
     vi.spyOn(console, `warn`).mockImplementation(() => {})

@@ -75,21 +75,20 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
     const y1_span = y1_range[1] - y1_range[0]
     if (y1_span === 0) return y2_base_range
 
-    // Where is align_val along Y1, as a fraction from y1_range[0] to y1_range[1]?
-    const rel_pos = (align_val - y1_range[0]) / y1_span
-    // The span math below assumes value rises with the fraction, which is only true on an
-    // ascending axis. A descending y1 is a supported mode, and taking its fraction at face
-    // value both mirrored y2 against it (y2 counting up while y1 counted down) and sized the
-    // range off the wrong constraint: y1 [10, 0] against y2 data [0, 5] gave [-5, 5] instead
-    // of [5, 0]. Solve in ascending space, then hand the pair back pointing y1's way.
+    // Where align_val sits along y1, as a fraction measured from y1's LOW end. The span math
+    // below assumes value rises with the fraction, which only holds on an ascending axis, and
+    // a descending y1 is a supported mode: measuring from y1_range[0] there both mirrored y2
+    // against it (y2 counting up while y1 counted down) and sized the range off the wrong
+    // constraint, so y1 [10, 0] against y2 data [0, 5] gave [-5, 5] instead of [5, 0]. Solve
+    // in ascending space, then hand the pair back pointing y1's way.
     const descending = y1_span < 0
-    const frac = descending ? 1 - rel_pos : rel_pos
+    const frac = (align_val - Math.min(y1_range[0], y1_range[1])) / Math.abs(y1_span)
 
     // Ensure Y2 range includes both align_val and all data
     const y2_min_data = Math.min(y2_base_range[0], align_val)
     const y2_max_data = Math.max(y2_base_range[1], align_val)
 
-    // Calculate minimum span needed to fit all data while keeping align_val at rel_pos
+    // Calculate minimum span needed to fit all data while keeping align_val at frac
     // Constraints: y2_min <= y2_min_data AND y2_max >= y2_max_data
     let y2_span = y2_max_data - y2_min_data
     if (frac > 0) {
@@ -101,7 +100,7 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
 
     const y2_min_computed = align_val - frac * y2_span
     const y2_max_computed = align_val + (1 - frac) * y2_span
-    // When align_val is outside y1_range (rel_pos < 0 or > 1), the formula can produce
+    // When align_val is outside y1_range (frac < 0 or > 1), the formula can produce
     // a range that omits y2_base_range or align_val. Ensure both are always included.
     const y2_min = Math.min(y2_min_computed, y2_base_range[0], align_val)
     const y2_max = Math.max(y2_max_computed, y2_base_range[1], align_val)

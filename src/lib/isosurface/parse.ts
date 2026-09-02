@@ -315,27 +315,30 @@ export function parse_chgcar(content: string): VolumetricFileData {
 // Parse Gaussian .cube file format.
 // Contains atomic structure and volumetric data in a single file.
 // Units: if grid dimensions are positive, coordinates are in Bohr; if negative, in Angstrom.
-// Only a grid this large is gated on the remaining byte count. A smaller one allocates little
-// even when the file is truncated, and letting it through keeps the parsers' own specific
-// "expected N values, got M" message, which says far more about an ordinary truncation.
+// Only a grid needing this many values is gated on the remaining byte count. A smaller one
+// allocates little even when the file is truncated, and letting it through keeps the parsers'
+// own "expected N values, got M" message, which says far more about an ordinary truncation.
 const GUARDED_POINT_COUNT = 1_000_000 // 8 MB as Float64
 
 // A declared grid size drives a Float64Array allocation before a single value is read, so it
 // has to be plausible for the bytes that remain: every value needs at least a digit and a
 // separator. Without this a 110-byte file declaring a 600x600x600 grid allocated 1.7 GB before
-// discovering there was no data, and a nonsensical one raised a bare RangeError.
-const checked_grid_points = (
+// discovering there was no data, and a nonsensical one raised a bare RangeError. `n_grids` is
+// how many arrays of this size the caller will allocate (one per band, for the Fermi readers).
+export const checked_grid_points = (
   dims: readonly number[],
   remaining_bytes: number,
   label: string,
+  n_grids = 1,
 ): number => {
   const total = dims.reduce((product, dim) => product * dim, 1)
   if (!Number.isSafeInteger(total) || total <= 0) {
     throw new Error(`${label} grid ${dims.join(`×`)} is not a valid point count`)
   }
-  if (total > GUARDED_POINT_COUNT && total > Math.floor(remaining_bytes / 2)) {
+  const needed = total * Math.max(n_grids, 1)
+  if (needed > GUARDED_POINT_COUNT && needed > Math.floor(remaining_bytes / 2)) {
     throw new Error(
-      `${label} declares a ${dims.join(`×`)} grid (${total} values) but only ${remaining_bytes} bytes remain`,
+      `${label} declares a ${dims.join(`×`)} grid needing ${needed} values but only ${remaining_bytes} bytes remain`,
     )
   }
   return total

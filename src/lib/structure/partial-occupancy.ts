@@ -9,14 +9,15 @@ const MERGE_DISTANCE_TOLERANCE = 1e-8
 // Bucket edge for the merge lookup, far wider than the tolerance so a group almost never sits
 // close enough to a face for a coincident partner to land in the next bucket along
 const MERGE_BUCKET_SIZE = MERGE_DISTANCE_TOLERANCE * 1e3
+// The tolerance as a fraction of a bucket, i.e. how far from a face still counts as close to it
+const MERGE_BUCKET_REACH = MERGE_DISTANCE_TOLERANCE / MERGE_BUCKET_SIZE
 // Bucket offsets along one axis that a point within the tolerance of `coord` could fall in:
 // just [0] unless `coord` sits within the tolerance of a bucket face, which is what keeps the
 // index exact without registering all 27 neighbours for every group
 const neighbor_offsets = (coord: number, bucket: number): readonly number[] => {
   const from_center = coord / MERGE_BUCKET_SIZE - bucket
-  const reach = MERGE_DISTANCE_TOLERANCE / MERGE_BUCKET_SIZE
-  if (from_center + reach > 0.5) return [0, 1]
-  if (from_center - reach < -0.5) return [-1, 0]
+  if (from_center + MERGE_BUCKET_REACH > 0.5) return [0, 1]
+  if (from_center - MERGE_BUCKET_REACH < -0.5) return [-1, 0]
   return [0]
 }
 type RenderSite = {
@@ -68,11 +69,12 @@ export const merge_split_partial_sites = (
   })
   const render_sites: RenderSite[] = []
   const groups: { center: Vec3; indices: number[] }[] = []
-  // Groups indexed by coordinate bucket, each registered under its own bucket and the 26 around
-  // it so a lookup is a single key even when two coincident sites round to opposite sides of a
-  // boundary. Scanning every group instead made this quadratic, and it runs per trajectory
-  // frame: 8k split-partial sites took 218 ms a frame, which hiding one species of an alloy
-  // reaches with any site count (that leaves one visible species summing under 1).
+  // Groups indexed by coordinate bucket, each registered under its own bucket and the handful
+  // of neighbours it actually lies close to (see `neighbor_offsets`), so a lookup is a single
+  // key even when two coincident sites round to opposite sides of a boundary. Scanning every
+  // group instead made this quadratic, and it runs per trajectory frame: 8k split-partial
+  // sites took 218 ms a frame, which hiding one species of an alloy reaches at any site count
+  // (that leaves one visible species summing under 1).
   const groups_by_bucket = new Map<string, number[]>()
   const bucket_of = (coord: number) => Math.round(coord / MERGE_BUCKET_SIZE)
   for (const [site_idx, site] of sites.entries()) {

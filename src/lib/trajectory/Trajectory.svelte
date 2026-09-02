@@ -603,8 +603,6 @@
     // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
     property_rows: session.property_rows,
     properties_complete: session.properties_complete,
-    // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
-
     pane_props: { style: pane_max_height },
     toggle_props: {
       class: `analysis-toggle-anchor`,

@@ -19,6 +19,7 @@ import {
   LineScanner,
   parse_coordinate,
   parse_float_token,
+  split_cif_tokens,
 } from '$lib/structure/parsers/shared'
 import benzene_mol2 from '$site/molecules/benzene.mol2?raw'
 import benzene_sdf from '$site/molecules/benzene.sdf?raw'
@@ -978,6 +979,21 @@ O2   O   0.410  0.140  0.880  1.000`
     const result = parse_cif(cif)
     assert(result, `Failed to parse CIF with an unresolvable symop term`)
     expect(rounded_abc(result.sites)).toEqual([[0.25, 0.1, 0.3]])
+  })
+
+  // The tokenizer scans characters rather than running a `\s`-based regex, so its notion of
+  // whitespace has to cover the same set. Space and tab alone let a CRLF file's trailing `\r`
+  // ride along inside the last token, and left a quoted value at the end of a line
+  // unterminated, splitting `'x, y, z'` into three pieces.
+  test.each([
+    [`a bare row`, `Na1 Na 0.1 0.2 0.3`, [`Na1`, `Na`, `0.1`, `0.2`, `0.3`]],
+    [`a quoted value`, `'two words' x`, [`two words`, `x`]],
+    [`a symop`, `'x, y, z'`, [`x, y, z`]],
+    [`a primed label`, `C1' C 0.1`, [`C1'`, `C`, `0.1`]],
+    [`an unclosed quote`, `'oops x`, [`'oops`, `x`]], // read literally, never eats the line
+  ])(`tokenizes %s the same with and without a trailing CR`, (_case, line, expected) => {
+    expect(split_cif_tokens(line)).toEqual(expected)
+    expect(split_cif_tokens(`${line}\r`)).toEqual(expected)
   })
 
   // A quote closes a CIF value only when whitespace or the line end follows it, so an
