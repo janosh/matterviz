@@ -329,8 +329,12 @@ export function xyz_frame_force_stats(
   text: string,
   { atoms_start, end, num_atoms, comment }: XyzFrameSpec,
 ): { force_max: number; force_norm: number } | null {
-  const { atomic_number_col, symbol_col, forces_col, min_cols } = parse_extxyz_columns(comment)
-  if (forces_col < 0) return null
+  const { atomic_number_col, symbol_col, forces_col, min_cols, spec_error } =
+    parse_extxyz_columns(comment)
+  // An unusable spec establishes no offsets, and the materialized path rejects the frame over
+  // it. Scanning `forces_col` anyway published a force curve point for a frame that cannot be
+  // built - here it read the tail of the position columns.
+  if (spec_error || forces_col < 0) return null
   const scanner = new LineScanner()
   let force_max = -Infinity
   let sum_sq = 0

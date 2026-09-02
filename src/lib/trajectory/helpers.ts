@@ -261,7 +261,7 @@ export function parse_extxyz_columns(comment: string): {
   // reject the frame outright rather than pick between two guesses.
   spec_error: string | null
 } {
-  const spec = /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1]
+  const spec = /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.groups?.properties
   const fields = spec?.split(`:`) ?? []
   let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {

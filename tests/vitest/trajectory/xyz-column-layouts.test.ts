@@ -68,6 +68,29 @@ test(`indexed run reports the same force stats as the materialized run`, async (
   expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-3, -4])
 })
 
+// The same agreement has to hold when a spec is unusable. Each frame carries its own
+// `Properties=`, and the indexed run only decodes frame 0 eagerly: a later frame's force
+// stats are scanned straight off its atom lines. `forces:R:3` still resolves to an offset
+// when a short `pos` discredits the spec, so that scan would publish a number for a frame
+// the materialized path refuses to build at all.
+test(`indexed run publishes no force stats for a frame whose spec is unusable`, async () => {
+  const sound = `species:S:1:pos:R:3:forces:R:3`
+  const text = two_frames(sound, [[`Si`], [`Si`]])
+    .split(`\n`)
+    .map((line) => (line.startsWith(`Si`) ? `${line} 0.1 0.2 0.2` : line))
+    .join(`\n`)
+    // only the second frame's spec is broken
+    .replace(new RegExp(`${sound}(?![\\s\\S]*${sound})`), `species:S:1:pos:R:2:forces:R:3`)
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
+    /does not declare a 3-column pos field/,
+  )
+  const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
+  await run.properties.done
+  const [first, second] = run.properties.rows.map((row) => row.properties.force_max)
+  expect(first).toBeCloseTo(0.3, 12)
+  expect(second).toBeUndefined() // read the tail of the position columns before the fix
+})
+
 // A malformed `Properties=` must fail loudly. Each of these used to yield a plausible wrong
 // atom: an unusable spec was discarded and read as "no Properties= at all", so the plain
 // `symbol x y z` fallback took columns 1-3 — the very ones the bad spec would have misread.
