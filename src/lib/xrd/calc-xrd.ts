@@ -242,16 +242,20 @@ export function enumerate_reciprocal_points(
   return points
 }
 
-// Σ_j |f_j(0)|·occu_j over the cell: the largest |F(g)| any reflection can reach, so its
-// square is the absolute scale a |F|² must be judged against
-export const forward_scattering_sum = (structure: Crystal, radiation: RadiationType): number =>
-  structure.sites
-    .flatMap((site) => site.species)
-    .reduce(
-      (total, { element, occu }) =>
-        total + Math.abs(scattering_length(element, radiation, 0)) * occu,
-      0,
-    )
+// Absolute round-off floor for |F(g)|²: 1e-16 of (Σ_j |f_j(0)|·occu_j)², the largest |F|² any
+// reflection can reach. Below it a squared structure factor is cancellation noise, not signal.
+export function structure_factor_noise_floor(
+  structure: Crystal,
+  radiation: RadiationType,
+): number {
+  let forward_sum = 0
+  for (const { species } of structure.sites) {
+    for (const { element, occu } of species) {
+      forward_sum += Math.abs(scattering_length(element, radiation, 0)) * occu
+    }
+  }
+  return 1e-16 * forward_sum ** 2
+}
 
 // |F(hkl)|² for every supplied reflection, where
 //   F(hkl) = Σⱼ fⱼ(s)·occuⱼ·exp(2πi·hkl·rⱼ)·exp(−Bⱼ·s²),  s = |g|/2.
@@ -526,9 +530,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   // Absolute round-off floor: tolerance filter and scaling are both relative, so a window in
   // which every reflection is extinct normalizes cancellation error to 100% — fcc Al over
   // [20, 33]° at Cu Kα emitted a forbidden (100) at y = 100 from a raw |F|² of 2.1e-27
-  if (max_f_squared < 1e-16 * forward_scattering_sum(structure, radiation) ** 2) {
+  if (max_f_squared < structure_factor_noise_floor(structure, radiation))
     return { x: [], y: [] }
-  }
 
   // Scale intensities so that the max intensity is 100, and filter by scaled tol
   const max_intensity = math.array_max(peaks.map((peak) => peak.intensity))

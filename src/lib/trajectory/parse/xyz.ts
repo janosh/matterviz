@@ -163,15 +163,16 @@ export function parse_xyz_comment_metadata(comment: string): {
 } {
   const properties: Record<string, number> = {}
   const flags: Record<string, boolean> = {}
-  for (const pair of iter_extxyz_pairs(comment)) {
-    const lower = pair.key.toLowerCase()
+  for (const { key, raw } of iter_extxyz_pairs(comment)) {
+    const lower = key.toLowerCase()
     if (RESERVED_COMMENT_KEY_RE.test(lower)) continue
-    const value = comment_scalar(pair.raw)
+    const value = comment_scalar(raw)
     if (value === undefined) continue
-    const key = METADATA_KEY_ALIASES[lower] ?? pair.key
-    if (key in properties || key in flags) continue // leftmost wins, as the old regexes did
-    if (typeof value === `boolean`) flags[key] = value
-    else properties[key] = value
+    const canonical = METADATA_KEY_ALIASES[lower] ?? key
+    // leftmost wins, as the old regexes did
+    if (canonical in properties || canonical in flags) continue
+    if (typeof value === `boolean`) flags[canonical] = value
+    else properties[canonical] = value
   }
   const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(?<step>\d+)/i.exec(comment)?.[1]
   return { step: step ? Math.trunc(Number(step)) : undefined, properties, flags }

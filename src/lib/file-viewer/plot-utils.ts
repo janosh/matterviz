@@ -189,9 +189,9 @@ const build_point_axes = (
   axis_keys: (`x` | `y` | `z`)[],
 ) => {
   const cols = axis_keys.map((key) => get_col(columns, mapping[key]))
-  if (cols.some((col) => !col)) return null
+  if (!cols.every((col) => col !== undefined)) return null
   return filter_finite(
-    cols.map((col) => to_numbers(col?.values ?? [])),
+    cols.map((col) => to_numbers(col.values)),
     optional_numbers(get_col(columns, mapping.color)),
     optional_numbers(get_col(columns, mapping.size)),
   )

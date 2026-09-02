@@ -508,12 +508,13 @@
     ctx.globalAlpha = 1
   }
 
-  // NaN fails every comparison, so this also rejects non-finite coordinates
-  const in_view = (x: number, y: number): boolean => {
+  // NaN fails every comparison, so this also rejects non-finite coordinates. Derived, not a
+  // plain function: draw_points runs it per point, so the ranges resolve once, not per point.
+  const in_view = $derived.by(() => {
     const [x_min, x_max] = range_bounds(x_range)
     const [y_min, y_max] = range_bounds(y_range)
-    return x >= x_min && x <= x_max && y >= y_min && y <= y_max
-  }
+    return (x: number, y: number) => x >= x_min && x <= x_max && y >= y_min && y <= y_max
+  })
 
   // Every point except the selected one, which pulses and so lives on the overlay. Reads
   // neither the pulse nor the hover, so this layer only repaints when the data or view move.

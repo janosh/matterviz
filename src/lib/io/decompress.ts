@@ -201,10 +201,10 @@ export async function classify_payload(
   const head = (count: number) => blob.slice(0, count).arrayBuffer()
   const gzip_magic = gzip_by_magic && has_gzip_magic(new Uint8Array(await head(2)))
   const format = gzip_magic ? `gzip` : compression_wrapper_of(names, source)
-  // In by-magic mode a named gzip/deflate wrapper without gzip bytes was inflated in transit,
-  // so only ZIP is still decompressed by name there
   // Either way the payload is now the inner file, so name it accordingly
   const stripped = names.map((name) => name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
+  // In by-magic mode a named gzip/deflate wrapper without gzip bytes was inflated in transit,
+  // so only ZIP is still decompressed by name there
   if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
     // A ZIP entry names itself, the only way `bundle.zip` holding `a.cif` reads as a CIF
     blob = await decompress_data_blob(blob, format, signal, (name) => stripped.unshift(name))

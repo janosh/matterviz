@@ -124,11 +124,11 @@ export const sampled_property_rows = (
 
 export const HDF5_MAX_LOGICAL_SLICE_BYTES = 8 * 1024 * 1024
 
-const assert_logical_budget = (path: string, value_count: number, what: string): void => {
+const assert_logical_budget = (path: string, value_count: number, action: string): void => {
   const logical_bytes = value_count * Float64Array.BYTES_PER_ELEMENT
   if (logical_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES) {
     throw new Error(
-      `HDF5 dataset ${path} ${what} ${logical_bytes} logical bytes, above the ` +
+      `HDF5 dataset ${path} ${action} ${logical_bytes} logical bytes, above the ` +
         `${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
     )
   }

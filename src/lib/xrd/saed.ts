@@ -15,9 +15,9 @@ import type { Crystal } from '$lib/structure/index'
 import {
   electron_wavelength,
   enumerate_reciprocal_points,
-  forward_scattering_sum,
   require_positive,
   resolve_wavelength,
+  structure_factor_noise_floor,
   structure_factors_squared,
 } from './calc-xrd'
 import type { RecipPoint, SaedOptions, SaedPatternData, SaedSpot } from './index'
@@ -164,15 +164,12 @@ export function compute_saed_pattern(
   )
   const max_intensity = raw_spots.reduce((peak, spot) => Math.max(peak, spot.intensity), 0)
 
-  // Absolute round-off floor as in compute_xrd_pattern; the relrod shape factor is ≤ 1, so
-  // the same |F|² bound holds
-  const noise_floor = 1e-16 * forward_scattering_sum(structure, `electron`) ** 2
-
   // Scaled to a maximum of 100, then strongest first so renderers can draw large spots
-  // underneath small ones
+  // underneath small ones. The floor is compute_xrd_pattern's: the relrod shape factor is
+  // ≤ 1, so the same |F|² bound holds.
   const intensity_tol = options.intensity_tol ?? 1e-3
   const spots =
-    max_intensity < noise_floor
+    max_intensity < structure_factor_noise_floor(structure, `electron`)
       ? []
       : raw_spots
           .map((spot) => ({ ...spot, intensity: (spot.intensity / max_intensity) * 100 }))

@@ -216,10 +216,10 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
   const traj_scale = to_scalar_number(read_dataset(h5_file, TRAJ_SCALE)) ?? scale
 
   // Budget-checked: the only whole-dataset reads here big enough to hang the tab
-  const bounded = (path: string) => read_dataset(h5_file, path, FORMAT)
-  const traj_positions = bounded(TRAJ_POSITIONS) as number[][][] | null
-  const traj_lattices = bounded(TRAJ_LATTICE) as number[][][] | null
-  const traj_forces = bounded(TRAJ_FORCES) as number[][][] | null
+  const read_bounded = (path: string) => read_dataset(h5_file, path, FORMAT)
+  const traj_positions = read_bounded(TRAJ_POSITIONS) as number[][][] | null
+  const traj_lattices = read_bounded(TRAJ_LATTICE) as number[][][] | null
+  const traj_forces = read_bounded(TRAJ_FORCES) as number[][][] | null
   const energies = read_dataset(h5_file, ENERGY_VALUES) as number[][] | null
   const energy_tags = to_string_array(read_dataset(h5_file, ENERGY_LABELS))
   const { idx: energy_col, tag: energy_tag } = pick_energy_column(energy_tags)

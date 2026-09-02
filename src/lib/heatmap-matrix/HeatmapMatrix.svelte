@@ -255,13 +255,9 @@
         if (value > 0 && value < pos) pos = value
       }
     }
-    const [min, max] = array_extent(numeric)
-    return {
-      numeric,
-      min: numeric.length ? min : 0,
-      max: numeric.length ? max : 1,
-      min_pos: Number.isFinite(pos) ? pos : null,
-    }
+    // no values: a placeholder domain, since array_extent yields the identity +-Infinity
+    const [min, max] = numeric.length ? array_extent(numeric) : [0, 1]
+    return { numeric, min, max, min_pos: Number.isFinite(pos) ? pos : null }
   })
   // Lazy: only evaluated while domain_mode === 'robust' reads it. quantile_unordered partially
   // sorts in place, so it gets a copy.

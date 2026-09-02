@@ -343,13 +343,8 @@
   // The group header emits one colspan per group, so a group split by another column would
   // label the wrong ones and leave its tail unlabelled. Emit each group at its first member.
   function group_contiguously(cols_in_order: Label[]): Label[] {
-    const groups = new Map<string, Label[]>()
-    for (const col of cols_in_order) {
-      if (!col.group) continue
-      const members = groups.get(col.group)
-      if (members) members.push(col)
-      else groups.set(col.group, [col])
-    }
+    const groups = Map.groupBy(cols_in_order, (col) => col.group)
+    groups.delete(undefined)
     if (groups.size === 0) return cols_in_order
     return cols_in_order.flatMap((col) => {
       if (!col.group) return [col]

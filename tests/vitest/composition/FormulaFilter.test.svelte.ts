@@ -396,10 +396,7 @@ describe(`FormulaFilter`, () => {
       localStorage.setItem(other_key, JSON.stringify([`Na,Cl`]))
       seed([`Fe,O`, `Li,Na`, `O,Si`])
       const state = $state({ history_key: HISTORY_KEY, max_history: 5 })
-      mount(FormulaFilter, {
-        target: document.body,
-        props: bind_props({ value: `` }, state) as ComponentProps<typeof FormulaFilter>,
-      })
+      mount_filter(bind_props({ value: `` }, state))
       focus_input()
       const texts = () => [...history_values()].map((item) => item.textContent?.trim())
       expect(texts()).toHaveLength(3)
