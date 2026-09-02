@@ -14,6 +14,8 @@ import {
   drop_placeholder_cell,
   element_from_candidates,
   guard_parse,
+  is_cif_data_header,
+  is_cif_loop_header,
   iter_cif_loops,
   parsed_result,
   parse_cif_uncertain_number,
@@ -104,7 +106,8 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
       for (let row_idx = loop.data_start; row_idx < lines.length; row_idx++) {
         const line = lines[row_idx].trim()
         // mmCIF terminates a loop with `#`, a new tag, a new loop or a new data block
-        if (!line || line === `#` || line === `loop_` || /^_|^data_/.test(line)) break
+        if (!line || line === `#` || line.startsWith(`_`)) break
+        if (is_cif_loop_header(line) || is_cif_data_header(line)) break
         data_rows.push(split_cif_tokens(line))
       }
       break

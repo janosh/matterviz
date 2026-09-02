@@ -470,6 +470,14 @@ export const parse_cif_uncertain_number = (token: string): number | null => {
   return Number.isNaN(value) ? null : value
 }
 
+// CIF reserved words are case-insensitive, so `DATA_phase_2` opens a block and `LOOP_` starts
+// a loop exactly as their lowercase spellings do. Comparing raw text left an uppercase header
+// inside the previous block, letting one phase's symmetry data reshape another phase's atoms.
+export const is_cif_data_header = (trimmed_line: string): boolean =>
+  /^data_/i.test(trimmed_line)
+export const is_cif_loop_header = (trimmed_line: string): boolean =>
+  /^loop_$/i.test(trimmed_line)
+
 // The `data_` block each line belongs to: 0 for anything before the first block header,
 // then one id per block. CIF scopes every data item to its own block, so a multi-block file
 // (a global block plus one per phase) must be read block by block. A `data_` line inside a
@@ -485,7 +493,7 @@ export const cif_block_ids = (lines: readonly string[]): number[] => {
     // rest of its text be read as headers.
     if (in_text_field) in_text_field = !line.startsWith(`;`)
     else if (line.startsWith(`;`)) in_text_field = true
-    else if (line.trim().startsWith(`data_`)) block_id++
+    else if (is_cif_data_header(line.trim())) block_id++
     block_ids.push(block_id)
   }
   return block_ids
@@ -496,7 +504,7 @@ export function* iter_cif_loops(
   lines: string[],
 ): Generator<{ headers: string[]; data_start: number }> {
   for (let idx = 0; idx < lines.length; idx++) {
-    if (lines[idx].trim() !== `loop_`) continue
+    if (!is_cif_loop_header(lines[idx].trim())) continue
     const headers: string[] = []
     let jj = idx + 1
     while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {

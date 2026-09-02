@@ -68,20 +68,34 @@ test(`indexed run reports the same force stats as the materialized run`, async (
   expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-3, -4])
 })
 
-// A malformed `Properties=` must fail loudly. Both of these used to produce a plausible
-// wrong atom: a short `pos` read the next field (forces[0]) as z, and a non-integer atomic
-// number was truncated into a real element.
+// A malformed `Properties=` must fail loudly. Every one of these used to produce a plausible
+// wrong atom: whatever sits in columns 1-3 became the position, and a non-integer atomic
+// number was truncated into a real element. The counts below (0, 4, fractional, non-numeric)
+// each discard the layout outright, which then read as "no Properties= at all" and fell back
+// to the plain `symbol x y z` shape — the same three columns the bad spec would have read.
 test.each([
-  [
-    `pos declaring fewer than 3 columns`,
-    `1\nProperties=species:S:1:pos:R:2:forces:R:3 Lattice="5 0 0 0 5 0 0 0 5"\nSi 1.0 2.0 9.9 8.8 7.7\n`,
-    /declares pos with 2 columns, expected 3/,
-  ],
-  [
-    `a non-integer atomic number`,
-    `1\nProperties=Z:I:1:pos:R:3 Lattice="5 0 0 0 5 0 0 0 5"\n14.9 0.0 0.0 0.0\n`,
+  [`pos declaring fewer than 3 columns`, `species:S:1:pos:R:2:forces:R:3`],
+  [`pos declaring more than 3 columns`, `species:S:1:pos:R:4`],
+  [`a zero pos count`, `species:S:1:pos:R:0:forces:R:3`],
+  [`a fractional pos count`, `species:S:1:pos:R:2.5:forces:R:3`],
+  // truncating the count first let a fractional one through and shifted every later offset
+  [`a fractional count in a later field`, `species:S:1:pos:R:3:forces:R:3.7`],
+  [`a non-numeric pos count`, `species:S:1:pos:R:x:forces:R:3`],
+  // a bad count in an earlier field makes every later offset, `pos` included, unknowable
+  [`a bad count before pos`, `id:I:0:species:S:1:pos:R:3`],
+  [`a field count that is not a multiple of 3`, `species:S:1:pos:R`],
+  // extXYZ requires `pos`; without it column 1 is not the x coordinate but the first force
+  [`no pos field at all`, `species:S:1:forces:R:3`],
+])(`rejects %s instead of guessing`, (_name, properties) => {
+  const text = `1\nProperties=${properties} Lattice="5 0 0 0 5 0 0 0 5"\nSi 1.0 2.0 9.9 8.8 7.7\n`
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
+    `Properties=${properties} does not declare a 3-column pos field`,
+  )
+})
+
+test(`rejects a non-integer atomic number instead of truncating it to an element`, () => {
+  const text = `1\nProperties=Z:I:1:pos:R:3 Lattice="5 0 0 0 5 0 0 0 5"\n14.9 0.0 0.0 0.0\n`
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
     /no atom with a recognised element symbol/,
-  ],
-])(`rejects %s instead of guessing`, (_name, text, message) => {
-  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(message)
+  )
 })

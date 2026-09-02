@@ -189,20 +189,9 @@ function parse_xyz_atom_lines(
   forces: number[][]
   site_properties: Record<string, unknown>[]
 } {
-  const {
-    atomic_number_col,
-    symbol_col,
-    pos_col,
-    forces_col,
-    min_cols,
-    layout,
-    malformed_pos,
-  } = parse_extxyz_columns(comment)
-  if (malformed_pos) {
-    throw new Error(
-      `XYZ ${frame_label}: Properties= declares pos with ${layout?.pos?.ncols} columns, expected 3`,
-    )
-  }
+  const { atomic_number_col, symbol_col, pos_col, forces_col, min_cols, layout, spec_error } =
+    parse_extxyz_columns(comment)
+  if (spec_error) throw new Error(`XYZ ${frame_label}: ${spec_error}`)
   const elements: ElementSymbol[] = []
   const positions: number[][] = []
   const forces: number[][] = []

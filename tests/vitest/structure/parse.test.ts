@@ -979,6 +979,26 @@ O2   O   0.410  0.140  0.880  1.000`
       [[0.5, 0.5, 0.5]],
     ],
     [
+      // CIF reserved words are case-insensitive, so `DATA_phase_1` opens a block just as
+      // `data_` does. Matching raw text left it inside the global block, whose 20 Å cell and
+      // inversion op then applied to a phase that declares neither.
+      `CIF with uppercase reserved words`,
+      [
+        `DATA_global`,
+        cif_cell(20),
+        `LOOP_`,
+        `_symmetry_equiv_pos_as_xyz`,
+        `'x, y, z'`,
+        `'-x, -y, -z'`,
+        `DATA_phase_1`,
+        cell5,
+        site_loop,
+        `Na1 Na 0.5 0.5 0.5`,
+      ].join(`\n`),
+      `multi-block-upper.cif`,
+      [[0.5, 0.5, 0.5]],
+    ],
+    [
       `mmCIF`,
       `data_global\n${mmcif_cell_tags(20)}\n#\n${mmcif_cell(5, `fract`, [
         `Si 0.0 0.0 0.0`,

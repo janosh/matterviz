@@ -254,16 +254,20 @@ export function parse_extxyz_columns(comment: string): {
   forces_col: number
   min_cols: number
   layout: Record<string, ExtxyzColumn> | null
-  // A declared `pos` that is not exactly 3 columns. Honouring it would read the next field
-  // (typically forces[0]) as z, and falling back to the plain `symbol x y z` shape reads the
-  // very same wrong column — so callers must reject the frame outright.
-  malformed_pos: boolean
+  // Why a declared `Properties=` spec cannot be used, or null when there is none to use or it
+  // is sound. A spec that does not resolve to exactly one 3-column `pos` leaves every column
+  // offset unknown: honouring it reads the next field (typically forces[0]) as z, and falling
+  // back to the plain `symbol x y z` shape reads that very same wrong column — so callers must
+  // reject the frame outright rather than pick between two guesses.
+  spec_error: string | null
 } {
-  const fields =
-    /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
+  const spec = /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1]
+  const fields = spec?.split(`:`) ?? []
   let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
-    const ncols = Math.trunc(Number(fields[idx + 2]))
+    // Not truncated first: `Number.isInteger` then passes anything finite, so `forces:R:3.7`
+    // became 3 columns and every offset after it silently shifted by the rounding
+    const ncols = Number(fields[idx + 2])
     if (Number.isInteger(ncols) && ncols > 0) {
       layout[fields[idx].toLowerCase()] = {
         offset,
@@ -284,7 +288,13 @@ export function parse_extxyz_columns(comment: string): {
     forces_col,
     min_cols: Math.max(pos_col + 3, species_col + 1),
     layout: layout && Object.keys(layout).length > 0 ? layout : null,
-    malformed_pos: Boolean(layout?.pos && layout.pos.ncols !== 3),
+    // Checked on the whole spec, not on `layout.pos`: a zero, fractional or non-numeric count
+    // anywhere in the spec (`pos:R:0`, `id:I:x:species:S:1:pos:R:3`) discards `layout`
+    // altogether, which used to read as "no spec at all" and fall back silently.
+    spec_error:
+      spec === undefined || layout?.pos?.ncols === 3
+        ? null
+        : `Properties=${spec} does not declare a 3-column pos field`,
   }
 }
 

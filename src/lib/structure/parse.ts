@@ -23,6 +23,8 @@ import {
   element_from_candidates,
   get_parse_errors,
   guard_parse,
+  is_cif_data_header,
+  is_cif_loop_header,
   iter_cif_loops,
   make_lattice,
   matrix3x3_from_rows,
@@ -591,7 +593,7 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
       in_text_field = true
       continue
     }
-    if (line === `loop_` || line.startsWith(`data_`)) break
+    if (is_cif_loop_header(line) || is_cif_data_header(line)) break
     if (!line || line.startsWith(`#`)) continue
     if (line.startsWith(`_`)) {
       // `_tag value` is self-contained; a bare `_tag` still owes us its value
@@ -1099,7 +1101,7 @@ function parser_for_content(content: string): FormatParser | null {
   if (lines.length >= 8 && !isNaN(parse_leading_num(lines[1]))) return parse_poscar
 
   const has_keyword = (pattern: RegExp) => lines.some((line) => pattern.test(line))
-  if (has_keyword(/^data_|_cell_length_|_atom_site_|^\s*loop_\s*$/)) return parse_cif
+  if (has_keyword(/^data_|_cell_length_|_atom_site_|^\s*loop_\s*$/i)) return parse_cif
   // `phonon_supercell:` and `phonon_primitive_cell:` are covered by the shorter keywords
   if (has_keyword(/phono3py:|phonopy:|primitive_cell:|supercell:/)) return parse_phonopy_yaml
   return null
