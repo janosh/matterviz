@@ -112,8 +112,8 @@
     TrajectoryLinesStats,
     TrajectoryLineWrapMode,
   } from './trajectory-lines'
+  import { trajectory_trail_anchors } from './trajectory-lines'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
-  import { trajectory_trail_anchors } from '$lib/structure/trajectory-lines'
 
   type EditableAtomHitTarget = {
     site_idx: number
@@ -1124,16 +1124,13 @@
       : DEFAULTS.structure.fov,
   )
 
-  const zoom_for = (extent: number) =>
-    ortho_zoom_for_extent(extent, width, height, initial_zoom)
   // False until the container has a size; a fit against 0x0 is meaningless
   const measured = () => width > 0 && height > 0
-
   // The fit follows resizes and the explicit camera (re)fits below only; a trajectory frame
   // never moves it (see create_fit_zoom for why untracking the extent alone is not enough).
   const fit = create_fit_zoom({
     extent: () => fit_extent,
-    zoom_for,
+    zoom_for: (extent) => ortho_zoom_for_extent(extent, width, height, initial_zoom),
     measured,
     initial_zoom: () => initial_zoom,
   })

@@ -18,39 +18,23 @@ const two_frames = (properties: string, columns: string[][]): string =>
     ])
     .join(`\n`)
 
-const species_first = two_frames(`species:S:1:pos:R:3`, [[`Si`], [`Si`]])
-const id_first = two_frames(`id:I:1:species:S:1:pos:R:3`, [
-  [`1`, `Si`],
-  [`2`, `Si`],
-])
-
+// oxfmt-ignore
 test.each([
-  [`species first`, species_first],
-  [`an id column before species`, id_first],
+  [`species first`, two_frames(`species:S:1:pos:R:3`, [[`Si`], [`Si`]])],
+  [`an id column before species`, two_frames(`id:I:1:species:S:1:pos:R:3`, [[`1`, `Si`], [`2`, `Si`]])],
+  // `Properties=Z:I:1:pos:R:3` names atoms by atomic number - there is no species column for
+  // the `symbol x y z` shape to find, and no symbol for the frame builder to resolve either.
+  [`atomic numbers and no species column`, two_frames(`Z:I:1:pos:R:3`, [[`14`], [`14`]])],
 ])(`indexes and parses both frames of an extXYZ with %s`, (_case, text) => {
   const collector = create_warning_collector()
   expect(index_xyz_frames(text, collector.warn)).toHaveLength(2)
   expect(count_xyz_frames(text)).toBe(2)
   const { frames } = parse_xyz_trajectory(text, collector)
   expect(frames).toHaveLength(2)
-  expect(frames.map((frame) => frame.structure.sites.length)).toEqual([2, 2])
   expect(frames.map((frame) => frame.structure.sites[0].xyz[2])).toEqual([0, 0.1])
-  expect(frames.map((frame) => frame.structure.sites[1].species[0].element)).toEqual([
-    `Si`,
-    `Si`,
-  ])
-})
-
-// `Properties=Z:I:1:pos:R:3` names atoms by atomic number - there is no species column for
-// the `symbol x y z` shape to find, and no symbol for the frame builder to resolve either.
-test(`reads atomic numbers from a layout with no species column`, () => {
-  const text = two_frames(`Z:I:1:pos:R:3`, [[`14`], [`14`]])
-  const { frames } = parse_xyz_trajectory(text, create_warning_collector())
-  expect(frames).toHaveLength(2)
-  expect(frames[0].structure.sites.map((site) => site.species[0].element)).toEqual([
-    `Si`,
-    `Si`,
-  ])
+  // every frame must hold exactly the two Si the layout declares
+  expect(frames.map((frame) => frame.structure.sites.map((site) => site.species[0].element)))
+    .toEqual([[`Si`, `Si`], [`Si`, `Si`]])
 })
 
 // The layout-driven check must stay strict: a stray number on its own line inside a frame,

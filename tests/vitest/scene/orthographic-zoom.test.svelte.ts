@@ -154,15 +154,17 @@ test(`reset_to_fit snaps to the new fit in the same flush instead of rescaling b
 // not schedule it) but still read the live extent whenever something else re-ran it — hover
 // revealing the gizmo hands StructureScene a fresh scene_props object, which does exactly that.
 // A resize stands in for that re-run here.
+type FitInputs = { extent: number; width: number; measured: boolean }
+
 const with_fit_zoom = (
   run: (
     fit: ReturnType<typeof create_fit_zoom>,
-    inputs: { extent: number; width: number; measured: boolean },
+    set: (patch: Partial<FitInputs>) => void,
   ) => void,
   { initial_zoom = 1, measured = true } = {},
 ) => {
   const cleanup = $effect.root(() => {
-    const inputs = $state({ extent: 10, width: 600, measured })
+    const inputs: FitInputs = $state({ extent: 10, width: 600, measured })
     const fit = create_fit_zoom({
       extent: () => inputs.extent,
       zoom_for: (extent) => inputs.width / extent,
@@ -170,39 +172,39 @@ const with_fit_zoom = (
       initial_zoom: () => initial_zoom,
     })
     flushSync()
-    run(fit, inputs)
+    run(fit, (patch) => flushSync(() => Object.assign(inputs, patch)))
   })
   cleanup()
 }
 
 test(`the fit is pinned to its extent: only refit() adopts new content`, () => {
-  with_fit_zoom((fit, inputs) => {
+  with_fit_zoom((fit, set) => {
     expect(fit.zoom).toBe(60)
 
     // next trajectory frame, cell 3x larger: the framing must hold
-    flushSync(() => (inputs.extent = 30))
+    set({ extent: 30 })
     expect(fit.zoom).toBe(60)
 
     // and must still hold when a resize re-runs the effect: it rescales against the pinned
     // extent, so a round trip lands back on the original zoom rather than on 900/30 = 30
-    flushSync(() => (inputs.width = 900))
+    set({ width: 900 })
     expect(fit.zoom).toBe(90)
-    flushSync(() => (inputs.width = 600))
+    set({ width: 600 })
     expect(fit.zoom).toBe(60)
 
     // an explicit re-frame (new series, camera reset, projection change) adopts the extent
     fit.refit()
     expect(fit.zoom).toBe(20)
-    flushSync(() => (inputs.width = 900))
+    set({ width: 900 })
     expect(fit.zoom).toBe(30)
   })
 })
 
 test(`an unmeasured container holds the initial zoom until it has a size`, () => {
   with_fit_zoom(
-    (fit, inputs) => {
+    (fit, set) => {
       expect(fit.zoom).toBe(42)
-      flushSync(() => (inputs.measured = true))
+      set({ measured: true })
       expect(fit.zoom).toBe(60)
     },
     { initial_zoom: 42, measured: false },

@@ -56,35 +56,33 @@ const current_mesh = (): InstancedMesh => threlte_stub.nodes.at(-1)?.props.is as
 const slot_color = (slot_idx: number): number[] => {
   const color = new Color()
   current_mesh().getColorAt(slot_idx, color)
-  return [color.r, color.g, color.b]
+  return color.toArray()
 }
 
-const expected_rgb = (css: string): number[] => {
+const linear_color = (css: string): Color => {
   const color = new Color()
   set_linear_css_color(css, color)
-  return [color.r, color.g, color.b]
+  return color
 }
 
 test(`re-colors reused instance slots when the composition changes mid-scrub`, () => {
   const props = mount_atoms(ch4())
   const mesh = current_mesh()
-  expect(slot_color(0)).toEqual(expected_rgb(`#000000`))
+  expect(slot_color(0)).toEqual(linear_color(`#000000`).toArray())
 
   // scrub to a frame with fewer atoms: same mesh, slot 0 is a different element now
   props.atoms = h2o()
   flushSync()
   expect(current_mesh()).toBe(mesh) // grow-only capacity, so no new mesh hides the staleness
   expect(mesh.count).toBe(3)
-  expect(slot_color(0)).toEqual(expected_rgb(`#ff0000`))
+  expect(slot_color(0)).toEqual(linear_color(`#ff0000`).toArray())
 
   // measure mode desaturates the same way mid-scrub
   props.ghost = true
   flushSync()
-  const ghosted = new Color()
-  set_linear_css_color(`#ff0000`, ghosted)
-  ghosted.lerp(new Color(0x999999), 0.4)
+  const ghosted = linear_color(`#ff0000`).lerp(new Color(0x999999), 0.4)
   // instanceColor is a f32 buffer, so the readback rounds the f64 expectation
-  expect(slot_color(0)).toEqual([ghosted.r, ghosted.g, ghosted.b].map(Math.fround))
+  expect(slot_color(0)).toEqual(ghosted.toArray().map(Math.fround))
 })
 
 test(`skips the color upload while only positions move`, () => {

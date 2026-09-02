@@ -495,7 +495,7 @@ describe(`scales`, () => {
           [2023, 0, 29],
         ],
       },
-    ])(`time ticks for ticks=$ticks`, ({ ticks, start, end, expected }) => {
+    ])(`time ticks for ticks=$ticks from $start`, ({ ticks, start, end, expected }) => {
       const domain: Vec2 = [
         new Date(...(start as [number, number, number])).getTime(),
         new Date(...(end as [number, number, number])).getTime(),

@@ -509,15 +509,11 @@ describe(`PlotAxis`, () => {
         },
       },
     })
+    const lines_of = (text: Element) => [...text.querySelectorAll(`tspan`)]
     const text = query(svg, `g.tick text`)
     expect(text.getAttribute(`aria-label`)).toBe(`Formation Energy`)
-    expect([...text.querySelectorAll(`tspan`)].map((line) => line.textContent)).toEqual([
-      `Formation`,
-      `Energy`,
-    ])
-    expect([...text.querySelectorAll(`tspan`)].map((line) => line.getAttribute(`dy`))).toEqual(
-      [`-8`, `16`],
-    )
+    expect(lines_of(text).map((line) => line.textContent)).toEqual([`Formation`, `Energy`])
+    expect(lines_of(text).map((line) => line.getAttribute(`dy`))).toEqual([`-8`, `16`])
 
     // Regression: the vertical wrap width was the NARROWEST label on the axis, so the 7px `E`
     // tick shrank the wrap target for every other label and over-wrapped them. The band cap
@@ -532,10 +528,7 @@ describe(`PlotAxis`, () => {
     })
     const [short_text, wide_text] = [...mixed.querySelectorAll(`g.tick text`)]
     expect(short_text.getAttribute(`aria-label`)).toBe(`E`)
-    expect([...wide_text.querySelectorAll(`tspan`)].map((line) => line.textContent)).toEqual([
-      `Band`,
-      `Gap Ev`,
-    ])
+    expect(lines_of(wide_text).map((line) => line.textContent)).toEqual([`Band`, `Gap Ev`])
   })
 
   test(`edge labels anchor inward`, async () => {

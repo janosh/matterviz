@@ -520,22 +520,19 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     on_drag_move: opts.on_drag_move,
     on_rect_select: opts.on_rect_select,
     on_rect_zoom: (start, current) => {
-      // Gate x2/y2 on real data: their scales are [0, 1] sentinels otherwise, so inverting
-      // would store a phantom range.
-      const commit = (axis: FacetAxis, range: Vec2 | null) => {
+      // Passing the live range keeps each axis pointing the way it already does, so zooming a
+      // reversed axis does not silently flip the plot. Gate x2/y2 on real data: their scales
+      // are [0, 1] sentinels otherwise, so inverting would store a phantom range.
+      const zoom_axis = (axis: FacetAxis, from_px: number, to_px: number) => {
+        const range = invert_rect_range(scales[axis], from_px, to_px, ranges.current[axis])
         if (range) synced_facet.update_range(axis, range)
+        return range
       }
-      // each axis keeps the direction it currently has, so zooming a reversed axis does not
-      // silently flip the plot
-      const zoom_to = (axis: FacetAxis, from_px: number, to_px: number) =>
-        invert_rect_range(scales[axis], from_px, to_px, ranges.current[axis])
-      const next_x = zoom_to(`x`, start.x, current.x)
-      if (!next_x) return
-      commit(`x`, next_x)
-      commit(`x2`, opts.has_x2() ? zoom_to(`x2`, start.x, current.x) : null)
-      commit(`y`, zoom_to(`y`, start.y, current.y))
-      // A synced y2 already followed the y commit above; the bridge drops this one
-      commit(`y2`, opts.has_y2() ? zoom_to(`y2`, start.y, current.y) : null)
+      if (!zoom_axis(`x`, start.x, current.x)) return
+      if (opts.has_x2()) zoom_axis(`x2`, start.x, current.x)
+      zoom_axis(`y`, start.y, current.y)
+      // A synced y2 already followed the y zoom above; the bridge drops this one
+      if (opts.has_y2()) zoom_axis(`y2`, start.y, current.y)
     },
     on_reset: () => {
       if (facet.reset_ranges()) return

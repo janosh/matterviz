@@ -389,44 +389,26 @@ describe(`compare_rows`, () => {
     expect(order([`b`, `B`, `a`])).toEqual([`a`, `b`, `B`]) // case-insensitive keeps input order for ties
   })
 
-  it(`sorts dates by time and honours later criteria on ties`, () => {
-    const data: RowData[] = [
-      { when: new Date(2024, 0, 2), name: `b` },
-      { when: new Date(2024, 0, 1), name: `z` },
-      { when: new Date(2024, 0, 2), name: `a` },
-    ]
-    const sorted = data.toSorted((row1, row2) =>
-      compare_rows(row1, row2, [
-        { key: `when`, ascending: false },
-        { key: `name`, ascending: true },
-      ]),
-    )
-    expect(sorted.map((row) => row.name)).toEqual([`a`, `b`, `z`])
-  })
-
-  it(`honours later criteria when both primary values are invalid`, () => {
-    const data: RowData[] = [
-      { score: NaN, name: `b` },
-      { score: NaN, name: `a` },
-      { score: 1, name: `c` },
-    ]
-    const criteria: SortCriterion[] = [
-      { key: `score`, ascending: true },
-      { key: `name`, ascending: true },
-    ]
-    const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
+  // Every case sorts on a primary key that ties, so only a working secondary criterion can
+  // produce the expected name order
+  const by_name: SortCriterion = { key: `name`, ascending: true }
+  const by_score: SortCriterion = { key: `score`, ascending: true }
+  // oxfmt-ignore
+  it.each<[string, RowData[], SortCriterion[], string[]]>([
+    [`dates compare by time`,
+      [{ when: new Date(2024, 0, 2), name: `b` }, { when: new Date(2024, 0, 1), name: `z` }, { when: new Date(2024, 0, 2), name: `a` }],
+      [{ key: `when`, ascending: false }, by_name], [`a`, `b`, `z`]],
     // both-NaN rows sink together but still order by name among themselves
-    expect(sorted.map((row) => row.name)).toEqual([`c`, `a`, `b`])
+    [`both primary values are invalid`,
+      [{ score: NaN, name: `b` }, { score: NaN, name: `a` }, { score: 1, name: `c` }],
+      [by_score, by_name], [`c`, `a`, `b`]],
     // null vs undefined is equally invalid, so the secondary criterion decides
-    const mixed: RowData[] = [
-      { score: null, name: `b` },
-      { score: undefined, name: `a` },
-    ]
-    expect(
-      mixed
-        .toSorted((row1, row2) => compare_rows(row1, row2, criteria))
-        .map((row) => row.name),
-    ).toEqual([`a`, `b`])
+    [`null and undefined meet`,
+      [{ score: null, name: `b` }, { score: undefined, name: `a` }],
+      [by_score, by_name], [`a`, `b`]],
+  ])(`honours later criteria when %s`, (_case, data, criteria, expected) => {
+    const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
+    expect(sorted.map((row) => row.name)).toEqual(expected)
   })
 })
 

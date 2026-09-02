@@ -42,6 +42,8 @@ const mount_sized_scatter_plot = (
   props: Partial<ComponentProps<typeof ScatterPlot>>,
 ): Promise<HTMLElement> => mount_sized(ScatterPlot, props, { selector: `.scatter` })
 
+const axis_tick_labels = (plot: HTMLElement, side: `x` | `y` | `y2`): (string | null)[] =>
+  [...plot.querySelectorAll(`.${side}-axis .tick text`)].map((label) => label.textContent)
 const marker_radius = (marker: Element): number => {
   const path = marker.getAttribute(`d`) ?? ``
   const match = /^M(?<radius>-?\d*\.?\d+(?:e-?\d+)?),0/i.exec(path)
@@ -1101,25 +1103,23 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot(
       bind_props({ point_tween: { duration: 0 }, legend: null, show_controls: false }, state),
     )
-    const tick_labels = (axis: `x` | `y`) =>
-      [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map((label) => label.textContent)
-    expect(tick_labels(`x`)).toContain(`10`)
-    expect(tick_labels(`x`)).not.toContain(`100`)
-    expect(tick_labels(`y`)).not.toContain(`50`)
+    expect(axis_tick_labels(plot, `x`)).toContain(`10`)
+    expect(axis_tick_labels(plot, `x`)).not.toContain(`100`)
+    expect(axis_tick_labels(plot, `y`)).not.toContain(`50`)
 
     state.series[1].visible = true
     flushSync()
     await tick()
-    expect(tick_labels(`x`)).toContain(`100`)
-    expect(tick_labels(`y`)).toContain(`50`)
+    expect(axis_tick_labels(plot, `x`)).toContain(`100`)
+    expect(axis_tick_labels(plot, `y`)).toContain(`50`)
 
     // Every series hidden: no data backs the auto ranges, so the view stays put
     state.series[0].visible = false
     state.series[1].visible = false
     flushSync()
     await tick()
-    expect(tick_labels(`x`)).toContain(`100`)
-    expect(tick_labels(`y`)).toContain(`50`)
+    expect(axis_tick_labels(plot, `x`)).toContain(`100`)
+    expect(axis_tick_labels(plot, `y`)).toContain(`50`)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(0)
   })
 
@@ -1708,10 +1708,8 @@ describe(`ScatterPlot`, () => {
     expect(marker_xs).toHaveLength(2)
     expect(marker_xs[0]).toBeCloseTo(clip.x + clip.width * 0.25, 6)
     expect(marker_xs[1]).toBeCloseTo(clip.x + clip.width * 0.65, 6)
-    const tick_labels = () =>
-      [...plot.querySelectorAll(`.x-axis .tick text`)].map((label) => label.textContent)
-    expect(tick_labels()).toContain(`120`)
-    expect(tick_labels()).not.toContain(`0`)
+    expect(axis_tick_labels(plot, `x`)).toContain(`120`)
+    expect(axis_tick_labels(plot, `x`)).not.toContain(`0`)
     expect(state.view?.x?.[0]).toBeCloseTo(25, 6)
     expect(state.view?.x?.[1]).toBeCloseTo(125, 6)
     expect(state.view?.y).toEqual([0, 10])
@@ -1719,8 +1717,8 @@ describe(`ScatterPlot`, () => {
     // the host scrolls the view back through the same prop
     state.view = { ...state.view, x: [0, 100] }
     await tick()
-    expect(tick_labels()).toContain(`0`)
-    expect(tick_labels()).not.toContain(`120`)
+    expect(axis_tick_labels(plot, `x`)).toContain(`0`)
+    expect(axis_tick_labels(plot, `x`)).not.toContain(`120`)
     expect(state.x_axis.range).toEqual([0, 100])
   })
 
@@ -1728,24 +1726,12 @@ describe(`ScatterPlot`, () => {
   // range-sync effect assigns zoom_y_range a fresh array every run, and the y2-sync
   // branch reads it back - a tracked read would re-trigger the effect forever. Svelte's
   // loop guard logs via console.error and throws, so a clean mount proves the fix.
-  test(`explicit y range + y2 sync mounts without a reactive loop`, async () => {
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    await mount_sized_scatter_plot({
-      series: [
-        { x: [1, 2, 3], y: [1, 2, 3] },
-        { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
-      ],
-      y_axis: { range: [0, 5] as Vec2 },
-      y2_axis: { sync: `synced` as const },
-    })
-    expect(error_spy).not.toHaveBeenCalled()
-  })
-
-  // A synced y2 is derived from y, so every writer of y has to re-derive it. Panning, rect
-  // zoom and reset all do; the `view` prop reached ranges.current.y through the raw facet
+  // A synced y2 is also derived from y, so every writer of y has to re-derive it. Panning,
+  // rect zoom and reset all do; the `view` prop reached ranges.current.y through the raw facet
   // bridge and skipped the sync, leaving y2 stale until something unrelated (new data, a
   // tick-count edit) re-ran the range effect and snapped it over in one jump.
-  test(`a host writing view.y re-derives a synced y2`, async () => {
+  test(`explicit y range + synced y2: no loop, view.y writes re-derive y2`, async () => {
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
     const state = $state<{ view: Partial<AxisRanges> | undefined }>({ view: undefined })
     const plot = await mount_sized_scatter_plot(
       bind_props(
@@ -1763,15 +1749,15 @@ describe(`ScatterPlot`, () => {
         state,
       ),
     )
-    const ticks = (side: `y` | `y2`) =>
-      [...plot.querySelectorAll(`.${side}-axis .tick text`)].map((label) => label.textContent)
-    expect(ticks(`y2`)).toEqual(ticks(`y`))
+    expect(error_spy).not.toHaveBeenCalled()
+    expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
 
     // the host scrolls only y; y2 has to come along in the same flush
     state.view = { y: [0, 5] }
     await tick()
-    expect(ticks(`y`)).toContain(`5`)
-    expect(ticks(`y`)).not.toContain(`10`)
-    expect(ticks(`y2`)).toEqual(ticks(`y`))
+    expect(axis_tick_labels(plot, `y`)).toContain(`5`)
+    expect(axis_tick_labels(plot, `y`)).not.toContain(`10`)
+    expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
+    expect(error_spy).not.toHaveBeenCalled()
   })
 })

@@ -298,35 +298,26 @@ describe(`anchoring trails to the displayed atoms`, () => {
     }
   })
 
+  const nacl = make_crystal(5, [
+    [`Na`, [0, 0, 0]],
+    [`Cl`, [0.5, 0.5, 0.5]],
+  ])
+
   // What StructureScene feeds `anchor_positions`: image atoms are appended after the base
   // sites (show_image_atoms defaults to on), so keying on an exact site count left every
   // periodic structure unanchored and drew each trail a lattice vector off its sphere.
   test(`derives anchors from the base sites of a structure carrying PBC image atoms`, () => {
-    const structure = make_crystal(5, [
-      [`Na`, [0, 0, 0]],
-      [`Cl`, [0.5, 0.5, 0.5]],
-    ])
-    const imaged = get_pbc_image_sites(structure)
-    expect(imaged.sites.length).toBeGreaterThan(structure.sites.length)
+    const imaged = get_pbc_image_sites(nacl)
+    expect(imaged.sites.length).toBeGreaterThan(nacl.sites.length)
 
-    const anchors = trajectory_trail_anchors(imaged.sites, structure.sites.length)
+    const anchors = trajectory_trail_anchors(imaged.sites, nacl.sites.length)
     expect(anchors).toEqual(new Float64Array([0, 0, 0, 2.5, 2.5, 2.5]))
   })
 
   test.each([
     // [case, sites, n_atoms] -> null: nothing here can be matched to the stream's atom order
     [`fewer displayed sites than stream atoms`, make_crystal(5, [[`Na`, [0, 0, 0]]]).sites, 2],
-    [
-      `a supercell, which renumbers every atom`,
-      make_supercell(
-        make_crystal(5, [
-          [`Na`, [0, 0, 0]],
-          [`Cl`, [0.5, 0.5, 0.5]],
-        ]),
-        [2, 1, 1],
-      ).sites,
-      2,
-    ],
+    [`a supercell, which renumbers every atom`, make_supercell(nacl, [2, 1, 1]).sites, 2],
   ])(`returns null for %s`, (_case, sites, n_atoms) => {
     expect(trajectory_trail_anchors(sites, n_atoms)).toBeNull()
   })

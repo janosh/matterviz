@@ -245,7 +245,6 @@ export type ExtxyzColumn = { offset: number; ncols: number; type: string }
 // Column layout an extXYZ comment line declares. Without a `Properties=` spec (plain XYZ)
 // `layout` is null and the caller falls back to the `symbol x y z` shape.
 export function parse_extxyz_columns(comment: string): {
-  species_col: number
   // Column holding the atomic number when the layout names atoms that way instead of by
   // symbol (`Properties=Z:I:1:pos:R:3`), else -1
   atomic_number_col: number
@@ -279,7 +278,6 @@ export function parse_extxyz_columns(comment: string): {
   const pos_col = layout?.pos?.offset ?? 1
   const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
   return {
-    species_col,
     atomic_number_col,
     symbol_col: atomic_number_col >= 0 ? atomic_number_col : species_col,
     pos_col,
@@ -297,19 +295,17 @@ export function parse_extxyz_columns(comment: string): {
 function make_xyz_atom_line_test(
   comment: string,
 ): (text: string, from?: number, to?: number) => boolean {
-  const { species_col, pos_col, min_cols, layout } = parse_extxyz_columns(comment)
+  const { pos_col, min_cols, layout } = parse_extxyz_columns(comment)
   if (!layout) return is_xyz_atom_line
   // Only a declared STRING species column can be checked for a symbol shape; `Z:I:1` names
-  // the atom with a number, so there is nothing non-numeric to assert. Deliberately not the
-  // `symbol_col` parse_extxyz_columns returns, which is whichever column names the element.
-  const text_species_col = layout.species?.type === `s` ? species_col : -1
+  // the atom with a number, so there is nothing non-numeric to assert
+  const species_col = layout.species?.type === `s` ? layout.species.offset : -1
   return (text, from = 0, to = text.length) => {
     const scanner = atom_line_scanner
     if (scanner.scan(text, from, to) < min_cols) return false
     if (
-      text_species_col >= 0 &&
-      (scanner.token_length(text_species_col) > 3 ||
-        !Number.isNaN(scanner.num(text_species_col)))
+      species_col >= 0 &&
+      (scanner.token_length(species_col) > 3 || !Number.isNaN(scanner.num(species_col)))
     )
       return false
     return (

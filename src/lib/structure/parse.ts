@@ -633,37 +633,34 @@ export const parse_cif = (content: string): Crystal | null =>
       return null
     }
 
-    // Find the first atom-site loop that has coordinates (fract or Cartn) and data rows
     const lines = text.split(`\n`)
     const block_ids = cif_block_ids(lines)
-    let header_indices: Record<string, number> = {}
-    let coord_cols: ReturnType<typeof cif_coord_columns> = null
-    let atom_block_id = 0
-    const atom_data_lines: string[] = []
 
-    for (const { headers, data_start } of iter_cif_loops(lines)) {
-      if (!headers.some((header) => header.includes(`_atom_site_`))) continue
-      const indices = build_cif_atom_site_header_indices(headers)
-      const columns = cif_coord_columns(indices)
-      if (!columns) continue
-      const rows = cif_loop_lines(lines, data_start)
-      if (rows.length === 0) continue
-      header_indices = indices
-      coord_cols = columns
-      atom_block_id = block_ids[data_start]
-      atom_data_lines.push(...rows)
-      break
+    // The first atom-site loop that has coordinates (fract or Cartn) and data rows
+    const find_atom_loop = () => {
+      for (const { headers, data_start } of iter_cif_loops(lines)) {
+        if (!headers.some((header) => header.includes(`_atom_site_`))) continue
+        const header_indices = build_cif_atom_site_header_indices(headers)
+        const coord_cols = cif_coord_columns(header_indices)
+        if (!coord_cols) continue
+        const atom_data_lines = cif_loop_lines(lines, data_start)
+        if (atom_data_lines.length === 0) continue
+        return { header_indices, coord_cols, atom_data_lines, block_id: block_ids[data_start] }
+      }
+      return null
     }
 
-    if (!coord_cols || atom_data_lines.length === 0) {
+    const atom_loop = find_atom_loop()
+    if (!atom_loop) {
       diag_error(`No valid atom site loop found in CIF file`)
       return null
     }
+    const { header_indices, coord_cols, atom_data_lines, block_id } = atom_loop
     // Everything else describing these atoms — cell, space group, symops, atom-type counts —
     // is read from the data block the atom-site loop lives in. A multi-block file (a global
     // block plus one per phase) declares a different cell and space group in each, so
     // reading them file-wide picked whichever came first, not the one that applies.
-    const block_lines = lines.filter((_line, idx) => block_ids[idx] === atom_block_id)
+    const block_lines = lines.filter((_line, idx) => block_ids[idx] === block_id)
 
     // Full pass over the block's loops: CIF imposes no ordering on data items, so a symop
     // loop is as likely to follow the atom-site loop as to precede it

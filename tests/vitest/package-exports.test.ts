@@ -270,17 +270,13 @@ describe(`svelte.config preprocessors`, () => {
     [`src/lib/brillouin/BrillouinZone.svelte`, false],
     [`src/routes/acknowledgements/+page.md`, true],
     [`src/routes/(demos)/structure/+page.md`, true],
-  ])(`%s gets injected heading ids: %s`, async (filename, expected) => {
-    const result = await markup({ content, filename: join(repo_root, filename) })
-    expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(expected)
-  })
-
-  // Windows hands the preprocessor a back-slashed path, which a `/`-only pattern reads as a
-  // site file — the packaged components would then ship injected ids
-  test(`a Windows-style src\\lib path is still recognised as a library file`, async () => {
-    const filename = String.raw`C:\repo\src\lib\brillouin\BrillouinZone.svelte`
+    // Windows hands the preprocessor a back-slashed absolute path, which a `/`-only pattern
+    // reads as a site file — the packaged components would then ship injected ids
+    [String.raw`C:\repo\src\lib\brillouin\BrillouinZone.svelte`, false],
+  ])(`%s gets injected heading ids: %s`, async (path, expected) => {
+    const filename = path.startsWith(`src/`) ? join(repo_root, path) : path
     const result = await markup({ content, filename })
-    expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(false)
+    expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(expected)
   })
 
   test.skipIf(!has_dist)(`packaged components carry no injected heading ids`, () => {

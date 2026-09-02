@@ -37,17 +37,15 @@ const starry_night = await create_highlighter(grammars).ready()
 // inside an {#each} (ChemPotDiagram's per-projection <h4>) repeats one id per iteration.
 // Site pages lose nothing - the heading_anchors attachment slugifies missing ids at runtime
 // with document-wide deduping.
-const site_heading_ids = (): PreprocessorGroup => {
-  const preprocessor = heading_ids()
-  return {
-    name: preprocessor.name,
-    // Separators normalized first: on Windows `input.filename` arrives back-slashed, so a
-    // `/`-only pattern misses src\lib and injects ids into packaged library components.
-    markup: (input) =>
-      /(?:^|\/)src\/lib\//.test(input.filename?.replaceAll(`\\`, `/`) ?? ``)
-        ? undefined
-        : preprocessor.markup(input),
-  }
+const heading_id_injector = heading_ids()
+const site_heading_ids: PreprocessorGroup = {
+  name: heading_id_injector.name,
+  // Separators normalized first: on Windows `input.filename` arrives back-slashed, so a
+  // `/`-only pattern misses src\lib and injects ids into packaged library components.
+  markup: (input) =>
+    /(?:^|\/)src\/lib\//.test(input.filename?.replaceAll(`\\`, `/`) ?? ``)
+      ? undefined
+      : heading_id_injector.markup(input),
 }
 
 export default {
@@ -59,7 +57,7 @@ export default {
       extensions: [`.svx`, `.md`],
       highlight: { highlighter: (code, lang) => render_block(starry_night, code, lang) },
     }),
-    site_heading_ids(), // runs after mdsvex converts markdown to HTML
+    site_heading_ids, // runs after mdsvex converts markdown to HTML
   ],
 
   kit: {

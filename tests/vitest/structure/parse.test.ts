@@ -570,6 +570,22 @@ const site_loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_f
 // same loop without _atom_site_type_symbol, so the element has to come from the label
 const label_loop = `loop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy`
 
+// `_cell.*` tags for a cubic mmCIF cell of edge `len` Å
+const mmcif_cell_tags = (len: number): string =>
+  [
+    ...[`a`, `b`, `c`].map((axis) => `_cell.length_${axis} ${len}`),
+    ...[`alpha`, `beta`, `gamma`].map((angle) => `_cell.angle_${angle} 90.0`),
+  ].join(`\n`)
+// Cubic mmCIF cell of edge `len` whose atom-site loop uses the given coordinate kind
+const mmcif_cell = (len: number, coord: `Cartn` | `fract`, rows: string[]) =>
+  `data_x\n${mmcif_cell_tags(len)}\nloop_\n_atom_site.type_symbol\n_atom_site.${coord}_x\n_atom_site.${coord}_y\n_atom_site.${coord}_z\n${rows.join(
+    `\n`,
+  )}`
+
+// Fractional coords rounded to 6 dp, the precision apply_symmetry_ops deduplicates on
+const rounded_abc = (sites: { abc: number[] }[]): number[][] =>
+  sites.map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
+
 // Exact composition of a parsed structure as element -> site count
 const element_counts = (result: { sites: { species: { element: string }[] }[] }) => {
   const counts: Record<string, number> = {}
@@ -722,9 +738,7 @@ O2   O   0.410  0.140  0.880  1.000`
 
     // round + sort coords so float error (e.g. R's 1/3) and order don't matter
     const sorted_coords = (sites: { abc: number[] }[]): number[][] =>
-      sites
-        .map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
-        .toSorted((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
+      rounded_abc(sites).toSorted((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
 
     // expand a single origin atom to the full centered cell, checking the exact
     // images so a swapped/missing centering vector can't pass on count alone
@@ -934,107 +948,86 @@ O2   O   0.410  0.140  0.880  1.000`
     const cif = `data_test\n${cell5}\nloop_\n${headers}\n${symop_rows.join(`\n`)}\n${site_loop}\nNa1 Na 0.1 0.2 0.3`
     const result = parse_cif(cif)
     assert(result, `Failed to parse CIF with ${_name} symops`)
-    const coords = result.sites.map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
-    expect(coords).toEqual([[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]])
+    expect(rounded_abc(result.sites)).toEqual([[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]])
     // the row keeps its label, symmetry-generated images get a unique `_k` suffix
     expect(result.sites.map((site) => site.label)).toEqual([`Na1`, `Na1_1`])
   })
 
-  // 6 dp is the same precision apply_symmetry_ops deduplicates on
-  const rounded_abc = (result: { sites: { abc: number[] }[] }) =>
-    result.sites.map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
-
   // CIF data items belong to the `data_` block they are written in. A multi-block file (a
-  // global block plus one block per phase, as PF-sd-1601634.cif has) may declare a
-  // different cell, space group and symop list in each, and only the block holding the
-  // atom-site loop describes those atoms. Reading them file-wide used to take the global
-  // block's 20 Å cell for a 5 Å phase (64x the volume) and expand its atoms by the global
-  // block's symops.
-  test(`reads cell and symops from the atom loop's own data_ block`, () => {
-    const cif = [
-      `data_global`,
-      cif_cell(20),
-      `loop_`,
-      `_symmetry_equiv_pos_as_xyz`,
-      `'x, y, z'`,
-      `'-x, -y, -z'`,
-      `data_phase_1`,
-      cell5,
-      site_loop,
-      `Na1 Na 0.5 0.5 0.5`,
-    ].join(`\n`)
-    const result = parse_cif(cif)
-    assert(result, `Failed to parse multi-block CIF`)
-    expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([5, 5, 5])
-    expect(rounded_abc(result)).toEqual([[0.5, 0.5, 0.5]])
-    expect(result.sites[0].xyz).toEqual([2.5, 2.5, 2.5])
-  })
-
-  // mmCIF is a CIF dialect, so data-block scoping applies there too. parse_mmcif has its own
-  // cell and symop readers, which used to scan the whole file and hand a `data_global` header
-  // block's 20 Å cell to a later phase's 5 Å atoms.
-  test(`mmCIF reads the cell from the atom loop's own data_ block`, () => {
-    const mmcif_cell_tags = (len: number) =>
+  // global block plus one block per phase, as PF-sd-1601634.cif has) may declare a different
+  // cell, space group and symop list in each, and only the block holding the atom-site loop
+  // describes those atoms. Reading them file-wide used to take the global block's 20 Å cell
+  // for a 5 Å phase (64x the volume) and expand its atoms by the global block's symops.
+  // mmCIF is a CIF dialect with its own cell and symop readers, which had the same bug.
+  test.each([
+    [
+      `CIF`,
+      // the global block's inversion op would double the phase's single atom
       [
-        ...[`a`, `b`, `c`].map((axis) => `_cell.length_${axis} ${len.toFixed(1)}`),
-        ...[`alpha`, `beta`, `gamma`].map((angle) => `_cell.angle_${angle} 90.0`),
-      ].join(`\n`)
-    const content = [
-      `data_global`,
-      mmcif_cell_tags(20),
-      `#`,
-      `data_phase_1`,
-      mmcif_cell_tags(5),
-      `loop_`,
-      `_atom_site.type_symbol`,
-      `_atom_site.fract_x`,
-      `_atom_site.fract_y`,
-      `_atom_site.fract_z`,
-      `Si 0.0 0.0 0.0`,
-      `Si 0.5 0.5 0.5`,
-    ].join(`\n`)
-    const result = parse_structure_file(content, `multi-block.mmcif`)
-    assert(`lattice` in result, `Failed to parse multi-block mmCIF`)
-    expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([5, 5, 5])
-    expect(rounded_abc(result)).toEqual([
-      [0, 0, 0],
-      [0.5, 0.5, 0.5],
-    ])
-    // 20 Å from the global block would put the second Si at [10, 10, 10]
-    expect(result.sites[1].xyz).toEqual([2.5, 2.5, 2.5])
-  })
+        `data_global`,
+        cif_cell(20),
+        `loop_`,
+        `_symmetry_equiv_pos_as_xyz`,
+        `'x, y, z'`,
+        `'-x, -y, -z'`,
+        `data_phase_1`,
+        cell5,
+        site_loop,
+        `Na1 Na 0.5 0.5 0.5`,
+      ].join(`\n`),
+      `multi-block.cif`,
+      [[0.5, 0.5, 0.5]],
+    ],
+    [
+      `mmCIF`,
+      `data_global\n${mmcif_cell_tags(20)}\n#\n${mmcif_cell(5, `fract`, [
+        `Si 0.0 0.0 0.0`,
+        `Si 0.5 0.5 0.5`,
+      ])}`,
+      `multi-block.mmcif`,
+      [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+      ],
+    ],
+  ])(
+    `%s reads cell and symops from the atom loop's own data_ block`,
+    (format, content, filename, expected_abc) => {
+      const result = parse_structure_file(content, filename)
+      assert(`lattice` in result, `Failed to parse multi-block ${format}`)
+      expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([5, 5, 5])
+      expect(rounded_abc(result.sites)).toEqual(expected_abc)
+      // 20 Å from the global block would put the last site at [10, 10, 10]
+      expect(result.sites.at(-1)?.xyz).toEqual([2.5, 2.5, 2.5])
+    },
+  )
 
-  // CIF imposes no ordering on data items, so a symop loop is equally valid before or after
-  // the atom-site loop; the atom loop used to end the scan, silently dropping a later one
-  test.each([`before`, `after`])(`collects a symop loop written %s the atom loop`, (order) => {
-    const symop_loop = `loop_\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n'-x, -y, -z'`
-    const atom_loop = `${site_loop}\nNa1 Na 0.1 0.2 0.3`
-    const body =
-      order === `before` ? `${symop_loop}\n${atom_loop}` : `${atom_loop}\n${symop_loop}`
-    const result = parse_cif(`data_test\n${cell5}\n${body}`)
-    assert(result, `Failed to parse CIF with symops ${order} the atom loop`)
-    expect(rounded_abc(result)).toEqual([
-      [0.1, 0.2, 0.3],
-      [0.9, 0.8, 0.7],
-    ])
-  })
+  // A symop loop declaring the identity, plus one more line: a second op, or the data item
+  // that ends the loop. `atom_loop` holds a single Na the inversion op maps to 0.9 0.8 0.7.
+  const symop_loop = (next: string) => `loop_\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n${next}`
+  const atom_loop = `${site_loop}\nNa1 Na 0.1 0.2 0.3`
 
-  // A loop's data ends at the next data name, and a semicolon text field's body is a value,
-  // not loop rows. Both used to be fed to the symop reader, generating phantom atoms.
+  // A symop loop is equally valid before or after the atom-site loop (CIF imposes no ordering
+  // on data items) and a loop's data ends at the next data name, so neither a key-value item
+  // nor a semicolon text field's body is a loop row. The atom loop used to end the scan,
+  // silently dropping a later symop loop, and every trailing item used to be fed to the symop
+  // reader, generating phantom atoms.
   // oxfmt-ignore
   test.each([
-    [`key-value item`, `_audit_creation_method 'Generated by Tool, version 1.0, on 2024-01-01'`],
-    [`semicolon text field`, `_audit_creation_method\n;Generated by Tool\n-x, -y, -z\n;`],
+    [`a symop loop written before the atom loop`, `${symop_loop(`'-x, -y, -z'`)}\n${atom_loop}`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]],
+    [`a symop loop written after the atom loop`, `${atom_loop}\n${symop_loop(`'-x, -y, -z'`)}`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]],
+    // the remaining cases place a trailing data item between the two loops: its `-x, -y, -z`
+    // is a value, not a symop row, so the atom must not be duplicated
+    [`a key-value item after the loop`, `${symop_loop(`_audit_creation_method 'Generated by Tool, version 1.0, on 2024-01-01'`)}\n${atom_loop}`, [[0.1, 0.2, 0.3]]],
+    [`a semicolon text field after the loop`, `${symop_loop(`_audit_creation_method\n;Generated by Tool\n-x, -y, -z\n;`)}\n${atom_loop}`, [[0.1, 0.2, 0.3]]],
     // a text field opens/closes only on `;` in COLUMN 1, so an indented one is still content
-    [`text field holding an indented semicolon`, `_audit_note\n;\n  ; still inside the field\n  -x, -y, -z\n;`],
+    [`a text field holding an indented semicolon`, `${symop_loop(`_audit_note\n;\n  ; still inside the field\n  -x, -y, -z\n;`)}\n${atom_loop}`, [[0.1, 0.2, 0.3]]],
     // CIF lets a data item put its value on the following line; that value is not a loop row
-    [`data item whose value is on the next line`, `_audit_creation_method\n'-x,-y,-z'`],
-  ])(`does not read a %s after a loop as loop data`, (_name, trailing_item) => {
-    const cif =
-      `data_test\n${cell5}\nloop_\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n${trailing_item}\n${site_loop}\nNa1 Na 0.1 0.2 0.3`
-    const result = parse_cif(cif)
-    assert(result, `Failed to parse CIF with trailing ${_name}`)
-    expect(rounded_abc(result)).toEqual([[0.1, 0.2, 0.3]])
+    [`a data item whose value is on the next line`, `${symop_loop(`_audit_creation_method\n'-x,-y,-z'`)}\n${atom_loop}`, [[0.1, 0.2, 0.3]]],
+  ])(`expands only real symop rows, with %s`, (_case, body, expected_abc) => {
+    const result = parse_cif(`data_test\n${cell5}\n${body}`)
+    assert(result, `Failed to parse CIF with ${_case}`)
+    expect(rounded_abc(result.sites)).toEqual(expected_abc)
   })
 
   // Disorder groups are mutually exclusive alternatives: only the lowest-numbered group is
@@ -2520,12 +2513,6 @@ describe(`molecular and LAMMPS structure formats`, () => {
     const result = parse_structure_file(content, `atoms.mmcif`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
   })
-
-  // Cubic mmCIF cell of edge `len` whose atom-site loop uses the given coordinate kind
-  const mmcif_cell = (len: number, coord: `Cartn` | `fract`, rows: string[]) =>
-    `data_x\n_cell.length_a ${len}\n_cell.length_b ${len}\n_cell.length_c ${len}\n_cell.angle_alpha 90.0\n_cell.angle_beta 90.0\n_cell.angle_gamma 90.0\nloop_\n_atom_site.type_symbol\n_atom_site.${coord}_x\n_atom_site.${coord}_y\n_atom_site.${coord}_z\n${rows.join(
-      `\n`,
-    )}`
 
   test(`mmCIF cell tags match exactly, so an _esd uncertainty cannot win`, () => {
     // some writers emit the uncertainty before the value it belongs to

@@ -312,8 +312,6 @@ export function build_trajectory_lines(
   }
 }
 
-// === Trajectory trail anchors ===
-
 // Cartesian trail-head targets in the position stream's atom order, or null when the
 // displayed sites cannot be matched to the stream's atoms one for one. Trails are built from
 // raw (unwrapped) stream coordinates while the spheres are drawn from the displayed

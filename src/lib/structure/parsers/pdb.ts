@@ -79,12 +79,10 @@ export const parse_pdb = (content: string): AnyStructure | null =>
       (line) => line.slice(0, 6).trim().toUpperCase() === `END`,
     )
     const lines = end_idx === -1 ? all_lines : all_lines.slice(0, end_idx)
-    const n_entries =
-      end_idx === -1
-        ? 1
-        : 1 +
-          Number(all_lines.slice(end_idx + 1).some((line) => line.slice(0, 6).trim() !== ``))
-    if (n_entries > 1) {
+    const has_further_entry =
+      end_idx !== -1 &&
+      all_lines.slice(end_idx + 1).some((line) => line.slice(0, 6).trim() !== ``)
+    if (has_further_entry) {
       diag_warn(`PDB contains multiple END-terminated entries; parsed the first`)
     }
 

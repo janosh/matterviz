@@ -147,7 +147,8 @@ export function create_fit_zoom(opts: {
   zoom_for: (extent: number) => number
   // False while the container has no size, as in create_orthographic_zoom.
   measured: () => boolean
-  // Held until the first measured run, when there is no viewport to fit to yet.
+  // Held until the first measured run, when there is no viewport to fit to yet. A thunk even
+  // though it is read once: a prop passed by value trips svelte's state_referenced_locally.
   initial_zoom: () => number
 }) {
   let fitted_extent = untrack(opts.extent)

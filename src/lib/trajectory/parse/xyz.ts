@@ -162,18 +162,17 @@ function parse_xyz_comment_signals(comment: string): Record<string, number[] | n
 }
 
 // Element of the atom on the scanned line: the symbol token, or the atomic number when the
-const integer_or_nan = (value: number): number => (Number.isInteger(value) ? value : NaN)
-
 // layout declares `Z` in place of a species column
 const scanned_element = (
   scanner: LineScanner,
   symbol_col: number,
   atomic_number_col: number,
-): ElementSymbol | undefined =>
-  atomic_number_col >= 0
-    ? // Integer only: truncating would turn a malformed `14.9` into silicon
-      ELEM_SYMBOLS[integer_or_nan(scanner.num(atomic_number_col)) - 1]
-    : elem_symbol_from_token(scanner.str(symbol_col))
+): ElementSymbol | undefined => {
+  if (atomic_number_col < 0) return elem_symbol_from_token(scanner.str(symbol_col))
+  // Integer only: truncating would turn a malformed `14.9` into silicon
+  const atomic_number = scanner.num(atomic_number_col)
+  return Number.isInteger(atomic_number) ? ELEM_SYMBOLS[atomic_number - 1] : undefined
+}
 
 // Symbols are case-normalised (`FE` -> `Fe`) like the structure parsers do. Unknown symbols
 // are skipped (with a warning) rather than rejected because real files carry them: ASE writes

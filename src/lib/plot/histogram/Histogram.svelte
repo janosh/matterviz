@@ -579,16 +579,15 @@
           : 1}
       >
         {#each hist.bins as bin, bin_idx (bin_idx)}
-          <!-- bin edges are always ascending, so a descending x range maps x0 to the RIGHT
-               pixel: take the min (as BarPlot's geometry does) rather than assuming x0 is left -->
+          <!-- min/abs on both axes (as BarPlot's compute_bar_rect does) rather than assuming
+               x0 is left of x1 and the baseline below the value: bin edges and the baseline are
+               data values, so a reversed range flips either pair and used to drop every bar -->
           {@const x0_px = x_scale(bin.x0)}
           {@const x1_px = x_scale(bin.x1)}
-          {@const bar_x = Math.min(x0_px, x1_px)}
-          {@const bar_width = Math.max(1, Math.abs(x1_px - x0_px))}
-          <!-- same for the value axis: a reversed count range puts the baseline ABOVE the
-               value pixel, and a signed height clamped at 0 dropped every bar -->
           {@const value_px = y_scale(bin.value)}
+          {@const bar_x = Math.min(x0_px, x1_px)}
           {@const bar_y = Math.min(baseline, value_px)}
+          {@const bar_width = Math.max(1, Math.abs(x1_px - x0_px))}
           {@const bar_height = Math.abs(baseline - value_px)}
           {#if bar_height > 0}
             <path

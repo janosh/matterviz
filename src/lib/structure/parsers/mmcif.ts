@@ -8,12 +8,12 @@ import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import {
   cell_frame,
+  cif_block_ids,
   diag_error,
   diag_warn,
   drop_placeholder_cell,
   element_from_candidates,
   guard_parse,
-  cif_block_ids,
   iter_cif_loops,
   parsed_result,
   parse_cif_uncertain_number,
