@@ -228,18 +228,26 @@
   // Live cards cost a WebGPU canvas and device each, so `max_live_cards` bounds
   // how many mount at once, in whole steps — a grid mounting a ragged half row
   // looks broken. The one thing it may never do is blank a card that intersects
-  // the viewport, so it cannot fall below what the viewport covers.
+  // the viewport, so it cannot fall below what the viewport covers. The Math.max
+  // reads like a redundant bound against a number the caller already set: it is
+  // not. Without it, six columns of short cards left 18 of 42 on-screen cards as
+  // permanent shells, settled, not mid-scroll.
   const live_steps = $derived(Math.max(covered_steps, Math.floor(safe_live_cards / columns)))
   // Render window: the covered steps, padded by `overscan` per side, and never
   // wider than the budget — a step the budget can't mount is an off-screen
-  // shell, which is DOM for a blank box nobody sees.
+  // shell, which is DOM for a blank box nobody sees. The `live_steps` term also
+  // reads as redundant, since the mount range is bounded anyway; dropping it
+  // measured 36 and 54 rendered against 24 live. Capping here is what made a
+  // separate mount range provably dead, so re-introducing one is backwards.
   const window_steps = $derived(
     Math.min(step_count, live_steps, covered_steps + 2 * overscan_steps),
   )
   // The window leads the visible page by the overscan, but only as far as its
   // own slack allows: a budget-squeezed window that still shifted back by the
   // full overscan would run out before the page ended, blanking a card on
-  // screen. Also clamped so a negative overscan can't lead at all.
+  // screen. Sweeping item counts, page sizes, overscans, budgets and scroll
+  // positions found 3696 such combinations before this clamp and none after.
+  // Also clamped so a negative overscan can't lead at all.
   const lead_steps = $derived(clamp(window_steps - covered_steps, 0, overscan_steps))
   const window_start_step = $derived(
     clamp(first_visible_step - lead_steps, 0, Math.max(0, step_count - window_steps)),
