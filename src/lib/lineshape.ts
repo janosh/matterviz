@@ -43,13 +43,20 @@ export function broaden_peaks(
   }
 
   // +1 samples max_x itself; ceil() stopped a full step short on evenly dividing spans
-  // ([10, 90] at 0.02 ended at 89.98). Uneven spans are unaffected, floor+1 and ceil agree.
-  const n_steps = Math.floor((max_x - min_x) / step_size) + 1
+  // ([10, 90] at 0.02 ended at 89.98). Uneven spans are unaffected. The quotient is only
+  // integral to within float error ((0.3 - 0) / 0.1 is 2.9999999999999996, which floors to 2
+  // and drops the endpoint), so it is rounded when it sits within a scaled tolerance.
+  const span_steps = (max_x - min_x) / step_size
+  const whole_steps = Math.round(span_steps)
+  const spans_to_max = Math.abs(span_steps - whole_steps) <= 1e-9 * Math.max(1, whole_steps)
+  const n_steps = (spans_to_max ? whole_steps : Math.floor(span_steps)) + 1
   // f64, not f32: at cm^-1 values in the thousands f32 resolves to ~2.4e-4, which shows up
   // as grid-dependent noise whenever the same peaks are broadened over two different spans
   const xs = new Float64Array(n_steps)
   const ys = new Float64Array(n_steps)
   for (let idx = 0; idx < n_steps; idx++) xs[idx] = min_x + idx * step_size
+  // min_x + n*step accumulates its own error, so pin the endpoint exactly when it is included
+  if (spans_to_max) xs[n_steps - 1] = max_x
 
   const { x: peak_pos, y: peak_int } = peaks
 

@@ -121,6 +121,22 @@ describe(`frame loading`, () => {
     destroy()
   })
 
+  // NaN used to normalize to null, which cleared the displayed frame AND gave the correction
+  // effect nothing to write back, so the viewer stayed blank with no way out
+  it(`corrects a non-finite host index to the first frame`, () => {
+    const { run } = make_async_run(frames(5))
+    const { host, session, events, errors, destroy } = make_session({ run })
+    host.index = Number.NaN
+    flushSync()
+    // NaN used to normalize to null, so the correction effect returned early: the host kept
+    // its NaN, no step fired, and request_frame cleared the displayed frame for good
+    expect(errors).toEqual([])
+    expect(host.index).toBe(0)
+    expect(events).toEqual([`step:0`])
+    expect(session.current_structure).toBeDefined()
+    destroy()
+  })
+
   it(`latest request wins: a superseded async read is aborted and never displayed`, async () => {
     const { run, pending, reads, resolve_next } = make_async_run(frames(6))
     const { host, session, errors, destroy } = make_session({ run })

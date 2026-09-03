@@ -95,7 +95,8 @@ function parse_bxsf(content: string): BandGridData {
   // The origin was never applied: extract_fermi_surface re-centres on Γ by −½(b1 + b2 + b3)
   // unconditionally, so a header encoding that shift would apply it twice and land the
   // surface a half-diagonal off inside a plausible-looking zone.
-  if (origin_vals.some((val) => Math.abs(val) > 1e-8)) {
+  // Negated comparison, so NaN and Infinity are rejected too (NaN > 1e-8 is false)
+  if (!origin_vals.every((val) => Math.abs(val) <= 1e-8)) {
     throw new Error(
       `BXSF grid origin [${origin_vals.join(`, `)}] is not supported: only Γ-centred grids ` +
         `(origin 0 0 0) can be rendered, since the surface is re-centred on Γ internally.`,

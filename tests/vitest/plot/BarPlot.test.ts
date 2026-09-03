@@ -435,6 +435,9 @@ describe(`BarPlot`, () => {
     const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
     expect(tooltip).not.toBeNull()
     const edges = [tooltip?.style.top ?? ``, tooltip?.style.left ?? ``]
+    // Assert the px strings first: an unset style is ``, and Number(``) is a finite 0, so the
+    // check below passed for a tooltip that had no coordinates at all
+    for (const edge of edges) expect(edge).toMatch(/^-?[\d.]+px$/)
     const coords = edges.map((edge) => Number(edge.replace(`px`, ``)))
     expect(coords.every(Number.isFinite)).toBe(true)
   })

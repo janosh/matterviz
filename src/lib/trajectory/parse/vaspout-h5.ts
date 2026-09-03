@@ -294,10 +294,10 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
   // Static (NSW=0) runs have no intermediate/ion_dynamics group at all; fall
   // back to the final structure so the file still opens as a 1-frame view.
   if (frames.length === 0) {
-    const final_lattice_data = squeeze_leading_axis(read_dataset(h5_file, FINAL_LATTICE))
-    const final_positions_data = squeeze_leading_axis(
-      read_dataset(h5_file, FINAL_POSITIONS),
-    ) as number[][] | null
+    const final_lattice_data = squeeze_leading_axis(read_bounded(FINAL_LATTICE))
+    const final_positions_data = squeeze_leading_axis(read_bounded(FINAL_POSITIONS)) as
+      | number[][]
+      | null
     if (!final_lattice_data || !final_positions_data) {
       // Ion species exist but geometry is missing/torn — a bands/DOS-only
       // file can still render its electronic results.

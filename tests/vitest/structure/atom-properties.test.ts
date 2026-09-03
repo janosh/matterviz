@@ -357,6 +357,10 @@ describe(`Custom`, () => {
     expect(colors).toEqual([ramp[1], ramp[0], ramp[2]])
     // an all-NaN column has no extent at all and must still yield the midpoint, not garbage
     expect(ap.get_custom_colors(diagonal_c, () => NaN).colors).toEqual(ramp.map(() => ramp[1]))
+    // Infinity is not skipped by array_extent the way NaN is, so it becomes a finite-min /
+    // infinite-max extent that collapsed every real value onto t = 0
+    const with_inf = ap.get_custom_colors(diagonal_c, (site) => site.xyz[2] || Infinity)
+    expect(with_inf.colors).toEqual(ramp.map(() => ramp[1]))
   })
 })
 

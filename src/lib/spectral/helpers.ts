@@ -926,16 +926,20 @@ export function compute_frequency_range(
   // normalized structure has qpoints). Bands that aren't electronic are phonon bands.
   const raw_band_structs = band_struct_entries(band_structs).map(([, raw]) => raw)
   // A malformed pymatgen entry throws from normalization; Bands reports it, the range just
-  // skips it
-  const bs_list = raw_band_structs.flatMap((raw) => {
+  // skips it. The raw input rides along because is_electronic_band_struct reads markers that
+  // normalization strips.
+  const normalized = raw_band_structs.flatMap((raw) => {
     try {
-      return normalize_band_structure(raw) ?? []
+      const bs = normalize_band_structure(raw)
+      return bs ? [{ raw, bs }] : []
     } catch {
       return []
     }
   })
-  let is_phonon = bs_list.length > 0 && !raw_band_structs.some(is_electronic_band_struct)
-  for (const bs of bs_list) frequency_lists.push(...bs.bands)
+  // any, not every: an electronic entry sitting alongside a phonon one must not clear the flag
+  // that drives the imaginary-mode clamp, matching the `||=` the DOS loop below uses
+  let is_phonon = normalized.some(({ raw }) => !is_electronic_band_struct(raw))
+  for (const { bs } of normalized) frequency_lists.push(...bs.bands)
 
   for (const [, raw] of dos_entries(doses)) {
     const dos = normalize_dos(raw)

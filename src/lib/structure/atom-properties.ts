@@ -90,7 +90,7 @@ export function apply_color_scale(
   // max === min guard (NaN !== NaN) and paints every atom at t = NaN. NaN values and an
   // all-NaN/empty extent (±Infinity) fall back to the scale midpoint.
   const [min, max] = array_extent(vals)
-  const constant_scale = !Number.isFinite(min) || max === min
+  const constant_scale = !Number.isFinite(min) || !Number.isFinite(max) || max === min
   return {
     colors: vals.map((val) =>
       to_hex(

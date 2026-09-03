@@ -352,6 +352,15 @@ export function fit_path_spline(
       `Got ${slope_widths.length} slope widths for ${widths.length} segments; they must match one-to-one`,
     )
   }
+  // Every tangent is slope * width, so a NaN, 0 or negative width silently flattens or
+  // inverts a segment instead of failing. knot_widths guarantees this for its own output;
+  // fit_path_spline is exported, so a caller-supplied array needs the same check.
+  const bad_width = slope_widths.findIndex((width) => !(width > 0) || !Number.isFinite(width))
+  if (bad_width !== -1) {
+    throw new Error(
+      `Slope width ${slope_widths[bad_width]} at segment ${bad_width} must be finite and > 0`,
+    )
+  }
   if (n_samples < 2) throw new Error(`fit_path_spline needs n_samples >= 2, got ${n_samples}`)
   const knot_slopes = given_slopes ? [...given_slopes] : natural_cubic_slopes(coords, energies)
   const highest_idx = arg_max(energies)
@@ -436,17 +445,19 @@ export function path_spline(
   options: PathSplineOptions = {},
   coords: readonly number[] = reaction_coordinate(path, options),
 ): PathSpline {
-  const { ignore_forces, mode, n_samples } = options
+  const { ignore_forces, n_samples } = options
   const energies = assert_path(path, `path_spline`).map((image) => image.energy)
   const slopes = ignore_forces ? null : projected_force_slopes(path, options)
   // projected_force_slopes returns dE/ds per Å of arc length, so a segment's Hermite tangent
   // is that slope times the segment's ARC width, whatever the plotted x axis is. Rescaling each
   // knot slope by a central-difference ds/di averaged the two runs a knot sits between, making
   // the saddle depend on the x-axis dropdown (0.99727 vs 1.02563 on a sin² path, true 1).
-  const slope_widths =
-    slopes && mode === `image_index`
-      ? knot_widths(reaction_coordinate(path, { ...options, mode: `arc_length` }), energies)
-      : undefined
+  // Derived for every slope-bearing fit, not just `image_index`: a caller passing its own
+  // `coords` leaves `mode` undefined, and those coords need not be arc lengths either. It is
+  // the same computation `coords` already did whenever they ARE arc lengths.
+  const slope_widths = slopes
+    ? knot_widths(reaction_coordinate(path, { ...options, mode: `arc_length` }), energies)
+    : undefined
   return fit_path_spline(coords, energies, {
     n_samples,
     slopes: slopes ?? undefined,

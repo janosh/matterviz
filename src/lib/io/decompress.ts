@@ -111,7 +111,12 @@ const consume_decompressed = async <Result>(
           ? data.stream()
           : data
     if (format === `zip`) {
-      const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+      // fflate needs the whole archive, so this buffers; pipe it through an identity
+      // transform first so an abort stops the buffering instead of being noticed after it
+      const zip_stream = signal
+        ? stream.pipeThrough(new TransformStream(), { signal })
+        : stream
+      const bytes = new Uint8Array(await new Response(zip_stream).arrayBuffer())
       signal?.throwIfAborted()
       const entry = await unzip_single_entry(bytes)
       on_entry_name?.(entry.name)

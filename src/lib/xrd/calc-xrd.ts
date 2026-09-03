@@ -202,11 +202,20 @@ export function enumerate_reciprocal_points(
   const estimated_points =
     (4 / 3) * Math.PI * max_radius ** 3 * Math.abs(math.det_3x3(direct_rows))
   const MAX_POINTS = 2e6
-  if (estimated_points > MAX_POINTS) {
+  // The loops sweep the enclosing BOX, not the sphere. For an orthogonal cell that is only
+  // 6/pi ~ 1.9x the sphere, but the ratio is |a||b||c| / V, so a strongly oblique cell can sit
+  // under the sphere cap while still iterating orders of magnitude more. 10x MAX_POINTS keeps
+  // every cell the sphere cap admits and still bounds the sweep at a few 1e7 cheap iterations.
+  const box_points = (2 * h_max + 1) * (2 * k_max + 1) * (2 * l_max + 1)
+  const MAX_BOX_POINTS = 10 * MAX_POINTS
+  if (estimated_points > MAX_POINTS || box_points > MAX_BOX_POINTS) {
+    const over =
+      estimated_points > MAX_POINTS
+        ? `~${estimated_points.toPrecision(3)} reciprocal lattice points, past the ${MAX_POINTS} cap`
+        : `an h/k/l box of ${box_points.toPrecision(3)} candidates, past the ${MAX_BOX_POINTS} cap`
     throw new Error(
       `enumerate_reciprocal_points: a sphere of radius ${max_radius.toPrecision(4)} 1/Å holds ` +
-        `~${estimated_points.toPrecision(3)} reciprocal lattice points, past the ${MAX_POINTS} ` +
-        `cap. Narrow options.two_theta_range (or max_g) or use a longer options.wavelength.`,
+        `${over}. Narrow options.two_theta_range (or max_g) or use a longer options.wavelength.`,
     )
   }
   const [zone_u, zone_v, zone_w] = laue_bound?.zone_axis ?? [0, 0, 0]

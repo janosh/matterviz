@@ -51,6 +51,11 @@ describe(`compute_broadened_pattern`, () => {
     expect(
       compute_broadened_pattern(empty, DEFAULT_BROADENING, [10, 12], 0.7).x.at(-1),
     ).toBeCloseTo(11.4)
+    // (0.3 - 0) / 0.1 is 2.9999999999999996, so flooring the raw quotient dropped the
+    // endpoint on a span that divides evenly in decimal
+    const fp_grid = compute_broadened_pattern(empty, DEFAULT_BROADENING, [0, 0.3], 0.1)
+    expect(fp_grid.x).toHaveLength(4)
+    expect(fp_grid.x.at(-1)).toBe(0.3) // pinned exactly, not 0 + 3 * 0.1
   })
 
   test(`broadens a single peak correctly with intensity conservation`, () => {

@@ -170,6 +170,13 @@
     loaded_from = source
     history = recent.load()
     pinned_history = load_pinned()
+    // An open dropdown still points into the OLD list: Enter reads
+    // visible_history[focused_history_idx], so a shorter reload left it indexing undefined and
+    // set_value crashed on .trim(). Same policy as remove_from_history — drop the stale focus
+    // and the query typed against the old list, and close only once nothing is left to show.
+    history_query = ``
+    focused_history_idx = -1
+    if (history.length === 0) history_open = false
   })
 
   function add_to_history(entry: string): void {

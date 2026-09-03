@@ -180,10 +180,21 @@ export function bin_values(
   const geometry = bin_geometry(domain, n_bins, scale_type)
   const { lo, hi, edges, degenerate, is_linear, fwd, pos_lo, scale } = geometry
   const n_values = values.length
+  // Length is checked up front (a short array yields `undefined` weights, and one of those
+  // turns the whole Float64Array into NaN); individual non-finite weights are dropped in the
+  // loops below the way non-finite VALUES are, rather than scanned for in a pass of their own
+  // — this path bins 1e6 samples and the inlined loops exist to hold it near 4 ms.
+  if (weights && weights.length !== n_values) {
+    throw new Error(
+      `bin_values got ${weights.length} weights for ${n_values} values; they must match one-to-one`,
+    )
+  }
   if (degenerate) {
     let count = 0
     for (let idx = 0; idx < n_values; idx++) {
-      if (values[idx] >= lo && values[idx] <= hi) count += weights ? weights[idx] : 1
+      if (!(values[idx] >= lo && values[idx] <= hi)) continue
+      if (!weights) count += 1
+      else if (Number.isFinite(weights[idx])) count += weights[idx]
     }
     return { edges, counts: weights ? Float64Array.of(count) : Uint32Array.of(count) }
   }
@@ -197,7 +208,8 @@ export function bin_values(
     let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, n - 1)
     if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
     else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
-    counts[bin_idx] += weights ? weights[idx] : 1
+    if (!weights) counts[bin_idx] += 1
+    else if (Number.isFinite(weights[idx])) counts[bin_idx] += weights[idx]
   }
   return { edges, counts }
 }

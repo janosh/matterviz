@@ -41,8 +41,12 @@ const is_promise = <Value>(value: Value | Promise<Value>): value is Promise<Valu
 
 // One rounding for every index reaching a run (host, scrub and controller each rounded
 // differently, and a raw 2.6 tripped read_frame's RangeError); null means "no frame"
-const normalize_idx = (idx: number, frame_count: number): number | null =>
-  Number.isFinite(idx) && frame_count > 0 ? clamp(Math.floor(idx), 0, frame_count - 1) : null
+const normalize_idx = (idx: number, frame_count: number): number | null => {
+  if (frame_count <= 0) return null
+  // A non-finite index resolves to 0 rather than null: null left `loaded` cleared AND the
+  // correction effect with nothing to write back, so the viewer stayed blank for good.
+  return Number.isFinite(idx) ? clamp(Math.floor(idx), 0, frame_count - 1) : 0
+}
 
 export function create_trajectory_session(
   inputs: TrajectorySessionInputs,

@@ -215,9 +215,13 @@ export function parse_chgcar(content: string): VolumetricFileData {
       const coords = parse_vasp_vec3(cur.line)
       pos = cur.next
 
-      const cart = is_direct ? null : apply_axis_scale(coords, scale)
-      const abc = wrap_to_unit_cell(cart ? cart_to_frac(cart) : coords)
-      const xyz = cart ?? frac_to_cart(abc)
+      // xyz is derived from the WRAPPED abc in both modes. Cartesian input used to keep its
+      // raw cart, so a coordinate outside the cell left abc and xyz describing different
+      // positions (the volume is always periodic, so wrapping is right for both).
+      const abc = wrap_to_unit_cell(
+        is_direct ? coords : cart_to_frac(apply_axis_scale(coords, scale)),
+      )
+      const xyz = frac_to_cart(abc)
 
       sites.push(make_site(element, abc, xyz, `${element}${atom_idx + count_idx + 1}`))
     }

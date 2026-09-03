@@ -583,6 +583,22 @@ describe(`Histogram`, () => {
     })
   })
 
+  test(`bin_values: weights must align, and non-finite ones drop like non-finite values`, () => {
+    const values = [1, 3, 5, 7, 9]
+    // a short array yielded `undefined` weights, and one of those turns the whole
+    // Float64Array into NaN rather than failing anywhere the caller can see
+    expect(() => bin_values(values, [0, 10], 5, `linear`, [1, 2])).toThrow(
+      `bin_values got 2 weights for 5 values`,
+    )
+    expect(counts_of(values, [0, 10], 5, `linear`, [1, 2, 3, 4, 5])).toEqual([1, 2, 3, 4, 5])
+    // NaN/Infinity weights are skipped, exactly as a NaN VALUE already is
+    const with_bad = counts_of(values, [0, 10], 5, `linear`, [1, NaN, 3, Infinity, 5])
+    expect(with_bad).toEqual([1, 0, 3, 0, 5])
+    expect(with_bad.every(Number.isFinite)).toBe(true)
+    // the collapsed-domain path shares the policy
+    expect(Array.from(bin_values([5, 5], [5, 5], 4, `linear`, [2, NaN]).counts)).toEqual([2])
+  })
+
   test(`bin_values: log and arcsinh bins are uniform in transformed space`, () => {
     const { edges, counts } = bin_values(
       [1, 9.99, 10, 99, 100, 999, 1000, 5000],

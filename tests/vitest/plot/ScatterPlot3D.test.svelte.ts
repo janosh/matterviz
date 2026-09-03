@@ -150,6 +150,9 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(style).toContain(`position: absolute`)
     expect(style).toContain(`left: 2em`)
     expect(style).toContain(`opacity: 0.5`)
+    // `style` rides the same root element as wrapper_style (ColorBar appends rest.style after
+    // its own div_style), so the caller's bar styling must survive the corner placement too
+    expect(style).toContain(`border: 1px solid red`)
   })
 
   test(`maps the chart's fullscreen background onto the shared shell`, async () => {

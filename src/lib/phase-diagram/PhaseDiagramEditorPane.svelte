@@ -32,6 +32,9 @@
 
   // Brief error flash when an edit is rejected by build_diagram
   const rejection = create_flash<string | null>(null, 3000)
+  // The flash div stays mounted across consecutive rejections, so its fade-out animation
+  // would not replay. Keying on a counter (not the text, which can repeat) remounts it.
+  let rejection_seq = $state(0)
 
   // True if obj looks like a DiagramInput rather than PhaseDiagramData
   function is_diagram_input(obj: Record<string, unknown>): boolean {
@@ -49,6 +52,7 @@
         build_diagram(updated as DiagramInput)
         diagram_input = updated as DiagramInput
       } catch (error) {
+        rejection_seq += 1
         rejection.show(to_error(error).message)
       }
       return
@@ -70,7 +74,9 @@
   {icon_style}
 >
   {#if rejection.value}
-    <div class="rejection-flash">{rejection.value}</div>
+    {#key rejection_seq}
+      <div class="rejection-flash">{rejection.value}</div>
+    {/key}
   {/if}
   {#if display_source}
     <JsonTree
