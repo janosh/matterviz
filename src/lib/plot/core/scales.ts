@@ -30,6 +30,17 @@ export type TicksOption = number | number[] | TimeInterval | Record<number, stri
 
 const MS_PER_DAY = 86_400_000
 
+// Every tick is measured and rendered, and a negative `axis.ticks` is a STEP whose count rides
+// on the domain: `ticks: -1` over [0, 1e8] built 100,000,001 entries (~800 MB)
+const MAX_TICKS = 10_000
+const assert_tick_count = (count: number, requested: string, span: number): void => {
+  if (count > MAX_TICKS) {
+    throw new Error(
+      `generate_ticks: ${requested} over a span of ${span} asks for ${Math.ceil(count)} ticks, past the ${MAX_TICKS} cap`,
+    )
+  }
+}
+
 // Dedupe and sort numeric array (used in tick generation)
 const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].toSorted((a, b) => a - b)
 
@@ -64,66 +75,46 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   let current_domain: Vec2 = [0, 1]
   let current_range: Vec2 = [0, 1]
 
-  // Forward transform: data value → arcsinh-space
   const arcsinh_transform = (x: number): number => Math.asinh(x / threshold)
-
-  // Inverse transform: arcsinh-space → data value
   const sinh_transform = (y: number): number => Math.sinh(y) * threshold
+  const transformed_domain = (): Vec2 => [
+    arcsinh_transform(current_domain[0]),
+    arcsinh_transform(current_domain[1]),
+  ]
 
-  // Map from data domain to output range
   const scale = ((value: number): number => {
     const [d_min, d_max] = current_domain
     const [r_min, r_max] = current_range
-
-    // Handle identical domain endpoints (degenerate case)
+    // Identical domain endpoints (degenerate case) map to the range midpoint
     if (d_max === d_min) return (r_min + r_max) / 2
 
-    // Transform domain endpoints
-    const t_min = arcsinh_transform(d_min)
-    const t_max = arcsinh_transform(d_max)
-
-    // Transform input value
-    const t_val = arcsinh_transform(value)
-
-    // Linear interpolation in transformed space
+    const [t_min, t_max] = transformed_domain()
     if (t_max === t_min) return (r_min + r_max) / 2
-    const frac = (t_val - t_min) / (t_max - t_min)
+    const frac = (arcsinh_transform(value) - t_min) / (t_max - t_min)
     return r_min + frac * (r_max - r_min)
   }) as ArcsinhScale
 
-  // Domain getter/setter
   scale.domain = function (domain?: Vec2): Vec2 | ArcsinhScale {
     if (domain === undefined) return current_domain
     current_domain = domain
     return scale
   } as ArcsinhScale[`domain`]
 
-  // Range getter/setter
   scale.range = function (output_range?: Vec2): Vec2 | ArcsinhScale {
     if (output_range === undefined) return current_range
     current_range = output_range
     return scale
   } as ArcsinhScale[`range`]
 
-  // Invert: screen position → data value
   scale.invert = (value: number): number => {
     const [d_min, d_max] = current_domain
     const [r_min, r_max] = current_range
+    // Identical domain endpoints (degenerate case) map to the domain midpoint
+    if (d_max === d_min || r_max === r_min) return (d_min + d_max) / 2
 
-    // Handle identical domain endpoints (degenerate case)
-    if (d_max === d_min) return (d_min + d_max) / 2
-
-    // Transform domain endpoints
-    const t_min = arcsinh_transform(d_min)
-    const t_max = arcsinh_transform(d_max)
-
-    // Inverse linear interpolation
-    if (r_max === r_min) return (d_min + d_max) / 2
+    const [t_min, t_max] = transformed_domain()
     const frac = (value - r_min) / (r_max - r_min)
-    const t_val = t_min + frac * (t_max - t_min)
-
-    // Inverse transform
-    return sinh_transform(t_val)
+    return sinh_transform(t_min + frac * (t_max - t_min))
   }
 
   scale.ticks = (count = 10): number[] =>
@@ -290,6 +281,9 @@ export function generate_ticks(
   // ascending bounds (a raw max_val < min_val collapses interval counts to zero ticks). Tick
   // order is irrelevant to rendering, so ascending output is fine.
   const [min_val, max_val] = range_bounds(domain)
+  if (typeof ticks_option === `number` && ticks_option > 0) {
+    assert_tick_count(ticks_option, `a tick count of ${ticks_option}`, max_val - min_val)
+  }
 
   // If ticks_option is an object (value-to-label mapping), extract values
   if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {
@@ -305,22 +299,22 @@ export function generate_ticks(
   if (is_time_scale(scale_type)) {
     // Interval requests (`day`/`month`/`year` or a negative day count) ask d3 for one tick per
     // interval in the domain, so it picks that interval; a positive number is a plain count.
+    const INTERVAL_DAYS: Record<string, number> = { day: 1, month: 30, year: 365 }
     const interval_days =
       typeof ticks_option === `number` && ticks_option < 0
         ? -ticks_option
-        : ticks_option === `day`
-          ? 1
-          : ticks_option === `month`
-            ? 30
-            : ticks_option === `year`
-              ? 365
-              : null
+        : ((typeof ticks_option === `string` ? INTERVAL_DAYS[ticks_option] : undefined) ??
+          null)
     const count =
       interval_days !== null
         ? Math.max(1, Math.ceil((max_val - min_val) / (interval_days * MS_PER_DAY)))
         : typeof ticks_option === `number` && ticks_option > 0
           ? ticks_option
           : 10
+    // Interval counts ride on the domain: `day` over two centuries asks for 73k ticks
+    if (interval_days !== null) {
+      assert_tick_count(count, `a tick interval of ${interval_days} day(s)`, max_val - min_val)
+    }
     const dates = scaleTime()
       .domain([new Date(min_val), new Date(max_val)])
       .ticks(count)
@@ -352,6 +346,11 @@ export function generate_ticks(
   if (typeof ticks_option === `number` && ticks_option < 0) {
     const interval = Math.abs(ticks_option)
     const start = Math.ceil(min_val / interval) * interval
+    assert_tick_count(
+      (max_val - start) / interval + 1,
+      `a tick interval of ${interval}`,
+      max_val - min_val,
+    )
     return range(start, max_val + interval * 0.1, interval)
   }
 
@@ -712,11 +711,12 @@ export function create_size_scale(
       range: () => Vec2
     }
 
-    // Wrap with clamping
-    const clamped_scale = ((value: number): number => {
-      const result = arcsinh_scale(value)
-      return Math.max(min_radius, Math.min(max_radius, result))
-    }) as ClampedSizeScale
+    // Order the bounds first: a descending radius_range would otherwise collapse the scale to
+    // the constant min_radius (this branch clamps by hand, unlike d3's .clamp(true) below).
+    const [lo_radius, hi_radius] =
+      min_radius <= max_radius ? [min_radius, max_radius] : [max_radius, min_radius]
+    const clamped_scale = ((value: number): number =>
+      math.clamp(arcsinh_scale(value), lo_radius, hi_radius)) as ClampedSizeScale
 
     clamped_scale.domain = () => arcsinh_scale.domain()
     clamped_scale.range = () => arcsinh_scale.range()

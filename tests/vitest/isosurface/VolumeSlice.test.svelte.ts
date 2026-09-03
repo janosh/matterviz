@@ -108,8 +108,9 @@ describe(`VolumeSlice`, () => {
 
     expect(colorbar_style.left).toBe(`50%`)
     expect([``, `auto`]).toContain(colorbar_style.right)
-    expect(colorbar_style.getPropertyValue(`--cbar-width`)).toContain(
-      `--volume-slice-colorbar-size`,
+    // happy-dom may resolve the var() chain or hand back the raw reference; accept either
+    expect(colorbar_style.getPropertyValue(`--cbar-width`)).toMatch(
+      /--volume-slice-colorbar-size|min\(70%,\s*360px\)/,
     )
     expect(colorbar_style.transform).toBe(`translateX(-50%)`)
   })

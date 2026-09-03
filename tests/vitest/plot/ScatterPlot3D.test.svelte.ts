@@ -139,6 +139,21 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(Boolean(container.querySelector(`.colorbar`))).toBe(expected)
   })
 
+  // A caller's wrapper_style must append to the corner placement, not replace it
+  test(`color bar keeps its corner placement when the caller styles it`, async () => {
+    await mount_plot({
+      series: [color_series],
+      color_bar: { wrapper_style: `opacity: 0.5`, style: `border: 1px solid red` },
+    })
+    const wrapper = query(container, `.colorbar`)
+    const style = wrapper.getAttribute(`style`) ?? ``
+    expect(style).toContain(`position: absolute`)
+    expect(style).toContain(`left: 2em`)
+    expect(style).toContain(`opacity: 0.5`)
+    // `style` rides the same root element, so it must survive the corner placement too
+    expect(style).toContain(`border: 1px solid red`)
+  })
+
   test(`maps the chart's fullscreen background onto the shared shell`, async () => {
     await mount_plot({ series: [basic_series] })
     expect(container.querySelector(`.scatter-3d`)?.getAttribute(`style`)).toContain(

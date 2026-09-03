@@ -78,9 +78,8 @@
 
   const finite = (values: (number | undefined)[]): number[] =>
     values.filter((val): val is number => val !== undefined && Number.isFinite(val))
-  const e_form_values = $derived(
-    finite(all_entries.map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)),
-  )
+  // E_form only: an energy_per_atom fallback histograms two incomparable quantities as one
+  const e_form_values = $derived(finite(all_entries.map((entry) => entry.e_form_per_atom)))
   const e_hull_values = $derived(finite(all_entries.map((entry) => entry.e_above_hull)))
   const histogram_props = {
     bins: 50,
@@ -94,9 +93,11 @@
   // Stat cards: phase counts, stability, then one per energy distribution (each followed
   // by its histogram in the markup)
   type StatCard = `counts` | `stability` | `e_form` | `e_hull`
-  const stat_cards = $derived.by((): Record<StatCard, InfoPaneCard> | null => {
+  // e_form card is absent when no entry has a formation energy
+  type StatCards = Omit<Record<StatCard, InfoPaneCard>, `e_form`> & { e_form?: InfoPaneCard }
+  const stat_cards = $derived.by((): StatCards | null => {
     if (!phase_stats) return null
-    const { total, chemical_system, max_arity, energy_range, hull_distance } = phase_stats
+    const { total, chemical_system, max_arity, e_form_range, hull_distance } = phase_stats
     const count_row = (label: string, count: number, key: string) => ({
       label,
       value: `${format_num(count)} (${total > 0 ? format_num(count / total, `.1~%`) : `0%`})`,
@@ -130,12 +131,14 @@
           count_row(`Unstable phases`, phase_stats.unstable, `unstable-phases`),
         ],
       },
-      e_form: energy_card(
-        `E<sub>form</sub> distribution`,
-        `Min / avg / max (eV/atom)`,
-        [energy_range.min, energy_range.avg, energy_range.max],
-        `pd-formation-energy`,
-      ),
+      e_form: e_form_range
+        ? energy_card(
+            `E<sub>form</sub> distribution`,
+            `Min / avg / max (eV/atom)`,
+            [e_form_range.min, e_form_range.avg, e_form_range.max],
+            `pd-formation-energy`,
+          )
+        : undefined,
       e_hull: energy_card(
         `E<sub>above hull</sub> distribution`,
         `Max / avg (eV/atom)`,
@@ -326,7 +329,9 @@
     <hr />
     <InfoPaneCards cards={[stat_cards.stability]} {...cards_props} />
     <hr />
-    <InfoPaneCards cards={[stat_cards.e_form]} {...cards_props} />
+    {#if stat_cards.e_form}
+      <InfoPaneCards cards={[stat_cards.e_form]} {...cards_props} />
+    {/if}
     {#if e_form_values.length > 0}
       <Histogram
         {...histogram_props}

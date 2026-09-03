@@ -17,6 +17,7 @@ import {
   enumerate_reciprocal_points,
   require_positive,
   resolve_wavelength,
+  structure_factor_noise_floor,
   structure_factors_squared,
 } from './calc-xrd'
 import type { RecipPoint, SaedOptions, SaedPatternData, SaedSpot } from './index'
@@ -164,10 +165,10 @@ export function compute_saed_pattern(
   const max_intensity = raw_spots.reduce((peak, spot) => Math.max(peak, spot.intensity), 0)
 
   // Scaled to a maximum of 100, then strongest first so renderers can draw large spots
-  // underneath small ones
+  // underneath small ones. Same |F|² floor as compute_xrd_pattern: the relrod shape factor ≤ 1.
   const intensity_tol = options.intensity_tol ?? 1e-3
   const spots =
-    max_intensity === 0
+    max_intensity < structure_factor_noise_floor(structure, `electron`)
       ? []
       : raw_spots
           .map((spot) => ({ ...spot, intensity: (spot.intensity / max_intensity) * 100 }))

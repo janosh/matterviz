@@ -1,8 +1,11 @@
 import {
+  classify_payload,
   decompress_data,
   decompress_file,
   decompress_trajectory_file,
   detect_compression_format,
+  inflation_limiter,
+  MAX_INFLATED_BYTES,
 } from '$lib/io/decompress'
 import { zipSync } from 'fflate'
 import { describe, expect, test, vi } from 'vitest'
@@ -175,6 +178,31 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     })
   })
 
+  // Stripping `.zip` off `bundle.zip` named the CIF `bundle`, so every extension-keyed
+  // dispatcher missed it. `names` also carries the URL basename after the dropped name, and
+  // only the payload's OWN name may decide text vs binary: matching ANY candidate let the
+  // `.h5` basename below force a plain CIF entry to ArrayBuffer.
+  test(`names a ZIP payload after its entry, not the archive or a sibling name, and keeps a binary payload's own name authoritative`, async () => {
+    const zip = zipSync({ 'nested/a.cif': encode(`data_zipped`) })
+    const entry = { content: `data_zipped`, filename: `a.cif` }
+    expect(await decompress_file(new File([zip], `bundle.zip`))).toEqual(entry)
+    expect(await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`])).toEqual(
+      entry,
+    )
+    // and a payload whose own name IS binary still comes back as bytes
+    const traj = await classify_payload(new Blob([encode(`x`)]), [`run.traj`, `page.cif`])
+    expect(traj.content).toBeInstanceOf(ArrayBuffer)
+  })
+
+  // Wrapping a caller's abort as a decompression failure hid its name and reason
+  test(`propagates an abort instead of wrapping it as a decompression failure`, async () => {
+    const controller = new AbortController()
+    const reason = new DOMException(`Superseded by a newer load`, `AbortError`)
+    controller.abort(reason)
+    const file = new File([new Uint8Array(8)], `a.h5.gz`)
+    await expect(decompress_trajectory_file(file, controller.signal)).rejects.toBe(reason)
+  })
+
   test(`streams compressed bytes out of the File instead of buffering them`, async () => {
     const text = `streamed`
     const file = new File([await compress(encode(text))], `a.json.gz`)
@@ -224,5 +252,33 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(result.content).toBeInstanceOf(ArrayBuffer)
     expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(hdf5)
     expect(result.filename).toBe(`payload`)
+  })
+})
+
+// gzip reaches 1029:1 on repetitive input (measured), so the compressed size bounds nothing:
+// a 10 MiB upload expands to 10 GB with no error until the tab dies
+describe(`inflated size limit`, () => {
+  // 4 MiB fed 64 KiB at a time; `emitted` records how much was pulled before an abort
+  let emitted = 0
+  const source = () => {
+    emitted = 0
+    return new ReadableStream<Uint8Array>({
+      pull(controller) {
+        emitted += 64 * 1024
+        controller.enqueue(new Uint8Array(64 * 1024).fill(7))
+        if (emitted >= 4 * 1024 * 1024) controller.close()
+      },
+    })
+  }
+
+  test(`aborts mid-stream once the inflated payload passes the cap`, async () => {
+    const limited = source().pipeThrough(inflation_limiter(`gzip`, 256 * 1024))
+    await expect(new Response(limited).arrayBuffer()).rejects.toThrow(
+      /GZIP payload inflates to at least \d+ bytes, past the 262144-byte limit/,
+    )
+    expect(emitted).toBeLessThan(1024 * 1024) // stopped early, not after the whole 4 MiB
+    // and the real cap does not clip an ordinary payload
+    const passed = source().pipeThrough(inflation_limiter(`gzip`, MAX_INFLATED_BYTES))
+    expect((await new Response(passed).arrayBuffer()).byteLength).toBe(4 * 1024 * 1024)
   })
 })

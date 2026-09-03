@@ -3,6 +3,7 @@
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { COLOR_SCALE_TYPES, get_d3_interpolator, is_d3_interpolate_name } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
+import { array_extent } from '$lib/math'
 import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, type AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
@@ -85,15 +86,17 @@ export function apply_color_scale(
   }
 
   const interp_fn = get_d3_interpolator(scale)
-  // Compute min/max in single pass to avoid spreading large arrays
-  let [min, max] = [vals[0], vals[0]]
-  for (const val of vals) {
-    if (val < min) min = val
-    if (val > max) max = val
-  }
+  // array_extent skips NaN: a vals[0] seed of NaN left min = max = NaN, defeating the
+  // max === min guard (NaN !== NaN) and painting every atom at t = NaN. Non-finite values and
+  // an all-NaN or empty extent fall back to the scale midpoint.
+  const [min, max] = array_extent(vals)
+  const constant_scale = !Number.isFinite(min) || !Number.isFinite(max) || max === min
   return {
     colors: vals.map((val) =>
-      to_hex(interp_fn, max === min ? 0.5 : (val - min) / (max - min)),
+      to_hex(
+        interp_fn,
+        constant_scale || !Number.isFinite(val) ? 0.5 : (val - min) / (max - min),
+      ),
     ),
   }
 }

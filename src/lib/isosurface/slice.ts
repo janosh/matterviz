@@ -2,7 +2,8 @@
 // crystallographic plane defined by Miller indices, using trilinear interpolation.
 import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { create_volume_sampler, sanitize_display_range, type DisplayRange } from './sampling'
+import type { DisplayRange } from './sampling'
+import { create_volume_sampler, sanitize_display_range, UNIT_CELL_RANGE } from './sampling'
 import type { VolumetricData } from './types'
 
 const CELL_EDGES = [
@@ -21,11 +22,6 @@ const CELL_EDGES = [
 ] as const
 const PLANE_TOLERANCE = 1e-9
 const DEFAULT_MAX_PIXELS = 1024 * 1024
-const UNIT_CELL_RANGE: DisplayRange = [
-  [0, 1],
-  [0, 1],
-  [0, 1],
-]
 
 export const volume_center = (volume: VolumetricData): Vec3 =>
   math.add(volume.origin, math.create_frac_to_cart(volume.lattice)([0.5, 0.5, 0.5]))
@@ -121,11 +117,7 @@ const intersect_plane_cell = (
     if (Math.abs(end_distance) <= PLANE_TOLERANCE) add_unique_point(intersections, end)
     if (start_distance * end_distance >= -(PLANE_TOLERANCE ** 2)) continue
     const fraction = start_distance / (start_distance - end_distance)
-    add_unique_point(intersections, [
-      start[0] + fraction * (end[0] - start[0]),
-      start[1] + fraction * (end[1] - start[1]),
-      start[2] + fraction * (end[2] - start[2]),
-    ])
+    add_unique_point(intersections, math.lerp_vec3(start, end, fraction))
   }
   return math.convex_hull_2d(
     intersections.map((intersection) => {
@@ -198,7 +190,6 @@ export function sample_plane_slice(
   if (Math.hypot(...plane.normal) < PLANE_TOLERANCE) return null // degenerate normal
   const normal = math.normalize_vec(plane.normal)
 
-  // In-plane basis vectors
   const [u_axis, v_axis] = plane_basis(normal, plane.up)
   const bounds = sanitize_display_range(
     options.fractional_bounds ?? UNIT_CELL_RANGE,

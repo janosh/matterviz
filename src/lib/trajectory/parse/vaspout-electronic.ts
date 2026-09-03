@@ -12,8 +12,13 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import { pretty_sym_point } from '$lib/spectral/helpers'
 import type { Branch, ElectronicBandStructure, ElectronicDos, QPoint } from '$lib/spectral'
 import type * as h5wasm from 'h5wasm'
-import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
-import { read_dataset, scale_matrix, to_scalar_number, to_string_array } from './h5-utils'
+import {
+  read_dataset,
+  read_scaled_lattice,
+  to_number_array,
+  to_scalar_number,
+  to_string_array,
+} from './h5-utils'
 
 const DOS_GROUPS = [`results/electron_dos`, `results/electron_dos_kpoints_opt`]
 const DOS_ENERGY_NAMES = [`energies`, `energy`]
@@ -48,9 +53,6 @@ const read_first_dataset = (h5_file: h5wasm.File, paths: string[]): unknown => {
   return null
 }
 
-const is_number_array = (data: unknown): data is number[] =>
-  Array.isArray(data) && data.every((val) => typeof val === `number`)
-
 export const read_vaspout_dos = (h5_file: h5wasm.File): ElectronicDos | null => {
   for (const group of DOS_GROUPS) {
     const energies = read_first_dataset(
@@ -61,21 +63,24 @@ export const read_vaspout_dos = (h5_file: h5wasm.File): ElectronicDos | null => 
       h5_file,
       DOS_TOTAL_NAMES.map((name) => `${group}/${name}`),
     )
-    if (!is_number_array(energies) || !Array.isArray(total)) continue
+    // to_number_array, not typeof: the old guard let NaN/Infinity sentinels reach the DOS plot
+    const energy_values = to_number_array(energies)
+    if (!energy_values || !Array.isArray(total)) continue
 
     // Total DOS is (n_spin, n_energies) in real files but tolerate a flat array
-    const spin_channels = is_number_array(total) ? [total] : (total as number[][])
-    const densities = spin_channels[0]
-    if (!is_number_array(densities) || densities.length !== energies.length) continue
-    const spin_down = spin_channels[1]
-    const spin_polarized = is_number_array(spin_down) && spin_down.length === energies.length
+    const flat_total = to_number_array(total)
+    const spin_channels: unknown[] = flat_total ? [flat_total] : total
+    const densities = to_number_array(spin_channels[0])
+    if (!densities || densities.length !== energy_values.length) continue
+    const spin_down = to_number_array(spin_channels[1])
+    const spin_down_densities = spin_down?.length === energy_values.length ? spin_down : null
 
     const efermi = to_scalar_number(read_dataset(h5_file, `${group}/efermi`))
     return {
       type: `electronic`,
-      energies,
+      energies: energy_values,
       densities,
-      ...(spin_polarized ? { spin_down_densities: spin_down, spin_polarized } : {}),
+      ...(spin_down_densities ? { spin_down_densities, spin_polarized: true } : {}),
       ...(efermi !== null ? { efermi } : {}),
     }
   }
@@ -89,14 +94,10 @@ const read_lattice = (h5_file: h5wasm.File): Matrix3x3 | null => {
     [`results/positions/lattice_vectors`, `results/positions/scale`],
     [`input/poscar/lattice_vectors`, `input/poscar/scale`],
   ]) {
-    const lattice_data = read_dataset(h5_file, lattice_path)
-    if (!lattice_data) continue
     try {
-      const scale = to_scalar_number(read_dataset(h5_file, scale_path)) ?? 1
-      return scale_matrix(matrix3x3_from_rows(lattice_data, `lattice matrix`), scale)
-    } catch {
-      continue
-    }
+      const lattice = read_scaled_lattice(h5_file, lattice_path, scale_path)
+      if (lattice) return lattice
+    } catch {} // torn or malformed cell: try the POSCAR input one
   }
   return null
 }

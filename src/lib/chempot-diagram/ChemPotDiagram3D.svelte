@@ -12,15 +12,8 @@
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { SettingsSection, ViewerChrome } from '$lib/layout'
   import { ViewerPane } from '$lib/overlays'
-  import type { Vec2, Vec3 } from '$lib/math'
-  import {
-    add,
-    array_extent,
-    cross_3d,
-    merge_coplanar_triangles,
-    normalize_vec,
-    subtract,
-  } from '$lib/math'
+  import type { Vec3 } from '$lib/math'
+  import { add, array_extent, clamp, merge_coplanar_triangles, subtract } from '$lib/math'
   import { ScatterPlot3DControls } from '$lib/plot'
   import type { ThreltePointerEvent } from '$lib/scene'
   import {
@@ -64,16 +57,20 @@
   import type { VisibleDomainLabel } from './compute'
   import {
     apply_element_padding,
+    assign_faces_to_domains,
     bbox_diagonal,
     build_axis_ranges,
     dedup_points,
     entry_elements,
     get_3d_domain_simplexes_and_ann_loc,
     get_ternary_combinations,
+    get_touches_limits,
     get_visible_domain_labels,
     pad_domain_points,
     scale_to_font_range,
+    strip_closing_faces,
     swizzle_to_render,
+    vertex_mean,
   } from './compute'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotHoverInfo3D } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
@@ -372,7 +369,7 @@
       return Math.max(hi - lo, 1e-6)
     })
     const max_span = Math.max(...spans)
-    return spans.map((span) => Math.min(Math.max(max_span / span, 1), 4)) as Vec3
+    return spans.map((span) => clamp(max_span / span, 1, 4)) as Vec3
   })
 
   // Swizzle a data-coord triple to Three.js coords; ChemPotScene3D frames the axes with the same
@@ -383,20 +380,11 @@
   const { data_center, data_extent } = $derived.by(() => {
     const points = render_domains.flatMap((domain) => domain.points_3d)
     if (points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
-    // Compute center in rendered coordinates (swizzled + axis scaling).
-    let [sum_x, sum_y, sum_z] = [0, 0, 0]
-    for (const point_3d of points) {
-      const [x_val, y_val, z_val] = to_render_xyz(point_3d)
-      sum_x += x_val
-      sum_y += y_val
-      sum_z += z_val
-    }
-    const n_points = points.length
-    const center: Vec3 = [sum_x / n_points, sum_y / n_points, sum_z / n_points]
-    // Compute max distance from center
+    // Center and max distance from it, in rendered coordinates (swizzled + axis scaling)
+    const rendered = points.map(to_render_xyz)
+    const center = vertex_mean(rendered)
     let max_dist = 0
-    for (const point of points) {
-      const [x_val, y_val, z_val] = to_render_xyz(point)
+    for (const [x_val, y_val, z_val] of rendered) {
       const dist = Math.hypot(x_val - center[0], y_val - center[1], z_val - center[2])
       if (dist > max_dist) max_dist = dist
     }
@@ -483,60 +471,13 @@
     render_hull_geometry(base_domains.flatMap((domain) => domain.points_3d)),
   )
 
-  // Non-indexed hull geometry with artificial closing faces removed.
-  // The convex hull includes faces that close the diagram at the lower axis
-  // limits — flat walls and diagonal closing triangles. These are artificial
-  // (they depend on how far we extend the axes) and clutter the view.
-  // We detect them via their outward-pointing face normal: closing faces have
-  // normals pointing entirely toward the negative octant (all components ≤ 0),
-  // while meaningful domain boundaries always have at least one positive
-  // normal component (pointing toward 0 eV / the elemental reference).
+  // Non-indexed hull geometry with the artificial closing faces removed
   const hull_base_geometry = $derived.by((): THREE.BufferGeometry | null => {
-    if (!occlusion_hull_geometry) return null
-    // merge_coplanar_geometry already returns non-indexed geometry, so read its positions
-    // directly (the filter below builds a fresh buffer and never mutates this one)
-    const pos = occlusion_hull_geometry.getAttribute(`position`)
-    const n_verts = pos.count
-    const n_faces = n_verts / 3
-    // Hull centroid for orienting face normals outward
-    let hx = 0,
-      hy = 0,
-      hz = 0
-    for (let vert_idx = 0; vert_idx < n_verts; vert_idx++) {
-      hx += pos.getX(vert_idx)
-      hy += pos.getY(vert_idx)
-      hz += pos.getZ(vert_idx)
-    }
-    hx /= n_verts
-    hy /= n_verts
-    hz /= n_verts
-    const kept: number[] = []
-    for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-      const base = face_idx * 3
-      const va: Vec3 = [pos.getX(base), pos.getY(base), pos.getZ(base)]
-      const vb: Vec3 = [pos.getX(base + 1), pos.getY(base + 1), pos.getZ(base + 1)]
-      const vc: Vec3 = [pos.getX(base + 2), pos.getY(base + 2), pos.getZ(base + 2)]
-      // Face normal via cross product of two edges
-      let normal = cross_3d(
-        [vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]],
-        [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]],
-      )
-      // Orient outward (away from hull centroid)
-      const dx = (va[0] + vb[0] + vc[0]) / 3 - hx
-      const dy = (va[1] + vb[1] + vc[1]) / 3 - hy
-      const dz = (va[2] + vb[2] + vc[2]) / 3 - hz
-      if (normal[0] * dx + normal[1] * dy + normal[2] * dz < 0) {
-        normal = [-normal[0], -normal[1], -normal[2]]
-      }
-      // Closing faces point entirely toward negative octant (all ≤ 0).
-      // Meaningful domain faces always have at least one positive component.
-      if (normal[0] <= 0 && normal[1] <= 0 && normal[2] <= 0) continue
-      kept.push(...va, ...vb, ...vc)
-    }
-    // Re-merge coplanar faces after the filter — the closing-face removal
-    // can expose new coplanar adjacencies or leave fragments that should be
-    // merged into cleaner fan triangulations.
-    const merged = merge_coplanar_triangles(new Float32Array(kept))
+    // occlusion_hull_geometry is non-indexed and strip_closing_faces never mutates its input
+    const merged =
+      occlusion_hull_geometry &&
+      strip_closing_faces(occlusion_hull_geometry.getAttribute(`position`).array)
+    if (!merged) return null
     const geom = new THREE.BufferGeometry()
     geom.setAttribute(`position`, new THREE.Float32BufferAttribute(merged, 3))
     const base_rgb = new THREE.Color(`#f6f6f6`).toArray()
@@ -545,148 +486,24 @@
     return geom
   })
 
-  // Per-face domain assignment (stable — only changes when geometry or domains change).
-  // Uses actual vertex centroid (mean of points_3d) for robust nearest-face matching.
-  const face_domain_map = $derived.by((): string[] => {
-    if (!hull_base_geometry) return []
-    const pos = hull_base_geometry.getAttribute(`position`)
-    const n_faces = pos.count / 3
-
-    // Domain vertex centroids in render coords (swizzled + axis stretch), matching hull_base_geometry.
-    const centroids = base_domains
+  // Domains in render coords (swizzle and axis stretch are linear, so planes stay planes)
+  const to_render_domains = (domains: RenderDomain[]) =>
+    domains
       .filter((domain) => domain.points_3d.length > 0)
-      .map((domain) => {
-        let sx = 0,
-          sy = 0,
-          sz = 0
-        for (const pt of domain.points_3d) {
-          const [x_val, y_val, z_val] = to_render_xyz(pt)
-          sx += x_val
-          sy += y_val
-          sz += z_val
-        }
-        const n_points = domain.points_3d.length
-        return {
-          formula: domain.formula,
-          cx: sx / n_points,
-          cy: sy / n_points,
-          cz: sz / n_points,
-        }
-      })
+      .map((domain) => ({
+        formula: domain.formula,
+        points: domain.points_3d.map(to_render_xyz) as number[][],
+      }))
 
-    // Assign each face to the nearest domain centroid
-    const result: string[] = []
-    for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-      const base = face_idx * 3
-      const fcx = (pos.getX(base) + pos.getX(base + 1) + pos.getX(base + 2)) / 3
-      const fcy = (pos.getY(base) + pos.getY(base + 1) + pos.getY(base + 2)) / 3
-      const fcz = (pos.getZ(base) + pos.getZ(base + 1) + pos.getZ(base + 2)) / 3
-      let best_formula = ``
-      let best_dist = Infinity
-      for (const dc of centroids) {
-        const dist = (fcx - dc.cx) ** 2 + (fcy - dc.cy) ** 2 + (fcz - dc.cz) ** 2
-        if (dist < best_dist) {
-          best_dist = dist
-          best_formula = dc.formula
-        }
-      }
-      result.push(best_formula)
-    }
-
-    // Unify coplanar adjacent faces to the majority domain so that fan
-    // triangulation edges within a single hull face don't create visible
-    // color boundaries. Build adjacency via shared edge keys, group
-    // coplanar neighbors, then assign each group to its most-common domain.
-    if (n_faces > 1) {
-      const tol = 1e-3
-      const round = (val: number): number => Math.round(val / tol)
-      const vkey = (vert_idx: number): string =>
-        `${round(pos.getX(vert_idx))},${round(pos.getY(vert_idx))},${round(
-          pos.getZ(vert_idx),
-        )}`
-      // Compute face normals
-      const normals: Vec3[] = []
-      for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-        const base = face_idx * 3
-        const e1: Vec3 = [
-          pos.getX(base + 1) - pos.getX(base),
-          pos.getY(base + 1) - pos.getY(base),
-          pos.getZ(base + 1) - pos.getZ(base),
-        ]
-        const e2: Vec3 = [
-          pos.getX(base + 2) - pos.getX(base),
-          pos.getY(base + 2) - pos.getY(base),
-          pos.getZ(base + 2) - pos.getZ(base),
-        ]
-        normals.push(normalize_vec(cross_3d(e1, e2)))
-      }
-      // Build edge → face adjacency
-      const edge_faces = new Map<string, number[]>()
-      for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-        const base = face_idx * 3
-        const keys = [vkey(base), vkey(base + 1), vkey(base + 2)]
-        for (const ek of [
-          edge_key(keys[0], keys[1]),
-          edge_key(keys[1], keys[2]),
-          edge_key(keys[0], keys[2]),
-        ]) {
-          const list = edge_faces.get(ek)
-          if (list) list.push(face_idx)
-          else edge_faces.set(ek, [face_idx])
-        }
-      }
-      // Union-find for coplanar adjacent faces
-      const parent = Array.from({ length: n_faces }, (_, idx) => idx)
-      const find = (node: number): number => {
-        while (parent[node] !== node) {
-          parent[node] = parent[parent[node]]
-          node = parent[node]
-        }
-        return node
-      }
-      const union = (a_idx: number, b_idx: number): void => {
-        const ra = find(a_idx),
-          rb = find(b_idx)
-        if (ra !== rb) parent[ra] = rb
-      }
-      for (const pair of edge_faces.values()) {
-        if (pair.length !== 2) continue
-        const [fa, fb] = pair
-        const na = normals[fa],
-          nb = normals[fb]
-        if (Math.abs(na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2]) > 1 - tol) {
-          union(fa, fb)
-        }
-      }
-      // Assign majority domain to each coplanar group
-      const groups = new Map<number, number[]>()
-      for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-        const root = find(face_idx)
-        const grp = groups.get(root)
-        if (grp) grp.push(face_idx)
-        else groups.set(root, [face_idx])
-      }
-      for (const members of groups.values()) {
-        if (members.length < 2) continue
-        // Find most common domain in this group
-        const counts = new Map<string, number>()
-        for (const member_idx of members) {
-          counts.set(result[member_idx], (counts.get(result[member_idx]) ?? 0) + 1)
-        }
-        let majority = result[members[0]]
-        let max_count = 0
-        for (const [formula, count] of counts) {
-          if (count > max_count) {
-            max_count = count
-            majority = formula
-          }
-        }
-        for (const member_idx of members) result[member_idx] = majority
-      }
-    }
-
-    return result
-  })
+  // Per-face domain assignment (stable — only changes when geometry or domains change)
+  const face_domain_map = $derived.by((): string[] =>
+    hull_base_geometry
+      ? assign_faces_to_domains(
+          hull_base_geometry.getAttribute(`position`).array,
+          to_render_domains(base_domains),
+        )
+      : [],
+  )
 
   // Faces no domain claims. Hoisted because a THREE.Color per recompute is pure waste.
   const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
@@ -765,39 +582,18 @@
     colored_hull_geometry !== hull_base_geometry ? [colored_hull_geometry] : [],
   )
 
-  // Domains on the outer surface of the full envelope (all domains, overlays included), used
-  // by the "Surface" overlay quick-select. Computed on demand: it needs a convex hull plus
-  // six raycasts per domain, and only a button click ever reads it.
+  // Domains on the outer surface of the full envelope (all domains, overlays included), used by
+  // the "Surface" overlay quick-select. On demand: costs a convex hull plus a plane test per
+  // domain and face, and only a button click reads it. Raycasting instead is broken — FrontSide
+  // culling means rays fired from inside the hull hit nothing and every domain scores 0.
   function get_surface_formulas(): string[] {
     const envelope = render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d))
-    if (!envelope) return render_domains.map((domain) => domain.formula)
-    // Raycast from each domain's centroid outward -- if it hits the hull,
-    // the centroid is inside (interior domain). Use multiple ray directions
-    // and count: if most hit, the point is interior.
-    const raycaster = new THREE.Raycaster()
-    const hull_mesh = new THREE.Mesh(envelope)
-    const directions = [
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(0, 1, 0),
-      new THREE.Vector3(0, 0, 1),
-      new THREE.Vector3(-1, 0, 0),
-      new THREE.Vector3(0, -1, 0),
-      new THREE.Vector3(0, 0, -1),
-    ]
-    const on_surface: string[] = []
-    for (const domain of render_domains) {
-      const origin = to_vec3(domain.ann_loc)
-      // Count how many rays hit the hull from the centroid
-      let hits = 0
-      for (const dir of directions) {
-        raycaster.set(origin, dir)
-        if (raycaster.intersectObject(hull_mesh).length > 0) hits++
-      }
-      // If fewer than 4 of 6 rays hit, centroid is on or near the surface
-      if (hits < 4) on_surface.push(domain.formula)
-    }
-    envelope.dispose()
-    return on_surface
+    const faces = envelope && strip_closing_faces(envelope.getAttribute(`position`).array)
+    envelope?.dispose()
+    // A domain is visible from outside exactly when it owns a face of the envelope
+    if (!faces) return render_domains.map((domain) => domain.formula)
+    const owners = assign_faces_to_domains(faces, to_render_domains(render_domains))
+    return [...new Set(owners)].filter(Boolean)
   }
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
@@ -897,28 +693,6 @@
     return dispose_evicted
   })
 
-  function get_touches_limits(points_3d: number[][], lims: Vec2[]): string[] {
-    const limit_tol = 1e-3
-    const touches_limits: string[] = []
-    for (
-      let axis_idx = 0;
-      axis_idx < Math.min(plot_elements.length, lims.length);
-      axis_idx++
-    ) {
-      const [axis_min, axis_max] = lims[axis_idx]
-      const axis_name = plot_elements[axis_idx] ?? `axis_${axis_idx}`
-      const touches_min = points_3d.some(
-        (point) => Math.abs(point[axis_idx] - axis_min) < limit_tol,
-      )
-      const touches_max = points_3d.some(
-        (point) => Math.abs(point[axis_idx] - axis_max) < limit_tol,
-      )
-      if (touches_min) touches_limits.push(`${axis_name} lower bound`)
-      if (touches_max) touches_limits.push(`${axis_name} upper bound`)
-    }
-    return touches_limits
-  }
-
   // Post-process ConvexGeometry to merge coplanar triangles, eliminating
   // internal diagonal edges across flat faces of the convex hull.
   function merge_coplanar_geometry(geom: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -1008,7 +782,7 @@
 
     for (const { domain, geometry, n_vertices } of hover_geometries) {
       const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
-      const touches_limits = get_touches_limits(domain.points_3d, lims)
+      const touches_limits = get_touches_limits(domain.points_3d, lims, plot_elements)
       const energy_stats = energy_stats_by_formula.get(domain.formula) ?? {
         matching_entry_count: 0,
         min_energy_per_atom: null,

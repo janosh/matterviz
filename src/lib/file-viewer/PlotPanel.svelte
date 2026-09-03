@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
+  import { clamp } from '$lib/math'
   import { BarPlot, Histogram, ScatterPlot } from '$lib/plot'
   import ScatterPlot3D from '$lib/plot/scatter-3d/ScatterPlot3D.svelte'
   import type { Label, RowData } from '$lib/table'
@@ -123,7 +124,7 @@
     if (!event.ctrlKey) return
     event.preventDefault()
     const delta = -event.deltaY * 0.01
-    zoom_level = Math.min(5, Math.max(0.25, zoom_level + delta))
+    zoom_level = clamp(zoom_level + delta, 0.25, 5)
   }
   function reset_zoom(): void {
     zoom_level = 1
@@ -280,26 +281,32 @@
     color: var(--vscode-foreground, var(--text-color, CanvasText));
     font-weight: 500;
   }
-  .close-btn {
+  .close-btn,
+  .zoom-reset-btn {
     background: none;
     border: none;
     color: var(--vscode-foreground, var(--text-color, CanvasText));
-    font-size: 16px;
     cursor: pointer;
-    padding: 0 4px;
-    line-height: 1;
-    opacity: 0.5;
     &:hover {
       opacity: 1;
     }
   }
-  .toolbar select {
+  .close-btn {
+    font-size: 16px;
+    padding: 0 4px;
+    line-height: 1;
+    opacity: 0.5;
+  }
+  .toolbar select,
+  .zoom-control input {
     background: var(--vscode-input-background, var(--surface-bg, Canvas));
     color: var(--vscode-input-foreground, var(--text-color, CanvasText));
     border: 1px solid var(--vscode-input-border, #555);
     border-radius: 3px;
-    padding: 2px 4px;
     font-size: 11px;
+  }
+  .toolbar select {
+    padding: 2px 4px;
     max-width: 140px;
   }
   .plot-viewport {
@@ -325,26 +332,14 @@
     input {
       width: 3.5em;
       box-sizing: border-box;
-      background: var(--vscode-input-background, var(--surface-bg, Canvas));
-      color: var(--vscode-input-foreground, var(--text-color, CanvasText));
-      border: 1px solid var(--vscode-input-border, #555);
-      border-radius: 3px;
       padding: 1px 3px;
-      font-size: 11px;
       text-align: right;
     }
   }
   .zoom-reset-btn {
-    background: none;
-    border: none;
-    color: var(--vscode-foreground, var(--text-color, CanvasText));
-    cursor: pointer;
     padding: 2px;
     display: flex;
     opacity: 0.7;
-    &:hover {
-      opacity: 1;
-    }
   }
   .empty {
     display: flex;

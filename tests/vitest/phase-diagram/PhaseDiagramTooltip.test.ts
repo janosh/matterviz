@@ -5,7 +5,6 @@ import type {
   PhaseBoundary,
   PhaseHoverInfo,
   TempUnit,
-  VerticalLeverRuleResult,
 } from '$lib/phase-diagram'
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
 import type { ComponentProps, Snippet } from 'svelte'
@@ -139,58 +138,21 @@ describe(`PhaseDiagramTooltip`, () => {
       fraction_left: 0.6,
       fraction_right: 0.4,
     }
-    const vertical_lever_rule: VerticalLeverRuleResult = {
-      bottom_phase: `α`,
-      top_phase: `L`,
-      bottom_temperature: 400,
-      top_temperature: 900,
-      fraction_bottom: 0.6,
-      fraction_top: 0.4,
-    }
     const two_phase = { id: `two_phase`, name: `α + L`, vertices: [] as Vec2[] }
 
-    test.each([
-      {
-        mode: `horizontal`,
-        info: { lever_rule },
-        label: `Lever Rule`,
-        parts: [`α: 60%`, `at 20 at%`, `β: 40%`, `at 80 at%`],
-      },
-      {
-        mode: `vertical`,
-        info: { vertical_lever_rule },
-        label: `Lever Rule (vertical)`,
-        parts: [`α: 60%`, `at 400 K`, `L: 40%`, `at 900 K`],
-      },
-      // vertical wins over a stale horizontal rule when both are present
-      {
-        mode: `vertical`,
-        info: { lever_rule, vertical_lever_rule },
-        label: `Lever Rule (vertical)`,
-        parts: [`at 400 K`],
-      },
-    ] as const)(
-      `$mode mode displays "$label", phase fractions and bars sized by fraction`,
-      ({ mode, info, label, parts }) => {
-        const hover_info = create_hover_info({ region: two_phase, ...info })
-        mount_tooltip({ hover_info, lever_rule_mode: mode, composition_unit: `at%` })
+    test(`displays phase fractions and bars sized by fraction`, () => {
+      const hover_info = create_hover_info({ region: two_phase, lever_rule })
+      mount_tooltip({ hover_info, composition_unit: `at%` })
 
-        expect(document.querySelector(`.lever > span`)?.textContent).toBe(label)
-        for (const part of parts) expect(lever_text()).toContain(part)
-        expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
-      },
-    )
+      expect(document.querySelector(`.lever > span`)?.textContent).toBe(`Lever Rule`)
+      for (const part of [`α: 60%`, `at 20 at%`, `β: 40%`, `at 80 at%`]) {
+        expect(lever_text()).toContain(part)
+      }
+      expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
+    })
 
-    // Only the active mode's rule is shown: a stale rule of the other mode must not leak
-    test.each([
-      { mode: `horizontal`, info: {}, desc: `no lever rule` },
-      { mode: `horizontal`, info: { vertical_lever_rule }, desc: `only vertical data` },
-      { mode: `vertical`, info: { lever_rule }, desc: `only horizontal data` },
-    ] as const)(`not displayed in $mode mode with $desc`, ({ mode, info }) => {
-      mount_tooltip({
-        hover_info: create_hover_info({ region: two_phase, ...info }),
-        lever_rule_mode: mode,
-      })
+    test(`not displayed without a lever rule`, () => {
+      mount_tooltip({ hover_info: create_hover_info({ region: two_phase }) })
       expect(document.querySelector(`.lever`)).toBeNull()
     })
   })

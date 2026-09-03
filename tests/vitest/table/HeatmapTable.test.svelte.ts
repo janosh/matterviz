@@ -7,7 +7,7 @@ import type {
   SummaryStat,
 } from '$lib/table'
 import { HeatmapTable } from '$lib/table'
-import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
 
@@ -26,6 +26,19 @@ const col_values = (col_name: string): (string | undefined)[] =>
 
 const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement =>
   doc_query(`td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`, HTMLTableCellElement)
+
+// Call before mounting, so the debounce wait below costs no wall clock
+const fake_search_timers = () => {
+  vi.useFakeTimers()
+  onTestFinished(() => void vi.useRealTimers())
+}
+// A non-empty search_query is debounced 150 ms before it reaches the filter (clearing is not)
+const settle_search = async (state: { search_query: string }, query: string) => {
+  state.search_query = query
+  flushSync() // let the debounce effect schedule its timer before advancing
+  await vi.advanceTimersByTimeAsync(150)
+  await tick()
+}
 
 describe(`HeatmapTable`, () => {
   const sample_data = [
@@ -654,6 +667,22 @@ describe(`HeatmapTable`, () => {
         `Value2`,
       ])
     })
+
+    // A split group used to swallow the intervening column under its label, leaving its tail
+    // unlabelled
+    it(`pulls a group's columns together when they are listed non-contiguously`, () => {
+      mount_table({
+        data: [{ A: 1, B: 2, C: 3 }],
+        columns: [{ label: `A`, group: `g1` }, { label: `B` }, { label: `C`, group: `g1` }],
+      })
+      const [group_row, header_row] = document.querySelectorAll(`thead tr`)
+      const spans = (row: Element) =>
+        [...row.querySelectorAll(`th`)].map(
+          (th) => `${th.textContent?.trim().replaceAll(/[↑↓\s]/g, ``)}/${th.colSpan}`,
+        )
+      expect(spans(group_row)).toEqual([`g1/2`, `/1`])
+      expect(spans(header_row)).toEqual([`A/1`, `C/1`, `B/1`])
+    })
   })
 
   describe(`Style and CSS properties`, () => {
@@ -737,6 +766,7 @@ describe(`HeatmapTable`, () => {
       [`no match`, `no-such-model`, []],
       [`empty query returns all rows`, `  `, [`Model A`, `Model B`, `Model C`]],
     ])(`filters rows by search_query: %s`, async (_desc, query, expected) => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       const data = [
         { Model: `Model A`, Score: 0.95 },
@@ -747,6 +777,8 @@ describe(`HeatmapTable`, () => {
 
       state.search_query = query
       await tick()
+      if (query.trim()) expect(col_values(`Model`)).toHaveLength(3) // debounced, not yet applied
+      await settle_search(state, query)
 
       const model_cells = col_values(`Model`)
       expect(model_cells).toHaveLength(expected.length)
@@ -756,6 +788,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`search.keys restricts matching to the given columns`, async () => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       const data = [
         { Model: `Model A`, Note: `great` },
@@ -764,8 +797,7 @@ describe(`HeatmapTable`, () => {
       const columns = plain_columns(`Model`, `Note`)
       mount_table(bind_props({ data, columns, search: { keys: [`Model`] } }, state))
 
-      state.search_query = `model a`
-      await tick()
+      await settle_search(state, `model a`)
 
       // without keys, "model a lookalike" in Note would also match
       expect(col_values(`Model`)).toEqual([`Model A`])
@@ -775,13 +807,13 @@ describe(`HeatmapTable`, () => {
       [true, [`Model A`]], // "mdla" is an in-order subsequence of "model a"
       [false, []],
     ])(`search.fuzzy=%s controls subsequence matching`, async (fuzzy, expected) => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       mount_table(
         bind_props({ data: sample_data, columns: sample_columns, search: { fuzzy } }, state),
       )
 
-      state.search_query = `mdla`
-      await tick()
+      await settle_search(state, `mdla`)
 
       expect(col_values(`Model`)).toEqual(expected)
     })
@@ -2025,6 +2057,31 @@ describe(`HeatmapTable`, () => {
       await tick()
       expect(cell_at(0, 0).style.getPropertyValue(`--cell-bg`)).not.toBe(``)
     })
+
+    // Two ways the color control used to vanish from a column that still paints: gating the
+    // list on "every value parses" dropped a mixed column, and gating it on column_stats
+    // (derived from the FILTERED rows) dropped it mid-typing
+    it(`keeps the color control for a mixed column the search empties of numbers`, async () => {
+      fake_search_timers()
+      const state = $state({ search_query: `` })
+      const data = [
+        { Model: `alpha 1`, Score: 1 },
+        { Model: `alpha 2`, Score: 2 },
+        { Model: `beta`, Score: `N/A` },
+      ]
+      const columns = plain_columns(`Model`, `Score`)
+      mount_table(bind_props({ data, columns, show_controls: true, search: true }, state))
+      document.querySelector<HTMLButtonElement>(`.pane-toggle`)?.click()
+      await tick()
+      const color_labels = () =>
+        [...document.querySelectorAll(`.col-color-label`)].map((el) => el.textContent?.trim())
+      expect(color_labels()).toEqual([`Score`])
+      expect(cell_at(0, 1).style.getPropertyValue(`--cell-bg`)).not.toBe(``) // it paints
+
+      await settle_search(state, `beta`) // filters away every numeric Score
+      expect(col_values(`Model`)).toEqual([`beta`])
+      expect(color_labels()).toEqual([`Score`])
+    })
   })
 
   describe(`cell range selection and column copy`, () => {
@@ -2179,20 +2236,25 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`.action-menu`)).not.toBeNull()
     })
 
-    it(`hides gradient controls when preferences disable the effective color scale`, async () => {
+    // An unconfigured numeric column still gets the default viridis scale, so its gradient
+    // direction is adjustable; `color_scale: null` in the prefs turns it back off
+    it.each([
+      [`hidden when preferences disable the color scale`, [heatmap_col], 0, false],
+      [`offered on a bare numeric column`, plain_columns(`Model`, `Value`), 1, true],
+    ])(`gradient controls %s`, async (_desc, columns, th_idx, shown) => {
       mount_table({
         data: sample_data,
-        columns: [heatmap_col],
-        column_prefs: { Value: { color_scale: null } },
+        columns,
+        column_prefs: { Value: { color_scale: shown ? undefined : null } },
         allow_better_toggle: true,
       })
       await tick()
 
-      document.querySelector(`th`)?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      const headers = document.querySelectorAll(`th`)
+      headers[th_idx].dispatchEvent(pointer(`contextmenu`, { button: 2 }))
       await tick()
-      expect(document.querySelector(`.action-menu`)?.textContent).not.toMatch(
-        /Higher is better|Lower is better/,
-      )
+      const menu_text = document.querySelector(`.action-menu`)?.textContent ?? ``
+      expect(/Higher is better|Lower is better/.test(menu_text)).toBe(shown)
     })
   })
 
@@ -2372,13 +2434,13 @@ describe(`HeatmapTable`, () => {
     // A narrowed result set starts at its top: keeping the old offset drops the user past
     // the end of the matches (row 140 of 111), so they land on the tail, not the first hit.
     it(`returns to the top of the results when the search query changes`, async () => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       mount_table(bind_props({ data: many_rows, columns: two_cols, virtual: true }, state))
       const scroller = await scroll_to(150 * row_height_px)
       expect(spacers()[0].style.height).toBe(`${(150 - overscan) * row_height_px}px`)
 
-      state.search_query = `Model 1` // matches 111 of the 200 rows
-      await tick()
+      await settle_search(state, `Model 1`) // matches 111 of the 200 rows
       expect(scroller.scrollTop).toBe(0)
       expect(spacers()).toHaveLength(1) // bottom only, so the window starts at row 0
     })

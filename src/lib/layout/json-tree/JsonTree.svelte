@@ -12,7 +12,8 @@
     Search,
   } from 'svelte-widgets/icons'
   import { download } from '$lib/io/fetch'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { clamp } from '$lib/math'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { make_change_detector } from '$lib/utils'
   import { tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-widgets/attachments'
@@ -366,6 +367,8 @@
       step_match(event.shiftKey ? -1 : 1)
       return
     }
+    // Everything below moves tree focus or hijacks Ctrl/Cmd+C; F3 above stays global
+    if (is_editable_event_target(event.target)) return
     // Escape closes context menu first, then clears selection
     if (event.key === `Escape`) {
       if (context_menu_state) context_menu_state = null
@@ -388,7 +391,7 @@
     const step = event.key === `ArrowDown` ? 1 : event.key === `ArrowUp` ? -1 : 0
     if (paths.length === 0 || (current_index !== -1 && step === 0)) return
     event.preventDefault()
-    set_focused(paths[Math.min(Math.max(current_index + step, 0), paths.length - 1)])
+    set_focused(paths[clamp(current_index + step, 0, paths.length - 1)])
   }
 
   function clear_search() {
@@ -605,10 +608,11 @@
     </button>
     <menu
       class="context-menu"
-      style="left: {Math.max(
+      style="left: {clamp(context_menu_state.x, 0, window.innerWidth - 180)}px; top: {clamp(
+        context_menu_state.y,
         0,
-        Math.min(context_menu_state.x, window.innerWidth - 180),
-      )}px; top: {Math.max(0, Math.min(context_menu_state.y, window.innerHeight - 200))}px"
+        window.innerHeight - 200,
+      )}px"
     >
       {#each context_menu_items as item, idx (idx)}
         <li class={{ separator: !item }}>

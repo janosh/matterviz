@@ -65,8 +65,12 @@ function formal_charge(symbol: string, bond_valence: number): number {
 
 const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 
-// Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains).
-const MAX_VALENCE_COMBOS = 4096
+// Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains), counted in PICKS
+// (combinations x fragment atoms) since valence_combinations materializes one target valence
+// per atom per combination: a 12-nitrogen 3000-atom chain is 4096 combinations, inside the old
+// combination cap, but 1.2e7 picks and 267 s. 2e6 picks is ~16 MB and ~200 ms worst case, and
+// gives small fragments (S8, Se8) more room than 4096 combinations did.
+const MAX_VALENCE_PICKS = 2_000_000
 
 // Edges are bounds-checked by perceive_bond_orders before reaching here.
 function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
@@ -106,17 +110,20 @@ type BondOrderSolution = { orders: number[]; valence: number[] }
 // valence-sum first (xyz2mol prefers the least-saturated solution).
 function* valence_combinations(valence_lists: number[][]): Generator<number[]> {
   const combos: { sum: number; pick: number[] }[] = []
-  const rec = (pos: number, acc: number[]) => {
+  // One shared, mutable prefix, leaves copied out: `[...acc, valence]` copied the whole prefix
+  // at every recursion step, costing combinations x atoms^2 rather than x atoms.
+  const acc: number[] = Array.from({ length: valence_lists.length }, () => 0)
+  const rec = (pos: number, sum: number) => {
     if (pos === valence_lists.length) {
-      combos.push({
-        sum: acc.reduce((sum, valence) => sum + valence, 0),
-        pick: [...acc],
-      })
+      combos.push({ sum, pick: acc.slice() })
       return
     }
-    for (const valence of valence_lists[pos]) rec(pos + 1, [...acc, valence])
+    for (const valence of valence_lists[pos]) {
+      acc[pos] = valence
+      rec(pos + 1, sum + valence)
+    }
   }
-  rec(0, [])
+  rec(0, 0)
   combos.sort((left_combo, right_combo) => left_combo.sum - right_combo.sum)
   for (const combo of combos) yield combo.pick
 }
@@ -312,7 +319,16 @@ export function perceive_bond_orders(
       (product, valence_list) => product * valence_list.length,
       1,
     )
-    if (combo_count > MAX_VALENCE_COMBOS) continue
+    const pick_count = combo_count * valence_lists.length
+    if (pick_count > MAX_VALENCE_PICKS) {
+      // Console, no WarnFn here: silently drawing benzene as all-single bonds is wrong data
+      console.warn(
+        `Bond-order perception skipped fragment ${frag_idx} (${frag.length} atoms, ` +
+          `${local_edges.length} bonds): ${pick_count} valence picks exceed the ` +
+          `${MAX_VALENCE_PICKS}-pick cap, so its bonds stay single-order and unperceived`,
+      )
+      continue
+    }
     let solved: BondOrderSolution | null = null
     for (const target of valence_combinations(valence_lists)) {
       const candidate = assign_bond_orders(local_edges, target)

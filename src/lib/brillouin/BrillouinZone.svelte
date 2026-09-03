@@ -157,7 +157,6 @@
 
   $effect(() => on_point_hover?.(hover_data))
 
-  // Normalize show_controls prop into consistent config
   let controls_config = $derived(normalize_show_controls(show_controls))
 
   const drop_zone = create_material_loader<Crystal>({

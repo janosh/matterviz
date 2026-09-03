@@ -302,14 +302,33 @@ describe(`camera helpers`, () => {
     expect(camera_position_for_target([0, 0, 0], 10, view_dir)).toEqual(expected)
   })
 
+  // Last two rows are reciprocal-space extents (any cell wider than ~12 A): clamping the
+  // divisor at 1 froze the zoom below extent 1 instead of letting it keep rising.
   test.each([
     [10, 800, 400, FIT_ZOOM_REF_PX, 40],
     [8, 500, 500, FIT_ZOOM_REF_PX * 2, 125],
     [10, 460, 460, FIT_ZOOM_REF_PX, 46],
     [100, 200, 200, FIT_ZOOM_REF_PX, 2],
-  ] as const)(`ortho_zoom extent=%i %ix%i in=%i → %i`, (ext, w, h, zoom_in, expected) => {
-    expect(ortho_zoom_for_extent(ext, w, h, zoom_in)).toBeCloseTo(expected, 10)
+    [0.5, 800, 400, FIT_ZOOM_REF_PX, 800],
+    [0.001, 800, 400, FIT_ZOOM_REF_PX, 400_000],
+  ] as const)(`ortho_zoom extent=%s %ix%i in=%i → %i`, (ext, wid, hgt, zoom_in, expected) => {
+    expect(ortho_zoom_for_extent(ext, wid, hgt, zoom_in)).toBeCloseTo(expected, 10)
   })
+
+  // one shared extent/viewport check, so a bad extent is rejected rather than clamped into
+  // framing the scene against a constant
+  // oxfmt-ignore
+  test.each([
+    [0, 400, 400], [-1, 400, 400], [Number.NaN, 400, 400], [Infinity, 400, 400],
+    [10, 0, 400], [10, 400, 0], [10, -1, 400],
+  ])(`both fits reject extent=%s viewport %sx%s`, (extent, width, height) => {
+    expect(() => ortho_zoom_for_extent(extent, width, height, 10)).toThrow(/Invalid ortho fit/)
+    expect(() => perspective_distance_for_extent(extent, width, height, 10)).toThrow(/persp/)
+  })
+
+  test.each([0, -1, 180, 200])(`perspective rejects fov %s`, (fov) =>
+    expect(() => perspective_distance_for_extent(10, 400, 400, fov)).toThrow(/perspective/),
+  )
 
   const vertical_half_fov = Math.PI / 36
   const tall_horizontal_half_fov = Math.atan(Math.tan(vertical_half_fov) / 2)

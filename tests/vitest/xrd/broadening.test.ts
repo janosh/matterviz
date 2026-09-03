@@ -1,4 +1,4 @@
-import { broaden_peaks } from '$lib/lineshape'
+import { broaden_peaks, MAX_BROADENING_FILL_STEPS } from '$lib/lineshape'
 import type { Vec2 } from '$lib/math'
 import {
   caglioti_fwhm,
@@ -44,9 +44,26 @@ describe(`compute_broadened_pattern`, () => {
   })
 
   test(`generates correct grid based on range and step_size`, () => {
-    // The grid is [min, max) unless (max-min) is not a multiple of step
-    const grid = compute_broadened_pattern({ x: [], y: [] }, DEFAULT_BROADENING, [10, 12], 0.5)
-    expect(grid.x).toEqual([10, 10.5, 11, 11.5])
+    const empty = { x: [], y: [] }
+    // both ends are included when the span divides evenly, otherwise the last whole step
+    expect(compute_broadened_pattern(empty, DEFAULT_BROADENING, [10, 12], 0.5).x).toEqual([
+      10, 10.5, 11, 11.5, 12,
+    ])
+    expect(
+      compute_broadened_pattern(empty, DEFAULT_BROADENING, [10, 12], 0.7).x.at(-1),
+    ).toBeCloseTo(11.4)
+    // (0.3 - 0) / 0.1 is 2.9999999999999996, so flooring the raw quotient dropped the endpoint
+    const fp_grid = compute_broadened_pattern(empty, DEFAULT_BROADENING, [0, 0.3], 0.1)
+    expect(fp_grid.x).toHaveLength(4)
+    expect(fp_grid.x.at(-1)).toBe(0.3) // pinned exactly, not 0 + 3 * 0.1
+  })
+
+  // flooring a negative radicand at 1e-9 gave FWHM 3.16e-5°, far under the 0.02° grid step, so
+  // broaden_peaks dumped a peak's whole area on one grid point
+  test(`caglioti_fwhm throws on an unphysical U/V/W triple instead of flooring the width`, () => {
+    expect(() => caglioti_fwhm(20, 0.04, -0.02, 0)).toThrow(
+      /Caglioti FWHM² = U·tan²θ \+ V·tanθ \+ W is -?[\d.e-]+ at 2θ = 20°/,
+    )
   })
 
   test(`broadens a single peak correctly with intensity conservation`, () => {
@@ -73,7 +90,7 @@ describe(`compute_broadened_pattern`, () => {
 
     expect(Math.max(...result.y)).toBeGreaterThan(0)
     expect(result.x[0]).toBe(40)
-    expect(result.x.at(-1)).toBeCloseTo(60 - 0.1)
+    expect(result.x.at(-1)).toBe(60)
     // the 50 peak's own window spans only 47.2..52.8, so both grid ends stay at zero
     // unless one of the far peaks leaked in
     expect(result.y[0]).toBe(0)
@@ -149,9 +166,9 @@ describe(`compute_broadened_pattern`, () => {
       params: DEFAULT_BROADENING,
       range: [15, 90] as Vec2,
       step_size: 0.02,
-      n_steps: 3750,
-      n_nonzero: 2440,
-      sum: 1.2518077747329109e4,
+      n_steps: 3751,
+      n_nonzero: 2441,
+      sum: 1.2518131773786872e4,
       max: 5.9048636119055686e2,
     },
     {
@@ -160,7 +177,7 @@ describe(`compute_broadened_pattern`, () => {
       params: { U: 0.12, V: -0.05, W: 0.008, shape_factor: 0.8 },
       range: [25, 70] as Vec2,
       step_size: 0.05,
-      n_steps: 900,
+      n_steps: 901,
       n_nonzero: 172,
       sum: 4.6243623456644464e3,
       max: 1.2326004596246166e3,
@@ -307,6 +324,14 @@ describe(`broaden_peaks`, () => {
       pattern: { x: [20], y: [1, 1e9] },
       err: `1 positions but 2 intensities`,
     },
+    // a two-column CSV whose x is not 2theta hands XrdPlot its own extent as angle_range:
+    // 1e9 grid points is 8 GB per array
+    {
+      step: 0.02,
+      range: [0, 2e7],
+      pattern: { x: [20], y: [100] },
+      err: `needs 1000000001 grid points, past the 10000000 cap`,
+    },
     // NaN poisons every grid point; Infinity puts the relative floor at Infinity and drops
     // the real peaks with it, so both come back looking like "nothing to plot"
     {
@@ -321,6 +346,14 @@ describe(`broaden_peaks`, () => {
       pattern: { x: [20, 40], y: [100, Infinity] },
       err: `intensities must be finite, got Infinity`,
     },
+    // A non-finite position fails both reach tests and leaves start_idx NaN, so the fill loop
+    // never runs: the curve came back identical to one that never carried the peak
+    {
+      step: 0.02,
+      range: [10, 80],
+      pattern: { x: [30, Infinity], y: [100, 100] },
+      err: `peak positions must be finite, got Infinity at index 1`,
+    },
   ])(`validates inputs before touching fwhm_fn ($err)`, ({ step, range, pattern, err }) => {
     const fwhm_fn = () => {
       throw new Error(`fwhm_fn must not be called`)
@@ -334,5 +367,21 @@ describe(`broaden_peaks`, () => {
     expect(() =>
       broaden_peaks({ x: [20], y: [100] }, () => bad_width, 0.5, [10, 80], 0.02),
     ).toThrow(`fwhm_fn must return > 0 and finite, got ${bad_width} at peak 20`)
+  })
+
+  // The grid cap bounds the allocation only; the fill work is O(sum of window lengths), which
+  // a diverging fwhm_fn drives arbitrarily high over a grid that is itself perfectly legal
+  test(`caps total fill work, not just the grid allocation`, () => {
+    const peaks_at = (count: number) => {
+      const x = Array.from({ length: count }, (_unused, idx) => 20 + idx * 1e-3)
+      return { x, y: x.map(() => 100) }
+    }
+    // every window covers the whole 10001-point grid: 20000 * 10001 = 2.0002e8 steps
+    expect(() => broaden_peaks(peaks_at(20_000), () => 1000, 0.5, [0, 100], 0.01)).toThrow(
+      `pass the ${MAX_BROADENING_FILL_STEPS} accumulation steps cap`,
+    )
+    // realistic widths over the same grid stay decades under the cap and still broaden
+    const narrow = broaden_peaks(peaks_at(1000), () => 0.1, 0.5, [0, 100], 0.01)
+    expect(narrow.y.filter((y_val) => y_val > 0).length).toBeGreaterThan(100)
   })
 })

@@ -1,5 +1,3 @@
-import { SvelteSet } from 'svelte/reactivity'
-
 // Normalises the `show_controls` prop every viewer accepts into one shape for its chrome
 
 type ControlsVisibility = `always` | `hover` | `never`
@@ -32,7 +30,8 @@ export function normalize_show_controls(
       : typeof prop === `string`
         ? prop
         : (config?.mode ?? default_mode)
-  const hidden = new SvelteSet(config?.hidden)
+  // Plain Set: never mutated, and every caller already wraps this in a $derived
+  const hidden = new Set(config?.hidden)
   return {
     mode,
     style: config?.style,

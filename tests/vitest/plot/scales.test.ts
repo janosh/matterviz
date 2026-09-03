@@ -15,6 +15,7 @@ import {
   nice_range_from_extent,
   scale_arcsinh,
 } from '$lib/plot/core/scales'
+import type { TicksOption } from '$lib/plot/core/scales'
 import type { ArcsinhScaleConfig, ScaleType } from '$lib/plot/core/types'
 import {
   get_arcsinh_threshold,
@@ -293,6 +294,20 @@ describe(`scales`, () => {
     expect(radii([1, 100])).toEqual([2, 6, 10])
     expect(radii([100, 1])).toEqual([10, 6, 2])
   })
+
+  // The arcsinh branch clamps by hand, not through d3's .clamp(true), so descending bounds
+  // collapsed it to a constant
+  test.each([`linear`, `arcsinh`, `log`] as const)(
+    `%s honors a descending radius_range`,
+    (type) => {
+      const radius = create_size_scale(
+        { type, value_range: [1, 100], radius_range: [10, 2] },
+        [],
+      )
+      // the last one is out of domain: it clamps to the end, not past it
+      expect([radius(1), radius(100), radius(1000)]).toEqual([10, 2, 2])
+    },
+  )
 
   describe(`log_floor_scale`, () => {
     test(`returns non-log scales untouched`, () => {
@@ -597,6 +612,26 @@ describe(`scales`, () => {
       const opts = default_count === undefined ? undefined : { default_count }
       const result = generate_ticks(domain, type, ticks, scale, opts)
       expect(result.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
+    })
+
+    // A negative ticks option is a STEP, so its count rides on the domain: `ticks: -1` over
+    // [0, 1e8] built 100,000,001 entries (~800 MB). Time intervals take the same step -> count
+    // path. Local, not UTC: d3's year ticks land on local year starts, so 201 holds in any TZ.
+    const centuries: Vec2 = [new Date(1900, 0, 1).getTime(), new Date(2100, 0, 1).getTime()]
+    // oxfmt-ignore
+    // last column: the exact tick count when the option is within the cap, else the throw
+    test.each<[string, Vec2, TicksOption, ScaleType, string | number]>([
+      [`interval past the cap`, [0, 1e8], -1, `linear`, `a tick interval of 1`],
+      [`count past the cap`, [0, 1e8], 5e6, `linear`, `a tick count of 5000000`],
+      [`interval within the cap`, [0, 1e8], -1e5, `linear`, 1001],
+      [`time day interval past the cap`, centuries, `day`, `time`, `a tick interval of 1 day(s)`],
+      [`time fractional day step past the cap`, centuries, -0.001, `time`, `a tick interval of 0.001 day(s)`],
+      [`time year interval within the cap`, centuries, `year`, `time`, 201],
+    ])(`%s`, (_name, domain, ticks, scale_type, expected) => {
+      const scale = scaleLinear().domain(domain).range([0, 500])
+      const generate = () => generate_ticks(domain, scale_type, ticks, scale)
+      if (typeof expected === `number`) expect(generate()).toHaveLength(expected)
+      else expect(generate).toThrow(expected)
     })
   })
 

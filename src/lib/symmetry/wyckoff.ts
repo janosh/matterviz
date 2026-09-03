@@ -1,7 +1,7 @@
 // Wyckoff rows of an analyzed structure: grouping moyo's input-cell orbits into table rows,
 // joining them against moyo's space-group database (ITA representative coordinates, site
 // symmetry) and mapping rows onto the sites of a displayed (transformed/supercell) structure.
-import { ELEM_SYMBOLS } from '$lib/element/types'
+import { element_from_atomic_number } from '$lib/element/helpers'
 import { superscript_digits } from '$lib/labels'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -48,13 +48,24 @@ function frac_coord_mapper(
   return { to_std, linear }
 }
 
-// Lower is simpler. Per coordinate u ∈ [0, 1): 0 scores 0, 1/2 scores 1/2, and the score
-// peaks at 3/4 for u = 1/4 or 3/4, so special positions (0, 1/2) win over generic ones.
+// Lower is simpler: per coordinate u ∈ [0, 1), the distance to the nearest of 0, 1/2 and 1.
+// The previous `min(u, 1 − u) + ½|u − ½|` reduces to ¼ + ½·min(u, 1 − u), which made u = 1/2
+// the WORST-scoring value so a generic 0.30 beat a special 0.50.
 const simplicity_score = (pos: Vec3): number =>
   pos.reduce((sum, coord) => {
     const unit = wrap_frac_coord(coord)
-    return sum + Math.min(unit, 1 - unit) + 0.5 * Math.abs(unit - 0.5)
+    return sum + Math.min(unit, Math.abs(unit - 0.5), 1 - unit)
   }, 0)
+
+// moyo echoes back the atomic numbers it was handed, so anything off the table means the two
+// disagree about the cell — name it rather than printing a `?` row the user cannot act on
+const element_symbol_of = (atomic_number: number): string => {
+  const symbol = element_from_atomic_number(atomic_number)
+  if (!symbol) {
+    throw new Error(`moyo input cell has atomic number ${atomic_number}, not a known element`)
+  }
+  return symbol
+}
 
 // Wyckoff letter from a `4a`-style multiplicity+letter label. Uppercase `A` is moyo's
 // encoding of ITA's 27th letter alpha (general position of Pmmm-like groups).
@@ -116,7 +127,7 @@ export function wyckoff_positions_from_moyo(
     const site_symmetry = site_symmetry_symbols?.[rep]
     return {
       wyckoff: `${multiplicity}${letter}`,
-      elem: ELEM_SYMBOLS[input_cell.numbers[rep] - 1] ?? `?`,
+      elem: element_symbol_of(input_cell.numbers[rep]),
       abc,
       site_indices,
       ...(site_symmetry ? { site_symmetry } : {}),
@@ -189,15 +200,9 @@ export function apply_symmetry_operations(
   const seen = new Set<string>()
   return operations
     .map(({ rotation, translation }) => {
-      // new_pos = W·position + t; moyo serializes W COLUMN-major: W[dim][j] = rotation[dim + 3j]
-      const new_pos: Vec3 = [0, 1, 2].map(
-        (dim) =>
-          rotation[dim] * position[0] +
-          rotation[dim + 3] * position[1] +
-          rotation[dim + 6] * position[2] +
-          translation[dim],
-      ) as Vec3
-      return wrap_to_unit_cell(new_pos)
+      // new_pos = W·position + t, with W decoded from moyo's COLUMN-major flat 9-array
+      const rotated = math.mat3x3_vec3_multiply(mat3_from_flat_col_major(rotation), position)
+      return wrap_to_unit_cell(rotated.map((val, dim) => val + translation[dim]) as Vec3)
     })
     .filter((pos) => {
       const pos_key = position_key(pos)
@@ -269,8 +274,7 @@ class WrappedPositionIndex {
     private readonly transform?: (pos: Vec3) => Vec3,
   ) {
     this.coords = transform ? coords.map(transform) : coords
-    const inv_tolerance = Math.floor(1 / Math.max(tolerance, 1e-9))
-    this.n_cells = Math.min(64, Math.max(1, inv_tolerance))
+    this.n_cells = math.clamp(Math.floor(1 / Math.max(tolerance, 1e-9)), 1, 64)
     this.coords.forEach((pos, idx) => {
       const key = this.cell_key(pos, 0, 0, 0)
       const bucket = this.buckets.get(key)

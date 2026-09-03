@@ -7,7 +7,6 @@
   import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import type {
-    AxisConfig,
     AxisLoadError,
     BarHandlerProps,
     BarMode,
@@ -39,10 +38,9 @@
   import { normalize_marginals } from '$lib/plot/core/marginals'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import {
-    AXIS_DEFAULTS,
     category_tick_labels,
     create_axis_loader,
-    X2_AXIS_DEFAULTS,
+    merge_secondary_axes,
   } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
@@ -51,7 +49,7 @@
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import {
-    focus_left,
+    create_focus_exit,
     get_relative_coords,
     is_activation_key,
   } from '$lib/plot/core/interactions'
@@ -61,7 +59,8 @@
     roving_key,
   } from '$lib/plot/core/utils/roving-focus.svelte'
   import { assign_axes } from '$lib/plot/core/axis-assignment'
-  import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
+  import type { ObstacleSeries } from '$lib/plot/core/decorations'
+  import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
     collect_scale_values,
@@ -203,17 +202,14 @@
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series_in = next),
-    (srs) => (orientation === `vertical` ? srs.y_axis : srs.x_axis),
+    (srs) => (vertical ? srs.y_axis : srs.x_axis),
   )
   let series: BarSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
-  // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
+  const vertical = $derived(orientation === `vertical`)
   let bar_state = $derived({ ...DEFAULTS.bar.bar, ...bar })
   let line_state = $derived({ ...DEFAULTS.bar.line, ...line })
-  // Merge secondary-axis defaults as deriveds instead of assigning back into the
-  // $bindable props (which would push library defaults into the parent's bound state)
-  let y2_axis = $derived<AxisConfig>({ ...AXIS_DEFAULTS, ...y2_axis_prop })
-  let x2_axis = $derived<AxisConfig>({ ...X2_AXIS_DEFAULTS, ...x2_axis_prop })
+  let { y2: y2_axis, x2: x2_axis } = $derived(merge_secondary_axes(y2_axis_prop, x2_axis_prop))
 
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
@@ -260,24 +256,19 @@
 
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
+  // Horizontal bars take their value axis from the x axis they were assigned
+  const HORIZONTAL_VALUE_AXIS = { x1: `y1`, x2: `y2` } as const
   // Assign visible series without an explicit value axis by unit/group. The value axis is
   // y/y2 for vertical bars and x/x2 for horizontal bars. Keep this as an effective copy so
   // legend toggles can reassign axes without mutating bound input series.
   const axis_assigned_series = $derived.by<BarSeries<Metadata>[]>(() => {
     const assignment_inputs = series.map((srs) => ({
       ...srs,
-      y_axis:
-        orientation === `vertical`
-          ? srs.y_axis
-          : srs.x_axis === `x1`
-            ? (`y1` as const)
-            : srs.x_axis === `x2`
-              ? (`y2` as const)
-              : undefined,
+      y_axis: vertical ? srs.y_axis : srs.x_axis && HORIZONTAL_VALUE_AXIS[srs.x_axis],
     }))
     const assignment = assign_axes(assignment_inputs)
     if (assignment.status === `overflow`) {
-      const axis_prop = orientation === `vertical` ? `y_axis` : `x_axis`
+      const axis_prop = vertical ? `y_axis` : `x_axis`
       throw new Error(
         `BarPlot cannot automatically assign visible value series in ${orientation} orientation: ${assignment.error.message}. Set ${axis_prop} explicitly or hide an axis group.`,
         { cause: assignment.error },
@@ -287,7 +278,7 @@
       if (srs.visible === false) return srs
       const assigned_axis = assignment.assignments[series_idx]
       if (!assigned_axis) return srs
-      return orientation === `vertical`
+      return vertical
         ? { ...srs, y_axis: assigned_axis }
         : { ...srs, x_axis: assigned_axis === `y1` ? `x1` : `x2` }
     })
@@ -329,8 +320,7 @@
     visible_series.some((srs) => srs.x_axis === `x2` && has_finite_point(srs)),
   )
   let show_y2 = $derived(
-    orientation === `vertical` &&
-      visible_series.some((srs) => srs.y_axis === `y2` && has_finite_point(srs)),
+    vertical && visible_series.some((srs) => srs.y_axis === `y2` && has_finite_point(srs)),
   )
 
   let auto_ranges = $derived(
@@ -361,101 +351,92 @@
   // against the decoration-independent base plot so outside padding cannot feed back into
   // the crowding decision. Bars contribute their grouped/stacked screen rectangles and
   // line series contribute sampled polylines.
-  const obstacles_norm = $derived.by(() => {
-    const { width, height, effective_base_pad } = frame
-    if (!width || !height || visible_series.length === 0) return []
-    const base_w = width - effective_base_pad.l - effective_base_pad.r
-    const base_h = height - effective_base_pad.t - effective_base_pad.b
-    if (base_w <= 0 || base_h <= 0) return []
-    const obstacle_series: {
-      points: { x: number; y: number }[]
-      draws_line: boolean
-    }[] = []
-    const vertical = orientation === `vertical`
-    const obstacle_scales = create_axis_scales(
-      plot_axes,
-      frame.ranges.current,
-      effective_base_pad,
-      width,
-      height,
-    )
-    internal_series.forEach((srs, series_idx) => {
-      if (!(srs?.visible ?? true)) return
-      const is_line = srs.render_mode === `line`
-      const series_offsets = stacked_offsets[series_idx] ?? []
-      const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
-      const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
-      const category_scale = vertical
-        ? (value: number) => obstacle_scales[x_axis_key](value) - effective_base_pad.l
-        : (value: number) => obstacle_scales.y(value) - effective_base_pad.t
-      const value_px = value_scale_for(vertical ? y_axis_key : x_axis_key, obstacle_scales)
-      const value_scale = vertical
-        ? (value: number) => value_px(value) - effective_base_pad.t
-        : (value: number) => value_px(value) - effective_base_pad.l
+  const obstacles_norm = $derived.by(() =>
+    with_obstacle_frame(frame, visible_series.length > 0, ({ base_w, base_h }) => {
+      const { width, height, effective_base_pad } = frame
+      const obstacle_series: ObstacleSeries[] = []
+      const obstacle_scales = create_axis_scales(
+        plot_axes,
+        frame.ranges.current,
+        effective_base_pad,
+        width,
+        height,
+      )
+      internal_series.forEach((srs, series_idx) => {
+        if (!(srs?.visible ?? true)) return
+        const is_line = srs.render_mode === `line`
+        const series_offsets = stacked_offsets[series_idx] ?? []
+        const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
+        const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
+        const category_scale = vertical
+          ? (value: number) => obstacle_scales[x_axis_key](value) - effective_base_pad.l
+          : (value: number) => obstacle_scales.y(value) - effective_base_pad.t
+        const value_px = value_scale_for(vertical ? y_axis_key : x_axis_key, obstacle_scales)
+        const value_scale = vertical
+          ? (value: number) => value_px(value) - effective_base_pad.t
+          : (value: number) => value_px(value) - effective_base_pad.l
 
-      if (is_line) {
-        const line_points = srs.x.map((x_val, point_idx) => {
-          const y_val = srs.y[point_idx]
-          const x = vertical ? category_scale(x_val) / base_w : value_scale(y_val) / base_w
-          const y = vertical ? value_scale(y_val) / base_h : category_scale(x_val) / base_h
-          return { x: clamp01(x), y: clamp01(y) }
-        })
-        const markers = srs.markers ?? DEFAULT_MARKERS
-        obstacle_series.push({
-          points: line_points,
-          draws_line: markers === `line` || markers === `line+points`,
-        })
-        return
-      }
-
-      srs.x.forEach((x_val, bar_idx) => {
-        const value = srs.y[bar_idx]
-        if (!Number.isFinite(x_val) || !Number.isFinite(value)) return
-        const base = mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
-        const bar_width_val = Array.isArray(srs.bar_width)
-          ? (srs.bar_width[bar_idx] ?? 0.5)
-          : (srs.bar_width ?? 0.5)
-        const rect = compute_bar_rect({
-          cat_val: x_val,
-          val: value,
-          base,
-          bar_width_val,
-          series_idx,
-          mode,
-          orientation,
-          group_info,
-          cat_scale: category_scale,
-          val_scale: value_scale,
-        })
-        const cross_start = vertical ? rect.rect_x / base_w : rect.rect_y / base_h
-        const cross_end = vertical
-          ? (rect.rect_x + rect.rect_w) / base_w
-          : (rect.rect_y + rect.rect_h) / base_h
-        const value_start = vertical ? rect.rect_y / base_h : rect.rect_x / base_w
-        const value_end = vertical
-          ? (rect.rect_y + rect.rect_h) / base_h
-          : (rect.rect_x + rect.rect_w) / base_w
-        for (const cross of [cross_start, (cross_start + cross_end) / 2, cross_end]) {
-          const segment = clip_bar(vertical, cross, value_start, value_end)
-          if (segment) obstacle_series.push(segment)
+        if (is_line) {
+          const line_points = srs.x.map((x_val, point_idx) => {
+            const y_val = srs.y[point_idx]
+            const x = vertical ? category_scale(x_val) / base_w : value_scale(y_val) / base_w
+            const y = vertical ? value_scale(y_val) / base_h : category_scale(x_val) / base_h
+            return { x: clamp01(x), y: clamp01(y) }
+          })
+          const markers = srs.markers ?? DEFAULT_MARKERS
+          obstacle_series.push({
+            points: line_points,
+            draws_line: markers === `line` || markers === `line+points`,
+          })
+          return
         }
+
+        srs.x.forEach((x_val, bar_idx) => {
+          const value = srs.y[bar_idx]
+          if (!Number.isFinite(x_val) || !Number.isFinite(value)) return
+          const base = mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
+          const bar_width_val = Array.isArray(srs.bar_width)
+            ? (srs.bar_width[bar_idx] ?? 0.5)
+            : (srs.bar_width ?? 0.5)
+          const rect = compute_bar_rect({
+            cat_val: x_val,
+            val: value,
+            base,
+            bar_width_val,
+            series_idx,
+            mode,
+            orientation,
+            group_info,
+            cat_scale: category_scale,
+            val_scale: value_scale,
+          })
+          const { rect_x, rect_y, rect_w, rect_h } = rect
+          // cross = across the bar, value = along it; sample both edges and the middle
+          const [cross0, cross_len, value_start, value_len] = vertical
+            ? [rect_x / base_w, rect_w / base_w, rect_y / base_h, rect_h / base_h]
+            : [rect_y / base_h, rect_h / base_h, rect_x / base_w, rect_w / base_w]
+          const value_end = value_start + value_len
+          for (const frac of [0, 0.5, 1]) {
+            const seg = clip_bar(vertical, cross0 + frac * cross_len, value_start, value_end)
+            if (seg) obstacle_series.push(seg)
+          }
+        })
       })
-    })
-    return build_obstacles_norm(obstacle_series, base_w, base_h)
-  })
+      return obstacle_series
+    }),
+  )
 
   // Resolve marginals before decoration placement so both share one final plot box.
-  const marginal_is_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(
     normalize_marginals(
       marginals,
-      marginal_is_vertical ? { top: { type: `cdf` } } : { right: { type: `cdf` } },
+      vertical ? { top: { type: `cdf` } } : { right: { type: `cdf` } },
     ),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     internal_series.map((srs) => ({
-      x: marginal_is_vertical ? (srs?.x ?? []) : undefined,
-      y: marginal_is_vertical ? undefined : (srs?.x ?? []),
+      x: vertical ? (srs?.x ?? []) : undefined,
+      y: vertical ? undefined : (srs?.x ?? []),
       // magnitude weights so negative bars still yield a monotonic cumulative (CDF) marginal
       weight: srs?.y?.map((value) => Math.abs(value)) ?? [],
       color: srs?.color ?? (srs?.render_mode === `line` ? line_state.color : bar_state.color),
@@ -568,11 +549,7 @@
     on_bar_hover?.(null)
   }
 
-  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
-  // is not. Defined once rather than inline, so every mark shares one handler.
-  const clear_hover_on_exit = (event: FocusEvent) => {
-    if (focus_left(event, frame.svg_element)) clear_hover()
-  }
+  const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
   const clear_point_hover = () => {
     hover_info = null
     on_point_hover?.(null)
@@ -581,7 +558,6 @@
   // Stack offsets (only for bar series in stacked mode, grouped by the value axis)
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode, orientation))
 
-  // Calculate group positions for grouped mode (side-by-side bars)
   let group_info = $derived(compute_group_info(internal_series, mode))
 
   // State accessors for shared axis change handler
@@ -598,7 +574,6 @@
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
-  // Shared handler + one-shot auto-load bound to this component's state
   const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
     data_loader,
     on_axis_change,
@@ -854,9 +829,8 @@
                 {@const bar_width_val = Array.isArray(srs.bar_width)
                   ? (srs.bar_width[bar_idx] ?? 0.5)
                   : (srs.bar_width ?? 0.5)}
-                {@const is_vertical = orientation === `vertical`}
                 {@const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`}
-                {@const [cat_scale, val_scale] = is_vertical
+                {@const [cat_scale, val_scale] = vertical
                   ? [
                       frame.scales[x_axis_key],
                       value_scale_for(srs.y_axis === `y2` ? `y2` : `y`),
@@ -874,7 +848,7 @@
                   cat_scale,
                   val_scale,
                 })}
-                {#if Number.isFinite(rect_x) && Number.isFinite(rect_y) && Number.isFinite(rect_w) && Number.isFinite(rect_h) && (is_vertical ? rect_h : rect_w) > 0}
+                {#if Number.isFinite(rect_x) && Number.isFinite(rect_y) && Number.isFinite(rect_w) && Number.isFinite(rect_h) && (vertical ? rect_h : rect_w) > 0}
                   <path
                     d={bar_path(
                       rect_x,
@@ -882,8 +856,8 @@
                       rect_w,
                       rect_h,
                       bar_state.border_radius ?? 0,
-                      is_vertical,
-                      is_vertical ? v1 > v0 : v1 < v0,
+                      vertical,
+                      vertical ? v1 > v0 : v1 < v0,
                     )}
                     fill={series_patterns[series_idx]?.url ?? color}
                     opacity={mode === `overlay` ? bar_state.opacity : 1}
@@ -924,22 +898,22 @@
                     }}
                   />
                   {#if srs.labels?.[bar_idx]}
-                    {@const label_x = is_vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
-                    {@const label_y = is_vertical
+                    {@const label_x = vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
+                    {@const label_y = vertical
                       ? Math.max(0, Math.min(v0, v1) - 6)
                       : (c0 + c1) / 2}
                     {@const label_rotation = bar_state.label_rotation ?? 0}
                     <text
                       x={label_x}
                       y={label_y}
-                      text-anchor={is_vertical
+                      text-anchor={vertical
                         ? label_rotation > 0
                           ? `end`
                           : label_rotation < 0
                             ? `start`
                             : `middle`
                         : undefined}
-                      dominant-baseline={is_vertical ? undefined : `central`}
+                      dominant-baseline={vertical ? undefined : `central`}
                       transform={label_rotation
                         ? `rotate(${label_rotation}, ${label_x}, ${label_y})`
                         : undefined}
@@ -978,11 +952,16 @@
         mode === `stacked`
           ? (stacked_offsets[hover_info.series_idx]?.[hover_info.bar_idx] ?? 0)
           : 0}
-      {@const cx = (hover_info.active_x_axis === `x2` ? frame.scales.x2 : frame.scales.x)(
+      {@const tip_x_key = hover_info.active_x_axis === `x2` ? `x2` : `x`}
+      {@const tip_y_key = hover_info.active_y_axis === `y2` ? `y2` : `y`}
+      <!-- Value axis via value_scale_for, like the bars: a non-positive value on a log axis
+      draws at the 1px floor where the raw scale anchors the tooltip at NaN. The category axis
+      keeps the bars' raw scale, so a log one cannot floor the anchor off its bar. -->
+      {@const cx = (vertical ? frame.scales[tip_x_key] : value_scale_for(tip_x_key))(
         hover_info.orient_x + (orientation === `horizontal` ? stack_base : 0),
       )}
-      {@const cy = (hover_info.active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(
-        hover_info.orient_y + (orientation === `vertical` ? stack_base : 0),
+      {@const cy = (vertical ? value_scale_for(tip_y_key) : frame.scales.y)(
+        hover_info.orient_y + (vertical ? stack_base : 0),
       )}
       <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip

@@ -3,18 +3,26 @@
 // Reference: pymatgen/analysis/chempot_diagram.py
 
 import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
-import { compute_quickhull_nd, get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
+import {
+  compute_e_form_per_atom,
+  compute_quickhull_nd,
+  get_energy_per_atom,
+} from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import {
   array_extent,
   array_max,
   array_min,
   combinations,
+  compute_in_plane_basis,
   convex_hull_2d,
   cross_3d,
+  dot,
   EPS,
   euclidean_dist,
+  merge_coplanar_triangles,
   normalize_vec,
+  point_in_polygon,
   polygon_centroid,
   subtract,
 } from '$lib/math'
@@ -113,30 +121,6 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
   return { min_entries, el_refs }
 }
 
-// Compute formation energy per atom against elemental references.
-// NOTE: diverges from convex-hull's compute_e_form_per_atom (which returns null on
-// missing refs); kept module-private so the divergent variant can't leak into public API.
-function compute_form_energy_per_atom(
-  entry: PhaseData,
-  el_refs: Record<string, PhaseData>,
-): number {
-  const atom_count = count_atoms_in_composition(entry.composition)
-  const energy_per_atom = safe_energy_per_atom(entry)
-  if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) return Number.NaN
-  let ref_energy = 0
-  for (const [element, amount] of Object.entries(entry.composition)) {
-    if (amount <= 0) continue
-    const fraction = amount / atom_count
-    const ref_entry = el_refs[element]
-    if (ref_entry) {
-      const ref_epa = safe_energy_per_atom(ref_entry)
-      if (!Number.isFinite(ref_epa)) return Number.NaN
-      ref_energy += fraction * ref_epa
-    }
-  }
-  return energy_per_atom - ref_energy
-}
-
 // Find minimum formation energy per atom across entries of one formula.
 export function best_form_energy_for_formula(
   entries: PhaseData[],
@@ -146,8 +130,9 @@ export function best_form_energy_for_formula(
   let best_value: number | undefined
   for (const entry of entries) {
     if (formula_key_from_composition(entry.composition) !== formula) continue
-    const e_form = entry.e_form_per_atom ?? compute_form_energy_per_atom(entry, el_refs)
-    if (!Number.isFinite(e_form)) continue
+    // best-effort: a formula with no elemental reference is left uncolored, not fatal
+    const e_form = entry.e_form_per_atom ?? compute_e_form_per_atom(entry, el_refs)
+    if (e_form === null || !Number.isFinite(e_form)) continue
     if (best_value === undefined || e_form < best_value) best_value = e_form
   }
   return best_value
@@ -191,33 +176,21 @@ export function get_energy_stats_by_formula(
   return stats
 }
 
-// Renormalize entry energies to be relative to elemental references (formal chemical potentials).
-// For each entry, subtracts sum(x_i * E_ref_i) from its energy per atom.
+// Renormalize entry energies relative to elemental references (formal chemical potentials): the
+// renormalized energy per atom is the formation energy per atom. Entries without one pass through.
 export const renormalize_entries = (
   entries: PhaseData[],
   el_refs: Record<string, PhaseData>,
-  elements: string[],
 ): PhaseData[] =>
   entries.map((entry) => {
+    const e_form = compute_e_form_per_atom(entry, el_refs)
+    if (e_form === null || !Number.isFinite(e_form)) return entry
     const atoms = count_atoms_in_composition(entry.composition)
-    const base_epa = safe_energy_per_atom(entry)
-    if (!(atoms > 0) || !Number.isFinite(base_epa)) return entry
-    let renorm_energy = 0
-    for (const el of elements) {
-      const frac = ((entry.composition as Record<string, number>)[el] ?? 0) / atoms
-      const ref = el_refs[el]
-      if (!ref) continue
-      const ref_epa = safe_energy_per_atom(ref)
-      if (!Number.isFinite(ref_epa)) return entry
-      renorm_energy += frac * ref_epa
-    }
-    const new_energy_per_atom = base_epa - renorm_energy
-    // base_epa already includes the MP correction, so drop it from the renormalized copy or
-    // get_energy_per_atom would apply it a second time
+    // e_form already includes the MP correction, so drop it or get_energy_per_atom re-applies
     return {
       ...entry,
-      energy: new_energy_per_atom * atoms,
-      energy_per_atom: new_energy_per_atom,
+      energy: e_form * atoms,
+      energy_per_atom: e_form,
       correction: undefined,
     }
   })
@@ -225,18 +198,15 @@ export const renormalize_entries = (
 // Build hyperplane representation for minimum entries.
 // Each row is [x_1, ..., x_n, -E_per_atom].
 // Filters to entries with negative formation energy plus all elemental refs.
+// When every entry carries `is_stable`/`e_above_hull`, those flags replace pymatgen's
+// `E_form < -tol` rule. PRECONDITION: the flags must belong to THIS chemsys — stale ones from
+// a larger chemsys silently delete a locally stable phase's whole domain.
 export function build_hyperplanes(
   min_entries: PhaseData[],
   el_refs: Record<string, PhaseData>,
   elements: string[],
 ): { hyperplanes: number[][]; hyperplane_entries: PhaseData[] } {
   const n_elems = elements.length
-  const element_ref_energies = elements.map((element) => {
-    const ref_entry = el_refs[element]
-    if (!ref_entry) return 0
-    const epa = safe_energy_per_atom(ref_entry)
-    return Number.isFinite(epa) ? epa : 0
-  })
   const always_include = new Set<PhaseData>(Object.values(el_refs))
   const tol = 1e-6 // PhaseDiagram.formation_energy_tol
   const use_precomputed_hull = min_entries.every(
@@ -251,21 +221,21 @@ export function build_hyperplanes(
     const energy_per_atom = safe_energy_per_atom(entry)
     if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) continue
     const row = Array(n_elems + 1).fill(0)
-    let ref_energy = 0
     for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
-      const fraction = (composition[elements[elem_idx]] ?? 0) / atom_count
-      row[elem_idx] = fraction
-      ref_energy += fraction * element_ref_energies[elem_idx]
+      row[elem_idx] = (composition[elements[elem_idx]] ?? 0) / atom_count
     }
-    const form_energy = energy_per_atom - ref_energy
     const on_precomputed_hull =
       use_precomputed_hull &&
       !entry.exclude_from_hull &&
       (entry.is_stable === true ||
         (typeof entry.e_above_hull === `number` && entry.e_above_hull <= tol))
-    const include_entry = use_precomputed_hull
-      ? on_precomputed_hull || always_include.has(entry)
-      : form_energy < -tol || always_include.has(entry)
+    let include_entry = on_precomputed_hull || always_include.has(entry)
+    if (!include_entry && !use_precomputed_hull) {
+      // build_chempot_hyperplanes validated the reference set, so null here is bad input
+      const e_form = compute_e_form_per_atom(entry, el_refs)
+      if (e_form === null) throw new Error(`No E_form for ${JSON.stringify(composition)}`)
+      include_entry = e_form < -tol
+    }
     if (include_entry) {
       row[n_elems] = -energy_per_atom
       hyperplanes.push(row)
@@ -516,10 +486,39 @@ export function build_axis_ranges(
   })
 }
 
+// Which axis bounds a domain is clipped against, as human-readable labels. Tolerance is a
+// fraction of each axis' own window, not an absolute eV: on a window a few meV wide an
+// absolute tolerance reports every domain as clipped on every bound.
+export function get_touches_limits(
+  points: number[][],
+  lims: Vec2[],
+  elements: string[],
+): string[] {
+  const touches_limits: string[] = []
+  for (let axis_idx = 0; axis_idx < Math.min(elements.length, lims.length); axis_idx++) {
+    const [axis_min, axis_max] = lims[axis_idx]
+    const tol = 1e-4 * (axis_max - axis_min) || EPS
+    const axis_name = elements[axis_idx] ?? `axis_${axis_idx}`
+    const touches = (bound: number) =>
+      points.some((point) => Math.abs(point[axis_idx] - bound) < tol)
+    if (touches(axis_min)) touches_limits.push(`${axis_name} lower bound`)
+    if (touches(axis_max)) touches_limits.push(`${axis_name} upper bound`)
+  }
+  return touches_limits
+}
+
 // === Label Placement Helpers ===
 
 // Simple PCA: center data, compute covariance, eigendecompose, project to top-k.
 // Used in 3D for finding domain polygon orientation for label placement.
+// Strip from `vec` (in place) its components along each vector of the orthonormal `basis`
+const project_out = (vec: number[], basis: number[][]): void => {
+  for (const basis_vec of basis) {
+    const proj = dot(vec, basis_vec)
+    for (let idx = 0; idx < vec.length; idx++) vec[idx] -= proj * basis_vec[idx]
+  }
+}
+
 // Unit vector orthogonal to every vector in `basis`: the standard-basis direction with the
 // largest residual after projecting the others out. Null when the basis already spans the space.
 const orthogonal_unit_vec = (basis: number[][], n_cols: number): number[] | null => {
@@ -527,11 +526,7 @@ const orthogonal_unit_vec = (basis: number[][], n_cols: number): number[] | null
   let best_norm = EPS
   for (let axis = 0; axis < n_cols; axis++) {
     const candidate = Array(n_cols).fill(0).with(axis, 1)
-    for (const prev_ev of basis) {
-      let proj = 0
-      for (let idx = 0; idx < n_cols; idx++) proj += candidate[idx] * prev_ev[idx]
-      for (let idx = 0; idx < n_cols; idx++) candidate[idx] -= proj * prev_ev[idx]
-    }
+    project_out(candidate, basis)
     const norm = Math.hypot(...candidate)
     if (norm > best_norm) [best_norm, best] = [norm, candidate.map((val) => val / norm)]
   }
@@ -572,9 +567,15 @@ export function simple_pca(
     }
   }
 
-  // Power iteration for top-k eigenvectors (sufficient for k=2 on small matrices)
+  // Power iteration for top-k eigenvectors (sufficient for k=2 on small matrices). Rank
+  // thresholds are relative to the total variance: covariance entries are lengths squared, so an
+  // absolute epsilon calls a good axis rank-deficient once coordinates shrink (a domain 1e-6
+  // wide has a second eigenvalue near 1e-13).
   const eigenvectors: number[][] = []
   const work_cov = cov.map((row) => [...row])
+  const mat_vec = (vec: number[]): number[] => dot(work_cov, vec)
+  const cov_scale = cov.reduce((sum, row, idx) => sum + row[idx], 0) // trace = total variance
+  const rank_eps = EPS * (cov_scale || 1)
 
   for (let comp = 0; comp < k; comp++) {
     // Initial guess: the (deflated) covariance row with the largest norm. A fixed basis
@@ -584,39 +585,23 @@ export function simple_pca(
     const row_norms = work_cov.map((row) => Math.hypot(...row))
     const seed_idx = row_norms.indexOf(array_max(row_norms))
     let vec: number[] =
-      row_norms[seed_idx] > EPS
+      row_norms[seed_idx] > rank_eps
         ? work_cov[seed_idx].map((val) => val / row_norms[seed_idx])
         : Array(n_cols).fill(0).with(seed_idx, 1)
 
     for (let iter = 0; iter < 100; iter++) {
-      // Matrix-vector multiply
-      const new_vec = Array(n_cols).fill(0)
-      for (let idx = 0; idx < n_cols; idx++) {
-        for (let jdx = 0; jdx < n_cols; jdx++) {
-          new_vec[idx] += work_cov[idx][jdx] * vec[jdx]
-        }
-      }
-      // Re-orthogonalize against the components already found: when two eigenvalues are
-      // close (near-square domains) 100 iterations don't converge, deflation with the
-      // unconverged vector is inexact and the next component would drift out of
-      // orthogonality (v1·v2 up to 1e-3 on planar rectangles with side ratio > 0.96),
-      // which breaks the lossless-reconstruction check behind is_planar.
-      for (const prev_ev of eigenvectors) {
-        let proj = 0
-        for (let idx = 0; idx < n_cols; idx++) proj += new_vec[idx] * prev_ev[idx]
-        for (let idx = 0; idx < n_cols; idx++) new_vec[idx] -= proj * prev_ev[idx]
-      }
+      const new_vec = mat_vec(vec)
+      // Re-orthogonalize against components already found: with close eigenvalues (near-square
+      // domains) 100 iterations don't converge, deflation is inexact and the next component
+      // drifts out of orthogonality (v1·v2 up to 1e-3), breaking the is_planar check.
+      project_out(new_vec, eigenvectors)
 
       // Normalize
       const norm = Math.hypot(...new_vec)
-      if (norm < EPS) {
-        // Nothing left in the deflated covariance to converge to (rank-deficient input:
-        // collinear or coincident points), and `vec` is still the raw seed, which is not
-        // orthogonal to what was already found. Returning it gave a non-orthonormal basis -
-        // for 3 collinear points, literally the same vector twice - and the reconstruction
-        // check behind `is_planar` then judged a trivially planar domain non-planar, so
-        // ChemPotDiagram3D handed it to hull_crease_edges, which threw, and the domain
-        // rendered with no outline at all. Any unit vector orthogonal to the rest will do.
+      if (norm < rank_eps) {
+        // Rank-deficient input (collinear/coincident points): `vec` is still the raw seed and
+        // not orthogonal to what was already found, which would give a non-orthonormal basis
+        // and wrongly fail the `is_planar` reconstruction check. Any orthogonal unit vec does.
         vec = orthogonal_unit_vec(eigenvectors, n_cols) ?? vec
         break
       }
@@ -627,11 +612,7 @@ export function simple_pca(
     }
 
     // Rayleigh quotient for deflation
-    const eigenvalue = vec.reduce((sum, val, idx) => {
-      let mv = 0
-      for (let jdx = 0; jdx < n_cols; jdx++) mv += work_cov[idx][jdx] * vec[jdx]
-      return sum + val * mv
-    }, 0)
+    const eigenvalue = dot(vec, mat_vec(vec))
 
     eigenvectors.push(vec)
 
@@ -657,7 +638,8 @@ export function orthonormal_2d(line_pts: number[][]): Vec2 {
   return normalize_vec<Vec2>([-dy, dx], [0, 1])
 }
 
-// Deduplicate points within tolerance, returning unique points and index mapping
+// Deduplicate points within an L-inf ball of radius `tol`, returning unique points and index
+// mapping. Greedy (first point of a cluster wins).
 export function dedup_points(
   pts: number[][],
   tol: number = 1e-4,
@@ -678,6 +660,122 @@ export function dedup_points(
     }
   }
   return { unique, orig_indices }
+}
+
+// Two-component PCA fit, with the reconstruction from a score pair and the largest
+// out-of-plane residual (0 when exactly coplanar).
+function pca_plane(points: number[][]) {
+  const { scores, eigenvectors, means } = simple_pca(points, 2)
+  const unproject = (score_x: number, score_y: number): number[] =>
+    means.map(
+      (mean, dim) => mean + score_x * eigenvectors[0][dim] + score_y * eigenvectors[1][dim],
+    )
+  const max_residual = Math.max(
+    ...points.map((pt, idx) => euclidean_dist(pt, unproject(scores[idx][0], scores[idx][1]))),
+  )
+  return { scores, eigenvectors, means, unproject, max_residual }
+}
+
+interface DomainPlane {
+  normal: Vec3
+  offset: number
+  // Is `point`, already known to lie on this plane, inside the outline the points trace on it?
+  in_outline: (point: Vec3) => boolean
+}
+
+// Plane a set of 3D points lies on, as unit `normal` and `offset` with normal . p = offset.
+// Null when they span a volume (projected quaternary+ domains are polyhedra), are collinear,
+// or number fewer than 3. `rel_tol` is relative to the bounding-box diagonal.
+export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPlane | null {
+  const diag = bbox_diagonal(points)
+  // dedup far below rel_tol — coarser merging is the collinearity check's job, and an absolute
+  // tolerance merges a whole domain once coordinates shrink
+  const { unique } = dedup_points(points, 1e-9 * diag || EPS)
+  if (unique.length < 3 || unique[0].length !== 3) return null
+  const { scores, eigenvectors, means, max_residual } = pca_plane(unique)
+  const tol = rel_tol * diag
+  // collinear points have a degenerate second component: any plane through the line fits
+  const [second_lo, second_hi] = array_extent(scores.map((row) => row[1]))
+  if (second_hi - second_lo <= tol || max_residual > tol) return null
+  const normal = normalize_vec<Vec3>(cross_3d(eigenvectors[0], eigenvectors[1]), [0, 0, 0])
+  if (normal.every((component) => component === 0)) return null
+  const [u_vec, v_vec] = compute_in_plane_basis(normal)
+  const outline = convex_hull_2d(unique.map((pt) => [dot(u_vec, pt), dot(v_vec, pt)] as Vec2))
+  return {
+    normal,
+    offset: dot(normal, means),
+    in_outline: (point) => point_in_polygon(dot(u_vec, point), dot(v_vec, point), outline),
+  }
+}
+
+// Mean of a set of points, per axis
+export const vertex_mean = (points: number[][]): Vec3 =>
+  [0, 1, 2].map(
+    (axis) => points.reduce((sum, pt) => sum + pt[axis], 0) / points.length,
+  ) as Vec3
+
+// Triangles of a non-indexed position buffer, as corner triples (9 numbers per face)
+const buffer_faces = (positions: ArrayLike<number>): Vec3[][] =>
+  Array.from({ length: Math.floor(positions.length / 9) }, (_, face) =>
+    [0, 3, 6].map(
+      (corner) => [0, 1, 2].map((axis) => positions[face * 9 + corner + axis]) as Vec3,
+    ),
+  )
+
+// Drop the artificial faces that close a chemical potential diagram at the lower axis limits: a
+// closing face's outward normal points entirely into the negative octant, a real domain boundary
+// always has one component toward 0 eV. Survivors come back as a flat non-indexed position array
+// re-merged into clean fans, or null when nothing survives.
+export function strip_closing_faces(positions: ArrayLike<number>): Float32Array | null {
+  const faces = buffer_faces(positions)
+  const hull_centroid = vertex_mean(faces.flat())
+  const kept = faces
+    .filter((corners) => {
+      const [va, vb, vc] = corners
+      const normal = cross_3d(subtract(vb, va), subtract(vc, va))
+      // oriented away from the hull centroid, so the buffer's own winding does not matter
+      const sign = dot(normal, subtract(vertex_mean(corners), hull_centroid)) < 0 ? -1 : 1
+      return normal.some((component) => component * sign > 0)
+    })
+    .flat(2)
+  if (kept.length === 0) return null
+  // removing closing faces can expose new coplanar adjacencies
+  return merge_coplanar_triangles(Float32Array.from(kept))
+}
+
+// Assign each triangle of a non-indexed face buffer (9 numbers per face) to the domain owning it.
+// Every hull face lies on exactly one entry's hyperplane, so the face centroid's distance to each
+// domain's plane decides it (nearest-centroid, replaced here, is a Voronoi partition mislabelling
+// elongated and adjacent domains: 73/120 faces correct against 120/120). Coplanar domains are
+// told apart by their outlines; nearest centroid is the last resort for domains with no plane.
+export function assign_faces_to_domains(
+  face_positions: ArrayLike<number>,
+  domains: { formula: string; points: number[][] }[],
+): string[] {
+  // plane membership tolerance, relative to the scene so it survives any axis stretch
+  const tol = 1e-4 * bbox_diagonal(domains.flatMap(({ points }) => points)) || 1e-6
+  const prepared = domains.map(({ formula, points }) => ({
+    formula,
+    plane: fit_plane(points),
+    centroid: vertex_mean(points),
+  }))
+
+  return buffer_faces(face_positions).map((corners) => {
+    const centroid = vertex_mean(corners)
+    let claimants = prepared.filter(
+      ({ plane }) => plane && Math.abs(dot(plane.normal, centroid) - plane.offset) <= tol,
+    )
+    if (claimants.length > 1) {
+      const inside = claimants.filter(({ plane }) => plane?.in_outline(centroid))
+      if (inside.length > 0) claimants = inside
+    }
+    if (claimants.length === 0) claimants = prepared
+    return claimants.reduce((best, cand) =>
+      euclidean_dist(centroid, cand.centroid) < euclidean_dist(centroid, best.centroid)
+        ? cand
+        : best,
+    ).formula
+  })
 }
 
 // Outline of a 3D domain: boundary edges (as index pairs into points_3d) and the label
@@ -706,21 +804,8 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
     }
   }
 
-  // simple_pca always returns k=2 components for >= 3 points
-  const { scores, eigenvectors, means } = simple_pca(unique, 2)
-  const [first_eigenvector, second_eigenvector] = eigenvectors
-  const unproject = (score_x: number, score_y: number): number[] =>
-    means.map(
-      (mean, dim) =>
-        mean + score_x * first_eigenvector[dim] + score_y * second_eigenvector[dim],
-    )
-
+  const { scores, unproject, max_residual } = pca_plane(unique)
   // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
-  const max_residual = Math.max(
-    ...unique.map((point, idx) => {
-      return euclidean_dist(point, unproject(scores[idx][0], scores[idx][1]))
-    }),
-  )
   const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
 
   // 2D convex hull of PCA-projected unique points → only boundary edges
@@ -731,29 +816,20 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
 
   // Map hull vertices back to original point indices using nearest projected
   // vertex instead of stringified coordinates to avoid precision aliasing.
-  function nearest_projected_idx(target: Vec2): number {
+  const nearest_orig_idx = (target: Vec2): number => {
     let [nearest_idx, min_sq_dist] = [0, Infinity]
-    for (let idx = 0; idx < pts_2d.length; idx++) {
-      const dx = pts_2d[idx][0] - target[0]
-      const dy = pts_2d[idx][1] - target[1]
-      const sq_dist = dx * dx + dy * dy
-      if (sq_dist < min_sq_dist) {
-        min_sq_dist = sq_dist
-        nearest_idx = idx
-      }
+    for (const [idx, [pt_x, pt_y]] of pts_2d.entries()) {
+      const [delta_x, delta_y] = [pt_x - target[0], pt_y - target[1]]
+      const sq_dist = delta_x * delta_x + delta_y * delta_y
+      if (sq_dist < min_sq_dist) [nearest_idx, min_sq_dist] = [idx, sq_dist]
     }
-    return nearest_idx
+    return orig_indices[nearest_idx]
   }
 
-  const simplex_indices: number[][] = []
-  for (let hull_idx = 0; hull_idx < hull.length; hull_idx++) {
-    const pt_a = hull[hull_idx]
-    const pt_b = hull[(hull_idx + 1) % hull.length]
-    const ui_a = nearest_projected_idx(pt_a)
-    const ui_b = nearest_projected_idx(pt_b)
-    // Map back to original array indices
-    simplex_indices.push([orig_indices[ui_a], orig_indices[ui_b]])
-  }
+  const simplex_indices = hull.map((pt_a, hull_idx) => [
+    nearest_orig_idx(pt_a),
+    nearest_orig_idx(hull[(hull_idx + 1) % hull.length]),
+  ])
 
   return { simplex_indices, ann_loc, is_planar }
 }
@@ -804,29 +880,24 @@ export function get_visible_domain_labels(
   label_font_size_by_formula: ReadonlyMap<string, number>,
   pinned_labels: VisibleDomainLabel[] = [],
 ): VisibleDomainLabel[] {
-  const n_faces = Math.min(Math.floor(face_positions.length / 9), face_domain_map.length)
   const accum = new Map<string, { area: number; x: number; y: number; z: number }>()
 
-  for (let face_idx = 0; face_idx < n_faces; face_idx++) {
+  // faces past the end of face_domain_map get an undefined formula and are skipped
+  for (const [face_idx, corners] of buffer_faces(face_positions).entries()) {
     const formula = face_domain_map[face_idx]
     if (!formula || !label_font_size_by_formula.has(formula)) continue
 
-    const base = face_idx * 9
-    const vertex = (offset: number): Vec3 => [
-      face_positions[base + offset],
-      face_positions[base + offset + 1],
-      face_positions[base + offset + 2],
-    ]
-    const [vert_a, vert_b, vert_c] = [vertex(0), vertex(3), vertex(6)]
+    const [vert_a, vert_b, vert_c] = corners
     const area =
       Math.hypot(...cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))) / 2
     if (area <= EPS) continue
 
+    const centroid = vertex_mean(corners)
     const entry = accum.get(formula) ?? { area: 0, x: 0, y: 0, z: 0 }
     entry.area += area
-    entry.x += ((vert_a[0] + vert_b[0] + vert_c[0]) / 3) * area
-    entry.y += ((vert_a[1] + vert_b[1] + vert_c[1]) / 3) * area
-    entry.z += ((vert_a[2] + vert_b[2] + vert_c[2]) / 3) * area
+    entry.x += centroid[0] * area
+    entry.y += centroid[1] * area
+    entry.z += centroid[2] * area
     accum.set(formula, entry)
   }
 
@@ -923,7 +994,7 @@ export function build_chempot_hyperplanes(
     throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
   }
   if (formal_chempots) {
-    min_entries = renormalize_entries(min_entries, el_refs, elements)
+    min_entries = renormalize_entries(min_entries, el_refs)
     el_refs = get_min_entries_and_el_refs(min_entries).el_refs
   }
   return { min_entries, el_refs, ...build_hyperplanes(min_entries, el_refs, elements) }

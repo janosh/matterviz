@@ -156,7 +156,6 @@
     }
   })
 
-  // Create hover data from pointer event
   function create_hover_data(event: ThreltePointerEvent, is_ibz: boolean): BZHoverData | null {
     if (!bz_data) return null
 

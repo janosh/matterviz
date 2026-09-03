@@ -176,10 +176,8 @@ describe(`parse_phase_diagram_svg`, () => {
     const simple = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES))
     // Smallest fill containing the rectangle centroid (px 200,400) is the inner rect;
     // the L-shape centroid (px ~333,267) only lies in the outer rect
-    expect(simple.regions.map((region) => region.color)).toEqual([
-      `rgb(200, 100, 50)`,
-      `#aabbcc`,
-    ])
+    const simple_colors = [`rgb(200, 100, 50)`, `#aabbcc`]
+    expect(simple.regions.map((region) => region.color)).toEqual(simple_colors)
 
     const mpl = parse_phase_diagram_svg(matplotlib_svg(MPL_BOUNDARIES))
     // White figure/axes patches are backgrounds, not region fills → no colour for the L
@@ -195,6 +193,13 @@ describe(`parse_phase_diagram_svg`, () => {
       <rect x="100" y="100" width="10" height="10" transform="scale(40)" fill="#0000ff"/>`
     const mpl_fills = parse_phase_diagram_svg(matplotlib_svg(MPL_BOUNDARIES, fill_between))
     expect(mpl_fills.regions.map((region) => region.color)).toEqual([`#ff0000`, `#00ff00`])
+
+    // A thin L tucked inside the rectangle region: its bbox, px (150,350)-(250,450), is a
+    // quarter the area of the rectangle's own fill and holds the probe at px 200,400, but the
+    // probe sits in the L's notch. Choosing by bounding box painted the rectangle the L's colour.
+    const thin_l = `<polygon points="150,350 250,350 250,360 160,360 160,450 150,450" fill="#ff00ff"/>`
+    const concave = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES, thin_l))
+    expect(concave.regions.map((region) => region.color)).toEqual(simple_colors)
   })
 
   it(`probes region colour inside the region even when its centroid falls outside`, () => {

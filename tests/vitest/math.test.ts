@@ -806,6 +806,11 @@ describe(`det_nxn`, () => {
       Array.from({ length: 5 }, (_col, jdx) => idx + jdx + 1),
     )
     expect(math.det_nxn(singular)).toBeCloseTo(0, 5)
+    // A NaN entry must not disable the singularity check: with a Math.max scan the pivot floor
+    // is NaN, every `max_val <= floor` is false, and det_nxn returns NaN instead of 0.
+    const with_nan = singular.map((row) => [...row])
+    with_nan[0][1] = NaN
+    expect(math.det_nxn(with_nan)).toBe(0)
   })
 
   test(`throws for non-square matrix`, () => {

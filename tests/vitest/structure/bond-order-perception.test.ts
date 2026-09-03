@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   compose_perceived_bonds,
   perceive_bond_orders,
@@ -7,6 +7,8 @@ import type { BondPair, Site, StructureBond } from '$lib/structure'
 import type { PerceivedBond } from '$lib/structure/bond-order-perception'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2, Vec3 } from '$lib/math'
+// per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
+beforeEach(() => vi.restoreAllMocks())
 
 function make_input(elements: ElementSymbol[], coords: Vec3[], edges: Vec2[]) {
   const sites = elements.map((element, idx) => ({
@@ -42,6 +44,7 @@ describe(`perceive_bond_orders on small molecules`, () => {
     charge?: number
     expected: PerceivedBond[`bond_order`][]
     perceived: boolean
+    warns?: string
   }>([
     { name: `H2`, elements: [`H`, `H`], coords: [[0, 0, 0], [0.74, 0, 0]], edges: [[0, 1]],
       expected: [1], perceived: true },
@@ -68,14 +71,38 @@ describe(`perceive_bond_orders on small molecules`, () => {
       coords: [[0, 0, 0], [1, 0, 1], [0.3, 0.95, 1], [-0.8, 0.6, 1], [-0.8, -0.6, 1], [0.3, -0.95, 1]],
       edges: [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [2, 3], [3, 4], [4, 5], [5, 1]],
       expected: Array(10).fill(1), perceived: false },
-    // combination-count bound: degrades to single bonds without enumerating 3^20
+    // pick-count bound: degrades to single bonds without enumerating 3^20, and says so —
+    // all-single bonds on a real molecule is wrong data, not a missing feature
     { name: `catenated S20 chain`, elements: Array.from({ length: 20 }, (): ElementSymbol => `S`),
       coords: Array.from({ length: 20 }, (_, idx) => [idx * 2, 0, 0] as Vec3),
       edges: Array.from({ length: 19 }, (_, idx) => [idx, idx + 1] as Vec2),
-      expected: Array(19).fill(1), perceived: false },
-  ])(`$name`, ({ elements, coords, edges, charge = 0, expected, perceived }) => {
+      expected: Array(19).fill(1), perceived: false,
+      warns: `skipped fragment 0 (20 atoms, 19 bonds)` },
+    // 3^8 = 6561 combinations put S8, the standard form of elemental sulfur, outside the old
+    // COMBINATION cap, so it fell back to single bonds instead of solving to them. `perceived`
+    // is the only thing that differs, so tightening the budget breaks this row and nothing else.
+    // Radius 2.7 gives a 2*2.7*sin(pi/8) = 2.07 A bond against a real 2.05.
+    { name: `cyclooctasulfur S8`, elements: Array.from({ length: 8 }, (): ElementSymbol => `S`),
+      coords: Array.from({ length: 8 }, (_, idx): Vec3 =>
+        [Math.cos(idx * Math.PI / 4) * 2.7, Math.sin(idx * Math.PI / 4) * 2.7, 0]),
+      edges: Array.from({ length: 8 }, (_, idx) => [idx, (idx + 1) % 8] as Vec2),
+      expected: Array(8).fill(1), perceived: true },
+    // The cap counted COMBINATIONS, but the work is combinations x atoms: 12 N give 2^12 = 4096
+    // combinations at any chain length, so this chain sat inside the old 4096-COMBINATION cap
+    // while enumerating 1.2e7 picks and 1.8e10 array elements — 266.5 s, ~2 ms once refused.
+    { name: `12-nitrogen 3000-atom chain is refused, not ground through`,
+      elements: Array.from({ length: 3000 }, (_un, idx): ElementSymbol => idx < 12 ? `N` : `C`),
+      coords: Array.from({ length: 3000 }, (_un, idx): Vec3 => [idx * 1.4, 0, 0]),
+      edges: Array.from({ length: 2999 }, (_un, idx): Vec2 => [idx, idx + 1]),
+      expected: Array(2999).fill(1), perceived: false,
+      warns: `skipped fragment 0 (3000 atoms, 2999 bonds): 12288000 valence picks exceed` },
+  ])(`$name`, ({ elements, coords, edges, charge = 0, expected, perceived, warns }) => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const { sites, bonds } = make_input(elements, coords, edges)
     const result = perceive_bond_orders(sites, bonds, { total_charge: charge })
+    expect(warn.mock.calls.map(([msg]) => msg)).toEqual(
+      warns ? [expect.stringContaining(warns)] : [],
+    )
     expect(result.map((bond) => [bond.site_idx_1, bond.site_idx_2])).toEqual(edges)
     const by_order = (left: PerceivedBond[`bond_order`], right: PerceivedBond[`bond_order`]) =>
       String(left).localeCompare(String(right))

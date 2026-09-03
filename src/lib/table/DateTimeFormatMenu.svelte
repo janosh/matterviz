@@ -3,7 +3,8 @@
   // listbox of the modes the column's kind supports. The host owns `open` (only one header
   // popover may be open at a time) and persists the chosen mode itself through `on_change`.
   import type { DateTimeFormatMode } from '$lib/table'
-  import { DATETIME_MODE_LABELS, strip_html } from './data'
+  import { DATETIME_MODE_LABELS } from './data'
+  import { strip_html } from '$lib/utils'
   import { Icon } from 'svelte-widgets'
   import { tooltip } from 'svelte-widgets/attachments'
   import { Calendar } from 'svelte-widgets/icons'

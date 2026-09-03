@@ -12,7 +12,7 @@
 import { default_element_colors, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import { create_cart_to_frac } from '$lib/math'
+import { clamp, create_cart_to_frac } from '$lib/math'
 import { unwrapped_positions_of } from '$lib/trajectory/positions'
 import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
@@ -148,8 +148,7 @@ function make_wrap_jump_test(
 export const collected_frame_idx = (
   stream: Pick<TrajectoryPositionStream, `n_frames` | `frame_stride`>,
   source_idx: number,
-): number =>
-  Math.max(0, Math.min(stream.n_frames - 1, Math.floor(source_idx / stream.frame_stride)))
+): number => clamp(Math.floor(source_idx / stream.frame_stride), 0, stream.n_frames - 1)
 
 export function build_trajectory_lines(
   stream: TrajectoryPositionStream,

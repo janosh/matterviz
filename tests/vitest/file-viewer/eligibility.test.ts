@@ -20,7 +20,7 @@ test.each([
   [`vaspout.h5`, true],
   [`md_run.hdf5`, true],
   [`data.h5`, false],
-  [`structure.cif.zip`, false],
+  [`structure.cif.zip`, true], // fflate inflates single-file ZIPs in the webview
   [`movie.xyz.xz`, false],
   [`movie.xyz.gz.gz`, false],
   [`md/notes.log`, false],

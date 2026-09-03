@@ -154,11 +154,7 @@ const replica_value = (
   replica_idx: number,
 ): number => {
   ensure_shape(shape_of(dataset, path), [replica_count], path)
-  const values = read_numeric_hyperslab(dataset, path, [[replica_idx, replica_idx + 1]])
-  if (values.length !== 1) {
-    throw new Error(`Reference MD HDF5 dataset ${path} must yield one selected replica value`)
-  }
-  return values[0]
+  return read_numeric_hyperslab(dataset, path, [[replica_idx, replica_idx + 1]])[0]
 }
 
 export const is_reference_md_h5_file = (h5_file: h5wasm.File): boolean => {
@@ -272,17 +268,12 @@ export const parse_reference_md_h5_file = (
     [replica_count, n_atoms, 3],
     positions_path,
   )
-  const initial_positions = read_numeric_hyperslab(initial_positions_dataset, positions_path, [
-    [replica_idx, replica_idx + 1],
-  ])
+  const read_replica = (dataset: Dataset, path: string): number[] =>
+    read_numeric_hyperslab(dataset, path, [[replica_idx, replica_idx + 1]])
+  const initial_positions = read_replica(initial_positions_dataset, positions_path)
   const cells_dataset = required_dataset(h5_file, cells_path)
   ensure_shape(shape_of(cells_dataset, cells_path), [replica_count, 3, 3], cells_path)
-  const selected_cell_values = read_numeric_hyperslab(cells_dataset, cells_path, [
-    [replica_idx, replica_idx + 1],
-  ])
-  if (selected_cell_values.length !== 9) {
-    throw new Error(`Reference MD HDF5 dataset ${cells_path} must contain 9 selected values`)
-  }
+  const selected_cell_values = read_replica(cells_dataset, cells_path)
   const lattice_matrix = lattice_from_values(selected_cell_values)
   const velocity_dataset = required_dataset(h5_file, velocity_path)
   const velocity_shape = [n_frames, replica_count, n_atoms, 3]

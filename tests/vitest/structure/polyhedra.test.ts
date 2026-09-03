@@ -15,8 +15,10 @@ import {
 import type { Polyhedron } from '$lib/structure/polyhedra'
 import { make_supercell } from '$lib/structure/supercell'
 import { Color } from 'three/webgpu'
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { make_crystal, make_rocksalt } from '../setup'
+// per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
+beforeEach(() => vi.restoreAllMocks())
 
 // Minimal BondPair stub (only fields polyhedra code reads)
 const make_bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
@@ -331,17 +333,6 @@ describe(`compute_polyhedra`, () => {
     expect(polyhedra).toHaveLength(0)
   })
 
-  test(`coplanar square-planar coordination yields no polyhedron`, () => {
-    const structure = make_crystal(10, [
-      { element: `Pt`, xyz: [5, 5, 5] },
-      ...octahedron_points.slice(0, 4).map((off) => ({
-        element: `Cl`,
-        xyz: add_vec([5, 5, 5], [off[0] * 2, off[1] * 2, off[2] * 2]),
-      })),
-    ])
-    expect(compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4]))).toHaveLength(0)
-  })
-
   test(`boundary completeness: truncated supercell copies are skipped`, () => {
     // Rocksalt NaCl conventional cell -> real bonding -> 3x3x3 supercell without
     // image atoms: interior Na atoms keep CN 6, boundary copies are truncated
@@ -416,6 +407,30 @@ describe(`compute_polyhedra`, () => {
     expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12) // regular octahedron
     // the 6th corner sits at the -x image of site 6, not at its in-cell position
     expect(poly.vertices).toContainEqual([-1.2, 3, 3].map((val) => expect.closeTo(val, 12)))
+  })
+
+  // Degeneracy is a fraction of the hull's own extent cubed, not an absolute A^3 volume, so it
+  // measures flatness at any coordinate scale: a CN-6 ring puckered by 2 mA across 3.6 A is
+  // 0.022 A^3 (20x the old absolute 1e-3) yet fills 4.8e-4 of its bounding cube.
+  test.each([
+    [0, 1, 0], // exactly coplanar (square-planar PtCl4 and friends)
+    [0.002, 1, 0], // near-planar
+    [0.005, 1, 1], // the same ring puckered 2.5x further
+    [0.002, 0.01, 0], // both verdicts survive a 100x shrink
+    [0.005, 0.01, 1],
+  ])(`CN-6 ring puckered %s at scale %s -> %i polyhedra`, (pucker, scale, n_polyhedra) => {
+    const [radius, pucker_z] = [1.8 * scale, pucker * scale]
+    const ring = Array.from({ length: 6 }, (_un, idx) => ({
+      element: `O`,
+      xyz: [
+        radius * Math.cos((idx * Math.PI) / 3),
+        radius * Math.sin((idx * Math.PI) / 3),
+        idx % 2 ? pucker_z : -pucker_z,
+      ] as Vec3,
+    }))
+    const structure = make_crystal(20, [{ element: `Ti`, xyz: [0, 0, 0] as Vec3 }, ...ring])
+    const bonds = [1, 2, 3, 4, 5, 6].map((site_idx) => image_bond(structure, site_idx))
+    expect(compute_polyhedra(structure, bonds)).toHaveLength(n_polyhedra)
   })
 
   test(`one neighbor site bonded through two cell shifts counts twice`, () => {
@@ -664,17 +679,40 @@ describe(`merge_polyhedra_buffers`, () => {
     }
   }
 
-  test(`buffer sizes match triangle and edge counts`, () => {
+  // A batch of disjoint triangles is what convex_hull_3d produces when it fails to close a
+  // manifold, which the 3F/2 edge budget assumes: N of them need 3N edges on a ceil(1.5 N) pool
+  // oxfmt-ignore
+  const loose_triangles = (n_tri: number): Polyhedron => ({
+    center_site_idx: 7, center_orig_idx: 7, center_element: `Fe`, volume: 0,
+    vertices: Array.from({ length: n_tri * 3 }, (_un, idx) => [idx, (idx % 3) ** 2, 0] as Vec3),
+    vertex_site_idxs: Array.from({ length: n_tri * 3 }, (_un, idx) => idx),
+    faces: Array.from({ length: n_tri }, (_un, idx): [number, number, number] => [idx * 3, idx * 3 + 1, idx * 3 + 2]),
+  })
+
+  // Placed FIRST, so what follows can only land at the rewound offset 0: a bad hull costs its
+  // own polyhedron, not the whole scene render. And the budget check must count the edges the
+  // write loop emits, not every undirected edge, or a hull that fits is dropped and blamed on
+  // the budget - silent, and green without the second row.
+  test.each([
+    // 10 loose need 30 edges on ceil(1.5 * 18) = 27; the octahedron's 12 real edges survive
+    [`overflowing hull is dropped whole`, 10, octahedron_points, 8, 12, true],
+    // 2 loose take 6 of ceil(1.5 * 14) = 21, leaving 15: the cube's 12 drawn edges fit (its 6
+    // coplanar quad diagonals are skipped), the 18 an over-count would charge do not
+    [`hull that fits is kept`, 2, cube_points(1), 14, 18, false],
+  ])(`%s`, (_label, n_loose, hull_pts, n_triangles, n_edges, warns) => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const buffers = merge_polyhedra_buffers(
-      [poly_from_hull(octahedron_points), poly_from_hull(octahedron_points)],
+      [loose_triangles(n_loose), poly_from_hull(hull_pts)],
       uniform_red,
     )
-    expect(buffers.triangle_count).toBe(16)
-    expect(buffers.positions).toHaveLength(16 * 9)
-    expect(buffers.colors).toHaveLength(16 * 9)
-    // Octahedron has 12 real edges, none coplanar
-    expect(buffers.edge_count).toBe(24)
-    expect(buffers.edge_positions).toHaveLength(24 * 6)
+    expect(buffers.triangle_count).toBe(n_triangles)
+    expect(buffers.positions).toHaveLength(n_triangles * 9)
+    expect(buffers.colors).toHaveLength(n_triangles * 9)
+    expect(buffers.edge_count).toBe(n_edges)
+    expect(buffers.edge_positions).toHaveLength(n_edges * 6)
+    expect(warn.mock.calls.map(([msg]) => msg)).toEqual(
+      warns ? [expect.stringContaining(`site 7`)] : [],
+    )
   })
 
   test(`fills the color buffer with linear CSS color`, () => {
@@ -707,12 +745,6 @@ describe(`merge_polyhedra_buffers`, () => {
       expect(buffers.colors[off]).toBe(is_target ? 1 : 0) // red channel
       expect(buffers.colors[off + 2]).toBe(is_target ? 0 : 1) // blue channel
     }
-  })
-
-  test(`cube wireframe omits coplanar quad diagonals`, () => {
-    // A cube has 12 edges; its 12 triangles have 18 undirected edges (6 diagonals)
-    const buffers = merge_polyhedra_buffers([poly_from_hull(cube_points(1))], uniform_red)
-    expect(buffers.edge_count).toBe(12)
   })
 
   test(`empty input yields empty buffers`, () => {

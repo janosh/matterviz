@@ -119,19 +119,25 @@ export function structure_fit_frame(
     radius_sq = Math.max(radius_sq, reach * reach)
   })
   if (!(radius_sq > 0)) return { center, extent: 10 }
-  return {
-    center,
-    extent: Math.max(1, 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING),
-  }
+  return { center, extent: 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING }
 }
+
+// `fit_extent` is a scene diameter in the scene's own units, so it has no lower bound of its
+// own: clamping at 1 framed the sub-1 1/A extents of reciprocal space against a constant.
+const bad_fit = (extent: number, width: number, height: number): boolean =>
+  !(extent > 0 && extent < Infinity) || !(width > 0) || !(height > 0)
 
 export const ortho_zoom_for_extent = (
   fit_extent: number,
   width: number,
   height: number,
   initial_zoom: number,
-): number =>
-  (initial_zoom * Math.min(width, height)) / (Math.max(1, fit_extent) * FIT_ZOOM_REF_PX)
+): number => {
+  if (bad_fit(fit_extent, width, height)) {
+    throw new Error(`Invalid ortho fit: extent=${fit_extent}, viewport=${width}x${height}`)
+  }
+  return (initial_zoom * Math.min(width, height)) / (fit_extent * FIT_ZOOM_REF_PX)
+}
 
 export const perspective_distance_for_extent = (
   fit_extent: number,
@@ -139,12 +145,8 @@ export const perspective_distance_for_extent = (
   height: number,
   vertical_fov_degrees: number,
 ): number => {
-  if (
-    !(fit_extent > 0) ||
-    !(width > 0) ||
-    !(height > 0) ||
-    !(vertical_fov_degrees > 0 && vertical_fov_degrees < 180)
-  ) {
+  const in_range = vertical_fov_degrees > 0 && vertical_fov_degrees < 180
+  if (bad_fit(fit_extent, width, height) || !in_range) {
     throw new Error(
       `Invalid perspective fit: extent=${fit_extent}, viewport=${width}x${height}, fov=${vertical_fov_degrees}`,
     )

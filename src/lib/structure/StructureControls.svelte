@@ -17,7 +17,7 @@
     SettingsSection,
   } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
-  import { to_degrees, to_radians } from '$lib/math'
+  import { clamp, to_degrees, to_radians } from '$lib/math'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import type { ZoneAxisMode } from '$lib/scene'
   import { is_valid_zone_axis, ZONE_AXIS_MODE_LABELS, zone_axis_direction } from '$lib/scene'
@@ -58,7 +58,6 @@
   import { to_error } from '$lib/utils'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
-  import { SvelteSet } from 'svelte/reactivity'
   import { Icon, MultiSelect as Select } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -563,9 +562,7 @@
   // actually use as centers - minority occupancies of disordered sites never are.
   let structure_elements = $derived(
     [
-      ...new SvelteSet(
-        (structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? []),
-      ),
+      ...new Set((structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? [])),
     ].toSorted(),
   )
 
@@ -590,18 +587,18 @@
     const excluded = scene_props.polyhedra_excluded_elements ?? []
     const included = scene_props.polyhedra_included_elements ?? []
     if (is_polyhedra_center_enabled(element)) {
-      scene_props.polyhedra_excluded_elements = [...new SvelteSet([...excluded, element])]
+      scene_props.polyhedra_excluded_elements = [...new Set([...excluded, element])]
       scene_props.polyhedra_included_elements = included.filter((el) => el !== element)
     } else {
       scene_props.polyhedra_excluded_elements = excluded.filter((el) => el !== element)
-      scene_props.polyhedra_included_elements = [...new SvelteSet([...included, element])]
+      scene_props.polyhedra_included_elements = [...new Set([...included, element])]
     }
   }
 
   // Species in the collected trajectory stream, for the trail filter. A Li-ion conductor
   // wants Li trails and not the framework, so narrowing this is usually the first move.
   let trail_elements = $derived(
-    [...new SvelteSet(scene_props.trajectory_position_stream?.elements)].toSorted(),
+    [...new Set(scene_props.trajectory_position_stream?.elements)].toSorted(),
   )
   // A null filter means "every species", which is also the state the checkboxes start in
   const is_trail_element_on = (element: ElementSymbol): boolean =>
@@ -631,7 +628,7 @@
     if (color_mix) {
       return {
         hex_color: color_mix[1],
-        opacity: Math.max(0, Math.min(100, Number(color_mix[2]))) / 100,
+        opacity: clamp(Number(color_mix[2]), 0, 100) / 100,
       }
     }
     const hex_color = color?.match(hex_color_pattern)?.[0]
@@ -735,7 +732,7 @@
   )
 
   function update_rotation(axis_idx: number, degrees: number) {
-    const radians = to_radians(((Math.max(0, Math.min(360, degrees)) % 360) + 360) % 360)
+    const radians = to_radians(((clamp(degrees, 0, 360) % 360) + 360) % 360)
     scene_props.rotation = (scene_props.rotation ?? [0, 0, 0]).with(axis_idx, radians) as Vec3
   }
 

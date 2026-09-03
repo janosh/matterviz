@@ -2,7 +2,7 @@
 // uniform in the x scale's transformed space (linear, log10, arcsinh) and counted in one pass
 // into typed arrays, so a million samples bin in a few milliseconds.
 
-import { LOG_EPS, type Vec2 } from '$lib/math'
+import { clamp, LOG_EPS, type Vec2 } from '$lib/math'
 import type { FillPattern } from '$lib/plot/core/patterns'
 import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/plot/core/scales'
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
@@ -101,6 +101,10 @@ export function log_safe_range(axis: Pick<AxisConfig, `range` | `scale_type`>): 
   return [drop_non_positive(lo), drop_non_positive(hi)]
 }
 
+// A bin count is an ALLOCATION (edges, counts, one <rect> each): 5e7 bins is a 400 MB
+// Float64Array, and NaN slipped through `Math.max(1, ...)` to a zero-length edge array
+const MAX_BINS = 1_000_000
+
 // Bin edges uniform in the AXIS' bin space (a log axis bins by decade, not by raw value), plus
 // the scalars an indexing loop needs. Exported so the marginal histograms bin on exactly these
 // edges, which is what makes a marginal agree with the bars it sits beside instead of binning
@@ -120,6 +124,11 @@ export function bin_geometry(
   pos_lo: number
   scale: number
 } {
+  if (!Number.isFinite(n_bins) || n_bins > MAX_BINS) {
+    throw new Error(
+      `bin_geometry: n_bins must be finite and at most ${MAX_BINS}, got ${n_bins}`,
+    )
+  }
   let lo = Math.min(domain[0], domain[1])
   let hi = Math.max(domain[0], domain[1])
   const type_name = get_scale_type_name(scale_type)
@@ -158,7 +167,7 @@ export function bin_index_of(val: number, geometry: ReturnType<typeof bin_geomet
   const { edges, is_linear, fwd, pos_lo, scale } = geometry
   const n = edges.length - 1
   const pos = is_linear ? val : fwd(val)
-  let bin_idx = Math.min(n - 1, Math.max(0, Math.floor((pos - pos_lo) * scale)))
+  let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, n - 1)
   if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
   else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
   return bin_idx
@@ -173,28 +182,41 @@ export function bin_values(
   domain: Vec2,
   n_bins: number,
   scale_type: ScaleType = `linear`,
-): { edges: Float64Array; counts: Uint32Array } {
+  // Per-value weights, index-aligned with `values`; without them each value counts as 1.
+  // Weighted totals are fractional, hence a Float64Array rather than the Uint32Array.
+  weights?: ArrayLike<number>,
+): { edges: Float64Array; counts: Uint32Array | Float64Array } {
   const geometry = bin_geometry(domain, n_bins, scale_type)
   const { lo, hi, edges, degenerate, is_linear, fwd, pos_lo, scale } = geometry
   const n_values = values.length
+  // A short array yields `undefined` weights, and one of those turns the whole Float64Array
+  // into NaN. Individual non-finite weights drop in the loops below, like non-finite VALUES.
+  if (weights && weights.length !== n_values) {
+    throw new Error(
+      `bin_values got ${weights.length} weights for ${n_values} values; they must match one-to-one`,
+    )
+  }
   if (degenerate) {
     let count = 0
     for (let idx = 0; idx < n_values; idx++) {
-      if (values[idx] >= lo && values[idx] <= hi) count++
+      if (!(values[idx] >= lo && values[idx] <= hi)) continue
+      if (!weights) count += 1
+      else if (Number.isFinite(weights[idx])) count += weights[idx]
     }
-    return { edges, counts: Uint32Array.of(count) }
+    return { edges, counts: weights ? Float64Array.of(count) : Uint32Array.of(count) }
   }
   const n = edges.length - 1
-  const counts = new Uint32Array(n)
+  const counts = weights ? new Float64Array(n) : new Uint32Array(n)
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
     // NaN fails both comparisons, so this also filters non-finite input
     if (!(val >= lo && val <= hi)) continue
     const pos = is_linear ? val : fwd(val)
-    let bin_idx = Math.min(n - 1, Math.max(0, Math.floor((pos - pos_lo) * scale)))
+    let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, n - 1)
     if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
     else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
-    counts[bin_idx]++
+    if (!weights) counts[bin_idx] += 1
+    else if (Number.isFinite(weights[idx])) counts[bin_idx] += weights[idx]
   }
   return { edges, counts }
 }
@@ -203,7 +225,7 @@ export function bin_values(
 // density additionally by each bin's width in data units.
 export function normalize_counts(
   edges: Float64Array,
-  counts: Uint32Array,
+  counts: Uint32Array | Float64Array,
   normalize: HistogramNormalize,
 ): HistogramBin[] {
   let total = 0

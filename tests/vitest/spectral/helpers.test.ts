@@ -6,6 +6,7 @@ import {
   ACOUSTIC_FREQ_THRESHOLD,
   are_qpoints_equivalent,
   apply_gaussian_smearing,
+  gaussian_kernel_smooth,
   branch_segment_keys,
   build_point_metadata,
   classify_acoustic,
@@ -20,6 +21,7 @@ import {
   negative_fraction,
   normalize_band_structure,
   normalize_densities,
+  trapezoid_weights,
   normalize_dos,
   pretty_sym_point,
   qpoint_x_position,
@@ -122,18 +124,28 @@ describe(`convert_frequencies`, () => {
 describe(`normalize_densities`, () => {
   const densities = [1, 2, 3, 2, 1]
   const energies = [0, 1, 2, 3, 4]
+  // trapezoid weights [0.5, 1, 1, 1, 0.5] give ∫ = 8, not the 9 a left-Riemann sum reports
   it.each([
     [`max`, densities.map((val) => val / 3)],
     [`sum`, densities.map((val) => val / 9)],
-    [`integral`, densities.map((val) => val / 9)], // bin width 1
+    [`integral`, densities.map((val) => val / 8)],
     [null, densities],
   ] as const)(`mode %s`, (mode, expected) => {
     expect(normalize_densities(densities, energies, mode)).toEqual(expected)
   })
 
-  it(`integral mode divides by the bin width and leaves degenerate input alone`, () => {
-    const half_step = normalize_densities(densities, [0, 0.5, 1, 1.5, 2], `integral`)
-    expect(half_step.reduce((acc, val) => acc + val, 0) * 0.5).toBeCloseTo(1, 12)
+  // the old left-Riemann sum read only x[1] - x[0]: 11.1% low on a uniform grid, 245% off here
+  it(`integral mode makes ∫ = 1 on a non-uniform grid, and leaves degenerate input alone`, () => {
+    const grid = [0, 0.1, 0.2, 3, 10]
+    const normalized = normalize_densities(densities, grid, `integral`)
+    const integral = grid
+      .slice(1)
+      .reduce(
+        (acc, x_val, idx) =>
+          acc + ((normalized[idx] + normalized[idx + 1]) / 2) * (x_val - grid[idx]),
+        0,
+      )
+    expect(integral).toBeCloseTo(1, 12)
     expect(normalize_densities([0, 0], [0, 1], `max`)).toEqual([0, 0])
     expect(normalize_densities([1], [0], `integral`)).toEqual([1])
   })
@@ -149,34 +161,65 @@ describe(`apply_gaussian_smearing`, () => {
   const energies = [0, 1, 2, 3, 4]
   const spike = [0, 0, 10, 0, 0]
 
-  it(`returns the input untouched for sigma 0 or an all-zero DOS`, () => {
+  it(`returns degenerate input untouched`, () => {
     expect(apply_gaussian_smearing(energies, spike, 0)).toBe(spike)
     expect(apply_gaussian_smearing(energies, [0, 0, 0, 0, 0], 0.5)).toEqual([0, 0, 0, 0, 0])
+    // a grid with no extent has zero trapezoid weights everywhere, so the convolution scaled
+    // every density to 0 rather than passing it through
+    expect(apply_gaussian_smearing([0], [5], 0.5)).toEqual([5]) // one-point grid
+    expect(apply_gaussian_smearing([1, 1, 1], [2, 2, 2], 0.5)).toEqual([2, 2, 2]) // no extent
   })
 
-  it(`spreads a spike symmetrically and preserves its sum`, () => {
+  it(`spreads a spike symmetrically with the normalized Gaussian shape`, () => {
     const smeared = apply_gaussian_smearing(energies, spike, 0.5)
-    expect(smeared[2]).toBeLessThan(10)
     expect(smeared[1]).toBeCloseTo(smeared[3], 12)
     expect(smeared[1]).toBeGreaterThan(0)
     // Gaussian ratio exp(-1/(2·0.25)) = e^-2 between the first neighbour and the centre
     expect(smeared[1] / smeared[2]).toBeCloseTo(Math.exp(-2), 12)
-    expect(smeared.reduce((acc, val) => acc + val, 0)).toBeCloseTo(10, 10)
+    // the centre carries the spike's weight (1 wide here) times the kernel peak 1/(σ√2π)
+    expect(smeared[2]).toBeCloseTo(10 / (0.5 * Math.sqrt(2 * Math.PI)), 12)
+  })
+
+  // the old measure-free form weighted by POINT DENSITY: a flat DOS came out anywhere from
+  // 0.235 to 1.950 over this grid's interior. gaussian_kernel_smooth is its Nadaraya-Watson
+  // sibling: exact on constants everywhere, with no quadrature measure.
+  it(`leaves a flat density alone on a clustered grid, as does gaussian_kernel_smooth`, () => {
+    const clustered = [
+      ...Array.from({ length: 40 }, (_, idx) => -4 + idx * 0.1),
+      ...Array.from({ length: 60 }, (_, idx) => idx * 0.005),
+      ...Array.from({ length: 40 }, (_, idx) => 0.3 + idx * 0.1),
+    ]
+    const ones = clustered.map(() => 1)
+    const smeared = apply_gaussian_smearing(clustered, ones, 0.3)
+    // interior only (the convolution loses mass past the grid ends); ±4σ truncation plus
+    // trapezoid error at the 0.005 → 0.1 spacing jump measures 3.21e-3
+    const errors = clustered.flatMap((x_val, idx) =>
+      Math.abs(x_val) > 2.5 ? [] : [Math.abs(smeared[idx] - 1)],
+    )
+    expect(Math.max(...errors)).toBeLessThan(5e-3)
+    for (const val of gaussian_kernel_smooth(clustered, ones, 0.3)) {
+      expect(val).toBeCloseTo(1, 12)
+    }
+    // still an actual smoother, and sigma <= 0 passes straight through
+    const alternating = clustered.map((_unused, idx) => (idx % 2 === 0 ? 1 : -1))
+    const smoothed = gaussian_kernel_smooth(clustered, alternating, 0.3)
+    for (const val of smoothed.slice(45, 55)) expect(Math.abs(val)).toBeLessThan(0.5)
+    expect(gaussian_kernel_smooth(clustered, alternating, 0)).toBe(alternating)
   })
 
   // The two-pointer window is only valid on an ascending grid; anything else falls back to
   // scanning every point. Pin that fallback to an unwindowed reference.
   const brute_force = (xs: number[], ys: number[], sigma: number): number[] => {
-    const raw = xs.map((energy) =>
-      xs.reduce((sum, other, jdx) => {
-        const delta = energy - other
-        if (Math.abs(delta) > 4 * sigma) return sum
-        return sum + ys[jdx] * Math.exp(-(delta ** 2) / (2 * sigma ** 2))
-      }, 0),
+    const weights = trapezoid_weights(xs)
+    return xs.map(
+      (energy) =>
+        xs.reduce((sum, other, jdx) => {
+          const delta = energy - other
+          if (Math.abs(delta) > 4 * sigma) return sum
+          return sum + ys[jdx] * weights[jdx] * Math.exp(-(delta ** 2) / (2 * sigma ** 2))
+        }, 0) /
+        (sigma * Math.sqrt(2 * Math.PI)),
     )
-    const total = raw.reduce((acc, val) => acc + val, 0)
-    const orig = ys.reduce((acc, val) => acc + val, 0)
-    return raw.map((val) => val * (orig / total))
   }
   const grid = Array.from({ length: 60 }, (_, idx) => idx * 0.1)
   it.each([
@@ -985,6 +1028,17 @@ describe(`compute_frequency_range`, () => {
       [0, 15.3],
     ],
     [`real imaginary modes (kept)`, bands_of([[-2, -1, 0, 5, 10]]), undefined, [-2.24, 10.24]],
+    // a plain `=` in the DOS loop let the last entry overwrite the phonon flag, disabling the
+    // imaginary-mode clamp (reported [-0.3102, 15.3002])
+    [
+      `a phonon DOS listed before an electronic one (phonon flag not overwritten)`,
+      bands_of([[-0.01, 5, 10]]),
+      {
+        phonon: { frequencies: [0, 15], densities: [0, 1] },
+        electronic: { energies: [0, 10], densities: [0, 1] },
+      },
+      [0, 15.3],
+    ],
     [
       `an electronic DOS overriding phonon-looking bands`,
       bands_of([[-0.01, 5, 10]]),

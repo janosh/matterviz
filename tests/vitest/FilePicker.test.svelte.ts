@@ -228,10 +228,10 @@ describe(`FilePicker`, () => {
       void unmount(component)
       return n_observers
     }
-    // backdrop token + shared badge-contrast epoch, each pairing an ancestor-attribute
-    // observer with a dark-mode watcher; the count must not scale with the badge count
-    expect(count_observers(5)).toBe(4)
-    expect(count_observers(20)).toBe(4)
+    // One ancestor-attribute observer each for the backdrop token and the shared
+    // badge-contrast epoch; the count must not scale with the badge count
+    expect(count_observers(5)).toBe(2)
+    expect(count_observers(20)).toBe(2)
   })
 
   const formats = [`CIF`, `XYZ`, `JSON`, `TRAJ`, `DAT`, `POSCAR_FILE`]
@@ -286,6 +286,20 @@ describe(`FilePicker`, () => {
 
     click(doc_query<HTMLButtonElement>(`.clear-filter`))
     expect(file_items()).toHaveLength(mock_files.length)
+    expect(document.querySelector(`.clear-filter`)).toBeNull()
+  })
+
+  // A files swap can retire the active filter's value, hiding every file with no way back
+  it(`drops a filter whose value the new files no longer offer`, () => {
+    const props = $state({ files: mock_files, show_category_filters: true })
+    mount(FilePicker, { target: document.body, props })
+    legend_btn(`XYZ`).click()
+    flushSync()
+    expect(file_items().map((item) => item.textContent?.trim())).toEqual([`molecule.xyz`])
+
+    props.files = [mock_file(`a.cif`, `crystal`), mock_file(`b.json`, `crystal`)]
+    flushSync()
+    expect(file_items()).toHaveLength(2)
     expect(document.querySelector(`.clear-filter`)).toBeNull()
   })
 

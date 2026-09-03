@@ -62,7 +62,6 @@
     fermi_data?.isosurfaces.some((iso) => iso.properties?.length) ?? false,
   )
 
-  // Get unique band indices from Fermi surface data
   let available_bands = $derived(
     fermi_data
       ? [...new SvelteSet(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(

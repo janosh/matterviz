@@ -2,7 +2,6 @@ import type { Vec2 } from '$lib/math'
 import type { CompUnit, PhaseDiagramData, PhaseRegion, TempUnit } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
-  calculate_vertical_lever_rule,
   compute_label_properties,
   compute_x_domain,
   convert_temp,
@@ -331,26 +330,11 @@ const split_region_horizontal: PhaseRegion = {
     [0.1, 600],
   ],
 }
-const split_region_vertical: PhaseRegion = {
-  id: `alpha-beta-split-vertical`,
-  name: `α + β`,
-  vertices: [
-    [0.4, 0.1],
-    [0.4, 0.9],
-    [0.6, 0.9],
-    [0.6, 0.6],
-    [0.45, 0.6],
-    [0.45, 0.4],
-    [0.6, 0.4],
-    [0.6, 0.1],
-  ],
-}
 const split_region_boundary_cases = [
   { position: 0.35, expected_bounds: [0.1, 0.4] as Vec2 },
   { position: 0.65, expected_bounds: [0.6, 0.9] as Vec2 },
 ]
 
-// Shared null-case inputs for both lever rule functions
 const lever_null_cases = [
   { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
   { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
@@ -412,51 +396,57 @@ describe(`calculate_lever_rule`, () => {
       expect(result.right_composition).toBeCloseTo(expected_bounds[1], 9)
     },
   )
-})
 
-describe(`calculate_vertical_lever_rule`, () => {
-  test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
-    expect(calculate_vertical_lever_rule(region, comp, temp)).toBeNull()
-  })
+  // The name lists β first but β's single-phase field sits on the right, so the tie-line ends
+  // must be assigned from the neighbouring regions, not from the name order
+  const misordered_region: PhaseRegion = { ...two_phase_region, name: `β + α` }
+  const alpha_field: PhaseRegion = {
+    id: `alpha`,
+    name: `α`,
+    vertices: [
+      [0, 400],
+      [0.2, 400],
+      [0.3, 600],
+      [0, 600],
+    ],
+  }
+  const beta_field: PhaseRegion = {
+    id: `beta`,
+    name: `β`,
+    vertices: [
+      [0.8, 400],
+      [1, 400],
+      [1, 600],
+      [0.7, 600],
+    ],
+  }
 
-  // A vertical scan at x in [0.3, 0.7] crosses only the horizontal edges at 400 K and 600 K
   test.each([
-    [0.5, 500],
-    [0.5, 410],
-    [0.5, 590],
-    [0.35, 450],
-    [0.7, 560],
-  ])(`tie line and fractions at x=%f, T=%d`, (comp, temp) => {
-    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, comp, temp))
-    const fraction_top = (temp - 400) / 200
-    expect(result).toEqual({
-      bottom_phase: `α`,
-      top_phase: `β`,
-      bottom_temperature: expect.closeTo(400, 9),
-      top_temperature: expect.closeTo(600, 9),
-      fraction_bottom: expect.closeTo(1 - fraction_top, 9),
-      fraction_top: expect.closeTo(fraction_top, 9),
-    })
-  })
-
-  test(`scan through a slanted edge interpolates the crossing temperature`, () => {
-    // at x = 0.25 the left edge (0.2,400)-(0.3,600) is crossed at T = 500
-    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.25, 450))
-    expect(result.bottom_temperature).toBeCloseTo(400, 9)
-    expect(result.top_temperature).toBeCloseTo(500, 9)
-    expect(result.fraction_top).toBeCloseTo(0.5, 9)
-  })
-
-  test.each(split_region_boundary_cases)(
-    `uses nearest temperature bounds at temperature=$position when multiple intersections exist`,
-    ({ position, expected_bounds }) => {
-      const result = expect_non_null(
-        calculate_vertical_lever_rule(split_region_vertical, 0.5, position),
-      )
-      expect(result.bottom_temperature).toBeCloseTo(expected_bounds[0], 9)
-      expect(result.top_temperature).toBeCloseTo(expected_bounds[1], 9)
+    { desc: `no neighbours: name order stands`, regions: [], left: `β`, right: `α` },
+    {
+      desc: `neighbouring single-phase fields override name order`,
+      regions: [misordered_region, alpha_field, beta_field],
+      left: `α`,
+      right: `β`,
     },
-  )
+    {
+      desc: `left neighbour alone is enough`,
+      regions: [misordered_region, alpha_field],
+      left: `α`,
+      right: `β`,
+    },
+    {
+      desc: `right neighbour alone is enough`,
+      regions: [misordered_region, beta_field],
+      left: `α`,
+      right: `β`,
+    },
+  ])(`$desc`, ({ regions, left, right }) => {
+    const result = expect_non_null(calculate_lever_rule(misordered_region, 0.5, 500, regions))
+    expect([result.left_phase, result.right_phase]).toEqual([left, right])
+    // fractions follow the geometry either way
+    expect(result.fraction_right).toBeCloseTo(0.5, 9)
+  })
 })
 
 describe(`compute_label_properties`, () => {

@@ -1,12 +1,10 @@
 // Periodic boundary conditions utilities
-import { element_by_symbol } from '$lib/element/data'
-import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   expected_bond_length,
-  get_majority_element,
   has_framework_potential,
+  intern_site_elements,
   is_spectator_center,
 } from './bonding'
 import type { AnyStructure, Site } from './index'
@@ -43,11 +41,12 @@ export const wrap_frac_coord = (coord: number): number => {
   return Number(wrapped.toFixed(15))
 }
 
-// Wrap fractional coordinates to [0, 1) range for periodicity.
-export const wrap_to_unit_cell = (frac: Vec3): Vec3 => [
-  wrap_frac_coord(frac[0]),
-  wrap_frac_coord(frac[1]),
-  wrap_frac_coord(frac[2]),
+// Wrap fractional coords to [0, 1). Non-periodic axes keep their out-of-cell coordinate
+// (matching normalize_fractional_coords) — folding a slab along its vacuum direction tears it.
+export const wrap_to_unit_cell = (frac: Vec3, pbc: Pbc = [true, true, true]): Vec3 => [
+  pbc[0] ? wrap_frac_coord(frac[0]) : frac[0],
+  pbc[1] ? wrap_frac_coord(frac[1]) : frac[1],
+  pbc[2] ? wrap_frac_coord(frac[2]) : frac[2],
 ]
 
 // Trajectory-like data: >10% of atoms far outside the unit cell. Image-atom
@@ -131,24 +130,15 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
   // Per-site element ids for the phase-2 completion pass; the composition is the tiny
   // per-element list (so has_framework_potential and the pair table below don't re-scan
   // every site in big supercells).
-  const elem_ids = new Map<string, number>()
-  const present_elements: string[] = []
-  const site_elem_ids = new Int32Array(structure.sites.length)
-  for (const [idx, site] of structure.sites.entries()) {
-    const elem = get_majority_element(site) ?? ``
-    let elem_id = elem_ids.get(elem)
-    if (elem_id === undefined) {
-      elem_id = elem_ids.size
-      elem_ids.set(elem, elem_id)
-      present_elements.push(elem)
-    }
-    site_elem_ids[idx] = elem_id
-  }
+  const {
+    symbols: present_elements,
+    site_elem_ids,
+    elem_data,
+  } = intern_site_elements(structure.sites)
   // Per-element-pair bond reach: the bond detector's expected length plus slack, 0 when the
   // pair cannot bond (unknown radius). One read in the hot loop below instead of a radius
   // sum, and the same metallic-vs-covalent choice electroneg_ratio makes.
   const n_elem = present_elements.length
-  const elem_data = present_elements.map((sym) => element_by_symbol.get(sym as ElementSymbol))
   const pair_reach = new Float64Array(n_elem * n_elem)
   let max_bond_dist = 0
   for (let id_a = 0; id_a < n_elem; id_a++) {
@@ -217,7 +207,9 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
     // True when a copy of the candidate at `pos` would bond some displayed anchor,
     // i.e. it completes that anchor's coordination shell
     const bonds_an_anchor = (pos: Vec3, elem_id: number): boolean => {
-      const [cx, cy, cz] = pos.map((coord) => Math.floor(coord / max_bond_dist))
+      const cx = Math.floor(pos[0] / max_bond_dist)
+      const cy = Math.floor(pos[1] / max_bond_dist)
+      const cz = Math.floor(pos[2] / max_bond_dist)
       const pair_row = elem_id * n_elem
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {

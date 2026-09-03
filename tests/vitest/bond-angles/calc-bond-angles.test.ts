@@ -357,6 +357,9 @@ describe(`binning`, () => {
     [{ bin_width: 0 }, /must be a number in/],
     [{ bin_width: -1 }, /must be a number in/],
     [{ bin_width: 181 }, /must be a number in/],
+    // bounding the WIDTH to (0, 180] bounded nothing: 1e-5 deg asked for 18 million bins
+    [{ bin_width: 1e-5 }, /spans 18000000 bins .* past the 100000 limit/],
+    [{ n_bins: 100_001 }, /positive integer <= 100000/],
   ])(`resolve_angle_bins(%j) throws`, (options, message) => {
     expect(() => resolve_angle_bins(options)).toThrow(message)
   })
@@ -366,6 +369,7 @@ describe(`binning`, () => {
     [{ bin_width: 5 }, 36, 5],
     [{ n_bins: 36 }, 36, 5],
     [{ bin_width: 7 }, 26, 7], // does not divide 180: last bin overhangs to 182
+    [{ bin_width: 0.0018 }, 100_000, 0.0018], // exactly at the bin cap
     [{}, 90, 2], // default
   ])(`resolve_angle_bins(%j) -> %s bins of %s deg`, (options, n_bins, bin_width) => {
     expect(resolve_angle_bins(options)).toEqual({ n_bins, bin_width })

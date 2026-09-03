@@ -52,6 +52,12 @@ const mount_xrd = async (props: XrdProps): Promise<HTMLDivElement> => {
   return target
 }
 
+// Broadened profiles are the only long paths; everything shorter is a control icon
+const profile_paths = (target: HTMLElement): SVGPathElement[] =>
+  [...target.querySelectorAll<SVGPathElement>(`svg path`)].filter(
+    (path) => (path.getAttribute(`d`) ?? ``).length > 1000,
+  )
+
 const axis_text = (target: HTMLElement, axis: `x` | `y`): string =>
   target.querySelector(`.${axis}-axis .axis-label`)?.textContent ?? ``
 
@@ -312,7 +318,26 @@ describe(`XrdPlot`, () => {
     expect(series[1].querySelector(`path`)?.getAttribute(`fill`)).toContain(`rgba(255, 0, 0`)
   })
 
-  test(`broadening controls bind one number input per Caglioti parameter`, async () => {
+  // Broadening is area-normalized, so an already normalized pattern profiles well under 1 and
+  // the old max(1, ...) floor left a y max of 0.01 at 5.92 of the fixed [0, 110] axis
+  test(`broadened profile fills the axis whatever the input intensity scale`, async () => {
+    const peak_top = async (scale: number) => {
+      const target = await mount_xrd({
+        patterns: { x: pattern.x, y: pattern.y.map((y_val) => y_val * scale) },
+        broadening_enabled: true,
+      })
+      // path coordinates alternate x, y, so the smallest odd one is the curve top (SVG y
+      // grows downward)
+      const curve = profile_paths(target)[0]?.getAttribute(`d`)
+      if (!curve) throw new Error(`no broadened profile path for scale ${scale}`)
+      const ys = (curve.match(/-?[\d.]+/g) ?? []).filter((_value, idx) => idx % 2 === 1)
+      return Math.min(...ys.map(Number))
+    }
+    // 100x apart on input, identical once both are scaled to a maximum of 100
+    expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)
+  })
+
+  test(`broadening controls bind one number input per Caglioti parameter, and an invalid FWHM banners instead of blanking`, async () => {
     const target = await mount_xrd({
       patterns: pattern,
       broadening_enabled: true,
@@ -322,13 +347,34 @@ describe(`XrdPlot`, () => {
     const inputs = Array.from(target.querySelectorAll<HTMLInputElement>(`.param-input`))
     // U, V, W, then the pseudo-Voigt shape factor, each showing its DEFAULT_BROADENING value
     expect(inputs.map((input) => input.value)).toEqual([`0.04`, `-0.02`, `0.02`, `0.5`])
-    // Only the mixing parameter is bounded, since eta outside [0, 1] is not a pseudo-Voigt
+    // U and W are floored at 0 (a negative FWHM² radicand throws), V is legitimately
+    // negative, and only eta is bounded above since outside [0, 1] it is not a pseudo-Voigt
     expect(inputs.map((input) => [input.min, input.max])).toEqual([
+      [`0`, ``],
       [``, ``],
-      [``, ``],
-      [``, ``],
+      [`0`, ``],
       [`0`, `1`],
     ])
+
+    // V^2 <= 4UW couples all three, so no static `min` keeps the FWHM^2 radicand positive:
+    // W at its own allowed minimum throws at 2theta = 10 deg, and the uncaught throw used to
+    // blank the whole component
+    const set_w = async (value: string) => {
+      inputs[2].value = value
+      inputs[2].dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      return [
+        target.querySelector(`.status-message.error`)?.textContent ?? ``,
+        profile_paths(target).length,
+      ] as const
+    }
+    expect(await set_w(`0`)).toEqual([
+      expect.stringMatching(/Caglioti FWHM.*U=0\.04, V=-0\.02, W=0/),
+      0,
+    ])
+    expect(target.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+    // and it CLEARS on the next valid W, profile and all - a thrown error could not come back
+    expect(await set_w(`0.02`)).toEqual([``, 1])
   })
 
   test(`dragover class toggles correctly`, async () => {

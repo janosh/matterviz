@@ -7,7 +7,7 @@
 // precomputed activities. Nothing in this file invents Raman data from eigenvectors.
 
 import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
-import { broaden_peaks } from '$lib/lineshape'
+import { broaden_peaks, MAX_BROADENING_GRID_POINTS } from '$lib/lineshape'
 import { SvelteSet } from 'svelte/reactivity'
 import { convert_frequencies } from './frequency-units'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
@@ -255,10 +255,6 @@ export function spectrum_sticks(
   }
 }
 
-// Grid-size ceiling for broaden_spectrum. 1e7 points is ~80 MB of f64 and already far past
-// anything plottable; beyond it broaden_peaks stops being interruptible.
-const MAX_GRID_POINTS = 1e7
-
 export interface BroadenOptions {
   fwhm?: number // constant FWHM in the stick spectrum's own x units
   fwhm_fn?: (peak_center: number) => number // frequency-dependent width, wins over fwhm
@@ -323,7 +319,7 @@ export function broaden_spectrum(
   // Every width can be individually sane while their RATIO is not: the grid spans
   // 10*max_width past the sticks in steps of min_width/20, so a soft mode 9 orders below
   // the rest asks for ~1e12 points and broaden_peaks fills them in an uninterruptible loop.
-  if (n_points > MAX_GRID_POINTS) {
+  if (n_points > MAX_BROADENING_GRID_POINTS) {
     throw new Error(
       `broaden_spectrum: ${n_points} grid points over [${range_lo}, ${range_hi}] at step ` +
         `${step_size}. Widths span ${min_width}..${max_width}; pass an explicit step_size ` +
@@ -336,8 +332,8 @@ export function broaden_spectrum(
 
 // Scale a curve so its maximum is 1. Used for the transmittance presentation, which inverts
 // the result, so an unbounded or all-zero absorbance would silently render a flat line at 1
-// instead of failing. A loop, not Math.max(...values): broadened grids run to MAX_GRID_POINTS,
-// far past the spread-argument limit.
+// instead of failing. A loop, not Math.max(...values): broadened grids run to 1e7 points, far
+// past the spread-argument limit.
 export function scale_to_max(values: number[]): number[] {
   let max_val = -Infinity
   for (const val of values) {

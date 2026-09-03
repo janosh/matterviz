@@ -106,6 +106,27 @@ describe(`frame loading`, () => {
     destroy()
   })
 
+  // Effects flush in creation order, so the request effect used to see the raw 2.6 and trip
+  // run.read_frame's RangeError; NaN normalized to null, which cleared the displayed frame AND
+  // left the correction effect nothing to write back, so the viewer stayed blank with no way out
+  // frame 0 is the synchronous preview, so the NaN row corrects without an async read
+  it.each([
+    [`a fractional`, 2.6, 2, [2]],
+    [`a non-finite`, Number.NaN, 0, []],
+  ])(`corrects %s host index instead of erroring`, (_label, index, expected, want_reads) => {
+    const { run, reads } = make_async_run(frames(5))
+    const { host, session, events, errors, destroy } = make_session({ run })
+    host.index = index
+    flushSync()
+    expect(errors).toEqual([])
+    expect(reads).toEqual(want_reads)
+    expect(host.index).toBe(expected)
+    expect(events).toEqual([`step:${expected}`])
+    expect(session.current_structure).toBeDefined()
+    expect(session.controller.set_step(3.9)).toBe(3)
+    destroy()
+  })
+
   it(`latest request wins: a superseded async read is aborted and never displayed`, async () => {
     const { run, pending, reads, resolve_next } = make_async_run(frames(6))
     const { host, session, errors, destroy } = make_session({ run })
@@ -185,7 +206,7 @@ describe(`frame loading`, () => {
 })
 
 describe(`scrub vs commit`, () => {
-  it(`coalesces a slider burst into one rAF write and settles after the quiet period`, () => {
+  it(`coalesces a slider burst into one rAF write, settles after the quiet period, and no-ops on a non-finite index`, () => {
     const raf_callbacks: FrameRequestCallback[] = []
     const raf = vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((cb) => {
       raf_callbacks.push(cb)
@@ -215,6 +236,15 @@ describe(`scrub vs commit`, () => {
     session.commit(99)
     expect(host.index).toBe(19)
     session.commit(19) // no-op: no duplicate event
+    expect(events).toEqual([`step:9`, `step:12`, `step:19`])
+    // A non-finite index (an empty range input's valueAsNumber, or NaN from a zero-width
+    // layout) is a no-op, not a silent jump to frame 0
+    session.scrub(Number.NaN)
+    raf_callbacks.at(-1)?.(16)
+    flushSync()
+    expect(host.index).toBe(19)
+    session.commit(Number.NaN)
+    expect(host.index).toBe(19)
     expect(events).toEqual([`step:9`, `step:12`, `step:19`])
     raf.mockRestore()
     destroy()

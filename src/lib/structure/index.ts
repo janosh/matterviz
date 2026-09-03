@@ -25,16 +25,19 @@ export * from './polyhedra'
 export * from './export'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
-export { default as StructureCarousel } from './StructureCarousel.svelte'
+export { default as StructureGallery } from './StructureGallery.svelte'
 
-// defined here (not in StructureCarousel.svelte's module script) so plain-TS
+// defined here (not in StructureGallery.svelte's module script) so plain-TS
 // consumers can import it from '$lib/structure' without a .svelte module
 // resolution, which type-aware lint can't see named exports of
-export type StructureCarouselItem = {
+export type StructureGalleryItem = {
   id: string
   label: string
   subtitle?: string
   structure: AnyStructure
+  // Key/value captions for the viewer. Numeric ones are tinted by their rank across the whole
+  // collection when the gallery has a property_color_scheme; `_` marks a subscript (`E_hull`).
+  properties?: Record<string, number | string>
 }
 export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureEditToolbar } from './StructureEditToolbar.svelte'

@@ -3,6 +3,7 @@
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
   import { is_elem_symbol, type ElementSymbol } from '$lib/element'
+  import { make_change_detector } from '$lib/utils'
   import { tooltip } from 'svelte-widgets/attachments'
   import {
     create_recent_list,
@@ -10,7 +11,6 @@
     storage_set_json,
   } from 'svelte-widgets/storage'
   import { untrack } from 'svelte'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { HTMLAttributes } from 'svelte/elements'
   import { format_amount, get_alphabetical_formula } from './format'
   import type { FormulaSearchMode } from './index'
@@ -161,7 +161,20 @@
   const save_pinned = (entries: string[]) => storage_set_json(history_pins_key, entries)
 
   let history = $state<string[]>(untrack(() => recent.load()))
-  let pinned_history = $state<string[]>(load_pinned())
+  let pinned_history = $state<string[]>(untrack(() => load_pinned()))
+  // Live props: without reloading, entries read from the old key get written back under the
+  // new one, and lowering max_history never truncates.
+  const history_source_changed = make_change_detector()
+  $effect(() => {
+    if (!history_source_changed(`${history_key}:${max_history}`)) return
+    history = recent.load()
+    pinned_history = load_pinned()
+    // The open dropdown still points into the OLD list: Enter reads
+    // visible_history[focused_history_idx], so a shorter reload indexed undefined and crashed.
+    history_query = ``
+    focused_history_idx = -1
+    if (history.length === 0) history_open = false
+  })
 
   function add_to_history(entry: string): void {
     if (max_history <= 0 || !entry.trim()) return
@@ -201,12 +214,11 @@
 
   // Filtered history: exclude current value to avoid redundant suggestion
   let visible_history = $derived.by(() => {
-    const filtered = history
-      .filter((item) => item !== value)
-      .filter((item) => item.toLowerCase().includes(history_query.toLowerCase().trim()))
-    const pinned = filtered.filter((item) => pinned_history.includes(item))
-    const unpinned = filtered.filter((item) => !pinned_history.includes(item))
-    return [...pinned, ...unpinned]
+    const query = history_query.toLowerCase().trim()
+    const filtered = history.filter(
+      (item) => item !== value && item.toLowerCase().includes(query),
+    )
+    return [...filtered.filter(is_pinned), ...filtered.filter((item) => !is_pinned(item))]
   })
 
   function close_history(): void {
@@ -308,7 +320,7 @@
     if (!has_wildcards(input))
       return get_alphabetical_formula(input, { plain_text: true, delim: `` }) || input
     const tokens = parse_formula_with_wildcards(input)
-    const merged = new SvelteMap<ElementSymbol, number>()
+    const merged = new Map<ElementSymbol, number>()
     for (const { element, amount } of tokens) {
       if (element) merged.set(element, (merged.get(element) ?? 0) + amount)
     }
@@ -435,12 +447,12 @@
     if (!trimmed) return []
     if (/[-,]/.test(trimmed)) {
       const parts = trimmed.split(/[-,]/).map((part) => part.trim())
-      const elements = [...new SvelteSet(parts.filter(is_elem_symbol))].toSorted()
+      const elements = [...new Set(parts.filter(is_elem_symbol))].toSorted()
       return [...elements, ...parts.filter((part) => part === `*`)]
     }
     try {
       const tokens = parse_formula_with_wildcards(trimmed)
-      const elements = [...new SvelteSet(tokens.flatMap((token) => token.element ?? []))]
+      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))]
       return [
         ...elements.toSorted(),
         ...tokens.filter((tok) => tok.element === null).map(() => `*`),
@@ -466,9 +478,12 @@
   }
 
   // elements -> chemsys -> exact -> elements, reformatting the current value on the way
+  const mode_after = (mode: FormulaSearchMode): FormulaSearchMode =>
+    MODE_CYCLE[(MODE_CYCLE.indexOf(mode) + 1) % MODE_CYCLE.length]
+
   function cycle_mode(): void {
     if (mode_locked) return
-    const next_mode = MODE_CYCLE[(MODE_CYCLE.indexOf(search_mode) + 1) % MODE_CYCLE.length]
+    const next_mode = mode_after(search_mode)
     commit(format_for_mode(value, next_mode), next_mode)
   }
 
@@ -553,6 +568,7 @@
   function handle_menu_keydown(event: KeyboardEvent): void {
     const len = all_examples.length
     if (!len) return
+    // Enter/Space on a focused example button is that button's click, not menu navigation
     const is_button_activation =
       (event.key === `Enter` || event.key === ` `) && event.target instanceof HTMLButtonElement
     if (is_button_activation) return
@@ -589,7 +605,7 @@
   let parsed_tokens = $derived(tokenize_query(input_value, search_mode))
   // Preview of the next mode cycle step for the mode-hint tooltip
   let next_mode = $derived.by(() => {
-    const next = MODE_CYCLE[(MODE_CYCLE.indexOf(search_mode) + 1) % MODE_CYCLE.length]
+    const next = mode_after(search_mode)
     return { mode: MODE_LABELS[next], value: format_for_mode(value, next) }
   })
 </script>

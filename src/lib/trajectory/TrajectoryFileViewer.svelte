@@ -97,13 +97,11 @@
   const compare_paths = (first: string, second: string): number =>
     first.localeCompare(second, undefined, { numeric: true })
   function group_hdf5_paths(paths: string[]): Hdf5PathGroup[] {
-    const groups: Record<string, string[]> = {}
-    for (const path of paths) {
+    const groups = Map.groupBy(paths, (path) => {
       const slash_idx = path.lastIndexOf(`/`)
-      const trunk = slash_idx > 0 ? path.slice(0, slash_idx) : `/`
-      ;(groups[trunk] ??= []).push(path)
-    }
-    return Object.entries(groups)
+      return slash_idx > 0 ? path.slice(0, slash_idx) : `/`
+    })
+    return [...groups]
       .toSorted(([first], [second]) => compare_paths(first, second))
       .map(([trunk, group_paths]) => ({ trunk, paths: group_paths.toSorted(compare_paths) }))
   }
@@ -231,13 +229,11 @@
         error instanceof MaterialOpenError && error.stage === `acquire`
           ? `Failed to load trajectory`
           : `Failed to parse trajectory`
-      report_error(
-        unsupported || `${prefix}: ${name ? `${name}: ` : ``}${to_error(error).message}`,
-        {
-          filename: name,
-          ...(error instanceof MaterialOpenError && error.provenance),
-        },
-      )
+      const message = `${prefix}: ${name ? `${name}: ` : ``}${to_error(error).message}`
+      report_error(unsupported || message, {
+        filename: name,
+        ...(error instanceof MaterialOpenError && error.provenance),
+      })
     } finally {
       end_load(controller)
     }

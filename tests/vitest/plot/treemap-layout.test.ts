@@ -2,6 +2,7 @@ import type { SunburstLayoutOptions, SunburstSort, TreemapNode } from '$lib/plot
 import {
   align_tiling,
   compute_sunburst_layout,
+  header_strip,
   lerp_rects,
   sunburst_from_paths,
   tile_rects,
@@ -167,6 +168,14 @@ describe(`compute_treemap_layout`, () => {
     }
   })
 
+  // d3 applies paddingTop after paddingOuter, so the reserved strip is the larger of the two
+  test(`header_strip is the band the tiling actually reserves`, () => {
+    expect([header_strip(4, 10), header_strip(20, 4)]).toEqual([10, 20])
+    const opts = { padding_inner: 0, padding_top: 4, padding_outer: 10 }
+    const [rect_a, rect_a1, rect_a2] = compute_treemap_layout(tree, size, opts).rects.slice(1)
+    expect(Math.min(rect_a1.y, rect_a2.y) - rect_a.y).toBeCloseTo(header_strip(4, 10), 9)
+  })
+
   test(`padding_top larger than a cell collapses children without NaN`, () => {
     const { rects } = compute_treemap_layout(
       tree,
@@ -284,7 +293,7 @@ describe(`place_treemap_label`, () => {
     header: false,
     fit: `hide` as const,
     min_font_size: 6,
-    padding_top: 0,
+    header_height: 0,
     margin: 0,
   }
   const rect = (width: number, height: number) => ({ x: 0, y: 0, width, height })
@@ -333,7 +342,7 @@ describe(`place_treemap_label`, () => {
       ...base,
       fit,
       header: true, // header disables the rotated candidate
-      padding_top: 100,
+      header_height: 100,
       rect: rect(width, 100),
     })
     expect(placement?.font_size).toBeCloseTo(font_px, 9)

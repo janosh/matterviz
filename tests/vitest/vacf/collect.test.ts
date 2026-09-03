@@ -86,9 +86,21 @@ describe(`collect_vacf_input`, () => {
     await expect(collect_vacf_input(run)).rejects.toThrow(error)
   })
 
-  it(`budgets both positions and stored velocities when suggesting a stride`, () => {
-    const run = make_run(1000, true)
-    expect(suggest_vacf_frame_stride(run, 48_000)).toBe(1)
-    expect(suggest_vacf_frame_stride(run, 24_000)).toBe(2)
-  })
+  // Stored velocities are used as they are (positions + velocities = 2 trajectory-sized
+  // buffers); a file WITHOUT them holds 3, since calc_vacf caches an unwrapped position copy
+  // and builds the central-difference series from it. Budgeting that path at 1 told a
+  // 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget.
+  it.each([
+    [`stored`, true, [1, 1, 2]],
+    [`derived`, false, [1, 2, 4]],
+  ])(
+    `budgets every buffer calc_vacf holds for %s velocities`,
+    (_label, has_velocity_columns, strides) => {
+      const run = make_run(1000, has_velocity_columns)
+      const budgets = [72_000, 48_000, 24_000]
+      expect(budgets.map((max_bytes) => suggest_vacf_frame_stride(run, max_bytes))).toEqual(
+        strides,
+      )
+    },
+  )
 })

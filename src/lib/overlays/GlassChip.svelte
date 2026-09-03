@@ -1,6 +1,6 @@
 <!-- Small text overlay with a frosted-glass backdrop, for annotating visual
   content (3D structure viewers, plots) without fully obscuring it. Shared by
-  StructurePopup's stats block and StructureCarousel's card headers so both
+  StructurePopup's stats block and StructureGallery's card headers so both
   render identically. Position/size via --glass-chip-* custom properties. -->
 <script lang="ts">
   import type { Snippet } from 'svelte'

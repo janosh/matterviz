@@ -1,4 +1,4 @@
-import type { Point2D } from '$lib/math'
+import { array_extent, array_max, type Point2D } from '$lib/math'
 import type { FacetAxis } from '$lib/plot/core/facets'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
@@ -98,8 +98,8 @@ export function estimate_label_size(text: string, font_size_str?: string): Label
   const font_size = resolve_font_size_css(font_size_str)
   const font: FontSpec = { ...DEFAULT_FONT_SPEC, font_size, line_height: font_size * 1.2 }
   const label_lines = text.split(/\r?\n/)
-  const max_line_width = Math.max(
-    ...label_lines.map((line) => measure_text_line(line, font).width),
+  const max_line_width = array_max(
+    label_lines.map((line) => measure_text_line(line, font).width),
   )
   return { width: max_line_width + 10, height: label_lines.length * font.line_height }
 }
@@ -251,16 +251,8 @@ type NeighborIndex = ReturnType<typeof create_neighbor_index>
 
 export function create_neighbor_index(anchors: AnchorInfo[]) {
   // `far_*` rather than max_x/max_y so `collect`'s query box below doesn't shadow them
-  let origin_x = Infinity,
-    origin_y = Infinity,
-    far_x = -Infinity,
-    far_y = -Infinity
-  for (const { x, y } of anchors) {
-    origin_x = Math.min(origin_x, x)
-    origin_y = Math.min(origin_y, y)
-    far_x = Math.max(far_x, x)
-    far_y = Math.max(far_y, y)
-  }
+  const [origin_x, far_x] = array_extent(anchors.map(({ x }) => x))
+  const [origin_y, far_y] = array_extent(anchors.map(({ y }) => y))
   // ~1 anchor per cell measured fastest; the dominant-extent floor caps collinear grids.
   const extent_x = far_x - origin_x
   const extent_y = far_y - origin_y
@@ -350,13 +342,11 @@ export function compute_delta_energy(
   const new_cx = new_state.x + new_state.w / 2,
     new_cy = new_state.y + new_state.h / 2
 
-  // Distance penalty change
   delta +=
     weights.distance *
     (Math.hypot(new_cx - anchor.x, new_cy - anchor.y) -
       Math.hypot(old_cx - anchor.x, old_cy - anchor.y))
 
-  // Bounds penalty change
   delta +=
     weights.bounds *
     (rect_out_of_bounds_area(new_state, bounds) - rect_out_of_bounds_area(old_state, bounds))
@@ -377,7 +367,6 @@ export function compute_delta_energy(
   const { candidates } = neighbors
   const count = neighbors.collect(box_min_x, box_max_x, box_min_y, box_max_y)
 
-  // Marker overlap change
   for (let pos = 0; pos < count; pos++) {
     const { x, y, radius } = anchors[candidates[pos]]
     if (misses_box(x - radius, x + radius, y - radius, y + radius)) continue
@@ -392,45 +381,28 @@ export function compute_delta_energy(
     const jdx = candidates[pos]
     if (jdx === changed_idx) continue
     const other = labels[jdx]
-    const anchor_j = anchors[other.anchor_idx]
+    const peer = anchors[other.anchor_idx] // the other label's anchor
     if (
       misses_box(
-        Math.min(other.x, anchor_j.x),
-        Math.max(other.x + other.w, anchor_j.x),
-        Math.min(other.y, anchor_j.y),
-        Math.max(other.y + other.h, anchor_j.y),
+        Math.min(other.x, peer.x),
+        Math.max(other.x + other.w, peer.x),
+        Math.min(other.y, peer.y),
+        Math.max(other.y + other.h, peer.y),
       )
     )
       continue
     const other_cx = other.x + other.w / 2,
       other_cy = other.y + other.h / 2
 
-    // Label-label overlap delta
     delta +=
       weights.overlap *
       (rect_overlap_area(new_state, other) - rect_overlap_area(old_state, other))
 
     // Leader line crossing delta (changed label's leader vs other's leader)
-    const old_cross = segments_intersect(
-      anchor.x,
-      anchor.y,
-      old_cx,
-      old_cy,
-      anchor_j.x,
-      anchor_j.y,
-      other_cx,
-      other_cy,
-    )
-    const new_cross = segments_intersect(
-      anchor.x,
-      anchor.y,
-      new_cx,
-      new_cy,
-      anchor_j.x,
-      anchor_j.y,
-      other_cx,
-      other_cy,
-    )
+    // shared tail of both crossing tests, so each call still fits on one line
+    const peer_leader = [peer.x, peer.y, other_cx, other_cy] as const
+    const old_cross = segments_intersect(anchor.x, anchor.y, old_cx, old_cy, ...peer_leader)
+    const new_cross = segments_intersect(anchor.x, anchor.y, new_cx, new_cy, ...peer_leader)
     if (new_cross !== old_cross) delta += (new_cross ? 1 : -1) * weights.leader_cross
 
     // Changed label's leader crossing other label's rect
@@ -439,20 +411,8 @@ export function compute_delta_energy(
     if (new_text !== old_text) delta += (new_text ? 1 : -1) * weights.leader_text
 
     // Other label's leader crossing changed label's rect
-    const old_other = segment_rect_intersects(
-      anchor_j.x,
-      anchor_j.y,
-      other_cx,
-      other_cy,
-      old_state,
-    )
-    const new_other = segment_rect_intersects(
-      anchor_j.x,
-      anchor_j.y,
-      other_cx,
-      other_cy,
-      new_state,
-    )
+    const old_other = segment_rect_intersects(peer.x, peer.y, other_cx, other_cy, old_state)
+    const new_other = segment_rect_intersects(peer.x, peer.y, other_cx, other_cy, new_state)
     if (new_other !== old_other) delta += (new_other ? 1 : -1) * weights.leader_text
   }
 

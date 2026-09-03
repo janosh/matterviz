@@ -19,10 +19,14 @@ import { vertex_count } from './types'
 
 // Distance below which a traced contour's ends count as joined
 const CLOSED_CONTOUR_TOLERANCE = 1e-6
-// Irreducible-wedge detection: every vertex in the positive octant within this tolerance,
-// and enough vertices for that to be meaningful
+// Irreducible-wedge detection: every vertex in the positive octant within this fraction of the
+// data's own extent. Relative, not absolute: a fixed 0.01 1/A is 16% of a 50 A supercell's
+// zone, where a small full-zone pocket at Gamma never dips below it and gets tiled 48 times.
 const IRREDUCIBLE_BZ_TOLERANCE = 0.01
 const IRREDUCIBLE_BZ_MIN_VERTICES = 10
+// Ceiling on one upsampled band grid: 2e7 points is 160 MB as Float64 and ~1 s of marching
+// cubes, above every k-mesh the UI can reach (64³ at 4x is 1.6e7, 48³ at 5x is 1.3e7)
+const MAX_UPSAMPLED_POINTS = 20_000_000
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
 // (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)
@@ -73,6 +77,18 @@ export function upsample_grid(
   const [new_nx, new_ny, new_nz] = [px, py, pz].map(
     (period) => Math.round(period * factor) + endpoint,
   )
+  // Bound the point count, not the factor: output grows as factor³ per band, so the settings
+  // cap of 5 bounds nothing (100³ at factor 5 is 496³ = 1.22e8 points, 976 MB per band).
+  // Negated so NaN is rejected here, not downstream as a bad dims triple.
+  const upsampled_points = new_nx * new_ny * new_nz
+  if (!(upsampled_points <= MAX_UPSAMPLED_POINTS)) {
+    throw new Error(
+      `upsample_grid: factor ${factor} turns a ${nx}×${ny}×${nz} band grid into ` +
+        `${new_nx}×${new_ny}×${new_nz} = ${upsampled_points.toPrecision(3)} points ` +
+        `(${(upsampled_points * 8e-6).toPrecision(3)} MB per band), past the ` +
+        `${MAX_UPSAMPLED_POINTS} cap. Lower options.interpolation_factor.`,
+    )
+  }
 
   // Map new index → source coordinate; a single-point axis (span 0) pins its lone
   // output to source 0 to avoid 0/0 = NaN
@@ -248,10 +264,8 @@ export function compute_fermi_slice(
   }
   const unit_normal = math.normalize_vec(plane_normal)
 
-  // Compute in-plane basis vectors
   const [in_plane_u, in_plane_v] = math.compute_in_plane_basis(unit_normal)
 
-  // Slice each isosurface
   const isolines: Isoline[] = fermi_data.isosurfaces.flatMap((surface) =>
     slice_surface_with_plane(surface, unit_normal, distance, in_plane_u, in_plane_v),
   )
@@ -260,7 +274,6 @@ export function compute_fermi_slice(
     isolines,
     plane_normal: unit_normal,
     plane_distance: distance,
-    k_lattice_2d: [in_plane_u, in_plane_v],
     metadata: {
       n_lines: isolines.length,
       has_properties: isolines.some((line) => line.properties !== undefined),
@@ -452,10 +465,14 @@ export function detect_irreducible_bz(fermi_data: FermiSurfaceData): boolean {
     (sum, surface) => sum + vertex_count(surface),
     0,
   )
-  // Only consider it irreducible if we have significant data and all vertices are
-  // in the positive octant (with small tolerance for numerical error)
+  // Irreducible only with enough data and no vertex past the origin by more than round-off
   if (n_vertices <= IRREDUCIBLE_BZ_MIN_VERTICES) return false
-  return fermi_data.isosurfaces.every((surface) =>
-    surface.positions.every((coord) => coord >= -IRREDUCIBLE_BZ_TOLERANCE),
-  )
+  let [min_coord, extent] = [Infinity, 0]
+  for (const { positions } of fermi_data.isosurfaces) {
+    for (const coord of positions) {
+      if (coord < min_coord) min_coord = coord
+      if (Math.abs(coord) > extent) extent = Math.abs(coord)
+    }
+  }
+  return min_coord >= -IRREDUCIBLE_BZ_TOLERANCE * extent
 }

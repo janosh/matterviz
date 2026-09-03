@@ -18,11 +18,7 @@
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { create_colorbar_decoration } from '$lib/plot/core/colorbar-decoration.svelte'
   import type { DecorationItem } from '$lib/plot/core/decorations'
-  import {
-    decoration_data_attrs,
-    decoration_placement_revision,
-    get_decoration_placement,
-  } from '$lib/plot/core/decorations'
+  import { decoration_data_attrs, get_decoration_placement } from '$lib/plot/core/decorations'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import { get_relative_coords, range_bounds } from '$lib/plot/core/interactions'
   import { query_nearest } from '$lib/plot/core/spatial-index'
@@ -427,6 +423,8 @@
     candidate_gap: 0,
     ...point_labels_settings.placement,
   })
+  // See ScatterPlot: compared by value, the merged object being a fresh identity per update
+  const label_config_key = $derived(JSON.stringify(actual_label_placement_config))
 
   const point_radius_for_value = (size_value: number | null | undefined): number =>
     size_value == null || !Number.isFinite(size_value)
@@ -510,19 +508,24 @@
     ctx.globalAlpha = 1
   }
 
+  // NaN fails every comparison, so this also rejects non-finite coords. Derived, not a plain
+  // function, so draw_points resolves the bounds once rather than per point.
+  const in_view = $derived.by(() => {
+    const [x_min, x_max] = range_bounds(x_range)
+    const [y_min, y_max] = range_bounds(y_range)
+    return (x: number, y: number) => x >= x_min && x <= x_max && y >= y_min && y <= y_max
+  })
+
   // Every point except the selected one, which pulses and so lives on the overlay. Reads
   // neither the pulse nor the hover, so this layer only repaints when the data or view move.
   function draw_points(ctx: CanvasRenderingContext2D) {
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
     for (const [series_idx, srs] of series.entries()) {
       const color = srs.color ?? plot_color(series_idx)
       const n_points = srs.x.length
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
         const y = srs.y[point_idx]
-        if (!Number.isFinite(x) || !Number.isFinite(y)) continue
-        if (x < x_min || x > x_max || y < y_min || y > y_max) continue
+        if (!in_view(x, y)) continue
         if (
           selected_point?.series_idx === series_idx &&
           selected_point.point_idx === point_idx
@@ -540,8 +543,6 @@
   // what keeps a pulse tick or a pointer move off the O(all points) path above.
   function draw_marked_points(ctx: CanvasRenderingContext2D) {
     if (render_mode !== `points`) return // density mode has no per-point markers
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
     for (const [mark, pulse] of [
       [hovered_point, null],
       // selected last, so its ring sits over the hover. Don't subscribe this paint effect to
@@ -552,8 +553,7 @@
       const { series_idx, point_idx } = mark
       const srs = series[series_idx]
       const [x, y] = [srs?.x[point_idx], srs?.y[point_idx]]
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
-      if (x < x_min || x > x_max || y < y_min || y > y_max) continue
+      if (!in_view(x, y)) continue
       const radius = point_radius_for_value(srs.size_values?.[point_idx])
       const color = srs.color ?? plot_color(series_idx)
       draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 1, pulse)
@@ -637,9 +637,12 @@
     series_idx: point.series_idx,
     x_axis,
     y_axis,
-    x_formatted: format_value(point.x, x_axis.format ?? `.3~g`),
-    y_formatted: format_value(point.y, y_axis.format ?? `.3~g`),
+    x_formatted: fmt_x(point.x),
+    y_formatted: fmt_y(point.y),
   })
+
+  const fmt_x = (val: number): string => format_value(val, x_axis.format ?? `.3~g`)
+  const fmt_y = (val: number): string => format_value(val, y_axis.format ?? `.3~g`)
 
   const point_color = (point: DenseInternalPoint<Metadata>): string =>
     series[point.series_idx]?.color ?? plot_color(point.series_idx)
@@ -677,11 +680,19 @@
 
   // See ScatterPlot: carried between solves so a pan/zoom frame polishes the previous layout
   const label_offsets = new Map<string, Point2D>()
+  let previous_label_series: typeof series | undefined
+  let previous_label_config: string | undefined
 
   // An effect, not $derived: the solve mutates `label_offsets`, and a lazy derived is skipped
   // while the template renders no labels, leaving stale offsets to warm-start the next solve.
   let point_label_positions = $state<Record<string, Point2D>>({})
   $effect(() => {
+    // Warm keys are index-based, so a data swap must search cold, not polish the old layout
+    if (series !== previous_label_series || label_config_key !== previous_label_config) {
+      label_offsets.clear()
+      previous_label_series = series
+      previous_label_config = label_config_key
+    }
     if (point_label_payloads.length === 0) {
       label_offsets.clear()
       point_label_positions = {}
@@ -947,10 +958,8 @@
         bg_color={color_scale_fn(hovered_bin.count)}
       >
         {hovered_bin.count.toLocaleString()} samples<br />
-        x: {format_value(hovered_bin.x_range[0], x_axis.format ?? `.3~g`)}
-        - {format_value(hovered_bin.x_range[1], x_axis.format ?? `.3~g`)}<br />
-        y: {format_value(hovered_bin.y_range[0], y_axis.format ?? `.3~g`)}
-        - {format_value(hovered_bin.y_range[1], y_axis.format ?? `.3~g`)}
+        x: {fmt_x(hovered_bin.x_range[0])} - {fmt_x(hovered_bin.x_range[1])}<br />
+        y: {fmt_y(hovered_bin.y_range[0])} - {fmt_y(hovered_bin.y_range[1])}
       </PlotTooltip>
     {:else if hovered_point}
       {@const props = point_payload(hovered_point)}

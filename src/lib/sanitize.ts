@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './composition/format'
+import { evict_oldest } from './labels'
 import { escape_html } from './utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
@@ -151,7 +152,7 @@ const stringify_html_input = (html: unknown): string => {
 
 const sanitize_cache = new Map<string, string>()
 const cache_sanitize = (key: string, result: string): string => {
-  if (sanitize_cache.size >= 4096) sanitize_cache.clear()
+  evict_oldest(sanitize_cache)
   sanitize_cache.set(key, result)
   return result
 }

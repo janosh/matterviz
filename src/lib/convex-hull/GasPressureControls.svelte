@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { GasSpecies, GasThermodynamicsConfig } from '$lib/convex-hull/types'
+  import { clamp } from '$lib/math'
   import { sanitize_html } from '$lib/sanitize'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
@@ -44,9 +45,7 @@
 
   // Pressure <-> log scale slider position (0-100)
   const pressure_to_slider = (pressure: number): number =>
-    ((Math.max(LOG_P_MIN, Math.min(LOG_P_MAX, Math.log10(pressure))) - LOG_P_MIN) /
-      LOG_P_RANGE) *
-    100
+    ((clamp(Math.log10(pressure), LOG_P_MIN, LOG_P_MAX) - LOG_P_MIN) / LOG_P_RANGE) * 100
   const slider_to_pressure = (value: number): number =>
     10 ** (LOG_P_MIN + (value / 100) * LOG_P_RANGE)
 
@@ -64,7 +63,7 @@
   }
 
   function set_pressure_direct(gas: GasSpecies, value: number): void {
-    set_pressure(gas, Math.max(10 ** LOG_P_MIN, Math.min(10 ** LOG_P_MAX, value)))
+    set_pressure(gas, clamp(value, 10 ** LOG_P_MIN, 10 ** LOG_P_MAX))
   }
 </script>
 

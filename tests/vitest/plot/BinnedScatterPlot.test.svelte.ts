@@ -675,9 +675,12 @@ describe(`BinnedScatterPlot`, () => {
     vi.useFakeTimers({ toFake: [`requestAnimationFrame`, `cancelAnimationFrame`] })
     const clears = { base: 0, overlay: 0 }
     const width_setter = vi.spyOn(HTMLCanvasElement.prototype, `width`, `set`)
-    const css_width_setter = vi.spyOn(CSSStyleDeclaration.prototype, `width`, `set`)
+    // happy-dom 20.13 dropped the per-property accessors on CSSStyleDeclaration.prototype, so a
+    // `width` setter spy throws; `style.width = x` routes through setProperty either way.
+    const set_property = vi.spyOn(CSSStyleDeclaration.prototype, `setProperty`)
     const resize_count = () =>
-      width_setter.mock.calls.length + css_width_setter.mock.calls.length
+      width_setter.mock.calls.length +
+      set_property.mock.calls.filter(([prop]) => prop === `width`).length
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
       function (this: HTMLCanvasElement) {
         const layer = this.classList.contains(`marked-points`) ? `overlay` : `base`

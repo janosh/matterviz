@@ -1,4 +1,3 @@
-import { SvelteMap } from 'svelte/reactivity'
 import type { DecorationSize, LegendDecorationItem } from './types'
 
 type LegendOrientation = `horizontal` | `vertical`
@@ -53,7 +52,7 @@ export function get_legend_grid_cells({
   show_filter?: boolean
 }): LegendGridCell[] {
   const normalized_filter = show_filter ? filter_query.trim().toLowerCase() : ``
-  const grouped_items = new SvelteMap<string | null, number[]>()
+  const grouped_items = new Map<string | null, number[]>()
   for (const [item_idx, item] of items.entries()) {
     const searchable_text = `${item.legend_group ?? ``} ${item.label}`.toLowerCase()
     if (normalized_filter && !searchable_text.includes(normalized_filter)) continue

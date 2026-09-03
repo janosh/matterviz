@@ -9,20 +9,23 @@
 import type { VisibleDomainLabel } from '$lib/chempot-diagram/compute'
 import {
   apply_element_padding,
+  assign_faces_to_domains,
   bbox_diagonal,
   best_form_energy_for_formula,
   build_axis_ranges,
   build_border_hyperplanes,
   build_chempot_hyperplanes,
   build_hyperplanes,
-  compute_chempot_diagram,
   chebyshev_centre,
+  compute_chempot_diagram,
   dedup_points,
+  fit_plane,
   formula_key_from_composition,
   get_3d_domain_simplexes_and_ann_loc,
   get_energy_stats_by_formula,
   get_min_entries_and_el_refs,
   get_ternary_combinations,
+  get_touches_limits,
   get_visible_domain_labels,
   orthonormal_2d,
   pad_domain_points,
@@ -30,6 +33,7 @@ import {
   safe_energy_per_atom,
   scale_to_font_range,
   simple_pca,
+  strip_closing_faces,
 } from '$lib/chempot-diagram/compute'
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
 import { filter_entries_at_temperature, slim_phase_entry } from '$lib/convex-hull/helpers'
@@ -37,6 +41,12 @@ import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { load_json, make_phase } from '../setup'
+
+// n-D points written as one flat list, so geometry fixtures stay on a single line
+const chunk = (size: number, flat: number[]): number[][] =>
+  Array.from({ length: flat.length / size }, (_, idx) =>
+    flat.slice(idx * size, (idx + 1) * size),
+  )
 
 const test_dir = import.meta.dirname
 const entries = load_json<PhaseData[]>(`${test_dir}/pd_entries_test.json.gz`)
@@ -712,7 +722,7 @@ describe(`renormalize_entries`, () => {
       expected_energy: [-1.0],
     },
   ])(`$label`, ({ phase_entries, expected_epa, expected_energy }) => {
-    const renormed = renormalize_entries(phase_entries, AB_REFS, [`A`, `B`])
+    const renormed = renormalize_entries(phase_entries, AB_REFS)
     expect(renormed.map((entry) => [entry.energy_per_atom, entry.energy])).toEqual(
       close_rows(
         expected_epa.map((epa, idx) => [epa, expected_energy[idx]]),
@@ -758,6 +768,16 @@ describe(`build_hyperplanes`, () => {
         { ...make_phase({ A: 2, B: 1 }, -5), is_stable: false, e_above_hull: 0.2 },
       ],
       expected: [`A`, `B`, `AB`],
+    },
+    {
+      // AB has E_form = -3.5 eV/atom here, yet a stale `is_stable: false` deletes its domain
+      label: `stale hull flags from a larger chemsys drop a locally stable phase`,
+      refs: {
+        A: { ...make_phase({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
+        B: { ...make_phase({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
+      },
+      extra: [{ ...make_phase({ A: 1, B: 1 }, -6), is_stable: false, e_above_hull: 0.2 }],
+      expected: [`A`, `B`],
     },
     {
       label: `falls back to negative formation energy when hull stability is absent`,
@@ -846,22 +866,6 @@ describe(`simple_pca`, () => {
     expect(eigenvectors).toEqual([])
   })
 
-  test(`eigenvectors are unit length and orthogonal`, () => {
-    const data = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-      [1, 1, 1],
-    ]
-    const { eigenvectors } = simple_pca(data, 2)
-    expect(eigenvectors).toHaveLength(2)
-    for (const ev of eigenvectors) {
-      expect(Math.hypot(...ev)).toBeCloseTo(1.0, 6)
-    }
-    const dot = eigenvectors[0].reduce((sum, val, idx) => sum + val * eigenvectors[1][idx], 0)
-    expect(Math.abs(dot)).toBeLessThan(1e-6)
-  })
-
   // Rank-deficient input leaves nothing in the deflated covariance for the second component to
   // converge to, so the loop broke with `vec` still at its raw seed - not orthogonal to the
   // first, and for 3 collinear points literally the same vector again. `is_planar`'s
@@ -869,6 +873,7 @@ describe(`simple_pca`, () => {
   // ChemPotDiagram3D fell through to hull_crease_edges, which threw on collinear points and
   // left the domain with no outline at all.
   test.each([
+    [`full-rank tetrahedron`, chunk(3, [1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1])],
     [
       `4 collinear points`,
       [
@@ -1262,6 +1267,119 @@ describe(`dedup_points`, () => {
   })
 })
 
+describe(`fit_plane`, () => {
+  // n . p = d for the plane 2x + 3y + 6z = 12 (|n| = 7)
+  const on_plane = chunk(3, [6, 0, 0, 0, 4, 0, 0, 0, 2, 3, 2, 0, 1.5, 1, 1])
+
+  test.each([
+    [`fewer than 3 unique points`, on_plane.slice(0, 2)],
+    [`collinear points`, [0, 1, 2, 3].map((val) => [val, val, val])],
+    [`points spanning a volume`, [...on_plane, [0, 0, 0]]], // origin is 12/7 off the plane
+  ])(`returns null for %s`, (_label, points) => {
+    expect(fit_plane(points)).toBeNull()
+  })
+
+  test(`rel_tol is relative to the bounding-box diagonal`, () => {
+    // bbox diagonal of `on_plane` is ~7.5, so a 1e-3 out-of-plane nudge needs rel_tol > ~1.4e-4
+    const nudged = [...on_plane.slice(0, 4), [1.5 + 2e-3 / 7, 1 + 3e-3 / 7, 1 + 6e-3 / 7]]
+    expect(fit_plane(nudged, 1e-6)).toBeNull()
+    expect(fit_plane(nudged, 1e-2)).not.toBeNull()
+  })
+
+  // Regression: the PCA rank threshold is relative to the total variance. An absolute epsilon
+  // on a covariance entry (a length squared) called a micro-eV-wide domain rank-deficient.
+  test.each([1e6, 1e3, 1, 1e-3, 1e-6, 1e-9])(
+    `fits a plane at coordinate scale %s`,
+    (scale) => {
+      const plane = fit_plane(on_plane.map((pt) => pt.map((val) => val * scale)))
+      if (!plane) throw new Error(`expected a plane at scale ${scale}`)
+      const sign = Math.sign(plane.offset) || 1 // either face normal is valid
+      expect(plane.normal.map((val) => val * sign)).toEqual(
+        [2 / 7, 3 / 7, 6 / 7].map((val) => expect.closeTo(val, 9)),
+      )
+      expect((plane.offset * sign) / scale).toBeCloseTo(12 / 7, 9)
+    },
+  )
+
+  test(`in_outline separates the polygon from the rest of its plane`, () => {
+    const plane = fit_plane(on_plane)
+    if (!plane) throw new Error(`expected a plane`)
+    expect(plane.in_outline([2, 1, 1])).toBe(true) // 2*2 + 3*1 + 6*1 = 13, ~on plane, inside
+    expect(plane.in_outline([12, -4, 0])).toBe(false) // on the plane, far outside the outline
+  })
+})
+
+// Regression: the tolerance is window-relative. An absolute 1e-3 eV called every domain in a
+// few-meV-wide window clipped on every bound.
+describe(`get_touches_limits`, () => {
+  const elements = [`Y`, `Ti`]
+  test.each([
+    [`wide window`, [-25, 0], [-25, -12, -3, -0.5], [`Y lower bound`]],
+    [`narrow window`, [-0.004, 0], [-0.0039, -0.0039, -0.0001, -0.0001], []],
+    [
+      `domain spanning a narrow window`,
+      [-0.004, 0],
+      [-0.004, -0.004, 0, 0],
+      [`Y lower bound`, `Y upper bound`, `Ti lower bound`, `Ti upper bound`],
+    ],
+  ])(`%s`, (_label, window, flat_points, expected) => {
+    const lims = [window, window] as Vec2[]
+    expect(get_touches_limits(chunk(2, flat_points), lims, elements)).toEqual(expected)
+  })
+})
+
+describe(`strip_closing_faces`, () => {
+  // Tetrahedron on the origin and the three unit steps into the negative octant. Its three
+  // coordinate-plane faces are real boundaries; the slanted fourth, outward normal (-1,-1,-1),
+  // is the artificial closing wall and the only face with no corner at the origin.
+  const corners = [[0, 0, 0], ...[0, 1, 2].map((axis) => [0, 0, 0].with(axis, -1))]
+  const tris = [0, 1, 2, 3].map((drop) => [0, 1, 2, 3].filter((idx) => idx !== drop))
+
+  // winding must not matter: normals are oriented against the hull centroid, not the buffer
+  test.each([
+    [`as wound`, tris],
+    [`reversed`, tris.map((tri) => tri.toReversed())],
+  ])(`drops the face closing the negative octant, %s`, (_label, wound) => {
+    const kept = strip_closing_faces(wound.flat().flatMap((idx) => corners[idx]))
+    expect(kept).toHaveLength(3 * 9) // three of the four triangles survive
+    const at_origin = (face: number) =>
+      [0, 3, 6].some((corner) =>
+        [0, 1, 2].every((axis) => kept?.[face * 9 + corner + axis] === 0),
+      )
+    expect([0, 1, 2].map(at_origin)).toEqual([true, true, true])
+  })
+
+  test.each([[[]], [[0, 0, 0, -1, 0, 0, 0, -1]]])(
+    `returns null for %s, a buffer holding no whole triangle`,
+    (positions) => expect(strip_closing_faces(positions)).toBeNull(),
+  )
+})
+
+describe(`assign_faces_to_domains`, () => {
+  // `Strip` and `Blob` are coplanar (z = 0), `Wall` is not (x = 0). Nearest-centroid, the
+  // Voronoi rule this replaced, mislabels two of the three faces: the strip's far end goes to
+  // `Blob` (3.59 vs 4.67) and the wall's low end to `Strip` (6.15 vs 10.67).
+  const domains = [
+    { formula: `Strip`, points: chunk(3, [0, 0, 0, 12, 0, 0, 12, 1, 0, 0, 1, 0]) },
+    { formula: `Blob`, points: chunk(3, [10, 2, 0, 14, 2, 0, 14, 6, 0, 10, 6, 0]) },
+    { formula: `Wall`, points: chunk(3, [0, 0, 0, 0, 1, 0, 0, 1, 24, 0, 0, 24]) },
+  ]
+  const faces = [
+    [12, 0, 0, 12, 1, 0, 8, 1, 0], // the strip's far end, coplanar with Blob's outline
+    [10, 2, 0, 14, 2, 0, 14, 6, 0], // Blob's own corner, on that same shared plane
+    [0, 0, 0, 0, 1, 0, 0, 0, 4], // on the wall's own plane, so the plane test alone decides
+  ]
+  // a domain too degenerate to bound a face (a line) must claim none
+  const line = { formula: `Line`, points: chunk(3, [0, 0, 0, 1, 0, 0, 2, 0, 0]) }
+
+  test.each([
+    [`outline holds the face`, faces.flat(), domains, [`Strip`, `Blob`, `Wall`]],
+    [`degenerate domain claims none`, faces[0], [...domains, line], [`Strip`]],
+  ])(`%s`, (_label, positions, doms, expected) => {
+    expect(assign_faces_to_domains(positions, doms)).toEqual(expected)
+  })
+})
+
 describe(`safe_energy_per_atom`, () => {
   test.each([
     {
@@ -1453,29 +1571,24 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
     expect(get_3d_domain_simplexes_and_ann_loc(pts).is_planar).toBe(false)
   })
 
-  test(`trailing duplicates map edges to first occurrences`, () => {
-    const pts = [
-      [0, 0, 0],
-      [10, 0, 0],
-      [5, 10, 0],
-      [0, 0, 0],
-      [10, 0, 0],
-    ]
+  // duplicates never reach the edge list: every edge names the first occurrence of its vertex
+  test.each([
+    [
+      `trailing duplicates`,
+      chunk(3, [0, 0, 0, 10, 0, 0, 5, 10, 0, 0, 0, 0, 10, 0, 0]),
+      [0, 1, 2],
+    ],
+    [
+      `a duplicate at a non-zero index`,
+      chunk(3, [5, 10, 0, 5, 10, 0, 0, 0, 0, 10, 0, 0]),
+      [0, 2, 3],
+    ],
+  ])(`%s map to first occurrences`, (_label, pts, expected) => {
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices).toHaveLength(3)
-    expect(result.simplex_indices.flat().every((idx) => idx <= 2)).toBe(true)
-    assert_valid_edges(result, pts.length)
-  })
-
-  test(`a duplicate at a non-zero index is skipped in edges`, () => {
-    const pts = [
-      [5, 10, 0],
-      [5, 10, 0],
-      [0, 0, 0],
-      [10, 0, 0],
-    ]
-    const result = get_3d_domain_simplexes_and_ann_loc(pts)
-    expect(new Set(result.simplex_indices.flat())).toEqual(new Set([0, 2, 3]))
+    expect(
+      [...new Set(result.simplex_indices.flat())].toSorted((a_idx, b_idx) => a_idx - b_idx),
+    ).toEqual(expected)
     assert_valid_edges(result, pts.length)
   })
 
@@ -1492,19 +1605,16 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   })
 })
 
-describe.each([
+test.each([
   { label: `ternary (Fe-Li-O)`, domains: cpd_ternary.domains },
   { label: `YTOS projection (O-Ti-Y)`, domains: ytos_y_ti_o.domains },
-])(`domain edge indices: $label`, ({ domains }) => {
-  test(`all simplex indices reference valid points`, () => {
-    for (const [formula, pts] of Object.entries(domains)) {
-      const result = get_3d_domain_simplexes_and_ann_loc(pts)
-      for (const [idx_a, idx_b] of result.simplex_indices) {
-        expect(idx_a, `${formula}: idx_a=${idx_a} >= ${pts.length}`).toBeLessThan(pts.length)
-        expect(idx_b, `${formula}: idx_b=${idx_b} >= ${pts.length}`).toBeLessThan(pts.length)
-      }
+])(`every domain edge index references a valid point: $label`, ({ domains }) => {
+  for (const [formula, pts] of Object.entries(domains)) {
+    for (const [idx_a, idx_b] of get_3d_domain_simplexes_and_ann_loc(pts).simplex_indices) {
+      expect(idx_a, `${formula}: idx_a=${idx_a} >= ${pts.length}`).toBeLessThan(pts.length)
+      expect(idx_b, `${formula}: idx_b=${idx_b} >= ${pts.length}`).toBeLessThan(pts.length)
     }
-  })
+  }
 })
 
 describe(`chebyshev_centre`, () => {
@@ -1710,7 +1820,7 @@ describe(`best_form_energy_for_formula`, () => {
 
   test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
     const all_entries = Object.values(AB_REFS)
-    const renormed = renormalize_entries(all_entries, AB_REFS, [`A`, `B`])
+    const renormed = renormalize_entries(all_entries, AB_REFS)
     const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
     expect(safe_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
     expect(safe_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)

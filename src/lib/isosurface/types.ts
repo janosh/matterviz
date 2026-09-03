@@ -1,16 +1,12 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import type { D3InterpolateName } from '$lib/colors'
+import { strip_compression_extensions } from '$lib/io/decompress'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { flatten_grid, type ScalarGrid3D } from './grid'
 
 // Precomputed statistics for a volumetric grid (min, max, abs_max, mean)
-export interface DataRange {
-  min: number
-  max: number
-  abs_max: number
-  mean: number
-}
+export type DataRange = { min: number; max: number; abs_max: number; mean: number }
 
 // Volumetric scalar data on a 3D grid (e.g. charge density, electrostatic potential).
 // Values are stored flat in C order (z fastest: index = (ix * ny + iy) * nz + iz) so the
@@ -182,80 +178,9 @@ export function grid_data_range(values: ArrayLike<number>): DataRange {
   return { min: min_val, max: max_val, abs_max, mean: sum / count }
 }
 
-const clamp_dim = (src: number, fac: number) =>
-  Math.min(src, Math.max(2, Math.ceil(src / fac)))
-const partition_ranges = (n_out: number, n_src: number): Vec2[] =>
-  Array.from({ length: n_out }, (_, idx) => [
-    Math.round((idx * n_src) / n_out),
-    Math.round(((idx + 1) * n_src) / n_out),
-  ])
-
-// Max total grid points before downsampling is applied for isosurface extraction.
+// Max total grid points the geometry grid is resampled down to for isosurface extraction.
 // 500K balances visual quality with interactive performance (<200ms marching cubes).
 export const MAX_GRID_POINTS = 500_000
-
-// Downsample a z-fastest grid to keep its point count under a budget via block
-// averaging. Returns the input grid itself when already within budget.
-export function downsample_grid(
-  grid: ScalarGrid3D<Float64Array>,
-  max_points: number = MAX_GRID_POINTS,
-): ScalarGrid3D<Float64Array> {
-  const [nx, ny, nz] = grid.dims
-  const total = nx * ny * nz
-  if (total <= max_points) return grid
-  if (grid.order !== `z_fastest`) {
-    throw new RangeError(`downsample_grid expects z_fastest values, got ${grid.order}`)
-  }
-  // Floor at 1 to avoid Infinity in cbrt(total/0)
-  max_points = Math.max(1, max_points)
-
-  // Increase factor until the clamped output fits within budget.
-  // A single cbrt step can overshoot for anisotropic grids where max(2,...)
-  // clamping prevents a small axis from shrinking below 2.
-  // clamp_dim: returns 1 for single-cell axes, otherwise clamps to [2, src]
-  const clamp_dims = (fac: number): Vec3 => grid.dims.map((dim) => clamp_dim(dim, fac)) as Vec3
-  const n_points = ([x_dim, y_dim, z_dim]: Vec3) => x_dim * y_dim * z_dim
-  let factor = Math.ceil(Math.cbrt(total / max_points))
-  let new_dims = clamp_dims(factor)
-  while (n_points(new_dims) > max_points) {
-    const next_dims = clamp_dims(++factor)
-    // dims hit their floor (2 per axis or 1 for single-cell) — stop to avoid infinite loop
-    if (n_points(next_dims) === n_points(new_dims)) break
-    new_dims = next_dims
-  }
-  const [new_nx, new_ny, new_nz] = new_dims
-
-  // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
-  // Unlike fixed-stride (ix * factor), this is safe when max(2,...) clamping
-  // produces more output cells than ceil(n/factor) would — no empty blocks.
-  const [x_ranges, y_ranges, z_ranges] = new_dims.map((n_out, axis) =>
-    partition_ranges(n_out, grid.dims[axis]),
-  )
-
-  const src = grid.values
-  const out = new Float64Array(new_nx * new_ny * new_nz)
-  let out_idx = 0
-  for (let ix = 0; ix < new_nx; ix++) {
-    const [sx_start, sx_end] = x_ranges[ix]
-    for (let iy = 0; iy < new_ny; iy++) {
-      const [sy_start, sy_end] = y_ranges[iy]
-      for (let iz = 0; iz < new_nz; iz++) {
-        const [sz_start, sz_end] = z_ranges[iz]
-        let sum = 0
-        for (let sx = sx_start; sx < sx_end; sx++) {
-          for (let sy = sy_start; sy < sy_end; sy++) {
-            const row_offset = (sx * ny + sy) * nz
-            for (let sz = sz_start; sz < sz_end; sz++) sum += src[row_offset + sz]
-          }
-        }
-        out[out_idx++] =
-          sum / ((sx_end - sx_start) * (sy_end - sy_start) * (sz_end - sz_start))
-      }
-    }
-  }
-
-  return { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }
-}
 
 // Default isosurface rendering settings (no layers: nothing renders until a volume adds one)
 export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
@@ -350,7 +275,8 @@ export function label_file_volumes(
   filename: string,
   source_filename = filename,
 ): VolumetricData[] {
-  const source = filename.replace(/\.(?:gz|gzip|bz2|xz|zst)$/i, ``)
+  // Case-preserving: this is a display label, so `CHGCAR.zip` must not become `chgcar`
+  const source = strip_compression_extensions(filename, { lowercase: false })
   return volumes.map((vol, idx) => ({
     ...vol,
     source,

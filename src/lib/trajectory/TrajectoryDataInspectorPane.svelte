@@ -20,11 +20,7 @@
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
-    // Runs are deliberately rune-free, so `run.properties` is a plain class instance whose
-    // `rows` are invisible to the reactivity graph. Reading them directly froze the frame tab
-    // at whatever had arrived when the pane first rendered - the notice below reads "available
-    // so far", which is exactly what it was meant to track. Trajectory.svelte passes the
-    // session's mirrored copies; the fallback keeps a standalone mount working.
+    // Session-mirrored: run.properties is rune-free (see run.ts). Fallback for standalone mounts.
     property_rows?: readonly TrajectoryMetadata[]
     properties_complete?: boolean
     current_step_idx?: number

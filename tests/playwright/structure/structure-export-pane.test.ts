@@ -61,16 +61,18 @@ test.describe(`StructureExportPane Tests`, () => {
       const { pane_div } = await open_structure_export_pane(page)
       await pane_div.getByText(label, { exact: true }).hover()
 
-      // svelte-widgets tooltips mount on document.body
-      const tooltip_elem = page.locator(`.custom-tooltip`)
+      // svelte-widgets tooltips mount on document.body, where the docs header has its own:
+      // match on text, or a second tooltip makes every assertion below a strict-mode violation
+      const tooltip_elem = page.locator(`.custom-tooltip`, { hasText: expected_text })
       await expect(tooltip_elem).toBeVisible()
-      await expect(tooltip_elem).toContainText(expected_text)
       const tooltip_link = tooltip_elem.locator(`a[href*="${link_href}"]`)
       await expect(tooltip_link).toBeVisible()
       await expect(tooltip_link).toHaveAttribute(`target`, `_blank`)
 
-      // Move mouse away from the label
-      await pane_div.locator(`h4:has-text("Export as text")`).hover()
+      // Move the pointer clear of BOTH label and tooltip. Hovering the section heading is not
+      // enough: the tooltip is placed to the left of its label, so for some formats it covers
+      // the heading and keeping the cursor on it holds the tooltip open.
+      await page.mouse.move(2, 2)
       await expect(tooltip_elem).toBeHidden()
     })
   }

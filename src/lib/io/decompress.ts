@@ -5,9 +5,13 @@ import {
 } from '$lib/constants'
 import { has_gzip_magic, has_hdf5_magic, is_binary_payload } from './is-binary'
 
-// Lowercase a filename and strip all trailing compression extensions (.gz, .zip, ...)
-export function strip_compression_extensions(filename: string): string {
-  let base_name = filename.toLowerCase()
+// Strip every trailing compression extension, repeatedly so `.chgcar.gz.zip` fully unwraps.
+// Lowercases by default; pass `lowercase: false` when the result names a file a user sees.
+export function strip_compression_extensions(
+  filename: string,
+  { lowercase = true }: { lowercase?: boolean } = {},
+): string {
+  let base_name = lowercase ? filename.toLowerCase() : filename
   while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
     base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
   }
@@ -26,7 +30,7 @@ export const is_stream_compression_format = (
 ): format is StreamCompressionFormat =>
   format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
 
-const is_browser_decompressible_format = (
+export const is_browser_decompressible_format = (
   format: CompressionFormat | null,
 ): format is BrowserCompressionFormat =>
   format === `zip` || is_stream_compression_format(format)
@@ -72,11 +76,48 @@ export async function decompress_data(
   return new TextDecoder().decode(buffer)
 }
 
+// Ceiling on the INFLATED payload: the compressed size bounds nothing (gzip reaches 1029:1 on
+// repetitive input) and 2 GiB is past anything downstream can consume (h5wasm heap ~2 GB)
+export const MAX_INFLATED_BYTES = 2 * 1024 * 1024 * 1024
+
+const bomb_msg = (format: CompressionFormat, inflated: number, max_bytes: number) =>
+  `${format.toUpperCase()} payload inflates to at least ${inflated} bytes, past the ` +
+  `${max_bytes}-byte limit; extract it and open the parts you need`
+
+// Aborts the inflate when the running output passes `max_bytes`, not after buffering it all
+export const inflation_limiter = (
+  format: CompressionFormat,
+  max_bytes = MAX_INFLATED_BYTES,
+): TransformStream<Uint8Array, Uint8Array> => {
+  let inflated = 0
+  return new TransformStream({
+    transform(chunk, controller) {
+      inflated += chunk.byteLength
+      if (inflated > max_bytes) throw new Error(bomb_msg(format, inflated, max_bytes))
+      controller.enqueue(chunk)
+    },
+  })
+}
+
 // The one payload file of a ZIP archive. Directory entries, macOS resource forks and
 // dotfiles are ignored; anything else ambiguous is an error rather than a silent pick.
-const unzip_single_entry = async (bytes: Uint8Array): Promise<Uint8Array> => {
+const unzip_single_entry = async (
+  bytes: Uint8Array,
+): Promise<{ name: string; bytes: Uint8Array }> => {
   const { unzipSync } = await import(`fflate`)
-  const entries = Object.entries(unzipSync(bytes)).filter(
+  // fflate sizes each entry's output buffer from the central directory before inflating and
+  // never overruns it, so gating here bounds the allocation even when the header lies
+  const entries = Object.entries(
+    unzipSync(bytes, {
+      filter: ({ originalSize, size }) => {
+        const inflated = Math.max(originalSize, size)
+        if (inflated > MAX_INFLATED_BYTES) {
+          throw new Error(bomb_msg(`zip`, inflated, MAX_INFLATED_BYTES))
+        }
+        return true
+      },
+    }),
+  ).filter(
     ([name]) =>
       !name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name),
   )
@@ -88,7 +129,8 @@ const unzip_single_entry = async (bytes: Uint8Array): Promise<Uint8Array> => {
         : `ZIP archive must contain exactly one file, found ${entries.length}: ${names}`,
     )
   }
-  return entries[0][1]
+  const [name, entry_bytes] = entries[0]
+  return { name: name.split(`/`).pop() ?? name, bytes: entry_bytes }
 }
 
 const consume_decompressed = async <Result>(
@@ -96,26 +138,31 @@ const consume_decompressed = async <Result>(
   format: CompressionFormat,
   consume: (response: Response) => Promise<Result>,
   signal?: AbortSignal,
+  on_entry_name?: (name: string) => void,
 ): Promise<Result> => {
   if (!is_browser_decompressible_format(format)) throw unsupported_format_error(format)
   try {
     // Blobs and streams are piped through without buffering the compressed bytes first
-    const stream =
-      data instanceof ArrayBuffer
-        ? new Blob([data]).stream()
-        : data instanceof Blob
-          ? data.stream()
-          : data
+    const source = data instanceof ArrayBuffer ? new Blob([data]) : data
+    const stream = source instanceof Blob ? source.stream() : source
     if (format === `zip`) {
-      const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+      // fflate needs the whole archive: the identity transform lets an abort stop the buffering
+      const zip_stream = stream.pipeThrough(new TransformStream(), { signal })
+      const bytes = new Uint8Array(await new Response(zip_stream).arrayBuffer())
       signal?.throwIfAborted()
+      const entry = await unzip_single_entry(bytes)
+      on_entry_name?.(entry.name)
       // copy: fflate may hand back a view into its own scratch buffer
-      const entry = new Uint8Array(await unzip_single_entry(bytes))
-      return await consume(new Response(entry))
+      return await consume(new Response(new Uint8Array(entry.bytes)))
     }
-    const decompressed = stream.pipeThrough(new DecompressionStream(format), { signal })
+    const decompressed = stream
+      .pipeThrough(new DecompressionStream(format), { signal })
+      .pipeThrough(inflation_limiter(format))
     return await consume(new Response(decompressed))
   } catch (error) {
+    // An abort is the caller's cancellation, not a corrupt archive
+    signal?.throwIfAborted()
+    if (error instanceof DOMException && error.name === `AbortError`) throw error
     throw new Error(`Failed to decompress ${format} file: ${error}`, { cause: error })
   }
 }
@@ -127,12 +174,6 @@ export const decompress_data_binary = (
   signal?: AbortSignal,
 ): Promise<ArrayBuffer> =>
   consume_decompressed(data, format, (response) => response.arrayBuffer(), signal)
-
-const decompress_data_blob = (
-  data: CompressedSource,
-  format: CompressionFormat,
-  signal?: AbortSignal,
-): Promise<Blob> => consume_decompressed(data, format, (response) => response.blob(), signal)
 
 // === consumers of the string | ArrayBuffer content union produced above ===
 
@@ -190,13 +231,22 @@ export async function classify_payload(
   const head = (count: number) => blob.slice(0, count).arrayBuffer()
   const gzip_magic = gzip_by_magic && has_gzip_magic(new Uint8Array(await head(2)))
   const format = gzip_magic ? `gzip` : compression_wrapper_of(names, source)
+  // Either way the payload is now the inner file, so name it accordingly
+  const stripped = names.map((name) =>
+    strip_compression_extensions(name, { lowercase: false }),
+  )
   // In by-magic mode a named gzip/deflate wrapper without gzip bytes was inflated in transit,
   // so only ZIP is still decompressed by name there
   if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
-    blob = await decompress_data_blob(blob, format, signal)
+    // A ZIP entry names itself, the only way `bundle.zip` holding `a.cif` reads as a CIF
+    blob = await consume_decompressed(
+      blob,
+      format,
+      (resp) => resp.blob(),
+      signal,
+      (name) => stripped.unshift(name),
+    )
   }
-  // Either way the payload is now the inner file, so name it accordingly
-  const stripped = names.map((name) => name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
   const magic = await head(8)
   if (
     hdf5_as_blob &&
@@ -205,7 +255,9 @@ export async function classify_payload(
     const filename = stripped.find(is_hdf5_filename) ?? `${stripped.find(Boolean) ?? ``}.h5`
     return { content: blob, filename }
   }
-  const is_binary = stripped.some((name) => is_binary_payload(name, magic))
+  // Only the payload's OWN name decides (ZIP entry unshifted to the front above, else the
+  // dropped name): matching any candidate let a URL basename force a text entry to ArrayBuffer
+  const is_binary = is_binary_payload(stripped[0] ?? ``, magic)
   return {
     content: is_binary ? await blob.arrayBuffer() : await blob.text(),
     filename: stripped[0],

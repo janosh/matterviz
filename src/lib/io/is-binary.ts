@@ -30,7 +30,10 @@ export const is_binary = (content: string): boolean => {
     ) {
       binary_char_count += 1
     }
-    if (char_code >= 32 && char_code <= 126) printable_ascii_count += 1
+    // 9-13 (tab, LF, VT, FF, CR) are text: excluding them read CRLF XYZ as binary
+    if ((char_code >= 32 && char_code <= 126) || (char_code >= 9 && char_code <= 13)) {
+      printable_ascii_count += 1
+    }
   }
 
   return binary_char_count / sample.length > 0.1 || printable_ascii_count / sample.length < 0.7

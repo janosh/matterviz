@@ -195,17 +195,33 @@
     })
   })
 
+  // compute_broadened_pattern throws when a Caglioti triple drives FWHM² non-positive inside
+  // `angle_range`, reachable from the spinners alone (V² <= 4UW couples all three, so no static
+  // input `min` enforces it). Uncaught in a $derived the throw blanks the whole component, so
+  // return the message and let the banner render it.
+  const broadened = $derived.by<XrdPattern[] | string>(() => {
+    if (!broadening_enabled) return []
+    try {
+      // Normalize so the highest peak across ALL broadened profiles is 100: per-profile
+      // normalization would lose relative scaling between patterns, while the stick-view
+      // global max would make broadened peaks tiny (broadening spreads intensity)
+      return pattern_entries.map((entry) =>
+        compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
+      )
+    } catch (exc) {
+      return exc instanceof Error ? exc.message : String(exc)
+    }
+  })
+  const broadening_error = $derived(typeof broadened === `string` ? broadened : undefined)
+
   // Build ScatterPlot series (for Broadened Profile view)
   const scatter_series = $derived.by<DataSeries[]>(() => {
-    if (!broadening_enabled) return []
+    if (typeof broadened === `string` || broadened.length === 0) return []
 
-    // Normalize so the highest peak across ALL broadened profiles is 100: per-profile
-    // normalization would lose relative scaling between patterns, while the stick-view
-    // global max would make broadened peaks tiny (broadening spreads intensity)
-    const broadened = pattern_entries.map((entry) =>
-      compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
-    )
-    let max_y = 1 // avoid div by zero
+    // The true maximum, not max(1, ...): broadening is area-normalized, so an already
+    // normalized pattern profiles well under 1 and a floor of 1 under-scales the whole curve
+    // (y max 0.01 rendered at 5.92 of the fixed [0, 110] axis) while the sticks filled it.
+    let max_y = 0
     for (const profile of broadened) {
       for (const y_val of profile.y) max_y = Math.max(max_y, y_val)
     }
@@ -214,7 +230,8 @@
       (profile, entry_idx) =>
         ({
           x: profile.x,
-          y: profile.y.map((y_val) => (y_val / max_y) * 100),
+          // broaden_peaks drops non-positive peaks, so max_y === 0 means an all-zero profile
+          y: max_y > 0 ? profile.y.map((y_val) => (y_val / max_y) * 100) : profile.y,
           ...series_style(pattern_entries[entry_idx], entry_idx),
           markers: `line`, // Only line for profile
           line_style: { stroke_width: 2 },
@@ -239,6 +256,8 @@
     },
   })
 
+  const banner_style = `position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; max-width: 80%`
+
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
   // In the horizontal layout the 2θ and intensity axes trade places
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -246,9 +265,10 @@
   // [key, label, tooltip, step, min?, max?]
   type BroadeningInput = [keyof BroadeningParams, string, string, number, number?, number?]
   const broadening_inputs: BroadeningInput[] = [
-    [`U`, `U`, `Caglioti U parameter`, 0.001],
+    // U and W are non-negative by construction (only V is legitimately negative)
+    [`U`, `U`, `Caglioti U parameter`, 0.001, 0],
     [`V`, `V`, `Caglioti V parameter`, 0.001],
-    [`W`, `W`, `Caglioti W parameter`, 0.001],
+    [`W`, `W`, `Caglioti W parameter`, 0.001, 0],
     [`shape_factor`, `η`, `Pseudo-Voigt shape factor (0=Gaussian, 1=Lorentzian)`, 0.05, 0, 1],
   ]
 </script>
@@ -338,12 +358,9 @@
 {:else}
   <div class="xrd-plot-container" style={`position: relative; ${rest.style ?? ``}`}>
     {#if error_msg}
-      <StatusMessage
-        bind:message={error_msg}
-        type="error"
-        dismissible
-        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; max-width: 80%"
-      />
+      <StatusMessage bind:message={error_msg} type="error" dismissible style={banner_style} />
+    {:else if broadening_error}
+      <StatusMessage message={broadening_error} type="error" style={banner_style} />
     {/if}
     {#if broadening_enabled}
       <!-- Broadened Profile View -->

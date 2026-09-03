@@ -334,49 +334,14 @@ describe(`format_hover_info_text`, () => {
   test.each([
     { unit: `at%`, expected: [`  α: 60.0% (at 20 at%)`, `  β: 40.0% (at 80 at%)`] },
     { unit: `fraction`, expected: [`  α: 60.0% (at 0.2)`, `  β: 40.0% (at 0.8)`] },
-  ] as const)(`horizontal lever rule in $unit`, ({ unit, expected }) => {
+  ] as const)(`lever rule in $unit`, ({ unit, expected }) => {
     const info = create_hover_info({
       region: { id: `two_phase`, name: `α + β`, vertices: [] },
       lever_rule,
-      vertical_lever_rule: {
-        // present but must be ignored in horizontal mode
-        bottom_phase: `α`,
-        top_phase: `β`,
-        bottom_temperature: 400,
-        top_temperature: 900,
-        fraction_bottom: 0.7,
-        fraction_top: 0.3,
-      },
     })
-    const text = format_hover_info_text(info, { comp_unit: unit })
-    const lines = text.split(`\n`)
+    const lines = format_hover_info_text(info, { comp_unit: unit }).split(`\n`)
     expect(lines).toContain(`Lever Rule:`)
     for (const line of expected) expect(lines).toContain(line)
-    expect(text).not.toContain(`Vertical`)
-  })
-
-  test(`vertical mode prints only the vertical lever rule, with converted temps`, () => {
-    const info = create_hover_info({
-      region: { id: `two_phase`, name: `α + L`, vertices: [] },
-      lever_rule, // present but must be ignored in vertical mode
-      vertical_lever_rule: {
-        bottom_phase: `α`,
-        top_phase: `L`,
-        bottom_temperature: 800,
-        top_temperature: 1000,
-        fraction_bottom: 0.25,
-        fraction_top: 0.75,
-      },
-    })
-    const lines = format_hover_info_text(info, {
-      temp_unit: `°C`,
-      data_temp_unit: `K`,
-      lever_rule_mode: `vertical`,
-    }).split(`\n`)
-    expect(lines).toContain(`Vertical Lever Rule:`)
-    expect(lines).toContain(`  α: 25.0% (at 527 °C)`) // 800 K -> 526.85 °C
-    expect(lines).toContain(`  L: 75.0% (at 727 °C)`)
-    expect(lines).not.toContain(`Lever Rule:`)
   })
 
   test(`line structure: header order, blank line before lever rule, none for single phase`, () => {

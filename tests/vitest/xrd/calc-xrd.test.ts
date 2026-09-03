@@ -270,17 +270,27 @@ describe(`compute_xrd_pattern edge cases`, () => {
     expect(total_multiplicity).toBe(brute_count)
   })
 
+  // the old max(h, k, l) < 512 cap missed electron wavelengths: TiC at 200 kV over [0, 90]°
+  // gives h_max 246 but 6.1e7 points, so electrons default to [0, 5]° instead
   test(`enumeration safety cap throws for pathological ranges`, () => {
-    // Use a huge direct lattice to create very small reciprocal spacing (dense grid)
-    const structure = make_simple_cubic_structure(1e4)
-    // two_theta_range null => up to 2/λ; with standard wavelength this yields large index bounds
+    // huge direct lattice => dense reciprocal grid; two_theta_range null reaches 2/λ
     expect(() =>
-      compute_xrd_pattern(structure, {
+      compute_xrd_pattern(make_simple_cubic_structure(1e4), {
         wavelength: `AgKa`,
         scaled: true,
         two_theta_range: null,
       }),
-    ).toThrow(/exceeds cap/i)
+    ).toThrow(/reciprocal lattice points, past the 2000000 cap/i)
+    const tic = make_rocksalt(4.328, `Ti`, `C`)
+    const electron = { radiation: `electron`, accelerating_voltage: 200 } as const
+    const pattern = compute_xrd_pattern(tic, electron)
+    expect(pattern.x.length).toBeGreaterThan(0)
+    expect(Math.max(...pattern.x)).toBeLessThanOrEqual(5)
+    expect(pattern.y.every(Number.isFinite)).toBe(true)
+    // asking for the X-ray default explicitly is what now gets refused
+    expect(() => compute_xrd_pattern(tic, { ...electron, two_theta_range: [0, 90] })).toThrow(
+      /reciprocal lattice points, past the 2000000 cap/i,
+    )
   })
 })
 
@@ -365,14 +375,9 @@ describe(`electron_wavelength`, () => {
     [1000, 0.008719],
   ])(`%i kV gives the tabulated wavelength %f Å`, (voltage_kv, tabulated) => {
     const computed = electron_wavelength(voltage_kv)
-    // 1.5e-4 relative covers half a unit in the last quoted digit of every entry above
+    // 1.5e-4 relative covers half a unit in the last quoted digit of every entry above, and
+    // rules out the non-relativistic h/sqrt(2·m0·e·V), 9.3% long (0.02741 at 200 kV)
     expect(Math.abs(computed - tabulated) / tabulated).toBeLessThan(1.5e-4)
-  })
-
-  test(`the relativistic correction is not silently dropped`, () => {
-    // Non-relativistic h/sqrt(2·m0·e·V) would give 0.02741 Å at 200 kV, 9.3% too long
-    const non_relativistic = 0.0274
-    expect(electron_wavelength(200)).toBeLessThan(non_relativistic * 0.95)
   })
 
   test.each([0, -100, NaN, Infinity])(`invalid voltage %p throws`, (voltage_kv) => {
@@ -655,11 +660,46 @@ describe(`compute_xrd_pattern options`, () => {
     },
   )
 
+  // fcc Al over [20, 33]° at Cu Kα has 18 reflections, none allowed, largest raw |F|²·L
+  // 2.14e-27 — relative scaling emitted that as a forbidden (100) at 21.9465°, y = 100
+  test(`an all-extinct 2θ window returns nothing instead of scaling round-off to 100`, () => {
+    const fcc_al = make_crystal(4.05, [
+      { element: `Al`, abc: [0, 0, 0], label: `Al1` },
+      { element: `Al`, abc: [0, 0.5, 0.5], label: `Al2` },
+      { element: `Al`, abc: [0.5, 0, 0.5], label: `Al3` },
+      { element: `Al`, abc: [0.5, 0.5, 0], label: `Al4` },
+    ])
+    expect(
+      compute_xrd_pattern(fcc_al, { wavelength: `CuKa`, two_theta_range: [20, 33] }),
+    ).toEqual({ x: [], y: [] })
+    // the allowed (111) at 38.47° is untouched
+    const full = compute_xrd_pattern(fcc_al, { wavelength: `CuKa` })
+    expect(full.x[0]).toBeCloseTo(38.47, 1)
+    expect(full.y[0]).toBeCloseTo(100, 6)
+  })
+
   test(`unknown element symbol throws`, () => {
     const structure = make_crystal(2, [{ element: `Xx`, abc: [0, 0, 0], label: `Xx` }])
     expect(() => compute_xrd_pattern(structure, { wavelength: `CuKa` })).toThrow(
-      /Unknown atomic number/i,
+      /No atomic number for Xx/i,
     )
+  })
+
+  // D has no ELEM_SYMBOLS entry but shares H's electronic structure; the Z lookup used to
+  // reject it, even for Z-free electrons
+  test.each([
+    { wavelength: `CuKa` },
+    { radiation: `electron`, accelerating_voltage: 200 },
+  ] as const)(`deuterium diffracts as hydrogen for %j`, (options) => {
+    const hydride = (element: string) =>
+      compute_xrd_pattern(
+        make_crystal(3, [
+          { element, abc: [0, 0, 0], label: element },
+          { element: `O`, abc: [0.5, 0.5, 0.5], label: `O` },
+        ]),
+        options,
+      )
+    expect(hydride(`D`)).toEqual(hydride(`H`))
   })
 
   // Both wavelength input forms are accepted, and every parallel array lines up with x

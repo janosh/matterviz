@@ -18,7 +18,6 @@ import {
   parse_numeric_val,
   resolve_color_domain,
   row_matches_query,
-  strip_html,
   table_to_delimited,
   table_to_json,
   table_to_latex,
@@ -27,6 +26,7 @@ import {
   with_category_toggled,
   with_numeric_bound,
 } from '$lib/table'
+import { strip_html } from '$lib/utils'
 import { describe, expect, it } from 'vitest'
 
 // one-shot wrapper around the memoized factory, for the single-cell assertions below
@@ -371,6 +371,8 @@ describe(`parse_numeric_val`, () => {
     [`<b>10</b>`, 10],
     [`<span data-sort-value="1000">1,000</span>`, 1000],
     [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
+    [`<span data-sort-value="">n/a</span>`, null], // blank is no sort key, but Number('') is 0
+    [`<span data-sort-value="0">n/a</span>`, 0], // an explicit zero still counts
     [`abc`, null],
     [``, null],
     [null, null],

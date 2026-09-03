@@ -5,7 +5,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
-import { SLAB_POSITION_TOLERANCE } from './types'
+import { MAX_TRANSLATION_PROBES, SLAB_POSITION_TOLERANCE } from './types'
 
 // Two sites are interchangeable when they carry the same species at the same
 // occupancies. Sorted so the ordering inside a disordered site cannot change the key.
@@ -149,6 +149,13 @@ export function find_lattice_translations(
     if (count < rarest_count) [rarest_key, rarest_count] = [key, count]
   }
   const target_idxs = keys.flatMap((key, idx) => (key === rarest_key ? [idx] : []))
+  // Every candidate shift is checked against every image, so this product is the real cost
+  const probes = target_idxs.length * images.length
+  if (probes > MAX_TRANSLATION_PROBES) {
+    throw new Error(
+      `Lattice-translation search needs ${probes} probes (${target_idxs.length} shifts x ${images.length} sites), past the ${MAX_TRANSLATION_PROBES} limit. Reduce the cell to its primitive form first: a supercell has the same surfaces as the cell it repeats.`,
+    )
+  }
   const anchor = images[target_idxs[0]]
 
   const frac_to_cart = math.create_frac_to_cart(matrix)

@@ -99,6 +99,21 @@ export const get_system_mode = (): ThemeType =>
     ? COLOR_THEMES.dark
     : COLOR_THEMES.light
 
+// A theme change lands on data-theme + inline color-scheme (apply_theme_to_dom) or on class
+// (JupyterLab, VS Code, marimo), so watch all three plus the OS preference. Callers own their
+// node set, any debounce, and whether to notify on subscribe. Returns the teardown.
+const THEME_MUTATIONS = { attributes: true, attributeFilter: [`class`, `data-theme`, `style`] }
+export function observe_theme_attributes(nodes: Iterable<Node>, on_change: () => void) {
+  const observer = new MutationObserver(on_change)
+  for (const node of nodes) observer.observe(node, THEME_MUTATIONS)
+  const media = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
+  media?.addEventListener(`change`, on_change)
+  return () => {
+    observer.disconnect()
+    media?.removeEventListener(`change`, on_change)
+  }
+}
+
 export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
   const resolved = mode === AUTO_THEME ? get_system_mode() : mode

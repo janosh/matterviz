@@ -15,17 +15,24 @@ import {
   XYZ_EXTENSIONS,
 } from '$lib/constants'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '$lib/file-viewer/types'
-import { detect_compression_format, is_stream_compression_format } from '$lib/io/decompress'
+import {
+  detect_compression_format,
+  is_browser_decompressible_format,
+  is_stream_compression_format,
+} from '$lib/io/decompress'
 import { is_structure_file } from '$lib/structure/format-detect'
 import { is_trajectory_filename } from '$lib/trajectory/format-detect'
 
-// Return the browser-visible filename after removing one supported compression
-// wrapper. Nested and unsupported wrappers are deliberately rejected because the
-// parser only decompresses one layer.
-export const normalize_browser_supported_filename = (filename: string): string | null => {
+// One compression wrapper removed; nested and unsupported ones are rejected because the parser
+// only decompresses one layer. `supported` differs by consumer: the webview inflates ZIP.
+type FormatPredicate = (fmt: ReturnType<typeof detect_compression_format>) => boolean
+export const normalize_browser_supported_filename = (
+  filename: string,
+  supported: FormatPredicate = is_stream_compression_format,
+): string | null => {
   const format = detect_compression_format(filename)
   if (!format) return filename
-  if (!is_stream_compression_format(format)) return null
+  if (!supported(format)) return null
   const normalized = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
   return detect_compression_format(normalized) ? null : normalized
 }
@@ -36,7 +43,8 @@ export const should_encode_filename_as_base64 = (filename: string): boolean =>
 const normalize_eligible_filename = (filename: unknown): string | null => {
   if (typeof filename !== `string` || !filename || CONFIG_DIRS_REGEX.test(filename))
     return null
-  return normalize_browser_supported_filename(filename.split(/[\\/]/).pop() ?? ``)
+  const base_name = filename.split(/[\\/]/).pop() ?? ``
+  return normalize_browser_supported_filename(base_name, is_browser_decompressible_format)
 }
 
 const is_fermi_or_volumetric = (normalized: string): boolean =>

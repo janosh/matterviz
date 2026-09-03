@@ -33,8 +33,13 @@ describe(`is_binary (string heuristic)`, () => {
     [`mostly non-printable bytes`, `\u00FF`.repeat(20), true],
     // 20% high bytes but 80% printable -> only the binary-char-ratio (>0.1) clause fires
     [`high-byte-ratio clause alone`, `\u00FF\u00FFabcdefgh`, true],
-    // control chars (no high bytes) drop printable below 70% -> only the printable clause fires
-    [`printable-ratio clause alone`, `${`\t`.repeat(8)}ab`, true],
+    // control chars other than 9-13 (no high bytes) drop printable below 70% -> only the
+    // printable clause fires
+    [`printable-ratio clause alone`, `${`\u000E`.repeat(8)}ab`, true],
+    // tab/CR/LF are text, not filler: counting them as neither sank a CRLF single-atom XYZ to a
+    // 0.600 printable ratio and a tab-indented YAML to 0.615, both reported as binary
+    [`CRLF single-atom XYZ`, `1\r\nE\r\nH 0 0 0\r\n`.repeat(400), false],
+    [`tab-indented YAML`, `\t\t\t\tvalue: 1\n`.repeat(400), false],
     // only the leading 8 KiB is sampled, so a large text file costs microseconds to classify
     [`binary header on a large payload`, `\0${`a`.repeat(20_000)}`, true],
     [`large text with a stray NUL past the sample window`, `${`a`.repeat(20_000)}\0`, false],

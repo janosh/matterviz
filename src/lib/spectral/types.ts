@@ -59,7 +59,6 @@ export interface PhononBandStructure extends BaseBandStructure {
 export interface ElectronicBandStructure extends BaseBandStructure {
   is_spin_polarized: boolean
   efermi?: number
-  is_metal?: boolean
   band_gap?: { energy: number; direct: boolean; transition?: string }
 }
 
@@ -77,7 +76,6 @@ export interface ElectronicDos {
   spin_down_densities?: number[] // Spin-down densities (only for spin-polarized)
   spin_polarized?: boolean
   efermi?: number
-  dos_at_e_fermi?: number // DOS value at Fermi level
 }
 
 // Spin display mode for electronic DOS visualization

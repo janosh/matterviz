@@ -84,11 +84,10 @@ describe(`ElementTile`, () => {
     expect(node.classList.contains(`active`)).toBe(active)
     expect(getComputedStyle(node).color).toBe(`white`)
     if (active) {
-      // Keep the reserved 1px border (unset --elem-tile-active-border must not wipe it,
-      // or cqw text inflates and the tile looks scaled). Color is --text-color in CSS;
-      // happy-dom does not always resolve nested var() in the border shorthand.
-      expect(getComputedStyle(node).borderWidth).toBe(`1px`)
-      expect(getComputedStyle(node).borderStyle).toBe(`solid`)
+      // Keep the reserved 1px border (unset --elem-tile-active-border must not wipe it, or cqw
+      // text inflates). Longhands, since happy-dom mis-splits the nested-var() border shorthand.
+      expect(getComputedStyle(node).borderTopWidth).toBe(`1px`)
+      expect(getComputedStyle(node).borderTopStyle).toBe(`solid`)
     }
   })
 

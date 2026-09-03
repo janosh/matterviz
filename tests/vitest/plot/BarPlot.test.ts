@@ -423,6 +423,49 @@ describe(`BarPlot`, () => {
     },
   )
 
+  // The bar renders at the 1px floor and stays hoverable, but scaleLog()(-5) is NaN
+  test(`tooltip anchors a negative bar on a log value axis at finite coords`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [1, 2], y: [-5, 100], label: `A` }],
+      y_axis: { scale_type: `log` },
+    })
+    plot.querySelector(`path[role="button"]`)?.dispatchEvent(mouse(`mousemove`))
+    await tick()
+    const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
+    expect(tooltip).not.toBeNull()
+    // match the px strings, not Number(): an unset style is `` and Number(``) is a finite 0
+    for (const edge of [tooltip?.style.top, tooltip?.style.left]) {
+      expect(edge).toMatch(/^-?[\d.]+px$/)
+    }
+  })
+
+  // The log floor belongs to the VALUE axis only: on the category axis it pinned the anchor to
+  // the range minimum while the bar stayed at its raw pixel. happy-dom lays nothing out, so the
+  // bar's own path is the only witness to the mapping - assert the exact anchor, not "inside".
+  test(`tooltip follows the bar when the category axis is log`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [1.9, 4], y: [10, 20], label: `A` }], // 1.9 sits below the range floor
+      x_axis: { scale_type: `log`, range: [2, 5] },
+      bar: { border_radius: 0 },
+      // roomy on the value axis so the tooltip is placed at anchor + offset without flipping
+      padding: { l: 50, r: 20, t: 20, b: 40 },
+    })
+    const [out_of_range_bar] = plot.querySelectorAll(`path[role="button"]`)
+    const path = out_of_range_bar?.getAttribute(`d`) ?? ``
+    const match = /^M(?<x>[\d.-]+),[\d.-]+h(?<w>[\d.-]+)/.exec(path)
+    if (!match?.groups) throw new Error(`unexpected bar path ${path}`)
+    // The bar's edges are the category scale at 1.9 +- half the default 0.5 bar width, so
+    // they pin down the log mapping; the anchor must land on it at 1.9 itself.
+    const lo_px = Number(match.groups.x)
+    const log_frac = Math.log(1.9 / 1.65) / Math.log(2.15 / 1.65)
+    const anchor = lo_px + Number(match.groups.w) * log_frac
+    out_of_range_bar?.dispatchEvent(mouse(`mousemove`))
+    await tick()
+    const left = plot.querySelector<HTMLElement>(`.plot-tooltip`)?.style.left ?? ``
+    // anchor + the tooltip's offset; a floored anchor sits ~19px away at the range minimum
+    expect(Number(left.replace(`px`, ``))).toBeCloseTo(anchor + 10, 3)
+  })
+
   test(`default tooltip shows series label for multi-series on hover`, async () => {
     const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
     const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }

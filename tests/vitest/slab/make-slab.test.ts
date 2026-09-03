@@ -241,6 +241,29 @@ describe(`lattice basis`, () => {
     expect(() => make_slab(slab, [0, 0, 1])).toThrow(/not periodic along all three axes/)
   })
 
+  // MAX_SLAB_SITES bounds the OUTPUT, which costs nothing here (a 12-site oriented cell); the
+  // 2.4 s is the translation search over the 6912-site INPUT the probe count pins.
+  test(`a supercell too large to primitivize is refused before the search runs`, () => {
+    const base = fcc()
+    const reps = 12
+    const sites = Array.from({ length: reps ** 3 }, (_cell, cell_idx) =>
+      base.sites.map((cell_site) => ({
+        ...cell_site,
+        abc: cell_site.abc.map(
+          (coord, axis) => (coord + (Math.floor(cell_idx / reps ** axis) % reps)) / reps,
+        ) as Vec3,
+      })),
+    ).flat()
+    const matrix = base.lattice.matrix.map((row) => math.scale(row, reps)) as math.Matrix3x3
+    const supercell = { ...base, lattice: { ...base.lattice, matrix }, sites } as Crystal
+    const started = performance.now()
+    expect(() => make_slab(supercell, [1, 1, 1])).toThrow(
+      /needs 47775744 probes \(6912 shifts x 6912 sites\).* primitive form/s,
+    )
+    // refused up front, not after the search it is meant to prevent
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+
   test(`(2,2,0) and (1,1,0) describe the same surface`, () => {
     const reduced = make_slab(fcc(), [1, 1, 0])
     const unreduced = make_slab(fcc(), [2, 2, 0])

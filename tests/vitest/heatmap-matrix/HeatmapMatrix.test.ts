@@ -6,7 +6,7 @@ import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse } from '../setup'
+import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
 const make_items = (labels: readonly string[]): AxisItem[] =>
@@ -640,6 +640,23 @@ describe(`milestone feature props`, () => {
     expect(get_x_labels()[0].textContent?.trim()).toBe(`Fe`)
   })
 
+  // The ramp spans only the values still on screen, so filtering rescales the colors
+  test.each([
+    [`unfiltered, the hidden 0 anchors the domain`, ``, 3, 128],
+    [`filtered, the domain shrinks to the survivors`, `keep`, 2, 0],
+  ])(`%s`, (_desc, search_query, n_cells, red) => {
+    mount_matrix({
+      x: [`keepA`], // the search filters both axes
+      y: [`keep5`, `keep10`, `drop0`],
+      values: [[5], [10], [0]],
+      color_scale: red_scale,
+      search_query,
+    })
+    const cells = get_data_cells()
+    expect(cells).toHaveLength(n_cells)
+    expect(red_of(cells[0])).toBe(red) // the cell holding 5
+  })
+
   test(`x_order and y_order reorder labels`, () => {
     mount_matrix({
       x_items: [
@@ -918,7 +935,7 @@ describe(`axis titles`, () => {
   })
 })
 
-describe(`virtualized keyboard navigation`, () => {
+describe(`virtualization`, () => {
   const STRIDE = 100 // tile_size, with the default 0 gap
   const labels = Array.from({ length: 30 }, (_unused, idx) => `I${idx}`)
 
@@ -940,6 +957,17 @@ describe(`virtualized keyboard navigation`, () => {
     }
   }
 
+  const mount_virtual = (extra: Partial<ComponentProps<typeof HeatmapMatrix>> = {}) => {
+    stub_cell_layout()
+    mount_matrix({
+      x: labels,
+      y: labels,
+      values: labels.map((_u, row) => labels.map((_v, col) => row + col)),
+      virtualize: true,
+      tile_size: `${STRIDE}px`,
+      ...extra,
+    })
+  }
   const rendered_idxs = (axis: `x` | `y`): number[] =>
     [
       ...new Set(query_all(`.cell[data-x]`).map((cell) => Number(cell.dataset[axis]))),
@@ -956,15 +984,7 @@ describe(`virtualized keyboard navigation`, () => {
     [`ArrowDown`, `y`, 1],
     [`ArrowUp`, `y`, -1],
   ] as const)(`%s moves focus across the virtual window edge`, async (key, axis, step) => {
-    stub_cell_layout()
-    mount_matrix({
-      x: labels,
-      y: labels,
-      values: labels.map((_u, row) => labels.map((_v, col) => row + col)),
-      virtualize: true,
-      tile_size: `${STRIDE}px`,
-      on_click: () => {},
-    })
+    mount_virtual({ on_click: () => {} })
     await tick()
     // Scroll into the middle so the window has an edge to cross in either direction
     const grid = doc_query(`.grid`)
@@ -987,6 +1007,27 @@ describe(`virtualized keyboard navigation`, () => {
     const focused = document.activeElement as HTMLElement | null
     expect(Number(focused?.dataset?.[axis])).toBe(from + step)
     expect(Number(focused?.dataset?.[fixed_axis])).toBe(fixed)
+  })
+
+  // Labels and summaries are one node per track, so the full list mounted 30 of each for a
+  // handful of cells. Measuring also left the scroll handler, so a resize must re-window.
+  test(`windows the label and summary tracks, and re-windows on a resize`, async () => {
+    mount_virtual({ show_row_summaries: true, show_col_summaries: true })
+    await tick()
+    const [x_window, y_window] = [rendered_idxs(`x`), rendered_idxs(`y`)]
+    expect(x_window.length).toBeLessThan(labels.length)
+    expect(get_x_labels()).toHaveLength(x_window.length)
+    expect(get_y_labels()).toHaveLength(y_window.length)
+    expect(query_all(`.summary-col`)).toHaveLength(x_window.length)
+    expect(query_all(`.summary-row`)).toHaveLength(y_window.length)
+
+    const grid = doc_query(`.grid`)
+    for (const prop of [`clientWidth`, `clientHeight`] as const) {
+      Object.defineProperty(grid, prop, { value: 10 * STRIDE, configurable: true })
+    }
+    trigger_resize_observer(grid)
+    await tick()
+    expect(rendered_idxs(`x`).length).toBeGreaterThan(x_window.length)
   })
 })
 

@@ -91,19 +91,8 @@
   // `config.tooltip` snippet overrides this default content.
   const tip = $derived.by(() => {
     if (!hovered) return null
-    const {
-      kind,
-      config,
-      color,
-      format,
-      pos,
-      pos0,
-      pos1,
-      pos_label,
-      value,
-      label,
-      axis_title,
-    } = hovered
+    const { kind, config, color, format, pos, pos0, pos1, pos_label } = hovered
+    const { value, label, axis_title } = hovered
     const bg_color = color.trim().toLowerCase() === `currentcolor` ? null : color
     const pos_fmt = format || `.3~g`
     // Position row = `<axis title>: <value>`. The title uses the host axis's markup convention
@@ -252,12 +241,8 @@
       base.fill_opacity = config.fill_opacity ?? 0.5
       // For monotone, the monotonic axis is the position axis: x for top/bottom, y for left/right
       const curve_name = config.curve ?? `monotone`
-      const curve_fn =
-        curve_name === `monotone`
-          ? is_x
-            ? curveMonotoneX
-            : curveMonotoneY
-          : line_curve_factory(curve_name)
+      const monotone = is_x ? curveMonotoneX : curveMonotoneY
+      const curve_fn = curve_name === `monotone` ? monotone : line_curve_factory(curve_name)
       // Position maps to x for top/bottom strips and to y for left/right strips; value is the
       // cross-axis. The line generator is symmetric; the area differs only in which axis baselines.
       const px = (pt: LinePt) => (is_x ? pos_scale(pt.pos) : val_scale(pt.value))

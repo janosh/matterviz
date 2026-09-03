@@ -67,7 +67,11 @@ const parse_species = (
   }
   const unknown = symbols.find((symbol) => !is_elem_symbol(symbol))
   if (unknown) throw new Error(`Unknown element symbol in OUTCAR: "${unknown}"`)
-  const elements = expand_ion_types(symbols, counts)
+  // One position line per ion per ionic step, so the line count bounds the declared total
+  const elements = expand_ion_types(symbols, counts, {
+    max_ions: lines.length,
+    source: `OUTCAR lines`,
+  })
   // `POMASS =   28.085; ZVAL   =    4.000` once per species in the header
   const masses = captures(lines, /POMASS\s*=\s*(?<value>[\d.]+)\s*;\s*ZVAL/).map(Number)
   const atom_masses =
@@ -111,8 +115,16 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
   for (let line_idx = 0; line_idx < lines.length; line_idx++) {
     const line = lines[line_idx]
     if (line.includes(`direct lattice vectors`)) {
+      // Skipping a corrupt block silently kept the PREVIOUS cell, wronging every volume and
+      // fractional coordinate of the rest of an ISIF=3 run
       const parsed = parse_lattice(lines, line_idx)
-      if (parsed) lattice = parsed
+      if (!parsed) {
+        throw new Error(
+          `OUTCAR line ${line_idx + 1}: "direct lattice vectors" is not followed by three ` +
+            `rows of finite numbers: "${lines.slice(line_idx + 1, line_idx + 4).join(` | `)}"`,
+        )
+      }
+      lattice = parsed
       continue
     }
     const iteration = ITERATION_RE.exec(line)

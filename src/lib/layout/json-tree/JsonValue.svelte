@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { create_flash } from '$lib/effects.svelte'
   import { tick } from 'svelte'
   import { get_json_tree_context, type JsonValueType } from './types'
   import {
@@ -21,8 +22,9 @@
 
   const ctx = get_json_tree_context()
 
-  let just_changed = $state(false)
-  let change_timeout: ReturnType<typeof setTimeout> | undefined
+  // Unmount-only teardown: an effect cleanup reruns per settings change (ctx.settings is a
+  // fresh object each time), which cancelled the un-flash timer mid-flash.
+  const changed_flash = create_flash(false, 1000)
   // Click-to-copy is delayed while editable so a double-click can cancel it. Cleared on unmount
   // only: the change-flash effect below re-runs on every value update and must not eat a
   // pending copy.
@@ -39,14 +41,9 @@
   $effect(() => {
     if (ctx.settings.highlight_changes) {
       const prev = ctx.prev_values.get(path)
-      if (prev !== undefined && !values_equal(prev, value)) {
-        just_changed = true
-        clearTimeout(change_timeout)
-        change_timeout = setTimeout(() => (just_changed = false), 1000)
-      }
+      if (prev !== undefined && !values_equal(prev, value)) changed_flash.show(true)
       ctx.prev_values.set(path, value)
     }
-    return () => clearTimeout(change_timeout)
   })
 
   // Trimmed string for URL/color detection (avoids using raw whitespace in href/style);
@@ -125,7 +122,7 @@
 {:else}
   <span
     class="json-value {value_type}"
-    class:changed={just_changed}
+    class:changed={changed_flash.value}
     class:editable={ctx.settings.editable}
     onclick={handle_click}
     ondblclick={start_edit}

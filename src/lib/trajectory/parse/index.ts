@@ -42,7 +42,6 @@ export function get_unsupported_format_message(
   for (const [ext, name] of [
     [`.bz2`, `BZ2`],
     [`.xz`, `XZ`],
-    [`.zip`, `ZIP`],
   ]) {
     if (lower.endsWith(ext)) {
       return `🚫 ${name} compression not supported in browser\nPlease decompress the file first`

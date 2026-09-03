@@ -507,7 +507,7 @@
     return { ...overrides, visible: overrides.visible ?? viewer_active }
   })
   let active_scene_sites = $derived([
-    ...new SvelteSet([...(scene_props.active_sites ?? []), ...session.highlighted_sites]),
+    ...new Set([...(scene_props.active_sites ?? []), ...session.highlighted_sites]),
   ])
   // Primary-pane outputs: scene/camera for export, readouts for the controls pane
   let scene = $state<Scene | undefined>(undefined)

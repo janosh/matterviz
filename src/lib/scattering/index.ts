@@ -75,6 +75,14 @@ const gaussian_sum = (element: ScatteringSpecies, s_sq: number): number => {
   return total
 }
 
+// Atomic number seen by the X-ray form factor. Deuterium has hydrogen's electronic structure,
+// so only neutrons, which see the nucleus, tell them apart.
+export function form_factor_z(element: ScatteringSpecies): number {
+  const entry = element_by_symbol.get(element === `D` ? `H` : element)
+  if (!entry) throw new Error(`No atomic number for ${element}.`)
+  return entry.number
+}
+
 // Bound coherent neutron scattering length b_coh in femtometres (fm). Throws rather than
 // defaulting to 0: a missing nucleus would silently produce a plausible but wrong pattern.
 export function neutron_scattering_length(element: ScatteringSpecies): number {
@@ -132,11 +140,9 @@ export const gaussian_turning_point = (element: ScatteringSpecies): number => {
 // high-s factor than the +Z the raw expression returns.
 export function xray_form_factor(element: ScatteringSpecies, s_val: number): number {
   assert_valid_s(s_val)
-  // Deuterium has hydrogen's electronic structure, so X-rays and electrons see it as H
-  const entry = element_by_symbol.get(element === `D` ? `H` : element)
-  if (!entry) throw new Error(`No atomic number for ${element}.`)
   const s_sq = Math.min(s_val * s_val, gaussian_turning_point(element))
-  const raw = entry.number - XRAY_GAUSSIAN_PREFACTOR * s_sq * gaussian_sum(element, s_sq)
+  const raw =
+    form_factor_z(element) - XRAY_GAUSSIAN_PREFACTOR * s_sq * gaussian_sum(element, s_sq)
   return Math.max(0, raw)
 }
 

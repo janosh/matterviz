@@ -39,6 +39,17 @@ describe(`adaptive density utilities`, () => {
     expect(run).toThrow(`aligned arrays`)
   })
 
+  // Both factors are plot_px / density.bin_px: bin_px 0.1 on a 1200x800 plot is 9.6e7 cells
+  it.each([
+    [12_000, 8000, true],
+    [Infinity, 8, true],
+    [2743, 1543, false], // an 8K plot at the default 2.8 px bin still fits
+  ])(`caps a %i x %i density grid: %s`, (x_bins, y_bins, should_throw) => {
+    const run = () => bin_points(series, [0, 2], [0, 2], x_bins, y_bins)
+    if (should_throw) expect(run).toThrow(`past the 20000000 cap`)
+    else expect(run().counts).toHaveLength(x_bins * y_bins)
+  })
+
   it(`bins only visible points and tracks max bin count`, () => {
     const result = bin_points(series, [0, 2], [0, 2], 2, 2)
 

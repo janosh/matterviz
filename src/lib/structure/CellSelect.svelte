@@ -29,7 +29,7 @@
   let input_valid = $derived(is_valid_supercell_input(input_value))
 
   // Hover-intent gate: opening instantly on mouseenter made the menu pop open
-  // when merely scrubbing the pointer across compact embeds (carousel cards).
+  // when merely scrubbing the pointer across compact embeds (gallery cards).
   // Deliberate hovers still open it; keyboard focus and clicks open instantly.
   const hover_open_delay_ms = 200
   let hover_timer: ReturnType<typeof setTimeout> | undefined

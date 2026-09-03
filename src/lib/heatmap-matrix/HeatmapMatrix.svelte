@@ -2,16 +2,19 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color_memo, is_color, resolve_backdrop } from '$lib/colors'
   import { format_num } from '$lib/labels'
-  import { quantile_unordered, type Vec2 } from '$lib/math'
-  import type { AxisConfig, ColorBarScale } from '$lib/plot/core/types'
-  import { type ColorRamp, resolve_color_ramp } from '$lib/plot/core/color-ramp'
+  import { array_extent, quantile_unordered, type Vec2 } from '$lib/math'
+  import type { AxisConfig } from '$lib/plot/core/types'
+  import {
+    type ColorRamp,
+    resolve_color_ramp,
+    to_color_bar_scale,
+  } from '$lib/plot/core/color-ramp'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { virtual_window } from '$lib/table/virtual'
   import { rows_to_csv } from '$lib/utils'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
   import type {
     AxisItem,
@@ -185,19 +188,14 @@
   // === Visible rows/columns: search filter, empty removal, ordering ===
   function sort_indices(indices: number[], items: AxisItem[], order?: AxisOrder): number[] {
     if (!order) return indices
-    if (typeof order === `function`) {
-      return indices.toSorted((idx_a, idx_b) => order(items[idx_a], items[idx_b]))
-    }
-    if (order === `sort_value`) {
-      return indices.toSorted(
-        (idx_a, idx_b) =>
-          (items[idx_a].sort_value ?? Infinity) - (items[idx_b].sort_value ?? Infinity),
-      )
-    }
     const text = order === `key` ? axis_key : (item: AxisItem) => item.label
-    return indices.toSorted((idx_a, idx_b) =>
-      text(items[idx_a]).localeCompare(text(items[idx_b])),
-    )
+    const cmp: (a: AxisItem, b: AxisItem) => number =
+      typeof order === `function`
+        ? order
+        : order === `sort_value`
+          ? (a, b) => (a.sort_value ?? Infinity) - (b.sort_value ?? Infinity)
+          : (a, b) => text(a).localeCompare(text(b))
+    return indices.toSorted((idx_a, idx_b) => cmp(items[idx_a], items[idx_b]))
   }
   let search_query_norm = $derived(search_query.trim().toLowerCase())
   const matches_search = (item: AxisItem): boolean =>
@@ -243,27 +241,23 @@
   let use_log = $derived(normalize === `log` || log)
   // One pass over the visible numeric values: min, max, smallest positive (the log floor when
   // the domain reaches <= 0; a Number.MIN_VALUE floor gave log_min ~ -744 and squashed every
-  // color to the top) and the values themselves for the robust quantiles.
+  // color to the top) and the values themselves for the robust quantiles. Only filtered-in
+  // rows/columns count, so filtering rescales the colors.
   let value_stats = $derived.by(() => {
     const numeric: number[] = []
-    let [min, max, pos] = [Infinity, -Infinity, Infinity]
-    for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
-      for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
+    let pos = Infinity
+    for (const y_idx of vis_y) {
+      for (const x_idx of vis_x) {
         if (is_hidden_cell(x_idx, y_idx)) continue
         const value = get_value(x_idx, y_idx)
         if (typeof value !== `number` || !Number.isFinite(value)) continue
         numeric.push(value)
-        if (value < min) min = value
-        if (value > max) max = value
         if (value > 0 && value < pos) pos = value
       }
     }
-    return {
-      numeric,
-      min: min <= max ? min : 0,
-      max: min <= max ? max : 1,
-      min_pos: Number.isFinite(pos) ? pos : null,
-    }
+    // no values: a placeholder domain, since array_extent yields the identity +-Infinity
+    const [min, max] = numeric.length ? array_extent(numeric) : [0, 1]
+    return { numeric, min, max, min_pos: Number.isFinite(pos) ? pos : null }
   })
   // Lazy: only evaluated while domain_mode === 'robust' reads it. quantile_unordered partially
   // sorts in place, so it gets a copy.
@@ -282,9 +276,7 @@
       domain_mode === `robust` ? robust_domain : [value_stats.min, value_stats.max]
     return [fixed_min ?? auto_min, fixed_max ?? auto_max]
   })
-  let color_bar_scale = $derived<ColorBarScale>(
-    typeof color_scale === `string` ? color_scale : { interpolator: color_scale },
-  )
+  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
   // The shared ramp clamps a non-positive log floor at LOG_EPS; lift it to the smallest
   // positive value instead so the colors still spread over the data. A degenerate domain
   // maps everything to the midpoint color; a log domain entirely <= 0 maps nothing (null).
@@ -380,8 +372,8 @@
 
   // item index -> grid track (0-based), or null when the item is hidden
   let track_pos = $derived({
-    x: new SvelteMap(vis_x.map((item_idx, pos) => [item_idx, pos])),
-    y: new SvelteMap(vis_y.map((item_idx, pos) => [item_idx, pos])),
+    x: new Map(vis_x.map((item_idx, pos) => [item_idx, pos])),
+    y: new Map(vis_y.map((item_idx, pos) => [item_idx, pos])),
   })
   const track = (axis: Axis, idx: number): number | null =>
     gaps_mode ? idx : (track_pos[axis].get(idx) ?? null)
@@ -443,10 +435,15 @@
   let render_vis_y = $derived(
     window_axis(vis_y, scroll_top - grid_offset_top, viewport_height, row_count),
   )
-  function update_viewport_state(): void {
+  // Scroll is hot: only read offsets there. Client sizes and grid offsets force sync layout.
+  function sync_scroll(): void {
     if (!matrix_el) return
     scroll_left = matrix_el.scrollLeft
     scroll_top = matrix_el.scrollTop
+  }
+  function measure_viewport(): void {
+    if (!matrix_el) return
+    sync_scroll()
     viewport_width = matrix_el.clientWidth
     viewport_height = matrix_el.clientHeight
     const first_cell = matrix_el.querySelector<HTMLElement>(`.cell[data-x][data-y]`)
@@ -456,12 +453,29 @@
     grid_offset_left = first_cell.offsetLeft - (track(`x`, x_idx) ?? 0) * stride_px
     grid_offset_top = first_cell.offsetTop - (track(`y`, y_idx) ?? 0) * stride_px
   }
-  onMount(update_viewport_state)
+  onMount(measure_viewport)
+  // A container resized but never scrolled would keep windowing against its mount viewport
+  $effect(() => {
+    if (!virtualize || !matrix_el || typeof ResizeObserver === `undefined`) return
+    // Size-guarded: remeasuring re-windows the grid, which can add or drop the scrollbar
+    const observer = new ResizeObserver(([{ target }]) => {
+      const { clientWidth: width, clientHeight: height } = target
+      if (width !== viewport_width || height !== viewport_height) measure_viewport()
+    })
+    observer.observe(matrix_el)
+    return () => observer.disconnect()
+  })
+  // Label tracks size to their content, so filtering moves the grid origin without resizing
+  // the container the observer above watches.
+  $effect(() => {
+    void [vis_x, vis_y, stride_px, show_x_labels, show_y_labels]
+    if (virtualize) measure_viewport()
+  })
 
   // === Selection, brush, tooltip ===
   const cell_pos_key = (x_idx: number, y_idx: number): string => `${x_idx}:${y_idx}`
   let selected_key_set = $derived(
-    new SvelteSet(selected_cells.map((pos) => cell_pos_key(pos.x_idx, pos.y_idx))),
+    new Set(selected_cells.map((pos) => cell_pos_key(pos.x_idx, pos.y_idx))),
   )
   let last_selected_cell: CellPos | null = null
   let brush_start: CellPos | null = $state(null)
@@ -488,7 +502,6 @@
     if (selection_mode === `range` && event.shiftKey && last_selected_cell) {
       selected_cells = cells_between(last_selected_cell, clicked).cells
     } else if (selection_mode === `multi` && (event.metaKey || event.ctrlKey)) {
-      // toggle the clicked cell
       selected_cells = selected_key_set.has(clicked_key)
         ? selected_cells.filter((pos) => cell_pos_key(pos.x_idx, pos.y_idx) !== clicked_key)
         : [...selected_cells, clicked]
@@ -669,7 +682,7 @@
         matrix_el.scrollLeft = edge(`x`, x_idx, x_step, grid_offset_left, viewport_width)
       if (y_step)
         matrix_el.scrollTop = edge(`y`, y_idx, y_step, grid_offset_top, viewport_height)
-      update_viewport_state()
+      measure_viewport()
       await tick()
     }
     const target = cell_node()
@@ -742,13 +755,9 @@
 
   let has_interaction_handlers = $derived(
     !disabled &&
-      Boolean(
-        on_click ||
-        on_double_click ||
-        on_context_menu ||
+      (Boolean(on_click ?? on_double_click ?? on_context_menu) ||
         selection_mode !== `single` ||
-        tooltip_mode !== `hover`,
-      ),
+        tooltip_mode !== `hover`),
   )
 
   // Reset index-based interaction state when the axis keys change. Element-wise compare beats
@@ -826,7 +835,7 @@
     ondblclick={handle_dblclick}
     oncontextmenu={handle_contextmenu}
     onkeydown={handle_keydown}
-    onscroll={update_viewport_state}
+    onscroll={virtualize ? sync_scroll : undefined}
   >
     <!-- Top-left corner spacer (when both axes have labels) -->
     {#if show_x_labels && show_y_labels}
@@ -846,7 +855,7 @@
       </div>
     {/snippet}
     {#if show_x_labels}
-      {#each vis_x as x_idx (x_keys[x_idx])}{@render axis_label(`x`, x_idx)}{/each}
+      {#each render_vis_x as x_idx (x_keys[x_idx])}{@render axis_label(`x`, x_idx)}{/each}
     {/if}
 
     {#each render_vis_y as y_idx (y_keys[y_idx])}
@@ -905,10 +914,10 @@
       </div>
     {/snippet}
     {#if show_row_summaries}
-      {#each vis_y as y_idx (y_keys[y_idx])}{@render summary_cell(`y`, y_idx)}{/each}
+      {#each render_vis_y as y_idx (y_keys[y_idx])}{@render summary_cell(`y`, y_idx)}{/each}
     {/if}
     {#if show_col_summaries}
-      {#each vis_x as x_idx (x_keys[x_idx])}{@render summary_cell(`x`, x_idx)}{/each}
+      {#each render_vis_x as x_idx (x_keys[x_idx])}{@render summary_cell(`x`, x_idx)}{/each}
     {/if}
 
     <!-- Tooltip: always in DOM, visibility toggled imperatively via classList -->

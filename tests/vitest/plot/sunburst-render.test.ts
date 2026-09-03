@@ -1,10 +1,5 @@
 import type { SunburstNode } from '$lib/plot'
-import {
-  arc_label_slots,
-  arc_label_transform,
-  compute_sunburst_layout,
-  project_arcs,
-} from '$lib/plot'
+import { arc_label_slots, compute_sunburst_layout, project_arcs } from '$lib/plot'
 import type { ScreenArc, ScreenGeometry, ViewWindow } from '$lib/plot/sunburst/render'
 import { annular_sector_path, hover_veil_path, rect_path } from '$lib/plot/sunburst/render'
 import { describe, expect, test, vi } from 'vitest'
@@ -338,7 +333,11 @@ describe(`hover_veil_path`, () => {
   })
 })
 
-describe(`arc_label_transform`, () => {
+describe(`arc_label_slots`, () => {
+  // What Sunburst.svelte does with the slots; text_w leads so the rest are the real args
+  const arc_label_transform = (text_w: number, ...args: Parameters<typeof arc_label_slots>) =>
+    arc_label_slots(...args).find((slot) => text_w <= slot.room)?.transform ?? null
+
   test.each([
     [
       `icicle wide cell: plain translate`,
@@ -371,7 +370,7 @@ describe(`arc_label_transform`, () => {
     ],
   ] as const)(`%s`, (_name, datum, text_w, shape, expected) => {
     const rotation = shape === `sunburst` ? `radial` : `auto`
-    const transform = arc_label_transform(datum, text_w, shape, rotation)
+    const transform = arc_label_transform(text_w, datum, shape, rotation)
     if (expected === null) expect(transform).toBeNull()
     else expect(transform).toMatch(expected)
   })
@@ -381,17 +380,17 @@ describe(`arc_label_transform`, () => {
     // (~149px) fits 120px of text, but the straight tangent line from a label
     // centered at r=95 reaches hypot(95, 60) ~= 112px from the center.
     const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
-    expect(arc_label_transform(wide_outer, 120, `sunburst`, `tangential`)).not.toBeNull()
-    expect(arc_label_transform(wide_outer, 120, `sunburst`, `tangential`, 100)).toBeNull()
+    expect(arc_label_transform(120, wide_outer, `sunburst`, `tangential`)).not.toBeNull()
+    expect(arc_label_transform(120, wide_outer, `sunburst`, `tangential`, 100)).toBeNull()
     // Shorter text stays within the circle and keeps its label
-    expect(arc_label_transform(wide_outer, 40, `sunburst`, `tangential`, 100)).not.toBeNull()
+    expect(arc_label_transform(40, wide_outer, `sunburst`, `tangential`, 100)).not.toBeNull()
     // Radial labels are bounded by their ring already: max_radius is a no-op
     const tall = { a0: 0, a1: 0.4, r0: 50, r1: 150 }
-    expect(arc_label_transform(tall, 80, `sunburst`, `radial`, 150)).not.toBeNull()
+    expect(arc_label_transform(80, tall, `sunburst`, `radial`, 150)).not.toBeNull()
     // Horizontal at 3 o'clock reads along the radius: the far end lands
     // sqrt(95^2 + 60^2 + 120*95) ~= 155px from the center, past radius 100
     const east = { a0: Math.PI / 2 - 0.7, a1: Math.PI / 2 + 0.7, r0: 88, r1: 102 }
-    expect(arc_label_transform(east, 120, `sunburst`, `horizontal`, 100)).toBeNull()
+    expect(arc_label_transform(120, east, `sunburst`, `horizontal`, 100)).toBeNull()
   })
 
   test(`auto rotation falls back to the other orientation before hiding`, () => {
@@ -399,12 +398,12 @@ describe(`arc_label_transform`, () => {
     // text is too long for the tangent line, so auto falls back to radial —
     // which also fails here (radial 14) -> null...
     const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
-    expect(arc_label_transform(wide_outer, 200, `sunburst`, `auto`)).toBeNull()
+    expect(arc_label_transform(200, wide_outer, `sunburst`, `auto`)).toBeNull()
     // ...but a THICK wide arc (radial 120) keeps its label by reading radially
     // when the tangent line would poke past the chart circle (max_radius 110 <
     // hypot(100, 55) ~= 114)
     const thick_wide = { a0: 0, a1: Math.PI / 2, r0: 40, r1: 160 }
-    expect(arc_label_transform(thick_wide, 110, `sunburst`, `auto`, 110)).toMatch(
+    expect(arc_label_transform(110, thick_wide, `sunburst`, `auto`, 110)).toMatch(
       /translate\(100, 0\)/,
     )
   })
@@ -418,11 +417,11 @@ describe(`arc_label_transform`, () => {
     const [clipped] = arc_label_slots(wide_outer, `sunburst`, `tangential`, 100)
     expect(clipped.room).toBeCloseTo(2 * Math.sqrt(100 ** 2 - 95 ** 2), 6)
     // and the transform for text of exactly that width agrees with the room
-    expect(arc_label_transform(wide_outer, clipped.room, `sunburst`, `tangential`, 100)).toBe(
+    expect(arc_label_transform(clipped.room, wide_outer, `sunburst`, `tangential`, 100)).toBe(
       clipped.transform,
     )
     expect(
-      arc_label_transform(wide_outer, clipped.room + 1, `sunburst`, `tangential`, 100),
+      arc_label_transform(clipped.room + 1, wide_outer, `sunburst`, `tangential`, 100),
     ).toBeNull()
     // Radial room is the ring thickness minus the margin, roomiest orientation first
     const tall = { a0: 0, a1: 0.4, r0: 50, r1: 150 }
@@ -437,12 +436,25 @@ describe(`arc_label_transform`, () => {
   })
 
   test(`font_scale relaxes the one-line-height across requirement`, () => {
-    // 10px-across slice: full-size labels need >= 12px -> hidden; at 0.7 scale
-    // the requirement drops to 8.4px and the (scaled) text fits radially
+    // 10px-across slice: full-size labels need >= 12.1px -> hidden; at 0.7 scale
+    // the requirement drops to 8.47px and the (scaled) text fits radially
     const thin = { a0: 0, a1: 10 / 95, r0: 50, r1: 140 }
-    expect(arc_label_transform(thin, 70, `sunburst`, `radial`)).toBeNull()
+    expect(arc_label_transform(70, thin, `sunburst`, `radial`)).toBeNull()
     expect(
-      arc_label_transform(thin, 70 * 0.7, `sunburst`, `radial`, undefined, 0.7),
+      arc_label_transform(70 * 0.7, thin, `sunburst`, `radial`, undefined, 0.7),
     ).not.toBeNull()
+  })
+
+  // The across requirement is the label's RESOLVED line height, not a private 1.1x ratio on the
+  // font size. 14px leads the 15px-tall row upright (a 1.1x ratio would make it 15.4 and drop
+  // the upright slot, leaving only the rotated one, as 22px does); 13.6-15 is the only band
+  // that separates the two, which is why the original 12.1 passed under both.
+  test(`the across requirement follows the resolved line height`, () => {
+    const row = { a0: 0, a1: 200, r0: 0, r1: 15 }
+    const room_at = (line_height: number) =>
+      arc_label_slots(row, `icicle`, `auto`, undefined, 1, line_height).map(
+        (slot) => slot.room,
+      )
+    expect([room_at(14), room_at(22)]).toEqual([[194, 9], [9]])
   })
 })

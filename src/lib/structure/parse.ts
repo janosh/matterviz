@@ -1237,8 +1237,10 @@ const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
   [/\.ya?ml$/i, (content) => (/phono3py:|phonopy:/i.test(content) ? `crystal` : `unknown`)],
   [
     XYZ_EXTXYZ_REGEX,
+    // same shape parse_extxyz_lattice accepts; `includes('Lattice=')` called `lattice="..."` a
+    // molecule while the parser still read its cell
     (content) =>
-      content.trim().split(/\r?\n/)[1]?.includes(`Lattice=`) ? `crystal` : `molecule`,
+      /\bLattice\s*=/i.test(content.trim().split(/\r?\n/)[1] ?? ``) ? `crystal` : `molecule`,
   ],
 ]
 

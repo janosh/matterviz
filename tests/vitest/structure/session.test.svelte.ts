@@ -437,6 +437,24 @@ describe(`edit-atoms`, () => {
     destroy()
   })
 
+  // a slab's vacuum axis is aperiodic: a dragged atom stays where dropped, not folded back in
+  it(`wraps only the periodic axes when moving sites of a slab`, () => {
+    const slab = make_crystal(5, [{ element: `H`, abc: [0.5, 0.5, 0.9] }], {
+      pbc: [true, true, false],
+    })
+    const { host, session, destroy } = make_session({
+      structure: slab,
+      measure_mode: `edit-atoms`,
+    })
+    session.move_sites([0], [5.5, 0, 2])
+    flushSync()
+    const moved = host.structure?.sites[0]
+    expect(moved?.abc[0], `periodic a axis wraps`).toBeCloseTo(0.6, 12)
+    expect(moved?.abc[2], `aperiodic c keeps its out-of-cell coord`).toBeCloseTo(1.3, 12)
+    expect(moved?.xyz[2]).toBeCloseTo(6.5, 12)
+    destroy()
+  })
+
   // A zero c-vector (extXYZ `Lattice="... 0 0 0"`) parses fine but has no cart->frac inverse;
   // the pointer handlers must surface that as a notice instead of throwing, and keep editing
   // xyz while leaving abc alone. A drag fires move_sites on every pointer move, so the notice

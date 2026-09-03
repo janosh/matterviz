@@ -11,7 +11,6 @@
   import type { StructureEntry } from '$lib/plot/core/structure-input'
   import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
   import { calc_coordination_nums } from './calc-coordination'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { CoordinationSplitMode } from './index'
 
   // Series identity travels as string metadata, which StructureBarPlot turns into the tooltip
@@ -59,11 +58,11 @@
     const entries_with_data = computed.entries
     if (split_mode === `by_element`) {
       // One series per element, summed across all structures
-      const by_element = new SvelteMap<string, SvelteMap<number, number>>()
+      const by_element = new Map<string, Map<number, number>>()
       for (const entry of entries_with_data) {
         for (const [element, histogram] of entry.data.cn_histogram_by_element) {
           let target = by_element.get(element)
-          if (!target) by_element.set(element, (target = new SvelteMap()))
+          if (!target) by_element.set(element, (target = new Map()))
           for (const [cn, count] of histogram) target.set(cn, (target.get(cn) ?? 0) + count)
         }
       }
@@ -80,7 +79,7 @@
       }))
     }
     // split_mode === `none`: every site of every structure in one series
-    const combined = new SvelteMap<number, number>()
+    const combined = new Map<number, number>()
     for (const entry of entries_with_data) {
       for (const [cn, count] of entry.data.cn_histogram) {
         combined.set(cn, (combined.get(cn) ?? 0) + count)
@@ -92,7 +91,7 @@
   // All series share one x axis spanning the union of their CNs so grouped bars line up. Every
   // split mode partitions the same sites, so this union equals the one over cn_histogram.
   const cns = $derived.by(() => {
-    const seen = new SvelteSet(groups.flatMap((group) => [...group.histogram.keys()]))
+    const seen = new Set(groups.flatMap((group) => [...group.histogram.keys()]))
     return Array.from(seen).toSorted((cn1, cn2) => cn1 - cn2)
   })
   const bar_series = $derived<BarSeries<PlotMetadata>[]>(
@@ -109,7 +108,7 @@
 
   // Axis ticks always show the minimum CN values 0-4, plus whatever the series reach
   const cn_ticks = $derived(
-    Array.from(new SvelteSet([0, 1, 2, 3, 4, ...cns])).toSorted((cn1, cn2) => cn1 - cn2),
+    Array.from(new Set([0, 1, 2, 3, 4, ...cns])).toSorted((cn1, cn2) => cn1 - cn2),
   )
   // CN axis spans all ticks with half-bar margin; count axis always starts at 0
   const cn_axis = $derived({

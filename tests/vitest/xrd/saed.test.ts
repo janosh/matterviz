@@ -161,6 +161,14 @@ describe(`compute_saed_pattern structure factor`, () => {
     expect(find_spot(pattern.spots, [2, 0, 0]).d_spacing).toBeCloseTo(3.615 / 2, 10)
     expect(() => find_spot(pattern.spots, [1, 0, 0])).toThrow(/no spot 100/)
     expect(() => find_spot(pattern.spots, [1, 1, 0])).toThrow(/no spot 110/)
+    // max_g 0.4 excludes the allowed 200 (g = 2/3.615 = 0.553), leaving only extinct
+    // reflections, whose round-off used to render at full brightness under relative scaling
+    const extinct_only = compute_saed_pattern(make_fcc(3.615), {
+      zone_axis: [0, 0, 1],
+      accelerating_voltage: 200,
+      max_g: 0.4,
+    })
+    expect(extinct_only.spots).toEqual([])
   })
 
   test(`FCC and simple cubic differ only by the absences, not the net`, () => {

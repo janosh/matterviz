@@ -136,13 +136,7 @@ const mat_scale = (mat: Matrix3x3, factor: number): Matrix3x3 =>
 
 const mat_negate = (mat: Matrix3x3): Matrix3x3 => mat_scale(mat, -1)
 
-const IDENTITY: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
-
-const is_identity = (mat: Matrix3x3): boolean =>
+export const is_identity = (mat: Matrix3x3): boolean =>
   mat.every((row, idx) => row.every((val, jdx) => val === (idx === jdx ? 1 : 0)))
 
 const trace = (mat: Matrix3x3): number => mat[0][0] + mat[1][1] + mat[2][2]
@@ -150,7 +144,7 @@ const trace = (mat: Matrix3x3): number => mat[0][0] + mat[1][1] + mat[2][2]
 // Projection onto the invariant (+1 eigenvalue) subspace P = (1/n) Σₖ Wᵏ, plus the
 // matrix order n (crystallographic: 1, 2, 3, 4 or 6)
 function invariant_projector(mat: Matrix3x3): { proj: Matrix3x3; order: number } {
-  let sum = IDENTITY
+  let sum = math.IDENTITY_3X3
   let power = mat
   for (let order = 1; order <= 6; order++) {
     if (is_identity(power)) return { proj: mat_scale(sum, 1 / order), order }

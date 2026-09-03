@@ -1,6 +1,7 @@
 // Turn a balanced, evaluated reaction into bench quantities and a heating schedule template.
 // Every heuristic that feeds the temperature window is named in `basis` so users and agents can
 // weigh it; the thermodynamic onset comes from the planner, the rest from the precursor library.
+import { format_num } from '$lib/labels'
 import { lookup_precursor_info } from './precursor-library'
 import type { SynthesisReaction, Recipe, RecipeItem, RouteThermodynamics } from './types'
 
@@ -97,7 +98,7 @@ export function build_recipe(
     .filter((item) => item.role === `precursor`)
     .map(
       (item) =>
-        `${item.mass_g.toFixed(4)} g ${item.phase.formula}${item.phase.common_name ? ` (${item.phase.common_name})` : ``}`,
+        `${format_num(item.mass_g, `.4~f`)} g ${item.phase.formula}${item.phase.common_name ? ` (${item.phase.common_name})` : ``}`,
     )
   const needs_drying = infos.some(({ info }) => info.hygroscopic)
   const air_sensitive = infos.some(({ info }) => info.air_sensitive)
@@ -110,13 +111,13 @@ export function build_recipe(
           `Dry hygroscopic precursors (e.g. 2 h at 400 K) and store in a desiccator until weighing.`,
         ]
       : []),
-    `Weigh ${weigh.join(`, `)} for ${target_mass_g.toFixed(3)} g of ${target.formula}${air_sensitive ? ` inside a glovebox` : ``}.`,
+    `Weigh ${weigh.join(`, `)} for ${format_num(target_mass_g, `.3~f`)} g of ${target.formula}${air_sensitive ? ` inside a glovebox` : ``}.`,
     `Grind intimately in an agate mortar (or ball-mill 30 min) to homogenize the stoichiometric mixture.`,
     `Press into a pellet and place in an alumina crucible${atmosphere.startsWith(`flowing`) ? ` inside a tube furnace` : ``}.`,
     `Heat at 3–5 K/min to ${hold} and hold 6–12 h in ${atmosphere}.`,
     ...(released.size
       ? [
-          `Expect ${Math.abs(mass_loss_percent).toFixed(1)}% mass ${mass_loss_percent >= 0 ? `loss` : `gain`} (${[...released].join(`, `)} ${mass_loss_percent >= 0 ? `release` : `uptake`}); verify by weighing after firing.`,
+          `Expect ${format_num(Math.abs(mass_loss_percent), `.1~f`)}% mass ${mass_loss_percent >= 0 ? `loss` : `gain`} (${[...released].join(`, `)} ${mass_loss_percent >= 0 ? `release` : `uptake`}); verify by weighing after firing.`,
         ]
       : []),
     `Cool, regrind, and check phase purity by XRD; repeat the firing if precursor or intermediate reflections remain.`,

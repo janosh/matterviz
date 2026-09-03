@@ -15,14 +15,45 @@ export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
 const strip_scientific_zero = (formatted: string, fmt: string, num: number): string =>
   num === 0 && fmt.endsWith(`e`) ? formatted.replace(/(?:\.0+)?e\+0$/, ``) : formatted
 
+// Cap for the string-keyed caches here, in sanitize.ts and colors/index.ts (keys come from
+// data, so they must be bounded). Evicting the oldest — Map iterates insertion order — beats a
+// wholesale clear, which makes a working set just over the limit recompute everything.
+export const STRING_CACHE_LIMIT = 4096
+export const evict_oldest = (
+  cache: Map<string, unknown>,
+  limit = STRING_CACHE_LIMIT,
+): void => {
+  if (cache.size < limit) return
+  const [oldest] = cache.keys()
+  if (oldest !== undefined) cache.delete(oldest)
+}
+
+// d3 `format()` re-parses the spec and rebuilds a closure per call, so cache one per spec
+const formatters = new Map<string, (num: number) => string>()
+const formatter_for = (spec: string): ((num: number) => string) => {
+  let formatter = formatters.get(spec)
+  if (!formatter) {
+    evict_oldest(formatters)
+    formatters.set(spec, (formatter = format(spec)))
+  }
+  return formatter
+}
+
 // fmt as number allows [].map(format_num) without a type error.
 export const format_num = (num: number, fmt?: string | number): string => {
   if (!fmt || typeof fmt !== `string`) {
     const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
     fmt = Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt
   }
-  return strip_scientific_zero(format(fmt)(num), fmt, num)
+  return strip_scientific_zero(formatter_for(fmt)(num), fmt, num)
 }
+
+// Uppercase the first character, leaving the rest alone (`bcc` -> `Bcc`, `pV` -> `PV`).
+export const capitalize = (text: string): string =>
+  text.charAt(0).toUpperCase() + text.slice(1)
+
+// Snake/kebab identifier to a display label: `bond_length` -> `Bond length`.
+export const humanize = (text: string): string => capitalize(text.replaceAll(/[_-]/g, ` `))
 
 // d3-shape symbol names (`Circle`, `Cross`, ...) in d3's fill-then-stroke order, and the
 // matching SymbolType for each. `symbolX` aliases `symbolTimes`, so the first export
@@ -53,7 +84,7 @@ export function format_value(value: number, formatter?: string): string {
   if (!formatter) return `${value}`
   if (formatter.startsWith(`%`)) return timeFormat(formatter)(new Date(value))
 
-  const formatted = normalize_unicode_minus(format(formatter)(value))
+  const formatted = normalize_unicode_minus(formatter_for(formatter)(value))
   // Fixed-precision currency keeps its zeros ($1.50); everything else drops trailing zeros
   // after the decimal point, keeping a % suffix
   if (formatter.includes(`$`) && /\.\d+f/.test(formatter)) return formatted

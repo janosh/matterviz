@@ -2,7 +2,12 @@
 
 import { perceived_brightness } from '$lib/colors'
 import type { ThemeType } from '$lib/theme'
-import { declared_color_scheme, get_system_mode, nearest_declared } from '$lib/theme'
+import {
+  declared_color_scheme,
+  get_system_mode,
+  nearest_declared,
+  observe_theme_attributes,
+} from '$lib/theme'
 
 // Extend globalThis with our custom properties
 declare global {
@@ -12,8 +17,6 @@ declare global {
       }
     | undefined
 }
-
-const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`, `style`] }
 
 // A theme the host states about itself, read through the standard API first — a declared
 // `color-scheme` is what every light-dark() token on the page resolves against — and then
@@ -71,17 +74,15 @@ export function watch_theme(
     clearTimeout(timer)
     timer = setTimeout(notify, 10)
   }
-  const observer = new MutationObserver(schedule)
-  observer.observe(document.documentElement, observe_opts)
-  if (document.body) observer.observe(document.body, observe_opts)
+  const nodes: Node[] = [document.documentElement]
+  if (document.body) nodes.push(document.body)
   const root_node = target_element.getRootNode()
-  if (root_node instanceof ShadowRoot) observer.observe(root_node.host, observe_opts)
-  const media_query = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
-  media_query?.addEventListener(`change`, schedule)
+  if (root_node instanceof ShadowRoot) nodes.push(root_node.host)
+  const stop_observing = observe_theme_attributes(nodes, schedule)
+  // notify on subscribe: callers have no other way to read the host theme
   notify()
   return () => {
     clearTimeout(timer)
-    observer.disconnect()
-    media_query?.removeEventListener(`change`, schedule)
+    stop_observing()
   }
 }

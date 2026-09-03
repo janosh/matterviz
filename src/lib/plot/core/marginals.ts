@@ -9,7 +9,7 @@ import type { Rect, Sides } from '$lib/plot/core/layout'
 import type { LineCurve, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
 import { gaussian_kde } from '$lib/plot/box/kde'
-import { bin_geometry, bin_index_of, bin_transform } from '$lib/plot/histogram/histogram'
+import { bin_transform, bin_values, normalize_counts } from '$lib/plot/histogram/histogram'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
 
@@ -533,43 +533,20 @@ function compute_histogram(
   positions: number[],
   weights: number[] | undefined,
   config: ResolvedMarginalConfig,
-  positional_range: Vec2,
+  pos_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // Binned in the axis' own bin space, on the same edges the main Histogram uses. d3's binner
-  // is uniform in DATA units, so under a log axis every bin but the last was a sliver: 5000
-  // samples spread log-uniformly over 1e-3..1e2 put 3301 of them in one bar covering two thirds
-  // of the strip, while the same data in the main plot is flat at ~83 per bin. It also returns
-  // d3's nice thresholds rather than the requested count (50 for a requested 60).
-  const geometry = bin_geometry(positional_range, config.bins, scale_type)
-  const { lo, hi, edges, degenerate } = geometry
-  const n_bins = edges.length - 1
-  const totals = new Float64Array(n_bins)
-  for (const [idx, pos] of positions.entries()) {
-    if (!(pos >= lo && pos <= hi)) continue
-    totals[degenerate ? 0 : bin_index_of(pos, geometry)] += weights ? weights[idx] : 1
-  }
-
+  // The main Histogram's binner, so a strip agrees bar for bar with the chart beside it. d3's
+  // is uniform in DATA units, so under a log axis every bin but the last was a sliver (3301 of
+  // 5000 log-uniform samples in one bar), and it returns nice thresholds, not the asked count.
+  const { edges, counts } = bin_values(positions, pos_range, config.bins, scale_type, weights)
   let max = 0
-  const bins = Array.from({ length: n_bins }, (_unused, idx) => {
-    const value = totals[idx]
-    if (value > max) max = value
-    return { pos0: edges[idx], pos1: edges[idx + 1], value }
-  })
-
-  // count: raw; probability: value/total; density: value/(total*bin_width)
-  if (config.normalize && config.normalize !== `count`) {
-    const grand = bins.reduce((sum, item) => sum + item.value, 0) || 1
-    max = 0
-    for (const item of bins) {
-      const width = item.pos1 - item.pos0
-      item.value =
-        config.normalize === `density`
-          ? item.value / (grand * (width || 1))
-          : item.value / grand
-      if (item.value > max) max = item.value
-    }
-  }
+  const bins = normalize_counts(edges, counts, config.normalize ?? `count`).map(
+    ({ x0, x1, value }) => {
+      if (value > max) max = value
+      return { pos0: x0, pos1: x1, value }
+    },
+  )
   return { kind: `bars`, bins, max }
 }
 
@@ -685,10 +662,7 @@ export const default_marginal_label = (config: ResolvedMarginalConfig): string =
 // d3-format spec for the strip's value-axis tick labels, picked to suit each type's value units
 export const marginal_value_format = (config: ResolvedMarginalConfig): string => {
   if (config.type === `cdf`) return `.0%`
-  if (config.type === `histogram`) {
-    if (config.normalize === `probability`) return `.0%`
-    if (config.normalize === `density`) return `.2~g`
-    return `.3~s`
-  }
-  return `.2~g` // kde density
+  if (config.type !== `histogram`) return `.2~g` // kde density
+  const by_normalize: Record<string, string> = { probability: `.0%`, density: `.2~g` }
+  return by_normalize[config.normalize ?? ``] ?? `.3~s`
 }

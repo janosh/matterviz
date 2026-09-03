@@ -918,9 +918,14 @@ describe(`scene sizing helpers`, () => {
     expect(k_space_size(undefined)).toBe(10)
   })
 
-  test(`default_camera_position scales [10, 3, 8] by max(1, size)`, () => {
-    expect(default_camera_position(2)).toEqual([20, 6, 16])
-    expect(default_camera_position(0.5)).toEqual([10, 3, 8])
+  // `size` is a mean |b| in 1/A, ~0.5 for a 12 A cell. It used to be floored at 1, parking the
+  // camera at a fixed real-space distance for every cell wider than 12 A instead of the zone.
+  test.each([
+    [`scales [10, 3, 8] by the size`, 2, [20, 6, 16]],
+    [`keeps scaling below 1`, 0.5, [5, 1.5, 4]],
+    [`falls back to the placeholder size with nothing to frame`, 0, [100, 30, 80]],
+  ])(`default_camera_position %s`, (_desc, size, expected) => {
+    expect(default_camera_position(size)).toEqual(expected)
   })
 
   describe(`bz_fit_extent`, () => {
@@ -933,6 +938,8 @@ describe(`scene sizing helpers`, () => {
     const cube: Vec3[] = [-1, 1].flatMap((x) =>
       [-1, 1].flatMap((y) => [-1, 1].map((z): Vec3 => [x, y, z])),
     )
+    const tiny = cube.map((vert) => math.scale(vert, 0.02))
+    const coincident = Array.from({ length: 4 }, (): Vec3 => [0.1, 0.1, 0.1])
 
     test.each([
       [`spans the enclosing sphere of the vertices`, cube, 1, 2 * Math.sqrt(3)],
@@ -954,6 +961,11 @@ describe(`scene sizing helpers`, () => {
         (4 * Math.sqrt(3)) / 0.92,
       ],
       [`falls back on empty vertices too`, [], undefined, (4 * Math.sqrt(3)) / 0.92],
+      // Framing must stay scale-free: a zone 50x smaller is 50x smaller on screen. A 1 A floor
+      // exceeded the true extent below ~0.29 here and drew every such zone against a constant.
+      [`scales down to a 0.02 1/A zone`, tiny, 1, 2 * Math.sqrt(3) * 0.02],
+      // coincident vertices leave nothing to frame, so the enclosing cell decides
+      [`falls back on coincident vertices`, coincident, 1, 4 * Math.sqrt(3)],
     ] as [string, Vec3[] | undefined, number | undefined, number][])(
       `%s`,
       (_desc, vertices, padding, expected) =>
@@ -981,6 +993,9 @@ describe(`scene sizing helpers`, () => {
         [0, 0, 1],
       ]
       expect(k_cell_fit_extent(stretched, 1)).toBeCloseTo(Math.hypot(100, 1, 1), 10)
+      // and the same cell 1000x smaller, which a 1 A floor used to round up to a flat 1
+      const shrunk = stretched.map((row) => math.scale(row, 1e-3)) as Matrix3x3
+      expect(k_cell_fit_extent(shrunk, 1)).toBeCloseTo(Math.hypot(0.1, 1e-3, 1e-3), 10)
     })
 
     // keeps this module's private FIT_PADDING from drifting away from camera-fit's constant

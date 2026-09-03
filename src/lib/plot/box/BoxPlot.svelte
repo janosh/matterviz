@@ -4,7 +4,7 @@
 >
   import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
+  import { array_max, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
     BandwidthOption,
@@ -32,7 +32,8 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
+  import type { ObstacleSeries } from '$lib/plot/core/decorations'
+  import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
@@ -44,13 +45,13 @@
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
-  import {
-    AXIS_DEFAULTS,
-    category_tick_labels,
-    X2_AXIS_DEFAULTS,
-  } from '$lib/plot/core/axis-utils'
+  import { category_tick_labels, merge_secondary_axes } from '$lib/plot/core/axis-utils'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
-  import { focus_left, is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
+  import {
+    create_focus_exit,
+    is_activation_key,
+    pointer_pos,
+  } from '$lib/plot/core/interactions'
   import {
     create_roving_focus,
     ROVING_ATTR,
@@ -219,12 +220,13 @@
   let outlier_state = $derived({ ...DEFAULTS.box.outlier, ...outlier_style })
   let violin_state = $derived({ ...DEFAULTS.box.violin, ...violin_style })
 
-  // Merge secondary-axis defaults as deriveds instead of assigning back into the
-  // $bindable props (which would push library defaults into the parent's bound state)
-  let y2_axis = $derived<AxisConfig>({ ...AXIS_DEFAULTS, ...y2_axis_prop })
-  let x2_axis = $derived<AxisConfig>({ ...X2_AXIS_DEFAULTS, ...x2_axis_prop })
+  let { y2: y2_axis, x2: x2_axis } = $derived(merge_secondary_axes(y2_axis_prop, x2_axis_prop))
 
+  const vertical = $derived(orientation === `vertical`)
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
+  // Value axis a series draws against; the other pair carries the categories
+  const val_axis_key = (srs: BoxPlotSeries<Metadata>): `x` | `x2` | `y` | `y2` =>
+    vertical ? (is_secondary(srs) ? `y2` : `y`) : is_secondary(srs) ? `x2` : `x`
 
   const frame = create_cartesian_frame({
     axes: () => plot_axes,
@@ -336,19 +338,13 @@
   // KDE per visible violin series, keyed by series index (bandwidth from the full sample)
   let violin_kdes = $derived.by(() => {
     const map = new SvelteMap<number, ViolinKde>()
-    const [val_axis, val_axis2] =
-      orientation === `vertical` ? [y_axis, y2_axis] : [x_axis, x2_axis]
     for (const box_item of visible_boxes) {
       if (!draws_violin(box_item.series)) continue
       const samples = box_item.series.y ?? []
       let clip = box_item.series.clip ?? kde_clip
       // On a log value axis the KDE grid tail (data_min - cut*bandwidth) is usually <= 0 →
       // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
-      if (
-        get_scale_type_name(
-          (is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type,
-        ) === `log`
-      ) {
+      if (get_scale_type_name(plot_axes[val_axis_key(box_item.series)].scale_type) === `log`) {
         const min_pos = samples.reduce(
           (min, val) => (val > 0 && val < min ? val : min),
           Infinity,
@@ -364,18 +360,14 @@
         bandwidth: box_item.series.bandwidth ?? bandwidth,
         clip,
       })
-      let max_density = 0
-      for (const density of kde.density) {
-        if (density > max_density) max_density = density
-      }
-      map.set(box_item.idx, { ...kde, max_density })
+      map.set(box_item.idx, { ...kde, max_density: Math.max(0, array_max(kde.density)) })
     }
     return map
   })
 
   // The horizontal category pixel axis is inverted, so flip the half-violin side to keep
   // `positive` meaning "above the center line" (vertical/`both` pass through unchanged)
-  const to_screen_side = (eff_side: ViolinSide, vertical: boolean): ViolinSide =>
+  const to_screen_side = (eff_side: ViolinSide): ViolinSide =>
     vertical || eff_side === `both`
       ? eff_side
       : eff_side === `positive`
@@ -384,7 +376,7 @@
 
   // Which boxes live on the secondary value axis (y2 for vertical, x2 for horizontal)
   const is_secondary = (srs: BoxPlotSeries<Metadata>): boolean =>
-    orientation === `vertical` ? srs.y_axis === `y2` : srs.x_axis === `x2`
+    vertical ? srs.y_axis === `y2` : srs.x_axis === `x2`
   let secondary_boxes = $derived(
     visible_boxes.filter((box_item) => is_secondary(box_item.series)),
   )
@@ -395,7 +387,7 @@
   // (right) when vertical. Derive once so axis rendering, ticks, range writes, point picking, and
   // marginal placement all stay provably in sync.
   let show_x2 = $derived(has_secondary && orientation === `horizontal`)
-  let show_y2 = $derived(has_secondary && orientation === `vertical`)
+  let show_y2 = $derived(has_secondary && vertical)
 
   // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range. On a
   // log axis non-positive stats (a whisker_low of exactly 0, negative outliers) are dropped:
@@ -419,7 +411,6 @@
   let auto_ranges = $derived.by(() => {
     const cat_count = slot_list.length
     const cat_range: Vec2 = cat_count > 0 ? [-0.5, cat_count - 0.5] : [0, 1]
-    const vertical = orientation === `vertical`
     const initial_pad = filter_padding(padding, DEFAULT_PLOT_PADDING)
     const value_axis_pixels = vertical
       ? frame.height - initial_pad.t - initial_pad.b
@@ -430,31 +421,23 @@
         ? outlier_extent / (value_axis_pixels - 2 * outlier_extent)
         : 0.05
     const primary_boxes = visible_boxes.filter((box_item) => !is_secondary(box_item.series))
-    const calc_value_range = (
-      boxes: Box[],
-      limit: [number | null, number | null],
-      scale_type: ScaleType,
-    ): Vec2 => {
+    const calc_value_range = (boxes: Box[], axis: AxisConfig): Vec2 => {
+      const scale_type = axis.scale_type ?? `linear`
       const values = range_values(boxes, get_scale_type_name(scale_type) === `log`)
       if (values.length === 0) return [0, 1]
       const has_outliers =
         show_outliers && boxes.some((box_item) => box_item.stats.outliers.length > 0)
       return nice_range_from_extent(
         accumulate_extent(empty_extent(), values),
-        limit,
+        axis.range ?? [null, null],
         scale_type,
         has_outliers ? Math.max(range_padding, outlier_range_padding) : range_padding,
       )
     }
-    const value_primary = calc_value_range(
-      primary_boxes,
-      (vertical ? y_axis.range : x_axis.range) ?? [null, null],
-      (vertical ? y_axis.scale_type : x_axis.scale_type) ?? `linear`,
-    )
+    const value_primary = calc_value_range(primary_boxes, plot_axes[vertical ? `y` : `x`])
     const value_secondary = calc_value_range(
       secondary_boxes,
-      (vertical ? y2_axis.range : x2_axis.range) ?? [null, null],
-      (vertical ? y2_axis.scale_type : x2_axis.scale_type) ?? `linear`,
+      plot_axes[vertical ? `y2` : `x2`],
     )
 
     return vertical
@@ -463,60 +446,49 @@
   })
 
   // Obstacle field in normalized [0,1] coords: each box modeled as a whisker-spanning segment
-  const obstacles_norm = $derived.by(() => {
-    const { width, height, effective_base_pad, ranges } = frame
-    if (!width || !height || visible_boxes.length === 0) return []
-    const base_w = width - effective_base_pad.l - effective_base_pad.r
-    const base_h = height - effective_base_pad.t - effective_base_pad.b
-    if (base_w <= 0 || base_h <= 0) return []
-    const vertical = orientation === `vertical`
-    const segs: { points: { x: number; y: number }[]; draws_line: boolean }[] = []
-    for (const box_item of visible_boxes) {
-      const { whisker_low, whisker_high, median } = box_item.stats
-      if (!Number.isFinite(median)) continue
-      const secondary = is_secondary(box_item.series)
-      const cat_rng = vertical ? ranges.current.x : ranges.current.y
-      const val_rng = vertical
-        ? secondary
-          ? ranges.current.y2
-          : ranges.current.y
-        : secondary
-          ? ranges.current.x2
-          : ranges.current.x
-      const cat_span = cat_rng[1] - cat_rng[0]
-      const val_span = val_rng[1] - val_rng[0]
-      if (cat_span === 0 || val_span === 0) continue
-      const cross = (box_item.slot - cat_rng[0]) / cat_span
-      const lo = (whisker_low - val_rng[0]) / val_span
-      const hi = (whisker_high - val_rng[0]) / val_span
-      const seg = vertical
-        ? clip_bar(true, cross, 1 - hi, 1 - lo)
-        : clip_bar(false, 1 - cross, lo, hi)
-      if (seg) segs.push(seg)
-    }
-    return build_obstacles_norm(segs, base_w, base_h)
-  })
+  const obstacles_norm = $derived.by(() =>
+    with_obstacle_frame(frame, visible_boxes.length > 0, ({ base_w, base_h }) => {
+      const { ranges } = frame
+      const segs: ObstacleSeries[] = []
+      for (const box_item of visible_boxes) {
+        const { whisker_low, whisker_high, median } = box_item.stats
+        if (!Number.isFinite(median)) continue
+        const cat_rng = vertical ? ranges.current.x : ranges.current.y
+        const val_rng = ranges.current[val_axis_key(box_item.series)]
+        const cat_span = cat_rng[1] - cat_rng[0]
+        const val_span = val_rng[1] - val_rng[0]
+        if (cat_span === 0 || val_span === 0) continue
+        const cross = (box_item.slot - cat_rng[0]) / cat_span
+        const lo = (whisker_low - val_rng[0]) / val_span
+        const hi = (whisker_high - val_rng[0]) / val_span
+        const seg = vertical
+          ? clip_bar(true, cross, 1 - hi, 1 - lo)
+          : clip_bar(false, 1 - cross, lo, hi)
+        if (seg) segs.push(seg)
+      }
+      return segs
+    }),
+  )
 
   const should_show_legend = $derived(
     // Category labels identify each series; show_legend remains an explicit opt-in.
     resolve_legend_visibility(show_legend, legend, series.length, false),
   )
   // Marginals are opt-in and bind to the value axis.
-  const marginal_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(
-    normalize_marginals(marginals, marginal_vertical ? { right: true } : { top: true }),
+    normalize_marginals(marginals, vertical ? { right: true } : { top: true }),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     visible_boxes.map((box_item) => {
       const secondary = is_secondary(box_item.series)
       return {
-        x: marginal_vertical ? undefined : (box_item.series.y ?? []),
-        y: marginal_vertical ? (box_item.series.y ?? []) : undefined,
+        x: vertical ? undefined : (box_item.series.y ?? []),
+        y: vertical ? (box_item.series.y ?? []) : undefined,
         color: box_color(box_item.idx),
         label: box_item.series.label,
         visible: true,
-        x_axis: marginal_vertical ? `x1` : secondary ? `x2` : `x1`,
-        y_axis: marginal_vertical ? (secondary ? `y2` : `y1`) : `y1`,
+        x_axis: vertical ? `x1` : secondary ? `x2` : `x1`,
+        y_axis: vertical ? (secondary ? `y2` : `y1`) : `y1`,
       }
     }),
   )
@@ -525,9 +497,7 @@
   // outliers) have no finite pixel. Clamp to the range floor so whiskers/boxes/labels end
   // at the plot edge (like BarPlot's bars) instead of NaN coords or a far-off LOG_EPS pixel.
   const box_val_scale = (srs: BoxPlotSeries<Metadata>): ((val: number) => number) => {
-    const vertical = orientation === `vertical`
-    const secondary = is_secondary(srs)
-    const axis_key = vertical ? (secondary ? `y2` : `y`) : secondary ? `x2` : `x`
+    const axis_key = val_axis_key(srs)
     return log_floor_scale(
       frame.scales[axis_key],
       plot_axes[axis_key].scale_type,
@@ -557,7 +527,6 @@
   let hover_at_pointer = $state(false)
 
   function get_box_data(box_item: Box, color: string): BoxHover {
-    const vertical = orientation === `vertical`
     const val_scale = box_val_scale(box_item.series)
     const cat_scale = vertical ? frame.scales.x : frame.scales.y
     const cc = cat_scale(box_item.slot)
@@ -609,11 +578,7 @@
     on_box_hover?.(null)
   }
 
-  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
-  // is not. Defined once rather than inline, so every mark shares one handler.
-  const clear_hover_on_exit = (event: FocusEvent) => {
-    if (focus_left(event, frame.svg_element)) clear_hover()
-  }
+  const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
 
   // Value label helper
   const value_label_for = (stats: Box[`stats`]): string =>
@@ -723,7 +688,6 @@
       {#each visible_boxes as box_item (box_item.series.id ?? box_item.idx)}
         {@const stats = box_item.stats}
         {#if Number.isFinite(stats.median)}
-          {@const vertical = orientation === `vertical`}
           {@const cat_scale = vertical ? frame.scales.x : frame.scales.y}
           {@const val_scale = box_val_scale(box_item.series)}
           {@const color = box_color(box_item.idx)}
@@ -804,7 +768,7 @@
               {@const offsets = kde.density.map(
                 (density) => (density / kde.max_density) * violin_half,
               )}
-              {@const screen_side = to_screen_side(eff_side, vertical)}
+              {@const screen_side = to_screen_side(eff_side)}
               <path
                 class="violin-area"
                 d={violin_path(grid_px, offsets, c_center, screen_side, pt)}
@@ -937,11 +901,11 @@
             orientation === `vertical` ? hover_info.y_axis.format : hover_info.x_axis.format}
           {@const stat = hover_info.stats}
           {@const rows = [
-            [`max`, stat.whisker_high],
+            [`whisker high`, stat.whisker_high],
             [`q3`, stat.q3],
             [`median`, stat.median],
             [`q1`, stat.q1],
-            [`min`, stat.whisker_low],
+            [`whisker low`, stat.whisker_low],
             ...(show_mean ? [[`mean`, stat.mean] as const] : []),
           ] as const}
           {#if hover_info.category_label}

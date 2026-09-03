@@ -105,73 +105,98 @@ export function normalize_densities(
   freqs_or_energies: number[],
   mode: types.NormalizationMode,
 ): number[] {
-  if (mode === `max`) {
-    const max_val = array_max(densities)
-    return max_val === 0 ? densities : densities.map((dens) => dens / max_val)
+  let divisor = 0
+  if (mode === `max`) divisor = array_max(densities)
+  else if (mode === `sum`) divisor = densities.reduce((acc, dens) => acc + dens, 0)
+  else if (mode === `integral` && freqs_or_energies.length >= 2) {
+    // trapezoid, not a left-Riemann sum off x[1] - x[0]: the latter assumed a uniform grid
+    // and dropped half an endpoint bin
+    const weights = trapezoid_weights(freqs_or_energies)
+    divisor = densities.reduce((acc, dens, idx) => acc + dens * weights[idx], 0)
   }
-  if (mode === `sum`) {
-    const sum = densities.reduce((acc, dens) => acc + dens, 0)
-    return sum === 0 ? densities : densities.map((dens) => dens / sum)
-  }
-  if (mode === `integral`) {
-    if (freqs_or_energies.length < 2) return densities
-    const bin_width = freqs_or_energies[1] - freqs_or_energies[0]
-    const sum = densities.reduce((acc, dens) => acc + dens, 0)
-    if (bin_width === 0 || sum === 0) return densities
-    return densities.map((dens) => dens / (sum * bin_width))
-  }
-  return densities
+  return divisor === 0 ? densities : densities.map((dens) => dens / divisor)
 }
 
-// Gaussian smearing of DOS densities, truncated at ±4σ (contribution < 0.01%) and
-// renormalized to preserve the sum. On an ascending grid — every DOS/band grid — the ±cutoff
-// window is a contiguous index range that only moves forward, so two pointers bound the
-// inner loop and the cost is O(n·w) rather than O(n²). Anything else scans all points.
+// Trapezoid quadrature weights for an arbitrary 1D grid: each point covers half the gap to
+// each neighbour. Read off the SORTED grid so a descending DOS grid gets the same measure.
+export function trapezoid_weights(grid: readonly number[]): number[] {
+  const last = grid.length - 1
+  const weights = Array(grid.length).fill(0)
+  if (last < 1) return weights
+  const order = grid.map((_, idx) => idx).toSorted((a_idx, b_idx) => grid[a_idx] - grid[b_idx])
+  for (const [pos, idx] of order.entries()) {
+    const lo = grid[order[Math.max(pos - 1, 0)]]
+    weights[idx] = (grid[order[Math.min(pos + 1, last)]] - lo) / 2
+  }
+  return weights
+}
+
+// One ±4σ-windowed Gaussian pass (contribution < 0.01% beyond). On an ascending grid the
+// window only moves forward, so two pointers bound the inner loop at O(n·w) not O(n²).
+// `measure` non-null gives the convolution ∫y(x')K(x−x')dx'; null the local average Σwy/Σw.
+function gaussian_pass(
+  grid: readonly number[],
+  values: readonly number[],
+  sigma: number,
+  measure: readonly number[] | null,
+): number[] {
+  const n_pts = grid.length
+  const out = Array(values.length).fill(0)
+  const cutoff = 4 * sigma
+  const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
+  // a normalized Gaussian integrates to 1, so the convolution preserves ∫y dx on its own
+  const prefactor = measure ? 1 / (sigma * Math.sqrt(2 * Math.PI)) : 1
+  const ascending = grid.every((value, idx) => idx === 0 || value >= grid[idx - 1])
+
+  let window_start = 0
+  let window_end = 0
+  for (let idx = 0; idx < n_pts; idx++) {
+    const center = grid[idx]
+    if (ascending) {
+      while (window_start < n_pts && center - grid[window_start] > cutoff) window_start++
+      while (window_end < n_pts && grid[window_end] - center <= cutoff) window_end++
+    } else window_end = n_pts
+
+    let sum = 0
+    let kernel_sum = 0
+    for (let jdx = window_start; jdx < window_end; jdx++) {
+      const delta = center - grid[jdx]
+      // Exact bounds on ascending grids; the fallback range is the whole array
+      if (Math.abs(delta) > cutoff) continue
+      const kernel = Math.exp(-(delta ** 2) * inv_two_sigma_sq)
+      sum += values[jdx] * (measure ? measure[jdx] : 1) * kernel
+      kernel_sum += kernel
+    }
+    // jdx = idx is always inside its own window, so kernel_sum ≥ 1
+    out[idx] = measure ? sum * prefactor : sum / kernel_sum
+  }
+  return out
+}
+
+// Gaussian smearing of DOS densities: the convolution ∫ g(E')·K(E − E') dE' over trapezoid
+// weights. Summing g(E')·K with no measure weights by POINT DENSITY instead, swinging a flat
+// DOS over 0.235-1.950 on a clustered grid. Mass leaks out at the grid ends, as the continuum
+// convolution does.
 export function apply_gaussian_smearing(
   freqs_or_energies: number[],
   densities: number[],
   sigma: number,
 ): number[] {
-  const orig_sum = densities.reduce((acc, dens) => acc + dens, 0)
-  if (sigma <= 0 || orig_sum === 0) return densities
-
-  const n_pts = freqs_or_energies.length
-  const smeared = Array(densities.length).fill(0)
-  const cutoff = 4 * sigma
-  const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
-
-  const ascending = freqs_or_energies.every(
-    (value, idx) => idx === 0 || value >= freqs_or_energies[idx - 1],
-  )
-
-  let window_start = 0
-  let window_end = 0
-  for (let idx = 0; idx < n_pts; idx++) {
-    const energy = freqs_or_energies[idx]
-    if (ascending) {
-      while (window_start < n_pts && energy - freqs_or_energies[window_start] > cutoff) {
-        window_start++
-      }
-      while (window_end < n_pts && freqs_or_energies[window_end] - energy <= cutoff) {
-        window_end++
-      }
-    } else window_end = n_pts
-
-    let sum = 0
-    for (let jdx = window_start; jdx < window_end; jdx++) {
-      const delta = energy - freqs_or_energies[jdx]
-      // Exact bounds on ascending grids; the fallback range is the whole array
-      if (Math.abs(delta) > cutoff) continue
-      sum += densities[jdx] * Math.exp(-(delta ** 2) * inv_two_sigma_sq)
-    }
-    smeared[idx] = sum
-  }
-
-  const smeared_sum = smeared.reduce((acc, dens) => acc + dens, 0)
-  if (smeared_sum === 0) return densities
-  const normalization = orig_sum / smeared_sum
-  return smeared.map((dens) => dens * normalization)
+  if (sigma <= 0) return densities
+  const weights = trapezoid_weights(freqs_or_energies)
+  // A grid with no extent (one point, or all-identical values) carries no trapezoid measure,
+  // so the convolution would return all zeros instead of leaving the input alone
+  if (weights.every((weight) => weight === 0)) return densities
+  return gaussian_pass(freqs_or_energies, densities, sigma, weights)
 }
+
+// Nadaraya-Watson Gaussian smoother Σ w·y / Σ w for a scattered (x, y) series. Unlike the DOS
+// convolution above it estimates a FUNCTION, not a density: exact on constants, no end droop.
+export const gaussian_kernel_smooth = (
+  x_values: number[],
+  y_values: number[],
+  sigma: number,
+): number[] => (sigma <= 0 ? y_values : gaussian_pass(x_values, y_values, sigma, null))
 
 // Type guards for pymatgen qpoint formats
 const is_vec3 = (val: unknown): val is Vec3 =>
@@ -185,7 +210,6 @@ const is_kpoint = (val: unknown): val is PymatgenKpoint =>
   val !== null && typeof val === `object` && `frac_coords` in val && is_vec3(val.frac_coords)
 
 const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
-  // Check for explicit pymatgen markers
   if (typeof obj[`@class`] === `string` || typeof obj[`@module`] === `string`) {
     return true
   }
@@ -215,10 +239,6 @@ const parse_qpoint = (qpt: unknown, label_entries: [string, Vec3][]): types.QPoi
   return { label, frac_coords }
 }
 
-// Spin key constants for pymatgen spin-polarized data
-const SPIN_UP_KEYS = [`1`, `Spin.up`]
-const SPIN_DOWN_KEYS = [`-1`, `Spin.down`]
-
 // Extract both spin channels from pymatgen spin-keyed data.
 // Returns { up: T, down: T | null } where down is null for non-spin-polarized data.
 export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null } | null {
@@ -226,8 +246,9 @@ export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null
   if (!data || typeof data !== `object`) return null
 
   const record = data as Record<string, T>
-  const up_key = SPIN_UP_KEYS.find((key) => key in record)
-  const down_key = SPIN_DOWN_KEYS.find((key) => key in record)
+  // pymatgen spin keys: `1`/`Spin.up`, `-1`/`Spin.down`
+  const up_key = [`1`, `Spin.up`].find((key) => key in record)
+  const down_key = [`-1`, `Spin.down`].find((key) => key in record)
   // No spin-up key: do not fall back to Object.keys()[0] (could be spin-down)
   if (up_key === undefined) return null
   return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
@@ -278,7 +299,6 @@ function convert_pymatgen_band_structure(
     // Phonon format: frequencies_cm is [n_qpoints x n_branches] - needs transpose
     const freqs = pmg.frequencies_cm as number[][]
     if (freqs.length > 0 && Array.isArray(freqs[0])) {
-      // Transpose: [n_qpoints x n_branches] -> [n_branches x n_qpoints]
       raw_bands = Array.from({ length: freqs[0].length }, (_, band_idx) =>
         freqs.map((qpt_freqs) => qpt_freqs[band_idx]),
       )
@@ -409,7 +429,6 @@ export function normalize_band_structure(
     return convert_pymatgen_band_structure(band_struct)
   }
 
-  // Standard matterviz format validation
   const { qpoints, branches, bands, distance } =
     band_struct as Partial<types.BaseBandStructure>
   if (
@@ -420,7 +439,6 @@ export function normalize_band_structure(
   )
     return null
 
-  // Validate array lengths and branch indices
   const n_qpts = qpoints.length
   if (
     n_qpts === 0 ||
@@ -471,7 +489,6 @@ const electronic_dos = (
 export function normalize_dos(dos: unknown): types.DosData | null {
   if (!is_plain_object(dos)) return null
 
-  // Check for pymatgen format (has @class or @module)
   const is_pymatgen = typeof dos[`@class`] === `string` || typeof dos[`@module`] === `string`
 
   const { frequencies, energies, spin_polarized } = dos
@@ -783,7 +800,6 @@ export function generate_ribbon_path(
   if (finite_positive_widths.length === 0) return ``
   const max_width_val = array_max(finite_positive_widths)
 
-  // Build upper edge path (forward direction)
   const upper_points: string[] = []
   const lower_points: string[] = []
 
@@ -822,7 +838,6 @@ export const closed_edge_path = (upper_points: string[], lower_points: string[])
 export function extract_efermi(data: unknown): number | undefined {
   if (!is_plain_object(data)) return undefined
 
-  // Direct efermi field on the object
   if (typeof data.efermi === `number`) return data.efermi
 
   // Dict of objects - try to get efermi from first value
@@ -900,29 +915,31 @@ export function compute_frequency_range(
   doses: unknown,
   padding_factor = 0.02,
 ): Vec2 | undefined {
-  let is_phonon = false
   const frequency_lists: (readonly number[])[] = []
 
   // Electronic markers are read from the raw input: normalization strips them (every
   // normalized structure has qpoints). Bands that aren't electronic are phonon bands.
   const raw_band_structs = band_struct_entries(band_structs).map(([, raw]) => raw)
   // A malformed pymatgen entry throws from normalization; Bands reports it, the range just
-  // skips it
-  const bs_list = raw_band_structs.flatMap((raw) => {
+  // skips it. The raw input rides along for is_electronic_band_struct's sake.
+  const normalized = raw_band_structs.flatMap((raw) => {
     try {
-      return normalize_band_structure(raw) ?? []
+      const bs = normalize_band_structure(raw)
+      return bs ? [{ raw, bs }] : []
     } catch {
       return []
     }
   })
-  if (bs_list.length > 0 && !raw_band_structs.some(is_electronic_band_struct)) is_phonon = true
-  for (const bs of bs_list) frequency_lists.push(...bs.bands)
+  // any, not every: an electronic entry alongside a phonon one must not clear the flag that
+  // drives the imaginary-mode clamp, matching the `||=` the DOS loop below uses
+  let is_phonon = normalized.some(({ raw }) => !is_electronic_band_struct(raw))
+  for (const { bs } of normalized) frequency_lists.push(...bs.bands)
 
   for (const [, raw] of dos_entries(doses)) {
     const dos = normalize_dos(raw)
     if (!dos) continue
-    // DOS type detection: explicit type field is authoritative
-    is_phonon = dos.type === `phonon`
+    // `||=`, not `=`: a later electronic entry must not clear a phonon flag set above
+    is_phonon ||= dos.type === `phonon`
     frequency_lists.push(dos.type === `phonon` ? dos.frequencies : dos.energies)
   }
   return padded_frequency_range(frequency_lists.flat(), is_phonon, padding_factor)
@@ -982,13 +999,6 @@ export const NORMALIZATION_MODES = [
   { value: `sum`, label: `Sum=1` },
   { value: `integral`, label: `∫=1` },
 ] as const satisfies readonly { value: types.NormalizationMode; label: string }[]
-
-// Format sigma with adaptive precision: 0→"0", <0.01→exp, <1→3dp, else→2dp
-export function format_sigma(val: number): string {
-  if (val === 0) return `0`
-  if (val < 0.01) return val.toExponential(1)
-  return val.toFixed(val < 1 ? 3 : 2)
-}
 
 // Validate sigma_range: ensures min < max, returns [0, 1] if invalid
 export const validate_sigma_range = ([min, max]: Vec2): Vec2 =>

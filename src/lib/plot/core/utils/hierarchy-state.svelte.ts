@@ -459,6 +459,13 @@ export class HierarchyChartState<
     event.preventDefault()
   }
 
+  // Roving tabindex: the last-focused node while still rendered, else `first_visible`. Without
+  // it, tabbing a large chart would visit every arc/cell.
+  roving_idx = (first_visible: number | null): number | null =>
+    this.focused_idx != null && this.#opts.visible(this.focused_idx)
+      ? this.focused_idx
+      : first_visible
+
   toggle_category = (series_idx: number): void =>
     toggle_muted(this.muted_ids, this.depth1_arcs[series_idx]?.id)
 
@@ -472,3 +479,12 @@ export class HierarchyChartState<
   export_chart = (format: `svg` | `png`): void =>
     export_chart_image(this.svg_element, this.#opts.export_filename(), format)
 }
+
+// zoom_root_id reaches the layout only while bucketing measures against the view root; else a
+// zoom would rebuild the layout (re-measuring every label) for an identical result.
+export const hierarchy_layout_options = (
+  opts: SunburstLayoutOptions & { min_fraction: number; max_children: number },
+): SunburstLayoutOptions => ({
+  ...opts,
+  zoom_root_id: opts.min_fraction > 0 || opts.max_children > 0 ? opts.zoom_root_id : null,
+})

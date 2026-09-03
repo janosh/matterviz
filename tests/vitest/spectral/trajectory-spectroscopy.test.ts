@@ -9,7 +9,8 @@ import {
 import { THZ_TO_INVERSE_CM } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { one_sided_periodogram } from '$lib/fft'
-import type { TrajectorySignal } from '$lib/trajectory'
+import type { Pbc } from '$lib/structure/pbc'
+import type { TrajectoryPositionStream, TrajectorySignal } from '$lib/trajectory'
 import { describe, expect, it } from 'vitest'
 
 const signal = (
@@ -22,6 +23,22 @@ const signal = (
   ),
   sample_shape,
   steps: Array.from({ length: n_samples }, (_unused, sample_idx) => sample_idx),
+})
+
+const position_stream = (
+  positions: Float64Array,
+  elements: ElementSymbol[],
+  steps: number[],
+): TrajectoryPositionStream => ({
+  positions,
+  n_frames: steps.length,
+  n_atoms: elements.length,
+  elements,
+  lattice_matrices: null,
+  pbc: [false, false, false],
+  coords_unwrapped: true,
+  frame_stride: 1,
+  steps,
 })
 
 const make_input = (
@@ -40,20 +57,28 @@ const make_input = (
     velocities.set([-velocity, 0, 0, velocity, 0, 0], frame_idx * 6)
   }
   return {
-    positions: {
-      positions,
-      n_frames,
-      n_atoms: 2,
-      elements: [`H`, `H`],
-      lattice_matrices: null,
-      pbc: [false, false, false],
-      coords_unwrapped: true,
-      frame_stride: 1,
-      steps,
-    },
+    positions: position_stream(positions, [`H`, `H`], steps),
     masses: Float64Array.from([1, 1]),
     velocities: { values: velocities, sample_shape: [2, 3], steps },
   }
+}
+
+// A vec3 series oscillating along x at `cycles_per_sample`, the standard IR/Raman probe here
+const x_sinusoid = (cycles_per_sample: number): TrajectorySignal =>
+  signal(128, [3], (sample_idx) => [
+    Math.sin(2 * Math.PI * cycles_per_sample * sample_idx),
+    0,
+    0,
+  ])
+
+// 10 A cubic cell on every frame, so periodic paths have a lattice to unwrap against
+const make_periodic = (input: TrajectorySpectroscopyInput, pbc: Pbc): void => {
+  input.positions.pbc = pbc
+  input.positions.lattice_matrices = Array.from({ length: 128 }, () => [
+    [10, 0, 0],
+    [0, 10, 0],
+    [0, 0, 10],
+  ])
 }
 
 const peak_near = (
@@ -112,17 +137,7 @@ const tumbling_spectra = (
     velocities: Float64Array,
     tensors: Float64Array,
   ): TrajectorySpectroscopyInput => ({
-    positions: {
-      positions,
-      n_frames,
-      n_atoms,
-      elements,
-      lattice_matrices: null,
-      pbc: [false, false, false],
-      coords_unwrapped: true,
-      frame_stride: 1,
-      steps,
-    },
+    positions: position_stream(positions, elements, steps),
     masses: Float64Array.from(masses),
     velocities: {
       values: velocities,
@@ -405,11 +420,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
       (input: TrajectorySpectroscopyInput) => {
         input.infrared_signal = {
           kind: `current`,
-          series: signal(128, [3], (sample_idx) => [
-            Math.sin(2 * Math.PI * 0.125 * sample_idx),
-            0,
-            0,
-          ]),
+          series: x_sinusoid(0.125),
         }
       },
       { preprocessing: `body_fixed` },
@@ -447,11 +458,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
       input.time_unit = time_unit
       input.infrared_signal = {
         kind: `dipole`,
-        series: signal(128, [3], (sample_idx) => [
-          Math.sin(2 * Math.PI * 0.125 * sample_idx),
-          0,
-          0,
-        ]),
+        series: x_sinusoid(0.125),
       }
       return input
     }
@@ -551,16 +558,79 @@ describe(`calc_trajectory_spectroscopy`, () => {
     const input = make_input(0.125)
     input.infrared_signal = {
       kind: `dipole`,
-      series: signal(128, [3], (sample_idx) => [
-        Math.sin(2 * Math.PI * 0.25 * sample_idx),
-        0,
-        0,
-      ]),
+      series: x_sinusoid(0.25),
     }
     const result = calc_trajectory_spectroscopy(input, RAW_SPECTRUM)
     expect(peak_near(result, 0.125).ir_activity).toBe(`inactive`)
     expect(peak_near(result, 0.25).ir_activity).toBe(`active`)
   })
+
+  // Prominence and the activity threshold are both fractions of the spectrum maximum, so
+  // without an absolute floor a run with nothing to report has its cancellation residue scaled
+  // to 1 and read as modes: this rigid water, tumbling and drifting under body_fixed, gave a
+  // VDOS maximum of 2.4e-29 with 25 peaks, six "IR active" off a constant-magnitude dipole.
+  // `stretch_amp` scales the O-H bonds, so 0 is the rigid molecule.
+  const rigid_water = (stretch_amp: number): TrajectorySpectroscopyInput => {
+    const n_frames = 256
+    const half_angle = (104.52 / 2) * (Math.PI / 180)
+    const [bond_x, bond_y] = [0.9572 * Math.sin(half_angle), 0.9572 * Math.cos(half_angle)]
+    const body = [
+      [0, 0, 0],
+      [bond_x, bond_y, 0],
+      [-bond_x, bond_y, 0],
+    ]
+    const angle = (frame_idx: number) => 0.037 * frame_idx
+    const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
+    const positions = Float64Array.from(
+      steps.flatMap((frame_idx) => {
+        const [cosine, sine] = [Math.cos(angle(frame_idx)), Math.sin(angle(frame_idx))]
+        const drift = [12 + 0.03 * frame_idx, -7 + 0.011 * frame_idx, 4]
+        const stretch = 1 + stretch_amp * Math.sin(2 * Math.PI * 0.11 * frame_idx)
+        return body.flatMap(([x_coord, y_coord, z_coord]) => {
+          const [x_body, y_body] = [x_coord * stretch, y_coord * stretch]
+          return [
+            x_body * cosine - y_body * sine + drift[0],
+            x_body * sine + y_body * cosine + drift[1],
+            z_coord + drift[2],
+          ]
+        })
+      }),
+    )
+    return {
+      positions: position_stream(positions, [`O`, `H`, `H`], steps),
+      masses: Float64Array.from([15.999, 1.008, 1.008]),
+      // constant 1.85 D magnitude, rotating with the molecule: no IR activity at all
+      infrared_signal: {
+        kind: `dipole`,
+        series: signal(n_frames, [3], (frame_idx) => [
+          -1.85 * Math.sin(angle(frame_idx)),
+          1.85 * Math.cos(angle(frame_idx)),
+          0,
+        ]),
+      },
+    }
+  }
+
+  it.each([
+    { stretch_amp: 0, peak_freqs: [], vdos_max: 0 },
+    { stretch_amp: 1e-3, peak_freqs: [0.11], vdos_max: 3.3e-6 },
+  ])(
+    `reports no spectrum for motion below round-off (stretch $stretch_amp)`,
+    ({ stretch_amp, peak_freqs, vdos_max }) => {
+      const result = calc_trajectory_spectroscopy(rigid_water(stretch_amp), {
+        preprocessing: `body_fixed`,
+        frequency_unit: `1/step`,
+      })
+      // any surviving peak is the injected 0.11 1/step stretch, not round-off
+      expect(result.peaks.map((peak) => peak.frequency)).toEqual(
+        peak_freqs.map((frequency) => expect.closeTo(frequency, 2)),
+      )
+      expect(Math.max(...result.vdos.power)).toBeCloseTo(vdos_max, 7)
+      // the lab dipole is rigid whatever the bonds do, so IR stays exactly zero
+      expect(Math.max(...(result.ir?.power ?? []))).toBe(0)
+      expect(result.peaks.every((peak) => peak.ir_activity === `inactive`)).toBe(true)
+    },
+  )
 
   it(`leaves activity unknown outside a response curve's Nyquist range`, () => {
     const input = make_input(0.25)
@@ -576,6 +646,19 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(result.ir?.nyquist).toBe(0.125)
     expect(peak_near(result, 0.25).ir_activity).toBe(`unknown`)
     expect(peak_near(result, 0.25).ir_score).toBeNull()
+  })
+
+  // the two H atoms of make_input move antiphase along x and not at all along y or z
+  it(`extracts the antiphase x mode at the detected peak`, () => {
+    const result = calc_trajectory_spectroscopy(make_input(0.125, 1, 128), RAW_SPECTRUM)
+    const displacement = peak_near(result, 0.125).displacement
+    if (!displacement) throw new Error(`no displacement at the 0.125 1/step peak`)
+    const [atom_a, atom_b] = displacement
+    expect(atom_a[0][0]).toBeCloseTo(-atom_b[0][0], 12)
+    expect(Math.abs(atom_a[0][0])).toBeGreaterThan(1e-3)
+    for (const atom of [atom_a, atom_b]) {
+      for (const axis of [1, 2]) expect(Math.hypot(...atom[axis])).toBeLessThan(1e-12)
+    }
   })
 
   it(`keeps response peaks above the position Nyquist without inventing MD motion`, () => {
@@ -781,12 +864,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
 
   it(`rejects periodic total dipoles`, () => {
     const input = make_input()
-    input.positions.pbc = [true, false, false]
-    input.positions.lattice_matrices = Array.from({ length: 128 }, () => [
-      [10, 0, 0],
-      [0, 10, 0],
-      [0, 0, 10],
-    ])
+    make_periodic(input, [true, false, false])
     input.infrared_signal = { kind: `dipole`, series: signal(128, [3], () => [1, 0, 0]) }
     expect(() => calc_trajectory_spectroscopy(input, { preprocessing: `remove_com` })).toThrow(
       /total dipole is not a valid periodic IR signal/,
@@ -798,12 +876,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     for (let value_idx = 0; value_idx < input.positions.positions.length; value_idx++) {
       input.positions.positions[value_idx] += 5
     }
-    input.positions.pbc = [true, true, true]
-    input.positions.lattice_matrices = Array.from({ length: 128 }, () => [
-      [10, 0, 0],
-      [0, 10, 0],
-      [0, 0, 10],
-    ])
+    make_periodic(input, [true, true, true])
     const result = calc_trajectory_spectroscopy(input, {
       ...RAW_SPECTRUM,
       preprocessing: `remove_com`,
@@ -819,18 +892,9 @@ describe(`calc_trajectory_spectroscopy`, () => {
     [`continuous periodic polarization`, true],
   ] as const)(`computes IR from %s on its scientifically valid path`, (_label, periodic) => {
     const input = make_input()
-    const series = signal(128, [3], (sample_idx) => [
-      Math.sin(2 * Math.PI * 0.25 * sample_idx),
-      0,
-      0,
-    ])
+    const series = x_sinusoid(0.25)
     if (periodic) {
-      input.positions.pbc = [true, false, false]
-      input.positions.lattice_matrices = Array.from({ length: 128 }, () => [
-        [10, 0, 0],
-        [0, 10, 0],
-        [0, 0, 10],
-      ])
+      make_periodic(input, [true, false, false])
       input.infrared_signal = { kind: `polarization`, branch_continuous: true, series }
     } else input.infrared_signal = { kind: `current`, series }
     const result = calc_trajectory_spectroscopy(input, {

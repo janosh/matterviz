@@ -1,6 +1,6 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
-  import { format_num } from '$lib/labels'
+  import { capitalize, format_num } from '$lib/labels'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import type { Vec3 } from '$lib/math'
   import type { ScatterHandlerEvent } from '$lib/plot/core/types'
@@ -40,7 +40,7 @@
   } from './types'
 
   const view_label = (candidate: PhononExplorerView): string =>
-    candidate === `ir` ? `IR` : `${candidate[0].toUpperCase()}${candidate.slice(1)}`
+    candidate === `ir` ? `IR` : capitalize(candidate)
   const format_qpoint = (q_position: Vec3, fmt: string): string =>
     q_position.map((coordinate) => format_num(coordinate, fmt)).join(`, `)
 

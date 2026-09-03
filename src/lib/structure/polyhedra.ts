@@ -7,6 +7,7 @@
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
+import { array_extent, array_max } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
 import { css_to_linear_rgb } from '$lib/scene/colors'
@@ -26,7 +27,8 @@ interface PolyhedraOptions {
 // Species whose mean bond dist / covalent-radii sum exceeds this are hidden when a
 // strongly-bound framework species exists (e.g. lone-pair Bi3+)
 const WEAK_BOND_NORM = 1.15
-// Hulls below this volume (A^3) are skipped as degenerate
+// Degenerate means FLAT, not small, so this is a fraction of the hull's own extent cubed: an
+// absolute A^3 cutoff kept a CN-6 ring puckered by 1 mA across 3 A (9e-3 A^3, nine times 1e-3).
 const VOLUME_EPS = 1e-3
 
 interface ConvexHullResult {
@@ -610,7 +612,12 @@ export function compute_polyhedra(
     seen_positions.add(pos_key)
 
     const hull = convex_hull_3d(vertex_positions)
-    if (hull.faces.length === 0 || hull.volume < VOLUME_EPS) continue
+    if (hull.faces.length === 0) continue
+    const spans = [0, 1, 2].map((axis) => {
+      const [lo, hi] = array_extent(hull.vertices.map((vert) => vert[axis]))
+      return hi - lo
+    })
+    if (hull.volume < VOLUME_EPS * array_max(spans) ** 3) continue
 
     polyhedra.push({
       center_site_idx: site_idx,
@@ -646,6 +653,7 @@ export function merge_polyhedra_buffers(
 
   let offset = 0
   let edge_offset = 0
+  const skipped_sites: string[] = []
   // Per-polyhedron scratch: crease detection tracks the first face normal seen
   // per undirected edge (packed vert_a * 2^16 + vert_b key)
   const edge_normals = new Map<
@@ -653,6 +661,8 @@ export function merge_polyhedra_buffers(
     { nx: number; ny: number; nz: number; crease: boolean; shared: boolean }
   >()
   for (const poly of polyhedra) {
+    // Rewind mark, in case this polyhedron turns out not to fit the shared edge pool below
+    const poly_offset = offset
     const verts = poly.vertices
     // Resolve per-hull-vertex colors once
     const vert_rgb = new Float32Array(verts.length * 3)
@@ -704,7 +714,16 @@ export function merge_polyhedra_buffers(
       }
     }
 
-    // Draw an edge unless both adjacent faces are coplanar (quad diagonal)
+    // An edge is drawn unless both adjacent faces are coplanar (quad diagonal). Float32Array
+    // drops out-of-range writes silently, so a polyhedron whose outline no longer fits the
+    // shared 3F/2 pool is dropped whole, triangles included, else the buffers would gap.
+    let n_edges = 0
+    for (const entry of edge_normals.values()) if (!entry.shared || entry.crease) n_edges++
+    if (edge_offset + n_edges * 6 > edge_positions.length) {
+      skipped_sites.push(`site ${poly.center_site_idx} (${poly.center_element})`)
+      offset = poly_offset
+      continue
+    }
     for (const [key, entry] of edge_normals) {
       if (entry.shared && !entry.crease) continue
       const from = verts[Math.floor(key / 65536)]
@@ -719,11 +738,21 @@ export function merge_polyhedra_buffers(
     }
   }
 
+  // one unclosed hull exhausts the shared pool for every polyhedron behind it: one tally, not
+  // one warning per victim
+  if (skipped_sites.length > 0) {
+    console.warn(
+      `Edge buffer exhausted (${edge_positions.length / 6} edges): dropped ` +
+        `polyhedra at ${skipped_sites.join(`, `)}`,
+    )
+  }
+  // Trim only if a polyhedron was dropped: slice copies the whole buffer
+  const dropped = offset < positions.length
   return {
-    positions,
-    colors,
+    positions: dropped ? positions.slice(0, offset) : positions,
+    colors: dropped ? colors.slice(0, offset) : colors,
     edge_positions: edge_positions.slice(0, edge_offset),
-    triangle_count,
+    triangle_count: offset / 9,
     edge_count: edge_offset / 6,
   }
 }

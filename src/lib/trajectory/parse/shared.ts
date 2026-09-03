@@ -80,11 +80,18 @@ const KBAR_TO_GPA = 0.1
 
 // Frame metadata for a stress tensor as VASP prints it: kB, positive = compressive. The
 // pressure is the trace mean, which is what OUTCAR's `external pressure` line reports.
+// The 3x3 matrix is not plottable, so the two magnitudes come along (stress_frobenius, a
+// default-visible series, otherwise had no producer).
 export const vasp_stress_metadata = (
   stress_kbar: Matrix3x3,
-): { stress: Matrix3x3; pressure: number } => {
+): { stress: Matrix3x3; pressure: number; stress_max: number; stress_frobenius: number } => {
   const stress = stress_kbar.map((row) => row.map((val) => val * KBAR_TO_GPA)) as Matrix3x3
-  return { stress, pressure: (stress[0][0] + stress[1][1] + stress[2][2]) / 3 }
+  return {
+    stress,
+    pressure: (stress[0][0] + stress[1][1] + stress[2][2]) / 3,
+    stress_max: Math.max(...stress.map((row, idx) => Math.abs(row[idx]))),
+    stress_frobenius: Math.hypot(...stress.flat()),
+  }
 }
 
 // POTIM is the time step (fs) only when IBRION = 0; relaxations reuse the tag as a step scale

@@ -15,14 +15,12 @@ import type { Crystal, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import type * as h5wasm from 'h5wasm'
-import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import { expand_ion_types } from '$lib/trajectory/helpers'
 import {
   is_hdf5_dataset,
   read_dataset,
-  scale_matrix,
+  read_scaled_lattice,
   to_number_array,
-  to_scalar_number,
   to_string_array,
   with_h5_file,
 } from '$lib/trajectory/parse/h5-utils'
@@ -41,15 +39,19 @@ export const is_vaspwave_filename = (filename: string): boolean => {
 }
 
 const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
-  const lattice_data = read_dataset(h5_file, `${STRUCTURE_PREFIX}/lattice_vectors`)
-  if (!lattice_data) {
+  // read_scaled_lattice squeezes the optional leading singleton step axis ([1, 3, 3]) some
+  // VASP versions write, which the raw read rejected even though the trajectory reader opens it
+  const lattice = read_scaled_lattice(
+    h5_file,
+    `${STRUCTURE_PREFIX}/lattice_vectors`,
+    `${STRUCTURE_PREFIX}/scale`,
+  )
+  if (!lattice) {
     throw new Error(
       `vaspwave.h5 has no embedded structure (${STRUCTURE_PREFIX}/lattice_vectors) — ` +
         `cannot place the charge grid in a lattice`,
     )
   }
-  const scale = to_scalar_number(read_dataset(h5_file, `${STRUCTURE_PREFIX}/scale`)) ?? 1
-  const lattice = scale_matrix(matrix3x3_from_rows(lattice_data, `lattice matrix`), scale)
 
   // Sites are optional for rendering (the isosurface needs only the lattice),
   // so a pruned/torn file missing ion data still opens with an empty cell.

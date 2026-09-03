@@ -14,13 +14,22 @@ const species_weights = (sites: Site[], element: string | undefined): Float64Arr
     element ? (site.species.find((spec) => spec.element === element)?.occu ?? 0) : 1,
   )
 
+// Cap on the histogram length. `n_bins > 0` bounds neither the allocation (bin centres, bin
+// indices and one g(r) array PER ELEMENT PAIR are all n_bins long: 480 MB at 1e7 on a
+// 3-element cell) nor the type (2.5 reached `Array(2.5)`, a bare `Invalid array length`).
+const MAX_RDF_BINS = 1_000_000
+
 // The neighbour list and bin assignment depend only on geometry and binning, never on the
 // species pair, so all-pair callers build them once and histogram many times.
 function prepare_rdf(structure: Crystal, options: RdfOptions) {
   const { cutoff = 15, n_bins = 75 } = options
-  if (!(cutoff > 0) || !(n_bins > 0)) {
+  // finite too: Infinity passes `> 0` and resurfaces as a neighbor_query error naming no caller
+  if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
+    throw new Error(`cutoff must be a positive finite number, got cutoff=${cutoff}`)
+  }
+  if (!Number.isInteger(n_bins) || n_bins <= 0 || n_bins > MAX_RDF_BINS) {
     throw new Error(
-      `cutoff and n_bins must be positive, got cutoff=${cutoff} n_bins=${n_bins}`,
+      `n_bins must be a positive integer <= ${MAX_RDF_BINS}, got n_bins=${n_bins}`,
     )
   }
   if (!structure.lattice?.matrix) {

@@ -53,15 +53,16 @@ interface AxisTitleLayout {
   readonly interactive: boolean
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  '&nbsp;': `\u00A0`,
+  '&amp;': `&`,
+  '&lt;': `<`,
+  '&gt;': `>`,
+  '&quot;': `"`,
+  '&#39;': `'`,
+}
 const decode_axis_title_text = (value: string): string =>
-  value.replaceAll(/&(?:nbsp|amp|lt|gt|quot|#39);/gu, (entity) => {
-    if (entity === `&nbsp;`) return `\u00A0`
-    if (entity === `&amp;`) return `&`
-    if (entity === `&lt;`) return `<`
-    if (entity === `&gt;`) return `>`
-    if (entity === `&quot;`) return `"`
-    return `'`
-  })
+  value.replaceAll(/&(?:nbsp|amp|lt|gt|quot|#39);/gu, (entity) => HTML_ENTITIES[entity])
 
 const append_axis_title_segment = (
   segments: AxisTitleSegment[],
@@ -320,10 +321,7 @@ export const element_position_for_footprint = (
   footprint: Pick<ElementFootprint, `offset_x` | `offset_y`>,
 ): { x: number; y: number } | null =>
   placement
-    ? {
-        x: placement.x - footprint.offset_x,
-        y: placement.y - footprint.offset_y,
-      }
+    ? { x: placement.x - footprint.offset_x, y: placement.y - footprint.offset_y }
     : null
 
 // Calculate auto-adjusted padding based on tick label widths/heights
@@ -526,12 +524,7 @@ export const calc_auto_padding = ({
     pad_b = padding.b ?? bottom_pad(plot_width)
   }
 
-  return {
-    t: pad_t,
-    b: pad_b,
-    l: pad_l,
-    r: pad_r,
-  }
+  return { t: pad_t, b: pad_b, l: pad_l, r: pad_r }
 }
 
 // Continuous placement algorithm with grid sampling and overlap scoring

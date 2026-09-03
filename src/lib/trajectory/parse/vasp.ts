@@ -35,7 +35,9 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
   if (!parsed.ok) throw new Error(parsed.error)
   const { elements: element_names, counts: element_counts } = parsed.header
   let lattice_matrix = parsed.header.lattice
-  let elements = expand_ion_types(element_names, element_counts)
+  // One fractional-coordinate line per ion, so no file can hold more ions than it has lines
+  const line_budget = { max_ions: lines.length, source: `XDATCAR lines` }
+  let elements = expand_ion_types(element_names, element_counts, line_budget)
 
   const frames: TrajectoryFrame[] = []
   let line_idx = header_end
@@ -57,7 +59,7 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
       if (repeat.ok && end === config_idx) {
         lattice_matrix = repeat.header.lattice
         frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-        elements = expand_ion_types(repeat.header.elements, repeat.header.counts)
+        elements = expand_ion_types(repeat.header.elements, repeat.header.counts, line_budget)
       }
     }
 

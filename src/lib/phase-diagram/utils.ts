@@ -6,14 +6,12 @@ import type { Sides } from '$lib/plot/core/layout'
 import { line } from 'd3-shape'
 import type {
   CompUnit,
-  LeverRuleMode,
   LeverRuleResult,
   PhaseDiagramConfig,
   PhaseDiagramData,
   PhaseHoverInfo,
   PhaseRegion,
   TempUnit,
-  VerticalLeverRuleResult,
 } from './types'
 
 // Convert temperature between units (K, °C, °F)
@@ -268,25 +266,18 @@ export function format_composition(
 export const format_temperature = (value: number, unit: TempUnit = `K`): string =>
   `${format_num(value, `.0f`)} ${unit}`
 
-// Find polygon edge intersections along a scan line (horizontal or vertical)
-// For horizontal: fixed_val = temperature, returns x-intersections
-// For vertical: fixed_val = composition, returns y-intersections
-function find_polygon_intersections(
-  vertices: Vec2[],
-  fixed_val: number,
-  axis: 0 | 1,
-): number[] {
-  const other = axis === 0 ? 1 : 0
+// Composition intersections of a polygon's edges with the isotherm T = temperature, sorted
+function find_isotherm_intersections(vertices: Vec2[], temperature: number): number[] {
   const intersections: number[] = []
   for (let idx = 0; idx < vertices.length; idx++) {
-    const v1 = vertices[idx]
-    const v2 = vertices[(idx + 1) % vertices.length]
+    const [comp_1, temp_1] = vertices[idx]
+    const [comp_2, temp_2] = vertices[(idx + 1) % vertices.length]
     if (
-      (v1[axis] <= fixed_val && v2[axis] > fixed_val) ||
-      (v2[axis] <= fixed_val && v1[axis] > fixed_val)
+      (temp_1 <= temperature && temp_2 > temperature) ||
+      (temp_2 <= temperature && temp_1 > temperature)
     ) {
       intersections.push(
-        v1[other] + ((fixed_val - v1[axis]) / (v2[axis] - v1[axis])) * (v2[other] - v1[other]),
+        comp_1 + ((temperature - temp_1) / (temp_2 - temp_1)) * (comp_2 - comp_1),
       )
     }
   }
@@ -328,15 +319,51 @@ function pick_bracketing_intersection_pair(
   return right_bound - left_bound > bound_tol ? [left_bound, right_bound] : null
 }
 
-// Shared core for lever rule calculations (horizontal and vertical): splits the region name
-// into exactly two phases, finds intersections along the scan axis, validates bounds, and
-// computes the fractional position within the two-phase region.
-function lever_rule_core(
+// Composition offsets (atomic fraction) probed outside a tie-line end to identify the adjacent
+// single-phase field. Widening steps cover narrow terminal solid solutions.
+const NEIGHBOR_PROBE_OFFSETS = [1e-4, 1e-3, 5e-3]
+
+// Order the two phases as [left, right] along the tie line. A region name lists them in
+// arbitrary order ("alpha + L" may have L on the left), so probe the field just past each end
+// and match by name; when neither neighbour matches, the name order stands.
+function order_phases_along_tie_line(
   region: PhaseRegion,
-  position: number,
-  scan_val: number,
-  axis: 0 | 1,
-): { phases: [string, string]; lo: number; hi: number; fraction_hi: number } | null {
+  all_regions: readonly PhaseRegion[],
+  phases: [string, string],
+  temperature: number,
+  lo: number,
+  hi: number,
+): [string, string] {
+  const swapped: [string, string] = [phases[1], phases[0]]
+  const probe = (position: number, direction: -1 | 1): string | null => {
+    for (const offset of NEIGHBOR_PROBE_OFFSETS) {
+      const found = all_regions.findLast(
+        (cand) =>
+          cand !== region &&
+          point_in_polygon(position + direction * offset, temperature, cand.vertices),
+      )
+      const name = found?.name.trim()
+      if (name === phases[0] || name === phases[1]) return name
+    }
+    return null
+  }
+  const left_neighbor = probe(lo, -1)
+  if (left_neighbor) return left_neighbor === phases[0] ? phases : swapped
+  const right_neighbor = probe(hi, 1)
+  if (right_neighbor) return right_neighbor === phases[1] ? phases : swapped
+  return phases
+}
+
+// Lever rule along the isothermal tie line — the only direction it is defined in (along a
+// vertical cut the coexisting phases change composition with T, so no ratio of temperatures is
+// a phase fraction). Null unless the region is exactly two-phase and the scan brackets the
+// point. `all_regions` assigns the phases to tie-line ends by geometry, not by name order.
+export function calculate_lever_rule(
+  region: PhaseRegion,
+  composition: number,
+  temperature: number,
+  all_regions: readonly PhaseRegion[] = [],
+): LeverRuleResult | null {
   const phases = region.name.includes(`+`)
     ? region.name
         .trim()
@@ -345,93 +372,48 @@ function lever_rule_core(
     : []
   if (phases.length !== 2) return null
 
-  const intersections = find_polygon_intersections(region.vertices, scan_val, axis)
-  const bounds = pick_bracketing_intersection_pair(intersections, position)
+  // Horizontal scan: fixed temperature, find composition intersections
+  const bounds = pick_bracketing_intersection_pair(
+    find_isotherm_intersections(region.vertices, temperature),
+    composition,
+  )
   if (!bounds) return null
   const [lo, hi] = bounds
+  if (hi - lo < 1e-10) return null
 
-  const span = hi - lo
-  if (span < 1e-10) return null
-
-  return { phases: [phases[0], phases[1]], lo, hi, fraction_hi: (position - lo) / span }
-}
-
-// Calculate lever rule for a point in a two-phase region
-// Returns null if the region is not exactly a two-phase region or calculation fails
-// Note: Lever rule is thermodynamically defined only for two-phase equilibria
-export function calculate_lever_rule(
-  region: PhaseRegion,
-  composition: number,
-  temperature: number,
-): LeverRuleResult | null {
-  // Horizontal scan: fixed temperature, find composition intersections
-  const core = lever_rule_core(region, composition, temperature, 1)
-  if (!core) return null
+  const [left_phase, right_phase] = order_phases_along_tie_line(
+    region,
+    all_regions,
+    [phases[0], phases[1]],
+    temperature,
+    lo,
+    hi,
+  )
+  const fraction_right = (composition - lo) / (hi - lo)
 
   return {
-    left_phase: core.phases[0],
-    right_phase: core.phases[1],
-    left_composition: core.lo,
-    right_composition: core.hi,
-    fraction_left: 1 - core.fraction_hi,
-    fraction_right: core.fraction_hi,
+    left_phase,
+    right_phase,
+    left_composition: lo,
+    right_composition: hi,
+    fraction_left: 1 - fraction_right,
+    fraction_right,
   }
 }
 
-// Calculate vertical lever rule for a point in a two-phase region
-// Uses constant composition (vertical line) to find temperature boundaries
-export function calculate_vertical_lever_rule(
-  region: PhaseRegion,
-  composition: number,
-  temperature: number,
-): VerticalLeverRuleResult | null {
-  // Vertical scan: fixed composition, find temperature intersections
-  const core = lever_rule_core(region, temperature, composition, 0)
-  if (!core) return null
-
-  return {
-    bottom_phase: core.phases[0],
-    top_phase: core.phases[1],
-    bottom_temperature: core.lo,
-    top_temperature: core.hi,
-    fraction_bottom: 1 - core.fraction_hi,
-    fraction_top: core.fraction_hi,
-  }
-}
-
-// Lever rule of the active mode as one [phase, fraction, location] row per tie-line end
-// (compositions for the horizontal rule, temperatures for the vertical one); null when the
-// hover info carries no lever rule for that mode
+// Lever rule as one [phase, fraction, composition] row per tie-line end; null when the hover
+// info carries no lever rule
 export function lever_rule_rows(
   info: PhaseHoverInfo,
-  mode: LeverRuleMode,
   comp_unit: CompUnit,
-  temp_unit: TempUnit,
-  data_temp_unit: TempUnit = temp_unit,
-): { vertical: boolean; rows: [string, number, string][] } | null {
-  const { lever_rule: lr, vertical_lever_rule: vlr } = info
-  if (mode === `vertical` && vlr) {
-    const temp = (val: number) =>
-      format_temperature(convert_temp(val, data_temp_unit, temp_unit), temp_unit)
-    return {
-      vertical: true,
-      rows: [
-        [vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)],
-        [vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)],
-      ],
-    }
-  }
-  if (mode === `horizontal` && lr) {
-    const comp = (val: number) => format_composition(val, comp_unit)
-    return {
-      vertical: false,
-      rows: [
-        [lr.left_phase, lr.fraction_left, comp(lr.left_composition)],
-        [lr.right_phase, lr.fraction_right, comp(lr.right_composition)],
-      ],
-    }
-  }
-  return null
+): [string, number, string][] | null {
+  const { lever_rule: lr } = info
+  if (!lr) return null
+  const comp = (val: number) => format_composition(val, comp_unit)
+  return [
+    [lr.left_phase, lr.fraction_left, comp(lr.left_composition)],
+    [lr.right_phase, lr.fraction_right, comp(lr.right_composition)],
+  ]
 }
 
 export interface HoverTextOptions {
@@ -440,11 +422,9 @@ export interface HoverTextOptions {
   component_a?: string
   component_b?: string
   data_temp_unit?: TempUnit // unit of info.temperature, defaults to temp_unit
-  lever_rule_mode?: LeverRuleMode
 }
 
 // Format hover info as copyable text for clipboard
-// Only includes lever rule data for the active mode to match tooltip display
 export function format_hover_info_text(
   info: PhaseHoverInfo,
   options: HoverTextOptions = {},
@@ -455,7 +435,6 @@ export function format_hover_info_text(
     component_a = `A`,
     component_b = `B`,
     data_temp_unit = temp_unit,
-    lever_rule_mode = `horizontal`,
   } = options
   const to_display = (temp: number) => convert_temp(temp, data_temp_unit, temp_unit)
 
@@ -468,10 +447,10 @@ export function format_hover_info_text(
     )} ${component_a})`,
   ]
 
-  const lever = lever_rule_rows(info, lever_rule_mode, comp_unit, temp_unit, data_temp_unit)
+  const lever = lever_rule_rows(info, comp_unit)
   if (lever) {
-    lines.push(``, lever.vertical ? `Vertical Lever Rule:` : `Lever Rule:`)
-    for (const [phase, fraction, location] of lever.rows) {
+    lines.push(``, `Lever Rule:`)
+    for (const [phase, fraction, location] of lever) {
       lines.push(`  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`)
     }
   }

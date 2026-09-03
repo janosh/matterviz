@@ -106,6 +106,22 @@ describe(`fit_eos`, () => {
     },
   )
 
+  // A bracketing scan can still land the fit outside its own volumes once noise enters: this
+  // Cu-like 9-point scan at ~20 meV silently returned V0 = 9.82, B0' = 42.7 against a truth of
+  // 40 / 4.5. Vinet still lands at V0 = 11.05 and must be rejected, not reported.
+  test(`rejects a noisy fit whose V0 escapes the scanned volumes`, () => {
+    const volumes = [36, 37, 38, 39, 40, 41, 42, 43, 44]
+    const energies = [
+      -10.359965146, -10.427177245, -10.466421621, -10.500782148, -10.501370108, -10.501183896,
+      -10.463480846, -10.432090326, -10.402130406,
+    ]
+    expect(() => fit_eos(volumes, energies, `vinet`)).toThrow(
+      /must lie inside the scanned range/,
+    )
+    // the damping-ladder reset recovers Birch-Murnaghan on the same data
+    expect(fit_eos(volumes, energies, `birch_murnaghan`).v0).toBeCloseTo(39.84, 1)
+  })
+
   test(`kind defaults to Birch–Murnaghan and unknown kinds throw`, () => {
     const { volumes, energies } = REFERENCE.ase_ag
     expect(fit_eos(volumes, energies).kind).toBe(`birch_murnaghan`)

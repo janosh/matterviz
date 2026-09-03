@@ -51,6 +51,16 @@ describe(`parse_fermi_file`, () => {
       expect(band_data.fermi_energy).toBe(7.0)
     })
 
+    // the origin was parsed and never read, while extract_fermi_surface re-centres on Γ
+    // unconditionally, so a header encoding that shift would apply it twice
+    test(`rejects a non-zero grid origin`, () => {
+      const shifted = sample_bxsf.replace(`    0.0 0.0 0.0\n`, `    -0.5 -0.5 -0.5\n`)
+      expect(() => parse_grid(shifted, `test.bxsf`)).toThrow(
+        /BXSF grid origin \[-0.5, -0.5, -0.5\] is not supported/,
+      )
+      expect(() => parse_grid(sample_bxsf, `test.bxsf`)).not.toThrow()
+    })
+
     test.each([
       [
         `an XCrySDen BEGIN_INFO block`,

@@ -24,7 +24,7 @@
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { create_pulse_animation, pulsing_highlight_opacity } from '$lib/effects.svelte'
-  import { colors } from '$lib/state.svelte'
+  import { colors, theme_state } from '$lib/state.svelte'
   import type {
     AnyStructure,
     BondEditMode,
@@ -671,10 +671,8 @@
     mesh.raycast = () => undefined
   }
 
-  function site_world_position(parent: Object3D, site: Site): Vector3 {
-    const position = new Vector3(...site.xyz)
-    return parent.localToWorld(position)
-  }
+  // scratch: the endpoint search below runs per pointer event over every site
+  const site_world_pos = new Vector3()
 
   function get_bond_endpoint_site_idx(
     site_idx: number,
@@ -686,8 +684,9 @@
     if (!site) return site_idx
 
     const matches_world_position = (candidate_site: Site): boolean =>
-      site_world_position(parent, candidate_site).distanceTo(world_position) <=
-      BOND_ENDPOINT_SITE_MATCH_TOLERANCE
+      parent
+        .localToWorld(site_world_pos.set(...candidate_site.xyz))
+        .distanceTo(world_position) <= BOND_ENDPOINT_SITE_MATCH_TOLERANCE
 
     if (matches_world_position(site)) {
       return site_idx
@@ -1120,7 +1119,7 @@
   const { minimum: min_fov = 5, maximum: max_fov = 150 } = SETTINGS_CONFIG.structure.fov
   let effective_fov = $derived(
     Number.isFinite(fov) && fov > 0
-      ? Math.min(max_fov, Math.max(min_fov, fov))
+      ? math.clamp(fov, min_fov, max_fov)
       : DEFAULTS.structure.fov,
   )
 
@@ -1382,19 +1381,20 @@
     )
 
     // Filter calculated bonds: exclude removed, replaced by manual additions, and hidden.
-    const calculated = perceived_bond_pairs
-      .filter((bond) => {
-        if (!is_site_visible(bond.site_idx_1) || !is_site_visible(bond.site_idx_2))
-          return false
-        if (removed_keys.size === 0 && added_keys.size === 0) return true
-        const key = bond_key_for(bond)
-        return !removed_keys.has(key) && !added_keys.has(key)
-      })
-      .map((bond) => {
-        if (order_overrides.size === 0) return bond
-        const override = order_overrides.get(bond_key_for(bond))
-        return override === undefined ? bond : { ...bond, bond_order: override }
-      })
+    // one bond_key_for per bond: canonicalizing costs two image-shift lookups and a Vec3
+    const needs_key = removed_keys.size > 0 || added_keys.size > 0 || order_overrides.size > 0
+    const calculated: BondPair[] = []
+    for (const bond of perceived_bond_pairs) {
+      if (!is_site_visible(bond.site_idx_1) || !is_site_visible(bond.site_idx_2)) continue
+      if (!needs_key) {
+        calculated.push(bond)
+        continue
+      }
+      const key = bond_key_for(bond)
+      if (removed_keys.has(key) || added_keys.has(key)) continue
+      const override = order_overrides.get(key)
+      calculated.push(override === undefined ? bond : { ...bond, bond_order: override })
+    }
 
     // Create BondPair objects for manually added bonds
     const added: BondPair[] = []
@@ -1888,6 +1888,8 @@
   })
 
   let measure_line_color = $derived.by(() => {
+    // re-resolve --text-color when the light/dark theme flips
+    void theme_state.mode
     if (typeof window === `undefined`) return
     const root_styles = getComputedStyle(document.documentElement)
     const text_color = root_styles.getPropertyValue(`--text-color`).trim()

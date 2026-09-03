@@ -512,7 +512,7 @@ describe(`total scattering-weighted PDF`, () => {
     { cutoff: 8, n_bins: 0 },
   ])(`calculate_total_pdf rejects cutoff=$cutoff n_bins=$n_bins`, ({ cutoff, n_bins }) => {
     expect(() => calculate_total_pdf(nacl(), { cutoff, n_bins })).toThrow(
-      /cutoff and n_bins must be positive/,
+      /cutoff must be a positive finite|n_bins must be a positive integer/,
     )
   })
 })

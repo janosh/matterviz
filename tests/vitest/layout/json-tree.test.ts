@@ -2,7 +2,7 @@
 import { JsonTree } from '$lib/layout'
 import { serialize_for_copy } from '$lib/layout/json-tree/utils'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, it, test, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import { doc_query, keydown, mock_clipboard_write, mouse } from '../setup'
 import JsonTreeReplacementHarness from './JsonTreeReplacementHarness.svelte'
 
@@ -376,6 +376,24 @@ describe(`folding`, () => {
     await click_and_tick(doc_query(`[data-testid="replace-flat-json"]`))
     expect(collapsed_count()).toBe(`0`)
   })
+
+  // The un-flash timer hung off an effect cleanup rerunning on every ctx.settings change, so a
+  // toggle mid-flash cancelled it without rescheduling and the node stayed highlighted
+  it(`un-flashes a changed value even when a setting is toggled mid-flash`, async () => {
+    vi.useFakeTimers()
+    onTestFinished(() => void vi.useRealTimers())
+    mount(JsonTreeReplacementHarness, { target: document.body })
+    flushSync()
+    const flashing = () => document.querySelector(`.json-value.changed`)
+    await click_and_tick(doc_query(`[data-testid="mutate-leaf"]`))
+    expect(flashing()).not.toBeNull()
+    vi.advanceTimersByTime(500)
+    await click_and_tick(control_group(0)[0]) // T: show data types
+    expect(flashing()).not.toBeNull()
+    vi.advanceTimersByTime(600)
+    flushSync()
+    expect(flashing()).toBeNull()
+  })
 })
 
 describe(`header toggles`, () => {
@@ -539,6 +557,28 @@ describe(`search`, () => {
     expect(match_count()).toBe(`2 of 2`)
     expect(node_at(`other.target`)?.classList.contains(`current-match`)).toBe(true)
     await vi.waitFor(() => expect(scroll_into_view).toHaveBeenCalledTimes(2))
+  })
+
+  // The search box sits inside the div carrying the tree's keydown handler, so arrows typed
+  // there yanked focus onto a tree node and Ctrl/Cmd+C copied the selection
+  it(`leaves keys typed in the search box to the input`, async () => {
+    const write_text = mock_clipboard_write()
+    mount_tree({ value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 })
+    fire(node_at(`bar`), mouse(`click`, { ctrlKey: true }))
+    const input = doc_query<HTMLInputElement>(`.search-input`)
+    input.focus()
+    for (const key of [`ArrowLeft`, `ArrowRight`, `ArrowDown`, `ArrowUp`]) {
+      fire(input, keydown(key))
+      expect(document.activeElement).toBe(input)
+    }
+    fire(input, keydown(`c`, { ctrlKey: true }))
+    await tick()
+    expect(write_text).not.toHaveBeenCalled()
+    // F3 stays global, so it still steps matches while the box has focus
+    await type_search(`ba`, `1 of 3`)
+    fire(input, keydown(`F3`))
+    await tick()
+    expect(match_count()).toBe(`2 of 3`)
   })
 })
 

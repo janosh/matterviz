@@ -1,6 +1,7 @@
 // Serialize trajectory frames back to files. Frames are pulled one at a time through a
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
+import { strip_compression_extensions } from '$lib/io/decompress'
 import { trajectory_property_config } from '$lib/labels'
 import { structure_to_poscar_str, structure_to_xyz_str } from '$lib/structure/export'
 import type { Site } from '$lib/structure'
@@ -20,8 +21,11 @@ export type TrajectoryFrameResolver = (
 // keep only filename-safe characters. Leading and trailing separators go too, so `run (1).traj`
 // exports as `run_1` rather than `run_1_`.
 export function trajectory_export_basename(filename: string): string {
-  const base = (filename.split(/[/\\]/).pop() ?? ``)
-    .replace(/(?:\.(?:gz|gzip|bz2|xz|zst))+$/i, ``)
+  // Case-preserving: this names a file the user sees. The hand-rolled list it replaced omitted
+  // `.zip`, `.z` and `.deflate`.
+  const base = strip_compression_extensions(filename.split(/[/\\]/).pop() ?? ``, {
+    lowercase: false,
+  })
     .replace(/\.(?:extxyz|xyz|traj|h5|hdf5|lammpstrj|dump|xml|json)$/i, ``)
     .replaceAll(/[^A-Za-z0-9._-]+/g, `_`)
     .replaceAll(/^[._-]+|[._-]+$/g, ``)

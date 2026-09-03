@@ -205,6 +205,38 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
     ])
   })
 
+  // Shifting the O reference changes every oxide's formation energy, but the oxides come back
+  // untouched and their cached e_form_per_atom would make the gas correction a hull no-op.
+  test(`a shifted reference clears formation energies cached against the old one`, () => {
+    const entries: PhaseData[] = [
+      { composition: { Fe: 1 }, energy: -8, energy_per_atom: -8, e_form_per_atom: 0 },
+      { composition: { O: 2 }, energy: -10, energy_per_atom: -5, e_form_per_atom: 0 },
+      {
+        composition: { Fe: 2, O: 3 },
+        energy: -34,
+        energy_per_atom: -6.8,
+        e_form_per_atom: -1.5, // against the uncorrected O reference
+        e_above_hull: 0.1,
+        is_stable: false,
+      },
+    ]
+    const config: GasThermodynamicsConfig = {
+      enabled_gases: [`O2`],
+      pressures: { O2: 1e-10 },
+    }
+
+    const [iron, oxygen, oxide] = apply_gas_corrections(entries, config, 1000)
+
+    expect(oxygen.energy_per_atom).not.toBeCloseTo(-5, 6) // the reference moved
+    // so the oxide's cached hull data went with it, though its energy is untouched
+    expect(oxide.energy_per_atom).toBe(-6.8)
+    for (const key of [`e_form_per_atom`, `e_above_hull`, `is_stable`] as const) {
+      expect(oxide[key], key).toBeUndefined()
+    }
+    // Fe contains no shifted element, so its own cache is still good
+    expect(iron.e_form_per_atom).toBe(0)
+  })
+
   test(`per-atom correction scales total energy by atom count for O2-style refs`, () => {
     // {O: 2} entry: 2 atoms, energy_per_atom = energy / 2
     const entry: PhaseData = { composition: { O: 2 }, energy: -9.86, energy_per_atom: -4.93 }
@@ -240,12 +272,14 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 })
 
 describe(`gas-thermodynamics: formatting`, () => {
+  // format_num renders the typographic minus (U+2212) and trims trailing zeros, so `decimals`
+  // is a maximum, not a fixed width
   test.each([
-    [-1.234, 3, `-1.234 eV`],
-    [0.5, 3, `+0.500 eV`],
-    [0, 3, `+0.000 eV`],
-    [-1.23456, 2, `-1.23 eV`],
-    [-1.23456, 4, `-1.2346 eV`],
+    [-1.234, 3, `\u22121.234 eV`],
+    [0.5, 3, `+0.5 eV`],
+    [0, 3, `+0 eV`],
+    [-1.23456, 2, `\u22121.23 eV`],
+    [-1.23456, 4, `\u22121.2346 eV`],
   ])(`format_chemical_potential(%s, %s) = %s`, (mu, decimals, expected) => {
     expect(format_chemical_potential(mu, decimals)).toBe(expected)
   })

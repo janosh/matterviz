@@ -57,6 +57,7 @@ describe(`trajectory_export_basename`, () => {
   test.each([
     [`run.extxyz`, `run`],
     [`run.xyz.gz`, `run`],
+    [`run.extxyz.zip`, `run`], // the hand-rolled list omitted .zip and carried a dead .zst
     [`/data/md/traj.h5`, `traj`],
     [`XDATCAR`, `XDATCAR`],
     [`weird name (1).traj`, `weird_name_1`],
@@ -126,6 +127,16 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     expect(trajectory_frame_to_extxyz_str(make_frame(0, two_sites, { forces })))
       .not.toContain(`forces:R:3`)
   })
+})
+
+// The old fixed allow-list of 7 comment keys dropped every other scalar on reopen. For
+// coords_unwrapped that is corruption: MSD/VACF then re-applies the minimum image.
+test(`extXYZ round trip preserves scalars outside the old allow-list`, () => {
+  const props = { energy: -10.5, n_scf_steps: 7, density: 2.33, coords_unwrapped: true }
+  const [reparsed] = parse_exported_frames(
+    trajectory_frame_to_extxyz_str(make_frame(0, two_sites, props)),
+  )
+  expect(reparsed.metadata).toMatchObject(props)
 })
 
 describe(`serialize_extxyz_frame_range`, () => {

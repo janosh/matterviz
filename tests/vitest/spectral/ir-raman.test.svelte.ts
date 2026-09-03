@@ -532,7 +532,7 @@ describe(`broaden_spectrum`, () => {
   it(`allows a wide width ratio when step_size is given explicitly`, () => {
     const opts = { fwhm_fn: wide_ratio_fwhm, range: [-50, 1050] as Vec2, step_size: 0.5 }
     const curve = broaden_spectrum(wide_ratio_sticks, opts)
-    expect(curve.x).toHaveLength(2200)
+    expect(curve.x).toHaveLength(2201) // [-50, 1050] at 0.5 is 2200 steps plus the endpoint
     expect(curve.y.every(Number.isFinite)).toBe(true)
   })
 

@@ -1,6 +1,7 @@
 import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import { count_atoms_in_composition } from '$lib/composition/reduce'
+import { drop_cached_hull_data } from './thermodynamics'
 import { element_by_symbol } from '$lib/element/data'
 import { format_fractional, format_num } from '$lib/labels'
 import { array_extent, array_max } from '$lib/math'
@@ -314,22 +315,19 @@ function compute_energy_per_atom(entry: PhaseData): number | null {
   return total_atoms > 0 ? entry.energy / total_atoms : null
 }
 
-// Get energy value for an entry using a specific metric
+// Energy value per metric, null when the entry cannot supply it. Key order is the preference
+// order a composition group picks from.
 // NOTE: We prioritize absolute energies (e_form_per_atom, energy_per_atom) over e_above_hull
 // because polymorphs of the same composition on the hull all have e_above_hull=0
-function get_entry_energy_by_metric(entry: PhaseData, metric: EnergyMetric): number | null {
-  if (metric === `e_form_per_atom` && is_finite(entry.e_form_per_atom)) {
-    return entry.e_form_per_atom
-  }
-  if (metric === `energy_per_atom`) {
-    return is_finite(entry.energy_per_atom)
-      ? entry.energy_per_atom
-      : compute_energy_per_atom(entry)
-  }
-  if (metric === `e_above_hull` && is_finite(entry.e_above_hull)) {
-    return entry.e_above_hull
-  }
-  return null
+const METRIC_ENERGY: Record<
+  Exclude<EnergyMetric, null>,
+  (entry: PhaseData) => number | null
+> = {
+  e_form_per_atom: (entry) =>
+    is_finite(entry.e_form_per_atom) ? entry.e_form_per_atom : null,
+  energy_per_atom: (entry) =>
+    is_finite(entry.energy_per_atom) ? entry.energy_per_atom : compute_energy_per_atom(entry),
+  e_above_hull: (entry) => (is_finite(entry.e_above_hull) ? entry.e_above_hull : null),
 }
 
 function get_label_representative_energy(entry: PhaseData): number {
@@ -369,27 +367,11 @@ export function get_composition_label_entries<T extends PhaseData>(entries: Iter
   return Array.from(label_entry_by_composition.values())
 }
 
-// Determine which energy metric to use for a composition group
-// Returns the first metric that ALL entries in the group can provide
-function select_group_energy_metric(polymorphs: PhaseData[]): EnergyMetric {
-  // Try e_form_per_atom first (best for comparing polymorphs)
-  if (polymorphs.every((entry) => is_finite(entry.e_form_per_atom))) {
-    return `e_form_per_atom`
-  }
-  // Try energy_per_atom (either direct field or computed from total energy)
-  if (
-    polymorphs.every(
-      (entry) => is_finite(entry.energy_per_atom) || compute_energy_per_atom(entry) !== null,
-    )
-  )
-    return `energy_per_atom`
-  // Last resort: e_above_hull (will fail to differentiate stable polymorphs with e_above_hull=0)
-  if (polymorphs.every((entry) => is_finite(entry.e_above_hull))) {
-    return `e_above_hull`
-  }
-
-  return null // No valid metric available for this group
-}
+// The first metric EVERY entry in a composition group can provide, else null
+const select_group_energy_metric = (polymorphs: PhaseData[]): EnergyMetric =>
+  (Object.keys(METRIC_ENERGY) as Exclude<EnergyMetric, null>[]).find((metric) =>
+    polymorphs.every((entry) => METRIC_ENERGY[metric](entry) !== null),
+  ) ?? null
 
 // Pre-compute polymorph statistics for all entries at once (O(n²) but done once)
 // Returns a Map keyed by entry_id for O(1) lookups during hover
@@ -399,16 +381,10 @@ export function compute_all_polymorph_stats(
   const stats_map = new Map<string, PolymorphStats>()
   const zero_stats = { total: 0, higher: 0, lower: 0, equal: 0 }
 
-  // Group entries by fractional composition (normalized stoichiometry)
-  const composition_groups = new Map<string, PhaseData[]>()
-  for (const entry of all_entries) {
-    const comp_key = get_fractional_composition_key(entry.composition)
-    const group = composition_groups.get(comp_key) ?? []
-    if (group.length === 0) composition_groups.set(comp_key, group)
-    group.push(entry)
-  }
-
-  // Calculate stats for each polymorph group
+  // Calculate stats for each polymorph group (grouped by normalized stoichiometry)
+  const composition_groups = Map.groupBy(all_entries, (entry) =>
+    get_fractional_composition_key(entry.composition),
+  )
   for (const polymorphs of composition_groups.values()) {
     // Select one consistent metric for the entire composition group
     const group_metric = select_group_energy_metric(polymorphs)
@@ -425,7 +401,7 @@ export function compute_all_polymorph_stats(
     for (const entry of polymorphs) {
       if (!entry.entry_id) continue
 
-      const entry_energy = get_entry_energy_by_metric(entry, group_metric)
+      const entry_energy = METRIC_ENERGY[group_metric](entry)
       if (entry_energy === null) {
         stats_map.set(entry.entry_id, zero_stats)
         continue
@@ -435,7 +411,7 @@ export function compute_all_polymorph_stats(
       for (const other of polymorphs) {
         if (other === entry || other.entry_id === entry.entry_id) continue
 
-        const other_energy = get_entry_energy_by_metric(other, group_metric)
+        const other_energy = METRIC_ENERGY[group_metric](other)
         if (other_energy === null) continue
 
         total++
@@ -484,17 +460,14 @@ function entry_has_temp_data(entry: PhaseData): boolean {
   )
 }
 
-// Tightest tabulated temperatures bracketing `temperature` (below < T < above) with their
-// free energies, or null when either side is missing. Scans every entry: arrays may be unsorted.
-function find_bracket_temperatures(
+// Linearly interpolated G(T) between the tightest tabulated temperatures bracketing
+// `temperature` (below < T < above); null when T is outside the tabulated range or the bracket
+// is wider than `max_gap`. Scans every entry: the arrays may be unsorted.
+export function interpolate_energy_at_temperature(
   entry: PhaseData,
   temperature: number,
-): {
-  temp_below: number
-  temp_above: number
-  energy_below: number
-  energy_above: number
-} | null {
+  max_gap: number,
+): number | null {
   const temps = entry.temperatures ?? []
   const energies = entry.free_energies ?? []
   if (temps.length < 2) return null
@@ -510,19 +483,7 @@ function find_bracket_temperatures(
     }
   }
   if (!Number.isFinite(temp_below) || !Number.isFinite(temp_above)) return null
-  return { temp_below, temp_above, energy_below, energy_above }
-}
-
-// Linearly interpolated G(T) between the bracketing tabulated temperatures; null when T is
-// outside the tabulated range or the bracket is wider than `max_gap`
-export function interpolate_energy_at_temperature(
-  entry: PhaseData,
-  temperature: number,
-  max_gap: number,
-): number | null {
-  const bracket = find_bracket_temperatures(entry, temperature)
-  if (!bracket || bracket.temp_above - bracket.temp_below > max_gap) return null
-  const { temp_below, temp_above, energy_below, energy_above } = bracket
+  if (temp_above - temp_below > max_gap) return null
   const fraction = (temperature - temp_below) / (temp_above - temp_below)
   return energy_below + (energy_above - energy_below) * fraction
 }
@@ -557,7 +518,17 @@ export function filter_entries_at_temperature(
           : null
     if (energy_per_atom == null) return []
     const energy = energy_per_atom * count_atoms_in_composition(entry.composition)
-    return [{ ...entry, energy, energy_per_atom }]
+    // G(T) already carries the MP correction; keeping it would double-apply. Everything cached
+    // from the 0 K energy goes too, or the hull prefers it.
+    return [
+      drop_cached_hull_data({
+        ...entry,
+        energy,
+        energy_per_atom,
+        correction: undefined,
+        energy_adjustments: undefined,
+      }),
+    ]
   })
 }
 

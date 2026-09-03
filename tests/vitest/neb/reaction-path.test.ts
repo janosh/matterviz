@@ -469,11 +469,9 @@ describe(`path_spline on structures`, () => {
     expect(spline.coords.at(-1)).toBeCloseTo(coords.at(-1) as number, 12)
   })
 
-  // dE/ds is measured in energy per Å of arc length. Plotting against the bare bead number
-  // changes the x-axis, so the knot slopes have to change with it; leaving them alone
-  // inflates every Hermite tangent by the arc length of its segment.
-  // Deliberately uneven spacing — with unit spacing the chain-rule factor is 1 and the
-  // bug is invisible. Arc length equals x here, so ds/di is a central difference of x.
+  // dE/ds is measured in energy per Å of arc length, so a segment's Hermite tangent is that
+  // slope times the segment's ARC width — no matter what the plot's x axis is. Deliberately
+  // uneven spacing: with unit spacing every arc width is 1 and the bug is invisible.
   const arc_positions = [0, 0.15, 0.45, 0.69, 1.2]
   const total = 1.2
   const barrier_energies = arc_positions.map(
@@ -486,27 +484,25 @@ describe(`path_spline on structures`, () => {
     arc_positions.map((s_val) => -(Math.PI / total) * Math.sin((2 * Math.PI * s_val) / total)),
   )
 
-  test(`image_index knot slopes pick up the arc length per bead`, () => {
-    const arc_slopes = path_spline(rescale_path).knot_slopes
-    const index_slopes = path_spline(rescale_path, { mode: `image_index` }).knot_slopes
-    // Central differences of [0, 0.15, 0.45, 0.69, 1.2], one-sided at the ends
-    for (const [idx, spacing] of [0.15, 0.225, 0.27, 0.375, 0.51].entries()) {
-      expect(index_slopes[idx]).toBeCloseTo(arc_slopes[idx] * spacing, 12)
-    }
-  })
+  test(`the fitted saddle does not depend on which x-axis is plotted`, () => {
+    const arc = path_spline(rescale_path)
+    const index = path_spline(rescale_path, { mode: `image_index` })
+    // The knot slopes stay dE/ds under both modes, and the interpolant is bit-identical
+    expect(index.knot_slopes).toEqual(arc.knot_slopes)
+    expect(index.fitted_max.energy).toBe(arc.fitted_max.energy)
 
-  test(`the fitted saddle stays a physical energy under either x-axis`, () => {
-    const arc = path_spline(rescale_path).fitted_max.energy
-    const index = path_spline(rescale_path, { mode: `image_index` }).fitted_max.energy
-    // The same fit with the slopes left in eV/Å — what the bug produced
-    const ungraded = fit_path_spline([0, 1, 2, 3, 4], barrier_energies, {
-      slopes: path_spline(rescale_path).knot_slopes,
+    // Both earlier tangent constructions were wrong on the bead-number axis: a
+    // central-difference ds/di collapsed the two arc widths a knot sits between into their
+    // average, and raw eV/Å slopes ignored the arc entirely.
+    const spacings = [0.15, 0.225, 0.27, 0.375, 0.51]
+    const central_diff = fit_path_spline([0, 1, 2, 3, 4], barrier_energies, {
+      slopes: arc.knot_slopes.map((slope, idx) => slope * spacings[idx]),
     }).fitted_max.energy
-    // Reparametrising these 5 unevenly spaced knots really does move the interpolant:
-    // measured 0.0284, i.e. 2.8% of the barrier, so the bound sits at 5%. Leaving the
-    // slopes in eV/Å overshoots by 0.2824 — 10x the bound.
-    expect(Math.abs(index - arc)).toBeLessThan(0.05)
-    expect(ungraded - arc).toBeGreaterThan(0.2)
+    const ungraded = fit_path_spline([0, 1, 2, 3, 4], barrier_energies, {
+      slopes: arc.knot_slopes,
+    }).fitted_max.energy
+    expect(Math.abs(central_diff - arc.fitted_max.energy)).toBeGreaterThan(1e-3)
+    expect(ungraded - arc.fitted_max.energy).toBeGreaterThan(0.2)
   })
 
   // A cubic Hermite segment with exact end slopes reproduces any cubic exactly, so a cubic

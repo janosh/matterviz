@@ -192,6 +192,24 @@ describe(`Histogram`, () => {
   })
 
   const repeated = { values: [0, 1, 2], label: `Repeated` }
+  // Keyed on the visible subset, `single` mode painted every swatch the shared bar color
+  test(`legend swatches stay per-series in single mode`, async () => {
+    await mount_histogram({
+      series: [`A`, `B`, `C`].map((label) => ({ values: [1, 2, 3], label })),
+      mode: `single`,
+      selected_property: `B`,
+      bins: 3,
+      show_legend: true,
+      bar: { color: `rebeccapurple` },
+    })
+    const swatches = [...document.querySelectorAll(`.legend-item .legend-marker path`)].map(
+      (path) => path.getAttribute(`fill`),
+    )
+    expect(swatches).toHaveLength(3)
+    expect(new Set(swatches).size).toBe(3)
+    expect(swatches).not.toContain(`rebeccapurple`)
+  })
+
   test.each([
     [
       `skips hidden series`,
@@ -562,6 +580,29 @@ describe(`Histogram`, () => {
       edges: Float64Array.of(5, 5),
       counts: Uint32Array.of(2),
     })
+  })
+
+  test(`bin_values: weights must align, and non-finite ones drop like non-finite values`, () => {
+    const values = [1, 3, 5, 7, 9]
+    // a short array yields `undefined` weights, one of which NaNs the whole Float64Array
+    expect(() => bin_values(values, [0, 10], 5, `linear`, [1, 2])).toThrow(
+      `bin_values got 2 weights for 5 values`,
+    )
+    expect(counts_of(values, [0, 10], 5, `linear`, [1, 2, 3, 4, 5])).toEqual([1, 2, 3, 4, 5])
+    // NaN/Infinity weights are skipped, exactly as a NaN VALUE already is
+    expect(counts_of(values, [0, 10], 5, `linear`, [1, NaN, 3, Infinity, 5])).toEqual([
+      1, 0, 3, 0, 5,
+    ])
+    // the collapsed-domain path shares the policy
+    expect(Array.from(bin_values([5, 5], [5, 5], 4, `linear`, [2, NaN]).counts)).toEqual([2])
+  })
+
+  // n_bins IS the allocation (edges + counts + one <rect> each): 5e7 is a 400 MB Float64Array,
+  // and NaN slipped through `Math.max(1, ...)` to a zero-length edge array.
+  test.each([[5e7], [NaN], [Infinity]])(`bin_values rejects n_bins %p`, (n_bins) => {
+    expect(() => bin_values([1, 2], [0, 10], n_bins)).toThrow(
+      `bin_geometry: n_bins must be finite and at most 1000000, got ${n_bins}`,
+    )
   })
 
   test(`bin_values: log and arcsinh bins are uniform in transformed space`, () => {

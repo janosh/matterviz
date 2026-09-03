@@ -19,7 +19,7 @@
   import { ELEM_SYMBOLS } from '$lib/labels'
   import { array_extent, type Point2D, type Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
-  import { resolve_color_ramp } from '$lib/plot/core/color-ramp'
+  import { resolve_color_ramp, to_color_bar_scale } from '$lib/plot/core/color-ramp'
   import { colors } from '$lib/state.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -293,9 +293,7 @@
     const [data_min, data_max] = heat_nums.length > 0 ? array_extent(heat_nums) : [0, 1]
     return [min_lifted ?? data_min, max_override ?? data_max]
   })
-  let color_bar_scale = $derived(
-    typeof color_scale === `string` ? color_scale : { interpolator: color_scale },
-  )
+  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
   let ramp = $derived(resolve_color_ramp(color_bar_scale, heat_range, log ? `log` : `linear`))
 
   // whether a value maps to a heatmap color (false => use the missing fallback). 0 is a

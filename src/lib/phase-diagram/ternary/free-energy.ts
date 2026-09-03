@@ -15,6 +15,7 @@ import {
 } from '$lib/convex-hull/gas-thermodynamics'
 import { interpolate_energy_at_temperature } from '$lib/convex-hull/helpers'
 import {
+  compute_e_form_per_atom,
   find_lowest_energy_unary_refs,
   get_energy_per_atom as energy_per_atom,
 } from '$lib/convex-hull/thermodynamics'
@@ -292,9 +293,10 @@ export function build_free_energy_model(
       }
       const volume = get_volume_per_atom(entry) ?? NaN
       const reduced_mass = sisso_reduced_mass(fractions) ?? NaN
-      const dh_form =
-        entry.e_form_per_atom ??
-        energy_per_atom(entry) - weighted(0, (el) => energy_per_atom(unary_refs[el]))
+      // unary_refs covers every element (synthetic zero-energy refs were filled in above)
+      const dh_form = entry.e_form_per_atom ?? compute_e_form_per_atom(entry, unary_refs)
+      if (dh_form === null)
+        throw new Error(`No E_form for ${entry.entry_id ?? JSON.stringify(entry.composition)}`)
       return {
         source,
         t_range: SISSO_T_RANGE,

@@ -233,11 +233,30 @@ describe(`build_legend_data`, () => {
   test(`point stroke replaces transparent/none fill for symbol color`, () => {
     const series: DataSeries[] = [
       { x: [1], y: [1], point_style: { fill: `none`, stroke: `purple` } },
-      { x: [2], y: [2], point_style: [{ fill: `rgba(0, 0, 0, 0.5)`, stroke: `teal` }] },
+      { x: [2], y: [2], point_style: [{ fill: `rgba(0, 0, 0, 0)`, stroke: `teal` }] },
+      // alpha, not the `rgba(` prefix, decides: a visible fill is kept over the stroke
+      { x: [3], y: [3], point_style: { fill: `rgba(255, 0, 0, 0.5)`, stroke: `teal` } },
     ]
     const items = build_legend_data(series, [], color_scale)
-    expect(items[0].display_style.symbol_color).toBe(`purple`)
-    expect(items[1].display_style.symbol_color).toBe(`teal`) // rgba( prefix counts as transparent
+    expect(items.map((item) => item.display_style.symbol_color)).toEqual([
+      `purple`,
+      `teal`,
+      `rgba(255, 0, 0, 0.5)`,
+    ])
+  })
+
+  test(`a null series holds its index but contributes no legend row`, () => {
+    const series = [
+      { x: [1], y: [1], label: `A` },
+      null,
+      { x: [3], y: [3], label: `B` },
+    ] as unknown as DataSeries[]
+    const items = build_legend_data(series, [], color_scale)
+    // no phantom `Series 2` row, and B keeps index 2 so toggling it hits the right series
+    expect(items.map((item) => [item.label, item.series_idx])).toEqual([
+      [`A`, 0],
+      [`B`, 2],
+    ])
   })
 })
 

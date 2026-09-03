@@ -1,8 +1,9 @@
 import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { ColorSchemeName } from '$lib/constants'
+import { evict_oldest } from '$lib/labels'
 import { clamp } from '$lib/math'
-import { get_system_mode, nearest_declared } from '$lib/theme'
+import { get_system_mode, nearest_declared, observe_theme_attributes } from '$lib/theme'
 import { clamp01 } from '$lib/utils'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
@@ -197,7 +198,9 @@ const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
 // APCA lightness contrast |Lc| (https://github.com/Myndex/SAPC-APCA, 0.0.98G). The WCAG 2
 // ratio (L+0.05)/(L'+0.05) flips black→white text at luminance 0.18, so mid-tones like the
 // steelblue and red of PLOT_COLORS got black text that reads worse than white; APCA's polarity-
-// dependent exponents put the flip near 0.32, matching how the pairs actually look
+// dependent exponents put the flip near 0.32, matching how the pairs actually look. Fed WCAG
+// luminance rather than APCA's own 2.4-power form: the black/white pick differs only on
+// near-ties, and only an exposed Lc value would justify the second luminance path.
 const apca_contrast = (text_luminance: number, bg_luminance: number): number => {
   // black-level soft clamp so near-black colors don't blow up the power curves; the spec's
   // exponent is 1.414, i.e. √2 to three decimals (the difference moves the clamp by < 1e-5)
@@ -302,7 +305,7 @@ export const contrast_color_memo = (
   } = {},
 ): ((background: string | null | undefined) => string | null) => {
   const { pick = pick_contrast_color } = opts
-  const memo = new Map<string, string>()
+  const memo = new Map<string, string | null>()
   let memo_backdrop: string | undefined
   let memo_alpha: number | undefined
   return (background) => {
@@ -313,18 +316,18 @@ export const contrast_color_memo = (
       memo_backdrop = backdrop
       memo_alpha = alpha
     }
-    if (!is_concrete_color(background)) return null
+    // Memo before parse: is_concrete_color parses, so testing it first would cost a hit that
+    // parse. Non-concrete strings memoize to null so they too parse only once.
+    if (background == null) return null
     let contrast = memo.get(background)
     if (contrast === undefined) {
-      contrast = pick({
-        background: alpha === undefined ? background : add_alpha(background, alpha),
-        backdrop,
-      })
-      // Map iterates in insertion order, so the first key is the oldest entry
-      if (memo.size >= CONTRAST_MEMO_LIMIT) {
-        const oldest = memo.keys().next().value
-        if (oldest !== undefined) memo.delete(oldest)
-      }
+      contrast = is_concrete_color(background)
+        ? pick({
+            background: alpha === undefined ? background : add_alpha(background, alpha),
+            backdrop,
+          })
+        : null
+      evict_oldest(memo, CONTRAST_MEMO_LIMIT)
       memo.set(background, contrast)
     }
     return contrast
@@ -351,18 +354,10 @@ export function watch_dark_mode(
   element: Element | undefined = globalThis.document?.documentElement,
 ): () => void {
   if (!element) return () => {} // No-op in SSR
-  const notify = () => on_change(is_dark_mode(element))
-  const observer = new MutationObserver(notify)
-  const options = { attributes: true, attributeFilter: [`data-theme`, `style`, `class`] }
-  observer.observe(document.documentElement, options)
   const root = element.getRootNode()
-  if (root instanceof ShadowRoot) observer.observe(root.host, options)
-  const media_query = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
-  media_query?.addEventListener(`change`, notify)
-  return () => {
-    observer.disconnect()
-    media_query?.removeEventListener(`change`, notify)
-  }
+  const nodes: Node[] = [document.documentElement]
+  if (root instanceof ShadowRoot) nodes.push(root.host)
+  return observe_theme_attributes(nodes, () => on_change(is_dark_mode(element)))
 }
 
 // Convert a CSS color string to hex format for use with <input type="color">.

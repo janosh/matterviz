@@ -24,6 +24,8 @@ import {
   is_hdf5_group,
   read_dataset,
   scale_matrix,
+  squeeze_leading_axis,
+  to_finite_number,
   to_number_array,
   to_scalar_number,
   to_string_array,
@@ -45,6 +47,7 @@ export class VaspoutElectronicOnlyError extends Error {
   }
 }
 
+const FORMAT = `vaspout.h5`
 const FINAL_ION_TYPES = `results/positions/ion_types`
 const FINAL_ION_COUNTS = `results/positions/number_ion_types`
 const FINAL_LATTICE = `results/positions/lattice_vectors`
@@ -70,16 +73,6 @@ export const is_vaspout_h5_file = (h5_file: h5wasm.File): boolean =>
     is_hdf5_group(h5_file.get(name)),
   ).length >= 2
 
-// Final-structure datasets may carry a leading singleton step axis
-// ([1, 3, 3] lattices, [1, n_atoms, 3] positions) depending on VASP version.
-const squeeze_leading_axis = (data: unknown): unknown =>
-  Array.isArray(data) &&
-  data.length === 1 &&
-  Array.isArray(data[0]) &&
-  Array.isArray((data[0] as unknown[])[0])
-    ? data[0]
-    : data
-
 // VASP writes several energy kinds per step; energies_tags names the columns.
 // Prefer the free energy (TOTEN), then energy(sigma->0), then column 0.
 const pick_energy_column = (tags: string[] | null): { idx: number; tag: string | null } => {
@@ -102,9 +95,6 @@ interface ScfIonicStep {
   charge_rms: (number | null)[]
 }
 
-const finite_or_null = (value: unknown): number | null =>
-  typeof value === `number` && Number.isFinite(value) ? value : null
-
 // OSZICAR rows are [total_scf_rows, n_cols] with oszicar_label naming columns
 // (N, E, dE, d eps, ncg, rms, rms(c)). The N counter resets to 1 at each new
 // ionic step, which is how rows group into ionic steps (same as ferrox).
@@ -122,16 +112,16 @@ const read_oszicar_history = (h5_file: h5wasm.File): ScfIonicStep[] | null => {
   let previous_scf_counter = Infinity
   for (const row of rows) {
     const scf_counter = row[n_col]
-    const energy = finite_or_null(row[energy_col])
+    const energy = to_finite_number(row[energy_col])
     if (energy === null || !Number.isFinite(scf_counter)) return null
     if (scf_counter <= previous_scf_counter || !current) {
       current = { energies: [], energy_deltas: [], rms: [], charge_rms: [] }
       ionic_steps.push(current)
     }
     current.energies.push(energy)
-    current.energy_deltas.push(delta_col >= 0 ? finite_or_null(row[delta_col]) : null)
-    current.rms.push(rms_col >= 0 ? finite_or_null(row[rms_col]) : null)
-    current.charge_rms.push(charge_rms_col >= 0 ? finite_or_null(row[charge_rms_col]) : null)
+    current.energy_deltas.push(delta_col >= 0 ? to_finite_number(row[delta_col]) : null)
+    current.rms.push(rms_col >= 0 ? to_finite_number(row[rms_col]) : null)
+    current.charge_rms.push(charge_rms_col >= 0 ? to_finite_number(row[charge_rms_col]) : null)
     previous_scf_counter = scf_counter
   }
   return ionic_steps.length > 0 ? ionic_steps : null
@@ -225,9 +215,11 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
   const scale = to_scalar_number(read_dataset(h5_file, FINAL_SCALE)) ?? 1
   const traj_scale = to_scalar_number(read_dataset(h5_file, TRAJ_SCALE)) ?? scale
 
-  const traj_positions = read_dataset(h5_file, TRAJ_POSITIONS) as number[][][] | null
-  const traj_lattices = read_dataset(h5_file, TRAJ_LATTICE) as number[][][] | null
-  const traj_forces = read_dataset(h5_file, TRAJ_FORCES) as number[][][] | null
+  // Checked against the whole-dataset budget: the only reads here big enough to hang the tab
+  const read_bounded = (path: string) => read_dataset(h5_file, path, FORMAT)
+  const traj_positions = read_bounded(TRAJ_POSITIONS) as number[][][] | null
+  const traj_lattices = read_bounded(TRAJ_LATTICE) as number[][][] | null
+  const traj_forces = read_bounded(TRAJ_FORCES) as number[][][] | null
   const energies = read_dataset(h5_file, ENERGY_VALUES) as number[][] | null
   const energy_tags = to_string_array(read_dataset(h5_file, ENERGY_LABELS))
   const { idx: energy_col, tag: energy_tag } = pick_energy_column(energy_tags)
@@ -255,7 +247,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     const frac_to_cart = create_frac_to_cart(lattice)
     const positions = frac_positions.map((frac) => frac_to_cart(frac as Vec3))
     const metadata: Record<string, unknown> = { ...scf_frame_metadata(scf) }
-    const energy = finite_or_null(raw_energy)
+    const energy = to_finite_number(raw_energy)
     if (energy !== null) metadata.energy = energy
     if (Array.isArray(forces)) metadata.forces = forces
     return create_trajectory_frame(
@@ -302,10 +294,10 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
   // Static (NSW=0) runs have no intermediate/ion_dynamics group at all; fall
   // back to the final structure so the file still opens as a 1-frame view.
   if (frames.length === 0) {
-    const final_lattice_data = squeeze_leading_axis(read_dataset(h5_file, FINAL_LATTICE))
-    const final_positions_data = squeeze_leading_axis(
-      read_dataset(h5_file, FINAL_POSITIONS),
-    ) as number[][] | null
+    const final_lattice_data = squeeze_leading_axis(read_bounded(FINAL_LATTICE))
+    const final_positions_data = squeeze_leading_axis(read_bounded(FINAL_POSITIONS)) as
+      | number[][]
+      | null
     if (!final_lattice_data || !final_positions_data) {
       // Ion species exist but geometry is missing/torn — a bands/DOS-only
       // file can still render its electronic results.

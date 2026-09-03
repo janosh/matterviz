@@ -2,7 +2,7 @@
 // Birch–Murnaghan (3rd order), Murnaghan and Vinet forms, and a least-squares fit of their four
 // parameters (E0, V0, B0, B0') by Levenberg–Marquardt seeded from a parabola through the data.
 // Energies in eV, volumes in A^3, so B0 comes out in eV/A^3 (× EV_PER_A3_TO_GPA for GPa).
-import { dot, solve_linear_system } from '$lib/math'
+import { array_max, array_min, dot, solve_linear_system } from '$lib/math'
 
 export const EOS_KINDS = [`birch_murnaghan`, `murnaghan`, `vinet`] as const
 export type EosKind = (typeof EOS_KINDS)[number]
@@ -197,6 +197,9 @@ export function fit_eos(
     const normal = jacobian.map((col_a) => jacobian.map((col_b) => dot(col_a, col_b)))
     const rhs = jacobian.map((col) => -dot(col, res))
 
+    // Restart the ladder each outer iteration, as textbook LM does: a carried-over damping of
+    // 1e11 froze every later step at ~1e-11 of Gauss-Newton and was read as convergence
+    damping = Math.min(damping, 1e-3)
     let moved = false
     while (damping < 1e12) {
       const damped = normal.map((row, idx) => row.with(idx, 1 + damping))
@@ -226,16 +229,26 @@ export function fit_eos(
       damping = Math.max(damping / 3, 1e-15)
       break
     }
-    converged = !moved // tiny step, or no downhill direction left
+    // tiny step, or no downhill direction left; with the reset above, an exhausted ladder
+    // means |Jᵀr| really is stationary
+    converged = !moved
   }
 
-  const { v0, b0 } = params
+  const { v0, b0, b0_prime } = params
   if (!Object.values(params).every(Number.isFinite) || v0 <= 0 || b0 <= 0) {
     throw new Error(`EOS fit (${kind}) diverged: ${JSON.stringify(params)}`)
   }
   if (!converged) {
     throw new Error(
       `EOS fit (${kind}) did not converge in ${MAX_ITERATIONS} iterations: ${JSON.stringify(params)}`,
+    )
+  }
+  // V0 outside the scanned volumes is an extrapolation the data cannot support and B0' <= 1
+  // sits on the 1/(B0' - 1)^2 pole of the Murnaghan and Vinet forms
+  const [v_min, v_max] = [array_min(volumes), array_max(volumes)]
+  if (v0 < v_min || v0 > v_max || b0_prime <= 1) {
+    throw new Error(
+      `EOS fit (${kind}) is unphysical: V0 = ${v0} A^3 must lie inside the scanned range [${v_min}, ${v_max}] A^3 and B0' = ${b0_prime} must exceed 1`,
     )
   }
   return { kind, ...params, rmse: Math.sqrt(current_cost / volumes.length) }

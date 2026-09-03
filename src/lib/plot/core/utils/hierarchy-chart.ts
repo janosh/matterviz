@@ -217,30 +217,30 @@ export function compute_metric_colors<Metadata>(
 
 const MUTED_OPACITY = 0.12
 
-// Legend muting + hover dimming per node, indexed by node_idx. The hovered node
-// + its ancestors/descendants stay fully opaque, other nodes dim to 0.3; muted
-// categories dim hardest. Pre-order indexing makes the ancestor/descendant
-// tests O(1): a subtree is the contiguous index range [node_idx, subtree_end].
-// Zoom-independent: recomputed only when hover/mute state changes, so during
-// zoom tweens (where geometry re-evaluates per frame) this is an array lookup.
+// Legend muting + hover dimming for one node. The hovered node + its ancestors/descendants stay
+// fully opaque, other nodes dim to 0.3; muted categories dim hardest. Pre-order indexing makes
+// the ancestor/descendant tests O(1): a subtree is the contiguous range [node_idx, subtree_end].
+// An accessor, not an array: only on-screen nodes are read, so an array allocated the whole
+// hierarchy on every hover move.
 export function compute_node_dim<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   muted_ids: ReadonlySet<string | number>,
   hovered_idx: number | null,
-): { opacity: number; label_opacity: number | undefined }[] {
+): (idx: number) => { opacity: number; label_opacity: number | undefined } {
   const hov = hovered_idx != null ? arcs[hovered_idx] : null
   const active = (arc: PositionedArc<Metadata>): boolean =>
     !hov ||
     (arc.node_idx >= hov.node_idx && arc.node_idx <= hov.subtree_end) ||
     (hov.node_idx >= arc.node_idx && hov.node_idx <= arc.subtree_end)
-  return arcs.map((arc) => {
+  return (idx) => {
+    const arc = arcs[idx]
     const muted = arc.path.length > 0 && muted_ids.has(arc.path[0])
     return {
       opacity: muted ? MUTED_OPACITY : active(arc) ? 1 : 0.3,
       // labels dim only when muted, not when hover-inactive (undefined omits the attr)
       label_opacity: muted ? MUTED_OPACITY : undefined,
     }
-  })
+  }
 }
 
 // Toggle one depth-1 category's muted state (legend click)

@@ -123,6 +123,19 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   for (const spy of dispose_spies) expect(spy).toHaveBeenCalledTimes(1)
 })
 
+// lattice_point_group_matrices memoized into a module-level SvelteMap inside the `symmetry_ops`
+// $derived, which Svelte 5 rejects. Must stay the only tiled mount here: a warm cache hides it.
+test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
+  const component = mount(FermiSurfaceScene, {
+    target: document.body,
+    props: { fermi_data, tile_bz: true, show_bz: false, show_vectors: false, gizmo: false },
+  })
+  teardown = () => void unmount(component)
+  flushSync()
+  // cubic (identity) k_lattice: 48 Oh operations × 2 renderable surfaces × (back, front) pass
+  expect(mesh_materials()).toHaveLength(48 * 2 * 2)
+})
+
 // A drag or wheel zoom used to keep raycasting the sheets on every pointermove, and the tooltip
 // popping in and out under the cursor flickered over the surface
 test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, () => {

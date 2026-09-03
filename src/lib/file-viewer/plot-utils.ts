@@ -183,27 +183,30 @@ function filter_finite(
   return { axes: out, color_values, size_values }
 }
 
+const build_point_axes = (
+  columns: Map<string, ColumnInfo>,
+  mapping: AxisMapping,
+  axis_keys: (`x` | `y` | `z`)[],
+) => {
+  const cols = axis_keys.map((key) => get_col(columns, mapping[key]))
+  if (!cols.every((col) => col !== undefined)) return null
+  return filter_finite(
+    cols.map((col) => to_numbers(col.values)),
+    optional_numbers(get_col(columns, mapping.color)),
+    optional_numbers(get_col(columns, mapping.size)),
+  )
+}
+
 export function build_scatter_series(
   columns: Map<string, ColumnInfo>,
   mapping: AxisMapping,
 ): DataSeries {
-  const x_col = get_col(columns, mapping.x)
-  const y_col = get_col(columns, mapping.y)
-  if (!x_col || !y_col) return { x: [], y: [] }
-
-  const {
-    axes: [x, y],
-    color_values,
-    size_values,
-  } = filter_finite(
-    [to_numbers(x_col.values), to_numbers(y_col.values)],
-    optional_numbers(get_col(columns, mapping.color)),
-    optional_numbers(get_col(columns, mapping.size)),
-  )
-
+  const built = build_point_axes(columns, mapping, [`x`, `y`])
+  if (!built) return { x: [], y: [] }
+  const { axes, color_values, size_values } = built
   return {
-    x,
-    y,
+    x: axes[0],
+    y: axes[1],
     markers: `points`,
     color_values,
     size_values,
@@ -215,21 +218,13 @@ export function build_scatter3d_series(
   columns: Map<string, ColumnInfo>,
   mapping: AxisMapping,
 ): DataSeries3D {
-  const x_col = get_col(columns, mapping.x)
-  const y_col = get_col(columns, mapping.y)
-  const z_col = get_col(columns, mapping.z)
-  if (!x_col || !y_col || !z_col) return { x: [], y: [], z: [] }
-
+  const built = build_point_axes(columns, mapping, [`x`, `y`, `z`])
+  if (!built) return { x: [], y: [], z: [] }
   const {
     axes: [x, y, z],
     color_values,
     size_values,
-  } = filter_finite(
-    [to_numbers(x_col.values), to_numbers(y_col.values), to_numbers(z_col.values)],
-    optional_numbers(get_col(columns, mapping.color)),
-    optional_numbers(get_col(columns, mapping.size)),
-  )
-
+  } = built
   return { x, y, z, markers: `points`, color_values, size_values }
 }
 

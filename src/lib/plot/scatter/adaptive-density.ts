@@ -119,7 +119,7 @@ const in_bounds = (value: number, min: number, max: number): boolean =>
   Number.isFinite(value) && value >= min && value <= max
 
 const value_bin = (value: number, min: number, span: number, bins: number): number =>
-  Math.min(bins - 1, Math.max(0, Math.floor(((value - min) / span) * bins)))
+  clamp(Math.floor(((value - min) / span) * bins), 0, bins - 1)
 
 const padded_extent = (
   min: number,
@@ -180,6 +180,11 @@ export function series_extents(
   }
 }
 
+// Both bin counts are plot_px / density.bin_px, so a sub-pixel bin_px squares up: 0.1 on a
+// 1200x800 plot is 12000 x 8000 = 9.6e7 cells, 1152 MB. 2e7 still admits an 8K plot at 2.8 px.
+const MAX_DENSITY_CELLS = 2e7
+const BYTES_PER_CELL = 12 // Uint32Array counts + two Int32Array first-hit indices
+
 export function bin_points(
   series: readonly DensePointSeries[],
   x_range: Vec2,
@@ -189,7 +194,14 @@ export function bin_points(
   transforms?: BinTransforms,
 ): DensityBinResult {
   series.forEach(assert_series_lengths)
-  const counts = new Uint32Array(x_bins * y_bins)
+  const cells = x_bins * y_bins
+  if (!Number.isFinite(cells) || cells > MAX_DENSITY_CELLS) {
+    const mb = Math.round((cells * BYTES_PER_CELL) / 1e6)
+    throw new Error(
+      `bin_points: a ${x_bins} x ${y_bins} grid is ${cells} cells (${mb} MB), past the ${MAX_DENSITY_CELLS} cap. Raise density.bin_px or shrink the plot.`,
+    )
+  }
+  const counts = new Uint32Array(cells)
   const first_point_idxs = new Int32Array(counts.length)
   const first_series_idxs = new Int32Array(counts.length)
   const [x_min, x_max] = range_bounds(x_range)

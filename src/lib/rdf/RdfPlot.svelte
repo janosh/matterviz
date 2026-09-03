@@ -4,6 +4,7 @@
   import { StatusMessage } from '$lib/feedback'
   import type { FileLoadCallback } from '$lib/io'
   import { as_text, file_drop_zone } from '$lib/io'
+  import { plural } from '$lib/labels'
   import { array_max } from '$lib/math'
   import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
@@ -99,11 +100,14 @@
     return [...(patterns ? [patterns].flat() : []), ...computed]
   })
 
-  // array_max, not Math.max(...): a fine RDF grid across many pairs exceeds the argument limit
-  const all_r = $derived(entries.flatMap((entry) => entry.pattern.r))
-  const all_g = $derived(entries.flatMap((entry) => entry.pattern.g_r))
-  const max_r = $derived(Math.max(array_max(all_r), 0))
-  const max_g = $derived(Math.max(1.2, array_max(all_g)))
+  // array_max per curve, not Math.max(...all): a fine RDF grid over many pairs blows the
+  // argument limit, and flattening every curve into one array to reduce it is wasted copies
+  const max_r = $derived(
+    entries.reduce((max, { pattern }) => Math.max(max, array_max(pattern.r)), 0),
+  )
+  const max_g = $derived(
+    entries.reduce((max, { pattern }) => Math.max(max, array_max(pattern.g_r)), 1.2),
+  )
   const series = $derived<DataSeries[]>(
     entries.map((entry, idx) => ({
       x: entry.pattern.r,
@@ -128,7 +132,7 @@
 
 {#if allow_file_drop && drag_dropped.length > 0}
   <div class="dropped-info">
-    {drag_dropped.length} structure{drag_dropped.length > 1 ? `s` : ``} loaded
+    {plural(drag_dropped.length, `structure`)} loaded
     <button onclick={() => (drag_dropped = [])}>Clear</button>
   </div>
 {/if}

@@ -17,7 +17,9 @@ import { get_unsupported_format_message } from '$lib/trajectory/parse'
 import { ase_calculator_data, read_ase_header } from '$lib/trajectory/parse/ase'
 import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
+  HDF5_MAX_WHOLE_DATASET_BYTES,
   hdf5_frames_per_slice,
+  read_dataset,
   read_numeric_1d,
   read_numeric_hyperslab,
   read_numeric_samples,
@@ -269,6 +271,8 @@ describe(`XDATCAR`, () => {
     [`non-element symbol`, xdatcar(`Xx\n1`, two_frames), `Invalid element symbol in XDATCAR: Xx`],
     [`fewer counts than symbols`, xdatcar(`H O Na\n1 1`, two_frames), `3 element symbol(s) but 2 atom count(s)`],
     [`zero count`, xdatcar(`H\n0`, two_frames), `invalid atom counts`],
+    // 113 bytes that allocated 1551 MB over 3410 ms, then died with a bare RangeError
+    [`an ion count larger than the file`, xdatcar(`Si O\n200000000 1`, two_frames), `ion counts declare 200000001 ions (Si 200000000, O 1) but only 11 XDATCAR lines remain`],
     // Corruption inside the file names the frame and line instead of dropping the frame
     [`non-numeric coordinate`, xdatcar(`H\n2`, [config(1, `0.5 0.5 0.5`, `0.1 xx 0.1`), config(2, `0.5 0.5 0.5`, `0.1 0.1 0.1`)]),
       `XDATCAR frame 1 line 10 is not a fractional coordinate triple: "0.1 xx 0.1"`],
@@ -590,6 +594,9 @@ describe(`OUTCAR`, () => {
     })
     // VASP prints kB, the labels declare GPa
     expect(frames[0].metadata?.pressure).toBeCloseTo(-0.2, 12)
+    // Without these an OUTCAR run showed pressure alone, and stress_frobenius had no producer
+    expect(frames[0].metadata?.stress_max).toBeCloseTo(0.3, 12)
+    expect(frames[0].metadata?.stress_frobenius).toBeCloseTo(Math.sqrt(0.1428), 12)
     expect(frames[0].metadata?.stress).toEqual(
       [
         [-0.1, 0.01, 0.03],
@@ -655,8 +662,11 @@ describe(`OUTCAR`, () => {
     [`no ions per type line`, ` vasp.6.4.2\n VRHFIN =Si:\n${ionic_step(1, 5, rows_1, -20)}`, `no "ions per type" line`],
     [`more species than counts`, header({ types: [[`Si`, 28, 1], [`O`, 16, 1], [`H`, 1, 1]] }).replace(/ions per type =.*/, `ions per type = 1 2`), `lists 3 species (Si, O, H) but 2 ion counts`],
     [`an unknown element`, [header({ types: [[`Xx`, 28, 1], [`O`, 16, 2]] }), ionic_step(1, 5, rows_1, -20)].join(`\n`), `Unknown element symbol in OUTCAR: "Xx"`],
+    // Same header-declared allocation as the XDATCAR row above, from a 107-byte file
+    [`an ion count larger than the file`, header({ types: [[`Si`, 28, 200000000]] }), `ion counts declare 200000000 ions (Si 200000000) but only 14 OUTCAR lines remain`],
     [`no position table`, header(), `contains no POSITION / TOTAL-FORCE table`],
     [`a corrupt position row`, [header(), ionic_step(1, 5, [[0, 0, 0, 0, 0, 0], [1, 1, `x`, 0, 0, 0], [2, 2, 2, 0, 0, 0]] as unknown as number[][], -20), ionic_step(2, 5, rows_2, -20)].join(`\n`), `is not a position + force sextet`],
+    [`a truncated lattice block`, [header(), ionic_step(1, 5, rows_1, -20), ionic_step(2, 5.2, rows_2, -20.5).replace(lattice_block(5.2), lattice_block(5.2).split(`\n`).slice(0, 3).join(`\n`))].join(`\n`), `"direct lattice vectors" is not followed by three rows of finite numbers`],
   ])(`rejects an OUTCAR with %s`, async (_label, content, error) => {
     await expect(open(content, `OUTCAR`)).rejects.toThrow(error)
   })
@@ -1174,6 +1184,21 @@ describe(`XYZ`, () => {
     expect({ energy, pressure, temperature }).toEqual(expected)
   })
 
+  // Writer casing must not split one key into two half-populated series: `Free_Energy=` in
+  // one frame and `free_energy=` in the next are the same plot line
+  it(`folds extXYZ metadata keys to lower case across frames`, async () => {
+    const content = [
+      xyz_frame([`H 0 0 0`], `Free_Energy=-1.5 MyFlag=T`),
+      xyz_frame([`H 0 0 0`], `free_energy=-2.5 myflag=F`),
+    ].join(`\n`)
+    const frames = await frames_of(await open(content, `casing.extxyz`))
+    expect(frames.map((frame) => frame.metadata?.free_energy)).toEqual([-1.5, -2.5])
+    expect(frames.map((frame) => frame.metadata?.myflag)).toEqual([true, false])
+    // no original-case duplicate survives to split one series into two
+    const keys = frames.flatMap((frame) => Object.keys(frame.metadata ?? {}))
+    expect(keys).toEqual(keys.map((key) => key.toLowerCase()))
+  })
+
   it(`preserves quoted extXYZ dipoles and polarizability tensors`, async () => {
     const frame = xyz_frame(
       [`H 0 0 0`],
@@ -1499,7 +1524,7 @@ describe(`unsupported format messages`, () => {
     [`test.dcd`, ``, `DCD`],
     [`test.lammpstrj.bz2`, ``, `BZ2 compression not supported`],
     [`trajectory.xyz.xz`, ``, `XZ compression not supported`],
-    [`data.json.zip`, ``, `ZIP compression not supported`],
+    [`data.json.zip`, ``, null], // single-file ZIPs inflate in the browser
     [`unknown.bin`, String.fromCharCode(0, 1, 2, 3), `Binary format not supported`],
     [`md.dump`, `ITEM: TIMESTEP\n0\n`, null],
     [`test.xyz`, ``, null],
@@ -1549,10 +1574,32 @@ describe(`HDF5 slice budgets`, () => {
       `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
     )
     expect(slice).not.toHaveBeenCalled()
+    // an undecoded 2-byte [n_atoms] masses used to yield 2*n_atoms plausible byte values
+    const undecoded = { shape: [4], slice: () => new Uint8Array(8) } as unknown as H5Dataset
+    expect(() => read_numeric_hyperslab(undecoded, `/masses`, [[]])).toThrow(
+      `HDF5 dataset /masses hyperslab returned 8 values, expected 4`,
+    )
     // and an overlong step axis is rejected before a hyperslab read could truncate it
     expect(() =>
       read_numeric_1d({ shape: [3] } as H5Dataset, `/steps/positions`, 2, `TorchSim HDF5`),
     ).toThrow(`TorchSim HDF5 dataset /steps/positions has shape [3], expected [2]`)
+  })
+
+  // A whole-dataset read has no frame axis to slice along, so it gets its own, much larger
+  // budget: the 8 MiB hyperslab cap was sized for one frame and rejected ordinary AIMD runs
+  it.each([
+    [[2000, 200, 3], true], // 9.6 MB — a 200-atom, 2000-step vaspout.h5
+    [[200_000, 2000, 3], false], // 9.6 GB — no browser tab survives this
+  ])(`bounds a whole-dataset read of shape %j at 128 MiB (allowed: %s)`, (shape, allowed) => {
+    const to_array = vi.fn(() => [])
+    const dataset = { shape, to_array, slice: vi.fn() } as unknown as H5Dataset
+    const h5_file = { get: () => dataset } as unknown as H5File
+    const read = () => read_dataset(h5_file, `/ion_dynamics/position_ions`, `vaspout.h5`)
+    if (allowed) expect(read()).toEqual([])
+    else {
+      expect(read).toThrow(`above the ${HDF5_MAX_WHOLE_DATASET_BYTES}-byte application limit`)
+      expect(to_array).not.toHaveBeenCalled() // the guard runs before the read
+    }
   })
 
   it(`copies large axis chunks and sampled hyperslabs without spreading into the call stack`, () => {

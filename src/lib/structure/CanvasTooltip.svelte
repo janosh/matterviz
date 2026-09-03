@@ -19,15 +19,44 @@
   const { dom } = useThrelte()
   const portal = dom.parentElement
   if (!portal) throw new Error(`CanvasTooltip requires a mounted Canvas host`)
+
+  // pull the far edge in, never past a flush near edge: a tooltip too wide for its clip keeps
+  // its start rather than its tail
+  const slide_in = (near: number, far: number): number => Math.max(near, Math.min(0, far))
+
+  // Placed at a projected 3D point, the tooltip grows right and down knowing nothing of what
+  // clips it, and a scroll container (a gallery track is one) never shows what leaves its box.
+  let tip: HTMLElement | undefined = $state()
+  $effect(() => {
+    void position // the anchor moved, so any previous slide is stale
+    const node = tip
+    if (!node) return
+    // threlte's HTML writes the anchor transform from a render-stage task, so measuring on
+    // this flush still reads the previous site's screen box
+    const frame = requestAnimationFrame(() => {
+      node.style.translate = ``
+      // the shorthand serializes to `visible` only when both axes are, which is the test
+      let scroller = node.parentElement
+      while (scroller && getComputedStyle(scroller).overflow === `visible`) {
+        scroller = scroller.parentElement
+      }
+      if (!scroller) return
+      const [box, clip] = [node.getBoundingClientRect(), scroller.getBoundingClientRect()]
+      const shift_x = slide_in(clip.left - box.left, clip.right - box.right)
+      const shift_y = slide_in(clip.top - box.top, clip.bottom - box.bottom)
+      if (shift_x || shift_y) node.style.translate = `${shift_x}px ${shift_y}px`
+    })
+    return () => cancelAnimationFrame(frame)
+  })
 </script>
 
 <!-- Constant zIndexRange: threlte's default [16777271, 0] maps camera distance
   over [near, far], which extrapolates to a NEGATIVE z-index for sites beyond
-  camera.far (common in zoomed-out carousel cards) — painting the tooltip
+  camera.far (common in zoomed-out gallery cards) — painting the tooltip
   behind the canvas. A degenerate range pins z-index at 1000, always above the
   canvas and sibling overlays. -->
 <HTML {portal} {position} pointerEvents="none" zIndexRange={[1000, 1000]}>
-  <div {...rest} role="tooltip">
+  <div bind:this={tip} {...rest} role="tooltip">
     {@render children({ position })}
   </div>
 </HTML>

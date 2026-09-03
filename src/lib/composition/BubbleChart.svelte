@@ -47,7 +47,9 @@
       .size([inner_size, inner_size])
       .padding(padding * 0.1)(root)
       .leaves()
-    const max_radius = Math.max(...leaves.map((leaf) => leaf.r))
+    // `|| 1` floors the divisor: size 0 or padding >= size / 2 packs every bubble at r = 0,
+    // and 0 / 0 put a NaN font_scale into `font-size: NaNpx`
+    const max_radius = Math.max(...leaves.map((leaf) => leaf.r)) || 1
     return leaves.map((leaf) => {
       const segment = leaf.data as ChartSegment
       const label = segment.element + segment_suffix(segment, label_opts)

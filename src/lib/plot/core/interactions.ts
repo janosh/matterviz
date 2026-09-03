@@ -33,6 +33,13 @@ export const is_activation_key = (evt: KeyboardEvent): boolean =>
 export const focus_left = (event: FocusEvent, root: Element | null | undefined): boolean =>
   !root || !(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)
 
+// Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark is not.
+export const create_focus_exit =
+  (root: () => Element | null | undefined, on_exit: () => void) =>
+  (event: FocusEvent): void => {
+    if (focus_left(event, root())) on_exit()
+  }
+
 // Resolve a delegated event to the integer value of the nearest ancestor's data
 // attribute (e.g. data-sunburst-node-idx), scoped to `root` so targets outside the
 // component don't leak in. Returns null when the event didn't hit an indexed element.

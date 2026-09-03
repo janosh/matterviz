@@ -402,6 +402,21 @@ describe(`grid/lattice conventions`, () => {
     expect(upsample_grid(grid, 1)).toBe(grid)
   })
 
+  // The cost is the upsampled point count (factor³ per band), not the factor: bounding only
+  // the factor let a 16³ grid at factor 40 allocate 601³ = 2.17e8 doubles (1.74 GB) from a
+  // 4 kB input. The last row is the shipped 31³ cu_fs.bxsf mesh at the UI max of 4x, which
+  // the guard must not clip.
+  const factor_40_error = /601×601×601 = 2\.17e\+8 points \(1\.74e\+3 MB per band\)/
+  test.each([
+    [`factor 40 on 16³`, [16, 16, 16] as Vec3, 40, factor_40_error],
+    [`a NaN factor`, [8, 8, 8] as Vec3, Number.NaN, /factor NaN/],
+    [`31³ at 4x`, [31, 31, 31] as Vec3, 4, null],
+  ])(`upsample_grid bounds %s by point count`, (_label, dims, factor, expected) => {
+    const grid = make_band_grid(dims, (ix) => ix)
+    if (expected) expect(() => upsample_grid(grid, factor)).toThrow(expected)
+    else expect(upsample_grid(grid, factor).dims).toEqual([121, 121, 121])
+  })
+
   test(`single-point endpoint-inclusive axis upsamples without NaN/crash`, () => {
     // [1][n][n] grid: px = 0, so unguarded resampling computes 0/0 = NaN and the
     // tricubic wrap (v % 0) indexes garbage. A single x-plane has no cubes
@@ -540,6 +555,15 @@ describe(`detect_irreducible_bz`, () => {
     idx % 2 ? vert : [-vert[0], vert[1], vert[2]],
   )
 
+  // A small electron pocket around Gamma in a large supercell spans the full zone, yet every
+  // coordinate is inside 0.005 1/A, so the absolute 0.01 1/A tolerance this used to carry read
+  // it as a wedge and the surface got tiled 48 times.
+  const pocket: Vec3[] = positive_verts.map((_v, idx) => [idx % 2 ? 5e-3 : -5e-3, 4e-3, 3e-3])
+  // that same supercell's genuine wedge, with round-off pushing one vertex past zero
+  const small_wedge: Vec3[] = positive_verts.map((vert, idx) =>
+    idx ? (vert.map((val) => val * 0.1) as Vec3) : [-1e-9, 0, 0.05],
+  )
+
   test.each([
     {
       label: `vertices in positive octant only`,
@@ -547,6 +571,8 @@ describe(`detect_irreducible_bz`, () => {
       expected: true,
     },
     { label: `vertices spanning full BZ`, data: make_data(spanning_verts), expected: false },
+    { label: `a tiny full-zone pocket`, data: make_data(pocket), expected: false },
+    { label: `a small wedge dipping past zero`, data: make_data(small_wedge), expected: true },
     { label: `empty isosurfaces`, data: make_data(), expected: false },
     {
       // needs > 10 vertices to be considered valid irreducible data
@@ -638,6 +664,28 @@ describe(`lattice_point_group_matrices`, () => {
     expect(max_vertex_mismatch(ops, vertices)).toBeLessThan(1e-8)
     // Cached: the same lattice returns the same array
     expect(lattice_point_group_matrices(k_lattice)).toBe(ops)
+  })
+
+  // a hexagonal a = 3.21, c = 5.21 cell written to 4 decimals is off exact hexagonal by
+  // 7.2e-6 on the worst Gram entry, which the old fixed 1e-6 rejected: 24 ops fell to 8 and
+  // the wedge tiled a third of the zone with no visible symptom
+  test(`a hexagonal lattice written to 4 decimals keeps all 24 operations`, () => {
+    const rounded = math
+      .reciprocal_lattice(
+        [
+          [3.21, 0, 0],
+          [-1.605, (3.21 * Math.sqrt(3)) / 2, 0],
+          [0, 0, 5.21],
+        ],
+        { two_pi: true },
+      )
+      .map((row) => row.map((val) => Number(val.toFixed(4)))) as Matrix3x3
+    const ops = lattice_point_group_matrices(rounded)
+    expect(ops).toHaveLength(24)
+    expect(lattice_point_group_matrices(rounded, 1e-6)).toHaveLength(8)
+    // the accepted operations still tile the zone without visible seams
+    const { vertices } = compute_brillouin_zone(rounded)
+    expect(max_vertex_mismatch(ops, vertices)).toBeLessThan(1e-3)
   })
 
   // The cubic ops are exactly the 48 axis permutations × sign flips (Oh in Cartesian space),

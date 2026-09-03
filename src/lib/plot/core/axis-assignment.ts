@@ -1,5 +1,4 @@
 import type { ScaleType } from './types'
-import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
 type AxisSlot = `y1` | `y2`
 
@@ -156,7 +155,7 @@ export function group_axis_series<Series extends AxisAssignableSeries>(
   options: AxisGroupingOptions<Series> = {},
 ): AxisGroup<Series>[] {
   const { is_visible = default_is_visible, priority = () => 0 } = options
-  const groups = new SvelteMap<string, { series: Series[]; series_indices: number[] }>()
+  const groups = new Map<string, { series: Series[]; series_indices: number[] }>()
 
   series.forEach((series_data, series_idx) => {
     if (!is_visible(series_data, series_idx)) return
@@ -272,10 +271,10 @@ function label_for_axis<Series extends AxisAssignableSeries>(
   const axis_series = series_on_axis(series, axis, options)
   if (axis_series.length === 0) return fallback_label
 
-  const labels_by_unit = new SvelteMap<string, SvelteSet<string>>()
+  const labels_by_unit = new Map<string, Set<string>>()
   for (const series_data of axis_series) {
     const unit = series_data.unit?.trim() ?? ``
-    const labels = labels_by_unit.get(unit) ?? new SvelteSet<string>()
+    const labels = labels_by_unit.get(unit) ?? new Set<string>()
     labels.add(series_data.label ?? fallback_label)
     labels_by_unit.set(unit, labels)
   }

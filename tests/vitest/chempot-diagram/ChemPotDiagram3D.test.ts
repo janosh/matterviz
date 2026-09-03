@@ -4,7 +4,9 @@ import type { PhaseData } from '$lib/convex-hull/types'
 import type * as scene_module from '$lib/scene'
 import type * as threlte_core from '@threlte/core'
 import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometry.js'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { swizzle_to_render } from '$lib/chempot-diagram/compute'
+import type { Vec3 } from '$lib/math'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props, load_json } from '../setup'
@@ -35,6 +37,7 @@ vi.mock(`$lib/chempot-diagram/ChemPotScene3D.svelte`, async () => ({
 }))
 
 const entries = load_json<PhaseData[]>(`${import.meta.dirname}/pd_entries_test.json.gz`)
+const ytos_entries = load_json<PhaseData[]>(`${import.meta.dirname}/ytos_entries.json.gz`)
 let mounted: ReturnType<typeof mount> | undefined
 afterEach(() => {
   if (mounted) void unmount(mounted)
@@ -44,28 +47,34 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// Mount, silence the expected console noise and wait out the compute spinner. Returns a getter
+// for the Scene stub's live props (re-looked-up, since toggles re-render the node).
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- each call site names the Scene props shape it reads
+const mount_diagram = async <T>(
+  props: ComponentProps<typeof ChemPotDiagram3D>,
+): Promise<() => T> => {
+  vi.spyOn(console, `error`).mockImplementation(() => undefined)
+  mounted = mount(ChemPotDiagram3D, { target: document.body, props })
+  await tick()
+  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
+  return () => {
+    const node = threlte_stub.nodes.find(({ tag }) => tag === `Scene`)
+    if (!node) throw new Error(`scene stub not mounted`)
+    return node.props as T
+  }
+}
+
 // Overlay hulls are cached per formula: with k overlays drawn, toggling one more used to
 // rebuild all k + 1 overlay hulls plus the base occlusion hull (2, 3, 4 builds for the three
 // toggles below); now each toggle builds the new overlay's hull and the occlusion hull only
 test(`toggling a formula overlay builds only that domain's hull`, async () => {
-  vi.spyOn(console, `error`).mockImplementation(() => undefined)
-  mounted = mount(ChemPotDiagram3D, {
-    target: document.body,
-    props: {
-      entries,
-      config: { default_min_limit: -25, draw_formula_meshes: true, draw_formula_lines: true },
-    },
+  const scene = await mount_diagram<{
+    formula_meshes: { geometry: object; color: string }[]
+    formula_edges: { geometry: object }[]
+  }>({
+    entries,
+    config: { default_min_limit: -25, draw_formula_meshes: true, draw_formula_lines: true },
   })
-  await tick()
-  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
-  const scene = () => {
-    const node = threlte_stub.nodes.find(({ tag }) => tag === `Scene`)
-    if (!node) throw new Error(`scene stub not mounted`)
-    return node.props as {
-      formula_meshes: { geometry: object; color: string }[]
-      formula_edges: { geometry: object }[]
-    }
-  }
   expect(scene().formula_meshes).toHaveLength(0)
   document.querySelector<HTMLButtonElement>(`.chempot-formula-toggle`)?.click()
   flushSync()
@@ -119,23 +128,16 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
 // toggles must not recompute (or rebuild any hull); a half-typed number (`-`) is NaN and must
 // not reach the computation either.
 test(`display toggles and partial number input never recompute the diagram`, async () => {
-  vi.spyOn(console, `error`).mockImplementation(() => undefined)
-  mounted = mount(ChemPotDiagram3D, {
-    target: document.body,
-    props: { entries, config: { default_min_limit: -25 } },
+  const scene = await mount_diagram<{ domain_labels: unknown[] }>({
+    entries,
+    config: { default_min_limit: -25 },
   })
-  await tick()
-  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
   document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)?.click()
   flushSync()
   const pane_inputs = [...document.querySelectorAll<HTMLInputElement>(`.draggable-pane input`)]
   const by_label = (text: string) =>
     pane_inputs.find((input) => input.closest(`label`)?.textContent?.includes(text))
-  const scene_labels = () => {
-    const node = threlte_stub.nodes.find(({ tag }) => tag === `Scene`)
-    if (!node) throw new Error(`Scene node not rendered`)
-    return (node.props as { domain_labels: unknown[] }).domain_labels.length
-  }
+  const scene_labels = () => scene().domain_labels.length
   expect(scene_labels()).toBeGreaterThan(0)
   const before = convex_builds.count
   for (const label of [`Label stable`, `Meshes`, `Lines`]) {
@@ -159,23 +161,16 @@ test(`display toggles and partial number input never recompute the diagram`, asy
 // A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave): the
 // camera-start callback must drop an unpinned tooltip while a click-pinned one survives
 test(`camera start clears an unpinned domain tooltip but keeps a pinned one`, async () => {
-  vi.spyOn(console, `error`).mockImplementation(() => undefined)
   // plain object: the test only reads the bound value back, no reactivity needed
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
-  mounted = mount(ChemPotDiagram3D, {
-    target: document.body,
-    props: bind_props({ entries, config: { default_min_limit: -25 } }, bound),
-  })
-  await tick()
-  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
-  const node = threlte_stub.nodes.find(({ tag }) => tag === `Scene`)
-  if (!node) throw new Error(`scene stub not mounted`)
-  const scene = node.props as {
-    hover_meshes: { formula: string }[]
-    on_domain_hover: (mesh: unknown, event: unknown) => void
-    on_domain_press: (mesh: unknown, event: unknown) => void
-    on_camera_start: () => void
-  }
+  const scene = (
+    await mount_diagram<{
+      hover_meshes: { formula: string }[]
+      on_domain_hover: (mesh: unknown, event: unknown) => void
+      on_domain_press: (mesh: unknown, event: unknown) => void
+      on_camera_start: () => void
+    }>(bind_props({ entries, config: { default_min_limit: -25 } }, bound))
+  )()
   const [domain] = scene.hover_meshes
   const event = {
     nativeEvent: new PointerEvent(`pointerdown`),
@@ -195,4 +190,81 @@ test(`camera start clears an unpinned domain tooltip but keeps a pinned one`, as
   scene.on_camera_start()
   flushSync()
   expect(bound.hover_info?.formula).toBe(domain.formula)
+})
+
+// Each hull face lies on exactly one entry's hyperplane, so its owner is the domain whose
+// vertex set holds all three corners. Nearest-centroid labelled six domains owning no face.
+test(`hull faces are labelled by the domain that owns their vertices`, async () => {
+  const { render_domains, render_axis_scale, hull_geometry, domain_labels } = (
+    await mount_diagram<{
+      render_domains: { formula: string; points_3d: number[][] }[]
+      render_axis_scale: Vec3
+      hull_geometry: {
+        getAttribute(name: string): { count: number; array: ArrayLike<number> }
+      }
+      domain_labels: { formula: string }[]
+    }>({
+      entries: ytos_entries,
+      config: { elements: [`Y`, `Ti`, `O`], default_min_limit: -25 },
+    })
+  )()
+  const swiz = swizzle_to_render(render_axis_scale)
+  const render_pts = new Map(
+    render_domains.map(({ formula, points_3d }) => [
+      formula,
+      points_3d.map((pt) => swiz(pt[0], pt[1], pt[2])),
+    ]),
+  )
+  const pos = hull_geometry.getAttribute(`position`).array
+  const n_faces = pos.length / 9
+  expect(n_faces).toBeGreaterThan(10)
+
+  // formulas whose vertex set contains all three corners of at least one hull face
+  const owners = new Set<string>()
+  const possible = new Set<string>()
+  for (let face_idx = 0; face_idx < n_faces; face_idx++) {
+    const claimants = [...render_pts].filter(([, pts]) =>
+      [0, 3, 6].every((vert) =>
+        pts.some((pt) =>
+          pt.every((val, axis) => Math.abs(val - pos[face_idx * 9 + vert + axis]) < 1e-3),
+        ),
+      ),
+    )
+    if (claimants.length === 1) owners.add(claimants[0][0])
+    for (const [formula] of claimants) possible.add(formula)
+  }
+  expect(owners.size).toBeGreaterThan(5)
+  const labelled = new Set(domain_labels.map(({ formula }) => formula))
+  expect([...owners].filter((formula) => !labelled.has(formula))).toEqual([]) // all owners labelled
+  expect([...labelled].filter((formula) => !possible.has(formula))).toEqual([]) // no others
+})
+
+// The "Surface" quick-select used to raycast from each domain's anchor at a FrontSide mesh:
+// rays cast from inside a hull hit only culled back faces, so every domain scored zero hits and
+// the button was a second "select all". It now asks which domains own a face of the envelope.
+test(`the Surface quick-select picks the domains that own a hull face`, async () => {
+  const scene = await mount_diagram<{
+    formula_meshes: { geometry: object; color: string }[]
+    render_domains: { formula: string }[]
+  }>({
+    entries: ytos_entries,
+    config: { elements: [`Y`, `Ti`, `O`], default_min_limit: -25, draw_formula_meshes: true },
+  })
+  const n_domains = scene().render_domains.length
+  expect(n_domains).toBeGreaterThan(10)
+  document.querySelector<HTMLButtonElement>(`.chempot-formula-toggle`)?.click()
+  flushSync()
+  const surface_button = [
+    ...document.querySelectorAll<HTMLButtonElement>(`.overlay-actions button`),
+  ].find((btn) => btn.textContent?.trim() === `Surface`)
+  if (!surface_button) throw new Error(`Surface button not rendered`)
+  surface_button.click()
+  flushSync()
+
+  const selected = [
+    ...document.querySelectorAll<HTMLInputElement>(`.formula-list input`),
+  ].filter((box) => box.checked).length
+  expect(selected).toBeGreaterThan(0)
+  expect(selected).toBeLessThan(n_domains) // buried domains stay unselected
+  expect(scene().formula_meshes).toHaveLength(selected)
 })

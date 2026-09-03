@@ -32,6 +32,11 @@ interface TilePadding {
 // shared constant would let mutating one zero rect corrupt every other one
 const zero_rect = (): Rect => ({ x: 0, y: 0, width: 0, height: 0 })
 
+// Height of a branch's label header strip: d3 applies paddingTop after paddingOuter, so the
+// reserved strip is the larger of the two. Label fitting and clipping read it too.
+export const header_strip = (padding_top: number, padding_outer: number): number =>
+  Math.max(padding_top, padding_outer)
+
 // Squarify the subtree under arcs[root_idx] into pixel rects filling `size`.
 // Returns an array aligned with `arcs` by node_idx (nodes outside the subtree
 // get zero rects). Separate from tree-semantics so zooming re-tiles the new
@@ -80,7 +85,7 @@ export function tile_rects<Metadata>(
     // … with the top inset enlarged into the label header strip. paddingTop is
     // applied after paddingOuter, overriding its top component.
     .paddingTop((node) =>
-      node.depth > 0 && node.children ? Math.max(pad.padding_top, pad.padding_outer) : 0,
+      node.depth > 0 && node.children ? header_strip(pad.padding_top, pad.padding_outer) : 0,
     )(root)
 
   // Clamp to the tiling area: with value_mode 'total', children exceeding their

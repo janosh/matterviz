@@ -56,7 +56,7 @@
     let hi = max_ratio
     if (size > 0) {
       // a floor wider than the container itself means the first pane takes all of it
-      if (min_px !== undefined) lo = Math.min(1, Math.max(lo, min_px / size))
+      if (min_px !== undefined) lo = clamp(min_px / size, lo, 1)
       if (max_px !== undefined) hi = Math.min(hi, max_px / size)
       if (second_min_px !== undefined) hi = Math.min(hi, 1 - second_min_px / size)
       // A container too small for both pixel floors splits at the first pane's floor

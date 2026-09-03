@@ -575,7 +575,7 @@
     gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
   }
   .element-legend {
-    /* 9pt floor keeps chips legible in small embeds (carousel cards) where
+    /* 9pt floor keeps chips legible in small embeds (gallery cards) where
       the cqmin term collapses */
     font-size: var(--struct-legend-font, clamp(9pt, 2.5cqmin, 12pt));
   }

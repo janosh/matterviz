@@ -259,16 +259,23 @@ describe(`BoxPlot`, () => {
     expect(tick_texts[1].getAttribute(`fill`)).toBe(`#00ff00`)
   })
 
-  test(`hover shows a tooltip and fires on_box_hover`, async () => {
+  // In the default tukey mode the whiskers are not the series min/max once there are outliers
+  test(`hover shows a tooltip labelling the whisker ends and fires on_box_hover`, async () => {
     const on_box_hover = vi.fn()
-    const plot = await mount_sized_box_plot({ series: [basic], on_box_hover })
+    const series = [{ y: [1, 2, 3, 4, 5, 100], label: `Box A` }]
+    const plot = await mount_sized_box_plot({ series, on_box_hover })
     const hit = plot.querySelector<SVGGElement>(`g.box-series[role="button"]`)
     expect(hit).not.toBeNull()
     hit?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     expect(on_box_hover).toHaveBeenCalledOnce()
-    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
-    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toContain(`median`)
+    const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    expect(text).toContain(`median`)
+    expect(text).toContain(`whisker high: 5`)
+    expect(text).toContain(`whisker low: 1`)
+    expect(text).not.toContain(`max`)
+    expect(text).not.toContain(`min`)
+    expect(text).toContain(`outliers: 1`)
   })
 
   test(`click fires on_box_click with stats`, async () => {

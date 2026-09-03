@@ -51,7 +51,7 @@
   // At most one filter is active at a time: category and type filters are mutually exclusive
   let active_filter = $state<{ kind: `category` | `type`; value: string } | null>(null)
   const is_filter_active = (kind: `category` | `type`, value: string) =>
-    active_filter?.kind === kind && active_filter.value === value
+    effective_filter?.kind === kind && effective_filter.value === value
   const toggle_filter = (kind: `category` | `type`, value: string) => {
     active_filter = is_filter_active(kind, value) ? null : { kind, value }
   }
@@ -67,10 +67,10 @@
 
   let filtered_files = $derived(
     files.filter((file) => {
-      if (!active_filter) return true
+      if (!effective_filter) return true
       const file_value =
-        active_filter.kind === `category` ? get_category_id(file) : get_base_file_type(file)
-      return file_value === active_filter.value
+        effective_filter.kind === `category` ? get_category_id(file) : get_base_file_type(file)
+      return file_value === effective_filter.value
     }),
   )
   // A filter with a single option can't narrow anything, so it isn't offered
@@ -82,6 +82,13 @@
   let category_filters = $derived(
     show_category_filters ? filter_options(files.map(get_category_id)) : [],
   )
+  // A new `files` set can retire the active filter's value, leaving an empty picker whose chip
+  // is gone from the legend. Derived, not an effect, so no render sees the stale filter.
+  const effective_filter = $derived.by(() => {
+    if (!active_filter) return null
+    const offered = active_filter.kind === `category` ? category_filters : format_filters
+    return offered.includes(active_filter.value) ? active_filter : null
+  })
 
   const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
     const url = file.url || file.name
@@ -116,7 +123,7 @@
 {/snippet}
 
 <div bind:this={root} {...rest} class={[`file-picker`, rest.class]}>
-  {#if category_filters.length > 0 || format_filters.length > 0 || active_filter}
+  {#if category_filters.length > 0 || format_filters.length > 0 || effective_filter}
     <div class="legend" role="group" aria-label="Filter files">
       {#each category_filters as category (category)}
         {@render filter_button(`category`, category)}
@@ -127,7 +134,7 @@
       {#each format_filters as format (format)}
         {@render filter_button(`type`, format, format.toUpperCase())}
       {/each}
-      {#if active_filter}
+      {#if effective_filter}
         <button
           type="button"
           class="clear-filter"

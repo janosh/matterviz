@@ -43,6 +43,35 @@ export const get_majority_element = (site: Site | undefined): ElementSymbol | nu
   return species.reduce((max, spec) => (spec.occu > max.occu ? spec : max)).element
 }
 
+// Intern distinct majority-element symbols as small integer ids so hot loops index flat arrays
+// and element data resolves once per element, not per site (a 10k-atom MD frame has a handful
+// of elements and this runs every frame). `unknown_label` stands in for unresolvable.
+export function intern_site_elements(
+  sites: readonly Site[],
+  unknown_label = ``,
+): {
+  symbols: string[]
+  site_elem_ids: Int32Array
+  elem_data: (ChemicalElement | undefined)[]
+} {
+  const symbols: string[] = []
+  const elem_data: (ChemicalElement | undefined)[] = []
+  const elem_id_of = new Map<string, number>()
+  const site_elem_ids = new Int32Array(sites.length)
+  for (let idx = 0; idx < sites.length; idx++) {
+    const symbol = get_majority_element(sites[idx]) ?? unknown_label
+    let elem_id = elem_id_of.get(symbol)
+    if (elem_id === undefined) {
+      elem_id = symbols.length
+      elem_id_of.set(symbol, elem_id)
+      symbols.push(symbol)
+      elem_data.push(element_by_symbol.get(symbol as ElementSymbol))
+    }
+    site_elem_ids[idx] = elem_id
+  }
+  return { symbols, site_elem_ids, elem_data }
+}
+
 // Large low-valent A-site cations whose coordination polyhedra (CN 8-12) tend to
 // obscure the structural framework. VESTA-style figures draw the framework
 // (e.g. TiO6 in BaTiO3, FeO6/PO4 in LiFePO4) and leave these as plain spheres.
@@ -80,6 +109,8 @@ export function has_framework_potential(elements: Iterable<string>): boolean {
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
 
+// the ternaries never yield -0, so a reversed shift keys as its forward twin (`-0` stringifies
+// differently from `0`)
 const negate_cell_shift = (cell_shift: Vec3): Vec3 => [
   cell_shift[0] === 0 ? 0 : -cell_shift[0],
   cell_shift[1] === 0 ? 0 : -cell_shift[1],
@@ -1247,34 +1278,22 @@ export function electroneg_ratio(
   // Per-site properties in flat typed arrays - the candidate loop below visits every
   // contact within reach in large supercells, so object property chains and Map lookups
   // are replaced with indexed array reads.
-  const elem_ids = new Int32Array(n_sites)
+  const { symbols, site_elem_ids: elem_ids, elem_data } = intern_site_elements(sites)
   const orig_idxs = new Int32Array(n_sites)
-  const elem_id_lookup = new Map<string, number>()
-  // Element data resolved once per distinct element, not once per site: an MD frame of
-  // 10k atoms has a handful of elements and this runs on every frame
-  const elem_data: (ChemicalElement | undefined)[] = []
   for (let idx = 0; idx < n_sites; idx++) {
-    const symbol = get_majority_element(sites[idx]) ?? ``
-    let elem_id = elem_id_lookup.get(symbol)
-    if (elem_id === undefined) {
-      elem_id = elem_id_lookup.size
-      elem_id_lookup.set(symbol, elem_id)
-      elem_data[elem_id] = element_by_symbol.get(symbol as ElementSymbol)
-    }
-    elem_ids[idx] = elem_id
     // Valid orig indices always reference a site in this structure; fall back to
     // the site's own index on out-of-range orig_*_idx properties so the typed
     // `closest` array below stays bounded by n_sites
     const orig_idx = get_orig_site_idx(sites[idx], idx)
     orig_idxs[idx] = orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
   }
-  const n_elem = elem_id_lookup.size
+  const n_elem = symbols.length
   const elem_en = new Float64Array(n_elem)
   const elem_metal = new Uint8Array(n_elem)
   const elem_nonmetal = new Uint8Array(n_elem)
   const elem_anion_former = new Uint8Array(n_elem) // nonmetal or metalloid
   const elem_spectator = new Uint8Array(n_elem)
-  for (const [symbol, elem_id] of elem_id_lookup) {
+  for (const [elem_id, symbol] of symbols.entries()) {
     const data = elem_data[elem_id]
     elem_en[elem_id] = data?.electronegativity ?? 2.0
     elem_metal[elem_id] = data?.metal ? 1 : 0

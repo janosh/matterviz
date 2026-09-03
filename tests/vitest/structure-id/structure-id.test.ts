@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { create_lattice_converters, min_image_displacement } from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { Crystal, Pbc } from '$lib/structure'
 import { neighbor_query } from '$lib/structure/bonding'
 import {
   apply_structure_id,
@@ -274,6 +274,52 @@ describe(`centrosymmetry`, () => {
     expect(result.n_csp_undefined).toBe(0)
     expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
   })
+
+  // N is a property of the lattice (12 close-packed, 8 bcc), so a fixed default cannot suit
+  // both: the close-packed 12 lands a DEFECT-FREE bcc crystal at 0.75*a^2 (6.18 A^2 at
+  // a = 2.87 A). hcp is genuinely NOT centrosymmetric, so only its N counts.
+  test.each<[string, () => Crystal, number | undefined, number, boolean | null]>([
+    [`fcc`, () => make_fcc([3, 3, 3]), undefined, 12, true],
+    [`bcc`, () => make_bcc([3, 3, 3]), undefined, 8, true],
+    [`hcp`, () => make_hcp([3, 3, 3]), undefined, 12, null],
+    [`bcc, explicit N wins`, () => make_bcc([3, 3, 3]), 12, 12, false],
+  ])(
+    `CSP neighbor count on %s`,
+    (_label, build, n_csp_neighbors, expected_n, csp_vanishes) => {
+      const result = calc_structure_id(build(), { n_csp_neighbors })
+      if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
+      expect(result.n_csp_neighbors).toBe(expected_n)
+      const max_csp = max_finite(result.centrosymmetry)
+      if (csp_vanishes === true) expect(max_csp).toBeLessThan(PERFECT_CSP_TOLERANCE)
+      else if (csp_vanishes === false) expect(max_csp).toBeGreaterThan(1)
+    },
+  )
+
+  // `other` atoms must not vote: a 4-layer bcc Fe slab is half surface, so counting them in
+  // the denominator ties the strict majority and falls back to 12, putting 0.75*a^2 back on
+  // the slab's crystalline interior. hcp is the converse, its classified atoms close-packed.
+  test.each([
+    [`bcc`, () => make_bcc([4, 4, 4]), CNA_TYPES.bcc, 8],
+    [`hcp`, () => make_hcp([4, 4, 4]), CNA_TYPES.hcp, 12],
+  ])(
+    `a half-surface %s slab derives its own neighbor count`,
+    (_label, build, code, want_n) => {
+      const bulk = build()
+      const { n_csp_neighbors, centrosymmetry, cna_types } = calc_structure_id({
+        ...bulk,
+        lattice: { ...bulk.lattice, pbc: [true, true, false] as Pbc },
+      })
+      if (!centrosymmetry || !cna_types) throw new Error(`analysis missing`)
+      expect(n_csp_neighbors).toBe(want_n)
+      const interior = [...centrosymmetry].filter((_csp, idx) => cna_types[idx] === code)
+      expect(interior.length).toBeGreaterThan(0)
+      if (code !== CNA_TYPES.bcc) return
+      // the bcc slab is the reachable tie: its surface outnumbers its crystalline interior,
+      // which must still read as centrosymmetric
+      expect(2 * interior.length).toBeLessThanOrEqual(cna_types.length)
+      expect(Math.max(...interior)).toBeLessThan(PERFECT_CSP_TOLERANCE)
+    },
+  )
 
   test(`displacing a perfect lattice raises CSP well clear of round-off`, () => {
     const crystal = with_random_displacements(make_fcc([3, 3, 3]), 0.35, 7)

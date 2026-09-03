@@ -291,16 +291,18 @@
         normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
         normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
       ] as Vec2}
+      <!-- spread first, so the corner placement and default bar size below append to the
+      caller's styles instead of being dropped by it -->
       <ColorBar
         tick_labels={4}
         tick_side="primary"
+        {...color_bar}
         scale={{ fn: color_scale_fn, domain: color_domain }}
         scale_type={normalized_color_scale.type}
         range={color_domain}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ??
           ``}"
-        bar_style="width: 200px; height: 16px; {color_bar?.style ?? ``}"
-        {...color_bar}
+        bar_style="width: 200px; height: 16px; {color_bar?.bar_style ?? ``}"
       />
     {/if}
 

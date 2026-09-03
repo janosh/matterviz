@@ -10,7 +10,10 @@
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import type { HierarchyChartProps } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import {
+    HierarchyChartState,
+    hierarchy_layout_options,
+  } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
   import {
     measure_treemap_label_block,
@@ -24,7 +27,13 @@
     TreemapLabelFormatter,
     TreemapLabelPlacement,
   } from '$lib/plot/treemap/labels'
-  import { align_tiling, lerp_rects, tile_rects, type Tiling } from '$lib/plot/treemap/treemap'
+  import type { Tiling } from '$lib/plot/treemap/treemap'
+  import {
+    align_tiling,
+    header_strip,
+    lerp_rects,
+    tile_rects,
+  } from '$lib/plot/treemap/treemap'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -130,20 +139,17 @@
     uid,
     default_padding: DEFAULT_PADDING,
     data: () => data,
-    layout_options: () => ({
-      value_mode,
-      sort,
-      level_lighten,
-      min_fraction,
-      max_children,
-      // Plain prop, never derived from the layout it feeds - the arcs depend on it,
-      // so reading it back off them would close a cycle. Read only while bucketing
-      // measures against the view root: otherwise a zoom would rebuild the layout
-      // (and re-measure every label) for an identical result
-      zoom_root_id: min_fraction > 0 || max_children > 0 ? zoom_root_id : null,
-      expanded_parents: chart_state.expanded_parents,
-      other_label,
-    }),
+    layout_options: () =>
+      hierarchy_layout_options({
+        value_mode,
+        sort,
+        level_lighten,
+        min_fraction,
+        max_children,
+        zoom_root_id,
+        expanded_parents: chart_state.expanded_parents,
+        other_label,
+      }),
     label_text: () => label_text,
     value_format: () => value_format,
     width: () => width,
@@ -204,6 +210,7 @@
       { padding_inner, padding_top, padding_outer },
     ),
   )
+  let header_height = $derived(header_strip(padding_top, padding_outer))
   // The rects travel with the arcs they were computed from: a zoom can change the arc
   // set (bucketing measures its threshold against the zoom root), and the two tilings
   // then have to be matched by id rather than by position.
@@ -273,16 +280,9 @@
     return idxs
   })
 
-  // Roving tabindex: exactly one cell is in the tab order (the last-focused one,
-  // else the first visible cell); arrow keys move focus between cells. Every
-  // visible cell is focusable (not just clickable ones) so keyboard users can
-  // reach tooltips, and so zooming into a branch of plain leaves doesn't strand
-  // focus outside the chart. role="button" stays limited to clickable cells.
-  let roving_idx = $derived(
-    chart_state.focused_idx != null && idx_visible(chart_state.focused_idx)
-      ? chart_state.focused_idx
-      : (visible_idxs[0] ?? null),
-  )
+  // Every visible cell is focusable, not just the clickable ones, so arrow keys reach
+  // tooltips and a zoom into plain leaves can't strand focus outside the chart.
+  let roving_idx = $derived(chart_state.roving_idx(visible_idxs[0] ?? null))
 
   // Rect center in container (pad-offset) pixel space, for tooltip + legend placement
   const rect_center = (rect: Rect): { x: number; y: number } => ({
@@ -343,7 +343,7 @@
         header,
         fit: label_fit,
         min_font_size: label_min_font_size,
-        padding_top,
+        header_height,
         margin: LABEL_MARGIN,
       })
       if (placement) return placement
@@ -357,7 +357,7 @@
   const label_clip_id = (idx: number) => `treemap-label-clip-${uid}-${idx}`
   const label_clip_rect = (rect: Rect, header: boolean): Rect => {
     const inset = 1
-    const clip_height = header ? Math.min(rect.height, padding_top) : rect.height
+    const clip_height = header ? Math.min(rect.height, header_height) : rect.height
     return {
       x: rect.x + inset,
       y: rect.y + inset,
@@ -372,11 +372,13 @@
   // The chrome floats over the cells, so its icons take their color from whatever is
   // painted under the top-right corner rather than from the page. Cells are drawn
   // parents-first, so the last visible one containing the point is the one on top.
+  // Probes the settled tiling, like legend_points: the tweened rects re-ran this ~24x per zoom
+  // and flickered the icons through every cell sweeping the corner.
   let chrome_color = $derived.by(() => {
     const probe = { x: chart_state.inner_width - 1, y: 1 }
     let label_fill: string | undefined
     for (const idx of visible_idxs) {
-      const rect = rects[idx]
+      const rect = target_rects[idx]
       if (
         rect &&
         probe.x >= rect.x &&
@@ -463,7 +465,7 @@
               {@render cell_content({ arc: chart_state.arcs[idx], rect })}
             {:else}
               {@const info = chart_state.node_infos[idx]}
-              {@const opacity = chart_state.node_dim[idx].opacity}
+              {@const opacity = chart_state.node_dim(idx).opacity}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <rect
                 x={rect.x}
@@ -492,7 +494,7 @@
                 <!-- Keep the clip on this untransformed wrapper. Applying it to
               rotated text rotates the clipping region and crops the wrong area. -->
                 {@const { label_fill, label_halo } = chart_state.node_infos[idx]}
-                {@const label_opacity = chart_state.node_dim[idx].label_opacity}
+                {@const label_opacity = chart_state.node_dim(idx).label_opacity}
                 {#snippet label_lines(halo: boolean)}
                   {#each lbl.lines as line}
                     <tspan

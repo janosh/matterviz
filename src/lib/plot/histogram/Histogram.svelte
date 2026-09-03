@@ -35,7 +35,8 @@
     legend_mode_to_prop,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
+  import type { ObstacleSeries } from '$lib/plot/core/decorations'
+  import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
     accumulate_extent,
@@ -67,7 +68,11 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '$lib/math'
-  import { focus_left, is_activation_key, vec2_equal } from '$lib/plot/core/interactions'
+  import {
+    create_focus_exit,
+    is_activation_key,
+    vec2_equal,
+  } from '$lib/plot/core/interactions'
   import {
     create_roving_focus,
     ROVING_ATTR,
@@ -192,16 +197,13 @@
       ? { label: `Count`, format: `d` }
       : { label: normalize === `density` ? `Density` : `Probability` },
   )
-  const final_y_axis = $derived<AxisConfig>({
+  const value_axis = (axis: AxisConfig): AxisConfig => ({
     ...axis_defaults,
     ...value_axis_defaults,
-    ...y_axis,
+    ...axis,
   })
-  const final_y2_axis = $derived<AxisConfig>({
-    ...axis_defaults,
-    ...value_axis_defaults,
-    ...y2_axis,
-  })
+  const final_y_axis = $derived(value_axis(y_axis))
+  const final_y2_axis = $derived(value_axis(y2_axis))
   const resolved_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
 
@@ -266,36 +268,27 @@
   const count_ranges = (binned: readonly BinnedSeries[]) => {
     const on_axis = (axis: `y1` | `y2`) =>
       binned.filter((hist) => (hist.y_axis ?? `y1`) === axis)
-    return {
-      y: compute_count_range(on_axis(`y1`), {
-        scale_type: final_y_axis.scale_type ?? `linear`,
-        y_limit: log_safe_range(final_y_axis),
+    const range_for = (axis: AxisConfig, key: `y1` | `y2`) =>
+      compute_count_range(on_axis(key), {
+        scale_type: axis.scale_type ?? `linear`,
+        y_limit: log_safe_range(axis),
         range_padding,
-      }),
-      y2: compute_count_range(on_axis(`y2`), {
-        scale_type: final_y2_axis.scale_type ?? `linear`,
-        y_limit: log_safe_range(final_y2_axis),
-        range_padding,
-      }),
-    }
+      })
+    return { y: range_for(final_y_axis, `y1`), y2: range_for(final_y2_axis, `y2`) }
   }
 
   const auto_x_ranges = $derived.by(() => {
-    const x = nice_range_from_extent(
-      axis_data.x1_extent,
-      final_x_axis.range ?? [null, null],
-      final_x_axis.scale_type ?? `linear`,
-      range_padding,
-    )
-    const x2 = has_x2_points
-      ? nice_range_from_extent(
-          axis_data.x2_extent,
-          final_x2_axis.range ?? [null, null],
-          final_x2_axis.scale_type ?? `linear`,
-          range_padding,
-        )
-      : ([0, 1] as Vec2)
-    return { x, x2 }
+    const nice_for = (extent: typeof axis_data.x1_extent, axis: AxisConfig) =>
+      nice_range_from_extent(
+        extent,
+        axis.range ?? [null, null],
+        axis.scale_type ?? `linear`,
+        range_padding,
+      )
+    return {
+      x: nice_for(axis_data.x1_extent, final_x_axis),
+      x2: has_x2_points ? nice_for(axis_data.x2_extent, final_x2_axis) : ([0, 1] as Vec2),
+    }
   })
   // Bins over the data-driven x domains; they also fix the count ranges so a pan/zoom along x
   // doesn't rescale y.
@@ -352,40 +345,37 @@
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each filled bar is modeled as a
   // vertical segment (top -> baseline) so the legend can't hide inside a tall bar. Built from
   // histogram_bins (pad-independent) + ranges so the crowding decision can't see its own reservation.
-  const obstacles_norm = $derived.by(() => {
-    const { width, height, effective_base_pad: base_pad, ranges } = frame
-    if (!width || !height || histogram_bins.length === 0) return []
-    const base_w = width - base_pad.l - base_pad.r
-    const base_h = height - base_pad.t - base_pad.b
-    if (base_w <= 0 || base_h <= 0) return []
-    const bars: { points: { x: number; y: number }[]; draws_line: boolean }[] = []
-    for (const hist of histogram_bins) {
-      const [rx0, rx1] = hist.x_axis === `x2` ? ranges.current.x2 : ranges.current.x
-      const [ry0, ry1] = hist.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
-      const x_span = rx1 - rx0
-      const y_span = ry1 - ry0
-      // signed spans: the x_norm/top/baseline math below is direction-correct, and rejecting a
-      // reversed range as degenerate emptied the obstacle field, so auto-placed decorations
-      // landed on the bars. Matches BoxPlot.svelte's guard.
-      if (x_span === 0 || y_span === 0) continue
-      for (const { x0, x1, value } of hist.bins) {
-        if (value <= 0) continue
-        const x_norm = ((x0 + x1) / 2 - rx0) / x_span
-        const top = 1 - (value - ry0) / y_span
-        const baseline = 1 + ry0 / y_span // normalized y of value=0 (bar foot)
-        const seg = clip_bar(true, x_norm, top, baseline)
-        if (seg) bars.push(seg)
+  const obstacles_norm = $derived.by(() =>
+    with_obstacle_frame(frame, histogram_bins.length > 0, ({ base_w, base_h }) => {
+      const { ranges } = frame
+      const bars: ObstacleSeries[] = []
+      for (const hist of histogram_bins) {
+        const [rx0, rx1] = hist.x_axis === `x2` ? ranges.current.x2 : ranges.current.x
+        const [ry0, ry1] = hist.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
+        const x_span = rx1 - rx0
+        const y_span = ry1 - ry0
+        // signed spans: the x_norm/top/baseline math below is direction-correct, and rejecting a
+        // reversed range as degenerate emptied the obstacle field, so auto-placed decorations
+        // landed on the bars. Matches BoxPlot.svelte's guard.
+        if (x_span === 0 || y_span === 0) continue
+        for (const { x0, x1, value } of hist.bins) {
+          if (value <= 0) continue
+          const x_norm = ((x0 + x1) / 2 - rx0) / x_span
+          const top = 1 - (value - ry0) / y_span
+          const baseline = 1 + ry0 / y_span // normalized y of value=0 (bar foot)
+          const seg = clip_bar(true, x_norm, top, baseline)
+          if (seg) bars.push(seg)
+        }
       }
-    }
-    return build_obstacles_norm(bars, base_w, base_h)
-  })
+      return bars
+    }),
+  )
 
-  // a lone series uses the configured bar color; with multiple, each gets its own
-  // (`color`, then the cycled palette)
+  // A lone series uses the configured bar color; with several, each gets its own (`color`, then
+  // the cycled palette). Keyed on `series`, not the visible subset the legend outlives, which
+  // painted every swatch `bar.color` once all but one series were hidden.
   const series_color = (series_data: HistogramSeries, series_idx: number): string =>
-    selected_series.length === 1
-      ? resolved_bar.color
-      : (series_data.color ?? plot_color(series_idx))
+    series.length === 1 ? resolved_bar.color : (series_data.color ?? plot_color(series_idx))
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data, series_idx }) => ({
       x: series_data.values,
@@ -471,11 +461,7 @@
     on_bar_hover?.(null)
   }
 
-  // Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark
-  // is not. Defined once rather than inline, so every mark shares one handler.
-  const clear_hover_on_exit = (event: FocusEvent) => {
-    if (focus_left(event, frame.svg_element)) clear_hover()
-  }
+  const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
   const handle_bar_click =
     (hist: BinnedSeries, bin: HistogramBin) => (event: MouseEvent | KeyboardEvent) => {
       if (event instanceof KeyboardEvent) {
@@ -485,7 +471,6 @@
       on_bar_click?.({ ...bar_data(hist, bin), event })
     }
 
-  // State accessors for shared axis change handler
   const axis_state: AxisChangeState<HistogramSeries> = {
     axes: {
       x: { get: () => final_x_axis, set: (config) => (x_axis = config) },
@@ -497,7 +482,6 @@
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
-  // Shared handler + one-shot auto-load bound to this component's state
   const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
     data_loader,
     on_axis_change,

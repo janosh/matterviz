@@ -19,7 +19,10 @@
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { ellipsize_to_width, node_display_name } from '$lib/plot/core/utils/hierarchy-chart'
   import type { HierarchyChartProps } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import {
+    HierarchyChartState,
+    hierarchy_layout_options,
+  } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import type { ScreenArc as ScreenArcOf, ViewWindow } from '$lib/plot/sunburst/render'
   import {
     arc_label_slots,
@@ -128,20 +131,17 @@
     // double-click on them must not compound a full reset on top of it
     dblclick_ignore: `.center-circle, .center-label`,
     data: () => data,
-    layout_options: () => ({
-      value_mode,
-      sort,
-      level_lighten,
-      min_fraction,
-      max_children,
-      // Plain prop, never derived from the layout it feeds - the arcs depend on it,
-      // so reading it back off them would close a cycle. Read only while bucketing
-      // measures against the view root: otherwise a zoom would rebuild the layout
-      // (and re-measure every label) for an identical result
-      zoom_root_id: min_fraction > 0 || max_children > 0 ? zoom_root_id : null,
-      expanded_parents: chart_state.expanded_parents,
-      other_label,
-    }),
+    layout_options: () =>
+      hierarchy_layout_options({
+        value_mode,
+        sort,
+        level_lighten,
+        min_fraction,
+        max_children,
+        zoom_root_id,
+        expanded_parents: chart_state.expanded_parents,
+        other_label,
+      }),
     label_text: () => label_text,
     value_format: () => value_format,
     width: () => width,
@@ -249,17 +249,9 @@
   // a large hierarchy this keeps per-frame template work proportional to what's on screen
   let visible_arcs = $derived(projection.visible)
 
-  // Roving tabindex: exactly one arc is in the tab order (the last-focused one, else
-  // the first visible arc); arrow keys move focus between arcs. Without this, tabbing
-  // through a large chart would visit every single arc. Every visible arc is focusable
-  // and labelled, not just the clickable ones, so keyboard users can reach leaf
-  // tooltips and arrow keys don't dead-end on a leaf (as Treemap already does).
-  // role="button" stays limited to clickable arcs.
-  let roving_idx = $derived(
-    chart_state.focused_idx != null && screen_arcs[chart_state.focused_idx]?.visible
-      ? chart_state.focused_idx
-      : (visible_arcs[0]?.arc.node_idx ?? null),
-  )
+  // Every visible arc is focusable and labelled, not just the clickable ones, so arrow keys
+  // reach leaf tooltips instead of dead-ending. role="button" stays limited to clickable arcs.
+  let roving_idx = $derived(chart_state.roving_idx(visible_arcs[0]?.arc.node_idx ?? null))
 
   let arc_gen = $derived(
     d3_arc<ScreenArc>()
@@ -335,7 +327,14 @@
     let font_scale = 1
     let slots: { room: number; transform: string }[] = []
     for (font_scale of LABEL_FONT_SCALES) {
-      slots = arc_label_slots(screen, shape, label_rotation, radius, font_scale)
+      slots = arc_label_slots(
+        screen,
+        shape,
+        label_rotation,
+        radius,
+        font_scale,
+        chart_state.label_font.line_height,
+      )
       for (const { text, width: text_w } of variants) {
         const fit = slots.find(({ room }) => text_w * font_scale <= room)
         if (fit) return { transform: fit.transform, text, font_scale }
@@ -420,7 +419,7 @@
               {@render arc_content(screen)}
             {:else}
               {@const info = chart_state.node_infos[screen.arc.node_idx]}
-              {@const opacity = chart_state.node_dim[screen.arc.node_idx].opacity}
+              {@const opacity = chart_state.node_dim(screen.arc.node_idx).opacity}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <path
                 d={screen_path(screen)}
@@ -448,8 +447,7 @@
               {@const lbl = label_attrs(screen)}
               {#if lbl}
                 {@const info = chart_state.node_infos[screen.arc.node_idx]}
-                {@const label_opacity =
-                  chart_state.node_dim[screen.arc.node_idx].label_opacity}
+                {@const dim = chart_state.node_dim(screen.arc.node_idx)}
                 {@const font_style =
                   lbl.font_scale === 1 ? `` : `; font-size: ${lbl.font_scale}em`}
                 {#if info.label_halo}
@@ -460,7 +458,7 @@
                     aria-hidden="true"
                     transform={lbl.transform}
                     style="fill: {info.label_halo}; stroke: {info.label_halo}{font_style}"
-                    style:opacity={label_opacity}
+                    style:opacity={dim.label_opacity}
                   >
                     {lbl.text}
                   </text>
@@ -470,7 +468,7 @@
                   data-sunburst-node-idx={screen.arc.node_idx}
                   transform={lbl.transform}
                   fill={info.label_fill}
-                  fill-opacity={label_opacity}
+                  fill-opacity={dim.label_opacity}
                   style="cursor: {info.clickable ? `pointer` : `text`}{font_style}"
                 >
                   {lbl.text}

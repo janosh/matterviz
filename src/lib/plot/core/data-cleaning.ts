@@ -4,7 +4,7 @@
 
 import { median, type Vec2 } from '$lib/math'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
-import { apply_gaussian_smearing } from '$lib/spectral/helpers'
+import { gaussian_kernel_smooth } from '$lib/spectral/helpers'
 import { Adder } from 'd3-array'
 
 // === Types ===
@@ -374,7 +374,9 @@ function apply_smoothing(
   if (config.type === `savgol`) {
     return smooth_savitzky_golay(y_values, config.window, config.polynomial_order)
   }
-  return apply_gaussian_smearing(x_values, y_values, config.sigma)
+  // Nadaraya-Watson, not the DOS convolution: on the irregular grid outlier removal leaves, a
+  // measure-weighted convolution droops at the series ends. NW is exact on constants.
+  return gaussian_kernel_smooth(x_values, y_values, config.sigma)
 }
 
 // === Local outlier removal ===

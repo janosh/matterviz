@@ -1,4 +1,5 @@
-import { is_concrete_color, is_opaque_color, watch_dark_mode } from '$lib/colors'
+import { is_concrete_color, is_opaque_color } from '$lib/colors'
+import { observe_theme_attributes } from '$lib/theme'
 
 const DEFAULT_BACKDROP_VAR = `--page-bg`
 
@@ -12,25 +13,19 @@ interface ColorOptions {
 
 type CssColorOptions = ColorOptions & { css_var?: string | readonly string[] }
 
-// Re-run a computed-color read when the theme or an ancestor selector may have changed.
+// Re-run a computed-color read when the theme or an ancestor selector may have changed. The
+// walk reaches <html> itself, so watch_dark_mode would only re-register the same media query.
 export const watch_css_color = (node: Element, read: () => void): (() => void) => {
-  const stop_watching_theme = watch_dark_mode(read)
-  const observer = new MutationObserver(read)
+  const ancestors: Element[] = []
   let ancestor: Element | null = node
   while (ancestor) {
-    observer.observe(ancestor, {
-      attributes: true,
-      attributeFilter: [`class`, `data-theme`, `style`],
-    })
+    ancestors.push(ancestor)
     const root = ancestor.getRootNode()
     ancestor =
       ancestor.parentElement ??
       (typeof ShadowRoot !== `undefined` && root instanceof ShadowRoot ? root.host : null)
   }
-  return () => {
-    stop_watching_theme()
-    observer.disconnect()
-  }
+  return observe_theme_attributes(ancestors, read)
 }
 
 const resolve_live_color = (

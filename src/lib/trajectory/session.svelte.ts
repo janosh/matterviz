@@ -39,6 +39,14 @@ interface TrajectorySessionOptions {
 const is_promise = <Value>(value: Value | Promise<Value>): value is Promise<Value> =>
   value instanceof Promise
 
+// One rounding for every index reaching a run (a raw 2.6 tripped read_frame's RangeError);
+// null means "no frame". Non-finite resolves to 0 rather than null: null left `loaded` cleared
+// AND the correction effect with nothing to write back, so the viewer stayed blank for good.
+const normalize_idx = (idx: number, frame_count: number): number | null => {
+  if (frame_count <= 0) return null
+  return Number.isFinite(idx) ? clamp(Math.floor(idx), 0, frame_count - 1) : 0
+}
+
 export function create_trajectory_session(
   inputs: TrajectorySessionInputs,
   options: TrajectorySessionOptions = {},
@@ -134,10 +142,11 @@ export function create_trajectory_session(
     loaded = { run, idx: frame_idx, frame }
   }
 
-  function request_frame(run: TrajectoryRun | undefined, frame_idx: number): void {
+  function request_frame(run: TrajectoryRun | undefined, requested_idx: number): void {
     cancel_in_flight()
     cancel_prefetch()
-    if (!run || frame_idx < 0 || frame_idx >= run.frame_count) {
+    const frame_idx = run ? normalize_idx(requested_idx, run.frame_count) : null
+    if (!run || frame_idx === null) {
       loaded = null
       return
     }
@@ -210,24 +219,23 @@ export function create_trajectory_session(
     }, prefetch_delay_ms)
   }
 
+  // Normalize out-of-range and fractional indices (Number.MAX_SAFE_INTEGER means "last frame"
+  // for hosts restoring viewer position across reloads); hosts hear about the correction.
+  // Must precede the request effect below: effects flush in creation order.
+  $effect(() => {
+    const idx = inputs.index()
+    const clamped = normalize_idx(idx, frame_count)
+    if (clamped === null || clamped === idx) return
+    untrack(() => {
+      inputs.set_index(clamped)
+      inputs.on_step_change?.(clamped)
+    })
+  })
+
   $effect(() => {
     const run = inputs.run()
     const frame_idx = inputs.index()
     untrack(() => request_frame(run, frame_idx))
-  })
-
-  // Clamp out-of-range indices (Number.MAX_SAFE_INTEGER means "last frame" for hosts restoring
-  // viewer position across reloads); hosts hear about the correction.
-  $effect(() => {
-    const idx = inputs.index()
-    if (frame_count === 0) return
-    const clamped = clamp(Math.floor(idx), 0, frame_count - 1)
-    if (clamped !== idx) {
-      untrack(() => {
-        inputs.set_index(clamped)
-        inputs.on_step_change?.(clamped)
-      })
-    }
   })
 
   const current_frame = $derived.by((): TrajectoryFrame | null => {
@@ -259,10 +267,11 @@ export function create_trajectory_session(
   let scrub_settle: ReturnType<typeof setTimeout> | undefined
   let pending_scrub: number | undefined
 
+  // Not normalize_idx's map-to-0: `scrub(NaN)` must not silently jump the viewer to frame 0
   function commit_index(idx: number): void {
-    if (!Number.isFinite(idx) || frame_count === 0) return
-    const bounded = clamp(Math.round(idx), 0, frame_count - 1)
-    if (bounded === inputs.index()) return
+    if (!Number.isFinite(idx)) return
+    const bounded = normalize_idx(idx, frame_count)
+    if (bounded === null || bounded === inputs.index()) return
     inputs.set_index(bounded)
     inputs.on_step_change?.(bounded)
   }
@@ -328,7 +337,7 @@ export function create_trajectory_session(
       if (!Number.isFinite(step_idx)) {
         throw new TypeError(`Step index must be finite, got ${step_idx}`)
       }
-      const bounded = clamp(Math.floor(step_idx), 0, Math.max(frame_count - 1, 0))
+      const bounded = normalize_idx(step_idx, frame_count) ?? 0
       player.go_to(bounded)
       return bounded
     },
@@ -347,7 +356,9 @@ export function create_trajectory_session(
     const cached = cache_get(frame_idx)
     if (cached) return cached
     const frame = await run.read_frame(frame_idx)
-    return inputs.run() === run ? frame : null
+    if (inputs.run() !== run) return null
+    cache_put(run, frame_idx, frame) // so re-exporting a range does not re-parse it
+    return frame
   }
 
   $effect(() => () => dispose())

@@ -125,31 +125,23 @@ export function elements_to_axis(
 ): AxisItem<ChemicalElement>[] {
   let elements = [...element_data]
 
-  // Filter to subset if specified
   if (symbols) {
     const symbol_set = new Set(symbols)
     elements = elements.filter((el) => symbol_set.has(el.symbol))
   }
 
-  // Sort elements
   if (typeof ordering === `function`) {
     elements.sort(ordering)
   } else if (ordering === `alphabetical`) {
     elements.sort((a, b) => a.symbol.localeCompare(b.symbol))
   } else {
-    // Sort by the named property, nulls/undefined last
+    // Number.MAX_VALUE, not Infinity (Infinity - Infinity is NaN), sorts nullish last
     const key = PROPERTY_MAP[ordering] ?? ordering
-    elements.sort((a, b) => {
-      const val_a = (a[key as keyof ChemicalElement] ?? null) as number | null
-      const val_b = (b[key as keyof ChemicalElement] ?? null) as number | null
-      if (val_a === null && val_b === null) return 0
-      if (val_a === null) return 1
-      if (val_b === null) return -1
-      return val_a - val_b
-    })
+    const num = (el: ChemicalElement) =>
+      (el[key as keyof ChemicalElement] ?? Number.MAX_VALUE) as number
+    elements.sort((el_a, el_b) => num(el_a) - num(el_b))
   }
 
-  // Convert to AxisItem[]
   return elements.map((el, idx) => ({
     label: el.symbol,
     key: el.symbol,

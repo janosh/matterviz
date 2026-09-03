@@ -9,11 +9,14 @@ import {
 } from '$lib/isosurface/parse'
 import type { VolumetricFileData } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { normalize_scientific_notation } from '$lib/utils'
 import { grid_value, read_maybe_gz } from '../setup'
 import { create_volume_sampler } from '$lib/isosurface/sampling'
 import * as math from '$lib/math'
+// spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
+// failing assertion above it, silencing console.warn for the rest of the file
+beforeEach(() => vi.restoreAllMocks())
 
 // Value accessor for the first volume of a parse result: at(ix, iy, iz)
 const grid_at = (result: VolumetricFileData | null, vol_idx = 0) => {
@@ -132,7 +135,6 @@ describe(`parse_chgcar`, () => {
       `He`,
     ])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Xx`))
-    warn.mockRestore()
   })
 
   test(`parses valid CHGCAR with Fortran exponents, grid, and volume normalization`, () => {
@@ -270,16 +272,9 @@ describe(`parse_chgcar`, () => {
   )
 
   test(`spin-polarized CHGCAR parses two volumes`, () => {
-    const content = make_chgcar({
-      elements: `Si`,
-      counts: `1`,
-      lattice: [`3.0  0.0  0.0`, `0.0  3.0  0.0`, `0.0  0.0  3.0`],
-      positions: [`0.0  0.0  0.0`],
-      grid_dims: `2   2   2`,
-      data: `1.0  2.0  3.0  4.0  5.0  6.0  7.0  8.0`,
-      second_volume: `   2   2   2\n  0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8`,
-    })
-    const result = parse_chgcar(content)
+    const result = parse_chgcar(
+      make_chgcar({ second_volume: `   2   2   2\n  0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8` }),
+    )
     expect(result?.volumes).toHaveLength(2)
     expect(result?.volumes[0].label).toBe(`charge density`)
     expect(result?.volumes[1].label).toBe(`magnetization density`)
@@ -313,19 +308,14 @@ describe(`parse_chgcar`, () => {
       `He`,
     ])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`VASP 4`))
-    warn.mockRestore()
   })
 
   test(`skips augmentation occupancies section`, () => {
-    const content = make_chgcar({
-      elements: `Si`,
-      counts: `1`,
-      positions: [`0.0  0.0  0.0`],
-      grid_dims: `2   2   2`,
-      data: `1.0  2.0  3.0  4.0  5.0  6.0  7.0  8.0`,
-      augmentation: `augmentation occupancies   1   8\n  0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8`,
-    })
-    const result = parse_chgcar(content)
+    const result = parse_chgcar(
+      make_chgcar({
+        augmentation: `augmentation occupancies   1   8\n  0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8`,
+      }),
+    )
     expect(result).not.toBeNull()
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
   })
@@ -380,7 +370,6 @@ describe(`parse_chgcar`, () => {
     expect(warn.mock.calls[0][0]).toMatch(
       /CHGCAR magnetization density \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the intact charge density/,
     )
-    warn.mockRestore()
   })
 
   test(`tolerates trailing comment on scale line like parseFloat did`, () => {
@@ -517,7 +506,6 @@ describe(`parse_cube`, () => {
   })
 
   test.each([
-    [0, `H`],
     [1, `H`],
     [6, `C`],
     [26, `Fe`],
@@ -531,6 +519,26 @@ describe(`parse_cube`, () => {
       }),
     )
     expect(result?.structure.sites[0].species[0].element).toBe(expected)
+  })
+
+  // 119 is off the table and -1 is not an element at all; both used to render as hydrogen,
+  // with real radii and real bonds
+  test.each([119, -1])(`rejects atomic number %i`, (z_num) => {
+    expect(() => parse_cube(make_cube({ n_atoms: 1, atoms: [[z_num, 0, 0, 0, 0]] }))).toThrow(
+      `Cube file has atomic number ${z_num}, which is not a chemical element`,
+    )
+  })
+
+  // Z = 0 is the documented ghost/BSSE encoding, so a counterpoise cube must still open, minus
+  // the ghost. It comes FIRST so a mis-skip would slide an atom line into the volume data.
+  test(`skips a Z = 0 ghost/BSSE centre`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // oxfmt-ignore
+    const result = parse_cube(make_cube({ n_atoms: 2, atoms: [[0, 0, 0, 0, 0], [6, 0, 1, 1, 1]] }))
+    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([`C`])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Z = 0 ghost/BSSE centre`))
+    const clean = parse_cube(make_cube({ n_atoms: 1, atoms: [[6, 0, 1, 1, 1]] }))
+    expect(result?.volumes).toEqual(clean?.volumes)
   })
 
   test(`handles Angstrom units (negative grid dims)`, () => {
@@ -563,6 +571,25 @@ describe(`parse_cube`, () => {
     expect(result).not.toBeNull()
     expect(result?.structure.sites).toHaveLength(1)
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
+  })
+
+  // A cube with N values per grid point interleaves N fields in one data block; reading
+  // nx·ny·nz values off the front returned one volume alternating MO1/MO2 over half the grid
+  // (max relative error 1.99 vs the true MO1 field). Both declarations of N are rejected.
+  test.each([
+    [
+      `orbital header count`,
+      { n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `  2  1  2` },
+    ],
+    [`line-3 NVAL field`, { origin: [0, 0, 0, 2] }],
+  ])(`.cube with 2 values per grid point is rejected via the %s`, (_label, overrides) => {
+    // 8 grid points x 2 interleaved values: first field 1..8, second its negation
+    const data = Array.from({ length: 8 }, (_, idx) => `${idx + 1}.0  ${-(idx + 1)}.0`).join(
+      `\n`,
+    )
+    expect(() => parse_cube(make_cube({ ...overrides, data }))).toThrow(
+      /2 values per grid point/,
+    )
   })
 
   test(`reads volumetric data values correctly`, () => {
@@ -839,14 +866,20 @@ describe(`parse_volumetric_file`, () => {
 
   // === Filename-based detection ===
 
-  test.each([[`path/to/data.cube`], [`ORBITAL.CUBE`]])(
-    `detects .cube from filename: %s`,
-    (filename) => {
-      const result = parse_volumetric_file(minimal_cube, filename)
-      expect(result).not.toBeNull()
-      expect(result?.volumes.length).toBeGreaterThan(0)
-    },
-  )
+  // filename, content sniffing when the name says nothing, and compression suffix stripping
+  test.each([
+    `path/to/data.cube`,
+    `ORBITAL.CUBE`,
+    `unknown_file`,
+    `molecule.cube.gz`,
+    `orbital.cube.xz`,
+  ])(`detects .cube for %s`, (filename) => {
+    expect(parse_volumetric_file(minimal_cube, filename)?.volumes.length).toBe(1)
+  })
+
+  test(`detects .cube with no filename at all`, () => {
+    expect(parse_volumetric_file(minimal_cube)).not.toBeNull()
+  })
 
   test.each([
     [`CHGCAR`],
@@ -859,25 +892,12 @@ describe(`parse_volumetric_file`, () => {
     [`PARCHG.BAND_1`],
     [`path/to/CHGCAR`],
     [`run_PARCHG_001`],
-  ])(`detects VASP volumetric from filename: %s`, (filename) => {
+    // `data.dat` says nothing: content sniffing on the POSCAR-like header with scale factor
+    [`data.dat`],
+  ])(`detects VASP volumetric from %s`, (filename) => {
     const result = parse_volumetric_file(minimal_chgcar, filename)
     expect(result).not.toBeNull()
     expect(result?.volumes.length).toBeGreaterThan(0)
-  })
-
-  // === Content-based detection ===
-
-  test(`detects .cube format by content when filename is unknown or absent`, () => {
-    const with_name = parse_volumetric_file(minimal_cube, `unknown_file`)
-    expect(with_name).not.toBeNull()
-    expect(with_name?.volumes.length).toBe(1)
-    // No filename at all also works
-    expect(parse_volumetric_file(minimal_cube)).not.toBeNull()
-  })
-
-  test(`detects CHGCAR by content (POSCAR-like header with scale factor)`, () => {
-    const result = parse_volumetric_file(minimal_chgcar, `data.dat`)
-    expect(result).not.toBeNull()
   })
 
   test.each([
@@ -894,17 +914,6 @@ describe(`parse_volumetric_file`, () => {
       /Failed to parse VASP volumetric \(CHGCAR-like\) file 'CHGCAR'/,
     )
   })
-
-  // === Compression suffix stripping ===
-
-  test.each([[`molecule.cube.gz`], [`orbital.cube.xz`]])(
-    `strips compression suffix for .cube detection: %s`,
-    (filename) => {
-      const result = parse_volumetric_file(minimal_cube, filename)
-      expect(result).not.toBeNull()
-      expect(result?.volumes.length).toBe(1)
-    },
-  )
 
   // === Plain POSCAR not misidentified as CHGCAR ===
 

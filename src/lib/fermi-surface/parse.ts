@@ -92,7 +92,15 @@ function parse_bxsf(content: string): BandGridData {
   if (origin_vals.length !== 3) {
     throw new Error(`Expected 3 origin values, got ${origin_vals.length}`)
   }
-  const origin: Vec3 = [origin_vals[0], origin_vals[1], origin_vals[2]]
+  // The origin was never applied: extract_fermi_surface re-centres on Γ unconditionally, so a
+  // header encoding that shift would apply it twice, landing the surface a half-diagonal off.
+  // Negated comparison, so NaN and Infinity are rejected too (NaN > 1e-8 is false)
+  if (!origin_vals.every((val) => Math.abs(val) <= 1e-8)) {
+    throw new Error(
+      `BXSF grid origin [${origin_vals.join(`, `)}] is not supported: only Γ-centred grids ` +
+        `(origin 0 0 0) can be rendered, since the surface is re-centred on Γ internally.`,
+    )
+  }
 
   // 3 spanning vectors (reciprocal lattice)
   const spanning_vectors = [0, 1, 2].map(() => parse_floats(reader.next()).slice(0, 3))
@@ -136,7 +144,6 @@ function parse_bxsf(content: string): BandGridData {
     fermi_energy,
     n_bands,
     n_spins: 1,
-    origin,
   }
 }
 

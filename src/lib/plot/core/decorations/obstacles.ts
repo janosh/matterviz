@@ -1,7 +1,7 @@
 // Obstacle fields the decoration solver routes around, plus the DOM footprint helpers the
 // hosts use to size auto-placed decorations before and after first render.
 
-import type { Rect } from '$lib/plot/core/layout'
+import type { Rect, Sides } from '$lib/plot/core/layout'
 import { sample_series_obstacle_points } from '$lib/plot/core/layout'
 import type { DecorationPoint, DecorationSize } from './types'
 
@@ -19,6 +19,24 @@ export const measured_footprint = (
   el?.offsetWidth && el?.offsetHeight
     ? { width: el.offsetWidth, height: el.offsetHeight }
     : fallback
+
+// One mark's contribution: projected points, plus whether a line through them is drawn (which
+// makes the segments between them obstacles too)
+export type ObstacleSeries = { points: DecorationPoint[]; draws_line?: boolean }
+
+// Samples what `build` projects into the base plot box (frame minus decoration-independent
+// padding), which is what keeps a decoration's own reservation out of the crowding decision.
+export function with_obstacle_frame(
+  frame: { width: number; height: number; effective_base_pad: Required<Sides> },
+  has_marks: boolean,
+  build: (base: { base_w: number; base_h: number }) => ObstacleSeries[],
+): DecorationPoint[] {
+  const { width, height, effective_base_pad: pad } = frame
+  if (!has_marks || !width || !height) return []
+  const [base_w, base_h] = [width - pad.l - pad.r, height - pad.t - pad.b]
+  if (base_w <= 0 || base_h <= 0) return []
+  return build_obstacles_norm(build({ base_w, base_h }), base_w, base_h)
+}
 
 const inside_unit_square = ({ x, y }: DecorationPoint): boolean =>
   Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1
@@ -58,7 +76,7 @@ export const clip_segment_to_unit_square = (
 // Build normalized obstacles from data so decoration reservations cannot change the result and
 // cause a reserve -> data-shift -> re-decide loop.
 export function build_obstacles_norm(
-  series: { points: DecorationPoint[]; draws_line?: boolean }[],
+  series: ObstacleSeries[],
   base_w: number,
   base_h: number,
 ): DecorationPoint[] {
@@ -109,7 +127,7 @@ export function clip_bar(
   cross: number,
   span_start: number,
   span_end: number,
-): { points: DecorationPoint[]; draws_line: boolean } | null {
+): ObstacleSeries | null {
   if (!(cross >= 0 && cross <= 1)) return null
   const lower = Math.max(0, Math.min(span_start, span_end))
   const upper = Math.min(1, Math.max(span_start, span_end))

@@ -1,5 +1,6 @@
 import * as draw from '$lib/convex-hull/canvas-draw'
 import * as helpers from '$lib/convex-hull/helpers'
+import { calculate_e_above_hull, get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
 import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull/types'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -390,35 +391,21 @@ describe(`helpers: polymorph statistics`, () => {
 describe(`helpers: batch polymorph stats computation`, () => {
   test(`empty and single-entry edge cases`, () => {
     expect(helpers.compute_all_polymorph_stats([]).size).toBe(0)
-
     const single = helpers.compute_all_polymorph_stats([
-      {
-        composition: { Li: 1 },
-        energy: -1,
-        e_above_hull: 0,
-        entry_id: `mp-1`,
-      },
+      phase(`mp-1`, { Li: 1 }, { energy: -1, e_above_hull: 0 }),
     ])
     expect(single.size).toBe(1)
     expect(single.get(`mp-1`)).toEqual({ total: 0, higher: 0, lower: 0, equal: 0 })
   })
 
   test(`normalizes stoichiometry and skips entries without entry_id`, () => {
-    // Li:O ratio 1:2 and 2:4 are the same fractional composition
-    const lio2_1 = {
-      composition: { Li: 1, O: 2 },
-      e_above_hull: 0,
-      entry_id: `mp-1`,
-    } as PhaseData
-    const lio2_2 = {
-      composition: { Li: 2, O: 4 },
-      e_above_hull: 0.1,
-      entry_id: `mp-2`,
-    } as PhaseData
-    const no_id = { composition: { Li: 1, O: 1 }, e_above_hull: 0 } as PhaseData
-
-    const stats_map = helpers.compute_all_polymorph_stats([lio2_1, lio2_2, no_id])
-    expect(stats_map.size).toBe(2) // no_id is skipped
+    const stats_map = helpers.compute_all_polymorph_stats([
+      // Li:O ratio 1:2 and 2:4 are the same fractional composition
+      phase(`mp-1`, { Li: 1, O: 2 }, { e_above_hull: 0 }),
+      phase(`mp-2`, { Li: 2, O: 4 }, { e_above_hull: 0.1 }),
+      { composition: { Li: 1, O: 1 }, e_above_hull: 0 } as PhaseData, // no entry_id
+    ])
+    expect(stats_map.size).toBe(2) // the id-less entry is skipped
     expect(stats_map.get(`mp-1`)?.total).toBe(1) // sees mp-2 as polymorph
     expect(stats_map.get(`mp-2`)?.total).toBe(1) // sees mp-1 as polymorph
   })
@@ -597,6 +584,55 @@ describe(`helpers: temperature interpolation`, () => {
       for (const entry of result.filter((ent) => ent.temperatures)) {
         expect(entry.energy_per_atom).toBe(entry.energy)
       }
+    })
+
+    // `correction` and the 0 K hull cache (`e_form_per_atom` and friends) both silently
+    // outrank G(T) if left in the spread, so the temperature switch moves nothing.
+    test(`drops correction and the cached hull quantities G(T) invalidates`, () => {
+      const entry = make_entry([300, 600], [-9.8, -9.6], {
+        composition: { Fe: 2, O: 3 },
+        energy: -50,
+        correction: -2.5,
+        e_form_per_atom: -1.5, // all three computed at 0 K
+        e_above_hull: 0.25,
+        is_stable: false,
+      })
+      const [filtered] = helpers.filter_entries_at_temperature([entry], 600)
+      for (const key of [
+        `correction`,
+        `e_form_per_atom`,
+        `e_above_hull`,
+        `is_stable`,
+      ] as const) {
+        expect(filtered[key], key).toBeUndefined()
+      }
+      // keeping the correction would make this -9.6 + (-2.5 / 5) = -10.1
+      expect(get_energy_per_atom(filtered)).toBeCloseTo(-9.6, 12)
+    })
+
+    test(`hull distance follows G(T) rather than a stale cached formation energy`, () => {
+      // Fe and O at -8 and -5 eV/atom put the tie line at -6.2, and a stable
+      // Fe2O3 at -8.2 eV/atom (E_form -2.0) holds the hull below the query.
+      const refs: PhaseData[] = [
+        { composition: { Fe: 1 }, energy: -8, energy_per_atom: -8 },
+        { composition: { O: 1 }, energy: -5, energy_per_atom: -5 },
+        { composition: { Fe: 2, O: 3 }, energy: -41, energy_per_atom: -8.2 },
+      ]
+      // E_form -0.6 at 300 K and 0.0 at 900 K, so the distance above that hull
+      // has to move by exactly 0.6 eV/atom between the two temperatures.
+      const compound = make_entry([300, 900], [-6.8, -6.2], {
+        composition: { Fe: 2, O: 3 },
+        energy: -34,
+        e_form_per_atom: -1.5, // stale: from the 0 K energy
+      })
+
+      const at_temp = (temperature: number): number => {
+        const [filtered] = helpers.filter_entries_at_temperature([compound], temperature)
+        return calculate_e_above_hull(filtered, refs)
+      }
+
+      expect(at_temp(300)).toBeCloseTo(1.4, 10)
+      expect(at_temp(900)).toBeCloseTo(2.0, 10)
     })
   })
 

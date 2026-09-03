@@ -1,9 +1,23 @@
-// Check if value is a plain object (not array, null, or other types)
+// Loose: any non-null non-array object, so Date/Map/RegExp/typed arrays pass (what the
+// JSON-validation callers want). Use is_plain_record where a class instance is a leaf.
 export const is_plain_object = (val: unknown): val is Record<string, unknown> =>
   typeof val === `object` && val !== null && !Array.isArray(val)
 
+// Strict: object literals, JSON.parse output and null-prototype objects only
+export const is_plain_record = (val: unknown): val is Record<string, unknown> => {
+  if (typeof val !== `object` || val === null) return false
+  const proto: unknown = Object.getPrototypeOf(val)
+  return proto === Object.prototype || proto === null
+}
+
 // Clamp a number to the [0, 1] range.
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
+
+// A tag opens with a letter, `/` or `!`: a bare `<[^>]*>` ate the prose between a comparison
+// pair, so `T < 300 K and P > 1 bar` read back as `T  1 bar`.
+export const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)[^>]*>`
+const HTML_TAG_RE = new RegExp(HTML_TAG_SRC, `gi`)
+export const strip_html = (str: string): string => str.replaceAll(HTML_TAG_RE, ``)
 
 // Escape HTML special characters to prevent XSS attacks
 export const escape_html = (unsafe_string: string): string =>

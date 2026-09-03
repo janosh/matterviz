@@ -15,7 +15,7 @@ const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   unstable: 85,
   elements: 4,
   chemical_system: `Li-Fe-P-O`,
-  energy_range: { min: -2.5, max: 0.5, avg: -0.8 },
+  e_form_range: { min: -2.5, max: 0.5, avg: -0.8 },
   hull_distance: { max: 0.4, avg: 0.12 },
   max_arity: 4,
   ...overrides,
@@ -141,7 +141,7 @@ describe(`ConvexHullStats`, () => {
         total: 150,
         stable: 25,
         unstable: 125,
-        energy_range: { min: -2.567, max: 0.123, avg: -1.234 },
+        e_form_range: { min: -2.567, max: 0.123, avg: -1.234 },
         hull_distance: { max: 0.456, avg: 0.089 },
       }),
     })
@@ -213,14 +213,14 @@ describe(`ConvexHullStats`, () => {
     expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.info-row`)).toHaveLength(0)
   })
 
-  // One histogram per energy distribution with finite data: E_form (falling back to
-  // energy_per_atom) and E_above_hull; NaN/Infinity are dropped
+  // One histogram per energy distribution with finite data: E_form and E_above_hull;
+  // NaN/Infinity are dropped, and an absolute energy_per_atom is NOT a formation energy
   test.each([
     { desc: `E_form and E_hull`, entries: [{}], n_histograms: 2 },
     {
-      desc: `energy_per_atom fallback`,
+      desc: `energy_per_atom only (not a formation energy → E_hull histogram alone)`,
       entries: [{ e_form_per_atom: undefined, energy_per_atom: -0.3, e_above_hull: 0.1 }],
-      n_histograms: 2,
+      n_histograms: 1,
     },
     {
       desc: `missing energies (E_hull only)`,

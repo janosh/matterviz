@@ -7,8 +7,8 @@ import {
   compute_isosurface_geometries,
   geometry_result_transferables,
 } from '$lib/isosurface/geometry'
-import { create_volume_sampler } from '$lib/isosurface/sampling'
-import { MAX_GRID_POINTS } from '$lib/isosurface/types'
+import { create_volume_sampler, prepare_geometry_grid } from '$lib/isosurface/sampling'
+import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '$lib/isosurface/types'
 import { afterEach, beforeAll, describe, expect, test } from 'vitest'
 import { cubic_matrix, install_stub_worker, make_grid, make_volume } from '../setup'
 
@@ -76,29 +76,45 @@ describe(`compute_isosurface_geometries`, () => {
     )
   })
 
-  test(`no range and within budget: the source grid is used as-is`, () => {
+  test(`no range and within budget: the source grid is resampled without interpolation`, () => {
+    // a periodic [0, 1] window is endpoint-inclusive: an 8-point axis becomes 9 samples whose
+    // last repeats the first, so no value is blended
     const volume = blob_volume(8)
     const input: GeometryInput = {
       volumes: [{ ...blob_input(volume).volumes[0], range: null }],
     }
     const [result] = compute_isosurface_geometries(input).volumes
-    expect(result.grid.values).toBe(volume.values)
-    expect(result.lattice).toBe(volume.lattice)
+    expect(result.grid.dims).toEqual([9, 9, 9])
+    expect(result.lattice).toEqual(volume.lattice)
+    for (const [idx, val] of result.grid.values.entries()) {
+      // oxfmt-ignore
+      const [ix, iy, iz] = [Math.floor(idx / 81) % 8, (Math.floor(idx / 9) % 9) % 8, (idx % 9) % 8]
+      expect(val).toBe(volume.values[(ix * 8 + iy) * 8 + iz])
+    }
   })
 
-  test(`no range but over budget: the source grid is downsampled`, () => {
-    const volume = blob_volume(8)
-    const big = {
-      ...volume,
-      values: new Float64Array(MAX_GRID_POINTS + 1000).fill(1),
-      dims: [MAX_GRID_POINTS / 1000 + 1, 1000, 1] as [number, number, number],
+  // block averaging read output sample k at source fraction (s_k + e_k - 1)/2/(N - 1) while
+  // marching cubes places it at k/(M - 1), moving an f = x_frac 0.3 isosurface in a 20 Å cell
+  // from x = 6.000 Å to 5.900 Å with the atoms staying put
+  test(`over budget: the resampled grid keeps its endpoints exact`, () => {
+    const n_pts = 101
+    const values = new Float64Array(n_pts ** 3)
+    for (let ix = 0; ix < n_pts; ix++) {
+      values.fill(ix / (n_pts - 1), ix * n_pts * n_pts, (ix + 1) * n_pts * n_pts)
     }
-    const input: GeometryInput = {
-      volumes: [{ ...blob_input(volume).volumes[0], volume: big, range: null }],
+    const volume = make_flat_volume(values, [n_pts, n_pts, n_pts], {
+      lattice: cubic_matrix(20),
+      origin: [0, 0, 0],
+      periodic: false,
+    })
+    const { grid, lattice, origin } = prepare_geometry_grid(volume, null)
+    expect(grid.values.length).toBeLessThanOrEqual(MAX_GRID_POINTS)
+    expect(lattice).toEqual(volume.lattice)
+    expect(origin).toEqual(volume.origin)
+    const [out_nx, out_ny, out_nz] = grid.dims
+    for (const idx of [0, 1, out_nx >> 1, out_nx - 1]) {
+      expect(grid.values[idx * out_ny * out_nz]).toBeCloseTo(idx / (out_nx - 1), 12)
     }
-    const [result] = compute_isosurface_geometries(input).volumes
-    expect(result.grid.values.length).toBeLessThanOrEqual(MAX_GRID_POINTS)
-    expect(result.grid.values).not.toBe(big.values)
   })
 
   test(`transferables list every output buffer exactly once`, () => {
