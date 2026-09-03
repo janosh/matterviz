@@ -456,7 +456,8 @@ describe(`arc_label_slots`, () => {
       )
     // 14px of leading fits the 15px-tall row upright (194px of room, then the rotated slot);
     // at 22px only the rotated one is left. A private 1.1x ratio would lead 14px to 15.4px
-    // and drop the upright slot.
+    // and drop the upright slot. 14 is load-bearing: it is the only probe in the 13.6-15
+    // band that separates the two, which is why the original 12.1 passed under both.
     expect(room_at(14)).toEqual([194, 9])
     expect(room_at(22)).toEqual([9])
   })

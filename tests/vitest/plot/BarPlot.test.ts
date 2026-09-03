@@ -444,6 +444,10 @@ describe(`BarPlot`, () => {
 
   // The log floor belongs to the VALUE axis only: applied to the category axis it pinned the
   // anchor to the range minimum while the bar itself stayed at its raw (out-of-range) pixel.
+  // Reconstructing the log mapping from the bar's path looks like gold-plating and is not:
+  // happy-dom lays nothing out, so getBoundingClientRect is all zeros, and the obvious
+  // simplification (assert the anchor merely falls inside the bar) was tried and PASSED with
+  // the bug reinstated. Keep the exact anchor.
   test.each([`vertical`, `horizontal`] as const)(
     `%s tooltip follows the bar when the category axis is log`,
     async (orientation) => {
