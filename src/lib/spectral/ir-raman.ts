@@ -332,8 +332,8 @@ export function broaden_spectrum(
 
 // Scale a curve so its maximum is 1. Used for the transmittance presentation, which inverts
 // the result, so an unbounded or all-zero absorbance would silently render a flat line at 1
-// instead of failing. A loop, not Math.max(...values): broadened grids run to MAX_BROADENING_GRID_POINTS,
-// far past the spread-argument limit.
+// instead of failing. A loop, not Math.max(...values): broadened grids run to 1e7 points, far
+// past the spread-argument limit.
 export function scale_to_max(values: number[]): number[] {
   let max_val = -Infinity
   for (const val of values) {

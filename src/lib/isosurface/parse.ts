@@ -371,10 +371,6 @@ export function parse_cube(
   const n_atoms = Math.abs(line2[0])
   const has_orbital_header = line2[0] < 0
   const raw_origin: Vec3 = [line2[1], line2[2], line2[3]]
-  // Gaussian's optional 5th field on line 3 (NVAL) declares how many values each grid point
-  // carries; the orbital header below repeats it as the orbital count. See the check after
-  // the atom block for why anything above 1 is rejected.
-  const declared_values_per_point = line2.length > 4 ? line2[4] : 1
 
   // Lines 3-5: grid dimensions and voxel vectors
   // Positive N means coordinates in Bohr, negative N means Angstrom
@@ -466,9 +462,9 @@ export function parse_cube(
     },
   }
 
-  // Consume the orbital header line if present ("NMO m1 m2 …"), whose leading integer is the
-  // orbital count and therefore also the number of values per grid point
-  let values_per_point = declared_values_per_point
+  // Values per grid point, declared twice: line 3's optional 5th field (NVAL) and the leading
+  // integer of the orbital header line ("NMO m1 m2 …"), which is the orbital count
+  let values_per_point = line2.length > 4 ? line2[4] : 1
   if (has_orbital_header) {
     if (pos >= content.length) {
       throw new Error(`.cube declares orbital data but ends before its orbital header line`)
@@ -483,11 +479,10 @@ export function parse_cube(
     }
     values_per_point = Math.max(values_per_point, n_orbitals)
   }
-  // The data block interleaves `values_per_point` fields per grid point. Reading nx·ny·nz
-  // values off its front is only right for a single-field cube (density, ESP, ELF); for a
-  // 2-orbital cube it silently returned one volume alternating MO1/MO2 over the first half of
-  // the grid — max relative error 2.0 against the true MO1 field, with a data_range spanning
-  // both signs. Refuse rather than render that.
+  // The data block interleaves that many fields per grid point, so reading nx·ny·nz values off
+  // its front only works for a single-field cube (density, ESP, ELF): a 2-orbital cube
+  // silently returned one volume alternating MO1/MO2 over half the grid, max relative error
+  // 1.99 against the true MO1 field, with a data_range spanning both signs
   if (values_per_point !== 1) {
     throw new Error(
       `.cube carries ${values_per_point} values per grid point (multi-orbital cube). Only ` +

@@ -268,12 +268,9 @@ const normalize_power = (power: ArrayLike<number>): number[] => {
   return maximum > 0 ? values.map((value) => value / maximum) : values.fill(0)
 }
 
-// Relative size below which what reaches a transform is cancellation residue, not motion.
-// Every stage feeding a spectrum is a difference of numbers far larger than its result —
-// center_frame subtracts a centre of mass, horn_rotation aligns successive frames,
-// central_difference_velocities subtracts neighbouring ones, one_sided_periodogram subtracts
-// each component's mean — and all of them are exact only to about n·eps of the magnitudes
-// they work with. 1e-10 leaves six decades over f64 eps, far under any real vibration.
+// Fraction of the source magnitude below which a signal is cancellation residue, not motion:
+// centre-of-mass removal, Horn alignment, finite differences and mean subtraction each hold
+// only to ~n·eps. 1e-10 leaves six decades over f64 eps, far under any real vibration.
 const ROUNDOFF_RATIO = 1e-10
 
 const max_abs = (values: Float64Array): number => {
@@ -290,19 +287,13 @@ const max_abs = (values: Float64Array): number => {
 const max_component_variation = (values: ArrayLike<number>, n_components: number): number => {
   const n_samples = values.length / n_components
   const means = new Float64Array(n_components)
-  for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
-    const base = sample_idx * n_components
-    for (let component_idx = 0; component_idx < n_components; component_idx++) {
-      means[component_idx] += values[base + component_idx] / n_samples
-    }
+  for (let idx = 0; idx < values.length; idx++) {
+    means[idx % n_components] += values[idx] / n_samples
   }
   let variation = 0
-  for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
-    const base = sample_idx * n_components
-    for (let component_idx = 0; component_idx < n_components; component_idx++) {
-      const deviation = Math.abs(values[base + component_idx] - means[component_idx])
-      if (deviation > variation) variation = deviation
-    }
+  for (let idx = 0; idx < values.length; idx++) {
+    const deviation = Math.abs(values[idx] - means[idx % n_components])
+    if (deviation > variation) variation = deviation
   }
   return variation
 }
@@ -878,9 +869,8 @@ const build_curve = (
     Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
   >,
   label: string,
-  // Magnitude of the raw data `values` were derived from, in the units of `values`. Only
-  // differs from max |values| when a subtraction upstream already destroyed the scale:
-  // velocities are differences of positions, so their round-off is set by the positions.
+  // Scale the raw data behind `values`, in their units. Only differs from max |values| once an
+  // upstream subtraction destroyed it: measured 2.0e1 vs 4.0e-15 for Horn-aligned velocities.
   source_scale: number,
   component_weights?: Float64Array,
   frequency_squared = false,
@@ -893,13 +883,10 @@ const build_curve = (
     component_weights,
   })
   const curve = curve_from_periodogram(periodogram, interval, options.frequency_unit, factor)
-  // Absolute floor, because everything downstream is relative: normalize_power puts the
-  // maximum at 1, peak prominence is a fraction of that and so is the activity threshold,
-  // so a spectrum made of nothing but cancellation residue is reported as modes at full
-  // scale. Measured: rigid (SHAKE-constrained) water tumbling and drifting through the box
-  // under the pane's default body_fixed preprocessing gave a VDOS maximum of 2.4e-29 and
-  // 25 peaks, six of them "IR active" off a dipole whose magnitude never changes. A run
-  // that genuinely does not vibrate has an all-zero spectrum, so report that instead.
+  // Absolute floor, since everything downstream is relative: normalize_power puts the maximum
+  // at 1 and peak prominence and the activity threshold are fractions of that, so a spectrum of
+  // pure cancellation residue reads as full-scale modes. Rigid tumbling water under body_fixed
+  // gave a VDOS maximum of 2.4e-29 with 25 peaks, six "IR active" off a constant dipole.
   const variation = max_component_variation(values, n_components)
   if (variation <= ROUNDOFF_RATIO * Math.max(max_abs(values), source_scale)) {
     const zeros = () => curve.power.map(() => 0)
@@ -1365,9 +1352,7 @@ export const calc_trajectory_spectroscopy = (
   let velocity_source: VelocitySource
   let velocity_values: Float64Array
   let velocity_steps: number[]
-  // What the velocities were subtracted out of, in velocity units: stored velocities lose
-  // their scale to remove_rigid_velocity, differentiated ones to center_frame, the
-  // body-frame alignment and the finite difference itself (see build_curve's source_scale)
+  // What the velocities were subtracted out of, in velocity units (see build_curve source_scale)
   let velocity_source_scale: number
   if (requested_velocity_source === `stored` && !input.velocities) {
     fail(`velocity_source 'stored' was requested but no velocity signal was supplied`)

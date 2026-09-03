@@ -39,9 +39,8 @@ describe(`adaptive density utilities`, () => {
     expect(run).toThrow(`aligned arrays`)
   })
 
-  // The grid costs x_bins * y_bins, and BinnedScatterPlot derives both from plot_px /
-  // density.bin_px, so a sub-pixel bin_px squares up: 0.1 on a 1200x800 plot is 12000 x 8000
-  // = 9.6e7 cells, 1152 MB of typed arrays for however few points there are.
+  // BinnedScatterPlot derives both factors from plot_px / density.bin_px, so a sub-pixel
+  // bin_px squares up: 0.1 on a 1200x800 plot is 12000 x 8000 = 9.6e7 cells, 1152 MB.
   it.each([
     [12_000, 8000, true],
     [Infinity, 8, true],

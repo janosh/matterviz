@@ -205,11 +205,9 @@
     const broadened = pattern_entries.map((entry) =>
       compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
     )
-    // Divide by the true maximum, not max(1, ...), for the reason compute_xrd_pattern gives
-    // for its own final scaling: broadening is area-normalized, so a pattern handed in
-    // already normalized to 1 or below profiles well under 1 and a floor of 1 silently
-    // under-scales the whole curve (y max 0.01 renders at 5.92 of the fixed [0, 110] axis)
-    // while the stick view of the same data, which divides by global_max_intensity, fills it.
+    // The true maximum, not max(1, ...): broadening is area-normalized, so a pattern handed in
+    // already normalized profiles well under 1 and a floor of 1 under-scales the whole curve
+    // (y max 0.01 rendered at 5.92 of the fixed [0, 110] axis) while the sticks filled it.
     let max_y = 0
     for (const profile of broadened) {
       for (const y_val of profile.y) max_y = Math.max(max_y, y_val)

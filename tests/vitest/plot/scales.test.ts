@@ -613,9 +613,8 @@ describe(`scales`, () => {
       expect(result.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
     })
 
-    // The interval form states a STEP, so its tick count rides on the domain: a step that is
-    // fine at one zoom builds millions of entries at another (`ticks: -1` over [0, 1e8] built
-    // 100,000,001, ~800 MB) and every one is then measured and rendered.
+    // A negative ticks option is a STEP, so its count rides on the domain: `ticks: -1` over
+    // [0, 1e8] built 100,000,001 entries (~800 MB), every one measured and rendered.
     test.each<[string, Vec2, number, string | null]>([
       [`interval past the cap`, [0, 1e8], -1, `a tick interval of 1`],
       [`count past the cap`, [0, 1e8], 5e6, `a tick count of 5000000`],

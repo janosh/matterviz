@@ -180,11 +180,10 @@ export function series_extents(
   }
 }
 
-// The grid is three typed arrays of x_bins * y_bins, so the cost is the PRODUCT — and the only
-// thing bounding either factor was a `Math.max(8, ...)` floor, which limits how FEW bins there
-// are. BinnedScatterPlot derives each factor as plot_px / density.bin_px, so a sub-pixel bin_px
-// squares up fast: bin_px 0.1 on a 1200x800 plot is 12000 x 8000 = 9.6e7 cells, 1152 MB
-// allocated before the first point is read. 2e7 still admits an 8K plot at the 2.8 px default.
+// The grid is three typed arrays of x_bins * y_bins, and BinnedScatterPlot derives each factor
+// as plot_px / density.bin_px, so a sub-pixel bin_px squares up: 0.1 on a 1200x800 plot is
+// 12000 x 8000 = 9.6e7 cells, 1152 MB before the first point is read. Only a `Math.max(8, ...)`
+// floor bounded either factor. 2e7 still admits an 8K plot at the 2.8 px default.
 const MAX_DENSITY_CELLS = 2e7
 const BYTES_PER_CELL = 12 // Uint32Array counts + two Int32Array first-hit indices
 
@@ -199,11 +198,9 @@ export function bin_points(
   series.forEach(assert_series_lengths)
   const cells = x_bins * y_bins
   if (!Number.isFinite(cells) || cells > MAX_DENSITY_CELLS) {
+    const mb = Math.round((cells * BYTES_PER_CELL) / 1e6)
     throw new Error(
-      `bin_points: a ${x_bins} x ${y_bins} grid is ${cells} cells (${Math.round(
-        (cells * BYTES_PER_CELL) / 1e6,
-      )} MB), past the ${MAX_DENSITY_CELLS} cap. Raise density.bin_px (it is the pixel width ` +
-        `of one bin, so the grid grows as its inverse square) or shrink the plot.`,
+      `bin_points: a ${x_bins} x ${y_bins} grid is ${cells} cells (${mb} MB), past the ${MAX_DENSITY_CELLS} cap. Raise density.bin_px or shrink the plot.`,
     )
   }
   const counts = new Uint32Array(cells)

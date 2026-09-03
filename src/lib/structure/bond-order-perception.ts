@@ -65,14 +65,12 @@ function formal_charge(symbol: string, bond_valence: number): number {
 
 const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 
-// Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains). Counted in
-// PICKS (combinations x fragment atoms), not combinations: valence_combinations materializes
-// one target valence per atom for every combination before the first is tried, so a
-// combination of a 3000-atom fragment costs 3000 numbers, not one. A 3000-atom chain
-// carrying 12 nitrogens has combo_count 4096 - inside a 4096-combination cap - yet
-// enumerates 1.2e7 picks and used to churn 1.8e10 array elements (267 s on the main
-// thread). 2e6 picks is ~16 MB and keeps every fragment the old cap admitted below ~500
-// atoms, which is where real multi-valence fragments live.
+// Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains), counted in PICKS
+// (combinations x fragment atoms): valence_combinations materializes one target valence per
+// atom for every combination. A 3000-atom chain carrying 12 nitrogens has combo_count 4096 —
+// inside the old 4096-combination cap — yet enumerates 1.2e7 picks, 1.8e10 array elements and
+// 267 s on the main thread. 2e6 picks is ~16 MB and keeps every fragment the old cap admitted
+// below ~500 atoms, where real multi-valence fragments live.
 const MAX_VALENCE_PICKS = 2_000_000
 
 // Edges are bounds-checked by perceive_bond_orders before reaching here.
@@ -113,9 +111,8 @@ type BondOrderSolution = { orders: number[]; valence: number[] }
 // valence-sum first (xyz2mol prefers the least-saturated solution).
 function* valence_combinations(valence_lists: number[][]): Generator<number[]> {
   const combos: { sum: number; pick: number[] }[] = []
-  // One shared, mutable prefix: `[...acc, valence]` per recursion step copied the whole
-  // prefix at every node, so the enumeration cost was combinations x atoms^2 rather than
-  // combinations x atoms. Only the leaves are copied out.
+  // One shared, mutable prefix, leaves copied out: `[...acc, valence]` per recursion step
+  // copied the whole prefix at every node, costing combinations x atoms^2 rather than x atoms.
   const acc: number[] = Array.from({ length: valence_lists.length }, () => 0)
   const rec = (pos: number, sum: number) => {
     if (pos === valence_lists.length) {

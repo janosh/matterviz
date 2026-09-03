@@ -269,8 +269,7 @@ describe(`XDATCAR`, () => {
     [`non-element symbol`, xdatcar(`Xx\n1`, two_frames), `Invalid element symbol in XDATCAR: Xx`],
     [`fewer counts than symbols`, xdatcar(`H O Na\n1 1`, two_frames), `3 element symbol(s) but 2 atom count(s)`],
     [`zero count`, xdatcar(`H\n0`, two_frames), `invalid atom counts`],
-    // The elements array is sized from the header count before a coordinate is read: this
-    // 113-byte file allocated 1.5 GB over 3.4 s and died with a bare RangeError
+    // 113 bytes that allocated 1551 MB over 3410 ms, then died with a bare RangeError
     [`an ion count larger than the file`, xdatcar(`Si O\n200000000 1`, two_frames), `ion counts declare 200000001 ions (Si 200000000, O 1) but only 11 XDATCAR lines remain`],
     // Corruption inside the file names the frame and line instead of dropping the frame
     [`non-numeric coordinate`, xdatcar(`H\n2`, [config(1, `0.5 0.5 0.5`, `0.1 xx 0.1`), config(2, `0.5 0.5 0.5`, `0.1 0.1 0.1`)]),
@@ -661,7 +660,7 @@ describe(`OUTCAR`, () => {
     [`no ions per type line`, ` vasp.6.4.2\n VRHFIN =Si:\n${ionic_step(1, 5, rows_1, -20)}`, `no "ions per type" line`],
     [`more species than counts`, header({ types: [[`Si`, 28, 1], [`O`, 16, 1], [`H`, 1, 1]] }).replace(/ions per type =.*/, `ions per type = 1 2`), `lists 3 species (Si, O, H) but 2 ion counts`],
     [`an unknown element`, [header({ types: [[`Xx`, 28, 1], [`O`, 16, 2]] }), ionic_step(1, 5, rows_1, -20)].join(`\n`), `Unknown element symbol in OUTCAR: "Xx"`],
-    // Same declared-count allocation as the XDATCAR row above: 1.6 GB from a header line
+    // Same header-declared allocation as the XDATCAR row above, from a 107-byte file
     [`an ion count larger than the file`, header({ types: [[`Si`, 28, 200000000]] }), `ion counts declare 200000000 ions (Si 200000000) but only 14 OUTCAR lines remain`],
     [`no position table`, header(), `contains no POSITION / TOTAL-FORCE table`],
     [`a corrupt position row`, [header(), ionic_step(1, 5, [[0, 0, 0, 0, 0, 0], [1, 1, `x`, 0, 0, 0], [2, 2, 2, 0, 0, 0]] as unknown as number[][], -20), ionic_step(2, 5, rows_2, -20)].join(`\n`), `is not a position + force sextet`],

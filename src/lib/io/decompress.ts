@@ -72,26 +72,17 @@ export async function decompress_data(
   return new TextDecoder().decode(buffer)
 }
 
-// Ceiling on the INFLATED payload, the quantity that actually gets allocated — the compressed
-// size bounds nothing, since gzip reaches 1029:1 on repetitive input (measured), so a 2 MiB
-// upload inflates to this cap and a 10 MiB one to 10 GB. Nothing downstream can consume more:
-// a text payload dies at V8's ~512 MB string limit, h5wasm copies the whole file into a WASM
-// heap that tops out near 2 GB (parse/h5-utils.ts), and the position accumulator budget is
-// 512 MB. So this only ever fires on a payload no parser could have read.
+// Ceiling on the INFLATED payload; the compressed size bounds nothing, since gzip reaches
+// 1029:1 on repetitive input (measured), so a 10 MiB upload inflates to 10 GB. 2 GiB is past
+// anything downstream can consume (V8 strings ~512 MB, h5wasm heap ~2 GB, position
+// accumulator 512 MB), so it only fires on a payload no parser could have read.
 export const MAX_INFLATED_BYTES = 2 * 1024 * 1024 * 1024
 
-const inflation_bomb_error = (
-  format: CompressionFormat,
-  inflated: number,
-  max_bytes = MAX_INFLATED_BYTES,
-): Error =>
-  new Error(
-    `${format.toUpperCase()} payload inflates to at least ${inflated} bytes, past the ` +
-      `${max_bytes}-byte limit; extract it and open the parts you need`,
-  )
+const bomb_msg = (format: CompressionFormat, inflated: number, max_bytes: number) =>
+  `${format.toUpperCase()} payload inflates to at least ${inflated} bytes, past the ` +
+  `${max_bytes}-byte limit; extract it and open the parts you need`
 
-// Aborts the inflate as soon as the running output size passes `max_bytes`, rather than after
-// the whole stream has been buffered.
+// Aborts the inflate when the running output passes `max_bytes`, not after buffering it all
 export const inflation_limiter = (
   format: CompressionFormat,
   max_bytes = MAX_INFLATED_BYTES,
@@ -100,7 +91,7 @@ export const inflation_limiter = (
   return new TransformStream({
     transform(chunk, controller) {
       inflated += chunk.byteLength
-      if (inflated > max_bytes) throw inflation_bomb_error(format, inflated, max_bytes)
+      if (inflated > max_bytes) throw new Error(bomb_msg(format, inflated, max_bytes))
       controller.enqueue(chunk)
     },
   })
@@ -112,13 +103,15 @@ const unzip_single_entry = async (
   bytes: Uint8Array,
 ): Promise<{ name: string; bytes: Uint8Array }> => {
   const { unzipSync } = await import(`fflate`)
-  // fflate has no streaming size budget, so the central directory's declared sizes gate the
-  // inflate up front; the length check below catches a header that lied
+  // fflate has no streaming budget, but it sizes each entry's output buffer from the central
+  // directory before inflating and never overruns it, so gating there bounds the allocation
+  // even when the header lies. `size` covers method-0 entries, copied out verbatim.
   const entries = Object.entries(
     unzipSync(bytes, {
-      filter: (file) => {
-        if (file.originalSize > MAX_INFLATED_BYTES) {
-          throw inflation_bomb_error(`zip`, file.originalSize)
+      filter: ({ originalSize, size }) => {
+        const inflated = Math.max(originalSize, size)
+        if (inflated > MAX_INFLATED_BYTES) {
+          throw new Error(bomb_msg(`zip`, inflated, MAX_INFLATED_BYTES))
         }
         return true
       },
@@ -136,9 +129,6 @@ const unzip_single_entry = async (
     )
   }
   const [name, entry_bytes] = entries[0]
-  if (entry_bytes.byteLength > MAX_INFLATED_BYTES) {
-    throw inflation_bomb_error(`zip`, entry_bytes.byteLength)
-  }
   return { name: name.split(`/`).pop() ?? name, bytes: entry_bytes }
 }
 

@@ -35,9 +35,7 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
   if (!parsed.ok) throw new Error(parsed.error)
   const { elements: element_names, counts: element_counts } = parsed.header
   let lattice_matrix = parsed.header.lattice
-  // A frame writes one fractional-coordinate line per ion, so no file can hold more ions than
-  // it has lines. Without this the elements array is sized from the header count alone, before
-  // a single coordinate is read, and a torn header is only noticed after the allocation.
+  // One fractional-coordinate line per ion, so no file can hold more ions than it has lines
   const line_budget = { max_ions: lines.length, source: `XDATCAR lines` }
   let elements = expand_ion_types(element_names, element_counts, line_budget)
 

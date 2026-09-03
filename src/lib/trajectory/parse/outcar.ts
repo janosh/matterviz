@@ -67,8 +67,7 @@ const parse_species = (
   }
   const unknown = symbols.find((symbol) => !is_elem_symbol(symbol))
   if (unknown) throw new Error(`Unknown element symbol in OUTCAR: "${unknown}"`)
-  // Every ion gets a position line per ionic step, so the file's own line count bounds the
-  // declared total; without it the array is sized from the header line alone
+  // One position line per ion per ionic step, so the line count bounds the declared total
   const elements = expand_ion_types(symbols, counts, {
     max_ions: lines.length,
     source: `OUTCAR lines`,

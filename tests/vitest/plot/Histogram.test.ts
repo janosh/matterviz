@@ -599,9 +599,9 @@ describe(`Histogram`, () => {
     expect(Array.from(bin_values([5, 5], [5, 5], 4, `linear`, [2, NaN]).counts)).toEqual([2])
   })
 
-  // n_bins IS the allocation (edges + counts + one <rect> each), so a bin count nobody bounded
-  // sized it: 5e7 asked for a 400 MB Float64Array, and NaN slipped through `Math.max(1, ...)`
-  // to hand back a zero-length edge array that only died later as `Invalid typed array length`.
+  // n_bins IS the allocation (edges + counts + one <rect> each): 5e7 asked for a 400 MB
+  // Float64Array, and NaN slipped through `Math.max(1, ...)` to a zero-length edge array that
+  // only died later as `Invalid typed array length`.
   test.each([[5e7], [NaN], [Infinity]])(`bin_values rejects n_bins %p`, (n_bins) => {
     expect(() => bin_values([1, 2], [0, 10], n_bins)).toThrow(
       `bin_geometry: n_bins must be finite and at most 1000000, got ${n_bins}`,

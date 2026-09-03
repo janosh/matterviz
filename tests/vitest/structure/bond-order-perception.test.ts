@@ -29,6 +29,15 @@ function make_input(elements: ElementSymbol[], coords: Vec3[], edges: Vec2[]) {
   return { sites, bonds }
 }
 
+// A linear chain whose first 12 atoms are N (two valences each) and the rest C (one)
+const n12_chain = (n_atoms: number) => ({
+  elements: Array.from({ length: n_atoms }, (_unused, idx): ElementSymbol =>
+    idx < 12 ? `N` : `C`,
+  ),
+  coords: Array.from({ length: n_atoms }, (_unused, idx): Vec3 => [idx * 1.4, 0, 0]),
+  edges: Array.from({ length: n_atoms - 1 }, (_unused, idx): Vec2 => [idx, idx + 1]),
+})
+
 // `expected` is compared as a sorted multiset (symmetric molecules like CO3^2- place the
 // double bond on any O); `perceived` false means the fallback (all single) ran
 describe(`perceive_bond_orders on small molecules`, () => {
@@ -73,6 +82,10 @@ describe(`perceive_bond_orders on small molecules`, () => {
       coords: Array.from({ length: 20 }, (_, idx) => [idx * 2, 0, 0] as Vec3),
       edges: Array.from({ length: 19 }, (_, idx) => [idx, idx + 1] as Vec2),
       expected: Array(19).fill(1), perceived: false },
+    // inside the pick budget: 12 N give 2^12 = 4096 combinations at any chain length, so this
+    // one enumerates; no valence-consistent assignment exists (the terminal C cannot reach 4)
+    { name: `12-nitrogen 200-atom chain`, ...n12_chain(200),
+      expected: Array(199).fill(1), perceived: false },
   ])(`$name`, ({ elements, coords, edges, charge = 0, expected, perceived }) => {
     const { sites, bonds } = make_input(elements, coords, edges)
     const result = perceive_bond_orders(sites, bonds, { total_charge: charge })
@@ -85,6 +98,20 @@ describe(`perceive_bond_orders on small molecules`, () => {
     expect(result.every((bond) => bond.perceived === perceived)).toBe(true)
   })
 
+  // The cap counted COMBINATIONS, but the work is combinations x atoms: this chain sat inside
+  // the 4096-COMBINATION cap while enumerating 1.2e7 picks and (copying the prefix at every
+  // recursion step) 1.8e10 array elements — 266.5 s on one thread, ~2 ms once refused. Only
+  // this case is timed; a bound on the in-budget row above flaked at 3.9 s under load.
+  test(`a 12-nitrogen 3000-atom chain is refused, not ground through`, () => {
+    const { elements, coords, edges } = n12_chain(3000)
+    const { sites, bonds } = make_input(elements, coords, edges)
+    const started = performance.now()
+    const result = perceive_bond_orders(sites, bonds)
+    expect(result).toHaveLength(2999)
+    expect(result.every((bond) => bond.bond_order === 1 && !bond.perceived)).toBe(true)
+    expect(performance.now() - started).toBeLessThan(10_000)
+  })
+
   test(`no bonds -> empty result`, () => {
     const { sites, bonds } = make_input(
       [`Na`, `Cl`],
@@ -95,45 +122,6 @@ describe(`perceive_bond_orders on small molecules`, () => {
       [],
     )
     expect(perceive_bond_orders(sites, bonds, {})).toHaveLength(0)
-  })
-})
-
-// A linear chain of `n_atoms` whose first `n_multi` entries are N (two valences each) and the
-// rest C (one), i.e. the element-grouped ordering a POSCAR or a grouped CIF writes.
-const multivalent_chain = (n_atoms: number, n_multi: number) =>
-  make_input(
-    Array.from({ length: n_atoms }, (_unused, idx): ElementSymbol =>
-      idx < n_multi ? `N` : `C`,
-    ),
-    Array.from({ length: n_atoms }, (_unused, idx): Vec3 => [idx * 1.4, 0, 0]),
-    Array.from({ length: n_atoms - 1 }, (_unused, idx): Vec2 => [idx, idx + 1]),
-  )
-
-// The enumeration cap used to count COMBINATIONS, but valence_combinations materializes one
-// target valence per fragment atom for each of them, so the real size is combinations x
-// atoms. 12 nitrogens give 2^12 = 4096 combinations at any chain length, so a 3000-atom
-// fragment sat inside a 4096-combination cap while enumerating 1.2e7 picks - and, because
-// each recursion step copied the whole prefix, churning 1.8e10 array elements: measured 267 s
-// on one thread (0.9 s at 200 atoms, 22 s at 1000). Both the cap and the copying are fixed,
-// so the over-budget fragment must now be refused outright rather than ground through.
-describe(`valence enumeration budget`, () => {
-  // Only the refused chain is timed. There the margin is five orders of magnitude (267 s
-  // ground through before the fix, ~2 ms refused after), so a 10 s bound cannot flake. The
-  // in-budget chain legitimately enumerates for seconds under a loaded run, so it is asserted
-  // on behaviour alone — a wall-clock bound there failed at 3.9 s in a full-suite run.
-  test.each([
-    [`inside the pick budget`, 200, null],
-    [`past the pick budget`, 3000, 10_000],
-  ])(`a 12-nitrogen chain %s`, (_label, n_atoms, max_ms) => {
-    const { sites, bonds } = multivalent_chain(n_atoms, 12)
-    const started = performance.now()
-    const result = perceive_bond_orders(sites, bonds)
-    expect(result).toHaveLength(n_atoms - 1)
-    // A refused fragment falls back to all-single, unperceived. Neither chain has a
-    // valence-consistent assignment (the terminal carbons cannot reach 4), so the orders
-    // match either way; what the cap changes is that the refusal is immediate.
-    expect(result.every((bond) => bond.bond_order === 1 && !bond.perceived)).toBe(true)
-    if (max_ms !== null) expect(performance.now() - started).toBeLessThan(max_ms)
   })
 })
 

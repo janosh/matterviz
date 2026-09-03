@@ -248,40 +248,33 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
   })
 })
 
-// gzip reaches 1029:1 on repetitive input (measured), so nothing about the compressed size
-// bounds the inflate: a 10 MiB upload expands to 10 GB with no error until the tab dies
+// gzip reaches 1029:1 on repetitive input (measured), so the compressed size bounds nothing:
+// a 10 MiB upload expands to 10 GB with no error until the tab dies
 describe(`inflated size limit`, () => {
-  test(`aborts mid-stream once the inflated payload passes the cap`, async () => {
-    const chunk = new Uint8Array(64 * 1024)
-    let emitted = 0
-    const source = new ReadableStream<Uint8Array>({
+  // 4 MiB fed 64 KiB at a time; `emitted` records how much was pulled before an abort
+  let emitted = 0
+  const source = () => {
+    emitted = 0
+    return new ReadableStream<Uint8Array>({
       pull(controller) {
-        emitted += chunk.byteLength
-        controller.enqueue(chunk)
+        emitted += 64 * 1024
+        controller.enqueue(new Uint8Array(64 * 1024).fill(7))
         if (emitted >= 4 * 1024 * 1024) controller.close()
       },
     })
-    const limited = source.pipeThrough(inflation_limiter(`gzip`, 256 * 1024))
+  }
+
+  test(`aborts mid-stream once the inflated payload passes the cap`, async () => {
+    const limited = source().pipeThrough(inflation_limiter(`gzip`, 256 * 1024))
     await expect(new Response(limited).arrayBuffer()).rejects.toThrow(
       /GZIP payload inflates to at least \d+ bytes, past the 262144-byte limit/,
     )
-    // stopped early instead of buffering the whole 4 MiB
-    expect(emitted).toBeLessThan(1024 * 1024)
+    expect(emitted).toBeLessThan(1024 * 1024) // stopped early, not after the whole 4 MiB
   })
 
-  test(`passes a payload under the cap through untouched`, async () => {
-    const payload = new Uint8Array(1024).fill(7)
-    const source = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(payload)
-        controller.close()
-      },
-    })
-    const limited = source.pipeThrough(inflation_limiter(`gzip`, 4096))
+  test(`the real cap passes an ordinary payload through untouched`, async () => {
+    const limited = source().pipeThrough(inflation_limiter(`gzip`, MAX_INFLATED_BYTES))
     const out = new Uint8Array(await new Response(limited).arrayBuffer())
-    expect(out).toEqual(payload)
-    // the real cap sits above every payload a parser here can consume (~512 MB strings,
-    // ~2 GB h5wasm heap), so it can only fire on a bomb
-    expect(MAX_INFLATED_BYTES).toBe(2 * 1024 * 1024 * 1024)
+    expect([out.byteLength, out[0], out.at(-1)]).toEqual([4 * 1024 * 1024, 7, 7])
   })
 })

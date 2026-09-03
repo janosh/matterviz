@@ -30,17 +30,14 @@ export type TicksOption = number | number[] | TimeInterval | Record<number, stri
 
 const MS_PER_DAY = 86_400_000
 
-// Ticks are generated eagerly, then every one of them is measured and rendered, so the cost is
-// the LENGTH of the array — which `axis.ticks` only sometimes states. A positive count says it
-// outright; a negative one is a STEP, and the same step spans a different number of ticks on
-// every domain, so a step that is fine at one zoom asks for millions at another (`ticks: -1`
-// over [0, 1e8] built 100,000,001 entries, ~800 MB, before a single label was measured).
+// Every tick is measured and rendered, so the cost is the array LENGTH. A negative `axis.ticks`
+// states a STEP, whose tick count rides on the domain: `ticks: -1` over [0, 1e8] built
+// 100,000,001 entries (~800 MB) before a single label was measured.
 const MAX_TICKS = 10_000
 const assert_tick_count = (count: number, requested: string, span: number): void => {
   if (count > MAX_TICKS) {
     throw new Error(
-      `generate_ticks: ${requested} over a span of ${span} asks for ${Math.ceil(count)} ticks, ` +
-        `past the ${MAX_TICKS} cap. Use a coarser axis.ticks interval or a plain tick count.`,
+      `generate_ticks: ${requested} over a span of ${span} asks for ${Math.ceil(count)} ticks, past the ${MAX_TICKS} cap`,
     )
   }
 }
