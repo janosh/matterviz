@@ -108,8 +108,11 @@ describe(`VolumeSlice`, () => {
 
     expect(colorbar_style.left).toBe(`50%`)
     expect([``, `auto`]).toContain(colorbar_style.right)
-    expect(colorbar_style.getPropertyValue(`--cbar-width`)).toContain(
-      `--volume-slice-colorbar-size`,
+    // Bounded by --volume-slice-colorbar-size, defaulting to min(70%, 360px). happy-dom
+    // resolves the var() chain where older versions returned the raw reference, so accept
+    // either spelling instead of pinning the assertion to one CSS engine's behaviour.
+    expect(colorbar_style.getPropertyValue(`--cbar-width`)).toMatch(
+      /--volume-slice-colorbar-size|min\(70%,\s*360px\)/,
     )
     expect(colorbar_style.transform).toBe(`translateX(-50%)`)
   })
