@@ -1,8 +1,8 @@
-import StructureCarousel from '$lib/structure/StructureCarousel.svelte'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import StructureGallery from '$lib/structure/StructureGallery.svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, keydown, make_crystal, mouse } from '../setup'
-import StructureCarouselHarness from './StructureCarouselHarness.svelte'
+import StructureGalleryHarness from './StructureGalleryHarness.svelte'
 
 const items = Array.from({ length: 5 }, (_, idx) => ({
   id: `structure-${idx}`,
@@ -29,11 +29,8 @@ const pointer_event = (
   return event
 }
 
-const mount_carousel = (
-  props: ComponentProps<typeof StructureCarousel>,
-  flush = true,
-): void => {
-  mount(StructureCarousel, { target: document.body, props })
+const mount_gallery = (props: ComponentProps<typeof StructureGallery>, flush = true): void => {
+  mount(StructureGallery, { target: document.body, props })
   if (flush) flushSync()
 }
 
@@ -46,17 +43,17 @@ const live_cards = (): number => document.querySelectorAll(`.structure-card .str
 const many_labels = (from: number, to: number): string[] =>
   many_items.slice(from, to).map((item) => item.label)
 
-describe(`StructureCarousel`, () => {
-  test(`renders structures in a horizontal carousel`, () => {
-    mount_carousel({ items, layout: `horizontal`, height: 210, min_card_width: 180 })
+describe(`StructureGallery`, () => {
+  test(`renders structures in a horizontal strip`, () => {
+    mount_gallery({ items, layout: `horizontal`, height: 210, min_card_width: 180 })
 
-    const carousel = doc_query(`.structure-carousel`)
-    expect(carousel.classList.contains(`horizontal`)).toBe(true)
+    const gallery = doc_query(`.structure-gallery`)
+    expect(gallery.classList.contains(`horizontal`)).toBe(true)
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(5)
     expect(live_cards()).toBe(5)
     // Four titlebar-safe cards fit the 800px host: (800 - 3*8) / 4 = 194.
-    expect(carousel.getAttribute(`style`)).toContain(`inline-size: min(100%, 1002px)`)
-    expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
+    expect(gallery.getAttribute(`style`)).toContain(`inline-size: min(100%, 1002px)`)
+    expect(doc_query(`.structure-gallery-track`).getAttribute(`style`)).toContain(
       `overflow-x: auto`,
     )
     expect(doc_query(`.structure-card`).getAttribute(`style`)).toContain(`translate3d(0px`)
@@ -66,7 +63,7 @@ describe(`StructureCarousel`, () => {
 
   test(`activates an item by pointer or keyboard`, () => {
     const on_item_activate = vi.fn()
-    mount_carousel({ items, on_item_activate })
+    mount_gallery({ items, on_item_activate })
     const chip = doc_query(`.structure-card .card-info`)
     chip.click()
     for (const key of [`Enter`, ` `]) {
@@ -82,16 +79,16 @@ describe(`StructureCarousel`, () => {
   test(`mounts the visible page plus overscan so scrolling reveals live cards`, async () => {
     // 800px viewport / 202px stride = 4 whole cards, plus a partial card at
     // each edge, plus 3 overscan cards per side = 12.
-    mount_carousel({ items: many_items, layout: `horizontal`, min_card_width: 180 })
+    mount_gallery({ items: many_items, layout: `horizontal`, min_card_width: 180 })
 
     expect(card_labels()).toEqual(many_labels(0, 12))
     expect(live_cards()).toBe(12)
-    // the carousel now spans all 40 cards (capped to the host by min(100%, ...))
-    expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
+    // the gallery now spans all 40 cards (capped to the host by min(100%, ...))
+    expect(doc_query(`.structure-gallery`).getAttribute(`style`)).toContain(
       `inline-size: min(100%, 8072px)`,
     )
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     const scroll_to = (scroll_left: number): void => {
       track.scrollLeft = scroll_left
       track.dispatchEvent(new Event(`scroll`))
@@ -120,7 +117,7 @@ describe(`StructureCarousel`, () => {
   ])(
     `overscan=%i mounts %i cards around the three-card viewport`,
     (overscan: number, expected_cards: number) => {
-      mount_carousel({ items: many_items, overscan })
+      mount_gallery({ items: many_items, layout: `horizontal`, overscan })
 
       expect(live_cards()).toBe(expected_cards)
       expect(card_labels()[0]).toBe(`Many 0`)
@@ -131,8 +128,8 @@ describe(`StructureCarousel`, () => {
   // stays out of a fling, but it must never fall so far behind that the whole
   // viewport is label shells. Discrete jumps skip the delay entirely.
   test(`keeps live cards on screen through a sustained scroll`, () => {
-    mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
-    const track = doc_query(`.structure-carousel-track`)
+    mount_gallery({ items: many_items, layout: `horizontal`, height: 200 })
+    const track = doc_query(`.structure-gallery-track`)
 
     const live_counts = [live_cards()]
     for (const offset of [404, 1010, 2020, 4040]) {
@@ -151,11 +148,11 @@ describe(`StructureCarousel`, () => {
       `pager`,
       () => doc_query<HTMLButtonElement>(`button[aria-label="Next structures"]`).click(),
     ],
-    [`End key`, () => press(doc_query(`.structure-carousel-track`), `End`)],
-    [`ArrowRight`, () => press(doc_query(`.structure-carousel-track`), `ArrowRight`)],
+    [`End key`, () => press(doc_query(`.structure-gallery-track`), `End`)],
+    [`ArrowRight`, () => press(doc_query(`.structure-gallery-track`), `ArrowRight`)],
   ])(`%s jumps mount their new page without waiting to settle`, (_label, jump) => {
-    mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
-    mock_track_size(doc_query(`.structure-carousel-track`), true)
+    mount_gallery({ items: many_items, layout: `horizontal`, height: 200 })
+    mock_track_size(doc_query(`.structure-gallery-track`), true)
 
     for (let repeat = 0; repeat < 5; repeat++) {
       jump()
@@ -164,8 +161,8 @@ describe(`StructureCarousel`, () => {
     }
   })
 
-  test(`assumes a one-card viewport until the carousel is measured`, () => {
-    mount_carousel({ items: many_items }, false)
+  test(`assumes a one-card viewport until the gallery is measured`, () => {
+    mount_gallery({ items: many_items, layout: `horizontal` }, false)
 
     // 1 visible card + 2 edges + 2*3 overscan, all still label shells
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(9)
@@ -188,7 +185,7 @@ describe(`StructureCarousel`, () => {
     return event
   }
 
-  // Capture runs before the nested canvas, so the carousel decides which wheels
+  // Capture runs before the nested canvas, so the gallery decides which wheels
   // it owns. Taking a vertical one stole zoom from the structure viewer.
   test.each([
     { name: `trackpad swipe`, init: { deltaX: 80 }, scrolled: 80, taken: true },
@@ -219,9 +216,9 @@ describe(`StructureCarousel`, () => {
       taken: false,
     },
   ])(`$name over a nested viewer: taken=$taken`, ({ init, scrolled, taken }) => {
-    mount_carousel({ items, layout: `horizontal` })
+    mount_gallery({ items, layout: `horizontal` })
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     const structure = doc_query(`.structure-card .structure`)
     structure.addEventListener(`wheel`, (event) => event.stopPropagation())
     const wheel = wheel_event(init)
@@ -234,7 +231,7 @@ describe(`StructureCarousel`, () => {
 
   test.each([
     {
-      name: `plain wheel scrolls the carousel`,
+      name: `plain wheel scrolls the gallery`,
       init: { deltaY: 80 },
       scrolled: 80,
       reaches_viewer: false,
@@ -252,9 +249,9 @@ describe(`StructureCarousel`, () => {
       reaches_viewer: true,
     },
   ])(`vertical $name`, ({ init, scrolled, reaches_viewer }) => {
-    mount_carousel({ items, layout: `vertical` })
+    mount_gallery({ items, layout: `vertical` })
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     const structure = doc_query(`.structure-card .structure`)
     const viewer_wheel = vi.fn()
     structure.addEventListener(`wheel`, viewer_wheel)
@@ -267,9 +264,9 @@ describe(`StructureCarousel`, () => {
   })
 
   test(`plain vertical wheel never reaches the viewer at a scroll boundary`, () => {
-    mount_carousel({ items: many_items, layout: `vertical` })
+    mount_gallery({ items: many_items, layout: `vertical` })
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     mock_track_size(track, false)
     track.scrollTop = 1500
     const viewer_wheel = vi.fn()
@@ -284,9 +281,9 @@ describe(`StructureCarousel`, () => {
   })
 
   test(`leaves wheel events for parent scrollers at scroll boundaries`, () => {
-    mount_carousel({ items: many_items, layout: `horizontal` })
+    mount_gallery({ items: many_items, layout: `horizontal` })
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     Object.defineProperties(track, {
       clientWidth: { configurable: true, value: 500 },
       scrollWidth: { configurable: true, value: 1000 },
@@ -307,9 +304,9 @@ describe(`StructureCarousel`, () => {
   })
 
   test(`leaves the wheel event alone when the browser clamps the scroll away`, () => {
-    mount_carousel({ items: many_items, layout: `horizontal` })
+    mount_gallery({ items: many_items, layout: `horizontal` })
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     // scrollWidth is unmeasured here, so on_wheel skips its own clamp and hands the browser
     // an out-of-range offset. happy-dom stores whatever it is given, so pin scrollLeft at 0
     // to emulate the clamp a real browser applies.
@@ -359,8 +356,8 @@ describe(`StructureCarousel`, () => {
   ])(
     `horizontal track keyboard: $key from $start scrolls to $expected`,
     ({ key, start, expected, prevented }) => {
-      mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
-      const track = doc_query(`.structure-carousel-track`)
+      mount_gallery({ items: many_items, layout: `horizontal`, height: 200 })
+      const track = doc_query(`.structure-gallery-track`)
       mock_track_size(track, true)
       track.scrollLeft = start
 
@@ -377,8 +374,8 @@ describe(`StructureCarousel`, () => {
   ])(
     `vertical track keyboard: $key from $start scrolls to $expected`,
     ({ key, start, expected, prevented }) => {
-      mount_carousel({ items: many_items, layout: `vertical`, height: 200 })
-      const track = doc_query(`.structure-carousel-track`)
+      mount_gallery({ items: many_items, layout: `vertical`, height: 200 })
+      const track = doc_query(`.structure-gallery-track`)
       mock_track_size(track, false)
       track.scrollTop = start
 
@@ -389,10 +386,10 @@ describe(`StructureCarousel`, () => {
   )
 
   test(`PageDown/PageUp page the focusable track; keys from card content are ignored`, () => {
-    mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
-    const track = doc_query(`.structure-carousel-track`)
+    mount_gallery({ items: many_items, layout: `horizontal`, height: 200 })
+    const track = doc_query(`.structure-gallery-track`)
     expect(track.getAttribute(`tabindex`)).toBe(`0`)
-    expect(track.getAttribute(`aria-roledescription`)).toBe(`carousel`)
+    expect(track.getAttribute(`aria-roledescription`)).toBe(`gallery`)
     mock_track_size(track, true)
 
     expect(press(track, `PageDown`).defaultPrevented).toBe(true)
@@ -414,7 +411,7 @@ describe(`StructureCarousel`, () => {
       const now_spy = vi.spyOn(performance, `now`).mockReturnValue(0)
       const on_prefetch_more = vi.fn()
       // the render window covers all 5 items, so the host is asked on mount
-      mount_carousel({
+      mount_gallery({
         items,
         layout: `horizontal`,
         on_prefetch_more,
@@ -422,7 +419,7 @@ describe(`StructureCarousel`, () => {
       })
       expect(on_prefetch_more).toHaveBeenCalledTimes(1)
 
-      const track = doc_query(`.structure-carousel-track`)
+      const track = doc_query(`.structure-gallery-track`)
       const scroll = (): void => {
         track.dispatchEvent(
           new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaX: 80 }),
@@ -446,7 +443,7 @@ describe(`StructureCarousel`, () => {
     // height=200 → vertical item_stride = 208; unmeasured viewport → page_size 1,
     // so the render window is 1 + 2 edges + 2*3 overscan = 9 cards and the host
     // is asked once fewer than page_size = 1 items trail it
-    mount_carousel({
+    mount_gallery({
       items: many_items,
       layout: `vertical`,
       height: 200,
@@ -454,7 +451,7 @@ describe(`StructureCarousel`, () => {
       on_prefetch_more,
     })
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     track.scrollTop = 0
     track.dispatchEvent(new Event(`scroll`))
     expect(on_prefetch_more).not.toHaveBeenCalled()
@@ -466,43 +463,57 @@ describe(`StructureCarousel`, () => {
   })
 
   test(`caps the vertical track at visible_rows cards`, () => {
-    mount_carousel({ items: many_items, layout: `vertical`, height: 200, visible_rows: 3 })
+    mount_gallery({ items: many_items, layout: `vertical`, height: 200, visible_rows: 3 })
 
     // 3 cards of 200px + 2 gaps, so exactly three fit with none part-cut
-    expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
+    expect(doc_query(`.structure-gallery-track`).getAttribute(`style`)).toContain(
       `max-block-size: 616px`,
     )
   })
 
   test(`offers page controls that move by the visible card count`, () => {
-    mount_carousel({ items: many_items, layout: `horizontal` })
+    mount_gallery({ items: many_items, layout: `horizontal` })
 
-    const pager = doc_query(`.structure-carousel-pager`)
+    const pager = doc_query(`.structure-gallery-pager`)
     expect(pager.textContent?.replaceAll(/\s/g, ``)).toBe(`‹1–3/40›`)
     const next = doc_query<HTMLButtonElement>(`button[aria-label="Next structures"]`)
     next.click()
     flushSync()
 
-    expect(doc_query(`.structure-carousel-track`).scrollLeft).toBe(808)
+    expect(doc_query(`.structure-gallery-track`).scrollLeft).toBe(808)
     expect(pager.textContent?.replaceAll(/\s/g, ``)).toBe(`‹4–6/40›`)
+  })
+
+  // A header snippet makes the gallery a panel, so the bar and the cards share
+  // one border instead of the caller reconstructing the join around a portal.
+  test(`header snippet docks the pager in a title bar of the gallery's own`, () => {
+    const header = createRawSnippet(() => ({ render: () => `<strong>Recent</strong>` }))
+    mount_gallery({ items: many_items, header })
+
+    expect(doc_query(`.structure-gallery`).classList.contains(`paneled`)).toBe(true)
+    const bar = doc_query(`.structure-gallery-header`)
+    expect(bar.querySelector(`strong`)?.textContent).toBe(`Recent`)
+    // exactly one pager, in the bar, without the floating pill's chrome
+    expect(document.querySelectorAll(`.structure-gallery-pager`)).toHaveLength(1)
+    expect(bar.querySelector(`.structure-gallery-pager`)?.classList).toContain(`docked`)
   })
 
   test(`teleports the pager into pager_target when provided`, async () => {
     const target = document.createElement(`div`)
     document.body.append(target)
-    mount_carousel({ items: many_items, layout: `horizontal`, pager_target: target })
+    mount_gallery({ items: many_items, layout: `horizontal`, pager_target: target })
     await tick() // attachments run in the effect phase
 
-    const pager = target.querySelector(`.structure-carousel-pager`)
+    const pager = target.querySelector(`.structure-gallery-pager`)
     expect(pager).not.toBeNull()
-    expect(pager?.classList.contains(`portaled`)).toBe(true)
+    expect(pager?.classList.contains(`docked`)).toBe(true)
     expect(pager?.textContent?.replaceAll(/\s/g, ``)).toBe(`‹1–3/40›`)
-    // no floating pager left inside the carousel itself
-    expect(document.querySelector(`.structure-carousel .structure-carousel-pager`)).toBeNull()
+    // no floating pager left inside the gallery itself
+    expect(document.querySelector(`.structure-gallery .structure-gallery-pager`)).toBeNull()
   })
 
-  test(`opens the cell selector menu inside carousel cards`, () => {
-    mount_carousel({ items, layout: `horizontal`, height: 210 })
+  test(`opens the cell selector menu inside gallery cards`, () => {
+    mount_gallery({ items, layout: `horizontal`, height: 210 })
 
     doc_query(`.structure-card .cell-select .toggle-btn`).dispatchEvent(mouse(`click`))
     flushSync()
@@ -512,20 +523,20 @@ describe(`StructureCarousel`, () => {
 
   test(`attaches the wheel handler to a track that appears after mount`, () => {
     const on_prefetch_more = vi.fn()
-    const harness = mount(StructureCarouselHarness, {
+    const harness = mount(StructureGalleryHarness, {
       target: document.body,
       props: { next_items: items, on_prefetch_more },
     })
     flushSync()
-    expect(document.querySelector(`.structure-carousel-track`)).toBeNull()
-    // an empty carousel stays quiet: the host owns the initial load
+    expect(document.querySelector(`.structure-gallery-track`)).toBeNull()
+    // an empty gallery stays quiet: the host owns the initial load
     expect(on_prefetch_more).not.toHaveBeenCalled()
 
     harness.show_items()
     flushSync()
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
 
-    const track = doc_query(`.structure-carousel-track`)
+    const track = doc_query(`.structure-gallery-track`)
     track.dispatchEvent(
       new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaX: 80 }),
     )
@@ -533,22 +544,23 @@ describe(`StructureCarousel`, () => {
   })
 
   test.each([
-    [`vertical`, {}, `No recent structures`],
-    // horizontal empty state keeps one titlebar-safe card width visible
-    [`horizontal`, { height: 160 }, `Loading`],
-  ] as const)(`shows %s empty state`, (layout, extra_props, message) => {
-    mount_carousel({ items: [], layout, empty_message: message, ...extra_props })
+    [`vertical`, {}, `No recent structures`, ``],
+    // horizontal keeps one titlebar-safe card width visible for the message
+    [`horizontal`, { height: 160 }, `Loading`, `inline-size: min(100%, 240px)`],
+    // a grid reserves one card's worth, not the two rows a populated one falls
+    // back to: a screenful of nothing behind one line of text reads as broken
+    [`grid`, { height: 160 }, `Loading`, `min-block-size: 160px`],
+  ] as const)(`shows %s empty state`, (layout, extra_props, message, style) => {
+    mount_gallery({ items: [], layout, empty_message: message, ...extra_props })
 
-    const carousel = doc_query(`.structure-carousel`)
-    expect(carousel.classList.contains(layout)).toBe(true)
-    if (layout === `horizontal`) {
-      expect(carousel.getAttribute(`style`)).toContain(`inline-size: min(100%, 240px)`)
-    }
-    expect(doc_query(`.empty-carousel`).textContent).toBe(message)
+    const gallery = doc_query(`.structure-gallery`)
+    expect(gallery.classList.contains(layout)).toBe(true)
+    if (style) expect(gallery.getAttribute(`style`)).toContain(style)
+    expect(doc_query(`.empty-gallery`).textContent).toBe(message)
   })
 
   test(`stacks vertical cards along the y axis`, () => {
-    mount_carousel({ items, layout: `vertical`, min_card_width: 200 })
+    mount_gallery({ items, layout: `vertical`, min_card_width: 200 })
 
     const card_styles = [...document.querySelectorAll(`.structure-card`)].map(
       (card) => card.getAttribute(`style`) ?? ``,
@@ -558,10 +570,10 @@ describe(`StructureCarousel`, () => {
     card_styles.forEach((style, idx) => {
       expect(style).toContain(`translate3d(0px, ${idx * 368}px, 0)`)
     })
-    expect(doc_query(`.structure-carousel-spacer`).getAttribute(`style`)).toContain(
+    expect(doc_query(`.structure-gallery-spacer`).getAttribute(`style`)).toContain(
       `block-size: ${items.length * 368 - 8}px`,
     )
-    expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
+    expect(doc_query(`.structure-gallery-track`).getAttribute(`style`)).toContain(
       `overflow-y: auto`,
     )
   })
@@ -576,17 +588,17 @@ describe(`StructureCarousel`, () => {
     [Number.NaN, 2, 488, 240],
   ] as const)(
     `height=%s with %i items remains finite and independent`,
-    (height, item_count, carousel_width, card_width) => {
-      mount_carousel({
+    (height, item_count, gallery_width, card_width) => {
+      mount_gallery({
         items: many_items.slice(0, item_count),
         layout: `horizontal`,
         height,
       })
 
-      expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-        `inline-size: min(100%, ${carousel_width}px)`,
+      expect(doc_query(`.structure-gallery`).getAttribute(`style`)).toContain(
+        `inline-size: min(100%, ${gallery_width}px)`,
       )
-      const track = document.querySelector(`.structure-carousel-track`)
+      const track = document.querySelector(`.structure-gallery-track`)
       if (item_count === 0) expect(track).toBeNull()
       else {
         expect(track?.getAttribute(`style`)).toContain(
@@ -596,7 +608,7 @@ describe(`StructureCarousel`, () => {
           `inline-size: ${card_width}px`,
         )
       }
-      const pager = document.querySelector(`.structure-carousel-pager`)
+      const pager = document.querySelector(`.structure-gallery-pager`)
       expect(pager?.textContent?.replaceAll(/\s/g, ``) ?? null).toBe(
         item_count === 20 ? `‹1–3/20›` : null,
       )
@@ -606,67 +618,258 @@ describe(`StructureCarousel`, () => {
     },
   )
 
-  // Drags the layout's resize handle and returns the resulting carousel style
-  const drag_resize = async (
-    layout: `horizontal` | `vertical`,
-    from: number,
-    to: number,
-  ): Promise<string> => {
-    if (layout === `vertical`) {
-      // vertical card width initializes async from the measured host width
-      await vi.waitFor(() => {
-        expect(doc_query(`.structure-carousel-spacer`).getAttribute(`style`)).toContain(
-          `inline-size: 790px`,
-        )
-      })
+  // One corner grip per layout, driving both axes. What the width axis writes
+  // differs: an exact card width in a vertical column, the fit-then-stretch
+  // minimum in the other two, where the column count re-derives from it.
+  test.each([
+    {
+      layout: `horizontal`,
+      props: { height: 210, min_card_width: 180 },
+      drag: [100, 80],
+      card_width: (800 - 8) / 2, // the wider minimum fits 2 across, then stretches
+      card_height: 290,
+    },
+    {
+      layout: `vertical`,
+      props: { height: 300, min_card_width: 240 },
+      drag: [-100, 50],
+      card_width: 200, // an exact width: a single column never stretches
+      card_height: 350,
+    },
+    {
+      layout: `grid`,
+      props: { height: 200, min_card_width: 240 },
+      drag: [-200, 100],
+      card_width: (800 - 8 * 5) / 6, // clamped to the 120px floor, so 6 fit
+      card_height: 300,
+    },
+  ] as const)(
+    `$layout corner grip resizes cards on both axes at once`,
+    ({ layout, props, drag, card_width, card_height }) => {
+      mount_gallery({ items: many_items, resizable: true, layout, ...props })
+
+      const handle = doc_query(`.structure-gallery-resize-handle`)
+      expect(handle.getAttribute(`title`)).toBe(`Drag to resize cards`)
+      handle.dispatchEvent(pointer_event(`pointerdown`, { clientX: 400, clientY: 100 }))
+      window.dispatchEvent(
+        pointer_event(`pointermove`, { clientX: 400 + drag[0], clientY: 100 + drag[1] }),
+      )
+      flushSync()
+
+      expect(doc_query(`.structure-card`).getAttribute(`style`)).toContain(
+        `inline-size: ${card_width}px`,
+      )
+      expect(doc_query(`.structure-gallery`).getAttribute(`style`)).toContain(
+        `--structure-gallery-height: ${card_height}px`,
+      )
+    },
+  )
+
+  // Arrow keys drive the same two axes as the drag. Width steps the stored
+  // minimum, not the width columns stretched it to: stepping the rendered width
+  // compounds, and two presses used to walk a three-column grid down to one.
+  test(`grid arrow keys step both axes without compounding`, () => {
+    mount_gallery({ items: many_items, ...grid_props, resizable: true })
+
+    const handle = doc_query(`.structure-gallery-resize-handle`)
+    for (const key of [`ArrowUp`, `ArrowRight`, `ArrowRight`]) {
+      handle.dispatchEvent(keydown(key, { cancelable: true }))
     }
-    const handle = doc_query(`.structure-carousel-resize-handle.${layout}`)
-    expect(handle.getAttribute(`title`)).toBe(
-      layout === `horizontal`
-        ? `Drag to resize carousel height`
-        : `Drag to resize carousel width`,
-    )
-    const axis = layout === `horizontal` ? `clientY` : `clientX`
-    handle.dispatchEvent(pointer_event(`pointerdown`, { [axis]: from }))
-    window.dispatchEvent(pointer_event(`pointermove`, { [axis]: to }))
     flushSync()
-    return doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
+
+    // 240 -> 272 crosses one column boundary, not two: 2 columns, not 1
+    expect(doc_query(`.structure-card`).getAttribute(`style`)).toContain(
+      `inline-size: ${(800 - 8) / 2}px`,
+    )
+    expect(doc_query(`.structure-gallery`).getAttribute(`style`)).toContain(
+      `--structure-gallery-height: 184px`,
+    )
+  })
+
+  test(`vertical grip follows the centred column, not the host edge`, () => {
+    mount_gallery({
+      items,
+      layout: `vertical`,
+      height: 300,
+      min_card_width: 240,
+      resizable: true,
+    })
+
+    // half the leftover width on each side, so the grip lands on the last card
+    expect(doc_query(`.structure-gallery`).getAttribute(`style`)).toContain(
+      `--structure-gallery-grip-inset: max(0px, (100% - 300px) / 2)`,
+    )
+  })
+
+  // A single column has nothing to divide, so it sits at the viewer's own
+  // proportions rather than stretching to whatever host it lands in.
+  test.each([
+    [300, 240, 300], // square: as wide as the viewer is tall
+    [200, 240, 240], // min_card_width floors it
+    [200, 900, 800], // never wider than the host
+  ])(
+    `vertical column with height=%i min_card_width=%i is %ipx wide and centred`,
+    (height: number, min_card_width: number, expected_width: number) => {
+      mount_gallery({ items, layout: `vertical`, height, min_card_width })
+
+      expect(doc_query(`.structure-gallery-spacer`).getAttribute(`style`)).toContain(
+        `inline-size: min(100%, ${expected_width}px)`,
+      )
+      // the section still spans the host; the spacer is what centres in it
+      expect(doc_query(`.structure-gallery`).getAttribute(`style`)).not.toContain(
+        `inline-size`,
+      )
+    },
+  )
+
+  // === grid layout ===
+  // The 800px x 600px host fits 3 columns of (800 - 2*8) / 3 px at
+  // min_card_width 240, and height 200 makes a 208px row stride, so two whole
+  // rows are a page, plus a partial one at either edge, and 3 cards of overscan
+  // round up to one row per side: a 6-row window. Nothing renders past what
+  // mounts, and the 24-viewer budget is the wider of the two bounds here.
+  const grid_props = { layout: `grid`, height: 200, min_card_width: 240 } as const
+  const grid_columns = 3
+  const grid_card_width = (800 - 8 * (grid_columns - 1)) / grid_columns
+  const grid_row_stride = 208
+  const card_position = (idx: number): string => {
+    const [column, row] = [idx % grid_columns, Math.floor(idx / grid_columns)]
+    return `translate3d(${column * (grid_card_width + 8)}px, ${row * grid_row_stride}px, 0)`
   }
 
-  test.each([
-    // [desc, extra_props, flush, drag from -> to, expected style fragments]
-    [
-      `resizes horizontal card height from the bottom handle`,
-      { layout: `horizontal`, height: 210, min_card_width: 180 },
-      true,
-      [10, 90],
-      // Resizing the viewer leaves the titlebar-safe card width unchanged.
-      [`--structure-carousel-height: 290px`, `inline-size: min(100%, 1002px)`],
-    ],
-    [
-      `resizes vertical card width from the side handle`,
-      { layout: `vertical` },
-      false, // mount unflushed so the async width measurement is exercised
-      [800, 680],
-      [`inline-size: min(100%, 680px)`],
-    ],
-    [
-      `respects min_card_width when shrinking vertical card width`,
-      { layout: `vertical`, min_card_width: 320 },
-      true,
-      [800, 100],
-      [`inline-size: min(100%, 330px)`],
-    ],
-  ] as const)(`%s`, async (_desc, extra_props, flush, [from, to], style_fragments) => {
-    mount_carousel({ items, resizable: true, ...extra_props }, flush)
+  test(`grid tiles cards into rows of responsive columns`, () => {
+    mount_gallery({ items: many_items, ...grid_props })
 
-    const carousel_style = await drag_resize(extra_props.layout, from, to)
-    for (const fragment of style_fragments) expect(carousel_style).toContain(fragment)
-    if (extra_props.layout === `horizontal`) {
-      expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
-        `block-size: 290px`,
-      )
-    }
+    const cards = [...document.querySelectorAll(`.structure-card`)]
+    expect(cards).toHaveLength(6 * grid_columns)
+    expect(live_cards()).toBe(cards.length) // nothing renders that can't mount
+    expect(card_labels().slice(0, 4)).toEqual(many_labels(0, 4))
+    cards.forEach((card, idx) => {
+      const style = card.getAttribute(`style`) ?? ``
+      expect(style).toContain(`inline-size: ${grid_card_width}px`)
+      expect(style).toContain(`block-size: 200px`)
+      expect(style).toContain(card_position(idx))
+    })
+    // 40 items over 3 columns = 14 rows of scrollable content
+    expect(doc_query(`.structure-gallery-spacer`).getAttribute(`style`)).toContain(
+      `block-size: ${14 * grid_row_stride - 8}px`,
+    )
+    // takes the height the section has left, over a two-row floor
+    // an absolute flex basis, not `flex: 1`'s 0%, which an auto-height host
+    // resolves to `content` — i.e. every row at once
+    expect(doc_query(`.structure-gallery-track`).getAttribute(`style`)).toContain(
+      `flex-basis: 0px`,
+    )
+    expect(doc_query(`.structure-gallery`).getAttribute(`style`)).toContain(
+      `min-block-size: ${2 * 200 + 8}px`,
+    )
+    expect(doc_query(`.structure-gallery-pager`).textContent?.replaceAll(/\s/g, ``)).toBe(
+      `‹1–6/40›`,
+    )
+  })
+
+  // Each live card owns a WebGPU canvas and device, so the budget bounds how
+  // many mount, and nothing renders beyond it. The one thing it may never do is
+  // blank a card the viewport covers, so a budget under the 4 rows this viewport
+  // spans (2 whole page rows, plus a partial one at either edge) yields to it.
+  test.each([
+    [24, 6],
+    [6, 4], // 2 rows of budget, but the viewport covers 4
+    [2, 4],
+    // a budget that isn't a number can't be allowed to mean "no budget"
+    [Number.NaN, 6],
+    [Number.POSITIVE_INFINITY, 6],
+  ])(
+    `grid with max_live_cards=%s renders %i rows, every one of them live`,
+    (max_live_cards: number, expected_rows: number) => {
+      mount_gallery({ items: many_items, ...grid_props, max_live_cards })
+
+      const expected_cards = expected_rows * grid_columns
+      expect(document.querySelectorAll(`.structure-card`)).toHaveLength(expected_cards)
+      expect(live_cards()).toBe(expected_cards)
+      // the budget is spent from the visible page out, never on overscan alone
+      expect(doc_query(`.structure-card`).querySelector(`.structure`)).not.toBeNull()
+    },
+  )
+
+  // The budget outranks `overscan` in every layout, so a generous overscan
+  // stops adding cards rather than adding ones that can never hold a viewer.
+  test.each([[`horizontal`], [`vertical`]] as const)(
+    `%s overscan past max_live_cards renders no further cards`,
+    (layout) => {
+      mount_gallery({ items: many_items, layout, height: 200, overscan: 10 })
+
+      expect(document.querySelectorAll(`.structure-card`)).toHaveLength(24)
+      expect(live_cards()).toBe(24)
+    },
+  )
+
+  test(`grid clamps its window and mount range at the last partial row`, async () => {
+    mount_gallery({ items: many_items, ...grid_props }) // 13 full rows + 1 card
+    const track = doc_query(`.structure-gallery-track`)
+
+    track.scrollTop = 99999 // past the end: the window pins to the last 8 rows
+    track.dispatchEvent(new Event(`scroll`))
+    flushSync()
+
+    expect(card_labels()).toEqual(many_labels(24, 40)) // 5 full rows + the last
+    await vi.waitFor(() => expect(live_cards()).toBe(16))
+    expect(doc_query(`.structure-gallery-pager`).textContent?.replaceAll(/\s/g, ``)).toBe(
+      `‹37–40/40›`, // clamped to the final page, not a page past the end
+    )
+  })
+
+  // A viewport denser than the budget still fills: 6 columns of 100px cards put
+  // more cards on screen at once than the 24-viewer budget allows, and every one
+  // of them must be live. Capping here left permanent blanks on screen, which is
+  // worse than running a few viewers over budget.
+  // A window the budget has squeezed may not lead the visible page by the full
+  // overscan: it would run out before the page ended, blanking a card on screen.
+  test(`grid window covers the visible page when the budget squeezes it`, async () => {
+    mount_gallery({ items: many_items, ...grid_props, max_live_cards: 3, overscan: 6 })
+    const track = doc_query(`.structure-gallery-track`)
+
+    track.scrollTop = 5 * grid_row_stride
+    track.dispatchEvent(new Event(`scroll`))
+    flushSync()
+
+    // 4 rows anchored on the first visible one, not 2 rows above it
+    expect(card_labels()).toEqual(many_labels(15, 27))
+    await vi.waitFor(() => expect(live_cards()).toBe(12))
+  })
+
+  test(`grid fills a viewport that outruns the viewer budget`, () => {
+    mount_gallery({ items: many_items, layout: `grid`, height: 100, min_card_width: 120 })
+
+    expect(document.querySelectorAll(`.structure-card`)).toHaveLength(many_items.length)
+    expect(live_cards()).toBe(many_items.length)
+  })
+
+  test.each([1, 4])(`grid with %i items needs no pager and sizes its spacer`, (count) => {
+    mount_gallery({ items: many_items.slice(0, count), ...grid_props })
+
+    expect(document.querySelector(`.structure-gallery-pager`)).toBeNull()
+    expect(doc_query(`.structure-gallery-spacer`).getAttribute(`style`)).toContain(
+      `block-size: ${Math.ceil(count / grid_columns) * grid_row_stride - 8}px`,
+    )
+  })
+
+  test(`grid scrolls by rows and remounts the new rows once settled`, async () => {
+    mount_gallery({ items: many_items, ...grid_props })
+    const track = doc_query(`.structure-gallery-track`)
+
+    track.scrollTop = 5 * grid_row_stride
+    track.dispatchEvent(new Event(`scroll`))
+    flushSync()
+
+    // window slides to rows 4-9, i.e. items 12-29
+    expect(card_labels()).toEqual(many_labels(12, 30))
+    await vi.waitFor(() => expect(live_cards()).toBe(18))
+
+    // arrow keys step one row, page keys one viewport row
+    mock_track_size(track, false)
+    expect(press(track, `ArrowDown`).defaultPrevented).toBe(true)
+    expect(track.scrollTop).toBe(6 * grid_row_stride)
   })
 })
 
@@ -677,18 +880,18 @@ test.each([
   [`Ctrl+ArrowDown is the browser's`, { ctrlKey: true }, false],
   [`Alt+ArrowDown is the browser's`, { altKey: true }, false],
 ])(`%s`, (_name, modifiers, expect_handled) => {
-  mount_carousel({
+  mount_gallery({
     items,
     resizable: true,
     layout: `horizontal`,
     height: 210,
     min_card_width: 180,
   })
-  const handle = doc_query(`.structure-carousel-resize-handle.horizontal`)
-  const before = doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
+  const handle = doc_query(`.structure-gallery-resize-handle`)
+  const before = doc_query(`.structure-gallery`).getAttribute(`style`) ?? ``
   const event = keydown(`ArrowDown`, { cancelable: true, ...modifiers })
   handle.dispatchEvent(event)
   flushSync()
-  const after = doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
+  const after = doc_query(`.structure-gallery`).getAttribute(`style`) ?? ``
   expect([event.defaultPrevented, after !== before]).toEqual([expect_handled, expect_handled])
 })

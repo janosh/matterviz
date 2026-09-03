@@ -166,7 +166,7 @@
   --viewer-chrome-icon-size: clamp(0.91rem, 2cqmin, 1rem);
 
   /* In-viewer overlay stack (inside one viewer container, above its 3D
-     canvas): 1 viewport labels · 2 glass chips · 4–6 carousel chrome
+     canvas): 1 viewport labels · 2 glass chips · 4–6 gallery chrome
      (legend/resize-handle/pager) · 10 draggable panes · 100 dropdowns +
      toasts · 1000 canvas tooltips + error banners. Components fall back to
      these tiers; override per instance via their dedicated --*-z-index vars.
