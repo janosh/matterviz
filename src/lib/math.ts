@@ -641,12 +641,13 @@ const lu_decompose = (
   const size = matrix.length
   const lu = matrix.map((row) => [...row])
   const perm = Array.from({ length: size }, (_, idx) => idx)
-  // Scanned, not `array_max(matrix.flat().map(Math.abs))`, which copied n^2 entries twice
-  let largest = 0
-  for (const row of matrix) {
-    for (const value of row) largest = Math.max(largest, Math.abs(value))
-  }
-  const pivot_floor = EPS * largest
+  // array_max skips NaN, so one stray entry cannot poison the floor the way a Math.max scan
+  // does (a NaN floor makes every `max_val <= pivot_floor` false, so no column is ever called
+  // singular). That keeps the check able to fire, not guaranteed to: whether it fires before
+  // elimination smears the NaN across rows depends on the matrix. An Infinity floor calls
+  // everything singular on column 0 - right outcome, incidental reason. Neither form validates
+  // its input. flat().map() copies n^2 twice, which the scan avoids, but callers are 4x4 down.
+  const pivot_floor = EPS * array_max(matrix.flat().map(Math.abs))
   let n_swaps = 0
 
   for (let col = 0; col < size; col++) {

@@ -59,10 +59,8 @@ export const expand_ion_types = (
       `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
     )
   }
-  // Total every count before allocating anything
-  const symbols: ElementSymbol[] = []
-  let total_ions = 0
-  for (const [type_idx, symbol] of ion_types.entries()) {
+  // Validate and total every count before allocating anything
+  const symbols = ion_types.map((symbol, type_idx) => {
     if (!is_elem_symbol(symbol)) {
       throw new Error(`Unknown element symbol in ion_types: ${symbol}`)
     }
@@ -70,9 +68,9 @@ export const expand_ion_types = (
     if (!Number.isInteger(ion_count) || ion_count < 0) {
       throw new Error(`Invalid ion count for ${symbol}: ${ion_count}`)
     }
-    symbols.push(symbol)
-    total_ions += ion_count
-  }
+    return symbol
+  })
+  const total_ions = ion_counts.reduce((sum, count) => sum + count, 0)
   if (available && total_ions > available.max_ions) {
     const declared = symbols.map((symbol, idx) => `${symbol} ${ion_counts[idx]}`).join(`, `)
     throw new Error(

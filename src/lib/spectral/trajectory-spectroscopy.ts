@@ -75,6 +75,11 @@ export interface TrajectorySpectroscopyOptions {
   raman_channel?: RamanChannel
 }
 
+// The resolved options every FFT path reads, as calc_trajectory_spectroscopy defaults them
+type SpectrumOptions = Required<
+  Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
+>
+
 // Peak detection: a local maximum of the normalized spectrum counts once it stands this far
 // above the surrounding minimum (within two Rayleigh widths)
 const PEAK_PROMINENCE = 0.02
@@ -865,9 +870,7 @@ const build_curve = (
   n_components: number,
   steps: number[],
   input: TrajectorySpectroscopyInput,
-  options: Required<
-    Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
-  >,
+  options: SpectrumOptions,
   label: string,
   // Scale the raw data behind `values`, in their units. Only differs from max |values| once an
   // upstream subtraction destroyed it: measured 2.0e1 vs 4.0e-15 for Horn-aligned velocities.
@@ -915,12 +918,8 @@ const calculate_raman = (
   input: TrajectorySpectroscopyInput,
   polarizability: TrajectorySignal,
   prepared: PreparedMotion,
-  options: Required<
-    Pick<
-      TrajectorySpectroscopyOptions,
-      `frequency_unit` | `preprocessing` | `window` | `zero_pad_factor` | `raman_channel`
-    >
-  >,
+  options: SpectrumOptions &
+    Required<Pick<TrajectorySpectroscopyOptions, `preprocessing` | `raman_channel`>>,
 ): RamanSpectrumResult => {
   validate_trajectory_signal(polarizability, [3, 3], `Raman polarizability`)
   const rotations = signal_rotations(
@@ -1064,16 +1063,15 @@ const curve_score = (
 
 const extract_displacements = (
   positions: Float64Array,
-  stream: TrajectoryPositionStream,
   frequencies: number[],
   input: TrajectorySpectroscopyInput,
-  frequency_unit: TrajectoryFrequencyUnit,
-  window: WindowType,
-  zero_pad_factor: number,
+  options: SpectrumOptions,
 ): Complex[][][] => {
+  const { frequency_unit } = options
+  const stream = input.positions
   const interval = sample_interval(stream.steps, frequency_unit, input.time_step, `positions`)
   const factor = frequency_factor(frequency_unit, input.time_unit)
-  const weights = time_series_window(stream.n_frames, window)
+  const weights = time_series_window(stream.n_frames, options.window)
   const weight_sum = weights.reduce((total, value) => total + value, 0)
   const n_components = stream.n_atoms * 3
   const component_means = new Float64Array(n_components)
@@ -1095,13 +1093,15 @@ const extract_displacements = (
   // One FFT per component serves every on-bin peak, vs a full-length DFT per (peak, component):
   // 1014 ms -> 113 ms for 494 peaks over 4096 frames and 128 atoms. VDOS peaks always land on a
   // bin; IR/Raman peaks come from separately sampled streams and fall back to the direct sum.
-  const n_fft = next_power_of_two(Math.ceil(zero_pad_factor * stream.n_frames))
-  const bins = frequencies.map((frequency) => {
+  const n_fft = next_power_of_two(Math.ceil(options.zero_pad_factor * stream.n_frames))
+  const binned: [number, number][] = []
+  const unbinned: number[] = []
+  for (const [freq_idx, frequency] of frequencies.entries()) {
     const exact = (frequency / factor) * interval * n_fft
     const bin = Math.round(exact)
-    return Math.abs(exact - bin) < 1e-9 && bin >= 0 && bin < n_fft ? bin : null
-  })
-  const binned = bins.flatMap((bin, freq_idx) => (bin === null ? [] : [[freq_idx, bin]]))
+    if (Math.abs(exact - bin) < 1e-9 && bin >= 0 && bin < n_fft) binned.push([freq_idx, bin])
+    else unbinned.push(freq_idx)
+  }
   if (binned.length > 0) {
     const real = new Float64Array(n_fft)
     const imaginary = new Float64Array(n_fft)
@@ -1117,8 +1117,7 @@ const extract_displacements = (
       }
     }
   }
-  for (const [freq_idx, bin] of bins.entries()) {
-    if (bin !== null) continue
+  for (const freq_idx of unbinned) {
     const raw_frequency = frequencies[freq_idx] / factor
     const flat = spectra[freq_idx]
     for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
@@ -1162,9 +1161,7 @@ const detect_peaks = (
   raman: TrajectorySpectrumCurve | null,
   prepared_positions: Float64Array,
   input: TrajectorySpectroscopyInput,
-  options: Required<
-    Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
-  >,
+  options: SpectrumOptions,
 ): TrajectorySpectralPeak[] => {
   const candidates = [
     ...curve_candidates(vdos, `vdos`),
@@ -1201,12 +1198,9 @@ const detect_peaks = (
   )
   const displacements = extract_displacements(
     prepared_positions,
-    input.positions,
     frequencies_with_displacements,
     input,
-    options.frequency_unit,
-    options.window,
-    options.zero_pad_factor,
+    options,
   )
   const displacement_by_frequency = new Map(
     frequencies_with_displacements.map((frequency, frequency_idx) => [

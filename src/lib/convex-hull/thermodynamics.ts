@@ -88,11 +88,9 @@ export function get_energy_per_atom(entry: PhaseData): number {
   return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
 }
 
-// Formation energy and hull results an entry carries from an earlier energy or an
-// earlier set of references. `e_above_hull_distances` prefers a cached e_form_per_atom
-// over recomputing one, so a transformation that changes energies or references must
-// clear these — otherwise the stale cache outranks the new energies and the change is
-// silently ignored, which is a temperature or gas-pressure control that moves nothing.
+// `e_above_hull_distances` prefers a cached e_form_per_atom over recomputing one, so any
+// transformation that changes energies or references must clear these: otherwise the stale
+// cache outranks the new energies and the temperature or gas-pressure control moves nothing.
 export const drop_cached_hull_data = <Entry extends PhaseData>(entry: Entry): Entry => ({
   ...entry,
   e_form_per_atom: undefined,
@@ -350,15 +348,13 @@ export function process_hull_for_stats(
 // energies in eV/atom)
 const HULL_EPS = 1e-9
 
-// Facet budget for the incremental construction below. Quickhull's cost is the number of
-// facets it builds, which grows combinatorially in the point count AND the dimension, so
-// neither bounds it on its own and nothing cheap predicts it up front — hence a running count
-// rather than a cap on entries or arity. Measured on points in convex position (every point a
-// hull vertex, the worst a real dataset reaches): 4D/2000 points is 569 facets in 19 ms and
-// 6D/1000 is 120k facets in 10 s, but 7D/1000 is 610k facets in 72 s and 8D/500 is 1.16M in
-// 210 s. 500k keeps every case that finished in a plausible time (6D/1000 builds ~300k) and
-// aborts the rest in 12-14 s. The plotted hulls are 2D-4D and the chempot dual hull 2D-3D, so
-// this only ever fires on the arity-5+ stats path.
+// Facet budget for the incremental construction below: nothing cheap predicts the count up
+// front, hence a running tally rather than a cap on entries or arity. Measured on points in
+// convex position (every point a hull vertex, the worst a real dataset reaches): 4D/2000 is 569
+// facets in 19 ms and 6D/1000 is 120k in 10 s, but 7D/1000 is 610k in 72 s and 8D/500 is 1.16M
+// in 210 s. 500k keeps every case that finished in a plausible time (6D/1000 builds ~300k) and
+// aborts the rest in 12-14 s. Plotted hulls are 2D-4D and the chempot dual hull 2D-3D, so this
+// only ever fires on the arity-5+ stats path.
 const MAX_HULL_FACETS = 500_000
 
 // Facet of an N-dimensional hull: an (N-1)-simplex of N vertices (indices into the input

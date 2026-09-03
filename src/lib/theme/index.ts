@@ -99,16 +99,14 @@ export const get_system_mode = (): ThemeType =>
     ? COLOR_THEMES.dark
     : COLOR_THEMES.light
 
-// Where a theme change lands: apply_theme_to_dom writes data-theme + inline color-scheme,
-// hosts (JupyterLab, VS Code, marimo) mark class. One list; three copies had drifted.
-const THEME_ATTRS = [`class`, `data-theme`, `style`]
-
-// Fires on a theme attribute change on any of `nodes` or on the OS preference. Callers own
-// their node set, any debounce and whether to notify on subscribe. Returns the teardown.
+// A theme change lands on data-theme + inline color-scheme (apply_theme_to_dom) or on class
+// (JupyterLab, VS Code, marimo) — one list, since three copies of it had drifted. Fires when
+// any of those changes on `nodes`, or when the OS preference does; callers own their node set,
+// any debounce, and whether to notify on subscribe. Returns the teardown.
+const THEME_MUTATIONS = { attributes: true, attributeFilter: [`class`, `data-theme`, `style`] }
 export function observe_theme_attributes(nodes: Iterable<Node>, on_change: () => void) {
   const observer = new MutationObserver(on_change)
-  const opts = { attributes: true, attributeFilter: THEME_ATTRS }
-  for (const node of nodes) observer.observe(node, opts)
+  for (const node of nodes) observer.observe(node, THEME_MUTATIONS)
   const media = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
   media?.addEventListener(`change`, on_change)
   return () => {

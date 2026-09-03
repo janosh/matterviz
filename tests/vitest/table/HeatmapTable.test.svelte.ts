@@ -30,9 +30,7 @@ const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement =>
 // Fake timers for a test that calls settle_search below, restored when the test finishes
 const fake_search_timers = () => {
   vi.useFakeTimers()
-  onTestFinished(() => {
-    vi.useRealTimers()
-  })
+  onTestFinished(() => void vi.useRealTimers())
 }
 
 // A non-empty search_query is debounced 150 ms before it reaches the filter (clearing is not).

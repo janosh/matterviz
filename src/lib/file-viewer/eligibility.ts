@@ -24,10 +24,12 @@ import { is_structure_file } from '$lib/structure/format-detect'
 import { is_trajectory_filename } from '$lib/trajectory/format-detect'
 
 // One compression wrapper removed; nested and unsupported ones are rejected because the parser
-// only decompresses one layer. The webview inflates ZIP (fflate); the node:zlib marker path cannot.
-const strip_supported_wrapper = (
+// only decompresses one layer. `supported` differs by consumer: the webview inflates ZIP
+// (fflate), the node:zlib marker path this defaults to cannot.
+type FormatPredicate = (fmt: ReturnType<typeof detect_compression_format>) => boolean
+export const normalize_browser_supported_filename = (
   filename: string,
-  supported: (format: ReturnType<typeof detect_compression_format>) => boolean,
+  supported: FormatPredicate = is_stream_compression_format,
 ): string | null => {
   const format = detect_compression_format(filename)
   if (!format) return filename
@@ -36,19 +38,14 @@ const strip_supported_wrapper = (
   return detect_compression_format(normalized) ? null : normalized
 }
 
-export const normalize_browser_supported_filename = (filename: string): string | null =>
-  strip_supported_wrapper(filename, is_stream_compression_format)
-
 export const should_encode_filename_as_base64 = (filename: string): boolean =>
   detect_compression_format(filename) !== null || BINARY_VIEWER_EXT_REGEX.test(filename)
 
 const normalize_eligible_filename = (filename: unknown): string | null => {
   if (typeof filename !== `string` || !filename || CONFIG_DIRS_REGEX.test(filename))
     return null
-  return strip_supported_wrapper(
-    filename.split(/[\\/]/).pop() ?? ``,
-    is_browser_decompressible_format,
-  )
+  const base_name = filename.split(/[\\/]/).pop() ?? ``
+  return normalize_browser_supported_filename(base_name, is_browser_decompressible_format)
 }
 
 const is_fermi_or_volumetric = (normalized: string): boolean =>

@@ -27,11 +27,10 @@ interface PolyhedraOptions {
 // Species whose mean bond dist / covalent-radii sum exceeds this are hidden when a
 // strongly-bound framework species exists (e.g. lone-pair Bi3+)
 const WEAK_BOND_NORM = 1.15
-// A hull is degenerate when it is flat, not when it is small, so this is a fraction of the
-// hull's own extent cubed rather than an absolute A^3 cutoff. Volume goes as length cubed, so
-// a fixed cutoff both keeps near-planar environments in A (a CN-6 puckering by 1 mA across
-// 3 A has a volume of 9e-3 A^3, nine times an absolute 1e-3) and drops perfectly good ones
-// whenever the coordinates are not in A.
+// A hull is degenerate when it is FLAT, not when it is small, so this is a fraction of the
+// hull's own extent cubed. An absolute A^3 cutoff would both keep near-planar environments in
+// A (a CN-6 puckering by 1 mA across 3 A has a volume of 9e-3 A^3, nine times an absolute
+// 1e-3) and drop perfectly good ones whenever the coordinates are not in A.
 const VOLUME_EPS = 1e-3
 
 interface ConvexHullResult {
@@ -616,13 +615,11 @@ export function compute_polyhedra(
 
     const hull = convex_hull_3d(vertex_positions)
     if (hull.faces.length === 0) continue
-    const extent = array_max(
-      [0, 1, 2].map((axis) => {
-        const [lo, hi] = array_extent(hull.vertices.map((vert) => vert[axis]))
-        return hi - lo
-      }),
-    )
-    if (hull.volume < VOLUME_EPS * extent ** 3) continue
+    const spans = [0, 1, 2].map((axis) => {
+      const [lo, hi] = array_extent(hull.vertices.map((vert) => vert[axis]))
+      return hi - lo
+    })
+    if (hull.volume < VOLUME_EPS * array_max(spans) ** 3) continue
 
     polyhedra.push({
       center_site_idx: site_idx,
@@ -666,8 +663,8 @@ export function merge_polyhedra_buffers(
     { nx: number; ny: number; nz: number; crease: boolean; shared: boolean }
   >()
   for (const poly of polyhedra) {
-    // Rewind marks, in case this polyhedron turns out to overflow the edge buffer below
-    const [poly_offset, poly_edge_offset] = [offset, edge_offset]
+    // Rewind mark, in case this polyhedron turns out not to fit the shared edge pool below
+    const poly_offset = offset
     const verts = poly.vertices
     // Resolve per-hull-vertex colors once
     const vert_rgb = new Float32Array(verts.length * 3)
@@ -719,17 +716,18 @@ export function merge_polyhedra_buffers(
       }
     }
 
-    // Draw an edge unless both adjacent faces are coplanar (quad diagonal)
-    let edge_overflow = false
+    // An edge is drawn unless both adjacent faces are coplanar (quad diagonal). Float32Array
+    // drops out-of-range writes SILENTLY, so a polyhedron whose outline no longer fits the
+    // shared 3F/2 pool is dropped WHOLE, triangles included, or the buffers would gap.
+    let n_edges = 0
+    for (const entry of edge_normals.values()) if (!entry.shared || entry.crease) n_edges++
+    if (edge_offset + n_edges * 6 > edge_positions.length) {
+      skipped_sites.push(`site ${poly.center_site_idx} (${poly.center_element})`)
+      offset = poly_offset
+      continue
+    }
     for (const [key, entry] of edge_normals) {
       if (entry.shared && !entry.crease) continue
-      // Float32Array drops out-of-range writes silently, so a polyhedron that no longer fits
-      // the shared pool is dropped whole rather than taking down the scene
-      if (edge_offset + 6 > edge_positions.length) {
-        skipped_sites.push(`site ${poly.center_site_idx} (${poly.center_element})`)
-        edge_overflow = true
-        break
-      }
       const from = verts[Math.floor(key / 65536)]
       const to = verts[key % 65536]
       edge_positions[edge_offset] = from[0]
@@ -740,8 +738,6 @@ export function merge_polyhedra_buffers(
       edge_positions[edge_offset + 5] = to[2]
       edge_offset += 6
     }
-    // Drop the overflowing polyhedron's triangles too, so the buffers stay gap-free
-    if (edge_overflow) [offset, edge_offset] = [poly_offset, poly_edge_offset]
   }
 
   // The 3F/2 pool is shared, so one hull convex_hull_3d failed to close exhausts it for the

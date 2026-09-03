@@ -156,9 +156,7 @@ const consume_decompressed = async <Result>(
     if (format === `zip`) {
       // fflate needs the whole archive, so this buffers; pipe it through an identity
       // transform first so an abort stops the buffering instead of being noticed after it
-      const zip_stream = signal
-        ? stream.pipeThrough(new TransformStream(), { signal })
-        : stream
+      const zip_stream = stream.pipeThrough(new TransformStream(), { signal })
       const bytes = new Uint8Array(await new Response(zip_stream).arrayBuffer())
       signal?.throwIfAborted()
       const entry = await unzip_single_entry(bytes)
@@ -186,14 +184,6 @@ export const decompress_data_binary = (
   signal?: AbortSignal,
 ): Promise<ArrayBuffer> =>
   consume_decompressed(data, format, (response) => response.arrayBuffer(), signal)
-
-const decompress_data_blob = (
-  data: CompressedSource,
-  format: CompressionFormat,
-  signal?: AbortSignal,
-  on_entry_name?: (name: string) => void,
-): Promise<Blob> =>
-  consume_decompressed(data, format, (response) => response.blob(), signal, on_entry_name)
 
 // === consumers of the string | ArrayBuffer content union produced above ===
 
@@ -259,7 +249,13 @@ export async function classify_payload(
   // so only ZIP is still decompressed by name there
   if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
     // A ZIP entry names itself, the only way `bundle.zip` holding `a.cif` reads as a CIF
-    blob = await decompress_data_blob(blob, format, signal, (name) => stripped.unshift(name))
+    blob = await consume_decompressed(
+      blob,
+      format,
+      (resp) => resp.blob(),
+      signal,
+      (name) => stripped.unshift(name),
+    )
   }
   const magic = await head(8)
   if (

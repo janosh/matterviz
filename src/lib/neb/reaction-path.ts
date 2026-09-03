@@ -363,6 +363,11 @@ export function fit_path_spline(
   }
   if (n_samples < 2) throw new Error(`fit_path_spline needs n_samples >= 2, got ${n_samples}`)
   const knot_slopes = given_slopes ? [...given_slopes] : natural_cubic_slopes(coords, energies)
+  // The Hermite basis wants t-space tangents: dE/dx times the run that slope was measured over
+  const tangents = (seg: number) =>
+    [knot_slopes[seg] * slope_widths[seg], knot_slopes[seg + 1] * slope_widths[seg]] as const
+  const seg_energy = (seg: number, t_val: number) =>
+    hermite(energies[seg], energies[seg + 1], ...tangents(seg), t_val)
   const highest_idx = arg_max(energies)
 
   // Start from the highest knot; interior critical points can only push it higher
@@ -372,8 +377,7 @@ export function fit_path_spline(
     between_images: [highest_idx, highest_idx],
   }
   for (const [seg, width] of widths.entries()) {
-    const slope_width = slope_widths[seg]
-    const [tan_0, tan_1] = [knot_slopes[seg] * slope_width, knot_slopes[seg + 1] * slope_width]
+    const [tan_0, tan_1] = tangents(seg)
     const criticals = segment_critical_points(energies[seg], energies[seg + 1], tan_0, tan_1)
     for (const t_val of criticals) {
       const energy = hermite(energies[seg], energies[seg + 1], tan_0, tan_1, t_val)
@@ -392,16 +396,7 @@ export function fit_path_spline(
     const coord = start + ((end - start) * sample) / (n_samples - 1)
     while (seg < widths.length - 1 && coord > coords[seg + 1]) seg++
     sample_coords.push(coord)
-    const slope_width = slope_widths[seg]
-    sample_energies.push(
-      hermite(
-        energies[seg],
-        energies[seg + 1],
-        knot_slopes[seg] * slope_width,
-        knot_slopes[seg + 1] * slope_width,
-        clamp((coord - coords[seg]) / widths[seg], 0, 1),
-      ),
-    )
+    sample_energies.push(seg_energy(seg, clamp((coord - coords[seg]) / widths[seg], 0, 1)))
   }
 
   // Include the analytic saddle so the plotted polyline peaks where the annotation sits. An

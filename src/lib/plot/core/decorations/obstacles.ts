@@ -1,7 +1,7 @@
 // Obstacle fields the decoration solver routes around, plus the DOM footprint helpers the
 // hosts use to size auto-placed decorations before and after first render.
 
-import type { Rect } from '$lib/plot/core/layout'
+import type { Rect, Sides } from '$lib/plot/core/layout'
 import { sample_series_obstacle_points } from '$lib/plot/core/layout'
 import type { DecorationPoint, DecorationSize } from './types'
 
@@ -28,18 +28,13 @@ export type ObstacleSeries = { points: DecorationPoint[]; draws_line?: boolean }
 // what it returns. Measuring against the base rather than the padded plot is what keeps a
 // decoration's own reservation out of the crowding decision.
 export function with_obstacle_frame(
-  frame: {
-    width: number
-    height: number
-    effective_base_pad: { l: number; r: number; t: number; b: number }
-  },
+  frame: { width: number; height: number; effective_base_pad: Required<Sides> },
   has_marks: boolean,
   build: (base: { base_w: number; base_h: number }) => ObstacleSeries[],
 ): DecorationPoint[] {
   const { width, height, effective_base_pad: pad } = frame
-  if (!width || !height || !has_marks) return []
-  const base_w = width - pad.l - pad.r
-  const base_h = height - pad.t - pad.b
+  if (!has_marks || !width || !height) return []
+  const [base_w, base_h] = [width - pad.l - pad.r, height - pad.t - pad.b]
   if (base_w <= 0 || base_h <= 0) return []
   return build_obstacles_norm(build({ base_w, base_h }), base_w, base_h)
 }
@@ -133,7 +128,7 @@ export function clip_bar(
   cross: number,
   span_start: number,
   span_end: number,
-): { points: DecorationPoint[]; draws_line: boolean } | null {
+): ObstacleSeries | null {
   if (!(cross >= 0 && cross <= 1)) return null
   const lower = Math.max(0, Math.min(span_start, span_end))
   const upper = Math.min(1, Math.max(span_start, span_end))

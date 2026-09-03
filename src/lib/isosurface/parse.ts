@@ -1,7 +1,6 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
 import { BOHR_TO_ANGSTROM, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
-import type { ElementSymbol } from '$lib/element'
-import { ELEM_SYMBOLS } from '$lib/element/types'
+import { element_from_atomic_number } from '$lib/element/helpers'
 import { strip_compression_extensions } from '$lib/io/decompress'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -445,6 +444,14 @@ export function parse_cube(
       console.warn(`.cube atom ${atom_idx}: skipping Z = 0 ghost/BSSE centre`)
       continue
     }
+    // Any other Z outside the table is a malformed header, which used to fall back to
+    // hydrogen and render with real radii and bonds
+    const element = element_from_atomic_number(atom_line[0])
+    if (!element) {
+      throw new Error(
+        `Cube file has atomic number ${atom_line[0]}, which is not a chemical element`,
+      )
+    }
 
     // atom_line[1] is the charge (often 0)
     const raw_xyz = math.scale([atom_line[2], atom_line[3], atom_line[4]] as Vec3, unit_scale)
@@ -454,7 +461,6 @@ export function parse_cube(
     const xyz = math.subtract(raw_xyz, origin)
     const abc = cube_cart_to_frac(xyz)
 
-    const element = atomic_number_to_symbol(atom_line[0])
     sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
   }
 
@@ -518,19 +524,6 @@ export function parse_cube(
   ]
 
   return { structure, volumes }
-}
-
-// Convert atomic number to element symbol. Any Z outside the table is a malformed header,
-// which used to render as hydrogen complete with real radii and bonds (Z = 0, a ghost/BSSE
-// centre, never reaches here: the atom loop skips it).
-const atomic_number_to_symbol = (atomic_number: number): ElementSymbol => {
-  const symbol = ELEM_SYMBOLS[atomic_number - 1]
-  if (!symbol) {
-    throw new Error(
-      `Cube file has atomic number ${atomic_number}, which is not a chemical element`,
-    )
-  }
-  return symbol
 }
 
 export type VolumetricFormat = `cube` | `chgcar`

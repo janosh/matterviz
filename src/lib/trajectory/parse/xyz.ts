@@ -124,13 +124,6 @@ function parse_extxyz_pbc(comment: string): Pbc | undefined {
 const EXTXYZ_PAIR_RE =
   /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*[=:]\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+))/gu
 
-function* iter_extxyz_pairs(comment: string) {
-  for (const { groups } of comment.matchAll(EXTXYZ_PAIR_RE)) {
-    const quoted = groups?.double ?? groups?.single
-    if (groups?.key) yield { key: groups.key, raw: quoted ?? groups.bare ?? ``, quoted }
-  }
-}
-
 // Read back by dedicated parsers (lattice, pbc, columns) or the step regex below, so
 // re-emitting them as frame properties would duplicate or contradict the frame
 const RESERVED_COMMENT_KEY_RE = /^(?:lattice|properties|pbc|step|frame|ionic_step)$/
@@ -166,8 +159,11 @@ export function parse_xyz_comment_metadata(comment: string): {
   const properties: Record<string, number> = {}
   const flags: Record<string, boolean> = {}
   const signals: Record<string, number[] | number[][]> = {}
-  for (const { key, raw, quoted } of iter_extxyz_pairs(comment)) {
-    const lower = key.toLowerCase()
+  for (const { groups } of comment.matchAll(EXTXYZ_PAIR_RE)) {
+    if (!groups?.key) continue
+    const quoted = groups.double ?? groups.single
+    const raw = quoted ?? groups.bare ?? ``
+    const lower = groups.key.toLowerCase()
     if (RESERVED_COMMENT_KEY_RE.test(lower)) continue
     const value = comment_scalar(raw)
     if (value === undefined) {

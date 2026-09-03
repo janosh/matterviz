@@ -150,8 +150,8 @@ export const read_dataset = (h5_file: h5wasm.File, path: string, format?: string
   if (!dataset) return null
   if (format !== undefined) {
     const shape = dataset_shape(dataset, path, format)
-    const value_count = shape.reduce((product, size) => product * size, 1)
-    assert_budget(path, value_count, `requests`, HDF5_MAX_WHOLE_DATASET_BYTES)
+    const values = shape.reduce((product, size) => product * size, 1)
+    assert_budget(path, values, `requests`, HDF5_MAX_WHOLE_DATASET_BYTES)
   }
   return dataset.to_array()
 }

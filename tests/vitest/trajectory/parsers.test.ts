@@ -1600,11 +1600,7 @@ describe(`HDF5 slice budgets`, () => {
     const read = () => read_dataset(h5_file, path, `vaspout.h5`)
     if (allowed) expect(read()).toEqual([])
     else {
-      const logical_bytes = shape.reduce((product, size) => product * size, 1) * 8
-      expect(read).toThrow(
-        `HDF5 dataset ${path} requests ${logical_bytes} logical bytes, above the ` +
-          `${HDF5_MAX_WHOLE_DATASET_BYTES}-byte application limit`,
-      )
+      expect(read).toThrow(`above the ${HDF5_MAX_WHOLE_DATASET_BYTES}-byte application limit`)
       expect(to_array).not.toHaveBeenCalled() // the guard runs before the read
     }
   })

@@ -85,7 +85,8 @@ export function broaden_peaks(
   // supercell pattern carries thousands of reflections.
   let tallest = 0
   for (let idx = 0; idx < peak_int.length; idx++) {
-    const [x0, intensity] = [peak_pos[idx], peak_int[idx]]
+    const x0 = peak_pos[idx]
+    const intensity = peak_int[idx]
     // All three are silent otherwise: a NaN intensity makes every grid point NaN, an Infinite
     // one puts the floor at Infinity and drops every real peak, and a non-finite position
     // fails both reach tests below, leaving a curve identical to one without that peak.

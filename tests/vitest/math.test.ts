@@ -806,6 +806,13 @@ describe(`det_nxn`, () => {
       Array.from({ length: 5 }, (_col, jdx) => idx + jdx + 1),
     )
     expect(math.det_nxn(singular)).toBeCloseTo(0, 5)
+    // A NaN entry must not disable the singularity check. With a Math.max scan the floor is
+    // NaN, every `max_val <= floor` is false, and det_nxn returns NaN for a matrix it should
+    // call singular. Fixture-specific: 16 of the 25 NaN positions here flip, and on other
+    // singular 5x5s elimination smears the NaN before the check reaches a column that fires.
+    const with_nan = singular.map((row) => [...row])
+    with_nan[0][1] = NaN
+    expect(math.det_nxn(with_nan)).toBe(0)
   })
 
   test(`throws for non-square matrix`, () => {

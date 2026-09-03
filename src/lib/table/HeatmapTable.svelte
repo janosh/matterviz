@@ -330,7 +330,9 @@
   const key_of_id = (col_id: string): string => data_keys.get(col_id) ?? col_id
   const cell_key = (col: Label): string => key_of_id(get_col_id(col))
 
-  // column_order first (stale IDs skipped), then any column it doesn't mention
+  // column_order first (stale IDs skipped), then any column it doesn't mention. Groups are
+  // then made contiguous: the group header emits one colspan per group, so a group split by
+  // another column would label the wrong ones and leave its tail unlabelled.
   let ordered_columns = $derived.by(() => {
     const by_id = new Map(columns.map((col) => [get_col_id(col), col]))
     const ordered = [...new Set(column_order)]
@@ -338,21 +340,14 @@
       .filter((col) => col != null)
     const ordered_ids = new Set(ordered.map(get_col_id))
     const merged = [...ordered, ...columns.filter((col) => !ordered_ids.has(get_col_id(col)))]
-    return group_contiguously(merged)
-  })
-  // The group header emits one colspan per group, so a group split by another column would
-  // label the wrong ones and leave its tail unlabelled. Emit each group at its first member.
-  function group_contiguously(cols_in_order: Label[]): Label[] {
-    const groups = Map.groupBy(cols_in_order, (col) => col.group)
-    groups.delete(undefined)
-    if (groups.size === 0) return cols_in_order
-    return cols_in_order.flatMap((col) => {
+    const groups = Map.groupBy(merged, (col) => col.group)
+    return merged.flatMap((col) => {
       if (!col.group) return [col]
       const members = groups.get(col.group) ?? []
-      groups.delete(col.group) // the group is emitted whole at its first member
+      groups.delete(col.group) // emitted whole at its first member, skipped at the rest
       return members
     })
-  }
+  })
   // Write the resolved order back to the bindable prop so hosts persist a complete, valid list.
   // Only on a real change: a fresh array reference would re-trigger this effect forever. Left
   // alone while columns are empty, so a persisted order survives until the data arrives.
@@ -461,10 +456,7 @@
   let debounced_query = $state(untrack(() => search_query))
   $effect(() => {
     const query = search_query
-    if (!query.trim()) {
-      debounced_query = query
-      return
-    }
+    if (!query.trim()) return void (debounced_query = query)
     const timer = setTimeout(() => (debounced_query = query), 150)
     return () => clearTimeout(timer)
   })
