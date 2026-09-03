@@ -4,6 +4,7 @@ import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 's
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, keydown, make_crystal, mouse } from '../setup'
 import StructureGalleryHarness from './StructureGalleryHarness.svelte'
+import StructureGalleryPropsHarness from './StructureGalleryPropsHarness.svelte'
 
 const items = Array.from({ length: 5 }, (_, idx) => ({
   id: `structure-${idx}`,
@@ -875,6 +876,31 @@ describe(`StructureGallery`, () => {
     expect(
       rendered.every((cell) => cell.style.startsWith(`--prop-rank-color: ${midpoint}`)),
     ).toBe(true)
+  })
+
+  // Ranking is built in one derived, so the direction has to be read while it is
+  // built, not when the tints are handed out — otherwise flipping it on a live
+  // gallery changes nothing. Mounting twice can't tell those two apart.
+  test(`repaints the tints when the scale direction flips on a live gallery`, () => {
+    const harness = mount(StructureGalleryPropsHarness, {
+      target: document.body,
+      props: {
+        initial: {
+          items: prop_items,
+          layout: `horizontal`,
+          property_color_scheme: `interpolateRdBu`,
+        },
+      },
+    })
+    flushSync()
+    const before = prop_cells().map((cell) => cell.style)
+
+    harness.update({ property_color_reverse: true })
+    flushSync()
+
+    const after = prop_cells().map((cell) => cell.style)
+    expect(after.filter(Boolean)).not.toHaveLength(0)
+    expect(after).not.toEqual(before)
   })
 
   test(`leaves a property with one distinct value uncoloured`, () => {

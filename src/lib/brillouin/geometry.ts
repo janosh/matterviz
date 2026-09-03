@@ -92,14 +92,13 @@ export const k_cell_fit_extent = (
   k_lattice: Matrix3x3 | undefined,
   padding = FIT_PADDING,
 ): number => {
-  // no lattice: treat k_space_size's placeholder as a cubic |b|, whose cell diagonal is sqrt(3)
-  const fallback = Math.sqrt(3) * k_space_size(undefined) * padding
-  if (!k_lattice) return fallback
   const half_extent = [0, 1, 2].map(
-    (axis_idx) => 0.5 * k_lattice.reduce((sum, row) => sum + Math.abs(row[axis_idx]), 0),
+    (axis) => 0.5 * (k_lattice?.reduce((sum, row) => sum + Math.abs(row[axis]), 0) ?? 0),
   )
   const extent = 2 * Math.hypot(...half_extent) * padding
-  return extent > 0 ? extent : fallback
+  // no lattice, or one that spans nothing: treat k_space_size's placeholder as a cubic |b|,
+  // whose cell diagonal is sqrt(3)
+  return extent > 0 ? extent : Math.sqrt(3) * k_space_size(undefined) * padding
 }
 
 // Padded diameter of the sphere enclosing the zone, in the same "fit to the shorter viewport

@@ -316,10 +316,20 @@ describe(`camera helpers`, () => {
     expect(ortho_zoom_for_extent(ext, w, h, zoom_in)).toBeCloseTo(expected, 10)
   })
 
-  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
-    `ortho_zoom rejects extent %s rather than clamping it`,
-    (ext) =>
-      expect(() => ortho_zoom_for_extent(ext, 400, 400, 10)).toThrow(/Invalid ortho fit/),
+  // Both fits share one extent/viewport check. An extent is a scene diameter with no lower
+  // bound of its own, so it is rejected rather than clamped; clamping at 1 framed every
+  // reciprocal-space scene (extent < 1 past a = 11.83 A) against a constant.
+  // oxfmt-ignore
+  test.each([
+    [0, 400, 400], [-1, 400, 400], [Number.NaN, 400, 400], [Infinity, 400, 400],
+    [10, 0, 400], [10, 400, 0], [10, -1, 400],
+  ])(`both fits reject extent=%s viewport %sx%s`, (ext, wid, hgt) => {
+    expect(() => ortho_zoom_for_extent(ext, wid, hgt, 10)).toThrow(/Invalid ortho fit/)
+    expect(() => perspective_distance_for_extent(ext, wid, hgt, 10)).toThrow(/perspective/)
+  })
+
+  test.each([0, -1, 180, 200])(`perspective rejects fov %s`, (fov) =>
+    expect(() => perspective_distance_for_extent(10, 400, 400, fov)).toThrow(/perspective/),
   )
 
   const vertical_half_fov = Math.PI / 36

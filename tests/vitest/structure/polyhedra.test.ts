@@ -720,6 +720,29 @@ describe(`merge_polyhedra_buffers`, () => {
     expect(warn.mock.calls[0][0]).toMatch(/site 7/)
   })
 
+  test(`counts the outline it will draw, so a hull that fits is not dropped`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // The overflow check must count the edges the write loop emits, not every undirected
+    // edge. A cube has 18 undirected edges and draws 12, the 6 coplanar quad diagonals being
+    // skipped. Two loose triangles ahead of it take 6 of the ceil(1.5 * 14) = 21 edge pool,
+    // leaving 15: the cube's true 12 fits, its naive 18 does not. Over-counting drops the
+    // cube whole and blames the edge budget - silent, and green without this case.
+    // oxfmt-ignore
+    const loose_triangles: Polyhedron = {
+      center_site_idx: 3, center_orig_idx: 3, center_element: `Fe`, volume: 0,
+      vertices: Array.from({ length: 6 }, (_un, idx) => [idx, (idx % 3) ** 2, 0] as Vec3),
+      vertex_site_idxs: Array.from({ length: 6 }, (_un, idx) => idx),
+      faces: [[0, 1, 2], [3, 4, 5]],
+    }
+    const buffers = merge_polyhedra_buffers(
+      [loose_triangles, poly_from_hull(cube_points(1))],
+      uniform_red,
+    )
+    expect(buffers.triangle_count).toBe(14) // the cube is kept: 2 loose + its 12
+    expect(buffers.edge_count).toBe(18) // 6 loose + the cube's 12 drawn edges
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   test(`fills the color buffer with linear CSS color`, () => {
     // same oracle as geometry.test.ts: three's own conversion, not numbers pinned from a run
     const expected_rgb = new Color(`#57178f`).toArray()

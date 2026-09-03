@@ -124,14 +124,17 @@ export function structure_fit_frame(
 
 // `fit_extent` is a scene diameter in the scene's own units, so it has no lower bound of its
 // own: reciprocal-space callers pass 1/A extents below 1. Clamping at 1 framed those against a
-// constant, so a bad extent throws here as it does in perspective_distance_for_extent.
+// constant, so both fits reject a bad extent instead.
+const bad_fit = (extent: number, width: number, height: number): boolean =>
+  !(extent > 0) || !Number.isFinite(extent) || !(width > 0) || !(height > 0)
+
 export const ortho_zoom_for_extent = (
   fit_extent: number,
   width: number,
   height: number,
   initial_zoom: number,
 ): number => {
-  if (!(fit_extent > 0) || !Number.isFinite(fit_extent) || !(width > 0) || !(height > 0)) {
+  if (bad_fit(fit_extent, width, height)) {
     throw new Error(`Invalid ortho fit: extent=${fit_extent}, viewport=${width}x${height}`)
   }
   return (initial_zoom * Math.min(width, height)) / (fit_extent * FIT_ZOOM_REF_PX)
@@ -143,13 +146,8 @@ export const perspective_distance_for_extent = (
   height: number,
   vertical_fov_degrees: number,
 ): number => {
-  if (
-    !(fit_extent > 0) ||
-    !Number.isFinite(fit_extent) ||
-    !(width > 0) ||
-    !(height > 0) ||
-    !(vertical_fov_degrees > 0 && vertical_fov_degrees < 180)
-  ) {
+  const in_range = vertical_fov_degrees > 0 && vertical_fov_degrees < 180
+  if (bad_fit(fit_extent, width, height) || !in_range) {
     throw new Error(
       `Invalid perspective fit: extent=${fit_extent}, viewport=${width}x${height}, fov=${vertical_fov_degrees}`,
     )

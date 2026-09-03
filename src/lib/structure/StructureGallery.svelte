@@ -343,25 +343,6 @@
     }
     return [...keys]
   })
-  // Numeric span per key across the WHOLE collection, not the render window, or a
-  // card would change colour as it scrolls out and back in.
-  const property_spans = $derived.by(() => {
-    const spans = new Map<string, [number, number]>()
-    if (!property_color_scheme) return spans
-    for (const item of items) {
-      for (const key of shown_property_keys) {
-        const value = item.properties?.[key]
-        if (typeof value !== `number` || !Number.isFinite(value)) continue
-        const span = spans.get(key)
-        if (span) spans.set(key, [Math.min(span[0], value), Math.max(span[1], value)])
-        else spans.set(key, [value, value])
-      }
-    }
-    return spans
-  })
-  const property_interpolator = $derived(
-    property_color_scheme ? get_d3_interpolator(property_color_scheme) : null,
-  )
   // The pairs a card actually captions with. Computed once per card so an item
   // carrying none of the shown keys renders no caption at all, rather than an
   // empty bordered strip under its viewer.
@@ -379,20 +360,36 @@
     const break_at = key.indexOf(`_`)
     return break_at === -1 ? [key, ``] : [key.slice(0, break_at), key.slice(break_at + 1)]
   }
-  // A pair's tint is its value's rank within that span. One distinct value has no rank,
-  // so it stays unmarked rather than being painted an arbitrary end of the scale.
-  const property_style = (key: string, value: number | string): string => {
-    if (!property_interpolator || typeof value !== `number` || !Number.isFinite(value)) {
-      return ``
+  // Ranking is one thing, so it is built in one place: without a scheme there is
+  // none, and with one every numeric value is placed between the collection's
+  // smallest and largest for its key. Spans cover the WHOLE collection, not the
+  // render window, or a card would change colour as it scrolls out and back in.
+  const property_style = $derived.by(() => {
+    if (!property_color_scheme) return () => ``
+    const interpolate = get_d3_interpolator(property_color_scheme)
+    const spans = new Map<string, [number, number]>()
+    for (const item of items) {
+      for (const key of shown_property_keys) {
+        const value = item.properties?.[key]
+        if (typeof value !== `number` || !Number.isFinite(value)) continue
+        const [lo, hi] = spans.get(key) ?? [value, value]
+        spans.set(key, [Math.min(lo, value), Math.max(hi, value)])
+      }
     }
-    const span = property_spans.get(key)
-    if (!span || span[1] - span[0] < Number.EPSILON) return ``
-    const rank = (value - span[0]) / (span[1] - span[0])
-    const color = property_interpolator(property_color_reverse ? 1 - rank : rank)
-    return `--prop-rank-color: ${color}; --prop-ink: ${pick_contrast_color({
-      background: color,
-    })}`
-  }
+    // One distinct value has no rank, so it stays untinted rather than being
+    // painted an arbitrary end of the scale.
+    return (key: string, value: number | string): string => {
+      const span = spans.get(key)
+      if (typeof value !== `number` || !span || span[1] - span[0] < Number.EPSILON) return ``
+      const rank = (value - span[0]) / (span[1] - span[0])
+      // read at call time, which the template tracks: flipping the direction
+      // repaints without rebuilding every span
+      const color = interpolate(property_color_reverse ? 1 - rank : rank)
+      return `--prop-rank-color: ${color}; --prop-ink: ${pick_contrast_color({
+        background: color,
+      })}`
+    }
+  })
   // Two key/value pairs per caption row once a card is wide enough to keep both
   // legible: four stacked rows under a shrunken viewer read as a debug dump, two
   // read as a caption. 260px is where a pair of typical keys ("E (eV/atom)" at the

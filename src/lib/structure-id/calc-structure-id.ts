@@ -23,14 +23,13 @@ const CSP_NEIGHBORS_CLOSE_PACKED = 12
 // not vote — they are surfaces, defects and liquid, and counting them in the denominator hands
 // a thin bcc slab the close-packed 12 (a 4-layer Fe slab is half surface, so a strict majority
 // of ALL atoms ties and falls back to 12, putting 0.75*a^2 back on its crystalline interior).
-function default_csp_neighbors(cna_types: Int8Array | null): number {
-  if (!cna_types) return CSP_NEIGHBORS_CLOSE_PACKED
-  let [n_bcc, n_close_packed] = [0, 0]
-  for (const code of cna_types) {
-    if (code === CNA_TYPES.bcc) n_bcc++
-    else if (code !== CNA_TYPES.other) n_close_packed++
+const default_csp_neighbors = (cna_types: Int8Array | null): number => {
+  let votes = 0 // +1 per bcc atom, -1 per close-packed one; `other` and no CNA abstain
+  for (const code of cna_types ?? []) {
+    if (code === CNA_TYPES.bcc) votes++
+    else if (code !== CNA_TYPES.other) votes--
   }
-  return n_bcc > n_close_packed ? CSP_NEIGHBORS_BCC : CSP_NEIGHBORS_CLOSE_PACKED
+  return votes > 0 ? CSP_NEIGHBORS_BCC : CSP_NEIGHBORS_CLOSE_PACKED
 }
 
 // site.properties keys written by apply_structure_id. `cna_type` holds a CNA_TYPES code
@@ -103,12 +102,14 @@ export function calc_structure_id(
   // The phase-derived default is unknown until CNA has run, so size the query for the larger
   // candidate; calc_centrosymmetry takes a prefix of each sorted block, so a longer block never
   // changes the neighbors it uses.
+  // Sized from the OPTION, never from the phase-derived value below: moving the
+  // default_csp_neighbors reassignment above this line looks harmless and would shrink the
+  // query to 8 for bcc, changing what CNA sees.
+  let n_csp_neighbors = n_csp_option ?? CSP_NEIGHBORS_CLOSE_PACKED
   const k_neighbors = Math.max(
     skip_cna || fixed_cutoff !== null ? 0 : N_ADAPTIVE_CNA_NEIGHBORS,
-    skip_csp ? 0 : (n_csp_option ?? CSP_NEIGHBORS_CLOSE_PACKED),
+    skip_csp ? 0 : n_csp_neighbors,
   )
-
-  let n_csp_neighbors = n_csp_option ?? CSP_NEIGHBORS_CLOSE_PACKED
   let cna_types: Int8Array | null = null
   let centrosymmetry: Float64Array | null = null
   let neighbor_cutoff = 0

@@ -37,8 +37,8 @@
   let tip: HTMLElement | undefined = $state()
   $effect(() => {
     void position // the anchor moved, so any previous slide is stale
-    if (!tip) return
     const node = tip
+    if (!node) return
     // threlte's HTML writes the anchor transform from a render-stage task, so
     // measuring on this flush still reads the previous site's screen box
     const frame = requestAnimationFrame(() => {
