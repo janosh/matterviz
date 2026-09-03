@@ -61,8 +61,6 @@
     property_keys?: string[]
     // Unit per key, rendered after the value rather than bracketed onto the key.
     property_units?: Record<string, string>
-    // Whether the caption sits under the viewer or beside it.
-    property_position?: `bottom` | `side`
     // Ranks each numeric value between the collection's smallest and largest for
     // that key — the lowest energy at one end of the scale, the highest at the
     // other — and tints the whole key/value pair in this scheme. The text colour
@@ -92,7 +90,6 @@
     pager_target = undefined,
     property_keys,
     property_units,
-    property_position = `bottom`,
     property_color_scheme,
     property_color_reverse = false,
   }: Props = $props()
@@ -166,14 +163,24 @@
     Math.max(1, Math.floor((width + gap) / (min_width + gap)))
   const share_width = (width: number, cols: number): number =>
     (width - gap * (cols - 1)) / cols
+  // A panel frames its cards: the track insets them by a gutter so they clear the
+  // header's rule and the panel's own corners, where a card's radius otherwise
+  // curves away from a straight border. clientWidth counts that padding, so the
+  // sizing below takes it back out. Scroll offsets don't: a gutter is a fraction
+  // of a step, and `covered_steps` already carries two whole steps of slack.
+  const panel_gutter = $derived(header ? gap : 0)
+  const inner_track_width = $derived(Math.max(0, track_width - 2 * panel_gutter))
+  const inner_track_height = $derived(Math.max(0, track_height - 2 * panel_gutter))
   // Cards per scroll-axis step: a responsive column count in grid mode, one
   // everywhere else. Every window calculation below is written in these terms,
   // so horizontal and vertical stay the single-lane cases of the same math.
-  const columns = $derived(is_grid ? fit_columns(track_width, fitted_min_card_width) : 1)
+  const columns = $derived(is_grid ? fit_columns(inner_track_width, fitted_min_card_width) : 1)
   // Grid columns divide the full width, so cards stretch past their minimum
   // rather than leaving a ragged gutter on the right.
   const grid_card_width = $derived(
-    track_width > 0 ? Math.max(1, share_width(track_width, columns)) : fitted_min_card_width,
+    inner_track_width > 0
+      ? Math.max(1, share_width(inner_track_width, columns))
+      : fitted_min_card_width,
   )
   // Viewer height and horizontal card width are independent. Fit as many
   // titlebar-safe cards as the measured viewport permits; only stretch cards
@@ -197,7 +204,9 @@
   // Whole steps per viewport page. Both measurements follow the scroll axis:
   // taking the cross axis would size a vertical page from the gallery's WIDTH.
   // Falls back to one step until the gallery has been measured.
-  const viewport_size = $derived(is_horizontal ? gallery_width : track_height)
+  const viewport_size = $derived(
+    is_horizontal ? gallery_width - 2 * panel_gutter : inner_track_height,
+  )
   const steps_per_page = $derived(Math.max(1, Math.floor((viewport_size + gap) / item_stride)))
   const page_size = $derived(steps_per_page * columns) // in items, not steps
   const max_page_step = $derived(Math.max(0, step_count - steps_per_page))
@@ -279,6 +288,7 @@
         ? `--structure-gallery-grip-inset: max(0px, (100% - ${card_width}px) / 2)`
         : ``,
       is_grid ? `min-block-size: ${grid_floor}px` : ``,
+      header ? `--structure-gallery-panel-gutter: ${panel_gutter}px` : ``,
       resizable ? `max-inline-size: 100%` : ``,
       resizable && !is_grid ? `min-block-size: ${min_resize_height}px` : ``,
     ]
@@ -352,11 +362,14 @@
   // The pairs a card actually captions with. Computed once per card so an item
   // carrying none of the shown keys renders no caption at all, rather than an
   // empty bordered strip under its viewer.
-  const property_pairs = (item: StructureGalleryItem): [string, number | string][] =>
-    shown_property_keys.flatMap((key) => {
+  const property_pairs = (item: StructureGalleryItem): [string, number | string][] => {
+    const pairs: [string, number | string][] = []
+    for (const key of shown_property_keys) {
       const value = item.properties?.[key]
-      return value === undefined ? [] : [[key, value] as [string, number | string]]
-    })
+      if (value !== undefined) pairs.push([key, value])
+    }
+    return pairs
+  }
   // An underscore in a key marks a subscript: `E_hull` captions as E with a
   // subscripted hull, the way the quantity is written.
   const split_subscript = (key: string): [string, string] => {
@@ -381,11 +394,8 @@
   // legible: four stacked rows under a shrunken viewer read as a debug dump, two
   // read as a caption. 260px is where a pair of typical keys ("E (eV/atom)" at the
   // caption's 11px ceiling) still leaves each value room for a number and its
-  // tint; longer keys ellipsis rather than pushing the numbers out. A side
-  // caption is a narrow lane by construction, so it always stacks.
-  const two_up_properties = $derived(
-    property_position === `bottom` && shown_property_keys.length > 1 && card_width >= 260,
-  )
+  // tint; longer keys ellipsis rather than pushing the numbers out.
+  const two_up_properties = $derived(shown_property_keys.length > 1 && card_width >= 260)
 
   // Ask the host for more items once fewer than a page of them trail the render
   // window. Both call sites are needed: the effect covers mount, resize and
@@ -522,7 +532,7 @@
   // its layout derives card width from: an exact width for a single column, the
   // fit-then-stretch minimum otherwise. Both clamp to the host.
   const widest_card = $derived(
-    Math.max(min_resize_width, is_grid ? track_width : gallery_width),
+    Math.max(min_resize_width, is_grid ? inner_track_width : gallery_width),
   )
   const set_resized_size = (axis: `height` | `width`, next_size: number): void => {
     if (axis === `height`) {
@@ -620,7 +630,6 @@
     resizable && `resizable`,
     resize_drag && `resizing`,
     header && `paneled`,
-    property_position === `side` && `properties-side`,
     two_up_properties && `properties-two-up`,
   ]}
   style={gallery_style}
@@ -691,14 +700,14 @@
               <dl class="card-properties">
                 {#each pairs as [key, value] (key)}
                   {@const [key_head, key_sub] = split_subscript(key)}
+                  {@const unit = property_units?.[key]}
                   <div class="prop" style={property_style(key, value)}>
                     <dt title={key}>
                       {key_head}{#if key_sub}<sub>{key_sub}</sub>{/if}
                     </dt>
                     <dd>
-                      {typeof value === `number`
-                        ? format_num(value)
-                        : value}{#if property_units?.[key]}<small>{property_units[key]}</small
+                      {typeof value === `number` ? format_num(value) : value}{#if unit}<small
+                          >{unit}</small
                         >{/if}
                     </dd>
                   </div>
@@ -749,6 +758,11 @@
     border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
     border-radius: 6px;
     background: color-mix(in srgb, currentColor 5%, transparent);
+  }
+  /* the gutter rides on the scroll area, not the section, so the header's rule
+     still spans the full panel while the cards clear it */
+  .structure-gallery.paneled .structure-gallery-track {
+    padding: var(--structure-gallery-panel-gutter);
   }
   .structure-gallery-header {
     display: flex;
@@ -834,67 +848,50 @@
     border-block-start: 1px solid color-mix(in srgb, currentColor 10%, transparent);
     font-size: clamp(9px, calc(var(--structure-gallery-height) * 0.05), 11px);
     line-height: 1.5;
-  }
-  /* One tinted box per pair, subgridding the two columns it spans so keys and
-     values stay in the card's own columns. Its padding is also what puts air
-     between two pairs on a line, which a shared column gap could only give by
-     loosening key from value everywhere too. */
-  .card-properties .prop {
-    display: grid;
-    grid-column: span 2;
-    grid-template-columns: subgrid;
-    align-items: baseline;
-    padding-inline: 4px;
-    border-radius: 3px;
-    background: var(--prop-rank-color, transparent);
-    color: var(--prop-ink, inherit);
-  }
-  .card-properties dt {
-    overflow: hidden;
-    /* muted against whatever the box is: the card's ink, or the contrast colour
-       picked for a tint */
-    color: color-mix(in srgb, currentColor 65%, transparent);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .card-properties dd {
-    margin: 0;
-    overflow: hidden;
-    font-variant-numeric: tabular-nums;
-    text-align: end;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .card-properties sub {
-    font-size: 0.75em;
-    line-height: 1;
-  }
-  .card-properties small {
-    margin-inline-start: 2px;
-    font-weight: lighter;
-    font-size: 0.85em;
+    /* One tinted box per pair, subgridding the two columns it spans so keys and
+       values keep the strip's own columns. Its padding is also what puts air
+       between two pairs on a line, which a shared column gap could only give by
+       loosening key from value everywhere too. */
+    .prop {
+      display: grid;
+      grid-column: span 2;
+      grid-template-columns: subgrid;
+      align-items: baseline;
+      padding-inline: 4px;
+      border-radius: 3px;
+      background: var(--prop-rank-color, transparent);
+      color: var(--prop-ink, inherit);
+    }
+    dt {
+      overflow: hidden;
+      /* muted against whatever the box is: the card's ink, or the contrast
+         colour picked for a tint */
+      color: color-mix(in srgb, currentColor 65%, transparent);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    dd {
+      margin: 0;
+      overflow: hidden;
+      font-variant-numeric: tabular-nums;
+      text-align: end;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    sub {
+      font-size: 0.75em;
+      line-height: 1;
+    }
+    small {
+      margin-inline-start: 2px;
+      font-weight: lighter;
+      font-size: 0.85em;
+    }
   }
   /* two pairs per line once a card is wide enough to keep both legible, so four
      keys caption a card in two lines rather than four under a shrunken viewer */
   .structure-gallery.properties-two-up .card-properties {
     grid-template-columns: repeat(2, minmax(0, max-content) minmax(0, 1fr));
-  }
-  /* beside the viewer instead of beneath it: the card gains a key and a value
-     column, each capped so a long key can only take so much off the viewer */
-  .structure-gallery.properties-side .structure-card {
-    grid-template-columns: minmax(0, 1fr) fit-content(44%);
-    grid-template-rows: minmax(0, 1fr);
-  }
-  .structure-gallery.properties-side .structure-card :global(.structure) {
-    grid-column: 1;
-  }
-  .structure-gallery.properties-side .card-properties {
-    grid-row: 1;
-    grid-column: 2;
-    align-content: center;
-    max-block-size: none;
-    border-block-start: 0;
-    border-inline-start: 1px solid color-mix(in srgb, currentColor 10%, transparent);
   }
   /* Lift paint containment only while a structure tooltip exists. */
   .structure-card:has(:global([role='tooltip'])) {

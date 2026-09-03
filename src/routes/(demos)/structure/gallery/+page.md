@@ -69,7 +69,7 @@ The corner grip works here too, and dragging narrower adds columns: the width it
 
 ## Per-structure properties
 
-Give an item `properties` and the gallery captions its viewer with them: a two-line strip along the bottom of the card, keys muted, values tabular. Cards wide enough for two key/value pairs per line get them, narrow ones stack; either way the pairs borrow the card's own grid columns through a CSS subgrid, so keys and values line up across every row of a card. `property_keys` picks and orders a subset, and `property_position="side"` moves the caption into a lane beside the viewer instead.
+Give an item `properties` and the gallery captions its viewer with them: a two-line strip along the bottom of the card, keys muted, values tabular. Cards wide enough for two key/value pairs per line get them, narrow ones stack; either way the pairs borrow the card's own grid columns through a CSS subgrid, so keys and values line up across every row of a card. `property_keys` picks and orders a subset.
 
 `property_color_scheme` ranks each numeric value between the smallest and largest for that key across the whole collection — not just the cards on screen, so a card keeps its colour as it scrolls — and tints the whole key/value pair in that scheme. The text colour is picked against each tint, so keys and values stay legible where d3's scales run to near-black and near-white. `property_color_reverse` flips which end of the scheme the smallest value takes; here it makes the lowest energy blue and the highest red. Non-numeric values, and any key whose values are all identical, are left untinted rather than implying a ranking that isn't there.
 

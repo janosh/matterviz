@@ -787,7 +787,6 @@ describe(`StructureGallery`, () => {
     [{ min_card_width: 320 }, true],
     [{ min_card_width: 220 }, false], // too narrow to keep both pairs legible
     [{ min_card_width: 320, property_keys: [`sites`] }, false], // a lone pair can't pair up
-    [{ min_card_width: 320, property_position: `side` }, false], // a side lane always stacks
   ]
   test.each(two_up_cases)(`two-up captions with %o -> %s`, (props, two_up) => {
     mount_gallery({ items: prop_items, layout: `horizontal`, ...props })

@@ -19,6 +19,33 @@
   const { dom } = useThrelte()
   const portal = dom.parentElement
   if (!portal) throw new Error(`CanvasTooltip requires a mounted Canvas host`)
+
+  // Placed at a projected 3D point, the tooltip grows right and down knowing
+  // nothing of what clips it — and a scroll container, which a gallery track is,
+  // can never show what leaves its box. So slide it back inside after each
+  // placement.
+  const clipper = (node: HTMLElement): DOMRect | undefined => {
+    for (let el = node.parentElement; el; el = el.parentElement) {
+      const { overflowX, overflowY } = getComputedStyle(el)
+      if (overflowX !== `visible` || overflowY !== `visible`) return el.getBoundingClientRect()
+    }
+  }
+  // Pull the far edge in, but never past where the near edge sits flush: a
+  // tooltip too wide for its clip keeps its start rather than its tail.
+  const slide_in = (near: number, far: number): number => Math.max(near, Math.min(0, far))
+
+  let tip: HTMLElement | undefined = $state()
+  $effect(() => {
+    void position // the anchor moved, so any previous slide is stale
+    if (!tip) return
+    tip.style.translate = ``
+    const clip = clipper(tip)
+    if (!clip) return
+    const box = tip.getBoundingClientRect()
+    const dx = slide_in(clip.left - box.left, clip.right - box.right)
+    const dy = slide_in(clip.top - box.top, clip.bottom - box.bottom)
+    if (dx || dy) tip.style.translate = `${dx}px ${dy}px`
+  })
 </script>
 
 <!-- Constant zIndexRange: threlte's default [16777271, 0] maps camera distance
@@ -27,7 +54,7 @@
   behind the canvas. A degenerate range pins z-index at 1000, always above the
   canvas and sibling overlays. -->
 <HTML {portal} {position} pointerEvents="none" zIndexRange={[1000, 1000]}>
-  <div {...rest} role="tooltip">
+  <div bind:this={tip} {...rest} role="tooltip">
     {@render children({ position })}
   </div>
 </HTML>

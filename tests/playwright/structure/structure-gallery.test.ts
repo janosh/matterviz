@@ -85,6 +85,8 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
     card_overflow: `visible`,
     crosses_card: true,
     visible_across_card: true,
+    // it may cross a card, but never the scroll container that would cut it off
+    within_track: true,
   }
   await expect
     .poll(
@@ -114,6 +116,11 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
                 card_overflow: getComputedStyle(card).overflow,
                 crosses_card: tooltip_rect.right > probe_x,
                 visible_across_card: hit === element || element.contains(hit),
+                within_track:
+                  tooltip_rect.right <=
+                  (card.closest(`.structure-gallery-track`)?.getBoundingClientRect().right ??
+                    0) +
+                    1,
               }
             })
             .catch(() => null)
