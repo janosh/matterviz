@@ -2,6 +2,7 @@
 // Enables atmosphere-controlled phase diagram analysis
 
 import { count_atoms_in_composition } from '$lib/composition/reduce'
+import { drop_cached_hull_data } from './thermodynamics'
 import { BOLTZMANN_EV_PER_K } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { format_num } from '$lib/labels'
@@ -276,7 +277,12 @@ export function apply_gas_corrections(
 
   const pressures = get_effective_pressures(config)
 
-  return entries.map((entry) => {
+  // Elements whose reference energy moved. Every formation energy measured against
+  // one of them is now stale, including on the compounds this function returns
+  // untouched, so the second pass drops what the hull would otherwise prefer.
+  const shifted_elements = new Set<string>()
+
+  const corrected = entries.map((entry) => {
     // Only apply corrections to unary (single-element) entries
     // These serve as reference states for formation energy calculations
     const elements_in_entry = Object.entries(entry.composition).filter(
@@ -293,8 +299,18 @@ export function apply_gas_corrections(
     // energy by atom count so downstream formation energies use the corrected values
     const atoms = count_atoms_in_composition(entry.composition)
     const energy_per_atom = (entry.energy_per_atom ?? entry.energy / atoms) + correction
+    shifted_elements.add(elements_in_entry[0][0])
+    // the MP correction stays: the shifted base above is the RAW per-atom energy, so
+    // get_energy_per_atom still has to add it exactly once downstream
     return { ...entry, energy: energy_per_atom * atoms, energy_per_atom }
   })
+
+  if (shifted_elements.size === 0) return entries
+  return corrected.map((entry) =>
+    Object.keys(entry.composition).some((el) => shifted_elements.has(el))
+      ? drop_cached_hull_data(entry)
+      : entry,
+  )
 }
 
 // Format chemical potential for display (e.g., "-1.23 eV")

@@ -199,6 +199,17 @@ describe(`BubbleChart`, () => {
     mount_chart(BubbleChart, { composition: {} })
     expect(document.querySelectorAll(`circle`)).toHaveLength(0)
   })
+
+  // size 0 (an unmeasured container) packs every bubble at r = 0, and the label scale divided
+  // by the largest radius: 0 / 0 wrote `font-size: NaNpx` into every tspan
+  test(`a collapsed size keeps label font sizes finite`, () => {
+    mount_chart(BubbleChart, { composition: { H: 4, O: 1 }, size: 0 })
+    const sizes = [...document.querySelectorAll<SVGTSpanElement>(`tspan`)].map(
+      (tspan) => tspan.style.fontSize,
+    )
+    expect(sizes.length).toBeGreaterThan(0)
+    for (const size of sizes) expect(Number(size.replace(`px`, ``))).not.toBeNaN()
+  })
 })
 
 describe(`BarChart`, () => {

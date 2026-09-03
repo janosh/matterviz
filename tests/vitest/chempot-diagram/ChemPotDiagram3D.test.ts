@@ -243,3 +243,35 @@ test(`hull faces are labelled by the domain that owns their vertices`, async () 
   expect([...owners].filter((formula) => !labelled.has(formula))).toEqual([]) // all owners labelled
   expect([...labelled].filter((formula) => !possible.has(formula))).toEqual([]) // no others
 })
+
+// The "Surface" quick-select used to raycast six axis-aligned rays from each domain's anchor
+// at a THREE.Mesh built with the default FrontSide material. Rays cast from inside a hull hit
+// only back faces, which are culled, so every domain scored zero hits and was called a surface
+// domain — the button was a second "select all". It now asks which domains own a face of the
+// envelope.
+test(`the Surface quick-select picks the domains that own a hull face`, async () => {
+  const scene = await mount_diagram<{
+    formula_meshes: { geometry: object; color: string }[]
+    render_domains: { formula: string }[]
+  }>({
+    entries: ytos_entries,
+    config: { elements: [`Y`, `Ti`, `O`], default_min_limit: -25, draw_formula_meshes: true },
+  })
+  const n_domains = scene().render_domains.length
+  expect(n_domains).toBeGreaterThan(10)
+  document.querySelector<HTMLButtonElement>(`.chempot-formula-toggle`)?.click()
+  flushSync()
+  const surface_button = [
+    ...document.querySelectorAll<HTMLButtonElement>(`.overlay-actions button`),
+  ].find((btn) => btn.textContent?.trim() === `Surface`)
+  if (!surface_button) throw new Error(`Surface button not rendered`)
+  surface_button.click()
+  flushSync()
+
+  const selected = [
+    ...document.querySelectorAll<HTMLInputElement>(`.formula-list input`),
+  ].filter((box) => box.checked).length
+  expect(selected).toBeGreaterThan(0)
+  expect(selected).toBeLessThan(n_domains) // buried domains stay unselected
+  expect(scene().formula_meshes).toHaveLength(selected)
+})

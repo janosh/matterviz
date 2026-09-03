@@ -15,6 +15,7 @@ import {
   build_border_hyperplanes,
   build_chempot_hyperplanes,
   build_hyperplanes,
+  assign_faces_to_domains,
   compute_chempot_diagram,
   chebyshev_centre,
   dedup_points,
@@ -1306,6 +1307,139 @@ describe(`fit_plane`, () => {
     const nudged = [...on_plane.slice(0, 4), [1.5 + 2e-3 / 7, 1 + 3e-3 / 7, 1 + 6e-3 / 7]]
     expect(fit_plane(nudged, 1e-6)).toBeNull()
     expect(fit_plane(nudged, 1e-2)).not.toBeNull()
+  })
+
+  // The PCA rank threshold used to be an absolute epsilon on a covariance entry, i.e. on a
+  // length squared. A domain a micro-eV across then had a second eigenvalue near 1e-13, was
+  // called rank-deficient, and came back as an arbitrary orthogonal direction — so a perfectly
+  // flat domain was reported as non-planar and lost its face assignment.
+  test.each([1e6, 1e3, 1, 1e-3, 1e-6, 1e-9])(
+    `fits a plane at coordinate scale %s`,
+    (scale) => {
+      const scaled = on_plane.map((pt) => pt.map((val) => val * scale))
+      const plane = fit_plane(scaled)
+      if (!plane) throw new Error(`expected a plane at scale ${scale}`)
+      const sign = Math.sign(plane.offset) || 1
+      expect(plane.normal.map((val) => val * sign)).toEqual(
+        [2 / 7, 3 / 7, 6 / 7].map((val) => expect.closeTo(val, 9)),
+      )
+      expect((plane.offset * sign) / scale).toBeCloseTo(12 / 7, 9)
+    },
+  )
+
+  test(`in_outline separates the polygon from the rest of its plane`, () => {
+    const plane = fit_plane(on_plane)
+    if (!plane) throw new Error(`expected a plane`)
+    expect(plane.in_outline([2, 1, 1])).toBe(true) // 2*2 + 3*1 + 6*1 = 13, ~on plane, inside
+    expect(plane.in_outline([12, -4, 0])).toBe(false) // on the plane, far outside the outline
+  })
+})
+
+describe(`assign_faces_to_domains`, () => {
+  // `Strip` and `Blob` are coplanar (z = 0), `Wall` is not (x = 0). Both the strip's far-end
+  // face and the wall's low-end face sit nearer a foreign domain's centroid than their own, so
+  // nearest-centroid assignment (the Voronoi rule this replaced) mislabels them: it hands the
+  // strip's face to `Blob` (3.59 vs 4.67) and the wall's to `Strip` (6.15 vs 10.67).
+  const domains = [
+    {
+      formula: `Strip`,
+      points: [
+        [0, 0, 0],
+        [12, 0, 0],
+        [12, 1, 0],
+        [0, 1, 0],
+      ],
+    },
+    {
+      formula: `Blob`,
+      points: [
+        [10, 2, 0],
+        [14, 2, 0],
+        [14, 6, 0],
+        [10, 6, 0],
+      ],
+    },
+    {
+      formula: `Wall`,
+      points: [
+        [0, 0, 0],
+        [0, 1, 0],
+        [0, 1, 24],
+        [0, 0, 24],
+      ],
+    },
+  ]
+
+  test.each([
+    // coplanar with `Blob`, so only the outline separates them
+    [
+      `elongated domain keeps its far-end face`,
+      [
+        [12, 0, 0],
+        [12, 1, 0],
+        [8, 1, 0],
+      ],
+      `Strip`,
+    ],
+    [
+      `compact neighbour keeps its own face`,
+      [
+        [10, 2, 0],
+        [14, 2, 0],
+        [14, 6, 0],
+      ],
+      `Blob`,
+    ],
+    // on its own plane, so the plane test alone decides it
+    [
+      `face on another plane is not stolen`,
+      [
+        [0, 0, 0],
+        [0, 1, 0],
+        [0, 0, 4],
+      ],
+      `Wall`,
+    ],
+  ])(`%s`, (_label, corners, expected) => {
+    expect(assign_faces_to_domains(corners.flat(), domains)).toEqual([expected])
+  })
+
+  test(`assigns every face of a multi-face buffer independently`, () => {
+    const buffer = [
+      [
+        [12, 0, 0],
+        [12, 1, 0],
+        [8, 1, 0],
+      ],
+      [
+        [10, 2, 0],
+        [14, 2, 0],
+        [14, 6, 0],
+      ],
+      [
+        [0, 0, 0],
+        [0, 1, 0],
+        [0, 0, 4],
+      ],
+    ].flat(2)
+    expect(assign_faces_to_domains(buffer, domains)).toEqual([`Strip`, `Blob`, `Wall`])
+  })
+
+  test(`a domain too degenerate to bound a face claims none`, () => {
+    const line = {
+      formula: `Line`,
+      points: [
+        [0, 0, 0],
+        [1, 0, 0],
+        [2, 0, 0],
+      ],
+    }
+    const face = [
+      [12, 0, 0],
+      [12, 1, 0],
+      [8, 1, 0],
+    ].flat()
+    expect(assign_faces_to_domains(face, [...domains, line])).toEqual([`Strip`])
   })
 })
 

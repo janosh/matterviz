@@ -30,6 +30,21 @@ export type TicksOption = number | number[] | TimeInterval | Record<number, stri
 
 const MS_PER_DAY = 86_400_000
 
+// Ticks are generated eagerly, then every one of them is measured and rendered, so the cost is
+// the LENGTH of the array — which `axis.ticks` only sometimes states. A positive count says it
+// outright; a negative one is a STEP, and the same step spans a different number of ticks on
+// every domain, so a step that is fine at one zoom asks for millions at another (`ticks: -1`
+// over [0, 1e8] built 100,000,001 entries, ~800 MB, before a single label was measured).
+const MAX_TICKS = 10_000
+const assert_tick_count = (count: number, requested: string, span: number): void => {
+  if (count > MAX_TICKS) {
+    throw new Error(
+      `generate_ticks: ${requested} over a span of ${span} asks for ${Math.ceil(count)} ticks, ` +
+        `past the ${MAX_TICKS} cap. Use a coarser axis.ticks interval or a plain tick count.`,
+    )
+  }
+}
+
 // Dedupe and sort numeric array (used in tick generation)
 const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].toSorted((a, b) => a - b)
 
@@ -270,6 +285,9 @@ export function generate_ticks(
   // ascending bounds (a raw max_val < min_val collapses interval counts to zero ticks). Tick
   // order is irrelevant to rendering, so ascending output is fine.
   const [min_val, max_val] = range_bounds(domain)
+  if (typeof ticks_option === `number` && ticks_option > 0) {
+    assert_tick_count(ticks_option, `a tick count of ${ticks_option}`, max_val - min_val)
+  }
 
   // If ticks_option is an object (value-to-label mapping), extract values
   if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {
@@ -328,6 +346,11 @@ export function generate_ticks(
   if (typeof ticks_option === `number` && ticks_option < 0) {
     const interval = Math.abs(ticks_option)
     const start = Math.ceil(min_val / interval) * interval
+    assert_tick_count(
+      (max_val - start) / interval + 1,
+      `a tick interval of ${interval}`,
+      max_val - min_val,
+    )
     return range(start, max_val + interval * 0.1, interval)
   }
 

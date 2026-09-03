@@ -39,6 +39,20 @@ describe(`adaptive density utilities`, () => {
     expect(run).toThrow(`aligned arrays`)
   })
 
+  // The grid costs x_bins * y_bins, and BinnedScatterPlot derives both from plot_px /
+  // density.bin_px, so a sub-pixel bin_px squares up: 0.1 on a 1200x800 plot is 12000 x 8000
+  // = 9.6e7 cells, 1152 MB of typed arrays for however few points there are.
+  it.each([
+    [12_000, 8000, true],
+    [Infinity, 8, true],
+    // an 8K plot at the default 2.8 px bin still fits
+    [2743, 1543, false],
+  ])(`caps a %i x %i density grid: %s`, (x_bins, y_bins, should_throw) => {
+    const run = () => bin_points(series, [0, 2], [0, 2], x_bins, y_bins)
+    if (should_throw) expect(run).toThrow(`past the 20000000 cap`)
+    else expect(run().counts).toHaveLength(x_bins * y_bins)
+  })
+
   it(`bins only visible points and tracks max bin count`, () => {
     const result = bin_points(series, [0, 2], [0, 2], 2, 2)
 

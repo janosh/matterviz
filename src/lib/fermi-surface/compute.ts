@@ -23,6 +23,10 @@ const CLOSED_CONTOUR_TOLERANCE = 1e-6
 // and enough vertices for that to be meaningful
 const IRREDUCIBLE_BZ_TOLERANCE = 0.01
 const IRREDUCIBLE_BZ_MIN_VERTICES = 10
+// Ceiling on the points one upsampled band grid may hold: 2e7 is 160 MB as Float64 and ~1 s
+// of marching cubes, which still admits every k-mesh the UI can produce short of the extremes
+// (64³ at 4x is 1.6e7, 48³ at 5x is 1.3e7) while rejecting the multi-hundred-MB ones.
+const MAX_UPSAMPLED_POINTS = 20_000_000
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
 // (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)
@@ -73,6 +77,20 @@ export function upsample_grid(
   const [new_nx, new_ny, new_nz] = [px, py, pz].map(
     (period) => Math.round(period * factor) + endpoint,
   )
+  // Bound the point count, not the factor: the output grows as factor³ and extract_fermi_surface
+  // allocates one of these per band, so the settings cap of 5 on interpolation_factor bounds
+  // nothing (a 100³ band grid at factor 5 is 496³ = 1.22e8 points, 976 MB per band as Float64;
+  // factor 40 on a 16³ grid measured 601³ = 2.17e8 points, 1.74 GB, from a 4 kB input).
+  // Negated so a NaN factor is rejected here rather than downstream as a bad dims triple.
+  const upsampled_points = new_nx * new_ny * new_nz
+  if (!(upsampled_points <= MAX_UPSAMPLED_POINTS)) {
+    throw new Error(
+      `upsample_grid: factor ${factor} turns a ${nx}×${ny}×${nz} band grid into ` +
+        `${new_nx}×${new_ny}×${new_nz} = ${upsampled_points.toPrecision(3)} points ` +
+        `(${(upsampled_points * 8e-6).toPrecision(3)} MB per band), past the ` +
+        `${MAX_UPSAMPLED_POINTS} cap. Lower options.interpolation_factor.`,
+    )
+  }
 
   // Map new index → source coordinate; a single-point axis (span 0) pins its lone
   // output to source 0 to avoid 0/0 = NaN

@@ -3,6 +3,8 @@ import {
   decompress_file,
   decompress_trajectory_file,
   detect_compression_format,
+  inflation_limiter,
+  MAX_INFLATED_BYTES,
 } from '$lib/io/decompress'
 import { zipSync } from 'fflate'
 import { describe, expect, test, vi } from 'vitest'
@@ -243,5 +245,43 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(result.content).toBeInstanceOf(ArrayBuffer)
     expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(hdf5)
     expect(result.filename).toBe(`payload`)
+  })
+})
+
+// gzip reaches 1029:1 on repetitive input (measured), so nothing about the compressed size
+// bounds the inflate: a 10 MiB upload expands to 10 GB with no error until the tab dies
+describe(`inflated size limit`, () => {
+  test(`aborts mid-stream once the inflated payload passes the cap`, async () => {
+    const chunk = new Uint8Array(64 * 1024)
+    let emitted = 0
+    const source = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        emitted += chunk.byteLength
+        controller.enqueue(chunk)
+        if (emitted >= 4 * 1024 * 1024) controller.close()
+      },
+    })
+    const limited = source.pipeThrough(inflation_limiter(`gzip`, 256 * 1024))
+    await expect(new Response(limited).arrayBuffer()).rejects.toThrow(
+      /GZIP payload inflates to at least \d+ bytes, past the 262144-byte limit/,
+    )
+    // stopped early instead of buffering the whole 4 MiB
+    expect(emitted).toBeLessThan(1024 * 1024)
+  })
+
+  test(`passes a payload under the cap through untouched`, async () => {
+    const payload = new Uint8Array(1024).fill(7)
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(payload)
+        controller.close()
+      },
+    })
+    const limited = source.pipeThrough(inflation_limiter(`gzip`, 4096))
+    const out = new Uint8Array(await new Response(limited).arrayBuffer())
+    expect(out).toEqual(payload)
+    // the real cap sits above every payload a parser here can consume (~512 MB strings,
+    // ~2 GB h5wasm heap), so it can only fire on a bomb
+    expect(MAX_INFLATED_BYTES).toBe(2 * 1024 * 1024 * 1024)
   })
 })

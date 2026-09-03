@@ -65,8 +65,15 @@ function formal_charge(symbol: string, bond_valence: number): number {
 
 const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 
-// Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains).
-const MAX_VALENCE_COMBOS = 4096
+// Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains). Counted in
+// PICKS (combinations x fragment atoms), not combinations: valence_combinations materializes
+// one target valence per atom for every combination before the first is tried, so a
+// combination of a 3000-atom fragment costs 3000 numbers, not one. A 3000-atom chain
+// carrying 12 nitrogens has combo_count 4096 - inside a 4096-combination cap - yet
+// enumerates 1.2e7 picks and used to churn 1.8e10 array elements (267 s on the main
+// thread). 2e6 picks is ~16 MB and keeps every fragment the old cap admitted below ~500
+// atoms, which is where real multi-valence fragments live.
+const MAX_VALENCE_PICKS = 2_000_000
 
 // Edges are bounds-checked by perceive_bond_orders before reaching here.
 function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
@@ -106,17 +113,21 @@ type BondOrderSolution = { orders: number[]; valence: number[] }
 // valence-sum first (xyz2mol prefers the least-saturated solution).
 function* valence_combinations(valence_lists: number[][]): Generator<number[]> {
   const combos: { sum: number; pick: number[] }[] = []
-  const rec = (pos: number, acc: number[]) => {
+  // One shared, mutable prefix: `[...acc, valence]` per recursion step copied the whole
+  // prefix at every node, so the enumeration cost was combinations x atoms^2 rather than
+  // combinations x atoms. Only the leaves are copied out.
+  const acc: number[] = Array.from({ length: valence_lists.length }, () => 0)
+  const rec = (pos: number, sum: number) => {
     if (pos === valence_lists.length) {
-      combos.push({
-        sum: acc.reduce((sum, valence) => sum + valence, 0),
-        pick: [...acc],
-      })
+      combos.push({ sum, pick: acc.slice() })
       return
     }
-    for (const valence of valence_lists[pos]) rec(pos + 1, [...acc, valence])
+    for (const valence of valence_lists[pos]) {
+      acc[pos] = valence
+      rec(pos + 1, sum + valence)
+    }
   }
-  rec(0, [])
+  rec(0, 0)
   combos.sort((left_combo, right_combo) => left_combo.sum - right_combo.sum)
   for (const combo of combos) yield combo.pick
 }
@@ -312,7 +323,7 @@ export function perceive_bond_orders(
       (product, valence_list) => product * valence_list.length,
       1,
     )
-    if (combo_count > MAX_VALENCE_COMBOS) continue
+    if (combo_count * valence_lists.length > MAX_VALENCE_PICKS) continue
     let solved: BondOrderSolution | null = null
     for (const target of valence_combinations(valence_lists)) {
       const candidate = assign_bond_orders(local_edges, target)

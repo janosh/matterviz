@@ -269,6 +269,25 @@ describe(`N-dimensional quickhull`, () => {
     expect(() => compute_quickhull_nd([[0, 0], [1]])).toThrow(`dimension mismatch`)
   })
 
+  // Facet count is combinatorial in BOTH the point count and the dimension, and only the
+  // running count bounds it: unguarded, 500 points in 8D built 1.16M facets over 210 s
+  test(`throws once the facet budget is spent`, () => {
+    let seed = 42
+    const rng = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      return seed / 2147483648
+    }
+    // Points in convex position (on a paraboloid), so every one of them is a hull vertex
+    const points = Array.from({ length: 120 }, () => {
+      const spatial = Array.from({ length: 5 }, () => rng())
+      return [...spatial, spatial.reduce((sum, val) => sum + (val - 0.5) ** 2, 0)]
+    })
+    expect(compute_quickhull_nd(points).length).toBeGreaterThan(2000)
+    expect(() => compute_quickhull_nd(points, 2000)).toThrow(
+      /120 points in 6D built \d+ facets, past the 2000 budget/,
+    )
+  })
+
   test(`compute_e_above_hull_nd: NaN outside the hull's composition domain, without facets, or for NaN queries`, () => {
     const points = [
       [0, 0, 0],

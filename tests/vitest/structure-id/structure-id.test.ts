@@ -275,6 +275,36 @@ describe(`centrosymmetry`, () => {
     expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
   })
 
+  // N is a property of the lattice (12 close-packed, 8 bcc), so a fixed default cannot be
+  // right for both: the close-packed 12 on bcc drags in 4 arbitrary members of the 6-fold
+  // degenerate second shell and lands a DEFECT-FREE crystal at 0.75*a^2 (6.18 A^2 for
+  // a = 2.87 A) on the atoms where only one antipodal second-shell pair survives. The
+  // default now follows the CNA classification the same call already computed.
+  // hcp is genuinely NOT centrosymmetric (its 12-neighbour shell has no inversion centre),
+  // so only the cubic phases are expected at round-off; hcp only has to pick N = 12.
+  test.each([
+    [`fcc`, () => make_fcc([3, 3, 3]), 12, true],
+    [`bcc`, () => make_bcc([3, 3, 3]), 8, true],
+    [`hcp`, () => make_hcp([3, 3, 3]), 12, false],
+  ])(
+    `the default CSP neighbor count follows the %s phase`,
+    (_label, build, expected_n, csp_vanishes) => {
+      const result = calc_structure_id(build())
+      if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
+      expect(result.n_csp_neighbors).toBe(expected_n)
+      if (csp_vanishes) {
+        expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
+      }
+    },
+  )
+
+  test(`an explicit n_csp_neighbors still overrides the phase-derived default`, () => {
+    const result = calc_structure_id(make_bcc([3, 3, 3]), { n_csp_neighbors: 12 })
+    if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
+    expect(result.n_csp_neighbors).toBe(12)
+    expect(max_finite(result.centrosymmetry)).toBeGreaterThan(1)
+  })
+
   test(`displacing a perfect lattice raises CSP well clear of round-off`, () => {
     const crystal = with_random_displacements(make_fcc([3, 3, 3]), 0.35, 7)
     const result = calc_structure_id(crystal, { skip_cna: true })

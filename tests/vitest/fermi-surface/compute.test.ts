@@ -402,6 +402,25 @@ describe(`grid/lattice conventions`, () => {
     expect(upsample_grid(grid, 1)).toBe(grid)
   })
 
+  // The cost is the upsampled point count (factor³ per band), not the factor: bounding only
+  // the factor let a 16³ grid at factor 40 allocate 601³ = 2.17e8 doubles (1.74 GB) from a
+  // 4 kB input, and a 100³ grid at the settings max of 5 would take 976 MB per band.
+  test.each([
+    [`factor 40 on 16³`, [16, 16, 16] as Vec3, 40, /601×601×601 = 2\.17e\+8 points/],
+    [`factor 40 on 16³`, [16, 16, 16] as Vec3, 40, /1\.74e\+3 MB per band/],
+    [`a NaN factor`, [8, 8, 8] as Vec3, Number.NaN, /factor NaN/],
+  ])(`upsample_grid rejects %s by point count`, (_label, dims, factor, expected) => {
+    const grid = make_band_grid(dims, (ix) => ix)
+    expect(() => upsample_grid(grid, factor)).toThrow(expected)
+  })
+
+  test(`upsample_grid still admits a large but affordable grid`, () => {
+    // 31³ (the shipped cu_fs.bxsf mesh) at the UI max of 4x is 121³ = 1.8e6 points, well
+    // under the cap — the guard must not clip real use
+    const grid = make_band_grid([31, 31, 31], (ix) => ix)
+    expect(upsample_grid(grid, 4).dims).toEqual([121, 121, 121])
+  })
+
   test(`single-point endpoint-inclusive axis upsamples without NaN/crash`, () => {
     // [1][n][n] grid: px = 0, so unguarded resampling computes 0/0 = NaN and the
     // tricubic wrap (v % 0) indexes garbage. A single x-plane has no cubes

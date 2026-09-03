@@ -247,9 +247,14 @@ describe(`calculate_rdf`, () => {
   })
 
   test.each([
-    [`negative cutoff`, { cutoff: -5, n_bins: 50 }, /cutoff and n_bins must be positive/],
-    [`zero bins`, { cutoff: 10, n_bins: 0 }, /cutoff and n_bins must be positive/],
-    [`NaN cutoff`, { cutoff: Number.NaN, n_bins: 10 }, /cutoff and n_bins must be positive/],
+    [`negative cutoff`, { cutoff: -5, n_bins: 50 }, /cutoff must be positive/],
+    [`zero bins`, { cutoff: 10, n_bins: 0 }, /n_bins must be a positive integer/],
+    [`NaN cutoff`, { cutoff: Number.NaN, n_bins: 10 }, /cutoff must be positive/],
+    // n_bins sizes the bin centres, the per-slot bin index and one g(r) array per element
+    // pair, so `n_bins > 0` bounded neither the allocation (1e7 asked for 480 MB on a
+    // 3-element cell) nor the type (2.5 reached `Array(2.5)` and threw a bare RangeError)
+    [`fractional bins`, { cutoff: 10, n_bins: 2.5 }, /n_bins must be a positive integer/],
+    [`1e7 bins`, { cutoff: 10, n_bins: 1e7 }, /n_bins must be a positive integer <= 1000000/],
   ])(`throws on %s`, (_name, opts, pattern) => {
     expect(() => calculate_rdf(pd_structure, opts)).toThrow(pattern)
   })

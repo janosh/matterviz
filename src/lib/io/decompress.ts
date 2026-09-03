@@ -72,13 +72,58 @@ export async function decompress_data(
   return new TextDecoder().decode(buffer)
 }
 
+// Ceiling on the INFLATED payload, the quantity that actually gets allocated — the compressed
+// size bounds nothing, since gzip reaches 1029:1 on repetitive input (measured), so a 2 MiB
+// upload inflates to this cap and a 10 MiB one to 10 GB. Nothing downstream can consume more:
+// a text payload dies at V8's ~512 MB string limit, h5wasm copies the whole file into a WASM
+// heap that tops out near 2 GB (parse/h5-utils.ts), and the position accumulator budget is
+// 512 MB. So this only ever fires on a payload no parser could have read.
+export const MAX_INFLATED_BYTES = 2 * 1024 * 1024 * 1024
+
+const inflation_bomb_error = (
+  format: CompressionFormat,
+  inflated: number,
+  max_bytes = MAX_INFLATED_BYTES,
+): Error =>
+  new Error(
+    `${format.toUpperCase()} payload inflates to at least ${inflated} bytes, past the ` +
+      `${max_bytes}-byte limit; extract it and open the parts you need`,
+  )
+
+// Aborts the inflate as soon as the running output size passes `max_bytes`, rather than after
+// the whole stream has been buffered.
+export const inflation_limiter = (
+  format: CompressionFormat,
+  max_bytes = MAX_INFLATED_BYTES,
+): TransformStream<Uint8Array, Uint8Array> => {
+  let inflated = 0
+  return new TransformStream({
+    transform(chunk, controller) {
+      inflated += chunk.byteLength
+      if (inflated > max_bytes) throw inflation_bomb_error(format, inflated, max_bytes)
+      controller.enqueue(chunk)
+    },
+  })
+}
+
 // The one payload file of a ZIP archive. Directory entries, macOS resource forks and
 // dotfiles are ignored; anything else ambiguous is an error rather than a silent pick.
 const unzip_single_entry = async (
   bytes: Uint8Array,
 ): Promise<{ name: string; bytes: Uint8Array }> => {
   const { unzipSync } = await import(`fflate`)
-  const entries = Object.entries(unzipSync(bytes)).filter(
+  // fflate has no streaming size budget, so the central directory's declared sizes gate the
+  // inflate up front; the length check below catches a header that lied
+  const entries = Object.entries(
+    unzipSync(bytes, {
+      filter: (file) => {
+        if (file.originalSize > MAX_INFLATED_BYTES) {
+          throw inflation_bomb_error(`zip`, file.originalSize)
+        }
+        return true
+      },
+    }),
+  ).filter(
     ([name]) =>
       !name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name),
   )
@@ -91,6 +136,9 @@ const unzip_single_entry = async (
     )
   }
   const [name, entry_bytes] = entries[0]
+  if (entry_bytes.byteLength > MAX_INFLATED_BYTES) {
+    throw inflation_bomb_error(`zip`, entry_bytes.byteLength)
+  }
   return { name: name.split(`/`).pop() ?? name, bytes: entry_bytes }
 }
 
@@ -123,7 +171,9 @@ const consume_decompressed = async <Result>(
       // copy: fflate may hand back a view into its own scratch buffer
       return await consume(new Response(new Uint8Array(entry.bytes)))
     }
-    const decompressed = stream.pipeThrough(new DecompressionStream(format), { signal })
+    const decompressed = stream
+      .pipeThrough(new DecompressionStream(format), { signal })
+      .pipeThrough(inflation_limiter(format))
     return await consume(new Response(decompressed))
   } catch (error) {
     // An abort is the caller's cancellation, not a corrupt archive; wrapping it hid both the

@@ -10,6 +10,12 @@ const SIGMA_PER_FWHM = 1 / (2 * Math.sqrt(2 * Math.log(2)))
 // Parallel x/y arrays: discrete peaks on the way in, a sampled curve on the way out.
 type PeakCurve = { x: number[]; y: number[] }
 
+// Ceiling on the sampled grid broaden_peaks allocates. 1e7 points is ~80 MB of f64 per
+// array and already far past anything plottable; beyond it the fill loop stops being
+// interruptible. Callers that can say something sharper about WHY the grid grew (see
+// broaden_spectrum's width-spread check) test against this same number first.
+export const MAX_BROADENING_GRID_POINTS = 1e7
+
 // Accumulates pseudo-Voigt peaks onto a uniform grid, with the FWHM model supplied by the
 // caller. Unit-agnostic: the faint-peak cut is a fraction of the tallest peak and the reach
 // test uses each peak's own width, so callers need not adapt either to their x or intensity
@@ -50,6 +56,20 @@ export function broaden_peaks(
   const whole_steps = Math.round(span_steps)
   const spans_to_max = Math.abs(span_steps - whole_steps) <= 1e-9 * Math.max(1, whole_steps)
   const n_steps = (spans_to_max ? whole_steps : Math.floor(span_steps)) + 1
+  // The cap belongs here, at the allocation, not in one caller: the cost is the grid the
+  // span and the step imply, and neither is bounded on its own. Without it an XRD pattern
+  // whose x column is not 2θ (a two-column CSV of anything monotone, which parse_xy_file
+  // accepts and XrdPlot then broadens over its own extent at the default 0.02° step) sizes
+  // the grid off that extent: a column reaching 2e7 asks for 1.0e9 points, 8.0 GB per array,
+  // and one reaching 1e9 asks for 4.99e10 points (399 GB), which SIGKILLs the process
+  // instead of throwing. See broaden_spectrum for the caller-side check that names the
+  // width spread; this one names the span and step whatever the caller was doing.
+  if (n_steps > MAX_BROADENING_GRID_POINTS) {
+    throw new Error(
+      `broaden_peaks: [${min_x}, ${max_x}] at step ${step_size} needs ${n_steps} grid ` +
+        `points, past the ${MAX_BROADENING_GRID_POINTS} cap. Narrow the range or widen step_size.`,
+    )
+  }
   // f64, not f32: at cm^-1 values in the thousands f32 resolves to ~2.4e-4, which shows up
   // as grid-dependent noise whenever the same peaks are broadened over two different spans
   const xs = new Float64Array(n_steps)

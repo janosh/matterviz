@@ -1,6 +1,7 @@
 import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import { count_atoms_in_composition } from '$lib/composition/reduce'
+import { drop_cached_hull_data } from './thermodynamics'
 import { element_by_symbol } from '$lib/element/data'
 import { format_fractional, format_num } from '$lib/labels'
 import { array_extent, array_max } from '$lib/math'
@@ -557,8 +558,17 @@ export function filter_entries_at_temperature(
           : null
     if (energy_per_atom == null) return []
     const energy = energy_per_atom * count_atoms_in_composition(entry.composition)
-    // G(T) already carries the MP correction; keep it and get_energy_per_atom adds it twice
-    return [{ ...entry, energy, energy_per_atom, correction: undefined }]
+    // G(T) already carries the MP correction; keep it and get_energy_per_atom adds it
+    // twice. Everything cached from the 0 K energy goes too, or the hull prefers it.
+    return [
+      drop_cached_hull_data({
+        ...entry,
+        energy,
+        energy_per_atom,
+        correction: undefined,
+        energy_adjustments: undefined,
+      }),
+    ]
   })
 }
 

@@ -14,12 +14,14 @@ import {
   array_max,
   array_min,
   combinations,
+  compute_in_plane_basis,
   convex_hull_2d,
   cross_3d,
   dot,
   EPS,
   euclidean_dist,
   normalize_vec,
+  point_in_polygon,
   polygon_centroid,
   subtract,
 } from '$lib/math'
@@ -541,9 +543,15 @@ export function simple_pca(
     }
   }
 
-  // Power iteration for top-k eigenvectors (sufficient for k=2 on small matrices)
+  // Power iteration for top-k eigenvectors (sufficient for k=2 on small matrices).
+  // Rank thresholds below are relative to the total variance: covariance entries are lengths
+  // squared, so an absolute epsilon calls a perfectly good axis rank-deficient as soon as the
+  // coordinates shrink. A domain 1e-6 wide has a second eigenvalue near 1e-13 and used to come
+  // back as an arbitrary orthogonal direction, which made fit_plane reject a flat domain.
   const eigenvectors: number[][] = []
   const work_cov = cov.map((row) => [...row])
+  const cov_scale = cov.reduce((sum, row, idx) => sum + row[idx], 0) // trace = total variance
+  const rank_eps = EPS * (cov_scale || 1)
 
   for (let comp = 0; comp < k; comp++) {
     // Initial guess: the (deflated) covariance row with the largest norm. A fixed basis
@@ -553,7 +561,7 @@ export function simple_pca(
     const row_norms = work_cov.map((row) => Math.hypot(...row))
     const seed_idx = row_norms.indexOf(array_max(row_norms))
     let vec: number[] =
-      row_norms[seed_idx] > EPS
+      row_norms[seed_idx] > rank_eps
         ? work_cov[seed_idx].map((val) => val / row_norms[seed_idx])
         : Array(n_cols).fill(0).with(seed_idx, 1)
 
@@ -578,7 +586,7 @@ export function simple_pca(
 
       // Normalize
       const norm = Math.hypot(...new_vec)
-      if (norm < EPS) {
+      if (norm < rank_eps) {
         // Nothing left in the deflated covariance to converge to (rank-deficient input:
         // collinear or coincident points), and `vec` is still the raw seed, which is not
         // orthogonal to what was already found. Returning it gave a non-orthonormal basis -
@@ -665,14 +673,20 @@ function pca_plane(points: number[][]) {
   return { scores, eigenvectors, means, unproject, max_residual }
 }
 
+export interface DomainPlane {
+  normal: Vec3
+  offset: number
+  // Is `point` inside the outline the points trace on this plane? Assumes the caller has
+  // already checked that `point` lies on the plane. Coplanar domains share a supporting
+  // plane, so only the outline separates them.
+  in_outline: (point: Vec3) => boolean
+}
+
 // Plane a set of 3D points lies on, as unit `normal` and `offset` with normal . p = offset.
 // Null when they span a volume (projected quaternary+ domains are polyhedra), are collinear,
 // or number fewer than 3. `rel_tol` is relative to the bounding-box diagonal.
-export function fit_plane(
-  points: number[][],
-  rel_tol: number = 1e-6,
-): { normal: Vec3; offset: number } | null {
-  const { unique } = dedup_points(points)
+export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPlane | null {
+  const { unique } = dedup_points(points, 1e-9 * bbox_diagonal(points) || EPS)
   if (unique.length < 3 || unique[0].length !== 3) return null
   const { scores, eigenvectors, means, max_residual } = pca_plane(unique)
   const tol = rel_tol * bbox_diagonal(unique)
@@ -681,7 +695,67 @@ export function fit_plane(
   if (second_hi - second_lo <= tol || max_residual > tol) return null
   const normal = normalize_vec<Vec3>(cross_3d(eigenvectors[0], eigenvectors[1]), [0, 0, 0])
   if (normal.every((component) => component === 0)) return null
-  return { normal, offset: dot(normal, means) }
+  const [u_vec, v_vec] = compute_in_plane_basis(normal)
+  const outline = convex_hull_2d(unique.map((pt) => [dot(u_vec, pt), dot(v_vec, pt)] as Vec2))
+  return {
+    normal,
+    offset: dot(normal, means),
+    in_outline: (point) => point_in_polygon(dot(u_vec, point), dot(v_vec, point), outline),
+  }
+}
+
+// Assign each triangle of a non-indexed face buffer (9 numbers per face) to the domain that
+// owns it. Every hull face of a chemical potential diagram lies on exactly one entry's
+// hyperplane, so the face centroid's distance to each domain's plane decides it outright.
+// Nearest-centroid assignment, which this replaced, is a Voronoi partition that mislabels
+// elongated and adjacent domains. Where several coplanar domains share the supporting plane,
+// their outlines separate them; centroid distance is the last resort and only degenerate
+// input (a domain that is a line or a point, which bounds no face) reaches it.
+export function assign_faces_to_domains(
+  face_positions: ArrayLike<number>,
+  domains: { formula: string; points: number[][] }[],
+): string[] {
+  // plane membership tolerance, relative to the scene so it survives any axis stretch
+  const tol = 1e-4 * bbox_diagonal(domains.flatMap(({ points }) => points)) || 1e-6
+  const prepared = domains.map(({ formula, points }) => ({
+    formula,
+    plane: fit_plane(points),
+    centroid: [0, 1, 2].map(
+      (axis) => points.reduce((sum, pt) => sum + pt[axis], 0) / points.length,
+    ) as Vec3,
+  }))
+  const nearest = (candidates: typeof prepared, point: Vec3): string => {
+    let [best_formula, best_dist] = [``, Infinity]
+    for (const { formula, centroid } of candidates) {
+      const dist = euclidean_dist(point, centroid)
+      if (dist < best_dist) [best_dist, best_formula] = [dist, formula]
+    }
+    return best_formula
+  }
+
+  const result: string[] = []
+  for (let base = 0; base + 8 < face_positions.length; base += 9) {
+    const centroid = [0, 1, 2].map(
+      (axis) =>
+        (face_positions[base + axis] +
+          face_positions[base + 3 + axis] +
+          face_positions[base + 6 + axis]) /
+        3,
+    ) as Vec3
+    let claimants = prepared.filter(
+      ({ plane }) => plane && Math.abs(dot(plane.normal, centroid) - plane.offset) <= tol,
+    )
+    if (claimants.length > 1) {
+      const inside = claimants.filter(({ plane }) => plane?.in_outline(centroid))
+      if (inside.length > 0) claimants = inside
+    }
+    result.push(
+      claimants.length === 1
+        ? claimants[0].formula
+        : nearest(claimants.length > 1 ? claimants : prepared, centroid),
+    )
+  }
+  return result
 }
 
 // Outline of a 3D domain: boundary edges (as index pairs into points_3d) and the label

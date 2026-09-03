@@ -14,15 +14,21 @@ import type { VacfInput } from './index'
 // descriptor), so for text formats calc_vacf labels the stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
-// Frame stride that keeps positions AND velocities inside `max_bytes` (two buffers whenever
-// the first frame carries velocities, since both are collected). Note that striding coarsens
-// the velocity sampling and so lowers the VDOS Nyquist frequency by the same factor — a
-// stride of 10 aliases everything above f_Nyquist/10.
+// Frame stride that keeps every trajectory-sized buffer calc_vacf ends up holding inside
+// `max_bytes`. Counting only what collect_vacf_input gathers gets this backwards: velocities
+// in the file are collected alongside the positions and used as they are (2 buffers), while a
+// file WITHOUT them makes calc_vacf allocate two more of the same size — unwrapped_positions_of
+// caches a full unwrapped copy on the stream, and central_difference_velocities builds the
+// velocity series from it (3 buffers). The cheap path used to be budgeted at 2 and the
+// expensive one at 1, so a 20k-frame x 1k-atom run with no velocity columns was told to stride
+// 1 and then held ~1.4 GB against a 512 MB budget. Note that striding coarsens the velocity
+// sampling and so lowers the VDOS Nyquist frequency by the same factor — a stride of 10
+// aliases everything above f_Nyquist/10.
 export const suggest_vacf_frame_stride = (
   run: TrajectoryRun,
   max_bytes?: number,
 ): number | null =>
-  suggest_analysis_frame_stride(run, max_bytes, has_velocities(run.preview) ? 2 : 1)
+  suggest_analysis_frame_stride(run, max_bytes, has_velocities(run.preview) ? 2 : 3)
 
 const site_velocity = (frame: TrajectoryFrame, atom_idx: number): unknown =>
   frame.structure.sites[atom_idx]?.properties?.[VELOCITY_SITE_PROPERTY]

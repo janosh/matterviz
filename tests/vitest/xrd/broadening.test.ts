@@ -327,6 +327,16 @@ describe(`broaden_peaks`, () => {
       pattern: { x: [20], y: [1, 1e9] },
       err: `1 positions but 2 intensities`,
     },
+    // The grid is sized from the range and the step, and neither is bounded on its own. A
+    // two-column CSV whose first column is not 2theta (parse_xy_file takes any monotone one)
+    // hands XrdPlot an angle_range off its own extent: 2e7 asks for 1e9 points, 8 GB per
+    // array, and 1e9 asks for 4.99e10, which SIGKILLs the process instead of throwing.
+    {
+      step: 0.02,
+      range: [0, 2e7],
+      pattern: { x: [20], y: [100] },
+      err: `needs 1000000001 grid points, past the 10000000 cap`,
+    },
     // NaN poisons every grid point; Infinity puts the relative floor at Infinity and drops
     // the real peaks with it, so both come back looking like "nothing to plot"
     {

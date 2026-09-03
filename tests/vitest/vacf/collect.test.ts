@@ -91,4 +91,17 @@ describe(`collect_vacf_input`, () => {
     expect(suggest_vacf_frame_stride(run, 48_000)).toBe(1)
     expect(suggest_vacf_frame_stride(run, 24_000)).toBe(2)
   })
+
+  // A run WITHOUT velocity columns is the expensive one, not the cheap one: calc_vacf then
+  // allocates a cached unwrapped copy of the positions AND the central-difference series on
+  // top of them (3 trajectory-sized buffers against the stored path's 2). Budgeting it at 1
+  // told a 20k-frame x 1k-atom run to stride 1 and then held ~1.4 GB against 512 MB.
+  it(`budgets the derived unwrap and velocity buffers when the file has none`, () => {
+    const [stored, derived] = [make_run(1000, true), make_run(1000, false)]
+    expect(suggest_vacf_frame_stride(derived, 48_000)).toBeGreaterThan(
+      suggest_vacf_frame_stride(stored, 48_000) ?? 0,
+    )
+    expect(suggest_vacf_frame_stride(derived, 72_000)).toBe(1)
+    expect(suggest_vacf_frame_stride(derived, 24_000)).toBe(4)
+  })
 })

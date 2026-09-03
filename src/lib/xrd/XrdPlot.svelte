@@ -205,7 +205,12 @@
     const broadened = pattern_entries.map((entry) =>
       compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
     )
-    let max_y = 1 // avoid div by zero
+    // Divide by the true maximum, not max(1, ...), for the reason compute_xrd_pattern gives
+    // for its own final scaling: broadening is area-normalized, so a pattern handed in
+    // already normalized to 1 or below profiles well under 1 and a floor of 1 silently
+    // under-scales the whole curve (y max 0.01 renders at 5.92 of the fixed [0, 110] axis)
+    // while the stick view of the same data, which divides by global_max_intensity, fills it.
+    let max_y = 0
     for (const profile of broadened) {
       for (const y_val of profile.y) max_y = Math.max(max_y, y_val)
     }
@@ -214,7 +219,8 @@
       (profile, entry_idx) =>
         ({
           x: profile.x,
-          y: profile.y.map((y_val) => (y_val / max_y) * 100),
+          // broaden_peaks drops non-positive peaks, so max_y === 0 means an all-zero profile
+          y: max_y > 0 ? profile.y.map((y_val) => (y_val / max_y) * 100) : profile.y,
           ...series_style(pattern_entries[entry_idx], entry_idx),
           markers: `line`, // Only line for profile
           line_style: { stroke_width: 2 },

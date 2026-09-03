@@ -268,6 +268,45 @@ const normalize_power = (power: ArrayLike<number>): number[] => {
   return maximum > 0 ? values.map((value) => value / maximum) : values.fill(0)
 }
 
+// Relative size below which what reaches a transform is cancellation residue, not motion.
+// Every stage feeding a spectrum is a difference of numbers far larger than its result —
+// center_frame subtracts a centre of mass, horn_rotation aligns successive frames,
+// central_difference_velocities subtracts neighbouring ones, one_sided_periodogram subtracts
+// each component's mean — and all of them are exact only to about n·eps of the magnitudes
+// they work with. 1e-10 leaves six decades over f64 eps, far under any real vibration.
+const ROUNDOFF_RATIO = 1e-10
+
+const max_abs = (values: Float64Array): number => {
+  let maximum = 0
+  for (const value of values) {
+    const magnitude = Math.abs(value)
+    if (magnitude > maximum) maximum = magnitude
+  }
+  return maximum
+}
+
+// Largest excursion from a component's own mean, i.e. exactly what the periodogram
+// transforms once it has removed those means.
+const max_component_variation = (values: ArrayLike<number>, n_components: number): number => {
+  const n_samples = values.length / n_components
+  const means = new Float64Array(n_components)
+  for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
+    const base = sample_idx * n_components
+    for (let component_idx = 0; component_idx < n_components; component_idx++) {
+      means[component_idx] += values[base + component_idx] / n_samples
+    }
+  }
+  let variation = 0
+  for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
+    const base = sample_idx * n_components
+    for (let component_idx = 0; component_idx < n_components; component_idx++) {
+      const deviation = Math.abs(values[base + component_idx] - means[component_idx])
+      if (deviation > variation) variation = deviation
+    }
+  }
+  return variation
+}
+
 // Cycles per `time_unit` -> `frequency_unit`; 1 for the per-step axis
 const frequency_factor = (
   frequency_unit: TrajectoryFrequencyUnit,
@@ -839,6 +878,10 @@ const build_curve = (
     Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
   >,
   label: string,
+  // Magnitude of the raw data `values` were derived from, in the units of `values`. Only
+  // differs from max |values| when a subtraction upstream already destroyed the scale:
+  // velocities are differences of positions, so their round-off is set by the positions.
+  source_scale: number,
   component_weights?: Float64Array,
   frequency_squared = false,
 ): TrajectorySpectrumCurve => {
@@ -850,6 +893,18 @@ const build_curve = (
     component_weights,
   })
   const curve = curve_from_periodogram(periodogram, interval, options.frequency_unit, factor)
+  // Absolute floor, because everything downstream is relative: normalize_power puts the
+  // maximum at 1, peak prominence is a fraction of that and so is the activity threshold,
+  // so a spectrum made of nothing but cancellation residue is reported as modes at full
+  // scale. Measured: rigid (SHAKE-constrained) water tumbling and drifting through the box
+  // under the pane's default body_fixed preprocessing gave a VDOS maximum of 2.4e-29 and
+  // 25 peaks, six of them "IR active" off a dipole whose magnitude never changes. A run
+  // that genuinely does not vibrate has an all-zero spectrum, so report that instead.
+  const variation = max_component_variation(values, n_components)
+  if (variation <= ROUNDOFF_RATIO * Math.max(max_abs(values), source_scale)) {
+    const zeros = () => curve.power.map(() => 0)
+    return { ...curve, power: zeros(), normalized_power: zeros() }
+  }
   if (!frequency_squared) return curve
   const physical_factor =
     options.frequency_unit === `1/step` ? 1 : frequency_factor(`THz`, input.time_unit)
@@ -910,6 +965,7 @@ const calculate_raman = (
       input,
       options,
       `Raman polarizability`,
+      max_abs(polarizability.values),
       component_weights,
     )
   const isotropic = raman_curve(isotropic_values, 1)
@@ -1309,6 +1365,10 @@ export const calc_trajectory_spectroscopy = (
   let velocity_source: VelocitySource
   let velocity_values: Float64Array
   let velocity_steps: number[]
+  // What the velocities were subtracted out of, in velocity units: stored velocities lose
+  // their scale to remove_rigid_velocity, differentiated ones to center_frame, the
+  // body-frame alignment and the finite difference itself (see build_curve's source_scale)
+  let velocity_source_scale: number
   if (requested_velocity_source === `stored` && !input.velocities) {
     fail(`velocity_source 'stored' was requested but no velocity signal was supplied`)
   }
@@ -1324,6 +1384,7 @@ export const calc_trajectory_spectroscopy = (
       prepared,
       preprocessing,
     )
+    velocity_source_scale = max_abs(input.velocities.values)
   } else {
     velocity_source = `central_difference`
     if (stream.n_frames < 4) {
@@ -1344,6 +1405,7 @@ export const calc_trajectory_spectroscopy = (
       derivative_interval,
     )
     velocity_steps = stream.steps.slice(1, -1)
+    velocity_source_scale = max_abs(stream.positions) / derivative_interval
   }
   const total_mass = masses.reduce((total, mass) => total + mass, 0)
   const component_weights = Float64Array.from(
@@ -1357,6 +1419,7 @@ export const calc_trajectory_spectroscopy = (
     input,
     calculation_options,
     `velocities`,
+    velocity_source_scale,
     component_weights,
   )
 
@@ -1381,6 +1444,7 @@ export const calc_trajectory_spectroscopy = (
       input,
       calculation_options,
       `IR ${input.infrared_signal.kind}`,
+      max_abs(series.values),
       undefined,
       input.infrared_signal.kind !== `current`,
     )

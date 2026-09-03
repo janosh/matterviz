@@ -1,6 +1,6 @@
 import * as draw from '$lib/convex-hull/canvas-draw'
 import * as helpers from '$lib/convex-hull/helpers'
-import { get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
+import { calculate_e_above_hull, get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
 import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull/types'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -598,6 +598,51 @@ describe(`helpers: temperature interpolation`, () => {
       for (const entry of result.filter((ent) => ent.temperatures)) {
         expect(entry.energy_per_atom).toBe(entry.energy)
       }
+    })
+
+    // Same hazard as the correction above, one level further on: `e_form_per_atom`
+    // and the hull results cached beside it were computed from the 0 K energy, and
+    // e_above_hull_distances prefers a cached e_form_per_atom over recomputing. Left
+    // in the spread they silently outrank G(T) and the temperature switch does nothing.
+    test(`drops cached hull quantities that G(T) invalidates`, () => {
+      const entry = make_entry([300, 600], [-9.8, -9.6], {
+        composition: { Fe: 2, O: 3 },
+        energy: -50,
+        e_form_per_atom: -1.5, // all three computed at 0 K
+        e_above_hull: 0.25,
+        is_stable: false,
+      })
+
+      const [filtered] = helpers.filter_entries_at_temperature([entry], 600)
+
+      expect(filtered.e_form_per_atom).toBeUndefined()
+      expect(filtered.e_above_hull).toBeUndefined()
+      expect(filtered.is_stable).toBeUndefined()
+    })
+
+    test(`hull distance follows G(T) rather than a stale cached formation energy`, () => {
+      // Fe and O at -8 and -5 eV/atom put the tie line at -6.2, and a stable
+      // Fe2O3 at -8.2 eV/atom (E_form -2.0) holds the hull below the query.
+      const refs: PhaseData[] = [
+        { composition: { Fe: 1 }, energy: -8, energy_per_atom: -8 },
+        { composition: { O: 1 }, energy: -5, energy_per_atom: -5 },
+        { composition: { Fe: 2, O: 3 }, energy: -41, energy_per_atom: -8.2 },
+      ]
+      // E_form -0.6 at 300 K and 0.0 at 900 K, so the distance above that hull
+      // has to move by exactly 0.6 eV/atom between the two temperatures.
+      const compound = make_entry([300, 900], [-6.8, -6.2], {
+        composition: { Fe: 2, O: 3 },
+        energy: -34,
+        e_form_per_atom: -1.5, // stale: from the 0 K energy
+      })
+
+      const at_temp = (temperature: number): number => {
+        const [filtered] = helpers.filter_entries_at_temperature([compound], temperature)
+        return calculate_e_above_hull(filtered, refs)
+      }
+
+      expect(at_temp(300)).toBeCloseTo(1.4, 10)
+      expect(at_temp(900)).toBeCloseTo(2.0, 10)
     })
 
     test(`drops correction so G(T) isn't double-counted`, () => {

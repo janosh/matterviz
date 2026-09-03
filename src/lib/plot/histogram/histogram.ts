@@ -101,6 +101,14 @@ export function log_safe_range(axis: Pick<AxisConfig, `range` | `scale_type`>): 
   return [drop_non_positive(lo), drop_non_positive(hi)]
 }
 
+// A bin count is an ALLOCATION, not a hint: it sizes `edges` here, `counts` in bin_values and
+// one <rect> per bin in the renderer, so 5e7 bins is a 400 MB Float64Array before a single
+// sample is read. A non-finite count was worse than large — `Math.max(1, Math.floor(NaN))` is
+// NaN, so `new Float64Array(NaN)` handed back a ZERO-length edge array with degenerate: false,
+// which bin_values then died on as `Invalid typed array length: -1`, naming nothing. The cap
+// stays well clear of the one-bin-per-sample case (12 MB at 1e6 bins) it is not there to police.
+const MAX_BINS = 1_000_000
+
 // Bin edges uniform in the AXIS' bin space (a log axis bins by decade, not by raw value), plus
 // the scalars an indexing loop needs. Exported so the marginal histograms bin on exactly these
 // edges, which is what makes a marginal agree with the bars it sits beside instead of binning
@@ -120,6 +128,11 @@ export function bin_geometry(
   pos_lo: number
   scale: number
 } {
+  if (!Number.isFinite(n_bins) || n_bins > MAX_BINS) {
+    throw new Error(
+      `bin_geometry: n_bins must be finite and at most ${MAX_BINS}, got ${n_bins}`,
+    )
+  }
   let lo = Math.min(domain[0], domain[1])
   let hi = Math.max(domain[0], domain[1])
   const type_name = get_scale_type_name(scale_type)

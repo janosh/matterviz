@@ -562,6 +562,85 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(peak_near(result, 0.25).ir_activity).toBe(`active`)
   })
 
+  // Both the peak prominence and the activity threshold are fractions of the spectrum
+  // maximum, so without an absolute floor a run with nothing to report has its cancellation
+  // residue scaled to 1 and read as modes. A rigid (SHAKE-constrained) water tumbling and
+  // drifting through the box under the pane's default body_fixed preprocessing used to give
+  // a VDOS maximum of 2.4e-29 with 25 peaks, six of them "IR active" off a dipole whose
+  // magnitude never changes. `stretch` scales the O-H bonds, so 0 is the rigid molecule.
+  const rigid_water = (stretch_amp: number): TrajectorySpectroscopyInput => {
+    const [n_frames, n_atoms] = [256, 3]
+    const half_angle = (104.52 / 2) * (Math.PI / 180)
+    const [bond_x, bond_y] = [0.9572 * Math.sin(half_angle), 0.9572 * Math.cos(half_angle)]
+    const body = [
+      [0, 0, 0],
+      [bond_x, bond_y, 0],
+      [-bond_x, bond_y, 0],
+    ]
+    const positions = new Float64Array(n_frames * n_atoms * 3)
+    const dipoles = new Float64Array(n_frames * 3)
+    const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
+    for (const frame_idx of steps) {
+      const angle = 0.037 * frame_idx
+      const [cosine, sine] = [Math.cos(angle), Math.sin(angle)]
+      const drift = [12 + 0.03 * frame_idx, -7 + 0.011 * frame_idx, 4]
+      const stretch = 1 + stretch_amp * Math.sin(2 * Math.PI * 0.11 * frame_idx)
+      for (const [atom_idx, coords] of body.entries()) {
+        const [x_body, y_body, z_body] = coords.map(
+          (value) => value * (atom_idx === 0 ? 1 : stretch),
+        )
+        positions.set(
+          [
+            x_body * cosine - y_body * sine + drift[0],
+            x_body * sine + y_body * cosine + drift[1],
+            z_body + drift[2],
+          ],
+          (frame_idx * n_atoms + atom_idx) * 3,
+        )
+      }
+      // constant 1.85 D magnitude, rotating with the molecule: no IR activity at all
+      dipoles.set([-1.85 * sine, 1.85 * cosine, 0], frame_idx * 3)
+    }
+    return {
+      positions: {
+        positions,
+        n_frames,
+        n_atoms,
+        elements: [`O`, `H`, `H`],
+        lattice_matrices: null,
+        pbc: [false, false, false],
+        coords_unwrapped: true,
+        frame_stride: 1,
+        steps,
+      },
+      masses: Float64Array.from([15.999, 1.008, 1.008]),
+      infrared_signal: {
+        kind: `dipole`,
+        series: { values: dipoles, sample_shape: [3], steps },
+      },
+    }
+  }
+
+  it.each([
+    { stretch_amp: 0, n_peaks: 0, vdos_max: 0 },
+    { stretch_amp: 1e-3, n_peaks: 1, vdos_max: 3.3e-6 },
+  ])(
+    `reports no spectrum for motion below round-off (stretch $stretch_amp)`,
+    ({ stretch_amp, n_peaks, vdos_max }) => {
+      const result = calc_trajectory_spectroscopy(rigid_water(stretch_amp), {
+        preprocessing: `body_fixed`,
+        frequency_unit: `1/step`,
+      })
+      expect(result.peaks).toHaveLength(n_peaks)
+      expect(Math.max(...result.vdos.power)).toBeCloseTo(vdos_max, 7)
+      // the lab dipole is rigid whatever the bonds do, so IR stays exactly zero
+      expect(Math.max(...(result.ir?.power ?? []))).toBe(0)
+      expect(result.peaks.every((peak) => peak.ir_activity === `inactive`)).toBe(true)
+      // the surviving peak is the injected 0.11 1/step stretch, not round-off
+      if (n_peaks > 0) expect(result.peaks[0].frequency).toBeCloseTo(0.11, 2)
+    },
+  )
+
   it(`leaves activity unknown outside a response curve's Nyquist range`, () => {
     const input = make_input(0.25)
     input.infrared_signal = {

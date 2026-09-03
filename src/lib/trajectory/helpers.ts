@@ -46,16 +46,25 @@ export const elem_symbol_from_token = (token: string): ElementSymbol | undefined
   coerce_elem_symbol(token) ?? coerce_elem_symbol(capitalize_symbol(token))
 
 // "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl] (XDATCAR header, vaspout/vaspwave ion_types)
+// `available` bounds the declared total against how many ion records the rest of the input can
+// actually hold (one per ion), the way isosurface's checked_grid_points bounds a declared
+// grid: the array is sized from the header before a single coordinate is read, so a 113-byte
+// XDATCAR declaring 2e8 Si atoms allocated 1.5 GB over 3.4 s and then died with a bare
+// `RangeError: Invalid array length`.
 export const expand_ion_types = (
   ion_types: readonly string[],
   ion_counts: readonly number[],
+  available?: { max_ions: number; source: string },
 ): ElementSymbol[] => {
   if (ion_types.length !== ion_counts.length) {
     throw new Error(
       `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
     )
   }
-  return ion_types.flatMap((symbol, type_idx) => {
+  // Validate and total every count before allocating anything
+  const symbols: ElementSymbol[] = []
+  let total_ions = 0
+  for (const [type_idx, symbol] of ion_types.entries()) {
     if (!is_elem_symbol(symbol)) {
       throw new Error(`Unknown element symbol in ion_types: ${symbol}`)
     }
@@ -63,8 +72,19 @@ export const expand_ion_types = (
     if (!Number.isInteger(ion_count) || ion_count < 0) {
       throw new Error(`Invalid ion count for ${symbol}: ${ion_count}`)
     }
-    return Array<ElementSymbol>(ion_count).fill(symbol)
-  })
+    symbols.push(symbol)
+    total_ions += ion_count
+  }
+  if (available && total_ions > available.max_ions) {
+    const declared = symbols.map((symbol, idx) => `${symbol} ${ion_counts[idx]}`).join(`, `)
+    throw new Error(
+      `ion counts declare ${total_ions} ions (${declared}) but only ` +
+        `${available.max_ions} ${available.source} remain`,
+    )
+  }
+  return symbols.flatMap((symbol, type_idx) =>
+    Array<ElementSymbol>(ion_counts[type_idx]).fill(symbol),
+  )
 }
 
 export const create_structure = (

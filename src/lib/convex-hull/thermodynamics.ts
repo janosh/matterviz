@@ -91,6 +91,18 @@ export function get_energy_per_atom(entry: PhaseData): number {
 // Formation energy per atom against elemental references (eV/atom), or null when a reference
 // is missing or an energy is non-finite. A missing reference is never treated as E = 0 — that
 // is a formation energy against a fictitious element. Zero-amount elements need no reference.
+// Formation energy and hull results an entry carries from an earlier energy or an
+// earlier set of references. `e_above_hull_distances` prefers a cached e_form_per_atom
+// over recomputing one, so a transformation that changes energies or references must
+// clear these — otherwise the stale cache outranks the new energies and the change is
+// silently ignored, which is a temperature or gas-pressure control that moves nothing.
+export const drop_cached_hull_data = <Entry extends PhaseData>(entry: Entry): Entry => ({
+  ...entry,
+  e_form_per_atom: undefined,
+  e_above_hull: undefined,
+  is_stable: undefined,
+})
+
 export function compute_e_form_per_atom(
   entry: PhaseData,
   el_refs: Record<string, PhaseData>,
@@ -338,6 +350,17 @@ export function process_hull_for_stats(
 // energies in eV/atom)
 const HULL_EPS = 1e-9
 
+// Facet budget for the incremental construction below. Quickhull's cost is the number of
+// facets it builds, which grows combinatorially in the point count AND the dimension, so
+// neither bounds it on its own and nothing cheap predicts it up front — hence a running count
+// rather than a cap on entries or arity. Measured on points in convex position (every point a
+// hull vertex, the worst a real dataset reaches): 4D/2000 points is 569 facets in 19 ms and
+// 6D/1000 is 120k facets in 10 s, but 7D/1000 is 610k facets in 72 s and 8D/500 is 1.16M in
+// 210 s. 500k keeps every case that finished in a plausible time (6D/1000 builds ~300k) and
+// aborts the rest in 12-14 s. The plotted hulls are 2D-4D and the chempot dual hull 2D-3D, so
+// this only ever fires on the arity-5+ stats path.
+const MAX_HULL_FACETS = 500_000
+
 // Facet of an N-dimensional hull: an (N-1)-simplex of N vertices (indices into the input
 // points) on the hyperplane normal · x + offset = 0, normal pointing out of the hull.
 export interface HullFacet {
@@ -475,8 +498,12 @@ function horizon_ridges(visible: WorkFacet[]): number[][] {
 }
 
 // Convex hull of points in N dimensions (quickhull). Returns [] for fewer than N+1 points
-// or degenerate (co-hyperplanar) input; throws on mixed dimensions.
-export function compute_quickhull_nd(points: number[][]): HullFacet[] {
+// or degenerate (co-hyperplanar) input; throws on mixed dimensions or on passing
+// `max_facets` (see MAX_HULL_FACETS).
+export function compute_quickhull_nd(
+  points: number[][],
+  max_facets = MAX_HULL_FACETS,
+): HullFacet[] {
   if (points.length === 0) return []
   const dim = points[0].length
   for (const pt of points) {
@@ -499,6 +526,7 @@ export function compute_quickhull_nd(points: number[][]): HullFacet[] {
     points.map((_, idx) => idx).filter((idx) => !initial.includes(idx)),
     facets,
   )
+  let facets_built = facets.length
 
   while (true) {
     let eye_facet: WorkFacet | null = null
@@ -521,6 +549,14 @@ export function compute_quickhull_nd(points: number[][]): HullFacet[] {
     const new_facets = horizon_ridges(visible).map((ridge) =>
       make_facet(points, [...ridge, eye_idx], interior),
     )
+    facets_built += new_facets.length
+    if (facets_built > max_facets) {
+      throw new Error(
+        `compute_quickhull_nd: ${points.length} points in ${dim}D built ${facets_built} facets, ` +
+          `past the ${max_facets} budget. Facet count grows combinatorially with both the ` +
+          `point count and the dimension; reduce the entry count or the chemical system size.`,
+      )
+    }
     const orphans = new Set(visible.flatMap((facet) => facet.outside))
     orphans.delete(eye_idx)
     claim_outside_points(points, [...orphans], new_facets)

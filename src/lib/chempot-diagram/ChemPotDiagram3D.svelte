@@ -64,11 +64,11 @@
   import type { VisibleDomainLabel } from './compute'
   import {
     apply_element_padding,
+    assign_faces_to_domains,
     bbox_diagonal,
     build_axis_ranges,
     dedup_points,
     entry_elements,
-    fit_plane,
     get_3d_domain_simplexes_and_ann_loc,
     get_ternary_combinations,
     get_visible_domain_labels,
@@ -484,19 +484,27 @@
     render_hull_geometry(base_domains.flatMap((domain) => domain.points_3d)),
   )
 
-  // Non-indexed hull geometry with artificial closing faces removed.
-  // The convex hull includes faces that close the diagram at the lower axis
-  // limits — flat walls and diagonal closing triangles. These are artificial
-  // (they depend on how far we extend the axes) and clutter the view.
-  // We detect them via their outward-pointing face normal: closing faces have
-  // normals pointing entirely toward the negative octant (all components ≤ 0),
-  // while meaningful domain boundaries always have at least one positive
-  // normal component (pointing toward 0 eV / the elemental reference).
+  // Non-indexed hull geometry with the artificial closing faces removed
   const hull_base_geometry = $derived.by((): THREE.BufferGeometry | null => {
-    if (!occlusion_hull_geometry) return null
+    const merged = occlusion_hull_geometry && strip_closing_faces(occlusion_hull_geometry)
+    if (!merged) return null
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(merged, 3))
+    const base_rgb = new THREE.Color(`#f6f6f6`).toArray()
+    const colors = Float32Array.from({ length: merged.length }, (_, idx) => base_rgb[idx % 3])
+    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
+    return geom
+  })
+
+  // Drop the artificial faces that close the diagram at the lower axis limits — flat walls and
+  // diagonal closing triangles that depend only on how far the axes were extended. They are
+  // detected by their outward normal: a closing face points entirely into the negative octant,
+  // while a real domain boundary always has one component pointing toward 0 eV. Returns the
+  // surviving triangles as a flat non-indexed position array, re-merged into clean fans.
+  function strip_closing_faces(geometry: THREE.BufferGeometry): Float32Array | null {
     // merge_coplanar_geometry already returns non-indexed geometry, so read its positions
-    // directly (the filter below builds a fresh buffer and never mutates this one)
-    const pos = occlusion_hull_geometry.getAttribute(`position`)
+    // directly (this builds a fresh buffer and never mutates the input)
+    const pos = geometry.getAttribute(`position`)
     const n_verts = pos.count
     const n_faces = n_verts / 3
     // Hull centroid for orienting face normals outward
@@ -534,85 +542,25 @@
       if (normal[0] <= 0 && normal[1] <= 0 && normal[2] <= 0) continue
       kept.push(...va, ...vb, ...vc)
     }
-    // Re-merge coplanar faces after the filter — the closing-face removal
-    // can expose new coplanar adjacencies or leave fragments that should be
-    // merged into cleaner fan triangulations.
-    const merged = merge_coplanar_triangles(new Float32Array(kept))
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(merged, 3))
-    const base_rgb = new THREE.Color(`#f6f6f6`).toArray()
-    const colors = Float32Array.from({ length: merged.length }, (_, idx) => base_rgb[idx % 3])
-    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
-    return geom
+    if (kept.length === 0) return null
+    // Re-merge coplanar faces after the filter — the closing-face removal can expose new
+    // coplanar adjacencies or leave fragments that should be merged into cleaner fans.
+    return merge_coplanar_triangles(new Float32Array(kept))
+  }
+
+  // Domains in render coords (swizzle and axis stretch are linear, so planes stay planes)
+  const to_render_domain = (domain: RenderDomain) => ({
+    formula: domain.formula,
+    points: domain.points_3d.map(to_render_xyz) as number[][],
   })
 
-  // Per-face domain assignment (stable — only changes when geometry or domains change).
-  // Every hull face of a true ternary lies on exactly one entry's hyperplane, so match faces
-  // to domain planes (swizzle and axis stretch are linear, so planes stay planes). The old
-  // nearest-centroid rule was a Voronoi partition that misses elongated/adjacent domains.
-  // Projected quaternary+ domains are polyhedra with no plane and keep the centroid rule.
+  // Per-face domain assignment (stable — only changes when geometry or domains change)
   const face_domain_map = $derived.by((): string[] => {
     if (!hull_base_geometry) return []
-    const pos = hull_base_geometry.getAttribute(`position`)
-    const n_faces = pos.count / 3
-
-    // domain planes and vertex centroids in render coords, matching hull_base_geometry
-    const all_render_pts: Vec3[] = []
-    const domains = base_domains
-      .filter((domain) => domain.points_3d.length > 0)
-      .map((domain) => {
-        const render_pts = domain.points_3d.map(to_render_xyz)
-        all_render_pts.push(...render_pts)
-        let [sum_x, sum_y, sum_z] = [0, 0, 0]
-        for (const [x_val, y_val, z_val] of render_pts) {
-          sum_x += x_val
-          sum_y += y_val
-          sum_z += z_val
-        }
-        const n_pts = render_pts.length
-        return {
-          formula: domain.formula,
-          plane: fit_plane(render_pts),
-          centroid: [sum_x / n_pts, sum_y / n_pts, sum_z / n_pts] as Vec3,
-        }
-      })
-    // Plane membership tolerance, relative to the scene size so it survives the axis stretch
-    const plane_tol = 1e-4 * bbox_diagonal(all_render_pts) || 1e-6
-
-    const nearest = (candidates: typeof domains, centroid: Vec3): string => {
-      let [best_formula, best_dist] = [``, Infinity]
-      for (const { formula, centroid: dom_centroid } of candidates) {
-        const dist =
-          (centroid[0] - dom_centroid[0]) ** 2 +
-          (centroid[1] - dom_centroid[1]) ** 2 +
-          (centroid[2] - dom_centroid[2]) ** 2
-        if (dist < best_dist) [best_dist, best_formula] = [dist, formula]
-      }
-      return best_formula
-    }
-
-    const result: string[] = []
-    for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-      const base = face_idx * 3
-      const centroid: Vec3 = [
-        (pos.getX(base) + pos.getX(base + 1) + pos.getX(base + 2)) / 3,
-        (pos.getY(base) + pos.getY(base + 1) + pos.getY(base + 2)) / 3,
-        (pos.getZ(base) + pos.getZ(base + 1) + pos.getZ(base + 2)) / 3,
-      ]
-      const on_plane = domains.filter(({ plane }) => {
-        if (!plane) return false
-        const [norm_x, norm_y, norm_z] = plane.normal
-        const dist = norm_x * centroid[0] + norm_y * centroid[1] + norm_z * centroid[2]
-        return Math.abs(dist - plane.offset) <= plane_tol
-      })
-      // one plane through the face is the answer; ties and no-plane faces fall back to centroids
-      result.push(
-        on_plane.length === 1
-          ? on_plane[0].formula
-          : nearest(on_plane.length > 1 ? on_plane : domains, centroid),
-      )
-    }
-    return result
+    return assign_faces_to_domains(
+      hull_base_geometry.getAttribute(`position`).array,
+      base_domains.filter((domain) => domain.points_3d.length > 0).map(to_render_domain),
+    )
   })
 
   // Faces no domain claims. Hoisted because a THREE.Color per recompute is pure waste.
@@ -693,38 +641,23 @@
   )
 
   // Domains on the outer surface of the full envelope (all domains, overlays included), used
-  // by the "Surface" overlay quick-select. Computed on demand: it needs a convex hull plus
-  // six raycasts per domain, and only a button click ever reads it.
+  // by the "Surface" overlay quick-select. Computed on demand: it needs a convex hull plus a
+  // plane test per domain and face, and only a button click ever reads it.
   function get_surface_formulas(): string[] {
     const envelope = render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d))
     if (!envelope) return render_domains.map((domain) => domain.formula)
-    // Raycast from each domain's centroid outward -- if it hits the hull,
-    // the centroid is inside (interior domain). Use multiple ray directions
-    // and count: if most hit, the point is interior.
-    const raycaster = new THREE.Raycaster()
-    const hull_mesh = new THREE.Mesh(envelope)
-    const directions = [
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(0, 1, 0),
-      new THREE.Vector3(0, 0, 1),
-      new THREE.Vector3(-1, 0, 0),
-      new THREE.Vector3(0, -1, 0),
-      new THREE.Vector3(0, 0, -1),
-    ]
-    const on_surface: string[] = []
-    for (const domain of render_domains) {
-      const origin = to_vec3(domain.ann_loc)
-      // Count how many rays hit the hull from the centroid
-      let hits = 0
-      for (const dir of directions) {
-        raycaster.set(origin, dir)
-        if (raycaster.intersectObject(hull_mesh).length > 0) hits++
-      }
-      // If fewer than 4 of 6 rays hit, centroid is on or near the surface
-      if (hits < 4) on_surface.push(domain.formula)
-    }
+    const faces = strip_closing_faces(envelope)
     envelope.dispose()
-    return on_surface
+    if (!faces) return render_domains.map((domain) => domain.formula)
+    // A domain is visible from outside exactly when it owns a face of the envelope
+    return [
+      ...new Set(
+        assign_faces_to_domains(
+          faces,
+          render_domains.filter((domain) => domain.points_3d.length > 0).map(to_render_domain),
+        ),
+      ),
+    ].filter(Boolean)
   }
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)

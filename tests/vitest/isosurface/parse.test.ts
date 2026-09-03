@@ -564,6 +564,36 @@ describe(`parse_cube`, () => {
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
   })
 
+  // A cube carrying N values per grid point interleaves N fields in one data block. Reading
+  // nx·ny·nz values off the front used to yield one volume alternating MO1/MO2 over the first
+  // half of the grid (max relative error 2.0 vs the true MO1 field) with no error at all.
+  // Both declarations of N are rejected: line 3's optional NVAL and the orbital header count.
+  test.each([
+    [
+      `orbital header count`,
+      `    ${-1}    0.000000    0.000000    0.000000`,
+      `    2    1    2`,
+    ],
+    [`line-3 NVAL field`, `    ${-1}    0.000000    0.000000    0.000000    2`, `    1    1`],
+  ])(`.cube with 2 values per grid point is rejected via the %s`, (_label, line3, header) => {
+    // 8 grid points × 2 interleaved values; the first field is 1..8, the second its negation
+    const data = Array.from({ length: 8 }, (_, idx) => `${idx + 1}.0  ${-(idx + 1)}.0`).join(
+      `\n`,
+    )
+    const content = `${[
+      `MO cube`,
+      `two orbitals`,
+      line3,
+      `    2    1.000000    0.000000    0.000000`,
+      `    2    0.000000    1.000000    0.000000`,
+      `    2    0.000000    0.000000    1.000000`,
+      `    1    1.000000    0.100000    0.100000    0.100000`,
+      header,
+      data,
+    ].join(`\n`)}\n`
+    expect(() => parse_cube(content)).toThrow(/2 values per grid point/)
+  })
+
   test(`reads volumetric data values correctly`, () => {
     const result = parse_cube(make_cube())
     const at = grid_at(result)

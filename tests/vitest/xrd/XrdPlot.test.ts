@@ -312,6 +312,30 @@ describe(`XrdPlot`, () => {
     expect(series[1].querySelector(`path`)?.getAttribute(`fill`)).toContain(`rgba(255, 0, 0`)
   })
 
+  // Broadening is area-normalized, so a pattern already normalized to 1 or below profiles
+  // well under 1. The floor of max(1, ...) that used to scale the curve then left it at a
+  // few percent of the fixed [0, 110] axis (y max 0.01 rendered at 5.92) while the stick
+  // view of the same data, which divides by the true global maximum, filled it.
+  test(`broadened profile fills the axis whatever the input intensity scale`, async () => {
+    const peak_top = async (scale: number) => {
+      const target = await mount_xrd({
+        patterns: { x: pattern.x, y: pattern.y.map((y_val) => y_val * scale) },
+        broadening_enabled: true,
+      })
+      // the profile is the one long path; the short ones are control icons
+      const curve = [...target.querySelectorAll<SVGPathElement>(`svg path`)]
+        .map((path) => path.getAttribute(`d`) ?? ``)
+        .find((definition) => definition.length > 1000)
+      if (!curve) throw new Error(`no broadened profile path for scale ${scale}`)
+      // M/C coordinates alternate x, y throughout, so the odd numbers are the y pixels and
+      // the smallest of them is the top of the curve (SVG y grows downward)
+      const numbers = (curve.match(/-?[\d.]+/g) ?? []).map(Number)
+      return Math.min(...numbers.filter((_value, idx) => idx % 2 === 1))
+    }
+    // 100x apart on input, identical once both are scaled to a maximum of 100
+    expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)
+  })
+
   test(`broadening controls bind one number input per Caglioti parameter`, async () => {
     const target = await mount_xrd({
       patterns: pattern,

@@ -67,7 +67,12 @@ const parse_species = (
   }
   const unknown = symbols.find((symbol) => !is_elem_symbol(symbol))
   if (unknown) throw new Error(`Unknown element symbol in OUTCAR: "${unknown}"`)
-  const elements = expand_ion_types(symbols, counts)
+  // Every ion gets a position line per ionic step, so the file's own line count bounds the
+  // declared total; without it the array is sized from the header line alone
+  const elements = expand_ion_types(symbols, counts, {
+    max_ions: lines.length,
+    source: `OUTCAR lines`,
+  })
   // `POMASS =   28.085; ZVAL   =    4.000` once per species in the header
   const masses = captures(lines, /POMASS\s*=\s*(?<value>[\d.]+)\s*;\s*ZVAL/).map(Number)
   const atom_masses =
