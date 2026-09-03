@@ -302,14 +302,25 @@ describe(`camera helpers`, () => {
     expect(camera_position_for_target([0, 0, 0], 10, view_dir)).toEqual(expected)
   })
 
+  // The last two rows are reciprocal-space extents, which any cell wider than ~12 A produces.
+  // The divisor used to be clamped at 1, framing those scenes against a constant rather than
+  // their own size, so the zoom stopped rising as the extent fell.
   test.each([
     [10, 800, 400, FIT_ZOOM_REF_PX, 40],
     [8, 500, 500, FIT_ZOOM_REF_PX * 2, 125],
     [10, 460, 460, FIT_ZOOM_REF_PX, 46],
     [100, 200, 200, FIT_ZOOM_REF_PX, 2],
-  ] as const)(`ortho_zoom extent=%i %ix%i in=%i → %i`, (ext, w, h, zoom_in, expected) => {
+    [0.5, 800, 400, FIT_ZOOM_REF_PX, 800],
+    [0.001, 800, 400, FIT_ZOOM_REF_PX, 400_000],
+  ] as const)(`ortho_zoom extent=%s %ix%i in=%i → %i`, (ext, w, h, zoom_in, expected) => {
     expect(ortho_zoom_for_extent(ext, w, h, zoom_in)).toBeCloseTo(expected, 10)
   })
+
+  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    `ortho_zoom rejects extent %s rather than clamping it`,
+    (ext) =>
+      expect(() => ortho_zoom_for_extent(ext, 400, 400, 10)).toThrow(/Invalid ortho fit/),
+  )
 
   const vertical_half_fov = Math.PI / 36
   const tall_horizontal_half_fov = Math.atan(Math.tan(vertical_half_fov) / 2)

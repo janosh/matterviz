@@ -7,6 +7,7 @@
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
+import { array_extent, array_max } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
 import { css_to_linear_rgb } from '$lib/scene/colors'
@@ -26,7 +27,11 @@ interface PolyhedraOptions {
 // Species whose mean bond dist / covalent-radii sum exceeds this are hidden when a
 // strongly-bound framework species exists (e.g. lone-pair Bi3+)
 const WEAK_BOND_NORM = 1.15
-// Hulls below this volume (A^3) are skipped as degenerate
+// A hull is degenerate when it is flat, not when it is small, so this is a fraction of the
+// hull's own extent cubed rather than an absolute A^3 cutoff. Volume goes as length cubed, so
+// a fixed cutoff both keeps near-planar environments in A (a CN-6 puckering by 1 mA across
+// 3 A has a volume of 9e-3 A^3, nine times an absolute 1e-3) and drops perfectly good ones
+// whenever the coordinates are not in A.
 const VOLUME_EPS = 1e-3
 
 interface ConvexHullResult {
@@ -610,7 +615,14 @@ export function compute_polyhedra(
     seen_positions.add(pos_key)
 
     const hull = convex_hull_3d(vertex_positions)
-    if (hull.faces.length === 0 || hull.volume < VOLUME_EPS) continue
+    if (hull.faces.length === 0) continue
+    const extent = array_max(
+      [0, 1, 2].map((axis) => {
+        const [lo, hi] = array_extent(hull.vertices.map((vert) => vert[axis]))
+        return hi - lo
+      }),
+    )
+    if (hull.volume < VOLUME_EPS * extent ** 3) continue
 
     polyhedra.push({
       center_site_idx: site_idx,

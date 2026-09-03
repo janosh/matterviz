@@ -19,13 +19,14 @@ import { vertex_count } from './types'
 
 // Distance below which a traced contour's ends count as joined
 const CLOSED_CONTOUR_TOLERANCE = 1e-6
-// Irreducible-wedge detection: every vertex in the positive octant within this tolerance,
-// and enough vertices for that to be meaningful
+// Irreducible-wedge detection: every vertex in the positive octant within this fraction of the
+// data's own extent, and enough vertices for that to be meaningful. The tolerance has to be
+// relative: a fixed 0.01 1/A is 1.3% of the zone for a 4 A cell but 16% for a 50 A supercell,
+// where a small full-zone pocket at Gamma never dips below it and gets tiled 48 times.
 const IRREDUCIBLE_BZ_TOLERANCE = 0.01
 const IRREDUCIBLE_BZ_MIN_VERTICES = 10
-// Ceiling on the points one upsampled band grid may hold: 2e7 is 160 MB as Float64 and ~1 s
-// of marching cubes, which still admits every k-mesh the UI can produce short of the extremes
-// (64³ at 4x is 1.6e7, 48³ at 5x is 1.3e7) while rejecting the multi-hundred-MB ones.
+// Ceiling on one upsampled band grid: 2e7 points is 160 MB as Float64 and ~1 s of marching
+// cubes, above every k-mesh the UI can reach (64³ at 4x is 1.6e7, 48³ at 5x is 1.3e7)
 const MAX_UPSAMPLED_POINTS = 20_000_000
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
@@ -77,11 +78,11 @@ export function upsample_grid(
   const [new_nx, new_ny, new_nz] = [px, py, pz].map(
     (period) => Math.round(period * factor) + endpoint,
   )
-  // Bound the point count, not the factor: the output grows as factor³ and extract_fermi_surface
-  // allocates one of these per band, so the settings cap of 5 on interpolation_factor bounds
-  // nothing (a 100³ band grid at factor 5 is 496³ = 1.22e8 points, 976 MB per band as Float64;
-  // factor 40 on a 16³ grid measured 601³ = 2.17e8 points, 1.74 GB, from a 4 kB input).
-  // Negated so a NaN factor is rejected here rather than downstream as a bad dims triple.
+  // Bound the point count, not the factor: output grows as factor³ and one grid is allocated
+  // per band, so the settings cap of 5 on interpolation_factor bounds nothing (100³ at factor
+  // 5 is 496³ = 1.22e8 points, 976 MB per band as Float64; factor 40 on 16³ measured 601³ =
+  // 2.17e8 points, 1.74 GB, from a 4 kB input). Negated so NaN is rejected here, not
+  // downstream as a bad dims triple.
   const upsampled_points = new_nx * new_ny * new_nz
   if (!(upsampled_points <= MAX_UPSAMPLED_POINTS)) {
     throw new Error(
@@ -467,10 +468,15 @@ export function detect_irreducible_bz(fermi_data: FermiSurfaceData): boolean {
     (sum, surface) => sum + vertex_count(surface),
     0,
   )
-  // Only consider it irreducible if we have significant data and all vertices are
-  // in the positive octant (with small tolerance for numerical error)
+  // Only irreducible with enough data and no vertex reaching past the origin by more than
+  // round-off, measured against the extent of the data rather than a fixed distance
   if (n_vertices <= IRREDUCIBLE_BZ_MIN_VERTICES) return false
-  return fermi_data.isosurfaces.every((surface) =>
-    surface.positions.every((coord) => coord >= -IRREDUCIBLE_BZ_TOLERANCE),
-  )
+  let [min_coord, extent] = [Infinity, 0]
+  for (const { positions } of fermi_data.isosurfaces) {
+    for (const coord of positions) {
+      if (coord < min_coord) min_coord = coord
+      if (Math.abs(coord) > extent) extent = Math.abs(coord)
+    }
+  }
+  return min_coord >= -IRREDUCIBLE_BZ_TOLERANCE * extent
 }

@@ -12,15 +12,8 @@
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { SettingsSection, ViewerChrome } from '$lib/layout'
   import { ViewerPane } from '$lib/overlays'
-  import type { Vec2, Vec3 } from '$lib/math'
-  import {
-    add,
-    array_extent,
-    clamp,
-    cross_3d,
-    merge_coplanar_triangles,
-    subtract,
-  } from '$lib/math'
+  import type { Vec3 } from '$lib/math'
+  import { add, array_extent, clamp, merge_coplanar_triangles, subtract } from '$lib/math'
   import { ScatterPlot3DControls } from '$lib/plot'
   import type { ThreltePointerEvent } from '$lib/scene'
   import {
@@ -71,9 +64,11 @@
     entry_elements,
     get_3d_domain_simplexes_and_ann_loc,
     get_ternary_combinations,
+    get_touches_limits,
     get_visible_domain_labels,
     pad_domain_points,
     scale_to_font_range,
+    strip_closing_faces,
     swizzle_to_render,
   } from './compute'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotHoverInfo3D } from './types'
@@ -486,7 +481,11 @@
 
   // Non-indexed hull geometry with the artificial closing faces removed
   const hull_base_geometry = $derived.by((): THREE.BufferGeometry | null => {
-    const merged = occlusion_hull_geometry && strip_closing_faces(occlusion_hull_geometry)
+    // merge_coplanar_geometry already returns non-indexed geometry, so its positions are read
+    // straight through; strip_closing_faces builds a fresh buffer and never mutates the input
+    const merged =
+      occlusion_hull_geometry &&
+      strip_closing_faces(occlusion_hull_geometry.getAttribute(`position`).array)
     if (!merged) return null
     const geom = new THREE.BufferGeometry()
     geom.setAttribute(`position`, new THREE.Float32BufferAttribute(merged, 3))
@@ -496,72 +495,24 @@
     return geom
   })
 
-  // Drop the artificial faces that close the diagram at the lower axis limits — flat walls and
-  // diagonal closing triangles that depend only on how far the axes were extended. They are
-  // detected by their outward normal: a closing face points entirely into the negative octant,
-  // while a real domain boundary always has one component pointing toward 0 eV. Returns the
-  // surviving triangles as a flat non-indexed position array, re-merged into clean fans.
-  function strip_closing_faces(geometry: THREE.BufferGeometry): Float32Array | null {
-    // merge_coplanar_geometry already returns non-indexed geometry, so read its positions
-    // directly (this builds a fresh buffer and never mutates the input)
-    const pos = geometry.getAttribute(`position`)
-    const n_verts = pos.count
-    const n_faces = n_verts / 3
-    // Hull centroid for orienting face normals outward
-    let hx = 0,
-      hy = 0,
-      hz = 0
-    for (let vert_idx = 0; vert_idx < n_verts; vert_idx++) {
-      hx += pos.getX(vert_idx)
-      hy += pos.getY(vert_idx)
-      hz += pos.getZ(vert_idx)
-    }
-    hx /= n_verts
-    hy /= n_verts
-    hz /= n_verts
-    const kept: number[] = []
-    for (let face_idx = 0; face_idx < n_faces; face_idx++) {
-      const base = face_idx * 3
-      const va: Vec3 = [pos.getX(base), pos.getY(base), pos.getZ(base)]
-      const vb: Vec3 = [pos.getX(base + 1), pos.getY(base + 1), pos.getZ(base + 1)]
-      const vc: Vec3 = [pos.getX(base + 2), pos.getY(base + 2), pos.getZ(base + 2)]
-      // Face normal via cross product of two edges
-      let normal = cross_3d(
-        [vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]],
-        [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]],
-      )
-      // Orient outward (away from hull centroid)
-      const dx = (va[0] + vb[0] + vc[0]) / 3 - hx
-      const dy = (va[1] + vb[1] + vc[1]) / 3 - hy
-      const dz = (va[2] + vb[2] + vc[2]) / 3 - hz
-      if (normal[0] * dx + normal[1] * dy + normal[2] * dz < 0) {
-        normal = [-normal[0], -normal[1], -normal[2]]
-      }
-      // Closing faces point entirely toward negative octant (all ≤ 0).
-      // Meaningful domain faces always have at least one positive component.
-      if (normal[0] <= 0 && normal[1] <= 0 && normal[2] <= 0) continue
-      kept.push(...va, ...vb, ...vc)
-    }
-    if (kept.length === 0) return null
-    // Re-merge coplanar faces after the filter — the closing-face removal can expose new
-    // coplanar adjacencies or leave fragments that should be merged into cleaner fans.
-    return merge_coplanar_triangles(new Float32Array(kept))
-  }
-
   // Domains in render coords (swizzle and axis stretch are linear, so planes stay planes)
-  const to_render_domain = (domain: RenderDomain) => ({
-    formula: domain.formula,
-    points: domain.points_3d.map(to_render_xyz) as number[][],
-  })
+  const to_render_domains = (domains: RenderDomain[]) =>
+    domains
+      .filter((domain) => domain.points_3d.length > 0)
+      .map((domain) => ({
+        formula: domain.formula,
+        points: domain.points_3d.map(to_render_xyz) as number[][],
+      }))
 
   // Per-face domain assignment (stable — only changes when geometry or domains change)
-  const face_domain_map = $derived.by((): string[] => {
-    if (!hull_base_geometry) return []
-    return assign_faces_to_domains(
-      hull_base_geometry.getAttribute(`position`).array,
-      base_domains.filter((domain) => domain.points_3d.length > 0).map(to_render_domain),
-    )
-  })
+  const face_domain_map = $derived.by((): string[] =>
+    hull_base_geometry
+      ? assign_faces_to_domains(
+          hull_base_geometry.getAttribute(`position`).array,
+          to_render_domains(base_domains),
+        )
+      : [],
+  )
 
   // Faces no domain claims. Hoisted because a THREE.Color per recompute is pure waste.
   const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
@@ -645,19 +596,12 @@
   // plane test per domain and face, and only a button click ever reads it.
   function get_surface_formulas(): string[] {
     const envelope = render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d))
-    if (!envelope) return render_domains.map((domain) => domain.formula)
-    const faces = strip_closing_faces(envelope)
-    envelope.dispose()
-    if (!faces) return render_domains.map((domain) => domain.formula)
+    const faces = envelope && strip_closing_faces(envelope.getAttribute(`position`).array)
+    envelope?.dispose()
     // A domain is visible from outside exactly when it owns a face of the envelope
-    return [
-      ...new Set(
-        assign_faces_to_domains(
-          faces,
-          render_domains.filter((domain) => domain.points_3d.length > 0).map(to_render_domain),
-        ),
-      ),
-    ].filter(Boolean)
+    if (!faces) return render_domains.map((domain) => domain.formula)
+    const owners = assign_faces_to_domains(faces, to_render_domains(render_domains))
+    return [...new Set(owners)].filter(Boolean)
   }
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
@@ -757,28 +701,6 @@
     return dispose_evicted
   })
 
-  function get_touches_limits(points_3d: number[][], lims: Vec2[]): string[] {
-    const limit_tol = 1e-3
-    const touches_limits: string[] = []
-    for (
-      let axis_idx = 0;
-      axis_idx < Math.min(plot_elements.length, lims.length);
-      axis_idx++
-    ) {
-      const [axis_min, axis_max] = lims[axis_idx]
-      const axis_name = plot_elements[axis_idx] ?? `axis_${axis_idx}`
-      const touches_min = points_3d.some(
-        (point) => Math.abs(point[axis_idx] - axis_min) < limit_tol,
-      )
-      const touches_max = points_3d.some(
-        (point) => Math.abs(point[axis_idx] - axis_max) < limit_tol,
-      )
-      if (touches_min) touches_limits.push(`${axis_name} lower bound`)
-      if (touches_max) touches_limits.push(`${axis_name} upper bound`)
-    }
-    return touches_limits
-  }
-
   // Post-process ConvexGeometry to merge coplanar triangles, eliminating
   // internal diagonal edges across flat faces of the convex hull.
   function merge_coplanar_geometry(geom: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -868,7 +790,7 @@
 
     for (const { domain, geometry, n_vertices } of hover_geometries) {
       const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
-      const touches_limits = get_touches_limits(domain.points_3d, lims)
+      const touches_limits = get_touches_limits(domain.points_3d, lims, plot_elements)
       const energy_stats = energy_stats_by_formula.get(domain.formula) ?? {
         matching_entry_count: 0,
         min_energy_per_atom: null,

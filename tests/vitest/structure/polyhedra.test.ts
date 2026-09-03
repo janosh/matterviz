@@ -418,6 +418,31 @@ describe(`compute_polyhedra`, () => {
     expect(poly.vertices).toContainEqual([-1.2, 3, 3].map((val) => expect.closeTo(val, 12)))
   })
 
+  // The degeneracy cutoff is a fraction of the hull's own extent cubed, not an absolute A^3
+  // volume, so it measures flatness at any coordinate scale. A CN-6 ring puckering by 2 mA
+  // across 3.6 A comes to 0.022 A^3 — twenty times the absolute 1e-3 A^3 this used to compare
+  // against — while filling 4.8e-4 of its own bounding cube, which is a plane, not a solid.
+  test.each([
+    [`near-planar CN-6 ring is dropped`, 0.002, 1, 0],
+    [`the same ring puckered 2.5x further is kept`, 0.005, 1, 1],
+    // both verdicts survive a 100x shrink, though both volumes are then far below 1e-3 A^3
+    [`near-planar ring is dropped at 1/100 scale`, 0.002, 0.01, 0],
+    [`puckered ring is kept at 1/100 scale`, 0.005, 0.01, 1],
+  ])(`%s`, (_label, pucker, scale, n_polyhedra) => {
+    const [radius, dz] = [1.8 * scale, pucker * scale]
+    const ring = Array.from({ length: 6 }, (_, idx) => ({
+      element: `O`,
+      xyz: [
+        radius * Math.cos((idx * Math.PI) / 3),
+        radius * Math.sin((idx * Math.PI) / 3),
+        idx % 2 ? dz : -dz,
+      ] as Vec3,
+    }))
+    const structure = make_crystal(20, [{ element: `Ti`, xyz: [0, 0, 0] as Vec3 }, ...ring])
+    const bonds = [1, 2, 3, 4, 5, 6].map((site_idx) => image_bond(structure, site_idx))
+    expect(compute_polyhedra(structure, bonds)).toHaveLength(n_polyhedra)
+  })
+
   test(`one neighbor site bonded through two cell shifts counts twice`, () => {
     // Rocksalt-like: Ti at the origin has CN 6 via only 3 O sites, each bonded twice
     // (in-cell at +a/2 and through the -1 image at -a/2). Collapsing the two bonds onto

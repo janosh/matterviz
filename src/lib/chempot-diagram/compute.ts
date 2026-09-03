@@ -20,6 +20,7 @@ import {
   dot,
   EPS,
   euclidean_dist,
+  merge_coplanar_triangles,
   normalize_vec,
   point_in_polygon,
   polygon_centroid,
@@ -487,6 +488,27 @@ export function build_axis_ranges(
   })
 }
 
+// Which axis bounds a domain is clipped against, as human-readable labels. The tolerance is a
+// fraction of each axis' own window, not an absolute number of eV: on a window a few meV wide
+// an absolute tolerance reports every domain as clipped on every bound.
+export function get_touches_limits(
+  points: number[][],
+  lims: Vec2[],
+  elements: string[],
+): string[] {
+  const touches_limits: string[] = []
+  for (let axis_idx = 0; axis_idx < Math.min(elements.length, lims.length); axis_idx++) {
+    const [axis_min, axis_max] = lims[axis_idx]
+    const tol = 1e-4 * (axis_max - axis_min) || EPS
+    const axis_name = elements[axis_idx] ?? `axis_${axis_idx}`
+    const touches = (bound: number) =>
+      points.some((point) => Math.abs(point[axis_idx] - bound) < tol)
+    if (touches(axis_min)) touches_limits.push(`${axis_name} lower bound`)
+    if (touches(axis_max)) touches_limits.push(`${axis_name} upper bound`)
+  }
+  return touches_limits
+}
+
 // === Label Placement Helpers ===
 
 // Simple PCA: center data, compute covariance, eigendecompose, project to top-k.
@@ -684,12 +706,17 @@ export interface DomainPlane {
 
 // Plane a set of 3D points lies on, as unit `normal` and `offset` with normal . p = offset.
 // Null when they span a volume (projected quaternary+ domains are polyhedra), are collinear,
-// or number fewer than 3. `rel_tol` is relative to the bounding-box diagonal.
+// or number fewer than 3. `rel_tol` is relative to the bounding-box diagonal, with a floor:
+// simple_pca gives up on a second axis below ~1e-5 of the first, so a hairline domain comes
+// back null rather than with an arbitrary normal, whatever `rel_tol` says.
 export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPlane | null {
-  const { unique } = dedup_points(points, 1e-9 * bbox_diagonal(points) || EPS)
+  const diag = bbox_diagonal(points)
+  // Dedup far below rel_tol — merging anything coarser is the collinearity check's job, and an
+  // absolute tolerance (what this used to be) merges a whole domain once coordinates shrink.
+  const { unique } = dedup_points(points, 1e-9 * diag || EPS)
   if (unique.length < 3 || unique[0].length !== 3) return null
   const { scores, eigenvectors, means, max_residual } = pca_plane(unique)
-  const tol = rel_tol * bbox_diagonal(unique)
+  const tol = rel_tol * diag
   // collinear points have a degenerate second component: any plane through the line fits
   const [second_lo, second_hi] = array_extent(scores.map((row) => row[1]))
   if (second_hi - second_lo <= tol || max_residual > tol) return null
@@ -702,6 +729,44 @@ export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPla
     offset: dot(normal, means),
     in_outline: (point) => point_in_polygon(dot(u_vec, point), dot(v_vec, point), outline),
   }
+}
+
+// Mean of a set of points, per axis
+const vertex_mean = (points: number[][]): Vec3 =>
+  [0, 1, 2].map(
+    (axis) => points.reduce((sum, pt) => sum + pt[axis], 0) / points.length,
+  ) as Vec3
+
+// Triangles of a non-indexed position buffer, as corner triples (9 numbers per face)
+const buffer_faces = (positions: ArrayLike<number>): Vec3[][] =>
+  Array.from({ length: Math.floor(positions.length / 9) }, (_, face) =>
+    [0, 3, 6].map(
+      (corner) => [0, 1, 2].map((axis) => positions[face * 9 + corner + axis]) as Vec3,
+    ),
+  )
+
+// Drop the artificial faces that close a chemical potential diagram at the lower axis limits —
+// flat walls and diagonal closing triangles that depend only on how far the axes were extended.
+// They are told apart by their outward normal: a closing face points entirely into the negative
+// octant, while a real domain boundary always has one component pointing toward 0 eV. Returns
+// the survivors as a flat non-indexed position array, re-merged into clean fans, or null when
+// nothing survives.
+export function strip_closing_faces(positions: ArrayLike<number>): Float32Array | null {
+  const faces = buffer_faces(positions)
+  const hull_centroid = vertex_mean(faces.flat())
+  const kept = faces
+    .filter((corners) => {
+      const [va, vb, vc] = corners
+      const normal = cross_3d(subtract(vb, va), subtract(vc, va))
+      // oriented away from the hull centroid, so the buffer's own winding does not matter
+      const sign = dot(normal, subtract(vertex_mean(corners), hull_centroid)) < 0 ? -1 : 1
+      return normal.some((component) => component * sign > 0)
+    })
+    .flat(2)
+  if (kept.length === 0) return null
+  // Re-merge coplanar faces after the filter — removing the closing faces can expose new
+  // coplanar adjacencies or leave fragments that belong in cleaner fans.
+  return merge_coplanar_triangles(Float32Array.from(kept))
 }
 
 // Assign each triangle of a non-indexed face buffer (9 numbers per face) to the domain that
@@ -720,9 +785,7 @@ export function assign_faces_to_domains(
   const prepared = domains.map(({ formula, points }) => ({
     formula,
     plane: fit_plane(points),
-    centroid: [0, 1, 2].map(
-      (axis) => points.reduce((sum, pt) => sum + pt[axis], 0) / points.length,
-    ) as Vec3,
+    centroid: vertex_mean(points),
   }))
   const nearest = (candidates: typeof prepared, point: Vec3): string => {
     let [best_formula, best_dist] = [``, Infinity]
@@ -733,29 +796,20 @@ export function assign_faces_to_domains(
     return best_formula
   }
 
-  const result: string[] = []
-  for (let base = 0; base + 8 < face_positions.length; base += 9) {
-    const centroid = [0, 1, 2].map(
-      (axis) =>
-        (face_positions[base + axis] +
-          face_positions[base + 3 + axis] +
-          face_positions[base + 6 + axis]) /
-        3,
-    ) as Vec3
+  return buffer_faces(face_positions).map((corners) => {
+    const centroid = vertex_mean(corners)
     let claimants = prepared.filter(
       ({ plane }) => plane && Math.abs(dot(plane.normal, centroid) - plane.offset) <= tol,
     )
+    // coplanar domains share a supporting plane, so only their outlines tell them apart
     if (claimants.length > 1) {
       const inside = claimants.filter(({ plane }) => plane?.in_outline(centroid))
       if (inside.length > 0) claimants = inside
     }
-    result.push(
-      claimants.length === 1
-        ? claimants[0].formula
-        : nearest(claimants.length > 1 ? claimants : prepared, centroid),
-    )
-  }
-  return result
+    // an unclaimed face has no plane to go on and falls back to every domain's centroid
+    const pool = claimants.length > 0 ? claimants : prepared
+    return pool.length === 1 ? pool[0].formula : nearest(pool, centroid)
+  })
 }
 
 // Outline of a 3D domain: boundary edges (as index pairs into points_3d) and the label

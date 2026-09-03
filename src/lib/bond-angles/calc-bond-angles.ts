@@ -15,12 +15,10 @@ import type { Pbc } from '$lib/structure/pbc'
 
 // Angles are undirected, so the whole distribution lives in [0, 180]
 export const MAX_BOND_ANGLE = 180
-// Cap on the histogram length. bin_width and n_bins are two spellings of the same layout, so
-// bounding the WIDTH to (0, 180] bounds nothing: bin_width 1e-5 is inside that range and asks
-// for 18 million bins, which bin_bond_angles allocates twice (bin centers plus one count array
-// per triplet, ~290 MB and 1.2 s before a single angle is binned). 1e5 bins is 0.0018 degrees,
-// finer than any bond-angle distribution resolves.
-export const MAX_ANGLE_BINS = 100_000
+// Cap on the histogram length: bounding the bin WIDTH to (0, 180] bounds nothing, since
+// bin_width 1e-5 asks for 18 million bins (bin centers plus one count array per triplet,
+// ~290 MB and 1.2 s). 1e5 bins is 0.0018 degrees, finer than any angle distribution resolves.
+const MAX_ANGLE_BINS = 100_000
 export const BOND_ANGLE_DEFAULT_BIN_WIDTH = 2 // degrees
 // Element label for sites whose majority species cannot be resolved
 const UNKNOWN_ELEMENT = `Unknown`
@@ -99,9 +97,7 @@ export function resolve_angle_bins({
   const resolved_bins = Math.ceil(MAX_BOND_ANGLE / width)
   if (resolved_bins > MAX_ANGLE_BINS) {
     throw new Error(
-      `bin_width ${width} degrees spans ${resolved_bins} bins over 0-${MAX_BOND_ANGLE} ` +
-        `degrees, past the ${MAX_ANGLE_BINS} limit; widen it to at least ` +
-        `${MAX_BOND_ANGLE / MAX_ANGLE_BINS} degrees`,
+      `bin_width ${width} degrees spans ${resolved_bins} bins over 0-${MAX_BOND_ANGLE} degrees, past the ${MAX_ANGLE_BINS} limit; widen it to at least ${MAX_BOND_ANGLE / MAX_ANGLE_BINS} degrees`,
     )
   }
   return { n_bins: resolved_bins, bin_width: width }

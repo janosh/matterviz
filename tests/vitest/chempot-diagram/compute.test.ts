@@ -9,15 +9,15 @@
 import type { VisibleDomainLabel } from '$lib/chempot-diagram/compute'
 import {
   apply_element_padding,
+  assign_faces_to_domains,
   bbox_diagonal,
   best_form_energy_for_formula,
   build_axis_ranges,
   build_border_hyperplanes,
   build_chempot_hyperplanes,
   build_hyperplanes,
-  assign_faces_to_domains,
-  compute_chempot_diagram,
   chebyshev_centre,
+  compute_chempot_diagram,
   dedup_points,
   fit_plane,
   formula_key_from_composition,
@@ -25,6 +25,7 @@ import {
   get_energy_stats_by_formula,
   get_min_entries_and_el_refs,
   get_ternary_combinations,
+  get_touches_limits,
   get_visible_domain_labels,
   orthonormal_2d,
   pad_domain_points,
@@ -32,13 +33,20 @@ import {
   safe_energy_per_atom,
   scale_to_font_range,
   simple_pca,
+  strip_closing_faces,
 } from '$lib/chempot-diagram/compute'
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
 import { filter_entries_at_temperature, slim_phase_entry } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
-import type { Vec2 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { load_json, make_phase } from '../setup'
+
+// n-D points written as one flat list, so geometry fixtures stay on a single line
+const chunk = (size: number, flat: number[]): number[][] =>
+  Array.from({ length: flat.length / size }, (_, idx) =>
+    flat.slice(idx * size, (idx + 1) * size),
+  )
 
 const test_dir = import.meta.dirname
 const entries = load_json<PhaseData[]>(`${test_dir}/pd_entries_test.json.gz`)
@@ -1284,16 +1292,6 @@ describe(`fit_plane`, () => {
     [1.5, 1, 1],
   ]
 
-  test(`recovers a plane's unit normal and offset`, () => {
-    const plane = fit_plane(on_plane)
-    if (!plane) throw new Error(`expected a plane`)
-    const sign = Math.sign(plane.offset) || 1 // either face normal is valid
-    expect(plane.normal.map((val) => val * sign)).toEqual(
-      [2 / 7, 3 / 7, 6 / 7].map((val) => expect.closeTo(val, 9)),
-    )
-    expect(plane.offset * sign).toBeCloseTo(12 / 7, 9)
-  })
-
   test.each([
     [`fewer than 3 unique points`, on_plane.slice(0, 2)],
     [`collinear points`, [0, 1, 2, 3].map((val) => [val, val, val])],
@@ -1309,23 +1307,45 @@ describe(`fit_plane`, () => {
     expect(fit_plane(nudged, 1e-2)).not.toBeNull()
   })
 
-  // The PCA rank threshold used to be an absolute epsilon on a covariance entry, i.e. on a
-  // length squared. A domain a micro-eV across then had a second eigenvalue near 1e-13, was
-  // called rank-deficient, and came back as an arbitrary orthogonal direction — so a perfectly
-  // flat domain was reported as non-planar and lost its face assignment.
+  // Recovers the unit normal and offset at any coordinate scale. The PCA rank threshold used
+  // to be an absolute epsilon on a covariance entry, i.e. on a length squared, so a domain a
+  // micro-eV across had a second eigenvalue near 1e-13, was called rank-deficient, and came
+  // back as an arbitrary direction — a perfectly flat domain reported as non-planar.
   test.each([1e6, 1e3, 1, 1e-3, 1e-6, 1e-9])(
     `fits a plane at coordinate scale %s`,
     (scale) => {
-      const scaled = on_plane.map((pt) => pt.map((val) => val * scale))
-      const plane = fit_plane(scaled)
+      const plane = fit_plane(on_plane.map((pt) => pt.map((val) => val * scale)))
       if (!plane) throw new Error(`expected a plane at scale ${scale}`)
-      const sign = Math.sign(plane.offset) || 1
+      const sign = Math.sign(plane.offset) || 1 // either face normal is valid
       expect(plane.normal.map((val) => val * sign)).toEqual(
         [2 / 7, 3 / 7, 6 / 7].map((val) => expect.closeTo(val, 9)),
       )
       expect((plane.offset * sign) / scale).toBeCloseTo(12 / 7, 9)
     },
   )
+
+  // A hairline domain must never come back with an arbitrary plane: below the aspect ratio
+  // simple_pca can still resolve a second axis for, fit_plane has to return null and let the
+  // caller fall back rather than hand out a normal it guessed. Rotated off the axes, so a
+  // fallback basis vector cannot pass for the real second axis.
+  const [cos_z, sin_z, cos_x, sin_x] = [0.5, 0.7].flatMap((ang) => [
+    Math.cos(ang),
+    Math.sin(ang),
+  ])
+  const rotate = ([x_val, y_val, z_val]: number[]): Vec3 => {
+    const [rot_x, rot_y] = [cos_z * x_val - sin_z * y_val, sin_z * x_val + cos_z * y_val]
+    return [rot_x, cos_x * rot_y - sin_x * z_val, sin_x * rot_y + cos_x * z_val]
+  }
+
+  test.each([1e-2, 1e-4, 1e-5, 1e-6, 1e-8])(`hairline sliver of aspect %s`, (aspect) => {
+    const rect = chunk(3, [0, 0, 0, 1, 0, 0, 1, aspect, 0, 0, aspect, 0])
+    const plane = fit_plane(rect.map(rotate))
+    if (!plane) return // rejecting a sliver is the safe answer
+    const truth = rotate([0, 0, 1])
+    expect(
+      Math.abs(plane.normal.reduce((sum, val, idx) => sum + val * truth[idx], 0)),
+    ).toBeCloseTo(1, 9)
+  })
 
   test(`in_outline separates the polygon from the rest of its plane`, () => {
     const plane = fit_plane(on_plane)
@@ -1335,111 +1355,78 @@ describe(`fit_plane`, () => {
   })
 })
 
-describe(`assign_faces_to_domains`, () => {
-  // `Strip` and `Blob` are coplanar (z = 0), `Wall` is not (x = 0). Both the strip's far-end
-  // face and the wall's low-end face sit nearer a foreign domain's centroid than their own, so
-  // nearest-centroid assignment (the Voronoi rule this replaced) mislabels them: it hands the
-  // strip's face to `Blob` (3.59 vs 4.67) and the wall's to `Strip` (6.15 vs 10.67).
-  const domains = [
-    {
-      formula: `Strip`,
-      points: [
-        [0, 0, 0],
-        [12, 0, 0],
-        [12, 1, 0],
-        [0, 1, 0],
-      ],
-    },
-    {
-      formula: `Blob`,
-      points: [
-        [10, 2, 0],
-        [14, 2, 0],
-        [14, 6, 0],
-        [10, 6, 0],
-      ],
-    },
-    {
-      formula: `Wall`,
-      points: [
-        [0, 0, 0],
-        [0, 1, 0],
-        [0, 1, 24],
-        [0, 0, 24],
-      ],
-    },
-  ]
-
+// The tolerance used to be an absolute 1e-3 eV, so a window narrower than a few meV called
+// every domain clipped on every bound.
+describe(`get_touches_limits`, () => {
+  const elements = [`Y`, `Ti`]
   test.each([
-    // coplanar with `Blob`, so only the outline separates them
+    [`wide window`, [-25, 0], [-25, -12, -3, -0.5], [`Y lower bound`]],
+    // in a 4 meV window a domain 0.1 meV clear of every bound is inside all four, though an
+    // absolute 1e-3 eV tolerance calls it clipped on all four
+    [`narrow window`, [-0.004, 0], [-0.0039, -0.0039, -0.0001, -0.0001], []],
     [
-      `elongated domain keeps its far-end face`,
-      [
-        [12, 0, 0],
-        [12, 1, 0],
-        [8, 1, 0],
-      ],
-      `Strip`,
+      `domain spanning a narrow window`,
+      [-0.004, 0],
+      [-0.004, -0.004, 0, 0],
+      [`Y lower bound`, `Y upper bound`, `Ti lower bound`, `Ti upper bound`],
     ],
-    [
-      `compact neighbour keeps its own face`,
-      [
-        [10, 2, 0],
-        [14, 2, 0],
-        [14, 6, 0],
-      ],
-      `Blob`,
-    ],
-    // on its own plane, so the plane test alone decides it
-    [
-      `face on another plane is not stolen`,
-      [
-        [0, 0, 0],
-        [0, 1, 0],
-        [0, 0, 4],
-      ],
-      `Wall`,
-    ],
-  ])(`%s`, (_label, corners, expected) => {
-    expect(assign_faces_to_domains(corners.flat(), domains)).toEqual([expected])
+  ])(`%s`, (_label, window, flat_points, expected) => {
+    const lims = [window, window] as Vec2[]
+    expect(get_touches_limits(chunk(2, flat_points), lims, elements)).toEqual(expected)
+  })
+})
+
+describe(`strip_closing_faces`, () => {
+  // Tetrahedron on the origin and the three unit steps into the negative octant. Its three
+  // coordinate-plane faces are real boundaries; the slanted fourth has outward normal
+  // (-1, -1, -1) and is the artificial wall closing a diagram at its lower axis limits. It is
+  // also the only face with no corner at the origin.
+  const corners = [[0, 0, 0], ...[0, 1, 2].map((axis) => [0, 0, 0].with(axis, -1))]
+  const tris = [0, 1, 2, 3].map((drop) => [0, 1, 2, 3].filter((idx) => idx !== drop))
+
+  // winding must not matter: normals are oriented against the hull centroid, not the buffer
+  test.each([
+    [`as wound`, tris],
+    [`reversed`, tris.map((tri) => tri.toReversed())],
+  ])(`drops the face closing the negative octant, %s`, (_label, wound) => {
+    const kept = strip_closing_faces(wound.flat().flatMap((idx) => corners[idx]))
+    expect(kept).toHaveLength(3 * 9) // three of the four triangles survive
+    const at_origin = (face: number) =>
+      [0, 3, 6].some((corner) =>
+        [0, 1, 2].every((axis) => kept?.[face * 9 + corner + axis] === 0),
+      )
+    expect([0, 1, 2].map(at_origin)).toEqual([true, true, true])
   })
 
-  test(`assigns every face of a multi-face buffer independently`, () => {
-    const buffer = [
-      [
-        [12, 0, 0],
-        [12, 1, 0],
-        [8, 1, 0],
-      ],
-      [
-        [10, 2, 0],
-        [14, 2, 0],
-        [14, 6, 0],
-      ],
-      [
-        [0, 0, 0],
-        [0, 1, 0],
-        [0, 0, 4],
-      ],
-    ].flat(2)
-    expect(assign_faces_to_domains(buffer, domains)).toEqual([`Strip`, `Blob`, `Wall`])
+  test.each([[[]], [[0, 0, 0, -1, 0, 0, 0, -1]]])(
+    `returns null for %s, a buffer holding no whole triangle`,
+    (positions) => expect(strip_closing_faces(positions)).toBeNull(),
+  )
+})
+
+describe(`assign_faces_to_domains`, () => {
+  // `Strip` and `Blob` are coplanar (z = 0), `Wall` is not (x = 0). Nearest-centroid
+  // assignment, the Voronoi rule this replaced, mislabels two of the three faces below: the
+  // strip's far end goes to `Blob` (3.59 vs 4.67) and the wall's low end to `Strip`
+  // (6.15 vs 10.67).
+  const domains = [
+    { formula: `Strip`, points: chunk(3, [0, 0, 0, 12, 0, 0, 12, 1, 0, 0, 1, 0]) },
+    { formula: `Blob`, points: chunk(3, [10, 2, 0, 14, 2, 0, 14, 6, 0, 10, 6, 0]) },
+    { formula: `Wall`, points: chunk(3, [0, 0, 0, 0, 1, 0, 0, 1, 24, 0, 0, 24]) },
+  ]
+  const faces = [
+    [12, 0, 0, 12, 1, 0, 8, 1, 0], // the strip's far end, coplanar with Blob's outline
+    [10, 2, 0, 14, 2, 0, 14, 6, 0], // Blob's own corner, on that same shared plane
+    [0, 0, 0, 0, 1, 0, 0, 0, 4], // on the wall's own plane, so the plane test alone decides
+  ]
+
+  test(`gives each face of a buffer to the domain whose outline holds it`, () => {
+    expect(assign_faces_to_domains(faces.flat(), domains)).toEqual([`Strip`, `Blob`, `Wall`])
   })
 
   test(`a domain too degenerate to bound a face claims none`, () => {
-    const line = {
-      formula: `Line`,
-      points: [
-        [0, 0, 0],
-        [1, 0, 0],
-        [2, 0, 0],
-      ],
-    }
-    const face = [
-      [12, 0, 0],
-      [12, 1, 0],
-      [8, 1, 0],
-    ].flat()
-    expect(assign_faces_to_domains(face, [...domains, line])).toEqual([`Strip`])
+    const line = { formula: `Line`, points: chunk(3, [0, 0, 0, 1, 0, 0, 2, 0, 0]) }
+    expect(assign_faces_to_domains(faces[0], [...domains, line])).toEqual([`Strip`])
   })
 })
 

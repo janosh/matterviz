@@ -17,8 +17,13 @@ export const SLAB_LAYER_TOLERANCE = 0.1
 export const SLAB_DEFAULT_THICKNESS = 10 // Å
 export const SLAB_DEFAULT_VACUUM = 10 // Å
 
-// Refuse to build absurd slabs rather than hanging the browser tab.
+// Refuse to build absurd slabs rather than hanging the browser tab. MAX_SLAB_SITES bounds the
+// OUTPUT, which is not where the time goes: primitivizing the oriented cell first costs
+// (rarest species) x (sites) probes, set entirely by the INPUT, so an fcc Cu 12x12x12 supercell
+// spends 2.4 s reaching a 12-site oriented cell that the output cap would never have caught.
+// Measured at 0.030 us per probe, so 2e7 holds make_slab near 1 s.
 export const MAX_SLAB_SITES = 50_000
+export const MAX_TRANSLATION_PROBES = 20_000_000
 
 // A bulk cell re-expressed so that c crosses the (hkl) planes exactly once. Still fully
 // periodic — the vacuum and the cleaving happen in make_slab.

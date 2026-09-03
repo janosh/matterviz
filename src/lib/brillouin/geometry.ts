@@ -70,9 +70,12 @@ export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
 export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
   k_lattice ? k_lattice.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 3 : 10
 
-// Default camera position scaled to the scene size
+// Every size and extent below is a reciprocal-space length in 1/A (|b| ~ 2pi/a, so 0.05 for a
+// 120 A cell), orders of magnitude smaller than the real-space lengths structure_fit_frame
+// returns. They used to be floored at 1, which past a = 11.83 A exceeded the true extent and
+// framed the zone against a constant: 39% of the viewport at 30 A, 10% at 120 A.
 export const default_camera_position = (size: number): Vec3 =>
-  [10, 3, 8].map((coord) => coord * Math.max(1, size)) as Vec3
+  [10, 3, 8].map((coord) => coord * (size > 0 ? size : k_space_size(undefined))) as Vec3
 
 // Occupy at most 92% of the shorter viewport edge, matching structure_fit_frame's
 // DEFAULT_FIT_PADDING (asserted equal in brillouin-compute.test.ts rather than imported, which
@@ -90,11 +93,13 @@ export const k_cell_fit_extent = (
   padding = FIT_PADDING,
 ): number => {
   // no lattice: treat k_space_size's placeholder as a cubic |b|, whose cell diagonal is sqrt(3)
-  if (!k_lattice) return Math.max(1, Math.sqrt(3) * k_space_size(undefined) * padding)
+  const fallback = Math.sqrt(3) * k_space_size(undefined) * padding
+  if (!k_lattice) return fallback
   const half_extent = [0, 1, 2].map(
     (axis_idx) => 0.5 * k_lattice.reduce((sum, row) => sum + Math.abs(row[axis_idx]), 0),
   )
-  return Math.max(1, 2 * Math.hypot(...half_extent) * padding)
+  const extent = 2 * Math.hypot(...half_extent) * padding
+  return extent > 0 ? extent : fallback
 }
 
 // Padded diameter of the sphere enclosing the zone, in the same "fit to the shorter viewport
@@ -112,5 +117,6 @@ export const bz_fit_extent = (
   for (const vert of vertices) {
     max_dist = Math.max(max_dist, math.euclidean_dist(vert, center))
   }
-  return Math.max(1, 2 * max_dist * padding)
+  // coincident vertices leave nothing to frame; the enclosing cell is the honest fallback
+  return max_dist > 0 ? 2 * max_dist * padding : k_cell_fit_extent(k_lattice, padding)
 }

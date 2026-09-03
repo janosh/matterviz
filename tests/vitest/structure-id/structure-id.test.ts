@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { create_lattice_converters, min_image_displacement } from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { Crystal, Pbc } from '$lib/structure'
 import { neighbor_query } from '$lib/structure/bonding'
 import {
   apply_structure_id,
@@ -275,34 +275,83 @@ describe(`centrosymmetry`, () => {
     expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
   })
 
-  // N is a property of the lattice (12 close-packed, 8 bcc), so a fixed default cannot be
-  // right for both: the close-packed 12 on bcc drags in 4 arbitrary members of the 6-fold
-  // degenerate second shell and lands a DEFECT-FREE crystal at 0.75*a^2 (6.18 A^2 for
-  // a = 2.87 A) on the atoms where only one antipodal second-shell pair survives. The
-  // default now follows the CNA classification the same call already computed.
-  // hcp is genuinely NOT centrosymmetric (its 12-neighbour shell has no inversion centre),
-  // so only the cubic phases are expected at round-off; hcp only has to pick N = 12.
-  test.each([
-    [`fcc`, () => make_fcc([3, 3, 3]), 12, true],
-    [`bcc`, () => make_bcc([3, 3, 3]), 8, true],
-    [`hcp`, () => make_hcp([3, 3, 3]), 12, false],
+  // N is a property of the lattice (12 close-packed, 8 bcc), so a fixed default cannot be right
+  // for both: the close-packed 12 on bcc drags in 4 arbitrary members of its 6-fold degenerate
+  // second shell and lands a DEFECT-FREE crystal at 0.75*a^2 (6.18 A^2 for a = 2.87 A). The
+  // default now reads the phase off the CNA the same call already computed. hcp is genuinely
+  // NOT centrosymmetric (its 12-neighbour shell has no inversion centre), so only its N counts.
+  test.each<[string, () => Crystal, number | undefined, number, boolean | null]>([
+    [`fcc`, () => make_fcc([3, 3, 3]), undefined, 12, true],
+    [`bcc`, () => make_bcc([3, 3, 3]), undefined, 8, true],
+    [`hcp`, () => make_hcp([3, 3, 3]), undefined, 12, null],
+    [`bcc, explicit N wins`, () => make_bcc([3, 3, 3]), 12, 12, false],
   ])(
-    `the default CSP neighbor count follows the %s phase`,
-    (_label, build, expected_n, csp_vanishes) => {
-      const result = calc_structure_id(build())
+    `CSP neighbor count on %s`,
+    (_label, build, n_csp_neighbors, expected_n, csp_vanishes) => {
+      const result = calc_structure_id(build(), { n_csp_neighbors })
       if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
       expect(result.n_csp_neighbors).toBe(expected_n)
-      if (csp_vanishes) {
-        expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
-      }
+      const max_csp = max_finite(result.centrosymmetry)
+      if (csp_vanishes === true) expect(max_csp).toBeLessThan(PERFECT_CSP_TOLERANCE)
+      else if (csp_vanishes === false) expect(max_csp).toBeGreaterThan(1)
     },
   )
 
-  test(`an explicit n_csp_neighbors still overrides the phase-derived default`, () => {
-    const result = calc_structure_id(make_bcc([3, 3, 3]), { n_csp_neighbors: 12 })
-    if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
+  // `other` atoms must not vote. A 4-layer bcc Fe slab is half surface, so counting them in the
+  // denominator ties the strict majority and falls back to 12, putting 0.75*a^2 = 6.18 A^2 back
+  // on the slab's crystalline interior. Only bcc against the close-packed classifications
+  // decides it. hcp is the converse: as much surface, but its classified atoms are close-packed.
+  test.each([
+    [`bcc`, () => make_bcc([4, 4, 4]), CNA_TYPES.bcc, 8],
+    [`hcp`, () => make_hcp([4, 4, 4]), CNA_TYPES.hcp, 12],
+  ])(
+    `a half-surface %s slab derives its own neighbor count`,
+    (_label, build, code, want_n) => {
+      const bulk = build()
+      const { n_csp_neighbors, centrosymmetry, cna_types } = calc_structure_id({
+        ...bulk,
+        lattice: { ...bulk.lattice, pbc: [true, true, false] as Pbc },
+      })
+      if (!centrosymmetry || !cna_types) throw new Error(`analysis missing`)
+      expect(n_csp_neighbors).toBe(want_n)
+      const interior = [...centrosymmetry].filter((_csp, idx) => cna_types[idx] === code)
+      expect(interior.length).toBeGreaterThan(0)
+      if (code !== CNA_TYPES.bcc) return
+      // the bcc slab is the reachable tie: its surface outnumbers its crystalline interior,
+      // which must still read as centrosymmetric
+      expect(2 * interior.length).toBeLessThanOrEqual(cna_types.length)
+      expect(Math.max(...interior)).toBeLessThan(PERFECT_CSP_TOLERANCE)
+    },
+  )
+
+  // The converse of the slab case: bcc atoms are present but the close-packed ones outnumber
+  // them, so 12 must win. Two crystallites sit side by side in one non-periodic box, far
+  // enough apart not to bond; each contributes its own interior and a shell of `other`.
+  test(`bcc grains outnumbered by close-packed ones keep the close-packed count`, () => {
+    const fcc = make_fcc([4, 4, 4])
+    const bcc = make_bcc([5, 5, 5])
+    const offset = fcc.lattice.matrix[0][0] + 10
+    const box = offset + bcc.lattice.matrix[0][0] + 10
+    const sites = [
+      ...fcc.sites,
+      ...bcc.sites.map((site) => ({
+        ...site,
+        xyz: [site.xyz[0] + offset, site.xyz[1], site.xyz[2]] as Vec3,
+      })),
+    ].map((site) => ({ ...site, abc: site.xyz.map((coord) => coord / box) as Vec3 }))
+    const matrix = [
+      [box, 0, 0],
+      [0, box, 0],
+      [0, 0, box],
+    ] as Matrix3x3
+    const result = calc_structure_id({
+      sites,
+      lattice: { ...fcc.lattice, matrix, pbc: [false, false, false] },
+    })
+    // both phases really are classified, so the comparison is not vacuous
+    expect(result.populations.bcc).toBeGreaterThan(0)
+    expect(result.populations.fcc).toBeGreaterThan(result.populations.bcc)
     expect(result.n_csp_neighbors).toBe(12)
-    expect(max_finite(result.centrosymmetry)).toBeGreaterThan(1)
   })
 
   test(`displacing a perfect lattice raises CSP well clear of round-off`, () => {

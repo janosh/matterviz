@@ -2,7 +2,7 @@
 // Parses phase diagram SVGs (matplotlib or simple/Gemini format) into DiagramInput JSON
 // for immediate rendering by IsobaricBinaryPhaseDiagram
 
-import { array_extent, type Vec2, type Vec4 } from '$lib/math'
+import { array_extent, point_in_polygon, type Vec2, type Vec4 } from '$lib/math'
 import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
 
 // Round to 6 decimal places for clean floating-point output
@@ -37,10 +37,11 @@ interface Label {
   px_y: number
 }
 
-// A filled SVG shape (region fill) with its pixel bounding box
+// A filled SVG shape (region fill) with its pixel-space outline rings and bounding box
 interface FilledShape {
   fill: string
   bbox: Vec4 // [min_x, min_y, max_x, max_y] in px
+  rings: Vec2[][] // closed outline rings; the bbox alone cannot decide a concave shape
 }
 
 // === Format Detection ===
@@ -242,60 +243,83 @@ function element_fill(el: Element): string | null {
   return fill
 }
 
-// Pixel bounding box of a rect/polygon/path element, or of a <use> instance of one shifted by
-// its x/y offset (matplotlib's fill_between puts the polygon in <defs> and fills the <use>).
-// Other transforms are not applied.
-function shape_bbox(el: Element): Vec4 | null {
+// Closed vertex rings of a segment chain. parse_path_segments emits no segment for an M, so a
+// gap between one segment's end and the next one's start begins a new subpath; each ring is
+// closed the way SVG closes a subpath when filling it.
+function segments_to_rings(segments: Vec4[]): Vec2[][] {
+  const rings: Vec2[][] = []
+  for (const [x_1, y_1, x_2, y_2] of segments) {
+    const tail = rings.at(-1)?.at(-1)
+    if (tail?.[0] !== x_1 || tail[1] !== y_1) rings.push([[x_1, y_1]]) // jump: new subpath
+    rings.at(-1)?.push([x_2, y_2])
+  }
+  return rings
+}
+
+// Closed pixel-space outline of a rect/polygon/path element, or of a <use> instance of one
+// shifted by its x/y offset (matplotlib's fill_between puts the polygon in <defs> and fills
+// the <use>), as the rings SVG would fill. Other transforms are not applied.
+function shape_rings(el: Element): Vec2[][] | null {
   const tag = el.tagName.toLowerCase()
   if (tag === `use`) {
     const href = el.getAttribute(`href`) ?? el.getAttribute(`xlink:href`) ?? ``
     const target = href.startsWith(`#`)
       ? el.ownerDocument.querySelector(`[id="${href.slice(1).replaceAll(`"`, `\\"`)}"]`)
       : null
-    const bbox = target && target.tagName.toLowerCase() !== `use` ? shape_bbox(target) : null
-    if (!bbox) return null
+    const rings = target && target.tagName.toLowerCase() !== `use` ? shape_rings(target) : null
     const [dx, dy] = [parse_float_attr(el, `x`) ?? 0, parse_float_attr(el, `y`) ?? 0]
-    return [bbox[0] + dx, bbox[1] + dy, bbox[2] + dx, bbox[3] + dy]
+    return rings?.map((ring) => ring.map(([x_px, y_px]) => [x_px + dx, y_px + dy])) ?? null
   }
   if (tag === `rect`) {
-    const x_px = parse_float_attr(el, `x`) ?? 0
-    const y_px = parse_float_attr(el, `y`) ?? 0
-    const width = parse_float_attr(el, `width`)
-    const height = parse_float_attr(el, `height`)
+    const [x_px, y_px] = [parse_float_attr(el, `x`) ?? 0, parse_float_attr(el, `y`) ?? 0]
+    const [width, height] = [parse_float_attr(el, `width`), parse_float_attr(el, `height`)]
     if (width === null || height === null) return null
-    return [x_px, y_px, x_px + width, y_px + height]
+    const [max_x, max_y] = [x_px + width, y_px + height]
+    return [
+      [
+        [x_px, y_px],
+        [max_x, y_px],
+        [max_x, max_y],
+        [x_px, max_y],
+      ],
+    ]
   }
-  const points: number[] = []
   if (tag === `polygon`) {
-    const raw = el.getAttribute(`points`) ?? ``
-    points.push(...(raw.match(NUMBER_REGEX) ?? []).map(Number))
-  } else if (tag === `path`) {
-    const d_attr = el.getAttribute(`d`)
-    if (d_attr === null) return null
-    points.push(...parse_path_segments(d_attr).flat())
+    const nums = ((el.getAttribute(`points`) ?? ``).match(NUMBER_REGEX) ?? []).map(Number)
+    return [
+      Array.from({ length: nums.length >> 1 }, (_, idx) => [nums[2 * idx], nums[2 * idx + 1]]),
+    ]
   }
-  if (points.length < 4) return null
-  const xs = points.filter((_, idx) => idx % 2 === 0)
-  const ys = points.filter((_, idx) => idx % 2 === 1)
-  const [x_min, x_max] = array_extent(xs)
-  const [y_min, y_max] = array_extent(ys)
-  return [x_min, y_min, x_max, y_max]
+  const d_attr = tag === `path` ? el.getAttribute(`d`) : null
+  return d_attr === null ? null : segments_to_rings(parse_path_segments(d_attr))
+}
+
+// Outline rings of a filled shape plus their bounding box, or null if it encloses no area
+function shape_outline(el: Element): { bbox: Vec4; rings: Vec2[][] } | null {
+  const rings = shape_rings(el) ?? []
+  const verts = rings.flat()
+  if (verts.length < 3) return null // fewer than 3 corners encloses no area
+  const [min_x, max_x] = array_extent(verts.map(([x_px]) => x_px))
+  const [min_y, max_y] = array_extent(verts.map(([, y_px]) => y_px))
+  return { bbox: [min_x, min_y, max_x, max_y], rings }
 }
 
 // Collect all non-background filled shapes (candidate phase region fills). Transformed shapes
-// are skipped since shape_bbox ignores transforms (their pixel bbox would be wrong).
+// are skipped since shape_outline ignores transforms (their pixel coords would be wrong).
 function extract_filled_shapes(doc: Document): FilledShape[] {
   const shapes: FilledShape[] = []
   for (const el of Array.from(doc.querySelectorAll(`rect, polygon, path, use`))) {
     const fill = element_fill(el)
     if (fill === null || el.hasAttribute(`transform`)) continue
-    const bbox = shape_bbox(el)
-    if (bbox) shapes.push({ fill, bbox })
+    const outline = shape_outline(el)
+    if (outline) shapes.push({ fill, ...outline })
   }
   return shapes
 }
 
-// Fill of the smallest filled shape whose bbox contains the given pixel point
+// Fill of the smallest filled shape actually containing the given pixel point. The bounding
+// box is only the cheap reject: a concave phase field's bbox covers its neighbours, so
+// deciding on the bbox alone painted a field with a neighbour's colour.
 function fill_at_px(shapes: FilledShape[], [px_x, px_y]: Vec2): string | undefined {
   let best: FilledShape | undefined
   let best_area = Infinity
@@ -303,10 +327,13 @@ function fill_at_px(shapes: FilledShape[], [px_x, px_y]: Vec2): string | undefin
     const [min_x, min_y, max_x, max_y] = shape.bbox
     if (px_x < min_x || px_x > max_x || px_y < min_y || px_y > max_y) continue
     const area = (max_x - min_x) * (max_y - min_y)
-    if (area < best_area) {
-      best = shape
-      best_area = area
-    }
+    if (area >= best_area) continue
+    // even-odd across subpaths, so a ring cut out of another reads as a hole
+    const inside = shape.rings.reduce(
+      (acc, ring) => acc !== point_in_polygon(px_x, px_y, ring),
+      false,
+    )
+    if (inside) [best, best_area] = [shape, area]
   }
   return best?.fill
 }

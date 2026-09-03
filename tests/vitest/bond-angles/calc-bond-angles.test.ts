@@ -357,9 +357,8 @@ describe(`binning`, () => {
     [{ bin_width: 0 }, /must be a number in/],
     [{ bin_width: -1 }, /must be a number in/],
     [{ bin_width: 181 }, /must be a number in/],
-    // bin_width and n_bins are two spellings of the same layout, so bounding the WIDTH to
-    // (0, 180] bounded nothing: 1e-5 deg is inside that range and asked bin_bond_angles for
-    // 18 million bins (~290 MB across bin_centers and the count arrays, 1.2 s)
+    // bounding the WIDTH to (0, 180] bounded nothing: 1e-5 deg asked for 18 million bins
+    // (~290 MB across bin_centers and the count arrays, 1.2 s)
     [{ bin_width: 1e-5 }, /spans 18000000 bins .* past the 100000 limit/],
     [{ n_bins: 100_001 }, /positive integer <= 100000/],
   ])(`resolve_angle_bins(%j) throws`, (options, message) => {

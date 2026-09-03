@@ -15,15 +15,14 @@ import type { VacfInput } from './index'
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 // Frame stride that keeps every trajectory-sized buffer calc_vacf ends up holding inside
-// `max_bytes`. Counting only what collect_vacf_input gathers gets this backwards: velocities
-// in the file are collected alongside the positions and used as they are (2 buffers), while a
-// file WITHOUT them makes calc_vacf allocate two more of the same size — unwrapped_positions_of
-// caches a full unwrapped copy on the stream, and central_difference_velocities builds the
-// velocity series from it (3 buffers). The cheap path used to be budgeted at 2 and the
-// expensive one at 1, so a 20k-frame x 1k-atom run with no velocity columns was told to stride
-// 1 and then held ~1.4 GB against a 512 MB budget. Note that striding coarsens the velocity
-// sampling and so lowers the VDOS Nyquist frequency by the same factor — a stride of 10
-// aliases everything above f_Nyquist/10.
+// `max_bytes`. Stored velocities are used as they are (positions + velocities = 2 buffers);
+// WITHOUT them calc_vacf allocates two more of the same size — unwrapped_positions_of caches an
+// unwrapped copy and central_difference_velocities builds the series from it (3 buffers).
+// Budgeting that path at 1 told a 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against
+// a 512 MB budget. Striding coarsens the velocity sampling and so lowers the VDOS Nyquist
+// frequency by the same factor — a stride of 10 aliases everything above f_Nyquist/10. Forcing
+// `velocity_source: 'central_difference'` on a file that has velocities holds 4, under-budgeted
+// here because no caller sets that option.
 export const suggest_vacf_frame_stride = (
   run: TrajectoryRun,
   max_bytes?: number,

@@ -404,10 +404,10 @@ describe(`grid/lattice conventions`, () => {
 
   // The cost is the upsampled point count (factor³ per band), not the factor: bounding only
   // the factor let a 16³ grid at factor 40 allocate 601³ = 2.17e8 doubles (1.74 GB) from a
-  // 4 kB input, and a 100³ grid at the settings max of 5 would take 976 MB per band.
+  // 4 kB input, and a 100³ grid at the settings max of 5 would take 976 MB per band
+  const factor_40_error = /601×601×601 = 2\.17e\+8 points \(1\.74e\+3 MB per band\)/
   test.each([
-    [`factor 40 on 16³`, [16, 16, 16] as Vec3, 40, /601×601×601 = 2\.17e\+8 points/],
-    [`factor 40 on 16³`, [16, 16, 16] as Vec3, 40, /1\.74e\+3 MB per band/],
+    [`factor 40 on 16³`, [16, 16, 16] as Vec3, 40, factor_40_error],
     [`a NaN factor`, [8, 8, 8] as Vec3, Number.NaN, /factor NaN/],
   ])(`upsample_grid rejects %s by point count`, (_label, dims, factor, expected) => {
     const grid = make_band_grid(dims, (ix) => ix)
@@ -559,6 +559,15 @@ describe(`detect_irreducible_bz`, () => {
     idx % 2 ? vert : [-vert[0], vert[1], vert[2]],
   )
 
+  // A small electron pocket around Gamma in a large supercell spans the full zone, yet every
+  // coordinate is inside 0.005 1/A, so the absolute 0.01 1/A tolerance this used to carry read
+  // it as a wedge and the surface got tiled 48 times.
+  const pocket: Vec3[] = positive_verts.map((_v, idx) => [idx % 2 ? 5e-3 : -5e-3, 4e-3, 3e-3])
+  // that same supercell's genuine wedge, with round-off pushing one vertex past zero
+  const small_wedge: Vec3[] = positive_verts.map((vert, idx) =>
+    idx ? (vert.map((val) => val * 0.1) as Vec3) : [-1e-9, 0, 0.05],
+  )
+
   test.each([
     {
       label: `vertices in positive octant only`,
@@ -566,6 +575,8 @@ describe(`detect_irreducible_bz`, () => {
       expected: true,
     },
     { label: `vertices spanning full BZ`, data: make_data(spanning_verts), expected: false },
+    { label: `a tiny full-zone pocket`, data: make_data(pocket), expected: false },
+    { label: `a small wedge dipping past zero`, data: make_data(small_wedge), expected: true },
     { label: `empty isosurfaces`, data: make_data(), expected: false },
     {
       // needs > 10 vertices to be considered valid irreducible data

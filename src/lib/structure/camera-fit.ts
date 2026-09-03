@@ -119,19 +119,23 @@ export function structure_fit_frame(
     radius_sq = Math.max(radius_sq, reach * reach)
   })
   if (!(radius_sq > 0)) return { center, extent: 10 }
-  return {
-    center,
-    extent: Math.max(1, 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING),
-  }
+  return { center, extent: 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING }
 }
 
+// `fit_extent` is a scene diameter in the scene's own units, so it has no lower bound of its
+// own: reciprocal-space callers pass 1/A extents below 1. Clamping at 1 framed those against a
+// constant, so a bad extent throws here as it does in perspective_distance_for_extent.
 export const ortho_zoom_for_extent = (
   fit_extent: number,
   width: number,
   height: number,
   initial_zoom: number,
-): number =>
-  (initial_zoom * Math.min(width, height)) / (Math.max(1, fit_extent) * FIT_ZOOM_REF_PX)
+): number => {
+  if (!(fit_extent > 0) || !Number.isFinite(fit_extent) || !(width > 0) || !(height > 0)) {
+    throw new Error(`Invalid ortho fit: extent=${fit_extent}, viewport=${width}x${height}`)
+  }
+  return (initial_zoom * Math.min(width, height)) / (fit_extent * FIT_ZOOM_REF_PX)
+}
 
 export const perspective_distance_for_extent = (
   fit_extent: number,
@@ -141,6 +145,7 @@ export const perspective_distance_for_extent = (
 ): number => {
   if (
     !(fit_extent > 0) ||
+    !Number.isFinite(fit_extent) ||
     !(width > 0) ||
     !(height > 0) ||
     !(vertical_fov_degrees > 0 && vertical_fov_degrees < 180)
