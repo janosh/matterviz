@@ -35,6 +35,10 @@ export type StructureGalleryItem = {
   label: string
   subtitle?: string
   structure: AnyStructure
+  // Key/value pairs captioning the viewer. Numeric ones are tinted by their rank
+  // across the whole collection when the gallery is given a property_color_scheme.
+  // An underscore in a key marks a subscript, as in `E_hull`.
+  properties?: Record<string, number | string>
 }
 export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureEditToolbar } from './StructureEditToolbar.svelte'

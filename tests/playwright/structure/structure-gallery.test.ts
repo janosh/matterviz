@@ -172,12 +172,49 @@ test(`grid fills its host with virtualized rows and a capped live-viewer count`,
   expect(before?.rendered).toBeLessThanOrEqual(24) // the max_live_cards budget
   expect(before?.on_screen).toBeGreaterThan(1)
 
-  await page.evaluate(() => {
+  // well inside the scrollable range whatever the viewport: a larger offset gets
+  // clamped to the maximum and the assertion below would chase a moving number
+  const scroll_to = 400
+  await page.evaluate((offset) => {
     const track = document.querySelector(`.structure-gallery.grid .structure-gallery-track`)
-    if (track) track.scrollTop = 1200
-  })
+    if (track) track.scrollTop = offset
+  }, scroll_to)
   // the endless demo keeps appending, so the window must not grow with the list
   await expect
     .poll(measure, { timeout: 60_000 })
-    .toMatchObject({ ...settled, rendered: before?.rendered, scrolled: 1200 })
+    .toMatchObject({ ...settled, rendered: before?.rendered, scrolled: scroll_to })
+})
+
+// A card outside the mounted range holds no viewer, so nothing occupies the row
+// above the caption. Without an explicit row, auto-placement floated the caption
+// to the top of the card and under the label chip. Shells are transient here (the
+// budget covers the whole window), so the row assignment is asserted directly —
+// it is the mechanism that broke — alongside the geometry of a live card.
+test(`property captions sit under the viewer, in a row of their own`, async ({ page }) => {
+  await page.goto(`/structure/gallery`, { waitUntil: `domcontentloaded` })
+  const measure = () =>
+    page.evaluate(() => {
+      const card = document.querySelector(`.property-host .structure-card`)
+      const caption = card?.querySelector(`.card-properties`)
+      const chip = card?.querySelector(`.card-info`)
+      if (!card || !caption || !chip || !card.querySelector(`canvas`)) return null
+      const [box, cap, chip_box] = [card, caption, chip].map((el) =>
+        el.getBoundingClientRect(),
+      )
+      return {
+        clears_chip: cap.top >= chip_box.bottom,
+        inside_card: cap.top >= box.top && cap.bottom <= box.bottom + 1,
+        // an explicit row is what keeps a viewerless card from floating it to the top
+        pinned_row: getComputedStyle(caption).gridRowStart !== `auto`,
+        // the viewer has to stay the dominant part of the card
+        caption_share: Math.round((cap.height / box.height) * 100),
+      }
+    })
+
+  await expect.poll(measure, { timeout: 60_000 }).toMatchObject({
+    clears_chip: true,
+    inside_card: true,
+    pinned_row: true,
+  })
+  expect((await measure())?.caption_share).toBeLessThan(30)
 })

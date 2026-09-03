@@ -6,6 +6,8 @@ Bringing up a canvas costs enough GPU setup to stall a fling, so cards that ente
 
 Mouse wheel, trackpad and the pager (‹ 1–3 / 40 ›) all page through the cards. The track is keyboard-navigable too: when focused, main-axis arrow keys move one card, <kbd>PageUp</kbd>/<kbd>PageDown</kbd> one page, and <kbd>Home</kbd>/<kbd>End</kbd> jump to the ends. At the first/last card, wheel and arrow events pass through to the surrounding page.
 
+Every example below caps `max_live_cards` well under its default: five galleries on one page would otherwise ask for more simultaneous WebGPU contexts than a browser will hand out.
+
 ## Grid (the default)
 
 The default layout fills its host in both axes and scrolls vertically through as many columns as `min_card_width` allows, recomputing them on every resize. Virtualization works in whole rows, so a collection of any size costs the same: only the rows intersecting the viewport (plus `overscan` rows per side) exist in the DOM.
@@ -48,6 +50,7 @@ The corner grip works here too, and dragging narrower adds columns: the width it
     {items}
     height={200}
     min_card_width={200}
+    max_live_cards={9}
     on_prefetch_more={load_more}
     resizable
   />
@@ -60,6 +63,52 @@ The corner grip works here too, and dragging narrower adds columns: the width it
     border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
     border-radius: 6px;
     overflow: hidden;
+  }
+</style>
+```
+
+## Per-structure properties
+
+Give an item `properties` and the gallery captions its viewer with them: a two-line strip along the bottom of the card, keys muted, values tabular. Cards wide enough for two key/value pairs per line get them, narrow ones stack; either way the pairs borrow the card's own grid columns through a CSS subgrid, so keys and values line up across every row of a card. `property_keys` picks and orders a subset, and `property_position="side"` moves the caption into a lane beside the viewer instead.
+
+`property_color_scheme` ranks each numeric value between the smallest and largest for that key across the whole collection — not just the cards on screen, so a card keeps its colour as it scrolls — and tints the whole key/value pair in that scheme. The text colour is picked against each tint, so keys and values stay legible where d3's scales run to near-black and near-white. `property_color_reverse` flips which end of the scheme the smallest value takes; here it makes the lowest energy blue and the highest red. Non-numeric values, and any key whose values are all identical, are left untinted rather than implying a ranking that isn't there.
+
+`property_units` gives a key its unit, rendered after the value in a lighter face, so the key stays a name rather than carrying a bracketed suffix. An underscore in a key marks a subscript, so `E_hull` captions the way the quantity is written.
+
+```svelte example
+<script lang="ts">
+  import { StructureGallery, type StructureGalleryItem } from 'matterviz'
+  import { structures } from '$site/structures'
+
+  // stand-ins for whatever your pipeline computed per structure
+  const items: StructureGalleryItem[] = structures.slice(0, 12).map((structure, idx) => ({
+    id: structure.id ?? `structure-${idx}`,
+    label: structure.id ?? `structure ${idx}`,
+    structure,
+    properties: {
+      E: -8.4 + Math.sin(idx * 1.7) * 1.6,
+      E_hull: Math.abs(Math.cos(idx * 0.9)) * 0.12,
+      Gap: Math.abs(Math.sin(idx * 2.3)) * 3.1,
+      Sites: structure.sites.length,
+    },
+  }))
+</script>
+
+<div class="property-host">
+  <StructureGallery
+    {items}
+    height={230}
+    min_card_width={260}
+    max_live_cards={6}
+    property_units={{ E: `eV/atom`, E_hull: `eV`, Gap: `eV` }}
+    property_color_scheme="interpolateRdYlBu"
+    property_color_reverse
+  />
+</div>
+
+<style>
+  .property-host {
+    block-size: 60vh;
   }
 </style>
 ```

@@ -1,3 +1,4 @@
+import { get_d3_interpolator } from '$lib/colors'
 import StructureGallery from '$lib/structure/StructureGallery.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -721,6 +722,163 @@ describe(`StructureGallery`, () => {
       )
     },
   )
+
+  // === per-item properties ===
+  const prop_items = [0.5, -1.5, 2.5].map((energy, idx) => ({
+    ...items[idx],
+    id: `prop-${idx}`,
+    properties: { energy, sites: 4 + idx, spacegroup: `Fm-3m` },
+  }))
+  const prop_cells = (): { key: string; value: string; style: string }[] =>
+    [...document.querySelectorAll(`.card-properties dt`)].map((dt) => ({
+      key: dt.textContent ?? ``,
+      value: dt.nextElementSibling?.textContent?.trim() ?? ``,
+      // the tint dresses the whole pair, so it lives on the wrapper, not the value
+      style: (dt.parentElement?.getAttribute(`style`) ?? ``).replace(/;$/, ``),
+    }))
+
+  test(`lists each item's properties, in first-seen key order`, () => {
+    mount_gallery({ items: prop_items, layout: `horizontal` })
+
+    expect(prop_cells().slice(0, 3)).toEqual([
+      { key: `energy`, value: `0.5`, style: `` },
+      { key: `sites`, value: `4`, style: `` },
+      { key: `spacegroup`, value: `Fm-3m`, style: `` },
+    ])
+    // no scheme asked for, so no value ranks and no pair is tinted
+    expect(prop_cells().every((cell) => cell.style === ``)).toBe(true)
+  })
+
+  // A card whose properties hold none of the shown keys used to render an empty
+  // bordered strip under its viewer, which reads as a rendering fault.
+  test(`captions only the cards that carry one of the shown keys`, () => {
+    const mixed = prop_items.map((item, idx) =>
+      idx === 0 ? item : { ...item, properties: { unrelated: idx } },
+    )
+    mount_gallery({ items: mixed, layout: `horizontal`, property_keys: [`energy`] })
+
+    expect(document.querySelectorAll(`.card-properties`)).toHaveLength(1)
+    expect(prop_cells()).toEqual([{ key: `energy`, value: `0.5`, style: `` }])
+  })
+
+  test(`renders the part after an underscore as a subscript`, () => {
+    const subscripted = prop_items.map((item) => ({
+      ...item,
+      properties: { E_hull: 0.25 },
+    }))
+    mount_gallery({ items: subscripted, layout: `horizontal` })
+
+    const key = doc_query(`.card-properties dt`)
+    expect(key.querySelector(`sub`)?.textContent).toBe(`hull`)
+    expect(key.textContent).toBe(`Ehull`) // E with hull beneath it
+    expect(key.getAttribute(`title`)).toBe(`E_hull`) // the raw key still identifies it
+  })
+
+  test(`property_keys picks and orders the columns`, () => {
+    mount_gallery({ items: prop_items, layout: `horizontal`, property_keys: [`sites`] })
+
+    expect(prop_cells().map((cell) => cell.key)).toEqual([`sites`, `sites`, `sites`])
+  })
+
+  // Two pairs per caption row once a card is wide enough for both, so four keys
+  // caption a card in two lines rather than four stacked under a shrunken viewer.
+  // The card owns the columns the pairs subgrid, so the count lives on the gallery.
+  const two_up_cases: [Partial<ComponentProps<typeof StructureGallery>>, boolean][] = [
+    [{ min_card_width: 320 }, true],
+    [{ min_card_width: 220 }, false], // too narrow to keep both pairs legible
+    [{ min_card_width: 320, property_keys: [`sites`] }, false], // a lone pair can't pair up
+    [{ min_card_width: 320, property_position: `side` }, false], // a side lane always stacks
+  ]
+  test.each(two_up_cases)(`two-up captions with %o -> %s`, (props, two_up) => {
+    mount_gallery({ items: prop_items, layout: `horizontal`, ...props })
+
+    expect(doc_query(`.structure-gallery`).classList.contains(`properties-two-up`)).toBe(
+      two_up,
+    )
+  })
+
+  // The scale spans the whole collection, so the lowest and highest values land on
+  // the ends of the interpolator and everything between ranks against them.
+  test(`property_color_scheme tints each pair by its rank across items`, () => {
+    mount_gallery({
+      items: prop_items,
+      layout: `horizontal`,
+      property_color_scheme: `interpolateRdBu`,
+    })
+
+    const interpolate = get_d3_interpolator(`interpolateRdBu`)
+    const energies = prop_cells().filter((cell) => cell.key === `energy`)
+    // -1.5 is the smallest and 2.5 the largest, so they take the scale's ends
+    expect(energies.map((cell) => cell.style)).toEqual([
+      `--prop-rank-color: ${interpolate(0.5)}; --prop-ink: black`, // 0.5 sits halfway
+      `--prop-rank-color: ${interpolate(0)}; --prop-ink: white`,
+      `--prop-rank-color: ${interpolate(1)}; --prop-ink: white`,
+    ])
+    // a tint carries a foreground picked against it, so key and value stay legible
+    expect(
+      energies.every((cell) =>
+        [`black`, `white`].some((ink) => cell.style.includes(`--prop-ink: ${ink}`)),
+      ),
+    ).toBe(true)
+    // strings have no rank, so their pair is left untinted
+    expect(prop_cells().find((cell) => cell.key === `spacegroup`)?.style).toBe(``)
+  })
+
+  test(`property_color_reverse swaps which end of the scheme the smallest value takes`, () => {
+    const paint = (property_color_reverse: boolean): string[] => {
+      document.body.innerHTML = ``
+      mount_gallery({
+        items: prop_items,
+        layout: `horizontal`,
+        property_color_scheme: `interpolateRdYlBu`,
+        property_color_reverse,
+      })
+      return prop_cells()
+        .filter((cell) => cell.key === `energy`)
+        .map((cell) => cell.style)
+    }
+
+    const [forward, reversed] = [paint(false), paint(true)]
+    // the lowest energy takes what the highest took, and the other way round
+    expect(reversed[1]).toBe(forward[2])
+    expect(reversed[2]).toBe(forward[1])
+  })
+
+  // The scale spans the collection, not the render window, or a card would change
+  // colour as it scrolled out and back in. Every rendered card here holds the same
+  // mid-range value, so a window-scoped scale would find no span and paint nothing.
+  test(`scales against items that are far outside the render window`, () => {
+    const spread = Array.from({ length: 60 }, (_, idx) => ({
+      ...items[idx % items.length],
+      id: `spread-${idx}`,
+      properties: { energy: idx < 20 ? 50 : idx % 2 ? 0 : 100 },
+    }))
+    mount_gallery({
+      items: spread,
+      layout: `horizontal`,
+      property_color_scheme: `interpolateViridis`,
+    })
+
+    const rendered = prop_cells()
+    expect(rendered.length).toBeLessThan(20) // virtualized well short of the extremes
+    // 50 sits halfway between the collection's 0 and 100
+    const midpoint = get_d3_interpolator(`interpolateViridis`)(0.5)
+    expect(
+      rendered.every((cell) => cell.style.startsWith(`--prop-rank-color: ${midpoint}`)),
+    ).toBe(true)
+  })
+
+  test(`leaves a property with one distinct value uncoloured`, () => {
+    const flat = prop_items.map((item) => ({ ...item, properties: { energy: 1 } }))
+    mount_gallery({
+      items: flat,
+      layout: `horizontal`,
+      property_color_scheme: `interpolateViridis`,
+    })
+
+    // painting an arbitrary end of the scale would imply a ranking that isn't there
+    expect(prop_cells().every((cell) => cell.style === ``)).toBe(true)
+  })
 
   // === grid layout ===
   // The 800px x 600px host fits 3 columns of (800 - 2*8) / 3 px at

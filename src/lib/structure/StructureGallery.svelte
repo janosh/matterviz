@@ -1,5 +1,11 @@
 <script lang="ts">
+  import {
+    type D3InterpolateName,
+    get_d3_interpolator,
+    pick_contrast_color,
+  } from '$lib/colors'
   import { create_flash } from '$lib/effects.svelte'
+  import { format_num } from '$lib/labels'
   import { clamp } from '$lib/math'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import type { StructureGalleryItem } from '$lib/structure'
@@ -49,6 +55,23 @@
     // element to teleport it into. Prefer `header` for a bar of the gallery's
     // own, which cannot drift out of alignment with the cards.
     pager_target?: HTMLElement | null
+    // Which of the items' `properties` to caption cards with, in this order.
+    // Defaults to every key the items carry, first seen first. Cards with no
+    // properties carry no caption.
+    property_keys?: string[]
+    // Unit per key, rendered after the value rather than bracketed onto the key.
+    property_units?: Record<string, string>
+    // Whether the caption sits under the viewer or beside it.
+    property_position?: `bottom` | `side`
+    // Ranks each numeric value between the collection's smallest and largest for
+    // that key — the lowest energy at one end of the scale, the highest at the
+    // other — and tints the whole key/value pair in this scheme. The text colour
+    // is picked against each tint, since d3's scales run to near-black and
+    // near-white at their ends. Unset lists values untinted.
+    property_color_scheme?: D3InterpolateName
+    // Flips which end of the scheme the smallest value takes. d3 ships no reversed
+    // variants, so this is how `interpolateRdYlBu` becomes blue-low, red-high.
+    property_color_reverse?: boolean
   }
 
   let {
@@ -67,6 +90,11 @@
     prefetch_cooldown_ms = 1000,
     header,
     pager_target = undefined,
+    property_keys,
+    property_units,
+    property_position = `bottom`,
+    property_color_scheme,
+    property_color_reverse = false,
   }: Props = $props()
 
   let track: HTMLElement | undefined = $state()
@@ -293,6 +321,71 @@
     return `inline-size: ${card_width}px; ${cross_size}; transform: translate3d(${x_shift}px, ${y_shift}px, 0);`
   }
   const structure_scene_props = { gizmo: false }
+  // Every key the items carry, first seen first, unless the caller names a subset.
+  const shown_property_keys = $derived.by(() => {
+    if (property_keys) return property_keys
+    const keys = new Set<string>()
+    for (const item of items) {
+      for (const key of Object.keys(item.properties ?? {})) keys.add(key)
+    }
+    return [...keys]
+  })
+  // Numeric span per key across the WHOLE collection, not the render window, or a
+  // card would change colour as it scrolls out and back in.
+  const property_spans = $derived.by(() => {
+    const spans = new Map<string, [number, number]>()
+    if (!property_color_scheme) return spans
+    for (const item of items) {
+      for (const key of shown_property_keys) {
+        const value = item.properties?.[key]
+        if (typeof value !== `number` || !Number.isFinite(value)) continue
+        const span = spans.get(key)
+        if (span) spans.set(key, [Math.min(span[0], value), Math.max(span[1], value)])
+        else spans.set(key, [value, value])
+      }
+    }
+    return spans
+  })
+  const property_interpolator = $derived(
+    property_color_scheme ? get_d3_interpolator(property_color_scheme) : null,
+  )
+  // The pairs a card actually captions with. Computed once per card so an item
+  // carrying none of the shown keys renders no caption at all, rather than an
+  // empty bordered strip under its viewer.
+  const property_pairs = (item: StructureGalleryItem): [string, number | string][] =>
+    shown_property_keys.flatMap((key) => {
+      const value = item.properties?.[key]
+      return value === undefined ? [] : [[key, value] as [string, number | string]]
+    })
+  // An underscore in a key marks a subscript: `E_hull` captions as E with a
+  // subscripted hull, the way the quantity is written.
+  const split_subscript = (key: string): [string, string] => {
+    const break_at = key.indexOf(`_`)
+    return break_at === -1 ? [key, ``] : [key.slice(0, break_at), key.slice(break_at + 1)]
+  }
+  // A pair's tint is its value's rank within that span. One distinct value has no rank,
+  // so it stays unmarked rather than being painted an arbitrary end of the scale.
+  const property_style = (key: string, value: number | string): string => {
+    if (!property_interpolator || typeof value !== `number` || !Number.isFinite(value)) {
+      return ``
+    }
+    const span = property_spans.get(key)
+    if (!span || span[1] - span[0] < Number.EPSILON) return ``
+    const rank = (value - span[0]) / (span[1] - span[0])
+    const color = property_interpolator(property_color_reverse ? 1 - rank : rank)
+    return `--prop-rank-color: ${color}; --prop-ink: ${pick_contrast_color({
+      background: color,
+    })}`
+  }
+  // Two key/value pairs per caption row once a card is wide enough to keep both
+  // legible: four stacked rows under a shrunken viewer read as a debug dump, two
+  // read as a caption. 260px is where a pair of typical keys ("E (eV/atom)" at the
+  // caption's 11px ceiling) still leaves each value room for a number and its
+  // tint; longer keys ellipsis rather than pushing the numbers out. A side
+  // caption is a narrow lane by construction, so it always stacks.
+  const two_up_properties = $derived(
+    property_position === `bottom` && shown_property_keys.length > 1 && card_width >= 260,
+  )
 
   // Ask the host for more items once fewer than a page of them trail the render
   // window. Both call sites are needed: the effect covers mount, resize and
@@ -527,6 +620,8 @@
     resizable && `resizable`,
     resize_drag && `resizing`,
     header && `paneled`,
+    property_position === `side` && `properties-side`,
+    two_up_properties && `properties-two-up`,
   ]}
   style={gallery_style}
   bind:clientWidth={gallery_width}
@@ -558,6 +653,7 @@
     >
       <div class="structure-gallery-spacer" style={spacer_style}>
         {#each rendered_items as { item, idx } (item.id)}
+          {@const pairs = property_pairs(item)}
           <article class="structure-card" style={card_style(idx)}>
             <GlassChip
               class="card-info"
@@ -590,6 +686,24 @@
                 performance_mode="speed"
                 style="--struct-min-width: 0; --struct-height: 100%"
               />
+            {/if}
+            {#if pairs.length > 0}
+              <dl class="card-properties">
+                {#each pairs as [key, value] (key)}
+                  {@const [key_head, key_sub] = split_subscript(key)}
+                  <div class="prop" style={property_style(key, value)}>
+                    <dt title={key}>
+                      {key_head}{#if key_sub}<sub>{key_sub}</sub>{/if}
+                    </dt>
+                    <dd>
+                      {typeof value === `number`
+                        ? format_num(value)
+                        : value}{#if property_units?.[key]}<small>{property_units[key]}</small
+                        >{/if}
+                    </dd>
+                  </div>
+                {/each}
+              </dl>
             {/if}
           </article>
         {/each}
@@ -685,12 +799,102 @@
     box-sizing: border-box;
     inset-block-start: 0;
     inset-inline-start: 0;
+    /* the viewer takes the space the caption leaves under it */
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
     min-inline-size: 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
     border-radius: 6px;
     background: var(--structure-gallery-card-bg, light-dark(#e9edf2, #343941));
     contain: layout paint style;
+  }
+  .structure-card :global(.structure) {
+    grid-row: 1;
+    min-inline-size: 0;
+  }
+  /* A caption strip, not a table: the strip owns the key/value columns and each
+     pair picks them up again through subgrid, so keys and values line up across
+     rows however wide the values run. */
+  .card-properties {
+    display: grid;
+    /* explicit row: a card outside the mounted range has no viewer to push the
+       caption down, and auto-placement would float it up under the label chip */
+    grid-row: 2;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+    align-content: start;
+    gap: 2px 5px;
+    /* more keys than a short card can hold: drop the overflow rather than let the
+       caption crowd out the viewer it captions. Against the card height rather
+       than a percentage, which an auto grid row gives nothing definite to. */
+    max-block-size: calc(var(--structure-gallery-height) * 0.4);
+    margin: 0;
+    padding: 2px 6px 3px;
+    overflow: hidden;
+    border-block-start: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+    font-size: clamp(9px, calc(var(--structure-gallery-height) * 0.05), 11px);
+    line-height: 1.5;
+  }
+  /* One tinted box per pair, subgridding the two columns it spans so keys and
+     values stay in the card's own columns. Its padding is also what puts air
+     between two pairs on a line, which a shared column gap could only give by
+     loosening key from value everywhere too. */
+  .card-properties .prop {
+    display: grid;
+    grid-column: span 2;
+    grid-template-columns: subgrid;
+    align-items: baseline;
+    padding-inline: 4px;
+    border-radius: 3px;
+    background: var(--prop-rank-color, transparent);
+    color: var(--prop-ink, inherit);
+  }
+  .card-properties dt {
+    overflow: hidden;
+    /* muted against whatever the box is: the card's ink, or the contrast colour
+       picked for a tint */
+    color: color-mix(in srgb, currentColor 65%, transparent);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-properties dd {
+    margin: 0;
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-properties sub {
+    font-size: 0.75em;
+    line-height: 1;
+  }
+  .card-properties small {
+    margin-inline-start: 2px;
+    font-weight: lighter;
+    font-size: 0.85em;
+  }
+  /* two pairs per line once a card is wide enough to keep both legible, so four
+     keys caption a card in two lines rather than four under a shrunken viewer */
+  .structure-gallery.properties-two-up .card-properties {
+    grid-template-columns: repeat(2, minmax(0, max-content) minmax(0, 1fr));
+  }
+  /* beside the viewer instead of beneath it: the card gains a key and a value
+     column, each capped so a long key can only take so much off the viewer */
+  .structure-gallery.properties-side .structure-card {
+    grid-template-columns: minmax(0, 1fr) fit-content(44%);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .structure-gallery.properties-side .structure-card :global(.structure) {
+    grid-column: 1;
+  }
+  .structure-gallery.properties-side .card-properties {
+    grid-row: 1;
+    grid-column: 2;
+    align-content: center;
+    max-block-size: none;
+    border-block-start: 0;
+    border-inline-start: 1px solid color-mix(in srgb, currentColor 10%, transparent);
   }
   /* Lift paint containment only while a structure tooltip exists. */
   .structure-card:has(:global([role='tooltip'])) {
