@@ -43,9 +43,6 @@
     empty_message?: string
     on_prefetch_more?: () => void
     on_item_activate?: (item: StructureGalleryItem) => void
-    // Min delay between on_prefetch_more calls while the item count is
-    // unchanged (i.e. while a previous prefetch is still in flight).
-    prefetch_cooldown_ms?: number
     // Title bar content. Given one, the gallery draws a panel: a header rule
     // above the cards holding this on the left and the pager on the right, with
     // the border and background that connect the two. Without one, the pager
@@ -85,7 +82,6 @@
     empty_message = `No structures`,
     on_prefetch_more,
     on_item_activate,
-    prefetch_cooldown_ms = 1000,
     header,
     pager_target = undefined,
     property_keys,
@@ -109,7 +105,6 @@
   let resized_card_width: number | null = $state(null)
   let resized_min_card_width: number | null = $state(null)
   let scroll_pos = $state(0) // along the scroll axis (left horizontally, top vertically)
-  let last_prefetch_ms = Number.NEGATIVE_INFINITY
   let last_prefetch_item_count = -1
 
   type ResizeDrag = {
@@ -171,10 +166,11 @@
   // sizing below takes it back out. Scroll offsets don't: a gutter is a fraction
   // of a step, and `covered_steps` already carries two whole steps of slack.
   const panel_gutter = $derived(header ? gap : 0)
-  const inner_track_width = $derived(Math.max(0, track_width - 2 * panel_gutter))
-  const inner_track_height = $derived(Math.max(0, track_height - 2 * panel_gutter))
+  const inset = (size: number): number => Math.max(0, size - 2 * panel_gutter)
+  const inner_track_width = $derived(inset(track_width))
+  const inner_track_height = $derived(inset(track_height))
   // the same inset seen from the section, for the sizing that predates a measured track
-  const inner_gallery_width = $derived(Math.max(0, gallery_width - 2 * panel_gutter))
+  const inner_gallery_width = $derived(inset(gallery_width))
   // Cards per scroll-axis step: a responsive column count in grid mode, one
   // everywhere else. Every window calculation below is written in these terms,
   // so horizontal and vertical stay the single-lane cases of the same math.
@@ -410,15 +406,12 @@
   // items arriving, while the scroll call retries an unfulfilled ask at the end
   // of the list, where the window can no longer slide to re-run the effect.
   // Empty galleries stay quiet — the host owns the initial load.
+  // One ask per item count: a host that appends is asked again immediately, and
+  // one that has nothing left to give is not asked again until its count moves.
   const prefetch = (): void => {
     const trailing_items = items.length - window_end
     if (!on_prefetch_more || items.length === 0 || trailing_items > page_size) return
-    const now = performance.now()
-    const in_cooldown =
-      items.length === last_prefetch_item_count &&
-      now - last_prefetch_ms < prefetch_cooldown_ms
-    if (in_cooldown) return
-    last_prefetch_ms = now
+    if (items.length === last_prefetch_item_count) return
     last_prefetch_item_count = items.length
     on_prefetch_more()
   }

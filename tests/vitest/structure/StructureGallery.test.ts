@@ -407,37 +407,28 @@ describe(`StructureGallery`, () => {
     expect(track.scrollLeft).toBe(0)
   })
 
-  test.each([[500], [2000]])(
-    `throttles repeat prefetches by prefetch_cooldown_ms=%i while items are unchanged`,
-    (prefetch_cooldown_ms: number) => {
-      const now_spy = vi.spyOn(performance, `now`).mockReturnValue(0)
-      const on_prefetch_more = vi.fn()
-      // the render window covers all 5 items, so the host is asked on mount
-      mount_gallery({
-        items,
-        layout: `horizontal`,
-        on_prefetch_more,
-        prefetch_cooldown_ms,
-      })
-      expect(on_prefetch_more).toHaveBeenCalledTimes(1)
+  // One ask per item count. A timer used to allow repeat asks at the same count,
+  // which meant a host at its cap was asked again every second forever.
+  test(`asks once per item count, however much the gallery is scrolled`, () => {
+    const on_prefetch_more = vi.fn()
+    // the render window covers all 5 items, so the host is asked on mount
+    const props = { items, layout: `horizontal`, on_prefetch_more } as const
+    mount_gallery(props)
+    expect(on_prefetch_more).toHaveBeenCalledTimes(1)
 
-      const track = doc_query(`.structure-gallery-track`)
-      const scroll = (): void => {
-        track.dispatchEvent(
-          new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaX: 80 }),
-        )
-      }
-      // Within the cooldown (same item count): suppressed
-      now_spy.mockReturnValue(prefetch_cooldown_ms - 1)
-      scroll()
-      expect(on_prefetch_more).toHaveBeenCalledTimes(1)
+    const track = doc_query(`.structure-gallery-track`)
+    for (let scrolls = 0; scrolls < 5; scrolls++) {
+      track.dispatchEvent(
+        new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaX: 80 }),
+      )
+    }
+    expect(on_prefetch_more).toHaveBeenCalledTimes(1) // nothing arrived, so no re-ask
 
-      // After the cooldown elapses: fires again
-      now_spy.mockReturnValue(prefetch_cooldown_ms + 1)
-      scroll()
-      expect(on_prefetch_more).toHaveBeenCalledTimes(2)
-    },
-  )
+    // a host that appends is asked again straight away, without waiting out a timer
+    document.body.innerHTML = ``
+    mount_gallery({ ...props, items: [...items, ...many_items.slice(0, 2)] })
+    expect(on_prefetch_more).toHaveBeenCalledTimes(2)
+  })
 
   test(`vertical layout prefetches from scrollTop when nearing the end`, () => {
     vi.spyOn(performance, `now`).mockReturnValue(100)

@@ -165,7 +165,7 @@ A single column has nothing to divide, so it does not stretch to its host: cards
 
 ## Title bar and infinite loading
 
-`on_prefetch_more` fires once fewer than a page of items trail the render window (on mount and resize as well as while scrolling). `prefetch_cooldown_ms` throttles repeat asks only while the item count is unchanged, so a host that appends is asked again straight away and keeps being asked until the window is full: batch generously, or a host handing back one item at a time will be called once per item.
+`on_prefetch_more` fires once fewer than a page of items trail the render window (on mount and resize as well as while scrolling). It asks once per item count: a host that appends is asked again straight away and keeps being asked until the window is full, while one that has nothing left to give is not asked again until its count moves. Batch generously, or a host handing back one item at a time will be called once per item.
 
 `pager_target` teleports the pager out of the cards into any host element (here a panel title bar).
 
