@@ -695,7 +695,7 @@ function pca_plane(points: number[][]) {
   return { scores, eigenvectors, means, unproject, max_residual }
 }
 
-export interface DomainPlane {
+interface DomainPlane {
   normal: Vec3
   offset: number
   // Is `point` inside the outline the points trace on this plane? Assumes the caller has
@@ -776,9 +776,8 @@ export function strip_closing_faces(positions: ArrayLike<number>): Float32Array 
 // elongated and adjacent domains. Where several coplanar domains share the supporting plane,
 // their outlines separate them; centroid distance is the last resort and only degenerate
 // input (a domain that is a line or a point, which bounds no face) reaches it.
-// Testing point-in-polyhedron containment instead looks more general and measures worse,
-// 63/92 faces against 92/92: projecting a quaternary onto three elements makes domains
-// overlap, so several contain a face that only one of them bounds.
+// Point-in-polyhedron containment reads as more general and measures worse, 63/92 faces against
+// 92/92: a quaternary projected onto 3 elements has domains that overlap.
 export function assign_faces_to_domains(
   face_positions: ArrayLike<number>,
   domains: { formula: string; points: number[][] }[],
@@ -790,14 +789,12 @@ export function assign_faces_to_domains(
     plane: fit_plane(points),
     centroid: vertex_mean(points),
   }))
-  const nearest = (candidates: typeof prepared, point: Vec3): string => {
-    let [best_formula, best_dist] = [``, Infinity]
-    for (const { formula, centroid } of candidates) {
-      const dist = euclidean_dist(point, centroid)
-      if (dist < best_dist) [best_dist, best_formula] = [dist, formula]
-    }
-    return best_formula
-  }
+  const nearest = (pool: typeof prepared, point: Vec3): string =>
+    pool.reduce((best, cand) =>
+      euclidean_dist(point, cand.centroid) < euclidean_dist(point, best.centroid)
+        ? cand
+        : best,
+    ).formula
 
   return buffer_faces(face_positions).map((corners) => {
     const centroid = vertex_mean(corners)
@@ -810,8 +807,7 @@ export function assign_faces_to_domains(
       if (inside.length > 0) claimants = inside
     }
     // an unclaimed face has no plane to go on and falls back to every domain's centroid
-    const pool = claimants.length > 0 ? claimants : prepared
-    return pool.length === 1 ? pool[0].formula : nearest(pool, centroid)
+    return nearest(claimants.length > 0 ? claimants : prepared, centroid)
   })
 }
 

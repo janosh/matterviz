@@ -29,10 +29,8 @@ const default_csp_neighbors = (cna_types: Int8Array | null): number => {
     if (code === CNA_TYPES.bcc) votes++
     else if (code !== CNA_TYPES.other) votes--
   }
-  // A tie deliberately falls to 12, and no test pins that, so `votes >= 0` survives mutation
-  // coverage. It is not a hole: equal populations have no physically right answer, and 12 is
-  // both the pre-existing default and the safer guess, since it is right for three of the four
-  // classified phases. Pinning the tie would freeze an arbitrary choice as a requirement.
+  // `votes >= 0` survives mutation coverage by design, not by omission: a tie has no right
+  // answer and 12 is both the old default and right for 3 of the 4 classified phases.
   return votes > 0 ? CSP_NEIGHBORS_BCC : CSP_NEIGHBORS_CLOSE_PACKED
 }
 

@@ -1284,13 +1284,7 @@ describe(`dedup_points`, () => {
 
 describe(`fit_plane`, () => {
   // n . p = d for the plane 2x + 3y + 6z = 12 (|n| = 7)
-  const on_plane = [
-    [6, 0, 0],
-    [0, 4, 0],
-    [0, 0, 2],
-    [3, 2, 0],
-    [1.5, 1, 1],
-  ]
+  const on_plane = chunk(3, [6, 0, 0, 0, 4, 0, 0, 0, 2, 3, 2, 0, 1.5, 1, 1])
 
   test.each([
     [`fewer than 3 unique points`, on_plane.slice(0, 2)],

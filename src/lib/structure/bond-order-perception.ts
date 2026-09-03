@@ -70,9 +70,8 @@ const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 // atom for every combination. A 3000-atom chain carrying 12 nitrogens has combo_count 4096 —
 // inside the old 4096-combination cap — yet enumerates 1.2e7 picks, 1.8e10 array elements and
 // 267 s on the main thread. 2e6 picks is ~16 MB and keeps every fragment the old cap admitted
-// below ~500 atoms, where real multi-valence fragments live. It is deliberately MORE permissive
-// than 4096 combinations for small fragments, which is what lets S8 and Se8 solve at all; the
-// price is one unsolvable 11-atom chalcogen chain exhausting its enumeration in ~200 ms.
+// below ~500 atoms, where real multi-valence fragments live. Small fragments get MORE room than
+// 4096 combinations gave, which is what lets S8 and Se8 solve; worst case is ~200 ms.
 const MAX_VALENCE_PICKS = 2_000_000
 
 // Edges are bounds-checked by perceive_bond_orders before reaching here.

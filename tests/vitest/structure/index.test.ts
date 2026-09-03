@@ -303,8 +303,7 @@ describe(`camera helpers`, () => {
   })
 
   // The last two rows are reciprocal-space extents, which any cell wider than ~12 A produces.
-  // The divisor used to be clamped at 1, framing those scenes against a constant rather than
-  // their own size, so the zoom stopped rising as the extent fell.
+  // Clamping the divisor at 1 froze the zoom below extent 1 instead of letting it keep rising.
   test.each([
     [10, 800, 400, FIT_ZOOM_REF_PX, 40],
     [8, 500, 500, FIT_ZOOM_REF_PX * 2, 125],
@@ -316,9 +315,8 @@ describe(`camera helpers`, () => {
     expect(ortho_zoom_for_extent(ext, w, h, zoom_in)).toBeCloseTo(expected, 10)
   })
 
-  // Both fits share one extent/viewport check. An extent is a scene diameter with no lower
-  // bound of its own, so it is rejected rather than clamped; clamping at 1 framed every
-  // reciprocal-space scene (extent < 1 past a = 11.83 A) against a constant.
+  // Both fits share one extent/viewport check: a scene diameter has no lower bound of its own,
+  // so a bad one is rejected rather than clamped into framing the scene against a constant.
   // oxfmt-ignore
   test.each([
     [0, 400, 400], [-1, 400, 400], [Number.NaN, 400, 400], [Infinity, 400, 400],

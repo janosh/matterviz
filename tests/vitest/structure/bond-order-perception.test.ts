@@ -85,12 +85,11 @@ describe(`perceive_bond_orders on small molecules`, () => {
       coords: Array.from({ length: 20 }, (_, idx) => [idx * 2, 0, 0] as Vec3),
       edges: Array.from({ length: 19 }, (_, idx) => [idx, idx + 1] as Vec2),
       expected: Array(19).fill(1), perceived: false },
-    // The pick budget is deliberately MORE permissive than the old 4096-COMBINATION cap in the
-    // few-atoms/many-valences corner: 3^8 = 6561 combinations refused S8, the standard form of
-    // elemental sulfur, so a real molecule fell back to single bonds instead of solving to them.
-    // `perceived: true` is the whole point of this row — tightening the cap would flip it.
-    // Radius 2.7 puts adjacent atoms 2*2.7*sin(pi/8) = 2.07 A apart, against a real S-S bond of
-    // 2.05, so this is an S8 ring and not 8 atoms arranged to reach the same combinatorics.
+    // 3^8 = 6561 combinations put S8, the standard form of elemental sulfur, outside the old
+    // COMBINATION cap, so it fell back to single bonds instead of solving to them. `perceived`
+    // is the only thing that differs, so tightening the budget breaks this row and nothing else.
+    // Radius 2.7 gives a 2*2.7*sin(pi/8) = 2.07 A bond against a real 2.05: an S8 ring, not 8
+    // atoms arranged to reach the same combinatorics.
     { name: `cyclooctasulfur S8`, elements: Array.from({ length: 8 }, (): ElementSymbol => `S`),
       coords: Array.from({ length: 8 }, (_, idx): Vec3 =>
         [Math.cos(idx * Math.PI / 4) * 2.7, Math.sin(idx * Math.PI / 4) * 2.7, 0]),

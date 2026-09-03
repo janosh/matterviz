@@ -593,10 +593,9 @@
 
   // Domains on the outer surface of the full envelope (all domains, overlays included), used
   // by the "Surface" overlay quick-select. Computed on demand: it needs a convex hull plus a
-  // plane test per domain and face, and only a button click ever reads it. Counting raycast
-  // hits from each domain's anchor is the obvious alternative and is silently broken: a mesh
-  // built with the default FrontSide material culls back faces, so rays fired from inside the
-  // hull hit nothing, every domain scored 0 of 6 and the button selected all of them.
+  // plane test per domain and face, and only a button click ever reads it. Raycast hit-counting
+  // is the obvious alternative and is broken: FrontSide culling means rays fired from inside the
+  // hull hit nothing, so every domain scored 0 of 6 and the button selected all of them.
   function get_surface_formulas(): string[] {
     const envelope = render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d))
     const faces = envelope && strip_closing_faces(envelope.getAttribute(`position`).array)
