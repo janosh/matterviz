@@ -38,13 +38,19 @@
   $effect(() => {
     void position // the anchor moved, so any previous slide is stale
     if (!tip) return
-    tip.style.translate = ``
-    const clip = clipper(tip)
-    if (!clip) return
-    const box = tip.getBoundingClientRect()
-    const dx = slide_in(clip.left - box.left, clip.right - box.right)
-    const dy = slide_in(clip.top - box.top, clip.bottom - box.bottom)
-    if (dx || dy) tip.style.translate = `${dx}px ${dy}px`
+    const node = tip
+    // threlte's HTML writes the anchor transform from a render-stage task, so
+    // measuring on this flush still reads the previous site's screen box
+    const frame = requestAnimationFrame(() => {
+      node.style.translate = ``
+      const clip = clipper(node)
+      if (!clip) return
+      const box = node.getBoundingClientRect()
+      const dx = slide_in(clip.left - box.left, clip.right - box.right)
+      const dy = slide_in(clip.top - box.top, clip.bottom - box.bottom)
+      if (dx || dy) node.style.translate = `${dx}px ${dy}px`
+    })
+    return () => cancelAnimationFrame(frame)
   })
 </script>
 

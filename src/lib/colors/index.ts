@@ -199,8 +199,8 @@ const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
 // steelblue and red of PLOT_COLORS got black text that reads worse than white; APCA's polarity-
 // dependent exponents put the flip near 0.32, matching how the pairs actually look.
 // Fed WCAG luminance, not APCA's own 2.4-power form, to share rgb_luminance with the WCAG
-// paths. Measured over 140608 colors: the black/white pick differs on 2.42%, all near-ties,
-// worst Lc sacrificed 0.053. Revisit only if the Lc value itself becomes user-visible.
+// paths: the black/white pick differs only on near-ties. Revisit only if the Lc value itself
+// becomes user-visible.
 const apca_contrast = (text_luminance: number, bg_luminance: number): number => {
   // black-level soft clamp so near-black colors don't blow up the power curves; the spec's
   // exponent is 1.414, i.e. √2 to three decimals (the difference moves the clamp by < 1e-5)
@@ -316,8 +316,8 @@ export const contrast_color_memo = (
       memo_backdrop = backdrop
       memo_alpha = alpha
     }
-    // Memo before parse: is_concrete_color runs the full parse, so testing it first cost a
-    // hit 9.3x a Map.get. Non-concrete strings memoize to null so they parse once too.
+    // Memo before parse: is_concrete_color runs the full parse, so testing it first would
+    // make a hit cost that parse. Non-concrete strings memoize to null so they parse once too.
     if (background == null) return null
     let contrast = memo.get(background)
     if (contrast === undefined) {

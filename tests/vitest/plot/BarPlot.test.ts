@@ -442,6 +442,43 @@ describe(`BarPlot`, () => {
     expect(coords.every(Number.isFinite)).toBe(true)
   })
 
+  // The log floor belongs to the VALUE axis only: applied to the category axis it pinned the
+  // anchor to the range minimum while the bar itself stayed at its raw (out-of-range) pixel.
+  test.each([`vertical`, `horizontal`] as const)(
+    `%s tooltip follows the bar when the category axis is log`,
+    async (orientation) => {
+      const vertical = orientation === `vertical`
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [1.9, 4], y: [10, 20], label: `A` }], // 1.9 sits below the range floor
+        orientation,
+        [vertical ? `x_axis` : `y_axis`]: { scale_type: `log`, range: [2, 5] },
+        bar: { border_radius: 0 },
+        // roomy on the value axis so the tooltip is placed at anchor + offset without flipping
+        padding: vertical ? { l: 50, r: 20, t: 20, b: 40 } : { l: 50, r: 20, t: 20, b: 200 },
+      })
+      const [out_of_range_bar] = plot.querySelectorAll(`path[role="button"]`)
+      const match = /^M(?<x>[\d.-]+),(?<y>[\d.-]+)h(?<w>[\d.-]+)v(?<h>[\d.-]+)/.exec(
+        out_of_range_bar?.getAttribute(`d`) ?? ``,
+      )
+      if (!match?.groups) throw new Error(`unexpected bar path ${out_of_range_bar?.outerHTML}`)
+      const { x: bar_x, y: bar_y, w: bar_w, h: bar_h } = match.groups
+      // The bar's edges are the category scale at 1.9 +- half the default 0.5 bar width, so
+      // they pin down the log mapping the bars use; the anchor must land on it at 1.9 itself.
+      const [lo_px, hi_px] = vertical
+        ? [Number(bar_x), Number(bar_x) + Number(bar_w)]
+        : [Number(bar_y) + Number(bar_h), Number(bar_y)]
+      const log_frac = Math.log(1.9 / 1.65) / Math.log(2.15 / 1.65)
+      const anchor = lo_px + (hi_px - lo_px) * log_frac
+      out_of_range_bar?.dispatchEvent(mouse(`mousemove`))
+      await tick()
+      const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
+      const edge = (vertical ? tooltip?.style.left : tooltip?.style.top) ?? ``
+      // anchor + the tooltip's own offset; the floored anchor would sit at the range minimum
+      // (the padding edge), ~19px away along the category axis
+      expect(Number(edge.replace(`px`, ``))).toBeCloseTo(anchor + (vertical ? 10 : 5), 3)
+    },
+  )
+
   test(`default tooltip shows series label for multi-series on hover`, async () => {
     const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
     const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }

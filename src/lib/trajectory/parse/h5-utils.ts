@@ -122,27 +122,36 @@ export const sampled_property_rows = (
   }))
 }
 
+// Bounds ONE hyperslab: the streaming readers slice a run frame-by-frame, so this only has to
+// hold a single `slice()` call in a Float64Array scratch buffer.
 export const HDF5_MAX_LOGICAL_SLICE_BYTES = 8 * 1024 * 1024
 
-const assert_logical_budget = (path: string, value_count: number, action: string): void => {
-  const logical_bytes = value_count * Float64Array.BYTES_PER_ELEMENT
-  if (logical_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES) {
+// Bounds a WHOLE-dataset `to_array()`, which has no frame axis to slice along: one call
+// carries the entire `[n_steps, n_ions, 3]` run, so the frame-sized hyperslab budget rejected
+// an ordinary 200-atom / 2000-step vaspout.h5. h5wasm hands back nested JS arrays costing
+// ~4x the logical size, so this still bounds the allocation at ~512 MB of heap.
+export const HDF5_MAX_WHOLE_DATASET_BYTES = 128 * 1024 * 1024
+
+const assert_budget = (path: string, n_values: number, action: string, max_bytes: number) => {
+  const logical_bytes = n_values * Float64Array.BYTES_PER_ELEMENT
+  if (logical_bytes > max_bytes) {
     throw new Error(
       `HDF5 dataset ${path} ${action} ${logical_bytes} logical bytes, above the ` +
-        `${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
+        `${max_bytes}-byte application limit`,
     )
   }
 }
 
 // Nested JS arrays, null for a missing path. No try/catch: it only ever reported real failures
-// (float16, missing filter, oversized alloc) as "no data". `format` applies the slice budget.
+// (float16, missing filter, oversized alloc) as "no data". `format` applies the whole-dataset
+// budget, not the per-hyperslab one.
 export const read_dataset = (h5_file: h5wasm.File, path: string, format?: string): unknown => {
   const dataset = dataset_at(h5_file, path)
   if (!dataset) return null
   if (format !== undefined) {
     const shape = dataset_shape(dataset, path, format)
     const value_count = shape.reduce((product, size) => product * size, 1)
-    assert_logical_budget(path, value_count, `requests`)
+    assert_budget(path, value_count, `requests`, HDF5_MAX_WHOLE_DATASET_BYTES)
   }
   return dataset.to_array()
 }
@@ -201,7 +210,7 @@ const validated_numeric_hyperslab = (
   ranges: Parameters<Dataset[`slice`]>[0],
 ): ArrayLike<unknown> => {
   const requested = requested_hyperslab_values(dataset, path, ranges)
-  assert_logical_budget(path, requested, `hyperslab requests`)
+  assert_budget(path, requested, `hyperslab requests`, HDF5_MAX_LOGICAL_SLICE_BYTES)
   const values = numeric_values(dataset.slice(ranges))
   if (!values) throw new Error(`HDF5 dataset ${path} hyperslab must contain finite numbers`)
   // h5wasm hands back the raw Uint8Array for a dtype it cannot decode, so an undecoded 2-byte

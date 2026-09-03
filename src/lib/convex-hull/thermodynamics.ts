@@ -88,9 +88,6 @@ export function get_energy_per_atom(entry: PhaseData): number {
   return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
 }
 
-// Formation energy per atom against elemental references (eV/atom), or null when a reference
-// is missing or an energy is non-finite. A missing reference is never treated as E = 0 — that
-// is a formation energy against a fictitious element. Zero-amount elements need no reference.
 // Formation energy and hull results an entry carries from an earlier energy or an
 // earlier set of references. `e_above_hull_distances` prefers a cached e_form_per_atom
 // over recomputing one, so a transformation that changes energies or references must
@@ -103,6 +100,9 @@ export const drop_cached_hull_data = <Entry extends PhaseData>(entry: Entry): En
   is_stable: undefined,
 })
 
+// Formation energy per atom against elemental references (eV/atom), or null when a reference
+// is missing or an energy is non-finite. A missing reference is never treated as E = 0 — that
+// is a formation energy against a fictitious element. Zero-amount elements need no reference.
 export function compute_e_form_per_atom(
   entry: PhaseData,
   el_refs: Record<string, PhaseData>,

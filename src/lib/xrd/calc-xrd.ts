@@ -251,8 +251,10 @@ export function enumerate_reciprocal_points(
   return points
 }
 
-// Absolute round-off floor for |F(g)|²: 1e-16 of (Σ_j |f_j(0)|·occu_j)², the largest |F|² any
-// reflection can reach. Below it a squared structure factor is cancellation noise, not signal.
+// Absolute significance floor for |F(g)|²: 1e-16 of (Σ_j |f_j(0)|·occu_j)², the largest |F|²
+// any reflection can reach, i.e. 1e-8 of forward scattering on |F| itself. Far above the sum's
+// ~n·eps cancellation error, so this is not a round-off estimate but a cut below which a
+// reflection (a systematic absence, say) carries no physically meaningful intensity.
 export function structure_factor_noise_floor(
   structure: Crystal,
   radiation: RadiationType,
@@ -536,7 +538,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   }
 
   if (peaks.length === 0) return { x: [], y: [] }
-  // Absolute round-off floor: tolerance filter and scaling are both relative, so a window in
+  // Absolute significance floor: tolerance filter and scaling are both relative, so a window in
   // which every reflection is extinct normalizes cancellation error to 100% — fcc Al over
   // [20, 33]° at Cu Kα emitted a forbidden (100) at y = 100 from a raw |F|² of 2.1e-27
   if (max_f_squared < structure_factor_noise_floor(structure, radiation))

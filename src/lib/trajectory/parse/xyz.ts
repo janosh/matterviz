@@ -136,17 +136,15 @@ function* iter_extxyz_pairs(comment: string) {
 const RESERVED_COMMENT_KEY_RE = /^(?:lattice|properties|pbc|step|frame|ionic_step)$/
 
 // Spelling aliases only, so every other scalar round-trips under its own name — including
-// `coords_unwrapped`, which decides whether MSD/VACF may re-apply the minimum image. Canonical
-// names map to themselves so a writer's casing (`Time=`) normalises too.
+// `coords_unwrapped`, which decides whether MSD/VACF may re-apply the minimum image.
 // oxfmt-ignore
 const METADATA_KEY_ALIASES: Record<string, string> = {
-  energy: `energy`, e: `energy`, etot: `energy`, total_energy: `energy`,
-  volume: `volume`, vol: `volume`, v: `volume`,
-  pressure: `pressure`, press: `pressure`, p: `pressure`,
-  temperature: `temperature`, temp: `temperature`, t: `temperature`,
-  force_max: `force_max`, max_force: `force_max`, fmax: `force_max`,
-  bandgap: `bandgap`, e_gap: `bandgap`, gap: `bandgap`,
-  time: `time`,
+  e: `energy`, etot: `energy`, total_energy: `energy`,
+  vol: `volume`, v: `volume`,
+  press: `pressure`, p: `pressure`,
+  temp: `temperature`, t: `temperature`,
+  max_force: `force_max`, fmax: `force_max`,
+  e_gap: `bandgap`, gap: `bandgap`,
 }
 
 const comment_scalar = (raw: string): number | boolean | undefined => {
@@ -156,45 +154,47 @@ const comment_scalar = (raw: string): number | boolean | undefined => {
   return Number.isFinite(num) ? num : EXTXYZ_BOOL.get(token.toLowerCase())
 }
 
+// One pass over the comment's pairs yields every view a frame needs: scalars, flags, quoted
+// 3-/9-component signals and the step. Two passes each carried their own reserved-key list and
+// had drifted: the signal one lacked step/frame/ionic_step, so `step="1 2 3"` became a signal.
 export function parse_xyz_comment_metadata(comment: string): {
   step?: number
   properties: Record<string, number>
   flags: Record<string, boolean>
+  signals: Record<string, number[] | number[][]>
 } {
   const properties: Record<string, number> = {}
   const flags: Record<string, boolean> = {}
-  for (const { key, raw } of iter_extxyz_pairs(comment)) {
+  const signals: Record<string, number[] | number[][]> = {}
+  for (const { key, raw, quoted } of iter_extxyz_pairs(comment)) {
     const lower = key.toLowerCase()
     if (RESERVED_COMMENT_KEY_RE.test(lower)) continue
     const value = comment_scalar(raw)
-    if (value === undefined) continue
-    const canonical = METADATA_KEY_ALIASES[lower] ?? key
+    if (value === undefined) {
+      // Not a scalar: a quoted multi-value payload is a vec3 or a 3x3 matrix signal
+      if (quoted === undefined) continue
+      const values = raw
+        .trim()
+        .split(/[\s,]+/u)
+        .map(Number)
+      if (!values.every(Number.isFinite)) continue
+      // under `lower` like the scalars below: `Stress=` and `stress=` are one series
+      if (values.length === 3) signals[lower] = values
+      else if (values.length === 9) {
+        signals[lower] = [values.slice(0, 3), values.slice(3, 6), values.slice(6, 9)]
+      }
+      continue
+    }
+    // Lowercase, not the writer's casing: `Free_Energy=` in one frame and `free_energy=` in
+    // the next are one series, not two half-populated ones
+    const canonical = METADATA_KEY_ALIASES[lower] ?? lower
     // leftmost wins, as the old regexes did
     if (canonical in properties || canonical in flags) continue
     if (typeof value === `boolean`) flags[canonical] = value
     else properties[canonical] = value
   }
   const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(?<step>\d+)/i.exec(comment)?.[1]
-  return { step: step ? Math.trunc(Number(step)) : undefined, properties, flags }
-}
-
-function parse_xyz_comment_signals(comment: string): Record<string, number[] | number[][]> {
-  const signals: Record<string, number[] | number[][]> = {}
-  for (const { key, raw, quoted } of iter_extxyz_pairs(comment)) {
-    if (quoted === undefined || [`properties`, `lattice`, `pbc`].includes(key.toLowerCase())) {
-      continue
-    }
-    const values = raw
-      .trim()
-      .split(/[\s,]+/u)
-      .map(Number)
-    if (!values.every(Number.isFinite)) continue
-    if (values.length === 3) signals[key] = values
-    else if (values.length === 9) {
-      signals[key] = [values.slice(0, 3), values.slice(3, 6), values.slice(6, 9)]
-    }
-  }
-  return signals
+  return { step: step ? Math.trunc(Number(step)) : undefined, properties, flags, signals }
 }
 
 // Element of the atom on the scanned line: the symbol token, or the atomic number when the
@@ -321,7 +321,7 @@ export function build_xyz_frame(
   collector: WarningCollector,
 ): TrajectoryFrame {
   const { comment } = frame
-  const { step, properties, flags } = parse_xyz_comment_metadata(comment)
+  const { step, properties, flags, signals } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
   const parsed_pbc = parse_extxyz_pbc(comment)
   if (parsed_pbc === undefined && /\bpbc\s*=/iu.test(comment)) {
@@ -337,11 +337,7 @@ export function build_xyz_frame(
     opts.frame_label,
     collector.warn,
   )
-  const metadata: Record<string, unknown> = {
-    ...properties,
-    ...flags,
-    ...parse_xyz_comment_signals(comment),
-  }
+  const metadata: Record<string, unknown> = { ...properties, ...flags, ...signals }
   const force_stats = calc_force_stats(forces)
   if (force_stats) Object.assign(metadata, { forces, ...force_stats })
   return create_trajectory_frame(

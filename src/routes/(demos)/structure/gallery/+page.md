@@ -14,7 +14,7 @@ The default layout fills its host in both axes and scrolls vertically through as
 
 Because every live card owns its own WebGPU canvas and device, `max_live_cards` (default 24) budgets how many run at once. It is spent on whole rows around the visible page and outranks `overscan`, so a six-column grid stops rendering rows once the budget is gone rather than adding cards that could never hold a viewer. The budget yields to one thing only: a viewport holding more cards than it allows still fills, because a permanently blank card on screen is worse than a few viewers over budget.
 
-Give the host a definite height. Without one the track falls back to `visible_rows` rows tall rather than laying out the whole collection.
+Give the host a definite height. Without one the track falls back to a two-row floor rather than laying out the whole collection (`visible_rows` is vertical-only).
 
 The corner grip works here too, and dragging narrower adds columns: the width it moves is the per-card minimum the column count derives from, so the layout re-flows as a drag crosses each boundary.
 

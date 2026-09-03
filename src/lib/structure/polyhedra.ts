@@ -658,6 +658,7 @@ export function merge_polyhedra_buffers(
 
   let offset = 0
   let edge_offset = 0
+  const skipped_sites: string[] = []
   // Per-polyhedron scratch: crease detection tracks the first face normal seen
   // per undirected edge (packed vert_a * 2^16 + vert_b key)
   const edge_normals = new Map<
@@ -665,6 +666,8 @@ export function merge_polyhedra_buffers(
     { nx: number; ny: number; nz: number; crease: boolean; shared: boolean }
   >()
   for (const poly of polyhedra) {
+    // Rewind marks, in case this polyhedron turns out to overflow the edge buffer below
+    const [poly_offset, poly_edge_offset] = [offset, edge_offset]
     const verts = poly.vertices
     // Resolve per-hull-vertex colors once
     const vert_rgb = new Float32Array(verts.length * 3)
@@ -717,14 +720,15 @@ export function merge_polyhedra_buffers(
     }
 
     // Draw an edge unless both adjacent faces are coplanar (quad diagonal)
+    let edge_overflow = false
     for (const [key, entry] of edge_normals) {
       if (entry.shared && !entry.crease) continue
-      // Float32Array drops out-of-range writes silently and the 3F/2 edge cap assumes a
-      // closed manifold, which convex_hull_3d can fail to produce on a degenerate shell
+      // Float32Array drops out-of-range writes silently, so a polyhedron that no longer fits
+      // the shared pool is dropped whole rather than taking down the scene
       if (edge_offset + 6 > edge_positions.length) {
-        throw new Error(
-          `edge overflow past ${edge_positions.length / 6}: the ${poly.vertices.length}-vertex face set is not a closed manifold`,
-        )
+        skipped_sites.push(`site ${poly.center_site_idx} (${poly.center_element})`)
+        edge_overflow = true
+        break
       }
       const from = verts[Math.floor(key / 65536)]
       const to = verts[key % 65536]
@@ -736,13 +740,25 @@ export function merge_polyhedra_buffers(
       edge_positions[edge_offset + 5] = to[2]
       edge_offset += 6
     }
+    // Drop the overflowing polyhedron's triangles too, so the buffers stay gap-free
+    if (edge_overflow) [offset, edge_offset] = [poly_offset, poly_edge_offset]
   }
 
+  // The 3F/2 pool is shared, so one hull convex_hull_3d failed to close exhausts it for the
+  // valid polyhedra behind it: report the whole tally once, not one warning per victim
+  if (skipped_sites.length > 0) {
+    console.warn(
+      `Edge buffer exhausted (${edge_positions.length / 6} edges): dropped ` +
+        `polyhedra at ${skipped_sites.join(`, `)}`,
+    )
+  }
+  // Trim only if a polyhedron was dropped: slice copies the whole buffer
+  const dropped = offset < positions.length
   return {
-    positions,
-    colors,
+    positions: dropped ? positions.slice(0, offset) : positions,
+    colors: dropped ? colors.slice(0, offset) : colors,
     edge_positions: edge_positions.slice(0, edge_offset),
-    triangle_count,
+    triangle_count: offset / 9,
     edge_count: edge_offset / 6,
   }
 }

@@ -59,7 +59,12 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
   await expect(canvas).toHaveAttribute(`data-command-wheel`, `true`)
   await expect.poll(() => track.evaluate((node) => node.scrollTop)).toBe(command_scroll_start)
 
-  const cards = page.locator(`.structure-gallery`).first().locator(`.structure-card`)
+  // the horizontal strip, not the grid above it: a tooltip escaping a card sideways
+  // is the case that needs the portal, and only this layout puts cards side by side
+  const cards = page
+    .locator(`.structure-gallery.horizontal`)
+    .first()
+    .locator(`.structure-card`)
   await expect(cards.nth(2)).toBeAttached()
 
   const active_card = cards.nth(1)
@@ -136,7 +141,7 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
 test(`grid fills its host with virtualized rows and a capped live-viewer count`, async ({
   page,
 }) => {
-  await page.goto(`/structure/gallery`, { waitUntil: `domcontentloaded` })
+  await page.goto(`/structure/gallery`, { waitUntil: `networkidle` })
   const measure = () =>
     page.evaluate(() => {
       const root = document.querySelector(`.structure-gallery.grid`)
@@ -160,6 +165,7 @@ test(`grid fills its host with virtualized rows and a capped live-viewer count`,
         horizontal_overflow: track.scrollWidth - track.clientWidth,
         rendered: cards.length,
         on_screen: on_screen.length,
+        columns,
         on_screen_shells: on_screen.filter((card) => !card.querySelector(`canvas`)).length,
         scrolled: Math.round(track.scrollTop),
       }
@@ -176,8 +182,13 @@ test(`grid fills its host with virtualized rows and a capped live-viewer count`,
   }
   await expect.poll(measure, { timeout: 60_000 }).toMatchObject(settled)
   const before = await measure()
-  expect(before?.rendered).toBeLessThanOrEqual(24) // the max_live_cards budget
+  // The rendered window tracks the viewport, not the endlessly growing item list: the visible
+  // page plus at most the partial row at either edge. The max_live_cards budget is tighter
+  // still, but pinning it needs the prop, so StructureGallery.test.ts owns that.
   expect(before?.on_screen).toBeGreaterThan(1)
+  expect(before?.rendered).toBeLessThanOrEqual(
+    (before?.on_screen ?? 0) + 2 * (before?.columns ?? 0),
+  )
 
   // well inside the scrollable range whatever the viewport: a larger offset gets
   // clamped to the maximum and the assertion below would chase a moving number
@@ -198,7 +209,7 @@ test(`grid fills its host with virtualized rows and a capped live-viewer count`,
 // budget covers the whole window), so the row assignment is asserted directly —
 // it is the mechanism that broke — alongside the geometry of a live card.
 test(`property captions sit under the viewer, in a row of their own`, async ({ page }) => {
-  await page.goto(`/structure/gallery`, { waitUntil: `domcontentloaded` })
+  await page.goto(`/structure/gallery`, { waitUntil: `networkidle` })
   const measure = () =>
     page.evaluate(() => {
       const card = document.querySelector(`.property-host .structure-card`)

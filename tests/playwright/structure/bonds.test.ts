@@ -687,15 +687,20 @@ test.describe(`Bond component`, () => {
       test.skip(IS_CI, `Visual bonds test times out in CI`)
       await dispatch_co2(page)
       await expect_bonds(page, undefined)
-      await set_scene_props(page, { auto_bond_order: true })
+      // Re-assert the camera: setting a structure re-frames it on the new cell and drops the
+      // camera_target sent alongside, which would slide the bond off the canvas centre.
+      await set_scene_props(page, { auto_bond_order: true, ...front_camera })
 
-      // Target the right-side C-O1 bond midpoint. The molecule is centered near
-      // carbon, so the midpoint is slightly right of the canvas center.
       await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
-      await click_canvas_center(page, `right`)
+      // dispatch_co2 puts the C-O1 bond midpoint at the canvas centre, but the click only
+      // picks it once perception has rebuilt the bond meshes and the camera has settled
+      // there, and neither has an event to wait on. Retry the click until it lands.
       const menu = page.locator(`#test-structure .bond-context-menu`)
-      await expect(menu).toBeVisible()
+      await expect(async () => {
+        await click_canvas_center(page, `right`)
+        await expect(menu).toBeVisible({ timeout: 500 })
+      }).toPass({ timeout: 15_000 })
       // Pre-override: the menu reports the PERCEIVED order. Perception relabels
       // this C-O connectivity bond as a double (2) - non-vacuous proof that
       // perception is actually driving the order before any manual override.
@@ -764,7 +769,11 @@ test.describe(`Bond component`, () => {
 
       const canvas = structure_canvas(page)
       const canvas_rect = await canvas_box(canvas)
+      // force: a site label sits over the centre and is pointer-events: auto, so Playwright
+      // refuses the hover as intercepted. Only the cursor position matters here — the wheel
+      // events below reach the camera controls through the label either way.
       await canvas.hover({
+        force: true,
         position: { x: canvas_rect.width / 2, y: canvas_rect.height / 2 },
       })
       // Zoom in strongly enough that world-space label offsets would balloon;

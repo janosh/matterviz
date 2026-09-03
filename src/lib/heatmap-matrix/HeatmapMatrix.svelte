@@ -457,7 +457,12 @@
   // A container resized but never scrolled would keep windowing against its mount viewport
   $effect(() => {
     if (!virtualize || !matrix_el || typeof ResizeObserver === `undefined`) return
-    const observer = new ResizeObserver(() => measure_viewport())
+    // Remeasuring re-windows the grid, so it can add or drop the scrollbar: a size-neutral
+    // remeasure would feed straight back in here. Offset moves with no resize: effect below.
+    const observer = new ResizeObserver(([{ target }]) => {
+      const { clientWidth: width, clientHeight: height } = target
+      if (width !== viewport_width || height !== viewport_height) measure_viewport()
+    })
     observer.observe(matrix_el)
     return () => observer.disconnect()
   })

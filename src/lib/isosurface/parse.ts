@@ -439,6 +439,13 @@ export function parse_cube(
       continue
     }
 
+    // Z = 0 is the cube encoding for a ghost/BSSE centre: basis functions with no nucleus, so
+    // nothing to render. Skip it like a malformed line instead of failing the whole file.
+    if (atom_line[0] === 0) {
+      console.warn(`.cube atom ${atom_idx}: skipping Z = 0 ghost/BSSE centre`)
+      continue
+    }
+
     // atom_line[1] is the charge (often 0)
     const raw_xyz = math.scale([atom_line[2], atom_line[3], atom_line[4]] as Vec3, unit_scale)
 
@@ -513,15 +520,14 @@ export function parse_cube(
   return { structure, volumes }
 }
 
-// Convert atomic number to element symbol. Z = 0 is the Gaussian-cube encoding for a
-// ghost/BSSE centre and every other Z outside the table is a malformed header: both used to
-// render as hydrogen, complete with real radii and bonds.
+// Convert atomic number to element symbol. Any Z outside the table is a malformed header,
+// which used to render as hydrogen complete with real radii and bonds (Z = 0, a ghost/BSSE
+// centre, never reaches here: the atom loop skips it).
 const atomic_number_to_symbol = (atomic_number: number): ElementSymbol => {
   const symbol = ELEM_SYMBOLS[atomic_number - 1]
   if (!symbol) {
-    const ghost = atomic_number === 0 ? ` (Z = 0 marks a ghost/BSSE centre)` : ``
     throw new Error(
-      `Cube file has atomic number ${atomic_number}, which is not a chemical element${ghost}`,
+      `Cube file has atomic number ${atomic_number}, which is not a chemical element`,
     )
   }
   return symbol

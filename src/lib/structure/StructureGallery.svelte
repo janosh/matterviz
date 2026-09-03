@@ -146,14 +146,16 @@
   // to square (as wide as the viewer is tall), floored by `min_card_width`,
   // capped by the host, and centred in the track. A drag overrides all of that.
   const vertical_card_width = $derived.by(() => {
-    if (resized_card_width != null) return resized_card_width
+    if (resizable && resized_card_width != null && Number.isFinite(resized_card_width)) {
+      return Math.max(min_resize_width, resized_card_width)
+    }
     const square = Math.max(safe_min_card_width, effective_height)
-    return gallery_width > 0 ? Math.min(square, gallery_width) : square
+    return inner_gallery_width > 0 ? Math.min(square, inner_gallery_width) : square
   })
   // Grid and horizontal both fit-then-stretch, so their gesture moves the
   // minimum rather than a width, and column counts re-derive from it.
   const fitted_min_card_width = $derived(
-    resized_min_card_width != null && Number.isFinite(resized_min_card_width)
+    resizable && resized_min_card_width != null && Number.isFinite(resized_min_card_width)
       ? Math.max(min_resize_width, resized_min_card_width)
       : safe_min_card_width,
   )
@@ -171,6 +173,8 @@
   const panel_gutter = $derived(header ? gap : 0)
   const inner_track_width = $derived(Math.max(0, track_width - 2 * panel_gutter))
   const inner_track_height = $derived(Math.max(0, track_height - 2 * panel_gutter))
+  // the same inset seen from the section, for the sizing that predates a measured track
+  const inner_gallery_width = $derived(Math.max(0, gallery_width - 2 * panel_gutter))
   // Cards per scroll-axis step: a responsive column count in grid mode, one
   // everywhere else. Every window calculation below is written in these terms,
   // so horizontal and vertical stay the single-lane cases of the same math.
@@ -185,10 +189,10 @@
   // Viewer height and horizontal card width are independent. Fit as many
   // titlebar-safe cards as the measured viewport permits; only stretch cards
   // when more items remain, so short galleries keep their compact width.
-  const horizontal_capacity = $derived(fit_columns(gallery_width, fitted_min_card_width))
+  const horizontal_capacity = $derived(fit_columns(inner_gallery_width, fitted_min_card_width))
   const horizontal_card_width = $derived(
-    gallery_width > 0 && items.length > horizontal_capacity
-      ? Math.max(fitted_min_card_width, share_width(gallery_width, horizontal_capacity))
+    inner_gallery_width > 0 && items.length > horizontal_capacity
+      ? Math.max(fitted_min_card_width, share_width(inner_gallery_width, horizontal_capacity))
       : fitted_min_card_width,
   )
   const card_width = $derived(
@@ -204,9 +208,7 @@
   // Whole steps per viewport page. Both measurements follow the scroll axis:
   // taking the cross axis would size a vertical page from the gallery's WIDTH.
   // Falls back to one step until the gallery has been measured.
-  const viewport_size = $derived(
-    is_horizontal ? gallery_width - 2 * panel_gutter : inner_track_height,
-  )
+  const viewport_size = $derived(is_horizontal ? inner_gallery_width : inner_track_height)
   const steps_per_page = $derived(Math.max(1, Math.floor((viewport_size + gap) / item_stride)))
   const page_size = $derived(steps_per_page * columns) // in items, not steps
   const max_page_step = $derived(Math.max(0, step_count - steps_per_page))
@@ -279,6 +281,8 @@
   const gallery_style = $derived(
     [
       `--structure-gallery-height: ${effective_height}px`,
+      // one value drives both the measured inset (inner_*_width) and the painted one
+      `--structure-gallery-panel-gutter: ${panel_gutter}px`,
       // shrink to the cards when they don't fill the host; an empty gallery
       // keeps one card's width so its message has somewhere to sit
       is_horizontal ? `inline-size: min(100%, ${Math.max(card_width, scroll_extent)}px)` : ``,
@@ -288,7 +292,6 @@
         ? `--structure-gallery-grip-inset: max(0px, (100% - ${card_width}px) / 2)`
         : ``,
       is_grid ? `min-block-size: ${grid_floor}px` : ``,
-      header ? `--structure-gallery-panel-gutter: ${panel_gutter}px` : ``,
       resizable ? `max-inline-size: 100%` : ``,
       resizable && !is_grid ? `min-block-size: ${min_resize_height}px` : ``,
     ]
@@ -627,7 +630,6 @@
   class={[
     `structure-gallery`,
     layout,
-    resizable && `resizable`,
     resize_drag && `resizing`,
     header && `paneled`,
     two_up_properties && `properties-two-up`,

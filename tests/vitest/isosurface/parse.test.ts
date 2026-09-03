@@ -9,11 +9,14 @@ import {
 } from '$lib/isosurface/parse'
 import type { VolumetricFileData } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { normalize_scientific_notation } from '$lib/utils'
 import { grid_value, read_maybe_gz } from '../setup'
 import { create_volume_sampler } from '$lib/isosurface/sampling'
 import * as math from '$lib/math'
+// spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
+// failing assertion above it, silencing console.warn for the rest of the file
+beforeEach(() => vi.restoreAllMocks())
 
 // Value accessor for the first volume of a parse result: at(ix, iy, iz)
 const grid_at = (result: VolumetricFileData | null, vol_idx = 0) => {
@@ -132,7 +135,6 @@ describe(`parse_chgcar`, () => {
       `He`,
     ])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Xx`))
-    warn.mockRestore()
   })
 
   test(`parses valid CHGCAR with Fortran exponents, grid, and volume normalization`, () => {
@@ -306,7 +308,6 @@ describe(`parse_chgcar`, () => {
       `He`,
     ])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`VASP 4`))
-    warn.mockRestore()
   })
 
   test(`skips augmentation occupancies section`, () => {
@@ -369,7 +370,6 @@ describe(`parse_chgcar`, () => {
     expect(warn.mock.calls[0][0]).toMatch(
       /CHGCAR magnetization density \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the intact charge density/,
     )
-    warn.mockRestore()
   })
 
   test(`tolerates trailing comment on scale line like parseFloat did`, () => {
@@ -521,16 +521,28 @@ describe(`parse_cube`, () => {
     expect(result?.structure.sites[0].species[0].element).toBe(expected)
   })
 
-  // Z = 0 is the standard cube encoding for a ghost/BSSE centre and 119 is off the table;
-  // both used to render as hydrogen, with real radii and real bonds
-  test.each([0, 119, -1])(
-    `rejects atomic number %i instead of inventing hydrogen`,
-    (z_num) => {
-      expect(() =>
-        parse_cube(make_cube({ n_atoms: 1, atoms: [[z_num, 0, 0, 0, 0]] })),
-      ).toThrow(`Cube file has atomic number ${z_num}, which is not a chemical element`)
-    },
-  )
+  // 119 is off the table and -1 is not an element at all; both used to render as hydrogen,
+  // with real radii and real bonds. Z = 0 is the documented ghost/BSSE encoding instead, so a
+  // counterpoise cube must still open — minus the ghost.
+  test.each([119, -1, 0])(`never invents hydrogen for atomic number %i`, (z_num) => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // the ghost comes FIRST so skipping it has a line left to misalign
+    // oxfmt-ignore
+    const parse = () =>
+      parse_cube(make_cube({ n_atoms: 2, atoms: [[z_num, 0, 0, 0, 0], [6, 0, 1, 1, 1]] }))
+    if (z_num === 0) {
+      const result = parse()
+      expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([`C`])
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Z = 0 ghost/BSSE centre`))
+      // and the body still parses: the skip must not slide a line into the volume data
+      const clean = parse_cube(make_cube({ n_atoms: 1, atoms: [[6, 0, 1, 1, 1]] }))
+      expect(result?.volumes).toEqual(clean?.volumes)
+    } else {
+      expect(parse).toThrow(
+        `Cube file has atomic number ${z_num}, which is not a chemical element`,
+      )
+    }
+  })
 
   test(`handles Angstrom units (negative grid dims)`, () => {
     const result = parse_cube(

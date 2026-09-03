@@ -12,10 +12,9 @@ import type {
 } from '$lib/plot/core/utils/hierarchy-layout'
 
 const TWO_PI = 2 * Math.PI
-// Fallback for --sunburst-font-size when a caller hands over no resolved size; 1.1 is the
-// line-height ratio the treemap labels measure with.
-const DEFAULT_LABEL_FONT_SIZE = 11
-const LINE_HEIGHT = 1.1
+// Fallback when a caller hands over no resolved line height: 1.1x the 11px
+// --sunburst-font-size default. A measured FontSpec can lead far taller (`line-height: 1.6`).
+const DEFAULT_LABEL_LINE_HEIGHT = 11 * 1.1
 
 // An arc with its current screen-space geometry.
 // Sunburst: a0/a1 = angles in radians (clockwise from 12 o'clock), r0/r1 = radii in px.
@@ -205,17 +204,16 @@ export function hover_veil_path<Metadata>(
 // but renders as a straight tangent whose ends would otherwise shoot past the plot
 // border. `font_scale` < 1 relaxes the fit for downscaled text: callers pass the
 // already scaled text width, and the one-line-height requirement shrinks with it.
-// `font_size` is the size the label renders at, so the fit uses the font the widths were
-// measured in.
+// `font_line_height` is the vertical room a label line actually takes, leading included.
 export function arc_label_slots(
   d: { a0: number; a1: number; r0: number; r1: number },
   shape: SunburstShape,
   rotation: SunburstLabelRotation,
   max_radius?: number,
   font_scale = 1,
-  font_size = DEFAULT_LABEL_FONT_SIZE,
+  font_line_height = DEFAULT_LABEL_LINE_HEIGHT,
 ): { room: number; transform: string }[] {
-  const line_height = font_size * font_scale * LINE_HEIGHT
+  const line_height = font_line_height * font_scale
   // Text length that keeps a straight label centered `center_dist` from the chart
   // center inside the circle: text_w/2 perpendicular to the radius (tangential text,
   // exact) plus an optional component along it (horizontal text at 3/9 o'clock reads
@@ -282,19 +280,3 @@ export function arc_label_slots(
     )
   })
 }
-
-// Placement for a label of `text_w` px (pre-multiplied by `font_scale`): the first
-// slot with room for it, null when none has (hide the label, or cut it to a slot's
-// `room`).
-export const arc_label_transform = (
-  d: { a0: number; a1: number; r0: number; r1: number },
-  text_w: number,
-  shape: SunburstShape,
-  rotation: SunburstLabelRotation,
-  max_radius?: number,
-  font_scale = 1,
-  font_size = DEFAULT_LABEL_FONT_SIZE,
-): string | null =>
-  arc_label_slots(d, shape, rotation, max_radius, font_scale, font_size).find(
-    (slot) => text_w <= slot.room,
-  )?.transform ?? null

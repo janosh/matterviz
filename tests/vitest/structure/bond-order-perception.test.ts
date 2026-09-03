@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   compose_perceived_bonds,
   perceive_bond_orders,
@@ -7,6 +7,9 @@ import type { BondPair, Site, StructureBond } from '$lib/structure'
 import type { PerceivedBond } from '$lib/structure/bond-order-perception'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2, Vec3 } from '$lib/math'
+// spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
+// failing assertion above it, silencing console.warn for the rest of the file
+beforeEach(() => vi.restoreAllMocks())
 
 function make_input(elements: ElementSymbol[], coords: Vec3[], edges: Vec2[]) {
   const sites = elements.map((element, idx) => ({
@@ -100,16 +103,22 @@ describe(`perceive_bond_orders on small molecules`, () => {
 
   // The cap counted COMBINATIONS, but the work is combinations x atoms: this chain sat inside
   // the 4096-COMBINATION cap while enumerating 1.2e7 picks and (copying the prefix at every
-  // recursion step) 1.8e10 array elements — 266.5 s on one thread, ~2 ms once refused. Only
-  // this case is timed; a bound on the in-budget row above flaked at 3.9 s under load.
+  // recursion step) 1.8e10 array elements — 266.5 s on one thread, ~2 ms once refused. The
+  // warning below is what proves the refusal path ran, so no wall clock is needed.
   test(`a 12-nitrogen 3000-atom chain is refused, not ground through`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const { elements, coords, edges } = n12_chain(3000)
     const { sites, bonds } = make_input(elements, coords, edges)
-    const started = performance.now()
     const result = perceive_bond_orders(sites, bonds)
     expect(result).toHaveLength(2999)
     expect(result.every((bond) => bond.bond_order === 1 && !bond.perceived)).toBe(true)
-    expect(performance.now() - started).toBeLessThan(10_000)
+    // and the skip is reported: all-single bonds on a real molecule is wrong data, not a
+    // missing feature, so it must not happen silently
+    expect(warn).toHaveBeenCalledOnce()
+    // 2^12 nitrogen valence combinations x 3000 atoms = 12288000 picks
+    expect(warn.mock.calls[0][0]).toContain(
+      `skipped fragment 0 (3000 atoms, 2999 bonds): 12288000 valence picks exceed`,
+    )
   })
 
   test(`no bonds -> empty result`, () => {

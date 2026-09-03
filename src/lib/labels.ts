@@ -15,12 +15,25 @@ export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
 const strip_scientific_zero = (formatted: string, fmt: string, num: number): string =>
   num === 0 && fmt.endsWith(`e`) ? formatted.replace(/(?:\.0+)?e\+0$/, ``) : formatted
 
-// d3 `format()` re-parses the spec and rebuilds a closure per call: 2.8x slower than a
-// hoisted formatter, over 215 call sites. The spec vocabulary is small, so cache unbounded.
+// Entries a string-keyed render cache holds at once, here and in sanitize.ts: keys are built
+// from data, so past this many the oldest goes (FIFO) rather than the cache growing unbounded
+// — and unlike a wholesale clear, a working set just over the limit still mostly hits.
+export const STRING_CACHE_LIMIT = 4096
+
+// d3 `format()` re-parses the spec and rebuilds a closure per call, so cache one formatter
+// per spec. Callers can build specs from data (HeatmapTable takes `format` straight from host
+// columns), so evict FIFO past the limit.
 const formatters = new Map<string, (num: number) => string>()
 const formatter_for = (spec: string): ((num: number) => string) => {
   let formatter = formatters.get(spec)
-  if (!formatter) formatters.set(spec, (formatter = format(spec)))
+  if (!formatter) {
+    // Map iterates insertion order, so the first key is the oldest entry
+    if (formatters.size >= STRING_CACHE_LIMIT) {
+      const [oldest] = formatters.keys()
+      formatters.delete(oldest)
+    }
+    formatters.set(spec, (formatter = format(spec)))
+  }
   return formatter
 }
 

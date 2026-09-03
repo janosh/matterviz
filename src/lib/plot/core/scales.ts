@@ -312,6 +312,11 @@ export function generate_ticks(
         : typeof ticks_option === `number` && ticks_option > 0
           ? ticks_option
           : 10
+    // Interval counts ride on the domain like the linear interval branch below: `day` over
+    // two centuries asks for 73k ticks, a tiny step for millions (plain counts capped above)
+    if (interval_days !== null) {
+      assert_tick_count(count, `a tick interval of ${interval_days} day(s)`, max_val - min_val)
+    }
     const dates = scaleTime()
       .domain([new Date(min_val), new Date(max_val)])
       .ticks(count)

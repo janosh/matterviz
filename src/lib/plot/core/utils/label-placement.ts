@@ -335,7 +335,7 @@ export function compute_delta_energy(
   neighbors: NeighborIndex,
 ): number {
   let delta = 0
-  const { x: ax, y: ay } = anchors[new_state.anchor_idx]
+  const anchor = anchors[new_state.anchor_idx]
 
   const old_cx = old_state.x + old_state.w / 2,
     old_cy = old_state.y + old_state.h / 2
@@ -344,7 +344,8 @@ export function compute_delta_energy(
 
   delta +=
     weights.distance *
-    (Math.hypot(new_cx - ax, new_cy - ay) - Math.hypot(old_cx - ax, old_cy - ay))
+    (Math.hypot(new_cx - anchor.x, new_cy - anchor.y) -
+      Math.hypot(old_cx - anchor.x, old_cy - anchor.y))
 
   delta +=
     weights.bounds *
@@ -354,10 +355,10 @@ export function compute_delta_energy(
   // (the latter for the leader lines), so anything disjoint from it contributes exactly zero
   // and four comparisons can reject it before the geometry routines run. Measured 98-99% of
   // markers rejected on scenes of 50-500 labels.
-  const box_min_x = Math.min(old_state.x, new_state.x, ax)
-  const box_max_x = Math.max(old_state.x + old_state.w, new_state.x + new_state.w, ax)
-  const box_min_y = Math.min(old_state.y, new_state.y, ay)
-  const box_max_y = Math.max(old_state.y + old_state.h, new_state.y + new_state.h, ay)
+  const box_min_x = Math.min(old_state.x, new_state.x, anchor.x)
+  const box_max_x = Math.max(old_state.x + old_state.w, new_state.x + new_state.w, anchor.x)
+  const box_min_y = Math.min(old_state.y, new_state.y, anchor.y)
+  const box_max_y = Math.max(old_state.y + old_state.h, new_state.y + new_state.h, anchor.y)
   const misses_box = (min_x: number, max_x: number, min_y: number, max_y: number) =>
     max_x < box_min_x || min_x > box_max_x || max_y < box_min_y || min_y > box_max_y
 
@@ -380,36 +381,38 @@ export function compute_delta_energy(
     const jdx = candidates[pos]
     if (jdx === changed_idx) continue
     const other = labels[jdx]
-    const { x: jx, y: jy } = anchors[other.anchor_idx]
+    const peer = anchors[other.anchor_idx] // the other label's anchor
     if (
       misses_box(
-        Math.min(other.x, jx),
-        Math.max(other.x + other.w, jx),
-        Math.min(other.y, jy),
-        Math.max(other.y + other.h, jy),
+        Math.min(other.x, peer.x),
+        Math.max(other.x + other.w, peer.x),
+        Math.min(other.y, peer.y),
+        Math.max(other.y + other.h, peer.y),
       )
     )
       continue
-    const ocx = other.x + other.w / 2,
-      ocy = other.y + other.h / 2
+    const other_cx = other.x + other.w / 2,
+      other_cy = other.y + other.h / 2
 
     delta +=
       weights.overlap *
       (rect_overlap_area(new_state, other) - rect_overlap_area(old_state, other))
 
     // Leader line crossing delta (changed label's leader vs other's leader)
-    const old_cross = segments_intersect(ax, ay, old_cx, old_cy, jx, jy, ocx, ocy)
-    const new_cross = segments_intersect(ax, ay, new_cx, new_cy, jx, jy, ocx, ocy)
+    // shared tail of both crossing tests, so each call still fits on one line
+    const peer_leader = [peer.x, peer.y, other_cx, other_cy] as const
+    const old_cross = segments_intersect(anchor.x, anchor.y, old_cx, old_cy, ...peer_leader)
+    const new_cross = segments_intersect(anchor.x, anchor.y, new_cx, new_cy, ...peer_leader)
     if (new_cross !== old_cross) delta += (new_cross ? 1 : -1) * weights.leader_cross
 
     // Changed label's leader crossing other label's rect
-    const old_text = segment_rect_intersects(ax, ay, old_cx, old_cy, other)
-    const new_text = segment_rect_intersects(ax, ay, new_cx, new_cy, other)
+    const old_text = segment_rect_intersects(anchor.x, anchor.y, old_cx, old_cy, other)
+    const new_text = segment_rect_intersects(anchor.x, anchor.y, new_cx, new_cy, other)
     if (new_text !== old_text) delta += (new_text ? 1 : -1) * weights.leader_text
 
     // Other label's leader crossing changed label's rect
-    const old_other = segment_rect_intersects(jx, jy, ocx, ocy, old_state)
-    const new_other = segment_rect_intersects(jx, jy, ocx, ocy, new_state)
+    const old_other = segment_rect_intersects(peer.x, peer.y, other_cx, other_cy, old_state)
+    const new_other = segment_rect_intersects(peer.x, peer.y, other_cx, other_cy, new_state)
     if (new_other !== old_other) delta += (new_other ? 1 : -1) * weights.leader_text
   }
 

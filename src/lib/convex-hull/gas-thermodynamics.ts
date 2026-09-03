@@ -307,7 +307,8 @@ export function apply_gas_corrections(
 
   if (shifted_elements.size === 0) return entries
   return corrected.map((entry) =>
-    Object.keys(entry.composition).some((el) => shifted_elements.has(el))
+    // amt > 0: a zero-amount element is absent, so its key must not invalidate a live cache
+    Object.entries(entry.composition).some(([el, amt]) => amt > 0 && shifted_elements.has(el))
       ? drop_cached_hull_data(entry)
       : entry,
   )

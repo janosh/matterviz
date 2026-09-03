@@ -215,7 +215,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
   const scale = to_scalar_number(read_dataset(h5_file, FINAL_SCALE)) ?? 1
   const traj_scale = to_scalar_number(read_dataset(h5_file, TRAJ_SCALE)) ?? scale
 
-  // Budget-checked: the only whole-dataset reads here big enough to hang the tab
+  // Checked against the whole-dataset budget: the only reads here big enough to hang the tab
   const read_bounded = (path: string) => read_dataset(h5_file, path, FORMAT)
   const traj_positions = read_bounded(TRAJ_POSITIONS) as number[][][] | null
   const traj_lattices = read_bounded(TRAJ_LATTICE) as number[][][] | null

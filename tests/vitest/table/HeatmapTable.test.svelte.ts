@@ -7,7 +7,7 @@ import type {
   SummaryStat,
 } from '$lib/table'
 import { HeatmapTable } from '$lib/table'
-import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
 
@@ -27,10 +27,20 @@ const col_values = (col_name: string): (string | undefined)[] =>
 const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement =>
   doc_query(`td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`, HTMLTableCellElement)
 
-// A non-empty search_query is debounced 150 ms before it reaches the filter (clearing is not)
+// Fake timers for a test that calls settle_search below, restored when the test finishes
+const fake_search_timers = () => {
+  vi.useFakeTimers()
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+}
+
+// A non-empty search_query is debounced 150 ms before it reaches the filter (clearing is not).
+// Callers must call fake_search_timers() before mounting, so the wait costs no wall clock.
 const settle_search = async (state: { search_query: string }, query: string) => {
   state.search_query = query
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  flushSync() // let the debounce effect schedule its timer before advancing
+  await vi.advanceTimersByTimeAsync(150)
   await tick()
 }
 
@@ -768,6 +778,7 @@ describe(`HeatmapTable`, () => {
       [`no match`, `no-such-model`, []],
       [`empty query returns all rows`, `  `, [`Model A`, `Model B`, `Model C`]],
     ])(`filters rows by search_query: %s`, async (_desc, query, expected) => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       const data = [
         { Model: `Model A`, Score: 0.95 },
@@ -790,6 +801,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`search.keys restricts matching to the given columns`, async () => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       const data = [
         { Model: `Model A`, Note: `great` },
@@ -808,6 +820,7 @@ describe(`HeatmapTable`, () => {
       [true, [`Model A`]], // "mdla" is an in-order subsequence of "model a"
       [false, []],
     ])(`search.fuzzy=%s controls subsequence matching`, async (fuzzy, expected) => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       mount_table(
         bind_props({ data: sample_data, columns: sample_columns, search: { fuzzy } }, state),
@@ -2057,6 +2070,31 @@ describe(`HeatmapTable`, () => {
       await tick()
       expect(cell_at(0, 0).style.getPropertyValue(`--cell-bg`)).not.toBe(``)
     })
+
+    // Two ways the color control used to disappear from a column that still paints: gating
+    // the list on "every value parses" dropped a mixed numeric/text column, and gating it on
+    // column_stats (derived from the FILTERED rows) made it vanish mid-typing
+    it(`keeps the color control for a mixed column the search empties of numbers`, async () => {
+      fake_search_timers()
+      const state = $state({ search_query: `` })
+      const data = [
+        { Model: `alpha 1`, Score: 1 },
+        { Model: `alpha 2`, Score: 2 },
+        { Model: `beta`, Score: `N/A` },
+      ]
+      const columns = plain_columns(`Model`, `Score`)
+      mount_table(bind_props({ data, columns, show_controls: true, search: true }, state))
+      document.querySelector<HTMLButtonElement>(`.pane-toggle`)?.click()
+      await tick()
+      const color_labels = () =>
+        [...document.querySelectorAll(`.col-color-label`)].map((el) => el.textContent?.trim())
+      expect(color_labels()).toEqual([`Score`])
+      expect(cell_at(0, 1).style.getPropertyValue(`--cell-bg`)).not.toBe(``) // it paints
+
+      await settle_search(state, `beta`) // filters away every numeric Score
+      expect(col_values(`Model`)).toEqual([`beta`])
+      expect(color_labels()).toEqual([`Score`])
+    })
   })
 
   describe(`cell range selection and column copy`, () => {
@@ -2409,6 +2447,7 @@ describe(`HeatmapTable`, () => {
     // A narrowed result set starts at its top: keeping the old offset drops the user past
     // the end of the matches (row 140 of 111), so they land on the tail, not the first hit.
     it(`returns to the top of the results when the search query changes`, async () => {
+      fake_search_timers()
       const state = $state({ search_query: `` })
       mount_table(bind_props({ data: many_rows, columns: two_cols, virtual: true }, state))
       const scroller = await scroll_to(150 * row_height_px)

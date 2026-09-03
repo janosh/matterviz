@@ -17,7 +17,9 @@ import { get_unsupported_format_message } from '$lib/trajectory/parse'
 import { ase_calculator_data, read_ase_header } from '$lib/trajectory/parse/ase'
 import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
+  HDF5_MAX_WHOLE_DATASET_BYTES,
   hdf5_frames_per_slice,
+  read_dataset,
   read_numeric_1d,
   read_numeric_hyperslab,
   read_numeric_samples,
@@ -1182,6 +1184,21 @@ describe(`XYZ`, () => {
     expect({ energy, pressure, temperature }).toEqual(expected)
   })
 
+  // Writer casing must not split one key into two half-populated series: `Free_Energy=` in
+  // one frame and `free_energy=` in the next are the same plot line
+  it(`folds extXYZ metadata keys to lower case across frames`, async () => {
+    const content = [
+      xyz_frame([`H 0 0 0`], `Free_Energy=-1.5 MyFlag=T`),
+      xyz_frame([`H 0 0 0`], `free_energy=-2.5 myflag=F`),
+    ].join(`\n`)
+    const frames = await frames_of(await open(content, `casing.extxyz`))
+    expect(frames.map((frame) => frame.metadata?.free_energy)).toEqual([-1.5, -2.5])
+    expect(frames.map((frame) => frame.metadata?.myflag)).toEqual([true, false])
+    // no original-case duplicate survives to split one series into two
+    const keys = frames.flatMap((frame) => Object.keys(frame.metadata ?? {}))
+    expect(keys).toEqual(keys.map((key) => key.toLowerCase()))
+  })
+
   it(`preserves quoted extXYZ dipoles and polarizability tensors`, async () => {
     const frame = xyz_frame(
       [`H 0 0 0`],
@@ -1566,6 +1583,30 @@ describe(`HDF5 slice budgets`, () => {
     expect(() =>
       read_numeric_1d({ shape: [3] } as H5Dataset, `/steps/positions`, 2, `TorchSim HDF5`),
     ).toThrow(`TorchSim HDF5 dataset /steps/positions has shape [3], expected [2]`)
+  })
+
+  // A whole-dataset read has no frame axis to slice along, so it gets its own, much larger
+  // budget: the 8 MiB hyperslab cap was sized for one frame and rejected ordinary AIMD runs
+  it.each([
+    [[2000, 200, 3], true], // 9.6 MB — a 200-atom, 2000-step vaspout.h5
+    [[20_000, 270, 3], true], // 130 MB — just inside the budget
+    [[200_000, 2000, 3], false], // 9.6 GB — no browser tab survives this
+  ])(`bounds a whole-dataset read of shape %j at 128 MiB (allowed: %s)`, (shape, allowed) => {
+    expect(HDF5_MAX_LOGICAL_SLICE_BYTES).toBeLessThan(HDF5_MAX_WHOLE_DATASET_BYTES) // two budgets, not one merged cap
+    const to_array = vi.fn(() => [])
+    const dataset = { shape, to_array, slice: vi.fn() } as unknown as H5Dataset
+    const h5_file = { get: () => dataset } as unknown as H5File
+    const path = `/intermediate/ion_dynamics/position_ions`
+    const read = () => read_dataset(h5_file, path, `vaspout.h5`)
+    if (allowed) expect(read()).toEqual([])
+    else {
+      const logical_bytes = shape.reduce((product, size) => product * size, 1) * 8
+      expect(read).toThrow(
+        `HDF5 dataset ${path} requests ${logical_bytes} logical bytes, above the ` +
+          `${HDF5_MAX_WHOLE_DATASET_BYTES}-byte application limit`,
+      )
+      expect(to_array).not.toHaveBeenCalled() // the guard runs before the read
+    }
   })
 
   it(`copies large axis chunks and sampled hyperslabs without spreading into the call stack`, () => {

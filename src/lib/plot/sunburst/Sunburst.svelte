@@ -333,7 +333,7 @@
         label_rotation,
         radius,
         font_scale,
-        chart_state.label_font.font_size,
+        chart_state.label_font.line_height,
       )
       for (const { text, width: text_w } of variants) {
         const fit = slots.find(({ room }) => text_w * font_scale <= room)

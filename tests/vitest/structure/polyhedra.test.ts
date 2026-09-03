@@ -15,8 +15,11 @@ import {
 import type { Polyhedron } from '$lib/structure/polyhedra'
 import { make_supercell } from '$lib/structure/supercell'
 import { Color } from 'three/webgpu'
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { make_crystal, make_rocksalt } from '../setup'
+// spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
+// failing assertion above it, silencing console.warn for the rest of the file
+beforeEach(() => vi.restoreAllMocks())
 
 // Minimal BondPair stub (only fields polyhedra code reads)
 const make_bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
@@ -689,17 +692,32 @@ describe(`merge_polyhedra_buffers`, () => {
     }
   }
 
-  test(`buffer sizes match triangle and edge counts`, () => {
+  test(`buffer sizes match triangle and edge counts, skipping overflowing hulls`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // convex_hull_3d can fail to produce a closed manifold, and the 3F/2 edge cap assumes
+    // one: 10 disjoint triangles need 30 edges where this batch's 18 faces budget
+    // ceil(1.5 * 18) = 27. Placed FIRST, so the octahedron after it can only land at the
+    // rewound offset 0 - one bad hull costs its own polyhedron, not the whole scene render.
+    // oxfmt-ignore
+    const disjoint_triangles: Polyhedron = {
+      center_site_idx: 7, center_orig_idx: 7, center_element: `Fe`, volume: 0,
+      vertices: Array.from({ length: 30 }, (_un, idx) => [idx, (idx % 3) ** 2, 0] as Vec3),
+      vertex_site_idxs: Array.from({ length: 30 }, (_un, idx) => idx),
+      faces: Array.from({ length: 10 }, (_un, idx): [number, number, number] => [idx * 3, idx * 3 + 1, idx * 3 + 2]),
+    }
     const buffers = merge_polyhedra_buffers(
-      [poly_from_hull(octahedron_points), poly_from_hull(octahedron_points)],
+      [disjoint_triangles, poly_from_hull(octahedron_points)],
       uniform_red,
     )
-    expect(buffers.triangle_count).toBe(16)
-    expect(buffers.positions).toHaveLength(16 * 9)
-    expect(buffers.colors).toHaveLength(16 * 9)
+    // only the octahedron survives, and it starts at 0: no gap where the bad hull was
+    expect(buffers.triangle_count).toBe(8)
+    expect(buffers.positions).toHaveLength(8 * 9)
+    expect(buffers.colors).toHaveLength(8 * 9)
     // Octahedron has 12 real edges, none coplanar
-    expect(buffers.edge_count).toBe(24)
-    expect(buffers.edge_positions).toHaveLength(24 * 6)
+    expect(buffers.edge_count).toBe(12)
+    expect(buffers.edge_positions).toHaveLength(12 * 6)
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn.mock.calls[0][0]).toMatch(/site 7/)
   })
 
   test(`fills the color buffer with linear CSS color`, () => {

@@ -192,6 +192,10 @@ export function apply_gaussian_smearing(
 ): number[] {
   if (sigma <= 0) return densities
   const weights = trapezoid_weights(freqs_or_energies)
+  // A grid with no extent (one point, or all-identical values) carries no trapezoid measure,
+  // so every weight is 0 and the convolution would return an all-zero curve instead of leaving
+  // the input alone: [5] smeared to [0], and densities on a [2, 2, 2] grid to [0, 0, 0]
+  if (weights.every((weight) => weight === 0)) return densities
   return gaussian_pass(freqs_or_energies, densities, sigma, weights)
 }
 

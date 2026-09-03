@@ -165,9 +165,13 @@ describe(`apply_gaussian_smearing`, () => {
   const energies = [0, 1, 2, 3, 4]
   const spike = [0, 0, 10, 0, 0]
 
-  it(`returns the input untouched for sigma 0 and leaves an all-zero DOS at zero`, () => {
+  it(`returns degenerate input untouched`, () => {
     expect(apply_gaussian_smearing(energies, spike, 0)).toBe(spike)
     expect(apply_gaussian_smearing(energies, [0, 0, 0, 0, 0], 0.5)).toEqual([0, 0, 0, 0, 0])
+    // a grid with no extent has zero trapezoid weights everywhere, so the convolution used
+    // to scale every density to 0 rather than pass it through
+    expect(apply_gaussian_smearing([0], [5], 0.5)).toEqual([5]) // one-point grid
+    expect(apply_gaussian_smearing([1, 1, 1], [2, 2, 2], 0.5)).toEqual([2, 2, 2]) // no extent
   })
 
   it(`spreads a spike symmetrically with the normalized Gaussian shape`, () => {

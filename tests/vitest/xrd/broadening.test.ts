@@ -1,4 +1,4 @@
-import { broaden_peaks } from '$lib/lineshape'
+import { broaden_peaks, MAX_BROADENING_FILL_STEPS } from '$lib/lineshape'
 import type { Vec2 } from '$lib/math'
 import {
   caglioti_fwhm,
@@ -349,6 +349,20 @@ describe(`broaden_peaks`, () => {
       pattern: { x: [20, 40], y: [100, Infinity] },
       err: `intensities must be finite, got Infinity`,
     },
+    // A NaN position fails both reach tests and leaves start_idx NaN, so the fill loop never
+    // runs: the curve came back bit-identical to one that never carried the peak at all
+    {
+      step: 0.02,
+      range: [10, 80],
+      pattern: { x: [NaN, 30], y: [100, 100] },
+      err: `peak positions must be finite, got NaN at index 0`,
+    },
+    {
+      step: 0.02,
+      range: [10, 80],
+      pattern: { x: [30, Infinity], y: [100, 100] },
+      err: `peak positions must be finite, got Infinity at index 1`,
+    },
   ])(`validates inputs before touching fwhm_fn ($err)`, ({ step, range, pattern, err }) => {
     const fwhm_fn = () => {
       throw new Error(`fwhm_fn must not be called`)
@@ -362,5 +376,24 @@ describe(`broaden_peaks`, () => {
     expect(() =>
       broaden_peaks({ x: [20], y: [100] }, () => bad_width, 0.5, [10, 80], 0.02),
     ).toThrow(`fwhm_fn must return > 0 and finite, got ${bad_width} at peak 20`)
+  })
+
+  // The grid cap bounds the allocation only; the fill work is O(sum of window lengths), which
+  // a diverging fwhm_fn drives arbitrarily high over a grid that is itself perfectly legal
+  test(`caps total fill work, not just the grid allocation`, () => {
+    const n_peaks = 20_000
+    const wide_peaks = {
+      x: Array.from({ length: n_peaks }, (_, idx) => 20 + idx * 1e-3),
+      y: Array(n_peaks).fill(100),
+    }
+    // every window covers the whole 10001-point grid: 20000 * 10001 = 2.0002e8 steps
+    expect(() => broaden_peaks(wide_peaks, () => 1000, 0.5, [0, 100], 0.01)).toThrow(
+      `pass the ${MAX_BROADENING_FILL_STEPS} accumulation steps cap`,
+    )
+    // realistic widths over the same grid stay decades under the cap and still broaden
+    const realistic = { x: wide_peaks.x.slice(0, 1000), y: wide_peaks.y.slice(0, 1000) }
+    const narrow = broaden_peaks(realistic, () => 0.1, 0.5, [0, 100], 0.01)
+    // the 1000 peaks span 20..20.999, so the broadened curve is a wide band, not one spike
+    expect(narrow.y.filter((y_val) => y_val > 0).length).toBeGreaterThan(100)
   })
 })

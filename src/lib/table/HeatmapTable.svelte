@@ -457,7 +457,7 @@
   })
 
   // A keystroke re-filters every row, re-parses every visible cell and rebuilds one d3 scale
-  // per column: 60 ms of JS on 10k x 30. Clearing applies at once, since waiting reads as a hang.
+  // per column. Clearing applies at once, since waiting reads as a hang.
   let debounced_query = $state(untrack(() => search_query))
   $effect(() => {
     const query = search_query
@@ -709,10 +709,19 @@
     return scales
   })
 
+  // The condition `column_stats` paints on, but over the UNFILTERED data: keyed off
+  // `column_stats` itself, a column's color row appeared and disappeared as a search narrowed
+  // the rows out from under it. Looser than `numeric_columns`, which demands EVERY value parse
+  // — a column mixing numbers with "N/A" still paints, so it still needs its control.
+  let paintable_columns = $derived.by(() => {
+    const has_number = (col: Label) =>
+      data.some((row) => parse_numeric_val(row[cell_key(col)]) !== null)
+    return new Set(columns.filter(has_number).map(get_col_id))
+  })
   // Does the column actually paint? An unconfigured numeric column defaults to interpolateViridis
-  // (so the configured scale alone says "no"), and one with no numeric values has no stats.
+  // (so the configured scale alone says "no").
   const is_colored_column = (col: Label): boolean =>
-    color_scale_of(col) !== null && column_stats.has(get_col_id(col))
+    color_scale_of(col) !== null && paintable_columns.has(get_col_id(col))
   // Columns the color controls apply to: the colored ones, plus any with an explicit
   // configuration — `color_scale: null` included, so turning a heatmap off can be undone
   let colored_columns = $derived(
@@ -1146,8 +1155,9 @@
   const row_id_map = new WeakMap<RowData, string>()
   let row_id_counter = 0
   function get_row_id(row: RowData): string {
-    const id = row_id_map.get(row) ?? `row_${row_id_counter++}`
-    row_id_map.set(row, id)
+    let id = row_id_map.get(row)
+    // assign on miss only: this runs per rendered row AND per is_row_selected call
+    if (id === undefined) row_id_map.set(row, (id = `row_${row_id_counter++}`))
     return id
   }
   let selected_id_set = $derived(new Set(selected_rows.map(get_row_id)))

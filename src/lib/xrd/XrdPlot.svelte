@@ -195,16 +195,30 @@
     })
   })
 
+  // compute_broadened_pattern throws when a Caglioti triple drives FWHM² = U·tan²θ + V·tanθ + W
+  // non-positive inside `angle_range`, reachable from the spinners alone: V² <= 4UW couples all
+  // three, so no static input `min` enforces it. Uncaught in a $derived the throw blanks the
+  // whole component, so return the message and let the banner render it (writing `error_msg`
+  // from an $effect instead would clobber an undismissed file-drop error and never clear).
+  const broadened = $derived.by<XrdPattern[] | string>(() => {
+    if (!broadening_enabled) return []
+    try {
+      // Normalize so the highest peak across ALL broadened profiles is 100: per-profile
+      // normalization would lose relative scaling between patterns, while the stick-view
+      // global max would make broadened peaks tiny (broadening spreads intensity)
+      return pattern_entries.map((entry) =>
+        compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
+      )
+    } catch (exc) {
+      return exc instanceof Error ? exc.message : String(exc)
+    }
+  })
+  const broadening_error = $derived(typeof broadened === `string` ? broadened : undefined)
+
   // Build ScatterPlot series (for Broadened Profile view)
   const scatter_series = $derived.by<DataSeries[]>(() => {
-    if (!broadening_enabled) return []
+    if (typeof broadened === `string` || broadened.length === 0) return []
 
-    // Normalize so the highest peak across ALL broadened profiles is 100: per-profile
-    // normalization would lose relative scaling between patterns, while the stick-view
-    // global max would make broadened peaks tiny (broadening spreads intensity)
-    const broadened = pattern_entries.map((entry) =>
-      compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
-    )
     // The true maximum, not max(1, ...): broadening is area-normalized, so a pattern handed in
     // already normalized profiles well under 1 and a floor of 1 under-scales the whole curve
     // (y max 0.01 rendered at 5.92 of the fixed [0, 110] axis) while the sticks filled it.
@@ -242,6 +256,8 @@
       if (val) error_msg = undefined
     },
   })
+
+  const banner_style = `position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; max-width: 80%`
 
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
   // In the horizontal layout the 2θ and intensity axes trade places
@@ -343,12 +359,9 @@
 {:else}
   <div class="xrd-plot-container" style={`position: relative; ${rest.style ?? ``}`}>
     {#if error_msg}
-      <StatusMessage
-        bind:message={error_msg}
-        type="error"
-        dismissible
-        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; max-width: 80%"
-      />
+      <StatusMessage bind:message={error_msg} type="error" dismissible style={banner_style} />
+    {:else if broadening_error}
+      <StatusMessage message={broadening_error} type="error" style={banner_style} />
     {/if}
     {#if broadening_enabled}
       <!-- Broadened Profile View -->

@@ -268,7 +268,10 @@ export function create_trajectory_session(
   let scrub_settle: ReturnType<typeof setTimeout> | undefined
   let pending_scrub: number | undefined
 
+  // Not normalize_idx's map-to-0 (the host-correction effect needs something to write back):
+  // `scrub(NaN)` from an empty range input must not silently jump the viewer to frame 0
   function commit_index(idx: number): void {
+    if (!Number.isFinite(idx)) return
     const bounded = normalize_idx(idx, frame_count)
     if (bounded === null || bounded === inputs.index()) return
     inputs.set_index(bounded)

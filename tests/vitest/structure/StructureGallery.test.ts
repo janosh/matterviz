@@ -737,14 +737,24 @@ describe(`StructureGallery`, () => {
       style: (dt.parentElement?.getAttribute(`style`) ?? ``).replace(/;$/, ``),
     }))
 
-  test(`lists each item's properties, in first-seen key order`, () => {
-    mount_gallery({ items: prop_items, layout: `horizontal` })
+  test(`lists each item's properties, in first-seen key order, units after the value`, () => {
+    mount_gallery({
+      items: prop_items,
+      layout: `horizontal`,
+      property_units: { energy: `eV` },
+    })
 
+    // the unit trails the value in its own lighter face, so the key stays a bare name
     expect(prop_cells().slice(0, 3)).toEqual([
-      { key: `energy`, value: `0.5`, style: `` },
+      { key: `energy`, value: `0.5eV`, style: `` },
       { key: `sites`, value: `4`, style: `` },
       { key: `spacegroup`, value: `Fm-3m`, style: `` },
     ])
+    expect(doc_query(`.card-properties dd small`).textContent).toBe(`eV`)
+    // only the key given a unit carries the suffix: one per rendered card
+    expect(document.querySelectorAll(`.card-properties dd small`)).toHaveLength(
+      prop_items.length,
+    )
     // no scheme asked for, so no value ranks and no pair is tinted
     expect(prop_cells().every((cell) => cell.style === ``)).toBe(true)
   })

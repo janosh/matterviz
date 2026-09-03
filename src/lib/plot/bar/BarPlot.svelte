@@ -954,13 +954,15 @@
         mode === `stacked`
           ? (stacked_offsets[hover_info.series_idx]?.[hover_info.bar_idx] ?? 0)
           : 0}
-      <!-- through value_scale_for, like the bars themselves: on a log value axis a bar at a
-      non-positive value still renders at the 1px floor, and the raw scale would anchor its
-      tooltip at NaN -->
-      {@const cx = value_scale_for(hover_info.active_x_axis === `x2` ? `x2` : `x`)(
+      {@const tip_x_key = hover_info.active_x_axis === `x2` ? `x2` : `x`}
+      {@const tip_y_key = hover_info.active_y_axis === `y2` ? `y2` : `y`}
+      <!-- Value axis via value_scale_for, like the bars: a non-positive value on a log axis
+      renders at the 1px floor where the raw scale would anchor the tooltip at NaN. The category
+      axis takes the bars' raw frame scale, so a log one cannot floor the anchor off its bar. -->
+      {@const cx = (vertical ? frame.scales[tip_x_key] : value_scale_for(tip_x_key))(
         hover_info.orient_x + (orientation === `horizontal` ? stack_base : 0),
       )}
-      {@const cy = value_scale_for(hover_info.active_y_axis === `y2` ? `y2` : `y`)(
+      {@const cy = (vertical ? value_scale_for(tip_y_key) : frame.scales.y)(
         hover_info.orient_y + (vertical ? stack_base : 0),
       )}
       <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->

@@ -1,6 +1,6 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import type { D3InterpolateName } from '$lib/colors'
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import { strip_compression_extensions } from '$lib/io/decompress'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { flatten_grid, type ScalarGrid3D } from './grid'
@@ -275,12 +275,8 @@ export function label_file_volumes(
   filename: string,
   source_filename = filename,
 ): VolumetricData[] {
-  // The bare regex, not strip_compression_extensions: this is a display label, and that
-  // helper lowercases (CHGCAR.zip -> chgcar). Repeated so `.chgcar.gz.zip` fully unwraps.
-  let source = filename
-  while (COMPRESSION_EXTENSIONS_REGEX.test(source)) {
-    source = source.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-  }
+  // Case-preserving: this is a display label, so `CHGCAR.zip` must not become `chgcar`
+  const source = strip_compression_extensions(filename, { lowercase: false })
   return volumes.map((vol, idx) => ({
     ...vol,
     source,

@@ -216,7 +216,7 @@ describe(`frame loading`, () => {
 })
 
 describe(`scrub vs commit`, () => {
-  it(`coalesces a slider burst into one rAF write and settles after the quiet period`, () => {
+  it(`coalesces a slider burst into one rAF write, settles after the quiet period, and no-ops on a non-finite index`, () => {
     const raf_callbacks: FrameRequestCallback[] = []
     const raf = vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((cb) => {
       raf_callbacks.push(cb)
@@ -246,6 +246,15 @@ describe(`scrub vs commit`, () => {
     session.commit(99)
     expect(host.index).toBe(19)
     session.commit(19) // no-op: no duplicate event
+    expect(events).toEqual([`step:9`, `step:12`, `step:19`])
+    // A non-finite index (an empty range input's valueAsNumber, or NaN from a zero-width
+    // layout) is a no-op, not a silent jump to frame 0
+    session.scrub(Number.NaN)
+    raf_callbacks.at(-1)?.(16)
+    flushSync()
+    expect(host.index).toBe(19)
+    session.commit(Number.NaN)
+    expect(host.index).toBe(19)
     expect(events).toEqual([`step:9`, `step:12`, `step:19`])
     raf.mockRestore()
     destroy()

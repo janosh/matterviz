@@ -1,4 +1,5 @@
 import {
+  classify_payload,
   decompress_data,
   decompress_file,
   decompress_trajectory_file,
@@ -178,13 +179,19 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
   })
 
   // Stripping `.zip` off `bundle.zip` named the CIF `bundle`, so every extension-keyed
-  // dispatcher missed it
-  test(`names a ZIP payload after its entry, not the archive`, async () => {
+  // dispatcher missed it. `names` also carries the URL basename after the dropped name, and
+  // only the payload's OWN name may decide text vs binary: matching ANY candidate let the
+  // `.h5` basename below force a plain CIF entry to ArrayBuffer.
+  test(`names a ZIP payload after its entry, not the archive or a sibling name, and keeps a binary payload's own name authoritative`, async () => {
     const zip = zipSync({ 'nested/a.cif': encode(`data_zipped`) })
-    expect(await decompress_file(new File([zip], `bundle.zip`))).toEqual({
-      content: `data_zipped`,
-      filename: `a.cif`,
-    })
+    const entry = { content: `data_zipped`, filename: `a.cif` }
+    expect(await decompress_file(new File([zip], `bundle.zip`))).toEqual(entry)
+    expect(await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`])).toEqual(
+      entry,
+    )
+    // and a payload whose own name IS binary still comes back as bytes
+    const traj = await classify_payload(new Blob([encode(`x`)]), [`run.traj`, `page.cif`])
+    expect(traj.content).toBeInstanceOf(ArrayBuffer)
   })
 
   // Wrapping a caller's abort as a decompression failure hid its name and reason

@@ -14,6 +14,12 @@ type PeakCurve = { x: number[]; y: number[] }
 // past anything plottable, and past it the fill loop stops being interruptible.
 export const MAX_BROADENING_GRID_POINTS = 1e7
 
+// Ceiling on the fill work, which the grid cap above does not bound: each peak walks a
+// 20*fwhm_fn(x0) window no caller bounds, so a few thousand peaks over a grid that itself
+// passes the cap reach ~5e10 uninterruptible iterations. 1e8 is ~1s; a 5000-reflection
+// pattern over the usual 4001-point grid costs 5e5.
+export const MAX_BROADENING_FILL_STEPS = 1e8
+
 // Accumulates pseudo-Voigt peaks onto a uniform grid, with the FWHM model supplied by the
 // caller. Unit-agnostic: the faint-peak cut is a fraction of the tallest peak and the reach
 // test uses each peak's own width, so callers need not adapt either to their x or intensity
@@ -78,9 +84,14 @@ export function broaden_peaks(
   // the cut does not shift when the caller narrows the window. Looped, not spread: a
   // supercell pattern carries thousands of reflections.
   let tallest = 0
-  for (const intensity of peak_int) {
-    // Both are silent otherwise: one NaN makes every grid point NaN, and one Infinity puts
-    // the floor at Infinity, dropping every real peak for an empty curve
+  for (let idx = 0; idx < peak_int.length; idx++) {
+    const [x0, intensity] = [peak_pos[idx], peak_int[idx]]
+    // All three are silent otherwise: a NaN intensity makes every grid point NaN, an Infinite
+    // one puts the floor at Infinity and drops every real peak, and a non-finite position
+    // fails both reach tests below, leaving a curve identical to one without that peak.
+    if (!Number.isFinite(x0)) {
+      throw new TypeError(`peak positions must be finite, got ${x0} at index ${idx}`)
+    }
     if (!Number.isFinite(intensity)) {
       throw new TypeError(`peak intensities must be finite, got ${intensity}`)
     }
@@ -88,6 +99,7 @@ export function broaden_peaks(
   }
   const intensity_floor = 1e-5 * tallest
 
+  let fill_steps = 0
   for (let peak_idx = 0; peak_idx < peak_pos.length; peak_idx++) {
     const x0 = peak_pos[peak_idx]
     const intensity = peak_int[peak_idx]
@@ -117,6 +129,15 @@ export function broaden_peaks(
     if (x0 + window < min_x || x0 - window > max_x) continue
     const start_idx = Math.max(0, Math.floor((x0 - window - min_x) / step_size))
     const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_x) / step_size))
+    // Counted while filling: a measuring pre-pass would itself be unbounded work
+    fill_steps += end_idx - start_idx + 1
+    if (fill_steps > MAX_BROADENING_FILL_STEPS) {
+      throw new Error(
+        `broaden_peaks: ${peak_pos.length} peaks over a ${n_steps}-point grid pass the ` +
+          `${MAX_BROADENING_FILL_STEPS} accumulation steps cap. Narrow the range, widen ` +
+          `step_size, or return smaller widths from fwhm_fn.`,
+      )
+    }
 
     // Area-normalized pseudo-Voigt: shape_factor mixes Lorentzian (1) into Gaussian (0).
     // Per-peak constants hoisted out of the grid loop.

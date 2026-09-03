@@ -5,9 +5,14 @@ import {
 } from '$lib/constants'
 import { has_gzip_magic, has_hdf5_magic, is_binary_payload } from './is-binary'
 
-// Lowercase a filename and strip all trailing compression extensions (.gz, .zip, ...)
-export function strip_compression_extensions(filename: string): string {
-  let base_name = filename.toLowerCase()
+// Strip every trailing compression extension (.gz, .zip, ...), repeatedly so `.chgcar.gz.zip`
+// fully unwraps. Lowercases by default for the case-insensitive format probes most callers
+// feed it to; pass `lowercase: false` when the result names a file a user sees.
+export function strip_compression_extensions(
+  filename: string,
+  { lowercase = true }: { lowercase?: boolean } = {},
+): string {
+  let base_name = lowercase ? filename.toLowerCase() : filename
   while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
     base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
   }
@@ -247,7 +252,9 @@ export async function classify_payload(
   const gzip_magic = gzip_by_magic && has_gzip_magic(new Uint8Array(await head(2)))
   const format = gzip_magic ? `gzip` : compression_wrapper_of(names, source)
   // Either way the payload is now the inner file, so name it accordingly
-  const stripped = names.map((name) => name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
+  const stripped = names.map((name) =>
+    strip_compression_extensions(name, { lowercase: false }),
+  )
   // In by-magic mode a named gzip/deflate wrapper without gzip bytes was inflated in transit,
   // so only ZIP is still decompressed by name there
   if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
@@ -262,7 +269,10 @@ export async function classify_payload(
     const filename = stripped.find(is_hdf5_filename) ?? `${stripped.find(Boolean) ?? ``}.h5`
     return { content: blob, filename }
   }
-  const is_binary = stripped.some((name) => is_binary_payload(name, magic))
+  // Only the payload's OWN name decides (the ZIP entry, unshifted to the front above, or the
+  // dropped name): matching any candidate let a URL or archive basename force a text entry's
+  // bytes to ArrayBuffer
+  const is_binary = is_binary_payload(stripped[0] ?? ``, magic)
   return {
     content: is_binary ? await blob.arrayBuffer() : await blob.text(),
     filename: stripped[0],

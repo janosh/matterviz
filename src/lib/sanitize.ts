@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './composition/format'
+import { STRING_CACHE_LIMIT } from './labels'
 import { escape_html } from './utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
@@ -153,8 +154,10 @@ const sanitize_cache = new Map<string, string>()
 // FIFO like contrast_color_memo: a wholesale clear made a working set just over the limit
 // recompute every axis label next render. Map iterates insertion order, so first key is oldest.
 const cache_sanitize = (key: string, result: string): string => {
-  if (sanitize_cache.size >= 4096)
-    sanitize_cache.delete(sanitize_cache.keys().next().value ?? ``)
+  if (sanitize_cache.size >= STRING_CACHE_LIMIT) {
+    const [oldest] = sanitize_cache.keys()
+    sanitize_cache.delete(oldest)
+  }
   sanitize_cache.set(key, result)
   return result
 }

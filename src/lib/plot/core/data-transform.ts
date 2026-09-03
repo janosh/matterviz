@@ -32,17 +32,12 @@ type LegendSeries = { label?: string | null; visible?: boolean; legend_group?: s
 export function build_legend_items<Series extends LegendSeries>(
   series: readonly Series[],
   display_style: (series_data: Series, series_idx: number) => LegendItem[`display_style`],
-  opts: {
-    default_label?: (series_idx: number) => string
-    label?: (series_data: Series, series_idx: number) => string | null | undefined
-  } = {},
+  opts: { default_label?: (series_idx: number) => string } = {},
 ): LegendItem[] {
-  const { default_label = (idx: number) => `Series ${idx + 1}`, label } = opts
+  const { default_label = (idx: number) => `Series ${idx + 1}` } = opts
   return series.map((series_data, series_idx) => ({
     series_idx,
-    label:
-      (label ? label(series_data, series_idx) : series_data?.label) ??
-      default_label(series_idx),
+    label: series_data?.label ?? default_label(series_idx),
     visible: series_data?.visible ?? true,
     legend_group: series_data?.legend_group,
     display_style: display_style(series_data, series_idx),

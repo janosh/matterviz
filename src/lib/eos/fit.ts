@@ -2,7 +2,7 @@
 // Birch–Murnaghan (3rd order), Murnaghan and Vinet forms, and a least-squares fit of their four
 // parameters (E0, V0, B0, B0') by Levenberg–Marquardt seeded from a parabola through the data.
 // Energies in eV, volumes in A^3, so B0 comes out in eV/A^3 (× EV_PER_A3_TO_GPA for GPa).
-import { dot, solve_linear_system } from '$lib/math'
+import { array_max, array_min, dot, solve_linear_system } from '$lib/math'
 
 export const EOS_KINDS = [`birch_murnaghan`, `murnaghan`, `vinet`] as const
 export type EosKind = (typeof EOS_KINDS)[number]
@@ -246,7 +246,7 @@ export function fit_eos(
   // V0 outside the scanned volumes is an extrapolation the data cannot support and B0' <= 1
   // sits on the 1/(B0' - 1)^2 pole of the Murnaghan and Vinet forms: a 20 meV-noise Cu-like
   // 9-point scan returned V0 = 9.82 A^3, B0' = 42.7 for a truth of V0 = 40, B0' = 4.5
-  const [v_min, v_max] = [Math.min(...volumes), Math.max(...volumes)]
+  const [v_min, v_max] = [array_min(volumes), array_max(volumes)]
   if (v0 < v_min || v0 > v_max || b0_prime <= 1) {
     throw new Error(
       `EOS fit (${kind}) is unphysical: V0 = ${v0} A^3 must lie inside the scanned range [${v_min}, ${v_max}] A^3 and B0' = ${b0_prime} must exceed 1`,

@@ -334,7 +334,7 @@ describe(`XrdPlot`, () => {
     expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)
   })
 
-  test(`broadening controls bind one number input per Caglioti parameter`, async () => {
+  test(`broadening controls bind one number input per Caglioti parameter, and an invalid FWHM banners instead of blanking`, async () => {
     const target = await mount_xrd({
       patterns: pattern,
       broadening_enabled: true,
@@ -352,6 +352,27 @@ describe(`XrdPlot`, () => {
       [`0`, ``],
       [`0`, `1`],
     ])
+
+    // V^2 <= 4UW couples all three, so no static `min` keeps the FWHM^2 radicand positive:
+    // W dragged to its own allowed minimum throws at 2theta = 10 deg, and the uncaught throw
+    // used to blank the whole component. Now the parameters are named and the plot survives.
+    const set_w = async (value: string) => {
+      inputs[2].value = value
+      inputs[2].dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      const paths = [...target.querySelectorAll(`svg path`)]
+      return [
+        target.querySelector(`.status-message.error`)?.textContent ?? ``,
+        paths.filter((path) => (path.getAttribute(`d`) ?? ``).length > 1000).length,
+      ] as const
+    }
+    expect(await set_w(`0`)).toEqual([
+      expect.stringMatching(/Caglioti FWHM.*U=0\.04, V=-0\.02, W=0/),
+      0,
+    ])
+    expect(target.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+    // and it CLEARS on the next valid W, profile and all - a thrown error could not come back
+    expect(await set_w(`0.02`)).toEqual([``, 1])
   })
 
   test(`dragover class toggles correctly`, async () => {

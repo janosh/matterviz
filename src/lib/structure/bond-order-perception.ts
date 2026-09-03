@@ -320,7 +320,16 @@ export function perceive_bond_orders(
       (product, valence_list) => product * valence_list.length,
       1,
     )
-    if (combo_count * valence_lists.length > MAX_VALENCE_PICKS) continue
+    const pick_count = combo_count * valence_lists.length
+    if (pick_count > MAX_VALENCE_PICKS) {
+      // Console, no WarnFn here: silently drawing benzene as all-single bonds is wrong data
+      console.warn(
+        `Bond-order perception skipped fragment ${frag_idx} (${frag.length} atoms, ` +
+          `${local_edges.length} bonds): ${pick_count} valence picks exceed the ` +
+          `${MAX_VALENCE_PICKS}-pick cap, so its bonds stay single-order and unperceived`,
+      )
+      continue
+    }
     let solved: BondOrderSolution | null = null
     for (const target of valence_combinations(valence_lists)) {
       const candidate = assign_bond_orders(local_edges, target)
