@@ -776,6 +776,9 @@ export function strip_closing_faces(positions: ArrayLike<number>): Float32Array 
 // elongated and adjacent domains. Where several coplanar domains share the supporting plane,
 // their outlines separate them; centroid distance is the last resort and only degenerate
 // input (a domain that is a line or a point, which bounds no face) reaches it.
+// Testing point-in-polyhedron containment instead looks more general and measures worse,
+// 63/92 faces against 92/92: projecting a quaternary onto three elements makes domains
+// overlap, so several contain a face that only one of them bounds.
 export function assign_faces_to_domains(
   face_positions: ArrayLike<number>,
   domains: { formula: string; points: number[][] }[],

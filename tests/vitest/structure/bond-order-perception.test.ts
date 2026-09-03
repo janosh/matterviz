@@ -85,6 +85,15 @@ describe(`perceive_bond_orders on small molecules`, () => {
       coords: Array.from({ length: 20 }, (_, idx) => [idx * 2, 0, 0] as Vec3),
       edges: Array.from({ length: 19 }, (_, idx) => [idx, idx + 1] as Vec2),
       expected: Array(19).fill(1), perceived: false },
+    // The pick budget is deliberately MORE permissive than the old 4096-COMBINATION cap in the
+    // few-atoms/many-valences corner: 3^8 = 6561 combinations refused S8, the standard form of
+    // elemental sulfur, so a real molecule fell back to single bonds instead of solving to them.
+    // `perceived: true` is the whole point of this row — tightening the cap would flip it.
+    { name: `cyclooctasulfur S8`, elements: Array.from({ length: 8 }, (): ElementSymbol => `S`),
+      coords: Array.from({ length: 8 }, (_, idx): Vec3 =>
+        [Math.cos(idx * Math.PI / 4) * 2.7, Math.sin(idx * Math.PI / 4) * 2.7, 0]),
+      edges: Array.from({ length: 8 }, (_, idx) => [idx, (idx + 1) % 8] as Vec2),
+      expected: Array(8).fill(1), perceived: true },
     // inside the pick budget: 12 N give 2^12 = 4096 combinations at any chain length, so this
     // one enumerates; no valence-consistent assignment exists (the terminal C cannot reach 4)
     { name: `12-nitrogen 200-atom chain`, ...n12_chain(200),
