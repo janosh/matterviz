@@ -175,7 +175,11 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     const { has_temp_data, available_temperatures } = temp_analysis
     if (
       has_temp_data &&
-      (temperature === undefined || !available_temperatures.includes(temperature))
+      (temperature === undefined ||
+        !(inputs.interpolate_temperature()
+          ? temperature >= available_temperatures[0] &&
+            temperature <= available_temperatures[available_temperatures.length - 1]
+          : available_temperatures.includes(temperature)))
     )
       inputs.set_temperature(available_temperatures[0])
   })
@@ -373,6 +377,9 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     },
     get available_temperatures() {
       return temp_analysis.available_temperatures
+    },
+    get interpolate_temperature() {
+      return inputs.interpolate_temperature()
     },
     get gas_analysis() {
       return gas_result.analysis

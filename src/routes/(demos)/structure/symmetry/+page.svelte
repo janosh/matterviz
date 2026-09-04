@@ -1,7 +1,12 @@
 <script lang="ts">
   import EmptyState from '$lib/EmptyState.svelte'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { Structure } from '$lib/structure'
+  import {
+    is_crystal,
+    parse_supercell_scaling,
+    Structure,
+    type AnyStructure,
+  } from '$lib/structure'
   import type {
     CellType,
     ShowSymmetryKinds,
@@ -50,6 +55,8 @@
   // the input-cell (original) frame: the viewer only draws the overlay while that frame is
   // rendered, and the controls say so while a conventional/primitive cell is shown.
   let top_ex_cell_type = $state<CellType>(`original`)
+  let top_ex_structure = $state<AnyStructure>()
+  let top_ex_tiling = $state(`1x1x1`)
   const sym_elements = $derived(
     show_sym_elements && top_ex_sym_data
       ? symmetry_elements_from_ops(top_ex_sym_data.operations ?? [])
@@ -123,6 +130,8 @@
           elements={sym_elements}
           bind:show_kinds={show_sym_kinds}
           in_input_frame={top_ex_cell_type === `original`}
+          tiling={parse_supercell_scaling(top_ex_tiling)}
+          lattice={is_crystal(top_ex_structure) ? top_ex_structure.lattice.matrix : undefined}
           style="margin: 0.5em 0 0 1.5em"
         />
       {/if}
@@ -140,6 +149,8 @@
     bind:sym_data={top_ex_sym_data}
     bind:symmetry_settings={wide_example_symmetry_settings}
     bind:cell_type={top_ex_cell_type}
+    bind:structure={top_ex_structure}
+    bind:supercell_scaling={top_ex_tiling}
     scene_props={{
       active_sites: active_wyckoff_sites,
       selected_sites: hovered_wyckoff_sites,

@@ -1337,7 +1337,12 @@
     </ScatterPlot3DControls>
   </ViewerChrome>
   {#if has_temp_data && temperature !== undefined}
-    <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
+    <TemperatureSlider
+      class="chempot-temp-slider"
+      {available_temperatures}
+      interpolate_temperature={config.interpolate_temperature}
+      bind:temperature
+    />
   {/if}
   {#if !diagram_data}
     {#if diagram_computing}

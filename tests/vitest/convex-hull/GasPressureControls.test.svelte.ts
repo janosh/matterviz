@@ -90,16 +90,16 @@ describe(`GasPressureControls`, () => {
   })
 })
 
-// TemperatureSlider shares VerticalSlider with the gas controls: its range input runs over
-// indices into the tabulated temperatures and drags commit at most every 100 ms
+// TemperatureSlider shares VerticalSlider with gas controls; drags commit at most every 100 ms.
 describe(`TemperatureSlider`, () => {
   const available_temperatures = [300, 400, 500, 600, 700, 800, 900]
-  const mount_slider = (temperature = 300) => {
+  const mount_slider = (temperature = 300, interpolate_temperature = false) => {
     const state = $state({ temperature })
     mount(TemperatureSlider, {
       target: document.body,
       props: {
         available_temperatures,
+        interpolate_temperature,
         get temperature() {
           return state.temperature
         },
@@ -134,10 +134,13 @@ describe(`TemperatureSlider`, () => {
     expect(readout()?.value).toBe(`900`)
   })
 
-  test(`typed temperature snaps to the closest tabulated value`, () => {
-    const state = mount_slider(300)
+  test.each([false, true])(`typed temperature with interpolation=%s`, (interpolate) => {
+    const state = mount_slider(450, interpolate)
+    expect(readout()?.value).toBe(interpolate ? `450` : `300`)
     fire(readout(), `change`, `640`)
-    expect(state.temperature).toBe(600)
-    expect(range()?.value).toBe(`3`)
+    expect(state.temperature).toBe(interpolate ? 640 : 600)
+    expect(range()?.value).toBe(interpolate ? `640` : `3`)
+    fire(readout(), `change`, ``)
+    expect(state.temperature).toBe(interpolate ? 640 : 600)
   })
 })

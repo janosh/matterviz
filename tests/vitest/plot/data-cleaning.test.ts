@@ -199,6 +199,24 @@ describe(`clean_series`, () => {
     { label: `interior`, y: [0, NaN, NaN, NaN, 8], cleaned: [0, 2, 4, 6, 8], count: 3 },
     { label: `all missing`, y: [NaN, NaN], cleaned: [0, 0], count: 2 },
     {
+      label: `opposite extremes`,
+      y: [-1e308, NaN, 1e308],
+      cleaned: [-1e308, 0, 1e308],
+      count: 1,
+    },
+    {
+      label: `same-sign extremes`,
+      y: [1e308, NaN, 1.5e308],
+      cleaned: [1e308, 1.25e308, 1.5e308],
+      count: 1,
+    },
+    {
+      label: `subnormal endpoints`,
+      y: [Number.MIN_VALUE, NaN, Number.MIN_VALUE],
+      cleaned: Array<number>(3).fill(Number.MIN_VALUE),
+      count: 1,
+    },
+    {
       label: `long gap`,
       y: [7, ...Array<number>(2048).fill(NaN), 7],
       cleaned: Array<number>(2050).fill(7),

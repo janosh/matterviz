@@ -147,15 +147,46 @@ describe(`SymmetryElementControls`, () => {
 
   // The viewer blanks the overlay outside the analyzed (input) cell; the toggles must say so
   // rather than look like they stopped working
-  test.each([true, false])(
-    `in_input_frame=%s disables toggles and notes why`,
-    (in_input_frame) => {
-      mount_controls({ elements: SAMPLE_ELEMENTS, in_input_frame })
+  test.each([
+    { in_input_frame: true, repeats: 1, reason: null },
+    { in_input_frame: false, repeats: 1, reason: SYM_ELEMENTS_INPUT_FRAME_NOTE },
+    { in_input_frame: true, repeats: 4001, reason: `exceeds 4000 unique elements` },
+  ])(
+    `in_input_frame=$in_input_frame, repeats=$repeats explains unavailable toggles`,
+    ({ in_input_frame, repeats, reason }) => {
+      mount_controls({
+        elements: SAMPLE_ELEMENTS,
+        in_input_frame,
+        lattice: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
+        tiling: [repeats, 1, 1],
+      })
       const inputs = [...document.body.querySelectorAll(`input`)]
       expect(inputs).toHaveLength(6)
-      expect(inputs.every((inp) => inp.disabled === !in_input_frame)).toBe(true)
+      expect(
+        inputs.every(
+          (inp) => inp.disabled === (!in_input_frame || (repeats > 1 && !inp.checked)),
+        ),
+      ).toBe(true)
       const note = document.body.querySelector(`.frame-note`)?.textContent ?? null
-      expect(note).toBe(in_input_frame ? null : SYM_ELEMENTS_INPUT_FRAME_NOTE)
+      if (reason) {
+        expect(note).toContain(reason)
+        for (const input of inputs) {
+          expect(
+            document.querySelector(`[id="${input.getAttribute(`aria-describedby`)}"]`)
+              ?.textContent,
+          ).toContain(reason)
+        }
+      } else expect(note).toBeNull()
+      if (repeats > 1) {
+        const checked = inputs.find((input) => input.checked)
+        checked?.click()
+        flushSync()
+        expect(checked?.checked).toBe(false)
+      }
     },
   )
 })

@@ -665,40 +665,54 @@ export function clip_plane_to_cell(
 
 // Bound merged geometry allocation after removing redundant copies.
 export const MAX_TILED_SYM_ELEMENTS = 4000
+const MAX_TILING_VISITS = 1_000_000
 
 // Deduplicate translations along planes/axes, but retain every translated center marker.
 // Plane offsets use the Cartesian metric (n_eq · offset); line parallelism is affine.
 // Identity keeps different operations sharing a locus distinct.
-const tiled_element_key = (
-  element: SymmetryElement,
-  offset: Vec3,
-  lattice: Matrix3x3,
-): string => {
+const tiled_element_key = (element: SymmetryElement, lattice: Matrix3x3) => {
   const identity = `${element.kind}|${element.label}|${element.order}|${element.locus}`
   const { axis, kind } = element
+  let key = (offset: Vec3): string => offset.join(`,`)
+  let partial_key = key
+  let changes = [true, true, true]
   if (axis && (kind === `mirror` || kind === `glide`)) {
     const n_eq = math.dot(lattice, math.create_frac_to_cart(lattice)(axis))
+    const norm = Math.hypot(...n_eq)
     // Quantize normalized offsets at 1e-10 cell units, below the clipper's 1e-7 tolerance.
     // Exact keys split coincident planes for cells built from angles (cos(π/2) ≠ 0).
-    return `${identity}|${Math.round((math.dot(n_eq, offset) / Math.hypot(...n_eq)) * 1e10)}`
+    key = (offset) => String(Math.round((math.dot(n_eq, offset) / norm) * 1e10))
+    // Round only complete offsets: merging rounded partial sums can lose a plane after
+    // a later axis shifts it across the rounding boundary.
+    partial_key = (offset) => String(math.dot(n_eq, offset))
+    changes = n_eq.map((component) => component !== 0)
+  } else if (axis && (kind === `rotation` || kind === `screw`)) {
+    key = (offset) => math.cross_3d(offset, axis).join(`,`)
+    partial_key = key
+    changes = axis.map((_, idx) =>
+      axis.some((component, other) => other !== idx && component !== 0),
+    )
   }
-  if (axis && (kind === `rotation` || kind === `screw`)) {
-    return `${identity}|${math.cross_3d(offset, axis).join(`,`)}`
-  }
-  return `${identity}|${offset.join(`,`)}`
+  return { key: (offset: Vec3) => `${identity}|${key(offset)}`, partial_key, changes }
 }
 
 // Translate elements through the block, then divide coordinates/directions by tile counts
-// to express them in the block basis. The 1x1x1 path preserves identity; oversized overlays
-// throw rather than stretching unit-cell coordinates across the block.
+// to express them in the block basis. Deduplicate after each axis to avoid walking every tile.
+// Refusal returns a visible reason, never a partial overlay or a render-time exception.
 export function tile_symmetry_elements(
   elements: SymmetryElement[],
   tiling: Vec3,
   lattice: Matrix3x3,
-): SymmetryElement[] {
+): { elements: SymmetryElement[]; unavailable_reason: string | null } {
   const counts = tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3
   const n_tiles = counts[0] * counts[1] * counts[2]
-  if (n_tiles === 1) return elements
+  const unavailable = (reason: string) => ({
+    elements: [],
+    unavailable_reason: `Symmetry overlay for tiling ${counts.join(`x`)} ${reason}. Reduce the supercell or hide element kinds.`,
+  })
+  if (!counts.every(Number.isFinite)) return unavailable(`needs finite repeat counts`)
+  if (!elements.length || (n_tiles === 1 && elements.length <= MAX_TILED_SYM_ELEMENTS))
+    return { elements, unavailable_reason: null }
   const shrink = (vec: Vec3): Vec3 => [
     vec[0] / counts[0],
     vec[1] / counts[1],
@@ -706,28 +720,40 @@ export function tile_symmetry_elements(
   ]
   const tiled: SymmetryElement[] = []
   const seen = new Set<string>()
-  for (let cell_c = 0; cell_c < counts[2]; cell_c++) {
-    for (let cell_b = 0; cell_b < counts[1]; cell_b++) {
-      for (let cell_a = 0; cell_a < counts[0]; cell_a++) {
-        const offset: Vec3 = [cell_a, cell_b, cell_c]
-        for (const element of elements) {
-          const key = tiled_element_key(element, offset, lattice)
-          if (seen.has(key)) continue
-          if (tiled.length >= MAX_TILED_SYM_ELEMENTS) {
-            throw new Error(
-              `Symmetry overlay for tiling ${counts.join(`x`)} exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements (${elements.length} input elements)`,
-            )
-          }
-          seen.add(key)
-          tiled.push({
-            ...element,
-            point: shrink(element.point.map((coord, axis) => coord + offset[axis]) as Vec3),
-            axis: element.axis && shrink(element.axis),
-            translation: element.translation && shrink(element.translation),
-          })
+  let visits = 0
+  for (const element of elements) {
+    const { key, partial_key, changes } = tiled_element_key(element, lattice)
+    let offsets: Vec3[] = [[0, 0, 0]]
+    const axes = [2, 1, 0].filter((axis) => counts[axis] > 1 && changes[axis])
+    for (const [axis_idx, axis] of axes.entries()) {
+      const final_axis = axis_idx === axes.length - 1
+      const unique = new Map<string, Vec3>()
+      for (const offset of offsets) {
+        for (let step = 0; step < counts[axis]; step++) {
+          if (++visits > MAX_TILING_VISITS) return unavailable(`exceeds the tiling work limit`)
+          const shifted: Vec3 = [...offset]
+          shifted[axis] = step
+          const locus = final_axis ? key(shifted) : partial_key(shifted)
+          if (!unique.has(locus)) unique.set(locus, shifted)
+          if (final_axis && unique.size > MAX_TILED_SYM_ELEMENTS)
+            return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)
         }
       }
+      offsets = [...unique.values()]
+    }
+    for (const offset of offsets) {
+      const locus = key(offset)
+      if (seen.has(locus)) continue
+      if (tiled.length >= MAX_TILED_SYM_ELEMENTS)
+        return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)
+      seen.add(locus)
+      tiled.push({
+        ...element,
+        point: shrink(element.point.map((coord, axis) => coord + offset[axis]) as Vec3),
+        axis: element.axis && shrink(element.axis),
+        translation: element.translation && shrink(element.translation),
+      })
     }
   }
-  return tiled
+  return { elements: tiled, unavailable_reason: null }
 }

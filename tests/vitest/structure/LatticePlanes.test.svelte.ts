@@ -2,6 +2,8 @@
 // family, disposed when the families change
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import LatticePlanes from '$lib/structure/LatticePlanes.svelte'
+import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
+import type { SymmetryElement } from '$lib/symmetry'
 import type { LatticePlane } from '$lib/structure/lattice-planes'
 import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
@@ -12,6 +14,9 @@ import { threlte_stub } from '../isosurface/threlte-stub'
 vi.mock(`@threlte/core`, async (original) => ({
   ...(await original<typeof threlte_core>()),
   T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
+}))
+vi.mock(`@threlte/extras`, async () => ({
+  HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
 }))
 
 const cubic: Matrix3x3 = [
@@ -39,6 +44,36 @@ const vertex_counts = (tag: string) =>
   threlte_stub.nodes
     .filter((node) => node.tag === tag)
     .map((node) => (node.props.geometry as BufferGeometry).getAttribute(`position`).count)
+
+test(`symmetry overlays explain oversized tiling, dispose geometry, and recover`, () => {
+  const element: SymmetryElement = {
+    kind: `rotation`,
+    order: 2,
+    label: `2`,
+    locus: `z-axis`,
+    point: [0, 0, 0],
+    axis: [0, 0, 1],
+    translation: null,
+  }
+  const props = $state({ elements: [element], lattice: cubic, tiling: [1, 1, 1] as Vec3 })
+  const component = mount(SymmetryElements, { target: document.body, props })
+  teardown = () => void unmount(component)
+  flushSync()
+  const geometry = threlte_stub.nodes.find((node) => node.props.geometry)?.props
+    .geometry as BufferGeometry
+  const dispose = vi.spyOn(geometry, `dispose`)
+  props.tiling = [4001, 1, 1]
+  flushSync()
+  expect(document.querySelector(`[role="status"]`)?.textContent).toContain(
+    `exceeds 4000 unique elements`,
+  )
+  expect(threlte_stub.nodes.filter((node) => node.props.geometry)).toHaveLength(0)
+  expect(dispose).toHaveBeenCalledOnce()
+  props.tiling = [1, 1, 1]
+  flushSync()
+  expect(document.querySelector(`[role="status"]`)).toBeNull()
+  expect(threlte_stub.nodes.filter((node) => node.props.geometry)).toHaveLength(1)
+})
 
 test(`draws one fan-triangulated fill and one outline per family and disposes them on change`, () => {
   const props = mount_planes([{ hkl: [1, 0, 0] }, { hkl: [1, 1, 1], offsets: [1.5] }])

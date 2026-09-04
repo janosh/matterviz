@@ -6,6 +6,7 @@ only drawn while the viewer renders the analyzed (input) cell; pass `in_input_fr
 while a conventional/primitive cell is shown to disable the toggles and say why. -->
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { Matrix3x3, Vec3 } from '$lib/math'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     count_symmetry_elements,
@@ -13,32 +14,64 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
     SYM_ELEM_KIND_INFO,
     SYM_ELEM_KINDS,
     SYM_ELEMENTS_INPUT_FRAME_NOTE,
+    tile_symmetry_elements,
   } from './symmetry-elements'
 
   let {
     elements = [],
     show_kinds = $bindable({ ...DEFAULT_SHOW_SYM_KINDS }),
     in_input_frame = true,
+    tiling = [1, 1, 1],
+    lattice,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     elements?: SymmetryElement[]
     show_kinds?: ShowSymmetryKinds
     // Whether the viewer currently renders the original (input) cell the elements belong to
     in_input_frame?: boolean
+    tiling?: Vec3
+    lattice?: Matrix3x3
   } = $props()
 
   const counts = $derived(count_symmetry_elements(elements))
   const present_kinds = $derived(SYM_ELEM_KINDS.filter((kind) => counts[kind]))
+  const hint_id = $props.id()
+  const reasons = $derived(
+    Object.fromEntries(
+      present_kinds.map((kind) => [
+        kind,
+        !in_input_frame
+          ? SYM_ELEMENTS_INPUT_FRAME_NOTE
+          : lattice
+            ? tile_symmetry_elements(
+                elements.filter(
+                  (element) => show_kinds[element.kind] || element.kind === kind,
+                ),
+                tiling,
+                lattice,
+              ).unavailable_reason
+            : tiling.some((count) => count > 1)
+              ? `Provide the input lattice to preview tiled symmetry elements.`
+              : null,
+      ]),
+    ),
+  )
+  const messages = $derived([
+    ...new Set(Object.values(reasons).filter((reason) => reason !== null)),
+  ])
 </script>
 
 {#if present_kinds.length > 0}
   <div {...rest} class={[`sym-elem-controls`, rest.class]}>
     {#each present_kinds as kind (kind)}
-      <label class:disabled={!in_input_frame}>
+      {@const reason = reasons[kind]}
+      {@const disabled = !in_input_frame || Boolean(reason && !show_kinds[kind])}
+      <label class:disabled>
         <input
           type="checkbox"
           checked={show_kinds[kind] ?? false}
-          disabled={!in_input_frame}
+          {disabled}
+          aria-describedby={reason ? `${hint_id}-${messages.indexOf(reason)}` : undefined}
           onchange={(evt) =>
             // Reassign (not mutate) so bound parents always see the change
             (show_kinds = { ...show_kinds, [kind]: evt.currentTarget.checked })}
@@ -47,9 +80,9 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
         {SYM_ELEM_KIND_INFO[kind].label} ({counts[kind]})
       </label>
     {/each}
-    {#if !in_input_frame}
-      <small class="frame-note">{SYM_ELEMENTS_INPUT_FRAME_NOTE}</small>
-    {/if}
+    {#each messages as message, idx}
+      <small id={`${hint_id}-${idx}`} class="frame-note">{message}</small>
+    {/each}
   </div>
 {/if}
 

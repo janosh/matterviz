@@ -176,6 +176,13 @@ interface Competitor {
   driving_force: number
 }
 
+// One prepared phase set/request only. Preserve pair order: LP coefficients depend on it.
+export const create_thermo_cache = () => ({
+  gas_mu: new Map<string, number>(),
+  pairs: new Map<PlannerPhase, Map<PlannerPhase, Map<PlannerPhase, Competitor[]>>>(),
+})
+type ThermoCache = ReturnType<typeof create_thermo_cache>
+
 // Phases (other than the precursors, the target and gases) that can form from the precursor
 // mixture with a negative driving force, strongest first. Phases may form from a subset of the
 // precursors, so single-precursor decomposition products are included.
@@ -285,15 +292,27 @@ export function analyze_selectivity(
   gases: PlannerPhase[],
   phases: PlannerPhase[],
   target_driving_force: number,
+  cache?: ThermoCache,
 ): SelectivityMetrics {
-  const competitors = find_competitors(precursors, target, gases, phases)
+  const competitors_for = (mixture: PlannerPhase[]): Competitor[] => {
+    if (!cache || mixture.length !== 2) return find_competitors(mixture, target, gases, phases)
+    const [first, second] = mixture
+    let by_first = cache.pairs.get(target)
+    if (!by_first) cache.pairs.set(target, (by_first = new Map()))
+    let by_second = by_first.get(first)
+    if (!by_second) by_first.set(first, (by_second = new Map()))
+    let found = by_second.get(second)
+    if (!found)
+      by_second.set(second, (found = find_competitors(mixture, target, gases, phases)))
+    return found
+  }
+  const competitors = competitors_for(precursors)
   const interfaces: PairwiseInterface[] = []
   for (let idx_a = 0; idx_a < precursors.length; idx_a++) {
     for (let idx_b = idx_a + 1; idx_b < precursors.length; idx_b++) {
       const pair = [precursors[idx_a], precursors[idx_b]]
       // For a two-precursor route the pair is the whole mixture: reuse its competitors
-      const pair_competitors =
-        precursors.length === 2 ? competitors : find_competitors(pair, target, gases, phases)
+      const pair_competitors = precursors.length === 2 ? competitors : competitors_for(pair)
       interfaces.push(pairwise_interface(pair, target, gases, pair_competitors))
     }
   }
@@ -327,8 +346,11 @@ export function reaction_energy_at_temperature(
   gases: PlannerPhase[],
   gas_species: GasSpecies[],
   conditions: SynthesisConditions,
+  cache?: ThermoCache,
 ): (temperature: number) => number {
   const provider = conditions.gas_provider ?? get_default_gas_provider()
+  // Custom providers may be stateful; preserve their call order and count.
+  const samples = conditions.gas_provider ? undefined : cache?.gas_mu
   const solid_part =
     balanced.energy_per_fu -
     gases.reduce(
@@ -342,7 +364,11 @@ export function reaction_energy_at_temperature(
       const species = gas_species[idx]
       const pressure =
         conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]
-      const mu = compute_gas_chemical_potential(provider, species, temperature, pressure)
+      const key = `${species}:${temperature}:${pressure}`
+      const mu =
+        samples?.get(key) ??
+        compute_gas_chemical_potential(provider, species, temperature, pressure)
+      samples?.set(key, mu)
       return sum + balanced.gas_exchange[idx] * mu * gas.n_atoms_per_fu
     }, 0)
 }

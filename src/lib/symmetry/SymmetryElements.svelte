@@ -38,6 +38,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   } from './symmetry-elements'
 
   import { T } from '@threlte/core'
+  import { HTML } from '@threlte/extras'
   import {
     BufferAttribute,
     BufferGeometry,
@@ -87,13 +88,14 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // Everything below clips against the unit cube of `cell`, so the block's own cell vectors
   // plus block-frame elements extend the overlay over every tile
   let cell = $derived(math.scale_lattice_matrix(lattice, tiling))
-  let tiled_elements = $derived(
+  let tiling_result = $derived(
     tile_symmetry_elements(
       elements.filter((element) => show_kinds[element.kind]),
       tiling,
       lattice,
     ),
   )
+  let tiled_elements = $derived(tiling_result.elements)
 
   const UNIT_SCALE = new Vector3(1, 1, 1)
 
@@ -296,6 +298,17 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // Dispose the (non-reactive) stripe texture on unmount
   $effect(() => () => stripe_texture.dispose())
 </script>
+
+{#if tiling_result.unavailable_reason}
+  <HTML zIndexRange={[1000, 1000]}>
+    <div
+      role="status"
+      style="background: var(--surface-bg, white); padding: 0.5em; width: 20em"
+    >
+      {tiling_result.unavailable_reason}
+    </div>
+  </HTML>
+{/if}
 
 {#each axis_groups as group, idx (idx)}
   <T.Mesh geometry={group.geometry}>

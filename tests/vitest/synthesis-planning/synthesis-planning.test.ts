@@ -27,7 +27,10 @@ import type {
   SynthesisReaction,
 } from '$lib/synthesis-planning'
 import { plan_synthesis_with_progress } from '$lib/synthesis-planning/plan'
-import { describe, expect, test } from 'vitest'
+import { create_thermo_cache } from '$lib/synthesis-planning/thermo'
+import { get_default_gas_provider } from '$lib/convex-hull/gas-thermodynamics'
+import * as math from '$lib/math'
+import { describe, expect, test, vi } from 'vitest'
 import { make_phase, read_maybe_gz } from '../setup'
 import pymatgen_reference from './fixtures/ba_ti_o_pymatgen_reference.json' with { type: 'json' }
 
@@ -227,6 +230,23 @@ describe(`analyze_selectivity`, () => {
     expect(balanced.energy_per_fu).toBeCloseTo(-1.8, 9)
     const target_force = balanced.energy_per_fu / balanced.reactant_atoms
     const selectivity = analyze_selectivity(precursors, target, [], phases, target_force)
+    const cache = create_thermo_cache()
+    const solver = vi.spyOn(math, `solve_linear_program`)
+    for (const product of [target, find(phases, `Li2Ti2O5`)]) {
+      for (const pair of [precursors, precursors.toReversed()]) {
+        const expected = analyze_selectivity(pair, product, [], phases, target_force)
+        solver.mockClear()
+        const cold = analyze_selectivity(pair, product, [], phases, target_force, cache)
+        expect(cold).toEqual(expected)
+        const cold_calls = solver.mock.calls.length
+        solver.mockClear()
+        const warm = analyze_selectivity(pair, product, [], phases, target_force, cache)
+        expect(warm).toEqual(expected)
+        expect(warm.interfaces[0]).not.toBe(cold.interfaces[0])
+        expect(solver.mock.calls.length).toBeLessThan(cold_calls)
+      }
+    }
+    solver.mockRestore()
     // 2 Li2O + TiO2 → Li4TiO4 (9 atoms): -21.15 + 21 = -0.15 eV, a weak competitor
     expect(selectivity.competitors.map((comp) => comp.phase.formula)).toEqual([
       `Li2Ti2O5`,
@@ -318,7 +338,10 @@ describe(`analyze_selectivity`, () => {
 })
 
 describe(`temperature dependence`, () => {
-  const decomposition_onset = (pressure: number): number | null => {
+  const decomposition_onset = (
+    pressure: number,
+    cache: ReturnType<typeof create_thermo_cache>,
+  ): number | null => {
     const conditions = {
       temperature: 300,
       open_species: [`CO2` as const],
@@ -334,13 +357,17 @@ describe(`temperature dependence`, () => {
     )
     if (typeof balanced === `string`) throw new Error(balanced)
     const energy_at = reaction_energy_at_temperature(balanced, gases, [`CO2`], conditions)
+    const cached = reaction_energy_at_temperature(balanced, gases, [`CO2`], conditions, cache)
+    const temperatures = Array.from({ length: 2001 }, (_, idx) => idx)
+    expect(temperatures.map(cached)).toEqual(temperatures.map(energy_at))
     expect(energy_at(300)).toBeCloseTo(balanced.energy_per_fu, 9)
     return onset_temperature(energy_at)
   }
 
   test(`CaCO3 decomposition onset drops with CO2 partial pressure`, () => {
-    const onset_1bar = decomposition_onset(1)
-    const onset_air = decomposition_onset(4e-4)
+    const cache = create_thermo_cache()
+    const onset_1bar = decomposition_onset(1, cache)
+    const onset_air = decomposition_onset(4e-4, cache)
     expect(onset_1bar).not.toBeNull()
     expect(onset_air).not.toBeNull()
     if (onset_1bar === null || onset_air === null) return
@@ -367,7 +394,19 @@ describe(`plan_synthesis`, () => {
   }
 
   test(`ranks the textbook BaCO3 + TiO2 route first and flags Ba2TiO4 on the BaO + TiO2 line`, () => {
+    const provider = get_default_gas_provider()
+    const mu = vi.spyOn(provider, `get_standard_chemical_potential`)
     const plan = plan_synthesis(base_request)
+    const cached_calls = mu.mock.calls.length
+    mu.mockClear()
+    expect(
+      plan_synthesis({
+        ...base_request,
+        conditions: { ...base_request.conditions, gas_provider: provider },
+      }),
+    ).toEqual(plan)
+    expect(mu.mock.calls.length).toBeGreaterThan(cached_calls)
+    mu.mockRestore()
     expect(plan.chemical_system).toBe(`Ba-C-O-Ti`)
     expect(plan.target.formula).toBe(`BaTiO3`)
     expect(plan.target_stability.is_stable).toBe(true)

@@ -264,6 +264,7 @@
     {#if hull_data.has_temp_data && temperature !== undefined}
       <TemperatureSlider
         available_temperatures={hull_data.available_temperatures}
+        interpolate_temperature={hull_data.interpolate_temperature}
         bind:temperature
       />
     {/if}

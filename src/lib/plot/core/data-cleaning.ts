@@ -469,7 +469,12 @@ function handle_invalid_values(
     const has_right = right_idx < cleaned.length
     if (has_left && has_right) {
       const frac = (idx - left_idx) / (right_idx - left_idx)
-      cleaned[idx] = cleaned[left_idx] + frac * (cleaned[right_idx] - cleaned[left_idx])
+      const [left, right] = [cleaned[left_idx], cleaned[right_idx]]
+      const span = right - left
+      // Opposite extreme endpoints can overflow their difference while the result is finite.
+      cleaned[idx] = Number.isFinite(span)
+        ? left + frac * span
+        : (1 - frac) * left + frac * right
     } else cleaned[idx] = has_left ? cleaned[left_idx] : has_right ? cleaned[right_idx] : 0
     if (Number.isFinite(cleaned[idx])) left_idx = idx
   }

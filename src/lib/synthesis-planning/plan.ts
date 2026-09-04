@@ -24,6 +24,7 @@ import {
 import {
   analyze_selectivity,
   balance_reaction,
+  create_thermo_cache,
   make_reaction,
   onset_temperature,
   reaction_energy_at_temperature,
@@ -60,6 +61,7 @@ interface PlannerContext {
   target_mass_g: number
   rejected: Record<RejectReason, number>
   warnings: string[]
+  thermo_cache: ReturnType<typeof create_thermo_cache>
 }
 
 const empty_rejections = (): Record<RejectReason, number> => ({
@@ -151,7 +153,13 @@ function evaluate_route(
   // Only gas-exchanging reactions change with temperature, so only they can have an onset
   const onset = Object.keys(gas_exchange).length
     ? onset_temperature(
-        reaction_energy_at_temperature(balanced, gases, gas_species, conditions),
+        reaction_energy_at_temperature(
+          balanced,
+          gases,
+          gas_species,
+          conditions,
+          ctx.thermo_cache,
+        ),
       )
     : null
   if (balanced.energy_per_fu >= 0 && onset === null) {
@@ -170,6 +178,7 @@ function evaluate_route(
     gases,
     ctx.competitor_phases,
     reaction.driving_force,
+    ctx.thermo_cache,
   )
   const practicality = assess_practicality(reaction)
   const { score, breakdown, rationale } = score_route(
@@ -361,6 +370,7 @@ export function plan_synthesis_with_progress(
   const gases = phase_set.phases.filter((phase) => phase.is_gas)
   const gas_species = gases.map((gas) => gas.id.replace(`gas:`, ``) as GasSpecies)
   const ctx: PlannerContext = {
+    thermo_cache: create_thermo_cache(),
     phase_set,
     target,
     gases,

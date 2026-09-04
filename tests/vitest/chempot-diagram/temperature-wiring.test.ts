@@ -158,6 +158,10 @@ describe(`ChemPot temperature config wiring`, () => {
     })
     expect(document.querySelector(`.error-state`)).toBeNull()
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
+    expect(
+      document.querySelector<HTMLInputElement>(`.temperature-slider input[type="range"]`)
+        ?.value,
+    ).toBe(`700`)
   })
 
   test(`3D honors interpolate_temperature override`, async () => {
@@ -176,6 +180,10 @@ describe(`ChemPot temperature config wiring`, () => {
     // the dataset still has temperature data to pick from
     expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
+    expect(
+      document.querySelector<HTMLInputElement>(`.temperature-slider input[type="range"]`)
+        ?.value,
+    ).toBe(`1`)
   })
 
   test(`3D projection axes list every element of the system, not just the temperature slice`, async () => {
