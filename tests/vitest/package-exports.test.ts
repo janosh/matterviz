@@ -194,6 +194,7 @@ describe(`package.json exports`, () => {
         [
           `create_structure_filename`,
           `export_structure_as`,
+          `fractional_export_unavailable_reason`,
           `STRUCT_TEXT_FORMATS`,
           `structure_to_cif_str`,
           `structure_to_json_str`,
