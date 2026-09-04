@@ -21,8 +21,10 @@ runs:
         MATTERVIZ_SKIP_PREPARE: 1
       run: |
         corepack enable
+        # Match Hive's setup: Git dependencies need prepare; generate the allowlist in CI.
+        printf 'allowBuilds:\n  svelte-widgets: true\n' > pnpm-workspace.yaml
         # Registry packages ship their generated artifacts, so their prepare scripts do not
-        # need to run. Without a pnpm-workspace.yaml allowlist, keep skipped builds non-fatal.
+        # need to run. Keep their skipped builds non-fatal.
         pnpm install --config.strict-dep-builds=false
         # anywidget depends on `matterviz: file:../..`, which pnpm copies (hard-links) at install
         # time, so the svelte-package output must exist before that install or the copy has no
@@ -35,6 +37,12 @@ runs:
         # fontawesome ship built artifacts, so their skipped lifecycle scripts are safe.
         for ext in $EXTENSIONS; do
           if [ "$ext" = vscode ]; then strict_builds=true; else strict_builds=false; fi
-          pnpm -C "extensions/$ext" install --ignore-workspace \
+          workspace_args=(--ignore-workspace)
+          if [ "$ext" = anywidget ]; then
+            # Reuse the root's prepared Git package for both direct and transitive imports.
+            printf 'overrides:\n  svelte-widgets: file:../../node_modules/svelte-widgets\n' > "extensions/$ext/pnpm-workspace.yaml"
+            workspace_args=()
+          fi
+          pnpm -C "extensions/$ext" install "${workspace_args[@]}" \
             --config.strict-dep-builds="$strict_builds"
         done

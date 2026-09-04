@@ -1,7 +1,7 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
   import { capitalize, format_num } from '$lib/labels'
-  import PaneDivider from '$lib/layout/PaneDivider.svelte'
+  import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import type { Vec3 } from '$lib/math'
   import type { ScatterHandlerEvent } from '$lib/plot/core/types'
   import { parse_supercell_scaling } from '$lib/structure'

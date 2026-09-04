@@ -10,7 +10,7 @@
     to_color_bar_scale,
   } from '$lib/plot/core/color-ramp'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import { virtual_window } from '$lib/table/virtual'
+  import { virtual_window } from 'svelte-widgets/virtual'
   import { rows_to_csv } from '$lib/utils'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'

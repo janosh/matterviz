@@ -13,7 +13,7 @@ export { default as ToggleMenu } from './ToggleMenu.svelte'
 export * from './data'
 export * from './export'
 export { type CellPos, CellSelection } from './selection.svelte'
-export { virtual_window } from './virtual'
+export { virtual_window } from 'svelte-widgets/virtual'
 
 // Cell value types for table data
 export type CellVal =

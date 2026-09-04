@@ -104,6 +104,27 @@ const cancel_button = (target: ParentNode): HTMLButtonElement => {
 }
 
 describe(`src`, () => {
+  test(`file chooser loads once and the task cancel button disposes late results`, async () => {
+    const pending = deferred_worker()
+    const on_file_load = vi.fn()
+    const target = mount_viewer({ loading_options: WORKER_ALL, on_file_load })
+    const input = target.querySelector<HTMLInputElement>(`input[type="file"]`)
+    if (!input) throw new Error(`Missing file picker`)
+    Object.defineProperty(input, `files`, {
+      value: [new File([MULTI_FRAME_XYZ], `picked.xyz`)],
+    })
+    input.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    target.querySelector<HTMLButtonElement>(`.task-status button`)?.click()
+    await vi.waitFor(() => expect(pending[0].signal?.aborted).toBe(true))
+    expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
+    const late = make_run(`picked.xyz`)
+    const dispose = vi.spyOn(late, `dispose`)
+    pending[0].resolve(late)
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+    expect(on_file_load).not.toHaveBeenCalled()
+  })
+
   test(`loads multi-frame XYZ from a blob: URL with a UUID basename`, async () => {
     stub_fetch(MULTI_FRAME_XYZ)
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
@@ -277,7 +298,7 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
   })
 
-  test(`the spinner shows worker progress until the run arrives`, async () => {
+  test(`task status shows worker progress until the run arrives`, async () => {
     let release: ((run: TrajectoryRun) => void) | undefined
     stub_worker(
       (_data, filename, on_progress) =>
@@ -292,10 +313,12 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     })
     drop(target, new File([MULTI_FRAME_XYZ], `big.xyz`))
     await vi.waitFor(() =>
-      expect(doc_query(`.spinner[title="Parsing in a worker"]`).textContent).toBe(
+      expect(doc_query(`.task-status [role="status"]`).textContent).toBe(
         `Indexing frames (42%)`,
       ),
     )
+    expect(doc_query<HTMLProgressElement>(`progress`).value).toBe(42.4)
+    expect(doc_query(`.spinner`).getAttribute(`title`)).toBe(`Parsing in a worker`)
     if (!release) throw new Error(`worker stub never ran`)
     release(make_run(`big.xyz`))
     await vi.waitFor(() => expect(target.querySelector(`.trajectory`)).not.toBeNull())

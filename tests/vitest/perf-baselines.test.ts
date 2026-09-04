@@ -10,7 +10,7 @@ import { calculate_e_above_hull, compute_lower_hull_nd } from '$lib/convex-hull/
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import { parse_chgcar } from '$lib/isosurface/parse'
-import { JsonTree } from '$lib/layout/json-tree'
+import { JsonTree } from 'svelte-widgets/json-tree'
 import { marching_cubes } from '$lib/marching-cubes'
 import type { Vec3 } from '$lib/math'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'

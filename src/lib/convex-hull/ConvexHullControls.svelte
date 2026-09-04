@@ -2,7 +2,7 @@
   import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
-  import { SettingsSection } from '$lib/layout'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import { sanitize_html } from '$lib/sanitize'
   import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -335,25 +335,18 @@
       {@attach tooltip({ content: `Max eV/atom above hull to display unstable points` })}
     >
       <span class="control-label">Points threshold</span>
-      <label style="display: flex; align-items: center; gap: 4px; flex: 1">
-        <input
-          type="number"
-          min="0"
-          max={max_hull_dist_in_data}
-          step="0.01"
-          bind:value={max_hull_dist_show_phases}
-          aria-label="Points threshold (eV/atom)"
-          style="border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2))"
-        />
-        <span style="white-space: nowrap">eV/atom</span>
-        <input
-          type="range"
-          min="0"
-          max={max_hull_dist_in_data}
-          step="0.01"
-          bind:value={max_hull_dist_show_phases}
-        />
-      </label>
+      <NumberRangeInput
+        min={0}
+        max={max_hull_dist_in_data}
+        step={0.01}
+        bind:value={max_hull_dist_show_phases}
+        title="Points threshold (eV/atom)"
+        style="gap: 4px; flex: 1"
+        number_props={{
+          'aria-label': `Points threshold (eV/atom)`,
+          style: `border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2))`,
+        }}>eV/atom</NumberRangeInput
+      >
     </div>
 
     {#if color_mode === `stability`}

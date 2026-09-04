@@ -1,6 +1,7 @@
 <script lang="ts">
   // Convenience shell around <Trajectory>: source/drop UI, HDF5 group choice and errors.
   // open_material owns acquisition, parsing, workers, provenance and resource disposal.
+  import { FileInput, TaskStatus } from 'svelte-widgets'
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
@@ -348,13 +349,21 @@
       </button>
     </EmptyState>
   {:else if loading}
-    <Spinner
-      text={progress
+    <TaskStatus
+      label={progress
         ? `${progress.stage} (${Math.round(progress.current)}%)`
         : `Loading trajectory...`}
-      style="flex: 1; display: flex; align-items: center; justify-content: center"
-      {...spinner_props}
-    />
+      value={progress?.current}
+      oncancel={() => {
+        const controller = load_controller
+        if (!controller) return
+        controller.abort(new DOMException(`Cancelled`, `AbortError`))
+        end_load(controller)
+      }}
+      style="flex: 1; align-content: center; justify-items: center; padding: 1em"
+    >
+      <Spinner {...spinner_props} />
+    </TaskStatus>
   {:else if error_msg}
     <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} {error_snippet} />
   {:else if trajectory}
@@ -389,6 +398,16 @@
   {:else}
     <EmptyState class="trajectory-empty-state">
       <h3>Load Trajectory</h3>
+      {#if allow_file_drop}
+        <FileInput
+          label="Choose trajectory file"
+          ondrop={(event) => event.stopPropagation()}
+          onfiles={(files) => {
+            const source = files[0]
+            if (source) void open_source({ source }, begin_load())
+          }}
+        />
+      {/if}
       <p>
         Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, OUTCAR,
         vasprun.xml, .traj, .h5) or provide trajectory data via props

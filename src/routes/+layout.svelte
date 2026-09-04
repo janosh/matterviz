@@ -109,7 +109,7 @@
      the viewport fixes that. `max-width` clears its 90vw cap, which would re-narrow the panel. -->
 <Nav
   routes={[[`/`, `Home`], ...nav_routes]}
-  labels={{
+  route_labels={{
     '/how-to/hook-up-to-external-api': `Hook up to external API`,
     '/how-to/use-without-svelte': `Use without Svelte`,
     '/neb': `NEB`,
