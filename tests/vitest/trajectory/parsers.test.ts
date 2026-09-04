@@ -1753,6 +1753,9 @@ describe(`HDF5`, () => {
     })
     const run = await open(buffer, `torch-sim.h5`)
     expect(run.frame_count).toBe(n_frames)
+    const window = await collect(run, { start_frame: n_frames - 1 })
+    expect(window.n_frames).toBe(1)
+    expect(window.lattice_matrices?.[0]?.[0][0]).toBe(cells.at(-1)?.[0])
     for (const [frame_idx, edge] of edges.entries()) {
       const { structure } = await run.read_frame(frame_idx)
       expect(`lattice` in structure ? structure.lattice.matrix[0][0] : undefined).toBe(edge)
@@ -1773,6 +1776,17 @@ describe(`HDF5`, () => {
       polarizability: { sample_shape: [3, 3], sample_count: 3, frame_aligned: false },
     })
     expect(Object.values(run.signals ?? {}).every(is_signal_descriptor)).toBe(true)
+    const window = await collect(run, {
+      start_frame: 1,
+      end_frame: 3,
+      signal_keys: [`velocity`, `dipole`],
+      vector_keys: [`velocity`],
+    })
+    expect(window.steps).toEqual([1, 2])
+    expect(window.signals?.velocity.steps).toEqual([1, 2])
+    expect(window.signals?.dipole.steps).toEqual([2])
+    expect(window.positions).toHaveLength(12)
+    expect(window.vectors?.velocity).toHaveLength(12)
     const frame = await run.read_frame(3)
     expect(frame.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
       [1.8, 1.9, 2],
@@ -1980,6 +1994,9 @@ describe(`HDF5`, () => {
       `varying-pbc.h5`,
     )
     await expect(collect(varying)).rejects.toThrow(`PBC flags that vary between frames`)
+    const selected = await collect(varying, { start_frame: 6, end_frame: 7 })
+    expect(selected.n_frames).toBe(1)
+    expect(selected.pbc).toEqual([false, false, false])
   })
 
   it(`streams long generic runs with variable cells without materialising every frame`, async () => {
@@ -2068,6 +2085,20 @@ describe(`HDF5`, () => {
       steps: [0, 4, 8, 12, 16, 20],
     })
     expect(stream.vectors?.velocity).toHaveLength(36)
+    const window = await collect(run, {
+      start_frame: 3,
+      end_frame: 8,
+      frame_stride: 2,
+      vector_keys: [`velocity`],
+      signal_keys: [`velocity`],
+    })
+    expect(window.steps).toEqual([6, 10, 14])
+    expect(window.positions).toEqual(
+      Float64Array.from([3, 5, 7].flatMap((idx) => replica_xyz(idx).flat())),
+    )
+    expect(window.signals?.velocity.steps).toEqual([6, 8, 10, 12, 14])
+    expect(window.signals?.velocity.values).toHaveLength(30)
+    expect(window.vectors?.velocity).toHaveLength(18)
     // Streamed integration replays bit-identically to the materialised frames
     expect(stream.positions).toEqual(
       Float64Array.from(

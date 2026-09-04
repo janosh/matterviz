@@ -164,8 +164,11 @@ describe(`calculate_rdf`, () => {
           ? {
               ...site,
               species: [
-                { element: `Na`, occu: 0.5, oxidation_state: 1 },
+                { element: `Na`, occu: 0.2, oxidation_state: 1 },
+                { element: `Na`, occu: 0.3, oxidation_state: 1 },
                 { element: `K`, occu: 0.5, oxidation_state: 1 },
+                { element: `Ar`, occu: 0, oxidation_state: 0 },
+                { element: `He`, occu: 0, oxidation_state: 0 },
               ],
             }
           : site,
@@ -174,13 +177,28 @@ describe(`calculate_rdf`, () => {
     const opts = { cutoff: 4, n_bins: 40 }
     const partials = calculate_all_pair_rdfs(mixed, opts)
     expect(partials.map((partial) => partial.element_pair)).toEqual([
+      [`Ar`, `Ar`],
+      [`Ar`, `Cl`],
+      [`Ar`, `He`],
+      [`Ar`, `K`],
+      [`Ar`, `Na`],
       [`Cl`, `Cl`],
+      [`Cl`, `He`],
       [`Cl`, `K`],
       [`Cl`, `Na`],
+      [`He`, `He`],
+      [`He`, `K`],
+      [`He`, `Na`],
       [`K`, `K`],
       [`K`, `Na`],
       [`Na`, `Na`],
     ])
+    for (const { element_pair, g_r } of partials) {
+      const [center_species, neighbor_species] = element_pair ?? []
+      expect(g_r).toEqual(
+        calculate_rdf(mixed, { ...opts, center_species, neighbor_species }).g_r,
+      )
+    }
     const by_pair = Object.fromEntries(
       partials.map((partial) => [partial.element_pair?.join(`-`), partial]),
     )
@@ -274,14 +292,38 @@ describe(`calculate_rdf`, () => {
     expect(() => calculate_rdf(pd_structure, opts)).toThrow(pattern)
   })
 
-  test(`throws without a lattice to normalise against`, () => {
-    const { lattice: _lattice, ...no_lattice } = pd_structure
-    expect(() => calculate_rdf(no_lattice as Crystal)).toThrow(/must have a lattice/)
+  test.each([
+    undefined,
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 0],
+    ],
+    [
+      [NaN, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  ])(`rejects invalid normalisation cell %s`, (matrix) => {
+    const structure = {
+      sites: pd_structure.sites,
+      ...(matrix && { lattice: { matrix } }),
+    } as Crystal
+    for (const calculate of [calculate_rdf, calculate_all_pair_rdfs]) {
+      expect(() => calculate(structure)).toThrow(/unit cell/)
+    }
   })
 })
 
 describe(`calculate_all_pair_rdfs`, () => {
-  test.each([
+  const five_species = make_crystal(5, [
+    [`Si`, [0, 0, 0]],
+    [`Na`, [0.2, 0.2, 0.2]],
+    [`Cl`, [0.4, 0.4, 0.4]],
+    [`K`, [0.6, 0.6, 0.6]],
+    [`Al`, [0.8, 0.8, 0.8]],
+  ])
+  test.each<[string, Crystal, [string, string][]]>([
     [
       `Lu-Al`,
       lu_al_structure,
@@ -292,17 +334,58 @@ describe(`calculate_all_pair_rdfs`, () => {
       ],
     ],
     [`Pd`, pd_structure, [[`Pd`, `Pd`]]],
+    ...[false, true].map<[string, Crystal, [string, string][]]>((vacancy) => [
+      `five species, vacancy=${vacancy}`,
+      {
+        ...five_species,
+        sites: five_species.sites.map((site, idx) =>
+          vacancy && idx === 0
+            ? {
+                ...site,
+                species: site.species.map((species) => ({ ...species, occu: 0 })),
+              }
+            : site,
+        ),
+      },
+      [
+        [`Al`, `Al`],
+        [`Al`, `Cl`],
+        [`Al`, `K`],
+        [`Al`, `Na`],
+        [`Al`, `Si`],
+        [`Cl`, `Cl`],
+        [`Cl`, `K`],
+        [`Cl`, `Na`],
+        [`Cl`, `Si`],
+        [`K`, `K`],
+        [`K`, `Na`],
+        [`K`, `Si`],
+        [`Na`, `Na`],
+        [`Na`, `Si`],
+        [`Si`, `Si`],
+      ],
+    ]),
   ])(
     `%s: one pattern per unordered pair, sorted, matching calculate_rdf`,
     (_name, structure, pairs) => {
-      const opts = { cutoff: 8, n_bins: 50 }
-      const patterns = calculate_all_pair_rdfs(structure, opts)
-      expect(patterns.map((pattern) => pattern.element_pair)).toEqual(pairs)
-      for (const { element_pair, r, g_r } of patterns) {
-        const [center_species, neighbor_species] = element_pair ?? []
-        const direct = calculate_rdf(structure, { ...opts, center_species, neighbor_species })
-        expect(r).toBe(patterns[0].r)
-        expect(max_abs_diff(g_r, direct.g_r)).toBeLessThan(1e-12)
+      for (const pbc of [
+        [true, true, true],
+        [true, false, false],
+        [false, false, false],
+      ] as Pbc[]) {
+        const opts = { cutoff: 8, n_bins: 50, pbc }
+        const patterns = calculate_all_pair_rdfs(structure, opts)
+        expect(patterns.map((pattern) => pattern.element_pair)).toEqual(pairs)
+        for (const { element_pair, r, g_r } of patterns) {
+          const [center_species, neighbor_species] = element_pair ?? []
+          const direct = calculate_rdf(structure, {
+            ...opts,
+            center_species,
+            neighbor_species,
+          })
+          expect(r).toBe(patterns[0].r)
+          expect(g_r).toEqual(direct.g_r)
+        }
       }
     },
   )

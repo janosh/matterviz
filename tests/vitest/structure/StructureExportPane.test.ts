@@ -13,12 +13,13 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
   mount(StructureExportPane, { target: document.body, props })
 
 // Mock the export functions
-vi.mock(`$lib/structure/export`, () => {
+vi.mock(`$lib/structure/export`, async (import_original) => {
   const structure_to_json_str = vi.fn(() => `{"test": "json"}`)
   const structure_to_xyz_str = vi.fn(() => `3\ntest\nH 0 0 0`)
   const structure_to_cif_str = vi.fn(() => `data_test\n_cell_length_a 1.0`)
   const structure_to_poscar_str = vi.fn(() => `test\n1.0\n1 0 0`)
   return {
+    ...(await import_original<typeof export_funcs>()),
     create_structure_filename: vi.fn(() => `structure-basename`),
     export_structure_as: vi.fn(),
     structure_to_json_str,
@@ -279,9 +280,24 @@ describe(`StructureExportPane`, () => {
     console_error_spy.mockRestore()
   })
 
-  test(`molecule disables the crystal-only CIF and POSCAR rows, keeps JSON and XYZ`, () => {
-    const molecule: AnyStructure = { id: `test_no_lattice`, sites: simple_structure.sites }
-    mount_pane({ structure: molecule })
+  test.each([
+    null,
+    [
+      [NaN, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 0],
+    ],
+  ])(`invalid lattice %s disables CIF/POSCAR, keeps JSON/XYZ`, (matrix) => {
+    const structure = {
+      sites: simple_structure.sites.map(({ abc: _abc, ...site }) => site),
+      ...(matrix && { lattice: { matrix } }),
+    } as AnyStructure
+    mount_pane({ structure })
 
     for (const label of [`CIF`, `POSCAR`]) {
       for (const action of [`Download`, `Copy`]) {
@@ -293,7 +309,13 @@ describe(`StructureExportPane`, () => {
         expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(`unit cell`)
       }
     }
-    expect(document.body.textContent).toContain(`this structure has no lattice`)
+    expect(document.body.textContent).toContain(
+      matrix
+        ? matrix[2][2] === 0
+          ? `nonsingular unit cell`
+          : `finite 3x3 lattice matrix`
+        : `this structure has no lattice`,
+    )
     for (const label of [`JSON`, `XYZ`]) {
       expect(get_button(`Download ${label}`).disabled, label).toBe(false)
       expect(get_button(`Copy ${label}`).disabled, label).toBe(false)

@@ -170,6 +170,8 @@ export async function collect_trajectory_spectroscopy_input(
 ): Promise<TrajectorySpectroscopyInput> {
   const {
     frame_stride = 1,
+    start_frame,
+    end_frame,
     max_bytes,
     on_progress,
     signal,
@@ -190,6 +192,8 @@ export async function collect_trajectory_spectroscopy_input(
   })
   const stream = await collect_trajectory_positions(run, {
     frame_stride,
+    start_frame,
+    end_frame,
     max_bytes,
     ...(vector_keys.length > 0 ? { vector_keys } : {}),
     ...(signal_keys.length > 0 ? { signal_keys } : {}),
@@ -202,9 +206,39 @@ export async function collect_trajectory_spectroscopy_input(
   // care: rigid-motion removal for velocities, body-frame rotation for IR/Raman. Every other
   // signal keeps its native cadence, so a dipole sampled every step beside positions kept
   // every 20th is not decimated or emptied by the stride
+  const start_step = start_frame === undefined ? -Infinity : stream.steps[0]
+  // Streamed signals were already restricted by their collector. Only eager native signals
+  // need a boundary lookup; use recorded steps so excluded geometry need never be loaded.
+  const needs_end_step = [velocity_key, infrared_key, raman_key].some((key) => {
+    const series = key && run.signals?.[key]
+    return series && is_loaded_signal(series)
+  })
+  const end_step =
+    needs_end_step && end_frame !== undefined && end_frame < run.frame_count
+      ? (run.properties.rows.find(({ frame_number }) => frame_number === end_frame)?.step ??
+        (await run.read_frame(end_frame, signal)).step)
+      : Infinity
+  signal?.throwIfAborted()
   const signal_of = (key: string, align: boolean): TrajectorySignal | undefined => {
     const declared = run.signals?.[key]
-    const series = declared && is_loaded_signal(declared) ? declared : stream.signals?.[key]
+    let series = declared && is_loaded_signal(declared) ? declared : stream.signals?.[key]
+    if (
+      series &&
+      declared &&
+      is_loaded_signal(declared) &&
+      (start_frame !== undefined || end_frame !== undefined)
+    ) {
+      const first = series.steps.findIndex((step) => step >= start_step)
+      const last = series.steps.findIndex((step) => step >= end_step)
+      const begin = first === -1 ? series.steps.length : first
+      const end = last === -1 ? series.steps.length : last
+      const size = values_per_sample(series.sample_shape)
+      series = {
+        ...series,
+        steps: series.steps.slice(begin, end),
+        values: series.values.slice(begin * size, end * size),
+      }
+    }
     return series && align && frame_stride > 1
       ? align_signal_to_steps(series, stream.steps, key, frame_stride)
       : series

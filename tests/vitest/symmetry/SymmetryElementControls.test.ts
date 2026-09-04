@@ -1,4 +1,5 @@
 // Tests for the per-kind symmetry-element visibility toggles (legend + checkboxes)
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { ShowSymmetryKinds, SymmetryElement } from '$lib/symmetry'
 import {
   count_symmetry_elements,
@@ -7,9 +8,10 @@ import {
   SYM_ELEM_KIND_INFO,
   SYM_ELEMENTS_INPUT_FRAME_NOTE,
   SymmetryElementControls,
+  tile_symmetry_elements,
 } from '$lib/symmetry'
 import { type ComponentProps, flushSync, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 const make_elem = (
   kind: SymmetryElement[`kind`],
@@ -117,6 +119,42 @@ describe(`SymmetryElementControls`, () => {
     // only the first checkbox (rotation axes) is checked by DEFAULT_SHOW_SYM_KINDS
     expect(checked).toEqual([true, false, false, false, false, false])
   })
+
+  test.each([false, true])(
+    `preflights enabled kinds without copying points, shared result=%s`,
+    (shared) => {
+      const read_point = vi.fn((): Vec3 => [0, 0, 0])
+      const elements = SAMPLE_ELEMENTS.map((element) => ({
+        ...element,
+        get point() {
+          return read_point()
+        },
+      }))
+      const lattice: Matrix3x3 = [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ]
+      const tiling: Vec3 = [2, 2, 2]
+      const tiling_result = tile_symmetry_elements(elements, tiling, lattice)
+      const point_reads = read_point.mock.calls.length
+      read_point.mockClear()
+      mount_controls({
+        elements,
+        lattice,
+        tiling,
+        show_kinds: Object.fromEntries(elements.map(({ kind }) => [kind, true])),
+        tiling_result: shared ? tiling_result : undefined,
+      })
+      expect(
+        [...document.body.querySelectorAll(`input`)].every(
+          (input) => input.checked && !input.disabled,
+        ),
+      ).toBe(true)
+      expect(point_reads).toBeGreaterThan(0)
+      expect(read_point).not.toHaveBeenCalled()
+    },
+  )
 
   test(`toggling a checkbox updates the bound show_kinds (reassigned, not mutated)`, () => {
     const initial: ShowSymmetryKinds = { rotation: true }

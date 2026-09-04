@@ -6,6 +6,7 @@ import type { AnyStructure, LatticeType, Site } from '$lib/structure'
 import {
   create_structure_filename,
   export_structure_as,
+  fractional_export_unavailable_reason,
   structure_to_cif_str,
   structure_to_json_str,
   structure_to_poscar_str,
@@ -100,7 +101,7 @@ describe(`Export functionality`, () => {
 
     it.each([`cif`, `poscar`] as const)(`throws for a molecule as %s`, (fmt) => {
       const molecule = { sites: simple_structure.sites }
-      expect(() => export_structure_as(fmt, molecule)).toThrow(`No lattice information`)
+      expect(() => export_structure_as(fmt, molecule)).toThrow(`this structure has no lattice`)
       expect(mock_download).not.toHaveBeenCalled()
     })
   })
@@ -142,10 +143,14 @@ describe(`Export functionality`, () => {
       { name: `XYZ quartz`, parse: () => parse_xyz(extended_xyz_quartz), out: structure_to_xyz_str },
       { name: `POSCAR BaTiO3`, parse: () => parse_poscar(ba_ti_o3_tetragonal), out: structure_to_poscar_str },
       { name: `CIF TiO2`, parse: () => parse_cif(tio2_cif), out: structure_to_cif_str },
-    ])(`round-trips %s`, ({ parse, out }) => {
+    ])(`round-trips %s`, ({ name, parse, out }) => {
       const parsed = parse()
       assert(parsed && `lattice` in parsed, `failed to parse fixture`)
-      const exported = out(to_any(parsed))
+      const structure = to_any(parsed)
+      const exported = out(structure)
+      if (name === `CIF TiO2`) {
+        expect(structure_to_cif_str({ ...structure, lattice: { matrix: parsed.lattice.matrix } } as AnyStructure)).toBe(exported)
+      }
       const reparsed = parse_structure_file(exported)
       assert(reparsed && `lattice` in reparsed, `failed to reparse`)
       expect(reparsed.sites).toHaveLength(parsed.sites.length)
@@ -356,8 +361,8 @@ describe(`Export functionality`, () => {
     })
 
     it.each([
-      { func: structure_to_cif_str, error_msg: `No lattice information for CIF export` },
-      { func: structure_to_poscar_str, error_msg: `No lattice information for POSCAR export` },
+      { func: structure_to_cif_str, error_msg: `CIF export: A unit cell is required` },
+      { func: structure_to_poscar_str, error_msg: `POSCAR export: A unit cell is required` },
     ])(`throws error for structure without lattice`, ({ func, error_msg }) => {
       const structure_no_lattice: AnyStructure = { sites: [make_site(`H`)] }
       expect(() => func(structure_no_lattice)).toThrow(error_msg)
@@ -382,17 +387,20 @@ describe(`Export functionality`, () => {
       )
     })
 
-    it(`handles invalid lattice matrix in POSCAR`, () => {
-      // oxfmt-ignore
-      const matrix = [[1, 2], [3, 4]] as unknown as Matrix3x3 // 2x2 instead of 3x3
-      const structure_invalid_lattice: AnyStructure = {
-        sites: [make_site(`H`)],
-        lattice: { ...diag_lattice(1), matrix },
-      }
-      expect(() => structure_to_poscar_str(structure_invalid_lattice)).toThrow(
-        `No valid lattice matrix for POSCAR export`,
-      )
-    })
+    it.each([structure_to_cif_str, structure_to_poscar_str])(
+      `rejects malformed matrices in %s`,
+      (serialize) => {
+        // oxfmt-ignore
+        const matrix = [[1, 2], [3, 4]] as unknown as Matrix3x3 // 2x2 instead of 3x3
+        const structure_invalid_lattice: AnyStructure = {
+          sites: [make_site(`H`)],
+          lattice: { ...diag_lattice(1), matrix },
+        }
+        expect(() => serialize(structure_invalid_lattice)).toThrow(
+          `A unit cell requires a finite 3x3 lattice matrix`,
+        )
+      },
+    )
 
     // An extXYZ `Lattice="... 0 0 0"` parses (axis-length fallback) but has no cart->frac
     // inverse; sites already carry abc, so the inverse must not be built unless one needs it
@@ -410,6 +418,18 @@ describe(`Export functionality`, () => {
             ? structure_to_cif_str(structure)
             : structure_to_poscar_str(structure)
         expect(content).toContain(`0.20000000 0.40000000 0.00000000`)
+        expect(fractional_export_unavailable_reason(structure)).toBeUndefined()
+        const without_abc = {
+          ...structure,
+          sites: structure.sites.map(({ abc: _abc, ...site }) => site),
+        } as AnyStructure
+        expect(fractional_export_unavailable_reason(without_abc)).toContain(
+          `nonsingular unit cell`,
+        )
+        expect(() =>
+          (format === `CIF` ? structure_to_cif_str : structure_to_poscar_str)(without_abc),
+        ).toThrow(`singular or ill-conditioned`)
+        if (format === `CIF`) expect(content).toContain(`_cell_length_c 0.000000`)
       },
     )
 
@@ -419,6 +439,9 @@ describe(`Export functionality`, () => {
       const structure_nan_lattice: AnyStructure = {
         sites: [make_site(`H`)],
         lattice: { ...diag_lattice(1), matrix },
+      }
+      for (const serialize of [structure_to_cif_str, structure_to_poscar_str]) {
+        expect(() => serialize(structure_nan_lattice)).toThrow(`finite 3x3 lattice matrix`)
       }
       const lines = structure_to_xyz_str(structure_nan_lattice).split(`\n`)
       const zeros = Array(8).fill(`0.00000000`).join(` `)

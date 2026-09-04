@@ -102,8 +102,7 @@
   $effect(() => observe_canvas_presence(wrapper, (val) => (wrapper_has_canvas = val)))
   let has_canvas = $derived(Boolean(image_canvas) || wrapper_has_canvas)
 
-  // CIF and POSCAR cannot express a molecule (no lattice), so their rows are disabled for one
-  let has_lattice = $derived(Boolean(structure && `lattice` in structure))
+  let lattice_reason = $derived(exports.fractional_export_unavailable_reason(structure))
 
   function handle_text_export(format: StructTextFormat) {
     if (!structure) return
@@ -118,7 +117,7 @@
     {
       title: `Export as text`,
       items: text_export_formats.map(({ label, format, hint }) => {
-        const needs_lattice = [`cif`, `poscar`].includes(format) && !has_lattice
+        const needs_lattice = [`cif`, `poscar`].includes(format) && Boolean(lattice_reason)
         return {
           label,
           hint,
@@ -126,7 +125,7 @@
           disabled_reason: !structure
             ? `No structure loaded`
             : needs_lattice
-              ? `${label} requires a unit cell; this structure has no lattice`
+              ? lattice_reason
               : undefined,
           on_download: () => handle_text_export(format),
           copy_text: () => get_text_content(format),

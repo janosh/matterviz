@@ -190,6 +190,20 @@ describe(`collect_positions parity with the memory run`, () => {
     })
     const run = await make()
     const stream = await run.collect_positions?.({ frame_stride: 3, vector_keys: [`force`] })
+    const window = await run.collect_positions?.({
+      start_frame: 2,
+      end_frame: 8,
+      frame_stride: 3,
+      vector_keys: [`force`],
+    })
+    expect(window?.steps).toEqual([reference_frames[2].step, reference_frames[5].step])
+    expect(window?.positions).toEqual(
+      Float64Array.from(
+        [2, 5].flatMap((idx) =>
+          reference_frames[idx].structure.sites.flatMap((site) => site.xyz),
+        ),
+      ),
+    )
     if (!reference || !stream) throw new Error(`collect_positions missing`)
     expect(stream.n_frames).toBe(reference.n_frames)
     expect(stream.n_atoms).toBe(N_ATOMS)
@@ -238,10 +252,14 @@ describe(`collect_positions parity with the memory run`, () => {
     const run = await open_trajectory(read_binary_test_file(`gold-nanoparticle-md.h5`), {
       filename: `gold.h5`,
     })
-    const stream = await run.collect_positions?.({ frame_stride: 5 })
+    const stream = await run.collect_positions?.({
+      frame_stride: 5,
+      start_frame: 2,
+      end_frame: 15,
+    })
     if (!stream) throw new Error(`no stream`)
-    expect(stream.n_frames).toBe(Math.ceil(run.frame_count / 5))
-    for (const [sample_idx, frame_idx] of [0, 5, 10].entries()) {
+    expect(stream.n_frames).toBe(3)
+    for (const [sample_idx, frame_idx] of [2, 7, 12].entries()) {
       const frame = await run.read_frame(frame_idx)
       const from_frame = frame.structure.sites.flatMap((site) => site.xyz)
       const offset = sample_idx * stream.n_atoms * 3

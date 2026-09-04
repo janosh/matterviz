@@ -6,8 +6,8 @@
 // histograms come back, so a 100k-frame run never needs its positions in memory at once
 // (unlike MSD/VACF, which are lag analyses and need the whole series).
 import { calc_lattice_params } from '$lib/math'
-import { is_crystal } from '$lib/structure/validation'
-import type { TrajectoryRun } from '$lib/trajectory'
+import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
+import type { FrameRange, TrajectoryRun } from '$lib/trajectory'
 import { sweep_frames } from '$lib/trajectory/analysis'
 import { calc_frame_rdfs_async } from './async-compute.svelte'
 import { coordination_number } from './calc-pdf'
@@ -19,7 +19,7 @@ export const DEFAULT_RDF_MAX_FRAMES = 100
 export const DEFAULT_RDF_CUTOFF = 10
 export const DEFAULT_RDF_BINS = 200
 
-export interface TrajectoryRdfOptions extends FrameRdfOptions {
+export interface TrajectoryRdfOptions extends FrameRdfOptions, FrameRange {
   max_frames?: number
   on_progress?: (done: number, total: number) => void
   signal?: AbortSignal
@@ -51,6 +51,13 @@ export interface TrajectoryRdfCurve {
 }
 
 export interface TrajectoryRdf {
+  // Captured at collection start; later edits to the run cannot relabel existing results.
+  source: Pick<TrajectoryRun, `provenance` | `frame_count` | `time_step`>
+  max_frames: number
+  // Recorded MD steps corresponding to frame_numbers, not inferred from source indices.
+  frame_steps: number[]
+  start_frame: number
+  end_frame: number
   // Bin centres in A
   r: number[]
   curves: TrajectoryRdfCurve[]
@@ -126,11 +133,19 @@ export async function collect_trajectory_rdf(
     n_bins = DEFAULT_RDF_BINS,
     on_progress,
     signal,
+    start_frame,
+    end_frame,
   } = options
+  const source = {
+    provenance: { ...run.provenance },
+    frame_count: run.frame_count,
+    ...(run.time_step && { time_step: { ...run.time_step } }),
+  }
+  const frame_steps: number[] = []
   // Composition signature of the first analysed frame: every species and occupancy per site,
   // since mixed-occupancy sites feed every partial g(r) they carry
   let reference:
-    | { frame_number: number; signature: string; counts: Map<string, number> }
+    | { frame_number: number; signature: string; counts: Map<string, number>; n_atoms: number }
     | undefined
   let sums: Float64Array[] = []
   let density_sums: Float64Array[] = []
@@ -142,8 +157,14 @@ export async function collect_trajectory_rdf(
     frame_stride,
   } = await sweep_frames(
     run,
-    { max_frames, on_progress, signal },
-    async ({ structure }, frame_number) => {
+    { max_frames, on_progress, signal, start_frame, end_frame },
+    async ({ structure, step }, frame_number) => {
+      if (!Number.isFinite(step)) {
+        throw new TypeError(
+          `collect_trajectory_rdf: frame ${frame_number} has invalid step ${step}`,
+        )
+      }
+      frame_steps.push(step)
       const counts = new Map<string, number>()
       const signature = structure.sites
         .map(({ species }) => {
@@ -153,16 +174,16 @@ export async function collect_trajectory_rdf(
           return species.map(({ element, occu }) => `${element}:${occu}`).join(`,`)
         })
         .join(`;`)
-      reference ??= { frame_number, signature, counts }
+      reference ??= { frame_number, signature, counts, n_atoms: structure.sites.length }
       if (signature !== reference.signature) {
         throw new Error(
           `collect_trajectory_rdf: frame ${frame_number} has a different composition or atom ` +
             `order than frame ${reference.frame_number}; a time-averaged g(r) needs one composition`,
         )
       }
-      if (!is_crystal(structure)) {
+      if (!has_usable_lattice(structure)) {
         throw new Error(
-          `collect_trajectory_rdf: frame ${frame_number} needs a periodic cell to normalise against`,
+          `collect_trajectory_rdf: frame ${frame_number}: ${lattice_unavailable_reason(structure, true)}`,
         )
       }
       const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
@@ -192,8 +213,9 @@ export async function collect_trajectory_rdf(
     },
   )
   const n_frames = frame_numbers.length
+  if (!reference) throw new Error(`collect_trajectory_rdf: no frames were sampled`)
   // Occupancy-weighted atom counts, as the per-frame normalisation weighted them
-  const counts = reference?.counts ?? new Map<string, number>()
+  const { counts } = reference
   const curves = pairs.map(([el_a, el_b], pair_idx): TrajectoryRdfCurve => {
     const g_r = Array.from(sums[pair_idx], (sum) => sum / n_frames)
     const [n_a, n_b] = [counts.get(el_a) ?? 0, counts.get(el_b) ?? 0]
@@ -210,13 +232,18 @@ export async function collect_trajectory_rdf(
     }
   })
   return {
+    source,
+    max_frames,
+    frame_steps,
     r,
     curves,
     frame_numbers,
+    start_frame: start_frame ?? 0,
+    end_frame: end_frame ?? source.frame_count,
     frame_stride,
     cutoff,
     n_bins,
-    n_atoms: run.preview.structure.sites.length,
+    n_atoms: reference.n_atoms,
     mean_volume: volumes.reduce((total, volume) => total + volume, 0) / n_frames,
   }
 }

@@ -7,7 +7,7 @@ import {
 import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
 import { is_signal_descriptor } from '$lib/trajectory'
 import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { make_torch_sim_signal_buffer } from '../trajectory/fixtures'
 
 const N_FRAMES = 8
@@ -63,6 +63,18 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     if (input.raman_signal?.kind === `polarizability`) {
       expect(input.raman_signal.series.sample_shape).toEqual([3, 3])
     }
+    const window_run = make_run()
+    const read_frame = vi.spyOn(window_run, `read_frame`).mockImplementation(() => {
+      throw new Error(`Excluded frame must not be loaded`)
+    })
+    const window = await collect_trajectory_spectroscopy_input(window_run, {
+      start_frame: 2,
+      end_frame: 6,
+    })
+    expect(read_frame).not.toHaveBeenCalled()
+    expect(window.positions.steps).toEqual([2, 3, 4, 5])
+    expect(window.infrared_signal?.series.steps).toEqual([2, 3, 4, 5])
+    expect(window.velocities?.steps).toEqual([2, 3, 4, 5])
     expect(input.time_step).toBe(0.5)
     expect(input.time_unit).toBe(`fs`)
     expect(input.metadata).toMatchObject({
@@ -312,6 +324,22 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
         raman_key: null,
         preprocessing,
       })
+      const window_run = native_cadence_run()
+      vi.spyOn(window_run, `read_frame`).mockImplementation(() => {
+        throw new Error(`Excluded geometry must not be loaded to get its recorded step`)
+      })
+      const window = await collect_trajectory_spectroscopy_input(window_run, {
+        start_frame: 1,
+        end_frame: 6,
+        frame_stride: 2,
+        raman_key: null,
+        preprocessing,
+      })
+      expect(window.positions.steps).toEqual([1, 3, 5])
+      expect(window.velocities?.steps).toEqual([1, 3, 5])
+      expect(window.infrared_signal?.series.steps).toEqual(
+        preprocessing === `body_fixed` ? [1, 3, 5] : [1, 2, 3, 4, 5],
+      )
       expect(input.positions.steps).toEqual([0, 2, 4, 6])
       expect(input.velocities).toEqual({
         values: Float64Array.from([0, 0, 0, 2, 0, 0, 4, 0, 0, 6, 0, 0]),
@@ -415,6 +443,13 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
         expect(input.raman_signal.series.steps).toEqual([0, 2, 4])
       }
       expect(input.masses).toEqual(Float64Array.from([1.008, 15.999]))
+      const window = await collect_trajectory_spectroscopy_input(make_run(), {
+        start_frame: 2,
+        end_frame: 6,
+      })
+      expect(window.positions.steps).toEqual([2, 3, 4, 5])
+      expect(window.infrared_signal?.series.steps).toEqual([2, 3, 4, 5])
+      expect(window.velocities?.steps).toEqual([2, 3, 4, 5])
       expect(input.time_step).toBe(0.5)
       expect(input.time_unit).toBe(`fs`)
       expect(input.metadata).toMatchObject({

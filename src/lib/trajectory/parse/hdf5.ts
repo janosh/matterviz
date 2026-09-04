@@ -267,15 +267,27 @@ const discover_torch_sim_signals = (
   return { signal_manifest, atom_masses, mass_path, signal_paths }
 }
 
-const read_torch_sim_signal = (signal: TorchSimSignalManifest): TrajectorySignal => {
+const read_torch_sim_signal = (
+  signal: TorchSimSignalManifest,
+  start_step = -Infinity,
+  end_step = Infinity,
+): TrajectorySignal => {
   const { dataset, path, steps, sample_shape } = signal
+  const start = steps.findIndex((step) => step >= start_step)
+  const end = steps.findIndex((step) => step >= end_step)
+  const sample_start = start === -1 ? steps.length : start
+  const sample_end = end === -1 ? steps.length : end
   const values = read_numeric_samples(
     dataset,
     path,
     steps.length,
     values_per_sample(sample_shape),
+    1,
+    undefined,
+    sample_start,
+    sample_end,
   )
-  return trajectory_signal(values, signal, [...steps])
+  return trajectory_signal(values, signal, steps.slice(sample_start, sample_end))
 }
 
 type TorchSimConfig = {
@@ -570,14 +582,6 @@ const parse_torch_sim_datasets = (
     )
   }
   const last_geometry_step = steps[valid_frame_count - 1]
-  const streamed_pbc =
-    static_pbc ??
-    (pbc_values?.every(
-      (value, value_idx) =>
-        value_idx >= valid_frame_count * 3 || value === pbc_values[value_idx % 3],
-    )
-      ? pbc_for_frame(0)
-      : null)
   const candidate_energy_dataset = dataset_at(h5_file, energy_path)
   const candidate_energy_shape =
     candidate_energy_dataset && energy_path
@@ -750,11 +754,6 @@ const parse_torch_sim_datasets = (
   const collect_positions = (
     options: PositionStreamOptions = {},
   ): TrajectoryPositionStream => {
-    if (!streamed_pbc) {
-      throw new Error(
-        `TorchSim HDF5 analysis does not support PBC flags that vary between frames`,
-      )
-    }
     const { frame_stride, vector_keys, signal_keys, frame_indices } = resolve_stream_channels(
       FORMAT,
       options,
@@ -774,17 +773,38 @@ const parse_torch_sim_datasets = (
           position_values_per_frame * (1 + n_vectors) +
           1 +
           (static_lattice || dynamic_cells ? 9 : 0),
-        signal_values: (key) =>
-          signal_manifest[key].steps.length *
+        signal_values: (key, start_frame, end_frame) =>
+          signal_manifest[key].steps.reduce(
+            (count, step) =>
+              count +
+              Number(
+                step >= steps[start_frame] &&
+                  step < (end_frame < valid_frame_count ? steps[end_frame] : Infinity),
+              ),
+            0,
+          ) *
           (values_per_sample(signal_manifest[key].sample_shape) + 1),
       },
     )
+    const start_frame = options.start_frame ?? 0
+    const end_frame = options.end_frame ?? valid_frame_count
+    const streamed_pbc = pbc_for_frame(start_frame)
+    for (let idx = static_pbc ? end_frame * 3 : start_frame * 3; idx < end_frame * 3; idx++) {
+      if (Boolean(pbc_values?.[idx]) !== streamed_pbc[idx % 3]) {
+        throw new Error(
+          `TorchSim HDF5 analysis does not support PBC flags that vary between frames`,
+        )
+      }
+    }
     const positions = read_numeric_samples(
       positions_dataset,
       position_path,
       valid_frame_count,
       position_values_per_frame,
       frame_stride,
+      undefined,
+      start_frame,
+      end_frame,
     )
     const vectors = Object.fromEntries(
       vector_keys.map((key) => {
@@ -800,16 +820,35 @@ const parse_torch_sim_datasets = (
             valid_frame_count,
             position_values_per_frame,
             frame_stride,
+            undefined,
+            start_frame,
+            end_frame,
           ),
         ]
       }),
     )
     const signals = Object.fromEntries(
-      signal_keys.map((key) => [key, read_torch_sim_signal(signal_manifest[key])]),
+      signal_keys.map((key) => [
+        key,
+        read_torch_sim_signal(
+          signal_manifest[key],
+          steps[start_frame],
+          end_frame < valid_frame_count ? steps[end_frame] : Infinity,
+        ),
+      ]),
     )
     const sampled_cells =
       cells_dataset && cell_path && dynamic_cells
-        ? read_numeric_samples(cells_dataset, cell_path, valid_frame_count, 9, frame_stride)
+        ? read_numeric_samples(
+            cells_dataset,
+            cell_path,
+            valid_frame_count,
+            9,
+            frame_stride,
+            undefined,
+            start_frame,
+            end_frame,
+          )
         : null
     return {
       positions,

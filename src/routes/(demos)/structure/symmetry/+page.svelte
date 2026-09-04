@@ -20,6 +20,7 @@
     ensure_moyo_wasm_ready,
     spacegroup_wyckoff_positions,
     symmetry_elements_from_ops,
+    tile_symmetry_elements,
     SymmetryElementControls,
     SymmetryStats,
     WyckoffTable,
@@ -61,6 +62,20 @@
     show_sym_elements && top_ex_sym_data
       ? symmetry_elements_from_ops(top_ex_sym_data.operations ?? [])
       : [],
+  )
+
+  const sym_tiling = $derived(parse_supercell_scaling(top_ex_tiling))
+  const sym_lattice = $derived(
+    is_crystal(top_ex_structure) ? top_ex_structure.lattice.matrix : undefined,
+  )
+  const sym_tiling_result = $derived(
+    sym_lattice && top_ex_cell_type === `original`
+      ? tile_symmetry_elements(
+          sym_elements.filter((element) => show_sym_kinds[element.kind]),
+          sym_tiling,
+          sym_lattice,
+        )
+      : undefined,
   )
 
   onMount(() => {
@@ -130,8 +145,9 @@
           elements={sym_elements}
           bind:show_kinds={show_sym_kinds}
           in_input_frame={top_ex_cell_type === `original`}
-          tiling={parse_supercell_scaling(top_ex_tiling)}
-          lattice={is_crystal(top_ex_structure) ? top_ex_structure.lattice.matrix : undefined}
+          tiling={sym_tiling}
+          lattice={sym_lattice}
+          tiling_result={sym_tiling_result}
           style="margin: 0.5em 0 0 1.5em"
         />
       {/if}
@@ -155,7 +171,10 @@
       active_sites: active_wyckoff_sites,
       selected_sites: hovered_wyckoff_sites,
       symmetry_elements: sym_elements,
-      symmetry_elements_props: { show_kinds: show_sym_kinds },
+      symmetry_elements_props: {
+        show_kinds: show_sym_kinds,
+        tiling_result: sym_tiling_result,
+      },
     }}
     on_file_load={({ filename = ``, source_filename: loaded_source_filename }) => {
       display_filename = filename || source_filename

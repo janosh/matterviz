@@ -1,6 +1,6 @@
 import { collect_trajectory_rdf, rdf_shell } from '$lib/rdf'
 import type { Crystal } from '$lib/structure'
-import { trajectory_from_frames } from '$lib/trajectory'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { describe, expect, test } from 'vitest'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 import { make_crystal } from '../setup'
@@ -25,15 +25,48 @@ const rocksalt = (a_len = NACL_A): Crystal =>
 describe(`collect_trajectory_rdf`, () => {
   test(`averages every element pair over the sampled frames and reads off the shells`, async () => {
     const seen: number[] = []
-    const result = await collect_trajectory_rdf(run_of(Array.from({ length: 10 }, rocksalt)), {
+    const run = trajectory_from_frames(
+      Array.from({ length: 10 }, (_unused, idx) => ({
+        step: 100 + idx ** 2 * 25,
+        structure: idx === 0 ? make_fcc([1, 1, 1]) : rocksalt(),
+      })),
+      {
+        provenance: { filename: `original.xyz`, format: `extxyz`, source_bytes: 123 },
+        time_step: { value: 0.5, unit: `fs` },
+      },
+    )
+    const options = {
       max_frames: 4,
+      start_frame: 2,
+      end_frame: 9,
       cutoff: 6,
       n_bins: 120,
-      on_progress: (done) => seen.push(done),
-    })
+      on_progress: (done: number) => {
+        seen.push(done)
+        run.provenance.filename = `renamed.xyz`
+        if (run.time_step) run.time_step.value = 2
+        options.max_frames = 1
+        options.end_frame = 3
+      },
+    }
+    const result = await collect_trajectory_rdf(run, options)
     expect(seen).toEqual([1, 2, 3, 4])
-    expect(result.frame_numbers).toEqual([0, 3, 6, 9])
-    expect(result).toMatchObject({ frame_stride: 3, n_atoms: 8, cutoff: 6, n_bins: 120 })
+    expect(result.frame_numbers).toEqual([2, 4, 6, 8])
+    expect(result).toMatchObject({
+      start_frame: 2,
+      end_frame: 9,
+      frame_stride: 2,
+      max_frames: 4,
+      frame_steps: [200, 500, 1000, 1700],
+      source: {
+        provenance: { filename: `original.xyz`, format: `extxyz`, source_bytes: 123 },
+        frame_count: 10,
+        time_step: { value: 0.5, unit: `fs` },
+      },
+      n_atoms: 8,
+      cutoff: 6,
+      n_bins: 120,
+    })
     expect(result.mean_volume).toBeCloseTo(NACL_A ** 3, 6)
     expect(result.curves.map((curve) => curve.label)).toEqual([`Cl-Cl`, `Cl-Na`, `Na-Na`])
     const cl_na = result.curves[1]
@@ -122,11 +155,32 @@ describe(`collect_trajectory_rdf`, () => {
     ).rejects.toThrow(/different composition/)
   })
 
-  test.each([
+  test.each<readonly [string, () => TrajectoryRun, RegExp]>([
+    ...[undefined, NaN, Infinity].map(
+      (step) =>
+        [
+          `invalid step ${step}`,
+          () =>
+            ({
+              ...run_of([rocksalt()]),
+              read_frame: () => ({ structure: rocksalt(), step }),
+            }) as TrajectoryRun,
+          /frame 0 has invalid step/,
+        ] as const,
+    ),
     [
       `a lattice-less frame`,
       () => run_of([{ sites: rocksalt().sites } as unknown as Crystal]),
-      /needs a periodic cell/,
+      /this structure has no lattice/,
+    ],
+    [
+      `a singular lattice`,
+      () => {
+        const crystal = rocksalt()
+        crystal.lattice.matrix[2] = [0, 0, 0]
+        return run_of([crystal])
+      },
+      /nonsingular unit cell/,
     ],
     [
       `a composition change`,

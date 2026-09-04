@@ -610,12 +610,11 @@ describe(`Structure`, () => {
     },
   )
 
-  // Supercells, primitive and conventional cells all need a periodic direction to mean
-  // anything, so the widget offering them hides for a molecule or an isolated cluster
+  // Aperiodic boxes still support supercell repetition; molecules have no cell to repeat.
   test.each([
     [`fully periodic crystal`, [true, true, true], true],
     [`slab periodic along two axes`, [true, true, false], true],
-    [`cluster in a vacuum box`, [false, false, false], false],
+    [`cluster in a vacuum box`, [false, false, false], true],
     [`molecule without a lattice`, null, false],
   ] satisfies [string, Pbc | null, boolean][])(
     `cell select shown for a %s: %s`,

@@ -37,6 +37,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     tile_symmetry_elements,
   } from './symmetry-elements'
 
+  import { untrack } from 'svelte'
   import { T } from '@threlte/core'
   import { HTML } from '@threlte/extras'
   import {
@@ -76,6 +77,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // buries the structure under overlays for high-symmetry cells. Toggle additional
     // kinds individually (e.g. via SymmetryElementControls).
     show_kinds = DEFAULT_SHOW_SYM_KINDS,
+    tiling_result,
   }: {
     elements?: SymmetryElement[]
     lattice: Matrix3x3
@@ -83,20 +85,75 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // translation, so a tiled view draws them across the whole block (tile_symmetry_elements).
     tiling?: Vec3
     show_kinds?: ShowSymmetryKinds
+    // Optional result shared with controls; must describe the same elements/cell/selection.
+    tiling_result?: ReturnType<typeof tile_symmetry_elements>
   } = $props()
 
   // Everything below clips against the unit cube of `cell`, so the block's own cell vectors
   // plus block-frame elements extend the overlay over every tile
-  let tile_counts = $derived(tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3)
-  let cell = $derived(math.scale_lattice_matrix(lattice, tile_counts))
-  let tiling_result = $derived(
-    tile_symmetry_elements(
-      elements.filter((element) => show_kinds[element.kind]),
+  const tiling_key = $derived(tiling.map((count) => Math.max(1, Math.floor(count))).join(`,`))
+  const tile_counts = $derived(tiling_key.split(`,`).map(Number) as Vec3)
+  const matrix_key = $derived(lattice.flat().join(`,`))
+  const cell = $derived.by(() => {
+    void matrix_key
+    return math.scale_lattice_matrix(
+      untrack(() => lattice),
       tile_counts,
-      lattice,
+    )
+  })
+  const element_key = (items: SymmetryElement[]) =>
+    JSON.stringify(
+      items.map(({ kind, order, label, locus, point, axis, translation }) => [
+        kind,
+        order,
+        label,
+        locus,
+        point.join(`,`),
+        axis?.join(`,`),
+        translation?.join(`,`),
+      ]),
+    )
+  const visible_elements = $derived(elements.filter((element) => show_kinds[element.kind]))
+  const tiling_input_key = $derived(
+    JSON.stringify([
+      matrix_key,
+      tiling_key,
+      Boolean(tiling_result),
+      tiling_result?.unavailable_reason,
+      element_key(tiling_result?.elements ?? visible_elements),
+    ]),
+  )
+  const resolved_tiling = $derived.by(() => {
+    void tiling_input_key
+    // Keep a non-reactive snapshot: later proxy mutations are tracked by the value key,
+    // never by geometry consumers that would otherwise bypass that gate.
+    return untrack(() =>
+      $state.snapshot(
+        tiling_result ?? tile_symmetry_elements(visible_elements, tile_counts, lattice),
+      ),
+    )
+  })
+  const tiled_elements = $derived(resolved_tiling.elements)
+  const axis_elements = $derived(
+    tiled_elements.filter(
+      (element) =>
+        (element.kind === `rotation` ||
+          element.kind === `screw` ||
+          element.kind === `rotoinversion`) &&
+        element.axis,
     ),
   )
-  let tiled_elements = $derived(tiling_result.elements)
+  const plane_elements = $derived(
+    tiled_elements.filter(
+      (element) => (element.kind === `mirror` || element.kind === `glide`) && element.axis,
+    ),
+  )
+  const center_elements = $derived(
+    tiled_elements.filter((element) => element.kind === `inversion`),
+  )
+  const axes_key = $derived(element_key(axis_elements))
+  const planes_key = $derived(element_key(plane_elements))
+  const centers_key = $derived(element_key(center_elements))
 
   const UNIT_SCALE = new Vector3(1, 1, 1)
 
@@ -139,16 +196,13 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     )
   }
 
-  // Axes (cylinders) + rotoinversion center markers (spheres), merged per color/radius.
+  // Axes (cylinders) + rotoinversion center markers (octahedra), merged per color/radius.
   // Pure rotations render solid; screw axes render DASHED so the two are
   // distinguishable at a glance (translation-carrying elements are dashed, as in ITA
   // diagrams).
   const axis_groups: MaterialGroup[] = $derived.by(() => {
-    const axis_elements = tiled_elements.filter(
-      (elem) =>
-        (elem.kind === `rotation` || elem.kind === `screw` || elem.kind === `rotoinversion`) &&
-        elem.axis,
-    )
+    void axes_key
+    const axes = untrack(() => axis_elements)
     // Drop axes that are sub-elements of a higher-order axis on the same line (4 contains 2,
     // 6 contains 2 and 3, -4 contains 2, …) to reduce visual clutter. Computed over the
     // VISIBLE elements only, so 2-folds reappear when their enclosing higher-order kind is
@@ -156,14 +210,16 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // perpendicular-foot intercept would key lattice-equivalent parallel lines differently
     // in non-standard (primitive fcc, ...) frames and leave their sub-axes drawn.
     const max_order_by_line = new Map<string, number>()
-    for (const elem of axis_elements) {
+    for (const elem of axes) {
       const current = max_order_by_line.get(elem.locus) ?? 0
       max_order_by_line.set(elem.locus, Math.max(current, elem.order))
     }
 
     const parts_by_group = new Map<string, BufferGeometry[]>()
-    for (const elem of axis_elements) {
-      if (elem.order < (max_order_by_line.get(elem.locus) ?? 0)) continue
+    const drawn_axes = new Set<string>()
+    for (const elem of axes) {
+      const show_axis = elem.order >= (max_order_by_line.get(elem.locus) ?? 0)
+      if (!show_axis && elem.kind !== `rotoinversion`) continue
       const clipped = clip_line_to_cell(elem.point, elem.axis as Vec3, cell)
       if (!clipped) continue
       const [start, end] = clipped
@@ -176,6 +232,22 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       // Radius is baked into each geometry, so one merged group per color suffices
       const color = SYM_ELEM_COLORS.axis_by_order[elem.order] ?? `#777777`
       const group = parts_by_group.get(color) ?? []
+      parts_by_group.set(color, group)
+
+      if (elem.kind === `rotoinversion`) {
+        const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
+        const marker = new OctahedronGeometry(INVERSION_RADIUS * 0.8).translate(cx, cy, cz)
+        // Cylinders are indexed; every part in a merged geometry must agree on indexing.
+        marker.setIndex(
+          Array.from({ length: marker.getAttribute(`position`).count }, (_unused, idx) => idx),
+        )
+        group.push(marker)
+      }
+      if (!show_axis) continue // Hiding a sub-axis must not hide its distinct centers.
+      // Distinct centers may share a cylinder. Keep solid and dashed styles separate.
+      const line_key = `${color}|${elem.kind === `screw`}|${start}|${end}`
+      if (drawn_axes.has(line_key)) continue
+      drawn_axes.add(line_key)
 
       if (elem.kind === `screw`) {
         // Dashed cylinder: segments along the axis, touching both cell faces
@@ -187,11 +259,6 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
         const center = start_vec.clone().addScaledVector(dir_unit, length / 2)
         group.push(oriented_cylinder(center, dir_unit, AXIS_RADIUS, length))
       }
-      if (elem.kind === `rotoinversion`) {
-        const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
-        group.push(new OctahedronGeometry(INVERSION_RADIUS * 0.8).translate(cx, cy, cz))
-      }
-      parts_by_group.set(color, group)
     }
 
     return [...parts_by_group.entries()].flatMap(([color, geometries]) => {
@@ -205,15 +272,15 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // fill and outline groups below. stripe_dir is the unit Cartesian glide direction
   // (null for mirrors and translation-less entries).
   const visible_planes = $derived.by(() => {
+    void planes_key
     const planes: {
       polygon: Vec3[]
       color: string
       opacity: number
       stripe_dir: Vec3 | null
     }[] = []
-    for (const elem of tiled_elements) {
-      if ((elem.kind !== `mirror` && elem.kind !== `glide`) || !elem.axis) continue
-      const polygon = clip_plane_to_cell(elem.point, elem.axis, cell)
+    for (const elem of untrack(() => plane_elements)) {
+      const polygon = clip_plane_to_cell(elem.point, elem.axis as Vec3, cell)
       if (polygon.length < 3) continue
       const is_mirror = elem.kind === `mirror`
       planes.push({
@@ -274,12 +341,11 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // Inversion centers: faceted octahedra (centrosymmetric, unlike the smooth spheres
   // used for atoms) merged into a single geometry
   const inversion_group: MaterialGroup | null = $derived.by(() => {
-    const markers = tiled_elements
-      .filter((elem) => elem.kind === `inversion`)
-      .map((elem) => {
-        const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
-        return new OctahedronGeometry(INVERSION_RADIUS).translate(cx, cy, cz)
-      })
+    void centers_key
+    const markers = untrack(() => center_elements).map((elem) => {
+      const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
+      return new OctahedronGeometry(INVERSION_RADIUS).translate(cx, cy, cz)
+    })
     if (markers.length === 0) return null
     const merged = mergeGeometries(markers)
     markers.forEach((geo) => geo.dispose())
@@ -300,13 +366,13 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   $effect(() => () => stripe_texture.dispose())
 </script>
 
-{#if tiling_result.unavailable_reason}
+{#if resolved_tiling.unavailable_reason}
   <HTML zIndexRange={[1000, 1000]}>
     <div
       role="status"
       style="background: var(--surface-bg, white); padding: 0.5em; width: 20em"
     >
-      {tiling_result.unavailable_reason}
+      {resolved_tiling.unavailable_reason}
     </div>
   </HTML>
 {/if}

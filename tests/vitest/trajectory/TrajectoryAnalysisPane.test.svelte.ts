@@ -1,13 +1,15 @@
 // The shared chrome every whole-trajectory analysis pane (MSD, VACF, ...) is built on: the
 // timestep seeding, stride normalisation, indexed-trajectory warnings and stale-state rules
 // are tested once here against a stub collector rather than once per analysis.
-import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
+import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
 import type { AnalysisCollectOptions, AnalysisPaneContext } from '$lib/trajectory/analysis'
 import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
+import { TrajectoryProperties, trajectory_from_frames } from '$lib/trajectory'
+import { analysis_frame_times } from '$lib/trajectory/analysis'
 import { to_error } from '$lib/utils'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, make_run, settle } from '../setup'
+import { bind_props, doc_query, make_frame, make_run, settle } from '../setup'
 
 const frame_only_run = (n_frames: number): TrajectoryRun => {
   const { collect_positions: _collect_positions, ...run } = make_run(n_frames)
@@ -131,7 +133,10 @@ describe(`timestep seeding`, () => {
   test(`folds the frame stride into the time per collected frame and keeps the collected stride after a retype`, async () => {
     mount_pane({ default_dt: 0.5, default_time_unit: `ps`, time_unit_fallback: `fs` })
     await settle()
-    const stride = doc_query(`.stub-controls input[min='1'][step='1']`, HTMLInputElement)
+    const stride = doc_query(
+      `.stub-controls input[aria-label="Frame stride"]`,
+      HTMLInputElement,
+    )
     stride.value = `4`
     stride.dispatchEvent(new Event(`input`))
     await settle()
@@ -164,7 +169,10 @@ describe(`frame stride`, () => {
     `normalises a typed stride of %j to %i and collects with it`,
     async (raw, stride, frames) => {
       const collect = mount_pane({})
-      const input = doc_query(`.stub-controls input[min='1'][step='1']`, HTMLInputElement)
+      const input = doc_query(
+        `.stub-controls input[aria-label="Frame stride"]`,
+        HTMLInputElement,
+      )
       input.value = raw
       input.dispatchEvent(new Event(`input`))
       await settle()
@@ -182,7 +190,10 @@ describe(`frame stride`, () => {
     mount_pane({ suggest_stride: () => 5 })
     await settle()
     expect(pane_text()).toContain(`needs ≥ 5`)
-    const input = doc_query(`.stub-controls input[min='1'][step='1']`, HTMLInputElement)
+    const input = doc_query(
+      `.stub-controls input[aria-label="Frame stride"]`,
+      HTMLInputElement,
+    )
     input.value = `5`
     input.dispatchEvent(new Event(`input`))
     await settle()
@@ -192,10 +203,99 @@ describe(`frame stride`, () => {
   test(`omits the stride control, size estimate and hint line for analyses without a buffer to budget`, async () => {
     mount_pane({ suggest_stride: undefined })
     await settle()
-    expect(document.querySelector(`.stub-controls input[min='1'][step='1']`)).toBeNull()
+    expect(
+      document.querySelector(`.stub-controls input[aria-label="Frame stride"]`),
+    ).toBeNull()
     expect(pane_text()).not.toContain(`atoms ≈`)
     expect(document.querySelector(`.stub-controls p.hint`)).toBeNull()
   })
+})
+
+describe(`frame window`, () => {
+  test(`maps recorded times to source frames, rejects empty windows, and snapshots collection options`, async () => {
+    const run = trajectory_from_frames(
+      [10, 20, 50, 90].map((step) => make_frame(step, [[0, 0, 0]])),
+      {
+        time_step: { value: 0.5, unit: `fs` },
+      },
+    )
+    const properties = new TrajectoryProperties()
+    const collect = mount_pane({ run: { ...run, properties } })
+    await settle()
+    expect(document.querySelector(`input[aria-label="Start time"]`)).toBeNull()
+    properties.push(run.properties.rows)
+    properties.finish()
+    await settle()
+    expect(analysis_frame_times(run)?.values).toEqual([5, 10, 25, 45])
+    const set = async (label: string, value: string) => {
+      const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
+      input.value = value
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await settle()
+      if (label.includes(`time`)) {
+        // Typing must not snap the field after the first digit; commit only on change.
+        expect(input.value).toBe(value)
+        input.dispatchEvent(new Event(`change`, { bubbles: true }))
+        await settle()
+      }
+    }
+    await set(`Start time`, `11`)
+    await set(`End time (inclusive)`, `30`)
+    expect(pane_text()).toContain(`1 frames × 1 atoms`)
+    await click_collect()
+    const options = collect.mock.calls[0][1]
+    expect(options).toMatchObject({ start_frame: 2, end_frame: 3 })
+    const button = doc_query(`.stub-controls button`, HTMLButtonElement)
+    await set(`Start time`, ``)
+    expect(button.disabled).toBe(true)
+    await set(`Start time`, `11`)
+    expect(button.disabled).toBe(false)
+    await set(`Start frame`, `3`)
+    expect(button.disabled).toBe(true)
+    expect(
+      document.querySelector(`[id="${button.getAttribute(`aria-describedby`)}"]`)?.textContent,
+    ).toContain(`must be nonempty`)
+    expect(options).toMatchObject({ start_frame: 2, end_frame: 3 })
+    expect(analysis_frame_times({ ...run, properties: make_run(1).properties })).toBeNull()
+    expect(analysis_frame_times({ ...run, time_step: undefined })).toBeNull()
+  })
+})
+
+test(`selected-frame checks cancel stale reads, explain failures, and stop on unmount`, async () => {
+  const pending = [
+    Promise.withResolvers<TrajectoryFrame>(),
+    Promise.withResolvers<TrajectoryFrame>(),
+  ]
+  const signals: AbortSignal[] = []
+  const run = make_run(3)
+  const read_frame = vi.fn((_idx: number, signal?: AbortSignal) => {
+    if (signal) signals.push(signal)
+    return pending[signals.length - 1].promise
+  })
+  mount_pane({ run: { ...run, read_frame }, frame_unavailable_reason: () => null })
+  await settle()
+  const start = doc_query(`input[aria-label="Start frame"]`, HTMLInputElement)
+  const compute = doc_query(`.stub-controls button`, HTMLButtonElement)
+  for (const value of [`1`, `2`]) {
+    start.value = value
+    start.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(compute.disabled).toBe(true)
+    expect(compute.title).toContain(`Checking selected frame`)
+  }
+  expect(signals.map((signal) => signal.aborted)).toEqual([true, false])
+  pending[0].resolve(run.preview)
+  await settle()
+  expect(compute.disabled).toBe(true)
+  pending[1].reject(new Error(`Cannot read frame 2`))
+  await settle()
+  expect(compute.title).toBe(`Cannot read frame 2`)
+  expect(
+    document.querySelector(`[id="${compute.getAttribute(`aria-describedby`)}"]`)?.textContent,
+  ).toBe(`Cannot read frame 2`)
+  if (mounted) await unmount(mounted)
+  mounted = undefined
+  expect(signals[1].aborted).toBe(true)
 })
 
 describe(`trajectory state`, () => {

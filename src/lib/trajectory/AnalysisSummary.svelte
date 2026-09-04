@@ -1,7 +1,7 @@
 <script lang="ts">
   // Summary table plus provenance note under an analysis plot (MSD, VACF, RDF): one place
   // for the column headers, the compact styling, the faint note line each plot used to copy
-  // and the CSV download of the curves behind the plot
+  // and downloads of the curves and their analysis metadata
   import { download } from '$lib/io/fetch'
   import { columns_to_csv } from '$lib/trajectory/analysis'
   import type { Snippet } from 'svelte'
@@ -13,13 +13,11 @@
     note,
   }: {
     headers: string[]
-    // One CSV per entry: the columns are built on click so no pane pays for a string it
-    // never downloads
-    downloads?: {
-      label: string
-      filename: string
-      columns: () => Record<string, ArrayLike<number>>
-    }[]
+    // Build and serialize data only on click.
+    downloads?: ({ label: string; filename: string } & (
+      | { columns: () => Record<string, ArrayLike<number>> }
+      | { json: () => unknown }
+    ))[]
     // Table rows (<tr>…</tr>)
     children: Snippet
     // Provenance line rendered below the table
@@ -41,14 +39,17 @@
 </table>
 <p class="analysis-note">
   {@render note()}
-  {#each downloads as { label, filename, columns } (label)}
+  {#each downloads as item (item.label)}
     <button
       type="button"
       class="analysis-download"
-      title="Download {label} as CSV"
-      onclick={() => download(columns_to_csv(columns()), filename, `text/csv`)}
+      title="Download {item.label}"
+      onclick={() =>
+        `columns` in item
+          ? download(columns_to_csv(item.columns()), item.filename, `text/csv`)
+          : download(JSON.stringify(item.json(), null, 2), item.filename, `application/json`)}
     >
-      ⬇ {label}
+      ⬇ {item.label}
     </button>
   {/each}
 </p>

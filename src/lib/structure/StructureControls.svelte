@@ -54,7 +54,11 @@
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
-  import { is_periodic } from '$lib/structure/validation'
+  import {
+    has_lattice_matrix,
+    has_usable_lattice,
+    is_periodic,
+  } from '$lib/structure/validation'
   import type { CellType, SymmetryDataset } from '$lib/symmetry'
   import { to_error } from '$lib/utils'
   import { untrack, type ComponentProps } from 'svelte'
@@ -723,10 +727,8 @@
   }
 
   // Cell styling/tiling needs a lattice; image atoms and cell reduction need periodicity.
-  let has_lattice = $derived(
-    structure && `lattice` in structure && structure.lattice !== undefined,
-  )
-  let periodic = $derived(is_periodic(structure))
+  let has_lattice = $derived(has_lattice_matrix(structure))
+  let periodic = $derived(has_usable_lattice(structure) && is_periodic(structure))
 
   // Validate supercell input
   let supercell_input_valid = $derived(is_valid_supercell_input(supercell_scaling))

@@ -133,6 +133,44 @@ describe(`StructureControls inputs`, () => {
       false,
     ],
     [`periodic crystal`, simple_structure, true, true],
+    [
+      `slab`,
+      make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc: [true, true, false] }),
+      true,
+      true,
+    ],
+    [
+      `singular cell`,
+      {
+        ...simple_structure,
+        lattice: {
+          ...make_crystal(1, []).lattice,
+          matrix: [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 0],
+          ],
+        },
+      },
+      true,
+      false,
+    ],
+    [
+      `nonfinite cell`,
+      {
+        ...simple_structure,
+        lattice: {
+          ...make_crystal(1, []).lattice,
+          matrix: [
+            [NaN, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ],
+        },
+      },
+      false,
+      false,
+    ],
   ])(`lattice-dependent controls for %s`, async (_name, structure, cell_rows, reducible) => {
     await mount_controls({ structure, controls_open: true })
     expect(document.querySelectorAll(`input[placeholder="1x1x1"]`).length > 0).toBe(cell_rows)

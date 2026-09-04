@@ -12,6 +12,7 @@ import {
   frac_to_cart_direction,
   MAX_TILED_SYM_ELEMENTS,
   symmetry_elements_from_ops,
+  symmetry_tiling_reason,
   tile_symmetry_elements,
 } from '$lib/symmetry'
 import type { SymmetryElement } from '$lib/symmetry'
@@ -147,6 +148,20 @@ describe(`classify_symmetry_op`, () => {
       point: [0, 0, 0],
       translation: null,
     })
+    // (I-W) has determinant 4: two x/y positions, each with centers at z=0 and 1/2.
+    const elements = symmetry_elements_from_ops(
+      [0, 2 - 2e-9].map((shift) => ({
+        rotation: col_major(ROTOINV4_Z),
+        translation: [0, 0, shift],
+      })) as MoyoDataset[`operations`],
+    )
+    expect(elements.map(({ point }) => point)).toEqual([
+      [0, 0, 0],
+      [0, 0, 0.5],
+      [0.5, 0.5, 0],
+      [0.5, 0.5, 0.5],
+    ])
+    expect(new Set(elements.map(({ locus }) => locus)).size).toBe(2)
   })
 
   test(`3-fold and 3_1/3_2 screws in a hexagonal cell`, () => {
@@ -294,14 +309,14 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(elements.some((elem) => elem.kind === `inversion`)).toBe(true)
   })
 
-  // Exact in-cell counts (hand-verified vs ITA diagrams) pin element_locus_key dedup and
+  // Exact in-cell counts pin element_locus_key dedup and
   // invariant_translations' in-plane invariance check; each kills a distinct mutation:
   // - P4mm=14: dropping the plane-offset wrap splits lattice-equivalent mirrors
-  // - R-3m=84: locus-key fmt precision 4→1 collides/shifts trigonal loci
+  // - R-3m=87: locus-key fmt precision 4→1 collides/shifts trigonal loci
   // - Cm=4: weakening invariant_translations' some()→every() invariance test
   test.each([
     [`P4mm`, 99, 14],
-    [`R-3m`, 166, 84],
+    [`R-3m`, 166, 87],
     [`Cm`, 8, 4],
   ])(`%s (#%i) has exactly %i distinct in-cell elements`, (_, spg, expected) => {
     expect(elements_for(spg)).toHaveLength(expected)
@@ -322,7 +337,8 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       '3_1': 6,
       '3_2': 6,
       '2_1': 18,
-      '-3': 3,
+      // det(I - W) = 2 for -3, times three R-centering translations: six centers.
+      '-3': 6,
       m: 3,
       g: 3,
       '-1': 24,
@@ -631,6 +647,31 @@ describe(`tile_symmetry_elements`, () => {
     locus: `screw-z`,
   }
 
+  test.each([
+    [2, 1, 3],
+    [0.5, 1, 1],
+    [4001, 1, 1],
+    [1, 1e9, 1e9],
+    [Infinity, 1, 1],
+  ] as Vec3[])(`preflights %s,%s,%s without allocating translated elements`, (...tiling) => {
+    const elements = [mirror, screw]
+    const expected = tile_symmetry_elements(elements, tiling, cell).unavailable_reason
+    expect(
+      symmetry_tiling_reason(
+        elements.map((element) => ({
+          ...element,
+          get point(): Vec3 {
+            throw new Error(
+              `Preflight must not read coordinates to allocate translated elements`,
+            )
+          },
+        })),
+        tiling,
+        cell,
+      ),
+    ).toBe(expected)
+  })
+
   test(`repeats each element per tile at unchanged Cartesian positions`, () => {
     const elements = [mirror, screw]
     expect(tile_symmetry_elements(elements, [1, 1, 1], cell).elements).toBe(elements)
@@ -736,6 +777,18 @@ describe(`tile_symmetry_elements`, () => {
     const roto: SymmetryElement = { ...rotation, kind: `rotoinversion`, label: `-4` }
     expect(tile_symmetry_elements([rotation], [1, 1, 3], cell).elements).toHaveLength(1)
     expect(tile_symmetry_elements([roto], [1, 1, 3], cell).elements).toHaveLength(3)
+    const centers = [roto, { ...roto, point: [0, 0, 0.5] as Vec3 }]
+    expect(
+      tile_symmetry_elements(centers, [1, 1, 3], cell).elements.map(({ point }) => point[2]),
+    ).toEqual([0, 1 / 3, 2 / 3, 1 / 6, 0.5, 5 / 6])
+    // Custom source centers outside the unit cell remain outside it; coincident copies dedup.
+    expect(
+      tile_symmetry_elements(
+        [roto, { ...roto, point: [0, 0, 1] }],
+        [1, 1, 2],
+        cell,
+      ).elements.map(({ point }) => point[2]),
+    ).toEqual([0, 0.5, 1])
     // and the two never collapse into each other despite sharing a locus
     expect(tile_symmetry_elements([rotation, roto], [1, 1, 2], cell).elements).toHaveLength(3)
   })
