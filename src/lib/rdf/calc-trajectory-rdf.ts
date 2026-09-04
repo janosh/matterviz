@@ -192,19 +192,14 @@ export async function collect_trajectory_rdf(
     },
   )
   const n_frames = frame_numbers.length
-  // ρ_b averaged as <N_b / V>, the density the per-frame normalisation used
-  const inverse_volume = volumes.reduce((total, volume) => total + 1 / volume, 0) / n_frames
   // Occupancy-weighted atom counts, as the per-frame normalisation weighted them
   const counts = reference?.counts ?? new Map<string, number>()
   const curves = pairs.map(([el_a, el_b], pair_idx): TrajectoryRdfCurve => {
     const g_r = Array.from(sums[pair_idx], (sum) => sum / n_frames)
     const [n_a, n_b] = [counts.get(el_a) ?? 0, counts.get(el_b) ?? 0]
-    // Preserve the mean RDF's shell boundary but integrate <g/V>, not <g><1/V>.
-    const coordination_g_r = Array.from(
-      density_sums[pair_idx],
-      (sum) => sum / n_frames / inverse_volume,
-    )
-    const shell = rdf_shell(r, g_r, n_b * inverse_volume, coordination_g_r)
+    // Integrate N_b<g/V> directly, with the mean RDF's shell boundary.
+    const coordination_g_r = Array.from(density_sums[pair_idx], (sum) => sum / n_frames)
+    const shell = rdf_shell(r, g_r, n_b, coordination_g_r)
     return {
       element_pair: [el_a, el_b],
       label: `${el_a}-${el_b}`,

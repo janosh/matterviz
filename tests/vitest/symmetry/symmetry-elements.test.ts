@@ -662,16 +662,12 @@ describe(`tile_symmetry_elements`, () => {
     // Cartesian directions and screw/glide translations survive the basis change.
     for (const copy of tiled) {
       const source = copy.locus === mirror.locus ? mirror : screw
-      const cart_axis = frac_to_cart_direction(copy.axis as Vec3, block)
-      const want_axis = frac_to_cart_direction(source.axis as Vec3, cell)
-      for (const [idx, component] of cart_axis.entries()) {
-        expect(component).toBeCloseTo(want_axis[idx], 9)
-      }
-      if (!source.translation) continue
-      const cart_shift = frac_to_cart_direction(copy.translation as Vec3, block)
-      const want_shift = frac_to_cart_direction(source.translation, cell)
-      for (const [idx, component] of cart_shift.entries()) {
-        expect(component).toBeCloseTo(want_shift[idx], 9)
+      for (const key of [`axis`, `translation`] as const) {
+        const expected = source[key]
+        if (!expected) continue
+        expect(frac_to_cart_direction(copy[key] as Vec3, block)).toEqual(
+          frac_to_cart_direction(expected, cell).map((value) => expect.closeTo(value, 9)),
+        )
       }
     }
   })

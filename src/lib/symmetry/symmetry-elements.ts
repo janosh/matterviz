@@ -694,7 +694,7 @@ const tiled_element_key = (element: SymmetryElement, lattice: Matrix3x3) => {
       axis.some((component, other) => other !== idx && component !== 0),
     )
   }
-  return { key: (offset: Vec3) => `${identity}|${key(offset)}`, partial_key, changes }
+  return { identity, key, partial_key, changes }
 }
 
 // Translate elements through the block, then divide coordinates/directions by tile counts
@@ -723,7 +723,7 @@ export function tile_symmetry_elements(
   const seen = new Set<string>()
   let visits = 0
   for (const element of elements) {
-    const { key, partial_key, changes } = tiled_element_key(element, lattice)
+    const { identity, key, partial_key, changes } = tiled_element_key(element, lattice)
     let offsets: Vec3[] = [[0, 0, 0]]
     const axes = [2, 1, 0].filter((axis) => counts[axis] > 1 && changes[axis])
     for (const [axis_idx, axis] of axes.entries()) {
@@ -743,7 +743,7 @@ export function tile_symmetry_elements(
       offsets = [...unique.values()]
     }
     for (const offset of offsets) {
-      const locus = key(offset)
+      const locus = `${identity}|${key(offset)}`
       if (seen.has(locus)) continue
       if (tiled.length >= MAX_TILED_SYM_ELEMENTS)
         return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)

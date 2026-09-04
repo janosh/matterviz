@@ -18,6 +18,8 @@ import {
   VECTOR_PALETTE,
 } from '$lib/structure'
 import { neighbor_query } from '$lib/structure/bonding'
+import { make_site as create_site } from '$lib/structure/site'
+import { generate_lattice_points } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../setup'
@@ -614,23 +616,16 @@ describe(`characteristic_atom_spacing`, () => {
     ]
     const sites: [string, Vec3][] = []
     const reach = Math.ceil(radius / a_lat) + 1
-    for (let cell_a = -reach; cell_a <= reach; cell_a++) {
-      for (let cell_b = -reach; cell_b <= reach; cell_b++) {
-        for (let cell_c = -reach; cell_c <= reach; cell_c++) {
-          for (const [b_x, b_y, b_z] of basis) {
-            const xyz: Vec3 = [
-              (cell_a + b_x) * a_lat,
-              (cell_b + b_y) * a_lat,
-              (cell_c + b_z) * a_lat,
-            ]
-            if (Math.hypot(...xyz) > radius) continue
-            const abc = xyz.map((coord, axis) => {
-              const frac = (coord + centre[axis]) / box
-              return frac - Math.floor(frac)
-            }) as Vec3
-            sites.push([`Au`, abc])
-          }
-        }
+    const extent = 2 * reach + 1
+    for (const cell of generate_lattice_points([extent, extent, extent])) {
+      for (const offset of basis) {
+        const xyz = cell.map((coord, axis) => (coord - reach + offset[axis]) * a_lat)
+        if (Math.hypot(...xyz) > radius) continue
+        const abc = xyz.map((coord, axis) => {
+          const frac = (coord + centre[axis]) / box
+          return frac - Math.floor(frac)
+        }) as Vec3
+        sites.push([`Au`, abc])
       }
     }
     return make_crystal(box, sites)
@@ -767,13 +762,7 @@ describe(`characteristic_atom_spacing`, () => {
     `falls back to the bounding box for %s`,
     (_name, positions, low, high) => {
       const spacing = characteristic_atom_spacing({
-        sites: positions.map((xyz) => ({
-          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-          abc: xyz,
-          xyz,
-          label: `C`,
-          properties: {},
-        })),
+        sites: positions.map((xyz) => create_site(`C`, xyz, xyz, `C`)),
       })
       expect(spacing).toBeGreaterThan(low)
       expect(spacing).toBeLessThan(high)

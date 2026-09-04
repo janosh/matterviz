@@ -88,11 +88,6 @@ describe(`supercell_grid_edges`, () => {
     `%s covers every grid edge once, skipping the origin cell`,
     (tiling) => {
       const edges = supercell_grid_edges(tiling as Vec3)
-      const [n_a, n_b, n_c] = tiling
-      if (n_a * n_b * n_c === 1) {
-        expect(edges).toEqual([])
-        return
-      }
       expect(edges).toHaveLength(expected_count(tiling as Vec3))
       // no duplicates, every edge one cell long and inside the block
       const keys = new Set(edges.map(([start, axis]) => `${start.join(`,`)}|${axis}`))

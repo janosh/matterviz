@@ -1198,14 +1198,12 @@
               () => supercell_scaling,
               (value) => (supercell_scaling = value),
             ),
-            ...(periodic
-              ? {
-                  cell_type: local(
-                    () => cell_type,
-                    (value) => (cell_type = value),
-                  ),
-                }
-              : {}),
+            ...(periodic && {
+              cell_type: local(
+                () => cell_type,
+                (value) => (cell_type = value),
+              ),
+            }),
           })}
         >
           {#if periodic}
