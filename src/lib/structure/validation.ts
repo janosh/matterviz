@@ -9,3 +9,11 @@ export function is_crystal(obj: unknown): obj is Crystal {
     obj.lattice !== undefined && obj.lattice !== null && typeof obj.lattice === `object`
   return has_sites && has_lattice
 }
+
+// At least one periodic axis. An aperiodic box can still be tiled (is_crystal), but has
+// no image atoms or primitive/conventional reduction. Missing pbc matches make_lattice.
+export function is_periodic(obj: unknown): obj is Crystal {
+  if (!is_crystal(obj)) return false
+  const { pbc } = obj.lattice
+  return !Array.isArray(pbc) || pbc.some(Boolean)
+}

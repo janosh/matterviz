@@ -7,7 +7,7 @@ import {
   detect_instability,
   smooth_moving_average,
 } from '$lib/plot/core/data-cleaning'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 const linear = (length: number, slope = 1): { x: number[]; y: number[] } => {
   const x = Array.from({ length }, (_, idx) => idx)
@@ -81,6 +81,11 @@ describe(`detect_instability`, () => {
 
   it(`weights method scores into the combined score`, () => {
     const { x, y } = unstable(30, 30, 0.3)
+    expect(
+      detect_instability(x, y, {
+        oscillation_weights: { derivative_variance: 0, amplitude_growth: 0, sign_changes: 0 },
+      }),
+    ).toMatchObject({ detected: false, onset_index: -1, combined_score: 0 })
     const only = (method: `derivative_variance` | `amplitude_growth`) =>
       detect_instability(x, y, {
         oscillation_weights: { derivative_variance: 0, amplitude_growth: 0, [method]: 1 },
@@ -190,14 +195,25 @@ describe(`clean_series`, () => {
 
   // edges hold the nearest finite value; runs interpolate linearly; nothing finite -> 0
   it.each([
-    { y: [NaN, 2, 4, 6, NaN], cleaned: [2, 2, 4, 6, 6], count: 2 },
-    { y: [0, NaN, NaN, NaN, 8], cleaned: [0, 2, 4, 6, 8], count: 3 },
-    { y: [NaN, NaN], cleaned: [0, 0], count: 2 },
-  ])(`interpolates $y`, ({ y, cleaned, count }) => {
+    { label: `edges`, y: [NaN, 2, 4, 6, NaN], cleaned: [2, 2, 4, 6, 6], count: 2 },
+    { label: `interior`, y: [0, NaN, NaN, NaN, 8], cleaned: [0, 2, 4, 6, 8], count: 3 },
+    { label: `all missing`, y: [NaN, NaN], cleaned: [0, 0], count: 2 },
+    {
+      label: `long gap`,
+      y: [7, ...Array<number>(2048).fill(NaN), 7],
+      cleaned: Array<number>(2050).fill(7),
+      count: 2048,
+    },
+  ])(`interpolates $label in linear work`, ({ y, cleaned, count }) => {
+    const finite_check = vi.spyOn(Number, `isFinite`)
     const { series, quality } = clean_series(indexed(y), {
       invalid_values: `interpolate`,
       in_place: false,
     })
+    const checks = finite_check.mock.calls.length
+    finite_check.mockRestore()
+    // Includes detection/quality passes; rescanning the unfilled tail costs O(gap²).
+    expect(checks).toBeLessThan(100 * y.length)
     expect(series.y).toEqual(cleaned)
     expect(quality).toMatchObject({ points_removed: 0, invalid_values_found: count })
   })

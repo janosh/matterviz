@@ -424,6 +424,25 @@ describe(`TrajectoryExportPane property export`, () => {
     return content.split(`\n`)
   }
 
+  // POSCAR cannot write a frame without a cell, so the button refuses before the click rather
+  // than failing partway through a zip the user is already waiting on
+  test(`disables POSCAR ZIP with a reason for a lattice-less run, keeps extXYZ`, () => {
+    const molecule = trajectory_from_frames([
+      { step: 0, structure: { sites: trajectory.preview.structure.sites } },
+    ])
+    open_pane({ run: molecule })
+    const poscar = doc_query<HTMLButtonElement>(`button[aria-label="Download POSCAR ZIP"]`)
+    expect(poscar.disabled).toBe(true)
+    expect(poscar.title).toContain(`unit cell`)
+    const hint_id = poscar.getAttribute(`aria-describedby`)
+    expect(hint_id).toBeTypeOf(`string`)
+    expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(`unit cell`)
+    expect(document.body.textContent).toContain(`frames do not have`)
+    expect(doc_query<HTMLButtonElement>(`button[aria-label="Download extXYZ"]`).disabled).toBe(
+      false,
+    )
+  })
+
   test(`names every download action`, () => {
     vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
     open_pane({ run: trajectory })

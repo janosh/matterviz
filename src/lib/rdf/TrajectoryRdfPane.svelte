@@ -4,6 +4,7 @@
   // frame-stride control stays hidden and `max_frames` caps the sample instead.
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
+  import { is_crystal } from '$lib/structure/validation'
   import type { TrajectoryRun } from '$lib/trajectory'
   import type { AnalysisCollectOptions } from '$lib/trajectory/analysis'
   import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
@@ -81,6 +82,9 @@
   class_prefix="trajectory-rdf"
   analysis_name="RDF"
   {collect}
+  unavailable_reason={run && !is_crystal(run.preview.structure)
+    ? `g(r) counts pairs against the cell volume, so it needs a periodic cell, which these frames do not have`
+    : null}
   compute_label="Compute g(r)"
   recollect_label="Recompute"
   collecting_label="Binning pair distances…"

@@ -827,12 +827,17 @@ describe(`LAMMPS`, () => {
       `Invalid LAMMPS orthogonal BOX BOUNDS at timestep 0 (lines 6-8): 0.0 10.0 | 0.0 xx | 0.0 10.0`],
     [`duplicate atom IDs`, `${frame_0}\n${lammps_frame(`id type x y z`, [`1 1 1.5 0 0`, `1 1 7.5 0 0`], { timestep: 1 })}`,
       `LAMMPS frame at timestep 1 has duplicate atom IDs`],
-    [`non-positive atom ID`, lammps_frame(`id type x y z`, [`0 1 1 0 0`]), `LAMMPS frame at timestep 0 has a non-positive-integer atom ID 0`],
+    ...[`0`, `bad`, `NaN`, `Infinity`].map((id) => [
+      `invalid atom ID ${id}`, lammps_frame(`id element x y z`, [`${id} H 1 0 0`]),
+      `LAMMPS atom line 10 (timestep 0) has invalid ID "${id}"`,
+    ]),
     [`a frame that loses the ID column`, `${frame_0}\n${lammps_frame(`type x y z`, [`1 1 0 0`, `1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS frame at timestep 1 lost the atom ID column`],
     // An interior frame shorter than its atom count runs into the next header
     [`an interior frame missing atoms`, `${lammps_frame(`id type x y z`, [`1 1 1 0 0`], { n_atoms: 2 })}\n${lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS atom line 11 (timestep 0) has 2 columns, expected 5`],
+    [`an interior frame missing BOX BOUNDS`, `${frame_0}\nITEM: TIMESTEP\n1\nITEM: NUMBER OF ATOMS\n1\n${lammps_frame(`id type x y z`, [`1 1 2 0 0`], { timestep: 2 })}`,
+      `LAMMPS frame at timestep 1 is missing "ITEM: BOX BOUNDS" before line`],
     [`descending timesteps`, [lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 1 }), lammps_frame(`id type x y z`, [`1 1 2 0 0`])].join(`\n`),
       `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`],
   ])(`rejects %s with line/frame context`, async (_label, content, error) => {

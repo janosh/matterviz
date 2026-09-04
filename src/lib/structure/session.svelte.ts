@@ -247,9 +247,9 @@ export class StructureSession {
       this.has_scaled_cell &&
       (!this.inputs.apply_supercell_scaling() || this.supercell.applied),
   )
-  // Tiling factors for isosurface geometry; held at 1 until the supercell structure lands so
-  // surfaces and atoms update in the same frame
-  volume_scaling = $derived.by((): Vec3 => {
+  // Tiling factors for the drawn cell and isosurface geometry; held at 1 until the supercell
+  // structure lands so cell tiles, surfaces and atoms update in the same frame
+  supercell_tiling = $derived.by((): Vec3 => {
     if (!this.has_supercell || !this.supercell.applied || this.supercell.loading)
       return [1, 1, 1]
     return this.supercell_factors ?? [1, 1, 1]

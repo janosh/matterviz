@@ -128,18 +128,23 @@ describe(`compute_e_form_per_atom`, () => {
 })
 
 describe(`find_lowest_energy_unary_refs`, () => {
-  test(`selects lowest energy polymorph per element, ignoring compounds`, () => {
-    const entries = [
-      make_phase({ Fe: 1 }, -3.5),
-      make_phase({ Fe: 1 }, -4.0),
-      make_phase({ O: 1 }, -2.0),
-      make_phase({ O: 1 }, -2.5),
-      make_phase({ Fe: 1, O: 1 }, -6.0),
-    ]
-    const refs = find_lowest_energy_unary_refs(entries)
-    expect(Object.keys(refs)).toEqual([`Fe`, `O`])
-    expect([refs.Fe.energy_per_atom, refs.O.energy_per_atom]).toEqual([-4.0, -2.5])
-  })
+  test.each([NaN, -Infinity, Infinity])(
+    `selects finite unary references, ignoring %s`,
+    (invalid_energy) => {
+      const entries = [
+        make_phase({ Fe: 1 }, invalid_energy),
+        make_phase({ Li: 1 }, invalid_energy),
+        make_phase({ Fe: 1 }, -3.5),
+        make_phase({ Fe: 1 }, -4.0),
+        make_phase({ O: 1 }, -2.0),
+        make_phase({ O: 1 }, -2.5),
+        make_phase({ Fe: 1, O: 1 }, -6.0),
+      ]
+      const refs = find_lowest_energy_unary_refs(entries)
+      expect(Object.keys(refs)).toEqual([`Fe`, `O`])
+      expect([refs.Fe.energy_per_atom, refs.O.energy_per_atom]).toEqual([-4.0, -2.5])
+    },
+  )
 })
 
 // Brute-force lower hull energy at `query`: min over all (d+1)-subsets containing the

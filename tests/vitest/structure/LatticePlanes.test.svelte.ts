@@ -1,6 +1,6 @@
 // Mounts LatticePlanes against the recording Threlte stub: one fill mesh and one outline per
 // family, disposed when the families change
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import LatticePlanes from '$lib/structure/LatticePlanes.svelte'
 import type { LatticePlane } from '$lib/structure/lattice-planes'
 import type * as threlte_core from '@threlte/core'
@@ -28,7 +28,7 @@ afterEach(() => {
 })
 
 const mount_planes = (planes: LatticePlane[]) => {
-  const props = $state({ planes, lattice: cubic })
+  const props = $state({ planes, lattice: cubic, tiling: [1, 1, 1] as Vec3 })
   const component = mount(LatticePlanes, { target: document.body, props })
   teardown = () => void unmount(component)
   flushSync()
@@ -52,4 +52,15 @@ test(`draws one fan-triangulated fill and one outline per family and disposes th
   flushSync()
   expect(dispose).toHaveBeenCalledOnce()
   expect(vertex_counts(`Mesh`)).toEqual([12])
+
+  props.tiling = [2, 3, 1]
+  flushSync()
+  // Three full block faces at x = 0, 4, 8, each spanning y = 0..12.
+  expect(vertex_counts(`Mesh`)).toEqual([18])
+  expect(vertex_counts(`LineSegments`)).toEqual([24])
+  const geometry = threlte_stub.nodes.find((node) => node.tag === `Mesh`)?.props
+    .geometry as BufferGeometry
+  geometry.computeBoundingBox()
+  expect(geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
+  expect(geometry.boundingBox?.max.toArray()).toEqual([8, 12, 4])
 })

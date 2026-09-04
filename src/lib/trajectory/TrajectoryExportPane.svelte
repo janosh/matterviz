@@ -74,6 +74,8 @@
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
   let range = $derived(`${start_frame}-${end_frame}`)
   let data_export_disabled = $derived(running !== null || !run || export_frame_count === 0)
+  // Refuse lattice-less previews before export; the writer still validates every frame.
+  let poscar_blocked = $derived(run !== undefined && !(`lattice` in run.preview.structure))
 
   let canvas = $derived(wrapper?.querySelector<HTMLCanvasElement>(`canvas`) ?? null)
   let has_canvas = $state(false)
@@ -192,7 +194,10 @@
         {
           label: `POSCAR ZIP`,
           hint: `One numbered POSCAR per frame, zipped`,
-          disabled: data_export_disabled,
+          disabled: data_export_disabled || poscar_blocked,
+          disabled_reason: poscar_blocked
+            ? `POSCAR has to state a unit cell, which this trajectory's frames do not have`
+            : undefined,
           on_download: () =>
             run_export(`POSCAR ZIP`, async () =>
               download(

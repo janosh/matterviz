@@ -367,16 +367,21 @@ describe(`banners`, () => {
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ warnings: [`odd header`, `missing cell`] }) }),
     )
-    const banner = doc_query(`.status-message.warning`)
+    // scoped by content: analysis panes render warnings of their own (an RDF pane tells a
+    // lattice-less run why g(r) is unavailable) and those are not this banner
+    const find_parse_banner = (root: ParentNode) =>
+      [...root.querySelectorAll<HTMLElement>(`.status-message.warning`)].find((node) =>
+        node.textContent?.includes(`parse warning`),
+      )
+    const banner = find_parse_banner(document) as HTMLElement
     expect(banner.textContent).toContain(`2 parse warnings: odd header; missing cell`)
     // bottom-anchored like the AtomLegend (z-index 2), so it must stack above it
     expect(Number(banner.style.zIndex)).toBeGreaterThan(2)
     banner.querySelector<HTMLButtonElement>(`button[aria-label="Dismiss message"]`)?.click()
     await tick()
-    expect(target.querySelector(`.status-message.warning`)).toBeNull()
-    expect(
-      mount_trajectory(default_props()).querySelector(`.status-message.warning`),
-    ).toBeNull()
+    expect(find_parse_banner(target)).toBeUndefined()
+    const fresh_viewer = mount_trajectory(default_props())
+    expect(find_parse_banner(fresh_viewer)).toBeUndefined()
   })
 
   test.each([

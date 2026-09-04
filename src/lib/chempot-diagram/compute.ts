@@ -61,22 +61,14 @@ function prefer_min_entry(
   return entry_fingerprint(candidate) < entry_fingerprint(existing)
 }
 
-// Cache for reduced formula strings -- avoids recomputing get_reduced_formula
-// in hot loops. Key is object identity (WeakMap), value is the formula string.
-const formula_cache = new WeakMap<Record<string, number>, string>()
-
-// Get a stable reduced formula string from composition dict (cached)
+// Get a stable reduced formula string from composition dict
 export function formula_key_from_composition(composition: Record<string, number>): string {
-  const cached = formula_cache.get(composition)
-  if (cached) return cached
   const reduced = get_reduced_formula(composition)
-  const key = Object.entries(reduced)
+  return Object.entries(reduced)
     .filter(([, amt]) => amt > 0)
     .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([el, amt]) => (amt === 1 ? el : `${el}${amt}`))
     .join(``)
-  formula_cache.set(composition, key)
-  return key
 }
 
 // Sorted elements present (positive amount) in any entry: the chemical system of a dataset

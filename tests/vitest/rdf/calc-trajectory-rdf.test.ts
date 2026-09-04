@@ -48,22 +48,38 @@ describe(`collect_trajectory_rdf`, () => {
     expect(cl_na.g_r).toHaveLength(120)
   })
 
-  test(`weights a changing cell by each frame's own density`, async () => {
-    // NPT-like: the second frame is expanded 1%, so its first shell lands in a neighbouring
-    // bin. Each frame's g(r) is normalised with its own volume and the CN integral uses the
-    // mean density, so 12 first neighbours come back to second order in the volume change.
-    const result = await collect_trajectory_rdf(
-      run_of([make_fcc([2, 2, 2]), make_fcc([2, 2, 2], FCC_LATTICE_CONST * 1.01)]),
-      { cutoff: 5, n_bins: 100 },
-    )
-    expect(result.curves).toHaveLength(1)
-    expect(result.curves[0].shell.coordination).toBeCloseTo(12, 2)
-    expect(result.curves[0].coordination_reverse).toBeCloseTo(12, 2)
-    expect(result.mean_volume).toBeCloseTo(
-      ((2 * FCC_LATTICE_CONST) ** 3 * (1 + 1.01 ** 3)) / 2,
-      6,
-    )
-  })
+  test.each([
+    {
+      label: `expanded FCC`,
+      structures: [make_fcc([2, 2, 2]), make_fcc([2, 2, 2], FCC_LATTICE_CONST * 1.01)],
+      coordination: 12,
+      volume: ((2 * FCC_LATTICE_CONST) ** 3 * (1 + 1.01 ** 3)) / 2,
+    },
+    {
+      label: `fixed dimer in changing volume`,
+      structures: [10, 20].map((cell) =>
+        make_crystal(cell, [
+          [`Na`, [0, 0, 0]],
+          [`Na`, [1 / cell, 0, 0]],
+        ]),
+      ),
+      coordination: 1,
+      volume: 4500,
+    },
+  ])(
+    `weights $label by each frame's own density`,
+    async ({ structures, coordination, volume }) => {
+      const result = await collect_trajectory_rdf(run_of(structures), {
+        cutoff: 5,
+        n_bins: 100,
+      })
+      expect(result.curves).toHaveLength(1)
+      // Both frames contain the entire first shell; the count is independent of cell volume.
+      expect(result.curves[0].shell.coordination).toBeCloseTo(coordination, 9)
+      expect(result.curves[0].coordination_reverse).toBeCloseTo(coordination, 9)
+      expect(result.mean_volume).toBeCloseTo(volume, 6)
+    },
+  )
 
   test(`keeps every species of a mixed-occupancy site, weighted by occupancy`, async () => {
     // Na0.5K0.5 on every cation site: K-Cl and Na-Cl see the same 6 Cl neighbours, and with

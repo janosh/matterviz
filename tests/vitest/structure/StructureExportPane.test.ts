@@ -284,9 +284,16 @@ describe(`StructureExportPane`, () => {
     mount_pane({ structure: molecule })
 
     for (const label of [`CIF`, `POSCAR`]) {
-      expect(get_button(`Download ${label}`).disabled, label).toBe(true)
-      expect(get_button(`Copy ${label}`).disabled, label).toBe(true)
+      for (const action of [`Download`, `Copy`]) {
+        const button = get_button(`${action} ${label}`)
+        expect(button.disabled, label).toBe(true)
+        expect(button.title, label).toContain(`unit cell`)
+        const hint_id = button.getAttribute(`aria-describedby`)
+        expect(hint_id).toBeTypeOf(`string`)
+        expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(`unit cell`)
+      }
     }
+    expect(document.body.textContent).toContain(`this structure has no lattice`)
     for (const label of [`JSON`, `XYZ`]) {
       expect(get_button(`Download ${label}`).disabled, label).toBe(false)
       expect(get_button(`Copy ${label}`).disabled, label).toBe(false)

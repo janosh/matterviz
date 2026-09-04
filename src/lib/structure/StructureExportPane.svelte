@@ -117,13 +117,21 @@
   const sections = $derived<ExportSection[]>([
     {
       title: `Export as text`,
-      items: text_export_formats.map(({ label, format, hint }) => ({
-        label,
-        hint,
-        disabled: !structure || ([`cif`, `poscar`].includes(format) && !has_lattice),
-        on_download: () => handle_text_export(format),
-        copy_text: () => get_text_content(format),
-      })),
+      items: text_export_formats.map(({ label, format, hint }) => {
+        const needs_lattice = [`cif`, `poscar`].includes(format) && !has_lattice
+        return {
+          label,
+          hint,
+          disabled: !structure || needs_lattice,
+          disabled_reason: !structure
+            ? `No structure loaded`
+            : needs_lattice
+              ? `${label} requires a unit cell; this structure has no lattice`
+              : undefined,
+          on_download: () => handle_text_export(format),
+          copy_text: () => get_text_content(format),
+        }
+      }),
     },
     {
       title: `Export as image`,
@@ -131,6 +139,7 @@
         {
           label: `PNG`,
           disabled: !has_canvas,
+          disabled_reason: has_canvas ? undefined : `Waiting for the 3D view to render`,
           show_dpi: true,
           on_download: () => {
             const canvas = image_canvas ?? wrapper?.querySelector(`canvas`)
@@ -155,6 +164,7 @@
               label,
               hint,
               disabled: !scene,
+              disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
               on_download: () => handle_3d_export(format),
             })),
           },

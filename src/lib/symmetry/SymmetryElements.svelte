@@ -34,6 +34,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     DEFAULT_SHOW_SYM_KINDS,
     frac_to_cart_direction,
     SYM_ELEM_COLORS,
+    tile_symmetry_elements,
   } from './symmetry-elements'
 
   import { T } from '@threlte/core'
@@ -69,6 +70,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   let {
     elements = [],
     lattice,
+    tiling = [1, 1, 1],
     // Per-kind visibility. Defaults to rotation axes ONLY: drawing every kind at once
     // buries the structure under overlays for high-symmetry cells. Toggle additional
     // kinds individually (e.g. via SymmetryElementControls).
@@ -76,8 +78,22 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   }: {
     elements?: SymmetryElement[]
     lattice: Matrix3x3
+    // Unit cells the rendered structure spans along a/b/c. Elements repeat at every lattice
+    // translation, so a tiled view draws them across the whole block (tile_symmetry_elements).
+    tiling?: Vec3
     show_kinds?: ShowSymmetryKinds
   } = $props()
+
+  // Everything below clips against the unit cube of `cell`, so the block's own cell vectors
+  // plus block-frame elements extend the overlay over every tile
+  let cell = $derived(math.scale_lattice_matrix(lattice, tiling))
+  let tiled_elements = $derived(
+    tile_symmetry_elements(
+      elements.filter((element) => show_kinds[element.kind]),
+      tiling,
+      lattice,
+    ),
+  )
 
   const UNIT_SCALE = new Vector3(1, 1, 1)
 
@@ -125,10 +141,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // distinguishable at a glance (translation-carrying elements are dashed, as in ITA
   // diagrams).
   const axis_groups: MaterialGroup[] = $derived.by(() => {
-    const axis_elements = elements.filter(
+    const axis_elements = tiled_elements.filter(
       (elem) =>
         (elem.kind === `rotation` || elem.kind === `screw` || elem.kind === `rotoinversion`) &&
-        show_kinds[elem.kind] &&
         elem.axis,
     )
     // Drop axes that are sub-elements of a higher-order axis on the same line (4 contains 2,
@@ -146,7 +161,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     const parts_by_group = new Map<string, BufferGeometry[]>()
     for (const elem of axis_elements) {
       if (elem.order < (max_order_by_line.get(elem.locus) ?? 0)) continue
-      const clipped = clip_line_to_cell(elem.point, elem.axis as Vec3, lattice)
+      const clipped = clip_line_to_cell(elem.point, elem.axis as Vec3, cell)
       if (!clipped) continue
       const [start, end] = clipped
       const span = new Vector3(...math.subtract(end, start))
@@ -170,7 +185,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
         group.push(oriented_cylinder(center, dir_unit, AXIS_RADIUS, length))
       }
       if (elem.kind === `rotoinversion`) {
-        const [cx, cy, cz] = frac_to_cart_direction(elem.point, lattice)
+        const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
         group.push(new OctahedronGeometry(INVERSION_RADIUS * 0.8).translate(cx, cy, cz))
       }
       parts_by_group.set(color, group)
@@ -193,10 +208,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       opacity: number
       stripe_dir: Vec3 | null
     }[] = []
-    for (const elem of elements) {
+    for (const elem of tiled_elements) {
       if ((elem.kind !== `mirror` && elem.kind !== `glide`) || !elem.axis) continue
-      if (!show_kinds[elem.kind]) continue
-      const polygon = clip_plane_to_cell(elem.point, elem.axis, lattice)
+      const polygon = clip_plane_to_cell(elem.point, elem.axis, cell)
       if (polygon.length < 3) continue
       const is_mirror = elem.kind === `mirror`
       planes.push({
@@ -204,7 +218,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
         color: is_mirror ? SYM_ELEM_COLORS.mirror : SYM_ELEM_COLORS.glide,
         opacity: is_mirror ? PLANE_OPACITY : GLIDE_OPACITY,
         stripe_dir: elem.translation
-          ? math.normalize_vec(frac_to_cart_direction(elem.translation, lattice))
+          ? math.normalize_vec(frac_to_cart_direction(elem.translation, cell))
           : null,
       })
     }
@@ -257,11 +271,10 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // Inversion centers: faceted octahedra (centrosymmetric, unlike the smooth spheres
   // used for atoms) merged into a single geometry
   const inversion_group: MaterialGroup | null = $derived.by(() => {
-    if (!show_kinds.inversion) return null
-    const markers = elements
+    const markers = tiled_elements
       .filter((elem) => elem.kind === `inversion`)
       .map((elem) => {
-        const [cx, cy, cz] = frac_to_cart_direction(elem.point, lattice)
+        const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
         return new OctahedronGeometry(INVERSION_RADIUS).translate(cx, cy, cz)
       })
     if (markers.length === 0) return null

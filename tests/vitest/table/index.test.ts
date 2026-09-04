@@ -389,9 +389,16 @@ describe(`compare_rows`, () => {
       .toSorted((row1, row2) => compare_rows(row1, row2, [{ key: `val`, ascending }]))
       .map((row) => row.val)
 
-  it(`sinks invalid values regardless of direction`, () => {
-    expect(order([null, 3, undefined, 1, NaN, 2])).toEqual([1, 2, 3, null, undefined, NaN])
-    expect(order([null, 3, 1, 2], false)).toEqual([3, 2, 1, null])
+  it.each([true, false])(`sinks invalid values with ascending=%s`, (ascending) => {
+    const invalid_date = new Date(NaN)
+    expect(cell_text(invalid_date)).toBe(``)
+    expect(order([null, 3, undefined, 1, NaN, 2, invalid_date], ascending)).toEqual([
+      ...(ascending ? [1, 2, 3] : [3, 2, 1]),
+      null,
+      undefined,
+      NaN,
+      invalid_date,
+    ])
   })
 
   it(`puts numbers before strings and compares strings in natural order`, () => {
@@ -429,6 +436,7 @@ describe(`compare_rows`, () => {
   it.each([
     [`a boolean`, true],
     [`an object`, { a: 1 }],
+    [`an invalid date`, new Date(NaN)],
   ])(`compares a string against %s antisymmetrically`, (_case, other) => {
     const cmp = (val1: CellVal, val2: CellVal) =>
       compare_rows({ val: val1 }, { val: val2 }, [{ key: `val`, ascending: true }])

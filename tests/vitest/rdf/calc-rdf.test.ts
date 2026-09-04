@@ -115,6 +115,19 @@ describe(`calculate_rdf`, () => {
   // a naive mean of the unordered partials is wrong for anything but a 1:1 binary
   test.each([
     [`rocksalt`, rocksalt],
+    [
+      `vacant rocksalt`,
+      {
+        ...rocksalt,
+        sites: rocksalt.sites.map((site) => ({
+          ...site,
+          species: site.species.map((spec) => ({
+            ...spec,
+            occu: spec.element === `Na` ? 0.5 : 1,
+          })),
+        })),
+      },
+    ],
     [`Bi2Zr2O8`, bi2zr2o8_structure],
     [`Lu-Al`, lu_al_structure],
   ])(`full g(r) of %s equals Σ c_a c_b g_ab(r) over the partials`, (_name, structure) => {

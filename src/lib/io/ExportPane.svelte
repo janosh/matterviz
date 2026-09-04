@@ -40,6 +40,8 @@
     children?: Snippet
   } = $props()
 
+  const pane_id = $props.id()
+
   // Clamp DPI into dpi_range on input change (fires on blur, before any download click)
   function clamp_dpi(): void {
     const [min_dpi, max_dpi] = dpi_range
@@ -90,7 +92,10 @@
       {#each section.items as item, item_idx (item.label)}
         {@const copy_key = `${sec_idx}-${item_idx}`}
         <!-- not a <label>: it would forward label-text clicks to the first (download) button -->
-        <span class="export-item">
+        {@const why = item.disabled ? item.disabled_reason : undefined}
+        {@const hint_id = why ? `${pane_id}-${copy_key}-hint` : undefined}
+        {@const why_suffix = why ? ` — ${why}` : ``}
+        <span class="export-item" class:disabled={item.disabled}>
           {#if item.hint}
             <span {@attach tooltip({ allow_html: true, content: sanitize_html(item.hint) })}
               >{item.label}</span
@@ -104,7 +109,10 @@
               onclick={item.on_download}
               disabled={item.disabled ?? false}
               aria-label={`Download ${item.label}`}
-              title={`Download ${item.label}${item.show_dpi ? ` (${png_dpi} DPI)` : ``}`}
+              aria-describedby={hint_id}
+              title={`Download ${item.label}${
+                item.show_dpi ? ` (${png_dpi} DPI)` : ``
+              }${why_suffix}`}
             >
               ⬇
             </button>
@@ -115,11 +123,13 @@
               onclick={() => handle_copy(item, copy_key)}
               disabled={item.disabled ?? false}
               aria-label="Copy {item.label} to clipboard"
-              title="Copy {item.label} to clipboard"
+              aria-describedby={hint_id}
+              title={`Copy ${item.label} to clipboard${why_suffix}`}
             >
               {copied.has(copy_key) ? `✅` : `📋`}
             </button>
           {/if}
+          {#if why}<small id={hint_id} class="disabled-reason">{why}</small>{/if}
           {#if item.show_dpi}
             <span class="dpi-input"
               >(DPI: <input
@@ -157,6 +167,14 @@
     align-items: center;
     gap: 4pt;
     white-space: nowrap;
+    &.disabled {
+      opacity: 0.6;
+    }
+  }
+  .disabled-reason {
+    font-size: 0.85em;
+    opacity: 0.8;
+    white-space: normal;
   }
   .export-grid button {
     min-width: 1.9em;

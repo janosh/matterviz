@@ -34,7 +34,7 @@ export interface RdfShell {
   // curve is still falling at the cutoff.
   first_min_r: number | null
   // Neighbours of the second element around one atom of the first, out to first_min_r:
-  // 4π ρ_b ∫ g_ab(r) r² dr with ρ_b the second element's mean number density
+  // 4π ∫ <ρ_b g_ab(r)> r² dr, averaging density and RDF together for a changing cell
   coordination: number | null
 }
 
@@ -73,7 +73,12 @@ const EMPTY_SHELL: RdfShell = {
 
 // Shell extrema are located on a 3-bin running mean so a thin-sample wiggle is not taken for
 // a shell boundary; the coordination integral uses the raw curve.
-export function rdf_shell(r: number[], g_r: number[], rho_b: number): RdfShell {
+export function rdf_shell(
+  r: number[],
+  g_r: number[],
+  rho_b: number,
+  coordination_g_r = g_r,
+): RdfShell {
   const n_bins = g_r.length
   if (n_bins < 3 || r.length !== n_bins) return EMPTY_SHELL
   const smooth = g_r.map(
@@ -105,7 +110,7 @@ export function rdf_shell(r: number[], g_r: number[], rho_b: number): RdfShell {
   if (first_min < 0) return shell
   // far edge of the first-minimum bin: coordination_number's window is half-open [0, r_max)
   const bin_size = r[1] - r[0]
-  const coordination = coordination_number({ r, g_r }, rho_b, {
+  const coordination = coordination_number({ r, g_r: coordination_g_r }, rho_b, {
     r_max: r[first_min] + bin_size / 2,
   })
   return { ...shell, first_min_r: r[first_min], coordination }
@@ -128,6 +133,7 @@ export async function collect_trajectory_rdf(
     | { frame_number: number; signature: string; counts: Map<string, number> }
     | undefined
   let sums: Float64Array[] = []
+  let density_sums: Float64Array[] = []
   let r: number[] = []
   let pairs: [string, string][] = []
   const {
@@ -171,12 +177,18 @@ export async function collect_trajectory_rdf(
           return pattern.element_pair
         })
         sums = patterns.map(() => new Float64Array(n_bins))
+        density_sums = patterns.map(() => new Float64Array(n_bins))
       }
+      const volume = calc_lattice_params(structure.lattice.matrix).volume
       for (const [pair_idx, pattern] of patterns.entries()) {
         const sum = sums[pair_idx]
-        for (let bin = 0; bin < n_bins; bin++) sum[bin] += pattern.g_r[bin]
+        const density_sum = density_sums[pair_idx]
+        for (let bin = 0; bin < n_bins; bin++) {
+          sum[bin] += pattern.g_r[bin]
+          density_sum[bin] += pattern.g_r[bin] / volume
+        }
       }
-      return calc_lattice_params(structure.lattice.matrix).volume
+      return volume
     },
   )
   const n_frames = frame_numbers.length
@@ -187,7 +199,12 @@ export async function collect_trajectory_rdf(
   const curves = pairs.map(([el_a, el_b], pair_idx): TrajectoryRdfCurve => {
     const g_r = Array.from(sums[pair_idx], (sum) => sum / n_frames)
     const [n_a, n_b] = [counts.get(el_a) ?? 0, counts.get(el_b) ?? 0]
-    const shell = rdf_shell(r, g_r, n_b * inverse_volume)
+    // Preserve the mean RDF's shell boundary but integrate <g/V>, not <g><1/V>.
+    const coordination_g_r = Array.from(
+      density_sums[pair_idx],
+      (sum) => sum / n_frames / inverse_volume,
+    )
+    const shell = rdf_shell(r, g_r, n_b * inverse_volume, coordination_g_r)
     return {
       element_pair: [el_a, el_b],
       label: `${el_a}-${el_b}`,

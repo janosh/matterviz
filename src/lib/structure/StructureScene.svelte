@@ -37,6 +37,7 @@
   import {
     camera_needs_fit,
     camera_position_for_target,
+    characteristic_atom_spacing,
     Cylinder,
     get_all_site_vectors,
     get_center_of_mass,
@@ -252,7 +253,7 @@
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
     active_volume_idx = 0,
-    volume_scaling = [1, 1, 1],
+    supercell_tiling = [1, 1, 1],
     interactive = true,
     fly_to_request = $bindable(undefined),
     reference_structure = undefined,
@@ -334,7 +335,7 @@
     symmetry_elements?: SymmetryElement[]
     symmetry_elements_props?: Omit<
       ComponentProps<typeof SymmetryElements>,
-      `elements` | `lattice`
+      `elements` | `lattice` | `tiling`
     >
     // Auto-reduce visual clutter while a symmetry-element overlay is visible: hides
     // coordination polyhedra and calculated bonds, and shrinks atoms so axes/planes/
@@ -388,7 +389,9 @@
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Volume implicit single-isovalue settings apply to
-    volume_scaling?: Vec3 // Supercell tiling applied to isosurface geometry
+    // How many unit cells the displayed structure spans along a/b/c. Tiles the drawn cell
+    // and the isosurface geometry; 1x1x1 until an applied supercell lands.
+    supercell_tiling?: Vec3
     // When false, render the scene without hover/edit raycast helpers. Used by multi-side
     // view so inactive panes skip interaction-only work while the active pane stays editable.
     interactive?: boolean
@@ -1094,15 +1097,12 @@
   })
   let fit_extent = $derived(fit_frame.extent)
 
-  // Characteristic inter-atomic spacing: cube root of volume per atom.
-  // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
-  let char_atom_spacing = $derived.by(() => {
-    if (!lattice || !structure?.sites?.length) return structure_size
-    // counted, not filtered: this re-runs on every trajectory frame of a supercell
-    let n_real = 0
-    for (const site of structure.sites) if (!is_image_site(site)) n_real += 1
-    return n_real > 0 ? Math.cbrt(lattice.volume / n_real) : structure_size
-  })
+  // Characteristic inter-atomic spacing: cube root of the volume one atom occupies, with any
+  // vacuum padding in the cell taken out first (see characteristic_atom_spacing). Excludes PBC
+  // image atoms so toggling image atoms doesn't affect arrow sizing.
+  let char_atom_spacing = $derived(
+    structure ? characteristic_atom_spacing(structure) : structure_size,
+  )
 
   // Uniform thickness turns negative (length-relative) arrow sizes into absolute ones scaled
   // by the inter-atomic spacing; positive (already absolute) values pass through
@@ -1157,6 +1157,10 @@
     fit_zoom: () => fit.zoom,
     measured,
     camera: () => camera,
+    // Makes min_zoom/max_zoom bound the perspective camera too: they are pixels per Å, which
+    // is a property of the picture, not of the projection (perspective_distance_for_zoom)
+    viewport_px: () => height,
+    fov: () => effective_fov,
     // No hover raycasts while orbiting: the highlight hopping between atoms under the cursor
     // reads as flicker. Pointerdown reaches the meshes before OrbitControls' start, so presses work
     set_camera_is_moving: (moving) => {
@@ -2296,6 +2300,7 @@
       {#if visual_lattice}
         <Lattice
           matrix={visual_lattice.matrix}
+          tiling={supercell_tiling}
           {cell_edge_color}
           {cell_surface_color}
           {cell_edge_width}
@@ -2304,12 +2309,17 @@
           {show_cell_vectors}
         />
         {#if lattice_planes.length > 0}
-          <LatticePlanes planes={lattice_planes} lattice={visual_lattice.matrix} />
+          <LatticePlanes
+            planes={lattice_planes}
+            lattice={visual_lattice.matrix}
+            tiling={supercell_tiling}
+          />
         {/if}
         {#if symmetry_elements.length > 0}
           <SymmetryElements
             elements={symmetry_elements}
             lattice={visual_lattice.matrix}
+            tiling={supercell_tiling}
             {...symmetry_elements_props}
           />
         {/if}
@@ -2394,7 +2404,7 @@
           volumes={volumetric_data}
           settings={isosurface_settings}
           {active_volume_idx}
-          tiling={volume_scaling}
+          tiling={supercell_tiling}
         />
       {/if}
 

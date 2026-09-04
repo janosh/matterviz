@@ -45,6 +45,8 @@ export interface ExportItem {
   hint?: string
   // Disables the download and copy buttons
   disabled?: boolean
+  // Visible, accessible explanation for disabled download/copy buttons.
+  disabled_reason?: string
   // Click handler for the ⬇ download button (omit to hide the button)
   on_download?: () => void
   // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return

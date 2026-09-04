@@ -75,15 +75,35 @@ test(`sweeps the capped frame sample with the typed cutoff and bins, then tabula
   expect(doc_query(`button.analysis-download`).textContent).toContain(`g(r) CSV`)
 })
 
-test(`refuses a run without a lattice`, async () => {
+// Refused up front, not on click: g(r) has nothing to normalise against without a cell, and a
+// button that takes the click and then throws reads as a broken feature rather than a
+// mismatched file
+test(`refuses a run without a lattice before the click`, async () => {
   const molecule = { sites: make_fcc([1, 1, 1]).sites }
-  const state = $state({ run: trajectory_from_frames([{ step: 0, structure: molecule }]) })
+  const state = $state({
+    run: trajectory_from_frames([{ step: 0, structure: molecule }]),
+    result: undefined as TrajectoryRdf | undefined,
+  })
   mounted_component = mount(TrajectoryRdfPane, {
     target: document.body,
     props: bind_props({ pane_open: true }, state),
   })
   await settle()
-  doc_query(`.trajectory-rdf-controls button`, HTMLButtonElement).click()
-  await settle()
+  const compute = doc_query(`.trajectory-rdf-controls button`, HTMLButtonElement)
+  expect(compute.disabled).toBe(true)
+  expect(compute.title).toContain(`needs a periodic cell`)
+  const hint_id = compute.getAttribute(`aria-describedby`)
+  expect(hint_id).toBeTypeOf(`string`)
+  expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(
+    `needs a periodic cell`,
+  )
   expect(document.body.textContent).toContain(`needs a periodic cell`)
+  compute.click()
+  await settle()
+  expect(state.result).toBeUndefined()
+  state.run = make_run(2)
+  await settle()
+  expect(compute.disabled).toBe(false)
+  expect(compute.hasAttribute(`aria-describedby`)).toBe(false)
+  expect(document.querySelector(`[id="${hint_id}"]`)).toBeNull()
 })

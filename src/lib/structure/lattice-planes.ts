@@ -39,6 +39,18 @@ function lattice_plane_offsets(hkl: Vec3): number[] {
   return Array.from({ length: n_planes }, (_, idx) => lo + idx)
 }
 
+// Block-frame Miller indices scale with cell repeats, preserving spacing and orientation.
+// Explicit offsets retain their planes; automatic offsets enumerate the whole block.
+export const tile_lattice_planes = (planes: LatticePlane[], tiling: Vec3): LatticePlane[] =>
+  tiling.every((count) => count === 1)
+    ? planes
+    : planes.map((plane) => ({
+        ...plane,
+        hkl: plane.hkl.map(
+          (index, axis) => index * Math.max(1, Math.floor(tiling[axis])),
+        ) as Vec3,
+      }))
+
 // Cartesian polygons of the planes in `plane` clipped to the cell. Planes that miss the cell
 // or only touch a corner or an edge come back empty from the clipper and are dropped, and a
 // repeated offset is drawn once (coincident translucent fills would stack up opaque).

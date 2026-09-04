@@ -124,12 +124,14 @@ export function find_lowest_energy_unary_refs(
   const refs: Record<string, PhaseData> = {}
   for (const entry of entries) {
     if (!is_unary_entry(entry)) continue
+    const energy_per_atom = get_energy_per_atom(entry)
+    if (!Number.isFinite(energy_per_atom)) continue
     const el = Object.keys(entry.composition).find(
       (key) => (entry.composition[key as ElementSymbol] ?? 0) > 0,
     )
     if (!el) continue
     const current = refs[el]
-    if (!current || get_energy_per_atom(entry) < get_energy_per_atom(current)) {
+    if (!current || energy_per_atom < get_energy_per_atom(current)) {
       refs[el] = entry
     }
   }

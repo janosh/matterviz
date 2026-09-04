@@ -211,7 +211,7 @@ function detect_sign_change_frequency(
   return { onset_index: -1, score: max_score }
 }
 
-// Combined weighted detection; onset is the earliest onset any method reported
+// Combined weighted detection; onset is the earliest onset an enabled method reported
 export function detect_instability(
   x_values: readonly number[],
   y_values: readonly number[],
@@ -250,7 +250,10 @@ export function detect_instability(
       ? methods.reduce((sum, method) => sum + weights[method] * results[method].score, 0) /
         total_weight
       : 0
-  const onsets = methods.map((method) => results[method].onset_index).filter((idx) => idx >= 0)
+  const onsets = methods
+    .filter((method) => weights[method] > 0)
+    .map((method) => results[method].onset_index)
+    .filter((idx) => idx >= 0)
   const valid_onset = onsets.length > 0 ? Math.min(...onsets) : -1
   const onset_index = valid_onset >= 0 ? (valid_indices[valid_onset] ?? valid_onset) : -1
   return {
@@ -452,12 +455,15 @@ function handle_invalid_values(
   }
   // Linear interpolation between the nearest finite neighbours; edges hold the nearest value
   const cleaned = [...values]
+  let left_idx = -1
+  let right_idx = 0
   for (let idx = 0; idx < cleaned.length; idx++) {
-    if (Number.isFinite(cleaned[idx])) continue
+    if (Number.isFinite(cleaned[idx])) {
+      left_idx = idx
+      continue
+    }
     invalid_count++
-    let left_idx = idx - 1
-    while (left_idx >= 0 && !Number.isFinite(cleaned[left_idx])) left_idx--
-    let right_idx = idx + 1
+    right_idx = Math.max(right_idx, idx + 1)
     while (right_idx < cleaned.length && !Number.isFinite(cleaned[right_idx])) right_idx++
     const has_left = left_idx >= 0
     const has_right = right_idx < cleaned.length
@@ -465,6 +471,7 @@ function handle_invalid_values(
       const frac = (idx - left_idx) / (right_idx - left_idx)
       cleaned[idx] = cleaned[left_idx] + frac * (cleaned[right_idx] - cleaned[left_idx])
     } else cleaned[idx] = has_left ? cleaned[left_idx] : has_right ? cleaned[right_idx] : 0
+    if (Number.isFinite(cleaned[idx])) left_idx = idx
   }
   return { cleaned, removed_indices: [], invalid_count }
 }

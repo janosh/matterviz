@@ -7,11 +7,14 @@ import { neighbor_query } from '$lib/structure/bonding'
 import { is_crystal } from '$lib/structure/validation'
 import type { RdfOptions, RdfPattern } from './index'
 
-// Occupancy of `element` on every site (0 where absent); every site with weight 1 when no
-// element is named. Partial RDFs weight each pair by the product of these.
+// Occupancy of `element` on every site (all species when unnamed). RDFs weight each pair
+// by the product of these, including vacancies in the full RDF.
 const species_weights = (sites: Site[], element: string | undefined): Float64Array =>
   Float64Array.from(sites, (site) =>
-    element ? (site.species.find((spec) => spec.element === element)?.occu ?? 0) : 1,
+    site.species.reduce(
+      (sum, spec) => sum + (!element || spec.element === element ? spec.occu : 0),
+      0,
+    ),
   )
 
 // Cap on the histogram length. `n_bins > 0` bounds neither the allocation (bin centres, bin

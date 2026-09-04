@@ -803,3 +803,26 @@ describe(`CNA structure type coloring`, () => {
     expect(ap.get_atom_colors(cna_struct(all_codes), config).colors).toEqual(palette)
   })
 })
+
+describe(`atom color mode availability`, () => {
+  test.each([
+    [`element`, null],
+    [`coordination`, null],
+    [`custom`, null],
+    [`wyckoff`, `symmetry`],
+    [`selective_dynamics`, `selective-dynamics`],
+    [`property`, `per-atom properties`],
+  ] as const)(`%s explains its missing input`, (mode, reason) => {
+    for (const available of [false, true]) {
+      const context = {
+        has_sym_data: available,
+        has_selective_dynamics: available,
+        colorable_property_keys: available ? [`force`] : [],
+      }
+      expect(ap.is_atom_color_mode_available(mode, context)).toBe(available || reason === null)
+      expect(ap.atom_color_mode_unavailable_reason(mode, context)).toEqual(
+        available || reason === null ? null : expect.stringContaining(reason),
+      )
+    }
+  })
+})

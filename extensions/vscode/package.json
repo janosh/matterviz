@@ -432,13 +432,13 @@
         },
         "matterviz.structure.max_zoom": {
           "type": "number",
-          "default": 500,
-          "description": "Maximum zoom level (orthographic: larger = more zoomed out, perspective: larger = further away)"
+          "default": 20000,
+          "description": "Zoom-in limit in pixels per Angstrom (both projections: the perspective camera stops at the orbit distance that magnifies this much)"
         },
         "matterviz.structure.min_zoom": {
           "type": "number",
-          "default": 10,
-          "description": "Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)"
+          "default": 0.1,
+          "description": "Zoom-out limit in pixels per Angstrom (both projections: the perspective camera stops at the orbit distance that magnifies this little)"
         },
         "matterviz.structure.auto_rotate": {
           "type": "number",

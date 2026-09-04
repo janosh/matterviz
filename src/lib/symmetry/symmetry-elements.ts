@@ -662,3 +662,72 @@ export function clip_plane_to_cell(
   const n_eq = math.dot(lattice, normal_cart)
   return clip_frac_plane_to_cell(n_eq, math.dot(n_eq, point), lattice)
 }
+
+// Bound merged geometry allocation after removing redundant copies.
+export const MAX_TILED_SYM_ELEMENTS = 4000
+
+// Deduplicate translations along planes/axes, but retain every translated center marker.
+// Plane offsets use the Cartesian metric (n_eq · offset); line parallelism is affine.
+// Identity keeps different operations sharing a locus distinct.
+const tiled_element_key = (
+  element: SymmetryElement,
+  offset: Vec3,
+  lattice: Matrix3x3,
+): string => {
+  const identity = `${element.kind}|${element.label}|${element.order}|${element.locus}`
+  const { axis, kind } = element
+  if (axis && (kind === `mirror` || kind === `glide`)) {
+    const n_eq = math.dot(lattice, math.create_frac_to_cart(lattice)(axis))
+    // Quantize normalized offsets at 1e-10 cell units, below the clipper's 1e-7 tolerance.
+    // Exact keys split coincident planes for cells built from angles (cos(π/2) ≠ 0).
+    return `${identity}|${Math.round((math.dot(n_eq, offset) / Math.hypot(...n_eq)) * 1e10)}`
+  }
+  if (axis && (kind === `rotation` || kind === `screw`)) {
+    return `${identity}|${math.cross_3d(offset, axis).join(`,`)}`
+  }
+  return `${identity}|${offset.join(`,`)}`
+}
+
+// Translate elements through the block, then divide coordinates/directions by tile counts
+// to express them in the block basis. The 1x1x1 path preserves identity; oversized overlays
+// throw rather than stretching unit-cell coordinates across the block.
+export function tile_symmetry_elements(
+  elements: SymmetryElement[],
+  tiling: Vec3,
+  lattice: Matrix3x3,
+): SymmetryElement[] {
+  const counts = tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3
+  const n_tiles = counts[0] * counts[1] * counts[2]
+  if (n_tiles === 1) return elements
+  const shrink = (vec: Vec3): Vec3 => [
+    vec[0] / counts[0],
+    vec[1] / counts[1],
+    vec[2] / counts[2],
+  ]
+  const tiled: SymmetryElement[] = []
+  const seen = new Set<string>()
+  for (let cell_c = 0; cell_c < counts[2]; cell_c++) {
+    for (let cell_b = 0; cell_b < counts[1]; cell_b++) {
+      for (let cell_a = 0; cell_a < counts[0]; cell_a++) {
+        const offset: Vec3 = [cell_a, cell_b, cell_c]
+        for (const element of elements) {
+          const key = tiled_element_key(element, offset, lattice)
+          if (seen.has(key)) continue
+          if (tiled.length >= MAX_TILED_SYM_ELEMENTS) {
+            throw new Error(
+              `Symmetry overlay for tiling ${counts.join(`x`)} exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements (${elements.length} input elements)`,
+            )
+          }
+          seen.add(key)
+          tiled.push({
+            ...element,
+            point: shrink(element.point.map((coord, axis) => coord + offset[axis]) as Vec3),
+            axis: element.axis && shrink(element.axis),
+            translation: element.translation && shrink(element.translation),
+          })
+        }
+      }
+    }
+  }
+  return tiled
+}

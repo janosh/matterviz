@@ -6,6 +6,7 @@ import {
   MAX_AUTO_PLANES,
   polygon_edge_vertices,
   polygon_fan_vertices,
+  tile_lattice_planes,
 } from '$lib/structure/lattice-planes'
 import { describe, expect, test } from 'vitest'
 
@@ -149,6 +150,65 @@ describe(`lattice_plane_polygons`, () => {
     const hkl: Vec3 = [2 * MAX_AUTO_PLANES, 0, 0]
     const polys = lattice_plane_polygons({ hkl, offsets: [1000] }, cubic)
     expect(polys.map(({ offset }) => offset)).toEqual([1000])
+  })
+})
+
+describe(`tile_lattice_planes`, () => {
+  test.each([[[1, 0, 0]], [[1, 1, 1]], [[2, -1, 0]]] as [Vec3][])(
+    `%s keeps its spacing and covers the whole block`,
+    (hkl) => {
+      const planes = [{ hkl }]
+      expect(tile_lattice_planes(planes, [1, 1, 1])).toBe(planes)
+      const tiling: Vec3 = [2, 3, 2]
+      const block = math.scale_lattice_matrix(cubic, tiling)
+      const [tiled] = tile_lattice_planes([{ hkl }], tiling)
+      const cell_polys = lattice_plane_polygons({ hkl }, cubic)
+      const block_polys = lattice_plane_polygons(tiled, block)
+
+      // same normal direction, so the same family of planes
+      const cell_normal = math.normalize_vec(math.miller_plane_normal(cubic, hkl))
+      const block_normal = math.normalize_vec(math.miller_plane_normal(block, tiled.hkl))
+      for (const [axis, component] of block_normal.entries()) {
+        expect(component).toBeCloseTo(cell_normal[axis], 10)
+      }
+      // every plane of the single cell still lies in the block's set, at the same distance
+      // from the origin along that normal
+      const distance = (polygon: Vec3[]) => math.dot(block_normal, polygon[0])
+      const block_distances = block_polys.map(({ polygon }) => distance(polygon))
+      for (const { polygon } of cell_polys) {
+        const target = distance(polygon)
+        expect(
+          block_distances.some((dist) => Math.abs(dist - target) < 1e-9),
+          `plane at ${target} missing from the block`,
+        ).toBe(true)
+      }
+      // and the block holds more of them, since it is larger along every normal component
+      expect(block_polys.length).toBeGreaterThan(cell_polys.length)
+      for (const { offset, polygon } of block_polys) {
+        expect_valid_polygon(polygon, tiled.hkl, offset, block)
+      }
+    },
+  )
+
+  // Explicit offsets name specific planes, so tiling extends exactly those across the block
+  // rather than filling it with the rest of the family the way auto offsets do
+  test(`explicit offsets keep naming the same planes, extended over the block`, () => {
+    const tiling: Vec3 = [3, 2, 1]
+    const block = math.scale_lattice_matrix(cubic, tiling)
+    const [tiled] = tile_lattice_planes([{ hkl: [1, 0, 0], offsets: [1] }], tiling)
+    expect(tiled.hkl).toEqual([3, 0, 0])
+    expect(tiled.offsets).toEqual([1])
+
+    const polys = lattice_plane_polygons(tiled, block)
+    expect(polys).toHaveLength(1) // the one plane asked for, not the block's whole family
+    for (const vert of polys[0].polygon) expect(vert[0]).toBeCloseTo(4, 10) // still x = 4 Å
+    // it now spans the block, where before it stopped at the first cell
+    const spans = [1, 2].map((axis) => Math.max(...polys[0].polygon.map((vert) => vert[axis])))
+    expect(spans).toEqual([8, 4])
+    // while auto offsets do fill the block
+    expect(
+      lattice_plane_polygons(tile_lattice_planes([{ hkl: [1, 0, 0] }], tiling)[0], block),
+    ).toHaveLength(4)
   })
 })
 

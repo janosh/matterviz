@@ -30,6 +30,7 @@
     icon = Graph,
     analysis_name,
     collect,
+    unavailable_reason = null,
     suggest_stride,
     compute_label,
     recollect_label,
@@ -59,6 +60,8 @@
     // Short name for the indexed-trajectory warning, e.g. `MSD`
     analysis_name: string
     collect: (run: TrajectoryRun, options: AnalysisCollectOptions) => Promise<Input>
+    // Visible explanation for a disabled compute button.
+    unavailable_reason?: string | null
     // Stride that keeps the collected buffer inside the memory budget. Supplying it also
     // renders the frame-stride control; panes that read frames one at a time omit it.
     suggest_stride?: (run: TrajectoryRun) => number | null
@@ -82,6 +85,9 @@
     // compute errors and the empty state
     children: Snippet<[AnalysisPaneContext<Input>]>
   } = $props()
+
+  const pane_id = $props.id()
+  const unavailable_hint_id = `${pane_id}-unavailable`
 
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting every
   // Nth frame multiplies it (see dt_collected below). null, not 0, is what
@@ -199,7 +205,7 @@
     abort_collect()
   })
   async function run_collect() {
-    if (!run) return
+    if (!run || unavailable_reason) return
     const requested = run
     const this_request = ++request_id
     const is_current = () => run === requested && this_request === request_id
@@ -250,7 +256,9 @@
   {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
-    {#if suggest_stride && !can_collect && run}
+    {#if unavailable_reason}
+      <small id={unavailable_hint_id}>{unavailable_reason}</small>
+    {:else if suggest_stride && !can_collect && run}
       <StatusMessage
         type="warning"
         message={no_full_pass_message(run, analysis_name)}
@@ -306,7 +314,12 @@
       {/if}
       <button
         onclick={run_collect}
-        disabled={collecting || busy || (suggest_stride && !can_collect)}
+        disabled={collecting ||
+          busy ||
+          Boolean(unavailable_reason) ||
+          (suggest_stride && !can_collect)}
+        title={unavailable_reason ?? undefined}
+        aria-describedby={unavailable_reason ? unavailable_hint_id : undefined}
       >
         {collecting ? collecting_label : input ? recollect_label : compute_label}
       </button>

@@ -17,8 +17,10 @@ import {
   vector_display_defaults,
   VECTOR_PALETTE,
 } from '$lib/structure'
+import { neighbor_query } from '$lib/structure/bonding'
 import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
 const ref_data: Record<
   string,
@@ -590,4 +592,184 @@ test(`DEFAULT_STRUCTURE_VIEWS is a 2x2 grid: 1 perspective + 3 orthographic view
   for (const view of DEFAULT_STRUCTURE_VIEWS) {
     expect(Math.hypot(...(view.direction ?? [0, 0, 0]))).toBeGreaterThan(0)
   }
+})
+
+describe(`characteristic_atom_spacing`, () => {
+  const { characteristic_atom_spacing } = struct_utils
+  const nn_median = (structure: AnyStructure): number => {
+    const dists = [...neighbor_query(structure, { k: 1 }).distances].toSorted(
+      (one, two) => one - two,
+    )
+    return dists[Math.floor(dists.length / 2)]
+  }
+  // An fcc gold cluster of `radius` Å sitting at `centre` in a cubic vacuum box. Nearest
+  // neighbour 2.88 Å, so a correct spacing estimate lands near that whatever the box is.
+  const gold_cluster = (box: number, centre: Vec3, radius = 5) => {
+    const a_lat = 4.07
+    const basis: Vec3[] = [
+      [0, 0, 0],
+      [0.5, 0.5, 0],
+      [0.5, 0, 0.5],
+      [0, 0.5, 0.5],
+    ]
+    const sites: [string, Vec3][] = []
+    const reach = Math.ceil(radius / a_lat) + 1
+    for (let cell_a = -reach; cell_a <= reach; cell_a++) {
+      for (let cell_b = -reach; cell_b <= reach; cell_b++) {
+        for (let cell_c = -reach; cell_c <= reach; cell_c++) {
+          for (const [b_x, b_y, b_z] of basis) {
+            const xyz: Vec3 = [
+              (cell_a + b_x) * a_lat,
+              (cell_b + b_y) * a_lat,
+              (cell_c + b_z) * a_lat,
+            ]
+            if (Math.hypot(...xyz) > radius) continue
+            const abc = xyz.map((coord, axis) => {
+              const frac = (coord + centre[axis]) / box
+              return frac - Math.floor(frac)
+            }) as Vec3
+            sites.push([`Au`, abc])
+          }
+        }
+      }
+    }
+    return make_crystal(box, sites)
+  }
+
+  test.each(structures.filter((structure) => `lattice` in structure))(
+    `leaves filled cell $id at cube root of volume per atom`,
+    (structure) => {
+      expect(characteristic_atom_spacing(structure)).toBeCloseTo(
+        Math.cbrt(structure.lattice.volume / structure.sites.length),
+        12,
+      )
+    },
+  )
+
+  // Circular scanning must handle vacuum across the boundary and inside the cell.
+  const box = 25.8
+  test.each([
+    [`centred`, [box / 2, box / 2, box / 2]],
+    [`on a corner, wrapping every axis`, [0, 0, 0]],
+    [`on a face, wrapping one axis`, [0, box / 2, box / 2]],
+  ] satisfies [string, Vec3][])(`sees past the vacuum of a cluster %s`, (_name, centre) => {
+    const cluster = gold_cluster(box, centre)
+    const naive = Math.cbrt(cluster.lattice.volume / cluster.sites.length)
+    const nn = nn_median(cluster)
+    expect(nn).toBeCloseTo(2.878, 2) // fcc Au first shell, the spacing to recover
+    expect(naive / nn).toBeGreaterThan(2) // what the plain cell volume claimed
+    expect(characteristic_atom_spacing(cluster) / nn).toBeCloseTo(0.89, 1)
+  })
+
+  test.each([
+    [`one gap`, 30, [0, 4, 8, 12], 12, 1],
+    [`gap across the boundary`, 40, [12, 16, 20], 8, 0],
+    [`two disconnected gaps`, 40, [0, 4, 20, 24], 8, 0],
+  ] as const)(`removes slab vacuum: %s`, (_name, height, layers, depth, precision) => {
+    const sites: [string, Vec3][] = []
+    for (let row_idx = 0; row_idx < 5; row_idx++) {
+      for (let col_idx = 0; col_idx < 5; col_idx++) {
+        for (const layer of layers)
+          sites.push([`Al`, [row_idx / 5, col_idx / 5, layer / height]])
+      }
+    }
+    const slab = make_crystal(
+      [
+        [20, 0, 0],
+        [0, 20, 0],
+        [0, 0, height],
+      ],
+      sites,
+    )
+    const spacing = characteristic_atom_spacing(slab)
+    const expected = Math.cbrt((20 * 20 * depth) / sites.length)
+    // Binning moves each occupied boundary by at most height/64 Å; 4 Å layer gaps remain.
+    expect(spacing).toBeCloseTo(expected, precision)
+    expect(spacing / nn_median(slab)).toBeCloseTo(expected / 4, 1)
+  })
+
+  // Hand-built sites may omit abc or contain NaN; both must derive from xyz.
+  test.each([
+    [`NaN`, [Number.NaN, Number.NaN, Number.NaN]],
+    [`missing`, undefined],
+  ])(`falls back to xyz when a site's fractional coords are %s`, (_name, abc) => {
+    const cube = 25.8
+    const good = make_crystal(cube, [
+      [`Au`, [0.45, 0.45, 0.45]],
+      [`Au`, [0.55, 0.45, 0.45]],
+      [`Au`, [0.45, 0.55, 0.45]],
+      [`Au`, [0.45, 0.45, 0.55]],
+    ])
+    const expected = characteristic_atom_spacing(good)
+    const damaged = {
+      ...good,
+      sites: good.sites.map((site) => ({ ...site, abc: abc as unknown as Vec3 })),
+    }
+    expect(characteristic_atom_spacing(damaged)).toBeCloseTo(expected, 6)
+    // and specifically not the vacuum-blind cell density it exists to replace
+    expect(characteristic_atom_spacing(damaged)).toBeLessThan(
+      Math.cbrt(good.lattice.volume / good.sites.length) / 2,
+    )
+  })
+
+  test(`ignores PBC image sites, so toggling them cannot resize arrows`, () => {
+    const structure = structures[0]
+    const image_site = {
+      ...structure.sites[0],
+      properties: { ...structure.sites[0].properties, orig_site_idx: 0 },
+    }
+    expect(
+      characteristic_atom_spacing({ ...structure, sites: [...structure.sites, image_site] }),
+    ).toBe(characteristic_atom_spacing(structure))
+  })
+
+  test.each([
+    [
+      `a compact molecule`,
+      [
+        [0, 0, 0],
+        [0.96, 0, 0],
+        [-0.24, 0.93, 0],
+      ],
+      0.7,
+      1.3,
+    ],
+    // planar and linear arrangements have a zero-thickness box; the floor keeps them finite
+    [
+      `a flat ring`,
+      [
+        [0, 0, 0],
+        [1.4, 0, 0],
+        [2.1, 1.2, 0],
+        [1.4, 2.4, 0],
+      ],
+      0.5,
+      2,
+    ],
+    [
+      `a straight chain`,
+      [
+        [0, 0, 0],
+        [1.5, 0, 0],
+        [3, 0, 0],
+      ],
+      0.5,
+      2,
+    ],
+  ] satisfies [string, Vec3[], number, number][])(
+    `falls back to the bounding box for %s`,
+    (_name, positions, low, high) => {
+      const spacing = characteristic_atom_spacing({
+        sites: positions.map((xyz) => ({
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: xyz,
+          xyz,
+          label: `C`,
+          properties: {},
+        })),
+      })
+      expect(spacing).toBeGreaterThan(low)
+      expect(spacing).toBeLessThan(high)
+    },
+  )
 })

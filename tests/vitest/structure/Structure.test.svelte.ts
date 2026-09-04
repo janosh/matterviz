@@ -610,6 +610,26 @@ describe(`Structure`, () => {
     },
   )
 
+  // Supercells, primitive and conventional cells all need a periodic direction to mean
+  // anything, so the widget offering them hides for a molecule or an isolated cluster
+  test.each([
+    [`fully periodic crystal`, [true, true, true], true],
+    [`slab periodic along two axes`, [true, true, false], true],
+    [`cluster in a vacuum box`, [false, false, false], false],
+    [`molecule without a lattice`, null, false],
+  ] satisfies [string, Pbc | null, boolean][])(
+    `cell select shown for a %s: %s`,
+    async (_name, pbc, shown) => {
+      if (!(`lattice` in structure)) throw new Error(`Expected a crystal fixture`)
+      const { lattice: _lattice, ...molecule } = structure
+      mount_structure({
+        structure: pbc ? { ...structure, lattice: { ...structure.lattice, pbc } } : molecule,
+      })
+      await tick()
+      expect(document.querySelector(`.cell-select`) !== null).toBe(shown)
+    },
+  )
+
   test(`shows an already-materialized supercell without expanding it again`, async () => {
     vi.mocked(make_supercell).mockClear()
     const state = mount_bound_structure({

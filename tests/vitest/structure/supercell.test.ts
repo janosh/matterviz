@@ -6,6 +6,7 @@ import {
   is_valid_supercell_input,
   make_supercell,
   parse_supercell_scaling,
+  supercell_grid_edges,
 } from '$lib/structure/supercell'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, type SimpleSite } from '../setup'
@@ -72,6 +73,88 @@ describe(`generate_lattice_points`, () => {
     const result = generate_lattice_points(scaling as Vec3)
     expect(result).toEqual(expected)
     expect(result).toHaveLength(scaling.reduce((acc, val) => acc * val, 1))
+  })
+})
+
+describe(`supercell_grid_edges`, () => {
+  // Every unique grid edge exactly once, minus the origin cell's own 12
+  const expected_count = ([n_a, n_b, n_c]: Vec3) =>
+    n_a * (n_b + 1) * (n_c + 1) +
+    n_b * (n_a + 1) * (n_c + 1) +
+    n_c * (n_a + 1) * (n_b + 1) -
+    12
+
+  test.each([[[1, 1, 1]], [[2, 2, 2]], [[3, 1, 2]], [[4, 4, 4]]])(
+    `%s covers every grid edge once, skipping the origin cell`,
+    (tiling) => {
+      const edges = supercell_grid_edges(tiling as Vec3)
+      const [n_a, n_b, n_c] = tiling
+      if (n_a * n_b * n_c === 1) {
+        expect(edges).toEqual([])
+        return
+      }
+      expect(edges).toHaveLength(expected_count(tiling as Vec3))
+      // no duplicates, every edge one cell long and inside the block
+      const keys = new Set(edges.map(([start, axis]) => `${start.join(`,`)}|${axis}`))
+      expect(keys.size).toBe(edges.length)
+      for (const [start, axis, span] of edges) {
+        expect(span).toBe(1)
+        expect(start[axis] + span).toBeLessThanOrEqual(tiling[axis])
+        for (const [idx, index] of start.entries()) {
+          expect(index).toBeGreaterThanOrEqual(0)
+          expect(index).toBeLessThanOrEqual(tiling[idx])
+        }
+      }
+      // the 12 origin-cell edges are the caller's to draw, so none may appear here
+      const origin_edges = edges.filter(
+        ([start, axis]) => start[axis] === 0 && start.every((index) => index <= 1),
+      )
+      expect(origin_edges).toEqual([])
+    },
+  )
+
+  test.each<[Vec3, number[]]>([
+    [
+      [3, 4, 5],
+      [4, 4, 4],
+    ],
+    [
+      [3, 1, 1],
+      [4, 2, 2],
+    ],
+    [
+      [1, 3, 4],
+      [3, 4, 4],
+    ],
+  ])(`draws only the %s block outline past max_edges`, (counts, per_axis) => {
+    const edges = supercell_grid_edges(counts, 10)
+    expect(edges).toHaveLength(per_axis.reduce((sum, count) => sum + count, 0))
+    for (const axis of [0, 1, 2]) {
+      const [side_1, side_2] = [0, 1, 2].filter((idx) => idx !== axis)
+      const along = edges.filter(([, edge_axis]) => edge_axis === axis)
+      expect(along, `edges along ${axis}`).toHaveLength(per_axis[axis])
+      for (const [start, , span] of along) {
+        // rooted on a corner of the face spanned by the other two axes
+        for (const side of [side_1, side_2]) {
+          expect([0, counts[side]]).toContain(start[side])
+        }
+        // No overlap with the separately drawn origin cell, even when a side has one tile.
+        const yields_origin_cell = start[side_1] <= 1 && start[side_2] <= 1
+        expect(start[axis]).toBe(yields_origin_cell ? 1 : 0)
+        expect(start[axis] + span).toBe(counts[axis])
+        expect(span).toBeGreaterThan(0)
+      }
+    }
+    // no edge is drawn twice
+    const keys = new Set(
+      edges.map(([start, axis, span]) => `${start.join(`,`)}|${axis}|${span}`),
+    )
+    expect(keys.size).toBe(edges.length)
+  })
+
+  test(`clamps non-positive and fractional tiling factors to whole cells`, () => {
+    expect(supercell_grid_edges([0, 0, 0])).toEqual([])
+    expect(supercell_grid_edges([2.7, 1, 1])).toEqual(supercell_grid_edges([2, 1, 1]))
   })
 })
 
