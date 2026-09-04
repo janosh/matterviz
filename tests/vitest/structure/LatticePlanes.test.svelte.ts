@@ -45,57 +45,72 @@ const vertex_counts = (tag: string) =>
     .filter((node) => node.tag === tag)
     .map((node) => (node.props.geometry as BufferGeometry).getAttribute(`position`).count)
 
-test(`symmetry overlays explain oversized tiling, dispose geometry, and recover`, () => {
-  const element: SymmetryElement = {
-    kind: `rotation`,
-    order: 2,
-    label: `2`,
-    locus: `z-axis`,
-    point: [0, 0, 0],
-    axis: [0, 0, 1],
-    translation: null,
-  }
-  const props = $state({ elements: [element], lattice: cubic, tiling: [1, 1, 1] as Vec3 })
-  const component = mount(SymmetryElements, { target: document.body, props })
-  teardown = () => void unmount(component)
-  flushSync()
-  const geometry = threlte_stub.nodes.find((node) => node.props.geometry)?.props
-    .geometry as BufferGeometry
-  const dispose = vi.spyOn(geometry, `dispose`)
-  props.tiling = [4001, 1, 1]
-  flushSync()
-  expect(document.querySelector(`[role="status"]`)?.textContent).toContain(
-    `exceeds 4000 unique elements`,
-  )
-  expect(threlte_stub.nodes.filter((node) => node.props.geometry)).toHaveLength(0)
-  expect(dispose).toHaveBeenCalledOnce()
-  props.tiling = [1, 1, 1]
-  flushSync()
-  expect(document.querySelector(`[role="status"]`)).toBeNull()
-  expect(threlte_stub.nodes.filter((node) => node.props.geometry)).toHaveLength(1)
-})
+test.each([
+  [1, 1, 1],
+  [0.5, -1, 1.9],
+] as Vec3[])(
+  `symmetry overlays normalize %sx%sx%s, explain oversized tiling, and recover`,
+  (...tiling) => {
+    const element: SymmetryElement = {
+      kind: `rotation`,
+      order: 2,
+      label: `2`,
+      locus: `z-axis`,
+      point: [0, 0, 0],
+      axis: [0, 0, 1],
+      translation: null,
+    }
+    const props = $state({ elements: [element], lattice: cubic, tiling })
+    const component = mount(SymmetryElements, { target: document.body, props })
+    teardown = () => void unmount(component)
+    flushSync()
+    const geometry = threlte_stub.nodes.find((node) => node.props.geometry)?.props
+      .geometry as BufferGeometry
+    const dispose = vi.spyOn(geometry, `dispose`)
+    geometry.computeBoundingBox()
+    expect(geometry.boundingBox?.max.z).toBe(4)
+    props.tiling = [4001, 1, 1]
+    flushSync()
+    expect(document.querySelector(`[role="status"]`)?.textContent).toContain(
+      `exceeds 4000 unique elements`,
+    )
+    expect(threlte_stub.nodes.filter((node) => node.props.geometry)).toHaveLength(0)
+    expect(dispose).toHaveBeenCalledOnce()
+    props.tiling = [1, 1, 1]
+    flushSync()
+    expect(document.querySelector(`[role="status"]`)).toBeNull()
+    expect(threlte_stub.nodes.filter((node) => node.props.geometry)).toHaveLength(1)
+  },
+)
 
-test(`draws one fan-triangulated fill and one outline per family and disposes them on change`, () => {
-  const props = mount_planes([{ hkl: [1, 0, 0] }, { hkl: [1, 1, 1], offsets: [1.5] }])
-  // (100): two square faces = 2 × 2 triangles; (111) through the center: a hexagon = 4 triangles
-  expect(vertex_counts(`Mesh`)).toEqual([12, 12])
-  // 2 × 4 edges and 6 edges, two vertices each
-  expect(vertex_counts(`LineSegments`)).toEqual([16, 12])
-  const first_geometry = threlte_stub.nodes[0].props.geometry as BufferGeometry
-  const dispose = vi.spyOn(first_geometry, `dispose`)
-  props.planes = [{ hkl: [1, 0, 0] }]
-  flushSync()
-  expect(dispose).toHaveBeenCalledOnce()
-  expect(vertex_counts(`Mesh`)).toEqual([12])
+test.each([
+  [2, 3, 1],
+  [2.9, 3.5, 0.5],
+  [2, 3, -1],
+] as Vec3[])(
+  `draws and disposes one fill and outline per family, normalizing %sx%sx%s`,
+  (...tiling) => {
+    const props = mount_planes([{ hkl: [1, 0, 0] }, { hkl: [1, 1, 1], offsets: [1.5] }])
+    // (100): two square faces = 2 × 2 triangles; (111) through the center: a hexagon = 4 triangles
+    expect(vertex_counts(`Mesh`)).toEqual([12, 12])
+    // 2 × 4 edges and 6 edges, two vertices each
+    expect(vertex_counts(`LineSegments`)).toEqual([16, 12])
+    const first_geometry = threlte_stub.nodes[0].props.geometry as BufferGeometry
+    const dispose = vi.spyOn(first_geometry, `dispose`)
+    props.planes = [{ hkl: [1, 0, 0] }]
+    flushSync()
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(vertex_counts(`Mesh`)).toEqual([12])
 
-  props.tiling = [2, 3, 1]
-  flushSync()
-  // Three full block faces at x = 0, 4, 8, each spanning y = 0..12.
-  expect(vertex_counts(`Mesh`)).toEqual([18])
-  expect(vertex_counts(`LineSegments`)).toEqual([24])
-  const geometry = threlte_stub.nodes.find((node) => node.tag === `Mesh`)?.props
-    .geometry as BufferGeometry
-  geometry.computeBoundingBox()
-  expect(geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
-  expect(geometry.boundingBox?.max.toArray()).toEqual([8, 12, 4])
-})
+    props.tiling = tiling
+    flushSync()
+    // Three full block faces at x = 0, 4, 8, each spanning y = 0..12.
+    expect(vertex_counts(`Mesh`)).toEqual([18])
+    expect(vertex_counts(`LineSegments`)).toEqual([24])
+    const geometry = threlte_stub.nodes.find((node) => node.tag === `Mesh`)?.props
+      .geometry as BufferGeometry
+    geometry.computeBoundingBox()
+    expect(geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
+    expect(geometry.boundingBox?.max.toArray()).toEqual([8, 12, 4])
+  },
+)

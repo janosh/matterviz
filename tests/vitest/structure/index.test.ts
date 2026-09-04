@@ -662,31 +662,38 @@ describe(`characteristic_atom_spacing`, () => {
   })
 
   test.each([
-    [`one gap`, 30, [0, 4, 8, 12], 12, 1],
-    [`gap across the boundary`, 40, [12, 16, 20], 8, 0],
-    [`two disconnected gaps`, 40, [0, 4, 20, 24], 8, 0],
-  ] as const)(`removes slab vacuum: %s`, (_name, height, layers, depth, precision) => {
-    const sites: [string, Vec3][] = []
-    for (let row_idx = 0; row_idx < 5; row_idx++) {
-      for (let col_idx = 0; col_idx < 5; col_idx++) {
-        for (const layer of layers)
-          sites.push([`Al`, [row_idx / 5, col_idx / 5, layer / height]])
+    [`one gap`, 30, [0, 4, 8, 12], 12, 1, true],
+    [`gap across the boundary`, 40, [12, 16, 20], 8, 0, true],
+    [`two disconnected gaps`, 40, [0, 4, 20, 24], 8, 0, true],
+    [`open boundaries`, 40, [0, 4, 36, 40], 40, 12, false],
+    [`outside an open boundary`, 40, [0, 4, 76, 80], 80, 12, false],
+    [`negative unwrapped coordinates`, 40, [-40, -36, 36, 40], 80, 12, false],
+  ] as const)(
+    `removes slab vacuum: %s`,
+    (_name, height, layers, depth, precision, periodic) => {
+      const sites: [string, Vec3][] = []
+      for (let row_idx = 0; row_idx < 5; row_idx++) {
+        for (let col_idx = 0; col_idx < 5; col_idx++) {
+          for (const layer of layers)
+            sites.push([`Al`, [row_idx / 5, col_idx / 5, layer / height]])
+        }
       }
-    }
-    const slab = make_crystal(
-      [
-        [20, 0, 0],
-        [0, 20, 0],
-        [0, 0, height],
-      ],
-      sites,
-    )
-    const spacing = characteristic_atom_spacing(slab)
-    const expected = Math.cbrt((20 * 20 * depth) / sites.length)
-    // Binning moves each occupied boundary by at most height/64 Å; 4 Å layer gaps remain.
-    expect(spacing).toBeCloseTo(expected, precision)
-    expect(spacing / nn_median(slab)).toBeCloseTo(expected / 4, 1)
-  })
+      const slab = make_crystal(
+        [
+          [20, 0, 0],
+          [0, 20, 0],
+          [0, 0, height],
+        ],
+        sites,
+      )
+      slab.lattice.pbc = [true, true, periodic]
+      const spacing = characteristic_atom_spacing(slab)
+      const expected = Math.cbrt((20 * 20 * depth) / sites.length)
+      // Binning moves each occupied boundary by at most height/64 Å; 4 Å layer gaps remain.
+      expect(spacing).toBeCloseTo(expected, precision)
+      expect(spacing / nn_median(slab)).toBeCloseTo(expected / 4, 1)
+    },
+  )
 
   // Hand-built sites may omit abc or contain NaN; both must derive from xyz.
   test.each([

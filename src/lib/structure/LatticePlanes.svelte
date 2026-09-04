@@ -26,8 +26,9 @@
     tiling?: Vec3
   } = $props()
 
-  let block_lattice = $derived(math.scale_lattice_matrix(lattice, tiling))
-  let block_planes = $derived(tile_lattice_planes(planes, tiling))
+  let tile_counts = $derived(tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3)
+  let block_lattice = $derived(math.scale_lattice_matrix(lattice, tile_counts))
+  let block_planes = $derived(tile_lattice_planes(planes, tile_counts))
 
   const DEFAULT_COLOR = `#f28e2b`
   const DEFAULT_OPACITY = 0.3

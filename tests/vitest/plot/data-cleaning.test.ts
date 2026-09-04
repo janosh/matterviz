@@ -79,16 +79,24 @@ describe(`detect_instability`, () => {
     expect(result.onset_x).toBe(x[result.onset_index])
   })
 
-  it(`weights method scores into the combined score`, () => {
+  it.each([0, -0.5])(`weights method scores, excluding weight %s`, (disabled_weight) => {
     const { x, y } = unstable(30, 30, 0.3)
     expect(
       detect_instability(x, y, {
-        oscillation_weights: { derivative_variance: 0, amplitude_growth: 0, sign_changes: 0 },
+        oscillation_weights: {
+          derivative_variance: disabled_weight,
+          amplitude_growth: disabled_weight,
+          sign_changes: disabled_weight,
+        },
       }),
     ).toMatchObject({ detected: false, onset_index: -1, combined_score: 0 })
     const only = (method: `derivative_variance` | `amplitude_growth`) =>
       detect_instability(x, y, {
-        oscillation_weights: { derivative_variance: 0, amplitude_growth: 0, [method]: 1 },
+        oscillation_weights: {
+          derivative_variance: disabled_weight,
+          amplitude_growth: disabled_weight,
+          [method]: 1,
+        },
       })
     const deriv_only = only(`derivative_variance`)
     const amp_only = only(`amplitude_growth`)
@@ -112,6 +120,12 @@ describe(`detect_instability`, () => {
     expect(low.combined_score).toBeCloseTo(0.1 / 3, 9)
     expect(low).toMatchObject({ detected: true, onset_index: -1 })
     expect(detect_instability(x, y, { oscillation_threshold: 0.05 }).detected).toBe(false)
+    expect(
+      detect_instability(x, y, {
+        oscillation_weights: { sign_changes: -0.5 },
+        oscillation_threshold: 0.06,
+      }),
+    ).toMatchObject({ detected: false, onset_index: -1, combined_score: 0.05 })
   })
 })
 

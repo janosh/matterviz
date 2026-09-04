@@ -89,11 +89,13 @@ export function characteristic_atom_spacing(structure: AnyStructure): number {
     return Math.cbrt(box / n_real)
   }
 
-  const { volume, matrix } = structure.lattice
+  const { volume, matrix, pbc } = structure.lattice
   if (!(volume > 0)) return MIN_OCCUPIED_EXTENT // singular cell: nothing to divide up
 
   // Hand-built sites may lack valid abc; derive it lazily from rendered xyz.
   let to_frac: ((cart: Vec3) => Vec3) | undefined
+  const mins = [Infinity, Infinity, Infinity]
+  const maxs = [-Infinity, -Infinity, -Infinity]
   for (const bins of occupancy) bins.fill(0)
   for (const site of sites) {
     if (is_image_site(site)) continue
@@ -102,6 +104,11 @@ export function characteristic_atom_spacing(structure: AnyStructure): number {
       ? site.abc
       : (to_frac ??= math.create_cart_to_frac(matrix))(site.xyz)
     for (let axis = 0; axis < 3; axis++) {
+      if (!pbc[axis]) {
+        mins[axis] = Math.min(mins[axis], abc[axis])
+        maxs[axis] = Math.max(maxs[axis], abc[axis])
+        continue
+      }
       // MD frames and unwrapped inputs carry coordinates outside [0, 1)
       const wrapped = abc[axis] - Math.floor(abc[axis])
       occupancy[axis][Math.min(OCCUPANCY_BINS - 1, Math.floor(wrapped * OCCUPANCY_BINS))] = 1
@@ -112,6 +119,11 @@ export function characteristic_atom_spacing(structure: AnyStructure): number {
   const heights = math.cell_heights(matrix)
   let occupied_volume = volume
   for (let axis = 0; axis < 3; axis++) {
+    // Open boundaries cannot wrap distant atoms together, even outside the cell.
+    if (!pbc[axis]) {
+      occupied_volume *= Math.max(maxs[axis] - mins[axis], MIN_OCCUPIED_EXTENT / heights[axis])
+      continue
+    }
     // Gaps below the threshold are the material's own interlayer spacing, part of the volume
     // each atom occupies, and must stay in
     const min_run = (VACUUM_GAP / heights[axis]) * OCCUPANCY_BINS

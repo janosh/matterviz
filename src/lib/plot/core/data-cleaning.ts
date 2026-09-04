@@ -243,17 +243,16 @@ export function detect_instability(
     amplitude_growth: detect_amplitude_growth(valid_y, window_size),
     sign_changes: detect_sign_change_frequency(valid_y, window_size),
   }
-  const methods = [`derivative_variance`, `amplitude_growth`, `sign_changes`] as const
+  const methods = (
+    [`derivative_variance`, `amplitude_growth`, `sign_changes`] as const
+  ).filter((method) => weights[method] > 0)
   const total_weight = methods.reduce((sum, method) => sum + weights[method], 0)
   const combined_score =
     total_weight > 0
       ? methods.reduce((sum, method) => sum + weights[method] * results[method].score, 0) /
         total_weight
       : 0
-  const onsets = methods
-    .filter((method) => weights[method] > 0)
-    .map((method) => results[method].onset_index)
-    .filter((idx) => idx >= 0)
+  const onsets = methods.map((method) => results[method].onset_index).filter((idx) => idx >= 0)
   const valid_onset = onsets.length > 0 ? Math.min(...onsets) : -1
   const onset_index = valid_onset >= 0 ? (valid_indices[valid_onset] ?? valid_onset) : -1
   return {

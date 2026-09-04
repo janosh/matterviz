@@ -87,11 +87,12 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   // Everything below clips against the unit cube of `cell`, so the block's own cell vectors
   // plus block-frame elements extend the overlay over every tile
-  let cell = $derived(math.scale_lattice_matrix(lattice, tiling))
+  let tile_counts = $derived(tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3)
+  let cell = $derived(math.scale_lattice_matrix(lattice, tile_counts))
   let tiling_result = $derived(
     tile_symmetry_elements(
       elements.filter((element) => show_kinds[element.kind]),
-      tiling,
+      tile_counts,
       lattice,
     ),
   )
