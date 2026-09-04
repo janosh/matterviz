@@ -102,7 +102,8 @@
   $effect(() => observe_canvas_presence(wrapper, (val) => (wrapper_has_canvas = val)))
   let has_canvas = $derived(Boolean(image_canvas) || wrapper_has_canvas)
 
-  let lattice_reason = $derived(exports.fractional_export_unavailable_reason(structure))
+  const fractional_reason = $derived(exports.fractional_export_unavailable_reason(structure))
+  const xyz_reason = $derived(exports.xyz_export_unavailable_reason(structure))
 
   function handle_text_export(format: StructTextFormat) {
     if (!structure) return
@@ -117,16 +118,18 @@
     {
       title: `Export as text`,
       items: text_export_formats.map(({ label, format, hint }) => {
-        const needs_lattice = [`cif`, `poscar`].includes(format) && Boolean(lattice_reason)
+        const disabled_reason = !structure
+          ? `No structure loaded`
+          : format === `xyz`
+            ? xyz_reason
+            : format === `json`
+              ? undefined
+              : fractional_reason
         return {
           label,
           hint,
-          disabled: !structure || needs_lattice,
-          disabled_reason: !structure
-            ? `No structure loaded`
-            : needs_lattice
-              ? lattice_reason
-              : undefined,
+          disabled: Boolean(disabled_reason),
+          disabled_reason,
           on_download: () => handle_text_export(format),
           copy_text: () => get_text_content(format),
         }

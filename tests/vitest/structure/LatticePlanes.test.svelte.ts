@@ -225,6 +225,19 @@ test.each([
     expect(document.querySelector(`[role="status"]`)).toBeNull()
     expect(geometries()).toHaveLength(4)
     const recovered_disposed = geometries().map((item) => vi.spyOn(item, `dispose`))
+    // Opposite vectors describe the same solid cylinder or dashed screw axis.
+    for (const kind of [`rotation`, `screw`] as const) {
+      props.elements = [1, -1].map((direction) => ({
+        ...element,
+        kind,
+        order: 4,
+        label: `4`,
+        axis: [0, 0, direction] as Vec3,
+      }))
+      props.show_kinds = { [kind]: true }
+      update()
+      expect(geometries()[0].index?.count).toBe((kind === `screw` ? 11 : 1) * 144)
+    }
     props.elements = [{ ...element, kind: `rotoinversion`, order: 4, label: `-4` }]
     props.show_kinds = { rotoinversion: true }
     props.tiling = [1, 1, 3]
