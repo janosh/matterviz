@@ -1,6 +1,1 @@
-export {
-  build_path,
-  format_path,
-  parse_path,
-  resolve_path,
-} from 'svelte-widgets/json-tree/path'
+export { build_path, format_path, resolve_path } from 'svelte-widgets/json-tree/path'
