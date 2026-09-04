@@ -65,62 +65,46 @@ const vacuum_fraction = (bins: Uint8Array, min_run: number): number => {
 export function characteristic_atom_spacing(structure: AnyStructure): number {
   const { sites } = structure
   if (!sites?.length) return MIN_OCCUPIED_EXTENT
+  const lattice = `lattice` in structure ? structure.lattice : null
+  if (lattice && !(lattice.volume > 0)) return MIN_OCCUPIED_EXTENT // singular cell
 
   // Exclude PBC images from both occupancy and atom count.
   let n_real = 0
-  if (!(`lattice` in structure)) {
-    // No cell to subtract vacuum from: the atoms' own bounding box is all there is
-    const mins = [Infinity, Infinity, Infinity]
-    const maxs = [-Infinity, -Infinity, -Infinity]
-    for (const site of sites) {
-      if (is_image_site(site)) continue
-      n_real += 1
-      for (let axis = 0; axis < 3; axis++) {
-        const coord = site.xyz[axis]
-        if (coord < mins[axis]) mins[axis] = coord
-        if (coord > maxs[axis]) maxs[axis] = coord
-      }
-    }
-    if (n_real === 0) return MIN_OCCUPIED_EXTENT
-    const box = [0, 1, 2].reduce(
-      (product, axis) => product * Math.max(maxs[axis] - mins[axis], MIN_OCCUPIED_EXTENT),
-      1,
-    )
-    return Math.cbrt(box / n_real)
-  }
-
-  const { volume, matrix, pbc } = structure.lattice
-  if (!(volume > 0)) return MIN_OCCUPIED_EXTENT // singular cell: nothing to divide up
-
   // Hand-built sites may lack valid abc; derive it lazily from rendered xyz.
   let to_frac: ((cart: Vec3) => Vec3) | undefined
   const mins = [Infinity, Infinity, Infinity]
   const maxs = [-Infinity, -Infinity, -Infinity]
-  for (const bins of occupancy) bins.fill(0)
+  if (lattice) for (const bins of occupancy) bins.fill(0)
   for (const site of sites) {
     if (is_image_site(site)) continue
     n_real += 1
-    const abc = site.abc?.every((coord) => Number.isFinite(coord))
-      ? site.abc
-      : (to_frac ??= math.create_cart_to_frac(matrix))(site.xyz)
+    const coords = !lattice
+      ? site.xyz
+      : site.abc?.every(Number.isFinite)
+        ? site.abc
+        : (to_frac ??= math.create_cart_to_frac(lattice.matrix))(site.xyz)
     for (let axis = 0; axis < 3; axis++) {
-      if (!pbc[axis]) {
-        mins[axis] = Math.min(mins[axis], abc[axis])
-        maxs[axis] = Math.max(maxs[axis], abc[axis])
+      const coord = coords[axis]
+      if (!lattice?.pbc[axis]) {
+        // Molecule bounds ignore NaN coordinates, as coordinate comparisons do.
+        if (!lattice && Number.isNaN(coord)) continue
+        mins[axis] = Math.min(mins[axis], coord)
+        maxs[axis] = Math.max(maxs[axis], coord)
         continue
       }
       // MD frames and unwrapped inputs carry coordinates outside [0, 1)
-      const wrapped = abc[axis] - Math.floor(abc[axis])
+      const wrapped = coord - Math.floor(coord)
       occupancy[axis][Math.min(OCCUPANCY_BINS - 1, Math.floor(wrapped * OCCUPANCY_BINS))] = 1
     }
   }
   if (n_real === 0) return MIN_OCCUPIED_EXTENT
 
-  const heights = math.cell_heights(matrix)
-  let occupied_volume = volume
+  // Molecules use Cartesian bounds directly; crystal bounds are fractional.
+  const heights = lattice ? math.cell_heights(lattice.matrix) : [1, 1, 1]
+  let occupied_volume = lattice?.volume ?? 1
   for (let axis = 0; axis < 3; axis++) {
     // Open boundaries cannot wrap distant atoms together, even outside the cell.
-    if (!pbc[axis]) {
+    if (!lattice?.pbc[axis]) {
       occupied_volume *= Math.max(maxs[axis] - mins[axis], MIN_OCCUPIED_EXTENT / heights[axis])
       continue
     }

@@ -4,6 +4,7 @@
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
+  import { dispose_on_change } from '$lib/scene/geometry.svelte'
   import { CanvasTooltip } from '$lib/structure'
   import { write_bond_transform } from '$lib/structure/bond-rendering'
   import { supercell_grid_edges } from '$lib/structure/supercell'
@@ -83,31 +84,19 @@
   // Gate geometry rebuilds on cell numbers, not matrix identity (trajectory frames hand over
   // a fresh matrix object every step)
   let matrix_key = $derived(matrix?.flat().join(`,`) ?? ``)
-  let box_geometry = $state<BoxGeometry | null>(null)
-  $effect(() => {
+  const box_geometry = $derived.by(() => {
     void matrix_key
     const cell = untrack(() => matrix)
-    if (!cell) {
-      box_geometry = null
-      return
-    }
-    const geo = make_box_geometry(cell)
-    box_geometry = geo
-    return () => geo.dispose()
+    return cell ? make_box_geometry(cell) : null
   })
-  let block_geometry = $state<BoxGeometry | null>(null)
-  $effect(() => {
+  const block_geometry = $derived.by(() => {
     void matrix_key
     void tiling_key
     const cell = untrack(() => block_matrix)
-    if (!cell || untrack(() => n_tiles) === 1) {
-      block_geometry = null
-      return
-    }
-    const geo = make_box_geometry(cell)
-    block_geometry = geo
-    return () => geo.dispose()
+    return cell && untrack(() => n_tiles) !== 1 ? make_box_geometry(cell) : null
   })
+  dispose_on_change(() => [box_geometry])
+  dispose_on_change(() => [block_geometry])
 
   // All 12 edges in ONE InstancedMesh (one unit cylinder, one material) instead of a
   // geometry + material per edge. Edges never take pointer events, so skip raycasting.

@@ -2,6 +2,7 @@
 // family, disposed when the families change
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import LatticePlanes from '$lib/structure/LatticePlanes.svelte'
+import Lattice from '$lib/structure/Lattice.svelte'
 import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
 import type { SymmetryElement } from '$lib/symmetry'
 import type { LatticePlane } from '$lib/structure/lattice-planes'
@@ -14,6 +15,7 @@ import { threlte_stub } from '../isosurface/threlte-stub'
 vi.mock(`@threlte/core`, async (original) => ({
   ...(await original<typeof threlte_core>()),
   T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
+  useThrelte: () => ({ invalidate: vi.fn() }),
 }))
 vi.mock(`@threlte/extras`, async () => ({
   HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
@@ -44,6 +46,36 @@ const vertex_counts = (tag: string) =>
   threlte_stub.nodes
     .filter((node) => node.tag === tag)
     .map((node) => (node.props.geometry as BufferGeometry).getAttribute(`position`).count)
+
+test(`cell surfaces reuse unchanged geometry and dispose replaced blocks independently`, async () => {
+  const props = $state({ matrix: cubic, tiling: [2, 1, 1] as Vec3, show_cell_vectors: false })
+  const component = mount(Lattice, { target: document.body, props })
+  teardown = () => void unmount(component)
+  flushSync()
+  const geometries = () =>
+    threlte_stub.nodes
+      .filter((node) => node.tag === `Mesh`)
+      .map((node) => node.props.geometry as BufferGeometry)
+  const [block, origin] = geometries()
+  const disposed = [block, origin].map((geometry) => vi.spyOn(geometry, `dispose`))
+  props.matrix = structuredClone(cubic)
+  props.tiling = [2, 1, 1]
+  flushSync()
+  expect(geometries()).toEqual([block, origin])
+  expect(disposed.map((spy) => spy.mock.calls.length)).toEqual([0, 0])
+  props.tiling = [3, 1, 1]
+  flushSync()
+  const [new_block, same_origin] = geometries()
+  new_block.computeBoundingBox()
+  expect(new_block.boundingBox?.max.toArray()).toEqual([6, 2, 2])
+  expect(same_origin).toBe(origin)
+  expect(disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 0])
+  const dispose_block = vi.spyOn(new_block, `dispose`)
+  await unmount(component)
+  teardown = undefined
+  expect(dispose_block).toHaveBeenCalledOnce()
+  expect(disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1])
+})
 
 test.each([
   [1, 1, 1],

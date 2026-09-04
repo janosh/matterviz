@@ -16,16 +16,23 @@ const mag = (magnetic_ordering?: string): ConvexHullEntry => ({
   magnetic_ordering,
 })
 
-const mount_controls = (props: Partial<ComponentProps<typeof ConvexHullControls>> = {}) =>
+const mount_controls = (
+  props: Partial<ComponentProps<typeof ConvexHullControls>> = {},
+  state: Partial<ComponentProps<typeof ConvexHullControls>> = {},
+  target = document.body,
+) =>
   mount(ConvexHullControls, {
-    target: document.body,
-    props: {
-      controls_open: true,
-      stable_entries: [],
-      unstable_entries: [],
-      merged_controls: default_controls,
-      ...props,
-    },
+    target,
+    props: bind_props(
+      {
+        controls_open: true,
+        stable_entries: [],
+        unstable_entries: [],
+        merged_controls: default_controls,
+        ...props,
+      },
+      state,
+    ),
   })
 
 const magnetic_toggles = () => [
@@ -146,15 +153,7 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     const wrapper = document.createElement(`div`)
     wrapper.setAttribute(`style`, hull_style_css({ stable: `#111`, unstable: `#222` }))
     document.body.append(wrapper)
-    mount(ConvexHullControls, {
-      target: wrapper,
-      props: {
-        controls_open: true,
-        stable_entries: [mag()],
-        unstable_entries: [mag()],
-        merged_controls: default_controls,
-      },
-    })
+    mount_controls({ stable_entries: [mag()], unstable_entries: [mag()] }, {}, wrapper)
     const swatch_background = (kind: string) =>
       getComputedStyle(doc_query(`.marker.${kind}`)).background
     expect(swatch_background(`stable`)).toBe(`#111`)
@@ -163,18 +162,7 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
 
   test(`legend toggles and threshold inputs preserve valid display settings`, () => {
     const state = { max_hull_dist_show_phases: 0.1 }
-    mount(ConvexHullControls, {
-      target: document.body,
-      props: bind_props(
-        {
-          controls_open: true,
-          stable_entries: [mag()],
-          unstable_entries: [mag(), mag()],
-          merged_controls: default_controls,
-        },
-        state,
-      ),
-    })
+    mount_controls({ stable_entries: [mag()], unstable_entries: [mag(), mag()] }, state)
     // Points row (stability mode) renders stable + unstable toggles outside .category-filters
     const point_toggles = [...document.querySelectorAll<HTMLElement>(`.legend-item`)]
     const labels = () => point_toggles.map((item) => item.textContent?.trim())
