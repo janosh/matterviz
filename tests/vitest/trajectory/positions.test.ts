@@ -116,6 +116,21 @@ describe(`validate_position_stream_layout`, () => {
 })
 
 describe(`accumulate_positions step plausibility`, () => {
+  it.each([
+    [2, 2],
+    [3, 1],
+    [-1, 3],
+    [0, 4],
+    [0.5, 2],
+    [0, Infinity],
+  ])(`rejects range [%s, %s) before reading`, async (start_frame, end_frame) => {
+    const load = () => {
+      throw new Error(`must not read`)
+    }
+    await expect(accumulate_positions(3, load, { start_frame, end_frame })).rejects.toThrow(
+      `Frame range`,
+    )
+  })
   // 10 A cubic cell, four atoms; `shift` moves every atom by the same vector between frames
   const frames_with_shift = (shift: number, coords_unwrapped?: boolean) => {
     const start = [1, 2, 3, 4].map((val) => [val, val, val])

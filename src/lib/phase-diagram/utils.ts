@@ -309,14 +309,7 @@ function pick_bracketing_intersection_pair(
     }
   }
 
-  // Fallback for numerical edge cases where even-odd pairing fails:
-  // pick nearest enclosing neighbors around the hovered point.
-  const left_idx = unique_intersections.findLastIndex((val) => val <= position + bound_tol)
-  if (left_idx === -1 || left_idx + 1 >= unique_intersections.length) return null
-
-  const left_bound = unique_intersections[left_idx]
-  const right_bound = unique_intersections[left_idx + 1]
-  return right_bound - left_bound > bound_tol ? [left_bound, right_bound] : null
+  return null
 }
 
 // Composition offsets (atomic fraction) probed outside a tie-line end to identify the adjacent

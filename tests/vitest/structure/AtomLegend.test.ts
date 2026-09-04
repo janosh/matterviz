@@ -192,18 +192,24 @@ describe(`AtomLegend Component`, () => {
 
       const options = await open_mode_menu()
       expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`true`)
-      const option_texts = options.map((opt) => opt.textContent?.trim())
-      expect(option_texts).toEqual(
-        expect.arrayContaining([`Element`, `Coordination`, `Wyckoff Position`]),
-      )
-      // no sym_data, no site declaring selective dynamics, no colorable property
-      const option_disabled = (text: string) =>
-        options.find((opt) => opt.textContent?.includes(text))?.disabled
-      for (const text of [`Wyckoff`, `Selective Dynamics`, `Site Property`]) {
-        expect(option_disabled(text), text).toBe(true)
+      const option_for = (text: string) =>
+        options.find((opt) => opt.textContent?.includes(text))
+      for (const [text, reason] of [
+        [`Wyckoff Position`, `symmetry`],
+        [`Selective Dynamics`, `selective-dynamics`],
+        [`Site Property`, `per-atom properties`],
+      ]) {
+        const option = option_for(text)
+        expect(option?.disabled, text).toBe(true)
+        expect(option?.textContent, text).toContain(reason)
+        expect(option?.title, text).toContain(reason)
+        const hint_id = option?.getAttribute(`aria-describedby`)
+        expect(hint_id).toBeTypeOf(`string`)
+        expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(reason)
       }
       for (const text of [`Element`, `Coordination`]) {
-        expect(option_disabled(text), text).toBe(false)
+        expect(option_for(text)?.disabled, text).toBe(false)
+        expect(option_for(text)?.title ?? ``, text).toBe(``)
       }
 
       mode_toggle.click()

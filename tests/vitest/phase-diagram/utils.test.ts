@@ -336,6 +336,12 @@ const split_region_boundary_cases = [
 ]
 
 const lever_null_cases = [
+  {
+    region: split_region_horizontal,
+    comp: 0.5,
+    temp: 500,
+    desc: `gap between disjoint intervals`,
+  },
   { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
   { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
   { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },

@@ -102,8 +102,7 @@
   $effect(() => observe_canvas_presence(wrapper, (val) => (wrapper_has_canvas = val)))
   let has_canvas = $derived(Boolean(image_canvas) || wrapper_has_canvas)
 
-  // CIF and POSCAR cannot express a molecule (no lattice), so their rows are disabled for one
-  let has_lattice = $derived(Boolean(structure && `lattice` in structure))
+  let lattice_reason = $derived(exports.fractional_export_unavailable_reason(structure))
 
   function handle_text_export(format: StructTextFormat) {
     if (!structure) return
@@ -117,13 +116,21 @@
   const sections = $derived<ExportSection[]>([
     {
       title: `Export as text`,
-      items: text_export_formats.map(({ label, format, hint }) => ({
-        label,
-        hint,
-        disabled: !structure || ([`cif`, `poscar`].includes(format) && !has_lattice),
-        on_download: () => handle_text_export(format),
-        copy_text: () => get_text_content(format),
-      })),
+      items: text_export_formats.map(({ label, format, hint }) => {
+        const needs_lattice = [`cif`, `poscar`].includes(format) && Boolean(lattice_reason)
+        return {
+          label,
+          hint,
+          disabled: !structure || needs_lattice,
+          disabled_reason: !structure
+            ? `No structure loaded`
+            : needs_lattice
+              ? lattice_reason
+              : undefined,
+          on_download: () => handle_text_export(format),
+          copy_text: () => get_text_content(format),
+        }
+      }),
     },
     {
       title: `Export as image`,
@@ -131,6 +138,7 @@
         {
           label: `PNG`,
           disabled: !has_canvas,
+          disabled_reason: has_canvas ? undefined : `Waiting for the 3D view to render`,
           show_dpi: true,
           on_download: () => {
             const canvas = image_canvas ?? wrapper?.querySelector(`canvas`)
@@ -155,6 +163,7 @@
               label,
               hint,
               disabled: !scene,
+              disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
               on_download: () => handle_3d_export(format),
             })),
           },

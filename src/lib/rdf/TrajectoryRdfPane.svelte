@@ -4,6 +4,7 @@
   // frame-stride control stays hidden and `max_frames` caps the sample instead.
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
+  import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
   import type { TrajectoryRun } from '$lib/trajectory'
   import type { AnalysisCollectOptions } from '$lib/trajectory/analysis'
   import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
@@ -45,16 +46,18 @@
   // g(r) there averages over periodic replicas, so say so rather than refuse
   let half_cell = $derived.by(() => {
     const structure = run?.preview.structure
-    if (!structure || !(`lattice` in structure)) return null
+    if (!has_usable_lattice(structure)) return null
     return Math.min(structure.lattice.a, structure.lattice.b, structure.lattice.c) / 2
   })
 
   const collect = (
     target: TrajectoryRun,
-    { on_progress, signal }: AnalysisCollectOptions,
+    { on_progress, signal, start_frame, end_frame }: AnalysisCollectOptions,
   ): Promise<TrajectoryRdf> =>
     collect_trajectory_rdf(target, {
       signal,
+      start_frame,
+      end_frame,
       max_frames: safe_max_frames,
       cutoff: safe_cutoff,
       n_bins: safe_bins,
@@ -81,6 +84,8 @@
   class_prefix="trajectory-rdf"
   analysis_name="RDF"
   {collect}
+  frame_unavailable_reason={({ structure }) =>
+    lattice_unavailable_reason(structure, true) ?? null}
   compute_label="Compute g(r)"
   recollect_label="Recompute"
   collecting_label="Binning pair distances…"
@@ -94,11 +99,17 @@
         : { frame_numbers: [], frame_stride: 1 }}
     <label>
       Max frames
-      <input type="number" min="1" step="1" bind:value={max_frames} />
+      <input
+        type="number"
+        aria-label="Max RDF frames"
+        min="1"
+        step="1"
+        bind:value={max_frames}
+      />
     </label>
     <label>
       Cutoff
-      <input type="number" min="0.5" step="0.5" bind:value={cutoff} />
+      <input type="number" aria-label="RDF cutoff" min="0.5" step="0.5" bind:value={cutoff} />
       <span>Å</span>
       {#if half_cell !== null && safe_cutoff > half_cell}
         <span class="hint">beyond half the cell ({format_num(half_cell, `.3~g`)} Å)</span>
@@ -106,7 +117,7 @@
     </label>
     <label>
       Bins
-      <input type="number" min="10" step="10" bind:value={n_bins} />
+      <input type="number" aria-label="RDF bins" min="10" step="10" bind:value={n_bins} />
       <span class="hint">{format_num(safe_cutoff / safe_bins, `.3~g`)} Å per bin</span>
     </label>
     <p class="hint">
@@ -133,6 +144,21 @@
             columns: () => ({
               r_A: input.r,
               ...Object.fromEntries(input.curves.map(({ label, g_r }) => [`g_${label}`, g_r])),
+            }),
+          },
+          {
+            label: `Analysis JSON`,
+            filename: `rdf.json`,
+            json: () => ({
+              schema_version: 1,
+              analysis: `rdf`,
+              units: {
+                distance: `A`,
+                volume: `A^3`,
+                g_r: `dimensionless`,
+                coordination: `neighbors`,
+              },
+              ...input,
             }),
           },
         ]}

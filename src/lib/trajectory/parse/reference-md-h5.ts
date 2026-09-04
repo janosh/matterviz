@@ -351,7 +351,12 @@ export const parse_reference_md_h5_file = (
       [start, end, stride],
       [replica_idx, replica_idx + 1],
     ])
-  const read_replica_samples = (manifest: ObservableManifest, stride = 1): Float64Array => {
+  const read_replica_samples = (
+    manifest: ObservableManifest,
+    stride = 1,
+    start_frame = 0,
+    end_frame = n_frames,
+  ): Float64Array => {
     return read_numeric_samples(
       manifest.dataset,
       manifest.path,
@@ -362,6 +367,8 @@ export const parse_reference_md_h5_file = (
         [start, end, sample_stride],
         [replica_idx, replica_idx + 1],
       ],
+      start_frame,
+      end_frame,
     )
   }
   const velocity_manifest = signal_manifest.velocity
@@ -521,41 +528,53 @@ export const parse_reference_md_h5_file = (
         is_vector: (key) => key === `velocity`,
         is_signal: (key) => Boolean(signal_manifest[key]),
         values_per_frame: (n_vectors) => velocity_sample_size * (1 + n_vectors) + 10,
-        signal_values: (key) =>
-          n_frames * (values_per_sample(signal_manifest[key].sample_shape) + 1),
+        signal_values: (key, start_frame, end_frame) =>
+          (end_frame - start_frame) *
+          (values_per_sample(signal_manifest[key].sample_shape) + 1),
       },
     )
+    const start_frame = options.start_frame ?? 0
+    const end_frame = options.end_frame ?? n_frames
     const selected_values = frame_indices.length * velocity_sample_size
     const positions = new Float64Array(selected_values)
     const selected_velocities = vector_keys.includes(`velocity`)
       ? new Float64Array(selected_values)
       : null
     const native_velocity = signal_keys.includes(`velocity`)
-      ? new Float64Array(n_frames * velocity_sample_size)
+      ? new Float64Array((end_frame - start_frame) * velocity_sample_size)
       : null
-    const stream_positions = Float64Array.from(initial_positions)
+    const stream_positions = reconstruct_positions(start_frame)
     let selected_idx = 0
-    integrate_velocity_frames(0, n_frames, stream_positions, (frame_idx, chunk, offset) => {
-      // The native signal wants every frame, so copy each chunk in one bulk set as it
-      // arrives (offset 0 is the chunk's first frame); only the strided vector slices
-      if (offset === 0) native_velocity?.set(chunk, frame_idx * velocity_sample_size)
-      const selected = frame_idx % frame_stride === 0
-      if (!selected) return
-      selected_velocities?.set(
-        chunk.slice(offset, offset + velocity_sample_size),
-        selected_idx * velocity_sample_size,
-      )
-      positions.set(stream_positions, selected_idx * velocity_sample_size)
-      selected_idx++
-    })
+    integrate_velocity_frames(
+      start_frame,
+      end_frame,
+      stream_positions,
+      (frame_idx, chunk, offset) => {
+        // The native signal wants every frame, so copy each chunk in one bulk set as it
+        // arrives (offset 0 is the chunk's first frame); only the strided vector slices
+        if (offset === 0)
+          native_velocity?.set(chunk, (frame_idx - start_frame) * velocity_sample_size)
+        const selected = (frame_idx - start_frame) % frame_stride === 0
+        if (!selected) return
+        selected_velocities?.set(
+          chunk.slice(offset, offset + velocity_sample_size),
+          selected_idx * velocity_sample_size,
+        )
+        positions.set(stream_positions, selected_idx * velocity_sample_size)
+        selected_idx++
+      },
+    )
     const signals = Object.fromEntries(
       signal_keys.map((key) => {
         const manifest = signal_manifest[key]
         const values =
           key === `velocity` && native_velocity
             ? native_velocity
-            : read_replica_samples(manifest)
-        return [key, trajectory_signal(values, manifest, [...production_steps])]
+            : read_replica_samples(manifest, 1, start_frame, end_frame)
+        return [
+          key,
+          trajectory_signal(values, manifest, production_steps.slice(start_frame, end_frame)),
+        ]
       }),
     )
     return {

@@ -330,6 +330,17 @@ describe(`helpers: polymorph statistics`, () => {
       exp: [3, 1, 1, 1],
     },
     {
+      name: `duplicate IDs exclude every copy but anonymous entries still count`,
+      all: [
+        lio(`1`, { energy_per_atom: -2 }),
+        lio(``, { energy_per_atom: -2 }),
+        lio(`2`, { energy_per_atom: 0 }),
+        lio(`1`, { energy_per_atom: -1 }),
+        lio(`3`, { energy_per_atom: -1 }),
+      ],
+      exp: [3, 1, 1, 1],
+    },
+    {
       // e_above_hull alone would report every polymorph as equal
       name: `REGRESSION: stable polymorphs (e_above_hull=0) ranked by energy_per_atom`,
       all: [
@@ -389,13 +400,28 @@ describe(`helpers: polymorph statistics`, () => {
 })
 
 describe(`helpers: batch polymorph stats computation`, () => {
-  test(`empty and single-entry edge cases`, () => {
-    expect(helpers.compute_all_polymorph_stats([]).size).toBe(0)
-    const single = helpers.compute_all_polymorph_stats([
-      phase(`mp-1`, { Li: 1 }, { energy: -1, e_above_hull: 0 }),
-    ])
-    expect(single.size).toBe(1)
-    expect(single.get(`mp-1`)).toEqual({ total: 0, higher: 0, lower: 0, equal: 0 })
+  test.each([0, 1, 1000])(`ranks %s entries without quadratic energy reads`, (length) => {
+    let reads = 0
+    const entries = Array.from({ length }, (_, idx) => ({
+      entry_id: `mp-${idx}`,
+      composition: { Li: 1 },
+      energy: idx,
+      get energy_per_atom() {
+        reads++
+        return idx
+      },
+    }))
+    const stats = helpers.compute_all_polymorph_stats(entries)
+    expect(stats.size).toBe(length)
+    for (let idx = 0; idx < length; idx++) {
+      expect(stats.get(`mp-${idx}`)).toEqual({
+        total: length - 1,
+        higher: length - idx - 1,
+        lower: idx,
+        equal: 0,
+      })
+    }
+    expect(reads).toBeLessThanOrEqual(10 * length)
   })
 
   test(`normalizes stoichiometry and skips entries without entry_id`, () => {

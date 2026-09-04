@@ -7,7 +7,7 @@ import {
   detect_instability,
   smooth_moving_average,
 } from '$lib/plot/core/data-cleaning'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 const linear = (length: number, slope = 1): { x: number[]; y: number[] } => {
   const x = Array.from({ length }, (_, idx) => idx)
@@ -79,11 +79,24 @@ describe(`detect_instability`, () => {
     expect(result.onset_x).toBe(x[result.onset_index])
   })
 
-  it(`weights method scores into the combined score`, () => {
+  it.each([0, -0.5])(`weights method scores, excluding weight %s`, (disabled_weight) => {
     const { x, y } = unstable(30, 30, 0.3)
+    expect(
+      detect_instability(x, y, {
+        oscillation_weights: {
+          derivative_variance: disabled_weight,
+          amplitude_growth: disabled_weight,
+          sign_changes: disabled_weight,
+        },
+      }),
+    ).toMatchObject({ detected: false, onset_index: -1, combined_score: 0 })
     const only = (method: `derivative_variance` | `amplitude_growth`) =>
       detect_instability(x, y, {
-        oscillation_weights: { derivative_variance: 0, amplitude_growth: 0, [method]: 1 },
+        oscillation_weights: {
+          derivative_variance: disabled_weight,
+          amplitude_growth: disabled_weight,
+          [method]: 1,
+        },
       })
     const deriv_only = only(`derivative_variance`)
     const amp_only = only(`amplitude_growth`)
@@ -107,6 +120,12 @@ describe(`detect_instability`, () => {
     expect(low.combined_score).toBeCloseTo(0.1 / 3, 9)
     expect(low).toMatchObject({ detected: true, onset_index: -1 })
     expect(detect_instability(x, y, { oscillation_threshold: 0.05 }).detected).toBe(false)
+    expect(
+      detect_instability(x, y, {
+        oscillation_weights: { sign_changes: -0.5 },
+        oscillation_threshold: 0.06,
+      }),
+    ).toMatchObject({ detected: false, onset_index: -1, combined_score: 0.05 })
   })
 })
 
@@ -190,14 +209,43 @@ describe(`clean_series`, () => {
 
   // edges hold the nearest finite value; runs interpolate linearly; nothing finite -> 0
   it.each([
-    { y: [NaN, 2, 4, 6, NaN], cleaned: [2, 2, 4, 6, 6], count: 2 },
-    { y: [0, NaN, NaN, NaN, 8], cleaned: [0, 2, 4, 6, 8], count: 3 },
-    { y: [NaN, NaN], cleaned: [0, 0], count: 2 },
-  ])(`interpolates $y`, ({ y, cleaned, count }) => {
+    { label: `edges`, y: [NaN, 2, 4, 6, NaN], cleaned: [2, 2, 4, 6, 6], count: 2 },
+    { label: `interior`, y: [0, NaN, NaN, NaN, 8], cleaned: [0, 2, 4, 6, 8], count: 3 },
+    { label: `all missing`, y: [NaN, NaN], cleaned: [0, 0], count: 2 },
+    {
+      label: `opposite extremes`,
+      y: [-1e308, NaN, 1e308],
+      cleaned: [-1e308, 0, 1e308],
+      count: 1,
+    },
+    {
+      label: `same-sign extremes`,
+      y: [1e308, NaN, 1.5e308],
+      cleaned: [1e308, 1.25e308, 1.5e308],
+      count: 1,
+    },
+    {
+      label: `subnormal endpoints`,
+      y: [Number.MIN_VALUE, NaN, Number.MIN_VALUE],
+      cleaned: Array<number>(3).fill(Number.MIN_VALUE),
+      count: 1,
+    },
+    {
+      label: `long gap`,
+      y: [7, ...Array<number>(2048).fill(NaN), 7],
+      cleaned: Array<number>(2050).fill(7),
+      count: 2048,
+    },
+  ])(`interpolates $label in linear work`, ({ y, cleaned, count }) => {
+    const finite_check = vi.spyOn(Number, `isFinite`)
     const { series, quality } = clean_series(indexed(y), {
       invalid_values: `interpolate`,
       in_place: false,
     })
+    const checks = finite_check.mock.calls.length
+    finite_check.mockRestore()
+    // Includes detection/quality passes; rescanning the unfilled tail costs O(gap²).
+    expect(checks).toBeLessThan(100 * y.length)
     expect(series.y).toEqual(cleaned)
     expect(quality).toMatchObject({ points_removed: 0, invalid_values_found: count })
   })

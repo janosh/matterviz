@@ -438,6 +438,10 @@ function build_rotation_info(
   }
 }
 
+// Snap both ends of [0, 1): 1 - 1e-9 and 0 identify the same in-cell locus.
+const locus_coord = (val: number) =>
+  (Math.abs(val) < 1e-4 || Math.abs(val - 1) < 1e-4 ? 0 : val).toFixed(4)
+
 // Canonical key for the geometric locus of an element at `point` with rotation data `info`.
 // Elements are identified modulo lattice translations:
 // - inversion centers: the wrapped center
@@ -446,18 +450,14 @@ function build_rotation_info(
 // - axis lines: (direction, covector coordinates of x₀ mod 1) — wrapping merges
 //   lattice-equivalent parallel lines, see line_covectors
 function element_locus_key(point: Vec3, info: RotationInfo): string {
-  // Snap both ends of [0, 1): a wrapped coordinate at 1 - 1e-9 is the same lattice point as
-  // 0 (wrap_to_unit_cell only snaps within 1e-10)
-  const fmt = (val: number) =>
-    (Math.abs(val) < 1e-4 || Math.abs(val - 1) < 1e-4 ? 0 : val).toFixed(4)
   // Fractional coordinate of an integer covector against the element point, mod 1. Both
   // operands are lattice quantities, so a lattice translation shifts this by an integer
   // and the wrapped value is invariant — which is what "modulo lattice translations" needs.
   const covector_coord = (covector: Vec3) => {
     const raw = math.dot(point, covector)
-    return fmt(raw - Math.floor(raw + 1e-6))
+    return locus_coord(raw - Math.floor(raw + 1e-6))
   }
-  if (info.axis === null) return `center|${point.map(fmt).join(`,`)}`
+  if (info.axis === null) return `center|${point.map(locus_coord).join(`,`)}`
   const axis_key = info.axis.join(`,`)
   if (info.kind === `mirror`) {
     if (!info.normal_eq) throw new Error(`Plane element has no plane-equation normal`)
@@ -574,7 +574,10 @@ export function symmetry_elements_from_ops(
         for (let dz = 0; dz <= 1; dz++) {
           const shifted: Vec3 = [translation[0] + dx, translation[1] + dy, translation[2] + dz]
           const elem = classify_with_rotation_info(info, shifted)
-          const key = `${elem.kind}|${elem.label}|${elem.locus}`
+          // A rotoinversion fixes a center, not every point along its axis line.
+          const center =
+            elem.kind === `rotoinversion` ? elem.point.map(locus_coord).join(`,`) : ``
+          const key = `${elem.kind}|${elem.label}|${elem.locus}|${center}`
           if (!seen.has(key)) seen.set(key, elem)
         }
       }
@@ -662,3 +665,119 @@ export function clip_plane_to_cell(
   const n_eq = math.dot(lattice, normal_cart)
   return clip_frac_plane_to_cell(n_eq, math.dot(n_eq, point), lattice)
 }
+
+// Bound merged geometry allocation after removing redundant copies.
+export const MAX_TILED_SYM_ELEMENTS = 4000
+const MAX_TILING_VISITS = 1_000_000
+
+// Deduplicate translations along planes/axes, but retain every translated center marker.
+// Plane offsets use the Cartesian metric (n_eq · offset); line parallelism is affine.
+// Identity keeps different operations sharing a locus distinct.
+const tiled_element_key = (element: SymmetryElement, lattice: Matrix3x3) => {
+  const identity = `${element.kind}|${element.label}|${element.order}|${element.locus}`
+  const { axis, kind } = element
+  let key = (offset: Vec3): string =>
+    (kind === `rotoinversion` ? math.add(element.point, offset) : offset).join(`,`)
+  let partial_key = key
+  let changes = [true, true, true]
+  if (axis && (kind === `mirror` || kind === `glide`)) {
+    const n_eq = math.dot(lattice, math.create_frac_to_cart(lattice)(axis))
+    const norm = Math.hypot(...n_eq)
+    // Quantize normalized offsets at 1e-10 cell units, below the clipper's 1e-7 tolerance.
+    // Exact keys split coincident planes for cells built from angles (cos(π/2) ≠ 0).
+    key = (offset) => String(Math.round((math.dot(n_eq, offset) / norm) * 1e10))
+    // Round only complete offsets: merging rounded partial sums can lose a plane after
+    // a later axis shifts it across the rounding boundary.
+    partial_key = (offset) => String(math.dot(n_eq, offset))
+    // Ignore angle-conversion residuals below one epsilon relative to the plane coefficients.
+    changes = n_eq.map((component) => Math.abs(component) > Number.EPSILON * norm)
+  } else if (axis && (kind === `rotation` || kind === `screw`)) {
+    key = (offset) => math.cross_3d(offset, axis).join(`,`)
+    partial_key = key
+    changes = axis.map((_, idx) =>
+      axis.some((component, other) => other !== idx && component !== 0),
+    )
+  }
+  return { identity, key, partial_key, changes }
+}
+
+// Translate elements through the block, then divide coordinates/directions by tile counts
+// to express them in the block basis. Deduplicate after each axis to avoid walking every tile.
+// Refusal returns a visible reason, never a partial overlay or a render-time exception.
+function symmetry_tiling(
+  elements: SymmetryElement[],
+  tiling: Vec3,
+  lattice: Matrix3x3,
+  collect_elements: boolean,
+): { elements: SymmetryElement[]; unavailable_reason: string | null } {
+  const counts = tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3
+  const n_tiles = counts[0] * counts[1] * counts[2]
+  const unavailable = (reason: string) => ({
+    elements: [],
+    unavailable_reason: `Symmetry overlay for tiling ${counts.join(`x`)} ${reason}. Reduce the supercell or hide element kinds.`,
+  })
+  if (!counts.every(Number.isFinite)) return unavailable(`needs finite repeat counts`)
+  if (!elements.length || (n_tiles === 1 && elements.length <= MAX_TILED_SYM_ELEMENTS))
+    return { elements, unavailable_reason: null }
+  // Below this upper bound, neither the element cap nor the traversal cap can be hit.
+  if (!collect_elements && elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS)
+    return { elements: [], unavailable_reason: null }
+  const shrink = (vec: Vec3): Vec3 => [
+    vec[0] / counts[0],
+    vec[1] / counts[1],
+    vec[2] / counts[2],
+  ]
+  const tiled: SymmetryElement[] = []
+  const seen = new Set<string>()
+  let visits = 0
+  for (const element of elements) {
+    const { identity, key, partial_key, changes } = tiled_element_key(element, lattice)
+    let offsets: Vec3[] = [[0, 0, 0]]
+    const axes = [2, 1, 0].filter((axis) => counts[axis] > 1 && changes[axis])
+    for (const [axis_idx, axis] of axes.entries()) {
+      const final_axis = axis_idx === axes.length - 1
+      const unique = new Map<string, Vec3>()
+      for (const offset of offsets) {
+        for (let step = 0; step < counts[axis]; step++) {
+          if (++visits > MAX_TILING_VISITS) return unavailable(`exceeds the tiling work limit`)
+          const shifted: Vec3 = [...offset]
+          shifted[axis] = step
+          const locus = final_axis ? key(shifted) : partial_key(shifted)
+          if (!unique.has(locus)) unique.set(locus, shifted)
+          if (final_axis && unique.size > MAX_TILED_SYM_ELEMENTS)
+            return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)
+        }
+      }
+      offsets = [...unique.values()]
+    }
+    for (const offset of offsets) {
+      const locus = `${identity}|${key(offset)}`
+      if (seen.has(locus)) continue
+      if (seen.size >= MAX_TILED_SYM_ELEMENTS)
+        return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)
+      seen.add(locus)
+      if (collect_elements)
+        tiled.push({
+          ...element,
+          point: shrink(element.point.map((coord, axis) => coord + offset[axis]) as Vec3),
+          axis: element.axis && shrink(element.axis),
+          translation: element.translation && shrink(element.translation),
+        })
+    }
+  }
+  return { elements: tiled, unavailable_reason: null }
+}
+
+// The controls can preflight candidates without allocating block-frame element copies.
+export const symmetry_tiling_reason = (
+  elements: SymmetryElement[],
+  tiling: Vec3,
+  lattice: Matrix3x3,
+): string | null => symmetry_tiling(elements, tiling, lattice, false).unavailable_reason
+
+export const tile_symmetry_elements = (
+  elements: SymmetryElement[],
+  tiling: Vec3,
+  lattice: Matrix3x3,
+): { elements: SymmetryElement[]; unavailable_reason: string | null } =>
+  symmetry_tiling(elements, tiling, lattice, true)

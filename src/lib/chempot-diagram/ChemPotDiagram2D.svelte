@@ -344,6 +344,7 @@
       <TemperatureSlider
         class="chempot-temp-slider"
         available_temperatures={chempot.available_temperatures}
+        interpolate_temperature={config.interpolate_temperature}
         bind:temperature
       />
     {/if}

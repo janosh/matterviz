@@ -70,7 +70,7 @@
   } from './export'
   import { type CellPos, CellSelection } from './selection.svelte'
   import ToggleMenu from './ToggleMenu.svelte'
-  import { virtual_window } from './virtual'
+  import { virtual_window } from 'svelte-widgets/virtual'
   import { ActionMenu, Icon, type IconData, SettingsSection } from 'svelte-widgets'
   import { tooltip } from 'svelte-widgets/attachments'
   import {

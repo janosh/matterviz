@@ -24,9 +24,11 @@ export const middle_ellipsis_parts = (text: string): [string, string] => {
   return [graphemes.slice(0, split_at).join(``), graphemes.slice(split_at).join(``)]
 }
 
-// null, undefined or NaN: rendered as n/a and sorted to the bottom
+// Missing values, NaN and invalid dates render as n/a and sort to the bottom
 export const is_invalid = (val: unknown): boolean =>
-  val == null || (typeof val === `number` && Number.isNaN(val))
+  val == null ||
+  (typeof val === `number` && Number.isNaN(val)) ||
+  (val instanceof Date && Number.isNaN(val.getTime()))
 
 const HTML_MARKUP_RE = new RegExp(
   `${HTML_TAG_SRC}|&(?:#\\d+|#x[\\da-f]+|[a-z][\\da-z]+);`,
@@ -90,6 +92,7 @@ const get_sort_val = (val: CellVal): string | number => {
 }
 
 export type SortCriterion = { key: string; ascending: boolean }
+const sort_collator = new Intl.Collator(undefined, { numeric: true, sensitivity: `base` })
 
 // Comparator over row keys: invalid values sink to the bottom regardless of direction,
 // numbers sort before strings, strings compare natural-order and case-insensitively.
@@ -108,10 +111,7 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
     const sort_val2 = get_sort_val(val2)
     const modifier = ascending ? 1 : -1
     if (typeof sort_val1 === `string` && typeof sort_val2 === `string`) {
-      const cmp = sort_val1.localeCompare(sort_val2, undefined, {
-        numeric: true,
-        sensitivity: `base`,
-      })
+      const cmp = sort_collator.compare(sort_val1, sort_val2)
       if (cmp !== 0) return cmp * modifier
     } else if (typeof sort_val1 !== typeof sort_val2) {
       // number<string is false both ways, breaking the comparator: numbers sort first

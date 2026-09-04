@@ -9,7 +9,7 @@ import type {
 } from '$lib/trajectory/index'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
-import { DEFAULT_POSITION_STREAM_MAX_BYTES } from '../runs/accumulate'
+import { DEFAULT_POSITION_STREAM_MAX_BYTES, resolve_frame_range } from '../runs/accumulate'
 
 export const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
   entity !== null && `to_array` in entity
@@ -384,7 +384,7 @@ export const resolve_stream_channels = (
     is_vector: (key: string) => boolean
     is_signal: (key: string) => boolean
     values_per_frame: (n_vectors: number) => number
-    signal_values: (key: string) => number
+    signal_values: (key: string, start_frame: number, end_frame: number) => number
   },
 ): {
   frame_stride: number
@@ -402,13 +402,19 @@ export const resolve_stream_channels = (
   if (unknown_keys.length > 0) {
     throw new Error(`${format} has no channels named ${unknown_keys.join(`, `)}`)
   }
-  const frame_indices = sampled_indices(n_frames, frame_stride)
+  const { start_frame, end_frame } = resolve_frame_range(n_frames, options)
+  const frame_indices = sampled_indices(end_frame - start_frame, frame_stride).map(
+    (idx) => idx + start_frame,
+  )
   assert_hdf5_stream_budget(
     format,
-    n_frames,
+    end_frame - start_frame,
     frame_indices.length,
     channels.values_per_frame(vector_keys.length),
-    signal_keys.reduce((total, key) => total + channels.signal_values(key), 0),
+    signal_keys.reduce(
+      (total, key) => total + channels.signal_values(key, start_frame, end_frame),
+      0,
+    ),
     options.max_bytes ?? DEFAULT_POSITION_STREAM_MAX_BYTES,
   )
   return { frame_stride, vector_keys, signal_keys, frame_indices }
@@ -427,12 +433,16 @@ export const read_numeric_samples = (
   ) => Parameters<Dataset[`slice`]>[0] = (start, end, sample_stride) => [
     [start, end, sample_stride],
   ],
+  sample_start = 0,
+  sample_end = sample_count,
 ): Float64Array => {
-  const values = new Float64Array(Math.ceil(sample_count / stride) * sample_size)
+  const values = new Float64Array(
+    Math.ceil((sample_end - sample_start) / stride) * sample_size,
+  )
   const samples_per_slice = hdf5_frames_per_slice(sample_size)
   let output_offset = 0
-  for (let start = 0; start < sample_count; start += samples_per_slice * stride) {
-    const end = Math.min(start + samples_per_slice * stride, sample_count)
+  for (let start = sample_start; start < sample_end; start += samples_per_slice * stride) {
+    const end = Math.min(start + samples_per_slice * stride, sample_end)
     const expected_count = Math.ceil((end - start) / stride) * sample_size
     const copied_count = copy_numeric_hyperslab(
       dataset,

@@ -44,6 +44,7 @@
     default_vector_configs,
     get_element_counts,
     get_structure_vector_keys,
+    is_crystal,
     RESET_VIEW_TITLE,
   } from '$lib/structure'
   import type { CellType, SymmetryDataset, SymmetrySettings, WyckoffPos } from '$lib/symmetry'
@@ -892,7 +893,10 @@
         {sym_data}
       >
         {#snippet children({ mode_menu_open })}
-          {#if structure && `lattice` in structure}
+          <!-- A lattice is enough: repeating a cell is well defined whatever its pbc flags say
+            (the phonon explorer tiles a deliberately aperiodic cell), while the primitive and
+            conventional buttons inside gate themselves on sym_data -->
+          {#if is_crystal(structure)}
             <CellSelect
               bind:supercell_scaling
               bind:cell_type

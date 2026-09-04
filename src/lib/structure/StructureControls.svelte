@@ -46,7 +46,7 @@
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
-    is_atom_color_mode_available,
+    get_atom_color_mode_options,
     next_atom_color_config,
     structure_has_selective_dynamics,
   } from '$lib/structure/atom-properties'
@@ -54,6 +54,11 @@
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
+  import {
+    has_lattice_matrix,
+    has_usable_lattice,
+    is_periodic,
+  } from '$lib/structure/validation'
   import type { CellType, SymmetryDataset } from '$lib/symmetry'
   import { to_error } from '$lib/utils'
   import { untrack, type ComponentProps } from 'svelte'
@@ -314,12 +319,13 @@
     row(`show_atoms`, `Atoms`),
     {
       ...row(`show_image_atoms`, `Image atoms`),
+      when: () => periodic,
       get: () => show_image_atoms,
       set: (value) => (show_image_atoms = Boolean(value)),
     },
     row(`show_site_labels`, `Site labels`),
     row(`show_site_indices`, `Site indices`),
-    row(`show_cell_vectors`, `Lattice vectors`),
+    { ...row(`show_cell_vectors`, `Lattice vectors`), when: () => periodic },
   ]
   // Enum pickers rendered below the toggle grid, same section
   const visibility_mode_rows = [row(`show_bonds`, `Bonds`), row(`show_polyhedra`, `Polyhedra`)]
@@ -508,11 +514,13 @@
 
   // Selective-dynamics coloring needs at least one site declaring the property (POSCAR
   // "Selective dynamics" block); without it every atom would land in one `unknown` bucket.
-  let color_mode_context = $derived({
-    has_sym_data: Boolean(sym_data),
-    has_selective_dynamics: structure_has_selective_dynamics(structure),
-    colorable_property_keys,
-  })
+  let color_mode_options = $derived(
+    get_atom_color_mode_options({
+      has_sym_data: Boolean(sym_data),
+      has_selective_dynamics: structure_has_selective_dynamics(structure),
+      colorable_property_keys,
+    }),
+  )
 
   // A newly loaded structure may not carry the property being colored by, in which case
   // the mode drops back to element colors.
@@ -718,10 +726,9 @@
     scene_props.site_label_offset = offset.with(axis_idx, value) as Vec3
   }
 
-  // Detect if structure has lattice (can create supercells)
-  let has_lattice = $derived(
-    structure && `lattice` in structure && structure.lattice !== undefined,
-  )
+  // Cell styling/tiling needs a lattice; image atoms and cell reduction need periodicity.
+  let has_lattice = $derived(has_lattice_matrix(structure))
+  let periodic = $derived(has_usable_lattice(structure) && is_periodic(structure))
 
   // Validate supercell input
   let supercell_input_valid = $derived(is_valid_supercell_input(supercell_scaling))
@@ -1008,21 +1015,24 @@
             onchange={(event) =>
               set_atom_color_mode(event.currentTarget.value as AtomColorMode)}
           >
-            {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
-              {@const disabled = !is_atom_color_mode_available(
-                value as AtomColorMode,
-                color_mode_context,
-              )}
+            {#each color_mode_options as [value, label, unavailable] (value)}
               <option
                 {value}
-                {disabled}
-                title={value === `property` && disabled
-                  ? `No per-atom properties on this structure — load a file that carries extra columns (extXYZ Properties=..., LAMMPS dump)`
-                  : undefined}>{label}</option
+                disabled={Boolean(unavailable)}
+                title={unavailable ?? undefined}
+                aria-describedby={unavailable ? `${controls_id}-${value}-hint` : undefined}
+                >{unavailable ? `${label} — ${unavailable}` : label}</option
               >
             {/each}
           </select>
         </label>
+        {#each color_mode_options as [value, label, unavailable] (value)}
+          {#if unavailable}
+            <small id={`${controls_id}-${value}-hint`} class="setting-hint">
+              {label}: {unavailable}
+            </small>
+          {/if}
+        {/each}
         {#if atom_color_config.mode === `property` && colorable_property_keys.length > 0}
           <label {...setting_row(`atom_color_property_key`)}>
             <span>Property</span>
@@ -1190,27 +1200,31 @@
               () => supercell_scaling,
               (value) => (supercell_scaling = value),
             ),
-            cell_type: local(
-              () => cell_type,
-              (value) => (cell_type = value),
-            ),
+            ...(periodic && {
+              cell_type: local(
+                () => cell_type,
+                (value) => (cell_type = value),
+              ),
+            }),
           })}
         >
-          <label
-            {...setting_row(
-              `cell_type`,
-              sym_data
-                ? description_for(`cell_type`)
-                : `Symmetry analysis required. Wait for analysis to complete.`,
-            )}
-          >
-            <span>Cell type</span>
-            <select bind:value={cell_type} disabled={!sym_data}>
-              <option value="original">Original</option>
-              <option value="conventional">Conventional</option>
-              <option value="primitive">Primitive</option>
-            </select>
-          </label>
+          {#if periodic}
+            <label
+              {...setting_row(
+                `cell_type`,
+                sym_data
+                  ? description_for(`cell_type`)
+                  : `Symmetry analysis required. Wait for analysis to complete.`,
+              )}
+            >
+              <span>Cell type</span>
+              <select bind:value={cell_type} disabled={!sym_data}>
+                <option value="original">Original</option>
+                <option value="conventional">Conventional</option>
+                <option value="primitive">Primitive</option>
+              </select>
+            </label>
+          {/if}
           <label {...setting_row(`supercell_scaling`)}>
             <span>Supercell</span>
             <input

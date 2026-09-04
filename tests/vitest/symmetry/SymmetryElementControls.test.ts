@@ -1,4 +1,5 @@
 // Tests for the per-kind symmetry-element visibility toggles (legend + checkboxes)
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { ShowSymmetryKinds, SymmetryElement } from '$lib/symmetry'
 import {
   count_symmetry_elements,
@@ -7,9 +8,10 @@ import {
   SYM_ELEM_KIND_INFO,
   SYM_ELEMENTS_INPUT_FRAME_NOTE,
   SymmetryElementControls,
+  tile_symmetry_elements,
 } from '$lib/symmetry'
 import { type ComponentProps, flushSync, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 const make_elem = (
   kind: SymmetryElement[`kind`],
@@ -118,6 +120,42 @@ describe(`SymmetryElementControls`, () => {
     expect(checked).toEqual([true, false, false, false, false, false])
   })
 
+  test.each([false, true])(
+    `preflights enabled kinds without copying points, shared result=%s`,
+    (shared) => {
+      const read_point = vi.fn((): Vec3 => [0, 0, 0])
+      const elements = SAMPLE_ELEMENTS.map((element) => ({
+        ...element,
+        get point() {
+          return read_point()
+        },
+      }))
+      const lattice: Matrix3x3 = [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ]
+      const tiling: Vec3 = [2, 2, 2]
+      const tiling_result = tile_symmetry_elements(elements, tiling, lattice)
+      const point_reads = read_point.mock.calls.length
+      read_point.mockClear()
+      mount_controls({
+        elements,
+        lattice,
+        tiling,
+        show_kinds: Object.fromEntries(elements.map(({ kind }) => [kind, true])),
+        tiling_result: shared ? tiling_result : undefined,
+      })
+      expect(
+        [...document.body.querySelectorAll(`input`)].every(
+          (input) => input.checked && !input.disabled,
+        ),
+      ).toBe(true)
+      expect(point_reads).toBeGreaterThan(0)
+      expect(read_point).not.toHaveBeenCalled()
+    },
+  )
+
   test(`toggling a checkbox updates the bound show_kinds (reassigned, not mutated)`, () => {
     const initial: ShowSymmetryKinds = { rotation: true }
     let bound = initial
@@ -147,15 +185,46 @@ describe(`SymmetryElementControls`, () => {
 
   // The viewer blanks the overlay outside the analyzed (input) cell; the toggles must say so
   // rather than look like they stopped working
-  test.each([true, false])(
-    `in_input_frame=%s disables toggles and notes why`,
-    (in_input_frame) => {
-      mount_controls({ elements: SAMPLE_ELEMENTS, in_input_frame })
+  test.each([
+    { in_input_frame: true, repeats: 1, reason: null },
+    { in_input_frame: false, repeats: 1, reason: SYM_ELEMENTS_INPUT_FRAME_NOTE },
+    { in_input_frame: true, repeats: 4001, reason: `exceeds 4000 unique elements` },
+  ])(
+    `in_input_frame=$in_input_frame, repeats=$repeats explains unavailable toggles`,
+    ({ in_input_frame, repeats, reason }) => {
+      mount_controls({
+        elements: SAMPLE_ELEMENTS,
+        in_input_frame,
+        lattice: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
+        tiling: [repeats, 1, 1],
+      })
       const inputs = [...document.body.querySelectorAll(`input`)]
       expect(inputs).toHaveLength(6)
-      expect(inputs.every((inp) => inp.disabled === !in_input_frame)).toBe(true)
+      expect(
+        inputs.every(
+          (inp) => inp.disabled === (!in_input_frame || (repeats > 1 && !inp.checked)),
+        ),
+      ).toBe(true)
       const note = document.body.querySelector(`.frame-note`)?.textContent ?? null
-      expect(note).toBe(in_input_frame ? null : SYM_ELEMENTS_INPUT_FRAME_NOTE)
+      if (reason) {
+        expect(note).toContain(reason)
+        for (const input of inputs) {
+          expect(
+            document.querySelector(`[id="${input.getAttribute(`aria-describedby`)}"]`)
+              ?.textContent,
+          ).toContain(reason)
+        }
+      } else expect(note).toBeNull()
+      if (repeats > 1) {
+        const checked = inputs.find((input) => input.checked)
+        checked?.click()
+        flushSync()
+        expect(checked?.checked).toBe(false)
+      }
     },
   )
 })

@@ -5,6 +5,7 @@ import { drop_cached_hull_data } from './thermodynamics'
 import { element_by_symbol } from '$lib/element/data'
 import { format_fractional, format_num } from '$lib/labels'
 import { array_extent, array_max } from '$lib/math'
+import { bisectLeft, bisectRight } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
 import type {
   ConvexHullConfig,
@@ -373,7 +374,7 @@ const select_group_energy_metric = (polymorphs: PhaseData[]): EnergyMetric =>
     polymorphs.every((entry) => METRIC_ENERGY[metric](entry) !== null),
   ) ?? null
 
-// Pre-compute polymorph statistics for all entries at once (O(n²) but done once)
+// Rank each composition's energies once, then exclude same-ID entries by their ranks.
 // Returns a Map keyed by entry_id for O(1) lookups during hover
 export function compute_all_polymorph_stats(
   all_entries: PhaseData[],
@@ -397,30 +398,22 @@ export function compute_all_polymorph_stats(
       continue
     }
 
-    // Compare entries using the consistent group metric
-    for (const entry of polymorphs) {
-      if (!entry.entry_id) continue
-
-      const entry_energy = METRIC_ENERGY[group_metric](entry)
-      if (entry_energy === null) {
-        stats_map.set(entry.entry_id, zero_stats)
-        continue
-      }
-
-      let [total, higher, lower, equal] = [0, 0, 0, 0]
-      for (const other of polymorphs) {
-        if (other === entry || other.entry_id === entry.entry_id) continue
-
-        const other_energy = METRIC_ENERGY[group_metric](other)
-        if (other_energy === null) continue
-
-        total++
-        if (other_energy > entry_energy) higher++
-        else if (other_energy < entry_energy) lower++
-        else equal++
-      }
-
-      stats_map.set(entry.entry_id, { total, higher, lower, equal })
+    // The selected metric is finite for every entry, including anonymous competitors.
+    const ranked = polymorphs.map((entry) => ({
+      id: entry.entry_id,
+      energy: METRIC_ENERGY[group_metric](entry) as number,
+    }))
+    const ascending = (left: number, right: number) => left - right
+    const energies = ranked.map(({ energy }) => energy).toSorted(ascending)
+    for (const [id, same_id] of Map.groupBy(ranked, (entry) => entry.id)) {
+      if (!id) continue
+      // Duplicate IDs retain the last entry's result, excluding every copy of that ID.
+      const energy = same_id[same_id.length - 1].energy
+      const own = same_id.map((entry) => entry.energy).toSorted(ascending)
+      const total = energies.length - own.length
+      const lower = bisectLeft(energies, energy) - bisectLeft(own, energy)
+      const higher = total - (bisectRight(energies, energy) - bisectRight(own, energy))
+      stats_map.set(id, { total, higher, lower, equal: total - higher - lower })
     }
   }
 

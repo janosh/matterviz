@@ -107,7 +107,15 @@ export function parse_lammps_trajectory(
   // Header sections cut off by the end of the file are a torn tail; anything else missing
   // mid-file is corruption.
   const require_section = (prefix: string, timestep: number | null): void => {
-    if (skip_to(prefix)) return
+    while (idx < lines.length && !peek_line().startsWith(prefix)) {
+      if (peek_line().startsWith(`ITEM: TIME`)) {
+        throw new Error(
+          `LAMMPS frame at timestep ${timestep} is missing "${prefix}" before line ${idx + 1}`,
+        )
+      }
+      idx++
+    }
+    if (idx < lines.length) return
     throw new TornLammpsFrameError(
       `LAMMPS frame${timestep === null ? `` : ` at timestep ${timestep}`} ends before "${prefix}"`,
     )
@@ -296,6 +304,11 @@ export function parse_lammps_trajectory(
       }
       for (const { key, col_idx } of scalar_props) {
         const value = scanner.num(col_idx)
+        if (key === `id` && (!Number.isInteger(value) || value <= 0)) {
+          throw new Error(
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) has invalid ID "${scanner.str(col_idx)}"`,
+          )
+        }
         if (Number.isFinite(value)) props[key] = value
       }
       site_properties.push(props)
@@ -308,16 +321,7 @@ export function parse_lammps_trajectory(
       )
     }
     if (frame_uses_ids) {
-      const atom_ids = site_properties.map(({ id }) => id)
-      const bad_id = atom_ids.find(
-        (atom_id) => typeof atom_id !== `number` || !Number.isInteger(atom_id) || atom_id <= 0,
-      )
-      if (bad_id !== undefined) {
-        throw new Error(
-          `LAMMPS frame at timestep ${timestep} has a non-positive-integer atom ID ${JSON.stringify(bad_id)}`,
-        )
-      }
-      const numeric_atom_ids = atom_ids as number[]
+      const numeric_atom_ids = site_properties.map(({ id }) => id as number)
       if (new Set(numeric_atom_ids).size !== numeric_atom_ids.length) {
         throw new Error(`LAMMPS frame at timestep ${timestep} has duplicate atom IDs`)
       }

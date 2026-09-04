@@ -237,38 +237,49 @@ describe(`convex hull replacement state`, () => {
       temperatures,
       free_energies: temperatures.map((temp) => -1 - temp / 1000),
     })
-  test.each([
-    [`2D`, ConvexHull2D, {}, [`Li`], `.convex-hull-2d`],
-    [`3D`, ConvexHullCanvas, { dim: 3 }, [`Li`, `Fe`], `.convex-hull-3d`],
-    [`automatic`, ConvexHull, {}, [`Li`, `Fe`], `.convex-hull-3d`],
-  ] as [string, Component, Record<string, unknown>, string[], string][])(
-    `%s keeps plotting (and the temperature slider) when a temperature drops an element`,
-    async (_name, component, dim_props, kept_elements, plot_selector) => {
-      const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      const entries = [
-        ...kept_elements.map((el) => with_temps({ [el]: 1 }, [300, 600], el)),
-        with_temps({ O: 1 }, [300], `O`),
-      ]
-      const state = { stable_entries: [] as PhaseData[] }
-      const target = await mount_hull(
-        component,
-        bind_props(
-          { ...dim_props, entries, temperature: 600, interpolate_temperature: false },
-          state,
-        ),
-      )
-      flushSync()
+  describe.each([
+    [600, false],
+    [450, true],
+  ] as const)(`temperature=%s with interpolation=%s`, (temperature, interpolate) => {
+    test.each([
+      [`2D`, ConvexHull2D, {}, [`Li`], `.convex-hull-2d`],
+      [`3D`, ConvexHullCanvas, { dim: 3 }, [`Li`, `Fe`], `.convex-hull-3d`],
+      [`automatic`, ConvexHull, {}, [`Li`, `Fe`], `.convex-hull-3d`],
+    ] as [string, Component, Record<string, unknown>, string[], string][])(
+      `%s keeps its plot and temperature`,
+      async (_name, component, dim_props, kept_elements, plot_selector) => {
+        const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+        const entries = [
+          ...kept_elements.map((el) => with_temps({ [el]: 1 }, [300, 600], el)),
+          with_temps({ O: 1 }, [300], `O`),
+        ]
+        const state = { stable_entries: [] as PhaseData[], temperature }
+        const target = await mount_hull(
+          component,
+          bind_props({ ...dim_props, entries, interpolate_temperature: interpolate }, state),
+        )
+        flushSync()
 
-      expect(target.querySelector(`.empty-state`)).toBeNull()
-      expect(target.querySelector(plot_selector)).not.toBeNull()
-      expect(target.querySelector(`.temperature-slider`)).not.toBeNull()
-      // the dropped element is closed with a synthetic corner so the hull still spans it
-      expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(
-        `synthetic-element:O`,
-      )
-      expect(console_error).not.toHaveBeenCalled()
-    },
-  )
+        expect(target.querySelector(`.empty-state`)).toBeNull()
+        expect(target.querySelector(plot_selector)).not.toBeNull()
+        expect(target.querySelector(`.temperature-slider`)).not.toBeNull()
+        expect(state.temperature).toBe(temperature)
+        expect(
+          target.querySelector<HTMLInputElement>(`.temperature-slider input[type="number"]`)
+            ?.value,
+        ).toBe(String(temperature))
+        expect(
+          state.stable_entries.find((entry) => entry.entry_id === kept_elements[0])
+            ?.energy_per_atom,
+        ).toBeCloseTo(-1 - temperature / 1000, 12)
+        // the dropped element is closed with a synthetic corner so the hull still spans it
+        expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(
+          `synthetic-element:O`,
+        )
+        expect(console_error).not.toHaveBeenCalled()
+      },
+    )
+  })
 
   test.each([
     [`spin + oxidation`, { 'Fe2+,spin=5': 1, 'Fe3+,spin=-5': 2, 'O2-': 4 }, [`Fe`, `O`]],

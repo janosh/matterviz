@@ -128,7 +128,7 @@ describe(`display pipeline`, () => {
     expect(session.supercell_loading).toBe(false)
     expect(session.supercell_structure?.sites).toHaveLength(6)
     expect(session.scaled_cell_displayed).toBe(true)
-    expect(session.volume_scaling).toEqual([2, 1, 1])
+    expect(session.supercell_tiling).toEqual([2, 1, 1])
     expect(session.bond_edits_enabled).toBe(false)
     session.element_mapping = { H: `Na` }
     flushSync()
@@ -144,12 +144,12 @@ describe(`display pipeline`, () => {
     flushSync()
     expect(session.supercell_loading).toBe(true)
     expect(session.displayed_structure?.sites).toHaveLength(200)
-    expect(session.volume_scaling).toEqual([1, 1, 1])
+    expect(session.supercell_tiling).toEqual([1, 1, 1])
     vi.runAllTimers()
     flushSync()
     expect(session.supercell_loading).toBe(false)
     expect(session.displayed_structure?.sites).toHaveLength(1600)
-    expect(session.volume_scaling).toEqual([2, 2, 2])
+    expect(session.supercell_tiling).toEqual([2, 2, 2])
     destroy()
   })
 

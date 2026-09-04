@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Edit } from 'svelte-widgets/icons'
   import { ViewerPane, type PaneToggleProps } from '$lib/overlays'
-  import { JsonTree } from '$lib/layout/json-tree'
-  import { set_at_path } from '$lib/layout/json-tree/utils'
+  import { JsonTree } from 'svelte-widgets/json-tree'
+  import { set_at_path } from 'svelte-widgets/json-tree/utils'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'
@@ -45,21 +45,20 @@
   // Inline value edits from JsonTree
   function handle_change(path: string, new_value: unknown) {
     if (!display_source) return
-    const updated = set_at_path(display_source, path, new_value, root_label)
-
-    if (is_diagram_input(updated as Record<string, unknown>)) {
-      try {
+    try {
+      const updated = set_at_path(display_source, path, new_value, root_label)
+      if (is_diagram_input(updated as Record<string, unknown>)) {
         build_diagram(updated as DiagramInput)
         diagram_input = updated as DiagramInput
-      } catch (error) {
-        rejection_seq += 1
-        rejection.show(to_error(error).message)
+      } else {
+        // Clear diagram_input so the rebuilt diagram doesn't shadow the edited data.
+        diagram_input = null
+        on_data?.(updated as PhaseDiagramData)
       }
-      return
+    } catch (error) {
+      rejection_seq += 1
+      rejection.show(to_error(error).message)
     }
-    // PhaseDiagramData format: clear diagram_input so the rebuilt diagram doesn't shadow it
-    diagram_input = null
-    on_data?.(updated as PhaseDiagramData)
   }
 </script>
 

@@ -6,7 +6,7 @@ import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
 } from '$lib/structure-id/collect'
-import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
+import { trajectory_from_frames, type FrameRange, type TrajectoryRun } from '$lib/trajectory'
 import { sweep_frame_plan } from '$lib/trajectory/analysis'
 import { describe, expect, it, vi } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
@@ -49,10 +49,14 @@ describe(`sweep_frame_plan`, () => {
     // a cap above the frame count never oversamples
     [3, 100, 1, [0, 1, 2]],
     [1, 1, 1, [0]],
+    [20, 3, 3, [5, 8, 11], { start_frame: 5, end_frame: 13 }],
   ])(
     `samples %i frames capped at %i with stride %i`,
-    (total, max_frames, frame_stride, frame_numbers) => {
-      expect(sweep_frame_plan(total, max_frames)).toEqual({ frame_numbers, frame_stride })
+    (total, max_frames, frame_stride, frame_numbers, range?: FrameRange) => {
+      expect(sweep_frame_plan(total, max_frames, range)).toEqual({
+        frame_numbers,
+        frame_stride,
+      })
     },
   )
 
@@ -83,6 +87,13 @@ describe(`collect_structure_id_sweep`, () => {
     expect(sweep.frame_stride).toBe(5)
     expect(sweep.frame_numbers).toEqual([0, 5, 10, 15])
     expect(sweep.results).toHaveLength(4)
+    const window = await collect_structure_id_sweep(repeat_fcc(20), {
+      start_frame: 3,
+      end_frame: 15,
+      max_frames: 4,
+      options: { skip_csp: true },
+    })
+    expect(window.frame_numbers).toEqual([3, 6, 9, 12])
     expect(sweep.results[0].n_atoms).toBe(32)
     expect(sweep.results[0].populations).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
     // skip_csp is forwarded, so no frame carries centrosymmetry

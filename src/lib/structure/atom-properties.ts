@@ -4,7 +4,12 @@ import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { COLOR_SCALE_TYPES, get_d3_interpolator, is_d3_interpolate_name } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
 import { array_extent } from '$lib/math'
-import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, type AtomColorMode } from '$lib/settings'
+import {
+  ATOM_COLOR_MODE_OPTIONS,
+  DEFAULTS,
+  SETTINGS_CONFIG,
+  type AtomColorMode,
+} from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { get_orig_site_idx } from '$lib/structure/site'
@@ -462,12 +467,31 @@ export type AtomColorModeContext = {
   has_selective_dynamics: boolean
   colorable_property_keys: readonly string[]
 }
-export const is_atom_color_mode_available = (
+// Shared by both pickers; null means selectable.
+export const atom_color_mode_unavailable_reason = (
   mode: AtomColorMode,
   { has_sym_data, has_selective_dynamics, colorable_property_keys }: AtomColorModeContext,
-): boolean => {
-  if (mode === `wyckoff`) return has_sym_data
-  if (mode === `selective_dynamics`) return has_selective_dynamics
-  if (mode === `property`) return colorable_property_keys.length > 0
-  return true
+): string | null => {
+  if (mode === `wyckoff` && !has_sym_data) return `needs symmetry analysis`
+  if (mode === `selective_dynamics` && !has_selective_dynamics)
+    return `no selective-dynamics flags in this file`
+  if (mode === `property` && !colorable_property_keys.length)
+    return `no per-atom properties in this file`
+  return null
 }
+
+export const is_atom_color_mode_available = (
+  mode: AtomColorMode,
+  context: AtomColorModeContext,
+): boolean => atom_color_mode_unavailable_reason(mode, context) === null
+
+// One option list keeps labels, availability, and explanations in sync across both pickers.
+export const get_atom_color_mode_options = (context: AtomColorModeContext) =>
+  Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum ?? {}).map(
+    ([value, label]) =>
+      [
+        value as AtomColorMode,
+        label,
+        atom_color_mode_unavailable_reason(value as AtomColorMode, context),
+      ] as const,
+  )

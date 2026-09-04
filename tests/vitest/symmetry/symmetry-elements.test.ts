@@ -10,7 +10,10 @@ import {
   clip_plane_to_cell,
   dash_segments,
   frac_to_cart_direction,
+  MAX_TILED_SYM_ELEMENTS,
   symmetry_elements_from_ops,
+  symmetry_tiling_reason,
+  tile_symmetry_elements,
 } from '$lib/symmetry'
 import type { SymmetryElement } from '$lib/symmetry'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -145,6 +148,20 @@ describe(`classify_symmetry_op`, () => {
       point: [0, 0, 0],
       translation: null,
     })
+    // (I-W) has determinant 4: two x/y positions, each with centers at z=0 and 1/2.
+    const elements = symmetry_elements_from_ops(
+      [0, 2 - 2e-9].map((shift) => ({
+        rotation: col_major(ROTOINV4_Z),
+        translation: [0, 0, shift],
+      })) as MoyoDataset[`operations`],
+    )
+    expect(elements.map(({ point }) => point)).toEqual([
+      [0, 0, 0],
+      [0, 0, 0.5],
+      [0.5, 0.5, 0],
+      [0.5, 0.5, 0.5],
+    ])
+    expect(new Set(elements.map(({ locus }) => locus)).size).toBe(2)
   })
 
   test(`3-fold and 3_1/3_2 screws in a hexagonal cell`, () => {
@@ -292,14 +309,14 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(elements.some((elem) => elem.kind === `inversion`)).toBe(true)
   })
 
-  // Exact in-cell counts (hand-verified vs ITA diagrams) pin element_locus_key dedup and
+  // Exact in-cell counts pin element_locus_key dedup and
   // invariant_translations' in-plane invariance check; each kills a distinct mutation:
   // - P4mm=14: dropping the plane-offset wrap splits lattice-equivalent mirrors
-  // - R-3m=84: locus-key fmt precision 4→1 collides/shifts trigonal loci
+  // - R-3m=87: locus-key fmt precision 4→1 collides/shifts trigonal loci
   // - Cm=4: weakening invariant_translations' some()→every() invariance test
   test.each([
     [`P4mm`, 99, 14],
-    [`R-3m`, 166, 84],
+    [`R-3m`, 166, 87],
     [`Cm`, 8, 4],
   ])(`%s (#%i) has exactly %i distinct in-cell elements`, (_, spg, expected) => {
     expect(elements_for(spg)).toHaveLength(expected)
@@ -320,7 +337,8 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       '3_1': 6,
       '3_2': 6,
       '2_1': 18,
-      '-3': 3,
+      // det(I - W) = 2 for -3, times three R-centering translations: six centers.
+      '-3': 6,
       m: 3,
       g: 3,
       '-1': 24,
@@ -605,5 +623,210 @@ describe(`dash_segments`, () => {
     const segs = dash_segments(2, 0.5, 0)
     const covered = segs.reduce((sum, seg) => sum + seg.length, 0)
     expect(covered).toBeCloseTo(2, 10)
+  })
+})
+
+describe(`tile_symmetry_elements`, () => {
+  const cell = cubic_matrix(4)
+  const mirror: SymmetryElement = {
+    kind: `mirror`,
+    order: 2,
+    label: `m`,
+    axis: [1, 0, 0],
+    point: [0.25, 0, 0],
+    translation: null,
+    locus: `m-x`,
+  }
+  const screw: SymmetryElement = {
+    kind: `screw`,
+    order: 2,
+    label: `2_1`,
+    axis: [0, 0, 1],
+    point: [0.5, 0.5, 0],
+    translation: [0, 0, 0.5],
+    locus: `screw-z`,
+  }
+
+  test.each([
+    [2, 1, 3],
+    [0.5, 1, 1],
+    [4001, 1, 1],
+    [1, 1e9, 1e9],
+    [Infinity, 1, 1],
+  ] as Vec3[])(`preflights %s,%s,%s without allocating translated elements`, (...tiling) => {
+    const elements = [mirror, screw]
+    const expected = tile_symmetry_elements(elements, tiling, cell).unavailable_reason
+    expect(
+      symmetry_tiling_reason(
+        elements.map((element) => ({
+          ...element,
+          get point(): Vec3 {
+            throw new Error(
+              `Preflight must not read coordinates to allocate translated elements`,
+            )
+          },
+        })),
+        tiling,
+        cell,
+      ),
+    ).toBe(expected)
+  })
+
+  test(`repeats each element per tile at unchanged Cartesian positions`, () => {
+    const elements = [mirror, screw]
+    expect(tile_symmetry_elements(elements, [1, 1, 1], cell).elements).toBe(elements)
+    const tiling: Vec3 = [2, 1, 3]
+    const block = math.scale_lattice_matrix(cell, tiling)
+    // Along-plane/axis translations must not add coincident geometry.
+    const tiled = tile_symmetry_elements([mirror, screw], tiling, cell).elements
+    expect(tiled.filter((copy) => copy.locus === mirror.locus)).toHaveLength(2)
+    expect(tiled.filter((copy) => copy.locus === screw.locus)).toHaveLength(2)
+
+    for (const element of [mirror, screw]) {
+      const cart = frac_to_cart_direction(element.point, cell)
+      const matches = tiled.filter(
+        (copy) =>
+          copy.locus === element.locus &&
+          math.euclidean_dist(frac_to_cart_direction(copy.point, block), cart) < 1e-9,
+      )
+      expect(matches, `${element.label} at its original place`).toHaveLength(1)
+    }
+    const mirror_x = tiled
+      .filter((copy) => copy.locus === mirror.locus)
+      .map((copy) => frac_to_cart_direction(copy.point, block)[0])
+      .toSorted((one, two) => one - two)
+    expect(mirror_x.map((coord) => Number(coord.toFixed(9)))).toEqual([1, 5])
+    // the screw line runs along c, so tiling along c alone adds nothing
+    expect(tile_symmetry_elements([screw], [1, 1, 4], cell).elements).toHaveLength(1)
+    expect(tile_symmetry_elements([mirror], [1, 4, 4], cell).elements).toHaveLength(1)
+
+    // Cartesian directions and screw/glide translations survive the basis change.
+    for (const copy of tiled) {
+      const source = copy.locus === mirror.locus ? mirror : screw
+      for (const key of [`axis`, `translation`] as const) {
+        const expected = source[key]
+        if (!expected) continue
+        expect(frac_to_cart_direction(copy[key] as Vec3, block)).toEqual(
+          frac_to_cart_direction(expected, cell).map((value) => expect.closeTo(value, 9)),
+        )
+      }
+    }
+  })
+
+  // Fractional orthogonality is insufficient: mirror shifts need the Cartesian metric.
+  test(`keeps planes a non-orthogonal cell only appears to duplicate`, () => {
+    const hexagonal: Matrix3x3 = [
+      [3, 0, 0],
+      [-1.5, (3 * Math.sqrt(3)) / 2, 0],
+      [0, 0, 5],
+    ]
+    // Cartesian normal along x, i.e. the fractional direction [1, 0, 0] in this cell
+    const mirror_x: SymmetryElement = { ...mirror, point: [0, 0, 0], locus: `m-hex` }
+    const tiled = tile_symmetry_elements([mirror_x], [1, 2, 1], hexagonal).elements
+    expect(tiled).toHaveLength(2)
+    // the two planes really do sit at different distances along the normal
+    const block = math.scale_lattice_matrix(hexagonal, [1, 2, 1])
+    const to_cart = math.create_frac_to_cart(block)
+    const offsets = tiled.map((copy) => to_cart(copy.point)[0])
+    expect(Math.abs(offsets[0] - offsets[1])).toBeCloseTo(1.5, 9)
+    // while a translation that genuinely lies in the plane still dedups away
+    expect(tile_symmetry_elements([mirror_x], [1, 1, 3], hexagonal).elements).toHaveLength(1)
+    // Angle-generated cubes contain cos(π/2) residuals; these must not split one plane.
+    const angle_cube = math.cell_to_lattice_matrix(4, 4, 4, 90, 90, 90)
+    expect(tile_symmetry_elements([mirror], [1, 4, 4], angle_cube).elements).toHaveLength(1)
+    expect(tile_symmetry_elements([mirror], [2, 4, 4], angle_cube).elements).toHaveLength(2)
+    const planes: SymmetryElement[] = [mirror, { ...mirror, kind: `glide`, label: `g` }]
+    expect(tile_symmetry_elements(planes, [1, 1e9, 1e9], angle_cube)).toEqual({
+      elements: planes,
+      unavailable_reason: null,
+    })
+    // Rounding partial offsets can merge states which a later axis separates.
+    const axis: Vec3 = [1, 4e-11, 1]
+    const n_eq = math.dot(cell, math.create_frac_to_cart(cell)(axis))
+    const key = (offset: Vec3) =>
+      Math.round((math.dot(n_eq, offset) / Math.hypot(...n_eq)) * 1e10)
+    const tiling: Vec3 = [6, 3, 6]
+    const expected = new Set<number>()
+    for (let cell_z = 0; cell_z < 6; cell_z++)
+      for (let cell_y = 0; cell_y < 3; cell_y++)
+        for (let cell_x = 0; cell_x < 6; cell_x++) expected.add(key([cell_x, cell_y, cell_z]))
+    const result = tile_symmetry_elements(
+      [{ ...mirror, axis, point: [0, 0, 0] }],
+      tiling,
+      cell,
+    )
+    expect(
+      new Set(
+        result.elements.map(({ point }) =>
+          key(point.map((coord, idx) => Math.round(coord * tiling[idx])) as Vec3),
+        ),
+      ),
+    ).toEqual(expected)
+  })
+
+  // Rotoinversion centers repeat along the axis, unlike plain rotation lines.
+  test(`repeats a rotoinversion along its axis but not a rotation`, () => {
+    const shared = { order: 4, axis: [0, 0, 1] as Vec3, point: [0, 0, 0] as Vec3 }
+    const rotation: SymmetryElement = {
+      ...shared,
+      kind: `rotation`,
+      label: `4`,
+      translation: null,
+      locus: `line-z`,
+    }
+    const roto: SymmetryElement = { ...rotation, kind: `rotoinversion`, label: `-4` }
+    expect(tile_symmetry_elements([rotation], [1, 1, 3], cell).elements).toHaveLength(1)
+    expect(tile_symmetry_elements([roto], [1, 1, 3], cell).elements).toHaveLength(3)
+    const centers = [roto, { ...roto, point: [0, 0, 0.5] as Vec3 }]
+    expect(
+      tile_symmetry_elements(centers, [1, 1, 3], cell).elements.map(({ point }) => point[2]),
+    ).toEqual([0, 1 / 3, 2 / 3, 1 / 6, 0.5, 5 / 6])
+    // Custom source centers outside the unit cell remain outside it; coincident copies dedup.
+    expect(
+      tile_symmetry_elements(
+        [roto, { ...roto, point: [0, 0, 1] }],
+        [1, 1, 2],
+        cell,
+      ).elements.map(({ point }) => point[2]),
+    ).toEqual([0, 0.5, 1])
+    // and the two never collapse into each other despite sharing a locus
+    expect(tile_symmetry_elements([rotation, roto], [1, 1, 2], cell).elements).toHaveLength(3)
+  })
+
+  test(`deduplicates before enforcing the cap and refuses oversized overlays`, () => {
+    const many = Array.from({ length: 200 }, (_, idx) => ({ ...mirror, locus: `m-${idx}` }))
+    expect(many.length * 64).toBeGreaterThan(MAX_TILED_SYM_ELEMENTS)
+    expect(tile_symmetry_elements(many, [4, 4, 4], cell).elements).toHaveLength(800)
+    expect(tile_symmetry_elements(many, [2, 1, 1], cell).elements).toHaveLength(400)
+    expect(tile_symmetry_elements(many, [20, 1, 1], cell).elements).toHaveLength(
+      MAX_TILED_SYM_ELEMENTS,
+    )
+    const refused = tile_symmetry_elements(many, [21, 1, 1], cell)
+    expect(refused.elements).toEqual([])
+    expect(refused.unavailable_reason).toContain(
+      `exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`,
+    )
+    expect(tile_symmetry_elements([], [1e9, 1e9, 1e9], cell).elements).toEqual([])
+    expect(tile_symmetry_elements([mirror], [1, 1e9, 1e9], cell).elements).toHaveLength(1)
+    expect(tile_symmetry_elements([screw], [1, 1, 1e9], cell).elements).toHaveLength(1)
+    expect(
+      tile_symmetry_elements([{ ...mirror, axis: [1, 1, 1] }], [100, 100, 100], cell).elements,
+    ).toHaveLength(298)
+  })
+
+  test(`treats a null axis (inversion centre) and fractional counts safely`, () => {
+    const centre: SymmetryElement = {
+      kind: `inversion`,
+      order: 1,
+      label: `-1`,
+      axis: null,
+      point: [0, 0, 0],
+      translation: null,
+      locus: `inv`,
+    }
+    const tiled = tile_symmetry_elements([centre], [2, 1, 1], cell).elements
+    expect(tiled.map((copy) => copy.axis)).toEqual([null, null])
+    expect(tiled.map((copy) => copy.point[0])).toEqual([0, 0.5])
+    expect(tile_symmetry_elements([centre], [0.5, 1, 1], cell).elements).toEqual([centre])
   })
 })

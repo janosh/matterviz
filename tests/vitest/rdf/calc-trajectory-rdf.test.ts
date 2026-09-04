@@ -1,6 +1,6 @@
 import { collect_trajectory_rdf, rdf_shell } from '$lib/rdf'
 import type { Crystal } from '$lib/structure'
-import { trajectory_from_frames } from '$lib/trajectory'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { describe, expect, test } from 'vitest'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 import { make_crystal } from '../setup'
@@ -25,15 +25,48 @@ const rocksalt = (a_len = NACL_A): Crystal =>
 describe(`collect_trajectory_rdf`, () => {
   test(`averages every element pair over the sampled frames and reads off the shells`, async () => {
     const seen: number[] = []
-    const result = await collect_trajectory_rdf(run_of(Array.from({ length: 10 }, rocksalt)), {
+    const run = trajectory_from_frames(
+      Array.from({ length: 10 }, (_unused, idx) => ({
+        step: 100 + idx ** 2 * 25,
+        structure: idx === 0 ? make_fcc([1, 1, 1]) : rocksalt(),
+      })),
+      {
+        provenance: { filename: `original.xyz`, format: `extxyz`, source_bytes: 123 },
+        time_step: { value: 0.5, unit: `fs` },
+      },
+    )
+    const options = {
       max_frames: 4,
+      start_frame: 2,
+      end_frame: 9,
       cutoff: 6,
       n_bins: 120,
-      on_progress: (done) => seen.push(done),
-    })
+      on_progress: (done: number) => {
+        seen.push(done)
+        run.provenance.filename = `renamed.xyz`
+        if (run.time_step) run.time_step.value = 2
+        options.max_frames = 1
+        options.end_frame = 3
+      },
+    }
+    const result = await collect_trajectory_rdf(run, options)
     expect(seen).toEqual([1, 2, 3, 4])
-    expect(result.frame_numbers).toEqual([0, 3, 6, 9])
-    expect(result).toMatchObject({ frame_stride: 3, n_atoms: 8, cutoff: 6, n_bins: 120 })
+    expect(result.frame_numbers).toEqual([2, 4, 6, 8])
+    expect(result).toMatchObject({
+      start_frame: 2,
+      end_frame: 9,
+      frame_stride: 2,
+      max_frames: 4,
+      frame_steps: [200, 500, 1000, 1700],
+      source: {
+        provenance: { filename: `original.xyz`, format: `extxyz`, source_bytes: 123 },
+        frame_count: 10,
+        time_step: { value: 0.5, unit: `fs` },
+      },
+      n_atoms: 8,
+      cutoff: 6,
+      n_bins: 120,
+    })
     expect(result.mean_volume).toBeCloseTo(NACL_A ** 3, 6)
     expect(result.curves.map((curve) => curve.label)).toEqual([`Cl-Cl`, `Cl-Na`, `Na-Na`])
     const cl_na = result.curves[1]
@@ -48,22 +81,38 @@ describe(`collect_trajectory_rdf`, () => {
     expect(cl_na.g_r).toHaveLength(120)
   })
 
-  test(`weights a changing cell by each frame's own density`, async () => {
-    // NPT-like: the second frame is expanded 1%, so its first shell lands in a neighbouring
-    // bin. Each frame's g(r) is normalised with its own volume and the CN integral uses the
-    // mean density, so 12 first neighbours come back to second order in the volume change.
-    const result = await collect_trajectory_rdf(
-      run_of([make_fcc([2, 2, 2]), make_fcc([2, 2, 2], FCC_LATTICE_CONST * 1.01)]),
-      { cutoff: 5, n_bins: 100 },
-    )
-    expect(result.curves).toHaveLength(1)
-    expect(result.curves[0].shell.coordination).toBeCloseTo(12, 2)
-    expect(result.curves[0].coordination_reverse).toBeCloseTo(12, 2)
-    expect(result.mean_volume).toBeCloseTo(
-      ((2 * FCC_LATTICE_CONST) ** 3 * (1 + 1.01 ** 3)) / 2,
-      6,
-    )
-  })
+  test.each([
+    {
+      label: `expanded FCC`,
+      structures: [make_fcc([2, 2, 2]), make_fcc([2, 2, 2], FCC_LATTICE_CONST * 1.01)],
+      coordination: 12,
+      volume: ((2 * FCC_LATTICE_CONST) ** 3 * (1 + 1.01 ** 3)) / 2,
+    },
+    {
+      label: `fixed dimer in changing volume`,
+      structures: [10, 20].map((cell) =>
+        make_crystal(cell, [
+          [`Na`, [0, 0, 0]],
+          [`Na`, [1 / cell, 0, 0]],
+        ]),
+      ),
+      coordination: 1,
+      volume: 4500,
+    },
+  ])(
+    `weights $label by each frame's own density`,
+    async ({ structures, coordination, volume }) => {
+      const result = await collect_trajectory_rdf(run_of(structures), {
+        cutoff: 5,
+        n_bins: 100,
+      })
+      expect(result.curves).toHaveLength(1)
+      // Both frames contain the entire first shell; the count is independent of cell volume.
+      expect(result.curves[0].shell.coordination).toBeCloseTo(coordination, 9)
+      expect(result.curves[0].coordination_reverse).toBeCloseTo(coordination, 9)
+      expect(result.mean_volume).toBeCloseTo(volume, 6)
+    },
+  )
 
   test(`keeps every species of a mixed-occupancy site, weighted by occupancy`, async () => {
     // Na0.5K0.5 on every cation site: K-Cl and Na-Cl see the same 6 Cl neighbours, and with
@@ -106,11 +155,32 @@ describe(`collect_trajectory_rdf`, () => {
     ).rejects.toThrow(/different composition/)
   })
 
-  test.each([
+  test.each<readonly [string, () => TrajectoryRun, RegExp]>([
+    ...[undefined, NaN, Infinity].map(
+      (step) =>
+        [
+          `invalid step ${step}`,
+          () =>
+            ({
+              ...run_of([rocksalt()]),
+              read_frame: () => ({ structure: rocksalt(), step }),
+            }) as TrajectoryRun,
+          /frame 0 has invalid step/,
+        ] as const,
+    ),
     [
       `a lattice-less frame`,
       () => run_of([{ sites: rocksalt().sites } as unknown as Crystal]),
-      /needs a periodic cell/,
+      /this structure has no lattice/,
+    ],
+    [
+      `a singular lattice`,
+      () => {
+        const crystal = rocksalt()
+        crystal.lattice.matrix[2] = [0, 0, 0]
+        return run_of([crystal])
+      },
+      /nonsingular unit cell/,
     ],
     [
       `a composition change`,

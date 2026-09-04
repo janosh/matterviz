@@ -69,7 +69,9 @@ test.describe(`Trajectory Component`, () => {
     const empty_trajectory = page.locator(`#empty-state`)
 
     await expect(empty_trajectory.locator(`.empty-state h3`)).toHaveText(`Load Trajectory`)
-    await expect(empty_trajectory.locator(`ul`)).toContainText(`Multi-frame XYZ`)
+    await expect(empty_trajectory.locator(`.empty-state > ul`)).toContainText(
+      `Multi-frame XYZ`,
+    )
     await expect(empty_trajectory).toHaveAttribute(
       `aria-label`,
       `Drop trajectory file here to load`,

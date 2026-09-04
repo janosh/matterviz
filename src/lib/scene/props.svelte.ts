@@ -241,6 +241,14 @@ export function create_orthographic_zoom(opts: {
   }
 }
 
+// OrbitControls bounds perspective distance, not zoom. Invert target-plane pixels/Å using
+// viewport height and vertical FOV; larger zoom maps to a smaller orbit radius.
+export const perspective_distance_for_zoom = (
+  zoom: number,
+  height_px: number,
+  vertical_fov_degrees: number,
+): number => height_px / (2 * zoom * Math.tan((vertical_fov_degrees * Math.PI) / 360))
+
 // Shared OrbitControls config; `on_start_extra` runs extra cleanup when the camera starts moving
 // (e.g. StructureScene closes hover tooltips/context menus).
 export function build_orbit_props(opts: {
@@ -252,6 +260,9 @@ export function build_orbit_props(opts: {
   pan_speed: number
   max_zoom: number | undefined
   min_zoom: number | undefined
+  // Height and vertical FOV convert px/Å limits to perspective orbit radii.
+  viewport_px?: number
+  fov?: number
   auto_rotate: number
   rotation_damping: number
   set_camera_is_moving?: (moving: boolean) => void
@@ -260,6 +271,15 @@ export function build_orbit_props(opts: {
   on_end_extra?: () => void
 }) {
   const is_ortho = opts.camera_projection === `orthographic`
+  const { viewport_px, fov, min_zoom, max_zoom } = opts
+  // Unmeasured views and unset/nonpositive/infinite limits remain unbounded.
+  const orbit_distance_for_zoom = (zoom: number | undefined): number | undefined => {
+    if (is_ortho || zoom === undefined || !(zoom > 0) || !Number.isFinite(zoom))
+      return undefined
+    if (viewport_px === undefined || !(viewport_px > 0)) return undefined
+    if (fov === undefined || !(fov > 0) || fov >= 180) return undefined
+    return perspective_distance_for_zoom(zoom, viewport_px, fov)
+  }
   return {
     target: opts.target,
     enableRotate: opts.rotate_speed > 0,
@@ -270,8 +290,11 @@ export function build_orbit_props(opts: {
     // consumed by SceneCamera's view-offset pan (pan.ts), which disables OrbitControls' own
     enablePan: opts.pan_speed > 0,
     panSpeed: opts.pan_speed,
-    maxZoom: opts.max_zoom,
-    minZoom: opts.min_zoom,
+    maxZoom: max_zoom,
+    minZoom: min_zoom,
+    // falling back to OrbitControls' own defaults, i.e. unclamped either way
+    minDistance: orbit_distance_for_zoom(max_zoom) ?? 0,
+    maxDistance: orbit_distance_for_zoom(min_zoom) ?? Number.POSITIVE_INFINITY,
     // pause auto-rotation while the page is hidden: callers build these props
     // in $derived, so the visibility flip re-runs them and stops the per-frame
     // OrbitControls task (threlte only runs it while autoRotate/damping is on)
@@ -311,6 +334,9 @@ export function create_scene_camera(opts: {
   fit_zoom: () => number
   measured: () => boolean
   camera: () => Camera | undefined
+  // Omit for orthographic-only scenes.
+  viewport_px?: () => number
+  fov?: () => number
   set_camera_is_moving?: (moving: boolean) => void
   on_start_extra?: () => void
 }) {
@@ -329,6 +355,8 @@ export function create_scene_camera(opts: {
       // replace the raw min/max above, plus the gesture-end sync that keeps the user's zoom as
       // the resize baseline
       ...ortho_zoom.orbit_zoom_props(),
+      viewport_px: opts.viewport_px?.(),
+      fov: opts.fov?.(),
       set_camera_is_moving: opts.set_camera_is_moving,
       on_start_extra: opts.on_start_extra,
     }),

@@ -11,9 +11,14 @@
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
+  import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
   import type { AnalysisCollectOptions, AnalysisPaneContext } from '$lib/trajectory/analysis'
-  import { analysis_pane_setup, no_full_pass_message } from '$lib/trajectory/analysis'
+  import {
+    analysis_frame_times,
+    analysis_pane_setup,
+    no_full_pass_message,
+  } from '$lib/trajectory/analysis'
+  import { resolve_frame_range } from './runs/accumulate'
   import { format_bytes, to_error } from '$lib/utils'
   import { type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'
@@ -30,6 +35,8 @@
     icon = Graph,
     analysis_name,
     collect,
+    unavailable_reason = null,
+    frame_unavailable_reason,
     suggest_stride,
     compute_label,
     recollect_label,
@@ -59,6 +66,11 @@
     // Short name for the indexed-trajectory warning, e.g. `MSD`
     analysis_name: string
     collect: (run: TrajectoryRun, options: AnalysisCollectOptions) => Promise<Input>
+    // Visible explanation for a disabled compute button.
+    unavailable_reason?: string | null
+    // Validate the selected first frame before enabling collection; checked reads are cancelled
+    // when the run or start frame changes, independently of the analysis request.
+    frame_unavailable_reason?: (frame: TrajectoryFrame) => string | null
     // Stride that keeps the collected buffer inside the memory budget. Supplying it also
     // renders the frame-stride control; panes that read frames one at a time omit it.
     suggest_stride?: (run: TrajectoryRun) => number | null
@@ -83,6 +95,9 @@
     children: Snippet<[AnalysisPaneContext<Input>]>
   } = $props()
 
+  const pane_id = $props.id()
+  const unavailable_hint_id = `${pane_id}-unavailable`
+
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting every
   // Nth frame multiplies it (see dt_collected below). null, not 0, is what
   // <input type="number"> writes back when cleared.
@@ -91,6 +106,66 @@
   let time_unit = $state(``)
   let use_dt = $state(false)
   let frame_stride = $state<number | null>(1)
+  let start_frame = $state<number | null>(0)
+  let end_frame = $state<number | null>(null)
+  let range = $derived({
+    start_frame: start_frame ?? NaN,
+    end_frame: end_frame ?? run?.frame_count ?? 0,
+  })
+  let range_reason = $derived.by(() => {
+    if (!run) return null
+    try {
+      resolve_frame_range(run.frame_count, range)
+      return null
+    } catch (error) {
+      return to_error(error).message
+    }
+  })
+  let frame_check = $state.raw<{ run: TrajectoryRun; start: number; reason: string | null }>()
+  const frame_reason = $derived(
+    run && frame_unavailable_reason && !range_reason
+      ? frame_check?.run === run && frame_check.start === range.start_frame
+        ? frame_check.reason
+        : `Checking selected frame…`
+      : null,
+  )
+  const disabled_reason = $derived(unavailable_reason || range_reason || frame_reason)
+  $effect(() => {
+    const requested = run
+    const start = range.start_frame
+    const validate = frame_unavailable_reason
+    if (!requested || !validate || range_reason) return
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const frame =
+          start === 0
+            ? requested.preview
+            : await requested.read_frame(start, controller.signal)
+        if (!controller.signal.aborted)
+          frame_check = { run: requested, start, reason: validate(frame) }
+      } catch (error) {
+        if (!controller.signal.aborted)
+          frame_check = { run: requested, start, reason: to_error(error).message }
+      }
+    })()
+    return () => controller.abort()
+  })
+  let properties_revision = $state(0)
+  $effect(() => run?.properties.subscribe(() => properties_revision++))
+  let frame_times = $derived.by(() => {
+    void properties_revision
+    return analysis_frame_times(run)
+  })
+  let start_time = $derived(frame_times?.values[range.start_frame])
+  let end_time = $derived(frame_times?.values[range.end_frame - 1])
+  const set_time_bound = (value: number, start: boolean) => {
+    if (!frame_times) return
+    const idx = frame_times.values.findIndex((time) => (start ? time >= value : time > value))
+    const bound = !Number.isFinite(value) ? NaN : idx === -1 ? frame_times.values.length : idx
+    if (start) start_frame = bound
+    else end_frame = bound
+  }
   // Stride the current `input` was collected with. The typed stride can change after a
   // collect without triggering a new one, and the analyses take the time per COLLECTED frame,
   // so dt has to follow the stride that produced the buffer, not the one in the box.
@@ -99,7 +174,7 @@
   let progress = $state<ParseProgress | null>(null)
 
   let { total_frames, n_atoms, safe_stride, collected_frames, suggested_stride, can_collect } =
-    $derived(analysis_pane_setup(run, suggest_stride, frame_stride))
+    $derived(analysis_pane_setup(run, suggest_stride, frame_stride, range_reason ? {} : range))
   let estimated_bytes = $derived(collected_frames * n_atoms * bytes_per_atom_frame)
 
   const clear = () => {
@@ -121,6 +196,8 @@
     const run_changed = run !== analysed_run
     if (run_changed) {
       analysed_run = run
+      start_frame = 0
+      end_frame = null
       clear()
       // a collect still running for the old trajectory may no longer report here
       progress = null
@@ -199,7 +276,7 @@
     abort_collect()
   })
   async function run_collect() {
-    if (!run) return
+    if (!run || disabled_reason) return
     const requested = run
     const this_request = ++request_id
     const is_current = () => run === requested && this_request === request_id
@@ -213,6 +290,7 @@
     try {
       const collected = await collect(requested, {
         frame_stride: requested_stride,
+        ...range,
         signal: controller.signal,
         on_progress: (parse_progress) => {
           if (is_current()) progress = parse_progress
@@ -250,7 +328,9 @@
   {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
-    {#if suggest_stride && !can_collect && run}
+    {#if disabled_reason}
+      <small id={unavailable_hint_id}>{disabled_reason}</small>
+    {:else if suggest_stride && !can_collect && run}
       <StatusMessage
         type="warning"
         message={no_full_pass_message(run, analysis_name)}
@@ -260,10 +340,61 @@
 
     <div class="analysis-controls {class_prefix}-controls">
       {@render controls?.(context)}
+      <label>
+        Start frame
+        <input
+          aria-label="Start frame"
+          type="number"
+          min="0"
+          max={total_frames - 1}
+          step="1"
+          bind:value={start_frame}
+        />
+      </label>
+      <label>
+        End frame (exclusive)
+        <input
+          aria-label="End frame (exclusive)"
+          type="number"
+          min="1"
+          max={total_frames}
+          step="1"
+          placeholder={String(total_frames)}
+          bind:value={end_frame}
+        />
+      </label>
+      {#if frame_times}
+        <label>
+          Start time ({frame_times.unit})
+          <input
+            aria-label="Start time"
+            type="number"
+            step="any"
+            value={start_time}
+            onchange={(event) => set_time_bound(event.currentTarget.valueAsNumber, true)}
+          />
+        </label>
+        <label>
+          End time, inclusive ({frame_times.unit})
+          <input
+            aria-label="End time (inclusive)"
+            type="number"
+            step="any"
+            value={end_time}
+            onchange={(event) => set_time_bound(event.currentTarget.valueAsNumber, false)}
+          />
+        </label>
+      {/if}
       {#if suggest_stride}
         <label>
           Frame stride
-          <input type="number" min="1" step="1" bind:value={frame_stride} />
+          <input
+            aria-label="Frame stride"
+            type="number"
+            min="1"
+            step="1"
+            bind:value={frame_stride}
+          />
           {#if suggested_stride && suggested_stride > safe_stride}
             <span class="hint">needs ≥ {suggested_stride}</span>
           {/if}
@@ -306,7 +437,12 @@
       {/if}
       <button
         onclick={run_collect}
-        disabled={collecting || busy || (suggest_stride && !can_collect)}
+        disabled={collecting ||
+          busy ||
+          Boolean(disabled_reason) ||
+          (suggest_stride && !can_collect)}
+        title={disabled_reason ?? undefined}
+        aria-describedby={disabled_reason ? unavailable_hint_id : undefined}
       >
         {collecting ? collecting_label : input ? recollect_label : compute_label}
       </button>

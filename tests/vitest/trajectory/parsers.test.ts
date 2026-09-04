@@ -827,12 +827,17 @@ describe(`LAMMPS`, () => {
       `Invalid LAMMPS orthogonal BOX BOUNDS at timestep 0 (lines 6-8): 0.0 10.0 | 0.0 xx | 0.0 10.0`],
     [`duplicate atom IDs`, `${frame_0}\n${lammps_frame(`id type x y z`, [`1 1 1.5 0 0`, `1 1 7.5 0 0`], { timestep: 1 })}`,
       `LAMMPS frame at timestep 1 has duplicate atom IDs`],
-    [`non-positive atom ID`, lammps_frame(`id type x y z`, [`0 1 1 0 0`]), `LAMMPS frame at timestep 0 has a non-positive-integer atom ID 0`],
+    ...[`0`, `bad`, `NaN`, `Infinity`].map((id) => [
+      `invalid atom ID ${id}`, lammps_frame(`id element x y z`, [`${id} H 1 0 0`]),
+      `LAMMPS atom line 10 (timestep 0) has invalid ID "${id}"`,
+    ]),
     [`a frame that loses the ID column`, `${frame_0}\n${lammps_frame(`type x y z`, [`1 1 0 0`, `1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS frame at timestep 1 lost the atom ID column`],
     // An interior frame shorter than its atom count runs into the next header
     [`an interior frame missing atoms`, `${lammps_frame(`id type x y z`, [`1 1 1 0 0`], { n_atoms: 2 })}\n${lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS atom line 11 (timestep 0) has 2 columns, expected 5`],
+    [`an interior frame missing BOX BOUNDS`, `${frame_0}\nITEM: TIMESTEP\n1\nITEM: NUMBER OF ATOMS\n1\n${lammps_frame(`id type x y z`, [`1 1 2 0 0`], { timestep: 2 })}`,
+      `LAMMPS frame at timestep 1 is missing "ITEM: BOX BOUNDS" before line`],
     [`descending timesteps`, [lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 1 }), lammps_frame(`id type x y z`, [`1 1 2 0 0`])].join(`\n`),
       `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`],
   ])(`rejects %s with line/frame context`, async (_label, content, error) => {
@@ -1748,6 +1753,9 @@ describe(`HDF5`, () => {
     })
     const run = await open(buffer, `torch-sim.h5`)
     expect(run.frame_count).toBe(n_frames)
+    const window = await collect(run, { start_frame: n_frames - 1 })
+    expect(window.n_frames).toBe(1)
+    expect(window.lattice_matrices?.[0]?.[0][0]).toBe(cells.at(-1)?.[0])
     for (const [frame_idx, edge] of edges.entries()) {
       const { structure } = await run.read_frame(frame_idx)
       expect(`lattice` in structure ? structure.lattice.matrix[0][0] : undefined).toBe(edge)
@@ -1768,6 +1776,17 @@ describe(`HDF5`, () => {
       polarizability: { sample_shape: [3, 3], sample_count: 3, frame_aligned: false },
     })
     expect(Object.values(run.signals ?? {}).every(is_signal_descriptor)).toBe(true)
+    const window = await collect(run, {
+      start_frame: 1,
+      end_frame: 3,
+      signal_keys: [`velocity`, `dipole`],
+      vector_keys: [`velocity`],
+    })
+    expect(window.steps).toEqual([1, 2])
+    expect(window.signals?.velocity.steps).toEqual([1, 2])
+    expect(window.signals?.dipole.steps).toEqual([2])
+    expect(window.positions).toHaveLength(12)
+    expect(window.vectors?.velocity).toHaveLength(12)
     const frame = await run.read_frame(3)
     expect(frame.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
       [1.8, 1.9, 2],
@@ -1975,6 +1994,9 @@ describe(`HDF5`, () => {
       `varying-pbc.h5`,
     )
     await expect(collect(varying)).rejects.toThrow(`PBC flags that vary between frames`)
+    const selected = await collect(varying, { start_frame: 6, end_frame: 7 })
+    expect(selected.n_frames).toBe(1)
+    expect(selected.pbc).toEqual([false, false, false])
   })
 
   it(`streams long generic runs with variable cells without materialising every frame`, async () => {
@@ -2063,6 +2085,20 @@ describe(`HDF5`, () => {
       steps: [0, 4, 8, 12, 16, 20],
     })
     expect(stream.vectors?.velocity).toHaveLength(36)
+    const window = await collect(run, {
+      start_frame: 3,
+      end_frame: 8,
+      frame_stride: 2,
+      vector_keys: [`velocity`],
+      signal_keys: [`velocity`],
+    })
+    expect(window.steps).toEqual([6, 10, 14])
+    expect(window.positions).toEqual(
+      Float64Array.from([3, 5, 7].flatMap((idx) => replica_xyz(idx).flat())),
+    )
+    expect(window.signals?.velocity.steps).toEqual([6, 8, 10, 12, 14])
+    expect(window.signals?.velocity.values).toHaveLength(30)
+    expect(window.vectors?.velocity).toHaveLength(18)
     // Streamed integration replays bit-identically to the materialised frames
     expect(stream.positions).toEqual(
       Float64Array.from(

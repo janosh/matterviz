@@ -4,7 +4,7 @@ import { default_controls } from '$lib/convex-hull/index'
 import type { ConvexHullEntry } from '$lib/convex-hull/types'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 const mag = (magnetic_ordering?: string): ConvexHullEntry => ({
   composition: { Fe: 1, O: 1 },
@@ -16,16 +16,23 @@ const mag = (magnetic_ordering?: string): ConvexHullEntry => ({
   magnetic_ordering,
 })
 
-const mount_controls = (props: Partial<ComponentProps<typeof ConvexHullControls>> = {}) =>
+const mount_controls = (
+  props: Partial<ComponentProps<typeof ConvexHullControls>> = {},
+  state: Partial<ComponentProps<typeof ConvexHullControls>> = {},
+  target = document.body,
+) =>
   mount(ConvexHullControls, {
-    target: document.body,
-    props: {
-      controls_open: true,
-      stable_entries: [],
-      unstable_entries: [],
-      merged_controls: default_controls,
-      ...props,
-    },
+    target,
+    props: bind_props(
+      {
+        controls_open: true,
+        stable_entries: [],
+        unstable_entries: [],
+        merged_controls: default_controls,
+        ...props,
+      },
+      state,
+    ),
   })
 
 const magnetic_toggles = () => [
@@ -146,23 +153,16 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     const wrapper = document.createElement(`div`)
     wrapper.setAttribute(`style`, hull_style_css({ stable: `#111`, unstable: `#222` }))
     document.body.append(wrapper)
-    mount(ConvexHullControls, {
-      target: wrapper,
-      props: {
-        controls_open: true,
-        stable_entries: [mag()],
-        unstable_entries: [mag()],
-        merged_controls: default_controls,
-      },
-    })
+    mount_controls({ stable_entries: [mag()], unstable_entries: [mag()] }, {}, wrapper)
     const swatch_background = (kind: string) =>
       getComputedStyle(doc_query(`.marker.${kind}`)).background
     expect(swatch_background(`stable`)).toBe(`#111`)
     expect(swatch_background(`unstable`)).toBe(`#222`)
   })
 
-  test(`Space key also activates the stable/unstable legend toggles`, () => {
-    mount_controls({ stable_entries: [mag()], unstable_entries: [mag(), mag()] })
+  test(`legend toggles and threshold inputs preserve valid display settings`, () => {
+    const state = { max_hull_dist_show_phases: 0.1 }
+    mount_controls({ stable_entries: [mag()], unstable_entries: [mag(), mag()] }, state)
     // Points row (stability mode) renders stable + unstable toggles outside .category-filters
     const point_toggles = [...document.querySelectorAll<HTMLElement>(`.legend-item`)]
     const labels = () => point_toggles.map((item) => item.textContent?.trim())
@@ -181,6 +181,25 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     flushSync()
     // hidden stable keeps its total, hidden unstable shows 0/total
     expect(labels()).toEqual([`Stable (1)`, `Above hull (0/2)`])
+
+    const threshold = doc_query<HTMLInputElement>(
+      `input[aria-label="Points threshold (eV/atom)"][type="number"]`,
+    )
+    for (const [draft, committed] of [
+      [`0.2`, 0.2],
+      [``, 0.2],
+      [`-1`, 0.2],
+      [`0.6`, 0.2],
+      [`0`, 0],
+    ] as const) {
+      threshold.value = draft
+      threshold.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(state.max_hull_dist_show_phases).toBe(committed)
+      threshold.dispatchEvent(new Event(`change`, { bubbles: true }))
+      flushSync()
+      expect(threshold.value).toBe(String(committed))
+    }
   })
 
   test(`face color buttons follow hull_face_color_mode and show the swatch only for uniform`, () => {

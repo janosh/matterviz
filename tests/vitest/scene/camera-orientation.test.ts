@@ -6,6 +6,7 @@ import {
   resize_orthographic_zoom,
 } from '$lib/scene/props.svelte'
 import type { ZoneAxisMode } from '$lib/scene/zone-axis'
+import { DEFAULTS } from '$lib/settings'
 import { is_valid_zone_axis, zone_axis_direction } from '$lib/scene/zone-axis'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
@@ -63,6 +64,24 @@ test.each([
   })
   expect(get_orthographic_zoom_bounds(fit_zoom).max_zoom).toBe(Number.POSITIVE_INFINITY)
 })
+
+// The bounds are absolute pixels per Angstrom while the fit zoom is min(canvas_px) / extent, so
+// defaults that suit one structure size pin the camera at the fit for another: the former 10/500
+// pair left a 60 A cell (fit 10 on a 600 px canvas) unable to zoom out at all, and a 3 A molecule
+// (fit 200) able to zoom in only 2.5x
+test.each([[3], [10], [60], [200]])(
+  `default zoom bounds leave at least 10x in and out of a %s A structure`,
+  (extent_angstrom) => {
+    const fit_zoom = 600 / extent_angstrom
+    const { min_zoom, max_zoom } = get_orthographic_zoom_bounds(
+      fit_zoom,
+      DEFAULTS.structure.min_zoom,
+      DEFAULTS.structure.max_zoom,
+    )
+    expect(fit_zoom / min_zoom).toBeGreaterThanOrEqual(10)
+    expect(max_zoom / fit_zoom).toBeGreaterThanOrEqual(10)
+  },
+)
 
 describe(`zone axis directions`, () => {
   // oxfmt-ignore

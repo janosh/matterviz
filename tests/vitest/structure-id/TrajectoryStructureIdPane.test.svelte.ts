@@ -20,9 +20,9 @@ const make_run = (n_frames: number): TrajectoryRun =>
   )
 
 const sweep_result: StructureIdSweep = {
-  frame_numbers: [0, 7, 14],
+  frame_numbers: [2, 8, 14],
   results: [],
-  frame_stride: 7,
+  frame_stride: 6,
 }
 
 let mounted_component: ReturnType<typeof mount> | undefined
@@ -39,7 +39,7 @@ const settle = async () => {
   }
 }
 
-test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress, stores the result`, async () => {
+test(`passes the frame window, cap and skip_csp to the sweep, relays progress, stores the result`, async () => {
   const pending_sweep = Promise.withResolvers<StructureIdSweep>()
   const sweep = vi
     .spyOn(collect, `collect_structure_id_sweep`)
@@ -54,9 +54,8 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
   })
   await settle()
   const controls = doc_query(`.trajectory-structure-id-controls`)
-  // no position buffer: the only numeric input is the max-frames cap (no stride control)
-  // and no byte estimate is offered
-  expect(controls.querySelectorAll(`input[type=number]`)).toHaveLength(1)
+  // No position buffer: sampling uses the max-frames cap, without a stride or byte estimate.
+  expect(controls.querySelector(`input[aria-label="Frame stride"]`)).toBeNull()
   expect(controls.textContent).toContain(`20 of 20 frames`)
   expect(controls.textContent).not.toContain(`≈ `.concat(`0 B`))
 
@@ -64,10 +63,19 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
     `.trajectory-structure-id-controls input[type=number]`,
     HTMLInputElement,
   )
+  expect(max_frames.closest(`label`)?.textContent).toContain(`Max frames`)
   max_frames.value = `3`
   max_frames.dispatchEvent(new Event(`input`))
+  for (const [label, value] of [
+    [`Start frame`, `2`],
+    [`End frame (exclusive)`, `18`],
+  ]) {
+    const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
+    input.value = value
+    input.dispatchEvent(new Event(`input`))
+  }
   await settle()
-  expect(controls.textContent).toContain(`3 of 20 frames (every 7)`)
+  expect(controls.textContent).toContain(`3 of 16 frames (every 6)`)
 
   const button = doc_query(`.trajectory-structure-id-controls button`, HTMLButtonElement)
   expect(document.body.textContent).toContain(`No structure-type data to display`)
@@ -75,7 +83,12 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
   await settle()
   expect(sweep).toHaveBeenCalledWith(
     state.run,
-    expect.objectContaining({ max_frames: 3, options: { skip_csp: true } }),
+    expect.objectContaining({
+      start_frame: 2,
+      end_frame: 18,
+      max_frames: 3,
+      options: { skip_csp: true },
+    }),
   )
   // the sweep is the identification itself, so both the button and the plot slot say so
   expect(button.textContent).toContain(`Identifying…`)

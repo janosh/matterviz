@@ -11,7 +11,6 @@
   import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
   import { ELEM_SYMBOLS, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
-  import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { atomic_radii, site_base_radius } from '$lib/structure'
@@ -20,7 +19,7 @@
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
-    is_atom_color_mode_available,
+    get_atom_color_mode_options,
     next_atom_color_config,
     structure_has_selective_dynamics,
   } from '$lib/structure/atom-properties'
@@ -66,17 +65,21 @@
     children?: Snippet<[{ mode_menu_open: boolean; structure?: AnyStructure | null }]>
   } = $props()
 
+  const legend_id = $props.id()
+
   const titles = {
     coordination: `Coordination`,
     wyckoff: `Wyckoff Position`,
   }
 
   let colorable_property_keys = $derived(get_colorable_property_keys(structure))
-  let color_mode_context = $derived({
-    has_sym_data: Boolean(sym_data),
-    has_selective_dynamics: structure_has_selective_dynamics(structure),
-    colorable_property_keys,
-  })
+  let color_mode_options = $derived(
+    get_atom_color_mode_options({
+      has_sym_data: Boolean(sym_data),
+      has_selective_dynamics: structure_has_selective_dynamics(structure),
+      colorable_property_keys,
+    }),
+  )
 
   let show_element_legend = $derived(
     atom_color_config.mode === `element` && elements && Object.keys(elements).length > 0,
@@ -261,17 +264,14 @@
     </button>
     {#if mode_menu_open}
       <div class="mode-dropdown">
-        {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
-          {@const disabled = !is_atom_color_mode_available(
-            value as AtomColorMode,
-            color_mode_context,
-          )}
+        {#each color_mode_options as [value, label, unavailable] (value)}
+          {@const disabled = Boolean(unavailable)}
+          {@const hint_id = unavailable ? `${legend_id}-${value}-hint` : undefined}
           <button
             class={['mode-option', { selected: atom_color_config.mode === value, disabled }]}
             {disabled}
-            title={value === `property` && disabled
-              ? `No per-atom properties on this structure`
-              : undefined}
+            title={unavailable ?? undefined}
+            aria-describedby={hint_id}
             onclick={() => {
               atom_color_config = next_atom_color_config(
                 atom_color_config,
@@ -282,6 +282,9 @@
             }}
           >
             {titles[value as keyof typeof titles] || label}
+            {#if unavailable}
+              <small id={hint_id} class="mode-unavailable">{unavailable}</small>
+            {/if}
           </button>
         {/each}
       </div>
@@ -797,6 +800,7 @@
   .mode-option {
     display: flex;
     align-items: center;
+    gap: 6px;
     width: 100%;
     padding: 0.4rem 0.6rem;
     box-sizing: border-box;
@@ -809,6 +813,13 @@
     transition: background-color 0.15s ease;
     font-size: 0.85rem;
     white-space: nowrap;
+  }
+  .mode-unavailable {
+    margin-left: auto;
+    max-width: 18em;
+    white-space: normal;
+    font-size: 0.8em;
+    opacity: 0.7;
   }
   .mode-option:first-child {
     border-top-left-radius: var(--legend-menu-border-radius, 4px);

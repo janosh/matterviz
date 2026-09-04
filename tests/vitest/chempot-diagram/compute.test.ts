@@ -1459,8 +1459,12 @@ describe(`formula_key_from_composition`, () => {
     { comp: { Fe: 1.01, O: 2 }, expected: `Fe101O200`, label: `1% off is a real ratio` },
     { comp: { Fe: 1.04, O: 2 }, expected: `Fe13O25`, label: `4% off scales to 13:25` },
   ])(`$label → $expected`, ({ comp, expected }) => {
-    const key = formula_key_from_composition(comp as Record<string, number>)
-    expect(key).toBe(expected)
+    const composition = comp as Record<string, number>
+    expect(formula_key_from_composition(composition)).toBe(expected)
+    composition.Fe = 0
+    expect(formula_key_from_composition(composition)).toBe(
+      formula_key_from_composition({ ...composition }),
+    )
   })
 })
 

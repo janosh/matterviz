@@ -288,7 +288,7 @@
     "knip": "knip --include dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs",
-    "build:anywidget": "pnpm package:dist && pnpm -C extensions/anywidget install --ignore-workspace --config.strict-dep-builds=false && pnpm -C extensions/anywidget build",
+    "build:anywidget": "pnpm package:dist && printf 'overrides:\n  svelte-widgets: file:../../node_modules/svelte-widgets\n' > extensions/anywidget/pnpm-workspace.yaml && pnpm -C extensions/anywidget install --config.strict-dep-builds=false && pnpm -C extensions/anywidget build",
     "prepare": "node src/scripts/prepare.mjs",
     "prepublishOnly": "pnpm run package:dist"
   },
@@ -311,7 +311,7 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.4.1",
-    "svelte-widgets": "^1.6.1",
+    "svelte-widgets": "github:janosh/svelte-widgets#main",
     "three": "^0.185.1"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@ import type { Pbc } from '$lib/structure/index'
 import { values_per_sample } from '../helpers'
 import type {
   CollectPositionsOptions,
+  FrameRange,
   ParseProgress,
   TrajectoryFrame,
   TrajectoryPositionStream,
@@ -404,6 +405,24 @@ export const parse_frame_signal = (
   return null
 }
 
+export function resolve_frame_range(
+  total_frames: number,
+  { start_frame = 0, end_frame = total_frames }: FrameRange = {},
+): { start_frame: number; end_frame: number } {
+  if (
+    !Number.isInteger(start_frame) ||
+    !Number.isInteger(end_frame) ||
+    start_frame < 0 ||
+    end_frame > total_frames ||
+    start_frame >= end_frame
+  ) {
+    throw new Error(
+      `Frame range [${start_frame}, ${end_frame}) must be nonempty and inside [0, ${total_frames})`,
+    )
+  }
+  return { start_frame, end_frame }
+}
+
 export async function accumulate_positions(
   total_frames: number,
   load_frame: (
@@ -431,17 +450,21 @@ export async function accumulate_positions(
   }
   if (total_frames < 1) throw new Error(`accumulate_positions: payload contains no frames`)
 
-  const report = make_reporter(on_progress, total_frames)
-  const first_frame = await load_frame(0)
-  if (!first_frame) throw new Error(`accumulate_positions: could not read frame 0`)
-  const collected = Math.ceil(total_frames / frame_stride)
+  const { start_frame, end_frame } = resolve_frame_range(total_frames, options)
+  const selected_frames = end_frame - start_frame
+  const report = make_reporter(on_progress, selected_frames)
+  const first_frame = await load_frame(start_frame)
+  signal?.throwIfAborted()
+  if (!first_frame)
+    throw new Error(`accumulate_positions: could not read frame ${start_frame}`)
+  const collected = Math.ceil(selected_frames / frame_stride)
   const n_atoms = first_frame.structure.sites.length
   const signal_shapes = Object.fromEntries(
     channels.signal_keys.map((key) => {
       const parsed = parse_frame_signal(first_frame.metadata?.[key], key, n_atoms)
       if (!parsed) {
         throw new TypeError(
-          `Frame 0 has no supported finite numeric metadata signal "${key}" (got ` +
+          `Frame ${start_frame} has no supported finite numeric metadata signal "${key}" (got ` +
             `${JSON.stringify(first_frame.metadata?.[key])})`,
         )
       }
@@ -456,11 +479,11 @@ export async function accumulate_positions(
     channels,
     signal_shapes,
   )
-  accumulator.add_frame(first_frame, 0)
+  accumulator.add_frame(first_frame, start_frame)
 
   for (
-    let frame_number = frame_stride;
-    frame_number < total_frames;
+    let frame_number = start_frame + frame_stride;
+    frame_number < end_frame;
     frame_number += frame_stride
   ) {
     signal?.throwIfAborted()
@@ -470,10 +493,14 @@ export async function accumulate_positions(
         `accumulate_positions: frame ${frame_number} of ${total_frames} could not be read`,
       )
     }
+    signal?.throwIfAborted()
     accumulator.add_frame(frame, frame_number)
 
     if (accumulator.collected_frames % 500 === 0) {
-      report(frame_number, `Reading positions: ${frame_number}/${total_frames}`)
+      report(
+        frame_number - start_frame,
+        `Reading positions: ${frame_number - start_frame}/${selected_frames}`,
+      )
     }
   }
 

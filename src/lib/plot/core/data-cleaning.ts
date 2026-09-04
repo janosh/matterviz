@@ -211,7 +211,7 @@ function detect_sign_change_frequency(
   return { onset_index: -1, score: max_score }
 }
 
-// Combined weighted detection; onset is the earliest onset any method reported
+// Combined weighted detection; onset is the earliest onset an enabled method reported
 export function detect_instability(
   x_values: readonly number[],
   y_values: readonly number[],
@@ -243,7 +243,9 @@ export function detect_instability(
     amplitude_growth: detect_amplitude_growth(valid_y, window_size),
     sign_changes: detect_sign_change_frequency(valid_y, window_size),
   }
-  const methods = [`derivative_variance`, `amplitude_growth`, `sign_changes`] as const
+  const methods = (
+    [`derivative_variance`, `amplitude_growth`, `sign_changes`] as const
+  ).filter((method) => weights[method] > 0)
   const total_weight = methods.reduce((sum, method) => sum + weights[method], 0)
   const combined_score =
     total_weight > 0
@@ -452,19 +454,28 @@ function handle_invalid_values(
   }
   // Linear interpolation between the nearest finite neighbours; edges hold the nearest value
   const cleaned = [...values]
+  let left_idx = -1
+  let right_idx = 0
   for (let idx = 0; idx < cleaned.length; idx++) {
-    if (Number.isFinite(cleaned[idx])) continue
+    if (Number.isFinite(cleaned[idx])) {
+      left_idx = idx
+      continue
+    }
     invalid_count++
-    let left_idx = idx - 1
-    while (left_idx >= 0 && !Number.isFinite(cleaned[left_idx])) left_idx--
-    let right_idx = idx + 1
+    right_idx = Math.max(right_idx, idx + 1)
     while (right_idx < cleaned.length && !Number.isFinite(cleaned[right_idx])) right_idx++
     const has_left = left_idx >= 0
     const has_right = right_idx < cleaned.length
     if (has_left && has_right) {
       const frac = (idx - left_idx) / (right_idx - left_idx)
-      cleaned[idx] = cleaned[left_idx] + frac * (cleaned[right_idx] - cleaned[left_idx])
+      const [left, right] = [cleaned[left_idx], cleaned[right_idx]]
+      const span = right - left
+      // Opposite extreme endpoints can overflow their difference while the result is finite.
+      cleaned[idx] = Number.isFinite(span)
+        ? left + frac * span
+        : (1 - frac) * left + frac * right
     } else cleaned[idx] = has_left ? cleaned[left_idx] : has_right ? cleaned[right_idx] : 0
+    if (Number.isFinite(cleaned[idx])) left_idx = idx
   }
   return { cleaned, removed_indices: [], invalid_count }
 }

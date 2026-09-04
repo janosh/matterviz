@@ -3,18 +3,23 @@
 // accounting the analysis panes display before a sweep starts.
 import type {
   CollectPositionsOptions,
+  FrameRange,
   ParseProgress,
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
 import { csv_line } from '$lib/utils'
 import type { TrajectoryRun } from './run'
-import { DEFAULT_POSITION_STREAM_MAX_BYTES, suggest_frame_stride } from './runs/accumulate'
+import {
+  DEFAULT_POSITION_STREAM_MAX_BYTES,
+  resolve_frame_range,
+  suggest_frame_stride,
+} from './runs/accumulate'
 
 // The stream options an analysis's collector exposes to its pane
 export type AnalysisStreamOptions = Pick<
   CollectPositionsOptions,
-  `frame_stride` | `max_bytes` | `on_progress` | `signal`
+  `frame_stride` | `max_bytes` | `on_progress` | `signal` | `start_frame` | `end_frame`
 >
 
 // Frame stride that keeps `buffers` position-sized arrays per frame inside `max_bytes`, or
@@ -40,9 +45,11 @@ export const collect_trajectory_positions = async (
   run: TrajectoryRun,
   { analysis_name, min_frames = 1, ...options }: CollectTrajectoryPositionsOptions,
 ): Promise<TrajectoryPositionStream> => {
-  if (run.frame_count < min_frames) {
+  const { start_frame, end_frame } = resolve_frame_range(run.frame_count, options)
+  const collected_frames = Math.ceil((end_frame - start_frame) / (options.frame_stride ?? 1))
+  if (collected_frames < min_frames) {
     throw new Error(
-      `${analysis_name}: need at least ${min_frames} frames, got ${run.frame_count}`,
+      `${analysis_name}: need at least ${min_frames} frames, got ${collected_frames}`,
     )
   }
   if (!run.collect_positions) throw new Error(no_full_pass_message(run, analysis_name))
@@ -60,6 +67,25 @@ export const no_full_pass_message = (run: TrajectoryRun, analysis_name: string):
 // cleared and Infinity for a `1e999` entry, and the sweep/stride helpers reject both outright
 export const positive_int = (value: number | null | undefined, fallback: number): number =>
   value != null && Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback
+
+// Physical times only when every source step is known: sparse previews must not invent an
+// interpolated window, and an MD timestep scales recorded steps, never frame indices.
+export function analysis_frame_times(
+  run: TrajectoryRun | undefined,
+): { values: number[]; unit: string } | null {
+  if (!run?.time_step || run.properties.rows.length !== run.frame_count) return null
+  const { time_step } = run
+  const values = run.properties.rows.map(({ frame_number, step }, idx) =>
+    frame_number === idx ? step * time_step.value : NaN,
+  )
+  if (
+    !values.every(
+      (value, idx) => Number.isFinite(value) && (idx === 0 || value > values[idx - 1]),
+    )
+  )
+    return null
+  return { values, unit: time_step.unit }
+}
 
 // Adapts a sweep's (done, total) callback to the pane's progress shape
 export const sweep_progress =
@@ -86,7 +112,7 @@ export type AnalysisPaneContext<Input> = {
 }
 
 // What the pane passes to a module's collector
-export type AnalysisCollectOptions = {
+export type AnalysisCollectOptions = FrameRange & {
   frame_stride: number
   on_progress: (progress: ParseProgress) => void
   // Aborted once the answer can no longer be used (a newer collect, a trajectory swap, or the
@@ -96,18 +122,25 @@ export type AnalysisCollectOptions = {
 
 export function analysis_pane_setup(
   run: TrajectoryRun | undefined,
-  // Omit for a pane that reads frames one at a time and so has no buffer to budget
+  // Receives the selected frame count for budgeting. Omit for frame-at-a-time analyses.
   suggest_stride?: (run: TrajectoryRun) => number | null,
   frame_stride: number | null = 1,
+  range: FrameRange = {},
 ) {
   const safe_stride = positive_int(frame_stride, 1)
   const total_frames = run?.frame_count ?? 0
+  const { start_frame, end_frame } = total_frames
+    ? resolve_frame_range(total_frames, range)
+    : { start_frame: 0, end_frame: 0 }
+  const selected_frames = end_frame - start_frame
   return {
     total_frames,
     n_atoms: run?.preview.structure.sites.length ?? 0,
     safe_stride,
-    collected_frames: Math.ceil(total_frames / safe_stride),
-    suggested_stride: run ? (suggest_stride?.(run) ?? null) : null,
+    collected_frames: Math.ceil(selected_frames / safe_stride),
+    suggested_stride: run
+      ? (suggest_stride?.({ ...run, frame_count: selected_frames }) ?? null)
+      : null,
     can_collect: run?.collect_positions !== undefined,
   }
 }
@@ -118,6 +151,7 @@ export function analysis_pane_setup(
 export function sweep_frame_plan(
   total_frames: number,
   max_frames: number,
+  range: FrameRange = {},
 ): { frame_numbers: number[]; frame_stride: number } {
   for (const [name, value] of Object.entries({ total_frames, max_frames })) {
     if (!Number.isInteger(value) || value < 1) {
@@ -125,15 +159,20 @@ export function sweep_frame_plan(
     }
   }
   // ceil, not floor: a stride that rounds down would let ceil(total / stride) exceed the cap
-  const frame_stride = Math.max(1, Math.ceil(total_frames / max_frames))
+  const { start_frame, end_frame } = resolve_frame_range(total_frames, range)
+  const frame_stride = Math.max(1, Math.ceil((end_frame - start_frame) / max_frames))
   const frame_numbers: number[] = []
-  for (let frame_number = 0; frame_number < total_frames; frame_number += frame_stride) {
+  for (
+    let frame_number = start_frame;
+    frame_number < end_frame;
+    frame_number += frame_stride
+  ) {
     frame_numbers.push(frame_number)
   }
   return { frame_numbers, frame_stride }
 }
 
-export interface FrameSweepOptions {
+export interface FrameSweepOptions extends FrameRange {
   max_frames: number
   on_progress?: (done: number, total: number) => void
   // Stops the sweep between frames; the visitor gets it too for its worker request
@@ -145,14 +184,16 @@ export interface FrameSweepOptions {
 // 0 to 100 and n_frames structures snapshotted into memory at once.
 export async function sweep_frames<Result>(
   run: TrajectoryRun,
-  { max_frames, on_progress, signal }: FrameSweepOptions,
+  { max_frames, on_progress, signal, ...range }: FrameSweepOptions,
   visit: (frame: TrajectoryFrame, frame_number: number) => Promise<Result>,
 ): Promise<{ results: Result[]; frame_numbers: number[]; frame_stride: number }> {
-  const { frame_numbers, frame_stride } = sweep_frame_plan(run.frame_count, max_frames)
+  const { frame_numbers, frame_stride } = sweep_frame_plan(run.frame_count, max_frames, range)
   const results: Result[] = []
   for (const [done, frame_number] of frame_numbers.entries()) {
     signal?.throwIfAborted()
-    results.push(await visit(await run.read_frame(frame_number, signal), frame_number))
+    const frame = await run.read_frame(frame_number, signal)
+    signal?.throwIfAborted()
+    results.push(await visit(frame, frame_number))
     on_progress?.(done + 1, frame_numbers.length)
   }
   return { results, frame_numbers, frame_stride }

@@ -1,11 +1,13 @@
 import {
   build_orbit_props,
+  perspective_distance_for_zoom,
   mirror_scene_props,
   page_visibility,
   resolve_scene_controls,
   SCENE_CONTROL_DEFAULTS,
 } from '$lib/scene'
 import { DEFAULTS } from '$lib/settings'
+import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 describe(`build_orbit_props`, () => {
@@ -74,6 +76,56 @@ describe(`build_orbit_props`, () => {
       const props = build_orbit_props({ ...opts, auto_rotate: 1.5 })
       expect(props.autoRotate).toBe(auto_rotate_on)
       expect(props.autoRotateSpeed).toBe(1.5) // resumes at full speed when shown
+    })
+  })
+
+  describe(`perspective zoom limits`, () => {
+    const height = 600
+    const fov = 30
+    const perspective_opts = {
+      ...opts,
+      min_zoom: 0.1,
+      max_zoom: 20_000,
+      viewport_px: height,
+      fov,
+    }
+
+    // Measure scale through Three.js projection matrices.
+    test.each([[0.1], [1], [50], [20_000]])(
+      `%s px/Å becomes the distance at which three.js draws 1 Å that big`,
+      (zoom) => {
+        const distance = perspective_distance_for_zoom(zoom, height, fov)
+        const camera = new PerspectiveCamera(fov, 4 / 3, 0.01, 1e7)
+        // two points 1 Å apart across the view, on the plane the camera orbits around
+        const [left, right] = [
+          new Vector3(0, 0, -distance).project(camera),
+          new Vector3(1, 0, -distance).project(camera),
+        ]
+        // NDC spans [-1, 1] over the full viewport, so half the height converts it to pixels
+        const px_per_angstrom = ((right.x - left.x) * (camera.aspect * height)) / 2
+        expect(px_per_angstrom).toBeCloseTo(zoom, 6)
+      },
+    )
+
+    test(`hands OrbitControls the near limit for zooming in and the far one for out`, () => {
+      const props = build_orbit_props(perspective_opts)
+      expect(props.minDistance).toBeCloseTo(
+        perspective_distance_for_zoom(20_000, height, fov),
+        9,
+      )
+      expect(props.maxDistance).toBeCloseTo(perspective_distance_for_zoom(0.1, height, fov), 9)
+      expect(props.minDistance).toBeLessThan(props.maxDistance)
+    })
+
+    test.each([
+      [`orthographic camera`, { camera_projection: `orthographic` as const }],
+      [`unmeasured viewport`, { viewport_px: 0 }],
+      [`missing fov`, { fov: undefined }],
+      [`no configured limits`, { min_zoom: undefined, max_zoom: undefined }],
+    ])(`leaves the orbit radius unclamped for a %s`, (_name, patch) => {
+      const props = build_orbit_props({ ...perspective_opts, ...patch })
+      expect(props.minDistance).toBe(0)
+      expect(props.maxDistance).toBe(Number.POSITIVE_INFINITY)
     })
   })
 })

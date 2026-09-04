@@ -8,7 +8,7 @@
   import { as_text, file_drop_zone } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
-  import PaneDivider from '$lib/layout/PaneDivider.svelte'
+  import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import { clamp } from '$lib/math'

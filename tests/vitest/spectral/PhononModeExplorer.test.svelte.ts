@@ -70,9 +70,9 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
     expect(
       target.querySelector<HTMLSelectElement>(`[data-key="bonding_strategy"] select`)?.value,
     ).toBe(`explicit_only`)
-    expect(
-      target.querySelector<HTMLInputElement>(`[data-key="show_image_atoms"] input`)?.checked,
-    ).toBe(false)
+    // phonon-modes.ts marks the cell aperiodic on purpose (it adds its own positive-face
+    // copies instead of whole PBC shells), so the toggle has nothing to act on and is gone
+    expect(target.querySelector(`[data-key="show_image_atoms"]`)).toBeNull()
     expect(
       target.querySelector<HTMLInputElement>(
         `[data-key="vector_config:phonon_displacement"] input`,

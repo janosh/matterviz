@@ -28,28 +28,42 @@ afterEach(async () => {
 
 describe(`collect_msd_positions`, () => {
   it.each([
-    [1, 20],
-    [2, 10],
-    [3, 7],
-  ])(`collects a memory run at stride %s`, async (frame_stride, expected_frames) => {
-    const collected = await collect_msd_positions(make_run(20), { frame_stride })
-    expect(collected).toMatchObject({
-      n_frames: expected_frames,
-      n_atoms: 2,
-      frame_stride,
-      elements: [`H`, `H`],
-      coords_unwrapped: false,
-    })
-    expect(collected.positions).toHaveLength(expected_frames * 2 * 3)
-    const result = calc_msd(collected)
-    const step = drift_per_frame * frame_stride
-    expect(
-      max_rel_error(
-        result.curves[0].msd,
-        result.lags.map((lag) => (step * lag) ** 2),
-      ),
-    ).toBeLessThan(1e-12)
-  })
+    [1, 20, 0, 20],
+    [2, 10, 0, 20],
+    [3, 7, 0, 20],
+    [3, 3, 4, 13],
+  ])(
+    `collects a memory run at stride %s`,
+    async (frame_stride, expected_frames, start_frame, end_frame) => {
+      const collected = await collect_msd_positions(make_run(20), {
+        frame_stride,
+        start_frame,
+        end_frame,
+      })
+      expect(collected.steps).toEqual(
+        Array.from(
+          { length: expected_frames },
+          (_unused, idx) => start_frame + idx * frame_stride,
+        ),
+      )
+      expect(collected).toMatchObject({
+        n_frames: expected_frames,
+        n_atoms: 2,
+        frame_stride,
+        elements: [`H`, `H`],
+        coords_unwrapped: false,
+      })
+      expect(collected.positions).toHaveLength(expected_frames * 2 * 3)
+      const result = calc_msd(collected)
+      const step = drift_per_frame * frame_stride
+      expect(
+        max_rel_error(
+          result.curves[0].msd,
+          result.lags.map((lag) => (step * lag) ** 2),
+        ),
+      ).toBeLessThan(1e-12)
+    },
+  )
 
   it(`forwards collection options, progress, and cancellation to the run`, async () => {
     const backing = make_run(4)
@@ -95,6 +109,13 @@ describe(`collect_msd_positions`, () => {
   it(`enforces the memory budget and suggests the minimum fitting stride`, async () => {
     const run = make_run(100)
     expect(suggest_analysis_frame_stride(run, 1000)).toBe(5)
+    expect(
+      (await collect_msd_positions(run, { max_bytes: 1000, start_frame: 10, end_frame: 20 }))
+        .n_frames,
+    ).toBe(10)
+    await expect(
+      collect_msd_positions(run, { start_frame: 10, end_frame: 12, frame_stride: 2 }),
+    ).rejects.toThrow(`need at least 2 frames, got 1`)
     await expect(collect_msd_positions(run, { max_bytes: 1000 })).rejects.toThrow(
       `Use frame_stride >= 5`,
     )

@@ -32,10 +32,12 @@
   // shared pane's frame-stride control stays hidden and `max_frames` caps the sample instead.
   const collect = (
     target: TrajectoryRun,
-    { on_progress, signal }: AnalysisCollectOptions,
+    { on_progress, signal, start_frame, end_frame }: AnalysisCollectOptions,
   ): Promise<StructureIdSweep> =>
     collect_structure_id_sweep(target, {
       signal,
+      start_frame,
+      end_frame,
       max_frames: safe_max_frames,
       // CSP is not plotted here, and skipping it drops the second neighbor pass per frame
       options: { skip_csp: true },

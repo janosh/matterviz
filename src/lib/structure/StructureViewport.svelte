@@ -443,7 +443,7 @@
         {volumetric_data}
         {isosurface_settings}
         {active_volume_idx}
-        volume_scaling={session.volume_scaling}
+        supercell_tiling={session.supercell_tiling}
         bind:camera_is_moving
         bind:selected_sites={
           () => session.selected_sites, (value) => session.inputs.set_selected_sites(value)

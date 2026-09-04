@@ -167,7 +167,13 @@ export interface TrajectoryPositionStream {
   signals?: Record<string, TrajectorySignal>
 }
 
-export interface PositionStreamOptions {
+// Zero-based source frames, start inclusive and end exclusive; omitted bounds select all.
+export interface FrameRange {
+  start_frame?: number
+  end_frame?: number
+}
+
+export interface PositionStreamOptions extends FrameRange {
   // Collect every Nth frame. Use `suggest_frame_stride` to stay inside a memory budget.
   frame_stride?: number
   // Hard ceiling on the allocated position buffer; the sweep throws (with the stride

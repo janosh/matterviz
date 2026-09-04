@@ -30,7 +30,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
-  import PaneDivider from '$lib/layout/PaneDivider.svelte'
+  import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
   import type { DataSeries, HistogramSeries, Orientation } from '$lib/plot'

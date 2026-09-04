@@ -1,43 +1,74 @@
 <script lang="ts">
   // Translucent (hkl) lattice planes clipped to the unit cell, with opaque outlines so
   // overlapping planes stay legible (same treatment as the mirror planes in SymmetryElements).
-  import type { Matrix3x3 } from '$lib/math'
+  import type { Matrix3x3, Vec3 } from '$lib/math'
+  import * as math from '$lib/math'
   import { dispose_on_change, positions_geometry } from '$lib/scene/geometry.svelte'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'
+  import { untrack } from 'svelte'
   import type { LatticePlane } from './lattice-planes'
   import {
     lattice_plane_polygons,
     polygon_edge_vertices,
     polygon_fan_vertices,
+    tile_lattice_planes,
   } from './lattice-planes'
 
-  let { planes, lattice }: { planes: LatticePlane[]; lattice: Matrix3x3 } = $props()
+  let {
+    planes,
+    lattice,
+    tiling = [1, 1, 1],
+  }: {
+    planes: LatticePlane[]
+    lattice: Matrix3x3
+    // Unit cells the rendered structure spans along a/b/c. Planes are a property of the
+    // crystal, not of one cell, so they carry on through the whole tiled block.
+    tiling?: Vec3
+  } = $props()
+
+  const tiling_key = $derived(tiling.map((count) => Math.max(1, Math.floor(count))).join(`,`))
+  const tile_counts = $derived(tiling_key.split(`,`).map(Number) as Vec3)
+  // Trajectory frames often supply new arrays with unchanged geometry. Styles stay reactive
+  // separately, so changing only a family's color or opacity never replaces its GPU buffers.
+  const geometry_key = $derived(
+    JSON.stringify([
+      lattice.flat().join(`,`),
+      tiling_key,
+      planes.map(({ hkl, offsets }) => [hkl.join(`,`), offsets?.join(`,`)]),
+    ]),
+  )
 
   const DEFAULT_COLOR = `#f28e2b`
   const DEFAULT_OPACITY = 0.3
   const EDGE_OPACITY = 0.9
 
   // One fill mesh (fan-triangulated) and one outline per plane family
-  const groups = $derived(
-    planes.map((plane) => {
-      const polygons = lattice_plane_polygons(plane, lattice).map(({ polygon }) => polygon)
-      const fill_geometry = positions_geometry(polygons.flatMap(polygon_fan_vertices).flat())
-      fill_geometry.computeVertexNormals()
-      return {
-        fill_geometry,
-        edge_geometry: positions_geometry(polygons.flatMap(polygon_edge_vertices).flat()),
-        color: plane.color ?? DEFAULT_COLOR,
-        opacity: plane.opacity ?? DEFAULT_OPACITY,
-      }
-    }),
-  )
+  const groups = $derived.by(() => {
+    void geometry_key
+    return untrack(() => {
+      const block_lattice = math.scale_lattice_matrix(lattice, tile_counts)
+      return tile_lattice_planes(planes, tile_counts).map((plane) => {
+        const polygons = lattice_plane_polygons(plane, block_lattice).map(
+          ({ polygon }) => polygon,
+        )
+        const fill_geometry = positions_geometry(polygons.flatMap(polygon_fan_vertices).flat())
+        fill_geometry.computeVertexNormals()
+        return {
+          fill_geometry,
+          edge_geometry: positions_geometry(polygons.flatMap(polygon_edge_vertices).flat()),
+        }
+      })
+    })
+  })
   dispose_on_change(() =>
     groups.flatMap((group) => [group.fill_geometry, group.edge_geometry]),
   )
 </script>
 
-{#each groups as { fill_geometry, edge_geometry, color, opacity }, idx (idx)}
+{#each groups as { fill_geometry, edge_geometry }, idx (idx)}
+  {@const color = planes[idx].color ?? DEFAULT_COLOR}
+  {@const opacity = planes[idx].opacity ?? DEFAULT_OPACITY}
   <T.Mesh geometry={fill_geometry}>
     <T.MeshStandardMaterial
       {color}

@@ -117,14 +117,79 @@ describe(`StructureControls inputs`, () => {
     expect(input.title).toContain(title_includes)
   })
 
-  // The supercell input needs a lattice, so neither a lattice-less structure nor no
-  // structure at all may render one - and neither may crash the controls
-  test.each<[string, AnyStructure | undefined]>([
-    [`structure without lattice`, { id: `test_no_lattice`, sites: simple_structure.sites }],
-    [`undefined structure`, undefined],
-  ])(`renders no supercell input for %s`, async (_name, structure) => {
+  // Cell styling/tiling needs a lattice; image/vector controls and reduction need periodicity.
+  test.each<[string, AnyStructure | undefined, boolean, boolean]>([
+    [
+      `structure without lattice`,
+      { id: `test_no_lattice`, sites: simple_structure.sites },
+      false,
+      false,
+    ],
+    [`undefined structure`, undefined, false, false],
+    [
+      `aperiodic lattice`,
+      make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc: [false, false, false] }),
+      true,
+      false,
+    ],
+    [`periodic crystal`, simple_structure, true, true],
+    [
+      `slab`,
+      make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc: [true, true, false] }),
+      true,
+      true,
+    ],
+    [
+      `singular cell`,
+      {
+        ...simple_structure,
+        lattice: {
+          ...make_crystal(1, []).lattice,
+          matrix: [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 0],
+          ],
+        },
+      },
+      true,
+      false,
+    ],
+    [
+      `nonfinite cell`,
+      {
+        ...simple_structure,
+        lattice: {
+          ...make_crystal(1, []).lattice,
+          matrix: [
+            [NaN, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ],
+        },
+      },
+      false,
+      false,
+    ],
+  ])(`lattice-dependent controls for %s`, async (_name, structure, cell_rows, reducible) => {
     await mount_controls({ structure, controls_open: true })
-    expect(document.querySelectorAll(`input[placeholder="1x1x1"]`)).toHaveLength(0)
+    expect(document.querySelectorAll(`input[placeholder="1x1x1"]`).length > 0).toBe(cell_rows)
+    expect(document.querySelectorAll(`[data-key="cell_edge_color"]`).length > 0).toBe(
+      cell_rows,
+    )
+    expect(document.querySelectorAll(`[data-key="cell_type"]`).length > 0).toBe(reducible)
+    for (const key of [`show_image_atoms`, `show_cell_vectors`]) {
+      expect(document.querySelectorAll(`[data-key="${key}"]`).length > 0).toBe(reducible)
+    }
+    // the toggles that never depend on the cell stay put
+    expect(document.querySelectorAll(`[data-key="show_atoms"]`)).toHaveLength(1)
+    for (const option of document.querySelectorAll<HTMLOptionElement>(
+      `[data-key="atom_color_mode"] option:disabled`,
+    )) {
+      const hint_id = option.getAttribute(`aria-describedby`)
+      expect(hint_id).toBeTypeOf(`string`)
+      expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(option.title)
+    }
   })
 
   const mount_zone_axis = async (matrix: Matrix3x3 = cubic_matrix(10)) => {

@@ -1,3 +1,4 @@
+import type { Crystal } from '$lib/structure'
 import type { Vec3 } from '$lib/math'
 import { parse_poscar, parse_xyz } from '$lib/structure/parse'
 import { download } from '$lib/io/fetch'
@@ -423,6 +424,50 @@ describe(`TrajectoryExportPane property export`, () => {
     if (typeof content !== `string`) throw new Error(`expected text, got ${typeof content}`)
     return content.split(`\n`)
   }
+
+  // POSCAR cannot write a frame without a cell, so the button refuses before the click rather
+  // than failing partway through a zip the user is already waiting on
+  test.each([
+    null,
+    [
+      [NaN, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 0],
+    ],
+  ])(`disables POSCAR ZIP for invalid lattice %s, keeps extXYZ`, (matrix) => {
+    const molecule = {
+      ...trajectory,
+      preview: {
+        ...trajectory.preview,
+        structure: {
+          sites: trajectory.preview.structure.sites.map(({ abc: _abc, ...site }) => site),
+          ...(matrix && { lattice: { matrix } }),
+        } as Crystal,
+      },
+    }
+    open_pane({ run: molecule })
+    const poscar = doc_query<HTMLButtonElement>(`button[aria-label="Download POSCAR ZIP"]`)
+    expect(poscar.disabled).toBe(true)
+    expect(poscar.title).toContain(`unit cell`)
+    const hint_id = poscar.getAttribute(`aria-describedby`)
+    expect(hint_id).toBeTypeOf(`string`)
+    expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(`unit cell`)
+    expect(document.body.textContent).toContain(
+      matrix
+        ? matrix[2][2] === 0
+          ? `nonsingular unit cell`
+          : `finite 3x3 lattice matrix`
+        : `this structure has no lattice`,
+    )
+    expect(doc_query<HTMLButtonElement>(`button[aria-label="Download extXYZ"]`).disabled).toBe(
+      false,
+    )
+  })
 
   test(`names every download action`, () => {
     vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })

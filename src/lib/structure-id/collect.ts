@@ -1,5 +1,5 @@
 // Sweep structure identification (CNA + CSP) across sampled frames of a trajectory run.
-import type { TrajectoryRun } from '$lib/trajectory'
+import type { FrameRange, TrajectoryRun } from '$lib/trajectory'
 import { sweep_frames } from '$lib/trajectory/analysis'
 import { calc_structure_id_async } from './async-compute.svelte'
 import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
@@ -9,7 +9,7 @@ import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 // trajectory; 100 frames of 10k atoms is ~10 s, which is a wait a user will sit through.
 export const DEFAULT_MAX_SWEEP_FRAMES = 100
 
-interface StructureIdSweepOptions {
+interface StructureIdSweepOptions extends FrameRange {
   // Upper bound on how many frames are actually analysed; see DEFAULT_MAX_SWEEP_FRAMES
   max_frames?: number
   options?: StructureIdOptions
@@ -37,12 +37,14 @@ export async function collect_structure_id_sweep(
     options = {},
     on_progress,
     signal,
+    start_frame,
+    end_frame,
   } = sweep_options
 
   let first: { frame_number: number; n_atoms: number } | undefined
   return sweep_frames(
     run,
-    { max_frames, on_progress, signal },
+    { max_frames, on_progress, signal, start_frame, end_frame },
     async (frame, frame_number) => {
       const result = await calc_structure_id_async(frame.structure, options, { signal })
       first ??= { frame_number, n_atoms: result.n_atoms }

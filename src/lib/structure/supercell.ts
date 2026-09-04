@@ -102,6 +102,58 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   return points
 }
 
+// Unique [start indices, axis, span] grid edges, excluding the origin cell drawn separately.
+// Above max_edges, draw only the block outline to bound instance count.
+export function supercell_grid_edges(
+  tiling: Vec3,
+  max_edges = 6000,
+): [Vec3, number, number][] {
+  const counts = tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3
+  if (counts.every((count) => count === 1)) return []
+  const axes = [0, 1, 2]
+  const [count_a, count_b, count_c] = counts
+  const grid_size =
+    count_a * (count_b + 1) * (count_c + 1) +
+    count_b * (count_a + 1) * (count_c + 1) +
+    count_c * (count_a + 1) * (count_b + 1)
+  const edges: [Vec3, number, number][] = []
+  for (const axis of axes) {
+    const [side_1, side_2] = axes.filter((idx) => idx !== axis)
+    if (grid_size > max_edges) {
+      // block outline: 4 edges spanning the full axis
+      for (const [step_1, step_2] of [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ]) {
+        const start: Vec3 = [0, 0, 0]
+        start[side_1] = step_1 * counts[side_1]
+        start[side_2] = step_2 * counts[side_2]
+        // Trim every overlap with the origin cell, including thin blocks.
+        const from_origin = start[side_1] <= 1 && start[side_2] <= 1
+        if (from_origin && counts[axis] === 1) continue
+        if (from_origin) start[axis] = 1
+        edges.push([start, axis, counts[axis] - (from_origin ? 1 : 0)])
+      }
+      continue
+    }
+    for (let along = 0; along < counts[axis]; along++) {
+      for (let step_1 = 0; step_1 <= counts[side_1]; step_1++) {
+        for (let step_2 = 0; step_2 <= counts[side_2]; step_2++) {
+          if (along === 0 && step_1 <= 1 && step_2 <= 1) continue // origin cell edge
+          const start: Vec3 = [0, 0, 0]
+          start[axis] = along
+          start[side_1] = step_1
+          start[side_2] = step_2
+          edges.push([start, axis, 1])
+        }
+      }
+    }
+  }
+  return edges
+}
+
 // Site objects cost a few hundred bytes each; past this a typed "100x100x100" would hang the
 // tab on allocation alone, and nothing downstream (rendering, bonding) could use the result
 const MAX_SUPERCELL_SITES = 1_000_000

@@ -493,13 +493,15 @@ export const SETTINGS_CONFIG = define_settings({
       value: false,
       description: `Zoom toward the cursor instead of the scene center (the view drifts off-center as you zoom)`,
     },
+    // Pixels/Å; generous bounds accommodate molecules and large supercells. Auto-fit remains
+    // reachable even outside these limits (get_orthographic_zoom_bounds).
     max_zoom: typed_setting<number | undefined>({
-      value: 500,
-      description: `Maximum zoom level (orthographic: larger = more zoomed out, perspective: larger = further away)`,
+      value: 20_000,
+      description: `Zoom-in limit in pixels per Angstrom (both projections: the perspective camera stops at the orbit distance that magnifies this much)`,
     }),
     min_zoom: typed_setting<number | undefined>({
-      value: 10,
-      description: `Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)`,
+      value: 0.1,
+      description: `Zoom-out limit in pixels per Angstrom (both projections: the perspective camera stops at the orbit distance that magnifies this little)`,
     }),
     auto_rotate: {
       // Off by default: a permanently spinning scene is hard to read, keeps the render loop
