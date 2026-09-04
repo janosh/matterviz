@@ -685,7 +685,8 @@ const tiled_element_key = (element: SymmetryElement, lattice: Matrix3x3) => {
     // Round only complete offsets: merging rounded partial sums can lose a plane after
     // a later axis shifts it across the rounding boundary.
     partial_key = (offset) => String(math.dot(n_eq, offset))
-    changes = n_eq.map((component) => component !== 0)
+    // Ignore angle-conversion residuals below one epsilon relative to the plane coefficients.
+    changes = n_eq.map((component) => Math.abs(component) > Number.EPSILON * norm)
   } else if (axis && (kind === `rotation` || kind === `screw`)) {
     key = (offset) => math.cross_3d(offset, axis).join(`,`)
     partial_key = key

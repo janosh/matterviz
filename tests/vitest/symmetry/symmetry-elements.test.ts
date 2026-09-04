@@ -698,6 +698,11 @@ describe(`tile_symmetry_elements`, () => {
     const angle_cube = math.cell_to_lattice_matrix(4, 4, 4, 90, 90, 90)
     expect(tile_symmetry_elements([mirror], [1, 4, 4], angle_cube).elements).toHaveLength(1)
     expect(tile_symmetry_elements([mirror], [2, 4, 4], angle_cube).elements).toHaveLength(2)
+    const planes: SymmetryElement[] = [mirror, { ...mirror, kind: `glide`, label: `g` }]
+    expect(tile_symmetry_elements(planes, [1, 1e9, 1e9], angle_cube)).toEqual({
+      elements: planes,
+      unavailable_reason: null,
+    })
     // Rounding partial offsets can merge states which a later axis separates.
     const axis: Vec3 = [1, 4e-11, 1]
     const n_eq = math.dot(cell, math.create_frac_to_cart(cell)(axis))
