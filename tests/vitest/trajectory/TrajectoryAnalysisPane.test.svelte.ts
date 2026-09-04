@@ -4,8 +4,13 @@
 import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
 import type { AnalysisCollectOptions, AnalysisPaneContext } from '$lib/trajectory/analysis'
 import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
+import { collect_msd_positions } from '$lib/msd/collect'
 import { TrajectoryProperties, trajectory_from_frames } from '$lib/trajectory'
-import { analysis_frame_times } from '$lib/trajectory/analysis'
+import {
+  analysis_frame_times,
+  analysis_step_interval,
+  suggest_analysis_frame_stride,
+} from '$lib/trajectory/analysis'
 import { to_error } from '$lib/utils'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -14,6 +19,13 @@ import { bind_props, doc_query, make_frame, make_run, settle } from '../setup'
 const frame_only_run = (n_frames: number): TrajectoryRun => {
   const { collect_positions: _collect_positions, ...run } = make_run(n_frames)
   return run
+}
+
+class HostRun {
+  constructor(private readonly frame: TrajectoryFrame) {}
+  get preview() {
+    return this.frame
+  }
 }
 
 type Collected = { frame_stride: number; n: number }
@@ -90,6 +102,7 @@ describe(`timestep seeding`, () => {
     ])
     expect(pane_text()).toContain(`no valid timestep is available: lag axis in frames`)
 
+    await click_collect() // Late timing metadata must still seed an already collected input.
     defaults.default_time_unit = `fs`
     await settle()
     expect([use_dt.checked, dt.valueAsNumber, unit.value, unit.disabled]).toEqual([
@@ -186,8 +199,19 @@ describe(`frame stride`, () => {
     },
   )
 
-  test(`advertises the suggested stride only while the typed one is below it`, async () => {
-    mount_pane({ suggest_stride: () => 5 })
+  test(`budgets the selected window of a host run and hides satisfied stride hints`, async () => {
+    const { preview, ...fields } = make_run(20)
+    const run = Object.assign(new HostRun(preview), fields)
+    mount_pane({
+      run,
+      suggest_stride: (source: TrajectoryRun, frame_count: number) =>
+        suggest_analysis_frame_stride(
+          source,
+          preview.structure.sites.length * 96,
+          1,
+          frame_count,
+        ),
+    })
     await settle()
     expect(pane_text()).toContain(`needs ≥ 5`)
     const input = doc_query(
@@ -198,6 +222,13 @@ describe(`frame stride`, () => {
     input.dispatchEvent(new Event(`input`))
     await settle()
     expect(pane_text()).not.toContain(`needs ≥`)
+    input.value = `1`
+    input.dispatchEvent(new Event(`input`))
+    const end = doc_query(`input[aria-label="End frame (exclusive)"]`, HTMLInputElement)
+    end.value = `8`
+    end.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(pane_text()).toContain(`needs ≥ 2`)
   })
 
   test(`omits the stride control, size estimate and hint line for analyses without a buffer to budget`, async () => {
@@ -212,6 +243,138 @@ describe(`frame stride`, () => {
 })
 
 describe(`frame window`, () => {
+  test.each([
+    [[], undefined],
+    [[0], undefined],
+    [[0, undefined], undefined],
+    [[0, 10, 20], 10],
+    [[0, 0.1, 0.2, 0.3], 0.1],
+    [Array.from({ length: 1000 }, (_, idx) => 1000.1 + idx * 0.1), 0.1],
+    [[0, 1e-18, 2.1e-18], null],
+    [[1e16, 1e16 + 2, 1e16 + 2], null],
+    [[0, 10, 21], null],
+    [[1, 1], null],
+    [[2, 1], null],
+    [[NaN, 1], null],
+    [[0, Infinity], null],
+    [[0, 1, NaN], null],
+  ])(`classifies recorded sampling (case %#)`, (steps, expected) => {
+    const actual = analysis_step_interval((idx) => steps[idx], steps.length)
+    if (typeof expected !== `number`) expect(actual).toBe(expected)
+    else {
+      // Four f64 epsilons at the endpoint scale, divided by the number of intervals.
+      const tolerance =
+        (4 * Number.EPSILON * Math.max(Math.abs(steps[0] ?? 0), Math.abs(steps.at(-1) ?? 0))) /
+        (steps.length - 1)
+      expect(Math.abs((actual ?? NaN) - expected)).toBeLessThanOrEqual(tolerance)
+    }
+  })
+
+  test.each([false, true])(
+    `uses collected timing and preserves it across window edits (sparse=%s)`,
+    async (sparse) => {
+      const steps = [0, 3, 20, 27, 40, 100, 150, 200]
+      const source = trajectory_from_frames(
+        steps.map((step) => make_frame(step, [[0, 0, 0]])),
+        {
+          time_step: { value: 0.5, unit: `fs` },
+        },
+      )
+      const read_step = vi.fn(() => steps[0])
+      const properties = new TrajectoryProperties([
+        {
+          ...source.properties.rows[0],
+          get step() {
+            return read_step()
+          },
+        },
+      ])
+      const run = sparse ? { ...source, properties } : source
+      const state = $state<{ run: TrajectoryRun; error_msg?: string }>({
+        run,
+        error_msg: undefined,
+      })
+      const pending = Promise.withResolvers<undefined>()
+      let collections = 0
+      mount_pane(
+        bind_props(
+          {
+            time_unit_fallback: `ps`,
+            // A whole-run estimate must never override the selected/collected steps.
+            default_dt: 999,
+            default_time_unit: `fs`,
+            frame_steps: (input: { steps: number[] }) => input.steps,
+          },
+          state,
+        ),
+        vi.fn(async (_run, options) => {
+          if (++collections === 2) await pending.promise
+          return {
+            ...(await collect_msd_positions(source, options)),
+            frame_stride: options.frame_stride,
+            n: 1,
+          }
+        }),
+      )
+      const set = async (label: string, value: number) => {
+        const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
+        input.value = String(value)
+        input.dispatchEvent(new Event(`input`))
+        await settle()
+      }
+      await settle()
+      const button = doc_query(`.stub-controls button`, HTMLButtonElement)
+      if (sparse) expect(read_step).not.toHaveBeenCalled()
+      if (!sparse) {
+        expect(button.disabled).toBe(true)
+        expect(button.title).toContain(`uniformly spaced steps`)
+      }
+      await set(`End frame (exclusive)`, 5)
+      await set(`Frame stride`, 2)
+      await click_collect() // sampled steps 0, 20, 40: 10 fs, despite irregular skipped steps
+      expect(pane_text()).toContain(`10 fs per collected frame`)
+      await set(`End frame (exclusive)`, 8)
+      await set(`Start frame`, 5)
+      await set(`Frame stride`, 1)
+      expect(pane_text()).toContain(`10 fs per collected frame`)
+      button.click()
+      await settle()
+      if (sparse) {
+        const { dt, unit } = timestep_inputs()
+        dt.value = `3`
+        dt.dispatchEvent(new Event(`input`, { bubbles: true }))
+        unit.value = `ps`
+        unit.dispatchEvent(new Event(`input`, { bubbles: true }))
+        await settle()
+      }
+      pending.resolve(undefined)
+      await vi.waitFor(() => expect(button.disabled).toBe(false))
+      expect(pane_text()).toContain(`${sparse ? `3 ps` : `25 fs`} per collected frame`)
+      await set(`Start frame`, 0)
+      if (sparse) {
+        button.click()
+        await vi.waitFor(() => expect(state.error_msg).toContain(`uniformly spaced steps`))
+        expect(pane_text()).not.toContain(`25 fs per collected frame`)
+        // Sparse metadata cannot preflight the interval; actual collected steps must reject it.
+        expect(button.textContent).toContain(`Compute stub`)
+      } else expect(button.disabled).toBe(true)
+      if (sparse) {
+        properties.push(source.properties.rows.slice(1))
+        await settle()
+        expect(read_step).toHaveBeenCalled()
+      }
+      state.run = trajectory_from_frames(
+        [0, 2, 4].map((step) => make_frame(step, [[0, 0, 0]])),
+        {
+          time_step: { value: 0.5, unit: `fs` },
+        },
+      )
+      await settle()
+      const { use_dt, dt, unit } = timestep_inputs()
+      expect([use_dt.checked, dt.valueAsNumber, unit.value]).toEqual([true, 1, `fs`])
+    },
+  )
+
   test(`maps recorded times to source frames, rejects empty windows, and snapshots collection options`, async () => {
     const run = trajectory_from_frames(
       [10, 20, 50, 90].map((step) => make_frame(step, [[0, 0, 0]])),

@@ -16,6 +16,7 @@
   import {
     analysis_frame_times,
     analysis_pane_setup,
+    analysis_step_interval,
     no_full_pass_message,
   } from '$lib/trajectory/analysis'
   import { resolve_frame_range } from './runs/accumulate'
@@ -36,6 +37,7 @@
     icon = Graph,
     analysis_name,
     collect,
+    frame_steps,
     unavailable_reason = null,
     frame_unavailable_reason,
     suggest_stride,
@@ -67,6 +69,8 @@
     // Short name for the indexed-trajectory warning, e.g. `MSD`
     analysis_name: string
     collect: (run: TrajectoryRun, options: AnalysisCollectOptions) => Promise<Input>
+    // Actual collected steps verify sampling when indexed previews omit intermediate frames.
+    frame_steps?: (input: Input) => readonly number[]
     // Visible explanation for a disabled compute button.
     unavailable_reason?: string | null
     // Validate the selected first frame before enabling collection; checked reads are cancelled
@@ -74,7 +78,7 @@
     frame_unavailable_reason?: (frame: TrajectoryFrame) => string | null
     // Stride that keeps the collected buffer inside the memory budget. Supplying it also
     // renders the frame-stride control; panes that read frames one at a time omit it.
-    suggest_stride?: (run: TrajectoryRun) => number | null
+    suggest_stride?: (run: TrajectoryRun, frame_count: number) => number | null
     compute_label: string
     recollect_label: string
     // Button text while `collect` runs
@@ -106,6 +110,7 @@
   // Seeded by the effect below whenever timestep controls are enabled
   let time_unit = $state(``)
   let use_dt = $state(false)
+  let manual_timing = false
   let frame_stride = $state<number | null>(1)
   let start_frame = $state<number | null>(0)
   let end_frame = $state<number | null>(null)
@@ -130,7 +135,7 @@
         : `Checking selected frame…`
       : null,
   )
-  const disabled_reason = $derived(unavailable_reason || range_reason || frame_reason)
+  const timing_reason = `Selected frames must have finite, increasing, uniformly spaced steps; adjust the window or stride`
   $effect(() => {
     const requested = run
     const start = range.start_frame
@@ -171,32 +176,59 @@
   // collect without triggering a new one, and the analyses take the time per COLLECTED frame,
   // so dt has to follow the stride that produced the buffer, not the one in the box.
   let collected_stride = $state<number | null>(null)
+  let collected_interval = $state<number>()
   let collecting = $state(false)
   let progress = $state<ParseProgress | null>(null)
 
   let { total_frames, n_atoms, safe_stride, collected_frames, suggested_stride, can_collect } =
     $derived(analysis_pane_setup(run, suggest_stride, frame_stride, range_reason ? {} : range))
   let estimated_bytes = $derived(collected_frames * n_atoms * bytes_per_atom_frame)
+  const selected_interval = $derived.by(() => {
+    void properties_revision
+    if (!time_unit_fallback || !run || range_reason) return undefined
+    const rows = run.properties.rows
+    if (rows.length <= range.start_frame + (collected_frames - 1) * safe_stride) return
+    return analysis_step_interval((idx) => {
+      const frame_number = range.start_frame + idx * safe_stride
+      const row = rows[frame_number]
+      return row?.frame_number === frame_number ? row.step : undefined
+    }, collected_frames)
+  })
+  const disabled_reason = $derived(
+    unavailable_reason ||
+      range_reason ||
+      frame_reason ||
+      (selected_interval === null ? timing_reason : null),
+  )
+  const timing_interval = $derived(
+    collected_stride === null ? selected_interval : collected_interval,
+  )
+  const seeded_default_dt = $derived(
+    run?.time_step && timing_interval !== undefined
+      ? timing_interval === null
+        ? null
+        : (timing_interval * run.time_step.value) / (collected_stride ?? safe_stride)
+      : default_dt,
+  )
+  const seeded_default_unit = $derived(run?.time_step?.unit ?? default_time_unit)
 
   const clear = () => {
     input = undefined
     collected_stride = null
+    collected_interval = undefined
     error_msg = undefined
     on_clear?.()
   }
 
   // Drop stale input whenever the underlying run is swapped out, and re-seed the
-  // timestep from the file rather than carrying the previous one over. Seeding also keys on
-  // the defaults so metadata that only becomes known later still lands. Mount is not a swap:
-  // an `input` the caller supplied alongside the trajectory must survive it (seeding still
-  // runs on mount because `seeded_dt` starts out undefined).
+  // timestep from the file. Late metadata seeds untouched controls; manual edits survive
+  // until a run swap. Mount preserves an `input` the caller supplied alongside the run.
   let analysed_run = untrack(() => run)
-  let seeded_dt: number | null | undefined
-  let seeded_time_unit: string | undefined
   $effect(() => {
     const run_changed = run !== analysed_run
     if (run_changed) {
       analysed_run = run
+      manual_timing = false
       start_frame = 0
       end_frame = null
       clear()
@@ -204,19 +236,14 @@
       progress = null
       abort_collect()
     }
-    if (
-      time_unit_fallback &&
-      (run_changed || default_dt !== seeded_dt || default_time_unit !== seeded_time_unit)
-    ) {
-      seeded_dt = default_dt
-      seeded_time_unit = default_time_unit
+    if (time_unit_fallback && !manual_timing) {
       const has_default_timestep =
-        default_dt !== null &&
-        Number.isFinite(default_dt) &&
-        default_dt > 0 &&
-        Boolean(default_time_unit)
-      dt_source = has_default_timestep ? default_dt : 1
-      time_unit = (has_default_timestep && default_time_unit) || time_unit_fallback
+        seeded_default_dt !== null &&
+        Number.isFinite(seeded_default_dt) &&
+        seeded_default_dt > 0 &&
+        Boolean(seeded_default_unit)
+      dt_source = has_default_timestep ? seeded_default_dt : 1
+      time_unit = (has_default_timestep && seeded_default_unit) || time_unit_fallback
       use_dt = has_default_timestep
     }
   })
@@ -288,6 +315,7 @@
     error_msg = undefined
     progress = null
     const requested_stride = safe_stride
+    const requested_interval = selected_interval
     try {
       const collected = await collect(requested, {
         frame_stride: requested_stride,
@@ -298,8 +326,14 @@
         },
       })
       if (is_current()) {
+        const steps = frame_steps?.(collected)
+        const interval = steps
+          ? analysis_step_interval((idx) => steps[idx], steps.length)
+          : requested_interval
+        if (steps && interval == null) throw new Error(timing_reason)
         input = collected
         collected_stride = requested_stride
+        collected_interval = interval ?? undefined
       }
     } catch (exc) {
       if (!is_current()) return
@@ -402,7 +436,7 @@
         </label>
       {/if}
       {#if time_unit_fallback}
-        <label>
+        <label oninput={() => (manual_timing = true)}>
           <input type="checkbox" bind:checked={use_dt} />
           Time per source frame
           <input

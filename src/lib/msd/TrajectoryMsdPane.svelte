@@ -52,7 +52,9 @@
   class_prefix="trajectory-msd"
   analysis_name="MSD"
   collect={collect_msd_positions}
-  suggest_stride={suggest_analysis_frame_stride}
+  frame_steps={(input) => input.steps}
+  suggest_stride={(source, frame_count) =>
+    suggest_analysis_frame_stride(source, undefined, undefined, frame_count)}
   compute_label="Compute MSD"
   recollect_label="Recollect positions"
   {default_dt}

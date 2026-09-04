@@ -91,16 +91,19 @@ describe(`collect_vacf_input`, () => {
   // and builds the central-difference series from it. Budgeting that path at 1 told a
   // 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget.
   it.each([
-    [`stored`, true, [1, 1, 2]],
-    [`derived`, false, [1, 2, 4]],
+    [`stored`, true, [1, 1, 2], [1, 1, 1]],
+    [`derived`, false, [1, 2, 4], [1, 1, 2]],
   ])(
     `budgets every buffer calc_vacf holds for %s velocities`,
-    (_label, has_velocity_columns, strides) => {
+    (_label, has_velocity_columns, strides, window_strides) => {
       const run = make_run(1000, has_velocity_columns)
       const budgets = [72_000, 48_000, 24_000]
       expect(budgets.map((max_bytes) => suggest_vacf_frame_stride(run, max_bytes))).toEqual(
         strides,
       )
+      expect(
+        budgets.map((max_bytes) => suggest_vacf_frame_stride(run, max_bytes, 500)),
+      ).toEqual(window_strides)
     },
   )
 })

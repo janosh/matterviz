@@ -28,9 +28,10 @@ export function suggest_analysis_frame_stride(
   run: TrajectoryRun,
   max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
   buffers = 1,
+  frame_count = run.frame_count,
 ): number | null {
   const n_atoms = run.preview.structure.sites.length
-  return n_atoms ? suggest_frame_stride(run.frame_count, n_atoms * buffers, max_bytes) : null
+  return n_atoms ? suggest_frame_stride(frame_count, n_atoms * buffers, max_bytes) : null
 }
 
 export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
@@ -67,6 +68,36 @@ export const no_full_pass_message = (run: TrajectoryRun, analysis_name: string):
 // cleared and Infinity for a `1e999` entry, and the sweep/stride helpers reject both outright
 export const positive_int = (value: number | null | undefined, fallback: number): number =>
   value != null && Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback
+
+// undefined = steps not yet known; null = known irregular/invalid sampling. Scan only the
+// selected samples, without allocating another step array for a potentially large window.
+export function analysis_step_interval(
+  step_at: (idx: number) => number | undefined,
+  n_frames: number,
+): number | null | undefined {
+  if (n_frames < 2) return undefined
+  const first = step_at(0)
+  const last = step_at(n_frames - 1)
+  if (first === undefined || last === undefined) return undefined
+  const delta = (last - first) / (n_frames - 1)
+  if (!Number.isFinite(first) || !Number.isFinite(delta) || delta <= 0) return null
+  let previous = first
+  for (let idx = 1; idx < n_frames; idx++) {
+    const step = step_at(idx)
+    if (step === undefined) return undefined
+    // Allow four f64 epsilons at the step scale for subtraction/multiplication rounding.
+    const tolerance =
+      4 * Number.EPSILON * Math.max(Math.abs(first), Math.abs(step), idx * delta)
+    if (
+      !Number.isFinite(step) ||
+      step <= previous ||
+      Math.abs(step - first - idx * delta) > tolerance
+    )
+      return null
+    previous = step
+  }
+  return delta
+}
 
 // Physical times only when every source step is known: sparse previews must not invent an
 // interpolated window, and an MD timestep scales recorded steps, never frame indices.
@@ -123,7 +154,7 @@ export type AnalysisCollectOptions = FrameRange & {
 export function analysis_pane_setup(
   run: TrajectoryRun | undefined,
   // Receives the selected frame count for budgeting. Omit for frame-at-a-time analyses.
-  suggest_stride?: (run: TrajectoryRun) => number | null,
+  suggest_stride?: (run: TrajectoryRun, frame_count: number) => number | null,
   frame_stride: number | null = 1,
   range: FrameRange = {},
 ) {
@@ -138,9 +169,7 @@ export function analysis_pane_setup(
     n_atoms: run?.preview.structure.sites.length ?? 0,
     safe_stride,
     collected_frames: Math.ceil(selected_frames / safe_stride),
-    suggested_stride: run
-      ? (suggest_stride?.({ ...run, frame_count: selected_frames }) ?? null)
-      : null,
+    suggested_stride: run ? (suggest_stride?.(run, selected_frames) ?? null) : null,
     can_collect: run?.collect_positions !== undefined,
   }
 }
