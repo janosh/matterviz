@@ -1,5 +1,6 @@
 <script lang="ts">
   import { sanitize_html } from '$lib/sanitize'
+  import CodeBlock from 'svelte-widgets/CodeBlock.svelte'
   import { ScatterPlot } from '$lib'
   import type {
     CleaningConfig,
@@ -365,12 +366,14 @@
   const SYNTAX_RE = new RegExp(SYNTAX_RULES.map(([, re]) => `(${re.source})`).join(`|`), `g`)
 
   const highlight = (code: string) =>
-    code.replace(SYNTAX_RE, (token, ...groups) => {
-      const [cls] = SYNTAX_RULES[groups.findIndex((group) => group !== undefined)]
-      return `<span class="pl-${cls}">${token}</span>`
-    })
+    sanitize_html(
+      code.replace(SYNTAX_RE, (token, ...groups) => {
+        const [cls] = SYNTAX_RULES[groups.findIndex((group) => group !== undefined)]
+        return `<span class="pl-${cls}">${token}</span>`
+      }),
+    )
 
-  let live_code_html = $derived.by(() => {
+  let live_code = $derived.by(() => {
     const config_lines = [
       `  invalid_values: '${invalid_mode}',`,
       `  oscillation_threshold: ${oscillation_threshold},`,
@@ -402,7 +405,7 @@
       .join(`, `)
     const { series, quality } = cleaned_result
 
-    return highlight(`import { clean_series } from '$lib/plot'
+    return `import { clean_series } from '$lib/plot'
 import type { DataSeries, CleaningConfig } from '$lib/plot'
 
 const series: DataSeries = {
@@ -417,7 +420,7 @@ ${config_lines.join(`\n`)}
 const { series: cleaned, quality } = clean_series(series, config)
 // Result: ${series.x.length} points (${quality.points_removed} removed)
 // quality.invalid_values_found = ${quality.invalid_values_found}
-// quality.oscillation_detected = ${quality.oscillation_detected}`)
+// quality.oscillation_detected = ${quality.oscillation_detected}`
   })
 </script>
 
@@ -603,9 +606,13 @@ const { series: cleaned, quality } = clean_series(series, config)
     {/snippet}
   </ScatterPlot>
 
-  <div class="code-block">
-    <pre><code>{@html sanitize_html(live_code_html)}</code></pre>
-  </div>
+  <CodeBlock
+    code={live_code}
+    {highlight}
+    language="typescript"
+    label="Data cleaning example"
+    style="margin-top: 1.5em"
+  />
 </section>
 
 <section class="plot-section">
@@ -857,13 +864,6 @@ const { series: cleaned, quality } = clean_series(series, config)
     h3 {
       margin: 0 0 0.5em;
       text-align: center;
-    }
-  }
-  .code-block {
-    margin-top: 1.5em;
-    code {
-      font-size: 0.85em;
-      line-height: 1.6;
     }
   }
   @media (max-width: 600px) {

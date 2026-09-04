@@ -1,7 +1,7 @@
 <script lang="ts">
   import { add_alpha, plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
-  import StatusMessage from '$lib/feedback/StatusMessage.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import * as io from '$lib/io'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'

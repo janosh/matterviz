@@ -77,10 +77,6 @@
       "types": "./dist/eos/index.d.ts",
       "default": "./dist/eos/index.js"
     },
-    "./feedback": {
-      "types": "./dist/feedback/index.d.ts",
-      "default": "./dist/feedback/index.js"
-    },
     "./file-viewer": {
       "types": "./dist/file-viewer/index.d.ts",
       "default": "./dist/file-viewer/index.js"

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { plot_color } from '$lib/colors'
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import { frequency_unit_label } from '$lib/spectral/frequency-units'
   import type { DataSeries } from '$lib/plot'

@@ -156,6 +156,9 @@ describe(`NebViewer`, () => {
     expect(summary).toContain(`0.8339 eV`)
     expect(summary).toContain(`0.6539 eV`)
     expect(summary).toContain(`Fitted saddle (force-hermite)`)
+    expect(
+      viewer.querySelectorAll(`[aria-label="Reaction barriers"] [role="listitem"]`),
+    ).toHaveLength(5)
   })
 
   test(`aligns plot controls with the hover sequence bar`, async () => {

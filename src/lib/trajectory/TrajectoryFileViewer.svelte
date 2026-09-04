@@ -1,10 +1,8 @@
 <script lang="ts">
   // Convenience shell around <Trajectory>: source/drop UI, HDF5 group choice and errors.
   // open_material owns acquisition, parsing, workers, provenance and resource disposal.
-  import { FileInput, TaskStatus } from 'svelte-widgets'
+  import { FileInput, Spinner, StatusMessage, TaskStatus } from 'svelte-widgets'
   import EmptyState from '$lib/EmptyState.svelte'
-  import { StatusMessage } from '$lib/feedback'
-  import Spinner from '$lib/feedback/Spinner.svelte'
   import {
     open_material,
     MaterialOpenError,

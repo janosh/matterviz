@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { capitalize, format_num } from '$lib/labels'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import type { Vec3 } from '$lib/math'

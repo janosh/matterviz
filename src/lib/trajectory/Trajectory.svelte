@@ -5,9 +5,7 @@
   import { create_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { StatusMessage } from '$lib/feedback'
-  import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon } from 'svelte-widgets'
+  import { Icon, Spinner, StatusMessage } from 'svelte-widgets'
   import {
     ArrowDown,
     ArrowUp,

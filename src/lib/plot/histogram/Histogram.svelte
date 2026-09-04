@@ -73,11 +73,8 @@
     is_activation_key,
     vec2_equal,
   } from '$lib/plot/core/interactions'
-  import {
-    create_roving_focus,
-    ROVING_ATTR,
-    roving_key,
-  } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
   import { resolve_pattern } from '$lib/plot/core/patterns'
@@ -400,7 +397,7 @@
   // otherwise take 100 presses to tab past. Arrow keys walk the bars.
   const roving = create_roving_focus({
     container: () => frame.svg_element,
-    marks: () => histogram_bins,
+    items: () => histogram_bins,
   })
 
   let legend_data = $derived(

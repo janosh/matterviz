@@ -9,7 +9,7 @@ import {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
 } from '$lib/trajectory/format-detect'
-import { format_bytes } from '$lib/utils'
+import { format_bytes } from 'svelte-widgets/format'
 import { constants as buffer_constants } from 'node:buffer'
 import { Readable } from 'node:stream'
 import { createGunzip, createInflate, createInflateRaw } from 'node:zlib'

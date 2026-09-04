@@ -169,6 +169,7 @@ export default defineConfig({
   },
 
   resolve: {
+    dedupe: [`svelte`],
     conditions: process.env.VITEST ? [`browser`] : undefined,
     alias: [shared.three_compat_alias],
   },

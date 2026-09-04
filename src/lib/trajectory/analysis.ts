@@ -8,7 +8,7 @@ import type {
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
-import { csv_line } from '$lib/utils'
+import { csv_line } from 'svelte-widgets/csv'
 import type { TrajectoryRun } from './run'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,

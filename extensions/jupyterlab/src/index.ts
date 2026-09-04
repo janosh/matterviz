@@ -15,7 +15,7 @@ import { ABCWidgetFactory, Base64ModelFactory, DocumentWidget } from '@jupyterla
 import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { LabIcon } from '@jupyterlab/ui-components'
 import { Widget } from '@lumino/widgets'
-import { format_bytes } from '$lib/utils'
+import { format_bytes } from 'svelte-widgets/format'
 import { BASE64_FILE_TYPES, type FileTypeSpec, TEXT_FILE_TYPES } from './file-types'
 // Type-only, so it is erased at build time and pulls nothing into the entry chunk.
 import type * as viewer_module from './viewer'
@@ -96,7 +96,8 @@ export class MatterVizViewer extends Widget {
   private async render(): Promise<void> {
     const generation = ++this.render_generation
     this.parse_controller?.abort()
-    const { signal } = (this.parse_controller = new AbortController())
+    this.parse_controller = new AbortController()
+    const { signal } = this.parse_controller
     const filename = PathExt.basename(this.context.path)
     const is_base64 = this.context.contentsModel?.format === `base64`
     const content = this.context.model.toString()

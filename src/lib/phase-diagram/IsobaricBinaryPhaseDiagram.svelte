@@ -2,7 +2,7 @@
   import { create_flash } from '$lib/effects.svelte'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import EmptyState from '$lib/EmptyState.svelte'
-  import { ClickFeedback } from '$lib/feedback'
+  import { ClickFeedback } from 'svelte-widgets'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'

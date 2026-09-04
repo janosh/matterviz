@@ -3,7 +3,7 @@
   import type { ElementSymbol } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
   import { ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Spinner } from 'svelte-widgets'
   import { tick } from 'svelte'
 
   type Dimension = `2d` | `3d` | `4d`

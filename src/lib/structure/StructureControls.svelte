@@ -3,7 +3,7 @@
   import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ColorSchemeName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Icon, MultiSelect as Select, Spinner } from 'svelte-widgets'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
   import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
@@ -63,7 +63,6 @@
   import { to_error } from '$lib/utils'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
-  import { Icon, MultiSelect as Select } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
 

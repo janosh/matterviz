@@ -20,6 +20,7 @@ describe(`to_csv`, () => {
     [`commas force quotes`, [[`x,y`, 1]], `a,b\n"x,y",1`],
     [`embedded quotes double`, [[`say "hi"`, 1]], `a,b\n"say ""hi""",1`],
     [`newlines force quotes`, [[`two\nlines`, 1]], `a,b\n"two\nlines",1`],
+    [`carriage returns force quotes`, [[`two\rlines`, 1]], `a,b\n"two\rlines",1`],
     // A cell that silently became `NaN`/`Infinity` would read as data downstream
     [`non-finite numbers blank out`, [[NaN, Infinity]], `a,b\n,`],
     [`null and undefined blank out`, [[null, undefined]], `a,b\n,`],

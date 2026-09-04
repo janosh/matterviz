@@ -7,7 +7,32 @@ import {
   detect_instability,
   smooth_moving_average,
 } from '$lib/plot/core/data-cleaning'
-import { describe, expect, it, vi } from 'vitest'
+import { mount, unmount } from 'svelte'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import DataCleaningDemo from '../../../src/routes/(demos)/plot/data-cleaning/+page.svelte'
+
+it(`updates the accessible highlighted example when cleaning options change`, async () => {
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  const component = mount(DataCleaningDemo, { target })
+  onTestFinished(async () => {
+    await unmount(component)
+    target.remove()
+  })
+  const example = target.querySelector(`[aria-label="Data cleaning example"]`)
+  await vi.waitFor(() => expect(example?.querySelector(`.pl-k`)?.textContent).toBe(`import`))
+  expect(example?.getAttribute(`tabindex`)).toBe(`0`)
+  const bounds_label = [...target.querySelectorAll(`label`)].find((label) =>
+    label.textContent?.includes(`Apply Bounds`),
+  )
+  const checkbox = bounds_label?.querySelector(`input`)
+  expect(checkbox).toBeInstanceOf(HTMLInputElement)
+  checkbox?.click()
+  await vi.waitFor(() => {
+    expect(example?.getAttribute(`aria-busy`)).toBe(`false`)
+    expect(example?.textContent).toContain(`bounds: { min: 0, max: 30, mode: 'clamp' }`)
+  })
+})
 
 const linear = (length: number, slope = 1): { x: number[]; y: number[] } => {
   const x = Array.from({ length }, (_, idx) => idx)
