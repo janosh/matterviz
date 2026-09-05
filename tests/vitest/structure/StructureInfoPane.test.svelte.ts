@@ -221,8 +221,8 @@ describe(`StructureInfoPane`, () => {
         orig_unit_cell_idx: 0,
         completion_image: true,
       }
-      const state = $state({ selected_sites: [atom_count - 1] })
-      mount_info_pane(bind_props({ structure, displayed_structure, pane_open: true }, state))
+      const state = $state({ selected_sites: [atom_count - 1], displayed_structure })
+      mount_info_pane(bind_props({ structure, pane_open: true }, state))
       const cards = document.querySelectorAll(`.site-card`)
       expect(cards).toHaveLength(1)
       expect(cards[0].textContent).toContain(`O${atom_count}`)
@@ -253,6 +253,20 @@ describe(`StructureInfoPane`, () => {
         await tick()
         expect(doc_query(`.site-card`).getAttribute(`data-site-idx`)).toBe(`100`)
       }
+      // Display transforms can temporarily hide selected image sites without clearing them.
+      state.selected_sites = [0, atom_count - 1]
+      state.displayed_structure = structure
+      await tick()
+      expect(document.querySelectorAll(`.site-card`)).toHaveLength(1)
+      expect(doc_query(`.selected-sites h4`).textContent).toBe(`Selected sites (1)`)
+      expect(state.selected_sites).toEqual([0, atom_count - 1])
+      state.selected_sites = [atom_count - 1]
+      await tick()
+      expect(document.querySelectorAll(`.site-card`)).toHaveLength(0)
+      expect(doc_query(`.selected-sites h4`).textContent).toBe(`Selected sites (0)`)
+      state.displayed_structure = displayed_structure
+      await tick()
+      expect(doc_query(`.site-card`).getAttribute(`data-site-idx`)).toBe(`${atom_count - 1}`)
     },
   )
 

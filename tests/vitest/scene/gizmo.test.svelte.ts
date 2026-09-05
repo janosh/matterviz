@@ -82,9 +82,9 @@ test.each([0, 200])(
     }
     try {
       expect(frame()).toEqual([`main`])
+      expect(frame()).toEqual([])
       props.visible = true
       flushSync()
-      context.invalidate() // the initial pointer enter requests one frame
       const fade_frames = fade_duration === 0 ? 1 : 4
       for (let idx = 0; idx < fade_frames; idx++) expect(frame()).toEqual([`main`, `gizmo`])
       expect(passes.at(-1)?.opacity).toBe(0.8)
@@ -97,7 +97,6 @@ test.each([0, 200])(
       }
       props.visible = false
       flushSync()
-      context.invalidate() // likewise for pointer leave, then no more pointer events
       for (let idx = 0; idx < fade_frames; idx++) {
         expect(frame()).toEqual(idx === fade_frames - 1 ? [`main`] : [`main`, `gizmo`])
       }

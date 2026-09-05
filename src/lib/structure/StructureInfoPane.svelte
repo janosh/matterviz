@@ -266,12 +266,10 @@
 
   let site_cards = $derived.by((): SiteCard[] => {
     if (!pane_open) return []
-    return selected_sites.map((idx) => {
+    return selected_sites.flatMap((idx) => {
       const site = displayed_structure.sites[idx]
-      if (!site)
-        throw new Error(
-          `Selected site index ${idx} is outside ${displayed_structure.sites.length} displayed sites`,
-        )
+      // Image sites can disappear during a drag while the parent retains the selection.
+      if (!site) return []
       const element = site.species?.[0]?.element || `Unknown`
       const element_name = element_by_symbol.get(element as ElementSymbol)?.name ?? element
       const rows: InfoPaneRow[] = []
@@ -289,7 +287,7 @@
         if (row) rows.push(row)
       }
       const title = `${element}${idx + 1}`
-      return { idx, element, title, subtitle: element_name, key: title, rows }
+      return [{ idx, element, title, subtitle: element_name, key: title, rows }]
     })
   })
 
@@ -350,7 +348,7 @@
 
     {#if pane_open}
       <section class="selected-sites">
-        <h4>Selected sites ({selected_sites.length})</h4>
+        <h4>Selected sites ({site_cards.length})</h4>
         <input
           type="search"
           aria-label="Find site"

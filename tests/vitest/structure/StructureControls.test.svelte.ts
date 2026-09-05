@@ -419,7 +419,7 @@ describe(`StructureControls schema rows`, () => {
       // Bonds
       `bonding_strategy`, `auto_bond_order`, `aromatic_display`, `bond_color`, `bond_thickness`,
       // Polyhedra
-      `polyhedra_opacity`, `polyhedra_color`, `polyhedra_edges`, `polyhedra_hide_center_atoms`, `polyhedra_min_neighbors`, `polyhedra_max_neighbors`, `polyhedra_centers`,
+      `polyhedra_opacity`, `polyhedra_color`, `polyhedra_show_edges`, `polyhedra_hide_center_atoms`, `polyhedra_min_neighbors`, `polyhedra_max_neighbors`, `polyhedra_centers`,
       // Labels
       `site_label_color`, `site_label_size`, `site_label_padding`, `site_label_bg_hex`, `site_label_bg_opacity`, `site_label_offset`,
       // Site vectors
@@ -952,6 +952,17 @@ describe(`StructureControls reactive props`, () => {
     expect(reset_button(`polyhedra`)).toBeNull()
     expect(reset_button(`site vectors`)).toBeNull()
     expect(reset_button(`visibility`)).toBeNull()
+
+    doc_query<HTMLInputElement>(`[data-key="polyhedra_show_edges"] input`).click()
+    await tick()
+    expect(state.scene_props.polyhedra_show_edges).toBe(false)
+    expect(reset_button(`polyhedra`)).not.toBeNull()
+    doc_query<HTMLButtonElement>(
+      `[data-key="polyhedra_show_edges"] .setting-reset-button`,
+    ).click()
+    await tick()
+    expect(state.scene_props.polyhedra_show_edges).toBe(true)
+    expect(reset_button(`polyhedra`)).toBeNull()
 
     const force_scale = doc_query<HTMLInputElement>(
       `[data-key="vector_scale:force"] input[type="number"]`,
