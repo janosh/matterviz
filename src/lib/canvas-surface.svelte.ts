@@ -40,6 +40,9 @@ export function create_canvas_surface(
   const text_color = $derived(canvas_text_color(inputs.canvas(), dark_mode))
   const surface = create_surface({
     ...inputs,
+    // Svelte clears bind:this to null when a conditional canvas unmounts.
+    canvas: () => inputs.canvas() ?? undefined,
+    overlay_canvas: () => inputs.overlay_canvas?.() ?? undefined,
     draw: (frame) => inputs.draw({ ...frame, text_color, dark_mode }),
     draw_overlay: (frame) => inputs.draw_overlay?.({ ...frame, text_color, dark_mode }),
     repaint_deps: () => [inputs.repaint_deps(), text_color, dark_mode],
