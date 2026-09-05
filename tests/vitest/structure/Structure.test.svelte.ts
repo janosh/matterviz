@@ -1186,17 +1186,25 @@ describe(`Structure`, () => {
     expect(document.querySelector(`.edit-mode-toolbar`)).toBeNull()
   })
 
-  test(`info pane site hover updates highlighted sites`, async () => {
-    const state = {
+  test(`info pane search selects a site and its card updates highlighted sites`, async () => {
+    const state = $state({
       highlighted_sites: [] as number[],
       hovered_site_idx: null as number | null,
       selected_sites: [] as number[],
-    }
+    })
 
     mount_structure(
       bind_props({ structure, active_pane: `info` as const, show_controls: true }, state),
     )
     await tick()
+
+    const search = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
+    search.value = `${structure.sites[0].species[0].element}1`
+    search.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    doc_query<HTMLButtonElement>(`.site-matches button`).click()
+    await tick()
+    expect(state.selected_sites).toEqual([0])
 
     const first_site_row = doc_query(
       `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
@@ -1211,7 +1219,7 @@ describe(`Structure`, () => {
     expect(state.hovered_site_idx).toBeNull()
 
     first_site_row.click()
-    expect(state.selected_sites).toEqual([0])
+    expect(state.selected_sites).toEqual([])
   })
 })
 

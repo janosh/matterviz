@@ -264,7 +264,7 @@
         },
         "matterviz.structure.polyhedra_opacity": {
           "type": "number",
-          "default": 0.25,
+          "default": 0.15,
           "description": "Opacity of coordination polyhedra faces",
           "minimum": 0,
           "maximum": 1
@@ -273,11 +273,6 @@
           "type": "boolean",
           "default": true,
           "description": "Draw outlines along coordination polyhedra edges"
-        },
-        "matterviz.structure.polyhedra_edge_color": {
-          "type": "string",
-          "default": "#222222",
-          "description": "Color of coordination polyhedra edge lines"
         },
         "matterviz.structure.polyhedra_color_mode": {
           "type": "string",

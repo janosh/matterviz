@@ -806,9 +806,11 @@
         <StructureEditToolbar {session} />
       {/if}
 
-      {#if display_mode === `structure` && enable_info_pane && session.normalized_structure && controls_config.visible(`info-pane`)}
+      {#if display_mode === `structure` && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
         <StructureInfoPane
-          structure={session.normalized_structure}
+          structure={session.base_structure}
+          displayed_structure={session.displayed_structure}
+          bonding_strategy={scene_props.bonding_strategy}
           bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
           bind:highlighted_sites
           bind:hovered_site_idx

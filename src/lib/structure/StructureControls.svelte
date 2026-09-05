@@ -355,10 +355,6 @@
     {
       ...row(`polyhedra_show_edges`, `Edges`),
       data_key: `polyhedra_edges`,
-      pair: {
-        key: `polyhedra_edge_color`,
-        when: () => Boolean(scene_props.polyhedra_show_edges),
-      },
     },
     row(`polyhedra_hide_center_atoms`, `Hide centers`),
     row(`polyhedra_min_neighbors`, `Min neighbors`, 1),
@@ -434,7 +430,7 @@
     multi_view: `Show synchronized structure views from multiple directions`,
     polyhedra_centers: `Elements used as centers when constructing coordination polyhedra`,
     polyhedra_color: `Color mode and optional uniform color for coordination polyhedra`,
-    polyhedra_edges: `Visibility and color of coordination-polyhedra edges`,
+    polyhedra_edges: `Draw coordination-polyhedra edges in the face colors`,
     site_label_bg_hex: `Background color behind atom labels`,
     site_label_bg_opacity: `Opacity of the background behind atom labels`,
     supercell_scaling: `Repeat the unit cell along each lattice direction. Examples: "2x2x2", "3x1x2", or "2"`,
