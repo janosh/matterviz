@@ -44,6 +44,7 @@
     wrapper,
     camera,
     merged_controls,
+    title_height = $bindable(0),
     stable_entries,
     unstable_entries,
     get_point_color,
@@ -85,6 +86,7 @@
       hull_data: ReturnType<typeof create_hull_data_pipeline>
       controls_config: ShowControlsState
       loading?: boolean
+      title_height?: number
       show_tooltip?: boolean // off when the host plot renders its own tooltip (2D)
       on_reset?: () => void // host-specific reset (camera, face colour) after the shared one
       enable_info_pane?: boolean
@@ -135,7 +137,7 @@
   }
 </script>
 
-<h3 class="hull-title">{@html sanitize_html(title)}</h3>
+<h3 class="hull-title" bind:clientHeight={title_height}>{@html sanitize_html(title)}</h3>
 
 {#if loading}
   <Spinner
@@ -152,6 +154,7 @@
   {wrapper}
   fullscreen_bg_css_var="--hull-bg-fullscreen"
   {on_fullscreen_change}
+  class="convex-hull-toolbar"
   style="--viewer-buttons-gap: 0"
 >
   {#if controls_config.visible(`reset`)}
@@ -278,6 +281,10 @@
 {/if}
 
 <style>
+  :global(.convex-hull-toolbar > button > svg) {
+    --icon-size: 1.43em;
+    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+  }
   .hull-title {
     position: absolute;
     left: 1em;
