@@ -52,11 +52,8 @@
     is_activation_key,
     pointer_pos,
   } from '$lib/plot/core/interactions'
-  import {
-    create_roving_focus,
-    ROVING_ATTR,
-    roving_key,
-  } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
     empty_extent,
@@ -325,7 +322,7 @@
   // One tab stop for the whole group; arrow keys move between boxes
   const roving = create_roving_focus({
     container: () => frame.svg_element,
-    marks: () => visible_boxes,
+    items: () => visible_boxes,
   })
 
   let visible_boxes = $derived<Box[]>(

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { plot_color } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import type { FileLoadCallback } from '$lib/io'
   import { as_text, file_drop_zone } from '$lib/io'
   import { plural } from '$lib/labels'

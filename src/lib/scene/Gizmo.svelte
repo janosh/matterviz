@@ -37,7 +37,6 @@
     dom,
     invalidate,
     renderer,
-    shouldRender,
     size: canvas_size,
   } = useThrelte<THREE.WebGPURenderer>()
   // The orbit controls are the parent object, matching upstream's <OrbitControls><Gizmo /> nesting
@@ -131,9 +130,8 @@
 
   let hovered: GizmoAxisKey | null = $state(null)
 
-  // Advanced in the render task to step with frame time; a plain `let` since only that task
-  // reads it and per-frame $state writes would schedule pointless re-runs. untrack so mounting
-  // visible starts opaque instead of fading in; later changes come via the task.
+  // Only frame tasks use fade, so keep it non-reactive. untrack so mounting visible starts
+  // opaque instead of fading in; later changes advance in the update task.
   let fade = untrack(() => (visible ? 1 : 0))
 
   // Drop a stuck highlight if the gizmo is hidden mid-hover (pointer events stop resolving).
@@ -290,8 +288,11 @@
   const prev_viewport = new THREE.Vector4()
   const prev_scissor = new THREE.Vector4()
 
+  // Advance animations in the main stage, which runs even when rendering is idle.
+  // Invalidating inside the gated render stage is too late: Threlte clears that flag at
+  // frame end, so fades would only advance when another event (such as atom hover) redraws.
   useTask(
-    Symbol(`matterviz-gizmo-render`),
+    Symbol(`matterviz-gizmo-update`),
     (delta) => {
       // Let an in-flight fly-to finish even if the gizmo was hidden mid-animation.
       fly_to.step(delta)
@@ -304,11 +305,17 @@
         // above all the frame reaching 0, which is the one that repaints the gizmo away.
         invalidate()
       }
+    },
+    { autoInvalidate: false },
+  )
 
+  useTask(
+    Symbol(`matterviz-gizmo-render`),
+    () => {
       // `initialized` guards the frames before the GPU device resolves; render() throws then.
       // A pre-layout 0x0 canvas has nowhere to draw, and WebGPU rejects an empty viewport.
       if (fade <= 0 || rect.width <= 0 || rect.height <= 0) return
-      if (!shouldRender() || !renderer?.initialized) return
+      if (!renderer?.initialized) return
 
       for (const handle of handles) {
         handle.mesh.material.opacity = handle.base_opacity * fade

@@ -1,8 +1,9 @@
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
+import BrillouinBandsDos from '$lib/spectral/BrillouinBandsDos.svelte'
 import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
 import { flushSync, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
-import { clip_rect, mount_sized, plot_svg } from '../setup'
+import { describe, expect, it, vi } from 'vitest'
+import { clip_rect, make_crystal, mount_sized, plot_svg } from '../setup'
 
 const band_structs: BaseBandStructure = {
   qpoints: [
@@ -21,7 +22,26 @@ const band_structs: BaseBandStructure = {
   ],
 }
 
-describe(`BandsAndDos`, () => {
+describe(`bands/DOS wrappers`, () => {
+  it(`passes the Brillouin panel's cell to the bands popup`, async () => {
+    const root = await mount_sized(
+      BrillouinBandsDos,
+      {
+        structure: make_crystal(3, []),
+        band_structs,
+        doses: { type: `phonon`, frequencies: [0, 4], densities: [0, 1] },
+      },
+      { selector: `.bands-dos-brillouin`, width: 1200, height: 400 },
+    )
+    const symmetry_label = [...root.querySelectorAll(`.x-axis .tick text`)].find(
+      (label) => label.textContent === `X`,
+    )
+    expect(symmetry_label?.getAttribute(`role`)).toBe(`button`)
+    symmetry_label?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await vi.waitFor(() =>
+      expect(root.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`X`),
+    )
+  })
   // The shared y range BandsAndDos pins on both panels equals (or nearly equals) the padded
   // range Bands derives from its own data whenever the DOS lies inside the bands. Bands must
   // not treat that pin as its own default and clear it, or the sync effect re-pins it and the

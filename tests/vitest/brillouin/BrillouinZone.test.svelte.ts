@@ -10,6 +10,7 @@ import {
   cubic_matrix,
   doc_query,
   make_crystal,
+  mock_fullscreen,
   type SimpleSite,
 } from '../setup'
 
@@ -374,6 +375,7 @@ test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, a
 // Wiring check that a real viewer picks up the shared shortcut; the full key contract
 // (chords, repeats, nesting) is covered in layout/FullscreenButton.test
 test(`hovering the zone and pressing f fullscreens it`, async () => {
+  mock_fullscreen()
   const props = $state({ structure: cubic, fullscreen: false })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   await tick()

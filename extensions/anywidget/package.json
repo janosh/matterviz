@@ -29,7 +29,7 @@
     "anywidget": "^0.11.0",
     "matterviz": "file:../..",
     "svelte": "^5.56.10",
-    "svelte-widgets": "^1.6.0",
+    "svelte-widgets": "github:janosh/svelte-widgets#main",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vite-plus": "0.3.0"

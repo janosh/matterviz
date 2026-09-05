@@ -7,6 +7,7 @@ import {
   create_structure_filename,
   export_structure_as,
   fractional_export_unavailable_reason,
+  xyz_export_unavailable_reason,
   structure_to_cif_str,
   structure_to_json_str,
   structure_to_poscar_str,
@@ -269,16 +270,36 @@ describe(`Export functionality`, () => {
       },
     )
 
-    it(`refuses to export a site with no usable coordinates`, () => {
-      const structure_short_coords: AnyStructure = {
-        sites: [make_site(`H`, [0.1, 0.2] as unknown as Vec3, [1.0, 2.0] as unknown as Vec3)],
+    it.each(
+      [[0.1, 0.2], [NaN, 0, 0], [Infinity, 0, 0], [`bad`, 0, 0], Array<number>(3)].map(
+        (coords) => [coords],
+      ),
+    )(`refuses invalid coordinates %j with matching eligibility reasons`, (coords) => {
+      const structure: AnyStructure = {
+        sites: [make_site(`H`, coords as Vec3, coords as Vec3)],
+        lattice: diag_lattice(2),
       }
-      // Neither xyz nor abc has 3 components and there is no lattice to convert through.
-      // Writing such a site at the origin passes off a placeholder as a measured position;
-      // the POSCAR path has always thrown here, so XYZ does too.
-      expect(() => structure_to_xyz_str(structure_short_coords)).toThrow(
-        `No valid coordinates found for site 0`,
-      )
+      for (const [serialize, reason] of [
+        [structure_to_cif_str, fractional_export_unavailable_reason],
+        [structure_to_poscar_str, fractional_export_unavailable_reason],
+        [structure_to_xyz_str, xyz_export_unavailable_reason],
+      ]) {
+        expect(reason(structure)).toContain(`No valid coordinates found for site 0`)
+        expect(() => serialize(structure)).toThrow(reason(structure))
+      }
+      // A valid alternative must not silently replace the format's authoritative source.
+      const valid_xyz = {
+        ...structure,
+        sites: [{ ...structure.sites[0], xyz: [1, 1, 1] as Vec3 }],
+      }
+      const valid_abc = {
+        ...structure,
+        sites: [{ ...structure.sites[0], abc: [0.5, 0.5, 0.5] as Vec3 }],
+      }
+      if (coords.length === 3) {
+        expect(() => structure_to_cif_str(valid_xyz)).toThrow(`No valid coordinates`)
+        expect(() => structure_to_xyz_str(valid_abc)).toThrow(`No valid coordinates`)
+      }
     })
 
     // The 4-component row is the regression: the check is xyz.length >= 3, not === 3
@@ -440,12 +461,13 @@ describe(`Export functionality`, () => {
         sites: [make_site(`H`)],
         lattice: { ...diag_lattice(1), matrix },
       }
-      for (const serialize of [structure_to_cif_str, structure_to_poscar_str]) {
+      for (const serialize of [
+        structure_to_cif_str,
+        structure_to_poscar_str,
+        structure_to_xyz_str,
+      ]) {
         expect(() => serialize(structure_nan_lattice)).toThrow(`finite 3x3 lattice matrix`)
       }
-      const lines = structure_to_xyz_str(structure_nan_lattice).split(`\n`)
-      const zeros = Array(8).fill(`0.00000000`).join(` `)
-      expect(lines[1]).toContain(`Lattice="${zeros} 1.00000000"`)
     })
 
     it(`exports CIF format correctly`, () => {

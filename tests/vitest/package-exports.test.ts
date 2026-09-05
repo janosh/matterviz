@@ -200,6 +200,7 @@ describe(`package.json exports`, () => {
           `structure_to_json_str`,
           `structure_to_poscar_str`,
           `structure_to_xyz_str`,
+          `xyz_export_unavailable_reason`,
         ].toSorted(),
       )
     },
@@ -311,10 +312,13 @@ describe(`prepare hook`, () => {
   }
   const build_cmds = [`svelte-package`, `node src/scripts/package-dist-assets.mjs`]
 
-  test(`package.json runs the script as its prepare hook`, () => {
+  test(`package.json and CI configure dependency preparation`, () => {
     expect(pkg.scripts.prepare).toBe(`node src/scripts/prepare.mjs`)
     // the hook's build half must stay in lockstep with the explicit rebuild script
     expect(pkg.scripts[`package:dist`]).toBe(build_cmds.join(` && `))
+    // Git preparation strips lowercase npm_* variables before spawning npm install.
+    const setup = readFileSync(join(repo_root, `.github/actions/setup/action.yml`), `utf8`)
+    expect(setup).toMatch(/^\s+NPM_CONFIG_LEGACY_PEER_DEPS=true pnpm install /m)
   })
 
   test.each([

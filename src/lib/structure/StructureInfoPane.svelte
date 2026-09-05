@@ -7,13 +7,18 @@
   import { format_num } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import { get_density, type AnyStructure } from '$lib/structure'
+  import type { BondingStrategy } from '$lib/structure/bonding'
+  import { has_usable_lattice } from '$lib/structure/validation'
+  import { DEFAULTS } from '$lib/settings'
+  import RdfPlot from '$lib/rdf/RdfPlot.svelte'
+  import CoordinationBarPlot from '$lib/coordination/CoordinationBarPlot.svelte'
+  import BondAnglePlot from '$lib/bond-angles/BondAnglePlot.svelte'
   import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
   import { count_symmetry_op_kinds, WyckoffTable } from '$lib/symmetry'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  type SiteCard = InfoPaneCard & { idx: number; element: string; element_name: string }
+  type SiteCard = InfoPaneCard & { idx: number; element: string }
 
-  const SITE_PAGE_SIZE = 100
   const USAGE_TIPS = [
     [`File Drop`, `Drop POSCAR, XYZ, CIF or JSON files to load structures`],
     [
@@ -40,6 +45,8 @@
 
   let {
     structure,
+    displayed_structure = structure,
+    bonding_strategy = DEFAULTS.structure.bonding_strategy,
     pane_open = $bindable(false),
     toggle_props = {},
     pane_props = {},
@@ -48,14 +55,13 @@
     selected_sites = $bindable([]),
     sym_data = null,
     wyckoff_positions = [],
-    atom_count_thresholds = [50, 500],
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     structure: AnyStructure
+    // Analysis excludes render-only images; selected indices address displayed_structure.
+    displayed_structure?: AnyStructure
+    bonding_strategy?: BondingStrategy
     pane_open?: boolean
-    // [expanded_below, listed_up_to]: the site list starts expanded under the first count, is
-    // omitted above the second and starts collapsed in between. The chevron always toggles.
-    atom_count_thresholds?: [number, number]
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
@@ -76,6 +82,7 @@
   }
 
   function select_site(site_idx: number, event?: MouseEvent | KeyboardEvent) {
+    set_site_hover(null)
     if (event?.shiftKey) {
       selected_sites = selected_sites.includes(site_idx)
         ? selected_sites.filter((idx) => idx !== site_idx)
@@ -87,9 +94,7 @@
   }
 
   const site_summary = (card: SiteCard): string =>
-    [card.element_name, ...card.rows.map(({ label, value }) => `${label}: ${value}`)].join(
-      `; `,
-    )
+    [card.subtitle, ...card.rows.map(({ label, value }) => `${label}: ${value}`)].join(`; `)
 
   function handle_site_keydown(event: KeyboardEvent, card: SiteCard) {
     const plain_key = !event.altKey && !event.ctrlKey && !event.metaKey
@@ -229,13 +234,42 @@
     return cards
   })
 
-  let atom_count = $derived(structure.sites.length)
-  let sites_allowed_by_threshold = $derived(atom_count <= atom_count_thresholds[1])
-  let sites_open = $derived(atom_count < atom_count_thresholds[0])
+  let site_search = $state(``)
+  const site_matches = $derived.by(() => {
+    const query = site_search.trim().toLowerCase()
+    if (!pane_open || !query) return []
+    const matches: { idx: number; label: string }[] = []
+    for (const [idx, site] of displayed_structure.sites.entries()) {
+      const element = site.species.map((species) => species.element).join(`/`)
+      const label = `${element}${idx + 1}`
+      const names = site.species
+        .map((species) => element_by_symbol.get(species.element)?.name)
+        .join(` `)
+      if (`${label} ${names}`.toLowerCase().includes(query) || String(idx + 1) === query) {
+        matches.push({ idx, label })
+        if (matches.length === 20) break
+      }
+    }
+    return matches
+  })
+  let analysis_open = $state(false)
+  const rdf_structure = $derived(has_usable_lattice(structure) ? structure : undefined)
+  const rdf_available = $derived(Boolean(rdf_structure))
+  let analysis_kind = $derived<`rdf` | `coordination` | `angles`>(
+    rdf_available ? `rdf` : `coordination`,
+  )
+  const plot_props = {
+    allow_file_drop: false,
+    show_controls: false,
+    style: `height: 250px; width: 100%`,
+  }
 
   let site_cards = $derived.by((): SiteCard[] => {
-    if (!pane_open || !sites_allowed_by_threshold || !sites_open) return []
-    return structure.sites.map((site, idx) => {
+    if (!pane_open) return []
+    return selected_sites.flatMap((idx) => {
+      const site = displayed_structure.sites[idx]
+      // Image sites can disappear during a drag while the parent retains the selection.
+      if (!site) return []
       const element = site.species?.[0]?.element || `Unknown`
       const element_name = element_by_symbol.get(element as ElementSymbol)?.name ?? element
       const rows: InfoPaneRow[] = []
@@ -247,20 +281,21 @@
         rows.push({ label, key, value })
       }
       for (const [prop_key, prop_value] of Object.entries(site.properties ?? {})) {
+        if ([`orig_site_idx`, `orig_unit_cell_idx`, `completion_image`].includes(prop_key))
+          continue
         const row = format_site_property(prop_key, prop_value)
         if (row) rows.push(row)
       }
       const title = `${element}${idx + 1}`
-      return { idx, element, element_name, title, subtitle: element_name, key: title, rows }
+      return [{ idx, element, title, subtitle: element_name, key: title, rows }]
     })
   })
 
   const site_card_attrs = (card: SiteCard): HTMLAttributes<HTMLElement> => ({
     class: [
-      `site-card`,
+      `site-card selected`,
       {
         highlighted: highlighted_sites.includes(card.idx) || hovered_site_idx === card.idx,
-        selected: selected_sites.includes(card.idx),
       },
     ],
     'data-site-idx': card.idx,
@@ -276,13 +311,7 @@
     onkeydown: (event) => handle_site_keydown(event, card),
   })
 
-  // Keep the selected site's card in view when the selection comes from elsewhere (Wyckoff
-  // table, 3D scene): InfoPaneCards pages to it and scrolls it into view
-  const selected_site_key = $derived(
-    site_cards.find((card) => card.idx === selected_sites[0])?.key ?? null,
-  )
-
-  let wyckoff_table_expanded = $derived(wyckoff_positions.length < atom_count_thresholds[0])
+  let wyckoff_table_expanded = $derived(wyckoff_positions.length < 50)
 </script>
 
 <ViewerPane
@@ -317,19 +346,86 @@
       </details>
     {/if}
 
-    {#if pane_open && sites_allowed_by_threshold}
-      <details class="sites" bind:open={sites_open}>
-        <summary>Sites</summary>
-        {#if sites_open}
+    {#if pane_open}
+      <section class="selected-sites">
+        <h4>Selected sites ({site_cards.length})</h4>
+        <input
+          type="search"
+          aria-label="Find site"
+          placeholder="Find site by element or index"
+          bind:value={site_search}
+        />
+        {#if site_search.trim()}
+          <div class="site-matches">
+            {#each site_matches as { idx, label } (idx)}
+              <button
+                type="button"
+                onclick={(event) => {
+                  select_site(idx, event)
+                  site_search = ``
+                }}
+              >
+                {label}
+              </button>
+            {:else}
+              <span>No matching sites.</span>
+            {/each}
+            {#if site_matches.length === 20}<small
+                >First 20 matches. Refine your search for more.</small
+              >{/if}
+          </div>
+        {/if}
+        {#if site_cards.length > 0}
           <InfoPaneCards
             cards={site_cards}
-            filter_placeholder="Filter sites by element, index, coordinate, or property"
-            empty_label="sites"
-            page_size={SITE_PAGE_SIZE}
-            reveal_key={selected_site_key}
+            show_filter={false}
+            empty_label="selected sites"
+            page_size={100}
             card_attrs={site_card_attrs}
             class="site-cards"
           />
+        {:else}
+          <p>
+            Select atoms in the viewer or find a site above. Shift-click to select several.
+          </p>
+        {/if}
+      </section>
+
+      <details class="analysis" bind:open={analysis_open}>
+        <summary>Structure analysis</summary>
+        {#if analysis_open}
+          <label>
+            Plot
+            <select aria-label="Structure analysis plot" bind:value={analysis_kind}>
+              {#if rdf_structure}<option value="rdf">Radial distribution</option>{/if}
+              <option value="coordination">Coordination numbers</option>
+              <option value="angles">Bond angles</option>
+            </select>
+          </label>
+          {#if analysis_kind === `rdf` && rdf_structure}
+            <RdfPlot
+              structures={rdf_structure}
+              mode="full"
+              cutoff={8}
+              n_bins={80}
+              show_legend={false}
+              {...plot_props}
+            />
+          {:else if analysis_kind === `coordination`}
+            <CoordinationBarPlot
+              structures={structure}
+              strategy={bonding_strategy}
+              {...plot_props}
+            />
+          {:else if analysis_kind === `angles`}
+            <BondAnglePlot
+              structures={structure}
+              strategy={bonding_strategy}
+              split_mode="none"
+              show_legend={false}
+              {...plot_props}
+            />
+          {/if}
         {/if}
       </details>
     {/if}
@@ -362,6 +458,32 @@
       cursor: pointer;
       font-weight: 600;
       font-size: 0.95em;
+    }
+    h4 {
+      margin: 3pt 0;
+    }
+    input[type='search'] {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    p {
+      font-size: 0.8em;
+      margin: 5pt 0;
+    }
+    .site-matches {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3pt;
+      margin: 4pt 0;
+      small {
+        width: 100%;
+      }
+    }
+    .analysis label {
+      display: flex;
+      align-items: center;
+      gap: 6pt;
+      margin: 6pt 0;
     }
   }
   .structure-info :global(.site-cards) {

@@ -3,7 +3,7 @@
   import type { PhaseData } from '$lib/convex-hull'
   import { filter_by_elements, quaternary_loader } from '$site/convex-hull'
   import { create_temp_ternary_entries_li_fe_o } from '$site/convex-hull/demo-temperature'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Spinner } from 'svelte-widgets'
   import { onMount } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import { to_error } from '$lib/utils'

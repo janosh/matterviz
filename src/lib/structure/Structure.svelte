@@ -6,11 +6,9 @@
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { StatusMessage } from '$lib/feedback'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Icon, Spinner, StatusMessage, Toast } from 'svelte-widgets'
   import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
   import type { FileLoadCallback } from '$lib/io'
-  import { Icon, Toast } from 'svelte-widgets'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '$lib/utils'
@@ -21,8 +19,10 @@
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import VolumeSliceView from '$lib/isosurface/VolumeSliceView.svelte'
   import {
+    auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
     normalize_active_volume_idx,
+    pin_layers,
   } from '$lib/isosurface/types'
   import { ViewerChrome } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
@@ -70,6 +70,7 @@
   import type StructureScene from './StructureScene.svelte'
   import StructureViewport from './StructureViewport.svelte'
   import type { TrajectoryLinesStats } from './trajectory-lines'
+  import { structure_host_tool, type StructureToolOverlay } from './host-tool.svelte'
   import { apply_structure_material } from './material'
 
   export type StructureControlName =
@@ -288,6 +289,54 @@
     },
   })
 
+  let tool_overlay = $state.raw<StructureToolOverlay | null>(null)
+  const active_overlay = $derived(tool_overlay?.source === structure ? tool_overlay : null)
+  const tool_structure = $derived(
+    structure && active_overlay?.site_properties
+      ? {
+          ...structure,
+          sites: structure.sites.map((site, idx) => ({
+            ...site,
+            properties: { ...site.properties, ...active_overlay.site_properties?.[idx] },
+          })),
+        }
+      : structure,
+  )
+  let display_volumes = $derived(
+    active_overlay?.volumes?.length
+      ? [...(volumetric_data ?? []), ...active_overlay.volumes]
+      : volumetric_data,
+  )
+  let original_volume_idx = 0
+  const apply_tool_overlay = (overlay: StructureToolOverlay | null): void => {
+    const had_volumes = Boolean(tool_overlay?.volumes?.length)
+    const has_volumes = overlay?.source === structure && Boolean(overlay?.volumes?.length)
+    tool_overlay = overlay
+    if (!had_volumes && !has_volumes) return
+    if (!had_volumes) original_volume_idx = active_volume_idx
+    const base_count = volumetric_data?.length ?? 0
+    isosurface_settings = {
+      ...isosurface_settings,
+      layers: pin_layers(isosurface_settings.layers, active_volume_idx).filter(
+        (layer) => (layer.volume_idx ?? 0) < base_count,
+      ),
+    }
+    if (!has_volumes) active_volume_idx = original_volume_idx
+    if (overlay && overlay.source === structure && overlay.volumes?.length) {
+      active_volume_idx = base_count
+      isosurface_settings = {
+        ...isosurface_settings,
+        layers: [
+          ...isosurface_settings.layers,
+          ...overlay.volumes.map((volume, idx) => ({
+            ...auto_volume_layer(volume, 0),
+            volume_idx: base_count + idx,
+          })),
+        ],
+      }
+    }
+  }
+
   // === session: display pipeline, selection, editing, cameras ===
   // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
   let series_key = $derived(structure_series_key ?? structure)
@@ -336,7 +385,9 @@
 
   // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
   let vector_keys = $derived(
-    Array.isArray(structure?.sites) ? get_structure_vector_keys(structure) : [],
+    Array.isArray(structure?.sites)
+      ? get_structure_vector_keys(tool_structure ?? structure)
+      : [],
   )
   let vector_keys_signature = $derived(vector_keys.join(`\0`))
   let vectors_auto_populated_for = ``
@@ -450,14 +501,14 @@
     display_mode === `structure` && multi_view && multi_view_available,
   )
   let slice_layout_available = $derived(
-    Boolean(volumetric_data?.length || display_mode === `slice`) &&
+    Boolean(display_volumes?.length || display_mode === `slice`) &&
       controls_config.visible(`view-mode`),
   )
   let multi_layout_available = $derived(
     multi_view_available && controls_config.visible(`multi-view`),
   )
   let layout_control_visible = $derived(
-    (display_mode === `slice` && !volumetric_data?.length) ||
+    (display_mode === `slice` && !display_volumes?.length) ||
       slice_layout_available ||
       (display_mode === `structure` && multi_layout_available),
   )
@@ -534,6 +585,7 @@
   let shared_viewport_props = $derived({
     session,
     view_reset_key: series_key,
+    site_properties: active_overlay?.site_properties,
     reference_structure,
     scene_props: {
       ...scene_props,
@@ -541,7 +593,7 @@
       sphere_segments: effective_sphere_segments,
     },
     gizmo: scene_gizmo_props,
-    volumetric_data,
+    volumetric_data: display_volumes,
     active_volume_idx,
     isosurface_settings,
     property_colors: session.property_colors,
@@ -564,7 +616,7 @@
   $effect(() => {
     const clamped_idx = normalize_active_volume_idx(
       active_volume_idx,
-      volumetric_data?.length ?? 0,
+      display_volumes?.length ?? 0,
     )
     if (clamped_idx !== active_volume_idx) active_volume_idx = clamped_idx
   })
@@ -746,6 +798,9 @@
   {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
+  {#if structure_host_tool.component && structure?.sites.length}
+    <structure_host_tool.component {structure} on_overlay={apply_tool_overlay} />
+  {/if}
   {#if loading}
     <Spinner
       text="Loading structure..."
@@ -808,9 +863,11 @@
         <StructureEditToolbar {session} />
       {/if}
 
-      {#if display_mode === `structure` && enable_info_pane && session.normalized_structure && controls_config.visible(`info-pane`)}
+      {#if display_mode === `structure` && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
         <StructureInfoPane
-          structure={session.normalized_structure}
+          structure={session.base_structure}
+          displayed_structure={session.displayed_structure}
+          bonding_strategy={scene_props.bonding_strategy}
           bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
           bind:highlighted_sites
           bind:hovered_site_idx
@@ -832,7 +889,7 @@
           {camera}
           image_canvas={display_mode === `slice` ? slice_canvas : undefined}
           image_filename={display_mode === `slice`
-            ? `${volumetric_data?.[active_volume_idx]?.label ?? `volume`}-slice`
+            ? `${display_volumes?.[active_volume_idx]?.label ?? `volume`}-slice`
             : undefined}
           enable_3d_export={display_mode === `structure`}
           bind:png_dpi
@@ -854,7 +911,7 @@
           bind:color_scheme
           bind:atom_color_config
           bind:cell_type
-          bind:volumetric_data
+          bind:volumetric_data={display_volumes}
           bind:isosurface_settings
           bind:slice_settings
           bind:active_volume_idx
@@ -946,7 +1003,7 @@
 
     {#if display_mode === `slice`}
       <VolumeSliceView
-        volume={volumetric_data?.[active_volume_idx]}
+        volume={display_volumes?.[active_volume_idx]}
         bind:settings={slice_settings}
         bind:canvas={slice_canvas}
       />

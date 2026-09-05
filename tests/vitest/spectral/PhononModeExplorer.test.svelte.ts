@@ -31,8 +31,24 @@ const mount_explorer = (props: ExplorerProps): HTMLElement => {
 const render = (props: Partial<ExplorerProps> = {}): HTMLElement =>
   mount_explorer({ ...explorer_defaults, ...props })
 
+const open_menu = async (target: HTMLElement, label: string): Promise<void> => {
+  await vi.waitFor(() =>
+    expect(target.querySelector(`[aria-label="${label}"]`)).not.toBeNull(),
+  )
+  target.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.click()
+  await tick()
+}
+
 test(`renders a typed phonon dataset`, async () => {
-  const target = render()
+  const props = $state<ExplorerProps>({
+    ...explorer_defaults,
+    vector_thickness: 1,
+    vector_color: null,
+  })
+  const target = mount_explorer(props)
+  expect(target.querySelector(`.toolbar`)).toBeNull()
+  await open_menu(target, `Modes`)
+  await open_menu(target, `Phonon settings`)
   await vi.waitFor(() => {
     const summary = target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
     expect(summary).toContain(`Mode 4`)
@@ -49,6 +65,67 @@ test(`renders a typed phonon dataset`, async () => {
     expect(
       target.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--split-pane-size`),
     ).toBe(`${(1.15 / 2.1) * 100}%`)
+  })
+  expect(target.querySelector(`.explorer-header .tabs`)).toBeNull()
+  expect(target.querySelector(`.structure .mode-picker .phonon-modes-toggle`)).not.toBeNull()
+  expect(target.querySelector(`.phonon-modes-pane .control-tab`)).toBeNull()
+  expect(target.querySelector(`.phonon-modes-pane .resize-handle`)).toBeNull()
+  expect(target.querySelector(`.trajectory-controls .toolbar`)).not.toBeNull()
+  const eigenvectors = target.querySelector<HTMLInputElement>(`.checkbox input`)
+  eigenvectors?.click()
+  await vi.waitFor(() =>
+    expect(
+      target.querySelector<HTMLInputElement>(
+        `[data-key="vector_config:phonon_displacement"] input`,
+      )?.checked,
+    ).toBe(true),
+  )
+  const thickness = target.querySelector<HTMLInputElement>(
+    `[aria-label="Eigenvector thickness"]`,
+  )
+  const color = target.querySelector<HTMLInputElement>(`[aria-label="Eigenvector color"]`)
+  expect(thickness).not.toBeNull()
+  expect(color).not.toBeNull()
+  if (!thickness || !color) throw new Error(`Eigenvector style controls missing`)
+  thickness.value = `2.5`
+  thickness.dispatchEvent(new Event(`input`, { bubbles: true }))
+  color.value = `#123abc`
+  color.dispatchEvent(new Event(`input`, { bubbles: true }))
+  await vi.waitFor(() => {
+    expect(props.vector_thickness).toBe(2.5)
+    expect(props.vector_color).toBe(`#123abc`)
+    expect(target.querySelector(`.vector-thickness-control output`)?.textContent).toBe(`2.5×`)
+    expect(
+      target.querySelector<HTMLInputElement>(
+        `[data-key="vector_config:phonon_displacement"] input[type="color"]`,
+      )?.value,
+    ).toBe(`#123abc`)
+  })
+  target.querySelector<HTMLButtonElement>(`.vector-color-control button`)?.click()
+  await tick()
+  expect(props.vector_color).toBeNull()
+  expect(target.querySelector(`.phonon-modes-toggle`)?.getAttribute(`aria-expanded`)).toBe(
+    `true`,
+  )
+  target.querySelector<HTMLButtonElement>(`.phonon-modes-pane .mode-list button`)?.click()
+  await vi.waitFor(() => {
+    expect(target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent).toContain(
+      `Mode 1`,
+    )
+    expect(target.querySelector(`.plot-pane`)).not.toBeNull()
+    expect(target.querySelector(`.tabs [aria-pressed="true"]`)?.textContent).toBe(`Bands`)
+  })
+  target.querySelector<HTMLButtonElement>(`[aria-label="Phonon settings"]`)?.click()
+  await tick()
+  expect(target.querySelector(`.toolbar`)).toBeNull()
+  const symmetry_label = [...target.querySelectorAll(`.plot-pane .x-axis .tick text`)].find(
+    (label) => label.textContent === `X`,
+  )
+  expect(symmetry_label?.getAttribute(`role`)).toBe(`button`)
+  symmetry_label?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+  await vi.waitFor(() => {
+    expect(target.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`X`)
+    expect(target.querySelector(`.bz-popup .brillouin-zone`)).not.toBeNull()
   })
 })
 
@@ -70,8 +147,8 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
     expect(
       target.querySelector<HTMLSelectElement>(`[data-key="bonding_strategy"] select`)?.value,
     ).toBe(`explicit_only`)
-    // phonon-modes.ts marks the cell aperiodic on purpose (it adds its own positive-face
-    // copies instead of whole PBC shells), so the toggle has nothing to act on and is gone
+    // Phonon frames already include boundary coordination shells and are aperiodic,
+    // so the viewer's image toggle has nothing to add and is gone.
     expect(target.querySelector(`[data-key="show_image_atoms"]`)).toBeNull()
     expect(
       target.querySelector<HTMLInputElement>(
@@ -98,6 +175,8 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
 test(`updates views atomically with the dataset`, async () => {
   const props = $state<ExplorerProps>({ ...explorer_defaults, view: `ir` })
   const target = mount_explorer(props)
+  await open_menu(target, `Modes`)
+  await open_menu(target, `Phonon settings`)
   const view_states = () =>
     [...target.querySelectorAll<HTMLButtonElement>(`.tabs button`)].map((button) => [
       button.textContent,
@@ -107,7 +186,6 @@ test(`updates views atomically with the dataset`, async () => {
     expect(view_states()).toEqual([
       [`Bands`, `false`],
       [`IR`, `true`],
-      [`Modes`, `false`],
     ]),
   )
 
@@ -119,8 +197,12 @@ test(`updates views atomically with the dataset`, async () => {
     filename: `modes-only.yaml`,
   }
   await vi.waitFor(() => {
-    expect(props.view).toBe(`modes`)
-    expect(view_states()).toEqual([[`Modes`, `true`]])
+    expect(props.view).toBeUndefined()
+    expect(view_states()).toEqual([])
+    expect(target.querySelector(`.plot-pane`)).toBeNull()
+    expect(target.querySelector(`.phonon-modes-toggle`)?.getAttribute(`aria-expanded`)).toBe(
+      `true`,
+    )
     expect(target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent).toContain(
       `modes-only.yaml`,
     )
@@ -158,6 +240,7 @@ test(`steps through animatable modes and disables eigenvector-less q-points`, as
     selection: { qpoint_idx: 99, mode_idx: 99 },
   })
   const target = mount_explorer(props)
+  await open_menu(target, `Phonon settings`)
   const summary = () =>
     target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
   const prev_button = () =>

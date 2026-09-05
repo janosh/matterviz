@@ -439,7 +439,7 @@ describe(`TrajectoryExportPane property export`, () => {
       [0, 1, 0],
       [0, 0, 0],
     ],
-  ])(`disables POSCAR ZIP for invalid lattice %s, keeps extXYZ`, (matrix) => {
+  ])(`refuses exports requiring the invalid lattice %s`, async (matrix) => {
     const molecule = {
       ...trajectory,
       preview: {
@@ -464,9 +464,25 @@ describe(`TrajectoryExportPane property export`, () => {
           : `finite 3x3 lattice matrix`
         : `this structure has no lattice`,
     )
-    expect(doc_query<HTMLButtonElement>(`button[aria-label="Download extXYZ"]`).disabled).toBe(
-      false,
-    )
+    const xyz = doc_query<HTMLButtonElement>(`button[aria-label="Download extXYZ"]`)
+    expect(xyz.disabled).toBe(Boolean(matrix?.flat().some((value) => !Number.isFinite(value))))
+    if (xyz.disabled) {
+      expect(xyz.title).toContain(`finite 3x3 lattice matrix`)
+      expect(
+        document.querySelector(`[id="${xyz.getAttribute(`aria-describedby`)}"]`)?.textContent,
+      ).toContain(`finite 3x3 lattice matrix`)
+    }
+    // Preview is frame zero; excluding it must allow the valid remaining frames.
+    const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
+    start_input.value = `1`
+    start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(poscar.disabled).toBe(false)
+    expect(xyz.disabled).toBe(false)
+    await click(`Download extXYZ`)
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+    const exported = parse_exported_frames(downloaded_text().join(`\n`))
+    expect(exported.map(({ step }) => step)).toEqual([5, 9])
   })
 
   test(`names every download action`, () => {

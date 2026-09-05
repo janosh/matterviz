@@ -239,13 +239,13 @@
         layout="flow"
       >
         <div class="style-row">
-          <label title="Full width at half maximum">
-            <span>FWHM</span>
+          <label>
+            <span title="Full width at half maximum">FWHM</span>
             <span class="value">{format_num(fwhm, `.3~`)}</span>
             <input id="ir-raman-fwhm" type="range" {...fwhm_input} bind:value={fwhm} />
           </label>
-          <label title="0 = Gaussian, 1 = Lorentzian">
-            <span>Shape</span>
+          <label>
+            <span title="0 = Gaussian, 1 = Lorentzian">Shape</span>
             <span class="value">{format_num(shape_factor, `.2~`)}</span>
             <input
               id="ir-raman-shape"

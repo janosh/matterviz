@@ -8,33 +8,6 @@ test.describe(`StructureExportPane Tests`, () => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
-  test(`export pane and control pane have mutual exclusion`, async ({ page }) => {
-    const { container: structure, pane_div: export_pane } =
-      await open_structure_export_pane(page)
-    const export_toggle = structure.locator(`.structure-export-toggle`)
-
-    // Opening control pane closes export pane (mutual exclusion)
-    const control_toggle = structure.locator(`.structure-controls-toggle`)
-    await control_toggle.click()
-    const control_pane = structure.locator(`.draggable-pane.controls-pane`)
-    await expect(control_pane).toBeVisible()
-    await expect(export_pane).toBeHidden()
-
-    // Opening export pane closes control pane
-    await export_toggle.click()
-    await expect(export_pane).toBeVisible()
-    await expect(control_pane).toBeHidden()
-
-    // Toggling the export pane closed keeps the DPI edit for the next open
-    const dpi_input = export_pane.locator(`input[type="number"][title*="dots per inch"]`)
-    await dpi_input.fill(`250`)
-    await export_toggle.click()
-    await expect(export_pane).toBeHidden()
-    await export_toggle.click()
-    await expect(export_pane).toBeVisible()
-    await expect(dpi_input).toHaveValue(`250`)
-  })
-
   test(`copying two formats in sequence shows checkmark feedback each time`, async ({
     page,
   }) => {

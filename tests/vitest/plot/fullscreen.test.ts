@@ -1,3 +1,4 @@
+import { mock_fullscreen } from '../setup'
 import { BarPlot } from '$lib'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -16,6 +17,7 @@ describe(`Plot Fullscreen Toggle`, () => {
   })
 
   test(`toggles fullscreen class and aria-label on button click`, async () => {
+    mock_fullscreen()
     // Mock client dimensions to ensure content renders
     Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
       configurable: true,

@@ -401,8 +401,8 @@
         on_reset={() => (sigma = 0)}
         layout="flow"
       >
-        <label title="Gaussian smearing width (σ)">
-          <span>σ</span>
+        <label>
+          <span title="Gaussian smearing width (σ)">σ</span>
           <span class="sigma-value">{format_num(sigma)}</span>
           <input
             id="dos-sigma"

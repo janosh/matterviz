@@ -137,8 +137,8 @@
 {/if}
 
 {#if count > 1 && controls_config.visible(`fps`)}
-  <label class="fps-section" title="Frame rate: {format_num(playback.fps, `.2~s`)} fps">
-    FPS
+  <label class="fps-section">
+    <span title="Frame rate: {format_num(playback.fps, `.2~s`)} fps">FPS</span>
     <input
       type="number"
       min={playback.fps_limits[0]}

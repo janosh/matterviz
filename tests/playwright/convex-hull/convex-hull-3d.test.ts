@@ -1,6 +1,6 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
-import { IS_CI, opacity_of, require_bbox } from '../helpers'
+import { opacity_of, require_bbox, test_without_errors as test } from '../helpers'
 import {
   dom_click,
   get_canvas_hash,
@@ -9,29 +9,36 @@ import {
   open_info_pane,
 } from './utils'
 
-const ternary_diagram = (page: Page) => page.locator(`.ternary-grid .convex-hull-3d`).first()
+const ternary_diagram = (page: Page) => page.locator(`.convex-hull-3d`).first()
 
 // Probe a grid around the canvas center until `hit` reports an entry under the pointer
 const scan_for_entry = async (
   box: { x: number; y: number; width: number; height: number },
   step: number,
   hit: (x: number, y: number) => Promise<boolean>,
-): Promise<{ x: number; y: number } | null> => {
-  for (let x_frac = 0.3; x_frac <= 0.7; x_frac += step) {
-    for (let y_frac = 0.3; y_frac <= 0.7; y_frac += step) {
+): Promise<{ x: number; y: number }> => {
+  for (let x_frac = 0.1; x_frac <= 0.9; x_frac += step) {
+    for (let y_frac = 0.1; y_frac <= 0.9; y_frac += step) {
       const [x, y] = [box.x + box.width * x_frac, box.y + box.height * y_frac]
       if (await hit(x, y)) return { x, y }
     }
   }
-  return null
+  throw new Error(
+    `No matching entry found in canvas scan: step=${step}, box=${JSON.stringify(box)}`,
+  )
 }
 
 test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Ternary hull tests timeout in CI`)
-    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
-    // the ternary-grid only renders after loaded_data.size > 0
-    await expect(page.locator(`.ternary-grid`).first()).toBeVisible({ timeout: 15_000 })
+    // Reproducible synthetic entries, including five structures for popup tests.
+    await page.addInitScript(() => {
+      let seed = 42
+      Math.random = () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+        return seed / 4294967296
+      }
+    })
+    await goto_perf_page(page, `3d`, `count=10&hull_dist=10`)
     await expect(ternary_diagram(page)).toBeVisible()
   })
 
@@ -43,12 +50,12 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await expect(diagram).toHaveAttribute(`data-is-dragging`, `false`)
     expect(await diagram.locator(`.plot-tooltip`).count()).toBe(0)
 
-    // gizmo holds its own WebGL canvas: 2 canvases total (hull + gizmo)
+    // The hull owns base and highlight canvases, plus the gizmo's separate canvas.
     const gizmo = diagram.locator(`.gizmo-wrapper`)
     await expect(gizmo.locator(`canvas`)).toBeAttached()
-    await expect(diagram.locator(`canvas`)).toHaveCount(2)
+    await expect(diagram.locator(`:scope > canvas`)).toHaveCount(2)
 
-    const overlays = [diagram.locator(`section.control-buttons`), gizmo]
+    const overlays = [diagram.locator(`.convex-hull-toolbar`), gizmo]
     for (const overlay of overlays) {
       await expect(overlay).toBeAttached()
       await expect(overlay).toHaveClass(/hover-visible/)
@@ -63,16 +70,13 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     const diagram = await goto_perf_page(page, `3d`, `count=100&click_selection=false`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const canvas = diagram.locator(`canvas`).first()
-    const box = await canvas.boundingBox()
-    if (box) {
-      // Click multiple positions to ensure we hit an entry
-      for (const off of [0, 0.3, -0.3]) {
-        await canvas.click({
-          position: { x: box.width * (0.5 + off), y: box.height * (0.5 + off) },
-        })
-      }
-      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    }
+    const box = await require_bbox(canvas, `canvas`)
+    const entry_pos = await scan_for_entry(box, 0.04, async (x, y) => {
+      await page.mouse.move(x, y)
+      return (await diagram.getAttribute(`data-has-hover`)) === `true`
+    })
+    await page.mouse.click(entry_pos.x, entry_pos.y)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
   })
 
   test(`magnetic category toggle re-renders canvas (hide + restore)`, async ({ page }) => {
@@ -129,7 +133,6 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
   })
 
   test(`renders ternary diagram canvas and toggles hull faces`, async ({ page }) => {
-    await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const diagram = ternary_diagram(page)
     const canvas = diagram.locator(`canvas`).first()
     await expect(canvas).toBeVisible()
@@ -137,21 +140,14 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await dom_click(diagram.locator(`.legend-controls-btn`))
     const pane = page.locator(`.draggable-pane.convex-hull-controls-pane`).last()
     const hull_toggle = pane.getByText(`Hull Faces`, { exact: false })
-    if (await hull_toggle.isVisible()) await hull_toggle.click()
+    await hull_toggle.click()
     await expect(canvas).toBeVisible()
   })
 
   test(`info pane stats show chemical system and counts`, async ({ page }) => {
     const diagram = ternary_diagram(page)
-    // Info pane is conditionally rendered (needs phase_stats data)
     const info = await open_info_pane(page, diagram)
-    if (!(await info.isVisible())) {
-      test.skip(true, `Info pane not available — phase_stats not yet computed`)
-      return
-    }
-    await expect(info.getByText(`Convex Hull Stats`, { exact: false })).toBeVisible({
-      timeout: 5000,
-    })
+    await expect(info).toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     await expect(info.getByText(`Stability`)).toBeVisible()
 
@@ -209,10 +205,6 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
       await page.waitForTimeout(30)
       return (await diagram.getAttribute(`data-has-selection`)) === `true`
     })
-    if (!entry_pos) {
-      test.skip(true, `No selectable entry found — Svelte 5 click handler not reachable`)
-      return
-    }
 
     // Clear selection by clicking corner
     await page.mouse.click(box.x + 5, box.y + 5)
@@ -228,19 +220,17 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
   })
 
-  test(`tooltip shows fractional compositions with unicode glyphs`, async ({ page }) => {
+  test(`tooltip shows compact fractional compositions`, async ({ page }) => {
     const diagram = ternary_diagram(page)
     const box = await require_bbox(diagram.locator(`canvas`).first(), `canvas`)
-    // Move mouse to center of canvas to trigger hover on a compound
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-
-    const tooltip = page.locator(`.plot-tooltip`)
-    if (await tooltip.isVisible()) {
-      const tooltip_text = await tooltip.textContent()
-      // Verify fractional compositions don't have long decimals like "666.67"
-      if (tooltip_text?.includes(`Fractional:`))
-        expect(tooltip_text).not.toMatch(/\d{3,}\.\d+/)
-    }
+    const tooltip = diagram.locator(`.plot-tooltip`)
+    await scan_for_entry(box, 0.04, async (x, y) => {
+      await page.mouse.move(x, y)
+      return (await tooltip.allTextContents()).join(``).includes(`Fractional:`)
+    })
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText(`Fractional:`)
+    await expect(tooltip).not.toContainText(/\d{3,}\.\d+/)
   })
 
   test(`t shortcut changes canvas view after drag`, async ({ page }) => {
@@ -276,35 +266,34 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     const box = await require_bbox(canvas, `canvas`)
     const popup = diagram.locator(`.structure-popup`)
 
-    // Double-click around center to find a selectable entry and open its popup
-    const entry_pos = await scan_for_entry(box, 0.05, async (x, y) => {
-      await page.mouse.dblclick(x, y)
-      await page.waitForTimeout(100)
-      return popup.isVisible()
+    // Hover first: only click a compound known to carry a structure in this fixture.
+    const tooltip = diagram.locator(`.plot-tooltip`)
+    const entry_pos = await scan_for_entry(box, 0.02, async (x, y) => {
+      await page.mouse.move(x, y)
+      return (await tooltip.allTextContents()).some((text) => /test-[0-4]\b/.test(text))
     })
-    if (!entry_pos) {
-      test.skip(true, `Could not find selectable entry to open popup`)
-      return
-    }
+    await page.mouse.click(entry_pos.x, entry_pos.y)
 
     await expect(popup).toBeVisible()
     await canvas.press(`Escape`)
     await expect(popup).toBeHidden()
   })
 
-  test(`controls pane: no scroll overflow, pointer-events, drag isolation`, async ({
+  test(`controls pane: scrollable content, pointer-events, drag isolation`, async ({
     page,
   }) => {
     const diagram = ternary_diagram(page)
     const pane = await open_controls_pane(page, diagram)
     await expect(pane).toBeVisible({ timeout: 10_000 })
 
-    // scrollHeight should not exceed clientHeight (no hidden scrollable content)
-    const { scroll_height, client_height } = await pane.evaluate((el) => ({
-      scroll_height: el.scrollHeight,
-      client_height: el.clientHeight,
-    }))
-    expect(scroll_height).toBeLessThanOrEqual(client_height + 2)
+    // Short viewports keep all controls reachable through scrolling.
+    const content = pane.locator(`.pane-content`).first()
+    const remaining_scroll = await content.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+      return element.scrollHeight - element.clientHeight - element.scrollTop
+    })
+    expect(remaining_scroll).toBeLessThanOrEqual(2)
+    await content.evaluate((element) => (element.scrollTop = 0))
 
     // Pane has pointer-events: auto (prevents event leaking to canvas)
     expect(await pane.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe(`auto`)

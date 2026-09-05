@@ -105,6 +105,7 @@
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: visible"
     {band_structs}
+    {structure}
     fermi_level={sync.fermi_level}
     {...bands_props}
     padding={{ r: is_desktop ? 10 : 5, ...bands_props.padding, ...sync.shared_padding }}

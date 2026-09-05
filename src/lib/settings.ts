@@ -370,14 +370,10 @@ export const SETTINGS_CONFIG = define_settings({
       description: `When to render coordination polyhedra around cation-like centers`,
       enum: SHOW_BONDS_ENUM,
     },
-    polyhedra_opacity: opacity_setting(0.25, `Opacity of coordination polyhedra faces`),
+    polyhedra_opacity: opacity_setting(0.15, `Opacity of coordination polyhedra faces`),
     polyhedra_show_edges: {
       value: true,
       description: `Draw outlines along coordination polyhedra edges`,
-    },
-    polyhedra_edge_color: {
-      value: `#222222`,
-      description: `Color of coordination polyhedra edge lines`,
     },
     polyhedra_color_mode: {
       value: `vertex`,

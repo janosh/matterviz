@@ -7,50 +7,8 @@ import type {
 } from '$lib/plot/core/facets'
 import { createRawSnippet, mount, tick, unmount, type Snippet } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
-import { afterAll, afterEach, describe, expect, test } from 'vitest'
-import { query } from '../setup'
-
-const original_resize_observer = globalThis.ResizeObserver
-class ControlledResizeObserver implements ResizeObserver {
-  static instances: ControlledResizeObserver[] = []
-  readonly observed_elements: Element[] = []
-
-  constructor(private readonly callback: ResizeObserverCallback) {
-    ControlledResizeObserver.instances.push(this)
-  }
-
-  observe(element: Element): void {
-    if (!this.observed_elements.includes(element)) this.observed_elements.push(element)
-    queueMicrotask(() => this.notify(element))
-  }
-
-  unobserve(element: Element): void {
-    const element_idx = this.observed_elements.indexOf(element)
-    if (element_idx !== -1) this.observed_elements.splice(element_idx, 1)
-  }
-
-  disconnect(): void {
-    this.observed_elements.length = 0
-  }
-
-  notify(element: Element): void {
-    if (!this.observed_elements.includes(element)) return
-    const rect =
-      element instanceof HTMLElement
-        ? { width: element.clientWidth, height: element.clientHeight }
-        : {}
-    this.callback(
-      [{ target: element, contentRect: DOMRect.fromRect(rect) } as ResizeObserverEntry],
-      this,
-    )
-  }
-
-  static notify(element: Element): void {
-    for (const observer of ControlledResizeObserver.instances) observer.notify(element)
-  }
-}
-
-globalThis.ResizeObserver = ControlledResizeObserver
+import { afterEach, describe, expect, test } from 'vitest'
+import { query, trigger_resize_observer } from '../setup'
 
 const make_panel_snippet = (context_getters: (() => FacetPanelContext)[]) =>
   createRawSnippet<[FacetPanelContext]>((get_context) => {
@@ -132,10 +90,7 @@ describe(`FacetGrid`, () => {
       await unmount(component)
       target.remove()
     }
-    ControlledResizeObserver.instances.length = 0
   })
-
-  afterAll(() => void (globalThis.ResizeObserver = original_resize_observer))
 
   test(`renders explicit shared chrome bands and passes their geometry to slots`, async () => {
     const band_context_getters: (() => FacetSharedBandContext)[] = []
@@ -186,7 +141,7 @@ describe(`FacetGrid`, () => {
       clientWidth: { value: 0, configurable: true },
       clientHeight: { value: 0, configurable: true },
     })
-    ControlledResizeObserver.notify(root)
+    trigger_resize_observer(root)
     await tick()
 
     const rects = [
@@ -326,12 +281,7 @@ describe(`FacetGrid`, () => {
       clientWidth: { value: 400, configurable: true },
       clientHeight: { value: 200, configurable: true },
     })
-    expect(
-      ControlledResizeObserver.instances.some(({ observed_elements }) =>
-        observed_elements.includes(root),
-      ),
-    ).toBe(true)
-    ControlledResizeObserver.notify(root)
+    trigger_resize_observer(root)
     await tick()
 
     const resized_left = context_for(context_getters, `left`)
@@ -348,7 +298,7 @@ describe(`FacetGrid`, () => {
 
     // An identical report and resize are both no-ops, so the resolved context stays stable.
     resized_left.report_layout({ padding: { l: 60 }, ranges: { x: [-2, 2] } })
-    ControlledResizeObserver.notify(root)
+    trigger_resize_observer(root)
     await tick()
     expect(context_for(context_getters, `left`)).toBe(resized_left)
   })

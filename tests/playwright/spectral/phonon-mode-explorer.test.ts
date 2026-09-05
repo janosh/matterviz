@@ -177,10 +177,12 @@ test.describe(`PhononModeExplorer`, () => {
     ).toBeGreaterThan(1e-6)
     expect(max_coordinate_delta(frame_zero, frame_one)).toBeGreaterThan(1e-6)
 
+    await explorer.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
     const qpoint_select = explorer.getByLabel(`q-point`, { exact: true })
     await qpoint_select.selectOption(`2`)
     await expect(summary).toContainText(`q = [0.25, 0, 0.25]`)
 
+    await explorer.getByRole(`button`, { name: `Modes`, exact: true }).click()
     await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
     const stick = explorer.locator(`line.mode-stick`).nth(1)
     await stick.click({ force: true })
@@ -206,6 +208,7 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(detail).toContainText(`eigenvectors at 15 of 35 q-points`)
     await expect(summary).toContainText(`eigenvectors at 15/35 q-points`)
     await expect(summary).toContainText(`Γ q = [0, 0, 0]`)
+    await explorer.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
     await expect(
       explorer.getByLabel(`q-point`, { exact: true }).locator(`option:disabled`),
     ).toHaveCount(20)
@@ -223,6 +226,7 @@ test.describe(`PhononModeExplorer`, () => {
     await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
     await expect(detail).toContainText(`Γ-only file with Born charges and Raman tensors`)
     await expect(summary).toContainText(`q = [0, 0, 0]`)
+    await explorer.getByRole(`button`, { name: `Modes`, exact: true }).click()
     await expect(explorer.getByRole(`button`, { name: `Raman`, exact: true })).toBeVisible()
 
     const co2_yaml = gunzip_sync(
@@ -257,12 +261,15 @@ test.describe(`PhononModeExplorer`, () => {
     await expect.poll(() => url_params(page)).toEqual({ file: `NaCl-Gamma-X-band.yaml` })
 
     const explorer = page.locator(`#phonon-mode-explorer`)
+    await explorer.locator(`.trajectory`).hover()
+    await explorer.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
     await explorer.getByLabel(`q-point`, { exact: true }).selectOption(`3`)
     await explorer.getByLabel(`Mode`, { exact: true }).selectOption(`4`)
-    await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
     await explorer.locator(`.amplitude-control input`).fill(`0.42`)
-    await explorer.locator(`.fps-section input`).fill(`18`)
     await explorer.getByLabel(`Eigenvectors`).check()
+    await explorer.getByRole(`button`, { name: `Modes`, exact: true }).click()
+    await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
+    await explorer.locator(`.fps-section input`).fill(`18`)
     await select_supercell(explorer, 2)
 
     await expect
@@ -285,9 +292,13 @@ test.describe(`PhononModeExplorer`, () => {
     const restored_summary = restored.getByTestId(`phonon-mode-summary`)
     await expect(restored_summary).toContainText(`Mode 5`)
     await expect(restored_summary).toContainText(`q = [0.375, 0, 0.375]`)
+    await restored.locator(`.trajectory`).hover()
+    await restored.getByRole(`button`, { name: `Modes`, exact: true }).click()
     await expect(restored.getByRole(`button`, { name: `IR`, exact: true })).toHaveClass(
       /active/,
     )
+    await restored.locator(`.trajectory`).hover()
+    await restored.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
     await expect(restored.locator(`.amplitude-control input`)).toHaveValue(`0.42`)
     await expect(restored.locator(`.fps-section input`)).toHaveValue(`18`)
     await expect(restored.getByLabel(`Eigenvectors`)).toBeChecked()

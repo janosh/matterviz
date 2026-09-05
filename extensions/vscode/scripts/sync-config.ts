@@ -13,33 +13,6 @@ import { is_plain_object } from '$lib/utils'
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
 const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]
 
-// Settings removed from SETTINGS_CONFIG that users may still have in their settings.json. They
-// stay in the contributed configuration as deprecated entries (type plus `deprecationMessage`,
-// no default) so the editor flags them instead of silently ignoring them.
-const tick_format_removed = {
-  type: `string`,
-  deprecated: `Removed; tick formats are set per plot in its controls pane (Tick format)`,
-} as const
-const tick_count_removed = {
-  type: `number`,
-  deprecated: `Removed; tick counts follow the plot size automatically`,
-} as const
-export const DEPRECATED_SETTINGS: Readonly<
-  Record<string, { type: `boolean` | `number` | `string`; deprecated: string }>
-> = {
-  'plot.grid_lines': {
-    type: `boolean`,
-    deprecated: `Removed; use matterviz.plot.display.x_grid / matterviz.plot.display.y_grid`,
-  },
-  'plot.axis_labels': { type: `boolean`, deprecated: `Removed; had no effect` },
-  'plot.x_format': tick_format_removed,
-  'plot.x2_format': tick_format_removed,
-  'plot.y_format': tick_format_removed,
-  'plot.y2_format': tick_format_removed,
-  'plot.x_ticks': tick_count_removed,
-  'plot.y_ticks': tick_count_removed,
-}
-
 // Formats with no decoder still get a useful "Reopen Editor With…" conversion hint.
 // JupyterLab does not claim these because its file types displace the default handler.
 const HINT_ONLY_EXTENSIONS = [`dcd`, `xtc`, `trr`]
@@ -92,13 +65,10 @@ export const build_custom_editor_selectors = (): { filenamePattern: string }[] =
   )
 }
 
-// Every non-web_only leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting, plus a
-// deprecated entry (type + deprecationMessage, no default) for each removed key so the editor
-// flags stale settings.json values. Exported so tests can check the generated ids against what
-// the code actually reads; the schema/removed-key parameters let tests feed their own.
+// Every non-web_only leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting.
+// Exported so tests can check generated ids against the settings the code actually reads.
 export const build_vscode_settings = (
   settings_schema: unknown = SETTINGS_CONFIG,
-  deprecated_settings: typeof DEPRECATED_SETTINGS = DEPRECATED_SETTINGS,
 ): Record<string, Record<string, unknown>> => {
   const vscode_config: Record<string, Record<string, unknown>> = {}
 
@@ -117,11 +87,9 @@ export const build_vscode_settings = (
       default: schema.value,
       description: schema.description,
     }
-    if (schema.minimum !== undefined) config.minimum = schema.minimum
-    if (schema.maximum !== undefined) config.maximum = schema.maximum
-    if (schema.multipleOf !== undefined) config.multipleOf = schema.multipleOf
-    if (schema.minItems !== undefined) config.minItems = schema.minItems
-    if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
+    for (const key of [`minimum`, `maximum`, `multipleOf`, `minItems`, `maxItems`] as const) {
+      if (schema[key] !== undefined) config[key] = schema[key]
+    }
     if (schema.enum) config.enum = Object.keys(schema.enum)
 
     // Empty-array defaults cannot reveal an item type, so default those to string.
@@ -137,13 +105,6 @@ export const build_vscode_settings = (
   }
 
   process_setting_schema(settings_schema, `matterviz`)
-  for (const [key_path, { type, deprecated }] of Object.entries(deprecated_settings)) {
-    const full_path = `matterviz.${key_path}`
-    if (full_path in vscode_config) {
-      throw new Error(`${full_path} is both a live setting and listed in DEPRECATED_SETTINGS`)
-    }
-    vscode_config[full_path] = { type, deprecationMessage: deprecated }
-  }
   return vscode_config
 }
 

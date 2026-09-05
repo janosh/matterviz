@@ -484,8 +484,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
 
       const legend_items = scatter_plot.locator(`.legend .legend-item`)
-      const item_count = await legend_items.count()
-      test.skip(item_count < 2, `Need at least two legend items to test toggling`)
+      await expect(legend_items).toHaveCount(2)
 
       const first_item = legend_items.first()
       await expect(first_item).toBeVisible()
@@ -641,9 +640,6 @@ test.describe(`Trajectory Component`, () => {
       const display_button = trajectory.locator(
         `.view-mode-dropdown-wrapper .view-mode-button`,
       )
-      const button_count = await display_button.count()
-      test.skip(button_count === 0, `No view mode button found (no plot data)`)
-
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
       await expect(display_button).toBeVisible()
       await select_display_mode(trajectory, `Structure-only`)

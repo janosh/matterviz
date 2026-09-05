@@ -199,11 +199,15 @@ We welcome contributions! Please see our [Contributing Guide](../../contributing
 
 ## 🛠️ Development
 
+The extension bundles source from the repository and uses shared dependencies from the root installation. Install both root and extension dependencies before building.
+
 ```bash
 git clone https://github.com/janosh/matterviz
-cd matterviz/extensions/vscode
-npm install
-npm run build
+cd matterviz
+pnpm install --no-lockfile
+pnpm -C extensions/vscode install --ignore-workspace --no-lockfile
+cd extensions/vscode
+pnpm run build
 vsce package  # creates .vsix for local install
 ```
 

@@ -292,7 +292,7 @@ describe(`StructureExportPane`, () => {
       [0, 1, 0],
       [0, 0, 0],
     ],
-  ])(`invalid lattice %s disables CIF/POSCAR, keeps JSON/XYZ`, (matrix) => {
+  ])(`invalid lattice %s disables formats that require it`, (matrix) => {
     const structure = {
       sites: simple_structure.sites.map(({ abc: _abc, ...site }) => site),
       ...(matrix && { lattice: { matrix } }),
@@ -317,10 +317,38 @@ describe(`StructureExportPane`, () => {
         : `this structure has no lattice`,
     )
     for (const label of [`JSON`, `XYZ`]) {
-      expect(get_button(`Download ${label}`).disabled, label).toBe(false)
-      expect(get_button(`Copy ${label}`).disabled, label).toBe(false)
+      const disabled =
+        label === `XYZ` &&
+        Boolean(matrix?.some((row) => row.some((value) => !Number.isFinite(value))))
+      expect(get_button(`Download ${label}`).disabled, label).toBe(disabled)
+      expect(get_button(`Copy ${label}`).disabled, label).toBe(disabled)
     }
   })
+
+  test.each([`abc`, `xyz`] as const)(
+    `invalid %s disables only the format using those coordinates`,
+    (source) => {
+      const structure = {
+        ...simple_structure,
+        sites: simple_structure.sites.map((site) => ({ ...site, [source]: [NaN, 0, 0] })),
+      }
+      mount_pane({ structure })
+      for (const label of [`XYZ`, `CIF`, `POSCAR`]) {
+        const disabled = source === `xyz` ? label === `XYZ` : label !== `XYZ`
+        for (const action of [`Download`, `Copy`]) {
+          const button = get_button(`${action} ${label}`)
+          expect(button.disabled).toBe(disabled)
+          if (disabled) {
+            expect(button.title).toContain(`three finite numeric components`)
+            expect(
+              document.querySelector(`[id="${button.getAttribute(`aria-describedby`)}"]`)
+                ?.textContent,
+            ).toContain(`three finite numeric components`)
+          }
+        }
+      }
+    },
+  )
 
   test(`a throwing serializer on download is logged, not thrown from the click handler`, () => {
     vi.mocked(export_funcs.export_structure_as).mockImplementationOnce(() => {

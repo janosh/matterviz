@@ -1,5 +1,5 @@
-import type { Vec3 } from '$lib/math'
-import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
+import { create_cart_to_frac, create_frac_to_cart, dot } from '$lib/math'
 import type { Complex, PhononModeData } from '$lib/spectral'
 import {
   is_commensurate_phonon_supercell,
@@ -18,7 +18,6 @@ import {
 } from '$lib/spectral'
 import { get_structure_vector_keys } from '$lib/structure'
 import { compute_bonds, get_bond_key } from '$lib/structure/bonding'
-import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
 import cspbi3_band_yaml from '$site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
 import nacl_band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
@@ -134,9 +133,11 @@ describe(`phonon_mode_trajectory`, () => {
     expect(displacement_at(data, 1, 0)[1]).toBeCloseTo(1, 14)
   })
 
-  it(`applies Bloch phase to translated supercell images`, () => {
+  it.each([0, -1, 1])(`applies Bloch phase with a basis translated by %s cells`, (shift) => {
+    const data = make_mode_data(real_x, [0.5, 0, 0])
+    data.atoms[0].coordinates = [shift, 0, 0]
     const trajectory = phonon_mode_trajectory(
-      make_mode_data(real_x, [0.5, 0, 0]),
+      data,
       { qpoint_idx: 0, mode_idx: 0 },
       { amplitude: 1, supercell: [2, 1, 1], n_frames: 4 },
     )
@@ -235,61 +236,89 @@ describe(`phonon_mode_trajectory`, () => {
     expect(cyclic_steps.at(-1)).toBeLessThanOrEqual(Math.max(...cyclic_steps.slice(0, -1)))
   })
 
-  it(`keeps base-structure bond topology fixed while atoms vibrate`, () => {
-    const trajectory = phonon_mode_trajectory(
-      parse_phonon_modes(nacl_band_yaml),
-      { qpoint_idx: 0, mode_idx: 3 },
-      { amplitude: 0.6, supercell: [3, 3, 2], n_frames: 12 },
-    )
-    const frame_bonds = trajectory.frames.map(({ structure }) =>
-      compute_bonds(structure, `explicit_only`),
-    )
-    const first_structure = trajectory.frames[0].structure
-    if (!(`lattice` in first_structure)) throw new Error(`Expected a crystal frame`)
-    const bonded_site_indices = new SvelteSet(
-      frame_bonds[0].flatMap(({ site_idx_1, site_idx_2 }) => [site_idx_1, site_idx_2]),
-    )
-    const cart_to_frac = create_cart_to_frac(first_structure.lattice.matrix)
-    const equilibrium_abc = (site: (typeof first_structure.sites)[number]): Vec3 => {
-      const displacement = site.properties.phonon_displacement as Vec3
-      return cart_to_frac(
-        site.xyz.map((coordinate, axis) => coordinate - displacement[axis]) as Vec3,
+  it.each([
+    [`NaCl`, parse_phonon_modes(nacl_band_yaml), 3, 6],
+    // TECE mp-22913: the Br partners of the low-face Cu atoms lie outside the cell.
+    ...[-0.25, 0.75, 1.75].map(
+      (coordinate) =>
+        [
+          `CuBr (Br=${coordinate})`,
+          {
+            ...make_mode_data([...real_x, ...real_x], [0, 0, 0], [63.546, 79.904]),
+            lattice: [
+              [0, 2.8583, 2.8583],
+              [2.8583, 0, 2.8583],
+              [2.8583, 2.8583, 0],
+            ],
+            atoms: [
+              { symbol: `Cu`, mass: 63.546, coordinates: [0, 0, 0] },
+              {
+                symbol: `Br`,
+                mass: 79.904,
+                coordinates: [coordinate, coordinate, coordinate],
+              },
+            ],
+          } satisfies PhononModeData,
+          0,
+          4,
+        ] as const,
+    ),
+  ] as const)(
+    `completes %s boundary bonds and keeps topology fixed`,
+    (_name, data, mode_idx, coordination) => {
+      const trajectory = phonon_mode_trajectory(
+        data,
+        { qpoint_idx: 0, mode_idx },
+        { amplitude: 0.6, supercell: [3, 3, 2], n_frames: 12 },
       )
-    }
-    const unbonded_sites = first_structure.sites.filter(
-      (_, site_idx) => !bonded_site_indices.has(site_idx),
-    )
-    expect(unbonded_sites).toHaveLength(2)
-    for (const site of unbonded_sites) {
-      expect(
-        equilibrium_abc(site).every(
-          (coordinate) => Math.abs(coordinate) < 1e-12 || Math.abs(coordinate - 1) < 1e-12,
+      const frame_bonds = trajectory.frames.map(({ structure }) =>
+        compute_bonds(structure, `explicit_only`),
+      )
+      const first_structure = trajectory.frames[0].structure
+      if (!(`lattice` in first_structure)) throw new Error(`Expected a crystal frame`)
+      const degrees = new Uint32Array(first_structure.sites.length)
+      for (const { site_idx_1, site_idx_2 } of frame_bonds[0]) {
+        degrees[site_idx_1]++
+        degrees[site_idx_2]++
+      }
+      const cart_to_frac = create_cart_to_frac(first_structure.lattice.matrix)
+      const equilibrium_abc = (site: (typeof first_structure.sites)[number]): Vec3 => {
+        const displacement = site.properties.phonon_displacement as Vec3
+        return cart_to_frac(
+          site.xyz.map((coordinate, axis) => coordinate - displacement[axis]) as Vec3,
+        )
+      }
+      expect(degrees.every((degree) => degree > 0)).toBe(true)
+      for (const [site_idx, site] of first_structure.sites.entries()) {
+        if (site.properties.completion_image) continue
+        expect(degrees[site_idx], `${site.label} coordination`).toBe(coordination)
+      }
+      const image_sites = first_structure.sites.filter(
+        ({ properties }) => typeof properties.orig_site_idx === `number`,
+      )
+      expect(image_sites.length).toBeGreaterThan(0)
+      for (const site of image_sites) {
+        const abc = equilibrium_abc(site)
+        const source = first_structure.sites[site.properties.orig_site_idx as number]
+        const source_abc = equilibrium_abc(source)
+        const shift = abc.map((coordinate, axis) => coordinate - source_abc[axis])
+        expect(shift.some((coordinate) => Math.abs(coordinate) > 0.5)).toBe(true)
+        shift.forEach((coordinate) =>
+          expect(coordinate).toBeCloseTo(Math.round(coordinate), 12),
+        )
+      }
+      const bond_keys = frame_bonds.map((bonds) =>
+        bonds.map(({ site_idx_1, site_idx_2, cell_shift }) =>
+          get_bond_key(site_idx_1, site_idx_2, cell_shift),
         ),
-      ).toBe(true)
-    }
-    expect(bonded_site_indices.size / first_structure.sites.length).toBeGreaterThan(0.95)
-    const image_sites = first_structure.sites.filter(
-      ({ properties }) => typeof properties.orig_site_idx === `number`,
-    )
-    expect(image_sites.length).toBeGreaterThan(0)
-    for (const site of image_sites) {
-      const abc = equilibrium_abc(site)
-      expect(abc.every((coordinate) => coordinate >= -1e-12 && coordinate <= 1 + 1e-12)).toBe(
-        true,
       )
-      expect(abc.some((coordinate) => Math.abs(coordinate - 1) < 1e-12)).toBe(true)
-    }
-    const bond_keys = frame_bonds.map((bonds) =>
-      bonds.map(({ site_idx_1, site_idx_2, cell_shift }) =>
-        get_bond_key(site_idx_1, site_idx_2, cell_shift),
-      ),
-    )
-    expect(bond_keys).toEqual(trajectory.frames.map(() => bond_keys[0]))
-    expect(frame_bonds.flat().every(({ cell_shift }) => cell_shift === undefined)).toBe(true)
-    expect(frame_bonds[1].map(({ bond_length }) => bond_length)).not.toEqual(
-      frame_bonds[0].map(({ bond_length }) => bond_length),
-    )
-  })
+      expect(bond_keys).toEqual(trajectory.frames.map(() => bond_keys[0]))
+      expect(frame_bonds.flat().every(({ cell_shift }) => cell_shift === undefined)).toBe(true)
+      expect(frame_bonds[1].map(({ bond_length }) => bond_length)).not.toEqual(
+        frame_bonds[0].map(({ bond_length }) => bond_length),
+      )
+    },
+  )
 
   it.each([
     [`zero amplitude`, { amplitude: 0 }, /amplitude must be a positive/],
@@ -298,7 +327,7 @@ describe(`phonon_mode_trajectory`, () => {
     [
       `oversized supercell`,
       { supercell: [500, 500, 1] as Vec3 },
-      /would display 502002 sites.*exceeding the 200000 limit/,
+      /would display 250000 sites.*exceeding the 200000 limit/,
     ],
   ])(`rejects %s`, (_name, options, error) => {
     expect(() =>
@@ -458,16 +487,41 @@ describe(`phonon band helpers`, () => {
     expect(Math.max(...relative_errors)).toBeLessThan(1e-12)
   })
 
-  it(`transposes modes and preserves normalized path branches and labels`, () => {
+  it.each([
+    IDENTITY_MATRIX3,
+    null,
+    [
+      [2, 0, 0],
+      [1, 3, 0],
+      [0, 0, 4],
+    ] satisfies Matrix3x3,
+  ])(`preserves band metadata (%j)`, (lattice) => {
     const data = make_mode_data()
+    data.lattice = lattice
     data.qpoints = [
       { q_position: [0, 0, 0], distance: 0, modes: [{ frequency: 1, eigenvector: real_x }] },
-      { q_position: [0.5, 0, 0], distance: 1, modes: [{ frequency: 2, eigenvector: real_x }] },
+      {
+        q_position: [0.5, 0, 0],
+        distance: 1,
+        modes: [{ frequency: 2, eigenvector: real_x }],
+      },
     ]
     data.path_segments = [
       { start_index: 0, end_index: 1, start_label: `GAMMA`, end_label: `X` },
     ]
     const bands = phonon_band_structure_from_modes(data)
+    if (lattice) {
+      expect(bands.recip_lattice).toHaveLength(3)
+      // a_i · b_j = 2π δ_ij, including skew cells; 12 digits allow inversion roundoff.
+      lattice.forEach((real_vector, real_idx) =>
+        bands.recip_lattice?.forEach((recip_vector, recip_idx) =>
+          expect(dot(real_vector, recip_vector)).toBeCloseTo(
+            real_idx === recip_idx ? 2 * Math.PI : 0,
+            12,
+          ),
+        ),
+      )
+    } else expect(bands.recip_lattice).toBeUndefined()
     expect(bands.bands).toEqual([[1, 2]])
     expect(bands.branches).toEqual([
       { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },

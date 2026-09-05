@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Spinner, StatusMessage } from '$lib/feedback'
+  import { Spinner, StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'

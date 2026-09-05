@@ -109,6 +109,7 @@ describe(`collect_msd_positions`, () => {
   it(`enforces the memory budget and suggests the minimum fitting stride`, async () => {
     const run = make_run(100)
     expect(suggest_analysis_frame_stride(run, 1000)).toBe(5)
+    expect(suggest_analysis_frame_stride(run, 1000, 1, 10)).toBe(1)
     expect(
       (await collect_msd_positions(run, { max_bytes: 1000, start_frame: 10, end_frame: 20 }))
         .n_frames,

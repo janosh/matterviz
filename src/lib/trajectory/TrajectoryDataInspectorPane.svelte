@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage, Tabs } from 'svelte-widgets'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import { type CellVal, HeatmapTable, type Label, type RowData } from '$lib/table'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { Tabs } from 'svelte-widgets'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
 

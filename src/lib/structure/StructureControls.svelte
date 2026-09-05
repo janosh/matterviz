@@ -3,12 +3,12 @@
   import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ColorSchemeName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Icon, MultiSelect as Select, Spinner } from 'svelte-widgets'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
   import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
-  import { format_num } from '$lib/labels'
+  import { capitalize, format_num } from '$lib/labels'
   import { download } from '$lib/io/fetch'
   import {
     NumberRangeInput,
@@ -63,7 +63,6 @@
   import { to_error } from '$lib/utils'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
-  import { Icon, MultiSelect as Select } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
 
@@ -289,7 +288,7 @@
   // select, boolean → checkbox, number → slider + number input, string → color swatch).
   // Rows default to reading/writing scene_props[key]; `get`/`set` point one elsewhere (a
   // top-level bindable such as show_image_atoms). `pair` adds a dependent color swatch beside
-  // the primary control, and `data_key` names the pseudo-setting the pair resets as one.
+  // the primary control. The paired setting's key identifies both controls for reset and description.
   type StructureSettingKey = keyof typeof SETTINGS_CONFIG.structure
   type Row = {
     key: StructureSettingKey
@@ -300,7 +299,6 @@
     get?: () => unknown
     set?: (value: unknown) => void
     pair?: { key: StructureSettingKey; when: () => boolean }
-    data_key?: SettingKey // pseudo-key a paired row resets and describes as one
   }
   const row = (key: StructureSettingKey, label: string, step?: number): Row => ({
     key,
@@ -347,20 +345,12 @@
     row(`polyhedra_opacity`, `Opacity`, 0.05),
     {
       ...row(`polyhedra_color_mode`, `Color`),
-      data_key: `polyhedra_color`,
       pair: {
         key: `polyhedra_color`,
         when: () => scene_props.polyhedra_color_mode === `uniform`,
       },
     },
-    {
-      ...row(`polyhedra_show_edges`, `Edges`),
-      data_key: `polyhedra_edges`,
-      pair: {
-        key: `polyhedra_edge_color`,
-        when: () => Boolean(scene_props.polyhedra_show_edges),
-      },
-    },
+    row(`polyhedra_show_edges`, `Edges`),
     row(`polyhedra_hide_center_atoms`, `Hide centers`),
     row(`polyhedra_min_neighbors`, `Min neighbors`, 1),
     row(`polyhedra_max_neighbors`, `Max neighbors`, 1),
@@ -435,7 +425,6 @@
     multi_view: `Show synchronized structure views from multiple directions`,
     polyhedra_centers: `Elements used as centers when constructing coordination polyhedra`,
     polyhedra_color: `Color mode and optional uniform color for coordination polyhedra`,
-    polyhedra_edges: `Visibility and color of coordination-polyhedra edges`,
     site_label_bg_hex: `Background color behind atom labels`,
     site_label_bg_opacity: `Opacity of the background behind atom labels`,
     supercell_scaling: `Repeat the unit cell along each lattice direction. Examples: "2x2x2", "3x1x2", or "2"`,
@@ -457,7 +446,10 @@
     return {
       'data-key': key,
       'aria-description': description,
-      [setting_attachment_key]: tooltip({ content: description }),
+      [setting_attachment_key]: tooltip({
+        content: description,
+        delegate: `[data-key] > span:first-child`,
+      }),
     }
   }
 
@@ -488,7 +480,7 @@
     const keys = [...extra_keys]
     for (const current of rows) {
       if (current.pair) {
-        accessors[current.data_key ?? current.key] = scene_pair(current.key, current.pair.key)
+        accessors[current.pair.key] = scene_pair(current.key, current.pair.key)
       } else if (current.get && current.set) {
         accessors[current.key] = local(current.get, current.set)
       } else keys.push(current.key)
@@ -809,7 +801,7 @@
           >{label}</NumberRangeInput
         >
       {:else}
-        <label {...setting_row(current.data_key ?? key)}>
+        <label {...setting_row(pair?.key ?? key)}>
           <span>{label}</span>
           <span class="ctrl-pair">
             {#if schema.enum}
@@ -877,7 +869,6 @@
     >
       <Icon icon={Reset} />
       <span>Reset view</span>
-      <kbd>r</kbd>
     </button>
   {/if}
 
@@ -918,12 +909,9 @@
             {@render setting_rows(visibility_rows)}
             {#each available_vector_keys as key, idx (key)}
               {@const key_visible = is_key_visible(key)}
-              {@const description = `Visibility and color of ${key} vectors`}
-              <label
-                data-key={`vector_config:${key}`}
-                data-description={description}
-                {@attach tooltip({ content: description })}
-              >
+              {@const vector_label = capitalize(key.replaceAll(`_`, ` `))}
+              {@const description = `Visibility and color of ${vector_label} vectors`}
+              <label data-key={`vector_config:${key}`} data-description={description}>
                 <input
                   type="checkbox"
                   checked={key_visible}
@@ -932,18 +920,18 @@
                 <input
                   class="swatch"
                   type="color"
-                  aria-label={`${key} vector color`}
+                  aria-label={`${vector_label} color`}
                   value={scene_props.vector_configs?.[key]?.color ??
                     VECTOR_PALETTE[idx % VECTOR_PALETTE.length]}
                   onchange={(evt) =>
                     update_vector_config(key, { color: evt.currentTarget.value })}
                 />
-                {key}
+                <span {@attach tooltip({ content: description })}>{vector_label}</span>
                 {#if scene_props.vector_configs?.[key]?.color != null}
                   <button
                     type="button"
                     class="clear-color"
-                    aria-label={`Reset ${key} color to default`}
+                    aria-label={`Reset ${vector_label} color to default`}
                     onclick={() => update_vector_config(key, { color: null })}
                   >
                     ×
@@ -1538,13 +1526,18 @@
 </ControlPane>
 
 <style>
-  /* Column rhythm for every grid section in this pane. Widening the pane widens the slider
-     track only, so the label and value columns stay put and the eye can run straight down. */
+  /* Value tracks grow with typed numbers; sliders use the remaining space. */
   :global(.controls-pane) {
     font-size: 0.85em;
     --ctrl-label-w: 9.4em;
-    --ctrl-value-w: 3.6em;
+    --ctrl-value-w: minmax(6ch, max-content);
     --ctrl-cols: var(--ctrl-label-w) var(--ctrl-value-w) minmax(0, 1fr);
+  }
+  :global(.draggable-pane.controls-pane input[type='number']) {
+    field-sizing: content;
+    width: auto;
+    min-width: 6ch;
+    flex-shrink: 0;
   }
   /* Sections that opted out of the grid keep the historical stacked flow (the nested
      isosurface and volume-slice panes render their own markup in here) */
@@ -1553,8 +1546,13 @@
     flex-direction: column;
     gap: 6pt;
   }
+  :global(.controls-pane .settings-group > summary) {
+    min-height: 1.8em;
+    box-sizing: border-box;
+    padding: 2pt;
+  }
   :global(.controls-pane h4) {
-    margin: 8pt 0 3pt !important;
+    margin: 4pt 0 2pt !important;
     font-size: 0.95em;
     opacity: 0.75;
   }
@@ -1564,12 +1562,13 @@
     margin-top: 0 !important;
   }
   .reset-camera {
+    width: fit-content;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 5pt;
     margin-bottom: 4pt;
-    padding: 3pt;
+    padding: 1pt 6pt;
     cursor: pointer;
     border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
     border-radius: var(--border-radius, 3pt);
@@ -1577,11 +1576,6 @@
     color: inherit;
     &:hover {
       background: color-mix(in srgb, currentColor 16%, transparent);
-    }
-    kbd {
-      padding: 0 4px;
-      border-radius: 2pt;
-      background: color-mix(in srgb, currentColor 14%, transparent);
     }
   }
   :is(
@@ -1684,6 +1678,7 @@
   .swatch {
     box-sizing: border-box;
     width: 2.4em;
+    flex-shrink: 0;
     height: 1.5em;
     padding: 0;
     border: 1px solid color-mix(in srgb, currentColor 25%, transparent);

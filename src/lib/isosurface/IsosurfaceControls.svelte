@@ -212,8 +212,10 @@
       }}
     />
   </label>
-  <label {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}>
-    <span>Wireframe</span>
+  <label>
+    <span {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}
+      >Wireframe</span
+    >
     <input type="checkbox" bind:checked={settings.wireframe} />
   </label>
 
@@ -290,13 +292,12 @@
               {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}
             />
           {/if}
-          <label
-            class="slider-field"
-            {@attach tooltip({
-              content: `Density threshold — surface is drawn where grid values equal this`,
-            })}
-          >
-            <span>Iso</span>
+          <label class="slider-field">
+            <span
+              {@attach tooltip({
+                content: `Density threshold — surface is drawn where grid values equal this`,
+              })}>Iso</span
+            >
             <input
               type="range"
               class="isovalue-slider"
@@ -310,8 +311,8 @@
             />
             <span class="layer-value">{format_num(layer.isovalue, `.3~g`)}</span>
           </label>
-          <label class="slider-field" {@attach tooltip({ content: `Surface transparency` })}>
-            <span>Op</span>
+          <label class="slider-field">
+            <span {@attach tooltip({ content: `Surface transparency` })}>Op</span>
             <input
               type="range"
               class="opacity-slider"
@@ -334,8 +335,10 @@
           >
         </div>
         <div class="color-row">
-          <label {@attach tooltip({ content: `Color surface by another volume's values` })}>
-            <span>Color by</span>
+          <label>
+            <span {@attach tooltip({ content: `Color surface by another volume's values` })}
+              >Color by</span
+            >
             <select
               value={layer.color_volume_idx ?? -1}
               onchange={(event) => {

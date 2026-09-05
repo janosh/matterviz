@@ -3,7 +3,8 @@
   import { info_pane_icon, ViewerPane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num, trajectory_property_config } from '$lib/labels'
-  import { format_bytes, strip_html } from '$lib/utils'
+  import { strip_html } from '$lib/utils'
+  import { format_bytes } from 'svelte-widgets/format'
   import { array_extent } from '$lib/math'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import {

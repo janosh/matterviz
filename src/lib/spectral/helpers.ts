@@ -31,7 +31,6 @@ export const phonon_explorer_views = (
   ...(data.path_segments.length ? ([`bands`] as const) : []),
   ...(spectrum ? ([`ir`] as const) : []),
   ...(spectrum?.has_raman ? ([`raman`] as const) : []),
-  `modes`,
 ]
 
 // Band structure constants

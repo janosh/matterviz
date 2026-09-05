@@ -53,11 +53,8 @@
     get_relative_coords,
     is_activation_key,
   } from '$lib/plot/core/interactions'
-  import {
-    create_roving_focus,
-    ROVING_ATTR,
-    roving_key,
-  } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import { assign_axes } from '$lib/plot/core/axis-assignment'
   import type { ObstacleSeries } from '$lib/plot/core/decorations'
   import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
@@ -248,7 +245,7 @@
   // hovered every point was tabindex=-1 and keyboard users could not enter at all.
   const roving = create_roving_focus({
     container: () => frame.svg_element,
-    marks: () => [internal_series, frame.ranges.current],
+    items: () => [internal_series, frame.ranges.current],
   })
 
   // Interactive axis loading state

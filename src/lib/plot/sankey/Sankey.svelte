@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { format_value } from '$lib/labels'
   import type { BasePlotProps, LegendConfig, Orientation } from '$lib/plot'
   import { plot_color } from '$lib/colors'

@@ -323,10 +323,10 @@ describe(`cartesian frame`, () => {
 
       for (const axis of shown_axes) {
         const [min, max] = tick_span(axis)
-        expect(min, axis).toBeGreaterThanOrEqual(pinned[0])
-        expect(max, axis).toBeLessThan(pinned[1])
-        // the dragged rect spans at most half the pinned range on either axis
-        expect(max - min, axis).toBeLessThan((pinned[1] - pinned[0]) / 2)
+        // The drag selects x=[100, 300] and y=[200, 300]; ticks may land on the endpoints.
+        const [lower, upper] = axis.startsWith(`x`) ? [100, 300] : [200, 300]
+        expect(min, axis).toBeGreaterThanOrEqual(lower)
+        expect(max, axis).toBeLessThanOrEqual(upper)
       }
       const props_unchanged = () => {
         for (const axis of [`x`, `x2`, `y`, `y2`] as const) {

@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { StatusMessage } from '$lib/feedback'
+  import { Icon, StatusMessage } from 'svelte-widgets'
+  import { Settings } from 'svelte-widgets/icons'
+  import ToolbarMenu from '$lib/overlays/ToolbarMenu.svelte'
   import { capitalize, format_num } from '$lib/labels'
+  import { DEFAULTS } from '$lib/settings'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import type { Vec3 } from '$lib/math'
   import type { ScatterHandlerEvent } from '$lib/plot/core/types'
@@ -53,6 +56,8 @@
     n_frames = $bindable(DEFAULT_PHONON_FRAMES),
     fps = $bindable(DEFAULT_PHONON_FPS),
     show_vectors = $bindable(DEFAULT_PHONON_SHOW_VECTORS),
+    vector_thickness = $bindable(1),
+    vector_color = $bindable<string | null>(null),
     auto_play = true,
     pane_ratio = $bindable(1.15 / 2.1),
     trajectory_props = {},
@@ -66,6 +71,9 @@
     n_frames?: number
     fps?: number
     show_vectors?: boolean
+    // Multiplier for arrow shaft and head radii; null color uses element colors.
+    vector_thickness?: number
+    vector_color?: string | null
     auto_play?: boolean
     pane_ratio?: number
     trajectory_props?: Partial<ComponentProps<typeof Trajectory>>
@@ -110,6 +118,7 @@
   $effect(() => {
     if (!view || !visible_views.includes(view)) view = visible_views[0]
   })
+  let modes_open = $derived(visible_views.length === 0)
   // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
   // survives mode and amplitude changes and keys the camera framing, the displacement pattern
   // survives amplitude changes, and frames are synthesised on read
@@ -215,6 +224,139 @@
   }
 </script>
 
+{#snippet mode_picker()}
+  <div class="mode-picker">
+    <ToolbarMenu
+      bind:open={modes_open}
+      label="Modes"
+      button_class="phonon-modes-toggle"
+      menu_class="phonon-modes-pane"
+    >
+      {#snippet button()}Modes{/snippet}
+      {#if visible_views.length > 1}
+        <div class="tabs" role="group" aria-label="Phonon explorer plot">
+          {#each visible_views as candidate}
+            <button
+              aria-pressed={view === candidate}
+              class:active={view === candidate}
+              onclick={() => (view = candidate)}>{view_label(candidate)}</button
+            >
+          {/each}
+        </div>
+      {/if}
+      <div class="mode-list">
+        {#each selected_qpoint?.modes ?? [] as mode, mode_idx (mode_idx)}
+          <button
+            class:selected={selection?.mode_idx === mode_idx}
+            disabled={!mode.eigenvector}
+            onclick={() => selection && set_selection({ ...selection, mode_idx })}
+          >
+            <span>Mode {mode_idx + 1}</span><span>{format_num(mode.frequency, `.5~`)} THz</span
+            >
+          </button>
+        {/each}
+      </div>
+    </ToolbarMenu>
+  </div>
+{/snippet}
+
+{#snippet phonon_settings()}
+  <ToolbarMenu label="Phonon settings" menu_class="phonon-settings-pane">
+    {#snippet button()}<Icon icon={Settings} />{/snippet}
+    <div class="toolbar" aria-label="Phonon animation controls">
+      {#if mode_data.qpoints.length > 1}
+        <label
+          >q-point
+          <select
+            aria-label="q-point"
+            value={selection?.qpoint_idx ?? 0}
+            onchange={(event) => select_qpoint(Number(event.currentTarget.value))}
+          >
+            {#each mode_data.qpoints as qpoint, qpoint_idx (qpoint_idx)}
+              <option value={qpoint_idx} disabled={!qpoint_has_eigenvectors(qpoint)}
+                >{qpoint_idx + 1}: {qpoint_labels[qpoint_idx]
+                  ? `${pretty_sym_point(qpoint_labels[qpoint_idx])} `
+                  : ``}[{format_qpoint(qpoint.q_position, `.3~`)}]</option
+              >
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <div class="mode-control">
+        Mode
+        <button
+          type="button"
+          class="step-mode"
+          aria-label="Previous mode"
+          title="Previous mode with an eigenvector"
+          disabled={!selection || animatable_mode_indices[0] === selection.mode_idx}
+          onclick={() => step_mode(-1)}>‹</button
+        >
+        <select
+          aria-label="Mode"
+          value={selection?.mode_idx ?? 0}
+          onchange={(event) =>
+            selection &&
+            set_selection({ ...selection, mode_idx: Number(event.currentTarget.value) })}
+        >
+          {#each selected_qpoint?.modes ?? [] as mode, mode_idx (mode_idx)}
+            <option value={mode_idx} disabled={!mode.eigenvector}
+              >{mode_idx + 1}: {format_num(mode.frequency, `.5~`)} THz</option
+            >
+          {/each}
+        </select>
+        <button
+          type="button"
+          class="step-mode"
+          aria-label="Next mode"
+          title="Next mode with an eigenvector"
+          disabled={!selection || animatable_mode_indices.at(-1) === selection.mode_idx}
+          onclick={() => step_mode(1)}>›</button
+        >
+      </div>
+      <label class="amplitude-control">
+        Amplitude
+        <input type="range" min="0.02" max="1" step="0.02" bind:value={amplitude} />
+        <output>{format_num(amplitude, `.3~`)} Å</output>
+      </label>
+      <label class="checkbox"
+        ><input type="checkbox" bind:checked={show_vectors} />Eigenvectors</label
+      >
+      {#if show_vectors}
+        <label class="vector-thickness-control">
+          Thickness
+          <input
+            type="range"
+            aria-label="Eigenvector thickness"
+            min="0.25"
+            max="4"
+            step="0.05"
+            bind:value={vector_thickness}
+          />
+          <output>{format_num(vector_thickness, `.3~`)}×</output>
+        </label>
+        <div class="vector-color-control">
+          <label
+            >Color
+            <input
+              type="color"
+              aria-label="Eigenvector color"
+              value={vector_color ?? DEFAULTS.structure.vector_color}
+              oninput={(event) => (vector_color = event.currentTarget.value)}
+            />
+          </label>
+          <button
+            type="button"
+            title="Use element colors for eigenvectors"
+            disabled={vector_color === null}
+            onclick={() => (vector_color = null)}>By element</button
+          >
+        </div>
+      {/if}
+    </div>
+  </ToolbarMenu>
+{/snippet}
+
 <div {...rest} class={[`phonon-mode-explorer`, rest.class]}>
   {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
   {#if band_result.error}<StatusMessage message={band_result.error} type="error" />{/if}
@@ -265,17 +407,8 @@
         {#if dataset.filename}<span class="source">{dataset.filename}</span>{/if}
       </div>
     {/if}
-    <div class="tabs" role="group" aria-label="Phonon explorer plot">
-      {#each visible_views as candidate}
-        <button
-          aria-pressed={view === candidate}
-          class:active={view === candidate}
-          onclick={() => (view = candidate)}>{view_label(candidate)}</button
-        >
-      {/each}
-    </div>
   </div>
-  <div class="panes">
+  <div class="panes" class:structure_only={!view}>
     <section class="trajectory-pane" aria-label="Atomic motion">
       {#if trajectory_result.value}
         <Trajectory
@@ -303,7 +436,9 @@
               `view-mode`,
             ],
           }}
+          extra_controls={phonon_settings}
           structure_props={{
+            children: mode_picker,
             // Re-frame the camera only when the displayed cell changes, not per mode/amplitude
             structure_series_key: supercell_result.value?.structure,
             analyze_symmetry: false,
@@ -312,10 +447,13 @@
             scene_props: {
               bonding_strategy: `explicit_only`,
               show_polyhedra: `never`,
+              vector_shaft_radius: DEFAULTS.structure.vector_shaft_radius * vector_thickness,
+              vector_arrow_head_radius:
+                DEFAULTS.structure.vector_arrow_head_radius * vector_thickness,
               vector_configs: {
                 [PHONON_VECTOR_KEY]: {
                   visible: show_vectors,
-                  color: null,
+                  color: vector_color,
                   scale: null,
                 },
               },
@@ -324,107 +462,35 @@
         />
       {/if}
     </section>
-    <PaneDivider
-      orientation="horizontal"
-      bind:ratio={pane_ratio}
-      aria-label="Resize atomic motion and phonon plot panes"
-    />
-    <section class="plot-pane" aria-label="Phonon mode plot">
-      {#if view === `bands` && band_result.value}
-        <Bands
-          band_structs={band_result.value}
-          band_type="phonon"
-          reference_frequency={selected_mode?.frequency ?? null}
-          highlighted_qpoint_index={selection?.qpoint_idx ?? null}
-          highlighted_band_index={selection?.mode_idx ?? null}
-          on_point_click={handle_band_click}
-          on_plot_click={handle_band_click}
-          show_controls={false}
-        />
-      {:else if (view === `ir` || view === `raman`) && active_spectrum}
-        <IrRamanSpectrum
-          spectrum={active_spectrum}
-          kind={view as SpectrumKind}
-          selected_mode_idx={selection?.mode_idx ?? null}
-          on_mode_select={select_spectrum_mode}
-          show_controls={false}
-        />
-      {:else}
-        <div class="mode-list">
-          {#each selected_qpoint?.modes ?? [] as mode, mode_idx (mode_idx)}
-            <button
-              class:selected={selection?.mode_idx === mode_idx}
-              disabled={!mode.eigenvector}
-              onclick={() => selection && set_selection({ ...selection, mode_idx })}
-            >
-              <span>Mode {mode_idx + 1}</span><span
-                >{format_num(mode.frequency, `.5~`)} THz</span
-              >
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </section>
-  </div>
-  <div class="toolbar" aria-label="Phonon animation controls">
-    {#if mode_data.qpoints.length > 1}
-      <label
-        >q-point
-        <select
-          aria-label="q-point"
-          value={selection?.qpoint_idx ?? 0}
-          onchange={(event) => select_qpoint(Number(event.currentTarget.value))}
-        >
-          {#each mode_data.qpoints as qpoint, qpoint_idx (qpoint_idx)}
-            <option value={qpoint_idx} disabled={!qpoint_has_eigenvectors(qpoint)}
-              >{qpoint_idx + 1}: {qpoint_labels[qpoint_idx]
-                ? `${pretty_sym_point(qpoint_labels[qpoint_idx])} `
-                : ``}[{format_qpoint(qpoint.q_position, `.3~`)}]</option
-            >
-          {/each}
-        </select>
-      </label>
+    {#if view}
+      <PaneDivider
+        orientation="horizontal"
+        bind:ratio={pane_ratio}
+        aria-label="Resize atomic motion and phonon plot panes"
+      />
+      <section class="plot-pane" aria-label="Phonon mode plot">
+        {#if view === `bands` && band_result.value}
+          <Bands
+            band_structs={band_result.value}
+            band_type="phonon"
+            reference_frequency={selected_mode?.frequency ?? null}
+            highlighted_qpoint_index={selection?.qpoint_idx ?? null}
+            highlighted_band_index={selection?.mode_idx ?? null}
+            on_point_click={handle_band_click}
+            on_plot_click={handle_band_click}
+            show_controls={false}
+          />
+        {:else if (view === `ir` || view === `raman`) && active_spectrum}
+          <IrRamanSpectrum
+            spectrum={active_spectrum}
+            kind={view as SpectrumKind}
+            selected_mode_idx={selection?.mode_idx ?? null}
+            on_mode_select={select_spectrum_mode}
+            show_controls={false}
+          />
+        {/if}
+      </section>
     {/if}
-    <div class="mode-control">
-      Mode
-      <button
-        type="button"
-        class="step-mode"
-        aria-label="Previous mode"
-        title="Previous mode with an eigenvector"
-        disabled={!selection || animatable_mode_indices[0] === selection.mode_idx}
-        onclick={() => step_mode(-1)}>‹</button
-      >
-      <select
-        aria-label="Mode"
-        value={selection?.mode_idx ?? 0}
-        onchange={(event) =>
-          selection &&
-          set_selection({ ...selection, mode_idx: Number(event.currentTarget.value) })}
-      >
-        {#each selected_qpoint?.modes ?? [] as mode, mode_idx (mode_idx)}
-          <option value={mode_idx} disabled={!mode.eigenvector}
-            >{mode_idx + 1}: {format_num(mode.frequency, `.5~`)} THz</option
-          >
-        {/each}
-      </select>
-      <button
-        type="button"
-        class="step-mode"
-        aria-label="Next mode"
-        title="Next mode with an eigenvector"
-        disabled={!selection || animatable_mode_indices.at(-1) === selection.mode_idx}
-        onclick={() => step_mode(1)}>›</button
-      >
-    </div>
-    <label class="amplitude-control">
-      Amplitude
-      <input type="range" min="0.02" max="1" step="0.02" bind:value={amplitude} />
-      <output>{format_num(amplitude, `.3~`)} Å</output>
-    </label>
-    <label class="checkbox"
-      ><input type="checkbox" bind:checked={show_vectors} />Eigenvectors</label
-    >
   </div>
 </div>
 
@@ -444,13 +510,11 @@
   }
   .mode-summary {
     display: flex;
+    padding-left: 0.4em;
     align-items: baseline;
     flex-wrap: wrap;
     gap: 0.6em;
     min-width: 0;
-    .frequency {
-      color: var(--accent-color, #2878c8);
-    }
     .qpoint-label {
       font-weight: 600;
       /* the label reads as a prefix of the q-vector it names */
@@ -491,14 +555,17 @@
   .trajectory-pane {
     min-width: 0;
     min-height: 0;
-    overflow: hidden;
   }
   .plot-pane {
+    overflow: hidden;
     /* Bands and IrRamanSpectrum both use ScatterPlot's public sizing contract. */
     --scatter-height: 100%;
     --scatter-min-height: 0;
   }
   .trajectory-pane {
+    position: relative;
+    z-index: 1;
+    container-type: inline-size;
     --traj-border-radius: 0;
     --struct-border-radius: 0;
   }
@@ -509,19 +576,42 @@
     pointer-events: none;
   }
   .plot-pane > :global(*),
-  .trajectory-pane > :global(*) {
+  .trajectory-pane > :global(.trajectory) {
     width: 100%;
     height: 100%;
     min-width: 0;
     min-height: 0;
   }
-  /* Every control is one inline row: label text, then its input, on the same line */
+  .mode-picker {
+    position: absolute;
+    top: var(--viewer-buttons-top, 0.5em);
+    left: 0.5em;
+    z-index: 2;
+    :global(.phonon-modes-toggle) {
+      opacity: 0;
+      pointer-events: none;
+    }
+    :global(.structure:is(:hover, :focus-within)) & :global(.phonon-modes-toggle) {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    @media (hover: none) {
+      :global(.phonon-modes-toggle) {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
+  }
+  .panes.structure_only {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+
   .toolbar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.35em 1.2em;
-    padding: 0.35em 0 0;
+    display: grid;
+    gap: 0.5em;
+    padding: 0.6em;
+    max-width: calc(100vw - 2em);
     label,
     .mode-control {
       display: flex;
@@ -530,7 +620,8 @@
       white-space: nowrap;
     }
     select {
-      max-width: 18em;
+      min-width: 0;
+      flex: 1;
     }
     .step-mode {
       padding: 0 0.45em;
@@ -538,29 +629,52 @@
       font-size: 1.1em;
     }
   }
-  .amplitude-control {
+  .amplitude-control,
+  .vector-thickness-control {
     input {
       width: 9em;
+      min-width: 0;
+      flex: 1;
     }
     output {
       min-width: 4.5em;
     }
   }
+  .vector-color-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    input {
+      width: 3em;
+      height: 1.6em;
+      padding: 0;
+      flex-shrink: 0;
+    }
+  }
+  :global(.phonon-modes-pane) {
+    width: 220px;
+    min-width: 0;
+    left: 0;
+    right: auto;
+    padding: 4px;
+    box-sizing: border-box;
+    max-height: min(60vh, 400px);
+    overflow: auto;
+  }
   .mode-list {
     display: grid;
     align-content: start;
-    gap: 0.2em;
+    gap: 0;
     overflow: auto;
-    padding: 0.4em;
     box-sizing: border-box;
     button {
       display: flex;
       justify-content: space-between;
-      padding: 0.45em 0.6em;
-      border: 1px solid transparent;
+      padding: 0.15em 0.35em;
+      border: 0;
       background: transparent;
       &.selected {
-        border-left-color: var(--accent-color, #4c78a8);
+        font-weight: 600;
         color: var(--accent-color, #4c78a8);
       }
     }

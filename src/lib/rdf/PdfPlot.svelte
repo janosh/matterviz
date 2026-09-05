@@ -1,7 +1,7 @@
 <script lang="ts">
   import { plot_color } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'

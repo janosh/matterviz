@@ -142,6 +142,7 @@
   })
 
   let chrome = $state<ReturnType<typeof ConvexHullChrome>>()
+  let title_height = $state(0)
   const selection = create_hull_selection({
     entries: () => entries,
     plot_entries: () => plot_entries,
@@ -355,7 +356,7 @@
             }
           : null,
       )}
-    padding={{ t: 30, b: 60, l: 60, r: 30 }}
+    padding={{ t: 30 + title_height, b: 60, l: 60, r: 30 }}
   >
     {@render children?.({
       stable_entries,
@@ -365,6 +366,7 @@
     })}
     <ConvexHullChrome
       bind:this={chrome}
+      bind:title_height
       kind="binary"
       {selection}
       {hull_data}

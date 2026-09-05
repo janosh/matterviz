@@ -100,10 +100,18 @@
       justify-content: center;
       padding: var(--viewer-buttons-btn-padding, 4px);
       border-radius: var(--border-radius, 3pt);
-      font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+      font-size: var(--ctrl-btn-icon-size, clamp(0.77rem, 2.2cqmin, 0.935rem));
     }
-    > :global(.fullscreen-btn) {
-      --icon-size: 1.3em;
+    > :global(:is(button, .fullscreen-btn) svg),
+    > :global(.view-mode-control > button svg) {
+      width: var(
+        --viewer-buttons-icon-size,
+        var(--ctrl-btn-icon-size, clamp(0.77rem, 2.2cqmin, 0.935rem))
+      );
+      height: var(
+        --viewer-buttons-icon-size,
+        var(--ctrl-btn-icon-size, clamp(0.77rem, 2.2cqmin, 0.935rem))
+      );
     }
     :global(button:hover) {
       background-color: var(

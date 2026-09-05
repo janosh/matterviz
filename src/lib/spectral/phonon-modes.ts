@@ -4,9 +4,11 @@ import * as math from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import {
   get_orig_site_idx,
+  get_pbc_image_sites,
   make_site,
   make_supercell,
   parse_supercell_scaling,
+  wrap_to_unit_cell,
 } from '$lib/structure'
 import { compute_bonds, normalize_structure_bond } from '$lib/structure/bonding'
 import { trajectory_from_frame_source, type TrajectoryRun } from '$lib/trajectory'
@@ -28,8 +30,8 @@ interface PhononModeTrajectoryOptions {
   vector_key?: string
 }
 
-// The real-space cell one or more modes animate in: the tiled unit cell with its positive
-// faces closed and equilibrium bonds attached. Independent of the selected mode, so a viewer
+// The real-space cell one or more modes animate in: the tiled unit cell with boundary
+// coordination completed and equilibrium bonds attached. Independent of the selected mode, so a viewer
 // keeps one per supercell (and its camera framing) while modes and amplitudes change.
 export interface PhononSupercell {
   data: PhononModeData
@@ -63,34 +65,6 @@ export const PHONON_VECTOR_KEY = `phonon_displacement`
 // Frames are synthesised on read, so only the displayed site count bounds memory and per-frame
 // work; this keeps a mistyped supercell from freezing the browser in bonding and rendering.
 export const MAX_PHONON_SUPERCELL_SITES = 200_000
-const CELL_FACE_TOLERANCE = 1e-10
-
-// Close the half-open supercell [0, 1) with copies on its missing positive faces. These
-// are the only image atoms the phonon player needs: they fill the displayed cell without
-// asking the generic PBC renderer to add whole translated coordination shells outside it.
-const close_supercell_faces = (structure: Crystal): Crystal => {
-  const sites = [...structure.sites]
-  const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
-
-  for (const [site_idx, site] of structure.sites.entries()) {
-    const face_axes = site.abc.flatMap((coordinate, axis) =>
-      Math.abs(coordinate) <= CELL_FACE_TOLERANCE ? [axis] : [],
-    )
-    for (let face_mask = 1; face_mask < 1 << face_axes.length; face_mask++) {
-      const abc = [...site.abc] as Vec3
-      for (const [mask_idx, axis] of face_axes.entries()) {
-        if (face_mask & (1 << mask_idx)) abc[axis] = 1
-      }
-      sites.push({
-        ...site,
-        abc,
-        xyz: frac_to_cart(abc),
-        properties: { ...site.properties, orig_site_idx: site_idx },
-      })
-    }
-  }
-  return { ...structure, sites }
-}
 
 export function default_phonon_mode_selection(
   data: PhononModeData,
@@ -161,6 +135,9 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
 
   return {
     qpoints,
+    recip_lattice: data.lattice
+      ? math.reciprocal_lattice(data.lattice, { two_pi: true })
+      : undefined,
     branches,
     labels_dict,
     distance: distances,
@@ -285,7 +262,7 @@ export function phonon_mode_character(
   return { element_weights, participation_ratio }
 }
 
-// Build the displayed supercell once per (data, scaling): tiling, face closure and bonding
+// Build the displayed supercell once per (data, scaling): tiling, image atoms and bonding
 // are the expensive steps and none of them depends on which mode is animated.
 export function phonon_supercell(
   data: PhononModeData,
@@ -298,33 +275,26 @@ export function phonon_supercell(
     )
   }
   const scaling = parse_supercell_scaling(supercell)
-  // Count the cell as displayed: an atom on a zero-coordinate axis gains a positive-face copy,
-  // so that axis holds scaling + 1 of it (see close_supercell_faces)
-  const n_sites = data.atoms.reduce(
-    (total, { coordinates }) =>
-      total +
-      scaling.reduce(
-        (per_atom, scale, axis) =>
-          per_atom * (scale + (Math.abs(coordinates[axis]) <= CELL_FACE_TOLERANCE ? 1 : 0)),
-        1,
-      ),
-    0,
-  )
-  if (n_sites > MAX_PHONON_SUPERCELL_SITES) {
-    throw new Error(
-      `Phonon supercell ${scaling.join(`x`)} would display ${n_sites} sites (face copies ` +
-        `included), exceeding the ${MAX_PHONON_SUPERCELL_SITES} limit. Reduce the supercell.`,
-    )
+  const check_size = (n_sites: number): void => {
+    if (n_sites > MAX_PHONON_SUPERCELL_SITES) {
+      throw new Error(
+        `Phonon supercell ${scaling.join(`x`)} would display ${n_sites} sites, ` +
+          `exceeding the ${MAX_PHONON_SUPERCELL_SITES} limit. Reduce the supercell.`,
+      )
+    }
   }
+  check_size(scaling.reduce((count, scale) => count * scale, data.n_atoms))
   const frac_to_cart = math.create_frac_to_cart(data.lattice)
   const sites = data.atoms.map((atom, atom_idx) => {
     if (!is_elem_symbol(atom.symbol)) {
       throw new Error(`Phonon atom ${atom_idx} has unknown element symbol '${atom.symbol}'`)
     }
+    // Phonopy permits translated basis positions; image generation needs a canonical cell.
+    const coordinates = wrap_to_unit_cell(atom.coordinates)
     return make_site(
       atom.symbol,
-      atom.coordinates,
-      frac_to_cart(atom.coordinates),
+      coordinates,
+      frac_to_cart(coordinates),
       `${atom.symbol}${atom_idx + 1}`,
     )
   })
@@ -332,16 +302,24 @@ export function phonon_supercell(
     sites,
     lattice: {
       matrix: data.lattice,
-      pbc: [false, false, false],
+      pbc: [true, true, true],
       ...math.calc_lattice_params(data.lattice),
     },
     properties: {},
   }
-  const closed_cell = close_supercell_faces(make_supercell(unit_cell, scaling, false))
+  const tiled_cell = make_supercell(unit_cell, scaling, false)
+  const completed_cell: Crystal = {
+    ...tiled_cell,
+    sites: get_pbc_image_sites(tiled_cell).sites,
+    // The frames already contain image atoms and explicit bonds; don't wrap or image twice.
+    lattice: { ...tiled_cell.lattice, pbc: [false, false, false] },
+  }
+  const n_sites = completed_cell.sites.length
+  check_size(n_sites)
   const structure: Crystal = {
-    ...closed_cell,
+    ...completed_cell,
     properties: {
-      bonds: compute_bonds(closed_cell, `electroneg_ratio`).map(
+      bonds: compute_bonds(completed_cell, `electroneg_ratio`).map(
         ({ site_idx_1, site_idx_2, bond_order }) =>
           normalize_structure_bond(site_idx_1, site_idx_2, bond_order ?? 1),
       ),

@@ -8,6 +8,7 @@ import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  mock_fullscreen,
   bind_props,
   CANVAS_NOOP_METHODS,
   clip_rect,
@@ -166,6 +167,7 @@ function mock_label_measurement(width: number, height: number) {
 
 describe(`BinnedScatterPlot`, () => {
   test(`supports ScatterPlot-style fullscreen controls and overlay snippets`, async () => {
+    mock_fullscreen()
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
       ...hidden_colorbar,

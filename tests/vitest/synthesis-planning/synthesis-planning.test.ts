@@ -3,6 +3,9 @@ import {
   analyze_selectivity,
   assign_e_above_hull,
   balance_reaction,
+  build_recipe,
+  build_route_recipe,
+  format_recipe_text,
   DEFAULT_SCORE_WEIGHTS,
   format_plan_text,
   hull_at,
@@ -28,6 +31,7 @@ import type {
 } from '$lib/synthesis-planning'
 import { plan_synthesis_with_progress } from '$lib/synthesis-planning/plan'
 import { create_thermo_cache } from '$lib/synthesis-planning/thermo'
+import { describe_atmosphere } from '$lib/synthesis-planning/scoring'
 import { get_default_gas_provider } from '$lib/convex-hull/gas-thermodynamics'
 import * as math from '$lib/math'
 import { describe, expect, test, vi } from 'vitest'
@@ -414,12 +418,23 @@ describe(`plan_synthesis`, () => {
       expect.arrayContaining([`BaCO3`, `BaO`, `TiO2`]),
     )
     const [best] = plan.routes
+    const kept = plan.routes[1]
+    expect(
+      plan_synthesis({
+        ...base_request,
+        max_routes: 1,
+        keep_route_ids: [best.id, kept.id, `missing`],
+      }).routes.map(({ id }) => id),
+    ).toEqual([best.id, kept.id])
     expect(best.reaction.equation).toBe(`BaCO3 + TiO2 → BaTiO3 + CO2`)
     expect(best.thermodynamics.gas_exchange.CO2).toBeCloseTo(1, 9)
     expect(best.thermodynamics.onset_temperature).toBeGreaterThan(0)
+    for (const { phase } of [...best.reaction.reactants, ...best.reaction.products])
+      expect(plan.phases).toContainEqual(phase)
     // Ba2TiO4 is the experimentally observed intermediate of this reaction
     expect(best.selectivity.competitors[0].phase.formula).toBe(`Ba2TiO4`)
-    expect(best.recipe.temperature_window.min_K).toBeGreaterThanOrEqual(1000)
+    expect(best.recipe.assumptions.temperature_K).toBe(``)
+    expect(best.recipe.guidance.join(` `)).toContain(`BaCO3`)
 
     const oxide_route = plan.routes.find(
       (route) => route.reaction.equation === `BaO + TiO2 → BaTiO3`,
@@ -456,9 +471,43 @@ describe(`plan_synthesis`, () => {
       (100 * mass(`byproduct`)) / mass(`precursor`),
       9,
     )
-    expect(recipe.procedure.some((step) => step.includes(`g BaCO3`))).toBe(true)
-    expect(recipe.procedure.some((step) => step.includes(`releases CO2`))).toBe(true)
-    expect(plan.routes[0].thermodynamics.atmosphere).toBe(`air, open crucible (releases CO2)`)
+    expect(Object.values(recipe.assumptions).every((value) => value === ``)).toBe(true)
+    recipe.assumptions.hold_hours = `4`
+    recipe.assumptions.source = `Lab protocol A`
+    const scaled = build_route_recipe(plan.routes[0], 5)
+    expect(scaled.recipe.items.map(({ mass_g }) => mass_g)).toEqual(
+      recipe.items.map(({ mass_g }) => 2 * mass_g),
+    )
+    expect(scaled.recipe.assumptions).toBe(recipe.assumptions)
+    const text = format_recipe_text({ ...plan.routes[0], ...scaled })
+    expect(text).toContain(`Hold (h): 4`)
+    expect(text).toContain(`Protocol reference / rationale: Lab protocol A`)
+    expect(text).toContain(`unreferenced`)
+    expect(text).toContain(`BaCO3: hazards — toxic`)
+    const oxide = plan.routes.find(
+      (route) => route.reaction.equation === `BaO + TiO2 → BaTiO3`,
+    )
+    expect(oxide?.recipe.guidance).toEqual(
+      expect.arrayContaining([
+        `BaO: hygroscopic`,
+        `BaO: air-sensitive`,
+        `BaO: hazards — toxic, corrosive`,
+      ]),
+    )
+    expect(text).not.toMatch(/ball-mill 30 min|3–5 K\/min|6–12 h/)
+    for (const invalid_mass of [0, -1, Number.NaN, Infinity]) {
+      expect(() =>
+        build_recipe(plan.routes[0].reaction, plan.routes[0].thermodynamics, invalid_mass),
+      ).toThrow(/Target mass/)
+    }
+    expect(plan.routes[0].thermodynamics.atmosphere).toBe(`releases CO2`)
+    for (const [exchange, expected] of [
+      [{}, `no net gas exchange`],
+      [{ CO2: 0 }, `no net gas exchange`],
+      [{ O2: -1 }, `consumes O2`],
+      [{ O2: -1, CO2: 2 }, `consumes O2; releases CO2`],
+    ] as const)
+      expect(describe_atmosphere(exchange)).toBe(expected)
   })
 
   test(`closed 0 K planning of LiCoO2 only finds oxide routes; carbonates need open species`, () => {
@@ -485,11 +534,33 @@ describe(`plan_synthesis`, () => {
     for (const route of two_step) {
       expect(route.intermediate_step).toBeDefined()
       // The intermediate made in step 1 is consumed in step 2
-      const intermediate = route.intermediate_step?.products[0].phase.formula
+      const intermediate = route.intermediate_step?.reaction.products[0].phase.formula
       expect(route.reaction.reactants.map(({ phase }) => phase.formula)).toContain(
         intermediate,
       )
       expect(route.rationale[0]).toMatch(/Two-step route via/)
+      for (const target_mass of [1, 2.5]) {
+        const scaled = { ...route, ...build_route_recipe(route, target_mass) }
+        const first = scaled.intermediate_step
+        if (!first) throw new Error(`Missing first step`)
+        const consumed = scaled.recipe.items.find(
+          ({ phase, role }) => phase.formula === intermediate && role === `precursor`,
+        )
+        expect(first.recipe.target_mass_g).toBe(consumed?.mass_g)
+        const inputs = first.recipe.items
+          .filter(({ role }) => role === `precursor` || role === `atmosphere`)
+          .reduce((sum, item) => sum + item.mass_g, 0)
+        const outputs = first.recipe.items
+          .filter(({ role }) => role === `target` || role === `byproduct`)
+          .reduce((sum, item) => sum + item.mass_g, 0)
+        expect(inputs).toBeCloseTo(outputs, 9)
+        first.recipe.assumptions.source = `Intermediate protocol`
+        const text = format_recipe_text(scaled)
+        expect(text).toContain(`Step 1: ${first.reaction.equation}`)
+        expect(text).toContain(`Step 2: ${route.reaction.equation}`)
+        expect(text).toContain(`Intermediate protocol`)
+        expect(JSON.stringify(scaled)).toContain(JSON.stringify(first.recipe))
+      }
     }
   })
 
@@ -555,6 +626,7 @@ describe(`plan_synthesis`, () => {
     [{ max_routes: 0 }, /max_routes/],
     [{ max_routes: 201 }, /max_routes/],
     [{ max_routes: 1.5 }, /max_routes must be an integer/],
+    [{ keep_route_ids: [3] }, /keep_route_ids must be an array of strings/],
     [{ target_mass_g: 0 }, /target_mass_g/],
     [{ two_step: `yes` }, /two_step must be a boolean/],
     [{ mystery: true }, /unknown property mystery/],
@@ -587,7 +659,8 @@ describe(`agent surface`, () => {
     expect(text).toContain(`Synthesis plan for BaTiO3`)
     expect(text).toContain(`1. BaCO3 + TiO2 → BaTiO3 + CO2`)
     expect(text).toMatch(/inverse hull \d+ meV\/atom/)
-    expect(text).toMatch(/recipe for 1 g: [\d.]+ g BaCO3 \+ [\d.]+ g TiO2/)
+    expect(text).toContain(`Calculated recipe for 1 g`)
+    expect(text).toMatch(/Precursor: [\d.]+ g BaCO3/)
     expect(text).toContain(`more routes in the structured result`)
     expect(text.length).toBeLessThan(6000)
   })
@@ -601,6 +674,7 @@ describe(`agent surface`, () => {
       `two_step`,
       `scoring`,
       `max_routes`,
+      `keep_route_ids`,
       `target_mass_g`,
     ]
     expect(Object.keys(SYNTHESIS_PLAN_REQUEST_SCHEMA.properties).toSorted()).toEqual(

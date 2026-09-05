@@ -102,19 +102,13 @@ const read_lattice = (h5_file: h5wasm.File): Matrix3x3 | null => {
   return null
 }
 
-// B = 2π (A⁻¹)ᵀ, falling back to 2π·identity so bands-only files without an invertible
-// lattice still get monotonic path distances.
-const reciprocal_lattice_or_identity = (lattice: Matrix3x3 | null): Matrix3x3 => {
+// Only a measured, invertible cell can define a Brillouin zone.
+const band_recip_lattice = (lattice: Matrix3x3 | null): Matrix3x3 | undefined => {
   try {
-    if (lattice) return reciprocal_lattice(lattice, { two_pi: true })
+    return lattice ? reciprocal_lattice(lattice, { two_pi: true }) : undefined
   } catch {
-    // singular lattice — fall through to identity
+    return undefined
   }
-  return [
-    [2 * Math.PI, 0, 0],
-    [0, 2 * Math.PI, 0],
-    [0, 0, 2 * Math.PI],
-  ]
 }
 
 // VASP line-mode label layout: 2 labels per path segment of `per_segment` points
@@ -175,7 +169,7 @@ export const read_vaspout_bands = (
         ? transpose(spin_down)
         : undefined
 
-    const recip = reciprocal_lattice_or_identity(read_lattice(h5_file))
+    const recip_lattice = band_recip_lattice(read_lattice(h5_file))
     const line_mode = line_mode_labels(
       to_string_array(
         read_first_dataset(h5_file, [`${group}/kpoints_labels`, ...KPOINT_LABEL_PATHS]),
@@ -190,7 +184,15 @@ export const read_vaspout_bands = (
     let path_length = 0
     let prev_cart: Vec3 | null = null
     const labels_dict: Record<string, Vec3> = {}
-    const frac_to_cart = create_frac_to_cart(recip)
+    // Keep the existing fractional-distance scale for cell-less band paths, without
+    // presenting the placeholder as a physical lattice to the Brillouin zone viewer.
+    const frac_to_cart = create_frac_to_cart(
+      recip_lattice ?? [
+        [2 * Math.PI, 0, 0],
+        [0, 2 * Math.PI, 0],
+        [0, 0, 2 * Math.PI],
+      ],
+    )
     for (const [kpt_idx, kpt] of kpoint_data.entries()) {
       const frac = [kpt[0] ?? 0, kpt[1] ?? 0, kpt[2] ?? 0] as Vec3
       const cart = frac_to_cart(frac)
@@ -218,6 +220,7 @@ export const read_vaspout_bands = (
     const efermi = dos?.efermi
     return {
       qpoints,
+      recip_lattice,
       branches,
       distance,
       bands,

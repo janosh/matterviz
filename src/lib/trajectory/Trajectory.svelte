@@ -5,9 +5,7 @@
   import { create_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { StatusMessage } from '$lib/feedback'
-  import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon } from 'svelte-widgets'
+  import { Icon, Spinner, StatusMessage } from 'svelte-widgets'
   import {
     ArrowDown,
     ArrowUp,
@@ -155,6 +153,7 @@
     hovered = $bindable(false),
     wrapper = $bindable(),
     trajectory_controls,
+    extra_controls,
     active_pane = $bindable(null),
     on_step_change,
     on_play,
@@ -201,6 +200,8 @@
     hovered?: boolean
     wrapper?: HTMLDivElement
     trajectory_controls?: Snippet<[ControlsProps]>
+    // Extra actions beside the default playback controls.
+    extra_controls?: Snippet
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     on_step_change?: EventHandler
@@ -726,6 +727,7 @@
       />
 
       <div class="info-section">
+        {@render extra_controls?.()}
         {#if session.loading}
           <Spinner style="--spinner-size: 1em; margin: 0" />
         {/if}
@@ -1029,7 +1031,7 @@
       background: var(--traj-bg-fullscreen, var(--traj-surface-bg));
       overflow: hidden;
     }
-    &:has(:global(.viewer-pane-open)) {
+    &:has(:global(.viewer-pane-open), :global(.view-mode-dropdown)) {
       overflow: visible;
     }
     &.horizontal .content-area {

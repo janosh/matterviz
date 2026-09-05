@@ -68,27 +68,61 @@ const lazy_cart_to_frac = (matrix: Matrix3x3): ((xyz: Vec3) => Vec3) => {
 const has_fractional_coords = (site: Site): boolean =>
   Array.isArray(site.abc) && site.abc.length >= 3
 
+const has_cartesian_coords = (site: Site): boolean =>
+  Array.isArray(site.xyz) && site.xyz.length >= 3
+const coordinate_error = (idx: number): string =>
+  `No valid coordinates found for site ${idx}; expected three finite numeric components`
+const valid_export_coords = (site: Site, fractional: boolean): boolean => {
+  const coords = fractional
+    ? has_fractional_coords(site)
+      ? site.abc
+      : site.xyz
+    : has_cartesian_coords(site)
+      ? site.xyz
+      : site.abc
+  return Array.isArray(coords) && math.is_finite_vec3_like(coords.slice(0, 3))
+}
+
+function coordinate_export_unavailable_reason(
+  structure: AnyStructure | undefined,
+  fractional: boolean,
+): string | undefined {
+  if (!structure) return `No structure loaded`
+  const invalid_idx = structure.sites.findIndex(
+    (site) => !valid_export_coords(site, fractional),
+  )
+  if (invalid_idx !== -1) return coordinate_error(invalid_idx)
+  // XYZ may omit a cell, but must validate one it writes or uses to convert abc.
+  if (
+    fractional ||
+    (`lattice` in structure && structure.lattice) ||
+    structure.sites.some((site) => !has_cartesian_coords(site))
+  ) {
+    return lattice_unavailable_reason(
+      structure,
+      fractional && structure.sites.some((site) => !has_fractional_coords(site)),
+    )
+  }
+  return undefined
+}
+
 // Existing fractional coordinates allow exporting a singular cell without inverting it.
 export const fractional_export_unavailable_reason = (
   structure?: AnyStructure,
-): string | undefined =>
-  lattice_unavailable_reason(
-    structure,
-    structure?.sites.some((site) => !has_fractional_coords(site)),
-  )
+): string | undefined => coordinate_export_unavailable_reason(structure, true)
+export const xyz_export_unavailable_reason = (structure?: AnyStructure): string | undefined =>
+  coordinate_export_unavailable_reason(structure, false)
 
-// Fractional coordinates from abc, else converted from xyz. A site with neither is
-// unexportable: writing it at the origin would pass off a placeholder as a measured position.
+// Fractional coordinates from abc, else converted from xyz. Invalid present abc must not
+// silently switch the authoritative coordinate source or write NaN into the exported file.
 function get_frac_coords(
   site: Site,
   cart_to_frac: (xyz: Vec3) => Vec3,
   idx: number,
 ): number[] {
+  if (!valid_export_coords(site, true)) throw new Error(coordinate_error(idx))
   if (has_fractional_coords(site)) return site.abc.slice(0, 3)
-  if (Array.isArray(site.xyz) && site.xyz.length >= 3) {
-    return cart_to_frac(site.xyz.slice(0, 3) as Vec3)
-  }
-  throw new Error(`No valid coordinates found for site ${idx}`)
+  return cart_to_frac(site.xyz.slice(0, 3) as Vec3)
 }
 
 // A site's force vector, or null when it carries none. Non-finite components disqualify the
@@ -122,6 +156,8 @@ const sanitize_comment_label = (label: string): string =>
 // motion constraints) and the cell survive a round trip
 export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
+  const reason = xyz_export_unavailable_reason(structure)
+  if (reason) throw new Error(`XYZ export: ${reason}`)
   const lattice = `lattice` in structure ? structure.lattice : undefined
   const lattice_matrix = lattice?.matrix?.length === 3 ? lattice.matrix : null
 
@@ -137,9 +173,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   const formula = plain_formula(structure)
   if (formula) comment_parts.push(sanitize_comment_label(formula))
   if (lattice_matrix) {
-    const values = lattice_matrix
-      .flat()
-      .map((value) => (Number.isFinite(value) ? value : 0).toFixed(8))
+    const values = lattice_matrix.flat().map((value) => value.toFixed(8))
     comment_parts.push(`Lattice="${values.join(` `)}"`)
   }
   const property_cols = [`species:S:1`, `pos:R:3`]
@@ -165,6 +199,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     else if (site.abc?.length >= 3 && frac_to_cart) coords = frac_to_cart(site.abc)
     else throw new Error(`No valid coordinates found for site ${site_idx}`)
 
+    if (!math.is_finite_vec3_like(coords)) throw new Error(coordinate_error(site_idx))
     const columns = coords.map((coord) => coord.toFixed(6))
     if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
     if (has_constraints) columns.push(...move_flag_columns(site))

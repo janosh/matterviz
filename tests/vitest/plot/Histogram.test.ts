@@ -1,12 +1,11 @@
 import { Histogram, type Vec2 } from '$lib'
-import type { HistogramSeries, HistogramSeriesInput } from '$lib/plot/histogram/histogram'
+import type { HistogramSeries } from '$lib/plot/histogram/histogram'
 import {
   bin_values,
   compute_count_range,
   compute_histogram_bins,
   log_safe_range,
   normalize_counts,
-  to_histogram_series,
 } from '$lib/plot/histogram/histogram'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -274,46 +273,22 @@ describe(`Histogram`, () => {
     expect(Math.max(...get_tick_numbers(`y`))).toBeGreaterThanOrEqual(4)
   })
 
-  // pymatviz's HistogramWidget still sends DataSeries-shaped `{ x, y, line_style }` entries
-  test(`legacy {x, y} series render the same bars as {values} and keep their colours`, async () => {
-    const samples_a = [1, 1, 2, 3, 5, 8, 8, 8]
-    const samples_b = [2, 4, 4, 6, 9]
-    const bars_of = () =>
-      [...document.querySelectorAll<SVGPathElement>(`g.histogram-series path`)].map((bar) => [
-        bar.getAttribute(`d`),
-        bar.getAttribute(`fill`),
-      ])
-    await mount_histogram({
-      series: [
-        { values: samples_a, label: `A`, color: `red` },
-        { values: samples_b, label: `B`, color: `blue` },
-      ],
-      bins: 4,
-      mode: `overlay`,
-    })
-    const modern_bars = bars_of()
-    expect(modern_bars.length).toBeGreaterThan(0)
-    const legacy_a = {
-      x: [0, 1, 2, 3, 4, 5, 6, 7],
-      y: samples_a,
-      label: `A`,
-      line_style: { stroke: `red` },
-    }
-    const legacy_b = { x: [], y: samples_b, label: `B`, line_style: { stroke: `blue` } }
-    const state = { series: [legacy_a, legacy_b] }
+  test(`legend toggles preserve bound sample arrays and colors`, async () => {
+    const first_series = { values: [1, 1, 2, 3, 5], label: `A`, color: `red` }
+    const second_series = { values: [2, 4, 4, 6, 9], label: `B`, color: `blue` }
+    const state = { series: [first_series, second_series] }
     await mount_histogram(bind_props({ bins: 4, mode: `overlay`, show_legend: true }, state))
-    expect(bars_of()).toEqual(modern_bars)
-    // legend toggles write back into the bound prop in the caller's own (legacy) shape: the
-    // normaliser only feeds the component's internals
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     expect(legend_items).toHaveLength(2)
+    const fills = [...document.querySelectorAll(`g.histogram-series path`)].map((bar) =>
+      bar.getAttribute(`fill`),
+    )
+    expect(new Set(fills)).toEqual(new Set([`red`, `blue`]))
     legend_items[1].click()
     await tick()
-    expect(state.series[0]).toBe(legacy_a)
-    expect(state.series[1]).toStrictEqual({ ...legacy_b, visible: false })
-    // a legacy series without samples renders nothing instead of throwing mid-render
-    await mount_histogram({ series: [{ x: [1, 2], label: `empty` }], bins: 4 })
-    expect(bars_of()).toEqual([])
+    expect(state.series[0]).toBe(first_series)
+    expect(state.series[1]).toStrictEqual({ ...second_series, visible: false })
+    expect(state.series[1].values).toBe(second_series.values)
   })
 
   // Regression on both axes, one flip at a time against a shared ascending reference:
@@ -677,26 +652,6 @@ describe(`Histogram`, () => {
     // empty input keeps zero bars instead of dividing by zero
     const empty = normalize_counts(Float64Array.of(0, 1, 2), Uint32Array.of(0, 0), `density`)
     expect(empty.map(({ value }) => value)).toEqual([0, 0])
-  })
-
-  // The normaliser is the only place the legacy `{ x, y, line_style }` shape is understood:
-  // its output carries `values` (possibly empty) and `color`, never the legacy keys
-  // oxfmt-ignore
-  test.each<[string, HistogramSeriesInput, HistogramSeries]>([
-    [`values`, { values: [1, 2, 3], label: `a` }, { values: [1, 2, 3], label: `a` }],
-    [`legacy y (x dropped)`, { x: [10, 20, 30], y: [1, 2, 3] }, { values: [1, 2, 3] }],
-    [`values over y`, { values: [1, 2, 3], y: [7, 8, 9] }, { values: [1, 2, 3] }],
-    [`no samples`, { x: [1, 2], label: `empty` }, { values: [], label: `empty` }],
-    [`color over line_style.stroke`, { values: [1], color: `red`, line_style: { stroke: `blue` } }, { values: [1], color: `red` }],
-    [`legacy line_style.stroke`, { values: [1], line_style: { stroke: `blue`, width: 2 } }, { values: [1], color: `blue` }],
-    [`no colour`, { values: [1], line_style: { width: 2 } }, { values: [1] }],
-    [`metadata passthrough`, { id: 7, y: [150], visible: false, legend_group: `g`, x_axis: `x2`, y_axis: `y2` }, { id: 7, values: [150], visible: false, legend_group: `g`, x_axis: `x2`, y_axis: `y2` }],
-  ])(`to_histogram_series normalises %s`, (_name, input, expected) => {
-    const series_data = to_histogram_series(input)
-    expect(series_data).toStrictEqual(expected) // strict: no leftover legacy keys
-    // a sample-less series bins to empty bars rather than throwing
-    const [hist] = histogram_bins([{ series_data, series_idx: 0 }])
-    expect(hist.bins.reduce((sum, { count }) => sum + count, 0)).toBe(expected.values.length)
   })
 
   test(`compute_histogram_bins and compute_count_range`, () => {

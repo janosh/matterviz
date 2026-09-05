@@ -2,7 +2,7 @@
   // Shell shared by the bar plots that histogram one-or-many structures ($lib/bond-angles,
   // $lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { drag_over_handlers } from '$lib/io'
   import type { FileLoadCallback } from '$lib/io'
   import type {

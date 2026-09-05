@@ -4,7 +4,7 @@
 >
   import { plot_color } from '$lib/colors'
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { format_value } from '$lib/labels'
   import { array_extent } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
@@ -23,11 +23,8 @@
   import { observe_size } from '$lib/plot/core/utils'
   import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
   import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
-  import {
-    create_roving_focus,
-    ROVING_ATTR,
-    roving_key,
-  } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -282,7 +279,7 @@
 
   const roving = create_roving_focus({
     container: () => svg_element,
-    marks: () => rendered,
+    items: () => rendered,
   })
 
   function handle_keydown(event: KeyboardEvent) {

@@ -11,10 +11,31 @@ import { array_extent, array_max } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
 import { css_to_linear_rgb } from '$lib/scene/colors'
+import { Line2NodeMaterial } from 'three/webgpu'
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
+import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { get_orig_site_idx } from './site'
 import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`
+
+// Screen-space outlines stay pronounced when zooming out, independently of face opacity.
+// The caller owns disposal of the returned geometry and material.
+export function create_polyhedra_edges(
+  positions: Float32Array,
+  colors: Float32Array,
+): LineSegments2 {
+  const geometry = new LineSegmentsGeometry().setPositions(positions).setColors(colors)
+  const material = new Line2NodeMaterial({
+    vertexColors: true,
+    linewidth: 1,
+    worldUnits: false,
+  })
+  const edges = new LineSegments2(geometry, material)
+  edges.frustumCulled = false
+  edges.raycast = () => undefined
+  return edges
+}
 
 interface PolyhedraOptions {
   min_neighbors?: number // min coordination number to form a polyhedron
@@ -52,6 +73,7 @@ interface MergedPolyhedraBuffers {
   positions: Float32Array // 9 floats per triangle (non-indexed, flat-shaded)
   colors: Float32Array // per-vertex rgb matching positions
   edge_positions: Float32Array // 6 floats per crease edge for LineSegments
+  edge_colors: Float32Array // per-endpoint rgb matching face vertex colors
   triangle_count: number
   edge_count: number
 }
@@ -650,6 +672,7 @@ export function merge_polyhedra_buffers(
   const colors = new Float32Array(triangle_count * 9)
   // A closed triangulated surface has at most 3F/2 unique edges
   const edge_positions = new Float32Array(Math.ceil(triangle_count * 1.5) * 6)
+  const edge_colors = new Float32Array(edge_positions.length)
 
   let offset = 0
   let edge_offset = 0
@@ -726,14 +749,18 @@ export function merge_polyhedra_buffers(
     }
     for (const [key, entry] of edge_normals) {
       if (entry.shared && !entry.crease) continue
-      const from = verts[Math.floor(key / 65536)]
-      const to = verts[key % 65536]
+      const from_idx = Math.floor(key / 65536)
+      const to_idx = key % 65536
+      const from = verts[from_idx]
+      const to = verts[to_idx]
       edge_positions[edge_offset] = from[0]
       edge_positions[edge_offset + 1] = from[1]
       edge_positions[edge_offset + 2] = from[2]
       edge_positions[edge_offset + 3] = to[0]
       edge_positions[edge_offset + 4] = to[1]
       edge_positions[edge_offset + 5] = to[2]
+      edge_colors.set(vert_rgb.subarray(from_idx * 3, from_idx * 3 + 3), edge_offset)
+      edge_colors.set(vert_rgb.subarray(to_idx * 3, to_idx * 3 + 3), edge_offset + 3)
       edge_offset += 6
     }
   }
@@ -752,6 +779,7 @@ export function merge_polyhedra_buffers(
     positions: dropped ? positions.slice(0, offset) : positions,
     colors: dropped ? colors.slice(0, offset) : colors,
     edge_positions: edge_positions.slice(0, edge_offset),
+    edge_colors: edge_colors.slice(0, edge_offset),
     triangle_count: offset / 9,
     edge_count: edge_offset / 6,
   }

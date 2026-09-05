@@ -335,6 +335,10 @@ describe(`convex hull replacement state`, () => {
       button(`refresh-convex-entries`).click()
       await tick()
       expect(document.body.querySelector(plot_selector)).not.toBeNull()
+      expect(selected_text()).toBe(`none`)
+      button(`select-entry`).click()
+      await tick()
+      expect(selected_text()).not.toBe(`none`)
     },
   )
 

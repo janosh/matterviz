@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

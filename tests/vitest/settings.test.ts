@@ -312,6 +312,9 @@ describe(`Settings`, () => {
       'trajectory/Trajectory': {
         show_controls: `ShowControlsProp: undefined normalises to the schema's shown state via normalize_show_controls(.., 'always')`,
       },
+      'spectral/PhononModeExplorer': {
+        vector_color: `null uses element colors for eigenvectors instead of the structure viewer's uniform red`,
+      },
     }
 
     // get_convex_hull_defaults is the one helper that hands a component a DEFAULTS group

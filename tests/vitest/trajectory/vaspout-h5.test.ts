@@ -8,7 +8,7 @@ import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electr
 import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
 import { is_trajectory_file } from '$lib/trajectory/format-detect'
 import type * as h5wasm from 'h5wasm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { read_binary_test_file, rejection_of } from '../setup'
 
 const VASPOUT_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
@@ -210,37 +210,59 @@ describe(`HDF5 ion type expansion`, () => {
 })
 
 describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
-  it(`reads band structure from the phelel kpoints_opt fixture (TiNiSn)`, async () => {
-    const bands = await with_h5_file(
-      read_vaspout(`vaspout-tinisn-bands-only.h5`),
-      `vaspout.h5`,
-      read_vaspout_bands,
-    )
-    if (!bands) throw new Error(`expected bands`)
+  it.each([`valid`, `missing`, `singular`])(
+    `reads TiNiSn bands with a %s cell`,
+    async (cell) => {
+      const bands = await with_h5_file(
+        read_vaspout(`vaspout-tinisn-bands-only.h5`),
+        `vaspout.h5`,
+        (h5_file) => {
+          const get_dataset = h5_file.get.bind(h5_file)
+          vi.spyOn(h5_file, `get`).mockImplementation((path) => {
+            const entity = get_dataset(path)
+            if (cell === `valid` || !path.endsWith(`/lattice_vectors`)) return entity
+            if (cell === `missing`) return null
+            if (entity && `to_array` in entity)
+              vi.spyOn(entity, `to_array`).mockReturnValue([
+                [0, 0, 0],
+                [0, 0, 0],
+                [0, 0, 0],
+              ])
+            return entity
+          })
+          return read_vaspout_bands(h5_file)
+        },
+      )
+      if (!bands) throw new Error(`expected bands`)
+      if (cell === `valid`) {
+        expect(bands.recip_lattice).toHaveLength(3)
+        expect(bands.recip_lattice?.flat().every(Number.isFinite)).toBe(true)
+      } else expect(bands.recip_lattice).toBeUndefined()
 
-    // eigenvalues shape (1, 306, 24) -> 24 bands over 306 k-points
-    expect(bands.nb_bands).toBe(24)
-    expect(bands.bands).toHaveLength(24)
-    expect(bands.bands[0]).toHaveLength(306)
-    expect(bands.qpoints).toHaveLength(306)
-    expect(bands.distance).toHaveLength(306)
-    expect(bands.is_spin_polarized).toBe(false)
-    expect(bands.spin_down_bands).toBeUndefined()
-    expect(bands.bands[0][0]).toBeCloseTo(-48.4674, 3)
+      // eigenvalues shape (1, 306, 24) -> 24 bands over 306 k-points
+      expect(bands.nb_bands).toBe(24)
+      expect(bands.bands).toHaveLength(24)
+      expect(bands.bands[0]).toHaveLength(306)
+      expect(bands.qpoints).toHaveLength(306)
+      expect(bands.distance).toHaveLength(306)
+      expect(bands.is_spin_polarized).toBe(false)
+      expect(bands.spin_down_bands).toBeUndefined()
+      expect(bands.bands[0][0]).toBeCloseTo(-48.4674, 3)
 
-    // 12 line-mode labels + 51 points per segment -> 6 branches with Γ prettified
-    expect(bands.branches).toHaveLength(6)
-    expect(bands.branches[0]).toMatchObject({ start_index: 0, end_index: 50 })
-    expect(bands.qpoints[0].label).toBe(`Γ`)
-    expect(bands.qpoints[50].label).toBe(`X`)
-    expect(bands.labels_dict[`Γ`]).toEqual([0, 0, 0])
+      // 12 line-mode labels + 51 points per segment -> 6 branches with Γ prettified
+      expect(bands.branches).toHaveLength(6)
+      expect(bands.branches[0]).toMatchObject({ start_index: 0, end_index: 50 })
+      expect(bands.qpoints[0].label).toBe(`Γ`)
+      expect(bands.qpoints[50].label).toBe(`X`)
+      expect(bands.labels_dict[`Γ`]).toEqual([0, 0, 0])
 
-    // Path distance is cumulative and non-decreasing
-    for (let idx = 1; idx < bands.distance.length; idx++) {
-      expect(bands.distance[idx]).toBeGreaterThanOrEqual(bands.distance[idx - 1])
-    }
-    expect(bands.distance.at(-1)).toBeGreaterThan(0)
-  })
+      // Path distance is cumulative and non-decreasing
+      for (let idx = 1; idx < bands.distance.length; idx++) {
+        expect(bands.distance[idx]).toBeGreaterThanOrEqual(bands.distance[idx - 1])
+      }
+      expect(bands.distance.at(-1)).toBeGreaterThan(0)
+    },
+  )
 
   it(`expands single-point SCF runs into pseudo-frames and attaches DOS`, async () => {
     const trajectory = await parse_fixture(`vaspout-si-static-scf.h5`)

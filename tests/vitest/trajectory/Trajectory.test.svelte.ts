@@ -10,7 +10,7 @@ import type {
 import { Trajectory } from '$lib/trajectory'
 import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
-import { bind_props, doc_query, make_run as make_shared_run } from '../setup'
+import { mock_fullscreen, bind_props, doc_query, make_run as make_shared_run } from '../setup'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -600,6 +600,7 @@ describe(`events`, () => {
   })
 
   test(`on_fullscreen_change fires with the toggled state`, async () => {
+    mock_fullscreen()
     const on_fullscreen_change = vi.fn<(data: TrajHandlerData) => void>()
     const props = $state(default_props({ fullscreen: false, on_fullscreen_change }))
     mount_trajectory(props)
@@ -610,6 +611,7 @@ describe(`events`, () => {
   })
 
   test(`Escape closes the open menu and leaves parent-owned fullscreen alone`, async () => {
+    mock_fullscreen()
     const target = mount_trajectory(default_props())
     await tick()
     // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it

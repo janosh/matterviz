@@ -245,7 +245,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       }
       if (!show_axis) continue // Hiding a sub-axis must not hide its distinct centers.
       // Distinct centers may share a cylinder. Keep solid and dashed styles separate.
-      const line_key = `${color}|${elem.kind === `screw`}|${start}|${end}`
+      const endpoints = [String(start), String(end)].toSorted().join(`|`)
+      const line_key = `${color}|${elem.kind === `screw`}|${endpoints}`
       if (drawn_axes.has(line_key)) continue
       drawn_axes.add(line_key)
 
