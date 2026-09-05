@@ -4,6 +4,7 @@ import { reaction_paths } from '$site/neb'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  mock_fullscreen,
   bind_props,
   create_drop_event,
   doc_query,
@@ -46,7 +47,6 @@ const reset_mounts = async (): Promise<void> => {
 
 afterEach(async () => {
   await reset_mounts()
-  Object.defineProperty(document, `fullscreenElement`, { value: null, configurable: true })
   vi.restoreAllMocks()
 })
 
@@ -339,6 +339,7 @@ describe(`NebViewer`, () => {
   })
 
   test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {
+    mock_fullscreen()
     const rejected_state = $state({ fullscreen: false })
     const rejected_callback = vi.fn()
     const rejected_viewer = await mount_viewer(

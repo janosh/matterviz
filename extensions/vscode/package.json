@@ -1868,38 +1868,6 @@
           "description": "Initial camera Y rotation (rad) for quaternary (4D) convex hull",
           "minimum": -6.283,
           "maximum": 6.283
-        },
-        "matterviz.plot.grid_lines": {
-          "type": "boolean",
-          "deprecationMessage": "Removed; use matterviz.plot.display.x_grid / matterviz.plot.display.y_grid"
-        },
-        "matterviz.plot.axis_labels": {
-          "type": "boolean",
-          "deprecationMessage": "Removed; had no effect"
-        },
-        "matterviz.plot.x_format": {
-          "type": "string",
-          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
-        },
-        "matterviz.plot.x2_format": {
-          "type": "string",
-          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
-        },
-        "matterviz.plot.y_format": {
-          "type": "string",
-          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
-        },
-        "matterviz.plot.y2_format": {
-          "type": "string",
-          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
-        },
-        "matterviz.plot.x_ticks": {
-          "type": "number",
-          "deprecationMessage": "Removed; tick counts follow the plot size automatically"
-        },
-        "matterviz.plot.y_ticks": {
-          "type": "number",
-          "deprecationMessage": "Removed; tick counts follow the plot size automatically"
         }
       }
     }

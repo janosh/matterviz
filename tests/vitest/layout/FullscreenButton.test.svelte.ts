@@ -1,14 +1,15 @@
+import { mock_fullscreen } from '../setup'
 import FullscreenButton from '$lib/layout/FullscreenButton.svelte'
 import { flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Buttons keep a window keydown listener for the `f` shortcut, so one left mounted would
 // answer a later test's keypress and fullscreen its own stale wrapper
 const mounted: ReturnType<typeof mount>[] = []
+beforeEach(() => mock_fullscreen())
 afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component)
   document.body.replaceChildren()
-  Object.defineProperty(document, `fullscreenElement`, { configurable: true, value: null })
   vi.restoreAllMocks()
 })
 

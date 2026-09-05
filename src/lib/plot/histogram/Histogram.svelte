@@ -55,13 +55,11 @@
     HistogramBin,
     HistogramNormalize,
     HistogramSeries,
-    HistogramSeriesInput,
   } from '$lib/plot/histogram/histogram'
   import {
     compute_count_range,
     compute_histogram_bins,
     log_safe_range,
-    to_histogram_series,
   } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
   import { DEFAULTS } from '$lib/settings'
@@ -129,8 +127,7 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
-      // Canonical `{ values, … }` entries, or the legacy `{ x, y, line_style }` shape
-      series: HistogramSeriesInput[]
+      series: HistogramSeries[]
       // Component-specific props
       bins?: number
       normalize?: HistogramNormalize
@@ -167,15 +164,11 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write back into the bindable series prop (in the caller's shape); see
-  // create_legend_visibility. The normaliser runs once here so everything below reads the
-  // canonical `values`/`color` fields only.
-  const legend_vis = create_legend_visibility<HistogramSeriesInput>(
-    () => resolved_series_in,
+  const legend_vis = create_legend_visibility<HistogramSeries>(
+    () => series,
     (next) => (series_in = next),
   )
-  let resolved_series_in: HistogramSeriesInput[] = $derived(legend_vis.resolve(series_in))
-  let series: HistogramSeries[] = $derived(resolved_series_in.map(to_histogram_series))
+  let series: HistogramSeries[] = $derived(legend_vis.resolve(series_in))
 
   // Merge defaults without writing library-owned values into the caller's bound state.
   // No default tick format: PlotAxis falls back to format_num, which uses SI

@@ -29,6 +29,7 @@ import {
   make_grid,
   make_position_stream,
   make_volume,
+  mock_fullscreen,
   mouse,
   press_window_key,
   trigger_resize_observer,
@@ -298,6 +299,7 @@ const mount_volumetric = (
 // Stub the Fullscreen API on the mounted viewer; `set_fullscreen_element` plays the browser
 // entering/leaving fullscreen
 const stub_fullscreen_api = () => {
+  mock_fullscreen()
   const request_fullscreen = vi.fn().mockResolvedValue(undefined)
   const exit_fullscreen = vi.fn().mockResolvedValue(undefined)
   const wrapper = doc_query(`.structure`)
@@ -1166,6 +1168,40 @@ describe(`Structure`, () => {
       expect(Number(radius_input.value)).toBe(persist ? 1.35 : DEFAULTS.structure.atom_radius)
     },
   )
+
+  test(`export and controls panes exclude each other and preserve export edits`, async () => {
+    const props = $state<{ active_pane: StructurePane | null }>({ active_pane: null })
+    mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
+    await tick()
+    const toggle_pane = async (pane: `export` | `controls`): Promise<void> => {
+      doc_query<HTMLButtonElement>(`.structure-${pane}-toggle`).click()
+      await tick()
+    }
+    const dpi_selector = `input[type="number"][title*="dots per inch"]`
+
+    await toggle_pane(`export`)
+    expect(props.active_pane).toBe(`export`)
+    const dpi_input = doc_query<HTMLInputElement>(dpi_selector)
+    dpi_input.value = `250`
+    dpi_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    await toggle_pane(`controls`)
+    expect(props.active_pane).toBe(`controls`)
+    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+    expect(doc_query(`.controls-pane`).style.display).toBe(`grid`)
+
+    await toggle_pane(`export`)
+    expect(props.active_pane).toBe(`export`)
+    expect(doc_query(`.controls-pane`).style.display).toBe(`none`)
+    expect(doc_query(`.export-pane`).style.display).toBe(`grid`)
+    expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
+    await toggle_pane(`export`)
+    expect(props.active_pane).toBeNull()
+    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+    await toggle_pane(`export`)
+    expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
+  })
 
   // The Measure / Edit menu writes the bound measure_mode; distance is the default and stays
   // selectable from every other mode

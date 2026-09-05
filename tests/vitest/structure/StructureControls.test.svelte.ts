@@ -964,6 +964,17 @@ describe(`StructureControls reactive props`, () => {
     expect(state.scene_props.polyhedra_show_edges).toBe(true)
     expect(reset_button(`polyhedra`)).toBeNull()
 
+    state.scene_props.polyhedra_color_mode = `uniform`
+    state.scene_props.polyhedra_color = `#123456`
+    await tick()
+    doc_query<HTMLButtonElement>(`[data-key="polyhedra_color"] .setting-reset-button`).click()
+    await tick()
+    expect(state.scene_props.polyhedra_color_mode).toBe(
+      DEFAULTS.structure.polyhedra_color_mode,
+    )
+    expect(state.scene_props.polyhedra_color).toBe(DEFAULTS.structure.polyhedra_color)
+    expect(reset_button(`polyhedra`)).toBeNull()
+
     const force_scale = doc_query<HTMLInputElement>(
       `[data-key="vector_scale:force"] input[type="number"]`,
     )

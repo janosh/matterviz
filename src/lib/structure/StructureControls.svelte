@@ -288,7 +288,7 @@
   // select, boolean → checkbox, number → slider + number input, string → color swatch).
   // Rows default to reading/writing scene_props[key]; `get`/`set` point one elsewhere (a
   // top-level bindable such as show_image_atoms). `pair` adds a dependent color swatch beside
-  // the primary control, and `data_key` names the pseudo-setting the pair resets as one.
+  // the primary control. The paired setting's key identifies both controls for reset and description.
   type StructureSettingKey = keyof typeof SETTINGS_CONFIG.structure
   type Row = {
     key: StructureSettingKey
@@ -299,7 +299,6 @@
     get?: () => unknown
     set?: (value: unknown) => void
     pair?: { key: StructureSettingKey; when: () => boolean }
-    data_key?: SettingKey // pseudo-key a paired row resets and describes as one
   }
   const row = (key: StructureSettingKey, label: string, step?: number): Row => ({
     key,
@@ -346,7 +345,6 @@
     row(`polyhedra_opacity`, `Opacity`, 0.05),
     {
       ...row(`polyhedra_color_mode`, `Color`),
-      data_key: `polyhedra_color`,
       pair: {
         key: `polyhedra_color`,
         when: () => scene_props.polyhedra_color_mode === `uniform`,
@@ -479,7 +477,7 @@
     const keys = [...extra_keys]
     for (const current of rows) {
       if (current.pair) {
-        accessors[current.data_key ?? current.key] = scene_pair(current.key, current.pair.key)
+        accessors[current.pair.key] = scene_pair(current.key, current.pair.key)
       } else if (current.get && current.set) {
         accessors[current.key] = local(current.get, current.set)
       } else keys.push(current.key)
@@ -800,7 +798,7 @@
           >{label}</NumberRangeInput
         >
       {:else}
-        <label {...setting_row(current.data_key ?? key)}>
+        <label {...setting_row(pair?.key ?? key)}>
           <span>{label}</span>
           <span class="ctrl-pair">
             {#if schema.enum}

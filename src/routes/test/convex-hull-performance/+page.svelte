@@ -1,6 +1,6 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation'
-  import type { ElementSymbol } from '$lib'
+  import type { Crystal, ElementSymbol } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
   import { ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
   import { Spinner } from 'svelte-widgets'
@@ -60,14 +60,25 @@
       const atoms = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
 
       // Add dummy structure data to first 5 entries for testing click selection
-      const structure =
+      const structure: Crystal | undefined =
         idx < 5
           ? {
               sites: elements.map((el, site_idx) => ({
-                species: [{ element: el, occu: 1 }],
+                species: [{ element: el, occu: 1, oxidation_state: 0 }],
                 xyz: [site_idx * 2, 0, 0],
+                abc: [site_idx * 0.2, 0, 0],
+                label: el,
+                properties: {},
               })),
               lattice: {
+                a: 10,
+                b: 10,
+                c: 10,
+                alpha: 90,
+                beta: 90,
+                gamma: 90,
+                volume: 1000,
+                pbc: [true, true, true],
                 matrix: [
                   [10, 0, 0],
                   [0, 10, 0],

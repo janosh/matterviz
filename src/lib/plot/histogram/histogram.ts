@@ -8,8 +8,7 @@ import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/pl
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
-// One distribution to bin, in canonical form: `values` are the samples; everything else is
-// legend/axis metadata. Histogram internals only ever read this shape.
+// One distribution to bin: `values` are the samples; everything else is legend/axis metadata.
 export interface HistogramSeries {
   id?: string | number // stable key for series reordering
   values: readonly number[]
@@ -22,29 +21,6 @@ export interface HistogramSeries {
   // Which value axis the samples bin on (`x2`: top) and which count axis the bars use
   x_axis?: `x1` | `x2`
   y_axis?: `y1` | `y2`
-}
-
-// Legacy `DataSeries`-shaped input (`{ x, y, line_style }`, still what pymatviz's
-// HistogramWidget sends): `y` is the sample array when `values` is absent, `x` is ignored and
-// `line_style.stroke` is the colour when `color` is unset. Normalised by `to_histogram_series`.
-export interface LegacyHistogramSeries extends Omit<HistogramSeries, `values`> {
-  values?: readonly number[]
-  y?: readonly number[]
-  x?: readonly number[]
-  line_style?: { stroke?: string; [key: string]: unknown }
-}
-
-// What `Histogram`'s `series` prop accepts: canonical or legacy entries
-export type HistogramSeriesInput = HistogramSeries | LegacyHistogramSeries
-
-// Normalise one prop entry into the canonical shape (applied once per series in
-// `Histogram.svelte`). A sample-less legacy entry yields `values: []` and renders nothing.
-export const to_histogram_series = (input: HistogramSeriesInput): HistogramSeries => {
-  const { values, y, x: _ignored, line_style, color, ...rest }: LegacyHistogramSeries = input
-  const series: HistogramSeries = { ...rest, values: values ?? y ?? [] }
-  const fill = color ?? line_style?.stroke
-  if (fill !== undefined) series.color = fill
-  return series
 }
 
 // [min, max] range where either bound may be null (unset)

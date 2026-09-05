@@ -281,7 +281,7 @@
   "scripts": {
     "build:site": "vp build && pagefind --site build",
     "test": "vp test --run && playwright test",
-    "knip": "knip --include dependencies,exports,types,nsExports",
+    "knip": "knip --include files,dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs",
     "build:anywidget": "pnpm package:dist && printf 'overrides:\n  svelte-widgets: file:../../node_modules/svelte-widgets\n' > extensions/anywidget/pnpm-workspace.yaml && pnpm -C extensions/anywidget install --config.strict-dep-builds=false && pnpm -C extensions/anywidget build",
@@ -355,7 +355,10 @@
       ".": {
         "entry": [
           "svelte.config.ts",
-          "src/site/**/*.{js,ts,svelte}"
+          "src/site/**/*.{js,ts,svelte}",
+          "src/scripts/capture-screenshots.mjs",
+          "src/scripts/fetch-elem-images.mjs",
+          "src/lib/scene/three-compat.ts"
         ],
         "paths": {
           "$lib": [
@@ -372,6 +375,7 @@
           ]
         },
         "ignore": [
+          ".venv/**",
           "extensions/anywidget/**"
         ]
       },
