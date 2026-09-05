@@ -151,6 +151,7 @@ export function validate_synthesis_plan_request(
     `two_step`,
     `scoring`,
     `max_routes`,
+    `keep_route_ids`,
     `target_mass_g`,
   ])
   if (!Array.isArray(request.entries) || request.entries.length === 0)
@@ -166,6 +167,8 @@ export function validate_synthesis_plan_request(
   if (request.scoring !== undefined) validate_scoring(request.scoring)
   if (request.max_routes !== undefined)
     assert_integer(request.max_routes, `max_routes`, { minimum: 1, maximum: 200 })
+  if (request.keep_route_ids !== undefined)
+    assert_string_array(request.keep_route_ids, `keep_route_ids`)
   if (request.target_mass_g !== undefined)
     assert_finite_number(request.target_mass_g, `target_mass_g`, {
       minimum: 0,

@@ -48,7 +48,7 @@
       better: `lower`,
       color_scale: `interpolateRdBu`,
       format: `.0f`,
-      description: `Target driving force minus the most favorable competitor's; negative = target forms first`,
+      description: `Target driving force minus the most favorable competitor's; negative = thermodynamically preferred`,
     },
     {
       label: `Competitors`,
@@ -57,13 +57,13 @@
       format: `d`,
       description: `Phases with a larger driving force than the target`,
     },
-    { label: `Atmosphere`, key: `atmosphere`, filter: `category` },
+    { label: `Net gas exchange`, key: `atmosphere`, filter: `category` },
     {
       label: `Onset (K)`,
       key: `onset`,
       better: `lower`,
       format: `d`,
-      description: `Temperature above which a gas-releasing reaction is downhill`,
+      description: `First downhill temperature found for a gas-exchanging reaction (not a firing recommendation)`,
     },
     {
       label: `Practicality`,

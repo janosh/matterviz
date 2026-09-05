@@ -1,3 +1,4 @@
+import { format_recipe_text } from './recipe'
 // Agent-facing surface: a JSON schema for the request (drop-in tool `input_schema`), a compact
 // text rendering of a plan for the model channel, and a ready-made tool definition. The full
 // SynthesisPlan object is the structured channel; `format_plan_text` deliberately repeats only
@@ -98,6 +99,11 @@ export const SYNTHESIS_PLAN_REQUEST_SCHEMA = {
       ),
     },
     max_routes: { type: `integer`, minimum: 1, maximum: 200, default: 20 },
+    keep_route_ids: {
+      type: `array`,
+      items: { type: `string` },
+      description: `Also return these evaluated routes outside the top-ranked limit.`,
+    },
     target_mass_g: {
       type: `number`,
       exclusiveMinimum: 0,
@@ -109,23 +115,24 @@ export const SYNTHESIS_PLAN_REQUEST_SCHEMA = {
 
 export const SYNTHESIS_PLANNER_TOOL = {
   name: `plan_synthesis`,
-  description: `Rank solid-state synthesis routes to a target inorganic phase from simulated convex-hull data (formation energies per atom from DFT, ML potentials or experiment). For every precursor set it balances the reaction (with optional gas release/uptake), computes the reaction energy, the competing phases that can form from the same mixture with their driving forces, the inverse hull energy (https://doi.org/10.1038/s44160-024-00502-y), the temperature at which gas-releasing reactions turn favorable, and a bench recipe (masses for a given target mass, heating window, procedure). Returns routes best-first with per-term score breakdowns and plain-language rationale. Needs thermodynamic entries covering the target's chemical system plus any precursor-only elements (C for carbonates, H for hydroxides) and the corresponding open_species.`,
+  description: `Rank solid-state synthesis routes to a target inorganic phase from simulated convex-hull data (formation energies per atom from DFT, ML potentials or experiment). For every precursor set it balances the reaction (with optional gas release/uptake), computes the reaction energy, the competing phases that can form from the same mixture with their driving forces, the inverse hull energy (https://doi.org/10.1038/s44160-024-00502-y), the temperature at which gas-releasing reactions turn favorable, and an experiment card (calculated masses for each step, unreferenced precursor-library notes, editable experimental assumptions and checkpoints). Returns routes best-first with per-term score breakdowns and plain-language rationale. Needs thermodynamic entries covering the target's chemical system plus any precursor-only elements (C for carbonates, H for hydroxides) and the corresponding open_species.`,
   input_schema: SYNTHESIS_PLAN_REQUEST_SCHEMA,
 } as const
 
 export function format_route_text(route: SynthesisRoute, rank?: number): string {
-  const { reaction, selectivity, thermodynamics, recipe, practicality } = route
+  const { reaction, selectivity, thermodynamics, practicality } = route
   const lines: string[] = []
   const header = `${rank === undefined ? `` : `${rank}. `}${reaction.equation}  (score ${format_num(route.score, `.2~f`)}${
     route.kind === `two_step` ? `, two-step` : ``
   })`
   lines.push(header)
-  if (route.intermediate_step) lines.push(`   step 1: ${route.intermediate_step.equation}`)
+  if (route.intermediate_step)
+    lines.push(`   step 1: ${route.intermediate_step.reaction.equation}`)
   const onset_text = thermodynamics.onset_temperature
     ? `, favorable above ${thermodynamics.onset_temperature} K`
     : ``
   lines.push(
-    `   ΔE ${format_mev(reaction.energy_per_atom)} (${format_num(reaction.energy_per_fu, `.2~f`)} eV/fu)${onset_text}; atmosphere: ${thermodynamics.atmosphere}`,
+    `   ΔE ${format_mev(reaction.energy_per_atom)} (${format_num(reaction.energy_per_fu, `.2~f`)} eV/fu)${onset_text}; gas exchange: ${thermodynamics.atmosphere}`,
   )
   const competitor_text = selectivity.competitors
     .slice(0, 4)
@@ -149,20 +156,7 @@ export function format_route_text(route: SynthesisRoute, rank?: number): string 
         .join(`; `)}`,
     )
   }
-  const masses = recipe.items
-    .filter((item) => item.role === `precursor`)
-    .map((item) => `${format_num(item.mass_g, `.4~f`)} g ${item.phase.formula}`)
-    .join(` + `)
-  const window = recipe.temperature_window
-  const window_text =
-    window.min_K === null && window.max_K === null
-      ? `no temperature guidance`
-      : `fire at ${window.min_K ?? `?`}${window.max_K ? `–${window.max_K}` : `+`} K`
-  const mass_text =
-    Math.abs(recipe.mass_loss_percent) > 0.05
-      ? `; ${format_num(Math.abs(recipe.mass_loss_percent), `.1~f`)}% mass ${recipe.mass_loss_percent > 0 ? `loss` : `gain`}`
-      : ``
-  lines.push(`   recipe for ${recipe.target_mass_g} g: ${masses}; ${window_text}${mass_text}`)
+  lines.push(format_recipe_text(route))
   if (practicality.notes.length) {
     lines.push(
       `   practicality ${format_num(practicality.score, `.2~f`)}: ${practicality.notes.slice(0, 3).join(`; `)}`,

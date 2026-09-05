@@ -288,7 +288,7 @@
   .hull-title {
     position: absolute;
     left: 1em;
-    top: 1ex;
+    top: var(--hull-title-top, 1ex);
     margin: 0;
     font-weight: 500;
   }

@@ -12,20 +12,23 @@
   import { format_equation_html, format_mev } from './format'
   import { prepare_phase_set, resolve_phase } from './phases'
   import { plan_synthesis_async } from './plan-synthesis-async.svelte'
-  import { build_recipe } from './recipe'
+  import { build_route_recipe } from './recipe'
+  import RouteComparison from './RouteComparison.svelte'
+  import OpportunityMap from './OpportunityMap.svelte'
   import ReactionSlicePlot from './ReactionSlicePlot.svelte'
   import RecipeCard from './RecipeCard.svelte'
   import RouteTable from './RouteTable.svelte'
   import { DEFAULT_SCORE_WEIGHTS } from './scoring'
   import type {
     PrecursorPoolOptions,
+    RecipeAssumptions,
     ScoreWeights,
     SynthesisConditions,
     SynthesisPlan,
     SynthesisPlanProgress,
     SynthesisRoute,
   } from './types'
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
 
   let {
     entries = [],
@@ -38,10 +41,12 @@
     weights = $bindable({ ...DEFAULT_SCORE_WEIGHTS }),
     max_routes = 50,
     selected_route_id = $bindable(null),
+    shortlist_ids = $bindable([]),
     plan = $bindable(null),
     planning = $bindable(false),
     progress = $bindable(null),
     show_hull = true,
+    show_opportunity_map = true,
     show_controls = true,
     ...rest
   }: {
@@ -56,12 +61,14 @@
     weights?: ScoreWeights
     max_routes?: number
     selected_route_id?: string | null
+    shortlist_ids?: string[]
     // Bindable output: the full plan for the current inputs
     plan?: SynthesisPlan | null
     // Bindable async state for host applications embedding the planner
     planning?: boolean
     progress?: SynthesisPlanProgress | null
     show_hull?: boolean
+    show_opportunity_map?: boolean
     show_controls?: boolean
     [key: string]: unknown
   } = $props()
@@ -88,6 +95,16 @@
   })
 
   let worker_plan = $state<SynthesisPlan | null>(plan)
+  let planned_entries: PhaseData[] | undefined
+  let planned_target = ``
+  let hull_open = $state(false)
+  let map_routes = $state.raw<SynthesisRoute[]>([])
+  let map_entries: PhaseData[] | undefined
+  let map_target = ``
+  let shortlist_target = $state(``)
+  let experiment_choices = $state<
+    Record<string, Partial<Record<`final` | `intermediate`, RecipeAssumptions>>>
+  >({})
   let planning_error = $state<string | null>(null)
   let active_controller: AbortController | undefined
   const target_mass_error = $derived(
@@ -97,14 +114,32 @@
   )
   const computed_plan = $derived.by(() => {
     if (!worker_plan || target_mass_error) return null
-    if (worker_plan.routes.every((route) => route.recipe.target_mass_g === target_mass_g))
-      return worker_plan
     return {
       ...worker_plan,
-      routes: worker_plan.routes.map((route) => ({
-        ...route,
-        recipe: build_recipe(route.reaction, route.thermodynamics, target_mass_g),
-      })),
+      routes: worker_plan.routes.map((route) => {
+        const scaled =
+          target_mass_g === route.recipe.target_mass_g
+            ? route
+            : { ...route, ...build_route_recipe(route, target_mass_g) }
+        const choices = experiment_choices[route.id]
+        if (!choices) return scaled
+        return {
+          ...scaled,
+          recipe: choices.final
+            ? { ...scaled.recipe, assumptions: choices.final }
+            : scaled.recipe,
+          intermediate_step:
+            scaled.intermediate_step && choices.intermediate
+              ? {
+                  ...scaled.intermediate_step,
+                  recipe: {
+                    ...scaled.intermediate_step.recipe,
+                    assumptions: choices.intermediate,
+                  },
+                }
+              : scaled.intermediate_step,
+        }
+      }),
     }
   })
   const error = $derived(target_mass_error ?? planning_error)
@@ -121,6 +156,7 @@
       two_step,
       scoring: weights,
       max_routes,
+      keep_route_ids: untrack(() => shortlist_ids),
     }
     if (!entries.length || !target) {
       worker_plan = null
@@ -131,7 +167,9 @@
     }
     const controller = new AbortController()
     active_controller = controller
-    worker_plan = null
+    if (planned_entries !== entries || planned_target !== target) worker_plan = null
+    planned_entries = entries
+    planned_target = target
     planning = true
     progress = { stage: `preparing`, current: 0, total: 1 }
     planning_error = null
@@ -163,11 +201,52 @@
     plan_synthesis_async.release()
   })
   const routes = $derived(computed_plan?.routes ?? [])
+  $effect(() => {
+    const current_routes = routes
+    const ids = shortlist_ids
+    if (map_entries !== entries || map_target !== target) map_routes = []
+    map_entries = entries
+    map_target = target
+    // Preserve reaction definitions when changing conditions removes an uphill route from results.
+    map_routes = untrack(() =>
+      ids.flatMap(
+        (id) =>
+          current_routes.find((route) => route.id === id) ??
+          map_routes.find((route) => route.id === id) ??
+          [],
+      ),
+    )
+  })
+  $effect(() => {
+    if (computed_plan && computed_plan.target.id !== shortlist_target) {
+      if (shortlist_target || !shortlist_ids.length)
+        shortlist_ids = routes.slice(0, 2).map(({ id }) => id)
+      shortlist_target = computed_plan.target.id
+    }
+  })
+  const hull_entries = $derived.by((): PhaseData[] => {
+    if (!hull_open || !worker_plan) return []
+    const originals = new Map(entries.map((entry) => [entry.entry_id, entry]))
+    return worker_plan.phases.map((phase) => ({
+      ...originals.get(phase.id),
+      entry_id: phase.id,
+      composition: phase.composition,
+      reduced_formula: phase.formula,
+      energy: phase.energy_per_atom * phase.n_atoms_per_fu,
+      energy_per_atom: phase.energy_per_atom,
+      e_form_per_atom: phase.energy_per_atom,
+      exclude_from_hull: false,
+      e_above_hull: undefined,
+      is_stable: undefined,
+      temperatures: undefined,
+      free_energies: undefined,
+    }))
+  })
   const selected_route = $derived<SynthesisRoute | null>(
     routes.find((route) => route.id === selected_route_id) ?? routes[0] ?? null,
   )
   $effect(() => {
-    if (selected_route && selected_route.id !== selected_route_id)
+    if (!planning && selected_route && selected_route.id !== selected_route_id)
       selected_route_id = selected_route.id
   })
 
@@ -238,7 +317,7 @@
       [`Driving force`, `${format_mev(reaction.driving_force)} of mixture`],
       [`Inverse hull`, format_mev(selectivity.inverse_hull_energy)],
       [`Selectivity margin`, format_mev(selectivity.selectivity_margin)],
-      [`Atmosphere`, thermodynamics.atmosphere],
+      [`Net gas exchange`, thermodynamics.atmosphere],
       ...(thermodynamics.onset_temperature
         ? [[`Favorable above`, `${thermodynamics.onset_temperature} K`] as [string, string]]
         : []),
@@ -378,9 +457,11 @@
 
   {#if error}
     <p class="error">{error}</p>
-  {:else if planning}
+  {/if}
+  {#if planning}
     <p class="progress" role="status">{progress_text}</p>
-  {:else if computed_plan}
+  {/if}
+  {#if computed_plan && !error}
     <p class="summary">
       <strong>{@html sanitize_formula(computed_plan.target.formula)}</strong>
       in {computed_plan.chemical_system} at {computed_plan.conditions.temperature} K
@@ -400,15 +481,34 @@
     {/each}
 
     <div class="main">
-      <RouteTable {routes} bind:selected_route_id />
+      <RouteComparison {routes} bind:shortlist_ids bind:selected_route_id />
+      {#if show_opportunity_map}
+        <OpportunityMap
+          {entries}
+          target={computed_plan.target.id}
+          routes={map_routes}
+          conditions={{ ...computed_plan.conditions, gas_provider: conditions.gas_provider }}
+          selected_route_id={selected_route_id ?? undefined}
+          onconditionschange={(next_conditions, route_id) => {
+            planning = true
+            conditions = next_conditions
+            if (route_id) selected_route_id = route_id
+          }}
+        />
+      {/if}
+      <details class="all-routes">
+        <summary>Browse all {routes.length} ranked routes</summary>
+        <RouteTable {routes} bind:selected_route_id />
+      </details>
       {#if selected_route}
         {@const { reaction, selectivity } = selected_route}
+        {@const route_id = selected_route.id}
         <section class="detail">
           <h3 class="equation">
             {#if selected_route.intermediate_step}
               <small
                 >step 1: {@html format_equation_html(
-                  selected_route.intermediate_step.equation,
+                  selected_route.intermediate_step.reaction.equation,
                 )}</small
               ><br />
             {/if}
@@ -430,17 +530,22 @@
             <ul class="rationale">
               {#each selected_route.rationale as reason (reason)}<li>{reason}</li>{/each}
             </ul>
+            <ReactionSlicePlot route={selected_route} />
             {#if show_hull && n_elements >= 2 && n_elements <= 4}
-              <ConvexHull
-                {entries}
-                {highlighted_entries}
-                show_unstable_labels={false}
-                style="flex: 1; min-height: 520px"
-              />
+              <details bind:open={hull_open} class="system-hull">
+                <summary>Explore the chemical-system hull</summary>
+                {#if hull_open}
+                  <ConvexHull
+                    entries={hull_entries}
+                    {highlighted_entries}
+                    show_unstable_labels={false}
+                    style="flex: 1; min-height: 520px"
+                  />
+                {/if}
+              </details>
             {/if}
           </div>
           <div class="detail-right">
-            <ReactionSlicePlot route={selected_route} />
             {#if selectivity.interfaces.length > 1}
               <h4>Pairwise interfaces</h4>
               <ul class="interfaces">
@@ -462,12 +567,21 @@
               </ul>
             {/if}
 
-            <RecipeCard route={selected_route} bind:target_mass_g />
+            <RecipeCard
+              route={selected_route}
+              bind:target_mass_g
+              onassumptionschange={(step, assumptions) => {
+                experiment_choices[route_id] = {
+                  ...experiment_choices[route_id],
+                  [step]: assumptions,
+                }
+              }}
+            />
           </div>
         </section>
       {/if}
     </div>
-  {:else}
+  {:else if !planning && !error}
     <p class="empty">Provide thermodynamic entries and a target to plan a synthesis.</p>
   {/if}
 </div>
@@ -550,6 +664,16 @@
   .main {
     display: grid;
     gap: 1em;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 500;
+    padding: 0.4em 0;
+  }
+  .system-hull[open] {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
   }
   .detail {
     display: grid;

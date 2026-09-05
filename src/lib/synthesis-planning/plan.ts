@@ -14,7 +14,7 @@ import {
 } from './phases'
 import { format_mev } from './format-mev'
 import { lookup_precursor_info } from './precursor-library'
-import { build_recipe } from './recipe'
+import { build_recipe, build_route_recipe } from './recipe'
 import {
   assess_practicality,
   DEFAULT_SCORE_WEIGHTS,
@@ -168,6 +168,13 @@ function evaluate_route(
   }
   const reaction = make_reaction(precursors, product, gases, balanced)
   const thermodynamics = {
+    temperature: conditions.temperature ?? 0,
+    partial_pressures: Object.fromEntries(
+      gas_species.map((species) => [
+        species,
+        conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species],
+      ]),
+    ),
     onset_temperature: onset,
     gas_exchange,
     atmosphere: describe_atmosphere(gas_exchange),
@@ -302,17 +309,23 @@ function two_step_routes(
       step2 &&
       direct_routes(sub_ctx, pool, intermediate, Math.min(max_precursors, 2)).routes[0]
     if (step1) {
-      routes.push({
+      const route = {
         ...step2,
         id: `${step2.id}<<${step1.id}`,
-        intermediate_step: step1.reaction,
+        intermediate_step: {
+          reaction: step1.reaction,
+          thermodynamics: step1.thermodynamics,
+          selectivity: step1.selectivity,
+          recipe: step1.recipe,
+        },
         // The second firing costs an extra synthesis; the weaker step limits the route
         score: Math.min(step1.score, step2.score) - ctx.weights.simplicity,
         rationale: [
           `Two-step route via ${intermediate.formula}: first ${step1.reaction.equation} (${step1.rationale[0]}), then ${step2.reaction.equation}`,
           ...step2.rationale,
         ],
-      })
+      }
+      routes.push({ ...route, ...build_route_recipe(route, ctx.target_mass_g) })
     }
     on_progress?.({
       stage: `two_step_routes`,
@@ -432,8 +445,13 @@ export function plan_synthesis_with_progress(
     ]),
   ) as Partial<Record<GasSpecies, number>>
 
+  const kept_route_ids = new Set(request.keep_route_ids)
   return {
     target: to_phase_ref(target),
+    phases: (ground_state.id === target.id
+      ? phase_set.phases
+      : [...phase_set.phases, ground_state]
+    ).map(to_phase_ref),
     chemical_system: phase_set.elements.join(`-`),
     elements: phase_set.elements,
     conditions: {
@@ -453,7 +471,9 @@ export function plan_synthesis_with_progress(
             })),
     },
     weights,
-    routes: routes.slice(0, request.max_routes ?? 20),
+    routes: routes.filter(
+      (route, idx) => idx < (request.max_routes ?? 20) || kept_route_ids.has(route.id),
+    ),
     rejected: ctx.rejected,
     n_candidates,
     precursor_pool: pool.map(to_phase_ref),

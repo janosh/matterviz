@@ -10,7 +10,9 @@
 
   let { route, ...rest }: { route: SynthesisRoute; [key: string]: unknown } = $props()
 
-  const solids = $derived(route.reaction.reactants.filter(({ phase }) => !phase.is_gas))
+  const reaction = $derived(route.reaction)
+  const selectivity = $derived(route.selectivity)
+  const solids = $derived(reaction.reactants.filter(({ phase }) => !phase.is_gas))
   const components = $derived(solids.map(({ phase }) => phase.formula))
 
   const pseudo_entry = (
@@ -31,7 +33,7 @@
       ({ phase, coefficient }) => coefficient * phase.n_atoms_per_fu,
     )
     const total_atoms = solid_atoms.reduce((sum, atoms) => sum + atoms, 0)
-    const target = route.reaction.products[0].phase
+    const target = reaction.products[0].phase
     return [
       ...solids.map(({ phase }) =>
         pseudo_entry(phase.id, phase.formula, { [phase.formula]: 1 }, 0),
@@ -42,9 +44,9 @@
         Object.fromEntries(
           components.map((formula, idx) => [formula, solid_atoms[idx] / total_atoms]),
         ),
-        route.reaction.driving_force,
+        reaction.driving_force,
       ),
-      ...route.selectivity.competitors.map((comp) =>
+      ...selectivity.competitors.map((comp) =>
         pseudo_entry(comp.phase.id, comp.phase.formula, comp.mixture, comp.driving_force),
       ),
     ]
@@ -56,7 +58,7 @@
   <ConvexHull
     {entries}
     {components}
-    highlighted_entries={[route.reaction.products[0].phase.id]}
+    highlighted_entries={[reaction.products[0].phase.id]}
     x_axis={{ label: `Atom fraction of ${formulas_html[1]} in ${formulas_html.join(`–`)}` }}
     y_axis={{ label: `ΔE<sub>rxn</sub> (eV/atom of mixture)` }}
     show_unstable_labels
@@ -65,6 +67,6 @@
     enable_structure_preview={false}
     allow_file_drop={false}
     {...rest}
-    style="height: 400px; {rest.style ?? ``}"
+    style="height: 400px; --hull-title-top: 0; {rest.style ?? ``}"
   />
 {/if}
