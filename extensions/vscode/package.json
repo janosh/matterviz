@@ -29,7 +29,7 @@
     "svelte": "^5.56.10",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
-    "vitest": "4.1.11"
+    "vitest": "5.0.0"
   },
   "contributes": {
     "commands": [

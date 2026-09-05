@@ -280,7 +280,7 @@
   },
   "scripts": {
     "build:site": "vp build && pagefind --site build",
-    "test": "vp test --run && playwright test",
+    "test": "vitest run && playwright test",
     "knip": "knip --include files,dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs",
@@ -329,7 +329,7 @@
     "@types/d3-time-format": "^4.0.3",
     "@types/node": "^26.4.1",
     "@types/three": "^0.185.4",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.0",
     "@wooorm/starry-night": "^3.11.0",
     "happy-dom": "^20.13.2",
     "knip": "^6.34.0",
@@ -341,7 +341,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vite-plus": "0.3.0",
-    "vitest": "4.1.11"
+    "vitest": "5.0.0"
   },
   "peerDependencies": {
     "svelte": "^5.48.0"

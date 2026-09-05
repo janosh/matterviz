@@ -107,7 +107,7 @@ jobs:
       - name: Build component library
         run: pnpm package:dist
       - name: Run unit tests
-        run: pnpm exec vp test --run
+        run: pnpm exec vitest run
 
   # Regression tripwires for the hot paths measured in #438 (tests/vitest/perf-baselines.test.ts).
   # Opt-in locally (MATTERVIZ_PERF=1) and its own job here so its medians-of-N neither slow the
@@ -122,7 +122,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/setup
       - name: Run perf baselines
-        run: pnpm exec vp test --run tests/vitest/perf-baselines.test.ts
+        run: pnpm exec vitest run tests/vitest/perf-baselines.test.ts
         env:
           MATTERVIZ_PERF: 1
 
