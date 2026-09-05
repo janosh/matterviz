@@ -149,18 +149,25 @@ export function calculate_all_pair_rdfs(
   const weights = elements.map((element) => species_weights(structure.sites, element))
   // Sparse dispatch wins for many ordered species, but costs more for small or mixed sets.
   // Aggregate repeated entries before multiplying, exactly as the single-pair kernel does.
-  const site_weights =
-    elements.length > 4
-      ? structure.sites.map((_site, site_idx) => {
-          const occupied: { element_idx: number; weight: number }[] = []
-          for (let element_idx = 0; element_idx < elements.length; element_idx++) {
-            const weight = weights[element_idx][site_idx]
-            if (weight !== 0) occupied.push({ element_idx, weight })
-          }
-          return occupied
-        })
-      : null
-  if (!site_weights || site_weights.some((values) => values.length > 1)) {
+  let site_weights: ({ element_idx: number; weight: number } | undefined)[] | undefined
+  if (elements.length > 4) {
+    site_weights = []
+    for (let site_idx = 0; site_idx < structure.sites.length; site_idx++) {
+      let occupied: { element_idx: number; weight: number } | undefined
+      for (let element_idx = 0; element_idx < elements.length; element_idx++) {
+        const weight = weights[element_idx][site_idx]
+        if (weight === 0) continue
+        if (occupied) {
+          site_weights = undefined
+          break
+        }
+        occupied = { element_idx, weight }
+      }
+      if (!site_weights) break
+      site_weights.push(occupied)
+    }
+  }
+  if (!site_weights) {
     return elements.flatMap((el_a, idx_a) =>
       elements
         .slice(idx_a)
@@ -176,13 +183,13 @@ export function calculate_all_pair_rdfs(
   )
   const { list, bins } = prepared
   for (let center = 0; center < list.n_centers; center++) {
-    const center_species = site_weights[center][0]
+    const center_species = site_weights[center]
     if (!center_species) continue
     const { element_idx, weight } = center_species
     const row = histograms[element_idx]
     for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
       const bin = bins[slot]
-      const neighbor = site_weights[list.neighbors[slot]][0]
+      const neighbor = site_weights[list.neighbors[slot]]
       if (bin >= 0 && neighbor && element_idx <= neighbor.element_idx) {
         row[neighbor.element_idx][bin] += weight * neighbor.weight
       }

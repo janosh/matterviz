@@ -22,8 +22,14 @@ export const VELOCITY_SITE_PROPERTY = `velocity`
 export const suggest_vacf_frame_stride = (
   run: TrajectoryRun,
   max_bytes?: number,
+  frame_count = run.frame_count,
 ): number | null =>
-  suggest_analysis_frame_stride(run, max_bytes, has_velocities(run.preview) ? 2 : 3)
+  suggest_analysis_frame_stride(
+    run,
+    max_bytes,
+    has_velocities(run.preview) ? 2 : 3,
+    frame_count,
+  )
 
 const site_velocity = (frame: TrajectoryFrame, atom_idx: number): unknown =>
   frame.structure.sites[atom_idx]?.properties?.[VELOCITY_SITE_PROPERTY]

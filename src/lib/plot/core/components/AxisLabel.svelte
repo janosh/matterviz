@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Spinner } from 'svelte-widgets'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
   import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
   import type { AxisOption } from '$lib/plot/core/types'

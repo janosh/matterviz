@@ -42,9 +42,42 @@ test.describe(`ConvexHull HTML Title Rendering`, () => {
 
   // Verify each dimension renders HTML in diagram title (one test per dim covers the code path)
   for (const dim of Object.keys(DIMS) as (keyof typeof DIMS)[]) {
-    test(`${dim.toUpperCase()} diagram title renders subscript`, async ({ page }) => {
+    test(`${dim.toUpperCase()} diagram title and toolbar render consistently`, async ({
+      page,
+    }) => {
       const diagram = await goto_with_title(page, dim, `Test<sub>2</sub>Formula`)
       await expect(diagram.locator(`h3 sub`)).toHaveText(`2`)
+      if (dim === `2d`) {
+        const title_bottom = await diagram
+          .locator(`h3`)
+          .evaluate((element) => element.getBoundingClientRect().bottom)
+        await expect
+          .poll(() =>
+            diagram
+              .locator(`svg > line`)
+              .first()
+              .evaluate((element) => element.getBoundingClientRect().top),
+          )
+          .toBeGreaterThan(title_bottom)
+      }
+      const icons = diagram.locator(`:scope > .control-buttons > button > svg`)
+      await expect(icons).toHaveCount(4)
+      const sizes = await icons.evaluateAll((elements) =>
+        elements.map((element) => {
+          const { width, height } = element.getBoundingClientRect()
+          return {
+            width,
+            height,
+            font_size: Number(getComputedStyle(element).fontSize.slice(0, -2)),
+          }
+        }),
+      )
+      for (const { width, height, font_size } of sizes) {
+        expect(height).toBe(width)
+        expect(width).toBe(sizes[0].width)
+        // 10% above the former 1.3em fullscreen icon; allow subpixel layout rounding.
+        expect(width).toBeCloseTo(font_size * 1.3 * 1.1, 1)
+      }
     })
 
     test(`${dim.toUpperCase()} controls pane title renders HTML`, async ({ page }) => {

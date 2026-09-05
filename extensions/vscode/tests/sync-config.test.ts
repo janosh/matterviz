@@ -1,51 +1,28 @@
-import { globSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import pkg_json from '../package.json' with { type: 'json' }
-import {
-  build_custom_editor_selectors,
-  build_vscode_settings,
-  DEPRECATED_SETTINGS,
-} from '../scripts/sync-config'
-
-const repo_root = resolve(import.meta.dirname, `..`, `..`, `..`)
+import { build_custom_editor_selectors, build_vscode_settings } from '../scripts/sync-config'
 
 describe(`sync-config`, () => {
   const generated = build_vscode_settings()
 
   test(`package.json carries exactly the generated settings plus the three host settings`, () => {
-    // sync-config.ts only regenerates package.json on `prebuild`, so a schema edit stays
-    // invisible to the editor until someone runs it. It also preserves properties it did not
-    // generate, so a setting deleted from (or scoped away from the editor in) SETTINGS_CONFIG
-    // could linger as a documented toggle wired to nothing.
-    const props = pkg_json.contributes.configuration.properties as unknown as Record<
-      string,
-      Record<string, unknown>
-    >
+    // A removed schema setting must disappear from the manifest when it is regenerated.
+    const props: Record<string, Record<string, unknown>> = pkg_json.contributes.configuration
+      .properties
     expect(Object.keys(generated).length).toBeGreaterThan(200)
     expect(
       Object.keys(props)
         .filter((key) => !(key in generated))
         .toSorted(),
     ).toEqual([`matterviz.auto_render`, `matterviz.open_beside`, `matterviz.theme`])
-    for (const [key, config] of Object.entries(generated))
+    for (const [key, config] of Object.entries(generated)) {
       expect(props[key], key).toEqual(config)
+      expect(config).not.toHaveProperty(`deprecationMessage`)
+    }
     expect(pkg_json.contributes.customEditors[0].selector).toEqual(
       build_custom_editor_selectors(),
     )
   })
-
-  // Removed settings stay in the contributed configuration as deprecated entries (no default)
-  // so a stale settings.json value gets flagged in the editor instead of being silently ignored
-  test.each(Object.entries(DEPRECATED_SETTINGS))(
-    `removed setting %s is emitted deprecated`,
-    (key_path, { type, deprecated }) => {
-      expect(generated[`matterviz.${key_path}`]).toStrictEqual({
-        type,
-        deprecationMessage: deprecated,
-      })
-    },
-  )
 
   // Object-valued leaves (free-form maps) used to be emitted as `type: string`, so VS Code
   // rejected every value a user could type for them
@@ -58,9 +35,7 @@ describe(`sync-config`, () => {
         atom_type_mapping: { value: {}, description: `LAMMPS types to elements`, ...extra },
       },
     }
-    expect(
-      build_vscode_settings(schema, {})[`matterviz.trajectory.atom_type_mapping`],
-    ).toEqual({
+    expect(build_vscode_settings(schema)[`matterviz.trajectory.atom_type_mapping`]).toEqual({
       type: `object`,
       default: {},
       description: `LAMMPS types to elements`,
@@ -74,13 +49,5 @@ describe(`sync-config`, () => {
       type: `object`,
       additionalProperties: { type: `object` },
     })
-  })
-
-  test(`a removed key may not collide with a live setting`, () => {
-    const schema = { plot: { new_toggle: { value: true, description: `New toggle` } } }
-    const removed = { 'plot.new_toggle': { type: `boolean` as const, deprecated: `Removed` } }
-    expect(() => build_vscode_settings(schema, removed)).toThrow(
-      `matterviz.plot.new_toggle is both a live setting and listed in DEPRECATED_SETTINGS`,
-    )
   })
 })

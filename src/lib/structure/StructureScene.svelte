@@ -106,7 +106,11 @@
   import { CanvasTooltip, compose_perceived_bonds, perceive_bond_orders } from './index'
   import { choose_site_label_offset, LABEL_OFFSET_EPS } from './atom-label-placement'
   import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
-  import { compute_polyhedra, merge_polyhedra_buffers } from './polyhedra'
+  import {
+    compute_polyhedra,
+    create_polyhedra_edges,
+    merge_polyhedra_buffers,
+  } from './polyhedra'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {
     TrajectoryLineColorMode,
@@ -189,7 +193,6 @@
     show_polyhedra = DEFAULTS.structure.show_polyhedra,
     polyhedra_opacity = DEFAULTS.structure.polyhedra_opacity,
     polyhedra_show_edges = DEFAULTS.structure.polyhedra_show_edges,
-    polyhedra_edge_color = DEFAULTS.structure.polyhedra_edge_color,
     polyhedra_color_mode = DEFAULTS.structure.polyhedra_color_mode,
     polyhedra_color = DEFAULTS.structure.polyhedra_color,
     polyhedra_hide_center_atoms = DEFAULTS.structure.polyhedra_hide_center_atoms,
@@ -308,7 +311,6 @@
     show_polyhedra?: ShowBonds // when to render coordination polyhedra
     polyhedra_opacity?: number
     polyhedra_show_edges?: boolean
-    polyhedra_edge_color?: string
     polyhedra_color_mode?: PolyhedraColorMode
     polyhedra_color?: string // custom color used when polyhedra_color_mode is 'uniform'
     polyhedra_hide_center_atoms?: boolean
@@ -1462,8 +1464,7 @@
     )
   }
 
-  // Separate derived so material-only changes (opacity, edge color) don't rebuild
-  // buffers and color changes don't rebuild hulls
+  // Face opacity and edge visibility don't rebuild buffers; recoloring doesn't rebuild hulls.
   let polyhedra_buffers = $derived.by(() => {
     if (polyhedra.length === 0) return null
     const get_vertex_color = (poly: Polyhedron, vertex_idx: number): string => {
@@ -1511,14 +1512,20 @@
     return () => geo?.dispose()
   })
 
-  let polyhedra_edge_geometry: BufferGeometry | null = $state(null)
+  let polyhedra_edges: ReturnType<typeof create_polyhedra_edges> | null = $state(null)
   $effect(() => {
-    const geo =
+    const edges =
       polyhedra_show_edges && polyhedra_buffers && polyhedra_buffers.edge_count > 0
-        ? buffer_geometry({ position: polyhedra_buffers.edge_positions })
+        ? create_polyhedra_edges(
+            polyhedra_buffers.edge_positions,
+            polyhedra_buffers.edge_colors,
+          )
         : null
-    polyhedra_edge_geometry = geo
-    return () => geo?.dispose()
+    polyhedra_edges = edges
+    return () => {
+      edges?.geometry.dispose()
+      edges?.material.dispose()
+    }
   })
 
   let smart_site_label_offsets = $derived.by(() => {
@@ -2103,7 +2110,7 @@
       {/if}
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
-        LineSegments (1-2 draw calls regardless of supercell size) -->
+        LineSegments2 (1-2 draw calls regardless of supercell size) -->
       {#if polyhedra_geometry}
         <T.Mesh geometry={polyhedra_geometry} frustumCulled={false} raycast={() => null}>
           <!-- depthWrite when mostly opaque: VESTA-like occlusion between polyhedra;
@@ -2117,14 +2124,8 @@
             flatShading
           />
         </T.Mesh>
-        {#if polyhedra_edge_geometry}
-          <T.LineSegments
-            geometry={polyhedra_edge_geometry}
-            frustumCulled={false}
-            raycast={() => null}
-          >
-            <T.LineBasicMaterial color={polyhedra_edge_color} />
-          </T.LineSegments>
+        {#if polyhedra_edges}
+          <T is={polyhedra_edges} />
         {/if}
       {/if}
 

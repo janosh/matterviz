@@ -3,7 +3,7 @@
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Spinner } from 'svelte-widgets'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'

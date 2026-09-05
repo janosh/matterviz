@@ -4,7 +4,7 @@
   // (volumes, energies) and read the results back through the bindable `fits`.
   import { plot_color } from '$lib/colors'
   import { EV_PER_A3_TO_GPA } from '$lib/constants'
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'

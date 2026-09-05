@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PhaseData } from '$lib/convex-hull'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Spinner } from 'svelte-widgets'
   import { SynthesisPlanner } from '$lib/synthesis-planning'
   import type { SynthesisConditions, SynthesisPlan } from '$lib/synthesis-planning'
   import { to_error } from '$lib/utils'
@@ -39,15 +39,14 @@
 <h1>Synthesis Planner</h1>
 
 <p>
-  Rank solid-state synthesis routes to a target phase from simulated convex-hull data. Every
-  precursor set is balanced (with optional gas release or uptake from the atmosphere), scored
-  by how cleanly the target out-competes the other phases that can form from the same mixture
-  (driving forces, inverse hull energy and pairwise interfaces after
+  Shortlist precursor routes, compare their tradeoffs, and explore how temperature and gas
+  pressure change their thermodynamic selectivity. Build experiment cards with calculated
+  quantities for every firing and record your own protocol choices. The ranking uses driving
+  forces, inverse hull energy and pairwise interfaces after
   <a href="https://doi.org/10.1038/s44160-024-00502-y" target="_blank" rel="noreferrer"
     >Chen et al., Nat. Synth. 2024</a
-  >), and turned into a bench recipe. The same <code>plan_synthesis()</code> function ships as
-  an LLM tool definition (<code>SYNTHESIS_PLANNER_TOOL</code>); <em>Copy summary</em> shows what
-  an agent sees.
+  >. Copy a card or the complete plan to preserve the calculations and experimental
+  assumptions.
 </p>
 
 <label>
@@ -78,13 +77,14 @@
       keep their 0 K computed energies, open gases get μ(T, p) = H<sub>f</sub> − T·S + kT
       ln(p/p°), so carbonate decomposition and O<sub>2</sub> release turn on with temperature.
       The
-      <em>onset</em> is where a gas-releasing reaction becomes downhill.
+      <em>onset</em> is the first temperature where a gas-exchanging reaction becomes downhill, not
+      a recommended firing temperature.
     </li>
     <li>
       <strong>Competing phases</strong>: every near-hull phase that the same precursor mixture
       can form, with its driving force per atom of reacting mixture (pymatgen
       InterfacialReactivity convention). The <em>selectivity margin</em> is the target's driving
-      force minus the strongest competitor's; negative means the target forms first.
+      force minus the strongest competitor's; negative means the target is thermodynamically favored.
     </li>
     <li>
       <strong>Inverse hull energy</strong>: how far the target sits below the hull of all other
@@ -93,7 +93,8 @@
     </li>
     <li>
       <strong>Practicality</strong> from a library of commercial precursors (hygroscopic, air-sensitive,
-      hazards, decomposition and melting points) that also feeds the heating window of the recipe.
+      hazards, decomposition and melting points). These unreferenced notes are separated from calculated
+      quantities and user-supplied experimental choices.
     </li>
   </ul>
 </details>

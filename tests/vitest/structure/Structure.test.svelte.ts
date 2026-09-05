@@ -29,6 +29,7 @@ import {
   make_grid,
   make_position_stream,
   make_volume,
+  mock_fullscreen,
   mouse,
   press_window_key,
   trigger_resize_observer,
@@ -298,6 +299,7 @@ const mount_volumetric = (
 // Stub the Fullscreen API on the mounted viewer; `set_fullscreen_element` plays the browser
 // entering/leaving fullscreen
 const stub_fullscreen_api = () => {
+  mock_fullscreen()
   const request_fullscreen = vi.fn().mockResolvedValue(undefined)
   const exit_fullscreen = vi.fn().mockResolvedValue(undefined)
   const wrapper = doc_query(`.structure`)
@@ -1167,6 +1169,40 @@ describe(`Structure`, () => {
     },
   )
 
+  test(`export and controls panes exclude each other and preserve export edits`, async () => {
+    const props = $state<{ active_pane: StructurePane | null }>({ active_pane: null })
+    mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
+    await tick()
+    const toggle_pane = async (pane: `export` | `controls`): Promise<void> => {
+      doc_query<HTMLButtonElement>(`.structure-${pane}-toggle`).click()
+      await tick()
+    }
+    const dpi_selector = `input[type="number"][title*="dots per inch"]`
+
+    await toggle_pane(`export`)
+    expect(props.active_pane).toBe(`export`)
+    const dpi_input = doc_query<HTMLInputElement>(dpi_selector)
+    dpi_input.value = `250`
+    dpi_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    await toggle_pane(`controls`)
+    expect(props.active_pane).toBe(`controls`)
+    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+    expect(doc_query(`.controls-pane`).style.display).toBe(`grid`)
+
+    await toggle_pane(`export`)
+    expect(props.active_pane).toBe(`export`)
+    expect(doc_query(`.controls-pane`).style.display).toBe(`none`)
+    expect(doc_query(`.export-pane`).style.display).toBe(`grid`)
+    expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
+    await toggle_pane(`export`)
+    expect(props.active_pane).toBeNull()
+    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+    await toggle_pane(`export`)
+    expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
+  })
+
   // The Measure / Edit menu writes the bound measure_mode; distance is the default and stays
   // selectable from every other mode
   test(`Measure / Edit menu switches the bound measure_mode`, async () => {
@@ -1186,17 +1222,25 @@ describe(`Structure`, () => {
     expect(document.querySelector(`.edit-mode-toolbar`)).toBeNull()
   })
 
-  test(`info pane site hover updates highlighted sites`, async () => {
-    const state = {
+  test(`info pane search selects a site and its card updates highlighted sites`, async () => {
+    const state = $state({
       highlighted_sites: [] as number[],
       hovered_site_idx: null as number | null,
       selected_sites: [] as number[],
-    }
+    })
 
     mount_structure(
       bind_props({ structure, active_pane: `info` as const, show_controls: true }, state),
     )
     await tick()
+
+    const search = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
+    search.value = `${structure.sites[0].species[0].element}1`
+    search.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    doc_query<HTMLButtonElement>(`.site-matches button`).click()
+    await tick()
+    expect(state.selected_sites).toEqual([0])
 
     const first_site_row = doc_query(
       `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
@@ -1211,7 +1255,7 @@ describe(`Structure`, () => {
     expect(state.hovered_site_idx).toBeNull()
 
     first_site_row.click()
-    expect(state.selected_sites).toEqual([0])
+    expect(state.selected_sites).toEqual([])
   })
 })
 

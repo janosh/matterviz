@@ -3,7 +3,7 @@
   import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ColorSchemeName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Icon, MultiSelect as Select, Spinner } from 'svelte-widgets'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
   import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
@@ -63,7 +63,6 @@
   import { to_error } from '$lib/utils'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
-  import { Icon, MultiSelect as Select } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
 
@@ -289,7 +288,7 @@
   // select, boolean → checkbox, number → slider + number input, string → color swatch).
   // Rows default to reading/writing scene_props[key]; `get`/`set` point one elsewhere (a
   // top-level bindable such as show_image_atoms). `pair` adds a dependent color swatch beside
-  // the primary control, and `data_key` names the pseudo-setting the pair resets as one.
+  // the primary control. The paired setting's key identifies both controls for reset and description.
   type StructureSettingKey = keyof typeof SETTINGS_CONFIG.structure
   type Row = {
     key: StructureSettingKey
@@ -300,7 +299,6 @@
     get?: () => unknown
     set?: (value: unknown) => void
     pair?: { key: StructureSettingKey; when: () => boolean }
-    data_key?: SettingKey // pseudo-key a paired row resets and describes as one
   }
   const row = (key: StructureSettingKey, label: string, step?: number): Row => ({
     key,
@@ -347,20 +345,12 @@
     row(`polyhedra_opacity`, `Opacity`, 0.05),
     {
       ...row(`polyhedra_color_mode`, `Color`),
-      data_key: `polyhedra_color`,
       pair: {
         key: `polyhedra_color`,
         when: () => scene_props.polyhedra_color_mode === `uniform`,
       },
     },
-    {
-      ...row(`polyhedra_show_edges`, `Edges`),
-      data_key: `polyhedra_edges`,
-      pair: {
-        key: `polyhedra_edge_color`,
-        when: () => Boolean(scene_props.polyhedra_show_edges),
-      },
-    },
+    row(`polyhedra_show_edges`, `Edges`),
     row(`polyhedra_hide_center_atoms`, `Hide centers`),
     row(`polyhedra_min_neighbors`, `Min neighbors`, 1),
     row(`polyhedra_max_neighbors`, `Max neighbors`, 1),
@@ -435,7 +425,6 @@
     multi_view: `Show synchronized structure views from multiple directions`,
     polyhedra_centers: `Elements used as centers when constructing coordination polyhedra`,
     polyhedra_color: `Color mode and optional uniform color for coordination polyhedra`,
-    polyhedra_edges: `Visibility and color of coordination-polyhedra edges`,
     site_label_bg_hex: `Background color behind atom labels`,
     site_label_bg_opacity: `Opacity of the background behind atom labels`,
     supercell_scaling: `Repeat the unit cell along each lattice direction. Examples: "2x2x2", "3x1x2", or "2"`,
@@ -488,7 +477,7 @@
     const keys = [...extra_keys]
     for (const current of rows) {
       if (current.pair) {
-        accessors[current.data_key ?? current.key] = scene_pair(current.key, current.pair.key)
+        accessors[current.pair.key] = scene_pair(current.key, current.pair.key)
       } else if (current.get && current.set) {
         accessors[current.key] = local(current.get, current.set)
       } else keys.push(current.key)
@@ -809,7 +798,7 @@
           >{label}</NumberRangeInput
         >
       {:else}
-        <label {...setting_row(current.data_key ?? key)}>
+        <label {...setting_row(pair?.key ?? key)}>
           <span>{label}</span>
           <span class="ctrl-pair">
             {#if schema.enum}

@@ -17,12 +17,8 @@ import {
   render_block,
 } from 'svelte-widgets/live-examples/create-highlighter'
 
-const { default: pkg } = await import(`./package.json`, {
-  with: { type: `json` },
-})
 const defaults = {
   Wrapper: [`svelte-widgets`, `CodeExample`],
-  repo: pkg.repository,
   hideStyle: true,
   collapsible: true,
 }

@@ -6,11 +6,9 @@
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { StatusMessage } from '$lib/feedback'
-  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { Icon, Spinner, StatusMessage, Toast } from 'svelte-widgets'
   import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
   import type { FileLoadCallback } from '$lib/io'
-  import { Icon, Toast } from 'svelte-widgets'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '$lib/utils'
@@ -808,9 +806,11 @@
         <StructureEditToolbar {session} />
       {/if}
 
-      {#if display_mode === `structure` && enable_info_pane && session.normalized_structure && controls_config.visible(`info-pane`)}
+      {#if display_mode === `structure` && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
         <StructureInfoPane
-          structure={session.normalized_structure}
+          structure={session.base_structure}
+          displayed_structure={session.displayed_structure}
+          bonding_strategy={scene_props.bonding_strategy}
           bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
           bind:highlighted_sites
           bind:hovered_site_idx

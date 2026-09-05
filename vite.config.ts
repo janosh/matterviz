@@ -134,7 +134,7 @@ export default defineConfig({
     coverage: {
       reporter: [`text`, `json-summary`],
     },
-    setupFiles: `tests/vitest/setup.ts`,
+    setupFiles: `tests/vitest/environment.ts`,
     // The VS Code extension's tests run under its own vitest (pnpm -C extensions/vscode test):
     // they need the `vscode` module mocked and the extension's own dependency tree
     include: [`tests/vitest/**/*.test.ts`, `tests/vitest/**/*.test.svelte.ts`],
@@ -169,6 +169,7 @@ export default defineConfig({
   },
 
   resolve: {
+    dedupe: [`svelte`],
     conditions: process.env.VITEST ? [`browser`] : undefined,
     alias: [shared.three_compat_alias],
   },

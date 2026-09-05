@@ -13,7 +13,8 @@ import type {
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '$lib/file-viewer/host-protocol'
-import { format_bytes, is_plain_object, to_error } from '$lib/utils'
+import { is_plain_object, to_error } from '$lib/utils'
+import { format_bytes } from 'svelte-widgets/format'
 import type { DefaultSettings, SettingType } from '$lib/settings'
 import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '$lib/settings'
 import {

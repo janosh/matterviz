@@ -74,11 +74,8 @@
     SCALE_DEFAULTS,
   } from '$lib/plot/core/types'
   import { compute_label_positions } from '$lib/plot/core/utils/label-placement'
-  import {
-    create_roving_focus,
-    ROVING_ATTR,
-    roving_key,
-  } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
     legend_mode_to_prop,
@@ -1486,7 +1483,7 @@
   // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
   const roving = create_roving_focus({
     container: () => frame.svg_element,
-    marks: () => [
+    items: () => [
       filtered_series,
       use_canvas_markers,
       svg_overlay_points_by_series,

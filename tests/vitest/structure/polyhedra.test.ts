@@ -6,19 +6,57 @@ import {
   structure_bond_to_bond_pair,
 } from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
+import { DEFAULTS } from '$lib/settings'
 import {
   build_adjacency,
   compute_polyhedra,
+  create_polyhedra_edges,
   convex_hull_3d,
   merge_polyhedra_buffers,
 } from '$lib/structure/polyhedra'
 import type { Polyhedron } from '$lib/structure/polyhedra'
 import { make_supercell } from '$lib/structure/supercell'
-import { Color } from 'three/webgpu'
+import { Color, Vector3 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { make_crystal, make_rocksalt } from '../setup'
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())
+
+test.each([`#222222`, `#ff8800`])(
+  `pronounced polyhedra outlines in %s with faint faces`,
+  (color) => {
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0])
+    const rgb = new Color(color).toArray()
+    const colors = new Float32Array([...rgb, 1, 0, 0, 1, 0, 0, ...rgb])
+    const edges = create_polyhedra_edges(positions, colors)
+    try {
+      expect(DEFAULTS.structure.polyhedra_opacity).toBe(0.15)
+      expect(edges.material.linewidth).toBe(1)
+      expect(edges.material.worldUnits).toBe(false)
+      expect(edges.material.opacity).toBe(1)
+      expect(edges.material.transparent).toBe(false)
+      expect(edges.material.vertexColors).toBe(true)
+      expect(edges.material.color.getHexString()).toBe(`ffffff`)
+      expect(edges.geometry.instanceCount).toBe(2)
+      for (const [prefix, expected] of [
+        [`instance`, positions],
+        [`instanceColor`, colors],
+      ] as const) {
+        const endpoints = [0, 1].flatMap((idx) =>
+          [`Start`, `End`].flatMap((suffix) =>
+            new Vector3()
+              .fromBufferAttribute(edges.geometry.getAttribute(`${prefix}${suffix}`), idx)
+              .toArray(),
+          ),
+        )
+        expect(endpoints).toEqual(Array.from(expected))
+      }
+    } finally {
+      edges.geometry.dispose()
+      edges.material.dispose()
+    }
+  },
+)
 
 // Minimal BondPair stub (only fields polyhedra code reads)
 const make_bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
@@ -710,6 +748,7 @@ describe(`merge_polyhedra_buffers`, () => {
     expect(buffers.colors).toHaveLength(n_triangles * 9)
     expect(buffers.edge_count).toBe(n_edges)
     expect(buffers.edge_positions).toHaveLength(n_edges * 6)
+    expect(buffers.edge_colors).toHaveLength(n_edges * 6)
     expect(warn.mock.calls.map(([msg]) => msg)).toEqual(
       warns ? [expect.stringContaining(`site 7`)] : [],
     )
@@ -717,13 +756,15 @@ describe(`merge_polyhedra_buffers`, () => {
 
   test(`fills the color buffer with linear CSS color`, () => {
     // same oracle as geometry.test.ts: three's own conversion, not numbers pinned from a run
-    const expected_rgb = new Color(`#57178f`).toArray()
-    const { colors } = merge_polyhedra_buffers(
+    const expected_rgb = new Float32Array(new Color(`#57178f`).toArray())
+    const { colors, edge_colors } = merge_polyhedra_buffers(
       [poly_from_hull(octahedron_points)],
       () => `#57178f`,
     )
-    for (let idx = 0; idx < colors.length; idx++) {
-      expect(colors[idx]).toBeCloseTo(expected_rgb[idx % 3], 6)
+    for (const buffer of [colors, edge_colors]) {
+      for (let idx = 0; idx < buffer.length; idx++) {
+        expect(buffer[idx]).toBe(expected_rgb[idx % 3])
+      }
     }
   })
 
@@ -736,14 +777,17 @@ describe(`merge_polyhedra_buffers`, () => {
     const buffers = merge_polyhedra_buffers([poly], (_poly, vertex_idx) =>
       vertex_idx === target_idx ? `#ff0000` : `#0000ff`,
     )
-    for (let tri_vert = 0; tri_vert < buffers.triangle_count * 3; tri_vert++) {
-      const off = tri_vert * 3
-      const is_target =
-        buffers.positions[off] === 1 &&
-        buffers.positions[off + 1] === 0 &&
-        buffers.positions[off + 2] === 0
-      expect(buffers.colors[off]).toBe(is_target ? 1 : 0) // red channel
-      expect(buffers.colors[off + 2]).toBe(is_target ? 0 : 1) // blue channel
+    for (const [positions, colors] of [
+      [buffers.positions, buffers.colors],
+      [buffers.edge_positions, buffers.edge_colors],
+    ]) {
+      for (let off = 0; off < positions.length; off += 3) {
+        const is_target =
+          positions[off] === 1 && positions[off + 1] === 0 && positions[off + 2] === 0
+        expect(colors[off]).toBe(is_target ? 1 : 0) // red channel
+        expect(colors[off + 1]).toBe(0) // green channel
+        expect(colors[off + 2]).toBe(is_target ? 0 : 1) // blue channel
+      }
     }
   })
 
@@ -752,5 +796,6 @@ describe(`merge_polyhedra_buffers`, () => {
     expect(buffers.triangle_count).toBe(0)
     expect(buffers.positions).toHaveLength(0)
     expect(buffers.edge_count).toBe(0)
+    expect(buffers.edge_colors).toHaveLength(0)
   })
 })

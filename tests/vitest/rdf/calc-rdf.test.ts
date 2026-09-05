@@ -334,18 +334,26 @@ describe(`calculate_all_pair_rdfs`, () => {
       ],
     ],
     [`Pd`, pd_structure, [[`Pd`, `Pd`]]],
-    ...[false, true].map<[string, Crystal, [string, string][]]>((vacancy) => [
-      `five species, vacancy=${vacancy}`,
+    ...(
+      [
+        [false, -1],
+        [true, -1],
+        [false, 0],
+        [false, 4],
+      ] as const
+    ).map<[string, Crystal, [string, string][]]>(([vacancy, mixed_idx]) => [
+      `five species, vacancy=${vacancy}, mixed site=${mixed_idx}`,
       {
         ...five_species,
-        sites: five_species.sites.map((site, idx) =>
-          vacancy && idx === 0
-            ? {
-                ...site,
-                species: site.species.map((species) => ({ ...species, occu: 0 })),
-              }
-            : site,
-        ),
+        sites: five_species.sites.map((site, idx) => ({
+          ...site,
+          species:
+            idx === mixed_idx
+              ? [...site.species, { element: `Cl`, occu: 0.25, oxidation_state: 0 }]
+              : vacancy && idx === 0
+                ? site.species.map((species) => ({ ...species, occu: 0 }))
+                : site.species,
+        })),
       },
       [
         [`Al`, `Al`],

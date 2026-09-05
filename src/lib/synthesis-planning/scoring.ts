@@ -33,8 +33,7 @@ const saturate = (energy: number): number => energy / (Math.abs(energy) + ENERGY
 const solid_precursors = (reaction: SynthesisReaction) =>
   reaction.reactants.filter(({ phase }) => !phase.is_gas)
 
-// Furnace atmosphere a reaction needs. Releasing gas just needs an open crucible; taking up O2
-// works in air; taking up anything else needs a controlled flow.
+// Stoichiometric gas exchange does not determine a furnace atmosphere or container.
 export function describe_atmosphere(
   gas_exchange: Partial<Record<GasSpecies, number>>,
 ): string {
@@ -43,13 +42,15 @@ export function describe_atmosphere(
       .filter(([, amount]) => Math.sign(amount) === sign)
       .map(([gas]) => gas)
   const consumed = gases(-1)
-  const special = consumed.filter((gas) => gas !== `O2`)
-  if (special.length) return `flowing ${special.join(` + `)}`
-  if (consumed.length) return `air or flowing O2`
   const released = gases(1)
-  return released.length
-    ? `air, open crucible (releases ${released.join(`, `)})`
-    : `sealed or inert`
+  return (
+    [
+      consumed.length ? `consumes ${consumed.join(`, `)}` : ``,
+      released.length ? `releases ${released.join(`, `)}` : ``,
+    ]
+      .filter(Boolean)
+      .join(`; `) || `no net gas exchange`
+  )
 }
 
 // 0-1 handling/sourcing score of a reaction's reactants with the reasons behind it
@@ -99,11 +100,7 @@ export function assess_practicality(reaction: SynthesisReaction): PracticalityAs
   for (const { phase } of reaction.reactants) {
     if (!phase.is_gas) continue
     score -= phase.formula === `O2` ? 0.1 : 0.25
-    notes.push(
-      phase.formula === `O2`
-        ? `Takes up O2 from the atmosphere: fire as loose powder or thin pellets with good air access`
-        : `Takes up ${phase.formula}: requires a controlled flowing ${phase.formula} atmosphere`,
-    )
+    notes.push(`Takes up ${phase.formula} from the modeled gas reservoir`)
   }
   return { score: clamp01(score), notes }
 }

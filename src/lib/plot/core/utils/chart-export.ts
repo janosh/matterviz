@@ -5,6 +5,7 @@
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
+import { escape_csv_field } from 'svelte-widgets/csv'
 
 export type ChartExportFormat = `png` | `svg` | `csv`
 
@@ -48,13 +49,9 @@ export function export_chart_image(
 
 export type CsvCell = string | number | null | undefined
 
-// Quote only when the cell would otherwise break the row, so plain numeric data stays
-// diffable. Embedded quotes double per RFC 4180.
-const csv_cell = (cell: CsvCell): string => {
-  if (cell == null) return ``
-  const text = typeof cell === `number` ? (Number.isFinite(cell) ? `${cell}` : ``) : cell
-  return /[",\n\r]/.test(text) ? `"${text.replaceAll(`"`, `""`)}"` : text
-}
+// Non-finite chart values represent missing data, not literal NaN/Infinity fields.
+const csv_cell = (cell: CsvCell): string =>
+  escape_csv_field(typeof cell === `number` && !Number.isFinite(cell) ? null : cell)
 
 export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): string =>
   [header, ...rows].map((row) => row.map(csv_cell).join(`,`)).join(`\n`)

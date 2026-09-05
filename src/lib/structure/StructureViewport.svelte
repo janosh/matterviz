@@ -8,7 +8,7 @@
   // callbacks so it drives Structure's external camera API. Camera state is per-pane:
   // the primary pane binds it back to Structure's scene_props, while side panes keep it local.
   import type { ElementSymbol } from '$lib/element'
-  import { StatusMessage } from '$lib/feedback'
+  import { StatusMessage } from 'svelte-widgets'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { CameraProjection } from '$lib/settings'

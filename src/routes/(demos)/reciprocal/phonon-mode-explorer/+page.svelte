@@ -2,7 +2,7 @@
   import { afterNavigate, replaceState } from '$app/navigation'
   import { page } from '$app/state'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { Spinner, StatusMessage } from '$lib/feedback'
+  import { Spinner, StatusMessage } from 'svelte-widgets'
   import * as io from '$lib/io'
   import type { Vec3 } from '$lib/math'
   import type {
@@ -25,8 +25,8 @@
     spectrum_from_phonon_data,
   } from '$lib/spectral'
   import { parse_supercell_scaling } from '$lib/structure'
-  import type { UrlParamEntry } from '$lib/url-params'
-  import { bool_from_param, bool_url_entry, sync_url_params } from '$lib/url-params'
+  import type { UrlParamEntry } from 'svelte-widgets/url-params'
+  import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/url-params'
   import { to_error } from '$lib/utils'
   import { glob_basename, glob_default } from '$site/imports'
   import { untrack } from 'svelte'

@@ -4,7 +4,7 @@
   import { DEFAULT_FPS_RANGE } from '$lib/constants'
   import { normalize_show_controls } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
-  import { StatusMessage } from '$lib/feedback'
+  import { StatGrid, StatusMessage } from 'svelte-widgets'
   import { as_text, file_drop_zone } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
@@ -148,7 +148,7 @@
       (profile && energy_reference === `initial` ? profile.analysis.initial_energy : 0),
   )
 
-  const barrier_rows = $derived.by(() => {
+  const barrier_stats = $derived.by(() => {
     if (!profile) return []
     const { analysis, spline } = profile
     const ts_idx = analysis.ts_image_idx
@@ -157,11 +157,14 @@
     const coord_unit = coord_mode === `arc_length` ? ` Å` : ``
     const ts_at = `#${ts_idx} at ${format_num(analysis.ts_coordinate, `.4~`)}${coord_unit}`
     return [
-      [`Forward barrier`, with_unit(analysis.forward_barrier)],
-      [`Reverse barrier`, with_unit(analysis.reverse_barrier)],
-      [`Reaction energy`, with_unit(analysis.reaction_energy)],
-      [`Highest image`, ts_at],
-      [`Fitted saddle (${spline.method})`, `+${excess} ${energy_unit} above image #${ts_idx}`],
+      { label: `Forward barrier`, value: with_unit(analysis.forward_barrier) },
+      { label: `Reverse barrier`, value: with_unit(analysis.reverse_barrier) },
+      { label: `Reaction energy`, value: with_unit(analysis.reaction_energy) },
+      { label: `Highest image`, value: ts_at },
+      {
+        label: `Fitted saddle (${spline.method})`,
+        value: `+${excess} ${energy_unit} above image #${ts_idx}`,
+      },
     ]
   })
 </script>
@@ -268,12 +271,7 @@
       </div>
     </div>
 
-    <dl class="barrier-summary">
-      {#each barrier_rows as [term, value] (term)}
-        <dt>{term}</dt>
-        <dd>{value}</dd>
-      {/each}
-    </dl>
+    <StatGrid items={barrier_stats} class="barrier-summary" aria-label="Reaction barriers" />
   {/if}
 </div>
 
@@ -347,18 +345,7 @@
   .structure-pane {
     min-width: 0;
   }
-  .barrier-summary {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2pt 12pt;
-    margin: 0;
-    font-size: 0.85em;
-    dt {
-      color: var(--text-color-muted, #888);
-    }
-    dd {
-      margin: 0;
-      font-variant-numeric: tabular-nums;
-    }
+  .neb-viewer :global(.stat-label) {
+    white-space: normal;
   }
 </style>

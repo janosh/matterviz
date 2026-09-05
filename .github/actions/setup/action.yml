@@ -25,7 +25,8 @@ runs:
         printf 'allowBuilds:\n  svelte-widgets: true\n' > pnpm-workspace.yaml
         # Registry packages ship their generated artifacts, so their prepare scripts do not
         # need to run. Keep their skipped builds non-fatal.
-        pnpm install --config.strict-dep-builds=false
+        # Resolve moving Git branches afresh instead of reusing a previous lockfile's commit.
+        pnpm install --no-lockfile --config.strict-dep-builds=false
         # anywidget depends on `matterviz: file:../..`, which pnpm copies (hard-links) at install
         # time, so the svelte-package output must exist before that install or the copy has no
         # dist/ (dependencies never run `prepare`, only the root project does).
@@ -43,6 +44,6 @@ runs:
             printf 'overrides:\n  svelte-widgets: file:../../node_modules/svelte-widgets\n' > "extensions/$ext/pnpm-workspace.yaml"
             workspace_args=()
           fi
-          pnpm -C "extensions/$ext" install "${workspace_args[@]}" \
+          pnpm -C "extensions/$ext" install --no-lockfile "${workspace_args[@]}" \
             --config.strict-dep-builds="$strict_builds"
         done

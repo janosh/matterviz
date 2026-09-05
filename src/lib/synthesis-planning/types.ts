@@ -2,6 +2,11 @@ import type { CompositionType } from '$lib/composition'
 import type { GasSpecies, GasThermodynamicsProvider, PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element/types'
 
+export interface RouteComparisonOptions {
+  // Maximum visible lines per cell before hover/focus expansion; defaults to 8.
+  max_cell_lines?: number
+}
+
 // === Request ===
 
 // Thermodynamic conditions of the synthesis. Solids keep their 0 K computed formation energies; gases
@@ -69,6 +74,8 @@ export interface SynthesisPlanRequest {
   scoring?: Partial<ScoreWeights>
   // Number of ranked routes to return in full detail (default 20).
   max_routes?: number
+  // Also return these evaluated routes outside the top-ranked limit, for persistent comparisons.
+  keep_route_ids?: string[]
   // Target mass the recipe is scaled to (grams, default 1).
   target_mass_g?: number
 }
@@ -160,14 +167,15 @@ export interface SelectivityMetrics {
 }
 
 export interface RouteThermodynamics {
+  temperature: number
+  partial_pressures: Partial<Record<GasSpecies, number>>
   // Lowest temperature (K) at which the reaction energy turns negative at the given partial
   // pressures, searched on a 1 K grid up to 2000 K. null when no gas is exchanged, when the
   // reaction is already downhill at 0 K (then `onset_temperature` = 0), or never downhill.
   onset_temperature: number | null
   // Moles of each gas per formula unit of target; positive = released, negative = consumed
   gas_exchange: Partial<Record<GasSpecies, number>>
-  // What the furnace atmosphere must provide, derived from the gas exchange: `sealed or inert`
-  // (none), `air` (releases gas or takes up O2), or `flowing <gas>` for any other uptake
+  // Human-readable net gas exchange; not an experimental atmosphere recommendation.
   atmosphere: string
 }
 
@@ -187,16 +195,33 @@ export interface RecipeItem {
   mass_fraction?: number
 }
 
+// Experimental choices are user input, never inferred from thermodynamic favorability.
+export interface RecipeAssumptions {
+  temperature_K: string
+  ramp_K_min: string
+  hold_hours: string
+  preparation: string
+  container: string
+  atmosphere: string
+  source: string
+}
+
 export interface Recipe {
   target_mass_g: number
   items: RecipeItem[]
-  // Percent of the precursor mass lost as gas (negative when the product gains mass from the atmosphere)
+  // Percent of solid precursor mass lost; negative means uptake from the atmosphere.
   mass_loss_percent: number
-  // Heating guidance derived from onset temperature and precursor library data; every entry in
-  // `basis` names the rule that produced it so an agent can judge how much to trust it
-  temperature_window: { min_K: number | null; max_K: number | null; basis: string[] }
-  // Step-by-step procedure template with the computed quantities filled in
-  procedure: string[]
+  // Local precursor-library notes have no attached literature references.
+  guidance: string[]
+  assumptions: RecipeAssumptions
+  checkpoints: string[]
+}
+
+export interface SynthesisStep {
+  reaction: SynthesisReaction
+  thermodynamics: RouteThermodynamics
+  selectivity: SelectivityMetrics
+  recipe: Recipe
 }
 
 export type RejectReason =
@@ -210,7 +235,7 @@ export interface SynthesisRoute {
   kind: `direct` | `two_step`
   reaction: SynthesisReaction
   // Intermediate reaction for two-step routes (step 1); `reaction` is then step 2
-  intermediate_step?: SynthesisReaction
+  intermediate_step?: SynthesisStep
   selectivity: SelectivityMetrics
   thermodynamics: RouteThermodynamics
   practicality: PracticalityAssessment
@@ -231,6 +256,8 @@ export interface TargetStability {
 
 export interface SynthesisPlan {
   target: PhaseRef
+  // Working solid and gas energies at the requested conditions, including any target polymorph comparator.
+  phases: PhaseRef[]
   chemical_system: string
   elements: ElementSymbol[]
   conditions: Required<Pick<SynthesisConditions, `temperature` | `open_species`>> & {
