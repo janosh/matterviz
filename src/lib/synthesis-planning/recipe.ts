@@ -131,7 +131,7 @@ export const RECIPE_ROLE_LABELS = {
   atmosphere: `From atmosphere`,
   target: `Target`,
   byproduct: `Byproduct`,
-}
+} satisfies Record<RecipeItem[`role`], string>
 
 // The same text drives clipboard and agent exports so neither loses first-step details or edits.
 export function format_recipe_text(route: SynthesisRoute): string {

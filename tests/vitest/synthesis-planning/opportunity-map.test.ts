@@ -28,6 +28,8 @@ test(`cached sweep matches planner hull and selectivity at temperature/pressure 
   const spy = vi.spyOn(thermo, `balance_reaction`)
   const cells = compute_opportunity_map(request)
   const sweep_calls = spy.mock.calls.length
+  expect(sweep_calls).toBeGreaterThan(0)
+  // Each invocation prepares its own balances; grid size must not multiply that work.
   compute_opportunity_map({ ...request, temperatures: [1000], log_pressures: [0] })
   expect(spy.mock.calls.length - sweep_calls).toBe(sweep_calls)
   spy.mockRestore()
@@ -75,29 +77,32 @@ test(`cached sweep matches planner hull and selectivity at temperature/pressure 
   expect(max_relative).toBe(0)
 })
 
-test(`keeps the ground state as a stability comparator for a requested polymorph`, () => {
-  const polymorph = {
-    composition: plan.target.composition,
-    energy: (plan.target.energy_per_atom + 0.1) * plan.target.n_atoms_per_fu,
-    e_form_per_atom: plan.target.energy_per_atom + 0.1,
-    entry_id: `metastable-target`,
-  }
-  const augmented = [...entries, polymorph]
-  const expected = plan_synthesis({
-    entries: augmented,
-    target: polymorph.entry_id,
-    conditions,
-  })
-  const [cell] = compute_opportunity_map({
-    ...request,
-    entries: augmented,
-    target: polymorph.entry_id,
-    temperatures: [1000],
-    log_pressures: [Math.log10(3.95e-4)],
-  })
-  expect(cell.e_above_hull).toBeGreaterThanOrEqual(0.1 - 1e-12)
-  expect(cell.e_above_hull).toBeCloseTo(expected.target_stability.e_above_hull, 12)
-})
+test.each([0.01, 0.1, 1])(
+  `keeps the ground state for a polymorph %s eV/atom higher`,
+  (offset) => {
+    const polymorph = {
+      composition: plan.target.composition,
+      energy: (plan.target.energy_per_atom + offset) * plan.target.n_atoms_per_fu,
+      e_form_per_atom: plan.target.energy_per_atom + offset,
+      entry_id: `metastable-target`,
+    }
+    const augmented = [...entries, polymorph]
+    const expected = plan_synthesis({
+      entries: augmented,
+      target: polymorph.entry_id,
+      conditions,
+    })
+    const [cell] = compute_opportunity_map({
+      ...request,
+      entries: augmented,
+      target: polymorph.entry_id,
+      temperatures: [1000],
+      log_pressures: [Math.log10(3.95e-4)],
+    })
+    expect(cell.e_above_hull).toBeGreaterThanOrEqual(offset - 1e-12)
+    expect(cell.e_above_hull).toBe(expected.target_stability.e_above_hull)
+  },
+)
 
 test.each([
   { conditions: { ...conditions, partial_pressures: { O2: 0 } } },

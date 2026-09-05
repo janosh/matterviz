@@ -137,7 +137,10 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
       let e_above_hull = target.e_above_hull
       // Keep the replaced ground state for target stability, as in plan_synthesis.
       if (ground_state.id !== target.id) {
-        const hull = hull_at(target.fractions, [...phases, ground_state])
+        const hull = hull_at(target.fractions, [
+          ...phases.filter((phase) => phase.id !== target.id),
+          ground_state,
+        ])
         if (!hull) throw new Error(`No stability hull for scan target ${target_id}`)
         e_above_hull = Math.max(0, target.energy_per_atom - hull.energy)
       }
