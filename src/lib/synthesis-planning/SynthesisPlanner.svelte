@@ -435,7 +435,7 @@
                 {entries}
                 {highlighted_entries}
                 show_unstable_labels={false}
-                style="height: 520px"
+                style="flex: 1; min-height: 520px"
               />
             {/if}
           </div>
@@ -569,6 +569,10 @@
     gap: 0.7em;
     align-content: start;
     min-width: 0;
+  }
+  .detail-left {
+    display: flex;
+    flex-direction: column;
   }
   @media (max-width: 900px) {
     .detail {

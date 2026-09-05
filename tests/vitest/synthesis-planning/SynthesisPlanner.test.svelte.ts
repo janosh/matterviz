@@ -24,8 +24,12 @@ test(
     mount_planner()
 
     await vi.waitFor(
-      () =>
-        expect(document.querySelector(`.detail-left > [role="application"]`)).not.toBeNull(),
+      () => {
+        const hull = document.querySelector<HTMLElement>(`.detail-left > [role="application"]`)
+        expect(hull).not.toBeNull()
+        expect(hull?.style.flexGrow).toBe(`1`)
+        expect(hull?.style.minHeight).toBe(`520px`)
+      },
       { timeout: 15_000 },
     )
   },
