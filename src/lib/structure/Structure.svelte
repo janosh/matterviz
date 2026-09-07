@@ -441,7 +441,7 @@
     }
     tool_overlay = overlay
     tool_source = session.tool_input
-    tool_source_revision = overlay ? JSON.stringify(tool_source) : ``
+    tool_source_revision = overlay ? tool_input_revision : ``
     const active_before = volumetric_data?.[active_volume_idx]
     const restore_active = active_before !== undefined && owned_volume_set.has(active_before)
     const preserve_active = restore_active || (same_run && owned_volumes.length > 0)

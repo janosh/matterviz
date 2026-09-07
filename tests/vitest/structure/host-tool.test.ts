@@ -29,6 +29,38 @@ const volume = (field_id: string) => ({
 })
 
 describe(`host prediction ownership`, () => {
+  test.each([`molecule`, `xyz`, `abc`, `both`] as const)(
+    `starts predictions from %s JSON with omitted site properties`,
+    async (coordinates) => {
+      const source = make_crystal(2, [
+        { element: `H`, abc: [0, 0, 0] },
+        { element: `He`, abc: [0.5, 0.5, 0.5] },
+      ])
+      Reflect.deleteProperty(source.sites[0], `properties`)
+      source.sites[1].properties = { charge: 0.5 }
+      if (coordinates === `molecule`) Reflect.deleteProperty(source, `lattice`)
+      for (const site of source.sites) {
+        if (coordinates === `abc`) Reflect.deleteProperty(site, `xyz`)
+        else if (coordinates !== `both`) Reflect.deleteProperty(site, `abc`)
+      }
+      const parsed = await parse_file_content(JSON.stringify(source), `input.json`)
+      if (parsed.type !== `structure`) throw new Error(`Expected parsed structure`)
+      const controller = create_structure_tool_controller(
+        () => parsed.data,
+        () => true,
+        () => {},
+        () => {},
+        () => `input`,
+      )
+      const run = controller.start_run(provenance)
+      expect(run.structure.sites.map(({ properties }) => properties)).toEqual([
+        {},
+        { charge: 0.5 },
+      ])
+      controller.dispose()
+    },
+  )
+
   test.each([
     `new run`,
     `input change`,
