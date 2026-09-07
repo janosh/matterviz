@@ -83,7 +83,7 @@
       {root_label}
       default_fold_level={2}
       download_filename="diagram-data.json"
-      editable
+      editable={Boolean(diagram_input || on_data)}
       on_change={handle_change}
     />
   {:else}

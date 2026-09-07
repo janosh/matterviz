@@ -2,6 +2,7 @@ import type { Crystal } from '$lib/structure'
 import type { Vec3 } from '$lib/math'
 import { parse_poscar, parse_xyz } from '$lib/structure/parse'
 import { download } from '$lib/io/fetch'
+import * as io_export from '$lib/io/export'
 import type { TrajectoryFrame, TrajectoryMetadata } from '$lib/trajectory'
 import { trajectory_from_frames, TrajectoryExportPane } from '$lib/trajectory'
 import type { TrajectoryPropertyTable } from '$lib/trajectory/file-export'
@@ -25,6 +26,10 @@ import { doc_query, make_crystal, with_property_rows } from '../setup'
 vi.mock(`$lib/io/fetch`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   download: vi.fn(),
+}))
+vi.mock(`$lib/io/export`, async (import_original) => ({
+  ...(await import_original<typeof io_export>()),
+  export_trajectory_video: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Si + O in a 5 A cube at the given Cartesian positions
@@ -396,6 +401,7 @@ describe(`TrajectoryExportPane property export`, () => {
   afterEach(() => {
     document.body.replaceChildren()
     vi.mocked(download).mockClear()
+    vi.mocked(io_export.export_trajectory_video).mockClear()
     vi.mocked(navigator.clipboard.writeText).mockClear()
     vi.unstubAllGlobals()
   })
@@ -485,13 +491,53 @@ describe(`TrajectoryExportPane property export`, () => {
     expect(exported.map(({ step }) => step)).toEqual([5, 9])
   })
 
-  test(`names every download action`, () => {
-    vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
-    open_pane({ run: trajectory })
-    for (const label of [`extXYZ`, `POSCAR ZIP`, `CSV`, `JSON`, `WebM`, `MP4`]) {
-      expect(document.querySelector(`button[aria-label="Download ${label}"]`)).not.toBeNull()
-    }
-  })
+  test.each([false, true])(
+    `video export requires frame navigation=%s`,
+    async (can_navigate) => {
+      vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+      const wrapper = document.createElement(`div`)
+      open_pane({
+        run: trajectory,
+        wrapper,
+        on_step_change: can_navigate ? vi.fn() : undefined,
+      })
+      await tick()
+      expect(doc_query<HTMLButtonElement>(`button[aria-label="Download WebM"]`).disabled).toBe(
+        true,
+      )
+      const canvas = document.createElement(`canvas`)
+      wrapper.append(canvas)
+      await vi.waitFor(() => expect(doc_query(`.export-info`).textContent).toContain(`KB`))
+      for (const label of [`extXYZ`, `POSCAR ZIP`, `CSV`, `JSON`, `WebM`, `MP4`]) {
+        const button = doc_query<HTMLButtonElement>(`button[aria-label="Download ${label}"]`)
+        expect(button.disabled, label).toBe(!can_navigate && [`WebM`, `MP4`].includes(label))
+      }
+      if (can_navigate) {
+        const initial_info = doc_query(`.export-info`).textContent
+        const replacement = document.createElement(`canvas`)
+        replacement.width = 1000
+        replacement.height = 1000
+        canvas.replaceWith(replacement)
+        await vi.waitFor(() =>
+          expect(doc_query(`.export-info`).textContent).not.toBe(initial_info),
+        )
+        await click(`Download WebM`)
+        await vi.waitFor(() =>
+          expect(io_export.export_trajectory_video).toHaveBeenCalledExactlyOnceWith(
+            replacement,
+            `run.extxyz.webm`,
+            expect.objectContaining({ total_frames: 3 }),
+          ),
+        )
+        replacement.remove()
+        await vi.waitFor(() =>
+          expect(
+            doc_query<HTMLButtonElement>(`button[aria-label="Download WebM"]`).disabled,
+          ).toBe(true),
+        )
+      }
+    },
+  )
 
   test(`downloads the whole frame range as CSV`, async () => {
     open_pane({ run: trajectory })

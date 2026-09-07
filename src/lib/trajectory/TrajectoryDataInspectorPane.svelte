@@ -33,6 +33,14 @@
   // Per-frame scalars vs per-atom rows
   let active_tab = $state<`frames` | `atoms`>(`frames`)
 
+  const row_click_handler = (callback: ((idx: number) => void) | undefined, key: string) =>
+    callback
+      ? (_event: MouseEvent | KeyboardEvent, row: RowData) => {
+          const idx = row[key]
+          if (typeof idx === `number`) callback(idx)
+        }
+      : undefined
+
   const VEC3_AXES = [`x`, `y`, `z`] as const
   const FRAC_AXES = [`a`, `b`, `c`] as const
 
@@ -249,9 +257,7 @@
             search={{ placeholder: `Filter frames`, fuzzy: true }}
             export_data={{ formats: [`csv`, `json`], filename: `trajectory-frames` }}
             initial_sort={{ column: `frame_idx` }}
-            on_row_click={(_event, row) => {
-              if (typeof row.frame_idx === `number`) on_step_change?.(row.frame_idx)
-            }}
+            on_row_click={row_click_handler(on_step_change, `frame_idx`)}
             {...table_props}
           />
         {:else if selected && item.value === `atoms`}
@@ -264,9 +270,7 @@
               search={{ placeholder: `Filter atoms`, fuzzy: true }}
               export_data={{ formats: [`csv`, `json`], filename: `frame-atoms` }}
               initial_sort={{ column: `site_idx` }}
-              on_row_click={(_event, row) => {
-                if (typeof row.site_idx === `number`) on_site_select?.(row.site_idx)
-              }}
+              on_row_click={row_click_handler(on_site_select, `site_idx`)}
               {...table_props}
             />
           {/if}

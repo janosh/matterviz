@@ -83,6 +83,7 @@ export function create_structure_tool_controller(
         throw new Error(`Prediction model and version must be nonempty`)
       const input = structuredClone($state.snapshot(structure))
       const captured_provenance = structuredClone($state.snapshot(provenance))
+      const stale_output = current && !is_current_run()
       const previous_abort = abort
       abort = new AbortController()
       const id = ++next_id
@@ -133,6 +134,9 @@ export function create_structure_tool_controller(
       }
       current = run
       is_current_run = is_current
+      // A same-turn input/tool change may precede the invalidation effect. Only retain
+      // previous output (and its appearance) when it still belongs to this input and tool.
+      if (stale_output) on_prediction(null)
       // A previous view may close over its aborted run. Return before starting new work.
       on_view(null)
       // Abort listeners can synchronously start another run; it must retain ownership.

@@ -156,21 +156,25 @@ test(`atoms tab virtualizes a large frame`, async () => {
   expect(document.body.textContent).toContain(`Atoms (100)`)
 })
 
-test(`row clicks report frame and site indices`, async () => {
+test.each([false, true])(`row navigation requires callbacks=%s`, async (can_navigate) => {
   const on_step_change = vi.fn()
   const on_site_select = vi.fn()
   const run = make_run(5)
   await mount_pane({
     run,
     current_frame: run.preview,
-    on_step_change,
-    on_site_select,
+    on_step_change: can_navigate ? on_step_change : undefined,
+    on_site_select: can_navigate ? on_site_select : undefined,
   })
+  expect(body_rows()[2].getAttribute(`tabindex`)).toBe(can_navigate ? `0` : null)
   body_rows()[2].click()
-  expect(on_step_change).toHaveBeenCalledExactlyOnceWith(2)
+  if (can_navigate) expect(on_step_change).toHaveBeenCalledExactlyOnceWith(2)
+  else expect(on_step_change).not.toHaveBeenCalled()
   await open_atoms()
+  expect(body_rows()[1].getAttribute(`tabindex`)).toBe(can_navigate ? `0` : null)
   body_rows()[1].click()
-  expect(on_site_select).toHaveBeenCalledExactlyOnceWith(1)
+  if (can_navigate) expect(on_site_select).toHaveBeenCalledExactlyOnceWith(1)
+  else expect(on_site_select).not.toHaveBeenCalled()
 })
 
 test(`closed pane builds no table`, async () => {

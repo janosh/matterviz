@@ -423,14 +423,22 @@ test.each([`clear`, `replace input`])(
   },
 )
 
-test.each([`mutate input`, `replace tool`, `unmount`])(
-  `invalidates a mounted host run on %s`,
-  async (cause) => {
+test.each([
+  [`mutate input`, false],
+  [`replace tool`, false],
+  [`unmount`, false],
+  [`mutate input`, true],
+  [`replace input`, true],
+  [`replace tool`, true],
+] as const)(
+  `invalidates a mounted host run on %s with immediate restart=%s`,
+  async (cause, restart) => {
     const state = $state<ComponentProps<typeof Structure>>({
       structure: make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }]),
       volumetric_data: [],
     })
     const run = await mount_host_structure(bind_props({}, state))
+    let next_run: StructureToolRun | undefined
     flushSync(() => run.on_overlay({ volumes: volumetric_data }))
     if (cause === `unmount`) {
       const component = mounted.pop()
@@ -439,9 +447,14 @@ test.each([`mutate input`, `replace tool`, `unmount`])(
     } else {
       flushSync(() => {
         if (cause === `replace tool`) structure_host_tool.component = () => ({})
+        else if (cause === `replace input` && state.structure)
+          state.structure = { ...state.structure }
         else if (state.structure) state.structure.sites[0].xyz[0] = 9
         // Run guards must reject same-turn stale completions before effects clean up.
         run.on_overlay({ volumes: volumetric_data })
+        if (restart) {
+          next_run = run.start_run({ model: `test`, version: `2`, units: {}, settings: {} })
+        }
       })
     }
     expect(run.signal.aborted).toBe(true)
@@ -449,6 +462,11 @@ test.each([`mutate input`, `replace tool`, `unmount`])(
     expect(state.volumetric_data).toEqual([])
     flushSync(() => run.on_overlay({ volumes: volumetric_data }))
     expect(state.volumetric_data).toEqual([])
+    if (next_run) {
+      expect(next_run.signal.aborted).toBe(false)
+      flushSync(() => next_run?.on_overlay({ volumes: volumetric_data }))
+      expect(state.volumetric_data).toHaveLength(1)
+    }
   },
 )
 
