@@ -18,8 +18,6 @@ This project would not have been possible as a one-person side project without m
 | [three.js](https://threejs.org) |          [d3](https://d3js.org)          | [svelte-widgets](https://svelte-widgets.janosh.dev/) |     [vite](https://vitejs.dev)      | [playwright](https://playwright.dev) |
 | [threlte](https://threlte.xyz)  | [sharp](https://sharp.pixelplumbing.com) |     [rehype](https://github.com/rehypejs/rehype)     | [sveltekit](https://kit.svelte.dev) |     [vitest](https://vitest.dev)     |
 
-Note that the last two cells are empty because there were only 8 items in the list. In markdown tables, if you have less items in a row than there are columns, the remaining cells will just be empty.
-
 ## Element Images
 
 Big thanks to the element image providers listed below. Each image caption links back to the source website. See [`fetch-elem-images.mjs`](https://github.com/janosh/matterviz/blob/main/src/scripts/fetch-elem-images.mjs) for details.
