@@ -287,17 +287,29 @@
       pan: read_pan(),
     }
   }
-  onDestroy(() => {
-    if (!view_state || !camera) return
-    Object.assign(view_state, {
-      camera: camera.clone(),
-      target: read_orbit_target(),
+  // Capture parent props while mounted: evaluating their derived getters during destruction
+  // can disconnect the layout dependencies that are removing this pane.
+  let save_view: (() => void) | undefined
+  $effect(() => {
+    const owner = view_state
+    const live_camera = camera
+    const controls = orbit_controls
+    const context = {
       key: view_reset_key,
       reset_token,
       direction: camera_direction && [...camera_direction],
-      pose_key: view_state.get_pose_key(),
-    })
+      pose_key: owner?.get_pose_key(),
+    }
+    save_view = () => {
+      if (!owner || !live_camera) return
+      Object.assign(owner, {
+        ...context,
+        camera: live_camera.clone(),
+        target: controls?.target.toArray(),
+      })
+    }
   })
+  onDestroy(() => save_view?.())
   $effect(() => {
     const live_camera = camera
     const controls = orbit_controls

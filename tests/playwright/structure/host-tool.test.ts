@@ -1,5 +1,5 @@
 import { expect, type Download, type Page } from '@playwright/test'
-import { drag_canvas, test_without_errors as test } from '../helpers'
+import { test_without_errors as test } from '../helpers'
 
 const scene_state = (page: Page) =>
   page.evaluate(async () => {
@@ -82,9 +82,7 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
     page.getByRole(`button`, { name: `Add surface for Predicted density`, exact: true }),
   ).toBeVisible()
   await page.locator(`button.structure-controls-toggle`).click()
-  await outer.locator(`canvas`).first().hover()
-  await drag_canvas(outer.locator(`canvas`).first(), { dx: 65, dy: 35 })
-  // Seed the live camera directly: this tests remount persistence independently of gestures.
+  // Seed the live camera directly: a damped drag keeps changing the pose until suspension.
   await page.evaluate(async () => {
     const export_module = `/src/lib/io/export.ts`
     const pan_module = `/src/lib/scene/pan.ts`

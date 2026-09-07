@@ -25,6 +25,7 @@ import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { OrthographicCamera } from 'three/webgpu'
 import {
   assertHoverScopedShortcut,
   bind_props,
@@ -44,6 +45,19 @@ import {
   press_window_key,
   trigger_resize_observer,
 } from '../setup'
+
+// Exercise viewport lifecycle without creating a renderer in happy-dom.
+vi.mock(`@threlte/core`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  Canvas: (anchor: Node, props: { children: (anchor: Node) => void }) =>
+    props.children(anchor),
+}))
+vi.mock(`$lib/structure/StructureScene.svelte`, () => ({
+  default: (_anchor: Node, props: { camera: OrthographicCamera }) => {
+    props.camera = new OrthographicCamera()
+    return {}
+  },
+}))
 
 // Passthrough spy so individual tests can make make_supercell throw
 vi.mock(`$lib/structure/supercell`, async (import_original) => {
@@ -600,14 +614,18 @@ test.each([false, true])(
       expect(state.volumetric_data.map(({ label }) => label)).toContain(`added.CHGCAR`),
     )
     flushSync(() => tool_props.on_overlay({ ...overlay, site_properties: [{ charge: 1 }] }))
+    expect(state.volumetric_data[state.active_volume_idx]?.label).toBe(`added.CHGCAR`)
     const predicted_layer = state.isosurface_settings.layers.find(
       ({ isovalue }) => isovalue === 0.321,
     )
     expect(state.volumetric_data[predicted_layer?.volume_idx ?? -1]?.label).toBe(`Prediction`)
-    // A newly selected prediction field should return to the imported volume on clear.
-    flushSync(() =>
-      tool_props.on_overlay({ ...overlay, volumes: [{ ...overlay.volumes[0] }] }),
-    )
+    // A selected prediction field should return to the imported volume on clear.
+    flushSync(() => {
+      tool_props.on_overlay({ ...overlay, volumes: [{ ...overlay.volumes[0] }] })
+      state.active_volume_idx = state.volumetric_data.findIndex(
+        ({ label }) => label === `Prediction`,
+      )
+    })
     flushSync(() => tool_props.on_overlay(null))
     expect(state.volumetric_data.map(({ label }) => label)).toEqual(
       with_base ? [`Original`, `added.CHGCAR`] : [`added.CHGCAR`],
@@ -1867,10 +1885,7 @@ describe(`atom label controls`, () => {
   })
 })
 
-// Multi-side view (2x2 grid). The canvas grid itself is gated behind a
-// `typeof WebGLRenderingContext !== 'undefined'` guard so it doesn't render in
-// happy-dom; these cover the toggle button + wrapper class. The 4-canvas render
-// and independent rotation are exercised by the playwright suite.
+// Grid layout and viewport lifecycle; rendered camera interactions are covered by Playwright.
 describe(`Multi-side view`, () => {
   const mock_viewer_size = (client_width: number, client_height: number): void => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(client_width)
@@ -1878,7 +1893,12 @@ describe(`Multi-side view`, () => {
   }
   afterEach(() => vi.restoreAllMocks())
 
-  test(`layout dropdown is layered and switches multi_view`, async () => {
+  test(`layout dropdown survives repeated grid toggles and resizing`, async () => {
+    vi.stubGlobal(`navigator`, {
+      gpu: {},
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+    })
     const props = $state<ComponentProps<typeof Structure>>({
       structure,
       show_controls: `always`,
@@ -1891,14 +1911,26 @@ describe(`Multi-side view`, () => {
     expect(document.querySelector(`.view-mode-caret`)).toBeNull()
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
-    await select_structure_layout(`3D 2×2 grid`)
-    expect(props.multi_view).toBe(true)
-    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
-    expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
+    for (const _iteration of [0, 1]) {
+      await select_structure_layout(`3D 2×2 grid`)
+      expect(props.multi_view).toBe(true)
+      expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
+      expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
 
-    await select_structure_layout(`3D single view`)
-    expect(props.multi_view).toBe(false)
-    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+      for (const [width, height, active] of [
+        [599, 399, false],
+        [800, 600, true],
+      ] as const) {
+        mock_viewer_size(width, height)
+        trigger_resize_observer(doc_query(`.structure`))
+        await tick()
+        expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(active)
+      }
+
+      await select_structure_layout(`3D single view`)
+      expect(props.multi_view).toBe(false)
+      expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+    }
   })
 
   test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {

@@ -418,7 +418,8 @@
         }
     } else restore_tool_color()
     // A publication is a fresh snapshot; remember user removals by field ID within this run.
-    if (tool_overlay?.run_id !== overlay?.run_id) removed_tool_fields.clear()
+    const same_run = tool_overlay?.run_id === overlay?.run_id
+    if (!same_run) removed_tool_fields.clear()
     else {
       const present = new Set(volumetric_data)
       for (const volume of owned_volumes)
@@ -428,6 +429,7 @@
     tool_source = session.tool_input
     const active_before = volumetric_data?.[active_volume_idx]
     const restore_active = active_before !== undefined && owned_volume_set.has(active_before)
+    const preserve_active = restore_active || (same_run && owned_volumes.length > 0)
     if (!restore_active) original_active_volume = active_before
     const incoming = (overlay?.volumes ?? []).filter(
       ({ field_id }) => !removed_tool_fields.has(field_id),
@@ -444,7 +446,7 @@
     owned_volumes = volumetric_data.slice(result.first_idx) as StructureToolVolume[]
     if (incoming.length) {
       active_volume_idx =
-        restore_active && result.active_idx !== undefined
+        preserve_active && result.active_idx !== undefined
           ? result.active_idx
           : result.first_idx
     } else {

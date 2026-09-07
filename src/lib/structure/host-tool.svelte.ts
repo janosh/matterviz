@@ -8,7 +8,7 @@ import type { AnyStructure } from './index'
 export type StructureToolVolume = VolumetricData & { field_id: string }
 export interface StructureToolOverlay {
   // Publication copies these values. Hosts may reuse or mutate buffers after on_overlay returns.
-  // Shared buffers are supported for density values, but not inside site properties.
+  // Shared buffers are supported for density values, but not inside metadata.
   site_properties?: Record<string, unknown>[]
   volumes?: StructureToolVolume[]
   color_property?: string
@@ -56,7 +56,7 @@ function reject_shared_buffers(value: unknown, seen = new WeakSet<object>()): vo
   const buffer = ArrayBuffer.isView(value) ? value.buffer : value
   if (typeof SharedArrayBuffer !== `undefined` && buffer instanceof SharedArrayBuffer)
     throw new Error(
-      `Prediction properties cannot contain shared buffers; copy them before publishing`,
+      `Prediction metadata cannot contain shared buffers; copy them before publishing`,
     )
   if (ArrayBuffer.isView(value)) return
   const children =
@@ -66,6 +66,12 @@ function reject_shared_buffers(value: unknown, seen = new WeakSet<object>()): vo
         ? [...value]
         : Object.values(value)
   for (const child of children) reject_shared_buffers(child, seen)
+}
+
+function copy_metadata<T>(value: T) {
+  const copied = structuredClone($state.snapshot(value))
+  reject_shared_buffers(copied)
+  return copied
 }
 
 // Each mounted viewer owns its controller. Guards also run synchronously on callbacks, so
@@ -99,8 +105,8 @@ export function create_structure_tool_controller(
         throw new Error(`Cannot start a host run without a mounted, enabled structure viewer`)
       if (!provenance.model.trim() || !provenance.version.trim())
         throw new Error(`Prediction model and version must be nonempty`)
-      const input = structuredClone($state.snapshot(structure))
-      const captured_provenance = structuredClone($state.snapshot(provenance))
+      const input = copy_metadata(structure)
+      const captured_provenance = copy_metadata(provenance)
       const previous = current
       const stale_output = previous && !previous.is_current()
       const abort = new AbortController()
@@ -144,13 +150,11 @@ export function create_structure_tool_controller(
           }
           if (!overlay) return on_prediction(null)
           const { volumes, ...properties } = overlay
-          const copied_properties = structuredClone($state.snapshot(properties))
-          reject_shared_buffers(copied_properties)
           on_prediction({
-            ...copied_properties,
+            ...copy_metadata(properties),
             // Keep large density buffers out of $state.snapshot so each is copied only once.
             volumes: volumes?.map(({ values, ...metadata }) => ({
-              ...structuredClone($state.snapshot(metadata)),
+              ...copy_metadata(metadata),
               values: new Float64Array(values),
             })),
             input,

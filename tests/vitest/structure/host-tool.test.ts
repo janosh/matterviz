@@ -173,6 +173,14 @@ describe(`host prediction ownership`, () => {
         site_properties: [{ nested: new Map([[`shared`, shared_property]]) }],
       }),
     ).toThrow(`shared buffers`)
+    const shared_volume = { ...volume(`density`), extra: { shared_property } }
+    expect(() => latest.on_overlay({ volumes: [shared_volume] })).toThrow(`shared buffers`)
+    expect(() =>
+      controller.start_run({
+        ...provenance,
+        settings: { shared_property },
+      }),
+    ).toThrow(`shared buffers`)
   })
 })
 
