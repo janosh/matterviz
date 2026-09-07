@@ -38,7 +38,9 @@
 <h1>Host prediction tools</h1>
 <p>
   This runnable example adds deterministic charges, dipole arrows, density and a six-frame
-  trajectory to an unchanged input crystal. No model download or server is needed.
+  trajectory to an unchanged input crystal in a Web Worker. Set a delay to try cancelling or
+  restarting work, or enable failure to verify that the previous result remains available. No
+  model download or server is needed.
 </p>
 {#if ready}
   <Structure
@@ -84,4 +86,23 @@ run.on_overlay({
   change without losing surface appearance, including extra or deliberately removed layers. <strong
     >Reset prediction surfaces</strong
   > restores defaults. Hidden-density notices offer direct cell and supercell recovery actions.
+</p>
+
+<p>
+  Prediction metadata must contain plain JSON objects, arrays, strings, booleans, finite
+  numbers or null. Undefined object fields are omitted. Convert Maps, Sets, Dates and typed
+  arrays explicitly; unsupported values report their field path. Density values use
+  Float64Array, are copied on publication, and must not be written concurrently while copying
+  shared storage. Grid geometry is validated and cached statistics are recomputed.
+</p>
+<p>
+  Drop an exported prediction JSON onto any Structure viewer to reopen its input, properties,
+  density and provenance. Hosts can also import <code>prediction_from_json</code> from
+  <code>matterviz/structure</code> and pass its result as the viewer's <code>prediction</code>
+  prop. Import accepts version 1 only and restores the original cell and 1×1×1 scaling.
+</p>
+<p>
+  To measure larger grids locally, open <code>/test/isosurface-performance?size=128</code> and
+  click <strong>Benchmark prediction</strong>. The page records three publication timings,
+  export time and bytes, alongside the existing geometry/render timings and heap sampling.
 </p>

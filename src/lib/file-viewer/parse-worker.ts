@@ -14,7 +14,16 @@ const prepare_parse_result = (
   id: number,
   result: ParseResult,
 ): { response: ParseWorkerResponse; transfer: Transferable[] } => {
-  if (result.type !== `trajectory`) return { response: { id, result }, transfer: [] }
+  if (result.type !== `trajectory`)
+    return {
+      response: { id, result },
+      transfer:
+        result.type === `structure`
+          ? (result.prediction?.volumes ?? []).map(
+              ({ values }) => values.buffer as ArrayBuffer,
+            )
+          : [],
+    }
   const run = result.data
   const run_port = serve_run_over_port(run)
   return {

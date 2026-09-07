@@ -448,7 +448,10 @@ export const create_display = (
     log_message = `JSON browser opened: ${filename}`
   } else {
     // Single-viewer results share the dispatch table with JsonBrowser panels
-    app = mount_viewer(container, result.type, result.data, { defaults })
+    app = mount_viewer(container, result.type, result.data, {
+      defaults,
+      prediction: result.type === `structure` ? result.prediction : undefined,
+    })
     const detail =
       result.type === `convex_hull`
         ? ` (${result.data.length} entries)`

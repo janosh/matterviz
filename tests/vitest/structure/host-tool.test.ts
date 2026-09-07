@@ -1,11 +1,15 @@
+import { parse_file_content } from '$lib/file-viewer/parse'
 import {
   create_structure_tool_controller,
   prediction_to_json,
+  prediction_from_json,
 } from '$lib/structure/host-tool.svelte'
 import type {
   StructureToolPrediction,
+  StructureToolOverlay,
   StructureToolProvenance,
   StructureToolRun,
+  StructureToolVolume,
 } from '$lib/structure/host-tool.svelte'
 import { replace_tool_volumes } from '$lib/structure/host-tool-volumes'
 import { auto_volume_layer } from '$lib/isosurface'
@@ -250,4 +254,154 @@ test(`demo trajectory keeps fractional and Cartesian coordinates consistent`, as
     expect(xyz).toEqual(expected)
   }
   expect(crystal.sites[0].abc).toEqual([0.13, 0.27, 0.41])
+})
+
+const publication_fixture = () => {
+  const input = make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }])
+  const accepted = vi.fn()
+  const controller = create_structure_tool_controller(
+    () => input,
+    () => true,
+    accepted,
+    () => {},
+    () => ``,
+  )
+  const run = controller.start_run(provenance)
+  return { input, accepted, controller, run }
+}
+
+test.each([
+  [`Map`, (): unknown => new Map([[`key`, 1]])],
+  [`Set`, (): unknown => new Set([1])],
+  [`Date`, (): unknown => new Date(0)],
+  [`BigInt`, (): unknown => 1n],
+  [`NaN`, (): unknown => NaN],
+  [`Infinity`, (): unknown => Infinity],
+  [`typed array`, (): unknown => new Uint8Array([1])],
+  [`array hole`, (): unknown => Array(1)],
+  [
+    `cycle`,
+    (): unknown => {
+      const value: { self?: unknown } = {}
+      value.self = value
+      return value
+    },
+  ],
+] as const)(
+  `rejects %s metadata with a field path without replacing accepted output`,
+  (_name, make_bad) => {
+    const { input, accepted, controller, run } = publication_fixture()
+    run.on_overlay({ site_properties: [{ charge: 1 }] })
+    const bad = make_bad()
+    expect(() => run.on_overlay(bad as StructureToolOverlay)).toThrow(`prediction`)
+    expect(() => run.on_overlay({ site_properties: [{ bad }] })).toThrow(
+      `prediction.site_properties[0].bad`,
+    )
+    expect(() => controller.start_run({ ...provenance, settings: { bad } })).toThrow(
+      `provenance.settings.bad`,
+    )
+    expect(() =>
+      prediction_to_json({
+        input,
+        run_id: 1,
+        provenance: { ...provenance, settings: { bad } },
+      }),
+    ).toThrow(`provenance.settings.bad`)
+    expect(accepted).toHaveBeenCalledTimes(1)
+    expect(run.signal.aborted).toBe(false)
+  },
+)
+
+test.each([
+  { dims: [2, 2, 3] },
+  { dims: [-2, -2, 2] },
+  { dims: [1.5, 2, 2] },
+  { dims: [0, 2, 2], values: new Float64Array() },
+  { order: `x_fastest` },
+  { origin: [NaN, 0, 0] },
+  { periodic: `yes` },
+  {
+    lattice: [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ],
+  },
+  { values: new Float64Array(8).fill(Infinity) },
+  { values: new Float64Array(8).fill(1e308) },
+  {
+    lattice: [
+      [1e308, 1e308, 0],
+      [1e308, 1e308, 0],
+      [0, 0, 1],
+    ],
+  },
+  { values: new Float32Array(8) },
+])(`rejects malformed density atomically: %j`, (overrides) => {
+  const { accepted, run } = publication_fixture()
+  run.on_overlay({ volumes: [volume(`valid`)] })
+  const previous = accepted.mock.lastCall?.[0]
+  expect(() => run.on_overlay({ volumes: Array(1) })).toThrow(`prediction.volumes[0]`)
+  expect(() =>
+    run.on_overlay({
+      volumes: [volume(`valid`), { ...volume(`bad`), ...overrides } as StructureToolVolume],
+    }),
+  ).toThrow(`prediction.volumes[1]`)
+  expect(accepted).toHaveBeenCalledTimes(1)
+  expect(accepted.mock.lastCall?.[0]).toBe(previous)
+})
+
+test(`prediction import preserves input, fields and provenance, recomputes ranges, and rejects unsupported schemas`, async () => {
+  const input = make_crystal(1, [{ element: `Cu`, abc: [0.1, 0.2, 0.3] }])
+  const density = volume(`density`)
+  density.values[0] = 5 // Deliberately leave the host's cached statistics stale.
+  const prediction = {
+    input,
+    run_id: 3,
+    provenance,
+    volumes: [density],
+    site_properties: [{ charge: 0.5 }],
+    color_property: `charge`,
+  }
+  const text = prediction_to_json(prediction)
+  const restored = prediction_from_json(text)
+  expect(restored).toMatchObject({
+    input,
+    run_id: 3,
+    provenance,
+    site_properties: prediction.site_properties,
+  })
+  expect(restored.volumes?.[0].values).toEqual(density.values)
+  expect(restored.volumes?.[0].data_range).toEqual({ min: 1, max: 5, abs_max: 5, mean: 1.5 })
+  expect(prediction_to_json(restored)).toBe(text)
+  expect(prediction_from_json(JSON.parse(text))).toEqual(restored)
+  for (const [key, value] of [
+    [`label`, {}],
+    [`properties`, null],
+    [`properties`, []],
+  ] as const) {
+    const malformed = JSON.parse(text)
+    malformed.input.sites[0][key] = value
+    expect(() => prediction_from_json(malformed)).toThrow(`input.sites[0].${key}`)
+  }
+  expect(() => prediction_from_json(text.replace(`"Cu"`, `"DefinitelyNotAnElement"`))).toThrow(
+    `input.sites[0].species.element`,
+  )
+  for (const key of [`pbc`, `a`, `volume`]) {
+    const malformed = JSON.parse(text)
+    Reflect.deleteProperty(malformed.input.lattice, key)
+    expect(() => prediction_from_json(malformed)).toThrow(`input.lattice.${key}`)
+  }
+  const parsed = await parse_file_content(text, `prediction.json`)
+  expect(parsed).toMatchObject({ type: `structure`, data: input, prediction: restored })
+  await expect(
+    parse_file_content(text.replace(`prediction-v1`, `prediction-v2`), `prediction.json`),
+  ).rejects.toThrow(`schema`)
+  expect(() => prediction_from_json(text.replace(`"run_id":3`, `"run_id":0`))).toThrow(
+    `run_id`,
+  )
+  expect(() => prediction_from_json(text.replace(`"occu":1`, `"occu":-1`))).toThrow(`occu`)
+  expect(() =>
+    prediction_from_json(text.replace(`"xyz":[`, `"xyz":null,"old_xyz":[`)),
+  ).toThrow(`xyz`)
 })

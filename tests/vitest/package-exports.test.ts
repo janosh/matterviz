@@ -121,6 +121,7 @@ describe(`package.json exports`, () => {
   test(`root barrel exposes the host prediction API`, () => {
     expect(lib.structure_host_tool).toHaveProperty(`component`)
     expect(lib.prediction_to_json).toBeTypeOf(`function`)
+    expect(lib.prediction_from_json).toBeTypeOf(`function`)
     expectTypeOf<lib.StructureToolRun>().toHaveProperty(`signal`)
     expectTypeOf<lib.StructureToolProps>().toHaveProperty(`start_run`)
   })
@@ -130,9 +131,12 @@ describe(`package.json exports`, () => {
     { timeout: 60_000 },
     async (entry) => {
       expect(import.meta.resolve(entry)).toContain(`/dist/`)
-      const { structure_host_tool, prediction_to_json } = await import(entry)
+      const { structure_host_tool, prediction_to_json, prediction_from_json } = await import(
+        entry
+      )
       expect(structure_host_tool).toHaveProperty(`component`, null)
       expect(prediction_to_json).toBeTypeOf(`function`)
+      expect(prediction_from_json).toBeTypeOf(`function`)
       expectTypeOf<StructureToolRun>().toHaveProperty(`signal`)
       expectTypeOf<StructureToolProps>().toHaveProperty(`start_run`)
     },

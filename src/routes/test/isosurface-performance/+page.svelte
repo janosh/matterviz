@@ -12,6 +12,9 @@
   import { create_renderer } from '$lib/scene'
   import { Canvas, T } from '@threlte/core'
   import { onMount } from 'svelte'
+  import { make_site } from '$lib/structure/site'
+  import { create_structure_tool_controller } from '$lib/structure/host-tool.svelte'
+  import { prediction_to_json, type StructureToolPrediction } from '$lib/structure/prediction'
 
   const lattice: Matrix3x3 = [
     [4, 0, 0],
@@ -127,6 +130,52 @@
     }
   }
 
+  let prediction_metrics = $state<Record<string, number | number[]>>()
+  function benchmark_prediction(): void {
+    const input = { sites: [make_site(`H`, [0, 0, 0], [0, 0, 0], `H`)] }
+    let prediction: StructureToolPrediction | null = null
+    const controller = create_structure_tool_controller(
+      () => input,
+      () => true,
+      (value) => {
+        prediction = value
+      },
+      () => {},
+      () => `benchmark`,
+    )
+    const run = controller.start_run({
+      model: `benchmark`,
+      version: `1`,
+      units: { density: `e/A^3`, color: `eV` },
+      settings: { grid_size },
+    })
+    const payload = {
+      volumes: volumes.map((volume, idx) => ({ ...volume, field_id: `field-${idx}` })),
+    }
+    const publication_ms = [0, 1, 2].map(() => {
+      const start = performance.now()
+      run.on_overlay(payload)
+      return performance.now() - start
+    })
+    if (!prediction) throw new Error(`Benchmark did not publish a prediction`)
+    const start = performance.now()
+    const json = prediction_to_json(prediction)
+    const export_ms = performance.now() - start
+    prediction_metrics = {
+      grid_size,
+      publication_ms,
+      export_ms,
+      density_bytes: payload.volumes.reduce(
+        (total, volume) => total + volume.values.byteLength,
+        0,
+      ),
+      export_bytes: new Blob([json]).size,
+    }
+    // Feed the last accepted buffers to the existing renderer profiling harness.
+    volumes = (prediction as StructureToolPrediction).volumes ?? []
+    controller.dispose()
+  }
+
   function change_isovalue(): void {
     const { layers } = settings
     if (!layers[0]) return
@@ -184,6 +233,10 @@
   })
 </script>
 
+<button onclick={benchmark_prediction}>Benchmark prediction</button>
+<output data-testid="prediction-metrics"
+  >{prediction_metrics ? JSON.stringify(prediction_metrics) : `Not measured`}</output
+>
 <button data-testid="change-isovalue" onclick={change_isovalue}>Change isovalue</button>
 <button data-testid="recolor" onclick={recolor}>Recolor only</button>
 <button data-testid="measure-fps" onclick={measure_fps}>Measure FPS</button>

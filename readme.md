@@ -86,7 +86,7 @@ npm add -D matterviz
 <Structure {data_url} style="width: 500px; aspect-ratio: 1" />
 ```
 
-`Structure` accepts `structure`, `data_url`, `structure_string`, and direct file drops. Convenience loading delegates to the same `open_material()` runtime available to non-component hosts, so fetching, decompression, format detection, workers, provenance, and disposal remain centralized. Selection, measurements, atom/bond editing with undo/redo and the supercell/image-atom pipeline live in a headless `StructureSession` (exported from `matterviz/structure`); `active_pane: 'controls' | 'info' | 'export' | null` identifies the open floating pane.
+`Structure` accepts `structure`, `data_url`, `structure_string`, and direct file drops. Convenience loading delegates to the same `open_material()` runtime available to non-component hosts, so fetching, decompression, format detection, workers, provenance, and disposal remain centralized. Prediction JSON files reopen with their input, properties, density and provenance; hosts can also pass `prediction_from_json(content)` as the `prediction` prop. Selection, measurements, atom/bond editing with undo/redo and the supercell/image-atom pipeline live in a headless `StructureSession` (exported from `matterviz/structure`); `active_pane: 'controls' | 'info' | 'export' | null` identifies the open floating pane.
 
 ### Composition
 

@@ -439,3 +439,17 @@ describe(`StructureExportPane`, () => {
     })
   })
 })
+
+test(`prediction export reports invalid metadata in the pane`, async () => {
+  mount_pane({
+    prediction: {
+      input: simple_structure,
+      run_id: 1,
+      provenance: { model: `test`, version: `1`, units: {}, settings: { invalid: new Map() } },
+    },
+  })
+  doc_query<HTMLButtonElement>(`button[title="Download Export prediction"]`).click()
+  await tick()
+  expect(doc_query(`[role="alert"]`).textContent).toContain(`provenance.settings.invalid`)
+  expect(doc_query(`[role="alert"]`).textContent).toContain(`retry`)
+})

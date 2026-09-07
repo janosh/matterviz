@@ -74,9 +74,11 @@
     structure_host_tool,
     create_structure_tool_controller,
     type StructureToolPrediction,
+    type StructureToolProvenance,
     type StructureToolVolume,
     type StructureToolView,
   } from './host-tool.svelte'
+  import { copy_prediction } from './prediction'
   import { replace_tool_volumes } from './host-tool-volumes'
   import { apply_structure_material } from './material'
 
@@ -143,6 +145,7 @@
     allow_file_drop = true,
     data_url,
     structure_string,
+    prediction,
     on_file_drop,
     on_file_load,
     on_error,
@@ -220,6 +223,7 @@
     atom_color_config?: AtomColorConfig
     allow_file_drop?: boolean
     data_url?: string // fetched and parsed when no structure is supplied
+    prediction?: StructureToolPrediction
     structure_string?: string // parsed when neither structure nor data_url is supplied
     // Host takes over dropped/fetched content (and owns `structure`) instead of the parser
     on_file_drop?: FileLoadCallback
@@ -283,6 +287,15 @@
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
     commit: (opened) => {
+      if (opened.type === `structure` && opened.prediction) {
+        load_prediction(opened.prediction)
+        on_file_load?.({
+          structure,
+          ...opened.provenance,
+          total_atoms: structure?.sites.length ?? 0,
+        })
+        return
+      }
       const { document, notice } = apply_structure_material(
         { structure, volumetric_data, isosurface_settings, active_volume_idx },
         opened,
@@ -340,6 +353,7 @@
   })
 
   let tool_source = $state.raw<AnyStructure | undefined>()
+  let tool_source_revision = ``
   let tool_view = $state.raw<StructureToolView | null>(null)
   const active_tool_view = $derived(tool_source === session.tool_input ? tool_view : null)
   let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
@@ -427,6 +441,7 @@
     }
     tool_overlay = overlay
     tool_source = session.tool_input
+    tool_source_revision = overlay ? JSON.stringify(tool_source) : ``
     const active_before = volumetric_data?.[active_volume_idx]
     const restore_active = active_before !== undefined && owned_volume_set.has(active_before)
     const preserve_active = restore_active || (same_run && owned_volumes.length > 0)
@@ -463,7 +478,9 @@
   }
   // Cached until an input property changes; catches in-place edits without rescanning per callback.
   const tool_input_revision = $derived(
-    show_host_tool && structure_host_tool.component ? JSON.stringify(session.tool_input) : ``,
+    (show_host_tool && structure_host_tool.component) || tool_overlay
+      ? JSON.stringify(session.tool_input)
+      : ``,
   )
   const tool_controller = create_structure_tool_controller(
     () => session.tool_input,
@@ -483,9 +500,40 @@
       show_host_tool,
       structure_host_tool.component,
     ]
-    untrack(() => tool_controller.invalidate_if_changed())
+    untrack(() => {
+      tool_controller.invalidate_if_changed()
+      clear_stale_prediction()
+    })
   })
+  // Imported output has no running computation. Clearing it must not abort a newer run.
+  function clear_stale_prediction(): void {
+    if (
+      tool_overlay &&
+      (tool_source !== session.tool_input || tool_source_revision !== tool_input_revision)
+    )
+      apply_tool_overlay(null)
+  }
+  function start_tool_run(provenance: StructureToolProvenance) {
+    clear_stale_prediction()
+    return tool_controller.start_run(provenance)
+  }
   onDestroy(() => tool_controller.dispose())
+  function load_prediction(source: StructureToolPrediction): void {
+    const snapshot = copy_prediction(source)
+    structure = snapshot.input
+    session.element_mapping = undefined
+    cell_type = `original`
+    supercell_scaling = `1x1x1`
+    // Abort listeners may restart synchronously; they must capture the imported input.
+    tool_controller.clear()
+    volumetric_data = []
+    isosurface_settings = { ...isosurface_settings, layers: [] }
+    active_volume_idx = 0
+    apply_tool_overlay(snapshot)
+  }
+  $effect(() => {
+    if (prediction) untrack(() => load_prediction(prediction))
+  })
   const reset_prediction_surfaces = (): void => {
     isosurface_settings = {
       ...isosurface_settings,
@@ -943,7 +991,7 @@
     <div style:display={active_tool_view ? `none` : `contents`}>
       <structure_host_tool.component
         structure={session.tool_input}
-        start_run={tool_controller.start_run}
+        start_run={start_tool_run}
       />
     </div>
   {/if}

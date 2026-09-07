@@ -53,5 +53,22 @@ test.describe(`Isosurface performance harness`, () => {
     expect(marching.every((event) => event.meta.worker === true)).toBe(true)
     expect(marching.every((event) => Number(event.meta.vertices) > 0)).toBe(true)
     expect(events.some((event) => event.meta.worker_fallback === true)).toBe(false)
+    const rebuild_count = events.filter((event) => event.stage === `rebuild_total`).length
+    await page.getByRole(`button`, { name: `Benchmark prediction` }).click()
+    await expect
+      .poll(
+        async () =>
+          (await read_events(page)).filter((event) => event.stage === `rebuild_total`).length,
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(rebuild_count)
+    const metrics = JSON.parse(
+      (await page.getByTestId(`prediction-metrics`).textContent()) ?? `null`,
+    )
+    expect(metrics.publication_ms).toHaveLength(3)
+    expect(metrics.publication_ms.every((duration: number) => duration > 0)).toBe(true)
+    expect(metrics.export_ms).toBeGreaterThan(0)
+    expect(metrics.density_bytes).toBe((64 ** 3 + 53 ** 3) * 8)
+    expect(metrics.export_bytes).toBeGreaterThan(metrics.density_bytes)
   })
 })

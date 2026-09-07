@@ -2205,3 +2205,100 @@ describe(`data_url acquisition`, () => {
     expect(props.structure?.sites[0]?.species[0]?.element).toBe(`He`)
   })
 })
+
+test.each([`replace`, `mutate`, `restart`] as const)(
+  `imported prediction ownership after %s`,
+  async (action) => {
+    let host: StructureToolProps | undefined
+    if (action === `restart`)
+      structure_host_tool.component = (_anchor, props) => {
+        host = props
+        return {}
+      }
+    const input = make_crystal(1, [{ element: `Cu`, abc: [0.1, 0.2, 0.3] }])
+    const saved_volume = { ...make_volume(make_grid(2, 2, 2, () => 1)), field_id: `density` }
+    const state = $state({
+      structure: undefined as AnyStructure | undefined,
+      volumetric_data: [] as VolumetricData[],
+      cell_type: `primitive` as const,
+      supercell_scaling: `2x2x2`,
+    })
+    mount_structure(
+      bind_props(
+        {
+          show_host_tool: action === `restart`,
+          show_controls: `always` as const,
+          prediction: {
+            input,
+            run_id: 7,
+            provenance: {
+              model: `saved model`,
+              version: `1`,
+              units: { charge: `e` },
+              settings: {},
+            },
+            site_properties: [{ charge: 1 }],
+            color_property: `charge`,
+            volumes: [saved_volume],
+          },
+        },
+        state,
+      ),
+    )
+    await tick()
+    expect(state.structure).toEqual(input)
+    expect(state.structure).not.toBe(input)
+    expect(state.volumetric_data).toHaveLength(1)
+    expect(state.cell_type).toBe(`original`)
+    expect(state.supercell_scaling).toBe(`1x1x1`)
+    expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
+    if (action === `mutate` && state.structure)
+      state.structure.sites[0].species[0].element = `H`
+    else state.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
+    const run = host?.start_run({ model: `new`, version: `1`, units: {}, settings: {} })
+    if (run) expect(state.volumetric_data).toEqual([])
+    await tick()
+    expect(state.volumetric_data).toEqual([])
+    expect(document.querySelector(`[title="Download Export prediction"]`)).toBeNull()
+    if (run) {
+      expect(run.signal.aborted).toBe(false)
+      run.on_overlay({ site_properties: [{ charge: 2 }] })
+      await tick()
+      expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
+    }
+  },
+)
+
+test(`import survives a synchronous restart from the previous run's abort listener`, async () => {
+  const props = $state<ComponentProps<typeof Structure>>({
+    structure: make_crystal(1, [{ element: `Cu`, abc: [0, 0, 0] }]),
+    show_controls: `always`,
+    volumetric_data: [],
+  })
+  const run = await mount_host_structure(props)
+  let restarted: StructureToolRun | undefined
+  run.signal.addEventListener(
+    `abort`,
+    () => {
+      restarted = run.start_run({ model: `restart`, version: `1`, units: {}, settings: {} })
+    },
+    { once: true },
+  )
+  const input = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
+  props.prediction = {
+    input,
+    run_id: 7,
+    provenance: { model: `saved`, version: `1`, units: {}, settings: {} },
+    volumes: [{ ...make_volume(make_grid(2, 2, 2, () => 1)), field_id: `density` }],
+  }
+  await tick()
+  expect(props.volumetric_data).toHaveLength(1)
+  expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
+  if (!restarted) throw new Error(`Abort listener did not restart`)
+  expect(restarted.structure).toEqual(input)
+  expect(restarted.signal.aborted).toBe(false)
+  restarted.on_overlay({ site_properties: [{ charge: 2 }] })
+  await tick()
+  expect(props.volumetric_data).toEqual([])
+  expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
+})

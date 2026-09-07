@@ -1,29 +1,24 @@
 import type { Component, ComponentProps, Snippet } from 'svelte'
 import type StructureScene from './StructureScene.svelte'
-import type { VolumetricData } from '$lib/isosurface'
 import type { AnyStructure } from './index'
+import {
+  copy_prediction_input,
+  copy_prediction_overlay,
+  copy_prediction_provenance,
+} from './prediction'
+import type {
+  StructureToolOverlay,
+  StructureToolPrediction,
+  StructureToolProvenance,
+} from './prediction'
 
-// Reuse a field ID only for the same physical quantity, units and normalization. Change it
-// when those semantics change; array order, labels and grid resolution do not affect identity.
-export type StructureToolVolume = VolumetricData & { field_id: string }
-export interface StructureToolOverlay {
-  // Publication copies these values. Hosts may reuse or mutate buffers after on_overlay returns.
-  // Shared buffers are supported for density values, but not inside metadata.
-  site_properties?: Record<string, unknown>[]
-  volumes?: StructureToolVolume[]
-  color_property?: string
-}
-export interface StructureToolProvenance {
-  model: string
-  version: string
-  units: Record<string, string>
-  settings: Record<string, unknown>
-}
-export interface StructureToolPrediction extends StructureToolOverlay {
-  input: AnyStructure
-  run_id: number
-  provenance: StructureToolProvenance
-}
+export { prediction_to_json, prediction_from_json } from './prediction'
+export type {
+  StructureToolVolume,
+  StructureToolOverlay,
+  StructureToolPrediction,
+  StructureToolProvenance,
+} from './prediction'
 
 // The host lends a full-size view without unmounting the tool that owns the computation.
 export interface StructureToolViewProps {
@@ -47,31 +42,6 @@ export interface StructureToolRun {
 export interface StructureToolProps {
   structure: AnyStructure
   start_run: (provenance: StructureToolProvenance) => StructureToolRun
-}
-
-// structuredClone keeps shared storage shared; reject it in arbitrary property metadata.
-function reject_shared_buffers(value: unknown, seen = new WeakSet<object>()): void {
-  if (!value || typeof value !== `object` || seen.has(value)) return
-  seen.add(value)
-  const buffer = ArrayBuffer.isView(value) ? value.buffer : value
-  if (typeof SharedArrayBuffer !== `undefined` && buffer instanceof SharedArrayBuffer)
-    throw new Error(
-      `Prediction metadata cannot contain shared buffers; copy them before publishing`,
-    )
-  if (ArrayBuffer.isView(value)) return
-  const children =
-    value instanceof Map
-      ? [...value.keys(), ...value.values()]
-      : value instanceof Set
-        ? [...value]
-        : Object.values(value)
-  for (const child of children) reject_shared_buffers(child, seen)
-}
-
-function copy_metadata<T>(value: T) {
-  const copied = structuredClone($state.snapshot(value))
-  reject_shared_buffers(copied)
-  return copied
 }
 
 // Each mounted viewer owns its controller. Guards also run synchronously on callbacks, so
@@ -103,10 +73,8 @@ export function create_structure_tool_controller(
       const revision = get_revision()
       if (disposed || !owner || !structure)
         throw new Error(`Cannot start a host run without a mounted, enabled structure viewer`)
-      if (!provenance.model.trim() || !provenance.version.trim())
-        throw new Error(`Prediction model and version must be nonempty`)
-      const input = copy_metadata(structure)
-      const captured_provenance = copy_metadata(provenance)
+      const input = copy_prediction_input(structure)
+      const captured_provenance = copy_prediction_provenance(provenance)
       const previous = current
       const stale_output = previous && !previous.is_current()
       const abort = new AbortController()
@@ -133,30 +101,9 @@ export function create_structure_tool_controller(
         signal,
         on_overlay(overlay) {
           if (!is_current()) return
-          if (
-            overlay?.site_properties &&
-            overlay.site_properties.length !== input.sites.length
-          )
-            throw new Error(
-              `Run ${id}: received ${overlay.site_properties.length} property rows for ${input.sites.length} sites`,
-            )
-          const field_ids = new Set<string>()
-          for (const { field_id } of overlay?.volumes ?? []) {
-            if (!field_id?.trim() || field_ids.has(field_id))
-              throw new Error(
-                `Run ${id}: density field ID must be nonempty and unique, got ${field_id}`,
-              )
-            field_ids.add(field_id)
-          }
-          if (!overlay) return on_prediction(null)
-          const { volumes, ...properties } = overlay
+          if (overlay === null) return on_prediction(null)
           on_prediction({
-            ...copy_metadata(properties),
-            // Keep large density buffers out of $state.snapshot so each is copied only once.
-            volumes: volumes?.map(({ values, ...metadata }) => ({
-              ...copy_metadata(metadata),
-              values: new Float64Array(values),
-            })),
+            ...copy_prediction_overlay(overlay, input.sites.length),
             input,
             run_id: id,
             provenance: captured_provenance,
@@ -183,22 +130,6 @@ export function create_structure_tool_controller(
     },
   }
 }
-
-// JSON preserves the full input and transient outputs, including flat density arrays with
-// their lattice, origin, dimensions, ordering and boundary conditions.
-export const prediction_to_json = (prediction: StructureToolPrediction): string =>
-  JSON.stringify(
-    {
-      schema: `matterviz-prediction-v1`,
-      ...prediction,
-      volumes: prediction.volumes?.map(({ values, ...volume }) => ({
-        ...volume,
-        values: Array.from(values),
-      })),
-    },
-    null,
-    2,
-  )
 
 // Register before mounting; this also reaches independently mounted file viewers.
 export const structure_host_tool = $state<{

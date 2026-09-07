@@ -17,7 +17,11 @@ export * from './lattice-planes'
 export { default as LatticePlanes } from './LatticePlanes.svelte'
 export * from './camera-fit'
 export * from './density'
-export { structure_host_tool, prediction_to_json } from './host-tool.svelte'
+export {
+  structure_host_tool,
+  prediction_to_json,
+  prediction_from_json,
+} from './host-tool.svelte'
 export type {
   StructureToolProps,
   StructureToolRun,

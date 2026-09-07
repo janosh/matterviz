@@ -62,6 +62,18 @@ const scene_state = (page: Page) =>
     }
   })
 
+const drop_prediction = async (page: Page, prediction: unknown): Promise<void> => {
+  const transfer = await page.evaluateHandle((payload) => {
+    const drop_data = new DataTransfer()
+    drop_data.items.add(
+      new File([JSON.stringify(payload)], `prediction.json`, { type: `application/json` }),
+    )
+    return drop_data
+  }, prediction)
+  await page.locator(`.structure`).first().dispatchEvent(`drop`, { dataTransfer: transfer })
+  await transfer.dispose()
+}
+
 test(`prediction tools render with WebGPU and hand keyboard/camera ownership to a nested trajectory`, async ({
   page,
 }) => {
@@ -202,4 +214,90 @@ test(`exports reproducible predictions separately from the original structure`, 
   await page.getByRole(`button`, { name: `Clear prediction`, exact: true }).click()
   await expect(page.getByTitle(`Download Export prediction`, { exact: true })).toHaveCount(0)
   await expect(density_surface).toHaveCount(0)
+  await drop_prediction(page, data)
+  await expect(density_surface).toHaveCount(1)
+  const reopened_download = page.waitForEvent(`download`)
+  await page.getByTitle(`Download Export prediction`, { exact: true }).click()
+  expect(await read_download(await reopened_download)).toEqual(data)
+})
+
+test(`worker predictions guard reversed completion, failure and cancellation`, async ({
+  page,
+}) => {
+  // Model a computation that ignores cancellation. Its late message must still be harmless.
+  await page.addInitScript(() => {
+    globalThis.Worker = class extends Worker {
+      prediction_worker = false
+      constructor(...args: ConstructorParameters<typeof Worker>) {
+        const prediction_worker = String(args[0]).includes(`prediction-worker`)
+        if (prediction_worker && document.documentElement.dataset.failWorkerSetup)
+          throw new Error(`Worker setup failed`)
+        super(...args)
+        this.prediction_worker = prediction_worker
+        if (!prediction_worker) return
+        this.addEventListener(`message`, () => {
+          const root = document.documentElement
+          root.dataset.workerReplies = String(Number(root.dataset.workerReplies ?? 0) + 1)
+        })
+      }
+      terminate() {
+        if (!this.prediction_worker) return super.terminate()
+        const root = document.documentElement
+        root.dataset.workerStops = String(Number(root.dataset.workerStops ?? 0) + 1)
+      }
+    }
+  })
+  await page.goto(`/structure/host-tool`)
+  const delay = page.getByRole(`spinbutton`, { name: `Delay (ms)` })
+  const predict = page.getByRole(`button`, { name: `Run prediction`, exact: true })
+  const status = page.locator(`[data-testid="host-tool-controls"] [role="status"]`)
+  await delay.fill(`1000`)
+  await predict.click()
+  await expect(status).toContainText(`Prediction 1 running`)
+  await delay.fill(`0`)
+  await predict.click()
+  await expect(status).toContainText(`Prediction 2 ready`)
+  await expect(page.locator(`html`)).toHaveAttribute(`data-worker-replies`, `2`)
+  await expect(status).toContainText(`Prediction 2 ready`)
+  const exporting = page.getByTitle(`Download Export prediction`, { exact: true })
+  await page.getByRole(`checkbox`, { name: `Fail prediction` }).check()
+  await predict.click()
+  await expect(status).toContainText(`Simulated model failure`)
+  await page.locator(`button.structure-export-toggle`).click()
+  await expect(exporting).toBeVisible()
+  const saved = page.waitForEvent(`download`)
+  await exporting.click()
+  const retained = await read_download(await saved)
+  expect(retained.run_id).toBe(2)
+  await page.getByRole(`checkbox`, { name: `Fail prediction` }).uncheck()
+  await delay.fill(`500`)
+  await predict.click()
+  await page.getByRole(`button`, { name: `Cancel prediction`, exact: true }).click()
+  await expect(status).toContainText(`cancelled`)
+  await expect(page.locator(`html`)).toHaveAttribute(`data-worker-replies`, `4`)
+  await expect(exporting).toHaveCount(0)
+  await expect(status).toContainText(`cancelled`)
+  await predict.click()
+  retained.input.sites[0].species[0].element = `Zn`
+  await drop_prediction(page, retained)
+  await expect(page.locator(`html`)).toHaveAttribute(`data-worker-replies`, `5`)
+  await page.locator(`button.structure-export-toggle`).click()
+  const imported = page.waitForEvent(`download`)
+  await exporting.click()
+  expect(await read_download(await imported)).toEqual(retained)
+  await page.evaluate(() => {
+    document.documentElement.dataset.failWorkerSetup = `true`
+  })
+  await predict.click()
+  await expect(status).toContainText(`Worker setup failed`)
+  await expect(
+    page.getByRole(`button`, { name: `Cancel prediction`, exact: true }),
+  ).toBeDisabled()
+  await page.evaluate(() => {
+    delete document.documentElement.dataset.failWorkerSetup
+  })
+  await predict.click()
+  const stopped = Number(await page.locator(`html`).getAttribute(`data-worker-stops`))
+  await page.locator(`a[href="/"]`).first().click()
+  await expect(page.locator(`html`)).toHaveAttribute(`data-worker-stops`, String(stopped + 1))
 })

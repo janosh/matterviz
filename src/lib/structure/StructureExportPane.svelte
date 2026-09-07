@@ -122,6 +122,17 @@
     }
   }
 
+  let prediction_error = $state(``)
+  function prediction_text(): string | null {
+    prediction_error = ``
+    try {
+      return prediction ? prediction_to_json(prediction) : null
+    } catch (error) {
+      prediction_error = `Export failed: ${String(error)}. Correct the prediction metadata and retry.`
+      return null
+    }
+  }
+
   const sections = $derived<ExportSection[]>([
     ...(prediction
       ? [
@@ -132,14 +143,15 @@
                 label: `Export prediction`,
                 hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
                 on_download: () => {
-                  if (prediction)
+                  const content = prediction_text()
+                  if (prediction && content)
                     download(
-                      prediction_to_json(prediction),
+                      content,
                       `prediction-${prediction.run_id}.json`,
                       `application/json`,
                     )
                 },
-                copy_text: () => (prediction ? prediction_to_json(prediction) : null),
+                copy_text: prediction_text,
               },
             ],
           },
@@ -204,6 +216,8 @@
       : []),
   ])
 </script>
+
+{#if prediction_error}<p role="alert">{prediction_error}</p>{/if}
 
 <ExportPane
   bind:export_pane_open
