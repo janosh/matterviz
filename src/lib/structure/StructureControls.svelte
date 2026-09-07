@@ -22,7 +22,7 @@
   import type { ZoneAxisMode } from '$lib/scene'
   import { is_valid_zone_axis, ZONE_AXIS_MODE_LABELS, zone_axis_direction } from '$lib/scene'
   import { ColorScaleSelect } from '$lib/plot'
-  import type { AtomColorMode, VectorLayerConfig } from '$lib/settings'
+  import type { AtomColorMode, SettingType, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import type { StructurePaneSize, StructureViewState } from '$lib/settings/viewer-state'
   import {
@@ -305,6 +305,12 @@
     label,
     step,
   })
+  const number_range_props = (schema: SettingType, step = schema.multipleOf ?? `any`) => {
+    const { minimum: min, maximum: max, description: title } = schema
+    if (min === undefined || max === undefined)
+      throw new Error(`Missing range bounds for "${title}": min=${min}, max=${max}`)
+    return { min, max, step, title }
+  }
   // A getter, not a const: the parent may rebind scene_props to a fresh object
   const scene_record = () => scene_props as Record<string, unknown>
   const row_value = (current: Row): unknown =>
@@ -795,8 +801,7 @@
       {#if typeof schema.value === `number`}
         <NumberRangeInput
           setting={key}
-          schema={SETTINGS_CONFIG.structure}
-          {step}
+          {...number_range_props(schema, step)}
           bind:value={() => row_value(current) as number | undefined, set}
           >{label}</NumberRangeInput
         >
@@ -1377,8 +1382,7 @@
         </label>
         <NumberRangeInput
           setting="background_opacity"
-          schema={{ background_opacity: SETTINGS_CONFIG.background_opacity }}
-          step={0.02}
+          {...number_range_props(SETTINGS_CONFIG.background_opacity, 0.02)}
           bind:value={background_opacity}>Opacity</NumberRangeInput
         >
       </SettingsSection>
@@ -1447,7 +1451,7 @@
               {/if}
               <NumberRangeInput
                 setting="trajectory_line_trail_frames"
-                schema={SETTINGS_CONFIG.structure}
+                {...number_range_props(SETTINGS_CONFIG.structure.trajectory_line_trail_frames)}
                 max={Math.max(1, scene_props.trajectory_position_stream.n_frames)}
                 bind:value={scene_props.trajectory_line_trail_frames}
                 >Trail length <small>(0 = all)</small></NumberRangeInput

@@ -357,7 +357,8 @@
           "src/site/**/*.{js,ts,svelte}",
           "src/scripts/capture-screenshots.mjs",
           "src/scripts/fetch-elem-images.mjs",
-          "src/lib/scene/three-compat.ts"
+          "src/lib/scene/three-compat.ts",
+          "src/routes/(demos)/structure/host-tool/prediction-worker.ts"
         ],
         "paths": {
           "$lib": [
