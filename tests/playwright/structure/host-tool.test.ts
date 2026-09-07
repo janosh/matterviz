@@ -140,10 +140,15 @@ test(`exports reproducible predictions separately from the original structure`, 
   expect(original.sites).toEqual(data.input.sites)
   expect(original.lattice).toEqual(data.input.lattice)
   expect(original.volumes).toBeUndefined()
+  // Closed panes retain controls, so include hidden buttons when checking their removal.
+  const density_surface = page.getByRole(`button`, {
+    name: `Add surface for Predicted density`,
+    exact: true,
+    includeHidden: true,
+  })
+  await expect(density_surface).toHaveCount(1)
   await page.getByRole(`button`, { name: `Reset prediction surfaces` }).click()
   await page.getByRole(`button`, { name: `Clear prediction`, exact: true }).click()
   await expect(page.getByTitle(`Download Export prediction`, { exact: true })).toHaveCount(0)
-  await expect(
-    page.getByRole(`button`, { name: `Add surface for Predicted density`, exact: true }),
-  ).toHaveCount(0)
+  await expect(density_surface).toHaveCount(0)
 })

@@ -217,10 +217,14 @@
   }}
   {...rest}
 >
-  {#if prediction}
+  {#if prediction && (on_reset_prediction_surfaces || on_clear_prediction)}
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
-      <button onclick={on_reset_prediction_surfaces}>Reset prediction surfaces</button>
-      <button onclick={on_clear_prediction}>Clear prediction</button>
+      {#if on_reset_prediction_surfaces}
+        <button onclick={on_reset_prediction_surfaces}>Reset prediction surfaces</button>
+      {/if}
+      {#if on_clear_prediction}
+        <button onclick={on_clear_prediction}>Clear prediction</button>
+      {/if}
     </div>
   {/if}
 </ExportPane>

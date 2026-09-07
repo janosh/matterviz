@@ -83,6 +83,37 @@ describe(`StructureExportPane`, () => {
   })
 
   test.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(`prediction actions require their callbacks (clear=%s, reset=%s)`, (clear, reset) => {
+    const on_clear_prediction = vi.fn()
+    const on_reset_prediction_surfaces = vi.fn()
+    mount_pane({
+      prediction: {
+        input: simple_structure,
+        run_id: 1,
+        provenance: { model: `test`, version: `1`, units: {}, settings: {} },
+      },
+      on_clear_prediction: clear ? on_clear_prediction : undefined,
+      on_reset_prediction_surfaces: reset ? on_reset_prediction_surfaces : undefined,
+    })
+    expect(get_button(`Download Export prediction`).disabled).toBe(false)
+    for (const [label, enabled, callback] of [
+      [`Clear prediction`, clear, on_clear_prediction],
+      [`Reset prediction surfaces`, reset, on_reset_prediction_surfaces],
+    ] as const) {
+      const button = [...document.querySelectorAll(`button`)].find(
+        (candidate) => candidate.textContent === label,
+      )
+      expect(Boolean(button), label).toBe(enabled)
+      button?.click()
+      expect(callback).toHaveBeenCalledTimes(enabled ? 1 : 0)
+    }
+  })
+
+  test.each([
     { format: `json`, label: `JSON` },
     { format: `xyz`, label: `XYZ` },
     { format: `cif`, label: `CIF` },
