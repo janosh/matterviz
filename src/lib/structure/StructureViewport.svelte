@@ -29,7 +29,6 @@
   import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'
   import StructureScene from './StructureScene.svelte'
-  import { get_orig_site_idx } from './site'
 
   // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
   // "restored" event, so recovery means remounting the <Canvas> for a fresh renderer.
@@ -91,7 +90,6 @@
     session,
     view_reset_key = undefined,
     reference_structure = undefined,
-    site_properties = undefined,
     scene_props = {},
     gizmo = false,
     volumetric_data = undefined,
@@ -127,7 +125,6 @@
     on_camera_reset?: (data: StructureHandlerData) => void
     session: StructureSession
     view_reset_key?: unknown
-    site_properties?: Record<string, unknown>[]
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
@@ -149,17 +146,7 @@
     trajectory_lines_result?: TrajectoryLinesStats | null
   } = $props()
 
-  let structure = $derived.by(() => {
-    const displayed = session.displayed_structure
-    if (!displayed || !site_properties || !session.shows_input_frame) return displayed
-    return {
-      ...displayed,
-      sites: displayed.sites.map((site, idx) => ({
-        ...site,
-        properties: { ...site.properties, ...site_properties[get_orig_site_idx(site, idx)] },
-      })),
-    }
-  })
+  let structure = $derived(session.render_structure)
 
   // Cell-local dimensions (each pane is responsible for its own zoom sizing) and cursor
   let width = $state(0)

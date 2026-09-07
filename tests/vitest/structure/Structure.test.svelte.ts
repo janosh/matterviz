@@ -11,9 +11,18 @@ import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
 import { get_element_counts, OVERLAYS_INPUT_FRAME_NOTE } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
+import {
+  DEFAULT_ATOM_COLOR_CONFIG,
+  type AtomColorConfig,
+} from '$lib/structure/atom-properties'
+import {
+  structure_host_tool,
+  type StructureToolProps,
+  type StructureToolViewProps,
+} from '$lib/structure/host-tool.svelte'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
-import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   assertHoverScopedShortcut,
@@ -50,11 +59,13 @@ const structure = structures[0]
 // mount is unmounted after its test so component cleanup runs before happy-dom tears down:
 // the edit toast's dismiss timer would otherwise fire into a vanished `document`.
 const mounted: Record<string, unknown>[] = []
+const original_host_component = structure_host_tool.component
 const mount_structure = (props: ComponentProps<typeof Structure>): void => {
   mounted.push(mount(Structure, { target: document.body, props }))
 }
 afterEach(() => {
   for (const component of mounted.splice(0)) void unmount(component)
+  structure_host_tool.component = original_host_component
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -137,7 +148,10 @@ test(`loads strings, URLs and dropped files through the component API`, async ()
       expect.objectContaining({ filename: `string`, total_atoms: 5 }),
     )
     expect(url_load).toHaveBeenCalledWith(
-      expect.objectContaining({ filename: `loaded.poscar`, source_url: `/loaded.poscar` }),
+      expect.objectContaining({
+        filename: `loaded.poscar`,
+        source_url: `/loaded.poscar`,
+      }),
     )
     expect(drop_load).toHaveBeenCalledWith(
       expect.objectContaining({ filename: `dropped.poscar`, total_atoms: 5 }),
@@ -283,6 +297,274 @@ const volumetric_data = [
     },
   ),
 ]
+
+// Capture the registered host API while mounting; the shared cleanup restores registration.
+const mount_host_structure = async (
+  props: ComponentProps<typeof Structure>,
+): Promise<StructureToolProps> => {
+  let tool_props: StructureToolProps | undefined
+  structure_host_tool.component = (_anchor, host_props) => {
+    tool_props = host_props
+    return {}
+  }
+  mount_structure(props)
+  await tick()
+  if (!tool_props) throw new Error(`Host tool did not mount`)
+  return tool_props
+}
+
+test(`host views fill the main viewer, inherit its camera and cell, and reject stale sources`, async () => {
+  let received: StructureToolViewProps | undefined
+  const content = createRawSnippet<[StructureToolViewProps]>((get_props) => {
+    received = get_props()
+    return { render: () => `<div data-testid="live-host-view">Live trajectory</div>` }
+  })
+  const tool_props = await mount_host_structure({
+    structure,
+    supercell_scaling: `2x1x1`,
+    show_image_atoms: false,
+    scene_props: { camera_position: [3, 4, 5], camera_target: [1, 2, 3] },
+  })
+  const original_input = tool_props.structure
+  tool_props.on_view({ source: original_input, content })
+  await tick()
+  expect(
+    document.querySelector(`.structure > .host-view > [data-testid="live-host-view"]`),
+  ).not.toBeNull()
+  expect(received?.supercell_scaling).toBe(`2x1x1`)
+  expect(received?.show_image_atoms).toBe(false)
+  expect(received?.scene_props.camera_position).toEqual([3, 4, 5])
+  expect(received?.scene_props.camera_target).toEqual([1, 2, 3])
+  expect(tool_props.structure).toBe(original_input)
+  tool_props.on_view({ source: { ...original_input }, content })
+  await tick()
+  expect(document.querySelector(`.host-view`)).toBeNull()
+  tool_props.on_view({ source: original_input, content })
+  await tick()
+  tool_props.on_view(null)
+  await tick()
+  expect(document.querySelector(`.host-view`)).toBeNull()
+  expect(tool_props.structure).toBe(original_input)
+})
+
+test(`host overlays restore atom colors and preserve adjusted surfaces when only properties change`, async () => {
+  const state = $state<{
+    atom_color_config: AtomColorConfig
+    isosurface_settings: IsosurfaceSettings
+  }>({
+    atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
+    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+  })
+  const tool_props = await mount_host_structure(bind_props({ structure }, state))
+  const overlay = {
+    source: tool_props.structure,
+    site_properties: tool_props.structure.sites.map((_, idx) => ({
+      charge: idx,
+      magmom: -idx,
+    })),
+    volumes: volumetric_data,
+    color_property: `charge`,
+  }
+  flushSync(() => tool_props.on_overlay(overlay))
+  expect(state.atom_color_config).toMatchObject({
+    mode: `property`,
+    property_key: `charge`,
+  })
+  expect(state.isosurface_settings.layers).toHaveLength(1)
+  flushSync(() => {
+    state.isosurface_settings.layers[0].isovalue = 0.123
+    state.atom_color_config = {
+      ...state.atom_color_config,
+      scale: `interpolateViridis`,
+    }
+  })
+  flushSync(() =>
+    tool_props.on_overlay({
+      ...overlay,
+      site_properties: [...overlay.site_properties],
+    }),
+  )
+  expect(state.atom_color_config.scale).toBe(`interpolateViridis`)
+  flushSync(() => tool_props.on_overlay({ ...overlay, color_property: `magmom` }))
+  expect(state.atom_color_config).toMatchObject({
+    mode: `property`,
+    property_key: `magmom`,
+  })
+  expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
+  flushSync(() => tool_props.on_overlay(null))
+  expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
+  expect(state.isosurface_settings.layers).toEqual([])
+})
+
+test.each([`Original`, `Prediction`])(
+  `removing %s volumes updates their owner across later tool callbacks`,
+  async (removed_label) => {
+    const base_volume = { ...volumetric_data[0], label: `Original` }
+    const prediction_volume = { ...volumetric_data[0], label: `Prediction` }
+    const state = $state<{
+      volumetric_data: VolumetricData[]
+      isosurface_settings: IsosurfaceSettings
+    }>({
+      volumetric_data: [base_volume],
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    })
+    const tool_props = await mount_host_structure(bind_props({ structure }, state))
+    const overlay = { source: tool_props.structure, volumes: [prediction_volume] }
+    flushSync(() => tool_props.on_overlay(overlay))
+    const remove = doc_query<HTMLButtonElement>(
+      `button[aria-label="Remove volume ${removed_label}"]`,
+    )
+    flushSync(() => remove.click())
+    flushSync(() =>
+      tool_props.on_overlay({
+        ...overlay,
+        site_properties: structure.sites.map(() => ({ charge: 1 })),
+      }),
+    )
+    expect(
+      document.querySelector(`button[aria-label="Remove volume ${removed_label}"]`),
+    ).toBeNull()
+    const retained_label = removed_label === `Original` ? `Prediction` : `Original`
+    expect(
+      document.querySelector(`button[aria-label="Add surface for ${retained_label}"]`),
+    ).not.toBeNull()
+    expect(state.volumetric_data.map(({ label }) => label)).toEqual([retained_label])
+    if (removed_label === `Original`)
+      expect(state.isosurface_settings.layers).toEqual([
+        expect.objectContaining({ volume_idx: 0 }),
+      ])
+    else expect(state.isosurface_settings.layers).toEqual([])
+  },
+)
+
+test.each([false, true])(
+  `same-cell imports preserve prediction layers with existing base=%s`,
+  async (with_base) => {
+    const source = make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }])
+    const state = $state<{
+      volumetric_data: VolumetricData[]
+      isosurface_settings: IsosurfaceSettings
+      active_volume_idx: number
+    }>({
+      volumetric_data: with_base ? [{ ...volumetric_data[0], label: `Original` }] : [],
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+      active_volume_idx: 0,
+    })
+    const tool_props = await mount_host_structure(bind_props({ structure: source }, state))
+    const overlay = {
+      source: tool_props.structure,
+      volumes: [{ ...volumetric_data[0], label: `Prediction` }],
+    }
+    flushSync(() => tool_props.on_overlay(overlay))
+    flushSync(() => {
+      state.isosurface_settings.layers[0].isovalue = 0.321
+    })
+    doc_query(`.structure`).dispatchEvent(
+      create_drop_event(new File([SAMPLE_CHGCAR_CONTENT], `added.CHGCAR`)),
+    )
+    await vi.waitFor(() =>
+      expect(state.volumetric_data.map(({ label }) => label)).toContain(`added.CHGCAR`),
+    )
+    flushSync(() => tool_props.on_overlay({ ...overlay, site_properties: [{ charge: 1 }] }))
+    const predicted_layer = state.isosurface_settings.layers.find(
+      ({ isovalue }) => isovalue === 0.321,
+    )
+    expect(state.volumetric_data[predicted_layer?.volume_idx ?? -1]?.label).toBe(`Prediction`)
+    // A newly selected prediction field should return to the imported volume on clear.
+    flushSync(() =>
+      tool_props.on_overlay({ ...overlay, volumes: [{ ...overlay.volumes[0] }] }),
+    )
+    flushSync(() => tool_props.on_overlay(null))
+    expect(state.volumetric_data.map(({ label }) => label)).toEqual(
+      with_base ? [`Original`, `added.CHGCAR`] : [`added.CHGCAR`],
+    )
+    expect(state.volumetric_data[state.active_volume_idx]?.label).toBe(`added.CHGCAR`)
+  },
+)
+
+test.each([false, true])(
+  `host density respects each field's coordinate frame with finite volume removed=%s`,
+  async (remove_finite) => {
+    await init_moyo_for_tests()
+    const crystal = make_crystal(fcc_primitive_matrix(3.61), [
+      { element: `Cu`, abc: [0.13, 0.27, 0.41] },
+    ])
+    const state = $state<ComponentProps<typeof Structure>>({
+      structure: crystal,
+      cell_type: `original`,
+      display_mode: `structure`,
+      active_volume_idx: 0,
+      supercell_scaling: `1x1x1`,
+      sym_data: null,
+    })
+    const tool_props = await mount_host_structure(bind_props({}, state))
+    state.sym_data = await symmetry.analyze_structure_symmetry(crystal)
+    flushSync()
+    const overlay = {
+      source: tool_props.structure,
+      volumes: [{ ...volumetric_data[0], label: `Prediction`, periodic: true }],
+    }
+    flushSync(() => tool_props.on_overlay(overlay))
+    flushSync(() => {
+      state.cell_type = `conventional`
+    })
+    expect(document.body.textContent).toContain(
+      `Prediction density is hidden in standardized cells`,
+    )
+    flushSync(() => {
+      state.display_mode = `slice`
+    })
+    expect(document.body.textContent).toContain(`No volumetric data available`)
+    flushSync(() => {
+      state.cell_type = `original`
+      state.display_mode = `structure`
+    })
+    expect(
+      document.querySelector(`button[aria-label="Add surface for Prediction"]`),
+    ).not.toBeNull()
+    flushSync(() =>
+      tool_props.on_overlay({
+        ...overlay,
+        volumes: [{ ...overlay.volumes[0], periodic: false }],
+      }),
+    )
+    flushSync(() => {
+      state.supercell_scaling = `2x1x1`
+    })
+    expect(document.body.textContent).toContain(
+      `partially periodic prediction density is shown only in the input cell`,
+    )
+    expect(
+      document.querySelector(`button[aria-label="Add surface for Prediction"]`),
+    ).not.toBeNull()
+    flushSync(() =>
+      tool_props.on_overlay({
+        ...overlay,
+        volumes: [
+          { ...overlay.volumes[0], periodic: false },
+          { ...overlay.volumes[0], label: `Periodic prediction` },
+        ],
+      }),
+    )
+    if (remove_finite) {
+      flushSync(() =>
+        doc_query<HTMLButtonElement>(`button[aria-label="Remove volume Prediction"]`).click(),
+      )
+    }
+    flushSync(() => {
+      state.active_volume_idx = remove_finite ? 0 : 1
+      state.display_mode = `slice`
+    })
+    expect(
+      document.body.textContent?.includes(
+        `partially periodic prediction density is shown only in the input cell`,
+      ),
+    ).toBe(!remove_finite)
+    expect(
+      document.querySelector(`input[aria-label="Slice position on canvas"]`),
+    ).not.toBeNull()
+  },
+)
 
 const mount_volumetric = (
   overrides: Partial<ComponentProps<typeof Structure>> = {},
@@ -567,7 +849,11 @@ describe(`Structure`, () => {
 
     // dispatch on the viewer (focused/element path) — handle_and_prevent should run
     const press = (init: KeyboardEventInit) => {
-      const event = new KeyboardEvent(`keydown`, { cancelable: true, bubbles: true, ...init })
+      const event = new KeyboardEvent(`keydown`, {
+        cancelable: true,
+        bubbles: true,
+        ...init,
+      })
       doc_query(`.structure`).dispatchEvent(event)
       return event
     }
@@ -1073,7 +1359,10 @@ describe(`Structure`, () => {
 
     await set_fullscreen_element(null)
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
-    expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: false })
+    expect(on_fullscreen_change).toHaveBeenLastCalledWith({
+      structure,
+      fullscreen: false,
+    })
     expect(on_fullscreen_change).toHaveBeenCalledTimes(2)
   })
 
@@ -1272,7 +1561,12 @@ describe(`Structure empty states`, () => {
 
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
   const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
-  mount_structure({ structure, active_pane: `controls`, show_controls: true, scene_props })
+  mount_structure({
+    structure,
+    active_pane: `controls`,
+    show_controls: true,
+    scene_props,
+  })
   await tick()
 
   const projection_label = [...document.querySelectorAll(`label`)].find((label) =>
@@ -1619,7 +1913,10 @@ describe(`data_url acquisition`, () => {
   // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
   const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
     const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof Structure>>({ data_url: `/a.json`, ...extra })
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      ...extra,
+    })
     mount_structure(props)
     await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
     return { responses, props }

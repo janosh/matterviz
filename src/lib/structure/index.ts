@@ -165,6 +165,7 @@ const VECTOR_KEY_PREFIXES = [
   `velocity`,
   `velocities`,
   `phonon`,
+  `dipole`,
 ] as const
 
 // Memoised: the scan below asks this for every property key of every site on every
