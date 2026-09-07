@@ -7,6 +7,8 @@ import type { AnyStructure } from './index'
 // when those semantics change; array order, labels and grid resolution do not affect identity.
 export type StructureToolVolume = VolumetricData & { field_id: string }
 export interface StructureToolOverlay {
+  // Publication copies these values. Hosts may reuse or mutate buffers after on_overlay returns.
+  // Shared buffers are supported for density values, but not inside site properties.
   site_properties?: Record<string, unknown>[]
   volumes?: StructureToolVolume[]
   color_property?: string
@@ -45,6 +47,25 @@ export interface StructureToolRun {
 export interface StructureToolProps {
   structure: AnyStructure
   start_run: (provenance: StructureToolProvenance) => StructureToolRun
+}
+
+// structuredClone keeps shared storage shared; reject it in arbitrary property metadata.
+function reject_shared_buffers(value: unknown, seen = new WeakSet<object>()): void {
+  if (!value || typeof value !== `object` || seen.has(value)) return
+  seen.add(value)
+  const buffer = ArrayBuffer.isView(value) ? value.buffer : value
+  if (typeof SharedArrayBuffer !== `undefined` && buffer instanceof SharedArrayBuffer)
+    throw new Error(
+      `Prediction properties cannot contain shared buffers; copy them before publishing`,
+    )
+  if (ArrayBuffer.isView(value)) return
+  const children =
+    value instanceof Map
+      ? [...value.keys(), ...value.values()]
+      : value instanceof Set
+        ? [...value]
+        : Object.values(value)
+  for (const child of children) reject_shared_buffers(child, seen)
 }
 
 // Each mounted viewer owns its controller. Guards also run synchronously on callbacks, so
@@ -121,11 +142,21 @@ export function create_structure_tool_controller(
               )
             field_ids.add(field_id)
           }
-          on_prediction(
-            overlay
-              ? { ...overlay, input, run_id: id, provenance: captured_provenance }
-              : null,
-          )
+          if (!overlay) return on_prediction(null)
+          const { volumes, ...properties } = overlay
+          const copied_properties = structuredClone($state.snapshot(properties))
+          reject_shared_buffers(copied_properties)
+          on_prediction({
+            ...copied_properties,
+            // Keep large density buffers out of $state.snapshot so each is copied only once.
+            volumes: volumes?.map(({ values, ...metadata }) => ({
+              ...structuredClone($state.snapshot(metadata)),
+              values: new Float64Array(values),
+            })),
+            input,
+            run_id: id,
+            provenance: captured_provenance,
+          })
         },
         on_view(view) {
           if (is_current()) on_view(view)

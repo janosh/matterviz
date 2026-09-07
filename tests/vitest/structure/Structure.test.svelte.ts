@@ -368,10 +368,12 @@ test.each([`clear`, `replace input`])(
       structure: AnyStructure
       atom_color_config: AtomColorConfig
       isosurface_settings: IsosurfaceSettings
+      volumetric_data: VolumetricData[]
     }>({
       structure,
       atom_color_config: { ...original_color },
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+      volumetric_data: [],
     })
     const tool_props = await mount_host_structure(bind_props({}, state))
     const overlay = {
@@ -379,7 +381,7 @@ test.each([`clear`, `replace input`])(
         charge: idx,
         magmom: -idx,
       })),
-      volumes: volumetric_data,
+      volumes: [...volumetric_data],
       color_property: `charge`,
     }
     flushSync(() => tool_props.on_overlay(overlay))
@@ -407,6 +409,11 @@ test.each([`clear`, `replace input`])(
       mode: `property`,
       property_key: `magmom`,
     })
+    expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
+    // Reusing the array must still publish its changed contents and preserve appearance.
+    overlay.volumes[0] = { ...overlay.volumes[0], label: `Updated prediction` }
+    flushSync(() => tool_props.on_overlay(overlay))
+    expect(state.volumetric_data[0].label).toBe(`Updated prediction`)
     expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
     flushSync(() => {
       if (reset === `clear`) tool_props.on_overlay(null)
@@ -542,12 +549,13 @@ test.each([`Original`, `Prediction`])(
       `button[aria-label="Remove volume ${removed_label}"]`,
     )
     flushSync(() => remove.click())
-    flushSync(() =>
-      tool_props.on_overlay({
-        ...overlay,
-        site_properties: structure.sites.map(() => ({ charge: 1 })),
-      }),
-    )
+    for (const charge of [1, 2])
+      flushSync(() =>
+        tool_props.on_overlay({
+          ...overlay,
+          site_properties: structure.sites.map(() => ({ charge })),
+        }),
+      )
     expect(
       document.querySelector(`button[aria-label="Remove volume ${removed_label}"]`),
     ).toBeNull()

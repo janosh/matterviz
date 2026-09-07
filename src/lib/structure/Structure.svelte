@@ -359,6 +359,7 @@
   // share one index space. Ownership tracks the stored identities, including caller proxies.
   let owned_volumes = $state.raw<StructureToolVolume[]>([])
   const owned_volume_set = $derived(new Set<VolumetricData>(owned_volumes))
+  const removed_tool_fields = new Set<string>()
   let original_active_volume: VolumetricData | undefined
   const hidden_volume_indices = $derived(
     new Set(
@@ -416,15 +417,21 @@
           scale_type: `continuous`,
         }
     } else restore_tool_color()
-    const same_volumes =
-      tool_source === session.tool_input && tool_overlay?.volumes === overlay?.volumes
+    // A publication is a fresh snapshot; remember user removals by field ID within this run.
+    if (tool_overlay?.run_id !== overlay?.run_id) removed_tool_fields.clear()
+    else {
+      const present = new Set(volumetric_data)
+      for (const volume of owned_volumes)
+        if (!present.has(volume)) removed_tool_fields.add(volume.field_id)
+    }
     tool_overlay = overlay
     tool_source = session.tool_input
-    if (same_volumes) return
     const active_before = volumetric_data?.[active_volume_idx]
     const restore_active = active_before !== undefined && owned_volume_set.has(active_before)
     if (!restore_active) original_active_volume = active_before
-    const incoming = overlay?.volumes ?? []
+    const incoming = (overlay?.volumes ?? []).filter(
+      ({ field_id }) => !removed_tool_fields.has(field_id),
+    )
     const result = replace_tool_volumes(
       volumetric_data ?? [],
       isosurface_settings.layers,
@@ -697,7 +704,16 @@
       controls_config.visible(`reset-camera`),
   )
   // Inputs shared by every StructureViewport; camera bindings and chrome differ per pane
+  const viewport_states: NonNullable<
+    ComponentProps<typeof StructureViewport>[`view_state`]
+  >[] = []
   const pane_props = (pane_idx: number) => ({
+    view_state: (viewport_states[pane_idx] ??= {
+      get_pose_key: () =>
+        pane_idx === 0
+          ? JSON.stringify([scene_props.camera_position, scene_props.camera_target])
+          : ``,
+    }),
     in_grid: is_multi_view_active,
     active: is_multi_view_active && session.active_pane_idx === pane_idx,
     interactive: !is_multi_view_active || session.active_pane_idx === pane_idx,

@@ -17,12 +17,13 @@
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
-  import { untrack } from 'svelte'
+  import { onDestroy, tick, untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import {
     clear_pan_offset,
     create_renderer,
     read_pan_offset,
+    restore_camera_view,
     responsive_gizmo_size,
   } from '$lib/scene'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
@@ -82,6 +83,7 @@
     interactive = true,
     on_activate = undefined,
     report_moved = undefined,
+    view_state,
     on_camera_move = undefined,
     on_camera_reset = undefined,
 
@@ -121,6 +123,16 @@
     interactive?: boolean
     on_activate?: () => void
     report_moved?: (moved: boolean) => void
+    // Parent-owned storage survives a host view replacing this viewport.
+    view_state?: {
+      get_pose_key: () => string
+      pose_key?: string
+      camera?: Camera
+      target?: Vec3
+      key?: unknown
+      reset_token?: number
+      direction?: Vec3
+    }
     on_camera_move?: (data: StructureHandlerData) => void
     on_camera_reset?: (data: StructureHandlerData) => void
     session: StructureSession
@@ -275,6 +287,48 @@
       pan: read_pan(),
     }
   }
+  onDestroy(() => {
+    if (!view_state || !camera) return
+    Object.assign(view_state, {
+      camera: camera.clone(),
+      target: read_orbit_target(),
+      key: view_reset_key,
+      reset_token,
+      direction: camera_direction && [...camera_direction],
+      pose_key: view_state.get_pose_key(),
+    })
+  })
+  $effect(() => {
+    const live_camera = camera
+    const controls = orbit_controls
+    if (!live_camera || !controls || !width || !height || initial_computed_zoom === undefined)
+      return
+    // Let the new scene finish applying its initial auto-fit before restoring user zoom.
+    let cancelled = false
+    void tick().then(() => {
+      if (cancelled) return
+      const saved = view_state?.camera
+      if (!saved || !view_state) return
+      delete view_state.camera
+      if (
+        view_state.key !== view_reset_key ||
+        view_state.reset_token !== reset_token ||
+        view_state.pose_key !== view_state.get_pose_key() ||
+        saved.type !== live_camera.type ||
+        !same_pose(view_state.direction, camera_direction)
+      )
+        return
+      restore_camera_view(live_camera, saved, width, height)
+      if (view_state.target) controls.target.set(...view_state.target)
+      controls.update()
+      camera_position = read_camera_position()
+      camera_target = read_orbit_target()
+      remember_current_view()
+    })
+    return () => {
+      cancelled = true
+    }
+  })
   // Only a fresh gesture may cancel a pending settle. Rebaselining alone must not: the push
   // effect below also rebaselines, and cancelling there drops the sync that reports a drag.
   // OrbitControls dispatches `end` on every pointer release, also for presses it never turned

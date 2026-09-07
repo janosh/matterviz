@@ -34,6 +34,24 @@ export function clear_pan_offset(camera: Camera | undefined) {
   if (is_pannable(camera)) camera.clearViewOffset()
 }
 
+// Restore a cloned camera's view without overwriting the new viewport's projection bounds.
+export function restore_camera_view(
+  camera: Camera,
+  saved: Camera,
+  width: number,
+  height: number,
+) {
+  camera.position.copy(saved.position)
+  camera.quaternion.copy(saved.quaternion)
+  camera.up.copy(saved.up)
+  if (is_pannable(camera) && is_pannable(saved)) {
+    camera.zoom = saved.zoom
+    set_pan_offset(camera, read_pan_offset(saved), width, height)
+    camera.updateProjectionMatrix()
+  }
+  camera.updateMatrixWorld()
+}
+
 // Structural rather than the concrete OrbitControls class (see fly-to.ts): only the members the
 // gesture needs. Events are dispatched on the controls so every start/change/end listener —
 // Threlte's invalidate, hover suppression, StructureViewport's camera sync — treats a pan like

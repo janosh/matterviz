@@ -5,6 +5,8 @@ const scene_state = (page: Page) =>
   page.evaluate(async () => {
     const module_path = `/src/lib/io/export.ts`
     const { scene_registry, renderer_registry } = await import(/* @vite-ignore */ module_path)
+    const pan_module = `/src/lib/scene/pan.ts`
+    const { read_pan_offset } = await import(/* @vite-ignore */ pan_module)
     const canvas = document.querySelector(`.structure canvas`)
     const entry = canvas && scene_registry.get(canvas)
     const renderer = canvas && renderer_registry.get(canvas)
@@ -49,7 +51,12 @@ const scene_state = (page: Page) =>
       atom_colors,
       webgpu: Boolean(renderer?.backend?.isWebGPUBackend),
       camera: entry
-        ? [...entry.camera.position.toArray(), ...entry.camera.quaternion.toArray()]
+        ? [
+            ...entry.camera.position.toArray(),
+            ...entry.camera.quaternion.toArray(),
+            entry.camera.zoom,
+            ...read_pan_offset(entry.camera),
+          ]
         : undefined,
       rendered: (renderer?.info.render.calls ?? 0) > 0,
     }
@@ -58,6 +65,7 @@ const scene_state = (page: Page) =>
 test(`prediction tools render with WebGPU and hand keyboard/camera ownership to a nested trajectory`, async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1280, height: 1100 })
   await page.goto(`/structure/host-tool`)
   await expect.poll(() => scene_state(page)).toMatchObject({ webgpu: true, rendered: true })
   const outer = page.locator(`.structure`).first()
@@ -74,9 +82,25 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
     page.getByRole(`button`, { name: `Add surface for Predicted density`, exact: true }),
   ).toBeVisible()
   await page.locator(`button.structure-controls-toggle`).click()
+  await outer.locator(`canvas`).first().hover()
   await drag_canvas(outer.locator(`canvas`).first(), { dx: 65, dy: 35 })
+  // Seed the live camera directly: this tests remount persistence independently of gestures.
+  await page.evaluate(async () => {
+    const export_module = `/src/lib/io/export.ts`
+    const pan_module = `/src/lib/scene/pan.ts`
+    const { scene_registry } = await import(/* @vite-ignore */ export_module)
+    const { set_pan_offset } = await import(/* @vite-ignore */ pan_module)
+    const canvas = document.querySelector(`.structure canvas`)
+    const camera = canvas && scene_registry.get(canvas)?.camera
+    if (!canvas || !camera) throw new Error(`Missing structure camera`)
+    camera.zoom = 68.5797
+    camera.updateProjectionMatrix()
+    const { width, height } = canvas.getBoundingClientRect()
+    set_pan_offset(camera, [30, 15], width, height)
+  })
   const before = (await scene_state(page)).camera
-  expect(before).toHaveLength(7)
+  expect(before).toHaveLength(10)
+  expect(before?.slice(8)).toEqual([30, 15])
   await page.getByRole(`button`, { name: `Show predicted trajectory` }).click()
   await expect(page.getByTestId(`predicted-trajectory`)).toBeVisible()
   // The outer tool remains mounted but hidden; the nested Structure must not register one.
@@ -102,6 +126,35 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
         : Infinity
     })
     .toBeLessThan(1e-10)
+  expect((await scene_state(page)).camera?.slice(7)).toEqual(before?.slice(7))
+})
+
+test(`caller camera updates during a host view take precedence over its saved view`, async ({
+  page,
+}) => {
+  await page.goto(`/test/structure`)
+  await page.evaluate(async () => {
+    const host_module = `/src/lib/structure/index.ts`
+    const demo_module = `/src/routes/(demos)/structure/host-tool/DemoHostTool.svelte`
+    const { structure_host_tool } = await import(/* @vite-ignore */ host_module)
+    const { default: component } = await import(/* @vite-ignore */ demo_module)
+    structure_host_tool.component = component
+  })
+  await expect.poll(() => scene_state(page)).toMatchObject({ webgpu: true, rendered: true })
+  await page.getByRole(`button`, { name: `Show predicted trajectory` }).click()
+  await expect(page.getByTestId(`predicted-trajectory`)).toBeVisible()
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: { camera_position: [12, 9, 7], camera_target: [0, 0, 0] },
+      }),
+    ),
+  )
+  await page.getByRole(`button`, { name: `Return to structure` }).click()
+  await expect(page.getByTestId(`predicted-trajectory`)).toHaveCount(0)
+  await expect
+    .poll(async () => (await scene_state(page)).camera?.slice(0, 3))
+    .toEqual([12, 9, 7])
 })
 
 const read_download = async (download: Download) => {

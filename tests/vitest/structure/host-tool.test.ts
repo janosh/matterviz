@@ -108,7 +108,7 @@ describe(`host prediction ownership`, () => {
     },
   )
 
-  test(`exports a captured input and provenance with typed density values`, () => {
+  test.each([false, true])(`exports an owned snapshot with shared density=%s`, (shared) => {
     const structure = make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }])
     const settings = { seed: 0 }
     let prediction: StructureToolPrediction | null = null
@@ -123,11 +123,23 @@ describe(`host prediction ownership`, () => {
     )
     const run = controller.start_run({ ...provenance, settings })
     settings.seed = 9
-    run.on_overlay({
+    const overlay = {
       site_properties: [{ charge: 0.5, dipole: [1, 2, 3] }],
       volumes: [volume(`density`)],
-    })
+    }
+    if (shared) {
+      overlay.volumes[0].values = new Float64Array(
+        new SharedArrayBuffer(8 * Float64Array.BYTES_PER_ELEMENT),
+      )
+      overlay.volumes[0].values.fill(1)
+    }
+    run.on_overlay(overlay)
     if (!prediction) throw new Error(`Missing prediction`)
+    // Published buffers belong to the viewer, even after this run loses ownership.
+    controller.start_run(provenance)
+    overlay.site_properties[0].dipole[0] = 99
+    overlay.volumes[0].values[0] = 99
+    overlay.volumes[0].lattice[0][0] = 99
     run.structure.sites[0].xyz[0] = 8
     const exported = JSON.parse(prediction_to_json(prediction))
     expect(exported.input.sites[0].xyz[0]).toBe(0)
@@ -142,13 +154,25 @@ describe(`host prediction ownership`, () => {
       field_id: `density`,
       dims: [2, 2, 2],
       values: Array(8).fill(1),
+      lattice: [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
     })
     expect(structure.sites[0].properties?.charge).toBeUndefined()
-    expect(() => run.on_overlay({ site_properties: [] })).toThrow(`property rows`)
-    expect(() => run.on_overlay({ volumes: [volume(`same`), volume(`same`)] })).toThrow(
+    const latest = controller.start_run(provenance)
+    expect(() => latest.on_overlay({ site_properties: [] })).toThrow(`property rows`)
+    expect(() => latest.on_overlay({ volumes: [volume(`same`), volume(`same`)] })).toThrow(
       `unique`,
     )
-    expect(() => run.on_overlay({ volumes: [volume(``)] })).toThrow(`nonempty`)
+    expect(() => latest.on_overlay({ volumes: [volume(``)] })).toThrow(`nonempty`)
+    const shared_property = new Float64Array(new SharedArrayBuffer(8))
+    expect(() =>
+      latest.on_overlay({
+        site_properties: [{ nested: new Map([[`shared`, shared_property]]) }],
+      }),
+    ).toThrow(`shared buffers`)
   })
 })
 
