@@ -4,7 +4,7 @@ import { expect_bottom_within, get_chart_svg, is_present } from '../helpers'
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/plot/spacegroup-bar-plot`, { waitUntil: `networkidle` })
-    // Wait for first bar-plot to render (mdsvex examples may take time)
+    // Wait for the first bar-plot example to render.
     await page.waitForSelector(`.bar-plot`, { timeout: 15000 })
   })
 

@@ -333,7 +333,6 @@
     "@wooorm/starry-night": "^3.11.0",
     "happy-dom": "^20.13.2",
     "knip": "^6.34.0",
-    "mdsvex": "^0.12.8",
     "pagefind": "^1.5.2",
     "publint": "^0.3.24",
     "svelte": "^5.57.0",

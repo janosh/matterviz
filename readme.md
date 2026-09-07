@@ -129,10 +129,10 @@ npm add -D matterviz
 
 This project would not have been possible as a one-person side project without many fine open-source projects. 🙏 To name just a few:
 
-|           3D graphics           |               2D graphics                |                     Docs                     |               Bundler               |               Testing                |
-| :-----------------------------: | :--------------------------------------: | :------------------------------------------: | :---------------------------------: | :----------------------------------: |
-| [three.js](https://threejs.org) |          [d3](https://d3js.org)          |         [mdsvex](https://mdsvex.com)         |     [vite](https://vitejs.dev)      | [playwright](https://playwright.dev) |
-| [threlte](https://threlte.xyz)  | [sharp](https://sharp.pixelplumbing.com) | [rehype](https://github.com/rehypejs/rehype) | [sveltekit](https://kit.svelte.dev) |     [vitest](https://vitest.dev)     |
+|           3D graphics           |               2D graphics                |                             Docs                             |               Bundler               |               Testing                |
+| :-----------------------------: | :--------------------------------------: | :----------------------------------------------------------: | :---------------------------------: | :----------------------------------: |
+| [three.js](https://threejs.org) |          [d3](https://d3js.org)          | [svelte-widgets](https://svelte-widgets.janosh.dev/markdown) |     [vite](https://vitejs.dev)      | [playwright](https://playwright.dev) |
+| [threlte](https://threlte.xyz)  | [sharp](https://sharp.pixelplumbing.com) |         [rehype](https://github.com/rehypejs/rehype)         | [sveltekit](https://kit.svelte.dev) |     [vitest](https://vitest.dev)     |
 
 ## How to cite `matterviz`
 

@@ -3,13 +3,16 @@ import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
-import { vite_plugin as live_examples } from 'svelte-widgets/live-examples'
+// @ts-expect-error Node ESM config load needs the .ts extension here
+import svelte_config, { docs } from './svelte.config.ts'
 import source_links from 'svelte-widgets/source-links/vite-plugin'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 import { configDefaults } from 'vitest/config'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import * as shared from './src/vite-plugins.ts'
+
+const { kit, ...compiler_config } = svelte_config
 
 // Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
 // the structure/trajectory/phonon fixtures this repo imports (from src/site and tests), not
@@ -74,7 +77,7 @@ const raw_text_plugin: Plugin = {
   },
 }
 
-// sveltekit()/live-examples ship their own copy of vite's Plugin type; inferring this
+// sveltekit()/markdown ship their own copy of vite's Plugin type; inferring this
 // array's element type deep-compares them and exceeds TS's instantiation depth (TS2321).
 // Typing as `unknown[]` skips that comparison; vite ignores the falsy (null) entry.
 const plugins = [
@@ -82,8 +85,8 @@ const plugins = [
   raw_text_plugin as unknown,
   starry_night_theme_plugin as unknown,
   source_links() as unknown,
-  sveltekit() as unknown,
-  live_examples() as unknown,
+  sveltekit({ ...compiler_config, ...kit }) as unknown,
+  docs.plugin as unknown,
 ] as PluginOption[]
 
 const config = make_config()
