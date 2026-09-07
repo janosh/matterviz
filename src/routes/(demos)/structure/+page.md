@@ -360,3 +360,7 @@ Load structures from text with `structure_string` (CIF, POSCAR, XYZ, JSON, …).
 
 <Structure structure_string={selected_file.content} bind:structure={parsed_structure} />
 ```
+
+## Host prediction tools
+
+The [runnable host-tool example](/structure/host-tool) demonstrates transient scalar colors, dipole arrows, density, a host-owned trajectory, scoped asynchronous runs and prediction export through the public package API.

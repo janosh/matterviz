@@ -116,6 +116,13 @@ describe(`package.json exports`, () => {
     ])
   })
 
+  test(`root barrel exposes the host prediction API`, () => {
+    expect(lib.structure_host_tool).toHaveProperty(`component`)
+    expect(lib.prediction_to_json).toBeTypeOf(`function`)
+    expectTypeOf<lib.StructureToolRun>().toHaveProperty(`signal`)
+    expectTypeOf<lib.StructureToolProps>().toHaveProperty(`start_run`)
+  })
+
   test(`plot keeps its selected public title and decoration exports`, () => {
     expectTypeOf<DecorationSide>().toEqualTypeOf<`top` | `right` | `bottom` | `left`>()
     expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()

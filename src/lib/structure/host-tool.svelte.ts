@@ -3,36 +3,169 @@ import type StructureScene from './StructureScene.svelte'
 import type { VolumetricData } from '$lib/isosurface'
 import type { AnyStructure } from './index'
 
-// Host tools operate on the input cell. Their overlays are transient and never edit the
-// caller's structure, including when a trajectory lends its current frame to the viewer.
+// Field IDs describe a physical quantity, independently of array order, labels or grid size.
+export type StructureToolVolume = VolumetricData & { field_id: string }
 export interface StructureToolOverlay {
-  source: AnyStructure
   site_properties?: Record<string, unknown>[]
-  volumes?: VolumetricData[]
+  volumes?: StructureToolVolume[]
   color_property?: string
 }
+export interface StructureToolProvenance {
+  model: string
+  version: string
+  units: Record<string, string>
+  settings: Record<string, unknown>
+}
+export interface StructureToolPrediction extends StructureToolOverlay {
+  input: AnyStructure
+  run_id: number
+  provenance: StructureToolProvenance
+}
 
-// A host can lend a full-size view (for example a growing trajectory) without replacing
-// the source structure or unmounting the tool that owns the computation.
+// The host lends a full-size view without unmounting the tool that owns the computation.
 export interface StructureToolViewProps {
   scene_props: ComponentProps<typeof StructureScene>
   supercell_scaling: string
   show_image_atoms: boolean
 }
 export interface StructureToolView {
-  source: AnyStructure
   content: Snippet<[StructureToolViewProps]>
 }
-
-export interface StructureToolProps {
+export interface StructureToolRun {
+  id: number
   structure: AnyStructure
+  signal: AbortSignal
   on_overlay: (overlay: StructureToolOverlay | null) => void
   on_view: (view: StructureToolView | null) => void
+  // Clear just the result/view, or cancel the computation and clear both.
+  clear: () => void
+  cancel: () => void
+}
+export interface StructureToolProps {
+  structure: AnyStructure
+  start_run: (provenance: StructureToolProvenance) => StructureToolRun
 }
 
-// A host registers once before mounting; this also reaches independently mounted file viewers.
+// Each mounted viewer owns its controller. Guards also run synchronously on callbacks, so
+// an input change cannot race the effect that aborts the old computation.
+export function create_structure_tool_controller(
+  get_structure: () => AnyStructure | null | undefined,
+  get_owner: () => unknown,
+  on_prediction: (prediction: StructureToolPrediction | null) => void,
+  on_view: (view: StructureToolView | null) => void,
+  get_revision: () => string,
+) {
+  let current: StructureToolRun | undefined
+  let abort: AbortController | undefined
+  let next_id = 0
+  let disposed = false
+  let is_current_run = (): boolean => false
+  const clear = (): void => {
+    on_prediction(null)
+    on_view(null)
+  }
+  const invalidate = (): void => {
+    const previous_abort = abort
+    abort = undefined
+    current = undefined
+    clear()
+    previous_abort?.abort()
+  }
+  return {
+    start_run(provenance: StructureToolProvenance): StructureToolRun {
+      const structure = get_structure()
+      const owner = get_owner()
+      const revision = get_revision()
+      if (disposed || !owner || !structure)
+        throw new Error(`Cannot start a host run without a mounted, enabled structure viewer`)
+      if (!provenance.model.trim() || !provenance.version.trim())
+        throw new Error(`Prediction model and version must be nonempty`)
+      const input = structuredClone($state.snapshot(structure))
+      const captured_provenance = structuredClone($state.snapshot(provenance))
+      const previous_abort = abort
+      abort = new AbortController()
+      const id = ++next_id
+      const signal = abort.signal
+      const is_current = (): boolean =>
+        !disposed &&
+        !signal.aborted &&
+        current?.id === id &&
+        get_owner() === owner &&
+        get_structure() === structure &&
+        get_revision() === revision
+      const run: StructureToolRun = {
+        id,
+        structure: structuredClone(input),
+        signal,
+        on_overlay(overlay) {
+          if (!is_current()) return
+          if (
+            overlay?.site_properties &&
+            overlay.site_properties.length !== input.sites.length
+          )
+            throw new Error(
+              `Run ${id}: received ${overlay.site_properties.length} property rows for ${input.sites.length} sites`,
+            )
+          const field_ids = new Set<string>()
+          for (const { field_id } of overlay?.volumes ?? []) {
+            if (!field_id?.trim() || field_ids.has(field_id))
+              throw new Error(
+                `Run ${id}: density field ID must be nonempty and unique, got ${field_id}`,
+              )
+            field_ids.add(field_id)
+          }
+          on_prediction(
+            overlay
+              ? { ...overlay, input, run_id: id, provenance: captured_provenance }
+              : null,
+          )
+        },
+        on_view(view) {
+          if (is_current()) on_view(view)
+        },
+        clear() {
+          if (is_current()) clear()
+        },
+        cancel() {
+          if (is_current()) invalidate()
+        },
+      }
+      current = run
+      is_current_run = is_current
+      // A previous view may close over its aborted run. Return before starting new work.
+      on_view(null)
+      // Abort listeners can synchronously start another run; it must retain ownership.
+      previous_abort?.abort()
+      return run
+    },
+    invalidate_if_changed(): void {
+      if (current && !is_current_run()) invalidate()
+    },
+    clear: invalidate,
+    dispose(): void {
+      disposed = true
+      invalidate()
+    },
+  }
+}
+
+// JSON preserves the full input and transient outputs, including flat density arrays with
+// their lattice, origin, dimensions, ordering and boundary conditions.
+export const prediction_to_json = (prediction: StructureToolPrediction): string =>
+  JSON.stringify(
+    {
+      schema: `matterviz-prediction-v1`,
+      ...prediction,
+      volumes: prediction.volumes?.map(({ values, ...volume }) => ({
+        ...volume,
+        values: Array.from(values),
+      })),
+    },
+    null,
+    2,
+  )
+
+// Register before mounting; this also reaches independently mounted file viewers.
 export const structure_host_tool = $state<{
   component: Component<StructureToolProps> | null
-}>({
-  component: null,
-})
+}>({ component: null })

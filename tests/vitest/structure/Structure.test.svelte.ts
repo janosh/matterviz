@@ -18,6 +18,7 @@ import {
 import {
   structure_host_tool,
   type StructureToolProps,
+  type StructureToolRun,
   type StructureToolViewProps,
 } from '$lib/structure/host-tool.svelte'
 import { make_supercell } from '$lib/structure/supercell'
@@ -284,24 +285,27 @@ test(`multi-file drops continue after failures and report one batch error`, asyn
 })
 
 const volumetric_data = [
-  make_volume(
-    make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
-    {
-      lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
-      label: `Charge density`,
-    },
-  ),
+  {
+    field_id: `density`,
+    ...make_volume(
+      make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
+      {
+        lattice: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
+        data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
+        label: `Charge density`,
+      },
+    ),
+  },
 ]
 
 // Capture the registered host API while mounting; the shared cleanup restores registration.
 const mount_host_structure = async (
   props: ComponentProps<typeof Structure>,
-): Promise<StructureToolProps> => {
+): Promise<StructureToolRun & Pick<StructureToolProps, `start_run`>> => {
   let tool_props: StructureToolProps | undefined
   structure_host_tool.component = (_anchor, host_props) => {
     tool_props = host_props
@@ -310,7 +314,15 @@ const mount_host_structure = async (
   mount_structure(props)
   await tick()
   if (!tool_props) throw new Error(`Host tool did not mount`)
-  return tool_props
+  return {
+    ...tool_props.start_run({
+      model: `test`,
+      version: `1`,
+      units: { density: `e/A^3`, charge: `e` },
+      settings: {},
+    }),
+    start_run: tool_props.start_run,
+  }
 }
 
 test(`host views fill the main viewer, inherit its camera and cell, and reject stale sources`, async () => {
@@ -326,7 +338,7 @@ test(`host views fill the main viewer, inherit its camera and cell, and reject s
     scene_props: { camera_position: [3, 4, 5], camera_target: [1, 2, 3] },
   })
   const original_input = tool_props.structure
-  tool_props.on_view({ source: original_input, content })
+  tool_props.on_view({ content })
   await tick()
   expect(
     document.querySelector(`.structure > .host-view > [data-testid="live-host-view"]`),
@@ -336,10 +348,7 @@ test(`host views fill the main viewer, inherit its camera and cell, and reject s
   expect(received?.scene_props.camera_position).toEqual([3, 4, 5])
   expect(received?.scene_props.camera_target).toEqual([1, 2, 3])
   expect(tool_props.structure).toBe(original_input)
-  tool_props.on_view({ source: { ...original_input }, content })
-  await tick()
-  expect(document.querySelector(`.host-view`)).toBeNull()
-  tool_props.on_view({ source: original_input, content })
+  tool_props.on_view({ content })
   await tick()
   tool_props.on_view(null)
   await tick()
@@ -366,7 +375,6 @@ test.each([`clear`, `replace input`])(
     })
     const tool_props = await mount_host_structure(bind_props({}, state))
     const overlay = {
-      source: tool_props.structure,
       site_properties: tool_props.structure.sites.map((_, idx) => ({
         charge: idx,
         magmom: -idx,
@@ -415,6 +423,87 @@ test.each([`clear`, `replace input`])(
   },
 )
 
+test.each([`mutate input`, `replace tool`, `unmount`])(
+  `invalidates a mounted host run on %s`,
+  async (cause) => {
+    const state = $state<ComponentProps<typeof Structure>>({
+      structure: make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }]),
+      volumetric_data: [],
+    })
+    const run = await mount_host_structure(bind_props({}, state))
+    flushSync(() => run.on_overlay({ volumes: volumetric_data }))
+    if (cause === `unmount`) {
+      const component = mounted.pop()
+      if (!component) throw new Error(`Missing mounted viewer`)
+      await unmount(component)
+    } else {
+      flushSync(() => {
+        if (cause === `replace tool`) structure_host_tool.component = () => ({})
+        else if (state.structure) state.structure.sites[0].xyz[0] = 9
+        // Run guards must reject same-turn stale completions before effects clean up.
+        run.on_overlay({ volumes: volumetric_data })
+      })
+    }
+    expect(run.signal.aborted).toBe(true)
+    expect(run.structure.sites[0].xyz[0]).toBe(0)
+    expect(state.volumetric_data).toEqual([])
+    flushSync(() => run.on_overlay({ volumes: volumetric_data }))
+    expect(state.volumetric_data).toEqual([])
+  },
+)
+
+test(`reruns preserve surface appearance by field ID and explicit reset restores defaults`, async () => {
+  const state = $state<ComponentProps<typeof Structure>>({
+    structure,
+    volumetric_data: [],
+    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    active_pane: `export`,
+  })
+  const first = await mount_host_structure(bind_props({}, state))
+  const fields = [
+    { ...volumetric_data[0], field_id: `density`, label: `Density` },
+    { ...volumetric_data[0], field_id: `potential`, label: `Potential` },
+  ]
+  flushSync(() => first.on_overlay({ volumes: fields }))
+  flushSync(() => {
+    const layers = state.isosurface_settings?.layers
+    if (!layers) throw new Error(`Missing surfaces`)
+    Object.assign(layers[0], {
+      color: `#123456`,
+      isovalue: 0.321,
+      opacity: 0.4,
+      color_volume_idx: 1,
+    })
+  })
+  const next = first.start_run({ model: `test`, version: `2`, units: {}, settings: {} })
+  const reordered = fields.toReversed().map((field) => ({ ...field }))
+  flushSync(() => next.on_overlay({ volumes: reordered }))
+  expect(first.signal.aborted).toBe(true)
+  expect(state.isosurface_settings?.layers[0]).toMatchObject({
+    volume_idx: 1,
+    color_volume_idx: 0,
+    color: `#123456`,
+    isovalue: 0.321,
+    opacity: 0.4,
+  })
+  flushSync(() => first.clear())
+  expect(state.volumetric_data).toHaveLength(2)
+  const click_button = (name: string) => {
+    const button = [...document.querySelectorAll(`button`)].find(
+      (candidate) => candidate.textContent === name,
+    )
+    if (!button) throw new Error(`Missing button: ${name}`)
+    flushSync(() => button.click())
+  }
+  click_button(`Reset prediction surfaces`)
+  expect(state.isosurface_settings?.layers).toEqual(
+    reordered.map((volume, idx) => auto_volume_layer(volume, idx)),
+  )
+  click_button(`Clear prediction`)
+  expect(state.volumetric_data).toEqual([])
+  expect(next.signal.aborted).toBe(true)
+})
+
 test.each([`Original`, `Prediction`])(
   `removing %s volumes updates their owner across later tool callbacks`,
   async (removed_label) => {
@@ -428,7 +517,7 @@ test.each([`Original`, `Prediction`])(
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
     })
     const tool_props = await mount_host_structure(bind_props({ structure }, state))
-    const overlay = { source: tool_props.structure, volumes: [prediction_volume] }
+    const overlay = { volumes: [prediction_volume] }
     flushSync(() => tool_props.on_overlay(overlay))
     const remove = doc_query<HTMLButtonElement>(
       `button[aria-label="Remove volume ${removed_label}"]`,
@@ -471,7 +560,6 @@ test.each([false, true])(
     })
     const tool_props = await mount_host_structure(bind_props({ structure: source }, state))
     const overlay = {
-      source: tool_props.structure,
       volumes: [{ ...volumetric_data[0], label: `Prediction` }],
     }
     flushSync(() => tool_props.on_overlay(overlay))
@@ -521,7 +609,6 @@ test.each([false, true])(
     state.sym_data = await symmetry.analyze_structure_symmetry(crystal)
     flushSync()
     const overlay = {
-      source: tool_props.structure,
       volumes: [{ ...volumetric_data[0], label: `Prediction`, periodic: true }],
     }
     flushSync(() => tool_props.on_overlay(overlay))
@@ -536,7 +623,11 @@ test.each([false, true])(
     })
     expect(document.body.textContent).toContain(`No volumetric data available`)
     flushSync(() => {
-      state.cell_type = `original`
+      const recovery = [...document.querySelectorAll(`button`)].find(
+        (button) => button.textContent === `Use original cell`,
+      )
+      if (!recovery) throw new Error(`Missing cell recovery action`)
+      recovery.click()
       state.display_mode = `structure`
     })
     expect(
@@ -562,7 +653,11 @@ test.each([false, true])(
         ...overlay,
         volumes: [
           { ...overlay.volumes[0], periodic: false },
-          { ...overlay.volumes[0], label: `Periodic prediction` },
+          {
+            ...overlay.volumes[0],
+            label: `Periodic prediction`,
+            field_id: `periodic-density`,
+          },
         ],
       }),
     )
@@ -583,6 +678,19 @@ test.each([false, true])(
     expect(
       document.querySelector(`input[aria-label="Slice position on canvas"]`),
     ).not.toBeNull()
+    if (!remove_finite) {
+      flushSync(() => {
+        const reset = [...document.querySelectorAll(`button`)].find(
+          (button) => button.textContent === `Reset supercell to 1×1×1`,
+        )
+        if (!reset) throw new Error(`Missing supercell recovery`)
+        reset.click()
+      })
+      expect(state.supercell_scaling).toBe(`1x1x1`)
+      expect(document.body.textContent).not.toContain(
+        `partially periodic prediction density is shown only`,
+      )
+    }
   },
 )
 

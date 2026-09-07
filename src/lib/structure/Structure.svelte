@@ -23,7 +23,6 @@
     DEFAULT_ISOSURFACE_SETTINGS,
     normalize_active_volume_idx,
     pin_layers,
-    remove_volume,
   } from '$lib/isosurface/types'
   import { ViewerChrome } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
@@ -52,7 +51,7 @@
   import * as symmetry from '$lib/symmetry'
   import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -73,9 +72,12 @@
   import type { TrajectoryLinesStats } from './trajectory-lines'
   import {
     structure_host_tool,
-    type StructureToolOverlay,
+    create_structure_tool_controller,
+    type StructureToolPrediction,
+    type StructureToolVolume,
     type StructureToolView,
   } from './host-tool.svelte'
+  import { replace_tool_volumes } from './host-tool-volumes'
   import { apply_structure_material } from './material'
 
   export type StructureControlName =
@@ -285,7 +287,9 @@
         { structure, volumetric_data, isosurface_settings, active_volume_idx },
         opened,
       )
-      ;({ structure, volumetric_data, isosurface_settings, active_volume_idx } = document)
+      // Avoid wrapping an unchanged plain input in a proxy during a same-cell volume import.
+      if (document.structure !== structure) structure = document.structure
+      ;({ volumetric_data, isosurface_settings, active_volume_idx } = document)
       if (notice) show_toast(notice)
       on_file_load?.({
         structure: document.structure,
@@ -335,14 +339,11 @@
     on_notice: show_toast,
   })
 
+  let tool_source = $state.raw<AnyStructure | undefined>()
   let tool_view = $state.raw<StructureToolView | null>(null)
-  const active_tool_view = $derived(
-    tool_view?.source === session.tool_input ? tool_view : null,
-  )
-  let tool_overlay = $state.raw<StructureToolOverlay | null>(null)
-  const active_overlay: StructureToolOverlay | null = $derived(
-    tool_overlay?.source === session.tool_input ? tool_overlay : null,
-  )
+  const active_tool_view = $derived(tool_source === session.tool_input ? tool_view : null)
+  let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
+  const active_overlay = $derived(tool_source === session.tool_input ? tool_overlay : null)
   const tool_structure = $derived(
     session.tool_input && active_overlay?.site_properties
       ? {
@@ -356,12 +357,13 @@
   )
   // Generated fields join the active document registry so imports, exports and controls
   // share one index space. Ownership tracks the stored identities, including caller proxies.
-  let owned_volumes = $state.raw<VolumetricData[]>([])
+  let owned_volumes = $state.raw<StructureToolVolume[]>([])
+  const owned_volume_set = $derived(new Set<VolumetricData>(owned_volumes))
   let original_active_volume: VolumetricData | undefined
   const hidden_volume_indices = $derived(
     new Set(
       (volumetric_data ?? []).flatMap((volume, idx) =>
-        owned_volumes.includes(volume) &&
+        owned_volume_set.has(volume) &&
         (!active_overlay ||
           !session.shows_input_frame ||
           (session.has_supercell && !volume.periodic))
@@ -402,9 +404,8 @@
   $effect(() => {
     if (!active_overlay?.color_property) untrack(restore_tool_color)
   })
-  const apply_tool_overlay = (overlay: StructureToolOverlay | null): void => {
-    const color_property =
-      overlay?.source === session.tool_input ? overlay?.color_property : undefined
+  const apply_tool_overlay = (overlay: StructureToolPrediction | null): void => {
+    const color_property = overlay?.color_property
     if (color_property) {
       original_tool_color ??= atom_color_config
       if (color_property !== active_overlay?.color_property)
@@ -416,43 +417,82 @@
         }
     } else restore_tool_color()
     const same_volumes =
-      tool_overlay?.source === overlay?.source && tool_overlay?.volumes === overlay?.volumes
+      tool_source === session.tool_input && tool_overlay?.volumes === overlay?.volumes
     tool_overlay = overlay
+    tool_source = session.tool_input
     if (same_volumes) return
     const active_before = volumetric_data?.[active_volume_idx]
-    const restore_active = active_before !== undefined && owned_volumes.includes(active_before)
+    const restore_active = active_before !== undefined && owned_volume_set.has(active_before)
     if (!restore_active) original_active_volume = active_before
-    for (const volume of owned_volumes) {
-      const volume_idx = volumetric_data?.indexOf(volume) ?? -1
-      if (volume_idx < 0) continue
-      const result = remove_volume(
-        volumetric_data ?? [],
-        isosurface_settings.layers,
-        volume_idx,
-        active_volume_idx,
+    const incoming = overlay?.volumes ?? []
+    const result = replace_tool_volumes(
+      volumetric_data ?? [],
+      isosurface_settings.layers,
+      owned_volumes,
+      incoming,
+      active_volume_idx,
+    )
+    volumetric_data = result.volumes
+    isosurface_settings = { ...isosurface_settings, layers: result.layers }
+    owned_volumes = volumetric_data.slice(result.first_idx) as StructureToolVolume[]
+    if (incoming.length) {
+      active_volume_idx =
+        restore_active && result.active_idx !== undefined
+          ? result.active_idx
+          : result.first_idx
+    } else {
+      const restored_idx = original_active_volume
+        ? volumetric_data.indexOf(original_active_volume)
+        : -1
+      active_volume_idx = normalize_active_volume_idx(
+        restore_active && restored_idx >= 0
+          ? restored_idx
+          : (result.active_idx ?? active_volume_idx),
+        volumetric_data.length,
       )
-      volumetric_data = result.volumes
-      isosurface_settings = { ...isosurface_settings, layers: result.layers }
-      if (active_volume_idx > volume_idx) active_volume_idx -= 1
-      active_volume_idx = normalize_active_volume_idx(active_volume_idx, result.volumes.length)
     }
-    owned_volumes = []
-    if (restore_active && original_active_volume) {
-      const restored_idx = volumetric_data?.indexOf(original_active_volume) ?? -1
-      if (restored_idx >= 0) active_volume_idx = restored_idx
-    }
-    if (overlay?.source !== session.tool_input || !overlay?.volumes?.length) return
-    const first_idx = volumetric_data?.length ?? 0
+  }
+  // Cached until an input property changes; catches in-place edits without rescanning per callback.
+  const tool_input_revision = $derived(
+    show_host_tool && structure_host_tool.component ? JSON.stringify(session.tool_input) : ``,
+  )
+  const tool_controller = create_structure_tool_controller(
+    () => session.tool_input,
+    () => (show_host_tool ? structure_host_tool.component : null),
+    apply_tool_overlay,
+    (view) => {
+      tool_view = view
+      if (view) tool_source = session.tool_input
+    },
+    () => tool_input_revision,
+  )
+  $effect(() => {
+    // Subscribe only to ownership/input changes, not the output mutations in cleanup.
+    void [
+      tool_input_revision,
+      session.tool_input,
+      show_host_tool,
+      structure_host_tool.component,
+    ]
+    untrack(() => tool_controller.invalidate_if_changed())
+  })
+  onDestroy(() => tool_controller.dispose())
+  const reset_prediction_surfaces = (): void => {
+    const owned = new Set<VolumetricData>(owned_volumes)
     isosurface_settings = {
       ...isosurface_settings,
       layers: [
-        ...pin_layers(isosurface_settings.layers, active_volume_idx),
-        ...overlay.volumes.map((volume, idx) => auto_volume_layer(volume, first_idx + idx)),
+        ...pin_layers(isosurface_settings.layers, active_volume_idx).filter(
+          (layer) =>
+            !owned.has(
+              volumetric_data?.[layer.volume_idx ?? active_volume_idx] as VolumetricData,
+            ),
+        ),
+        ...(volumetric_data ?? []).flatMap((volume, idx) =>
+          owned.has(volume) ? [auto_volume_layer(volume, idx)] : [],
+        ),
       ],
     }
-    volumetric_data = [...(volumetric_data ?? []), ...overlay.volumes]
-    owned_volumes = volumetric_data.slice(first_idx)
-    active_volume_idx = first_idx
   }
 
   // === inputs: mirror caller props into the local models ===
@@ -886,8 +926,7 @@
     <div style:display={active_tool_view ? `none` : `contents`}>
       <structure_host_tool.component
         structure={session.tool_input}
-        on_overlay={apply_tool_overlay}
-        on_view={(view) => (tool_view = view)}
+        start_run={tool_controller.start_run}
       />
     </div>
   {/if}
@@ -905,6 +944,15 @@
         style="position: absolute; bottom: 1rem; left: 1rem; right: 1rem; z-index: 2; background: var(--pane-bg, #222); padding: 0.6rem; border-radius: 0.4rem"
       >
         {tool_volume_notice}
+        {#if active_overlay && !session.shows_input_frame}
+          <button onclick={() => (cell_type = `original`)}>Use original cell</button>
+        {/if}
+        {#if active_overlay && session.has_supercell}
+          <button onclick={() => (supercell_scaling = `1x1x1`)}
+            >Reset supercell to 1×1×1</button
+          >
+        {/if}
+        <button onclick={tool_controller.clear}>Clear prediction</button>
       </p>{/if}
     {#if loading}
       <Spinner
@@ -985,6 +1033,9 @@
 
         {#if controls_config.visible(`export-pane`)}
           <StructureExportPane
+            prediction={active_overlay ?? undefined}
+            on_clear_prediction={tool_controller.clear}
+            on_reset_prediction_surfaces={reset_prediction_surfaces}
             bind:export_pane_open={
               () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
             }

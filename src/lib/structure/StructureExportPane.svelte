@@ -8,12 +8,17 @@
   import type { AnyStructure } from '$lib/structure'
   import * as exports from '$lib/structure/export'
   import type { StructTextFormat } from '$lib/structure/export'
+  import { download } from '$lib/io/fetch'
+  import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import type { ComponentProps } from 'svelte'
   import type { Camera, Scene } from 'three/webgpu'
 
   let {
     export_pane_open = $bindable(false),
     structure = undefined,
+    prediction,
+    on_clear_prediction,
+    on_reset_prediction_surfaces,
     wrapper = undefined,
     scene = undefined,
     camera = undefined,
@@ -27,6 +32,9 @@
   }: {
     export_pane_open?: boolean
     structure?: AnyStructure
+    prediction?: StructureToolPrediction
+    on_clear_prediction?: () => void
+    on_reset_prediction_surfaces?: () => void
     wrapper?: HTMLDivElement
     scene?: Scene
     camera?: Camera
@@ -115,6 +123,28 @@
   }
 
   const sections = $derived<ExportSection[]>([
+    ...(prediction
+      ? [
+          {
+            title: `Prediction`,
+            items: [
+              {
+                label: `Export prediction`,
+                hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
+                on_download: () => {
+                  if (prediction)
+                    download(
+                      prediction_to_json(prediction),
+                      `prediction-${prediction.run_id}.json`,
+                      `application/json`,
+                    )
+                },
+                copy_text: () => (prediction ? prediction_to_json(prediction) : null),
+              },
+            ],
+          },
+        ]
+      : []),
     {
       title: `Export as text`,
       items: text_export_formats.map(({ label, format, hint }) => {
@@ -186,4 +216,11 @@
     class: [`structure-export-toggle`, toggle_props?.class],
   }}
   {...rest}
-/>
+>
+  {#if prediction}
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+      <button onclick={on_reset_prediction_surfaces}>Reset prediction surfaces</button>
+      <button onclick={on_clear_prediction}>Clear prediction</button>
+    </div>
+  {/if}
+</ExportPane>
