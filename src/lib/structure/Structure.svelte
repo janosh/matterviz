@@ -393,6 +393,15 @@
       : isosurface_settings,
   )
   let original_tool_color: AtomColorConfig | null = null
+  const restore_tool_color = (): void => {
+    if (!original_tool_color) return
+    atom_color_config = original_tool_color
+    original_tool_color = null
+  }
+  // Input changes invalidate overlays without requiring another host callback.
+  $effect(() => {
+    if (!active_overlay?.color_property) untrack(restore_tool_color)
+  })
   const apply_tool_overlay = (overlay: StructureToolOverlay | null): void => {
     const color_property =
       overlay?.source === session.tool_input ? overlay?.color_property : undefined
@@ -405,10 +414,7 @@
           scale: `interpolateRdBu`,
           scale_type: `continuous`,
         }
-    } else if (original_tool_color) {
-      atom_color_config = original_tool_color
-      original_tool_color = null
-    }
+    } else restore_tool_color()
     const same_volumes =
       tool_overlay?.source === overlay?.source && tool_overlay?.volumes === overlay?.volumes
     tool_overlay = overlay

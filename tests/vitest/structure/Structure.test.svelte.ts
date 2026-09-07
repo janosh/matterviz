@@ -347,54 +347,73 @@ test(`host views fill the main viewer, inherit its camera and cell, and reject s
   expect(tool_props.structure).toBe(original_input)
 })
 
-test(`host overlays restore atom colors and preserve adjusted surfaces when only properties change`, async () => {
-  const state = $state<{
-    atom_color_config: AtomColorConfig
-    isosurface_settings: IsosurfaceSettings
-  }>({
-    atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
-    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
-  })
-  const tool_props = await mount_host_structure(bind_props({ structure }, state))
-  const overlay = {
-    source: tool_props.structure,
-    site_properties: tool_props.structure.sites.map((_, idx) => ({
-      charge: idx,
-      magmom: -idx,
-    })),
-    volumes: volumetric_data,
-    color_property: `charge`,
-  }
-  flushSync(() => tool_props.on_overlay(overlay))
-  expect(state.atom_color_config).toMatchObject({
-    mode: `property`,
-    property_key: `charge`,
-  })
-  expect(state.isosurface_settings.layers).toHaveLength(1)
-  flushSync(() => {
-    state.isosurface_settings.layers[0].isovalue = 0.123
-    state.atom_color_config = {
-      ...state.atom_color_config,
+test.each([`clear`, `replace input`])(
+  `host overlays restore atom colors on %s and preserve adjusted surfaces when only properties change`,
+  async (reset) => {
+    const original_color: AtomColorConfig = {
+      mode: `element`,
       scale: `interpolateViridis`,
+      scale_type: `categorical`,
     }
-  })
-  flushSync(() =>
-    tool_props.on_overlay({
-      ...overlay,
-      site_properties: [...overlay.site_properties],
-    }),
-  )
-  expect(state.atom_color_config.scale).toBe(`interpolateViridis`)
-  flushSync(() => tool_props.on_overlay({ ...overlay, color_property: `magmom` }))
-  expect(state.atom_color_config).toMatchObject({
-    mode: `property`,
-    property_key: `magmom`,
-  })
-  expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
-  flushSync(() => tool_props.on_overlay(null))
-  expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
-  expect(state.isosurface_settings.layers).toEqual([])
-})
+    const state = $state<{
+      structure: AnyStructure
+      atom_color_config: AtomColorConfig
+      isosurface_settings: IsosurfaceSettings
+    }>({
+      structure,
+      atom_color_config: { ...original_color },
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    })
+    const tool_props = await mount_host_structure(bind_props({}, state))
+    const overlay = {
+      source: tool_props.structure,
+      site_properties: tool_props.structure.sites.map((_, idx) => ({
+        charge: idx,
+        magmom: -idx,
+      })),
+      volumes: volumetric_data,
+      color_property: `charge`,
+    }
+    flushSync(() => tool_props.on_overlay(overlay))
+    expect(state.atom_color_config).toMatchObject({
+      mode: `property`,
+      property_key: `charge`,
+    })
+    expect(state.isosurface_settings.layers).toHaveLength(1)
+    flushSync(() => {
+      state.isosurface_settings.layers[0].isovalue = 0.123
+      state.atom_color_config = {
+        ...state.atom_color_config,
+        scale: `interpolateViridis`,
+      }
+    })
+    flushSync(() =>
+      tool_props.on_overlay({
+        ...overlay,
+        site_properties: [...overlay.site_properties],
+      }),
+    )
+    expect(state.atom_color_config.scale).toBe(`interpolateViridis`)
+    flushSync(() => tool_props.on_overlay({ ...overlay, color_property: `magmom` }))
+    expect(state.atom_color_config).toMatchObject({
+      mode: `property`,
+      property_key: `magmom`,
+    })
+    expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
+    flushSync(() => {
+      if (reset === `clear`) tool_props.on_overlay(null)
+      else state.structure = { ...state.structure }
+    })
+    expect(state.atom_color_config).toEqual(original_color)
+    // A later tool cleanup must not restore the saved configuration a second time.
+    flushSync(() => {
+      state.atom_color_config = { ...DEFAULT_ATOM_COLOR_CONFIG }
+    })
+    flushSync(() => tool_props.on_overlay(null))
+    expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
+    expect(state.isosurface_settings.layers).toEqual([])
+  },
+)
 
 test.each([`Original`, `Prediction`])(
   `removing %s volumes updates their owner across later tool callbacks`,
