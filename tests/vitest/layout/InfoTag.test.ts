@@ -119,6 +119,8 @@ describe(`InfoTag`, () => {
   ])(
     `remove button visible=$expected when removable=$removable, disabled=$disabled, callback=$callback`,
     ({ removable, disabled, callback, expected }) => {
+      const onclick = vi.fn()
+      const on_remove = vi.fn()
       mount(InfoTag, {
         target: document.body,
         props: {
@@ -126,29 +128,22 @@ describe(`InfoTag`, () => {
           value: 1,
           removable,
           disabled,
-          on_remove: callback ? vi.fn() : undefined,
+          onclick,
+          on_remove: callback ? on_remove : undefined,
         },
       })
-      expect(Boolean(document.querySelector(`[aria-label="Remove"]`))).toBe(expected)
+      const remove = document.querySelector<HTMLButtonElement>(`[aria-label="Remove"]`)
+      expect(Boolean(remove)).toBe(expected)
+      if (!remove) return
+      for (const key of [`Enter`, ` `])
+        remove.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      expect(onclick).not.toHaveBeenCalled()
+      remove.click()
+      flushSync()
+      expect(on_remove).toHaveBeenCalledExactlyOnceWith()
+      expect(onclick).not.toHaveBeenCalled()
     },
   )
-
-  test(`on_remove fires without triggering tag onclick`, () => {
-    const onclick = vi.fn()
-    const on_remove = vi.fn()
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: 1, removable: true, onclick, on_remove },
-    })
-    const remove = doc_query<HTMLButtonElement>(`[aria-label="Remove"]`)
-    for (const key of [`Enter`, ` `])
-      remove.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-    expect(onclick).not.toHaveBeenCalled()
-    remove.click()
-    flushSync()
-    expect(on_remove).toHaveBeenCalledExactlyOnceWith()
-    expect(onclick).not.toHaveBeenCalled()
-  })
 
   test.each([
     { value: undefined, expected: `` },

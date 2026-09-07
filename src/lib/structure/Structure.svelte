@@ -478,18 +478,17 @@
   })
   onDestroy(() => tool_controller.dispose())
   const reset_prediction_surfaces = (): void => {
-    const owned = new Set<VolumetricData>(owned_volumes)
     isosurface_settings = {
       ...isosurface_settings,
       layers: [
         ...pin_layers(isosurface_settings.layers, active_volume_idx).filter(
           (layer) =>
-            !owned.has(
+            !owned_volume_set.has(
               volumetric_data?.[layer.volume_idx ?? active_volume_idx] as VolumetricData,
             ),
         ),
         ...(volumetric_data ?? []).flatMap((volume, idx) =>
-          owned.has(volume) ? [auto_volume_layer(volume, idx)] : [],
+          owned_volume_set.has(volume) ? [auto_volume_layer(volume, idx)] : [],
         ),
       ],
     }

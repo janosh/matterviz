@@ -56,21 +56,18 @@ export function create_structure_tool_controller(
   on_view: (view: StructureToolView | null) => void,
   get_revision: () => string,
 ) {
-  let current: StructureToolRun | undefined
-  let abort: AbortController | undefined
+  let current: { abort: AbortController; is_current: () => boolean } | undefined
   let next_id = 0
   let disposed = false
-  let is_current_run = (): boolean => false
   const clear = (): void => {
     on_prediction(null)
     on_view(null)
   }
   const invalidate = (): void => {
-    const previous_abort = abort
-    abort = undefined
+    const previous = current
     current = undefined
     clear()
-    previous_abort?.abort()
+    previous?.abort.abort()
   }
   return {
     start_run(provenance: StructureToolProvenance): StructureToolRun {
@@ -83,19 +80,27 @@ export function create_structure_tool_controller(
         throw new Error(`Prediction model and version must be nonempty`)
       const input = structuredClone($state.snapshot(structure))
       const captured_provenance = structuredClone($state.snapshot(provenance))
-      const stale_output = current && !is_current_run()
-      const previous_abort = abort
-      abort = new AbortController()
+      const previous = current
+      const stale_output = previous && !previous.is_current()
+      const abort = new AbortController()
       const id = ++next_id
       const signal = abort.signal
       const is_current = (): boolean =>
         !disposed &&
         !signal.aborted &&
-        current?.id === id &&
+        current?.abort === abort &&
         get_owner() === owner &&
         get_structure() === structure &&
         get_revision() === revision
-      const run: StructureToolRun = {
+      current = { abort, is_current }
+      // A same-turn input/tool change may precede the invalidation effect. Only retain
+      // previous output (and its appearance) when it still belongs to this input and tool.
+      if (stale_output) on_prediction(null)
+      // A previous view may close over its aborted run. Return before starting new work.
+      on_view(null)
+      // Abort listeners can synchronously start another run; it must retain ownership.
+      previous?.abort.abort()
+      return {
         id,
         structure: structuredClone(input),
         signal,
@@ -132,19 +137,9 @@ export function create_structure_tool_controller(
           if (is_current()) invalidate()
         },
       }
-      current = run
-      is_current_run = is_current
-      // A same-turn input/tool change may precede the invalidation effect. Only retain
-      // previous output (and its appearance) when it still belongs to this input and tool.
-      if (stale_output) on_prediction(null)
-      // A previous view may close over its aborted run. Return before starting new work.
-      on_view(null)
-      // Abort listeners can synchronously start another run; it must retain ownership.
-      previous_abort?.abort()
-      return run
     },
     invalidate_if_changed(): void {
-      if (current && !is_current_run()) invalidate()
+      if (current && !current.is_current()) invalidate()
     },
     clear: invalidate,
     dispose(): void {
