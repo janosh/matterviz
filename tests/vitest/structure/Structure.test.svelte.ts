@@ -500,6 +500,7 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
     reordered.map((volume, idx) => auto_volume_layer(volume, idx)),
   )
   click_button(`Clear prediction`)
+  flushSync(() => next.on_overlay({ volumes: reordered }))
   expect(state.volumetric_data).toEqual([])
   expect(next.signal.aborted).toBe(true)
 })
@@ -592,6 +593,13 @@ test.each([false, true])(
 test.each([false, true])(
   `host density respects each field's coordinate frame with finite volume removed=%s`,
   async (remove_finite) => {
+    const click_recovery = (label: string) => {
+      const button = [...document.querySelectorAll(`button`)].find(
+        (candidate) => candidate.textContent === label,
+      )
+      if (!button) throw new Error(`Missing recovery action: ${label}`)
+      flushSync(() => button.click())
+    }
     await init_moyo_for_tests()
     const crystal = make_crystal(fcc_primitive_matrix(3.61), [
       { element: `Cu`, abc: [0.13, 0.27, 0.41] },
@@ -614,20 +622,18 @@ test.each([false, true])(
     flushSync(() => tool_props.on_overlay(overlay))
     flushSync(() => {
       state.cell_type = `conventional`
+      state.supercell_scaling = `2x1x1`
     })
     expect(document.body.textContent).toContain(
       `Prediction density is hidden in standardized cells`,
     )
+    expect(document.body.textContent).not.toContain(`Reset supercell to 1×1×1`)
     flushSync(() => {
       state.display_mode = `slice`
     })
     expect(document.body.textContent).toContain(`No volumetric data available`)
+    click_recovery(`Use original cell`)
     flushSync(() => {
-      const recovery = [...document.querySelectorAll(`button`)].find(
-        (button) => button.textContent === `Use original cell`,
-      )
-      if (!recovery) throw new Error(`Missing cell recovery action`)
-      recovery.click()
       state.display_mode = `structure`
     })
     expect(
@@ -641,7 +647,11 @@ test.each([false, true])(
     )
     flushSync(() => {
       state.supercell_scaling = `2x1x1`
+      state.cell_type = `conventional`
     })
+    expect(document.body.textContent).toContain(`Reset supercell to 1×1×1`)
+    click_recovery(`Use original cell`)
+    expect(state.supercell_scaling).toBe(`2x1x1`)
     expect(document.body.textContent).toContain(
       `partially periodic prediction density is shown only in the input cell`,
     )
@@ -679,13 +689,7 @@ test.each([false, true])(
       document.querySelector(`input[aria-label="Slice position on canvas"]`),
     ).not.toBeNull()
     if (!remove_finite) {
-      flushSync(() => {
-        const reset = [...document.querySelectorAll(`button`)].find(
-          (button) => button.textContent === `Reset supercell to 1×1×1`,
-        )
-        if (!reset) throw new Error(`Missing supercell recovery`)
-        reset.click()
-      })
+      click_recovery(`Reset supercell to 1×1×1`)
       expect(state.supercell_scaling).toBe(`1x1x1`)
       expect(document.body.textContent).not.toContain(
         `partially periodic prediction density is shown only`,

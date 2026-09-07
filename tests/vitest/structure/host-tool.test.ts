@@ -167,7 +167,11 @@ test(`field IDs preserve layers and both index references across replacement, re
     },
     { ...auto_volume_layer(density, 1), isovalue: -0.2, visible: false },
   ]
-  const incoming = [volume(`potential`), volume(`density`), volume(`new`)]
+  const incoming = [
+    volume(`potential`),
+    { ...make_volume(make_grid(3, 3, 3, () => 2)), field_id: `density`, label: `Renamed` },
+    volume(`new`),
+  ]
   const result = replace_tool_volumes(
     [base, density, potential],
     layers,

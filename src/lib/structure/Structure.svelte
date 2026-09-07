@@ -947,7 +947,7 @@
         {#if active_overlay && !session.shows_input_frame}
           <button onclick={() => (cell_type = `original`)}>Use original cell</button>
         {/if}
-        {#if active_overlay && session.has_supercell}
+        {#if active_overlay && session.has_supercell && (volumetric_data ?? []).some((volume) => owned_volume_set.has(volume) && !volume.periodic)}
           <button onclick={() => (supercell_scaling = `1x1x1`)}
             >Reset supercell to 1×1×1</button
           >

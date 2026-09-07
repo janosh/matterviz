@@ -25,6 +25,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import type { StructureToolRun } from 'matterviz'
+import type { StructureToolProps } from 'matterviz/structure'
 import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
 import svelte_config from '../../svelte.config'
 
@@ -122,6 +124,19 @@ describe(`package.json exports`, () => {
     expectTypeOf<lib.StructureToolRun>().toHaveProperty(`signal`)
     expectTypeOf<lib.StructureToolProps>().toHaveProperty(`start_run`)
   })
+
+  test.skipIf(!has_dist).each([`matterviz`, `matterviz/structure`])(
+    `built %s entry exposes the host prediction API`,
+    { timeout: 60_000 },
+    async (entry) => {
+      expect(import.meta.resolve(entry)).toContain(`/dist/`)
+      const { structure_host_tool, prediction_to_json } = await import(entry)
+      expect(structure_host_tool).toHaveProperty(`component`, null)
+      expect(prediction_to_json).toBeTypeOf(`function`)
+      expectTypeOf<StructureToolRun>().toHaveProperty(`signal`)
+      expectTypeOf<StructureToolProps>().toHaveProperty(`start_run`)
+    },
+  )
 
   test(`plot keeps its selected public title and decoration exports`, () => {
     expectTypeOf<DecorationSide>().toEqualTypeOf<`top` | `right` | `bottom` | `left`>()

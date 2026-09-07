@@ -3,7 +3,8 @@ import type StructureScene from './StructureScene.svelte'
 import type { VolumetricData } from '$lib/isosurface'
 import type { AnyStructure } from './index'
 
-// Field IDs describe a physical quantity, independently of array order, labels or grid size.
+// Reuse a field ID only for the same physical quantity, units and normalization. Change it
+// when those semantics change; array order, labels and grid resolution do not affect identity.
 export type StructureToolVolume = VolumetricData & { field_id: string }
 export interface StructureToolOverlay {
   site_properties?: Record<string, unknown>[]

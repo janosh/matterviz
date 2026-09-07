@@ -79,7 +79,9 @@ run.on_overlay({
 <p>
   Use the export pane to download the prediction JSON, including the captured input,
   properties, density grids and provenance, or export the original structure in the usual
-  formats. Field IDs preserve surface appearance across reruns and reordering; <strong
+  formats. Reuse a field ID only while its physical quantity, units and normalization stay
+  compatible; change the ID when those semantics change. Labels, order and grid resolution can
+  change without losing surface appearance, including extra or deliberately removed layers. <strong
     >Reset prediction surfaces</strong
   > restores defaults. Hidden-density notices offer direct cell and supercell recovery actions.
 </p>
