@@ -513,6 +513,7 @@ test.each([false, true])(
       cell_type: `original`,
       display_mode: `structure`,
       active_volume_idx: 0,
+      slice_settings: { resolution: 2 },
       supercell_scaling: `1x1x1`,
       sym_data: null,
     })
