@@ -40,6 +40,7 @@ import { make_supercell, parse_supercell_scaling } from './supercell'
 // a caller-bound prop and the session never hold two copies
 export interface StructureSessionInputs {
   structure: () => AnyStructure | undefined
+  site_properties?: () => Record<string, unknown>[] | undefined
   set_structure: (value: AnyStructure | undefined) => void
   bonds: () => StructureBond[] | undefined
   set_bonds: (value: StructureBond[] | undefined) => void
@@ -263,24 +264,27 @@ export class StructureSession {
   // Remap element symbols for display (LAMMPS type placeholders → real elements)
   element_mapping = $state<Partial<Record<ElementSymbol, ElementSymbol>> | undefined>()
   dragging_atoms = $state(false)
-  // Element-mapped + PBC image atoms. Images are skipped during drags (doubled site count
-  // drops frames) and return on release.
-  displayed_structure = $derived.by((): AnyStructure | undefined => {
-    let struct = this.supercell_structure
+  // Host computations see mapped elements in the borrowed input cell, without display
+  // tiling, images or cell standardization. Mapping changes therefore change input identity.
+  tool_input = $derived.by(() => this.map_elements(this.inputs.structure()))
+  private map_elements(struct: AnyStructure | undefined): AnyStructure | undefined {
     const mapping = this.element_mapping
-    if (struct && mapping && Object.keys(mapping).length > 0) {
-      struct = {
-        ...struct,
-        sites: struct.sites.map((site) => ({
-          ...site,
-          species: site.species.map((species) => ({
-            ...species,
-            element: mapping[species.element] ?? species.element,
-          })),
-          label: mapping[site.label as ElementSymbol] ?? site.label,
+    if (!struct || !mapping || Object.keys(mapping).length === 0) return struct
+    return {
+      ...struct,
+      sites: struct.sites.map((site) => ({
+        ...site,
+        species: site.species.map((species) => ({
+          ...species,
+          element: mapping[species.element] ?? species.element,
         })),
-      }
+        label: mapping[site.label as ElementSymbol] ?? site.label,
+      })),
     }
+  }
+  // Element-mapped + PBC image atoms. Images are skipped during drags.
+  displayed_structure = $derived.by((): AnyStructure | undefined => {
+    const struct = this.map_elements(this.supercell_structure)
     return !this.dragging_atoms &&
       this.inputs.show_image_atoms() &&
       struct &&
@@ -293,6 +297,20 @@ export class StructureSession {
   // primitive transform applies. Overlays expressed in the input frame (symmetry elements) are
   // only placed correctly then; a supercell of the input cell still qualifies.
   shows_input_frame = $derived(this.base_structure === this.structure_with_bonds)
+  // Transient host properties follow this session's own tiling/image provenance and never
+  // enter editable snapshots or cell transforms. Scene, colors and legend share this view.
+  render_structure = $derived.by(() => {
+    const displayed = this.displayed_structure
+    const properties = this.inputs.site_properties?.()
+    if (!displayed || !properties || !this.shows_input_frame) return displayed
+    return {
+      ...displayed,
+      sites: displayed.sites.map((site, idx) => ({
+        ...site,
+        properties: { ...site.properties, ...properties[this.to_base_site_idx(site, idx)] },
+      })),
+    }
+  })
   // Wyckoff rows of the analyzed cell with site_indices re-expressed onto the displayed
   // structure (conventional/primitive cell, supercell, image atoms), so the table and the
   // Wyckoff coloring address the atoms actually on screen rather than the analyzed cell's
@@ -312,7 +330,7 @@ export class StructureSession {
   property_colors = $derived.by((): AtomPropertyColors | null => {
     const config = this.inputs.atom_color_config()
     if (config.mode === `element`) return null
-    return get_property_colors(this.displayed_structure, config, {
+    return get_property_colors(this.render_structure, config, {
       base: this.base_structure,
       to_base_idx: this.to_base_site_idx,
       bonding_strategy: this.inputs.bonding_strategy(),

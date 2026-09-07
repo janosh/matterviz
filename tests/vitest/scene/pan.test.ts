@@ -3,6 +3,7 @@ import {
   attach_pan_gesture,
   clear_pan_offset,
   read_pan_offset,
+  restore_camera_view,
   set_pan_offset,
 } from '$lib/scene/pan'
 import { Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
@@ -30,6 +31,20 @@ describe(`pan offset on the camera view`, () => {
       height: 600,
     })
     expect(read_pan_offset(camera)).toEqual([30, -12])
+    camera.position.set(3, 4, 5)
+    camera.lookAt(1, 2, 3)
+    camera.zoom = 68.5797
+    const saved = camera.clone()
+    const replacement = camera.clone()
+    replacement.position.set(0, 0, 0)
+    replacement.zoom = 53.0657
+    clear_pan_offset(replacement)
+    restore_camera_view(replacement, saved, 400, 300)
+    expect(replacement.position.toArray()).toEqual(camera.position.toArray())
+    expect(replacement.quaternion.toArray()).toEqual(camera.quaternion.toArray())
+    expect(replacement.zoom).toBe(68.5797)
+    expect(read_pan_offset(replacement)).toEqual([30, -12])
+    expect(replacement.view).toMatchObject({ fullWidth: 400, fullHeight: 300 })
     // re-applying at a new size keeps the CSS-px shift
     set_pan_offset(camera, read_pan_offset(camera), 400, 300)
     expect(camera.view).toMatchObject({ fullWidth: 400, fullHeight: 300, offsetX: -30 })

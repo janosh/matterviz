@@ -8,25 +8,28 @@ import { common } from '@wooorm/starry-night'
 import svelte_grammar from '@wooorm/starry-night/source.svelte'
 import tsx_grammar from '@wooorm/starry-night/source.tsx'
 import vue_grammar from '@wooorm/starry-night/text.html.vue'
-import { mdsvex } from 'mdsvex'
 import type { PreprocessorGroup } from 'svelte/compiler'
 import { heading_ids } from 'svelte-widgets/heading-anchors'
-import { mdsvex_transform } from 'svelte-widgets/live-examples'
-import {
-  create_highlighter,
-  render_block,
-} from 'svelte-widgets/live-examples/create-highlighter'
+import { create_markdown } from 'svelte-widgets/markdown'
+import { markdown_vite } from 'svelte-widgets/markdown/vite'
+import { create_highlighter } from 'svelte-widgets/highlight'
 
 const defaults = {
-  Wrapper: [`svelte-widgets`, `CodeExample`],
-  hideStyle: true,
+  hide_style: true,
   collapsible: true,
 }
 
 // svelte-widgets' default highlighter only knows starry-night's `common` bundle plus
 // Svelte, which would leave the tsx/vue fences in the framework-interop docs unstyled
 const grammars = [...common, svelte_grammar, tsx_grammar, vue_grammar]
-const starry_night = await create_highlighter(grammars).ready()
+const highlighter = create_highlighter(grammars)
+export const docs = markdown_vite(
+  create_markdown({
+    examples: defaults,
+    highlight: highlighter.highlight,
+    typography: true,
+  }),
+)
 
 // Heading anchors are a docs-site feature, but preprocessors run over src/lib too, where
 // the injected ids end up in the published package: nothing references them, and a heading
@@ -48,12 +51,8 @@ export default {
   extensions: [`.svelte`, `.svx`, `.md`],
 
   preprocess: [
-    mdsvex({
-      remarkPlugins: [[mdsvex_transform, { defaults }]],
-      extensions: [`.svx`, `.md`],
-      highlight: { highlighter: (code, lang) => render_block(starry_night, code, lang) },
-    }),
-    site_heading_ids, // runs after mdsvex converts markdown to HTML
+    docs.preprocess,
+    site_heading_ids, // anchors for native Svelte pages
   ],
 
   kit: {

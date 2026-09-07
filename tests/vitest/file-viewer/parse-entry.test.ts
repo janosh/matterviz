@@ -11,6 +11,7 @@ test(`worker-safe file-viewer entry graphs stay free of Svelte`, () => {
       `src/lib/file-viewer/host-transfer.ts`,
       // These load inside a Worker, where `document` does not exist.
       `src/lib/file-viewer/parse-worker.ts`,
+      `src/routes/(demos)/structure/host-tool/prediction-worker.ts`,
       `src/lib/file-viewer/parse-worker-protocol.ts`,
     ],
     10,

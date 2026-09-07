@@ -46,6 +46,7 @@ describe(`InfoTag`, () => {
   test.each([
     { value: `abc123`, copy_value: undefined, expected: `abc123` },
     { value: `abc123`, copy_value: `full-id-abc123`, expected: `full-id-abc123` },
+    { value: undefined, copy_value: `full-id-abc123`, expected: `full-id-abc123` },
   ])(
     `copies $expected to clipboard (copy_value=$copy_value)`,
     ({ value, copy_value, expected }) => {
@@ -54,6 +55,7 @@ describe(`InfoTag`, () => {
         target: document.body,
         props: { label: `ID:`, value, copy_value },
       })
+      expect(get_tag().getAttribute(`role`)).toBe(`button`)
       get_tag().click()
       flushSync()
       expect(write_text_spy).toHaveBeenCalledWith(expected)
@@ -79,7 +81,11 @@ describe(`InfoTag`, () => {
 
     // Custom onclick overrides copy
     const onclick = vi.fn()
-    mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1, onclick } })
+    mount(InfoTag, {
+      target: document.body,
+      props: { label: `Test`, value: undefined, onclick },
+    })
+    expect(get_tag().getAttribute(`role`)).toBe(`button`)
     get_tag().click()
     flushSync()
     expect(onclick).toHaveBeenCalled()
@@ -106,32 +112,38 @@ describe(`InfoTag`, () => {
   })
 
   test.each([
-    { removable: true, disabled: false, expected: true },
-    { removable: false, disabled: false, expected: false },
-    { removable: true, disabled: true, expected: false },
+    { removable: true, disabled: false, callback: true, expected: true },
+    { removable: false, disabled: false, callback: true, expected: false },
+    { removable: true, disabled: true, callback: true, expected: false },
+    { removable: true, disabled: false, callback: false, expected: false },
   ])(
-    `remove button visible=$expected when removable=$removable, disabled=$disabled`,
-    (params) => {
+    `remove button visible=$expected when removable=$removable, disabled=$disabled, callback=$callback`,
+    ({ removable, disabled, callback, expected }) => {
+      const onclick = vi.fn()
+      const on_remove = vi.fn()
       mount(InfoTag, {
         target: document.body,
-        props: { label: `Test`, value: 1, ...params },
+        props: {
+          label: `Test`,
+          value: 1,
+          removable,
+          disabled,
+          onclick,
+          on_remove: callback ? on_remove : undefined,
+        },
       })
-      expect(Boolean(document.querySelector(`[aria-label="Remove"]`))).toBe(params.expected)
+      const remove = document.querySelector<HTMLButtonElement>(`[aria-label="Remove"]`)
+      expect(Boolean(remove)).toBe(expected)
+      if (!remove) return
+      for (const key of [`Enter`, ` `])
+        remove.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      expect(onclick).not.toHaveBeenCalled()
+      remove.click()
+      flushSync()
+      expect(on_remove).toHaveBeenCalledExactlyOnceWith()
+      expect(onclick).not.toHaveBeenCalled()
     },
   )
-
-  test(`on_remove fires without triggering tag onclick`, () => {
-    const onclick = vi.fn()
-    const on_remove = vi.fn()
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: 1, removable: true, onclick, on_remove },
-    })
-    doc_query<HTMLButtonElement>(`[aria-label="Remove"]`).click()
-    flushSync()
-    expect(on_remove).toHaveBeenCalled()
-    expect(onclick).not.toHaveBeenCalled()
-  })
 
   test.each([
     { value: undefined, expected: `` },
@@ -140,6 +152,8 @@ describe(`InfoTag`, () => {
   ])(`displays value $value as "$expected"`, ({ value, expected }) => {
     mount(InfoTag, { target: document.body, props: { label: `Test:`, value } })
     expect(doc_query(`em`).textContent).toBe(expected)
+    expect(get_tag().getAttribute(`role`)).toBe(value === undefined ? null : `button`)
+    expect(get_tag().getAttribute(`tabindex`)).toBe(value === undefined ? null : `0`)
   })
 
   test(`spreads additional attributes`, () => {

@@ -16,6 +16,7 @@ import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
 import Dos from '$lib/spectral/Dos.svelte'
 import type { BaseBandStructure, DosInput } from '$lib/spectral/types'
 import type { AnyStructure } from '$lib/structure'
+import type { StructureToolPrediction } from '$lib/structure/prediction'
 import Structure from '$lib/structure/Structure.svelte'
 import type { XrdPattern } from '$lib/xrd'
 import XrdPlot from '$lib/xrd/XrdPlot.svelte'
@@ -27,6 +28,7 @@ import PlotPanel from './PlotPanel.svelte'
 export type ViewerMountType = Exclude<RenderableType, `volumetric`> | `isosurface`
 
 export interface MountViewerOptions {
+  prediction?: StructureToolPrediction
   defaults: DefaultSettings
   // Closes the hosting panel (JsonBrowser); viewers without a close affordance ignore it
   on_close?: () => void
@@ -44,7 +46,7 @@ export function mount_viewer(
   target: HTMLElement,
   type: ViewerMountType,
   data: unknown,
-  { defaults, on_close }: MountViewerOptions,
+  { defaults, on_close, prediction }: MountViewerOptions,
 ): ReturnType<typeof mount> {
   target.innerHTML = ``
   void target.offsetHeight // force layout so Three.js measures real dimensions
@@ -60,7 +62,7 @@ export function mount_viewer(
   if (type === `structure`) {
     return mount(Structure, {
       target,
-      props: { structure: data as AnyStructure, ...structure_props },
+      props: { structure: data as AnyStructure, prediction, ...structure_props },
     })
   }
   if (type === `isosurface`) {

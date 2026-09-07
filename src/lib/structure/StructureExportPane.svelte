@@ -8,12 +8,17 @@
   import type { AnyStructure } from '$lib/structure'
   import * as exports from '$lib/structure/export'
   import type { StructTextFormat } from '$lib/structure/export'
+  import { download } from '$lib/io/fetch'
+  import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import type { ComponentProps } from 'svelte'
   import type { Camera, Scene } from 'three/webgpu'
 
   let {
     export_pane_open = $bindable(false),
     structure = undefined,
+    prediction,
+    on_clear_prediction,
+    on_reset_prediction_surfaces,
     wrapper = undefined,
     scene = undefined,
     camera = undefined,
@@ -27,6 +32,9 @@
   }: {
     export_pane_open?: boolean
     structure?: AnyStructure
+    prediction?: StructureToolPrediction
+    on_clear_prediction?: () => void
+    on_reset_prediction_surfaces?: () => void
     wrapper?: HTMLDivElement
     scene?: Scene
     camera?: Camera
@@ -114,7 +122,41 @@
     }
   }
 
+  let prediction_error = $state(``)
+  function prediction_text(): string | null {
+    prediction_error = ``
+    try {
+      return prediction ? prediction_to_json(prediction) : null
+    } catch (error) {
+      prediction_error = `Export failed: ${String(error)}. Correct the prediction metadata and retry.`
+      return null
+    }
+  }
+
   const sections = $derived<ExportSection[]>([
+    ...(prediction
+      ? [
+          {
+            title: `Prediction`,
+            items: [
+              {
+                label: `Export prediction`,
+                hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
+                on_download: () => {
+                  const content = prediction_text()
+                  if (prediction && content)
+                    download(
+                      content,
+                      `prediction-${prediction.run_id}.json`,
+                      `application/json`,
+                    )
+                },
+                copy_text: prediction_text,
+              },
+            ],
+          },
+        ]
+      : []),
     {
       title: `Export as text`,
       items: text_export_formats.map(({ label, format, hint }) => {
@@ -175,6 +217,8 @@
   ])
 </script>
 
+{#if prediction_error}<p role="alert">{prediction_error}</p>{/if}
+
 <ExportPane
   bind:export_pane_open
   bind:png_dpi
@@ -186,4 +230,15 @@
     class: [`structure-export-toggle`, toggle_props?.class],
   }}
   {...rest}
-/>
+>
+  {#if prediction && (on_reset_prediction_surfaces || on_clear_prediction)}
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+      {#if on_reset_prediction_surfaces}
+        <button onclick={on_reset_prediction_surfaces}>Reset prediction surfaces</button>
+      {/if}
+      {#if on_clear_prediction}
+        <button onclick={on_clear_prediction}>Clear prediction</button>
+      {/if}
+    </div>
+  {/if}
+</ExportPane>

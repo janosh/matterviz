@@ -358,6 +358,8 @@ describe(`is_vector_key`, () => {
     [`magmoms`, true],
     [`velocity`, true],
     [`force_DFT`, true],
+    [`dipole_charge`, true],
+    [`dipole_spin`, true],
     [`spins_down`, true],
     [`force_`, true],
     [`charge`, false],

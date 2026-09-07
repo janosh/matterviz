@@ -37,6 +37,7 @@
 
   // one key, since a tag copies a single value; `copied` handles the timed reset
   const { copied, copy } = create_clipboard_feedback()
+  const has_action = $derived(Boolean(onclick) || (copy_value ?? value) !== undefined)
 
   function handle_click(event: MouseEvent): void {
     if (disabled) return
@@ -46,7 +47,12 @@
   }
 
   function handle_keydown(event: KeyboardEvent & { currentTarget: HTMLElement }): void {
-    if (disabled || (event.key !== `Enter` && event.key !== ` `)) return
+    if (
+      event.target !== event.currentTarget ||
+      disabled ||
+      (event.key !== `Enter` && event.key !== ` `)
+    )
+      return
     event.preventDefault()
     event.currentTarget.click()
   }
@@ -58,8 +64,7 @@
 </script>
 
 <span
-  role="button"
-  tabindex={disabled ? -1 : 0}
+  {...has_action ? { role: `button`, tabindex: disabled ? -1 : 0 } : {}}
   onclick={handle_click}
   onkeydown={handle_keydown}
   title={sanitize_html(title)}
@@ -77,7 +82,7 @@
       class="copy-checkmark"
     />
   {/if}
-  {#if removable && !disabled}
+  {#if removable && !disabled && on_remove}
     <button type="button" onclick={handle_remove} aria-label="Remove">
       <Icon icon={Close} style="width: 10px; height: 10px" />
     </button>
@@ -87,18 +92,20 @@
 
 <style>
   .info-tag {
-    cursor: pointer;
     position: relative;
     transition: all 0.12s;
     border: 1px solid;
     white-space: nowrap;
     border-color: color-mix(in srgb, var(--tag-color) 25%, transparent);
+    &[role='button'] {
+      cursor: pointer;
+    }
     em {
       font-style: normal;
       font-weight: 600;
       color: var(--tag-color);
     }
-    &:hover:not(.disabled) {
+    &[role='button']:hover:not(.disabled) {
       background: color-mix(in srgb, var(--tag-color) 18%, transparent);
       border-color: color-mix(in srgb, var(--tag-color) 40%, transparent);
     }
@@ -136,7 +143,7 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
-    &:active:not(.disabled) {
+    &[role='button']:active:not(.disabled) {
       transform: scale(0.97);
     }
     :global(.copy-checkmark) {

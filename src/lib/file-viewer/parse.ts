@@ -12,6 +12,7 @@ import {
 } from '$lib/io/decompress'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
+import { prediction_from_json, type StructureToolPrediction } from '$lib/structure/prediction'
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import { to_error } from '$lib/utils'
@@ -55,7 +56,7 @@ type Result<Type extends ViewType, Data> = { type: Type; data: Data; filename: s
 
 export type ParseResult =
   | Result<`trajectory`, TrajectoryRun>
-  | Result<`structure`, AnyStructure>
+  | (Result<`structure`, AnyStructure> & { prediction?: StructureToolPrediction })
   | Result<`fermi_surface`, BandGridData | FermiSurfaceData>
   | Result<`isosurface`, VolumetricFileData>
   | Result<`convex_hull`, PhaseData[]>
@@ -219,6 +220,16 @@ export const parse_file_content = async (
       throw new Error(`Invalid JSON in ${filename}: ${to_error(error).message}`, {
         cause: error,
       })
+    }
+    if (
+      parsed_json &&
+      typeof parsed_json === `object` &&
+      `schema` in parsed_json &&
+      typeof parsed_json.schema === `string` &&
+      parsed_json.schema.startsWith(`matterviz-prediction-`)
+    ) {
+      const prediction = prediction_from_json(parsed_json)
+      return { type: `structure`, data: prediction.input, prediction, filename }
     }
     const detected = detect_view_type(parsed_json)
     if (detected === `structure`) {

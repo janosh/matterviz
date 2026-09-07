@@ -11,6 +11,8 @@ import {
   parse_trajectory_in_worker,
 } from '$lib/file-viewer/parse-in-worker'
 import { handle_parse_worker_request } from '$lib/file-viewer/parse-worker'
+import { prediction_to_json } from '$lib/structure/prediction'
+import { make_grid, make_volume } from '../setup'
 import type { Hdf5GroupSelectionRequiredError, TrajectoryFrame } from '$lib/trajectory'
 import { summarize_run, trajectory_from_frames } from '$lib/trajectory'
 import { serve_run_over_port } from '$lib/trajectory/runs/worker'
@@ -323,6 +325,36 @@ describe(`parse_trajectory_in_worker`, () => {
 })
 
 describe(`parse worker handler`, () => {
+  it.each([0, 2])(`transfers all %i imported density buffers`, async (count) => {
+    const volumes = Array.from({ length: count }, (_, idx) => ({
+      ...make_volume(make_grid(2, 2, 2, () => idx + 1)),
+      field_id: `density-${idx}`,
+    }))
+    const { response, transfer } = await handle_parse_worker_request({
+      kind: `file`,
+      id: 8,
+      filename: `prediction.json`,
+      is_base64: false,
+      content: prediction_to_json({
+        input: frame.structure,
+        run_id: 1,
+        provenance: { model: `test`, version: `1`, units: {}, settings: {} },
+        volumes,
+      }),
+    })
+    if (response.result?.type !== `structure`) throw new Error(`Expected structure result`)
+    const buffers = response.result.prediction?.volumes?.map(({ values }) => values.buffer)
+    expect(transfer).toEqual(buffers)
+    expect(transfer).toHaveLength(count)
+    const received = structuredClone(response, { transfer })
+    expect(buffers?.every((buffer) => buffer.byteLength === 0)).toBe(true)
+    if (received.result?.type !== `structure`)
+      throw new Error(`Expected transferred structure`)
+    expect(received.result.prediction?.volumes?.map(({ values }) => values)).toEqual(
+      volumes.map(({ values }) => values),
+    )
+  })
+
   it(`keeps a parsed trajectory behind a transferred run port`, async () => {
     const { response, transfer } = await handle_parse_worker_request({
       kind: `trajectory`,

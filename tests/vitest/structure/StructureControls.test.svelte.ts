@@ -601,6 +601,13 @@ describe(`StructureControls layout`, () => {
       }
       expect(inputs[1].getAttribute(`aria-label`)).toBe(config.description)
     }
+    const opacity_inputs = target.querySelectorAll<HTMLInputElement>(
+      `[data-key="background_opacity"] input`,
+    )
+    expect(opacity_inputs).toHaveLength(2)
+    for (const input of opacity_inputs) {
+      expect([input.min, input.max, input.step]).toEqual([`0`, `1`, `0.02`])
+    }
   })
 })
 

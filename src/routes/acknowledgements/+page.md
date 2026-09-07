@@ -13,12 +13,10 @@
 
 This project would not have been possible as a one-person side project without many fine open-source projects. 🙏 To name just a few:
 
-|           3D graphics           |               2D graphics                |                     Docs                     |               Bundler               |               Testing                |
-| :-----------------------------: | :--------------------------------------: | :------------------------------------------: | :---------------------------------: | :----------------------------------: |
-| [three.js](https://threejs.org) |          [d3](https://d3js.org)          |         [mdsvex](https://mdsvex.com)         |     [vite](https://vitejs.dev)      | [playwright](https://playwright.dev) |
-| [threlte](https://threlte.xyz)  | [sharp](https://sharp.pixelplumbing.com) | [rehype](https://github.com/rehypejs/rehype) | [sveltekit](https://kit.svelte.dev) |     [vitest](https://vitest.dev)     |
-
-Note that the last two cells are empty because there were only 8 items in the list. In markdown tables, if you have less items in a row than there are columns, the remaining cells will just be empty.
+|           3D graphics           |               2D graphics                |                         Docs                         |               Bundler               |               Testing                |
+| :-----------------------------: | :--------------------------------------: | :--------------------------------------------------: | :---------------------------------: | :----------------------------------: |
+| [three.js](https://threejs.org) |          [d3](https://d3js.org)          | [svelte-widgets](https://svelte-widgets.janosh.dev/) |     [vite](https://vitejs.dev)      | [playwright](https://playwright.dev) |
+| [threlte](https://threlte.xyz)  | [sharp](https://sharp.pixelplumbing.com) |     [rehype](https://github.com/rehypejs/rehype)     | [sveltekit](https://kit.svelte.dev) |     [vitest](https://vitest.dev)     |
 
 ## Element Images
 

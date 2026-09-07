@@ -4,14 +4,14 @@ import { flushSync, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import al_cu_data from './fixtures/al-cu-sample.json' with { type: 'json' }
 
-test.each([false, true])(
-  `editor handles a leaf edit whose path becomes stale=%s`,
-  async (stale) => {
+test.each([`edit`, `stale edit`, `read-only`])(
+  `editor handles %s with callback availability and stale-path protection`,
+  async (mode) => {
     const data = structuredClone(al_cu_data) as unknown as PhaseDiagramData
     const on_data = vi.fn()
     const component = mount(PhaseDiagramEditorPane, {
       target: document.body,
-      props: { data, editor_open: true, on_data },
+      props: { data, editor_open: true, on_data: mode === `read-only` ? undefined : on_data },
     })
     onTestFinished(() => unmount(component))
     flushSync()
@@ -20,14 +20,19 @@ test.each([false, true])(
     leaf.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     await tick()
     const input = document.querySelector<HTMLInputElement>(`.edit-input`)
+    if (mode === `read-only`) {
+      expect(input).toBeNull()
+      expect(on_data).not.toHaveBeenCalled()
+      return
+    }
     if (!input) throw new Error(`Missing edit input`)
     input.value = `edited-unit`
     input.dispatchEvent(new Event(`input`, { bubbles: true }))
     // The source can change while a leaf editor is open.
-    if (stale) Reflect.deleteProperty(data, `temperature_unit`)
+    if (mode === `stale edit`) Reflect.deleteProperty(data, `temperature_unit`)
     input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     await tick()
-    if (stale) {
+    if (mode === `stale edit`) {
       expect(on_data).not.toHaveBeenCalled()
       expect(document.querySelector(`.rejection-flash`)?.textContent).toContain(
         `Cannot edit missing path`,

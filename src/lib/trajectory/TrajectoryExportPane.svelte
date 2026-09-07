@@ -91,9 +91,12 @@
       : undefined,
   )
 
-  let canvas = $derived(wrapper?.querySelector<HTMLCanvasElement>(`canvas`) ?? null)
-  let has_canvas = $state(false)
-  $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
+  let canvas = $state.raw<HTMLCanvasElement | null>(null)
+  $effect(() =>
+    observe_canvas_presence(wrapper, () => {
+      canvas = wrapper?.querySelector<HTMLCanvasElement>(`canvas`) ?? null
+    }),
+  )
   let is_video_supported = $derived(
     typeof MediaRecorder !== `undefined` &&
       MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`),
@@ -160,9 +163,11 @@
     if (!run || !on_step_change || !canvas || export_frame_count === 0) {
       export_error = !run
         ? `No trajectory`
-        : !canvas
-          ? `Canvas not ready`
-          : `Invalid frame range`
+        : !on_step_change
+          ? `Frame navigation unavailable`
+          : !canvas
+            ? `Canvas not ready`
+            : `Invalid frame range`
       return
     }
     await run_export(format.toUpperCase(), async () => {
@@ -334,7 +339,7 @@
           <button
             type="button"
             onclick={() => export_video(format)}
-            disabled={running !== null || !run || !has_canvas}
+            disabled={data_export_disabled || !on_step_change || !canvas}
             aria-label="Download {label}"
             {@attach tooltip({ content: hint })}
           >
@@ -353,7 +358,7 @@
       {/if}
     </div>
 
-    {#if run && !has_canvas}
+    {#if run && !canvas}
       <div class="warning">Waiting for canvas...</div>
     {/if}
   {/if}

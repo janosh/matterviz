@@ -42,6 +42,7 @@ type Host = {
   cell_type: CellType
   sym_data: SymmetryDataset | null
   atom_color_config: AtomColorConfig
+  site_properties?: Record<string, unknown>[]
 }
 
 const crystal = (atoms = 3): AnyStructure => get_dummy_structure(`H`, atoms, true)
@@ -71,6 +72,7 @@ function make_session(initial: Partial<Host> = {}) {
   const destroy = $effect.root(() => {
     session = new StructureSession({
       structure: () => host.structure,
+      site_properties: () => host.site_properties,
       set_structure: (value) => (host.structure = value),
       bonds: () => host.bonds,
       set_bonds: (value) => (host.bonds = value),
@@ -130,11 +132,26 @@ describe(`display pipeline`, () => {
     expect(session.scaled_cell_displayed).toBe(true)
     expect(session.supercell_tiling).toEqual([2, 1, 1])
     expect(session.bond_edits_enabled).toBe(false)
+    const original_input = session.tool_input
     session.element_mapping = { H: `Na` }
     flushSync()
     expect(
       session.displayed_structure?.sites.every((site) => site.species[0].element === `Na`),
     ).toBe(true)
+    expect(session.tool_input?.sites).toHaveLength(3)
+    expect(session.tool_input?.sites.map((site) => site.species[0].element)).toEqual([
+      `Na`,
+      `Na`,
+      `Na`,
+    ])
+    expect(session.tool_input?.sites.map((site) => site.xyz)).toEqual(
+      host.structure?.sites.map((site) => site.xyz),
+    )
+    expect(session.tool_input).not.toBe(original_input)
+    expect(host.structure?.sites[0].species[0].element).toBe(`H`)
+    session.element_mapping = undefined
+    flushSync()
+    expect(session.tool_input).toBe(original_input)
     destroy()
   })
 
@@ -188,6 +205,17 @@ describe(`display pipeline`, () => {
     expect(values.slice(0, 4)).toEqual(Array(4).fill(values[0]))
     expect(values[image_idx]).toBe(values[2])
 
+    host.site_properties = [10, 20, 30, 40].map((charge) => ({ charge }))
+    host.atom_color_config = {
+      ...DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `property`,
+      property_key: `charge`,
+    }
+    flushSync()
+    expect(session.property_colors?.values.slice(0, 4)).toEqual([10, 20, 30, 40])
+    expect(session.property_colors?.values[image_idx]).toBe(30)
+    expect(foreign.sites[2].properties).not.toHaveProperty(`charge`)
+
     // once the session tiles a supercell itself, its orig_unit_cell_idx is followed
     host.supercell_scaling = `1x2x1`
     flushSync()
@@ -196,6 +224,7 @@ describe(`display pipeline`, () => {
       (site) => site.properties.orig_unit_cell_idx === 3 && !is_image_site(site),
     )
     expect([...session.scene_to_structure_indices([site_idx ?? -1])]).toEqual([3])
+    expect(session.property_colors?.values[site_idx ?? -1]).toBe(40)
     destroy()
   })
 

@@ -925,7 +925,11 @@ function find_structure_in_json(obj: unknown, visited = new WeakSet()): Structur
 // species plus abc and/or xyz; the lattice, when present, is authoritative only in its
 // matrix (default pymatgen verbosity writes matrix + pbc and no scalar params)
 type StructureLike = Omit<AnyStructure, `sites` | `lattice`> & {
-  sites: (Omit<Site, `abc` | `xyz`> & { abc?: Vec3; xyz?: Vec3 })[]
+  sites: (Omit<Site, `abc` | `xyz` | `properties`> & {
+    abc?: Vec3
+    xyz?: Vec3
+    properties?: Site[`properties`]
+  })[]
   lattice?: { matrix: math.Matrix3x3; pbc?: unknown }
 }
 
@@ -962,7 +966,12 @@ export function structure_from_json(
       if (!site.xyz) {
         throw new Error(`JSON site ${idx} has no xyz and the structure has no lattice`)
       }
-      return { ...site, xyz: site.xyz, abc: site.abc ?? ([0, 0, 0] as Vec3) }
+      return {
+        ...site,
+        properties: site.properties ?? {},
+        xyz: site.xyz,
+        abc: site.abc ?? ([0, 0, 0] as Vec3),
+      }
     })
     return { ...rest, sites }
   }
@@ -970,7 +979,8 @@ export function structure_from_json(
   const lattice = make_lattice(matrix, is_pbc(raw_lattice.pbc) ? raw_lattice.pbc : undefined)
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
-  const sites = raw_sites.map((site, idx) => {
+  const sites = raw_sites.map((raw_site, idx) => {
+    const site = { ...raw_site, properties: raw_site.properties ?? {} }
     if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
     if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }
     if (site.xyz) return { ...site, xyz: site.xyz, abc: cart_to_frac(site.xyz) }

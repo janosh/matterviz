@@ -17,19 +17,19 @@
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
-  import { untrack } from 'svelte'
+  import { onDestroy, tick, untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import {
     clear_pan_offset,
     create_renderer,
     read_pan_offset,
+    restore_camera_view,
     responsive_gizmo_size,
   } from '$lib/scene'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'
   import StructureScene from './StructureScene.svelte'
-  import { get_orig_site_idx } from './site'
 
   // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
   // "restored" event, so recovery means remounting the <Canvas> for a fresh renderer.
@@ -83,6 +83,7 @@
     interactive = true,
     on_activate = undefined,
     report_moved = undefined,
+    view_state,
     on_camera_move = undefined,
     on_camera_reset = undefined,
 
@@ -91,7 +92,6 @@
     session,
     view_reset_key = undefined,
     reference_structure = undefined,
-    site_properties = undefined,
     scene_props = {},
     gizmo = false,
     volumetric_data = undefined,
@@ -123,11 +123,20 @@
     interactive?: boolean
     on_activate?: () => void
     report_moved?: (moved: boolean) => void
+    // Parent-owned storage survives a host view replacing this viewport.
+    view_state?: {
+      get_pose_key: () => string
+      pose_key?: string
+      camera?: Camera
+      target?: Vec3
+      key?: unknown
+      reset_token?: number
+      direction?: Vec3
+    }
     on_camera_move?: (data: StructureHandlerData) => void
     on_camera_reset?: (data: StructureHandlerData) => void
     session: StructureSession
     view_reset_key?: unknown
-    site_properties?: Record<string, unknown>[]
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
@@ -149,17 +158,7 @@
     trajectory_lines_result?: TrajectoryLinesStats | null
   } = $props()
 
-  let structure = $derived.by(() => {
-    const displayed = session.displayed_structure
-    if (!displayed || !site_properties || !session.shows_input_frame) return displayed
-    return {
-      ...displayed,
-      sites: displayed.sites.map((site, idx) => ({
-        ...site,
-        properties: { ...site.properties, ...site_properties[get_orig_site_idx(site, idx)] },
-      })),
-    }
-  })
+  let structure = $derived(session.render_structure)
 
   // Cell-local dimensions (each pane is responsible for its own zoom sizing) and cursor
   let width = $state(0)
@@ -288,6 +287,60 @@
       pan: read_pan(),
     }
   }
+  // Capture parent props while mounted: evaluating their derived getters during destruction
+  // can disconnect the layout dependencies that are removing this pane.
+  let save_view: (() => void) | undefined
+  $effect(() => {
+    const owner = view_state
+    const live_camera = camera
+    const controls = orbit_controls
+    const context = {
+      key: view_reset_key,
+      reset_token,
+      direction: camera_direction && [...camera_direction],
+      pose_key: owner?.get_pose_key(),
+    }
+    save_view = () => {
+      if (!owner || !live_camera) return
+      Object.assign(owner, {
+        ...context,
+        camera: live_camera.clone(),
+        target: controls?.target.toArray(),
+      })
+    }
+  })
+  onDestroy(() => save_view?.())
+  $effect(() => {
+    const live_camera = camera
+    const controls = orbit_controls
+    if (!live_camera || !controls || !width || !height || initial_computed_zoom === undefined)
+      return
+    // Let the new scene finish applying its initial auto-fit before restoring user zoom.
+    let cancelled = false
+    void tick().then(() => {
+      if (cancelled) return
+      const saved = view_state?.camera
+      if (!saved || !view_state) return
+      delete view_state.camera
+      if (
+        view_state.key !== view_reset_key ||
+        view_state.reset_token !== reset_token ||
+        view_state.pose_key !== view_state.get_pose_key() ||
+        saved.type !== live_camera.type ||
+        !same_pose(view_state.direction, camera_direction)
+      )
+        return
+      restore_camera_view(live_camera, saved, width, height)
+      if (view_state.target) controls.target.set(...view_state.target)
+      controls.update()
+      camera_position = read_camera_position()
+      camera_target = read_orbit_target()
+      remember_current_view()
+    })
+    return () => {
+      cancelled = true
+    }
+  })
   // Only a fresh gesture may cancel a pending settle. Rebaselining alone must not: the push
   // effect below also rebaselines, and cancelling there drops the sync that reports a drag.
   // OrbitControls dispatches `end` on every pointer release, also for presses it never turned

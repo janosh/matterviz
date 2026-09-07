@@ -17,6 +17,21 @@ export * from './lattice-planes'
 export { default as LatticePlanes } from './LatticePlanes.svelte'
 export * from './camera-fit'
 export * from './density'
+export {
+  structure_host_tool,
+  prediction_to_json,
+  prediction_from_json,
+} from './host-tool.svelte'
+export type {
+  StructureToolProps,
+  StructureToolRun,
+  StructureToolOverlay,
+  StructureToolVolume,
+  StructureToolProvenance,
+  StructureToolPrediction,
+  StructureToolView,
+  StructureToolViewProps,
+} from './host-tool.svelte'
 export * from './measure'
 export * from './material'
 export { StructureSession, type StructureSessionInputs } from './session.svelte'
@@ -165,6 +180,7 @@ const VECTOR_KEY_PREFIXES = [
   `velocity`,
   `velocities`,
   `phonon`,
+  `dipole`,
 ] as const
 
 // Memoised: the scan below asks this for every property key of every site on every
