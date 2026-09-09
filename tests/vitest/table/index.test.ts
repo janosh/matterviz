@@ -17,6 +17,7 @@ import {
   parse_numeric_val,
   resolve_color_domain,
   row_matches_query,
+  sort_table_rows,
   table_to_delimited,
   table_to_json,
   table_to_latex,
@@ -378,10 +379,13 @@ describe(`parse_numeric_val`, () => {
 
 describe(`compare_rows`, () => {
   const rows = (...vals: CellVal[]): RowData[] => vals.map((val) => ({ val }))
-  const order = (vals: CellVal[], ascending = true) =>
-    rows(...vals)
-      .toSorted((row1, row2) => compare_rows(row1, row2, [{ key: `val`, ascending }]))
-      .map((row) => row.val)
+  const order = (vals: CellVal[], ascending = true) => {
+    const data = rows(...vals)
+    const criteria = [{ key: `val`, ascending }]
+    const sorted = sort_table_rows(data, criteria)
+    expect(sorted).toEqual(data.toSorted((row1, row2) => compare_rows(row1, row2, criteria)))
+    return sorted.map((row) => row.val)
+  }
 
   it.each([true, false])(`sinks invalid values with ascending=%s`, (ascending) => {
     const invalid_date = new Date(NaN)
@@ -449,6 +453,30 @@ describe(`compare_rows`, () => {
     expect(results[0]).toEqual([5, `abc`, false, true, `zed`]) // numbers first, then text
   })
 
+  it(`reads each object once per sort and refreshes mutated sort values`, () => {
+    let reads = 0
+    const values = Array.from({ length: 40 }, (_, idx) => ({
+      rank: 39 - idx,
+      toJSON() {
+        reads++
+        return this.rank
+      },
+    }))
+    const data = values.map((val) => ({ val }))
+    const criteria = [{ key: `val`, ascending: true }]
+    expect(sort_table_rows(data, criteria).map(({ val }) => val.rank)).toEqual(
+      Array.from({ length: 40 }, (_, idx) => idx),
+    )
+    expect(reads).toBe(40)
+    values[0].rank = -1
+    expect(sort_table_rows(data, criteria)[0]).toBe(data[0])
+    expect(reads).toBe(80)
+    const dates = [{ val: new Date(2024, 0, 2) }, { val: new Date(2024, 0, 1) }]
+    expect(sort_table_rows(dates, criteria)[0]).toBe(dates[1])
+    dates[0].val.setFullYear(2023)
+    expect(sort_table_rows(dates, criteria)[0]).toBe(dates[0])
+  })
+
   // Every case sorts on a primary key that ties, so only a working secondary criterion can
   // produce the expected name order
   const by_name: SortCriterion = { key: `name`, ascending: true }
@@ -468,6 +496,7 @@ describe(`compare_rows`, () => {
       [by_score, by_name], [`a`, `b`]],
   ])(`honours later criteria when %s`, (_case, data, criteria, expected) => {
     const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
+    expect(sort_table_rows(data, criteria)).toEqual(sorted)
     expect(sorted.map((row) => row.name)).toEqual(expected)
   })
 })

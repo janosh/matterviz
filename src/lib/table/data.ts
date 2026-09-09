@@ -95,7 +95,12 @@ const sort_collator = new Intl.Collator(undefined, { numeric: true, sensitivity:
 
 // Comparator over row keys: invalid values sink to the bottom regardless of direction,
 // numbers sort before strings, strings compare natural-order and case-insensitively.
-export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriterion[]): number {
+function compare_row_values(
+  row1: RowData,
+  row2: RowData,
+  criteria: SortCriterion[],
+  sort_value: (val: CellVal) => string | number,
+): number {
   for (const { key, ascending } of criteria) {
     const val1 = row1[key]
     const val2 = row2[key]
@@ -106,8 +111,8 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
     // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
     if (invalid1 && invalid2) continue
     if (invalid1 || invalid2) return Number(invalid1) - Number(invalid2)
-    const sort_val1 = get_sort_val(val1)
-    const sort_val2 = get_sort_val(val2)
+    const sort_val1 = sort_value(val1)
+    const sort_val2 = sort_value(val2)
     const modifier = ascending ? 1 : -1
     if (typeof sort_val1 === `string` && typeof sort_val2 === `string`) {
       const cmp = sort_collator.compare(sort_val1, sort_val2)
@@ -122,7 +127,32 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
   return 0
 }
 
+export const compare_rows = (
+  row1: RowData,
+  row2: RowData,
+  criteria: SortCriterion[],
+): number => compare_row_values(row1, row2, criteria, get_sort_val)
+
+// Parse each distinct cell once per sort, not on every O(n log n) comparison. The cache is
+// local to this operation, so edits to rows, objects and Dates are read on the next sort.
+export function sort_table_rows<Row extends RowData>(
+  rows: Row[],
+  criteria: SortCriterion[],
+): Row[] {
+  const values = new Map<CellVal, string | number>()
+  const sort_value = (val: CellVal): string | number => {
+    if (typeof val === `number`) return get_sort_val(val)
+    let parsed = values.get(val)
+    if (parsed === undefined) values.set(val, (parsed = get_sort_val(val)))
+    return parsed
+  }
+  return rows.toSorted((row1, row2) => compare_row_values(row1, row2, criteria, sort_value))
+}
+
 // === Search and per-column filters ===
+
+export const text_matches_query = (text: string, query: string, fuzzy = false): boolean =>
+  text.includes(query) || (fuzzy && fuzzy_match(query, text))
 
 // Case-insensitive substring (optionally subsequence, e.g. "mdla" matches "Model A") match of
 // a lower-cased query against the row's values, or only the given keys.
@@ -134,7 +164,7 @@ export const row_matches_query = (
   (keys ? keys.map((key) => row[key]) : Object.values(row)).some((val) => {
     if (val == null) return false
     const clean_val = cell_text(val).toLowerCase()
-    return clean_val.includes(query) || (fuzzy && fuzzy_match(query, clean_val))
+    return text_matches_query(clean_val, query, fuzzy)
   })
 
 export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {

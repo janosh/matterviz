@@ -812,13 +812,14 @@
   const needs_static_svg_overlay = (
     point: InternalPoint<Metadata>,
     selected: typeof selected_point,
+    keys: typeof selected_keys,
   ): boolean =>
     point.point_label?.text != null ||
     same_logical_point(point, selected) ||
     // Rect-selected points get the same treatment as `selected_point`, so they must be
     // lifted out of the canvas bitmap too - otherwise a selection past the marker
     // threshold silently paints nothing
-    selected_keys.has(roving_key(point.series_idx, point.point_idx)) ||
+    (keys.size > 0 && keys.has(roving_key(point.series_idx, point.point_idx))) ||
     Boolean(point.point_style?.is_highlighted && point.point_style.highlight_effect)
 
   // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
@@ -844,6 +845,7 @@
       on_point_click || (point_events && Object.values(point_events).some(Boolean))
     if (!canvas_requested || !styles.show_points || needs_svg_events) return null
     const selected = selected_point
+    const keys = selected_keys
     const markers: CanvasMarker[] = []
     for (const series_data of filtered_series) {
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
@@ -852,7 +854,7 @@
       const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
       for (const point of series_data.filtered_data) {
         if (!canvas_safe(point)) return null
-        if (needs_static_svg_overlay(point, selected)) continue
+        if (needs_static_svg_overlay(point, selected, keys)) continue
         const [cx, cy] = project.point(point)
         markers.push(marker_of(point, cx, cy, opacity))
       }
@@ -865,8 +867,11 @@
   const static_overlay_points_by_series = $derived.by(() => {
     if (!use_canvas_markers) return []
     const selected = selected_point
+    const keys = selected_keys
     return filtered_series.map((series_data) =>
-      series_data.filtered_data.filter((point) => needs_static_svg_overlay(point, selected)),
+      series_data.filtered_data.filter((point) =>
+        needs_static_svg_overlay(point, selected, keys),
+      ),
     )
   })
   // Plus the hovered point, for its hover effects. tooltip_point may come from a previous
@@ -1075,31 +1080,13 @@
     return build_spatial_index(entries(), hover_radius)
   })
 
-  // X-only hover binary-searches ordered series and scans unordered ones.
-  const x_hover_series = $derived(
-    filtered_series.map((series_data) => {
-      let direction: -1 | 0 | 1 = 0
-      const { filtered_data: points } = series_data
-      for (let point_idx = 1; point_idx < points.length; point_idx++) {
-        const delta = points[point_idx].x - points[point_idx - 1].x
-        if (delta === 0) continue
-        const next_direction = delta > 0 ? 1 : -1
-        if (direction !== 0 && direction !== next_direction) {
-          return { series_data, direction: 0 as const }
-        }
-        direction = next_direction
-      }
-      return { series_data, direction }
-    }),
-  )
-
   // Nearest point along x within the hover radius, plus that x distance for the click radius
   const x_hover_candidate = (x_rel: number, y_rel: number) => {
     let best_point: InternalPoint<Metadata> | null = null
     let best_x_distance = Number.POSITIVE_INFINITY
     let best_y_distance = Number.POSITIVE_INFINITY
-    for (const { series_data, direction } of x_hover_series) {
-      const { filtered_data: points } = series_data
+    for (const series_data of filtered_series) {
+      const { filtered_data: points, x_direction: direction } = series_data
       if (points.length === 0) continue
       const project = series_projector(series_data)
       const target_x = Number(project.x_scale.invert(x_rel))
@@ -1331,7 +1318,7 @@
   }
 
   function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {
-    event.stopPropagation()
+    if (points_interactive) event.stopPropagation()
     point_events?.onclick?.({ point, event })
     const props = construct_handler_props(point)
     tooltip_point = point
@@ -1725,7 +1712,7 @@
                   selected_keys.has(roving_key(point.series_idx, point.point_idx))}
                 leader_line_threshold={actual_label_config.leader_line_threshold}
                 overlay_only={use_canvas_markers &&
-                  !needs_static_svg_overlay(point, selected_point)}
+                  !needs_static_svg_overlay(point, selected_point, selected_keys)}
                 style={{
                   symbol_type: appearance.symbol_type,
                   ...point.point_style,

@@ -68,10 +68,13 @@ describe(`generate_plot_series`, () => {
       create_rows([
         { energy: -10, frame_id: 0, production_step: 0, time_ps: 0, [`Time (ps)`]: 0 },
         { energy: -11, frame_id: 1, production_step: 10, time_ps: 0.25, [`Time (ps)`]: 0.25 },
+        { energy: -12, frame_id: 2, production_step: 20, time_ps: 0.5, [`Time (ps)`]: 0.5 },
       ]),
       { property_config: DEFAULT_PROPERTY_CONFIG },
     )
     expect(series.map(({ label }) => label)).toEqual([`Energy`])
+    expect(series[0].x).toEqual([0, 1, 2])
+    expect(series[0].y).toEqual([-10, -11, -12])
   })
 
   it(`groups energy and force series by unit`, () => {
@@ -266,6 +269,33 @@ describe(`generate_plot_series`, () => {
       64,
     )
     expect(large_smoothed.y).toEqual(Array(64).fill(1e306))
+  })
+
+  it.each([
+    [`regular`, [0, 2, 6, 11, 16, 24, 28, 31]],
+    [`duplicates`, [0, 2, 7, 11, 16, 24, 28, 31]],
+    [`gaps`, [0, 2, 7, 12, 19, 24, 27, 31]],
+    [`nonmonotonic`, [0, 2, 7, 14, 20, 25, 27, 31]],
+  ] as const)(`preserves selected samples and raw alignment on %s axes`, (shape, selected) => {
+    const source_x = Array.from({ length: 32 }, (_unused, idx) =>
+      shape === `duplicates`
+        ? Math.floor(idx / 3)
+        : shape === `nonmonotonic`
+          ? Math.sin(idx) * 32
+          : idx,
+    )
+    const source_y = source_x.map((_unused, idx) =>
+      shape === `gaps` && idx % 5 < 2 ? NaN : Math.sin(idx * 7) * 100,
+    )
+    if (shape === `gaps`) source_x[4] = Infinity
+    for (const indices of [selected, [0, 31]]) {
+      const [sampled] = prepare_trajectory_scatter_series(
+        [{ x: source_x, y: source_y }],
+        indices.length,
+      )
+      expect(sampled.x).toEqual(indices.map((idx) => source_x[idx]))
+      expect(sampled.raw_y).toEqual(indices.map((idx) => source_y[idx]))
+    }
   })
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 1, 0, -1])(

@@ -1,5 +1,6 @@
 // Pure data-transform helpers extracted from ScatterPlot.svelte. Everything here is
 // stateless: component $state/$derived values are passed in as parameters.
+import { partition_point } from '$lib/math'
 import { error_getter } from '$lib/plot/core/error-bars'
 import type { D3SymbolName } from '$lib/labels'
 import { plot_color } from '$lib/colors'
@@ -31,6 +32,7 @@ const prop_getter = <T>(
 // A series with every finite point materialized once (see materialize_series_points)
 export type MaterializedSeries<Metadata = Record<string, unknown>> = DataSeries<Metadata> & {
   points: InternalPoint<Metadata>[]
+  x_direction: -1 | 0 | 1
   _id: string | number
   orig_series_idx: number
 }
@@ -88,6 +90,11 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
       ...data_series,
       visible: true,
       points,
+      x_direction: points.every((point, idx) => idx === 0 || point.x >= points[idx - 1].x)
+        ? 1
+        : points.every((point, idx) => idx === 0 || point.x <= points[idx - 1].x)
+          ? -1
+          : 0,
       _id: data_series.id ?? series_idx,
       orig_series_idx: series_idx,
     })
@@ -117,7 +124,21 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
     const [x_lo, x_hi] = (data_series.x_axis ?? `x`) === `x2` ? x2_bounds : x_bounds
     const [y_lo, y_hi] = (data_series.y_axis ?? `y`) === `y2` ? y2_bounds : y_bounds
     const filtered_data: InternalPoint<Metadata>[] = []
-    for (const point of data_series.points) {
+    const { points, x_direction } = data_series
+    // Sorted curves/time series often show a tiny window of a long recording. Locate
+    // that window once rather than scanning off-screen history on every pan frame.
+    let start = 0
+    let end = points.length
+    if (x_direction !== 0) {
+      start = partition_point(points, (point) =>
+        x_direction > 0 ? point.x < x_lo : point.x > x_hi,
+      )
+      end = partition_point(points, (point) =>
+        x_direction > 0 ? point.x <= x_hi : point.x >= x_lo,
+      )
+    }
+    for (let point_idx = start; point_idx < end; point_idx++) {
+      const point = points[point_idx]
       // NaN bounds fail both comparisons, so they reject every point
       if (point.x >= x_lo && point.x <= x_hi && point.y >= y_lo && point.y <= y_hi) {
         filtered_data.push(point)

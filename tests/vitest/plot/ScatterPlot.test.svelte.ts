@@ -62,8 +62,8 @@ const next_animation_frame = (): Promise<void> =>
 const stub_svg_rect = (svg: SVGSVGElement) => {
   svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 300 })
 }
-const click_at = (svg: SVGSVGElement, at: { x: number; y: number }) =>
-  svg.dispatchEvent(mouse(`click`, { detail: 1, clientX: at.x, clientY: at.y }))
+const click_at = (element: Element, at: { x: number; y: number }) =>
+  element.dispatchEvent(mouse(`click`, { detail: 1, clientX: at.x, clientY: at.y }))
 // Moves the pointer `dx`/`dy` px off the nth marker and returns where it landed
 const move_to_marker = async (
   plot: HTMLElement,
@@ -385,7 +385,8 @@ describe(`ScatterPlot`, () => {
 
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
-      }>({ tooltip_point: null })
+        selected_points: { series_idx: number; point_idx: number }[]
+      }>({ tooltip_point: null, selected_points: [] })
       const hover_plot = await mount_sized_scatter_plot(
         bind_props({ series: [dense], marker_renderer: `canvas` as const }, state),
       )
@@ -401,6 +402,19 @@ describe(`ScatterPlot`, () => {
       expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
       expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(1)
       expect(hover_plot.querySelector(`path.marker`)?.getAttribute(`fill`)).toBe(`none`)
+      // Empty selection must stay reactive when points enter/leave the SVG overlay.
+      for (const selected_points of [[4, 5], []]) {
+        state.selected_points = selected_points.map((selected_idx) => ({
+          series_idx: 0,
+          point_idx: selected_idx,
+        }))
+        flushSync()
+        await tick()
+        expect(arcs_since_clear).toBe(dense.x.length - selected_points.length)
+        expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(
+          selected_points.length || 1,
+        )
+      }
     })
 
     test(`disables point tweening for canvas overlays`, async () => {
@@ -724,6 +738,10 @@ describe(`ScatterPlot`, () => {
     expect(svg.style.cursor).toBe(`pointer`)
     expect(on_plot_click).toHaveBeenCalledOnce()
     expect(on_plot_click.mock.calls[0][0]).toMatchObject({ x: 2, y: 3 })
+    // Plot-only handlers must also receive a direct marker hit, not just near misses.
+    click_at(plot.querySelectorAll(`path.marker`)[1], await move_to_marker(plot, 1))
+    expect(on_plot_click).toHaveBeenCalledTimes(2)
+    expect(on_plot_click).toHaveBeenLastCalledWith(expect.objectContaining({ x: 2, y: 3 }))
 
     // far from every point the click would land on nothing, so the crosshair returns
     svg.dispatchEvent(mouse(`mousemove`, { clientX: 0, clientY: 0 }))

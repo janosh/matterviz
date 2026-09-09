@@ -261,6 +261,9 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       expect(col_values(`Score`)).toEqual([`0.95`, `0.85`, `0.75`, `0.65`])
+      state.data[0].Score = 0.99
+      await tick()
+      expect(col_values(`Score`)).toEqual([`0.99`, `0.95`, `0.85`, `0.75`])
     })
 
     it(`selects valid date/time column display modes`, async () => {
@@ -895,6 +898,55 @@ describe(`HeatmapTable`, () => {
       for (const [idx, name] of expected.entries()) {
         expect(model_cells[idx]).toContain(name)
       }
+    })
+
+    it(`refreshes indexed searches after row, key, filter, object and Date changes`, async () => {
+      fake_search_timers()
+      const when = new Date(2024, 0, 2)
+      const column_prefs: Record<string, ColumnPrefs> = {}
+      const state = $state({
+        search_query: ``,
+        search: { keys: [`Model`, `Note`, `When`] },
+        column_prefs,
+        data: [
+          { Model: `Alpha`, Note: { value: `old` }, When: when },
+          { Model: `Beta`, Note: { value: `new` }, When: null },
+        ],
+      })
+      mount_table(bind_props({ columns: plain_columns(`Model`, `When`) }, state))
+      await settle_search(state, `alpha`)
+      expect(col_values(`Model`)).toEqual([`Alpha`])
+      state.data[1].Model = `<b>Alpha</b>`
+      await tick()
+      expect(col_values(`Model`)).toEqual([`Alpha`, `Alpha`])
+      await settle_search(state, `new`)
+      expect(col_values(`Model`)).toHaveLength(1)
+      state.data[0].Note.value = `new`
+      await tick()
+      expect(col_values(`Model`)).toHaveLength(2)
+      state.column_prefs.Model = { filter: { kind: `category`, values: [`Beta`] } }
+      await tick()
+      expect(col_values(`Model`)).toHaveLength(0)
+      state.column_prefs = {}
+      state.search.keys = [`When`]
+      when.setFullYear(2025)
+      await settle_search(state, `2025`)
+      expect(col_values(`Model`)).toHaveLength(1)
+      state.column_prefs.When = { filter: { kind: `category`, values: [when.toISOString()] } }
+      await tick()
+      expect(col_values(`Model`)).toHaveLength(1)
+      when.setFullYear(2026)
+      await settle_search(state, `2026`)
+      expect(col_values(`Model`)).toHaveLength(0)
+      state.column_prefs = {}
+      await tick()
+      expect(col_values(`Model`)).toHaveLength(1)
+      state.search.keys[0] = `Model`
+      await tick()
+      expect(col_values(`Model`)).toHaveLength(0)
+      state.search.keys.push(`When`)
+      await tick()
+      expect(col_values(`Model`)).toHaveLength(1)
     })
 
     it(`search.keys restricts matching to the given columns`, async () => {

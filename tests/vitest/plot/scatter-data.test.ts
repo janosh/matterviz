@@ -19,14 +19,43 @@ const filter_to_ranges = (
 ) => filter_series_to_ranges(materialize_series_points(series), axis_ranges)
 
 describe(`filter_series_to_ranges`, () => {
-  test(`includes points exactly on range edges, excludes outside`, () => {
-    const series: DataSeries[] = [{ x: [0, 5, 10, 10.001, -0.001], y: [0, 5, 10, 5, 5] }]
-    const [result] = filter_to_ranges(series, ranges)
-    expect(result.filtered_data.map((pt) => pt.x)).toEqual([0, 5, 10])
-    expect(result.filtered_data[2]).toMatchObject({ x: 10, y: 10, point_idx: 2 })
-    // full x array preserved so connecting lines can continue off-range
-    expect(result).toMatchObject({ visible: true, x: [0, 5, 10, 10.001, -0.001] })
-  })
+  test.each([
+    [`unordered`, [0, 5, 10, 10.001, -0.001]],
+    [`ascending with ties`, [-0.001, 0, 5, 5, 10, 10.001]],
+    [`descending with ties`, [10.001, 10, 5, 5, 0, -0.001]],
+    [`constant`, [5, 5, 5]],
+    [`empty`, []],
+  ] as const)(
+    `filters %s points inclusively without changing their order or identity`,
+    (_name, x_values) => {
+      const series: DataSeries[] = [
+        { x: [...x_values], y: x_values.map(() => 5), markers: `line` },
+      ]
+      const materialized = materialize_series_points(series)
+      for (const x_range of [
+        [0, 10],
+        [10, 0],
+        [5, 5],
+        [-20, -10],
+        [20, 30],
+        [NaN, 10],
+        [-Infinity, Infinity],
+      ]) {
+        const [result] = filter_series_to_ranges(materialized, {
+          ...ranges,
+          x: [x_range[0], x_range[1]],
+        })
+        const expected = materialized[0].points.filter(
+          (point) => point.x >= Math.min(...x_range) && point.x <= Math.max(...x_range),
+        )
+        expect(result.filtered_data).toEqual(expected)
+        for (const [idx, point] of result.filtered_data.entries())
+          expect(point).toBe(expected[idx])
+        // Connecting lines still receive the complete source arrays outside the marker window.
+        expect(result.x).toBe(series[0].x)
+      }
+    },
+  )
 
   test(`drops series whose points are all filtered out (and hidden series)`, () => {
     const series: DataSeries[] = [

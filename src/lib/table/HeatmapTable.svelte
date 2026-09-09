@@ -47,7 +47,7 @@
   import {
     cell_matches_filter,
     cell_text,
-    compare_rows,
+    sort_table_rows,
     DATETIME_MODES_BY_KIND,
     discover_columns,
     format_datetime,
@@ -58,7 +58,7 @@
     middle_ellipsis_parts,
     parse_datetime_val,
     parse_numeric_val,
-    row_matches_query,
+    text_matches_query,
   } from './data'
   import type { ExportFormat, TableMatrix } from './export'
   import {
@@ -240,7 +240,6 @@
   let pagination_config = $derived(with_defaults(pagination, { page_size: 25 }))
   // Writable: the page-size selector overrides it until the parent changes pagination
   let page_size = $derived(pagination_config?.page_size ?? 25)
-  // keys/fuzzy default inside row_matches_query
   let search_config = $derived(
     with_defaults(search, { placeholder: `Filter...`, expanded: false }),
   )
@@ -443,15 +442,37 @@
     return () => clearTimeout(timer)
   })
 
+  // Retain the values read to discard empty rows; normalize text only when a query reaches it.
+  // Objects/Dates stay live, and row values and search keys directly invalidate this index.
+  let search_index = $derived.by(() => {
+    const keys = search_config?.keys
+    return data.flatMap((row) => {
+      const values = Object.values(row)
+      return values.some((val) => val !== undefined)
+        ? [{ row, values: keys ? keys.map((key) => row[key]) : values, text: [] as string[] }]
+        : []
+    })
+  })
+
   // Rows surviving the global query and every per-column filter
   let filtered_data = $derived.by(() => {
     const query = debounced_query.toLowerCase().trim()
-    return data.filter(
-      (row) =>
-        Object.values(row).some((val) => val !== undefined) &&
-        active_filters.every(({ key, filter }) => cell_matches_filter(row[key], filter)) &&
-        (!query || row_matches_query(row, query, search_config ?? {})),
-    )
+    return search_index
+      .filter(
+        ({ row, values, text }) =>
+          active_filters.every(({ key, filter }) => cell_matches_filter(row[key], filter)) &&
+          (!query ||
+            values.some((val, val_idx) =>
+              text_matches_query(
+                typeof val === `object`
+                  ? cell_text(val).toLowerCase()
+                  : (text[val_idx] ??= cell_text(val).toLowerCase()),
+                query,
+                search_config?.fuzzy,
+              ),
+            )),
+      )
+      .map(({ row }) => row)
   })
 
   // === Sorting ===
@@ -469,9 +490,7 @@
       .map(({ column, ascending }) => ({ key: key_of_id(column), ascending }))
   })
   let sorted_data = $derived(
-    sort_criteria.length === 0
-      ? filtered_data
-      : filtered_data.toSorted((row1, row2) => compare_rows(row1, row2, sort_criteria)),
+    sort_criteria.length === 0 ? filtered_data : sort_table_rows(filtered_data, sort_criteria),
   )
 
   function sort_rows(col: Column<Row>, event: MouseEvent | KeyboardEvent) {

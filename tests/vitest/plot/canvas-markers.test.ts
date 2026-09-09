@@ -76,11 +76,14 @@ describe(`canvas markers`, () => {
     expect(filled_path(squares).added).toHaveLength(500)
     const translucent = draw(batch(2, { fill_opacity: 0.5 }))
     expect(ops(translucent, `fill`)).toHaveLength(2)
+    expect(ops(translucent, `set:fillStyle`)).toHaveLength(1)
+    expect(ops(translucent, `set:strokeStyle`)).toHaveLength(1)
     const embedded_alpha = draw(batch(2, { fill: `rgba(255, 0, 0, 0.5)`, stroke_width: 0 }))
     expect(ops(embedded_alpha, `fill`)).toHaveLength(2)
     const fill_and_stroke = draw(batch(2))
     expect(ops(fill_and_stroke, `fill`)).toHaveLength(2)
     expect(ops(fill_and_stroke, `stroke`)).toHaveLength(2)
+    expect(ops(fill_and_stroke, `set:lineWidth`)).toHaveLength(1)
     const color_ctx = draw(
       [`red`, `red`, `blue`, `red`].map((fill) => marker({ fill, stroke_width: 0 })),
     )

@@ -57,6 +57,7 @@ describe(`spatial index`, () => {
     for (const [first_cx, second_cx] of [
       [1, 9],
       [15, 5],
+      [5, 15], // Earlier item in the neighboring cell must survive equal-distance pruning
     ]) {
       expect(
         query_nearest(
@@ -90,7 +91,7 @@ describe(`spatial index`, () => {
     expect(query_nearest(cluster_index, { x: 0.99, y: 0 })?.idx).toBe(99)
   })
 
-  test.each([5, 20, 60])(`matches a linear scan for radius %s px`, (radius_px) => {
+  test.each([0, 0.25, 5, 20, 60])(`matches a linear scan for radius %s px`, (radius_px) => {
     let seed = 12345
     const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
     const items = Array.from({ length: 800 }, (_, idx) => ({
