@@ -323,14 +323,16 @@ test.describe(`Structure Component Tests`, () => {
     await set_scene_props(page, {
       camera_position: [0, 0, 0],
       camera_target: [0, 0, 10],
+      rotate_speed: 0.03,
       rotation_damping: 0,
       auto_rotate: 0,
     })
     await clear_events(page)
-    await drag_canvas(structure_canvas(page), { dx: 1 })
+    // A low-sensitivity drag makes a small orbit without subpixel pointer steps.
+    await drag_canvas(structure_canvas(page), { dx: 20 })
     const event = await wait_for_event(page, `on_camera_move`, [`camera_position`])
     const { camera_position } = event.data as { camera_position: number[] }
-    // A one-pixel orbit stays near the supplied origin; auto-fit would place it across the cell.
+    // The small orbit stays near the supplied origin; auto-fit would place it across the cell.
     expect(Math.hypot(...camera_position)).toBeLessThan(1)
   })
 
