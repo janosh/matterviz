@@ -170,8 +170,8 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     test.skip(IS_CI, `BrillouinZone 3D tests timeout in CI due to WebGL software rendering`)
   })
 
-  test(`triggers on_file_load with data_url`, async ({ page }) => {
-    await page.goto(`/test/brillouin-zone?data_url=/structures/mp-1.json`, {
+  test(`triggers on_file_load with source`, async ({ page }) => {
+    await page.goto(`/test/brillouin-zone?source=/structures/mp-1.json`, {
       waitUntil: `networkidle`,
     })
     await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 20000 })
@@ -181,7 +181,7 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
   })
 
   test(`triggers on_error on failed load`, async ({ page }) => {
-    await page.goto(`/test/brillouin-zone?data_url=/non-existent.json`, {
+    await page.goto(`/test/brillouin-zone?source=/non-existent.json`, {
       waitUntil: `networkidle`,
     })
     // Error handling may take time in CI

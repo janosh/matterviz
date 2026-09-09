@@ -21,7 +21,6 @@ export {
 export * from './run'
 export type { MemoryRunExtras } from './runs/memory'
 export { default as Trajectory } from './Trajectory.svelte'
-export { default as TrajectoryFileViewer } from './TrajectoryFileViewer.svelte'
 export { default as TrajectoryAnalysisPane } from './TrajectoryAnalysisPane.svelte'
 export { default as TrajectoryDataInspectorPane } from './TrajectoryDataInspectorPane.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'

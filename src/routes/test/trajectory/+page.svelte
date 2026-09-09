@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib/structure'
-  import { Trajectory, TrajectoryFileViewer, trajectory_from_frames } from '$lib/trajectory'
+  import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
   import { onMount } from 'svelte'
 
   const lattice_params = { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 }
@@ -182,7 +182,7 @@
 
 <h1 data-hydrated={hydrated}>Trajectory Component Test Page</h1>
 
-<TrajectoryFileViewer id="empty-state" show_controls="always" />
+<Trajectory id="empty-state" show_controls="always" />
 
 <Trajectory
   id="loaded-trajectory"

@@ -202,7 +202,7 @@ const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
 // Hide the first legend element and show it again, asserting the scene sheds instances
 // while hidden and comes back to exactly what it started with.
 const run_hide_restore_cycle = async (page: Page) => {
-  await goto_structure_test(page, `/test/structure?data_url=/structures/mp-756175.json`)
+  await goto_structure_test(page, `/test/structure?source=/structures/mp-756175.json`)
   await set_scene_props(page, { show_bonds: `always` })
   type Counts = Awaited<ReturnType<typeof rendered_instance_counts>>
   const expect_counts = (matcher: (counts: Counts) => void) =>

@@ -13,6 +13,7 @@ const quaternary_diagram = (page: Page) =>
 const hull_canvas = (diagram: Locator) => diagram.locator(`canvas`).first()
 
 const open_pane = async (diagram: Locator, kind: `info` | `controls`) => {
+  await diagram.hover() // Reveal the toolbar before targeting a hover-only button
   await diagram.locator(kind === `info` ? `.info-btn` : `.legend-controls-btn`).click()
   const pane = diagram.locator(`.draggable-pane.convex-hull-${kind}-pane`)
   await expect(pane).toBeVisible()
@@ -69,6 +70,10 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
   test(`renders quaternary diagram, opens panes, initial data attributes, camera inputs`, async ({
     page,
   }) => {
+    const ownership_warnings: string[] = []
+    page.on(`console`, (message) => {
+      if (message.text().includes(`ownership_invalid`)) ownership_warnings.push(message.text())
+    })
     await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const diagram = quaternary_diagram(page)
     await expect(diagram).toHaveAttribute(`data-has-hover`, `false`)
@@ -89,6 +94,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
         .fill(value)
     }
     await expect(hull_canvas(diagram)).toBeVisible()
+    expect(ownership_warnings).toEqual([])
   })
 
   test(`energy color mode shows the e_above_hull colorbar and threshold keeps stats visible`, async ({

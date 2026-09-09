@@ -18,7 +18,7 @@
     auto_isosurface_settings,
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
-    StructureFileViewer,
+    Structure,
   } from 'matterviz'
   import { onMount } from 'svelte'
   import { to_error } from '$lib/utils'
@@ -161,7 +161,7 @@
   style="margin-bottom: 0.5em"
 />
 
-<StructureFileViewer
+<Structure
   bind:structure
   bind:volumetric_data
   bind:isosurface_settings
@@ -187,7 +187,7 @@
       {active_file.replace(/\.gz$/, ``)}
     </p>
   {/if}
-</StructureFileViewer>
+</Structure>
 
 {#if error_msg}
   <StatusMessage message={error_msg} type="error" />

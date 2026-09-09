@@ -10,14 +10,12 @@ import {
   MaterialOpenError,
   open_material,
   source_provenance,
-  type MaterialPayload,
   type MaterialSource,
   type OpenedMaterial,
 } from './open'
 
 export interface MaterialLoaderInputs<Value> {
-  data_url?: () => string | undefined
-  inline_source?: () => MaterialPayload | undefined
+  source: () => MaterialSource | undefined
   current_value: () => Value | undefined
   allow_file_drop: () => boolean
   on_file_drop?: () => FileLoadCallback | undefined
@@ -28,7 +26,7 @@ export interface MaterialLoaderInputs<Value> {
   report_error: (message: string, metadata?: Partial<OpenedMaterial[`provenance`]>) => void
 }
 
-// `url` marks a data_url load, so its completion claims ownership of the URL
+// `url` marks a URL load, so its completion claims ownership of the URL
 type LoadOptions = { url?: string; drop?: boolean }
 
 class MaterialCommitError extends Error {
@@ -125,11 +123,14 @@ export function create_material_loader<Value>(
   }
 
   $effect(() => {
-    const url = inputs.data_url?.()
+    const source = inputs.source()
+    const url =
+      typeof source === `string` || source instanceof URL ? String(source) : undefined
     if (!url) {
       cancel_load()
       loaded_url = undefined
       loader_owns_value = false
+      if (source) void untrack(() => load(source))
       return
     }
     // A host on_file_drop owns the value, so it is neither read (reading it would subscribe
@@ -144,12 +145,6 @@ export function create_material_loader<Value>(
     }
     if (loaded_url === url) return
     void untrack(() => load(url, { url }))
-  })
-
-  $effect(() => {
-    const source = inputs.inline_source?.()
-    if (!source || inputs.data_url?.()) return
-    void untrack(() => load(source))
   })
 
   $effect(() => cancel_load)

@@ -6,7 +6,7 @@ const REPO = `https://github.com/janosh/matterviz/blob/${ref}`
 
 describe(`source links`, () => {
   it.each([
-    [`TrajectoryFileViewer`, `/src/lib/trajectory/TrajectoryFileViewer.svelte`],
+    [`Trajectory`, `/src/lib/trajectory/Trajectory.svelte`],
     [`Structure.svelte`, `/src/lib/structure/Structure.svelte`],
     [` bonding.ts `, `/src/lib/structure/bonding.ts`],
     [`index.ts`, undefined], // one per folder: ambiguous

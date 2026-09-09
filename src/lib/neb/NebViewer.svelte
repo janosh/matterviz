@@ -270,6 +270,7 @@
         {#if current_image}
           <Structure
             {...structure_props}
+            allow_file_drop={false}
             structure={current_image.structure}
             structure_series_key={active?.path}
             show_controls={controls_config.mode === `never`

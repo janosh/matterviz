@@ -21,7 +21,7 @@
   import { volumetric_files } from '$site/isosurfaces'
   import { replace_url } from '$site/state.svelte'
   import type { AnyStructure } from 'matterviz'
-  import { StructureFileViewer } from 'matterviz'
+  import { Structure } from 'matterviz'
   import { untrack } from 'svelte'
   import { to_error } from '$lib/utils'
 
@@ -349,7 +349,7 @@
   style="margin-bottom: 0.5em"
 />
 
-<StructureFileViewer
+<Structure
   bind:structure
   bind:volumetric_data
   bind:isosurface_settings
@@ -371,7 +371,7 @@
       {scenarios.find((entry) => entry.id === active_scenario)?.title}
     </p>
   {/if}
-</StructureFileViewer>
+</Structure>
 
 {#if error_msg}
   <StatusMessage message={error_msg} type="error" />

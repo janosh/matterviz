@@ -60,7 +60,7 @@
     energy_info,
     stable_entries,
     unstable_entries,
-    camera,
+    camera = $bindable(),
     merged_controls,
     controls_open = $bindable(false),
     toggle_props = {},

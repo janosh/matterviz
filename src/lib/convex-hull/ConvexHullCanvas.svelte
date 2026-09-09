@@ -2,13 +2,10 @@
   // Ternary (dim 3, triangle prism with an energy axis and orientation gizmo) and quaternary
   // (dim 4, tetrahedron) convex hulls on a 2D canvas. Everything dimension-specific comes
   // from the HullCanvasStrategy picked by `dim`; the component never reads camera angles.
-  import type { D3InterpolateName } from '$lib/colors'
   import { add_alpha, default_element_colors } from '$lib/colors'
-  import { normalize_show_controls } from '$lib/controls'
   import type { Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
   import { create_renderer, Gizmo, webgpu_available } from '$lib/scene'
-  import { DEFAULTS } from '$lib/settings'
   import { clamp01 } from '$lib/utils'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -25,104 +22,72 @@
     simplex_centroid,
   } from './canvas-draw'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
-  import ConvexHullChrome from './ConvexHullChrome.svelte'
   import { hull_distance_range, hull_style_css } from './helpers'
-  import { create_hull_data_pipeline, KIND_LABEL } from './hull-state.svelte'
-  import type { HullModel } from './model'
+  import type { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
-  import { default_controls, merge_hull_config } from './index'
-  import MissingConvexHullData from './MissingConvexHullData.svelte'
-  import type { ConvexHullEntry, HullFaceColorMode } from './types'
-  import { MAGNETIC_ORDERING_CATEGORY } from './types'
+  import { merge_hull_config } from './index'
+  import type { Snippet } from 'svelte'
+  import type { ShowControlsState } from '$lib/controls'
+  import type { HullSelection } from './canvas-interactions.svelte'
+  import type { ConvexHullEntry, ConvexHullControlsType } from './types'
 
-  // Bindable props default to the dimension's DEFAULTS.convex_hull section
-  const hull_defaults = (dim: 3 | 4) => DEFAULTS.convex_hull[HULL_CANVAS_STRATEGIES[dim].kind]
   let {
     dim,
-    entries: entries_prop,
-    components,
-    controls = {},
+    hull_data,
+    selection,
+    chrome,
+    merged_controls,
+    controls_config,
     config = {},
-    show_controls,
-    on_point_click,
-    on_point_hover,
-    fullscreen = $bindable(hull_defaults(dim).fullscreen),
-    fullscreen_toggle = true,
-    enable_info_pane = true,
     wrapper = $bindable(),
-    label_threshold = 50,
-    show_stable = $bindable(hull_defaults(dim).show_stable),
-    show_unstable = $bindable(hull_defaults(dim).show_unstable),
-    entry_category = MAGNETIC_ORDERING_CATEGORY,
-    hidden_categories = $bindable([]),
-    show_hull_faces = $bindable(hull_defaults(dim).show_hull_faces),
-    hull_face_opacity = $bindable(hull_defaults(dim).hull_face_opacity),
-    hull_face_color_mode = $bindable(
-      hull_defaults(dim).hull_face_color_mode as HullFaceColorMode,
-    ),
-    color_mode = $bindable(hull_defaults(dim).color_mode),
-    color_scale = $bindable(hull_defaults(dim).color_scale as D3InterpolateName),
-    info_pane_open = $bindable(hull_defaults(dim).info_pane_open),
-    controls_open = $bindable(hull_defaults(dim).legend_pane_open),
-    max_hull_dist_show_phases = $bindable(hull_defaults(dim).max_hull_dist_show_phases),
-    max_hull_dist_show_labels = $bindable(hull_defaults(dim).max_hull_dist_show_labels),
-    show_stable_labels = $bindable(hull_defaults(dim).show_stable_labels),
-    show_unstable_labels = $bindable(hull_defaults(dim).show_unstable_labels),
-    allow_file_drop = true,
-    on_file_drop,
-    enable_click_selection = true,
-    enable_structure_preview = true,
-    energy_source_mode = $bindable(`precomputed`),
-    highlighted_entries = $bindable([]),
+    show_hull_faces,
+    hull_face_color,
+    hull_face_opacity,
+    hull_face_color_mode = `uniform`,
+    color_mode = `energy`,
+    color_scale = `interpolateViridis`,
+    max_hull_dist_show_labels = 0.1,
+    show_stable_labels = true,
+    show_unstable_labels = false,
+    highlighted_entries = [],
     highlight_style = {},
-    selected_entry = $bindable(null),
-    temperature = $bindable(),
-    interpolate_temperature = true,
-    max_interpolation_gap = 500,
+    selected_entry = null,
     gizmo = true,
-    gas_config,
-    gas_pressures = $bindable({}),
     children,
-    tooltip,
     ...rest
-  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & { dim: 3 | 4 } = $props()
+  }: Pick<
+    BaseConvexHullProps,
+    | `config`
+    | `wrapper`
+    | `color_mode`
+    | `color_scale`
+    | `max_hull_dist_show_labels`
+    | `show_stable_labels`
+    | `show_unstable_labels`
+    | `highlighted_entries`
+    | `highlight_style`
+    | `selected_entry`
+    | `children`
+    | keyof import('svelte/elements').HTMLAttributes<HTMLDivElement>
+  > &
+    Hull3DProps & {
+      dim: 3 | 4
+      hull_data: ReturnType<typeof create_hull_data_pipeline>
+      selection: HullSelection
+      chrome: Snippet<[ReturnType<typeof create_canvas_interactions> | null]>
+      merged_controls: ConvexHullControlsType
+      controls_config: ShowControlsState
+      hull_face_color: string
+      hull_face_opacity: number
+    } = $props()
 
   // The strategy (and the data pipeline's arity) is fixed for the component's lifetime;
   // ConvexHull.svelte keys on the element count so a 3 ↔ 4 switch remounts
   // svelte-ignore state_referenced_locally
   const strategy = HULL_CANVAS_STRATEGIES[dim]
-  const defaults = DEFAULTS.convex_hull[strategy.kind]
 
-  const entries = $derived(entries_prop ?? [])
-  const merged_controls = $derived({ ...default_controls, ...controls })
-  const controls_config = $derived(normalize_show_controls(show_controls))
   const merged_config = $derived(merge_hull_config(config))
 
-  // Shared reactive data pipeline (temperature → gas → energies → coordinates → hull)
-  const hull_data = create_hull_data_pipeline({
-    dim: strategy.dim,
-    entries: () => entries,
-    components: () => components,
-    temperature: () => temperature,
-    interpolate_temperature: () => interpolate_temperature,
-    max_interpolation_gap: () => max_interpolation_gap,
-    gas_config: () => gas_config,
-    gas_pressures: () => gas_pressures,
-    energy_source_mode: () => energy_source_mode,
-    max_hull_dist_show_phases: () => max_hull_dist_show_phases,
-    show_stable: () => show_stable,
-    show_unstable: () => show_unstable,
-    entry_category: () => entry_category,
-    hidden_categories: () => hidden_categories,
-    label_threshold: () => label_threshold,
-    set_temperature: (next_temp) => (temperature = next_temp),
-    set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
-    hide_labels: () => {
-      show_stable_labels = false
-      show_unstable_labels = false
-    },
-  })
-  export const get_model = (): HullModel => hull_data.model
   const elements = $derived(hull_data.elements)
   const plot_entries = $derived(hull_data.plot_entries)
   const visible_entries = $derived(hull_data.visible_entries)
@@ -134,7 +99,6 @@
 
   let canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
-  let hull_face_color = $state(defaults.hull_face_color)
 
   const centroid = simplex_centroid(strategy.corners)
   const project_point = (x: number, y: number, z: number): Projected =>
@@ -144,22 +108,14 @@
   // state, point styling, canvas sizing, render scheduler)
   const interactions = create_canvas_interactions({
     strategy,
+    selection: () => selection,
     canvas: () => canvas,
     overlay_canvas: () => overlay_canvas,
     wrapper: () => wrapper,
-    entries: () => entries,
     elements: () => elements,
     visible_entries: () => visible_entries,
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
-    set_selected_entry: (entry) => (selected_entry = entry),
-    enable_click_selection: () => enable_click_selection,
-    enable_structure_preview: () => enable_structure_preview,
-    allow_file_drop: () => allow_file_drop,
-    on_point_click: () => on_point_click,
-    on_point_hover: () => on_point_hover,
-    on_file_drop: () => on_file_drop,
-    entry_category: () => entry_category,
     highlighted_entries: () => highlighted_entries,
     highlight_style: () => highlight_style,
     color_mode: () => color_mode,
@@ -175,15 +131,10 @@
     render_frame,
     // oxfmt-ignore
     repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, energy_range, merged_config],
-    actions: (): Record<string, () => void> => ({
-      r: interactions.reset_camera,
-      b: () => (color_mode = color_mode === `stability` ? `energy` : `stability`),
-      s: () => (show_stable = !show_stable),
-      u: () => (show_unstable = !show_unstable),
-      h: () => (show_hull_faces = !show_hull_faces),
-      l: () => (show_stable_labels = !show_stable_labels),
-      ...strategy.actions?.(camera, interactions.view_scale),
-    }),
+  })
+  export const get_actions = (): Record<string, () => void> => ({
+    r: interactions.reset_camera,
+    ...strategy.actions?.(camera, interactions.view_scale),
   })
   const { camera } = interactions
   // Current camera as data attributes (data-zoom, data-rotation-x, ...) for tests and styling.
@@ -273,149 +224,100 @@
   })
 
   const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
-  // Missing or invalid entries render the empty state instead of the canvas
-  const show_plot = $derived(entries_prop !== undefined && hull_data.error === null)
 </script>
 
 <svelte:document
-  onmousemove={show_plot ? interactions.handle_mouse_move : undefined}
-  onmouseup={show_plot ? interactions.handle_mouse_up : undefined}
+  onmousemove={interactions.handle_mouse_move}
+  onmouseup={interactions.handle_mouse_up}
 />
 
-{#if !show_plot}
-  <MissingConvexHullData
-    {...rest}
-    error={hull_data.error}
-    style="{style}; height: var(--hull-height, 500px)"
-  />
-{:else}
-  <div
-    {...rest}
-    class={[`convex-hull-canvas`, `convex-hull-${dim}d`, rest.class]}
-    {style}
-    data-has-selection={selected_entry !== null}
-    data-has-hover={interactions.selection.hover_data !== null}
-    data-is-dragging={interactions.is_dragging}
-    {...camera_attrs}
-    bind:this={wrapper}
-    role="application"
-    tabindex="-1"
-    onkeydown={interactions.selection.handle_keydown}
-    {...interactions.selection.drop_zone}
-    aria-label="{KIND_LABEL[strategy.kind]} convex hull visualization"
-  >
-    {@render children?.({
-      model: hull_data.model,
-      highlighted_entries,
-      selected_entry,
-    })}
-    <canvas
-      bind:this={canvas}
-      tabindex="0"
-      aria-label={merged_controls.title ||
-        hull_data.phase_stats?.chemical_system ||
-        `${dim}D Convex Hull`}
-      {...interactions.canvas_handlers}
-    ></canvas>
-    <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
+<div
+  {...rest}
+  class={[`convex-hull-canvas`, `convex-hull-${dim}d`, rest.class]}
+  {style}
+  data-has-selection={selected_entry !== null}
+  data-has-hover={selection.hover_data !== null}
+  data-is-dragging={interactions.is_dragging}
+  {...camera_attrs}
+  bind:this={wrapper}
+  role="application"
+  tabindex="-1"
+  onkeydown={selection.handle_keydown}
+  {...selection.drop_zone}
+  aria-label="{dim === 3 ? `Ternary` : `Quaternary`} convex hull visualization"
+>
+  {@render children?.({
+    model: hull_data.model,
+    highlighted_entries,
+    selected_entry,
+  })}
+  <canvas
+    bind:this={canvas}
+    tabindex="0"
+    aria-label={merged_controls.title ||
+      hull_data.phase_stats?.chemical_system ||
+      `${dim}D Convex Hull`}
+    {...interactions.canvas_handlers}
+  ></canvas>
+  <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
 
-    {#if color_mode === `energy` && plot_entries.length > 0}
-      <ColorBar
-        title="Energy above hull (eV/atom)"
-        range={hull_distance_range(plot_entries)}
-        scale={color_scale}
-        wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 2.5em);"
-        bar_style="height: 12px;"
-        title_style="margin-bottom: 4px;"
-      />
-    {/if}
-
-    {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
-      <ColorBar
-        title="Formation energy (eV/atom)"
-        scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
-        range={e_form_range}
-        wrapper_style="position: absolute; bottom: 1em; right: 1em; width: min(200px, 50cqw - 2.5em);"
-        bar_style="height: 12px;"
-        title_style="margin-bottom: 4px;"
-      />
-    {/if}
-
-    <ConvexHullChrome
-      kind={strategy.kind}
-      selection={interactions.selection}
-      {hull_data}
-      {controls_config}
-      loading={entries.length === 0}
-      on_reset={interactions.reset_camera}
-      {enable_info_pane}
-      {label_threshold}
-      bind:fullscreen
-      {fullscreen_toggle}
-      on_fullscreen_change={interactions.recenter_camera}
-      {wrapper}
-      {camera}
-      {merged_controls}
-      get_point_color={interactions.get_point_color}
-      merged_highlight_style={interactions.highlight_style}
-      is_highlighted={interactions.is_highlighted}
-      {tooltip}
-      {selected_entry}
-      bind:temperature
-      bind:gas_pressures
-      bind:show_hull_faces
-      bind:hull_face_color
-      bind:hull_face_opacity
-      bind:hull_face_color_mode
-      bind:info_pane_open
-      bind:controls_open
-      bind:color_mode
-      bind:color_scale
-      bind:show_stable
-      bind:show_unstable
-      {entry_category}
-      bind:hidden_categories
-      bind:show_stable_labels
-      bind:show_unstable_labels
-      bind:max_hull_dist_show_phases
-      bind:max_hull_dist_show_labels
-      bind:energy_source_mode
+  {#if color_mode === `energy` && plot_entries.length > 0}
+    <ColorBar
+      title="Energy above hull (eV/atom)"
+      range={hull_distance_range(plot_entries)}
+      scale={color_scale}
+      wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 2.5em);"
+      bar_style="height: 12px;"
+      title_style="margin-bottom: 4px;"
     />
+  {/if}
 
-    <!-- Orientation gizmo (configurable placement, default top-right) -->
-    {#if gizmo && gizmo_cam_state && webgpu_available()}
-      <div class={[`gizmo-wrapper`, controls_config.class]} data-placement={gizmo_placement}>
-        <Canvas createRenderer={create_renderer}>
-          <T.PerspectiveCamera
-            makeDefault
-            bind:ref={gizmo_cam_ref}
-            position={gizmo_cam_state.position}
-            up={gizmo_cam_state.up}
-            fov={50}
+  {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
+    <ColorBar
+      title="Formation energy (eV/atom)"
+      scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
+      range={e_form_range}
+      wrapper_style="position: absolute; bottom: 1em; right: 1em; width: min(200px, 50cqw - 2.5em);"
+      bar_style="height: 12px;"
+      title_style="margin-bottom: 4px;"
+    />
+  {/if}
+
+  {@render chrome(interactions)}
+
+  <!-- Orientation gizmo (configurable placement, default top-right) -->
+  {#if gizmo && gizmo_cam_state && webgpu_available()}
+    <div class={[`gizmo-wrapper`, controls_config.class]} data-placement={gizmo_placement}>
+      <Canvas createRenderer={create_renderer}>
+        <T.PerspectiveCamera
+          makeDefault
+          bind:ref={gizmo_cam_ref}
+          position={gizmo_cam_state.position}
+          up={gizmo_cam_state.up}
+          fov={50}
+        >
+          <extras.OrbitControls
+            bind:ref={gizmo_orbit_ref}
+            enableRotate={false}
+            enableZoom={false}
+            enablePan={false}
           >
-            <extras.OrbitControls
-              bind:ref={gizmo_orbit_ref}
-              enableRotate={false}
-              enableZoom={false}
-              enablePan={false}
-            >
-              <Gizmo
-                {...gizmo_props}
-                placement="fill"
-                on_start={() => (gizmo_active = true)}
-                on_change={sync_gizmo_to_camera}
-                on_end={() => {
-                  sync_gizmo_to_camera()
-                  gizmo_active = false
-                }}
-              />
-            </extras.OrbitControls>
-          </T.PerspectiveCamera>
-        </Canvas>
-      </div>
-    {/if}
-  </div>
-{/if}
+            <Gizmo
+              {...gizmo_props}
+              placement="fill"
+              on_start={() => (gizmo_active = true)}
+              on_change={sync_gizmo_to_camera}
+              on_end={() => {
+                sync_gizmo_to_camera()
+                gizmo_active = false
+              }}
+            />
+          </extras.OrbitControls>
+        </T.PerspectiveCamera>
+      </Canvas>
+    </div>
+  {/if}
+</div>
 
 <style>
   .convex-hull-canvas {

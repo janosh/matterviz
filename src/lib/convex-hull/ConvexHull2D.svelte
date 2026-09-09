@@ -1,6 +1,4 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
-  import { normalize_show_controls } from '$lib/controls'
   import { array_extent, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -10,82 +8,66 @@
     UserContentProps,
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import { DEFAULTS } from '$lib/settings'
   import { marker_d3_name, point_radius } from './canvas-draw'
-  import { create_hull_selection } from './canvas-interactions.svelte'
-  import ConvexHullChrome from './ConvexHullChrome.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import {
     entry_is_stable,
-    get_point_color_for_entry,
     hull_style_css,
     is_entry_highlighted,
     merge_highlight_style,
     same_entry,
   } from './helpers'
-  import { create_hull_data_pipeline } from './hull-state.svelte'
+  import type { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps } from './index'
-  import { CONVEX_HULL_STYLE, default_controls, merge_hull_config } from './index'
-  import MissingConvexHullData from './MissingConvexHullData.svelte'
-  import type { HullModel } from './model'
+  import { CONVEX_HULL_STYLE, merge_hull_config } from './index'
+  import type { Snippet } from 'svelte'
+  import type { HullSelection, create_canvas_interactions } from './canvas-interactions.svelte'
   import type { ConvexHullEntry } from './types'
-  import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
-  const defaults = DEFAULTS.convex_hull.binary
   let {
-    entries: entries_prop,
-    components,
-    controls = {},
+    hull_data,
+    selection,
+    chrome,
+    title_height,
     config = {},
-    show_controls,
-    on_point_click,
-    on_point_hover,
-    fullscreen = $bindable(defaults.fullscreen),
-    fullscreen_toggle = true,
-    enable_info_pane = true,
+    fullscreen = $bindable(false),
     wrapper = $bindable(),
-    label_threshold = 50,
-    show_stable = $bindable(defaults.show_stable),
-    show_unstable = $bindable(defaults.show_unstable),
-    entry_category = MAGNETIC_ORDERING_CATEGORY,
-    hidden_categories = $bindable([]),
-    color_mode = $bindable(defaults.color_mode),
-    color_scale = $bindable(defaults.color_scale as D3InterpolateName),
-    info_pane_open = $bindable(defaults.info_pane_open),
-    controls_open = $bindable(defaults.legend_pane_open),
-    max_hull_dist_show_phases = $bindable(defaults.max_hull_dist_show_phases),
-    max_hull_dist_show_labels = $bindable(defaults.max_hull_dist_show_labels),
-    show_stable_labels = $bindable(defaults.show_stable_labels),
-    show_unstable_labels = $bindable(defaults.show_unstable_labels),
-    allow_file_drop = true,
-    on_file_drop,
-    enable_click_selection = true,
-    enable_structure_preview = true,
-    energy_source_mode = $bindable(`precomputed`),
+    entry_category,
+    color_mode = `energy`,
     display = $bindable({ x_grid: false, y_grid: false }),
-    highlighted_entries = $bindable([]),
+    highlighted_entries = [],
     highlight_style = {},
     x_axis = {},
     y_axis = {},
-    selected_entry = $bindable(null),
-    temperature = $bindable(),
-    interpolate_temperature = true,
-    max_interpolation_gap = 500,
-    gas_config,
-    gas_pressures = $bindable({}),
+    selected_entry = null,
     children,
     tooltip: custom_tooltip,
     title,
     ...rest
-  }: BaseConvexHullProps<ConvexHullEntry> & {
+  }: Pick<
+    BaseConvexHullProps,
+    | `config`
+    | `fullscreen`
+    | `wrapper`
+    | `entry_category`
+    | `color_mode`
+    | `display`
+    | `highlighted_entries`
+    | `highlight_style`
+    | `selected_entry`
+    | `children`
+    | `tooltip`
+    | keyof import('svelte/elements').HTMLAttributes<HTMLDivElement>
+  > & {
+    hull_data: ReturnType<typeof create_hull_data_pipeline>
+    selection: HullSelection
+    chrome: Snippet<[ReturnType<typeof create_canvas_interactions> | null]>
+    title_height: number
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   } = $props()
-  const entries = $derived(entries_prop ?? [])
 
-  const merged_controls = $derived({ ...default_controls, ...controls })
-  const controls_config = $derived(normalize_show_controls(show_controls))
   const merged_config = $derived(merge_hull_config(config))
   // Narrow deriveds to primitive fields so heavy downstream deriveds (scatter series,
   // hull segments) don't recompute whenever the broad merged_config object is recreated.
@@ -97,31 +79,6 @@
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
     is_entry_highlighted(entry, highlighted_entries)
 
-  // Shared reactive data pipeline (temperature → gas → energies → coordinates → hull)
-  const hull_data = create_hull_data_pipeline({
-    dim: 2,
-    entries: () => entries,
-    components: () => components,
-    temperature: () => temperature,
-    interpolate_temperature: () => interpolate_temperature,
-    max_interpolation_gap: () => max_interpolation_gap,
-    gas_config: () => gas_config,
-    gas_pressures: () => gas_pressures,
-    energy_source_mode: () => energy_source_mode,
-    max_hull_dist_show_phases: () => max_hull_dist_show_phases,
-    show_stable: () => show_stable,
-    show_unstable: () => show_unstable,
-    entry_category: () => entry_category,
-    hidden_categories: () => hidden_categories,
-    label_threshold: () => label_threshold,
-    set_temperature: (next_temp) => (temperature = next_temp),
-    set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
-    hide_labels: () => {
-      show_stable_labels = false
-      show_unstable_labels = false
-    },
-  })
-  export const get_model = (): HullModel => hull_data.model
   const elements = $derived(hull_data.elements)
   const plot_entries = $derived(hull_data.plot_entries)
   const visible_entries = $derived(hull_data.visible_entries)
@@ -135,30 +92,6 @@
         ? hull_entries.filter((entry) => entry.is_element)
         : [...new Set(facet_entries.flat())]
     return vertices.toSorted((left, right) => left.x - right.x)
-  })
-
-  let chrome = $state<ReturnType<typeof ConvexHullChrome>>()
-  let title_height = $state(0)
-  const selection = create_hull_selection({
-    entries: () => entries,
-    plot_entries: () => plot_entries,
-    selected_entry: () => selected_entry,
-    set_selected_entry: (entry) => (selected_entry = entry),
-    enable_click_selection: () => enable_click_selection,
-    enable_structure_preview: () => enable_structure_preview,
-    allow_file_drop: () => allow_file_drop,
-    on_point_click: () => on_point_click,
-    on_point_hover: () => on_point_hover,
-    on_file_drop: () => on_file_drop,
-    entry_category: () => entry_category,
-    wrapper: () => wrapper,
-    actions: () => ({
-      b: () => (color_mode = color_mode === `stability` ? `energy` : `stability`),
-      s: () => (show_stable = !show_stable),
-      u: () => (show_unstable = !show_unstable),
-      l: () => (show_stable_labels = !show_stable_labels),
-      r: () => chrome?.reset_all(),
-    }),
   })
 
   const y_domain = $derived.by((): Vec2 => {
@@ -297,106 +230,63 @@
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
 
-{#if entries_prop === undefined || hull_data.error}
-  <MissingConvexHullData
-    {...rest}
-    error={hull_data.error}
-    style="{style}; height: var(--hull-height, 500px)"
-  />
-{:else}
-  <ScatterPlot
-    {...rest}
-    class={[`convex-hull-2d`, rest.class]}
-    {style}
-    title={title ?? undefined}
-    data-has-selection={selected_entry !== null}
-    bind:wrapper
-    bind:fullscreen
-    role="application"
-    tabindex={-1}
-    onkeydown={selection.handle_keydown}
-    {...selection.drop_zone}
-    aria-label="Binary convex hull visualization"
-    series={scatter_series}
-    bind:display
-    show_controls={false}
-    fullscreen_toggle={false}
-    x_axis={{
-      label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
-      range: [0, 1],
-      ticks: 4,
-      ...x_axis,
-    }}
-    y_axis={{
-      label: `E<sub>form</sub> (eV/atom)`,
-      range: y_domain,
-      ticks: 4,
-      label_shift: { y: 15 },
-      ...y_axis,
-    }}
-    legend={null}
-    color_bar={{
-      title: `E<sub>above hull</sub> (eV/atom)`,
-      bar_style: `width: 220px; height: 16px;`,
-    }}
-    {tooltip}
-    {user_content}
-    selected_point={selected_scatter_point}
-    on_point_click={handle_point_click}
-    on_point_hover={(data: ScatterHandlerEvent<ConvexHullEntry> | null) =>
-      selection.set_hover(
-        data?.metadata
-          ? {
-              entry: data.metadata,
-              position: { x: data.event.clientX, y: data.event.clientY },
-            }
-          : null,
-      )}
-    padding={{ t: 30 + title_height, b: 60, l: 60, r: 30 }}
-  >
-    {@render children?.({
-      model: hull_data.model,
-      highlighted_entries,
-      selected_entry,
-    })}
-    <ConvexHullChrome
-      bind:this={chrome}
-      bind:title_height
-      kind="binary"
-      {selection}
-      {hull_data}
-      {controls_config}
-      show_tooltip={false}
-      {enable_info_pane}
-      {label_threshold}
-      bind:fullscreen
-      {fullscreen_toggle}
-      {wrapper}
-      {merged_controls}
-      get_point_color={(entry) =>
-        get_point_color_for_entry(entry, color_mode, merged_config.colors, null)}
-      {merged_highlight_style}
-      {is_highlighted}
-      tooltip={custom_tooltip}
-      {selected_entry}
-      bind:temperature
-      bind:gas_pressures
-      bind:info_pane_open
-      bind:controls_open
-      bind:color_mode
-      bind:color_scale
-      bind:show_stable
-      bind:show_unstable
-      {entry_category}
-      bind:hidden_categories
-      bind:show_stable_labels
-      bind:show_unstable_labels
-      bind:max_hull_dist_show_phases
-      bind:max_hull_dist_show_labels
-      bind:energy_source_mode
-    />
-  </ScatterPlot>
-{/if}
+<ScatterPlot
+  {...rest}
+  class={[`convex-hull-2d`, rest.class]}
+  {style}
+  title={title ?? undefined}
+  data-has-selection={selected_entry !== null}
+  bind:wrapper
+  bind:fullscreen
+  role="application"
+  tabindex={-1}
+  onkeydown={selection.handle_keydown}
+  {...selection.drop_zone}
+  aria-label="Binary convex hull visualization"
+  series={scatter_series}
+  bind:display
+  show_controls={false}
+  fullscreen_toggle={false}
+  x_axis={{
+    label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
+    range: [0, 1],
+    ticks: 4,
+    ...x_axis,
+  }}
+  y_axis={{
+    label: `E<sub>form</sub> (eV/atom)`,
+    range: y_domain,
+    ticks: 4,
+    label_shift: { y: 15 },
+    ...y_axis,
+  }}
+  legend={null}
+  color_bar={{
+    title: `E<sub>above hull</sub> (eV/atom)`,
+    bar_style: `width: 220px; height: 16px;`,
+  }}
+  {tooltip}
+  {user_content}
+  selected_point={selected_scatter_point}
+  on_point_click={handle_point_click}
+  on_point_hover={(data: ScatterHandlerEvent<ConvexHullEntry> | null) =>
+    selection.set_hover(
+      data?.metadata
+        ? {
+            entry: data.metadata,
+            position: { x: data.event.clientX, y: data.event.clientY },
+          }
+        : null,
+    )}
+  padding={{ t: 30 + title_height, b: 60, l: 60, r: 30 }}
+>
+  {@render children?.({
+    model: hull_data.model,
+    highlighted_entries,
+    selected_entry,
+  })}
+  {@render chrome(null)}
+</ScatterPlot>
 
 <style>
   :global(.convex-hull-2d:fullscreen) {

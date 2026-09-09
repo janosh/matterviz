@@ -31,8 +31,8 @@ vi.mock(`matterviz`, async () => {
     `ScatterPlot`,
     `ScatterPlot3D`,
     `SpacegroupBarPlot`,
-    `StructureFileViewer`,
-    `TrajectoryFileViewer`,
+    `Structure`,
+    `Trajectory`,
     `Treemap`,
     `XrdPlot`,
   ]
@@ -327,7 +327,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
 })
 
 describe(`widget config wiring`, () => {
-  test(`trajectory builds a run from the JSON trait and feeds data_url to the file viewer as src`, () => {
+  test(`trajectory builds a run from the JSON trait and feeds data_url to the file viewer as source`, () => {
     const payload = { frames: [{ step: 0, structure: { sites: [] } }] }
     const model = new MockModel({
       widget_type: `trajectory`,
@@ -336,7 +336,7 @@ describe(`widget config wiring`, () => {
     })
     const stub = run_widget(`trajectory`, model)
     expect(stub.read().trajectory).toEqual({ run_of: payload })
-    expect(stub.read().src).toBe(`/a.xyz`)
+    expect(stub.read().source).toBe(`/a.xyz`)
     expect(`data_url` in stub.read()).toBe(false)
     model.push_from_python(`trajectory`, null)
     flushSync()

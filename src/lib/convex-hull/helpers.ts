@@ -192,14 +192,14 @@ export function auto_threshold_reset(default_threshold: number) {
 
 // The entry in `entries` that is the same logical entry as `entry` (by id, else identity)
 export function current_entry<Entry extends { entry_id?: string }>(
-  entry: Entry | null | undefined,
+  entry: { entry_id?: string } | null | undefined,
   entries: readonly Entry[],
 ): Entry | null {
   if (!entry) return null
   if (entry.entry_id) {
     return entries.find((candidate) => candidate.entry_id === entry.entry_id) ?? null
   }
-  return entries.includes(entry) ? entry : null
+  return entries.find((candidate) => candidate === entry) ?? null
 }
 
 // Same logical entry: same object or same entry_id. The id check is proxy-safe — a raw

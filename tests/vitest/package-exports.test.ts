@@ -120,6 +120,18 @@ describe(`package.json exports`, () => {
   })
 
   test(`root barrel exposes headless hull and host prediction APIs`, () => {
+    expect(lib.Structure).toBeTypeOf(`function`)
+    expect(lib.Trajectory).toBeTypeOf(`function`)
+    expect(lib.ConvexHull).toBeTypeOf(`function`)
+    for (const name of [
+      `StructureFileViewer`,
+      `TrajectoryFileViewer`,
+      `ConvexHull2D`,
+      `ConvexHullCanvas`,
+      `StructureBarPlot`,
+    ]) {
+      expect(lib).not.toHaveProperty(name)
+    }
     expect(lib.compute_hull_model).toBeTypeOf(`function`)
     expectTypeOf<HullModel>().toHaveProperty(`entries`)
     expect(lib.structure_host_tool).toHaveProperty(`component`)
@@ -141,13 +153,13 @@ describe(`package.json exports`, () => {
     async (entry) => {
       expect(import.meta.resolve(entry)).toContain(`/dist/`)
       const {
-        StructureFileViewer,
+        Structure,
         compute_hull_model,
         structure_host_tool,
         prediction_to_json,
         prediction_from_json,
       } = await import(entry)
-      expect(StructureFileViewer).toBeTypeOf(`function`)
+      expect(Structure).toBeTypeOf(`function`)
       if (entry === `matterviz`) expect(compute_hull_model).toBeTypeOf(`function`)
       expect(structure_host_tool).toHaveProperty(`component`, null)
       expect(prediction_to_json).toBeTypeOf(`function`)

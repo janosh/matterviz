@@ -1,7 +1,7 @@
 <script lang="ts">
   import FilePicker from '$lib/FilePicker.svelte'
-  import StructureFileViewer from '$lib/structure/StructureFileViewer.svelte'
-  import { TrajectoryFileViewer } from '$lib/trajectory'
+  import Structure from '$lib/structure/Structure.svelte'
+  import { Trajectory } from '$lib/trajectory'
   import {
     ConvexHullDemo,
     FermiSurfaceDemo,
@@ -76,7 +76,7 @@
       <h3 style="margin: 0 0 1ex; text-align: center; font-family: monospace">
         {structure_filenames[idx]}
       </h3>
-      <StructureFileViewer
+      <Structure
         source="/structures/{file_name}"
         style="flex: 1"
         on_file_load={(data) => {
@@ -117,8 +117,8 @@
 
 <h2><a href="/trajectory">Trajectory Viewer</a></h2>
 
-<TrajectoryFileViewer
-  src="/trajectories/{default_trajectory_file}"
+<Trajectory
+  source="/trajectories/{default_trajectory_file}"
   class="full-bleed"
   style="max-height: 700px"
   on_file_load={({ source_filename }) => {

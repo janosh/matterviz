@@ -1,7 +1,7 @@
 <script lang="ts">
   import FilePicker from '$lib/FilePicker.svelte'
   import { trajectory_files } from '$site/trajectories'
-  import { TrajectoryFileViewer, type TrajHandlerData } from 'matterviz/trajectory'
+  import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
 
   let active_file = $state(``) // last drag-and-dropped trajectory file
   let visible_props_cantor_qha = $state<string[] | undefined>(undefined)
@@ -20,13 +20,10 @@
 <h1>Trajectory</h1>
 
 <p>
-  Every viewer on this page is a <code>TrajectoryFileViewer</code>: it fetches <code>src</code>
-  (a URL, <code>File</code>, <code>ArrayBuffer</code> or <code>Blob</code>), accepts drops,
-  decompresses, resolves ambiguous HDF5 groups, opens large files in a Web Worker and disposes
-  each run when it is replaced or unmounted. The <code>Trajectory</code> component underneath
-  is a pure viewer that borrows a <code>TrajectoryRun</code> you already hold (from
-  <code>open_trajectory</code> or <code>trajectory_from_frames</code>) and never loads or
-  disposes anything itself.
+  <code>Trajectory</code> accepts a URL, <code>File</code> or
+  <code>{'{ data, filename }'}</code> through <code>source</code>, handles drops and HDF5 group
+  selection, and disposes runs it opens. Pass a <code>TrajectoryRun</code> through
+  <code>trajectory</code> to manage loading and disposal yourself.
 </p>
 
 <details class="analysis-notes">
@@ -51,13 +48,13 @@
 </details>
 
 <div class="full-bleed traj-pair">
-  <TrajectoryFileViewer
-    src="/trajectories/flame-gold-cluster-55-atoms.h5"
+  <Trajectory
+    source="/trajectories/flame-gold-cluster-55-atoms.h5"
     style={viewer_style}
     on_file_load={handle_file_load}
   />
-  <TrajectoryFileViewer
-    src="/trajectories/vasp-XDATCAR-traj.gz"
+  <Trajectory
+    source="/trajectories/vasp-XDATCAR-traj.gz"
     style={viewer_style}
     on_file_load={handle_file_load}
   />
@@ -70,20 +67,20 @@
 >
   bind:visible_properties = {JSON.stringify(visible_props_cantor_qha)}
 </strong>
-<TrajectoryFileViewer
-  src="/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz"
+<Trajectory
+  source="/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz"
   bind:visible_properties={visible_props_cantor_qha}
   class="full-bleed"
   style="margin-top: 1em; {viewer_style}"
   on_file_load={handle_file_load}
 />
-<TrajectoryFileViewer
-  src="/trajectories/ase-images-Ag-0-to-97.xyz.gz"
+<Trajectory
+  source="/trajectories/ase-images-Ag-0-to-97.xyz.gz"
   class="full-bleed"
   style="margin-top: 5em; {viewer_style}"
   on_file_load={handle_file_load}
 />
-<TrajectoryFileViewer
+<Trajectory
   class="full-bleed"
   style="margin-top: 5em; {viewer_style}"
   on_file_load={handle_file_load}
@@ -106,7 +103,7 @@
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
     gap: 1em;
     margin-top: 5em;
-    > :global(.trajectory-file-viewer) {
+    > :global(.trajectory) {
       min-width: 0;
     }
   }

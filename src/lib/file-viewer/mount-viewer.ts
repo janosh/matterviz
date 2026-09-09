@@ -55,7 +55,7 @@ export function mount_viewer(
   const no_file_drop = { ...common_props, allow_file_drop: false }
   const structure_props = {
     ...build_structure_props_from_settings(defaults),
-    ...common_props,
+    ...no_file_drop,
     persist_settings: false,
   }
 

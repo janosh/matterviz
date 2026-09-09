@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { FileInfo } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
-  import { ConvexHullCanvas } from '$lib/convex-hull'
+  import { ConvexHull } from '$lib/convex-hull'
   import FilePicker from '$lib/FilePicker.svelte'
   import { filter_by_elements, hull_system_name, quaternary_files } from '$site/convex-hull'
   import { onMount } from 'svelte'
@@ -63,14 +63,12 @@
     style="margin-block: 1em"
   />
   <div {...rest} class={[`hull-grid`, rest.class]}>
-    <ConvexHullCanvas
-      dim={3}
+    <ConvexHull
       entries={ternary_entries}
       controls={{ title: ternary_elements.join(`-`) }}
       style="height: 500px"
     />
-    <ConvexHullCanvas
-      dim={4}
+    <ConvexHull
       entries={quaternary_entries}
       controls={{ title: active_name }}
       on_file_drop={(dropped) => loaded_data.set(active_name, dropped)}

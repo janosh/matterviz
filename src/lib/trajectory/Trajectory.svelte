@@ -6,13 +6,11 @@
     HistogramSeries,
     Orientation,
   } from '$lib/plot'
-  // Pure viewer over a TrajectoryRun: playback, the structure + plot split, analysis panes
-  // and export. It borrows the run and never parses or disposes it; acquisition (URLs, drops,
-  // decompression, HDF5 group choice, errors) lives in TrajectoryFileViewer.svelte.
+  // Playback and acquisition share one viewer; only runs opened here are disposed here.
   import { create_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { Icon, Spinner, StatusMessage } from 'svelte-widgets'
+  import { FileInput, Icon, Spinner, StatusMessage, TaskStatus } from 'svelte-widgets'
   import {
     ArrowDown,
     ArrowUp,
@@ -49,12 +47,13 @@
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
-  import type { Snippet } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type {
+    ParseProgress,
     TrajectoryController,
     TrajectoryPositionStream,
     TrajectoryXQuantity,
@@ -83,6 +82,20 @@
   } from './plotting'
   import type { TrajectoryRun } from './run'
   import { create_trajectory_session } from './session.svelte'
+  import EmptyState from '$lib/EmptyState.svelte'
+  import {
+    open_material,
+    MaterialOpenError,
+    type MaterialPayload,
+    type MaterialSource,
+    type OpenedMaterial,
+  } from '$lib/file-viewer/open'
+  import * as io from '$lib/io'
+  import { Hdf5GroupSelectionRequiredError, type OpenTrajectoryOptions } from './open'
+  import { get_unsupported_format_message } from './parse'
+  import TrajectoryError from './TrajectoryError.svelte'
+
+  type PendingSource = { input: MaterialSource; payload?: MaterialPayload }
 
   export type TrajectoryPane =
     | `controls`
@@ -135,7 +148,14 @@
   const TRAIL_POSITION_MAX_BYTES = 64 * 1024 * 1024
 
   let {
-    trajectory,
+    trajectory = $bindable(),
+    source,
+    loading_options = {},
+    allow_file_drop = DEFAULTS.trajectory.allow_file_drop,
+    spinner_props = {},
+    error_snippet,
+    on_file_load,
+    on_error,
     structure_series_key = trajectory,
     current_step_idx = $bindable(0),
     fps = $bindable(DEFAULTS.trajectory.fps),
@@ -172,7 +192,18 @@
     on_controller,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    trajectory: TrajectoryRun
+    // Caller-supplied runs are borrowed; runs opened from source or drops are owned here.
+    trajectory?: TrajectoryRun
+    source?: MaterialSource
+    loading_options?: Pick<
+      OpenTrajectoryOptions,
+      'hdf5_group_path' | 'atom_type_mapping' | 'index_above_bytes'
+    >
+    allow_file_drop?: boolean
+    spinner_props?: ComponentProps<typeof Spinner>
+    error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
+    on_file_load?: EventHandler
+    on_error?: EventHandler
     // Stable identity when a host regenerates frames within the same displayed structure
     structure_series_key?: unknown
     // bindable: frame on display
@@ -226,6 +257,185 @@
     on_controller?: (controller: TrajectoryController | null) => void
   } = $props()
 
+  let loading = $state(false)
+  let progress = $state<ParseProgress | null>(null)
+  let error_msg = $state<string | null>(null)
+  // The run this component opened (vs one the caller passed in); disposed on replacement
+  let owned = $state.raw<{ material: OpenedMaterial; run: TrajectoryRun }>()
+  let load_controller: AbortController | undefined
+  // HDF5 files holding several trajectories wait here for the user's pick
+  let hdf5_selection = $state.raw<{ groups: string[]; input: PendingSource } | undefined>(
+    undefined,
+  )
+  let hdf5_picker_open = $state(false)
+  const compare_paths = (first: string, second: string): number =>
+    first.localeCompare(second, undefined, { numeric: true })
+  const hdf5_path_groups = $derived.by(() => {
+    const groups = Map.groupBy(hdf5_selection?.groups ?? [], (path) => {
+      const slash_idx = path.lastIndexOf(`/`)
+      return slash_idx > 0 ? path.slice(0, slash_idx) : `/`
+    })
+    return [...groups]
+      .toSorted(([first], [second]) => compare_paths(first, second))
+      .map(([trunk, group_paths]) => ({ trunk, paths: group_paths.toSorted(compare_paths) }))
+  })
+  const hdf5_leaf = (path: string): string => path.slice(path.lastIndexOf(`/`) + 1)
+
+  // Adopt `run` as the one on display; the previous owned run is disposed only now, so a
+  // failed or superseded load never leaves the viewer empty
+  const adopt = (opened: Extract<OpenedMaterial, { type: `trajectory` }>): void => {
+    const previous = owned?.material
+    trajectory = opened.data
+    // Bindable writes may proxy the run; retain the bound identity for ownership checks.
+    owned = { material: opened, run: trajectory }
+    current_step_idx = 0
+    if (previous !== opened) previous?.dispose()
+  }
+
+  // A caller can replace a run opened here through bind:trajectory. Release only the run
+  // this component owns; caller-supplied runs remain the caller's responsibility.
+  $effect(() => {
+    const displayed_run = trajectory
+    if (owned && displayed_run !== owned.run) {
+      owned.material.dispose()
+      owned = undefined
+    }
+  })
+
+  // Every load supersedes the one before it: abort decompression/parsing and forget any
+  // pending HDF5 pick
+  const begin_load = (): AbortController => {
+    load_controller?.abort(new DOMException(`Superseded by a newer load`, `AbortError`))
+    load_controller = new AbortController()
+    hdf5_selection = undefined
+    hdf5_picker_open = false
+    loading = true
+    progress = null
+    error_msg = null
+    return load_controller
+  }
+  const end_load = (controller: AbortController): void => {
+    if (load_controller !== controller) return
+    loading = false
+    progress = null
+  }
+
+  const report_error = (message: string, details: TrajHandlerData = {}): void => {
+    error_msg = message
+    on_error?.({ error_msg: message, ...details })
+  }
+  const source_name = ({ input }: PendingSource): string => {
+    if (typeof input === `string` || input instanceof URL) {
+      return io.basename_from_url(String(input))
+    }
+    if (typeof File !== `undefined` && input instanceof File) return input.name
+    return `filename` in input ? input.filename : ``
+  }
+
+  async function open_source(
+    pending: PendingSource,
+    controller: AbortController,
+    hdf5_group_path: string | undefined = loading_options.hdf5_group_path,
+  ): Promise<void> {
+    const { input } = pending
+    const material_source = pending.payload ?? input
+    const on_progress = (update: ParseProgress): void => {
+      if (load_controller === controller) progress = update
+    }
+    // Inflating a gzipped HDF5 into browser-managed storage happens before any parse progress
+    // arrives and can take a while, so say so instead of showing a bare spinner
+    if (!pending.payload && io.hdf5_compression_format(source_name(pending)) === `gzip`) {
+      progress = {
+        current: 0,
+        total: 100,
+        stage: `Decompressing HDF5 into temporary browser-managed storage…`,
+      }
+    }
+    try {
+      const opened = await open_material(material_source, {
+        ...loading_options,
+        hdf5_group_path,
+        signal: controller.signal,
+        on_progress,
+        on_acquired: (payload) => (pending.payload = payload),
+      })
+      if (load_controller !== controller || controller.signal.aborted) return opened.dispose()
+      if (opened.type !== `trajectory`) {
+        opened.dispose()
+        throw new Error(`${opened.filename} is ${opened.type}, not a trajectory`)
+      }
+      const run = opened.data
+      adopt(opened)
+      on_file_load?.({
+        trajectory: run,
+        frame_count: run.frame_count,
+        total_atoms: run.preview.structure.sites.length,
+        ...opened.provenance,
+      })
+    } catch (error) {
+      if (load_controller !== controller || controller.signal.aborted) return
+      if (error instanceof Hdf5GroupSelectionRequiredError) {
+        hdf5_selection = { groups: error.groups, input: pending }
+        hdf5_picker_open = true
+        return
+      }
+      const name = source_name(pending)
+      // Enough of the payload for the binary sniff behind get_unsupported_format_message
+      const acquired = pending.payload?.data ?? pending.input
+      const head =
+        acquired instanceof ArrayBuffer
+          ? new TextDecoder().decode(acquired.slice(0, 8192))
+          : typeof acquired === `string`
+            ? acquired
+            : ``
+      const unsupported = get_unsupported_format_message(name, head)
+      const prefix =
+        error instanceof MaterialOpenError && error.stage === `acquire`
+          ? `Failed to load trajectory`
+          : `Failed to parse trajectory`
+      const message = `${prefix}: ${name ? `${name}: ` : ``}${to_error(error).message}`
+      report_error(unsupported || message, {
+        filename: name,
+        ...(error instanceof MaterialOpenError && error.provenance),
+      })
+    } finally {
+      end_load(controller)
+    }
+  }
+
+  async function select_hdf5_group(path: string): Promise<void> {
+    const selection = hdf5_selection
+    if (!selection) return
+    const controller = begin_load()
+    hdf5_selection = selection
+    await open_source(selection.input, controller, path)
+    // A failed pick reopens the picker with the reason so another group can be tried
+    if (load_controller === controller && error_msg) hdf5_picker_open = true
+  }
+
+  // === sources: prop, URL, drop ===
+  let loaded_source: typeof source
+  $effect(() => {
+    const input = source
+    if (input === loaded_source) return
+    loaded_source = input
+    // Hosts that clear a URL trait often send `` or null rather than undefined
+    if (!input) return
+    const controller = begin_load()
+    void open_source({ input }, controller)
+    return () => {
+      if (load_controller === controller) {
+        controller.abort(new DOMException(`Source changed`, `AbortError`))
+        end_load(controller)
+      }
+    }
+  })
+  $effect(() => () => {
+    load_controller?.abort(new DOMException(`Viewer unmounted`, `AbortError`))
+    owned?.material.dispose()
+    owned = undefined
+  })
+
   // === session: frames, playback, scrub/commit, cache ===
   let frame_error = $state.raw<{ run: TrajectoryRun; idx: number; message: string } | null>(
     null,
@@ -236,7 +446,7 @@
     frame: session.current_frame ?? undefined,
   })
   const session = create_trajectory_session({
-    run: () => trajectory,
+    run: () => (loading || error_msg || hdf5_picker_open ? undefined : trajectory),
     index: () => current_step_idx,
     set_index: (idx) => (current_step_idx = idx),
     fps: () => fps,
@@ -251,7 +461,7 @@
     on_frame_error: (frame_idx, error) => {
       console.error(`Failed to load frame ${frame_idx}:`, error)
       const message = `Failed to load frame ${frame_idx}: ${error.message}`
-      frame_error = { run: trajectory, idx: frame_idx, message }
+      if (trajectory) frame_error = { run: trajectory, idx: frame_idx, message }
     },
   })
   const { player, controller } = session
@@ -306,7 +516,7 @@
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
   // Writable so the banner can be dismissed
   let warning_msg = $derived(
-    trajectory.warnings.length > 0
+    trajectory && trajectory.warnings.length > 0
       ? `${plural(trajectory.warnings.length, `parse warning`)}: ${trajectory.warnings.join(`; `)}`
       : undefined,
   )
@@ -329,13 +539,13 @@
     configured_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
   )
   let trajectory_lines_available = $derived(
-    total_frames >= 2 && trajectory.collect_positions !== undefined,
+    total_frames >= 2 && trajectory?.collect_positions !== undefined,
   )
   $effect(() => {
     const owner = trajectory
     const enabled = show_trajectory_lines && trajectory_lines_available
     trail_stream = null
-    if (!enabled) return
+    if (!enabled || !owner) return
     const trail_controller = new AbortController()
     // The stride budget throws synchronously (a single frame over budget); the async wrapper
     // turns that into a rejection so one catch covers it and the stream failures alike
@@ -373,7 +583,7 @@
     return settled_trail_end
   })
   let spectroscopy_open = $derived(active_pane === `spectroscopy`)
-  const trail_scene_props = $derived({
+  let trail_scene_props = $derived({
     ...structure_props.scene_props,
     get show_trajectory_lines() {
       return spectroscopy_open ? false : show_trajectory_lines
@@ -424,8 +634,8 @@
   let x_quantity_options = $derived(
     available_x_quantities(
       frame_step_samples,
-      trajectory.time_step?.value,
-      trajectory.time_step?.unit,
+      trajectory?.time_step?.value,
+      trajectory?.time_step?.unit,
     ),
   )
   // The host's (or the user's, via the select) standing request; only an x_quantity value
@@ -443,8 +653,8 @@
   })
   let x_map = $derived(
     build_x_map(frame_step_samples, chosen_x_quantity, {
-      time_step: trajectory.time_step?.value,
-      time_unit: trajectory.time_step?.unit,
+      time_step: trajectory?.time_step?.value,
+      time_unit: trajectory?.time_step?.unit,
     }),
   )
   // Report the axis actually in effect so hosts binding x_quantity see the resolved value.
@@ -456,7 +666,7 @@
   })
   // Time between frames, so displacement analyses report D in real units
   let frame_time_step = $derived(
-    get_frame_time_step(frame_step_samples, trajectory.time_step?.value),
+    get_frame_time_step(frame_step_samples, trajectory?.time_step?.value),
   )
 
   // Prepare arrays only when data/configuration changes, not on legend interactions.
@@ -614,7 +824,7 @@
   let correlation_pane_props = $derived({
     ...analysis_pane_props,
     default_dt: frame_time_step,
-    default_time_unit: trajectory.time_step?.unit,
+    default_time_unit: trajectory?.time_step?.unit,
   })
   // oxfmt-ignore
   const ANALYSES = (
@@ -647,7 +857,9 @@
   bind:this={wrapper}
   data-scrubbing={scrub_active}
   role="application"
-  aria-label="Trajectory viewer"
+  aria-label={!trajectory && allow_file_drop
+    ? `Drop trajectory file here to load`
+    : `Trajectory viewer`}
   tabindex="0"
   onpointerenter={() => (hovered = true)}
   onpointerleave={() => (hovered = false)}
@@ -656,352 +868,484 @@
   class={[`trajectory sequence-viewer`, actual_layout, rest.class]}
   class:show-both-views={show_plot && show_structure && !spectroscopy_open}
   class:spectroscopy-mode={spectroscopy_open}
+  {@attach io.raw_file_drop_zone({
+    allow: () => allow_file_drop,
+    max_files: 1,
+    on_drop: (input) => {
+      const controller = begin_load()
+      return open_source({ input }, controller)
+    },
+    on_error: (message) => report_error(message),
+  })}
   {@attach forward_window_keydown({ handle: onkeydown })}
 >
-  <!-- z-index 3: above the structure viewer's AtomLegend (2), which shares the bottom edge -->
-  {#if warning_msg}
-    <StatusMessage
-      bind:message={warning_msg}
-      type="warning"
-      dismissible
-      style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
-    />
-  {/if}
-  {#if frame_error_msg}
-    <StatusMessage
-      bind:message={frame_error_msg}
-      type="error"
-      dismissible
-      style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
-    />
-  {/if}
-  <SequenceControlBar
-    class="trajectory-controls"
-    {controls_config}
-    {fullscreen}
-    bind:height={controls_height}
-  >
-    {#if trajectory_controls}
-      {@render trajectory_controls({
-        trajectory,
-        current_step_idx,
-        total_frames,
-        on_step_change: session.commit,
-      })}
-    {:else}
-      {#if trajectory.provenance.filename && controls_config.visible(`filename`)}
-        {@const filename = trajectory.provenance.filename}
-        <button
-          class="filename"
-          title="Click to copy filename <code>{filename}</code>"
-          {@attach tooltip({ allow_html: true })}
-          onclick={() => {
-            navigator.clipboard.writeText(filename)
-            filename_copied.show(true)
-          }}
-        >
-          {filename}
-          {#if filename_copied.value}
-            <Icon
-              icon={Check}
-              style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
+  {#if hdf5_selection && hdf5_picker_open}
+    <EmptyState
+      class="hdf5-group-picker"
+      role="dialog"
+      aria-label="Choose HDF5 trajectory"
+      style="justify-content: flex-start"
+    >
+      <h3>Choose trajectory</h3>
+      <p>
+        <code>{source_name(hdf5_selection.input)}</code> contains multiple trajectories; choose one
+        to load.
+      </p>
+      {#if error_msg}
+        <StatusMessage bind:message={error_msg} type="error" dismissible />
+      {/if}
+      <div
+        class="hdf5-group-options"
+        class:flat={hdf5_path_groups.length === 1}
+        style="flex: initial"
+        role="group"
+        aria-label="HDF5 trajectory groups"
+      >
+        {#each hdf5_path_groups as { trunk, paths }, group_idx (trunk)}
+          <div
+            class="hdf5-path-group"
+            style="--hdf5-path-hue: {(200 + group_idx * 89) % 360}deg"
+          >
+            {#if trunk !== `/`}
+              <div class="hdf5-path-trunk" title={trunk}><code>{trunk}</code></div>
+            {/if}
+            <div class="hdf5-path-leaves">
+              {#each paths as group_path (group_path)}
+                <button
+                  class="hdf5-group-option"
+                  data-hdf5-group={group_path}
+                  title={group_path}
+                  onclick={() => void select_hdf5_group(group_path)}
+                >
+                  <code>{hdf5_leaf(group_path)}</code>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+      <button
+        style="margin-top: 0.5rem"
+        onclick={() => {
+          hdf5_picker_open = false
+          if (!trajectory) hdf5_selection = undefined
+          error_msg = null
+        }}
+      >
+        Cancel
+      </button>
+    </EmptyState>
+  {:else if loading}
+    <TaskStatus
+      label={progress
+        ? `${progress.stage} (${Math.round(progress.current)}%)`
+        : `Loading trajectory...`}
+      value={progress?.current}
+      on_cancel={() => {
+        const controller = load_controller
+        if (!controller) return
+        controller.abort(new DOMException(`Cancelled`, `AbortError`))
+        end_load(controller)
+      }}
+      style="flex: 1; align-content: center; justify-items: center; padding: 1em"
+    >
+      <Spinner {...spinner_props} />
+    </TaskStatus>
+  {:else if error_msg}
+    <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} {error_snippet} />
+  {:else if trajectory}
+    {#if hdf5_selection}
+      <button
+        type="button"
+        class="hdf5-group-picker-back"
+        data-hdf5-group-picker-back
+        title="Choose a different trajectory from this HDF5 file"
+        aria-label="Choose a different trajectory from this HDF5 file"
+        onclick={() => (hdf5_picker_open = true)}
+      >
+        ←
+      </button>
+    {/if}
+    <!-- z-index 3: above the structure viewer's AtomLegend (2), which shares the bottom edge -->
+    {#if warning_msg}
+      <StatusMessage
+        bind:message={warning_msg}
+        type="warning"
+        dismissible
+        style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
+      />
+    {/if}
+    {#if frame_error_msg}
+      <StatusMessage
+        bind:message={frame_error_msg}
+        type="error"
+        dismissible
+        style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
+      />
+    {/if}
+    <SequenceControlBar
+      class="trajectory-controls"
+      {controls_config}
+      {fullscreen}
+      bind:height={controls_height}
+    >
+      {#if trajectory_controls}
+        {@render trajectory_controls({
+          trajectory,
+          current_step_idx,
+          total_frames,
+          on_step_change: session.commit,
+        })}
+      {:else}
+        {#if trajectory.provenance.filename && controls_config.visible(`filename`)}
+          {@const filename = trajectory.provenance.filename}
+          <button
+            class="filename"
+            title="Click to copy filename <code>{filename}</code>"
+            {@attach tooltip({ allow_html: true })}
+            onclick={() => {
+              navigator.clipboard.writeText(filename)
+              filename_copied.show(true)
+            }}
+          >
+            {filename}
+            {#if filename_copied.value}
+              <Icon
+                icon={Check}
+                style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
+              />
+            {/if}
+          </button>
+        {/if}
+
+        <SequenceControls
+          {controls_config}
+          index={current_step_idx}
+          count={total_frames}
+          playback={player}
+          {step_label_positions}
+          item_name="step"
+          previous_title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
+          play_title={`${player.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
+          next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
+          on_index_input={session.scrub}
+        />
+
+        <div class="info-section">
+          {@render extra_controls?.()}
+          {#if session.loading}
+            <Spinner style="--spinner-size: 1em; margin: 0" />
+          {/if}
+          {#if controls_config.visible(`info-pane`)}
+            <TrajectoryInfoPane
+              run={trajectory}
+              {current_frame}
+              {current_step_idx}
+              property_rows={session.property_rows}
+              properties_complete={session.properties_complete}
+              bind:pane_open={
+                () => is_pane_open(`info`), (open) => set_pane_open(`info`, open)
+              }
+              pane_props={{ style: pane_max_height }}
             />
           {/if}
-        </button>
-      {/if}
-
-      <SequenceControls
-        {controls_config}
-        index={current_step_idx}
-        count={total_frames}
-        playback={player}
-        {step_label_positions}
-        item_name="step"
-        previous_title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
-        play_title={`${player.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
-        next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
-        on_index_input={session.scrub}
-      />
-
-      <div class="info-section">
-        {@render extra_controls?.()}
-        {#if session.loading}
-          <Spinner style="--spinner-size: 1em; margin: 0" />
-        {/if}
-        {#if controls_config.visible(`info-pane`)}
-          <TrajectoryInfoPane
-            run={trajectory}
-            {current_frame}
-            {current_step_idx}
-            property_rows={session.property_rows}
-            properties_complete={session.properties_complete}
-            bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
-            pane_props={{ style: pane_max_height }}
-          />
-        {/if}
-        {#if controls_config.visible(`export-pane`)}
-          <TrajectoryExportPane
-            bind:export_pane_open={
-              () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
-            }
-            run={trajectory}
-            {wrapper}
-            filename={trajectory.provenance.filename || `trajectory`}
-            on_step_change={session.commit}
-            resolve_frame={session.resolve_frame}
-            pane_props={{ style: pane_max_height }}
-          />
-        {/if}
-        <!-- Analyses plot their own x axis (MSD plots lag time, not frame index) so they
+          {#if controls_config.visible(`export-pane`)}
+            <TrajectoryExportPane
+              bind:export_pane_open={
+                () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
+              }
+              run={trajectory}
+              {wrapper}
+              filename={trajectory.provenance.filename || `trajectory`}
+              on_step_change={session.commit}
+              resolve_frame={session.resolve_frame}
+              pane_props={{ style: pane_max_height }}
+            />
+          {/if}
+          <!-- Analyses plot their own x axis (MSD plots lag time, not frame index) so they
           cannot share the step-linked scatter/histogram display modes -->
-        {#if visible_analyses.length > 0}
-          <ToolbarMenu
-            bind:open={analysis_menu_open}
-            label="Analysis"
-            active={analysis_menu_open || any_analysis_open}
-            button_class="analysis-button"
-            menu_class="analysis-dropdown"
-            class="analysis-dropdown-wrapper"
-          >
-            {#snippet button()}
-              <Icon icon={Graph} />
-              <Icon icon={analysis_menu_open ? ArrowUp : ArrowDown} />
-            {/snippet}
-            {#each visible_analyses as entry (entry.pane)}
-              <button
-                type="button"
-                class={['view-mode-option', { selected: active_pane === entry.pane }]}
-                title={entry.label}
-                aria-pressed={active_pane === entry.pane}
-                onclick={() => {
-                  set_pane_open(entry.pane, active_pane !== entry.pane)
-                  analysis_menu_open = false
-                }}
-              >
-                <Icon icon={entry.icon} />
-                <span>{entry.label}</span>
-              </button>
-            {/each}
-            {#snippet trailing()}
-              <TrajectoryMsdPane
-                {...correlation_pane_props}
-                bind:pane_open={
-                  () => is_pane_open(`msd`), (open) => set_pane_open(`msd`, open)
-                }
-              />
-              <TrajectoryVacfPane
-                {...correlation_pane_props}
-                bind:pane_open={
-                  () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
-                }
-              />
-              <TrajectoryRdfPane
-                {...analysis_pane_props}
-                bind:pane_open={
-                  () => is_pane_open(`rdf`), (open) => set_pane_open(`rdf`, open)
-                }
-              />
-              <TrajectoryStructureIdPane
-                {...analysis_pane_props}
-                bind:pane_open={
-                  () => is_pane_open(`structure-id`),
-                  (open) => set_pane_open(`structure-id`, open)
-                }
-              />
-              <TrajectoryDataInspectorPane
-                {...analysis_pane_props}
-                {current_step_idx}
-                {current_frame}
-                bind:pane_open={
-                  () => is_pane_open(`data-inspector`),
-                  (open) => set_pane_open(`data-inspector`, open)
-                }
-                on_step_change={session.commit}
-              />
-            {/snippet}
-          </ToolbarMenu>
-        {/if}
-        {#if !spectroscopy_open && plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
-          <select
-            bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
-            class="x-quantity-select"
-            title="Plot x axis"
-            aria-label="Plot x axis"
-          >
-            {#each x_quantity_options as option (option)}
-              <option value={option}>{X_QUANTITY_LABELS[option]}</option>
-            {/each}
-          </select>
-        {/if}
-        {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
-          <ToolbarMenu
-            bind:open={view_mode_dropdown_open}
-            label={current_display_mode.label}
-            class="view-mode-dropdown-wrapper"
-          >
-            {#snippet button()}
-              <Icon icon={current_display_mode.icon} />
-              <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
-            {/snippet}
-            {#each DISPLAY_MODES as option (option.mode)}
-              <button
-                class={['view-mode-option', { selected: display_mode === option.mode }]}
-                onclick={() => {
-                  display_mode = option.mode
-                  on_display_mode_change?.(event_data())
-                  view_mode_dropdown_open = false
-                }}
-              >
-                <Icon icon={option.icon} />
-                <span>{option.label}</span>
-              </button>
-            {/each}
-          </ToolbarMenu>
-        {/if}
-        {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
-          <FullscreenButton
-            bind:fullscreen
-            hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
-            {wrapper}
-            bg_css_var="--traj-bg-fullscreen"
-            on_change={() => on_fullscreen_change?.(event_data())}
-            class="fullscreen-button"
-          />
-        {/if}
-      </div>
-    {/if}
-  </SequenceControlBar>
-
-  <div
-    class="content-area"
-    bind:clientWidth={content_size.width}
-    bind:clientHeight={content_size.height}
-    class:hide-plot={!show_plot}
-    class:hide-structure={!show_structure}
-    class:show-both={show_structure && show_plot}
-    class:show-structure-only={show_structure && !show_plot}
-    class:show-plot-only={!show_structure && show_plot}
-    style:--viewer-buttons-top={controls_config.mode === `hover`
-      ? `calc(${controls_height}px + 1ex)`
-      : undefined}
-  >
-    {#if show_structure}
-      <Structure
-        style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
-        {...{
-          show_image_atoms: false, // avoid atoms popping in/out at cell edges during playback
-          // Coordinate playback is not a stream of new crystals to classify: symmetry
-          // analysis on every slider event dominated small-molecule scrubbing
-          analyze_symmetry: false,
-          ...structure_props,
-          scene_props: trail_scene_props,
-        }}
-        show_controls={controls_config.mode === `never`
-          ? false
-          : structure_props.show_controls}
-        structure={session.current_structure}
-        {structure_series_key}
-        trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
-        trajectory_line_end_frame={spectroscopy_open ? undefined : trajectory_line_end_frame}
-        defer_expensive_geometry={!spectroscopy_open && scrub_active}
-        bind:supercell_scaling
-        bind:active_pane={
-          () => (active_pane === `controls` ? `controls` : structure_pane),
-          (pane) => {
-            set_pane_open(`controls`, pane === `controls`)
-            structure_pane = pane === `controls` ? null : pane
-          }
-        }
-        bind:hidden_elements
-      />
-    {/if}
-
-    {#if show_structure && show_plot}
-      <PaneDivider
-        orientation={actual_layout}
-        bind:ratio={pane_ratio}
-        aria-label="Resize structure and plot panes"
-      />
-    {/if}
-
-    <TrajectorySpectroscopyPane
-      inline
-      run={trajectory}
-      bind:pane_open={
-        () => is_pane_open(`spectroscopy`), (open) => set_pane_open(`spectroscopy`, open)
-      }
-    />
-
-    {#if show_plot && !spectroscopy_open}
-      {#if plot_loading}
-        <Spinner
-          text="Sampling trajectory plot data..."
-          style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
-        />
-      {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
-        <ScatterPlot
-          {...scatter_props}
-          show_controls={controls_config.mode === `never`
-            ? false
-            : scatter_props.show_controls}
-          series={scatter_series}
-          bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
-          {x_axis}
-          {y_axis}
-          {y2_axis}
-          bind:controls_open={scatter_controls_open}
-          current_x_value={x_map.to_x(settled_plot_step_idx)}
-          on_plot_click={(event) => {
-            if (plot_skimming) handle_plot_click(event)
-            scatter_props.on_plot_click?.(event)
-          }}
-          range_padding={0}
-          style="height: 100%"
-          padding={trajectory_scatter_padding}
-          hover_config={trajectory_hover_config}
-        >
-          {#snippet tooltip({ x, y, raw_y, metadata, label }: ScatterHandlerProps)}
-            {x_axis.label}: {format_num(x, `~g`)}<br />
-            {@html sanitize_html(metadata?.series_label || label || `Value`)}: {format_num(y)}
-            {#if typeof raw_y === `number`}
-              <small style="opacity: 0.65">&nbsp;(raw: {format_num(raw_y)})</small>
-            {/if}
-          {/snippet}
-        </ScatterPlot>
-      {:else}
-        <Histogram
-          {...histogram_props}
-          show_controls={controls_config.mode === `never`
-            ? false
-            : histogram_props.show_controls}
-          series={histogram_series}
-          bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
-          x_axis={{
-            label: String(histogram_props.x_axis?.label ?? y_axis_labels.y),
-            format: `.3~s`,
-            ...histogram_props.x_axis,
-          }}
-          y_axis={{ label: `Count`, format: `.3~s`, ...histogram_props.y_axis }}
-          mode={histogram_props.mode ?? `overlay`}
-          style="height: 100%"
-        >
-          {#snippet tooltip({
-            value,
-            count,
-            property,
-          }: {
-            value: number
-            count: number
-            property?: string
-          })}
-            {#if property}<div><strong>{property}</strong></div>{/if}
-            <div>Value: {format_num(value)}</div>
-            <div>Count: {count}</div>
-          {/snippet}
-        </Histogram>
+          {#if visible_analyses.length > 0}
+            <ToolbarMenu
+              bind:open={analysis_menu_open}
+              label="Analysis"
+              active={analysis_menu_open || any_analysis_open}
+              button_class="analysis-button"
+              menu_class="analysis-dropdown"
+              class="analysis-dropdown-wrapper"
+            >
+              {#snippet button()}
+                <Icon icon={Graph} />
+                <Icon icon={analysis_menu_open ? ArrowUp : ArrowDown} />
+              {/snippet}
+              {#each visible_analyses as entry (entry.pane)}
+                <button
+                  type="button"
+                  class={['view-mode-option', { selected: active_pane === entry.pane }]}
+                  title={entry.label}
+                  aria-pressed={active_pane === entry.pane}
+                  onclick={() => {
+                    set_pane_open(entry.pane, active_pane !== entry.pane)
+                    analysis_menu_open = false
+                  }}
+                >
+                  <Icon icon={entry.icon} />
+                  <span>{entry.label}</span>
+                </button>
+              {/each}
+              {#snippet trailing()}
+                <TrajectoryMsdPane
+                  {...correlation_pane_props}
+                  bind:pane_open={
+                    () => is_pane_open(`msd`), (open) => set_pane_open(`msd`, open)
+                  }
+                />
+                <TrajectoryVacfPane
+                  {...correlation_pane_props}
+                  bind:pane_open={
+                    () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
+                  }
+                />
+                <TrajectoryRdfPane
+                  {...analysis_pane_props}
+                  bind:pane_open={
+                    () => is_pane_open(`rdf`), (open) => set_pane_open(`rdf`, open)
+                  }
+                />
+                <TrajectoryStructureIdPane
+                  {...analysis_pane_props}
+                  bind:pane_open={
+                    () => is_pane_open(`structure-id`),
+                    (open) => set_pane_open(`structure-id`, open)
+                  }
+                />
+                <TrajectoryDataInspectorPane
+                  {...analysis_pane_props}
+                  {current_step_idx}
+                  {current_frame}
+                  bind:pane_open={
+                    () => is_pane_open(`data-inspector`),
+                    (open) => set_pane_open(`data-inspector`, open)
+                  }
+                  on_step_change={session.commit}
+                />
+              {/snippet}
+            </ToolbarMenu>
+          {/if}
+          {#if !spectroscopy_open && plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
+            <select
+              bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
+              class="x-quantity-select"
+              title="Plot x axis"
+              aria-label="Plot x axis"
+            >
+              {#each x_quantity_options as option (option)}
+                <option value={option}>{X_QUANTITY_LABELS[option]}</option>
+              {/each}
+            </select>
+          {/if}
+          {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
+            <ToolbarMenu
+              bind:open={view_mode_dropdown_open}
+              label={current_display_mode.label}
+              class="view-mode-dropdown-wrapper"
+            >
+              {#snippet button()}
+                <Icon icon={current_display_mode.icon} />
+                <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
+              {/snippet}
+              {#each DISPLAY_MODES as option (option.mode)}
+                <button
+                  class={['view-mode-option', { selected: display_mode === option.mode }]}
+                  onclick={() => {
+                    display_mode = option.mode
+                    on_display_mode_change?.(event_data())
+                    view_mode_dropdown_open = false
+                  }}
+                >
+                  <Icon icon={option.icon} />
+                  <span>{option.label}</span>
+                </button>
+              {/each}
+            </ToolbarMenu>
+          {/if}
+          {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
+            <FullscreenButton
+              bind:fullscreen
+              hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
+              {wrapper}
+              bg_css_var="--traj-bg-fullscreen"
+              on_change={() => on_fullscreen_change?.(event_data())}
+              class="fullscreen-button"
+            />
+          {/if}
+        </div>
       {/if}
-    {/if}
-  </div>
+    </SequenceControlBar>
+
+    <div
+      class="content-area"
+      bind:clientWidth={content_size.width}
+      bind:clientHeight={content_size.height}
+      class:hide-plot={!show_plot}
+      class:hide-structure={!show_structure}
+      class:show-both={show_structure && show_plot}
+      class:show-structure-only={show_structure && !show_plot}
+      class:show-plot-only={!show_structure && show_plot}
+      style:--viewer-buttons-top={controls_config.mode === `hover`
+        ? `calc(${controls_height}px + 1ex)`
+        : undefined}
+    >
+      {#if show_structure}
+        <Structure
+          allow_file_drop={false}
+          style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
+          {...{
+            show_image_atoms: false, // avoid atoms popping in/out at cell edges during playback
+            // Coordinate playback is not a stream of new crystals to classify: symmetry
+            // analysis on every slider event dominated small-molecule scrubbing
+            analyze_symmetry: false,
+            ...structure_props,
+          }}
+          show_controls={controls_config.mode === `never`
+            ? false
+            : structure_props.show_controls}
+          bind:scene_props={trail_scene_props}
+          structure={session.current_structure}
+          {structure_series_key}
+          trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
+          trajectory_line_end_frame={spectroscopy_open ? undefined : trajectory_line_end_frame}
+          defer_expensive_geometry={!spectroscopy_open && scrub_active}
+          bind:supercell_scaling
+          bind:active_pane={
+            () => (active_pane === `controls` ? `controls` : structure_pane),
+            (pane) => {
+              set_pane_open(`controls`, pane === `controls`)
+              structure_pane = pane === `controls` ? null : pane
+            }
+          }
+          bind:hidden_elements
+        />
+      {/if}
+
+      {#if show_structure && show_plot}
+        <PaneDivider
+          orientation={actual_layout}
+          bind:ratio={pane_ratio}
+          aria-label="Resize structure and plot panes"
+        />
+      {/if}
+
+      <TrajectorySpectroscopyPane
+        inline
+        run={trajectory}
+        bind:pane_open={
+          () => is_pane_open(`spectroscopy`), (open) => set_pane_open(`spectroscopy`, open)
+        }
+      />
+
+      {#if show_plot && !spectroscopy_open}
+        {#if plot_loading}
+          <Spinner
+            text="Sampling trajectory plot data..."
+            style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
+          />
+        {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
+          <ScatterPlot
+            {...scatter_props}
+            show_controls={controls_config.mode === `never`
+              ? false
+              : scatter_props.show_controls}
+            series={scatter_series}
+            bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
+            {x_axis}
+            {y_axis}
+            {y2_axis}
+            bind:controls_open={scatter_controls_open}
+            current_x_value={x_map.to_x(settled_plot_step_idx)}
+            on_plot_click={(event) => {
+              if (plot_skimming) handle_plot_click(event)
+              scatter_props.on_plot_click?.(event)
+            }}
+            range_padding={0}
+            style="height: 100%"
+            padding={trajectory_scatter_padding}
+            hover_config={trajectory_hover_config}
+          >
+            {#snippet tooltip({ x, y, raw_y, metadata, label }: ScatterHandlerProps)}
+              {x_axis.label}: {format_num(x, `~g`)}<br />
+              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {format_num(
+                y,
+              )}
+              {#if typeof raw_y === `number`}
+                <small style="opacity: 0.65">&nbsp;(raw: {format_num(raw_y)})</small>
+              {/if}
+            {/snippet}
+          </ScatterPlot>
+        {:else}
+          <Histogram
+            {...histogram_props}
+            show_controls={controls_config.mode === `never`
+              ? false
+              : histogram_props.show_controls}
+            series={histogram_series}
+            bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
+            x_axis={{
+              label: String(histogram_props.x_axis?.label ?? y_axis_labels.y),
+              format: `.3~s`,
+              ...histogram_props.x_axis,
+            }}
+            y_axis={{ label: `Count`, format: `.3~s`, ...histogram_props.y_axis }}
+            mode={histogram_props.mode ?? `overlay`}
+            style="height: 100%"
+          >
+            {#snippet tooltip({
+              value,
+              count,
+              property,
+            }: {
+              value: number
+              count: number
+              property?: string
+            })}
+              {#if property}<div><strong>{property}</strong></div>{/if}
+              <div>Value: {format_num(value)}</div>
+              <div>Count: {count}</div>
+            {/snippet}
+          </Histogram>
+        {/if}
+      {/if}
+    </div>
+  {:else}
+    <EmptyState class="trajectory-empty-state">
+      <h3>Load Trajectory</h3>
+      {#if allow_file_drop}
+        <FileInput
+          label="Choose trajectory file"
+          ondrop={(event) => event.stopPropagation()}
+          on_files={(files) => {
+            const input = files[0]
+            if (input) void open_source({ input }, begin_load())
+          }}
+        />
+      {/if}
+      <p>
+        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, OUTCAR,
+        vasprun.xml, .traj, .h5) or provide trajectory data via props
+      </p>
+      <strong style="display: block; margin-block: 1em 1ex">Supported formats:</strong>
+      <ul>
+        <li>Multi-frame XYZ trajectory files (.xyz, .extxyz)</li>
+        <li>ASE trajectory files (.traj)</li>
+        <li>Pymatgen trajectory JSON</li>
+        <li>Array of structures with metadata</li>
+        <li>VASP XDATCAR, OUTCAR and vasprun.xml files</li>
+        <li>LAMMPS dump files (.lammpstrj)</li>
+        <li>HDF5 trajectory files (.h5, .hdf5)</li>
+        <li>Compressed files (.gz)</li>
+      </ul>
+      <p>💡 Force vectors will be automatically displayed when present in trajectory data</p>
+    </EmptyState>
+  {/if}
 </div>
 
 <style>
@@ -1026,6 +1370,10 @@
     contain: layout;
     z-index: var(--traj-z-index, 1);
     container: trajectory / size; /* cqw/cqh for chrome and panes */
+    &:global(.dragover) {
+      background-color: var(--traj-dragover-bg, var(--dragover-bg));
+      border: var(--traj-dragover-border, var(--dragover-border));
+    }
     &.active {
       z-index: 2; /* info/control panes of an active viewer overlay those of the next one */
     }
@@ -1140,5 +1488,93 @@
     opacity: 0;
     pointer-events: none;
     overflow: hidden;
+  }
+  .hdf5-group-picker-back {
+    position: absolute;
+    top: 4pt;
+    left: 4pt;
+    z-index: 3;
+    padding: 1pt 5pt;
+    line-height: 1;
+    background: var(--btn-bg);
+  }
+  :global(.trajectory-empty-state) {
+    flex: 1;
+    padding: 2rem;
+    border-radius: var(--border-radius, 3pt);
+    background: var(--dropzone-bg);
+    :where(p, ul) {
+      color: var(--text-color-muted);
+    }
+    :where(ul, li, strong) {
+      max-width: var(--trajectory-empty-state-max-width, 500px);
+      margin-inline: auto;
+    }
+  }
+  .trajectory :global(.hdf5-group-picker) {
+    align-self: center;
+    flex: 0 1 auto;
+    width: min(calc(100% - 2rem), 72rem);
+    height: auto;
+    max-height: calc(100% - 2rem);
+    min-height: 0;
+    margin: auto;
+    padding: clamp(1rem, 2cqi, 2rem);
+    border-radius: var(--border-radius, 3pt);
+    background: var(--dropzone-bg);
+    overflow: hidden;
+  }
+  .hdf5-group-options {
+    display: grid;
+    align-content: start;
+    min-height: 0;
+    overflow-y: auto;
+    gap: 0.5rem;
+    width: 100%;
+    &.flat {
+      display: block;
+      .hdf5-path-leaves {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+        gap: 0.5rem;
+      }
+      .hdf5-group-option {
+        text-align: left;
+      }
+    }
+    &:not(.flat) {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr));
+      width: min(100%, 52rem);
+      margin-inline: auto;
+    }
+  }
+  .hdf5-path-group {
+    --hdf5-path-color: hsl(var(--hdf5-path-hue) 55% 45%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    padding: 0.25rem;
+    background: color-mix(in srgb, var(--hdf5-path-color) 8%, transparent);
+    border-inline-start: 3px solid var(--hdf5-path-color);
+    border-radius: var(--border-radius, 3pt);
+  }
+  .hdf5-path-trunk {
+    overflow: hidden;
+    color: color-mix(in srgb, var(--hdf5-path-color) 72%, var(--text-color, CanvasText));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hdf5-path-leaves {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(3rem, 1fr));
+    gap: 0.25rem;
+  }
+  .hdf5-group-option {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

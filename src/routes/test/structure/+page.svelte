@@ -10,7 +10,7 @@
     StructureBond,
     StructurePane,
   } from '$lib/structure'
-  import { Structure, StructureFileViewer } from '$lib/structure'
+  import { Structure } from '$lib/structure'
   import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import { type ComponentProps, untrack } from 'svelte'
@@ -38,12 +38,12 @@
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
   let bonds = $state<StructureBond[] | undefined>()
-  // ?data_url= loads an external structure in place of the static one
+  // ?source= loads an external structure in place of the static one
   const url_params = browser ? page.url.searchParams : new URLSearchParams()
-  const data_url = url_params.get(`data_url`) || undefined
+  const source = url_params.get(`source`) || undefined
   const comparison_mode = url_params.get(`comparison`) === `true`
   let structure = $state<Crystal | undefined>(
-    data_url ? undefined : (mp1_struct as unknown as Crystal),
+    source ? undefined : (mp1_struct as unknown as Crystal),
   )
 
   // capture event data for testing
@@ -128,11 +128,11 @@
 </section>
 
 <div class:comparison={comparison_mode} class="structure-test-layout">
-  {#if data_url || url_params.has(`files`)}
-    <StructureFileViewer
+  {#if source || url_params.has(`files`)}
+    <Structure
       id="test-structure"
       bind:structure
-      source={data_url}
+      {source}
       {background_color}
       {show_controls}
       bind:scene_props

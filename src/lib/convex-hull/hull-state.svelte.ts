@@ -1,7 +1,7 @@
-// Shared reactive data pipeline (runes-in-closure factory) for ConvexHull2D/3D/4D:
+// Reactive data pipeline for ConvexHull:
 // temperature → gas corrections → formation energies → plot coordinates → lower hull →
 // energy above hull → thresholds/visibility. Components only render.
-import { DEFAULTS } from '$lib/settings'
+import { get_convex_hull_defaults } from '$lib/settings'
 import { to_error } from '$lib/utils'
 import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import * as helpers from './helpers'
@@ -21,16 +21,7 @@ import type {
 } from './types'
 import { DEFAULT_GAS_TEMP } from './types'
 
-const DIM_TO_KIND = { 2: `binary`, 3: `ternary`, 4: `quaternary` } as const
-// Capitalised kind for user-facing text (error messages, aria labels)
-export const KIND_LABEL = {
-  binary: `Binary`,
-  ternary: `Ternary`,
-  quaternary: `Quaternary`,
-} as const satisfies Record<(typeof DIM_TO_KIND)[keyof typeof DIM_TO_KIND], string>
-
 interface HullDataPipelineInputs {
-  dim: 2 | 3 | 4 // diagram arity (static)
   // Reactive getters
   entries: () => PhaseData[]
   temperature: () => number | undefined
@@ -85,10 +76,6 @@ function get_gas_corrected_entries(
 }
 
 export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
-  const { dim } = inputs
-  const kind = DIM_TO_KIND[dim]
-  const default_threshold = DEFAULTS.convex_hull[kind].max_hull_dist_show_phases
-
   // Composition keys are normalized once here ("Fe3+" → Fe) so every later stage, including
   // the unary-reference lookup, sees plain element symbols. Unrecognized keys ("Fe2O3") come
   // straight from the entries prop, so the throw is caught and surfaced through `error`
@@ -163,6 +150,8 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // hull with a synthetic corner (below) instead of unmounting together with the temperature
   // slider the user would need to recover.
   const elements = $derived(normalized_source.elements)
+  const dim = $derived(elements.length === 3 || elements.length === 4 ? elements.length : 2)
+  const default_threshold = $derived(get_convex_hull_defaults(dim).max_hull_dist_show_phases)
 
   // Why the entries prop can't be plotted: a rejected composition key, or a dataset whose
   // element count doesn't match the diagram's arity. Empty entries (data still loading) are
@@ -170,7 +159,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const error = $derived.by((): string | null => {
     if (normalized_source.error) return normalized_source.error
     if (elements.length === 0 || elements.length === dim) return null
-    return `${KIND_LABEL[kind]} convex hull requires exactly ${dim} elements, found ${elements.length}: ${elements.join(`, `)}`
+    return `Convex hulls require 2, 3 or 4 elements, found ${elements.length}: ${elements.join(`, `)}`
   })
 
   const model = $derived(
@@ -196,7 +185,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     ),
   )
 
-  const next_auto_threshold = helpers.auto_threshold_reset(default_threshold)
+  const next_auto_threshold = $derived(helpers.auto_threshold_reset(default_threshold))
   $effect(() => {
     const current = inputs.max_hull_dist_show_phases()
     // Keyed on the enriched entries, not raw entries(), so the auto threshold re-derives when
@@ -246,6 +235,9 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   )
 
   return {
+    get dim() {
+      return dim
+    },
     get model() {
       return model
     },

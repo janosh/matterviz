@@ -2,7 +2,7 @@
   import { replaceState } from '$app/navigation'
   import type { Crystal, ElementSymbol } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
-  import { ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
+  import { ConvexHull } from '$lib/convex-hull'
   import { Spinner } from 'svelte-widgets'
   import { tick } from 'svelte'
 
@@ -245,48 +245,18 @@
 {:else if generated_entries.length > 0}
   {#key `${dimension}-${generated_entries.length}-${generation_time_ms}`}
     <div style="height: min(70vh, 800px)" {@attach track_render}>
-      {#if dimension === `2d`}
-        <ConvexHull2D
-          entries={generated_entries}
-          controls={{
-            title:
-              custom_title ?? `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
-          }}
-          {show_stable}
-          {show_unstable}
-          max_hull_dist_show_phases={max_hull_dist}
-          {color_mode}
-          {enable_click_selection}
-        />
-      {:else if dimension === `3d`}
-        <ConvexHullCanvas
-          dim={3}
-          entries={generated_entries}
-          controls={{
-            title:
-              custom_title ?? `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
-          }}
-          {show_stable}
-          {show_unstable}
-          max_hull_dist_show_phases={max_hull_dist}
-          {color_mode}
-          {enable_click_selection}
-        />
-      {:else}
-        <ConvexHullCanvas
-          dim={4}
-          entries={generated_entries}
-          controls={{
-            title:
-              custom_title ?? `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
-          }}
-          {show_stable}
-          {show_unstable}
-          max_hull_dist_show_phases={max_hull_dist}
-          {color_mode}
-          {enable_click_selection}
-        />
-      {/if}
+      <ConvexHull
+        entries={generated_entries}
+        controls={{
+          title:
+            custom_title ?? `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
+        }}
+        {show_stable}
+        {show_unstable}
+        max_hull_dist_show_phases={max_hull_dist}
+        {color_mode}
+        {enable_click_selection}
+      />
     </div>
   {/key}
 {/if}

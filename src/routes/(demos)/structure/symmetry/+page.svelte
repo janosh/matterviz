@@ -4,8 +4,9 @@
   import {
     is_crystal,
     parse_supercell_scaling,
-    StructureFileViewer,
+    Structure,
     type AnyStructure,
+    type StructureSettings,
   } from '$lib/structure'
   import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '$lib/symmetry'
   import {
@@ -30,9 +31,9 @@
   let display_filename = $state(default_filename)
   // Wyckoff rows already re-expressed onto whatever cell the viewer renders
   // (conventional/primitive/supercell), read from the viewer analysis
-  let top_viewer = $state<ReturnType<typeof StructureFileViewer>>()
-  let two_col_viewer = $state<ReturnType<typeof StructureFileViewer>>()
-  let stacked_viewer = $state<ReturnType<typeof StructureFileViewer>>()
+  let top_viewer = $state<ReturnType<typeof Structure>>()
+  let two_col_viewer = $state<ReturnType<typeof Structure>>()
+  let stacked_viewer = $state<ReturnType<typeof Structure>>()
   const wyckoff_positions = $derived(top_viewer?.analysis.wyckoff_positions ?? [])
   let hovered_wyckoff_sites = $state<number[]>([])
   let active_wyckoff_sites = $state<number[]>([])
@@ -74,6 +75,13 @@
         )
       : undefined,
   )
+  let scene_props = $derived<StructureSettings>({
+    symmetry_elements: sym_elements,
+    symmetry_elements_props: {
+      show_kinds: show_sym_kinds,
+      tiling_result: sym_tiling_result,
+    },
+  })
 
   onMount(() => {
     // Initialize WASM
@@ -156,22 +164,16 @@
     {/if}
   </div>
 
-  <StructureFileViewer
+  <Structure
     source="/structures/{source_filename}"
     bind:this={top_viewer}
     bind:symmetry_settings={wide_example_symmetry_settings}
     bind:cell_type={top_ex_cell_type}
     bind:structure={top_ex_structure}
     bind:supercell_scaling={top_ex_tiling}
-    highlighted_sites={active_wyckoff_sites}
-    selected_sites={hovered_wyckoff_sites}
-    scene_props={{
-      symmetry_elements: sym_elements,
-      symmetry_elements_props: {
-        show_kinds: show_sym_kinds,
-        tiling_result: sym_tiling_result,
-      },
-    }}
+    bind:highlighted_sites={active_wyckoff_sites}
+    bind:selected_sites={hovered_wyckoff_sites}
+    bind:scene_props
     on_file_load={({ filename = ``, source_filename: loaded_source_filename }) => {
       display_filename = filename || source_filename
       source_filename = loaded_source_filename ?? source_filename
@@ -184,7 +186,7 @@
     >
       {display_filename}
     </h2>
-  </StructureFileViewer>
+  </Structure>
 </div>
 
 <p style="margin: 2em 0; text-align: center">Drag any structure onto the viewer:</p>
@@ -201,7 +203,7 @@
       <h3>Two Column - Stats + Structure</h3>
       <div class="two-column-layout">
         <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
-        <StructureFileViewer
+        <Structure
           source="/structures/{source_filename}"
           show_controls={true}
           bind:this={two_col_viewer}
@@ -216,7 +218,7 @@
       <h3>Stacked Layout - Stats Above Structure</h3>
       <div class="stacked-layout">
         <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
-        <StructureFileViewer
+        <Structure
           source="/structures/{source_filename}"
           show_controls={true}
           bind:this={stacked_viewer}

@@ -22,9 +22,9 @@ import {
   ScatterPlot,
   ScatterPlot3D,
   SpacegroupBarPlot,
-  StructureFileViewer,
+  Structure,
   trajectory_from_json,
-  TrajectoryFileViewer,
+  Trajectory,
   Treemap,
   volume_from_json,
   XrdPlot,
@@ -298,7 +298,7 @@ export const mount_spec = (
 // Exported so tests can exercise each widget's drive/writeback/derived wiring.
 export const WIDGETS: Record<string, WidgetSpec> = {
   structure: {
-    component: StructureFileViewer,
+    component: Structure,
     static_props: no_file_drop,
     drive: [
       ...drive_props([
@@ -334,7 +334,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   trajectory: {
-    component: TrajectoryFileViewer,
+    component: Trajectory,
     static_props: no_file_drop,
     drive: [
       ...drive_props([
@@ -356,7 +356,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
           return undefined
         }
       }),
-      derived_prop(`src`, [`data_url`], (model) => get_prop(model, `data_url`)),
+      derived_prop(`source`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // atom_type_mapping ({ "1": "Si", "2": "O" }) names the atom types of a LAMMPS dump
       // fetched from data_url; it rides in the file viewer's loading_options. None/{} mean
       // unset, so loading_options falls back to the viewer's default

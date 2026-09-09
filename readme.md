@@ -86,19 +86,19 @@ Composite components expose deliberate `*_props` options for presentation and in
 
 ```svelte
 <script>
-  import { StructureFileViewer } from 'matterviz'
+  import { Structure } from 'matterviz'
   const source = '/structures/TiO2.cif'
   // supports .cif, .poscar, .xyz/.extxyz, pymatgen JSON, OPTIMADE JSON, .gz
 </script>
 
-<StructureFileViewer {source} style="width: 500px; aspect-ratio: 1" />
+<Structure {source} style="width: 500px; aspect-ratio: 1" />
 ```
 
 `scene_props.camera_position` fits the structure when omitted; any supplied coordinate tuple, including `[0, 0, 0]`, is an explicit position. Clear it with `undefined` to request a fresh fit.
 
 Floating viewer, plot, table and heatmap controls share `show_controls`: `true`/`'always'`, `'hover'`, `false`/`'never'`, or `{ mode, hidden, style }`. For example, `{ mode: 'hover', hidden: ['controls'] }` keeps a plot’s fullscreen button and hides its settings pane. `false` hides all plot chrome; `controls_open` independently controls whether the settings pane is open. `HeatmapMatrixControls` uses this contract instead of `show_pane` and `toggle_visible`.
 
-`Structure` renders supplied `structure` data. Its `scene_props` accepts `StructureSettings`; computed results are available through the readonly `analysis` export on a component reference. `StructureFileViewer` accepts a URL or `{ data, filename }` payload through `source`, and handles file drops. Loading delegates to the same `open_material()` runtime available to non-component hosts, so fetching, decompression, format detection, workers, provenance, and disposal remain centralized. Prediction JSON files reopen with their input, properties, density and provenance; hosts can also pass `prediction_from_json(content)` as the `prediction` prop. Selection, measurements, atom/bond editing with undo/redo and the supercell/image-atom pipeline live in a headless `StructureSession` (exported from `matterviz/structure`); `active_pane: 'controls' | 'info' | 'export' | null` identifies the open floating pane.
+`Structure` accepts parsed data through `structure`, or a URL, `File` or `{ data, filename }` payload through `source`, and handles file drops. Set `allow_file_drop={false}` when a parent owns loading. Its `scene_props` accepts `StructureSettings`; computed results are available through the readonly `analysis` export on a component reference. Loading delegates to the same `open_material()` runtime available to non-component hosts, so fetching, decompression, format detection, workers, provenance, and disposal remain centralized. Prediction JSON files reopen with their input, properties, density and provenance; hosts can also pass `prediction_from_json(content)` as the `prediction` prop. Selection, measurements, atom/bond editing with undo/redo and the supercell/image-atom pipeline live in a headless `StructureSession` (exported from `matterviz/structure`); `active_pane: 'controls' | 'info' | 'export' | null` identifies the open floating pane.
 
 Host computations register a component through `structure_host_tool` from `matterviz/structure`. Each run captures its input and exposes an abort signal plus guarded publication callbacks. Publish complete, versioned JSON-safe calculation metadata through `StructureToolOverlay.result`; the host receives accepted and reopened snapshots through its `prediction` prop. Use `set_overlay_visible()` to toggle predicted properties and density without discarding results or edited surfaces. An optional `structure_host_tool.input_key` selects relevant in-place calculation inputs, including atom order; document replacement still invalidates ownership. See the [host-tool demo](https://matterviz.janosh.dev/structure/host-tool).
 
@@ -115,21 +115,23 @@ Every `VolumetricData` has a nonempty, unique `id`. Isosurface layers require `v
 <Composition composition="LiFePO4" mode="pie" />
 ```
 
+`Structure`, `Trajectory`, `BrillouinZone` and `FermiSurface` share the `source` input for URLs, files and named payloads. `ConvexHull` accepts `entries` and automatically chooses a binary, ternary or quaternary plot. The dimension-specific renderers and `StructureBarPlot` are internal; use `BondAnglePlot`, `CoordinationBarPlot` or `StructureTypePlot` for structure distributions.
+
 ### Trajectory
 
 ```svelte
 <script>
-  import { TrajectoryFileViewer } from 'matterviz'
+  import { Trajectory } from 'matterviz'
   // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat plus .gz/.zip wrappers;
   // decompress .bz2/.xz first because browsers cannot decode them
 </script>
 
-<TrajectoryFileViewer src="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
+<Trajectory source="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
 ```
 
 `Trajectory.visible_properties` is the shared selection for scatter and histogram modes. It contains exact source property keys, independently of display labels; an empty array hides every series. Legend clicks, isolation, and plot-mode changes use this same state.
 
-`TrajectoryFileViewer` owns loading: it fetches `src` (a URL, `File`, `ArrayBuffer` or `Blob`), accepts drops, decompresses, resolves ambiguous HDF5 groups, opens files above `DEFAULTS.trajectory.index_above_bytes` in a Web Worker and disposes each run when it is replaced or the component unmounts. The `Trajectory` component underneath is a pure viewer that only borrows a `TrajectoryRun` you already hold, so pass `trajectory={await open_trajectory(bytes, { filename })}` (or `trajectory_from_frames(frames)`) when you manage the data yourself and call `run.dispose()` when done. Disposed runs reject every frame read, including frame zero; the stored `run.preview` remains accessible. Worker parsing failures surface as errors. Use `open_trajectory()` directly when you explicitly want same-thread parsing.
+`Trajectory` accepts a URL, `File` or `{ data, filename }` through `source`, handles drops and HDF5 group selection, and disposes runs it opens. To manage data yourself, pass a `TrajectoryRun` through `trajectory` and dispose it yourself; the viewer borrows supplied runs. Use `trajectory_from_frames(frames)` for existing frames or `open_trajectory(bytes, { filename })` for same-thread parsing. Set `allow_file_drop={false}` when the parent owns loading. Disposed runs reject every frame read, including frame zero; `run.preview` remains accessible.
 
 ## 🧪 &thinsp; Coverage
 

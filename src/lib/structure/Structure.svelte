@@ -1,12 +1,12 @@
 <script lang="ts">
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
-  // layout. StructureFileViewer owns URL/text acquisition and file drops.
+  // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { Icon, StatusMessage, Toast } from 'svelte-widgets'
+  import { Icon, Spinner, StatusMessage, Toast } from 'svelte-widgets'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '$lib/utils'
@@ -77,6 +77,10 @@
   } from './host-tool.svelte'
   import { copy_prediction } from './prediction'
   import { replace_tool_volumes } from './host-tool-volumes'
+  import type { FileLoadCallback } from '$lib/io'
+  import type { MaterialSource } from '$lib/file-viewer/open'
+  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
+  import { apply_structure_material } from './material'
 
   export type StructureControlName =
     | `reset-camera`
@@ -128,6 +132,14 @@
     color_scheme = $bindable(`Vesta`),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
 
+    source,
+    allow_file_drop = true,
+    on_file_drop,
+    on_file_load,
+    on_error,
+    loading = $bindable(false),
+    error_msg = $bindable(),
+    dragover = $bindable(false),
     prediction,
     trajectory_position_stream,
     trajectory_line_end_frame,
@@ -199,6 +211,15 @@
     height?: number // output: wrapper height in CSS px
     color_scheme?: string
     atom_color_config?: AtomColorConfig
+    // URL or named file contents; parsed structures can be supplied directly via structure.
+    source?: MaterialSource
+    allow_file_drop?: boolean
+    on_file_drop?: FileLoadCallback
+    on_file_load?: EventHandler
+    on_error?: EventHandler
+    loading?: boolean
+    error_msg?: string
+    dragover?: boolean
     prediction?: StructureToolPrediction
     trajectory_position_stream?: TrajectoryPositionStream | null
     trajectory_line_end_frame?: number
@@ -231,6 +252,45 @@
     on_camera_move?: EventHandler
     on_camera_reset?: EventHandler
   } = $props()
+
+  let notice_message = $state<string>()
+  const drop_zone = create_material_loader<AnyStructure>({
+    source: () => source,
+    current_value: () => structure,
+    allow_file_drop: () => allow_file_drop,
+    on_file_drop: () => on_file_drop,
+    set_loading: (value) => (loading = value),
+    set_error: (message) => (error_msg = message),
+    set_dragover: (over) => (dragover = over),
+    commit: (opened) => {
+      notice_message = undefined
+      let loaded_structure: AnyStructure | undefined
+      if (opened.type === `structure` && opened.prediction) {
+        prediction = opened.prediction
+        structure = prediction.input
+        loaded_structure = structure
+      } else {
+        const { document, notice } = apply_structure_material(
+          { structure, volumetric_data, isosurface_settings, active_volume_id },
+          opened,
+        )
+        loaded_structure = document.structure
+        // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
+        if (loaded_structure !== structure) structure = loaded_structure
+        ;({ volumetric_data, isosurface_settings, active_volume_id } = document)
+        if (notice) notice_message = notice
+      }
+      on_file_load?.({
+        structure: loaded_structure,
+        ...opened.provenance,
+        total_atoms: loaded_structure?.sites.length ?? 0,
+      })
+    },
+    report_error: (message, metadata) => {
+      error_msg = message
+      on_error?.({ error_msg: message, ...metadata })
+    },
+  })
 
   // Callers may supply plain settings; controls need reactive nested writes, including after replacement.
   $effect.pre(() => {
@@ -449,8 +509,8 @@
     return tool_controller.start_run(provenance)
   }
   onDestroy(() => tool_controller.dispose())
-  function load_prediction(source: StructureToolPrediction): void {
-    const snapshot = copy_prediction(source)
+  function load_prediction(incoming: StructureToolPrediction): void {
+    const snapshot = copy_prediction(incoming)
     structure = snapshot.input
     session.element_mapping = undefined
     cell_type = `original`
@@ -464,7 +524,8 @@
     apply_tool_overlay(snapshot)
   }
   $effect(() => {
-    if (prediction) untrack(() => load_prediction(prediction))
+    const current_prediction = prediction
+    if (current_prediction) untrack(() => load_prediction(current_prediction))
   })
   const reset_prediction_surfaces = (): void => {
     isosurface_settings = {
@@ -895,6 +956,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
+  class:dragover
   class:active={active_pane !== null}
   class:multi-view={is_multi_view_active}
   style:--struct-viewport-gap="{MULTI_VIEW_MIN_PANE.gap}px"
@@ -916,9 +978,16 @@
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
+  {@attach drop_zone}
   {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
+  {#if loading}<Spinner
+      text="Loading structure..."
+      style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
+    />{/if}
+  {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
+  {#if notice_message}<StatusMessage bind:message={notice_message} dismissible />{/if}
   {#if show_host_tool && structure_host_tool.component && session.tool_input?.sites.length}
     <div style:display={active_tool_view ? `none` : `contents`}>
       <structure_host_tool.component
@@ -1223,6 +1292,10 @@
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--text-color);
     display: flex;
+    &.dragover {
+      background: var(--struct-dragover-bg, var(--dragover-bg));
+      border: var(--struct-dragover-border, var(--dragover-border));
+    }
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);

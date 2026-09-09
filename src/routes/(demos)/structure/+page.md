@@ -3,7 +3,7 @@
 ```svelte example
 <script lang="ts">
   import { browser } from '$app/environment'
-  import { StructureFileViewer, type StructureHandlerData } from 'matterviz'
+  import { Structure, type StructureHandlerData } from 'matterviz'
   import { MultiSelect as Select } from 'svelte-widgets'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
@@ -47,7 +47,7 @@
   })
 </script>
 
-<StructureFileViewer
+<Structure
   source={hash_structure_string
     ? { data: hash_structure_string, filename: `string` }
     : get_file_url(source_filename)}
@@ -64,14 +64,14 @@
   >
     {display_filename}
   </h3>
-</StructureFileViewer>
+</Structure>
 
 <FilePicker files={all_files} show_category_filters style="margin-block: 2em" />
 ```
 
 ## Anatomy
 
-`Structure` renders supplied data. `StructureFileViewer` accepts a URL or a `{ data, filename }` payload through `source` and handles file drops. It delegates acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
+`Structure` accepts parsed data through `structure`, or a URL or `{ data, filename }` payload through `source`, and handles file drops. Set `allow_file_drop={false}` when a parent owns loading. It delegates acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
 
 ## Explicit Bond Orders
 
@@ -87,7 +87,14 @@ bond's context menu to update an existing bond order interactively.
 ```svelte example
 <script lang="ts">
   import { Structure } from 'matterviz'
-  import type { Molecule } from 'matterviz'
+  import type { Molecule, StructureSettings } from 'matterviz'
+
+  let scene_props = $state<StructureSettings>({
+    camera_position: [0, 0, 12],
+    show_site_labels: true,
+    show_site_indices: true,
+    bonding_options: { strength_threshold: 10 },
+  })
 
   const bond_order_playground: Molecule = {
     id: `explicit-bond-order-playground`,
@@ -142,12 +149,7 @@ bond's context menu to update an existing bond order interactively.
 <Structure
   structure={bond_order_playground}
   show_controls="always"
-  scene_props={{
-    camera_position: [0, 0, 12],
-    show_site_labels: true,
-    show_site_indices: true,
-    bonding_options: { strength_threshold: 10 },
-  }}
+  bind:scene_props
   style="height: 520px"
 />
 ```
@@ -301,11 +303,11 @@ Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction
 
 ## Load Structure from String
 
-Load structures from text with `StructureFileViewer source={{ data: text, filename }}` (CIF, POSCAR, XYZ, JSON, …).
+Load structures from text with `Structure source={{ data: text, filename }}` (CIF, POSCAR, XYZ, JSON, …).
 
 ```svelte example
 <script lang="ts">
-  import { StructureFileViewer } from 'matterviz'
+  import { Structure } from 'matterviz'
   import { format_num } from '$lib'
   import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
   import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
@@ -356,7 +358,7 @@ Load structures from text with `StructureFileViewer source={{ data: text, filena
   )}B)
 </label>
 
-<StructureFileViewer
+<Structure
   source={{ data: selected_file.content, filename: selected_file.name }}
   bind:structure={parsed_structure}
 />

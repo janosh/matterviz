@@ -746,13 +746,13 @@ test.describe(`Structure Event Handler Tests`, () => {
     page.on(`console`, (message) => {
       if (message.text().includes(`ownership_invalid`)) ownership_warnings.push(message.text())
     })
-    await goto_structure_test(page, `/test/structure?data_url=/structures/mp-1.json`)
+    await goto_structure_test(page, `/test/structure?source=/structures/mp-1.json`)
     await wait_for_event(page, `on_file_load`, [`structure`, `filename`])
     expect(ownership_warnings).toEqual([])
   })
 
   test(`should trigger on_error event when file loading fails`, async ({ page }) => {
-    await page.goto(`/test/structure?data_url=non-existent.json`)
+    await page.goto(`/test/structure?source=non-existent.json`)
     await wait_for_event(page, `on_error`, [`error_msg`, `filename`])
 
     // UI should still render gracefully despite the load failure

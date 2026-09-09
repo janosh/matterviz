@@ -1,12 +1,6 @@
 <script lang="ts">
-  import {
-    ConvexHull,
-    ConvexHull2D,
-    ConvexHullCanvas,
-    MAGNETIC_ORDERING_CATEGORY,
-  } from '$lib/convex-hull'
+  import { ConvexHull, MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull'
   import type { ConvexHullEntry, HullModel, PhaseData } from '$lib/convex-hull'
-  import type { Component, ComponentProps } from 'svelte'
 
   const elements_by_dim = {
     '2d': [`Li`, `O`],
@@ -19,23 +13,12 @@
     include_element_refs = true,
     allow_file_drop = true,
     start_missing = false,
-    use_wrapper = false,
   }: {
     dim: keyof typeof elements_by_dim
     include_element_refs?: boolean
     allow_file_drop?: boolean
     start_missing?: boolean
-    use_wrapper?: boolean
   } = $props()
-  // The prop superset cast mirrors ConvexHull.svelte's dynamic component; 2D ignores `dim`
-  const Hull = $derived(
-    (use_wrapper ? ConvexHull : dim === `2d` ? ConvexHull2D : ConvexHullCanvas) as Component<
-      ComponentProps<typeof ConvexHullCanvas>,
-      { get_model: () => HullModel | undefined }
-    >,
-  )
-  const canvas_dim = $derived(dim === `3d` ? 3 : 4)
-
   const entries_for = (prefix: string): PhaseData[] => {
     const elements = elements_by_dim[dim]
     const composition = Object.fromEntries(elements.map((element) => [element, 1]))
@@ -116,8 +99,7 @@
   >Toggle Category</button
 >
 
-<Hull
-  dim={canvas_dim}
+<ConvexHull
   {entries}
   {config}
   {entry_category}

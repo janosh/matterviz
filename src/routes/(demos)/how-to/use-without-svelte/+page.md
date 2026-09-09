@@ -8,18 +8,18 @@ You can compile Svelte components to custom elements and consume them anywhere (
 - React docs: [Using Web Components](https://react.dev/reference/react-dom/components#using-web-components)
 - Vue docs: [Web Components](https://vuejs.org/guide/extras/web-components.html)
 
-MatterViz does not ship custom elements, so write a one-file wrapper in your own project. A minimal `StructureCE.svelte` for [`StructureFileViewer.svelte`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/StructureFileViewer.svelte):
+MatterViz does not ship custom elements, so write a one-file wrapper in your own project. A minimal `StructureCE.svelte` for [`Structure.svelte`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/Structure.svelte):
 
 ```svelte
 <svelte:options customElement="mv-structure" />
 
 <!-- src/StructureCE.svelte in your app, compiled with the Svelte compiler (customElement: true) -->
 <script lang="ts">
-  import { StructureFileViewer } from 'matterviz'
+  import { Structure } from 'matterviz'
   let props = $props()
 </script>
 
-<StructureFileViewer {...props} />
+<Structure {...props} />
 ```
 
 Use in React (set properties via ref):

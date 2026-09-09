@@ -24,8 +24,6 @@ export {
   TRIANGLE_VERTICES,
 } from './barycentric-coords'
 export { default as ConvexHull } from './ConvexHull.svelte'
-export { default as ConvexHull2D } from './ConvexHull2D.svelte'
-export { default as ConvexHullCanvas } from './ConvexHullCanvas.svelte'
 export { default as ConvexHullControls } from './ConvexHullControls.svelte'
 export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'

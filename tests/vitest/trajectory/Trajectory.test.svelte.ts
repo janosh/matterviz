@@ -1,6 +1,6 @@
-// Rendering, props, panes and events of the pure <Trajectory> viewer over a TrajectoryRun.
+// Rendering, props, panes and events of Trajectory over a supplied TrajectoryRun.
 // Playback mechanics live in sequence-player.test, frame loading/caching in session.test and
-// file acquisition in TrajectoryFileViewer.test; none of that is re-tested here.
+// file acquisition in Trajectory-loading.test; none of that is re-tested here.
 import type {
   TrajectoryController,
   TrajectoryRun,

@@ -393,6 +393,7 @@ export const create_display = (
       trajectory: final_trajectory,
       ...trajectory_props(defaults),
       ...VIEWER_COMMON_PROPS,
+      allow_file_drop: false,
       ...(initial_step_idx !== undefined && { current_step_idx: initial_step_idx }),
       ...(on_step_change && {
         on_step_change: (data: TrajHandlerData) =>
@@ -475,8 +476,7 @@ export const create_display = (
 // Map defaults to trajectory component props
 const trajectory_props = (defaults: DefaultSettings) => {
   const { trajectory, plot, scatter, histogram } = defaults
-  // Loading/UX settings belong to TrajectoryFileViewer, not the viewer mounted here; spreading
-  // them would land on the wrapper div
+  // This host owns acquisition; only playback settings reach the mounted Trajectory.
   const {
     index_above_bytes: _index_above_bytes,
     atom_type_mapping: _atom_type_mapping,

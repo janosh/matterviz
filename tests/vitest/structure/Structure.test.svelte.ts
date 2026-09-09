@@ -1,4 +1,4 @@
-import { type AnyStructure, type MeasureMode, Structure, StructureFileViewer } from '$lib'
+import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from '$lib/isosurface'
 import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface'
@@ -89,11 +89,6 @@ const mount_structure = (props: ComponentProps<typeof Structure>) => {
   mounted.push(viewer)
   return viewer.analysis
 }
-const mount_file_viewer = (props: ComponentProps<typeof StructureFileViewer>) => {
-  const viewer = mount(StructureFileViewer, { target: document.body, props })
-  mounted.push(viewer)
-  return viewer.analysis
-}
 afterEach(() => {
   scene_stub.props = undefined
   for (const component of mounted.splice(0)) void unmount(component)
@@ -172,13 +167,13 @@ test(`loads strings, URLs and dropped files through the component API`, async ()
   const string_load = vi.fn<(data: StructureHandlerData) => void>()
   const url_load = vi.fn<(data: StructureHandlerData) => void>()
   const drop_load = vi.fn<(data: StructureHandlerData) => void>()
-  mount_file_viewer({
+  mount_structure({
     source: { data: SAMPLE_POSCAR_CONTENT, filename: `string` },
     on_file_load: string_load,
   })
-  mount_file_viewer({ source: `/loaded.poscar`, on_file_load: url_load })
+  mount_structure({ source: `/loaded.poscar`, on_file_load: url_load })
   const drop_state = $state<{ structure?: AnyStructure }>({ structure: undefined })
-  mount_file_viewer(bind_props({ on_file_load: drop_load }, drop_state))
+  mount_structure(bind_props({ on_file_load: drop_load }, drop_state))
   await tick()
   document
     .querySelectorAll(`.structure`)
@@ -208,11 +203,11 @@ test(`caller-owned structures prevent fetching a source URL`, async () => {
     .mockImplementation(() => Promise.resolve(new Response(SAMPLE_POSCAR_CONTENT)))
   vi.stubGlobal(`fetch`, fetch_spy)
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-  mount_file_viewer({
+  mount_structure({
     source: `/priority.poscar`,
     on_file_load,
   })
-  mount_file_viewer({ source: `/blocked.poscar`, structure })
+  mount_structure({ source: `/blocked.poscar`, structure })
   await vi.waitFor(() =>
     expect(on_file_load).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ filename: `priority.poscar`, total_atoms: 5 }),
@@ -224,10 +219,10 @@ test(`caller-owned structures prevent fetching a source URL`, async () => {
 test(`drag hover state remains bindable and respects allow_file_drop`, async () => {
   const enabled = $state({ dragover: false })
   const disabled = $state({ dragover: false })
-  mount_file_viewer(bind_props({}, enabled))
-  mount_file_viewer(bind_props({ allow_file_drop: false }, disabled))
+  mount_structure(bind_props({}, enabled))
+  mount_structure(bind_props({ allow_file_drop: false }, disabled))
   await tick()
-  const [enabled_zone, disabled_zone] = document.querySelectorAll(`.structure-file-viewer`)
+  const [enabled_zone, disabled_zone] = document.querySelectorAll(`.structure`)
   enabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
   disabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
   expect(enabled.dragover).toBe(true)
@@ -240,7 +235,7 @@ test(`drag hover state remains bindable and respects allow_file_drop`, async () 
 
 test(`custom drop handlers retain raw content and source metadata`, async () => {
   const on_file_drop = vi.fn()
-  mount_file_viewer({ on_file_drop })
+  mount_structure({ on_file_drop })
   await tick()
   const file = new File([SAMPLE_POSCAR_CONTENT], `custom.poscar`)
   doc_query(`.structure`).dispatchEvent(create_drop_event(file))
@@ -266,7 +261,7 @@ test(`file viewer forwards replacement atom colors from host predictions`, async
     structure,
     atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
   })
-  const run = await mount_host_structure(bind_props({}, state), mount_file_viewer)
+  const run = await mount_host_structure(bind_props({}, state), mount_structure)
   flushSync(() =>
     run.on_overlay({
       color_property: `charge`,
@@ -317,7 +312,7 @@ test.each([
       volumetric_data: undefined,
       structure: undefined,
     })
-    mount_file_viewer(bind_props({}, state))
+    mount_structure(bind_props({}, state))
     await tick()
     const drop = (text: string, name: string) =>
       doc_query(`.structure`).dispatchEvent(
@@ -377,7 +372,7 @@ test.each([
     volumetric_data: undefined,
     isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.2 },
   })
-  mount_file_viewer(bind_props({ on_file_load }, state))
+  mount_structure(bind_props({ on_file_load }, state))
   await tick()
   const drop_zone = doc_query(`.structure`)
   const drop = (content: string, filename: string) =>
@@ -413,7 +408,7 @@ test.each([
 test(`multi-file drops continue after failures and report one batch error`, async () => {
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
   const state = $state<{ error_msg?: string }>({ error_msg: undefined })
-  mount_file_viewer(bind_props({ on_file_load }, state))
+  mount_structure(bind_props({ on_file_load }, state))
   await tick()
   doc_query(`.structure`).dispatchEvent(
     create_drop_event([
@@ -746,7 +741,7 @@ test.each([false, true])(
     })
     const tool_props = await mount_host_structure(
       bind_props({ structure: source }, state),
-      mount_file_viewer,
+      mount_structure,
     )
     const overlay = {
       volumes: [{ ...volumetric_data[0], label: `Prediction` }],
@@ -2157,7 +2152,7 @@ describe(`source acquisition`, () => {
     `reports $name errors with an optional callback`,
     async ({ source, filename, error, on_error }) => {
       vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(``, { status: 404 })))
-      mount_file_viewer({ source, on_error })
+      mount_structure({ source, on_error })
       await vi.waitFor(() =>
         expect(document.querySelector(`.status-message.error`)?.textContent).toMatch(error),
       )
@@ -2175,7 +2170,7 @@ describe(`source acquisition`, () => {
     const { promise, resolve } = Promise.withResolvers<undefined>()
     const on_file_drop = vi.fn(() => promise)
     const state = { loading: false }
-    mount_file_viewer(bind_props({ source: `/test.poscar`, on_file_drop }, state))
+    mount_structure(bind_props({ source: `/test.poscar`, on_file_drop }, state))
 
     await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
     expect(state.loading).toBe(true)
@@ -2187,7 +2182,7 @@ describe(`source acquisition`, () => {
   test(`reports async source handler failures`, async () => {
     mock_fetch_response(SAMPLE_POSCAR_CONTENT)
     const on_error = vi.fn()
-    mount_file_viewer({
+    mount_structure({
       source: `/test.poscar`,
       on_file_drop: () => Promise.reject(new Error(`handler failed`)),
       on_error,
@@ -2208,7 +2203,7 @@ describe(`source acquisition`, () => {
       mock_fetch_response(content, { 'content-encoding': `gzip` })
       const on_file_load = vi.fn()
       const state = { volumetric_data: undefined as VolumetricData[] | undefined }
-      mount_file_viewer(bind_props({ source: `/${filename}.gz`, on_file_load }, state))
+      mount_structure(bind_props({ source: `/${filename}.gz`, on_file_load }, state))
       await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
       expect(on_file_load.mock.calls[0][0]).toMatchObject({
         filename,
@@ -2244,7 +2239,7 @@ describe(`source acquisition`, () => {
         volumetric_data: undefined as VolumetricData[] | undefined,
         isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
       }
-      mount_file_viewer(bind_props({ source: `/density.CHGCAR` }, state))
+      mount_structure(bind_props({ source: `/density.CHGCAR` }, state))
 
       await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
       expect(state.isosurface_settings.layers).toEqual(
@@ -2254,13 +2249,13 @@ describe(`source acquisition`, () => {
   )
 
   // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
-  const mount_pending_url = async (extra: ComponentProps<typeof StructureFileViewer> = {}) => {
+  const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
     const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof StructureFileViewer>>({
+    const props = $state<ComponentProps<typeof Structure>>({
       source: `/a.json`,
       ...extra,
     })
-    mount_file_viewer(props)
+    mount_structure(props)
     await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
     return { responses, props }
   }
@@ -2322,14 +2317,14 @@ describe(`source acquisition`, () => {
     })
     vi.stubGlobal(`fetch`, fetch_mock)
     const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-    const props = $state<ComponentProps<typeof StructureFileViewer>>({
+    const props = $state<ComponentProps<typeof Structure>>({
       source: `/a.json`,
       structure: undefined,
       selected_sites: [],
       measure_mode: `edit-atoms`,
       on_file_load,
     })
-    mount_file_viewer(props)
+    mount_structure(props)
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
     await tick()
     props.selected_sites = [0]
@@ -2433,11 +2428,10 @@ test(`import survives a synchronous restart from the previous run's abort listen
   expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
 })
 
-// The data component owns no acquisition and publishes computed results without setters.
-test(`pure Structure exposes live read-only analysis without loading files`, async () => {
+test(`caller-owned Structure exposes live read-only analysis with file drops disabled`, async () => {
   const fetch = vi.fn()
   vi.stubGlobal(`fetch`, fetch)
-  const props = $state({ structure, show_image_atoms: false })
+  const props = $state({ structure, show_image_atoms: false, allow_file_drop: false })
   const analysis = mount_structure(props)
   await tick()
   expect(analysis.displayed_structure?.sites).toHaveLength(structure.sites.length)

@@ -1,10 +1,5 @@
 <script lang="ts">
-  import {
-    StructureFileViewer,
-    make_site,
-    structure_host_tool,
-    type Crystal,
-  } from '$lib/structure'
+  import { Structure, make_site, structure_host_tool, type Crystal } from '$lib/structure'
   import {
     calc_lattice_params,
     create_frac_to_cart,
@@ -48,7 +43,7 @@
   model download or server is needed.
 </p>
 {#if ready}
-  <StructureFileViewer
+  <Structure
     {structure}
     show_controls="always"
     scene_props={{ camera_position: [7, 5, 6], camera_target: [1.5, 1.5, 1.5] }}
@@ -113,8 +108,8 @@ run.on_overlay({
   shared storage. Grid geometry is validated and cached statistics are recomputed.
 </p>
 <p>
-  Drop an exported prediction JSON onto a StructureFileViewer to reopen its input, properties,
-  density and provenance. Hosts can also import <code>prediction_from_json</code> from
+  Drop an exported prediction JSON onto a Structure to reopen its input, properties, density
+  and provenance. Hosts can also import <code>prediction_from_json</code> from
   <code>matterviz/structure</code> and pass its result as the viewer's <code>prediction</code>
   prop. Import accepts version 1 only and restores the original cell and 1×1×1 scaling.
 </p>

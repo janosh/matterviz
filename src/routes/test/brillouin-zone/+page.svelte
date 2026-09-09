@@ -24,7 +24,7 @@
   let ibz_data = $state<IrreducibleBZData | null>(null)
 
   let structure = $state<Crystal | undefined>(mp1_struct as unknown as Crystal)
-  let data_url = $state<string | undefined>(undefined)
+  let source = $state<string | undefined>(undefined)
   let event_calls = $state<{ event: string; data: unknown }[]>([])
   let camera = $state<Camera>()
   $effect(() => {
@@ -43,10 +43,10 @@
     if (typeof window === `undefined`) return
     const params = new URLSearchParams(window.location.search)
 
-    if (params.has(`data_url`)) {
-      const url_data = params.get(`data_url`)
+    if (params.has(`source`)) {
+      const url_data = params.get(`source`)
       if (url_data) {
-        data_url = url_data
+        source = url_data
         structure = undefined
       }
     }
@@ -161,7 +161,7 @@
 <BrillouinZone
   id="test-brillouin-zone"
   {structure}
-  {data_url}
+  {source}
   bind:bz_order
   bind:controls_open
   bind:info_pane_open

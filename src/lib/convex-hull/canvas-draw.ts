@@ -90,7 +90,7 @@ export type HullPoint = { entry: ConvexHullEntry; projected: Projected }
 export type HullPointOpts = {
   scale: number // canvas container scale factor
   shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
-  selected_entry: ConvexHullEntry | null
+  selected_entry: Pick<ConvexHullEntry, `entry_id`> | null
   is_highlighted: (entry: ConvexHullEntry) => boolean
   get_point_color: (entry: ConvexHullEntry) => string
   highlight_style: Required<HighlightStyle>

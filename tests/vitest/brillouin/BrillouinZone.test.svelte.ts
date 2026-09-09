@@ -84,10 +84,10 @@ test(`loads dropped structures and reports their provenance`, async () => {
 test(`loads later data URLs after the first URL-owned structure`, async () => {
   vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
   const on_file_load = vi.fn()
-  const props = $state({ data_url: `http://x/a.poscar`, on_file_load })
+  const props = $state({ source: `http://x/a.poscar`, on_file_load })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-  props.data_url = `http://x/b.poscar`
+  props.source = `http://x/b.poscar`
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
   expect(on_file_load.mock.calls.map(([payload]) => payload.filename)).toEqual([
     `a.poscar`,
@@ -102,10 +102,10 @@ test(`a stale URL response cannot overwrite a newer structure`, async () => {
     return new Promise((resolve) => responses.set(url, resolve))
   })
   const on_file_load = vi.fn()
-  const props = $state({ data_url: `http://x/a.poscar`, on_file_load })
+  const props = $state({ source: `http://x/a.poscar`, on_file_load })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   await vi.waitFor(() => expect(responses.has(`http://x/a.poscar`)).toBe(true))
-  props.data_url = `http://x/b.poscar`
+  props.source = `http://x/b.poscar`
   await vi.waitFor(() => expect(responses.has(`http://x/b.poscar`)).toBe(true))
   responses.get(`http://x/b.poscar`)?.(new Response(poscar))
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
@@ -121,7 +121,7 @@ test(`a failing load callback keeps the parsed value and URL ownership`, async (
   })
   const on_error = vi.fn()
   const props = $state({
-    data_url: `http://x/a.poscar`,
+    source: `http://x/a.poscar`,
     structure: undefined as typeof cubic | undefined,
     on_file_load,
     on_error,
@@ -136,7 +136,7 @@ test(`a failing load callback keeps the parsed value and URL ownership`, async (
     ),
   )
   expect(props.structure?.sites).toHaveLength(1)
-  props.data_url = `http://x/b.poscar`
+  props.source = `http://x/b.poscar`
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
   expect(on_file_load).toHaveBeenLastCalledWith(
     expect.objectContaining({ filename: `b.poscar` }),
@@ -144,14 +144,14 @@ test(`a failing load callback keeps the parsed value and URL ownership`, async (
 })
 
 // A host on_file_drop owns whatever it stores in `structure`; that value must not read as a
-// caller-supplied one that cancels the URL, or a second data_url would never be fetched
-test(`loads a second data_url when a host on_file_drop set the structure`, async () => {
+// caller-supplied one that cancels the URL, or a second source would never be fetched
+test(`loads a second source when a host on_file_drop set the structure`, async () => {
   vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
   const on_file_drop = vi.fn((_content: string | ArrayBuffer, _filename: string) => {
     props.structure = cubic
   })
   const props = $state({
-    data_url: `http://x/a.poscar`,
+    source: `http://x/a.poscar`,
     structure: undefined as typeof cubic | undefined,
     on_file_drop,
   })
@@ -159,22 +159,25 @@ test(`loads a second data_url when a host on_file_drop set the structure`, async
   await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
   await tick()
 
-  props.data_url = `http://x/b.poscar`
+  props.source = `http://x/b.poscar`
   await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
   expect(on_file_drop.mock.calls.map((call) => call[1])).toEqual([`a.poscar`, `b.poscar`])
 })
 
-test(`reports loading while a structure_string is parsed`, async () => {
-  const on_file_load = vi.fn()
-  const props = $state({ structure_string: poscar, loading: false, on_file_load })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  flushSync()
-  // Parsing is asynchronous, so the spinner covers at least one microtask
-  expect(props.loading).toBe(true)
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-  expect(props.loading).toBe(false)
-  expect(on_file_load.mock.calls[0][0].bz_data?.order).toBe(1)
-})
+test.each([{ data: poscar, filename: `inline.poscar` }, new File([poscar], `local.poscar`)])(
+  `reports loading while source %o is parsed`,
+  async (source) => {
+    const on_file_load = vi.fn()
+    const props = $state({ source, loading: false, on_file_load })
+    mounted_component = mount(BrillouinZone, { target: document.body, props })
+    flushSync()
+    // Parsing is asynchronous, so the spinner covers at least one microtask
+    expect(props.loading).toBe(true)
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    expect(props.loading).toBe(false)
+    expect(on_file_load.mock.calls[0][0].bz_data?.order).toBe(1)
+  },
+)
 
 test(`ignores a stale async on_file_drop failure`, async () => {
   vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
@@ -186,11 +189,11 @@ test(`ignores a stale async on_file_drop failure`, async () => {
     completed_filenames.push(filename)
   })
   const on_error = vi.fn()
-  const props = $state({ data_url: `http://x/a.poscar`, on_file_drop, on_error })
+  const props = $state({ source: `http://x/a.poscar`, on_file_drop, on_error })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
 
-  props.data_url = `http://x/b.poscar`
+  props.source = `http://x/b.poscar`
   await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
   first_drop.reject(new Error(`stale parse failure`))
   second_drop.resolve(undefined)
