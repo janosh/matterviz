@@ -332,7 +332,7 @@ export const SETTINGS_CONFIG = define_settings({
     },
     sphere_segments: {
       value: 20,
-      description: `Number of segments for sphere rendering (higher = smoother)`,
+      description: `Maximum sphere detail; large scenes use less detail for distant atoms`,
       minimum: 8,
       maximum: 64,
     },

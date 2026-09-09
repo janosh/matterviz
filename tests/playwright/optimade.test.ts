@@ -133,18 +133,27 @@ test.describe(`OPTIMADE route`, () => {
   test(`shows suggestion failures and recovers on provider change`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
     await wait_for_providers(page)
+    await expect(page.locator(`.structure-suggestions button`).first()).toBeVisible()
     await page.evaluate(() => {
       const original_fetch = globalThis.fetch
       globalThis.fetch = (input, init) => {
         const url =
           typeof input === `string` ? input : input instanceof URL ? input.href : input.url
         if (url.includes(`oqmd.org`) && url.includes(`page_limit`)) {
-          return Promise.reject(new TypeError(`Provider unavailable`))
+          return new Promise<Response>((_resolve, reject) => {
+            window.addEventListener(
+              `fail-suggestions`,
+              () => reject(new TypeError(`Provider unavailable`)),
+              { once: true },
+            )
+          })
         }
         return original_fetch(input, init)
       }
     })
     await page.locator(`button.db-select`, { hasText: `oqmd` }).click()
+    await expect(page.locator(`.suggestions-column`)).toContainText(`Loading...`)
+    await page.evaluate(() => window.dispatchEvent(new Event(`fail-suggestions`)))
     await expect(page.locator(`.suggestions-column [role=alert]`)).toContainText(
       `Provider unavailable`,
     )

@@ -1,54 +1,38 @@
 <script lang="ts">
-  // All atoms of one visual class (base or ghosted PBC image) in a single
-  // THREE.InstancedMesh: one draw call and zero per-atom Svelte components.
-  // Per-atom colors live in the instanceColor buffer, per-atom position/radius
-  // in the instanceMatrix buffer. Pointer handlers spread onto the mesh receive
-  // threlte intersection events whose `instanceId` indexes into `atoms`.
-  //
-  // This replaces one <extras.Instance> component (plus one scene-graph Group and
-  // one interactivity registration) per atom, which made structure changes on
-  // supercells block the main thread for seconds and hover raycasts O(n²).
-  import type { Vec3 } from '$lib/math'
+  // One draw call per visual class; instanceId maps pointer events back to atoms.
+  import { AtomInstances, atom_sphere_segments, type InstancedAtom } from './atom-instances'
   import { set_linear_css_color } from '$lib/scene/colors'
-  import { T, useThrelte } from '@threlte/core'
+  import { T, useTask, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import {
     Color,
-    InstancedMesh,
-    Matrix4,
     MeshStandardMaterial,
+    PerspectiveCamera,
     SphereGeometry,
+    Vector3,
   } from 'three/webgpu'
-
-  type InstancedAtom = {
-    position: Vec3
-    radius: number
-    color?: string
-  }
 
   let {
     atoms,
     sphere_segments = 20,
     ghost = false,
-    positions_only = false,
     ...pointer_props
   }: {
     atoms: InstancedAtom[]
     sphere_segments?: number
     // edit-mode PBC image atoms: desaturated + translucent
     ghost?: boolean
-    // Fast trajectory-scrub path: apply positions/radii but skip unchanged color uploads.
-    positions_only?: boolean
     // threlte interactivity handlers (onpointerenter, onclick, ...) forwarded to the mesh
     [key: string]: unknown
   } = $props()
 
-  const { invalidate } = useThrelte()
+  const { invalidate, camera, size, renderStage } = useThrelte()
+  // svelte-ignore state_referenced_locally
+  let detail_segments = $state(sphere_segments)
 
   // One material shared across mesh recreations; per-atom colors come from the
   // instanceColor buffer so the base color stays white.
   const material = new MeshStandardMaterial()
-  $effect(() => () => material.dispose())
 
   $effect(() => {
     material.transparent = ghost
@@ -57,117 +41,107 @@
     invalidate()
   })
 
-  // Rebuilt only when the segment count really changes. The prop's signal fires on
-  // unrelated scene updates (hiding an element, editing bonds, ...) with an unchanged
-  // value, and an effect keyed on it alone would dispose + re-upload the sphere on every
-  // one of them. Beyond the wasted uploads, disposing a geometry whose GPU buffer never
-  // got created throws from inside the effect teardown, and that abandons the rest of
-  // Svelte's flush: atom meshes keep the previous element's counts and bonds render
-  // colorless. Software WebGPU hits exactly this by rejecting the sphere upload.
-  // Both reads capture the initial value on purpose - the effect below owns every later
-  // change, keyed on built_segments so an unchanged value is a no-op
-  // svelte-ignore state_referenced_locally
-  let geometry = $state.raw(new SphereGeometry(0.5, sphere_segments, sphere_segments))
-  // svelte-ignore state_referenced_locally
-  let built_segments = sphere_segments
+  // Keep resources across updates: disposing/re-uploading unchanged geometry can also
+  // abort Svelte's flush after a failed GPU upload, leaving stale atoms and bonds.
+  let mesh = $state.raw<AtomInstances | null>(null)
+  let colored_css: (string | undefined)[] = []
+  let colored_ghost = false
   $effect(() => {
-    if (sphere_segments === built_segments) return
-    built_segments = sphere_segments
-    const prev = untrack(() => geometry)
-    geometry = new SphereGeometry(0.5, sphere_segments, sphere_segments)
-    prev.dispose()
-  })
-  $effect(() => () => geometry.dispose()) // unmount-only, cleanups run untracked
-
-  // Grow-only capacity (three caches TSL by mesh uuid); shrink via mesh.count.
-  let mesh = $state.raw<InstancedMesh | null>(null)
-  $effect(() => {
-    const count = atoms.length
-    const prev = untrack(() => mesh)
-    if (prev && prev.instanceMatrix.count >= count) {
-      prev.count = count
-      invalidate()
-      return
+    let current = untrack(() => mesh)
+    if (!current && atoms.length === 0) return
+    const segments = Math.min(detail_segments, sphere_segments)
+    const geometry =
+      current?.geometry.parameters.widthSegments === segments
+        ? current.geometry
+        : new SphereGeometry(0.5, segments, segments)
+    if (current && current.geometry !== geometry) current.geometry.dispose()
+    const capacity = current?.instanceMatrix.count ?? 0
+    // Grow geometrically (three caches TSL by mesh uuid); shrink via mesh.count.
+    if (!current || atoms.length > capacity) {
+      current?.dispose()
+      current = new AtomInstances(
+        geometry,
+        material,
+        Math.max(atoms.length, Math.ceil(capacity * 1.5)),
+      )
+      current.frustumCulled = false
+      mesh = current
     }
-    prev?.dispose()
-    if (count === 0) {
-      mesh = null
-      return
-    }
-    const next = new InstancedMesh(
-      untrack(() => geometry),
-      material,
-      count,
-    )
-    next.frustumCulled = false
-    mesh = next
-  })
-  // Unmount-only cleanup (a cleanup on the effect above would dispose the mesh
-  // on every re-run, including runs that keep it; cleanups run untracked)
-  $effect(() => () => mesh?.dispose())
-  $effect(() => {
-    if (mesh && mesh.geometry !== geometry) {
-      mesh.geometry = geometry
-      invalidate()
-    }
-  })
-
-  const scratch_matrix = new Matrix4()
-  $effect(() => {
-    const current = mesh
-    if (!current) return
-    const limit = Math.min(atoms.length, current.count)
-    for (let idx = 0; idx < limit; idx++) {
-      const { position, radius } = atoms[idx]
-      scratch_matrix
-        .makeScale(radius, radius, radius)
-        .setPosition(position[0], position[1], position[2])
-      current.setMatrixAt(idx, scratch_matrix)
-    }
-    current.instanceMatrix.needsUpdate = true
-    // keep the whole-mesh bounding sphere in sync so raycasts can early-reject
-    current.computeBoundingSphere()
+    // Detail changes can alter the sphere's exact float32 bounds.
+    current.geometry = geometry
+    current.update_atoms(atoms)
     invalidate()
+  })
+  // Dispose only on unmount, never on updates that reuse a resource.
+  $effect(() => () => {
+    mesh?.dispose()
+    mesh?.geometry.dispose()
+    material.dispose()
+  })
+
+  const view_center = new Vector3()
+  const update_detail = () => {
+    const current = mesh
+    const cam = camera.current
+    if (!current?.boundingSphere || !cam) return
+    let desired = sphere_segments
+    // Small scenes retain the requested tessellation. Large scenes recover it when zoomed in.
+    if (current.count >= 2000) {
+      current.updateWorldMatrix(true, false)
+      const world_scale = current.matrixWorld.getMaxScaleOnAxis()
+      let radius_px =
+        (current.max_radius *
+          world_scale *
+          Math.abs(cam.projectionMatrix.elements[5]) *
+          size.current.height) /
+        2
+      if (cam instanceof PerspectiveCamera) {
+        view_center
+          .copy(current.boundingSphere.center)
+          .applyMatrix4(current.matrixWorld)
+          .applyMatrix4(cam.matrixWorldInverse)
+        const depth = -view_center.z - current.boundingSphere.radius * world_scale
+        // Bound perspective magnification across the entire mesh, including off-axis views.
+        const lateral =
+          Math.hypot(view_center.x, view_center.y) +
+          current.boundingSphere.radius * world_scale
+        radius_px = depth > 0 ? (radius_px / depth) * Math.hypot(1, lateral / depth) : Infinity
+      }
+      desired = atom_sphere_segments(radius_px, sphere_segments)
+    }
+    // Raise detail immediately; leave room before lowering it to avoid zoom-boundary churn.
+    if (desired > detail_segments || desired <= detail_segments * 0.75)
+      detail_segments = desired
+  }
+  useTask(update_detail, { stage: renderStage, autoInvalidate: false })
+  $effect(() => {
+    void $size
+    update_detail()
   })
 
   const gray = new Color(0x999999)
   const scratch_color = new Color()
-  let colored_mesh: InstancedMesh | null = null
-  // Colors last written, one entry per instance slot, plus the ghost flag they were written
-  // under. The mesh is grow-only, so a trajectory whose frames differ in composition reuses
-  // a slot for a different element: keying the scrub fast path on mesh identity alone left
-  // that slot painted the previous frame's color for the whole scrub burst.
-  let colored_css: (string | undefined)[] = []
-  let colored_ghost = false
   $effect(() => {
     const current = mesh
-    // Read before any early return so a composition (or ghost) change still re-runs this
-    const current_atoms = atoms
-    const desaturate = ghost
     if (!current) return
-    const limit = Math.min(current_atoms.length, current.count)
-    if (positions_only && current === colored_mesh && desaturate === colored_ghost) {
-      // Scrub fast path: comparing the CSS strings is a few hundred ns for 10k atoms and
-      // skips both the per-atom color math and the instanceColor upload when only the
-      // positions moved, which is the common case this flag exists for.
-      let recolor = colored_css.length !== limit
-      for (let idx = 0; !recolor && idx < limit; idx++) {
-        recolor = current_atoms[idx].color !== colored_css[idx]
-      }
-      if (!recolor) return
-    }
+    // Slots can change element mid-scrub even when the grow-only mesh is reused.
+    if (
+      ghost === colored_ghost &&
+      colored_css.length === atoms.length &&
+      atoms.every(({ color }, idx) => color === colored_css[idx])
+    )
+      return
     // set_linear_css_color caches the CSS parse per distinct color (a handful here, >10k atoms)
-    colored_css.length = limit
-    for (let idx = 0; idx < limit; idx++) {
-      const css_color = current_atoms[idx].color
+    colored_css.length = atoms.length
+    for (let idx = 0; idx < atoms.length; idx++) {
+      const css_color = atoms[idx].color
       set_linear_css_color(css_color ?? `#999999`, scratch_color)
-      if (desaturate) scratch_color.lerp(gray, 0.4)
+      if (ghost) scratch_color.lerp(gray, 0.4)
       current.setColorAt(idx, scratch_color)
       colored_css[idx] = css_color
     }
     if (current.instanceColor) current.instanceColor.needsUpdate = true
-    colored_mesh = current
-    colored_ghost = desaturate
+    colored_ghost = ghost
     invalidate()
   })
 </script>

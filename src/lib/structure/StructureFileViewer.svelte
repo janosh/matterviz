@@ -104,6 +104,7 @@
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
     commit: (opened) => {
+      notice_message = undefined
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction

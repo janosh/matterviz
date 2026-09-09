@@ -59,6 +59,23 @@ describe(`Bonding Algorithms`, () => {
         )}`,
     )
     expect(new Set(bond_pairs).size).toBe(bonds.length)
+    // Cross-bin discovery must keep the lower site index, regardless of spatial order.
+    const chain = make_struct(
+      [7.5, 0, 5, 2.5].map((coord) => ({ element: `Cu`, xyz: [coord, 0, 0] })),
+    )
+    expect(
+      bonding
+        .electroneg_ratio(chain)
+        .map(({ site_idx_1, site_idx_2, bond_length }) => [
+          site_idx_1,
+          site_idx_2,
+          bond_length,
+        ]),
+    ).toEqual([
+      [0, 2, 2.5],
+      [1, 3, 2.5],
+      [2, 3, 2.5],
+    ])
   })
 
   test(`electroneg_ratio handles edge cases`, () => {

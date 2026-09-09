@@ -48,7 +48,8 @@ export const same_legend_item = (
     ? target.legend_id != null && target.legend_id === item?.legend_id
     : target.id != null || item?.id != null || !target.label
       ? target_idx === idx
-      : target.label === item?.label && target.legend_group === item.legend_group
+      : target.label === item?.label &&
+        (target.legend_group ?? ``) === (item.legend_group ?? ``)
 
 const can_share_axis = (series1: VisSeries, series2: VisSeries): boolean =>
   series1.axis_group?.trim() || series2.axis_group?.trim()

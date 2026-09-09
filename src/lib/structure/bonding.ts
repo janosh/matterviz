@@ -728,6 +728,7 @@ function neighbor_query_cutoff(
   cutoff: number,
   pbc_override: Pbc | undefined,
   sorted: boolean,
+  unique_pairs = false,
 ): NeighborList {
   const { sites } = structure
   const n_sites = sites.length
@@ -971,8 +972,8 @@ function neighbor_query_cutoff(
         pair_a[n_pairs] = slot_a
         pair_b[n_pairs] = slot_b
         pair_dist_sq[n_pairs] = dist_sq
-        if (slot_a < n_sites) offsets[slot_a + 1]++
-        if (slot_b < n_sites) offsets[slot_b + 1]++
+        if (slot_a < n_sites && (!unique_pairs || slot_a < slot_b)) offsets[slot_a + 1]++
+        if (slot_b < n_sites && (!unique_pairs || slot_b < slot_a)) offsets[slot_b + 1]++
         n_pairs++
       }
     }
@@ -991,8 +992,10 @@ function neighbor_query_cutoff(
   for (let pair = 0; pair < n_pairs; pair++) {
     const slot_a = pair_a[pair]
     const slot_b = pair_b[pair]
-    if (slot_a < n_sites) entry_at[center_cursor[slot_a]++] = pair * 2
-    if (slot_b < n_sites) entry_at[center_cursor[slot_b]++] = pair * 2 + 1
+    if (slot_a < n_sites && (!unique_pairs || slot_a < slot_b))
+      entry_at[center_cursor[slot_a]++] = pair * 2
+    if (slot_b < n_sites && (!unique_pairs || slot_b < slot_a))
+      entry_at[center_cursor[slot_b]++] = pair * 2 + 1
   }
   const neighbors = new Int32Array(total)
   const images = new Int32Array(total * 3)
@@ -1349,11 +1352,14 @@ export function electroneg_ratio(
   }
   // A zero/non-finite reach (no known radius, or a degenerate ratio) still needs a
   // positive cutoff for the query to be well-formed.
-  const { offsets, neighbors, images, deltas, distances } = neighbor_query(structure, {
-    cutoff: max_reach > 0 && Number.isFinite(max_reach) ? max_reach : 1,
+  // Finite bonds use each pair once; avoid allocating the discarded reverse neighbors.
+  const { offsets, neighbors, images, deltas, distances } = neighbor_query_cutoff(
+    structure,
+    max_reach > 0 && Number.isFinite(max_reach) ? max_reach : 1,
     pbc,
-    sorted: false, // every contact is filtered through the reach band below regardless
-  })
+    false,
+    !pbc.some(Boolean),
+  )
 
   // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, normalized
   // distance, metallic-pair flag, strength): no per-candidate object in the hot loop, and

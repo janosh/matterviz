@@ -262,12 +262,13 @@ describe(`Isosurface`, () => {
     expect(invalidate).toHaveBeenCalled()
 
     // Replacing a scalar field under the same ID resamples it without rebuilding geometry.
+    const before_replacement = Float32Array.from(color_attr.array)
     props.volumes = props.volumes.map((volume) =>
       volume.id === `1` ? { ...positive_volume(), id: `1` } : volume,
     )
     await settle()
     expect(geometry_of(meshes()[0])).toBe(geometry)
-    expect(Float32Array.from(color_attr.array)).not.toEqual(before)
+    expect(Float32Array.from(color_attr.array)).not.toEqual(before_replacement)
 
     // Clearing the color source drops the attribute and restores the solid color
     props.settings.layers = [{ ...colored, color_volume_id: undefined }]

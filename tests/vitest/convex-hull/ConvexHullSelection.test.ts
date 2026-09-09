@@ -518,12 +518,12 @@ describe(`convex hull replacement state`, () => {
       const clears = count_canvas_clears()
       await mount_harness({ dim })
       await let_frames_run()
-      const before = clears.base
-      expect(before).toBeGreaterThan(0) // it painted at all to begin with
+      expect(clears.base).toBeGreaterThan(0) // it painted at all to begin with
 
       const initial_builds = builds.mock.calls.length
       expect(initial_builds).toBeGreaterThan(0)
       for (const toggle of [`toggle-hull-labels`, `toggle-hull-category`]) {
+        const before = clears.base
         button(toggle).click()
         await let_frames_run()
         expect(clears.base).toBeGreaterThan(before)

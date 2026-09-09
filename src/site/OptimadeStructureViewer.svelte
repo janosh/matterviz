@@ -208,7 +208,7 @@
     {#if suggestions_error}
       <p class="error-message" role="alert">{suggestions_error}</p>
     {/if}
-    {#if suggested_structures.length > 0}
+    {#if loading_suggestions || suggested_structures.length > 0}
       <h3>
         Suggested Structures
         <span style="font-weight: lighter">({suggested_structures.length})</span>

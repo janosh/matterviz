@@ -73,6 +73,11 @@ describe(`legend toggles`, () => {
       [{ label: `A` }, { label: `B` }, { label: `A` }],
       [false, true, false],
     ],
+    [
+      `treats missing and empty legend groups alike`,
+      [{ label: `A` }, { label: `A`, legend_group: `` }, { label: `A`, legend_group: `B` }],
+      [false, false, true],
+    ],
     [`shares an axis without units`, [{ visible: false }, {}], [true, true]],
     [
       `shares an axis when only one series has units`,

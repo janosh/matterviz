@@ -186,9 +186,9 @@
     const vol = layer.volume
     return JSON.stringify([
       layer.volume_id,
-      vol ? vol_id(vol) : 0,
+      vol_id(vol),
       sign * layer.isovalue,
-      vol ? range_key(vol) : ``,
+      range_key(vol),
     ])
   }
 
@@ -288,7 +288,7 @@
 
     for (const [layer_idx, layer] of layers.entries()) {
       const vol = layer.volume
-      if (!vol || !layer.visible || layer.isovalue <= 0) continue
+      if (!layer.visible || layer.isovalue <= 0) continue
 
       for (const sign of layer.show_negative ? ([1, -1] as const) : ([1] as const)) {
         const key = `${layer_idx}:${sign}`
@@ -353,7 +353,7 @@
     // comparable, so rank by isovalue as a fraction of each volume's abs_max.
     const shell_fraction = (entry: MeshEntry): number => {
       const layer = layers[entry.layer_idx]
-      const abs_max = layer.volume?.data_range.abs_max ?? 1
+      const abs_max = layer.volume.data_range.abs_max
       return layer.isovalue / Math.max(abs_max, 1e-30)
     }
     const entries = plans
@@ -413,8 +413,7 @@
   let geo_sig = $derived(
     resolved_layers
       .map((layer) => {
-        const vol = layer.volume
-        if (!vol || !layer.visible || layer.isovalue <= 0) return `off`
+        if (!layer.visible || layer.isovalue <= 0) return `off`
         return `${geometry_key(layer, 1)}.${layer.show_negative}`
       })
       .join(`|`),

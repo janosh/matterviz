@@ -56,7 +56,13 @@ vi.mock(`@threlte/core`, async (import_original) => ({
 }))
 const scene_stub = vi.hoisted(() => ({
   props: undefined as
-    | { camera: OrthographicCamera; camera_position?: Vec3; camera_target?: Vec3 }
+    | {
+        camera: OrthographicCamera
+        camera_position?: Vec3
+        camera_target?: Vec3
+        auto_rotate?: number
+        sphere_segments?: number
+      }
     | undefined,
 }))
 vi.mock(`$lib/structure/StructureScene.svelte`, () => ({
@@ -322,12 +328,14 @@ test.each([
         (has_atoms ? [`A`, `B`] : [`B`]).map((name) => `${name}.${extension}`),
       ),
     )
+    if (has_atoms) expect(document.body.textContent).toContain(`Added 1 volume from B`)
     drop(content.replace(before, after), `C`)
     await vi.waitFor(() =>
       expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual([
         `C.${extension}`,
       ]),
     )
+    expect(document.body.textContent).not.toContain(`Added 1 volume from B`)
     expect(state.structure).not.toBe(original)
     if (extension === `cube` && has_atoms) {
       expect(original?.sites[0].xyz).toEqual([0.5, 0.5, 0.5])
@@ -1874,6 +1882,11 @@ describe(`Structure empty states`, () => {
 })
 
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
+  vi.stubGlobal(`navigator`, {
+    gpu: {},
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+  })
   const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
   mount_structure({
     structure,
@@ -1901,6 +1914,12 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
   const auto_rotate_input =
     auto_rotate_label?.querySelector<HTMLInputElement>(`input[type="number"]`)
   expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
+  expect(scene_stub.props?.auto_rotate).toBe(0.5)
+  if (!auto_rotate_input) throw new Error(`Missing auto-rotate input`)
+  auto_rotate_input.value = `1.5`
+  auto_rotate_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  await tick()
+  expect(scene_stub.props?.auto_rotate).toBe(1.5)
 })
 
 test(`scene_props owns the trail toggle in both directions`, async () => {
@@ -2465,3 +2484,26 @@ test(`pure Structure exposes live read-only analysis without loading files`, asy
   expect(fetch).not.toHaveBeenCalled()
   expect(analysis.displayed_structure?.sites).toHaveLength(1)
 })
+
+test.each([`quality`, `speed`] as const)(
+  `%s detail uses the expanded supercell size`,
+  async (performance_mode) => {
+    vi.stubGlobal(`navigator`, {
+      gpu: {},
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+    })
+    mount_structure({
+      structure: make_crystal(3, [{ element: `Cu`, xyz: [0, 0, 0] }]),
+      supercell_scaling: `6x6x6`,
+      show_image_atoms: false,
+      analyze_symmetry: false,
+      performance_mode,
+      scene_props: { sphere_segments: 20 },
+    })
+    await vi.waitFor(() => {
+      flushSync()
+      expect(scene_stub.props?.sphere_segments).toBe(performance_mode === `speed` ? 12 : 20)
+    })
+  },
+)

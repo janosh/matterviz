@@ -232,6 +232,12 @@
     on_camera_reset?: EventHandler
   } = $props()
 
+  // Callers may supply plain settings; controls need reactive nested writes, including after replacement.
+  $effect.pre(() => {
+    const reactive_settings = $state(scene_props)
+    scene_props = reactive_settings
+  })
+
   // === toast ===
   // One notice at a time: a newer message replaces the current one rather than queueing
   const toast_store = new ToastStore({ duration_ms: 2000 })
@@ -648,7 +654,7 @@
   // === scene inputs ===
   // Speed mode caps tessellation at render time rather than rewriting the user's setting
   let effective_sphere_segments = $derived(
-    performance_mode === `speed` && (structure?.sites?.length ?? 0) > 200
+    performance_mode === `speed` && (session.supercell_structure?.sites.length ?? 0) > 200
       ? Math.min(scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments, 12)
       : (scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments),
   )

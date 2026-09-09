@@ -55,7 +55,8 @@
   camera.far (common in zoomed-out gallery cards) — painting the tooltip
   behind the canvas. A degenerate range pins z-index at 1000, always above the
   canvas and sibling overlays. -->
-<HTML {portal} {position} pointerEvents="none" zIndexRange={[1000, 1000]}>
+<!-- HTML applies pointerEvents only in CSS-3D mode; its ordinary wrapper also needs this style. -->
+<HTML {portal} {position} style="pointer-events: none" zIndexRange={[1000, 1000]}>
   <div bind:this={tip} {...rest} role="tooltip">
     {@render children({ position })}
   </div>
