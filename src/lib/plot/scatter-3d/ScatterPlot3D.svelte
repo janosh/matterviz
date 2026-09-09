@@ -315,9 +315,18 @@
         active_series_idx={tooltip_point?.series_idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
-        on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
-        on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
-        on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
+        on_toggle={(idx) => {
+          legend_vis.on_toggle(idx)
+          legend?.on_toggle?.(idx)
+        }}
+        on_double_click={(idx) => {
+          legend_vis.on_double_click(idx)
+          legend?.on_double_click?.(idx)
+        }}
+        on_group_toggle={(name, indices) => {
+          legend_vis.on_group_toggle(name, indices)
+          legend?.on_group_toggle?.(name, indices)
+        }}
         style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}
       />
     {/if}

@@ -27,6 +27,7 @@ import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { OrthographicCamera } from 'three/webgpu'
 import {
+  fire,
   assertHoverScopedShortcut,
   bind_props,
   mock_parse_worker,
@@ -288,69 +289,47 @@ test.each([false, true])(
 )
 
 test.each([
-  {
-    label: `coordinates`,
-    extension: `CHGCAR`,
-    content: SAMPLE_CHGCAR_CONTENT,
-    replacement: SAMPLE_CHGCAR_CONTENT.replace(`Direct\n0 0 0`, `Direct\n0.5 0 0`),
-    merges: true,
-  },
-  {
-    label: `species`,
-    extension: `CHGCAR`,
-    content: SAMPLE_CHGCAR_CONTENT,
-    replacement: SAMPLE_CHGCAR_CONTENT.replace(`\nH\n`, `\nHe\n`),
-    merges: true,
-  },
-  {
-    label: `cube origin`,
-    extension: `cube`,
-    content: SAMPLE_CUBE_CONTENT,
-    replacement: SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `1 2 0 0`),
-    merges: true,
-  },
-  {
-    label: `unanchored cube`,
-    extension: `cube`,
-    content: SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `0 1 0 0`).replace(
-      `6 0 1.5 0.5 0.5\n`,
-      ``,
-    ),
-    replacement: SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `0 2 0 0`).replace(
-      `6 0 1.5 0.5 0.5\n`,
-      ``,
-    ),
-    merges: false,
-  },
-])(
-  `volume imports merge identical anchored geometry and replace changed $label`,
-  async ({ content, replacement, extension, merges }) => {
+  [`coordinates`, SAMPLE_CHGCAR_CONTENT, `Direct\n0 0 0`, `Direct\n0.5 0 0`, true],
+  [`species`, SAMPLE_CHGCAR_CONTENT, `\nH\n`, `\nHe\n`, true],
+  [`cube origin`, SAMPLE_CUBE_CONTENT, `1 1 0 0`, `1 2 0 0`, true],
+  [
+    `unanchored cube`,
+    SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `0 1 0 0`).replace(`6 0 1.5 0.5 0.5\n`, ``),
+    `0 1 0 0`,
+    `0 2 0 0`,
+    false,
+  ],
+] as const)(
+  `volume imports merge anchored geometry and replace changed %s`,
+  async (label, content, before, after, has_atoms) => {
+    const extension = label.includes(`cube`) ? `cube` : `CHGCAR`
     const state = $state<{ volumetric_data?: VolumetricData[]; structure?: AnyStructure }>({
       volumetric_data: undefined,
       structure: undefined,
     })
     mount_file_viewer(bind_props({}, state))
     await tick()
-    const drop_zone = doc_query(`.structure`)
     const drop = (text: string, name: string) =>
-      drop_zone.dispatchEvent(create_drop_event(new File([text], `${name}.${extension}`)))
+      doc_query(`.structure`).dispatchEvent(
+        create_drop_event(new File([text], `${name}.${extension}`)),
+      )
     drop(content, `A`)
     await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
     const original = state.structure
     drop(content, `B`)
     await vi.waitFor(() =>
       expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual(
-        (merges ? [`A`, `B`] : [`B`]).map((name) => `${name}.${extension}`),
+        (has_atoms ? [`A`, `B`] : [`B`]).map((name) => `${name}.${extension}`),
       ),
     )
-    drop(replacement, `C`)
+    drop(content.replace(before, after), `C`)
     await vi.waitFor(() =>
       expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual([
         `C.${extension}`,
       ]),
     )
     expect(state.structure).not.toBe(original)
-    if (extension === `cube` && merges) {
+    if (extension === `cube` && has_atoms) {
       expect(original?.sites[0].xyz).toEqual([0.5, 0.5, 0.5])
       expect(state.structure?.sites[0].xyz).toEqual([-0.5, 0.5, 0.5])
       expect(state.volumetric_data?.[0].origin).toEqual([0, 0, 0])
@@ -362,11 +341,23 @@ test.each([
 // volumes AND their layers, so the next volume gets its own automatic layer instead of
 // inheriting one scaled to the previous field (CHGCAR values are hundreds, cube values ~0.01)
 test.each([
-  [`lattice`, `1 0 0\n0 1 0\n0 0 1`, `2 0 0\n0 2 0\n0 0 2`],
-  [`coordinates`, `Direct\n0 0 0`, `Direct\n0.5 0 0`],
-  [`species`, `\nH\n`, `\nHe\n`],
-])(`layers die with volumes when importing changed %s`, async (_label, before, after) => {
-  const other_cell = SAMPLE_CHGCAR_CONTENT.replace(before, after)
+  [`lattice`, `1 0 0\n0 1 0\n0 0 1`, `2 0 0\n0 2 0\n0 0 2`, false],
+  [`coordinates`, `Direct\n0 0 0`, `Direct\n0.5 0 0`, false],
+  [`species`, `\nH\n`, `\nHe\n`, false],
+  [`lattice serialization`, `1 0 0\n0 1 0\n0 0 1`, `1.000000005 0 0\n0 1 0\n0 0 1`, true],
+  [`coordinate serialization`, `Direct\n0 0 0`, `Direct\n0.000000005 0 0`, true],
+  [`resolved displacement`, `Direct\n0 0 0`, `Direct\n0.00000002 0 0`, false],
+  [`coordinate conversion`, `Cartesian\n0.3 0 0`, `Direct\n0.1 0 0`, true],
+] as const)(`volume/layer retention after %s`, async (label, before, after, preserves) => {
+  const original_cell =
+    label === `coordinate conversion`
+      ? SAMPLE_CHGCAR_CONTENT.replace(`1 0 0\n0 1 0\n0 0 1`, `3 0 0\n0 3 0\n0 0 3`).replace(
+          `Direct\n0 0 0`,
+          `Cartesian\n0.3 0 0`,
+        )
+      : SAMPLE_CHGCAR_CONTENT
+  const other_cell = original_cell.replace(before, after)
+  const on_file_load = vi.fn()
   const state = $state<{
     volumetric_data?: VolumetricData[]
     isosurface_settings: IsosurfaceSettings
@@ -374,25 +365,37 @@ test.each([
     volumetric_data: undefined,
     isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.2 },
   })
-  mount_file_viewer(bind_props({}, state))
+  mount_file_viewer(bind_props({ on_file_load }, state))
   await tick()
   const drop_zone = doc_query(`.structure`)
   const drop = (content: string, filename: string) =>
     drop_zone.dispatchEvent(create_drop_event(new File([content], filename)))
 
-  drop(SAMPLE_CHGCAR_CONTENT, `a.CHGCAR`)
+  drop(original_cell, `a.CHGCAR`)
   await vi.waitFor(() => expect(state.isosurface_settings.layers).toHaveLength(1))
   const settings_with_a = state.isosurface_settings
+  const volumes_with_a = state.volumetric_data
 
   drop(other_cell.split(`\n\n`)[0], `b.poscar`)
-  await vi.waitFor(() => expect(state.volumetric_data).toEqual([]))
-  expect(state.isosurface_settings).toEqual({ ...settings_with_a, layers: [] })
+  await vi.waitFor(() =>
+    expect(on_file_load).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filename: `b.poscar` }),
+    ),
+  )
+  await vi.waitFor(() =>
+    expect(state.volumetric_data).toEqual(preserves ? volumes_with_a : []),
+  )
+  expect(state.isosurface_settings).toEqual(
+    preserves ? settings_with_a : { ...settings_with_a, layers: [] },
+  )
 
   drop(other_cell, `c.CHGCAR`)
-  await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
-  expect(state.isosurface_settings.layers).toEqual([
-    auto_volume_layer(state.volumetric_data?.[0] as VolumetricData),
-  ])
+  await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(preserves ? 2 : 1))
+  if (preserves) expect(state.isosurface_settings.layers[0]).toEqual(settings_with_a.layers[0])
+  else
+    expect(state.isosurface_settings.layers).toEqual([
+      auto_volume_layer(state.volumetric_data?.[0] as VolumetricData),
+    ])
 })
 
 test(`multi-file drops continue after failures and report one batch error`, async () => {
@@ -919,8 +922,7 @@ const stub_fullscreen_api = () => {
   document.exitFullscreen = exit_fullscreen
   const set_fullscreen_element = async (value: Element | null) => {
     Object.defineProperty(document, `fullscreenElement`, { value, configurable: true })
-    document.dispatchEvent(new Event(`fullscreenchange`))
-    await tick()
+    await fire(document, new Event(`fullscreenchange`))
   }
   return { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element }
 }
@@ -932,17 +934,13 @@ describe(`Structure`, () => {
   // triggered state_proxy_equality_mismatch on mount. They must use $state.raw.
   test(`mount does not emit state_proxy_equality_mismatch warning`, async () => {
     const warns: string[] = []
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation((...args: unknown[]) => {
+    vi.spyOn(console, `warn`).mockImplementation((...args: unknown[]) => {
       warns.push(args.map(String).join(` `))
     })
-    try {
-      mount_structure({ structure })
-      flushSync()
-      await tick()
-      flushSync()
-    } finally {
-      warn_spy.mockRestore()
-    }
+    mount_structure({ structure })
+    flushSync()
+    await tick()
+    flushSync()
     const proxy_warns = warns.filter((warn) =>
       /state_proxy_equality_mismatch|effect_update_depth/i.test(warn),
     )
@@ -956,21 +954,16 @@ describe(`Structure`, () => {
       new Error(`WASM unavailable`),
     )
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    try {
-      mount_structure({ structure })
-      await vi.waitFor(() =>
-        expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
-      )
-      const warning = doc_query(`.symmetry-error`)
-      expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
-      expect(warning.getAttribute(`role`)).toBe(`status`)
-      doc_query<HTMLButtonElement>(`.symmetry-error button`).click()
-      flushSync()
-      expect(document.querySelector(`.symmetry-error`)).toBeNull()
-    } finally {
-      vi.unstubAllEnvs()
-      vi.restoreAllMocks()
-    }
+    mount_structure({ structure })
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
+    )
+    const warning = doc_query(`.symmetry-error`)
+    expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
+    expect(warning.getAttribute(`role`)).toBe(`status`)
+    doc_query<HTMLButtonElement>(`.symmetry-error button`).click()
+    flushSync()
+    expect(document.querySelector(`.symmetry-error`)).toBeNull()
   })
 
   test.each([`disabled`, `molecule`, `empty`, `unmounted`] as const)(
@@ -1004,17 +997,12 @@ describe(`Structure`, () => {
     vi.stubEnv(`VITEST`, ``)
     const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`)
     const analyze_spy = vi.spyOn(symmetry, `analyze_structure_symmetry`)
-    try {
-      mount_structure({ structure, analyze_symmetry: false })
-      flushSync()
-      await tick()
-      expect(ready_spy).not.toHaveBeenCalled()
-      expect(analyze_spy).not.toHaveBeenCalled()
-      expect(document.querySelector(`.symmetry-error`)).toBeNull()
-    } finally {
-      vi.unstubAllEnvs()
-      vi.restoreAllMocks()
-    }
+    mount_structure({ structure, analyze_symmetry: false })
+    flushSync()
+    await tick()
+    expect(ready_spy).not.toHaveBeenCalled()
+    expect(analyze_spy).not.toHaveBeenCalled()
+    expect(document.querySelector(`.symmetry-error`)).toBeNull()
   })
 
   test(`switches a volumetric structure between shared 3D and slice views`, async () => {
@@ -1123,21 +1111,17 @@ describe(`Structure`, () => {
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
     expect(mode_toggle.tabIndex).toBe(-1)
 
-    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
-    await tick()
+    await fire(viewer, new PointerEvent(`pointerenter`))
     expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
     expect(mode_toggle.tabIndex).toBe(0)
 
-    viewer.dispatchEvent(new PointerEvent(`pointerleave`))
-    await tick()
+    await fire(viewer, new PointerEvent(`pointerleave`))
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
 
     // second hover cycle: the unbound $bindable hovered prop must keep driving the toggle
-    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
-    await tick()
+    await fire(viewer, new PointerEvent(`pointerenter`))
     expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
-    viewer.dispatchEvent(new PointerEvent(`pointerleave`))
-    await tick()
+    await fire(viewer, new PointerEvent(`pointerleave`))
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
   })
 
@@ -1164,8 +1148,7 @@ describe(`Structure`, () => {
       `edit-atoms`,
     )
 
-    doc_query(`.structure`).dispatchEvent(new PointerEvent(`pointerenter`))
-    await tick()
+    await fire(doc_query(`.structure`), new PointerEvent(`pointerenter`))
     // hovered (not focused) + edit mode → window forwarder ignores the key
     press_window_key({ key: `i` })
     expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
@@ -1354,34 +1337,27 @@ describe(`Structure`, () => {
     vi.mocked(make_supercell).mockImplementationOnce(() => {
       throw new Error(`malformed scaling matrix`)
     })
-    try {
-      const state = { measure_mode: `edit-bonds` as MeasureMode }
-      mount_structure(bind_props({ structure, supercell_scaling: `2x2x2` }, state))
+    const state = { measure_mode: `edit-bonds` as MeasureMode }
+    mount_structure(bind_props({ structure, supercell_scaling: `2x2x2` }, state))
 
-      await vi.waitFor(() => {
-        // error log proves make_supercell was called, threw, and was caught
-        expect(error_spy).toHaveBeenCalledWith(
-          `Failed to create supercell:`,
-          expect.any(Error),
-        )
-        // legend reflects the untransformed base structure, not 8x supercell counts
-        const legend_total = [
-          ...document.querySelectorAll(`.element-legend .legend-item sub`),
-        ].reduce((total, sub) => total + Number(sub.textContent), 0)
-        const base_total = Object.values(get_element_counts(structure)).reduce(
-          (total, amt) => total + amt,
-          0,
-        )
-        expect(legend_total).toBe(base_total)
-      })
-      expect(state.measure_mode).toBe(`edit-bonds`)
-      // a build that already fails at mount is reported, not only one that starts failing
-      expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
-        `Failed to create supercell: malformed scaling matrix`,
+    await vi.waitFor(() => {
+      // error log proves make_supercell was called, threw, and was caught
+      expect(error_spy).toHaveBeenCalledWith(`Failed to create supercell:`, expect.any(Error))
+      // legend reflects the untransformed base structure, not 8x supercell counts
+      const legend_total = [
+        ...document.querySelectorAll(`.element-legend .legend-item sub`),
+      ].reduce((total, sub) => total + Number(sub.textContent), 0)
+      const base_total = Object.values(get_element_counts(structure)).reduce(
+        (total, amt) => total + amt,
+        0,
       )
-    } finally {
-      error_spy.mockRestore()
-    }
+      expect(legend_total).toBe(base_total)
+    })
+    expect(state.measure_mode).toBe(`edit-bonds`)
+    // a build that already fails at mount is reported, not only one that starts failing
+    expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
+      `Failed to create supercell: malformed scaling matrix`,
+    )
   })
 
   // `wyckoff_positions` is the viewer's own mapped Wyckoff table (site indices on the displayed
@@ -1744,21 +1720,16 @@ describe(`Structure`, () => {
     const height_spy = vi
       .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
       .mockReturnValue(480)
-    try {
-      const props = $state({ width: 0, height: 0 })
-      mount_structure(bind_props({ structure }, props))
-      await tick()
-      expect([props.width, props.height]).toEqual([640, 480])
+    const props = $state({ width: 0, height: 0 })
+    mount_structure(bind_props({ structure }, props))
+    await tick()
+    expect([props.width, props.height]).toEqual([640, 480])
 
-      width_spy.mockReturnValue(1024)
-      height_spy.mockReturnValue(768)
-      trigger_resize_observer(doc_query(`.structure`))
-      await tick()
-      expect([props.width, props.height]).toEqual([1024, 768])
-    } finally {
-      width_spy.mockRestore()
-      height_spy.mockRestore()
-    }
+    width_spy.mockReturnValue(1024)
+    height_spy.mockReturnValue(768)
+    trigger_resize_observer(doc_query(`.structure`))
+    await tick()
+    expect([props.width, props.height]).toEqual([1024, 768])
   })
 
   // `persist_settings` reaches the controls pane: a saved browser view state is restored into
@@ -1816,8 +1787,7 @@ describe(`Structure`, () => {
     expect(props.active_pane).toBe(`export`)
     const dpi_input = doc_query<HTMLInputElement>(dpi_selector)
     dpi_input.value = `250`
-    dpi_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
+    await fire(dpi_input, new Event(`input`, { bubbles: true }))
 
     await toggle_pane(`controls`)
     expect(props.active_pane).toBe(`controls`)
@@ -1869,8 +1839,7 @@ describe(`Structure`, () => {
 
     const search = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
     search.value = `${structure.sites[0].species[0].element}1`
-    search.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
+    await fire(search, new Event(`input`, { bubbles: true }))
     doc_query<HTMLButtonElement>(`.site-matches button`).click()
     await tick()
     expect(state.selected_sites).toEqual([0])
@@ -2052,8 +2021,7 @@ describe(`atom label controls`, () => {
     expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
 
     instance1_z.value = `0.9`
-    instance1_z.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
+    await fire(instance1_z, new Event(`input`, { bubbles: true }))
 
     expect(Number(instance1_z.value)).toBeCloseTo(0.9, 1)
     expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
@@ -2066,7 +2034,6 @@ describe(`Multi-side view`, () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(client_width)
     vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(client_height)
   }
-  afterEach(() => vi.restoreAllMocks())
 
   test(`layout dropdown survives repeated grid toggles and resizing`, async () => {
     vi.stubGlobal(`navigator`, {
@@ -2150,8 +2117,7 @@ describe(`Multi-side view`, () => {
     await tick()
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
-    doc_query(`.structure`).dispatchEvent(keydown(`g`))
-    await tick()
+    await fire(doc_query(`.structure`), keydown(`g`))
     expect(state.multi_view).toBe(false)
   })
 })
@@ -2374,8 +2340,7 @@ describe(`source acquisition`, () => {
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
     await tick()
     props.selected_sites = [0]
-    doc_query(`.structure`).dispatchEvent(keydown(`Delete`, { cancelable: true }))
-    await tick()
+    await fire(doc_query(`.structure`), keydown(`Delete`, { cancelable: true }))
     expect(props.structure?.sites).toHaveLength(2)
 
     props.source = `/b.json`
@@ -2493,10 +2458,10 @@ test(`pure Structure exposes live read-only analysis without loading files`, asy
   props.structure = { ...structure, sites: structure.sites.slice(0, 1) }
   flushSync()
   expect(analysis.displayed_structure?.sites).toHaveLength(1)
-  doc_query(`.structure`).dispatchEvent(
+  await fire(
+    doc_query(`.structure`),
     create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `input.poscar`)),
   )
-  await tick()
   expect(fetch).not.toHaveBeenCalled()
   expect(analysis.displayed_structure?.sites).toHaveLength(1)
 })

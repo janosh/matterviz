@@ -1,14 +1,29 @@
 import type { DataSeries } from '$lib/plot'
 import {
   create_legend_visibility,
-  can_share_axis,
   LEGEND_VISIBILITY_MODES,
   legend_mode_to_prop,
   resolve_legend_visibility,
-  toggle_group_visibility,
-  toggle_series_visibility,
 } from '$lib/plot/core/utils/series-visibility'
 import { describe, expect, test } from 'vitest'
+
+const make_store = (initial: DataSeries[]) => {
+  const store: { raw: DataSeries[]; hidden?: readonly (string | number)[] } = {
+    raw: initial,
+  }
+  const vis = create_legend_visibility(
+    (): DataSeries[] => vis.resolve(store.raw),
+    () => store.hidden,
+    (next) => {
+      store.hidden = next
+    },
+  )
+  return {
+    store,
+    vis,
+    visible: () => vis.resolve(store.raw).map((srs) => srs.visible ?? true),
+  }
+}
 
 describe(`resolve_legend_visibility`, () => {
   // oxfmt-ignore
@@ -50,47 +65,20 @@ describe(`legend_mode_to_prop`, () => {
   })
 })
 
-describe(`can_share_axis`, () => {
-  test.each([
-    { unit1: undefined, unit2: undefined, expected: true, desc: `both have no units` },
-    { unit1: `eV`, unit2: undefined, expected: true, desc: `only one has a unit` },
-    { unit1: `eV`, unit2: `eV`, expected: true, desc: `both have same unit` },
-    { unit1: `eV`, unit2: `GPa`, expected: false, desc: `different units` },
-  ])(`returns $expected when $desc`, ({ unit1, unit2, expected }) => {
-    expect(can_share_axis({ unit: unit1 }, { unit: unit2 })).toBe(expected)
-  })
-})
-
-describe(`toggle_series_visibility`, () => {
-  test(`toggles visibility of a single series`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], visible: true },
-      { x: [3], y: [4], visible: true },
-    ]
-    const result = toggle_series_visibility(series, 0)
-    expect(result[0].visible).toBe(false)
-    expect(result[1].visible).toBe(true)
-  })
-
-  test.each([
-    { idx: -1, desc: `negative index` },
-    { idx: 10, desc: `out of bounds index` },
-  ])(`returns original series for $desc`, ({ idx }) => {
-    const series: DataSeries[] = [{ x: [1], y: [2] }]
-    expect(toggle_series_visibility(series, idx)).toBe(series)
-  })
-
-  test(`toggles all series with the same label`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-      { x: [5], y: [6], label: `A`, visible: true },
-    ]
-    const result = toggle_series_visibility(series, 0)
-    expect(result.map((srs) => srs.visible)).toEqual([false, true, false])
-  })
-
+describe(`legend toggles`, () => {
   test.each<[string, Partial<DataSeries>[], boolean[]]>([
+    [`toggles a single series`, [{ visible: true }, { visible: true }], [false, true]],
+    [
+      `toggles matching labels`,
+      [{ label: `A` }, { label: `B` }, { label: `A` }],
+      [false, true, false],
+    ],
+    [`shares an axis without units`, [{ visible: false }, {}], [true, true]],
+    [
+      `shares an axis when only one series has units`,
+      [{ visible: false, unit: `eV` }, {}],
+      [true, true],
+    ],
     [
       `hides incompatible units`,
       [
@@ -127,15 +115,17 @@ describe(`toggle_series_visibility`, () => {
       [true, false, true],
     ],
   ])(`%s when showing a series`, (_name, series, expected) => {
-    const result = toggle_series_visibility(
-      series.map((srs) => ({ x: [], y: [], ...srs })),
-      0,
+    const raw = series.map((srs) =>
+      Object.freeze({ x: [], y: [], y_axis: `y` as const, ...srs }),
     )
-    expect(result.map((srs) => srs.visible ?? true)).toEqual(expected)
+    const { vis, visible, store } = make_store(raw)
+    vis.on_toggle(0)
+    expect(visible()).toEqual(expected)
+    expect(store.raw).toBe(raw)
   })
 })
 
-describe(`toggle_group_visibility`, () => {
+describe(`legend group toggles`, () => {
   test.each([
     {
       desc: `hides all when all visible`,
@@ -171,7 +161,7 @@ describe(`toggle_group_visibility`, () => {
       desc: `handles undefined visibility (defaults to true)`,
       visibilities: [undefined, undefined, undefined],
       indices: [0, 1],
-      expected: [false, false, undefined],
+      expected: [false, false, true],
     },
   ])(`$desc`, ({ visibilities, indices, expected }) => {
     const series: DataSeries[] = visibilities.map((vis, idx) => ({
@@ -179,44 +169,32 @@ describe(`toggle_group_visibility`, () => {
       y: [idx],
       visible: vis,
     }))
-    const result = toggle_group_visibility(series, indices)
-    expect(result.map((srs) => srs.visible)).toEqual(expected)
+    series.forEach(Object.freeze)
+    const { vis, visible, store } = make_store(series)
+    vis.on_group_toggle(`Group`, indices)
+    expect(visible()).toEqual(expected)
+    expect(store.raw).toBe(series)
   })
 
-  test(`returns original series for empty indices array`, () => {
-    const series: DataSeries[] = [{ x: [1], y: [2], visible: true }]
-    expect(toggle_group_visibility(series, [])).toBe(series)
-  })
-
-  test(`preserves other series properties and handles out-of-bounds indices`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true, unit: `eV` },
-      { x: [3], y: [4], label: `B`, visible: true, unit: `GPa` },
-    ]
-    const result = toggle_group_visibility(series, [0, 0, -1, 5]) // duplicates and out-of-bounds indices
-    expect(result[0]).toMatchObject({ visible: false, unit: `eV`, label: `A` })
-    expect(result[1]).toMatchObject({ visible: true, unit: `GPa`, label: `B` })
-  })
+  test.each([{ indices: [] }, { indices: [-1, 10] }, { indices: [0, 0, -1, 5] }])(
+    `ignores invalid group indices $indices`,
+    ({ indices }) => {
+      const raw = [{ id: `a`, x: [1], y: [2], label: `A`, unit: `eV` }]
+      raw.forEach(Object.freeze)
+      const { vis, visible, store } = make_store(raw)
+      vis.on_group_toggle(`Group`, indices)
+      expect(visible()).toEqual([!indices.includes(0)])
+      expect(store.raw).toBe(raw)
+    },
+  )
 })
 
 describe(`create_legend_visibility`, () => {
-  const make_store = (initial: DataSeries[]) => {
-    const store: { raw: DataSeries[]; hidden?: readonly (string | number)[] } = {
-      raw: initial,
-    }
-    const vis = create_legend_visibility(
-      (): DataSeries[] => vis.resolve(store.raw),
-      () => store.hidden,
-      (next) => {
-        store.hidden = next
-      },
-    )
-    return {
-      store,
-      vis,
-      visible: () => vis.resolve(store.raw).map((srs) => srs.visible ?? true),
-    }
-  }
+  test.each([-1, 10])(`ignores invalid series index %s`, (idx) => {
+    const { vis, visible } = make_store([{ x: [], y: [] }])
+    vis.on_toggle(idx)
+    expect(visible()).toEqual([true])
+  })
 
   test(`legend state survives reordering and replacement without changing input data`, () => {
     const initial = [

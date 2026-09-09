@@ -20,6 +20,7 @@
     band_structs,
     doses,
     units = $bindable(`THz`),
+    fermi_level,
     bands_props = {},
     dos_props = {},
     bz_props = {},
@@ -31,6 +32,7 @@
     band_structs: Record<string, BaseBandStructure>
     doses: Record<string, DosData>
     units?: FrequencyUnit
+    fermi_level?: number // Shared electronic reference; omitted uses dataset metadata
     bands_props?: BandsOptions
     dos_props?: DosOptions
     bz_props?: BrillouinZoneOptions
@@ -79,6 +81,7 @@
     band_structs: () => band_structs,
     doses: () => doses,
     units: () => units,
+    fermi_level: () => fermi_level,
     bands_y_axis: () => bands_props.y_axis,
     dos_y_axis: () => dos_props.y_axis,
     bands_padding: () => bands_props.padding,

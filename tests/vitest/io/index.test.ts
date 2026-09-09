@@ -5,7 +5,7 @@ import {
   load_from_url,
   load_trajectory_from_url,
 } from '$lib/io'
-import { gzipSync, zipSync } from 'fflate'
+import { gzipSync, zipSync, zlibSync } from 'fflate'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
@@ -251,21 +251,26 @@ describe(`load_from_url`, () => {
     expect(received_filename).toBe(`structure.cif`)
   })
 
-  // Body already inflated (fetch transparently decoded a Content-Encoding: gzip response, the
+  // Body already inflated (fetch transparently decoded a Content-Encoding response, the
   // GitHub Pages way of serving a stored .gz). Text formats arrive as string, binary inner
   // formats (.h5.gz) as ArrayBuffer that a text decode would corrupt.
   test.each([
-    [`file.xyz.gz`, `decompressed content`, `string`],
-    [`data.h5.gz`, new Uint8Array([0x89, 0x48, 0x44, 0x46]).buffer, `binary`],
-  ] as const)(`inflated gzip body passes through: %s`, async (name, body, kind) => {
+    [`file.xyz.gz`, `decompressed content`, `string`, `gzip`],
+    [`data.h5.gz`, hdf5_bytes.buffer, `binary`, `gzip`],
+    [`file.xyz.deflate`, `decompressed content`, `string`, `deflate`],
+    [`data.h5.deflate`, hdf5_bytes.buffer, `binary`, `deflate`],
+    // Cross-origin fetch still decodes the body when CORS hides Content-Encoding.
+    [`file.xyz.deflate`, `decompressed content`, `string`, undefined],
+    [`data.h5.deflate`, hdf5_bytes.buffer, `binary`, undefined],
+  ] as const)(`HTTP-decoded body passes through: %s`, async (name, body, kind, encoding) => {
     const { received_content, received_filename, received_metadata } = await load_test_url(
       `https://example.com/${name}`,
       body,
-      { 'content-encoding': `gzip` },
+      encoding ? { 'content-encoding': encoding } : {},
     )
     if (kind === `binary`) expect(received_content).toEqual(body)
     else expect(received_content).toBe(`decompressed content`)
-    expect(received_filename).toBe(name.replace(/\.gz$/, ``))
+    expect(received_filename).toBe(name.replace(/\.(?:gz|deflate)$/, ``))
     expect(received_metadata?.source_filename).toBe(name)
   })
 
@@ -279,12 +284,17 @@ describe(`load_from_url`, () => {
     [`x.h5.gz`, `x.h5`, `binary`, {}],
     [`file.xyz.gz`, `file.xyz`, `string`, { 'content-encoding': `gzip` }],
     [`x.h5.gz`, `x.h5`, `binary`, { 'content-encoding': `gzip` }],
+    [`file.xyz.deflate`, `file.xyz`, `string`, {}],
+    [`x.h5.deflate`, `x.h5`, `binary`, { 'content-encoding': `deflate` }],
+    [`file.xyz.deflate.deflate`, `file.xyz`, `string`, { 'content-encoding': `deflate` }],
   ] as const)(
-    `gunzips a still-compressed body: %s -> %s (%s) %j`,
+    `inflates a remaining compressed layer: %s -> %s (%s) %j`,
     async (name, expected_name, kind, headers) => {
       const { received_content, received_filename, received_metadata } = await load_test_url(
         `https://example.com/${name}`,
-        gzip(`inner bytes`),
+        name.endsWith(`.deflate`)
+          ? zlibSync(new TextEncoder().encode(`inner bytes`)).buffer
+          : gzip(`inner bytes`),
         { 'content-type': `application/octet-stream`, ...headers },
       )
       if (kind === `string`) expect(received_content).toBe(`inner bytes`)
@@ -295,13 +305,16 @@ describe(`load_from_url`, () => {
     },
   )
 
-  test(`propagates corrupt gzip errors`, async () => {
-    // Once magic bytes identify gzip, corrupt compressed content must fail explicitly.
-    const gzip_body = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
-    globalThis.fetch = vi.fn().mockResolvedValueOnce(create_mock_response(gzip_body))
+  test.each([
+    [`gzip`, `blob-uuid`, [0x1f, 0x8b]],
+    [`deflate`, `file.xyz.deflate`, [0x78, 0x9c]],
+  ] as const)(`propagates corrupt %s errors`, async (format, filename, header) => {
+    // Once the header identifies compression, corrupt content must fail explicitly.
+    const body = new Uint8Array([...header, ...Array(14).fill(0)]).buffer
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(create_mock_response(body))
 
-    await expect(load_from_url(`https://example.com/blob-uuid`, () => {})).rejects.toThrow(
-      `Failed to decompress gzip file`,
+    await expect(load_from_url(`https://example.com/${filename}`, () => {})).rejects.toThrow(
+      `Failed to decompress ${format} file`,
     )
     expect(globalThis.fetch).toHaveBeenCalledOnce()
   })

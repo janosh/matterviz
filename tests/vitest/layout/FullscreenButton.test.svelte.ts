@@ -1,4 +1,4 @@
-import { bind_props, mock_fullscreen, mount_sized } from '../setup'
+import { fire, bind_props, mock_fullscreen, mount_sized } from '../setup'
 import FullscreenButton from '$lib/layout/FullscreenButton.svelte'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import Sankey from '$lib/plot/sankey/Sankey.svelte'
@@ -22,19 +22,7 @@ const mount_button = (wrapper?: HTMLElement) => {
   mounted.push(
     mount(FullscreenButton, {
       target: document.body,
-      props: {
-        wrapper,
-        on_change,
-        get hidden() {
-          return state.hidden
-        },
-        get fullscreen() {
-          return state.fullscreen
-        },
-        set fullscreen(next: boolean) {
-          state.fullscreen = next
-        },
-      },
+      props: bind_props({ wrapper, on_change }, state),
     }),
   )
   flushSync()
@@ -90,14 +78,12 @@ describe(`FullscreenButton`, () => {
     expect(button.hidden).toBe(true)
     expect(button.style.display).toBe(`none`)
     wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
-    await tick()
+    await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
     expect(state.fullscreen).toBe(true)
 
     // Esc/F11: the browser leaves fullscreen, the flag follows and the host is told once
     Object.defineProperty(document, `fullscreenElement`, { configurable: true, value: null })
-    document.dispatchEvent(new Event(`fullscreenchange`))
-    await tick()
+    await fire(document, new Event(`fullscreenchange`))
     expect(state.fullscreen).toBe(false)
     expect(on_change.mock.calls).toEqual([[true], [false]])
   })
@@ -186,8 +172,7 @@ describe(`FullscreenButton`, () => {
     document.body.append(wrapper)
     const { state } = mount_button(wrapper)
     wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, init))
-    await tick()
+    await fire(globalThis, new KeyboardEvent(`keydown`, init))
     expect(state.fullscreen).toBe(toggles)
   })
 
@@ -195,8 +180,7 @@ describe(`FullscreenButton`, () => {
     const wrapper = document.createElement(`div`)
     document.body.append(wrapper)
     const { state } = mount_button(wrapper)
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
-    await tick()
+    await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
     expect(state.fullscreen).toBe(false)
   })
 
@@ -211,8 +195,7 @@ describe(`FullscreenButton`, () => {
     const nested = mount_button(inner)
 
     for (const node of [outer, inner]) node.dispatchEvent(new PointerEvent(`pointerenter`))
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
-    await tick()
+    await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
     expect([host.state.fullscreen, nested.state.fullscreen]).toEqual([true, false])
   })
 })

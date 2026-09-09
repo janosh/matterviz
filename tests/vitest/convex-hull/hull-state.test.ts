@@ -63,9 +63,13 @@ describe(`compute_hull_model`, () => {
       const entries = Object.freeze(
         [
           ...elements.map((element) => make_phase({ [element]: 1 }, 0)),
-          make_phase(composition, -1, { entry_id: `stable` }),
-          make_phase(composition, 0.25, { entry_id: `unstable` }),
           make_phase(composition, -2, { entry_id: `excluded`, exclude_from_hull: true }),
+          make_phase(composition, -1, {
+            entry_id: `stable`,
+            e_above_hull: 0.5,
+            is_stable: false,
+          }),
+          make_phase(composition, 0.25, { entry_id: `unstable` }),
         ].map((entry) =>
           Object.freeze({ ...entry, composition: Object.freeze(entry.composition) }),
         ),
@@ -78,8 +82,8 @@ describe(`compute_hull_model`, () => {
       expectTypeOf(model.entries[0].composition).toEqualTypeOf<
         Readonly<(typeof model.entries)[0][`composition`]>
       >()
-      expectTypeOf(model.hull.facets[0].normal).toEqualTypeOf<readonly number[]>()
-      expectTypeOf(model.hull.facets[0].vertex_indices).toEqualTypeOf<readonly number[]>()
+      expectTypeOf(model.facets[0].normal).toEqualTypeOf<readonly number[]>()
+      expectTypeOf(model.facets[0].vertex_indices).toEqualTypeOf<readonly number[]>()
       expectTypeOf<NonNullable<HullModel[`phase_stats`]>[`hull_distance`]>().toEqualTypeOf<
         Readonly<{ max: number; avg: number }>
       >()
@@ -97,7 +101,17 @@ describe(`compute_hull_model`, () => {
       )?.e_above_hull
       if (unstable_distance === undefined) throw new Error(`Missing hull distance`)
       expect(Math.abs(unstable_distance - 1.25)).toBeLessThanOrEqual(4 * Number.EPSILON)
-      expect(model.hull.entries.every((entry) => !entry.exclude_from_hull)).toBe(true)
+      expect(model.facets.length).toBeGreaterThan(0)
+      const facet_entries = model.facets.flatMap((facet) =>
+        facet.vertex_indices.map((idx) => model.entries[idx]),
+      )
+      expect(facet_entries.every((entry) => !entry.exclude_from_hull)).toBe(true)
+      const stable_vertices = facet_entries.filter((entry) => entry.entry_id === `stable`)
+      expect(stable_vertices.length).toBeGreaterThan(0)
+      for (const entry of stable_vertices) {
+        expect(entry).toMatchObject({ e_above_hull: 0, is_stable: true })
+        expect(entry).toBe(model.entries.find((candidate) => candidate.entry_id === `stable`))
+      }
       expect(model.phase_stats).toMatchObject({ total: dim + 3, stable: dim + 1, unstable: 2 })
     },
   )

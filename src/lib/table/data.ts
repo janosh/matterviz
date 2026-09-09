@@ -61,8 +61,7 @@ const get_data_sort_value = (val: string): string | null => {
 const parse_numeric_string = (val: string): number | null => {
   const numeric_str = NUMERIC_WITH_ERROR_RE.exec(val)?.[1] ?? val
   if (numeric_str.trim() === ``) return null
-  const num = Number(normalize_unicode_minus(numeric_str))
-  return Number.isNaN(num) ? null : num
+  return Number(normalize_unicode_minus(numeric_str))
 }
 
 // The one numeric reading of a cell: an explicit data-sort-value wins, then the visible

@@ -156,17 +156,13 @@ test.describe(`Trajectory Component`, () => {
       const open_module_path = `/src/lib/trajectory/open.ts`
       const h5_utils_module_path = `/src/lib/trajectory/parse/h5-utils.ts`
       const element_module_path = `/src/lib/element/types.ts`
-      const [
-        { parse_trajectory_in_worker },
-        { open_trajectory },
-        { with_h5_file },
-        { ELEM_SYMBOLS },
-      ] = await Promise.all([
-        import(worker_module_path) as Promise<typeof ParseWorkerModule>,
-        import(open_module_path) as Promise<typeof OpenTrajectoryModule>,
-        import(h5_utils_module_path) as Promise<typeof H5UtilsModule>,
-        import(element_module_path) as Promise<typeof ElementModule>,
-      ])
+      const [{ parse_in_worker }, { open_trajectory }, { with_h5_file }, { ELEM_SYMBOLS }] =
+        await Promise.all([
+          import(worker_module_path) as Promise<typeof ParseWorkerModule>,
+          import(open_module_path) as Promise<typeof OpenTrajectoryModule>,
+          import(h5_utils_module_path) as Promise<typeof H5UtilsModule>,
+          import(element_module_path) as Promise<typeof ElementModule>,
+        ])
       const source = await (await fetch(url)).blob()
       const source_buffer = await source.arrayBuffer()
       const raw = await with_h5_file(source_buffer, `oracle.h5`, (h5_file) => {
@@ -196,7 +192,9 @@ test.describe(`Trajectory Component`, () => {
         }
       })
       const memfs = await open_trajectory(source_buffer, { filename: `gold.h5` })
-      const workerfs = await parse_trajectory_in_worker(source, `gold.h5`, undefined, {})
+      const result = await parse_in_worker(source, `gold.h5`)
+      if (result.type !== `trajectory`) throw new Error(`Expected HDF5 trajectory`)
+      const workerfs = result.data
       const request = { signal_keys: [`velocity`, `forces`] }
       const memfs_stream = await memfs.collect_positions?.(request)
       const workerfs_stream = await workerfs.collect_positions?.(request)

@@ -19,7 +19,7 @@ import {
   unmount,
 } from 'svelte'
 import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
+import { fire, bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
 
 // vp lint sees .svelte imports as nongeneric; specialize only row-dependent props for mount.
 type TableProps<Row extends object = RowData> = Omit<
@@ -306,8 +306,7 @@ describe(`HeatmapTable`, () => {
         const select_mode = async (idx: number, value: string) => {
           const select = await open_select(idx)
           select.value = value
-          select.dispatchEvent(new Event(`input`, { bubbles: true }))
-          await tick()
+          await fire(select, new Event(`input`, { bubbles: true }))
         }
 
         expect(cells()).toEqual([
@@ -1131,8 +1130,7 @@ describe(`HeatmapTable`, () => {
       mount_table({ data: sample_data, columns: sample_columns })
       const headers = document.querySelectorAll(`th`)
       const shift_click = async (idx: number) => {
-        headers[idx].dispatchEvent(mouse(`click`, { shiftKey: true }))
-        await tick()
+        await fire(headers[idx], mouse(`click`, { shiftKey: true }))
       }
 
       await shift_click(0)
@@ -1247,8 +1245,7 @@ describe(`HeatmapTable`, () => {
 
       const select = document.querySelector(`.page-size-select`) as HTMLSelectElement
       select.value = `25`
-      select.dispatchEvent(new Event(`change`, { bubbles: true }))
-      await tick()
+      await fire(select, new Event(`change`, { bubbles: true }))
 
       expect(on_page_size_change).toHaveBeenCalledWith(25)
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(25)
@@ -1282,8 +1279,7 @@ describe(`HeatmapTable`, () => {
     expect(state.column_prefs.Score?.width).toBe(500)
     expect(state.column_prefs.Model).toBeUndefined()
     // the click that follows the release lands on the handle inside the sortable header
-    handle.dispatchEvent(mouse(`click`))
-    await tick()
+    await fire(handle, mouse(`click`))
     expect(doc_query(`th[data-col-id="Score"]`).getAttribute(`aria-sort`)).toBe(`none`)
   })
 
@@ -1641,8 +1637,7 @@ describe(`HeatmapTable`, () => {
         })
 
         const first_row = document.querySelector(`tbody tr`) as HTMLElement
-        first_row.dispatchEvent(keydown(key))
-        await tick()
+        await fire(first_row, keydown(key))
 
         expect(clicked).toHaveLength(1)
         expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
@@ -1716,16 +1711,14 @@ describe(`HeatmapTable`, () => {
 
       // a drag started in the inner cell selects the outer cell it sits in, not (0, 0)
       inner.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
-      globalThis.dispatchEvent(new PointerEvent(`pointerup`))
-      await tick()
+      await fire(globalThis, new PointerEvent(`pointerup`))
       const selected = [...document.querySelectorAll<HTMLElement>(`td.cell-selected`)]
       expect(selected.map((td) => td.dataset.rowIdx)).toEqual([`2`])
       expect(selected[0].classList.contains(`inner`)).toBe(false)
 
       // keyboard: ArrowUp from the outer row 2 cell lands on the outer row 1 cell
       cell_at(2, 0).focus()
-      cell_at(2, 0).dispatchEvent(keydown(`ArrowUp`))
-      await tick()
+      await fire(cell_at(2, 0), keydown(`ArrowUp`))
       expect(document.activeElement).toBe(cell_at(1, 0))
     })
   })
@@ -1879,8 +1872,7 @@ describe(`HeatmapTable`, () => {
       const cell = document.querySelector(
         `td[data-row-idx="1"][data-col-idx="1"]`,
       ) as HTMLElement
-      cell.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
-      await tick()
+      await fire(cell, new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
 
       props.column_prefs = { Score: { width: 180 } } // a resize, not a filter
@@ -1934,8 +1926,7 @@ describe(`HeatmapTable`, () => {
       const set_input = async (input: HTMLInputElement | undefined, value: string) => {
         assert(input)
         input.value = value
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        await tick()
+        await fire(input, new Event(`input`, { bubbles: true }))
       }
 
       const [min_input, max_input] = (
@@ -2006,19 +1997,16 @@ describe(`HeatmapTable`, () => {
       expect(cell_at(0, 0).getAttribute(`tabindex`)).toBe(`0`)
       expect([...document.querySelectorAll(`td[tabindex="0"]`)]).toHaveLength(1)
 
-      cell_at(0, 0).dispatchEvent(keydown(`ArrowDown`))
-      await tick()
+      await fire(cell_at(0, 0), keydown(`ArrowDown`))
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
       expect(cell_at(1, 0).classList.contains(`cell-selected`)).toBe(true)
       expect(cell_at(1, 0).getAttribute(`tabindex`)).toBe(`0`)
       expect(document.activeElement).toBe(cell_at(1, 0))
 
-      cell_at(1, 0).dispatchEvent(keydown(`ArrowRight`, { shiftKey: true }))
-      await tick()
+      await fire(cell_at(1, 0), keydown(`ArrowRight`, { shiftKey: true }))
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(2)
 
-      cell_at(1, 1).dispatchEvent(keydown(`ArrowLeft`, { altKey: true }))
-      await tick()
+      await fire(cell_at(1, 1), keydown(`ArrowLeft`, { altKey: true }))
       expect(props.column_order).toEqual([`Score`, `Model`, `Tier`])
     })
 
@@ -2293,51 +2281,25 @@ describe(`HeatmapTable`, () => {
       expect(cell_at(2, 1).classList.contains(`cell-selected`)).toBe(true)
     })
 
-    it(`clears selection when columns hide, reorder, or sort`, async () => {
-      const state = $state({ hidden_columns: [] as string[], column_order: [] as string[] })
-      mount_table(bind_props({ data: sample_data, columns: sample_columns }, state))
-      await tick()
-
-      // hiding a column remaps col indices -> stale rects must clear
-      drag_cells([0, 0], [1, 1])
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
-      state.hidden_columns = [`Value`]
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
-
-      // reordering columns remaps col indices too
-      drag_cells([0, 0], [1, 1])
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
-      state.column_order = [`Score`, `Model`, `Value`]
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
-
-      drag_cells([0, 0], [1, 1])
-      cell_at(1, 1).dispatchEvent(pointer(`click`)) // consume the post-drag click guard
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
-      doc_query(`th[data-col-id="Model"]`).click()
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
-    })
-
-    it(`Escape and outside pointerdown clear the selection`, async () => {
-      await mount_sample_table()
-
-      drag_cells([0, 0], [1, 1])
-      await tick()
-      globalThis.window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
-
-      drag_cells([0, 0], [1, 1])
-      await tick()
-      document.body.dispatchEvent(pointer(`pointerdown`))
-      await tick()
-      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
-    })
+    it.each([`hide`, `reorder`, `sort`, `Escape`, `outside`] as const)(
+      `clears a cell selection on %s`,
+      async (action) => {
+        const state = $state({ hidden_columns: [] as string[], column_order: [] as string[] })
+        mount_table(bind_props({ data: sample_data, columns: sample_columns }, state))
+        await tick()
+        drag_cells([0, 0], [1, 1])
+        cell_at(1, 1).dispatchEvent(pointer(`click`)) // consume the post-drag click guard
+        await tick()
+        expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+        if (action === `hide`) state.hidden_columns = [`Value`]
+        else if (action === `reorder`) state.column_order = [`Score`, `Model`, `Value`]
+        else if (action === `sort`) doc_query(`th[data-col-id="Model"]`).click()
+        else if (action === `Escape`) window.dispatchEvent(keydown(`Escape`))
+        else document.body.dispatchEvent(pointer(`pointerdown`))
+        await tick()
+        expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+      },
+    )
 
     it(`suppresses the row click that follows a cell drag`, async () => {
       const on_row_click = vi.fn()
@@ -2357,8 +2319,7 @@ describe(`HeatmapTable`, () => {
     it(`right-click copy column copies all filtered rows across pages`, async () => {
       await mount_sample_table({ pagination: { page_size: 2 } })
 
-      cell_at(0, 0).dispatchEvent(pointer(`contextmenu`, { button: 2 }))
-      await tick()
+      await fire(cell_at(0, 0), pointer(`contextmenu`, { button: 2 }))
 
       const copy_option = [
         ...document.querySelectorAll<HTMLButtonElement>(`.action-menu button`),
@@ -2410,8 +2371,7 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       const headers = document.querySelectorAll(`th`)
-      headers[th_idx].dispatchEvent(pointer(`contextmenu`, { button: 2 }))
-      await tick()
+      await fire(headers[th_idx], pointer(`contextmenu`, { button: 2 }))
       const menu_text = document.querySelector(`.action-menu`)?.textContent ?? ``
       expect(/Higher is better|Lower is better/.test(menu_text)).toBe(shown)
     })
@@ -2436,8 +2396,7 @@ describe(`HeatmapTable`, () => {
     const scroll_to = async (scroll_top: number): Promise<HTMLDivElement> => {
       const scroller = doc_query<HTMLDivElement>(`.table-scroll`)
       scroller.scrollTop = scroll_top
-      scroller.dispatchEvent(new Event(`scroll`))
-      await tick()
+      await fire(scroller, new Event(`scroll`))
       return scroller
     }
 
@@ -2475,12 +2434,10 @@ describe(`HeatmapTable`, () => {
       expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
       expect(col_values(`Model`)[0]).toBe(`Model 20`)
 
-      cell_at(start, 0).dispatchEvent(keydown(`ArrowRight`))
-      await tick()
+      await fire(cell_at(start, 0), keydown(`ArrowRight`))
       expect(scroller.scrollTop).toBe(30 * row_height_px)
 
-      cell_at(end - 1, 0).dispatchEvent(keydown(`ArrowDown`))
-      await tick()
+      await fire(cell_at(end - 1, 0), keydown(`ArrowDown`))
       expect(scroller.scrollTop).toBe(end * row_height_px)
       expect(document.activeElement).toBe(
         document.querySelector(`td[data-row-idx="${end}"][data-col-idx="0"]`),
@@ -2563,8 +2520,7 @@ describe(`HeatmapTable`, () => {
 
       const last_rendered = row_at(min_window - 1)
       assert(last_rendered)
-      last_rendered.dispatchEvent(keydown(`ArrowDown`))
-      await tick()
+      await fire(last_rendered, keydown(`ArrowDown`))
 
       expect(scroller.scrollTop).toBeGreaterThan(0) // pulled the next row into the window
       expect(document.activeElement).toBe(row_at(min_window))

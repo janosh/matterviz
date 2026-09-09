@@ -10,7 +10,6 @@ import {
   sample_std,
 } from '$lib/math'
 import {
-  assign_axes,
   axis_group_key,
   axis_labels as get_axis_labels,
   axis_scale_types as get_axis_scale_types,
@@ -439,20 +438,23 @@ export function with_visible_properties(
   visible_properties: readonly string[] | undefined,
 ): PropertySeries[] {
   const selected = visible_properties && new Set(visible_properties)
-  const next = series.map(({ y_axis: _axis, ...srs }) => ({
-    ...srs,
-    visible: selected ? selected.has(srs.id) : srs.visible,
-  }))
-  const { assignments, groups } = assign_axes(next, { priority: calculate_priority })
-  const hidden_axis = assignments.includes(`y2`) ? `y` : `y2`
-  return next.map((srs, idx) => ({
-    ...srs,
-    visible: srs.visible && assignments[idx] !== undefined,
-    y_axis:
-      assignments[idx] ??
-      groups.find((group) => group.key === axis_group_key(srs))?.axis ??
-      hidden_axis,
-  }))
+  const is_visible = (srs: PropertySeries) => (selected ? selected.has(srs.id) : srs.visible)
+  const groups = group_axis_series(series, { is_visible, priority: calculate_priority }).slice(
+    0,
+    2,
+  )
+  const axes = new Map(
+    groups.map((group, idx) => [group.key, idx === 0 ? `y` : `y2`] as const),
+  )
+  const hidden_axis = axes.size === 2 ? `y` : `y2`
+  return series.map((srs) => {
+    const axis = axes.get(axis_group_key(srs))
+    return {
+      ...srs,
+      visible: is_visible(srs) && axis !== undefined,
+      y_axis: axis ?? hidden_axis,
+    }
+  })
 }
 
 // Plot series from a run's property rows

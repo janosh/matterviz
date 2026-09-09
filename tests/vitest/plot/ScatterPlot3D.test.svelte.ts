@@ -169,8 +169,29 @@ describe(`ScatterPlot3D smoke tests`, () => {
       return first_item
     }
     // unbound: the component owns visibility and greys out the legend entry
-    await mount_plot({ series: multi_series })
+    const on_toggle = vi.fn()
+    const on_double_click = vi.fn()
+    const on_group_toggle = vi.fn()
+    await mount_plot({
+      series: multi_series.map((srs) => ({ ...srs, legend_group: `Group` })),
+      legend: { on_toggle, on_double_click, on_group_toggle },
+    })
     expect(click_first_item().classList.contains(`hidden`)).toBe(true)
+    expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
+    query(container, `.legend-item`).dispatchEvent(
+      new MouseEvent(`dblclick`, { bubbles: true }),
+    )
+    flushSync()
+    expect(on_double_click).toHaveBeenCalledExactlyOnceWith(0)
+    expect(query(container, `.legend-item`).classList.contains(`hidden`)).toBe(false)
+    const group = query(container, `.legend-group-header`)
+    for (const hidden_count of [0, 2]) {
+      group.click()
+      flushSync()
+      expect(container.querySelectorAll(`.legend-item.hidden`)).toHaveLength(hidden_count)
+    }
+    expect(on_group_toggle).toHaveBeenCalledTimes(2)
+    expect(on_group_toggle).toHaveBeenLastCalledWith(`Group`, [0, 1])
     // original series objects are replaced, never mutated
     expect(multi_series[0].visible).toBeUndefined()
     if (mounted_component) await unmount(mounted_component)
@@ -178,7 +199,16 @@ describe(`ScatterPlot3D smoke tests`, () => {
     // Bound: the toggle writes hidden IDs (plain state here, so
     // the DOM can't re-render from it - that path is covered above)
     const state = { series: multi_series, hidden_series: [] as (string | number)[] }
-    await mount_plot(bind_props({}, state))
+    await mount_plot(
+      bind_props(
+        {
+          legend: {
+            on_toggle: () => expect(state.hidden_series).toEqual([0]),
+          },
+        },
+        state,
+      ),
+    )
     click_first_item()
     expect(state.series).toBe(multi_series)
     expect(state.hidden_series).toEqual([0])

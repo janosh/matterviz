@@ -1,6 +1,6 @@
 // Shared Svelte wiring for viewer convenience inputs. Acquisition and parsing stay in
 // open_material; viewers only validate and commit the typed result they understand.
-import type { FileLoadCallback, FileLoadMeta } from '$lib/io'
+import type { FileLoadCallback } from '$lib/io'
 import { raw_file_drop_zone } from '$lib/io'
 import { to_error } from '$lib/utils'
 import { untrack } from 'svelte'
@@ -28,14 +28,8 @@ export interface MaterialLoaderInputs<Value> {
   report_error: (message: string, metadata?: Partial<OpenedMaterial[`provenance`]>) => void
 }
 
-const payload_metadata = (payload: MaterialPayload): FileLoadMeta => ({
-  source_filename: payload.source_filename ?? payload.filename,
-  source_url: payload.source_url,
-  file: payload.file,
-})
-
 // `url` marks a data_url load, so its completion claims ownership of the URL
-type LoadOptions = { url?: string; rethrow?: boolean; manage_loading?: boolean }
+type LoadOptions = { url?: string; drop?: boolean }
 
 class MaterialCommitError extends Error {
   constructor(
@@ -64,14 +58,13 @@ export function create_material_loader<Value>(
     inputs.set_loading?.(false)
   }
 
-  // Drops set `rethrow` (the drop zone folds failures into one batch report) and skip
-  // `manage_loading` (the drop zone owns the spinner across the whole batch)
+  // The drop zone owns loading indicators and error reporting across its whole batch.
   const load = async (source: MaterialSource, opts: LoadOptions = {}): Promise<void> => {
-    const { url, rethrow = false, manage_loading = true } = opts
+    const { url, drop = false } = opts
     active_controller?.abort()
     const controller = new AbortController()
     active_controller = controller
-    if (manage_loading) inputs.set_loading?.(true)
+    if (!drop) inputs.set_loading?.(true)
     inputs.set_error(undefined)
     try {
       const on_file_drop = inputs.on_file_drop?.()
@@ -80,7 +73,11 @@ export function create_material_loader<Value>(
         if (controller !== active_controller) return
         const content =
           payload.data instanceof Blob ? await payload.data.arrayBuffer() : payload.data
-        await on_file_drop(content, payload.filename, payload_metadata(payload))
+        await on_file_drop(content, payload.filename, {
+          source_filename: payload.source_filename ?? payload.filename,
+          source_url: payload.source_url,
+          file: payload.file,
+        })
       } else {
         const opened = await open_material(source, { signal: controller.signal })
         if (controller !== active_controller) return opened.dispose()
@@ -115,13 +112,13 @@ export function create_material_loader<Value>(
         error instanceof MaterialOpenError && error.stage === `parse`
           ? `Failed to parse ${filename ?? `material`}: ${error.message}`
           : to_error(error).message
-      if (!rethrow) return inputs.report_error(message, { ...metadata, filename })
+      if (!drop) return inputs.report_error(message, { ...metadata, filename })
       throw error instanceof MaterialOpenError
         ? new Error(error.message, { cause: error })
         : error
     } finally {
       if (controller === active_controller) {
-        if (manage_loading) inputs.set_loading?.(false)
+        if (!drop) inputs.set_loading?.(false)
         if (controller === active_controller) active_controller = undefined
       }
     }
@@ -159,7 +156,7 @@ export function create_material_loader<Value>(
 
   return raw_file_drop_zone({
     allow: inputs.allow_file_drop,
-    on_drop: (source) => load(source, { rethrow: true, manage_loading: false }),
+    on_drop: (source) => load(source, { drop: true }),
     on_error: (message) => inputs.report_error(message),
     on_dragover: inputs.set_dragover,
     set_loading: inputs.set_loading,

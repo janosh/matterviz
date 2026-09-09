@@ -2,12 +2,7 @@
 // main thread receives a TrajectoryRun backed by its MessagePort.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 // oxlint-disable eslint-plugin-unicorn/relative-url-style
-import type {
-  OpenTrajectoryOptions,
-  ParseProgress,
-  TrajectoryRun,
-  TrajectorySource,
-} from '$lib/trajectory'
+import type { ParseProgress, TrajectoryRun, TrajectorySource } from '$lib/trajectory'
 import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory'
 import { dispose_run_port, worker_run } from '$lib/trajectory/runs/worker'
 import { to_error } from '$lib/utils'
@@ -29,17 +24,6 @@ interface ParseInWorkerOptions {
   owns_content?: boolean
 }
 
-type TrajectoryWorkerOptions = Omit<
-  OpenTrajectoryOptions,
-  `filename` | `signal` | `on_progress`
->
-
-interface ParseTrajectoryInWorkerOptions {
-  worker_factory?: WorkerFactory
-  signal?: AbortSignal
-  transfer_source?: boolean
-}
-
 const default_worker_factory: WorkerFactory = () =>
   new Worker(new URL(`./parse-worker.js`, import.meta.url), { type: `module` })
 
@@ -47,18 +31,33 @@ let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
 
-interface RunInWorkerOptions {
-  worker_factory: WorkerFactory
-  signal?: AbortSignal
-  on_progress?: (progress: ParseProgress) => void
-  transfer?: Transferable[]
-}
-
-const run_in_worker = (
-  request: ParseWorkerRequest,
-  { worker_factory, signal, on_progress, transfer = [] }: RunInWorkerOptions,
-): Promise<ParseResult> =>
-  new Promise<ParseResult>((resolve, reject) => {
+export const parse_in_worker = async (
+  content: TrajectorySource,
+  filename: string,
+  is_base64: boolean = false,
+  options: ParseInWorkerOptions = {},
+): Promise<ParseResult> => {
+  const {
+    signal,
+    worker_factory = default_worker_factory,
+    load_options,
+    on_progress,
+    owns_content = false,
+  } = options
+  signal?.throwIfAborted()
+  // Host markers require the main-thread host bridge; they contain no file bytes to parse.
+  if (typeof content === `string` && content.startsWith(`LARGE_FILE:`)) {
+    return parse_file_content(content, filename, is_base64, load_options, on_progress)
+  }
+  const request: ParseWorkerRequest = {
+    id: next_request_id++,
+    content,
+    filename,
+    is_base64,
+    load_options,
+  }
+  const transfer = owns_content && content instanceof ArrayBuffer ? [content] : []
+  return new Promise<ParseResult>((resolve, reject) => {
     if (signal?.aborted) return reject(to_error(signal.reason ?? parse_abort_error()))
     let worker: WorkerLike
     try {
@@ -127,69 +126,4 @@ const run_in_worker = (
       settle(to_error(error))
     }
   })
-
-export const parse_in_worker = async (
-  content: TrajectorySource,
-  filename: string,
-  is_base64: boolean = false,
-  options: ParseInWorkerOptions = {},
-): Promise<ParseResult> => {
-  const {
-    signal,
-    worker_factory = default_worker_factory,
-    load_options,
-    on_progress,
-    owns_content = false,
-  } = options
-  signal?.throwIfAborted()
-  // Host markers require the main-thread host bridge; they contain no file bytes to parse.
-  if (typeof content === `string` && content.startsWith(`LARGE_FILE:`)) {
-    return parse_file_content(content, filename, is_base64, load_options, on_progress)
-  }
-  const transfer = owns_content && content instanceof ArrayBuffer ? [content] : []
-  return run_in_worker(
-    { kind: `file`, id: next_request_id++, content, filename, is_base64, load_options },
-    { worker_factory, signal, on_progress, transfer },
-  )
-}
-
-export const parse_trajectory_in_worker = async (
-  data: TrajectorySource,
-  filename: string,
-  on_progress: ((progress: ParseProgress) => void) | undefined,
-  loading_options: TrajectoryWorkerOptions = {},
-  client_options: ParseTrajectoryInWorkerOptions = {},
-): Promise<TrajectoryRun> => {
-  const {
-    signal,
-    transfer_source = false,
-    worker_factory = default_worker_factory,
-  } = client_options
-  signal?.throwIfAborted()
-  const transfer_buffer = data instanceof ArrayBuffer && transfer_source
-  const request_data = data instanceof ArrayBuffer && !transfer_buffer ? data.slice(0) : data
-  const result = await run_in_worker(
-    {
-      kind: `trajectory`,
-      id: next_request_id++,
-      data: request_data,
-      filename,
-      options: {
-        ...loading_options,
-        ...(loading_options.atom_type_mapping && {
-          atom_type_mapping: { ...loading_options.atom_type_mapping },
-        }),
-      },
-    },
-    {
-      worker_factory,
-      signal,
-      on_progress,
-      transfer: request_data instanceof ArrayBuffer ? [request_data] : [],
-    },
-  )
-  // A `trajectory` request can only come back as a trajectory result
-  if (result.type !== `trajectory`)
-    throw new Error(`Expected a trajectory, got ${result.type}`)
-  return result.data
 }

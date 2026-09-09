@@ -485,12 +485,12 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   bands_and_dos: {
     // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
-    // It internally controls fermi_level, reference_frequency and dos orientation,
-    // so those traits are intentionally not forwarded here (they'd be overridden).
+    // The parent owns the shared Fermi reference; hover frequency and DOS orientation
+    // are controlled internally.
     component: BandsAndDos,
     base_drive: style_base_drive,
     drive: [
-      ...drive_props([`band_structs`, `doses`]),
+      ...drive_props([`band_structs`, `doses`, `fermi_level`]),
       picked_prop(`bands_props`, [`show_legend`, ...plot_control_keys]),
       picked_prop(`dos_props`, [
         `stack`,

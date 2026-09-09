@@ -11,6 +11,11 @@ import {
 import { plural } from '$lib/labels'
 import type { AnyStructure } from './index'
 
+// Absolute Cartesian tolerance (A): retain fields across coordinate conversions and
+// high-precision text serialization; reject differences >= 1e-8 A regardless of cell size.
+const same_coordinate = (left: number, right: number): boolean =>
+  Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) < 1e-8
+
 export type StructureDocument = {
   structure: AnyStructure | undefined
   volumetric_data: VolumetricData[] | undefined
@@ -31,18 +36,24 @@ export function apply_structure_material(
       ? current.structure.lattice.matrix
       : undefined
 
-  // Only combine fields with an established identical atomic coordinate frame.
-  // Empty structures have no anchor; rounding or reordered sites conservatively replace.
+  const incoming_lattice = `lattice` in structure ? structure.lattice.matrix : undefined
+  // Only combine fields with matching ordered atoms and a common Cartesian frame.
+  // Empty structures have no anchor; reordered sites or changed species replace.
   const same_structure =
     current.structure !== undefined &&
     current.structure.sites.length > 0 &&
     current.structure.sites.length === structure.sites.length &&
-    JSON.stringify(current_lattice) ===
-      JSON.stringify(`lattice` in structure ? structure.lattice.matrix : undefined) &&
+    (current_lattice && incoming_lattice
+      ? current_lattice.every((row, row_idx) =>
+          row.every((value, col_idx) =>
+            same_coordinate(value, incoming_lattice[row_idx][col_idx]),
+          ),
+        )
+      : current_lattice === incoming_lattice) &&
     current.structure.sites.every((site, site_idx) => {
       const other = structure.sites[site_idx]
       return (
-        site.xyz.every((value, axis) => value === other.xyz[axis]) &&
+        site.xyz.every((value, axis) => same_coordinate(value, other.xyz[axis])) &&
         site.species.length === other.species.length &&
         site.species.every(
           (species, species_idx) =>

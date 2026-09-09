@@ -39,9 +39,16 @@ describe(`gaussian_kde`, () => {
     { samples: [1, 2, 3, 4, 5], n_points: 17, cut: 2 },
     { samples: [0, 0, 1, 2, 2, 3, 5, 8], n_points: 23, cut: 3 },
     { samples: normal_samples(120, 7), n_points: 64, cut: 2 },
+    { samples: [5, 5, 5, 5], n_points: 11, cut: 0 },
+    { samples: [3, 1, 2, NaN, 5], n_points: 100, cut: 2 },
   ])(`matches an exact Gaussian-sum reference`, ({ samples, n_points, cut }) => {
-    const { grid, density, bandwidth } = gaussian_kde(samples, { n_points, cut })
-    const reference = ref_density(samples, grid, bandwidth)
+    const { grid, density, bandwidth } = gaussian_kde(Object.freeze(samples), {
+      n_points,
+      cut,
+    })
+    expect(bandwidth).toBeGreaterThan(0)
+    if (cut === 0) expect(grid).toEqual(Array(n_points).fill(5))
+    const reference = ref_density(samples.filter(Number.isFinite), grid, bandwidth)
     // Three ordered divisions replace a multiplied denominator; allow four f64 epsilons.
     for (const [idx, value] of density.entries()) {
       expect(Math.abs(value - reference[idx])).toBeLessThanOrEqual(
@@ -110,23 +117,6 @@ describe(`gaussian_kde`, () => {
     expect(gaussian_kde([])).toEqual({ grid: [], density: [], bandwidth: 0 })
   })
 
-  test(`all-equal samples produce a finite positive-bandwidth density`, () => {
-    const { grid, density, bandwidth } = gaussian_kde([5, 5, 5, 5], {
-      n_points: 11,
-      cut: 0,
-    })
-    expect(bandwidth).toBeGreaterThan(0)
-    expect(grid).toEqual(Array.from({ length: 11 }, () => 5))
-    expect(density.every(Number.isFinite)).toBe(true)
-  })
-
-  test(`does not mutate input`, () => {
-    const input = [3, 1, 2, NaN, 5]
-    const snapshot = [...input]
-    gaussian_kde(input)
-    expect(input).toEqual(snapshot)
-  })
-
   test.each([1, 1e-4, 1e-15])(
     `resolves a narrow peak beside a distant outlier (bandwidth=%s)`,
     (bandwidth) => {
@@ -152,27 +142,26 @@ describe(`gaussian_kde`, () => {
   )
 
   test.each([undefined, 2049])(
-    `normalizes extreme bandwidths without zero times infinity (max_samples=%s)`,
+    `normalizes extreme bandwidths (max_samples=%s)`,
     (max_samples) => {
-      const narrow = gaussian_kde([0, 0], {
-        bandwidth: Number.MIN_VALUE,
-        range: [-1, 1],
-        n_points: 3,
-        max_samples,
-      })
-      expect(narrow.density).toEqual([0, Infinity, 0])
-      const samples = Array.from({ length: 2049 }, (_, idx) => idx % 2)
-      const wide = gaussian_kde(samples, {
-        bandwidth: 1e308,
-        range: [-1, 1],
-        n_points: 3,
-        max_samples,
-      })
-      // Standard normal peak / 1e308; permit two subnormal ULPs in the final division.
-      for (const value of wide.density)
-        expect(Math.abs(value - 3.989422804014326e-309)).toBeLessThanOrEqual(
-          2 * Number.MIN_VALUE,
+      for (const [bandwidth, step, expected] of [
+        [Number.MIN_VALUE, 0, [0, Infinity, 0]],
+        [5e-309, 1e-320, [0, 7.978845608028655e307, 0]],
+        [1e308, 1, Array(3).fill(3.989422804014326e-309)],
+      ] as const) {
+        const { density } = gaussian_kde(
+          Array.from({ length: 2049 }, (_, idx) => (idx % 2) * step),
+          { bandwidth, range: [-1, 1], n_points: 3, max_samples },
         )
+        for (const [idx, value] of expected.entries()) {
+          if (value === 0 || value === Infinity) expect(density[idx]).toBe(value)
+          // Two f64 epsilons for finite peaks, two subnormal ULPs for wide kernels.
+          else
+            expect(Math.abs(density[idx] - value)).toBeLessThanOrEqual(
+              Math.max(2 * Number.EPSILON * Math.abs(value), 2 * Number.MIN_VALUE),
+            )
+        }
+      }
     },
   )
 

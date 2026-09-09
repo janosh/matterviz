@@ -373,6 +373,7 @@ describe(`widget config wiring`, () => {
     [`trajectory`, `property_labels`, { energy: `Energy (eV)` }],
     [`band_structure`, `band_structs`, { sample: { type: `phonon`, branches: [] } }],
     [`dos`, `doses`, { sample: { type: `electronic`, energies: [], densities: [] } }],
+    [`bands_and_dos`, `fermi_level`, 0],
     [`periodic_table`, `log`, true],
     [`heatmap_matrix`, `log`, true],
   ] as const)(`%s forwards %s directly`, (widget_type, prop, value) => {

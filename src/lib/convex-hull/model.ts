@@ -4,7 +4,7 @@ import type { ElementSymbol } from '$lib/element'
 import { composition_to_simplex_coords } from './barycentric-coords'
 import { compute_hull_stability, is_unary_entry } from './entry-stability'
 import * as thermo from './thermodynamics'
-import type { ConvexHullEntry, PhaseData } from './types'
+import type { ConvexHullEntry, PhaseData, PhaseStats } from './types'
 
 type ReadonlyValue<Value> = Value extends string | number | boolean | bigint | symbol
   ? Value
@@ -12,7 +12,14 @@ type ReadonlyValue<Value> = Value extends string | number | boolean | bigint | s
     ? { readonly [Key in keyof Value]: ReadonlyValue<Value[Key]> }
     : Value
 
-export type HullModel = ReadonlyValue<ReturnType<typeof build_hull_model>>
+// Every facet vertex indexes this one enriched entry table, including when entries are
+// excluded from hull construction. Geometry work arrays are not part of the public API.
+export type HullModel = ReadonlyValue<{
+  entries: ConvexHullEntry[]
+  elements: ElementSymbol[]
+  facets: thermo.HullFacet[]
+  phase_stats: PhaseStats | null
+}>
 
 export type EnergySourceMode = `precomputed` | `on-the-fly`
 
@@ -118,15 +125,11 @@ export function build_hull_model(
   })()
 
   // Lower hull over the non-excluded entries (always built: 3D/4D draw its faces)
-  const hull = (() => {
-    const entries = coords_entries.filter((entry) => !entry.exclude_from_hull)
-    const points = entries.map((entry) => hull_point(entry, dim))
-    const facets = thermo.compute_lower_hull_nd(points)
-    const facet_entries = facets.map((facet) =>
-      facet.vertex_indices.map((idx) => entries[idx]),
-    )
-    return { entries, points, facets, facet_entries }
-  })()
+  const hull_indices = coords_entries.flatMap((entry, idx) =>
+    entry.exclude_from_hull ? [] : [idx],
+  )
+  const hull_points = hull_indices.map((idx) => hull_point(coords_entries[idx], dim))
+  const hull_facets = thermo.compute_lower_hull_nd(hull_points)
 
   // Entries with e_above_hull/is_stable: from the data when precomputed, else from the hull
   const enriched_entries = (() => {
@@ -134,12 +137,12 @@ export function build_hull_model(
     // No facets means every hull point sits at E_form = 0 (the corners always do), so the
     // hull is that plane and the distance is E_form itself
     const raw_dists =
-      hull.facets.length === 0
+      hull_facets.length === 0
         ? coords_entries.map((entry) => entry.e_form_per_atom)
         : thermo.compute_e_above_hull_nd(
             coords_entries.map((entry) => hull_point(entry, dim)),
-            hull.facets,
-            hull.points,
+            hull_facets,
+            hull_points,
           )
     // non-finite distance (no covering hull face) → unknown, handled by compute_hull_stability
     return coords_entries.map((entry, idx) => ({
@@ -151,7 +154,10 @@ export function build_hull_model(
   return {
     entries: enriched_entries,
     elements,
-    hull,
+    facets: hull_facets.map((facet) => ({
+      ...facet,
+      vertex_indices: facet.vertex_indices.map((idx) => hull_indices[idx]),
+    })),
     phase_stats: thermo.get_convex_hull_stats(enriched_entries, elements, dim),
   }
 }

@@ -181,6 +181,10 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     const compressed = await compress(encode(text), format)
     const result = await decompress_file(new File([compressed], `test.json.${ext}`))
     expect(result).toEqual({ content: text, filename: `test.json` })
+    // Unlike HTTP bodies, dropped files cannot have had a transport wrapper removed.
+    await expect(decompress_file(new File([text], `test.json.${ext}`))).rejects.toThrow(
+      `Failed to decompress ${format} file`,
+    )
   })
 
   test(`unzips a dropped .zip and strips the extension`, async () => {
@@ -211,7 +215,7 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
         filename: `nested.cif`,
       })
       expect(
-        await classify_payload(new Blob([bytes]), [filename], { gzip_by_magic: true }),
+        await classify_payload(new Blob([bytes]), [filename], { compression_by_magic: true }),
       ).toEqual({ content: text, filename: `nested.cif` })
     },
   )

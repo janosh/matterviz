@@ -24,7 +24,9 @@ import {
 beforeEach(mock_parse_worker)
 
 type Props = ComponentProps<typeof TrajectoryFileViewer>
-type WorkerParse = typeof parse_worker.parse_trajectory_in_worker
+type WorkerParse = (
+  ...args: Parameters<typeof parse_worker.parse_in_worker>
+) => Promise<TrajectoryRun>
 
 const BLOB_URL = `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
 const BLOB_FILENAME = BLOB_URL.split(`/`).at(-1) ?? BLOB_URL
@@ -65,12 +67,10 @@ const stub_fetch = (content: string, headers = new Headers()) =>
 const stub_worker = (implementation: WorkerParse) =>
   vi
     .spyOn(parse_worker, `parse_in_worker`)
-    .mockImplementation(async (data, filename, _is_base64, options = {}) => ({
+    .mockImplementation(async (data, filename, is_base64, options) => ({
       type: `trajectory`,
       filename,
-      data: await implementation(data, filename, options.on_progress, options.load_options, {
-        signal: options.signal,
-      }),
+      data: await implementation(data, filename, is_base64, options),
     }))
 // Worker stub whose results are released by hand, to order races deliberately
 const deferred_worker = () => {
@@ -80,9 +80,9 @@ const deferred_worker = () => {
     resolve: (run: TrajectoryRun) => void
   }[] = []
   stub_worker(
-    (_data, filename, _on_progress, _options, client_options) =>
+    (_data, filename, _is_base64, options) =>
       new Promise<TrajectoryRun>((resolve) => {
-        pending.push({ filename, signal: client_options?.signal, resolve })
+        pending.push({ filename, signal: options?.signal, resolve })
       }),
   )
   return pending
@@ -293,9 +293,9 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
   test(`task status shows worker progress until the run arrives`, async () => {
     let release: ((run: TrajectoryRun) => void) | undefined
     stub_worker(
-      (_data, filename, on_progress) =>
+      (_data, filename, _is_base64, options) =>
         new Promise<TrajectoryRun>((resolve) => {
-          on_progress?.({ current: 42.4, total: 100, stage: `Indexing frames` })
+          options?.on_progress?.({ current: 42.4, total: 100, stage: `Indexing frames` })
           release = () => resolve(make_run(filename))
         }),
     )
@@ -640,11 +640,11 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   test(`a failing group choice shows the error inside the picker and keeps the shown run`, async () => {
     const run_0 = make_run(`groups.h5`)
     const run_0_dispose = vi.spyOn(run_0, `dispose`)
-    stub_worker(async (_data, _filename, _on_progress, options) => {
-      if (!options?.hdf5_group_path) {
+    stub_worker(async (_data, _filename, _is_base64, { load_options } = {}) => {
+      if (!load_options?.hdf5_group_path) {
         throw new Hdf5GroupSelectionRequiredError([`/run/0`, `/run/1`])
       }
-      if (options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
+      if (load_options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
       return run_0
     })
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()

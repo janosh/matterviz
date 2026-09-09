@@ -231,14 +231,25 @@ describe(`TernaryPlot`, () => {
       series: series.map((srs) => ({ ...srs })),
       hidden_series: [] as (string | number)[],
     })
-    const plot = await mount_ternary(bind_props({}, bound))
+    const on_toggle = vi.fn(() => expect(bound.hidden_series).toEqual([0]))
+    const on_double_click = vi.fn(() => expect(bound.hidden_series).toEqual([1]))
+    const plot = await mount_ternary(
+      bind_props({ legend: { on_toggle, on_double_click } }, bound),
+    )
     expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
     plot.querySelector<HTMLElement>(`.legend-item`)?.click() // hide Oxides
     await tick()
     expect(bound.series[0].visible).toBeUndefined()
     expect(bound.hidden_series).toEqual([0])
+    expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
     expect(markers(plot)).toHaveLength(2)
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1) // Path keeps its line
+    plot
+      .querySelector<HTMLElement>(`.legend-item`)
+      ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await tick()
+    expect(on_double_click).toHaveBeenCalledExactlyOnceWith(0)
+    expect(markers(plot)).toHaveLength(3)
     // the host overrides the toggle
     bound.hidden_series = []
     await tick()

@@ -177,6 +177,12 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     build_hull_model(effective_entries, elements, dim, energy_info.energy_mode),
   )
   const all_enriched_entries = $derived(model.entries)
+  const hull = $derived({
+    entries: model.entries.filter((entry) => !entry.exclude_from_hull),
+    facet_entries: model.facets.map((facet) =>
+      facet.vertex_indices.map((idx) => model.entries[idx]),
+    ),
+  })
 
   // Auto threshold: show all for few entries, use default for many, interpolate between
   const max_hull_dist_in_data = $derived(
@@ -280,7 +286,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
       return elements
     },
     get hull() {
-      return model.hull
+      return hull
     },
     get all_enriched_entries() {
       return all_enriched_entries

@@ -67,8 +67,9 @@ function exact_density(
       const z_score = (g_val - sample) / band
       sum += Math.exp(-0.5 * z_score * z_score)
     }
-    // Divide separately: n*band can overflow; 1/band can overflow for tiny kernels.
-    density[grid_idx] = sum / n_eval / band / Math.sqrt(2 * Math.PI)
+    // Average and normalize before dividing by bandwidth: avoid premature overflow for
+    // tiny kernels and underflow for wide kernels without ever forming n*band.
+    density[grid_idx] = sum / n_eval / Math.sqrt(2 * Math.PI) / band
   }
   return density
 }
@@ -118,8 +119,7 @@ function binned_density(
       const z_score = (g_val - centers[bin_idx]) / band
       sum += count * Math.exp(-0.5 * z_score * z_score)
     }
-    // Divide separately: n*band can overflow; 1/band can overflow for tiny kernels.
-    density[grid_idx] = sum / n_eval / band / Math.sqrt(2 * Math.PI)
+    density[grid_idx] = sum / n_eval / Math.sqrt(2 * Math.PI) / band
   }
   return density
 }

@@ -2,8 +2,7 @@ import type { Column } from '$lib/table'
 import ToggleMenu from '$lib/table/ToggleMenu.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import ToggleMenuHarness from './ToggleMenuHarness.svelte'
-import { doc_query } from '../setup'
+import { bind_props, fire, doc_query } from '../setup'
 
 afterEach(() => {
   document.body.innerHTML = ``
@@ -23,6 +22,12 @@ describe(`ToggleMenu`, () => {
       visible: true,
     }))
 
+  const checkbox_states = () =>
+    Array.from(
+      document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
+      (checkbox) => checkbox.checked,
+    )
+
   // Mount helper to reduce boilerplate
   const mount_menu = (
     columns: Column[],
@@ -38,41 +43,28 @@ describe(`ToggleMenu`, () => {
     globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
 
   describe(`Basic rendering`, () => {
-    it(`renders correctly with initial state`, () => {
-      mount_menu(make_columns(), { column_panel_open: true })
-
-      const summary = document.querySelector(`summary`)
-      expect(summary?.textContent?.trim()).toBe(`Columns`)
-      expect(summary?.getAttribute(`aria-expanded`)).toBe(`true`)
-
-      const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
-      expect(checkboxes).toHaveLength(3)
-      expect(checkboxes[0].checked).toBe(true)
-      expect(checkboxes[1].checked).toBe(false)
-      expect(checkboxes[2].checked).toBe(true)
-
-      expect(document.querySelector(`[role="group"]`)).not.toBeNull()
-    })
-
-    it(`toggles column visibility when checkbox clicked`, async () => {
-      const columns = make_columns()
-      mount_menu(columns, { column_panel_open: true })
-
-      document.querySelectorAll(`label`)[0].click()
-      await tick()
-      expect(columns[0].visible).toBe(false)
-    })
-
-    it(`opens panel when summary clicked`, async () => {
-      mount_menu(make_columns())
-
-      const details = document.querySelector(`details`)
-      expect(details?.open).toBe(false)
-
-      document.querySelector(`summary`)?.click()
-      await tick()
-      expect(details?.open).toBe(true)
-    })
+    it.each([true, undefined])(
+      `renders default visibility and toggles a column after opening (visible=%s)`,
+      async (visible) => {
+        const columns = make_columns()
+        columns[0].visible = visible
+        columns[2].label = `E<sub>hull</sub>`
+        mount_menu(columns)
+        const summary = doc_query(`summary`)
+        expect(doc_query<HTMLDetailsElement>(`details`).open).toBe(false)
+        summary.click()
+        await tick()
+        expect(summary.textContent?.trim()).toBe(`Columns`)
+        expect(summary.getAttribute(`aria-expanded`)).toBe(`true`)
+        expect(checkbox_states()).toEqual([true, false, true])
+        expect(document.querySelector(`[role="group"]`)).not.toBeNull()
+        expect(document.querySelector(`.sections-container`)).toBeNull()
+        expect(document.querySelector(`sub`)).not.toBeNull()
+        doc_query(`.toggle-label`).click()
+        await tick()
+        expect(columns[0].visible).toBe(false)
+      },
+    )
 
     it(`portals the dropdown and right-aligns it to the trigger`, async () => {
       mount_menu(make_columns(), { column_panel_open: true })
@@ -149,47 +141,13 @@ describe(`ToggleMenu`, () => {
       expect(details?.open).toBe(expect_open)
     })
 
-    it(`renders HTML in column labels via @html`, () => {
-      mount_menu([{ id: `col1`, label: `E<sub>hull</sub>`, visible: true }], {
-        column_panel_open: true,
-      })
-      expect(document.querySelector(`sub`)).not.toBeNull()
-    })
-
-    it(`handles columns without explicit visible property`, () => {
-      mount_menu(
-        [
-          { id: `col1`, label: `No visible prop` },
-          { id: `col2`, label: `Explicit true`, visible: true },
-          { id: `col3`, label: `Explicit false`, visible: false },
-        ],
-        { column_panel_open: true },
-      )
-
-      const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
-      expect(checkboxes[0].checked).toBe(true) // defaults to true
-      expect(checkboxes[1].checked).toBe(true)
-      expect(checkboxes[2].checked).toBe(false)
-    })
-
-    it.each([
-      { count: 20, expected: false },
-      { count: 21, expected: true },
-    ])(`shows the column filter above 20 columns: $count`, ({ count, expected }) => {
-      mount_menu(make_many_columns(count), { column_panel_open: true })
-      expect(document.querySelector(`input[aria-label="Filter columns"]`) !== null).toBe(
-        expected,
-      )
-    })
-
     it(`filters large menus without changing which column a toggle controls`, async () => {
       const columns = make_many_columns(21)
       mount_menu(columns, { column_panel_open: true })
 
       const filter = doc_query<HTMLInputElement>(`input[aria-label="Filter columns"]`)
       filter.value = `column 21`
-      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
+      await fire(filter, new Event(`input`, { bubbles: true }))
 
       const labels = document.querySelectorAll<HTMLElement>(`.toggle-label`)
       expect([...labels].map((label) => label.textContent?.trim())).toEqual([`Column 21`])
@@ -198,8 +156,7 @@ describe(`ToggleMenu`, () => {
       expect(columns[20].visible).toBe(false)
 
       filter.value = `missing`
-      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
+      await fire(filter, new Event(`input`, { bubbles: true }))
       expect(document.querySelector(`.no-matching-columns`)?.textContent).toBe(
         `No matching columns`,
       )
@@ -280,8 +237,7 @@ describe(`ToggleMenu`, () => {
       doc_query(`.toggle-label`).click()
       const filter = doc_query<HTMLInputElement>(`input[aria-label="Filter columns"]`)
       filter.value = `match`
-      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
+      await fire(filter, new Event(`input`, { bubbles: true }))
       expect(
         [...document.querySelectorAll(`.toggle-label`)].map((item) =>
           item.textContent?.trim(),
@@ -297,12 +253,6 @@ describe(`ToggleMenu`, () => {
         [`first`, true],
       ])
     })
-
-    it(`falls back to flat list when no groups`, () => {
-      mount_menu(make_columns(), { column_panel_open: true })
-      expect(document.querySelector(`.sections-container`)).toBeNull()
-      expect(document.querySelector(`.column-menu`)).not.toBeNull()
-    })
   })
 
   describe(`Collapsible sections`, () => {
@@ -312,41 +262,21 @@ describe(`ToggleMenu`, () => {
       { id: `c (G2)`, key: `c`, label: `C`, group: `G2` },
     ]
 
-    it(`sections expanded by default, collapse/expand on click`, async () => {
-      mount_menu(two_groups, { column_panel_open: true })
-
-      // All expanded by default
-      document.querySelectorAll(`.section`).forEach((section) => {
-        expect(section.querySelector(`.section-items`)).not.toBeNull()
+    it.each([false, true])(`toggles a section from collapsed=%s`, async (collapsed) => {
+      mount_menu(two_groups, {
+        column_panel_open: true,
+        collapsed_sections: collapsed ? [`G1`] : [],
       })
-      document.querySelectorAll(`.section-header`).forEach((header) => {
-        expect(header.textContent).toContain(`▼`)
-        expect(header.getAttribute(`aria-expanded`)).toBe(`true`)
-      })
-
-      // Click to collapse first section
-      const header = document.querySelector(`.section-header`) as HTMLElement
-      header.click()
-      await tick()
-      // the slide outro finishes in a microtask (setup.ts mocks Element.animate), so one more
-      // tick lets Svelte remove the section items before asserting on them
-      await tick()
-
-      expect(header.textContent).toContain(`▶`)
-      expect(header.getAttribute(`aria-expanded`)).toBe(`false`)
-      expect(document.querySelector(`.section`)?.querySelector(`.section-items`)).toBeNull()
-    })
-
-    it(`pre-collapsed sections hide toggles and expand on click`, async () => {
-      mount_menu(two_groups, { column_panel_open: true, collapsed_sections: [`G1`] })
-
-      const headers = document.querySelectorAll(`.section-header`)
-      expect(headers[0].textContent).toContain(`▶`) // G1 collapsed
-      expect(headers[1].textContent).toContain(`▼`) // G2 expanded
-      expect(document.querySelectorAll(`input`)).toHaveLength(1) // only G2's toggle
-      ;(headers[0] as HTMLElement).click()
-      await tick()
-      expect(headers[0].textContent).toContain(`▼`)
+      const headers = document.querySelectorAll<HTMLElement>(`.section-header`)
+      expect(headers[1].getAttribute(`aria-expanded`)).toBe(`true`)
+      for (const expected of [!collapsed, collapsed]) {
+        expect(headers[0].getAttribute(`aria-expanded`)).toBe(String(expected))
+        expect(headers[0].textContent).toContain(expected ? `▼` : `▶`)
+        expect(checkbox_states()).toHaveLength(expected ? 3 : 1)
+        headers[0].click()
+        await tick()
+        await tick() // finish the mocked slide outro
+      }
     })
   })
 
@@ -359,8 +289,12 @@ describe(`ToggleMenu`, () => {
       { count: 31, expected: 3 }, // capped at three columns however many items
     ])(`uses $expected columns for $count items`, ({ count, expected }) => {
       mount_menu(make_many_columns(count), { column_panel_open: true })
-      const menu = document.querySelector(`.column-menu`) as HTMLElement
-      expect(menu?.style.gridTemplateColumns).toBe(`repeat(${expected}, max-content)`)
+      expect(doc_query(`.column-menu`).style.gridTemplateColumns).toBe(
+        `repeat(${expected}, max-content)`,
+      )
+      expect(document.querySelector(`input[aria-label="Filter columns"]`) !== null).toBe(
+        count > 20,
+      )
     })
 
     it(`sizes grouped sections independently`, () => {
@@ -413,80 +347,73 @@ describe(`ToggleMenu`, () => {
   })
 
   describe(`Reset functionality`, () => {
-    const checkbox_states = () =>
-      Array.from(
-        document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-        (checkbox) => checkbox.checked,
-      )
+    const mount_bound_menu = () => {
+      const state = $state({ columns: make_columns().slice(0, 2) })
+      mount(ToggleMenu, {
+        target: document.body,
+        props: bind_props({ column_panel_open: true }, state),
+      })
+      return state
+    }
 
-    it(`reset all restores defaults and hides its button`, async () => {
-      mount_menu(make_columns(), { column_panel_open: true }) // true, false, true
-      const reset_btn = () => document.querySelector<HTMLElement>(`summary .reset-btn`)
-      expect(reset_btn()).toBeNull() // nothing differs from defaults yet
-
-      document.querySelectorAll<HTMLElement>(`.toggle-label`)[0].click()
-      await tick()
-      expect(checkbox_states()).toEqual([false, false, true])
-      expect(reset_btn()).not.toBeNull()
-
-      reset_btn()?.click()
-      await tick()
-      expect(checkbox_states()).toEqual([true, false, true])
-      expect(reset_btn()).toBeNull() // no more changes
-    })
-
-    // Hosts that mirror visibility elsewhere (HeatmapTable keeps a `hidden_columns` id
-    // list) only stay in sync if resets report back. Only CHANGED columns may be reported:
-    // replaying untouched ones would push their ids into a list that never held them.
     it.each([
-      [`whole menu`, `summary .reset-btn`],
-      [`one section`, `.section-header-row .reset-btn`],
-    ])(`a %s reset reports only the columns it changed`, async (_desc, selector) => {
-      const on_toggle = vi.fn()
-      mount_menu(
-        [
-          { id: `name (Personal)`, key: `name`, label: `Name`, group: `Personal` },
-          { id: `age (Personal)`, key: `age`, label: `Age`, group: `Personal` },
-          { id: `email (Contact)`, key: `email`, label: `Email`, group: `Contact` },
-          { id: `phone (Contact)`, key: `phone`, label: `Phone`, group: `Contact` },
+      {
+        name: `flat menu`,
+        columns: make_columns(),
+        toggle: [0],
+        changed: [false, false, true],
+        section: false,
+      },
+      ...[false, true].map((section) => ({
+        name: section ? `one group` : `grouped menu`,
+        section,
+        columns: [`name`, `age`, `email`, `phone`].map((key, idx) => ({
+          id: key,
+          key,
+          label: key,
+          group: idx < 2 ? `Personal` : `Contact`,
+        })),
+        toggle: [0],
+        changed: [false, true, true, true],
+      })),
+      {
+        name: `duplicate data keys`,
+        section: false,
+        columns: [
+          { id: `first`, key: `Value`, label: `Value A`, group: `A`, visible: true },
+          { id: `second`, key: `Value`, label: `Value B`, group: `B`, visible: false },
         ],
-        { column_panel_open: true, on_toggle },
-      )
-
-      document.querySelectorAll<HTMLElement>(`.toggle-label`)[0].click()
-      await tick()
-      expect(on_toggle.mock.calls.at(-1)).toEqual([
-        expect.objectContaining({ key: `name` }),
-        false,
-      ])
-
-      on_toggle.mockClear()
-      document.querySelector<HTMLElement>(selector)?.click()
-      await tick()
-      expect(on_toggle.mock.calls).toEqual([[expect.objectContaining({ key: `name` }), true]])
-    })
-
-    it(`resets duplicate grouped keys independently`, async () => {
-      const columns = [
-        { id: `Value (A)`, key: `Value`, label: `Value A`, group: `A`, visible: true },
-        { id: `Value (B)`, key: `Value`, label: `Value B`, group: `B`, visible: false },
-      ]
-      mount_menu(columns, { column_panel_open: true })
-
-      for (const label of document.querySelectorAll<HTMLElement>(`.toggle-label`))
-        label.click()
-      await tick()
-      expect(checkbox_states()).toEqual([false, true])
-
-      document.querySelector<HTMLElement>(`summary .reset-btn`)?.click()
-      await tick()
-      expect(checkbox_states()).toEqual([true, false])
-    })
+        toggle: [0, 1],
+        changed: [false, true],
+      },
+    ])(
+      `reset restores only changed columns and reports them: $name`,
+      async ({ columns, toggle, changed, section }) => {
+        const initial = columns.map((column) => (column as Column).visible !== false)
+        const on_toggle = vi.fn()
+        const calls = () =>
+          on_toggle.mock.calls.map(([column, visible]) => [column.id, visible])
+        mount_menu(columns, { column_panel_open: true, on_toggle })
+        const selector = section ? `.section-header-row .reset-btn` : `summary .reset-btn`
+        expect(document.querySelector(selector)).toBeNull()
+        const labels = document.querySelectorAll<HTMLElement>(`.toggle-label`)
+        for (const idx of toggle) labels[idx].click()
+        await tick()
+        expect(checkbox_states()).toEqual(changed)
+        expect(calls()).toEqual(toggle.map((idx) => [columns[idx].id, changed[idx]]))
+        on_toggle.mockClear()
+        doc_query(selector).click()
+        await tick()
+        expect(checkbox_states()).toEqual(initial)
+        expect(calls()).toEqual(toggle.map((idx) => [columns[idx].id, initial[idx]]))
+        expect(document.querySelector(selector)).toBeNull()
+      },
+    )
 
     // A host reordering its columns must not read as a new column set, which would
     // resnapshot defaults and strand the shown column with no way back to hidden.
     it(`keeps the reset baseline when only column order changes`, async () => {
-      mount(ToggleMenuHarness, { target: document.body }) // col1 visible, col2 hidden
+      const state = mount_bound_menu()
       const reset_btn = () => document.querySelector<HTMLElement>(`summary .reset-btn`)
       const col2_checked = () =>
         [...document.querySelectorAll<HTMLLabelElement>(`.toggle-label`)]
@@ -498,7 +425,7 @@ describe(`ToggleMenu`, () => {
       expect(col2_checked()).toBe(true)
       expect(reset_btn()).not.toBeNull()
 
-      document.querySelector<HTMLElement>(`[data-testid="reverse-columns"]`)?.click()
+      state.columns = state.columns.toReversed()
       await tick()
       expect(reset_btn(), `a reorder must not become the new baseline`).not.toBeNull()
 
@@ -508,7 +435,7 @@ describe(`ToggleMenu`, () => {
     })
 
     it(`resnapshots defaults when same keys receive new source visibility`, async () => {
-      mount(ToggleMenuHarness, { target: document.body })
+      const state = mount_bound_menu()
       const wait_for_default_snapshot = async () => {
         // Column replacement updates the bound prop first, then ToggleMenu snapshots defaults.
         await tick()
@@ -518,7 +445,7 @@ describe(`ToggleMenu`, () => {
       expect(checkbox_states()).toEqual([true, false])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
 
-      document.querySelector<HTMLButtonElement>(`[data-testid="replace-columns"]`)?.click()
+      state.columns = state.columns.map((col, idx) => ({ ...col, visible: idx === 1 }))
       await wait_for_default_snapshot()
       expect(checkbox_states()).toEqual([false, true])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
@@ -530,9 +457,7 @@ describe(`ToggleMenu`, () => {
       await tick()
       expect(checkbox_states()).toEqual([false, true])
 
-      document
-        .querySelector<HTMLButtonElement>(`[data-testid="replace-columns-again"]`)
-        ?.click()
+      state.columns = state.columns.map((col) => ({ ...col, visible: true }))
       await wait_for_default_snapshot()
       expect(checkbox_states()).toEqual([true, true])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()

@@ -50,60 +50,10 @@ export const same_legend_item = (
       ? target_idx === idx
       : target.label === item?.label && target.legend_group === item.legend_group
 
-export const can_share_axis = (series1: VisSeries, series2: VisSeries): boolean =>
+const can_share_axis = (series1: VisSeries, series2: VisSeries): boolean =>
   series1.axis_group?.trim() || series2.axis_group?.trim()
     ? axis_group_key(series1) === axis_group_key(series2)
     : !series1.unit || !series2.unit || series1.unit === series2.unit
-
-export function toggle_series_visibility<Series extends VisSeries>(
-  series: Series[],
-  series_idx: number,
-  get_axis: SeriesAxisAccessor<Series> = (srs) => srs.y_axis ?? `y`,
-): Series[] {
-  if (series_idx < 0 || series_idx >= series.length || !series[series_idx]) return series
-
-  const toggled = series[series_idx]
-  const new_visibility = !(toggled.visible ?? true)
-  const target_axis = get_axis(toggled, series_idx)
-
-  return series.map((srs, idx) => {
-    if (!srs) return srs
-    const is_target = same_legend_item(toggled, srs, series_idx, idx)
-    const hide_incompatible =
-      !is_target &&
-      new_visibility &&
-      target_axis !== undefined &&
-      get_axis(srs, idx) === target_axis &&
-      !can_share_axis(toggled, srs) &&
-      (srs.visible ?? true)
-    return is_target || hide_incompatible
-      ? { ...srs, visible: is_target ? new_visibility : false }
-      : srs
-  })
-}
-
-export function toggle_group_visibility<Series extends VisSeries>(
-  series: Series[],
-  series_indices: number[],
-): Series[] {
-  const valid_indices = new Set(
-    series_indices.filter((idx) => idx >= 0 && idx < series.length),
-  )
-  if (valid_indices.size === 0) return series
-  const legend_ids = new Set(
-    [...valid_indices].flatMap((idx) =>
-      series[idx].legend_id != null ? [series[idx].legend_id] : [],
-    ),
-  )
-  series.forEach((srs, idx) => {
-    if (srs?.legend_id != null && legend_ids.has(srs.legend_id)) valid_indices.add(idx)
-  })
-
-  const all_visible = [...valid_indices].every((idx) => series[idx].visible ?? true)
-  return series.map((srs, idx) =>
-    valid_indices.has(idx) ? { ...srs, visible: !all_visible } : srs,
-  )
-}
 
 // Legend interaction owns only hidden IDs; input series are never replaced or mutated.
 export function create_legend_visibility<Series extends VisSeries>(
@@ -168,11 +118,38 @@ export function create_legend_visibility<Series extends VisSeries>(
     },
     on_toggle: (series_idx: number) => {
       snapshot = null
-      commit(toggle_series_visibility(get_series(), series_idx, get_axis))
+      const series = get_series()
+      const target = series[series_idx]
+      if (!target) {
+        commit(series)
+        return
+      }
+      const visible = !(target.visible ?? true)
+      const axis = get_axis(target, series_idx)
+      commit(series, (srs, idx) =>
+        same_legend_item(target, srs, series_idx, idx)
+          ? !visible
+          : (visible &&
+              axis !== undefined &&
+              get_axis(srs, idx) === axis &&
+              !can_share_axis(target, srs)) ||
+            srs.visible === false,
+      )
     },
     on_group_toggle: (_group_name: string, series_indices: number[]) => {
       snapshot = null
-      commit(toggle_group_visibility(get_series(), series_indices))
+      const series = get_series()
+      const indices = new Set(series_indices.filter((idx) => idx >= 0 && idx < series.length))
+      const legend_ids = new Set(
+        [...indices].flatMap((idx) =>
+          series[idx].legend_id != null ? [series[idx].legend_id] : [],
+        ),
+      )
+      series.forEach((srs, idx) => {
+        if (srs?.legend_id != null && legend_ids.has(srs.legend_id)) indices.add(idx)
+      })
+      const all_visible = [...indices].every((idx) => series[idx].visible ?? true)
+      commit(series, (srs, idx) => (indices.has(idx) ? all_visible : srs.visible === false))
     },
     on_double_click: (series_idx: number) => {
       const series = get_series()

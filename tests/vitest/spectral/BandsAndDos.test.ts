@@ -1,9 +1,10 @@
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
 import BrillouinBandsDos from '$lib/spectral/BrillouinBandsDos.svelte'
-import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
-import { flushSync, tick } from 'svelte'
+import type { BaseBandStructure, ElectronicDos, PhononDos } from '$lib/spectral/types'
+import { flushSync } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
-import { clip_rect, make_crystal, mount_sized, plot_svg } from '../setup'
+import { fire, clip_rect, make_crystal, mount_sized, plot_svg, translate_of } from '../setup'
 
 const band_structs: BaseBandStructure = {
   type: `phonon`,
@@ -23,28 +24,84 @@ const band_structs: BaseBandStructure = {
   ],
 }
 
+const wrappers = [
+  [`.bands-and-dos`, 1200, BandsAndDos],
+  [`.bands-and-dos`, 400, BandsAndDos],
+  [`.bands-dos-brillouin`, 1200, BrillouinBandsDos],
+  [`.bands-dos-brillouin`, 400, BrillouinBandsDos],
+] as const
+
 describe(`bands/DOS wrappers`, () => {
-  it.each([
-    [`.bands-and-dos`, 1200, BandsAndDos],
-    [`.bands-and-dos`, 400, BandsAndDos],
-    [`.bands-dos-brillouin`, 1200, BrillouinBandsDos],
-    [`.bands-dos-brillouin`, 400, BrillouinBandsDos],
-  ] as const)(
-    `shares initial and changing frequency units in %s at %ipx`,
+  it.each(wrappers)(
+    `shares an explicit Fermi reference in %s at %ipx`,
     async (selector, width, Component) => {
+      const bands: BaseBandStructure = { ...band_structs, type: `electronic`, efermi: 2 }
+      const dos: ElectronicDos = {
+        type: `electronic`,
+        energies: [0, 4],
+        densities: [0, 1],
+        efermi: 3,
+      }
+      const reference = fromStore(writable<number | undefined>(undefined))
       const root = await mount_sized(
         Component,
         {
           structure: make_crystal(3, []),
-          band_structs: { '': band_structs },
-          doses: { '': { type: `phonon`, frequencies: [0, 4], densities: [0, 1] } },
-          units: `meV`,
-          bands_props: { controls_open: true },
-          dos_props: { controls_open: true, show_units_control: true },
+          band_structs: { '': bands },
+          doses: { '': dos },
+          get fermi_level() {
+            return reference.current
+          },
         },
         { selector, width, height: 600 },
       )
+      const plots = [...root.querySelectorAll(`.scatter`)]
+      expect(plots).toHaveLength(2)
+      for (const value of [undefined, 0, 1, undefined]) {
+        reference.current = value
+        flushSync()
+        for (const [idx, plot] of plots.entries()) {
+          const horizontal = idx === 1 && width === 400
+          const axis = horizontal ? `x` : `y`
+          const tick = [...plot.querySelectorAll(`.${axis}-axis .tick`)].find(
+            (node) => node.querySelector(`text`)?.textContent === String(value ?? 2),
+          )
+          const line = plot.querySelector(`.fermi-level-line`)
+          expect(line).not.toBeNull()
+          // Reference and tick use the same scale; compare in the current layout, since
+          // annotation widths can change the available plot area between renders.
+          expect(Number(line?.getAttribute(`${axis}1`))).toBe(translate_of(tick)[axis])
+        }
+      }
+      expect([bands.efermi, dos.efermi]).toEqual([2, 3])
+    },
+  )
+
+  it.each(wrappers)(
+    `keeps parent data and shares changing frequency units in %s at %ipx`,
+    async (selector, width, Component) => {
+      const dos: PhononDos = { type: `phonon`, frequencies: [0, 4], densities: [0, 1] }
+      // Runtime callers can supply extra keys; the parent's data must still win.
+      const props = {
+        structure: make_crystal(3, []),
+        band_structs: { '': band_structs },
+        doses: { '': dos },
+        units: `meV` as const,
+        bands_props: {
+          controls_open: true,
+          band_structs: { '': { ...band_structs, nb_bands: 1, bands: [[100, 101, 102]] } },
+        },
+        dos_props: {
+          controls_open: true,
+          show_units_control: true,
+          doses: { first: dos, second: dos },
+        },
+      }
+      const root = await mount_sized(Component, props, { selector, width, height: 600 })
       const plots = root.querySelectorAll(`.scatter`)
+      expect(plots).toHaveLength(2)
+      expect(plots[0].querySelectorAll(`svg path[fill="none"]`)).toHaveLength(3)
+      expect(plots[1].querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
       const frequency_ticks = (idx: number) =>
         [
           ...plots[idx].querySelectorAll(
@@ -62,8 +119,7 @@ describe(`bands/DOS wrappers`, () => {
         [`dos`, `cm^-1`, 100, 140],
       ] as const) {
         units_select(panel).value = unit
-        units_select(panel).dispatchEvent(new Event(`change`, { bubbles: true }))
-        await tick()
+        await fire(units_select(panel), new Event(`change`, { bubbles: true }))
         expect(units_select(`bands`).value).toBe(unit)
         expect(units_select(`dos`).value).toBe(unit)
         for (const idx of [0, 1]) {
@@ -72,31 +128,6 @@ describe(`bands/DOS wrappers`, () => {
           expect(upper).toBeLessThan(upper_max)
         }
       }
-    },
-  )
-
-  it.each([
-    [`.bands-and-dos`, BandsAndDos],
-    [`.bands-dos-brillouin`, BrillouinBandsDos],
-  ] as const)(
-    `keeps parent data in %s despite extra JavaScript options`,
-    async (selector, Component) => {
-      const doses: PhononDos = { type: `phonon`, frequencies: [0, 4], densities: [0, 1] }
-      const props = {
-        structure: make_crystal(3, []),
-        band_structs: { '': band_structs },
-        doses: { '': doses },
-        bands_props: {
-          show_controls: false,
-          band_structs: { '': { ...band_structs, nb_bands: 1, bands: [[100, 101, 102]] } },
-        },
-        dos_props: { show_controls: false, doses: { first: doses, second: doses } },
-      }
-      const root = await mount_sized(Component, props, { selector, width: 1200, height: 400 })
-      const plots = root.querySelectorAll(`.scatter`)
-      expect(plots).toHaveLength(2)
-      expect(plots[0].querySelectorAll(`svg path[fill="none"]`)).toHaveLength(3)
-      expect(plots[1].querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
     },
   )
 
@@ -174,16 +205,14 @@ describe(`bands/DOS wrappers`, () => {
     })
     bands_svg.dispatchEvent(new MouseEvent(`mousedown`, at(0.1, 0.3)))
     window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...at(0.9, 0.6) }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, at(0.9, 0.6)))
-    await tick()
+    await fire(window, new MouseEvent(`mouseup`, at(0.9, 0.6)))
     const zoomed = y_ticks(bands_plot)
     expect(Math.max(...zoomed) - Math.min(...zoomed)).toBeLessThan(
       Math.max(...initial) - Math.min(...initial),
     )
     expect(y_ticks(dos_plot)).toEqual(zoomed)
 
-    plot_svg(dos_plot).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    await tick()
+    await fire(plot_svg(dos_plot), new MouseEvent(`dblclick`, { bubbles: true }))
     expect(y_ticks(bands_plot)).toEqual(initial)
     expect(y_ticks(dos_plot)).toEqual(initial)
   })

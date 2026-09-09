@@ -35,6 +35,7 @@ interface BandsDosSyncInputs {
   band_structs: () => Record<string, BaseBandStructure>
   doses: () => Record<string, DosData>
   units: () => FrequencyUnit
+  fermi_level?: () => number | undefined
   bands_y_axis: () => AxisConfig | undefined
   dos_y_axis: () => AxisConfig | undefined
   bands_padding: () => Sides | undefined
@@ -66,7 +67,9 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     return range ? ([range[0] * unit_factor, range[1] * unit_factor] as Vec2) : undefined
   })
   const fermi_level = $derived(
-    extract_efermi(inputs.band_structs()) ?? extract_efermi(inputs.doses()),
+    inputs.fermi_level?.() ??
+      extract_efermi(inputs.band_structs()) ??
+      extract_efermi(inputs.doses()),
   )
   // Side by side, the DOS axis label defaults to empty since the bands axis already names
   // the quantity; a caller's label still wins

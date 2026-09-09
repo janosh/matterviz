@@ -515,8 +515,14 @@
         bind:root_element={legend_element}
         {...legend}
         series_data={legend_data}
-        on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
-        on_double_click={legend_vis.on_double_click}
+        on_toggle={(idx) => {
+          legend_vis.on_toggle(idx)
+          legend?.on_toggle?.(idx)
+        }}
+        on_double_click={(idx) => {
+          legend_vis.on_double_click(idx)
+          legend?.on_double_click?.(idx)
+        }}
         on_item_hover={(item) =>
           (legend_hover_idx = item != null && item.series_idx >= 0 ? item.series_idx : null)}
         style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${

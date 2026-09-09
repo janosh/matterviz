@@ -104,30 +104,11 @@ describe(`Bands component`, () => {
       props: { band_structs: { '': base_band_structure } },
       expected_line_count: 4,
     },
-    {
-      name: `electronic spin overlay`,
-      props: {
-        band_structs: { '': spin_polarized_electronic },
-        band_spin_mode: `overlay` as const,
-      },
-      expected_line_count: 8,
-    },
-    {
-      name: `electronic spin up only`,
-      props: {
-        band_structs: { '': spin_polarized_electronic },
-        band_spin_mode: `up_only` as const,
-      },
-      expected_line_count: 4,
-    },
-    {
-      name: `electronic spin down only`,
-      props: {
-        band_structs: { '': spin_polarized_electronic },
-        band_spin_mode: `down_only` as const,
-      },
-      expected_line_count: 4,
-    },
+    ...([`overlay`, `up_only`, `down_only`] as const).map((band_spin_mode) => ({
+      name: `electronic spin ${band_spin_mode}`,
+      props: { band_structs: { '': spin_polarized_electronic }, band_spin_mode },
+      expected_line_count: band_spin_mode === `overlay` ? 8 : 4,
+    })),
     {
       name: `explicit physical two-point branch`,
       props: {

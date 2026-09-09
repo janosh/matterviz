@@ -204,11 +204,9 @@ interface ClassifyPayloadOptions {
   // Keep HDF5 payloads (by name or magic bytes) as a Blob so h5wasm can read them lazily
   // instead of materializing the whole file (trajectory viewers)
   hdf5_as_blob?: boolean
-  // Decide gzip by the bytes rather than the name: a host serving a stored .gz with
-  // `Content-Encoding: gzip` has already been un-gzipped by fetch, while one that also
-  // transport-compresses the same file leaves a second layer behind under the identical
-  // header. A dropped File is always exactly what its name says, so there the name rules.
-  gzip_by_magic?: boolean
+  // Fetch can remove named gzip/deflate wrappers, even when CORS hides Content-Encoding.
+  // Inspect remaining bytes for HTTP payloads; dropped files use their declared wrappers.
+  compression_by_magic?: boolean
   // Names the payload in error messages (defaults to the first of `names`)
   source?: string
   signal?: AbortSignal
@@ -227,13 +225,13 @@ export async function classify_payload(
   names: string[],
   options: ClassifyPayloadOptions = {},
 ): Promise<LoadedPayload<string | ArrayBuffer | Blob>> {
-  const { hdf5_as_blob = false, gzip_by_magic = false, source, signal } = options
+  const { hdf5_as_blob = false, compression_by_magic = false, source, signal } = options
   const head = (count: number) => blob.slice(0, count).arrayBuffer()
   let payload_names = [...names]
-  let sniff_gzip = gzip_by_magic
+  let sniff_compression = compression_by_magic
   while (true) {
     signal?.throwIfAborted()
-    const gzip_magic = sniff_gzip && has_gzip_magic(new Uint8Array(await head(2)))
+    const gzip_magic = sniff_compression && has_gzip_magic(new Uint8Array(await head(2)))
     const format = gzip_magic ? `gzip` : compression_wrapper_of(payload_names, source)
     if (!format) break
     // Strip only the layer being consumed. Sniffed gzip can wrap a named ZIP, and ZIP
@@ -243,8 +241,18 @@ export async function classify_payload(
         ? name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
         : name,
     )
-    // Fetch may already have removed a named gzip layer via Content-Encoding.
-    if (sniff_gzip && format === `gzip` && !gzip_magic) continue
+    // Fetch may already have removed a named layer via Content-Encoding.
+    if (sniff_compression && format === `gzip` && !gzip_magic) continue
+    if (sniff_compression && format === `deflate`) {
+      const bytes = new Uint8Array(await head(2))
+      // RFC 1950: DEFLATE method, window <= 32 KiB, and the zlib header checksum.
+      const has_zlib_header =
+        bytes.length === 2 &&
+        (bytes[0] & 0x0f) === 8 &&
+        bytes[0] >>> 4 <= 7 &&
+        ((bytes[0] << 8) | bytes[1]) % 31 === 0
+      if (!has_zlib_header) continue
+    }
     blob = await consume_decompressed(
       blob,
       format,
@@ -253,7 +261,7 @@ export async function classify_payload(
       (name) => {
         // An archive's entry is authoritative; URL/header aliases describe its container.
         payload_names = [name]
-        sniff_gzip = false
+        sniff_compression = false
       },
     )
   }
