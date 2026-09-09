@@ -5,8 +5,8 @@
   // Each viewport owns its camera: move tracking, reset (on reset_token), and orbit-target
   // recentering on structure change. The primary pane (index 0) additionally binds out
   // scene/camera for the export pane and receives the on_camera_move/on_camera_reset
-  // callbacks so it drives Structure's external camera API. Camera state is per-pane:
-  // the primary pane binds it back to Structure's scene_props, while side panes keep it local.
+  // callbacks so it drives Structure's external camera API. Camera state stays local to each
+  // pane; scene_props supplies caller-controlled pose overrides.
   import type { ElementSymbol } from '$lib/element'
   import { StatusMessage } from 'svelte-widgets'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
@@ -96,12 +96,11 @@
     gizmo = false,
     volumetric_data = undefined,
     isosurface_settings = undefined,
-    active_volume_idx = 0,
     property_colors = null,
     active_sites = [],
     camera_direction = undefined,
     camera_projection = `orthographic`,
-    camera_position = $bindable([0, 0, 0]),
+    camera_position = $bindable(undefined),
     camera_target = $bindable(undefined),
     // One-shot fly-to, routed to the primary pane only: `scene_props` is spread into every
     // pane, so putting the request there would collapse all four fixed multi-view directions
@@ -142,7 +141,6 @@
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
-    active_volume_idx?: number
     property_colors?: AtomPropertyColors | null
     active_sites?: number[]
     camera_direction?: Vec3
@@ -172,8 +170,7 @@
     return { ...(typeof gizmo === `object` ? gizmo : {}), size }
   })
 
-  // Internal orbit controls are bound from StructureScene; camera_position/target are
-  // bindable above so the primary viewport can persist moves into scene_props.
+  // Internal orbit controls are bound from StructureScene for pose tracking and recovery.
   let orbit_controls =
     $state<ComponentProps<typeof StructureScene>[`orbit_controls`]>(undefined)
   let rotation_target_ref = $state<Vec3 | undefined>(undefined)
@@ -186,7 +183,7 @@
     return [x, y, z]
   }
 
-  const read_camera_position = (): Vec3 =>
+  const read_camera_position = (): Vec3 | undefined =>
     camera ? [camera.position.x, camera.position.y, camera.position.z] : camera_position
   // Perspective controls dolly instead of changing camera.zoom.
   const read_zoom = (): number | undefined =>
@@ -194,26 +191,25 @@
   // Pans are a view offset on the camera (see scene/pan.ts), not a target move
   const read_pan = (): Vec2 => read_pan_offset(camera)
 
-  // Both optional keys can be absent — a perspective camera has no zoom, and the orbit target
-  // is unknown until the controls bind. Omit rather than emit undefined: JSON.stringify drops
+  // Camera values can be absent before initialization; perspective cameras also have no zoom. Omit rather than emit undefined: JSON.stringify drops
   // such keys, so serialized host payloads would otherwise differ in
   // shape from the one in-process listeners see.
   const camera_event = (
     camera_has_moved: boolean,
-    position: Vec3,
+    position: Vec3 | undefined,
     target: Vec3 | undefined,
     zoom: number | undefined,
   ): StructureHandlerData => ({
     structure,
     camera_has_moved,
-    camera_position: position,
+    ...(position !== undefined && { camera_position: position }),
     ...(target !== undefined && { camera_target: target }),
     ...(zoom !== undefined && { camera_zoom: zoom }),
   })
 
   // Reset this pane's camera. The primary pane is given on_camera_reset, so it also emits.
   function reset_camera() {
-    camera_position = [0, 0, 0]
+    camera_position = undefined
     camera_target = rotation_target_ref
     report_moved?.(false)
     if (orbit_controls && camera) {
@@ -415,8 +411,7 @@
     untrack(() => {
       if (!camera || !orbit_controls?.target) return
       const move_camera =
-        next_position.some((coord) => coord !== 0) &&
-        !same_pose(next_position, self_written.position)
+        next_position !== undefined && !same_pose(next_position, self_written.position)
       const target =
         next_target && !same_pose(next_target, self_written.target) ? next_target : undefined
       if (!move_camera && !target) return
@@ -435,23 +430,6 @@
       untrack(reset_camera)
     }
     last_reset_token = token
-  })
-
-  // Clear stale camera state for a genuinely new viewing context. Trajectory frames pass a
-  // stable key so coordinate-only updates do not repeatedly reset/re-fit the camera.
-  let viewport_first_run = true
-  $effect(() => {
-    void view_reset_key
-    if (viewport_first_run) {
-      viewport_first_run = false
-      return
-    }
-    untrack(() => {
-      // Preserve explicit camera props supplied alongside a structure change.
-      if (camera_target !== undefined || camera_position.some((coord) => coord !== 0)) return
-      camera_position = [0, 0, 0]
-      camera_target = undefined
-    })
   })
 
   function handle_dblclick(event: MouseEvent) {
@@ -508,7 +486,6 @@
         gizmo={gizmo_prop}
         {volumetric_data}
         {isosurface_settings}
-        {active_volume_idx}
         supercell_tiling={session.supercell_tiling}
         bind:camera_is_moving
         bind:selected_sites={

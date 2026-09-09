@@ -1,4 +1,9 @@
-import { decode_url_safe_base64, escape_html, parse_leading_num, parse_num_token } from '$lib'
+import {
+  decode_url_safe_base64,
+  escape_html,
+  parse_leading_num,
+  parse_num_token,
+} from '$lib/utils'
 import { describe, expect, test } from 'vitest'
 
 test.each([

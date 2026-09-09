@@ -90,10 +90,10 @@ export function get_entry_category(
 // Assign default marker shapes by category (per config.markers). Explicit entry.marker
 // values win. Returns the input array unchanged when no marker was assigned (e.g. when
 // config is null or entries lack category data).
-export function apply_category_markers(
-  entries: (PhaseData & { marker?: MarkerSymbol })[],
+export function apply_category_markers<Entry extends PhaseData & { marker?: MarkerSymbol }>(
+  entries: Entry[],
   config: EntryCategoryConfig | null | undefined,
-): (PhaseData & { marker?: MarkerSymbol })[] {
+): (Entry & { marker?: MarkerSymbol })[] {
   if (!config) return entries
   let any_assigned = false
   const result = entries.map((entry) => {
@@ -154,7 +154,7 @@ export function get_point_color_for_entry(
 }
 
 // Compute a consistent max energy threshold for controls (shared)
-export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): number {
+export function calc_max_hull_dist_in_data(processed_entries: readonly PhaseData[]): number {
   if (processed_entries.length === 0) return 0.5
   const max_hull_dist = Math.max(0, array_max(finite_hull_dists(processed_entries)))
   return Math.max(0.1, max_hull_dist + 0.001)
@@ -192,14 +192,14 @@ export function auto_threshold_reset(default_threshold: number) {
 
 // The entry in `entries` that is the same logical entry as `entry` (by id, else identity)
 export function current_entry<Entry extends { entry_id?: string }>(
-  entry: Entry | null | undefined,
+  entry: { entry_id?: string } | null | undefined,
   entries: readonly Entry[],
 ): Entry | null {
   if (!entry) return null
   if (entry.entry_id) {
     return entries.find((candidate) => candidate.entry_id === entry.entry_id) ?? null
   }
-  return entries.includes(entry) ? entry : null
+  return entries.find((candidate) => candidate === entry) ?? null
 }
 
 // Same logical entry: same object or same entry_id. The id check is proxy-safe — a raw

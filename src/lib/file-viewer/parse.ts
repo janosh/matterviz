@@ -1,15 +1,7 @@
 // Worker-safe file parsing with no Svelte or DOM imports.
-import {
-  BINARY_VIEWER_EXT_REGEX,
-  COMPRESSION_EXTENSIONS_REGEX,
-  VASP_VOLUMETRIC_REGEX,
-} from '$lib/constants'
+import { BINARY_VIEWER_EXT_REGEX, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
 import { parse_fermi_file } from '$lib/fermi-surface/parse'
-import {
-  decompress_data,
-  decompress_data_binary,
-  detect_compression_format,
-} from '$lib/io/decompress'
+import { classify_payload } from '$lib/io/decompress'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { prediction_from_json, type StructureToolPrediction } from '$lib/structure/prediction'
@@ -145,37 +137,11 @@ export const parse_file_content = async (
   if (is_base64) {
     if (typeof source !== `string`)
       throw new Error(`Base64 payload for ${filename} is not text`)
-    let buffer = base64_to_array_buffer(source)
-    const compression_format = detect_compression_format(filename)
-    if (compression_format) {
-      const normalized_filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-      if (detect_compression_format(normalized_filename)) {
-        throw new Error(`Nested compression is not supported: ${filename}`)
-      }
-      filename = normalized_filename
-    }
-
-    // Compressed binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
-    // or compressed ASE .traj files): decompress to binary first — generic text
-    // decompression would corrupt their bytes — so routing sees the inner name.
-    const is_binary_format = BINARY_VIEWER_EXT_REGEX.test(filename)
-    if (compression_format) {
-      // gzip/deflate/zip inflate here; unsupported formats fail with a clear extraction error
-      if (is_binary_format) buffer = await decompress_data_binary(buffer, compression_format)
-      else source = await decompress_data(buffer, compression_format)
-    }
-
-    // vaspwave.h5 holds charge density (+ wavefunctions), not a trajectory —
-    // route to the volumetric parser so it renders as an isosurface.
-    if (is_vaspwave_filename(filename)) {
-      const data = await parse_vaspwave_charge(buffer, filename)
-      return { type: `isosurface`, data, filename }
-    }
-
-    // Binary trajectory formats: pass buffer directly to trajectory parser
-    if (is_binary_format) {
-      return trajectory_result(buffer, filename, load_options, on_progress)
-    }
+    const payload = await classify_payload(new Blob([base64_to_array_buffer(source)]), [
+      filename,
+    ])
+    source = payload.content
+    filename = payload.filename
   }
 
   // Raw binary payloads come from open_material after decompression/classification. HDF5

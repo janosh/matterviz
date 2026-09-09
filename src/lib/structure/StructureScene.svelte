@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enable_atom_sphere_picking } from './atom-instances'
   import type { D3InterpolateName } from '$lib/colors'
   import { get_d3_interpolator } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
@@ -149,7 +150,7 @@
     same_size_atoms = false,
     // bindable: the auto-placement effect below assigns the position it computes, which a
     // plain prop would strand here, leaving the parent to re-push its stale value
-    camera_position = $bindable(DEFAULTS.structure.camera_position),
+    camera_position = $bindable(undefined),
     camera_target = $bindable(undefined),
     camera_direction = undefined,
     camera_projection = DEFAULTS.structure.camera_projection,
@@ -255,7 +256,6 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
-    active_volume_idx = 0,
     supercell_tiling = [1, 1, 1],
     interactive = true,
     fly_to_request = $bindable(undefined),
@@ -280,9 +280,9 @@
     base_structure?: AnyStructure // untransformed cell: supplies the drawn lattice and the displacement reference
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
-    camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
+    camera_position?: [x: number, y: number, z: number] // initial camera position; unset fits the structure
     camera_target?: Vec3 // external orbit-controls target for pan synchronization
-    // When set (and camera_position is unset/zero), auto-place the camera along this
+    // When set (and camera_position is unset), auto-place the camera along this
     // direction from the structure center (used by the multi-side view for fixed angles)
     camera_direction?: Vec3
     show_atoms?: boolean
@@ -390,7 +390,6 @@
     // Loaded volumetric datasets for isosurface rendering
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
-    active_volume_idx?: number // Volume implicit single-isovalue settings apply to
     // How many unit cells the displayed structure spans along a/b/c. Tiles the drawn cell
     // and the isosurface geometry; 1x1x1 until an applied supercell lands.
     supercell_tiling?: Vec3
@@ -482,7 +481,7 @@
     target_structure = current_structure
     has_target_structure = true
     rotation_target_ref =
-      is_initial_structure && camera_position.some((coordinate) => coordinate !== 0)
+      is_initial_structure && camera_position !== undefined
         ? (camera_target ?? rotation_target)
         : current_fit_target
   })
@@ -647,23 +646,16 @@
   const HIGHLIGHT_SHELL_SCALE = 1.08
   const editable_bond_matrix = new Float32Array(16)
 
-  // Shared by every invisible hit target and highlight shell: per-mesh <T.SphereGeometry>
-  // would allocate and upload one sphere per hovered/selected/partial-occupancy site
-  // (hundreds when the Wyckoff table highlights an orbit) and rebuild them all on every
-  // selection change. Hit targets are never drawn, so a coarse sphere raycasts identically.
-  const hit_sphere_geometry = new SphereGeometry(0.5, 12, 12)
+  // Analytic atom hit targets need no vertices; share resources across targets and highlights.
+  const atom_hit_geometry = new BufferGeometry()
   const highlight_sphere_geometry = new SphereGeometry(0.5, 22, 22)
   const bond_hit_geometry = new CylinderGeometry(1, 1, 1, 6)
-  const invisible_material = new MeshBasicMaterial({
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-  })
+  const hit_material = new MeshBasicMaterial()
   $effect(() => () => {
-    hit_sphere_geometry.dispose()
+    atom_hit_geometry.dispose()
     highlight_sphere_geometry.dispose()
     bond_hit_geometry.dispose()
-    invisible_material.dispose()
+    hit_material.dispose()
   })
 
   function apply_bond_transform(mesh: Mesh, bond: BondPair, radius: number): void {
@@ -1305,6 +1297,7 @@
         atoms.push({
           site_idx,
           element: slice_data.element,
+          species: site.species,
           occupancy: slice_data.occupancy,
           position: site.xyz,
           radius,
@@ -1879,14 +1872,27 @@
       : [],
   )
 
+  // Build lazily on the first tooltip after a topology change, then visit only its neighbors.
+  let bond_neighbors = $derived.by(() => {
+    const neighbors = new Map<number, number[]>()
+    const add = (from: number, to: number) => {
+      const entries = neighbors.get(from)
+      if (entries) entries.push(to)
+      else neighbors.set(from, [to])
+    }
+    for (const { site_idx_1, site_idx_2 } of filtered_bond_pairs) {
+      add(site_idx_1, site_idx_2)
+      if (site_idx_1 !== site_idx_2) add(site_idx_2, site_idx_1)
+    }
+    return neighbors
+  })
+
   // Hovered site's bonded neighbours for the tooltip, e.g. `3 (N: 2, O: 1)`; null when none
   let hovered_bond_summary = $derived.by((): string | null => {
     if (hovered_idx === null || !structure?.sites) return null
     const counts: Record<string, number> = {}
     let total = 0
-    for (const { site_idx_1, site_idx_2 } of filtered_bond_pairs) {
-      if (site_idx_1 !== hovered_idx && site_idx_2 !== hovered_idx) continue
-      const neighbor_idx = site_idx_1 === hovered_idx ? site_idx_2 : site_idx_1
+    for (const neighbor_idx of bond_neighbors.get(hovered_idx) ?? []) {
       const element = structure.sites[neighbor_idx]?.species[0]?.element ?? `?`
       counts[element] = (counts[element] ?? 0) + 1
       total += 1
@@ -1978,7 +1984,6 @@
           <InstancedAtoms
             atoms={atom_groups.base}
             {sphere_segments}
-            positions_only={defer_expensive_geometry}
             {...atom_instance_events(atom_groups.base, false)}
           />
         {/if}
@@ -1988,7 +1993,6 @@
             atoms={atom_groups.image}
             {sphere_segments}
             ghost={edit_mode_image}
-            positions_only={defer_expensive_geometry}
             {...atom_instance_events(atom_groups.image, edit_mode_image)}
           />
         {/if}
@@ -2036,8 +2040,10 @@
         {#each partial_hit_targets as hit (hit.site_idx)}
           {@const hit_edit_image = measure_mode === `edit-atoms` && hit.is_image_atom}
           <T.Mesh
-            geometry={hit_sphere_geometry}
-            material={invisible_material}
+            geometry={atom_hit_geometry}
+            oncreate={enable_atom_sphere_picking}
+            material={hit_material}
+            visible={false}
             position={hit.position}
             scale={hit.radius}
             {...atom_pointer_props(hit.site_idx, hit_edit_image)}
@@ -2139,7 +2145,8 @@
           {@const bond_hover_radius = bond_thickness * 1.1}
           <T.Mesh
             geometry={bond_hit_geometry}
-            material={invisible_material}
+            material={hit_material}
+            visible={false}
             matrixAutoUpdate={false}
             oncreate={(ref) => apply_bond_transform(ref, bond, bond_hit_radius)}
             onpointerdown={(event: BondPointerEvent) => {
@@ -2189,8 +2196,10 @@
       {#if interactive && editable_atom_hit_targets.length > 0}
         {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
           <T.Mesh
-            geometry={hit_sphere_geometry}
-            material={invisible_material}
+            geometry={atom_hit_geometry}
+            oncreate={enable_atom_sphere_picking}
+            material={hit_material}
+            visible={false}
             position={atom_hit.position}
             scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
             {...atom_hover_props(atom_hit.site_idx)}
@@ -2271,8 +2280,7 @@
         {@const abc = hovered_site.abc.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const tooltip_species =
-          render_sites.find((rs) => rs.site_idx === hovered_idx)?.site.species ??
-          hovered_site.species}
+          atom_groups.first_by_site.get(hovered_idx ?? -1)?.species ?? hovered_site.species}
         <CanvasTooltip position={hovered_site.xyz}>
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
@@ -2404,7 +2412,6 @@
         <Isosurface
           volumes={volumetric_data}
           settings={isosurface_settings}
-          {active_volume_idx}
           tiling={supercell_tiling}
         />
       {/if}

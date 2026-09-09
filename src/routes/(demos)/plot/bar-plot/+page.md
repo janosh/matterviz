@@ -1137,7 +1137,8 @@ When comparing results from different computational methods or experimental tech
 
 ```svelte example
 <script lang="ts">
-  import { BarPlot } from 'matterviz'
+  import { onDestroy } from 'svelte'
+  import { BarPlot, create_axis_loader } from 'matterviz'
 
   // Seeded random for reproducible data
   function seeded_random(seed) {
@@ -1212,14 +1213,14 @@ When comparing results from different computational methods or experimental tech
   async function data_loader(axis, property_key) {
     load_start = performance.now()
     await new Promise((resolve) => setTimeout(resolve, 150 + Math.random() * 350))
-    const prop = properties[property_key]
-    return {
-      series: build_series(property_key),
-      axis_label: `${prop.label} (${prop.unit})`,
-    }
+    return property_key
   }
 
-  function on_axis_change(axis, property_key) {
+  const axis_loader = create_axis_loader(data_loader)
+  onDestroy(axis_loader.cancel)
+
+  async function on_axis_change(axis, property_key) {
+    if (!(await axis_loader.load(axis, property_key))) return
     switch_count++
     y_key = property_key
     load_times = [...load_times.slice(-9), Math.round(performance.now() - load_start)]
@@ -1248,14 +1249,13 @@ When comparing results from different computational methods or experimental tech
 </div>
 
 <BarPlot
-  bind:series
+  {series}
   x_axis={{ label: `Material ID` }}
   y_axis={{
     label: `${properties[y_key].label} (${properties[y_key].unit})`,
     options: y_options,
     selected_key: y_key,
   }}
-  {data_loader}
   {on_axis_change}
   mode="grouped"
   bar={{ border_radius: 1, gap: 0.1, label_rotation: 90 }}

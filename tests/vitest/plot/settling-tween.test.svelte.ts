@@ -1,4 +1,4 @@
-import { ScatterPoint } from '$lib'
+import ScatterPoint from '$lib/plot/scatter/ScatterPoint.svelte'
 import type { Point2D } from '$lib/math'
 import { create_settling_tween, SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { flushSync, mount, unmount } from 'svelte'

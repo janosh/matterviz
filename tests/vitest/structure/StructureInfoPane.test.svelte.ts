@@ -1,4 +1,5 @@
-import { type AnyStructure, StructureInfoPane } from '$lib'
+import StructureInfoPane from '$lib/structure/StructureInfoPane.svelte'
+import type { AnyStructure } from '$lib'
 import { info_pane_icon } from '$lib/overlays'
 import * as rdf from '$lib/rdf/calc-rdf'
 import * as coordination from '$lib/coordination/calc-coordination'

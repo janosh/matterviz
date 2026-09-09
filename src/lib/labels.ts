@@ -200,7 +200,7 @@ const formatter_precision = (formatter: string): number =>
   Number(/\.(?<precision>\d+)/u.exec(formatter)?.groups?.precision ?? DEFAULT_TICK_PRECISION)
 
 const longest_label = (labels: readonly string[]): number =>
-  Math.max(...labels.map((label) => label.length))
+  labels.reduce((longest, label) => Math.max(longest, label.length), 0)
 
 // Retain compact adaptive labels until adjacent distinct tick values would render identically,
 // then add just enough precision to distinguish neighbouring ticks. Explicit formats remain

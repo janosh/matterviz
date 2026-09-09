@@ -11,7 +11,7 @@
     selected_sites = $bindable(),
     hovered_site_idx = $bindable(),
     current_step_idx = $bindable(),
-    active_volume_idx = $bindable(),
+    active_volume_id = $bindable(),
     display_mode = $bindable(),
     slice_settings = $bindable(),
     zoom_root_id = $bindable(),
@@ -23,7 +23,7 @@
     if (key === `selected_sites`) selected_sites = value
     else if (key === `hovered_site_idx`) hovered_site_idx = value
     else if (key === `current_step_idx`) current_step_idx = value
-    else if (key === `active_volume_idx`) active_volume_idx = value
+    else if (key === `active_volume_id`) active_volume_id = value
     else if (key === `display_mode`) display_mode = value
     else if (key === `slice_settings`) slice_settings = value
     else if (key === `zoom_root_id`) zoom_root_id = value
@@ -35,7 +35,7 @@
     selected_sites,
     hovered_site_idx,
     current_step_idx,
-    active_volume_idx,
+    active_volume_id,
     display_mode,
     slice_settings,
     zoom_root_id,

@@ -1,4 +1,5 @@
-import { Histogram, type Vec2 } from '$lib'
+import Histogram from '$lib/plot/histogram/Histogram.svelte'
+import type { Vec2 } from '$lib'
 import type { HistogramSeries } from '$lib/plot/histogram/histogram'
 import {
   bin_values,
@@ -273,10 +274,13 @@ describe(`Histogram`, () => {
     expect(Math.max(...get_tick_numbers(`y`))).toBeGreaterThanOrEqual(4)
   })
 
-  test(`legend toggles preserve bound sample arrays and colors`, async () => {
+  test(`legend writes hidden IDs while preserving input samples and colors`, async () => {
     const first_series = { values: [1, 1, 2, 3, 5], label: `A`, color: `red` }
     const second_series = { values: [2, 4, 4, 6, 9], label: `B`, color: `blue` }
-    const state = { series: [first_series, second_series] }
+    const state = {
+      series: [first_series, second_series],
+      hidden_series: [] as (string | number)[],
+    }
     await mount_histogram(bind_props({ bins: 4, mode: `overlay`, show_legend: true }, state))
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     expect(legend_items).toHaveLength(2)
@@ -287,7 +291,8 @@ describe(`Histogram`, () => {
     legend_items[1].click()
     await tick()
     expect(state.series[0]).toBe(first_series)
-    expect(state.series[1]).toStrictEqual({ ...second_series, visible: false })
+    expect(state.series[1]).toBe(second_series)
+    expect(state.hidden_series).toEqual([1])
     expect(state.series[1].values).toBe(second_series.values)
   })
 
@@ -442,7 +447,7 @@ describe(`Histogram`, () => {
         property: `A`,
         label: `A`,
         series_idx: 0,
-        active_x_axis: `x1`,
+        active_x_axis: `x`,
         event: expect.any(MouseEvent),
       }),
     )

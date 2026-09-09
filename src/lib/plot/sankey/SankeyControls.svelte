@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { SankeyNodeAlign, Orientation } from '$lib/plot'
   import { ControlPane } from '$lib/overlays'
@@ -21,7 +22,7 @@
     pane_props = {},
     children,
   }: {
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
     orientation?: Orientation
     node_width?: number
@@ -44,12 +45,28 @@
   {/each}
 {/snippet}
 
-{#if show_controls}
-  <ControlPane bind:controls_open controls_name="sankey" {toggle_props} {pane_props}>
-    {@render children?.()}
-    <SettingsSection
-      title="Sankey"
-      current_values={{
+<ControlPane
+  {show_controls}
+  bind:controls_open
+  controls_name="sankey"
+  {toggle_props}
+  {pane_props}
+>
+  {@render children?.()}
+  <SettingsSection
+    title="Sankey"
+    current_values={{
+      orientation,
+      node_align,
+      node_width,
+      node_padding,
+      link_opacity,
+      show_node_labels,
+      min_fraction,
+      max_links,
+    }}
+    on_reset={() => {
+      ;({
         orientation,
         node_align,
         node_width,
@@ -58,52 +75,40 @@
         show_node_labels,
         min_fraction,
         max_links,
-      }}
-      on_reset={() => {
-        ;({
-          orientation,
-          node_align,
-          node_width,
-          node_padding,
-          link_opacity,
-          show_node_labels,
-          min_fraction,
-          max_links,
-        } = DEFAULTS.sankey)
-      }}
-      layout="grid"
+      } = DEFAULTS.sankey)
+    }}
+    layout="grid"
+  >
+    <label>
+      <span>Orientation</span>
+      <select bind:value={orientation}>
+        {@render options(enum_labels(SETTINGS_CONFIG.sankey.orientation))}
+      </select>
+    </label>
+    <label>
+      <span>Node align</span>
+      <select bind:value={node_align}>
+        {@render options(enum_labels(SETTINGS_CONFIG.sankey.node_align))}
+      </select>
+    </label>
+    <NumberRangeInput min={4} max={60} step={1} bind:value={node_width}
+      >Node width</NumberRangeInput
     >
-      <label>
-        <span>Orientation</span>
-        <select bind:value={orientation}>
-          {@render options(enum_labels(SETTINGS_CONFIG.sankey.orientation))}
-        </select>
-      </label>
-      <label>
-        <span>Node align</span>
-        <select bind:value={node_align}>
-          {@render options(enum_labels(SETTINGS_CONFIG.sankey.node_align))}
-        </select>
-      </label>
-      <NumberRangeInput min={4} max={60} step={1} bind:value={node_width}
-        >Node width</NumberRangeInput
-      >
-      <NumberRangeInput min={0} max={40} step={1} bind:value={node_padding}
-        >Node padding</NumberRangeInput
-      >
-      <NumberRangeInput min={0} max={0.2} step={0.005} bind:value={min_fraction}
-        >Group links below (fraction of outflow)</NumberRangeInput
-      >
-      <NumberRangeInput min={0} max={20} step={1} bind:value={max_links}
-        >Max links per node (0 = all)</NumberRangeInput
-      >
-      <NumberRangeInput min={0.05} max={1} step={0.05} bind:value={link_opacity}
-        >Link opacity</NumberRangeInput
-      >
-      <label>
-        <span>Show node labels</span>
-        <input type="checkbox" bind:checked={show_node_labels} />
-      </label>
-    </SettingsSection>
-  </ControlPane>
-{/if}
+    <NumberRangeInput min={0} max={40} step={1} bind:value={node_padding}
+      >Node padding</NumberRangeInput
+    >
+    <NumberRangeInput min={0} max={0.2} step={0.005} bind:value={min_fraction}
+      >Group links below (fraction of outflow)</NumberRangeInput
+    >
+    <NumberRangeInput min={0} max={20} step={1} bind:value={max_links}
+      >Max links per node (0 = all)</NumberRangeInput
+    >
+    <NumberRangeInput min={0.05} max={1} step={0.05} bind:value={link_opacity}
+      >Link opacity</NumberRangeInput
+    >
+    <label>
+      <span>Show node labels</span>
+      <input type="checkbox" bind:checked={show_node_labels} />
+    </label>
+  </SettingsSection>
+</ControlPane>

@@ -11,7 +11,13 @@ import {
   process_hull_for_stats,
 } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { solve_linear_system } from '$lib/math'
+import {
+  type Matrix3x3,
+  matrix_inverse_3x3,
+  mat3x3_vec3_multiply,
+  solve_linear_system,
+  type Vec3,
+} from '$lib/math'
 import { describe, expect, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../setup'
@@ -149,18 +155,35 @@ describe(`find_lowest_energy_unary_refs`, () => {
 
 // Brute-force lower hull energy at `query`: min over all (d+1)-subsets containing the
 // query's projection of the barycentric interpolation (spatial dim d = coords - 1)
-function brute_force_e_hull(points: number[][], query: number[]): number {
-  const dim = query.length - 1
-  let best = Infinity
+function prepare_brute_force_e_hull(
+  points: number[][],
+  dim: number,
+): (query: number[]) => number {
+  const simplexes: { verts: number[][]; matrix: number[][]; inverse: Matrix3x3 | null }[] = []
   const visit = (start: number, chosen: number[]) => {
     if (chosen.length === dim + 1) {
       const verts = chosen.map((idx) => points[idx])
       const matrix = Array.from({ length: dim }, (_, row) =>
         verts.slice(1).map((vert) => vert[row] - verts[0][row]),
       )
+      // Singularity depends only on the matrix. Reuse the same 3x3 inverse/multiply
+      // operations as solve_linear_system, without rebuilding an inverse for every query.
+      if (!solve_linear_system(matrix, Array(dim).fill(0))) return
+      const inverse = dim === 3 ? matrix_inverse_3x3(matrix as Matrix3x3) : null
+      simplexes.push({ verts, matrix, inverse })
+      return
+    }
+    for (let idx = start; idx < points.length; idx++) visit(idx + 1, [...chosen, idx])
+  }
+  visit(0, [])
+  return (query) => {
+    let best = Infinity
+    for (const { verts, matrix, inverse } of simplexes) {
       const rhs = Array.from({ length: dim }, (_, row) => query[row] - verts[0][row])
-      const lambda = solve_linear_system(matrix, rhs)
-      if (!lambda) return
+      const lambda = inverse
+        ? mat3x3_vec3_multiply(inverse, rhs as Vec3)
+        : solve_linear_system(matrix, rhs)
+      if (!lambda) continue
       const weights = [1 - lambda.reduce((sum, val) => sum + val, 0), ...lambda]
       if (weights.every((val) => val >= -1e-9)) {
         best = Math.min(
@@ -168,12 +191,9 @@ function brute_force_e_hull(points: number[][], query: number[]): number {
           weights.reduce((sum, wt, idx) => sum + wt * verts[idx][dim], 0),
         )
       }
-      return
     }
-    for (let idx = start; idx < points.length; idx++) visit(idx + 1, [...chosen, idx])
+    return best
   }
-  visit(0, [])
-  return best
 }
 
 // Deterministic RNG so failures reproduce
@@ -197,8 +217,7 @@ describe(`N-dimensional quickhull`, () => {
     (dim) => {
       const spatial_dim = dim - 1
       let max_diff = 0
-      // brute force enumerates C(24, dim) simplexes per query: 2D/3D are cheap, 4D is ~10k
-      // solves per query, so it gets fewer trials to stay well inside the CI timeout
+      // Brute force evaluates ~10k simplexes per query in 4D, so it gets fewer trials.
       const n_trials = dim === 4 ? 3 : 8
       for (let trial = 0; trial < n_trials; trial++) {
         const points = [
@@ -221,8 +240,9 @@ describe(`N-dimensional quickhull`, () => {
           ...Array.from({ length: 10 }, () => random_point(spatial_dim, 0)),
         ]
         const distances = compute_e_above_hull_nd(queries, facets, points)
+        const reference_hull = prepare_brute_force_e_hull(points, spatial_dim)
         for (const [idx, query] of queries.entries()) {
-          const reference = query[spatial_dim] - brute_force_e_hull(points, query)
+          const reference = query[spatial_dim] - reference_hull(query)
           max_diff = Math.max(max_diff, Math.abs(distances[idx] - reference))
         }
       }
@@ -601,19 +621,15 @@ describe(`process_hull_for_stats`, () => {
     ]
     const result = process_hull_for_stats(entries)
     if (!result) throw new Error(`expected result`)
-    const by_id = Object.fromEntries(
-      [...result.stable_entries, ...result.unstable_entries].map((entry) => [
-        entry.entry_id,
-        entry,
-      ]),
-    )
+    const by_id = Object.fromEntries(result.entries.map((entry) => [entry.entry_id, entry]))
     expect(by_id.FeO.e_form_per_atom).toBeCloseTo(0.5, 10)
     expect(by_id.FeO.e_above_hull).toBeCloseTo(0.5, 10)
     expect(by_id.FeO3.e_form_per_atom).toBe(1)
     expect(by_id.FeO3.e_above_hull).toBeCloseTo(1, 10)
     expect(by_id.Fe.is_element).toBe(true)
     expect(
-      result.stable_entries
+      result.entries
+        .filter((entry) => entry.is_stable)
         .map((entry) => entry.entry_id)
         .toSorted((id_a, id_b) => String(id_a).localeCompare(String(id_b))),
     ).toEqual([`Fe`, `O`])
@@ -628,12 +644,16 @@ describe(`process_hull_for_stats`, () => {
       make_phase({ Li: 1, Fe: 2 }, -0.1, { entry_id: `LiFe2` }),
     ]
     const result = process_hull_for_stats(entries)
-    const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
+    const all = result?.entries ?? []
     // LiFe2 (-0.1) sits on the Li-Fe tie-line (else ~0.233 above the Li-LiFe-Fe hull);
     // LiFe is scored (below hull → 0) but never counted stable
     expect(all.find((entry) => entry.entry_id === `LiFe2`)?.e_above_hull).toBeCloseTo(0, 10)
     expect(all.find((entry) => entry.entry_id === `LiFe`)?.e_above_hull).toBeCloseTo(0, 10)
-    expect(result?.stable_entries.some((entry) => entry.entry_id === `LiFe`)).toBe(false)
+    expect(
+      result?.entries
+        .filter((entry) => entry.is_stable)
+        .some((entry) => entry.entry_id === `LiFe`),
+    ).toBe(false)
   })
 
   // Hull distances are keyed by entry_id, else composition + energy: same-composition
@@ -662,7 +682,7 @@ describe(`process_hull_for_stats`, () => {
     `scores same-composition polymorphs without entry_id distinctly ($system)`,
     ({ entries }) => {
       const result = process_hull_for_stats(entries)
-      const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
+      const all = result?.entries ?? []
       const compounds = all
         .filter((entry) => !entry.is_element)
         .toSorted((a, b) => a.energy - b.energy)

@@ -10,6 +10,8 @@ import { install_stub_worker, type StubWorkerInstance, type StubWorkerMessage } 
 let stub: ReturnType<typeof install_stub_worker<StubWorkerMessage>>
 const workers = (): StubWorkerInstance[] => stub.instances
 const first_post = (worker: StubWorkerInstance) => worker.posted[0].message
+const reply = (worker: StubWorkerInstance, result: unknown = `done`) =>
+  worker.emit(`message`, { data: { id: first_post(worker).id, result, error: null } })
 
 const make_client = <Result = string>(
   compute_sync: (
@@ -105,9 +107,7 @@ describe(`worker teardown`, () => {
     // Another pane unmounting must not reject this pane's request
     run.release()
     expect(worker.terminated).toBe(0)
-    worker.emit(`message`, {
-      data: { id: first_post(worker).id, result: `done`, error: null },
-    })
+    reply(worker)
     await expect(pending).resolves.toBe(`done`)
     run.release()
     expect(worker.terminated).toBe(1)
@@ -158,6 +158,18 @@ describe(`request dedupe`, () => {
     // same shape, different object: a content hash would merge these, identity must not
     expect(workers()[0].posted).toHaveLength(2)
   })
+
+  test(`omitted options remain distinct from an explicit empty object`, async () => {
+    vi.stubGlobal(`Worker`, undefined)
+    const run = make_client((_input, options) =>
+      options === undefined ? `default` : `explicit`,
+    )
+    const input = { tag: `a` }
+    await expect(Promise.all([run(input), run(input, {})])).resolves.toEqual([
+      `default`,
+      `explicit`,
+    ])
+  })
 })
 
 test(`falls back to compute_sync when Worker is missing`, async () => {
@@ -185,29 +197,28 @@ test(`a throwing compute_sync rejects asynchronously and frees the dedupe key`, 
   await expect(run(input, {})).rejects.toThrow(`bad input`)
 })
 
-test(`falls back to compute_sync when the worker constructor throws, and stops retrying it`, async () => {
-  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+test(`worker construction failures reject without moving work onto the main thread`, async () => {
   const create_worker = vi.fn(() => {
     throw new DOMException(`cannot be accessed from origin`, `SecurityError`)
   })
+  const compute_sync = vi.fn(({ tag }: { tag: string }) => `sync:${tag}`)
   const run = create_worker_client<{ tag: string }, Record<string, unknown>, string>({
     label: `Test`,
     create_worker,
-    compute_sync: ({ tag }) => `sync:${tag}`,
+    compute_sync,
     build_payload: (input) => input,
   })
-  await expect(run({ tag: `a` }, {})).resolves.toBe(`sync:a`)
-  await expect(run({ tag: `b` }, {})).resolves.toBe(`sync:b`)
-  expect(create_worker).toHaveBeenCalledOnce()
-  expect(warn).toHaveBeenCalledOnce()
-  warn.mockRestore()
+  await expect(run({ tag: `a` }, {})).rejects.toThrow(`cannot be accessed from origin`)
+  await expect(run({ tag: `b` }, {})).rejects.toThrow(`cannot be accessed from origin`)
+  expect(create_worker).toHaveBeenCalledTimes(2)
+  expect(compute_sync).not.toHaveBeenCalled()
 })
 
 test(`an explicit null result is delivered rather than reported as missing`, async () => {
   const run = make_client<number | null>(() => 0)
   const pending = run({ tag: `a` }, {})
   const [worker] = workers()
-  worker.emit(`message`, { data: { id: first_post(worker).id, result: null, error: null } })
+  reply(worker, null)
   await expect(pending).resolves.toBeNull()
 })
 
@@ -231,68 +242,64 @@ test.each([
 })
 
 describe(`per-request options`, () => {
-  test(`progress messages reach every caller sharing the request, results settle it`, async () => {
-    const run = make_client()
-    const input = { tag: `a` }
-    const seen: unknown[][] = [[], []]
-    const first = run(input, {}, { on_progress: (progress) => seen[0].push(progress) })
-    const second = run(input, {}, { on_progress: (progress) => seen[1].push(progress) })
-    const [worker] = workers()
-    expect(worker.posted).toHaveLength(1)
-    const { id } = first_post(worker)
-    worker.emit(`message`, { data: { id, progress: 0.5 } })
-    worker.emit(`message`, { data: { id, progress: 1 } })
-    worker.emit(`message`, { data: { id, result: `done`, error: null } })
-    await expect(Promise.all([first, second])).resolves.toEqual([`done`, `done`])
-    expect(seen).toEqual([
-      [0.5, 1],
-      [0.5, 1],
-    ])
-  })
+  test.each([true, false])(
+    `progress reaches every shared caller (worker=%s)`,
+    async (use_worker) => {
+      if (!use_worker) vi.stubGlobal(`Worker`, undefined)
+      const run = make_client((_input, _options, on_progress) => {
+        on_progress?.(0.5)
+        on_progress?.(1)
+        return `done`
+      })
+      const input = { tag: `a` }
+      const seen: unknown[][] = [[], []]
+      const first = run(input, {}, { on_progress: (progress) => seen[0].push(progress) })
+      const second = run(input, {}, { on_progress: (progress) => seen[1].push(progress) })
+      if (use_worker) {
+        const [worker] = workers()
+        expect(worker.posted).toHaveLength(1)
+        const { id } = first_post(worker)
+        worker.emit(`message`, { data: { id, progress: 0.5 } })
+        worker.emit(`message`, { data: { id, progress: 1 } })
+        worker.emit(`message`, { data: { id, result: `done`, error: null } })
+      }
+      await expect(Promise.all([first, second])).resolves.toEqual([`done`, `done`])
+      expect(seen).toEqual([
+        [0.5, 1],
+        [0.5, 1],
+      ])
+    },
+  )
 
-  test(`aborting the only waiter frees the key and terminates the busy worker at once`, async () => {
-    const run = make_client()
-    const input = { tag: `a` }
-    const controller = new AbortController()
-    const pending = run(input, {}, { signal: controller.signal })
-    const [worker] = workers()
-    controller.abort(new Error(`superseded`))
-    await expect(pending).rejects.toThrow(`superseded`)
-    // the abandoned compute is still running inside the worker: keeping it alive would make
-    // the next request queue behind it
-    expect(worker.terminated).toBe(1)
-    // a replacement is pre-warmed immediately so the next request does not pay a cold start
-    expect(workers()).toHaveLength(2)
-    expect(workers()[1].posted).toHaveLength(0)
-    // the dropped request must not be handed out again
-    void run(input, {}).catch(() => {})
-    expect(workers()).toHaveLength(2)
-    expect(workers()[1].posted).toHaveLength(1)
-  })
-
-  test(`an abort followed by a new request reuses the pre-warmed worker`, async () => {
-    // The option-keystroke pattern of use_async_result: abort the superseded compute, then
-    // request again in the same tick
-    const run = make_client()
-    const input = { tag: `a` }
-    const controller = new AbortController()
-    const aborted = run(input, { lag: 1 }, { signal: controller.signal })
-    controller.abort()
-    await expect(aborted).rejects.toMatchObject({ name: `AbortError` })
-    const kept = run(input, { lag: 2 })
-    // exactly two workers ever: the terminated one and its eager replacement; no third
-    expect(workers()).toHaveLength(2)
-    const [old_worker, worker] = workers()
-    expect(old_worker.terminated).toBe(1)
-    expect(old_worker.posted).toHaveLength(1)
-    expect(worker.terminated).toBe(0)
-    expect(worker.posted).toHaveLength(1)
-    expect(first_post(worker).options).toEqual({ lag: 2 })
-    worker.emit(`message`, {
-      data: { id: first_post(worker).id, result: `done`, error: null },
-    })
-    await expect(kept).resolves.toBe(`done`)
-  })
+  test.each([
+    [`same options and explicit reason`, {}, {}, new Error(`superseded`)],
+    [`changed options and default reason`, { lag: 1 }, { lag: 2 }, undefined],
+  ] as const)(
+    `aborting the only waiter frees its key and creates one replacement: %s`,
+    async (_label, options, next_options, reason) => {
+      const run = make_client()
+      const input = { tag: `a` }
+      const controller = new AbortController()
+      const aborted = run(input, options, { signal: controller.signal })
+      const [old_worker] = workers()
+      controller.abort(reason)
+      await expect(aborted).rejects.toEqual(
+        reason ?? expect.objectContaining({ name: `AbortError` }),
+      )
+      expect(old_worker.terminated).toBe(1)
+      expect(old_worker.posted).toHaveLength(1)
+      // Abort leaves no unused replacement; the next request creates exactly one.
+      expect(workers()).toHaveLength(1)
+      const kept = run(input, next_options)
+      expect(workers()).toHaveLength(2)
+      const worker = workers()[1]
+      expect(worker.terminated).toBe(0)
+      expect(worker.posted).toHaveLength(1)
+      expect(first_post(worker).options).toEqual(next_options)
+      reply(worker)
+      await expect(kept).resolves.toBe(`done`)
+    },
+  )
 
   test(`a reply from the terminated worker does not settle the replacement's request`, async () => {
     const run = make_client()
@@ -304,16 +311,15 @@ describe(`per-request options`, () => {
     const [old_worker, worker] = workers()
     // a late reply for the aborted id (real workers never deliver after terminate, but the
     // id must be forgotten regardless) leaves the live request pending
-    old_worker.emit(`message`, {
-      data: { id: first_post(old_worker).id, result: `stale`, error: null },
-    })
+    reply(old_worker, `stale`)
+    old_worker.emit(`error`, { message: `stale error`, preventDefault: () => {} })
+    old_worker.emit(`messageerror`, {})
+    old_worker.emit(`message`, { data: { id: null, error: `stale decode error` } })
     let settled = false
     void kept.then(() => (settled = true))
     await Promise.resolve()
     expect(settled).toBe(false)
-    worker.emit(`message`, {
-      data: { id: first_post(worker).id, result: `done`, error: null },
-    })
+    reply(worker)
     await expect(kept).resolves.toBe(`done`)
   })
 
@@ -321,15 +327,16 @@ describe(`per-request options`, () => {
     const run = make_client()
     const input = { tag: `a` }
     const controller = new AbortController()
-    const aborted = run(input, {}, { signal: controller.signal })
-    const kept = run(input, {})
+    const on_progress = vi.fn()
+    const aborted = run(input, {}, { signal: controller.signal, on_progress })
+    const kept = run(input, {}, { on_progress })
     const [worker] = workers()
     controller.abort(new Error(`no longer needed`))
     await expect(aborted).rejects.toThrow(`no longer needed`)
     expect(worker.terminated).toBe(0)
-    worker.emit(`message`, {
-      data: { id: first_post(worker).id, result: `done`, error: null },
-    })
+    worker.emit(`message`, { data: { id: first_post(worker).id, progress: 0.5 } })
+    expect(on_progress).toHaveBeenCalledExactlyOnceWith(0.5)
+    reply(worker)
     await expect(kept).resolves.toBe(`done`)
   })
 
@@ -338,11 +345,9 @@ describe(`per-request options`, () => {
     const controller = new AbortController()
     const pending = run({ tag: `a` }, {}, { signal: controller.signal })
     const [worker] = workers()
-    worker.emit(`message`, {
-      data: { id: first_post(worker).id, result: `done`, error: null },
-    })
-    await expect(pending).resolves.toBe(`done`)
+    reply(worker)
     controller.abort()
+    await expect(pending).resolves.toBe(`done`)
     expect(worker.terminated).toBe(0)
   })
 
@@ -355,6 +360,21 @@ describe(`per-request options`, () => {
     expect(workers()[0]?.posted ?? []).toHaveLength(0)
   })
 })
+
+test.each([`abort`, `cancel`] as const)(
+  `%s prevents queued synchronous computation`,
+  async (action) => {
+    vi.stubGlobal(`Worker`, undefined)
+    const compute_sync = vi.fn(() => `done`)
+    const run = make_client(compute_sync)
+    const controller = new AbortController()
+    const pending = run({ tag: `a` }, {}, { signal: controller.signal })
+    if (action === `abort`) controller.abort()
+    else run.cancel()
+    await expect(pending).rejects.toThrow(/abort|cancel/i)
+    expect(compute_sync).not.toHaveBeenCalled()
+  },
+)
 
 test(`serve_worker answers an undeserializable request with an id-less error reply`, () => {
   // Stand in for the worker global scope: record listeners and posted replies

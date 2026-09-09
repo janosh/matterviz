@@ -1,9 +1,21 @@
-import { ConvexHull, ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
+import { ConvexHull, type HullModel } from '$lib/convex-hull'
+import * as thermo from '$lib/convex-hull/thermodynamics'
+import * as canvas_draw from '$lib/convex-hull/canvas-draw'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, create_drop_event, doc_query, make_phase, mount_sized } from '../setup'
+import {
+  bind_props,
+  create_drop_event,
+  doc_query,
+  make_phase,
+  mock_parse_worker,
+  mount_sized,
+} from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
+
+beforeEach(mock_parse_worker)
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
 // exercised deterministically in jsdom (synthetic events can't land on points).
@@ -59,6 +71,9 @@ const test_text = (test_id: string): string =>
   doc_query(`[data-testid="${test_id}"]`).textContent ?? ``
 const selected_text = (): string => test_text(`selected-entry`)
 const mounted_components: ReturnType<typeof mount>[] = []
+const model_entries = () =>
+  (mounted_components.at(-1) as { get_model: () => HullModel | undefined }).get_model()
+    ?.entries
 const track_component = (component: ReturnType<typeof mount>): void => {
   mounted_components.push(component)
 }
@@ -68,14 +83,13 @@ const mount_harness = async (
   track_component(mount(ConvexHullSelectionHarness, { target: document.body, props }))
   await tick()
 }
-// Mounts a hull component into its own div so assertions can scope to that mount
+// Each hull gets its own div so assertions can scope to that mount
 const mount_hull = async (
-  component: Component,
-  props: Record<string, unknown>,
+  props: ComponentProps<typeof ConvexHull>,
 ): Promise<HTMLDivElement> => {
   const target = document.createElement(`div`)
   document.body.append(target)
-  track_component(mount(component, { target, props }))
+  track_component(mount(ConvexHull, { target, props }))
   await tick()
   return target
 }
@@ -96,36 +110,39 @@ describe(`convex hull replacement state`, () => {
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(canvas_context)
   })
 
-  const hull_components = [
-    [`automatic`, ConvexHull, {}],
-    [`2D`, ConvexHull2D, {}],
-    [`3D`, ConvexHullCanvas, { dim: 3 }],
-    [`4D`, ConvexHullCanvas, { dim: 4 }],
-  ] as [string, Component, Record<string, unknown>][]
+  test.each([`3d`, `4d`] as const)(
+    `empty %s canvas clicks clear selection without a popup`,
+    async (dim) => {
+      await mount_harness({ dim })
+      button(`select-entry`).click()
+      await tick()
+      expect(selected_text()).not.toBe(`none`)
+      vi.spyOn(canvas_draw, `find_hull_entry_at_mouse`).mockReturnValueOnce(null)
+      doc_query<HTMLCanvasElement>(`canvas`).click()
+      await tick()
+      expect(selected_text()).toBe(`none`)
+    },
+  )
   // Every empty-state branch (no entries, an empty array, the wrapper's own arity message)
   // keeps the consumer's DOM attributes; the five-element case goes through the branch that
   // used to cherry-pick id/class/style and dropped hidden, onclick, aria-* and data-*
   const missing_text = `Missing convex hull data`
   const five_elements = [`Li`, `Fe`, `Co`, `Ni`, `O`].map((el) => make_phase({ [el]: 1 }))
   test.each([
-    ...hull_components.map(
-      ([name, component, dim_props]) =>
-        [name, component, dim_props, missing_text, `status`] as const,
-    ),
-    [`automatic (entries=[])`, ConvexHull, { entries: [] }, missing_text, `status`],
+    [`undefined entries`, {}, missing_text, `status`],
+    [`empty entries`, { entries: [] }, missing_text, `status`],
     [
-      `automatic (5 elements)`,
-      ConvexHull,
+      `five elements`,
       { entries: five_elements, controls: { title: `not a DOM attribute` } },
       `Convex hulls require 2, 3 or 4 elements, found 5: Co, Fe, Li, Ni, O`,
       `alert`,
     ],
-  ] as [string, Component, Record<string, unknown>, string, string][])(
-    `renders a useful missing-entries error from the %s component`,
-    async (_name, component, extra_props, text, role) => {
+  ] satisfies [string, ComponentProps<typeof ConvexHull>, string, string][])(
+    `renders a useful empty state for %s`,
+    async (_name, extra_props, text, role) => {
       for (const hidden of [false, true]) {
         const onclick = vi.fn()
-        const target = await mount_hull(component, {
+        const target = await mount_hull({
           ...extra_props,
           id: `missing-hull`,
           'aria-label': `Missing hull`,
@@ -169,46 +186,19 @@ describe(`convex hull replacement state`, () => {
     make_phase({ O: 1 }),
     make_phase({ Li2O: 1 }, -6),
   ]
-  const ternary_entries = [`Li`, `Fe`, `O`].map((el) => make_phase({ [el]: 1 }))
   const bad_key = `Unrecognized composition key "Li2O"`
   test.each([
-    ...hull_components.map(
-      ([name, component, dim_props]) =>
-        [name, component, dim_props, compound_key_entries, bad_key] as const,
-    ),
+    [`invalid composition`, compound_key_entries, bad_key],
     [
-      `2D (arity)`,
-      ConvexHull2D,
-      {},
-      ternary_entries,
-      `Binary convex hull requires exactly 2 elements, found 3: Fe, Li, O`,
-    ],
-    [
-      `3D (arity)`,
-      ConvexHullCanvas,
-      { dim: 3 },
-      compound_key_entries.slice(0, 2),
-      `Ternary convex hull requires exactly 3 elements, found 2: Li, O`,
-    ],
-    [
-      `4D (arity)`,
-      ConvexHullCanvas,
-      { dim: 4 },
-      ternary_entries,
-      `Quaternary convex hull requires exactly 4 elements, found 3: Fe, Li, O`,
-    ],
-    [
-      `automatic (arity)`,
-      ConvexHull,
-      {},
+      `one element`,
       [make_phase({ Li: 1 })],
       `Convex hulls require 2, 3 or 4 elements, found 1: Li`,
     ],
-  ] as [string, Component, Record<string, unknown>, PhaseData[], string][])(
-    `renders the error of an invalid entries prop from the %s component`,
-    async (_name, component, dim_props, entries, message) => {
+  ] satisfies [string, PhaseData[], string][])(
+    `renders the entries error for %s`,
+    async (_name, entries, message) => {
       const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      const target = await mount_hull(component, { ...dim_props, entries, id: `bad-hull` })
+      const target = await mount_hull({ entries, id: `bad-hull` })
 
       const empty_state = target.querySelector<HTMLElement>(`.empty-state`)
       expect(empty_state?.getAttribute(`role`)).toBe(`alert`)
@@ -242,21 +232,20 @@ describe(`convex hull replacement state`, () => {
     [450, true],
   ] as const)(`temperature=%s with interpolation=%s`, (temperature, interpolate) => {
     test.each([
-      [`2D`, ConvexHull2D, {}, [`Li`], `.convex-hull-2d`],
-      [`3D`, ConvexHullCanvas, { dim: 3 }, [`Li`, `Fe`], `.convex-hull-3d`],
-      [`automatic`, ConvexHull, {}, [`Li`, `Fe`], `.convex-hull-3d`],
-    ] as [string, Component, Record<string, unknown>, string[], string][])(
+      [`2D`, [`Li`], `.convex-hull-2d`],
+      [`3D`, [`Li`, `Fe`], `.convex-hull-3d`],
+      [`4D`, [`Li`, `Fe`, `Na`], `.convex-hull-4d`],
+    ] satisfies [string, string[], string][])(
       `%s keeps its plot and temperature`,
-      async (_name, component, dim_props, kept_elements, plot_selector) => {
+      async (_name, kept_elements, plot_selector) => {
         const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
         const entries = [
           ...kept_elements.map((el) => with_temps({ [el]: 1 }, [300, 600], el)),
           with_temps({ O: 1 }, [300], `O`),
         ]
-        const state = { stable_entries: [] as PhaseData[], temperature }
+        const state = { temperature }
         const target = await mount_hull(
-          component,
-          bind_props({ ...dim_props, entries, interpolate_temperature: interpolate }, state),
+          bind_props({ entries, interpolate_temperature: interpolate }, state),
         )
         flushSync()
 
@@ -269,16 +258,50 @@ describe(`convex hull replacement state`, () => {
             ?.value,
         ).toBe(String(temperature))
         expect(
-          state.stable_entries.find((entry) => entry.entry_id === kept_elements[0])
+          model_entries()?.find((entry) => entry.entry_id === kept_elements[0])
             ?.energy_per_atom,
         ).toBeCloseTo(-1 - temperature / 1000, 12)
         // the dropped element is closed with a synthetic corner so the hull still spans it
-        expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(
+        expect(model_entries()?.map((entry) => entry.entry_id)).toContain(
           `synthetic-element:O`,
         )
         expect(console_error).not.toHaveBeenCalled()
       },
     )
+  })
+
+  test(`source changes normalize once and switch renderer without losing bound controls`, async () => {
+    const normalize = vi.spyOn(thermo, `process_hull_entries`)
+    const state = new SvelteMap<string, PhaseData[]>([[`entries`, []]])
+    const props = {
+      get entries() {
+        return state.get(`entries`)
+      },
+      show_stable: false,
+      controls_open: true,
+    }
+    const target = await mount_hull(props)
+    for (const dim of [2, 3, 4, 2]) {
+      normalize.mockClear()
+      state.set(
+        `entries`,
+        [`Li`, `Fe`, `O`, `Na`].slice(0, dim).map((element) => make_phase({ [element]: 1 })),
+      )
+      await tick()
+      flushSync()
+      const label = [
+        `Binary convex hull visualization`,
+        `Ternary convex hull visualization`,
+        `Quaternary convex hull visualization`,
+      ][dim - 2]
+      expect(target.querySelector(`[aria-label="${label}"]`)).not.toBeNull()
+      expect(model_entries()).toHaveLength(dim)
+      expect(props.show_stable).toBe(false)
+      const face_mode = target.querySelector(`.face-color-mode-buttons .active`)
+      if (dim === 2) expect(face_mode).toBeNull()
+      else expect(face_mode?.textContent?.trim()).toBe(dim === 3 ? `Uniform` : `Element`)
+      expect(normalize).toHaveBeenCalledOnce()
+    }
   })
 
   test.each([
@@ -292,25 +315,23 @@ describe(`convex hull replacement state`, () => {
         ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
         make_phase({ ...composition }, -10, { entry_id: `compound` }),
       ]
-      const state = { stable_entries: [] as PhaseData[] }
-      const target = await mount_hull(ConvexHull, bind_props({ entries }, state))
+      const target = await mount_hull({ entries })
       flushSync()
 
       expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
       expect(target.querySelector(`.empty-state`)).toBeNull()
-      expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(`compound`)
+      expect(model_entries()?.map((entry) => entry.entry_id)).toContain(`compound`)
     },
   )
 
   test.each([
-    [`automatic`, `2d`, true, `.convex-hull-2d`],
-    [`2D`, `2d`, false, `.convex-hull-2d`],
-    [`3D`, `3d`, false, `.convex-hull-3d`],
-    [`4D`, `4d`, false, `.convex-hull-4d`],
+    [`2D`, `2d`, `.convex-hull-2d`],
+    [`3D`, `3d`, `.convex-hull-3d`],
+    [`4D`, `4d`, `.convex-hull-4d`],
   ] as const)(
     `recovers the %s component when entries arrive`,
-    async (_name, dim, use_wrapper, plot_selector) => {
-      await mount_harness({ dim, start_missing: true, use_wrapper })
+    async (_name, dim, plot_selector) => {
+      await mount_harness({ dim, start_missing: true })
       expect(document.body.textContent).toContain(`Missing convex hull data`)
 
       button(`refresh-convex-entries`).click()
@@ -432,26 +453,23 @@ describe(`convex hull replacement state`, () => {
   // Composition keys are validated inside the drop handler, so a compound-like key ("Fe2O3")
   // reports through console.error instead of throwing from the hull pipeline's $derived
   // mid-render (and, via the auto-dimension wrapper, instead of being mis-counted as binary).
-  test.each([false, true])(
-    `invalid dropped entries report their filename without replacing the hull (wrapper=%s)`,
-    async (use_wrapper) => {
-      const dim = `2d`
-      await mount_harness({ dim, use_wrapper })
-      const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      const stable_before = test_text(`stable-count`)
-      const bad_entries = JSON.stringify([{ composition: { Fe2O3: 1 }, energy: -1 }])
-      doc_query(`.convex-hull-${dim}`).dispatchEvent(
-        create_drop_event(new File([bad_entries], `bad-hull.json`)),
-      )
-      await vi.waitFor(() => expect(console_error).toHaveBeenCalledOnce())
-      expect(console_error.mock.calls[0][0]).toMatch(
-        /bad-hull\.json: Unrecognized composition key "Fe2O3"/,
-      )
-      // the component kept its previous entries and is still mounted
-      expect(document.body.querySelector(`.convex-hull-${dim}`)).not.toBeNull()
-      expect(test_text(`stable-count`)).toBe(stable_before)
-    },
-  )
+  test(`invalid dropped entries report their filename without replacing the hull`, async () => {
+    const dim = `2d`
+    await mount_harness({ dim })
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const stable_before = test_text(`stable-count`)
+    const bad_entries = JSON.stringify([{ composition: { Fe2O3: 1 }, energy: -1 }])
+    doc_query(`.convex-hull-${dim}`).dispatchEvent(
+      create_drop_event(new File([bad_entries], `bad-hull.json`)),
+    )
+    await vi.waitFor(() => expect(console_error).toHaveBeenCalledOnce())
+    expect(console_error.mock.calls[0][0]).toMatch(
+      /bad-hull\.json: Unrecognized composition key "Fe2O3"/,
+    )
+    // the component kept its previous entries and is still mounted
+    expect(document.body.querySelector(`.convex-hull-${dim}`)).not.toBeNull()
+    expect(test_text(`stable-count`)).toBe(stable_before)
+  })
 
   // current_entry() returned the raw plot entry while hover_data.entry was its proxy.
   // The identity comparison was always unequal -> reassign -> effect_update_depth_exceeded.
@@ -495,17 +513,29 @@ describe(`convex hull replacement state`, () => {
   // dependencies and every one has to be declared in `repaint_deps`. `config` reaches the draw
   // code only through merged_config, so the individual label toggles don't cover it: leaving it
   // out left the hull showing labels the config had already turned off.
-  test.each([`3d`, `4d`] as const)(`a config change repaints the hull (%s)`, async (dim) => {
-    const clears = count_canvas_clears()
-    await mount_harness({ dim })
-    await let_frames_run()
-    const before = clears.base
-    expect(before).toBeGreaterThan(0) // it painted at all to begin with
+  test.each([`3d`, `4d`] as const)(
+    `presentation changes repaint without recomputing hull geometry (%s)`,
+    async (dim) => {
+      const builds = vi.spyOn(thermo, `compute_lower_hull_nd`)
+      const clears = count_canvas_clears()
+      await mount_harness({ dim })
+      await let_frames_run()
+      expect(clears.base).toBeGreaterThan(0) // it painted at all to begin with
 
-    button(`toggle-hull-labels`).click()
-    await let_frames_run()
-    expect(clears.base).toBeGreaterThan(before)
-  })
+      const initial_builds = builds.mock.calls.length
+      expect(initial_builds).toBeGreaterThan(0)
+      for (const toggle of [`toggle-hull-labels`, `toggle-hull-category`]) {
+        const before = clears.base
+        button(toggle).click()
+        await let_frames_run()
+        expect(clears.base).toBeGreaterThan(before)
+        expect(builds).toHaveBeenCalledTimes(initial_builds)
+      }
+      button(`replace-convex-entries`).click()
+      await tick()
+      expect(builds.mock.calls.length).toBeGreaterThan(initial_builds)
+    },
+  )
 
   // Enter selects the hovered entry, but the chord belongs to the browser (Cmd+Enter is
   // open-in-new-tab). The chord guard has to run before the Enter branch, not after it.
@@ -531,7 +561,7 @@ describe(`convex hull replacement state`, () => {
 
 // End-to-end: magnetic_ordering -> pipeline marker assignment -> 2D SVG symbol rendering,
 // and hidden_categories -> pipeline visible_entries -> fewer rendered points
-describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
+describe(`magnetic ordering rendering (ConvexHull)`, () => {
   const compound = (
     composition: Record<string, number>,
     entry_id: string,
@@ -565,7 +595,7 @@ describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
     `hidden=%s renders %i markers`,
     async (hidden, expected_markers) => {
       const plot = await mount_sized(
-        ConvexHull2D,
+        ConvexHull,
         { entries: magnetic_entries, hidden_categories: hidden },
         { selector: `.scatter`, on_mount: track_component },
       )
@@ -588,7 +618,7 @@ describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
       { ...compound({ Li: 1, O: 3 }, `lio3`, 0), e_form_per_atom: -0.4 },
     ]
     const plot = await mount_sized(
-      ConvexHull2D,
+      ConvexHull,
       { entries },
       { selector: `.scatter`, on_mount: track_component },
     )

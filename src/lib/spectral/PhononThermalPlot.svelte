@@ -5,18 +5,17 @@
   import { plot_color } from '$lib/colors'
   import { EV_TO_KJ_PER_MOL } from '$lib/constants'
   import { StatusMessage } from 'svelte-widgets'
-  import type { DataSeries } from '$lib/plot'
+  import type { DataSeries, ScatterPlotOptions } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import { to_error } from '$lib/utils'
-  import type { ComponentProps } from 'svelte'
   import type { FrequencyUnit } from './frequency-units'
   import { thermal_properties } from './thermal'
   import type { PhononDos } from './types'
 
   // all four quantities are always plotted; the legend toggles hide individual ones
   const QUANTITIES = [
-    { key: `free_energy`, label: `Free energy F`, axis: `y1` },
-    { key: `internal_energy`, label: `Internal energy U`, axis: `y1` },
+    { key: `free_energy`, label: `Free energy F`, axis: `y` },
+    { key: `internal_energy`, label: `Internal energy U`, axis: `y` },
     { key: `entropy`, label: `Entropy S`, axis: `y2` },
     { key: `heat_capacity`, label: `Heat capacity C<sub>v</sub>`, axis: `y2` },
   ] as const
@@ -35,7 +34,7 @@
     temperatures?: number[] // K
     frequency_unit?: FrequencyUnit // of dos.frequencies
     energy_unit?: `eV` | `kJ/mol` // eV and meV/K, or kJ/mol and J/(K·mol)
-  } & Omit<ComponentProps<typeof ScatterPlot>, `series`> = $props()
+  } & ScatterPlotOptions = $props()
 
   // Invalid input (mismatched DOS arrays, negative temperatures, no positive frequencies) is
   // shown as a dismissible error over an empty plot rather than taking the component down
@@ -55,10 +54,10 @@
   const axis_units = $derived(
     energy_unit === `kJ/mol`
       ? {
-          y1: { scale: EV_TO_KJ_PER_MOL, label: `kJ/mol` },
+          y: { scale: EV_TO_KJ_PER_MOL, label: `kJ/mol` },
           y2: { scale: EV_TO_KJ_PER_MOL * 1000, label: `J/(K·mol)` },
         }
-      : { y1: { scale: 1, label: `eV` }, y2: { scale: 1000, label: `meV/K` } },
+      : { y: { scale: 1, label: `eV` }, y2: { scale: 1000, label: `meV/K` } },
   )
 
   const series = $derived.by((): DataSeries[] => {
@@ -82,7 +81,7 @@
   {...rest}
   {series}
   x_axis={{ label: `T (K)`, ...x_axis }}
-  y_axis={{ label: `F, U (${axis_units.y1.label})`, ...y_axis }}
+  y_axis={{ label: `F, U (${axis_units.y.label})`, ...y_axis }}
   y2_axis={{ label: `S, C<sub>v</sub> (${axis_units.y2.label})`, ...y2_axis }}
   style={rest.style ?? `height: 400px;`}
 />

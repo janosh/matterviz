@@ -49,8 +49,11 @@ const raw_text_plugin: Plugin = {
   name: `vite-plugin-raw-text`,
   enforce: `pre`,
   resolveId(source, importer) {
-    // Leave bare package specifiers such as @wooorm/starry-night/source.yaml to Vite.
+    // Rolldown needs the explicit file resolution during builds. Dev/test URLs from
+    // restored Vitest modules go through Vite's URL resolver instead.
     if (!/^[./$]/.test(source)) return null
+    if (this.environment.mode !== `build` && (!source.startsWith(`.`) || !importer))
+      return null
     const [clean, query] = shared.split_query(source)
     if (query.includes(`url`)) return null
     const is_raw_gz = clean.endsWith(`.json.gz`) && query.includes(`raw`)
@@ -93,6 +96,9 @@ const config = make_config()
 
 export default defineConfig({
   ...config, // shared lint/fmt/build
+  // The site contains large scientific datasets; gzip size reporting recompresses them
+  // just to print a table. Deployment and package-size validation don't use that table.
+  build: { ...config.build, reportCompressedSize: false },
   plugins,
   worker: {
     plugins: shared.json_gz_worker_plugins(json_gz_options) as unknown as () => PluginOption[],

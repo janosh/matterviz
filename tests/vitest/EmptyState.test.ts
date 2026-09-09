@@ -1,4 +1,4 @@
-import { EmptyState } from '$lib'
+import EmptyState from '$lib/EmptyState.svelte'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from './setup'

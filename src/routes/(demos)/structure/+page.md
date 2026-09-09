@@ -48,8 +48,9 @@
 </script>
 
 <Structure
-  data_url={hash_structure_string ? undefined : get_file_url(source_filename)}
-  structure_string={hash_structure_string}
+  source={hash_structure_string
+    ? { data: hash_structure_string, filename: `string` }
+    : get_file_url(source_filename)}
   on_file_load={(data: StructureHandlerData) => {
     display_filename = data.filename ?? source_filename
     if (hash_structure_string) return
@@ -70,7 +71,7 @@
 
 ## Anatomy
 
-`Structure` renders a typed structure directly and retains convenience inputs for URLs, strings, and file drops. Those convenience paths delegate acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
+`Structure` accepts parsed data through `structure`, or a URL or `{ data, filename }` payload through `source`, and handles file drops. Set `allow_file_drop={false}` when a parent owns loading. It delegates acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
 
 ## Explicit Bond Orders
 
@@ -86,7 +87,14 @@ bond's context menu to update an existing bond order interactively.
 ```svelte example
 <script lang="ts">
   import { Structure } from 'matterviz'
-  import type { Molecule } from 'matterviz'
+  import type { Molecule, StructureSettings } from 'matterviz'
+
+  let scene_props = $state<StructureSettings>({
+    camera_position: [0, 0, 12],
+    show_site_labels: true,
+    show_site_indices: true,
+    bonding_options: { strength_threshold: 10 },
+  })
 
   const bond_order_playground: Molecule = {
     id: `explicit-bond-order-playground`,
@@ -141,12 +149,7 @@ bond's context menu to update an existing bond order interactively.
 <Structure
   structure={bond_order_playground}
   show_controls="always"
-  scene_props={{
-    camera_position: [0, 0, 12],
-    show_site_labels: true,
-    show_site_indices: true,
-    bonding_options: { strength_threshold: 10 },
-  }}
+  bind:scene_props
   style="height: 520px"
 />
 ```
@@ -207,11 +210,7 @@ rather than one spanning the whole box. Sites pair up by index, so a mismatched 
 or a reordered species list fails loudly instead of reporting a confident RMSD for atoms
 that were never the same atom.
 
-Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the
-atom spacing (relaxations are usually smaller than an atomic radius, so true-length arrows
-would sit entirely inside their own atoms). The true numbers are reported instead: the
-controls pane shows the RMSD and the largest single displacement, and `Structure` exposes
-the RMSD through the bindable `displacement_rmsd` prop.
+Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the atom spacing. The controls pane reports the RMSD and largest displacement. Bind the component with `bind:this={viewer}` to read `viewer.analysis.displacement_rmsd`, alongside the displayed structure, symmetry dataset and mapped Wyckoff rows.
 
 ```svelte example
 <script lang="ts">
@@ -235,7 +234,8 @@ the RMSD through the bindable `displacement_rmsd` prop.
     })),
   }
 
-  let displacement_rmsd = $state<number | undefined>()
+  let viewer = $state<ReturnType<typeof Structure>>()
+  const displacement_rmsd = $derived(viewer?.analysis.displacement_rmsd)
 </script>
 
 {#if relaxed && unrelaxed}
@@ -248,7 +248,7 @@ the RMSD through the bindable `displacement_rmsd` prop.
   <Structure
     structure={relaxed}
     reference_structure={unrelaxed}
-    bind:displacement_rmsd
+    bind:this={viewer}
     show_controls="always"
     style="height: 500px"
   />
@@ -303,7 +303,7 @@ the RMSD through the bindable `displacement_rmsd` prop.
 
 ## Load Structure from String
 
-Load structures from text with `structure_string` (CIF, POSCAR, XYZ, JSON, …).
+Load structures from text with `Structure source={{ data: text, filename }}` (CIF, POSCAR, XYZ, JSON, …).
 
 ```svelte example
 <script lang="ts">
@@ -358,7 +358,10 @@ Load structures from text with `structure_string` (CIF, POSCAR, XYZ, JSON, …).
   )}B)
 </label>
 
-<Structure structure_string={selected_file.content} bind:structure={parsed_structure} />
+<Structure
+  source={{ data: selected_file.content, filename: selected_file.name }}
+  bind:structure={parsed_structure}
+/>
 ```
 
 ## Host prediction tools

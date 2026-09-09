@@ -1,13 +1,12 @@
 <script lang="ts">
+  import type { ScatterPlotOptions, DataSeries } from '$lib/plot'
   import { plot_color } from '$lib/colors'
   import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
-  import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
-  import type { ComponentProps } from 'svelte'
   import { compute_msd_async } from './async-compute.svelte'
   import type { MsdOptions, MsdResult } from './index'
 
@@ -36,9 +35,7 @@
     max_visible_curves?: number
     loading?: boolean
     error_msg?: string
-    x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
-    y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
-  } & ComponentProps<typeof ScatterPlot> = $props()
+  } & ScatterPlotOptions = $props()
 
   use_async_result({
     input: () => positions,
@@ -105,7 +102,7 @@
     {series}
     x_axis={{ label: summary.x_label, ...x_axis }}
     y_axis={{ label: `MSD (Å²)`, ...y_axis }}
-    styles={{ show_lines: true, show_points: false }}
+    styles={{ show_lines: true, show_points: false, ...rest.styles }}
     style={rest.style ?? `height: 320px;`}
   />
   {#if show_summary}

@@ -28,7 +28,7 @@
   let isosurface_settings = $state<IsosurfaceSettings>({
     ...DEFAULT_ISOSURFACE_SETTINGS,
   })
-  let active_volume_idx = $state(0)
+  let active_volume_id = $state<string>()
   let display_mode = $state<StructureDisplayMode>(`structure`)
   let active_file = $state<string | undefined>()
   let loading = $state(false)
@@ -37,13 +37,15 @@
   let dragover_hint = $state(false)
 
   // Use precomputed data_range from the active volume
-  let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
-  let active_volume = $derived(volumetric_data?.[active_volume_idx])
+  let data_range = $derived(
+    volumetric_data?.find(({ id }) => id === active_volume_id)?.data_range,
+  )
+  let active_volume = $derived(volumetric_data?.find(({ id }) => id === active_volume_id))
 
   function reset_loaded_content() {
     structure = undefined
     volumetric_data = undefined
-    active_volume_idx = 0
+    active_volume_id = undefined
   }
 
   function apply_material(opened: OpenedMaterial) {
@@ -57,7 +59,7 @@
     const parsed = opened.data
     structure = parsed.structure as AnyStructure
     volumetric_data = parsed.volumes
-    active_volume_idx = 0
+    active_volume_id = undefined
     const volume = parsed.volumes[0]
     if (volume) isosurface_settings = auto_isosurface_settings(volume)
   }
@@ -71,7 +73,7 @@
     const [layer] = isosurface_settings.layers
     const first_volume = volumetric_data?.[0]
     if (layer && first_volume) {
-      const defaults = auto_volume_layer(first_volume, 0)
+      const defaults = auto_volume_layer(first_volume)
       if (layer.isovalue !== defaults.isovalue) {
         params.set(`isovalue`, layer.isovalue.toPrecision(4))
       }
@@ -163,7 +165,7 @@
   bind:structure
   bind:volumetric_data
   bind:isosurface_settings
-  bind:active_volume_idx
+  bind:active_volume_id
   bind:display_mode
   bind:loading
   bind:error_msg

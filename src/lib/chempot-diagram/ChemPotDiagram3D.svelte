@@ -4,7 +4,7 @@
   import { Filter } from 'svelte-widgets/icons'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
-  import { normalize_show_controls } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { Spinner } from 'svelte-widgets'
@@ -92,6 +92,7 @@
 
   let {
     entries = [],
+    show_controls = `hover`,
     config = {},
     width = 800,
     height = 600,
@@ -100,6 +101,7 @@
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
   }: {
     entries: PhaseData[]
+    show_controls?: ShowControlsProp<`controls` | `fullscreen` | `export` | `formulas`>
     config?: ChemPotDiagramConfig
     width?: number
     height?: number
@@ -110,7 +112,7 @@
   let fullscreen = $state(false)
   let controls_open = $state(false)
   let export_pane_open = $state(false)
-  const controls_config = normalize_show_controls(undefined)
+  const controls_config = $derived(normalize_show_controls(show_controls))
 
   const chempot = create_chempot_state({
     entries: () => entries,
@@ -1188,65 +1190,70 @@
     {wrapper}
     fullscreen_bg_css_var="--chempot-3d-bg-fullscreen"
   >
-    <ExportPane
-      bind:export_pane_open
-      bind:png_dpi
-      sections={export_sections}
-      pane_props={{ class: `chempot-export-pane` }}
-      toggle_props={{
-        class: `chempot-export-toggle`,
-        title: `Export chemical potential diagram`,
-      }}
-    />
-    <ViewerPane
-      bind:open={formula_picker_open}
-      pane_name="formula overlays"
-      class_prefix="chempot-formula"
-      closed_icon={Filter}
-    >
-      <h4>Formula Overlays</h4>
-      <div class="overlay-actions">
-        <button type="button" onclick={() => chempot.set(`formulas_to_draw`, [])}>
-          Clear
-        </button>
-        <button type="button" onclick={select_surface_formulas}>Surface</button>
-        <button type="button" onclick={select_neighbor_formulas}>Neighbors</button>
-      </div>
-      <label class="overlay-search">
-        Search:
-        <input type="text" placeholder="Formula filter" bind:value={formula_filter_query} />
-      </label>
-      <div class="formula-list">
-        {#if filtered_formulas.length === 0}
-          <div class="formula-empty">No matching formulas</div>
-        {:else}
-          {#each filtered_formulas as formula, formula_idx (formula)}
-            {@const formula_overlay_idx = formulas_to_draw.indexOf(formula)}
-            <label>
-              <input
-                type="checkbox"
-                checked={formula_overlay_idx !== -1}
-                onchange={() => toggle_formula_selection(formula)}
-              />
-              <span
-                class="formula-color-dot"
-                style:background={formula_colors[
-                  (formula_overlay_idx >= 0 ? formula_overlay_idx : formula_idx) %
-                    formula_colors.length
-                ]}
-              ></span>
-              {get_electro_neg_formula(formula, {
-                plain_text: true,
-                delim: ``,
-                amount_format: `.3~s`,
-              })}
-            </label>
-          {/each}
-        {/if}
-      </div>
-    </ViewerPane>
+    {#if controls_config.visible(`export`)}
+      <ExportPane
+        bind:export_pane_open
+        bind:png_dpi
+        sections={export_sections}
+        pane_props={{ class: `chempot-export-pane` }}
+        toggle_props={{
+          class: `chempot-export-toggle`,
+          title: `Export chemical potential diagram`,
+        }}
+      />
+    {/if}
+    {#if controls_config.visible(`formulas`)}
+      <ViewerPane
+        bind:open={formula_picker_open}
+        pane_name="formula overlays"
+        class_prefix="chempot-formula"
+        closed_icon={Filter}
+      >
+        <h4>Formula Overlays</h4>
+        <div class="overlay-actions">
+          <button type="button" onclick={() => chempot.set(`formulas_to_draw`, [])}>
+            Clear
+          </button>
+          <button type="button" onclick={select_surface_formulas}>Surface</button>
+          <button type="button" onclick={select_neighbor_formulas}>Neighbors</button>
+        </div>
+        <label class="overlay-search">
+          Search:
+          <input type="text" placeholder="Formula filter" bind:value={formula_filter_query} />
+        </label>
+        <div class="formula-list">
+          {#if filtered_formulas.length === 0}
+            <div class="formula-empty">No matching formulas</div>
+          {:else}
+            {#each filtered_formulas as formula, formula_idx (formula)}
+              {@const formula_overlay_idx = formulas_to_draw.indexOf(formula)}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={formula_overlay_idx !== -1}
+                  onchange={() => toggle_formula_selection(formula)}
+                />
+                <span
+                  class="formula-color-dot"
+                  style:background={formula_colors[
+                    (formula_overlay_idx >= 0 ? formula_overlay_idx : formula_idx) %
+                      formula_colors.length
+                  ]}
+                ></span>
+                {get_electro_neg_formula(formula, {
+                  plain_text: true,
+                  delim: ``,
+                  amount_format: `.3~s`,
+                })}
+              </label>
+            {/each}
+          {/if}
+        </div>
+      </ViewerPane>
+    {/if}
 
     <ScatterPlot3DControls
+      show_controls={controls_config.visible(`controls`)}
       bind:controls_open
       bind:x_axis
       bind:y_axis

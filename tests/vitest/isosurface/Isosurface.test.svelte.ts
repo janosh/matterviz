@@ -51,17 +51,16 @@ const signed_volume = () =>
 type Props = {
   volumes: VolumetricData[]
   settings: IsosurfaceSettings
-  active_volume_idx: number
   on_error?: (message: string) => void
 }
 let teardown: (() => void) | undefined
 
-// One layer at `isovalue` with the classic blue/red lobe colours; `volume_idx` left implicit
-// so the active volume resolves it
+// One explicit layer on the density fixture with the classic blue/red lobe colours.
 const layer = (
   isovalue: number,
   overrides: Partial<IsosurfaceLayer> = {},
 ): IsosurfaceLayer => ({
+  volume_id: `0`,
   isovalue,
   color: `#3b82f6`,
   opacity: 0.6,
@@ -79,7 +78,6 @@ const mount_isosurface = (overrides: Partial<Props> = {}, context?: Map<unknown,
   const props = $state<Props>({
     volumes: [positive_volume()],
     settings: with_layers([layer(0.3)]),
-    active_volume_idx: 0,
     ...overrides,
   })
   const component = mount(Isosurface, { target: document.body, props, context })
@@ -173,14 +171,13 @@ describe(`Isosurface`, () => {
     expect(geometry_of(meshes()[0])).not.toBe(geometry_of(meshes()[2]))
   })
 
-  test(`layers skip out-of-range volumes and default to the active volume`, async () => {
+  test(`layers skip missing volume IDs without retargeting`, async () => {
     const base = layer(0.3, { color: `#112233`, opacity: 1 })
     mount_isosurface({
-      volumes: [signed_volume(), positive_volume()],
-      active_volume_idx: 1,
+      volumes: [{ ...signed_volume(), id: `spin` }, positive_volume()],
       settings: with_layers([
         base,
-        { ...base, color: `#445566`, volume_idx: 7 }, // out of range: skipped, not clamped
+        { ...base, color: `#445566`, volume_id: `7` }, // out of range: skipped, not clamped
         { ...base, color: `#778899`, visible: false },
       ]),
     })
@@ -225,11 +222,15 @@ describe(`Isosurface`, () => {
     const colored = layer(0.3, {
       color: `#112233`,
       opacity: 1,
-      volume_idx: 0,
-      color_volume_idx: 1,
+      volume_id: `0`,
+      color_volume_id: `1`,
     })
     const props = mount_isosurface({
-      volumes: [positive_volume(), signed_volume()],
+      volumes: [
+        { ...positive_volume(), id: `unrelated`, origin: [3, 0, 0] },
+        positive_volume(),
+        { ...signed_volume(), id: `1`, origin: [0.1, 0, 0] },
+      ],
       settings: with_layers([colored]),
     })
     await settle()
@@ -238,6 +239,17 @@ describe(`Isosurface`, () => {
     expect(color_attr.count).toBe(geometry.getAttribute(`position`).count)
     expect(materials()[0].props).toMatchObject({ vertexColors: true, color: `#ffffff` })
     const before = Float32Array.from(color_attr.array)
+
+    props.volumes = props.volumes.toReversed()
+    await settle()
+    expect(geometry_of(meshes()[0])).toBe(geometry)
+    expect(Float32Array.from(color_attr.array)).toEqual(before)
+    expect(props.settings.layers[0]).toEqual(colored)
+
+    props.volumes = props.volumes.filter((volume) => volume.id !== `unrelated`)
+    await settle()
+    expect(geometry_of(meshes()[0])).toBe(geometry)
+    expect(Float32Array.from(color_attr.array)).toEqual(before)
 
     // Remapping through a different colormap reuses the color buffer in place; the in-place
     // needsUpdate is invisible to Threlte, so the on-demand renderer must be invalidated
@@ -249,8 +261,17 @@ describe(`Isosurface`, () => {
     expect(Float32Array.from(color_attr.array)).not.toEqual(before)
     expect(invalidate).toHaveBeenCalled()
 
+    // Replacing a scalar field under the same ID resamples it without rebuilding geometry.
+    const before_replacement = Float32Array.from(color_attr.array)
+    props.volumes = props.volumes.map((volume) =>
+      volume.id === `1` ? { ...positive_volume(), id: `1` } : volume,
+    )
+    await settle()
+    expect(geometry_of(meshes()[0])).toBe(geometry)
+    expect(Float32Array.from(color_attr.array)).not.toEqual(before_replacement)
+
     // Clearing the color source drops the attribute and restores the solid color
-    props.settings.layers = [{ ...colored, color_volume_idx: undefined }]
+    props.settings.layers = [{ ...colored, color_volume_id: undefined }]
     await settle()
     expect(geometry.getAttribute(`color`)).toBeUndefined()
     expect(materials()[0].props).toMatchObject({ vertexColors: false, color: `#112233` })

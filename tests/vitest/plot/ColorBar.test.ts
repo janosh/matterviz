@@ -1,4 +1,5 @@
-import { ColorBar, type Vec2 } from '$lib'
+import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+import type { Vec2 } from '$lib'
 import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'

@@ -134,6 +134,7 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
   )
 
   return {
+    type: `phonon`,
     qpoints,
     recip_lattice: data.lattice
       ? math.reciprocal_lattice(data.lattice, { two_pi: true })

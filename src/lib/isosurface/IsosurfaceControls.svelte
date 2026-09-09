@@ -4,10 +4,9 @@
   // scalar colouring (color source, colormap, value range).
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
-  import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { clamp, type Vec2 } from '$lib/math'
+  import type { Vec2 } from '$lib/math'
   import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-widgets/attachments'
   import {
@@ -22,37 +21,34 @@
     auto_isosurface_settings,
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
-    normalize_active_volume_idx,
-    pin_layers,
+    normalize_active_volume_id,
+    index_volumes,
     remove_volume,
   } from './types'
 
   let {
     settings = $bindable({ ...DEFAULT_ISOSURFACE_SETTINGS }),
     volumes = $bindable([]),
-    active_volume_idx = $bindable(0),
+    active_volume_id = $bindable<string | undefined>(),
   }: {
     settings?: IsosurfaceSettings
     volumes?: VolumetricData[]
-    active_volume_idx?: number
+    active_volume_id?: string
   } = $props()
 
-  // Clamp active_volume_idx when volumes list changes (e.g. dataset swap)
+  // Preserve the selected field while it exists; select the first remaining field on removal.
   $effect(() => {
-    const normalized_idx = normalize_active_volume_idx(active_volume_idx, volumes.length)
-    if (normalized_idx !== active_volume_idx) active_volume_idx = normalized_idx
+    const normalized_id = normalize_active_volume_id(active_volume_id, volumes)
+    if (normalized_id !== active_volume_id) active_volume_id = normalized_id
   })
 
   const vol_label = (idx: number): string => volumes[idx]?.label ?? `Volume ${idx + 1}`
 
-  // Resolve a layer's geometry volume the same way for grouping, warnings, and
-  // data ranges (out-of-range indices clamp so stale layers stay editable/removable)
+  const volume_by_id = $derived(index_volumes(volumes))
   const resolve_geo_idx = (layer: IsosurfaceLayer): number =>
-    clamp(layer.volume_idx ?? active_volume_idx, 0, volumes.length - 1)
-
-  // The layer's scalar-color-source volume, if any
+    volumes.findIndex(({ id }) => id === layer.volume_id)
   const color_vol_of = (layer: IsosurfaceLayer): VolumetricData | undefined =>
-    layer.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
+    layer.color_volume_id === undefined ? undefined : volume_by_id.get(layer.color_volume_id)
 
   function update_layer(idx: number, updates: Partial<IsosurfaceLayer>) {
     settings.layers = settings.layers.map((layer, layer_idx) =>
@@ -67,32 +63,32 @@
   function add_surface(vol_idx: number) {
     const vol = volumes[vol_idx]
     if (!vol) return
-    const layers: IsosurfaceLayer[] = pin_layers(settings.layers, active_volume_idx)
+    const layers = [...settings.layers]
     // nth shell of this volume: steps the isovalue/opacity ladder so it never coincides
     // with the surfaces the volume already has
-    const shell_idx = layers.filter((layer) => layer.volume_idx === vol_idx).length
-    layers.push(auto_volume_layer(vol, vol_idx, layers.length, shell_idx))
+    const shell_idx = layers.filter((layer) => layer.volume_id === vol.id).length
+    layers.push(auto_volume_layer(vol, layers.length, shell_idx))
     settings.layers = layers
-    active_volume_idx = vol_idx
+    active_volume_id = vol.id
   }
 
   function handle_remove_volume(vol_idx: number) {
-    const result = remove_volume(volumes, settings.layers, vol_idx, active_volume_idx)
+    const volume = volumes[vol_idx]
+    if (!volume) return
+    const result = remove_volume(volumes, settings.layers, volume.id)
     volumes = result.volumes
     settings.layers = result.layers
-    // Keep the active volume pointing at the same physical volume (indices shift)
-    if (active_volume_idx > vol_idx) active_volume_idx -= 1
-    active_volume_idx = normalize_active_volume_idx(active_volume_idx, result.volumes.length)
+    active_volume_id = normalize_active_volume_id(active_volume_id, volumes)
   }
 
   // Set (or clear) a layer's scalar-color source. The colormap is auto-picked
   // from the color volume's data; color_range stays unset so the renderer fits
   // it to the scalar values actually present on the surface.
-  function set_color_source(layer_idx: number, color_idx: number | null) {
-    const color_vol = color_idx === null ? undefined : volumes[color_idx]
-    if (color_idx !== null && !color_vol) return
+  function set_color_source(layer_idx: number, color_id: string | null) {
+    const color_vol = color_id === null ? undefined : volume_by_id.get(color_id)
+    if (color_id !== null && !color_vol) return
     update_layer(layer_idx, {
-      color_volume_idx: color_idx ?? undefined,
+      color_volume_id: color_id ?? undefined,
       colormap: color_vol ? auto_color_config(color_vol.data_range).colormap : undefined,
       color_range: undefined,
     })
@@ -278,7 +274,7 @@
             onchange={(event) => update_layer(layer_idx, { color: event.currentTarget.value })}
             {@attach tooltip({
               content:
-                layer.color_volume_idx != null
+                layer.color_volume_id != null
                   ? `Fallback color (surface uses colormap)`
                   : `Surface color`,
             })}
@@ -340,15 +336,14 @@
               >Color by</span
             >
             <select
-              value={layer.color_volume_idx ?? -1}
+              value={layer.color_volume_id ?? ``}
               onchange={(event) => {
-                const idx = Number(event.currentTarget.value)
-                set_color_source(layer_idx, idx < 0 ? null : idx)
+                set_color_source(layer_idx, event.currentTarget.value || null)
               }}
             >
-              <option value={-1}>None (solid)</option>
-              {#each volumes as _color_vol, color_idx (color_idx)}
-                <option value={color_idx}>{vol_label(color_idx)}</option>
+              <option value="">None (solid)</option>
+              {#each volumes as color_vol, color_idx (color_vol.id)}
+                <option value={color_vol.id}>{vol_label(color_idx)}</option>
               {/each}
             </select>
           </label>
@@ -359,8 +354,7 @@
               {...ISO_COLORMAP_SELECT_PROPS}
               value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
               selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
-              onadd={({ option }) =>
-                update_layer(layer_idx, { colormap: option as D3InterpolateName })}
+              on_add={({ option }) => update_layer(layer_idx, { colormap: option })}
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}
             />
@@ -375,7 +369,7 @@
               <button
                 type="button"
                 class="icon-btn"
-                onclick={() => set_color_source(layer_idx, layer.color_volume_idx ?? null)}
+                onclick={() => set_color_source(layer_idx, layer.color_volume_id ?? null)}
                 aria-label={reset_color_label}
                 {@attach tooltip({ content: reset_color_label })}
               >

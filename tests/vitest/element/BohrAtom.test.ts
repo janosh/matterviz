@@ -1,4 +1,4 @@
-import { BohrAtom } from '$lib'
+import BohrAtom from '$lib/element/BohrAtom.svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

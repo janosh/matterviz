@@ -11,6 +11,15 @@ on:
   workflow_dispatch:
   workflow_call:
 
+permissions:
+  contents: read
+
+concurrency:
+  # Reusable calls keep the caller's event and workflow name. Give each release run its
+  # own group so dispatching another version cannot cancel or replace its CI gate.
+  group: ${{ github.workflow }}-${{ github.workflow == 'CI' && (github.event.pull_request.number || github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.workflow == 'CI' }}
+
 jobs:
   prek:
     name: Lint and type-check
@@ -25,6 +34,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           extensions: vscode anywidget jupyterlab
+          build-package: 'false'
       # Locally the vp-staged hook checks only staged files; with nothing staged (CI) it is a
       # no-op, so the repo-wide format/lint/type-aware pass runs explicitly here.
       - name: Format, lint and type-check the whole repo
@@ -49,12 +59,8 @@ jobs:
       - name: Check VS Code package.json is in sync with $lib
         run: pnpm -C extensions/vscode run sync-config -- --check
 
-      # Same blind spot as vscode: this tsconfig ran nowhere. verify-deps-before-run is off
-      # because pnpm re-runs `install` before `run`, which fails over the ignored fontawesome
-      # build script even immediately after a successful install.
+      # Same blind spot as vscode: this tsconfig ran nowhere.
       - name: Type-check and test JupyterLab extension
-        env:
-          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
         run: |
           pnpm -C extensions/jupyterlab run typecheck
           pnpm -C extensions/jupyterlab test
@@ -62,22 +68,7 @@ jobs:
       # The widget passes component props by name from a table; a renamed or removed prop
       # (e.g. BarPlot.point_tween) went stale silently until this ran somewhere.
       - name: Type-check anywidget
-        env:
-          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
         run: pnpm -C extensions/anywidget run typecheck
-
-  knip:
-    name: Check unused code
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-
-      - name: Install dependencies
-        uses: ./.github/actions/setup
-
-      - name: Check for unused dependencies and exports
-        run: pnpm run knip
 
   publint:
     name: Validate npm package
@@ -88,49 +79,24 @@ jobs:
 
       - name: Install dependencies
         uses: ./.github/actions/setup
+        with:
+          test-cache: package
 
       # publint checks that every export target exists, so build dist/ first
       - name: Build and validate package exports and types
         run: |
           pnpm package:dist
           pnpm run publint
+      - name: Test package exports and check unused code
+        run: |
+          pnpm exec vitest run tests/vitest/package-exports.test.ts --fsModuleCache --fsModuleCachePath=.cache/vitest
+          pnpm run knip
 
-  unit-tests:
-    name: Unit tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-      - name: Install dependencies
-        uses: ./.github/actions/setup
-      # package-exports.test.ts inspects the svelte-package output, which `prepare` no longer builds
-      - name: Build component library
-        run: pnpm package:dist
-      - name: Run unit tests
-        run: pnpm exec vitest run
-
-  # Regression tripwires for the hot paths measured in #438 (tests/vitest/perf-baselines.test.ts).
-  # Opt-in locally (MATTERVIZ_PERF=1) and its own job here so its medians-of-N neither slow the
-  # unit job nor share a CPU with it.
-  perf-baselines:
-    name: Perf baselines
-    runs-on: ubuntu-latest
-    timeout-minutes: 10 # a hung mount would otherwise hold the runner for GitHub's 6 h default
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-      - name: Install dependencies
-        uses: ./.github/actions/setup
-      - name: Run perf baselines
-        run: pnpm exec vitest run tests/vitest/perf-baselines.test.ts
-        env:
-          MATTERVIZ_PERF: 1
-
-  e2e-tests:
-    name: E2E tests (shard ${{ matrix.shard }}/4)
+  unit-test-shards:
+    name: Unit tests (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # let every shard finish so we see all failures, not just the first
+      fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
     steps:
@@ -138,10 +104,80 @@ jobs:
         uses: actions/checkout@v6
       - name: Install dependencies
         uses: ./.github/actions/setup
+        with:
+          test-cache: ${{ matrix.shard }}
+      - name: Run unit tests
+        # Built-output checks run once in publint; the remaining tests import source files.
+        run: pnpm exec vitest run --exclude=tests/vitest/package-exports.test.ts --shard=${{ matrix.shard }}/4 --maxWorkers=100% --fsModuleCache --fsModuleCachePath=.cache/vitest
+
+  # Keep the required check name and fail if any shard fails or is cancelled/skipped.
+  unit-tests:
+    name: Unit tests
+    if: always()
+    needs: [unit-test-shards, publint]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all unit test shards
+        env:
+          RESULT: ${{ needs.unit-test-shards.result == 'success' && needs.publint.result == 'success' && 'success' || 'failure' }}
+        run: test "$RESULT" = success
+
+  build-site:
+    name: Build browser test site
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      - name: Build production site
+        run: pnpm exec vite build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: browser-test-site
+          path: .svelte-kit/output/
+          include-hidden-files: true
+          retention-days: 1
+
+  e2e-source:
+    name: E2E source inspection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      - run: pnpm exec playwright install chromium --only-shell
+      - run: pnpm exec playwright test
+        env:
+          MATTERVIZ_E2E_MODE: source
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-traces-source
+          path: test-results/
+          retention-days: 7
+
+  e2e-test-shards:
+    name: E2E production (shard ${{ matrix.shard }}/6)
+    needs: build-site
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # let every shard finish so we see all failures, not just the first
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
       - name: Install Chromium
-        run: npx playwright install chromium
+        run: npx playwright install chromium --only-shell
+      - uses: actions/download-artifact@v8
+        with:
+          name: browser-test-site
+          path: .svelte-kit/output/
       - name: Run E2E tests
-        run: npx playwright test --shard=${{ matrix.shard }}/4
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/6
+        env:
+          MATTERVIZ_E2E_MODE: preview
       - name: Upload failure traces
         if: failure()
         uses: actions/upload-artifact@v7
@@ -149,3 +185,18 @@ jobs:
           name: playwright-traces-shard-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
+
+  # These four names are required by the main ruleset. Each gates the complete matrix.
+  e2e-tests:
+    name: E2E tests (shard ${{ matrix.shard }}/4)
+    if: always()
+    needs: [e2e-test-shards, e2e-source]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Require all E2E test shards
+        env:
+          RESULT: ${{ needs.e2e-test-shards.result == 'success' && needs.e2e-source.result == 'success' && 'success' || 'failure' }}
+        run: test "$RESULT" = success

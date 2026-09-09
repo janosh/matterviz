@@ -33,10 +33,10 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   // Group name for organizing legend items (same semantics as BarSeries.legend_group)
   legend_group?: string
   metadata?: Metadata
-  // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
-  x_axis?: `x1` | `x2`
-  // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
-  y_axis?: `y1` | `y2`
+  // Specify which x-axis to use: 'x' (bottom, default) or 'x2' (top)
+  x_axis?: `x` | `x2`
+  // Specify which y-axis to use: 'y' (left, default) or 'y2' (right)
+  y_axis?: `y` | `y2`
   // Per-series whisker overrides (else fall back to component-level props)
   whisker_mode?: WhiskerMode
   whisker_range?: number
@@ -59,8 +59,8 @@ export interface BoxHandlerProps<
   stats: BoxStats
   color: string
   category_label?: string
-  active_y_axis: `y1` | `y2`
-  active_x_axis: `x1` | `x2`
+  active_y_axis: `y` | `y2`
+  active_x_axis: `x` | `x2`
 }
 
 // Summary statistics for a single box, in data units.

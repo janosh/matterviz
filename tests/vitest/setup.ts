@@ -29,6 +29,25 @@ export {
   trigger_resize_observer,
 } from './environment'
 
+// Exercise real parsers in happy-dom; worker transport has its own tests.
+export async function mock_parse_worker(): Promise<void> {
+  const [worker, { parse_file_content }] = await Promise.all([
+    import(`$lib/file-viewer/parse-in-worker`),
+    import(`$lib/file-viewer/parse`),
+  ])
+  vi.spyOn(worker, `parse_in_worker`).mockImplementation(
+    // Node cannot mount Blobs through h5wasm's worker-only WORKERFS.
+    async (data, filename, is_base64, options = {}) =>
+      parse_file_content(
+        data instanceof Blob ? await data.arrayBuffer() : data,
+        filename,
+        is_base64,
+        options.load_options,
+        options.on_progress,
+      ),
+  )
+}
+
 // Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
 const current_dir = import.meta.dirname
 const MOYO_WASM_PATH = resolve(
@@ -536,6 +555,7 @@ export const make_volume = (
   const flat = flatten_grid(grid)
   return {
     ...make_volume_from_values(flat.values, flat.dims, {
+      id: overrides.id ?? `0`,
       lattice: [
         [5, 0, 0],
         [0, 5, 0],

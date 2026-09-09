@@ -6,6 +6,7 @@ import {
   generate_axis_labels,
   generate_axis_scale_types,
   generate_plot_series,
+  with_visible_properties,
   get_frame_step_samples,
   get_frame_time_step,
   prepare_trajectory_scatter_series,
@@ -42,7 +43,7 @@ type SeriesOptions = Partial<
 
 const create_series = (
   y_values: number[],
-  { visible = true, label = `Test`, unit = ``, y_axis = `y1`, axis_group }: SeriesOptions = {},
+  { visible = true, label = `Test`, unit = ``, y_axis = `y`, axis_group }: SeriesOptions = {},
 ): DataSeries => ({
   x: y_values.map((_, idx) => idx),
   y: y_values,
@@ -67,10 +68,13 @@ describe(`generate_plot_series`, () => {
       create_rows([
         { energy: -10, frame_id: 0, production_step: 0, time_ps: 0, [`Time (ps)`]: 0 },
         { energy: -11, frame_id: 1, production_step: 10, time_ps: 0.25, [`Time (ps)`]: 0.25 },
+        { energy: -12, frame_id: 2, production_step: 20, time_ps: 0.5, [`Time (ps)`]: 0.5 },
       ]),
       { property_config: DEFAULT_PROPERTY_CONFIG },
     )
     expect(series.map(({ label }) => label)).toEqual([`Energy`])
+    expect(series[0].x).toEqual([0, 1, 2])
+    expect(series[0].y).toEqual([-10, -11, -12])
   })
 
   it(`groups energy and force series by unit`, () => {
@@ -85,7 +89,7 @@ describe(`generate_plot_series`, () => {
     const energy = find_series_by_label(series, `energy`)
     expect(energy).toMatchObject({
       unit: `eV`,
-      y_axis: `y1`,
+      y_axis: `y`,
       visible: true,
       metadata: expect.objectContaining({ property_key: `energy` }),
     })
@@ -95,11 +99,31 @@ describe(`generate_plot_series`, () => {
       visible: true,
       metadata: expect.objectContaining({ property_key: `force_max` }),
     })
+    const selected = with_visible_properties(series, [`volume`])
+    expect(selected.map((srs) => srs.id)).toEqual(series.map((srs) => srs.id))
+    for (const [idx, srs] of selected.entries()) {
+      expect(srs.x).toBe(series[idx].x)
+      expect(srs.y).toBe(series[idx].y)
+      expect(srs.visible).toBe(srs.id === `volume`)
+    }
     // volume omitted from default_visible_properties, not the 2-group cap
     expect(find_series_by_label(series, `volume`)).toMatchObject({
       visible: false,
       metadata: expect.objectContaining({ property_key: `volume` }),
     })
+    // Enabling another force series must join Force's axis without displacing Energy.
+    const force = series.find((srs) => srs.id === `force_max`)
+    if (!force) throw new Error(`Expected force_max series`)
+    for (const visible of [[`energy`, `force_max`], [`force_max`]]) {
+      const grouped = with_visible_properties(
+        [...series, { ...force, id: `force_other` }],
+        visible,
+      )
+      expect(grouped.at(-1)).toMatchObject({
+        visible: false,
+        y_axis: grouped.find((srs) => srs.id === `force_max`)?.y_axis,
+      })
+    }
   })
 
   it.each([
@@ -118,9 +142,9 @@ describe(`generate_plot_series`, () => {
         default_visible_properties: new Set([`selected`]),
       }),
       expected: {
-        Selected: { visible: true, y_axis: `y1` },
-        [`Same group`]: { visible: true, y_axis: `y1` },
-        [`Hidden group`]: { visible: false, y_axis: `y1` },
+        Selected: { visible: true, y_axis: `y` },
+        [`Same group`]: { visible: true, y_axis: `y` },
+        [`Hidden group`]: { visible: false, y_axis: `y` },
       },
     },
     {
@@ -138,9 +162,9 @@ describe(`generate_plot_series`, () => {
         default_visible_properties: new Set([`temperature`, `force`, `energy`]),
       }),
       expected: {
-        Energy: { visible: true, y_axis: `y1` },
+        Energy: { visible: true, y_axis: `y` },
         Force: { visible: true, y_axis: `y2` },
-        Temperature: { visible: false, y_axis: `y1` },
+        Temperature: { visible: false, y_axis: `y` },
       },
     },
     {
@@ -157,8 +181,8 @@ describe(`generate_plot_series`, () => {
         default_visible_properties: new Set(),
       }),
       expected: {
-        Energy: { visible: true, y_axis: `y1` },
-        Temperature: { visible: false, y_axis: `y1` },
+        Energy: { visible: true, y_axis: `y` },
+        Temperature: { visible: false, y_axis: `y` },
       },
     },
   ])(`$name`, ({ frames, options, expected }) => {
@@ -247,6 +271,33 @@ describe(`generate_plot_series`, () => {
     expect(large_smoothed.y).toEqual(Array(64).fill(1e306))
   })
 
+  it.each([
+    [`regular`, [0, 2, 6, 11, 16, 24, 28, 31]],
+    [`duplicates`, [0, 2, 7, 11, 16, 24, 28, 31]],
+    [`gaps`, [0, 2, 7, 12, 19, 24, 27, 31]],
+    [`nonmonotonic`, [0, 2, 7, 14, 20, 25, 27, 31]],
+  ] as const)(`preserves selected samples and raw alignment on %s axes`, (shape, selected) => {
+    const source_x = Array.from({ length: 32 }, (_unused, idx) =>
+      shape === `duplicates`
+        ? Math.floor(idx / 3)
+        : shape === `nonmonotonic`
+          ? Math.sin(idx) * 32
+          : idx,
+    )
+    const source_y = source_x.map((_unused, idx) =>
+      shape === `gaps` && idx % 5 < 2 ? NaN : Math.sin(idx * 7) * 100,
+    )
+    if (shape === `gaps`) source_x[4] = Infinity
+    for (const indices of [selected, [0, 31]]) {
+      const [sampled] = prepare_trajectory_scatter_series(
+        [{ x: source_x, y: source_y }],
+        indices.length,
+      )
+      expect(sampled.x).toEqual(indices.map((idx) => source_x[idx]))
+      expect(sampled.raw_y).toEqual(indices.map((idx) => source_y[idx]))
+    }
+  })
+
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 1, 0, -1])(
     `rejects an invalid scatter point budget of %s`,
     (max_points) => {
@@ -282,7 +333,7 @@ describe(`generate_plot_series`, () => {
       match: {
         visible: true,
         unit: `eV`,
-        y_axis: `y1`,
+        y_axis: `y`,
         label: `Energy`,
         markers: `line+points`,
       },
@@ -367,26 +418,26 @@ describe(`generate_axis_labels`, () => {
         create_series([3, 4], { visible: false, label: `Hidden`, unit: `eV` }),
         create_series([5, 6], { label: `Another`, unit: `Å`, y_axis: `y2` }),
       ]),
-    ).toEqual({ y1: `Visible (eV)`, y2: `Another (Å)` })
+    ).toEqual({ y: `Visible (eV)`, y2: `Another (Å)` })
     expect(
       generate_axis_labels([create_series([1, 2], { label: `Dimensionless`, unit: `` })]),
-    ).toEqual({ y1: `Dimensionless`, y2: `Value` })
+    ).toEqual({ y: `Dimensionless`, y2: `Value` })
   })
 })
 
 describe(`generate_axis_scale_types`, () => {
-  const all_linear = { y1: `linear`, y2: `linear` }
+  const all_linear = { y: `linear`, y2: `linear` }
   // oxfmt-ignore
   it.each([
     { name: `positive non-SCF series spanning >=3 decades stays linear`,
       series: [create_series([1e-6, 1e-4, 1e-2, 1])], expected: all_linear },
     { name: `positive SCF axis group spanning >=3 decades goes log`,
       series: [create_series([1e-6, 1e-4, 1e-2, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
-      expected: { y1: `log`, y2: `linear` } },
-    { name: `per-axis decision: linear energy on y1, log residual on y2`, series: [
+      expected: { y: `log`, y2: `linear` } },
+    { name: `per-axis decision: linear energy on y, log residual on y2`, series: [
       create_series([-10, -11, -12], { label: `Energy`, unit: `eV` }),
       create_series([1, 1e-3, 1e-7], { label: `Residual`, unit: `eV`, y_axis: `y2`, axis_group: `eV (SCF)` }),
-    ], expected: { y1: `linear`, y2: `log` } },
+    ], expected: { y: `linear`, y2: `log` } },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
   })
@@ -409,7 +460,7 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
     const energy_series = series.find((srs) => srs.label === `Energy`)
     const delta_series = series.find((srs) => srs.label?.includes(`ΔE`))
     expect(energy_series?.visible).toBe(true)
-    expect(energy_series?.y_axis).toBe(`y1`)
+    expect(energy_series?.y_axis).toBe(`y`)
     expect(delta_series?.visible).toBe(true)
     expect(delta_series?.y_axis).toBe(`y2`)
     // axis_group separates it from the eV energy group while unit stays displayable
@@ -430,7 +481,7 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
     expect(series.find((srs) => srs.label === `Energy`)?.visible).toBe(true)
     expect(series.find((srs) => srs.label?.includes(`F`))?.visible).toBe(true)
     expect(series.find((srs) => srs.label?.includes(`ΔE`))?.visible).toBe(false)
-    expect(generate_axis_scale_types(series)).toEqual({ y1: `linear`, y2: `linear` })
+    expect(generate_axis_scale_types(series)).toEqual({ y: `linear`, y2: `linear` })
   })
 })
 

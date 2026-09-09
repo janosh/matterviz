@@ -101,9 +101,12 @@ export class MatterVizViewer extends Widget {
     const filename = PathExt.basename(this.context.path)
     const is_base64 = this.context.contentsModel?.format === `base64`
     const content = this.context.model.toString()
-    // Measured off the loaded content because JupyterLab omits `size` from
-    // contentsModel; base64 carries three bytes per four characters.
-    const byte_size = is_base64 ? Math.floor((content.length * 3) / 4) : content.length
+    // JupyterLab omits `size` from contentsModel. Text counts UTF-8 bytes, while
+    // base64's final padding characters do not encode payload bytes.
+    const padding = content.endsWith(`==`) ? 2 : content.endsWith(`=`) ? 1 : 0
+    const byte_size = is_base64
+      ? Math.floor((content.length * 3) / 4) - padding
+      : new Blob([content]).size
 
     if (byte_size > MAX_PARSE_BYTES) {
       const message = `File is ${format_bytes(byte_size)}, above the ${format_bytes(MAX_PARSE_BYTES)} viewer limit. Open it from a notebook instead, where the kernel parses it in Python rather than holding every byte in the browser.`
@@ -114,8 +117,15 @@ export class MatterVizViewer extends Widget {
     try {
       const { create_display, parse_in_worker } = await load_viewer()
       const result = await parse_in_worker(content, filename, is_base64, { signal })
-      if (!(await this.clear_for(generation))) return
-      this.mounted_app = create_display(this.viewer_root, result)
+      let mounted = false
+      try {
+        if (!(await this.clear_for(generation))) return
+        this.mounted_app = create_display(this.viewer_root, result)
+        mounted = true
+      } finally {
+        // Until mounting succeeds, this render owns the parser's live worker/HDF5 handle.
+        if (!mounted && result.type === `trajectory`) result.data.dispose()
+      }
     } catch (error) {
       await this.show_error(filename, error, generation)
     }

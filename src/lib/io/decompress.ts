@@ -105,31 +105,31 @@ const unzip_single_entry = async (
   bytes: Uint8Array,
 ): Promise<{ name: string; bytes: Uint8Array }> => {
   const { unzipSync } = await import(`fflate`)
-  // fflate sizes each entry's output buffer from the central directory before inflating and
-  // never overruns it, so gating here bounds the allocation even when the header lies
-  const entries = Object.entries(
-    unzipSync(bytes, {
-      filter: ({ originalSize, size }) => {
-        const inflated = Math.max(originalSize, size)
-        if (inflated > MAX_INFLATED_BYTES) {
-          throw new Error(bomb_msg(`zip`, inflated, MAX_INFLATED_BYTES))
-        }
-        return true
-      },
-    }),
-  ).filter(
-    ([name]) =>
-      !name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name),
-  )
+  // Inspect the directory before allocating or inflating any entry. Ignored metadata may
+  // dwarf the payload, and ambiguous archives must fail before decompressing their contents.
+  const entries: { name: string; inflated: number }[] = []
+  unzipSync(bytes, {
+    filter: ({ name, originalSize, size }) => {
+      if (!name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name)) {
+        entries.push({ name, inflated: Math.max(originalSize, size) })
+      }
+      return false
+    },
+  })
   if (entries.length !== 1) {
-    const names = entries.map(([name]) => name).join(`, `)
+    const names = entries.map(({ name }) => name).join(`, `)
     throw new Error(
       entries.length === 0
         ? `ZIP archive contains no files`
         : `ZIP archive must contain exactly one file, found ${entries.length}: ${names}`,
     )
   }
-  const [name, entry_bytes] = entries[0]
+  const { name, inflated } = entries[0]
+  // fflate allocates from the declared size and bounds its writes to that buffer.
+  if (inflated > MAX_INFLATED_BYTES) {
+    throw new Error(bomb_msg(`zip`, inflated, MAX_INFLATED_BYTES))
+  }
+  const entry_bytes = unzipSync(bytes, { filter: (entry) => entry.name === name })[name]
   return { name: name.split(`/`).pop() ?? name, bytes: entry_bytes }
 }
 
@@ -152,8 +152,8 @@ const consume_decompressed = async <Result>(
       signal?.throwIfAborted()
       const entry = await unzip_single_entry(bytes)
       on_entry_name?.(entry.name)
-      // copy: fflate may hand back a view into its own scratch buffer
-      return await consume(new Response(new Uint8Array(entry.bytes)))
+      // The archive is ArrayBuffer-backed; Response snapshots the entry bytes.
+      return await consume(new Response(entry.bytes as Uint8Array<ArrayBuffer>))
     }
     const decompressed = stream
       .pipeThrough(new DecompressionStream(format), { signal })
@@ -204,11 +204,9 @@ interface ClassifyPayloadOptions {
   // Keep HDF5 payloads (by name or magic bytes) as a Blob so h5wasm can read them lazily
   // instead of materializing the whole file (trajectory viewers)
   hdf5_as_blob?: boolean
-  // Decide gzip by the bytes rather than the name: a host serving a stored .gz with
-  // `Content-Encoding: gzip` has already been un-gzipped by fetch, while one that also
-  // transport-compresses the same file leaves a second layer behind under the identical
-  // header. A dropped File is always exactly what its name says, so there the name rules.
-  gzip_by_magic?: boolean
+  // Fetch can remove named gzip/deflate wrappers, even when CORS hides Content-Encoding.
+  // Inspect remaining bytes for HTTP payloads; dropped files use their declared wrappers.
+  compression_by_magic?: boolean
   // Names the payload in error messages (defaults to the first of `names`)
   source?: string
   signal?: AbortSignal
@@ -216,7 +214,7 @@ interface ClassifyPayloadOptions {
 
 type LoadedPayload<Content> = { content: Content; filename: string }
 
-// Every loader funnels here: inflate a browser-decompressible wrapper (the compressed bytes
+// Every loader funnels here: inflate each browser-decompressible wrapper (the compressed bytes
 // stream straight out of the Blob, never buffered), then classify the payload the way parsers
 // expect: HDF5 as a Blob when asked, known binary formats as ArrayBuffer so a lossy UTF-8
 // decode cannot corrupt them, everything else as text. `names` are candidate filenames
@@ -227,40 +225,62 @@ export async function classify_payload(
   names: string[],
   options: ClassifyPayloadOptions = {},
 ): Promise<LoadedPayload<string | ArrayBuffer | Blob>> {
-  const { hdf5_as_blob = false, gzip_by_magic = false, source, signal } = options
+  const { hdf5_as_blob = false, compression_by_magic = false, source, signal } = options
   const head = (count: number) => blob.slice(0, count).arrayBuffer()
-  const gzip_magic = gzip_by_magic && has_gzip_magic(new Uint8Array(await head(2)))
-  const format = gzip_magic ? `gzip` : compression_wrapper_of(names, source)
-  // Either way the payload is now the inner file, so name it accordingly
-  const stripped = names.map((name) =>
-    strip_compression_extensions(name, { lowercase: false }),
-  )
-  // In by-magic mode a named gzip/deflate wrapper without gzip bytes was inflated in transit,
-  // so only ZIP is still decompressed by name there
-  if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
-    // A ZIP entry names itself, the only way `bundle.zip` holding `a.cif` reads as a CIF
+  let payload_names = [...names]
+  let sniff_compression = compression_by_magic
+  while (true) {
+    signal?.throwIfAborted()
+    const gzip_magic = sniff_compression && has_gzip_magic(new Uint8Array(await head(2)))
+    const format = gzip_magic ? `gzip` : compression_wrapper_of(payload_names, source)
+    if (!format) break
+    // Strip only the layer being consumed. Sniffed gzip can wrap a named ZIP, and ZIP
+    // entries can themselves be compressed; stripping every suffix lost those layers.
+    payload_names = payload_names.map((name) =>
+      detect_compression_format(name) === format
+        ? name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+        : name,
+    )
+    // Fetch may already have removed a named layer via Content-Encoding.
+    if (sniff_compression && format === `gzip` && !gzip_magic) continue
+    if (sniff_compression && format === `deflate`) {
+      const bytes = new Uint8Array(await head(2))
+      // RFC 1950: DEFLATE method, window <= 32 KiB, and the zlib header checksum.
+      const has_zlib_header =
+        bytes.length === 2 &&
+        (bytes[0] & 0x0f) === 8 &&
+        bytes[0] >>> 4 <= 7 &&
+        ((bytes[0] << 8) | bytes[1]) % 31 === 0
+      if (!has_zlib_header) continue
+    }
     blob = await consume_decompressed(
       blob,
       format,
       (resp) => resp.blob(),
       signal,
-      (name) => stripped.unshift(name),
+      (name) => {
+        // An archive's entry is authoritative; URL/header aliases describe its container.
+        payload_names = [name]
+        sniff_compression = false
+      },
     )
   }
+  signal?.throwIfAborted()
   const magic = await head(8)
   if (
     hdf5_as_blob &&
-    (stripped.some(is_hdf5_filename) || has_hdf5_magic(new Uint8Array(magic)))
+    (payload_names.some(is_hdf5_filename) || has_hdf5_magic(new Uint8Array(magic)))
   ) {
-    const filename = stripped.find(is_hdf5_filename) ?? `${stripped.find(Boolean) ?? ``}.h5`
+    const filename =
+      payload_names.find(is_hdf5_filename) ?? `${payload_names.find(Boolean) ?? ``}.h5`
     return { content: blob, filename }
   }
-  // Only the payload's OWN name decides (ZIP entry unshifted to the front above, else the
+  // Only the payload's OWN name decides (ZIP entry above, else the
   // dropped name): matching any candidate let a URL basename force a text entry to ArrayBuffer
-  const is_binary = is_binary_payload(stripped[0] ?? ``, magic)
+  const is_binary = is_binary_payload(payload_names[0] ?? ``, magic)
   return {
     content: is_binary ? await blob.arrayBuffer() : await blob.text(),
-    filename: stripped[0],
+    filename: payload_names[0],
   }
 }
 

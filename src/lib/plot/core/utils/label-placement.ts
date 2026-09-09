@@ -8,7 +8,7 @@ import {
   resolve_font_size_css,
 } from '$lib/plot/core/text-metrics'
 import type {
-  DataSeries,
+  InternalPoint,
   LabelPlacementConfig,
   LabelPlacementWeights,
 } from '$lib/plot/core/types'
@@ -457,7 +457,11 @@ function cull_dense_labels(
 
 // === Main export ===
 export function compute_label_positions(
-  filtered_series: DataSeries[],
+  filtered_series: readonly {
+    x_axis?: string
+    y_axis?: string
+    filtered_data?: readonly InternalPoint[]
+  }[],
   config: LabelPlacementConfig,
   // Per-axis pixel scales; each point anchors to its series' x/x2 and y/y2 scale
   scales: Record<FacetAxis, PlotScaleFn>,

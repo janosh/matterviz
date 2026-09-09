@@ -3,6 +3,7 @@
 // remote (SSH) workspaces work too.
 
 import { normalize_browser_supported_filename } from '$lib/file-viewer/eligibility'
+import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { detect_compression_format, is_stream_compression_format } from '$lib/io/decompress'
 import type { StreamCompressionFormat } from '$lib/io/decompress'
 import {
@@ -87,8 +88,7 @@ export const decompress_host_buffer = async (
   return output_buffer
 }
 
-// Stream large files efficiently to avoid memory issues
-// Uses VSCode's filesystem API to support both local and remote files (SSH)
+// Size-check and read local or remote files through VSCode's filesystem API.
 export const stream_file_to_buffer = async (file_path: string): Promise<ArrayBuffer> => {
   const uri = vscode.Uri.file(file_path)
 
@@ -126,26 +126,28 @@ export const read_indexed_trajectory_file = async (
   file_path: string,
   filename: string,
 ): Promise<IndexedTrajectoryFile> => {
-  const compression_format = detect_compression_format(filename)
-  if (compression_format && !is_stream_compression_format(compression_format)) {
-    throw new Error(`Unsupported compression for indexed trajectory: ${compression_format}`)
-  }
-
   const normalized_filename = normalize_browser_supported_filename(filename)
   if (normalized_filename === null) {
-    throw new Error(`Nested compression is not supported: ${filename}`)
+    throw new Error(`Unsupported compression for indexed trajectory: ${filename}`)
   }
   if (!is_indexable_trajectory_filename(normalized_filename)) {
     throw new Error(`Indexed loading is not supported for ${filename}`)
   }
   const is_text_trajectory = indexed_trajectory_format(normalized_filename) === `xyz`
   let buffer = await stream_file_to_buffer(file_path)
-  if (compression_format) {
+  for (
+    let format = detect_compression_format(filename);
+    format;
+    format = detect_compression_format(filename)
+  ) {
+    if (!is_stream_compression_format(format))
+      throw new Error(`Unsupported compression for indexed trajectory: ${filename}`)
+    filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
     buffer = await decompress_host_buffer(
       buffer,
-      compression_format,
+      format,
       is_text_trajectory ? MAX_TEXT_TRAJECTORY_SIZE : MAX_STREAMING_FILE_SIZE,
-      is_text_trajectory,
+      is_text_trajectory && filename === normalized_filename,
     )
   }
 

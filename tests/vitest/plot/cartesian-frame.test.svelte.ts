@@ -2,7 +2,11 @@
 // feeds (PlotAxes, PlotLegendLayer, ReferenceLinesLayer), exercised through the charts that
 // mount it rather than in isolation (it creates $effects). Anything asserted here holds for
 // every chart, so the per-chart test files only keep behaviour specific to their own marks.
-import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib'
+import BarPlot from '$lib/plot/bar/BarPlot.svelte'
+import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
+import Histogram from '$lib/plot/histogram/Histogram.svelte'
+import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+import type { ShowControlsProp } from '$lib/controls'
 import type { Vec2 } from '$lib/math'
 import { type AxisConfig, COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
 import { AXIS_LABEL_HEIGHT, DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
@@ -67,9 +71,9 @@ const frame_charts: FrameChart[] = [
     secondary_axes: [`x2`, `y2`],
     secondary_props: (values) => ({
       series: [
-        { x: [1, 2, 3], y: [1, 2, 3], label: `Main`, y_axis: `y1` },
+        { x: [1, 2, 3], y: [1, 2, 3], label: `Main`, y_axis: `y` },
         { x: [1, 2, 3], y: values, label: `Y2`, y_axis: `y2` },
-        { x: values, y: [5, 15, 25], label: `X2`, x_axis: `x2`, y_axis: `y1` },
+        { x: values, y: [5, 15, 25], label: `X2`, x_axis: `x2`, y_axis: `y` },
       ],
     }),
   },
@@ -90,7 +94,7 @@ const frame_charts: FrameChart[] = [
     secondary_axes: [`y2`],
     secondary_props: (values) => ({
       series: [
-        { y: dist(30), label: `Main`, y_axis: `y1` },
+        { y: dist(30), label: `Main`, y_axis: `y` },
         { y: values, label: `Y2`, y_axis: `y2` },
       ],
     }),
@@ -116,9 +120,9 @@ const frame_charts: FrameChart[] = [
     secondary_axes: [`x2`, `y2`],
     secondary_props: (values) => ({
       series: [
-        { values: [1, 2, 3], label: `Main`, y_axis: `y1` },
+        { values: [1, 2, 3], label: `Main`, y_axis: `y` },
         { values, label: `Y2`, y_axis: `y2` },
-        { values, label: `X2`, x_axis: `x2`, y_axis: `y1` },
+        { values, label: `X2`, x_axis: `x2`, y_axis: `y` },
       ],
       mode: `overlay`,
     }),
@@ -150,9 +154,9 @@ const frame_charts: FrameChart[] = [
     secondary_axes: [`x2`, `y2`],
     secondary_props: (values) => ({
       series: [
-        { x: [1, 2, 3], y: [1, 2, 3], label: `Main`, y_axis: `y1` },
+        { x: [1, 2, 3], y: [1, 2, 3], label: `Main`, y_axis: `y` },
         { x: [1, 2, 3], y: values, label: `Y2`, y_axis: `y2` },
-        { x: values, y: [5, 15, 25], label: `X2`, x_axis: `x2`, y_axis: `y1` },
+        { x: values, y: [5, 15, 25], label: `X2`, x_axis: `x2`, y_axis: `y` },
       ],
     }),
   },
@@ -249,6 +253,30 @@ const annotation_of = (plot: HTMLElement, text: string): Element => {
 
 describe(`cartesian frame`, () => {
   afterEach(() => vi.restoreAllMocks())
+
+  test.each(frame_charts)(
+    `$name shares viewer controls visibility and reacts to changes`,
+    async (chart) => {
+      const state = $state<{ show_controls: ShowControlsProp }>({ show_controls: `hover` })
+      const plot = await mount_chart(chart, bind_props(chart.props(), state))
+      expect(query(plot, `.header-controls`).classList.contains(`hover-visible`)).toBe(true)
+      expect(query(plot, `.control-pane-toggle`).classList.contains(`hover-visible`)).toBe(
+        true,
+      )
+      state.show_controls = { mode: `always`, hidden: [`controls`] }
+      await tick()
+      expect(plot.querySelector(`.control-pane-toggle`)).toBeNull()
+      expect(plot.querySelector(`.fullscreen-btn`)).not.toBeNull()
+      expect(query(plot, `.header-controls`).classList.contains(`always-visible`)).toBe(true)
+      state.show_controls = { hidden: [`fullscreen`] }
+      await tick()
+      expect(plot.querySelector(`.control-pane-toggle`)).not.toBeNull()
+      expect(plot.querySelector(`.fullscreen-btn`)).toBeNull()
+      state.show_controls = `never`
+      await tick()
+      expect(plot.querySelector(`.control-pane-toggle, .fullscreen-btn`)).toBeNull()
+    },
+  )
 
   // PlotLegendLayer binds frame.legend_filter_query, so the frame owns the text after mount.
   // As a $derived it reset to the legend config on every new legend object, wiping what the

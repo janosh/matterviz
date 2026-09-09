@@ -3,8 +3,8 @@
 // above 2x that baseline, after scaling by how much slower than the baseline machine this one
 // proves on a fixed reference workload. That keeps 2x meaningful on a throttled CI runner
 // without loosening it into a band no real regression would ever hit. Sub-2x slowdowns pass.
-// Opt in locally with MATTERVIZ_PERF=1; CI runs it in its own job (see ci.yml). The file is
-// excluded from the default run in vite.config.ts, so it never pays its import cost there.
+// Opt in locally with MATTERVIZ_PERF=1. The file is excluded from the default run in
+// vite.config.ts, so it never pays its import cost there.
 import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coords'
 import { calculate_e_above_hull, compute_lower_hull_nd } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
@@ -23,7 +23,7 @@ import { HeatmapTable, type RowData } from '$lib/table'
 import { Trajectory, type TrajectoryController, trajectory_from_frames } from '$lib/trajectory'
 import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
 import process from 'node:process'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { type Component, flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { make_rng } from './numeric-helpers'
 import {
@@ -120,6 +120,7 @@ const make_json = (n_keys: number): Record<string, unknown> => {
 const make_table = (n_rows: number, n_cols: number) => {
   const rng = make_rng(4)
   const columns = Array.from({ length: n_cols }, (_, idx) => ({
+    id: `col_${idx}`,
     label: `col_${idx}`,
     color_scale: idx % 3 === 0 ? (`interpolateViridis` as const) : undefined,
     sticky: idx === 0,
@@ -431,11 +432,12 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
 
   test(`HeatmapTable 10k x 30 virtual mount`, async () => {
     const { columns, data } = make_table(10_000, 30)
+    const props = { data, columns, virtual: true, show_row_numbers: true }
     await measure(`HeatmapTable 10k x 30 virtual mount`, async () => {
       mounted.push(
-        mount(HeatmapTable, {
+        mount(HeatmapTable as Component<typeof props>, {
           target: target(),
-          props: { data, columns, virtual: true, show_row_numbers: true },
+          props,
         }),
       )
       flushSync()

@@ -1,48 +1,93 @@
 <script lang="ts">
   import { ToggleMenu } from '$lib/table'
-  import type { Label } from '$lib/table'
+  import type { Column } from '$lib/table'
 
   // === Example 1: Basic flat list (no groups) ===
-  let basic_columns: Label[] = $state([
-    { key: `name`, label: `Name`, description: `Person's full name` },
-    { key: `age`, label: `Age`, description: `Age in years` },
-    { key: `email`, label: `Email`, description: `Contact email address` },
-    { key: `phone`, label: `Phone`, description: `Phone number` },
-    { key: `address`, label: `Address`, description: `Home address` },
+  let basic_columns: Column[] = $state([
+    { id: `name`, label: `Name`, description: `Person's full name` },
+    { id: `age`, label: `Age`, description: `Age in years` },
+    { id: `email`, label: `Email`, description: `Contact email address` },
+    { id: `phone`, label: `Phone`, description: `Phone number` },
+    { id: `address`, label: `Address`, description: `Home address` },
   ])
   let basic_open = $state(false)
 
   // === Example 2: Grouped columns ===
-  let grouped_columns: Label[] = $state([
-    { key: `name`, label: `Name`, group: `Personal`, description: `Full name` },
-    { key: `age`, label: `Age`, group: `Personal`, description: `Age in years` },
+  let grouped_columns: Column[] = $state([
     {
+      id: `name (Personal)`,
+      key: `name`,
+      label: `Name`,
+      group: `Personal`,
+      description: `Full name`,
+    },
+    {
+      id: `age (Personal)`,
+      key: `age`,
+      label: `Age`,
+      group: `Personal`,
+      description: `Age in years`,
+    },
+    {
+      id: `gender (Personal)`,
       key: `gender`,
       label: `Gender`,
       group: `Personal`,
       description: `Gender identity`,
     },
-    { key: `email`, label: `Email`, group: `Contact`, description: `Email address` },
-    { key: `phone`, label: `Phone`, group: `Contact`, description: `Phone number` },
-    { key: `company`, label: `Company`, group: `Work`, description: `Employer name` },
-    { key: `title`, label: `Title`, group: `Work`, description: `Job title` },
-    { key: `salary`, label: `Salary`, group: `Work`, description: `Annual salary` },
-    { key: `notes`, label: `Notes`, description: `Additional notes (ungrouped)` },
+    {
+      id: `email (Contact)`,
+      key: `email`,
+      label: `Email`,
+      group: `Contact`,
+      description: `Email address`,
+    },
+    {
+      id: `phone (Contact)`,
+      key: `phone`,
+      label: `Phone`,
+      group: `Contact`,
+      description: `Phone number`,
+    },
+    {
+      id: `company (Work)`,
+      key: `company`,
+      label: `Company`,
+      group: `Work`,
+      description: `Employer name`,
+    },
+    {
+      id: `title (Work)`,
+      key: `title`,
+      label: `Title`,
+      group: `Work`,
+      description: `Job title`,
+    },
+    {
+      id: `salary (Work)`,
+      key: `salary`,
+      label: `Salary`,
+      group: `Work`,
+      description: `Annual salary`,
+    },
+    { id: `notes`, label: `Notes`, description: `Additional notes (ungrouped)` },
   ])
   let grouped_open = $state(false)
   let grouped_collapsed: string[] = $state([])
 
   // === Example 3: With disabled items ===
-  let disabled_columns: Label[] = $state([
-    { key: `enabled1`, label: `Enabled 1`, description: `This toggle is enabled` },
+  let disabled_columns: Column[] = $state([
+    { id: `enabled1`, label: `Enabled 1`, description: `This toggle is enabled` },
     {
+      id: `disabled1`,
       key: `disabled1`,
       label: `Disabled 1`,
       description: `This toggle is disabled`,
       disabled: true,
     },
-    { key: `enabled2`, label: `Enabled 2`, description: `Another enabled toggle` },
+    { id: `enabled2`, label: `Enabled 2`, description: `Another enabled toggle` },
     {
+      id: `disabled2`,
       key: `disabled2`,
       label: `Disabled 2`,
       description: `Another disabled toggle`,
@@ -50,6 +95,7 @@
       visible: false,
     },
     {
+      id: `enabled3`,
       key: `enabled3`,
       label: `Enabled 3`,
       description: `Yet another enabled toggle`,
@@ -58,26 +104,30 @@
   let disabled_open = $state(false)
 
   // === Example 4: HTML labels with subscripts/superscripts ===
-  let html_columns: Label[] = $state([
+  let html_columns: Column[] = $state([
     {
+      id: `h2o (Chemistry)`,
       key: `h2o`,
       label: `H<sub>2</sub>O`,
       group: `Chemistry`,
       description: `Water molecule`,
     },
     {
+      id: `co2 (Chemistry)`,
       key: `co2`,
       label: `CO<sub>2</sub>`,
       group: `Chemistry`,
       description: `Carbon dioxide`,
     },
     {
+      id: `emc2 (Physics)`,
       key: `emc2`,
       label: `E=mc<sup>2</sup>`,
       group: `Physics`,
       description: `Mass-energy equivalence`,
     },
     {
+      id: `x2y2 (Math)`,
       key: `x2y2`,
       label: `x<sup>2</sup>+y<sup>2</sup>`,
       group: `Math`,
@@ -88,43 +138,48 @@
   let html_collapsed: string[] = $state([])
 
   // === Example 5: Many groups with pre-collapsed ===
-  let many_groups_columns: Label[] = $state([
-    { key: `a1`, label: `A1`, group: `Group A` },
-    { key: `a2`, label: `A2`, group: `Group A` },
-    { key: `b1`, label: `B1`, group: `Group B` },
-    { key: `b2`, label: `B2`, group: `Group B` },
-    { key: `b3`, label: `B3`, group: `Group B` },
-    { key: `c1`, label: `C1`, group: `Group C` },
-    { key: `d1`, label: `D1`, group: `Group D` },
-    { key: `d2`, label: `D2`, group: `Group D` },
+  let many_groups_columns: Column[] = $state([
+    { id: `a1 (Group A)`, key: `a1`, label: `A1`, group: `Group A` },
+    { id: `a2 (Group A)`, key: `a2`, label: `A2`, group: `Group A` },
+    { id: `b1 (Group B)`, key: `b1`, label: `B1`, group: `Group B` },
+    { id: `b2 (Group B)`, key: `b2`, label: `B2`, group: `Group B` },
+    { id: `b3 (Group B)`, key: `b3`, label: `B3`, group: `Group B` },
+    { id: `c1 (Group C)`, key: `c1`, label: `C1`, group: `Group C` },
+    { id: `d1 (Group D)`, key: `d1`, label: `D1`, group: `Group D` },
+    { id: `d2 (Group D)`, key: `d2`, label: `D2`, group: `Group D` },
   ])
   let many_groups_open = $state(false)
   let many_groups_collapsed: string[] = $state([`Group B`, `Group D`])
 
   // === Example 6: Multi-column sections ===
-  let multicolumn_columns: Label[] = $state([
-    { key: `li`, label: `Lithium`, group: `Alkali Metals` },
-    { key: `na`, label: `Sodium`, group: `Alkali Metals` },
-    { key: `k`, label: `Potassium`, group: `Alkali Metals` },
-    { key: `rb`, label: `Rubidium`, group: `Alkali Metals` },
-    { key: `cs`, label: `Cesium`, group: `Alkali Metals` },
-    { key: `fr`, label: `Francium`, group: `Alkali Metals` },
-    { key: `be`, label: `Beryllium`, group: `Alkaline Earth` },
-    { key: `mg`, label: `Magnesium`, group: `Alkaline Earth` },
-    { key: `ca`, label: `Calcium`, group: `Alkaline Earth` },
-    { key: `sr`, label: `Strontium`, group: `Alkaline Earth` },
-    { key: `ba`, label: `Barium`, group: `Alkaline Earth` },
-    { key: `ra`, label: `Radium`, group: `Alkaline Earth` },
-    { key: `sc`, label: `Scandium`, group: `Transition Metals` },
-    { key: `ti`, label: `Titanium`, group: `Transition Metals` },
-    { key: `v`, label: `Vanadium`, group: `Transition Metals` },
-    { key: `cr`, label: `Chromium`, group: `Transition Metals` },
-    { key: `mn`, label: `Manganese`, group: `Transition Metals` },
-    { key: `fe`, label: `Iron`, group: `Transition Metals` },
-    { key: `co`, label: `Cobalt`, group: `Transition Metals` },
-    { key: `ni`, label: `Nickel`, group: `Transition Metals` },
-    { key: `cu`, label: `Copper`, group: `Transition Metals` },
-    { key: `zn`, label: `Zinc`, group: `Transition Metals` },
+  let multicolumn_columns: Column[] = $state([
+    { id: `li (Alkali Metals)`, key: `li`, label: `Lithium`, group: `Alkali Metals` },
+    { id: `na (Alkali Metals)`, key: `na`, label: `Sodium`, group: `Alkali Metals` },
+    { id: `k (Alkali Metals)`, key: `k`, label: `Potassium`, group: `Alkali Metals` },
+    { id: `rb (Alkali Metals)`, key: `rb`, label: `Rubidium`, group: `Alkali Metals` },
+    { id: `cs (Alkali Metals)`, key: `cs`, label: `Cesium`, group: `Alkali Metals` },
+    { id: `fr (Alkali Metals)`, key: `fr`, label: `Francium`, group: `Alkali Metals` },
+    { id: `be (Alkaline Earth)`, key: `be`, label: `Beryllium`, group: `Alkaline Earth` },
+    { id: `mg (Alkaline Earth)`, key: `mg`, label: `Magnesium`, group: `Alkaline Earth` },
+    { id: `ca (Alkaline Earth)`, key: `ca`, label: `Calcium`, group: `Alkaline Earth` },
+    { id: `sr (Alkaline Earth)`, key: `sr`, label: `Strontium`, group: `Alkaline Earth` },
+    { id: `ba (Alkaline Earth)`, key: `ba`, label: `Barium`, group: `Alkaline Earth` },
+    { id: `ra (Alkaline Earth)`, key: `ra`, label: `Radium`, group: `Alkaline Earth` },
+    { id: `sc (Transition Metals)`, key: `sc`, label: `Scandium`, group: `Transition Metals` },
+    { id: `ti (Transition Metals)`, key: `ti`, label: `Titanium`, group: `Transition Metals` },
+    { id: `v (Transition Metals)`, key: `v`, label: `Vanadium`, group: `Transition Metals` },
+    { id: `cr (Transition Metals)`, key: `cr`, label: `Chromium`, group: `Transition Metals` },
+    {
+      id: `mn (Transition Metals)`,
+      key: `mn`,
+      label: `Manganese`,
+      group: `Transition Metals`,
+    },
+    { id: `fe (Transition Metals)`, key: `fe`, label: `Iron`, group: `Transition Metals` },
+    { id: `co (Transition Metals)`, key: `co`, label: `Cobalt`, group: `Transition Metals` },
+    { id: `ni (Transition Metals)`, key: `ni`, label: `Nickel`, group: `Transition Metals` },
+    { id: `cu (Transition Metals)`, key: `cu`, label: `Copper`, group: `Transition Metals` },
+    { id: `zn (Transition Metals)`, key: `zn`, label: `Zinc`, group: `Transition Metals` },
   ])
   let multicolumn_open = $state(false)
   let multicolumn_collapsed: string[] = $state([])

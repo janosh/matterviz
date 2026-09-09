@@ -21,10 +21,6 @@ export interface CanvasMarker {
   opacity: number // legend-hover dimming, 1 when not dimmed
 }
 
-// Position and symbol vary within a batch; style fields start a new path.
-const style_key = (marker: CanvasMarker): string =>
-  `${marker.fill}|${marker.fill_opacity}|${marker.stroke}|${marker.stroke_width}|${marker.stroke_opacity}|${marker.opacity}`
-
 // Reuse position-independent d3 outlines by symbol and size.
 const symbol_path_cache = new Map<string, Path2D>()
 const MAX_SYMBOL_CACHE = 512
@@ -71,7 +67,8 @@ export function draw_markers(
 
   ctx.scale(pixel_ratio, pixel_ratio)
 
-  let open_key: string | null = null
+  let open_marker: CanvasMarker | null = null
+  let isolate = false
   // Circles use the current path; translated symbols accumulate in one Path2D.
   let open_symbols: Path2D | null = null
   let has_circles = false
@@ -106,37 +103,41 @@ export function draw_markers(
     const valid_size = Number.isFinite(marker_size) && marker_size > 0
     if (!valid_position || !valid_size) continue
 
-    const fill_color_opacity = color_opacity(marker.fill)
-    const stroke_color_opacity = color_opacity(marker.stroke)
-    const has_fill = marker.fill !== `none` && fill_color_opacity > 0
-    const has_stroke = marker.stroke !== `none` && stroke_color_opacity > 0
-    const stroke_width = Number.isFinite(marker.stroke_width)
-      ? Math.max(0, marker.stroke_width)
-      : 0
-    const next_fill_alpha = normalize_alpha(
-      has_fill ? marker.opacity * marker.fill_opacity : 0,
-    )
-    const next_stroke_alpha = normalize_alpha(
-      stroke_width > 0 && has_stroke ? marker.opacity * marker.stroke_opacity : 0,
-    )
-    // Isolate when overlap/order changes compositing: shared paths composite translucent
-    // overlaps once, while separate SVG markers paint each fill and stroke in DOM order.
-    const isolate =
-      (next_fill_alpha > 0 && next_stroke_alpha > 0) ||
-      (next_fill_alpha > 0 && next_fill_alpha < 1) ||
-      (next_stroke_alpha > 0 && next_stroke_alpha < 1) ||
-      (next_fill_alpha > 0 && fill_color_opacity < 1) ||
-      (next_stroke_alpha > 0 && stroke_color_opacity < 1)
-    const key = isolate ? null : style_key(marker)
-    if (key === null || key !== open_key) {
+    // Styles usually repeat across a series. Compare fields without allocating a key,
+    // and normalize/assign canvas state only when the style actually changes.
+    const style_changed =
+      !open_marker ||
+      marker.fill !== open_marker.fill ||
+      marker.stroke !== open_marker.stroke ||
+      marker.fill_opacity !== open_marker.fill_opacity ||
+      marker.stroke_width !== open_marker.stroke_width ||
+      marker.stroke_opacity !== open_marker.stroke_opacity ||
+      marker.opacity !== open_marker.opacity
+    if (style_changed || isolate) {
       flush()
+      ctx.beginPath()
+    }
+    if (style_changed) {
+      const fill_color_opacity = color_opacity(marker.fill)
+      const stroke_color_opacity = color_opacity(marker.stroke)
+      const has_fill = marker.fill !== `none` && fill_color_opacity > 0
+      const has_stroke = marker.stroke !== `none` && stroke_color_opacity > 0
+      const stroke_width = Number.isFinite(marker.stroke_width)
+        ? Math.max(0, marker.stroke_width)
+        : 0
+      fill_alpha = normalize_alpha(has_fill ? marker.opacity * marker.fill_opacity : 0)
+      stroke_alpha = normalize_alpha(
+        stroke_width > 0 && has_stroke ? marker.opacity * marker.stroke_opacity : 0,
+      )
+      // Each translucent or filled-and-stroked marker needs its own path to preserve
+      // SVG overlap compositing and fill/stroke order, even when styles match.
+      isolate =
+        (fill_alpha > 0 && (stroke_alpha > 0 || fill_alpha < 1 || fill_color_opacity < 1)) ||
+        (stroke_alpha > 0 && (stroke_alpha < 1 || stroke_color_opacity < 1))
       ctx.fillStyle = has_fill ? marker.fill : `#000` // canvas rejects CSS `none`
       ctx.strokeStyle = has_stroke ? marker.stroke : `#000`
       ctx.lineWidth = stroke_width
-      fill_alpha = next_fill_alpha
-      stroke_alpha = next_stroke_alpha
-      open_key = key
-      ctx.beginPath()
+      open_marker = marker
     }
 
     if (

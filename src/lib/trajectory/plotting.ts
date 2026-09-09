@@ -10,7 +10,6 @@ import {
   sample_std,
 } from '$lib/math'
 import {
-  assign_axes,
   axis_group_key,
   axis_labels as get_axis_labels,
   axis_scale_types as get_axis_scale_types,
@@ -252,9 +251,6 @@ const is_energy_property = (key: string): boolean =>
     (property) => normalize_property_key(property) === normalize_property_key(key),
   )
 
-const is_axis_coordinate_property = (key: string): boolean =>
-  AXIS_COORDINATE_PROPERTIES.has(normalize_property_key(key))
-
 const is_default_visible = (
   property_key: string,
   default_properties: Set<string>,
@@ -265,39 +261,41 @@ const is_default_visible = (
   )
 }
 
-// Keep every property that varies (plus energy, kept even when flat so a converged run
-// still shows its energy) and was observed in at least two frames.
-const filter_plottable = (stats: PropertyStats): PropertyStats =>
-  new Map(
-    [...stats].filter(
-      ([key, stat]) =>
-        stat.values.length > 1 &&
-        (is_energy_property(key) || get_coefficient_of_variation(stat.values) >= 1e-6),
-    ),
-  )
-
 // Per-property value lists from the rows, keyed by property. Rows arrive sorted and
-// deduplicated (TrajectoryProperties), so this is one linear pass.
-function row_property_statistics(rows: readonly TrajectoryMetadata[]): PropertyStats {
+// deduplicated (TrajectoryProperties). Cache by rows array so label/visibility changes reuse it.
+const stats_cache = new WeakMap<readonly TrajectoryMetadata[], PropertyStats>()
+function cached_property_statistics(rows: readonly TrajectoryMetadata[]): PropertyStats {
+  const cached = stats_cache.get(rows)
+  if (cached) return cached
   const stats: PropertyStats = new Map()
+  const coordinates = new Set<string>()
   for (const { frame_number, properties } of rows) {
-    for (const [key, value] of Object.entries(properties)) {
-      if (typeof value !== `number` || is_axis_coordinate_property(key)) continue
+    for (const key of Object.keys(properties)) {
+      const value = properties[key]
+      if (typeof value !== `number` || coordinates.has(key)) continue
       let stat = stats.get(key)
-      if (!stat) stats.set(key, (stat = { values: [], frame_indices: [] }))
+      if (!stat) {
+        // Property names repeat across frames; normalize each once per row collection.
+        if (AXIS_COORDINATE_PROPERTIES.has(normalize_property_key(key))) {
+          coordinates.add(key)
+          continue
+        }
+        stats.set(key, (stat = { values: [], frame_indices: [] }))
+      }
       stat.values.push(value)
       stat.frame_indices.push(frame_number)
     }
   }
-  return filter_plottable(stats)
-}
-
-// Cache the per-row walk per rows array so re-renders that only change visible_properties or
-// labels reuse it (legend toggles mutate plot_series directly and skip regeneration).
-const stats_cache = new WeakMap<readonly TrajectoryMetadata[], PropertyStats>()
-const cached_property_statistics = (rows: readonly TrajectoryMetadata[]): PropertyStats => {
-  let stats = stats_cache.get(rows)
-  if (!stats) stats_cache.set(rows, (stats = row_property_statistics(rows)))
+  // Keep varying properties (plus flat energy for converged runs) seen in at least two frames.
+  for (const [key, { values }] of stats) {
+    if (
+      values.length > 1 &&
+      (is_energy_property(key) || get_coefficient_of_variation(values) >= 1e-6)
+    )
+      continue
+    stats.delete(key)
+  }
+  stats_cache.set(rows, stats)
   return stats
 }
 
@@ -315,7 +313,7 @@ export interface PropertySummary {
   drift: number
 }
 
-// Run-level statistics of every plottable property (see filter_plottable), keyed by property.
+// Run-level statistics of every plottable property, keyed by property.
 // `x_of` maps a row to the abscissa the drift is taken against (frame number by default; a
 // time axis gives the same drift with the slope in per-time units).
 export function summarize_properties(
@@ -377,22 +375,27 @@ function calculate_priority(unit: string, group_series: readonly DataSeries[]): 
 // Series from property statistics: one per property, coloured in order, visible when the
 // property (or another in its unit group) is requested, capped at two axes by priority. With
 // nothing requested the highest-priority group shows so the plot is never empty.
-function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSeries[] {
+type PropertySeries = DataSeries & { id: string; visible: boolean }
+
+function build_series(stats: PropertyStats, options: PlotSeriesOptions): PropertySeries[] {
   const {
     property_config = trajectory_property_config,
-    default_visible_properties = DEFAULT_VISIBLE,
+    default_visible_properties,
     x_map = FRAME_X_MAP,
   } = options
-  const series: DataSeries[] = []
+  const series: PropertySeries[] = []
   for (const [key, stat] of stats) {
     const n_values = stat.values.length
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
     const color = PLOT_COLORS[series.length % PLOT_COLORS.length]
     series.push({
+      id: key,
       x: stat.frame_indices.map(x_map.to_x),
       y: stat.values,
       label: clean_label,
       unit,
+      visible: false,
+      y_axis: `y`,
       ...(axis_group ? { axis_group } : {}),
       markers: n_values < 30 ? `line+points` : `line`,
       // Series-level (not per point): every consumer resolves a scalar metadata object
@@ -411,34 +414,53 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSer
   })
   const requested_groups = groups.filter((group) =>
     group.series.some((srs) =>
-      is_default_visible(property_key(srs) ?? srs.label ?? ``, default_visible_properties),
+      default_visible_properties
+        ? default_visible_properties.has(srs.id)
+        : is_default_visible(srs.id, DEFAULT_VISIBLE),
     ),
   )
   const selected_groups = requested_groups.length > 0 ? requested_groups : groups.slice(0, 1)
-  const { assignments } = assign_axes(series, {
-    is_visible: (srs) => selected_groups.some((group) => group.key === axis_group_key(srs)),
-    priority: calculate_priority,
+  // These series are ours: assign the already sorted groups without regrouping or cloning.
+  selected_groups.slice(0, 2).forEach((group, idx) => {
+    for (const srs of group.series) {
+      srs.visible = true
+      srs.y_axis = idx === 0 ? `y` : `y2`
+    }
   })
-  return series
-    .map((srs, series_idx) => ({
-      ...srs,
-      visible: assignments[series_idx] !== undefined,
-      y_axis: assignments[series_idx] ?? `y1`,
-    }))
-    .toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
+  return series.toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
 }
 
-export const property_key = (series: DataSeries): string | undefined => {
-  const metadata = Array.isArray(series.metadata) ? series.metadata[0] : series.metadata
-  const key = metadata?.property_key
-  return typeof key === `string` ? key : undefined
+// Visibility changes reuse data arrays and keep legend order stable. Hidden series join
+// their group's axis, otherwise target the free axis or replace y when both are occupied.
+export function with_visible_properties(
+  series: readonly PropertySeries[],
+  visible_properties: readonly string[] | undefined,
+): PropertySeries[] {
+  const selected = visible_properties && new Set(visible_properties)
+  const is_visible = (srs: PropertySeries) => (selected ? selected.has(srs.id) : srs.visible)
+  const groups = group_axis_series(series, { is_visible, priority: calculate_priority }).slice(
+    0,
+    2,
+  )
+  const axes = new Map(
+    groups.map((group, idx) => [group.key, idx === 0 ? `y` : `y2`] as const),
+  )
+  const hidden_axis = axes.size === 2 ? `y` : `y2`
+  return series.map((srs) => {
+    const axis = axes.get(axis_group_key(srs))
+    return {
+      ...srs,
+      visible: is_visible(srs) && axis !== undefined,
+      y_axis: axis ?? hidden_axis,
+    }
+  })
 }
 
 // Plot series from a run's property rows
 export const generate_plot_series = (
   rows: readonly TrajectoryMetadata[],
   options: PlotSeriesOptions = {},
-): DataSeries[] =>
+): PropertySeries[] =>
   rows.length > 0 ? build_series(cached_property_statistics(rows), options) : []
 
 // A plot of one frame, or of nothing but flat lines, says nothing: hide it
@@ -475,8 +497,6 @@ export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
     min_log_decades: 3,
   })
 
-type PlotDataPoint = { x: number; y: number; source_idx: number }
-
 export function prepare_trajectory_scatter_series(
   series: readonly DataSeries[],
   max_points: number,
@@ -492,17 +512,14 @@ export function prepare_trajectory_scatter_series(
     let window_size = Math.max(5, Math.round(data_series.x.length / 50))
     if (window_size % 2 === 0) window_size++
     const smoothed_y = smooth_moving_average(data_series.y, window_size)
-    const sampled_points = downsample_data_points(
-      data_series.x.map((x, source_idx) => ({ x, y: source_raw_y[source_idx], source_idx })),
-      limit,
-    )
-    const sampled_x = sampled_points.map((point) => point.x)
-    const sampled_raw_y = sampled_points.map((point) => point.y)
+    const sampled = downsample_indices(data_series.x, source_raw_y, limit)
+    const sampled_x = sampled.map((idx) => data_series.x[idx])
+    const sampled_raw_y = sampled.map((idx) => source_raw_y[idx])
     const color = data_series.line_style?.stroke ?? `currentColor`
     return {
       ...data_series,
       x: sampled_x,
-      y: sampled_points.map(({ source_idx }) => smoothed_y[source_idx]),
+      y: sampled.map((idx) => smoothed_y[idx]),
       raw_y: sampled_raw_y,
       markers: `line`,
       metadata: data_series.metadata,
@@ -526,54 +543,57 @@ export function prepare_trajectory_scatter_series(
 // limiting long trajectories to roughly one point per plot pixel. Uniform decimation can
 // miss narrow energy spikes; drawing all 24k+ samples turns quantized thermal noise into a
 // solid wall and makes hover/layout work scale with the file instead of the viewport.
-function downsample_data_points(data_points: PlotDataPoint[], limit: number): PlotDataPoint[] {
-  if (data_points.length <= limit) return data_points
-  const last_point = data_points[data_points.length - 1]
-  if (limit === 2) return [data_points[0], last_point]
+function downsample_indices(
+  x_values: readonly number[],
+  y_values: readonly number[],
+  limit: number,
+): number[] {
+  const last_idx = x_values.length - 1
+  if (limit === 2) return [0, last_idx]
 
-  const sampled = [data_points[0]]
-  const bucket_width = (data_points.length - 2) / (limit - 2)
+  const sampled = [0]
+  const bucket_width = (x_values.length - 2) / (limit - 2)
   let anchor_idx = 0
   for (let bucket_idx = 0; bucket_idx < limit - 2; bucket_idx++) {
-    const anchor = data_points[anchor_idx]
+    let anchor_x = x_values[anchor_idx]
+    let anchor_y = y_values[anchor_idx]
     const average_start = Math.floor((bucket_idx + 1) * bucket_width) + 1
     const average_end = Math.min(
       Math.floor((bucket_idx + 2) * bucket_width) + 1,
-      data_points.length,
+      x_values.length,
     )
     let average_x = 0
     let average_y = 0
     let average_count = 0
     for (let point_idx = average_start; point_idx < average_end; point_idx++) {
-      const point = data_points[point_idx]
-      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
-      average_x += point.x
-      average_y += point.y
+      const point_x = x_values[point_idx]
+      const point_y = y_values[point_idx]
+      if (!Number.isFinite(point_x) || !Number.isFinite(point_y)) continue
+      average_x += point_x
+      average_y += point_y
       average_count++
     }
     if (average_count > 0) {
       average_x /= average_count
       average_y /= average_count
     } else {
-      average_x = Number.isFinite(anchor.x) ? anchor.x : 0
-      average_y = Number.isFinite(anchor.y) ? anchor.y : 0
+      average_x = Number.isFinite(anchor_x) ? anchor_x : 0
+      average_y = Number.isFinite(anchor_y) ? anchor_y : 0
     }
 
     const bucket_start = Math.floor(bucket_idx * bucket_width) + 1
-    const bucket_end = Math.min(
-      Math.floor((bucket_idx + 1) * bucket_width) + 1,
-      data_points.length - 1,
-    )
-    const anchor_x = Number.isFinite(anchor.x) ? anchor.x : average_x
-    const anchor_y = Number.isFinite(anchor.y) ? anchor.y : average_y
+    const bucket_end = Math.min(Math.floor((bucket_idx + 1) * bucket_width) + 1, last_idx)
+    if (!Number.isFinite(anchor_x)) anchor_x = average_x
+    if (!Number.isFinite(anchor_y)) anchor_y = average_y
     let selected_idx = -1
     let max_area = -1
     for (let point_idx = bucket_start; point_idx < bucket_end; point_idx++) {
-      const point = data_points[point_idx]
-      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+      const point_x = x_values[point_idx]
+      const point_y = y_values[point_idx]
+      if (!Number.isFinite(point_x) || !Number.isFinite(point_y)) continue
       const area = Math.abs(
-        (anchor_x - average_x) * (point.y - anchor_y) -
-          (anchor_x - point.x) * (average_y - anchor_y),
+        (anchor_x - average_x) * (point_y - anchor_y) -
+          (anchor_x - point_x) * (average_y - anchor_y),
       )
       if (area > max_area) {
         max_area = area
@@ -581,9 +601,9 @@ function downsample_data_points(data_points: PlotDataPoint[], limit: number): Pl
       }
     }
     if (selected_idx < 0) selected_idx = bucket_start
-    sampled.push(data_points[selected_idx])
+    sampled.push(selected_idx)
     anchor_idx = selected_idx
   }
-  sampled.push(last_point)
+  sampled.push(last_idx)
   return sampled
 }

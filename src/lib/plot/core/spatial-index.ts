@@ -60,26 +60,32 @@ export function query_nearest<T extends Positioned>(
   if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return null
   const center_col = Math.floor(pointer.x / cell_size)
   const center_row = Math.floor(pointer.y / cell_size)
-  const cell_radius = Math.ceil(radius_px / cell_size)
-  const min_col = Math.max(-COORD_OFFSET, center_col - cell_radius)
-  const max_col = Math.min(COORD_OFFSET - 1, center_col + cell_radius)
-  const min_row = Math.max(-COORD_OFFSET, center_row - cell_radius)
-  const max_row = Math.min(COORD_OFFSET - 1, center_row + cell_radius)
-  if (min_col > max_col || min_row > max_row) return null
-  const max_dist_sq = radius_px * radius_px
   let best: T | null = null
-  let best_dist_sq = Infinity
+  let best_dist_sq = radius_px * radius_px
   let best_idx = Infinity
 
-  for (let col = min_col; col <= max_col; col++) {
-    for (let row = min_row; row <= max_row; row++) {
+  // Visit the pointer's cell first, then prune cells farther away than the best hit.
+  // Strict > preserves earlier-indexed ties on shared cell boundaries.
+  const offsets = radius_px === 0 ? [0] : [0, -1, 1]
+  for (const col_offset of offsets) {
+    const col = center_col + col_offset
+    if (!in_grid(col)) continue
+    const dx_min = Math.max(col * cell_size - pointer.x, 0, pointer.x - (col + 1) * cell_size)
+    for (const row_offset of offsets) {
+      const row = center_row + row_offset
+      if (!in_grid(row)) continue
+      const dy_min = Math.max(
+        row * cell_size - pointer.y,
+        0,
+        pointer.y - (row + 1) * cell_size,
+      )
+      if (dx_min * dx_min + dy_min * dy_min > best_dist_sq) continue
       const bucket = cells.get(pack_cell_key(col, row))
       if (!bucket) continue
       for (const { item, idx } of bucket) {
         const dx = pointer.x - item.cx
         const dy = pointer.y - item.cy
         const dist_sq = dx * dx + dy * dy
-        if (dist_sq > max_dist_sq) continue
         if (dist_sq < best_dist_sq || (dist_sq === best_dist_sq && idx < best_idx)) {
           best_dist_sq = dist_sq
           best_idx = idx

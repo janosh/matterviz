@@ -9,11 +9,15 @@ This example uses bands and DOS from different materials.
   import { BandsAndDos } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
+  import { normalize_dos } from 'matterviz'
+
+  const total_dos = normalize_dos(dos_spin_polarization)
+  if (!total_dos) throw new Error('Invalid DOS fixture')
 </script>
 
 <BandsAndDos
-  band_structs={electronic_bands.cao_2605}
-  doses={dos_spin_polarization}
+  band_structs={{ '': electronic_bands.cao_2605 }}
+  doses={{ '': total_dos }}
   bands_props={{ y_axis: { label: 'Energy (eV)' } }}
   dos_props={{ y_axis: { label: '' } }}
   shared_y_axis
@@ -31,8 +35,8 @@ This example uses bands and DOS from different materials.
 </script>
 
 <BandsAndDos
-  band_structs={[phonon_bands['mp-2758-Sr4Se4-pbe']]}
-  doses={[phonon_dos['mp-2758-Sr4Se4-pbe']]}
+  band_structs={{ '': phonon_bands['mp-2758-Sr4Se4-pbe'] }}
+  doses={{ '': phonon_dos['mp-2758-Sr4Se4-pbe'] }}
   bands_props={{
     line_kwargs: {
       acoustic: { stroke: '#e74c3c', stroke_width: 2 },
@@ -81,11 +85,15 @@ This example uses bands and DOS from different materials.
   import { BandsAndDos } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
+  import { normalize_dos } from 'matterviz'
+
+  const total_dos = normalize_dos(dos_spin_polarization)
+  if (!total_dos) throw new Error('Invalid DOS fixture')
 </script>
 
 <BandsAndDos
-  band_structs={electronic_bands.vbr2_971787}
-  doses={dos_spin_polarization}
+  band_structs={{ '': electronic_bands.vbr2_971787 }}
+  doses={{ '': total_dos }}
   bands_props={{
     band_spin_mode: 'overlay',
     show_gap_annotation: true,

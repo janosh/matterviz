@@ -1,4 +1,4 @@
-import { Sunburst } from '$lib'
+import Sunburst from '$lib/plot/sunburst/Sunburst.svelte'
 import type { PositionedArc, SunburstNode, SunburstNodeHandlerProps } from '$lib/plot'
 import { PLOT_COLORS } from '$lib/colors'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
@@ -212,6 +212,76 @@ describe(`Sunburst`, () => {
     expect(halos[0].nextElementSibling).toBe(dotted_label)
     expect(halos[0].getAttribute(`transform`)).toBe(dotted_label?.getAttribute(`transform`))
   })
+
+  test.each([
+    [`sunburst`, 0],
+    [`sunburst`, 0.2],
+    [`icicle`, 0],
+  ] as const)(
+    `dense %s paints batch with pad_angle=%s and retain node interactions`,
+    async (shape, pad_angle) => {
+      const on_node_click = vi.fn()
+      const plot = await mount_sized_sunburst({
+        shape,
+        pad_angle,
+        max_children: 2,
+        on_node_click,
+        data: [
+          {
+            id: `jobs`,
+            label: `Jobs`,
+            children: Array.from({ length: 120 }, (_node, idx) => ({
+              id: `job-${idx}`,
+              label: `Job ${idx}`,
+              value: 1,
+              color: idx < 60 ? `#4e79a7` : `#e15759`,
+              pattern: `x`,
+              metadata: { job: idx },
+            })),
+          },
+        ],
+      })
+      // Expanding a bucket crosses the batching threshold while retaining every job.
+      await fire(query(plot, `.arcs path[aria-label^="Other:"]`))
+      expect(n_arcs(plot)).toBe(120)
+      const paints = [...plot.querySelectorAll(`.arc-paints path`)]
+      expect(paints).toHaveLength(2)
+      expect(paints.map((paint) => paint.getAttribute(`fill-opacity`))).toEqual([`1`, `1`])
+      expect(paints.every((paint) => paint.getAttribute(`fill`)?.startsWith(`url(#`))).toBe(
+        true,
+      )
+      // Zero padding coalesces each consecutive half-ring into one fill. Padding must
+      // retain each separate sector; borders always retain every original path.
+      expect(paints.map((paint) => paint.getAttribute(`d`)?.match(/M/g)?.length)).toEqual(
+        pad_angle === 0 ? [1, 1] : [60, 60],
+      )
+      const jobs = [...plot.querySelectorAll(`.arcs path`)]
+      expect(plot.querySelector(`.arc-borders`)?.getAttribute(`d`)).toBe(
+        jobs.map((job) => job.getAttribute(`d`)).join(``),
+      )
+      expect(jobs.every((job) => job.getAttribute(`fill`) === `transparent`)).toBe(true)
+      const job = query<SVGPathElement>(plot, `.arcs path[aria-label="Job 17: 1"]`)
+      const paint_paths = paints.map((paint) => paint.getAttribute(`d`))
+      await fire(job, mouse(`mousemove`))
+      expect(plot.querySelector(`.plot-tooltip`)?.textContent).toContain(`Job 17`)
+      expect(plot.querySelectorAll(`.hover-veil`)).toHaveLength(1)
+      expect(paints.map((paint) => paint.getAttribute(`d`))).toEqual(paint_paths)
+      await fire(job)
+      expect(on_node_click).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: `job-17`,
+          is_leaf: true,
+          metadata: { job: 17 },
+        }),
+      )
+      job.focus()
+      await fire(job, keydown(`ArrowRight`))
+      expect(document.activeElement?.getAttribute(`aria-label`)).toBe(`Job 18: 1`)
+      await fire(query(plot, `.breadcrumb`))
+      expect(plot.querySelector(`.arc-paints`)).toBeNull()
+      expect(n_arcs(plot)).toBe(4)
+    },
+  )
 
   test(`a name too long for its arc is ellipsized at the smallest font instead of hidden`, async () => {
     const name = `pretrain-llama-70b-stage2-resume-from-checkpoint`

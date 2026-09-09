@@ -166,7 +166,8 @@ function same_topology(sites: readonly Site[], last: readonly Site[]): boolean {
 function create_change_tracker() {
   const previous = new Map<string, unknown>()
   return (key: string, value: unknown): boolean => {
-    const changed = previous.has(key) && previous.get(key) !== value
+    // Exact value identity is intentional, including proxy replacements and stable NaN keys.
+    const changed = previous.has(key) && !Object.is(previous.get(key), value)
     previous.set(key, value)
     return changed
   }

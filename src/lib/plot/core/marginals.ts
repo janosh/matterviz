@@ -23,7 +23,7 @@ export type MarginalType = `histogram` | `kde` | `cdf` | `rug`
 export type MarginalPlacement = `auto` | `flush` | `outer`
 export type MarginalNormalize = `count` | `density` | `probability`
 // Which plot axis a marginal binds to (defaults to the primary axis for its side)
-export type MarginalAxisBinding = `x1` | `x2` | `y1` | `y2`
+export type MarginalAxisBinding = `x` | `x2` | `y` | `y2`
 
 // Top/bottom strips run along the x (horizontal) positional axis; left/right run along y
 const is_x_side = (side: MarginalSide): boolean => side === `top` || side === `bottom`
@@ -113,9 +113,9 @@ export interface MarginalSeriesInput {
   label?: string
   visible?: boolean
   // Which axis the series renders on; a marginal only summarizes series whose axis matches
-  // the side it binds to (so a top/x1 marginal ignores x2 series, a right/y1 marginal ignores y2)
-  x_axis?: `x1` | `x2`
-  y_axis?: `y1` | `y2`
+  // the side it binds to (so a top/x marginal ignores x2 series, a right/y marginal ignores y2)
+  x_axis?: `x` | `x2`
+  y_axis?: `y` | `y2`
 }
 
 // One computed curve plus the series it came from (for rendering + the snippet context)
@@ -130,7 +130,7 @@ export interface MarginalSeriesCurve {
 export type ScaleFn = (value: number) => number
 
 // Scale fn, current range, and scale type for one axis a marginal can bind to. Plots pass an
-// `axes` map (x1 + y1 required, x2/y2 optional) to PlotMarginals; x2/y2 fall back to x1/y1.
+// `axes` map (x + y required, x2/y2 optional) to PlotMarginals; x2/y2 fall back to x/y.
 export interface MarginalAxis {
   scale: ScaleFn
   range: Vec2
@@ -140,9 +140,9 @@ export interface MarginalAxis {
   label?: string // axis title (e.g. `Error`), used as the position-row label in hover tooltips
 }
 export type MarginalAxes = {
-  x1: MarginalAxis
+  x: MarginalAxis
   x2?: MarginalAxis
-  y1: MarginalAxis
+  y: MarginalAxis
   y2?: MarginalAxis
 }
 
@@ -425,7 +425,7 @@ export const add_sides = (a: Required<Sides>, b: Required<Sides>): Required<Side
 
 // Default axis a side binds to when `config.axis` is unset
 export const default_axis_for_side = (side: MarginalSide): MarginalAxisBinding =>
-  is_x_side(side) ? `x1` : `y1`
+  is_x_side(side) ? `x` : `y`
 
 // Which sides carry an axis (drives `auto` placement). Bottom/left hold the primary x/y axes and
 // are always present; top/right only when the plot shows a secondary axis there.

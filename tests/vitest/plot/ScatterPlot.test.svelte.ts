@@ -62,8 +62,8 @@ const next_animation_frame = (): Promise<void> =>
 const stub_svg_rect = (svg: SVGSVGElement) => {
   svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 300 })
 }
-const click_at = (svg: SVGSVGElement, at: { x: number; y: number }) =>
-  svg.dispatchEvent(mouse(`click`, { detail: 1, clientX: at.x, clientY: at.y }))
+const click_at = (element: Element, at: { x: number; y: number }) =>
+  element.dispatchEvent(mouse(`click`, { detail: 1, clientX: at.x, clientY: at.y }))
 // Moves the pointer `dx`/`dy` px off the nth marker and returns where it landed
 const move_to_marker = async (
   plot: HTMLElement,
@@ -385,7 +385,8 @@ describe(`ScatterPlot`, () => {
 
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
-      }>({ tooltip_point: null })
+        selected_points: { series_idx: number; point_idx: number }[]
+      }>({ tooltip_point: null, selected_points: [] })
       const hover_plot = await mount_sized_scatter_plot(
         bind_props({ series: [dense], marker_renderer: `canvas` as const }, state),
       )
@@ -401,6 +402,19 @@ describe(`ScatterPlot`, () => {
       expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
       expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(1)
       expect(hover_plot.querySelector(`path.marker`)?.getAttribute(`fill`)).toBe(`none`)
+      // Empty selection must stay reactive when points enter/leave the SVG overlay.
+      for (const selected_points of [[4, 5], []]) {
+        state.selected_points = selected_points.map((selected_idx) => ({
+          series_idx: 0,
+          point_idx: selected_idx,
+        }))
+        flushSync()
+        await tick()
+        expect(arcs_since_clear).toBe(dense.x.length - selected_points.length)
+        expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(
+          selected_points.length || 1,
+        )
+      }
     })
 
     test(`disables point tweening for canvas overlays`, async () => {
@@ -521,6 +535,9 @@ describe(`ScatterPlot`, () => {
   const legend_auto_cases: LegendAutoCase[] = [
     [`distinct labels auto-show`, { series: labeled_series(`A`, `B`) }, 2],
     [`duplicate labels auto-hide`, { series: labeled_series(`Dup`, `Dup`) }, 0],
+    [`IDs cannot collide with label/group keys`, { series: [{ ...basic, id: `foo`, label: `First` }, { ...basic, legend_group: `string`, label: `foo` }] }, 2],
+    [`distinct IDs keep identical labels separate`, { series: labeled_series(`Dup`, `Dup`).map((srs, idx) => ({ ...srs, id: idx })) }, 2],
+    [`shared legend IDs combine distinct drawing IDs and labels`, { series: labeled_series(`A`, `B`).map((srs, idx) => ({ ...srs, id: idx, legend_id: `shared` })), show_legend: true }, 1],
     [`explicit true opens one deduped entry`, { series: labeled_series(`Dup`, `Dup`), show_legend: true }, 1],
     [`labelled fill region counts`, { series: labeled_series(`A`), fill_regions: [{ ...fill_region, label: `Band` }] }, 2],
     [`unlabelled fill region does not count`, { series: labeled_series(`A`), fill_regions: [fill_region] }, 0],
@@ -534,16 +551,25 @@ describe(`ScatterPlot`, () => {
     },
   )
 
-  test(`legend-hidden series stays hidden across one-way series replacement until the parent flips visible`, async () => {
+  test(`legend-hidden series stays hidden across one-way series replacement until the parent changes hidden_series`, async () => {
     const make_series = (first_extra: Partial<DataSeries> = {}): DataSeries[] => [
       { ...basic, id: `a`, label: `A`, ...first_extra },
       { ...basic, id: `b`, label: `B` },
     ]
-    const state = $state({ series: make_series() })
+    const state = $state<{
+      series: DataSeries[]
+      hidden_series?: readonly (string | number)[]
+    }>({ series: make_series() })
     // getter-only prop: one-way, the component cannot write back into the parent
     const plot = await mount_sized_scatter_plot({
       get series() {
         return state.series
+      },
+      get hidden_series() {
+        return state.hidden_series
+      },
+      set hidden_series(value) {
+        state.hidden_series = value
       },
     })
     const first_hidden = () =>
@@ -562,11 +588,36 @@ describe(`ScatterPlot`, () => {
     expect(first_hidden()).toBe(true)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
 
-    // parent explicitly shows it again: the user's override yields
-    state.series = make_series({ visible: true })
+    // Explicit visibility state shows it again without replacing the series.
+    state.hidden_series = []
     flushSync()
     expect(first_hidden()).toBe(false)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(10)
+  })
+
+  test(`axis choices request host updates without replacing input data or axis metadata`, async () => {
+    const x_axis = Object.freeze({
+      label: `Energy`,
+      selected_key: `energy`,
+      options: [
+        { key: `energy`, label: `Energy` },
+        { key: `volume`, label: `Volume` },
+      ],
+    })
+    const on_axis_change = vi.fn()
+    const plot = await mount_sized_scatter_plot({ series: [basic], x_axis, on_axis_change })
+    plot.querySelector<HTMLButtonElement>(`button.axis-trigger`)?.click()
+    flushSync()
+    const option = [...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`)].find(
+      (candidate) => candidate.textContent?.includes(`Volume`),
+    )
+    expect(option).toBeDefined()
+    option?.click()
+    await tick()
+    expect(on_axis_change).toHaveBeenCalledWith(`x`, `volume`)
+    expect(x_axis.selected_key).toBe(`energy`)
+    expect(plot.querySelector(`button.axis-trigger`)?.textContent).toContain(`Energy`)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
   })
 
   test(`x hover resolves duplicate x-values by vertical distance`, async () => {
@@ -584,6 +635,36 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
   })
+
+  test.each([false, true])(
+    `legend hover follows shared identity (grouped=%s)`,
+    async (grouped) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [0, 1, 2].map((idx) => ({
+          id: idx,
+          legend_id: grouped && idx < 2 ? `shared` : undefined,
+          label: `Series ${idx}`,
+          x: [idx * 2, idx * 2 + 1],
+          y: [idx * 2, idx * 2 + 1],
+          markers: `line+points`,
+        })),
+        point_tween: { duration: 0 },
+      })
+      const items = [...plot.querySelectorAll<HTMLElement>(`.legend-item`)]
+      expect(items).toHaveLength(grouped ? 2 : 3)
+      await hover(items[0])
+      expect(
+        [0, 1, 2].map((idx) =>
+          plot.querySelector(`g[data-series-id="${idx}"][opacity]`)?.getAttribute(`opacity`),
+        ),
+      ).toEqual([`1`, grouped ? `1` : `0.25`, `0.25`])
+      items[0].dispatchEvent(mouse(`mouseleave`))
+      await move_to_marker(plot, 2)
+      expect(items.map((item) => item.classList.contains(`active`))).toEqual(
+        grouped ? [true, false] : [false, true, false],
+      )
+    },
+  )
 
   test(`line underlays stay out of legends, controls, and hover`, async () => {
     const on_point_hover = vi.fn()
@@ -657,6 +738,10 @@ describe(`ScatterPlot`, () => {
     expect(svg.style.cursor).toBe(`pointer`)
     expect(on_plot_click).toHaveBeenCalledOnce()
     expect(on_plot_click.mock.calls[0][0]).toMatchObject({ x: 2, y: 3 })
+    // Plot-only handlers must also receive a direct marker hit, not just near misses.
+    click_at(plot.querySelectorAll(`path.marker`)[1], await move_to_marker(plot, 1))
+    expect(on_plot_click).toHaveBeenCalledTimes(2)
+    expect(on_plot_click).toHaveBeenLastCalledWith(expect.objectContaining({ x: 2, y: 3 }))
 
     // far from every point the click would land on nothing, so the crosshair returns
     svg.dispatchEvent(mouse(`mousemove`, { clientX: 0, clientY: 0 }))
@@ -821,7 +906,7 @@ describe(`ScatterPlot`, () => {
           ? { x: [1, NaN], y: [NaN, 2], x_axis: `x2` }
           : { x: [1, NaN], y: [NaN, 2], y_axis: `y2` }
       const plot = await mount_sized_scatter_plot({
-        series: [{ x: [1, 2], y: [3, 4], y_axis: `y1` }, invalid_series],
+        series: [{ x: [1, 2], y: [3, 4], y_axis: `y` }, invalid_series],
       })
       expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
     },
@@ -1082,8 +1167,8 @@ describe(`ScatterPlot`, () => {
   })
 
   test.each([
-    [`duplicate ids`, [{ id: `a` }, { id: `a` }], /duplicate id "a"/],
-    [`duplicate numeric ids`, [{ id: 1 }, { id: 1 }], /duplicate id "1"/],
+    [`duplicate ids`, [{ id: `a` }, { id: `a` }], /duplicate "a"/],
+    [`duplicate numeric ids`, [{ id: 1 }, { id: 1 }], /duplicate "1"/],
     [`unset ids`, [{}, {}, null], null],
     [`distinct ids`, [{ id: `a` }, { id: 1 }, {}], null],
   ] as const)(`series with %s`, (_desc, series_ids, error) => {

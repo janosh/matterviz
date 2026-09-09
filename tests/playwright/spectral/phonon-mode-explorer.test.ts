@@ -306,33 +306,35 @@ test.describe(`PhononModeExplorer`, () => {
   })
 })
 
-test(`a fixture picked before the initial one finishes loading still reaches the URL`, async ({
-  page,
-}) => {
-  // hold the default fixture's chunk so the click below supersedes the URL-driven load
-  let release_default = (): void => {}
-  const default_held = new Promise<void>((resolve) => (release_default = resolve))
-  await page.route(`**/NaCl-Gamma-X-band.yaml*`, async (route) => {
-    await default_held
-    await route.continue()
-  })
-  await page.goto(`/reciprocal/phonon-mode-explorer`)
-  // the SSR picker is visible before hydration, so retry the click until it takes effect
-  await expect(async () => {
-    await page.getByRole(`button`, { name: /MgB2/ }).click()
-    await expect(page.getByTestId(`phonon-fixture-detail`)).toContainText(
-      `Metal without Born charges`,
-      { timeout: 500 },
-    )
-  }).toPass()
-  await expect.poll(() => url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
-  await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
-  const default_response = page.waitForResponse(`**/NaCl-Gamma-X-band.yaml*`)
-  release_default()
-  await default_response
-  // the late default response must not clobber the user's choice; networkidle gives the page
-  // time to parse and (wrongly) apply it before checking
-  await page.waitForLoadState(`networkidle`)
-  await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
-  expect(url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
-})
+test(
+  `a fixture picked before the initial one finishes loading still reaches the URL`,
+  { tag: `@source` },
+  async ({ page }) => {
+    // hold the default fixture's chunk so the click below supersedes the URL-driven load
+    let release_default = (): void => {}
+    const default_held = new Promise<void>((resolve) => (release_default = resolve))
+    await page.route(`**/NaCl-Gamma-X-band.yaml*`, async (route) => {
+      await default_held
+      await route.continue()
+    })
+    await page.goto(`/reciprocal/phonon-mode-explorer`)
+    // the SSR picker is visible before hydration, so retry the click until it takes effect
+    await expect(async () => {
+      await page.getByRole(`button`, { name: /MgB2/ }).click()
+      await expect(page.getByTestId(`phonon-fixture-detail`)).toContainText(
+        `Metal without Born charges`,
+        { timeout: 500 },
+      )
+    }).toPass()
+    await expect.poll(() => url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
+    await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
+    const default_response = page.waitForResponse(`**/NaCl-Gamma-X-band.yaml*`)
+    release_default()
+    await default_response
+    // the late default response must not clobber the user's choice; networkidle gives the page
+    // time to parse and (wrongly) apply it before checking
+    await page.waitForLoadState(`networkidle`)
+    await expect(page.getByTestId(`phonon-mode-summary`)).toContainText(`MgB2-band.yaml.gz`)
+    expect(url_params(page)).toEqual({ file: `MgB2-band.yaml.gz` })
+  },
+)

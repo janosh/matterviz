@@ -38,12 +38,13 @@ export function predict_demo(structure: AnyStructure) {
     volumes: [
       {
         ...make_volume(values, [12, 12, 12], {
+          id: `density`,
           lattice,
           origin: [0, 0, 0],
           periodic: false,
           label: `Predicted density`,
         }),
-        field_id: `density`,
+        id: `density`,
       },
     ],
   }

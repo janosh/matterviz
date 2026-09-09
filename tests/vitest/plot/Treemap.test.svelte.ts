@@ -1,4 +1,4 @@
-import { Treemap } from '$lib'
+import Treemap from '$lib/plot/treemap/Treemap.svelte'
 import type { SunburstNodeHandlerProps, TreemapArc, TreemapNode } from '$lib/plot'
 import { PLOT_COLORS } from '$lib/colors'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'

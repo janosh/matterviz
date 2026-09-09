@@ -112,8 +112,8 @@ export interface TrajectoryRun {
   readonly warnings: readonly string[]
   // The only frame-access path. Sync for in-memory and same-thread indexed runs so scrubbing
   // needs no microtask; a Promise for worker/host runs. Rejects with the signal's reason when
-  // aborted and throws/rejects after dispose(), except for frame 0, which is the in-memory
-  // `preview` and needs no resource.
+  // aborted and throws/rejects after dispose(), including frame 0. The in-memory `preview`
+  // remains readable without accessing disposed resources.
   read_frame(frame_idx: number, signal?: AbortSignal): FrameResult
   // Present iff the run supports full-pass analyses (MSD/VACF/CNA/spectroscopy/trails)
   collect_positions?(options?: CollectPositionsOptions): Promise<TrajectoryPositionStream>
@@ -222,10 +222,11 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
     ...fields,
     frame_count,
     preview,
-    read_frame: (frame_idx) => {
+    read_frame: (frame_idx, signal) => {
       assert_frame_idx({ frame_count }, frame_idx)
-      if (frame_idx === 0) return preview
       live()
+      signal?.throwIfAborted()
+      if (frame_idx === 0) return preview
       return read(frame_idx)
     },
     ...(collect_positions

@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { normalize_show_controls } from '$lib/controls'
   import { error_bounds } from '$lib/plot/core/error-bars'
   import { create_chart_exporter, series_to_csv_rows } from '$lib/plot/core/utils/chart-export'
   import { type D3InterpolateName, plot_color, resolve_computed_color } from '$lib/colors'
@@ -9,11 +10,9 @@
   import { sanitize_html } from '$lib/sanitize'
   import { partition_point, type Point2D, type Vec2 } from '$lib/math'
   import type {
-    AxisLoadError,
     AxisRanges,
     BasePlotProps,
     ColorScaleConfig,
-    DataLoaderFn,
     DataSeries,
     ErrorBand,
     FillHandlerEvent,
@@ -58,12 +57,7 @@
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
   import { assign_axes, axis_labels, axis_scale_types } from '$lib/plot/core/axis-assignment'
-  import {
-    AXIS_DEFAULTS,
-    create_axis_loader,
-    X2_AXIS_DEFAULTS,
-  } from '$lib/plot/core/axis-utils'
-  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
+  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
   import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { with_obstacle_frame } from '$lib/plot/core/decorations'
@@ -80,6 +74,7 @@
     create_legend_visibility,
     legend_mode_to_prop,
     resolve_legend_visibility,
+    same_legend_item,
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -125,7 +120,9 @@
   const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
-    series: series_in = $bindable([]),
+    series: series_in = [],
+    hidden_series = $bindable(),
+    on_hidden_series_change,
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -133,7 +130,7 @@
     // Clone so the controls' checkbox writes never mutate the shared DEFAULTS
     display = $bindable({ ...DEFAULTS.plot.display }),
     styles: styles_init = {},
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -177,9 +174,8 @@
     children,
     header_controls,
     controls_extra,
-    data_loader,
+    axis_loading = null,
     on_axis_change,
-    on_error,
     pan = {},
     marginals = false,
     facet_layout,
@@ -190,7 +186,9 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     Omit<BasePlotProps, `children`> &
     PlotConfig & {
-      series?: DataSeries<Metadata>[]
+      hidden_series?: readonly (string | number)[]
+      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+      series?: readonly DataSeries<Metadata>[]
       // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
       children?: Snippet<[UserContentProps]>
       styles?: StyleOverrides
@@ -251,14 +249,9 @@
       // a host writing an axis moves the view without touching the axis config, so linked
       // panels (BandsAndDos) share one zoom while each keeps its own pins and reset target.
       view?: Partial<AxisRanges>
-      // Interactive axis props
-      data_loader?: DataLoaderFn<Metadata>
-      on_axis_change?: (
-        axis: `x` | `x2` | `y` | `y2`,
-        key: string,
-        new_series: DataSeries<Metadata>[],
-      ) => void
-      on_error?: (error: AxisLoadError) => void
+      // The host owns property selection, loading, and publishing the resulting data.
+      axis_loading?: `x` | `x2` | `y` | `y2` | null
+      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
       pan?: PanConfig
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
@@ -271,10 +264,14 @@
       point_hit_padding?: number
     } = $props()
 
-  // Legend toggles write back into the bindable series prop; see create_legend_visibility
+  // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
     () => series,
-    (next) => (series_in = next),
+    () => hidden_series,
+    (next) => {
+      hidden_series = next
+      on_hidden_series_change?.(next)
+    },
   )
   let series: DataSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
@@ -283,20 +280,10 @@
   })
 
   // Assign visible series by unit/axis_group while preserving every explicit y_axis.
-  // Dimensionless series retain the historical y1 default. Re-running this derived after a
-  // legend toggle lets the remaining visible group move back to y1. `_id` (series.id, else
-  // index) keys the rendered series so reordering with stable ids doesn't remount marks;
-  // duplicate ids would make Svelte's keyed each throw mid-render, so fail early here.
+  // Dimensionless series retain the historical y default. Re-running this derived after a
+  // legend toggle lets the remaining visible group move back to y.
   // Null/undefined entries pass through untouched; every consumer skips them.
-  const series_with_ids = $derived.by(() => {
-    const seen_ids = new Set<string | number>()
-    for (const srs of series) {
-      if (!srs || typeof srs !== `object` || srs.id == null) continue
-      if (seen_ids.has(srs.id)) {
-        throw new Error(`ScatterPlot series ids must be unique, got duplicate id "${srs.id}"`)
-      }
-      seen_ids.add(srs.id)
-    }
+  const assigned_series = $derived.by(() => {
     const assignment = assign_axes(series, {
       is_visible: (srs) => Boolean(srs && typeof srs === `object` && srs.visible !== false),
       priority: (group_key) => (group_key === `dimensionless` ? -1 : 0),
@@ -310,12 +297,12 @@
     return series.map((srs, series_idx) => {
       if (!srs || typeof srs !== `object`) return srs
       const assigned_y = srs.y_axis ?? assignment.assignments[series_idx]
-      return { ...srs, ...(assigned_y && { y_axis: assigned_y }), _id: srs.id ?? series_idx }
+      return { ...srs, ...(assigned_y && { y_axis: assigned_y }) }
     })
   })
 
   const inferred_y_axes = $derived.by(() => {
-    const valid_series = series_with_ids.filter((srs) =>
+    const valid_series = assigned_series.filter((srs) =>
       Boolean(srs && typeof srs === `object`),
     )
     const labels = axis_labels(valid_series)
@@ -324,21 +311,21 @@
       // independent scale (for example, positive SCF residuals spanning many decades).
       can_use_log_scale: (srs) => srs.axis_group != null,
     })
-    const inferred = (axis: `y1` | `y2`) => {
+    const inferred = (axis: `y` | `y2`) => {
       const has_metadata = valid_series.some(
         (srs) =>
           srs.visible !== false &&
-          (srs.y_axis ?? `y1`) === axis &&
+          (srs.y_axis ?? `y`) === axis &&
           (srs.unit !== undefined || srs.axis_group !== undefined),
       )
       return has_metadata ? { label: labels[axis], scale_type: scale_types[axis] } : {}
     }
-    return { y1: inferred(`y1`), y2: inferred(`y2`) }
+    return { y: inferred(`y`), y2: inferred(`y2`) }
   })
 
   // Merged axis/display values with defaults (use $derived to avoid breaking $bindable)
   const final_x_axis = $derived({ ...AXIS_DEFAULTS, ...x_axis })
-  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...inferred_y_axes.y1, ...y_axis })
+  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...inferred_y_axes.y, ...y_axis })
   const final_x2_axis = $derived({ ...X2_AXIS_DEFAULTS, ...x2_axis })
   const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...inferred_y_axes.y2, ...y2_axis })
   // Time axes only differ in range nicing; their scales are linear over epoch milliseconds
@@ -363,34 +350,38 @@
   // Fill region hover state
   let hovered_fill_key = $state<string | null>(null)
 
-  // Interactive axis loading state
-  let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
-
   // State to hold the calculated label positions after simulation
   let label_positions = $state<Record<string, Point2D>>({})
 
   // Hovering a legend entry fades every other series
   const is_legend_dimmed = (series_idx: number | undefined): boolean =>
-    frame.hovered_series_idx !== null && frame.hovered_series_idx !== series_idx
+    frame.hovered_series_idx !== null &&
+    Boolean(series[frame.hovered_series_idx]) &&
+    !same_legend_item(
+      series[frame.hovered_series_idx],
+      series[series_idx ?? -1],
+      frame.hovered_series_idx,
+      series_idx ?? -1,
+    )
 
   // Finite extents of the visible series per axis, without materializing point objects.
   // Hidden series widen no axis, so toggling one off lets the view tighten on every axis.
   let extents_by_axis = $derived.by(() => {
     const all_x = empty_extent()
-    const y1 = empty_extent()
+    const y = empty_extent()
     const y2 = empty_extent()
     const x2 = empty_extent()
     let has_x2_points = false
     let has_y2_points = false
 
-    for (const srs of series_with_ids) {
+    for (const srs of assigned_series) {
       if (!srs || srs.visible === false) continue
-      const { line_underlays = [], y_axis: series_y_axis = `y1`, x_axis: x_ax = `x1` } = srs
+      const { line_underlays = [], y_axis: series_y_axis = `y`, x_axis: x_ax = `x` } = srs
       for (const { x: layer_x, y: layer_y } of [srs, ...line_underlays]) {
         // x drives the point count: a y array of a different length is read through x.length
         const n_points = layer_x.length
         accumulate_extent(all_x, layer_x, n_points)
-        const y_extent = series_y_axis === `y2` ? y2 : y1
+        const y_extent = series_y_axis === `y2` ? y2 : y
         accumulate_extent(y_extent, layer_y, n_points)
         if (x_ax === `x2`) accumulate_extent(x2, layer_x, n_points)
         // Error bars reach past their point, so the axis has to reach with them or the
@@ -421,7 +412,7 @@
         has_y2_points ||= series_y_axis === `y2` && has_drawable_point
       }
     }
-    return { all_x, y1, y2, x2, has_x2_points, has_y2_points }
+    return { all_x, y, y2, x2, has_x2_points, has_y2_points }
   })
 
   let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
@@ -442,7 +433,7 @@
   const intrinsic_ranges = $derived({
     x: auto_range(extents_by_axis.all_x, final_x_axis, is_time_x),
     x2: auto_range(extents_by_axis.x2, final_x2_axis, is_time_x2),
-    y: auto_range(extents_by_axis.y1, final_y_axis),
+    y: auto_range(extents_by_axis.y, final_y_axis),
     y2: auto_range(extents_by_axis.y2, final_y2_axis),
   })
   const frame = create_cartesian_frame({
@@ -454,7 +445,7 @@
     has_data: () => ({
       x: extents_by_axis.all_x.n_finite > 0,
       x2: extents_by_axis.x2.n_finite > 0,
-      y: extents_by_axis.y1.n_finite > 0,
+      y: extents_by_axis.y.n_finite > 0,
       y2: extents_by_axis.y2.n_finite > 0,
     }),
     has_x2: () => has_x2_points,
@@ -598,7 +589,7 @@
   const legend_track_items = $derived.by(() => {
     const first_seen = legend_row_dedupe()
     return [
-      ...scatter_legend_rows(series_with_ids),
+      ...scatter_legend_rows(assigned_series),
       ...fill_regions.flatMap((fill) =>
         fill.show_in_legend !== false && fill.label
           ? [{ label: fill.label, legend_group: fill.legend_group }]
@@ -617,13 +608,10 @@
   // (the default) while no strip is enabled so data changes don't pay for it.
   const marginal_series = $derived<MarginalSeriesInput[]>(
     Object.values(resolved_marginals).some(Boolean)
-      ? series_with_ids.map((srs, idx) => ({
+      ? assigned_series.map((srs, idx) => ({
           x: srs?.x ?? [],
           y: srs?.y ?? [],
-          color:
-            srs?.line_style?.stroke ??
-            first_point_style(srs)?.fill ??
-            plot_color(srs?.orig_series_idx ?? idx),
+          color: srs?.line_style?.stroke ?? first_point_style(srs)?.fill ?? plot_color(idx),
           label: srs?.label,
           visible: srs?.visible ?? true,
           x_axis: srs?.x_axis,
@@ -633,7 +621,7 @@
   )
   // Finite color extent and finite size values across all series, one pass. NaN/null entries
   // fall back to the series color/radius per point, so they must not widen either scale.
-  const color_size_values = $derived(collect_scale_values(series_with_ids))
+  const color_size_values = $derived(collect_scale_values(assigned_series))
   const has_color_values = $derived(color_size_values.color_extent.n_finite > 0)
   const auto_color_range = $derived(color_size_values.color_range)
   let size_scale_fn = $derived(create_size_scale(size_scale, color_size_values.size_values))
@@ -644,7 +632,7 @@
 
   // Visible series with their in-range points: InternalPoints are built once per data change
   // and only picked by range on each pan/zoom frame
-  const materialized_series = $derived(materialize_series_points(series_with_ids))
+  const materialized_series = $derived(materialize_series_points(assigned_series))
   let filtered_series = $derived(
     filter_series_to_ranges(materialized_series, {
       x: [x_min, x_max],
@@ -683,7 +671,7 @@
 
   // Apply controls to the selected series (by original index, which survives range filtering)
   const applies_style_controls = (series_data: { orig_series_idx?: number }): boolean =>
-    show_controls &&
+    normalize_show_controls(show_controls).visible(`controls`) &&
     (!has_multiple_series || series_data.orig_series_idx === selected_series_idx)
 
   const is_finite_num = (val: number | null | undefined): val is number =>
@@ -824,13 +812,14 @@
   const needs_static_svg_overlay = (
     point: InternalPoint<Metadata>,
     selected: typeof selected_point,
+    keys: typeof selected_keys,
   ): boolean =>
     point.point_label?.text != null ||
     same_logical_point(point, selected) ||
     // Rect-selected points get the same treatment as `selected_point`, so they must be
     // lifted out of the canvas bitmap too - otherwise a selection past the marker
     // threshold silently paints nothing
-    selected_keys.has(roving_key(point.series_idx, point.point_idx)) ||
+    (keys.size > 0 && keys.has(roving_key(point.series_idx, point.point_idx))) ||
     Boolean(point.point_style?.is_highlighted && point.point_style.highlight_effect)
 
   // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
@@ -856,6 +845,7 @@
       on_point_click || (point_events && Object.values(point_events).some(Boolean))
     if (!canvas_requested || !styles.show_points || needs_svg_events) return null
     const selected = selected_point
+    const keys = selected_keys
     const markers: CanvasMarker[] = []
     for (const series_data of filtered_series) {
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
@@ -864,7 +854,7 @@
       const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
       for (const point of series_data.filtered_data) {
         if (!canvas_safe(point)) return null
-        if (needs_static_svg_overlay(point, selected)) continue
+        if (needs_static_svg_overlay(point, selected, keys)) continue
         const [cx, cy] = project.point(point)
         markers.push(marker_of(point, cx, cy, opacity))
       }
@@ -877,8 +867,11 @@
   const static_overlay_points_by_series = $derived.by(() => {
     if (!use_canvas_markers) return []
     const selected = selected_point
+    const keys = selected_keys
     return filtered_series.map((series_data) =>
-      series_data.filtered_data.filter((point) => needs_static_svg_overlay(point, selected)),
+      series_data.filtered_data.filter((point) =>
+        needs_static_svg_overlay(point, selected, keys),
+      ),
     )
   })
   // Plus the hovered point, for its hover effects. tooltip_point may come from a previous
@@ -973,7 +966,7 @@
     const all_regions = [
       ...tag_regions(fill_regions, `fill_region`, (region) => region),
       ...tag_regions(error_bands, `error_band`, (band) =>
-        convert_error_band_to_fill_region(band, series_with_ids),
+        convert_error_band_to_fill_region(band, assigned_series),
       ),
     ]
 
@@ -1002,7 +995,7 @@
         const hidden = region.visible === false
         const path_segments = hidden
           ? []
-          : compute_fill_segments(region, series_with_ids, domains)
+          : compute_fill_segments(region, assigned_series, domains)
               .map((seg) =>
                 generate_fill_path(
                   seg.upper.map(to_px),
@@ -1023,12 +1016,21 @@
 
   let legend_data = $derived(
     build_legend_data(
-      series_with_ids,
+      assigned_series,
       computed_fills,
       color_scale_fn,
       styles.point?.symbol_type,
     ),
   )
+  const active_legend_idx = $derived.by(() => {
+    const idx = tooltip_point?.series_idx ?? frame.hovered_series_idx
+    if (idx == null || !series[idx]) return null
+    return (
+      legend_data.find((item) =>
+        same_legend_item(series[idx], series[item.series_idx], idx, item.series_idx),
+      )?.series_idx ?? idx
+    )
+  })
   // legend_track_items mirrors the rendered entries without depending on frame geometry,
   // avoiding a frame -> visibility -> computed fills -> frame dependency cycle.
   const should_show_legend = $derived(
@@ -1078,31 +1080,13 @@
     return build_spatial_index(entries(), hover_radius)
   })
 
-  // X-only hover binary-searches ordered series and scans unordered ones.
-  const x_hover_series = $derived(
-    filtered_series.map((series_data) => {
-      let direction: -1 | 0 | 1 = 0
-      const { filtered_data: points } = series_data
-      for (let point_idx = 1; point_idx < points.length; point_idx++) {
-        const delta = points[point_idx].x - points[point_idx - 1].x
-        if (delta === 0) continue
-        const next_direction = delta > 0 ? 1 : -1
-        if (direction !== 0 && direction !== next_direction) {
-          return { series_data, direction: 0 as const }
-        }
-        direction = next_direction
-      }
-      return { series_data, direction }
-    }),
-  )
-
   // Nearest point along x within the hover radius, plus that x distance for the click radius
   const x_hover_candidate = (x_rel: number, y_rel: number) => {
     let best_point: InternalPoint<Metadata> | null = null
     let best_x_distance = Number.POSITIVE_INFINITY
     let best_y_distance = Number.POSITIVE_INFINITY
-    for (const { series_data, direction } of x_hover_series) {
-      const { filtered_data: points } = series_data
+    for (const series_data of filtered_series) {
+      const { filtered_data: points, x_direction: direction } = series_data
       if (points.length === 0) continue
       const project = series_projector(series_data)
       const target_x = Number(project.x_scale.invert(x_rel))
@@ -1236,15 +1220,15 @@
   const label_config_key = $derived(JSON.stringify(actual_label_config))
 
   // The solver below scans every point and reruns per pan/zoom frame (it reads the scales),
-  // so skip it entirely on plots with no auto-placed labels. Scans `series_with_ids` rather
+  // so skip it entirely on plots with no auto-placed labels. Scans `assigned_series` rather
   // than `filtered_series` on purpose: the latter is refiltered from the ranges, which would
   // put this scan back on every frame. Counting labels outside the visible range only means
   // the solver runs and filters them out itself.
-  // series and label entries can both be null: series_with_ids passes non-objects through
+  // series and label entries can both be null: assigned_series passes non-objects through
   const is_auto_placed = (label: LabelStyle | null | undefined) =>
     Boolean(label?.auto_placement && label.text)
   let has_auto_placed_labels = $derived(
-    series_with_ids.some((series_data) => {
+    assigned_series.some((series_data) => {
       const label = series_data?.point_label
       return Array.isArray(label) ? label.some(is_auto_placed) : is_auto_placed(label)
     }),
@@ -1264,11 +1248,11 @@
   // layout instead of re-solving from scratch. A plain Map, not SvelteMap: the effect below
   // both reads and writes it, and tracking that would re-trigger the effect forever.
   const label_offsets = new Map<string, Point2D>()
-  let previous_label_series: typeof series_with_ids | undefined
+  let previous_label_series: typeof assigned_series | undefined
   let previous_label_config: string | undefined
 
   $effect(() => {
-    const label_series = series_with_ids
+    const label_series = assigned_series
     const label_config = actual_label_config
     const config_key = label_config_key
     if (label_series !== previous_label_series || config_key !== previous_label_config) {
@@ -1294,7 +1278,7 @@
   function construct_handler_props(
     point: InternalPoint<Metadata>,
   ): ScatterHandlerProps<Metadata> | null {
-    const hovered_series = series_with_ids[point.series_idx]
+    const hovered_series = assigned_series[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
     const [cx, cy] = series_projector(hovered_series).point(point)
@@ -1329,12 +1313,12 @@
   function point_accessible_label(point: InternalPoint<Metadata>): string {
     const metadata_label = point.metadata?.[`aria_label`]
     if (typeof metadata_label === `string`) return metadata_label
-    const series_label = series_with_ids[point.series_idx]?.label
+    const series_label = assigned_series[point.series_idx]?.label
     return `Select ${series_label ?? `series ${point.series_idx + 1}`} point ${point.point_idx + 1}`
   }
 
   function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {
-    event.stopPropagation()
+    if (points_interactive) event.stopPropagation()
     point_events?.onclick?.({ point, event })
     const props = construct_handler_props(point)
     tooltip_point = point
@@ -1343,7 +1327,7 @@
 
   let handler_props = $derived(tooltip_point ? construct_handler_props(tooltip_point) : null)
 
-  let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
+  let has_multiple_series = $derived(assigned_series.filter(Boolean).length > 1)
 
   // Precompute non-click event names from point_events so we don't rebuild
   // the entries array on every point render.
@@ -1491,24 +1475,6 @@
     ],
   })
 
-  const axis_state: AxisChangeState<DataSeries<Metadata>> = {
-    axes: {
-      x: { get: () => x_axis, set: (config) => (x_axis = config) },
-      x2: { get: () => x2_axis, set: (config) => (x2_axis = config) },
-      y: { get: () => y_axis, set: (config) => (y_axis = config) },
-      y2: { get: () => y2_axis, set: (config) => (y2_axis = config) },
-    },
-    series: { get: () => series, set: (next) => (series_in = next) },
-    loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
-  }
-
-  const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
-    data_loader,
-    on_axis_change,
-    on_error,
-  }))
-  $effect(try_auto_load)
-
   // === Export ===
   const csv_series = () =>
     filtered_series.map((series_data, series_idx) => ({
@@ -1568,6 +1534,7 @@
   bind:fullscreen
   bind:wrapper
   {fullscreen_toggle}
+  {show_controls}
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
@@ -1604,7 +1571,7 @@
       show_baseline={false}
       unit_on_first_tick
       {axis_loading}
-      on_axis_change={handle_axis_change}
+      {on_axis_change}
     />
 
     {#if current_x_value != null}
@@ -1745,7 +1712,7 @@
                   selected_keys.has(roving_key(point.series_idx, point.point_idx))}
                 leader_line_threshold={actual_label_config.leader_line_threshold}
                 overlay_only={use_canvas_markers &&
-                  !needs_static_svg_overlay(point, selected_point)}
+                  !needs_static_svg_overlay(point, selected_point, selected_keys)}
                 style={{
                   symbol_type: appearance.symbol_type,
                   ...point.point_style,
@@ -1803,7 +1770,7 @@
       {@const { point_label, series_idx } = tooltip_point}
       {@const tooltip_bg_color = pick_tooltip_bg(
         tooltip_point,
-        series_with_ids[series_idx],
+        assigned_series[series_idx],
         color_scale_fn,
       )}
       <!-- avoid_cursor off: the anchor is the projected point, not the pointer -->
@@ -1835,31 +1802,29 @@
       </PlotTooltip>
     {/if}
 
-    {#if show_controls}
-      <ScatterPlotControls
-        on_export={handle_export}
-        toggle_props={controls_toggle_props}
-        pane_props={controls_pane_props}
-        bind:show_controls
-        bind:controls_open
-        bind:x_axis
-        bind:x2_axis
-        bind:y_axis
-        bind:y2_axis
-        bind:display
-        bind:styles
-        auto_x_range={intrinsic_ranges.x}
-        auto_x2_range={intrinsic_ranges.x2}
-        auto_y_range={intrinsic_ranges.y}
-        auto_y2_range={intrinsic_ranges.y2}
-        bind:selected_series_idx
-        series={series_with_ids}
-        {has_x2_points}
-        {has_y2_points}
-        children={controls_extra}
-        on_touch={(key, is_touched) => (is_touched ? touched.add(key) : touched.delete(key))}
-      />
-    {/if}
+    <ScatterPlotControls
+      on_export={handle_export}
+      toggle_props={controls_toggle_props}
+      pane_props={controls_pane_props}
+      bind:show_controls
+      bind:controls_open
+      bind:x_axis
+      bind:x2_axis
+      bind:y_axis
+      bind:y2_axis
+      bind:display
+      bind:styles
+      auto_x_range={intrinsic_ranges.x}
+      auto_x2_range={intrinsic_ranges.x2}
+      auto_y_range={intrinsic_ranges.y}
+      auto_y2_range={intrinsic_ranges.y2}
+      bind:selected_series_idx
+      series={assigned_series}
+      {has_x2_points}
+      {has_y2_points}
+      children={controls_extra}
+      on_touch={(key, is_touched) => (is_touched ? touched.add(key) : touched.delete(key))}
+    />
 
     {#if width > 0 && height > 0 && color_bar && has_color_values}
       {@const color_domain = [
@@ -1886,7 +1851,7 @@
       {frame}
       {legend}
       series_data={legend_data}
-      active_series_idx={tooltip_point?.series_idx ?? frame.hovered_series_idx}
+      active_series_idx={active_legend_idx}
       active_fill_idx={computed_fills.find((fill) => fill.hover_key === hovered_fill_key)
         ?.idx ?? null}
       on_toggle={legend_vis.on_toggle}

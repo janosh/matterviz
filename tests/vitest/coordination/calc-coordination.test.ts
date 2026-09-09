@@ -1,7 +1,7 @@
 // to_structure_entries and its two types are imported from the package ROOT on purpose: they
 // are the headline prop type of CoordinationBarPlot and BondAnglePlot, and the rest of
 // $lib/plot/core is deliberately not published.
-import { to_structure_entries } from '$lib'
+import { to_structure_entries } from '$lib/plot/core/structure-input'
 import { element_by_symbol } from '$lib/element/data'
 import type { StructureEntry, StructureInput } from '$lib'
 import { calc_coordination_nums, CoordinationBarPlot } from '$lib/coordination'

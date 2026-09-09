@@ -319,6 +319,23 @@ test.describe(`Structure Component Tests`, () => {
     await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 200 }))
   })
 
+  test(`an explicit origin camera pose is not auto-fitted`, async ({ page }) => {
+    await set_scene_props(page, {
+      camera_position: [0, 0, 0],
+      camera_target: [0, 0, 10],
+      rotate_speed: 0.03,
+      rotation_damping: 0,
+      auto_rotate: 0,
+    })
+    await clear_events(page)
+    // A low-sensitivity drag makes a small orbit without subpixel pointer steps.
+    await drag_canvas(structure_canvas(page), { dx: 20 })
+    const event = await wait_for_event(page, `on_camera_move`, [`camera_position`])
+    const { camera_position } = event.data as { camera_position: number[] }
+    // The small orbit stays near the supplied origin; auto-fit would place it across the cell.
+    expect(Math.hypot(...camera_position)).toBeLessThan(1)
+  })
+
   test(`invalid FOVs do not break perspective auto-placement`, async ({ page }) => {
     const perspective_fit_errors: string[] = []
     page.on(`pageerror`, ({ message }) => {
@@ -331,7 +348,7 @@ test.describe(`Structure Component Tests`, () => {
         window.dispatchEvent(
           new CustomEvent(`set-scene-props`, {
             detail: {
-              camera_position: [0, 0, 0],
+              camera_position: undefined,
               camera_projection: `perspective`,
               fov,
             },
@@ -588,7 +605,7 @@ test.describe(`File Drop Functionality Tests`, () => {
   // Synthetic DataTransfer events are unreliable in headless CI; these work locally
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Synthetic file drop events unreliable in headless CI`)
-    await goto_structure_test(page)
+    await goto_structure_test(page, `/test/structure?files=true`)
   })
 
   // Regression: commit 10477bb9 added scene_props.camera_target for comparison-view
@@ -722,16 +739,20 @@ test.describe(`Structure Event Handler Tests`, () => {
     expect(event.data).toMatchObject({ fullscreen: true })
   })
 
-  test(`should trigger on_file_load event when structure is loaded via data_url`, async ({
+  test(`should trigger on_file_load event when structure is loaded from a source URL`, async ({
     page,
   }) => {
-    // Use a valid structure file that exists in the static directory
-    await goto_structure_test(page, `/test/structure?data_url=/structures/mp-1.json`)
+    const ownership_warnings: string[] = []
+    page.on(`console`, (message) => {
+      if (message.text().includes(`ownership_invalid`)) ownership_warnings.push(message.text())
+    })
+    await goto_structure_test(page, `/test/structure?source=/structures/mp-1.json`)
     await wait_for_event(page, `on_file_load`, [`structure`, `filename`])
+    expect(ownership_warnings).toEqual([])
   })
 
   test(`should trigger on_error event when file loading fails`, async ({ page }) => {
-    await page.goto(`/test/structure?data_url=non-existent.json`)
+    await page.goto(`/test/structure?source=non-existent.json`)
     await wait_for_event(page, `on_error`, [`error_msg`, `filename`])
 
     // UI should still render gracefully despite the load failure

@@ -17,7 +17,7 @@ const parse_in_worker = vi.fn(
     filename: string,
     _is_base64: boolean,
     _options: { signal: AbortSignal },
-  ) => Promise.resolve({ type: `structure`, data: { sites: [] }, filename }),
+  ): Promise<unknown> => Promise.resolve({ type: `structure`, data: { sites: [] }, filename }),
 )
 
 vi.mock(`../src/viewer`, () => ({ create_display, parse_in_worker, unmount }))
@@ -67,35 +67,61 @@ const new_viewer = (context: ReturnType<typeof make_context>) =>
 
 beforeEach(() => vi.clearAllMocks())
 
-test(`an oversize file's error must not clobber the render that superseded it`, async () => {
-  const context = make_context(`data`, Promise.resolve())
+test.each([`x`, `€`, `😀`])(
+  `an oversize %s file's error must not clobber a newer render`,
+  async (character) => {
+    const context = make_context(`data`, Promise.resolve())
+    const viewer = new_viewer(context)
+    await vi.waitFor(() => expect(create_display).toHaveBeenCalledTimes(1))
+    expect(parse_in_worker).toHaveBeenCalledExactlyOnceWith(
+      `data`,
+      `Li2O.cif`,
+      false,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+
+    // Size guard unmounts before writing its error.
+    context.set_content(
+      character.repeat(
+        Math.floor(MAX_PARSE_BYTES / new TextEncoder().encode(character).length) + 1,
+      ),
+    )
+    await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(1))
+
+    // Newer render wins while that unmount is still in flight.
+    context.set_content(`data`)
+    await vi.waitFor(() => expect(create_display).toHaveBeenCalledTimes(2))
+
+    finish_unmount()
+    await Promise.resolve()
+
+    expect(viewer.node.querySelector(`.mv-file-viewer-error`)).toBeNull()
+    expect(viewer.node.textContent).toBe(`mounted`)
+    // The oversize revision never reached the parser; disposing aborts the last parse
+    expect(parse_in_worker).toHaveBeenCalledTimes(2)
+    const last_signal = parse_in_worker.mock.calls.at(-1)?.[3]?.signal
+    viewer.dispose()
+    expect(last_signal?.aborted).toBe(true)
+  },
+)
+
+test(`base64 padding does not push an exactly-at-limit file over the cap`, async () => {
+  // 100 MiB leaves one byte in the final base64 quartet (two padding characters).
+  const content = `A`.repeat(Math.ceil(MAX_PARSE_BYTES / 3) * 4 - 2) + `==`
+  const context = make_context(content, Promise.resolve())
+  context.contentsModel.format = `base64`
   const viewer = new_viewer(context)
-  await vi.waitFor(() => expect(create_display).toHaveBeenCalledTimes(1))
-  expect(parse_in_worker).toHaveBeenCalledExactlyOnceWith(
-    `data`,
-    `Li2O.cif`,
-    false,
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
-  )
-
-  // Size guard unmounts before writing its error.
-  context.set_content(`x`.repeat(MAX_PARSE_BYTES + 1))
-  await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(1))
-
-  // Newer render wins while that unmount is still in flight.
-  context.set_content(`data`)
-  await vi.waitFor(() => expect(create_display).toHaveBeenCalledTimes(2))
-
-  finish_unmount()
-  await Promise.resolve()
-
-  expect(viewer.node.querySelector(`.mv-file-viewer-error`)).toBeNull()
-  expect(viewer.node.textContent).toBe(`mounted`)
-  // The oversize revision never reached the parser; disposing aborts the last parse
-  expect(parse_in_worker).toHaveBeenCalledTimes(2)
-  const last_signal = parse_in_worker.mock.calls.at(-1)?.[3]?.signal
-  viewer.dispose()
-  expect(last_signal?.aborted).toBe(true)
+  try {
+    await vi.waitFor(() => expect(create_display).toHaveBeenCalledOnce())
+    expect(parse_in_worker).toHaveBeenCalledExactlyOnceWith(
+      content,
+      `Li2O.cif`,
+      true,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  } finally {
+    viewer.dispose()
+  }
 })
 
 test(`a context that fails to become ready reports the failure`, async () => {
@@ -108,4 +134,31 @@ test(`a context that fails to become ready reports the failure`, async () => {
   expect(viewer.node.textContent).toContain(`Cannot display Li2O.cif`)
   expect(viewer.node.textContent).toContain(`File not found`)
   expect(create_display).not.toHaveBeenCalled()
+  viewer.dispose()
 })
+
+test.each([`superseded`, `disposed`, `mount failure`] as const)(
+  `releases an unmounted trajectory after %s`,
+  async (reason) => {
+    const pending = Promise.withResolvers<unknown>()
+    parse_in_worker.mockReturnValueOnce(pending.promise)
+    const context = make_context(`data`, Promise.resolve())
+    const viewer = new_viewer(context)
+    await vi.waitFor(() => expect(parse_in_worker).toHaveBeenCalledOnce())
+    if (reason === `disposed`) viewer.dispose()
+    else if (reason === `superseded`) {
+      context.set_content(`new data`)
+      await vi.waitFor(() => expect(create_display).toHaveBeenCalledOnce())
+    } else {
+      create_display.mockImplementationOnce(() => {
+        throw new Error(`mount failed`)
+      })
+    }
+    const dispose = vi.fn()
+    pending.resolve({ type: `trajectory`, data: { dispose }, filename: `movie.xyz` })
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+    expect(create_display).toHaveBeenCalledTimes(reason === `disposed` ? 0 : 1)
+    viewer.dispose()
+    finish_unmount()
+  },
+)

@@ -3,8 +3,16 @@ import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
 import { type BandGridJson, normalize_fermi_surface } from '$lib/fermi-surface/parse'
 import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
-import { bind_props, create_drop_event, IDENTITY_MATRIX3, make_bxsf } from '../setup'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import {
+  bind_props,
+  mock_parse_worker,
+  create_drop_event,
+  IDENTITY_MATRIX3,
+  make_bxsf,
+} from '../setup'
+
+beforeEach(mock_parse_worker)
 
 const mounted: ReturnType<typeof mount>[] = []
 
@@ -59,28 +67,31 @@ test(`built-in drops load typed Fermi surface data and provenance`, async () => 
 // Extracting a surface from a URL-loaded grid stores a new fermi_data. A bound parent hands
 // back a proxy of it, so claiming the raw result left the loader reading the proxy as
 // caller-supplied: it dropped the URL and never fetched the next one.
-test(`a second data_url still loads after re-extraction with a bound fermi_data`, async () => {
-  vi.useFakeTimers({
-    toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
-  })
-  vi.spyOn(globalThis, `fetch`).mockImplementation(() =>
-    Promise.resolve(new Response(make_bxsf(6))),
-  )
-  const on_file_load = vi.fn()
-  const props = $state({
-    data_url: `http://x/a.bxsf`,
-    fermi_data: undefined as FermiSurfaceData | undefined,
-    on_file_load,
-  })
-  mounted.push(mount(FermiSurface, { target: document.body, props }))
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-  await vi.advanceTimersByTimeAsync(300) // extraction debounce + paint ticks
-  expect(props.fermi_data?.isosurfaces.length).toBeGreaterThan(0)
+test.each([`http://x/a.bxsf`, new URL(`http://x/a.bxsf`)])(
+  `a second source still loads after re-extraction with a bound fermi_data (%s)`,
+  async (source) => {
+    vi.useFakeTimers({
+      toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
+    })
+    vi.spyOn(globalThis, `fetch`).mockImplementation(() =>
+      Promise.resolve(new Response(make_bxsf(6))),
+    )
+    const on_file_load = vi.fn()
+    const props = $state({
+      source,
+      fermi_data: undefined as FermiSurfaceData | undefined,
+      on_file_load,
+    })
+    mounted.push(mount(FermiSurface, { target: document.body, props }))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    await vi.advanceTimersByTimeAsync(300) // extraction debounce + paint ticks
+    expect(props.fermi_data?.isosurfaces.length).toBeGreaterThan(0)
 
-  props.data_url = `http://x/b.bxsf`
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
-  expect(on_file_load.mock.calls[1][0].filename).toBe(`b.bxsf`)
-})
+    props.source = `http://x/b.bxsf`
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+    expect(on_file_load.mock.calls[1][0].filename).toBe(`b.bxsf`)
+  },
+)
 
 test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`, async () => {
   // Faking rAF too keeps the extraction's yield-to-paint tick on the fake clock, so the test

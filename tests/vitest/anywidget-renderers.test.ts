@@ -32,7 +32,7 @@ vi.mock(`matterviz`, async () => {
     `ScatterPlot3D`,
     `SpacegroupBarPlot`,
     `Structure`,
-    `TrajectoryFileViewer`,
+    `Trajectory`,
     `Treemap`,
     `XrdPlot`,
   ]
@@ -327,7 +327,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
 })
 
 describe(`widget config wiring`, () => {
-  test(`trajectory builds a run from the JSON trait and feeds data_url to the file viewer as src`, () => {
+  test(`trajectory builds a run from the JSON trait and feeds data_url to the file viewer as source`, () => {
     const payload = { frames: [{ step: 0, structure: { sites: [] } }] }
     const model = new MockModel({
       widget_type: `trajectory`,
@@ -336,7 +336,7 @@ describe(`widget config wiring`, () => {
     })
     const stub = run_widget(`trajectory`, model)
     expect(stub.read().trajectory).toEqual({ run_of: payload })
-    expect(stub.read().src).toBe(`/a.xyz`)
+    expect(stub.read().source).toBe(`/a.xyz`)
     expect(`data_url` in stub.read()).toBe(false)
     model.push_from_python(`trajectory`, null)
     flushSync()
@@ -371,8 +371,9 @@ describe(`widget config wiring`, () => {
 
   test.each([
     [`trajectory`, `property_labels`, { energy: `Energy (eV)` }],
-    [`band_structure`, `band_structs`, { branches: [] }],
-    [`dos`, `doses`, { energies: [] }],
+    [`band_structure`, `band_structs`, { sample: { type: `phonon`, branches: [] } }],
+    [`dos`, `doses`, { sample: { type: `electronic`, energies: [], densities: [] } }],
+    [`bands_and_dos`, `fermi_level`, 0],
     [`periodic_table`, `log`, true],
     [`heatmap_matrix`, `log`, true],
   ] as const)(`%s forwards %s directly`, (widget_type, prop, value) => {
@@ -428,7 +429,6 @@ describe(`widget config wiring`, () => {
   test(`bands_and_dos forwards controls into both child prop bags`, () => {
     const model = new MockModel({
       widget_type: `bands_and_dos`,
-      band_type: `line`,
       show_legend: false,
       show_controls: false,
       controls_open: true,
@@ -443,7 +443,6 @@ describe(`widget config wiring`, () => {
       controls_pane_props: { style: `width: 20rem` },
     }
     expect(stub.read().bands_props).toEqual({
-      band_type: `line`,
       show_legend: false,
       ...controls,
     })
@@ -459,7 +458,7 @@ describe(`writeback wiring`, () => {
   test.each([
     [`structure`, `selected_sites`, [], [3], [5, 6]],
     [`structure`, `hovered_site_idx`, null, 2, 9],
-    [`structure`, `active_volume_idx`, 0, 2, 1],
+    [`structure`, `active_volume_id`, null, `potential`, `spin`],
     [`structure`, `display_mode`, `structure`, `slice`, `structure`],
     [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
     [`trajectory`, `current_step_idx`, 0, 7, 3],

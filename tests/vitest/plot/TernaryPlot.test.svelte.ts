@@ -1,4 +1,4 @@
-import { TernaryPlot } from '$lib'
+import TernaryPlot from '$lib/plot/ternary/TernaryPlot.svelte'
 import type { TernaryPointProps, TernarySeries } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -226,19 +226,32 @@ describe(`TernaryPlot`, () => {
     expect(plot.querySelector(`.legend-item line`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
   })
 
-  test(`legend toggles write visible into the bound series and yield to host changes`, async () => {
-    const bound = $state({ series: series.map((srs) => ({ ...srs })) })
-    const plot = await mount_ternary(bind_props({}, bound))
+  test(`legend toggles update separate visibility state`, async () => {
+    const bound = $state({
+      series: series.map((srs) => ({ ...srs })),
+      hidden_series: [] as (string | number)[],
+    })
+    const on_toggle = vi.fn(() => expect(bound.hidden_series).toEqual([0]))
+    const on_double_click = vi.fn(() => expect(bound.hidden_series).toEqual([1]))
+    const plot = await mount_ternary(
+      bind_props({ legend: { on_toggle, on_double_click } }, bound),
+    )
     expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
     plot.querySelector<HTMLElement>(`.legend-item`)?.click() // hide Oxides
     await tick()
-    expect(bound.series[0].visible).toBe(false)
+    expect(bound.series[0].visible).toBeUndefined()
+    expect(bound.hidden_series).toEqual([0])
+    expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
     expect(markers(plot)).toHaveLength(2)
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1) // Path keeps its line
+    plot
+      .querySelector<HTMLElement>(`.legend-item`)
+      ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await tick()
+    expect(on_double_click).toHaveBeenCalledExactlyOnceWith(0)
+    expect(markers(plot)).toHaveLength(3)
     // the host overrides the toggle
-    bound.series = bound.series.map((srs, idx) =>
-      idx === 0 ? { ...srs, visible: true } : srs,
-    )
+    bound.hidden_series = []
     await tick()
     expect(markers(plot)).toHaveLength(5)
   })

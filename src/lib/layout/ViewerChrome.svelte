@@ -39,23 +39,22 @@
   class={[`control-buttons`, controls_config.class, rest.class]}
   style={[rest.style, controls_config.style].filter(Boolean).join(`; `)}
 >
-  {#if controls_config.mode !== `never`}
-    {#if filename && controls_config.visible(`filename`)}
-      <span class="filename">{filename}</span>
-    {/if}
-
-    {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <FullscreenButton
-        bind:fullscreen
-        {wrapper}
-        bg_css_var={fullscreen_bg_css_var}
-        on_change={on_fullscreen_change}
-        {...tooltip_attachment}
-      />
-    {/if}
-
-    {@render children?.()}
+  {#if filename && controls_config.visible(`filename`)}
+    <span class="filename">{filename}</span>
   {/if}
+
+  {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
+    <FullscreenButton
+      bind:fullscreen
+      hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
+      {wrapper}
+      bg_css_var={fullscreen_bg_css_var}
+      on_change={on_fullscreen_change}
+      {...tooltip_attachment}
+    />
+  {/if}
+
+  {#if controls_config.mode !== `never`}{@render children?.()}{/if}
 </section>
 
 <style>

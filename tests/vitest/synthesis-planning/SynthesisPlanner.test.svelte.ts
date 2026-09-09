@@ -165,6 +165,7 @@ test(`target changes ignore stale responses and unmount aborts pending work befo
   const stale_request = stub.posted[0].message
   state.target = `BaCO3`
   await vi.waitFor(() => expect(stub.posted).toHaveLength(2))
+  expect(stub.instances.map((worker) => worker.terminated)).toEqual([1, 0])
   stale_worker.emit(`message`, {
     data: { id: stale_request.id, result: plan_synthesis(stale_request.input) },
   })
@@ -173,7 +174,7 @@ test(`target changes ignore stale responses and unmount aborts pending work befo
   expect(state.planning).toBe(true)
 
   await unmount(component)
-  expect(stub.instances.map((worker) => worker.terminated)).toEqual([1, 1, 1])
+  expect(stub.instances.map((worker) => worker.terminated)).toEqual([1, 1])
 })
 
 test(`experiment cards edit and copy each firing without losing quantities or assumptions`, async () => {

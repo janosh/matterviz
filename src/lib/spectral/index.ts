@@ -1,3 +1,8 @@
+import type { ComponentProps } from 'svelte'
+import type { ScatterPlotOptions } from '$lib/plot'
+import type Bands from './Bands.svelte'
+import type Dos from './Dos.svelte'
+
 // Spectral visualization components (band structure, density of states, etc.)
 
 export { default as Bands } from './Bands.svelte'
@@ -19,3 +24,32 @@ export * from './thermal'
 export * from './trajectory-spectroscopy'
 export { compute_trajectory_spectroscopy_async } from './trajectory-spectroscopy-async.svelte'
 export type * from './types'
+
+// Paired viewers own data, hover markers and synchronized view state.
+type SpectralPlotOptions = Omit<
+  ScatterPlotOptions,
+  'view' | 'resolved_padding' | 'tooltip' | 'controls_extra' | 'children'
+>
+export type BandsOptions = SpectralPlotOptions &
+  Pick<
+    ComponentProps<typeof Bands>,
+    | 'line_kwargs'
+    | 'path_mode'
+    | 'ribbon_config'
+    | 'band_spin_mode'
+    | 'highlight_regions'
+    | 'shade_imaginary_modes'
+    | 'show_gap_annotation'
+    | 'bz_popup_props'
+  >
+export type DosOptions = SpectralPlotOptions &
+  Pick<
+    ComponentProps<typeof Dos>,
+    | 'stack'
+    | 'sigma'
+    | 'normalize'
+    | 'spin_mode'
+    | 'show_normalize_control'
+    | 'show_units_control'
+    | 'sigma_range'
+  >

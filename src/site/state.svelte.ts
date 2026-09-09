@@ -52,7 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: `Electronic & Phonons`, href: `/electronic`, prefixes: [`/reciprocal`] },
   { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
   { label: `Plots`, href: `/plot`, prefixes: [`/plot`] },
-  { label: `Guides`, href: `/guides`, prefixes: [`/how-to`, `/acknowledgements`] },
+  { label: `Guides`, href: `/guides`, prefixes: [`/guides`, `/how-to`, `/acknowledgements`] },
 ]
 
 // Routes that exist but stay out of the dropdowns: the layout adds `/` as Home itself, the

@@ -3,15 +3,15 @@
 // and the component only wires these to events and markup.
 import { HTML_TAG_SRC, normalize_unicode_minus, strip_html } from '$lib/utils'
 import { fuzzy_match } from 'svelte-widgets/utils'
-import type { CellVal, ColumnFilter, DateTimeFormatMode, Label, RowData } from './index'
+import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from './index'
 
 // Columns discovered from the first rows when the caller passes none
-export const discover_columns = (rows: RowData[]): Label[] => {
+export const discover_columns = <Row extends object>(rows: Row[]): Column<Row>[] => {
   const seen = new Set<string>()
   for (const row of rows.slice(0, 50)) {
     for (const key of Object.keys(row)) if (key !== `style` && key !== `class`) seen.add(key)
   }
-  return [...seen].map((key) => ({ label: key }))
+  return [...seen].map((key) => ({ id: key as Extract<keyof Row, string>, label: key }))
 }
 
 // Head and tail of a long cell string for a middle ellipsis, split on graphemes so combining
@@ -61,8 +61,7 @@ const get_data_sort_value = (val: string): string | null => {
 const parse_numeric_string = (val: string): number | null => {
   const numeric_str = NUMERIC_WITH_ERROR_RE.exec(val)?.[1] ?? val
   if (numeric_str.trim() === ``) return null
-  const num = Number(normalize_unicode_minus(numeric_str))
-  return Number.isNaN(num) ? null : num
+  return Number(normalize_unicode_minus(numeric_str))
 }
 
 // The one numeric reading of a cell: an explicit data-sort-value wins, then the visible
@@ -96,7 +95,12 @@ const sort_collator = new Intl.Collator(undefined, { numeric: true, sensitivity:
 
 // Comparator over row keys: invalid values sink to the bottom regardless of direction,
 // numbers sort before strings, strings compare natural-order and case-insensitively.
-export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriterion[]): number {
+function compare_row_values(
+  row1: RowData,
+  row2: RowData,
+  criteria: SortCriterion[],
+  sort_value: (val: CellVal) => string | number,
+): number {
   for (const { key, ascending } of criteria) {
     const val1 = row1[key]
     const val2 = row2[key]
@@ -107,8 +111,8 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
     // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
     if (invalid1 && invalid2) continue
     if (invalid1 || invalid2) return Number(invalid1) - Number(invalid2)
-    const sort_val1 = get_sort_val(val1)
-    const sort_val2 = get_sort_val(val2)
+    const sort_val1 = sort_value(val1)
+    const sort_val2 = sort_value(val2)
     const modifier = ascending ? 1 : -1
     if (typeof sort_val1 === `string` && typeof sort_val2 === `string`) {
       const cmp = sort_collator.compare(sort_val1, sort_val2)
@@ -123,7 +127,32 @@ export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriteri
   return 0
 }
 
+export const compare_rows = (
+  row1: RowData,
+  row2: RowData,
+  criteria: SortCriterion[],
+): number => compare_row_values(row1, row2, criteria, get_sort_val)
+
+// Parse each distinct cell once per sort, not on every O(n log n) comparison. The cache is
+// local to this operation, so edits to rows, objects and Dates are read on the next sort.
+export function sort_table_rows<Row extends RowData>(
+  rows: Row[],
+  criteria: SortCriterion[],
+): Row[] {
+  const values = new Map<CellVal, string | number>()
+  const sort_value = (val: CellVal): string | number => {
+    if (typeof val === `number`) return get_sort_val(val)
+    let parsed = values.get(val)
+    if (parsed === undefined) values.set(val, (parsed = get_sort_val(val)))
+    return parsed
+  }
+  return rows.toSorted((row1, row2) => compare_row_values(row1, row2, criteria, sort_value))
+}
+
 // === Search and per-column filters ===
+
+export const text_matches_query = (text: string, query: string, fuzzy = false): boolean =>
+  text.includes(query) || (fuzzy && fuzzy_match(query, text))
 
 // Case-insensitive substring (optionally subsequence, e.g. "mdla" matches "Model A") match of
 // a lower-cased query against the row's values, or only the given keys.
@@ -135,7 +164,7 @@ export const row_matches_query = (
   (keys ? keys.map((key) => row[key]) : Object.values(row)).some((val) => {
     if (val == null) return false
     const clean_val = cell_text(val).toLowerCase()
-    return clean_val.includes(query) || (fuzzy && fuzzy_match(query, clean_val))
+    return text_matches_query(clean_val, query, fuzzy)
   })
 
 export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {
@@ -160,7 +189,7 @@ type FilterPanel = { kind: `numeric` | `category` | `text`; options: string[] }
 // The cap applies only to auto-detection: an explicit `category` column must list them all
 // or its checklist renders empty.
 export function column_filter_panel(
-  col: Label,
+  col: Omit<Column, `cell`>,
   rows: RowData[],
   row_key: string,
   is_numeric: boolean,
@@ -239,13 +268,21 @@ const is_date_only_string = (val: unknown): boolean =>
 
 const parse_datetime_string = (val: string): number | null => {
   const clean = strip_html(val).trim()
-  const date_only = DATE_ONLY_RE.exec(clean)?.groups
-  // built as local midnight, where Date.parse would read a bare date as UTC
-  if (date_only) {
-    const { year, month, day } = date_only
-    return new Date(Number(year), Number(month) - 1, Number(day)).getTime()
-  }
   if (!DATE_TIME_RE.test(clean)) return null
+  const [year, month, day] = clean.slice(0, 10).split(`-`).map(Number)
+  // Date constructors normalize impossible dates (February 30 becomes March 1) and the
+  // multi-argument form maps years 00–99 to 1900–1999. Validate the calendar date explicitly.
+  const calendar = new Date(0)
+  calendar.setFullYear(year, month - 1, day)
+  calendar.setHours(0, 0, 0, 0)
+  if (
+    calendar.getFullYear() !== year ||
+    calendar.getMonth() !== month - 1 ||
+    calendar.getDate() !== day
+  )
+    return null
+  // Bare dates denote local midnight; Date.parse would interpret them as UTC.
+  if (DATE_ONLY_RE.test(clean)) return calendar.getTime()
   const parsed = Date.parse(
     clean.replace(` `, `T`).replace(/\.(?<millis>\d{3})\d+/, `.$<millis>`),
   )
@@ -254,7 +291,7 @@ const parse_datetime_string = (val: string): number | null => {
 
 // Epoch milliseconds for a cell, or null when it isn't a date. Numbers and numeric strings
 // only count as timestamps in columns that declare a datetime format.
-export const parse_datetime_val = (val: CellVal, col: Label): number | null => {
+export const parse_datetime_val = (val: CellVal, col: Omit<Column, `cell`>): number | null => {
   if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
   if (typeof val === `number`) {
     return col.datetime_format ? normalize_timestamp(val) : null
@@ -270,14 +307,18 @@ export const parse_datetime_val = (val: CellVal, col: Label): number | null => {
 // A column's date/time kind from its config, else from a sample of its values: a single
 // value carrying a time of day makes it a datetime column; bare dates only settle it if
 // nothing richer turns up in the sample.
-export function infer_datetime_kind(col: Label, sample: CellVal[]): DateTimeColumnKind | null {
+export function infer_datetime_kind(
+  col: Omit<Column, `cell`>,
+  sample: CellVal[],
+): DateTimeColumnKind | null {
   if (col.datetime_format === `date`) return `date`
   if (col.datetime_format === `time`) return `time`
   if (col.datetime_format) return `datetime`
   let has_date_value = false
   for (const val of sample) {
+    if (parse_datetime_val(val, col) === null) continue
     if (is_date_only_string(val)) has_date_value = true
-    else if (parse_datetime_val(val, col) !== null) return `datetime`
+    else return `datetime`
   }
   return has_date_value ? `date` : null
 }

@@ -14,7 +14,7 @@ export const resolve_from_importer = (clean: string, importer?: string): string 
   importer ? resolve(dirname(split_query(importer)[0]), clean) : clean
 
 // Transparently import .json.gz files as ES modules.
-// Query-aware mode leaves ?raw and ?url to peer plugins and resolves bare importer paths.
+// Query-aware mode leaves ?raw and ?url to peer plugins and resolves relative importer paths.
 export function vite_plugin_json_gz({
   resolve_queries = false,
 }: { resolve_queries?: boolean } = {}): Plugin {
@@ -33,6 +33,9 @@ export function vite_plugin_json_gz({
     },
     resolveId: resolve_queries
       ? (source, importer) => {
+          // Vite URLs (/src/..., /@fs/...) must go through Vite's resolver, including when
+          // Vitest restores an importing module from its filesystem cache.
+          if (!is_build && (!source.startsWith(`.`) || !importer)) return null
           const clean = claim(source)
           return clean ? resolve_from_importer(clean, importer) : null
         }

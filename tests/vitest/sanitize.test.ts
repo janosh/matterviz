@@ -5,7 +5,7 @@ import {
   sanitize_html,
   sanitize_html_ssr,
   sanitize_svg,
-} from '$lib'
+} from '$lib/sanitize'
 import type * as Sanitize from '$lib/sanitize'
 import DOMPurify from 'dompurify'
 import { describe, expect, test, vi } from 'vitest'

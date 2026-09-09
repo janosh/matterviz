@@ -1,4 +1,5 @@
-import { Sankey } from '$lib'
+import type { ShowControlsProp } from '$lib/controls'
+import Sankey from '$lib/plot/sankey/Sankey.svelte'
 import { plot_color } from '$lib/colors'
 import type { SankeyData, SankeyLinkHandlerProps, SankeyNodeHandlerProps } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
@@ -26,6 +27,32 @@ const mount_sized_sankey = (
   mount_sized(Sankey, props, { selector: `.sankey`, width: 500, height: 360 })
 
 describe(`Sankey`, () => {
+  test.each([
+    [`never`, false, false],
+    [{ hidden: [`controls`] }, false, true],
+    [{ mode: `always`, hidden: [`fullscreen`] }, true, false],
+  ] satisfies [ShowControlsProp<`controls` | `fullscreen`>, boolean, boolean][])(
+    `shared controls %j`,
+    async (show_controls, controls, fullscreen) => {
+      const plot = await mount_sized_sankey({ data, show_controls })
+      expect(Boolean(plot.querySelector(`.control-pane-toggle`))).toBe(controls)
+      expect(Boolean(plot.querySelector(`.fullscreen-btn`))).toBe(fullscreen)
+    },
+  )
+
+  test(`chrome owns mode and style without applying either twice`, async () => {
+    const plot = await mount_sized_sankey({
+      data,
+      show_controls: { mode: `hover`, style: `opacity: 0.5` },
+    })
+    const row = plot.querySelector<HTMLElement>(`.header-controls`)
+    const toggle = plot.querySelector<HTMLElement>(`.control-pane-toggle`)
+    expect(row?.classList.contains(`hover-visible`)).toBe(true)
+    expect(row?.style.opacity).toBe(`0.5`)
+    expect(toggle?.classList.contains(`always-visible`)).toBe(true)
+    expect(toggle?.style.opacity).toBe(``)
+  })
+
   test.each([`horizontal`, `vertical`] as const)(
     `renders one rect per node and one path per link (%s)`,
     async (orientation) => {

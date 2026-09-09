@@ -9,7 +9,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { marker_path_data } from './canvas-draw'
   import { get_entry_category } from './helpers'
-  import type { EnergyModeInfo, EnergySourceMode } from './hull-state.svelte'
+  import type { EnergyModeInfo, EnergySourceMode } from './model'
   import type {
     ConvexHullControlsType,
     ConvexHullEntry,
@@ -60,7 +60,7 @@
     energy_info,
     stable_entries,
     unstable_entries,
-    camera,
+    camera = $bindable(),
     merged_controls,
     controls_open = $bindable(false),
     toggle_props = {},

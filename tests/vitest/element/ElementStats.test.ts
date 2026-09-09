@@ -1,4 +1,5 @@
-import { element_data, ElementStats } from '$lib'
+import element_data from '$lib/element/data'
+import ElementStats from '$lib/element/ElementStats.svelte'
 import { format_num } from '$lib/labels'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'

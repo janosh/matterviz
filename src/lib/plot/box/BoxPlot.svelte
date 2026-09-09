@@ -103,7 +103,8 @@
   type BoxHover = BoxHandlerProps<Metadata> & { cx: number; cy: number }
 
   let {
-    series: series_in = $bindable([]),
+    series: series_in = [],
+    hidden_series = $bindable(),
     orientation = $bindable(`vertical`),
     x_axis = $bindable({}),
     x2_axis: x2_axis_prop = $bindable({}),
@@ -142,7 +143,7 @@
     ref_lines = $bindable([]),
     on_ref_line_click,
     on_ref_line_hover,
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -158,7 +159,8 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
-      series?: BoxPlotSeries<Metadata>[]
+      hidden_series?: readonly (string | number)[]
+      series?: readonly BoxPlotSeries<Metadata>[]
       orientation?: Orientation
       legend?: LegendConfig | null
       show_legend?: boolean
@@ -200,10 +202,11 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write back into the bindable series prop; see create_legend_visibility
+  // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
     () => series,
-    (next) => (series_in = next),
+    () => hidden_series,
+    (next) => (hidden_series = next),
   )
   let series: BoxPlotSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
@@ -484,8 +487,8 @@
         color: box_color(box_item.idx),
         label: box_item.series.label,
         visible: true,
-        x_axis: vertical ? `x1` : secondary ? `x2` : `x1`,
-        y_axis: vertical ? (secondary ? `y2` : `y1`) : `y1`,
+        x_axis: vertical ? `x` : secondary ? `x2` : `x`,
+        y_axis: vertical ? (secondary ? `y2` : `y`) : `y`,
       }
     }),
   )
@@ -530,8 +533,8 @@
     const v_hi = val_scale(box_item.stats.whisker_high)
     const v_lo = val_scale(box_item.stats.whisker_low)
     const [cx, cy] = vertical ? [cc, Math.min(v_hi, v_lo)] : [Math.max(v_hi, v_lo), cc]
-    const active_y_axis = (vertical ? (box_item.series.y_axis ?? `y1`) : `y1`) as `y1` | `y2`
-    const active_x_axis = (vertical ? `x1` : (box_item.series.x_axis ?? `x1`)) as `x1` | `x2`
+    const active_y_axis = (vertical ? (box_item.series.y_axis ?? `y`) : `y`) as `y` | `y2`
+    const active_x_axis = (vertical ? `x` : (box_item.series.x_axis ?? `x`)) as `x` | `x2`
     return {
       x: vertical ? box_item.slot : box_item.stats.median,
       y: vertical ? box_item.stats.median : box_item.slot,
@@ -646,6 +649,7 @@
   aria_label="Box plot"
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_leave={() => {
@@ -918,32 +922,30 @@
       </PlotTooltip>
     {/if}
 
-    {#if show_controls}
-      <BoxPlotControls
-        on_export={handle_export}
-        toggle_props={controls_toggle_props}
-        pane_props={controls_pane_props}
-        bind:show_controls
-        bind:controls_open
-        bind:orientation
-        bind:whisker_mode
-        bind:show_outliers
-        bind:show_mean
-        bind:kind
-        bind:side
-        bind:x_axis
-        bind:x2_axis={x2_axis_prop}
-        bind:y_axis
-        bind:y2_axis={y2_axis_prop}
-        bind:display
-        auto_x_range={auto_ranges.x}
-        auto_x2_range={auto_ranges.x2}
-        auto_y_range={auto_ranges.y}
-        auto_y2_range={auto_ranges.y2}
-        has_x2_points={show_x2}
-        has_y2_points={show_y2}
-        children={controls_extra}
-      />
-    {/if}
+    <BoxPlotControls
+      on_export={handle_export}
+      toggle_props={controls_toggle_props}
+      pane_props={controls_pane_props}
+      bind:show_controls
+      bind:controls_open
+      bind:orientation
+      bind:whisker_mode
+      bind:show_outliers
+      bind:show_mean
+      bind:kind
+      bind:side
+      bind:x_axis
+      bind:x2_axis={x2_axis_prop}
+      bind:y_axis
+      bind:y2_axis={y2_axis_prop}
+      bind:display
+      auto_x_range={auto_ranges.x}
+      auto_x2_range={auto_ranges.x2}
+      auto_y_range={auto_ranges.y}
+      auto_y2_range={auto_ranges.y2}
+      has_x2_points={show_x2}
+      has_y2_points={show_y2}
+      children={controls_extra}
+    />
   {/snippet}
 </CartesianFrame>

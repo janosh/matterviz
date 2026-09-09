@@ -24,7 +24,7 @@ import {
   SpacegroupBarPlot,
   Structure,
   trajectory_from_json,
-  TrajectoryFileViewer,
+  Trajectory,
   Treemap,
   volume_from_json,
   XrdPlot,
@@ -303,8 +303,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       ...drive_props([
         `structure`,
-        `structure_string`,
-        `data_url`,
         // show_site_labels/show_site_indices are delivered via scene_props (see
         // scene_pick_keys), not as top-level Structure props.
         ...traj_structure_prop_keys,
@@ -316,13 +314,18 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         // hover (high frequency), so writeback would flood the comm channel.
         `highlighted_sites`,
       ]),
+      derived_prop(`source`, [`data_url`, `structure_string`], (model) => {
+        const url = get_prop(model, `data_url`)
+        const data = get_prop(model, `structure_string`)
+        return url || (data ? { data, filename: `string` } : undefined)
+      }),
       // Traits carry nested JSON grids; the renderer stores flat typed arrays
       derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
         const raw = get_prop(model, `volumetric_data`)
         if (raw == null) return undefined
         return (Array.isArray(raw) ? raw : [raw]).map(volume_from_json)
       }),
-      writeback_prop(`active_volume_idx`, 0),
+      writeback_prop(`active_volume_id`),
       writeback_prop(`display_mode`, `structure`),
       writeback_prop(`slice_settings`, {}),
       writeback_prop(`selected_sites`, []),
@@ -331,7 +334,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   trajectory: {
-    component: TrajectoryFileViewer,
+    component: Trajectory,
     static_props: no_file_drop,
     drive: [
       ...drive_props([
@@ -353,7 +356,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
           return undefined
         }
       }),
-      derived_prop(`src`, [`data_url`], (model) => get_prop(model, `data_url`)),
+      derived_prop(`source`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // atom_type_mapping ({ "1": "Si", "2": "O" }) names the atom types of a LAMMPS dump
       // fetched from data_url; it rides in the file viewer's loading_options. None/{} mean
       // unset, so loading_options falls back to the viewer's default
@@ -462,7 +465,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     base_drive: style_base_drive,
     drive: with_plot_controls([
       `band_structs`,
-      `band_type`,
       `show_legend`,
       `fermi_level`,
       `reference_frequency`,
@@ -483,13 +485,13 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   bands_and_dos: {
     // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
-    // It internally controls fermi_level, reference_frequency and dos orientation,
-    // so those traits are intentionally not forwarded here (they'd be overridden).
+    // The parent owns the shared Fermi reference; hover frequency and DOS orientation
+    // are controlled internally.
     component: BandsAndDos,
     base_drive: style_base_drive,
     drive: [
-      ...drive_props([`band_structs`, `doses`]),
-      picked_prop(`bands_props`, [`band_type`, `show_legend`, ...plot_control_keys]),
+      ...drive_props([`band_structs`, `doses`, `fermi_level`]),
+      picked_prop(`bands_props`, [`show_legend`, ...plot_control_keys]),
       picked_prop(`dos_props`, [
         `stack`,
         `sigma`,

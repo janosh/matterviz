@@ -34,16 +34,31 @@ const normal_samples = (count: number, seed = 1): number[] => {
   })
 }
 
+// Three ordered divisions replace a multiplied denominator; allow four f64 epsilons.
+const expect_density_close = (actual: number[], reference: number[]) => {
+  for (const [idx, value] of actual.entries()) {
+    expect(Math.abs(value - reference[idx])).toBeLessThanOrEqual(
+      4 * Number.EPSILON * Math.abs(reference[idx]) + 2 * Number.MIN_VALUE,
+    )
+  }
+}
+
 describe(`gaussian_kde`, () => {
   test.each([
     { samples: [1, 2, 3, 4, 5], n_points: 17, cut: 2 },
     { samples: [0, 0, 1, 2, 2, 3, 5, 8], n_points: 23, cut: 3 },
     { samples: normal_samples(120, 7), n_points: 64, cut: 2 },
+    { samples: [5, 5, 5, 5], n_points: 11, cut: 0 },
+    { samples: [3, 1, 2, NaN, 5], n_points: 100, cut: 2 },
   ])(`matches an exact Gaussian-sum reference`, ({ samples, n_points, cut }) => {
-    const { grid, density, bandwidth } = gaussian_kde(samples, { n_points, cut })
-    const reference = ref_density(samples, grid, bandwidth)
-    const max_abs = Math.max(...density.map((val, idx) => Math.abs(val - reference[idx])))
-    expect(max_abs).toBeLessThan(1e-12) // bit-for-bit modulo float summation order
+    const { grid, density, bandwidth } = gaussian_kde(Object.freeze(samples), {
+      n_points,
+      cut,
+    })
+    expect(bandwidth).toBeGreaterThan(0)
+    if (cut === 0) expect(grid).toEqual(Array(n_points).fill(5))
+    const reference = ref_density(samples.filter(Number.isFinite), grid, bandwidth)
+    expect_density_close(density, reference)
   })
 
   test(`density integrates to ~1 over a wide grid`, () => {
@@ -81,7 +96,7 @@ describe(`gaussian_kde`, () => {
     expect(density).toEqual([])
   })
 
-  // max_samples <= KDE_EXACT_SAMPLE_LIMIT strides the sample; larger uses the binned path
+  // Bandwidth and grid use the full data even when density evaluation is subsampled.
   test.each([
     [`strided subsample`, 4000, 11, 50, 500, 0.05],
     [`binned large-sample path`, 6000, 13, 80, 5000, 0.02],
@@ -106,20 +121,79 @@ describe(`gaussian_kde`, () => {
     expect(gaussian_kde([])).toEqual({ grid: [], density: [], bandwidth: 0 })
   })
 
-  test(`all-equal samples produce a finite positive-bandwidth density`, () => {
-    const { grid, density, bandwidth } = gaussian_kde([5, 5, 5, 5], {
-      n_points: 11,
-      cut: 0,
-    })
-    expect(bandwidth).toBeGreaterThan(0)
-    expect(grid).toEqual(Array.from({ length: 11 }, () => 5))
-    expect(density.every(Number.isFinite)).toBe(true)
+  test.each([1, 1e-4, 1e-15])(
+    `resolves a narrow peak beside a distant outlier (bandwidth=%s)`,
+    (bandwidth) => {
+      const samples = [
+        ...Array.from({ length: 2048 }, (_, idx) => ((idx % 7) * bandwidth) / 10),
+        1e8,
+      ]
+      const { grid, density } = gaussian_kde(samples, {
+        bandwidth,
+        n_points: 25,
+        range: [-bandwidth, bandwidth],
+        max_samples: samples.length,
+      })
+      const reference = ref_density(samples, grid, bandwidth)
+      expect_density_close(density, reference)
+      expect(density[12]).toBeGreaterThan(0)
+    },
+  )
+
+  test.each([undefined, 2049])(
+    `normalizes extreme bandwidths (max_samples=%s)`,
+    (max_samples) => {
+      for (const [bandwidth, step, expected] of [
+        [Number.MIN_VALUE, 0, [0, Infinity, 0]],
+        [5e-309, 1e-320, [0, 7.978845608028655e307, 0]],
+        [1e308, 1, Array(3).fill(3.989422804014326e-309)],
+      ] as const) {
+        const { density } = gaussian_kde(
+          Array.from({ length: 2049 }, (_, idx) => (idx % 2) * step),
+          { bandwidth, range: [-1, 1], n_points: 3, max_samples },
+        )
+        for (const [idx, value] of expected.entries()) {
+          if (value === 0 || value === Infinity) expect(density[idx]).toBe(value)
+          // Two f64 epsilons for finite peaks, two subnormal ULPs for wide kernels.
+          else
+            expect(Math.abs(density[idx] - value)).toBeLessThanOrEqual(
+              Math.max(2 * Number.EPSILON * Math.abs(value), 2 * Number.MIN_VALUE),
+            )
+        }
+      }
+    },
+  )
+
+  test(`keeps binned densities finite when the data span is subnormal`, () => {
+    const samples = Array.from({ length: 2048 }, (_, idx) => (idx % 2 ? 1e-320 : 0))
+    const options = { bandwidth: 1, n_points: 20, max_samples: samples.length }
+    const { grid, density } = gaussian_kde(samples, options)
+    const reference = ref_density(samples, grid, 1)
+    // Binning multiplies each kernel by its count; the reference adds it N times.
+    // Bound the accumulation error by N * f64 epsilon, relative to the density.
+    for (let idx = 0; idx < grid.length; idx++) {
+      expect(Math.abs(density[idx] - reference[idx])).toBeLessThanOrEqual(
+        samples.length * Number.EPSILON * reference[idx],
+      )
+    }
   })
 
-  test(`does not mutate input`, () => {
-    const input = [3, 1, 2, NaN, 5]
-    const snapshot = [...input]
-    gaussian_kde(input)
-    expect(input).toEqual(snapshot)
+  test.each([
+    { bandwidth: 0 },
+    { bandwidth: -1 },
+    { bandwidth: NaN },
+    { bandwidth: Infinity },
+    { max_samples: 0 },
+    { max_samples: -1 },
+    { max_samples: 1.5 },
+    { max_samples: NaN },
+    { n_points: 1 },
+    { n_points: 2.5 },
+    { n_points: NaN },
+    { n_points: Infinity },
+    { cut: -1 },
+    { cut: NaN },
+  ])(`rejects invalid options %j`, (options) => {
+    expect(() => gaussian_kde([1, 2, 3], options)).toThrow(RangeError)
   })
 })

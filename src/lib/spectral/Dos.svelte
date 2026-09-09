@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ScatterPlotOptions } from '$lib/plot'
   import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
@@ -8,21 +9,18 @@
   import { accumulate_extent, empty_extent } from '$lib/plot/core/scales'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import { extent } from 'd3-array'
-  import type { ComponentProps } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
     apply_gaussian_smearing,
     calculate_sigma_step,
     closed_edge_path,
-    dos_entries,
     extract_efermi,
-    extract_pdos,
+    spectral_type,
     format_dos_tooltip,
     IMAGINARY_MODE_NOISE_THRESHOLD,
     negative_fraction,
     NORMALIZATION_MODES,
     normalize_densities,
-    normalize_dos,
     SPIN_MODES,
     validate_sigma_range,
   } from './helpers'
@@ -34,10 +32,8 @@
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import type {
     DosData,
-    DosInput,
     FrequencyUnit,
     NormalizationMode,
-    PdosType,
     SpinMode,
     StackedAreaData,
   } from './types'
@@ -57,9 +53,13 @@
     reference_frequency = null,
     fermi_level = undefined,
     spin_mode = $bindable(`mirror`),
-    pdos_type = null,
-    pdos_filter = undefined,
     // Controls configuration
+    display = $bindable({
+      x_grid: true,
+      y_grid: true,
+      x_zero_line: true,
+      y_zero_line: true,
+    }),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     show_normalize_control = false,
@@ -68,24 +68,18 @@
     // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
     resolved_padding = $bindable(),
     ...rest
-  }: ComponentProps<typeof ScatterPlot> & {
-    doses: DosInput | Record<string, DosInput>
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
+  }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
+    doses: Record<string, DosData>
     stack?: boolean
     sigma?: number
     units?: FrequencyUnit
     normalize?: NormalizationMode
     orientation?: `vertical` | `horizontal`
-    show_legend?: boolean
     hovered_frequency?: number | null
     reference_frequency?: number | null
     fermi_level?: number // Fermi level for electronic DOS (auto-detected if not provided)
     spin_mode?: SpinMode // How to display spin-polarized DOS: mirror (default), overlay, up_only, down_only, or null (auto)
-    pdos_type?: PdosType | null // Extract projected DOS: 'atom' for atom-resolved, 'orbital' for orbital-resolved (s, p, d)
-    pdos_filter?: string[] // Filter projected DOS to specific keys (e.g., ["Fe", "O"] for atoms or ["s", "p", "d"] for orbitals)
     // Controls configuration
-    show_controls?: boolean // Show the controls pane
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)
     sigma_range?: Vec2 // Min/max range for sigma slider (auto-detected if not provided)
@@ -96,38 +90,11 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
-  // Normalized DOS by label (`` for a single DOS). With pdos_type set, the projected DOS of
-  // the input (a single CompleteDos) or of the first dict entry replace the totals.
-  let doses_dict = $derived.by((): Record<string, DosData> => {
-    const entries = dos_entries(doses)
-    if (pdos_type) {
-      const first_entry = entries[0]?.[1]
-      for (const candidate of first_entry === doses ? [doses] : [doses, first_entry]) {
-        const pdos = extract_pdos(candidate, pdos_type, pdos_filter)
-        if (pdos) return pdos
-      }
-      // PDOS extraction was requested but failed - warn and revert to normal processing
-      console.warn(
-        `PDOS extraction requested (pdos_type="${pdos_type}") but no projected DOS data found. ` +
-          `Falling back to total DOS. Ensure input has atom_dos (for atom) or spd_dos (for orbital) data.`,
-      )
-    }
-    const result: Record<string, DosData> = {}
-    for (const [key, dos] of entries) {
-      const normalized = normalize_dos(dos)
-      if (normalized) result[key] = normalized
-    }
-    return result
-  })
-
-  let is_phonon = $derived(Object.values(doses_dict)[0]?.type === `phonon`)
-
-  let effective_fermi_level = $derived(
-    fermi_level ?? (is_phonon ? undefined : extract_efermi(doses)),
-  )
+  const is_phonon = $derived(spectral_type(doses) === `phonon`)
+  const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
 
   let has_spin_polarized = $derived(
-    Object.values(doses_dict).some(
+    Object.values(doses).some(
       (dos) => dos.type === `electronic` && dos.spin_down_densities?.length,
     ),
   )
@@ -145,7 +112,7 @@
       let cumulative_spin_up: number[] | null = null
       let cumulative_spin_down: number[] | null = null
 
-      for (const [dos_idx, [label, dos]] of Object.entries(doses_dict).entries()) {
+      for (const [dos_idx, [label, dos]] of Object.entries(doses).entries()) {
         const color = plot_color(dos_idx)
         const x_values =
           dos.type === `phonon` && unit !== `THz`
@@ -183,15 +150,16 @@
         }
         const push_series = (
           densities: number[],
-          suffix: string,
+          spin: `up` | `down`,
           stroke: string,
           dash?: string,
         ) =>
           all_series.push({
+            id: JSON.stringify([label, spin]),
             x: is_horizontal ? densities : x_values,
             y: is_horizontal ? x_values : densities,
             markers: `line`,
-            label: `${series_label}${suffix}`,
+            label: `${series_label}${spin === `down` ? ` (↓)` : has_spin_down && effective_spin_mode ? ` (↑)` : ``}`,
             line_style: { stroke, stroke_width: 1.5, line_dash: dash },
             point_style: { fill: stack ? stroke : undefined },
           })
@@ -204,7 +172,7 @@
             ``,
           )
           if (stack) cumulative_spin_up = densities
-          push_series(densities, has_spin_down && effective_spin_mode ? ` (↑)` : ``, color)
+          push_series(densities, `up`, color)
         }
         if (
           has_spin_down &&
@@ -225,7 +193,7 @@
           if (stack && overlay) cumulative_spin_down = densities
           if (effective_spin_mode === `mirror`)
             densities = densities.map((density) => -density)
-          push_series(densities, ` (↓)`, down_color, overlay ? `4,2` : undefined)
+          push_series(densities, `down`, down_color, overlay ? `4,2` : undefined)
         }
       }
       return { series_data: all_series, stacked_areas: areas }
@@ -234,7 +202,7 @@
 
   let all_freqs = $derived(
     // for clamping phonon noise
-    Object.values(doses_dict).flatMap((dos) =>
+    Object.values(doses).flatMap((dos) =>
       dos.type === `phonon` ? dos.frequencies : dos.energies,
     ),
   )
@@ -281,13 +249,6 @@
     format: `.2f`,
     range: y_range,
     ...y_axis,
-  })
-
-  let display = $state({
-    x_grid: true,
-    y_grid: true,
-    x_zero_line: true,
-    y_zero_line: true,
   })
 
   let has_valid_data = $derived(series_data.length > 0)
@@ -338,6 +299,7 @@
 
 {#if has_valid_data}
   <ScatterPlot
+    {...rest}
     series={series_data}
     x_axis={internal_x_axis}
     y_axis={internal_y_axis}
@@ -345,11 +307,11 @@
     bind:display
     bind:resolved_padding
     {show_legend}
-    hover_config={{ threshold_px: 50 }}
+    hover_config={{ threshold_px: 50, ...rest.hover_config }}
     on_point_hover={(event) => {
       hovered_frequency = is_horizontal ? (event?.point?.y ?? null) : (event?.point?.x ?? null)
+      rest.on_point_hover?.(event)
     }}
-    {...rest}
     bind:show_controls
     bind:controls_open
   >
@@ -363,7 +325,7 @@
         units: unit,
         x_axis_label: internal_x_axis.label ?? ``,
         y_axis_label: internal_y_axis.label ?? ``,
-        num_series: Object.keys(doses_dict).length,
+        num_series: Object.keys(doses).length,
       })}
       {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
       {#each tooltip_data.lines as line, line_idx (line_idx)}

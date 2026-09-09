@@ -544,8 +544,8 @@ test(`a bootstrap that fails before displaying still accepts host reloads`, asyn
 })
 
 // #451: a worker script on the vscode-cdn resource origin cannot load from a worker context
-// (the webview service worker only serves the document), so the constructor throws at once
-// and every client falls back to the main thread instead of stalling ~20 s per file
+// (the webview service worker only serves the document). Reject it immediately so clients
+// report the failure instead of stalling ~20 s per file.
 test(`rejects cross-origin worker scripts synchronously and passes same-origin ones through`, () => {
   const { native_worker_calls, object_url_blobs } = test_mocks
   const resource_url = `https://file+.vscode-resource.vscode-cdn.net/ext/dist/assets/parse-worker.js`

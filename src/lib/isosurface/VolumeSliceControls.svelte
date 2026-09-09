@@ -1,6 +1,10 @@
 <script lang="ts">
   import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
-  import { normalize_active_volume_idx, type VolumetricData } from '$lib/isosurface/types'
+  import {
+    normalize_active_volume_id,
+    index_volumes,
+    type VolumetricData,
+  } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
@@ -26,19 +30,22 @@
   let {
     settings = $bindable(create_volume_slice_settings()),
     volumes = [],
-    active_volume_idx = $bindable(0),
+    active_volume_id = $bindable<string | undefined>(),
   }: {
     settings?: Partial<VolumeSliceSettings>
     volumes?: VolumetricData[]
-    active_volume_idx?: number
+    active_volume_id?: string
   } = $props()
 
   $effect(() => {
-    const normalized_idx = normalize_active_volume_idx(active_volume_idx, volumes.length)
-    if (normalized_idx !== active_volume_idx) active_volume_idx = normalized_idx
+    const normalized_id = normalize_active_volume_id(active_volume_id, volumes)
+    if (normalized_id !== active_volume_id) active_volume_id = normalized_id
   })
 
-  let active_volume = $derived(volumes[active_volume_idx])
+  const volume_by_id = $derived(index_volumes(volumes))
+  let active_volume = $derived(
+    active_volume_id === undefined ? undefined : volume_by_id.get(active_volume_id),
+  )
   let resolved_settings = $derived(create_volume_slice_settings(settings))
   let cartesian_point = $derived(
     resolve_slice_cartesian_point(resolved_settings.cartesian_point, active_volume),
@@ -84,9 +91,9 @@
 
 <SettingsSection
   title="Cross-section"
-  current_values={{ ...resolved_settings, active_volume_idx }}
+  current_values={{ ...resolved_settings, active_volume_id }}
   on_reset={() => {
-    active_volume_idx = 0
+    active_volume_id = undefined
     update_settings(create_volume_slice_settings())
   }}
   class="slice-settings"
@@ -95,9 +102,9 @@
   {#if volumes.length > 1}
     <label>
       <span>Volume</span>
-      <select bind:value={active_volume_idx} aria-label="Slice volume">
-        {#each volumes as volume, volume_idx (volume_idx)}
-          <option value={volume_idx}>
+      <select bind:value={active_volume_id} aria-label="Slice volume">
+        {#each volumes as volume, volume_idx (volume.id)}
+          <option value={volume.id}>
             {volume.label ?? `Volume ${volume_idx + 1}`}
           </option>
         {/each}

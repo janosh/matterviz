@@ -160,6 +160,7 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
           ? Float64Array.from(component, (val) => val / divisor)
           : transpose_x_fastest(component, dims, divisor)
       return make_volume(values, dims, {
+        id: component_labels[component_idx],
         lattice,
         origin: [0, 0, 0],
         periodic: true,

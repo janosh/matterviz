@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
   // Shared controls pane for the hierarchical part-of-whole charts. Exported as
   // SunburstControls/TreemapControls from the chart barrels; `chart` picks the
   // chart-specific controls (shape/rotation/radius vs cell paddings) and labels.
@@ -42,7 +43,7 @@
     children,
   }: {
     chart: `sunburst` | `treemap`
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
     value_mode?: SunburstValueMode
     max_depth?: number
@@ -99,113 +100,117 @@
   }
 </script>
 
-{#if show_controls}
-  <!-- snippets live at the template top level (not inside the components below) so
+<!-- snippets live at the template top level (not inside the components below) so
   they're locally renderable rather than treated as ControlPane/SettingsSection props -->
-  {#snippet options(enum_map: Record<string, string>)}
-    {#each Object.entries(enum_map) as [value, label] (value)}
-      <option {value}>{label}</option>
-    {/each}
-  {/snippet}
-  <ControlPane bind:controls_open controls_name={chart} {toggle_props} {pane_props}>
-    {@render children?.()}
-    <SettingsSection
-      title={chart === `sunburst` ? `Sunburst` : `Treemap`}
-      {current_values}
-      on_reset={reset_to_defaults}
-      layout="grid"
-    >
-      <!-- select options come from the settings schema so labels/values have a
+{#snippet options(enum_map: Record<string, string>)}
+  {#each Object.entries(enum_map) as [value, label] (value)}
+    <option {value}>{label}</option>
+  {/each}
+{/snippet}
+<ControlPane
+  {show_controls}
+  bind:controls_open
+  controls_name={chart}
+  {toggle_props}
+  {pane_props}
+>
+  {@render children?.()}
+  <SettingsSection
+    title={chart === `sunburst` ? `Sunburst` : `Treemap`}
+    {current_values}
+    on_reset={reset_to_defaults}
+    layout="grid"
+  >
+    <!-- select options come from the settings schema so labels/values have a
       single source of truth -->
-      {#if chart === `sunburst`}
-        <label>
-          <span>Shape</span>
-          <select bind:value={shape}>
-            {@render options(SETTINGS_CONFIG.sunburst.shape.enum ?? {})}
-          </select>
-        </label>
-      {/if}
+    {#if chart === `sunburst`}
       <label>
-        <span>Value mode</span>
-        <select bind:value={value_mode}>
-          {@render options(SETTINGS_CONFIG[chart].value_mode.enum ?? {})}
+        <span>Shape</span>
+        <select bind:value={shape}>
+          {@render options(SETTINGS_CONFIG.sunburst.shape.enum ?? {})}
         </select>
       </label>
-      {#if chart === `sunburst` && shape === `sunburst`}
-        <!-- icicle labels are always horizontal; inner radius/pad angle are polar-only -->
-        <label>
-          <span>Labels</span>
-          <select bind:value={label_rotation}>
-            {@render options(SETTINGS_CONFIG.sunburst.label_rotation.enum ?? {})}
-          </select>
-        </label>
-      {/if}
-      <label>
-        <span>Label text</span>
-        <select bind:value={label_text}>
-          {@render options(SETTINGS_CONFIG[chart].label_text.enum ?? {})}
-        </select>
-      </label>
-      <NumberRangeInput min={0} max={10} step={1} bind:value={max_depth}
-        >Max depth (0 = all)</NumberRangeInput
-      >
-      {#if chart === `sunburst` && shape === `sunburst`}
-        <NumberRangeInput min={0} max={0.8} step={0.05} bind:value={inner_radius}
-          >Inner radius</NumberRangeInput
-        >
-        <NumberRangeInput min={0} max={4} step={0.1} bind:value={pad_angle}
-          >Pad angle (°)</NumberRangeInput
-        >
-      {:else if chart === `treemap`}
-        <NumberRangeInput min={0} max={10} step={0.5} bind:value={padding_inner}
-          >Cell gap (px)</NumberRangeInput
-        >
-        <NumberRangeInput min={0} max={40} step={1} bind:value={padding_top}
-          >Header height (px, 0 = none)</NumberRangeInput
-        >
-        <NumberRangeInput min={0} max={10} step={0.5} bind:value={padding_outer}
-          >Child inset (px)</NumberRangeInput
-        >
-      {/if}
-      <NumberRangeInput min={0} max={0.2} step={0.005} bind:value={min_fraction}
-        >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction)</NumberRangeInput
-      >
-      <NumberRangeInput min={0} max={20} step={1} bind:value={max_children}
-        >Max children per parent (0 = all)</NumberRangeInput
-      >
-      <label>
-        <span>Show {chart === `sunburst` ? `arc` : `cell`} labels</span>
-        <input type="checkbox" bind:checked={show_labels} />
-      </label>
-      <label>
-        <span>Zoom on click</span>
-        <input type="checkbox" bind:checked={zoom_on_click} />
-      </label>
-      <label>
-        <span>Show breadcrumbs when zoomed</span>
-        <input type="checkbox" bind:checked={show_breadcrumbs} />
-      </label>
-    </SettingsSection>
-    {#if export_buttons && on_export}
-      <!-- --hier-btn-*: forward the chart's own theming vars (--sunburst-btn-bg /
-      --treemap-btn-bg); when unset, the outer var() falls back to the gray default -->
-      <div
-        class="export-row"
-        style="--hier-btn-bg: var(--{chart}-btn-bg); --hier-btn-hover-bg: var(--{chart}-btn-hover-bg)"
-      >
-        Export
-        {#each [`svg`, `png`] as const as fmt (fmt)}
-          <button
-            type="button"
-            class="export-btn"
-            aria-label="Download {fmt.toUpperCase()}"
-            onclick={() => on_export?.(fmt)}>{fmt.toUpperCase()}</button
-          >
-        {/each}
-      </div>
     {/if}
-  </ControlPane>
-{/if}
+    <label>
+      <span>Value mode</span>
+      <select bind:value={value_mode}>
+        {@render options(SETTINGS_CONFIG[chart].value_mode.enum ?? {})}
+      </select>
+    </label>
+    {#if chart === `sunburst` && shape === `sunburst`}
+      <!-- icicle labels are always horizontal; inner radius/pad angle are polar-only -->
+      <label>
+        <span>Labels</span>
+        <select bind:value={label_rotation}>
+          {@render options(SETTINGS_CONFIG.sunburst.label_rotation.enum ?? {})}
+        </select>
+      </label>
+    {/if}
+    <label>
+      <span>Label text</span>
+      <select bind:value={label_text}>
+        {@render options(SETTINGS_CONFIG[chart].label_text.enum ?? {})}
+      </select>
+    </label>
+    <NumberRangeInput min={0} max={10} step={1} bind:value={max_depth}
+      >Max depth (0 = all)</NumberRangeInput
+    >
+    {#if chart === `sunburst` && shape === `sunburst`}
+      <NumberRangeInput min={0} max={0.8} step={0.05} bind:value={inner_radius}
+        >Inner radius</NumberRangeInput
+      >
+      <NumberRangeInput min={0} max={4} step={0.1} bind:value={pad_angle}
+        >Pad angle (°)</NumberRangeInput
+      >
+    {:else if chart === `treemap`}
+      <NumberRangeInput min={0} max={10} step={0.5} bind:value={padding_inner}
+        >Cell gap (px)</NumberRangeInput
+      >
+      <NumberRangeInput min={0} max={40} step={1} bind:value={padding_top}
+        >Header height (px, 0 = none)</NumberRangeInput
+      >
+      <NumberRangeInput min={0} max={10} step={0.5} bind:value={padding_outer}
+        >Child inset (px)</NumberRangeInput
+      >
+    {/if}
+    <NumberRangeInput min={0} max={0.2} step={0.005} bind:value={min_fraction}
+      >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction)</NumberRangeInput
+    >
+    <NumberRangeInput min={0} max={20} step={1} bind:value={max_children}
+      >Max children per parent (0 = all)</NumberRangeInput
+    >
+    <label>
+      <span>Show {chart === `sunburst` ? `arc` : `cell`} labels</span>
+      <input type="checkbox" bind:checked={show_labels} />
+    </label>
+    <label>
+      <span>Zoom on click</span>
+      <input type="checkbox" bind:checked={zoom_on_click} />
+    </label>
+    <label>
+      <span>Show breadcrumbs when zoomed</span>
+      <input type="checkbox" bind:checked={show_breadcrumbs} />
+    </label>
+  </SettingsSection>
+  {#if export_buttons && on_export}
+    <!-- --hier-btn-*: forward the chart's own theming vars (--sunburst-btn-bg /
+      --treemap-btn-bg); when unset, the outer var() falls back to the gray default -->
+    <div
+      class="export-row"
+      style="--hier-btn-bg: var(--{chart}-btn-bg); --hier-btn-hover-bg: var(--{chart}-btn-hover-bg)"
+    >
+      Export
+      {#each [`svg`, `png`] as const as fmt (fmt)}
+        <button
+          type="button"
+          class="export-btn"
+          aria-label="Download {fmt.toUpperCase()}"
+          onclick={() => on_export?.(fmt)}>{fmt.toUpperCase()}</button
+        >
+      {/each}
+    </div>
+  {/if}
+</ControlPane>
 
 <style>
   .export-row {

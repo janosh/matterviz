@@ -5,6 +5,8 @@
   import { MultiSelect as Select } from 'svelte-widgets'
   import type { D3InterpolateName } from '$lib/colors'
 
+  const ScaleSelect = Select<D3InterpolateName>
+
   let {
     options = Object.keys(d3_sc).filter((key) =>
       key.startsWith(`interpolate`),
@@ -15,17 +17,14 @@
     // empty selection back, nulling the caller's value on mount unless they also bind
     // `selected` purely to work around it.
     selected = $bindable(value == null ? [] : [value]),
-    minSelect = 1,
+    min_select = 1,
     placeholder = `Select a color scale`,
     color_bar = {},
     open = $bindable(false),
     ...rest
-  }: Omit<ComponentProps<typeof Select>, `options`> & {
+  }: Omit<ComponentProps<typeof ScaleSelect>, `options`> & {
     options?: D3InterpolateName[]
     value?: D3InterpolateName
-    selected?: D3InterpolateName[]
-    minSelect?: number
-    placeholder?: string
     color_bar?: ComponentProps<typeof ColorBar>
   } = $props()
 
@@ -38,27 +37,26 @@
   })
 </script>
 
-<Select
+<ScaleSelect
   {options}
-  maxSelect={1}
-  maxOptions={options.length}
-  {minSelect}
+  max_select={1}
+  max_options={options.length}
+  {min_select}
   bind:value
   bind:selected
   {placeholder}
-  liOptionStyle="padding: 3pt 6pt;"
-  liSelectedStyle="width: 100%; background-color: transparent;"
-  ulSelectedStyle="display: contents;"
-  inputStyle="min-width: 0; width: 0; padding: 0; border: none; caret-color: transparent;"
+  li_option_style="padding: 3pt 6pt;"
+  li_selected_style="width: 100%; background-color: transparent;"
+  ul_selected_style="display: contents;"
+  input_style="min-width: 0; width: 0; padding: 0; border: none; caret-color: transparent;"
   bind:open
   {...rest}
   style={`min-width: 14em; ${rest.style ?? ``}`}
 >
-  {#snippet children(ctx: { option: unknown; idx: number; type: `selected` | `option` })}
-    {@const scheme = ctx.option as D3InterpolateName}
+  {#snippet children({ option: scheme, type })}
     {@const label = scheme.replace(/^interpolate/, ``)}
     <!-- `open` covers the first open, which renders before the latch effect runs -->
-    {#if ctx.type === `selected` || open || previews_built}
+    {#if type === `selected` || open || previews_built}
       <ColorBar
         title={label}
         scale={scheme}
@@ -72,4 +70,4 @@
       {label}
     {/if}
   {/snippet}
-</Select>
+</ScaleSelect>

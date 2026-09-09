@@ -201,7 +201,7 @@
         "matterviz.structure.sphere_segments": {
           "type": "number",
           "default": 20,
-          "description": "Number of segments for sphere rendering (higher = smoother)",
+          "description": "Maximum sphere detail; large scenes use less detail for distant atoms",
           "minimum": 8,
           "maximum": 64
         },
@@ -354,20 +354,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show orientation gizmo in the corner of structure viewer"
-        },
-        "matterviz.structure.camera_position": {
-          "type": "array",
-          "default": [
-            0,
-            0,
-            0
-          ],
-          "description": "Initial camera position [x, y, z]",
-          "minItems": 3,
-          "maxItems": 3,
-          "items": {
-            "type": "number"
-          }
         },
         "matterviz.structure.camera_projection": {
           "type": "string",

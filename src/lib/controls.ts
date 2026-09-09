@@ -1,10 +1,10 @@
-// Normalises the `show_controls` prop every viewer accepts into one shape for its chrome
+// Shared visibility contract for viewer and plot controls.
 
-type ControlsVisibility = `always` | `hover` | `never`
+export type ControlsVisibility = `always` | `hover` | `never`
 
-type ShowControlsConfig<ControlName extends string = string> = {
+export type ShowControlsConfig<ControlName extends string = string> = {
   mode?: ControlsVisibility
-  hidden?: ControlName[]
+  hidden?: readonly ControlName[]
   style?: string
 }
 
@@ -35,7 +35,7 @@ export function normalize_show_controls(
   return {
     mode,
     style: config?.style,
-    visible: (name: string) => !hidden.has(name),
+    visible: (name: string) => mode !== `never` && !hidden.has(name),
     // CSS class for visibility mode
     class: mode === `never` ? `` : `${mode}-visible`,
   }

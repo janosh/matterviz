@@ -4,7 +4,7 @@
   // values, a substring box otherwise. The host owns `open` (only one header popover may be
   // open at a time) and persists the filter itself through `on_change`.
   import { format_num } from '$lib/labels'
-  import type { ColumnFilter, Label, RowData } from '$lib/table'
+  import type { ColumnFilter, Column, RowData } from '$lib/table'
   import { column_filter_panel, with_category_toggled, with_numeric_bound } from './data'
   import { strip_html } from '$lib/utils'
   import { Icon } from 'svelte-widgets'
@@ -21,7 +21,7 @@
     on_toggle,
     on_change,
   }: {
-    col: Label
+    col: Omit<Column, `cell`>
     rows: RowData[]
     row_key: string
     is_numeric: boolean

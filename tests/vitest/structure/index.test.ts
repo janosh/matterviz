@@ -286,8 +286,9 @@ describe(`structure_fit_frame`, () => {
 })
 
 describe(`camera helpers`, () => {
-  test(`fits zero poses and re-fits changed camera views`, () => {
-    expect(camera_needs_fit([0, 0, 0], undefined, `orthographic:`)).toBe(true)
+  test(`fits unset poses and re-fits changed camera views`, () => {
+    expect(camera_needs_fit(undefined, undefined, `orthographic:`)).toBe(true)
+    expect(camera_needs_fit([0, 0, 0], undefined, `orthographic:`)).toBe(false)
     expect(camera_needs_fit([10, 3, 8], undefined, `orthographic:`)).toBe(false)
     expect(camera_needs_fit([10, 3, 8], `orthographic:`, `perspective:1,0.3,0.8`)).toBe(true)
     expect(

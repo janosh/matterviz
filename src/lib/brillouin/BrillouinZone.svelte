@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MaterialSource } from '$lib/file-viewer/open'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
@@ -84,8 +85,7 @@
     allow_file_drop = true,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     fullscreen_toggle = DEFAULTS.brillouin.fullscreen_toggle,
-    data_url,
-    structure_string,
+    source,
     on_file_drop,
     spinner_props = {},
     loading = $bindable(false),
@@ -121,8 +121,7 @@
     dragover?: boolean
     allow_file_drop?: boolean
     fullscreen_toggle?: boolean
-    data_url?: string
-    structure_string?: string
+    source?: MaterialSource
     on_file_drop?: FileLoadCallback
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
@@ -159,9 +158,7 @@
   let controls_config = $derived(normalize_show_controls(show_controls))
 
   const drop_zone = create_material_loader<Crystal>({
-    data_url: () => data_url,
-    inline_source: () =>
-      structure_string ? { data: structure_string, filename: `string` } : undefined,
+    source: () => source,
     current_value: () => structure,
     allow_file_drop: () => allow_file_drop,
     on_file_drop: () => on_file_drop,

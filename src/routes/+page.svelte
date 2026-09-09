@@ -1,7 +1,7 @@
 <script lang="ts">
   import FilePicker from '$lib/FilePicker.svelte'
   import Structure from '$lib/structure/Structure.svelte'
-  import { TrajectoryFileViewer } from '$lib/trajectory'
+  import { Trajectory } from '$lib/trajectory'
   import {
     ConvexHullDemo,
     FermiSurfaceDemo,
@@ -62,7 +62,7 @@
       <a href="https://www.npmjs.com/package/matterviz">
         <Icon icon={NPM} />
       </a>
-      install matterviz
+      npm install matterviz
       <CopyButton content="npm install matterviz" style="background: transparent" />
     </code>
   </span>
@@ -77,7 +77,7 @@
         {structure_filenames[idx]}
       </h3>
       <Structure
-        data_url="/structures/{file_name}"
+        source="/structures/{file_name}"
         style="flex: 1"
         on_file_load={(data) => {
           if (data.filename) structure_filenames[idx] = data.filename
@@ -117,8 +117,8 @@
 
 <h2><a href="/trajectory">Trajectory Viewer</a></h2>
 
-<TrajectoryFileViewer
-  src="/trajectories/{default_trajectory_file}"
+<Trajectory
+  source="/trajectories/{default_trajectory_file}"
   class="full-bleed"
   style="max-height: 700px"
   on_file_load={({ source_filename }) => {

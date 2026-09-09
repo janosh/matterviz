@@ -77,6 +77,7 @@
       }
     }
     return make_volume(values, [size, size, size], {
+      id: kind,
       lattice,
       origin: [0, 0, 0],
       periodic: true,
@@ -92,8 +93,8 @@
       opacity: Math.max(0.25, 0.8 - layer_idx * 0.08),
       visible: true,
       show_negative: false,
-      volume_idx: 0,
-      color_volume_idx: color_mode === `same_grid` ? 0 : 1,
+      volume_id: `density`,
+      color_volume_id: color_mode === `same_grid` ? `density` : `color`,
       colormap: `interpolateRdBu`,
     }))
   }
@@ -150,7 +151,7 @@
       settings: { grid_size },
     })
     const payload = {
-      volumes: volumes.map((volume, idx) => ({ ...volume, field_id: `field-${idx}` })),
+      volumes: volumes.map((volume, idx) => ({ ...volume, id: `field-${idx}` })),
     }
     const publication_ms = [0, 1, 2].map(() => {
       const start = performance.now()

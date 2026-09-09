@@ -1,8 +1,8 @@
-import { ColorScaleSelect } from '$lib'
+import ColorScaleSelect from '$lib/plot/core/components/ColorScaleSelect.svelte'
 import type { D3InterpolateName } from '$lib/colors'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, fire } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
   test.each([
@@ -24,21 +24,35 @@ describe(`ColorScaleSelect`, () => {
 
   // Binding `selected` alongside `value` is optional, so mounting must not treat an unbound
   // `selected` as "nothing is selected" and write that emptiness back over the caller's value.
-  test(`keeps a bound value when only value is bound`, () => {
+  test(`keeps a scalar bound value on mount and selection, and reports additions`, async () => {
     const controls_state = { value: `interpolateViridis` as D3InterpolateName }
+    const on_add = vi.fn()
     mount(ColorScaleSelect, {
       target: document.body,
-      props: bind_props({}, controls_state),
+      props: bind_props(
+        {
+          options: [`interpolateViridis`, `interpolatePlasma`] satisfies D3InterpolateName[],
+          on_add,
+        },
+        controls_state,
+      ),
     })
     flushSync()
 
     expect(controls_state.value).toBe(`interpolateViridis`)
     expect(doc_query(`.selected`)?.textContent?.trim()).toBe(`Viridis`)
+    await fire(doc_query(`.multiselect`), new MouseEvent(`mouseup`, { bubbles: true }))
+    await fire(doc_query(`[role="option"]`))
+    expect(controls_state.value).toBe(`interpolatePlasma`)
+    expect(on_add).toHaveBeenCalledExactlyOnceWith({
+      option: `interpolatePlasma`,
+      selected: [`interpolatePlasma`],
+    })
   })
 
   // MultiSelect keeps its option list mounted while closed, so a gradient per scheme would
   // otherwise be built on every mount — including in control panels never opened.
-  test(`builds option gradients only once the dropdown opens`, async () => {
+  test.each([false, true])(`lazily builds gradients with custom styles=%s`, async (custom) => {
     const options: D3InterpolateName[] = [
       `interpolateViridis`,
       `interpolatePlasma`,
@@ -46,64 +60,32 @@ describe(`ColorScaleSelect`, () => {
     ]
     mount(ColorScaleSelect, {
       target: document.body,
-      props: { options, value: options[0], selected: [options[0]] },
-    })
-    flushSync()
-    const gradient_count = () => document.body.querySelectorAll(`.colorbar`).length
-
-    expect(gradient_count()).toBe(1) // just the selected chip
-    doc_query(`.multiselect`).dispatchEvent(new MouseEvent(`mouseup`, { bubbles: true }))
-    // the chip plus one per unselected option (MultiSelect drops the selected one from the list)
-    await vi.waitFor(() => expect(gradient_count()).toBe(options.length))
-  })
-
-  test(`passes color_bar props to ColorBar snippet`, async () => {
-    // Verifies that props passed via the color_bar prop are applied to the ColorBar component.
-    const custom_color_bar_props = {
-      tick_side: `secondary` as const,
-      title_side: `right` as const,
-      wrapper_style: `border: 1px dashed red;`,
-    }
-
-    mount(ColorScaleSelect, {
-      target: document.body,
       props: {
-        options: [`interpolateViridis`],
-        color_bar: custom_color_bar_props,
-        selected: [`interpolateViridis`],
-      },
-    })
-
-    doc_query(`.multiselect`).dispatchEvent(new MouseEvent(`mousedown`))
-    await vi.waitFor(() => document.body.querySelector(`.options`))
-
-    const color_bar_wrapper = doc_query(`.colorbar`)
-    expect(color_bar_wrapper.getAttribute(`style`)).toContain(
-      custom_color_bar_props.wrapper_style,
-    )
-    expect(color_bar_wrapper.style.flexDirection).toBe(`row-reverse`)
-  })
-
-  test(`left-aligns scale names in the closed chip and dropdown`, async () => {
-    mount(ColorScaleSelect, {
-      target: document.body,
-      props: {
-        options: [`interpolateViridis`, `interpolateRdBu`],
-        value: `interpolateViridis`,
-        selected: [`interpolateViridis`],
+        options,
+        value: options[0],
+        selected: [options[0]],
+        color_bar: custom
+          ? {
+              tick_side: `secondary`,
+              title_side: `right`,
+              wrapper_style: `border: 1px dashed red;`,
+            }
+          : undefined,
       },
     })
     flushSync()
-    expect(doc_query(`.colorbar`).style.getPropertyValue(`--cbar-label-text-align`)).toBe(
-      `left`,
-    )
-
-    doc_query(`.multiselect`).dispatchEvent(new MouseEvent(`mouseup`, { bubbles: true }))
-    await vi.waitFor(() => expect(document.body.querySelectorAll(`.colorbar`)).toHaveLength(2))
-    for (const bar of document.body.querySelectorAll(`.colorbar`)) {
-      expect((bar as HTMLElement).style.getPropertyValue(`--cbar-label-text-align`)).toBe(
-        `left`,
-      )
+    for (const open of [false, true]) {
+      if (open)
+        await fire(doc_query(`.multiselect`), new MouseEvent(`mouseup`, { bubbles: true }))
+      const bars = document.body.querySelectorAll<HTMLElement>(`.colorbar`)
+      // The closed chip only; after opening, one bar per scheme including the chip.
+      expect(bars).toHaveLength(open ? options.length : 1)
+      for (const { style } of bars) {
+        if (custom) {
+          expect(style.border).toBe(`1px dashed red`)
+          expect(style.flexDirection).toBe(`row-reverse`)
+        } else expect(style.getPropertyValue(`--cbar-label-text-align`)).toBe(`left`)
+      }
     }
   })
 })

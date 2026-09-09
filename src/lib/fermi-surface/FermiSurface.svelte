@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MaterialSource } from '$lib/file-viewer/open'
   import type { BrillouinZoneData } from '$lib/brillouin'
   import { compute_brillouin_zone } from '$lib/brillouin'
   import { reciprocal_lattice } from '$lib/math'
@@ -78,7 +79,7 @@
     dragover = $bindable(false),
     allow_file_drop = true,
     fullscreen_toggle = DEFAULTS.fermi.fullscreen_toggle,
-    data_url,
+    source,
     spinner_props = {},
     loading = $bindable(false),
     error_msg = $bindable(),
@@ -110,7 +111,7 @@
     dragover?: boolean
     allow_file_drop?: boolean
     fullscreen_toggle?: boolean
-    data_url?: string
+    source?: MaterialSource
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
@@ -173,7 +174,7 @@
     )
 
   const drop_zone = create_material_loader<FermiSurfaceData | BandGridData>({
-    data_url: () => data_url,
+    source: () => source,
     current_value: () => surface_data ?? grid_data,
     allow_file_drop: () => allow_file_drop,
     on_file_drop: () => on_file_drop,

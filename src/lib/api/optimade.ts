@@ -42,125 +42,71 @@ export interface OptimadeProvider {
   }
 }
 
-// CORS proxies for fallback reliability. Query-style proxies need the target URL
-// percent-encoded; path-suffix proxies need it verbatim (encoded can never succeed).
-const CORS_PROXIES: { prefix: string; encode: boolean }[] = [
-  { prefix: `https://corsproxy.io/?`, encode: true },
-  { prefix: `https://api.allorigins.win/raw?url=`, encode: true },
-]
+const REQUEST_TIMEOUT_MS = 8000
 
-const PROXY_TIMEOUT_MS = 8000 // else one hung proxy stalls the whole ladder
-
-let cached_providers: OptimadeProvider[] | null = null
-let providers_cache_time = 0
 const CACHE_DURATION = 5 * 60 * 1000
+// Cache in-flight requests too: suggestions, structure loads and separate viewers often
+// discover the same provider at once. Each successful response gets its own TTL.
+const links_cache = new Map<
+  string,
+  { promise: Promise<OptimadeProvider[]>; expires: number }
+>()
 
-// Per-key timestamps: a shared one would let any resolution refresh every entry's TTL
-const resolved_provider_urls: Record<string, { url: string; time: number }> = {}
-const RESOLVED_URLS_CACHE_DURATION = 10 * 60 * 1000
-
-async function fetch_with_cors_proxy(url: string): Promise<Response> {
-  // No User-Agent: it is a forbidden header name in browsers and was silently dropped
-  const headers = { Accept: `application/vnd.api+json` }
-  let direct: Response | undefined
-  try {
-    direct = await fetch(url, { headers })
-  } catch {
-    // No response at all (network/CORS failure) — fall back to CORS proxies below
+// Contact only the requested provider. Network/CORS failures stay visible to the caller.
+async function fetch_optimade(url: string): Promise<Response> {
+  const response = await fetch(url, {
+    headers: { Accept: `application/vnd.api+json` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status} ${response.statusText} for ${url}`)
   }
-  // A returned response means CORS succeeded. Surface a definitive HTTP error status
-  // directly (rather than masking a 404/500 behind callers' JSON.parse or the proxy
-  // fallback); only a thrown fetch (no response) warrants the proxies.
-  if (direct) {
-    if (direct.ok) return direct
-    throw new Error(`Request failed: ${direct.status} ${direct.statusText} for ${url}`)
-  }
+  return response
+}
 
-  for (const { prefix, encode } of CORS_PROXIES) {
-    try {
-      const response = await fetch(`${prefix}${encode ? encodeURIComponent(url) : url}`, {
-        headers,
-        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
-      })
-      if (response.ok) return response
-    } catch {
-      // Try next proxy
-    }
-  }
-
-  throw new Error(`All CORS proxies failed for ${url}`)
+const versioned_base_url = (base_url: string): string => {
+  const clean = base_url.replace(/\/+$/, ``)
+  return /\/v\d+(?:\.\d+)*$/.test(clean) ? clean : `${clean}/v1`
 }
 
 async function resolve_provider_url(provider_base_url: string): Promise<string> {
-  const now = Date.now()
-  const cached = resolved_provider_urls[provider_base_url]
-  if (cached && now - cached.time < RESOLVED_URLS_CACHE_DURATION) {
-    return cached.url
-  }
-
-  for (const endpoint of [`/links`, `/v1/links`]) {
-    try {
-      const response = await fetch_with_cors_proxy(`${provider_base_url}${endpoint}`)
-      const data = await response.json()
-
-      const self_link = data.data?.find(
-        (link: { type: string; attributes?: { base_url?: string; link_type?: string } }) =>
-          link.type === `links` &&
-          link.attributes?.base_url &&
-          link.attributes.link_type === `child`,
-      )
-
-      const url = self_link?.attributes.base_url
-      if (url) {
-        resolved_provider_urls[provider_base_url] = { url, time: now }
-        return url
-      }
-    } catch {
-      // Try next endpoint
-    }
-  }
-
-  resolved_provider_urls[provider_base_url] = { url: provider_base_url, time: now }
-  return provider_base_url
+  const api_base = versioned_base_url(provider_base_url)
+  const links = await fetch_links(`${api_base}/links`)
+  const child = links.find((link) => link.attributes.link_type === `child`)
+  // Index providers point to a child database; database providers already serve structures.
+  return child ? versioned_base_url(child.attributes.base_url) : api_base
 }
 
-export async function fetch_optimade_providers(): Promise<OptimadeProvider[]> {
-  const now = Date.now()
-  if (cached_providers && now - providers_cache_time < CACHE_DURATION) {
-    return cached_providers
+async function fetch_links(url: string): Promise<OptimadeProvider[]> {
+  const cached = links_cache.get(url)
+  if (cached && Date.now() < cached.expires) return cached.promise
+  const promise = fetch_optimade(url).then(async (response) => {
+    const body: { data: OptimadeProvider[] } = await response.json()
+    if (!Array.isArray(body.data)) throw new Error(`Invalid links response from ${url}`)
+    return body.data.filter((link) => link.type === `links` && link.attributes.base_url)
+  })
+  const entry = { promise, expires: Infinity }
+  links_cache.set(url, entry)
+  try {
+    const links = await promise
+    entry.expires = Date.now() + CACHE_DURATION
+    return links
+  } catch (error) {
+    links_cache.delete(url)
+    throw error
   }
-
-  const response = await fetch_with_cors_proxy(`https://providers.optimade.org/v1/links`)
-  const data: { data: OptimadeProvider[] } = await response.json()
-  const providers = data.data
-    .filter((provider) => provider.attributes.base_url)
-    .map((provider) => ({
-      id: provider.id,
-      type: `links` as const,
-      attributes: {
-        name: provider.attributes.name,
-        description: provider.attributes.description,
-        base_url: provider.attributes.base_url,
-        homepage: provider.attributes.homepage,
-        version: provider.attributes.version,
-      },
-    }))
-
-  cached_providers = providers
-  providers_cache_time = now
-  return providers
 }
 
-// URL encode/decode utilities for structure IDs with special characters (encodeURIComponent
+export const fetch_optimade_providers = (): Promise<OptimadeProvider[]> =>
+  fetch_links(`https://providers.optimade.org/v1/links`)
+
+// URL encoding for structure IDs with special characters (encodeURIComponent
 // leaves dots alone, but a trailing `.` in a path segment is routinely stripped by servers)
 export const encode_structure_id = (id: string) =>
   encodeURIComponent(id).replaceAll(`.`, `%2E`)
 
-export const decode_structure_id = (encoded_id: string) => decodeURIComponent(encoded_id)
-
-export function detect_provider_from_slug(slug: string, providers: OptimadeProvider[]) {
-  const decoded_slug = decode_structure_id(slug)
-  const prefix = decoded_slug.split(`-`)[0].toLowerCase()
+export function detect_provider_from_id(structure_id: string, providers: OptimadeProvider[]) {
+  const prefix = structure_id.split(`-`)[0].toLowerCase()
   return providers.find((provider) => provider.id === prefix)?.id ?? ``
 }
 
@@ -169,8 +115,7 @@ async function get_api_base(provider: string, providers: OptimadeProvider[]): Pr
   const provider_config = providers.find((entry) => entry.id === provider)
   if (!provider_config) throw new Error(`Unknown provider: ${provider}`)
 
-  const base_url = await resolve_provider_url(provider_config.attributes.base_url)
-  return base_url.endsWith(`/v1`) ? base_url : `${base_url}/v1`
+  return resolve_provider_url(provider_config.attributes.base_url)
 }
 
 export async function fetch_optimade_structure(
@@ -180,7 +125,7 @@ export async function fetch_optimade_structure(
 ): Promise<OptimadeStructure> {
   const api_base = await get_api_base(provider, providers)
   const encoded_id = encode_structure_id(structure_id)
-  const response = await fetch_with_cors_proxy(`${api_base}/structures/${encoded_id}`)
+  const response = await fetch_optimade(`${api_base}/structures/${encoded_id}`)
   const data = await response.json()
 
   // An empty array is a valid "no such entry" answer, not a hit: `!data.data` misses it
@@ -196,18 +141,12 @@ export async function fetch_suggested_structures(
   providers: OptimadeProvider[],
   limit: number = 12,
 ): Promise<OptimadeStructure[]> {
-  try {
-    // get_api_base stays inside the try: suggestions are optional, so an unknown provider and
-    // a URL-resolution failure both soft-fail to [] instead of leaving the caller's loading
-    // state stuck on a rejection
-    const api_base = await get_api_base(provider, providers)
-    const response = await fetch_with_cors_proxy(
-      `${api_base}/structures?page_limit=${limit}&page_offset=0`,
-    )
-    const data = await response.json()
-    return Array.isArray(data.data) ? data.data : []
-  } catch (error) {
-    console.warn(`Failed to fetch suggested structures for ${provider}:`, error)
-    return []
-  }
+  const api_base = await get_api_base(provider, providers)
+  const response = await fetch_optimade(
+    `${api_base}/structures?page_limit=${limit}&page_offset=0`,
+  )
+  const data: { data: OptimadeStructure[] } = await response.json()
+  if (!Array.isArray(data.data))
+    throw new Error(`Invalid structures response from ${api_base}`)
+  return data.data
 }

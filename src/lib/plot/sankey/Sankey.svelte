@@ -59,7 +59,7 @@
     on_node_hover,
     on_link_click,
     on_link_hover,
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -373,16 +373,17 @@
   bind:height
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   {controls_toggle_props}
   {header_controls}
   {children}
   {...rest}
 >
-  {#snippet controls(toggle_props)}
+  {#snippet controls(toggle_props, show_controls)}
     <SankeyControls
       {toggle_props}
       pane_props={controls_pane_props}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       bind:orientation
       bind:node_width

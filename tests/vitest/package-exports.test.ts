@@ -25,8 +25,9 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import type { HullModel } from 'matterviz/convex-hull'
 import type { StructureToolRun } from 'matterviz'
-import type { StructureToolProps } from 'matterviz/structure'
+import type { StructureSettings, StructureToolProps } from 'matterviz/structure'
 import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
 import svelte_config from '../../svelte.config'
 
@@ -118,31 +119,64 @@ describe(`package.json exports`, () => {
     ])
   })
 
-  test(`root barrel exposes the host prediction API`, () => {
+  test(`root barrel exposes headless hull and host prediction APIs`, () => {
+    expect(lib.Structure).toBeTypeOf(`function`)
+    expect(lib.Trajectory).toBeTypeOf(`function`)
+    expect(lib.ConvexHull).toBeTypeOf(`function`)
+    for (const name of [
+      `StructureFileViewer`,
+      `TrajectoryFileViewer`,
+      `ConvexHull2D`,
+      `ConvexHullCanvas`,
+      `StructureBarPlot`,
+    ]) {
+      expect(lib).not.toHaveProperty(name)
+    }
+    expect(lib.compute_hull_model).toBeTypeOf(`function`)
+    expectTypeOf<HullModel>().toHaveProperty(`entries`)
     expect(lib.structure_host_tool).toHaveProperty(`component`)
     expect(lib.prediction_to_json).toBeTypeOf(`function`)
     expect(lib.prediction_from_json).toBeTypeOf(`function`)
     expectTypeOf<lib.StructureToolRun>().toHaveProperty(`signal`)
     expectTypeOf<lib.StructureToolProps>().toHaveProperty(`start_run`)
+    expectTypeOf<
+      Extract<
+        keyof StructureSettings,
+        `structure` | `volumetric_data` | `measure_mode` | `selected_sites` | `orbit_controls`
+      >
+    >().toEqualTypeOf<never>()
   })
 
   test.skipIf(!has_dist).each([`matterviz`, `matterviz/structure`])(
-    `built %s entry exposes the host prediction API`,
+    `built %s entry exposes structure viewing and host prediction APIs`,
     { timeout: 60_000 },
     async (entry) => {
       expect(import.meta.resolve(entry)).toContain(`/dist/`)
-      const { structure_host_tool, prediction_to_json, prediction_from_json } = await import(
-        entry
-      )
+      const {
+        Structure,
+        compute_hull_model,
+        structure_host_tool,
+        prediction_to_json,
+        prediction_from_json,
+      } = await import(entry)
+      expect(Structure).toBeTypeOf(`function`)
+      if (entry === `matterviz`) expect(compute_hull_model).toBeTypeOf(`function`)
       expect(structure_host_tool).toHaveProperty(`component`, null)
       expect(prediction_to_json).toBeTypeOf(`function`)
       expect(prediction_from_json).toBeTypeOf(`function`)
       expectTypeOf<StructureToolRun>().toHaveProperty(`signal`)
       expectTypeOf<StructureToolProps>().toHaveProperty(`start_run`)
+      expectTypeOf<StructureSettings>().toHaveProperty(`camera_position`)
     },
   )
 
   test(`plot keeps its selected public title and decoration exports`, () => {
+    expectTypeOf<
+      Extract<
+        keyof lib.ScatterPlotOptions | keyof lib.BarPlotOptions | keyof lib.HistogramOptions,
+        `series` | `width` | `height` | `wrapper` | `hovered`
+      >
+    >().toEqualTypeOf<never>()
     expectTypeOf<DecorationSide>().toEqualTypeOf<`top` | `right` | `bottom` | `left`>()
     expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()
     expectTypeOf<PlotTitleLineKind>().toEqualTypeOf<`title` | `subtitle`>()
@@ -211,7 +245,10 @@ describe(`package.json exports`, () => {
     `built structure export entry point retains strict public exports`,
     { timeout: 60_000 },
     async () => {
-      const structure_export = await import(`../../dist/structure/export.js`)
+      // This inspects the built module's runtime keys. Source-only type checks need no dist/.
+      const structure_export: Record<string, unknown> = await import(
+        `${dist_dir}/structure/export.js`
+      )
       expect(pkg.exports[`./structure/export`]).toEqual({
         types: `./dist/structure/export.d.ts`,
         default: `./dist/structure/export.js`,

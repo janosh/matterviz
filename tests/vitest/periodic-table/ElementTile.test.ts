@@ -1,4 +1,5 @@
-import { element_data, ElementTile } from '$lib'
+import element_data from '$lib/element/data'
+import ElementTile from '$lib/element/ElementTile.svelte'
 import type { SplitLayout, TileSegment } from '$lib/element'
 import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { type ComponentProps, mount, tick } from 'svelte'

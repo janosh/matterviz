@@ -892,10 +892,19 @@ describe(`IrRamanSpectrum component`, () => {
     [`CO2 IR`, { fwhm: 25 }, 3],
     [`CO2 Raman`, { fwhm: 25, kind: `raman` } as const, 1],
   ])(`renders %s with one stick per active mode`, async (_name, props, n_sticks) => {
-    render(props)
+    render({
+      ...props,
+      legend: {},
+      show_legend: true,
+      display: { x_grid: false, y_grid: false },
+    })
     await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(n_sticks)
+    expect(document.querySelector(`.legend`)).not.toBeNull()
+    for (const axis_tick of document.querySelectorAll(`.tick`)) {
+      expect(axis_tick.querySelectorAll(`line`)).toHaveLength(1)
+    }
   })
 
   it(`forwards flat control props and controls_open binding`, async () => {

@@ -3,13 +3,15 @@
   import { Columns, Reset } from 'svelte-widgets/icons'
   import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
-  import { get_column_id as col_id, type Label } from '$lib/table'
+  import type { Column } from '$lib/table'
   import { strip_html } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import { slide } from 'svelte/transition'
 
+  type MenuColumn = Omit<Column, `cell`>
+
   // Hosts with external visibility state can keep the declared reset baseline separate.
-  type ToggleColumn = Label & { default_visible?: boolean }
+  type ToggleColumn = MenuColumn & { default_visible?: boolean }
 
   let {
     columns = $bindable([]),
@@ -40,14 +42,13 @@
   let normalized_column_filter = $derived(
     show_column_filter ? column_filter.trim().toLowerCase() : ``,
   )
-  const column_matches_filter = (col: Label): boolean =>
+  const column_matches_filter = (col: MenuColumn): boolean =>
     !normalized_column_filter ||
-    [col.key, strip_html(col.label), col.description, col.group]
+    [col.id, col.key, strip_html(col.label), col.description, col.group]
       .filter(Boolean)
       .join(` `)
       .toLowerCase()
       .includes(normalized_column_filter)
-  let filtered_columns = $derived(columns.filter(column_matches_filter))
 
   // Reset baseline: each column's default visibility, snapshotted when the column SET changes
   // (a new dataset) and held steady across this menu's own toggles. Sorted so a pure reorder
@@ -56,15 +57,14 @@
   // derived sees them as unchanged and keeps the snapshot.
   const default_signature = () =>
     columns
-      .map((col) => `${col_id(col)}:${default_visible(col)}`)
+      .map((col) => `${col.id}:${default_visible(col)}`)
       .toSorted()
       .join(`\0`)
-  let snapshot = { signature: ``, defaults: {} as Record<string, boolean> }
+  let snapshot = { signature: ``, defaults: new Map<string, boolean>() }
   let default_visibility = $derived.by(() => {
     const signature = default_signature()
     if (signature !== snapshot.signature) {
-      const defaults: Record<string, boolean> = {}
-      for (const col of columns) defaults[col_id(col)] = default_visible(col)
+      const defaults = new Map(columns.map((col) => [col.id, default_visible(col)]))
       snapshot = { signature, defaults }
     }
     return snapshot.defaults
@@ -72,50 +72,37 @@
   const keep_snapshot = () => (snapshot.signature = default_signature())
 
   // Check if a column's visibility differs from its default
-  const is_changed = (col: Label) =>
-    (col.visible !== false) !== (default_visibility[col_id(col)] ?? true)
+  const is_changed = (col: MenuColumn) =>
+    (col.visible !== false) !== (default_visibility.get(col.id) ?? true)
 
   let has_any_changes = $derived(columns.some(is_changed))
 
   // Reset columns to default visibility
-  function reset_columns(items: Label[]): void {
+  function reset_columns(items: MenuColumn[]): void {
     const changed = items.filter(is_changed)
     // Read the baseline once: each write below dirties the derived, and re-reading it
     // mid-loop would resnapshot from the half-reset columns
     const defaults = default_visibility
-    for (const col of changed) col.visible = defaults[col_id(col)] ?? true
+    for (const col of changed) col.visible = defaults.get(col.id) ?? true
     // Record our write before notifying a host that may feed new columns back in.
     keep_snapshot()
     columns = [...columns]
     for (const col of changed) on_toggle?.(col, col.visible !== false)
   }
 
-  // Group columns by their group property
-  let sections = $derived.by(() => {
-    const grouped: Record<string, Label[]> = {}
-    const ungrouped: Label[] = []
-
-    for (const col of columns) {
-      if (col.group) {
-        grouped[col.group] ??= []
-        grouped[col.group].push(col)
-      } else {
-        ungrouped.push(col)
-      }
+  // Keep first-occurrence group order, with ungrouped columns last, even when filtering.
+  let filtered_sections = $derived.by(() => {
+    const groups = Map.groupBy(columns, (col) => col.group || ``)
+    const ungrouped = groups.get(``)
+    if (ungrouped) {
+      groups.delete(``)
+      groups.set(``, ungrouped)
     }
-
-    const result = Object.entries(grouped).map(([name, items]) => ({ name, items }))
-    if (ungrouped.length > 0) result.push({ name: ``, items: ungrouped })
-    return result
+    return [...groups]
+      .map(([name, items]) => ({ name, items: items.filter(column_matches_filter) }))
+      .filter(({ items }) => items.length > 0)
   })
-  let filtered_sections = $derived(
-    sections
-      .map((section) => ({
-        ...section,
-        items: section.items.filter(column_matches_filter),
-      }))
-      .filter((section) => section.items.length > 0),
-  )
+  let filtered_columns = $derived(filtered_sections.flatMap(({ items }) => items))
 
   // Check if any column defines a group (to decide whether to show sections)
   let has_sections = $derived(columns.some((col) => col.group))
@@ -127,7 +114,7 @@
   }
 
   function toggle_column_visibility(
-    col: Label,
+    col: MenuColumn,
     event: Event & { currentTarget: HTMLInputElement },
   ) {
     col.visible = event.currentTarget.checked
@@ -184,7 +171,7 @@
   })
 </script>
 
-{#snippet toggle_item(col: Label)}
+{#snippet toggle_item(col: MenuColumn)}
   <label
     class={['toggle-label', { disabled: col.disabled }]}
     {@attach tooltip({ allow_html: true, content: sanitize_html(col.description ?? ``) })}
@@ -305,7 +292,7 @@
               style:grid-template-columns={grid_template(section.items.length)}
               transition:slide={{ duration: 200 }}
             >
-              {#each section.items as col (col_id(col))}
+              {#each section.items as col (col.id)}
                 {@render toggle_item(col)}
               {/each}
             </div>
@@ -313,7 +300,7 @@
         </div>
       {/each}
     {:else}
-      {#each filtered_columns as col (col_id(col))}
+      {#each filtered_columns as col (col.id)}
         {@render toggle_item(col)}
       {/each}
     {/if}

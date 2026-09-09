@@ -201,9 +201,8 @@
     }
   }
 
-  // Unmount: abort this pane's request, then release the worker (the client pre-warms a
-  // replacement after every abort, which nothing would use once the pane is gone). Not
-  // `cancel()`: the client is shared, so another mounted pane's request must survive.
+  // Unmount: abort this pane's request and release an idle worker. Other mounted panes'
+  // requests share the client and must survive.
   $effect(() => () => {
     request_controller?.abort()
     compute_trajectory_spectroscopy_async.release()

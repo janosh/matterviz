@@ -1,4 +1,4 @@
-import type { DataSeries } from '$lib/plot'
+import type { InternalPoint } from '$lib/plot'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { LabelPlacementConfig } from '$lib/plot/core/types'
 import type { AnchorInfo, LabelState } from '$lib/plot/core/utils/label-placement'
@@ -17,6 +17,14 @@ import {
 } from '$lib/plot/core/utils/label-placement'
 import { describe, expect, test } from 'vitest'
 import { mock_text_measurement } from '../setup'
+
+type LabelSeries = {
+  x?: readonly number[]
+  y?: readonly number[]
+  x_axis?: string
+  y_axis?: string
+  filtered_data?: InternalPoint[]
+}
 
 // === Geometry helpers ===
 
@@ -502,7 +510,7 @@ type LabeledPoint = {
   point_offset?: { x: number; y: number }
 }
 
-function make_labeled_series(points: LabeledPoint[]): DataSeries[] {
+function make_labeled_series(points: LabeledPoint[]): LabelSeries[] {
   const series = {
     x: points.map((pt) => pt.x),
     y: points.map((pt) => pt.y),
@@ -522,7 +530,7 @@ function make_labeled_series(points: LabeledPoint[]): DataSeries[] {
 
 // Default scales and bounds for every case below, so tests read as points plus the one config
 // knob they exercise. Pass a prebuilt series to place_series when a case tweaks point fields.
-const place_series = (series: DataSeries[], config = default_config) =>
+const place_series = (series: LabelSeries[], config = default_config) =>
   compute_label_positions(series, config, default_scales, default_bounds)
 
 const place = (points: LabeledPoint[], config = default_config) =>
@@ -568,7 +576,7 @@ describe(`compute_label_positions`, () => {
   test(`returns empty for empty series or disabled auto_placement`, () => {
     expect(place_series([])).toEqual({})
 
-    const disabled: DataSeries[] = [
+    const disabled: LabelSeries[] = [
       {
         x: [10, 20],
         y: [10, 20],

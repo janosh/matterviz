@@ -14,7 +14,7 @@ import { build_structure_props_from_settings, type DefaultSettings } from '$lib/
 import Bands from '$lib/spectral/Bands.svelte'
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
 import Dos from '$lib/spectral/Dos.svelte'
-import type { BaseBandStructure, DosInput } from '$lib/spectral/types'
+import { normalize_band_structure, normalize_dos } from '$lib/spectral/helpers'
 import type { AnyStructure } from '$lib/structure'
 import type { StructureToolPrediction } from '$lib/structure/prediction'
 import Structure from '$lib/structure/Structure.svelte'
@@ -90,29 +90,22 @@ export function mount_viewer(
       props: { data: data as PhaseDiagramData, ...common_props },
     })
   }
-  if (type === `bands_and_dos`) {
-    // Support both { band_structure, dos } wrapper and combined-fields format
+  if (type === `bands_and_dos` || type === `band_structure` || type === `dos`) {
     const record = data as Record<string, unknown>
-    return mount(BandsAndDos, {
-      target,
-      props: {
-        band_structs: (record.band_structure ?? data) as BaseBandStructure,
-        doses: (record.dos ?? data) as DosInput,
-        ...common_props,
-      },
-    })
-  }
-  if (type === `band_structure`) {
-    return mount(Bands, {
-      target,
-      props: { band_structs: data as BaseBandStructure, ...common_props, padding: { b: 60 } },
-    })
-  }
-  if (type === `dos`) {
-    return mount(Dos, {
-      target,
-      props: { doses: data as DosInput, ...common_props, padding: { b: 60 } },
-    })
+    const bands =
+      type === `dos` ? null : normalize_band_structure(record.band_structure ?? data)
+    const dos = type === `band_structure` ? null : normalize_dos(record.dos ?? data)
+    if (type !== `dos` && !bands) throw new Error(`Invalid band structure data`)
+    if (type !== `band_structure` && !dos) throw new Error(`Invalid DOS data`)
+    const props = { ...common_props, padding: { b: 60 } }
+    if (bands && dos)
+      return mount(BandsAndDos, {
+        target,
+        props: { band_structs: { '': bands }, doses: { '': dos }, ...common_props },
+      })
+    if (bands)
+      return mount(Bands, { target, props: { band_structs: { '': bands }, ...props } })
+    if (dos) return mount(Dos, { target, props: { doses: { '': dos }, ...props } })
   }
   if (type === `brillouin_zone`) {
     const record = data as Record<string, unknown>
@@ -135,5 +128,5 @@ export function mount_viewer(
       props: { data, ...(type === `table` && { initial_type: `table` as const }), on_close },
     })
   }
-  throw new Error(`mount_viewer: no viewer registered for type ${String(type)}`)
+  throw new Error(`mount_viewer: no viewer registered for type ${type}`)
 }

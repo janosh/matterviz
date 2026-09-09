@@ -74,7 +74,7 @@
       >
         <PortalSelect
           {options}
-          {selected_key}
+          bind:selected_key={() => selected_key, () => {}}
           {on_select}
           disabled={loading}
           class="axis-trigger"

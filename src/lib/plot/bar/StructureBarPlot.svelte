@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { BarPlotOptions } from '$lib/plot'
   // Shell shared by the bar plots that histogram one-or-many structures ($lib/bond-angles,
   // $lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
@@ -13,7 +14,7 @@
   } from '$lib/plot/core/types'
   import { create_structure_drop_handler } from '$lib/plot/core/structure-input'
   import type { StructureEntry } from '$lib/plot/core/structure-input'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import BarPlot from './BarPlot.svelte'
 
   let {
@@ -33,10 +34,10 @@
     loading = $bindable(false),
     loading_message = `Reading dropped file…`,
     error_msg = $bindable(),
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     ...rest
-  }: Omit<ComponentProps<typeof BarPlot>, `series` | `tooltip`> & {
+  }: Omit<BarPlotOptions, `tooltip`> & {
     // Not generic over the metadata type: BarPlot's snippet prop is invariant in it, so a
     // narrower Metadata here fails to satisfy Snippet<[BarHandlerProps<Record<string, unknown>>]>.
     // Callers keep their metadata fields optional, which makes both directions assignable.

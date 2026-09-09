@@ -1,3 +1,10 @@
+import type { ComponentProps } from 'svelte'
+import type { HTMLAttributes } from 'svelte/elements'
+import type ScatterPlot from './scatter/ScatterPlot.svelte'
+import type BarPlot from './bar/BarPlot.svelte'
+import type Histogram from './histogram/Histogram.svelte'
+import type { BasePlotProps, PlotConfig } from './core/types'
+
 // Public plot API. Chart families are exported wholesale; each folder has its own index.ts
 // barrel re-exported here.
 export * from './bar'
@@ -88,3 +95,90 @@ export {
   type StructureEntry,
   type StructureInput,
 } from './core/structure-input'
+
+type PlotElementOptions = Pick<
+  HTMLAttributes<HTMLDivElement>,
+  | 'id'
+  | 'class'
+  | 'style'
+  | 'role'
+  | 'tabindex'
+  | 'aria-label'
+  | 'aria-describedby'
+  | 'onmouseleave'
+> & { 'data-testid'?: string }
+
+// Composite charts deliberately expose presentation and interaction options, never child data.
+type PlotOptionKey =
+  | keyof PlotConfig
+  | Exclude<keyof BasePlotProps, 'hovered'>
+  | 'legend'
+  | 'show_legend'
+  | 'pan'
+  | 'marginals'
+  | 'ref_lines'
+  | 'on_ref_line_click'
+  | 'on_ref_line_hover'
+  | 'header_controls'
+  | 'user_content'
+  | 'hidden_series'
+  | 'on_hidden_series_change'
+  | 'on_axis_change'
+  | 'axis_loading'
+  | 'tooltip'
+  | 'controls_extra'
+
+export type ScatterPlotOptions = PlotElementOptions &
+  Pick<
+    ComponentProps<typeof ScatterPlot>,
+    | PlotOptionKey
+    | 'styles'
+    | 'color_scale'
+    | 'size_scale'
+    | 'color_bar'
+    | 'label_placement_config'
+    | 'hover_config'
+    | 'point_tween'
+    | 'line_tween'
+    | 'point_events'
+    | 'on_point_click'
+    | 'on_point_hover'
+    | 'on_plot_click'
+    | 'view'
+    | 'resolved_padding'
+    | 'marker_renderer'
+    | 'error_bar_cap'
+    | 'point_hit_padding'
+    | 'on_select'
+  >
+
+export type BarPlotOptions = PlotElementOptions &
+  Pick<
+    ComponentProps<typeof BarPlot>,
+    | PlotOptionKey
+    | 'orientation'
+    | 'mode'
+    | 'bar'
+    | 'line'
+    | 'color_scale'
+    | 'size_scale'
+    | 'on_bar_click'
+    | 'on_bar_hover'
+    | 'on_point_click'
+    | 'on_point_hover'
+  >
+
+export type HistogramOptions = PlotElementOptions &
+  Pick<
+    ComponentProps<typeof Histogram>,
+    | PlotOptionKey
+    | 'bins'
+    | 'normalize'
+    | 'bar'
+    | 'mode'
+    | 'on_bar_click'
+    | 'on_bar_hover'
+    | 'on_series_toggle'
+  >
+
+export { create_axis_loader } from './core/axis-utils'

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { ConvexHull, ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
-  import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull'
-  import type { Component, ComponentProps } from 'svelte'
+  import { ConvexHull, MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull'
+  import type { ConvexHullEntry, HullModel, PhaseData } from '$lib/convex-hull'
 
   const elements_by_dim = {
     '2d': [`Li`, `O`],
@@ -14,22 +13,12 @@
     include_element_refs = true,
     allow_file_drop = true,
     start_missing = false,
-    use_wrapper = false,
   }: {
     dim: keyof typeof elements_by_dim
     include_element_refs?: boolean
     allow_file_drop?: boolean
     start_missing?: boolean
-    use_wrapper?: boolean
   } = $props()
-  // The prop superset cast mirrors ConvexHull.svelte's dynamic component; 2D ignores `dim`
-  const Hull = $derived(
-    (use_wrapper ? ConvexHull : dim === `2d` ? ConvexHull2D : ConvexHullCanvas) as Component<
-      ComponentProps<typeof ConvexHullCanvas>
-    >,
-  )
-  const canvas_dim = $derived(dim === `3d` ? 3 : 4)
-
   const entries_for = (prefix: string): PhaseData[] => {
     const elements = elements_by_dim[dim]
     const composition = Object.fromEntries(elements.map((element) => [element, 1]))
@@ -47,11 +36,16 @@
   let entries = $derived<PhaseData[] | undefined>(
     start_missing ? undefined : entries_for(`old`),
   )
-  let stable_entries = $state.raw<ConvexHullEntry[]>([])
-  let unstable_entries = $state.raw<ConvexHullEntry[]>([])
+  let hull = $state<{ get_model: () => HullModel | undefined }>()
+  const model = $derived(hull?.get_model())
+  const stable_entries = $derived(model?.entries.filter((entry) => entry.is_stable) ?? [])
+  const unstable_entries = $derived(model?.entries.filter((entry) => !entry.is_stable) ?? [])
   // Plain (deeply-proxied) $state, matching how the demo binds selected_entry: the
   // component writing a raw plot entry back through this binding re-proxies it, which
   // used to loop the selection effect forever (raw !== proxy → effect_update_depth_exceeded)
+  let entry_category = $state<typeof MAGNETIC_ORDERING_CATEGORY | null>(
+    MAGNETIC_ORDERING_CATEGORY,
+  )
   let selected_entry = $state<ConvexHullEntry | null>(null)
   // Read by the draw code but only reachable through `config`, so it exercises whether the
   // renderer's repaint list covers config as well as the individual toggles.
@@ -98,13 +92,19 @@
   Toggle Labels
 </button>
 
-<Hull
-  dim={canvas_dim}
+<button
+  type="button"
+  data-testid="toggle-hull-category"
+  onclick={() => (entry_category = entry_category ? null : MAGNETIC_ORDERING_CATEGORY)}
+  >Toggle Category</button
+>
+
+<ConvexHull
   {entries}
   {config}
+  {entry_category}
   {allow_file_drop}
   on_file_drop={(dropped) => (entries = dropped)}
   bind:selected_entry
-  bind:stable_entries
-  bind:unstable_entries
+  bind:this={hull}
 />

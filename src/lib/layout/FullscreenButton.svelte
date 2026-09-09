@@ -13,6 +13,7 @@
   // whose request the browser rejects never reaches the host, and a granted one does.
   let {
     fullscreen = $bindable(false),
+    hidden = false,
     wrapper,
     on_change,
     ...rest
@@ -39,14 +40,15 @@
   })
 
   // Plain `f` fullscreens the viewer under the pointer. Every viewer renders one of these
-  // buttons for its own root, so owning the key here keeps one binding across all of them,
-  // and hosts that pass fullscreen_toggle={false} never render us and so never get the key.
+  // buttons for its own root, so owning the key here keeps one binding across all of them.
+  // Hidden buttons retain an active fullscreen subscription but never handle shortcuts.
   // Chords stay with the browser (Cmd/Ctrl+F is find-in-page) and typing is left alone.
   $effect(() => {
     const root = wrapper
     if (!root) return
     root.setAttribute(VIEWER_ATTR, ``)
     const handle = (event: KeyboardEvent) => {
+      if (hidden) return false
       if (event.key !== `f` || event.repeat || is_modifier_chord(event)) return false
       if (is_editable_event_target(event.target)) return false
       // Nested viewers (a Structure inside a Trajectory) leave the key to the outer one:
@@ -64,4 +66,10 @@
   })
 </script>
 
-<WidgetFullscreenButton bind:fullscreen {wrapper} {...rest} />
+<WidgetFullscreenButton
+  bind:fullscreen
+  {wrapper}
+  {...rest}
+  {hidden}
+  style={[rest.style, hidden && `display: none`].filter(Boolean).join(`; `)}
+/>

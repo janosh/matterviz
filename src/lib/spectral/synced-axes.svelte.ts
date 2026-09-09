@@ -6,7 +6,9 @@ import type { Vec2 } from '$lib/math'
 import { vec2_equal } from '$lib/plot/core/interactions'
 import { axis_with_range, max_side_padding } from '$lib/plot/core/shared-axes'
 import type { AxisConfig, AxisRanges } from '$lib/plot/core/types'
-import { compute_frequency_range, extract_efermi } from './helpers'
+import { compute_frequency_range, extract_efermi, spectral_type } from './helpers'
+import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
+import type { BaseBandStructure, DosData, FrequencyUnit } from './types'
 
 // Floor for the vertical padding two side-by-side panels share. A panel that moves its
 // legend/colorbar outside widens its own bottom margin, and the other panel must follow or the
@@ -30,8 +32,10 @@ export function shared_resolved_padding_floor() {
 }
 
 interface BandsDosSyncInputs {
-  band_structs: () => unknown
-  doses: () => unknown
+  band_structs: () => Record<string, BaseBandStructure>
+  doses: () => Record<string, DosData>
+  units: () => FrequencyUnit
+  fermi_level?: () => number | undefined
   bands_y_axis: () => AxisConfig | undefined
   dos_y_axis: () => AxisConfig | undefined
   bands_padding: () => Sides | undefined
@@ -52,11 +56,20 @@ interface BandsDosSyncInputs {
 // BrillouinBandsDos).
 export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const shared = () => inputs.shared_axis?.() ?? true
-  const shared_range = $derived(
-    shared() ? compute_frequency_range(inputs.band_structs(), inputs.doses()) : undefined,
-  )
+  const unit_factor = $derived.by(() => {
+    if (spectral_type(inputs.band_structs(), inputs.doses()) !== `phonon`) return 1
+    const unit = inputs.units()
+    return frequency_unit_per_thz(parse_frequency_unit(unit) ?? unit)
+  })
+  const shared_range = $derived.by(() => {
+    if (!shared()) return undefined
+    const range = compute_frequency_range(inputs.band_structs(), inputs.doses())
+    return range ? ([range[0] * unit_factor, range[1] * unit_factor] as Vec2) : undefined
+  })
   const fermi_level = $derived(
-    extract_efermi(inputs.band_structs()) ?? extract_efermi(inputs.doses()),
+    inputs.fermi_level?.() ??
+      extract_efermi(inputs.band_structs()) ??
+      extract_efermi(inputs.doses()),
   )
   // Side by side, the DOS axis label defaults to empty since the bands axis already names
   // the quantity; a caller's label still wins
@@ -73,7 +86,18 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   // baseline, so a panel left zoomed while the link was off leads once it is back on.
   const views = $state<(Partial<AxisRanges> | undefined)[]>([undefined, undefined])
   let synced_y: Vec2 | undefined
+  let previous_unit_factor: number | undefined
   $effect(() => {
+    if (previous_unit_factor !== undefined && previous_unit_factor !== unit_factor) {
+      // A unit change resets frequency zoom; child plots may already have updated their
+      // bound view, so scaling that view here could convert it twice.
+      for (const [idx, view] of views.entries()) {
+        const axis = idx === 1 && !inputs.side_by_side() ? `x` : `y`
+        views[idx] = { ...view, [axis]: shared_range ? [...shared_range] : undefined }
+      }
+      synced_y = shared_range
+    }
+    previous_unit_factor = unit_factor
     if (!inputs.sync_zoom() || !inputs.side_by_side() || !shared_range) {
       synced_y = undefined
       return

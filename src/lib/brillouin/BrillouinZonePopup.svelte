@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { BrillouinZoneOptions } from './index'
   // Small floating Brillouin zone that marks one or more symmetry points on the k-path; Bands
   // opens it when a symmetry-point tick label is clicked. Same FloatingPopup shell as the
   // convex hull's StructurePopup.
@@ -32,7 +33,7 @@
     k_path_labels?: { position: Vec3; label: string | null }[]
     width?: number
     height?: number
-    bz_props?: Partial<ComponentProps<typeof BrillouinZone>>
+    bz_props?: Omit<BrillouinZoneOptions, `show_controls` | `fullscreen_toggle`>
   } = $props()
 
   // First zone only: the popup marks a point, it is not the full BrillouinZone viewer. A
@@ -56,6 +57,7 @@
       </p>
     {:else}
       <BrillouinZone
+        {...bz_props}
         {bz_data}
         {k_path_points}
         {k_path_labels}
@@ -63,8 +65,8 @@
         show_controls={false}
         fullscreen_toggle={false}
         allow_file_drop={false}
-        style="--bz-width: {width}px; --bz-height: {height}px; --bz-min-width: 0"
-        {...bz_props}
+        style="--bz-width: {width}px; --bz-height: {height}px; --bz-min-width: 0; {bz_props.style ??
+          ``}"
       >
         <div class="bz-popup-close">{@render close_button()}</div>
       </BrillouinZone>

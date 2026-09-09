@@ -10,6 +10,7 @@ dist
 .env
 
 # vitest coverage and playwright output
+.cache
 coverage
 test-results
 

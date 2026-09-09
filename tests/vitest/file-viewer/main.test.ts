@@ -146,10 +146,32 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
 test.each([
   [`data.json.xz`, `XZ decompression is not supported`],
   [`data.json.bz2`, `BZ2 decompression is not supported`],
-  [`movie.xyz.gz.gz`, `Nested compression is not supported`], // rejected before parsing the inner payload
 ])(`rejects %s with %s`, async (filename, message) => {
   await expect(parse_file_content(btoa(`content`), filename, true)).rejects.toThrow(message)
 })
+
+test.each([`plain`, `zip`, `gzip/gzip`, `zip/gzip`] as const)(
+  `base64 %s payloads route by their decoded contents and inner name`,
+  async (compression) => {
+    const content = { label: `café`, values: [1, 2] }
+    let bytes: Uint8Array<ArrayBuffer> = new TextEncoder().encode(JSON.stringify(content))
+    let filename = `settings.json`
+    for (const layer of compression.split(`/`).toReversed()) {
+      if (layer === `zip`) {
+        bytes = zipSync({ [filename]: bytes })
+        filename = `bundle.zip`
+      } else if (layer === `gzip`) {
+        bytes = new Uint8Array(gzip_sync(bytes))
+        filename += `.gz`
+      }
+    }
+    expect(await parse_file_content(uint8_as_base64(bytes), filename, true)).toEqual({
+      type: `json_browser`,
+      data: content,
+      filename: `settings.json`,
+    })
+  },
+)
 
 test(`parse_file_content renders convex hull JSON whose filename contains convex`, async () => {
   // oxfmt-ignore
@@ -216,6 +238,7 @@ test.each([true, false])(
       [0, 0, 6],
     ]
     const volumetric = {
+      id: `density`,
       lattice: matrix,
       origin: [0, 0, 0],
       periodic,
@@ -258,8 +281,8 @@ describe(`vaspout.h5 electronic routing`, () => {
 
     create_display(make_container(), result)
     const mount_props = last_mount_props()
-    expect(mount_props.band_type).toBe(`electronic`)
-    expect(mount_props.band_structs).toBe(data.bands)
+    expect(mount_props.band_structs).toEqual({ '': data.bands })
+    expect(data.bands).toMatchObject({ type: `electronic` })
   })
 
   test(`trajectories carrying a DOS mount the trajectory-with-DOS wrapper`, async () => {
@@ -303,6 +326,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     [`.deflate`, deflate_sync],
     [`.z`, deflate_raw_sync],
     [`.zip`, (data: Uint8Array) => zipSync({ [`relax.traj`]: data })],
+    [`.traj.zip`, (data: Uint8Array) => zipSync({ [`relax.traj.gz`]: gzip_sync(data) })],
   ] as const)(
     `%s-compressed .traj routes byte-identical data to the trajectory parser`,
     async (extension, compress) => {
@@ -372,15 +396,13 @@ describe(`create_display trajectory display options`, () => {
     expect(mount_props.trajectory).toBe(result.data)
     expect(mount_props.current_step_idx).toBe(42)
     expect(mount_props.on_controller).toBe(on_trajectory_controller)
-    // The webview mounts the pure viewer after parsing elsewhere, so loading/file-drop
-    // settings (and the never-declared enable_tips) must not reach it: Trajectory would
-    // spread them onto its wrapper div as unknown HTML attributes
+    // The host owns parsing and drops; the viewer borrows its already-opened run.
+    expect(mount_props.allow_file_drop).toBe(false)
     for (const key of [
       `loading_options`,
       `spinner_props`,
       `index_above_bytes`,
       `atom_type_mapping`,
-      `allow_file_drop`,
       `enable_tips`,
     ]) {
       expect(mount_props).not.toHaveProperty(key)

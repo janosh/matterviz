@@ -1,5 +1,5 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { CellVal, ColumnFilter, Label, RowData, SortCriterion } from '$lib/table'
+import type { CellVal, ColumnFilter, Column, RowData, SortCriterion } from '$lib/table'
 import {
   CATEGORY_LIMIT,
   cell_matches_filter,
@@ -9,7 +9,6 @@ import {
   compute_column_stats,
   discover_columns,
   format_datetime,
-  get_column_id,
   infer_datetime_kind,
   make_cell_color_scale,
   merge_domains,
@@ -18,6 +17,7 @@ import {
   parse_numeric_val,
   resolve_color_domain,
   row_matches_query,
+  sort_table_rows,
   table_to_delimited,
   table_to_json,
   table_to_latex,
@@ -37,14 +37,6 @@ const calc_cell_color = (
   color_scale: D3InterpolateName | null = `interpolateViridis`,
   scale_type: `linear` | `log` = `linear`,
 ) => make_cell_color_scale(all_values, better, color_scale, scale_type)(val)
-
-it(`encodes grouped column IDs without changing ungrouped IDs`, () => {
-  expect(get_column_id({ label: `x` })).toBe(`x`)
-  expect(get_column_id({ key: `x`, label: `X`, group: `g` })).toBe(`["x","g"]`)
-  expect(get_column_id({ key: `x`, label: `X`, group: `g` })).not.toBe(
-    get_column_id({ key: `x (g)`, label: `X` }),
-  )
-})
 
 describe(`column stats and color domains`, () => {
   const values = [...Array.from({ length: 20 }, (_v, idx) => idx * 5), 10_000]
@@ -319,7 +311,10 @@ it(`discovers columns from the first 50 rows' keys, skipping style/class`, () =>
     ...Array.from({ length: 60 }, () => ({ b: 3 })),
     { late: 1 },
   ]
-  expect(discover_columns(rows)).toEqual([{ label: `b` }, { label: `a` }])
+  expect(discover_columns(rows)).toEqual([
+    { id: `b`, label: `b` },
+    { id: `a`, label: `a` },
+  ])
   expect(discover_columns([])).toEqual([])
 })
 
@@ -384,10 +379,13 @@ describe(`parse_numeric_val`, () => {
 
 describe(`compare_rows`, () => {
   const rows = (...vals: CellVal[]): RowData[] => vals.map((val) => ({ val }))
-  const order = (vals: CellVal[], ascending = true) =>
-    rows(...vals)
-      .toSorted((row1, row2) => compare_rows(row1, row2, [{ key: `val`, ascending }]))
-      .map((row) => row.val)
+  const order = (vals: CellVal[], ascending = true) => {
+    const data = rows(...vals)
+    const criteria = [{ key: `val`, ascending }]
+    const sorted = sort_table_rows(data, criteria)
+    expect(sorted).toEqual(data.toSorted((row1, row2) => compare_rows(row1, row2, criteria)))
+    return sorted.map((row) => row.val)
+  }
 
   it.each([true, false])(`sinks invalid values with ascending=%s`, (ascending) => {
     const invalid_date = new Date(NaN)
@@ -455,6 +453,30 @@ describe(`compare_rows`, () => {
     expect(results[0]).toEqual([5, `abc`, false, true, `zed`]) // numbers first, then text
   })
 
+  it(`reads each object once per sort and refreshes mutated sort values`, () => {
+    let reads = 0
+    const values = Array.from({ length: 40 }, (_, idx) => ({
+      rank: 39 - idx,
+      toJSON() {
+        reads++
+        return this.rank
+      },
+    }))
+    const data = values.map((val) => ({ val }))
+    const criteria = [{ key: `val`, ascending: true }]
+    expect(sort_table_rows(data, criteria).map(({ val }) => val.rank)).toEqual(
+      Array.from({ length: 40 }, (_, idx) => idx),
+    )
+    expect(reads).toBe(40)
+    values[0].rank = -1
+    expect(sort_table_rows(data, criteria)[0]).toBe(data[0])
+    expect(reads).toBe(80)
+    const dates = [{ val: new Date(2024, 0, 2) }, { val: new Date(2024, 0, 1) }]
+    expect(sort_table_rows(dates, criteria)[0]).toBe(dates[1])
+    dates[0].val.setFullYear(2023)
+    expect(sort_table_rows(dates, criteria)[0]).toBe(dates[0])
+  })
+
   // Every case sorts on a primary key that ties, so only a working secondary criterion can
   // produce the expected name order
   const by_name: SortCriterion = { key: `name`, ascending: true }
@@ -474,6 +496,7 @@ describe(`compare_rows`, () => {
       [by_score, by_name], [`a`, `b`]],
   ])(`honours later criteria when %s`, (_case, data, criteria, expected) => {
     const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
+    expect(sort_table_rows(data, criteria)).toEqual(sorted)
     expect(sorted.map((row) => row.name)).toEqual(expected)
   })
 })
@@ -505,24 +528,25 @@ describe(`search and filters`, () => {
 
   it(`picks the filter panel kind from config, then the data, capping auto-detected checklists`, () => {
     const tags = Array.from({ length: CATEGORY_LIMIT + 1 }, (_, idx) => ({ Tag: `t${idx}` }))
+    const column: Column = { id: `Tag`, label: `Tag` }
     const few = [{ Tag: `b` }, { Tag: `<i>a</i>` }, { Tag: null }, { Tag: `b` }]
-    expect(column_filter_panel({ label: `Tag` }, few, `Tag`, false)).toEqual({
+    expect(column_filter_panel(column, few, `Tag`, false)).toEqual({
       kind: `category`,
       options: [`a`, `b`], // distinct, markup-stripped, sorted; invalid cells skipped
     })
-    expect(column_filter_panel({ label: `Tag` }, tags, `Tag`, false)).toEqual({
+    expect(column_filter_panel(column, tags, `Tag`, false)).toEqual({
       kind: `text`,
       options: [],
     })
     // an explicit category column lists every value however many there are
     expect(
-      column_filter_panel({ label: `Tag`, filter: `category` }, tags, `Tag`, false).options,
+      column_filter_panel({ ...column, filter: `category` }, tags, `Tag`, false).options,
     ).toHaveLength(CATEGORY_LIMIT + 1)
-    expect(column_filter_panel({ label: `Tag` }, few, `Tag`, true).kind).toBe(`numeric`)
-    expect(column_filter_panel({ label: `Tag`, filter: `text` }, few, `Tag`, true).kind).toBe(
+    expect(column_filter_panel(column, few, `Tag`, true).kind).toBe(`numeric`)
+    expect(column_filter_panel({ ...column, filter: `text` }, few, `Tag`, true).kind).toBe(
       `text`,
     )
-    expect(column_filter_panel({ label: `Tag` }, [], `Tag`, false).kind).toBe(`text`)
+    expect(column_filter_panel(column, [], `Tag`, false).kind).toBe(`text`)
   })
 
   it(`collapses no-op filters to undefined when editing bounds and checklists`, () => {
@@ -548,14 +572,21 @@ describe(`search and filters`, () => {
 })
 
 describe(`date/time columns`, () => {
-  const plain: Label = { label: `When` }
-  const explicit: Label = { label: `When`, datetime_format: `datetime` }
+  const plain: Column = { id: `When`, label: `When` }
+  const explicit: Column = { id: `When`, label: `When`, datetime_format: `datetime` }
 
-  it.each<[CellVal, Label, number | null]>([
+  it.each<[CellVal, Column, number | null]>([
     [`2024-01-02`, plain, new Date(2024, 0, 2).getTime()], // local midnight, not UTC
     [`2024-01-02T03:04:05Z`, plain, Date.UTC(2024, 0, 2, 3, 4, 5)],
     [`2024-01-02 03:04`, plain, new Date(2024, 0, 2, 3, 4).getTime()],
     [`2024-01-02T03:04:05.123456789Z`, plain, Date.UTC(2024, 0, 2, 3, 4, 5, 123)],
+    [`2024-02-29`, plain, new Date(2024, 1, 29).getTime()],
+    [`0099-01-02`, plain, new Date(`0099-01-02T00:00:00`).getTime()],
+    [`2023-02-29`, plain, null],
+    [`2024-02-30`, plain, null],
+    [`2024-02-30T12:00:00Z`, plain, null],
+    [`2024-13-01`, plain, null],
+    [`2024-01-00`, plain, null],
     [1_700_000_000, plain, null], // bare numbers need an explicit datetime column
     [1_700_000_000, explicit, 1_700_000_000_000], // epoch seconds scale to ms
     [1_700_000_000_000, explicit, 1_700_000_000_000],
@@ -568,12 +599,15 @@ describe(`date/time columns`, () => {
   })
 
   it(`infers the column kind from config first, then from a sample`, () => {
-    expect(infer_datetime_kind({ label: `x`, datetime_format: `time` }, [])).toBe(`time`)
+    expect(infer_datetime_kind({ id: `x`, label: `x`, datetime_format: `time` }, [])).toBe(
+      `time`,
+    )
     expect(infer_datetime_kind(explicit, [])).toBe(`datetime`)
     expect(infer_datetime_kind(plain, [`2024-01-02`, `2024-01-03`])).toBe(`date`)
     // one value with a time of day upgrades the whole column
     expect(infer_datetime_kind(plain, [`2024-01-02`, `2024-01-03T10:00`])).toBe(`datetime`)
     expect(infer_datetime_kind(plain, [`abc`, 5, null])).toBeNull()
+    expect(infer_datetime_kind(plain, [`2023-02-29`, `2024-13-01`])).toBeNull()
   })
 
   it(`formats in local time and as relative age`, () => {
@@ -649,17 +683,19 @@ describe(`table exporters`, () => {
     ])
   })
 
-  it(`exports JSON keyed by stripped headers, stripping only string cells`, () => {
+  it(`exports JSON keyed by stable IDs despite repeated or renamed headers`, () => {
     const when = new Date(Date.UTC(2024, 0, 2))
     const rows: RowData[] = [{ 'n<sub>val</sub>': 1, Name: `<b>Fe</b>`, When: when, Skip: 5 }]
     const columns = [
-      { label: `n<sub>val</sub>`, key: `n<sub>val</sub>` },
-      { label: `Name`, key: `Name` },
-      { label: `When`, key: `When` },
+      { id: `valence`, label: `Value`, key: `n<sub>val</sub>` },
+      { id: `Name`, label: `Value`, key: `Name` },
+      { id: `When`, label: `Value`, key: `When` },
     ]
     expect(JSON.parse(table_to_json(rows, columns))).toEqual([
-      { nval: 1, Name: `Fe`, When: when.toISOString() },
+      { valence: 1, Name: `Fe`, When: when.toISOString() },
     ])
+    columns[0].label = `Renamed`
+    expect(JSON.parse(table_to_json(rows, columns))[0].valence).toBe(1)
   })
 
   it(`escapes markdown backslashes, pipes and newlines and right-aligns numeric columns`, () => {

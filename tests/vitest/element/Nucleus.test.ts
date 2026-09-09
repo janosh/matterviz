@@ -1,4 +1,4 @@
-import { Nucleus } from '$lib'
+import Nucleus from '$lib/element/Nucleus.svelte'
 import { mount } from 'svelte'
 import { expect, test } from 'vitest'
 

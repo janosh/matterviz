@@ -11,8 +11,6 @@ export interface GeometryVolumeJob {
   token: number
   volume: VolumeGrid
   range: DisplayRange | null
-  // Scene origin (first volume's origin); vertices are shifted into that frame
-  reference_origin: Vec3
   surfaces: { token: string; isovalue: number }[]
 }
 
@@ -42,11 +40,11 @@ export interface GeometryResult {
 }
 
 // Marching-cubes options for a finite display window in scene coordinates
-const finite_grid_options = (vertex_shift: Vec3) =>
+const finite_grid_options = (origin: Vec3) =>
   ({
     periodic: false,
     normals: false, // BufferGeometry.computeVertexNormals() on the main thread
-    position_offset: vertex_shift,
+    position_offset: origin,
   }) as const
 
 export function compute_isosurface_geometries(input: GeometryInput): GeometryResult {
@@ -55,18 +53,13 @@ export function compute_isosurface_geometries(input: GeometryInput): GeometryRes
     // Returns the source grid itself when there is no range and it is within budget
     const { grid, lattice, origin } = prepare_geometry_grid(job.volume, job.range)
     const prepare_geometry_ms = performance.now() - prepare_start
-    const vertex_shift: Vec3 = [
-      origin[0] - job.reference_origin[0],
-      origin[1] - job.reference_origin[1],
-      origin[2] - job.reference_origin[2],
-    ]
     const surfaces = job.surfaces.map(({ token, isovalue }): GeometrySurfaceResult => {
       const marching_start = performance.now()
       const { positions, indices } = marching_cubes(
         grid,
         isovalue,
         lattice,
-        finite_grid_options(vertex_shift),
+        finite_grid_options(origin),
       )
       return {
         token,

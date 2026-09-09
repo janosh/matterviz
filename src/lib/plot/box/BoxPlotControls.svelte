@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import type { Orientation, PlotConfig, ViolinKind, ViolinSide, WhiskerMode } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
@@ -29,7 +30,7 @@
     show_mean?: boolean
     kind?: ViolinKind
     side?: ViolinSide
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
     children?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
   } = $props()

@@ -9,14 +9,14 @@
     value = $bindable(null),
     empty = false,
     selected = empty ? [] : [options[1]],
-    minSelect = 0,
+    min_select = 0,
     key = $bindable(null),
     ...rest
-  }: Omit<ComponentProps<typeof Select>, `options` | `key`> & {
+  }: Omit<ComponentProps<typeof Select<string>>, `options` | `key`> & {
     value?: keyof ChemicalElement | null
     empty?: boolean
     selected?: string[]
-    minSelect?: number
+    min_select?: number
     key?: string | null
   } = $props()
 
@@ -28,11 +28,11 @@
 <Select
   {options}
   {selected}
-  maxSelect={1}
-  maxOptions={options.length}
-  {minSelect}
+  max_select={1}
+  max_options={options.length}
+  {min_select}
   bind:value
   placeholder="Select a heatmap"
-  inputStyle="padding: 3pt 6pt;"
+  input_style="padding: 3pt 6pt;"
   {...rest}
 />

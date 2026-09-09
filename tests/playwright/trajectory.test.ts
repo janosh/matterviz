@@ -149,24 +149,20 @@ test.describe(`Trajectory Component`, () => {
     await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `19`)
   })
 
-  test(`main-thread and worker HDF5 runs return exactly matching data`, async ({ page }) => {
+  test(`HDF5 worker and main-thread data match exactly @source`, async ({ page }) => {
     const source_url = `/trajectories/gold-nanoparticle-md.h5`
     const comparison = await page.evaluate(async (url) => {
       const worker_module_path = `/src/lib/file-viewer/parse-in-worker.ts`
       const open_module_path = `/src/lib/trajectory/open.ts`
       const h5_utils_module_path = `/src/lib/trajectory/parse/h5-utils.ts`
       const element_module_path = `/src/lib/element/types.ts`
-      const [
-        { parse_trajectory_in_worker },
-        { open_trajectory },
-        { with_h5_file },
-        { ELEM_SYMBOLS },
-      ] = await Promise.all([
-        import(worker_module_path) as Promise<typeof ParseWorkerModule>,
-        import(open_module_path) as Promise<typeof OpenTrajectoryModule>,
-        import(h5_utils_module_path) as Promise<typeof H5UtilsModule>,
-        import(element_module_path) as Promise<typeof ElementModule>,
-      ])
+      const [{ parse_in_worker }, { open_trajectory }, { with_h5_file }, { ELEM_SYMBOLS }] =
+        await Promise.all([
+          import(worker_module_path) as Promise<typeof ParseWorkerModule>,
+          import(open_module_path) as Promise<typeof OpenTrajectoryModule>,
+          import(h5_utils_module_path) as Promise<typeof H5UtilsModule>,
+          import(element_module_path) as Promise<typeof ElementModule>,
+        ])
       const source = await (await fetch(url)).blob()
       const source_buffer = await source.arrayBuffer()
       const raw = await with_h5_file(source_buffer, `oracle.h5`, (h5_file) => {
@@ -196,7 +192,9 @@ test.describe(`Trajectory Component`, () => {
         }
       })
       const memfs = await open_trajectory(source_buffer, { filename: `gold.h5` })
-      const workerfs = await parse_trajectory_in_worker(source, `gold.h5`, undefined, {})
+      const result = await parse_in_worker(source, `gold.h5`)
+      if (result.type !== `trajectory`) throw new Error(`Expected HDF5 trajectory`)
+      const workerfs = result.data
       const request = { signal_keys: [`velocity`, `forces`] }
       const memfs_stream = await memfs.collect_positions?.(request)
       const workerfs_stream = await workerfs.collect_positions?.(request)
@@ -335,7 +333,7 @@ test.describe(`Trajectory Component`, () => {
       const oracle_plot_metadata_equal = exact(memfs.properties.rows, oracle_plot_metadata)
       workerfs.dispose()
       memfs.dispose()
-      // frame 0 is the in-memory preview and stays readable after dispose; any other frame rejects
+      // All reads reject after disposal; the stored preview remains available directly.
       const disposed_error = await Promise.resolve(workerfs.read_frame(1)).then(
         () => `missing error`,
         String,

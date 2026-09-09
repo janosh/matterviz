@@ -12,16 +12,11 @@ import { describe, expect, test, vi } from 'vitest'
 
 // Compress bytes with the platform CompressionStream for round-trip tests
 const compress = async (
-  data: Uint8Array,
+  data: Uint8Array<ArrayBuffer>,
   format: `gzip` | `deflate` | `deflate-raw` = `gzip`,
 ): Promise<ArrayBuffer> => {
-  const stream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(data)
-      controller.close()
-    },
-  })
-  return new Response(stream.pipeThrough(new CompressionStream(format))).arrayBuffer()
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream(format))
+  return new Response(stream).arrayBuffer()
 }
 
 const hdf5_signature = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -61,15 +56,28 @@ describe(`decompress_data`, () => {
     )
   })
 
-  test(`unzips the single payload file of a ZIP archive, skipping junk entries`, async () => {
-    const zip = zipSync({
-      'dir/': new Uint8Array(),
-      '__MACOSX/._a.cif': new Uint8Array([1]),
-      '.DS_Store': new Uint8Array([2]),
-      'a.cif': encode(`data_a`),
-    })
-    expect(await decompress_data(zip.buffer, `zip`)).toBe(`data_a`)
-  })
+  test.each([`valid`, `unsupported compression`, `oversized metadata`] as const)(
+    `unzips only the payload, skipping %s in ignored entries`,
+    async (metadata) => {
+      const zip = zipSync({
+        '.DS_Store': new Uint8Array([2]),
+        'dir/': new Uint8Array(),
+        '__MACOSX/._a.cif': new Uint8Array([1]),
+        'a.cif': encode(`data_a`),
+      })
+      const view = new DataView(zip.buffer)
+      for (let offset = 0; offset < zip.length - 4; offset++) {
+        if (view.getUint32(offset, true) !== 0x02014b50) continue
+        // First central-directory entry describes .DS_Store. Neither its compression
+        // method nor its inflated size should matter because we never extract it.
+        if (metadata === `unsupported compression`) view.setUint16(offset + 10, 99, true)
+        if (metadata === `oversized metadata`)
+          view.setUint32(offset + 24, MAX_INFLATED_BYTES + 1, true)
+        break
+      }
+      expect(await decompress_data(zip.buffer, `zip`)).toBe(`data_a`)
+    },
+  )
 
   test.each([
     [{}, `ZIP archive contains no files`],
@@ -168,6 +176,10 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     const compressed = await compress(encode(text), format)
     const result = await decompress_file(new File([compressed], `test.json.${ext}`))
     expect(result).toEqual({ content: text, filename: `test.json` })
+    // Unlike HTTP bodies, dropped files cannot have had a transport wrapper removed.
+    await expect(decompress_file(new File([text], `test.json.${ext}`))).rejects.toThrow(
+      `Failed to decompress ${format} file`,
+    )
   })
 
   test(`unzips a dropped .zip and strips the extension`, async () => {
@@ -177,6 +189,31 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
       filename: `test.json`,
     })
   })
+
+  test.each([`gzip/gzip`, `zip/gzip`, `gzip/zip`, `zip/zip`, `gzip/deflate`] as const)(
+    `decodes every layer of %s and retains the payload name`,
+    async (layers) => {
+      const text = `data_nested`
+      let bytes = encode(text)
+      let filename = `nested.cif`
+      for (const layer of layers.split(`/`).toReversed()) {
+        if (layer === `zip`) {
+          bytes = zipSync({ [filename]: bytes })
+          filename = `bundle.zip`
+        } else {
+          bytes = new Uint8Array(await compress(bytes, layer as `gzip` | `deflate`))
+          filename += layer === `gzip` ? `.gz` : `.deflate`
+        }
+      }
+      expect(await decompress_file(new File([bytes], filename))).toEqual({
+        content: text,
+        filename: `nested.cif`,
+      })
+      expect(
+        await classify_payload(new Blob([bytes]), [filename], { compression_by_magic: true }),
+      ).toEqual({ content: text, filename: `nested.cif` })
+    },
+  )
 
   // Stripping `.zip` off `bundle.zip` named the CIF `bundle`, so every extension-keyed
   // dispatcher missed it. `names` also carries the URL basename after the dropped name, and
@@ -189,6 +226,11 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`])).toEqual(
       entry,
     )
+    expect(
+      await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`], {
+        hdf5_as_blob: true,
+      }),
+    ).toEqual(entry)
     // and a payload whose own name IS binary still comes back as bytes
     const traj = await classify_payload(new Blob([encode(`x`)]), [`run.traj`, `page.cif`])
     expect(traj.content).toBeInstanceOf(ArrayBuffer)
@@ -199,8 +241,10 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     const controller = new AbortController()
     const reason = new DOMException(`Superseded by a newer load`, `AbortError`)
     controller.abort(reason)
-    const file = new File([new Uint8Array(8)], `a.h5.gz`)
-    await expect(decompress_trajectory_file(file, controller.signal)).rejects.toBe(reason)
+    for (const filename of [`a.h5.gz`, `a.h5`, `a.cif`]) {
+      const file = new File([new Uint8Array(8)], filename)
+      await expect(decompress_trajectory_file(file, controller.signal)).rejects.toBe(reason)
+    }
   })
 
   test(`streams compressed bytes out of the File instead of buffering them`, async () => {

@@ -1,4 +1,5 @@
-import { PdfPlot, RdfPlot } from '$lib'
+import PdfPlot from '$lib/rdf/PdfPlot.svelte'
+import RdfPlot from '$lib/rdf/RdfPlot.svelte'
 import type { RdfPattern } from '$lib/rdf'
 import type { RadiationType } from '$lib/scattering'
 import { structure_map } from '$site/structures'
@@ -220,6 +221,26 @@ describe(`PdfPlot`, () => {
     if (plot) await resize_element(plot, 400, 300)
     return target
   }
+
+  test.each([
+    { show_controls: false, shown: false },
+    { show_controls: `never`, shown: false },
+    { show_controls: { mode: `never` }, shown: false },
+    { show_controls: { hidden: [`controls`] }, shown: false },
+    { show_controls: { mode: `hover`, style: `opacity: 0.5` }, shown: true },
+  ] as const)(
+    `honors PDF controls visibility: $show_controls`,
+    async ({ show_controls, shown }) => {
+      const target = await mount_pdf_plot({ structures: [], show_controls })
+      const toolbar = target.querySelector<HTMLElement>(`.pdf-controls`)
+      expect(Boolean(toolbar)).toBe(shown)
+      if (shown) {
+        expect(toolbar?.classList.contains(`hover-visible`)).toBe(true)
+        expect(toolbar?.style.opacity).toBe(`0.5`)
+        expect(toolbar?.textContent).toContain(`Cutoff`)
+      }
+    },
+  )
 
   // Regression: computing the PDFs inside a $derived used to assign the error message to a
   // bindable prop, which Svelte 5 rejects with state_unsafe_mutation and which tore down the

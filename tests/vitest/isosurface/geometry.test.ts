@@ -33,7 +33,6 @@ const blob_input = (volume = blob_volume()): GeometryInput => ({
         [0, 1],
         [0, 1],
       ],
-      reference_origin: [1, 2, 3],
       surfaces: [
         { token: `0:1`, isovalue: 0.5 },
         { token: `1:1`, isovalue: 0.2 },
@@ -44,13 +43,13 @@ const blob_input = (volume = blob_volume()): GeometryInput => ({
 
 describe(`compute_isosurface_geometries`, () => {
   test(`extracts a display window and one mesh per isovalue in the scene frame`, () => {
-    const volume = blob_volume()
+    const volume = { ...blob_volume(), origin: [1, 2, 3] as [number, number, number] }
     const [result] = compute_isosurface_geometries(blob_input(volume)).volumes
     expect(result.token).toBe(7)
     // 2x1x1 window at source density, endpoint inclusive
     expect(result.grid.dims).toEqual([33, 17, 17])
     expect(result.lattice[0][0]).toBeCloseTo(20, 12)
-    expect(result.origin).toEqual([0, 0, 0])
+    expect(result.origin).toEqual(volume.origin)
     expect(result.surfaces.map((surface) => surface.token)).toEqual([`0:1`, `1:1`])
 
     const sample = create_volume_sampler(volume)
@@ -59,13 +58,12 @@ describe(`compute_isosurface_geometries`, () => {
       expect(surface.positions.length).toBeGreaterThan(300)
       expect(surface.indices.length % 3).toBe(0)
       expect(Math.max(...surface.indices)).toBeLessThan(surface.positions.length / 3)
-      // Vertices are shifted by origin - reference_origin; shifting back and sampling the
-      // source field recovers the isovalue (trilinear on the same lattice)
+      // Sampling vertices directly in the structure frame recovers each isovalue.
       for (let vert = 0; vert < surface.positions.length; vert += 3 * 37) {
         const position: [number, number, number] = [
-          surface.positions[vert] + 1,
-          surface.positions[vert + 1] + 2,
-          surface.positions[vert + 2] + 3,
+          surface.positions[vert],
+          surface.positions[vert + 1],
+          surface.positions[vert + 2],
         ]
         expect(sample(position)).toBeCloseTo(isovalue, 4)
       }
@@ -103,6 +101,7 @@ describe(`compute_isosurface_geometries`, () => {
       values.fill(ix / (n_pts - 1), ix * n_pts * n_pts, (ix + 1) * n_pts * n_pts)
     }
     const volume = make_flat_volume(values, [n_pts, n_pts, n_pts], {
+      id: `density`,
       lattice: cubic_matrix(20),
       origin: [0, 0, 0],
       periodic: false,
@@ -141,13 +140,14 @@ beforeAll(async () => {
 afterEach(stub.reset)
 
 test(`compute_geometries_async posts a cloneable payload and returns the worker result`, async () => {
-  const volume = blob_volume()
+  const volume = { ...blob_volume(), origin: [1, 2, 3] as [number, number, number] }
   const result = await compute_geometries_async(blob_input(volume))
   expect(stub.posted).toHaveLength(1)
   const payload = stub.posted[0].message.input.volumes[0]
   expect(payload.volume.values).toBeInstanceOf(Float64Array)
   expect(payload.volume.values).toHaveLength(volume.values.length)
   expect(payload.volume.lattice).toEqual(volume.lattice)
+  expect(payload.volume.origin).toEqual(volume.origin)
   // Value buffers stay owned by the caller (copied, not transferred)
   expect(stub.posted[0].transfer).toEqual([])
   expect(volume.values).toHaveLength(16 ** 3)

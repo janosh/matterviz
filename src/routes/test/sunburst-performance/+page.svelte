@@ -16,6 +16,8 @@
   const n_mid = param(`mid`, 12)
   const n_leaf = param(`leaf`, 10)
   const labels = param(`labels`, 1) !== 0
+  const patterned = param(`patterned`, 0) !== 0
+  const max_children = param(`max_children`, 0)
 
   // mulberry32 so every run sees identical values
   const make_rng = (seed: number) => () => {
@@ -37,6 +39,7 @@
           id: `T${top_idx}/M${mid_idx}/L${leaf_idx}`,
           label: `Leaf ${leaf_idx}`,
           value: 1 + Math.floor(rng() * 20),
+          pattern: patterned ? `x` : undefined,
         })),
       })),
     }))
@@ -55,7 +58,14 @@
 </script>
 
 {#if browser}
-  <Sunburst {data} bind:zoom_root_id show_labels={labels} style="height: 700px" />
+  <Sunburst
+    {data}
+    bind:zoom_root_id
+    {max_children}
+    show_labels={labels}
+    pad_angle={0}
+    style="height: 700px; --sunburst-arc-stroke-width: 1.2"
+  />
 {/if}
 
 <pre data-testid="perf-metrics">{JSON.stringify({

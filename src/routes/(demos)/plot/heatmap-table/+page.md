@@ -1,5 +1,9 @@
 # Heatmap Table
 
+Columns use a stable `id`, a display `label`, and an optional row-property `key` (defaults to `id`). Changing the label or group preserves sorting, visibility, order, and preferences. Omit `columns` to discover them from the data. Put a custom renderer on the column's `cell` snippet; it receives `{ row, col, val }` and overrides the table-wide `cell` snippet.
+
+For row selection, supply `row_key` as a property name or a function returning a unique string or number, and bind `selected_ids`. Selection survives replacing row objects; derive selected rows from the current data when needed. JSON exports use column IDs as keys; CSV and other display formats use labels.
+
 ## Basic Usage
 
 ```svelte example
@@ -100,36 +104,46 @@
 
   // oxfmt-ignore
   const columns = [
-    { label: `Formula` },
+    { id: `Formula`, label: `Formula` },
     {
+      id: `E<sub>above hull</sub>`,
       label: `E<sub>above hull</sub>`,
       better: `lower`,
       color_scale: `interpolateRdYlGn`,
       format: `.2f`,
     },
     {
+      id: `E<sub>gap</sub>`,
       label: `E<sub>gap</sub>`,
       better: `higher`,
       color_scale: `interpolateViridis`,
       format: `.1f`,
     },
     {
+      id: `E<sub>form</sub>`,
       label: `E<sub>form</sub>`,
       better: `lower`,
       color_scale: `interpolateBlues`,
       format: `.1f`,
     },
-    { label: `Created Date`, description: `ISO date string with automatic date formatting` },
     {
+      id: `Created Date`,
+      label: `Created Date`,
+      description: `ISO date string with automatic date formatting`,
+    },
+    {
+      id: `Calculated At`,
       label: `Calculated At`,
       description: `ISO date-time string with automatic date/time formatting`,
     },
     {
+      id: `Last Updated`,
       label: `Last Updated`,
       datetime_format: `datetime`,
       description: `Millisecond timestamp; click the calendar button to show age since now`,
     },
     {
+      id: `Synthesis Time`,
       label: `Synthesis Time`,
       datetime_format: `time`,
       description: `Date object rendered as time by default`,
@@ -151,7 +165,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 
 ```svelte example
 <script lang="ts">
-  import { element_data, HeatmapTable } from 'matterviz'
+  import { element_data, format_num, HeatmapTable } from 'matterviz'
 
   // Get unique categories and phases for filters
   const categories = [...new Set(element_data.map((el) => el.category))].sort()
@@ -159,7 +173,8 @@ All 118 chemical elements with physical and chemical properties. Features column
 
   let category_filter = $state(`all`)
   let phase_filter = $state(`all`)
-  let selected_rows = $state([])
+  let selected_ids = $state<number[]>([])
+  let selected_rows = $derived(data.filter((row) => selected_ids.includes(row.atomic_number)))
 
   // Transform and filter element data
   let data = $derived(
@@ -167,26 +182,26 @@ All 118 chemical elements with physical and chemical properties. Features column
       .filter((el) => category_filter === `all` || el.category === category_filter)
       .filter((el) => phase_filter === `all` || el.phase === phase_filter)
       .map((el) => ({
-        Symbol: el.radioactive ? `☢️ ${el.symbol}` : el.symbol,
-        Name: el.name,
-        Z: el.number,
-        'Mass (u)': el.atomic_mass,
-        Category: el.category,
-        Period: el.period,
-        Group: el.column,
-        'n<sub>val</sub>': el.n_valence,
-        'ρ (g/cm³)': el.density,
-        'r<sub>atom</sub> (Å)': el.atomic_radius,
-        'r<sub>cov</sub> (Å)': el.covalent_radius,
-        χ: el.electronegativity,
-        'EA (kJ/mol)': el.electron_affinity,
-        'IE<sub>1</sub> (eV)': el.first_ionization,
-        'C<sub>p</sub>': el.specific_heat,
-        'T<sub>m</sub> (K)': el.melting_point,
-        'T<sub>b</sub> (K)': el.boiling_point,
-        Phase: el.phase,
-        Year: el.year,
-        _symbol: el.symbol, // raw symbol for selected row display
+        symbol: el.radioactive ? `☢️ ${el.symbol}` : el.symbol,
+        name: el.name,
+        atomic_number: el.number,
+        atomic_mass: el.atomic_mass,
+        category: el.category,
+        period: el.period,
+        group: el.column,
+        n_valence: el.n_valence,
+        density: el.density,
+        atomic_radius: el.atomic_radius,
+        covalent_radius: el.covalent_radius,
+        electronegativity: el.electronegativity,
+        electron_affinity: el.electron_affinity,
+        first_ionization: el.first_ionization,
+        specific_heat: el.specific_heat,
+        melting_point: el.melting_point,
+        boiling_point: el.boiling_point,
+        phase: el.phase,
+        year: el.year,
+        element_symbol: el.symbol, // raw symbol for selected row display
       })),
   )
 
@@ -198,24 +213,65 @@ All 118 chemical elements with physical and chemical properties. Features column
       arr.length ? arr.reduce((sum, val) => sum + val, 0) / arr.length : null
     return {
       count: selected_rows.length,
-      avg_mass: avg(nums(`Mass (u)`))?.toFixed(2),
-      avg_density: avg(nums(`ρ (g/cm³)`))?.toFixed(2),
-      avg_electronegativity: avg(nums(`χ`))?.toFixed(2),
+      avg_mass: format_num(avg(nums(`atomic_mass`)), `.2f`),
+      avg_density: format_num(avg(nums(`density`)), `.2f`),
+      avg_electronegativity: format_num(avg(nums(`electronegativity`)), `.2f`),
     }
   })
 
+  // IDs access data fields; labels and groups can change independently.
   // oxfmt-ignore
   const columns = [
     // Identity
-    { label: `Symbol`, sticky: true, style: `min-width: 75px; font-weight: 600;` },
-    { label: `Name`, group: `Identity`, style: `min-width: 100px;` },
-    { label: `Z`, group: `Identity`, color_scale: `interpolateViridis`, format: `d` },
-    { label: `Mass (u)`, group: `Identity`, color_scale: `interpolateBlues`, format: `.2f` },
-    { label: `Category`, group: `Identity`, style: `min-width: 160px;` },
-    // Structure
-    { label: `Period`, group: `Structure`, color_scale: `interpolatePurples`, format: `d` },
-    { label: `Group`, group: `Structure`, color_scale: `interpolateGreens`, format: `d` },
     {
+      id: `symbol`,
+      label: `Symbol`,
+      sticky: true,
+      style: `min-width: 75px; font-weight: 600;`,
+    },
+    {
+      id: `name`,
+      label: `Name`,
+      group: `Identity`,
+      style: `min-width: 100px;`,
+    },
+    {
+      id: `atomic_number`,
+      label: `Z`,
+      group: `Identity`,
+      color_scale: `interpolateViridis`,
+      format: `d`,
+    },
+    {
+      id: `atomic_mass`,
+      label: `Mass (u)`,
+      group: `Identity`,
+      color_scale: `interpolateBlues`,
+      format: `.2f`,
+    },
+    {
+      id: `category`,
+      label: `Category`,
+      group: `Identity`,
+      style: `min-width: 160px;`,
+    },
+    // Structure
+    {
+      id: `period`,
+      label: `Period`,
+      group: `Structure`,
+      color_scale: `interpolatePurples`,
+      format: `d`,
+    },
+    {
+      id: `group`,
+      label: `Group`,
+      group: `Structure`,
+      color_scale: `interpolateGreens`,
+      format: `d`,
+    },
+    {
+      id: `n_valence`,
       label: `n<sub>val</sub>`,
       group: `Structure`,
       color_scale: `interpolateCool`,
@@ -224,6 +280,7 @@ All 118 chemical elements with physical and chemical properties. Features column
     },
     // Physical
     {
+      id: `density`,
       label: `ρ (g/cm³)`,
       group: `Physical`,
       better: `higher`,
@@ -233,6 +290,7 @@ All 118 chemical elements with physical and chemical properties. Features column
       description: `Density`,
     },
     {
+      id: `atomic_radius`,
       label: `r<sub>atom</sub> (Å)`,
       group: `Physical`,
       color_scale: `interpolatePlasma`,
@@ -240,15 +298,22 @@ All 118 chemical elements with physical and chemical properties. Features column
       description: `Atomic radius`,
     },
     {
+      id: `covalent_radius`,
       label: `r<sub>cov</sub> (Å)`,
       group: `Physical`,
       color_scale: `interpolateMagma`,
       format: `.2f`,
       description: `Covalent radius`,
     },
-    { label: `Phase`, group: `Physical`, style: `min-width: 60px;` },
+    {
+      id: `phase`,
+      label: `Phase`,
+      group: `Physical`,
+      style: `min-width: 60px;`,
+    },
     // Chemical
     {
+      id: `electronegativity`,
       label: `χ`,
       group: `Chemical`,
       better: `higher`,
@@ -257,6 +322,7 @@ All 118 chemical elements with physical and chemical properties. Features column
       description: `Electronegativity (Pauling)`,
     },
     {
+      id: `electron_affinity`,
       label: `EA (kJ/mol)`,
       group: `Chemical`,
       color_scale: `interpolateRdYlGn`,
@@ -264,6 +330,7 @@ All 118 chemical elements with physical and chemical properties. Features column
       description: `Electron affinity`,
     },
     {
+      id: `first_ionization`,
       label: `IE<sub>1</sub> (eV)`,
       group: `Chemical`,
       better: `higher`,
@@ -273,6 +340,7 @@ All 118 chemical elements with physical and chemical properties. Features column
     },
     // Thermal
     {
+      id: `specific_heat`,
       label: `C<sub>p</sub>`,
       group: `Thermal`,
       color_scale: `interpolateYlOrRd`,
@@ -280,6 +348,7 @@ All 118 chemical elements with physical and chemical properties. Features column
       description: `Specific heat (J/g·K)`,
     },
     {
+      id: `melting_point`,
       label: `T<sub>m</sub> (K)`,
       group: `Thermal`,
       color_scale: `interpolateCool`,
@@ -287,6 +356,7 @@ All 118 chemical elements with physical and chemical properties. Features column
       description: `Melting point`,
     },
     {
+      id: `boiling_point`,
       label: `T<sub>b</sub> (K)`,
       group: `Thermal`,
       color_scale: `interpolateWarm`,
@@ -295,6 +365,7 @@ All 118 chemical elements with physical and chemical properties. Features column
     },
     // Discovery
     {
+      id: `year`,
       label: `Year`,
       group: `Discovery`,
       color_scale: `interpolateGreys`,
@@ -342,17 +413,18 @@ All 118 chemical elements with physical and chemical properties. Features column
   export_data
   show_column_toggle
   show_row_select
-  bind:selected_rows
+  row_key="atomic_number"
+  bind:selected_ids
   pagination={{ page_size: 20 }}
   sort_hint="Click headers to sort, Shift+click for multi-sort"
-  on_row_double_click={(_, row) => window.open(`/${row.Name.toLowerCase()}`, `_blank`)}
+  on_row_double_click={(_, row) => window.open(`/${row.name.toLowerCase()}`, `_blank`)}
   style="margin: 0 auto"
 />
 
 {#if selected_rows.length > 0}
   <p style="margin-top: 0.5em; font-size: 0.9em; color: var(--text-color-muted)">
     Double-click a row to open element page. Selected: {selected_rows
-      .map((row) => row._symbol)
+      .map((row) => row.element_symbol)
       .join(`, `)}
   </p>
 {/if}
@@ -385,11 +457,35 @@ Drag columns to reorder them within a group (handy for side-by-side metrics):
 
   // oxfmt-ignore
   const columns = [
-    { label: `Structure` },
-    { label: `MAE`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.3f` },
-    { label: `RMSE`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.3f` },
-    { label: `R²`, better: `higher`, color_scale: `interpolateViridis`, format: `.2f` },
-    { label: `Max Error`, better: `lower`, color_scale: `interpolateOranges`, format: `.2f` },
+    { id: `Structure`, label: `Structure` },
+    {
+      id: `MAE`,
+      label: `MAE`,
+      better: `lower`,
+      color_scale: `interpolateRdYlGn`,
+      format: `.3f`,
+    },
+    {
+      id: `RMSE`,
+      label: `RMSE`,
+      better: `lower`,
+      color_scale: `interpolateRdYlGn`,
+      format: `.3f`,
+    },
+    {
+      id: `R²`,
+      label: `R²`,
+      better: `higher`,
+      color_scale: `interpolateViridis`,
+      format: `.2f`,
+    },
+    {
+      id: `Max Error`,
+      label: `Max Error`,
+      better: `lower`,
+      color_scale: `interpolateOranges`,
+      format: `.2f`,
+    },
   ]
 
   let column_order = $state([])
@@ -460,26 +556,35 @@ ML model benchmark with a sticky first column. Scroll horizontally to compare mo
   })
 
   const columns = [
-    { label: `Model`, sticky: true, style: `min-width: 120px; font-weight: 600;` },
-    { label: `Published Date`, style: `min-width: 115px;` },
     {
+      id: `Model`,
+      label: `Model`,
+      sticky: true,
+      style: `min-width: 120px; font-weight: 600;`,
+    },
+    { id: `Published Date`, label: `Published Date`, style: `min-width: 115px;` },
+    {
+      id: `Scheduled Time`,
       label: `Scheduled Time`,
       datetime_format: `time`,
       style: `min-width: 115px;`,
       description: `Date object rendered as time by default`,
     },
     {
+      id: `Last Run`,
       label: `Last Run`,
       datetime_format: `datetime`,
       style: `min-width: 115px;`,
       description: `Numeric timestamp from the latest benchmark run`,
     },
     {
+      id: `Queued At`,
       label: `Queued At`,
       style: `min-width: 125px;`,
       description: `ISO timestamp for the queued benchmark job`,
     },
     ...benchmarks.map((bench) => ({
+      id: bench,
       label: bench,
       better: `higher`,
       color_scale: `interpolateViridis`,
@@ -532,20 +637,23 @@ The table correctly handles numeric strings with uncertainty notation for both s
 
   // oxfmt-ignore
   const columns = [
-    { label: `ID` },
-    { label: `Formula` },
+    { id: `ID`, label: `ID` },
+    { id: `Formula`, label: `Formula` },
     {
+      id: `E<sub>gap</sub> (eV)`,
       label: `E<sub>gap</sub> (eV)`,
       better: `higher`,
       color_scale: `interpolateViridis`,
       description: `Band gap with measurement uncertainty`,
     },
     {
+      id: `ρ (g/cm³)`,
       label: `ρ (g/cm³)`,
       color_scale: `interpolateBlues`,
       description: `Density with uncertainty`,
     },
     {
+      id: `κ (W/m·K)`,
       label: `κ (W/m·K)`,
       better: `higher`,
       color_scale: `interpolateOranges`,
@@ -613,8 +721,9 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
   }))
 
   let columns = $derived([
-    { label: `Material` },
+    { id: `Material`, label: `Material` },
     {
+      id: `E<sub>gap</sub> (eV)`,
       label: `E<sub>gap</sub> (eV)`,
       better,
       color_scale: selected_scale,
@@ -622,6 +731,7 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
       description: `Band gap`,
     },
     {
+      id: `σ (S/m)`,
       label: `σ (S/m)`,
       better,
       color_scale: selected_scale,
@@ -630,6 +740,7 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
       description: `Electrical conductivity (try log scale!)`,
     },
     {
+      id: `κ (W/m·K)`,
       label: `κ (W/m·K)`,
       better,
       color_scale: selected_scale,
@@ -692,21 +803,28 @@ Combines per-column filters, filtered summaries, diverging normalization, quanti
   let density = $state(`cosy`)
 
   const columns = [
-    { label: `Material`, sticky: true },
+    { id: `Material`, label: `Material`, sticky: true },
     // diverging: zero sits at the scale's midpoint, so sign reads at a glance
-    { label: `E_form`, color_scale: `interpolateRdBu`, normalize: `diverging`, format: `.1f` },
+    {
+      id: `E_form`,
+      label: `E_form`,
+      color_scale: `interpolateRdBu`,
+      normalize: `diverging`,
+      format: `.1f`,
+    },
     // one shared domain, so MAE and RMSE cells are comparable to each other
     {
+      id: `MAE`,
       label: `MAE`,
       better: `lower`,
       domain_group: `error`,
       highlight_best: true,
       format: `.3f`,
     },
-    { label: `RMSE`, better: `lower`, domain_group: `error`, format: `.3f` },
+    { id: `RMSE`, label: `RMSE`, better: `lower`, domain_group: `error`, format: `.3f` },
     // spans 12 orders of magnitude; quantile clipping keeps the middle legible
-    { label: `sigma`, normalize: `quantile`, render_as: `bar`, format: `.1e` },
-    { label: `Tier` },
+    { id: `sigma`, label: `sigma`, normalize: `quantile`, render_as: `bar`, format: `.1e` },
+    { id: `Tier`, label: `Tier` },
   ]
 </script>
 

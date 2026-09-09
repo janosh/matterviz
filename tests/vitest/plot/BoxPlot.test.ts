@@ -1,4 +1,5 @@
-import { BoxPlot, type Vec2 } from '$lib'
+import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
+import type { Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'

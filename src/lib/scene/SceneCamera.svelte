@@ -12,7 +12,7 @@
 
   let {
     camera_projection = `perspective`,
-    position,
+    position = [0, 0, 0],
     fov = DEFAULTS.structure.fov,
     zoom = DEFAULTS.structure.initial_zoom,
     near = 0.1,
@@ -23,7 +23,7 @@
     orbit_controls = $bindable(undefined),
   }: {
     camera_projection?: CameraProjection
-    position: Vec3 // camera position
+    position?: Vec3 // camera position; may be unset while the scene measures its bounds
     fov?: number // perspective field of view
     zoom?: number // orthographic zoom level
     near?: number // perspective near plane (three's default when omitted)

@@ -4,7 +4,7 @@
   import { clamp } from '$lib/math'
   import { BarPlot, Histogram, ScatterPlot } from '$lib/plot'
   import ScatterPlot3D from '$lib/plot/scatter-3d/ScatterPlot3D.svelte'
-  import type { Label, RowData } from '$lib/table'
+  import type { Column, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import {
     build_bar_series,
@@ -76,13 +76,14 @@
   })
 
   // Generate column labels from extracted columns for HeatmapTable
-  let table_columns = $derived<Label[]>(
+  let table_columns = $derived<Column[]>(
     [...columns.entries()].map(([key, col]) => {
-      if (col.type !== `numeric`) return { label: key, color_scale: null }
+      if (col.type !== `numeric`) return { id: key, label: key, color_scale: null }
       const is_integer = col.values.every(
         (val) => val == null || (typeof val === `number` && Number.isInteger(val)),
       )
       return {
+        id: key,
         label: key,
         color_scale: `interpolateViridis` as const,
         format: is_integer ? `,d` : `.4~g`,

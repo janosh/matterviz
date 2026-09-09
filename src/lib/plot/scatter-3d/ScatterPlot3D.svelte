@@ -44,7 +44,8 @@
 
   let {
     // Data props
-    series: series_in = $bindable([]),
+    series: series_in = [],
+    hidden_series = $bindable(),
     surfaces = [],
     ref_lines = [],
     ref_planes = [],
@@ -79,7 +80,7 @@
     // Gizmo
     gizmo = true,
     // Controls
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -104,7 +105,8 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    series?: DataSeries3D<Metadata>[]
+    hidden_series?: readonly (string | number)[]
+    series?: readonly DataSeries3D<Metadata>[]
     surfaces?: Surface3DConfig[]
     ref_lines?: RefLine3D[]
     ref_planes?: RefPlane[]
@@ -145,12 +147,11 @@
     controls_extra?: Snippet
   } & Omit<BasePlotProps, `range_padding` | `padding` | `title` | `children`> = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
     () => series,
-    (next) => (series_in = next),
+    () => hidden_series,
+    (next) => (hidden_series = next),
   )
   let series: DataSeries3D<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
@@ -212,14 +213,15 @@
   bind:height
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   {controls_toggle_props}
   {header_controls}
   {children}
   {...rest}
 >
-  {#snippet controls(toggle_props)}
+  {#snippet controls(toggle_props, show_controls)}
     <ScatterPlot3DControls
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       {toggle_props}
       pane_props={{
@@ -313,9 +315,18 @@
         active_series_idx={tooltip_point?.series_idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
-        on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
-        on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
-        on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
+        on_toggle={(idx) => {
+          legend_vis.on_toggle(idx)
+          legend?.on_toggle?.(idx)
+        }}
+        on_double_click={(idx) => {
+          legend_vis.on_double_click(idx)
+          legend?.on_double_click?.(idx)
+        }}
+        on_group_toggle={(name, indices) => {
+          legend_vis.on_group_toggle(name, indices)
+          legend?.on_group_toggle?.(name, indices)
+        }}
         style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}
       />
     {/if}

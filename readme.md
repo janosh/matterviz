@@ -62,6 +62,14 @@ npm add -D matterviz
 
 ## 📙 &thinsp; Usage
 
+Spectral components accept keyed canonical collections: `<Bands band_structs={{ Si: bands }} />` and `<Dos doses={{ Si: dos }} />`. Bands declare `type: "phonon" | "electronic"`; DOS uses the same discriminator with `frequencies` or `energies`. Data is in THz for phonons and eV for electrons; a shared plot cannot mix the two types. `BandsAndDos` and `BrillouinBandsDos` own one bindable `units` prop for both panels (default `THz`); changing units resets frequency zoom to the converted shared range; nested `bands_props` and `dos_props` do not accept `units`. Electronic plots always use eV. Both paired viewers accept a shared `fermi_level` reference, including zero; omit it to use dataset metadata without modifying the input data. Parse external files once using `normalize_band_structure` or `normalize_dos`; extract projections with `extract_pdos(raw, "atom" | "orbital", filter)` before rendering. A single dataset still needs a key (`""` gives an unlabelled series). The renderers no longer accept raw pymatgen objects, positional arrays, `band_type`, `pdos_type`, or `pdos_filter`.
+
+Hull renderers expose `get_model()` (also `children`’s `model`) instead of writable `stable_entries`, `unstable_entries`, and `phase_stats` outputs. Pass that snapshot to `<ConvexHullStats {model} />`, or call `compute_hull_model(entries, options)` for headless computation. The numerical model is independent of display thresholds and category styles. `model.facets` contains vertex indices into the single enriched `model.entries` table, so geometry and stability always refer to the same entries.
+
+Composite components expose deliberate `*_props` options for presentation and interactions. Their parent owns data and synchronization: use `band_structs`, `doses`, or `trajectory` on the parent rather than supplying replacement child data. Plot `series` are read-only inputs; bind `hidden_series` for legend choices and `view` for zoom. Supply stable `id` values when reordering series or persisting visibility; omitted IDs use array positions. Multiple drawing series can share a `legend_id` for one legend entry and visibility choice; their drawing IDs must remain unique, and `hidden_series` then uses the shared `legend_id`. Bands uses `JSON.stringify([material_key, spin])` for these keys (`spin` is `up` or `down`; use material key `""` for an unlabelled dataset). Composite wrappers accept `hidden_series` plus `on_hidden_series_change` for controlled visibility. Legend callbacks run after the chart updates visibility. Axis identifiers are `x`, `x2`, `y`, and `y2`; `on_axis_change` delegates loading to the caller. `create_axis_loader` cancels superseded requests independently per axis; `cancel()` aborts all pending axes.
+
+`HeatmapTable` columns have stable `id` values and optional `key` accessors and `cell` snippets; labels only control headings. Selectable tables require `row_key` and bind `selected_ids`, so replacing rows with fresh objects preserves selection.
+
 ### Periodic Table
 
 ```svelte
@@ -79,14 +87,22 @@ npm add -D matterviz
 ```svelte
 <script>
   import { Structure } from 'matterviz'
-  const data_url = '/structures/TiO2.cif'
+  const source = '/structures/TiO2.cif'
   // supports .cif, .poscar, .xyz/.extxyz, pymatgen JSON, OPTIMADE JSON, .gz
 </script>
 
-<Structure {data_url} style="width: 500px; aspect-ratio: 1" />
+<Structure {source} style="width: 500px; aspect-ratio: 1" />
 ```
 
-`Structure` accepts `structure`, `data_url`, `structure_string`, and direct file drops. Convenience loading delegates to the same `open_material()` runtime available to non-component hosts, so fetching, decompression, format detection, workers, provenance, and disposal remain centralized. Prediction JSON files reopen with their input, properties, density and provenance; hosts can also pass `prediction_from_json(content)` as the `prediction` prop. Selection, measurements, atom/bond editing with undo/redo and the supercell/image-atom pipeline live in a headless `StructureSession` (exported from `matterviz/structure`); `active_pane: 'controls' | 'info' | 'export' | null` identifies the open floating pane.
+`scene_props.camera_position` fits the structure when omitted; any supplied coordinate tuple, including `[0, 0, 0]`, is an explicit position. Clear it with `undefined` to request a fresh fit.
+
+Floating viewer, plot, table and heatmap controls share `show_controls`: `true`/`'always'`, `'hover'`, `false`/`'never'`, or `{ mode, hidden, style }`. For example, `{ mode: 'hover', hidden: ['controls'] }` keeps a plot’s fullscreen button and hides its settings pane. `false` hides all plot chrome; `controls_open` independently controls whether the settings pane is open. `HeatmapMatrixControls` uses this contract instead of `show_pane` and `toggle_visible`.
+
+`Structure` accepts parsed data through `structure`, or a URL, `File` or `{ data, filename }` payload through `source`, and handles file drops. Set `allow_file_drop={false}` when a parent owns loading. Its `scene_props` accepts `StructureSettings`; computed results are available through the readonly `analysis` export on a component reference. Loading delegates to the same `open_material()` runtime available to non-component hosts, so fetching, decompression, format detection, workers, provenance, and disposal remain centralized. Prediction JSON files reopen with their input, properties, density and provenance; hosts can also pass `prediction_from_json(content)` as the `prediction` prop. Selection, measurements, atom/bond editing with undo/redo and the supercell/image-atom pipeline live in a headless `StructureSession` (exported from `matterviz/structure`); `active_pane: 'controls' | 'info' | 'export' | null` identifies the open floating pane.
+
+Host computations register a component through `structure_host_tool` from `matterviz/structure`. Each run captures its input and exposes an abort signal plus guarded publication callbacks. Publish complete, versioned JSON-safe calculation metadata through `StructureToolOverlay.result`; the host receives accepted and reopened snapshots through its `prediction` prop. Use `set_overlay_visible()` to toggle predicted properties and density without discarding results or edited surfaces. An optional `structure_host_tool.input_key` selects relevant in-place calculation inputs, including atom order; document replacement still invalidates ownership. See the [host-tool demo](https://matterviz.janosh.dev/structure/host-tool).
+
+Every `VolumetricData` has a nonempty, unique `id`. Isosurface layers require `volume_id` and optionally `color_volume_id`; `active_volume_id` selects the slice field. Keep IDs stable when replacing or reordering fields so selection and surface settings follow the data. Removing a field drops its surfaces and clears color references to it. File loading derives IDs from the source filename and field identity; host predictions use the same `id` contract. A volume’s `origin` is an offset in the structure’s Cartesian frame; cube parsing translates atoms and the grid together into that frame. File imports combine fields only when the nonempty ordered atoms, species, occupancies, coordinates, and lattice match (Cartesian coordinates and lattice vectors use an absolute tolerance below `1e-8 A`; species and occupancies match exactly); otherwise they replace the scene and its fields.
 
 ### Composition
 
@@ -99,19 +115,23 @@ npm add -D matterviz
 <Composition composition="LiFePO4" mode="pie" />
 ```
 
+`Structure`, `Trajectory`, `BrillouinZone` and `FermiSurface` share the `source` input for URLs, files and named payloads. `ConvexHull` accepts `entries` and automatically chooses a binary, ternary or quaternary plot. The dimension-specific renderers and `StructureBarPlot` are internal; use `BondAnglePlot`, `CoordinationBarPlot` or `StructureTypePlot` for structure distributions.
+
 ### Trajectory
 
 ```svelte
 <script>
-  import { TrajectoryFileViewer } from 'matterviz'
+  import { Trajectory } from 'matterviz'
   // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat plus .gz/.zip wrappers;
   // decompress .bz2/.xz first because browsers cannot decode them
 </script>
 
-<TrajectoryFileViewer src="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
+<Trajectory source="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
 ```
 
-`TrajectoryFileViewer` owns loading: it fetches `src` (a URL, `File`, `ArrayBuffer` or `Blob`), accepts drops, decompresses, resolves ambiguous HDF5 groups, opens files above `DEFAULTS.trajectory.index_above_bytes` in a Web Worker and disposes each run when it is replaced or the component unmounts. The `Trajectory` component underneath is a pure viewer that only borrows a `TrajectoryRun` you already hold, so pass `trajectory={await open_trajectory(bytes, { filename })}` (or `trajectory_from_frames(frames)`) when you manage the data yourself and call `run.dispose()` when done.
+`Trajectory.visible_properties` is the shared selection for scatter and histogram modes. It contains exact source property keys, independently of display labels; an empty array hides every series. Legend clicks, isolation, and plot-mode changes use this same state.
+
+`Trajectory` accepts a URL, `File` or `{ data, filename }` through `source`, handles drops and HDF5 group selection, and disposes runs it opens. To manage data yourself, pass a `TrajectoryRun` through `trajectory` and dispose it yourself; the viewer borrows supplied runs. Use `trajectory_from_frames(frames)` for existing frames or `open_trajectory(bytes, { filename })` for same-thread parsing. Set `allow_file_drop={false}` when the parent owns loading. Disposed runs reject every frame read, including frame zero; `run.preview` remains accessible.
 
 ## 🧪 &thinsp; Coverage
 
@@ -124,7 +144,7 @@ npm add -D matterviz
 - Element properties in `src/lib/element/data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
 - Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.
 - Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to display animated Bohr model atoms and inset a scatter plot into the periodic table to visualize the periodic nature of elemental properties.
-- Big thanks to all sources of element images. See [`fetch-elem-images.mjs`](https://github.com/janosh/matterviz/blob/-/src/scripts/fetch-elem-images.mjs) and [`static/elements`](https://github.com/janosh/matterviz/tree/main/static/elements).
+- Big thanks to all sources of element images. See [`fetch-elem-images.mjs`](https://github.com/janosh/matterviz/blob/main/src/scripts/fetch-elem-images.mjs) and [`static/elements`](https://github.com/janosh/matterviz/tree/main/static/elements).
 - Thanks to [@ixxie](https://github.com/ixxie) ([shenhav.fyi](https://shenhav.fyi)) for great suggestions.
 
 This project would not have been possible as a one-person side project without many fine open-source projects. 🙏 To name just a few:

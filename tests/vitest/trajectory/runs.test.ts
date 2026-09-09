@@ -147,6 +147,11 @@ describe.each(RUN_CASES)(
       controller.abort(reason)
       if (pending instanceof Promise) await expect(pending).rejects.toBe(reason)
       else expect(pending.structure.sites).toHaveLength(n_atoms) // sync reads cannot be aborted
+      for (const frame_idx of [0, n_frames - 1]) {
+        await expect(
+          (async () => run.read_frame(frame_idx, controller.signal))(),
+        ).rejects.toBe(reason)
+      }
       run.dispose()
     })
 
@@ -154,8 +159,9 @@ describe.each(RUN_CASES)(
       const run = await make()
       run.dispose()
       run.dispose()
-      const read = async (): Promise<TrajectoryFrame> => run.read_frame(n_frames - 1)
-      await expect(read()).rejects.toThrow(/disposed/)
+      for (const frame_idx of [0, n_frames - 1]) {
+        await expect((async () => run.read_frame(frame_idx))()).rejects.toThrow(/disposed/)
+      }
       if (run.collect_positions)
         await expect(run.collect_positions()).rejects.toThrow(/disposed/)
       expect(run.properties.complete).toBe(true)

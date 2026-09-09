@@ -8,11 +8,9 @@
     GasThermodynamicsConfig,
     MagneticOrdering,
     PhaseData,
-    PhaseStats,
   } from '$lib/convex-hull'
   import {
-    ConvexHull2D,
-    ConvexHullCanvas,
+    ConvexHull,
     ConvexHullStats,
     GAS_SPECIES,
     process_hull_for_stats,
@@ -36,15 +34,13 @@
   const loaded_data = new SvelteMap<string, PhaseData[]>()
 
   // State for the 3D example with stats display
-  let phase_stats = $state<PhaseStats | null>(null)
-  let stable_entries = $state<ConvexHullEntry[]>([])
-  let unstable_entries = $state<ConvexHullEntry[]>([])
+  let stats_hull = $state<ReturnType<typeof ConvexHull>>()
+  const model = $derived(stats_hull?.get_model())
   let max_hull_dist_show_phases = $state(0.5)
 
   // State for the side-by-side stats demo
-  let side_phase_stats = $state<PhaseStats | null>(null)
-  let side_stable = $state<ConvexHullEntry[]>([])
-  let side_unstable = $state<ConvexHullEntry[]>([])
+  let side_hull = $state<ReturnType<typeof ConvexHull>>()
+  const side_model = $derived(side_hull?.get_model())
   let clicked_entry_id = $state<string | undefined>(undefined)
   let selected_quinary_path = $state<string>(``)
   const deferred_sections = [
@@ -222,7 +218,8 @@
     `<b>Drag & drop</b>: load your own JSON data onto the quaternary diagrams`,
   ]
   const stats_features = [
-    `<b>Live-bound stats</b>: phase counts, energy ranges, and hull distances update with the diagram`,
+    `<b>Shared model</b>: <code>get_model()</code> exposes the current numerical hull for <code>ConvexHullStats model={model}</code>; display thresholds and categories do not change the model`,
+    `<b>Headless computation</b>: <code>compute_hull_model(entries)</code> builds the same model without mounting a diagram`,
     `<b>Row highlighting</b>: click a table row to highlight it (<code>highlighted_entry_id</code> + <code>on_entry_click</code>)`,
     `<b>Clickable IDs</b>: <code>entry_href</code> callback turns the ID column into links`,
     `<b>Poly column</b>: shows polymorph count per reduced formula`,
@@ -405,7 +402,7 @@
     <h2>Ternary Chemical Systems</h2>
     <div class="ternary-grid">
       {#each ternary_examples as { title, entries } (title)}
-        <ConvexHullCanvas dim={3} {entries} controls={{ title }} />
+        <ConvexHull {entries} controls={{ title }} />
       {/each}
     </div>
   </section>
@@ -416,8 +413,7 @@
     <div class="quaternary-grid">
       {#each [...loaded_data.entries()].filter( ([p]) => p.includes(`quaternaries`) ) as [path, data] (path)}
         {@const title = hull_system_name(path)}
-        <ConvexHullCanvas
-          dim={4}
+        <ConvexHull
           entries={entries_map.get(path) || data}
           controls={{ title }}
           on_file_drop={handle_file_drop(path)}
@@ -430,7 +426,7 @@
     <h2>Binary Chemical Systems</h2>
     <div class="binary-grid">
       {#each binary_examples as { title, entries } (title)}
-        <ConvexHull2D {entries} controls={{ title }} style="height: 500px" />
+        <ConvexHull {entries} controls={{ title }} style="height: 500px" />
       {/each}
     </div>
   </section>
@@ -438,23 +434,23 @@
   {#if section_mounted(`stats`)}
     <section class="demo-section">
       <h2>Statistics Panel</h2>
+      <p>
+        Use <code>bind:this</code> to access the renderer, then derive
+        <code>renderer?.get_model()</code> for an external statistics panel. The model contains all
+        phases; the built-in info pane follows the plot’s visibility threshold.
+      </p>
       {@render feature_list(stats_features)}
       <div class="stats-example-grid">
-        <ConvexHullCanvas
-          dim={3}
+        <ConvexHull
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O with Stats` }}
-          bind:phase_stats
-          bind:stable_entries
-          bind:unstable_entries
+          bind:this={stats_hull}
           bind:max_hull_dist_show_phases
           style="height: 100%"
         />
-        {#if phase_stats}
+        {#if model}
           <ConvexHullStats
-            {phase_stats}
-            {stable_entries}
-            {unstable_entries}
+            {model}
             highlighted_entry_id={clicked_entry_id}
             on_entry_click={(entry) => (clicked_entry_id = entry.entry_id)}
             entry_href={get_entry_href}
@@ -466,19 +462,14 @@
       <h3>Side-by-Side Layout</h3>
       {@render feature_list(side_by_side_features)}
       <div class="side-by-side-example">
-        <ConvexHullCanvas
-          dim={3}
+        <ConvexHull
           entries={li_co_ni_o_data}
           controls={{ title: `Li-Co-O` }}
-          bind:phase_stats={side_phase_stats}
-          bind:stable_entries={side_stable}
-          bind:unstable_entries={side_unstable}
+          bind:this={side_hull}
         />
-        {#if side_phase_stats}
+        {#if side_model}
           <ConvexHullStats
-            phase_stats={side_phase_stats}
-            stable_entries={side_stable}
-            unstable_entries={side_unstable}
+            model={side_model}
             layout="side-by-side"
             entry_href={get_entry_href}
             style="--hull-stats-padding: 0"
@@ -493,7 +484,7 @@
       <h2>Highlighted Entries</h2>
       {@render feature_list(highlighted_features)}
       <div class="highlight-grid">
-        <ConvexHull2D
+        <ConvexHull
           entries={binary_examples[1]?.entries ?? []}
           controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
           highlighted_entries={highlighted_fe_o}
@@ -504,8 +495,7 @@
             pulse_speed: 4,
           }}
         />
-        <ConvexHullCanvas
-          dim={3}
+        <ConvexHull
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
           highlighted_entries={highlighted_na_fe_o}
@@ -516,8 +506,7 @@
             pulse_speed: 3,
           }}
         />
-        <ConvexHullCanvas
-          dim={4}
+        <ConvexHull
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
           highlighted_entries={highlighted_li_co_ni_o}
@@ -540,8 +529,7 @@
           <div class="marker-legend">
             {#each magnetic_marker_legend as item (item)}<span>{item}</span>{/each}
           </div>
-          <ConvexHullCanvas
-            dim={3}
+          <ConvexHull
             entries={magnetic_ternary_entries}
             controls={{ title: `Na-Fe-O Magnetic Orderings` }}
           />
@@ -550,7 +538,7 @@
           <div class="marker-legend">
             {#each crystallinity_marker_legend as item (item)}<span>{item}</span>{/each}
           </div>
-          <ConvexHull2D
+          <ConvexHull
             entries={crystallinity_entries}
             entry_category={crystallinity_category}
             controls={{ title: `Co-O Crystallinity (custom entry_category)` }}
@@ -566,18 +554,13 @@
       <h2>Temperature-Dependent Free Energies</h2>
       {@render feature_list(temp_features)}
       <div class="temp-grid">
-        <ConvexHull2D
+        <ConvexHull
           entries={temp_binary_entries}
           controls={{ title: `Li-Fe with G(T)` }}
           style="height: 500px"
         />
-        <ConvexHullCanvas
-          dim={3}
-          entries={temp_ternary_entries}
-          controls={{ title: `Li-Fe-O with G(T)` }}
-        />
-        <ConvexHullCanvas
-          dim={4}
+        <ConvexHull entries={temp_ternary_entries} controls={{ title: `Li-Fe-O with G(T)` }} />
+        <ConvexHull
           entries={temp_quaternary_entries}
           controls={{ title: `Li-Fe-Ni-O with G(T)` }}
         />
@@ -598,15 +581,14 @@
         </select>
       </div>
       <div class="gas-grid">
-        <ConvexHull2D
+        <ConvexHull
           entries={gas_demo_fe_o_entries}
           controls={{ title: `Fe-O with ${selected_demo_gas} Pressure` }}
           gas_config={gas_demo_config}
           bind:gas_pressures={gas_demo_pressures}
           style="height: 500px"
         />
-        <ConvexHullCanvas
-          dim={3}
+        <ConvexHull
           entries={gas_demo_ternary_entries}
           controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}
           gas_config={gas_demo_config}
@@ -630,9 +612,7 @@
       </div>
       {#if quinary_stats_result?.phase_stats}
         <ConvexHullStats
-          phase_stats={quinary_stats_result.phase_stats}
-          stable_entries={quinary_stats_result.stable_entries}
-          unstable_entries={quinary_stats_result.unstable_entries}
+          model={quinary_stats_result}
           layout="side-by-side"
           style="width: min(100%, 980px); margin: 0 auto 2rem"
         />

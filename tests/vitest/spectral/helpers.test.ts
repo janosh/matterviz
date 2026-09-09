@@ -60,6 +60,7 @@ const make_bs = (
   }))
   const bands = overrides.bands ?? [qpoints.map((_, idx) => idx)]
   return {
+    type: `phonon`,
     qpoints,
     branches: branches.length
       ? branches
@@ -603,25 +604,10 @@ describe(`normalize_band_structure`, () => {
       bands: [[0, 1]],
     }
     // a throw, not null: the shape is recognisably pymatgen, so the missing key is a
-    // fixable defect Bands surfaces in its empty state (unrecognised shapes stay null)
+    // fixable defect reported by the file adapter (unrecognised shapes stay null)
     expect(() => normalize_band_structure({ ...input, ...lattice })).toThrow(
       /'lattice_rec\.matrix' \(or 'recip_lattice\.matrix'\).*got keys \[@class, qpoints, bands/,
     )
-  })
-
-  it(`compute_frequency_range skips pymatgen entries that fail to normalize`, () => {
-    const broken = {
-      '@class': `PhononBandStructureSymmLine`,
-      qpoints: line(2),
-      bands: [[0, 1]],
-    }
-    const range = compute_frequency_range(
-      { broken, fine: pmg({ qpoints: line(2), bands: [[2, 4]] }) },
-      undefined,
-    )
-    expect(range?.[0]).toBeCloseTo(2 - 0.02 * 2, 9)
-    expect(range?.[1]).toBeCloseTo(4 + 0.02 * 2, 9)
-    expect(compute_frequency_range(broken, undefined)).toBeUndefined()
   })
 
   it(`passes pymatgen phonon flags through`, () => {
@@ -828,8 +814,9 @@ describe(`normalize_dos`, () => {
     ],
     [`a plain array`, [0.2, 0.6, 0.2], [0.2, 0.6, 0.2], undefined],
   ])(`electronic densities as %s`, (_label, densities, up, down) => {
-    expect(normalize_dos({ energies: [-5, 0, 5], densities })).toEqual({
+    expect(normalize_dos({ energies: [-5, 0, 5], densities, efermi: 2 })).toEqual({
       type: `electronic`,
+      efermi: 2,
       energies: [-5, 0, 5],
       densities: up,
       spin_down_densities: down,
@@ -973,12 +960,15 @@ describe(`generate_ribbon_path`, () => {
 })
 
 describe(`compute_frequency_range`, () => {
-  const bands_of = (bands: number[][]) =>
-    make_bs(
+  const bands_of = (bands: number[][], type: `phonon` | `electronic` = `phonon`) => ({
+    sample: make_bs(
       Array.from({ length: bands[0].length }, () => null),
-      { bands },
-    )
-
+      { bands, type },
+    ),
+  })
+  const dos_of = (frequencies: number[]) => ({
+    sample: { type: `phonon` as const, frequencies, densities: frequencies.map(() => 1) },
+  })
   it.each([
     [
       `phonon bands`,
@@ -986,63 +976,47 @@ describe(`compute_frequency_range`, () => {
         [0, 5, 10],
         [2, 8, 15],
       ]),
-      undefined,
+      {},
       [0, 15.3],
     ],
-    [`a phonon DOS`, undefined, { frequencies: [0, 5, 15], densities: [0, 1, 0] }, [0, 15.3]],
+    [`a phonon DOS`, {}, dos_of([0, 5, 15]), [0, 15.3]],
+    [`bands plus DOS`, bands_of([[0, 5]]), dos_of([0, 20]), [0, 20.4]],
     [
-      `bands plus DOS`,
-      bands_of([[0, 5]]),
-      { frequencies: [0, 20], densities: [0, 1] },
-      [0, 20.4],
-    ],
-    [
-      `a dict of band structures`,
-      { a: bands_of([[0, 5]]), b: bands_of([[2, 12]]) },
-      undefined,
+      `multiple band structures`,
+      { ...bands_of([[0, 5]]), other: bands_of([[2, 12]]).sample },
+      {},
       [0, 12.24],
     ],
+    [`multiple DOS`, {}, { ...dos_of([0, 8]), other: dos_of([0, 15]).sample }, [0, 15.3]],
     [
-      `a dict of DOS`,
-      undefined,
+      `electronic DOS`,
+      {},
       {
-        a: { frequencies: [0, 8], densities: [0, 1] },
-        b: { frequencies: [0, 15], densities: [0, 1] },
+        sample: { type: `electronic` as const, energies: [-10, 0, 10], densities: [0, 1, 0] },
       },
-      [0, 15.3],
-    ],
-    [
-      `an electronic DOS (no clamp, padded both sides)`,
-      undefined,
-      { energies: [-10, 0, 10], densities: [0, 1, 0] },
       [-10.4, 10.4],
     ],
-    [`non-finite band values`, bands_of([[0, NaN, 5, Infinity, 10]]), undefined, [0, 10.2]],
+    [`non-finite band values`, bands_of([[0, NaN, 5, Infinity, 10]]), {}, [0, 10.2]],
     [
-      `negative noise under 0.5% (clamped)`,
+      `negative noise under 0.5%`,
       bands_of([
         [-0.01, 5, 10],
         [0, 8, 15],
       ]),
-      undefined,
+      {},
       [0, 15.3],
     ],
-    [`real imaginary modes (kept)`, bands_of([[-2, -1, 0, 5, 10]]), undefined, [-2.24, 10.24]],
-    // a plain `=` in the DOS loop let the last entry overwrite the phonon flag, disabling the
-    // imaginary-mode clamp (reported [-0.3102, 15.3002])
+    [`real imaginary modes`, bands_of([[-2, -1, 0, 5, 10]]), {}, [-2.24, 10.24]],
     [
-      `a phonon DOS listed before an electronic one (phonon flag not overwritten)`,
-      bands_of([[-0.01, 5, 10]]),
-      {
-        phonon: { frequencies: [0, 15], densities: [0, 1] },
-        electronic: { energies: [0, 10], densities: [0, 1] },
-      },
-      [0, 15.3],
+      `electronic bands retain small negative values`,
+      bands_of([[-0.01, 5, 10]], `electronic`),
+      {},
+      [-0.2102, 10.2002],
     ],
     [
-      `an electronic DOS overriding phonon-looking bands`,
-      bands_of([[-0.01, 5, 10]]),
-      { type: `electronic`, energies: [-5, 0, 5], densities: [0, 1, 0] },
+      `electronic DOS extends the bands range`,
+      bands_of([[-0.01, 5, 10]], `electronic`),
+      { sample: { type: `electronic` as const, energies: [-5, 0, 5], densities: [0, 1, 0] } },
       [-5.3, 10.3],
     ],
   ])(`%s`, (_label, bands, doses, expected) => {
@@ -1051,32 +1025,52 @@ describe(`compute_frequency_range`, () => {
     expect(range?.[1]).toBeCloseTo(expected[1], 9)
   })
 
-  it(`returns undefined without data and honours the padding factor`, () => {
-    expect(compute_frequency_range(undefined, undefined)).toBeUndefined()
-    expect(compute_frequency_range({}, {})).toBeUndefined()
-    expect(
-      compute_frequency_range(undefined, { frequencies: [0, 10], densities: [0, 1] }, 0.1),
-    ).toEqual([0, 11])
+  const electronic_dos = {
+    electronic: { type: `electronic` as const, energies: [0, 10], densities: [0, 1] },
+  }
+  it.each([
+    [
+      `bands`,
+      { ...bands_of([[0, 10]]), electronic: bands_of([[0, 10]], `electronic`).sample },
+      {},
+    ],
+    [`dos`, {}, { ...dos_of([0, 10]), ...electronic_dos }],
+    [`both`, bands_of([[0, 10]]), electronic_dos],
+  ])(`rejects mixed spectral types in %s`, (_scope, bands, doses) => {
+    expect(() => compute_frequency_range(bands, doses)).toThrow(
+      /Cannot mix phonon and electronic spectra/,
+    )
   })
 
-  // Raw electronic markers must be read before normalisation strips them: with a small
-  // negative value, phonon input clamps to 0 while electronic input keeps it. A @class marker
-  // routes through the pymatgen converter, which needs the reciprocal lattice. Bands.svelte
-  // classifies its input with the same predicate, so the two cannot disagree.
+  it(`includes spin-down extrema in the shared electronic range`, () => {
+    const bands = bands_of([[0, 1]], `electronic`)
+    bands.sample.spin_down_bands = [[-5, 10]]
+    expect(compute_frequency_range(bands, {})).toEqual([-5.3, 10.3])
+  })
+
+  it(`returns undefined for empty collections and honours padding`, () => {
+    expect(compute_frequency_range({}, {})).toBeUndefined()
+    expect(compute_frequency_range({}, dos_of([0, 10]), 0.1)).toEqual([0, 11])
+  })
+
   it.each([
     [`efermi`, { efermi: 5 }, true],
     [`kpoints`, { kpoints: [{ frac_coords: [0, 0, 0] }] }, true],
-    [`an electronic @class`, { '@class': `BandStructureSymmLine`, ...identity_rec }, true],
+    [`electronic @class`, { '@class': `BandStructureSymmLine`, ...identity_rec }, true],
     [
-      `an electronic @module`,
+      `electronic @module`,
       { '@module': `pymatgen.electronic_structure.bandstructure`, ...identity_rec },
       true,
     ],
-    [`a phonon @class`, { '@class': `PhononBandStructureSymmLine`, ...identity_rec }, false],
-  ])(`detects electronic bands via %s`, (_label, marker, is_electronic) => {
-    const input = { ...bands_of([[-0.01, 5, 10]]), ...marker }
+    [`phonon @class`, { '@class': `PhononBandStructureSymmLine`, ...identity_rec }, false],
+  ])(`adapter retains type and range from %s`, (_label, marker, is_electronic) => {
+    const { type: _type, ...raw } = bands_of([[-0.01, 5, 10]]).sample
+    const input = { ...raw, ...marker }
     expect(is_electronic_band_struct(input)).toBe(is_electronic)
-    const range = compute_frequency_range(input, undefined)
+    const normalized = normalize_band_structure(input)
+    if (!normalized) throw new Error(`Expected canonical bands`)
+    expect(normalized.type).toBe(is_electronic ? `electronic` : `phonon`)
+    const range = compute_frequency_range({ sample: normalized }, {})
     expect(range?.[0]).toBeCloseTo(is_electronic ? -0.01 - 10.01 * 0.02 : 0, 9)
   })
 })

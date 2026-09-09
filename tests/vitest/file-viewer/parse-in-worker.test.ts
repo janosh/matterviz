@@ -4,18 +4,13 @@ import type {
   ParseWorkerResponse,
   WorkerLike,
 } from '$lib/file-viewer/parse-in-worker'
-import {
-  MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES,
-  MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
-  parse_in_worker,
-  parse_trajectory_in_worker,
-} from '$lib/file-viewer/parse-in-worker'
+import { parse_in_worker } from '$lib/file-viewer/parse-in-worker'
 import { handle_parse_worker_request } from '$lib/file-viewer/parse-worker'
 import { prediction_to_json } from '$lib/structure/prediction'
 import { make_grid, make_volume } from '../setup'
 import type { Hdf5GroupSelectionRequiredError, TrajectoryFrame } from '$lib/trajectory'
 import { summarize_run, trajectory_from_frames } from '$lib/trajectory'
-import { serve_run_over_port } from '$lib/trajectory/runs/worker'
+import { dispose_run_port, serve_run_over_port } from '$lib/trajectory/runs/worker'
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest'
 
 // MessagePort/Worker postMessage take no targetOrigin (that's window.postMessage)
@@ -96,32 +91,25 @@ const trajectory_response = (request: ParseWorkerRequest): ParseWorkerResponse =
   }
 }
 
-const silence_warnings = (): ReturnType<typeof vi.spyOn> =>
-  vi.spyOn(console, `warn`).mockImplementation(() => {})
-
 afterEach(() => vi.restoreAllMocks())
 
 describe(`parse_in_worker`, () => {
   it(`posts a file request and terminates the worker after a non-trajectory reply`, async () => {
     const worker = make_fake_worker()
-    const fallback_parse = vi.fn()
     await expect(
       parse_in_worker(`data_si`, `si.cif`, false, {
         worker_factory: () => worker,
-        fallback_parse,
         load_options: { index_above_bytes: 4096 },
       }),
     ).resolves.toEqual(structure_result)
     // host loading settings ride along so the worker's open_trajectory honours them
     expect(worker.posted[0].request).toMatchObject({
-      kind: `file`,
       content: `data_si`,
       filename: `si.cif`,
       is_base64: false,
       load_options: { index_above_bytes: 4096 },
     })
     expect(worker.terminate).toHaveBeenCalledOnce()
-    expect(fallback_parse).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -147,55 +135,13 @@ describe(`parse_in_worker`, () => {
         return worker
       },
     ],
-  ])(`falls back when worker %s fails`, async (_label, make_worker) => {
-    silence_warnings()
-    const fallback_parse = vi.fn().mockResolvedValue(structure_result)
+  ])(`rejects when worker %s fails`, async (_label, make_worker) => {
     await expect(
       parse_in_worker(`data`, `si.cif`, false, {
         worker_factory: make_worker,
-        fallback_parse,
         load_options: { index_above_bytes: 4096 },
       }),
-    ).resolves.toEqual(structure_result)
-    expect(fallback_parse).toHaveBeenCalledExactlyOnceWith(
-      `data`,
-      `si.cif`,
-      false,
-      {
-        index_above_bytes: 4096,
-      },
-      undefined,
-    )
-  })
-
-  it.each([
-    [`text`, MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES + 1, false],
-    [`base64`, Math.ceil((MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES * 4) / 3), true],
-  ])(`refuses an oversized %s main-thread fallback`, async (_label, length, is_base64) => {
-    silence_warnings()
-    await expect(
-      parse_in_worker(`x`.repeat(length), `huge.h5`, is_base64, {
-        worker_factory: () => {
-          throw new Error(`blocked`)
-        },
-      }),
-    ).rejects.toThrow(`main-thread fallback is disabled`)
-  })
-
-  // Indexed formats open frame by frame, so the main thread can take any size of them
-  it(`lets an oversized indexable trajectory fall back to the main thread`, async () => {
-    silence_warnings()
-    const fallback_parse = vi.fn().mockResolvedValue(structure_result)
-    const content = `x`.repeat(MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES + 1)
-    await expect(
-      parse_in_worker(content, `huge.extxyz`, false, {
-        worker_factory: () => {
-          throw new Error(`blocked`)
-        },
-        fallback_parse,
-      }),
-    ).resolves.toEqual(structure_result)
-    expect(fallback_parse).toHaveBeenCalledOnce()
+    ).rejects.toThrow(/blocked|404|deserialize/)
   })
 
   it(`aborting terminates the worker`, async () => {
@@ -209,20 +155,13 @@ describe(`parse_in_worker`, () => {
     await expect(parsing).rejects.toMatchObject({ name: `AbortError` })
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
-})
-
-describe(`parse_trajectory_in_worker`, () => {
   it(`returns a live worker-backed run and terminates its worker on dispose`, async () => {
     const worker = make_fake_worker(trajectory_response)
-    const run = await parse_trajectory_in_worker(
-      `1\nframe\nH 1 2 3\n`,
-      `movie.xyz`,
-      undefined,
-      {},
-      {
-        worker_factory: () => worker,
-      },
-    )
+    const result = await parse_in_worker(`1\nframe\nH 1 2 3\n`, `movie.xyz`, false, {
+      worker_factory: () => worker,
+    })
+    if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
+    const run = result.data
     expect(run.frame_count).toBe(1)
     expect(run.read_frame(0)).toEqual(frame)
     expect(worker.terminate).not.toHaveBeenCalled()
@@ -230,33 +169,48 @@ describe(`parse_trajectory_in_worker`, () => {
     await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce())
   })
 
-  it(`clones ArrayBuffer sources by default and snapshots mapping options`, async () => {
+  it.each([`missing port`, `malformed summary`])(
+    `rejects a trajectory with %s and releases its worker`,
+    async (failure) => {
+      const worker = make_fake_worker((request) => {
+        const response = trajectory_response(request)
+        if (failure === `missing port`) {
+          dispose_run_port(response.run_port)
+          delete response.run_port
+        } else if (response.result?.type === `trajectory`) {
+          Reflect.deleteProperty(response.result.data, `properties`)
+        }
+        return response
+      })
+      await expect(
+        parse_in_worker(`text`, `movie.xyz`, false, { worker_factory: () => worker }),
+      ).rejects.toThrow(failure === `missing port` ? /missing its run port/ : /rows/)
+      expect(worker.terminate).toHaveBeenCalledOnce()
+    },
+  )
+
+  it(`clones retained ArrayBuffer sources and mapping options`, async () => {
     const source = new Uint8Array([1, 2, 3, 4]).buffer
     const worker = make_fake_worker(trajectory_response)
-    const mapping = new Proxy({ 1: `H` as const }, {})
-    const run = await parse_trajectory_in_worker(
-      source,
-      `large.h5`,
-      undefined,
-      {
-        atom_type_mapping: mapping,
-      },
-      { worker_factory: () => worker },
-    )
+    const mapping = { 1: `H` as const }
+    const result = await parse_in_worker(source, `large.h5`, false, {
+      worker_factory: () => worker,
+      load_options: { atom_type_mapping: mapping },
+    })
+    if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
+    const run = result.data
     expect(source.byteLength).toBe(4)
     expect(worker.posted[0].request).toMatchObject({
-      kind: `trajectory`,
       filename: `large.h5`,
-      options: { atom_type_mapping: { 1: `H` } },
+      load_options: { atom_type_mapping: { 1: `H` } },
     })
-    expect(worker.posted[0].transfer).toHaveLength(1)
+    expect(worker.posted[0].transfer).toHaveLength(0)
     run.dispose()
   })
 
-  // Cloning is the default so the main-thread fallback still has the bytes; a payload the
-  // fallback would refuse anyway is handed over instead, which is where the copy costs most.
+  // Ownership alone decides whether bytes may be detached, independently of file size.
   it.each([
-    [`clones a payload the fallback could still parse`, 1024, true, 0],
+    [`transfers a small payload the caller gave up`, 1024, true, 1],
     [`clones when the caller keeps ownership`, 60 * 1024 * 1024, false, 0],
     [`transfers an oversized payload the caller gave up`, 60 * 1024 * 1024, true, 1],
   ])(`%s`, async (_label, size, owns_content, expected_transfers) => {
@@ -274,6 +228,21 @@ describe(`parse_trajectory_in_worker`, () => {
     expect(content.byteLength).toBe(expected_transfers === 0 ? size : 0)
   })
 
+  it.each([`error`, `messageerror`])(
+    `a late worker %s disposes the opened trajectory`,
+    async (event_type) => {
+      const worker = make_fake_worker(trajectory_response)
+      const result = await parse_in_worker(`text`, `movie.xyz`, false, {
+        worker_factory: () => worker,
+      })
+      if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
+      const run = result.data
+      worker.emit(event_type, new Event(event_type))
+      await expect(Promise.resolve(run.read_frame(0))).rejects.toThrow(/disposed/)
+      expect(worker.terminate).toHaveBeenCalledOnce()
+    },
+  )
+
   it(`surfaces an ambiguous HDF5 group choice as a typed error`, async () => {
     const worker = make_fake_worker((request) => ({
       id: request.id,
@@ -281,15 +250,9 @@ describe(`parse_trajectory_in_worker`, () => {
       hdf5_group_paths: [`/a`, `/b`],
     }))
     await expect(
-      parse_trajectory_in_worker(
-        `text`,
-        `multi.h5`,
-        undefined,
-        {},
-        {
-          worker_factory: () => worker,
-        },
-      ),
+      parse_in_worker(`text`, `multi.h5`, false, {
+        worker_factory: () => worker,
+      }),
     ).rejects.toMatchObject({
       name: `Hdf5GroupSelectionRequiredError`,
       groups: [`/a`, `/b`],
@@ -310,15 +273,12 @@ describe(`parse_trajectory_in_worker`, () => {
       )
       return trajectory_response(request)
     })
-    const run = await parse_trajectory_in_worker(
-      `text`,
-      `run.xyz`,
-      progress,
-      {},
-      {
-        worker_factory: () => worker,
-      },
-    )
+    const result = await parse_in_worker(`text`, `run.xyz`, false, {
+      on_progress: progress,
+      worker_factory: () => worker,
+    })
+    if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
+    const run = result.data
     expect(progress).toHaveBeenCalledWith({ current: 1, total: 2, stage: `read` })
     run.dispose()
   })
@@ -328,10 +288,9 @@ describe(`parse worker handler`, () => {
   it.each([0, 2])(`transfers all %i imported density buffers`, async (count) => {
     const volumes = Array.from({ length: count }, (_, idx) => ({
       ...make_volume(make_grid(2, 2, 2, () => idx + 1)),
-      field_id: `density-${idx}`,
+      id: `density-${idx}`,
     }))
     const { response, transfer } = await handle_parse_worker_request({
-      kind: `file`,
       id: 8,
       filename: `prediction.json`,
       is_base64: false,
@@ -357,19 +316,18 @@ describe(`parse worker handler`, () => {
 
   it(`keeps a parsed trajectory behind a transferred run port`, async () => {
     const { response, transfer } = await handle_parse_worker_request({
-      kind: `trajectory`,
       id: 7,
-      data: `1\nframe\nH 1 2 3\n`,
+      content: `1\nframe\nH 1 2 3\n1\nframe\nH 2 3 4\n`,
       filename: `movie.xyz`,
-      options: {},
+      is_base64: false,
     })
     expect(response.id).toBe(7)
     expect(response.result?.type).toBe(`trajectory`)
     expect(response.result?.data).toMatchObject({
-      frame_count: 1,
+      frame_count: 2,
       preview: { step: 0, structure: { sites: [{ xyz: [1, 2, 3] }] } },
     })
     expect(transfer).toEqual([response.run_port])
-    response.run_port?.close()
+    dispose_run_port(response.run_port)
   })
 })

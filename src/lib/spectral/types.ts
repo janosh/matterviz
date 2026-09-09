@@ -2,7 +2,6 @@
 
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { InternalPoint } from '$lib/plot'
-import type { PymatgenCompleteDos } from './helpers'
 
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`
@@ -30,6 +29,8 @@ export interface Branch {
 // `lattice_rec`, phonopy's `recip_lattice`) so Cartesian k and the Brillouin zone follow from
 // the band data alone. Without it, consumers derive k from a structure's lattice.
 export interface BaseBandStructure {
+  type: BandStructureType
+  efermi?: number
   qpoints: QPoint[]
   recip_lattice?: Matrix3x3
   branches: Branch[]
@@ -51,14 +52,15 @@ export interface RibbonConfig {
 
 // Phonon-specific band structure
 export interface PhononBandStructure extends BaseBandStructure {
+  type: `phonon`
   has_imaginary_modes?: boolean
   has_nac?: boolean
 }
 
 // Electronic band structure
 export interface ElectronicBandStructure extends BaseBandStructure {
+  type: `electronic`
   is_spin_polarized: boolean
-  efermi?: number
   band_gap?: { energy: number; direct: boolean; transition?: string }
 }
 
@@ -96,9 +98,6 @@ export interface StackedAreaData {
 
 // Discriminated union for type-safe DOS handling
 export type DosData = PhononDos | ElectronicDos
-
-// Union type for component props that accept both normalized and pymatgen DOS formats
-export type DosInput = DosData | PymatgenCompleteDos
 
 // Band line styling: one style for every band, or one per acoustic/optical mode
 export interface BandLineStyle {

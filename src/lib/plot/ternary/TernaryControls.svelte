@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import { ControlPane } from '$lib/overlays'
   import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
@@ -20,7 +21,7 @@
     pane_props = {},
     children,
   }: {
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
     grid_step?: number
     show_grid?: boolean
@@ -32,41 +33,45 @@
   } = $props()
 </script>
 
-{#if show_controls}
-  <ControlPane bind:controls_open controls_name="ternary" {toggle_props} {pane_props}>
-    {@render children?.()}
-    <SettingsSection
-      title="Grid"
-      current_values={{ grid_step, show_grid, show_ticks }}
-      on_reset={() => {
-        ;({ grid_step, show_grid, show_ticks } = GRID_DEFAULTS)
-      }}
-      layout="grid"
+<ControlPane
+  {show_controls}
+  bind:controls_open
+  controls_name="ternary"
+  {toggle_props}
+  {pane_props}
+>
+  {@render children?.()}
+  <SettingsSection
+    title="Grid"
+    current_values={{ grid_step, show_grid, show_ticks }}
+    on_reset={() => {
+      ;({ grid_step, show_grid, show_ticks } = GRID_DEFAULTS)
+    }}
+    layout="grid"
+  >
+    <NumberRangeInput min={0.05} max={0.5} step={0.05} bind:value={grid_step}
+      >Grid step</NumberRangeInput
     >
-      <NumberRangeInput min={0.05} max={0.5} step={0.05} bind:value={grid_step}
-        >Grid step</NumberRangeInput
-      >
-      <label>
-        <span>Show grid</span>
-        <input type="checkbox" bind:checked={show_grid} />
-      </label>
-      <label>
-        <span>Show ticks</span>
-        <input type="checkbox" bind:checked={show_ticks} />
-      </label>
+    <label>
+      <span>Show grid</span>
+      <input type="checkbox" bind:checked={show_grid} />
+    </label>
+    <label>
+      <span>Show ticks</span>
+      <input type="checkbox" bind:checked={show_ticks} />
+    </label>
+  </SettingsSection>
+  {#if on_export}
+    <SettingsSection title="Export" layout="flow">
+      {#each EXPORT_FORMATS as format (format)}
+        <button
+          type="button"
+          style="padding: 2pt 8pt; cursor: pointer"
+          onclick={() => on_export?.(format)}
+        >
+          {format.toUpperCase()}
+        </button>
+      {/each}
     </SettingsSection>
-    {#if on_export}
-      <SettingsSection title="Export" layout="flow">
-        {#each EXPORT_FORMATS as format (format)}
-          <button
-            type="button"
-            style="padding: 2pt 8pt; cursor: pointer"
-            onclick={() => on_export?.(format)}
-          >
-            {format.toUpperCase()}
-          </button>
-        {/each}
-      </SettingsSection>
-    {/if}
-  </ControlPane>
-{/if}
+  {/if}
+</ControlPane>

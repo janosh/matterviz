@@ -1,14 +1,15 @@
-// Acquisition shell around <Trajectory>: `src` as URL / File / bytes, drag-and-drop (OS drags
+// Trajectory acquisition: `source` as URL / File / bytes, drag-and-drop (OS drags
 // carry a File plus a text/plain path to ignore, FilePicker drags a URL), worker parsing with
 // progress, superseded loads, run ownership, the HDF5 group picker, errors and the empty state.
 import * as parse_worker from '$lib/file-viewer/parse-in-worker'
-import type { TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
-import { Hdf5GroupSelectionRequiredError, open_trajectory } from '$lib/trajectory'
-import TrajectoryFileViewer from '$lib/trajectory/TrajectoryFileViewer.svelte'
+import type { TrajectoryController, TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
+import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory'
+import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  mock_parse_worker,
   create_drop_event,
   doc_query,
   gzip_bytes,
@@ -20,8 +21,12 @@ import {
   read_binary_test_file,
 } from '../setup'
 
-type Props = ComponentProps<typeof TrajectoryFileViewer>
-type WorkerParse = typeof parse_worker.parse_trajectory_in_worker
+beforeEach(mock_parse_worker)
+
+type Props = ComponentProps<typeof Trajectory>
+type WorkerParse = (
+  ...args: Parameters<typeof parse_worker.parse_in_worker>
+) => Promise<TrajectoryRun>
 
 const BLOB_URL = `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
 const BLOB_FILENAME = BLOB_URL.split(`/`).at(-1) ?? BLOB_URL
@@ -45,12 +50,12 @@ const mount_viewer = (props: Props = {}): HTMLElement => {
   if (!(`show_controls` in props)) props.show_controls = `never`
   const target = document.createElement(`div`)
   document.body.append(target)
-  mounted.push(mount(TrajectoryFileViewer, { target, props }))
+  mounted.push(mount(Trajectory, { target, props }))
   flushSync()
   return target
 }
 const drop = (target: ParentNode, file: File, text_plain = ``): void => {
-  const zone = query(target, `.trajectory-file-viewer`)
+  const zone = query(target, `.trajectory`)
   zone.dispatchEvent(create_drop_event(file, { text_plain }))
 }
 
@@ -62,22 +67,11 @@ const stub_fetch = (content: string, headers = new Headers()) =>
 const stub_worker = (implementation: WorkerParse) =>
   vi
     .spyOn(parse_worker, `parse_in_worker`)
-    .mockImplementation(async (data, filename, _is_base64, options = {}) => ({
+    .mockImplementation(async (data, filename, is_base64, options) => ({
       type: `trajectory`,
       filename,
-      data: await implementation(data, filename, options.on_progress, options.load_options, {
-        signal: options.signal,
-      }),
+      data: await implementation(data, filename, is_base64, options),
     }))
-// Parses on this thread what production would hand to the worker (Blob HDF5, large payloads)
-const passthrough_worker = (): ReturnType<typeof stub_worker> =>
-  stub_worker(async (data, filename, on_progress, options) =>
-    open_trajectory(data instanceof Blob ? await data.arrayBuffer() : data, {
-      ...options,
-      filename,
-      on_progress,
-    }),
-  )
 // Worker stub whose results are released by hand, to order races deliberately
 const deferred_worker = () => {
   const pending: {
@@ -86,15 +80,13 @@ const deferred_worker = () => {
     resolve: (run: TrajectoryRun) => void
   }[] = []
   stub_worker(
-    (_data, filename, _on_progress, _options, client_options) =>
+    (_data, filename, _is_base64, options) =>
       new Promise<TrajectoryRun>((resolve) => {
-        pending.push({ filename, signal: client_options?.signal, resolve })
+        pending.push({ filename, signal: options?.signal, resolve })
       }),
   )
   return pending
 }
-// Every payload goes through the (stubbed) worker path
-const WORKER_ALL = { index_above_bytes: 0 }
 const cancel_button = (target: ParentNode): HTMLButtonElement => {
   const button = [
     ...target.querySelectorAll<HTMLButtonElement>(`.hdf5-group-picker button`),
@@ -103,11 +95,11 @@ const cancel_button = (target: ParentNode): HTMLButtonElement => {
   return button
 }
 
-describe(`src`, () => {
+describe(`source`, () => {
   test(`file chooser loads once and the task cancel button disposes late results`, async () => {
     const pending = deferred_worker()
     const on_file_load = vi.fn()
-    const target = mount_viewer({ loading_options: WORKER_ALL, on_file_load })
+    const target = mount_viewer({ on_file_load })
     const input = target.querySelector<HTMLInputElement>(`input[type="file"]`)
     if (!input) throw new Error(`Missing file picker`)
     Object.defineProperty(input, `files`, {
@@ -115,7 +107,7 @@ describe(`src`, () => {
     })
     input.dispatchEvent(new Event(`change`, { bubbles: true }))
     await vi.waitFor(() => expect(pending).toHaveLength(1))
-    target.querySelector<HTMLButtonElement>(`.task-status button`)?.click()
+    query<HTMLButtonElement>(target, `.task-status button`).click()
     await vi.waitFor(() => expect(pending[0].signal?.aborted).toBe(true))
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
     const late = make_run(`picked.xyz`)
@@ -129,7 +121,7 @@ describe(`src`, () => {
     stub_fetch(MULTI_FRAME_XYZ)
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const on_error = vi.fn()
-    const target = mount_viewer({ src: BLOB_URL, on_file_load, on_error })
+    const target = mount_viewer({ source: BLOB_URL, on_file_load, on_error })
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
     expect(on_file_load.mock.calls[0][0]).toMatchObject({
       frame_count: 2,
@@ -155,7 +147,7 @@ describe(`src`, () => {
       stub_fetch(`not a trajectory in any format`, headers)
       const on_file_load = vi.fn()
       const on_error = vi.fn<(data: TrajHandlerData) => void>()
-      mount_viewer({ src: url, on_file_load, on_error })
+      mount_viewer({ source: url, on_file_load, on_error })
       await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
       expect(on_error.mock.calls[0][0]).toMatchObject({ source_filename, source_url: url })
       expect(on_file_load).not.toHaveBeenCalled()
@@ -168,7 +160,7 @@ describe(`src`, () => {
     )
     vi.spyOn(console, `error`).mockImplementation(() => {})
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
-    mount_viewer({ src: `https://example.com/missing.xyz`, on_error })
+    mount_viewer({ source: `https://example.com/missing.xyz`, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
     expect(on_error.mock.calls[0][0]).toMatchObject({
       error_msg: expect.stringContaining(`HTTP 404 Not Found`),
@@ -179,11 +171,11 @@ describe(`src`, () => {
     expect(doc_query(`h3`).textContent).toBe(`Error`)
   })
 
-  test.each([``, null])(`src %j is no source, not a URL to fetch`, async (src) => {
+  test.each([``, undefined])(`source %j is no source, not a URL to fetch`, async (source) => {
     // notebook hosts clear a URL trait to "" / null; fetching that resolves to the page itself
     const fetch_spy = vi.spyOn(globalThis, `fetch`)
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
-    mount_viewer({ src, on_error })
+    mount_viewer({ source, on_error })
     await tick()
     expect(fetch_spy).not.toHaveBeenCalled()
     expect(on_error).not.toHaveBeenCalled()
@@ -191,10 +183,10 @@ describe(`src`, () => {
     expect(doc_query(`h3`).textContent).not.toBe(`Error`)
   })
 
-  test(`a File src carries its own name and identity`, async () => {
+  test(`a File source carries its own name and identity`, async () => {
     const file = new File([MULTI_FRAME_XYZ], `dropped.xyz`)
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    mount_viewer({ src: file, on_file_load })
+    mount_viewer({ source: file, on_file_load })
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
     expect(on_file_load.mock.calls[0][0]).toMatchObject({
       frame_count: 2,
@@ -209,29 +201,31 @@ describe(`src`, () => {
   test.each([
     [{ '1': `Si`, '2': `O` }, [`Si`, `O`, `O`]],
     [undefined, [`H`, `He`, `He`]],
-  ] as const)(`LAMMPS src with atom_type_mapping %o`, async (atom_type_mapping, elements) => {
-    const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n3\nITEM: BOX BOUNDS pp pp pp\n0 5\n0 5\n0 5
+  ] as const)(
+    `LAMMPS source with atom_type_mapping %o`,
+    async (atom_type_mapping, elements) => {
+      const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n3\nITEM: BOX BOUNDS pp pp pp\n0 5\n0 5\n0 5
 ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
-    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    mount_viewer({
-      src: new File([dump], `dump.lammpstrj`),
-      loading_options: { atom_type_mapping },
-      on_file_load,
-    })
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    const run = on_file_load.mock.calls[0][0].trajectory
-    expect(run?.preview.structure.sites.map((site) => site.species[0].element)).toEqual(
-      elements,
-    )
-    expect(run?.warnings).toHaveLength(atom_type_mapping ? 0 : 1)
-  })
+      const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
+      mount_viewer({
+        source: new File([dump], `dump.lammpstrj`),
+        loading_options: { atom_type_mapping },
+        on_file_load,
+      })
+      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+      const run = on_file_load.mock.calls[0][0].trajectory
+      expect(run?.preview.structure.sites.map((site) => site.species[0].element)).toEqual(
+        elements,
+      )
+      expect(run?.warnings).toHaveLength(atom_type_mapping ? 0 : 1)
+    },
+  )
 
-  test(`binary src uses filename for detection and reports the full payload`, async () => {
+  test(`binary source uses filename for detection and reports the full payload`, async () => {
     const bytes = read_binary_test_file(ASE_FIXTURE)
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({
-      src: bytes,
-      filename: ASE_FIXTURE,
+      source: { data: bytes, filename: ASE_FIXTURE },
       show_controls: `always`,
       on_file_load,
     })
@@ -254,7 +248,7 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
   test(`parse errors render TrajectoryError with the on_error payload and dismiss`, async () => {
     const bytes = new Uint8Array([1, 2, 3, 4]).buffer
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
-    const target = mount_viewer({ src: bytes, filename: `mystery.bin`, on_error })
+    const target = mount_viewer({ source: { data: bytes, filename: `mystery.bin` }, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
     expect(on_error.mock.calls[0][0]).toMatchObject({
       error_msg: `🚫 Binary format not supported: mystery.bin`,
@@ -284,10 +278,10 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
         button.addEventListener(`click`, () => get_props().on_dismiss())
       },
     }))
-    // a string src is a URL: fail the fetch here rather than let it escape to the network
+    // a string source is a URL: fail the fetch here rather than let it escape to the network
     vi.spyOn(globalThis, `fetch`).mockRejectedValue(new Error(`network down`))
     vi.spyOn(console, `error`).mockImplementation(() => {})
-    const target = mount_viewer({ src: `https://example.com/x.bin`, error_snippet })
+    const target = mount_viewer({ source: `https://example.com/x.bin`, error_snippet })
     await vi.waitFor(() => expect(target.querySelector(`.custom-error`)).not.toBeNull())
     expect(doc_query(`.custom-error em`).textContent).toContain(`network down`)
     expect(doc_query(`.custom-error em`).textContent).toMatch(/^Failed to load trajectory/)
@@ -298,18 +292,20 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
   })
 
-  test(`task status shows worker progress until the run arrives`, async () => {
+  test(`replacement loading pauses playback and shows worker progress until the run arrives`, async () => {
+    const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
     let release: ((run: TrajectoryRun) => void) | undefined
     stub_worker(
-      (_data, filename, on_progress) =>
+      (_data, filename, _is_base64, options) =>
         new Promise<TrajectoryRun>((resolve) => {
-          on_progress?.({ current: 42.4, total: 100, stage: `Indexing frames` })
+          options?.on_progress?.({ current: 42.4, total: 100, stage: `Indexing frames` })
           release = () => resolve(make_run(filename))
         }),
     )
     const target = mount_viewer({
-      loading_options: WORKER_ALL,
       spinner_props: { title: `Parsing in a worker` },
+      trajectory: make_run(`previous.xyz`),
+      on_controller,
     })
     drop(target, new File([MULTI_FRAME_XYZ], `big.xyz`))
     await vi.waitFor(() =>
@@ -317,28 +313,29 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
         `Indexing frames (42%)`,
       ),
     )
+    const controller = on_controller.mock.calls.at(-1)?.[0]
+    expect(controller?.state().total_frames).toBe(0)
     expect(doc_query<HTMLProgressElement>(`progress`).value).toBe(42.4)
     expect(doc_query(`.spinner`).getAttribute(`title`)).toBe(`Parsing in a worker`)
     if (!release) throw new Error(`worker stub never ran`)
     release(make_run(`big.xyz`))
-    await vi.waitFor(() => expect(target.querySelector(`.trajectory`)).not.toBeNull())
-    expect(target.querySelector(`.spinner`)).toBeNull()
+    await vi.waitFor(() => expect(target.querySelector(`.spinner`)).toBeNull())
+    expect(controller?.state().total_frames).toBe(3)
   })
 
-  test(`changing src aborts the in-flight load and disposes its late result`, async () => {
+  test(`changing source aborts the in-flight load and disposes its late result`, async () => {
     const pending = deferred_worker()
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const props = $state<Props>({
-      src: new File([MULTI_FRAME_XYZ], `first.xyz`),
+      source: new File([MULTI_FRAME_XYZ], `first.xyz`),
       trajectory: undefined,
-      loading_options: WORKER_ALL,
       on_file_load,
     })
     const target = mount_viewer(props)
     await vi.waitFor(() => expect(pending).toHaveLength(1))
     expect(pending[0].signal?.aborted).toBe(false)
 
-    props.src = new File([MULTI_FRAME_XYZ], `second.xyz`)
+    props.source = new File([MULTI_FRAME_XYZ], `second.xyz`)
     await vi.waitFor(() => expect(pending).toHaveLength(2))
     expect(pending[0].signal?.aborted).toBe(true)
     expect(pending[0].signal?.reason).toMatchObject({ name: `AbortError` })
@@ -359,12 +356,11 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     expect(vi.spyOn(second, `dispose`)).not.toHaveBeenCalled()
   })
 
-  test(`a drop supersedes a pending src load`, async () => {
+  test(`a drop supersedes a pending source load`, async () => {
     const pending = deferred_worker()
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({
-      src: new File([MULTI_FRAME_XYZ], `slow.xyz`),
-      loading_options: WORKER_ALL,
+      source: new File([MULTI_FRAME_XYZ], `slow.xyz`),
       on_file_load,
     })
     await vi.waitFor(() => expect(pending).toHaveLength(1))
@@ -387,7 +383,7 @@ describe(`run ownership`, () => {
     const dispose = vi.spyOn(run, `dispose`)
     const target = document.createElement(`div`)
     document.body.append(target)
-    const component = mount(TrajectoryFileViewer, {
+    const component = mount(Trajectory, {
       target,
       props: { trajectory: run, display_mode: `structure`, show_controls: `always` },
     })
@@ -403,10 +399,10 @@ describe(`run ownership`, () => {
     const target = document.createElement(`div`)
     document.body.append(target)
     // `trajectory` deliberately unbound: the viewer owns the run outright
-    const component = mount(TrajectoryFileViewer, {
+    const component = mount(Trajectory, {
       target,
       props: {
-        src: new File([MULTI_FRAME_XYZ], `owned.xyz`),
+        source: new File([MULTI_FRAME_XYZ], `owned.xyz`),
         display_mode: `structure`,
         show_controls: `always`,
         on_file_load,
@@ -430,7 +426,7 @@ describe(`run ownership`, () => {
     const state: { trajectory: TrajectoryRun | undefined } = { trajectory: undefined }
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer(
-      bind_props({ src: new File([MULTI_FRAME_XYZ], `first.xyz`), on_file_load }, state),
+      bind_props({ source: new File([MULTI_FRAME_XYZ], `first.xyz`), on_file_load }, state),
     )
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
     const first = state.trajectory
@@ -449,7 +445,7 @@ describe(`run ownership`, () => {
   test(`a caller swapping in its own run through bind:trajectory releases the owned one`, async () => {
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const props = $state<Props>({
-      src: new File([MULTI_FRAME_XYZ], `owned.xyz`),
+      source: new File([MULTI_FRAME_XYZ], `owned.xyz`),
       trajectory: undefined,
       on_file_load,
     })
@@ -533,7 +529,6 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   }, 60_000)
 
   const drop_ambiguous = async (props: Props = {}) => {
-    passthrough_worker()
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({ on_file_load, on_error, ...props })
@@ -545,8 +540,10 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   }
 
   test(`an ambiguous file opens the picker; a choice loads that group`, async () => {
+    const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
     const { target, on_file_load, on_error } = await drop_ambiguous({
       show_controls: `always`,
+      on_controller,
     })
     const picker = doc_query(`.hdf5-group-picker`)
     expect(picker.getAttribute(`role`)).toBe(`dialog`)
@@ -572,6 +569,9 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
     expect(target.querySelector(`button[data-hdf5-group]`)).toBeNull()
     const run = on_file_load.mock.calls[0][0].trajectory
+    const controller = on_controller.mock.calls.at(-1)?.[0]
+    expect(controller?.state().total_frames).toBeGreaterThan(0)
+    expect(controller?.state().total_frames).toBe(run?.frame_count)
     expect(run?.provenance).toMatchObject({
       filename: `ambiguous.h5`,
       hdf5_group: `/molecules/nh3/replicas/0`,
@@ -586,10 +586,12 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
     doc_query<HTMLButtonElement>(`[data-hdf5-group-picker-back]`).click()
     await tick()
     expect(target.querySelectorAll(`button[data-hdf5-group]`)).toHaveLength(8)
+    expect(controller?.state().total_frames).toBe(0)
     cancel_button(target).click()
     await tick()
     expect(target.querySelector(`button[data-hdf5-group]`)).toBeNull()
     expect(target.querySelector(`.filename`)?.textContent).toContain(`ambiguous.h5`)
+    expect(controller?.state().total_frames).toBe(run?.frame_count)
 
     // Picking another group swaps the run and disposes the previous one
     const first_dispose = run ? vi.spyOn(run, `dispose`) : undefined
@@ -606,7 +608,6 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   // Picking a group re-parses the payload already in hand: re-fetching (and re-inflating) a
   // multi-GB HDF5 just to read a different group would double the wait
   test(`a group pick reuses the fetched payload instead of downloading again`, async () => {
-    passthrough_worker()
     const gz = await new Response(
       new Blob([ambiguous_bytes]).stream().pipeThrough(new CompressionStream(`gzip`)),
     ).arrayBuffer()
@@ -614,7 +615,10 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
       .spyOn(globalThis, `fetch`)
       .mockImplementation(() => Promise.resolve(new Response(gz)))
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    const target = mount_viewer({ src: `https://example.com/ambiguous.h5.gz`, on_file_load })
+    const target = mount_viewer({
+      source: `https://example.com/ambiguous.h5.gz`,
+      on_file_load,
+    })
     await vi.waitFor(() =>
       expect(target.querySelectorAll(`button[data-hdf5-group]`)).toHaveLength(8),
     )
@@ -653,11 +657,11 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   test(`a failing group choice shows the error inside the picker and keeps the shown run`, async () => {
     const run_0 = make_run(`groups.h5`)
     const run_0_dispose = vi.spyOn(run_0, `dispose`)
-    stub_worker(async (_data, _filename, _on_progress, options) => {
-      if (!options?.hdf5_group_path) {
+    stub_worker(async (_data, _filename, _is_base64, { load_options } = {}) => {
+      if (!load_options?.hdf5_group_path) {
         throw new Hdf5GroupSelectionRequiredError([`/run/0`, `/run/1`])
       }
-      if (options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
+      if (load_options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
       return run_0
     })
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
@@ -709,7 +713,7 @@ describe(`bindable re-exposure`, () => {
   test(`current_step_idx, display_mode, active_pane and trajectory round-trip`, async () => {
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const props = $state<Props>({
-      src: new File([MULTI_FRAME_XYZ], `bound.xyz`),
+      source: new File([MULTI_FRAME_XYZ], `bound.xyz`),
       trajectory: undefined,
       current_step_idx: 0,
       display_mode: `structure`,

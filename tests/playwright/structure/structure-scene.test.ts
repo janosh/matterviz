@@ -94,7 +94,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await goto_structure_test(page)
   })
 
-  test(`supercell transition keeps atom spheres visible`, async ({ page }) => {
+  test(`supercell transition keeps atom spheres visible @source`, async ({ page }) => {
     const supercell_input = page.locator(`[data-testid="supercell-input"]`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const atom_count = async () => (await rendered_instance_counts(page)).atoms
@@ -142,6 +142,35 @@ test.describe(`StructureScene Component Tests`, () => {
     }
     await hover_canvas_corner(canvas)
     await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
+
+    // Topology changes invalidate the cached neighbor lookup used by subsequent tooltips.
+    for (const symbols of [
+      [`C`, `O`, `H`],
+      [`C`, `O`],
+    ]) {
+      await set_structure(
+        page,
+        {
+          sites: symbols.map((element, idx) => ({
+            species: [{ element, occu: 1, oxidation_state: 0 }],
+            xyz: [
+              [0, 0, 0],
+              [1.2, 0, 0],
+              [-1, 0, 0],
+            ][idx],
+            abc: [0, 0, 0],
+            label: element,
+            properties: {},
+          })),
+        },
+        { show_bonds: `always`, atom_radius: 0.4 },
+      )
+      await hover_canvas_corner(canvas)
+      await hover_canvas_center(canvas)
+      await expect(tooltip).toContainText(
+        symbols.length === 3 ? `Bonds: 2 (H: 1, O: 1)` : `Bonds: 1 (O: 1)`,
+      )
+    }
   })
 
   test(`tooltip lists all elements on disordered split sites`, async ({ page }) => {

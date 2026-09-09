@@ -1,5 +1,5 @@
 import { mock_fullscreen } from '../setup'
-import { BarPlot } from '$lib'
+import BarPlot from '$lib/plot/bar/BarPlot.svelte'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 

@@ -30,8 +30,7 @@ describe(`HeatmapMatrixControls`, () => {
     mount_controls()
     const toggle = get_toggle()
     expect(toggle).not.toBeNull()
-    expect(toggle.style.cssText).toContain(`opacity: 0`)
-    expect(toggle.style.cssText).toContain(`pointer-events: none`)
+    expect(toggle.classList.contains(`hover-visible`)).toBe(true)
     expect(doc_query(`.draggable-pane.heatmap-controls`)).toBeInstanceOf(HTMLElement)
     expect_labelled_settings_grid()
     // one option per ordering, in ELEMENT_ORDERINGS order, labelled and bound to the prop
@@ -44,8 +43,8 @@ describe(`HeatmapMatrixControls`, () => {
     expect(ordering_select.value).toBe(`atomic_number`)
   })
 
-  test(`show_pane=false hides toggle and pane`, () => {
-    mount_controls({ show_pane: false })
+  test(`show_controls=false hides toggle and pane`, () => {
+    mount_controls({ show_controls: false })
     expect(get_toggle()).toBeNull()
     expect(document.querySelector(`.heatmap-controls`)).toBeNull()
   })
@@ -68,11 +67,10 @@ describe(`HeatmapMatrixControls`, () => {
     expect(toggle.classList.contains(`custom-toggle-class`)).toBe(true)
   })
 
-  test(`toggle_visible=true shows toggle via inline styles`, () => {
-    mount_controls({ toggle_visible: true })
+  test(`always mode shows toggle through the shared controls contract`, () => {
+    mount_controls({ show_controls: `always` })
     const toggle = get_toggle()
-    expect(toggle.style.cssText).toContain(`opacity: 1`)
-    expect(toggle.style.cssText).toContain(`pointer-events: auto`)
+    expect(toggle.classList.contains(`always-visible`)).toBe(true)
   })
 
   // CSS elsewhere keys off pane-open (e.g. hover-visible control bars stay visible)

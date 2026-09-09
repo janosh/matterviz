@@ -5,25 +5,21 @@
   import type { InfoPaneCard } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import Histogram from '$lib/plot/histogram/Histogram.svelte'
-  import type { Label, RowData } from '$lib/table'
+  import type { Column, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import { escape_html } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import { get_arity, is_on_hull, visible_entries as filter_visible } from './helpers'
-  import type {
-    ConvexHullEntry,
-    EntryCategoryConfig,
-    PhaseArityField,
-    PhaseStats,
-  } from './types'
+  import type { HullModel } from './model'
+  import type { EntryCategoryConfig, PhaseArityField } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
+  type ModelEntry = HullModel[`entries`][number]
+
   let {
-    phase_stats,
-    stable_entries,
-    unstable_entries,
+    model,
     show_stable = true,
     show_unstable = true,
     entry_category = MAGNETIC_ORDERING_CATEGORY,
@@ -35,9 +31,7 @@
     entry_href,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    phase_stats: PhaseStats | null
-    stable_entries: ConvexHullEntry[]
-    unstable_entries: ConvexHullEntry[]
+    model: Pick<HullModel, `entries` | `phase_stats`>
     show_stable?: boolean
     show_unstable?: boolean
     // Categorical classification + hidden values (excluded from shown counts/table)
@@ -45,27 +39,20 @@
     hidden_categories?: string[]
     // 'toggle' switches between stats and table; 'side-by-side' shows both
     layout?: `toggle` | `side-by-side`
-    on_entry_click?: (entry: ConvexHullEntry) => void // table row click
+    on_entry_click?: (entry: ModelEntry) => void // table row click
     highlighted_entry_id?: string // row to highlight (e.g. current material on a detail page)
     min_n_elements?: number // table filter: minimum number of elements (bindable for URL sync)
-    entry_href?: (entry: ConvexHullEntry) => string | null // makes the ID column a link
+    entry_href?: (entry: ModelEntry) => string | null // makes the ID column a link
   } = $props()
 
   let view_mode = $state<`stats` | `table`>(`stats`)
   let formula_filter = $state(``) // table shows only this reduced formula when set
   const table_height = `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
 
-  const all_entries = $derived([...stable_entries, ...unstable_entries])
-  // show flags passed as true: the caller's stable/unstable partition is respected here and
-  // filter_visible only applies the category filter on top
+  const phase_stats = $derived(model.phase_stats)
+  const all_entries = $derived(model.entries)
   const shown_entries = $derived(
-    filter_visible(
-      [...(show_stable ? stable_entries : []), ...(show_unstable ? unstable_entries : [])],
-      true,
-      true,
-      entry_category,
-      hidden_categories,
-    ),
+    filter_visible(all_entries, show_stable, show_unstable, entry_category, hidden_categories),
   )
 
   const arity_types: [string, PhaseArityField, number][] = [
@@ -206,7 +193,7 @@
   const has_ids = $derived(table_entries.some((entry) => entry.entry_id))
   const max_n_el = $derived(Math.max(1, ...all_entries.map(get_arity)))
 
-  const is_highlighted = (entry: ConvexHullEntry): boolean => {
+  const is_highlighted = (entry: ModelEntry): boolean => {
     if (!highlighted_entry_id) return false
     const data = entry.data as Record<string, unknown> | undefined
     return [entry.entry_id, data?.mat_id, data?.structure_id].includes(highlighted_entry_id)
@@ -252,10 +239,11 @@
     if (entry) on_entry_click?.(entry)
   }
 
-  const table_columns = $derived<Label[]>([
-    { label: `#`, color_scale: null, format: `d`, description: `Row number` },
-    { label: `Formula`, color_scale: null },
+  const table_columns = $derived<Column[]>([
+    { id: `#`, label: `#`, color_scale: null, format: `d`, description: `Row number` },
+    { id: `Formula`, label: `Formula`, color_scale: null },
     {
+      id: `E<sub>hull</sub>`,
       label: `E<sub>hull</sub>`,
       better: `lower`,
       color_scale: `interpolateRdYlGn`,
@@ -263,6 +251,7 @@
       description: `Energy above convex hull (eV/atom)`,
     },
     {
+      id: `E<sub>form</sub>`,
       label: `E<sub>form</sub>`,
       better: `lower`,
       color_scale: `interpolateBlues`,
@@ -272,6 +261,7 @@
     ...(has_raw
       ? [
           {
+            id: `E<sub>raw</sub>`,
             label: `E<sub>raw</sub>`,
             color_scale: `interpolateCool` as const,
             format: `.4f`,
@@ -279,18 +269,27 @@
           },
         ]
       : []),
-    ...(has_ids ? [{ label: `ID`, color_scale: null, description: `Entry identifier` }] : []),
+    ...(has_ids
+      ? [{ id: `ID`, label: `ID`, color_scale: null, description: `Entry identifier` }]
+      : []),
     ...(has_polymorphs
       ? [
           {
+            id: `Poly`,
             label: `Poly`,
             color_scale: null,
             description: `Number of polymorphs (same reduced formula)`,
           },
         ]
       : []),
-    { label: `N<sub>el</sub>`, color_scale: null, description: `Number of elements` },
     {
+      id: `N<sub>el</sub>`,
+      label: `N<sub>el</sub>`,
+      color_scale: null,
+      description: `Number of elements`,
+    },
+    {
+      id: `N<sub>at</sub>`,
       label: `N<sub>at</sub>`,
       color_scale: null,
       format: `d`,

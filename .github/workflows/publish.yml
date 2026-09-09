@@ -107,10 +107,10 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/ci.yml
 
-  # === Build every immutable release artifact before publishing anything ===
+  # Build alongside CI; every publisher below requires both CI and all artifacts.
   package_matterviz:
     name: Build matterviz npm package
-    needs: [prepare, ci]
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -135,7 +135,7 @@ jobs:
 
   package_vscode:
     name: Build VS Code extension
-    needs: [prepare, ci]
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -159,7 +159,7 @@ jobs:
 
   package_anywidget:
     name: Build anywidget npm package
-    needs: [prepare, ci]
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -194,7 +194,7 @@ jobs:
 
   package_jupyterlab:
     name: Build JupyterLab extension
-    needs: [prepare, ci]
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -205,12 +205,12 @@ jobs:
           extensions: jupyterlab
       - name: Set up uv
         uses: astral-sh/setup-uv@v9.0.0
+        with:
+          cache-dependency-glob: extensions/jupyterlab/pyproject.toml
       - name: Build prebuilt labextension and wheel
         working-directory: extensions/jupyterlab
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          # Match ci.yml: ignored fontawesome scripts trip pnpm's pre-run verification.
-          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
         run: |
           # --no-project: uv would otherwise try to install this package, which
           # cannot build until the labextension below has written data/.
@@ -240,7 +240,8 @@ jobs:
   # === Publish only after every artifact has built successfully ===
   publish_npm:
     name: Publish ${{ matrix.package_name }} to npm
-    needs: [prepare, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
+    needs:
+      [prepare, ci, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -267,7 +268,9 @@ jobs:
         run: |
           tarball="./release/$PACKAGE_NAME-$RELEASE_VERSION.tgz"
           if [ "$DRY_RUN" = true ]; then
-            npx --yes npm@latest publish "$tarball" --ignore-scripts --access public --dry-run
+            # Branch rehearsals retain the current version, which may already be published.
+            # --force skips npm's version check; --dry-run still prevents every upload.
+            npx --yes npm@latest publish "$tarball" --ignore-scripts --access public --dry-run --force
             exit 0
           fi
 
@@ -284,7 +287,8 @@ jobs:
 
   publish_pypi:
     name: Publish JupyterLab extension to PyPI
-    needs: [prepare, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
+    needs:
+      [prepare, ci, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -308,16 +312,21 @@ jobs:
           # `always` fails loudly when the OIDC identity is missing instead of silently
           # falling back to a token. --check-url turns a re-run over an already-published
           # version into a no-op rather than PyPI's 400, matching the npm job's recovery.
-          publish_args=(--trusted-publishing always --check-url https://pypi.org/simple/)
+          publish_args=(--trusted-publishing always)
           # A dry run still mints the OIDC token, so it proves the trusted publisher is
           # configured before a real release is the thing that discovers otherwise.
-          if [ "$DRY_RUN" = true ]; then publish_args+=(--dry-run); fi
+          if [ "$DRY_RUN" = true ]; then
+            publish_args+=(--dry-run)
+          else
+            publish_args+=(--check-url https://pypi.org/simple/)
+          fi
 
           uv publish "${publish_args[@]}" "$wheel"
 
   publish_open_vsx:
     name: Publish VS Code extension to Open VSX
-    needs: [prepare, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
+    needs:
+      [prepare, ci, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX

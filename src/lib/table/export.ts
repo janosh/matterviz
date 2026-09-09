@@ -31,18 +31,18 @@ export const table_to_delimited = (
   return [headers, ...rows].map(to_line).join(`\n`)
 }
 
-// JSON array of row objects keyed by header. Unlike the matrix exporters this keeps numbers,
-// dates and nested values as they are; only string cells and headers lose their markup.
+// JSON uses stable column IDs, so repeated or renamed headers never overwrite values.
+// Numbers, dates and nested values are preserved; string cells lose their markup.
 export const table_to_json = (
   rows: RowData[],
-  columns: { label: string; key: string }[],
+  columns: { id: string; key: string }[],
 ): string =>
   JSON.stringify(
     rows.map((row) =>
       Object.fromEntries(
-        columns.map(({ label, key }) => {
+        columns.map(({ id, key }) => {
           const val = row[key]
-          return [strip_html(label), typeof val === `string` ? strip_html(val) : val]
+          return [id, typeof val === `string` ? strip_html(val) : val]
         }),
       ),
     ),

@@ -2112,20 +2112,13 @@ describe(`compute_chempot_async`, () => {
     return import(`$lib/chempot-diagram/async-compute.svelte`)
   }
 
-  test(`computes on the main thread (with a warning) when Worker construction fails`, async () => {
-    // Must be constructable (`new Worker()`); arrow functions are not.
-    function FailingWorker() {
-      throw new Error(`worker blocked by CSP`)
+  test(`rejects Worker construction failures`, async () => {
+    const error = new Error(`worker blocked by CSP`)
+    function failing_worker(): never {
+      throw error
     }
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
-    const { compute_chempot_async } = await load_async(FailingWorker)
-    const data = await compute_chempot_async(async_entries)
-    expect(Object.keys(data.domains).toSorted()).toEqual([`Li`, `O`])
-    expect(warn_spy).toHaveBeenCalledWith(
-      `Chempot worker could not be constructed; computing on the main thread:`,
-      expect.objectContaining({ message: `worker blocked by CSP` }),
-    )
-    warn_spy.mockRestore()
+    const { compute_chempot_async } = await load_async(failing_worker)
+    await expect(compute_chempot_async(async_entries)).rejects.toBe(error)
   })
 
   test(`falls back to main-thread compute without a Worker global`, async () => {

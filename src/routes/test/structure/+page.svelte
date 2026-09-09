@@ -10,7 +10,7 @@
     StructureBond,
     StructurePane,
   } from '$lib/structure'
-  import Structure from '$lib/structure/Structure.svelte'
+  import { Structure } from '$lib/structure'
   import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import { type ComponentProps, untrack } from 'svelte'
@@ -38,12 +38,12 @@
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
   let bonds = $state<StructureBond[] | undefined>()
-  // ?data_url= loads an external structure in place of the static one
+  // ?source= loads an external structure in place of the static one
   const url_params = browser ? page.url.searchParams : new URLSearchParams()
-  const data_url = url_params.get(`data_url`) || undefined
+  const source = url_params.get(`source`) || undefined
   const comparison_mode = url_params.get(`comparison`) === `true`
   let structure = $state<Crystal | undefined>(
-    data_url ? undefined : (mp1_struct as unknown as Crystal),
+    source ? undefined : (mp1_struct as unknown as Crystal),
   )
 
   // capture event data for testing
@@ -128,35 +128,46 @@
 </section>
 
 <div class:comparison={comparison_mode} class="structure-test-layout">
-  <Structure
-    id="test-structure"
-    {structure}
-    {data_url}
-    bind:active_pane
-    {background_color}
-    {show_controls}
-    bind:scene_props
-    on_file_load={create_event_handler(`on_file_load`)}
-    on_error={create_event_handler(`on_error`)}
-    on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
-    on_camera_move={create_event_handler(`on_camera_move`)}
-    on_camera_reset={create_event_handler(`on_camera_reset`)}
-    bind:selected_sites
-    bind:measured_sites
-    {enable_measure_mode}
-    bind:measure_mode
-    bind:bond_edit_mode
-    bind:bond_edit_order
-    bind:supercell_scaling
-    bind:show_image_atoms
-    bind:bonds
-  />
+  {#if source || url_params.has(`files`)}
+    <Structure
+      id="test-structure"
+      bind:structure
+      {source}
+      {background_color}
+      {show_controls}
+      bind:scene_props
+      on_file_load={create_event_handler(`on_file_load`)}
+      on_error={create_event_handler(`on_error`)}
+      on_camera_move={create_event_handler(`on_camera_move`)}
+      on_camera_reset={create_event_handler(`on_camera_reset`)}
+    />
+  {:else}
+    <Structure
+      id="test-structure"
+      bind:structure
+      bind:active_pane
+      {background_color}
+      {show_controls}
+      bind:scene_props
+      on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
+      on_camera_move={create_event_handler(`on_camera_move`)}
+      on_camera_reset={create_event_handler(`on_camera_reset`)}
+      bind:selected_sites
+      bind:measured_sites
+      {enable_measure_mode}
+      bind:measure_mode
+      bind:bond_edit_mode
+      bind:bond_edit_order
+      bind:supercell_scaling
+      bind:show_image_atoms
+      bind:bonds
+    />
+  {/if}
   {#if comparison_mode}
     <Structure
       id="comparison-structure"
       {structure}
       show_controls="always"
-      allow_file_drop={false}
       performance_mode="speed"
       style="--struct-min-width: 0"
     />

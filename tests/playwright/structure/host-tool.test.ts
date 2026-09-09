@@ -1,5 +1,5 @@
 import { expect, type Download, type Page } from '@playwright/test'
-import { test_without_errors as test } from '../helpers'
+import { goto_structure_test, test_without_errors as test } from '../helpers'
 
 const scene_state = (page: Page) =>
   page.evaluate(async () => {
@@ -89,6 +89,18 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
   await expect.poll(async () => (await scene_state(page)).arrows).toBeGreaterThan(0)
   await expect.poll(async () => (await scene_state(page)).density_vertices).toBeGreaterThan(0)
   expect((await scene_state(page)).atom_colors).not.toEqual(original_colors)
+  const visibility = page.getByRole(`checkbox`, { name: `Show prediction` })
+  await visibility.uncheck()
+  await expect
+    .poll(() => scene_state(page))
+    .toMatchObject({
+      arrows: 0,
+      density_vertices: 0,
+      atom_colors: original_colors,
+    })
+  await visibility.check()
+  await expect.poll(async () => (await scene_state(page)).arrows).toBeGreaterThan(0)
+  await expect.poll(async () => (await scene_state(page)).density_vertices).toBeGreaterThan(0)
   await page.locator(`button.structure-controls-toggle`).click()
   await expect(
     page.getByRole(`button`, { name: `Add surface for Predicted density`, exact: true }),
@@ -142,7 +154,7 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
 test(`caller camera updates during a host view take precedence over its saved view`, async ({
   page,
 }) => {
-  await page.goto(`/test/structure`)
+  await goto_structure_test(page)
   await page.evaluate(async () => {
     const host_module = `/src/lib/structure/index.ts`
     const demo_module = `/src/routes/(demos)/structure/host-tool/DemoHostTool.svelte`
@@ -162,9 +174,15 @@ test(`caller camera updates during a host view take precedence over its saved vi
   )
   await page.getByRole(`button`, { name: `Return to structure` }).click()
   await expect(page.getByTestId(`predicted-trajectory`)).toHaveCount(0)
-  await expect
-    .poll(async () => (await scene_state(page)).camera?.slice(0, 3))
-    .toEqual([12, 9, 7])
+  // OrbitControls reconstructs position from spherical coordinates (CI error: 8.9e-16).
+  await expect(async () => {
+    const position = (await scene_state(page)).camera?.slice(0, 3)
+    expect(position).toHaveLength(3)
+    for (const [idx, expected] of [12, 9, 7].entries())
+      expect(Math.abs((position?.[idx] ?? Infinity) - expected)).toBeLessThanOrEqual(
+        8 * Number.EPSILON * expected,
+      )
+  }).toPass()
 })
 
 const read_download = async (download: Download) => {
@@ -195,7 +213,7 @@ test(`exports reproducible predictions separately from the original structure`, 
   expect(data.site_properties).toHaveLength(data.input.sites.length)
   expect(data.site_properties[0]).toMatchObject({ charge: 0.4, dipole: [0.4, 0.2, 0.1] })
   expect(data.input.sites[0].properties.charge).toBeUndefined()
-  expect(data.volumes[0]).toMatchObject({ field_id: `density`, dims: [12, 12, 12] })
+  expect(data.volumes[0]).toMatchObject({ id: `density`, dims: [12, 12, 12] })
   expect(data.volumes[0].values).toHaveLength(12 ** 3)
   const original_download = page.waitForEvent(`download`)
   await page.getByTitle(`Download JSON`, { exact: true }).click()

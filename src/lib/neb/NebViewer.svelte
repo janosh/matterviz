@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { ScatterPlotOptions } from '$lib/plot'
+  import type { StructureOptions } from '$lib/structure'
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
   import { DEFAULT_FPS_RANGE } from '$lib/constants'
@@ -15,7 +17,6 @@
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
   import { Structure } from '$lib/structure'
   import { to_error } from '$lib/utils'
-  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import type {
@@ -72,8 +73,11 @@
     fullscreen?: boolean
     wrapper?: HTMLDivElement
     error_msg?: string
-    plot_props?: Partial<ComponentProps<typeof NebPlot>>
-    structure_props?: Partial<ComponentProps<typeof Structure>>
+    plot_props?: Omit<
+      ScatterPlotOptions,
+      `controls_extra` | `on_point_hover` | `on_point_click`
+    >
+    structure_props?: StructureOptions
     on_fullscreen_change?: (fullscreen: boolean) => void
   } = $props()
 
@@ -187,7 +191,12 @@
       />
     </div>
   {:else}
-    <SequenceControlBar class="neb-controls" {controls_config} bind:height={controls_height}>
+    <SequenceControlBar
+      class="neb-controls"
+      {controls_config}
+      {fullscreen}
+      bind:height={controls_height}
+    >
       {#if named_paths.length > 1 && controls_config.visible(`path`)}
         <label class="path-control">
           Path
@@ -221,9 +230,10 @@
         </span>
       {/if}
 
-      {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
+      {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
         <FullscreenButton
           bind:fullscreen
+          hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
           {wrapper}
           bg_css_var="--neb-bg-fullscreen"
           on_change={on_fullscreen_change}
@@ -249,7 +259,7 @@
         bind:show_spline
         bind:active_path_key
         bind:active_image_idx
-        show_controls={controls_config.mode !== `never` && plot_props.show_controls !== false}
+        show_controls={controls_config.mode === `never` ? false : plot_props.show_controls}
       />
       <PaneDivider
         orientation="horizontal"
@@ -260,9 +270,9 @@
         {#if current_image}
           <Structure
             {...structure_props}
+            allow_file_drop={false}
             structure={current_image.structure}
             structure_series_key={active?.path}
-            allow_file_drop={structure_props.allow_file_drop ?? false}
             show_controls={controls_config.mode === `never`
               ? false
               : structure_props.show_controls}

@@ -7,11 +7,13 @@ import { is_elem_symbol } from '$lib/element/helpers'
 import type { AnyStructure } from './index'
 
 // Reuse IDs only for the same physical quantity, units and normalization.
-export type StructureToolVolume = VolumetricData & { field_id: string }
+export type StructureToolVolume = VolumetricData
 export interface StructureToolOverlay {
   site_properties?: Record<string, unknown>[]
   volumes?: StructureToolVolume[]
   color_property?: string
+  // Hosts define the calculation schema; the viewer validates JSON and preserves it on export.
+  result?: Record<string, unknown> & { schema: string }
 }
 export interface StructureToolProvenance {
   model: string
@@ -136,29 +138,27 @@ export function copy_prediction_overlay(
 ): StructureToolOverlay {
   const { volumes, ...rest } = record(value, `prediction`)
   const properties = copy_prediction_metadata(rest, `prediction`)
-  if (
-    properties.site_properties !== undefined &&
-    (!Array.isArray(properties.site_properties) ||
-      properties.site_properties.length !== n_sites)
-  )
-    invalid(`prediction.site_properties`, `expected ${n_sites} property rows`)
-  if (Array.isArray(properties.site_properties))
-    properties.site_properties.forEach((row, idx) =>
-      record(row, `prediction.site_properties[${idx}]`),
-    )
+  if (properties.result !== undefined)
+    nonempty(record(properties.result, `prediction.result`).schema, `prediction.result.schema`)
+  const rows = properties.site_properties
+  if (rows !== undefined) {
+    if (!Array.isArray(rows) || rows.length !== n_sites)
+      return invalid(`prediction.site_properties`, `expected ${n_sites} property rows`)
+    rows.forEach((row, idx) => record(row, `prediction.site_properties[${idx}]`))
+  }
   if (properties.color_property !== undefined)
     nonempty(properties.color_property, `prediction.color_property`)
-  if (volumes === undefined) return { ...properties }
+  if (volumes === undefined) return properties
   if (!Array.isArray(volumes)) invalid(`prediction.volumes`, `expected an array`)
-  const field_ids = new Set<string>()
+  const ids = new Set<string>()
   const copied_volumes = Array.from(volumes as unknown[], (raw, idx) => {
     const path = `prediction.volumes[${idx}]`
     const { values: raw_values, ...metadata_fields } = record(raw, path)
     const metadata = copy_prediction_metadata(metadata_fields, path)
-    nonempty(metadata.field_id, `${path}.field_id`)
-    const field_id = metadata.field_id as string
-    if (field_ids.has(field_id)) invalid(`${path}.field_id`, `must be unique: ${field_id}`)
-    field_ids.add(field_id)
+    nonempty(metadata.id, `${path}.id`)
+    const id = metadata.id as string
+    if (ids.has(id)) invalid(`${path}.id`, `must be unique: ${id}`)
+    ids.add(id)
     if (
       !(raw_values instanceof Float64Array) &&
       !(

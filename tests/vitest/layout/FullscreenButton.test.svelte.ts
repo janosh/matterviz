@@ -1,5 +1,7 @@
-import { mock_fullscreen } from '../setup'
+import { fire, bind_props, mock_fullscreen, mount_sized } from '../setup'
 import FullscreenButton from '$lib/layout/FullscreenButton.svelte'
+import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+import Sankey from '$lib/plot/sankey/Sankey.svelte'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -13,23 +15,20 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+const create_wrapper = (parent = document.body) => {
+  const wrapper = document.createElement(`div`)
+  parent.append(wrapper)
+  return wrapper
+}
+
 // Mount with a two-way bound `fullscreen` flag like every viewer does
 const mount_button = (wrapper?: HTMLElement) => {
-  const state = $state({ fullscreen: false })
+  const state = $state({ fullscreen: false, hidden: false })
   const on_change = vi.fn<(fullscreen: boolean) => void>()
   mounted.push(
     mount(FullscreenButton, {
       target: document.body,
-      props: {
-        wrapper,
-        on_change,
-        get fullscreen() {
-          return state.fullscreen
-        },
-        set fullscreen(next: boolean) {
-          state.fullscreen = next
-        },
-      },
+      props: bind_props({ wrapper, on_change }, state),
     }),
   )
   flushSync()
@@ -56,8 +55,7 @@ describe(`FullscreenButton`, () => {
   })
 
   test(`with a wrapper only real browser transitions are reported`, async () => {
-    const wrapper = document.createElement(`div`)
-    document.body.append(wrapper)
+    const wrapper = create_wrapper()
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
     const request_fullscreen = vi
       .fn<() => Promise<void>>()
@@ -79,20 +77,78 @@ describe(`FullscreenButton`, () => {
     await vi.waitFor(() => expect(on_change).toHaveBeenLastCalledWith(true))
     expect(document.fullscreenElement).toBe(wrapper)
 
+    // A hidden active controller still observes exit, but has neither a button nor shortcut.
+    state.hidden = true
+    flushSync()
+    expect(button.hidden).toBe(true)
+    expect(button.style.display).toBe(`none`)
+    wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
+    await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
+    expect(state.fullscreen).toBe(true)
+
     // Esc/F11: the browser leaves fullscreen, the flag follows and the host is told once
     Object.defineProperty(document, `fullscreenElement`, { configurable: true, value: null })
-    document.dispatchEvent(new Event(`fullscreenchange`))
-    await tick()
+    await fire(document, new Event(`fullscreenchange`))
     expect(state.fullscreen).toBe(false)
     expect(on_change.mock.calls).toEqual([[true], [false]])
   })
 
+  test.each([`cartesian`, `chart`] as const)(
+    `%s keeps an active fullscreen controller when chrome hides, then removes it on exit`,
+    async (kind) => {
+      const state = $state({ fullscreen: false, show_controls: true, fullscreen_toggle: true })
+      const plot =
+        kind === `cartesian`
+          ? await mount_sized(
+              ScatterPlot,
+              bind_props({ series: [{ x: [0, 1], y: [0, 1] }] }, state),
+              { selector: `.scatter`, on_mount: (component) => mounted.push(component) },
+            )
+          : await mount_sized(
+              Sankey,
+              bind_props(
+                {
+                  data: {
+                    nodes: [{ label: `A` }, { label: `B` }],
+                    links: [{ source: 0, target: 1, value: 1 }],
+                  },
+                },
+                state,
+              ),
+              { selector: `.sankey`, on_mount: (component) => mounted.push(component) },
+            )
+      const button = () => plot.querySelector<HTMLButtonElement>(`.fullscreen-btn`)
+      for (const key of [`show_controls`, `fullscreen_toggle`] as const) {
+        state[key] = true
+        flushSync()
+        button()?.click()
+        await vi.waitFor(() => expect(document.fullscreenElement).toBe(plot))
+        state[key] = false
+        flushSync()
+        expect(button()?.style.display).toBe(`none`)
+        await document.exitFullscreen()
+        flushSync()
+        expect(state.fullscreen).toBe(false)
+        expect(plot.classList.contains(`fullscreen`)).toBe(false)
+        expect(button()).toBeNull()
+        state[key] = true
+      }
+      // An external request still works while chrome starts hidden.
+      state.show_controls = false
+      state.fullscreen = true
+      flushSync()
+      await vi.waitFor(() => expect(document.fullscreenElement).toBe(plot))
+      expect(button()?.hidden).toBe(true)
+      await document.exitFullscreen()
+      flushSync()
+      expect(button()).toBeNull()
+    },
+  )
+
   // a host app (e.g. a slide deck) owning fullscreen around an embedded viewer
   test(`fullscreen owned by another element is neither reported nor taken over`, async () => {
-    const host = document.createElement(`div`)
-    const wrapper = document.createElement(`div`)
-    host.append(wrapper)
-    document.body.append(host)
+    const host = create_wrapper()
+    const wrapper = create_wrapper(host)
     const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
     const { state, on_change } = mount_button(wrapper)
 
@@ -114,38 +170,25 @@ describe(`FullscreenButton`, () => {
     [`Alt+F is left alone`, { key: `f`, altKey: true }, false],
     [`an autorepeat does not re-toggle`, { key: `f`, repeat: true }, false],
     [`other keys are ignored`, { key: `g` }, false],
-  ])(`%s`, async (_name, init, toggles) => {
-    const wrapper = document.createElement(`div`)
-    document.body.append(wrapper)
+    [`f outside the viewer is ignored`, { key: `f` }, false, false],
+  ])(`%s`, async (_name, init, toggles, hovered = true) => {
+    const wrapper = create_wrapper()
     const { state } = mount_button(wrapper)
-    wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, init))
-    await tick()
+    if (hovered) wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
+    await fire(globalThis, new KeyboardEvent(`keydown`, init))
     expect(state.fullscreen).toBe(toggles)
-  })
-
-  test(`f is ignored until the pointer is over the viewer`, async () => {
-    const wrapper = document.createElement(`div`)
-    document.body.append(wrapper)
-    const { state } = mount_button(wrapper)
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
-    await tick()
-    expect(state.fullscreen).toBe(false)
   })
 
   // A Structure inside a Trajectory is hovered at the same time as its host, so both would
   // fullscreen their own root on one press. The inner viewer defers; its button still works.
   test(`a viewer nested in another leaves f to the outer one`, async () => {
-    const outer = document.createElement(`div`)
-    const inner = document.createElement(`div`)
-    outer.append(inner)
-    document.body.append(outer)
+    const outer = create_wrapper()
+    const inner = create_wrapper(outer)
     const host = mount_button(outer)
     const nested = mount_button(inner)
 
     for (const node of [outer, inner]) node.dispatchEvent(new PointerEvent(`pointerenter`))
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
-    await tick()
+    await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
     expect([host.state.fullscreen, nested.state.fullscreen]).toEqual([true, false])
   })
 })

@@ -1,12 +1,11 @@
 <script lang="ts">
+  import { type ScatterPlotOptions, ScatterPlot, type DataSeries } from '$lib/plot'
   // Energy profile of one or more reaction paths, with the barrier annotated and the
   // fitted saddle drawn distinctly from the highest computed image.
   import { plot_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import { clamp } from '$lib/math'
-  import { ScatterPlot, type DataSeries } from '$lib/plot'
-  import type { ComponentProps } from 'svelte'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
   import type { PathProfile, PathSplineOptions } from './reaction-path'
   import {
@@ -56,12 +55,7 @@
     active_path_key?: string
     active_image_idx?: number
     on_image_change?: (payload: PointMeta) => void
-    x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
-    y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
-  } & Omit<
-    ComponentProps<typeof ScatterPlot>,
-    `series` | `x_axis` | `y_axis` | `controls_extra`
-  > = $props()
+  } & Omit<ScatterPlotOptions, `controls_extra`> = $props()
 
   const named_paths = $derived(normalize_paths(paths))
   const profile_options = $derived({ ...coord_options, mode: coord_mode })
@@ -155,8 +149,14 @@
   x_axis={{ label: x_label, ...x_axis }}
   y_axis={{ label: y_label, ...y_axis }}
   current_x_value={current_coord}
-  on_point_hover={select_point}
-  on_point_click={select_point}
+  on_point_hover={(event) => {
+    select_point(event)
+    rest.on_point_hover?.(event)
+  }}
+  on_point_click={(event) => {
+    select_point(event)
+    rest.on_point_click?.(event)
+  }}
 >
   {#snippet controls_extra()}
     <SettingsSection

@@ -105,8 +105,7 @@ export const set_scene_props = (page: Page, detail: Record<string, unknown>): Pr
     globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
   }, detail)
 
-// Load a structure into the test page via its `set-structure` hook, applying scene props in
-// the same round trip (the page resets camera_target on structure change, so pass cameras here)
+// Load a structure and apply scene props in one round trip through the test page's hook.
 export const set_structure = (
   page: Page,
   structure: Record<string, unknown>,
@@ -281,6 +280,8 @@ export async function goto_structure_test(
   container_selector: string = `#test-structure`,
 ): Promise<Locator> {
   await page.goto(url, { waitUntil: `networkidle` })
+  // A canvas can mount before a child throws during hydration; wait for the page hooks too.
+  await page.waitForFunction(() => Array.isArray(Reflect.get(globalThis, `event_calls`)))
   return wait_for_3d_canvas(page, container_selector)
 }
 

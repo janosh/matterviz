@@ -143,7 +143,7 @@ const dispatch_two_atom_bond_structure = (page: Page, order: 1 | 2 | 3) =>
       sites: two_atom_sites,
       properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order }] },
     },
-    { camera_position: [0, 0, 8], show_bonds: `always` },
+    { ...front_camera, show_bonds: `always` },
   )
 const dispatch_two_atom_unbonded_structure = (page: Page) =>
   dispatch_structure(
@@ -179,18 +179,6 @@ const dispatch_periodic_image_structure = (
     },
   )
 
-// Structure changes clear scene_props.camera_target (Structure.svelte re-frames the new
-// cell), wiping the camera passed alongside set-structure. Re-apply it once the canvas
-// settled so the C-O image bond midpoint [9.95, 5, 5] projects to the canvas center,
-// then give orbit-controls damping a moment to move the camera there.
-const apply_image_bond_camera = async (page: Page) => {
-  await set_scene_props(page, {
-    camera_position: [9.95, 5, 17],
-    camera_target: [9.95, 5, 5],
-  })
-  await page.waitForTimeout(1000)
-}
-
 const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
   dispatch_structure(
     page,
@@ -214,7 +202,7 @@ const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
 // Hide the first legend element and show it again, asserting the scene sheds instances
 // while hidden and comes back to exactly what it started with.
 const run_hide_restore_cycle = async (page: Page) => {
-  await goto_structure_test(page, `/test/structure?data_url=/structures/mp-756175.json`)
+  await goto_structure_test(page, `/test/structure?source=/structures/mp-756175.json`)
   await set_scene_props(page, { show_bonds: `always` })
   type Counts = Awaited<ReturnType<typeof rendered_instance_counts>>
   const expect_counts = (matcher: (counts: Counts) => void) =>
@@ -244,7 +232,7 @@ const run_hide_restore_cycle = async (page: Page) => {
 }
 
 test.describe(`Bond component`, () => {
-  test(`hiding an element drops its bonds from the scene`, async ({ page }) => {
+  test(`hiding an element drops its bonds from the scene @source`, async ({ page }) => {
     await run_hide_restore_cycle(page)
   })
 
@@ -255,7 +243,7 @@ test.describe(`Bond component`, () => {
   // the flush: atoms stay at the hidden element's counts and the rebuilt bond mesh never
   // gets its instance colors. Nothing about that is renderer-specific once an upload
   // fails, so the recovery is asserted on every platform.
-  test(`element toggle survives a refused atom geometry upload`, async ({ page }) => {
+  test(`element toggle survives a refused atom upload @source`, async ({ page }) => {
     await page.addInitScript(() => {
       const gpu_device = (
         globalThis as unknown as {
@@ -559,7 +547,6 @@ test.describe(`Bond component`, () => {
       await dispatch_periodic_image_structure(page, {
         bonding_options: { strategy: `electroneg_ratio` },
       })
-      await apply_image_bond_camera(page)
       await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
       await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
       await expect_canvas_changed_by(canvas, async () => {
@@ -571,7 +558,6 @@ test.describe(`Bond component`, () => {
 
       // manually added image bond
       await dispatch_periodic_image_structure(page, { ...unbonded, show_site_labels: true })
-      await apply_image_bond_camera(page)
       await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
       await page.locator(`[data-testid="btn-set-bond-add"]`).click()
       await select_atom_label_with_keyboard(page, `C`, `first`)
@@ -644,7 +630,7 @@ test.describe(`Bond component`, () => {
 
     // Bond order perception changes how many cylinders each bond renders (1/2/3 for
     // single/double/triple, 2 for aromatic), read straight from the instanced mesh.
-    test(`auto bond order and aromatic display change rendered bond instances`, async ({
+    test(`bond order and aromatic display change instance counts @source`, async ({
       page,
     }) => {
       const bond_instances = async () => (await rendered_instance_counts(page)).bonds
@@ -672,7 +658,7 @@ test.describe(`Bond component`, () => {
         page,
         { sites: ring },
         {
-          camera_position: [0, 0, 8],
+          ...front_camera,
           show_bonds: `always`,
           auto_bond_order: true,
           aromatic_display: `aromatic`,

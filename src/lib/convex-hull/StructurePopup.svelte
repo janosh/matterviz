@@ -61,6 +61,7 @@
   {/if}
 
   <Structure
+    allow_file_drop={false}
     {structure}
     {width}
     {height}

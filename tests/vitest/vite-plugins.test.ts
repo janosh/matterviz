@@ -20,13 +20,21 @@ function make_plugin(command: `build` | `serve` = `serve`) {
 }
 
 describe(`vite_plugin_json_gz`, () => {
-  test(`query-aware mode resolves bare imports and leaves raw and URL imports unclaimed`, () => {
+  test(`query-aware mode resolves relative imports and delegates Vite URLs`, () => {
     const plugin = vite_plugin_json_gz({ resolve_queries: true })
     const resolve_id = plugin.resolveId as (source: string, importer?: string) => string | null
     const importer = join(tmpdir(), `vite.config.ts`)
     expect(resolve_id(`./data.json.gz`, importer)).toBe(join(tmpdir(), `data.json.gz`))
     expect(resolve_id(`./data.json.gz?raw`, importer)).toBeNull()
     expect(resolve_id(`./data.json.gz?url`, importer)).toBeNull()
+    for (const source of [`/src/data.json.gz`, `/@fs/tmp/data.json.gz`, `pkg/data.json.gz`]) {
+      expect(resolve_id(source, importer)).toBeNull()
+    }
+    expect(resolve_id(`./data.json.gz`)).toBeNull()
+    // Build imports are filesystem paths, not dev-server URLs; retain explicit resolution.
+    const configure = plugin.configResolved as (cfg: { command: string }) => void
+    configure({ command: `build` })
+    expect(resolve_id(`${fixture_path}?import`)).toBe(fixture_path)
   })
 
   test.each([`foo.json`, `bar.ts`, `data.gz`, `${fixture_path}?url`, `${fixture_path}?raw`])(

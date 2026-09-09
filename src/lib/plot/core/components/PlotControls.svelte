@@ -221,226 +221,225 @@
   {/if}
 {/snippet}
 
-{#if show_controls}
-  <ControlPane
-    bind:controls_open
-    {controls_name}
-    toggle_title={controls_title}
-    pane_class="compact-settings"
-    {toggle_props}
-    {pane_props}
+<ControlPane
+  {show_controls}
+  bind:controls_open
+  {controls_name}
+  toggle_title={controls_title}
+  pane_class="compact-settings"
+  {toggle_props}
+  {pane_props}
+>
+  {@render children?.()}
+
+  <SettingsSection
+    title="Display"
+    class="ctrl-line"
+    current_values={{ ...display_values(), ...display_extra_values }}
+    on_reset={() => {
+      display = { ...display, ...display_reset_values }
+      on_display_extra_reset?.()
+    }}
+    layout="flow"
   >
-    {@render children?.()}
+    {@render display_children?.()}
+    {@render axis_checks(
+      `Zero line`,
+      `zero_line`,
+      zero_line_default,
+      (axis) => includes_zero[axis],
+    )}
+    {@render axis_checks(`Grid`, `grid`, grid_default)}
+  </SettingsSection>
 
-    <SettingsSection
-      title="Display"
-      class="ctrl-line"
-      current_values={{ ...display_values(), ...display_extra_values }}
-      on_reset={() => {
-        display = { ...display, ...display_reset_values }
-        on_display_extra_reset?.()
-      }}
-      layout="flow"
-    >
-      {@render display_children?.()}
-      {@render axis_checks(
-        `Zero line`,
-        `zero_line`,
-        zero_line_default,
-        (axis) => includes_zero[axis],
-      )}
-      {@render axis_checks(`Grid`, `grid`, grid_default)}
-    </SettingsSection>
+  <SettingsSection
+    title="Axis range"
+    class="ctrl-line axis-fields"
+    current_values={axis_record((axis) => axis_config(axis).range)}
+    on_reset_key={reset_axis_field(`range`)}
+    layout="flow"
+  >
+    {#each visible_axes as [axis, label] (axis)}
+      {@const invalid = range_invalid(range_inputs[axis])}
+      <label>
+        <span>{label}</span>
+        <span class="range-pair">
+          {#each [0, 1] as const as bound (bound)}
+            {#if bound === 1}<span>to</span>{/if}
+            <input
+              type="number"
+              value={range_inputs[axis][bound] ?? ``}
+              placeholder="auto"
+              class={[`range-input`, { invalid }]}
+              oninput={(evt) => update_range(axis, bound, evt.currentTarget.value)}
+              onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget.blur()}
+            />
+          {/each}
+        </span>
+      </label>
+    {/each}
+  </SettingsSection>
 
-    <SettingsSection
-      title="Axis range"
-      class="ctrl-line axis-fields"
-      current_values={axis_record((axis) => axis_config(axis).range)}
-      on_reset_key={reset_axis_field(`range`)}
-      layout="flow"
-    >
-      {#each visible_axes as [axis, label] (axis)}
-        {@const invalid = range_invalid(range_inputs[axis])}
-        <label>
-          <span>{label}</span>
-          <span class="range-pair">
-            {#each [0, 1] as const as bound (bound)}
-              {#if bound === 1}<span>to</span>{/if}
-              <input
-                type="number"
-                value={range_inputs[axis][bound] ?? ``}
-                placeholder="auto"
-                class={[`range-input`, { invalid }]}
-                oninput={(evt) => update_range(axis, bound, evt.currentTarget.value)}
-                onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget.blur()}
-              />
-            {/each}
-          </span>
-        </label>
-      {/each}
-    </SettingsSection>
+  <SettingsSection
+    title="Scale type"
+    class="ctrl-line axis-fields"
+    current_values={axis_values(`scale`, (axis) =>
+      get_scale_type_name(axis_config(axis).scale_type),
+    )}
+    on_reset={() => {
+      for (const axis of all_axes) update_axis(axis, { scale_type: `linear` })
+    }}
+    data-testid="scale-type-section"
+    layout="flow"
+  >
+    {#each visible_axes as [axis, label] (axis)}
+      <label>
+        <span>{label}</span>
+        <select
+          value={get_scale_type_name(axis_config(axis).scale_type)}
+          onchange={(evt) => {
+            const scale_type = evt.currentTarget.value
+            update_axis(axis, {
+              scale_type: is_scale_type_name(scale_type) ? scale_type : `linear`,
+            })
+          }}
+        >
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+          <option value="arcsinh">Arcsinh</option>
+        </select>
+      </label>
+    {/each}
+  </SettingsSection>
 
-    <SettingsSection
-      title="Scale type"
-      class="ctrl-line axis-fields"
-      current_values={axis_values(`scale`, (axis) =>
-        get_scale_type_name(axis_config(axis).scale_type),
-      )}
-      on_reset={() => {
-        for (const axis of all_axes) update_axis(axis, { scale_type: `linear` })
-      }}
-      data-testid="scale-type-section"
-      layout="flow"
-    >
-      {#each visible_axes as [axis, label] (axis)}
-        <label>
-          <span>{label}</span>
-          <select
-            value={get_scale_type_name(axis_config(axis).scale_type)}
-            onchange={(evt) => {
-              const scale_type = evt.currentTarget.value
-              update_axis(axis, {
-                scale_type: is_scale_type_name(scale_type) ? scale_type : `linear`,
-              })
-            }}
-          >
-            <option value="linear">Linear</option>
-            <option value="log">Log</option>
-            <option value="arcsinh">Arcsinh</option>
-          </select>
-        </label>
-      {/each}
-    </SettingsSection>
-
-    {#if has_y2_points}
-      {@const current_sync = normalize_y2_sync(y2_axis.sync)}
-      {@const y2_sync_tip = `Controls Y2 axis range:
+  {#if has_y2_points}
+    {@const current_sync = normalize_y2_sync(y2_axis.sync)}
+    {@const y2_sync_tip = `Controls Y2 axis range:
 • Independent: Y2 has its own range based on its data
 • Synced: Y2 has exact same range as Y1
 • Align: Y2 expands to show all data, with a shared anchor point (default 0)`}
-      <SettingsSection
-        title="Y2 sync"
-        class="ctrl-line"
-        current_values={{
-          y2_sync: current_sync.mode,
-          align_value: current_sync.align_value,
-        }}
-        on_reset={() => {
-          y2_axis = { ...y2_axis, sync: undefined }
-        }}
-        layout="flow"
-      >
-        <label {@attach tooltip({ content: y2_sync_tip })}>
-          <span>Mode</span>
-          <select
-            value={current_sync.mode}
-            aria-label="Y2 axis synchronization mode"
-            onchange={(evt) => {
-              const val = evt.currentTarget.value
-              const mode = is_y2_sync_mode(val) ? val : `none`
-              if (mode === `none`) {
-                y2_axis = { ...y2_axis, sync: undefined }
-              } else if (mode === `align`) {
-                y2_axis = {
-                  ...y2_axis,
-                  sync: { mode, align_value: current_sync.align_value ?? 0 },
-                }
-              } else {
-                y2_axis = { ...y2_axis, sync: mode }
-              }
-            }}
-          >
-            <option value="none">Independent</option>
-            <option value="synced">Synced</option>
-            <option value="align">Align</option>
-          </select>
-        </label>
-        {#if current_sync.mode === `align`}
-          <label>
-            <span>Align at</span>
-            <input
-              type="number"
-              value={current_sync.align_value ?? 0}
-              aria-label="Value to align on both axes"
-              onchange={(evt) => {
-                const val = parseFloat(evt.currentTarget.value)
-                y2_axis = {
-                  ...y2_axis,
-                  sync: {
-                    mode: `align`,
-                    align_value: Number.isFinite(val) ? val : 0,
-                  },
-                }
-              }}
-            />
-          </label>
-        {/if}
-      </SettingsSection>
-    {/if}
-
     <SettingsSection
-      title="Ticks"
-      data-testid="ticks-section"
-      class="ctrl-line axis-fields"
-      current_values={axis_record(tick_count)}
-      on_reset_key={reset_axis_field(`ticks`)}
+      title="Y2 sync"
+      class="ctrl-line"
+      current_values={{
+        y2_sync: current_sync.mode,
+        align_value: current_sync.align_value,
+      }}
+      on_reset={() => {
+        y2_axis = { ...y2_axis, sync: undefined }
+      }}
       layout="flow"
     >
-      {#each visible_axes as [axis, label] (axis)}
-        {@const count = tick_count(axis)}
-        {@const custom = count === undefined && axis_config(axis).ticks !== undefined}
+      <label {@attach tooltip({ content: y2_sync_tip })}>
+        <span>Mode</span>
+        <select
+          value={current_sync.mode}
+          aria-label="Y2 axis synchronization mode"
+          onchange={(evt) => {
+            const val = evt.currentTarget.value
+            const mode = is_y2_sync_mode(val) ? val : `none`
+            if (mode === `none`) {
+              y2_axis = { ...y2_axis, sync: undefined }
+            } else if (mode === `align`) {
+              y2_axis = {
+                ...y2_axis,
+                sync: { mode, align_value: current_sync.align_value ?? 0 },
+              }
+            } else {
+              y2_axis = { ...y2_axis, sync: mode }
+            }
+          }}
+        >
+          <option value="none">Independent</option>
+          <option value="synced">Synced</option>
+          <option value="align">Align</option>
+        </select>
+      </label>
+      {#if current_sync.mode === `align`}
         <label>
-          <span>{label}</span>
+          <span>Align at</span>
           <input
             type="number"
-            min="1"
-            max={MAX_TICK_COUNT}
-            step="1"
-            value={count ?? ``}
-            placeholder={custom ? `custom` : `auto`}
-            disabled={custom}
-            aria-label="{label} axis tick count"
-            oninput={(evt) => update_tick_count(axis, evt.currentTarget.value)}
-            onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget.blur()}
+            value={current_sync.align_value ?? 0}
+            aria-label="Value to align on both axes"
+            onchange={(evt) => {
+              const val = parseFloat(evt.currentTarget.value)
+              y2_axis = {
+                ...y2_axis,
+                sync: {
+                  mode: `align`,
+                  align_value: Number.isFinite(val) ? val : 0,
+                },
+              }
+            }}
           />
         </label>
+      {/if}
+    </SettingsSection>
+  {/if}
+
+  <SettingsSection
+    title="Ticks"
+    data-testid="ticks-section"
+    class="ctrl-line axis-fields"
+    current_values={axis_record(tick_count)}
+    on_reset_key={reset_axis_field(`ticks`)}
+    layout="flow"
+  >
+    {#each visible_axes as [axis, label] (axis)}
+      {@const count = tick_count(axis)}
+      {@const custom = count === undefined && axis_config(axis).ticks !== undefined}
+      <label>
+        <span>{label}</span>
+        <input
+          type="number"
+          min="1"
+          max={MAX_TICK_COUNT}
+          step="1"
+          value={count ?? ``}
+          placeholder={custom ? `custom` : `auto`}
+          disabled={custom}
+          aria-label="{label} axis tick count"
+          oninput={(evt) => update_tick_count(axis, evt.currentTarget.value)}
+          onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget.blur()}
+        />
+      </label>
+    {/each}
+  </SettingsSection>
+
+  <SettingsSection
+    title="Tick format"
+    data-testid="tick-format-section"
+    class="ctrl-line formats tick-format-section"
+    current_values={axis_record((axis) => axis_config(axis).format)}
+    on_reset_key={reset_axis_field(`format`)}
+    layout="flow"
+  >
+    {#each visible_axes as [axis, label] (axis)}
+      <label>
+        <span>{label}-axis</span>
+        <input
+          type="text"
+          value={axis_config(axis).format ?? ``}
+          placeholder={format_placeholders[axis]}
+          oninput={format_input_handler(axis)}
+        />
+      </label>
+    {/each}
+  </SettingsSection>
+
+  {@render post_children?.()}
+
+  {#if on_export}
+    <SettingsSection title="Export" layout="flow">
+      {#each export_formats as format (format)}
+        <button type="button" class="export-btn" onclick={() => on_export?.(format)}>
+          {format.toUpperCase()}
+        </button>
       {/each}
     </SettingsSection>
-
-    <SettingsSection
-      title="Tick format"
-      data-testid="tick-format-section"
-      class="ctrl-line formats tick-format-section"
-      current_values={axis_record((axis) => axis_config(axis).format)}
-      on_reset_key={reset_axis_field(`format`)}
-      layout="flow"
-    >
-      {#each visible_axes as [axis, label] (axis)}
-        <label>
-          <span>{label}-axis</span>
-          <input
-            type="text"
-            value={axis_config(axis).format ?? ``}
-            placeholder={format_placeholders[axis]}
-            oninput={format_input_handler(axis)}
-          />
-        </label>
-      {/each}
-    </SettingsSection>
-
-    {@render post_children?.()}
-
-    {#if on_export}
-      <SettingsSection title="Export" layout="flow">
-        {#each export_formats as format (format)}
-          <button type="button" class="export-btn" onclick={() => on_export?.(format)}>
-            {format.toUpperCase()}
-          </button>
-        {/each}
-      </SettingsSection>
-    {/if}
-  </ControlPane>
-{/if}
+  {/if}
+</ControlPane>
 
 <style>
   .export-btn {

@@ -1,13 +1,12 @@
 <script lang="ts">
+  import type { ScatterPlotOptions, DataSeries } from '$lib/plot'
   import { plot_color } from '$lib/colors'
   import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import { frequency_unit_label } from '$lib/spectral/frequency-units'
-  import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
-  import type { ComponentProps } from 'svelte'
   import { compute_vacf_async } from './async-compute.svelte'
   import type { VacfInput, VacfOptions, VacfResult } from './index'
 
@@ -38,7 +37,7 @@
     error_msg?: string
     vacf_controls_open?: boolean
     vdos_controls_open?: boolean
-  } & Omit<ComponentProps<typeof ScatterPlot>, `controls_open`> = $props()
+  } & Omit<ScatterPlotOptions, `controls_open`> = $props()
 
   use_async_result({
     input: () => input,
@@ -109,9 +108,9 @@
       bind:show_controls
       bind:controls_open={() => controls_open, set_controls_open}
       {series}
-      x_axis={{ label: x_label }}
-      y_axis={{ label: y_label }}
-      styles={{ show_lines: true, show_points: false }}
+      x_axis={{ label: x_label, ...rest.x_axis }}
+      y_axis={{ label: y_label, ...rest.y_axis }}
+      styles={{ show_lines: true, show_points: false, ...rest.styles }}
       style={plot_style}
     />
   {/snippet}

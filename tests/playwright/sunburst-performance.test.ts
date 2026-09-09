@@ -55,6 +55,74 @@ const sample_frames = (page: Page, duration_ms: number) =>
   )
 
 test.describe(`Sunburst performance`, () => {
+  for (const n_leaf of [392, 1400]) {
+    test(`expands ${n_leaf} patterned leaves and keeps subsequent hovering responsive`, async ({
+      page,
+    }) => {
+      await page.goto(
+        `/test/sunburst-performance?top=4&mid=4&leaf=${n_leaf}&max_children=12&patterned=1`,
+      )
+      const bucket = page.locator(`.arcs path[aria-label^="Other:"]`).first()
+      await expect(bucket).toBeVisible()
+      // Exercise a real tween after the component's initial 500 ms settling window.
+      await page.waitForTimeout(550)
+      const zoom_frames = sample_frames(page, 700)
+      await bucket.dispatchEvent(`click`)
+      const zoom = await zoom_frames
+      await expect(page.locator(`.arcs path`)).toHaveCount(n_leaf)
+      await expect(page.locator(`.arc-paints path`)).toHaveCount(1)
+      expect((await read_metrics(page)).zoom_root_id).toBe(`T0/M0`)
+
+      // All jobs retain their own hit target, but a run of identically patterned
+      // leaves paints one annulus. WebKit previously repainted the texture hundreds
+      // of times per hover (400+ ms frames for just 392 leaves).
+      const paint = page.locator(`.arc-paints path`)
+      const painted_path = await paint.getAttribute(`d`)
+      expect(painted_path?.match(/M/g)?.length).toBe(2) // outer circle + inner hole
+      await expect(page.locator(`.arcs path[fill="transparent"]`)).toHaveCount(n_leaf)
+      const hover = await page.evaluate(async () => {
+        const chart = document.querySelector(`svg[role="application"]`)
+        if (!chart) throw new Error(`Sunburst SVG missing`)
+        const box = chart.getBoundingClientRect()
+        const center_x = box.x + box.width / 2
+        const center_y = box.y + box.height / 2
+        const radius = (Math.min(box.width, box.height) / 2 - 20) * 0.8
+        let previous = performance.now()
+        let longest_ms = 0
+        let total_ms = 0
+        for (let step = 0; step < 30; step++) {
+          const angle = (step / 30) * 2 * Math.PI
+          const client_x = center_x + Math.sin(angle) * radius
+          const client_y = center_y - Math.cos(angle) * radius
+          const target = document.elementFromPoint(client_x, client_y)
+          target?.dispatchEvent(
+            new MouseEvent(`mousemove`, {
+              bubbles: true,
+              clientX: client_x,
+              clientY: client_y,
+            }),
+          )
+          await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve())
+          })
+          const now = performance.now()
+          longest_ms = Math.max(longest_ms, now - previous)
+          total_ms += now - previous
+          previous = now
+        }
+        return { longest_ms, total_ms }
+      })
+      await expect(page.locator(`.plot-tooltip`)).toContainText(`Leaf`)
+      await expect(paint).toHaveAttribute(`d`, painted_path ?? ``)
+      console.info(JSON.stringify({ n_leaf, zoom, hover }))
+      expect(zoom.longest_ms).toBeLessThan(IS_CI ? 400 : 150)
+      expect(hover.longest_ms).toBeLessThan(IS_CI ? 250 : 100)
+      expect(hover.total_ms).toBeLessThan(IS_CI ? 4000 : 1500)
+      await page.getByRole(`button`, { name: `all`, exact: true }).click()
+      await expect.poll(async () => (await read_metrics(page)).zoom_root_id).toBeNull()
+    })
+  }
+
   test(`mounts 1.6k arcs and reports metrics`, async ({ page }) => {
     await load_page(page)
     const { n_nodes, build_ms, mount_ms } = await read_metrics(page)

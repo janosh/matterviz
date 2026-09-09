@@ -35,7 +35,7 @@ import type {
 interface HullSelectionInputs {
   entries: () => PhaseData[] // raw entries, for the structure lookup
   plot_entries: () => ConvexHullEntry[]
-  selected_entry: () => ConvexHullEntry | null
+  selected_entry: () => PhaseData | null
   set_selected_entry: (entry: ConvexHullEntry | null) => void
   enable_click_selection: () => boolean
   enable_structure_preview: () => boolean
@@ -58,6 +58,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
   let modal_place_right = $state(true)
+  let selection_version = 0
 
   // Original (un-projected) entry's structure, for the click-to-preview popup
   const extract_structure = (entry: ConvexHullEntry): AnyStructure | null => {
@@ -117,10 +118,11 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   }
 
   async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
+    const version = selection_version
     await navigator.clipboard.writeText(
       build_entry_tooltip_text(entry, inputs.entry_category()),
     )
-    copy_feedback.show({ visible: true, position })
+    if (version === selection_version) copy_feedback.show({ visible: true, position })
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -191,6 +193,14 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     get modal_place_right() {
       return modal_place_right
     },
+    reset() {
+      selection_version++
+      hover_data = null
+      modal_open = false
+      selected_structure = null
+      dragover = false
+      copy_feedback.reset()
+    },
     set_hover,
     select_entry,
     close_structure_popup,
@@ -202,7 +212,11 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
 
 export type HullSelection = ReturnType<typeof create_hull_selection>
 
-interface CanvasInteractionInputs extends HullSelectionInputs {
+interface CanvasInteractionInputs extends Pick<
+  HullSelectionInputs,
+  `plot_entries` | `selected_entry` | `wrapper`
+> {
+  selection: () => HullSelection
   // Camera defaults, drag rotation, zoom clamp and point shadow of the ternary/quaternary view
   strategy: draw.HullCanvasStrategy
   canvas: () => HTMLCanvasElement | undefined
@@ -212,7 +226,7 @@ interface CanvasInteractionInputs extends HullSelectionInputs {
   visible_entries: () => ConvexHullEntry[]
   project_point: draw.ProjectPoint
   // Point styling
-  highlighted_entries: () => (string | ConvexHullEntry)[]
+  highlighted_entries: () => (string | PhaseData)[]
   highlight_style: () => HighlightStyle | undefined
   color_mode: () => `stability` | `energy`
   color_scale: () => D3InterpolateName
@@ -231,8 +245,8 @@ interface CanvasInteractionInputs extends HullSelectionInputs {
 }
 
 export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
-  const selection = create_hull_selection(inputs)
   const { strategy } = inputs
+  const selection = inputs.selection()
   const [zoom_min, zoom_max] = strategy.wheel_clamp
 
   // === Camera ===
@@ -337,7 +351,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       // gets the tooltip. Under a mouse the next mousemove would restore it anyway.
       selection.set_hover({ entry, position: { x: event.clientX, y: event.clientY } })
       selection.select_entry(entry)
-    } else if (selection.modal_open) selection.close_structure_popup()
+    } else selection.close_structure_popup()
   }
 
   const handle_double_click = (event: MouseEvent) => {
@@ -407,7 +421,6 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   })
 
   return {
-    selection,
     camera, // the $state proxy itself, so writes through it repaint
     reset_camera,
     recenter_camera,

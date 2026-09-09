@@ -1,6 +1,6 @@
 # Band Structures
 
-`Bands` renders pymatgen band-structure objects without manual transformation.
+`Bands` accepts a record of canonical band structures keyed by material label. Each dataset declares `type: "phonon" | "electronic"`; phonon frequencies are in THz and electronic energies in eV. Convert raw pymatgen data once with `normalize_band_structure(raw)` before passing it to a renderer.
 
 ## Phonon Bands with Custom Styling
 
@@ -11,7 +11,7 @@ The symmetry-point labels on the x axis are clickable: each opens a small Brillo
   import { Bands } from 'matterviz'
   import { phonon_bands } from '$site/phonons'
 
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
+  const band_structs = { '': phonon_bands['mp-2758-Sr4Se4-pbe'] }
 
   const line_kwargs = {
     acoustic: { stroke: '#e74c3c', stroke_width: 2 },
@@ -24,7 +24,7 @@ The symmetry-point labels on the x axis are clickable: each opens a small Brillo
 
 ## Electronic Band Structures
 
-Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed bands (`"1"` for spin-up, `"-1"` for spin-down). The Fermi level is drawn as a dashed line whenever the data carries `efermi` or the `fermi_level` prop is set:
+The `normalize_band_structure` adapter converts pymatgen `BandStructureSymmLine` objects, including spin-keyed bands (`"1"` for spin-up, `"-1"` for spin-down), to canonical arrays. The demo fixtures below are converted when loaded. The Fermi level is drawn as a dashed line whenever the data carries `efermi` or the `fermi_level` prop is set:
 
 ```svelte example
 <script lang="ts">
@@ -32,7 +32,7 @@ Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed 
   import { electronic_bands } from '$site/electronic/bands'
 </script>
 
-<Bands band_structs={electronic_bands.cao_2605} y_axis={{ label: 'Energy (eV)' }} />
+<Bands band_structs={{ '': electronic_bands.cao_2605 }} y_axis={{ label: 'Energy (eV)' }} />
 ```
 
 ### Spin-Polarized Electronic Bands
@@ -46,7 +46,7 @@ Spin-polarized electronic band structures can be shown in `overlay`, `up_only`, 
 </script>
 
 <Bands
-  band_structs={electronic_bands.vbr2_971787}
+  band_structs={{ '': electronic_bands.vbr2_971787 }}
   band_spin_mode="overlay"
   y_axis={{ label: 'Energy (eV)' }}
 />
@@ -63,7 +63,7 @@ For gapped electronic structures, `Bands` automatically annotates VBM/CBM and th
 </script>
 
 <Bands
-  band_structs={electronic_bands.cao_2605}
+  band_structs={{ '': electronic_bands.cao_2605 }}
   band_spin_mode="up_only"
   show_gap_annotation
   y_axis={{ label: 'Energy (eV)' }}
@@ -136,7 +136,7 @@ Use `units` to convert phonon frequencies on the y-axis, and `highlight_regions`
 </script>
 
 <Bands
-  band_structs={phonon_bands['mp-2758-Sr4Se4-pbe']}
+  band_structs={{ '': phonon_bands['mp-2758-Sr4Se4-pbe'] }}
   units="cm^-1"
   highlight_regions={[
     { y_min: 40, y_max: 120, color: 'rgba(255, 193, 7, 0.35)', label: 'Target window' },
@@ -176,7 +176,7 @@ Add `band_widths` to your band structure data - a 2D array matching the shape of
   const band_struct = { ...base_bs, band_widths }
 </script>
 
-<Bands band_structs={band_struct} ribbon_config={{ opacity: 0.4, max_width: 8 }} />
+<Bands band_structs={{ '': band_struct }} ribbon_config={{ opacity: 0.4, max_width: 8 }} />
 ```
 
 ### Custom Ribbon Styling
@@ -205,7 +205,7 @@ Customize the ribbon appearance with `ribbon_config`. You can set color, opacity
 </script>
 
 <Bands
-  band_structs={band_struct}
+  band_structs={{ '': band_struct }}
   ribbon_config={{ color: '#e74c3c', opacity: 0.4, max_width: 10 }}
   line_kwargs={{ stroke: '#2c3e50', stroke_width: 1.2 }}
 />

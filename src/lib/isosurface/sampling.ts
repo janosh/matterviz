@@ -6,7 +6,7 @@ import { clamp, reciprocal_lattice, scale_lattice_matrix } from '$lib/math'
 import { clamp01 } from '$lib/utils'
 import type { ScalarGrid3D } from './grid'
 import type { VolumeGrid, VolumetricData } from './types'
-import { make_volume, MAX_GRID_POINTS } from './types'
+import { grid_data_range, MAX_GRID_POINTS } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
@@ -364,7 +364,7 @@ export function extract_volume_range(
   volume: VolumeGrid & Partial<Pick<VolumetricData, `label` | `source` | `source_filename`>>,
   range: DisplayRange,
   max_points: number = MAX_GRID_POINTS,
-): VolumetricData {
+): Omit<VolumetricData, `id`> {
   const sanitized = sanitize_display_range(range, volume.periodic)
   const [rx, ry, rz] = sanitized
   const widths: Vec3 = [rx[1] - rx[0], ry[1] - ry[0], rz[1] - rz[0]]
@@ -436,7 +436,11 @@ export function extract_volume_range(
 
   const [row_a, row_b, row_c] = volume.lattice
   const { label, source, source_filename } = volume
-  return make_volume(values, counts, {
+  return {
+    values,
+    dims: counts,
+    order: `z_fastest`,
+    data_range: grid_data_range(values),
     label,
     source,
     source_filename,
@@ -447,7 +451,7 @@ export function extract_volume_range(
       volume.origin[2] + rx[0] * row_a[2] + ry[0] * row_b[2] + rz[0] * row_c[2],
     ],
     periodic: false, // the extracted block is a finite window; endpoints included
-  })
+  }
 }
 
 export const UNIT_CELL_RANGE: DisplayRange = [

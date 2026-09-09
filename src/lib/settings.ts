@@ -332,7 +332,7 @@ export const SETTINGS_CONFIG = define_settings({
     },
     sphere_segments: {
       value: 20,
-      description: `Number of segments for sphere rendering (higher = smoother)`,
+      description: `Maximum sphere detail; large scenes use less detail for distant atoms`,
       minimum: 8,
       maximum: 64,
     },
@@ -434,12 +434,6 @@ export const SETTINGS_CONFIG = define_settings({
       value: true,
       description: `Show orientation gizmo in the corner of structure viewer`,
     }),
-    camera_position: {
-      value: [0, 0, 0] satisfies Vec3,
-      description: `Initial camera position [x, y, z]`,
-      minItems: 3,
-      maxItems: 3,
-    },
     camera_projection: camera_projection_setting(`orthographic`, `Camera projection type`),
     initial_zoom: {
       value: 50,

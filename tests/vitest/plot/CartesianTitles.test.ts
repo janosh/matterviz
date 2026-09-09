@@ -1,4 +1,7 @@
-import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib'
+import BarPlot from '$lib/plot/bar/BarPlot.svelte'
+import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
+import Histogram from '$lib/plot/histogram/Histogram.svelte'
+import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import { place_outside_decorations } from '$lib/plot/core/decorations'
 import { calc_auto_padding, DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import { resolve_plot_title } from '$lib/plot/core/plot-title'

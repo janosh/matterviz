@@ -65,8 +65,9 @@
 })
 const result = await predict(run.structure, { signal: run.signal })
 run.on_overlay({
+  result: { schema: 'my-model-result-v1', energy: result.energy },
   site_properties: result.site_properties,
-  volumes: result.volumes, // each field needs a stable, unique field_id
+  volumes: result.volumes, // each field needs a stable, unique id
   color_property: 'charge',
 })`}</code
   ></pre>
@@ -77,6 +78,17 @@ run.on_overlay({
   <code>run.clear()</code>
   to clear its outputs, and <code>run.on_view(null)</code> to return from a host view. Supply
   <code>show_host_tool: false</code> to nested structure viewers.
+</p>
+<p>
+  Publish complete JSON-safe calculation data in <code>result</code> with a host-defined
+  schema. The <code>prediction</code> prop includes imported results.
+  <code>set_overlay_visible(false)</code> hides visuals while retaining results and surface
+  settings;
+  <code>run.on_overlay(null)</code> deletes the result.
+</p>
+<p>
+  Set <code>structure_host_tool.input_key</code> to select calculation inputs, including atom order.
+  Unrelated annotations can then change without cancelling runs; replacing the document always cancels.
 </p>
 <p>
   Use the export pane to download the prediction JSON, including the captured input,
@@ -96,8 +108,8 @@ run.on_overlay({
   shared storage. Grid geometry is validated and cached statistics are recomputed.
 </p>
 <p>
-  Drop an exported prediction JSON onto any Structure viewer to reopen its input, properties,
-  density and provenance. Hosts can also import <code>prediction_from_json</code> from
+  Drop an exported prediction JSON onto a Structure to reopen its input, properties, density
+  and provenance. Hosts can also import <code>prediction_from_json</code> from
   <code>matterviz/structure</code> and pass its result as the viewer's <code>prediction</code>
   prop. Import accepts version 1 only and restores the original cell and 1×1×1 scaling.
 </p>

@@ -5,6 +5,12 @@ inputs:
   extensions:
     description: Space-separated extension dirs under extensions/ to also install
     default: ''
+  build-package:
+    description: Build anywidget's local matterviz dependency (type checks use source aliases)
+    default: 'true'
+  test-cache:
+    description: Separate Vitest compilation cache for this suite or shard
+    default: ''
 
 runs:
   using: composite
@@ -12,15 +18,32 @@ runs:
     - uses: actions/setup-node@v6
       with:
         node-version: 24
+    - name: Enable pnpm
+      shell: bash
+      run: |
+        corepack enable
+        # Node validates bytecode against the source and Node version before reusing it.
+        echo "NODE_COMPILE_CACHE=$HOME/.cache/node-compile" >> "$GITHUB_ENV"
+        # Install explicitly below; don't resolve dependencies again before every command.
+        echo "PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false" >> "$GITHUB_ENV"
+    - name: Cache dependency downloads
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.local/share/pnpm/store
+          ~/.npm
+          ~/.cache/node-compile
+        key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json', 'extensions/*/package.json') }}-${{ github.sha }}
+        restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json', 'extensions/*/package.json') }}-
     - shell: bash
       env:
         EXTENSIONS: ${{ inputs.extensions }}
+        BUILD_PACKAGE: ${{ inputs.build-package }}
         # Root `prepare` (src/scripts/prepare.mjs) builds dist/ when it is missing so git
         # dependencies (github:janosh/matterviz#main) install usable; jobs here build it
         # explicitly where they need it, so skip the ~20 s svelte-package run on install.
         MATTERVIZ_SKIP_PREPARE: 1
       run: |
-        corepack enable
         # Match Hive's setup: Git dependencies need prepare; generate the allowlist in CI.
         printf 'allowBuilds:\n  svelte-widgets: true\n' > pnpm-workspace.yaml
         # Registry packages ship their generated artifacts, so their prepare scripts do not
@@ -33,7 +56,9 @@ runs:
         # anywidget depends on `matterviz: file:../..`, which pnpm copies (hard-links) at install
         # time, so the svelte-package output must exist before that install or the copy has no
         # dist/ (dependencies never run `prepare`, only the root project does).
-        case " $EXTENSIONS " in *" anywidget "*) pnpm package:dist ;; esac
+        if [ "$BUILD_PACKAGE" = true ]; then
+          case " $EXTENSIONS " in *" anywidget "*) pnpm package:dist ;; esac
+        fi
         # --ignore-workspace: a freshly released dep trips pnpm's cooldown
         # (minimumReleaseAge), auto-creating a pnpm-workspace.yaml that makes these
         # standalone extension installs no-ops (skipping anywidget/@types/node/matterviz).
@@ -50,3 +75,18 @@ runs:
           pnpm -C "extensions/$ext" install --no-lockfile "${workspace_args[@]}" \
             --config.strict-dep-builds="$strict_builds"
         done
+    - name: Cache test compilation
+      if: inputs.test-cache != ''
+      uses: actions/cache@v6
+      with:
+        path: |
+          .cache/node-compile
+          .cache/vitest
+        # The installed graph includes resolved Git SHAs. Include custom compiler plugins;
+        # Vitest hashes each source file and excludes import.meta.glob from its cache.
+        key: vitest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/lock.yaml', 'vite.config.ts', 'svelte.config.ts', 'src/vite-plugins.ts', 'src/scripts/**') }}-${{ inputs.test-cache }}-${{ github.sha }}
+        restore-keys: vitest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/lock.yaml', 'vite.config.ts', 'svelte.config.ts', 'src/vite-plugins.ts', 'src/scripts/**') }}-${{ inputs.test-cache }}-
+    - name: Enable cached test compilation
+      if: inputs.test-cache != ''
+      shell: bash
+      run: echo "NODE_COMPILE_CACHE=$GITHUB_WORKSPACE/.cache/node-compile" >> "$GITHUB_ENV"

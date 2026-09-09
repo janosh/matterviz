@@ -1,7 +1,6 @@
 import {
   build_orbit_props,
   perspective_distance_for_zoom,
-  mirror_scene_props,
   page_visibility,
   resolve_scene_controls,
   SCENE_CONTROL_DEFAULTS,
@@ -143,51 +142,5 @@ describe(`resolve_scene_controls`, () => {
     expect(resolved).toEqual({ ...SCENE_CONTROL_DEFAULTS, rotate_speed: 3, gizmo: false })
     expect(SCENE_CONTROL_DEFAULTS.fov).toBe(DEFAULTS.structure.fov)
     expect(`camera_projection` in resolved).toBe(false) // per-viewer default, not shared
-  })
-})
-
-describe(`mirror_scene_props`, () => {
-  // The viewer auto-frames the structure and the orbit controls move the camera from there,
-  // so a later pass must not copy the caller's "you choose" sentinels back over the result.
-  test.each([
-    [`all-zero position`, [0, 0, 0]],
-    [`absent position`, undefined],
-  ])(`keeps the viewer's placement over an incoming %s`, (_label, camera_position) => {
-    const model = { show_bonds: false, camera_position: [9, 9, 9], camera_target: [1, 1, 1] }
-
-    mirror_scene_props(model, { show_bonds: true, camera_position, camera_target: undefined })
-
-    expect(model.camera_position).toEqual([9, 9, 9])
-    expect(model.camera_target).toEqual([1, 1, 1])
-    expect(model.show_bonds).toBe(true) // non-camera config always applies
-  })
-
-  test.each([
-    [`nothing placed yet`, [0, 0, 0], undefined],
-    [`a placement already made`, [9, 9, 9], [1, 1, 1]],
-  ])(`applies real coordinates over %s`, (_label, camera_position, camera_target) => {
-    const model = { camera_position, camera_target }
-
-    mirror_scene_props(model, { camera_position: [1, 2, 3], camera_target: [4, 5, 6] })
-
-    expect(model.camera_position).toEqual([1, 2, 3])
-    expect(model.camera_target).toEqual([4, 5, 6])
-  })
-
-  // Regression: gating camera keys to the first mirror pass left callers unable to move the
-  // camera at all once mounted, since the first pass runs before their props arrive.
-  test(`honours repeated moves after the viewer has placed the camera`, () => {
-    const model: Record<string, unknown> = { camera_position: [0, 0, 0] }
-
-    mirror_scene_props(model, { camera_position: [1, 2, 30] })
-    expect(model.camera_position).toEqual([1, 2, 30])
-
-    mirror_scene_props(model, { camera_position: [40, 3, 4] })
-    expect(model.camera_position).toEqual([40, 3, 4])
-
-    // re-asserting the same coordinates after the viewer drifted away still lands
-    model.camera_position = [55, 17, 45]
-    mirror_scene_props(model, { camera_position: [40, 3, 4] })
-    expect(model.camera_position).toEqual([40, 3, 4])
   })
 })

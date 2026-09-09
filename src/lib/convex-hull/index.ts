@@ -3,7 +3,7 @@ import type { ShowControlsProp } from '$lib/controls'
 import type { TooltipConfig } from '$lib/tooltip'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
-import type { EnergySourceMode } from './hull-state.svelte'
+import type { EnergySourceMode, HullModel } from './model'
 import type {
   ConvexHullConfig,
   ConvexHullControlsType,
@@ -14,7 +14,6 @@ import type {
   HoverData3D,
   HullFaceColorMode,
   PhaseData,
-  PhaseStats,
 } from './types'
 import { DEFAULT_HULL_COLORS } from './types'
 
@@ -25,8 +24,6 @@ export {
   TRIANGLE_VERTICES,
 } from './barycentric-coords'
 export { default as ConvexHull } from './ConvexHull.svelte'
-export { default as ConvexHull2D } from './ConvexHull2D.svelte'
-export { default as ConvexHullCanvas } from './ConvexHullCanvas.svelte'
 export { default as ConvexHullControls } from './ConvexHullControls.svelte'
 export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'
@@ -56,7 +53,8 @@ export {
   visible_entries,
 } from './helpers'
 export type { PolymorphStats, TemperatureAnalysis, TemperatureFilterOptions } from './helpers'
-export type { EnergyModeInfo, EnergySourceMode } from './hull-state.svelte'
+export { compute_hull_model } from './model'
+export type { EnergyModeInfo, EnergySourceMode, HullModel } from './model'
 export { default as StructurePopup } from './StructurePopup.svelte'
 export { default as TemperatureSlider } from './TemperatureSlider.svelte'
 export {
@@ -75,8 +73,7 @@ export type { HighDimHullResult, HullFacet } from './thermodynamics'
 export * from './types'
 
 interface BaseConvexHullChildrenProps<AnyDimEntry = PhaseData> {
-  stable_entries: AnyDimEntry[]
-  unstable_entries: AnyDimEntry[]
+  model: HullModel
   highlighted_entries: (string | AnyDimEntry)[]
   selected_entry: AnyDimEntry | null
 }
@@ -152,13 +149,8 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   // Enable structure preview popup when clicking entries with structure data
   enable_structure_preview?: boolean
   energy_source_mode?: EnergySourceMode
-  // Bindable convex hull statistics - computed internally but exposed for external use
-  phase_stats?: PhaseStats | null
   // Display configuration for grid lines and other visual elements
   display?: { x_grid?: boolean; y_grid?: boolean }
-  // Bindable stable and unstable entries - computed internally but exposed for external use
-  stable_entries?: AnyDimEntry[]
-  unstable_entries?: AnyDimEntry[]
   // Highlighted entries with customizable visual effects
   highlighted_entries?: (string | AnyDimEntry)[]
   highlight_style?: HighlightStyle

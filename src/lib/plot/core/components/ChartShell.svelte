@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
   // Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
   // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
@@ -34,6 +35,7 @@
     height = $bindable(0),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
+    show_controls = `hover`,
     chrome_color,
     controls_toggle_props,
     header_controls,
@@ -54,6 +56,7 @@
     height?: number
     fullscreen?: boolean
     fullscreen_toggle?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     // Color for the chrome icons, from whatever the chart paints under the top-right
     // corner. A prop, not a CSS var passed through `style`: charts spread the caller's
     // rest props after their own, so a `style` they set would be clobbered by any caller
@@ -61,8 +64,8 @@
     chrome_color?: string
     controls_toggle_props?: PaneToggleProps
     header_controls?: Snippet<[Dims]>
-    // The controls pane; receives the toggle props that seat its toggle in the header row
-    controls?: Snippet<[PaneToggleProps]>
+    // The controls pane receives layout props and visibility; this row owns mode and style.
+    controls?: Snippet<[PaneToggleProps, boolean]>
     // Chart content, rendered once the container is measured
     body: Snippet
     children?: Snippet<[Dims]>
@@ -82,6 +85,7 @@
     ...controls_toggle_props,
     style: `position: static; ${controls_toggle_props?.style ?? ``}`,
   })
+  const controls_config = $derived(normalize_show_controls(show_controls))
 </script>
 
 <div
@@ -93,12 +97,17 @@
   style={`${css_vars} ${rest.style ?? ``}`}
 >
   {#if width && height}
-    <div class="header-controls" style:--chart-chrome-color={chrome_color}>
-      {@render header_controls?.(dims)}
-      {@render controls?.(toggle_props)}
-      {#if fullscreen_toggle}
+    <div
+      class={[`header-controls`, controls_config.class]}
+      style={controls_config.style}
+      style:--chart-chrome-color={chrome_color}
+    >
+      {#if controls_config.mode !== `never`}{@render header_controls?.(dims)}{/if}
+      {@render controls?.(toggle_props, controls_config.visible(`controls`))}
+      {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
         <FullscreenButton
           bind:fullscreen
+          hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
           {wrapper}
           bg_css_var="--{css_prefix}-fullscreen-bg"
         />
@@ -164,9 +173,15 @@
     color: var(--chart-chrome-color, inherit);
   }
   /* revealed on hover, while focused, and while the controls pane is open */
+  .header-controls.always-visible,
   .chart-shell:hover .header-controls,
   .header-controls:focus-within,
   .header-controls:has(:global([aria-expanded='true'])) {
     opacity: 1;
+  }
+  @media (hover: none) {
+    .header-controls.hover-visible {
+      opacity: 1;
+    }
   }
 </style>

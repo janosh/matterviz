@@ -1,6 +1,6 @@
-// Rendering, props, panes and events of the pure <Trajectory> viewer over a TrajectoryRun.
+// Rendering, props, panes and events of Trajectory over a supplied TrajectoryRun.
 // Playback mechanics live in sequence-player.test, frame loading/caching in session.test and
-// file acquisition in TrajectoryFileViewer.test; none of that is re-tested here.
+// file acquisition in Trajectory-loading.test; none of that is re-tested here.
 import type {
   TrajectoryController,
   TrajectoryRun,
@@ -8,9 +8,16 @@ import type {
   TrajHandlerData,
 } from '$lib/trajectory'
 import { Trajectory } from '$lib/trajectory'
+import * as plotting from '$lib/trajectory/plotting'
 import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
-import { mock_fullscreen, bind_props, doc_query, make_run as make_shared_run } from '../setup'
+import {
+  resize_element,
+  mock_fullscreen,
+  bind_props,
+  doc_query,
+  make_run as make_shared_run,
+} from '../setup'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -83,7 +90,11 @@ const open_analysis = async (target: ParentNode, label: string): Promise<void> =
 }
 const legend_state = (target: ParentNode): Record<string, boolean> =>
   Object.fromEntries(
-    [...target.querySelectorAll<HTMLElement>(`.scatter .legend-item`)].map((item) => [
+    [
+      ...target.querySelectorAll<HTMLElement>(
+        `.scatter .legend-item, .histogram .legend-item`,
+      ),
+    ].map((item) => [
       item.getAttribute(`aria-label`)?.replace(`Toggle visibility for `, ``) ?? ``,
       item.getAttribute(`aria-pressed`) === `true`,
     ]),
@@ -150,12 +161,49 @@ describe(`display modes`, () => {
 })
 
 describe(`controls`, () => {
-  test(`show_controls='never' renders no control bar`, () => {
-    const target = mount_trajectory(default_props({ show_controls: `never` }))
-    expect(target.querySelector(`.trajectory-controls`)).toBeNull()
-    expect(target.querySelector(`.filename`)).toBeNull()
-    expect(target.querySelector(`.structure`)).not.toBeNull()
-  })
+  test.each([false, `never`, { mode: `never` }] as const)(
+    `show_controls=%s hides parent and nested chrome`,
+    async (show_controls) => {
+      const props = $state(
+        default_props({
+          show_controls,
+          structure_props: { show_controls: true },
+          scatter_props: { show_controls: { mode: `hover`, style: `opacity: 0.5` } },
+          histogram_props: { show_controls: { mode: `hover`, style: `opacity: 0.5` } },
+        }),
+      )
+      const target = mount_trajectory(props)
+      for (const display_mode of [`structure+scatter`, `structure+histogram`] as const) {
+        props.display_mode = display_mode
+        await vi.waitFor(() =>
+          expect(
+            target.querySelector(
+              display_mode === `structure+scatter` ? `.scatter` : `.histogram`,
+            ),
+          ).not.toBeNull(),
+        )
+        const plot = target.querySelector<HTMLElement>(`.scatter, .histogram`)
+        if (!plot) throw new Error(`Missing ${display_mode} plot`)
+        await resize_element(plot, 400, 300)
+        expect(plot.querySelector(`svg`)).not.toBeNull()
+        expect(plot.querySelector(`.fullscreen-button, .control-pane-toggle`)).toBeNull()
+      }
+      expect(target.querySelector(`.trajectory-controls`)).toBeNull()
+      expect(target.querySelector(`.filename`)).toBeNull()
+      expect(target.querySelector(`.structure`)).not.toBeNull()
+      expect(
+        target.querySelector(
+          `.fullscreen-button, .control-pane-toggle, .structure-controls-toggle`,
+        ),
+      ).toBeNull()
+      props.show_controls = true
+      await tick()
+      const toggle = target.querySelector<HTMLElement>(`.histogram .control-pane-toggle`)
+      expect(toggle?.classList.contains(`hover-visible`)).toBe(true)
+      expect(toggle?.style.opacity).toBe(`0.5`)
+      expect(target.querySelector(`.structure-controls-toggle`)).not.toBeNull()
+    },
+  )
 
   const HIDEABLE_CONTROLS = [
     [`filename`, `.filename`],
@@ -279,29 +327,92 @@ describe(`controls`, () => {
 })
 
 describe(`plot`, () => {
-  test(`visible_properties syncs both ways with legend toggles`, async () => {
-    const props = $state(default_props({ visible_properties: undefined }))
-    const target = mount_trajectory(props)
-    await tick()
-    // Unset: the default selection is written back once the series exist
-    expect(props.visible_properties).toEqual([`energy`, `force_max`])
-    expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
+  test.each([`scatter`, `histogram`] as const)(
+    `%s shares visibility across legend actions, parent writes and plot modes`,
+    async (display_mode) => {
+      const prepare_scatter = vi.spyOn(plotting, `prepare_trajectory_scatter_series`)
+      const on_toggle = vi.fn()
+      const props = $state(
+        default_props({
+          visible_properties: undefined,
+          display_mode,
+          scatter_props: { legend: { on_toggle } },
+          histogram_props: { legend: { on_toggle } },
+        }),
+      )
+      const target = mount_trajectory(props)
+      await tick()
+      // Unset: the default selection is written back once the series exist
+      expect(props.visible_properties?.toSorted()).toEqual([`energy`, `force_max`])
+      expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
+      const preparations = prepare_scatter.mock.calls.length
+      if (display_mode === `scatter`) expect(preparations).toBeGreaterThan(0)
 
-    const energy_item = target.querySelector<HTMLElement>(
-      `.scatter .legend-item[aria-label="Toggle visibility for Energy"]`,
-    )
-    energy_item?.click()
-    await tick()
-    expect(legend_state(target)).toEqual({ Energy: false, Fmax: true, Volume: false })
-    expect(props.visible_properties).toEqual([`force_max`])
-    energy_item?.click()
-    await tick()
-    expect(props.visible_properties).toEqual([`energy`, `force_max`])
+      const energy_item = () =>
+        target.querySelector<HTMLElement>(
+          `.legend-item[aria-label="Toggle visibility for Energy"]`,
+        )
+      energy_item()?.click()
+      await tick()
+      expect(legend_state(target)).toEqual({ Energy: false, Fmax: true, Volume: false })
+      expect(props.visible_properties).toEqual([`force_max`])
+      expect(on_toggle).toHaveBeenCalledOnce()
+      energy_item()?.click()
+      await tick()
+      expect(props.visible_properties?.toSorted()).toEqual([`energy`, `force_max`])
 
-    props.visible_properties = [`volume`]
-    await tick()
-    expect(legend_state(target)).toEqual({ Energy: false, Fmax: false, Volume: true })
-  })
+      energy_item()?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      await tick()
+      expect(props.visible_properties).toEqual([`energy`])
+      props.visible_properties = [`volume`]
+      await tick()
+      expect(legend_state(target)).toEqual({ Energy: false, Fmax: false, Volume: true })
+      expect(prepare_scatter).toHaveBeenCalledTimes(preparations)
+      props.display_mode = display_mode === `scatter` ? `histogram` : `scatter`
+      await tick()
+      expect(legend_state(target)).toEqual({ Energy: false, Fmax: false, Volume: true })
+      props.visible_properties = []
+      await tick()
+      expect(Object.values(legend_state(target))).toEqual([false, false, false])
+      props.visible_properties = [`Energy`]
+      await tick()
+      expect(Object.values(legend_state(target))).toEqual([false, false, false])
+      props.visible_properties = [`energy`]
+      await tick()
+      expect(legend_state(target)).toEqual({ Energy: true, Fmax: false, Volume: false })
+      props.visible_properties = [`ENERGY`, `force_max`, `volume`]
+      await tick()
+      expect(legend_state(target)).toEqual({ Energy: false, Fmax: true, Volume: true })
+    },
+  )
+
+  test.each([`scatter`, `histogram`] as const)(
+    `%s can replace energy with a distinct SCF axis group`,
+    async (display_mode) => {
+      const props = $state(
+        default_props({
+          display_mode,
+          visible_properties: undefined,
+          property_labels: { scf_energy_delta: `SCF` },
+          trajectory: make_run({
+            properties: (idx) => ({
+              energy: -3 + idx,
+              force_max: 3 - idx,
+              scf_energy_delta: 0.1 / (idx + 1),
+            }),
+          }),
+        }),
+      )
+      const target = mount_trajectory(props)
+      await tick()
+      target
+        .querySelector<HTMLElement>(`.legend-item[aria-label="Toggle visibility for SCF"]`)
+        ?.click()
+      await tick()
+      expect(props.visible_properties?.toSorted()).toEqual([`force_max`, `scf_energy_delta`])
+      expect(legend_state(target)).toEqual({ Energy: false, Fmax: true, SCF: true })
+    },
+  )
 
   test.each([
     [`time when steps and a time step exist`, make_run(), `time`, [`Frame`, `Step`, `Time`]],
@@ -608,6 +719,13 @@ describe(`events`, () => {
     await vi.waitFor(() => expect(props.fullscreen).toBe(true))
     expect(on_fullscreen_change).toHaveBeenCalledWith(payload(0, 0))
     expect(document.fullscreenElement).toBe(doc_query(`.trajectory`))
+    props.show_controls = false
+    await tick()
+    expect(doc_query<HTMLButtonElement>(`.fullscreen-button`).style.display).toBe(`none`)
+    await document.exitFullscreen()
+    await tick()
+    expect(props.fullscreen).toBe(false)
+    expect(document.querySelector(`.trajectory > .sequence-control-bar`)).toBeNull()
   })
 
   test(`Escape closes the open menu and leaves parent-owned fullscreen alone`, async () => {

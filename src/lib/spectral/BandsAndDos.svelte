@@ -1,15 +1,18 @@
 <script lang="ts">
+  import type { BandsOptions, DosOptions } from './index'
   import { axis_with_range } from '$lib/plot/core/shared-axes'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import { create_bands_dos_sync } from './synced-axes.svelte'
-  import type { BaseBandStructure, DosInput, HoveredData } from './types'
+  import type { BaseBandStructure, DosData, FrequencyUnit, HoveredData } from './types'
 
   let {
     band_structs,
     doses,
+    units = $bindable(`THz`),
+    fermi_level,
     bands_props = {},
     dos_props = {},
     shared_y_axis = true,
@@ -17,10 +20,12 @@
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    band_structs: BaseBandStructure | Record<string, BaseBandStructure>
-    doses: DosInput | Record<string, DosInput>
-    bands_props?: Partial<ComponentProps<typeof Bands>>
-    dos_props?: Partial<ComponentProps<typeof Dos>>
+    band_structs: Record<string, BaseBandStructure>
+    doses: Record<string, DosData>
+    units?: FrequencyUnit
+    fermi_level?: number // Shared electronic reference; omitted uses dataset metadata
+    bands_props?: BandsOptions
+    dos_props?: DosOptions
     shared_y_axis?: boolean
     sync_y_zoom?: boolean
     children?: Snippet<[HoveredData]>
@@ -36,6 +41,8 @@
   const sync = create_bands_dos_sync({
     band_structs: () => band_structs,
     doses: () => doses,
+    units: () => units,
+    fermi_level: () => fermi_level,
     bands_y_axis: () => bands_props.y_axis,
     dos_y_axis: () => dos_props.y_axis,
     bands_padding: () => bands_props.padding,
@@ -54,6 +61,7 @@
   <Bands
     {...bands_props}
     {band_structs}
+    bind:units
     fermi_level={sync.fermi_level}
     y_axis={sync.y_axes[0]}
     bind:view={sync.views[0]}
@@ -65,6 +73,7 @@
   <Dos
     {...dos_props}
     {doses}
+    bind:units
     fermi_level={sync.fermi_level}
     orientation={stacked ? `vertical` : `horizontal`}
     x_axis={{

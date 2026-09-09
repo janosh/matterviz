@@ -2,9 +2,7 @@
   import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type {
-    AxisLoadError,
     BarStyle,
-    DataLoaderFn,
     HistogramHandlerProps,
     LayerZIndex,
     PanConfig,
@@ -19,12 +17,7 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import {
-    AXIS_DEFAULTS,
-    create_axis_loader,
-    X2_AXIS_DEFAULTS,
-  } from '$lib/plot/core/axis-utils'
-  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
+  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { resolve_plot_display } from '$lib/plot/core/display.svelte'
   import { plot_color } from '$lib/colors'
@@ -79,7 +72,9 @@
   import { unique_id } from '$lib/plot/core/utils'
 
   let {
-    series: series_in = $bindable([]),
+    series: series_in = [],
+    hidden_series = $bindable(),
+    on_hidden_series_change,
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -107,7 +102,7 @@
     ref_lines = $bindable([]),
     on_ref_line_click,
     on_ref_line_hover,
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     on_series_toggle = () => {},
     controls_toggle_props,
@@ -117,9 +112,8 @@
     children,
     header_controls,
     controls_extra,
-    data_loader,
+    axis_loading = null,
     on_axis_change,
-    on_error,
     pan = {},
     marginals = false,
     facet_layout,
@@ -127,7 +121,9 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
-      series: HistogramSeries[]
+      hidden_series?: readonly (string | number)[]
+      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+      series: readonly HistogramSeries[]
       // Component-specific props
       bins?: number
       normalize?: HistogramNormalize
@@ -151,14 +147,9 @@
       on_ref_line_click?: (event: RefLineEvent) => void
       on_ref_line_hover?: (event: RefLineEvent | null) => void
       on_series_toggle?: (series_idx: number) => void
-      // Interactive axis props
-      data_loader?: DataLoaderFn<Record<string, unknown>, HistogramSeries>
-      on_axis_change?: (
-        axis: `x` | `x2` | `y` | `y2`,
-        key: string,
-        new_series: HistogramSeries[],
-      ) => void
-      on_error?: (error: AxisLoadError) => void
+      // The host owns property selection, loading, and publishing the resulting data.
+      axis_loading?: `x` | `x2` | `y` | `y2` | null
+      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
       pan?: PanConfig
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
@@ -166,7 +157,11 @@
 
   const legend_vis = create_legend_visibility<HistogramSeries>(
     () => series,
-    (next) => (series_in = next),
+    () => hidden_series,
+    (next) => {
+      hidden_series = next
+      on_hidden_series_change?.(next)
+    },
   )
   let series: HistogramSeries[] = $derived(legend_vis.resolve(series_in))
 
@@ -198,9 +193,6 @@
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
 
   let hover_info = $state<HistogramHandlerProps | null>(null)
-
-  // Interactive axis loading state
-  let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
@@ -256,15 +248,15 @@
       series_color,
     })
   const count_ranges = (binned: readonly BinnedSeries[]) => {
-    const on_axis = (axis: `y1` | `y2`) =>
-      binned.filter((hist) => (hist.y_axis ?? `y1`) === axis)
-    const range_for = (axis: AxisConfig, key: `y1` | `y2`) =>
+    const on_axis = (axis: `y` | `y2`) =>
+      binned.filter((hist) => (hist.y_axis ?? `y`) === axis)
+    const range_for = (axis: AxisConfig, key: `y` | `y2`) =>
       compute_count_range(on_axis(key), {
         scale_type: axis.scale_type ?? `linear`,
         y_limit: log_safe_range(axis),
         range_padding,
       })
-    return { y: range_for(final_y_axis, `y1`), y2: range_for(final_y2_axis, `y2`) }
+    return { y: range_for(final_y_axis, `y`), y2: range_for(final_y2_axis, `y2`) }
   }
 
   const auto_x_ranges = $derived.by(() => {
@@ -419,8 +411,8 @@
 
   // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height
   const bar_data = (hist: BinnedSeries, { x0, x1, count, value }: HistogramBin) => {
-    const active_x_axis = hist.x_axis ?? `x1`
-    const active_y_axis = hist.y_axis ?? `y1`
+    const active_x_axis = hist.x_axis ?? `x`
+    const active_y_axis = hist.y_axis ?? `y`
     const center = (x0 + x1) / 2
     return {
       value: center,
@@ -461,24 +453,6 @@
       on_bar_click?.({ ...bar_data(hist, bin), event })
     }
 
-  const axis_state: AxisChangeState<HistogramSeries> = {
-    axes: {
-      x: { get: () => final_x_axis, set: (config) => (x_axis = config) },
-      x2: { get: () => final_x2_axis, set: (config) => (x2_axis = config) },
-      y: { get: () => final_y_axis, set: (config) => (y_axis = config) },
-      y2: { get: () => final_y2_axis, set: (config) => (y2_axis = config) },
-    },
-    series: { get: () => series, set: (next) => (series_in = next) },
-    loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
-  }
-
-  const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
-    data_loader,
-    on_axis_change,
-    on_error,
-  }))
-  $effect(try_auto_load)
-
   // === Export ===
   // Bins have an extent, so CSV reports edges rather than the (x, y) the shared long
   // format would collapse them to.
@@ -508,6 +482,7 @@
   aria_label="Histogram"
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   require_size={false}
   marginals={resolved_marginals}
   {marginal_series}
@@ -527,12 +502,7 @@
     {@render ref_lines_layer(`below-lines`)}
     {@render ref_lines_layer(`below-points`)}
 
-    <PlotAxes
-      {frame}
-      display={resolved_display}
-      {axis_loading}
-      on_axis_change={handle_axis_change}
-    />
+    <PlotAxes {frame} display={resolved_display} {axis_loading} {on_axis_change} />
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
     <defs><PatternDefs patterns={hist_patterns} /></defs>
@@ -635,35 +605,33 @@
       </PlotTooltip>
     {/if}
 
-    {#if show_controls}
-      <HistogramControls
-        on_export={handle_export}
-        toggle_props={controls_toggle_props}
-        pane_props={controls_pane_props}
-        bind:show_controls
-        bind:controls_open
-        bind:bins
-        bind:normalize
-        bind:mode
-        bind:show_legend
-        resolved_show_legend={should_show_legend}
-        bind:selected_property={() => active_property, (value) => (selected_property = value)}
-        bind:display
-        bind:bar
-        bind:x_axis
-        bind:x2_axis
-        bind:y_axis
-        bind:y2_axis
-        auto_x_range={auto_ranges.x}
-        auto_x2_range={auto_ranges.x2}
-        auto_y_range={auto_ranges.y}
-        auto_y2_range={auto_ranges.y2}
-        {series}
-        {has_x2_points}
-        {has_y2_points}
-        children={controls_extra}
-      />
-    {/if}
+    <HistogramControls
+      on_export={handle_export}
+      toggle_props={controls_toggle_props}
+      pane_props={controls_pane_props}
+      bind:show_controls
+      bind:controls_open
+      bind:bins
+      bind:normalize
+      bind:mode
+      bind:show_legend
+      resolved_show_legend={should_show_legend}
+      bind:selected_property={() => active_property, (value) => (selected_property = value)}
+      bind:display
+      bind:bar
+      bind:x_axis
+      bind:x2_axis
+      bind:y_axis
+      bind:y2_axis
+      auto_x_range={auto_ranges.x}
+      auto_x2_range={auto_ranges.x2}
+      auto_y_range={auto_ranges.y}
+      auto_y2_range={auto_ranges.y2}
+      {series}
+      {has_x2_points}
+      {has_y2_points}
+      children={controls_extra}
+    />
 
     <PlotLegendLayer
       {frame}

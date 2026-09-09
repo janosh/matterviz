@@ -921,7 +921,8 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 
 ```svelte example
 <script lang="ts">
-  import { type DataSeries, Histogram } from 'matterviz'
+  import { onDestroy } from 'svelte'
+  import { type HistogramSeries, Histogram, create_axis_loader, type AxisKey } from 'matterviz'
   import { box_muller, seeded_rng } from '$site/histogram-data'
 
   type DistType =
@@ -1040,7 +1041,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   type PropKey = keyof typeof property_configs
 
   // Build series for a property
-  function build_series(prop_key: PropKey): DataSeries[] {
+  function build_series(prop_key: PropKey): HistogramSeries[] {
     return material_classes.map((name, idx) => ({
       values: all_data[prop_key][idx],
       label: name,
@@ -1057,23 +1058,24 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   let switch_count = $state(0)
   let load_start = $state(0)
 
-  async function data_loader(
-    _axis: string,
-    property_key: PropKey,
-  ): Promise<{ series: DataSeries[]; axis_label: string }> {
+  async function data_loader(_axis: AxisKey, property_key: string): Promise<PropKey> {
+    if (!Object.hasOwn(property_configs, property_key))
+      throw new Error(`Unknown property: ${property_key}`)
+    const key = property_key as PropKey
     load_start = performance.now()
     await new Promise((resolve) => setTimeout(resolve, 100 + Math.random() * 400))
-    const config = property_configs[property_key]
-    return {
-      series: build_series(property_key),
-      axis_label: `${config.label} (${config.unit})`,
-    }
+    return key
   }
 
-  function on_axis_change(_axis: string, property_key: PropKey): void {
+  const axis_loader = create_axis_loader(data_loader)
+  onDestroy(axis_loader.cancel)
+
+  async function on_axis_change(_axis: AxisKey, property_key: string): Promise<void> {
+    const key = await axis_loader.load(_axis, property_key)
+    if (key === undefined) return
     switch_count++
-    current_prop = property_key
-    bins = property_configs[property_key].bins
+    current_prop = key
+    bins = property_configs[key].bins
     load_times = [...load_times.slice(-9), Math.round(performance.now() - load_start)]
   }
 
@@ -1099,7 +1101,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 </div>
 
 <Histogram
-  bind:series
+  {series}
   {bins}
   x_axis={{
     label: `${property_configs[current_prop].label} (${property_configs[current_prop].unit})`,
@@ -1107,7 +1109,6 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
     selected_key: current_prop,
   }}
   y_axis={{ label: `Count` }}
-  {data_loader}
   {on_axis_change}
   bar={{ border_radius: 1 }}
   legend={{ layout: `horizontal`, style: `justify-content: center` }}
@@ -1213,7 +1214,7 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
       values: y1_values,
       label: `Sample A`,
       color: `#e74c3c`,
-      y_axis: `y1`,
+      y_axis: `y`,
     },
     {
       values: y2_values,

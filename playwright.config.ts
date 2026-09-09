@@ -1,11 +1,16 @@
+/// <reference types="node" />
 import type { PlaywrightTestConfig } from '@playwright/test'
 import process from 'node:process'
 
 const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
+const e2e_mode = process.env.MATTERVIZ_E2E_MODE
+// Playwright matches grep against filenames, titles and tags. @source marks individual
+// tests that need development requests without moving their entire suite off production.
+const source_tests = /structure\/host-tool\.test\.ts|@source\b/
 
 export default {
   webServer: {
-    command: `npx vite dev --port 3005`,
+    command: `pnpm exec vite ${e2e_mode === `preview` ? `preview` : `dev`} --port 3005`,
     port: 3005,
     reuseExistingServer: true,
     timeout: 60_000,
@@ -34,7 +39,8 @@ export default {
   // Software WebGPU spreads one canvas over several SwiftShader threads, so a worker per vCPU
   // starves the render path: shard 3/4 took 6.1 min with 4 failures at 4 workers, 3.3 min with
   // 1 at 2 workers. A real GPU allows more.
-  workers: is_ci ? 2 : 16,
+  // Production pages need no Vite transforms alongside SwiftShader, freeing one worker.
+  workers: is_ci ? (e2e_mode === `preview` ? 3 : 2) : 16,
   // Shard by test, not by file: structure.test.ts holds ~130 tests and most files 1-4, so
   // file-level sharding would pile the big ones onto one runner. Ordering-sensitive files opt
   // into test.describe.configure({ mode: `serial` }).
@@ -45,5 +51,9 @@ export default {
   expect: { timeout: is_ci ? 30_000 : 5000 },
   retries: is_ci ? 2 : 0,
   testDir: `tests/playwright`,
+  // These suites inspect source registries or intercept development module requests. Others test
+  // the production build in CI; ordinary local runs still run the complete suite on dev.
+  ...(e2e_mode === `preview` ? { grepInvert: source_tests } : {}),
+  ...(e2e_mode === `source` ? { grep: source_tests } : {}),
   reporter: [[`list`]], // keeps each shard's pass/fail readable in its CI log
 } satisfies PlaywrightTestConfig

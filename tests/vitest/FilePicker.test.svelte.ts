@@ -1,4 +1,6 @@
-import { DEFAULT_FILE_TYPE_PAINTS, type FileInfo, FilePicker, file_type_paint } from '$lib'
+import FilePicker from '$lib/FilePicker.svelte'
+import type { FileInfo } from '$lib'
+import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '$lib/io/file-type-paint'
 import { color as d3_color } from 'd3-color'
 import { flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'

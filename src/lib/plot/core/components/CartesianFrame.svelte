@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import { FullscreenButton } from '$lib/layout'
   import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetAxis } from '$lib/plot/core/facets'
@@ -58,6 +59,7 @@
     aria_label: string
     fullscreen?: boolean
     fullscreen_toggle?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     // The outer container, exposed so charts can re-export it to their own callers
     wrapper?: HTMLDivElement
     // Charts that render their SVG before the container is measured (Histogram)
@@ -100,6 +102,7 @@
     'aria-label': aria_label_override,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
+    show_controls = `hover`,
     wrapper = $bindable(),
     require_size = true,
     marginals,
@@ -162,13 +165,14 @@
       marginal_tick_label[binding],
     )
   const marginal_axes = $derived({
-    x1: get_marginal_axis(`x`, `x1`),
+    x: get_marginal_axis(`x`, `x`),
     x2: get_marginal_axis(`x2`, `x2`),
-    y1: get_marginal_axis(`y`, `y1`),
+    y: get_marginal_axis(`y`, `y`),
     y2: get_marginal_axis(`y2`, `y2`),
   })
 
   onDestroy(() => pan_zoom.destroy())
+  const controls_config = $derived(normalize_show_controls(show_controls))
 </script>
 
 <svelte:window
@@ -188,11 +192,12 @@
   style={`${css_vars} ${rest.style ?? ``}`}
 >
   {#if measured}
-    <div class="header-controls">
-      {@render header_controls?.(dims)}
-      {#if fullscreen_toggle}
+    <div class={[`header-controls`, controls_config.class]} style={controls_config.style}>
+      {#if controls_config.mode !== `never`}{@render header_controls?.(dims)}{/if}
+      {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
         <FullscreenButton
           bind:fullscreen
+          hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
           {wrapper}
           bg_css_var="--{css_prefix}-fullscreen-bg"
         />
@@ -339,7 +344,6 @@
     font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
   }
   /* Hide controls and fullscreen toggles by default, show on hover */
-  .plot-frame :global(.pane-toggle),
   .plot-frame .header-controls {
     opacity: 0;
     transition:
@@ -349,10 +353,8 @@
   .plot-frame :global(.pane-toggle) {
     font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
   }
-  .plot-frame:hover :global(.pane-toggle),
+  .header-controls.always-visible,
   .plot-frame:hover .header-controls,
-  .plot-frame :global(.pane-toggle:focus-visible),
-  .plot-frame :global(.pane-toggle[aria-expanded='true']),
   .plot-frame .header-controls:focus-within {
     opacity: 1;
   }
@@ -365,5 +367,10 @@
     fill: var(--text-color);
     font-weight: var(--plot-frame-font-weight);
     font-size: var(--plot-frame-font-size);
+  }
+  @media (hover: none) {
+    .header-controls.hover-visible {
+      opacity: 1;
+    }
   }
 </style>

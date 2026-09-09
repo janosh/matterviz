@@ -1,4 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import { open_settings_pane, wait_for_3d_canvas } from './helpers'
 
 const DEMO_URL = `/structure/multi-volume`
@@ -35,6 +37,30 @@ test.describe(`Multi-volume isosurface demo`, () => {
     })
     await expect(page).toHaveURL(/scenario=fe-spin/)
     await expect(page.locator(`.scenario-card.active`)).toContainText(`Charge × magnetization`)
+  })
+
+  test(`file clicks replace volumes when atoms change within the same lattice`, async ({
+    page,
+  }) => {
+    await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
+    await expect(page.locator(`.demo-stats-bar`)).toContainText(`Volumes: 2`)
+    const lines = gunzipSync(
+      readFileSync(new URL(`../../src/site/isosurfaces/glycine-esp.cube.gz`, import.meta.url)),
+    )
+      .toString()
+      .split(`\n`)
+    const atom = lines[6].trim().split(/\s+/)
+    atom[2] = `${Number(atom[2]) + 1}`
+    lines[6] = atom.join(` `)
+    await page.route(`**/isosurfaces/glycine-esp.cube.gz`, (route) =>
+      route.fulfill({ body: gzipSync(lines.join(`\n`)) }),
+    )
+    await page.getByRole(`button`, { name: /Glycine ESP/ }).click()
+    await expect(page.locator(`.demo-stats-bar`)).toContainText(`Volumes: 1`, {
+      timeout: SCENARIO_LOAD_TIMEOUT,
+    })
+    await expect(page).not.toHaveURL(/scenario=/)
+    await expect(page.locator(`.status-message.error`)).toHaveCount(0)
   })
 
   test(`controls group surfaces by volume and mark color-source-only volumes`, async ({

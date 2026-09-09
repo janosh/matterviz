@@ -1,4 +1,4 @@
-import { XrdPlot } from '$lib'
+import XrdPlot from '$lib/xrd/XrdPlot.svelte'
 import type { XrdPattern } from '$lib/xrd'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'

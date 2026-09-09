@@ -7,14 +7,12 @@
   import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import type {
-    AxisLoadError,
     BarHandlerProps,
     BarMode,
     BarSeries,
     BarStyle,
     BasePlotProps,
     ColorScaleConfig,
-    DataLoaderFn,
     InternalPoint,
     LayerZIndex,
     LegendConfig,
@@ -36,12 +34,7 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import {
-    category_tick_labels,
-    create_axis_loader,
-    merge_secondary_axes,
-  } from '$lib/plot/core/axis-utils'
+  import { category_tick_labels, merge_secondary_axes } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
@@ -96,7 +89,9 @@
   type LineSeriesPoint = BarLineSeriesPoint<Metadata>
 
   let {
-    series: series_in = $bindable([]),
+    series: series_in = [],
+    hidden_series = $bindable(),
+    on_hidden_series_change,
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
     x_axis = $bindable({}),
@@ -125,7 +120,7 @@
     ref_lines = $bindable([]),
     on_ref_line_click,
     on_ref_line_hover,
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -134,9 +129,8 @@
     children,
     header_controls,
     controls_extra,
-    data_loader,
+    axis_loading = null,
     on_axis_change,
-    on_error,
     pan = {},
     marginals = false,
     facet_layout,
@@ -144,7 +138,9 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
-      series?: BarSeries<Metadata>[]
+      hidden_series?: readonly (string | number)[]
+      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+      series?: readonly BarSeries<Metadata>[]
       // Component-specific props
       orientation?: Orientation
       mode?: BarMode
@@ -182,23 +178,22 @@
       ref_lines?: RefLine[]
       on_ref_line_click?: (event: RefLineEvent) => void
       on_ref_line_hover?: (event: RefLineEvent | null) => void
-      // Interactive axis props
-      data_loader?: DataLoaderFn<Metadata, BarSeries<Metadata>>
-      on_axis_change?: (
-        axis: `x` | `x2` | `y` | `y2`,
-        key: string,
-        new_series: BarSeries<Metadata>[],
-      ) => void
-      on_error?: (error: AxisLoadError) => void
+      // The host owns property selection, loading, and publishing the resulting data.
+      axis_loading?: `x` | `x2` | `y` | `y2` | null
+      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
       pan?: PanConfig
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write back into the bindable series prop; see create_legend_visibility
+  // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
     () => series,
-    (next) => (series_in = next),
+    () => hidden_series,
+    (next) => {
+      hidden_series = next
+      on_hidden_series_change?.(next)
+    },
     (srs) => (vertical ? srs.y_axis : srs.x_axis),
   )
   let series: BarSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
@@ -248,16 +243,13 @@
     items: () => [internal_series, frame.ranges.current],
   })
 
-  // Interactive axis loading state
-  let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
-
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
   // Horizontal bars take their value axis from the x axis they were assigned
-  const HORIZONTAL_VALUE_AXIS = { x1: `y1`, x2: `y2` } as const
+  const HORIZONTAL_VALUE_AXIS = { x: `y`, x2: `y2` } as const
   // Assign visible series without an explicit value axis by unit/group. The value axis is
   // y/y2 for vertical bars and x/x2 for horizontal bars. Keep this as an effective copy so
-  // legend toggles can reassign axes without mutating bound input series.
+  // legend toggles can reassign axes without mutating input series.
   const axis_assigned_series = $derived.by<BarSeries<Metadata>[]>(() => {
     const assignment_inputs = series.map((srs) => ({
       ...srs,
@@ -277,7 +269,7 @@
       if (!assigned_axis) return srs
       return vertical
         ? { ...srs, y_axis: assigned_axis }
-        : { ...srs, x_axis: assigned_axis === `y1` ? `x1` : `x2` }
+        : { ...srs, x_axis: assigned_axis === `y` ? `x` : `x2` }
     })
   })
 
@@ -494,8 +486,8 @@
     const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
     const metadata = Array.isArray(srs.metadata) ? srs.metadata[bar_idx] : srs.metadata
     const label = srs.labels?.[bar_idx] ?? null
-    const active_y_axis = srs.y_axis ?? `y1`
-    const active_x_axis = srs.x_axis ?? `x1`
+    const active_y_axis = srs.y_axis ?? `y`
+    const active_x_axis = srs.x_axis ?? `x`
     const category_label = category_list[x]
     return {
       x,
@@ -557,27 +549,6 @@
 
   let group_info = $derived(compute_group_info(internal_series, mode))
 
-  // State accessors for shared axis change handler
-  // Secondary axes read the merged $derived (x2_axis/y2_axis) but write the raw $bindable props
-  // (x2_axis_prop/y2_axis_prop) so library defaults aren't pushed into the parent's bound state
-  const axis_state: AxisChangeState<BarSeries<Metadata>> = {
-    axes: {
-      x: { get: () => x_axis, set: (config) => (x_axis = config) },
-      x2: { get: () => x2_axis, set: (config) => (x2_axis_prop = config) },
-      y: { get: () => y_axis, set: (config) => (y_axis = config) },
-      y2: { get: () => y2_axis, set: (config) => (y2_axis_prop = config) },
-    },
-    series: { get: () => series, set: (next) => (series_in = next) },
-    loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
-  }
-
-  const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
-    data_loader,
-    on_axis_change,
-    on_error,
-  }))
-  $effect(try_auto_load)
-
   // === Export ===
   const handle_export = create_chart_exporter(frame, () =>
     series_to_csv_rows(
@@ -605,10 +576,11 @@
   aria_label="Bar chart"
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   marginals={resolved_marginals}
   {marginal_series}
   marginal_tick_label={{
-    [cat_axis === `x` ? `x1` : `y1`]: (pos: number) => category_list[Math.round(pos)],
+    [cat_axis === `x` ? `x` : `y`]: (pos: number) => category_list[Math.round(pos)],
   }}
   on_mouse_leave={() => {
     hovered = false
@@ -629,7 +601,7 @@
       display={category_display.resolved}
       label_ticks={{ [cat_axis]: effective_cat_ticks }}
       {axis_loading}
-      on_axis_change={handle_axis_change}
+      {on_axis_change}
     />
 
     <!-- Chart content is clipped in two groups so reference lines can interleave
@@ -994,29 +966,27 @@
       </PlotTooltip>
     {/if}
 
-    {#if show_controls}
-      <BarPlotControls
-        on_export={handle_export}
-        toggle_props={controls_toggle_props}
-        pane_props={controls_pane_props}
-        bind:show_controls
-        bind:controls_open
-        bind:orientation
-        bind:mode
-        bind:x_axis
-        bind:x2_axis={x2_axis_prop}
-        bind:y_axis
-        bind:y2_axis={y2_axis_prop}
-        bind:display
-        auto_x_range={auto_ranges.x}
-        auto_x2_range={auto_ranges.x2}
-        auto_y_range={auto_ranges.y}
-        auto_y2_range={auto_ranges.y2}
-        has_x2_points={show_x2}
-        has_y2_points={show_y2}
-        children={controls_extra}
-      />
-    {/if}
+    <BarPlotControls
+      on_export={handle_export}
+      toggle_props={controls_toggle_props}
+      pane_props={controls_pane_props}
+      bind:show_controls
+      bind:controls_open
+      bind:orientation
+      bind:mode
+      bind:x_axis
+      bind:x2_axis={x2_axis_prop}
+      bind:y_axis
+      bind:y2_axis={y2_axis_prop}
+      bind:display
+      auto_x_range={auto_ranges.x}
+      auto_x2_range={auto_ranges.x2}
+      auto_y_range={auto_ranges.y}
+      auto_y2_range={auto_ranges.y2}
+      has_x2_points={show_x2}
+      has_y2_points={show_y2}
+      children={controls_extra}
+    />
   {/snippet}
 </CartesianFrame>
 

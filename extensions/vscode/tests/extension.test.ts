@@ -1439,7 +1439,6 @@ describe(`MatterViz Extension`, () => {
       apply_overrides({
         'structure.atom_radius': 1.5,
         'structure.show_bonds': `always`,
-        'structure.camera_position': [1, 2, 3],
         'structure.vector_configs': { force: { visible: true } },
         'trajectory.auto_play': true,
         'trajectory.show_controls': false,
@@ -1451,7 +1450,6 @@ describe(`MatterViz Extension`, () => {
         structure: {
           atom_radius: 1.5,
           show_bonds: `always`,
-          camera_position: [1, 2, 3],
           same_size_atoms: DEFAULTS.structure.same_size_atoms,
           vector_configs: { force: { visible: true } },
         },
@@ -1507,13 +1505,11 @@ describe(`MatterViz Extension`, () => {
         ),
       })
       const { structure } = get_defaults()
-      const { atom_radius, show_atoms, show_bonds, camera_position, vector_configs } =
-        DEFAULTS.structure
+      const { atom_radius, show_atoms, show_bonds, vector_configs } = DEFAULTS.structure
       expect(structure).toMatchObject({
         atom_radius,
         show_atoms,
         show_bonds,
-        camera_position,
         vector_configs,
         bond_color: `invalid`,
       })

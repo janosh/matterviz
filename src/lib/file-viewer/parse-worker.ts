@@ -2,7 +2,6 @@
 // boundary as a summary plus a MessagePort implementing read_frame/collect_positions.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import type { ParseProgress } from '$lib/trajectory'
-import { open_trajectory } from '$lib/trajectory/open'
 import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory/parse'
 import { summarize_run } from '$lib/trajectory/run'
 import { dispose_run_port, serve_run_over_port } from '$lib/trajectory/runs/worker'
@@ -38,24 +37,13 @@ export const handle_parse_worker_request = async (
 ): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
   const { id, filename } = request
   try {
-    const result =
-      request.kind === `trajectory`
-        ? {
-            type: `trajectory` as const,
-            filename,
-            data: await open_trajectory(request.data, {
-              ...request.options,
-              filename,
-              on_progress,
-            }),
-          }
-        : await parse_file_content(
-            request.content,
-            filename,
-            request.is_base64,
-            request.load_options,
-            on_progress,
-          )
+    const result = await parse_file_content(
+      request.content,
+      filename,
+      request.is_base64,
+      request.load_options,
+      on_progress,
+    )
     return prepare_parse_result(id, result)
   } catch (error) {
     return {

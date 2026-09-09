@@ -303,6 +303,7 @@ describe(`Settings`, () => {
     const deliberate: Record<string, Record<string, string>> = {
       'convex-hull/ConvexHull': {
         hull_face_opacity: `undefined resolves per dimension through get_convex_hull_defaults (ternary 0.3, quaternary 0.03)`,
+        hull_face_color_mode: `undefined resolves per dimension through get_convex_hull_defaults; ConvexHullSelection tests the rendered modes across dimension changes`,
         max_hull_dist_show_phases: `undefined resolves per dimension through get_convex_hull_defaults (binary 0.1, ternary 0.5)`,
       },
       'scene/SceneCamera': {

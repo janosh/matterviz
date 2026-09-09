@@ -61,11 +61,22 @@ describe(`create_hull_selection copy feedback`, () => {
     destroy()
   })
 
-  it(`destroying the owner clears the pending hide timer`, async () => {
-    const { selection, destroy } = mount_selection()
-    await selection.copy_entry_data(entry, { x: 1, y: 2 })
-    expect(vi.getTimerCount()).toBe(1)
-    destroy()
-    expect(vi.getTimerCount()).toBe(0)
-  })
+  it.each([`reset`, `destroy`] as const)(
+    `%s clears the pending hide timer`,
+    async (action) => {
+      const { selection, destroy } = mount_selection()
+      await selection.copy_entry_data(entry, { x: 1, y: 2 })
+      selection.set_hover({ entry, position: { x: 1, y: 2 } })
+      expect(vi.getTimerCount()).toBe(1)
+      if (action === `reset`) {
+        const pending_copy = selection.copy_entry_data(entry, { x: 3, y: 4 })
+        selection.reset()
+        await pending_copy
+        expect(selection.hover_data).toBeNull()
+        expect(selection.copy_feedback.visible).toBe(false)
+      } else destroy()
+      expect(vi.getTimerCount()).toBe(0)
+      if (action === `reset`) destroy()
+    },
+  )
 })

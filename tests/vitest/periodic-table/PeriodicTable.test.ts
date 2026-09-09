@@ -1,5 +1,6 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
-import { element_data, PeriodicTable } from '$lib'
+import element_data from '$lib/element/data'
+import PeriodicTable from '$lib/periodic-table/PeriodicTable.svelte'
 import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { ELEM_HEATMAP_LABELS } from '$lib/labels'
 import type { Vec2 } from '$lib/math'

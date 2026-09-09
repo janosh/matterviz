@@ -90,7 +90,7 @@ export type HullPoint = { entry: ConvexHullEntry; projected: Projected }
 export type HullPointOpts = {
   scale: number // canvas container scale factor
   shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
-  selected_entry: ConvexHullEntry | null
+  selected_entry: Pick<ConvexHullEntry, `entry_id`> | null
   is_highlighted: (entry: ConvexHullEntry) => boolean
   get_point_color: (entry: ConvexHullEntry) => string
   highlight_style: Required<HighlightStyle>
@@ -436,7 +436,7 @@ export function draw_hull_labels(
 // mean formation energy. 4D tetrahedra contribute their 4 triangular faces with a shared
 // `facet_idx` so they get one categorical colour.
 export type HullFace = {
-  vertices: ConvexHullEntry[]
+  vertices: readonly ConvexHullEntry[]
   projected: Projected[]
   e_form: number
   depth: number
@@ -446,11 +446,15 @@ export type HullFace = {
 // Drawable faces of the lower hull, back to front: each triangle facet is one face, each
 // tetrahedron facet contributes the 4 triangles that drop one of its vertices
 export function build_hull_faces(
-  facet_entries: ConvexHullEntry[][],
+  facet_entries: readonly (readonly ConvexHullEntry[])[],
   project: ProjectPoint,
 ): HullFace[] {
   const faces: HullFace[] = []
-  const add_face = (vertices: ConvexHullEntry[], projected: Projected[], facet_idx: number) =>
+  const add_face = (
+    vertices: readonly ConvexHullEntry[],
+    projected: Projected[],
+    facet_idx: number,
+  ) =>
     faces.push({
       vertices,
       projected,
@@ -480,7 +484,7 @@ type FaceColorOpts = {
 
 // Element with the largest mean fraction over the face's vertices
 function dominant_element(
-  vertices: ConvexHullEntry[],
+  vertices: readonly ConvexHullEntry[],
   elements: ElementSymbol[],
 ): ElementSymbol {
   const totals = elements.map(() => 0)
@@ -602,7 +606,7 @@ type QuaternaryCamera = HullCamera & { rotation_x: number; rotation_y: number } 
 // axis with `z_scale` about `center`; uniform-mode faces fade towards `min` in both
 export type EnergyRange = { min: number; max: number; center: number; z_scale: number }
 
-export function energy_range_of(entries: ConvexHullEntry[]): EnergyRange {
+export function energy_range_of(entries: readonly ConvexHullEntry[]): EnergyRange {
   let [min, max] = [0, 0]
   for (const entry of entries) {
     const e_form = entry.e_form_per_atom ?? 0
