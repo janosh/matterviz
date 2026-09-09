@@ -12,16 +12,11 @@ import { describe, expect, test, vi } from 'vitest'
 
 // Compress bytes with the platform CompressionStream for round-trip tests
 const compress = async (
-  data: Uint8Array,
+  data: Uint8Array<ArrayBuffer>,
   format: `gzip` | `deflate` | `deflate-raw` = `gzip`,
 ): Promise<ArrayBuffer> => {
-  const stream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(data)
-      controller.close()
-    },
-  })
-  return new Response(stream.pipeThrough(new CompressionStream(format))).arrayBuffer()
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream(format))
+  return new Response(stream).arrayBuffer()
 }
 
 const hdf5_signature = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])

@@ -1,4 +1,4 @@
-import type { FileLoadMeta } from '$lib/io'
+import type { FileLoadCallback } from '$lib/io'
 import {
   basename_from_url,
   dropped_file_url,
@@ -28,70 +28,28 @@ describe(`load_trajectory_from_url`, () => {
   const content_disposition = (name: string) => ({
     'content-disposition': `attachment; filename="${name}"`,
   })
-  test.each([
-    { url: `run.h5`, body: hdf5_bytes, headers: {}, filename: `run.h5`, source: `run.h5` },
-    {
-      url: `run.h5`,
-      body: hdf5_bytes,
-      headers: content_disposition(`download`), // generic response filename
-      filename: `run.h5`,
-      source: `download`,
-    },
-    {
-      url: `download.bin`, // generic URL, header names the HDF5 file
-      body: hdf5_bytes,
-      headers: content_disposition(`run.h5`),
-      filename: `run.h5`,
-      source: `run.h5`,
-    },
-    {
-      url: `download`, // neither URL nor header names it: magic bytes earn a .h5 suffix
-      body: hdf5_bytes,
-      headers: {
-        'content-type': `application/octet-stream`,
-        ...content_disposition(`download`),
-      },
-      filename: `download.h5`,
-      source: `download`,
-    },
-    {
-      url: `download.gz`, // gzip inflated by magic, HDF5 recognized from inflated bytes
-      body: gzip(hdf5_bytes),
-      headers: {},
-      filename: `download.h5`,
-      source: `download.gz`,
-    },
-    {
-      url: `download`, // extensionless gzip, no filename header
-      body: gzip(hdf5_bytes),
-      headers: {},
-      filename: `download.h5`,
-      source: `download`,
-    },
-    {
-      url: `download`, // extensionless gzip, HDF5 gzip filename header
-      body: gzip(hdf5_bytes),
-      headers: content_disposition(`run.h5.gz`),
-      filename: `run.h5`,
-      source: `run.h5.gz`,
-    },
-    {
-      url: `run.h5.gz`, // Content-Disposition without extension must not lose the .h5 name
-      body: gzip(hdf5_bytes),
-      headers: content_disposition(`download`),
-      filename: `run.h5`,
-      source: `download`,
-    },
-    {
-      url: `run.h5.zip`,
-      body: zipSync({ 'run.h5': hdf5_bytes }),
-      headers: {},
-      filename: `run.h5`,
-      source: `run.h5.zip`,
-    },
+  test.each<[string, BodyInit, Record<string, string>, string, string]>([
+    [`run.h5`, hdf5_bytes, {}, `run.h5`, `run.h5`],
+    // A generic response filename must not erase the URL's HDF5 extension.
+    [`run.h5`, hdf5_bytes, content_disposition(`download`), `run.h5`, `download`],
+    [`download.bin`, hdf5_bytes, content_disposition(`run.h5`), `run.h5`, `run.h5`],
+    // With neither URL nor header naming the format, magic bytes earn the .h5 suffix.
+    [
+      `download`,
+      hdf5_bytes,
+      { 'content-type': `application/octet-stream`, ...content_disposition(`download`) },
+      `download.h5`,
+      `download`,
+    ],
+    // Compression is identified from bytes even without a suffix or filename header.
+    [`download.gz`, gzip(hdf5_bytes), {}, `download.h5`, `download.gz`],
+    [`download`, gzip(hdf5_bytes), {}, `download.h5`, `download`],
+    [`download`, gzip(hdf5_bytes), content_disposition(`run.h5.gz`), `run.h5`, `run.h5.gz`],
+    [`run.h5.gz`, gzip(hdf5_bytes), content_disposition(`download`), `run.h5`, `download`],
+    [`run.h5.zip`, zipSync({ 'run.h5': hdf5_bytes }), {}, `run.h5`, `run.h5.zip`],
   ])(
-    `loads $url with headers $headers as Blob $filename`,
-    async ({ url: basename, body, headers, filename, source }) => {
+    `loads %s (%j, %j) as Blob %s with source %s`,
+    async (basename, body, headers, filename, source) => {
       const url = `https://example.com/${basename}`
       vi.mocked(fetch).mockResolvedValueOnce(new Response(body, { headers }))
       const callback = vi.fn()
@@ -173,31 +131,16 @@ describe(`dropped_file_url`, () => {
 })
 
 describe(`load_from_url`, () => {
-  const create_mock_response = (content: string | ArrayBuffer, headers = {}) =>
-    new Response(content, { headers })
-
   const load_test_url = async (
     url: string,
     content: string | ArrayBuffer,
     headers: Record<string, string> = {},
-  ): Promise<{
-    received_content: string | ArrayBuffer | null
-    received_filename: string | null
-    received_metadata: FileLoadMeta | null
-  }> => {
-    const mock_response = create_mock_response(content, headers)
-    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-    let received_content: string | ArrayBuffer | null = null
-    let received_filename: string | null = null
-    let received_metadata: FileLoadMeta | null = null
-
-    await load_from_url(url, (loaded_content, filename, metadata) => {
-      received_content = loaded_content
-      received_filename = filename
-      received_metadata = metadata
-    })
-
+  ) => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(content, { headers }))
+    const callback = vi.fn<FileLoadCallback>()
+    await load_from_url(url, callback)
+    expect(callback).toHaveBeenCalledOnce()
+    const [received_content, received_filename, received_metadata] = callback.mock.calls[0]
     return { received_content, received_filename, received_metadata }
   }
 
@@ -311,7 +254,7 @@ describe(`load_from_url`, () => {
   ] as const)(`propagates corrupt %s errors`, async (format, filename, header) => {
     // Once the header identifies compression, corrupt content must fail explicitly.
     const body = new Uint8Array([...header, ...Array(14).fill(0)]).buffer
-    globalThis.fetch = vi.fn().mockResolvedValueOnce(create_mock_response(body))
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(new Response(body))
 
     await expect(load_from_url(`https://example.com/${filename}`, () => {})).rejects.toThrow(
       `Failed to decompress ${format} file`,
@@ -361,12 +304,9 @@ describe(`load_from_url`, () => {
   })
 
   test(`a rejecting callback rejects load_from_url itself`, async () => {
-    const mock_response = create_mock_response(
-      binary_payload([0x89, 0x48, 0x44, 0x46]).buffer,
-      {
-        'content-type': `application/octet-stream`,
-      },
-    )
+    const mock_response = new Response(binary_payload([0x89, 0x48, 0x44, 0x46]).buffer, {
+      headers: { 'content-type': `application/octet-stream` },
+    })
     globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
     const callback = vi.fn().mockRejectedValue(new TypeError(`callback failed`))
     await expect(load_from_url(`https://example.com/data.bin`, callback)).rejects.toThrow(

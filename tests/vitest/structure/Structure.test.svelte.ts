@@ -22,6 +22,7 @@ import {
   type StructureToolViewProps,
 } from '$lib/structure/host-tool.svelte'
 import { make_supercell } from '$lib/structure/supercell'
+import type StructureScene from '$lib/structure/StructureScene.svelte'
 import { structures } from '$site/structures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -55,15 +56,7 @@ vi.mock(`@threlte/core`, async (import_original) => ({
     props.children(anchor),
 }))
 const scene_stub = vi.hoisted(() => ({
-  props: undefined as
-    | {
-        camera: OrthographicCamera
-        camera_position?: Vec3
-        camera_target?: Vec3
-        auto_rotate?: number
-        sphere_segments?: number
-      }
-    | undefined,
+  props: undefined as ComponentProps<typeof StructureScene> | undefined,
 }))
 vi.mock(`$lib/structure/StructureScene.svelte`, () => ({
   default: (_anchor: Node, props: NonNullable<typeof scene_stub.props>) => {
@@ -132,6 +125,21 @@ const set_aria_input = (aria_label: string, value: string): void => {
   input.value = value
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
 }
+
+const click_button = (label: string) => {
+  const button = [...document.querySelectorAll(`button`)].find(
+    (candidate) => candidate.textContent === label,
+  )
+  if (!button) throw new Error(`Missing button: ${label}`)
+  flushSync(() => button.click())
+}
+
+const mock_gpu = () =>
+  vi.stubGlobal(`navigator`, {
+    gpu: {},
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+  })
 
 const SAMPLE_POSCAR_CONTENT = `BaTiO3 tetragonal
 1.0
@@ -273,11 +281,7 @@ test(`file viewer forwards replacement atom colors from host predictions`, async
 test.each([false, true])(
   `structure changes retain explicit camera target (new pose=%s)`,
   async (new_pose) => {
-    vi.stubGlobal(`navigator`, {
-      gpu: {},
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-    })
+    mock_gpu()
     const props = $state<ComponentProps<typeof Structure>>({
       structure,
       scene_props: { camera_position: [3, 4, 5], camera_target: [1, 2, 3] },
@@ -426,21 +430,19 @@ test(`multi-file drops continue after failures and report one batch error`, asyn
 })
 
 const volumetric_data = [
-  {
-    ...make_volume(
-      make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
-      {
-        lattice: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-        data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
-        id: `density`,
-        label: `Charge density`,
-      },
-    ),
-  },
+  make_volume(
+    make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
+    {
+      lattice: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
+      id: `density`,
+      label: `Charge density`,
+    },
+  ),
 ]
 
 // Capture the registered host API while mounting; the shared cleanup restores registration.
@@ -678,13 +680,6 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
   })
   flushSync(() => first.clear())
   expect(state.volumetric_data).toHaveLength(2)
-  const click_button = (name: string) => {
-    const button = [...document.querySelectorAll(`button`)].find(
-      (candidate) => candidate.textContent === name,
-    )
-    if (!button) throw new Error(`Missing button: ${name}`)
-    flushSync(() => button.click())
-  }
   click_button(`Reset prediction surfaces`)
   expect(state.isosurface_settings?.layers).toEqual(
     reordered.map((volume) => auto_volume_layer(volume)),
@@ -700,12 +695,9 @@ test.each([`Original`, `Prediction`])(
   async (removed_label) => {
     const base_volume = { ...volumetric_data[0], id: `original`, label: `Original` }
     const prediction_volume = { ...volumetric_data[0], label: `Prediction` }
-    const state = $state<{
-      volumetric_data: VolumetricData[]
-      isosurface_settings: IsosurfaceSettings
-    }>({
+    const state = $state({
       volumetric_data: [base_volume],
-      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] as IsosurfaceLayer[] },
     })
     const tool_props = await mount_host_structure(bind_props({ structure }, state))
     const overlay = { volumes: [prediction_volume] }
@@ -801,13 +793,6 @@ test.each([false, true])(
 test.each([false, true])(
   `host density respects each field's coordinate frame with finite volume removed=%s`,
   async (remove_finite) => {
-    const click_recovery = (label: string) => {
-      const button = [...document.querySelectorAll(`button`)].find(
-        (candidate) => candidate.textContent === label,
-      )
-      if (!button) throw new Error(`Missing recovery action: ${label}`)
-      flushSync(() => button.click())
-    }
     await init_moyo_for_tests()
     const crystal = make_crystal(fcc_primitive_matrix(3.61), [
       { element: `Cu`, abc: [0.13, 0.27, 0.41] },
@@ -841,7 +826,7 @@ test.each([false, true])(
       state.display_mode = `slice`
     })
     expect(document.body.textContent).toContain(`No volumetric data available`)
-    click_recovery(`Use original cell`)
+    click_button(`Use original cell`)
     flushSync(() => {
       state.display_mode = `structure`
     })
@@ -859,7 +844,7 @@ test.each([false, true])(
       state.cell_type = `conventional`
     })
     expect(document.body.textContent).toContain(`Reset supercell to 1×1×1`)
-    click_recovery(`Use original cell`)
+    click_button(`Use original cell`)
     expect(state.supercell_scaling).toBe(`2x1x1`)
     expect(document.body.textContent).toContain(
       `partially periodic prediction density is shown only in the input cell`,
@@ -898,7 +883,7 @@ test.each([false, true])(
       document.querySelector(`input[aria-label="Slice position on canvas"]`),
     ).not.toBeNull()
     if (!remove_finite) {
-      click_recovery(`Reset supercell to 1×1×1`)
+      click_button(`Reset supercell to 1×1×1`)
       expect(state.supercell_scaling).toBe(`1x1x1`)
       expect(document.body.textContent).not.toContain(
         `partially periodic prediction density is shown only`,
@@ -1882,11 +1867,7 @@ describe(`Structure empty states`, () => {
 })
 
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
-  vi.stubGlobal(`navigator`, {
-    gpu: {},
-    userAgent: navigator.userAgent,
-    platform: navigator.platform,
-  })
+  mock_gpu()
   const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
   mount_structure({
     structure,
@@ -2055,11 +2036,7 @@ describe(`Multi-side view`, () => {
   }
 
   test(`layout dropdown survives repeated grid toggles and resizing`, async () => {
-    vi.stubGlobal(`navigator`, {
-      gpu: {},
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-    })
+    mock_gpu()
     const props = $state<ComponentProps<typeof Structure>>({
       structure,
       show_controls: `always`,
@@ -2222,31 +2199,28 @@ describe(`source acquisition`, () => {
     )
   })
 
-  test(`keeps compressed source identity separate from the logical filename`, async () => {
-    mock_fetch_response(SAMPLE_POSCAR_CONTENT, { 'content-encoding': `gzip` })
-    let load_data: StructureHandlerData | undefined
-    mount_file_viewer({
-      source: `/test.poscar.gz`,
-      on_file_load: (data: StructureHandlerData) => (load_data = data),
-    })
-
-    await vi.waitFor(() => expect(load_data).toBeDefined())
-    expect(load_data?.filename).toBe(`test.poscar`)
-    expect(load_data?.source_filename).toBe(`test.poscar.gz`)
-    expect(load_data?.source_url).toBe(`/test.poscar.gz`)
-  })
-
-  test(`keeps compressed volumetric source identity separate from its dedupe key`, async () => {
-    mock_fetch_response(SAMPLE_CHGCAR_CONTENT, { 'content-encoding': `gzip` })
-    const state = { volumetric_data: undefined as VolumetricData[] | undefined }
-    mount_file_viewer(bind_props({ source: `/density.CHGCAR.gz` }, state))
-
-    await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
-    expect(state.volumetric_data?.[0]).toMatchObject({
-      source: `density.CHGCAR`,
-      source_filename: `density.CHGCAR.gz`,
-    })
-  })
+  test.each([
+    [`test.poscar`, SAMPLE_POSCAR_CONTENT],
+    [`density.CHGCAR`, SAMPLE_CHGCAR_CONTENT],
+  ])(
+    `keeps compressed %s identity separate from filename and volume dedupe key`,
+    async (filename, content) => {
+      mock_fetch_response(content, { 'content-encoding': `gzip` })
+      const on_file_load = vi.fn()
+      const state = { volumetric_data: undefined as VolumetricData[] | undefined }
+      mount_file_viewer(bind_props({ source: `/${filename}.gz`, on_file_load }, state))
+      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+      expect(on_file_load.mock.calls[0][0]).toMatchObject({
+        filename,
+        source_filename: `${filename}.gz`,
+        source_url: `/${filename}.gz`,
+      })
+      if (filename.endsWith(`CHGCAR`))
+        expect(state.volumetric_data).toEqual([
+          expect.objectContaining({ source: filename, source_filename: `${filename}.gz` }),
+        ])
+    },
+  )
 
   // A host that passes isosurface_settings alongside source (pymatviz) wants its layers on
   // the loaded volume, not the automatic 20 %-of-|max| layer
@@ -2379,34 +2353,28 @@ test.each([`replace`, `mutate`, `restart`] as const)(
       }
     const input = make_crystal(1, [{ element: `Cu`, abc: [0.1, 0.2, 0.3] }])
     const saved_volume = { ...make_volume(make_grid(2, 2, 2, () => 1)), id: `density` }
-    const state = $state({
-      structure: undefined as AnyStructure | undefined,
-      volumetric_data: [] as VolumetricData[],
-      cell_type: `primitive` as const,
+    const state = $state<ComponentProps<typeof Structure>>({
+      structure: undefined,
+      volumetric_data: [],
+      cell_type: `primitive`,
       supercell_scaling: `2x2x2`,
-    })
-    mount_structure(
-      bind_props(
-        {
-          show_host_tool: action === `restart`,
-          show_controls: `always` as const,
-          prediction: {
-            input,
-            run_id: 7,
-            provenance: {
-              model: `saved model`,
-              version: `1`,
-              units: { charge: `e` },
-              settings: {},
-            },
-            site_properties: [{ charge: 1 }],
-            color_property: `charge`,
-            volumes: [saved_volume],
-          },
+      show_host_tool: action === `restart`,
+      show_controls: `always`,
+      prediction: {
+        input,
+        run_id: 7,
+        provenance: {
+          model: `saved model`,
+          version: `1`,
+          units: { charge: `e` },
+          settings: {},
         },
-        state,
-      ),
-    )
+        site_properties: [{ charge: 1 }],
+        color_property: `charge`,
+        volumes: [saved_volume],
+      },
+    })
+    mount_structure(state)
     await tick()
     expect(state.structure).toEqual(input)
     expect(state.structure).not.toBe(input)
@@ -2488,11 +2456,7 @@ test(`pure Structure exposes live read-only analysis without loading files`, asy
 test.each([`quality`, `speed`] as const)(
   `%s detail uses the expanded supercell size`,
   async (performance_mode) => {
-    vi.stubGlobal(`navigator`, {
-      gpu: {},
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-    })
+    mock_gpu()
     mount_structure({
       structure: make_crystal(3, [{ element: `Cu`, xyz: [0, 0, 0] }]),
       supercell_scaling: `6x6x6`,

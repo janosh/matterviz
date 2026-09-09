@@ -89,8 +89,8 @@
   strip_html_suffix
   aria_label="Search the MatterViz site"
   placeholder="Search pages and commands..."
-  noMatchingOptionsMsg="No matches"
-  maxOptions={12}
+  no_matching_options_msg="No matches"
+  max_options={12}
   dialog_props={{
     class: `site-search-dialog`,
     style: `left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog); --sms-width: min(42em, 90vw); --sms-options-li-padding: 2pt 1ex`,

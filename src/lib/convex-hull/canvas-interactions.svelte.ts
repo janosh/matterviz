@@ -337,7 +337,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       // gets the tooltip. Under a mouse the next mousemove would restore it anyway.
       selection.set_hover({ entry, position: { x: event.clientX, y: event.clientY } })
       selection.select_entry(entry)
-    } else if (selection.modal_open) selection.close_structure_popup()
+    } else selection.close_structure_popup()
   }
 
   const handle_double_click = (event: MouseEvent) => {

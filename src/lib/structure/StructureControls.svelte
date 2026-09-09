@@ -978,13 +978,13 @@
           <span>Color scheme</span>
           <Select
             options={Object.keys(ELEMENT_COLOR_SCHEMES)}
-            maxSelect={1}
-            minSelect={1}
+            max_select={1}
+            min_select={1}
             bind:value={color_scheme}
-            liOptionStyle="padding: 3pt 6pt;"
-            liSelectedStyle="background-color: transparent;"
-            ulSelectedStyle="display: contents;"
-            inputStyle="flex: none; min-width: 0; width: 0; opacity: 0;"
+            li_option_style="padding: 3pt 6pt;"
+            li_selected_style="background-color: transparent;"
+            ul_selected_style="display: contents;"
+            input_style="flex: none; min-width: 0; width: 0; opacity: 0;"
             style="min-width: 0; border: none"
             aria-label="Color scheme"
           >

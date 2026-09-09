@@ -2,7 +2,7 @@ import { ColorScaleSelect } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, fire } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
   test.each([
@@ -24,16 +24,30 @@ describe(`ColorScaleSelect`, () => {
 
   // Binding `selected` alongside `value` is optional, so mounting must not treat an unbound
   // `selected` as "nothing is selected" and write that emptiness back over the caller's value.
-  test(`keeps a bound value when only value is bound`, () => {
+  test(`keeps a scalar bound value on mount and selection, and reports additions`, async () => {
     const controls_state = { value: `interpolateViridis` as D3InterpolateName }
+    const on_add = vi.fn()
     mount(ColorScaleSelect, {
       target: document.body,
-      props: bind_props({}, controls_state),
+      props: bind_props(
+        {
+          options: [`interpolateViridis`, `interpolatePlasma`] satisfies D3InterpolateName[],
+          on_add,
+        },
+        controls_state,
+      ),
     })
     flushSync()
 
     expect(controls_state.value).toBe(`interpolateViridis`)
     expect(doc_query(`.selected`)?.textContent?.trim()).toBe(`Viridis`)
+    await fire(doc_query(`.multiselect`), new MouseEvent(`mouseup`, { bubbles: true }))
+    await fire(doc_query(`[role="option"]`))
+    expect(controls_state.value).toBe(`interpolatePlasma`)
+    expect(on_add).toHaveBeenCalledExactlyOnceWith({
+      option: `interpolatePlasma`,
+      selected: [`interpolatePlasma`],
+    })
   })
 
   // MultiSelect keeps its option list mounted while closed, so a gradient per scheme would

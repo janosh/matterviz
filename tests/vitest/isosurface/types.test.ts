@@ -269,14 +269,9 @@ describe(`merge_imported_volumes`, () => {
         color_volume_id: `esp`,
       }
       const retained = { ...auto_volume_layer(original[2]), color_volume_id: `spin` }
-      const incoming =
-        action === `remove`
-          ? [source_volume(`charge`, `CHGCAR`, 9)]
-          : [
-              source_volume(`spin`),
-              source_volume(`charge`, `CHGCAR`, 9),
-              ...(action === `append` ? [source_volume(`extra`)] : []),
-            ]
+      const incoming = [source_volume(`charge`, `CHGCAR`, 9)]
+      if (action !== `remove`) incoming.unshift(source_volume(`spin`))
+      if (action === `append`) incoming.push(source_volume(`extra`))
       const result = merge_imported_volumes(original.toReversed(), [tuned, retained], incoming)
       expect(result.volumes.find(({ id }) => id === `charge`)?.values[0]).toBe(9)
       expect(result.layers[0]).toBe(tuned)

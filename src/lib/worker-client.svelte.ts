@@ -128,7 +128,7 @@ export function create_worker_client<
   const canonical_key_of = (value: unknown): string => {
     const seen = new WeakMap<object, number>()
     let next_reference = 0
-    const encode = (item: unknown): unknown => {
+    const encode = (item: unknown): unknown[] => {
       if (item === null || item === undefined) return [String(item)]
       if (typeof item === `number`) {
         return [`number`, Object.is(item, -0) ? `-0` : String(item)]
@@ -165,9 +165,7 @@ export function create_worker_client<
 
       return [`identity`, Object.prototype.toString.call(item), non_plain_token(item)]
     }
-    const key = JSON.stringify(encode(value))
-    if (key === undefined) throw new TypeError(`${label} worker could not key its request`)
-    return key
+    return JSON.stringify(encode(value))
   }
   const payload_key_of = (payload: unknown): string => {
     if (!Array.isArray(payload)) {
@@ -178,18 +176,6 @@ export function create_worker_client<
     )
     return JSON.stringify(item_keys.toSorted())
   }
-  const request_key_of = (
-    input: Input,
-    options: Options | undefined,
-    payload?: unknown,
-  ): string => {
-    const input_key = dedupe_by_payload
-      ? payload_key_of(payload)
-      : `input:${input_token(input)}`
-    const options_key = canonical_key_of(options)
-    return `${input_key.length}:${input_key}${options_key}`
-  }
-
   // Forget a request once it settles. .then(onOk, onErr) rather than .finally: the latter
   // forwards the rejection into a derived promise nobody awaits, which surfaces as an
   // unhandled rejection
@@ -224,10 +210,7 @@ export function create_worker_client<
   const drop = (request: Request, error: Error): void => {
     forget(request)
     request.reject(error)
-    // Another request is still in flight on this worker; terminating it would lose that
-    // result, so the abandoned compute is left to finish on its own
-    if (pending.size > 0) return
-    terminate_worker()
+    release()
   }
 
   // Hand one caller a view of a (possibly shared) request that honours its own signal and
@@ -311,7 +294,10 @@ export function create_worker_client<
     // Content-keyed clients build once before the lookup and reuse that same snapshot for
     // postMessage. Identity-keyed clients defer payload construction until a cache miss.
     const keyed_payload = dedupe_by_payload ? build_payload(input) : undefined
-    const request_key = request_key_of(input, options, keyed_payload)
+    const input_key = dedupe_by_payload
+      ? payload_key_of(keyed_payload)
+      : `input:${input_token(input)}`
+    const request_key = `${input_key.length}:${input_key}${canonical_key_of(options)}`
     const existing = pending_by_key.get(request_key)
     if (existing) return join(existing, request_options)
 

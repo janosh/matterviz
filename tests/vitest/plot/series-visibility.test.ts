@@ -132,43 +132,23 @@ describe(`legend toggles`, () => {
 
 describe(`legend group toggles`, () => {
   test.each([
-    {
-      desc: `hides all when all visible`,
-      visibilities: [true, true, true],
-      indices: [0, 1],
-      expected: [false, false, true],
-    },
-    {
-      desc: `shows all when some hidden`,
-      visibilities: [false, true, true],
-      indices: [0, 1],
-      expected: [true, true, true],
-    },
-    {
-      desc: `shows all when all in group hidden`,
-      visibilities: [false, false, true],
-      indices: [0, 1],
-      expected: [true, true, true],
-    },
-    {
-      desc: `handles single index`,
-      visibilities: [true, true],
-      indices: [0],
-      expected: [false, true],
-    },
-    {
-      desc: `handles non-contiguous indices`,
-      visibilities: [true, true, true, true],
-      indices: [0, 2],
-      expected: [false, true, false, true],
-    },
-    {
-      desc: `handles undefined visibility (defaults to true)`,
-      visibilities: [undefined, undefined, undefined],
-      indices: [0, 1],
-      expected: [false, false, true],
-    },
-  ])(`$desc`, ({ visibilities, indices, expected }) => {
+    [`hides all when all visible`, [true, true, true], [0, 1], [false, false, true]],
+    [`shows all when some hidden`, [false, true, true], [0, 1], [true, true, true]],
+    [`shows all when all in group hidden`, [false, false, true], [0, 1], [true, true, true]],
+    [`handles single index`, [true, true], [0], [false, true]],
+    [
+      `handles non-contiguous indices`,
+      [true, true, true, true],
+      [0, 2],
+      [false, true, false, true],
+    ],
+    [
+      `defaults undefined visibility to true`,
+      [undefined, undefined, undefined],
+      [0, 1],
+      [false, false, true],
+    ],
+  ] as const)(`%s`, (_desc, visibilities, indices, expected) => {
     const series: DataSeries[] = visibilities.map((vis, idx) => ({
       x: [idx],
       y: [idx],
@@ -176,7 +156,7 @@ describe(`legend group toggles`, () => {
     }))
     series.forEach(Object.freeze)
     const { vis, visible, store } = make_store(series)
-    vis.on_group_toggle(`Group`, indices)
+    vis.on_group_toggle(`Group`, [...indices])
     expect(visible()).toEqual(expected)
     expect(store.raw).toBe(series)
   })

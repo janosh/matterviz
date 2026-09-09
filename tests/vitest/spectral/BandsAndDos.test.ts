@@ -24,6 +24,16 @@ const band_structs: BaseBandStructure = {
   ],
 }
 
+const phonon_dos: PhononDos = {
+  type: `phonon`,
+  frequencies: [0, 1, 2, 3, 4],
+  densities: [0, 1, 2, 1, 0],
+}
+const pair_props = {
+  structure: make_crystal(3, []),
+  band_structs: { '': band_structs },
+  doses: { '': phonon_dos },
+}
 const wrappers = [
   [`.bands-and-dos`, 1200, BandsAndDos],
   [`.bands-and-dos`, 400, BandsAndDos],
@@ -46,7 +56,7 @@ describe(`bands/DOS wrappers`, () => {
       const root = await mount_sized(
         Component,
         {
-          structure: make_crystal(3, []),
+          ...pair_props,
           band_structs: { '': bands },
           doses: { '': dos },
           get fermi_level() {
@@ -83,8 +93,7 @@ describe(`bands/DOS wrappers`, () => {
       const dos: PhononDos = { type: `phonon`, frequencies: [0, 4], densities: [0, 1] }
       // Runtime callers can supply extra keys; the parent's data must still win.
       const props = {
-        structure: make_crystal(3, []),
-        band_structs: { '': band_structs },
+        ...pair_props,
         doses: { '': dos },
         units: `meV` as const,
         bands_props: {
@@ -135,8 +144,7 @@ describe(`bands/DOS wrappers`, () => {
     const root = await mount_sized(
       BrillouinBandsDos,
       {
-        structure: make_crystal(3, []),
-        band_structs: { '': band_structs },
+        ...pair_props,
         doses: { '': { type: `phonon`, frequencies: [0, 4], densities: [0, 1] } },
       },
       { selector: `.bands-dos-brillouin`, width: 1200, height: 400 },
@@ -158,38 +166,31 @@ describe(`bands/DOS wrappers`, () => {
     [`DOS inside the bands range`, 4],
     [`DOS ending within tolerance of the bands range`, 4.0001],
   ])(`renders both panels without an effect loop (%s)`, async (_label, dos_max) => {
-    const doses: PhononDos = {
-      type: `phonon`,
-      frequencies: [0, 1, 2, 3, dos_max],
-      densities: [0, 1, 2, 1, 0],
-    }
     const root = await mount_sized(
       BandsAndDos,
-      { band_structs: { '': band_structs }, doses: { '': doses } },
+      {
+        ...pair_props,
+        doses: { '': { ...phonon_dos, frequencies: [0, 1, 2, 3, dos_max] } },
+      },
       { selector: `.bands-and-dos`, width: 800, height: 400 },
     )
     expect(() => flushSync()).not.toThrow()
-    const y_ticks = (plot: Element) =>
+    const tick_text = (plot: Element) =>
       [...plot.querySelectorAll(`.y-axis .tick text`)].map((el) => el.textContent)
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
-    expect(y_ticks(bands_plot)).toEqual(y_ticks(dos_plot))
-    expect(y_ticks(bands_plot).length).toBeGreaterThan(2)
+    expect(tick_text(bands_plot)).toEqual(tick_text(dos_plot))
+    expect(tick_text(bands_plot).length).toBeGreaterThan(2)
   })
 
   // The panels link their live y views: a rect zoom in the bands panel shows the same y range
   // in the DOS panel, and a reset in either panel returns both to the shared range without
   // either panel's axis pin having been touched
   it(`links a zoom in one panel to the other and resets both`, async () => {
-    const doses: PhononDos = {
-      type: `phonon`,
-      frequencies: [0, 1, 2, 3, 4],
-      densities: [0, 1, 2, 1, 0],
-    }
-    const root = await mount_sized(
-      BandsAndDos,
-      { band_structs: { '': band_structs }, doses: { '': doses } },
-      { selector: `.bands-and-dos`, width: 800, height: 400 },
-    )
+    const root = await mount_sized(BandsAndDos, pair_props, {
+      selector: `.bands-and-dos`,
+      width: 800,
+      height: 400,
+    })
     const y_ticks = (plot: Element) =>
       [...plot.querySelectorAll(`.y-axis .tick text`)].map((el) => Number(el.textContent))
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]

@@ -528,29 +528,25 @@ describe(`search and filters`, () => {
 
   it(`picks the filter panel kind from config, then the data, capping auto-detected checklists`, () => {
     const tags = Array.from({ length: CATEGORY_LIMIT + 1 }, (_, idx) => ({ Tag: `t${idx}` }))
+    const column: Column = { id: `Tag`, label: `Tag` }
     const few = [{ Tag: `b` }, { Tag: `<i>a</i>` }, { Tag: null }, { Tag: `b` }]
-    expect(column_filter_panel({ id: `Tag`, label: `Tag` }, few, `Tag`, false)).toEqual({
+    expect(column_filter_panel(column, few, `Tag`, false)).toEqual({
       kind: `category`,
       options: [`a`, `b`], // distinct, markup-stripped, sorted; invalid cells skipped
     })
-    expect(column_filter_panel({ id: `Tag`, label: `Tag` }, tags, `Tag`, false)).toEqual({
+    expect(column_filter_panel(column, tags, `Tag`, false)).toEqual({
       kind: `text`,
       options: [],
     })
     // an explicit category column lists every value however many there are
     expect(
-      column_filter_panel({ id: `Tag`, label: `Tag`, filter: `category` }, tags, `Tag`, false)
-        .options,
+      column_filter_panel({ ...column, filter: `category` }, tags, `Tag`, false).options,
     ).toHaveLength(CATEGORY_LIMIT + 1)
-    expect(column_filter_panel({ id: `Tag`, label: `Tag` }, few, `Tag`, true).kind).toBe(
-      `numeric`,
-    )
-    expect(
-      column_filter_panel({ id: `Tag`, label: `Tag`, filter: `text` }, few, `Tag`, true).kind,
-    ).toBe(`text`)
-    expect(column_filter_panel({ id: `Tag`, label: `Tag` }, [], `Tag`, false).kind).toBe(
+    expect(column_filter_panel(column, few, `Tag`, true).kind).toBe(`numeric`)
+    expect(column_filter_panel({ ...column, filter: `text` }, few, `Tag`, true).kind).toBe(
       `text`,
     )
+    expect(column_filter_panel(column, [], `Tag`, false).kind).toBe(`text`)
   })
 
   it(`collapses no-op filters to undefined when editing bounds and checklists`, () => {

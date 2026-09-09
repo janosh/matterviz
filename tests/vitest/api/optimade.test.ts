@@ -6,7 +6,7 @@ import {
   fetch_optimade_structure,
   fetch_suggested_structures,
 } from '$lib/api/optimade'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mount, tick, unmount } from 'svelte'
 import { MOCK_PROVIDERS, MOCK_STRUCTURES } from '../../fixtures/optimade-mocks'
 
@@ -101,14 +101,20 @@ test.each([true, false])(
 )
 
 describe(`OPTIMADE requests`, () => {
+  const mock_fetch = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>()
+  const provider_at = (base_url: string) => [
+    { ...MOCK_PROVIDERS[0], attributes: { name: `Test`, base_url } },
+  ]
+  beforeEach(() => {
+    mock_fetch.mockReset().mockImplementation(async () => Response.json({ data: [] }))
+    vi.stubGlobal(`fetch`, mock_fetch)
+  })
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
   test(`unknown provider rejects suggested structures without fetching`, async () => {
-    const mock_fetch = vi.fn()
-    vi.stubGlobal(`fetch`, mock_fetch)
     await expect(fetch_suggested_structures(`unknown`, MOCK_PROVIDERS)).rejects.toThrow(
       `Unknown provider: unknown`,
     )
@@ -118,10 +124,7 @@ describe(`OPTIMADE requests`, () => {
   test(`HTTP error status from direct fetch surfaces instead of hammering proxies`, async () => {
     // A 404 is a definitive server answer — surface the real status, not an opaque
     // JSON.parse failure from a caller and not masked by 5 proxy attempts
-    const mock_fetch = vi
-      .fn()
-      .mockResolvedValue({ ok: false, status: 404, statusText: `Not Found` })
-    vi.stubGlobal(`fetch`, mock_fetch)
+    mock_fetch.mockResolvedValue(new Response(null, { status: 404, statusText: `Not Found` }))
     await expect(fetch_optimade_providers()).rejects.toThrow(`404`)
     expect(mock_fetch).toHaveBeenCalledTimes(1) // no proxy fallback
   })
@@ -136,11 +139,9 @@ describe(`OPTIMADE requests`, () => {
   ])(
     `reports a missing structure when the provider answers with %s`,
     async (_case, payload) => {
-      const mock_fetch = vi.fn().mockImplementation(async (url: string) => ({
-        ok: true,
-        json: async () => ({ data: url.endsWith(`/links`) ? [] : payload }),
-      }))
-      vi.stubGlobal(`fetch`, mock_fetch)
+      mock_fetch.mockImplementation(async (url) =>
+        Response.json({ data: url.endsWith(`/links`) ? [] : payload }),
+      )
       await expect(fetch_optimade_structure(`mp-0`, `mp`, MOCK_PROVIDERS)).rejects.toThrow(
         `Structure mp-0 not found`,
       )
@@ -149,15 +150,15 @@ describe(`OPTIMADE requests`, () => {
 
   test(`network failures surface without contacting third-party proxies`, async () => {
     const error = new TypeError(`Failed to fetch`)
-    const mock_fetch = vi.fn().mockRejectedValue(error)
-    vi.stubGlobal(`fetch`, mock_fetch)
+    mock_fetch.mockRejectedValue(error)
     await expect(fetch_optimade_providers()).rejects.toBe(error)
-    const calls = mock_fetch.mock.calls as [string, RequestInit][]
-    const target = `https://providers.optimade.org/v1/links`
-    expect(calls).toHaveLength(1)
-    expect(calls[0][0]).toBe(target)
-    expect(calls[0][1].signal).toBeInstanceOf(AbortSignal)
-    expect(calls[0][1].headers).toEqual({ Accept: `application/vnd.api+json` })
+    expect(mock_fetch).toHaveBeenCalledExactlyOnceWith(
+      `https://providers.optimade.org/v1/links`,
+      {
+        signal: expect.any(AbortSignal),
+        headers: { Accept: `application/vnd.api+json` },
+      },
+    )
   })
 
   test.each([``, `/`, `/v1`, `/v1/`, `/v1.2`, `/v1.2.0/`])(
@@ -166,13 +167,7 @@ describe(`OPTIMADE requests`, () => {
       const base = `https://example.org/${encodeURIComponent(suffix) || `bare`}`
       const version = suffix.includes(`v1`) ? suffix.replace(/\/$/, ``) : `/v1`
       const api_base = `${base}${version}`
-      const providers = [
-        { ...MOCK_PROVIDERS[0], attributes: { name: `Test`, base_url: `${base}${suffix}` } },
-      ]
-      const mock_fetch = vi
-        .fn()
-        .mockResolvedValue({ ok: true, json: async () => ({ data: [] }) })
-      vi.stubGlobal(`fetch`, mock_fetch)
+      const providers = provider_at(`${base}${suffix}`)
       await expect(fetch_suggested_structures(`mp`, providers)).resolves.toEqual([])
       await expect(fetch_suggested_structures(`mp`, providers)).resolves.toEqual([])
       expect(mock_fetch.mock.calls.map(([url]) => url)).toEqual([
@@ -184,28 +179,17 @@ describe(`OPTIMADE requests`, () => {
   )
 
   test(`discovery failures reject and can be retried; child URLs retain their version`, async () => {
-    const providers = [
-      {
-        ...MOCK_PROVIDERS[0],
-        attributes: { name: `Index`, base_url: `https://index.example.org` },
-      },
-    ]
-    const mock_fetch = vi
-      .fn()
-      .mockRejectedValueOnce(new Error(`offline`))
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          data: [
-            {
-              type: `links`,
-              attributes: { link_type: `child`, base_url: `https://child.example.org/v1.2/` },
-            },
-          ],
-        }),
-      })
-      .mockResolvedValue({ ok: true, json: async () => ({ data: [] }) })
-    vi.stubGlobal(`fetch`, mock_fetch)
+    const providers = provider_at(`https://index.example.org`)
+    mock_fetch.mockRejectedValueOnce(new Error(`offline`)).mockResolvedValueOnce(
+      Response.json({
+        data: [
+          {
+            type: `links`,
+            attributes: { link_type: `child`, base_url: `https://child.example.org/v1.2/` },
+          },
+        ],
+      }),
+    )
     await expect(fetch_suggested_structures(`mp`, providers)).rejects.toThrow(`offline`)
     expect(mock_fetch).toHaveBeenCalledTimes(1)
     await expect(fetch_suggested_structures(`mp`, providers)).resolves.toEqual([])
@@ -225,12 +209,9 @@ describe(`OPTIMADE requests`, () => {
       let now = 0
       vi.spyOn(Date, `now`).mockImplementation(() => now)
       const pending = Promise.withResolvers<Response>()
-      const mock_fetch = vi
-        .fn()
+      mock_fetch
         .mockRejectedValueOnce(new Error(`offline`))
         .mockReturnValueOnce(pending.promise)
-        .mockResolvedValue({ ok: true, json: async () => ({ data: [] }) })
-      vi.stubGlobal(`fetch`, mock_fetch)
       const request =
         kind === `providers`
           ? () => api.fetch_optimade_providers()
@@ -242,10 +223,10 @@ describe(`OPTIMADE requests`, () => {
       now = 6 * 60 * 1000 // A pending request does not expire while waiting for its response.
       const second = request()
       expect(mock_fetch).toHaveBeenCalledTimes(2)
-      pending.resolve(new Response(JSON.stringify({ data: [] })))
+      pending.resolve(Response.json({ data: [] }))
       await Promise.all([first, second])
       const links_count = () =>
-        mock_fetch.mock.calls.filter(([url]) => String(url).endsWith(`/links`)).length
+        mock_fetch.mock.calls.filter(([url]) => url.endsWith(`/links`)).length
       expect(links_count()).toBe(2)
       now += 4 * 60 * 1000
       await request()
@@ -260,12 +241,8 @@ describe(`OPTIMADE requests`, () => {
     `rejects malformed links data %j without caching it`,
     async (data) => {
       const base_url = `https://invalid-${typeof data}-${data === null}.example.org`
-      const providers = [{ ...MOCK_PROVIDERS[0], attributes: { name: `Test`, base_url } }]
-      const mock_fetch = vi
-        .fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ data }) })
-        .mockResolvedValue({ ok: true, json: async () => ({ data: [] }) })
-      vi.stubGlobal(`fetch`, mock_fetch)
+      const providers = provider_at(base_url)
+      mock_fetch.mockResolvedValueOnce(Response.json({ data }))
       await expect(fetch_suggested_structures(`mp`, providers)).rejects.toThrow(
         `Invalid links response from ${base_url}/v1/links`,
       )

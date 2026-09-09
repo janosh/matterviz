@@ -1,6 +1,5 @@
 import type { Matrix3x3, Vec2 } from '$lib/math'
 import Bands from '$lib/spectral/Bands.svelte'
-import { normalize_band_structure } from '$lib/spectral/helpers'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
@@ -8,6 +7,7 @@ import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
 import {
   bind_props,
+  fire,
   clip_rect,
   doc_query,
   expect_plot_controls,
@@ -289,19 +289,6 @@ describe(`Bands component`, () => {
     expect(line_count()).toBe(0)
   })
 
-  it(`rejects pymatgen bands missing their reciprocal lattice at the adapter boundary`, () => {
-    expect(() =>
-      normalize_band_structure({
-        '@class': `PhononBandStructureSymmLine`,
-        qpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-        ],
-        bands: [[0, 1]],
-      }),
-    ).toThrow(`pymatgen band structure needs a finite 3x3 reciprocal lattice`)
-  })
-
   // Mismatched paths: union appends the second structure's segment after the canonical path,
   // intersection has nothing in common and falls through to the EmptyState
   it.each([
@@ -369,8 +356,7 @@ describe(`Bands component`, () => {
       // picking an option writes the canonical unit back to `units` (the handler is delegated, so
       // the synthetic change event must bubble like a real one)
       select.value = `meV`
-      select.dispatchEvent(new Event(`change`, { bubbles: true }))
-      await tick()
+      await fire(select, new Event(`change`, { bubbles: true }))
       expect(document.body.textContent).toContain(`Frequency (meV)`)
     },
   )
@@ -387,8 +373,7 @@ describe(`Bands component`, () => {
     expect(Math.max(...y_ticks())).toBeLessThan(5)
     const select = doc_query<HTMLSelectElement>(`#bands-units`)
     select.value = `meV`
-    select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await tick()
+    await fire(select, new Event(`change`, { bubbles: true }))
     // 0..16 meV: the default range must follow the data instead of the THz copy the zoom
     // sync mirrored into the y_axis prop
     expect(Math.max(...y_ticks())).toBeGreaterThan(10)
@@ -497,8 +482,7 @@ describe(`Bands component`, () => {
 
     // the reset must restore the k-path range Bands pinned via x_axis.range; clearing it would
     // drop the plot to a nice-rounded auto range with the k-path ending short of the frame
-    svg.dispatchEvent(mouse(`dblclick`))
-    await tick()
+    await fire(svg, mouse(`dblclick`))
     expect(last_tick_x()).toBeCloseTo(before, 6)
     expect(fermi_x_end()).toBeCloseTo(before, 6)
     expect(y_ticks()).toEqual(y_before)
@@ -550,8 +534,7 @@ describe(`Bands component`, () => {
     expect(labels.every((label) => label.getAttribute(`role`) === `button`)).toBe(true)
     expect(document.querySelector(`.bz-popup`)).toBeNull()
 
-    labels[1].dispatchEvent(mouse(`click`))
-    await tick()
+    await fire(labels[1], mouse(`click`))
     const popup = document.querySelector(`.bz-popup`)
     expect(popup).not.toBeNull()
     expect(popup?.classList.contains(`manual`)).toBe(true)
@@ -587,8 +570,7 @@ describe(`Bands component`, () => {
     expect(labels[0].getAttribute(`aria-pressed`)).toBe(`false`)
 
     // clicking another symmetry point re-targets the same popup
-    labels[0].dispatchEvent(mouse(`click`))
-    await tick()
+    await fire(labels[0], mouse(`click`))
     expect(document.querySelectorAll(`.bz-popup`)).toHaveLength(1)
     expect(document.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
     expect(labels[0].classList.contains(`active`)).toBe(true)
@@ -607,8 +589,7 @@ describe(`Bands component`, () => {
         new MouseEvent(`mousemove`, { buttons: 1, clientX: to_x, clientY: y }),
       )
       await tick()
-      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: to_x, clientY: y }))
-      await tick()
+      await fire(window, new MouseEvent(`mouseup`, { clientX: to_x, clientY: y }))
     }
     const mid = clip_x + clip_width / 2
     await pan(mid, mid - clip_width / 2)
@@ -616,8 +597,7 @@ describe(`Bands component`, () => {
     await pan(mid, mid + clip_width / 2)
     expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`160px`)
 
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-    await tick()
+    await fire(globalThis, new KeyboardEvent(`keydown`, { key: `Escape` }))
     expect(document.querySelector(`.bz-popup`)).toBeNull()
     expect(document.querySelector(`text.active`)).toBeNull()
   })
@@ -633,8 +613,7 @@ describe(`Bands component`, () => {
       },
       { selector: `.scatter` },
     )
-    tick_labels()[0].dispatchEvent(keydown(`Enter`))
-    await tick()
+    await fire(tick_labels()[0], keydown(`Enter`))
     const popup = document.querySelector<HTMLElement>(`.bz-popup`)
     expect(popup?.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
     // Γ sits at the plot's left padding, so the caller's width sets the clamp; the caller's
@@ -659,8 +638,7 @@ describe(`Bands component`, () => {
       { band_structs: { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } } },
       { selector: `.scatter`, width: 240 },
     )
-    tick_labels()[1].dispatchEvent(mouse(`click`))
-    await tick()
+    await fire(tick_labels()[1], mouse(`click`))
     expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`120px`)
   })
 })

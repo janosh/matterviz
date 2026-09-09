@@ -381,29 +381,19 @@ describe(`NebViewer`, () => {
     expect(rejected_state.fullscreen).toBe(false)
     expect(rejected_callback).not.toHaveBeenCalled()
 
-    let fullscreen_element: Element | null = null
-    Object.defineProperty(document, `fullscreenElement`, {
-      configurable: true,
-      get: () => fullscreen_element,
-    })
     const state = $state({ fullscreen: false, show_controls: true })
     const on_fullscreen_change = vi.fn()
     const viewer = await mount_viewer(
       bind_props({ paths: direct_path, on_fullscreen_change }, state),
     )
     const button = query<HTMLButtonElement>(viewer, `.fullscreen-button`)
-    viewer.requestFullscreen = vi.fn(async () => {
-      fullscreen_element = viewer
-      document.dispatchEvent(new Event(`fullscreenchange`))
-    })
     button.click()
     await vi.waitFor(() => expect(state.fullscreen).toBe(true))
     expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)
     state.show_controls = false
     await tick()
     expect(button.style.display).toBe(`none`)
-    fullscreen_element = null
-    document.dispatchEvent(new Event(`fullscreenchange`))
+    await document.exitFullscreen()
     await tick()
     expect(state.fullscreen).toBe(false)
     expect(viewer.querySelector(`.sequence-control-bar`)).toBeNull()

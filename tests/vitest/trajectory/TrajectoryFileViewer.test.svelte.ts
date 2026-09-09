@@ -107,7 +107,7 @@ describe(`src`, () => {
     })
     input.dispatchEvent(new Event(`change`, { bubbles: true }))
     await vi.waitFor(() => expect(pending).toHaveLength(1))
-    target.querySelector<HTMLButtonElement>(`.task-status button`)?.click()
+    query<HTMLButtonElement>(target, `.task-status button`).click()
     await vi.waitFor(() => expect(pending[0].signal?.aborted).toBe(true))
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
     const late = make_run(`picked.xyz`)

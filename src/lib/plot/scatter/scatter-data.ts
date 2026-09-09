@@ -202,24 +202,19 @@ export const scatter_legend_rows = <Metadata>(
   legend_group: string | undefined
   legend_key?: string
 }[] =>
-  series.flatMap((data_series, series_idx) =>
-    data_series
-      ? [
-          {
-            series_idx,
-            ...((data_series.legend_id ?? data_series.id) != null && {
-              legend_key: JSON.stringify([
-                data_series.legend_id != null ? `legend` : `id`,
-                typeof (data_series.legend_id ?? data_series.id),
-                data_series.legend_id ?? data_series.id,
-              ]),
-            }),
-            label: scatter_series_label(data_series) ?? `Series ${series_idx + 1}`,
-            legend_group: data_series.legend_group,
-          },
-        ]
-      : [],
-  )
+  series.flatMap((data_series, series_idx) => {
+    if (!data_series) return []
+    const { legend_id, id, legend_group } = data_series
+    const key = legend_id ?? id
+    return {
+      series_idx,
+      ...(key != null && {
+        legend_key: JSON.stringify([legend_id != null ? `legend` : `id`, typeof key, key]),
+      }),
+      label: scatter_series_label(data_series) ?? `Series ${series_idx + 1}`,
+      legend_group,
+    }
+  })
 
 // Shared legend IDs combine drawings; explicit series IDs otherwise stay separate.
 export const legend_row_dedupe = () => {

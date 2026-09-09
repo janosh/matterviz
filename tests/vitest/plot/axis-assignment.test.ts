@@ -349,58 +349,39 @@ describe(`axis_scale_types`, () => {
     create_series(`Residual`, `eV`, { axis_group: `scf`, y, ...options })
 
   test.each([
-    {
-      name: `eligible positive series spanning three decades`,
-      series: [residual([1e-6, 1e-3])],
-      expected: { y: `log`, y2: `linear` },
-    },
-    {
-      name: `ineligible series`,
-      series: [create_series(`Energy`, `eV`, { y: [1e-6, 1] })],
-      expected: all_linear,
-    },
-    {
-      name: `zero or negative values`,
-      series: [residual([-1, 0, 1e-6, 1])],
-      expected: all_linear,
-    },
-    {
-      name: `narrow value span`,
-      series: [residual([1, 100])],
-      expected: all_linear,
-    },
-    {
-      name: `hidden ineligible series`,
-      series: [
+    [
+      `eligible positive series spanning three decades`,
+      [residual([1e-6, 1e-3])],
+      { y: `log`, y2: `linear` },
+    ],
+    [`ineligible series`, [create_series(`Energy`, `eV`, { y: [1e-6, 1] })], all_linear],
+    [`zero or negative values`, [residual([-1, 0, 1e-6, 1])], all_linear],
+    [`narrow value span`, [residual([1, 100])], all_linear],
+    [
+      `hidden ineligible series`,
+      [
         residual([1e-6, 1]),
         create_series(`Hidden energy`, `eV`, { visible: false, y: [-10, -9] }),
       ],
-      expected: { y: `log`, y2: `linear` },
-    },
-    {
-      name: `independent y axes`,
-      series: [
-        create_series(`Energy`, `eV`, { y: [-10, -9] }),
-        residual([1e-7, 1], { y_axis: `y2` }),
-      ],
-      expected: { y: `linear`, y2: `log` },
-    },
-    {
-      name: `non-finite values ignored`,
-      series: [residual([NaN, -Infinity, 1e-6, Infinity, 1])],
-      expected: { y: `log`, y2: `linear` },
-    },
-    {
-      name: `non-finite values cannot conceal a finite zero`,
-      series: [residual([NaN, 0, 1e-6, Infinity, 1])],
-      expected: all_linear,
-    },
-    {
-      name: `entirely non-finite data`,
-      series: [residual([NaN, -Infinity, Infinity])],
-      expected: all_linear,
-    },
-  ])(`selects scale types for $name`, ({ series, expected }) => {
+      { y: `log`, y2: `linear` },
+    ],
+    [
+      `independent y axes`,
+      [create_series(`Energy`, `eV`, { y: [-10, -9] }), residual([1e-7, 1], { y_axis: `y2` })],
+      { y: `linear`, y2: `log` },
+    ],
+    [
+      `non-finite values ignored`,
+      [residual([NaN, -Infinity, 1e-6, Infinity, 1])],
+      { y: `log`, y2: `linear` },
+    ],
+    [
+      `non-finite values cannot conceal a finite zero`,
+      [residual([NaN, 0, 1e-6, Infinity, 1])],
+      all_linear,
+    ],
+    [`entirely non-finite data`, [residual([NaN, -Infinity, Infinity])], all_linear],
+  ])(`selects scale types for %s`, (_name, series, expected) => {
     expect(axis_scale_types(series, log_options)).toEqual(expected)
   })
 

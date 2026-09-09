@@ -4,7 +4,6 @@
   // scalar colouring (color source, colormap, value range).
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
-  import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
@@ -355,8 +354,7 @@
               {...ISO_COLORMAP_SELECT_PROPS}
               value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
               selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
-              onadd={({ option }) =>
-                update_layer(layer_idx, { colormap: option as D3InterpolateName })}
+              on_add={({ option }) => update_layer(layer_idx, { colormap: option })}
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}
             />

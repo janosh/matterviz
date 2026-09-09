@@ -80,7 +80,7 @@ const slot_color = (slot_idx: number): number[] => {
   return color.toArray()
 }
 
-test(`re-colors reused instance slots when the composition changes mid-scrub`, () => {
+test(`uploads colors only when composition or ghost mode changes mid-scrub`, () => {
   const props = mount_atoms(ch4())
   const mesh = current_mesh()
   expect(slot_color(0)).toEqual([0, 0, 0])
@@ -92,27 +92,22 @@ test(`re-colors reused instance slots when the composition changes mid-scrub`, (
   expect(mesh.count).toBe(3)
   expect(slot_color(0)).toEqual([1, 0, 0])
 
+  const color_version = mesh.instanceColor?.version
+  props.atoms = h2o(0.5)
+  flushSync()
+  expect(mesh.instanceColor?.version).toBe(color_version)
+  expect(mesh.instanceMatrix.array[12]).toBe(0.5)
+  props.atoms[0].radius = 1
+  flushSync()
+  expect(mesh.instanceColor?.version).toBe(color_version)
+  expect(mesh.instanceMatrix.array[0]).toBe(1)
+
   // measure mode desaturates the same way mid-scrub
   props.ghost = true
   flushSync()
   const ghosted = new Color(1, 0, 0).lerp(new Color(0x999999), 0.4)
   // instanceColor is a f32 buffer, so the readback rounds the f64 expectation
   expect(slot_color(0)).toEqual(ghosted.toArray().map(Math.fround))
-})
-
-test(`skips the color upload while only positions move`, () => {
-  const props = mount_atoms(h2o())
-  const uploads = () => current_mesh().instanceColor?.version ?? 0
-  const before = uploads()
-
-  props.atoms = h2o(0.5)
-  flushSync()
-  expect(uploads()).toBe(before)
-  expect(current_mesh().instanceMatrix.array[12]).toBe(0.5)
-  props.atoms[0].radius = 1
-  flushSync()
-  expect(uploads()).toBe(before)
-  expect(current_mesh().instanceMatrix.array[0]).toBe(1)
 })
 
 test.each([

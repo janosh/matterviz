@@ -104,6 +104,9 @@ describe(`HeatmapTable`, () => {
     { id: `Value`, label: `Value`, better: `lower` },
   ]
 
+  const mount_sample = (props: Partial<TableProps> = {}) =>
+    mount_table(bind_props({ data: sample_data, columns: sample_columns }, props))
+
   const heatmap_col: Column = {
     id: `Value`,
     label: `Value`,
@@ -140,6 +143,7 @@ describe(`HeatmapTable`, () => {
     expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
     expect(document.querySelector(`.dropdown-wrapper`)).toBeNull()
     expect(document.querySelector(`.pane-toggle`)).toBeNull()
+    expect(document.querySelector(`.sort-hint`)).toBeNull()
   })
 
   it(`preserves both ends of long plain-text cells for middle ellipsis`, () => {
@@ -270,92 +274,85 @@ describe(`HeatmapTable`, () => {
       const created = new Date(2024, 0, 2, 3, 4)
       const now = new Date(2024, 0, 3, 5, 34).getTime()
       const date_now = vi.spyOn(Date, `now`).mockReturnValue(now)
-      try {
-        const data = [
-          {
-            Observed: `2024-01-02`,
-            'Start Time': created,
-            Created: created,
-            Ancient: new Date(2017, 6, 23, 9, 57),
-            Unix: new Date(2024, 0, 2, 12, 0).getTime(),
-          },
-        ]
-        const columns: Column[] = [
-          { id: `Observed`, label: `Observed` },
-          { id: `Start Time`, label: `Start Time`, datetime_format: `time` },
-          { id: `Created`, label: `Created`, datetime_format: `datetime` },
-          { id: `Ancient`, label: `Ancient`, datetime_format: `datetime` },
-          { id: `Unix`, label: `Unix`, datetime_format: `datetime` },
-        ]
+      onTestFinished(() => date_now.mockRestore())
+      const data = [
+        {
+          Observed: `2024-01-02`,
+          'Start Time': created,
+          Created: created,
+          Ancient: new Date(2017, 6, 23, 9, 57),
+          Unix: new Date(2024, 0, 2, 12, 0).getTime(),
+        },
+      ]
+      const columns: Column[] = [
+        { id: `Observed`, label: `Observed` },
+        { id: `Start Time`, label: `Start Time`, datetime_format: `time` },
+        { id: `Created`, label: `Created`, datetime_format: `datetime` },
+        { id: `Ancient`, label: `Ancient`, datetime_format: `datetime` },
+        { id: `Unix`, label: `Unix`, datetime_format: `datetime` },
+      ]
 
-        mount_table({ data, columns })
+      mount_table({ data, columns })
 
-        const cells = () =>
-          [...document.querySelectorAll(`tbody td`)].map((cell) => cell.textContent?.trim())
-        const triggers = document.querySelectorAll<HTMLButtonElement>(
-          `.datetime-format-trigger`,
-        )
-        const options = (select: HTMLSelectElement) =>
-          [...select.options].map((option) => option.value)
-        const open_select = async (idx: number): Promise<HTMLSelectElement> => {
-          if (triggers[idx].getAttribute(`aria-expanded`) !== `true`) {
-            triggers[idx].click()
-            await tick()
-          }
-          const select = document.querySelector<HTMLSelectElement>(`.datetime-format-select`)
-          expect(select).not.toBeNull()
-          return select as HTMLSelectElement
+      const cells = () =>
+        [...document.querySelectorAll(`tbody td`)].map((cell) => cell.textContent?.trim())
+      const triggers = document.querySelectorAll<HTMLButtonElement>(`.datetime-format-trigger`)
+      const options = (select: HTMLSelectElement) =>
+        [...select.options].map((option) => option.value)
+      const open_select = async (idx: number): Promise<HTMLSelectElement> => {
+        if (triggers[idx].getAttribute(`aria-expanded`) !== `true`) {
+          triggers[idx].click()
+          await tick()
         }
-        const select_mode = async (idx: number, value: string) => {
-          const select = await open_select(idx)
-          select.value = value
-          await fire(select, new Event(`input`, { bubbles: true }))
-        }
-
-        expect(cells()).toEqual([
-          `2024-01-02`,
-          `03:04`,
-          `2024-01-02 03:04`,
-          `2017-07-23 09:57`,
-          `2024-01-02 12:00`,
-        ])
-        expect(document.querySelector(`.datetime-format-select`)).toBeNull()
-        expect([...triggers].map((trigger) => trigger.dataset.mode)).toEqual([
-          `date`,
-          `time`,
-          `datetime`,
-          `datetime`,
-          `datetime`,
-        ])
-
-        expect(options(await open_select(0))).toEqual([`date`, `relative`])
-        expect(options(await open_select(1))).toEqual([`time`])
-        expect(options(await open_select(2))).toEqual([
-          `date`,
-          `time`,
-          `datetime`,
-          `iso`,
-          `relative`,
-        ])
-        const active_select = await open_select(2)
-        active_select.click()
-        await tick()
-        expect(document.querySelector(`.datetime-format-select`)).toBeNull()
-
-        await select_mode(2, `relative`)
-        expect(document.querySelector(`.datetime-format-select`)).toBeNull()
-        expect(triggers[2].dataset.mode).toBe(`relative`)
-        expect(cells()[2]).toBe(`1d 2h 30m ago`)
-
-        await select_mode(3, `relative`)
-        expect(cells()[3]).toBe(`6y 5mo 2w ago`)
-
-        await select_mode(2, `time`)
-        expect(cells()[2]).toBe(`03:04`)
-        expect(cells()[1]).toBe(`03:04`)
-      } finally {
-        date_now.mockRestore()
+        return doc_query<HTMLSelectElement>(`.datetime-format-select`)
       }
+      const select_mode = async (idx: number, value: string) => {
+        const select = await open_select(idx)
+        select.value = value
+        await fire(select, new Event(`input`, { bubbles: true }))
+      }
+
+      expect(cells()).toEqual([
+        `2024-01-02`,
+        `03:04`,
+        `2024-01-02 03:04`,
+        `2017-07-23 09:57`,
+        `2024-01-02 12:00`,
+      ])
+      expect(document.querySelector(`.datetime-format-select`)).toBeNull()
+      expect([...triggers].map((trigger) => trigger.dataset.mode)).toEqual([
+        `date`,
+        `time`,
+        `datetime`,
+        `datetime`,
+        `datetime`,
+      ])
+
+      expect(options(await open_select(0))).toEqual([`date`, `relative`])
+      expect(options(await open_select(1))).toEqual([`time`])
+      expect(options(await open_select(2))).toEqual([
+        `date`,
+        `time`,
+        `datetime`,
+        `iso`,
+        `relative`,
+      ])
+      const active_select = await open_select(2)
+      active_select.click()
+      await tick()
+      expect(document.querySelector(`.datetime-format-select`)).toBeNull()
+
+      await select_mode(2, `relative`)
+      expect(document.querySelector(`.datetime-format-select`)).toBeNull()
+      expect(triggers[2].dataset.mode).toBe(`relative`)
+      expect(cells()[2]).toBe(`1d 2h 30m ago`)
+
+      await select_mode(3, `relative`)
+      expect(cells()[3]).toBe(`6y 5mo 2w ago`)
+
+      await select_mode(2, `time`)
+      expect(cells()[2]).toBe(`03:04`)
+      expect(cells()[1]).toBe(`03:04`)
     })
 
     // Cell parsing itself is covered by the compare_rows/parse_numeric_val unit tests; these
@@ -857,7 +854,7 @@ describe(`HeatmapTable`, () => {
         click: false,
       },
     ])(`$desc`, async ({ search, click, placeholder }) => {
-      mount_table({ data: sample_data, columns: sample_columns, search })
+      mount_sample({ search })
 
       expect(document.querySelector(`.control-buttons .icon-btn`)).not.toBeNull()
       if (click) {
@@ -1013,7 +1010,7 @@ describe(`HeatmapTable`, () => {
         absent: [`JSON`],
       },
     ])(`export_data=$desc`, async ({ export_data, present, absent }) => {
-      mount_table({ data: sample_data, columns: sample_columns, export_data })
+      mount_sample({ export_data })
       await open_export_menu()
 
       const dropdown = document.querySelector(`.dropdown-pane`)
@@ -1093,9 +1090,7 @@ describe(`HeatmapTable`, () => {
     it.each([[`columns`], [`export`]] as const)(
       `opening the %s menu closes the other`,
       async (first) => {
-        mount_table({
-          data: sample_data,
-          columns: sample_columns,
+        mount_sample({
           show_column_toggle: true,
           export_data: true,
         })
@@ -1163,9 +1158,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`contrasts selection badges against the accent color`, async () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
+      mount_sample({
         show_row_select: true,
         row_key: `Model`,
         style: `--accent-color: rgb(0 0 0)`,
@@ -1179,7 +1172,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Multi-Column Sorting`, () => {
     it(`Shift+click toggles multi-sort columns and regular click clears them`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns })
+      mount_sample()
       const headers = document.querySelectorAll(`th`)
       const shift_click = async (idx: number) => {
         await fire(headers[idx], mouse(`click`, { shiftKey: true }))
@@ -1307,7 +1300,7 @@ describe(`HeatmapTable`, () => {
   it(`renders resize handles with ARIA roles and drags them into clamped column widths`, async () => {
     const column_prefs: Record<string, ColumnPrefs> = {}
     const state = $state({ column_prefs })
-    mount_table(bind_props({ data: sample_data, columns: sample_columns }, state))
+    mount_sample(state)
 
     const resize_handles = document.querySelectorAll<HTMLElement>(`.resize-handle`)
     expect(resize_handles).toHaveLength(3) // One per column
@@ -1336,71 +1329,37 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Regression tests for bug fixes`, () => {
-    type SortHintCase = {
-      desc: string
-      sort_hint?: TableProps[`sort_hint`]
-      text: string | null
-      permanent?: boolean
-      position?: `top` | `bottom`
-      classes?: string[]
-      style_includes?: string[]
-    }
-    it.each<SortHintCase>([
-      { desc: `does not render when undefined`, sort_hint: undefined, text: null },
-      {
-        desc: `renders as string with default position bottom, not permanent`,
-        sort_hint: `Click to sort`,
-        text: `Click to sort`,
-        permanent: false,
-        position: `bottom`,
-      },
-      {
-        desc: `applies custom style, class, position, and permanent together`,
-        sort_hint: {
+    it.each<[TableProps[`sort_hint`], string, boolean, `top` | `bottom`]>([
+      [`Click to sort`, `Click to sort`, false, `bottom`],
+      [
+        {
           text: `Full config hint`,
           position: `top`,
           permanent: true,
           style: `font-weight: bold; color: red;`,
           class: `custom-hint-class another-class`,
         },
-        text: `Full config hint`,
-        permanent: true,
-        position: `top`,
-        classes: [`custom-hint-class`, `another-class`],
-        style_includes: [`font-weight: bold`, `color: red`],
-      },
-    ])(
-      `sort_hint $desc`,
-      ({ sort_hint, text, permanent, position, classes, style_includes }) => {
-        mount_table({ data: sample_data, columns: sample_columns, sort_hint })
-
-        const container = document.querySelector(`.table-container`)
-        const hint = container?.querySelector(`.sort-hint`)
-        if (text === null) {
-          expect(hint).toBeNull()
-          return
-        }
-
-        expect(hint).not.toBeNull()
-        expect(hint?.textContent).toBe(text)
-        expect(hint?.classList.contains(`permanent`)).toBe(permanent)
-        for (const cls of classes ?? []) expect(hint?.classList.contains(cls)).toBe(true)
-        for (const fragment of style_includes ?? []) {
-          expect(hint?.getAttribute(`style`)).toContain(fragment)
-        }
-
-        // position=top -> hint precedes the table-scroll div, bottom -> follows it
-        const table_scroll = container?.querySelector(`.table-scroll`)
-        expect(table_scroll).not.toBeNull()
-        if (hint && table_scroll) {
-          expect(hint.compareDocumentPosition(table_scroll)).toBe(
-            position === `top`
-              ? Node.DOCUMENT_POSITION_FOLLOWING
-              : Node.DOCUMENT_POSITION_PRECEDING,
-          )
-        }
-      },
-    )
+        `Full config hint`,
+        true,
+        `top`,
+      ],
+    ])(`renders sort_hint %j`, (sort_hint, text, permanent, position) => {
+      mount_sample({ sort_hint })
+      const hint = doc_query(`.sort-hint`)
+      expect(hint.textContent).toBe(text)
+      expect(hint.classList.contains(`permanent`)).toBe(permanent)
+      if (typeof sort_hint === `object`) {
+        expect(hint.classList.contains(`custom-hint-class`)).toBe(true)
+        expect(hint.classList.contains(`another-class`)).toBe(true)
+        expect(hint.style.fontWeight).toBe(`bold`)
+        expect(hint.style.color).toBe(`red`)
+      }
+      expect(hint.compareDocumentPosition(doc_query(`.table-scroll`))).toBe(
+        position === `top`
+          ? Node.DOCUMENT_POSITION_FOLLOWING
+          : Node.DOCUMENT_POSITION_PRECEDING,
+      )
+    })
 
     it(`correctly matches grouped columns for sorting`, async () => {
       // Regression test: ungrouped column matching was incorrect
@@ -1491,29 +1450,16 @@ describe(`HeatmapTable`, () => {
             Marked: `<b data-sort-value="2.5">2.5 eV</b>`,
           },
         ],
-        columns: [`Name`, `Mass`, `Mixed`, `When`, `Marked`].map((label) => ({
-          id: label,
-          label,
-        })),
+        columns: plain_columns(`Name`, `Mass`, `Mixed`, `When`, `Marked`),
       })
-      const aligned = (col: string) =>
-        document.querySelector(`td[data-col="${col}"]`)?.classList.contains(`numeric-col`)
-
-      expect(aligned(`Mass`)).toBe(true)
-      expect(aligned(`Name`)).toBe(false)
-      expect(aligned(`Mixed`)).toBe(false) // one non-numeric value disqualifies the column
-      expect(aligned(`When`)).toBe(false) // dates read as text
-      // markup and data-sort-value read as the numbers they sort by
-      expect(aligned(`Marked`)).toBe(true)
-      // header follows its column so the two line up
-      const headers = [...document.querySelectorAll(`thead th`)]
-      expect(headers.map((th) => th.classList.contains(`numeric-col`))).toEqual([
-        false,
-        true,
-        false,
-        false,
-        true,
-      ])
+      // Text, mixed columns and dates stay left; numeric markup aligns with numbers.
+      for (const selector of [`tbody tr:first-child td`, `thead th`]) {
+        expect(
+          [...document.querySelectorAll(selector)].map((cell) =>
+            cell.classList.contains(`numeric-col`),
+          ),
+        ).toEqual([false, true, false, false, true])
+      }
     })
 
     // A sampled scan of the leading rows would right-align this column and offer it a
@@ -1534,7 +1480,7 @@ describe(`HeatmapTable`, () => {
     // aria-grabbed follows the drag state reactively rather than being poked onto the DOM
     // by the drag handlers, so it can't fall out of sync with what the component thinks.
     it(`marks the dragged header grabbed until the drag ends`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns })
+      mount_sample()
       const header = document.querySelector(`thead tr:last-child th`) as HTMLElement
       const drag = (type: string) => {
         const event = new Event(type, { bubbles: true })
@@ -1652,7 +1598,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Row Numbers`, () => {
     it(`shows 1-indexed numbers and # header when enabled`, () => {
-      mount_table({ data: sample_data, columns: sample_columns, show_row_numbers: true })
+      mount_sample({ show_row_numbers: true })
       const headers = [...document.querySelectorAll(`th`)].map((th) => th.textContent?.trim())
       expect(headers).toContain(`#`)
       expect(
@@ -1666,11 +1612,7 @@ describe(`HeatmapTable`, () => {
       { desc: `with on_row_click`, has_click: true, expected_tabindex: `0` },
       { desc: `without on_row_click`, has_click: false, expected_tabindex: null },
     ])(`tabindex $desc`, ({ has_click, expected_tabindex }) => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        ...(has_click ? { on_row_click: () => {} } : {}),
-      })
+      mount_sample(has_click ? { on_row_click: () => {} } : {})
 
       for (const row of Array.from(document.querySelectorAll(`tbody tr`))) {
         expect(row.getAttribute(`tabindex`)).toBe(expected_tabindex)
@@ -1681,9 +1623,7 @@ describe(`HeatmapTable`, () => {
       `triggers on_row_click on $key key`,
       async ({ key }) => {
         const clicked: unknown[] = []
-        mount_table({
-          data: sample_data,
-          columns: sample_columns,
+        mount_sample({
           on_row_click: (_event: KeyboardEvent | MouseEvent, row: Record<string, unknown>) =>
             clicked.push(row),
         })
@@ -2188,9 +2128,7 @@ describe(`HeatmapTable`, () => {
           row_key: `Model`,
         },
         async () => {
-          ;(
-            document.querySelector(`td.select-col input[type="checkbox"]`) as HTMLInputElement
-          ).click()
+          doc_query<HTMLInputElement>(`td.select-col input[type="checkbox"]`).click()
           await tick()
         },
       )
@@ -2304,7 +2242,7 @@ describe(`HeatmapTable`, () => {
     const written_text = (): string =>
       (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]
     const mount_sample_table = async (props: Omit<TableProps, 'data' | 'columns'> = {}) => {
-      mount_table({ data: sample_data, columns: sample_columns, ...props })
+      mount_sample(props)
       await tick()
     }
 
@@ -2337,7 +2275,7 @@ describe(`HeatmapTable`, () => {
       `clears a cell selection on %s`,
       async (action) => {
         const state = $state({ hidden_columns: [] as string[], column_order: [] as string[] })
-        mount_table(bind_props({ data: sample_data, columns: sample_columns }, state))
+        mount_sample(state)
         await tick()
         drag_cells([0, 0], [1, 1])
         cell_at(1, 1).dispatchEvent(pointer(`click`)) // consume the post-drag click guard

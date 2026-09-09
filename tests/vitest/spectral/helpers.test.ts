@@ -28,7 +28,7 @@ import {
   scale_segment_distances,
   shift_to_fermi,
 } from '$lib/spectral/helpers'
-import type { BaseBandStructure, DosData, QPoint } from '$lib/spectral/types'
+import type { BaseBandStructure, QPoint } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
 
 // pymatgen input needs a reciprocal lattice to measure its k-path; the identity keeps the
@@ -1025,25 +1025,18 @@ describe(`compute_frequency_range`, () => {
     expect(range?.[1]).toBeCloseTo(expected[1], 9)
   })
 
-  it.each([`bands`, `dos`, `both`] as const)(`rejects mixed spectral types in %s`, (scope) => {
-    const electronic_dos = {
-      type: `electronic` as const,
-      energies: [0, 10],
-      densities: [0, 1],
-    }
-    const phonon_bands = bands_of([[0, 10]])
-    const bands =
-      scope === `dos`
-        ? {}
-        : scope === `both`
-          ? phonon_bands
-          : { ...phonon_bands, electronic: bands_of([[0, 10]], `electronic`).sample }
-    const doses: Record<string, DosData> =
-      scope === `bands`
-        ? {}
-        : scope === `both`
-          ? { electronic: electronic_dos }
-          : { ...dos_of([0, 10]), electronic: electronic_dos }
+  const electronic_dos = {
+    electronic: { type: `electronic` as const, energies: [0, 10], densities: [0, 1] },
+  }
+  it.each([
+    [
+      `bands`,
+      { ...bands_of([[0, 10]]), electronic: bands_of([[0, 10]], `electronic`).sample },
+      {},
+    ],
+    [`dos`, {}, { ...dos_of([0, 10]), ...electronic_dos }],
+    [`both`, bands_of([[0, 10]]), electronic_dos],
+  ])(`rejects mixed spectral types in %s`, (_scope, bands, doses) => {
     expect(() => compute_frequency_range(bands, doses)).toThrow(
       /Cannot mix phonon and electronic spectra/,
     )

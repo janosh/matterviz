@@ -34,6 +34,15 @@ const normal_samples = (count: number, seed = 1): number[] => {
   })
 }
 
+// Three ordered divisions replace a multiplied denominator; allow four f64 epsilons.
+const expect_density_close = (actual: number[], reference: number[]) => {
+  for (const [idx, value] of actual.entries()) {
+    expect(Math.abs(value - reference[idx])).toBeLessThanOrEqual(
+      4 * Number.EPSILON * Math.abs(reference[idx]) + 2 * Number.MIN_VALUE,
+    )
+  }
+}
+
 describe(`gaussian_kde`, () => {
   test.each([
     { samples: [1, 2, 3, 4, 5], n_points: 17, cut: 2 },
@@ -49,12 +58,7 @@ describe(`gaussian_kde`, () => {
     expect(bandwidth).toBeGreaterThan(0)
     if (cut === 0) expect(grid).toEqual(Array(n_points).fill(5))
     const reference = ref_density(samples.filter(Number.isFinite), grid, bandwidth)
-    // Three ordered divisions replace a multiplied denominator; allow four f64 epsilons.
-    for (const [idx, value] of density.entries()) {
-      expect(Math.abs(value - reference[idx])).toBeLessThanOrEqual(
-        4 * Number.EPSILON * Math.abs(reference[idx]) + 2 * Number.MIN_VALUE,
-      )
-    }
+    expect_density_close(density, reference)
   })
 
   test(`density integrates to ~1 over a wide grid`, () => {
@@ -131,12 +135,7 @@ describe(`gaussian_kde`, () => {
         max_samples: samples.length,
       })
       const reference = ref_density(samples, grid, bandwidth)
-      // Three ordered divisions replace a multiplied denominator; allow four f64 epsilons.
-      for (const [idx, value] of density.entries()) {
-        expect(Math.abs(value - reference[idx])).toBeLessThanOrEqual(
-          4 * Number.EPSILON * Math.abs(reference[idx]) + 2 * Number.MIN_VALUE,
-        )
-      }
+      expect_density_close(density, reference)
       expect(density[12]).toBeGreaterThan(0)
     },
   )

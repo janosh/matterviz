@@ -17,7 +17,7 @@ import { make_supercell } from '$lib/structure/supercell'
 import type { CellType, SymmetryDataset } from '$lib/symmetry'
 import { analyze_structure_symmetry } from '$lib/symmetry'
 import { flushSync } from 'svelte'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   fcc_primitive_matrix,
   get_dummy_structure,
@@ -102,8 +102,9 @@ function make_session(initial: Partial<Host> = {}) {
       on_notice: (message) => notices.push(message),
     })
   })
+  onTestFinished(destroy)
   flushSync()
-  return { host, session, notices, destroy }
+  return { host, session, notices }
 }
 
 // Every site with image atoms: the dummy crystal puts all atoms on cell boundaries
@@ -119,7 +120,7 @@ afterEach(() => vi.useRealTimers())
 
 describe(`display pipeline`, () => {
   it(`adds image atoms, tiles supercells synchronously below the async threshold and maps elements`, () => {
-    const { host, session, destroy } = make_session()
+    const { host, session } = make_session()
     expect(session.displayed_structure?.sites).toHaveLength(3)
     host.show_image_atoms = true
     flushSync()
@@ -152,11 +153,10 @@ describe(`display pipeline`, () => {
     session.element_mapping = undefined
     flushSync()
     expect(session.tool_input).toBe(original_input)
-    destroy()
   })
 
   it(`builds large supercells off the main task and keeps the previous build while loading`, () => {
-    const { host, session, destroy } = make_session({ structure: crystal(200) })
+    const { host, session } = make_session({ structure: crystal(200) })
     host.supercell_scaling = `2x2x2`
     flushSync()
     expect(session.supercell_loading).toBe(true)
@@ -167,7 +167,6 @@ describe(`display pipeline`, () => {
     expect(session.supercell_loading).toBe(false)
     expect(session.displayed_structure?.sites).toHaveLength(1600)
     expect(session.supercell_tiling).toEqual([2, 2, 2])
-    destroy()
   })
 
   // A caller-supplied supercell (phonon mode explorer) carries orig_unit_cell_idx into a cell
@@ -186,7 +185,7 @@ describe(`display pipeline`, () => {
       ...DEFAULT_ATOM_COLOR_CONFIG,
       mode: `coordination`,
     }
-    const { host, session, destroy } = make_session({
+    const { host, session } = make_session({
       structure: foreign,
       show_image_atoms: true,
       atom_color_config: coordination_config,
@@ -225,11 +224,10 @@ describe(`display pipeline`, () => {
     )
     expect([...session.scene_to_structure_indices([site_idx ?? -1])]).toEqual([3])
     expect(session.property_colors?.values[site_idx ?? -1]).toBe(40)
-    destroy()
   })
 
   it(`shows an already-materialized supercell as-is and falls back on invalid scaling`, () => {
-    const { host, session, destroy } = make_session({
+    const { host, session } = make_session({
       supercell_scaling: `3x3x3`,
       apply_supercell_scaling: false,
     })
@@ -241,7 +239,6 @@ describe(`display pipeline`, () => {
     expect(session.has_supercell).toBe(false)
     expect(session.displayed_structure?.sites).toHaveLength(3)
     expect(session.bond_edits_enabled).toBe(true)
-    destroy()
   })
 })
 
@@ -260,7 +257,7 @@ describe(`symmetry-aware display`, () => {
       mode: `wyckoff`,
       scale_type: `categorical`,
     }
-    const { host, session, destroy } = make_session({
+    const { host, session } = make_session({
       structure,
       sym_data,
       atom_color_config: wyckoff_config,
@@ -295,13 +292,12 @@ describe(`symmetry-aware display`, () => {
     host.atom_color_config = DEFAULT_ATOM_COLOR_CONFIG
     flushSync()
     expect(session.property_colors).toBeNull()
-    destroy()
   })
 })
 
 describe(`selection validity`, () => {
   it(`never exposes a site index the displayed structure does not have`, () => {
-    const { host, session, destroy } = make_session({ show_image_atoms: true })
+    const { host, session } = make_session({ show_image_atoms: true })
     pick_all(host, session)
     const count = session.displayed_structure?.sites.length ?? 0
     expect(session.measured_sites).toEqual([0, count - 1])
@@ -316,14 +312,13 @@ describe(`selection validity`, () => {
     flushSync()
     expect(session.measured_sites).toEqual([0])
     expect(session.hovered_site_idx).toBeNull()
-    destroy()
   })
 
   it.each([{}, NaN])(
     `keeps selection across frames with series key %j and clears it on topology or series change`,
     (series_key) => {
       const base = crystal()
-      const { host, session, destroy } = make_session({ structure: base, series_key })
+      const { host, session } = make_session({ structure: base, series_key })
       host.selected_sites = [0]
       host.highlighted_sites = [1]
       host.hovered_site_idx = 1
@@ -363,12 +358,11 @@ describe(`selection validity`, () => {
       host.series_key = {}
       flushSync()
       expect(host.selected_sites).toEqual([])
-      destroy()
     },
   )
 
   it(`preserves the selection through transforms in edit-atoms mode only`, () => {
-    const { host, destroy } = make_session({ measure_mode: `edit-atoms` })
+    const { host } = make_session({ measure_mode: `edit-atoms` })
     host.selected_sites = [0]
     flushSync()
     host.supercell_scaling = `2x1x1`
@@ -382,16 +376,14 @@ describe(`selection validity`, () => {
     host.show_image_atoms = true
     flushSync()
     expect(host.measured_sites).toEqual([])
-    destroy()
   })
 
   it(`leaves edit-bonds mode with a notice when bond edits become unavailable`, () => {
-    const { host, notices, destroy } = make_session({ measure_mode: `edit-bonds` })
+    const { host, notices } = make_session({ measure_mode: `edit-bonds` })
     host.supercell_scaling = `2x2x2`
     flushSync()
     expect(host.measure_mode).toBe(`distance`)
     expect(notices).toContain(`Bond editing is only available for the original 1x1x1 cell`)
-    destroy()
   })
 })
 
@@ -401,7 +393,7 @@ describe(`edit-atoms`, () => {
       { site_idx_1: 0, site_idx_2: 1, order: 1 },
       { site_idx_1: 1, site_idx_2: 2, order: 2 },
     ]
-    const { host, session, notices, destroy } = make_session({
+    const { host, session, notices } = make_session({
       measure_mode: `edit-atoms`,
       bonds: structuredClone(bonds),
       show_image_atoms: true,
@@ -429,11 +421,10 @@ describe(`edit-atoms`, () => {
     expect(session.history.redo_stack).toHaveLength(1)
     session.push_undo()
     expect(session.history.redo_stack, `a new edit invalidates redo`).toHaveLength(0)
-    destroy()
   })
 
   it(`duplicates into a new selection, changes elements and adds atoms with fractional coords`, () => {
-    const { host, session, notices, destroy } = make_session({ measure_mode: `edit-atoms` })
+    const { host, session, notices } = make_session({ measure_mode: `edit-atoms` })
     host.selected_sites = [1]
     flushSync()
     expect(session.duplicate_selected()).toBe(true)
@@ -454,11 +445,10 @@ describe(`edit-atoms`, () => {
     expect(added?.abc.every((coord) => Math.abs(coord - 0.5 / 5) < 1e-12)).toBe(true)
     expect(notices.at(-1)).toBe(`Added O at (0.50, 0.50, 0.50)`)
     expect(session.history.undo_stack).toHaveLength(3)
-    destroy()
   })
 
   it(`moves sites with wrapped fractional coordinates and caps history at MAX_HISTORY`, () => {
-    const { host, session, destroy } = make_session({ measure_mode: `edit-atoms` })
+    const { host, session } = make_session({ measure_mode: `edit-atoms` })
     session.push_undo()
     session.move_sites([0], [5.5, 0, 0])
     flushSync()
@@ -466,7 +456,6 @@ describe(`edit-atoms`, () => {
     expect(host.structure?.sites[0].xyz[0]).toBeCloseTo(0.5, 12)
     for (let step = 0; step < MAX_HISTORY + 5; step++) session.push_undo()
     expect(session.history.undo_stack).toHaveLength(MAX_HISTORY)
-    destroy()
   })
 
   // a slab's vacuum axis is aperiodic: a dragged atom stays where dropped, not folded back in
@@ -474,7 +463,7 @@ describe(`edit-atoms`, () => {
     const slab = make_crystal(5, [{ element: `H`, abc: [0.5, 0.5, 0.9] }], {
       pbc: [true, true, false],
     })
-    const { host, session, destroy } = make_session({
+    const { host, session } = make_session({
       structure: slab,
       measure_mode: `edit-atoms`,
     })
@@ -484,7 +473,6 @@ describe(`edit-atoms`, () => {
     expect(moved?.abc[0], `periodic a axis wraps`).toBeCloseTo(0.6, 12)
     expect(moved?.abc[2], `aperiodic c keeps its out-of-cell coord`).toBeCloseTo(1.3, 12)
     expect(moved?.xyz[2]).toBeCloseTo(6.5, 12)
-    destroy()
   })
 
   // A zero c-vector (extXYZ `Lattice="... 0 0 0"`) parses fine but has no cart->frac inverse;
@@ -504,7 +492,7 @@ describe(`edit-atoms`, () => {
           { element: `Cl`, abc: [0.6, 0.7, 0] },
         ],
       )
-    const { host, session, notices, destroy } = make_session({
+    const { host, session, notices } = make_session({
       measure_mode: `edit-atoms`,
       structure: make_singular(),
     })
@@ -539,11 +527,10 @@ describe(`edit-atoms`, () => {
     session.move_sites([0], [1, 0, 0])
     flushSync()
     expect(notice_count()).toBe(2)
-    destroy()
   })
 
   it(`clears history on an external structure change but not on its own edits`, () => {
-    const { host, session, destroy } = make_session({ measure_mode: `edit-atoms` })
+    const { host, session } = make_session({ measure_mode: `edit-atoms` })
     host.selected_sites = [0]
     flushSync()
     session.delete_selected()
@@ -552,7 +539,6 @@ describe(`edit-atoms`, () => {
     host.structure = crystal(4)
     flushSync()
     expect(session.history.undo_stack).toHaveLength(0)
-    destroy()
   })
 })
 
@@ -562,7 +548,7 @@ describe(`edit-bonds`, () => {
     // a delete must merge against structure.properties.bonds, publish [], and undo to the source
     const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
     const structure = { ...crystal(), properties: { bonds: structuredClone(source) } }
-    const { host, session, destroy } = make_session({ measure_mode: `edit-bonds`, structure })
+    const { host, session } = make_session({ measure_mode: `edit-bonds`, structure })
     flushSync()
     expect(host.bonds).toBeUndefined()
     session.push_bond_undo()
@@ -580,14 +566,13 @@ describe(`edit-bonds`, () => {
     expect(session.undo_bond_edit()).toBe(true)
     flushSync()
     expect(host.bonds).toEqual(source)
-    destroy()
   })
 
   it(`a caller swapping the source bonds after an undo clears the redo history too`, () => {
     // undo leaves has_bond_edits false and the undo stack empty, with the undone edit on the
     // redo stack; redoing it onto a different source set would corrupt the new bonds
     const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    const { host, session, destroy } = make_session({
+    const { host, session } = make_session({
       measure_mode: `edit-bonds`,
       bonds: structuredClone(source),
     })
@@ -603,12 +588,11 @@ describe(`edit-bonds`, () => {
     expect(session.bond_history.redo_stack).toHaveLength(0)
     expect(session.redo_bond_edit()).toBe(false)
     expect(host.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
-    destroy()
   })
 
   it(`publishes merged bonds, undoes through snapshots and restores the source when edits end`, () => {
     const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    const { host, session, destroy } = make_session({
+    const { host, session } = make_session({
       measure_mode: `edit-bonds`,
       bonds: structuredClone(source),
     })
@@ -629,11 +613,10 @@ describe(`edit-bonds`, () => {
     expect(session.has_bond_edits).toBe(false)
     expect(host.bonds, `source bonds restored`).toEqual(source)
     expect(session.undo_bond_edit()).toBe(false)
-    destroy()
   })
 
   it(`drops the edit layer when the structure, a transform or the source bonds change`, () => {
-    const { host, session, destroy } = make_session({ measure_mode: `edit-bonds` })
+    const { host, session } = make_session({ measure_mode: `edit-bonds` })
     const edit = (): void => {
       session.push_bond_undo()
       session.added_bonds = [{ site_idx_1: 0, site_idx_2: 2, order: 1 }]
@@ -652,13 +635,12 @@ describe(`edit-bonds`, () => {
     flushSync()
     expect(session.has_bond_edits, `caller replaced the source`).toBe(false)
     expect(session.bond_history.undo_stack).toHaveLength(0)
-    destroy()
   })
 })
 
 describe(`panes`, () => {
   it(`tracks moved panes, resets all cameras and collapses side-pane state`, () => {
-    const { session, destroy } = make_session()
+    const { session } = make_session()
     session.report_pane_moved(0, true)
     session.report_pane_moved(2, true)
     expect(session.any_camera_moved).toBe(true)
@@ -669,6 +651,5 @@ describe(`panes`, () => {
     session.reset_all_cameras()
     expect(session.reset_token).toBe(1)
     expect(session.any_camera_moved).toBe(false)
-    destroy()
   })
 })

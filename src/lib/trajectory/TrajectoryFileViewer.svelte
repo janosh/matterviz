@@ -352,7 +352,7 @@
         ? `${progress.stage} (${Math.round(progress.current)}%)`
         : `Loading trajectory...`}
       value={progress?.current}
-      oncancel={() => {
+      on_cancel={() => {
         const controller = load_controller
         if (!controller) return
         controller.abort(new DOMException(`Cancelled`, `AbortError`))
@@ -400,7 +400,7 @@
         <FileInput
           label="Choose trajectory file"
           ondrop={(event) => event.stopPropagation()}
-          onfiles={(files) => {
+          on_files={(files) => {
             const source = files[0]
             if (source) void open_source({ source }, begin_load())
           }}

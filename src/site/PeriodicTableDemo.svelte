@@ -110,7 +110,7 @@
   {#if heatmap_key}
     <ColorScaleSelect
       bind:value={color_scale}
-      minSelect={1}
+      min_select={1}
       selected={[color_scale]}
       style="flex: 1"
     />

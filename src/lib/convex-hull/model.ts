@@ -98,19 +98,18 @@ export function build_hull_model(
 
   // Plot coordinates: entries with a finite formation energy placed in the simplex, plus
   // synthetic E_form = 0 corners for elements without a reference entry (closes the hull)
-  const coords_entries = (() => {
-    if (elements.length !== dim) return []
-    const coords: ConvexHullEntry[] = []
+  const entries: ConvexHullEntry[] = []
+  if (elements.length === dim) {
     for (const entry of effective_entries) {
       const e_form = entry.e_form_per_atom
       if (typeof e_form !== `number` || !Number.isFinite(e_form)) continue
       const is_element = is_unary_entry(entry)
-      coords.push({ ...entry, ...plot_position(entry.composition, e_form), is_element })
+      entries.push({ ...entry, ...plot_position(entry.composition, e_form), is_element })
     }
     for (const element of elements) {
-      if (coords.some((entry) => entry.is_element && entry.composition[element])) continue
+      if (entries.some((entry) => entry.is_element && entry.composition[element])) continue
       const composition = { [element]: 1 } as CompositionType
-      coords.push({
+      entries.push({
         composition,
         energy: 0,
         e_form_per_atom: 0,
@@ -121,44 +120,39 @@ export function build_hull_model(
         is_element: true,
       })
     }
-    return coords
-  })()
+  }
 
   // Lower hull over the non-excluded entries (always built: 3D/4D draw its faces)
-  const hull_indices = coords_entries.flatMap((entry, idx) =>
-    entry.exclude_from_hull ? [] : [idx],
-  )
-  const hull_points = hull_indices.map((idx) => hull_point(coords_entries[idx], dim))
+  const hull_indices = entries.flatMap((entry, idx) => (entry.exclude_from_hull ? [] : [idx]))
+  const hull_points = hull_indices.map((idx) => hull_point(entries[idx], dim))
   const hull_facets = thermo.compute_lower_hull_nd(hull_points)
 
   // Entries with e_above_hull/is_stable: from the data when precomputed, else from the hull
-  const enriched_entries = (() => {
-    if (energy_mode !== `on-the-fly`) return coords_entries
+  if (energy_mode === `on-the-fly`) {
     // No facets means every hull point sits at E_form = 0 (the corners always do), so the
     // hull is that plane and the distance is E_form itself
     const raw_dists =
       hull_facets.length === 0
-        ? coords_entries.map((entry) => entry.e_form_per_atom)
+        ? entries.map((entry) => entry.e_form_per_atom)
         : thermo.compute_e_above_hull_nd(
-            coords_entries.map((entry) => hull_point(entry, dim)),
+            entries.map((entry) => hull_point(entry, dim)),
             hull_facets,
             hull_points,
           )
     // non-finite distance (no covering hull face) → unknown, handled by compute_hull_stability
-    return coords_entries.map((entry, idx) => ({
-      ...entry,
-      ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull),
-    }))
-  })()
+    for (const [idx, entry] of entries.entries()) {
+      Object.assign(entry, compute_hull_stability(raw_dists[idx], entry.exclude_from_hull))
+    }
+  }
 
   return {
-    entries: enriched_entries,
+    entries,
     elements,
     facets: hull_facets.map((facet) => ({
       ...facet,
       vertex_indices: facet.vertex_indices.map((idx) => hull_indices[idx]),
     })),
-    phase_stats: thermo.get_convex_hull_stats(enriched_entries, elements, dim),
+    phase_stats: thermo.get_convex_hull_stats(entries, elements, dim),
   }
 }
 

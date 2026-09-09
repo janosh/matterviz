@@ -15,6 +15,12 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+const create_wrapper = (parent = document.body) => {
+  const wrapper = document.createElement(`div`)
+  parent.append(wrapper)
+  return wrapper
+}
+
 // Mount with a two-way bound `fullscreen` flag like every viewer does
 const mount_button = (wrapper?: HTMLElement) => {
   const state = $state({ fullscreen: false, hidden: false })
@@ -49,8 +55,7 @@ describe(`FullscreenButton`, () => {
   })
 
   test(`with a wrapper only real browser transitions are reported`, async () => {
-    const wrapper = document.createElement(`div`)
-    document.body.append(wrapper)
+    const wrapper = create_wrapper()
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
     const request_fullscreen = vi
       .fn<() => Promise<void>>()
@@ -142,10 +147,8 @@ describe(`FullscreenButton`, () => {
 
   // a host app (e.g. a slide deck) owning fullscreen around an embedded viewer
   test(`fullscreen owned by another element is neither reported nor taken over`, async () => {
-    const host = document.createElement(`div`)
-    const wrapper = document.createElement(`div`)
-    host.append(wrapper)
-    document.body.append(host)
+    const host = create_wrapper()
+    const wrapper = create_wrapper(host)
     const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
     const { state, on_change } = mount_button(wrapper)
 
@@ -167,30 +170,20 @@ describe(`FullscreenButton`, () => {
     [`Alt+F is left alone`, { key: `f`, altKey: true }, false],
     [`an autorepeat does not re-toggle`, { key: `f`, repeat: true }, false],
     [`other keys are ignored`, { key: `g` }, false],
-  ])(`%s`, async (_name, init, toggles) => {
-    const wrapper = document.createElement(`div`)
-    document.body.append(wrapper)
+    [`f outside the viewer is ignored`, { key: `f` }, false, false],
+  ])(`%s`, async (_name, init, toggles, hovered = true) => {
+    const wrapper = create_wrapper()
     const { state } = mount_button(wrapper)
-    wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
+    if (hovered) wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
     await fire(globalThis, new KeyboardEvent(`keydown`, init))
     expect(state.fullscreen).toBe(toggles)
-  })
-
-  test(`f is ignored until the pointer is over the viewer`, async () => {
-    const wrapper = document.createElement(`div`)
-    document.body.append(wrapper)
-    const { state } = mount_button(wrapper)
-    await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
-    expect(state.fullscreen).toBe(false)
   })
 
   // A Structure inside a Trajectory is hovered at the same time as its host, so both would
   // fullscreen their own root on one press. The inner viewer defers; its button still works.
   test(`a viewer nested in another leaves f to the outer one`, async () => {
-    const outer = document.createElement(`div`)
-    const inner = document.createElement(`div`)
-    outer.append(inner)
-    document.body.append(outer)
+    const outer = create_wrapper()
+    const inner = create_wrapper(outer)
     const host = mount_button(outer)
     const nested = mount_button(inner)
 

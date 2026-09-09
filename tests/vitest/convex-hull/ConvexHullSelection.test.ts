@@ -1,5 +1,6 @@
 import { ConvexHull, ConvexHull2D, ConvexHullCanvas, type HullModel } from '$lib/convex-hull'
 import * as thermo from '$lib/convex-hull/thermodynamics'
+import * as canvas_draw from '$lib/convex-hull/canvas-draw'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -69,6 +70,9 @@ const test_text = (test_id: string): string =>
   doc_query(`[data-testid="${test_id}"]`).textContent ?? ``
 const selected_text = (): string => test_text(`selected-entry`)
 const mounted_components: ReturnType<typeof mount>[] = []
+const model_entries = () =>
+  (mounted_components.at(-1) as { get_model: () => HullModel | undefined }).get_model()
+    ?.entries
 const track_component = (component: ReturnType<typeof mount>): void => {
   mounted_components.push(component)
 }
@@ -112,6 +116,20 @@ describe(`convex hull replacement state`, () => {
     [`3D`, ConvexHullCanvas, { dim: 3 }],
     [`4D`, ConvexHullCanvas, { dim: 4 }],
   ] as [string, Component, Record<string, unknown>][]
+
+  test.each([`3d`, `4d`] as const)(
+    `empty %s canvas clicks clear selection without a popup`,
+    async (dim) => {
+      await mount_harness({ dim })
+      button(`select-entry`).click()
+      await tick()
+      expect(selected_text()).not.toBe(`none`)
+      vi.spyOn(canvas_draw, `find_hull_entry_at_mouse`).mockReturnValueOnce(null)
+      doc_query<HTMLCanvasElement>(`canvas`).click()
+      await tick()
+      expect(selected_text()).toBe(`none`)
+    },
+  )
   // Every empty-state branch (no entries, an empty array, the wrapper's own arity message)
   // keeps the consumer's DOM attributes; the five-element case goes through the branch that
   // used to cherry-pick id/class/style and dropped hidden, onclick, aria-* and data-*
@@ -279,16 +297,13 @@ describe(`convex hull replacement state`, () => {
             ?.value,
         ).toBe(String(temperature))
         expect(
-          (mounted_components.at(-1) as { get_model: () => HullModel | undefined })
-            .get_model()
-            ?.entries.find((entry) => entry.entry_id === kept_elements[0])?.energy_per_atom,
+          model_entries()?.find((entry) => entry.entry_id === kept_elements[0])
+            ?.energy_per_atom,
         ).toBeCloseTo(-1 - temperature / 1000, 12)
         // the dropped element is closed with a synthetic corner so the hull still spans it
-        expect(
-          (mounted_components.at(-1) as { get_model: () => HullModel | undefined })
-            .get_model()
-            ?.entries.map((entry) => entry.entry_id),
-        ).toContain(`synthetic-element:O`)
+        expect(model_entries()?.map((entry) => entry.entry_id)).toContain(
+          `synthetic-element:O`,
+        )
         expect(console_error).not.toHaveBeenCalled()
       },
     )
@@ -310,11 +325,7 @@ describe(`convex hull replacement state`, () => {
 
       expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
       expect(target.querySelector(`.empty-state`)).toBeNull()
-      expect(
-        (mounted_components.at(-1) as { get_model: () => HullModel | undefined })
-          .get_model()
-          ?.entries.map((entry) => entry.entry_id),
-      ).toContain(`compound`)
+      expect(model_entries()?.map((entry) => entry.entry_id)).toContain(`compound`)
     },
   )
 

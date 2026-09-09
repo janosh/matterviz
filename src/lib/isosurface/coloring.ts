@@ -33,7 +33,7 @@ export const DEFAULT_ISO_COLORMAP: IsoColormap = `interpolateViridis`
 export const ISO_COLORMAP_SELECT_PROPS = {
   options: [...ISO_COLORMAPS],
   color_bar: { bar_style: `height: 8px`, title_style: `width: 4em; font-size: 1em;` },
-  liSelectedStyle: `width: 100%; margin: 0; padding: 0; background: transparent;`,
+  li_selected_style: `width: 100%; margin: 0; padding: 0; background: transparent;`,
 }
 
 // A field counts as signed when it has significant values of both signs
