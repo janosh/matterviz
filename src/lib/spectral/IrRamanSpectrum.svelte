@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ScatterPlotOptions } from '$lib/plot'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
@@ -6,7 +7,7 @@
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { extent } from 'd3-array'
-  import { untrack, type ComponentProps } from 'svelte'
+  import { untrack } from 'svelte'
   import {
     convert_frequencies,
     frequency_unit_label,
@@ -37,10 +38,11 @@
     hovered_frequency = $bindable(null),
     selected_mode_idx = $bindable(null),
     on_mode_select,
+    display = $bindable({ x_grid: true, y_grid: true, x_zero_line: false, y_zero_line: true }),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     ...rest
-  }: ComponentProps<typeof ScatterPlot> & {
+  }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
     spectrum: VibrationalSpectrum
     kind?: SpectrumKind
     units?: FrequencyUnit // defaults to cm^-1, the vibrational spectroscopy convention
@@ -49,8 +51,6 @@
     normalize?: NormalizationMode
     presentation?: SpectrumPresentation // transmittance flips IR spectra to point downwards
     show_sticks?: boolean
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
     hovered_frequency?: number | null
     selected_mode_idx?: number | null
     on_mode_select?: (mode_idx: number) => void
@@ -143,8 +143,6 @@
     ...y_axis,
   })
 
-  let display = $state({ x_grid: true, y_grid: true, x_zero_line: false, y_zero_line: true })
-
   // Slider bounds scale with the plotted range so they stay sensible in every unit.
   let fwhm_input = $derived.by(() => {
     const span = plot_range[1] - plot_range[0]
@@ -163,15 +161,18 @@
   />
 {:else if has_signal}
   <ScatterPlot
+    {...rest}
     series={series_data}
     x_axis={internal_x_axis}
     y_axis={internal_y_axis}
     bind:display
-    legend={null}
-    hover_config={{ threshold_px: 30 }}
-    on_point_hover={(event) => (hovered_frequency = event?.point?.x ?? null)}
-    range_padding={0}
-    {...rest}
+    legend={rest.legend === undefined ? null : rest.legend}
+    hover_config={{ threshold_px: 30, ...rest.hover_config }}
+    on_point_hover={(event) => {
+      hovered_frequency = event?.point?.x ?? null
+      rest.on_point_hover?.(event)
+    }}
+    range_padding={rest.range_padding ?? 0}
     bind:show_controls
     bind:controls_open
   >

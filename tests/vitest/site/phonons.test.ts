@@ -1,4 +1,5 @@
 import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '$lib/math'
+import { compute_frequency_range } from '$lib/spectral'
 import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
 import { describe, expect, it } from 'vitest'
 
@@ -14,6 +15,9 @@ describe(`Phonon Module Tests`, () => {
     expect(ids.every((id) => /^mp-\d+-[A-Za-z0-9]+-/.test(id))).toBe(true)
     expect(Object.keys(phonon_bands)).toEqual(ids)
     expect(Object.keys(phonon_dos)).toEqual(ids)
+    expect(compute_frequency_range(phonon_bands, phonon_dos)?.every(Number.isFinite)).toBe(
+      true,
+    )
   })
 
   // Minimum qpoints threshold: band structure calculations typically sample 100+ k-points
@@ -23,6 +27,7 @@ describe(`Phonon Module Tests`, () => {
   it.each(band_entries)(
     `%s has valid band structure with correct dimensions and physical frequencies`,
     (id, band_struct) => {
+      expect(band_struct.type, id).toBe(`phonon`)
       expect(band_struct.qpoints.length, id).toBeGreaterThan(MIN_QPOINTS)
       expect(band_struct.distance, id).toHaveLength(band_struct.qpoints.length)
       expect(band_struct.nb_bands, id).toBeGreaterThan(0)
@@ -197,6 +202,7 @@ describe(`Phonon Module Tests`, () => {
   it.each(Object.entries(phonon_dos))(
     `%s DOS has valid frequencies and densities`,
     (id, dos) => {
+      expect(dos.type, id).toBe(`phonon`)
       expect(dos.frequencies, id).toHaveLength(dos.densities.length)
       expect(dos.frequencies.length, id).toBeGreaterThan(0)
 

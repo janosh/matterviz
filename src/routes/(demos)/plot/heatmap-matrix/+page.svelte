@@ -15,8 +15,6 @@
   let axis_items = $derived(elements_to_axis(undefined, ordering))
   let clicked_cell = $state<CellContext | null>(null)
   let dblclick_info: string | null = $state(null)
-  let show_primary_controls_toggle = $state(false)
-  let show_secondary_controls_toggle = $state(false)
   let normalize_mode = $state<`linear` | `log`>(`linear`)
   let domain_mode = $state<`auto` | `robust` | `fixed`>(`auto`)
   let show_color_bar = $state(true)
@@ -93,14 +91,7 @@
   the whole ~103&times;103 grid fits on screen at most window sizes, so all ~10k cells are mounted.
 </p>
 
-<div
-  class="heatmap-controls-anchor bleed-1400"
-  role="group"
-  onmouseenter={() => (show_primary_controls_toggle = true)}
-  onmouseleave={() => (show_primary_controls_toggle = false)}
-  onfocusin={() => (show_primary_controls_toggle = true)}
-  onfocusout={() => (show_primary_controls_toggle = false)}
->
+<div class="heatmap-controls-anchor bleed-1400" role="group">
   <div class="scroll-container">
     <HeatmapMatrix
       x_items={axis_items}
@@ -137,7 +128,6 @@
     bind:color_bar_position
     bind:search_query
     on_export={(format_name) => (last_export_status = `Exported ${format_name.toUpperCase()}`)}
-    toggle_visible={show_primary_controls_toggle}
   >
     <label>
       Hide empty
@@ -179,14 +169,7 @@
   Demonstrates switchable <code>symmetric</code> modes and a custom <code>tooltip</code> snippet.
 </p>
 
-<div
-  class="heatmap-controls-anchor"
-  role="group"
-  onmouseenter={() => (show_secondary_controls_toggle = true)}
-  onmouseleave={() => (show_secondary_controls_toggle = false)}
-  onfocusin={() => (show_secondary_controls_toggle = true)}
-  onfocusout={() => (show_secondary_controls_toggle = false)}
->
+<div class="heatmap-controls-anchor" role="group">
   <HeatmapMatrix
     x_items={small_axis}
     y_items={small_axis}
@@ -219,7 +202,6 @@
     bind:show_values
     bind:show_row_summaries
     bind:show_col_summaries
-    toggle_visible={show_secondary_controls_toggle}
   />
 </div>
 {#if dblclick_info}

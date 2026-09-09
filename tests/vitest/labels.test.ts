@@ -90,6 +90,13 @@ test.each([
   expect(format_tick_values(values, formatter)).toEqual(expected)
 })
 
+test(`adaptive formatting handles large arrays of colliding labels`, () => {
+  const values = Array.from({ length: 150_000 }, (_, idx) => -1539 + (idx % 2))
+  const labels = format_tick_values(values)
+  expect(labels).toHaveLength(values.length)
+  expect(new Set(labels)).toEqual(new Set([`−1539`, `−1538`]))
+})
+
 test(`symbol_names lists d3's fill-then-stroke symbols once each, symbol_map resolves them`, () => {
   // `symbolX` aliases `symbolTimes`; the first export naming the object wins
   expect(symbol_names).toEqual([

@@ -44,7 +44,8 @@
 
   let {
     // Data props
-    series: series_in = $bindable([]),
+    series: series_in = [],
+    hidden_series = $bindable(),
     surfaces = [],
     ref_lines = [],
     ref_planes = [],
@@ -79,7 +80,7 @@
     // Gizmo
     gizmo = true,
     // Controls
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -104,7 +105,8 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    series?: DataSeries3D<Metadata>[]
+    hidden_series?: readonly (string | number)[]
+    series?: readonly DataSeries3D<Metadata>[]
     surfaces?: Surface3DConfig[]
     ref_lines?: RefLine3D[]
     ref_planes?: RefPlane[]
@@ -145,12 +147,11 @@
     controls_extra?: Snippet
   } & Omit<BasePlotProps, `range_padding` | `padding` | `title` | `children`> = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
     () => series,
-    (next) => (series_in = next),
+    () => hidden_series,
+    (next) => (hidden_series = next),
   )
   let series: DataSeries3D<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
@@ -212,14 +213,15 @@
   bind:height
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   {controls_toggle_props}
   {header_controls}
   {children}
   {...rest}
 >
-  {#snippet controls(toggle_props)}
+  {#snippet controls(toggle_props, show_controls)}
     <ScatterPlot3DControls
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       {toggle_props}
       pane_props={{

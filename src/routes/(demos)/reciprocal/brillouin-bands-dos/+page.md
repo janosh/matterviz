@@ -9,12 +9,16 @@ This example uses bands and DOS from different materials.
   import { BrillouinBandsDos } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
+  import { normalize_dos } from 'matterviz'
+
+  const total_dos = normalize_dos(dos_spin_polarization)
+  if (!total_dos) throw new Error('Invalid DOS fixture')
   import { structure_map } from '$site/structures'
 </script>
 
 <BrillouinBandsDos
-  band_structs={electronic_bands.cao_2605}
-  doses={dos_spin_polarization}
+  band_structs={{ '': electronic_bands.cao_2605 }}
+  doses={{ '': total_dos }}
   structure={structure_map.get('mp-1')}
   bands_props={{ y_axis: { label: 'Energy (eV)' } }}
   dos_props={{ y_axis: { label: '' } }}
@@ -41,8 +45,8 @@ Phonon band structure with acoustic/optical mode styling:
 </script>
 
 <BrillouinBandsDos
-  band_structs={[phonon_bands['mp-2758-Sr4Se4-pbe']]}
-  doses={[phonon_dos['mp-2758-Sr4Se4-pbe']]}
+  band_structs={{ '': phonon_bands['mp-2758-Sr4Se4-pbe'] }}
+  doses={{ '': phonon_dos['mp-2758-Sr4Se4-pbe'] }}
   structure={phonon_data['mp-2758-Sr4Se4-pbe']?.primitive}
   {bands_props}
   dos_props={{ normalize: 'max', sigma: 0.15 }}

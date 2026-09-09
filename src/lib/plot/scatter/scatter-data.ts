@@ -31,6 +31,7 @@ const prop_getter = <T>(
 // A series with every finite point materialized once (see materialize_series_points)
 export type MaterializedSeries<Metadata = Record<string, unknown>> = DataSeries<Metadata> & {
   points: InternalPoint<Metadata>[]
+  _id: string | number
   orig_series_idx: number
 }
 
@@ -83,7 +84,13 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
       })
     }
     // orig_series_idx keeps auto-cycled colors/symbols stable across filtering
-    out.push({ ...data_series, visible: true, points, orig_series_idx: series_idx })
+    out.push({
+      ...data_series,
+      visible: true,
+      points,
+      _id: data_series.id ?? series_idx,
+      orig_series_idx: series_idx,
+    })
   }
   return out
 }
@@ -92,19 +99,23 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
 // returned series (via spread) so connecting lines can continue through off-range points;
 // only filtered_data (rendered markers) is range-limited. Takes the output of
 // materialize_series_points so callers cache it across pan/zoom frames.
+type PreparedSeries<Metadata> = Omit<MaterializedSeries<Metadata>, `points`> & {
+  filtered_data: InternalPoint<Metadata>[]
+}
+
 export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
   materialized: readonly MaterializedSeries<Metadata>[],
   ranges: AxisRanges,
-): (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] {
+): PreparedSeries<Metadata>[] {
   const x_bounds = range_bounds(ranges.x)
   const x2_bounds = range_bounds(ranges.x2)
   const y_bounds = range_bounds(ranges.y)
   const y2_bounds = range_bounds(ranges.y2)
 
-  const out: (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] = []
+  const out: PreparedSeries<Metadata>[] = []
   for (const data_series of materialized) {
-    const [x_lo, x_hi] = (data_series.x_axis ?? `x1`) === `x2` ? x2_bounds : x_bounds
-    const [y_lo, y_hi] = (data_series.y_axis ?? `y1`) === `y2` ? y2_bounds : y_bounds
+    const [x_lo, x_hi] = (data_series.x_axis ?? `x`) === `x2` ? x2_bounds : x_bounds
+    const [y_lo, y_hi] = (data_series.y_axis ?? `y`) === `y2` ? y2_bounds : y_bounds
     const filtered_data: InternalPoint<Metadata>[] = []
     for (const point of data_series.points) {
       // NaN bounds fail both comparisons, so they reject every point
@@ -164,12 +175,24 @@ const is_opaque_color = (color: string | undefined | null): color is string =>
 // else the legend shows a phantom `Series N`.
 export const scatter_legend_rows = <Metadata>(
   series: readonly DataSeries<Metadata>[],
-): { series_idx: number; label: string; legend_group: string | undefined }[] =>
+): {
+  series_idx: number
+  label: string
+  legend_group: string | undefined
+  legend_key?: string
+}[] =>
   series.flatMap((data_series, series_idx) =>
     data_series
       ? [
           {
             series_idx,
+            ...((data_series.legend_id ?? data_series.id) != null && {
+              legend_key: JSON.stringify([
+                data_series.legend_id != null ? `legend` : `id`,
+                typeof (data_series.legend_id ?? data_series.id),
+                data_series.legend_id ?? data_series.id,
+              ]),
+            }),
             label: scatter_series_label(data_series) ?? `Series ${series_idx + 1}`,
             legend_group: data_series.legend_group,
           },
@@ -177,20 +200,26 @@ export const scatter_legend_rows = <Metadata>(
       : [],
   )
 
-// First occurrence of `legend_group::label` wins; stateful so one dedupe spans several row
-// sources (series, then fills, then error bands).
+// Shared legend IDs combine drawings; explicit series IDs otherwise stay separate.
 export const legend_row_dedupe = () => {
   const seen = new Set<string>()
-  return ({ label, legend_group }: { label?: string; legend_group?: string }): boolean => {
-    const key = `${legend_group ?? ``}::${label ?? ``}`
+  return ({
+    label,
+    legend_group,
+    legend_key,
+  }: {
+    label?: string
+    legend_group?: string
+    legend_key?: string
+  }): boolean => {
+    const key = legend_key ?? JSON.stringify([legend_group ?? ``, label ?? ``])
     if (seen.has(key)) return false
     seen.add(key)
     return true
   }
 }
 
-// Prepare legend items from series + computed fill regions, deduplicated by
-// legend_group::label (first occurrence wins across both series and fills)
+// Prepare legend items from series + computed fill regions; first matching identity wins.
 export function build_legend_data<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   computed_fills: readonly LegendFill[],

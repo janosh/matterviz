@@ -34,7 +34,12 @@ test.each([
   [`movie.traj`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
   [`movie.h5`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
   [`movie.xyz.zip`, 101, { kind: `reject`, reason: `unsupported-compression` }],
-  [`movie.xyz.gz.gz`, 101, { kind: `reject`, reason: `unsupported-compression` }],
+  [
+    `movie.xyz.gz.gz`,
+    101,
+    { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.xyz.gz.gz:101` },
+  ],
+  [`movie.xyz.xz.gz`, 101, { kind: `reject`, reason: `unsupported-compression` }],
 ] as const)(`plans %s at %d bytes`, (filename, file_size, expected) => {
   expect(plan(filename, file_size)).toEqual(expected)
 })

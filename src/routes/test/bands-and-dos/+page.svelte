@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { normalize_dos } from '$lib/spectral'
   import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
   import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
 
   // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
-  const electronic_dos = dos_spin_polarization
+  const electronic_dos = normalize_dos(dos_spin_polarization)
+  if (!electronic_dos) throw new Error(`Invalid electronic DOS fixture`)
 
   const mock_band_structure: BaseBandStructure = {
+    type: `phonon`,
     qpoints: [
       { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
       { label: null, frac_coords: [0.25, 0.0, 0.0], distance: 0.5 },
@@ -45,40 +48,40 @@
   {sync_y_zoom ? `Disable` : `Enable`} y zoom sync
 </button>
 <BandsAndDos
-  band_structs={mock_band_structure}
-  doses={mock_dos}
+  band_structs={{ '': mock_band_structure }}
+  doses={{ '': mock_dos }}
   {sync_y_zoom}
   data-testid="bands-and-dos-default"
 />
 
 <h2 id="custom-widths">Custom Subplot Widths</h2>
 <BandsAndDos
-  band_structs={mock_band_structure}
-  doses={mock_dos}
+  band_structs={{ '': mock_band_structure }}
+  doses={{ '': mock_dos }}
   style="grid-template-columns: 60% 40%"
   data-testid="bands-and-dos-custom-widths"
 />
 
 <h2 id="bands-custom-styling">Custom Bands Styling</h2>
 <BandsAndDos
-  band_structs={mock_band_structure}
-  doses={mock_dos}
+  band_structs={{ '': mock_band_structure }}
+  doses={{ '': mock_dos }}
   bands_props={{ line_kwargs: { stroke: `red` } }}
   data-testid="bands-and-dos-bands-styling"
 />
 
 <h2 id="dos-normalization">DOS with Normalization</h2>
 <BandsAndDos
-  band_structs={mock_band_structure}
-  doses={mock_dos}
+  band_structs={{ '': mock_band_structure }}
+  doses={{ '': mock_dos }}
   dos_props={{ normalize: `max`, sigma: 0.2 }}
   data-testid="bands-and-dos-dos-norm"
 />
 
 <h2 id="independent-axes">Independent Y-axes (Mismatched Ranges)</h2>
 <BandsAndDos
-  band_structs={mock_band_structure}
-  doses={high_freq_dos}
+  band_structs={{ '': mock_band_structure }}
+  doses={{ '': high_freq_dos }}
   shared_y_axis={false}
   data-testid="bands-and-dos-independent-axes"
 >
@@ -96,8 +99,8 @@
   and displayed as a dashed red line.
 </p>
 <BandsAndDos
-  band_structs={electronic_bands.cao_2605}
-  doses={electronic_dos}
+  band_structs={{ '': electronic_bands.cao_2605 }}
+  doses={{ '': electronic_dos }}
   bands_props={{ y_axis: { label: `Energy (eV)` } }}
   dos_props={{ y_axis: { label: `` } }}
   data-testid="bands-and-dos-electronic"
@@ -109,8 +112,8 @@
   marker.
 </p>
 <BandsAndDos
-  band_structs={electronic_bands.vbr2_971787}
-  doses={electronic_dos}
+  band_structs={{ '': electronic_bands.vbr2_971787 }}
+  doses={{ '': electronic_dos }}
   bands_props={{
     y_axis: { label: `Energy (eV)` },
     line_kwargs: { stroke_width: 1.5 },
@@ -128,8 +131,8 @@
   <div>
     <h3 style="text-align: center">Electronic (CaO)</h3>
     <BandsAndDos
-      band_structs={electronic_bands.cao_2605}
-      doses={electronic_dos}
+      band_structs={{ '': electronic_bands.cao_2605 }}
+      doses={{ '': electronic_dos }}
       bands_props={{ y_axis: { label: `Energy (eV)` } }}
       dos_props={{ y_axis: { label: `` } }}
       data-testid="bands-and-dos-electronic-comparison"
@@ -138,8 +141,8 @@
   <div>
     <h3 style="text-align: center">Phonon (Mock)</h3>
     <BandsAndDos
-      band_structs={mock_band_structure}
-      doses={mock_dos}
+      band_structs={{ '': mock_band_structure }}
+      doses={{ '': mock_dos }}
       bands_props={{ y_axis: { label: `Frequency (THz)` } }}
       data-testid="bands-and-dos-phonon-comparison"
     />

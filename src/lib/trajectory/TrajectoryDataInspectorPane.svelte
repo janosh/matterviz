@@ -2,7 +2,7 @@
   import { StatusMessage, Tabs } from 'svelte-widgets'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import { type CellVal, HeatmapTable, type Label, type RowData } from '$lib/table'
+  import { type CellVal, HeatmapTable, type Column, type RowData } from '$lib/table'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
@@ -77,13 +77,14 @@
   // Column for one property. Per-frame scalars take label and unit from the same config
   // that labels the plot axes; per-atom keys, which that config never covers, take their
   // unit from SITE_PROPERTY_UNITS. `axis` splits a vec3 property into one column per axis.
-  const property_column = (prop_name: string, axis?: string): Label => {
+  const property_column = (prop_name: string, axis?: string): Column => {
     const config =
       trajectory_property_config[prop_name] ??
       trajectory_property_config[prop_name.toLowerCase()]
     const label = axis ? `${prop_name} ${axis}` : (config?.label ?? prop_name)
     const unit = SITE_PROPERTY_UNITS[prop_name] ?? config?.unit
     return {
+      id: `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`,
       key: `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`,
       label: unit ? `${label} (${unit})` : label,
       description: prop_name,
@@ -120,9 +121,9 @@
       }
       return row
     })
-    const columns: Label[] = [
-      { key: `frame_idx`, label: `Frame`, format: `d`, color_scale: null, sticky: true },
-      { key: `step`, label: `Step`, format: `d`, color_scale: null },
+    const columns: Column[] = [
+      { id: `frame_idx`, label: `Frame`, format: `d`, color_scale: null, sticky: true },
+      { id: `step`, label: `Step`, format: `d`, color_scale: null },
       ...[...property_keys].map((key) => property_column(key)),
     ]
     return { rows, columns }
@@ -156,15 +157,17 @@
     return [...specs]
   })
 
-  let atom_columns: Label[] = $derived([
-    { key: `site_idx`, label: `Site`, format: `d`, color_scale: null, sticky: true },
-    { key: `element`, label: `Element`, color_scale: null },
+  let atom_columns: Column[] = $derived([
+    { id: `site_idx`, label: `Site`, format: `d`, color_scale: null, sticky: true },
+    { id: `element`, label: `Element`, color_scale: null },
     ...FRAC_AXES.map((axis) => ({
+      id: `frac_${axis}`,
       key: `frac_${axis}`,
       label: `${axis}<sub>frac</sub>`,
       format: `.4~f`,
     })),
     ...VEC3_AXES.map((axis) => ({
+      id: `cart_${axis}`,
       key: `cart_${axis}`,
       label: `${axis} (Å)`,
       format: `.4~f`,
@@ -205,10 +208,15 @@
 
   let tab_items = $derived([
     {
+      id: `Frames (${format_num(frame_table.rows.length, `,d`)})`,
       value: `frames` as const,
       label: `Frames (${format_num(frame_table.rows.length, `,d`)})`,
     },
-    { value: `atoms` as const, label: `Atoms (${format_num(active_sites.length, `,d`)})` },
+    {
+      id: `Atoms (${format_num(active_sites.length, `,d`)})`,
+      value: `atoms` as const,
+      label: `Atoms (${format_num(active_sites.length, `,d`)})`,
+    },
   ])
 
   const table_props = {

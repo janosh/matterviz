@@ -601,19 +601,15 @@ describe(`process_hull_for_stats`, () => {
     ]
     const result = process_hull_for_stats(entries)
     if (!result) throw new Error(`expected result`)
-    const by_id = Object.fromEntries(
-      [...result.stable_entries, ...result.unstable_entries].map((entry) => [
-        entry.entry_id,
-        entry,
-      ]),
-    )
+    const by_id = Object.fromEntries(result.entries.map((entry) => [entry.entry_id, entry]))
     expect(by_id.FeO.e_form_per_atom).toBeCloseTo(0.5, 10)
     expect(by_id.FeO.e_above_hull).toBeCloseTo(0.5, 10)
     expect(by_id.FeO3.e_form_per_atom).toBe(1)
     expect(by_id.FeO3.e_above_hull).toBeCloseTo(1, 10)
     expect(by_id.Fe.is_element).toBe(true)
     expect(
-      result.stable_entries
+      result.entries
+        .filter((entry) => entry.is_stable)
         .map((entry) => entry.entry_id)
         .toSorted((id_a, id_b) => String(id_a).localeCompare(String(id_b))),
     ).toEqual([`Fe`, `O`])
@@ -628,12 +624,16 @@ describe(`process_hull_for_stats`, () => {
       make_phase({ Li: 1, Fe: 2 }, -0.1, { entry_id: `LiFe2` }),
     ]
     const result = process_hull_for_stats(entries)
-    const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
+    const all = result?.entries ?? []
     // LiFe2 (-0.1) sits on the Li-Fe tie-line (else ~0.233 above the Li-LiFe-Fe hull);
     // LiFe is scored (below hull → 0) but never counted stable
     expect(all.find((entry) => entry.entry_id === `LiFe2`)?.e_above_hull).toBeCloseTo(0, 10)
     expect(all.find((entry) => entry.entry_id === `LiFe`)?.e_above_hull).toBeCloseTo(0, 10)
-    expect(result?.stable_entries.some((entry) => entry.entry_id === `LiFe`)).toBe(false)
+    expect(
+      result?.entries
+        .filter((entry) => entry.is_stable)
+        .some((entry) => entry.entry_id === `LiFe`),
+    ).toBe(false)
   })
 
   // Hull distances are keyed by entry_id, else composition + energy: same-composition
@@ -662,7 +662,7 @@ describe(`process_hull_for_stats`, () => {
     `scores same-composition polymorphs without entry_id distinctly ($system)`,
     ({ entries }) => {
       const result = process_hull_for_stats(entries)
-      const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
+      const all = result?.entries ?? []
       const compounds = all
         .filter((entry) => !entry.is_element)
         .toSorted((a, b) => a.energy - b.energy)

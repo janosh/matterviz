@@ -277,12 +277,10 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
   )
 }
 
-// Convert pymatgen PhononBandStructureSymmLine or BandStructure to matterviz format.
-// `PhononBandStructure` only adds the optional `has_nac`/`has_imaginary_modes` flags to
-// `BaseBandStructure`; electronic input simply leaves them unset.
+// Convert pymatgen bands while retaining their physical type and reference energy.
 function convert_pymatgen_band_structure(
   pmg: Record<string, unknown>,
-): types.PhononBandStructure | null {
+): types.BaseBandStructure | null {
   // Support both qpoints (phonon) and kpoints (electronic)
   const raw_qpts = (pmg.qpoints ?? pmg.kpoints) as unknown[] | undefined
 
@@ -401,6 +399,8 @@ function convert_pymatgen_band_structure(
       : null
 
   return {
+    type: is_electronic_band_struct(pmg) ? `electronic` : `phonon`,
+    ...(typeof pmg.efermi === `number` && { efermi: pmg.efermi }),
     qpoints,
     recip_lattice,
     branches,
@@ -458,6 +458,7 @@ export function normalize_band_structure(
   // Fill the defaults (labels_dict/nb_bands) not covered above so the cast below is sound
   return {
     ...band_struct,
+    type: is_electronic_band_struct(band_struct) ? `electronic` : `phonon`,
     nb_bands: typeof band_struct.nb_bands === `number` ? band_struct.nb_bands : bands.length,
     labels_dict: band_struct.labels_dict ?? {},
   } as unknown as types.BaseBandStructure
@@ -524,6 +525,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     if (energies.length !== densities.length) return null
     return electronic_dos(energies, densities, spin_down_densities, {
       spin_polarized: spin_polarized as boolean | undefined,
+      efermi: typeof dos.efermi === `number` ? dos.efermi : undefined,
     })
   }
 
@@ -831,20 +833,30 @@ export const closed_edge_path = (upper_points: string[], lower_points: string[])
     `Z`,
   ].join(` `)
 
-// Extract efermi from a data source (band structure or DOS).
-// Handles both single objects with an efermi field and dicts of objects.
-// Returns undefined if no valid efermi is found or if the source is empty.
-export function extract_efermi(data: unknown): number | undefined {
-  if (!is_plain_object(data)) return undefined
-
-  if (typeof data.efermi === `number`) return data.efermi
-
-  // Dict of objects - try to get efermi from first value
-  const first_val: unknown = Object.values(data)[0]
-  if (is_plain_object(first_val) && typeof first_val.efermi === `number`) {
-    return first_val.efermi
+// A shared axis cannot mix frequencies and energies. Validate every material, including maps
+// whose first dataset is empty, before rendering or computing a combined range.
+export function spectral_type(
+  ...collections: Record<string, { type: types.BandStructureType }>[]
+): types.BandStructureType | undefined {
+  let result: types.BandStructureType | undefined
+  for (const collection of collections) {
+    for (const [label, { type }] of Object.entries(collection)) {
+      if (type !== `phonon` && type !== `electronic`)
+        throw new Error(`Invalid spectral type for "${label}": ${type}`)
+      if (result && type !== result)
+        throw new Error(`Cannot mix ${result} and ${type} spectra (material "${label}")`)
+      result = type
+    }
   }
-  return undefined
+  return result
+}
+
+// Fermi level of the first canonical dataset; collection order controls the shared reference.
+export function extract_efermi(
+  data: Record<string, types.BaseBandStructure | types.DosData>,
+): number | undefined {
+  const first = Object.values(data)[0]
+  return first && `efermi` in first ? first.efermi : undefined
 }
 
 // Calculate fraction of |values| that are negative. Used to detect imaginary phonon modes.
@@ -864,6 +876,8 @@ export function negative_fraction(values: number[]): number {
 // electronic_structure @module. Must run on the raw input: normalization strips these fields.
 export function is_electronic_band_struct(band_struct: unknown): boolean {
   if (!is_plain_object(band_struct)) return false
+  if (band_struct.type === `electronic`) return true
+  if (band_struct.type === `phonon`) return false
   if (typeof band_struct.efermi === `number`) return true
   if (Array.isArray(band_struct.kpoints) && band_struct.kpoints.length > 0) return true
   const py_class = band_struct[`@class`]
@@ -875,21 +889,6 @@ export function is_electronic_band_struct(band_struct: unknown): boolean {
     (typeof py_module === `string` && py_module.includes(`electronic_structure`))
   )
 }
-
-// Band structure / DOS props take one object or a dict of them keyed by label. A single
-// object is recognised by a marker key on the object itself and gets the empty label;
-// anything that is not an object yields no entries.
-const single_or_dict_entries = (
-  input: unknown,
-  marker_keys: string[],
-): [label: string, value: unknown][] => {
-  if (typeof input !== `object` || input === null) return []
-  return marker_keys.some((key) => key in input) ? [[``, input]] : Object.entries(input)
-}
-// matterviz and pymatgen phonon band structures carry `qpoints`, electronic pymatgen `kpoints`
-export const band_struct_entries = (input: unknown) =>
-  single_or_dict_entries(input, [`qpoints`, `kpoints`])
-export const dos_entries = (input: unknown) => single_or_dict_entries(input, [`densities`])
 
 // Min/max of the finite `values` padded by `padding_factor` of the span; a phonon range whose
 // negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0
@@ -910,41 +909,25 @@ export function padded_frequency_range(
 
 // Shared frequency/energy range of bands and DOS, see padded_frequency_range
 export function compute_frequency_range(
-  band_structs: unknown,
-  doses: unknown,
+  band_structs: Record<string, types.BaseBandStructure>,
+  doses: Record<string, types.DosData>,
   padding_factor = 0.02,
 ): Vec2 | undefined {
-  const frequency_lists: (readonly number[])[] = []
-
-  // Electronic markers are read from the raw input: normalization strips them (every
-  // normalized structure has qpoints). Bands that aren't electronic are phonon bands.
-  const raw_band_structs = band_struct_entries(band_structs).map(([, raw]) => raw)
-  // A malformed pymatgen entry throws from normalization; Bands reports it, the range just
-  // skips it. The raw input rides along for is_electronic_band_struct's sake.
-  const normalized = raw_band_structs.flatMap((raw) => {
-    try {
-      const bs = normalize_band_structure(raw)
-      return bs ? [{ raw, bs }] : []
-    } catch {
-      return []
-    }
-  })
-  // any, not every: an electronic entry alongside a phonon one must not clear the flag that
-  // drives the imaginary-mode clamp, matching the `||=` the DOS loop below uses
-  let is_phonon = normalized.some(({ raw }) => !is_electronic_band_struct(raw))
-  for (const { bs } of normalized) frequency_lists.push(...bs.bands)
-
-  for (const [, raw] of dos_entries(doses)) {
-    const dos = normalize_dos(raw)
-    if (!dos) continue
-    // `||=`, not `=`: a later electronic entry must not clear a phonon flag set above
-    is_phonon ||= dos.type === `phonon`
-    frequency_lists.push(dos.type === `phonon` ? dos.frequencies : dos.energies)
-  }
-  return padded_frequency_range(frequency_lists.flat(), is_phonon, padding_factor)
+  const type = spectral_type(band_structs, doses)
+  const bands = Object.values(band_structs)
+  const dos = Object.values(doses)
+  return padded_frequency_range(
+    [
+      ...bands.flatMap((bs) => [...bs.bands, ...(bs.spin_down_bands ?? [])].flat()),
+      ...dos.flatMap((entry) =>
+        entry.type === `phonon` ? entry.frequencies : entry.energies,
+      ),
+    ],
+    type === `phonon`,
+    padding_factor,
+  )
 }
 
-// Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
 export function parse_axis_label(label: string): { name: string; unit?: string } {
   const match = /^(?<name>.+?)\s*\((?<unit>[^)]+)\)$/.exec(label)
   return match ? { name: match[1], unit: match[2] } : { name: label }

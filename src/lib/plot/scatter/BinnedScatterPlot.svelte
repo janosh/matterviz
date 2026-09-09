@@ -711,7 +711,7 @@
           point_radius_for_value(payload.point.size_value) + point_labels_settings.gap_px,
       },
     }))
-    const label_series: DataSeries<Metadata>[] = [{ x: [], y: [], filtered_data }]
+    const label_series = [{ filtered_data }]
     point_label_positions = compute_label_positions(
       label_series,
       actual_label_placement_config,

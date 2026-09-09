@@ -1,3 +1,4 @@
+import type { ShowControlsProp } from '$lib/controls'
 import type { PaneProps, PaneToggleProps } from '$lib/overlays'
 import type { D3InterpolateName } from '$lib/colors'
 import type { D3SymbolName } from '$lib/labels'
@@ -87,7 +88,10 @@ export type Markers = `line` | `points` | `line+points` | `none`
 
 // Define the structure for a data series in the plot
 export interface DataSeries<Metadata = Record<string, unknown>> {
-  id?: string | number // Optional stable identifier for the series (used for keying)
+  id?: string | number // Omitted IDs use array positions; supply stable IDs for reordering or persisted visibility
+  // Shared legend/visibility identity for several drawing series. hidden_series uses this
+  // key when supplied; each drawing still needs its own unique id.
+  legend_id?: string | number
   x: readonly number[]
   y: readonly number[]
   // Original values for transformed series, exposed to hover handlers alongside y.
@@ -97,10 +101,10 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   line_underlays?: Pick<DataSeries<Metadata>, `x` | `y` | `line_style`>[]
   // Optional marker display type override for this specific series
   markers?: Markers
-  // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
-  x_axis?: `x1` | `x2`
-  // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
-  y_axis?: `y1` | `y2`
+  // Specify which x-axis to use: 'x' (bottom, default) or 'x2' (top)
+  x_axis?: `x` | `x2`
+  // Specify which y-axis to use: 'y' (left, default) or 'y2' (right)
+  y_axis?: `y` | `y2`
   color_values?: (number | null)[] | null
   size_values?: readonly (number | null)[] | null
   // Per-point uncertainty, drawn as capped bars. Scalar, per-point array, or
@@ -113,7 +117,7 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
   point_offset?: Point2D[] | Point2D // Can be array or single object
-  visible?: boolean // Optional visibility flag
+  visible?: boolean // Initial legend visibility; explicit hidden_series takes precedence
   label?: string // Optional series label for legend
   // Group name for organizing legend items. Series with the same legend_group
   // are displayed together under a collapsible header. Click the header to toggle
@@ -130,10 +134,6 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
     line_dash?: string
     curve?: LineCurve // d3-shape curve for the connecting line; `linear` = straight segments
   }
-  // Internal fields used after processing (not provided by users)
-  filtered_data?: InternalPoint<Metadata>[]
-  _id?: string | number
-  orig_series_idx?: number // Original series index for consistent auto-cycling colors/symbols
 }
 
 // Throw when arrays that are indexed in lockstep have different lengths. Absent arrays are skipped.
@@ -239,8 +239,8 @@ export interface BarHandlerProps<
   bar_idx: number
   orient_x: number
   orient_y: number
-  active_y_axis: `y1` | `y2`
-  active_x_axis: `x1` | `x2`
+  active_y_axis: `y` | `y2`
+  active_x_axis: `x` | `x2`
   color: string
   category_label?: string // original string category (undefined when numeric x)
 }
@@ -251,8 +251,8 @@ export interface HistogramHandlerProps<
   value: number
   count: number
   property: string
-  active_y_axis: `y1` | `y2`
-  active_x_axis: `x1` | `x2`
+  active_y_axis: `y` | `y2`
+  active_x_axis: `x` | `x2`
 }
 
 export type TimeInterval = `day` | `month` | `year`
@@ -382,7 +382,7 @@ export type HoverConfig = {
   show_tooltip?: boolean
 }
 
-// Type for PlotLegend props forwarded from ScatterPlot props
+// Legend callbacks observe chart-owned visibility updates; they do not replace them.
 export type LegendConfig = Omit<
   ComponentProps<typeof PlotLegend>,
   `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
@@ -441,7 +441,7 @@ export type Orientation = `vertical` | `horizontal`
 export type BarMode = `overlay` | `stacked` | `grouped`
 
 export interface BarSeries<Metadata = Record<string, unknown>> {
-  id?: string | number // Optional stable identifier for the series (used for keying)
+  id?: string | number // Omitted IDs use array positions; supply stable IDs for reordering or persisted visibility
   x: readonly (number | string)[]
   y: readonly number[]
   label?: string
@@ -460,10 +460,10 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   metadata?: Metadata[] | Metadata
   labels?: readonly (string | null | undefined)[]
   render_mode?: `bar` | `line` // Render as bars (default) or as a line
-  // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
-  x_axis?: `x1` | `x2`
-  // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
-  y_axis?: `y1` | `y2`
+  // Specify which x-axis to use: 'x' (bottom, default) or 'x2' (top)
+  x_axis?: `x` | `x2`
+  // Specify which y-axis to use: 'y' (left, default) or 'y2' (right)
+  y_axis?: `y` | `y2`
   line_style?: {
     stroke_width?: number
     line_dash?: string
@@ -550,7 +550,7 @@ export interface AxisConfig {
   // Tick whose label is drawn in the active (pressed) state, e.g. the one whose popup is open;
   // colored by --tick-active-fill
   active_tick?: number | null
-  // Synchronization with y1 axis (only applicable when used as y2_axis)
+  // Synchronization with y axis (only applicable when used as y2_axis)
   // - 'synced': Y2 has exact same range as Y1
   // - 'align': Y2 expands to show all data, align_value (default 0) at same position
   // - 'none' or undefined: Independent axes (default)
@@ -560,35 +560,12 @@ export interface AxisConfig {
   categories?: readonly string[] // explicit category order/filter for categorical bar plots
 }
 
-// Result from data loader - returns complete series array
-// SeriesType defaults to DataSeries but can be BarSeries for bar plots
-interface DataLoaderResult<
-  Metadata = Record<string, unknown>,
-  SeriesType = DataSeries<Metadata>,
-> {
-  series: SeriesType[] // full replacement series
-  axis_label?: string // optional new axis label
-  axis_unit?: string // optional axis unit
-}
-
-// Callback to fetch data for a property change
-// Called when user selects a new property from the axis dropdown
-// SeriesType defaults to DataSeries but can be BarSeries for bar plots
-export type DataLoaderFn<
-  Metadata = Record<string, unknown>,
-  SeriesType = DataSeries<Metadata>,
-> = (
+// Async data retrieval is owned by the caller, independently of chart rendering.
+export type AxisLoader<Result> = (
   axis: AxisKey,
   property_key: string,
-  current_series: readonly SeriesType[], // passed for context
-) => Promise<DataLoaderResult<Metadata, SeriesType>>
-
-// Error event for axis data loading failures
-export interface AxisLoadError {
-  axis: AxisKey
-  key: string
-  message: string
-}
+  signal: AbortSignal,
+) => Promise<Result>
 
 // How a ColorBar gets its colors:
 //   - a d3 interpolator name, sampled across the bar's `range`
@@ -664,10 +641,8 @@ export interface PanConfig {
   touch_enabled?: boolean // default: true - whether touch gestures are enabled
 }
 
-export interface PlotControlsProps extends PlotConfig {
-  // Control pane visibility
-  show_controls?: boolean
-  controls_open?: boolean
+export interface PlotControlsProps
+  extends PlotConfig, Pick<BasePlotProps, `show_controls` | `controls_open`> {
   // Custom sections rendered before / after the shared axis sections
   children?: Snippet
   post_children?: Snippet
@@ -704,7 +679,7 @@ export interface BasePlotProps {
   // State
   hovered?: boolean
   // Controls
-  show_controls?: boolean
+  show_controls?: ShowControlsProp<`controls` | `fullscreen`>
   controls_open?: boolean
   controls_toggle_props?: PaneToggleProps
   controls_pane_props?: PaneProps

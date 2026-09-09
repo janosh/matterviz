@@ -12,7 +12,7 @@ export interface KdeResult {
 
 interface KdeOptions {
   bandwidth?: number | `silverman` | `scott` // default 'silverman'
-  n_points?: number // grid resolution (default 100, min 2)
+  n_points?: number // integer grid resolution >= 2 (default 100)
   cut?: number // extend grid by cut*bandwidth beyond data extremes (default 2)
   clip?: [number | null, number | null] // hard bounds for the grid (e.g. [0, null] for RMSD)
   range?: Vec2 // explicit eval range (overrides data extent + cut)
@@ -59,7 +59,6 @@ function exact_density(
   band: number,
 ): number[] {
   const n_eval = eval_samples.length
-  const norm = 1 / (n_eval * band * Math.sqrt(2 * Math.PI))
   const density = Array.from({ length: grid.length }, () => 0)
   for (let grid_idx = 0; grid_idx < grid.length; grid_idx++) {
     const g_val = grid[grid_idx]
@@ -68,7 +67,8 @@ function exact_density(
       const z_score = (g_val - sample) / band
       sum += Math.exp(-0.5 * z_score * z_score)
     }
-    density[grid_idx] = sum * norm
+    // Divide separately: n*band can overflow; 1/band can overflow for tiny kernels.
+    density[grid_idx] = sum / n_eval / band / Math.sqrt(2 * Math.PI)
   }
   return density
 }
@@ -87,28 +87,29 @@ function binned_density(
   }
   if (sample_max <= sample_min) return exact_density(eval_samples, grid, band)
 
-  const bin_count = clamp(grid.length * 4, 128, 1024)
-  const counts = new Float64Array(bin_count)
   const span = sample_max - sample_min
-  const inv_bin_width = bin_count / span
+  // Bin centers must resolve the kernel, not just the data extent. A distant outlier
+  // or a narrow user bandwidth otherwise shifts entire peaks out of the plotted range.
+  const bin_count = Math.max(clamp(grid.length * 4, 128, 1024), Math.ceil((span / band) * 8))
+  if (bin_count > 4096) return exact_density(eval_samples, grid, band)
+  const counts = new Float64Array(bin_count)
   for (const sample of eval_samples) {
-    const idx = Math.min(bin_count - 1, Math.floor((sample - sample_min) * inv_bin_width))
+    const idx = Math.min(bin_count - 1, Math.floor(((sample - sample_min) / span) * bin_count))
     counts[idx] += 1
   }
 
   const centers = new Float64Array(bin_count)
-  const bin_width = span / bin_count
-  for (let idx = 0; idx < bin_count; idx++) centers[idx] = sample_min + (idx + 0.5) * bin_width
+  for (let idx = 0; idx < bin_count; idx++)
+    centers[idx] = sample_min + ((idx + 0.5) / bin_count) * span
 
   const density = Array.from({ length: grid.length }, () => 0)
-  const norm = 1 / (n_eval * band * Math.sqrt(2 * Math.PI))
   const radius = KDE_TAIL_SIGMA * band
   for (let grid_idx = 0; grid_idx < grid.length; grid_idx++) {
     const g_val = grid[grid_idx]
-    const start = Math.max(0, Math.floor((g_val - radius - sample_min) * inv_bin_width))
+    const start = Math.max(0, Math.floor(((g_val - radius - sample_min) / span) * bin_count))
     const stop = Math.min(
       bin_count - 1,
-      Math.floor((g_val + radius - sample_min) * inv_bin_width),
+      Math.floor(((g_val + radius - sample_min) / span) * bin_count),
     )
     let sum = 0
     for (let bin_idx = start; bin_idx <= stop; bin_idx++) {
@@ -117,7 +118,8 @@ function binned_density(
       const z_score = (g_val - centers[bin_idx]) / band
       sum += count * Math.exp(-0.5 * z_score * z_score)
     }
-    density[grid_idx] = sum * norm
+    // Divide separately: n*band can overflow; 1/band can overflow for tiny kernels.
+    density[grid_idx] = sum / n_eval / band / Math.sqrt(2 * Math.PI)
   }
   return density
 }
@@ -126,6 +128,19 @@ function binned_density(
 export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}): KdeResult {
   // oxfmt-ignore
   const { bandwidth = `silverman`, n_points = 100, cut = 2, clip, range, max_samples, grid_transform } = opts
+
+  if (!Number.isSafeInteger(n_points) || n_points < 2) {
+    throw new RangeError(`KDE n_points must be an integer >= 2, got ${n_points}`)
+  }
+  if (max_samples !== undefined && (!Number.isSafeInteger(max_samples) || max_samples < 1)) {
+    throw new RangeError(`KDE max_samples must be a positive integer, got ${max_samples}`)
+  }
+  if (typeof bandwidth === `number` && (!Number.isFinite(bandwidth) || bandwidth <= 0)) {
+    throw new RangeError(`KDE bandwidth must be finite and positive, got ${bandwidth}`)
+  }
+  if (!Number.isFinite(cut) || cut < 0) {
+    throw new RangeError(`KDE cut must be finite and non-negative, got ${cut}`)
+  }
 
   const finite = samples.filter((val) => Number.isFinite(val))
   const n_vals = finite.length
@@ -139,22 +154,20 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
   }
 
   // Deterministic stride subsample for the density sum on large inputs.
-  // Do this before unordered quantile selection mutates `finite`.
   let eval_samples: readonly number[] = finite
-  if (max_samples && n_vals > max_samples) {
+  if (max_samples !== undefined && n_vals > max_samples) {
     const step = n_vals / max_samples
     const sampled = Array.from({ length: max_samples }, () => 0)
     for (let idx = 0; idx < max_samples; idx++) sampled[idx] = finite[Math.floor(idx * step)]
     eval_samples = sampled
   }
 
-  let band =
+  const band =
     typeof bandwidth === `number`
       ? bandwidth
       : bandwidth === `scott`
         ? scott_bandwidth(finite)
         : silverman_bandwidth(finite)
-  band = Math.max(band, 1e-12) // guard against zero/negative bandwidth
 
   const n_eval = eval_samples.length
 
@@ -167,8 +180,7 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
   // A collapsed range renders constant samples; only inverted bounds leave no valid grid.
   if (hi < lo) return { grid: [], density: [], bandwidth: band }
 
-  const points = Math.max(2, Math.floor(n_points))
-  const grid = Array.from({ length: points }, () => 0)
+  const grid = Array.from({ length: n_points }, () => 0)
   // Spaced in the transformed coordinate when one is given and both ends survive it finite
   // (a log transform of a non-positive bound does not), else evenly in data units
   const [pos_lo, pos_hi] = [grid_transform?.fwd(lo) ?? NaN, grid_transform?.fwd(hi) ?? NaN]
@@ -176,10 +188,10 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
     grid_transform && Number.isFinite(pos_lo) && Number.isFinite(pos_hi)
       ? (frac: number) => grid_transform.inv(pos_lo + (pos_hi - pos_lo) * frac)
       : (frac: number) => lo + (hi - lo) * frac
-  for (let idx = 0; idx < points; idx++) grid[idx] = at(idx / (points - 1))
+  for (let idx = 0; idx < n_points; idx++) grid[idx] = at(idx / (n_points - 1))
   // the transform can round the ends off; the grid must still span exactly [lo, hi]
   grid[0] = lo
-  grid[points - 1] = hi
+  grid[n_points - 1] = hi
   const density =
     max_samples && n_eval > KDE_EXACT_SAMPLE_LIMIT
       ? binned_density(eval_samples, grid, band)

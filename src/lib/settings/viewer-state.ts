@@ -45,10 +45,9 @@ type StructureViewStateParseResult =
   | { state: StructureViewState; error?: never }
   | { state?: never; error: string }
 
-// Absolute camera coordinates and vector property keys belong to one particular structure.
-// Restoring either globally can mis-frame or suppress vector discovery on the next structure.
+// Vector property keys belong to one structure; restoring them can suppress vector discovery.
 const is_non_portable_structure_key = (key: StructureSettingKey): boolean =>
-  key === `camera_position` || key === `vector_configs`
+  key === `vector_configs`
 
 const object_value = (source: object | undefined, key: PropertyKey): unknown =>
   source && Reflect.has(source, key) ? Reflect.get(source, key) : undefined

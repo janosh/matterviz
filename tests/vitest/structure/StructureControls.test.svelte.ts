@@ -12,7 +12,7 @@ import { default_vector_configs, StructureControls } from '$lib/structure'
 import { next_atom_color_config } from '$lib/structure/atom-properties'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
@@ -400,8 +400,8 @@ describe(`StructureControls schema rows`, () => {
         auto_bond_order: true,
         polyhedra_color_mode: `uniform` as const,
         vector_color_mode: `uniform` as const,
-        trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
       },
+      trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
       show_image_atoms: true,
       show_trajectory_lines: true,
       multi_view: false,
@@ -568,11 +568,11 @@ describe(`StructureControls layout`, () => {
       structure: simple_structure,
       controls_open: true,
       show_trajectory_lines: true,
+      trajectory_position_stream: stream,
       scene_props: {
         show_bonds: `always`,
         show_polyhedra: `always`,
         show_site_labels: true,
-        trajectory_position_stream: stream,
       },
       displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
     })
@@ -660,9 +660,20 @@ describe(`StructureControls reactive props`, () => {
     const { state } = await mount_persisted_controls()
     state.scene_props.atom_radius = 1.6
     const pane = doc_query(`.controls-pane`)
+    // A real resize takes ownership from the pane's automatic anchoring.
+    doc_query(`[data-resize-edge="right"]`).dispatchEvent(
+      new PointerEvent(`pointerdown`, {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+      }),
+    )
+    flushSync()
     pane.style.width = `520px`
     pane.style.height = `610px`
     trigger_resize_observer(pane)
+    document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
     await vi.waitFor(() =>
       expect(load_structure_view_state()).toMatchObject({
         settings: { structure: { atom_radius: 1.6 } },
@@ -930,10 +941,7 @@ describe(`StructureControls reactive props`, () => {
     expect(center_label(`e`)).toBeUndefined()
   })
 
-  // Sections wire `current_values` and their reset from one shared key list. Check three
-  // sections to ensure changes reveal their reset and restore defaults — including Site
-  // vectors, whose per-key scales live in vector_configs rather than under a scene_props key
-  // and so have to be tracked by hand.
+  // Section resets include site-vector scales stored in vector_configs.
   test(`offers section resets only after changes and restores defaults`, async () => {
     // every key defined at its default, so the mount-time snapshot the reset offer compares
     // against isn't perturbed by `bind:` writing back into an undefined prop
@@ -954,11 +962,9 @@ describe(`StructureControls reactive props`, () => {
         `button[aria-label="Reset ${section} to defaults"]`,
       )
     // nothing differs from the mount-time snapshot yet, so no section offers a reset
-    expect(reset_button(`atoms`)).toBeNull()
-    expect(reset_button(`displacement overlay`)).toBeNull()
-    expect(reset_button(`polyhedra`)).toBeNull()
-    expect(reset_button(`site vectors`)).toBeNull()
-    expect(reset_button(`visibility`)).toBeNull()
+    const sections = [`displacement overlay`, `atoms`, `polyhedra`, `site vectors`]
+    for (const section of [...sections, `visibility`])
+      expect(reset_button(section), section).toBeNull()
 
     doc_query<HTMLInputElement>(`[data-key="polyhedra_show_edges"] input`).click()
     await tick()
@@ -1006,7 +1012,7 @@ describe(`StructureControls reactive props`, () => {
       scale: 2.5,
     })
 
-    for (const section of [`displacement overlay`, `atoms`, `polyhedra`, `site vectors`]) {
+    for (const section of sections) {
       reset_button(section)?.click()
     }
     await tick()
@@ -1050,7 +1056,7 @@ describe(`StructureControls reactive props`, () => {
     async (_desc, stream, show_trails, expect_toggle, expect_length) => {
       const state = $state({
         show_trajectory_lines: show_trails,
-        scene_props: { trajectory_position_stream: stream },
+        trajectory_position_stream: stream,
       })
       const target = await mount_bound_controls(state)
 

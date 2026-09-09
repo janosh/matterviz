@@ -86,6 +86,15 @@ describe(`group_nav_routes`, () => {
     const all_children = nav_routes.flatMap(({ children }) => children ?? [])
     expect(all_children).toContain(`/structure/slab`)
     expect(all_children).toContain(`/acknowledgements`)
+    expect(nav_routes.find(({ href }) => href === `/guides`)).toMatchObject({
+      label: `Guides`,
+      children: expect.arrayContaining([
+        `/guides`,
+        `/how-to/use-without-svelte`,
+        `/how-to/hook-up-to-external-api`,
+        `/acknowledgements`,
+      ]),
+    })
     expect(all_children.some((route) => route.startsWith(`/layout`))).toBe(false)
     expect(all_children.some((route) => route.startsWith(`/test`))).toBe(false)
     expect(new Set(all_children).size).toBe(all_children.length)

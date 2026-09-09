@@ -76,7 +76,19 @@
     vector_color?: string | null
     auto_play?: boolean
     pane_ratio?: number
-    trajectory_props?: Partial<ComponentProps<typeof Trajectory>>
+    trajectory_props?: Pick<
+      ComponentProps<typeof Trajectory>,
+      | `class`
+      | `style`
+      | `fps_range`
+      | `step_labels`
+      | `fullscreen_toggle`
+      | `on_play`
+      | `on_pause`
+      | `on_end`
+      | `on_loop`
+      | `on_controller`
+    >
   } = $props()
 
   let error_msg = $state<string>()
@@ -437,10 +449,9 @@
             ],
           }}
           extra_controls={phonon_settings}
+          structure_series_key={supercell_result.value?.structure}
           structure_props={{
             children: mode_picker,
-            // Re-frame the camera only when the displayed cell changes, not per mode/amplitude
-            structure_series_key: supercell_result.value?.structure,
             analyze_symmetry: false,
             apply_supercell_scaling: false,
             show_image_atoms: false,
@@ -471,8 +482,7 @@
       <section class="plot-pane" aria-label="Phonon mode plot">
         {#if view === `bands` && band_result.value}
           <Bands
-            band_structs={band_result.value}
-            band_type="phonon"
+            band_structs={{ '': band_result.value }}
             reference_frequency={selected_mode?.frequency ?? null}
             highlighted_qpoint_index={selection?.qpoint_idx ?? null}
             highlighted_band_index={selection?.mode_idx ?? null}

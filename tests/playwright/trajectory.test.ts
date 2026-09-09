@@ -335,7 +335,7 @@ test.describe(`Trajectory Component`, () => {
       const oracle_plot_metadata_equal = exact(memfs.properties.rows, oracle_plot_metadata)
       workerfs.dispose()
       memfs.dispose()
-      // frame 0 is the in-memory preview and stays readable after dispose; any other frame rejects
+      // All reads reject after disposal; the stored preview remains available directly.
       const disposed_error = await Promise.resolve(workerfs.read_frame(1)).then(
         () => `missing error`,
         String,

@@ -9,7 +9,13 @@
   import { onDestroy } from 'svelte'
   import { make_demo_trajectory } from './demo'
 
-  let { structure, start_run }: StructureToolProps = $props()
+  let {
+    structure,
+    start_run,
+    prediction,
+    overlay_visible,
+    set_overlay_visible,
+  }: StructureToolProps = $props()
   let run = $state.raw<StructureToolRun>()
   let status = $state(`Ready`)
   let current_step_idx = $state(0)
@@ -92,6 +98,14 @@
   <label>Delay (ms) <input type="number" min="0" max="10000" bind:value={delay_ms} /></label>
   <label><input type="checkbox" bind:checked={fail} /> Fail prediction</label>
   <button onclick={show_trajectory}>Show predicted trajectory</button>
+  <label
+    ><input
+      type="checkbox"
+      checked={overlay_visible}
+      disabled={!prediction}
+      onchange={(event) => set_overlay_visible(event.currentTarget.checked)}
+    />Show prediction</label
+  >
   <span role="status">{status}</span>
 </div>
 

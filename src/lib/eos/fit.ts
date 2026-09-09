@@ -116,7 +116,7 @@ function parabola_guess(volumes: readonly number[], energies: readonly number[])
   const order = volumes
     .map((_, idx) => idx)
     .toSorted((idx_a, idx_b) => volumes[idx_a] - volumes[idx_b])
-  const min_pos = order.indexOf(energies.indexOf(Math.min(...energies)))
+  const min_pos = order.indexOf(energies.indexOf(array_min(energies)))
   // Same guard as pymatgen's EOS: a scan that does not bracket its minimum starts the
   // 4-parameter fit far from the truth and can settle in a wrong local minimum without any
   // symptom other than a large RMSE, so refuse it up front. Judged by the lowest-energy point,

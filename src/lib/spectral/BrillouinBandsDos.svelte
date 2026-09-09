@@ -1,22 +1,25 @@
 <script lang="ts">
+  import type { BandsOptions, DosOptions } from './index'
+  import type { BrillouinZoneOptions } from '$lib/brillouin'
   import { BrillouinZone } from '$lib/brillouin'
   import { reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { InternalPoint, ScatterHandlerEvent } from '$lib/plot'
   import { axis_with_range } from '$lib/plot/core/shared-axes'
   import type { Crystal } from '$lib/structure'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import * as helpers from './helpers'
   import { create_bands_dos_sync } from './synced-axes.svelte'
-  import type { BaseBandStructure, DosData, HoveredData } from './types'
+  import type { BaseBandStructure, DosData, FrequencyUnit, HoveredData } from './types'
 
   let {
     structure,
     band_structs,
     doses,
+    units = $bindable(`THz`),
     bands_props = {},
     dos_props = {},
     bz_props = {},
@@ -25,26 +28,17 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     structure: Crystal
-    band_structs: BaseBandStructure | Record<string, BaseBandStructure>
-    doses: DosData | Record<string, DosData>
-    bands_props?: Partial<ComponentProps<typeof Bands>>
-    dos_props?: Partial<ComponentProps<typeof Dos>>
-    bz_props?: Partial<ComponentProps<typeof BrillouinZone>>
+    band_structs: Record<string, BaseBandStructure>
+    doses: Record<string, DosData>
+    units?: FrequencyUnit
+    bands_props?: BandsOptions
+    dos_props?: DosOptions
+    bz_props?: BrillouinZoneOptions
     sync_y_zoom?: boolean // Sync frequency/energy axis zoom between plots (default: true)
     children?: Snippet<[HoveredData]>
   } = $props()
 
-  // First normalized band structure, for the k-path. A malformed pymatgen input throws from
-  // normalization; the nested Bands reports it, so the k-path just stays empty here.
-  let first_band_struct = $derived.by((): BaseBandStructure | null => {
-    try {
-      return helpers.normalize_band_structure(
-        helpers.band_struct_entries(band_structs)[0]?.[1],
-      )
-    } catch {
-      return null
-    }
-  })
+  const first_band_struct = $derived(Object.values(band_structs)[0])
 
   // Convert fractional k-point coordinates to Cartesian reciprocal space
   // using the structure's reciprocal lattice (consistent with BZ computation)
@@ -84,6 +78,7 @@
   const sync = create_bands_dos_sync({
     band_structs: () => band_structs,
     doses: () => doses,
+    units: () => units,
     bands_y_axis: () => bands_props.y_axis,
     dos_y_axis: () => dos_props.y_axis,
     bands_padding: () => bands_props.padding,
@@ -103,11 +98,13 @@
     hovered_qpoint_index: active_qpoint_index,
   })}
   <Bands
-    style="grid-area: bands; min-width: 0; min-height: 0; overflow: visible"
+    {...bands_props}
+    style="grid-area: bands; min-width: 0; min-height: 0; overflow: visible; {bands_props.style ??
+      ``}"
     {band_structs}
+    bind:units
     {structure}
     fermi_level={sync.fermi_level}
-    {...bands_props}
     padding={{ r: is_desktop ? 10 : 5, ...bands_props.padding, ...sync.shared_padding }}
     y_axis={sync.y_axes[0]}
     bind:view={sync.views[0]}
@@ -122,7 +119,9 @@
   />
 
   <BrillouinZone
-    style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; height: 100%"
+    {...bz_props}
+    style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; height: 100%; {bz_props.style ??
+      ``}"
     {structure}
     {k_path_points}
     k_path_labels={first_band_struct
@@ -131,14 +130,15 @@
     {hovered_k_point}
     hovered_qpoint_index={active_qpoint_index}
     on_kpath_hover={(idx) => (bz_hovered_qpoint_index = idx)}
-    {...bz_props}
   />
 
   <Dos
-    style="grid-area: dos; min-width: 0; min-height: 0; overflow: visible"
-    {doses}
-    fermi_level={sync.fermi_level}
     {...dos_props}
+    style="grid-area: dos; min-width: 0; min-height: 0; overflow: visible; {dos_props.style ??
+      ``}"
+    {doses}
+    bind:units
+    fermi_level={sync.fermi_level}
     orientation={is_desktop ? `horizontal` : `vertical`}
     x_axis={{
       ...axis_with_range(undefined, is_desktop ? undefined : sync.shared_range),

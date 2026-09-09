@@ -229,21 +229,21 @@ describe(`BarPlot`, () => {
       axis: `x2`,
       orientation: `vertical`,
       invalid_series: { ...invalid_x, x_axis: `x2` },
-      primary_axis: { x_axis: `x1` },
+      primary_axis: { x_axis: `x` },
     },
     {
       name: `vertical x2 with unpaired coordinates`,
       axis: `x2`,
       orientation: `vertical`,
       invalid_series: { ...unpaired_values, x_axis: `x2` },
-      primary_axis: { x_axis: `x1` },
+      primary_axis: { x_axis: `x` },
     },
     {
       name: `horizontal x2 with invalid values`,
       axis: `x2`,
       orientation: `horizontal`,
       invalid_series: { ...invalid_y, x_axis: `x2` },
-      primary_axis: { x_axis: `x1` },
+      primary_axis: { x_axis: `x` },
     },
   ] as const)(
     `does not render an axis without a finite point ($name)`,
@@ -752,8 +752,8 @@ describe(`BarPlot`, () => {
   )
 
   test.each([
-    { orientation: `vertical`, secondary_axis: `y2`, explicit_axis: { y_axis: `y1` } },
-    { orientation: `horizontal`, secondary_axis: `x2`, explicit_axis: { x_axis: `x1` } },
+    { orientation: `vertical`, secondary_axis: `y2`, explicit_axis: { y_axis: `y` } },
+    { orientation: `horizontal`, secondary_axis: `x2`, explicit_axis: { x_axis: `x` } },
   ] as const)(
     `explicit value axes reserve their slot in $orientation orientation`,
     async ({ orientation, secondary_axis, explicit_axis }) => {
@@ -789,7 +789,7 @@ describe(`BarPlot`, () => {
     }
     const input = [basic, { ...basic, label: `Second`, color: `tomato` }]
     expect(await collect_geometry(input)).toEqual(
-      await collect_geometry(input.map((srs) => ({ ...srs, y_axis: `y1` }))),
+      await collect_geometry(input.map((srs) => ({ ...srs, y_axis: `y` }))),
     )
   })
 

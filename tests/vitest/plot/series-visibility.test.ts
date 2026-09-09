@@ -1,8 +1,7 @@
 import type { DataSeries } from '$lib/plot'
 import {
   create_legend_visibility,
-  handle_legend_double_click,
-  have_compatible_units,
+  can_share_axis,
   LEGEND_VISIBILITY_MODES,
   legend_mode_to_prop,
   resolve_legend_visibility,
@@ -51,16 +50,14 @@ describe(`legend_mode_to_prop`, () => {
   })
 })
 
-describe(`have_compatible_units`, () => {
+describe(`can_share_axis`, () => {
   test.each([
     { unit1: undefined, unit2: undefined, expected: true, desc: `both have no units` },
     { unit1: `eV`, unit2: undefined, expected: true, desc: `only one has a unit` },
     { unit1: `eV`, unit2: `eV`, expected: true, desc: `both have same unit` },
     { unit1: `eV`, unit2: `GPa`, expected: false, desc: `different units` },
   ])(`returns $expected when $desc`, ({ unit1, unit2, expected }) => {
-    const s1: DataSeries = { x: [1], y: [2], unit: unit1 }
-    const s2: DataSeries = { x: [3], y: [4], unit: unit2 }
-    expect(have_compatible_units(s1, s2)).toBe(expected)
+    expect(can_share_axis({ unit: unit1 }, { unit: unit2 })).toBe(expected)
   })
 })
 
@@ -93,35 +90,48 @@ describe(`toggle_series_visibility`, () => {
     expect(result.map((srs) => srs.visible)).toEqual([false, true, false])
   })
 
-  test(`hides incompatible units when making series visible`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], unit: `eV`, visible: false },
-      { x: [3], y: [4], unit: `GPa`, visible: true },
-    ]
-    const result = toggle_series_visibility(series, 0)
-    expect(result.map((srs) => srs.visible)).toEqual([true, false])
-  })
-
-  test(`keeps compatible units visible when toggling series`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], unit: `eV`, visible: false },
-      { x: [3], y: [4], unit: `eV`, visible: true },
-      { x: [5], y: [6], unit: `GPa`, visible: true },
-    ]
-    const result = toggle_series_visibility(series, 0)
-    expect(result.map((srs) => srs.visible)).toEqual([true, true, false])
-  })
-
-  test(`only affects series on same y-axis`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], unit: `eV`, y_axis: `y1`, visible: false },
-      { x: [3], y: [4], unit: `eV`, y_axis: `y2`, visible: true },
-      { x: [5], y: [6], unit: `GPa`, y_axis: `y1`, visible: true },
-    ]
-    const result = toggle_series_visibility(series, 0)
-    // Series 0 (eV, y1) becomes visible, series 1 (eV, y2) stays visible (different axis),
-    // series 2 (GPa, y1) becomes hidden (same axis, incompatible unit)
-    expect(result.map((srs) => srs.visible)).toEqual([true, true, false])
+  test.each<[string, Partial<DataSeries>[], boolean[]]>([
+    [
+      `hides incompatible units`,
+      [
+        { unit: `eV`, visible: false },
+        { unit: `GPa`, visible: true },
+      ],
+      [true, false],
+    ],
+    [
+      `keeps compatible units visible`,
+      [
+        { unit: `eV`, visible: false },
+        { unit: `eV`, visible: true },
+        { unit: `GPa`, visible: true },
+      ],
+      [true, true, false],
+    ],
+    [
+      `only affects series on the same y-axis`,
+      [
+        { unit: `eV`, y_axis: `y`, visible: false },
+        { unit: `eV`, y_axis: `y2`, visible: true },
+        { unit: `GPa`, y_axis: `y`, visible: true },
+      ],
+      [true, true, false],
+    ],
+    [
+      `replaces distinct axis groups even with the same unit`,
+      [
+        { id: `scf`, unit: `eV`, axis_group: `scf`, y_axis: `y`, visible: false },
+        { id: `energy`, unit: `eV`, y_axis: `y` },
+        { id: `force`, unit: `eV/A`, y_axis: `y2` },
+      ],
+      [true, false, true],
+    ],
+  ])(`%s when showing a series`, (_name, series, expected) => {
+    const result = toggle_series_visibility(
+      series.map((srs) => ({ x: [], y: [], ...srs })),
+      0,
+    )
+    expect(result.map((srs) => srs.visible ?? true)).toEqual(expected)
   })
 })
 
@@ -183,258 +193,192 @@ describe(`toggle_group_visibility`, () => {
       { x: [1], y: [2], label: `A`, visible: true, unit: `eV` },
       { x: [3], y: [4], label: `B`, visible: true, unit: `GPa` },
     ]
-    const result = toggle_group_visibility(series, [0, 5]) // 5 is out of bounds
+    const result = toggle_group_visibility(series, [0, 0, -1, 5]) // duplicates and out-of-bounds indices
     expect(result[0]).toMatchObject({ visible: false, unit: `eV`, label: `A` })
     expect(result[1]).toMatchObject({ visible: true, unit: `GPa`, label: `B` })
   })
 })
 
-describe(`handle_legend_double_click`, () => {
-  test(`isolates a single series`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-      { x: [5], y: [6], label: `C`, visible: true },
-    ]
-    const result = handle_legend_double_click(series, 1, null)
-    expect(result.series.map((srs) => srs.visible)).toEqual([false, true, false])
-    expect(result.prev_visibility?.visibility).toEqual([true, true, true])
-  })
-
-  test(`restores visibility when already isolated`, () => {
-    const original: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-      { x: [5], y: [6], label: `C`, visible: true },
-    ]
-    const isolated = handle_legend_double_click(original, 1, null)
-    const result = handle_legend_double_click(isolated.series, 1, isolated.prev_visibility)
-    expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true])
-    expect(result.prev_visibility).toBeNull()
-  })
-
-  // inside components, x/y are $state proxies whose identity changes when the series
-  // prop is reassigned by the isolate itself - the snapshot must match by value, not
-  // by array identity, else restore-from-isolation permanently breaks
-  test(`restores when data is value-identical but referentially new`, () => {
-    const original: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-    ]
-    const isolated = handle_legend_double_click(original, 0, null)
-    const reproxied = isolated.series.map((srs) => ({
-      ...srs,
-      x: [...srs.x],
-      y: [...srs.y],
-    }))
-    const result = handle_legend_double_click(reproxied, 0, isolated.prev_visibility)
-    expect(result.series.map((srs) => srs.visible)).toEqual([true, true])
-    expect(result.prev_visibility).toBeNull()
-  })
-
-  test.each([
-    { new_vis: true, desc: `keeps true visibility` },
-    { new_vis: false, desc: `keeps false visibility` },
-  ])(`handles new series added after isolation - $desc`, ({ new_vis }) => {
-    const original: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-      { x: [5], y: [6], label: `C`, visible: true },
-    ]
-    const isolated = handle_legend_double_click(original, 1, null)
-    const result = handle_legend_double_click(
-      [...isolated.series, { x: [7], y: [8], label: `D`, visible: new_vis }],
-      1,
-      isolated.prev_visibility,
-    )
-    expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true, new_vis])
-    expect(result.prev_visibility).toBeNull()
-  })
-
-  test(`does not restore stale visibility when series source changes`, () => {
-    const original: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-      { x: [5], y: [6], label: `C`, visible: true },
-    ]
-    const isolated = handle_legend_double_click(original, 1, null)
-    const replacement: DataSeries[] = [
-      { x: [10], y: [20], label: `A`, visible: false },
-      { x: [30], y: [40], label: `B`, visible: true },
-      { x: [50], y: [60], label: `C`, visible: false },
-    ]
-
-    const result = handle_legend_double_click(replacement, 1, isolated.prev_visibility)
-
-    expect(result.series.map((srs) => srs.visible)).toEqual([false, true, false])
-    expect(result.prev_visibility).toBeNull()
-  })
-
-  test(`isolates series by label`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-      { x: [5], y: [6], label: `A`, visible: true },
-    ]
-    const result = handle_legend_double_click(series, 0, null)
-    expect(result.series.map((srs) => srs.visible)).toEqual([true, false, true])
-  })
-
-  test(`does not save previous visibility when only one series is visible`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: false },
-    ]
-    expect(handle_legend_double_click(series, 0, null).prev_visibility).toBeNull()
-  })
-
-  test(`isolates series without label by index`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], visible: true },
-      { x: [3], y: [4], visible: true },
-      { x: [5], y: [6], visible: true },
-    ]
-    const result = handle_legend_double_click(series, 1, null)
-    expect(result.series.map((srs) => srs.visible)).toEqual([false, true, false])
-  })
-
-  test.each([
-    { idx: -1, desc: `negative index` },
-    { idx: 10, desc: `out of bounds index` },
-  ])(`handles invalid index gracefully - $desc`, ({ idx }) => {
-    const series: DataSeries[] = [
-      { x: [1], y: [2], label: `A`, visible: true },
-      { x: [3], y: [4], label: `B`, visible: true },
-    ]
-    const result = handle_legend_double_click(series, idx, null)
-    // All series should remain visible (no isolation occurs)
-    expect(result.series.map((srs) => srs.visible)).toEqual([true, true])
-    expect(result.prev_visibility).toBeNull()
-  })
-})
-
 describe(`create_legend_visibility`, () => {
-  // Mimics a component: `raw` is the (bindable) prop, `resolved` what the chart renders
   const make_store = (initial: DataSeries[]) => {
-    const store = { raw: initial, resolved: initial }
-    const vis = create_legend_visibility<DataSeries>(
-      () => store.resolved,
-      (next) => receive(next),
-    )
-    const receive = (incoming: DataSeries[]) => {
-      store.raw = incoming
-      store.resolved = vis.resolve(incoming)
+    const store: { raw: DataSeries[]; hidden?: readonly (string | number)[] } = {
+      raw: initial,
     }
-    receive(initial)
+    const vis = create_legend_visibility(
+      (): DataSeries[] => vis.resolve(store.raw),
+      () => store.hidden,
+      (next) => {
+        store.hidden = next
+      },
+    )
     return {
       store,
       vis,
-      receive,
-      visible: () => store.resolved.map((srs) => srs.visible ?? true),
+      visible: () => vis.resolve(store.raw).map((srs) => srs.visible ?? true),
     }
   }
-  const fresh = (overrides: Partial<DataSeries>[] = [{ id: `a` }, { id: `b` }]) =>
-    overrides.map((extra, idx) => ({ x: [idx], y: [idx], label: `S${idx}`, ...extra }))
 
-  test(`a legend-hidden series stays hidden when the parent re-sends equal series`, () => {
-    const { store, vis, receive, visible } = make_store(fresh())
+  test(`legend state survives reordering and replacement without changing input data`, () => {
+    const initial = [
+      { id: `a`, x: [1], y: [2] },
+      { id: `b`, x: [3], y: [4] },
+    ]
+    initial.forEach(Object.freeze)
+    const { store, vis, visible } = make_store(initial)
     vis.on_toggle(0)
-    expect(visible()).toEqual([false, true])
-    // write-back reaches the bindable prop (bound parents see the toggle)
-    expect(store.raw.map((srs) => srs.visible)).toEqual([false, undefined])
-    // one-way parent rebuilds the array without `visible`
-    receive(fresh())
-    expect(visible()).toEqual([false, true])
-    // untouched series objects pass through by identity
-    expect(store.resolved[1]).toBe(store.raw[1])
-  })
-
-  test(`parent explicitly changing visible clears the override`, () => {
-    const { vis, receive, visible } = make_store(fresh())
-    vis.on_toggle(0)
-    receive(fresh([{ id: `a`, visible: true }, { id: `b` }]))
-    expect(visible()).toEqual([true, true])
-    // override is gone for good: reverting to the unset value no longer re-hides
-    receive(fresh())
+    expect(store.raw).toBe(initial)
+    expect(store.hidden).toEqual([`a`])
+    store.raw = initial.toReversed().map((srs) => ({ ...srs, label: `Renamed` }))
+    expect(visible()).toEqual([true, false])
+    store.hidden = []
     expect(visible()).toEqual([true, true])
   })
 
-  test(`parent echoing the hidden value keeps it hidden, user re-show drops the override`, () => {
-    const { vis, receive, visible } = make_store(fresh())
-    vis.on_toggle(0)
-    receive(fresh([{ id: `a`, visible: false }, { id: `b` }]))
-    expect(visible()).toEqual([false, true])
-    vis.on_toggle(0)
-    expect(visible()).toEqual([true, true])
-    receive(fresh([{ id: `a`, visible: false }, { id: `b` }]))
-    // parent's explicit false now wins again since the user returned to the parent value
-    expect(visible()).toEqual([false, true])
-  })
+  test.each([undefined, `a`, 0])(
+    `initially hidden series %s can be shown without rewriting it`,
+    (id) => {
+      const initial = [{ id, x: [1], y: [2], visible: false }]
+      const { store, vis, visible } = make_store(initial)
+      expect(visible()).toEqual([false])
+      vis.on_toggle(0)
+      expect(visible()).toEqual([true])
+      expect(store.hidden).toEqual([])
+      expect(initial[0].visible).toBe(false)
+    },
+  )
 
-  test.each([
-    [`label when id is missing`, fresh([{}, {}]), fresh([{}, {}])],
-    [
-      `index when id and label are missing`,
-      fresh([{ label: undefined }, { label: undefined }]),
-      fresh([{ label: undefined }, { label: undefined }]),
-    ],
-    [
-      `id over label`,
-      fresh([{ id: `a`, label: `old` }, { id: `b` }]),
-      fresh([{ id: `a`, label: `renamed` }, { id: `b` }]),
-    ],
-  ])(`keys overrides by %s`, (_desc, initial, replacement) => {
-    const { vis, receive, visible } = make_store(initial)
-    vis.on_toggle(0)
-    receive(replacement)
-    expect(visible()).toEqual([false, true])
-  })
-
-  test(`isolate via double-click survives replacement and restore returns to parent state`, () => {
-    const { vis, receive, visible } = make_store(
-      fresh([{ id: `a` }, { id: `b` }, { id: `c` }]),
-    )
-    vis.on_double_click(1)
-    receive(fresh([{ id: `a` }, { id: `b` }, { id: `c` }]))
-    expect(visible()).toEqual([false, true, false])
-    vis.on_double_click(1)
-    expect(visible()).toEqual([true, true, true])
-    receive(fresh([{ id: `a` }, { id: `b` }, { id: `c` }]))
+  test(`isolate/restore follows stable IDs across reorder and preserves hidden series`, () => {
+    const { store, vis, visible } = make_store([
+      { id: `a`, x: [1], y: [2] },
+      { id: `b`, x: [3], y: [4] },
+      { id: `c`, x: [5], y: [6], visible: false },
+    ])
+    vis.on_double_click(0)
+    expect(visible()).toEqual([true, false, false])
+    store.raw = store.raw.toReversed()
+    vis.on_double_click(2)
+    expect(visible()).toEqual([false, true, true])
+    vis.on_group_toggle(`group`, [0, 1])
     expect(visible()).toEqual([true, true, true])
   })
-
-  test(`passes nullish entries through`, () => {
-    const series = [{ x: [1], y: [1] }, null, undefined] as DataSeries[]
-    const { store, vis, receive } = make_store(series)
+  test(`explicit IDs with identical labels toggle and isolate independently`, () => {
+    const { vis, visible } = make_store([
+      { id: `a`, label: `Same`, x: [1], y: [2] },
+      { id: `b`, label: `Same`, x: [3], y: [4] },
+    ])
     vis.on_toggle(0)
-    receive([...series])
-    expect(store.resolved.map((srs) => srs?.visible ?? srs)).toEqual([false, null, undefined])
+    expect(visible()).toEqual([false, true])
+    vis.on_double_click(0)
+    expect(visible()).toEqual([true, false])
+    vis.on_double_click(0)
+    expect(visible()).toEqual([false, true])
   })
 
-  // Trajectory plots auto-assign y axes per unit group: restoring a hidden series must keep
-  // a dual-axis partner, while an explicit same-axis clash still hides the incompatible one
-  test.each([
-    [`automatic axes preserve a dual-axis partner`, [undefined, undefined], [true, true]],
-    [
-      `explicit same-axis assignments hide an incompatible partner`,
-      [`y1`, `y1`],
-      [true, false],
-    ],
-  ] as [string, (`y1` | undefined)[], boolean[]][])(
-    `round-trips visibility when %s`,
-    (_label, axes, expected_after_restore) => {
-      let series: DataSeries[] = [
-        { x: [0, 1], y: [1, 2], unit: `eV`, visible: true, y_axis: axes[0] },
-        { x: [0, 1], y: [3, 4], unit: `GPa`, visible: true, y_axis: axes[1] },
+  test.each([`toggle`, `group`, `isolate`] as const)(
+    `%s follows shared legend IDs through drawing replacement and reorder`,
+    (action) => {
+      const drawing = (id: string, legend_id: string): DataSeries => ({
+        id,
+        legend_id,
+        label: `Same`,
+        x: [],
+        y: [],
+      })
+      const { store, vis, visible } = make_store([
+        drawing(`a1`, `a`),
+        drawing(`a2`, `a`),
+        drawing(`b1`, `b`),
+        drawing(`c1`, `c`),
+      ])
+      store.hidden = [`c`]
+      if (action === `toggle`) vis.on_toggle(0)
+      else if (action === `group`) vis.on_group_toggle(`Group`, [0])
+      else vis.on_double_click(2)
+      expect(store.hidden).toEqual([`a`, `c`])
+      expect(visible()).toEqual([false, false, true, false])
+      store.raw = [drawing(`c2`, `c`), drawing(`b2`, `b`), drawing(`a3`, `a`)]
+      expect(visible()).toEqual([false, true, false])
+      if (action === `toggle`) vis.on_toggle(2)
+      else if (action === `group`) vis.on_group_toggle(`Group`, [2])
+      else vis.on_double_click(1)
+      expect(store.hidden).toEqual([`c`])
+      expect(visible()).toEqual([false, true, true])
+    },
+  )
+
+  test.each([false, true])(
+    `rejects ambiguous legend/drawing keys (reversed=%s)`,
+    (reverse) => {
+      const series = [
+        { id: `a`, legend_id: `shared`, x: [], y: [] },
+        { id: `shared`, x: [], y: [] },
       ]
-      const vis = create_legend_visibility(
-        () => series,
-        (next_series) => (series = next_series),
+      expect(() => make_store(reverse ? series.toReversed() : series).visible()).toThrow(
+        `Legend key "shared" conflicts with a drawing series ID`,
       )
-      vis.on_toggle(0)
-      expect(series.map((srs) => srs.visible)).toEqual([false, true])
-      vis.on_toggle(0)
-      expect(series.map((srs) => srs.visible)).toEqual(expected_after_restore)
+    },
+  )
+
+  test(`rejects a shared identity spanning different legend headers`, () => {
+    expect(() =>
+      make_store([
+        { id: `a`, legend_id: `shared`, legend_group: `First`, x: [], y: [] },
+        { id: `b`, legend_id: `shared`, legend_group: `Second`, x: [], y: [] },
+      ]).visible(),
+    ).toThrow(`Legend key "shared" spans different legend groups`)
+  })
+
+  test.each([`toggle`, `group`, `external`, `replacement`] as const)(
+    `%s invalidates an old isolation snapshot`,
+    (action) => {
+      const { store, vis, visible } = make_store([
+        { id: `a`, x: [1], y: [2] },
+        { id: `b`, x: [3], y: [4] },
+        { id: `c`, x: [5], y: [6] },
+      ])
+      vis.on_double_click(0)
+      if (action === `toggle`) vis.on_toggle(2)
+      else if (action === `group`) vis.on_group_toggle(`Other`, [2])
+      else if (action === `external`) store.hidden = [`b`]
+      else
+        store.raw = store.raw.map((srs) => ({
+          ...srs,
+          id: `new-${srs.id}`,
+          visible: srs.id !== `b`,
+        }))
+      const expected = visible()
+      vis.on_double_click(0)
+      vis.on_double_click(0)
+      expect(visible()).toEqual(expected)
+    },
+  )
+
+  test(`rejects ambiguous explicit IDs and index-derived keys`, () => {
+    expect(() =>
+      make_store([
+        { id: 1, x: [], y: [] },
+        { x: [], y: [] },
+      ]).visible(),
+    ).toThrow(`Series keys must be unique`)
+  })
+  test.each([`toggle`, `group`, `isolate`] as const)(
+    `%s preserves hidden IDs absent from a filtered series array`,
+    (action) => {
+      const { store, vis, visible } = make_store([
+        { id: `b`, x: [], y: [] },
+        { id: `c`, x: [], y: [] },
+      ])
+      store.hidden = [`a`, `a`]
+      if (action === `toggle`) vis.on_toggle(0)
+      else if (action === `group`) vis.on_group_toggle(`Group`, [0])
+      else {
+        vis.on_double_click(0)
+        vis.on_double_click(0)
+      }
+      expect(store.hidden).toContain(`a`)
+      expect(visible()).toEqual([action === `isolate`, true])
+      store.raw = [{ id: `a`, x: [], y: [] }, ...store.raw]
+      expect(visible()[0]).toBe(false)
     },
   )
 })

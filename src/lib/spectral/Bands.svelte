@@ -1,11 +1,11 @@
 <script lang="ts">
+  import type { ScatterPlotOptions } from '$lib/plot'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '$lib/brillouin'
   import type { BZPopupPoint } from '$lib/brillouin'
   import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import { to_error } from '$lib/utils'
   import { SettingsSection } from '$lib/layout'
   import { clamp, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
@@ -26,7 +26,6 @@
   import type {
     BandLineStyle,
     BandsSpinMode,
-    BandStructureType,
     BaseBandStructure,
     Branch,
     FrequencyUnit,
@@ -45,7 +44,6 @@
     bz_popup_props = {},
     line_kwargs = {},
     path_mode = `strict`,
-    band_type = undefined,
     show_legend,
     x_axis = {},
     y_axis = {},
@@ -61,6 +59,7 @@
     highlight_regions = [],
     shade_imaginary_modes = true,
     show_gap_annotation = true,
+    display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     id = undefined,
@@ -70,19 +69,18 @@
     resolved_padding = $bindable(),
     children: user_children,
     ...rest
-  }: ComponentProps<typeof ScatterPlot> & {
-    band_structs: BaseBandStructure | Record<string, BaseBandStructure>
+  }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
+    band_structs: Record<string, BaseBandStructure>
     // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the
     // clicked point whenever a reciprocal lattice is known: from the band data itself (pymatgen
     // and phonopy inputs carry one) or, overriding it, from this crystal's lattice
     structure?: Crystal
-    bz_popup_props?: Partial<ComponentProps<typeof BrillouinZonePopup>>
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
+    bz_popup_props?: Pick<
+      ComponentProps<typeof BrillouinZonePopup>,
+      `width` | `height` | `bz_props` | `style` | `class` | `on_close`
+    >
     line_kwargs?: LineKwargs
     path_mode?: PathMode
-    band_type?: BandStructureType
-    show_legend?: boolean
     // Plot x-range of every plotted path segment, keyed by segment key (read-only output)
     x_positions?: Record<string, Vec2>
     reference_frequency?: number | null
@@ -103,9 +101,6 @@
     }[]
     shade_imaginary_modes?: boolean // Shade y<0 region for phonon plots with imaginary modes
     show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
-    show_controls?: boolean
-    id?: string
-    'data-testid'?: string
   } = $props()
 
   const is_per_mode_style = (
@@ -147,42 +142,20 @@
     key: string
   }
 
-  // One structure (empty label) or a dict of them keyed by label
-  let raw_structures = $derived(helpers.band_struct_entries(band_structs))
-
-  // Normalized structures in plot order, each with its per-branch segment keys (aligned with
-  // bs.branches). Entries whose normalization throws (pymatgen shape missing its reciprocal
-  // lattice) are collected as parse errors so the empty state can name the defect instead
-  // of a generic message.
-  let { structures, parse_errors } = $derived.by(() => {
-    const parsed: { label: string; bs: BaseBandStructure; keys: string[] }[] = []
-    const errors: string[] = []
-    for (const [label, input] of raw_structures) {
-      try {
-        const bs = helpers.normalize_band_structure(input)
-        if (bs) parsed.push({ label, bs, keys: helpers.branch_segment_keys(bs) })
-      } catch (error) {
-        errors.push(`${label ? `${label}: ` : ``}${to_error(error).message}`)
-      }
-    }
-    return { structures: parsed, parse_errors: errors }
-  })
-  let num_structures = $derived(structures.length)
-
-  // Same raw-input markers compute_frequency_range reads, so the plot and a shared bands+DOS
-  // range agree on which bands are electronic
-  let detected_band_type = $derived.by((): BandStructureType => {
-    if (band_type) return band_type
-    return helpers.is_electronic_band_struct(raw_structures[0]?.[1]) ? `electronic` : `phonon`
-  })
-
-  let effective_fermi_level = $derived(
-    fermi_level ??
-      (detected_band_type === `electronic` ? helpers.extract_efermi(band_structs) : undefined),
+  // Material labels are stable identities; use an empty label for an unnamed dataset.
+  const structures = $derived(
+    Object.entries(band_structs).map(([label, bs]) => ({
+      label,
+      bs,
+      keys: helpers.branch_segment_keys(bs),
+    })),
   )
+  const num_structures = $derived(structures.length)
+  const band_type = $derived(helpers.spectral_type(band_structs) ?? `phonon`)
+  const effective_fermi_level = $derived(fermi_level ?? structures[0]?.bs.efermi)
 
   let effective_spin_mode = $derived.by((): BandsSpinMode => {
-    if (detected_band_type !== `electronic`) return null
+    if (band_type !== `electronic`) return null
     return band_spin_mode === `up_only` || band_spin_mode === `down_only`
       ? band_spin_mode
       : `overlay`
@@ -192,7 +165,7 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
   const convert_band_values = (values: number[]): number[] =>
-    detected_band_type === `phonon` ? convert_frequencies(values, unit) : values
+    band_type === `phonon` ? convert_frequencies(values, unit) : values
 
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
@@ -254,8 +227,7 @@
     for (const [bs_idx, { label, bs, keys }] of structures.entries()) {
       const color = plot_color(bs_idx)
       const structure_label = label || `Structure ${bs_idx + 1}`
-      const gamma_indices =
-        detected_band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
+      const gamma_indices = band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
       const ribbon = bs.band_widths?.length
         ? { opacity: 0.3, max_width: 6, scale: 1, ...ribbon_config }
         : null
@@ -280,9 +252,7 @@
           const style_up = get_line_style(color, is_acoustic === true, band_idx)
           const spin_down_band = bs.spin_down_bands?.[band_idx]
           const y_down =
-            detected_band_type === `electronic` &&
-            spin_down_band &&
-            spin_down_band.length >= end_idx
+            band_type === `electronic` && spin_down_band && spin_down_band.length >= end_idx
               ? convert_band_values(spin_down_band.slice(start_idx, end_idx))
               : null
 
@@ -316,6 +286,8 @@
               }
             }
             all_series.push({
+              id: JSON.stringify([label, segment_key, band_idx, spin]),
+              legend_id: JSON.stringify([label, spin]),
               x: x_vals,
               y: y_vals,
               markers,
@@ -427,16 +399,14 @@
         ...bs.bands.flat(),
         ...(bs.spin_down_bands?.flat() ?? []),
       ]),
-      detected_band_type === `phonon`,
+      band_type === `phonon`,
     ),
   )
   let y_range = $derived(raw_y_range && (convert_band_values(raw_y_range) as Vec2))
 
   const internal_y_axis = $derived<AxisConfig>({
     label:
-      detected_band_type === `phonon`
-        ? `Frequency (${frequency_unit_label(unit)})`
-        : `Energy (eV)`,
+      band_type === `phonon` ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
     format: `.2f`,
     label_shift: { y: 15 },
     range: y_range,
@@ -456,12 +426,7 @@
         show_in_legend: Boolean(region.label),
         z_index: `below-lines` as const,
       }))
-    if (
-      detected_band_type === `phonon` &&
-      shade_imaginary_modes &&
-      y_range &&
-      y_range[0] < 0
-    ) {
+    if (band_type === `phonon` && shade_imaginary_modes && y_range && y_range[0] < 0) {
       regions.unshift({
         lower: y_range[0],
         upper: 0,
@@ -493,7 +458,7 @@
   let electronic_gap_annotation = $derived.by(() => {
     if (
       !show_gap_annotation ||
-      detected_band_type !== `electronic` ||
+      band_type !== `electronic` ||
       effective_fermi_level === undefined
     )
       return null
@@ -513,7 +478,7 @@
   let empty_state_msg = $derived(
     strict_path_error ??
       (num_structures === 0
-        ? (parse_errors[0] ?? `No valid band structure data to display.`)
+        ? `No band structure data to display.`
         : `No plottable band segments were found in the provided data.`),
   )
   // Only the generic DOM attributes make sense on the EmptyState div
@@ -531,13 +496,12 @@
     if (highlighted_qpoint_index == null || !bs) return null
     return helpers.qpoint_x_position(bs, highlighted_qpoint_index, internal_x_positions)
   })
-
-  let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
 </script>
 
 {#if series_data.length > 0 && !strict_path_error}
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
+    {...rest}
     {id}
     data-testid={data_testid}
     series={series_data}
@@ -548,10 +512,9 @@
     bind:view
     bind:display
     {show_legend}
-    legend={num_structures > 1 ? {} : null}
-    hover_config={{ threshold_px: 50, click_threshold_px: 10 }}
+    legend={rest.legend === undefined ? (num_structures > 1 ? {} : null) : rest.legend}
+    hover_config={{ threshold_px: 50, click_threshold_px: 10, ...rest.hover_config }}
     {selected_point}
-    {...rest}
     style="--tick-active-fill: var(--bands-active-tick-color, #ff2020); {rest.style ?? ``}"
     bind:show_controls
     bind:controls_open
@@ -592,7 +555,7 @@
         Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{nb_bands}{/if}
         {#if typeof is_acoustic === `boolean`}
           ({is_acoustic ? `acoustic` : `optical`})
-        {:else if detected_band_type === `electronic` && effective_fermi_level !== undefined}
+        {:else if band_type === `electronic` && effective_fermi_level !== undefined}
           ({y <= effective_fermi_level ? `valence` : `conduction`})
         {/if}
         {#if spin === `up` || spin === `down`}
@@ -603,7 +566,7 @@
         <br />At: {helpers.pretty_sym_point(qpoint_label)}
       {/if}
       {#if Array.isArray(frac_coords)}
-        <br />{detected_band_type === `electronic` ? `k` : `q`}: [{frac_coords
+        <br />{band_type === `electronic` ? `k` : `q`}: [{frac_coords
           .map((coord: number) => format_num(coord, `.3f`))
           .join(`, `)}]
       {/if}
@@ -622,15 +585,13 @@
         class="ctrl-line"
         current_values={{
           path_mode,
-          ...(detected_band_type === `phonon` ? { units: unit } : {}),
-          ...(detected_band_type === `electronic`
-            ? { band_spin_mode, show_gap_annotation }
-            : {}),
+          ...(band_type === `phonon` ? { units: unit } : {}),
+          ...(band_type === `electronic` ? { band_spin_mode, show_gap_annotation } : {}),
         }}
         on_reset={() => {
           path_mode = `strict`
-          if (detected_band_type === `phonon`) units = `THz`
-          if (detected_band_type === `electronic`) {
+          if (band_type === `phonon`) units = `THz`
+          if (band_type === `electronic`) {
             band_spin_mode = `overlay`
             show_gap_annotation = true
           }
@@ -645,10 +606,10 @@
             <option value="union">union</option>
           </select>
         </label>
-        {#if detected_band_type === `phonon`}
+        {#if band_type === `phonon`}
           <FrequencyUnitSelect id="bands-units" bind:units />
         {/if}
-        {#if detected_band_type === `electronic`}
+        {#if band_type === `electronic`}
           <label>
             <span>Spin</span>
             <select id="bands-spin-mode" bind:value={band_spin_mode}>
@@ -839,13 +800,13 @@
           ? ctx.width / 2
           : clamp(tick_x, half_width, ctx.width - half_width)}
       <BrillouinZonePopup
+        {...bz_popup_props}
         {k_lattice}
         points={bz_popup_points}
         {k_path_points}
         {k_path_labels}
         place="manual"
         arrow_x={clamp(tick_x - left + half_width, 12, 2 * half_width - 12)}
-        {...bz_popup_props}
         style="left: {left}px; top: {ctx.height -
           ctx.pad.b}px; transform: translate(-50%, calc(-100% - 8px)); {bz_popup_props.style ??
           ``}"

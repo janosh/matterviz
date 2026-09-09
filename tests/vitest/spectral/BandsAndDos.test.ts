@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { clip_rect, make_crystal, mount_sized, plot_svg } from '../setup'
 
 const band_structs: BaseBandStructure = {
+  type: `phonon`,
   qpoints: [
     { label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 },
     { label: null, frac_coords: [0.25, 0, 0], distance: 0.5 },
@@ -23,13 +24,89 @@ const band_structs: BaseBandStructure = {
 }
 
 describe(`bands/DOS wrappers`, () => {
+  it.each([
+    [`.bands-and-dos`, 1200, BandsAndDos],
+    [`.bands-and-dos`, 400, BandsAndDos],
+    [`.bands-dos-brillouin`, 1200, BrillouinBandsDos],
+    [`.bands-dos-brillouin`, 400, BrillouinBandsDos],
+  ] as const)(
+    `shares initial and changing frequency units in %s at %ipx`,
+    async (selector, width, Component) => {
+      const root = await mount_sized(
+        Component,
+        {
+          structure: make_crystal(3, []),
+          band_structs: { '': band_structs },
+          doses: { '': { type: `phonon`, frequencies: [0, 4], densities: [0, 1] } },
+          units: `meV`,
+          bands_props: { controls_open: true },
+          dos_props: { controls_open: true, show_units_control: true },
+        },
+        { selector, width, height: 600 },
+      )
+      const plots = root.querySelectorAll(`.scatter`)
+      const frequency_ticks = (idx: number) =>
+        [
+          ...plots[idx].querySelectorAll(
+            `${idx === 1 && width === 400 ? `.x-axis` : `.y-axis`} .tick text`,
+          ),
+        ].map((label) => Number(label.textContent))
+      const units_select = (id: string) => {
+        const select = root.querySelector<HTMLSelectElement>(`#${id}-units`)
+        if (!select) throw new Error(`Missing ${id} unit selector`)
+        return select
+      }
+      for (const idx of [0, 1]) expect(Math.max(...frequency_ticks(idx))).toBeGreaterThan(10)
+      for (const [panel, unit, upper_min, upper_max] of [
+        [`bands`, `THz`, 3, 5],
+        [`dos`, `cm^-1`, 100, 140],
+      ] as const) {
+        units_select(panel).value = unit
+        units_select(panel).dispatchEvent(new Event(`change`, { bubbles: true }))
+        await tick()
+        expect(units_select(`bands`).value).toBe(unit)
+        expect(units_select(`dos`).value).toBe(unit)
+        for (const idx of [0, 1]) {
+          const upper = Math.max(...frequency_ticks(idx))
+          expect(upper).toBeGreaterThan(upper_min)
+          expect(upper).toBeLessThan(upper_max)
+        }
+      }
+    },
+  )
+
+  it.each([
+    [`.bands-and-dos`, BandsAndDos],
+    [`.bands-dos-brillouin`, BrillouinBandsDos],
+  ] as const)(
+    `keeps parent data in %s despite extra JavaScript options`,
+    async (selector, Component) => {
+      const doses: PhononDos = { type: `phonon`, frequencies: [0, 4], densities: [0, 1] }
+      const props = {
+        structure: make_crystal(3, []),
+        band_structs: { '': band_structs },
+        doses: { '': doses },
+        bands_props: {
+          show_controls: false,
+          band_structs: { '': { ...band_structs, nb_bands: 1, bands: [[100, 101, 102]] } },
+        },
+        dos_props: { show_controls: false, doses: { first: doses, second: doses } },
+      }
+      const root = await mount_sized(Component, props, { selector, width: 1200, height: 400 })
+      const plots = root.querySelectorAll(`.scatter`)
+      expect(plots).toHaveLength(2)
+      expect(plots[0].querySelectorAll(`svg path[fill="none"]`)).toHaveLength(3)
+      expect(plots[1].querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
+    },
+  )
+
   it(`passes the Brillouin panel's cell to the bands popup`, async () => {
     const root = await mount_sized(
       BrillouinBandsDos,
       {
         structure: make_crystal(3, []),
-        band_structs,
-        doses: { type: `phonon`, frequencies: [0, 4], densities: [0, 1] },
+        band_structs: { '': band_structs },
+        doses: { '': { type: `phonon`, frequencies: [0, 4], densities: [0, 1] } },
       },
       { selector: `.bands-dos-brillouin`, width: 1200, height: 400 },
     )
@@ -57,7 +134,7 @@ describe(`bands/DOS wrappers`, () => {
     }
     const root = await mount_sized(
       BandsAndDos,
-      { band_structs, doses },
+      { band_structs: { '': band_structs }, doses: { '': doses } },
       { selector: `.bands-and-dos`, width: 800, height: 400 },
     )
     expect(() => flushSync()).not.toThrow()
@@ -79,7 +156,7 @@ describe(`bands/DOS wrappers`, () => {
     }
     const root = await mount_sized(
       BandsAndDos,
-      { band_structs, doses },
+      { band_structs: { '': band_structs }, doses: { '': doses } },
       { selector: `.bands-and-dos`, width: 800, height: 400 },
     )
     const y_ticks = (plot: Element) =>

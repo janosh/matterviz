@@ -37,15 +37,15 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
   const channel = new MessageChannel()
   const { port1 } = channel
   let served: TrajectoryRun | null = run
-  let controllers: (AbortController | undefined)[] = []
+  const controllers = new Map<number, AbortController>()
   let queue = Promise.resolve()
   const unsubscribe = run.properties.subscribe((batch, complete) =>
     post({ properties: batch, complete }),
   )
   const dispose = (): void => {
     unsubscribe()
-    for (const controller of controllers) controller?.abort(abort_error())
-    controllers = []
+    for (const controller of controllers.values()) controller.abort(abort_error())
+    controllers.clear()
     try {
       served?.dispose()
     } finally {
@@ -71,14 +71,14 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
   port1.addEventListener(`message`, (event: MessageEvent<RunPortRequest>) => {
     const { id, method, args } = event.data
     if (method === `dispose` || !served) return dispose()
-    if (method === `abort`) return controllers[Number(args[0])]?.abort(abort_error())
+    if (method === `abort`) return controllers.get(Number(args[0]))?.abort(abort_error())
     const controller = new AbortController()
-    controllers[id] = controller
+    controllers.set(id, controller)
     queue = queue.then(async () => {
       const active = served
       if (!active) return
       if (controller.signal.aborted) {
-        controllers[id] = undefined
+        controllers.delete(id)
         return post({ id, error: `Request aborted` })
       }
       try {
@@ -97,7 +97,7 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
       } catch (error) {
         post({ id, error: to_error(error).message })
       } finally {
-        controllers[id] = undefined
+        controllers.delete(id)
       }
     })
   })
@@ -134,16 +134,15 @@ export const worker_run = (
     signal?: AbortSignal
     on_abort: () => void
   }
-  let pending: (Pending | undefined)[] = []
+  const pending = new Map<number, Pending>()
   const dispose = (reason = disposed_error(`Worker-served trajectory`)): void => {
     if (disposed_reason) return
     disposed_reason = reason
-    for (const request of pending) {
-      if (!request) continue
+    for (const request of pending.values()) {
       request.signal?.removeEventListener(`abort`, request.on_abort)
       request.reject(reason)
     }
-    pending = []
+    pending.clear()
     properties.finish()
     dispose_run_port(port)
     release()
@@ -157,10 +156,10 @@ export const worker_run = (
       }
       return
     }
-    const request = pending[reply.id]
+    const request = pending.get(reply.id)
     if (!request) return
     if (reply.progress) return request.on_progress?.(reply.progress)
-    pending[reply.id] = undefined
+    pending.delete(reply.id)
     request.signal?.removeEventListener(`abort`, request.on_abort)
     if (reply.error) request.reject(new Error(reply.error))
     else request.resolve(reply.result)
@@ -181,8 +180,7 @@ export const worker_run = (
     return new Promise<Result>((resolve, reject) => {
       const id = next_id++
       const on_abort = (): void => {
-        if (!pending[id]) return
-        pending[id] = undefined
+        if (!pending.delete(id)) return
         try {
           port.postMessage({
             id: next_id++,
@@ -194,19 +192,17 @@ export const worker_run = (
         }
         reject(to_error(signal?.reason ?? abort_error()))
       }
-      pending[id] = {
+      pending.set(id, {
         resolve: (value) => resolve(value as Result),
         reject,
         on_progress,
         signal,
         on_abort,
-      }
+      })
       signal?.addEventListener(`abort`, on_abort, { once: true })
       try {
         port.postMessage({ id, method, args } satisfies RunPortRequest)
       } catch (error) {
-        pending[id] = undefined
-        reject(to_error(error))
         dispose(to_error(error))
       }
     })
@@ -216,6 +212,8 @@ export const worker_run = (
     ...fields,
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)
+      if (disposed_reason) return Promise.reject(disposed_reason)
+      if (signal?.aborted) return Promise.reject(to_error(signal.reason ?? abort_error()))
       if (frame_idx === 0) return summary.preview
       return rpc<TrajectoryFrame>(`read_frame`, [frame_idx], signal)
     },

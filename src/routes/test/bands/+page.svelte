@@ -3,6 +3,7 @@
   import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
 
   const mock_band_structure: BaseBandStructure = {
+    type: `phonon`,
     qpoints: [
       { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
       { label: null, frac_coords: [0.25, 0.0, 0.0], distance: 0.5 },
@@ -136,6 +137,7 @@
 
   const electronic_bands_with_fermi = {
     ...electronic_bands_spin,
+    type: `electronic` as const,
     efermi: 0.0,
   }
 </script>
@@ -143,7 +145,7 @@
 <h1>Bands Component Test Page</h1>
 
 <h2 id="single-bands">Single Band Structure</h2>
-<Bands band_structs={mock_band_structure} data-testid="single-bands-plot" />
+<Bands band_structs={{ '': mock_band_structure }} data-testid="single-bands-plot" />
 
 <h2 id="multiple-bands">Multiple Band Structures</h2>
 <Bands
@@ -153,17 +155,21 @@
 
 <h2 id="custom-styling">Custom Line Styling</h2>
 <Bands
-  band_structs={mock_band_structure}
+  band_structs={{ '': mock_band_structure }}
   line_kwargs={{ acoustic: { stroke: `red` }, optical: { stroke: `blue` } }}
   data-testid="custom-styling-plot"
 />
 
 <h2 id="union-path">Union Path Mode</h2>
-<Bands band_structs={mock_band_structure} path_mode="union" data-testid="union-path-plot" />
+<Bands
+  band_structs={{ '': mock_band_structure }}
+  path_mode="union"
+  data-testid="union-path-plot"
+/>
 
 <h2 id="intersection-path">Intersection Path Mode</h2>
 <Bands
-  band_structs={mock_band_structure}
+  band_structs={{ '': mock_band_structure }}
   path_mode="intersection"
   data-testid="intersection-path-plot"
 />
@@ -190,17 +196,17 @@
 />
 
 <h2 id="discontinuity">Band Structure with Discontinuities</h2>
-<Bands band_structs={bs_with_discontinuity} data-testid="discontinuity-plot" />
+<Bands band_structs={{ '': bs_with_discontinuity }} data-testid="discontinuity-plot" />
 
 <h2 id="fat-bands">Fat Bands (Electron-Phonon Coupling)</h2>
 <Bands
-  band_structs={bs_with_fat_bands}
+  band_structs={{ '': bs_with_fat_bands }}
   ribbon_config={fat_bands_config}
   data-testid="fat-bands-plot"
 />
 
 <h2 id="fat-bands-default">Fat Bands with Default Styling</h2>
-<Bands band_structs={bs_with_fat_bands} data-testid="fat-bands-default-plot" />
+<Bands band_structs={{ '': bs_with_fat_bands }} data-testid="fat-bands-default-plot" />
 
 <h2 id="fat-bands-multiple">Multiple Structures with Fat Bands</h2>
 <Bands
@@ -222,7 +228,7 @@
 
 <h2 id="phonon-units-and-shading">Phonon Units and Highlight Regions</h2>
 <Bands
-  band_structs={mock_band_structure}
+  band_structs={{ '': mock_band_structure }}
   units="cm^-1"
   highlight_regions={[
     {
@@ -237,16 +243,14 @@
 
 <h2 id="electronic-spin-overlay">Electronic Spin Overlay and Gap Annotation</h2>
 <Bands
-  band_structs={electronic_bands_with_fermi}
-  band_type="electronic"
+  band_structs={{ '': electronic_bands_with_fermi }}
   band_spin_mode="overlay"
   data-testid="electronic-spin-overlay-plot"
 />
 
 <h2 id="electronic-spin-down-only">Electronic Spin Down Only</h2>
 <Bands
-  band_structs={electronic_bands_with_fermi}
-  band_type="electronic"
+  band_structs={{ '': electronic_bands_with_fermi }}
   band_spin_mode="down_only"
   data-testid="electronic-spin-down-only-plot"
 />

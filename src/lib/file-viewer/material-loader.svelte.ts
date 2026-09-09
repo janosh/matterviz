@@ -52,25 +52,13 @@ export function create_material_loader<Value>(
   inputs: MaterialLoaderInputs<Value>,
 ): Attachment<HTMLElement> {
   let active_controller: AbortController | undefined
-  let load_id = 0
   let loaded_url: string | undefined
   // Set once this loader has produced a value, so the viewer's own edits to it (and the proxy
   // a bindable hands back) still read as ours. Only a value present before we produced one
   // belongs to the caller and cancels the fetch.
   let loader_owns_value = false
 
-  const begin_load = (
-    manage_loading: boolean,
-  ): { controller: AbortController; id: number } => {
-    active_controller?.abort()
-    const controller = new AbortController()
-    active_controller = controller
-    if (manage_loading) inputs.set_loading?.(true)
-    inputs.set_error(undefined)
-    return { controller, id: ++load_id }
-  }
   const cancel_load = (): void => {
-    load_id++
     active_controller?.abort()
     active_controller = undefined
     inputs.set_loading?.(false)
@@ -80,18 +68,22 @@ export function create_material_loader<Value>(
   // `manage_loading` (the drop zone owns the spinner across the whole batch)
   const load = async (source: MaterialSource, opts: LoadOptions = {}): Promise<void> => {
     const { url, rethrow = false, manage_loading = true } = opts
-    const { controller, id } = begin_load(manage_loading)
+    active_controller?.abort()
+    const controller = new AbortController()
+    active_controller = controller
+    if (manage_loading) inputs.set_loading?.(true)
+    inputs.set_error(undefined)
     try {
       const on_file_drop = inputs.on_file_drop?.()
       if (on_file_drop) {
         const payload = await acquire_material(source, controller.signal)
-        if (id !== load_id) return
+        if (controller !== active_controller) return
         const content =
           payload.data instanceof Blob ? await payload.data.arrayBuffer() : payload.data
         await on_file_drop(content, payload.filename, payload_metadata(payload))
       } else {
         const opened = await open_material(source, { signal: controller.signal })
-        if (id !== load_id) return opened.dispose()
+        if (controller !== active_controller) return opened.dispose()
         try {
           inputs.commit(opened)
         } catch (error) {
@@ -111,7 +103,7 @@ export function create_material_loader<Value>(
       }
       if (url) loaded_url = url
     } catch (error) {
-      if (id !== load_id || controller.signal.aborted) return
+      if (controller !== active_controller || controller.signal.aborted) return
       // Before a payload is parsed it has no logical filename, so fall back to what the source
       // says about itself: on_error must always name the payload that failed
       const metadata =
@@ -128,9 +120,9 @@ export function create_material_loader<Value>(
         ? new Error(error.message, { cause: error })
         : error
     } finally {
-      if (id === load_id) {
+      if (controller === active_controller) {
         if (manage_loading) inputs.set_loading?.(false)
-        if (active_controller === controller) active_controller = undefined
+        if (controller === active_controller) active_controller = undefined
       }
     }
   }
@@ -145,11 +137,13 @@ export function create_material_loader<Value>(
     }
     // A host on_file_drop owns the value, so it is neither read (reading it would subscribe
     // this effect to every host write and refetch the same URL) nor treated as a cancel
-    if (!inputs.on_file_drop?.()) {
-      if (inputs.current_value() !== undefined && !loader_owns_value) {
-        cancel_load()
-        return
-      }
+    if (
+      !inputs.on_file_drop?.() &&
+      inputs.current_value() !== undefined &&
+      !loader_owns_value
+    ) {
+      cancel_load()
+      return
     }
     if (loaded_url === url) return
     void untrack(() => load(url, { url }))

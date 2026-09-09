@@ -261,19 +261,22 @@ describe(`PlotControls`, () => {
     })
   })
 
-  test(`controls visibility toggles`, () => {
-    mount_controls({ show_controls: false })
-    expect(document.querySelector(`.plot-controls-pane`)).toBeNull()
+  test.each([false, `never`, { mode: `never` }, { hidden: [`controls`] }] as const)(
+    `controls visibility %j`,
+    (show_controls) => {
+      mount_controls({ show_controls })
+      expect(document.querySelector(`.plot-controls-pane`)).toBeNull()
 
-    // When shown, toggle + pane use the `plot-controls-*` prefix (regression guard:
-    // an empty controls_name default produced leading-hyphen `-controls-*` names).
-    document.body.innerHTML = ``
-    mount_controls()
-    expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
-    const pane = document.querySelector(`.plot-controls-pane`)
-    expect(pane).not.toBeNull()
-    expect(pane?.classList.contains(`compact-settings`)).toBe(true)
-  })
+      // When shown, toggle + pane use the `plot-controls-*` prefix (regression guard:
+      // an empty controls_name default produced leading-hyphen `-controls-*` names).
+      document.body.innerHTML = ``
+      mount_controls()
+      expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
+      const pane = document.querySelector(`.plot-controls-pane`)
+      expect(pane).not.toBeNull()
+      expect(pane?.classList.contains(`compact-settings`)).toBe(true)
+    },
+  )
 
   test(`packs related display and axis fields onto shared rows`, async () => {
     mount_controls({ auto_x_range: [0, 1], auto_y_range: [0, 1] })

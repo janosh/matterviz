@@ -1,5 +1,7 @@
-import { mock_fullscreen } from '../setup'
+import { bind_props, mock_fullscreen, mount_sized } from '../setup'
 import FullscreenButton from '$lib/layout/FullscreenButton.svelte'
+import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+import Sankey from '$lib/plot/sankey/Sankey.svelte'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -15,7 +17,7 @@ afterEach(async () => {
 
 // Mount with a two-way bound `fullscreen` flag like every viewer does
 const mount_button = (wrapper?: HTMLElement) => {
-  const state = $state({ fullscreen: false })
+  const state = $state({ fullscreen: false, hidden: false })
   const on_change = vi.fn<(fullscreen: boolean) => void>()
   mounted.push(
     mount(FullscreenButton, {
@@ -23,6 +25,9 @@ const mount_button = (wrapper?: HTMLElement) => {
       props: {
         wrapper,
         on_change,
+        get hidden() {
+          return state.hidden
+        },
         get fullscreen() {
           return state.fullscreen
         },
@@ -79,6 +84,16 @@ describe(`FullscreenButton`, () => {
     await vi.waitFor(() => expect(on_change).toHaveBeenLastCalledWith(true))
     expect(document.fullscreenElement).toBe(wrapper)
 
+    // A hidden active controller still observes exit, but has neither a button nor shortcut.
+    state.hidden = true
+    flushSync()
+    expect(button.hidden).toBe(true)
+    expect(button.style.display).toBe(`none`)
+    wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
+    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
+    await tick()
+    expect(state.fullscreen).toBe(true)
+
     // Esc/F11: the browser leaves fullscreen, the flag follows and the host is told once
     Object.defineProperty(document, `fullscreenElement`, { configurable: true, value: null })
     document.dispatchEvent(new Event(`fullscreenchange`))
@@ -86,6 +101,58 @@ describe(`FullscreenButton`, () => {
     expect(state.fullscreen).toBe(false)
     expect(on_change.mock.calls).toEqual([[true], [false]])
   })
+
+  test.each([`cartesian`, `chart`] as const)(
+    `%s keeps an active fullscreen controller when chrome hides, then removes it on exit`,
+    async (kind) => {
+      const state = $state({ fullscreen: false, show_controls: true, fullscreen_toggle: true })
+      const plot =
+        kind === `cartesian`
+          ? await mount_sized(
+              ScatterPlot,
+              bind_props({ series: [{ x: [0, 1], y: [0, 1] }] }, state),
+              { selector: `.scatter`, on_mount: (component) => mounted.push(component) },
+            )
+          : await mount_sized(
+              Sankey,
+              bind_props(
+                {
+                  data: {
+                    nodes: [{ label: `A` }, { label: `B` }],
+                    links: [{ source: 0, target: 1, value: 1 }],
+                  },
+                },
+                state,
+              ),
+              { selector: `.sankey`, on_mount: (component) => mounted.push(component) },
+            )
+      const button = () => plot.querySelector<HTMLButtonElement>(`.fullscreen-btn`)
+      for (const key of [`show_controls`, `fullscreen_toggle`] as const) {
+        state[key] = true
+        flushSync()
+        button()?.click()
+        await vi.waitFor(() => expect(document.fullscreenElement).toBe(plot))
+        state[key] = false
+        flushSync()
+        expect(button()?.style.display).toBe(`none`)
+        await document.exitFullscreen()
+        flushSync()
+        expect(state.fullscreen).toBe(false)
+        expect(plot.classList.contains(`fullscreen`)).toBe(false)
+        expect(button()).toBeNull()
+        state[key] = true
+      }
+      // An external request still works while chrome starts hidden.
+      state.show_controls = false
+      state.fullscreen = true
+      flushSync()
+      await vi.waitFor(() => expect(document.fullscreenElement).toBe(plot))
+      expect(button()?.hidden).toBe(true)
+      await document.exitFullscreen()
+      flushSync()
+      expect(button()).toBeNull()
+    },
+  )
 
   // a host app (e.g. a slide deck) owning fullscreen around an embedded viewer
   test(`fullscreen owned by another element is neither reported nor taken over`, async () => {

@@ -8,7 +8,6 @@
     GasThermodynamicsConfig,
     MagneticOrdering,
     PhaseData,
-    PhaseStats,
   } from '$lib/convex-hull'
   import {
     ConvexHull2D,
@@ -36,15 +35,13 @@
   const loaded_data = new SvelteMap<string, PhaseData[]>()
 
   // State for the 3D example with stats display
-  let phase_stats = $state<PhaseStats | null>(null)
-  let stable_entries = $state<ConvexHullEntry[]>([])
-  let unstable_entries = $state<ConvexHullEntry[]>([])
+  let stats_hull = $state<ReturnType<typeof ConvexHullCanvas>>()
+  const model = $derived(stats_hull?.get_model())
   let max_hull_dist_show_phases = $state(0.5)
 
   // State for the side-by-side stats demo
-  let side_phase_stats = $state<PhaseStats | null>(null)
-  let side_stable = $state<ConvexHullEntry[]>([])
-  let side_unstable = $state<ConvexHullEntry[]>([])
+  let side_hull = $state<ReturnType<typeof ConvexHullCanvas>>()
+  const side_model = $derived(side_hull?.get_model())
   let clicked_entry_id = $state<string | undefined>(undefined)
   let selected_quinary_path = $state<string>(``)
   const deferred_sections = [
@@ -222,7 +219,8 @@
     `<b>Drag & drop</b>: load your own JSON data onto the quaternary diagrams`,
   ]
   const stats_features = [
-    `<b>Live-bound stats</b>: phase counts, energy ranges, and hull distances update with the diagram`,
+    `<b>Shared model</b>: <code>get_model()</code> exposes the current numerical hull for <code>ConvexHullStats model={model}</code>; display thresholds and categories do not change the model`,
+    `<b>Headless computation</b>: <code>compute_hull_model(entries)</code> builds the same model without mounting a diagram`,
     `<b>Row highlighting</b>: click a table row to highlight it (<code>highlighted_entry_id</code> + <code>on_entry_click</code>)`,
     `<b>Clickable IDs</b>: <code>entry_href</code> callback turns the ID column into links`,
     `<b>Poly column</b>: shows polymorph count per reduced formula`,
@@ -438,23 +436,24 @@
   {#if section_mounted(`stats`)}
     <section class="demo-section">
       <h2>Statistics Panel</h2>
+      <p>
+        Use <code>bind:this</code> to access the renderer, then derive
+        <code>renderer?.get_model()</code> for an external statistics panel. The model contains all
+        phases; the built-in info pane follows the plot’s visibility threshold.
+      </p>
       {@render feature_list(stats_features)}
       <div class="stats-example-grid">
         <ConvexHullCanvas
           dim={3}
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O with Stats` }}
-          bind:phase_stats
-          bind:stable_entries
-          bind:unstable_entries
+          bind:this={stats_hull}
           bind:max_hull_dist_show_phases
           style="height: 100%"
         />
-        {#if phase_stats}
+        {#if model}
           <ConvexHullStats
-            {phase_stats}
-            {stable_entries}
-            {unstable_entries}
+            {model}
             highlighted_entry_id={clicked_entry_id}
             on_entry_click={(entry) => (clicked_entry_id = entry.entry_id)}
             entry_href={get_entry_href}
@@ -470,15 +469,11 @@
           dim={3}
           entries={li_co_ni_o_data}
           controls={{ title: `Li-Co-O` }}
-          bind:phase_stats={side_phase_stats}
-          bind:stable_entries={side_stable}
-          bind:unstable_entries={side_unstable}
+          bind:this={side_hull}
         />
-        {#if side_phase_stats}
+        {#if side_model}
           <ConvexHullStats
-            phase_stats={side_phase_stats}
-            stable_entries={side_stable}
-            unstable_entries={side_unstable}
+            model={side_model}
             layout="side-by-side"
             entry_href={get_entry_href}
             style="--hull-stats-padding: 0"
@@ -630,9 +625,7 @@
       </div>
       {#if quinary_stats_result?.phase_stats}
         <ConvexHullStats
-          phase_stats={quinary_stats_result.phase_stats}
-          stable_entries={quinary_stats_result.stable_entries}
-          unstable_entries={quinary_stats_result.unstable_entries}
+          model={quinary_stats_result}
           layout="side-by-side"
           style="width: min(100%, 980px); margin: 0 auto 2rem"
         />

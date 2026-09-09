@@ -1,5 +1,6 @@
-<script lang="ts">
+<script lang="ts" generics="Row extends object">
   import type { D3InterpolateName } from '$lib/colors'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import {
     contrast_color_memo,
     contrast_text_color,
@@ -23,19 +24,18 @@
     DateTimeFormatMode,
     ExportData,
     InitialSort,
-    Label,
+    Column,
     Pagination,
     RowData,
     Search,
     SortHint,
-    SpecialCells,
+    RowId,
     SummaryStat,
     TableSort,
     VirtualScroll,
   } from '$lib/table'
   import {
     compute_column_stats,
-    get_column_id as get_col_id,
     make_cell_color_scale,
     merge_domains,
     NULL_CELL_COLOR,
@@ -85,11 +85,10 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    data = $bindable([]),
+    data: input_data = $bindable([]),
     columns: given_columns = [],
     sort_hint = undefined,
     cell,
-    special_cells,
     controls,
     initial_sort = undefined,
     sort = $bindable({ column: ``, dir: `asc` }),
@@ -110,7 +109,8 @@
     show_row_select = false,
     pagination = false,
     virtual = false,
-    selected_rows = $bindable([]),
+    row_key,
+    selected_ids = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
     root_style,
@@ -118,17 +118,15 @@
     backdrop = undefined,
     show_row_numbers = false,
     allow_better_toggle = false,
-    show_controls = $bindable(false),
+    show_controls = $bindable({ mode: `hover`, hidden: [`controls`] }),
     controls_open = $bindable(false),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    data: RowData[]
+    data: Row[]
     // Discovered from the first 50 rows' keys when omitted
-    columns?: Label[]
+    columns?: Column<Row>[]
     sort_hint?: SortHint
-    cell?: CellSnippet
-    // Per-column renderers keyed by column label, taking precedence over `cell`
-    special_cells?: SpecialCells
+    cell?: CellSnippet<Row>
     // Extra buttons rendered in the toolbar row above the table
     controls?: Snippet
     initial_sort?: InitialSort
@@ -136,9 +134,9 @@
     sort?: TableSort
     default_num_format?: string
     show_heatmap?: boolean
-    on_row_click?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
-    on_row_double_click?: (event: MouseEvent, row: RowData) => void
-    // Column IDs (see get_column_id) in display order. Bindable so drag reorders persist.
+    on_row_click?: (event: MouseEvent | KeyboardEvent, row: Row) => void
+    on_row_double_click?: (event: MouseEvent, row: Row) => void
+    // Column IDs in display order. Bindable so drag reorders persist.
     column_order?: string[]
     // Per-column user tuning (width, color scale, gradient direction, date format,
     // filter), keyed by column ID. Bindable so hosts can persist and restore it.
@@ -166,7 +164,9 @@
     // preserving scroll geometry, so DOM size stays bounded for any data length.
     // Inactive when pagination is enabled.
     virtual?: VirtualScroll
-    selected_rows?: RowData[]
+    // Required for selection; identifies rows across sorting and data replacement.
+    row_key?: Extract<keyof Row, string> | ((row: Row) => RowId)
+    selected_ids?: RowId[]
     // Column IDs hidden through the column toggle. Bindable for persistence.
     hidden_columns?: string[]
     scroll_style?: string
@@ -182,8 +182,8 @@
     show_row_numbers?: boolean
     // Offer a gradient-direction toggle in the context menu of heatmap columns
     allow_better_toggle?: boolean
-    // Whether the gear icon for the controls pane is visible / the pane is expanded
-    show_controls?: boolean
+    // Floating toolbar visibility; defaults to hover with the settings gear hidden.
+    show_controls?: ShowControlsProp<`controls`>
     controls_open?: boolean
   } = $props()
 
@@ -194,7 +194,19 @@
     render_html = sanitize_html
   })
 
-  let columns = $derived(given_columns.length > 0 ? given_columns : discover_columns(data))
+  // Keyed cell access is internal; callers can use ordinary typed row interfaces.
+  const data = $derived(input_data as (Row & RowData)[])
+
+  let columns = $derived.by(() => {
+    const resolved = given_columns.length > 0 ? given_columns : discover_columns<Row>(data)
+    const ids = new Set<string>()
+    for (const col of resolved) {
+      if (!col.id || ids.has(col.id))
+        throw new Error(`Column id must be nonempty and unique: ${col.id}`)
+      ids.add(col.id)
+    }
+    return resolved
+  })
 
   let container_el = $state<HTMLDivElement>()
   const page_backdrop = resolve_backdrop(() => container_el, { override: () => backdrop })
@@ -293,48 +305,27 @@
     const next = value === undefined ? kept : { ...kept, [key]: value }
     column_prefs = { ...column_prefs, [col_id]: next }
   }
-  const better_of = (col: Label): `higher` | `lower` | undefined =>
-    prefs_of(get_col_id(col)).better ?? col.better
+  const better_of = (col: Column<Row>): `higher` | `lower` | undefined =>
+    prefs_of(col.id).better ?? col.better
   // `null` is a meaningful pref here (heatmap off), so only a missing pref falls back
-  const color_scale_of = (col: Label): D3InterpolateName | null | undefined => {
-    const pref = prefs_of(get_col_id(col)).color_scale
+  const color_scale_of = (col: Column<Row>): D3InterpolateName | null | undefined => {
+    const pref = prefs_of(col.id).color_scale
     return pref === undefined ? col.color_scale : pref
   }
 
   // === Column identity and order ===
-  // IDs and row keys are separate: grouped IDs use tuple encoding, while row data may key a
-  // grouped column either by its plain key or by the display-style "Label (Group)".
-  let data_keys = $derived.by(() => {
-    const keys = new Map<string, string>()
-    const qualified_keys = new Map<string, string>()
-    for (const col of columns) {
-      const col_id = get_col_id(col)
-      const plain_key = col.key ?? col.label
-      keys.set(col_id, plain_key) // upgraded below if the rows carry the qualified key
-      if (col.group) qualified_keys.set(col_id, `${plain_key} (${col.group})`)
-    }
-    // Only a grouped column can be keyed either way, so an ungrouped table skips the row
-    // scan entirely — it costs O(rows x keys) and runs on every data change.
-    if (qualified_keys.size === 0) return keys
-    const present_keys = new Set<string>()
-    for (const row of data) for (const key of Object.keys(row)) present_keys.add(key)
-    for (const [col_id, data_key] of qualified_keys) {
-      if (present_keys.has(data_key)) keys.set(col_id, data_key)
-    }
-    return keys
-  })
-  const key_of_id = (col_id: string): string => data_keys.get(col_id) ?? col_id
-  const cell_key = (col: Label): string => key_of_id(get_col_id(col))
+  let columns_by_id = $derived(new Map(columns.map((col) => [col.id, col])))
+  const key_of_id = (col_id: string): string => columns_by_id.get(col_id)?.key ?? col_id
+  const cell_key = (col: Column<Row>): string => col.key ?? col.id
 
   // column_order first (stale IDs skipped), then any column it doesn't mention. Groups are made
   // contiguous: the header emits one colspan per group, so a split group mislabels its members.
   let ordered_columns = $derived.by(() => {
-    const by_id = new Map(columns.map((col) => [get_col_id(col), col]))
     const ordered = [...new Set(column_order)]
-      .map((id) => by_id.get(id))
+      .map((id) => columns_by_id.get(id))
       .filter((col) => col != null)
-    const ordered_ids = new Set(ordered.map(get_col_id))
-    const merged = [...ordered, ...columns.filter((col) => !ordered_ids.has(get_col_id(col)))]
+    const ordered_ids = new Set(ordered.map((col) => col.id))
+    const merged = [...ordered, ...columns.filter((col) => !ordered_ids.has(col.id))]
     const groups = Map.groupBy(merged, (col) => col.group)
     return merged.flatMap((col) => {
       if (!col.group) return [col]
@@ -348,16 +339,14 @@
   // alone while columns are empty, so a persisted order survives until the data arrives.
   $effect(() => {
     if (columns.length === 0) return
-    const new_order = ordered_columns.map(get_col_id)
+    const new_order = ordered_columns.map((col) => col.id)
     const unchanged =
       new_order.length === column_order.length &&
       new_order.every((id, idx) => id === column_order[idx])
     if (!unchanged) column_order = new_order
   })
   let visible_columns = $derived(
-    ordered_columns.filter(
-      (col) => col.visible !== false && !hidden_columns.includes(get_col_id(col)),
-    ),
+    ordered_columns.filter((col) => col.visible !== false && !hidden_columns.includes(col.id)),
   )
   let has_group_header = $derived(visible_columns.some((col) => col.group))
   // Cells rendered before the data columns: the select checkbox and the row number
@@ -371,25 +360,23 @@
     const kinds = new Map<string, `date` | `time` | `datetime`>()
     const sample = data.slice(0, 25)
     for (const col of columns) {
-      const row_key = cell_key(col)
+      const data_key = cell_key(col)
       const kind = infer_datetime_kind(
         col,
-        sample.map((row) => row[row_key]),
+        sample.map((row) => row[data_key]),
       )
-      if (kind) kinds.set(get_col_id(col), kind)
+      if (kind) kinds.set(col.id, kind)
     }
     return kinds
   })
-  const is_datetime_column = (col: Label): boolean =>
-    datetime_column_kinds.has(get_col_id(col))
-  const datetime_kind = (col: Label) =>
-    datetime_column_kinds.get(get_col_id(col)) ?? `datetime`
-  const datetime_format_options = (col: Label): DateTimeFormatMode[] =>
+  const is_datetime_column = (col: Column<Row>): boolean => datetime_column_kinds.has(col.id)
+  const datetime_kind = (col: Column<Row>) => datetime_column_kinds.get(col.id) ?? `datetime`
+  const datetime_format_options = (col: Column<Row>): DateTimeFormatMode[] =>
     DATETIME_MODES_BY_KIND[datetime_kind(col)]
-  const datetime_mode = (col: Label): DateTimeFormatMode => {
+  const datetime_mode = (col: Column<Row>): DateTimeFormatMode => {
     const options = datetime_format_options(col)
     const selected =
-      prefs_of(get_col_id(col)).datetime_format ?? col.datetime_format ?? datetime_kind(col)
+      prefs_of(col.id).datetime_format ?? col.datetime_format ?? datetime_kind(col)
     return options.includes(selected) ? selected : options[0]
   }
   // Ticks once a minute while any column shows relative times, so "Xm ago" cells don't go
@@ -404,7 +391,7 @@
     const interval = setInterval(() => (relative_now_ms = Date.now()), 60_000)
     return () => clearInterval(interval)
   })
-  function format_datetime_cell(val: CellVal, col: Label, mode: DateTimeFormatMode) {
+  function format_datetime_cell(val: CellVal, col: Column<Row>, mode: DateTimeFormatMode) {
     const timestamp = parse_datetime_val(val, col)
     return timestamp === null ? null : format_datetime(timestamp, mode, relative_now_ms)
   }
@@ -416,16 +403,16 @@
   let numeric_columns = $derived.by(() => {
     const col_ids = new Set<string>()
     for (const col of columns) {
-      if (is_datetime_column(col) || special_cells?.[col.label]) continue
-      const row_key = cell_key(col)
+      if (is_datetime_column(col) || col.cell) continue
+      const data_key = cell_key(col)
       let any_value = false
       const all_numeric = data.every((row) => {
-        const val = row[row_key]
+        const val = row[data_key]
         if (is_invalid(val) || val === ``) return true
         any_value = true
         return parse_numeric_val(val) !== null
       })
-      if (all_numeric && any_value) col_ids.add(get_col_id(col))
+      if (all_numeric && any_value) col_ids.add(col.id)
     }
     return col_ids
   })
@@ -439,7 +426,7 @@
   let filter_cache = { key: ``, filters: [] as { key: string; filter: ColumnFilter }[] }
   let active_filters = $derived.by(() => {
     const filters = columns
-      .map((col) => ({ key: cell_key(col), filter: prefs_of(get_col_id(col)).filter }))
+      .map((col) => ({ key: cell_key(col), filter: prefs_of(col.id).filter }))
       .filter((entry): entry is { key: string; filter: ColumnFilter } => Boolean(entry.filter))
     const key = JSON.stringify(filters)
     if (key !== filter_cache.key) filter_cache = { key, filters }
@@ -478,7 +465,7 @@
   let sort_criteria = $derived.by((): SortCriterion[] => {
     const active = multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
     return active
-      .filter(({ column }) => data_keys.has(column)) // skip entries for removed columns
+      .filter(({ column }) => columns_by_id.has(column)) // skip entries for removed columns
       .map(({ column, ascending }) => ({ key: key_of_id(column), ascending }))
   })
   let sorted_data = $derived(
@@ -487,9 +474,9 @@
       : filtered_data.toSorted((row1, row2) => compare_rows(row1, row2, sort_criteria)),
   )
 
-  function sort_rows(col: Label, event: MouseEvent | KeyboardEvent) {
+  function sort_rows(col: Column<Row>, event: MouseEvent | KeyboardEvent) {
     if (col.sortable === false) return
-    const col_id = get_col_id(col)
+    const col_id = col.id
     // Shift-click toggles this column in multi-sort and clears single-column sorting
     if (event.shiftKey) {
       multi_sort = multi_sort.some((entry) => entry.column === col_id)
@@ -512,7 +499,7 @@
 
   // Header click, or Enter/Space while it has focus, sorts — unless a drag is in progress,
   // whose release would otherwise register as a click
-  function activate_header(event: MouseEvent | KeyboardEvent, col: Label) {
+  function activate_header(event: MouseEvent | KeyboardEvent, col: Column<Row>) {
     if (drag_col_id) return
     if (event instanceof KeyboardEvent) {
       if (event.key !== `Enter` && event.key !== ` `) return
@@ -658,13 +645,13 @@
       const col_stats = compute_column_stats(parsed, better_of(col), needs_quantiles)
       if (!col_stats) continue
       const domain = resolve_color_domain(col_stats, col.normalize)
-      stats.set(get_col_id(col), { ...col_stats, domain })
+      stats.set(col.id, { ...col_stats, domain })
       const group = col.domain_group
       if (group) groups.set(group, [...(groups.get(group) ?? []), domain])
     }
     // Columns sharing a tag end up on one merged domain, so their cells compare directly
     for (const col of visible_columns) {
-      const entry = stats.get(get_col_id(col))
+      const entry = stats.get(col.id)
       const merged = col.domain_group && merge_domains(groups.get(col.domain_group) ?? [])
       if (entry && merged) entry.domain = merged
     }
@@ -676,7 +663,7 @@
     const scales = new Map<string, (val: number | null | undefined) => CellColor>()
     if (!show_heatmap) return scales
     for (const col of visible_columns) {
-      const col_id = get_col_id(col)
+      const col_id = col.id
       const stats = column_stats.get(col_id)
       const configured_scale = color_scale_of(col)
       if (configured_scale === null) continue
@@ -699,7 +686,7 @@
   // Does the column paint? An unconfigured numeric column defaults to interpolateViridis, so the
   // configured scale alone can't say. Over UNFILTERED data: `column_stats` is filtered, so the
   // control vanished mid-search. Looser than `numeric_columns`: mixed-in "N/A" still paints.
-  const is_colored_column = (col: Label): boolean =>
+  const is_colored_column = (col: Column<Row>): boolean =>
     color_scale_of(col) !== null &&
     data.some((row) => parse_numeric_val(row[cell_key(col)]) !== null)
   // Columns the color controls apply to: the colored ones, plus any explicitly configured —
@@ -728,7 +715,7 @@
     let offset = 0
     for (const col of visible_columns) {
       if (!col.sticky) continue
-      const col_id = get_col_id(col)
+      const col_id = col.id
       offsets[col_id] = offset
       offset += sticky_widths[col_id] ?? 0
     }
@@ -737,10 +724,9 @@
 
   // === Column view model ===
   // Everything the header, body and summary cells need per column, resolved once per column
-  // rather than once per rendered cell: a 60x30 virtual window re-renders 1800 cells on every
-  // scroll step, and a grouped column ID alone costs a JSON.stringify.
+  // rather than once per rendered cell: a 60x30 virtual window re-renders 1800 cells per scroll.
   type ColumnView = {
-    col: Label
+    col: Column<Row>
     id: string
     key: string // row key holding the column's values
     numeric: boolean
@@ -756,7 +742,7 @@
   }
   let cols = $derived<ColumnView[]>(
     visible_columns.map((col) => {
-      const id = get_col_id(col)
+      const id = col.id
       const width = prefs_of(id).width
       const stats = column_stats.get(id)
       const size = (edge: `min-width` | `max-width`) =>
@@ -805,8 +791,7 @@
   // === Column drag reorder (within a group, so group headers stay contiguous) ===
   let drag_col_id = $state<string | null>(null)
   let drag_over_col_id = $state<string | null>(null)
-  const drag_col_group = () =>
-    ordered_columns.find((col) => get_col_id(col) === drag_col_id)?.group
+  const drag_col_group = () => ordered_columns.find((col) => col.id === drag_col_id)?.group
   // Which side of the hovered header the dragged column would land on
   const drag_side = (target_col_id: string): `left` | `right` | null => {
     if (drag_over_col_id !== target_col_id || !drag_col_id) return null
@@ -825,17 +810,17 @@
     event.dataTransfer.effectAllowed = `move`
     event.dataTransfer.setData(`text/html`, ``)
   }
-  function handle_drag_over(event: DragEvent, col: Label) {
+  function handle_drag_over(event: DragEvent, col: Column<Row>) {
     event.preventDefault()
     if (!event.dataTransfer) return
     const same_group = drag_col_group() === col.group
     event.dataTransfer.dropEffect = same_group ? `move` : `none`
-    drag_over_col_id = same_group ? get_col_id(col) : null
+    drag_over_col_id = same_group ? col.id : null
   }
-  function handle_drop(event: DragEvent, target_col: Label) {
+  function handle_drop(event: DragEvent, target_col: Column<Row>) {
     event.preventDefault()
     if (drag_col_id && drag_col_group() === target_col.group) {
-      move_column_to(drag_col_id, get_col_id(target_col))
+      move_column_to(drag_col_id, target_col.id)
     }
     reset_drag_state()
   }
@@ -850,11 +835,11 @@
     column_order = next
   }
   // Shift a column one step left/right within its group (keyboard counterpart of dragging)
-  function move_column(col: Label | undefined, step: number) {
+  function move_column(col: Column<Row> | undefined, step: number) {
     if (!col) return
     const neighbour = visible_columns[visible_columns.indexOf(col) + step]
     if (neighbour && neighbour.group === col.group) {
-      move_column_to(get_col_id(col), get_col_id(neighbour))
+      move_column_to(col.id, neighbour.id)
     }
   }
 
@@ -918,7 +903,7 @@
     own_row_el(row)?.querySelector<HTMLElement>(`:scope > td[data-col-idx="${col}"]`)
   // Spacer and empty rows carry no index, so row actions skip them
   const row_handler =
-    (action: (event: MouseEvent, row: RowData) => void) => (event: MouseEvent & BodyEvent) => {
+    (action: (event: MouseEvent, row: Row) => void) => (event: MouseEvent & BodyEvent) => {
       const row = row_under(event)
       if (row !== null) action(event, sorted_data[row])
     }
@@ -1085,7 +1070,7 @@
     set_pref(context_menu_col, `better`, current === direction ? undefined : direction)
   }
   let context_menu_column = $derived(
-    visible_columns.find((col) => get_col_id(col) === context_menu_col),
+    visible_columns.find((col) => col.id === context_menu_col),
   )
   let context_menu_actions = $derived([
     {
@@ -1131,49 +1116,58 @@
   ])
 
   // === Row selection ===
-  // Stable IDs per row object so selection survives re-sorts and deep proxying by a bound parent
-  const row_id_map = new WeakMap<RowData, string>()
-  let row_id_counter = 0
-  function get_row_id(row: RowData): string {
-    let id = row_id_map.get(row)
-    if (id === undefined) row_id_map.set(row, (id = `row_${row_id_counter++}`))
+  function get_row_id(row: Row): RowId {
+    const id =
+      typeof row_key === `function`
+        ? row_key(row)
+        : row_key !== undefined
+          ? row[row_key]
+          : undefined
+    if (typeof id !== `string` && (typeof id !== `number` || !Number.isFinite(id))) {
+      throw new Error(`row_key must return a string or finite number; received ${String(id)}`)
+    }
     return id
   }
-  let selected_id_set = $derived(new Set(selected_rows.map(get_row_id)))
-  const is_row_selected = (row: RowData): boolean => selected_id_set.has(get_row_id(row))
-  function append_selected_rows(rows: RowData[]) {
-    const row_ids = rows.map(get_row_id)
-    const start_idx = selected_rows.length
-    selected_rows = [...selected_rows, ...rows]
-    // A bound parent may deep-proxy assigned rows, changing their object identity
-    for (const [row_idx, row_id] of row_ids.entries()) {
-      const stored_row = selected_rows[start_idx + row_idx]
-      if (stored_row) row_id_map.set(stored_row, row_id)
+  $effect(() => {
+    if (!show_row_select && row_key === undefined) return
+    if (row_key === undefined)
+      throw new Error(`row_key is required when show_row_select is enabled`)
+    const ids = new Set<RowId>()
+    for (const row of data) {
+      const id = get_row_id(row)
+      if (ids.has(id)) throw new Error(`Duplicate row id: ${id}`)
+      ids.add(id)
     }
-  }
-  function toggle_row_select(row: RowData) {
+  })
+  let selected_id_set = $derived(new Set(selected_ids))
+  const is_row_selected = (row: Row): boolean => selected_id_set.has(get_row_id(row))
+  function toggle_row_select(row: Row) {
     const row_id = get_row_id(row)
-    if (selected_id_set.has(row_id)) {
-      selected_rows = selected_rows.filter((selected) => get_row_id(selected) !== row_id)
-    } else append_selected_rows([row])
+    selected_ids = selected_id_set.has(row_id)
+      ? selected_ids.filter((id) => id !== row_id)
+      : [...selected_ids, row_id]
   }
   // Select-all scope: the current page under pagination, every sorted+filtered row otherwise
   // (the virtual window is a rendering detail)
   let select_all_rows = $derived(pagination_config ? display_rows : sorted_data)
   let all_page_selected = $derived(
-    select_all_rows.length > 0 && select_all_rows.every(is_row_selected),
+    show_row_select && select_all_rows.length > 0 && select_all_rows.every(is_row_selected),
   )
   function toggle_select_all() {
     if (all_page_selected) {
       const scope_ids = new Set(select_all_rows.map(get_row_id))
-      selected_rows = selected_rows.filter((row) => !scope_ids.has(get_row_id(row)))
-    } else append_selected_rows(select_all_rows.filter((row) => !is_row_selected(row)))
+      selected_ids = selected_ids.filter((id) => !scope_ids.has(id))
+    } else
+      selected_ids = [
+        ...selected_ids,
+        ...select_all_rows.filter((row) => !is_row_selected(row)).map(get_row_id),
+      ]
   }
 
   // === Export ===
   // Selected rows when any are selected, otherwise all sorted+filtered rows
   let export_rows = $derived(
-    show_row_select && selected_rows.length > 0 ? selected_rows : sorted_data,
+    show_row_select && selected_ids.length > 0 ? data.filter(is_row_selected) : sorted_data,
   )
   // Visible cells as plain text: the single extraction every exporter builds on
   const table_matrix = (): TableMatrix => ({
@@ -1186,7 +1180,7 @@
     json: () =>
       table_to_json(
         export_rows,
-        cols.map((view) => ({ label: view.col.label, key: view.key })),
+        cols.map((view) => ({ id: view.col.id, key: view.key })),
       ),
     md: () => table_to_markdown(table_matrix()),
     tex: () => table_to_latex(table_matrix()),
@@ -1217,7 +1211,7 @@
       default_visible: col.visible !== false,
       // Caller-hidden columns cannot be shown through `hidden_columns`
       disabled: col.disabled || col.visible === false,
-      visible: col.visible !== false && !hidden_columns.includes(get_col_id(col)),
+      visible: col.visible !== false && !hidden_columns.includes(col.id),
     })),
   )
 
@@ -1267,6 +1261,7 @@
     sanitize_html,
     delegate: `[title], [aria-label], [data-title]`,
   })
+  const controls_config = $derived(normalize_show_controls(show_controls))
   let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
 </script>
 
@@ -1334,102 +1329,104 @@
     context_menu_at = null
   }}
 >
-  <section
-    class="control-buttons"
-    class:force-visible={controls_open || open_dropdown !== null}
-  >
-    {#if search_config}
-      {#if search_expanded || search_query}
-        <input
-          type="search"
-          class="search-input"
-          placeholder={search_config.placeholder}
-          bind:value={search_query}
-          onblur={() => {
-            if (!search_query) search_expanded = false
-          }}
-        />
-        {@render icon_btn(Cross, `Clear`, () => {
-          search_query = ``
-          search_expanded = false
-        })}
-      {:else}
-        {@render icon_btn(SearchIcon, `Search`, () => (search_expanded = true))}
+  {#if controls_config.mode !== `never`}
+    <section
+      class={[`control-buttons`, controls_config.class]}
+      style={controls_config.style}
+      class:force-visible={controls_open || open_dropdown !== null}
+    >
+      {#if search_config}
+        {#if search_expanded || search_query}
+          <input
+            type="search"
+            class="search-input"
+            placeholder={search_config.placeholder}
+            bind:value={search_query}
+            onblur={() => {
+              if (!search_query) search_expanded = false
+            }}
+          />
+          {@render icon_btn(Cross, `Clear`, () => {
+            search_query = ``
+            search_expanded = false
+          })}
+        {:else}
+          {@render icon_btn(SearchIcon, `Search`, () => (search_expanded = true))}
+        {/if}
       {/if}
-    {/if}
 
-    {#if show_column_toggle}
-      <ToggleMenu
-        columns={toggle_columns}
-        bind:column_panel_open={
-          () => open_dropdown === `columns`,
-          (open) => (open_dropdown = open ? `columns` : null)
-        }
-        on_toggle={(col, visible) => set_column_visible(get_col_id(col), visible)}
-      >
-        {#snippet trigger({ open })}
-          <span
-            class={['icon-btn', { active: open }]}
-            {@attach tooltip({ content: `Columns`, placement: `top` })}
-            ><Icon icon={Columns} /></span
-          >
-        {/snippet}
-      </ToggleMenu>
-    {/if}
+      {#if show_column_toggle}
+        <ToggleMenu
+          columns={toggle_columns}
+          bind:column_panel_open={
+            () => open_dropdown === `columns`,
+            (open) => (open_dropdown = open ? `columns` : null)
+          }
+          on_toggle={(col, visible) => set_column_visible(col.id, visible)}
+        >
+          {#snippet trigger({ open })}
+            <span
+              class={['icon-btn', { active: open }]}
+              {@attach tooltip({ content: `Columns`, placement: `top` })}
+              ><Icon icon={Columns} /></span
+            >
+          {/snippet}
+        </ToggleMenu>
+      {/if}
 
-    {#if export_config}
-      <div class="dropdown-wrapper">
-        {@render icon_btn(
-          Export,
-          `Export`,
-          () => (open_dropdown = open_dropdown === `export` ? null : `export`),
-          open_dropdown === `export`,
-        )}
-        {#if open_dropdown === `export`}
-          <div class="dropdown-pane">
-            {#each export_config.formats as format (format)}
+      {#if export_config}
+        <div class="dropdown-wrapper">
+          {@render icon_btn(
+            Export,
+            `Export`,
+            () => (open_dropdown = open_dropdown === `export` ? null : `export`),
+            open_dropdown === `export`,
+          )}
+          {#if open_dropdown === `export`}
+            <div class="dropdown-pane">
+              {#each export_config.formats as format (format)}
+                <button
+                  class="dropdown-option"
+                  onclick={() => {
+                    download(
+                      EXPORTERS[format](),
+                      `${export_config.filename}.${format}`,
+                      EXPORT_MIME_TYPES[format],
+                    )
+                    open_dropdown = null
+                  }}
+                >
+                  <Icon icon={Download} style="width: 12px" />
+                  {format.toUpperCase()}
+                </button>
+              {/each}
               <button
                 class="dropdown-option"
                 onclick={() => {
-                  download(
-                    EXPORTERS[format](),
-                    `${export_config.filename}.${format}`,
-                    EXPORT_MIME_TYPES[format],
-                  )
+                  copy_to_clipboard()
                   open_dropdown = null
                 }}
               >
-                <Icon icon={Download} style="width: 12px" />
-                {format.toUpperCase()}
+                <Icon icon={Copy} style="width: 12px" /> Copy
               </button>
-            {/each}
-            <button
-              class="dropdown-option"
-              onclick={() => {
-                copy_to_clipboard()
-                open_dropdown = null
-              }}
-            >
-              <Icon icon={Copy} style="width: 12px" /> Copy
-            </button>
-          </div>
-        {/if}
-      </div>
-    {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
-    {#if show_row_select && selected_rows.length > 0}
-      <button
-        class="icon-btn selection-badge"
-        onclick={() => (selected_rows = [])}
-        title="Clear {selected_rows.length} selected rows"
-      >
-        <span class="badge" style:color={selection_badge_color}>{selected_rows.length}</span>
-        <Icon icon={Cross} />
-      </button>
-    {/if}
+      {#if show_row_select && selected_ids.length > 0}
+        <button
+          class="icon-btn selection-badge"
+          onclick={() => (selected_ids = [])}
+          title="Clear {selected_ids.length} selected rows"
+        >
+          <span class="badge" style:color={selection_badge_color}>{selected_ids.length}</span>
+          <Icon icon={Cross} />
+        </button>
+      {/if}
 
-    {#if show_controls}
       <ControlPane
+        show_controls={controls_config.visible(`controls`)}
         bind:controls_open
         controls_name="table"
         position="fixed"
@@ -1475,8 +1472,8 @@
             current_values={split_color_prefs().color}
             on_reset={() => (column_prefs = split_color_prefs().rest)}
           >
-            {#each colored_columns as col (get_col_id(col))}
-              {@const col_id = get_col_id(col)}
+            {#each colored_columns as col (col.id)}
+              {@const col_id = col.id}
               <div class="col-color-row">
                 <span class="col-color-label">{@html render_html(col.label)}</span>
                 <select
@@ -1507,10 +1504,10 @@
           </SettingsSection>
         {/if}
       </ControlPane>
-    {/if}
 
-    {@render controls?.()}
-  </section>
+      {@render controls?.()}
+    </section>
+  {/if}
 
   {@render sort_hint_element(`top`)}
 
@@ -1659,7 +1656,7 @@
         ondblclick={on_row_double_click ? row_handler(on_row_double_click) : undefined}
       >
         {@render virtual_spacer(spacer_top)}
-        {#each display_rows as row, row_idx (get_row_id(row))}
+        {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
           {@const abs_idx = display_range.start + row_idx}
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
@@ -1725,8 +1722,8 @@
                     ></span>
                   {/if}
                 {/if}
-                {#if special_cells?.[col.label]}
-                  {@render special_cells[col.label]({ row, col, val })}
+                {#if col.cell}
+                  {@render col.cell({ row, col, val })}
                 {:else if cell}
                   {@render cell({ row, col, val })}
                 {:else if date_val != null}
@@ -2148,9 +2145,16 @@
   /* keep visible while a dropdown/pane is open */
   .table-container:hover .control-buttons,
   .control-buttons:focus-within,
-  .control-buttons.force-visible {
+  .control-buttons.force-visible,
+  .control-buttons.always-visible {
     opacity: 1;
     pointer-events: auto;
+  }
+  @media (hover: none) {
+    .control-buttons {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
   /* .pane-toggle = the settings-pane gear, which sits in the control row and
      must match the other .icon-btn buttons: uniform square ghost buttons */

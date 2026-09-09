@@ -157,8 +157,25 @@ describe(`detect_instability`, () => {
 describe(`smooth_moving_average`, () => {
   it.each([
     { values: [1, 2, 3, 4, 5], window: 1, expected: [1, 2, 3, 4, 5] },
+    {
+      values: [Number.MIN_VALUE, Number.MIN_VALUE],
+      window: 3,
+      expected: [Number.MIN_VALUE, Number.MIN_VALUE],
+    },
+    { values: [1e-300, 1e-300], window: Number.MAX_SAFE_INTEGER, expected: [1e-300, 1e-300] },
+    {
+      values: Array(3).fill(Number.MAX_VALUE / 3),
+      window: 5,
+      expected: Array(3).fill(Number.MAX_VALUE / 3),
+    },
+    {
+      values: Array(3).fill(Number.MAX_VALUE),
+      window: 5,
+      expected: Array(3).fill(Number.MAX_VALUE),
+    },
     { values: [1, 10, 1, 10, 1], window: 3, expected: [5.5, 4, 7, 4, 5.5] },
     { values: [1, 2, NaN, 4, 5], window: 3, expected: [1.5, 1.5, 3, 4.5, 4.5] },
+    { values: [1, NaN, Infinity, NaN, 5], window: 3, expected: [1, 1, Infinity, 5, 5] },
   ])(`window $window over $values`, ({ values, window, expected }) => {
     const result = smooth_moving_average(values, window)
     expect(result).toEqual(expected)
@@ -172,6 +189,33 @@ describe(`smooth_moving_average`, () => {
       smooth_moving_average([1e16, -1e16, 1e16, -1e16, 1, 2, 3, 4, 5], 5).slice(6),
     ).toEqual([3, 3.5, 4])
     expect(smooth_moving_average([1e100, 1e50, 1, -1e100, -1e50], 5)[2]).toBe(0.2)
+    const min = Number.MIN_VALUE
+    const max = Number.MAX_VALUE
+    expect(smooth_moving_average([max, max, min, min, min], 3).slice(-2)).toEqual([min, min])
+    expect(smooth_moving_average([max, 8 * min, -max], 5)).toEqual(Array(3).fill(3 * min))
+    const cutoff = 2 ** -1022 * 8
+    expect(
+      smooth_moving_average([max, -max, cutoff, -cutoff / 2, -cutoff / 2, 4 * min], 13),
+    ).toEqual(Array(6).fill(min))
+    // Python math.fsum / 65; the old 32-slot sum returned NaN.
+    const wide = Array.from({ length: 65 }, (_, idx) => 10 ** (-300 + idx * 9))
+    expect(smooth_moving_average(wide, 131)).toEqual(Array(65).fill(1.5384615400000002e274))
+  })
+
+  it.each([0, -1, 1.5, NaN, Infinity])(`rejects window %s`, (window) => {
+    expect(() => smooth_moving_average([1, 2, 3], window)).toThrow(RangeError)
+  })
+
+  it(`processes wide windows with linear work`, () => {
+    const values = Array.from({ length: 10_000 }, (_, idx) => idx)
+    const finite_check = vi.spyOn(Number, `isFinite`)
+    const result = smooth_moving_average(values, 501)
+    const checks = finite_check.mock.calls.length
+    finite_check.mockRestore()
+    expect(checks).toBeLessThanOrEqual(3 * values.length)
+    expect(result.slice(250, -250)).toEqual(values.slice(250, -250))
+    expect(result[0]).toBe(125)
+    expect(result.at(-1)).toBe(9874)
   })
 })
 
@@ -405,15 +449,28 @@ describe(`clean_series`, () => {
     })
 
     it.each([
-      { spikes: { 15: 100 }, length: 30 },
-      { spikes: { 10: 100, 25: -100, 40: 50 }, length: 50 },
-      { spikes: { 20: 50, 21: -30, 22: 60 }, length: 50 }, // cluster needs iterations
-    ])(`removes exactly the spiked indices $spikes`, ({ spikes, length }) => {
-      const y = Array.from({ length }, (_, idx) => idx * 0.5)
+      { spikes: { 15: 100 }, length: 30, slope: 0.5 },
+      { spikes: { 10: 100, 25: -100, 40: 50 }, length: 50, slope: 0.5 },
+      { spikes: { 20: 50, 21: -30, 22: 60 }, length: 50, slope: 0.5 },
+      { spikes: { 15: 100 }, length: 30, slope: 0 },
+      { spikes: { 20: 50, 21: -30, 22: 60 }, length: 50, slope: 0 },
+    ])(`removes exactly the spiked indices $spikes`, ({ spikes, length, slope }) => {
+      const y = Array.from({ length }, (_, idx) => idx * slope)
       for (const [idx, val] of Object.entries(spikes)) y[Number(idx)] = val
       const kept = new Set(kept_indices(y, { local_outliers: outliers }))
       const removed = y.map((_, idx) => idx).filter((idx) => !kept.has(idx))
       expect(removed).toEqual(Object.keys(spikes).map(Number))
+    })
+
+    it.each([
+      { window_half: 0 },
+      { window_half: 1.5 },
+      { window_half: Infinity },
+      { mad_threshold: 0 },
+      { mad_threshold: NaN },
+      { mad_threshold: Infinity },
+    ])(`rejects invalid local outlier settings %j`, (local_outliers) => {
+      expect(() => kept_indices([1, 2, 3], { local_outliers })).toThrow(RangeError)
     })
 
     it(`skips NaN, respects mad_threshold and tolerates regular oscillation`, () => {

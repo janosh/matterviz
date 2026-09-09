@@ -61,7 +61,7 @@ export const collect_hull_elements = (entries: PhaseData[]): ElementSymbol[] =>
 
 // Normalize composition keys and drop entries whose composition normalizes to {}.
 export function process_hull_entries(
-  entries: PhaseData[],
+  entries: readonly PhaseData[],
   components?: readonly string[],
 ): ProcessedPhaseData {
   const normalized = entries
@@ -300,8 +300,7 @@ export function get_convex_hull_stats(
 }
 
 export interface HighDimHullResult {
-  stable_entries: ConvexHullEntry[]
-  unstable_entries: ConvexHullEntry[]
+  entries: ConvexHullEntry[]
   phase_stats: PhaseStats | null
 }
 
@@ -330,7 +329,7 @@ export function process_hull_for_stats(
     return {
       ...entry,
       e_above_hull: known ? dist : undefined,
-      is_stable: known ? dist < HULL_STABILITY_TOL : undefined,
+      is_stable: known ? !entry.exclude_from_hull && dist < HULL_STABILITY_TOL : undefined,
       is_element: is_unary_entry(entry),
       x: 0,
       y: 0,
@@ -338,8 +337,7 @@ export function process_hull_for_stats(
     }
   })
   return {
-    stable_entries: hull_entries.filter((entry) => is_on_hull(entry)),
-    unstable_entries: hull_entries.filter((entry) => !is_on_hull(entry)),
+    entries: hull_entries,
     phase_stats: get_convex_hull_stats(hull_entries, hull_elements, hull_elements.length),
   }
 }

@@ -46,7 +46,7 @@ test.describe(`OPTIMADE route`, () => {
         // Let local requests through unchanged
         if (url.startsWith(location.origin))
           return original_fetch.call(globalThis, input, init)
-        // Decode CORS proxy wrappers to get the actual target URL
+        // Decode structure IDs in the requested URL.
         const decoded = decodeURIComponent(url)
         const json = (body: unknown, status = 200) =>
           Promise.resolve(
@@ -83,20 +83,26 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`button.fetch-button`)).toBeVisible()
   })
 
-  test(`handles invalid structure ID gracefully`, async ({ page }) => {
-    // invalid ID triggers async provider fetches; networkidle ensures stability
-    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `networkidle` })
-    await wait_for_providers(page)
+  for (const structure_id of [`invalid-id-12345`, `mp-100%`, `mp-%2F`, `mp-a/b?c#d`]) {
+    test(`handles missing structure ID ${structure_id} without decoding it twice`, async ({
+      page,
+    }) => {
+      // invalid ID triggers async provider fetches; networkidle ensures stability
+      await page.goto(`/optimade-${encodeURIComponent(structure_id)}`, {
+        waitUntil: `networkidle`,
+      })
+      await wait_for_providers(page)
 
-    // Check input value is set correctly (after providers load)
-    await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
+      // Check input value is set correctly (after providers load)
+      await expect(page.locator(`input.structure-input`)).toHaveValue(structure_id)
 
-    // Check for structure error message - mock returns OPTIMADE 404 with "Structure not found"
-    const error_message = page.locator(`.structure-column .error-message`)
-    await expect(error_message).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
-    // Verify the app displays an error message (content varies based on mock vs real API)
-    await expect(error_message).toContainText(/not found|failed|error/i)
-  })
+      // Check for structure error message - mock returns OPTIMADE 404 with "Structure not found"
+      const error_message = page.locator(`.structure-column .error-message`)
+      await expect(error_message).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
+      // Verify the app displays an error message (content varies based on mock vs real API)
+      await expect(error_message).toContainText(/not found|failed|error/i)
+    })
+  }
 
   test(`can switch providers and clear input field`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
@@ -115,12 +121,37 @@ test.describe(`OPTIMADE route`, () => {
 
     // Wait for provider change and verify input is cleared
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
+    await expect(page.locator(`.structure-column h2`)).toHaveCount(0)
 
     // Verify OQMD provider is selected
     await expect(page.locator(`.db-grid > div`, { hasText: `oqmd` })).toHaveClass(/selected/)
 
     // Verify suggestions section appears
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible()
+  })
+
+  test(`shows suggestion failures and recovers on provider change`, async ({ page }) => {
+    await page.goto(`/optimade-mp-1`)
+    await wait_for_providers(page)
+    await page.evaluate(() => {
+      const original_fetch = globalThis.fetch
+      globalThis.fetch = (input, init) => {
+        const url =
+          typeof input === `string` ? input : input instanceof URL ? input.href : input.url
+        if (url.includes(`oqmd.org`) && url.includes(`page_limit`)) {
+          return Promise.reject(new TypeError(`Provider unavailable`))
+        }
+        return original_fetch(input, init)
+      }
+    })
+    await page.locator(`button.db-select`, { hasText: `oqmd` }).click()
+    await expect(page.locator(`.suggestions-column [role=alert]`)).toContainText(
+      `Provider unavailable`,
+    )
+    await expect(page.locator(`.structure-suggestions button`)).toHaveCount(0)
+    await page.locator(`button.db-select`, { hasText: `mp` }).click()
+    await expect(page.locator(`.suggestions-column [role=alert]`)).toHaveCount(0)
+    await expect(page.locator(`.structure-suggestions button`).first()).toBeVisible()
   })
 
   test(`can load structure from different providers via text input`, async ({ page }) => {

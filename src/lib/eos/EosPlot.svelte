@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ScatterPlotOptions, DataSeries } from '$lib/plot'
   // Energy–volume scan with one or more fitted equations of state drawn through it and the
   // fitted E0, V0, B0, B0' shown in a corner. Fitting happens here, so callers pass raw
   // (volumes, energies) and read the results back through the bindable `fits`.
@@ -6,10 +7,9 @@
   import { EV_PER_A3_TO_GPA } from '$lib/constants'
   import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
-  import type { DataSeries } from '$lib/plot'
+  import { array_extent } from '$lib/math'
   import { ScatterPlot } from '$lib/plot'
   import { to_error } from '$lib/utils'
-  import type { ComponentProps } from 'svelte'
   import type { EosFit, EosKind } from './fit'
   import { EOS_KIND_LABELS, eos_energy, fit_eos } from './fit'
 
@@ -28,7 +28,7 @@
     fits?: EosFit[] // read-only output: the successful fits, in `kinds` order
     show_fit_params?: boolean
     data_label?: string
-  } & Omit<ComponentProps<typeof ScatterPlot>, `series` | `children`> = $props()
+  } & Omit<ScatterPlotOptions, `children`> = $props()
 
   // Fit every requested form; a failed fit (no minimum, diverged) is shown as a dismissible
   // error and leaves the data points on the plot
@@ -52,7 +52,7 @@
   // 200 points from 5% below the smallest to 5% above the largest volume so the fitted curve
   // visibly extrapolates past the scanned points
   const curve_volumes = $derived.by(() => {
-    const [v_min, v_max] = [Math.min(...volumes), Math.max(...volumes)]
+    const [v_min, v_max] = array_extent(volumes)
     const [start, span] = [v_min - 0.05 * (v_max - v_min), 1.1 * (v_max - v_min)]
     return Array.from({ length: 200 }, (_, idx) => start + (span * idx) / 199)
   })

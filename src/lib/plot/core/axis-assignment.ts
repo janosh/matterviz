@@ -1,6 +1,6 @@
 import type { ScaleType } from './types'
 
-type AxisSlot = `y1` | `y2`
+type AxisSlot = `y` | `y2`
 
 // Minimal shape needed to group and assign a series without depending on a
 // particular plot family.
@@ -30,7 +30,7 @@ interface AssignedAxisGroup<Series extends AxisAssignableSeries> extends AxisGro
 interface AxisGroupingOptions<Series extends AxisAssignableSeries> {
   // Undefined visibility means visible, matching plot-series rendering.
   is_visible?: (series: Series, series_idx: number) => boolean
-  // Lower numeric values are assigned before higher ones (normally to y1, then y2).
+  // Lower numeric values are assigned before higher ones (normally to y, then y2).
   priority?: (group_key: string, series: readonly Series[]) => number
 }
 
@@ -68,7 +68,7 @@ type AxisAssignmentResult<Series extends AxisAssignableSeries> =
 interface AxisLabelOptions<Series extends AxisAssignableSeries> {
   is_visible?: (series: Series, series_idx: number) => boolean
   // A resolved assignment array or accessor is authoritative: undefined entries
-  // stay unassigned instead of falling back to y1.
+  // stay unassigned instead of falling back to y.
   axis?: readonly (AxisSlot | undefined)[] | AxisAccessor<Series>
   fallback_label?: string
 }
@@ -86,14 +86,10 @@ type AxisAccessor<Series extends AxisAssignableSeries> = (
 ) => AxisSlot | undefined
 
 export class AxisAssignmentOverflowError extends Error {
-  readonly group_keys: readonly string[]
-  readonly max_axes: number
-  readonly reserved_axes: readonly AxisSlot[]
-
   constructor(
-    group_keys: readonly string[],
-    max_axes: number,
-    reserved_axes: readonly AxisSlot[] = [],
+    readonly group_keys: readonly string[],
+    readonly max_axes: number,
+    readonly reserved_axes: readonly AxisSlot[] = [],
   ) {
     const available_count = max_axes - reserved_axes.length
     const reservation =
@@ -111,15 +107,14 @@ export class AxisAssignmentOverflowError extends Error {
       )}`,
     )
     this.name = 'AxisAssignmentOverflowError'
-    this.group_keys = group_keys
-    this.max_axes = max_axes
-    this.reserved_axes = reserved_axes
   }
 }
 
 const default_is_visible = (series: AxisAssignableSeries): boolean => series.visible !== false
 
-export const axis_group_key = (series: AxisAssignableSeries): string => {
+export const axis_group_key = (
+  series: Pick<AxisAssignableSeries, `axis_group` | `unit`>,
+): string => {
   const axis_group = series.axis_group?.trim()
   if (axis_group) return axis_group
   const unit = series.unit?.trim()
@@ -134,7 +129,7 @@ const resolved_axis = <Series extends AxisAssignableSeries>(
 ): AxisSlot | undefined => {
   if (typeof axis === `function`) return axis(series, series_idx)
   if (axis !== undefined) return axis[series_idx]
-  return series.y_axis ?? `y1`
+  return series.y_axis ?? `y`
 }
 
 const series_on_axis = <Series extends AxisAssignableSeries>(
@@ -149,7 +144,7 @@ const series_on_axis = <Series extends AxisAssignableSeries>(
   )
 
 // Group visible series by axis_group (when present) or unit. Groups are sorted by ascending
-// caller priority (lower values win y1), then first input occurrence so ties are deterministic.
+// caller priority (lower values win y), then first input occurrence so ties are deterministic.
 export function group_axis_series<Series extends AxisAssignableSeries>(
   series: readonly Series[],
   options: AxisGroupingOptions<Series> = {},
@@ -193,7 +188,7 @@ export function assign_axes<Series extends AxisAssignableSeries>(
     throw new Error(`max_axes must be 1 or 2, got ${max_axes}`)
   }
 
-  const supported_axes: readonly AxisSlot[] = max_axes === 1 ? [`y1`] : [`y1`, `y2`]
+  const supported_axes: readonly AxisSlot[] = max_axes === 1 ? [`y`] : [`y`, `y2`]
   const assignments = Array<AxisSlot | undefined>(series.length).fill(undefined)
   series.forEach((series_data, series_idx) => {
     if (!is_visible(series_data, series_idx) || series_data.y_axis === undefined) return
@@ -220,21 +215,14 @@ export function assign_axes<Series extends AxisAssignableSeries>(
     const explicit_axes = supported_axes.filter((axis) =>
       group.series.some((series_data) => series_data.y_axis === axis),
     )
-    if (explicit_axes.length === 0) {
-      attempted_group_keys.push(group.key)
-      const axis = available_axes[automatic_group_idx++]
-      if (axis === undefined) {
-        overflow_groups.push(group)
-        continue
-      }
-      assigned_groups.push({ ...group, axis })
-      group.series_indices.forEach((series_idx) => (assignments[series_idx] = axis))
+    if (explicit_axes.length === 0) attempted_group_keys.push(group.key)
+    const axis = explicit_axes[0] ?? available_axes[automatic_group_idx++]
+    if (axis === undefined) {
+      overflow_groups.push(group)
       continue
     }
-
-    const axis = explicit_axes[0]
     assigned_groups.push({ ...group, axis })
-    if (explicit_axes.length === 1) {
+    if (explicit_axes.length < 2) {
       group.series_indices.forEach((series_idx) => (assignments[series_idx] ??= axis))
       continue
     }
@@ -290,7 +278,7 @@ export function axis_labels<Series extends AxisAssignableSeries>(
   options: AxisLabelOptions<Series> = {},
 ): Record<AxisSlot, string> {
   return {
-    y1: label_for_axis(series, `y1`, options),
+    y: label_for_axis(series, `y`, options),
     y2: label_for_axis(series, `y2`, options),
   }
 }
@@ -329,5 +317,5 @@ export function axis_scale_types<Series extends AxisValueSeries>(
     return decade_span >= min_log_decades ? `log` : `linear`
   }
 
-  return { y1: scale_for_axis(`y1`), y2: scale_for_axis(`y2`) }
+  return { y: scale_for_axis(`y`), y2: scale_for_axis(`y2`) }
 }

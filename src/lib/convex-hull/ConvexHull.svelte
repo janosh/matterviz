@@ -3,6 +3,7 @@
   import type { AxisConfig } from '$lib/plot'
   import { get_convex_hull_defaults } from '$lib/settings'
   import type { Component } from 'svelte'
+  import type { HullModel } from './model'
   import ConvexHull2D from './ConvexHull2D.svelte'
   import ConvexHullCanvas from './ConvexHullCanvas.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
@@ -40,10 +41,7 @@
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
     energy_source_mode = $bindable(`precomputed`),
-    phase_stats = $bindable(null),
     display = $bindable({ x_grid: false, y_grid: false }),
-    stable_entries = $bindable([]),
-    unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
     selected_entry = $bindable(null),
     temperature = $bindable(),
@@ -51,6 +49,9 @@
     children,
     ...rest
   }: ConvexHullProps = $props()
+
+  let renderer = $state<{ get_model: () => HullModel }>()
+  export const get_model = () => (ConvexHullComponent ? renderer?.get_model() : undefined)
 
   // An empty array is the usual "not loaded yet" shape (the anywidget bridge sends [] before
   // the data arrives), so it gets the neutral missing-data state like `undefined`
@@ -109,7 +110,7 @@
       : canvas_dim
         ? ConvexHullCanvas
         : null,
-  ) as Component<ConvexHullProps & { dim?: 3 | 4 }> | null
+  ) as Component<ConvexHullProps & { dim?: 3 | 4 }, { get_model: () => HullModel }> | null
 
   // `rest` carries the non-bindable component props too (controls, config, callbacks, …).
   // Only the DOM attributes may reach the empty state, while `hidden`, `onclick`, aria-* and
@@ -147,6 +148,7 @@
 {#if ConvexHullComponent}
   {#key canvas_dim}
     <ConvexHullComponent
+      bind:this={renderer}
       {entries}
       {components}
       dim={canvas_dim ?? undefined}
@@ -167,10 +169,7 @@
       bind:show_stable_labels
       bind:show_unstable_labels
       bind:energy_source_mode
-      bind:phase_stats
       bind:display
-      bind:stable_entries
-      bind:unstable_entries
       bind:highlighted_entries
       bind:selected_entry
       bind:temperature

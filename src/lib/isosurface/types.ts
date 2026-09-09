@@ -13,10 +13,11 @@ export type DataRange = { min: number; max: number; abs_max: number; mean: numbe
 // volume itself is a ScalarGrid3D that marching cubes and the geometry worker consume
 // without copying. Parsers transpose Fortran-ordered sources (VASP) once at load time.
 export interface VolumetricData extends ScalarGrid3D<Float64Array> {
+  id: string // Stable field identity; independent of array order and display label
   order: `z_fastest`
   dims: Vec3 // [nx, ny, nz]
   lattice: Matrix3x3 // real-space lattice vectors (rows are a, b, c)
-  origin: Vec3 // grid origin in Cartesian coordinates
+  origin: Vec3 // grid origin in the structure's Cartesian coordinate frame
   data_range: DataRange // precomputed min/max/mean statistics
   // Whether the grid has periodic boundary conditions (affects coordinate scaling).
   // Periodic grids (CHGCAR) span [0,1) with spacing 1/N; non-periodic (.cube molecular)
@@ -43,6 +44,7 @@ export function make_volume(
   dims: Vec3,
   fields: Omit<VolumetricData, `values` | `dims` | `order` | `data_range`>,
 ): VolumetricData {
+  if (!fields.id?.trim()) throw new TypeError(`Volume id must be a nonempty string`)
   const expected = dims[0] * dims[1] * dims[2]
   if (values.length !== expected) {
     throw new RangeError(
@@ -87,6 +89,7 @@ export function volume_from_json(raw: unknown): VolumetricData {
   const optional = (key: `label` | `source` | `source_filename`) =>
     typeof data[key] === `string` ? { [key]: data[key] } : {}
   return make_volume(grid.values, grid.dims, {
+    id: typeof data.id === `string` ? data.id : ``,
     lattice: data.lattice,
     origin: data.origin,
     periodic: data.periodic,
@@ -96,14 +99,25 @@ export function volume_from_json(raw: unknown): VolumetricData {
   })
 }
 
-// Reset an out-of-range active volume index while preserving valid or empty states.
-export const normalize_active_volume_idx = (
-  active_volume_idx: number,
-  volume_count: number,
-): number =>
-  volume_count > 0 && (active_volume_idx < 0 || active_volume_idx >= volume_count)
-    ? 0
-    : active_volume_idx
+// Validate the registry once and resolve every reference by stable field identity.
+export function index_volumes(
+  volumes: readonly VolumetricData[],
+): Map<string, VolumetricData> {
+  const indexed = new Map<string, VolumetricData>()
+  for (const volume of volumes) {
+    if (typeof volume.id !== `string` || !volume.id.trim())
+      throw new TypeError(`Volume id must be a nonempty string`)
+    if (indexed.has(volume.id)) throw new Error(`Duplicate volume id: ${volume.id}`)
+    indexed.set(volume.id, volume)
+  }
+  return indexed
+}
+
+export const normalize_active_volume_id = (
+  active_volume_id: string | undefined,
+  volumes: readonly VolumetricData[],
+): string | undefined =>
+  volumes.some(({ id }) => id === active_volume_id) ? active_volume_id : volumes[0]?.id
 
 // Result of parsing a volumetric file (contains both structure and volumetric data)
 export interface VolumetricFileData {
@@ -112,8 +126,8 @@ export interface VolumetricFileData {
 }
 
 // A single isosurface layer at a specific isovalue with its own appearance.
-// Layers reference volumes by index into the loaded volumes array: `volume_idx`
-// picks the geometry source (marching cubes input) and `color_volume_idx`
+// Layers reference stable volume IDs: `volume_id`
+// picks the geometry source (marching cubes input) and `color_volume_id`
 // optionally picks a different volume whose scalar field is sampled at surface
 // vertices to drive a colormap (e.g. density surface colored by ESP).
 export interface IsosurfaceLayer {
@@ -124,10 +138,10 @@ export interface IsosurfaceLayer {
   // When true, also render the -isovalue surface in `negative_color`
   show_negative: boolean
   negative_color: string
-  // Geometry-source volume index (defaults to the active volume when omitted)
-  volume_idx?: number
-  // Scalar-color-source volume index; unset preserves solid-color behavior
-  color_volume_idx?: number
+  // Geometry-source volume ID
+  volume_id: string
+  // Scalar-color-source volume ID; unset preserves solid-color behavior
+  color_volume_id?: string
   // Continuous colormap applied to sampled scalars (default interpolateViridis)
   colormap?: D3InterpolateName
   // Scalar range mapped onto the colormap; inverted [max, min] flips the map.
@@ -209,7 +223,6 @@ export const SHELL_STEPS: readonly (readonly [fraction: number, opacity: number]
 // distinguishable shells instead of coincident copies.
 export const auto_volume_layer = (
   volume: VolumetricData,
-  volume_idx: number,
   color_offset = 0,
   shell_idx = 0,
 ): IsosurfaceLayer => {
@@ -223,7 +236,7 @@ export const auto_volume_layer = (
     visible: true,
     show_negative: min < -abs_max * 0.01,
     negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
-    volume_idx,
+    volume_id: volume.id,
   }
 }
 
@@ -232,39 +245,29 @@ export const auto_volume_layer = (
 // for manually added surfaces)
 export const auto_isosurface_settings = (volume: VolumetricData): IsosurfaceSettings => ({
   ...DEFAULT_ISOSURFACE_SETTINGS,
-  layers: [auto_volume_layer(volume, 0)],
+  layers: [auto_volume_layer(volume)],
 })
 
-// Pin layers still relying on the implicit active volume to an explicit volume_idx
-export const pin_layers = (
+// Drop missing geometry sources and clear missing scalar-color sources without retargeting.
+export const retain_volume_layers = (
   layers: IsosurfaceLayer[],
-  active_volume_idx: number,
-): (IsosurfaceLayer & { volume_idx: number })[] =>
-  layers.map((layer) => ({ ...layer, volume_idx: layer.volume_idx ?? active_volume_idx }))
+  volumes: ReadonlyMap<string, VolumetricData>,
+): IsosurfaceLayer[] =>
+  layers
+    .filter((layer) => volumes.has(layer.volume_id))
+    .map((layer) =>
+      layer.color_volume_id !== undefined && !volumes.has(layer.color_volume_id)
+        ? { ...layer, color_volume_id: undefined }
+        : layer,
+    )
 
-// Remove a volume from the registry: drops layers whose geometry references it,
-// unsets color sources pointing at it, and shifts higher indices down by one.
-// Layers without an explicit volume_idx implicitly reference `active_volume_idx`.
 export function remove_volume(
   volumes: VolumetricData[],
   layers: IsosurfaceLayer[],
-  removed_idx: number,
-  active_volume_idx = 0,
+  removed_id: string,
 ): { volumes: VolumetricData[]; layers: IsosurfaceLayer[] } {
-  const shift = (idx: number): number => (idx > removed_idx ? idx - 1 : idx)
-  const remap = (idx: number | undefined): number | undefined =>
-    idx === undefined || idx === removed_idx ? undefined : shift(idx)
-  return {
-    volumes: volumes.filter((_vol, idx) => idx !== removed_idx),
-    layers: layers
-      .filter((layer) => (layer.volume_idx ?? active_volume_idx) !== removed_idx)
-      .map((layer) => ({
-        ...layer,
-        // the filter above already dropped layers on the removed volume, so only the shift remains
-        volume_idx: shift(layer.volume_idx ?? active_volume_idx),
-        color_volume_idx: remap(layer.color_volume_idx),
-      })),
-  }
+  const retained = volumes.filter(({ id }) => id !== removed_id)
+  return { volumes: retained, layers: retain_volume_layers(layers, index_volumes(retained)) }
 }
 
 // Label volumes parsed from a file with a stable `source` id (compression-
@@ -279,71 +282,33 @@ export function label_file_volumes(
   const source = strip_compression_extensions(filename, { lowercase: false })
   return volumes.map((vol, idx) => ({
     ...vol,
+    id: JSON.stringify([source, vol.id]),
     source,
     source_filename,
     label: volumes.length > 1 ? `${source}: ${vol.label ?? idx + 1}` : source,
   }))
 }
 
-// Two lattices describe the same cell when all matrix entries agree within
-// tolerance — the signal that an imported file is another scalar field of the
-// already-loaded system and should be appended rather than replace the scene.
-export const lattices_match = (
-  lattice_a: readonly (readonly number[])[] | undefined,
-  lattice_b: readonly (readonly number[])[] | undefined,
-  tolerance = 0.05,
-): boolean =>
-  lattice_a !== undefined &&
-  lattice_b !== undefined &&
-  lattice_a.every((row, row_idx) =>
-    row.every((val, col_idx) => Math.abs(val - lattice_b[row_idx][col_idx]) < tolerance),
-  )
-
-interface VolumeMergeResult {
-  volumes: VolumetricData[]
-  layers: IsosurfaceLayer[]
-  first_touched_idx: number // index of the first replaced/added volume (new active)
-  n_added: number // volumes appended (0 for a pure in-place reimport)
-}
-
-// Merge volumes from a newly imported file (pre-labeled via label_file_volumes)
-// into an existing registry. Reimporting a source with the same block count
-// replaces its volumes in place, preserving user-tuned layers; a changed block
-// count drops the stale group (remapping layer indices) before appending fresh
-// volumes. New volumes each get an auto-generated layer.
-// Layers without an explicit volume_idx implicitly reference `active_volume_idx`
-// and are pinned to it up front so index remapping treats them correctly.
+// A source publication replaces matching IDs and removes fields that disappeared.
+// Surviving fields retain all user layers, including an intentionally empty set.
 export function merge_imported_volumes(
   existing: VolumetricData[],
   existing_layers: IsosurfaceLayer[],
   incoming: VolumetricData[],
-  active_volume_idx = 0,
-): VolumeMergeResult {
-  const source = incoming[0]?.source
-  let volumes = [...existing]
-  let layers: IsosurfaceLayer[] = pin_layers(existing_layers, active_volume_idx)
-
-  const group_indices = volumes
-    .map((vol, idx) => (source !== undefined && vol.source === source ? idx : -1))
-    .filter((idx) => idx >= 0)
-
-  if (group_indices.length === incoming.length && incoming.length > 0) {
-    // Same source, same block count: replace in place, keep layer settings
-    for (const [incoming_idx, vol_idx] of group_indices.entries()) {
-      volumes[vol_idx] = incoming[incoming_idx]
-    }
-    return { volumes, layers, first_touched_idx: group_indices[0], n_added: 0 }
-  }
-
-  // Drop any stale volumes from the same source (block count changed)
-  for (let removed = group_indices.length - 1; removed >= 0; removed--) {
-    ;({ volumes, layers } = remove_volume(volumes, layers, group_indices[removed]))
-  }
-
-  const first_touched_idx = volumes.length
-  for (const vol of incoming) {
-    layers.push(auto_volume_layer(vol, volumes.length, layers.length))
-    volumes.push(vol)
-  }
-  return { volumes, layers, first_touched_idx, n_added: incoming.length }
+) {
+  const previous = index_volumes(existing)
+  const replacements = index_volumes(incoming)
+  const sources = new Set(
+    incoming.flatMap(({ source }) => (source === undefined ? [] : [source])),
+  )
+  const volumes = existing.flatMap((volume) => {
+    const replacement = replacements.get(volume.id)
+    if (replacement) return [replacement]
+    return volume.source !== undefined && sources.has(volume.source) ? [] : [volume]
+  })
+  const added = incoming.filter(({ id }) => !previous.has(id))
+  volumes.push(...added)
+  const layers = retain_volume_layers(existing_layers, index_volumes(volumes))
+  for (const volume of added) layers.push(auto_volume_layer(volume, layers.length))
+  return { volumes, layers, n_added: added.length }
 }

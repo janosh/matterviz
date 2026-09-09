@@ -1,8 +1,10 @@
 import type { Matrix3x3, Vec2 } from '$lib/math'
 import Bands from '$lib/spectral/Bands.svelte'
-import type { BaseBandStructure, FrequencyUnit } from '$lib/spectral/types'
+import { normalize_band_structure } from '$lib/spectral/helpers'
+import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
 import {
   bind_props,
@@ -11,12 +13,14 @@ import {
   expect_plot_controls,
   keydown,
   make_crystal,
+  marker_position,
   mount_sized,
   mouse,
   plot_svg,
 } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
+  type: `phonon`,
   qpoints: [
     { label: `GAMMA`, frac_coords: [0, 0, 0] },
     { label: null, frac_coords: [0.25, 0, 0] },
@@ -70,6 +74,7 @@ const make_unlabeled_band_structure = (
 
 const spin_polarized_electronic = {
   ...base_band_structure,
+  type: `electronic`,
   bands: [
     [-1.2, -0.6, -0.1, 0.3],
     [-0.6, -0.1, 0.4, 0.9],
@@ -93,17 +98,16 @@ const mount_bands = async (props: ComponentProps<typeof Bands>): Promise<void> =
 const line_count = (): number => document.querySelectorAll(`svg path[fill="none"]`).length
 
 describe(`Bands component`, () => {
-  it.each([
+  it.each<{ name: string; props: ComponentProps<typeof Bands>; expected_line_count: number }>([
     {
       name: `single structure`,
-      props: { band_structs: base_band_structure },
+      props: { band_structs: { '': base_band_structure } },
       expected_line_count: 4,
     },
     {
       name: `electronic spin overlay`,
       props: {
-        band_structs: spin_polarized_electronic,
-        band_type: `electronic` as const,
+        band_structs: { '': spin_polarized_electronic },
         band_spin_mode: `overlay` as const,
       },
       expected_line_count: 8,
@@ -111,8 +115,7 @@ describe(`Bands component`, () => {
     {
       name: `electronic spin up only`,
       props: {
-        band_structs: spin_polarized_electronic,
-        band_type: `electronic` as const,
+        band_structs: { '': spin_polarized_electronic },
         band_spin_mode: `up_only` as const,
       },
       expected_line_count: 4,
@@ -120,8 +123,7 @@ describe(`Bands component`, () => {
     {
       name: `electronic spin down only`,
       props: {
-        band_structs: spin_polarized_electronic,
-        band_type: `electronic` as const,
+        band_structs: { '': spin_polarized_electronic },
         band_spin_mode: `down_only` as const,
       },
       expected_line_count: 4,
@@ -130,20 +132,22 @@ describe(`Bands component`, () => {
       name: `explicit physical two-point branch`,
       props: {
         band_structs: {
-          ...base_band_structure,
-          qpoints: [base_band_structure.qpoints[0], base_band_structure.qpoints[3]],
-          branches: [
-            { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-          ],
-          distance: [0, 3],
-          bands: base_band_structure.bands.map((band) => [band[0], band[3]]),
+          '': {
+            ...base_band_structure,
+            qpoints: [base_band_structure.qpoints[0], base_band_structure.qpoints[3]],
+            branches: [
+              { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
+            ],
+            distance: [0, 3],
+            bands: base_band_structure.bands.map((band) => [band[0], band[3]]),
+          },
         },
       },
       expected_line_count: 4,
     },
     {
       name: `multiple unlabeled branches`,
-      props: { band_structs: make_unlabeled_band_structure() },
+      props: { band_structs: { '': make_unlabeled_band_structure() } },
       expected_line_count: 8,
     },
     {
@@ -151,7 +155,7 @@ describe(`Bands component`, () => {
       name: `two structures with differently named unlabeled branches (strict)`,
       props: {
         band_structs: {
-          unlabeled: make_unlabeled_band_structure([`first-a`, `first-b`]),
+          qpoints: make_unlabeled_band_structure([`first-a`, `first-b`]),
           renamed: make_unlabeled_band_structure([`renamed-a`, `renamed-b`]),
         },
         path_mode: `strict` as const,
@@ -163,15 +167,17 @@ describe(`Bands component`, () => {
       name: `repeated GAMMA-X segments`,
       props: {
         band_structs: {
-          ...base_band_structure,
-          qpoints: base_band_structure.qpoints.map((qpoint, idx) => ({
-            ...qpoint,
-            label: idx % 2 ? `X` : `GAMMA`,
-          })),
-          branches: [
-            { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-            { start_index: 2, end_index: 3, name: `GAMMA-X`, is_discontinuity: false },
-          ],
+          '': {
+            ...base_band_structure,
+            qpoints: base_band_structure.qpoints.map((qpoint, idx) => ({
+              ...qpoint,
+              label: idx % 2 ? `X` : `GAMMA`,
+            })),
+            branches: [
+              { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
+              { start_index: 2, end_index: 3, name: `GAMMA-X`, is_discontinuity: false },
+            ],
+          },
         },
       },
       expected_line_count: 8,
@@ -179,6 +185,109 @@ describe(`Bands component`, () => {
   ])(`renders expected line count for $name`, async ({ props, expected_line_count }) => {
     await mount_bands(props)
     expect(line_count()).toBe(expected_line_count)
+  })
+
+  it(`honors legend, display, and hover presentation options`, async () => {
+    const on_point_hover = vi.fn()
+    const plot = await mount_sized(
+      Bands,
+      {
+        band_structs: { '': base_band_structure },
+        show_legend: true,
+        legend: {},
+        display: { x_grid: false, y_grid: false },
+        hover_config: { show_tooltip: false },
+        on_point_click: vi.fn(),
+        on_point_hover,
+        point_tween: { duration: 0 },
+      },
+      { selector: `.scatter` },
+    )
+    expect(plot.querySelector(`.legend`)).not.toBeNull()
+    for (const axis_tick of plot.querySelectorAll(`.tick`)) {
+      expect(axis_tick.querySelectorAll(`line`)).toHaveLength(1)
+    }
+    const svg = plot_svg(plot)
+    svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 300 })
+    const point = marker_position(plot, 1)
+    svg.dispatchEvent(mouse(`mousemove`, { clientX: point.x, clientY: point.y }))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+  })
+
+  it(`keeps material/spin visibility through reorder, band/branch changes and spin modes`, async () => {
+    const state = fromStore(
+      writable({
+        band_structs: {
+          A: spin_polarized_electronic,
+          'A (↑)': { ...base_band_structure, type: `electronic` as const },
+        },
+        band_spin_mode: `overlay` as BandsSpinMode,
+      }),
+    )
+    const on_hidden_series_change = vi.fn()
+    const plot = await mount_sized(
+      Bands,
+      {
+        get band_structs() {
+          return state.current.band_structs
+        },
+        get band_spin_mode() {
+          return state.current.band_spin_mode
+        },
+        on_hidden_series_change,
+      },
+      { selector: `.scatter` },
+    )
+    // These distinct material/channel identities happen to have the same display label.
+    const items = () => [...plot.querySelectorAll<HTMLElement>(`.legend-item`)]
+    expect(items()).toHaveLength(3)
+    expect(line_count()).toBe(12)
+    items()[0].click()
+    flushSync()
+    expect(on_hidden_series_change).toHaveBeenLastCalledWith([JSON.stringify([`A`, `up`])])
+    expect(items().map((item) => item.classList.contains(`hidden`))).toEqual([
+      true,
+      false,
+      false,
+    ])
+    expect(line_count()).toBe(8)
+
+    const changed = {
+      ...make_unlabeled_band_structure(),
+      type: `electronic` as const,
+      efermi: 0,
+      nb_bands: 2,
+      bands: spin_polarized_electronic.bands.slice(0, 2),
+      spin_down_bands: spin_polarized_electronic.spin_down_bands.slice(0, 2),
+    }
+    state.current = {
+      band_structs: { 'A (↑)': changed, A: changed },
+      band_spin_mode: `overlay`,
+    }
+    flushSync()
+    expect(items()).toHaveLength(4)
+    expect(items().map((item) => item.classList.contains(`hidden`))).toEqual([
+      false,
+      false,
+      true,
+      false,
+    ])
+    expect(line_count()).toBe(12)
+    for (const [band_spin_mode, expected_lines] of [
+      [`up_only`, 4],
+      [`down_only`, 8],
+      [`overlay`, 12],
+    ] as const) {
+      state.current = { ...state.current, band_spin_mode }
+      flushSync()
+      expect(line_count()).toBe(expected_lines)
+    }
+    items()[2].click()
+    flushSync()
+    expect(line_count()).toBe(16)
+    expect(on_hidden_series_change).toHaveBeenLastCalledWith([])
   })
 
   it(`renders strict-mode mismatch as EmptyState with message`, async () => {
@@ -199,33 +308,18 @@ describe(`Bands component`, () => {
     expect(line_count()).toBe(0)
   })
 
-  it.each([
-    [`a single pymatgen dict`, (pmg: object) => pmg, ``],
-    [`a labelled dict of structures`, (pmg: object) => ({ broken: pmg }), `broken: `],
-  ])(
-    `names the missing reciprocal lattice key for %s instead of the generic empty state`,
-    async (_label, wrap, prefix) => {
-      // pymatgen-shaped but without lattice_rec: the k-path cannot be measured
-      const pmg = {
+  it(`rejects pymatgen bands missing their reciprocal lattice at the adapter boundary`, () => {
+    expect(() =>
+      normalize_band_structure({
         '@class': `PhononBandStructureSymmLine`,
         qpoints: [
           [0, 0, 0],
           [0.5, 0, 0],
         ],
         bands: [[0, 1]],
-      }
-      await mount_bands({
-        band_structs: wrap(pmg) as BaseBandStructure,
-        'data-testid': `pmg-missing-lattice`,
-      })
-      expect(line_count()).toBe(0)
-      const text = document.body.textContent ?? ``
-      expect(text).toContain(
-        `${prefix}pymatgen band structure needs a finite 3x3 reciprocal lattice under 'lattice_rec.matrix'`,
-      )
-      expect(text).not.toContain(`No valid band structure data`)
-    },
-  )
+      }),
+    ).toThrow(`pymatgen band structure needs a finite 3x3 reciprocal lattice`)
+  })
 
   // Mismatched paths: union appends the second structure's segment after the canonical path,
   // intersection has nothing in common and falls through to the EmptyState
@@ -268,7 +362,7 @@ describe(`Bands component`, () => {
       {
         band_structs: multi
           ? { first: base_band_structure, second: shifted }
-          : base_band_structure,
+          : { "": base_band_structure },
         show_legend,
         show_controls: false,
       },
@@ -283,7 +377,7 @@ describe(`Bands component`, () => {
     `renders the phonon y-axis in %s as cm⁻¹`,
     async (units) => {
       await mount_bands({
-        band_structs: base_band_structure,
+        band_structs: { '': base_band_structure },
         units: units as FrequencyUnit,
         show_controls: true,
         controls_open: true,
@@ -303,7 +397,7 @@ describe(`Bands component`, () => {
   it(`rescales the y axis when the units change`, async () => {
     await mount_sized(
       Bands,
-      { band_structs: base_band_structure, show_controls: true, controls_open: true },
+      { band_structs: { '': base_band_structure }, show_controls: true, controls_open: true },
       { selector: `.scatter` },
     )
     const y_ticks = () =>
@@ -325,7 +419,7 @@ describe(`Bands component`, () => {
     await mount_bands(
       bind_props(
         {
-          band_structs: base_band_structure,
+          band_structs: { '': base_band_structure },
           controls_toggle_props: { 'data-testid': `bands-toggle` },
           controls_pane_props: { 'data-testid': `bands-pane`, style: `min-width: 20rem` },
         },
@@ -352,7 +446,7 @@ describe(`Bands component`, () => {
 
   it(`renders one highlight fill region from props`, async () => {
     await mount_bands({
-      band_structs: base_band_structure,
+      band_structs: { '': base_band_structure },
       highlight_regions: [{ y_min: 0.5, y_max: 1.5, label: `Window` }],
     })
     const fill_region_paths = document.querySelectorAll(`g.fill-region path[fill-opacity]`)
@@ -362,7 +456,7 @@ describe(`Bands component`, () => {
   it(`emphasizes the selection and extends clickable marker hit areas`, async () => {
     const on_point_click = vi.fn()
     await mount_bands({
-      band_structs: base_band_structure,
+      band_structs: { '': base_band_structure },
       highlighted_band_index: 2,
       highlighted_qpoint_index: 1,
       on_point_click,
@@ -384,8 +478,7 @@ describe(`Bands component`, () => {
 
   it(`annotates the electronic gap and ignores the units prop for electronic values`, async () => {
     await mount_bands({
-      band_structs: spin_polarized_electronic,
-      band_type: `electronic`,
+      band_structs: { '': spin_polarized_electronic },
       band_spin_mode: `up_only`,
       units: `cm^-1`,
       show_gap_annotation: true,
@@ -402,11 +495,7 @@ describe(`Bands component`, () => {
   it(`returns both axes to their pinned ranges after a double-click view reset`, async () => {
     // a path end D3's nice() would round up (3.3 -> 3.5), unlike the fixture's 0..3
     const band_structs = { ...spin_polarized_electronic, distance: [0, 1.1, 2.2, 3.3] }
-    await mount_sized(
-      Bands,
-      { band_structs, band_type: `electronic` },
-      { selector: `.scatter` },
-    )
+    await mount_sized(Bands, { band_structs: { '': band_structs } }, { selector: `.scatter` })
     const svg = plot_svg()
     // the padded energy range differs from the nice()-rounded auto range too
     const y_ticks = () =>
@@ -438,7 +527,7 @@ describe(`Bands component`, () => {
     // the reset restore must not re-assign a default whose own range is invalid forever
     await mount_sized(
       Bands,
-      { band_structs: base_band_structure, x_axis: { range: [null, null] } },
+      { band_structs: { '': base_band_structure }, x_axis: { range: [null, null] } },
       { selector: `.scatter` },
     )
     expect(() => flushSync()).not.toThrow()
@@ -460,7 +549,7 @@ describe(`Bands component`, () => {
     async (_name, props, clickable) => {
       await mount_sized(
         Bands,
-        { band_structs: base_band_structure, ...props },
+        { band_structs: { '': base_band_structure }, ...props },
         { selector: `.scatter` },
       )
       const labels = tick_labels()
@@ -473,7 +562,7 @@ describe(`Bands component`, () => {
     // the band data's own reciprocal lattice is enough, no structure needed
     await mount_sized(
       Bands,
-      { band_structs: { ...base_band_structure, recip_lattice: recip_lattice_a3 } },
+      { band_structs: { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } } },
       { selector: `.scatter` },
     )
     const labels = tick_labels()
@@ -557,7 +646,7 @@ describe(`Bands component`, () => {
     await mount_sized(
       Bands,
       {
-        band_structs: base_band_structure,
+        band_structs: { '': base_band_structure },
         structure: make_crystal(3, [[`Si`, [0, 0, 0]]]),
         bz_popup_props: { width: 200, on_close, style: `border: 1px solid red` },
       },
@@ -586,7 +675,7 @@ describe(`Bands component`, () => {
     // 240px plot vs the 320px default popup: clamp(tick_x, 160, 80) would flip its bounds
     await mount_sized(
       Bands,
-      { band_structs: { ...base_band_structure, recip_lattice: recip_lattice_a3 } },
+      { band_structs: { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } } },
       { selector: `.scatter`, width: 240 },
     )
     tick_labels()[1].dispatchEvent(mouse(`click`))

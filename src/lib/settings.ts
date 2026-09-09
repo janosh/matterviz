@@ -434,12 +434,6 @@ export const SETTINGS_CONFIG = define_settings({
       value: true,
       description: `Show orientation gizmo in the corner of structure viewer`,
     }),
-    camera_position: {
-      value: [0, 0, 0] satisfies Vec3,
-      description: `Initial camera position [x, y, z]`,
-      minItems: 3,
-      maxItems: 3,
-    },
     camera_projection: camera_projection_setting(`orthographic`, `Camera projection type`),
     initial_zoom: {
       value: 50,

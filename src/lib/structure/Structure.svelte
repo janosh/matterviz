@@ -1,14 +1,12 @@
 <script lang="ts">
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
-  // layout. Acquisition is shared with the other material viewers through open_material.
+  // layout. StructureFileViewer owns URL/text acquisition and file drops.
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { Icon, Spinner, StatusMessage, Toast } from 'svelte-widgets'
-  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
-  import type { FileLoadCallback } from '$lib/io'
+  import { Icon, StatusMessage, Toast } from 'svelte-widgets'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '$lib/utils'
@@ -21,8 +19,8 @@
   import {
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
-    normalize_active_volume_idx,
-    pin_layers,
+    normalize_active_volume_id,
+    index_volumes,
   } from '$lib/isosurface/types'
   import { ViewerChrome } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
@@ -47,7 +45,7 @@
     is_crystal,
     RESET_VIEW_TITLE,
   } from '$lib/structure'
-  import type { CellType, SymmetryDataset, SymmetrySettings, WyckoffPos } from '$lib/symmetry'
+  import type { CellType, SymmetryDataset, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -61,13 +59,13 @@
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
   import type { DisplacementSummary } from './measure'
-  import { mirror_scene_props } from '$lib/scene/props.svelte'
   import { StructureSession } from './session.svelte'
   import StructureControls from './StructureControls.svelte'
   import StructureEditToolbar from './StructureEditToolbar.svelte'
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
-  import type StructureScene from './StructureScene.svelte'
+  import type { StructureSettings } from './settings'
+  import type { TrajectoryPositionStream } from '$lib/trajectory'
   import StructureViewport from './StructureViewport.svelte'
   import type { TrajectoryLinesStats } from './trajectory-lines'
   import {
@@ -75,12 +73,10 @@
     create_structure_tool_controller,
     type StructureToolPrediction,
     type StructureToolProvenance,
-    type StructureToolVolume,
     type StructureToolView,
   } from './host-tool.svelte'
   import { copy_prediction } from './prediction'
   import { replace_tool_volumes } from './host-tool-volumes'
-  import { apply_structure_material } from './material'
 
   export type StructureControlName =
     | `reset-camera`
@@ -93,7 +89,6 @@
     | `controls`
   type EventHandler = (data: StructureHandlerData) => void
   type StructureLayoutMode = `single` | `multi` | `slice`
-  type SceneProps = ComponentProps<typeof StructureScene> & typeof DEFAULTS.structure
 
   // Each multi-view pane needs room for orbit controls, labels and atom picking
   const MULTI_VIEW_COLUMNS = 2
@@ -106,24 +101,14 @@
     multi: { mode: `multi`, icon: Grid2x2, label: `3D 2×2 grid` },
     slice: { mode: `slice`, icon: HeatmapMatrix, label: `2D cross-section` },
   } as const
-  // Local scene model (cell rendering included): deep-cloned so UI mutations never leak into
-  // the shared defaults
-  let scene_props = $state(structuredClone(DEFAULTS.structure) as SceneProps)
-
   let {
     structure = $bindable(),
     structure_series_key = undefined,
     show_host_tool = true,
     reference_structure = undefined,
-    displacement_rmsd = $bindable(undefined),
+
     bonds = $bindable(),
-    scene_props: scene_props_in = $bindable(),
-    // Top-level like show_image_atoms (not a scene_props key): Trajectory binds it to start
-    // collecting trail positions when the user toggles it on in the controls pane. Seeded from
-    // scene_props once so `scene_props={{ show_trajectory_lines: true }}` is honored.
-    show_trajectory_lines = $bindable(
-      scene_props_in?.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
-    ),
+    scene_props = $bindable<StructureSettings>(structuredClone(DEFAULTS.structure)),
     active_pane = $bindable(null),
     multi_view = $bindable(false),
     views = DEFAULT_STRUCTURE_VIEWS,
@@ -142,16 +127,12 @@
     height = $bindable(0),
     color_scheme = $bindable(`Vesta`),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
-    allow_file_drop = true,
-    data_url,
-    structure_string,
+
     prediction,
-    on_file_drop,
-    on_file_load,
-    on_error,
-    loading = $bindable(false),
-    error_msg = $bindable(),
-    dragover = $bindable(false),
+    trajectory_position_stream,
+    trajectory_line_end_frame,
+    defer_expensive_geometry = false,
+
     enable_info_pane = true,
     analyze_symmetry = true,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
@@ -164,10 +145,9 @@
     highlighted_sites = $bindable([]),
     hovered_site_idx = $bindable(null),
     measured_sites = $bindable([]),
-    displayed_structure = $bindable(),
-    wyckoff_positions = $bindable([]),
+
     hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
-    sym_data = $bindable(null),
+
     symmetry_settings = $bindable(symmetry.default_sym_settings),
     volumetric_data = $bindable<VolumetricData[] | undefined>(),
     isosurface_settings = $bindable<IsosurfaceSettings>({
@@ -175,7 +155,7 @@
     }),
     slice_settings = $bindable<Partial<VolumeSliceSettings>>({}),
     display_mode = $bindable<StructureDisplayMode>(`structure`),
-    active_volume_idx = $bindable(0),
+    active_volume_id = $bindable<string | undefined>(),
     children,
     top_right_controls,
     on_fullscreen_change,
@@ -193,11 +173,9 @@
     // Comparison overlay: per-atom displacement arrows from this geometry to `structure`
     // (same atom count and order)
     reference_structure?: AnyStructure
-    displacement_rmsd?: number // output: RMSD in Angstrom vs reference_structure
     // bindable: explicit bonds. Source for the edit-bonds layer, which writes merged bonds back.
     bonds?: StructureBond[]
-    scene_props?: ComponentProps<typeof StructureScene>
-    show_trajectory_lines?: boolean
+    scene_props?: StructureSettings
     // bindable: the one floating pane that is open
     active_pane?: StructurePane | null
     // Ovito-style 2x2 grid; collapses to one pane while the viewer is too small for it
@@ -221,17 +199,10 @@
     height?: number // output: wrapper height in CSS px
     color_scheme?: string
     atom_color_config?: AtomColorConfig
-    allow_file_drop?: boolean
-    data_url?: string // fetched and parsed when no structure is supplied
     prediction?: StructureToolPrediction
-    structure_string?: string // parsed when neither structure nor data_url is supplied
-    // Host takes over dropped/fetched content (and owns `structure`) instead of the parser
-    on_file_drop?: FileLoadCallback
-    on_file_load?: EventHandler
-    on_error?: EventHandler
-    loading?: boolean
-    error_msg?: string
-    dragover?: boolean
+    trajectory_position_stream?: TrajectoryPositionStream | null
+    trajectory_line_end_frame?: number
+    defer_expensive_geometry?: boolean
     enable_info_pane?: boolean
     // Off for rapidly changing structures whose consumers do not read symmetry data
     analyze_symmetry?: boolean
@@ -247,19 +218,13 @@
     highlighted_sites?: number[]
     hovered_site_idx?: number | null
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
-    // Output: the structure as rendered (supercell + image atoms). Writes are overwritten.
-    displayed_structure?: AnyStructure
-    // Output: Wyckoff rows of the analyzed cell with `site_indices` re-expressed onto
-    // `displayed_structure` (empty until symmetry analysis finishes). Writes are overwritten.
-    wyckoff_positions?: WyckoffPos[]
     hidden_elements?: Set<ElementSymbol>
-    sym_data?: SymmetryDataset | null
     symmetry_settings?: Partial<SymmetrySettings>
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
     slice_settings?: Partial<VolumeSliceSettings>
     display_mode?: StructureDisplayMode // 3D structure/isosurface or 2D cross-section
-    active_volume_idx?: number
+    active_volume_id?: string
     children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
     top_right_controls?: Snippet // rendered at the end of the control buttons row
     on_fullscreen_change?: EventHandler
@@ -275,46 +240,7 @@
     toast_store.show(msg)
   }
 
-  // === acquisition: data_url, structure_string, drops ===
-  const drop_zone = create_material_loader<AnyStructure>({
-    data_url: () => data_url,
-    inline_source: () =>
-      structure_string ? { data: structure_string, filename: `string` } : undefined,
-    current_value: () => structure,
-    allow_file_drop: () => allow_file_drop,
-    on_file_drop: () => on_file_drop,
-    set_loading: (value) => (loading = value),
-    set_error: (message) => (error_msg = message),
-    set_dragover: (over) => (dragover = over),
-    commit: (opened) => {
-      if (opened.type === `structure` && opened.prediction) {
-        load_prediction(opened.prediction)
-        on_file_load?.({
-          structure,
-          ...opened.provenance,
-          total_atoms: structure?.sites.length ?? 0,
-        })
-        return
-      }
-      const { document, notice } = apply_structure_material(
-        { structure, volumetric_data, isosurface_settings, active_volume_idx },
-        opened,
-      )
-      // Avoid wrapping an unchanged plain input in a proxy during a same-cell volume import.
-      if (document.structure !== structure) structure = document.structure
-      ;({ volumetric_data, isosurface_settings, active_volume_idx } = document)
-      if (notice) show_toast(notice)
-      on_file_load?.({
-        structure: document.structure,
-        ...opened.provenance,
-        total_atoms: document.structure?.sites.length ?? 0,
-      })
-    },
-    report_error: (message, metadata) => {
-      error_msg = message
-      on_error?.({ error_msg: message, ...metadata })
-    },
-  })
+  let sym_data = $state<SymmetryDataset | null>(null)
 
   // === session: display pipeline, selection, editing, cameras ===
   // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
@@ -348,7 +274,8 @@
     set_cell_type: (value) => (cell_type = value),
     sym_data: () => sym_data,
     atom_color_config: () => atom_color_config,
-    bonding_strategy: () => scene_props.bonding_strategy,
+    bonding_strategy: () =>
+      scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
     on_notice: show_toast,
   })
 
@@ -357,38 +284,41 @@
   let tool_view = $state.raw<StructureToolView | null>(null)
   const active_tool_view = $derived(tool_source === session.tool_input ? tool_view : null)
   let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
-  const active_overlay = $derived(tool_source === session.tool_input ? tool_overlay : null)
+  let tool_overlay_visible = $state(true)
+  const active_prediction = $derived(tool_source === session.tool_input ? tool_overlay : null)
+  const active_overlay = $derived(tool_overlay_visible ? active_prediction : null)
   const tool_structure = $derived(
-    session.tool_input && active_overlay?.site_properties
+    session.tool_input && active_prediction?.site_properties
       ? {
           ...session.tool_input,
           sites: session.tool_input.sites.map((site, idx) => ({
             ...site,
-            properties: { ...site.properties, ...active_overlay.site_properties?.[idx] },
+            properties: { ...site.properties, ...active_prediction.site_properties?.[idx] },
           })),
         }
       : session.tool_input,
   )
   // Generated fields join the active document registry so imports, exports and controls
-  // share one index space. Ownership tracks the stored identities, including caller proxies.
-  let owned_volumes = $state.raw<StructureToolVolume[]>([])
-  const owned_volume_set = $derived(new Set<VolumetricData>(owned_volumes))
+  // share stable field IDs, independent of object replacement or array order.
+  let owned_volume_ids = $state.raw<string[]>([])
+  const owned_volume_set = $derived(new Set(owned_volume_ids))
+  const volume_by_id = $derived(index_volumes(volumetric_data ?? []))
   const removed_tool_fields = new Set<string>()
-  let original_active_volume: VolumetricData | undefined
-  const hidden_volume_indices = $derived(
+  let original_active_volume_id: string | undefined
+  const hidden_volume_ids = $derived(
     new Set(
-      (volumetric_data ?? []).flatMap((volume, idx) =>
-        owned_volume_set.has(volume) &&
+      (volumetric_data ?? []).flatMap((volume) =>
+        owned_volume_set.has(volume.id) &&
         (!active_overlay ||
           !session.shows_input_frame ||
           (session.has_supercell && !volume.periodic))
-          ? [idx]
+          ? [volume.id]
           : [],
       ),
     ),
   )
   const tool_volume_notice = $derived(
-    hidden_volume_indices.size > 0
+    tool_overlay_visible && hidden_volume_ids.size > 0
       ? !active_overlay
         ? `Prediction density belongs to a previous input. Run a new prediction.`
         : !session.shows_input_frame
@@ -397,91 +327,85 @@
       : ``,
   )
   const display_isosurface_settings = $derived(
-    hidden_volume_indices.size > 0
+    hidden_volume_ids.size > 0
       ? {
           ...isosurface_settings,
           layers: isosurface_settings.layers.filter(
             (layer) =>
-              !hidden_volume_indices.has(layer.volume_idx ?? active_volume_idx) &&
-              (layer.color_volume_idx === undefined ||
-                !hidden_volume_indices.has(layer.color_volume_idx)),
+              !hidden_volume_ids.has(layer.volume_id) &&
+              (layer.color_volume_id === undefined ||
+                !hidden_volume_ids.has(layer.color_volume_id)),
           ),
         }
       : isosurface_settings,
   )
-  let original_tool_color: AtomColorConfig | null = null
-  const restore_tool_color = (): void => {
-    if (!original_tool_color) return
-    atom_color_config = original_tool_color
-    original_tool_color = null
+  // The active configuration lives in atom_color_config; retain only its hidden counterpart.
+  let inactive_tool_color: AtomColorConfig | null = null
+  const set_tool_overlay_visible = (visible: boolean): void => {
+    if (visible === tool_overlay_visible) return
+    if (inactive_tool_color)
+      [atom_color_config, inactive_tool_color] = [inactive_tool_color, atom_color_config]
+    tool_overlay_visible = visible
   }
-  // Input changes invalidate overlays without requiring another host callback.
-  $effect(() => {
-    if (!active_overlay?.color_property) untrack(restore_tool_color)
-  })
   const apply_tool_overlay = (overlay: StructureToolPrediction | null): void => {
     const color_property = overlay?.color_property
     if (color_property) {
-      original_tool_color ??= atom_color_config
-      if (color_property !== active_overlay?.color_property)
-        atom_color_config = {
+      if (tool_overlay_visible) inactive_tool_color ??= atom_color_config
+      if (color_property !== active_prediction?.color_property) {
+        const config: AtomColorConfig = {
           mode: `property`,
           property_key: color_property,
           scale: `interpolateRdBu`,
           scale_type: `continuous`,
         }
-    } else restore_tool_color()
+        if (tool_overlay_visible) atom_color_config = config
+        else inactive_tool_color = config
+      }
+    } else {
+      if (tool_overlay_visible && inactive_tool_color) atom_color_config = inactive_tool_color
+      inactive_tool_color = null
+    }
     // A publication is a fresh snapshot; remember user removals by field ID within this run.
     const same_run = tool_overlay?.run_id === overlay?.run_id
     if (!same_run) removed_tool_fields.clear()
-    else {
-      const present = new Set(volumetric_data)
-      for (const volume of owned_volumes)
-        if (!present.has(volume)) removed_tool_fields.add(volume.field_id)
-    }
+    else
+      for (const id of owned_volume_ids) if (!volume_by_id.has(id)) removed_tool_fields.add(id)
     tool_overlay = overlay
     tool_source = session.tool_input
     tool_source_revision = overlay ? tool_input_revision : ``
-    const active_before = volumetric_data?.[active_volume_idx]
-    const restore_active = active_before !== undefined && owned_volume_set.has(active_before)
-    const preserve_active = restore_active || (same_run && owned_volumes.length > 0)
-    if (!restore_active) original_active_volume = active_before
-    const incoming = (overlay?.volumes ?? []).filter(
-      ({ field_id }) => !removed_tool_fields.has(field_id),
-    )
+    const restore_active =
+      active_volume_id !== undefined && owned_volume_set.has(active_volume_id)
+    const preserve_active = restore_active || (same_run && owned_volume_ids.length > 0)
+    if (!restore_active) original_active_volume_id = active_volume_id
+    const incoming = (overlay?.volumes ?? []).filter(({ id }) => !removed_tool_fields.has(id))
     const result = replace_tool_volumes(
       volumetric_data ?? [],
       isosurface_settings.layers,
-      owned_volumes,
+      owned_volume_ids,
       incoming,
-      active_volume_idx,
     )
     volumetric_data = result.volumes
     isosurface_settings = { ...isosurface_settings, layers: result.layers }
-    owned_volumes = volumetric_data.slice(result.first_idx) as StructureToolVolume[]
-    if (incoming.length) {
-      active_volume_idx =
-        preserve_active && result.active_idx !== undefined
-          ? result.active_idx
-          : result.first_idx
-    } else {
-      const restored_idx = original_active_volume
-        ? volumetric_data.indexOf(original_active_volume)
-        : -1
-      active_volume_idx = normalize_active_volume_idx(
-        restore_active && restored_idx >= 0
-          ? restored_idx
-          : (result.active_idx ?? active_volume_idx),
-        volumetric_data.length,
-      )
-    }
+    owned_volume_ids = incoming.map(({ id }) => id)
+    active_volume_id = normalize_active_volume_id(
+      incoming.length
+        ? preserve_active
+          ? active_volume_id
+          : incoming[0].id
+        : restore_active
+          ? original_active_volume_id
+          : active_volume_id,
+      volumetric_data,
+    )
   }
   // Cached until an input property changes; catches in-place edits without rescanning per callback.
-  const tool_input_revision = $derived(
-    (show_host_tool && structure_host_tool.component) || tool_overlay
-      ? JSON.stringify(session.tool_input)
-      : ``,
-  )
+  const tool_input_revision = $derived.by(() => {
+    if (!(show_host_tool && structure_host_tool.component) && !tool_overlay) return ``
+    const input = session.tool_input
+    return input && structure_host_tool.input_key
+      ? structure_host_tool.input_key(input)
+      : JSON.stringify(input)
+  })
   const tool_controller = create_structure_tool_controller(
     () => session.tool_input,
     () => (show_host_tool ? structure_host_tool.component : null),
@@ -499,6 +423,7 @@
       session.tool_input,
       show_host_tool,
       structure_host_tool.component,
+      structure_host_tool.input_key,
     ]
     untrack(() => {
       tool_controller.invalidate_if_changed()
@@ -526,9 +451,10 @@
     supercell_scaling = `1x1x1`
     // Abort listeners may restart synchronously; they must capture the imported input.
     tool_controller.clear()
+    tool_overlay_visible = true
     volumetric_data = []
     isosurface_settings = { ...isosurface_settings, layers: [] }
-    active_volume_idx = 0
+    active_volume_id = undefined
     apply_tool_overlay(snapshot)
   }
   $effect(() => {
@@ -538,29 +464,23 @@
     isosurface_settings = {
       ...isosurface_settings,
       layers: [
-        ...pin_layers(isosurface_settings.layers, active_volume_idx).filter(
-          (layer) =>
-            !owned_volume_set.has(
-              volumetric_data?.[layer.volume_idx ?? active_volume_idx] as VolumetricData,
-            ),
+        ...isosurface_settings.layers.filter(
+          (layer) => !owned_volume_set.has(layer.volume_id),
         ),
-        ...(volumetric_data ?? []).flatMap((volume, idx) =>
-          owned_volume_set.has(volume) ? [auto_volume_layer(volume, idx)] : [],
+        ...(volumetric_data ?? []).flatMap((volume) =>
+          owned_volume_set.has(volume.id) ? [auto_volume_layer(volume)] : [],
         ),
       ],
     }
   }
 
-  // === inputs: mirror caller props into the local models ===
+  // === inputs ===
   // JavaScript callers can bypass the TypeScript union with partial JSON; normalize before the
   // first render and again whenever the prop changes
   atom_color_config = normalize_atom_color_config(atom_color_config)
   $effect.pre(() => {
     const normalized = normalize_atom_color_config(atom_color_config)
     if (normalized !== atom_color_config) atom_color_config = normalized
-    if (scene_props_in && typeof scene_props_in === `object`) {
-      mirror_scene_props(scene_props, scene_props_in)
-    }
   })
 
   // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
@@ -610,6 +530,7 @@
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
   $effect(() => {
+    const run_id = ++symmetry_run_id
     if (session.dragging_atoms) return
     if (!analyze_symmetry || !structure || !(`lattice` in structure)) {
       untrack(() => {
@@ -627,7 +548,6 @@
       symmetry_error = undefined
     })
     last_symmetry_structure = current_structure
-    const run_id = ++symmetry_run_id
     // Destructure so symprec/algo changes are tracked, not just the object identity
     const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
     // happy-dom cannot fetch WASM assets
@@ -648,6 +568,9 @@
         symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
         console.error(`Symmetry analysis failed:`, err)
       })
+    return () => {
+      symmetry_run_id++
+    }
   })
 
   // The symmetry-element and lattice-plane overlays are blanked outside the input frame
@@ -726,8 +649,8 @@
   // Speed mode caps tessellation at render time rather than rewriting the user's setting
   let effective_sphere_segments = $derived(
     performance_mode === `speed` && (structure?.sites?.length ?? 0) > 200
-      ? Math.min(scene_props.sphere_segments, 12)
-      : scene_props.sphere_segments,
+      ? Math.min(scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments, 12)
+      : (scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments),
   )
   // Keep the gizmo mounted whenever enabled (toggling remounts OrbitControls and resets the
   // camera); reveal it on hover/focus through its own `visible` flag
@@ -738,9 +661,7 @@
     // `??` so an explicit `visible: false` is honored
     return { ...overrides, visible: overrides.visible ?? viewer_active }
   })
-  let active_scene_sites = $derived([
-    ...new Set([...(scene_props.active_sites ?? []), ...session.highlighted_sites]),
-  ])
+  let active_scene_sites = $derived([...new Set(session.highlighted_sites)])
   // Primary-pane outputs: scene/camera for export, readouts for the controls pane
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
@@ -760,9 +681,7 @@
   const pane_props = (pane_idx: number) => ({
     view_state: (viewport_states[pane_idx] ??= {
       get_pose_key: () =>
-        pane_idx === 0
-          ? JSON.stringify([scene_props.camera_position, scene_props.camera_target])
-          : ``,
+        pane_idx === 0 ? JSON.stringify([camera_position, camera_target]) : ``,
     }),
     in_grid: is_multi_view_active,
     active: is_multi_view_active && session.active_pane_idx === pane_idx,
@@ -777,41 +696,47 @@
     reference_structure,
     scene_props: {
       ...scene_props,
-      show_trajectory_lines,
+      trajectory_position_stream,
+      trajectory_line_end_frame,
+      defer_expensive_geometry,
       sphere_segments: effective_sphere_segments,
     },
     gizmo: scene_gizmo_props,
     volumetric_data,
-    active_volume_idx,
     isosurface_settings: display_isosurface_settings,
     property_colors: session.property_colors,
     active_sites: active_scene_sites,
   })
 
-  // === outputs and clamps ===
-  // Own effect: a bound parent re-proxies every write, so writing on unrelated reruns would
-  // hand consumers a new identity for the same structure
+  // Live read-only results: consumers bind:this and read analysis without copying outputs
+  // through effects or exposing setters that the next render would overwrite.
+  export const analysis = {
+    get displayed_structure() {
+      return session.displayed_structure
+    },
+    get wyckoff_positions() {
+      return session.wyckoff_rows
+    },
+    get sym_data() {
+      return sym_data
+    },
+    get displacement_rmsd() {
+      return displacement_summary?.rmsd
+    },
+  }
+  // Selection follows a field ID through replacement/reordering and resets only after removal.
   $effect(() => {
-    displayed_structure = session.displayed_structure
-  })
-  $effect(() => {
-    wyckoff_positions = session.wyckoff_rows
-  })
-  $effect(() => {
-    displacement_rmsd = displacement_summary?.rmsd
-  })
-  // Stale externally-controlled indices must not blank either volumetric view
-  $effect(() => {
-    const clamped_idx = normalize_active_volume_idx(
-      active_volume_idx,
-      volumetric_data?.length ?? 0,
-    )
-    if (clamped_idx !== active_volume_idx) active_volume_idx = clamped_idx
+    void volume_by_id
+    const selected_id = normalize_active_volume_id(active_volume_id, volumetric_data ?? [])
+    if (selected_id !== active_volume_id) active_volume_id = selected_id
   })
   // untrack: collapsing reads the moved-pane set, which must not re-run this on camera moves
   $effect(() => {
     if (!is_multi_view_active) untrack(session.collapse_to_primary_pane)
   })
+
+  let camera_position = $derived(scene_props.camera_position)
+  let camera_target = $derived(scene_props.camera_target)
 
   // === camera context ===
   // A new series (not coordinate-only frames) re-frames the camera unless the caller supplied
@@ -828,16 +753,18 @@
     previous_transform = transform
     if (!series_changed && !transform_changed) return
     untrack(() => {
+      if (series_changed) {
+        session.clear_moved_panes()
+        // Keep an explicit caller pose intact when replacing the structure.
+        if (
+          scene_props.camera_target !== undefined ||
+          scene_props.camera_position !== undefined
+        )
+          return
+        camera_position = undefined
+      }
       // In edit-atoms mode structure changes are the user's own edits: keep the orbit target
-      if (measure_mode !== `edit-atoms`) scene_props.camera_target = undefined
-      if (!series_changed) return
-      session.clear_moved_panes()
-      const explicit_camera =
-        scene_props_in?.camera_target !== undefined ||
-        scene_props_in?.camera_position?.some((coordinate) => coordinate !== 0)
-      if (explicit_camera) return
-      scene_props.camera_target = undefined
-      scene_props.camera_position = [0, 0, 0]
+      if (measure_mode !== `edit-atoms`) camera_target = undefined
     })
   })
 
@@ -983,7 +910,6 @@
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
-  {@attach drop_zone}
   {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
@@ -991,6 +917,9 @@
     <div style:display={active_tool_view ? `none` : `contents`}>
       <structure_host_tool.component
         structure={session.tool_input}
+        prediction={active_prediction}
+        overlay_visible={tool_overlay_visible}
+        set_overlay_visible={set_tool_overlay_visible}
         start_run={start_tool_run}
       />
     </div>
@@ -1012,21 +941,14 @@
         {#if active_overlay && !session.shows_input_frame}
           <button onclick={() => (cell_type = `original`)}>Use original cell</button>
         {/if}
-        {#if active_overlay && session.has_supercell && (volumetric_data ?? []).some((volume) => owned_volume_set.has(volume) && !volume.periodic)}
+        {#if active_overlay && session.has_supercell && (volumetric_data ?? []).some((volume) => owned_volume_set.has(volume.id) && !volume.periodic)}
           <button onclick={() => (supercell_scaling = `1x1x1`)}
             >Reset supercell to 1×1×1</button
           >
         {/if}
         <button onclick={tool_controller.clear}>Clear prediction</button>
       </p>{/if}
-    {#if loading}
-      <Spinner
-        text="Loading structure..."
-        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
-      />
-    {:else if error_msg}
-      <StatusMessage bind:message={error_msg} type="error" dismissible />
-    {:else if (structure?.sites?.length ?? 0) > 0 || (volumetric_data?.length ?? 0) > 0}
+    {#if (structure?.sites?.length ?? 0) > 0 || (volumetric_data?.length ?? 0) > 0}
       <ViewerChrome
         {controls_config}
         bind:fullscreen
@@ -1084,7 +1006,7 @@
         {#if display_mode === `structure` && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
           <StructureInfoPane
             structure={session.base_structure}
-            displayed_structure={session.displayed_structure}
+            displayed_structure={session.render_structure}
             bonding_strategy={scene_props.bonding_strategy}
             bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
             bind:highlighted_sites
@@ -1098,7 +1020,7 @@
 
         {#if controls_config.visible(`export-pane`)}
           <StructureExportPane
-            prediction={active_overlay ?? undefined}
+            prediction={active_prediction ?? undefined}
             on_clear_prediction={tool_controller.clear}
             on_reset_prediction_surfaces={reset_prediction_surfaces}
             bind:export_pane_open={
@@ -1110,7 +1032,7 @@
             {camera}
             image_canvas={display_mode === `slice` ? slice_canvas : undefined}
             image_filename={display_mode === `slice`
-              ? `${volumetric_data?.[active_volume_idx]?.label ?? `volume`}-slice`
+              ? `${volume_by_id.get(active_volume_id ?? ``)?.label ?? `volume`}-slice`
               : undefined}
             enable_3d_export={display_mode === `structure`}
             bind:png_dpi
@@ -1124,7 +1046,12 @@
               () => is_pane_open(`controls`), (open) => set_pane_open(`controls`, open)
             }
             bind:scene_props
-            bind:show_trajectory_lines
+            bind:show_trajectory_lines={
+              () =>
+                scene_props.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
+              (value) => (scene_props.show_trajectory_lines = value)
+            }
+            {trajectory_position_stream}
             bind:show_image_atoms
             bind:supercell_scaling
             bind:background_color
@@ -1135,7 +1062,7 @@
             bind:volumetric_data
             bind:isosurface_settings
             bind:slice_settings
-            bind:active_volume_idx
+            bind:active_volume_id
             {display_mode}
             bind:multi_view
             multi_view_control_visible={controls_config.visible(`multi-view`)}
@@ -1188,9 +1115,8 @@
         </AtomLegend>
       {/if}
 
-      <!-- One StructureViewport renders the single view; four render the 2x2 grid. The primary
-      pane (index 0) carries the external camera API: scene/camera are bound out for export,
-      camera_position/target persist into scene_props, and it emits on_camera_move/reset. -->
+      <!-- The primary pane binds scene/camera for export and keeps the camera pose local,
+      reporting camera changes through on_camera_move/reset. -->
       {#snippet primary_viewport(view: StructureView)}
         <StructureViewport
           {...pane_props(0)}
@@ -1199,8 +1125,8 @@
           {...shared_viewport_props}
           camera_direction={view.direction}
           camera_projection={view.projection ?? scene_props.camera_projection}
-          bind:camera_position={scene_props.camera_position}
-          bind:camera_target={scene_props.camera_target}
+          bind:camera_position
+          bind:camera_target
           bind:fly_to_request={session.fly_to_request}
           bind:displacement_summary
           bind:scene
@@ -1224,9 +1150,9 @@
 
       {#if display_mode === `slice`}
         <VolumeSliceView
-          volume={hidden_volume_indices.has(active_volume_idx)
+          volume={hidden_volume_ids.has(active_volume_id ?? ``)
             ? undefined
-            : volumetric_data?.[active_volume_idx]}
+            : volume_by_id.get(active_volume_id ?? ``)}
           bind:settings={slice_settings}
           bind:canvas={slice_canvas}
         />
@@ -1304,10 +1230,6 @@
   .structure:fullscreen:not(.multi-view) :global(canvas) {
     height: 100vh !important;
     width: 100vw !important;
-  }
-  .structure.dragover {
-    background: var(--struct-dragover-bg, var(--dragover-bg));
-    border: var(--struct-dragover-border, var(--dragover-border));
   }
   .host-view {
     width: 100%;

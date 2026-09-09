@@ -1,4 +1,4 @@
-import type { Label } from '$lib/table'
+import type { Column } from '$lib/table'
 import ToggleMenu from '$lib/table/ToggleMenu.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -10,13 +10,14 @@ afterEach(() => {
 })
 
 describe(`ToggleMenu`, () => {
-  const make_columns = (): Label[] => [
-    { key: `col1`, label: `Column 1`, visible: true, description: `First column` },
-    { key: `col2`, label: `Column 2`, visible: false, description: `Second column` },
-    { key: `col3`, label: `Column 3`, visible: true, description: `Third column` },
+  const make_columns = (): Column[] => [
+    { id: `col1`, label: `Column 1`, visible: true, description: `First column` },
+    { id: `col2`, label: `Column 2`, visible: false, description: `Second column` },
+    { id: `col3`, label: `Column 3`, visible: true, description: `Third column` },
   ]
-  const make_many_columns = (count: number): Label[] =>
+  const make_many_columns = (count: number): Column[] =>
     Array.from({ length: count }, (_, idx) => ({
+      id: `col_${idx + 1}`,
       key: `col_${idx + 1}`,
       label: `Column ${idx + 1}`,
       visible: true,
@@ -24,7 +25,7 @@ describe(`ToggleMenu`, () => {
 
   // Mount helper to reduce boilerplate
   const mount_menu = (
-    columns: Label[],
+    columns: Column[],
     props: Partial<Omit<ComponentProps<typeof ToggleMenu>, `columns`>> = {},
   ) =>
     mount(ToggleMenu, {
@@ -149,7 +150,7 @@ describe(`ToggleMenu`, () => {
     })
 
     it(`renders HTML in column labels via @html`, () => {
-      mount_menu([{ key: `col1`, label: `E<sub>hull</sub>`, visible: true }], {
+      mount_menu([{ id: `col1`, label: `E<sub>hull</sub>`, visible: true }], {
         column_panel_open: true,
       })
       expect(document.querySelector(`sub`)).not.toBeNull()
@@ -158,9 +159,9 @@ describe(`ToggleMenu`, () => {
     it(`handles columns without explicit visible property`, () => {
       mount_menu(
         [
-          { key: `col1`, label: `No visible prop` },
-          { key: `col2`, label: `Explicit true`, visible: true },
-          { key: `col3`, label: `Explicit false`, visible: false },
+          { id: `col1`, label: `No visible prop` },
+          { id: `col2`, label: `Explicit true`, visible: true },
+          { id: `col3`, label: `Explicit false`, visible: false },
         ],
         { column_panel_open: true },
       )
@@ -206,12 +207,28 @@ describe(`ToggleMenu`, () => {
   })
 
   describe(`Grouped sections`, () => {
-    const grouped_cols: Label[] = [
-      { key: `name`, label: `Name`, group: `Personal` },
-      { key: `age`, label: `Age`, group: `Personal` },
-      { key: `email`, label: `Email`, group: `Contact` },
-      { key: `phone`, label: `Phone`, group: `Contact` },
-      { key: `notes`, label: `Notes` }, // ungrouped
+    it.each([`__proto__`, `constructor`])(
+      `accepts %s as a column ID and group`,
+      async (id) => {
+        const columns = [{ id, label: `Metric`, group: id, visible: false }]
+        mount_menu(columns, { column_panel_open: true })
+        const checkbox = doc_query<HTMLInputElement>(`input[type="checkbox"]`)
+        expect(checkbox.checked).toBe(false)
+        checkbox.click()
+        await tick()
+        expect(checkbox.checked).toBe(true)
+        doc_query<HTMLButtonElement>(`.reset-btn`).click()
+        await tick()
+        expect(checkbox.checked).toBe(false)
+      },
+    )
+
+    const grouped_cols: Column[] = [
+      { id: `name (Personal)`, key: `name`, label: `Name`, group: `Personal` },
+      { id: `age (Personal)`, key: `age`, label: `Age`, group: `Personal` },
+      { id: `email (Contact)`, key: `email`, label: `Email`, group: `Contact` },
+      { id: `phone (Contact)`, key: `phone`, label: `Phone`, group: `Contact` },
+      { id: `notes`, label: `Notes` }, // ungrouped
     ]
 
     it.each([
@@ -221,12 +238,12 @@ describe(`ToggleMenu`, () => {
         // order and every ungrouped column lands in the trailing headerless section
         desc: `ungrouped interleaved`,
         columns: [
-          { key: `email`, label: `Email`, group: `Contact` },
-          { key: `notes`, label: `Notes` },
-          { key: `name`, label: `Name`, group: `Personal` },
-          { key: `phone`, label: `Phone`, group: `Contact` },
-          { key: `age`, label: `Age`, group: `Personal` },
-        ] satisfies Label[],
+          { id: `email (Contact)`, key: `email`, label: `Email`, group: `Contact` },
+          { id: `notes`, label: `Notes` },
+          { id: `name (Personal)`, key: `name`, label: `Name`, group: `Personal` },
+          { id: `phone (Contact)`, key: `phone`, label: `Phone`, group: `Contact` },
+          { id: `age (Personal)`, key: `age`, label: `Age`, group: `Personal` },
+        ] satisfies Column[],
         headers: [`Contact`, `Personal`],
       },
     ])(`groups columns into sections ($desc)`, ({ columns, headers }) => {
@@ -250,6 +267,37 @@ describe(`ToggleMenu`, () => {
       expect(sections[2].querySelector(`.section-header`)).toBeNull() // no header for ungrouped
     })
 
+    it(`filtering preserves group order and resets only matching columns`, async () => {
+      const columns = [
+        { id: `hidden`, label: `Hidden`, group: `First` },
+        { id: `loose`, label: `Match loose` },
+        { id: `second`, label: `Match second`, group: `Second` },
+        { id: `first`, label: `Match first`, group: `First` },
+        ...make_many_columns(17),
+      ]
+      const on_toggle = vi.fn()
+      mount_menu(columns, { column_panel_open: true, on_toggle })
+      doc_query(`.toggle-label`).click()
+      const filter = doc_query<HTMLInputElement>(`input[aria-label="Filter columns"]`)
+      filter.value = `match`
+      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      expect(
+        [...document.querySelectorAll(`.toggle-label`)].map((item) =>
+          item.textContent?.trim(),
+        ),
+      ).toEqual([`Match first`, `Match second`, `Match loose`])
+      doc_query(`.toggle-label`).click()
+      await tick()
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset First to defaults"]`).click()
+      await tick()
+      expect(on_toggle.mock.calls.map(([col, visible]) => [col.id, visible])).toEqual([
+        [`hidden`, false],
+        [`first`, false],
+        [`first`, true],
+      ])
+    })
+
     it(`falls back to flat list when no groups`, () => {
       mount_menu(make_columns(), { column_panel_open: true })
       expect(document.querySelector(`.sections-container`)).toBeNull()
@@ -258,10 +306,10 @@ describe(`ToggleMenu`, () => {
   })
 
   describe(`Collapsible sections`, () => {
-    const two_groups: Label[] = [
-      { key: `a`, label: `A`, group: `G1` },
-      { key: `b`, label: `B`, group: `G1` },
-      { key: `c`, label: `C`, group: `G2` },
+    const two_groups: Column[] = [
+      { id: `a (G1)`, key: `a`, label: `A`, group: `G1` },
+      { id: `b (G1)`, key: `b`, label: `B`, group: `G1` },
+      { id: `c (G2)`, key: `c`, label: `C`, group: `G2` },
     ]
 
     it(`sections expanded by default, collapse/expand on click`, async () => {
@@ -316,7 +364,7 @@ describe(`ToggleMenu`, () => {
     })
 
     it(`sizes grouped sections independently`, () => {
-      const grouped: Label[] = [
+      const grouped: Column[] = [
         ...make_many_columns(8).map((col) => ({
           ...col,
           key: `small_${col.key}`,
@@ -338,37 +386,30 @@ describe(`ToggleMenu`, () => {
   })
 
   describe(`Disabled items`, () => {
-    it(`applies disabled attribute and class correctly`, () => {
-      const columns: Label[] = [
-        { key: `enabled`, label: `Enabled` },
-        { key: `disabled`, label: `Disabled`, disabled: true },
-      ]
-      mount_menu(columns, { column_panel_open: true })
+    it.each([undefined, true])(
+      `disabled items stay checked with visible=%s`,
+      async (visible) => {
+        const columns: Column[] = [
+          { id: `enabled`, label: `Enabled` },
+          { id: `disabled`, label: `Disabled`, disabled: true, visible },
+        ]
+        mount_menu(columns, { column_panel_open: true })
 
-      const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
-      const labels = document.querySelectorAll(`.toggle-label`)
+        const checkboxes =
+          document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
+        const labels = document.querySelectorAll(`.toggle-label`)
 
-      expect(checkboxes[0].disabled).toBe(false)
-      expect(checkboxes[1].disabled).toBe(true)
-      expect(labels[0].classList.contains(`disabled`)).toBe(false)
-      expect(labels[1].classList.contains(`disabled`)).toBe(true)
-    })
-
-    it(`disabled checkbox cannot be toggled`, async () => {
-      const columns: Label[] = [
-        { key: `disabled`, label: `Disabled`, disabled: true, visible: true },
-      ]
-      mount_menu(columns, { column_panel_open: true })
-
-      const checkbox = document.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
-      expect(checkbox?.checked).toBe(true)
-
-      checkbox?.click()
-      await tick()
-
-      expect(checkbox?.checked).toBe(true)
-      expect(columns[0].visible).toBe(true)
-    })
+        expect(checkboxes[0].disabled).toBe(false)
+        expect(checkboxes[1].disabled).toBe(true)
+        expect(labels[0].classList.contains(`disabled`)).toBe(false)
+        expect(labels[1].classList.contains(`disabled`)).toBe(true)
+        expect(checkboxes[1].checked).toBe(true)
+        checkboxes[1].click()
+        await tick()
+        expect(checkboxes[1].checked).toBe(true)
+        expect(columns[1].visible).toBe(visible)
+      },
+    )
   })
 
   describe(`Reset functionality`, () => {
@@ -404,10 +445,10 @@ describe(`ToggleMenu`, () => {
       const on_toggle = vi.fn()
       mount_menu(
         [
-          { key: `name`, label: `Name`, group: `Personal` },
-          { key: `age`, label: `Age`, group: `Personal` },
-          { key: `email`, label: `Email`, group: `Contact` },
-          { key: `phone`, label: `Phone`, group: `Contact` },
+          { id: `name (Personal)`, key: `name`, label: `Name`, group: `Personal` },
+          { id: `age (Personal)`, key: `age`, label: `Age`, group: `Personal` },
+          { id: `email (Contact)`, key: `email`, label: `Email`, group: `Contact` },
+          { id: `phone (Contact)`, key: `phone`, label: `Phone`, group: `Contact` },
         ],
         { column_panel_open: true, on_toggle },
       )
@@ -427,8 +468,8 @@ describe(`ToggleMenu`, () => {
 
     it(`resets duplicate grouped keys independently`, async () => {
       const columns = [
-        { key: `Value`, label: `Value A`, group: `A`, visible: true },
-        { key: `Value`, label: `Value B`, group: `B`, visible: false },
+        { id: `Value (A)`, key: `Value`, label: `Value A`, group: `A`, visible: true },
+        { id: `Value (B)`, key: `Value`, label: `Value B`, group: `B`, visible: false },
       ]
       mount_menu(columns, { column_panel_open: true })
 
@@ -468,51 +509,41 @@ describe(`ToggleMenu`, () => {
 
     it(`resnapshots defaults when same keys receive new source visibility`, async () => {
       mount(ToggleMenuHarness, { target: document.body })
-      const checkboxes = () =>
-        document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
-      const checked = () => Array.from(checkboxes(), (checkbox) => checkbox.checked)
       const wait_for_default_snapshot = async () => {
         // Column replacement updates the bound prop first, then ToggleMenu snapshots defaults.
         await tick()
         await tick()
       }
 
-      expect(checked()).toEqual([true, false])
+      expect(checkbox_states()).toEqual([true, false])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
 
       document.querySelector<HTMLButtonElement>(`[data-testid="replace-columns"]`)?.click()
       await wait_for_default_snapshot()
-      expect(checked()).toEqual([false, true])
+      expect(checkbox_states()).toEqual([false, true])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
 
-      ;(document.querySelectorAll(`.toggle-label`)[0] as HTMLElement).click()
+      doc_query(`.toggle-label`).click()
       await tick()
-      expect(checkboxes()[0].checked).toBe(true)
-      const reset_btn = document.querySelector(`summary .reset-btn`)
-      expect(reset_btn).toBeInstanceOf(HTMLElement)
-      ;(reset_btn as HTMLElement).click()
+      expect(checkbox_states()[0]).toBe(true)
+      doc_query(`summary .reset-btn`).click()
       await tick()
-      expect(checked()).toEqual([false, true])
+      expect(checkbox_states()).toEqual([false, true])
 
       document
         .querySelector<HTMLButtonElement>(`[data-testid="replace-columns-again"]`)
         ?.click()
       await wait_for_default_snapshot()
-      expect(checked()).toEqual([true, true])
+      expect(checkbox_states()).toEqual([true, true])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
     })
 
     it(`section reset button tracks changed sections and restores only its own`, async () => {
-      const grouped: Label[] = [
-        { key: `a`, label: `A`, group: `G1`, visible: true },
-        { key: `b`, label: `B`, group: `G2`, visible: true },
+      const grouped: Column[] = [
+        { id: `a (G1)`, key: `a`, label: `A`, group: `G1`, visible: true },
+        { id: `b (G2)`, key: `b`, label: `B`, group: `G2`, visible: true },
       ]
       mount_menu(grouped, { column_panel_open: true })
-      const checked = () =>
-        Array.from(
-          document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-          (checkbox) => checkbox.checked,
-        )
       const section_btns = () =>
         document.querySelectorAll<HTMLElement>(`.section-header-row .reset-btn`)
       const labels = () => document.querySelectorAll<HTMLElement>(`.toggle-label`)
@@ -525,22 +556,22 @@ describe(`ToggleMenu`, () => {
       labels()[1].click()
       await tick()
       expect(section_btns()).toHaveLength(2)
-      expect(checked()).toEqual([false, false])
+      expect(checkbox_states()).toEqual([false, false])
 
       section_btns()[0].click() // G1's button
       await tick()
-      expect(checked()).toEqual([true, false]) // G2 left untouched
+      expect(checkbox_states()).toEqual([true, false]) // G2 left untouched
     })
   })
 
   it.each([
-    { desc: `empty columns`, columns: [] as Label[], n_checkboxes: 0 },
+    { desc: `empty columns`, columns: [] as Column[], n_checkboxes: 0 },
     {
       desc: `same label, different keys`,
       columns: [
-        { key: `value_a`, label: `Value`, group: `A` },
-        { key: `value_b`, label: `Value`, group: `B` },
-      ] as Label[],
+        { id: `value_a (A)`, key: `value_a`, label: `Value`, group: `A` },
+        { id: `value_b (B)`, key: `value_b`, label: `Value`, group: `B` },
+      ] as Column[],
       n_checkboxes: 2,
     },
   ])(`renders one toggle per column for $desc`, ({ columns, n_checkboxes }) => {

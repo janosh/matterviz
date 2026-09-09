@@ -128,6 +128,11 @@ describe(`fit_eos`, () => {
     expect(() => fit_eos(volumes, energies, `birch` as EosKind)).toThrow(`Unknown EOS kind`)
   })
 
+  test(`large scans reach minimum validation without overflowing the argument stack`, () => {
+    const volumes = Array.from({ length: 150_000 }, (_, idx) => idx + 1)
+    expect(() => fit_eos(volumes, volumes)).toThrow(/must bracket the energy minimum/)
+  })
+
   test.each([
     [[1, 2, 3], [1, 2], /3 volumes but 2 energies/],
     [[1, 2, 3], [1, 2, 3], /at least 4 volumes, got 3/],

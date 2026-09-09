@@ -6,7 +6,7 @@
   // Geometry is cached per layer so colormap/color-range changes never rerun
   // marching cubes, and sampled scalars are cached so they only remap through the
   // colormap LUT.
-  import { clamp, type Matrix3x3, type Vec3 } from '../math'
+  import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from '../utils'
   import { indexed_mesh_geometry } from '$lib/scene/geometry.svelte'
   import { T, useThrelte } from '@threlte/core'
@@ -32,19 +32,16 @@
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS, pin_layers } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS, index_volumes } from './types'
 
   let {
     volumes = [],
     settings = DEFAULT_ISOSURFACE_SETTINGS,
-    active_volume_idx = 0,
     tiling = [1, 1, 1],
     on_error,
   }: {
     volumes?: VolumetricData[]
     settings?: IsosurfaceSettings
-    // Volume that layers without an explicit volume_idx render from
-    active_volume_idx?: number
     // Supercell tiling applied to geometry volumes (color sampling always uses
     // the original volume with periodic wrapping for full fidelity)
     tiling?: Vec3
@@ -64,22 +61,15 @@
   // nothing would repaint until the next orbit without an explicit invalidate
   const threlte = useThrelte()
 
-  let reference_origin = $derived<Vec3>(volumes[0]?.origin ?? [0, 0, 0])
-  let reference_origin_key = $derived(reference_origin.join(`,`))
-
-  type ResolvedLayer = ReturnType<typeof pin_layers>[number]
-
-  // Layers pinned to the (clamped) active volume. Layers with an explicitly out-of-range
-  // volume_idx are skipped rather than clamped — silently rendering a different volume's
-  // data would be scientifically wrong.
-  let resolved_layers = $derived.by((): ResolvedLayer[] => {
-    const n_vols = volumes.length
-    if (n_vols === 0) return []
-    const active_idx = clamp(active_volume_idx, 0, n_vols - 1)
-    return pin_layers(settings.layers, active_idx).filter(
-      (layer) => layer.volume_idx >= 0 && layer.volume_idx < n_vols,
-    )
-  })
+  type ResolvedLayer = IsosurfaceLayer & { volume: VolumetricData }
+  const volume_by_id = $derived(index_volumes(volumes))
+  // Missing geometry sources render nothing; they never borrow another volume's data.
+  const resolved_layers = $derived(
+    settings.layers.flatMap((layer): ResolvedLayer[] => {
+      const volume = volume_by_id.get(layer.volume_id)
+      return volume ? [{ ...layer, volume }] : []
+    }),
+  )
 
   // Stable identity tokens for volume objects so cache keys detect replacement
   let vol_id_counter = 0
@@ -122,12 +112,9 @@
   const range_key = (vol: VolumetricData): string =>
     effective_range(vol)?.flat().join(`,`) ?? ``
 
-  const prepared_key = (vol: VolumetricData): string =>
-    `${range_key(vol)}|${reference_origin_key}`
-
   const current_prepared = (vol: VolumetricData): PreparedGrid | undefined => {
     const cached = prepared_cache.get(vol)
-    return cached?.key === prepared_key(vol) ? cached : undefined
+    return cached?.key === range_key(vol) ? cached : undefined
   }
 
   const geometry_buffer_bytes = (geometry: BufferGeometry): number =>
@@ -198,13 +185,12 @@
   // range_key covers halo + tiling (encoded in the range for periodic volumes;
   // irrelevant for finite ones), so the geometry identity needs no other inputs
   const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
-    const vol = volumes[layer.volume_idx]
+    const vol = layer.volume
     return JSON.stringify([
-      layer.volume_idx,
+      layer.volume_id,
       vol ? vol_id(vol) : 0,
       sign * layer.isovalue,
       vol ? range_key(vol) : ``,
-      reference_origin_key,
     ])
   }
 
@@ -251,7 +237,6 @@
             }
           : vol,
         range: prepared ? null : effective_range(vol),
-        reference_origin,
         surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
       }
     })
@@ -269,7 +254,7 @@
       )?.volume
       if (source_volume) {
         prepared_cache.set(source_volume, {
-          key: prepared_key(source_volume),
+          key: range_key(source_volume),
           grid: volume_result.grid,
           lattice: volume_result.lattice,
           origin: volume_result.origin,
@@ -304,7 +289,7 @@
     const pending: PendingSurface[] = []
 
     for (const [layer_idx, layer] of layers.entries()) {
-      const vol = volumes[layer.volume_idx]
+      const vol = layer.volume
       if (!vol || !layer.visible || layer.isovalue <= 0) continue
 
       for (const sign of layer.show_negative ? ([1, -1] as const) : ([1] as const)) {
@@ -370,7 +355,7 @@
     // comparable, so rank by isovalue as a fraction of each volume's abs_max.
     const shell_fraction = (entry: MeshEntry): number => {
       const layer = layers[entry.layer_idx]
-      const abs_max = volumes[layer.volume_idx]?.data_range.abs_max ?? 1
+      const abs_max = layer.volume?.data_range.abs_max ?? 1
       return layer.isovalue / Math.max(abs_max, 1e-30)
     }
     const entries = plans
@@ -430,7 +415,7 @@
   let geo_sig = $derived(
     resolved_layers
       .map((layer) => {
-        const vol = volumes[layer.volume_idx]
+        const vol = layer.volume
         if (!vol || !layer.visible || layer.isovalue <= 0) return `off`
         return `${geometry_key(layer, 1)}.${layer.show_negative}`
       })
@@ -460,23 +445,20 @@
 
   // === Cross-volume vertex coloring ===
 
-  // Sample the color volume at this entry's vertices. Vertices are in the scene
-  // frame (first volume's origin at the grid corner), so shift back to absolute
-  // Cartesian coordinates before sampling. The bulk kernel caches each volume's
-  // inverse lattice and avoids per-vertex closures or temporary position arrays.
+  // Vertices and volumes share the structure coordinate frame. The bulk kernel caches
+  // each volume's inverse lattice and avoids per-vertex closures or position arrays.
   const sample_entry_scalars = (entry: MeshEntry, color_vol: VolumetricData): Float32Array =>
     time_stage(`sample_scalars`, () => {
       const positions = entry.geometry.getAttribute(`position`).array as Float32Array
       return sample_volume_at_positions(color_vol, positions, {
         out_of_bounds: color_vol.periodic ? `clamp` : `fallback`,
-        position_offset: reference_origin,
         out: entry.scalars ?? undefined,
       })
     })
 
   // The layer's scalar-color-source volume, if any
   const color_vol_of = (layer: IsosurfaceLayer | undefined): VolumetricData | undefined =>
-    layer?.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
+    layer?.color_volume_id != null ? volume_by_id.get(layer.color_volume_id) : undefined
 
   function apply_vertex_colors(entries: MeshEntry[], layers: ResolvedLayer[]) {
     const profile_start = performance.now()
@@ -552,7 +534,7 @@
       .map((layer) => {
         const color_vol = color_vol_of(layer)
         return [
-          layer.color_volume_idx ?? ``,
+          layer.color_volume_id ?? ``,
           color_vol ? vol_id(color_vol) : ``,
           layer.colormap ?? ``,
           layer.color_range?.join(`,`) ?? ``,

@@ -536,6 +536,7 @@ export const make_volume = (
   const flat = flatten_grid(grid)
   return {
     ...make_volume_from_values(flat.values, flat.dims, {
+      id: overrides.id ?? `0`,
       lattice: [
         [5, 0, 0],
         [0, 5, 0],

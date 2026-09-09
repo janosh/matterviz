@@ -23,7 +23,7 @@ import { HeatmapTable, type RowData } from '$lib/table'
 import { Trajectory, type TrajectoryController, trajectory_from_frames } from '$lib/trajectory'
 import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
 import process from 'node:process'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { type Component, flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { make_rng } from './numeric-helpers'
 import {
@@ -120,6 +120,7 @@ const make_json = (n_keys: number): Record<string, unknown> => {
 const make_table = (n_rows: number, n_cols: number) => {
   const rng = make_rng(4)
   const columns = Array.from({ length: n_cols }, (_, idx) => ({
+    id: `col_${idx}`,
     label: `col_${idx}`,
     color_scale: idx % 3 === 0 ? (`interpolateViridis` as const) : undefined,
     sticky: idx === 0,
@@ -431,11 +432,12 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
 
   test(`HeatmapTable 10k x 30 virtual mount`, async () => {
     const { columns, data } = make_table(10_000, 30)
+    const props = { data, columns, virtual: true, show_row_numbers: true }
     await measure(`HeatmapTable 10k x 30 virtual mount`, async () => {
       mounted.push(
-        mount(HeatmapTable, {
+        mount(HeatmapTable as Component<typeof props>, {
           target: target(),
-          props: { data, columns, virtual: true, show_row_numbers: true },
+          props,
         }),
       )
       flushSync()

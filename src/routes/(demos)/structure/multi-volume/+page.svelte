@@ -3,6 +3,7 @@
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from 'svelte-widgets'
   import { open_material } from '$lib/file-viewer/open'
+  import { apply_structure_material } from '$lib/structure/material'
   import FilePicker from '$lib/FilePicker.svelte'
   import { auto_color_config } from '$lib/isosurface/coloring'
   import type {
@@ -15,21 +16,19 @@
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
     label_file_volumes,
-    lattices_match,
-    merge_imported_volumes,
   } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import { volumetric_files } from '$site/isosurfaces'
   import { replace_url } from '$site/state.svelte'
   import type { AnyStructure } from 'matterviz'
-  import { Structure } from 'matterviz'
+  import { StructureFileViewer } from 'matterviz'
   import { untrack } from 'svelte'
   import { to_error } from '$lib/utils'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state.raw<VolumetricData[] | undefined>()
   let isosurface_settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS })
-  let active_volume_idx = $state(0)
+  let active_volume_id = $state<string>()
   let supercell_scaling = $state(`1x1x1`)
   let active_scenario = $state<string | undefined>()
   let loading = $state(false)
@@ -40,11 +39,15 @@
   // Monotonic token so a stale async load can never overwrite a newer selection
   let load_counter = 0
 
-  // Fetch and parse one demo file from /isosurfaces/<name>
-  async function fetch_volumetric(name: string): Promise<VolumetricFileData> {
+  const file_url = (name: string): string => {
     const file = volumetric_files.find((entry) => entry.name === name)
     if (!file) throw new Error(`Unknown demo file ${name}`)
-    const opened = await open_material(file.url)
+    return file.url
+  }
+
+  // Fetch and parse one demo file from /isosurfaces/<name>
+  async function fetch_volumetric(name: string): Promise<VolumetricFileData> {
+    const opened = await open_material(file_url(name))
     try {
       if (opened.type !== `isosurface`) {
         throw new Error(`Expected volumetric data, got ${opened.type}`)
@@ -94,8 +97,8 @@
     visible: true,
     show_negative: false,
     negative_color: `#ef4444`,
-    volume_idx,
-    color_volume_idx: color_idx,
+    volume_id: volumes[volume_idx].id,
+    color_volume_id: volumes[color_idx].id,
     colormap: auto_color_config(volumes[color_idx].data_range).colormap,
     ...overrides,
   })
@@ -118,7 +121,7 @@
       title: `HOMO + LUMO together (caffeine)`,
       description: `Two real Psi4 orbital cubes at once: HOMO in blue/red, LUMO in green/purple, each with ± lobes, giving four transparent surfaces from independent volumes in one scene.`,
       files: [`caffeine-HOMO.cube.gz`, `caffeine-LUMO.cube.gz`],
-      layers: () => [
+      layers: (volumes) => [
         {
           isovalue: 0.02,
           color: `#3b82f6`,
@@ -126,7 +129,7 @@
           visible: true,
           show_negative: true,
           negative_color: `#ef4444`,
-          volume_idx: 0,
+          volume_id: volumes[0].id,
         },
         {
           isovalue: 0.02,
@@ -135,7 +138,7 @@
           visible: true,
           show_negative: true,
           negative_color: `#a855f7`,
-          volume_idx: 1,
+          volume_id: volumes[1].id,
         },
       ],
     },
@@ -183,7 +186,7 @@
           visible: true,
           show_negative: false,
           negative_color: `#ef4444`,
-          volume_idx: 0,
+          volume_id: volumes[0].id,
         },
       ],
     },
@@ -230,7 +233,7 @@
       active_scenario = scenario.id
       structure = undefined
       volumetric_data = undefined
-      active_volume_idx = 0
+      active_volume_id = undefined
 
       const start = performance.now()
       const { struct, volumes } = await load_files(scenario.files)
@@ -257,41 +260,22 @@
     }
   }
 
-  // Clicking a file appends its volumes when the lattice matches the current
-  // scene (same physical cell → overlay another field); otherwise it replaces.
-  // Uses the same merge helpers as Structure.svelte's drag-and-drop import.
+  // File clicks and drops use the same atomic-frame compatibility and merge rules.
   const add_or_replace_file = (name: string) =>
     run_load(async (is_current) => {
-      const parsed = await fetch_volumetric(name)
-      if (!is_current()) return // stale load; a newer one took over
-      const incoming = label_file_volumes(parsed.volumes, name)
-      const current_lattice =
-        structure && `lattice` in structure ? structure.lattice.matrix : undefined
-
-      if (
-        volumetric_data?.length &&
-        lattices_match(current_lattice, parsed.structure.lattice?.matrix)
-      ) {
-        const merged = merge_imported_volumes(
-          volumetric_data,
-          isosurface_settings.layers,
-          incoming,
-          active_volume_idx,
+      const opened = await open_material(file_url(name))
+      try {
+        if (!is_current()) return // stale load; a newer one took over
+        const { document } = apply_structure_material(
+          { structure, volumetric_data, isosurface_settings, active_volume_id },
+          opened,
         )
-        volumetric_data = merged.volumes
-        isosurface_settings = { ...isosurface_settings, layers: merged.layers }
-        active_volume_idx = merged.first_touched_idx
-      } else {
-        structure = parsed.structure as AnyStructure
-        volumetric_data = incoming
-        isosurface_settings = {
-          ...DEFAULT_ISOSURFACE_SETTINGS,
-          layers: incoming.map((vol, idx) => auto_volume_layer(vol, idx, idx)),
-        }
-        active_volume_idx = 0
-        supercell_scaling = `1x1x1`
+        if (document.structure !== structure) supercell_scaling = `1x1x1`
+        ;({ structure, volumetric_data, isosurface_settings, active_volume_id } = document)
+        clear_scenario()
+      } finally {
+        opened.dispose()
       }
-      clear_scenario()
     })
 
   let total_points = $derived(
@@ -354,7 +338,7 @@
 </section>
 
 <h2 style="margin: 0.5em 0 0.3em; font-size: 0.9rem; opacity: 0.85">
-  Mix your own (same-cell files append as extra volumes)
+  Mix your own (matching structures append as extra volumes)
 </h2>
 <FilePicker
   files={volumetric_files}
@@ -365,11 +349,11 @@
   style="margin-bottom: 0.5em"
 />
 
-<Structure
+<StructureFileViewer
   bind:structure
   bind:volumetric_data
   bind:isosurface_settings
-  bind:active_volume_idx
+  bind:active_volume_id
   bind:supercell_scaling
   bind:loading
   bind:error_msg
@@ -380,14 +364,14 @@
 >
   <DragOverlay
     visible={dragover_hint}
-    message="Drop one or more volumetric files (same-cell files append as extra volumes)"
+    message="Drop volumetric files (matching structures append as extra volumes)"
   />
   {#if active_scenario}
     <p class="demo-overlay-label">
       {scenarios.find((entry) => entry.id === active_scenario)?.title}
     </p>
   {/if}
-</Structure>
+</StructureFileViewer>
 
 {#if error_msg}
   <StatusMessage message={error_msg} type="error" />

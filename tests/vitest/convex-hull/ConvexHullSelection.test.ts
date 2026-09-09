@@ -1,9 +1,16 @@
-import { ConvexHull, ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
+import { ConvexHull, ConvexHull2D, ConvexHullCanvas, type HullModel } from '$lib/convex-hull'
+import * as thermo from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, create_drop_event, doc_query, make_phase, mount_sized } from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
+
+// Exercise actual JSON parsing; worker transport is covered by parse-in-worker tests.
+vi.mock(`$lib/file-viewer/parse-in-worker`, async () => {
+  const { parse_file_content } = await import(`$lib/file-viewer/parse`)
+  return { parse_in_worker: parse_file_content }
+})
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
 // exercised deterministically in jsdom (synthetic events can't land on points).
@@ -253,7 +260,7 @@ describe(`convex hull replacement state`, () => {
           ...kept_elements.map((el) => with_temps({ [el]: 1 }, [300, 600], el)),
           with_temps({ O: 1 }, [300], `O`),
         ]
-        const state = { stable_entries: [] as PhaseData[], temperature }
+        const state = { temperature }
         const target = await mount_hull(
           component,
           bind_props({ ...dim_props, entries, interpolate_temperature: interpolate }, state),
@@ -269,13 +276,16 @@ describe(`convex hull replacement state`, () => {
             ?.value,
         ).toBe(String(temperature))
         expect(
-          state.stable_entries.find((entry) => entry.entry_id === kept_elements[0])
-            ?.energy_per_atom,
+          (mounted_components.at(-1) as { get_model: () => HullModel | undefined })
+            .get_model()
+            ?.entries.find((entry) => entry.entry_id === kept_elements[0])?.energy_per_atom,
         ).toBeCloseTo(-1 - temperature / 1000, 12)
         // the dropped element is closed with a synthetic corner so the hull still spans it
-        expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(
-          `synthetic-element:O`,
-        )
+        expect(
+          (mounted_components.at(-1) as { get_model: () => HullModel | undefined })
+            .get_model()
+            ?.entries.map((entry) => entry.entry_id),
+        ).toContain(`synthetic-element:O`)
         expect(console_error).not.toHaveBeenCalled()
       },
     )
@@ -292,13 +302,16 @@ describe(`convex hull replacement state`, () => {
         ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
         make_phase({ ...composition }, -10, { entry_id: `compound` }),
       ]
-      const state = { stable_entries: [] as PhaseData[] }
-      const target = await mount_hull(ConvexHull, bind_props({ entries }, state))
+      const target = await mount_hull(ConvexHull, { entries })
       flushSync()
 
       expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
       expect(target.querySelector(`.empty-state`)).toBeNull()
-      expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(`compound`)
+      expect(
+        (mounted_components.at(-1) as { get_model: () => HullModel | undefined })
+          .get_model()
+          ?.entries.map((entry) => entry.entry_id),
+      ).toContain(`compound`)
     },
   )
 
@@ -495,17 +508,29 @@ describe(`convex hull replacement state`, () => {
   // dependencies and every one has to be declared in `repaint_deps`. `config` reaches the draw
   // code only through merged_config, so the individual label toggles don't cover it: leaving it
   // out left the hull showing labels the config had already turned off.
-  test.each([`3d`, `4d`] as const)(`a config change repaints the hull (%s)`, async (dim) => {
-    const clears = count_canvas_clears()
-    await mount_harness({ dim })
-    await let_frames_run()
-    const before = clears.base
-    expect(before).toBeGreaterThan(0) // it painted at all to begin with
+  test.each([`3d`, `4d`] as const)(
+    `presentation changes repaint without recomputing hull geometry (%s)`,
+    async (dim) => {
+      const builds = vi.spyOn(thermo, `compute_lower_hull_nd`)
+      const clears = count_canvas_clears()
+      await mount_harness({ dim })
+      await let_frames_run()
+      const before = clears.base
+      expect(before).toBeGreaterThan(0) // it painted at all to begin with
 
-    button(`toggle-hull-labels`).click()
-    await let_frames_run()
-    expect(clears.base).toBeGreaterThan(before)
-  })
+      const initial_builds = builds.mock.calls.length
+      expect(initial_builds).toBeGreaterThan(0)
+      for (const toggle of [`toggle-hull-labels`, `toggle-hull-category`]) {
+        button(toggle).click()
+        await let_frames_run()
+        expect(clears.base).toBeGreaterThan(before)
+        expect(builds).toHaveBeenCalledTimes(initial_builds)
+      }
+      button(`replace-convex-entries`).click()
+      await tick()
+      expect(builds.mock.calls.length).toBeGreaterThan(initial_builds)
+    },
+  )
 
   // Enter selects the hovered entry, but the chord belongs to the browser (Cmd+Enter is
   // open-in-new-tab). The chord guard has to run before the Enter branch, not after it.

@@ -82,7 +82,7 @@
     on_node_click,
     on_node_hover,
     on_zoom,
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -369,18 +369,19 @@
   bind:height
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   {controls_toggle_props}
   {header_controls}
   {children}
   {...rest}
   class={[rest.class, { icicle: shape === `icicle` }]}
 >
-  {#snippet controls(toggle_props)}
+  {#snippet controls(toggle_props, show_controls)}
     <SunburstControls
       chart="sunburst"
       {toggle_props}
       pane_props={controls_pane_props}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       bind:shape
       bind:value_mode

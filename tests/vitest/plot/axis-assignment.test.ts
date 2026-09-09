@@ -88,7 +88,7 @@ describe(`group_axis_series`, () => {
 })
 
 describe(`assign_axes`, () => {
-  test(`assigns y1/y2 deterministically without mutating input`, () => {
+  test(`assigns y/y2 deterministically without mutating input`, () => {
     const input = [
       create_series(`Energy`, `eV`),
       create_series(`Free energy`, `eV`),
@@ -99,14 +99,14 @@ describe(`assign_axes`, () => {
 
     expect(assign_axes(input)).toEqual({
       status: `assigned`,
-      assignments: [`y1`, `y1`, `y2`, undefined],
+      assignments: [`y`, `y`, `y2`, undefined],
       groups: [
         {
           key: `eV`,
           priority: 0,
           series: [input[0], input[1]],
           series_indices: [0, 1],
-          axis: `y1`,
+          axis: `y`,
         },
         {
           key: `eV/Å`,
@@ -123,7 +123,7 @@ describe(`assign_axes`, () => {
 
   test(`reserves explicit axes before assigning duplicate automatic groups`, () => {
     const input = [
-      create_series(`Explicit energy`, `eV`, { y_axis: `y1` }),
+      create_series(`Explicit energy`, `eV`, { y_axis: `y` }),
       create_series(`Pressure`, `GPa`),
       create_series(`Pressure duplicate`, `GPa`),
       create_series(`Hidden explicit`, `K`, { visible: false, y_axis: `y2` }),
@@ -132,11 +132,11 @@ describe(`assign_axes`, () => {
     const result = assign_axes(input)
 
     expect(result.status).toBe(`assigned`)
-    expect(result.assignments).toEqual([`y1`, `y2`, `y2`, undefined])
+    expect(result.assignments).toEqual([`y`, `y2`, `y2`, undefined])
     expect(
       result.groups.map(({ key, axis, series_indices }) => ({ key, axis, series_indices })),
     ).toEqual([
-      { key: `eV`, axis: `y1`, series_indices: [0] },
+      { key: `eV`, axis: `y`, series_indices: [0] },
       { key: `GPa`, axis: `y2`, series_indices: [1, 2] },
     ])
   })
@@ -157,10 +157,10 @@ describe(`assign_axes`, () => {
     const result = assign_overflow([
       create_series(`Explicit secondary energy`, `eV`, { y_axis: `y2` }),
       create_series(`Automatic free energy`, `eV`),
-      create_series(`Explicit primary energy`, `eV`, { y_axis: `y1` }),
+      create_series(`Explicit primary energy`, `eV`, { y_axis: `y` }),
     ])
 
-    expect(result.assignments).toEqual([`y2`, undefined, `y1`])
+    expect(result.assignments).toEqual([`y2`, undefined, `y`])
     expect(result.overflow_groups).toHaveLength(1)
     expect(result.overflow_groups[0]).toMatchObject({
       key: `eV`,
@@ -168,26 +168,26 @@ describe(`assign_axes`, () => {
       series: [expect.objectContaining({ label: `Automatic free energy` })],
     })
     expect(result.error.message).toBe(
-      `Cannot assign 1 visible automatic axis group to 0 available axes (y1, y2 reserved explicitly): eV`,
+      `Cannot assign 1 visible automatic axis group to 0 available axes (y, y2 reserved explicitly): eV`,
     )
   })
 
-  test(`assigns the sole automatic group to y1 when only y2 is reserved`, () => {
+  test(`assigns the sole automatic group to y when only y2 is reserved`, () => {
     const result = assign_axes([
       create_series(`Explicit pressure`, `GPa`, { y_axis: `y2` }),
       create_series(`Energy`, `eV`),
     ])
 
-    expect(result.assignments).toEqual([`y2`, `y1`])
+    expect(result.assignments).toEqual([`y2`, `y`])
     expect(result.groups.map(({ key, axis }) => ({ key, axis }))).toEqual([
       { key: `GPa`, axis: `y2` },
-      { key: `eV`, axis: `y1` },
+      { key: `eV`, axis: `y` },
     ])
   })
 
   test.each([
-    [false, true, [undefined, `y1`]],
-    [true, false, [`y1`, undefined]],
+    [false, true, [undefined, `y`]],
+    [true, false, [`y`, undefined]],
   ] as const)(
     `assigns only visible series (%s, %s)`,
     (first_visible, second_visible, expected) => {
@@ -201,24 +201,24 @@ describe(`assign_axes`, () => {
 
   test(`reports automatic overflow after explicit reservations`, () => {
     const input = [
-      create_series(`Explicit energy`, `eV`, { y_axis: `y1` }),
+      create_series(`Explicit energy`, `eV`, { y_axis: `y` }),
       create_series(`Pressure`, `GPa`),
       create_series(`Temperature`, `K`),
     ]
     const result = assign_overflow(input)
-    expect(result.assignments).toEqual([`y1`, `y2`, undefined])
+    expect(result.assignments).toEqual([`y`, `y2`, undefined])
     expect(result.groups.map(({ key, axis }) => ({ key, axis }))).toEqual([
-      { key: `eV`, axis: `y1` },
+      { key: `eV`, axis: `y` },
       { key: `GPa`, axis: `y2` },
     ])
     expect(result.overflow_groups.map((group) => group.key)).toEqual([`K`])
     expect(result.error).toMatchObject({
       group_keys: [`GPa`, `K`],
       max_axes: 2,
-      reserved_axes: [`y1`],
+      reserved_axes: [`y`],
     })
     expect(result.error.message).toBe(
-      `Cannot assign 2 visible automatic axis groups to 1 available axis (y1 reserved explicitly): GPa, K`,
+      `Cannot assign 2 visible automatic axis groups to 1 available axis (y reserved explicitly): GPa, K`,
     )
   })
 
@@ -230,9 +230,9 @@ describe(`assign_axes`, () => {
     ]
     const priority = (group_key: string) => [`high`, `medium`, `low`].indexOf(group_key)
     const result = assign_overflow(input, { priority })
-    expect(result.assignments).toEqual([undefined, `y2`, `y1`])
+    expect(result.assignments).toEqual([undefined, `y2`, `y`])
     expect(result.groups.map(({ key, axis }) => ({ key, axis }))).toEqual([
-      { key: `high`, axis: `y1` },
+      { key: `high`, axis: `y` },
       { key: `medium`, axis: `y2` },
     ])
     expect(result.overflow_groups.map((group) => group.key)).toEqual([`low`])
@@ -244,8 +244,8 @@ describe(`assign_axes`, () => {
   })
 
   test.each([
-    { max_axes: 1 as const, expected: [`y1`, undefined] },
-    { max_axes: 2 as const, expected: [`y1`, `y2`] },
+    { max_axes: 1 as const, expected: [`y`, undefined] },
+    { max_axes: 2 as const, expected: [`y`, `y2`] },
   ])(`respects the explicit $max_axes-axis limit`, ({ max_axes, expected }) => {
     const result = assign_axes([create_series(`A`, `unit_a`), create_series(`B`, `unit_b`)], {
       max_axes,
@@ -285,12 +285,12 @@ describe(`axis_labels`, () => {
     {
       name: `single series with unit`,
       series: [create_series(`Energy`, `eV`)],
-      expected: { y1: `Energy (eV)`, y2: `Value` },
+      expected: { y: `Energy (eV)`, y2: `Value` },
     },
     {
       name: `deduplicated sorted labels`,
       series: [create_series(`B`, `eV`), create_series(`A`, `eV`), create_series(`B`, `eV`)],
-      expected: { y1: `A / B (eV)`, y2: `Value` },
+      expected: { y: `A / B (eV)`, y2: `Value` },
     },
     {
       name: `hidden series excluded`,
@@ -299,7 +299,7 @@ describe(`axis_labels`, () => {
         create_series(`Hidden`, `eV`, { visible: false }),
         create_series(`Force`, `eV/Å`, { y_axis: `y2` }),
       ],
-      expected: { y1: `Visible (eV)`, y2: `Force (eV/Å)` },
+      expected: { y: `Visible (eV)`, y2: `Force (eV/Å)` },
     },
     {
       name: `custom visibility filter`,
@@ -310,7 +310,7 @@ describe(`axis_labels`, () => {
       options: {
         is_visible: (_series: AxisValueSeries, series_idx: number) => series_idx === 1,
       },
-      expected: { y1: `Second (eV)`, y2: `Value` },
+      expected: { y: `Second (eV)`, y2: `Value` },
     },
     {
       name: `mixed units independent of input order`,
@@ -319,7 +319,7 @@ describe(`axis_labels`, () => {
         create_series(`Energy`, `eV`),
         create_series(`Energy`, `eV`),
       ],
-      expected: { y1: `Energy (eV) / Pressure (GPa)`, y2: `Value` },
+      expected: { y: `Energy (eV) / Pressure (GPa)`, y2: `Value` },
     },
   ])(`generates labels for $name`, ({ series, options, expected }) => {
     expect(axis_labels(series, options)).toEqual(expected)
@@ -333,7 +333,7 @@ describe(`axis_labels`, () => {
     const assignment = assign_axes(input)
 
     expect(axis_labels(input, { axis: assignment.assignments })).toEqual({
-      y1: `Energy (eV)`,
+      y: `Energy (eV)`,
       y2: `Residual (eV)`,
     })
   })
@@ -344,7 +344,7 @@ describe(`axis_scale_types`, () => {
     can_use_log_scale: (series: AxisValueSeries) => series.axis_group === `scf`,
     min_log_decades: 3,
   }
-  const all_linear = { y1: `linear`, y2: `linear` }
+  const all_linear = { y: `linear`, y2: `linear` }
   const residual = (y: number[], options: Partial<AxisValueSeries> = {}) =>
     create_series(`Residual`, `eV`, { axis_group: `scf`, y, ...options })
 
@@ -352,7 +352,7 @@ describe(`axis_scale_types`, () => {
     {
       name: `eligible positive series spanning three decades`,
       series: [residual([1e-6, 1e-3])],
-      expected: { y1: `log`, y2: `linear` },
+      expected: { y: `log`, y2: `linear` },
     },
     {
       name: `ineligible series`,
@@ -375,7 +375,7 @@ describe(`axis_scale_types`, () => {
         residual([1e-6, 1]),
         create_series(`Hidden energy`, `eV`, { visible: false, y: [-10, -9] }),
       ],
-      expected: { y1: `log`, y2: `linear` },
+      expected: { y: `log`, y2: `linear` },
     },
     {
       name: `independent y axes`,
@@ -383,12 +383,12 @@ describe(`axis_scale_types`, () => {
         create_series(`Energy`, `eV`, { y: [-10, -9] }),
         residual([1e-7, 1], { y_axis: `y2` }),
       ],
-      expected: { y1: `linear`, y2: `log` },
+      expected: { y: `linear`, y2: `log` },
     },
     {
       name: `non-finite values ignored`,
       series: [residual([NaN, -Infinity, 1e-6, Infinity, 1])],
-      expected: { y1: `log`, y2: `linear` },
+      expected: { y: `log`, y2: `linear` },
     },
     {
       name: `non-finite values cannot conceal a finite zero`,
@@ -430,8 +430,8 @@ describe(`axis_scale_types`, () => {
     expect(
       axis_scale_types(input, {
         ...log_options,
-        axis: (_series, series_idx) => (series_idx === 0 ? `y1` : `y2`),
+        axis: (_series, series_idx) => (series_idx === 0 ? `y` : `y2`),
       }),
-    ).toEqual({ y1: `linear`, y2: `log` })
+    ).toEqual({ y: `linear`, y2: `log` })
   })
 })

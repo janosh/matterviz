@@ -186,7 +186,7 @@ export function create_worker_client<
     const input_key = dedupe_by_payload
       ? payload_key_of(payload)
       : `input:${input_token(input)}`
-    const options_key = canonical_key_of(options ?? {})
+    const options_key = canonical_key_of(options)
     return `${input_key.length}:${input_key}${options_key}`
   }
 
@@ -219,18 +219,15 @@ export function create_worker_client<
   const release = (): void => {
     if (pending.size === 0) terminate_worker()
   }
-  // Stop caring about a request nobody awaits anymore. Only reachable from an abort, so the
-  // dropped request is still executing inside the worker: terminating at once frees the CPU
-  // it was burning (an idle-timer variant left every follow-up request queued behind the
-  // abandoned compute - N keystrokes over an 8 s VACF meant N serial 8 s waits). The
-  // replacement is constructed immediately so its module graph loads while the user types.
-  const drop = (request: Request): void => {
+  // Settle abandoned requests and free their worker when no other request still needs it.
+  // Construct the next worker on demand: aborting on unmount must not leave an idle replacement.
+  const drop = (request: Request, error: Error): void => {
     forget(request)
+    request.reject(error)
     // Another request is still in flight on this worker; terminating it would lose that
     // result, so the abandoned compute is left to finish on its own
     if (pending.size > 0) return
     terminate_worker()
-    ensure_worker()
   }
 
   // Hand one caller a view of a (possibly shared) request that honours its own signal and
@@ -240,45 +237,35 @@ export function create_worker_client<
     { signal, on_progress }: WorkerRequestOptions<Progress>,
   ): Promise<Result> => {
     request.waiters++
-    if (on_progress) request.progress_listeners.add(on_progress)
+    // Each subscription owns its listener, even when callers reuse the same callback.
+    const listener = on_progress ? (progress: Progress) => on_progress(progress) : undefined
+    if (listener) request.progress_listeners.add(listener)
     if (!signal) return request.promise
-    const leave = () => {
-      if (on_progress) request.progress_listeners.delete(on_progress)
-      if (--request.waiters === 0) drop(request)
-    }
     const { promise, resolve, reject } = Promise.withResolvers<Result>()
     const on_abort = () => {
-      leave()
-      reject(abort_error(signal, label))
+      if (pending_by_key.get(request.key) !== request) return
+      const error = abort_error(signal, label)
+      if (listener) request.progress_listeners.delete(listener)
+      if (--request.waiters === 0) drop(request, error)
+      reject(error)
     }
     signal.addEventListener(`abort`, on_abort, { once: true })
-    // Once settled, a late abort must not run `leave` (it would drop a finished request)
+    // Settled requests no longer need the caller's abort listener.
     void request.promise
       .then(resolve, reject)
       .then(() => signal.removeEventListener(`abort`, on_abort))
     return promise
   }
 
-  // Set when the constructor itself throws (CSP, a cross-origin script URL, or a host that
-  // inlined the bundle so `new URL(..., import.meta.url)` has no usable base): the module
-  // then computes on the main thread like an environment without Worker at all.
-  let worker_unusable = false
-  // Construct the worker (if none is alive) and wire its listeners. Shared by the request
-  // path and by `drop`, which pre-warms the replacement for the next request.
+  // Constructor failures reject the request instead of silently moving expensive work onto
+  // the UI thread. Environments without Worker use the explicit synchronous implementation.
   function ensure_worker(): Worker | null {
-    if (typeof Worker === `undefined` || worker_unusable) return null
+    if (typeof Worker === `undefined`) return null
     if (worker) return worker
-    try {
-      worker = create_worker()
-    } catch (error) {
-      worker_unusable = true
-      console.warn(
-        `${label} worker could not be constructed; computing on the main thread:`,
-        error,
-      )
-      return null
-    }
+    const active_worker = create_worker()
+    worker = active_worker
     worker.addEventListener(`message`, ({ data: { id, result, error, progress } }) => {
+      if (worker !== active_worker) return
       // serve_worker's own `messageerror` reply: the request that failed to deserialize
       // on the worker side has no id, so nothing can be settled individually
       if (id === null) {
@@ -291,7 +278,7 @@ export function create_worker_client<
         for (const listener of request.progress_listeners) listener(progress)
         return
       }
-      pending.delete(id)
+      forget(request)
       if (error || result === undefined) {
         request.reject(
           new Error(error ?? `${label} worker returned no result for request ${id}`),
@@ -303,10 +290,12 @@ export function create_worker_client<
     // retry is handed the same promise that will never settle.
     worker.addEventListener(`error`, (event) => {
       event.preventDefault()
+      if (worker !== active_worker) return
       cancel(event.message || `${label} worker initialization error`)
     })
     // A response that fails to deserialize never reaches the `message` handler
     worker.addEventListener(`messageerror`, () => {
+      if (worker !== active_worker) return
       cancel(`${label} worker sent a message that could not be deserialized`)
     })
     return worker
@@ -330,8 +319,16 @@ export function create_worker_client<
     if (!wkr) {
       const request = track(request_key, null)
       Promise.resolve()
-        .then(() => compute_sync(input, options, request_options.on_progress))
-        .then(request.resolve, (err: unknown) => request.reject(to_error(err)))
+        .then(() => {
+          // An abort/cancel in this tick must prevent queued main-thread work from starting.
+          if (pending_by_key.get(request.key) !== request) return
+          const result = compute_sync(input, options, (progress) => {
+            for (const listener of request.progress_listeners) listener(progress)
+          })
+          forget(request)
+          request.resolve(result)
+        })
+        .catch((err: unknown) => request.reject(to_error(err)))
       return join(request, request_options)
     }
 

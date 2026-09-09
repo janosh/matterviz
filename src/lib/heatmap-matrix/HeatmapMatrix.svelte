@@ -15,6 +15,7 @@
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { ShowControlsProp } from '$lib/controls'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
   import type {
     AxisItem,
@@ -165,9 +166,12 @@
     // true uses '.3~g', a string is a format_num spec; ignored when `cell` is set
     show_values?: boolean | string
     // Controls pane (opt-in, renders HeatmapMatrixControls inside the shell)
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls`>
     controls_open?: boolean
-    controls_props?: Partial<ComponentProps<typeof HeatmapMatrixControls>>
+    controls_props?: Pick<
+      ComponentProps<typeof HeatmapMatrixControls>,
+      `pane_props` | `toggle_props` | `children`
+    >
     // Axis config (label used as axis title)
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -796,26 +800,24 @@
   class={[`heatmap`, `color-bar-${color_bar_position}`]}
   style:padding-left={y_axis.label ? `1.8em` : undefined}
 >
-  {#if show_controls}
-    <HeatmapMatrixControls
-      bind:controls_open
-      bind:normalize
-      bind:domain_mode
-      bind:show_color_bar
-      bind:color_bar_position
-      bind:search_query
-      bind:symmetric
-      bind:show_values
-      bind:show_row_summaries
-      bind:show_col_summaries
-      {export_formats}
-      on_export={on_export
-        ? (fmt: HeatmapExportFormat) => on_export(fmt, build_export_payload(fmt))
-        : undefined}
-      toggle_visible
-      {...controls_props}
-    />
-  {/if}
+  <HeatmapMatrixControls
+    {...controls_props}
+    bind:controls_open
+    bind:normalize
+    bind:domain_mode
+    bind:show_color_bar
+    bind:color_bar_position
+    bind:search_query
+    bind:symmetric
+    bind:show_values
+    bind:show_row_summaries
+    bind:show_col_summaries
+    {export_formats}
+    on_export={on_export
+      ? (fmt: HeatmapExportFormat) => on_export(fmt, build_export_payload(fmt))
+      : undefined}
+    {show_controls}
+  />
   <div
     {...rest}
     bind:this={matrix_el}

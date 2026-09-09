@@ -27,6 +27,7 @@
   import type { BaseConvexHullProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, merge_hull_config } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
+  import type { HullModel } from './model'
   import type { ConvexHullEntry } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
@@ -62,10 +63,7 @@
     enable_click_selection = true,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
-    phase_stats = $bindable(null),
     display = $bindable({ x_grid: false, y_grid: false }),
-    stable_entries = $bindable([]),
-    unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
     highlight_style = {},
     x_axis = {},
@@ -118,14 +116,12 @@
     label_threshold: () => label_threshold,
     set_temperature: (next_temp) => (temperature = next_temp),
     set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
-    set_stable_entries: (value) => (stable_entries = value),
-    set_unstable_entries: (value) => (unstable_entries = value),
-    set_phase_stats: (value) => (phase_stats = value),
     hide_labels: () => {
       show_stable_labels = false
       show_unstable_labels = false
     },
   })
+  export const get_model = (): HullModel => hull_data.model
   const elements = $derived(hull_data.elements)
   const plot_entries = $derived(hull_data.plot_entries)
   const visible_entries = $derived(hull_data.visible_entries)
@@ -359,8 +355,7 @@
     padding={{ t: 30 + title_height, b: 60, l: 60, r: 30 }}
   >
     {@render children?.({
-      stable_entries,
-      unstable_entries,
+      model: hull_data.model,
       highlighted_entries,
       selected_entry,
     })}
@@ -373,14 +368,11 @@
       {controls_config}
       show_tooltip={false}
       {enable_info_pane}
-      {phase_stats}
       {label_threshold}
       bind:fullscreen
       {fullscreen_toggle}
       {wrapper}
       {merged_controls}
-      {stable_entries}
-      {unstable_entries}
       get_point_color={(entry) =>
         get_point_color_for_entry(entry, color_mode, merged_config.colors, null)}
       {merged_highlight_style}

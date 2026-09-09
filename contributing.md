@@ -38,6 +38,12 @@ npx playwright test
 
 The root test run (`pnpm exec vitest run`) no longer covers the VS Code extension; its host-side tests live in their own vitest project and run with `pnpm -C extensions/vscode test`.
 
+### Numerical performance
+
+Moving-average smoothing uses compensated sums and scales only when a window could overflow, retaining tiny terms separately to prevent underflow and cancellation losses. Preserve the extreme-value regressions in `tests/vitest/plot/data-cleaning.test.ts` when optimizing this path.
+
+On 2026-09-09, 200,000-value benchmarks on an Apple M5 Max with Node 24.21.0 (seed `20260909`, five warm-ups, median of eleven alternating runs) measured 6–19% overhead on ordinary inputs and 53% on overflow-scale inputs versus the previous implementation that scaled every input. For example, a signed random series with a 501-point window took 11.50 ms versus 9.70 ms; the overflow-scale case took 22.76 ms versus 14.84 ms. These are local measurements, not performance guarantees. All five benchmark datasets matched the previous outputs exactly, and all seven numerical edge cases matched their expected outputs: maximum absolute and relative error were both zero. We accept this cost to preserve tiny values; optimize against both correctness and timing rather than dropping those safeguards.
+
 ### Test Requirements
 
 **New features should include tests.** Bug fixes should include a test that fails on the old code and passes with your fix.

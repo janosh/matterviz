@@ -26,12 +26,11 @@ type StructureFitFrame = { center: Vec3; extent: number }
 const empty_frame = (): StructureFitFrame => ({ center: [0, 0, 0], extent: 10 })
 
 export const camera_needs_fit = (
-  position: Vec3,
+  position: Vec3 | undefined,
   previous_view: string | undefined,
   camera_view: string,
 ): boolean =>
-  position.every((coordinate) => coordinate === 0) ||
-  (previous_view !== undefined && previous_view !== camera_view)
+  position === undefined || (previous_view !== undefined && previous_view !== camera_view)
 
 const element_radius = (
   element: ElementSymbol,

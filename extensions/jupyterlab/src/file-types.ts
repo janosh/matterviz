@@ -17,7 +17,7 @@ const TEXT_EXTENSIONS = TEXT_VIEWER_EXTENSIONS.filter((ext) => ext !== `data`)
 
 // Gzipped variants are registered explicitly rather than claiming bare `.gz`, which
 // would hijack every compressed file in the browser. Compressed payloads always
-// travel as base64 — the parser peels one layer before dispatching on the inner name.
+// travel as base64; the shared loader decompresses before dispatching on the payload name.
 const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_VIEWER_EXTENSIONS].map(
   (ext) => `${ext}.gz`,
 )

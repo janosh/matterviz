@@ -27,6 +27,7 @@ describe(`normalize_show_controls`, () => {
     const config = normalize_show_controls(input)
     expect(config.mode).toBe(expected_mode)
     expect(config.class).toBe(expected_class)
+    expect(config.visible(`controls`)).toBe(expected_mode !== `never`)
   })
 
   it(`preserves style and hidden from object config`, () => {

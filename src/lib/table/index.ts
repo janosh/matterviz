@@ -33,12 +33,14 @@ export type RowData = { style?: string; class?: ClassValue; [key: string]: CellV
 export type DateTimeFormatMode = `date` | `time` | `datetime` | `iso` | `relative`
 
 // Column configuration for HeatmapTable
-export type Label = {
-  // Display label for the column header. Supports HTML markup (e.g., "n<sub>val</sub>")
-  // for subscripts/superscripts. Note: HTML is rendered via {@html}, so ensure
-  // labels are developer-defined, not user input, to avoid XSS vulnerabilities.
+export type Column<Row extends object = RowData> = {
+  // Stable identity for sorting, visibility, preferences and reordering.
+  id: string
+  // Header text; HTML markup is sanitized before rendering.
   label: string
-  key?: string
+  // Row property to read; defaults to id. Header and group never determine data access.
+  key?: Extract<keyof Row, string>
+  cell?: CellSnippet<Row>
   // Columns sharing a group render under one spanning header row in HeatmapTable and can
   // only be drag-reordered within that group. ToggleMenu also sections its list by it.
   group?: string
@@ -69,23 +71,22 @@ export type Label = {
   disabled?: boolean
   style?: string
   cell_style?: string
-}
-
-// Keep ungrouped IDs unchanged; grouped IDs encode the base and group separately so
-// `{ key: "x", group: "g" }` cannot collide with an ungrouped `{ key: "x (g)" }`.
-export const get_column_id = (col: Label): string =>
-  col.group ? JSON.stringify([col.key ?? col.label, col.group]) : (col.key ?? col.label)
+} & (
+  | { id: Extract<keyof Row, string> }
+  | { key: Extract<keyof Row, string> }
+  | { cell: CellSnippet<Row> }
+)
 
 // Arguments passed to cell snippet renderers
-export type CellSnippetArgs = { row: RowData; col: Label; val: CellVal }
+export type CellSnippetArgs<Row extends object = RowData> = {
+  row: Row
+  col: Column<Row>
+  val: CellVal
+}
 
-// Type alias for cell snippets - use this for cross-package compatibility
-// instead of directly using Snippet<[CellSnippetArgs]> which can cause
-// type mismatches between different svelte package instances
-export type CellSnippet = Snippet<[CellSnippetArgs]>
+export type CellSnippet<Row extends object = RowData> = Snippet<[CellSnippetArgs<Row>]>
 
-// Type for special_cells prop - maps column labels to cell snippets
-export type SpecialCells = Record<string, CellSnippet>
+export type RowId = string | number
 
 // Statistics a summary row can show. Each names a field of ColumnStats.
 export type SummaryStat = `mean` | `median` | `min` | `max` | `count`
@@ -108,7 +109,7 @@ export type ColumnFilter =
   | { kind: `text`; text: string }
   | { kind: `category`; values: string[] }
 
-// Externally bindable table sort used by HeatmapTable's `sort` prop. Column IDs, see get_column_id.
+// Externally bindable table sort used by HeatmapTable's `sort` prop. Uses the column id.
 export type SortDir = `asc` | `desc`
 export type TableSort = { column: string; dir: SortDir }
 
@@ -142,7 +143,7 @@ export type Pagination =
 export type VirtualScroll = boolean | { overscan?: number; min_window?: number }
 
 // Search configuration (boolean to enable, object for full control).
-// keys: row keys (i.e. column ids, col.key ?? col.label) to match against;
+// keys: row property names to match against;
 // defaults to all row values. fuzzy: also match query terms as in-order
 // character subsequences (e.g. "mdla" matches "Model A").
 export type Search =

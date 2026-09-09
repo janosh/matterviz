@@ -1,5 +1,5 @@
-import type { Component, ComponentProps, Snippet } from 'svelte'
-import type StructureScene from './StructureScene.svelte'
+import type { Component, Snippet } from 'svelte'
+import type { StructureSettings } from './settings'
 import type { AnyStructure } from './index'
 import {
   copy_prediction_input,
@@ -22,7 +22,7 @@ export type {
 
 // The host lends a full-size view without unmounting the tool that owns the computation.
 export interface StructureToolViewProps {
-  scene_props: ComponentProps<typeof StructureScene>
+  scene_props: StructureSettings
   supercell_scaling: string
   show_image_atoms: boolean
 }
@@ -39,8 +39,12 @@ export interface StructureToolRun {
   clear: () => void
   cancel: () => void
 }
-export interface StructureToolProps {
+export type StructureToolProps = {
   structure: AnyStructure
+  // Includes imported results; hiding visual output never removes this snapshot.
+  prediction: StructureToolPrediction | null
+  overlay_visible: boolean
+  set_overlay_visible: (visible: boolean) => void
   start_run: (provenance: StructureToolProvenance) => StructureToolRun
 }
 
@@ -134,4 +138,6 @@ export function create_structure_tool_controller(
 // Register before mounting; this also reaches independently mounted file viewers.
 export const structure_host_tool = $state<{
   component: Component<StructureToolProps> | null
+  // Select all calculation inputs, preserving atom order. Omit for full-document identity.
+  input_key?: (structure: AnyStructure) => string
 }>({ component: null })

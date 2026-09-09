@@ -40,6 +40,8 @@ export * from './polyhedra'
 export * from './export'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
+export { default as StructureFileViewer } from './StructureFileViewer.svelte'
+export type { StructureSettings, StructureOptions } from './settings'
 export { default as StructureGallery } from './StructureGallery.svelte'
 
 // defined here (not in StructureGallery.svelte's module script) so plain-TS

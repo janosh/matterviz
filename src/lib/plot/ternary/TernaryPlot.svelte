@@ -48,7 +48,8 @@
   const COLOR_BAR_GAP = 8
 
   let {
-    series: series_in = $bindable([]),
+    series: series_in = [],
+    hidden_series = $bindable(),
     labels = [`A`, `B`, `C`],
     grid_step = $bindable(0.1),
     show_grid = $bindable(true),
@@ -64,7 +65,7 @@
     hovered = $bindable(false),
     on_point_click,
     on_point_hover,
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -78,7 +79,8 @@
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
     Omit<BasePlotProps, `range_padding` | `title`> & {
-      series?: TernarySeries<Metadata>[]
+      hidden_series?: readonly (string | number)[]
+      series?: readonly TernarySeries<Metadata>[]
       // Component names at the right, top and left corner (the order of every triple)
       labels?: readonly [string, string, string]
       grid_step?: number // fraction between grid lines / ticks; 0 disables both
@@ -111,11 +113,11 @@
   // Keyboard focus anchors at the marker, where there is no pointer glyph to dodge
   let hover_at_pointer = $state(false)
   let legend_hover_idx = $state<number | null>(null)
-  // Legend toggles write `visible` back into the bindable series prop, so the host sees
-  // them and can still hide or show a series itself; see create_legend_visibility
+  // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility<TernarySeries<Metadata>>(
     () => series,
-    (next) => (series_in = next),
+    () => hidden_series,
+    (next) => (hidden_series = next),
   )
   let series: TernarySeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
   const is_visible = (series_idx: number): boolean => series[series_idx]?.visible !== false
@@ -361,16 +363,17 @@
   bind:height
   bind:fullscreen
   {fullscreen_toggle}
+  {show_controls}
   {controls_toggle_props}
   {header_controls}
   {children}
   {...rest}
 >
-  {#snippet controls(toggle_props)}
+  {#snippet controls(toggle_props, show_controls)}
     <TernaryControls
       {toggle_props}
       pane_props={controls_pane_props}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       bind:grid_step
       bind:show_grid

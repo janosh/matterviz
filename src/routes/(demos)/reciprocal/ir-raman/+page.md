@@ -141,7 +141,7 @@ Selected computed quantities are available per mode, so the raw numbers can be t
     parse_phonon_modes,
     spectrum_from_phonon_data,
   } from '$lib/spectral'
-  import { HeatmapTable, type Label } from '$lib/table'
+  import { HeatmapTable, type Column } from '$lib/table'
   import raman_data from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
   import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
   import yaml_file from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
@@ -171,12 +171,24 @@ Selected computed quantities are available per mode, so the raw numbers can be t
     }
   })
   const mode_columns = [
-    { label: `Mode`, key: `mode`, color_scale: null, sticky: true },
-    { label: `ω (cm⁻¹)`, key: `frequency`, format: `.1f` },
-    { label: `IR (e²/amu)`, key: `ir_intensity`, format: `.2~e`, scale_type: `log` },
-    { label: `Raman (a.u.)`, key: `raman_activity`, format: `.2~e`, scale_type: `log` },
-    { label: `Character`, key: `character`, color_scale: null },
-  ] satisfies Label[]
+    { id: `mode`, label: `Mode`, key: `mode`, color_scale: null, sticky: true },
+    { id: `frequency`, label: `ω (cm⁻¹)`, key: `frequency`, format: `.1f` },
+    {
+      id: `ir_intensity`,
+      label: `IR (e²/amu)`,
+      key: `ir_intensity`,
+      format: `.2~e`,
+      scale_type: `log`,
+    },
+    {
+      id: `raman_activity`,
+      label: `Raman (a.u.)`,
+      key: `raman_activity`,
+      format: `.2~e`,
+      scale_type: `log`,
+    },
+    { id: `character`, label: `Character`, key: `character`, color_scale: null },
+  ] satisfies Column[]
 </script>
 
 <HeatmapTable data={mode_data} columns={mode_columns} />
@@ -184,5 +196,5 @@ Selected computed quantities are available per mode, so the raw numbers can be t
 
 ## Traps this component deliberately avoids
 
-- **`normalize_dos` is not used.** It assumes any frequency above 100 must be in cm⁻¹ and silently divides by 33.36. Vibrational spectra routinely reach 4000 cm⁻¹, so IR/Raman data uses its own `VibrationalSpectrum` type and never touches the DOS normalisation path.
+- IR/Raman data uses `VibrationalSpectrum` to represent discrete modes and intensities. DOS adapters represent sampled density curves and normalize explicitly declared frequency units to THz.
 - **`apply_gaussian_smearing` is not used.** It smears values already on a grid and renormalises to preserve their sum, which is not a stick-to-continuum convolution. Broadening goes through `broaden_peaks` from `$lib/lineshape` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.

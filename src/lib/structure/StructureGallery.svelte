@@ -613,7 +613,6 @@
                 structure={item.structure}
                 {show_controls}
                 scene_props={structure_scene_props}
-                allow_file_drop={false}
                 performance_mode="speed"
                 style="--struct-min-width: 0; --struct-height: 100%"
               />

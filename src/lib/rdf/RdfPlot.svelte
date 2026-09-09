@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ScatterPlotOptions, DataSeries, RefLine } from '$lib/plot'
   import { plot_color } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from 'svelte-widgets'
@@ -6,13 +7,12 @@
   import { as_text, file_drop_zone } from '$lib/io'
   import { plural } from '$lib/labels'
   import { array_max } from '$lib/math'
-  import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { Crystal, Pbc } from '$lib/structure'
   import { parse_structure_file } from '$lib/structure/parse'
   import { is_crystal } from '$lib/structure/validation'
   import { to_error } from '$lib/utils'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import {
     calculate_all_pair_rdfs,
     calculate_rdf,
@@ -55,7 +55,7 @@
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
     drag_dropped?: Crystal[]
-  } & ComponentProps<typeof ScatterPlot> = $props()
+  } & Omit<ScatterPlotOptions, `children`> = $props()
 
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
@@ -155,7 +155,7 @@
     {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
     y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
-    styles={{ show_lines: true, show_points: false }}
+    styles={{ show_lines: true, show_points: false, ...rest.styles }}
     style={rest.style ?? `height: 400px;`}
     {@attach drop_zone}
   >

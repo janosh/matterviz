@@ -13,7 +13,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { normalize_scientific_notation } from '$lib/utils'
 import { grid_value, read_maybe_gz } from '../setup'
 import { create_volume_sampler } from '$lib/isosurface/sampling'
-import * as math from '$lib/math'
 // spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
 // failing assertion above it, silencing console.warn for the rest of the file
 beforeEach(() => vi.restoreAllMocks())
@@ -456,8 +455,6 @@ function make_cube({
 }
 
 describe(`parse_cube`, () => {
-  const bohr = BOHR_TO_ANGSTROM
-
   // A .cube header declares its atom count and grid size, and both used to be trusted before
   // any data was read. At EOF `read_text_line` returns an empty line without advancing, so an
   // inflated atom count just span (4e6 took 847 ms, 1e9 would never return), and the grid size
@@ -605,11 +602,9 @@ describe(`parse_cube`, () => {
     expect(at(1, 1, 1)).toBeCloseTo(0.008, 5)
   })
 
-  test(`handles non-zero grid origin`, () => {
+  test(`normalizes non-zero grid origin to the structure frame`, () => {
     const result = parse_cube(make_cube({ origin: [1.0, 2.0, 3.0] }))
-    expect(result?.volumes[0].origin[0]).toBeCloseTo(bohr, 5)
-    expect(result?.volumes[0].origin[1]).toBeCloseTo(2.0 * bohr, 5)
-    expect(result?.volumes[0].origin[2]).toBeCloseTo(3.0 * bohr, 5)
+    expect(result.volumes[0].origin).toEqual([0, 0, 0])
   })
 
   // oxfmt-ignore
@@ -765,13 +760,10 @@ describe(`parse_cube geometry`, () => {
     const sample = create_volume_sampler(volume, { out_of_bounds: `fallback` })
     for (const [site_idx, [, , x, y, z]] of atoms.entries()) {
       const site = result.structure.sites[site_idx]
-      // Sites store lattice-frame coordinates (origin subtracted); the sampler works in
-      // absolute Cartesian coordinates, so add the origin back
-      const absolute = math.add(site.xyz, volume.origin)
-      expect(absolute.map((val) => val / bohr)).toEqual(
-        [x, y, z].map((val) => expect.closeTo(val, 10)),
+      expect(site.xyz.map((val) => val / bohr)).toEqual(
+        [x, y, z].map((val, axis) => expect.closeTo(val - origin[axis], 10)),
       )
-      expect(sample(absolute)).toBeCloseTo(x + 2 * y + 3 * z, 6)
+      expect(sample(site.xyz)).toBeCloseTo(x + 2 * y + 3 * z, 6)
     }
   })
 })
@@ -847,7 +839,7 @@ describe(`site fixtures`, () => {
     // generator: 10 A box, 50 points => voxel 0.2 A => 49 * 0.2 = 9.8 A extent
     // (voxel written with 6 decimals in Bohr, hence ~1e-5 A slack)
     expect(volume.lattice[0][0]).toBeCloseTo(9.8, 4)
-    expect(volume.origin[0]).toBeCloseTo(-5, 4)
+    expect(volume.origin).toEqual([0, 0, 0])
     for (const site of parsed.structure.sites) {
       for (const frac of site.abc) expect(frac).toBeGreaterThanOrEqual(0)
       for (const frac of site.abc) expect(frac).toBeLessThanOrEqual(1)

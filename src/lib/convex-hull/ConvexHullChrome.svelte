@@ -36,7 +36,6 @@
     show_tooltip = true,
     on_reset,
     enable_info_pane = true,
-    phase_stats,
     label_threshold,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
@@ -45,8 +44,6 @@
     camera,
     merged_controls,
     title_height = $bindable(0),
-    stable_entries,
-    unstable_entries,
     get_point_color,
     merged_highlight_style,
     is_highlighted,
@@ -79,8 +76,10 @@
     | `pane_props`
     | `max_hull_dist_in_data`
     | `energy_info`
+    | `stable_entries`
+    | `unstable_entries`
   > &
-    Pick<ComponentProps<typeof ConvexHullInfoPane>, `phase_stats` | `label_threshold`> & {
+    Pick<ComponentProps<typeof ConvexHullInfoPane>, `label_threshold`> & {
       kind: `binary` | `ternary` | `quaternary` // DEFAULTS.convex_hull section for reset
       selection: HullSelection
       hull_data: ReturnType<typeof create_hull_data_pipeline>
@@ -104,6 +103,7 @@
       info_pane_open?: boolean
     } = $props()
 
+  const { phase_stats, stable_entries, unstable_entries } = $derived(hull_data)
   const title = $derived(merged_controls.title || phase_stats?.chemical_system || ``)
   // Gas pressure controls only make sense when the system contains gas-derived elements
   const gas_config = $derived(

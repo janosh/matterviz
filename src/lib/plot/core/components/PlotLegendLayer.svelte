@@ -11,7 +11,7 @@
 
   // Auto-placed legend of a CartesianFrame: solved position with tweened follow-up, drag to
   // pin (owned by the frame), filter query and hover wiring. Handlers passed here are the
-  // chart's defaults; anything set on `legend` itself wins. Remaining PlotLegend props
+  // state updates; callbacks on `legend` observe them. Remaining PlotLegend props
   // (fill toggles, active_fill_idx, ...) pass straight through.
   let {
     frame,
@@ -93,9 +93,18 @@
     {series_data}
     {active_series_idx}
     draggable={legend.draggable ?? true}
-    on_toggle={legend.on_toggle ?? on_toggle}
-    on_group_toggle={legend.on_group_toggle ?? on_group_toggle}
-    on_double_click={legend.on_double_click ?? on_double_click}
+    on_toggle={(idx) => {
+      on_toggle?.(idx)
+      legend.on_toggle?.(idx)
+    }}
+    on_group_toggle={(name, indices) => {
+      on_group_toggle?.(name, indices)
+      legend.on_group_toggle?.(name, indices)
+    }}
+    on_double_click={(idx) => {
+      on_double_click?.(idx)
+      legend.on_double_click?.(idx)
+    }}
     on_drag_start={frame.legend_drag_start}
     on_drag={frame.legend_drag}
     on_drag_end={frame.legend_drag_end}

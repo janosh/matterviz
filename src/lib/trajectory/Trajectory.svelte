@@ -1,4 +1,11 @@
 <script lang="ts">
+  import type {
+    ScatterPlotOptions,
+    HistogramOptions,
+    DataSeries,
+    HistogramSeries,
+    Orientation,
+  } from '$lib/plot'
   // Pure viewer over a TrajectoryRun: playback, the structure + plot split, analysis panes
   // and export. It borrows the run and never parses or disposes it; acquisition (URLs, drops,
   // decompression, HDF5 group choice, errors) lives in TrajectoryFileViewer.svelte.
@@ -31,20 +38,18 @@
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import type { DataSeries, HistogramSeries, Orientation } from '$lib/plot'
   import { first_point_style } from '$lib/plot/core/data-transform'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
-  import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
-  import type { StructurePane } from '$lib/structure'
+  import type { StructurePane, StructureOptions } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
   import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -69,10 +74,10 @@
     generate_axis_labels,
     generate_axis_scale_types,
     generate_plot_series,
+    with_visible_properties,
     get_frame_step_samples,
     get_frame_time_step,
     prepare_trajectory_scatter_series,
-    property_key,
     should_hide_plot,
     X_QUANTITY_LABELS,
   } from './plotting'
@@ -131,6 +136,7 @@
 
   let {
     trajectory,
+    structure_series_key = trajectory,
     current_step_idx = $bindable(0),
     fps = $bindable(DEFAULTS.trajectory.fps),
     fps_range = DEFAULTS.trajectory.fps_range,
@@ -167,6 +173,8 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     trajectory: TrajectoryRun
+    // Stable identity when a host regenerates frames within the same displayed structure
+    structure_series_key?: unknown
     // bindable: frame on display
     current_step_idx?: number
     fps?: number
@@ -176,17 +184,20 @@
     // 'auto' adapts to the element size, 'horizontal'/'vertical' force a split direction
     layout?: `auto` | Orientation
     pane_ratio?: number
-    structure_props?: ComponentProps<typeof Structure>
+    structure_props?: Omit<StructureOptions, `active_pane` | `hidden_elements`>
     supercell_scaling?: string
-    scatter_props?: ComponentProps<typeof ScatterPlot>
-    histogram_props?: Omit<ComponentProps<typeof Histogram>, `series`>
+    scatter_props?: Omit<
+      ScatterPlotOptions,
+      `tooltip` | `x_axis` | `y_axis` | `y2_axis` | `hidden_series`
+    >
+    histogram_props?: Omit<HistogramOptions, `tooltip` | `hidden_series`>
     // Display labels per property key, merged with trajectory_property_config
     property_labels?: Record<string, string>
     // What the plot's x axis counts: 'frame' (position in the run), 'step' (the MD step
     // recorded in the file) or 'time' (step x the file's timestep). Unset picks the most
     // informative one the data supports; the resolved choice is written back.
     x_quantity?: TrajectoryXQuantity
-    // bindable: property keys currently plotted
+    // Bindable exact property keys (independent of display labels); [] hides every series.
     visible_properties?: string[]
     // Slider labels: n evenly spaced ticks (n > 0), every |n|th step (n < 0), or exact indices
     step_labels?: number | number[]
@@ -362,11 +373,14 @@
     return settled_trail_end
   })
   let spectroscopy_open = $derived(active_pane === `spectroscopy`)
-  let trail_scene_props = $derived({
+  const trail_scene_props = $derived({
     ...structure_props.scene_props,
-    trajectory_position_stream: spectroscopy_open ? undefined : trail_stream,
-    trajectory_line_end_frame: spectroscopy_open ? undefined : trajectory_line_end_frame,
-    defer_expensive_geometry: spectroscopy_open ? false : scrub_active,
+    get show_trajectory_lines() {
+      return spectroscopy_open ? false : show_trajectory_lines
+    },
+    set show_trajectory_lines(value: boolean) {
+      show_trajectory_lines = value
+    },
   })
 
   // === plot ===
@@ -445,54 +459,41 @@
     get_frame_time_step(frame_step_samples, trajectory.time_step?.value),
   )
 
-  // Plot series state (not derived so legend toggles can replace it). `.raw`, since both
-  // writers reassign the whole array: a deep proxy over N series x N frames of numbers put a
-  // signal behind every element, and smooth_moving_average's ~2M reads per series then went
-  // through the proxy trap - 4.9 s instead of 144 ms at 10k frames, on every resize tick.
-  let plot_series = $state.raw<DataSeries[]>([])
-  let syncing_visible_properties = false
-  // Read ALL reactive deps before the syncing guard can return: a guarded run that reads no
-  // dependencies leaves the effect dep-less, and Svelte permanently unlinks such effects
-  $effect(() => {
-    const [rows, config, keys, active_x_map] = [
-      session.property_rows,
-      extended_config,
-      visible_properties,
+  // Prepare arrays only when data/configuration changes, not on legend interactions.
+  let base_plot_series = $derived(
+    generate_plot_series(session.property_rows, {
+      property_config: extended_config,
       x_map,
-    ]
-    if (syncing_visible_properties) return
-    plot_series = generate_plot_series(rows, {
-      property_config: config,
-      default_visible_properties: keys ? new SvelteSet(keys) : undefined,
-      x_map: active_x_map,
-    })
-  })
-  // Legend toggles flow back into the bindable visible_properties
+    }),
+  )
+  let plot_series = $derived(with_visible_properties(base_plot_series, visible_properties))
+  // Publish defaults once property rows arrive; an explicit empty selection stays empty.
   $effect(() => {
-    if (plot_series.length === 0) return
-    const visible_keys = plot_series.flatMap((srs) => {
-      const key = srs.visible ? property_key(srs) : undefined
-      return key === undefined ? [] : [key]
-    })
-    const current = untrack(() => visible_properties) || []
-    const has_changed =
-      visible_keys.length !== current.length ||
-      !visible_keys.every((key, idx) => key === current[idx])
-    if (has_changed) {
-      syncing_visible_properties = true
-      visible_properties = visible_keys
-      queueMicrotask(() => (syncing_visible_properties = false))
-    }
+    if (visible_properties === undefined && plot_series.length > 0)
+      visible_properties = plot_series.filter((srs) => srs.visible).map((srs) => srs.id)
   })
-  const handle_legend_toggle = (series_idx: number): void => {
-    plot_series = toggle_series_visibility(plot_series, series_idx)
+  const hidden_plot_series = () =>
+    plot_series.filter((srs) => !srs.visible).map((srs) => srs.id)
+  const set_hidden_plot_series = (hidden: readonly (string | number)[] | undefined) => {
+    const hidden_ids = new Set(hidden)
+    const present_ids = new Set(plot_series.map((srs) => srs.id))
+    visible_properties = [
+      ...(visible_properties ?? []).filter((key) => !present_ids.has(key)),
+      ...plot_series.filter((srs) => !hidden_ids.has(srs.id)).map((srs) => srs.id),
+    ]
   }
   let scatter_point_limit = $derived(clamp(content_size.width / 2, 128, 1000))
-  let scatter_series = $derived(
-    prepare_trajectory_scatter_series(plot_series, scatter_point_limit),
+  let base_scatter_series = $derived(
+    prepare_trajectory_scatter_series(base_plot_series, scatter_point_limit),
   )
-  // Histogram mode bins each property's values; keep index alignment with plot_series so
-  // legend toggles map back onto the same series_idx
+  let scatter_series = $derived(
+    base_scatter_series.map((srs, idx) => ({
+      ...srs,
+      visible: plot_series[idx].visible,
+      y_axis: plot_series[idx].y_axis,
+    })),
+  )
+  // Both plot modes carry the same property IDs.
   let histogram_series = $derived<HistogramSeries[]>(
     plot_series.map((srs) => ({
       id: srs.id,
@@ -500,6 +501,8 @@
       label: srs.label,
       visible: srs.visible,
       legend_group: srs.legend_group,
+      unit: srs.unit,
+      axis_group: srs.axis_group,
       color: srs.line_style?.stroke ?? first_point_style(srs)?.fill,
       y_axis: srs.y_axis,
     })),
@@ -512,9 +515,9 @@
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
   let y_axis_scale_types = $derived(generate_axis_scale_types(plot_series))
   let y_axis = $derived({
-    label: y_axis_labels.y1,
+    label: y_axis_labels.y,
     label_shift: { y: 10 },
-    scale_type: y_axis_scale_types.y1,
+    scale_type: y_axis_scale_types.y,
   })
   let y2_axis = $derived({
     label: y_axis_labels.y2,
@@ -544,13 +547,6 @@
   let trajectory_scatter_padding = $derived.by(() => {
     const { t = 20, b = 60, r = 0, ...user } = scatter_props.padding ?? {}
     return { ...user, t, b, r: Math.max(r, has_y2_series ? 100 : 20) }
-  })
-  let trajectory_scatter_legend = $derived({
-    ...scatter_props.legend,
-    on_toggle: (series_idx: number) => {
-      handle_legend_toggle(series_idx)
-      scatter_props.legend?.on_toggle?.(series_idx)
-    },
   })
   let trajectory_hover_config = $derived({ ...scatter_props.hover_config, mode: `x` as const })
   // Hold the plot's active-frame tick still during a pointer burst; snap it when settled
@@ -682,6 +678,7 @@
   <SequenceControlBar
     class="trajectory-controls"
     {controls_config}
+    {fullscreen}
     bind:height={controls_height}
   >
     {#if trajectory_controls}
@@ -861,9 +858,10 @@
             {/each}
           </ToolbarMenu>
         {/if}
-        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
+        {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
           <FullscreenButton
             bind:fullscreen
+            hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
             {wrapper}
             bg_css_var="--traj-bg-fullscreen"
             on_change={() => on_fullscreen_change?.(event_data())}
@@ -889,9 +887,6 @@
   >
     {#if show_structure}
       <Structure
-        structure={session.current_structure}
-        structure_series_key={trajectory}
-        allow_file_drop={false}
         style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
         {...{
           show_image_atoms: false, // avoid atoms popping in/out at cell edges during playback
@@ -901,10 +896,14 @@
           ...structure_props,
           scene_props: trail_scene_props,
         }}
-        bind:show_trajectory_lines={
-          () => (spectroscopy_open ? false : show_trajectory_lines),
-          (value) => (show_trajectory_lines = value)
-        }
+        show_controls={controls_config.mode === `never`
+          ? false
+          : structure_props.show_controls}
+        structure={session.current_structure}
+        {structure_series_key}
+        trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
+        trajectory_line_end_frame={spectroscopy_open ? undefined : trajectory_line_end_frame}
+        defer_expensive_geometry={!spectroscopy_open && scrub_active}
         bind:supercell_scaling
         bind:active_pane={
           () => (active_pane === `controls` ? `controls` : structure_pane),
@@ -941,19 +940,25 @@
         />
       {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
         <ScatterPlot
+          {...scatter_props}
+          show_controls={controls_config.mode === `never`
+            ? false
+            : scatter_props.show_controls}
           series={scatter_series}
+          bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
           {x_axis}
           {y_axis}
           {y2_axis}
           bind:controls_open={scatter_controls_open}
           current_x_value={x_map.to_x(settled_plot_step_idx)}
-          on_plot_click={plot_skimming ? handle_plot_click : undefined}
+          on_plot_click={(event) => {
+            if (plot_skimming) handle_plot_click(event)
+            scatter_props.on_plot_click?.(event)
+          }}
           range_padding={0}
           style="height: 100%"
-          {...scatter_props}
           padding={trajectory_scatter_padding}
           hover_config={trajectory_hover_config}
-          legend={trajectory_scatter_legend}
         >
           {#snippet tooltip({ x, y, raw_y, metadata, label }: ScatterHandlerProps)}
             {x_axis.label}: {format_num(x, `~g`)}<br />
@@ -966,18 +971,18 @@
       {:else}
         <Histogram
           {...histogram_props}
+          show_controls={controls_config.mode === `never`
+            ? false
+            : histogram_props.show_controls}
           series={histogram_series}
+          bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
           x_axis={{
-            label: String(histogram_props.x_axis?.label ?? y_axis_labels.y1),
+            label: String(histogram_props.x_axis?.label ?? y_axis_labels.y),
             format: `.3~s`,
+            ...histogram_props.x_axis,
           }}
-          y_axis={{ label: histogram_props.y_axis?.label ?? `Count`, format: `.3~s` }}
+          y_axis={{ label: `Count`, format: `.3~s`, ...histogram_props.y_axis }}
           mode={histogram_props.mode ?? `overlay`}
-          legend={histogram_props.legend}
-          on_series_toggle={(series_idx: number) => {
-            handle_legend_toggle(series_idx)
-            histogram_props.on_series_toggle?.(series_idx)
-          }}
           style="height: 100%"
         >
           {#snippet tooltip({

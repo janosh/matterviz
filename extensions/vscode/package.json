@@ -355,20 +355,6 @@
           "default": true,
           "description": "Show orientation gizmo in the corner of structure viewer"
         },
-        "matterviz.structure.camera_position": {
-          "type": "array",
-          "default": [
-            0,
-            0,
-            0
-          ],
-          "description": "Initial camera position [x, y, z]",
-          "minItems": 3,
-          "maxItems": 3,
-          "items": {
-            "type": "number"
-          }
-        },
         "matterviz.structure.camera_projection": {
           "type": "string",
           "default": "orthographic",

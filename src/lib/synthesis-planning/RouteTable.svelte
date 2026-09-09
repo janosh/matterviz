@@ -1,7 +1,7 @@
 <script lang="ts">
   // Ranked routes as a sortable heatmap table; clicking a row selects the route
   import { HeatmapTable } from '$lib/table'
-  import type { Label, RowData } from '$lib/table'
+  import type { Column, RowData } from '$lib/table'
   import { format_equation_html } from './format'
   import type { SynthesisRoute } from './types'
 
@@ -15,10 +15,11 @@
     [key: string]: unknown
   } = $props()
 
-  const columns: Label[] = [
-    { label: `#`, key: `rank`, sticky: true, format: `d`, color_scale: null },
-    { label: `Reaction`, key: `reaction`, sticky: true, filter: `text` },
+  const columns: Column[] = [
+    { id: `rank`, label: `#`, key: `rank`, sticky: true, format: `d`, color_scale: null },
+    { id: `reaction`, label: `Reaction`, key: `reaction`, sticky: true, filter: `text` },
     {
+      id: `score`,
       label: `Score`,
       key: `score`,
       better: `higher`,
@@ -27,6 +28,7 @@
       description: `Weighted sum of the scoring terms`,
     },
     {
+      id: `energy`,
       label: `ΔE (meV/atom)`,
       key: `energy`,
       better: `lower`,
@@ -35,6 +37,7 @@
       description: `Reaction energy per atom of target at the set temperature`,
     },
     {
+      id: `inverse_hull`,
       label: `Inverse hull (meV/atom)`,
       key: `inverse_hull`,
       better: `higher`,
@@ -43,6 +46,7 @@
       description: `Depth of the target below the hull of all other phases reachable from the precursors`,
     },
     {
+      id: `margin`,
       label: `Margin (meV/atom)`,
       key: `margin`,
       better: `lower`,
@@ -51,14 +55,16 @@
       description: `Target driving force minus the most favorable competitor's; negative = thermodynamically preferred`,
     },
     {
+      id: `n_more_favorable`,
       label: `Competitors`,
       key: `n_more_favorable`,
       better: `lower`,
       format: `d`,
       description: `Phases with a larger driving force than the target`,
     },
-    { label: `Net gas exchange`, key: `atmosphere`, filter: `category` },
+    { id: `atmosphere`, label: `Net gas exchange`, key: `atmosphere`, filter: `category` },
     {
+      id: `onset`,
       label: `Onset (K)`,
       key: `onset`,
       better: `lower`,
@@ -66,13 +72,14 @@
       description: `First downhill temperature found for a gas-exchanging reaction (not a firing recommendation)`,
     },
     {
+      id: `practicality`,
       label: `Practicality`,
       key: `practicality`,
       better: `higher`,
       color_scale: `interpolateViridis`,
       format: `.2f`,
     },
-    { label: `Steps`, key: `steps`, format: `d`, color_scale: null },
+    { id: `steps`, label: `Steps`, key: `steps`, format: `d`, color_scale: null },
   ]
 
   const data = $derived<RowData[]>(

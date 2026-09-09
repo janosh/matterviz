@@ -23,18 +23,23 @@ import {
 import { is_structure_file } from '$lib/structure/format-detect'
 import { is_trajectory_filename } from '$lib/trajectory/format-detect'
 
-// One compression wrapper removed; nested and unsupported ones are rejected because the parser
-// only decompresses one layer. `supported` differs by consumer: the webview inflates ZIP.
+// Remove every supported wrapper. Indexed host loading accepts stream formats; the
+// browser additionally accepts ZIP, whose entry name is resolved during decompression.
 type FormatPredicate = (fmt: ReturnType<typeof detect_compression_format>) => boolean
 export const normalize_browser_supported_filename = (
   filename: string,
   supported: FormatPredicate = is_stream_compression_format,
 ): string | null => {
-  const format = detect_compression_format(filename)
-  if (!format) return filename
-  if (!supported(format)) return null
-  const normalized = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-  return detect_compression_format(normalized) ? null : normalized
+  let normalized = filename
+  for (
+    let format = detect_compression_format(normalized);
+    format;
+    format = detect_compression_format(normalized)
+  ) {
+    if (!supported(format)) return null
+    normalized = normalized.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  }
+  return normalized
 }
 
 export const should_encode_filename_as_base64 = (filename: string): boolean =>

@@ -5,7 +5,6 @@
 import { median, type Vec2 } from '$lib/math'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
 import { gaussian_kernel_smooth } from '$lib/spectral/helpers'
-import { Adder } from 'd3-array'
 
 // === Types ===
 
@@ -37,7 +36,6 @@ export type SmoothingConfig =
 export interface LocalOutlierConfig {
   window_half?: number // Points on each side for local context (default: 7)
   mad_threshold?: number // MADs from local median to flag outlier (default: 2.0)
-  max_iterations?: number // Iterative passes to catch clustered outliers (default: 5)
 }
 
 export interface InstabilityResult {
@@ -85,7 +83,6 @@ const DEFAULT_OSCILLATION_THRESHOLD = 3.0
 const DEFAULT_POLYNOMIAL_ORDER = 2
 const DEFAULT_LOCAL_WINDOW_HALF = 7
 const DEFAULT_LOCAL_MAD_THRESHOLD = 2.0
-const DEFAULT_LOCAL_MAX_ITERATIONS = 5
 
 const index_range = (length: number): number[] => Array.from({ length }, (_, idx) => idx)
 const pick = <T>(arr: readonly T[], indices: readonly number[]): T[] =>
@@ -270,24 +267,101 @@ export function detect_instability(
 
 // === Smoothing ===
 
-// Centered finite-aware moving average
+// Non-overlapping partial sums retain small terms when large values leave a window.
+// Storage grows with the exponent spread: a fixed 32-slot expansion loses terms for inputs
+// spanning hundreds of orders of magnitude. Inputs are finite and scaled against overflow.
+class SlidingSum {
+  private partials: number[] = []
+
+  add(value: number): void {
+    let write_idx = 0
+    for (const partial of this.partials) {
+      const high = value + partial
+      const low =
+        Math.abs(value) < Math.abs(partial)
+          ? value - (high - partial)
+          : partial - (high - value)
+      if (low !== 0) this.partials[write_idx++] = low
+      value = high
+    }
+    this.partials[write_idx] = value
+    this.partials.length = write_idx + 1
+  }
+
+  mean(count: number, normalizer: number, tiny_sum: SlidingSum): number {
+    if (normalizer === 1) return Number(this) / count
+    const main = Number(this)
+    const tiny = Number(tiny_sum)
+    if (tiny === 0 || Math.abs(main) >= 1) return main / (count / normalizer) + tiny / count
+    // Merge before rounding when the two magnitude ranges can cancel.
+    const combined = new SlidingSum()
+    for (const value of this.partials) combined.add(value * normalizer)
+    for (const value of tiny_sum.partials) combined.add(value)
+    return Number(combined) / count
+  }
+
+  valueOf(): number {
+    let idx = this.partials.length - 1
+    let high = this.partials[idx] ?? 0
+    while (idx > 0) {
+      const value = high
+      const partial = this.partials[--idx]
+      high = value + partial
+      const low = partial - (high - value)
+      if (low === 0) continue
+      // Round a halfway result toward a remaining tail of the same sign.
+      if (idx > 0 && Math.sign(low) === Math.sign(this.partials[idx - 1])) {
+        const rounded = high + 2 * low
+        if (rounded - high === 2 * low) high = rounded
+      }
+      break
+    }
+    return high
+  }
+}
+
+// Centered finite-aware moving average. Each value enters and leaves a compensated sum,
+// so the cost is linear in the input length, independent of the window width.
 export function smooth_moving_average(values: readonly number[], window: number): number[] {
-  if (values.length === 0 || !(window > 1)) return [...values]
+  if (!Number.isSafeInteger(window) || window < 1) {
+    throw new RangeError(
+      `Moving average window must be a positive safe integer, got ${window}`,
+    )
+  }
+  if (values.length === 0 || window === 1) return [...values]
   const half_window = Math.floor(window / 2)
-  // Scaling by a power of two prevents same-sign windows from overflowing without
-  // introducing division roundoff into individual values.
-  const normalizer = 2 ** Math.ceil(Math.log2(2 * half_window + 1))
+  const max_count = Math.min(values.length, 2 * half_window + 1)
+  let max_abs = 0
+  for (const value of values)
+    if (Number.isFinite(value)) max_abs = Math.max(max_abs, Math.abs(value))
+  // Only scale when a window could overflow; keep tiny terms unscaled so they survive.
+  const normalizer =
+    max_abs >= Number.MAX_VALUE / max_count ? 2 ** Math.ceil(Math.log2(max_count)) : 1
+  const min_scaled = normalizer === 1 ? 0 : 2 ** -1022 * normalizer
   const result = Array<number>(values.length)
+  const sum = new SlidingSum()
+  const tiny_sum = new SlidingSum()
+  let count = 0
+  let start = 0
+  let end = 0
   for (let idx = 0; idx < values.length; idx++) {
-    const end = Math.min(values.length, idx + half_window + 1)
-    const sum = new Adder()
-    let count = 0
-    for (let value_idx = Math.max(0, idx - half_window); value_idx < end; value_idx++) {
-      if (!Number.isFinite(values[value_idx])) continue
-      sum.add(values[value_idx] / normalizer)
+    const next_start = Math.max(0, idx - half_window)
+    const next_end = Math.min(values.length, idx + half_window + 1)
+    while (start < next_start) {
+      const value = values[start++]
+      if (!Number.isFinite(value)) continue
+      if (Math.abs(value) < min_scaled) tiny_sum.add(-value)
+      else sum.add(-value / normalizer)
+      count--
+    }
+    while (end < next_end) {
+      const value = values[end++]
+      if (!Number.isFinite(value)) continue
+      if (Math.abs(value) < min_scaled) tiny_sum.add(value)
+      else sum.add(value / normalizer)
       count++
     }
-    result[idx] = count > 0 ? (Number(sum) / count) * normalizer : values[idx]
+    result[idx] = count > 0 ? sum.mean(count, normalizer, tiny_sum) : values[idx]
   }
   return result
 }
@@ -400,7 +474,7 @@ function local_median_and_mad(
   return { local_median, local_mad }
 }
 
-// Iterative sliding-window MAD outlier detection; returns the indices to drop. Statistics are
+// Sliding-window MAD outlier detection; returns the indices to drop. Statistics are
 // always computed from the original values (not the progressively filtered ones) so one removal
 // cannot shift its neighbours' statistics and cascade into false positives. Points within
 // window_half of either end are never flagged: their one-sided window makes the local median
@@ -411,26 +485,23 @@ function remove_local_outliers(
 ): number[] {
   const window_half = config.window_half ?? DEFAULT_LOCAL_WINDOW_HALF
   const mad_threshold = config.mad_threshold ?? DEFAULT_LOCAL_MAD_THRESHOLD
-  const max_iterations = config.max_iterations ?? DEFAULT_LOCAL_MAX_ITERATIONS
+  if (!Number.isInteger(window_half) || window_half < 1) {
+    throw new RangeError(`window_half must be a positive integer, got ${window_half}`)
+  }
+  if (!Number.isFinite(mad_threshold) || mad_threshold <= 0) {
+    throw new RangeError(`mad_threshold must be finite and positive, got ${mad_threshold}`)
+  }
   const len = y_values.length
   // Need enough neighbours for meaningful local statistics
   if (len < window_half * 2 + 1) return []
-  const kept = Array<boolean>(len).fill(true)
-  for (let iter = 0; iter < max_iterations; iter++) {
-    let removed_any = false
-    for (let idx = window_half; idx < len - window_half; idx++) {
-      if (!kept[idx] || !Number.isFinite(y_values[idx])) continue
-      const { local_median, local_mad } = local_median_and_mad(y_values, idx, window_half)
-      // Cannot compute robust threshold if MAD is zero (all neighbours identical)
-      if (local_mad === 0) continue
-      if (Math.abs(y_values[idx] - local_median) > local_mad * mad_threshold) {
-        kept[idx] = false
-        removed_any = true
-      }
-    }
-    if (!removed_any) break
+  const removed: number[] = []
+  for (let idx = window_half; idx < len - window_half; idx++) {
+    if (!Number.isFinite(y_values[idx])) continue
+    const { local_median, local_mad } = local_median_and_mad(y_values, idx, window_half)
+    // A flat neighbourhood has zero tolerance: retain its baseline, remove isolated spikes.
+    if (Math.abs(y_values[idx] - local_median) > local_mad * mad_threshold) removed.push(idx)
   }
-  return index_range(len).filter((idx) => !kept[idx])
+  return removed
 }
 
 // === Invalid values and bounds ===

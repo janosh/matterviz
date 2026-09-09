@@ -5,8 +5,7 @@
   import { Icon } from 'svelte-widgets'
   import { Database, Globe, Link } from 'svelte-widgets/icons'
   import {
-    decode_structure_id,
-    detect_provider_from_slug,
+    detect_provider_from_id,
     encode_structure_id,
     fetch_optimade_providers,
     fetch_optimade_structure,
@@ -35,6 +34,7 @@
   let structure = $state<AnyStructure | null>(null)
   let loading_struct = $state(false)
   let loading_suggestions = $state(false)
+  let suggestions_error = $state<string | null>(null)
   let struct_error = $state<string | null>(null)
   let available_providers = $state<OptimadeProvider[]>([])
   let providers_error = $state<string | null>(null)
@@ -52,14 +52,11 @@
   // Route slug (e.g. /optimade-mp-149 or /optimade-cod-1000000) picks provider + id
   $effect(() => {
     if (!routed || available_providers.length === 0) return
-    const decoded_slug = decode_structure_id(page.params.slug ?? ``)
-    const provider = detect_provider_from_slug(decoded_slug, available_providers)
-    if (provider) {
-      selected_db = provider
-      input_value = decoded_slug.startsWith(`${provider}-`)
-        ? decoded_slug
-        : `${provider}-${decoded_slug}`
-    } else input_value = decoded_slug
+    // SvelteKit has already decoded params, including literal percent signs in an ID.
+    const route_id = page.params.slug ?? ``
+    const provider = detect_provider_from_id(route_id, available_providers)
+    if (provider) selected_db = provider
+    input_value = route_id
   })
 
   // Suggestions follow the provider only (not every structure navigation within it)
@@ -67,7 +64,12 @@
     if (available_providers.length > 0) void load_suggested_structures()
   })
   $effect(() => {
-    if (structure_id && available_providers.length > 0) void load_structure_data()
+    if (!structure_id) {
+      structure_request_id++
+      structure = null
+      struct_error = null
+      loading_struct = false
+    } else if (available_providers.length > 0) void load_structure_data()
   })
 
   async function load_providers() {
@@ -111,10 +113,17 @@
   async function load_suggested_structures() {
     const request_id = ++suggestions_request_id
     loading_suggestions = true
-    const structures = await fetch_suggested_structures(selected_db, available_providers, 12)
-    if (request_id !== suggestions_request_id) return
-    suggested_structures = structures
-    loading_suggestions = false
+    suggestions_error = null
+    suggested_structures = []
+    try {
+      const structures = await fetch_suggested_structures(selected_db, available_providers, 12)
+      if (request_id === suggestions_request_id) suggested_structures = structures
+    } catch (error) {
+      if (request_id === suggestions_request_id)
+        suggestions_error = `Failed to load suggestions: ${error}`
+    } finally {
+      if (request_id === suggestions_request_id) loading_suggestions = false
+    }
   }
 
   function navigate_to_structure(id: string) {
@@ -196,6 +205,9 @@
   </div>
 
   <div class="suggestions-column">
+    {#if suggestions_error}
+      <p class="error-message" role="alert">{suggestions_error}</p>
+    {/if}
     {#if suggested_structures.length > 0}
       <h3>
         Suggested Structures

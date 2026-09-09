@@ -1,8 +1,7 @@
 // Drives a worker-backed analysis from reactive inputs inside a component. An async compute
 // cannot be a $derived, so this owns the one effect every analysis plot used to copy: the
 // superseded job is aborted so the worker client stops tracking it (and terminates the busy
-// worker once nothing else is in flight, pre-warming a replacement for the re-request that
-// follows an option keystroke), its settlement is ignored, and a failure clears the stale
+// worker once nothing else is in flight), its settlement is ignored, and a failure clears the stale
 // curves so the plot's empty-state message can show the error.
 import { to_error } from '$lib/utils'
 import type { TrajectoryPositionStream } from './index'

@@ -67,6 +67,8 @@ describe(`read_indexed_trajectory_file`, () => {
     [`movie.xyz.gzip`, gzipSync],
     [`movie.xyz.deflate`, deflateSync],
     [`movie.xyz.z`, deflateRawSync],
+    [`movie.xyz.gz.gz`, (text: string) => gzipSync(gzipSync(text))],
+    [`movie.xyz.deflate.gz`, (text: string) => gzipSync(deflateSync(text))],
   ])(`decompresses and decodes indexed text trajectory %s`, async (filename, compress) => {
     const text = `1\nframe\nH 0 0 0\n`
     const compressed = new Uint8Array(compress(text))
@@ -75,7 +77,7 @@ describe(`read_indexed_trajectory_file`, () => {
 
     await expect(read_indexed_trajectory_file(`/tmp/${filename}`, filename)).resolves.toEqual({
       data: text,
-      filename: filename.replace(/\.(?:gz|gzip|deflate|z)$/, ``),
+      filename: filename.replace(/(?:\.(?:gz|gzip|deflate|z))+$/, ``),
     })
   })
 
@@ -110,7 +112,7 @@ describe(`read_indexed_trajectory_file`, () => {
 
   test.each([
     [`movie.xyz.bz2`, `Unsupported compression`],
-    [`movie.xyz.gz.gz`, `Nested compression`],
+    [`movie.xyz.xz.gz`, `Unsupported compression`],
     [`movie.h5`, `Indexed loading is not supported`],
   ])(`rejects unsupported indexed input %s before reading`, async (filename, error) => {
     await expect(read_indexed_trajectory_file(`/tmp/${filename}`, filename)).rejects.toThrow(

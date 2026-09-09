@@ -18,9 +18,11 @@ export interface HistogramSeries {
   pattern?: FillPattern // hatch/texture over the bar fill
   visible?: boolean
   legend_group?: string
+  unit?: string
+  axis_group?: string
   // Which value axis the samples bin on (`x2`: top) and which count axis the bars use
-  x_axis?: `x1` | `x2`
-  y_axis?: `y1` | `y2`
+  x_axis?: `x` | `x2`
+  y_axis?: `y` | `y2`
 }
 
 // [min, max] range where either bound may be null (unset)
@@ -43,8 +45,8 @@ export interface BinnedSeries {
   label: string
   color: string
   bins: HistogramBin[]
-  x_axis?: `x1` | `x2`
-  y_axis?: `y1` | `y2`
+  x_axis?: `x` | `x2`
+  y_axis?: `y` | `y2`
   max_value: number // tallest bar (0 when every bin is empty)
   min_value: number // shortest non-empty bar (Infinity when every bin is empty)
 }

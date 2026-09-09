@@ -3,7 +3,7 @@
 ```svelte example
 <script lang="ts">
   import { browser } from '$app/environment'
-  import { Structure, type StructureHandlerData } from 'matterviz'
+  import { StructureFileViewer, type StructureHandlerData } from 'matterviz'
   import { MultiSelect as Select } from 'svelte-widgets'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
@@ -47,9 +47,10 @@
   })
 </script>
 
-<Structure
-  data_url={hash_structure_string ? undefined : get_file_url(source_filename)}
-  structure_string={hash_structure_string}
+<StructureFileViewer
+  source={hash_structure_string
+    ? { data: hash_structure_string, filename: `string` }
+    : get_file_url(source_filename)}
   on_file_load={(data: StructureHandlerData) => {
     display_filename = data.filename ?? source_filename
     if (hash_structure_string) return
@@ -63,14 +64,14 @@
   >
     {display_filename}
   </h3>
-</Structure>
+</StructureFileViewer>
 
 <FilePicker files={all_files} show_category_filters style="margin-block: 2em" />
 ```
 
 ## Anatomy
 
-`Structure` renders a typed structure directly and retains convenience inputs for URLs, strings, and file drops. Those convenience paths delegate acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
+`Structure` renders supplied data. `StructureFileViewer` accepts a URL or a `{ data, filename }` payload through `source` and handles file drops. It delegates acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
 
 ## Explicit Bond Orders
 
@@ -207,11 +208,7 @@ rather than one spanning the whole box. Sites pair up by index, so a mismatched 
 or a reordered species list fails loudly instead of reporting a confident RMSD for atoms
 that were never the same atom.
 
-Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the
-atom spacing (relaxations are usually smaller than an atomic radius, so true-length arrows
-would sit entirely inside their own atoms). The true numbers are reported instead: the
-controls pane shows the RMSD and the largest single displacement, and `Structure` exposes
-the RMSD through the bindable `displacement_rmsd` prop.
+Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the atom spacing. The controls pane reports the RMSD and largest displacement. Bind the component with `bind:this={viewer}` to read `viewer.analysis.displacement_rmsd`, alongside the displayed structure, symmetry dataset and mapped Wyckoff rows.
 
 ```svelte example
 <script lang="ts">
@@ -235,7 +232,8 @@ the RMSD through the bindable `displacement_rmsd` prop.
     })),
   }
 
-  let displacement_rmsd = $state<number | undefined>()
+  let viewer = $state<ReturnType<typeof Structure>>()
+  const displacement_rmsd = $derived(viewer?.analysis.displacement_rmsd)
 </script>
 
 {#if relaxed && unrelaxed}
@@ -248,7 +246,7 @@ the RMSD through the bindable `displacement_rmsd` prop.
   <Structure
     structure={relaxed}
     reference_structure={unrelaxed}
-    bind:displacement_rmsd
+    bind:this={viewer}
     show_controls="always"
     style="height: 500px"
   />
@@ -303,11 +301,11 @@ the RMSD through the bindable `displacement_rmsd` prop.
 
 ## Load Structure from String
 
-Load structures from text with `structure_string` (CIF, POSCAR, XYZ, JSON, …).
+Load structures from text with `StructureFileViewer source={{ data: text, filename }}` (CIF, POSCAR, XYZ, JSON, …).
 
 ```svelte example
 <script lang="ts">
-  import { Structure } from 'matterviz'
+  import { StructureFileViewer } from 'matterviz'
   import { format_num } from '$lib'
   import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
   import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
@@ -358,7 +356,10 @@ Load structures from text with `structure_string` (CIF, POSCAR, XYZ, JSON, …).
   )}B)
 </label>
 
-<Structure structure_string={selected_file.content} bind:structure={parsed_structure} />
+<StructureFileViewer
+  source={{ data: selected_file.content, filename: selected_file.name }}
+  bind:structure={parsed_structure}
+/>
 ```
 
 ## Host prediction tools

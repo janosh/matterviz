@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { StructureSettings } from './settings'
+  import type { TrajectoryPositionStream } from '$lib/trajectory'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ColorSchemeName } from '$lib/colors'
@@ -35,12 +37,7 @@
     serialize_structure_view_state,
   } from '$lib/settings/viewer-state'
   import type { AnyStructure, StructureDisplayMode } from '$lib/structure'
-  import {
-    get_structure_vector_keys,
-    RESET_VIEW_TITLE,
-    StructureScene,
-    VECTOR_PALETTE,
-  } from '$lib/structure'
+  import { get_structure_vector_keys, RESET_VIEW_TITLE, VECTOR_PALETTE } from '$lib/structure'
   import type { ElementSymbol } from '$lib/element'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import {
@@ -82,7 +79,7 @@
     volumetric_data = $bindable<VolumetricData[]>(),
     isosurface_settings = $bindable<IsosurfaceSettings>(),
     slice_settings = $bindable<Partial<VolumeSliceSettings>>(),
-    active_volume_idx = $bindable(0),
+    active_volume_id = $bindable<string | undefined>(),
     display_mode = `structure`,
     multi_view = $bindable(false),
     multi_view_control_visible = true,
@@ -90,6 +87,7 @@
     polyhedra_rendered_elements = [],
     displacement_summary = null,
     trajectory_lines_result = null,
+    trajectory_position_stream,
     show_trajectory_lines = $bindable(DEFAULTS.structure.show_trajectory_lines),
     on_reset_camera,
     fly_to_request = $bindable(undefined),
@@ -99,7 +97,8 @@
     ...rest
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
     controls_open?: boolean // Control pane state
-    scene_props?: ComponentProps<typeof StructureScene>
+    scene_props?: StructureSettings
+    trajectory_position_stream?: TrajectoryPositionStream | null
     show_image_atoms?: boolean
     supercell_scaling?: string
     background_color?: string
@@ -113,7 +112,7 @@
     volumetric_data?: VolumetricData[] // Volumetric data volumes for isosurface controls
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     slice_settings?: Partial<VolumeSliceSettings> // 2D cross-section sampling and rendering settings
-    active_volume_idx?: number // Active volume index
+    active_volume_id?: string // Selected volume ID
     display_mode?: StructureDisplayMode
     multi_view?: boolean
     multi_view_control_visible?: boolean
@@ -314,7 +313,9 @@
   // A getter, not a const: the parent may rebind scene_props to a fresh object
   const scene_record = () => scene_props as Record<string, unknown>
   const row_value = (current: Row): unknown =>
-    current.get ? current.get() : scene_record()[current.key]
+    current.get
+      ? current.get()
+      : (scene_record()[current.key] ?? DEFAULTS.structure[current.key])
   const set_row_value = (current: Row, value: unknown): void => {
     if (current.set) current.set(value)
     else scene_record()[current.key] = value
@@ -603,9 +604,7 @@
 
   // Species in the collected trajectory stream, for the trail filter. A Li-ion conductor
   // wants Li trails and not the framework, so narrowing this is usually the first move.
-  let trail_elements = $derived(
-    [...new Set(scene_props.trajectory_position_stream?.elements)].toSorted(),
-  )
+  let trail_elements = $derived([...new Set(trajectory_position_stream?.elements)].toSorted())
   // A null filter means "every species", which is also the state the checkboxes start in
   const is_trail_element_on = (element: ElementSymbol): boolean =>
     scene_props.trajectory_line_elements?.includes(element) ?? true
@@ -753,7 +752,7 @@
   // when present — they only render at all because the data made them relevant.
   let open_groups = $state({ appearance: true, camera: false, scene: false })
   let has_overlays = $derived(
-    Boolean(displacement_summary) || scene_props.trajectory_position_stream !== undefined,
+    Boolean(displacement_summary) || trajectory_position_stream !== undefined,
   )
   // Collapsed groups still need to say what is inside them, so each summary carries a hint
   let camera_summary = $derived(
@@ -888,13 +887,13 @@
           <VolumeSliceControls
             bind:settings={slice_settings}
             volumes={volumetric_data}
-            bind:active_volume_idx
+            bind:active_volume_id
           />
         {:else if isosurface_settings}
           <IsosurfaceControls
             bind:settings={isosurface_settings}
             bind:volumes={volumetric_data}
-            bind:active_volume_idx
+            bind:active_volume_id
           />
         {/if}
       </SettingsGroup>
@@ -1423,7 +1422,7 @@
 
         <!-- Only the trajectory viewer can collect a whole-run position stream, so this section
         is absent for plain structures rather than showing dead controls -->
-        {#if scene_props.trajectory_position_stream !== undefined}
+        {#if trajectory_position_stream !== undefined}
           <SettingsSection
             title="Trajectory Trails"
             layout="grid"
@@ -1439,7 +1438,7 @@
             )}
           >
             {@render setting_rows([trail_toggle_row])}
-            {#if show_trajectory_lines && scene_props.trajectory_position_stream}
+            {#if show_trajectory_lines && trajectory_position_stream}
               {#if trail_elements.length > 1}
                 {@render element_chips(
                   `trajectory_line_elements`,
@@ -1452,7 +1451,7 @@
               <NumberRangeInput
                 setting="trajectory_line_trail_frames"
                 {...number_range_props(SETTINGS_CONFIG.structure.trajectory_line_trail_frames)}
-                max={Math.max(1, scene_props.trajectory_position_stream.n_frames)}
+                max={Math.max(1, trajectory_position_stream.n_frames)}
                 bind:value={scene_props.trajectory_line_trail_frames}
                 >Trail length <small>(0 = all)</small></NumberRangeInput
               >

@@ -1,4 +1,4 @@
-import { type AnyStructure, type MeasureMode, Structure } from '$lib'
+import { type AnyStructure, type MeasureMode, Structure, StructureFileViewer } from '$lib'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from '$lib/isosurface'
 import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface'
@@ -52,12 +52,24 @@ vi.mock(`@threlte/core`, async (import_original) => ({
   Canvas: (anchor: Node, props: { children: (anchor: Node) => void }) =>
     props.children(anchor),
 }))
+const scene_stub = vi.hoisted(() => ({
+  props: undefined as
+    | { camera: OrthographicCamera; camera_position?: Vec3; camera_target?: Vec3 }
+    | undefined,
+}))
 vi.mock(`$lib/structure/StructureScene.svelte`, () => ({
-  default: (_anchor: Node, props: { camera: OrthographicCamera }) => {
+  default: (_anchor: Node, props: NonNullable<typeof scene_stub.props>) => {
+    scene_stub.props = props
     props.camera = new OrthographicCamera()
     return {}
   },
 }))
+
+// Exercise real parsers in happy-dom; worker transport has its own tests.
+vi.mock(`$lib/file-viewer/parse-in-worker`, async () => {
+  const { parse_file_content } = await import(`$lib/file-viewer/parse`)
+  return { parse_in_worker: parse_file_content }
+})
 
 // Passthrough spy so individual tests can make make_supercell throw
 vi.mock(`$lib/structure/supercell`, async (import_original) => {
@@ -75,24 +87,24 @@ const structure = structures[0]
 // the edit toast's dismiss timer would otherwise fire into a vanished `document`.
 const mounted: Record<string, unknown>[] = []
 const original_host_component = structure_host_tool.component
-const mount_structure = (props: ComponentProps<typeof Structure>): void => {
-  mounted.push(mount(Structure, { target: document.body, props }))
+const mount_structure = (props: ComponentProps<typeof Structure>) => {
+  const viewer = mount(Structure, { target: document.body, props })
+  mounted.push(viewer)
+  return viewer.analysis
+}
+const mount_file_viewer = (props: ComponentProps<typeof StructureFileViewer>) => {
+  const viewer = mount(StructureFileViewer, { target: document.body, props })
+  mounted.push(viewer)
+  return viewer.analysis
 }
 afterEach(() => {
+  scene_stub.props = undefined
   for (const component of mounted.splice(0)) void unmount(component)
   structure_host_tool.component = original_host_component
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
-const mount_bound_structure = (
-  props: ComponentProps<typeof Structure>,
-): { displayed_structure?: AnyStructure } => {
-  const state = $state<{ displayed_structure?: AnyStructure }>({
-    displayed_structure: undefined,
-  })
-  mount_structure(bind_props(props, state))
-  return state
-}
 
 // Open the dropdown menu behind `trigger` and click the option labelled `label`
 const pick_menu_option = async (trigger: string, label: string): Promise<void> => {
@@ -148,10 +160,13 @@ test(`loads strings, URLs and dropped files through the component API`, async ()
   const string_load = vi.fn<(data: StructureHandlerData) => void>()
   const url_load = vi.fn<(data: StructureHandlerData) => void>()
   const drop_load = vi.fn<(data: StructureHandlerData) => void>()
-  mount_structure({ structure_string: SAMPLE_POSCAR_CONTENT, on_file_load: string_load })
-  mount_structure({ data_url: `/loaded.poscar`, on_file_load: url_load })
+  mount_file_viewer({
+    source: { data: SAMPLE_POSCAR_CONTENT, filename: `string` },
+    on_file_load: string_load,
+  })
+  mount_file_viewer({ source: `/loaded.poscar`, on_file_load: url_load })
   const drop_state = $state<{ structure?: AnyStructure }>({ structure: undefined })
-  mount_structure(bind_props({ on_file_load: drop_load }, drop_state))
+  mount_file_viewer(bind_props({ on_file_load: drop_load }, drop_state))
   await tick()
   document
     .querySelectorAll(`.structure`)
@@ -175,18 +190,17 @@ test(`loads strings, URLs and dropped files through the component API`, async ()
   expect(drop_state.structure?.sites).toHaveLength(5)
 })
 
-test(`data URLs win over inline text while caller-owned structures prevent fetching`, async () => {
+test(`caller-owned structures prevent fetching a source URL`, async () => {
   const fetch_spy = vi
     .fn()
     .mockImplementation(() => Promise.resolve(new Response(SAMPLE_POSCAR_CONTENT)))
   vi.stubGlobal(`fetch`, fetch_spy)
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-  mount_structure({
-    data_url: `/priority.poscar`,
-    structure_string: `ignored invalid text`,
+  mount_file_viewer({
+    source: `/priority.poscar`,
     on_file_load,
   })
-  mount_structure({ data_url: `/blocked.poscar`, structure })
+  mount_file_viewer({ source: `/blocked.poscar`, structure })
   await vi.waitFor(() =>
     expect(on_file_load).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ filename: `priority.poscar`, total_atoms: 5 }),
@@ -198,10 +212,10 @@ test(`data URLs win over inline text while caller-owned structures prevent fetch
 test(`drag hover state remains bindable and respects allow_file_drop`, async () => {
   const enabled = $state({ dragover: false })
   const disabled = $state({ dragover: false })
-  mount_structure(bind_props({}, enabled))
-  mount_structure(bind_props({ allow_file_drop: false }, disabled))
+  mount_file_viewer(bind_props({}, enabled))
+  mount_file_viewer(bind_props({ allow_file_drop: false }, disabled))
   await tick()
-  const [enabled_zone, disabled_zone] = document.querySelectorAll(`.structure`)
+  const [enabled_zone, disabled_zone] = document.querySelectorAll(`.structure-file-viewer`)
   enabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
   disabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
   expect(enabled.dragover).toBe(true)
@@ -214,7 +228,7 @@ test(`drag hover state remains bindable and respects allow_file_drop`, async () 
 
 test(`custom drop handlers retain raw content and source metadata`, async () => {
   const on_file_drop = vi.fn()
-  mount_structure({ on_file_drop })
+  mount_file_viewer({ on_file_drop })
   await tick()
   const file = new File([SAMPLE_POSCAR_CONTENT], `custom.poscar`)
   doc_query(`.structure`).dispatchEvent(create_drop_event(file))
@@ -226,31 +240,136 @@ test(`custom drop handlers retain raw content and source metadata`, async () => 
   )
 })
 
-test(`same-cell volumetric drops append volumes through the shared runtime`, async () => {
-  const state = $state<{ volumetric_data?: VolumetricData[] }>({
-    volumetric_data: undefined,
+const SAMPLE_CUBE_CONTENT = `title
+comment
+1 1 0 0
+-2 1 0 0
+-2 0 1 0
+-2 0 0 1
+6 0 1.5 0.5 0.5
+0 0 0 0 1 1 1 1`
+
+test(`file viewer forwards replacement atom colors from host predictions`, async () => {
+  const state = $state({
+    structure,
+    atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
   })
-  mount_structure(bind_props({}, state))
-  await tick()
-  const drop_zone = doc_query(`.structure`)
-  drop_zone.dispatchEvent(create_drop_event(new File([SAMPLE_CHGCAR_CONTENT], `A.CHGCAR`)))
-  await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
-  drop_zone.dispatchEvent(create_drop_event(new File([SAMPLE_CHGCAR_CONTENT], `B.CHGCAR`)))
-  await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(2))
-  expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual([
-    `A.CHGCAR`,
-    `B.CHGCAR`,
-  ])
+  const run = await mount_host_structure(bind_props({}, state), mount_file_viewer)
+  flushSync(() =>
+    run.on_overlay({
+      color_property: `charge`,
+      site_properties: structure.sites.map(() => ({ charge: 1 })),
+    }),
+  )
+  expect(state.atom_color_config).toMatchObject({ mode: `property`, property_key: `charge` })
+  flushSync(() => run.clear())
+  expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
 })
 
-// Layers index the volumes they were made for: a structure in a different cell drops the
+test.each([false, true])(
+  `structure changes retain explicit camera target (new pose=%s)`,
+  async (new_pose) => {
+    vi.stubGlobal(`navigator`, {
+      gpu: {},
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+    })
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      scene_props: { camera_position: [3, 4, 5], camera_target: [1, 2, 3] },
+    })
+    mount_structure(props)
+    await tick()
+    expect(scene_stub.props?.camera_target).toEqual([1, 2, 3])
+    flushSync(() => {
+      props.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
+      if (new_pose)
+        props.scene_props = { camera_position: [6, 7, 8], camera_target: [4, 5, 6] }
+    })
+    expect(scene_stub.props?.camera_target).toEqual(new_pose ? [4, 5, 6] : [1, 2, 3])
+  },
+)
+
+test.each([
+  {
+    label: `coordinates`,
+    extension: `CHGCAR`,
+    content: SAMPLE_CHGCAR_CONTENT,
+    replacement: SAMPLE_CHGCAR_CONTENT.replace(`Direct\n0 0 0`, `Direct\n0.5 0 0`),
+    merges: true,
+  },
+  {
+    label: `species`,
+    extension: `CHGCAR`,
+    content: SAMPLE_CHGCAR_CONTENT,
+    replacement: SAMPLE_CHGCAR_CONTENT.replace(`\nH\n`, `\nHe\n`),
+    merges: true,
+  },
+  {
+    label: `cube origin`,
+    extension: `cube`,
+    content: SAMPLE_CUBE_CONTENT,
+    replacement: SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `1 2 0 0`),
+    merges: true,
+  },
+  {
+    label: `unanchored cube`,
+    extension: `cube`,
+    content: SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `0 1 0 0`).replace(
+      `6 0 1.5 0.5 0.5\n`,
+      ``,
+    ),
+    replacement: SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `0 2 0 0`).replace(
+      `6 0 1.5 0.5 0.5\n`,
+      ``,
+    ),
+    merges: false,
+  },
+])(
+  `volume imports merge identical anchored geometry and replace changed $label`,
+  async ({ content, replacement, extension, merges }) => {
+    const state = $state<{ volumetric_data?: VolumetricData[]; structure?: AnyStructure }>({
+      volumetric_data: undefined,
+      structure: undefined,
+    })
+    mount_file_viewer(bind_props({}, state))
+    await tick()
+    const drop_zone = doc_query(`.structure`)
+    const drop = (text: string, name: string) =>
+      drop_zone.dispatchEvent(create_drop_event(new File([text], `${name}.${extension}`)))
+    drop(content, `A`)
+    await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+    const original = state.structure
+    drop(content, `B`)
+    await vi.waitFor(() =>
+      expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual(
+        (merges ? [`A`, `B`] : [`B`]).map((name) => `${name}.${extension}`),
+      ),
+    )
+    drop(replacement, `C`)
+    await vi.waitFor(() =>
+      expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual([
+        `C.${extension}`,
+      ]),
+    )
+    expect(state.structure).not.toBe(original)
+    if (extension === `cube` && merges) {
+      expect(original?.sites[0].xyz).toEqual([0.5, 0.5, 0.5])
+      expect(state.structure?.sites[0].xyz).toEqual([-0.5, 0.5, 0.5])
+      expect(state.volumetric_data?.[0].origin).toEqual([0, 0, 0])
+    }
+  },
+)
+
+// Layers reference the volumes they were made for: a structure in a different frame drops the
 // volumes AND their layers, so the next volume gets its own automatic layer instead of
 // inheriting one scaled to the previous field (CHGCAR values are hundreds, cube values ~0.01)
-test(`layers die with the volumes an unrelated structure replaces`, async () => {
-  const other_cell = SAMPLE_CHGCAR_CONTENT.replace(
-    `1 0 0\n0 1 0\n0 0 1`,
-    `2 0 0\n0 2 0\n0 0 2`,
-  )
+test.each([
+  [`lattice`, `1 0 0\n0 1 0\n0 0 1`, `2 0 0\n0 2 0\n0 0 2`],
+  [`coordinates`, `Direct\n0 0 0`, `Direct\n0.5 0 0`],
+  [`species`, `\nH\n`, `\nHe\n`],
+])(`layers die with volumes when importing changed %s`, async (_label, before, after) => {
+  const other_cell = SAMPLE_CHGCAR_CONTENT.replace(before, after)
   const state = $state<{
     volumetric_data?: VolumetricData[]
     isosurface_settings: IsosurfaceSettings
@@ -258,7 +377,7 @@ test(`layers die with the volumes an unrelated structure replaces`, async () => 
     volumetric_data: undefined,
     isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.2 },
   })
-  mount_structure(bind_props({}, state))
+  mount_file_viewer(bind_props({}, state))
   await tick()
   const drop_zone = doc_query(`.structure`)
   const drop = (content: string, filename: string) =>
@@ -275,14 +394,14 @@ test(`layers die with the volumes an unrelated structure replaces`, async () => 
   drop(other_cell, `c.CHGCAR`)
   await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
   expect(state.isosurface_settings.layers).toEqual([
-    auto_volume_layer(state.volumetric_data?.[0] as VolumetricData, 0),
+    auto_volume_layer(state.volumetric_data?.[0] as VolumetricData),
   ])
 })
 
 test(`multi-file drops continue after failures and report one batch error`, async () => {
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
   const state = $state<{ error_msg?: string }>({ error_msg: undefined })
-  mount_structure(bind_props({ on_file_load }, state))
+  mount_file_viewer(bind_props({ on_file_load }, state))
   await tick()
   doc_query(`.structure`).dispatchEvent(
     create_drop_event([
@@ -300,7 +419,6 @@ test(`multi-file drops continue after failures and report one batch error`, asyn
 
 const volumetric_data = [
   {
-    field_id: `density`,
     ...make_volume(
       make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
       {
@@ -310,6 +428,7 @@ const volumetric_data = [
           [0, 0, 1],
         ],
         data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
+        id: `density`,
         label: `Charge density`,
       },
     ),
@@ -319,13 +438,16 @@ const volumetric_data = [
 // Capture the registered host API while mounting; the shared cleanup restores registration.
 const mount_host_structure = async (
   props: ComponentProps<typeof Structure>,
-): Promise<StructureToolRun & Pick<StructureToolProps, `start_run`>> => {
+  mount_view = mount_structure,
+): Promise<
+  StructureToolRun & Pick<StructureToolProps, `start_run` | `set_overlay_visible`>
+> => {
   let tool_props: StructureToolProps | undefined
   structure_host_tool.component = (_anchor, host_props) => {
     tool_props = host_props
     return {}
   }
-  mount_structure(props)
+  mount_view(props)
   await tick()
   if (!tool_props) throw new Error(`Host tool did not mount`)
   return {
@@ -336,6 +458,7 @@ const mount_host_structure = async (
       settings: {},
     }),
     start_run: tool_props.start_run,
+    set_overlay_visible: tool_props.set_overlay_visible,
   }
 }
 
@@ -370,9 +493,14 @@ test(`host views fill the main viewer, inherit its camera and cell, and reject s
   expect(tool_props.structure).toBe(original_input)
 })
 
-test.each([`clear`, `replace input`])(
-  `host overlays restore atom colors on %s and preserve adjusted surfaces when only properties change`,
-  async (reset) => {
+test.each([
+  [`clear`, true],
+  [`clear`, false],
+  [`replace input`, true],
+  [`replace input`, false],
+] as const)(
+  `host overlays restore atom colors on %s (visible=%s) and preserve adjusted surfaces`,
+  async (reset, visible_at_reset) => {
     const original_color: AtomColorConfig = {
       mode: `element`,
       scale: `interpolateViridis`,
@@ -429,6 +557,21 @@ test.each([`clear`, `replace input`])(
     flushSync(() => tool_props.on_overlay(overlay))
     expect(state.volumetric_data[0].label).toBe(`Updated prediction`)
     expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
+    const published_volume = state.volumetric_data[0]
+    const saved_layers = state.isosurface_settings.layers
+    const predicted_colors = state.atom_color_config
+    for (const visible of [false, true]) {
+      flushSync(() => tool_props.set_overlay_visible(visible))
+      expect(state.volumetric_data[0]).toBe(published_volume)
+      expect(state.isosurface_settings.layers).toBe(saved_layers)
+      expect(state.atom_color_config).toEqual(visible ? predicted_colors : original_color)
+      if (!visible)
+        flushSync(() => {
+          original_color.scale = `interpolatePlasma`
+          state.atom_color_config = { ...original_color }
+        })
+    }
+    flushSync(() => tool_props.set_overlay_visible(visible_at_reset))
     flushSync(() => {
       if (reset === `clear`) tool_props.on_overlay(null)
       else state.structure = { ...state.structure }
@@ -500,8 +643,8 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
   })
   const first = await mount_host_structure(bind_props({}, state))
   const fields = [
-    { ...volumetric_data[0], field_id: `density`, label: `Density` },
-    { ...volumetric_data[0], field_id: `potential`, label: `Potential` },
+    { ...volumetric_data[0], id: `density`, label: `Density` },
+    { ...volumetric_data[0], id: `potential`, label: `Potential` },
   ]
   flushSync(() => first.on_overlay({ volumes: fields }))
   flushSync(() => {
@@ -511,7 +654,7 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
       color: `#123456`,
       isovalue: 0.321,
       opacity: 0.4,
-      color_volume_idx: 1,
+      color_volume_id: `potential`,
     })
   })
   const next = first.start_run({ model: `test`, version: `2`, units: {}, settings: {} })
@@ -519,8 +662,8 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
   flushSync(() => next.on_overlay({ volumes: reordered }))
   expect(first.signal.aborted).toBe(true)
   expect(state.isosurface_settings?.layers[0]).toMatchObject({
-    volume_idx: 1,
-    color_volume_idx: 0,
+    volume_id: `density`,
+    color_volume_id: `potential`,
     color: `#123456`,
     isovalue: 0.321,
     opacity: 0.4,
@@ -536,7 +679,7 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
   }
   click_button(`Reset prediction surfaces`)
   expect(state.isosurface_settings?.layers).toEqual(
-    reordered.map((volume, idx) => auto_volume_layer(volume, idx)),
+    reordered.map((volume) => auto_volume_layer(volume)),
   )
   click_button(`Clear prediction`)
   flushSync(() => next.on_overlay({ volumes: reordered }))
@@ -547,7 +690,7 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
 test.each([`Original`, `Prediction`])(
   `removing %s volumes updates their owner across later tool callbacks`,
   async (removed_label) => {
-    const base_volume = { ...volumetric_data[0], label: `Original` }
+    const base_volume = { ...volumetric_data[0], id: `original`, label: `Original` }
     const prediction_volume = { ...volumetric_data[0], label: `Prediction` }
     const state = $state<{
       volumetric_data: VolumetricData[]
@@ -580,26 +723,31 @@ test.each([`Original`, `Prediction`])(
     expect(state.volumetric_data.map(({ label }) => label)).toEqual([retained_label])
     if (removed_label === `Original`)
       expect(state.isosurface_settings.layers).toEqual([
-        expect.objectContaining({ volume_idx: 0 }),
+        expect.objectContaining({ volume_id: `density` }),
       ])
     else expect(state.isosurface_settings.layers).toEqual([])
   },
 )
 
 test.each([false, true])(
-  `same-cell imports preserve prediction layers with existing base=%s`,
+  `same-geometry imports preserve prediction layers with existing base=%s`,
   async (with_base) => {
     const source = make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }])
     const state = $state<{
       volumetric_data: VolumetricData[]
       isosurface_settings: IsosurfaceSettings
-      active_volume_idx: number
+      active_volume_id: string | undefined
     }>({
-      volumetric_data: with_base ? [{ ...volumetric_data[0], label: `Original` }] : [],
+      volumetric_data: with_base
+        ? [{ ...volumetric_data[0], id: `original`, label: `Original` }]
+        : [],
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
-      active_volume_idx: 0,
+      active_volume_id: `0`,
     })
-    const tool_props = await mount_host_structure(bind_props({ structure: source }, state))
+    const tool_props = await mount_host_structure(
+      bind_props({ structure: source }, state),
+      mount_file_viewer,
+    )
     const overlay = {
       volumes: [{ ...volumetric_data[0], label: `Prediction` }],
     }
@@ -613,24 +761,32 @@ test.each([false, true])(
     await vi.waitFor(() =>
       expect(state.volumetric_data.map(({ label }) => label)).toContain(`added.CHGCAR`),
     )
+    expect(state.active_volume_id).toBe(`density`)
+    state.active_volume_id = state.volumetric_data.find(
+      ({ label }) => label === `added.CHGCAR`,
+    )?.id
     flushSync(() => tool_props.on_overlay({ ...overlay, site_properties: [{ charge: 1 }] }))
-    expect(state.volumetric_data[state.active_volume_idx]?.label).toBe(`added.CHGCAR`)
+    expect(state.volumetric_data.find(({ id }) => id === state.active_volume_id)?.label).toBe(
+      `added.CHGCAR`,
+    )
     const predicted_layer = state.isosurface_settings.layers.find(
       ({ isovalue }) => isovalue === 0.321,
     )
-    expect(state.volumetric_data[predicted_layer?.volume_idx ?? -1]?.label).toBe(`Prediction`)
+    expect(
+      state.volumetric_data.find(({ id }) => id === predicted_layer?.volume_id)?.label,
+    ).toBe(`Prediction`)
     // A selected prediction field should return to the imported volume on clear.
     flushSync(() => {
       tool_props.on_overlay({ ...overlay, volumes: [{ ...overlay.volumes[0] }] })
-      state.active_volume_idx = state.volumetric_data.findIndex(
-        ({ label }) => label === `Prediction`,
-      )
+      state.active_volume_id = `density`
     })
     flushSync(() => tool_props.on_overlay(null))
     expect(state.volumetric_data.map(({ label }) => label)).toEqual(
       with_base ? [`Original`, `added.CHGCAR`] : [`added.CHGCAR`],
     )
-    expect(state.volumetric_data[state.active_volume_idx]?.label).toBe(`added.CHGCAR`)
+    expect(state.volumetric_data.find(({ id }) => id === state.active_volume_id)?.label).toBe(
+      `added.CHGCAR`,
+    )
   },
 )
 
@@ -652,14 +808,15 @@ test.each([false, true])(
       structure: crystal,
       cell_type: `original`,
       display_mode: `structure`,
-      active_volume_idx: 0,
+      active_volume_id: `0`,
       slice_settings: { resolution: 2 },
       supercell_scaling: `1x1x1`,
-      sym_data: null,
     })
+    vi.stubEnv(`VITEST`, ``)
     const tool_props = await mount_host_structure(bind_props({}, state))
-    state.sym_data = await symmetry.analyze_structure_symmetry(crystal)
-    flushSync()
+    await vi.waitFor(() => expect(document.querySelector(`.cell-select`)).not.toBeNull())
+    await symmetry.analyze_structure_symmetry(crystal)
+    await tick()
     const overlay = {
       volumes: [{ ...volumetric_data[0], label: `Prediction`, periodic: true }],
     }
@@ -710,7 +867,7 @@ test.each([false, true])(
           {
             ...overlay.volumes[0],
             label: `Periodic prediction`,
-            field_id: `periodic-density`,
+            id: `periodic-density`,
           },
         ],
       }),
@@ -721,7 +878,7 @@ test.each([false, true])(
       )
     }
     flushSync(() => {
-      state.active_volume_idx = remove_finite ? 0 : 1
+      state.active_volume_id = `periodic-density`
       state.display_mode = `slice`
     })
     expect(
@@ -819,6 +976,33 @@ describe(`Structure`, () => {
     }
   })
 
+  test.each([`disabled`, `molecule`, `empty`, `unmounted`] as const)(
+    `ignores a pending symmetry failure after becoming %s`,
+    async (transition) => {
+      vi.stubEnv(`VITEST`, ``)
+      vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
+      const pending = Promise.withResolvers<never>()
+      const analyze = vi
+        .spyOn(symmetry, `analyze_structure_symmetry`)
+        .mockReturnValue(pending.promise)
+      const error = vi.spyOn(console, `error`).mockImplementation(() => {})
+      const props = $state<ComponentProps<typeof Structure>>({ structure })
+      const analysis = mount_structure(props)
+      await vi.waitFor(() => expect(analyze).toHaveBeenCalled())
+      if (transition === `disabled`) props.analyze_symmetry = false
+      else if (transition === `molecule`) props.structure = { sites: structure.sites }
+      else if (transition === `empty`) props.structure = undefined
+      else for (const component of mounted.splice(0)) await unmount(component)
+      flushSync()
+      pending.reject(new Error(`stale symmetry result`))
+      await tick()
+      await tick()
+      expect(error).not.toHaveBeenCalled()
+      expect(analysis.sym_data).toBeNull()
+      expect(document.querySelector(`.symmetry-error`)).toBeNull()
+    },
+  )
+
   test(`skips symmetry analysis when disabled`, async () => {
     vi.stubEnv(`VITEST`, ``)
     const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`)
@@ -906,15 +1090,15 @@ describe(`Structure`, () => {
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
   })
 
-  test(`clamps stale active volume indices with controls closed`, async () => {
+  test(`resets a missing selected volume ID with controls closed`, async () => {
     const props = mount_volumetric({
-      active_volume_idx: 9,
+      active_volume_id: `9`,
       display_mode: `slice`,
       slice_settings: { resolution: 2 },
     })
     await tick()
 
-    expect(props.active_volume_idx).toBe(0)
+    expect(props.active_volume_id).toBe(`density`)
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
   })
 
@@ -1095,7 +1279,7 @@ describe(`Structure`, () => {
 
   test(`shows an already-materialized supercell without expanding it again`, async () => {
     vi.mocked(make_supercell).mockClear()
-    const state = mount_bound_structure({
+    const state = mount_structure({
       structure,
       supercell_scaling: `3x3x3`,
       apply_supercell_scaling: false,
@@ -1112,28 +1296,26 @@ describe(`Structure`, () => {
   })
 
   test(`displayed_structure keeps its identity across unrelated prop changes`, async () => {
-    // A bound parent re-proxies every write, so rewriting the same structure on an
-    // unrelated rerun would invalidate every consumer of displayed_structure
+    // Read-only results keep their identity when unrelated viewer state changes.
     const props = $state<ComponentProps<typeof Structure>>({
       structure,
-      displayed_structure: undefined,
-      active_volume_idx: 0,
+      active_volume_id: `0`,
       volumetric_data: undefined,
     })
+    const analysis = mount_structure(props)
     let runs = 0
     const destroy = $effect.root(() => {
       $effect(() => {
-        void props.displayed_structure
+        void analysis.displayed_structure
         runs += 1
       })
     })
-    mount_structure(props)
     await tick()
-    const [displayed, runs_before] = [props.displayed_structure, runs]
+    const [displayed, runs_before] = [analysis.displayed_structure, runs]
     expect(displayed?.sites.length).toBeGreaterThan(0)
-    props.active_volume_idx = 3
+    props.active_volume_id = `3`
     await tick()
-    expect(props.displayed_structure).toBe(displayed)
+    expect(analysis.displayed_structure).toBe(displayed)
     expect(runs).toBe(runs_before)
     destroy()
   })
@@ -1158,7 +1340,7 @@ describe(`Structure`, () => {
           },
         ],
       }
-      const state = mount_bound_structure({
+      const state = mount_structure({
         structure: out_of_cell,
         show_image_atoms: false,
       })
@@ -1207,35 +1389,29 @@ describe(`Structure`, () => {
 
   // `wyckoff_positions` is the viewer's own mapped Wyckoff table (site indices on the displayed
   // cell), so consumers such as the symmetry demo need not re-run map_wyckoff_to_all_atoms
-  test(`binds wyckoff_positions once symmetry analysis lands and remaps them per cell type`, async () => {
+  test(`exposes read-only wyckoff_positions once symmetry analysis lands and remaps them per cell type`, async () => {
     vi.stubEnv(`VITEST`, ``)
     await init_moyo_for_tests()
-    try {
-      const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
-        { element: `Cu`, abc: [0, 0, 0] },
-      ])
-      const state = $state<{
-        sym_data: symmetry.SymmetryDataset | null
-        wyckoff_positions: symmetry.WyckoffPos[]
-        cell_type: symmetry.CellType
-      }>({ sym_data: null, wyckoff_positions: [], cell_type: `original` })
-      // no image atoms so site_indices are exactly the cell's own sites
-      mount_structure(bind_props({ structure: prim_fcc_cu, show_image_atoms: false }, state))
-      flushSync()
-      expect(state.wyckoff_positions).toEqual([])
-      await vi.waitFor(() => expect(state.sym_data).not.toBeNull())
-      flushSync()
-      expect(state.wyckoff_positions).toEqual([
-        expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),
-      ])
-      // the conventional fcc cell holds four copies of the lone 4a site
-      state.cell_type = `conventional`
-      flushSync()
-      expect(state.wyckoff_positions).toHaveLength(1)
-      expect(state.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
-    } finally {
-      vi.unstubAllEnvs()
-    }
+    const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
+      { element: `Cu`, abc: [0, 0, 0] },
+    ])
+    const state = $state<{ cell_type: symmetry.CellType }>({ cell_type: `original` })
+    // no image atoms so site_indices are exactly the cell's own sites
+    const analysis = mount_structure(
+      bind_props({ structure: prim_fcc_cu, show_image_atoms: false }, state),
+    )
+    flushSync()
+    expect(analysis.wyckoff_positions).toEqual([])
+    await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
+    flushSync()
+    expect(analysis.wyckoff_positions).toEqual([
+      expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),
+    ])
+    // the conventional fcc cell holds four copies of the lone 4a site
+    state.cell_type = `conventional`
+    flushSync()
+    expect(analysis.wyckoff_positions).toHaveLength(1)
+    expect(analysis.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
   })
 
   // The symmetry-element and lattice-plane overlays only exist in the analyzed (input) cell and
@@ -1257,12 +1433,10 @@ describe(`Structure`, () => {
             ? { symmetry_elements }
             : { lattice_planes: [{ hkl: [1, 1, 1] }] },
         cell_type: `original`,
-        sym_data: null,
       })
-      mount_structure(props)
-      flushSync()
-      // the mount-time analysis reset has run; hand the viewer its symmetry data now
-      props.sym_data = sym_data
+      vi.stubEnv(`VITEST`, ``)
+      const analysis = mount_structure(props)
+      await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
       flushSync()
       expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
 
@@ -1424,18 +1598,16 @@ describe(`Structure`, () => {
       measure_mode: MeasureMode
       show_image_atoms: boolean
       supercell_scaling: string
-      displayed_structure?: AnyStructure
     }>({
       structure,
       measured_sites: [],
       measure_mode: `distance`,
       show_image_atoms: true,
       supercell_scaling: `1x1x1`,
-      displayed_structure: undefined,
     })
-    mount_structure(props)
+    const analysis = mount_structure(props)
     await tick()
-    const displayed_count = () => props.displayed_structure?.sites.length ?? 0
+    const displayed_count = () => analysis.displayed_structure?.sites.length ?? 0
     const pick_last_displayed = () => {
       props.measured_sites = [0, 1, displayed_count() - 1]
       flushSync()
@@ -1765,9 +1937,7 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
   expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
 })
 
-// show_trajectory_lines lives outside scene_props (Trajectory binds it top-level), but a caller
-// passing it inside scene_props must still be honored instead of silently falling to the default
-test(`scene_props.show_trajectory_lines seeds the trail toggle`, async () => {
+test(`scene_props owns the trail toggle in both directions`, async () => {
   const trajectory_position_stream = make_position_stream(
     Array.from({ length: 3 }, () => [[0, 0, 0]]),
     [`H`],
@@ -1777,16 +1947,24 @@ test(`scene_props.show_trajectory_lines seeds the trail toggle`, async () => {
       coords_unwrapped: true,
     },
   )
+  const scene_props = $state({ show_trajectory_lines: true })
   mount_structure({
     structure,
     active_pane: `controls`,
     show_controls: true,
-    scene_props: { show_trajectory_lines: true, trajectory_position_stream },
+    scene_props,
+    trajectory_position_stream,
   })
   await tick()
   const toggle = doc_query<HTMLInputElement>(
     `[data-key="show_trajectory_lines"] input[type="checkbox"]`,
   )
+  expect(toggle.checked).toBe(true)
+  toggle.click()
+  flushSync()
+  expect(scene_props.show_trajectory_lines).toBe(false)
+  scene_props.show_trajectory_lines = true
+  flushSync()
   expect(toggle.checked).toBe(true)
 })
 
@@ -1984,7 +2162,7 @@ describe(`Multi-side view`, () => {
 // Camera target reset on supercell change and structure reload requires WebGL +
 // OrbitControls — tested via Playwright E2E (tests/playwright/structure/).
 
-describe(`data_url acquisition`, () => {
+describe(`source acquisition`, () => {
   const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
     vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(content, { headers })))
   }
@@ -2001,39 +2179,57 @@ describe(`data_url acquisition`, () => {
   const request_url = (url: string | URL | Request) =>
     typeof url === `string` ? url : url instanceof URL ? url.href : url.url
 
-  test(`reports invalid structure_string content`, async () => {
-    const on_error = vi.fn()
-    mount_structure({ structure_string: `not parseable`, on_error })
-    await vi.waitFor(() =>
-      expect(on_error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error_msg: expect.stringMatching(/^Failed to parse string: /),
-          filename: `string`,
-        }),
-      ),
-    )
-  })
+  test.each([
+    {
+      name: `invalid inline source`,
+      source: { data: `not parseable`, filename: `string` },
+      filename: `string`,
+      error: /^Failed to parse string: /,
+      on_error: vi.fn(),
+    },
+    {
+      name: `HTTP 404 source`,
+      source: `/missing-structure.json`,
+      filename: `missing-structure.json`,
+      error: /Failed to fetch \/missing-structure\.json: HTTP 404/,
+      on_error: undefined,
+    },
+  ])(
+    `reports $name errors with an optional callback`,
+    async ({ source, filename, error, on_error }) => {
+      vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(``, { status: 404 })))
+      mount_file_viewer({ source, on_error })
+      await vi.waitFor(() =>
+        expect(document.querySelector(`.status-message.error`)?.textContent).toMatch(error),
+      )
+      if (on_error)
+        expect(on_error).toHaveBeenCalledWith(
+          expect.objectContaining({ error_msg: expect.stringMatching(error), filename }),
+        )
+      const status_msg = doc_query(`.status-message.error`)
+      expect(status_msg.getAttribute(`role`)).toBe(`alert`)
+    },
+  )
 
-  test(`keeps loading active until async data_url handlers finish`, async () => {
+  test(`keeps loading active until async source handlers finish`, async () => {
     mock_fetch_response(SAMPLE_POSCAR_CONTENT)
-    let resolve_drop!: () => void
-    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
-    const on_file_drop = vi.fn(() => drop_done)
+    const { promise, resolve } = Promise.withResolvers<undefined>()
+    const on_file_drop = vi.fn(() => promise)
     const state = { loading: false }
-    mount_structure(bind_props({ data_url: `/test.poscar`, on_file_drop }, state))
+    mount_file_viewer(bind_props({ source: `/test.poscar`, on_file_drop }, state))
 
     await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
     expect(state.loading).toBe(true)
-    resolve_drop()
+    resolve(undefined)
     await vi.waitFor(() => expect(state.loading).toBe(false))
   })
 
   // A host handler's failure is reported in its own words, with the payload's source identity
-  test(`reports async data_url handler failures`, async () => {
+  test(`reports async source handler failures`, async () => {
     mock_fetch_response(SAMPLE_POSCAR_CONTENT)
     const on_error = vi.fn()
-    mount_structure({
-      data_url: `/test.poscar`,
+    mount_file_viewer({
+      source: `/test.poscar`,
       on_file_drop: () => Promise.reject(new Error(`handler failed`)),
       on_error,
     })
@@ -2047,8 +2243,8 @@ describe(`data_url acquisition`, () => {
   test(`keeps compressed source identity separate from the logical filename`, async () => {
     mock_fetch_response(SAMPLE_POSCAR_CONTENT, { 'content-encoding': `gzip` })
     let load_data: StructureHandlerData | undefined
-    mount_structure({
-      data_url: `/test.poscar.gz`,
+    mount_file_viewer({
+      source: `/test.poscar.gz`,
       on_file_load: (data: StructureHandlerData) => (load_data = data),
     })
 
@@ -2061,7 +2257,7 @@ describe(`data_url acquisition`, () => {
   test(`keeps compressed volumetric source identity separate from its dedupe key`, async () => {
     mock_fetch_response(SAMPLE_CHGCAR_CONTENT, { 'content-encoding': `gzip` })
     const state = { volumetric_data: undefined as VolumetricData[] | undefined }
-    mount_structure(bind_props({ data_url: `/density.CHGCAR.gz` }, state))
+    mount_file_viewer(bind_props({ source: `/density.CHGCAR.gz` }, state))
 
     await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
     expect(state.volumetric_data?.[0]).toMatchObject({
@@ -2070,9 +2266,10 @@ describe(`data_url acquisition`, () => {
     })
   })
 
-  // A host that passes isosurface_settings alongside data_url (pymatviz) wants its layers on
+  // A host that passes isosurface_settings alongside source (pymatviz) wants its layers on
   // the loaded volume, not the automatic 20 %-of-|max| layer
   const caller_layer = {
+    volume_id: JSON.stringify([`density.CHGCAR`, `charge density`]),
     isovalue: 0.05,
     color: `#3b82f6`,
     opacity: 0.6,
@@ -2082,16 +2279,16 @@ describe(`data_url acquisition`, () => {
   }
   test.each<[string, IsosurfaceLayer[], (volumes: VolumetricData[]) => IsosurfaceLayer[]]>([
     [`caller layers`, [caller_layer], () => [caller_layer]],
-    [`no layers`, [], (volumes) => [auto_volume_layer(volumes[0], 0)]],
+    [`no layers`, [], (volumes) => [auto_volume_layer(volumes[0])]],
   ])(
-    `a data_url volume keeps %s supplied before it loaded`,
+    `a source volume keeps %s supplied before it loaded`,
     async (_label, layers, expected_layers) => {
       mock_fetch_response(SAMPLE_CHGCAR_CONTENT)
       const state = {
         volumetric_data: undefined as VolumetricData[] | undefined,
         isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
       }
-      mount_structure(bind_props({ data_url: `/density.CHGCAR` }, state))
+      mount_file_viewer(bind_props({ source: `/density.CHGCAR` }, state))
 
       await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
       expect(state.isosurface_settings.layers).toEqual(
@@ -2101,13 +2298,13 @@ describe(`data_url acquisition`, () => {
   )
 
   // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
-  const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
+  const mount_pending_url = async (extra: ComponentProps<typeof StructureFileViewer> = {}) => {
     const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
+    const props = $state<ComponentProps<typeof StructureFileViewer>>({
+      source: `/a.json`,
       ...extra,
     })
-    mount_structure(props)
+    mount_file_viewer(props)
     await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
     return { responses, props }
   }
@@ -2116,7 +2313,7 @@ describe(`data_url acquisition`, () => {
     const on_file_load = vi.fn()
     const { responses, props } = await mount_pending_url({ on_file_load })
 
-    props.data_url = `/b.json`
+    props.source = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
     responses
       .get(`/b.json`)
@@ -2133,23 +2330,23 @@ describe(`data_url acquisition`, () => {
     expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
   })
 
-  test(`an unrelated prop change does not abort and restart an in-flight data_url fetch`, async () => {
+  test(`an unrelated prop change does not abort and restart an in-flight source fetch`, async () => {
     const { responses, props } = await mount_pending_url({
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
-      active_volume_idx: 0,
+      active_volume_id: `0`,
     })
     props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
-    props.active_volume_idx = 2
+    props.active_volume_id = `2`
     await tick()
     await tick()
     expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
   })
 
-  test(`on_error reports the requested URL, not a superseded data_url`, async () => {
+  test(`on_error reports the requested URL, not a superseded source`, async () => {
     const on_error = vi.fn()
     const { responses, props } = await mount_pending_url({ on_error })
 
-    props.data_url = `/b.json`
+    props.source = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
     responses.get(`/a.json`)?.shift()?.reject(new Error(`network down`))
     await tick()
@@ -2160,39 +2357,23 @@ describe(`data_url acquisition`, () => {
     expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
   })
 
-  test(`load error state renders StatusMessage`, async () => {
-    vi.stubGlobal(
-      `fetch`,
-      vi.fn().mockResolvedValue({ ok: false, status: 404, text: () => Promise.resolve(``) }),
-    )
-    mount_structure({ data_url: `/missing-structure.json` })
-    await vi.waitFor(() =>
-      expect(document.querySelector(`.status-message.error`)).toBeInstanceOf(HTMLElement),
-    )
-    const status_msg = doc_query(`.status-message.error`)
-    expect(status_msg.getAttribute(`role`)).toBe(`alert`)
-    expect(status_msg.textContent).toContain(
-      `Failed to fetch /missing-structure.json: HTTP 404`,
-    )
-  })
-
   // Deleting an atom writes a new structure object through the binding. Without re-claiming it
-  // for the URL the loader reads it as caller-supplied and never fetches the next data_url.
-  test(`an edited URL-loaded structure still follows a data_url change`, async () => {
+  // for the URL the loader reads it as caller-supplied and never fetches the next source.
+  test(`an edited URL-loaded structure still follows a source change`, async () => {
     const fetch_mock = vi.fn((url: string | URL | Request) => {
       const element = request_url(url).includes(`b.json`) ? `He` : `H`
       return Promise.resolve(new Response(structure_json(element, 3)))
     })
     vi.stubGlobal(`fetch`, fetch_mock)
     const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
+    const props = $state<ComponentProps<typeof StructureFileViewer>>({
+      source: `/a.json`,
       structure: undefined,
       selected_sites: [],
       measure_mode: `edit-atoms`,
       on_file_load,
     })
-    mount_structure(props)
+    mount_file_viewer(props)
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
     await tick()
     props.selected_sites = [0]
@@ -2200,7 +2381,7 @@ describe(`data_url acquisition`, () => {
     await tick()
     expect(props.structure?.sites).toHaveLength(2)
 
-    props.data_url = `/b.json`
+    props.source = `/b.json`
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
     expect(props.structure?.sites[0]?.species[0]?.element).toBe(`He`)
   })
@@ -2216,7 +2397,7 @@ test.each([`replace`, `mutate`, `restart`] as const)(
         return {}
       }
     const input = make_crystal(1, [{ element: `Cu`, abc: [0.1, 0.2, 0.3] }])
-    const saved_volume = { ...make_volume(make_grid(2, 2, 2, () => 1)), field_id: `density` }
+    const saved_volume = { ...make_volume(make_grid(2, 2, 2, () => 1)), id: `density` }
     const state = $state({
       structure: undefined as AnyStructure | undefined,
       volumetric_data: [] as VolumetricData[],
@@ -2289,7 +2470,7 @@ test(`import survives a synchronous restart from the previous run's abort listen
     input,
     run_id: 7,
     provenance: { model: `saved`, version: `1`, units: {}, settings: {} },
-    volumes: [{ ...make_volume(make_grid(2, 2, 2, () => 1)), field_id: `density` }],
+    volumes: [{ ...make_volume(make_grid(2, 2, 2, () => 1)), id: `density` }],
   }
   await tick()
   expect(props.volumetric_data).toHaveLength(1)
@@ -2301,4 +2482,24 @@ test(`import survives a synchronous restart from the previous run's abort listen
   await tick()
   expect(props.volumetric_data).toEqual([])
   expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
+})
+
+// The data component owns no acquisition and publishes computed results without setters.
+test(`pure Structure exposes live read-only analysis without loading files`, async () => {
+  const fetch = vi.fn()
+  vi.stubGlobal(`fetch`, fetch)
+  const props = $state({ structure, show_image_atoms: false })
+  const analysis = mount_structure(props)
+  await tick()
+  expect(analysis.displayed_structure?.sites).toHaveLength(structure.sites.length)
+  expect(Reflect.set(analysis, `displayed_structure`, undefined)).toBe(false)
+  props.structure = { ...structure, sites: structure.sites.slice(0, 1) }
+  flushSync()
+  expect(analysis.displayed_structure?.sites).toHaveLength(1)
+  doc_query(`.structure`).dispatchEvent(
+    create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `input.poscar`)),
+  )
+  await tick()
+  expect(fetch).not.toHaveBeenCalled()
+  expect(analysis.displayed_structure?.sites).toHaveLength(1)
 })

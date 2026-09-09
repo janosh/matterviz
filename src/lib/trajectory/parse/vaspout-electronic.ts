@@ -219,6 +219,7 @@ export const read_vaspout_bands = (
 
     const efermi = dos?.efermi
     return {
+      type: `electronic`,
       qpoints,
       recip_lattice,
       branches,

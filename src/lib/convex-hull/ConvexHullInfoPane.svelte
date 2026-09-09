@@ -109,9 +109,7 @@
   {...rest}
 >
   <ConvexHullStats
-    {phase_stats}
-    {stable_entries}
-    {unstable_entries}
+    model={{ entries: [...stable_entries, ...unstable_entries], phase_stats }}
     {show_stable}
     {show_unstable}
     {entry_category}

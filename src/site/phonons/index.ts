@@ -2,7 +2,7 @@
 
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { PhononBandStructure, PhononDos } from '$lib/spectral'
-import { normalize_band_structure } from '$lib/spectral'
+import { normalize_band_structure, normalize_dos } from '$lib/spectral'
 import type { Crystal } from '$lib/structure'
 import { SvelteMap } from 'svelte/reactivity'
 
@@ -20,7 +20,7 @@ interface RawPhononBandStructure {
 
 type PhononData = {
   phonon_bandstructure?: RawPhononBandStructure
-  phonon_dos?: PhononDos
+  phonon_dos?: Omit<PhononDos, 'type'>
   primitive?: Crystal
   structure?: Crystal
 }
@@ -58,11 +58,15 @@ for (const [path, data] of Object.entries(raw_imports)) {
   phonon_data[id] = data
   if (data.phonon_bandstructure) {
     const band_struct = normalize_band_structure(data.phonon_bandstructure)
-    if (!band_struct) throw new Error(`${id}: phonon_bandstructure is not a band structure`)
-    phonon_bands[id] = band_struct
+    if (!band_struct || band_struct.type !== `phonon`)
+      throw new Error(`${id}: phonon_bandstructure is not a phonon band structure`)
+    phonon_bands[id] = { ...band_struct, type: `phonon` }
   }
   if (data.phonon_dos) {
-    phonon_dos[id] = data.phonon_dos
+    const dos = normalize_dos(data.phonon_dos)
+    if (!dos || dos.type !== `phonon`)
+      throw new Error(`${id}: phonon_dos is not a phonon density of states`)
+    phonon_dos[id] = dos
   }
 }
 

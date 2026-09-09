@@ -4,16 +4,10 @@
   import {
     is_crystal,
     parse_supercell_scaling,
-    Structure,
+    StructureFileViewer,
     type AnyStructure,
   } from '$lib/structure'
-  import type {
-    CellType,
-    ShowSymmetryKinds,
-    SymmetryDataset,
-    SymmetrySettings,
-    WyckoffPos,
-  } from '$lib/symmetry'
+  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '$lib/symmetry'
   import {
     DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
@@ -35,14 +29,17 @@
   let source_filename = $state(default_filename)
   let display_filename = $state(default_filename)
   // Wyckoff rows already re-expressed onto whatever cell the viewer renders
-  // (conventional/primitive/supercell), bound from the viewer
-  let wyckoff_positions = $state<WyckoffPos[]>([])
+  // (conventional/primitive/supercell), read from the viewer analysis
+  let top_viewer = $state<ReturnType<typeof StructureFileViewer>>()
+  let two_col_viewer = $state<ReturnType<typeof StructureFileViewer>>()
+  let stacked_viewer = $state<ReturnType<typeof StructureFileViewer>>()
+  const wyckoff_positions = $derived(top_viewer?.analysis.wyckoff_positions ?? [])
   let hovered_wyckoff_sites = $state<number[]>([])
   let active_wyckoff_sites = $state<number[]>([])
   // Symmetry data for each example
-  let top_ex_sym_data = $state<SymmetryDataset | null>(null)
-  let two_col_sym_data = $state<SymmetryDataset | null>(null)
-  let stacked_sym_data = $state<SymmetryDataset | null>(null)
+  const top_ex_sym_data = $derived(top_viewer?.analysis.sym_data ?? null)
+  const two_col_sym_data = $derived(two_col_viewer?.analysis.sym_data ?? null)
+  const stacked_sym_data = $derived(stacked_viewer?.analysis.sym_data ?? null)
   // Symmetry settings for layout examples (independent controls)
   let wide_example_symmetry_settings = $state<SymmetrySettings>(default_sym_settings)
   let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)
@@ -159,17 +156,16 @@
     {/if}
   </div>
 
-  <Structure
-    data_url="/structures/{source_filename}"
-    bind:wyckoff_positions
-    bind:sym_data={top_ex_sym_data}
+  <StructureFileViewer
+    source="/structures/{source_filename}"
+    bind:this={top_viewer}
     bind:symmetry_settings={wide_example_symmetry_settings}
     bind:cell_type={top_ex_cell_type}
     bind:structure={top_ex_structure}
     bind:supercell_scaling={top_ex_tiling}
+    highlighted_sites={active_wyckoff_sites}
+    selected_sites={hovered_wyckoff_sites}
     scene_props={{
-      active_sites: active_wyckoff_sites,
-      selected_sites: hovered_wyckoff_sites,
       symmetry_elements: sym_elements,
       symmetry_elements_props: {
         show_kinds: show_sym_kinds,
@@ -188,7 +184,7 @@
     >
       {display_filename}
     </h2>
-  </Structure>
+  </StructureFileViewer>
 </div>
 
 <p style="margin: 2em 0; text-align: center">Drag any structure onto the viewer:</p>
@@ -205,10 +201,10 @@
       <h3>Two Column - Stats + Structure</h3>
       <div class="two-column-layout">
         <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
-        <Structure
-          data_url="/structures/{source_filename}"
+        <StructureFileViewer
+          source="/structures/{source_filename}"
           show_controls={true}
-          bind:sym_data={two_col_sym_data}
+          bind:this={two_col_viewer}
           bind:symmetry_settings={two_col_sym_settings}
           style="height: 300px; border-radius: 8pt"
         />
@@ -220,10 +216,10 @@
       <h3>Stacked Layout - Stats Above Structure</h3>
       <div class="stacked-layout">
         <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
-        <Structure
-          data_url="/structures/{source_filename}"
+        <StructureFileViewer
+          source="/structures/{source_filename}"
           show_controls={true}
-          bind:sym_data={stacked_sym_data}
+          bind:this={stacked_viewer}
           bind:symmetry_settings={stacked_sym_settings}
           style="height: 400px; border-radius: 8pt; margin-top: 1em"
         />

@@ -161,7 +161,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
     )
   })
 
-  test(`legend click hides the series and writes visible=false into a bound series`, async () => {
+  test(`legend click hides the series and writes bound hidden_series`, async () => {
     const click_first_item = () => {
       const first_item = query(container, `.legend-item`)
       first_item.click()
@@ -175,24 +175,34 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(multi_series[0].visible).toBeUndefined()
     if (mounted_component) await unmount(mounted_component)
 
-    // bound: the toggle is written back into the caller's series array (plain state here, so
+    // Bound: the toggle writes hidden IDs (plain state here, so
     // the DOM can't re-render from it - that path is covered above)
-    const state = { series: multi_series }
+    const state = { series: multi_series, hidden_series: [] as (string | number)[] }
     await mount_plot(bind_props({}, state))
     click_first_item()
-    expect(state.series.map((srs) => srs.visible ?? true)).toEqual([false, true])
+    expect(state.series).toBe(multi_series)
+    expect(state.hidden_series).toEqual([0])
   })
 
-  test(`legend-hidden series stays hidden across one-way series replacement until the parent flips visible`, async () => {
+  test(`legend-hidden series stays hidden across one-way series replacement until the parent changes hidden_series`, async () => {
     const make_series = (first_extra: Partial<DataSeries3D> = {}): DataSeries3D[] => [
       { ...basic_series, id: `a`, ...first_extra },
       { ...basic_series, id: `b`, label: `Other` },
     ]
-    const state = $state({ series: make_series() })
+    const state = $state<{
+      series: DataSeries3D[]
+      hidden_series?: readonly (string | number)[]
+    }>({ series: make_series() })
     // getter-only prop: one-way, so the component cannot write back into the parent
     await mount_plot({
       get series() {
         return state.series
+      },
+      get hidden_series() {
+        return state.hidden_series
+      },
+      set hidden_series(value) {
+        state.hidden_series = value
       },
     })
     const first_hidden = () =>
@@ -208,8 +218,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     flushSync()
     await vi.waitFor(() => expect(first_hidden()).toBe(true))
 
-    // parent explicitly shows it again: the user's override yields
-    state.series = make_series({ visible: true })
+    // The host explicitly controls visibility without rewriting data.
+    state.hidden_series = []
     flushSync()
     await vi.waitFor(() => expect(first_hidden()).toBe(false))
   })

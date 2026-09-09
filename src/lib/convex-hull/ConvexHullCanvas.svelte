@@ -28,6 +28,7 @@
   import ConvexHullChrome from './ConvexHullChrome.svelte'
   import { hull_distance_range, hull_style_css } from './helpers'
   import { create_hull_data_pipeline, KIND_LABEL } from './hull-state.svelte'
+  import type { HullModel } from './model'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { default_controls, merge_hull_config } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
@@ -72,9 +73,6 @@
     enable_click_selection = true,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
-    phase_stats = $bindable(null),
-    stable_entries = $bindable([]),
-    unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
     highlight_style = {},
     selected_entry = $bindable(null),
@@ -119,14 +117,12 @@
     label_threshold: () => label_threshold,
     set_temperature: (next_temp) => (temperature = next_temp),
     set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
-    set_stable_entries: (value) => (stable_entries = value),
-    set_unstable_entries: (value) => (unstable_entries = value),
-    set_phase_stats: (value) => (phase_stats = value),
     hide_labels: () => {
       show_stable_labels = false
       show_unstable_labels = false
     },
   })
+  export const get_model = (): HullModel => hull_data.model
   const elements = $derived(hull_data.elements)
   const plot_entries = $derived(hull_data.plot_entries)
   const visible_entries = $derived(hull_data.visible_entries)
@@ -309,8 +305,7 @@
     aria-label="{KIND_LABEL[strategy.kind]} convex hull visualization"
   >
     {@render children?.({
-      stable_entries,
-      unstable_entries,
+      model: hull_data.model,
       highlighted_entries,
       selected_entry,
     })}
@@ -318,7 +313,7 @@
       bind:this={canvas}
       tabindex="0"
       aria-label={merged_controls.title ||
-        phase_stats?.chemical_system ||
+        hull_data.phase_stats?.chemical_system ||
         `${dim}D Convex Hull`}
       {...interactions.canvas_handlers}
     ></canvas>
@@ -354,7 +349,6 @@
       loading={entries.length === 0}
       on_reset={interactions.reset_camera}
       {enable_info_pane}
-      {phase_stats}
       {label_threshold}
       bind:fullscreen
       {fullscreen_toggle}
@@ -362,8 +356,6 @@
       {wrapper}
       {camera}
       {merged_controls}
-      {stable_entries}
-      {unstable_entries}
       get_point_color={interactions.get_point_color}
       merged_highlight_style={interactions.highlight_style}
       is_highlighted={interactions.is_highlighted}

@@ -89,6 +89,18 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
   await expect.poll(async () => (await scene_state(page)).arrows).toBeGreaterThan(0)
   await expect.poll(async () => (await scene_state(page)).density_vertices).toBeGreaterThan(0)
   expect((await scene_state(page)).atom_colors).not.toEqual(original_colors)
+  const visibility = page.getByRole(`checkbox`, { name: `Show prediction` })
+  await visibility.uncheck()
+  await expect
+    .poll(() => scene_state(page))
+    .toMatchObject({
+      arrows: 0,
+      density_vertices: 0,
+      atom_colors: original_colors,
+    })
+  await visibility.check()
+  await expect.poll(async () => (await scene_state(page)).arrows).toBeGreaterThan(0)
+  await expect.poll(async () => (await scene_state(page)).density_vertices).toBeGreaterThan(0)
   await page.locator(`button.structure-controls-toggle`).click()
   await expect(
     page.getByRole(`button`, { name: `Add surface for Predicted density`, exact: true }),
@@ -195,7 +207,7 @@ test(`exports reproducible predictions separately from the original structure`, 
   expect(data.site_properties).toHaveLength(data.input.sites.length)
   expect(data.site_properties[0]).toMatchObject({ charge: 0.4, dipole: [0.4, 0.2, 0.1] })
   expect(data.input.sites[0].properties.charge).toBeUndefined()
-  expect(data.volumes[0]).toMatchObject({ field_id: `density`, dims: [12, 12, 12] })
+  expect(data.volumes[0]).toMatchObject({ id: `density`, dims: [12, 12, 12] })
   expect(data.volumes[0].values).toHaveLength(12 ** 3)
   const original_download = page.waitForEvent(`download`)
   await page.getByTitle(`Download JSON`, { exact: true }).click()

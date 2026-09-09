@@ -283,6 +283,7 @@ export function parse_chgcar(content: string): VolumetricFileData {
     const values = transpose_x_fastest(data, dims, divisor)
     volumes.push(
       make_volume(values, dims, {
+        id: volume_labels[vol_idx],
         lattice,
         origin: [0, 0, 0],
         periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
@@ -513,8 +514,9 @@ export function parse_cube(
   // .cube data is already z-fastest (z varies fastest, then y, then x)
   const volumes: VolumetricData[] = [
     make_volume(data, n_grid, {
+      id: `scalar`,
       lattice,
-      origin,
+      origin: [0, 0, 0], // same lattice frame as the shifted atomic positions
       periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
       label: `volumetric data`,
     }),

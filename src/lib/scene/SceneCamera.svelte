@@ -23,7 +23,7 @@
     orbit_controls = $bindable(undefined),
   }: {
     camera_projection?: CameraProjection
-    position: Vec3 // camera position
+    position?: Vec3 // camera position; may be unset while the scene measures its bounds
     fov?: number // perspective field of view
     zoom?: number // orthographic zoom level
     near?: number // perspective near plane (three's default when omitted)
@@ -88,11 +88,17 @@
 {/snippet}
 
 {#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault {position} {fov} {near} {far}>
+  <T.PerspectiveCamera makeDefault {...position ? { position } : {}} {fov} {near} {far}>
     {@render camera_contents()}
   </T.PerspectiveCamera>
 {:else}
-  <T.OrthographicCamera makeDefault {position} {zoom} near={ortho_near} {far}>
+  <T.OrthographicCamera
+    makeDefault
+    {...position ? { position } : {}}
+    {zoom}
+    near={ortho_near}
+    {far}
+  >
     {@render camera_contents()}
   </T.OrthographicCamera>
 {/if}

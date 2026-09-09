@@ -176,6 +176,7 @@ describe(`HDF5`, () => {
     expect((await run.read_frame(99)).step).toBe(991)
     run.dispose()
     expect(() => run.read_frame(5)).toThrow(/disposed/)
-    expect(run.read_frame(0)).toBe(run.preview) // the preview needs no handle
+    expect(() => run.read_frame(0)).toThrow(/disposed/)
+    expect(run.preview.structure.sites).toHaveLength(55)
   })
 })

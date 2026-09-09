@@ -14,6 +14,7 @@
 </script>
 
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
@@ -49,7 +50,7 @@
     pane_props,
     children,
   }: {
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
@@ -117,181 +118,180 @@
   const projection_planes = [`xy`, `xz`, `yz`] as const
 </script>
 
-{#if show_controls}
-  <ControlPane
-    bind:controls_open
-    controls_name="scatter-3d"
-    toggle_title="3D plot"
-    pane_style="--pane-max-height: 80cqh"
-    {toggle_props}
-    pane_props={{
-      title: `3D plot settings`,
-      ...pane_props,
-    }}
+<ControlPane
+  {show_controls}
+  bind:controls_open
+  controls_name="scatter-3d"
+  toggle_title="3D plot"
+  pane_style="--pane-max-height: 80cqh"
+  {toggle_props}
+  pane_props={{
+    title: `3D plot settings`,
+    ...pane_props,
+  }}
+>
+  <!-- Camera Controls -->
+  <SettingsSection
+    title="Camera"
+    current_values={{ projection: camera_projection, auto_rotate }}
+    on_reset={() => ({ camera_projection, auto_rotate } = defaults)}
+    layout="grid"
   >
-    <!-- Camera Controls -->
-    <SettingsSection
-      title="Camera"
-      current_values={{ projection: camera_projection, auto_rotate }}
-      on_reset={() => ({ camera_projection, auto_rotate } = defaults)}
-      layout="grid"
+    <label>
+      <span>Projection</span>
+      <select bind:value={camera_projection}>
+        <option value="perspective">Perspective</option>
+        <option value="orthographic">Orthographic</option>
+      </select>
+    </label>
+    <NumberRangeInput min={0} max={5} step={0.1} bind:value={auto_rotate}
+      >Auto-rotate</NumberRangeInput
     >
+  </SettingsSection>
+
+  <!-- Display Controls -->
+  <SettingsSection
+    title="Display"
+    current_values={Object.fromEntries(display_toggles.map(([key]) => [key, display[key]]))}
+    on_reset={() => {
+      const { show_axes, show_grid, show_axis_labels, show_bounding_box } = defaults
+      display = { ...display, show_axes, show_grid, show_axis_labels, show_bounding_box }
+    }}
+    layout="grid"
+  >
+    {#each display_toggles as [key, label] (key)}
       <label>
-        <span>Projection</span>
-        <select bind:value={camera_projection}>
-          <option value="perspective">Perspective</option>
-          <option value="orthographic">Orthographic</option>
-        </select>
+        <span>{label}</span>
+        <input type="checkbox" checked={display[key]} onchange={toggle_display(key)} />
       </label>
-      <NumberRangeInput min={0} max={5} step={0.1} bind:value={auto_rotate}
-        >Auto-rotate</NumberRangeInput
-      >
-    </SettingsSection>
+    {/each}
+  </SettingsSection>
 
-    <!-- Display Controls -->
+  <!-- Projections: only when there's data to project -->
+  {#if series.length > 0}
     <SettingsSection
-      title="Display"
-      current_values={Object.fromEntries(display_toggles.map(([key]) => [key, display[key]]))}
-      on_reset={() => {
-        const { show_axes, show_grid, show_axis_labels, show_bounding_box } = defaults
-        display = { ...display, show_axes, show_grid, show_axis_labels, show_bounding_box }
-      }}
-      layout="grid"
-    >
-      {#each display_toggles as [key, label] (key)}
-        <label>
-          <span>{label}</span>
-          <input type="checkbox" checked={display[key]} onchange={toggle_display(key)} />
-        </label>
-      {/each}
-    </SettingsSection>
-
-    <!-- Projections: only when there's data to project -->
-    {#if series.length > 0}
-      <SettingsSection
-        title="Projections"
-        current_values={{
-          ...Object.fromEntries(
-            projection_planes.map((plane) => [plane, display.projections?.[plane]]),
-          ),
-          opacity: display.projection_opacity,
-          scale: display.projection_scale,
-        }}
-        on_reset={() => {
-          const { projections, projection_opacity, projection_scale } = defaults
-          display = {
-            ...display,
-            projections: { ...projections },
-            projection_opacity,
-            projection_scale,
-          }
-        }}
-        layout="grid"
-      >
-        <div class="setting">
-          <span>Planes</span>
-          <div class="check-options">
-            {#each projection_planes as plane (plane)}
-              <label>
-                <input
-                  type="checkbox"
-                  checked={display.projections?.[plane]}
-                  onchange={toggle_projection(plane)}
-                />
-                {plane.toUpperCase()}
-              </label>
-            {/each}
-          </div>
-        </div>
-        <NumberRangeInput
-          min={0}
-          max={1}
-          step={0.05}
-          bind:value={
-            () => display.projection_opacity ?? defaults.projection_opacity,
-            set_display(`projection_opacity`)
-          }>Opacity</NumberRangeInput
-        >
-        <NumberRangeInput
-          min={0.1}
-          max={1}
-          step={0.05}
-          bind:value={
-            () => display.projection_scale ?? defaults.projection_scale,
-            set_display(`projection_scale`)
-          }>Size</NumberRangeInput
-        >
-      </SettingsSection>
-    {/if}
-
-    <!-- Axes (merged X/Y/Z) -->
-    <SettingsSection
-      title="Axes"
+      title="Projections"
       current_values={{
-        x_range: x_axis.range,
-        y_range: y_axis.range,
-        z_range: z_axis.range,
+        ...Object.fromEntries(
+          projection_planes.map((plane) => [plane, display.projections?.[plane]]),
+        ),
+        opacity: display.projection_opacity,
+        scale: display.projection_scale,
       }}
       on_reset={() => {
-        for (const { axis, set } of axes) set({ ...axis, range: [null, null] })
+        const { projections, projection_opacity, projection_scale } = defaults
+        display = {
+          ...display,
+          projections: { ...projections },
+          projection_opacity,
+          projection_scale,
+        }
       }}
       layout="grid"
     >
-      {#each axes as entry (entry.name)}
-        {@const { name, axis, auto_range, set } = entry}
-        <div class="setting">
-          <span>{name}</span>
-          <div class="axis-inputs">
-            <input
-              type="text"
-              value={axis.label}
-              oninput={(event) => set({ ...axis, label: event.currentTarget.value })}
-              placeholder="{name} label"
-              aria-label="{name} label"
-              class="axis-label-input"
-            />
-            <input
-              type="number"
-              step="any"
-              value={round4(axis.range?.[0] ?? auto_range[0])}
-              oninput={(event) => set_axis_range(entry, 0, event.currentTarget.valueAsNumber)}
-              aria-label="{name} min"
-              class="axis-range-input"
-            />
-            <span style="flex-shrink: 0; opacity: 0.5">–</span>
-            <input
-              type="number"
-              step="any"
-              value={round4(axis.range?.[1] ?? auto_range[1])}
-              oninput={(event) => set_axis_range(entry, 1, event.currentTarget.valueAsNumber)}
-              aria-label="{name} max"
-              class="axis-range-input"
-            />
-          </div>
+      <div class="setting">
+        <span>Planes</span>
+        <div class="check-options">
+          {#each projection_planes as plane (plane)}
+            <label>
+              <input
+                type="checkbox"
+                checked={display.projections?.[plane]}
+                onchange={toggle_projection(plane)}
+              />
+              {plane.toUpperCase()}
+            </label>
+          {/each}
         </div>
-      {/each}
-    </SettingsSection>
-
-    <!-- Data summary: only when there's data -->
-    {#if series.length > 0 || surfaces.length > 0}
-      <div class="data-summary">
-        {#if series.length > 0}
-          <span
-            >{series.length} series · {series
-              .reduce((sum, srs) => sum + srs.x.length, 0)
-              .toLocaleString()} points</span
-          >
-        {/if}
-        {#if surfaces.length > 0}
-          <span>{surfaces.length} {surfaces.length === 1 ? `surface` : `surfaces`}</span>
-        {/if}
       </div>
-    {/if}
+      <NumberRangeInput
+        min={0}
+        max={1}
+        step={0.05}
+        bind:value={
+          () => display.projection_opacity ?? defaults.projection_opacity,
+          set_display(`projection_opacity`)
+        }>Opacity</NumberRangeInput
+      >
+      <NumberRangeInput
+        min={0.1}
+        max={1}
+        step={0.05}
+        bind:value={
+          () => display.projection_scale ?? defaults.projection_scale,
+          set_display(`projection_scale`)
+        }>Size</NumberRangeInput
+      >
+    </SettingsSection>
+  {/if}
 
-    <!-- User-provided children -->
-    {@render children?.()}
-  </ControlPane>
-{/if}
+  <!-- Axes (merged X/Y/Z) -->
+  <SettingsSection
+    title="Axes"
+    current_values={{
+      x_range: x_axis.range,
+      y_range: y_axis.range,
+      z_range: z_axis.range,
+    }}
+    on_reset={() => {
+      for (const { axis, set } of axes) set({ ...axis, range: [null, null] })
+    }}
+    layout="grid"
+  >
+    {#each axes as entry (entry.name)}
+      {@const { name, axis, auto_range, set } = entry}
+      <div class="setting">
+        <span>{name}</span>
+        <div class="axis-inputs">
+          <input
+            type="text"
+            value={axis.label}
+            oninput={(event) => set({ ...axis, label: event.currentTarget.value })}
+            placeholder="{name} label"
+            aria-label="{name} label"
+            class="axis-label-input"
+          />
+          <input
+            type="number"
+            step="any"
+            value={round4(axis.range?.[0] ?? auto_range[0])}
+            oninput={(event) => set_axis_range(entry, 0, event.currentTarget.valueAsNumber)}
+            aria-label="{name} min"
+            class="axis-range-input"
+          />
+          <span style="flex-shrink: 0; opacity: 0.5">–</span>
+          <input
+            type="number"
+            step="any"
+            value={round4(axis.range?.[1] ?? auto_range[1])}
+            oninput={(event) => set_axis_range(entry, 1, event.currentTarget.valueAsNumber)}
+            aria-label="{name} max"
+            class="axis-range-input"
+          />
+        </div>
+      </div>
+    {/each}
+  </SettingsSection>
+
+  <!-- Data summary: only when there's data -->
+  {#if series.length > 0 || surfaces.length > 0}
+    <div class="data-summary">
+      {#if series.length > 0}
+        <span
+          >{series.length} series · {series
+            .reduce((sum, srs) => sum + srs.x.length, 0)
+            .toLocaleString()} points</span
+        >
+      {/if}
+      {#if surfaces.length > 0}
+        <span>{surfaces.length} {surfaces.length === 1 ? `surface` : `surfaces`}</span>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- User-provided children -->
+  {@render children?.()}
+</ControlPane>
 
 <style>
   :is(.check-options, .axis-inputs) {

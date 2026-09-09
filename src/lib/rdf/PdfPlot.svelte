@@ -1,14 +1,14 @@
 <script lang="ts">
+  import { normalize_show_controls } from '$lib/controls'
+  import type { ScatterPlotOptions, DataSeries, RefLine } from '$lib/plot'
   import { plot_color } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
-  import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { RadiationType } from '$lib/scattering'
   import type { Crystal, Pbc } from '$lib/structure'
   import { strip_html, to_error } from '$lib/utils'
-  import type { ComponentProps } from 'svelte'
   import {
     calculate_total_pdf,
     label_structures,
@@ -47,10 +47,11 @@
     cutoff?: number
     n_bins?: number
     show_partials?: boolean
-    show_controls?: boolean
     pbc?: Pbc
     error_msg?: string
-  } & ComponentProps<typeof ScatterPlot> = $props()
+  } & ScatterPlotOptions = $props()
+
+  const controls_config = $derived(normalize_show_controls(show_controls))
 
   const struct_list = $derived(
     label_structures(structures).map(({ struct, label }) => ({
@@ -127,8 +128,8 @@
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
 
-{#if show_controls}
-  <div class="pdf-controls">
+{#if controls_config.visible(`controls`)}
+  <div class={[`pdf-controls`, controls_config.class]} style={controls_config.style}>
     {#each [[`g_r`, `g(r)`], [`reduced_g_r`, `G(r)`]] as const as [key, label] (key)}
       <button class:active={quantity === key} onclick={() => (quantity = key)}>{label}</button>
     {/each}
@@ -166,7 +167,7 @@ the whole story and claiming there was nothing to plot would contradict it -->
     {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
     y_axis={{ label: quantity === `reduced_g_r` ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
-    styles={{ show_lines: true, show_points: false }}
+    styles={{ show_lines: true, show_points: false, ...rest.styles }}
     style={rest.style ?? `height: 450px;`}
   />
   {#if weight_summary}
@@ -175,6 +176,18 @@ the whole story and claiming there was nothing to plot would contradict it -->
 {/if}
 
 <style>
+  .pdf-controls.hover-visible {
+    opacity: 0;
+    &:hover,
+    &:focus-within {
+      opacity: 1;
+    }
+  }
+  @media (hover: none) {
+    .pdf-controls.hover-visible {
+      opacity: 1;
+    }
+  }
   .pdf-controls {
     display: flex;
     flex-wrap: wrap;

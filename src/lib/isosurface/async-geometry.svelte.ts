@@ -29,7 +29,6 @@ const run_geometry = create_worker_client<
         periodic: job.volume.periodic,
       },
       range: job.range ? job.range.map((bounds) => [...bounds]) : null,
-      reference_origin: [...job.reference_origin],
       surfaces: job.surfaces.map(({ token, isovalue }) => ({ token, isovalue })),
     })),
   }),

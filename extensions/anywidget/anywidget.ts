@@ -22,7 +22,7 @@ import {
   ScatterPlot,
   ScatterPlot3D,
   SpacegroupBarPlot,
-  Structure,
+  StructureFileViewer,
   trajectory_from_json,
   TrajectoryFileViewer,
   Treemap,
@@ -298,13 +298,11 @@ export const mount_spec = (
 // Exported so tests can exercise each widget's drive/writeback/derived wiring.
 export const WIDGETS: Record<string, WidgetSpec> = {
   structure: {
-    component: Structure,
+    component: StructureFileViewer,
     static_props: no_file_drop,
     drive: [
       ...drive_props([
         `structure`,
-        `structure_string`,
-        `data_url`,
         // show_site_labels/show_site_indices are delivered via scene_props (see
         // scene_pick_keys), not as top-level Structure props.
         ...traj_structure_prop_keys,
@@ -316,13 +314,18 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         // hover (high frequency), so writeback would flood the comm channel.
         `highlighted_sites`,
       ]),
+      derived_prop(`source`, [`data_url`, `structure_string`], (model) => {
+        const url = get_prop(model, `data_url`)
+        const data = get_prop(model, `structure_string`)
+        return url || (data ? { data, filename: `string` } : undefined)
+      }),
       // Traits carry nested JSON grids; the renderer stores flat typed arrays
       derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
         const raw = get_prop(model, `volumetric_data`)
         if (raw == null) return undefined
         return (Array.isArray(raw) ? raw : [raw]).map(volume_from_json)
       }),
-      writeback_prop(`active_volume_idx`, 0),
+      writeback_prop(`active_volume_id`),
       writeback_prop(`display_mode`, `structure`),
       writeback_prop(`slice_settings`, {}),
       writeback_prop(`selected_sites`, []),
@@ -462,7 +465,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     base_drive: style_base_drive,
     drive: with_plot_controls([
       `band_structs`,
-      `band_type`,
       `show_legend`,
       `fermi_level`,
       `reference_frequency`,
@@ -489,7 +491,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     base_drive: style_base_drive,
     drive: [
       ...drive_props([`band_structs`, `doses`]),
-      picked_prop(`bands_props`, [`band_type`, `show_legend`, ...plot_control_keys]),
+      picked_prop(`bands_props`, [`show_legend`, ...plot_control_keys]),
       picked_prop(`dos_props`, [
         `stack`,
         `sigma`,

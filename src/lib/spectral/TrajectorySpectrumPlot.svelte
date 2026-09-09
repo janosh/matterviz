@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
-  import { clamp } from '$lib/math'
   import type {
+    ScatterPlotOptions,
     DataSeries,
     FacetPanel,
     FacetPanelContext,
     ScatterHandlerEvent,
   } from '$lib/plot'
+  import { PLOT_COLORS } from '$lib/colors'
+  import { clamp } from '$lib/math'
   import { FacetGrid, ScatterPlot } from '$lib/plot'
-  import type { ComponentProps } from 'svelte'
   import { frequency_unit_label } from './frequency-units'
   import type {
     RamanChannel,
@@ -32,12 +32,8 @@
     raman_channel?: RamanChannel
     selected_peak_idx?: number
     show_summary?: boolean
-    show_controls?: boolean
     frequency_range?: [number, number]
-  } & Omit<
-    ComponentProps<typeof ScatterPlot>,
-    `series` | `error_bands` | `ref_lines` | `facet_layout`
-  > = $props()
+  } & Omit<ScatterPlotOptions, `ref_lines` | `fullscreen` | `fullscreen_toggle`> = $props()
 
   interface SpectrumPanelDatum {
     kind: `ir` | `raman` | `vdos`
@@ -174,17 +170,22 @@
     legend={spectroscopy_legend}
     bind:show_controls
     {series}
-    on_point_click={handle_point_click}
+    on_point_click={(event) => {
+      handle_point_click(event)
+      rest.on_point_click?.(event)
+    }}
     header_controls={facet_layout.index === 0 ? header_controls : undefined}
     controls_extra={facet_layout.index === 0 ? controls_extra : undefined}
     x_axis={{
       label: `Frequency (${frequency_unit_label(result.frequency_unit)})`,
+      ...rest.x_axis,
       range: visible_frequency_range,
     }}
     y_axis={{
       label: kind !== `vdos` ? `Independent normalized power` : `Normalized vibrational power`,
+      ...rest.y_axis,
     }}
-    styles={{ show_lines: true, show_points: true }}
+    styles={{ show_lines: true, show_points: true, ...rest.styles }}
     {facet_layout}
     fullscreen_toggle={false}
     style="height: 100%; min-height: 0"

@@ -1,14 +1,13 @@
 <script lang="ts">
+  import type { BarPlotOptions, BarHandlerProps, BarSeries, TickLabelConfig } from '$lib/plot'
   import { format_num, format_value } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
-  import type { BarHandlerProps, BarSeries, TickLabelConfig } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
   import { observe_size } from '$lib/plot/core/utils'
   import type { CrystalSystem } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import * as spg from '$lib/symmetry/spacegroups'
-  import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
   // Merge tick label config with default rotation, preserving user overrides
@@ -31,7 +30,16 @@
     y_axis = {},
     padding = {},
     ...rest
-  }: ComponentProps<typeof BarPlot> & {
+  }: Omit<
+    BarPlotOptions,
+    | `tooltip`
+    | `mode`
+    | `show_controls`
+    | `controls_open`
+    | `controls_toggle_props`
+    | `controls_pane_props`
+    | `user_content`
+  > & {
     data: (number | string)[]
     show_counts?: boolean
   } = $props()
@@ -124,7 +132,14 @@
       const system_data = series_by_system.get(system)
       if (!system_data) return []
       const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
-      return { ...system_data, color, label: system, bar_width: 0.9, visible: true }
+      return {
+        ...system_data,
+        id: system,
+        color,
+        label: system,
+        bar_width: 0.9,
+        visible: true,
+      }
     })
   })
 

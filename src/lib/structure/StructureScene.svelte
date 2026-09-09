@@ -149,7 +149,7 @@
     same_size_atoms = false,
     // bindable: the auto-placement effect below assigns the position it computes, which a
     // plain prop would strand here, leaving the parent to re-push its stale value
-    camera_position = $bindable(DEFAULTS.structure.camera_position),
+    camera_position = $bindable(undefined),
     camera_target = $bindable(undefined),
     camera_direction = undefined,
     camera_projection = DEFAULTS.structure.camera_projection,
@@ -255,7 +255,6 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
-    active_volume_idx = 0,
     supercell_tiling = [1, 1, 1],
     interactive = true,
     fly_to_request = $bindable(undefined),
@@ -280,9 +279,9 @@
     base_structure?: AnyStructure // untransformed cell: supplies the drawn lattice and the displacement reference
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
-    camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
+    camera_position?: [x: number, y: number, z: number] // initial camera position; unset fits the structure
     camera_target?: Vec3 // external orbit-controls target for pan synchronization
-    // When set (and camera_position is unset/zero), auto-place the camera along this
+    // When set (and camera_position is unset), auto-place the camera along this
     // direction from the structure center (used by the multi-side view for fixed angles)
     camera_direction?: Vec3
     show_atoms?: boolean
@@ -390,7 +389,6 @@
     // Loaded volumetric datasets for isosurface rendering
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
-    active_volume_idx?: number // Volume implicit single-isovalue settings apply to
     // How many unit cells the displayed structure spans along a/b/c. Tiles the drawn cell
     // and the isosurface geometry; 1x1x1 until an applied supercell lands.
     supercell_tiling?: Vec3
@@ -482,7 +480,7 @@
     target_structure = current_structure
     has_target_structure = true
     rotation_target_ref =
-      is_initial_structure && camera_position.some((coordinate) => coordinate !== 0)
+      is_initial_structure && camera_position !== undefined
         ? (camera_target ?? rotation_target)
         : current_fit_target
   })
@@ -2404,7 +2402,6 @@
         <Isosurface
           volumes={volumetric_data}
           settings={isosurface_settings}
-          {active_volume_idx}
           tiling={supercell_tiling}
         />
       {/if}

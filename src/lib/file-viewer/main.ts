@@ -9,7 +9,6 @@ import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
 import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
 import type { DefaultSettings } from '$lib/settings'
 import type { DownloadData } from '$lib/io/fetch'
-import type { DosInput } from '$lib/spectral'
 import Bands from '$lib/spectral/Bands.svelte'
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
 import Dos from '$lib/spectral/Dos.svelte'
@@ -421,23 +420,22 @@ export const create_display = (
       app = mount(BandsAndDos, {
         target: container,
         props: {
-          band_structs: bands,
-          doses: dos,
-          bands_props: { band_type: `electronic` as const },
+          band_structs: { '': bands },
+          doses: { '': dos },
           ...spectral_props,
         },
       })
     } else if (bands) {
       app = mount(Bands, {
         target: container,
-        props: { band_structs: bands, band_type: `electronic` as const, ...spectral_props },
+        props: { band_structs: { '': bands }, ...spectral_props },
       })
-    } else {
+    } else if (dos) {
       app = mount(Dos, {
         target: container,
-        props: { doses: dos as DosInput, ...spectral_props },
+        props: { doses: { '': dos }, ...spectral_props },
       })
-    }
+    } else throw new Error(`No bands or DOS in electronic result for ${filename}`)
     const parts = [bands ? `bands` : null, dos ? `DOS` : null].filter(Boolean).join(` + `)
     log_message = `Electronic structure rendered: ${filename} (${parts})`
   } else if (result.type === `json_browser`) {

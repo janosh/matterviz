@@ -161,6 +161,27 @@ describe(`NebViewer`, () => {
     ).toHaveLength(5)
   })
 
+  test.each([
+    { show_controls: `never`, shown: false },
+    { show_controls: { mode: `never` }, shown: false },
+    { show_controls: { mode: `hover`, style: `opacity: 0.5` }, shown: true },
+    { show_controls: { hidden: [`controls`] }, shown: false },
+  ] as const)(
+    `preserves nested plot controls: $show_controls`,
+    async ({ show_controls, shown }) => {
+      const viewer = await mount_viewer({
+        paths: reaction_paths,
+        plot_props: { show_controls },
+      })
+      const toggle = viewer.querySelector<HTMLElement>(`.scatter .plot-controls-toggle`)
+      expect(Boolean(toggle)).toBe(shown)
+      if (shown) {
+        expect(toggle?.classList.contains(`hover-visible`)).toBe(true)
+        expect(toggle?.style.opacity).toBe(`0.5`)
+      }
+    },
+  )
+
   test(`aligns plot controls with the hover sequence bar`, async () => {
     await mount_viewer({ paths: reaction_paths, show_controls: `hover` })
     const panes = doc_query(`.panes`)
@@ -365,7 +386,7 @@ describe(`NebViewer`, () => {
       configurable: true,
       get: () => fullscreen_element,
     })
-    const state = $state({ fullscreen: false })
+    const state = $state({ fullscreen: false, show_controls: true })
     const on_fullscreen_change = vi.fn()
     const viewer = await mount_viewer(
       bind_props({ paths: direct_path, on_fullscreen_change }, state),
@@ -378,6 +399,15 @@ describe(`NebViewer`, () => {
     button.click()
     await vi.waitFor(() => expect(state.fullscreen).toBe(true))
     expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)
+    state.show_controls = false
+    await tick()
+    expect(button.style.display).toBe(`none`)
+    fullscreen_element = null
+    document.dispatchEvent(new Event(`fullscreenchange`))
+    await tick()
+    expect(state.fullscreen).toBe(false)
+    expect(viewer.querySelector(`.sequence-control-bar`)).toBeNull()
+    expect(on_fullscreen_change).toHaveBeenLastCalledWith(false)
   })
 
   test(`the fitted saddle is a physical energy, not an artefact of the x-axis`, async () => {

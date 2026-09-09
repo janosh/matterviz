@@ -1,11 +1,11 @@
 <script lang="ts">
+  import type { ScatterPlotOptions } from '$lib/plot'
   import { element_data } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import type { AxisConfig, InternalPoint } from '$lib/plot/core/types'
   import ScatterPlot from './ScatterPlot.svelte'
   import { selected } from '$lib/state.svelte'
-  import type { ComponentProps } from 'svelte'
 
   let {
     y,
@@ -14,10 +14,10 @@
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
-    show_controls = $bindable(true),
+    show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     ...rest
-  }: ComponentProps<typeof ScatterPlot> & {
+  }: Omit<ScatterPlotOptions, `tooltip`> & {
     y: number[] // array of length 118 (one value for each element)
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -39,6 +39,10 @@
 </script>
 
 <ScatterPlot
+  color_bar={null}
+  padding={{ l: 60, r: 10, t: 5, b: 45 }}
+  range_padding={0}
+  {...rest}
   series={[
     {
       x: [...Array(y.length + 1).keys()].slice(1),
@@ -51,10 +55,6 @@
   bind:hovered
   x_axis={{ label: `Atomic Number`, range: [0, null], ...x_axis }}
   y_axis={{ format: `~s`, ...y_axis }}
-  color_bar={null}
-  padding={{ l: 60, r: 10, t: 5, b: 45 }}
-  range_padding={0}
-  {...rest}
   bind:show_controls
   bind:controls_open
 >

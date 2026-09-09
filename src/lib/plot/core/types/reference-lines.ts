@@ -44,8 +44,8 @@ interface RefLineBase {
   x_span?: [number | null, number | null]
   y_span?: [number | null, number | null]
   coord_mode?: `data` | `relative` // default: 'data'
-  x_axis?: `x1` | `x2` // for vertical lines with dual x-axes
-  y_axis?: `y1` | `y2` // for horizontal lines with dual y-axes
+  x_axis?: `x` | `x2` // for vertical lines with dual x-axes
+  y_axis?: `y` | `y2` // for horizontal lines with dual y-axes
   style?: RefLineStyle
   annotation?: RefLineAnnotation
   z_index?: LayerZIndex

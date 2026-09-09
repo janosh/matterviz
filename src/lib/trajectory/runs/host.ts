@@ -2,6 +2,7 @@
 // indexed the file, sent a summary, and answers one frame per request. Progressive plot
 // rows arrive through `properties.push()` from whoever owns the host channel.
 import type { TrajectoryFrame } from '../index'
+import { to_error } from '$lib/utils'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
 
@@ -17,8 +18,9 @@ export const host_run = (
     provenance: { ...summary.provenance, format: summary.provenance.format ?? `host` },
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)
-      if (frame_idx === 0) return summary.preview
       if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))
+      if (signal?.aborted) return Promise.reject(to_error(signal.reason))
+      if (frame_idx === 0) return summary.preview
       return request_frame(frame_idx, signal)
     },
     dispose: () => {

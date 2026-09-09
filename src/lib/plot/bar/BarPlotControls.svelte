@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import type { BarMode, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
@@ -20,7 +21,7 @@
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     orientation?: Orientation
     mode?: BarMode
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
     children?: Snippet<[{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]>
   } = $props()

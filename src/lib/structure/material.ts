@@ -5,8 +5,8 @@ import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface'
 import {
   auto_isosurface_settings,
   label_file_volumes,
-  lattices_match,
   merge_imported_volumes,
+  normalize_active_volume_id,
 } from '$lib/isosurface'
 import { plural } from '$lib/labels'
 import type { AnyStructure } from './index'
@@ -15,36 +15,62 @@ export type StructureDocument = {
   structure: AnyStructure | undefined
   volumetric_data: VolumetricData[] | undefined
   isosurface_settings: IsosurfaceSettings
-  active_volume_idx: number
+  active_volume_id: string | undefined
 }
 
 export function apply_structure_material(
   current: StructureDocument,
   opened: OpenedMaterial,
 ): { document: StructureDocument; notice?: string } {
+  if (opened.type !== `isosurface` && opened.type !== `structure`) {
+    throw new Error(`${opened.filename} is ${opened.type}, not a structure`)
+  }
+  const structure = opened.type === `isosurface` ? opened.data.structure : opened.data
   const current_lattice =
     current.structure && `lattice` in current.structure
       ? current.structure.lattice.matrix
       : undefined
 
+  // Only combine fields with an established identical atomic coordinate frame.
+  // Empty structures have no anchor; rounding or reordered sites conservatively replace.
+  const same_structure =
+    current.structure !== undefined &&
+    current.structure.sites.length > 0 &&
+    current.structure.sites.length === structure.sites.length &&
+    JSON.stringify(current_lattice) ===
+      JSON.stringify(`lattice` in structure ? structure.lattice.matrix : undefined) &&
+    current.structure.sites.every((site, site_idx) => {
+      const other = structure.sites[site_idx]
+      return (
+        site.xyz.every((value, axis) => value === other.xyz[axis]) &&
+        site.species.length === other.species.length &&
+        site.species.every(
+          (species, species_idx) =>
+            species.element === other.species[species_idx].element &&
+            species.occu === other.species[species_idx].occu,
+        )
+      )
+    })
+
   if (opened.type === `isosurface`) {
     const volumetric = opened.data
     const { filename, source_filename } = opened.provenance
     const incoming = label_file_volumes(volumetric.volumes, filename, source_filename)
-    const same_cell = lattices_match(current_lattice, volumetric.structure.lattice?.matrix)
-    if (same_cell && current.volumetric_data?.length) {
+    if (same_structure && current.volumetric_data?.length) {
       const merged = merge_imported_volumes(
         current.volumetric_data,
         current.isosurface_settings.layers,
         incoming,
-        current.active_volume_idx,
       )
       return {
         document: {
           structure: current.structure,
           volumetric_data: merged.volumes,
           isosurface_settings: { ...current.isosurface_settings, layers: merged.layers },
-          active_volume_idx: merged.first_touched_idx,
+          active_volume_id: normalize_active_volume_id(
+            current.active_volume_id,
+            merged.volumes,
+          ),
         },
         notice:
           merged.n_added > 0
@@ -58,36 +84,28 @@ export function apply_structure_material(
       !current.volumetric_data?.length && current.isosurface_settings.layers.length > 0
     return {
       document: {
-        structure: same_cell ? current.structure : volumetric.structure,
+        structure: same_structure ? current.structure : structure,
         volumetric_data: incoming,
         isosurface_settings: caller_layers
           ? current.isosurface_settings
           : auto_isosurface_settings(first_volume),
-        active_volume_idx: 0,
+        active_volume_id: first_volume.id,
       },
-      notice: same_cell
+      notice: same_structure
         ? `Added ${plural(incoming.length, `volume`)} from ${filename}`
         : undefined,
     }
   }
 
-  if (opened.type !== `structure`) {
-    throw new Error(`${opened.filename} is ${opened.type}, not a structure`)
-  }
-  const structure = opened.data
-  const same_cell = lattices_match(
-    current_lattice,
-    `lattice` in structure ? structure.lattice?.matrix : undefined,
-  )
-  const keeps_volumes = same_cell || !current.volumetric_data?.length
+  const keeps_volumes = same_structure || !current.volumetric_data?.length
   return {
     document: {
       structure,
-      volumetric_data: same_cell ? current.volumetric_data : [],
+      volumetric_data: same_structure ? current.volumetric_data : [],
       isosurface_settings: keeps_volumes
         ? current.isosurface_settings
         : { ...current.isosurface_settings, layers: [] },
-      active_volume_idx: same_cell ? current.active_volume_idx : 0,
+      active_volume_id: same_structure ? current.active_volume_id : undefined,
     },
   }
 }

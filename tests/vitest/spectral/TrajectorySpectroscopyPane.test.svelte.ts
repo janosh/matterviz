@@ -217,8 +217,7 @@ test(`unmounting aborts the in-flight request and releases the worker`, async ()
   expect(mocks.release).not.toHaveBeenCalled()
   await unmount(component)
   expect(signal.aborted).toBe(true)
-  // the client pre-warms a replacement worker after every abort; nothing would use it. Only
-  // release (idle-only), never cancel: another pane's in-flight request must not be rejected
+  // Release an idle worker without rejecting another pane's in-flight request.
   expect(mocks.release).toHaveBeenCalledOnce()
   expect(mocks.cancel).not.toHaveBeenCalled()
 })

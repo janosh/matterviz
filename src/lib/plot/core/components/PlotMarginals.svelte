@@ -150,7 +150,7 @@
 
   // The axis a marginal binds to (x2/y2 fall back to x1/y1), with scale_type defaulted to linear
   const axis_props = (axis: MarginalAxisBinding) => {
-    const ax = axes[axis] ?? (axis === `x2` ? axes.x1 : axes.y1)
+    const ax = axes[axis] ?? (axis === `x2` ? axes.x : axes.y)
     return { ...ax, scale_type: ax.scale_type ?? `linear` }
   }
 
@@ -349,7 +349,7 @@
       // Only summarize series that render on the axis this side binds to (a top/x1 marginal
       // ignores x2 series; a right/y1 marginal ignores y2 series)
       const axis_series = visible.filter((srs) =>
-        is_x ? (srs.x_axis ?? `x1`) === axis : (srs.y_axis ?? `y1`) === axis,
+        is_x ? (srs.x_axis ?? `x`) === axis : (srs.y_axis ?? `y`) === axis,
       )
       const merged_color = config.color ?? axis_series[0]?.color ?? `currentColor`
       // One combined curve (for reduce / data / merged), colored once

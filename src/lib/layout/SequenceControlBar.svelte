@@ -5,22 +5,24 @@
 
   let {
     controls_config,
+    fullscreen = false,
     height = $bindable(0),
     class: class_name,
     children,
   }: {
     controls_config: ShowControlsState
+    fullscreen?: boolean // Keep the hidden active fullscreen controller mounted until exit.
     height?: number
     class?: ClassValue
     children: Snippet
   } = $props()
 </script>
 
-{#if controls_config.mode !== `never`}
+{#if controls_config.mode !== `never` || fullscreen}
   <section
     class={[`sequence-control-bar`, controls_config.class, class_name]}
     bind:clientHeight={height}
-    style={controls_config.style}
+    style={controls_config.mode === `never` ? `display: none` : controls_config.style}
   >
     {@render children()}
   </section>

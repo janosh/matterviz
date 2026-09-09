@@ -2906,7 +2906,8 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
 
 ```svelte example
 <script lang="ts">
-  import { ScatterPlot } from 'matterviz'
+  import { onDestroy } from 'svelte'
+  import { ScatterPlot, create_axis_loader, type AxisKey } from 'matterviz'
 
   // Seeded random for reproducible data
   function seeded_random(seed: number): () => number {
@@ -3030,10 +3031,17 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
   let load_count = $state(0)
   let load_start = $state(0)
 
-  // Async data loader - side-effect free, state updates in on_axis_change
-  async function data_loader(_axis: string, property_key: PropKey, _current_series: unknown) {
+  // Caller-owned loading; only the latest result updates the selected properties
+  async function data_loader(
+    _axis: AxisKey,
+    property_key: string,
+    _signal: AbortSignal,
+  ): Promise<PropKey> {
+    if (!Object.hasOwn(properties, property_key))
+      throw new Error(`Unknown property: ${property_key}`)
+    const key = property_key as PropKey
     load_start = performance.now()
-    loading_log = [...loading_log, `⏳ Loading ${properties[property_key].label}...`]
+    loading_log = [...loading_log, `⏳ Loading ${properties[key].label}...`]
 
     // Variable delay (200-800ms) to simulate real network conditions
     const delay = 200 + Math.random() * 600
@@ -3045,29 +3053,27 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
       throw new Error(`Simulated network error for ${property_key}`)
     }
 
-    // Determine new keys for series build (don't mutate x_key/y_key here)
-    const new_x_key = _axis === `x` ? property_key : x_key
-    const new_y_key = _axis === `y` ? property_key : y_key
+    return key
+  }
 
-    const prop = properties[property_key]
-    return {
-      series: build_series(new_x_key, new_y_key),
-      axis_label: `${prop.label} (${prop.unit})`,
+  const axis_loader = create_axis_loader(data_loader)
+  onDestroy(axis_loader.cancel)
+
+  async function on_axis_change(axis: AxisKey, property_key: string): Promise<void> {
+    try {
+      const key = await axis_loader.load(axis, property_key)
+      if (key === undefined) return
+      load_count++
+      if (axis === `x`) x_key = key
+      if (axis === `y`) y_key = key
+      const elapsed = Math.round(performance.now() - load_start)
+      loading_log = [...loading_log, `✓ Loaded ${properties[key].label} (${elapsed}ms)`]
+    } catch (error) {
+      loading_log = [
+        ...loading_log,
+        `❌ ${axis}-axis error (${property_key}): ${String(error)}`,
+      ]
     }
-  }
-
-  function on_axis_change(axis: `x` | `y`, property_key: PropKey): void {
-    load_count++
-    if (axis === `x`) x_key = property_key
-    if (axis === `y`) y_key = property_key
-    const elapsed = (performance.now() - load_start).toFixed(0)
-    loading_log = [...loading_log, `✓ Loaded ${properties[property_key].label} (${elapsed}ms)`]
-  }
-
-  type AxisLoadError = { axis: string; key: string; message: string }
-
-  function handle_error(err: AxisLoadError): void {
-    loading_log = [...loading_log, `❌ ${err.axis}-axis error (${err.key}): ${err.message}`]
   }
 
   // Axis options from properties
@@ -3089,7 +3095,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
 </div>
 
 <ScatterPlot
-  bind:series
+  {series}
   x_axis={{
     label: `${properties[x_key].label} (${properties[x_key].unit})`,
     options: axis_options,
@@ -3100,9 +3106,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
     options: axis_options,
     selected_key: y_key,
   }}
-  {data_loader}
   {on_axis_change}
-  on_error={handle_error}
   legend={{ layout: `horizontal`, style: `justify-content: center` }}
   style="height: 400px"
 />
@@ -3132,7 +3136,8 @@ All changes trigger lazy data loading with simulated network delays.
 
 ```svelte example
 <script lang="ts">
-  import { ScatterPlot } from 'matterviz'
+  import { onDestroy } from 'svelte'
+  import { ScatterPlot, create_axis_loader } from 'matterviz'
 
   // Seeded random for reproducible data
   function seeded_random(seed: number): () => number {
@@ -3244,21 +3249,18 @@ All changes trigger lazy data loading with simulated network delays.
   // Property options for ColorBar (same structure)
   const color_property_options = axis_options
 
-  // Axis data loader - side-effect free, returns data only
-  async function axis_data_loader(axis, property_key, current_series) {
+  // Load outside the chart; cancelled requests cannot publish stale data
+  async function axis_data_loader(axis, property_key, _signal) {
     await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 400))
-    const new_x = axis === `x` ? property_key : x_key
-    const new_y = axis === `y` ? property_key : y_key
-    const prop = properties[property_key]
-    return {
-      series: build_series(new_x, new_y, color_key),
-      axis_label: prop.label,
-      axis_unit: prop.unit,
-    }
+    return property_key
   }
 
   // Called after successful axis change - safe to update state
-  function handle_axis_change(axis, property_key) {
+  const axis_loader = create_axis_loader(axis_data_loader)
+  onDestroy(axis_loader.cancel)
+
+  async function handle_axis_change(axis, property_key) {
+    if (!(await axis_loader.load(axis, property_key))) return
     axis_switches++
     if (axis === `x`) x_key = property_key
     if (axis === `y`) y_key = property_key
@@ -3298,7 +3300,7 @@ All changes trigger lazy data loading with simulated network delays.
 </div>
 
 <ScatterPlot
-  bind:series
+  {series}
   x_axis={{
     label: `${properties[x_key].label} (${properties[x_key].unit})`,
     options: axis_options,
@@ -3309,7 +3311,6 @@ All changes trigger lazy data loading with simulated network delays.
     options: axis_options,
     selected_key: y_key,
   }}
-  data_loader={axis_data_loader}
   on_axis_change={handle_axis_change}
   color_scale={{
     scheme:
@@ -3425,7 +3426,7 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
     point_style: { fill: `#e74c3c`, radius: 4 },
     line_style: { stroke: `#e74c3c`, stroke_width: 2 },
     markers: `line+points`,
-    y_axis: `y1`,
+    y_axis: `y`,
   }
   const pressure_data = {
     x: time,
@@ -3487,8 +3488,8 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
   })
 
   const series = [
-    make_series(`Efficiency (%)`, `#e74c3c`, `y1`, 0.2, 60, 20, 5),
-    make_series(`Yield (%)`, `#f39c12`, `y1`, 0.15, 70, 15, 4),
+    make_series(`Efficiency (%)`, `#e74c3c`, `y`, 0.2, 60, 20, 5),
+    make_series(`Yield (%)`, `#f39c12`, `y`, 0.15, 70, 15, 4),
     make_series(`Throughput (units/hr)`, `#3498db`, `y2`, 0.25, 500, 200, 30),
     {
       ...make_series(`Cost ($/unit)`, `#9b59b6`, `y2`, 0.18, 200, 100, 20),

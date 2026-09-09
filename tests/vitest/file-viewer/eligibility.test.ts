@@ -22,7 +22,8 @@ test.each([
   [`data.h5`, false],
   [`structure.cif.zip`, true], // fflate inflates single-file ZIPs in the webview
   [`movie.xyz.xz`, false],
-  [`movie.xyz.gz.gz`, false],
+  [`movie.xyz.gz.gz`, true],
+  [`movie.xyz.xz.gz`, false],
   [`md/notes.log`, false],
   [`simulation/params.out`, false],
   [`relax/data.json`, false],
@@ -85,7 +86,8 @@ test.each([
   [`movie.extxyz.deflate`, `movie.extxyz`],
   [`movie.traj.z`, `movie.traj`],
   [`movie.xyz.bz2`, null],
-  [`movie.xyz.gz.gz`, null],
+  [`movie.xyz.gz.gz`, `movie.xyz`],
+  [`movie.xyz.xz.gz`, null],
 ])(`normalizes browser compression for %s`, (filename, expected) => {
   expect(normalize_browser_supported_filename(filename)).toBe(expected)
 })

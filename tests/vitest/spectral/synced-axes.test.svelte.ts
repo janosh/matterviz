@@ -2,7 +2,7 @@ import {
   create_bands_dos_sync,
   shared_resolved_padding_floor,
 } from '$lib/spectral/synced-axes.svelte'
-import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
+import type { BaseBandStructure, FrequencyUnit, PhononDos } from '$lib/spectral/types'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test } from 'vitest'
 
@@ -12,6 +12,7 @@ afterEach(() => {
 })
 
 const band_structs: BaseBandStructure = {
+  type: `phonon`,
   qpoints: [
     { label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 },
     { label: `X`, frac_coords: [0.5, 0, 0], distance: 1 },
@@ -29,67 +30,83 @@ const doses: PhononDos = { type: `phonon`, frequencies: [0, 2, 4], densities: [0
 
 // Each panel binds its `view`; the sync mirrors the y view of whichever panel moved into
 // the other, so a zoom or reset in either panel reaches both
-test(`side-by-side panels mirror y view changes, stacked panels don't`, () => {
-  const inputs = $state({ side_by_side: true, sync_zoom: true })
-  let sync: ReturnType<typeof create_bands_dos_sync> | undefined
-  roots.push(
-    $effect.root(() => {
-      sync = create_bands_dos_sync({
-        band_structs: () => band_structs,
-        doses: () => doses,
-        bands_y_axis: () => undefined,
-        dos_y_axis: () => undefined,
-        bands_padding: () => undefined,
-        dos_padding: () => undefined,
-        side_by_side: () => inputs.side_by_side,
-        sync_zoom: () => inputs.sync_zoom,
-        base_padding: { t: 20, b: 50 },
-      })
-    }),
-  )
-  flushSync()
-  if (!sync) throw new Error(`sync not created`)
-  const shared = sync.shared_range
-  if (!shared) throw new Error(`no shared range`)
-  expect(sync.y_axes.map((axis) => axis.range)).toEqual([shared, shared])
-  expect(sync.y_axes[1].label).toBe(``)
+test.each([`phonon`, `electronic`] as const)(
+  `%s panels mirror y view changes, stacked panels do not`,
+  (type) => {
+    const inputs = $state({
+      side_by_side: true,
+      sync_zoom: true,
+    })
+    let units = $state<FrequencyUnit>(`meV`)
+    let sync: ReturnType<typeof create_bands_dos_sync> | undefined
+    roots.push(
+      $effect.root(() => {
+        sync = create_bands_dos_sync({
+          band_structs: () => ({ '': { ...band_structs, type } }),
+          doses: () => ({
+            '':
+              type === `phonon`
+                ? doses
+                : { type, energies: doses.frequencies, densities: doses.densities },
+          }),
+          units: () => units,
+          bands_y_axis: () => undefined,
+          dos_y_axis: () => undefined,
+          bands_padding: () => undefined,
+          dos_padding: () => undefined,
+          side_by_side: () => inputs.side_by_side,
+          sync_zoom: () => inputs.sync_zoom,
+          base_padding: { t: 20, b: 50 },
+        })
+      }),
+    )
+    flushSync()
+    if (!sync) throw new Error(`sync not created`)
+    expect(sync.shared_range?.[1]).toBeCloseTo(type === `phonon` ? 16.8735242034493 : 4.08, 12)
+    units = `THz`
+    flushSync()
+    const shared = sync.shared_range
+    if (!shared) throw new Error(`no shared range`)
+    expect(sync.y_axes.map((axis) => axis.range)).toEqual([shared, shared])
+    expect(sync.y_axes[1].label).toBe(``)
 
-  // both panels report their initial view (the shared pin); nothing to mirror yet
-  sync.views[0] = { x: [0, 1], y: [...shared] }
-  sync.views[1] = { x: [0, 5], y: [...shared] }
-  flushSync()
-  expect(sync.views[1]).toEqual({ x: [0, 5], y: shared })
+    // both panels report their initial view (the shared pin); nothing to mirror yet
+    sync.views[0] = { x: [0, 1], y: [...shared] }
+    sync.views[1] = { x: [0, 5], y: [...shared] }
+    flushSync()
+    expect(sync.views[1]).toEqual({ x: [0, 5], y: shared })
 
-  // a zoom in the bands panel reaches the DOS panel's y view, and only y
-  sync.views[0] = { x: [0, 1], y: [1, 3] }
-  flushSync()
-  expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 3] })
-  // a reset of the DOS panel (back to the shared range) reaches the bands panel
-  sync.views[1] = { x: [0, 5], y: [...shared] }
-  flushSync()
-  expect(sync.views[0]).toEqual({ x: [0, 1], y: shared })
-  // the mirrored range is copied, never aliased between the two panels' views
-  expect(sync.views[0]?.y).not.toBe(sync.views[1]?.y)
+    // a zoom in the bands panel reaches the DOS panel's y view, and only y
+    sync.views[0] = { x: [0, 1], y: [1, 3] }
+    flushSync()
+    expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 3] })
+    // a reset of the DOS panel (back to the shared range) reaches the bands panel
+    sync.views[1] = { x: [0, 5], y: [...shared] }
+    flushSync()
+    expect(sync.views[0]).toEqual({ x: [0, 1], y: shared })
+    // the mirrored range is copied, never aliased between the two panels' views
+    expect(sync.views[0]?.y).not.toBe(sync.views[1]?.y)
 
-  // with the link off, panels zoom independently
-  inputs.sync_zoom = false
-  flushSync()
-  sync.views[1] = { x: [0, 5], y: [1, 2] }
-  flushSync()
-  expect(sync.views[0]).toEqual({ x: [0, 1], y: shared })
-  // re-enabling the link lets the panel that left the shared range lead
-  inputs.sync_zoom = true
-  flushSync()
-  expect(sync.views[0]).toEqual({ x: [0, 1], y: [1, 2] })
+    // with the link off, panels zoom independently
+    inputs.sync_zoom = false
+    flushSync()
+    sync.views[1] = { x: [0, 5], y: [1, 2] }
+    flushSync()
+    expect(sync.views[0]).toEqual({ x: [0, 1], y: shared })
+    // re-enabling the link lets the panel that left the shared range lead
+    inputs.sync_zoom = true
+    flushSync()
+    expect(sync.views[0]).toEqual({ x: [0, 1], y: [1, 2] })
 
-  // stacked, the DOS plots density on y: its view no longer takes part
-  inputs.side_by_side = false
-  flushSync()
-  expect(sync.y_axes[1]).toEqual({})
-  sync.views[0] = { x: [0, 1], y: [2, 3] }
-  flushSync()
-  expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 2] })
-})
+    // stacked, the DOS plots density on y: its view no longer takes part
+    inputs.side_by_side = false
+    flushSync()
+    expect(sync.y_axes[1]).toEqual({})
+    sync.views[0] = { x: [0, 1], y: [2, 3] }
+    flushSync()
+    expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 2] })
+  },
+)
 
 test(`padding floor only ever rises, ignores sub-pixel creep and undefined reports`, () => {
   const floor = shared_resolved_padding_floor()

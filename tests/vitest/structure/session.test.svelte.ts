@@ -319,50 +319,53 @@ describe(`selection validity`, () => {
     destroy()
   })
 
-  it(`keeps selection across coordinate-only frames and clears it on topology or series change`, () => {
-    const base = crystal()
-    const { host, session, destroy } = make_session({ structure: base, series_key: {} })
-    host.selected_sites = [0]
-    host.highlighted_sites = [1]
-    host.hovered_site_idx = 1
-    session.site_radius_overrides.set(0, 2)
-    flushSync()
-    // Parsers allocate fresh species arrays per frame: equal content is the same topology
-    host.structure = {
-      ...base,
-      sites: base.sites.map((site) => ({
-        ...site,
-        xyz: [...site.xyz] as Vec3,
-        species: site.species.map((entry) => ({ ...entry })),
-      })),
-    }
-    flushSync()
-    expect(host.selected_sites).toEqual([0])
-    expect(session.site_radius_overrides.get(0)).toBe(2)
-    // Same site count and labels, one element swapped: a different topology
-    host.structure = {
-      ...base,
-      sites: base.sites.map((site, idx) =>
-        idx === 0 ? { ...site, species: [{ ...site.species[0], element: `Xe` }] } : site,
-      ),
-    }
-    flushSync()
-    expect(host.selected_sites).toEqual([])
-    host.selected_sites = [0]
-    flushSync()
-    host.structure = { ...base, sites: base.sites.slice(1) }
-    flushSync()
-    expect(host.selected_sites).toEqual([])
-    expect(host.highlighted_sites).toEqual([])
-    expect(host.hovered_site_idx).toBeNull()
-    expect(session.site_radius_overrides.size).toBe(0)
-    host.selected_sites = [0]
-    flushSync()
-    host.series_key = {}
-    flushSync()
-    expect(host.selected_sites).toEqual([])
-    destroy()
-  })
+  it.each([{}, NaN])(
+    `keeps selection across frames with series key %j and clears it on topology or series change`,
+    (series_key) => {
+      const base = crystal()
+      const { host, session, destroy } = make_session({ structure: base, series_key })
+      host.selected_sites = [0]
+      host.highlighted_sites = [1]
+      host.hovered_site_idx = 1
+      session.site_radius_overrides.set(0, 2)
+      flushSync()
+      // Parsers allocate fresh species arrays per frame: equal content is the same topology
+      host.structure = {
+        ...base,
+        sites: base.sites.map((site) => ({
+          ...site,
+          xyz: [...site.xyz] as Vec3,
+          species: site.species.map((entry) => ({ ...entry })),
+        })),
+      }
+      flushSync()
+      expect(host.selected_sites).toEqual([0])
+      expect(session.site_radius_overrides.get(0)).toBe(2)
+      // Same site count and labels, one element swapped: a different topology
+      host.structure = {
+        ...base,
+        sites: base.sites.map((site, idx) =>
+          idx === 0 ? { ...site, species: [{ ...site.species[0], element: `Xe` }] } : site,
+        ),
+      }
+      flushSync()
+      expect(host.selected_sites).toEqual([])
+      host.selected_sites = [0]
+      flushSync()
+      host.structure = { ...base, sites: base.sites.slice(1) }
+      flushSync()
+      expect(host.selected_sites).toEqual([])
+      expect(host.highlighted_sites).toEqual([])
+      expect(host.hovered_site_idx).toBeNull()
+      expect(session.site_radius_overrides.size).toBe(0)
+      host.selected_sites = [0]
+      flushSync()
+      host.series_key = {}
+      flushSync()
+      expect(host.selected_sites).toEqual([])
+      destroy()
+    },
+  )
 
   it(`preserves the selection through transforms in edit-atoms mode only`, () => {
     const { host, destroy } = make_session({ measure_mode: `edit-atoms` })

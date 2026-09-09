@@ -1,10 +1,10 @@
 # Density of States (DOS)
 
-The `Dos` component visualizes electronic and phonon density of states from pymatgen-compatible data.
+The `Dos` component visualizes electronic and phonon density of states from canonical data keyed by series label.
 
 ## Basic Usage
 
-Pass DOS data to the `doses` prop. The component auto-detects phonon vs electronic data:
+Pass a record to `doses`. Each entry declares `type: "phonon"` with `frequencies` in THz, or `type: "electronic"` with `energies` in eV, plus `densities`.
 
 ```svelte example
 <script lang="ts">
@@ -12,34 +12,38 @@ Pass DOS data to the `doses` prop. The component auto-detects phonon vs electron
   import { phonon_dos } from '$site/phonons'
 </script>
 
-<Dos doses={phonon_dos['mp-2758-Sr4Se4-pbe']} />
+<Dos doses={{ '': phonon_dos['mp-2758-Sr4Se4-pbe'] }} />
 ```
 
 ## Electronic DOS with Spin Polarization
 
-Electronic DOS from pymatgen `CompleteDos` and `LobsterCompleteDos` objects render directly. Spin-polarized data (stored as `{1: [...], -1: [...]}`) is automatically extracted and drawn according to `spin_mode`: `mirror` (default, spin-down below zero), `overlay`, `up_only` or `down_only`. Use `shift_to_fermi()` to center energies at E_F = 0:
+Convert pymatgen `CompleteDos` and `LobsterCompleteDos` objects with `normalize_dos` at the input boundary. Spin-polarized data (stored as `{1: [...], -1: [...]}`) is automatically extracted and drawn according to `spin_mode`: `mirror` (default, spin-down below zero), `overlay`, `up_only` or `down_only`. Use `shift_to_fermi()` to center energies at E_F = 0:
 
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { shift_to_fermi } from '$lib/spectral/helpers'
+  import { shift_to_fermi, normalize_dos, extract_pdos } from '$lib/spectral/helpers'
   import { dos_spin_polarization } from '$site/electronic/dos'
+
+  const total_dos = normalize_dos(shift_to_fermi(dos_spin_polarization))
+  if (!total_dos) throw new Error('Invalid DOS fixture')
 </script>
 
-<Dos doses={shift_to_fermi(dos_spin_polarization)} />
+{#if total_dos}<Dos doses={{ '': total_dos }} />{/if}
 ```
 
 ## Projected DOS (pDOS)
 
-Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `pdos_type`:
+Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `extract_pdos(raw, type)`:
 
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { shift_to_fermi } from '$lib/spectral/helpers'
+  import { shift_to_fermi, normalize_dos, extract_pdos } from '$lib/spectral/helpers'
   import { dos_spin_polarization } from '$site/electronic/dos'
 
-  let pdos_type = $state('atom')
+  let pdos_type = $state<'atom' | 'orbital'>('atom')
+  const projected = $derived(extract_pdos(shift_to_fermi(dos_spin_polarization), pdos_type))
 </script>
 
 <label style="display: block; margin-bottom: 0.5em">
@@ -50,7 +54,7 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
   </select>
 </label>
 
-<Dos doses={shift_to_fermi(dos_spin_polarization)} {pdos_type} stack spin_mode="up_only" />
+{#if projected}<Dos doses={projected} stack spin_mode="up_only" />{/if}
 ```
 
 ## Stacking and Smearing
@@ -107,7 +111,7 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
 ```svelte example
 <script lang="ts">
   import { Dos, FilePicker } from 'matterviz'
-  import { shift_to_fermi } from '$lib/spectral/helpers'
+  import { shift_to_fermi, normalize_dos, extract_pdos } from '$lib/spectral/helpers'
   import { dos_spin_polarization, get_dos } from '$site/electronic/dos'
   import { phonon_dos } from '$site/phonons'
 
@@ -133,9 +137,19 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
   ]
 
   let active_file = $state(files[0].name)
-  let pdos_type = $state(null)
+  let pdos_type = $state<'atom' | 'orbital' | null>(null)
 
   const current_dos = $derived(files.find((file) => file.name === active_file)?.data)
+  const doses = $derived.by(() => {
+    if (pdos_type) {
+      const projected = extract_pdos(current_dos, pdos_type)
+      if (!projected) throw new Error(`No ${pdos_type} projected DOS in ${active_file}`)
+      return projected
+    }
+    const total = normalize_dos(current_dos)
+    if (!total) throw new Error(`Invalid DOS in ${active_file}`)
+    return { '': total }
+  })
   const is_electronic = $derived(
     files.find((file) => file.name === active_file)?.category === 'Electronic',
   )
@@ -164,8 +178,7 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
 </div>
 
 <Dos
-  doses={current_dos}
-  {pdos_type}
+  {doses}
   stack={pdos_type !== null}
   show_normalize_control
   show_units_control={!is_electronic}

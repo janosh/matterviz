@@ -146,10 +146,32 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
 test.each([
   [`data.json.xz`, `XZ decompression is not supported`],
   [`data.json.bz2`, `BZ2 decompression is not supported`],
-  [`movie.xyz.gz.gz`, `Nested compression is not supported`], // rejected before parsing the inner payload
 ])(`rejects %s with %s`, async (filename, message) => {
   await expect(parse_file_content(btoa(`content`), filename, true)).rejects.toThrow(message)
 })
+
+test.each([`plain`, `zip`, `gzip/gzip`, `zip/gzip`] as const)(
+  `base64 %s payloads route by their decoded contents and inner name`,
+  async (compression) => {
+    const content = { label: `café`, values: [1, 2] }
+    let bytes: Uint8Array<ArrayBuffer> = new TextEncoder().encode(JSON.stringify(content))
+    let filename = `settings.json`
+    for (const layer of compression.split(`/`).toReversed()) {
+      if (layer === `zip`) {
+        bytes = zipSync({ [filename]: bytes })
+        filename = `bundle.zip`
+      } else if (layer === `gzip`) {
+        bytes = new Uint8Array(gzip_sync(bytes))
+        filename += `.gz`
+      }
+    }
+    expect(await parse_file_content(uint8_as_base64(bytes), filename, true)).toEqual({
+      type: `json_browser`,
+      data: content,
+      filename: `settings.json`,
+    })
+  },
+)
 
 test(`parse_file_content renders convex hull JSON whose filename contains convex`, async () => {
   // oxfmt-ignore
@@ -216,6 +238,7 @@ test.each([true, false])(
       [0, 0, 6],
     ]
     const volumetric = {
+      id: `density`,
       lattice: matrix,
       origin: [0, 0, 0],
       periodic,
@@ -258,8 +281,8 @@ describe(`vaspout.h5 electronic routing`, () => {
 
     create_display(make_container(), result)
     const mount_props = last_mount_props()
-    expect(mount_props.band_type).toBe(`electronic`)
-    expect(mount_props.band_structs).toBe(data.bands)
+    expect(mount_props.band_structs).toEqual({ '': data.bands })
+    expect(data.bands).toMatchObject({ type: `electronic` })
   })
 
   test(`trajectories carrying a DOS mount the trajectory-with-DOS wrapper`, async () => {
@@ -303,6 +326,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     [`.deflate`, deflate_sync],
     [`.z`, deflate_raw_sync],
     [`.zip`, (data: Uint8Array) => zipSync({ [`relax.traj`]: data })],
+    [`.traj.zip`, (data: Uint8Array) => zipSync({ [`relax.traj.gz`]: gzip_sync(data) })],
   ] as const)(
     `%s-compressed .traj routes byte-identical data to the trajectory parser`,
     async (extension, compress) => {
@@ -327,7 +351,7 @@ test.each([
   [`fermi_surface`, { energies: [] }, `band_data`, false],
   [`convex_hull`, [], `entries`, false],
   [`phase_diagram`, {}, `data`, undefined],
-  [`structure`, { sites: [] }, `structure`, false],
+  [`structure`, { sites: [] }, `structure`, undefined],
 ] as const)(`create_display mounts %s data`, (type, data, prop_name, allow_file_drop) => {
   // Minimal stubs: this asserts which prop create_display forwards data to, not that the
   // payload is a well-formed member of its view type

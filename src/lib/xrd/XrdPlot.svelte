@@ -1,4 +1,13 @@
 <script lang="ts">
+  import type {
+    ScatterPlotOptions,
+    BarPlotOptions,
+    AxisConfig,
+    BarHandlerProps,
+    BarSeries,
+    DataSeries,
+    ScatterHandlerProps,
+  } from '$lib/plot'
   import { add_alpha, plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -7,16 +16,8 @@
   import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'
   import { array_extent, array_max, type Vec2 } from '$lib/math'
-  import type {
-    AxisConfig,
-    BarHandlerProps,
-    BarSeries,
-    DataSeries,
-    ScatterHandlerProps,
-  } from '$lib/plot'
   import { BarPlot, ScatterPlot } from '$lib/plot'
   import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
-  import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import type { RadiationType } from '$lib/scattering'
   import type { BroadeningParams } from './broadening'
@@ -53,33 +54,30 @@
     broadening_enabled = $bindable(false),
     broadening_params = $bindable({ ...DEFAULT_BROADENING }),
     ...rest
-  }: ComponentProps<typeof BarPlot> &
-    ComponentProps<typeof ScatterPlot> & {
-      patterns:
-        | XrdPattern
-        | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
-        | PatternEntry[]
-      peak_width?: number
-      annotate_peaks?: number // int => top-k, float in (0,1) => threshold of max
-      hkl_format?: HklFormat
-      show_angles?: boolean | null
-      wavelength?: number | null
-      // Probe used when recomputing a pattern from a dropped structure file. Neutron and
-      // electron both require an explicit `wavelength` (no anode default exists for them).
-      radiation?: RadiationType
-      x_axis?: AxisConfig
-      y_axis?: AxisConfig
-      allow_file_drop?: boolean
-      on_file_drop?: (
-        content: string | ArrayBuffer,
-        filename: string,
-        metadata: io.FileLoadMeta,
-      ) => Promise<void> | void
-      loading?: boolean
-      error_msg?: string
-      broadening_enabled?: boolean
-      broadening_params?: BroadeningParams
-    } = $props()
+  }: Omit<BarPlotOptions & ScatterPlotOptions, `tooltip`> & {
+    patterns:
+      | XrdPattern
+      | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
+      | PatternEntry[]
+    peak_width?: number
+    annotate_peaks?: number // int => top-k, float in (0,1) => threshold of max
+    hkl_format?: HklFormat
+    show_angles?: boolean | null
+    wavelength?: number | null
+    // Probe used when recomputing a pattern from a dropped structure file. Neutron and
+    // electron both require an explicit `wavelength` (no anode default exists for them).
+    radiation?: RadiationType
+    allow_file_drop?: boolean
+    on_file_drop?: (
+      content: string | ArrayBuffer,
+      filename: string,
+      metadata: io.FileLoadMeta,
+    ) => Promise<void> | void
+    loading?: boolean
+    error_msg?: string
+    broadening_enabled?: boolean
+    broadening_params?: BroadeningParams
+  } = $props()
 
   let dropped_entries = $state<PatternEntry[]>([])
 

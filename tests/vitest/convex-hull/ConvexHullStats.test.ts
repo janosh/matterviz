@@ -1,6 +1,6 @@
 import { ConvexHullStats } from '$lib/convex-hull'
 import type { ConvexHullEntry, PhaseStats } from '$lib/convex-hull/types'
-import { flushSync, mount } from 'svelte'
+import { flushSync, mount, type ComponentProps } from 'svelte'
 import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query, mock_object_url } from '../setup'
 
@@ -34,27 +34,27 @@ const mock_entry = (overrides: Partial<ConvexHullEntry> = {}): ConvexHullEntry =
   ...overrides,
 })
 
-type Props = {
+type Props = Omit<ComponentProps<typeof ConvexHullStats>, `model`> & {
   phase_stats: PhaseStats | null
   stable_entries: ConvexHullEntry[]
   unstable_entries: ConvexHullEntry[]
-  show_stable?: boolean
-  show_unstable?: boolean
-  hidden_categories?: string[]
-  layout?: `toggle` | `side-by-side`
-  on_entry_click?: (entry: ConvexHullEntry) => void
-  highlighted_entry_id?: string
-  entry_href?: (entry: ConvexHullEntry) => string | null
-  class?: string
-  style?: string
 }
-const mount_stats = (props: Partial<Props> = {}) =>
+const mount_stats = ({
+  phase_stats = mock_stats(),
+  stable_entries = [],
+  unstable_entries = [],
+  ...props
+}: Partial<Props> = {}) =>
   mount(ConvexHullStats, {
     target: document.body,
     props: {
-      phase_stats: mock_stats(),
-      stable_entries: [],
-      unstable_entries: [],
+      model: {
+        phase_stats,
+        entries: [
+          ...stable_entries.map((entry) => ({ ...entry, is_stable: true })),
+          ...unstable_entries.map((entry) => ({ ...entry, is_stable: false })),
+        ],
+      },
       ...props,
     },
   })

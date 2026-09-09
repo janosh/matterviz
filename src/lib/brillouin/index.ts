@@ -1,3 +1,6 @@
+import type { ComponentProps } from 'svelte'
+import type BrillouinZone from './BrillouinZone.svelte'
+
 export { default as BrillouinZone } from './BrillouinZone.svelte'
 export { default as BrillouinZoneControls } from './BrillouinZoneControls.svelte'
 export { default as BrillouinZoneExportPane } from './BrillouinZoneExportPane.svelte'
@@ -10,3 +13,26 @@ export * from './geometry'
 export { default as PolyhedronMesh } from './PolyhedronMesh.svelte'
 export { default as ReciprocalVectors } from './ReciprocalVectors.svelte'
 export * from './types'
+
+export type BrillouinZoneOptions = Pick<
+  ComponentProps<typeof BrillouinZone>,
+  | 'class'
+  | 'style'
+  | 'bz_order'
+  | 'controls_open'
+  | 'info_pane_open'
+  | 'surface_color'
+  | 'surface_opacity'
+  | 'edge_color'
+  | 'edge_width'
+  | 'show_vectors'
+  | 'vector_scale'
+  | 'camera_projection'
+  | 'show_ibz'
+  | 'ibz_color'
+  | 'ibz_opacity'
+  | 'show_controls'
+  | 'fullscreen_toggle'
+  | 'png_dpi'
+  | 'tooltip_config'
+>

@@ -8,18 +8,18 @@ You can compile Svelte components to custom elements and consume them anywhere (
 - React docs: [Using Web Components](https://react.dev/reference/react-dom/components#using-web-components)
 - Vue docs: [Web Components](https://vuejs.org/guide/extras/web-components.html)
 
-MatterViz does not ship custom elements, so write a one-file wrapper in your own project. A minimal `StructureCE.svelte` for [`Structure.svelte`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/Structure.svelte):
+MatterViz does not ship custom elements, so write a one-file wrapper in your own project. A minimal `StructureCE.svelte` for [`StructureFileViewer.svelte`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/StructureFileViewer.svelte):
 
 ```svelte
 <svelte:options customElement="mv-structure" />
 
 <!-- src/StructureCE.svelte in your app, compiled with the Svelte compiler (customElement: true) -->
 <script lang="ts">
-  import { Structure } from 'matterviz'
+  import { StructureFileViewer } from 'matterviz'
   let props = $props()
 </script>
 
-<Structure {...props} />
+<StructureFileViewer {...props} />
 ```
 
 Use in React (set properties via ref):
@@ -32,7 +32,7 @@ import './StructureCE.svelte'
 export default function StructureEmbed() {
   const ref = useRef<
     HTMLElement & {
-      data_url?: string
+      source?: string
       show_controls?: boolean
       on_file_load?: (data: StructureHandlerData) => void
     }
@@ -40,7 +40,7 @@ export default function StructureEmbed() {
 
   useEffect(() => {
     if (!ref.current) return
-    ref.current.data_url = '/TiO2.cif'
+    ref.current.source = '/TiO2.cif'
     ref.current.show_controls = true
     // Callback props receive a flat payload ({ structure, filename, file_size, ... }), not a CustomEvent
     ref.current.on_file_load = ({ filename, structure }) =>
@@ -62,7 +62,7 @@ import { onMounted, ref } from 'vue'
 const mv = ref()
 onMounted(() => {
   if (!mv.value) return
-  mv.value.data_url = '/TiO2.cif'
+  mv.value.source = '/TiO2.cif'
   mv.value.show_controls = true
   mv.value.on_file_load = ({ filename, structure }) =>
     console.log('loaded:', filename, structure)

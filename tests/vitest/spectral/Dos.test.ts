@@ -76,32 +76,63 @@ describe(`Dos component`, () => {
   // One line series per DOS per drawn spin channel: spin-polarized inputs default to
   // `mirror`, `up_only`/`down_only` keep one channel, pDOS draws one per kept atom/orbital
   it.each([
-    [`phonon DOS`, { doses: phonon_dos }, 1],
-    [`electronic DOS`, { doses: electronic_dos }, 1],
-    [`multiple DOS dict`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos } }, 2],
+    [`phonon DOS`, { doses: { '': phonon_dos } }, 1],
+    [
+      `hidden up channel`,
+      { doses: { sample: electronic_dos }, hidden_series: [JSON.stringify([`sample`, `up`])] },
+      0,
+    ],
+    [
+      `hidden up channel with spin splitting`,
+      {
+        doses: { sample: spin_polarized_dos },
+        hidden_series: [JSON.stringify([`sample`, `up`])],
+      },
+      1,
+    ],
+    [`electronic DOS`, { doses: { '': electronic_dos } }, 1],
+    [
+      `DOS labels may match field names`,
+      { doses: { densities: phonon_dos, energies: phonon_dos } },
+      2,
+    ],
     [`stacked DOS`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos }, stack: true }, 2],
-    [`horizontal orientation`, { doses: phonon_dos, orientation: `horizontal` as const }, 1],
+    [
+      `horizontal orientation`,
+      { doses: { '': phonon_dos }, orientation: `horizontal` as const },
+      1,
+    ],
     // conversion factors and per-mode normalization maths are pinned in helpers.test.ts
-    [`cm^-1 units`, { doses: phonon_dos, units: `cm^-1` as const }, 1],
-    [`normalized to max`, { doses: phonon_dos, normalize: `max` as const }, 1],
-    [`mirror spin mode`, { doses: spin_polarized_dos, spin_mode: `mirror` as const }, 2],
-    [`up_only spin mode`, { doses: spin_polarized_dos, spin_mode: `up_only` as const }, 1],
-    [`down_only spin mode`, { doses: spin_polarized_dos, spin_mode: `down_only` as const }, 1],
-    [`atom pDOS`, { doses: pymatgen_complete_dos, pdos_type: `atom` as const }, 4],
-    [`orbital pDOS`, { doses: pymatgen_complete_dos, pdos_type: `orbital` as const }, 3],
+    [`cm^-1 units`, { doses: { '': phonon_dos }, units: `cm^-1` as const }, 1],
+    [`normalized to max`, { doses: { '': phonon_dos }, normalize: `max` as const }, 1],
+    [
+      `mirror spin mode`,
+      { doses: { '': spin_polarized_dos }, spin_mode: `mirror` as const },
+      2,
+    ],
+    [
+      `up_only spin mode`,
+      { doses: { '': spin_polarized_dos }, spin_mode: `up_only` as const },
+      1,
+    ],
+    [
+      `down_only spin mode`,
+      { doses: { '': spin_polarized_dos }, spin_mode: `down_only` as const },
+      1,
+    ],
+    [`atom pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `atom`) ?? {} }, 4],
+    [`orbital pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `orbital`) ?? {} }, 3],
     [
       `filtered pDOS`,
       {
-        doses: pymatgen_complete_dos,
-        pdos_type: `atom` as const,
-        pdos_filter: [`Fe`],
+        doses: extract_pdos(pymatgen_complete_dos, `atom`, [`Fe`]) ?? {},
       },
       2,
     ],
     [
       `all controls enabled`,
       {
-        doses: phonon_dos,
+        doses: { '': phonon_dos },
         show_controls: true,
         show_normalize_control: true,
         show_units_control: true,
@@ -123,7 +154,7 @@ describe(`Dos component`, () => {
     mount(Dos, {
       target: document.body,
       props: {
-        doses: phonon_dos,
+        doses: { '': phonon_dos },
         units: units as FrequencyUnit,
         show_controls: true,
         show_units_control: true,
@@ -153,13 +184,17 @@ describe(`Dos component`, () => {
     const plot = await mount_sized(
       Dos,
       {
-        doses: multi ? { A: phonon_dos, B: electronic_dos } : phonon_dos,
+        doses: multi ? { A: phonon_dos, B: phonon_dos } : { "": phonon_dos },
         show_legend,
         show_controls: false,
+        display: { x_grid: false, y_grid: false },
       },
       { selector: `.scatter` },
     )
     expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
+    for (const axis_tick of plot.querySelectorAll(`.tick`)) {
+      expect(axis_tick.querySelectorAll(`line`)).toHaveLength(1)
+    }
   })
 
   // both axes carry Dos' own ranges (density from zero, the padded frequency range), which
@@ -171,7 +206,7 @@ describe(`Dos component`, () => {
       frequencies: phonon_dos.frequencies.map((freq) => freq * 0.93),
       densities: phonon_dos.densities.map((density) => density * 0.87),
     }
-    const plot = await mount_sized(Dos, { doses }, { selector: `.scatter` })
+    const plot = await mount_sized(Dos, { doses: { '': doses } }, { selector: `.scatter` })
     const ticks = (axis: string) =>
       [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map((el) => el.textContent)
     const [x_before, y_before] = [ticks(`x`), ticks(`y`)]
@@ -189,7 +224,7 @@ describe(`Dos component`, () => {
       target,
       props: bind_props(
         {
-          doses: phonon_dos,
+          doses: { '': phonon_dos },
           controls_toggle_props: { 'data-testid': `dos-toggle` },
           controls_pane_props: { 'data-testid': `dos-pane`, style: `min-width: 20rem` },
         },
@@ -203,13 +238,8 @@ describe(`Dos component`, () => {
     await expect_plot_controls(target, controls_state, `dos`)
   })
 
-  // Empty state tests
-  it.each([
-    [`null`, null],
-    [`empty object`, {}],
-    [`invalid data`, { invalid: true }],
-  ])(`shows EmptyState for %s`, (_desc, doses) => {
-    mount(Dos, { target: document.body, props: { doses: doses as never } })
+  it(`shows EmptyState for an empty canonical collection`, () => {
+    mount(Dos, { target: document.body, props: { doses: {} } })
     expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
   })
 

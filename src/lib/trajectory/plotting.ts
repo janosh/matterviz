@@ -377,22 +377,27 @@ function calculate_priority(unit: string, group_series: readonly DataSeries[]): 
 // Series from property statistics: one per property, coloured in order, visible when the
 // property (or another in its unit group) is requested, capped at two axes by priority. With
 // nothing requested the highest-priority group shows so the plot is never empty.
-function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSeries[] {
+type PropertySeries = DataSeries & { id: string; visible: boolean }
+
+function build_series(stats: PropertyStats, options: PlotSeriesOptions): PropertySeries[] {
   const {
     property_config = trajectory_property_config,
-    default_visible_properties = DEFAULT_VISIBLE,
+    default_visible_properties,
     x_map = FRAME_X_MAP,
   } = options
-  const series: DataSeries[] = []
+  const series: PropertySeries[] = []
   for (const [key, stat] of stats) {
     const n_values = stat.values.length
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
     const color = PLOT_COLORS[series.length % PLOT_COLORS.length]
     series.push({
+      id: key,
       x: stat.frame_indices.map(x_map.to_x),
       y: stat.values,
       label: clean_label,
       unit,
+      visible: false,
+      y_axis: `y`,
       ...(axis_group ? { axis_group } : {}),
       markers: n_values < 30 ? `line+points` : `line`,
       // Series-level (not per point): every consumer resolves a scalar metadata object
@@ -411,34 +416,50 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSer
   })
   const requested_groups = groups.filter((group) =>
     group.series.some((srs) =>
-      is_default_visible(property_key(srs) ?? srs.label ?? ``, default_visible_properties),
+      default_visible_properties
+        ? default_visible_properties.has(srs.id)
+        : is_default_visible(srs.id, DEFAULT_VISIBLE),
     ),
   )
   const selected_groups = requested_groups.length > 0 ? requested_groups : groups.slice(0, 1)
-  const { assignments } = assign_axes(series, {
-    is_visible: (srs) => selected_groups.some((group) => group.key === axis_group_key(srs)),
-    priority: calculate_priority,
+  // These series are ours: assign the already sorted groups without regrouping or cloning.
+  selected_groups.slice(0, 2).forEach((group, idx) => {
+    for (const srs of group.series) {
+      srs.visible = true
+      srs.y_axis = idx === 0 ? `y` : `y2`
+    }
   })
-  return series
-    .map((srs, series_idx) => ({
-      ...srs,
-      visible: assignments[series_idx] !== undefined,
-      y_axis: assignments[series_idx] ?? `y1`,
-    }))
-    .toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
+  return series.toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
 }
 
-export const property_key = (series: DataSeries): string | undefined => {
-  const metadata = Array.isArray(series.metadata) ? series.metadata[0] : series.metadata
-  const key = metadata?.property_key
-  return typeof key === `string` ? key : undefined
+// Visibility changes reuse data arrays and keep legend order stable. Hidden series join
+// their group's axis, otherwise target the free axis or replace y when both are occupied.
+export function with_visible_properties(
+  series: readonly PropertySeries[],
+  visible_properties: readonly string[] | undefined,
+): PropertySeries[] {
+  const selected = visible_properties && new Set(visible_properties)
+  const next = series.map(({ y_axis: _axis, ...srs }) => ({
+    ...srs,
+    visible: selected ? selected.has(srs.id) : srs.visible,
+  }))
+  const { assignments, groups } = assign_axes(next, { priority: calculate_priority })
+  const hidden_axis = assignments.includes(`y2`) ? `y` : `y2`
+  return next.map((srs, idx) => ({
+    ...srs,
+    visible: srs.visible && assignments[idx] !== undefined,
+    y_axis:
+      assignments[idx] ??
+      groups.find((group) => group.key === axis_group_key(srs))?.axis ??
+      hidden_axis,
+  }))
 }
 
 // Plot series from a run's property rows
 export const generate_plot_series = (
   rows: readonly TrajectoryMetadata[],
   options: PlotSeriesOptions = {},
-): DataSeries[] =>
+): PropertySeries[] =>
   rows.length > 0 ? build_series(cached_property_statistics(rows), options) : []
 
 // A plot of one frame, or of nothing but flat lines, says nothing: hide it

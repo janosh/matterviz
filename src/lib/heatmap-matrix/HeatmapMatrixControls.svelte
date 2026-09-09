@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { Snippet } from 'svelte'
@@ -16,7 +17,7 @@
     ordering = $bindable(),
     orderings = ELEMENT_ORDERINGS,
     controls_open = $bindable(false),
-    toggle_visible = $bindable(false),
+    show_controls = `hover`,
     normalize = $bindable(`linear`),
     domain_mode = $bindable(`auto`),
     show_color_bar = $bindable(false),
@@ -28,7 +29,6 @@
     show_col_summaries = $bindable(false),
     export_formats = [`csv`, `json`],
     on_export,
-    show_pane = true,
     pane_props = {},
     toggle_props = {},
     children,
@@ -38,7 +38,7 @@
     ordering?: ElementAxisOrderingKey
     orderings?: ElementAxisOrderingKey[]
     controls_open?: boolean
-    toggle_visible?: boolean
+    show_controls?: ShowControlsProp<`controls`>
     normalize?: HeatmapNormalizeMode
     domain_mode?: HeatmapDomainMode
     show_color_bar?: boolean
@@ -50,7 +50,6 @@
     show_col_summaries?: boolean
     export_formats?: HeatmapExportFormat[]
     on_export?: (format: HeatmapExportFormat) => void
-    show_pane?: boolean
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
     children?: Snippet<[{ controls_open: boolean }]>
@@ -59,18 +58,12 @@
   // Stash custom format string so toggling the checkbox preserves it
   let stashed_format = $state<string | null>(null)
 
-  let show_toggle = $derived(controls_open || toggle_visible)
-  let default_toggle_style = $derived(
-    [
-      `position: absolute`,
-      `top: var(--heatmap-matrix-controls-toggle-top, 6px)`,
-      `right: var(--heatmap-matrix-controls-toggle-right, 6px)`,
-      `z-index: var(--heatmap-matrix-controls-toggle-z-index, 20)`,
-      `opacity: ${show_toggle ? `1` : `0`}`,
-      `pointer-events: ${show_toggle ? `auto` : `none`}`,
-      `transition: var(--heatmap-matrix-controls-toggle-transition, opacity 0.2s ease)`,
-    ].join(`; `),
-  )
+  const default_toggle_style = [
+    `position: absolute`,
+    `top: var(--heatmap-matrix-controls-toggle-top, 6px)`,
+    `right: var(--heatmap-matrix-controls-toggle-right, 6px)`,
+    `z-index: var(--heatmap-matrix-controls-toggle-z-index, 20)`,
+  ].join(`; `)
   const default_pane_style = [
     `z-index: var(--heatmap-matrix-controls-pane-z-index, 25)`,
     `min-width: var(--heatmap-matrix-controls-pane-min-width, 220px)`,
@@ -79,109 +72,107 @@
   ].join(`; `)
 </script>
 
-<!-- gated here so the toggle goes with the pane; ControlPane has no prop for it -->
-{#if show_pane}
-  <ControlPane
-    bind:controls_open
-    pane_class="heatmap-controls"
-    toggle_class="heatmap-matrix-controls-toggle"
-    pane_style={default_pane_style}
-    toggle_style={default_toggle_style}
-    toggle_props={{
-      ...toggle_props,
-      title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),
-      'aria-label': toggle_props[`aria-label`] ?? `Heatmap controls`,
-    }}
-    {pane_props}
-  >
-    <SettingsSection title="Heatmap" layout="grid">
-      {#if ordering !== undefined}
-        <label>
-          <span>Ordering</span>
-          <select bind:value={ordering}>
-            {#each orderings as ord (ord)}
-              <option value={ord}>{ORDERING_LABELS[ord]}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
+<ControlPane
+  {show_controls}
+  bind:controls_open
+  pane_class="heatmap-controls"
+  toggle_class="heatmap-matrix-controls-toggle"
+  pane_style={default_pane_style}
+  toggle_style={default_toggle_style}
+  toggle_props={{
+    ...toggle_props,
+    title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),
+    'aria-label': toggle_props[`aria-label`] ?? `Heatmap controls`,
+  }}
+  {pane_props}
+>
+  <SettingsSection title="Heatmap" layout="grid">
+    {#if ordering !== undefined}
       <label>
-        <span>Search</span>
-        <input bind:value={search_query} placeholder="Filter labels/keys" />
-      </label>
-      <label>
-        <span>Normalize</span>
-        <select bind:value={normalize}>
-          <option value="linear">Linear</option>
-          <option value="log">Log</option>
-        </select>
-      </label>
-      <label>
-        <span>Domain</span>
-        <select bind:value={domain_mode}>
-          <option value="auto">Auto</option>
-          <option value="robust">Robust</option>
-          <option value="fixed">Fixed</option>
-        </select>
-      </label>
-      <label>
-        <span>Color bar</span>
-        <input type="checkbox" bind:checked={show_color_bar} />
-      </label>
-      {#if show_color_bar}
-        <label>
-          <span>Position</span>
-          <select bind:value={color_bar_position}>
-            <option value="right">Right</option>
-            <option value="bottom">Bottom</option>
-          </select>
-        </label>
-      {/if}
-      <label>
-        <span>Symmetric</span>
-        <select bind:value={symmetric}>
-          <option value={false}>Off</option>
-          <option value="lower">Lower</option>
-          <option value="upper">Upper</option>
-        </select>
-      </label>
-      <label>
-        <span>Values</span>
-        <input
-          type="checkbox"
-          checked={!!show_values}
-          onchange={(evt) => {
-            if (evt.currentTarget.checked) {
-              show_values = stashed_format || true
-              return
-            }
-            stashed_format = typeof show_values === `string` ? show_values : null
-            show_values = false
-          }}
-        />
-      </label>
-      <label>
-        <span>Row sums</span>
-        <input type="checkbox" bind:checked={show_row_summaries} />
-      </label>
-      <label>
-        <span>Col sums</span>
-        <input type="checkbox" bind:checked={show_col_summaries} />
-      </label>
-      <div class="setting">
-        <span>Export</span>
-        <div class="pane-row">
-          {#each export_formats as export_format (export_format)}
-            <button type="button" onclick={() => on_export?.(export_format)}>
-              Export {export_format.toUpperCase()}
-            </button>
+        <span>Ordering</span>
+        <select bind:value={ordering}>
+          {#each orderings as ord (ord)}
+            <option value={ord}>{ORDERING_LABELS[ord]}</option>
           {/each}
-        </div>
+        </select>
+      </label>
+    {/if}
+    <label>
+      <span>Search</span>
+      <input bind:value={search_query} placeholder="Filter labels/keys" />
+    </label>
+    <label>
+      <span>Normalize</span>
+      <select bind:value={normalize}>
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select>
+    </label>
+    <label>
+      <span>Domain</span>
+      <select bind:value={domain_mode}>
+        <option value="auto">Auto</option>
+        <option value="robust">Robust</option>
+        <option value="fixed">Fixed</option>
+      </select>
+    </label>
+    <label>
+      <span>Color bar</span>
+      <input type="checkbox" bind:checked={show_color_bar} />
+    </label>
+    {#if show_color_bar}
+      <label>
+        <span>Position</span>
+        <select bind:value={color_bar_position}>
+          <option value="right">Right</option>
+          <option value="bottom">Bottom</option>
+        </select>
+      </label>
+    {/if}
+    <label>
+      <span>Symmetric</span>
+      <select bind:value={symmetric}>
+        <option value={false}>Off</option>
+        <option value="lower">Lower</option>
+        <option value="upper">Upper</option>
+      </select>
+    </label>
+    <label>
+      <span>Values</span>
+      <input
+        type="checkbox"
+        checked={!!show_values}
+        onchange={(evt) => {
+          if (evt.currentTarget.checked) {
+            show_values = stashed_format || true
+            return
+          }
+          stashed_format = typeof show_values === `string` ? show_values : null
+          show_values = false
+        }}
+      />
+    </label>
+    <label>
+      <span>Row sums</span>
+      <input type="checkbox" bind:checked={show_row_summaries} />
+    </label>
+    <label>
+      <span>Col sums</span>
+      <input type="checkbox" bind:checked={show_col_summaries} />
+    </label>
+    <div class="setting">
+      <span>Export</span>
+      <div class="pane-row">
+        {#each export_formats as export_format (export_format)}
+          <button type="button" onclick={() => on_export?.(export_format)}>
+            Export {export_format.toUpperCase()}
+          </button>
+        {/each}
       </div>
-    </SettingsSection>
-    {@render children?.({ controls_open })}
-  </ControlPane>
-{/if}
+    </div>
+  </SettingsSection>
+  {@render children?.({ controls_open })}
+</ControlPane>
 
 <style>
   :global(.heatmap-controls) {

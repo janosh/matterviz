@@ -226,19 +226,21 @@ describe(`TernaryPlot`, () => {
     expect(plot.querySelector(`.legend-item line`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
   })
 
-  test(`legend toggles write visible into the bound series and yield to host changes`, async () => {
-    const bound = $state({ series: series.map((srs) => ({ ...srs })) })
+  test(`legend toggles update separate visibility state`, async () => {
+    const bound = $state({
+      series: series.map((srs) => ({ ...srs })),
+      hidden_series: [] as (string | number)[],
+    })
     const plot = await mount_ternary(bind_props({}, bound))
     expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
     plot.querySelector<HTMLElement>(`.legend-item`)?.click() // hide Oxides
     await tick()
-    expect(bound.series[0].visible).toBe(false)
+    expect(bound.series[0].visible).toBeUndefined()
+    expect(bound.hidden_series).toEqual([0])
     expect(markers(plot)).toHaveLength(2)
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1) // Path keeps its line
     // the host overrides the toggle
-    bound.series = bound.series.map((srs, idx) =>
-      idx === 0 ? { ...srs, visible: true } : srs,
-    )
+    bound.hidden_series = []
     await tick()
     expect(markers(plot)).toHaveLength(5)
   })
