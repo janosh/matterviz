@@ -278,6 +278,7 @@ describe(`convex hull replacement state`, () => {
         return state.get(`entries`)
       },
       show_stable: false,
+      controls_open: true,
     }
     const target = await mount_hull(props)
     for (const dim of [2, 3, 4, 2]) {
@@ -296,6 +297,9 @@ describe(`convex hull replacement state`, () => {
       expect(target.querySelector(`[aria-label="${label}"]`)).not.toBeNull()
       expect(model_entries()).toHaveLength(dim)
       expect(props.show_stable).toBe(false)
+      const face_mode = target.querySelector(`.face-color-mode-buttons .active`)
+      if (dim === 2) expect(face_mode).toBeNull()
+      else expect(face_mode?.textContent?.trim()).toBe(dim === 3 ? `Uniform` : `Element`)
       expect(normalize).toHaveBeenCalledOnce()
     }
   })

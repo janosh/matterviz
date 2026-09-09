@@ -351,7 +351,7 @@ test.each([
   [`fermi_surface`, { energies: [] }, `band_data`, false],
   [`convex_hull`, [], `entries`, false],
   [`phase_diagram`, {}, `data`, undefined],
-  [`structure`, { sites: [] }, `structure`, undefined],
+  [`structure`, { sites: [] }, `structure`, false],
 ] as const)(`create_display mounts %s data`, (type, data, prop_name, allow_file_drop) => {
   // Minimal stubs: this asserts which prop create_display forwards data to, not that the
   // payload is a well-formed member of its view type
@@ -396,15 +396,13 @@ describe(`create_display trajectory display options`, () => {
     expect(mount_props.trajectory).toBe(result.data)
     expect(mount_props.current_step_idx).toBe(42)
     expect(mount_props.on_controller).toBe(on_trajectory_controller)
-    // The webview mounts the pure viewer after parsing elsewhere, so loading/file-drop
-    // settings (and the never-declared enable_tips) must not reach it: Trajectory would
-    // spread them onto its wrapper div as unknown HTML attributes
+    // The host owns parsing and drops; the viewer borrows its already-opened run.
+    expect(mount_props.allow_file_drop).toBe(false)
     for (const key of [
       `loading_options`,
       `spinner_props`,
       `index_above_bytes`,
       `atom_type_mapping`,
-      `allow_file_drop`,
       `enable_tips`,
     ]) {
       expect(mount_props).not.toHaveProperty(key)
