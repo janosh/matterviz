@@ -57,19 +57,6 @@
 
   // Stash custom format string so toggling the checkbox preserves it
   let stashed_format = $state<string | null>(null)
-
-  const default_toggle_style = [
-    `position: absolute`,
-    `top: var(--heatmap-matrix-controls-toggle-top, 6px)`,
-    `right: var(--heatmap-matrix-controls-toggle-right, 6px)`,
-    `z-index: var(--heatmap-matrix-controls-toggle-z-index, 20)`,
-  ].join(`; `)
-  const default_pane_style = [
-    `z-index: var(--heatmap-matrix-controls-pane-z-index, 25)`,
-    `min-width: var(--heatmap-matrix-controls-pane-min-width, 220px)`,
-    `--ctrl-label-w: 6.5em`,
-    `--ctrl-value-w: 4em`,
-  ].join(`; `)
 </script>
 
 <ControlPane
@@ -77,8 +64,8 @@
   bind:controls_open
   pane_class="heatmap-controls"
   toggle_class="heatmap-matrix-controls-toggle"
-  pane_style={default_pane_style}
-  toggle_style={default_toggle_style}
+  pane_style="z-index: var(--heatmap-matrix-controls-pane-z-index, 25); min-width: var(--heatmap-matrix-controls-pane-min-width, 220px); --ctrl-label-w: 6.5em; --ctrl-value-w: 4em"
+  toggle_style="position: absolute; top: var(--heatmap-matrix-controls-toggle-top, 6px); right: var(--heatmap-matrix-controls-toggle-right, 6px); z-index: var(--heatmap-matrix-controls-toggle-z-index, 20)"
   toggle_props={{
     ...toggle_props,
     title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),

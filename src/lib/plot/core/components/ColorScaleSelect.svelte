@@ -25,9 +25,6 @@
   }: Omit<ComponentProps<typeof ScaleSelect>, `options`> & {
     options?: D3InterpolateName[]
     value?: D3InterpolateName
-    selected?: D3InterpolateName[]
-    min_select?: number
-    placeholder?: string
     color_bar?: ComponentProps<typeof ColorBar>
   } = $props()
 
