@@ -1,7 +1,61 @@
 import { create_fit_zoom, create_orthographic_zoom, create_scene_camera } from '$lib/scene'
-import { flushSync } from 'svelte'
+import SceneCamera from '$lib/scene/SceneCamera.svelte'
+import { read_pan_offset, set_pan_offset } from '$lib/scene/pan'
+import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '$lib/scene/props.svelte'
+import { createThrelteContext } from '@threlte/core'
+import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
+import type { WebGLRenderer } from 'three'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
-import { expect, test } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
+
+test.each([`orthographic`, `perspective`] as const)(
+  `%s camera retains identity and pan when its position changes`,
+  async (camera_projection) => {
+    const props = $state<ComponentProps<typeof SceneCamera>>({
+      camera_projection,
+      position: undefined,
+      orbit_props: build_orbit_props({
+        ...SCENE_CONTROL_DEFAULTS,
+        camera_projection,
+        target: [0, 0, 0],
+        min_zoom: undefined,
+        max_zoom: undefined,
+      }),
+    })
+    const contexts: ReturnType<typeof createThrelteContext>[] = []
+    const Harness: Component = (anchor) => {
+      // Only GPU rendering is stubbed; actual Threlte components own the Three cameras.
+      contexts.push(
+        createThrelteContext({
+          dom: document.body,
+          canvas: document.createElement(`canvas`),
+          createRenderer: () =>
+            ({
+              xr: {},
+              shadowMap: {},
+              setSize: vi.fn(),
+              setPixelRatio: vi.fn(),
+              setAnimationLoop: vi.fn(),
+              render: vi.fn(),
+              dispose: vi.fn(),
+            }) as unknown as WebGLRenderer,
+        }),
+      )
+      return SceneCamera(anchor, props)
+    }
+    const component = mount(Harness, { target: document.body })
+    onTestFinished(() => unmount(component))
+    flushSync()
+    const camera = contexts[0].camera.current
+    set_pan_offset(camera, [30, 15], 400, 300)
+    for (const position of [[3, 4, 5], [0, 0, 0], undefined] as const) {
+      props.position = position && [...position]
+      flushSync()
+      expect(contexts[0].camera.current).toBe(camera)
+      expect(read_pan_offset(camera)).toEqual([30, 15])
+    }
+  },
+)
 
 // Shared by BrillouinZoneScene, FermiSurfaceScene, ScatterPlot3DScene and StructureScene, so a
 // regression here hits four renderers at once — and both bugs this replaced lived in exactly

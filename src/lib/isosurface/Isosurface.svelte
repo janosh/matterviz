@@ -45,10 +45,8 @@
     // Supercell tiling applied to geometry volumes (color sampling always uses
     // the original volume with periodic wrapping for full fidelity)
     tiling?: Vec3
-    // Called when the geometry worker fails after construction (chunk 404, OOM, module
-    // import failure) so the host can tell the user why the surfaces did not update. A
-    // worker that cannot be constructed at all falls back to the main thread silently.
-    // Falls back to the handler a host (Structure) registered via set_isosurface_error_handler
+    // Reports geometry worker construction and runtime failures. Uses the host's
+    // set_isosurface_error_handler when no component handler is supplied.
     on_error?: IsosurfaceErrorHandler
   } = $props()
 

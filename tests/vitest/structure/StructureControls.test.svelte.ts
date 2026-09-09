@@ -8,7 +8,11 @@ import {
 } from '$lib/settings/viewer-state'
 import type { AnyStructure } from '$lib'
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import { default_vector_configs, StructureControls } from '$lib/structure'
+import {
+  default_vector_configs,
+  StructureControls,
+  type StructureSettings,
+} from '$lib/structure'
 import { next_atom_color_config } from '$lib/structure/atom-properties'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
@@ -280,19 +284,16 @@ describe(`StructureControls schema rows`, () => {
   // Every uniform row is generated from SETTINGS_CONFIG: the entry's value type picks the
   // control and the control shows the bound value. Rows with accessors (the show_image_atoms /
   // show_trajectory_lines bindables) write back to their own target, not scene_props.
-  test(`render the control matching each setting's type, value and bounds`, async () => {
+  test(`render default and explicit setting values, types and bounds`, async () => {
     const state = $state({
       scene_props: {
-        ...DEFAULTS.structure,
-        show_bonds: `always` as const,
-        show_polyhedra: `always` as const,
         show_site_labels: true,
         auto_bond_order: true,
         polyhedra_color_mode: `uniform` as const,
         bond_thickness: 0.2,
         cell_edge_color: `#123456`,
         show_cell_vectors: false,
-      },
+      } as StructureSettings,
       show_image_atoms: false,
     })
     const target = await mount_bound_controls(state, {
@@ -384,7 +385,13 @@ describe(`StructureControls schema rows`, () => {
     expect(state.scene_props.show_cell_vectors).toBe(true)
     expect(state.show_image_atoms).toBe(true)
     // ...and nothing leaked onto scene_props from the accessor row
-    expect(state.scene_props.show_image_atoms).toBe(DEFAULTS.structure.show_image_atoms)
+    expect(Object.hasOwn(state.scene_props, `show_image_atoms`)).toBe(false)
+
+    state.scene_props.show_bonds = `never`
+    state.scene_props.show_polyhedra = `never`
+    await tick()
+    expect(target.querySelector(`[data-key="bonding_strategy"]`)).toBeNull()
+    expect(target.querySelector(`[data-key="polyhedra_opacity"]`)).toBeNull()
   })
 
   // The full row inventory with every conditional section open, in pane order. A row that

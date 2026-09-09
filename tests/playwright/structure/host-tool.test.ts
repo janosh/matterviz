@@ -1,5 +1,5 @@
 import { expect, type Download, type Page } from '@playwright/test'
-import { test_without_errors as test } from '../helpers'
+import { goto_structure_test, test_without_errors as test } from '../helpers'
 
 const scene_state = (page: Page) =>
   page.evaluate(async () => {
@@ -154,7 +154,7 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
 test(`caller camera updates during a host view take precedence over its saved view`, async ({
   page,
 }) => {
-  await page.goto(`/test/structure`)
+  await goto_structure_test(page)
   await page.evaluate(async () => {
     const host_module = `/src/lib/structure/index.ts`
     const demo_module = `/src/routes/(demos)/structure/host-tool/DemoHostTool.svelte`
@@ -174,9 +174,15 @@ test(`caller camera updates during a host view take precedence over its saved vi
   )
   await page.getByRole(`button`, { name: `Return to structure` }).click()
   await expect(page.getByTestId(`predicted-trajectory`)).toHaveCount(0)
-  await expect
-    .poll(async () => (await scene_state(page)).camera?.slice(0, 3))
-    .toEqual([12, 9, 7])
+  // OrbitControls reconstructs position from spherical coordinates (CI error: 8.9e-16).
+  await expect(async () => {
+    const position = (await scene_state(page)).camera?.slice(0, 3)
+    expect(position).toHaveLength(3)
+    for (const [idx, expected] of [12, 9, 7].entries())
+      expect(Math.abs((position?.[idx] ?? Infinity) - expected)).toBeLessThanOrEqual(
+        8 * Number.EPSILON * expected,
+      )
+  }).toPass()
 })
 
 const read_download = async (download: Download) => {

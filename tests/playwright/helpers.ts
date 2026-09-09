@@ -105,8 +105,7 @@ export const set_scene_props = (page: Page, detail: Record<string, unknown>): Pr
     globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
   }, detail)
 
-// Load a structure into the test page via its `set-structure` hook, applying scene props in
-// the same round trip (the page resets camera_target on structure change, so pass cameras here)
+// Load a structure and apply scene props in one round trip through the test page's hook.
 export const set_structure = (
   page: Page,
   structure: Record<string, unknown>,

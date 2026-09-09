@@ -12,7 +12,7 @@
 
   let {
     camera_projection = `perspective`,
-    position,
+    position = [0, 0, 0],
     fov = DEFAULTS.structure.fov,
     zoom = DEFAULTS.structure.initial_zoom,
     near = 0.1,
@@ -88,17 +88,11 @@
 {/snippet}
 
 {#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault {...position ? { position } : {}} {fov} {near} {far}>
+  <T.PerspectiveCamera makeDefault {position} {fov} {near} {far}>
     {@render camera_contents()}
   </T.PerspectiveCamera>
 {:else}
-  <T.OrthographicCamera
-    makeDefault
-    {...position ? { position } : {}}
-    {zoom}
-    near={ortho_near}
-    {far}
-  >
+  <T.OrthographicCamera makeDefault {position} {zoom} near={ortho_near} {far}>
     {@render camera_contents()}
   </T.OrthographicCamera>
 {/if}

@@ -3,12 +3,13 @@
 // progress, superseded loads, run ownership, the HDF5 group picker, errors and the empty state.
 import * as parse_worker from '$lib/file-viewer/parse-in-worker'
 import type { TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
-import { Hdf5GroupSelectionRequiredError, open_trajectory } from '$lib/trajectory'
+import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory'
 import TrajectoryFileViewer from '$lib/trajectory/TrajectoryFileViewer.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  mock_parse_worker,
   create_drop_event,
   doc_query,
   gzip_bytes,
@@ -19,6 +20,8 @@ import {
   query,
   read_binary_test_file,
 } from '../setup'
+
+beforeEach(mock_parse_worker)
 
 type Props = ComponentProps<typeof TrajectoryFileViewer>
 type WorkerParse = typeof parse_worker.parse_trajectory_in_worker
@@ -69,15 +72,6 @@ const stub_worker = (implementation: WorkerParse) =>
         signal: options.signal,
       }),
     }))
-// Parses on this thread what production would hand to the worker (Blob HDF5, large payloads)
-const passthrough_worker = (): ReturnType<typeof stub_worker> =>
-  stub_worker(async (data, filename, on_progress, options) =>
-    open_trajectory(data instanceof Blob ? await data.arrayBuffer() : data, {
-      ...options,
-      filename,
-      on_progress,
-    }),
-  )
 // Worker stub whose results are released by hand, to order races deliberately
 const deferred_worker = () => {
   const pending: {
@@ -93,8 +87,6 @@ const deferred_worker = () => {
   )
   return pending
 }
-// Every payload goes through the (stubbed) worker path
-const WORKER_ALL = { index_above_bytes: 0 }
 const cancel_button = (target: ParentNode): HTMLButtonElement => {
   const button = [
     ...target.querySelectorAll<HTMLButtonElement>(`.hdf5-group-picker button`),
@@ -107,7 +99,7 @@ describe(`src`, () => {
   test(`file chooser loads once and the task cancel button disposes late results`, async () => {
     const pending = deferred_worker()
     const on_file_load = vi.fn()
-    const target = mount_viewer({ loading_options: WORKER_ALL, on_file_load })
+    const target = mount_viewer({ on_file_load })
     const input = target.querySelector<HTMLInputElement>(`input[type="file"]`)
     if (!input) throw new Error(`Missing file picker`)
     Object.defineProperty(input, `files`, {
@@ -308,7 +300,6 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
         }),
     )
     const target = mount_viewer({
-      loading_options: WORKER_ALL,
       spinner_props: { title: `Parsing in a worker` },
     })
     drop(target, new File([MULTI_FRAME_XYZ], `big.xyz`))
@@ -331,7 +322,6 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     const props = $state<Props>({
       src: new File([MULTI_FRAME_XYZ], `first.xyz`),
       trajectory: undefined,
-      loading_options: WORKER_ALL,
       on_file_load,
     })
     const target = mount_viewer(props)
@@ -364,7 +354,6 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({
       src: new File([MULTI_FRAME_XYZ], `slow.xyz`),
-      loading_options: WORKER_ALL,
       on_file_load,
     })
     await vi.waitFor(() => expect(pending).toHaveLength(1))
@@ -533,7 +522,6 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   }, 60_000)
 
   const drop_ambiguous = async (props: Props = {}) => {
-    passthrough_worker()
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({ on_file_load, on_error, ...props })
@@ -606,7 +594,6 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   // Picking a group re-parses the payload already in hand: re-fetching (and re-inflating) a
   // multi-GB HDF5 just to read a different group would double the wait
   test(`a group pick reuses the fetched payload instead of downloading again`, async () => {
-    passthrough_worker()
     const gz = await new Response(
       new Blob([ambiguous_bytes]).stream().pipeThrough(new CompressionStream(`gzip`)),
     ).arrayBuffer()

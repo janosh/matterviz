@@ -312,10 +312,10 @@
   }
   // A getter, not a const: the parent may rebind scene_props to a fresh object
   const scene_record = () => scene_props as Record<string, unknown>
+  const scene_value = (key: StructureSettingKey): unknown =>
+    scene_record()[key] ?? DEFAULTS.structure[key]
   const row_value = (current: Row): unknown =>
-    current.get
-      ? current.get()
-      : (scene_record()[current.key] ?? DEFAULTS.structure[current.key])
+    current.get ? current.get() : scene_value(current.key)
   const set_row_value = (current: Row, value: unknown): void => {
     if (current.set) current.set(value)
     else scene_record()[current.key] = value
@@ -343,7 +343,7 @@
     row(`auto_bond_order`, `Auto bond order`),
     {
       ...row(`aromatic_display`, `Aromatic`),
-      when: () => Boolean(scene_props.auto_bond_order),
+      when: () => Boolean(scene_value(`auto_bond_order`)),
     },
     row(`bond_color`, `Color`),
     row(`bond_thickness`, `Thickness`, 0.01),
@@ -354,7 +354,7 @@
       ...row(`polyhedra_color_mode`, `Color`),
       pair: {
         key: `polyhedra_color`,
-        when: () => scene_props.polyhedra_color_mode === `uniform`,
+        when: () => scene_value(`polyhedra_color_mode`) === `uniform`,
       },
     },
     row(`polyhedra_show_edges`, `Edges`),
@@ -374,7 +374,7 @@
     row(`vector_color_mode`, `Color by`),
     {
       ...row(`vector_color`, `Color`),
-      when: () => scene_props.vector_color_mode === `uniform`,
+      when: () => scene_value(`vector_color_mode`) === `uniform`,
     },
     {
       ...row(`vector_origin_gap`, `Origin gap`, 0.02),
@@ -494,7 +494,7 @@
     }
     return {
       current_values: Object.fromEntries([
-        ...keys.map((key) => [key, scene_record()[key] ?? DEFAULTS.structure[key]]),
+        ...keys.map((key) => [key, scene_value(key)]),
         ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
       ]),
       on_reset_key: (key: string, reference_value: unknown, reference_present: boolean) => {
@@ -834,7 +834,7 @@
                 class="swatch"
                 type="color"
                 bind:value={
-                  () => scene_record()[pair.key] as string | undefined,
+                  () => scene_value(pair.key) as string,
                   (value) => (scene_record()[pair.key] = value)
                 }
               />
@@ -1053,13 +1053,13 @@
         {/if}
       </SettingsSection>
 
-      {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
+      {#if scene_value(`show_bonds`) !== `never`}
         <SettingsSection title="Bonds" layout="grid" {...scene_section(bond_rows)}>
           {@render setting_rows(bond_rows)}
         </SettingsSection>
       {/if}
 
-      {#if scene_props.show_polyhedra && scene_props.show_polyhedra !== `never`}
+      {#if scene_value(`show_polyhedra`) !== `never`}
         <SettingsSection
           title="Polyhedra"
           layout="grid"
@@ -1086,7 +1086,7 @@
         </SettingsSection>
       {/if}
 
-      {#if scene_props.show_site_labels || scene_props.show_site_indices}
+      {#if scene_value(`show_site_labels`) || scene_value(`show_site_indices`)}
         <SettingsSection
           title="Labels"
           layout="grid"
@@ -1151,7 +1151,7 @@
             {...scene_section(vector_rows, vector_scale_accessors(), [`vector_color_scale`])}
           >
             {@render setting_rows(vector_rows)}
-            {#if scene_props.vector_color_mode === `magnitude`}
+            {#if scene_value(`vector_color_mode`) === `magnitude`}
               <label {...setting_row(`vector_color_scale`)}>
                 <span>Color scale</span>
                 <ColorScaleSelect

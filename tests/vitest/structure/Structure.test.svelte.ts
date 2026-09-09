@@ -24,11 +24,12 @@ import {
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { OrthographicCamera } from 'three/webgpu'
 import {
   assertHoverScopedShortcut,
   bind_props,
+  mock_parse_worker,
   create_drop_event,
   deferred_fetch_responses,
   doc_query,
@@ -65,11 +66,7 @@ vi.mock(`$lib/structure/StructureScene.svelte`, () => ({
   },
 }))
 
-// Exercise real parsers in happy-dom; worker transport has its own tests.
-vi.mock(`$lib/file-viewer/parse-in-worker`, async () => {
-  const { parse_file_content } = await import(`$lib/file-viewer/parse`)
-  return { parse_in_worker: parse_file_content }
-})
+beforeEach(mock_parse_worker)
 
 // Passthrough spy so individual tests can make make_supercell throw
 vi.mock(`$lib/structure/supercell`, async (import_original) => {

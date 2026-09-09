@@ -54,7 +54,7 @@ export function normalize_hull_composition_keys(
 }
 
 // Sorted element symbols present in a set of (normalized) entries
-export const collect_hull_elements = (entries: PhaseData[]): ElementSymbol[] =>
+const collect_hull_elements = (entries: PhaseData[]): ElementSymbol[] =>
   [
     ...new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
   ].toSorted() as ElementSymbol[]

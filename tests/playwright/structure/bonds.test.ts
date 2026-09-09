@@ -143,7 +143,7 @@ const dispatch_two_atom_bond_structure = (page: Page, order: 1 | 2 | 3) =>
       sites: two_atom_sites,
       properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order }] },
     },
-    { camera_position: [0, 0, 8], show_bonds: `always` },
+    { ...front_camera, show_bonds: `always` },
   )
 const dispatch_two_atom_unbonded_structure = (page: Page) =>
   dispatch_structure(
@@ -178,18 +178,6 @@ const dispatch_periodic_image_structure = (
       ...(show_site_labels ? labelled : {}),
     },
   )
-
-// Structure changes clear scene_props.camera_target (Structure.svelte re-frames the new
-// cell), wiping the camera passed alongside set-structure. Re-apply it once the canvas
-// settled so the C-O image bond midpoint [9.95, 5, 5] projects to the canvas center,
-// then give orbit-controls damping a moment to move the camera there.
-const apply_image_bond_camera = async (page: Page) => {
-  await set_scene_props(page, {
-    camera_position: [9.95, 5, 17],
-    camera_target: [9.95, 5, 5],
-  })
-  await page.waitForTimeout(1000)
-}
 
 const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
   dispatch_structure(
@@ -559,7 +547,6 @@ test.describe(`Bond component`, () => {
       await dispatch_periodic_image_structure(page, {
         bonding_options: { strategy: `electroneg_ratio` },
       })
-      await apply_image_bond_camera(page)
       await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
       await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
       await expect_canvas_changed_by(canvas, async () => {
@@ -571,7 +558,6 @@ test.describe(`Bond component`, () => {
 
       // manually added image bond
       await dispatch_periodic_image_structure(page, { ...unbonded, show_site_labels: true })
-      await apply_image_bond_camera(page)
       await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
       await page.locator(`[data-testid="btn-set-bond-add"]`).click()
       await select_atom_label_with_keyboard(page, `C`, `first`)
@@ -672,7 +658,7 @@ test.describe(`Bond component`, () => {
         page,
         { sites: ring },
         {
-          camera_position: [0, 0, 8],
+          ...front_camera,
           show_bonds: `always`,
           auto_bond_order: true,
           aromatic_display: `aromatic`,

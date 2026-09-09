@@ -4,8 +4,9 @@ import type { BrillouinZoneData } from '$lib/brillouin/types'
 import { reciprocal_lattice } from '$lib/math'
 import type * as symmetry from '$lib/symmetry'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import {
+  mock_parse_worker,
   create_drop_event,
   cubic_matrix,
   doc_query,
@@ -13,6 +14,8 @@ import {
   mock_fullscreen,
   type SimpleSite,
 } from '../setup'
+
+beforeEach(mock_parse_worker)
 
 // The IBZ needs moyo's point group; stand in for the WASM analysis so a test can make it fail
 const analyze_structure_symmetry = vi.hoisted(() => vi.fn())

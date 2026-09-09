@@ -3,14 +3,17 @@ import * as thermo from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, create_drop_event, doc_query, make_phase, mount_sized } from '../setup'
+import {
+  bind_props,
+  create_drop_event,
+  doc_query,
+  make_phase,
+  mock_parse_worker,
+  mount_sized,
+} from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
-// Exercise actual JSON parsing; worker transport is covered by parse-in-worker tests.
-vi.mock(`$lib/file-viewer/parse-in-worker`, async () => {
-  const { parse_file_content } = await import(`$lib/file-viewer/parse`)
-  return { parse_in_worker: parse_file_content }
-})
+beforeEach(mock_parse_worker)
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
 // exercised deterministically in jsdom (synthetic events can't land on points).

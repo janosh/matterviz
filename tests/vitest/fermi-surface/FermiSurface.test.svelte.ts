@@ -3,8 +3,16 @@ import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
 import { type BandGridJson, normalize_fermi_surface } from '$lib/fermi-surface/parse'
 import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
-import { bind_props, create_drop_event, IDENTITY_MATRIX3, make_bxsf } from '../setup'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import {
+  bind_props,
+  mock_parse_worker,
+  create_drop_event,
+  IDENTITY_MATRIX3,
+  make_bxsf,
+} from '../setup'
+
+beforeEach(mock_parse_worker)
 
 const mounted: ReturnType<typeof mount>[] = []
 
