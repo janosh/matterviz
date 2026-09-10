@@ -174,6 +174,15 @@
   let bar_px = $state(0)
   let tick_font = $state(DEFAULT_FONT_SPEC)
   let tick_spacing = $state(8) // label padding plus a 4px gap
+  // Hosts with a background need room for the centered labels beyond the gradient ends.
+  const tick_label_width = $derived(
+    Math.max(
+      0,
+      ...ticks.map((value) => measure_text_line(format_tick(value), tick_font).width),
+    ) +
+      tick_spacing -
+      4,
+  )
   const observe_bar = observe_size<HTMLDivElement>(({ width }, node) => {
     bar_px = width
     const label = node.querySelector<HTMLElement>(`.tick-label`)
@@ -299,6 +308,7 @@
 <div
   bind:this={colorbar_node}
   style:flex-direction={wrapper_flex_dir}
+  style:--cbar-tick-label-width={`${tick_label_width}px`}
   {...rest}
   style={div_style + (rest.style ?? ``)}
   class={[`colorbar`, rest.class]}

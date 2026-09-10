@@ -1,6 +1,42 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
+test(`settings align native fields and custom rows at different pane widths`, async ({
+  page,
+}) => {
+  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
+  await page.locator(`.heatmap-matrix-controls-toggle`).first().click({ force: true })
+  const pane = page.locator(`.heatmap-controls`).first()
+  for (const pane_width of [320, 440]) {
+    await pane.evaluate((node, width) => {
+      node.style.width = `${width}px`
+    }, pane_width)
+    const layout = await pane.evaluate((node) => {
+      const section = node.querySelector(`.settings-section.grid`)
+      if (!section) throw new Error(`Missing heatmap settings grid`)
+      const fields = [...node.querySelectorAll(`select, input:not([type])`)]
+      const rows = [...node.querySelectorAll(`.settings-section.grid > :is(label, .setting)`)]
+      const row_bounds = rows.map((row) => row.getBoundingClientRect())
+      return {
+        fields: fields.map((field) => {
+          const { left, width, height } = field.getBoundingClientRect()
+          return { left, width, height, font: getComputedStyle(field).fontSize }
+        }),
+        row_gaps: row_bounds
+          .slice(1)
+          .map((bounds, idx) => bounds.top - row_bounds[idx].bottom),
+        expected_gap: Number(getComputedStyle(section).rowGap.replace(`px`, ``)),
+        custom_rows: rows.slice(-2).map((row) => row.querySelector(`span`)?.textContent),
+      }
+    })
+    expect(layout.fields).toHaveLength(7)
+    for (const field of layout.fields) expect(field).toEqual(layout.fields[0])
+    expect(layout.custom_rows).toEqual([`Ordering`, `Hide empty`])
+    expect(layout.expected_gap).toBeGreaterThan(0)
+    for (const gap of layout.row_gaps) expect(gap).toBeCloseTo(layout.expected_gap, 1)
+  }
+})
+
 test(`domain and normalization changes recolor cells without per-cell animations`, async ({
   page,
 }) => {
@@ -28,6 +64,16 @@ test(`domain and normalization changes recolor cells without per-cell animations
         }),
       }))
       expect(state).toEqual({ animations: 0, colors_match: true })
+      // Log endpoints such as 0.001 need more background padding than short linear ticks.
+      const colorbar = page.locator(`.heatmap .colorbar`).first()
+      const contained = await colorbar.evaluate((node) => {
+        const bounds = node.getBoundingClientRect()
+        return [...node.querySelectorAll(`.tick-label`)].every((label) => {
+          const tick_bounds = label.getBoundingClientRect()
+          return tick_bounds.left >= bounds.left && tick_bounds.right <= bounds.right
+        })
+      })
+      expect(contained).toBe(true)
     }
   }
 })

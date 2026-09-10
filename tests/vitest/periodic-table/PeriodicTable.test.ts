@@ -4,6 +4,7 @@ import PeriodicTable from '$lib/periodic-table/PeriodicTable.svelte'
 import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { ELEM_HEATMAP_LABELS } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
+import * as math from '$lib/math'
 import { colors, selected } from '$lib/state.svelte'
 import PeriodicTableControls from '$site/PeriodicTableControls.svelte'
 import PeriodicTableDemo from '$site/PeriodicTableDemo.svelte'
@@ -1002,7 +1003,8 @@ describe(`PeriodicTable`, () => {
 
     // tiles and the auto ColorBar share one ramp: an explicit color_scale_range clamps
     // out-of-range values to the end colors instead of extrapolating
-    test(`color_scale_range clamps tile colors to the ramp ends`, () => {
+    test(`color_scale_range clamps tile colors without scanning the data extent`, () => {
+      const extent_spy = vi.spyOn(math, `array_extent`)
       const color_scale = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
       mount(PeriodicTable, {
         target: document.body,
@@ -1011,6 +1013,7 @@ describe(`PeriodicTable`, () => {
       const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
       const red = (idx: number) => Number(/\d+/.exec(tiles[idx].style.backgroundColor)?.[0])
       expect([0, 1, 2, 3, 4].map(red)).toEqual([0, 0, 128, 255, 255])
+      expect(extent_spy).not.toHaveBeenCalled()
       const ticks = get_tick_values(document.querySelector(`.colorbar`))
       expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0, 10])
     })

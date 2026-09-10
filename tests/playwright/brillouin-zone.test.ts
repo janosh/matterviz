@@ -79,6 +79,27 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await expect(checkbox).not.toBeChecked()
     await checkbox.check()
     await expect(status_locator(page, `controls-open`)).toHaveText(`true`)
+    const selects = page.locator(
+      `${BZ_SELECTOR} .draggable-pane .settings-section.grid > label > select`,
+    )
+    await expect(selects).toHaveCount(2)
+    const fields = await selects.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const style = getComputedStyle(node)
+        const { right, height } = node.getBoundingClientRect()
+        return {
+          right,
+          height,
+          margin: style.margin,
+          font: style.fontSize,
+          row_font: node.parentElement && getComputedStyle(node.parentElement).fontSize,
+        }
+      }),
+    )
+    // Collapsible groups indent their labels, but control heights and right edges align.
+    expect(fields[0]).toEqual(fields[1])
+    expect(fields[0].margin).toBe(`0px`)
+    expect(fields[0].font).toBe(fields[0].row_font)
     await checkbox.uncheck()
     await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
   })

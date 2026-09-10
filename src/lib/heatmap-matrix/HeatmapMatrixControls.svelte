@@ -109,7 +109,7 @@
     </label>
     {#if show_color_bar}
       <label>
-        <span>Position</span>
+        <span>Color bar side</span>
         <select bind:value={color_bar_position}>
           <option value="right">Right</option>
           <option value="bottom">Bottom</option>
@@ -157,8 +157,8 @@
         </div>
       </div>
     {/if}
+    {@render children?.({ controls_open })}
   </SettingsSection>
-  {@render children?.({ controls_open })}
 </ControlPane>
 
 <style>
@@ -170,18 +170,5 @@
     display: flex;
     gap: 10pt;
     flex-wrap: wrap;
-  }
-  select,
-  input:not([type]) {
-    height: 1.8em;
-    padding: 0 0.5em;
-    border-radius: var(--border-radius, 3pt);
-    border: 1px solid light-dark(#ccc, #555);
-    background: light-dark(white, #333);
-    color: inherit;
-    font: inherit;
-    box-sizing: border-box;
-    flex: 1;
-    min-width: 0;
   }
 </style>

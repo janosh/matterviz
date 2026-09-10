@@ -960,7 +960,7 @@
     :global(.color-bar) {
       position: absolute;
       background: color-mix(in srgb, var(--page-bg, #fff) 80%, transparent);
-      padding: 0.3rem 0.4rem;
+      padding: 0.3rem max(0.4rem, calc(var(--cbar-tick-label-width, 0px) / 2 + 2px));
       border-radius: var(--border-radius, 3pt);
     }
     &.color-bar-right :global(.color-bar-right) {

@@ -303,12 +303,37 @@ body.fullscreen .draggable-pane {
     var(--btn-bg-hover, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.2)))
   );
 }
-.draggable-pane select {
+.draggable-pane :where(select) {
   margin: 0 0 0 5pt;
   flex: 1;
   border-radius: 3px;
   padding: 2px 4px;
   font-size: 0.8em;
+}
+/* Grid tracks supply the spacing. Native fields share dimensions regardless of input type
+   or whether their row comes from the component or a caller's snippet. Keep specificity low
+   so controls with intentional compact sizing can override these defaults. */
+.draggable-pane
+  :where(
+    .settings-section.grid
+      > :is(label, .setting)
+      > :is(select, input:not([type]), input[type='text'], input[type='search'])
+  ) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: var(--pane-input-height, 1.8em);
+  margin: 0;
+  padding: var(--pane-input-padding, 0 0.5em);
+  border: 1px solid var(--border-color, light-dark(#ccc, #555));
+  border-radius: var(--border-radius, 3pt);
+  background: var(--surface-bg, light-dark(white, #333));
+  color: inherit;
+  font: inherit;
+}
+.draggable-pane
+  :where(.settings-section.grid > :is(label, .setting) > input[type='checkbox']) {
+  margin: 0;
 }
 .draggable-pane .pane-row {
   display: flex;

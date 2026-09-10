@@ -259,26 +259,28 @@ export function make_cell_color_scale(
 ): (val: number | null | undefined) => CellColor {
   if (color_scale === null) return () => NULL_CELL_COLOR
 
-  const numeric_vals = all_values.filter(
-    (value): value is number =>
-      typeof value === `number` &&
-      Number.isFinite(value) &&
-      (scale_type === `log` ? value > 0 : true),
-  )
-  // a log column of nothing but zeros still colors them at the low end, hence the includes
-  const has_log_zero = scale_type === `log` && all_values.includes(0)
-  if (numeric_vals.length === 0 && !has_log_zero && !domain) return () => NULL_CELL_COLOR
-
-  // On a log scale numeric_vals holds only positives, so its min doubles as the smallest
-  // positive value.
-  const lowest = min(numeric_vals)
-  const range: [number, number] = domain ? [...domain] : [lowest ?? 0, max(numeric_vals) ?? 1]
-
-  // A supplied domain may reach to or below zero (quantile clipping, a shared group), which
-  // a log scale can't take. Lift its low end so it is the column's smallest positive value
-  // rather than the LOG_EPS floor.
-  if (scale_type === `log` && range[0] <= 0 && lowest != null && range[1] > 0) {
-    range[0] = lowest
+  const range: [number, number] = domain ? [...domain] : [0, 1]
+  // Resolved domains need no column scan, except when a log lower bound needs lifting
+  // to the smallest positive value (quantile clipping or a shared-domain group).
+  if (!domain || (scale_type === `log` && range[0] <= 0 && range[1] > 0)) {
+    const numeric_vals = all_values.filter(
+      (value): value is number =>
+        typeof value === `number` &&
+        Number.isFinite(value) &&
+        (scale_type !== `log` || value > 0),
+    )
+    // A log column of nothing but zeros still colors them at the low end.
+    if (
+      !domain &&
+      numeric_vals.length === 0 &&
+      !(scale_type === `log` && all_values.includes(0))
+    )
+      return () => NULL_CELL_COLOR
+    const lowest = min(numeric_vals)
+    if (!domain) {
+      range[0] = lowest ?? 0
+      range[1] = max(numeric_vals) ?? 1
+    } else if (lowest != null) range[0] = lowest
   }
   if (better === `lower`) range.reverse()
 

@@ -266,7 +266,28 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const color_plot = color_section.locator(`#color-scale-toggle .scatter`)
     await expect(color_section.locator(`input[value="linear"]`)).toBeChecked()
     for (const mode of [`log`, `linear`]) {
+      const markers = color_plot.locator(`.marker`)
+      const before = await markers.evaluateAll((nodes) =>
+        nodes.map((node) => getComputedStyle(node).fill),
+      )
       await color_section.locator(`input[value="${mode}"]`).click()
+      const after = await markers.evaluateAll(async (nodes) => {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        return {
+          fills: nodes.map((node) => getComputedStyle(node).fill),
+          fading: nodes.some((node) =>
+            node
+              .getAnimations()
+              .some(
+                (animation) =>
+                  animation instanceof CSSTransition &&
+                  animation.transitionProperty === `fill`,
+              ),
+          ),
+        }
+      })
+      expect(after.fills).not.toEqual(before)
+      expect(after.fading).toBe(false)
       await expect(color_section.locator(`input[value="${mode}"]`)).toBeChecked()
       await expect(color_plot.locator(`.marker`)).toHaveCount(10)
       await expect(color_plot.locator(`.colorbar`)).toBeVisible()

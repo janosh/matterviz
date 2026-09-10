@@ -82,6 +82,12 @@ describe(`HeatmapMatrixControls`, () => {
     expect(labels(1)).toEqual(reordered_subset)
 
     const panes = document.querySelectorAll(`.heatmap-controls`)
+    for (const pane of panes) {
+      // Caller-provided ordering/hide-empty rows must share the built-in settings grid.
+      expect(pane.querySelectorAll(`.settings-section.grid > label`)).toHaveLength(
+        pane.querySelectorAll(`label`).length,
+      )
+    }
     const setting = (pane_idx: number, name: string) => {
       const control_label = [...panes[pane_idx].querySelectorAll(`label`)].find(
         (label) => label.querySelector(`span`)?.textContent === name,
@@ -225,6 +231,7 @@ describe(`HeatmapMatrixControls`, () => {
     color_bar_checkbox.click()
     await tick()
     expect(find_position_select()).toBeDefined()
+    expect(find_position_select()?.labels?.[0]?.textContent).toContain(`Color bar side`)
   })
 
   test.each([undefined, [], [`csv`, `json`]] as const)(

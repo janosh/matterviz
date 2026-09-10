@@ -145,17 +145,26 @@ describe(`column stats and color domains`, () => {
     expect(merge_domains([])).toBeNull()
   })
 
-  it(`clamps values outside a supplied domain`, () => {
-    const scale = make_cell_color_scale(
-      [0, 10, 10_000],
-      `higher`,
-      `interpolateViridis`,
-      `linear`,
-      [0, 10],
-    )
-    expect(scale(10_000).bg).toBe(scale(10).bg)
-    expect(scale(5).bg).not.toBe(scale(10).bg)
-  })
+  it.each([`linear`, `log`] as const)(
+    `clamps %s colors without rescanning a supplied domain`,
+    (scale_type) => {
+      const column_values = [0, 10, 10_000]
+      Object.defineProperty(column_values, 0, {
+        get: () => {
+          throw new Error(`explicit domain must not read column values`)
+        },
+      })
+      const scale = make_cell_color_scale(
+        column_values,
+        `higher`,
+        `interpolateViridis`,
+        scale_type,
+        [1, 10],
+      )
+      expect(scale(10_000).bg).toBe(scale(10).bg)
+      expect(scale(5).bg).not.toBe(scale(10).bg)
+    },
+  )
 })
 
 describe(`make_cell_color_scale`, () => {

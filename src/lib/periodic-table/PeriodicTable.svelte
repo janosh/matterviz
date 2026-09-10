@@ -290,6 +290,7 @@
   let heat_range = $derived.by((): Vec2 => {
     const [min_override, max_override] = color_scale_range
     const min_lifted = log && min_override !== null && min_override <= 0 ? null : min_override
+    if (min_lifted !== null && max_override !== null) return [min_lifted, max_override]
     const [data_min, data_max] = heat_nums.length > 0 ? array_extent(heat_nums) : [0, 1]
     return [min_lifted ?? data_min, max_override ?? data_max]
   })

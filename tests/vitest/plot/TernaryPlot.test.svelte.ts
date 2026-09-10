@@ -6,6 +6,7 @@ import {
   bind_props,
   mount_sized,
   one_tab_stop,
+  query,
   roving_tabindexes,
   translate_of,
 } from '../setup'
@@ -194,6 +195,12 @@ describe(`TernaryPlot`, () => {
     const plot = await mount_ternary({ series, on_point_click })
     const [first] = markers(plot)
     expect(first.getAttribute(`role`)).toBe(`button`)
+    first.focus()
+    await tick()
+    expect(getComputedStyle(first).outlineStyle).toBe(`none`)
+    const marker_style = getComputedStyle(query(first, `.marker`))
+    expect(marker_style.strokeWidth).toBe(`1.5px`)
+    expect(marker_style.vectorEffect).toBe(`non-scaling-stroke`)
     first.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     first.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     await tick()

@@ -583,4 +583,13 @@
   .lines path {
     transition: opacity 0.15s ease;
   }
+  .points :global([data-ternary-idx]:focus) {
+    outline: none;
+  }
+  .points :global([data-ternary-idx]:focus > .marker) {
+    stroke: var(--ternary-focus-stroke, var(--accent-color, #1976d2));
+    stroke-width: 1.5px;
+    stroke-opacity: 1;
+    vector-effect: non-scaling-stroke;
+  }
 </style>

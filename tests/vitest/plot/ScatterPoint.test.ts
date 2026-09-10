@@ -58,11 +58,11 @@ describe(`ScatterPoint`, () => {
       `stroke`,
       `stroke-width`,
       `stroke-opacity`,
-      `fill`,
       `fill-opacity`,
       `filter`,
       `opacity`,
     ])
+    expect(getComputedStyle(path).transition).not.toMatch(/(?:^|,)\s*fill\s/)
   })
 
   test(`extends the transparent hit radius without changing the visible marker`, () => {

@@ -179,6 +179,7 @@ describe(`ColorBar tick labels`, () => {
         return format_state.current
       },
     })
+    const label_widths: number[] = []
     for (const [spec, expected] of [
       [undefined, [`0`, `0.5`, `1`]],
       [`.1f`, [`0.0`, `0.5`, `1.0`]],
@@ -189,7 +190,16 @@ describe(`ColorBar tick labels`, () => {
       selected_format.set(spec)
       await tick()
       expect(tick_texts()).toEqual(expected)
+      label_widths.push(
+        Number(
+          doc_query(`.colorbar`)
+            .style.getPropertyValue(`--cbar-tick-label-width`)
+            .replace(`px`, ``),
+        ),
+      )
     }
+    expect(label_widths[2]).toBeGreaterThan(label_widths[0])
+    expect(label_widths.at(-1)).toBe(label_widths[0])
   })
 
   test.each([false, true])(
