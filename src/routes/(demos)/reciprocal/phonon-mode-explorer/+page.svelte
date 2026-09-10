@@ -407,7 +407,7 @@
 
 <header style="margin-block: 1.5em; text-align: center">
   <span>Interactive lattice dynamics</span>
-  <h1>Phonon Mode Explorer</h1>
+  <h1 id="phonon-mode-explorer-1">Phonon Mode Explorer</h1>
   <p>
     Select a bundled calculation, inspect its structure and dispersion, and animate every
     available eigenvector directly from the band plot.
@@ -486,7 +486,7 @@
   </div>
   <div>
     <span>Bring your own calculation</span>
-    <h2>Drop in phonopy output</h2>
+    <h2 id="drop-in-phonopy-output">Drop in phonopy output</h2>
     <p>
       Drop a single <code>band.yaml</code>, <code>qpoints.yaml</code>, or
       <code>mesh.yaml</code> file onto the explorer. Gzip-compressed variants work too. Files without

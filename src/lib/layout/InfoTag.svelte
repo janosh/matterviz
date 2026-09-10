@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
+  import { Icon, Popover } from 'svelte-widgets'
   import { Check, Close } from 'svelte-widgets/icons'
   import { create_clipboard_feedback } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { InfoTagSize, InfoTagVariant } from './index'
 
@@ -63,32 +62,47 @@
   }
 </script>
 
-<span
-  {...has_action ? { role: `button`, tabindex: disabled ? -1 : 0 } : {}}
-  onclick={handle_click}
-  onkeydown={handle_keydown}
-  title={sanitize_html(title)}
-  {@attach tooltip({ allow_html: true })}
-  aria-disabled={disabled}
-  {...rest}
-  class={[`info-tag`, variant, size, { disabled }, rest.class]}
->
-  {@html sanitize_html(label)}
-  <em>{@html sanitize_html(value)}</em>
-  {#if copied.has(`value`)}
-    <Icon
-      icon={Check}
-      style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-      class="copy-checkmark"
-    />
-  {/if}
-  {#if removable && !disabled && on_remove}
-    <button type="button" onclick={handle_remove} aria-label="Remove">
-      <Icon icon={Close} style="width: 10px; height: 10px" />
-    </button>
-  {/if}
-  {@render children?.()}
-</span>
+{#snippet tag(trigger_props: HTMLAttributes<HTMLSpanElement> = {})}
+  <span
+    {...trigger_props}
+    {...has_action ? { role: `button`, tabindex: disabled ? -1 : 0 } : {}}
+    onclick={handle_click}
+    onkeydown={handle_keydown}
+    aria-disabled={disabled}
+    {...rest}
+    class={[`info-tag`, variant, size, { disabled }, rest.class]}
+  >
+    {@html sanitize_html(label)}
+    <em>{@html sanitize_html(value)}</em>
+    {#if copied.has(`value`)}
+      <Icon
+        icon={Check}
+        style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+        class="copy-checkmark"
+      />
+    {/if}
+    {#if removable && !disabled && on_remove}
+      <button type="button" onclick={handle_remove} aria-label="Remove">
+        <Icon icon={Close} style="width: 10px; height: 10px" />
+      </button>
+    {/if}
+    {@render children?.()}
+  </span>
+{/snippet}
+
+{#if title}
+  <Popover
+    trigger_mode="hover"
+    trap_focus={false}
+    open_delay_ms={200}
+    aria-label="Tag details"
+  >
+    {#snippet trigger(trigger_props)}{@render tag(trigger_props)}{/snippet}
+    {@html sanitize_html(title)}
+  </Popover>
+{:else}
+  {@render tag()}
+{/if}
 
 <style>
   .info-tag {

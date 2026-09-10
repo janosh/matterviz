@@ -1,6 +1,6 @@
 // Unit tests for controls visibility configuration
 import { describe, expect, it } from 'vitest'
-import { normalize_show_controls } from '$lib/controls'
+import { normalize_show_controls, track_settings } from '$lib/controls'
 
 describe(`normalize_show_controls`, () => {
   it(`returns hover mode with every control visible when undefined`, () => {
@@ -54,5 +54,64 @@ describe(`normalize_show_controls`, () => {
   ])(`visible() with hidden=%j returns %s for %s`, (hidden, control, expected) => {
     const config = normalize_show_controls({ hidden })
     expect(config.visible(control)).toBe(expected)
+  })
+})
+
+describe(`track_settings`, () => {
+  it(`captures nested settings, restores independent copies and distinguishes absent keys`, () => {
+    const values: Record<string, unknown> = {
+      range: [0, 10],
+      nested: { opacity: 0.5 },
+      optional: undefined,
+    }
+    const tracked = track_settings(() => values)
+    expect(tracked.changed_keys).toEqual([])
+    ;(values.range as number[])[1] = 20
+    values.nested = { opacity: 1 }
+    values.added = undefined
+    expect(tracked.changed_keys).toEqual([`range`, `nested`, `added`])
+    for (const key of tracked.changed_keys)
+      tracked.reset(key, (value, present) => {
+        if (present) values[key] = value
+        else Reflect.deleteProperty(values, key)
+      })
+    expect(tracked.changed_keys).toEqual([])
+    expect(Object.hasOwn(values, `optional`)).toBe(true)
+    expect(Object.hasOwn(values, `added`)).toBe(false)
+    ;(values.range as number[])[0] = -1
+    expect(tracked.changed_keys).toEqual([`range`])
+    delete values.nested
+    expect(tracked.changed_keys).toEqual([`range`, `nested`])
+    tracked.reset(`nested`, (value) => {
+      values.nested = value
+    })
+    expect(values.nested).toEqual({ opacity: 0.5 })
+  })
+
+  it.each([
+    [{ min: 0, max: 1 }, { max: 1, min: 0 }, false],
+    [[0, 1], [1, 0], true],
+    [new Date(0), new Date(0), false],
+    [new Date(0), new Date(1), true],
+    [NaN, NaN, false],
+    [null, undefined, true],
+  ])(`compares %j against %j (changed=%s)`, (initial, current, changed) => {
+    const values: { value: unknown } = { value: initial }
+    const tracked = track_settings(() => values)
+    values.value = current
+    expect(tracked.changed_keys).toEqual(changed ? [`value`] : [])
+  })
+
+  it(`compares only visible keys against caller-provided defaults`, () => {
+    const values = { color: `blue` }
+    const defaults = { color: `red`, hidden: true }
+    const tracked = track_settings(() => values, defaults)
+    defaults.color = `green`
+    expect(tracked.changed_keys).toEqual([`color`])
+    tracked.reset(`color`, (value) => {
+      values.color = String(value)
+    })
+    expect(values.color).toBe(`red`)
+    expect(tracked.changed_keys).toEqual([])
   })
 })

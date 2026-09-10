@@ -74,10 +74,10 @@
   })
 </script>
 
-<h1>BrillouinZone Component Test Page</h1>
+<h1 id="brillouinzone-component-test-page">BrillouinZone Component Test Page</h1>
 
 <section>
-  <h2>Controls</h2>
+  <h2 id="controls">Controls</h2>
   <label
     >Controls Open: <input
       id="controls-open"
@@ -143,7 +143,7 @@
 </section>
 
 <section>
-  <h2>Status</h2>
+  <h2 id="status">Status</h2>
   <p data-testid="controls-open">{controls_open}</p>
   <p data-testid="info-pane-open">{info_pane_open}</p>
   <p data-testid="bz-order">{bz_order}</p>

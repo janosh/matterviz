@@ -119,7 +119,7 @@
 </section>
 
 <section id="y2-axis-histogram">
-  <h2>Y2 Axis Histogram</h2>
+  <h2 id="y2-axis-histogram-1">Y2 Axis Histogram</h2>
   <Histogram
     series={y2_axis_data}
     bins={25}
@@ -132,7 +132,7 @@
 </section>
 
 <section id="y2-different-scale">
-  <h2>Y2 Different Scale Histogram</h2>
+  <h2 id="y2-different-scale-histogram">Y2 Different Scale Histogram</h2>
   <Histogram
     series={y2_different_scale_data}
     bins={30}

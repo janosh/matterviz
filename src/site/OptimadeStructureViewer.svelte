@@ -156,7 +156,7 @@
 
 <div class="main-layout full-bleed" {...rest}>
   <div class="db-column">
-    <h3>
+    <h3 id="providers">
       Providers
       <span style="font-weight: lighter">({available_providers.length})</span>
     </h3>
@@ -174,7 +174,7 @@
           <div class:selected={identifier === selected_db}>
             <button
               class="db-select"
-              {@attach tooltip({ allow_html: true, content: sanitize_html(attributes.name) })}
+              {@attach tooltip({ content: attributes.name })}
               onclick={() => {
                 selected_db = identifier
                 input_value = ``
@@ -212,7 +212,7 @@
       <p class="error-message" role="alert">{suggestions_error}</p>
     {/if}
     {#if loading_suggestions || suggested_structures.length > 0}
-      <h3>
+      <h3 id="suggested-structures">
         Suggested Structures
         <span style="font-weight: lighter">({suggested_structures.length})</span>
       </h3>

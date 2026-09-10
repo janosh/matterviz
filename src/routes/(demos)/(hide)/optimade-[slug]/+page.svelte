@@ -2,6 +2,6 @@
   import { OptimadeStructureViewer } from '$site'
 </script>
 
-<h1>OPTIMADE Explorer</h1>
+<h1 id="optimade-explorer">OPTIMADE Explorer</h1>
 
 <OptimadeStructureViewer />

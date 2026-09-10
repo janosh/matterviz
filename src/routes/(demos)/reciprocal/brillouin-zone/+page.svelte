@@ -103,7 +103,7 @@
   let surface_opacity = $state(0.4)
 </script>
 
-<h1>Brillouin Zones</h1>
+<h1 id="brillouin-zones">Brillouin Zones</h1>
 
 <label>
   Surface Opacity: {surface_opacity.toFixed(2)}
@@ -121,7 +121,9 @@
   {/each}
 </div>
 
-<h2 style="text-align: center; margin-block: 3em 1em">Try Your Own Structure</h2>
+<h2 id="try-your-own-structure" style="text-align: center; margin-block: 3em 1em">
+  Try Your Own Structure
+</h2>
 <p style="text-align: center; color: var(--text-color-muted)">
   Pick a file or drag &amp; drop a structure (CIF, POSCAR, JSON) onto the viewer.
 </p>
@@ -142,7 +144,9 @@
   />
 </div>
 
-<h2 style="text-align: center; margin-block: 3em 1em">Higher-Order Brillouin Zones</h2>
+<h2 id="higher-order-brillouin-zones" style="text-align: center; margin-block: 3em 1em">
+  Higher-Order Brillouin Zones
+</h2>
 
 <div class="full-bleed grid">
   {#each higher_order_examples as { id: identifier, label, description, order } (`${identifier}-${order}`)}

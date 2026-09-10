@@ -1011,8 +1011,8 @@
           {@const filename = trajectory.provenance.filename}
           <button
             class="filename"
-            title="Click to copy filename <code>{filename}</code>"
-            {@attach tooltip({ allow_html: true })}
+            title="Click to copy filename {filename}"
+            {@attach tooltip()}
             onclick={() => {
               navigator.clipboard.writeText(filename)
               filename_copied.show(true)

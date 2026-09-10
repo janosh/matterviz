@@ -1,6 +1,10 @@
 <script lang="ts" generics="Row extends object">
   import type { D3InterpolateName } from '$lib/colors'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
+  import {
+    track_settings,
+    normalize_show_controls,
+    type ShowControlsProp,
+  } from '$lib/controls'
   import {
     contrast_color_memo,
     contrast_text_color,
@@ -71,7 +75,7 @@
   import { type CellPos, CellSelection } from './selection.svelte'
   import ToggleMenu from './ToggleMenu.svelte'
   import { virtual_window } from 'svelte-widgets/virtual'
-  import { ActionMenu, Icon, type IconData, SettingsSection } from 'svelte-widgets'
+  import { ActionMenu, Icon, type IconData, Popover, SettingsSection } from 'svelte-widgets'
   import { tooltip } from 'svelte-widgets/attachments'
   import {
     Columns,
@@ -1281,13 +1285,36 @@
 
   // Delegation keeps tooltips working as sorting, filtering and pagination replace cells
   const table_tooltips = tooltip({
-    allow_html: true,
-    sanitize_html,
     delegate: `[title], [aria-label], [data-title]`,
   })
   const controls_config = $derived(normalize_show_controls(show_controls))
   let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
+
+  const heatmap_settings = track_settings(() => ({ show_heatmap, heatmap_opacity }))
+  const display_settings = track_settings(() => ({ show_row_numbers }))
+  const column_colors_settings = track_settings(() => split_color_prefs().color)
 </script>
+
+{#snippet column_label(label: string, description?: string)}
+  {#if description}
+    <Popover
+      trigger_mode="hover"
+      trap_focus={false}
+      placement="top"
+      onclick={stop_event}
+      onkeydown={stop_event}
+    >
+      {#snippet trigger(trigger_props)}
+        <button type="button" {...trigger_props} style="all: unset; cursor: help"
+          >{@html render_html(label)}</button
+        >
+      {/snippet}
+      {@html render_html(description)}
+    </Popover>
+  {:else}
+    {@html render_html(label)}
+  {/if}
+{/snippet}
 
 <svelte:window
   onpointerdown={handle_window_pointerdown}
@@ -1459,7 +1486,7 @@
       >
         <SettingsSection
           title="Heatmap"
-          current_values={{ show_heatmap, heatmap_opacity }}
+          changed_keys={heatmap_settings.changed_keys}
           on_reset={() => {
             show_heatmap = true
             heatmap_opacity = 1
@@ -1484,7 +1511,7 @@
 
         <SettingsSection
           title="Display"
-          current_values={{ show_row_numbers }}
+          changed_keys={display_settings.changed_keys}
           on_reset={() => (show_row_numbers = false)}
         >
           <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
@@ -1493,7 +1520,7 @@
         {#if colored_columns.length > 0}
           <SettingsSection
             title="Column Colors"
-            current_values={split_color_prefs().color}
+            changed_keys={column_colors_settings.changed_keys}
             on_reset={() => (column_prefs = split_color_prefs().rest)}
           >
             {#each colored_columns as col (col.id)}
@@ -1555,11 +1582,8 @@
                 <th class:sticky-col={col.sticky} style:left={sticky_left}></th>
                 <!-- the group header renders once per group, on the group's first column -->
               {:else if visible_columns.find((one) => one.group === col.group) === col}
-                <th
-                  title={col.description}
-                  colspan={visible_columns.filter((one) => one.group === col.group).length}
-                >
-                  {@html render_html(col.group)}
+                <th colspan={visible_columns.filter((one) => one.group === col.group).length}>
+                  {@render column_label(col.group, col.description)}
                 </th>
               {/if}
             {/each}
@@ -1584,7 +1608,6 @@
             {@const sorted_by = sort_indicator(col_id)}
             {@const sortable = col.sortable !== false}
             <th
-              title={col.description}
               data-col-id={col_id}
               style:left={view.sticky_left}
               tabindex={sortable ? 0 : undefined}
@@ -1614,7 +1637,7 @@
               ondragend={reset_drag_state}
               {@attach col.sticky ? track_sticky_width : undefined}
             >
-              {@html render_html(col.label)}
+              {@render column_label(col.label, col.description)}
               {#if sorted_by}
                 <span style="font-size: 0.8em"
                   >{sorted_by.ascending ? `↓` : `↑`}{#if sorted_by.rank}<sup

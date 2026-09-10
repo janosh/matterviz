@@ -15,7 +15,7 @@
   }
 </script>
 
-<h1>DOS Component Test Page</h1>
+<h1 id="dos-component-test-page">DOS Component Test Page</h1>
 
 <h2 id="single-dos">Single DOS</h2>
 <Dos doses={{ '': mock_dos }} data-testid="dos-single" />

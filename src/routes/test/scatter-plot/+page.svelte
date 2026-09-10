@@ -352,10 +352,10 @@
   ]
 </script>
 
-<h1>ScatterPlot Component E2E Test Page</h1>
+<h1 id="scatterplot-component-e2e-test-page">ScatterPlot Component E2E Test Page</h1>
 
 <section id="basic-example">
-  <h2>Basic Example</h2>
+  <h2 id="basic-example-1">Basic Example</h2>
   <ScatterPlot
     series={[basic_data]}
     x_axis={{ label: `X Axis` }}
@@ -365,7 +365,7 @@
 </section>
 
 <section id="canvas-auto-renderer">
-  <h2>Canvas Auto Renderer</h2>
+  <h2 id="canvas-auto-renderer-1">Canvas Auto Renderer</h2>
   <ScatterPlot
     series={[canvas_auto_data]}
     show_controls={false}
@@ -374,7 +374,7 @@
 </section>
 
 <section id="marginals-browser-regression">
-  <h2>Marginals Browser Regression</h2>
+  <h2 id="marginals-browser-regression-1">Marginals Browser Regression</h2>
   <ScatterPlot
     series={marginal_browser_series}
     x_axis={{ label: `Energy`, range: [0, 10] }}
@@ -388,9 +388,9 @@
 </section>
 
 <section id="color-scale">
-  <h2>Color Scale Examples</h2>
+  <h2 id="color-scale-examples">Color Scale Examples</h2>
   <div id="color-scale-toggle">
-    <h3>Color Scale with Toggle</h3>
+    <h3 id="color-scale-with-toggle">Color Scale with Toggle</h3>
     <div style="display: flex; justify-content: center; gap: 1em">
       {#each [`linear`, `log`] as scale_type (scale_type)}
         <label>
@@ -410,7 +410,7 @@
 </section>
 
 <section id="bind-hovered">
-  <h2>bind:hovered Example</h2>
+  <h2 id="bind-hovered-example">bind:hovered Example</h2>
   <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
   <ScatterPlot
     series={[{ ...bind_hovered_data, markers: `points` }]}
@@ -422,7 +422,7 @@
   id="label-auto-placement-test"
   style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
 >
-  <h2>Label Auto Placement Test</h2>
+  <h2 id="label-auto-placement-test-1">Label Auto Placement Test</h2>
   <label>
     <input type="checkbox" bind:checked={enable_auto_placement} />
     Enable Auto Placement
@@ -438,7 +438,7 @@
 </section>
 
 <section id="auto-colorbar-placement">
-  <h2>Automatic Color Bar Placement</h2>
+  <h2 id="automatic-color-bar-placement">Automatic Color Bar Placement</h2>
   This example demonstrates how the color bar automatically positions itself based on point density.
   <div>
     {#each [[`top_left`, `Top Left`], [`top_right`, `Top Right`], [`bottom_left`, `Bottom Left`], [`bottom_right`, `Bottom Right`]] as const as [quadrant, label] (label)}
@@ -470,8 +470,10 @@
 </section>
 
 <section id="legend-tests">
-  <h2>Legend Rendering Tests</h2>
-  <h3>Multi Series (Default Legend) - Legend Expected</h3>
+  <h2 id="legend-rendering-tests">Legend Rendering Tests</h2>
+  <h3 id="multi-series-default-legend-legend-expected">
+    Multi Series (Default Legend) - Legend Expected
+  </h3>
   <ScatterPlot
     series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ draggable: true, style: `padding: 8px;` }}
@@ -481,7 +483,7 @@
 </section>
 
 <section id="lin-log-transition">
-  <h2>Linear-to-Log Scale Transition Test</h2>
+  <h2 id="linear-to-log-scale-transition-test">Linear-to-Log Scale Transition Test</h2>
   <p>
     Test switching between linear and log scales. Values near zero previously caused NaN errors
     during the tweening animation.
@@ -512,7 +514,7 @@
 
 <!-- Added Point Sizing Example -->
 <section id="point-sizing-spiral-test">
-  <h2>Point Sizing Test with Spiral Data</h2>
+  <h2 id="point-sizing-test-with-spiral-data">Point Sizing Test with Spiral Data</h2>
   <label>
     Min Size (px):
     <input
@@ -565,8 +567,10 @@
 
 <!-- Added Tooltip Precedence Test -->
 <section id="tooltip-precedence-test">
-  <h2>Tooltip Background Color Precedence Test</h2>
-  <h3>Fill Color Precedence (Purple)</h3>
+  <h2 id="tooltip-background-color-precedence-test">
+    Tooltip Background Color Precedence Test
+  </h2>
+  <h3 id="fill-color-precedence-purple">Fill Color Precedence (Purple)</h3>
   <ScatterPlot
     id="fill-plot"
     series={[{ x: [1], y: [1], point_style: { fill: `purple`, radius: 8 } }]}
@@ -574,7 +578,7 @@
     style="height: 200px; width: 300px"
   />
 
-  <h3>Stroke Color Precedence (Orange)</h3>
+  <h3 id="stroke-color-precedence-orange">Stroke Color Precedence (Orange)</h3>
   <ScatterPlot
     id="stroke-plot"
     series={[
@@ -593,7 +597,7 @@
     style="height: 200px; width: 300px"
   />
 
-  <h3>Line Color Precedence (Green)</h3>
+  <h3 id="line-color-precedence-green">Line Color Precedence (Green)</h3>
   <ScatterPlot
     id="line-plot"
     series={[
@@ -616,7 +620,7 @@
 
 <!-- Point Event Test -->
 <section id="point-event-test">
-  <h2>Point Event Test</h2>
+  <h2 id="point-event-test-1">Point Event Test</h2>
   <p>Clicking a point should update the text below.</p>
   <ScatterPlot
     series={point_event_data.map((srs) => ({ ...srs, markers: `points` }))}
@@ -637,7 +641,7 @@
 
 <!-- Color-mapped Line Legend Test -->
 <section id="color-mapped-line-legend-test">
-  <h2>Color-mapped Line Legend Test</h2>
+  <h2 id="color-mapped-line-legend-test-1">Color-mapped Line Legend Test</h2>
   <p>Tests that legend line color reflects the color scale for series with color_values.</p>
   <ScatterPlot
     id="color-mapped-line-plot"
@@ -663,7 +667,7 @@
 
 <!-- Control Precedence Test: explicit styling should win on page load -->
 <section id="control-precedence-test">
-  <h2>Control Precedence Test</h2>
+  <h2 id="control-precedence-test-1">Control Precedence Test</h2>
   <p>
     Tests that explicit per-series styling (point_style, line_style) is preserved on page load.
     Control defaults should NOT override explicit props until user actually modifies a specific

@@ -158,7 +158,7 @@
   const PRESETS = [100, 500, 1000, 2500, 5000, 10000]
 </script>
 
-<h1>Convex Hull Performance Test</h1>
+<h1 id="convex-hull-performance-test">Convex Hull Performance Test</h1>
 
 <div style="display: flex; flex-wrap: wrap; gap: 2em; margin-bottom: 1em">
   <label>

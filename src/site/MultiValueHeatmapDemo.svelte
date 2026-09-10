@@ -26,10 +26,10 @@
   }
 </script>
 
-<h2 style="margin-top: 3em">Multi-value Heatmap</h2>
+<h2 id="multi-value-heatmap" style="margin-top: 3em">Multi-value Heatmap</h2>
 The periodic table supports multiple values per element with different visual layouts:
 
-<h3>2-fold Split (Diagonal)</h3>
+<h3 id="2-fold-split-diagonal">2-fold Split (Diagonal)</h3>
 <p>
   Each element shows two values as diagonal triangles:
   <strong>top-left = atomic mass</strong>,

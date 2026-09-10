@@ -73,13 +73,13 @@
 
 <svelte:window bind:innerWidth={window_width} />
 
-<h1>Periodic Table</h1>
+<h1 id="periodic-table">Periodic Table</h1>
 
 <PeriodicTableDemo />
 
 <MultiValueHeatmapDemo />
 
-<h2>4-fold Split</h2>
+<h2 id="4-fold-split">4-fold Split</h2>
 <p>
   Each element shows four values as quadrants: <strong>top-left = atomic radius</strong>,
   <strong>top-right = electronegativity * 100</strong>,
@@ -113,7 +113,7 @@
   {/snippet}
 </PeriodicTable>
 
-<h2>Missing Color Demo</h2>
+<h2 id="missing-color-demo">Missing Color Demo</h2>
 <p>
   The <code>missing</code> prop (<code>{`{ color, label, style }`}</code>) styles tiles with no
   heatmap value. <code>color</code> takes any CSS color or
@@ -181,7 +181,7 @@
   {/snippet}
 </PeriodicTable>
 
-<h2>Active Elements Border Styling</h2>
+<h2 id="active-elements-border-styling">Active Elements Border Styling</h2>
 <p>
   Customize active element borders with CSS custom property <code
     >--elem-tile-active-border</code
@@ -218,7 +218,7 @@
   {/snippet}
 </PeriodicTable>
 
-<h2>Auto-Scaling Color Bar</h2>
+<h2 id="auto-scaling-color-bar">Auto-Scaling Color Bar</h2>
 <p>
   When <code>show_color_bar</code> is enabled (the default) and no custom inset is provided, the
   periodic table automatically displays a color bar that scales with the table size. The color bar
@@ -240,7 +240,7 @@
   {/each}
 </div>
 
-<h2>2×2 Grid Layout</h2>
+<h2 id="2-2-grid-layout">2×2 Grid Layout</h2>
 
 <div class="two-by-two-grid">
   {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolateBlues` }, { title: `Density`, property: `density`, color_scale: `interpolateReds` }, { title: `Melting Point`, property: `melting_point`, color_scale: `interpolateOranges` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateGreens` }] as const as { title, property, color_scale } (title)}

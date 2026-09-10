@@ -58,9 +58,9 @@
   <title>RdfPlot Test Page</title>
 </svelte:head>
 
-<h1>RdfPlot Component Playwright Tests</h1>
+<h1 id="rdfplot-component-playwright-tests">RdfPlot Component Playwright Tests</h1>
 
-<h2>Single Synthetic Pattern</h2>
+<h2 id="single-synthetic-pattern">Single Synthetic Pattern</h2>
 <RdfPlot
   id="single-pattern"
   patterns={synthetic_pattern}
@@ -71,7 +71,7 @@
   style="height: 360px"
 />
 
-<h2>Multiple Synthetic Patterns with Legend</h2>
+<h2 id="multiple-synthetic-patterns-with-legend">Multiple Synthetic Patterns with Legend</h2>
 <RdfPlot
   id="multi-pattern"
   patterns={synthetic_patterns}
@@ -82,7 +82,7 @@
   style="height: 360px"
 />
 
-<h2>Single Structure - Element Pairs</h2>
+<h2 id="single-structure-element-pairs">Single Structure - Element Pairs</h2>
 <RdfPlot
   id="single-structure-element-pairs-plot"
   structures={structures[`Al₂Lu`]}
@@ -92,7 +92,7 @@
   style="height: 360px"
 />
 
-<h2>Single Structure - Full RDF</h2>
+<h2 id="single-structure-full-rdf">Single Structure - Full RDF</h2>
 <RdfPlot
   id="single-structure-full"
   structures={structures[`Al₂Lu`]}
@@ -102,7 +102,7 @@
   style="height: 360px"
 />
 
-<h2>Multiple Structures Comparison</h2>
+<h2 id="multiple-structures-comparison">Multiple Structures Comparison</h2>
 <RdfPlot
   id="multi-structure"
   {structures}
@@ -112,7 +112,7 @@
   style="height: 360px"
 />
 
-<h2>Reference Line at g(r) = 1</h2>
+<h2 id="reference-line-at-g-r-1">Reference Line at g(r) = 1</h2>
 <RdfPlot
   id="reference-line"
   patterns={synthetic_pattern}
@@ -122,7 +122,7 @@
   style="height: 360px"
 />
 
-<h2>Without Reference Line</h2>
+<h2 id="without-reference-line">Without Reference Line</h2>
 <RdfPlot
   id="no-reference-line"
   patterns={synthetic_pattern}
@@ -132,7 +132,7 @@
   style="height: 360px"
 />
 
-<h2>Drag & Drop Enabled</h2>
+<h2 id="drag-drop-enabled">Drag & Drop Enabled</h2>
 <RdfPlot
   id="drag-drop"
   mode="element_pairs"

@@ -218,7 +218,7 @@
     <button
       class={[`toggle-btn`, active && `active`]}
       onclick={select}
-      {@attach tooltip({ allow_html: true, content: tip })}
+      {@attach tooltip({ content: tip })}
     >
       {text}
     </button>
@@ -299,13 +299,13 @@
         [
           [
             `Precomputed`,
-            `Use precomputed formation energies (E<sub>form</sub>)`,
+            `Use precomputed formation energies (E_form)`,
             energy_source_mode === `precomputed`,
             () => (energy_source_mode = `precomputed`),
           ],
           [
             `On the fly`,
-            `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
+            `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E_form = 0 eV/atom if not provided explicitly.`,
             energy_source_mode === `on-the-fly`,
             () => (energy_source_mode = `on-the-fly`),
           ],
@@ -366,7 +366,6 @@
         >
         <ColorScaleSelect
           bind:value={color_scale}
-          selected={[color_scale]}
           placeholder="Select color scale"
           {@attach tooltip({ content: `Set interpolator for energy colors` })}
         />

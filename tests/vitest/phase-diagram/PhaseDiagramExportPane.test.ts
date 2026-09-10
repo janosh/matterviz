@@ -53,8 +53,8 @@ describe(`PhaseDiagramExportPane`, () => {
     for (const label of [`SVG`, `PNG`, `JSON`]) {
       expect(document.body.textContent).toContain(label)
     }
-    const headings = Array.from(document.querySelectorAll(`h4`)).map(
-      (heading) => heading.textContent,
+    const headings = Array.from(document.querySelectorAll(`h4`)).map((heading) =>
+      heading.textContent?.trim(),
     )
     expect(headings).toContain(`Image`)
     expect(headings).toContain(`Data`)

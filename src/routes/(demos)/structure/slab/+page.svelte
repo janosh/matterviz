@@ -26,7 +26,7 @@
   const bulk = $derived(bulk_structures[selected])
 </script>
 
-<h1>Surface Slabs</h1>
+<h1 id="surface-slabs">Surface Slabs</h1>
 
 <p class="demo-intro">
   Cut a bulk crystal along a set of (hkl) lattice planes. The cell is rebuilt so that c crosses

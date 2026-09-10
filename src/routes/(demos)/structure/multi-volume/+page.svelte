@@ -314,7 +314,7 @@
   <title>Multi-Volume Isosurfaces | MatterViz</title>
 </svelte:head>
 
-<h1>Multi-Volume Isosurfaces</h1>
+<h1 id="multi-volume-isosurfaces">Multi-Volume Isosurfaces</h1>
 
 <p>
   Load several volumetric datasets into one scene, render isosurfaces from each simultaneously,
@@ -337,7 +337,10 @@
   {/each}
 </section>
 
-<h2 style="margin: 0.5em 0 0.3em; font-size: 0.9rem; opacity: 0.85">
+<h2
+  id="mix-your-own-matching-structures-append-as-extra-volumes"
+  style="margin: 0.5em 0 0.3em; font-size: 0.9rem; opacity: 0.85"
+>
   Mix your own (matching structures append as extra volumes)
 </h2>
 <FilePicker
@@ -399,7 +402,7 @@
 {/if}
 
 <section class="features">
-  <h2>Details</h2>
+  <h2 id="details">Details</h2>
   <ul>
     <li>
       <strong>Hidden color sources</strong>: a volume with no surfaces of its own still colors

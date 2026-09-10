@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ScatterPlotOptions } from '$lib/plot'
   import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
@@ -295,6 +296,13 @@
     }
     return closed_edge_path(upper_coords, lower_coords)
   }
+
+  const spin_display_settings = track_settings(() => ({ spin_mode }))
+  const smearing_settings = track_settings(() => ({ sigma }))
+  const dos_settings = track_settings(() => ({
+    ...(show_normalize_control ? { normalize } : {}),
+    ...(show_units_control && is_phonon ? { units: unit } : {}),
+  }))
 </script>
 
 {#if has_valid_data}
@@ -337,7 +345,7 @@
       {#if has_spin_polarized}
         <SettingsSection
           title="Spin Display"
-          current_values={{ spin_mode }}
+          changed_keys={spin_display_settings.changed_keys}
           on_reset={() => (spin_mode = `mirror`)}
         >
           <div class="dos-spin-modes">
@@ -359,7 +367,7 @@
 
       <SettingsSection
         title="Smearing"
-        current_values={{ sigma }}
+        changed_keys={smearing_settings.changed_keys}
         on_reset={() => (sigma = 0)}
         layout="flow"
       >
@@ -381,10 +389,7 @@
         <SettingsSection
           title="DOS"
           class="ctrl-line"
-          current_values={{
-            ...(show_normalize_control ? { normalize } : {}),
-            ...(show_units_control && is_phonon ? { units: unit } : {}),
-          }}
+          changed_keys={dos_settings.changed_keys}
           on_reset={() => {
             if (show_normalize_control) normalize = null
             if (show_units_control && is_phonon) units = `THz`

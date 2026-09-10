@@ -51,10 +51,10 @@
   <title>BoxPlot Test Page</title>
 </svelte:head>
 
-<h1>BoxPlot Component Playwright Tests</h1>
+<h1 id="boxplot-component-playwright-tests">BoxPlot Component Playwright Tests</h1>
 
 <section id="basic-box">
-  <h2>Basic</h2>
+  <h2 id="basic">Basic</h2>
   <BoxPlot
     series={basic_series}
     x_axis={{ label: `Model` }}
@@ -65,7 +65,7 @@
 </section>
 
 <section id="horizontal-box">
-  <h2>Horizontal</h2>
+  <h2 id="horizontal">Horizontal</h2>
   <BoxPlot
     series={basic_series}
     orientation="horizontal"
@@ -77,7 +77,7 @@
 </section>
 
 <section id="whisker-minmax">
-  <h2>Whisker Mode: Min/Max</h2>
+  <h2 id="whisker-mode-min-max">Whisker Mode: Min/Max</h2>
   <BoxPlot
     series={basic_series}
     whisker_mode="minmax"
@@ -89,7 +89,7 @@
 </section>
 
 <section id="outliers-box">
-  <h2>Outliers + Mean</h2>
+  <h2 id="outliers-mean">Outliers + Mean</h2>
   <BoxPlot
     series={outlier_series}
     show_mean
@@ -101,7 +101,9 @@
 </section>
 
 <section id="value-labels-box">
-  <h2>Value Labels + Colored Tick Labels (matbench style)</h2>
+  <h2 id="value-labels-colored-tick-labels-matbench-style">
+    Value Labels + Colored Tick Labels (matbench style)
+  </h2>
   <BoxPlot
     series={percentile_series}
     whisker_mode="minmax"
@@ -115,7 +117,7 @@
 </section>
 
 <section id="y2-box">
-  <h2>Y2 Axis</h2>
+  <h2 id="y2-axis">Y2 Axis</h2>
   <BoxPlot
     series={y2_series}
     show_legend
@@ -128,7 +130,7 @@
 </section>
 
 <section id="handlers-box">
-  <h2>With Handlers</h2>
+  <h2 id="with-handlers">With Handlers</h2>
   <BoxPlot
     series={basic_series}
     x_axis={{ label: `Model` }}

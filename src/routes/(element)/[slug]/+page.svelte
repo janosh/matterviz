@@ -151,7 +151,7 @@
 
 <form>
   <PropertySelect min_select={1} />
-  <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} min_select={1} />
+  <ColorScaleSelect bind:value={color_scale} min_select={1} />
 </form>
 <section class="viz">
   <ElementPhoto {element} />

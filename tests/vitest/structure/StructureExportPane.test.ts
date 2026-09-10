@@ -66,7 +66,7 @@ describe(`StructureExportPane`, () => {
     return matches[0]
   }
 
-  test(`displays all text export format buttons`, () => {
+  test(`displays text export actions and linked format descriptions`, async () => {
     mount_pane({ structure: simple_structure })
 
     const format_labels = [`JSON`, `XYZ`, `CIF`, `POSCAR`]
@@ -80,6 +80,12 @@ describe(`StructureExportPane`, () => {
     )?.nextElementSibling
     const buttons = text_section?.querySelectorAll(`button`)
     expect(buttons?.length).toBe(8)
+    doc_query(`.export-item span[aria-haspopup]`).dispatchEvent(new MouseEvent(`mouseenter`))
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.popover a`)?.getAttribute(`href`)).toBe(
+        `https://pymatgen.org`,
+      ),
+    )
   })
 
   test.each([

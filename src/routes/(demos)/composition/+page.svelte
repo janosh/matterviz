@@ -18,11 +18,11 @@
   )
 </script>
 
-<h1>Chemical Composition</h1>
+<h1 id="chemical-composition">Chemical Composition</h1>
 
 <CompositionDemo show_grid />
 
-<h2>Chart Controls</h2>
+<h2 id="chart-controls">Chart Controls</h2>
 <div class="demo-controls">
   <label><input type="checkbox" bind:checked={show_labels} /> Labels</label>
   <label><input type="checkbox" bind:checked={show_amounts} /> Amounts</label>
@@ -63,7 +63,7 @@
   <BubbleChart {composition} size={chart_size} {show_labels} {show_amounts} {patterns} />
 </div>
 
-<h2>Dynamic User Input</h2>
+<h2 id="dynamic-user-input">Dynamic User Input</h2>
 <CompositionDemo show_interactive />
 
 <style>

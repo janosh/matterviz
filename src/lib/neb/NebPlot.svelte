@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import { type ScatterPlotOptions, ScatterPlot, type DataSeries } from '$lib/plot'
   // Energy profile of one or more reaction paths, with the barrier annotated and the
   // fitted saddle drawn distinctly from the highest computed image.
@@ -139,6 +140,12 @@
     // Spline points carry no metadata; map the hovered coordinate to the nearest image
     select_image(active.key, nearest_image_idx(active.coords, data.x))
   }
+
+  const profile_settings = track_settings(() => ({
+    coord_mode,
+    energy_reference,
+    show_spline,
+  }))
 </script>
 
 <ScatterPlot
@@ -162,7 +169,7 @@
     <SettingsSection
       title="Profile"
       class="ctrl-line"
-      current_values={{ coord_mode, energy_reference, show_spline }}
+      changed_keys={profile_settings.changed_keys}
       on_reset={() => {
         coord_mode = `arc_length`
         energy_reference = `initial`

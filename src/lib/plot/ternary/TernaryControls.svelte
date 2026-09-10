@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import { ControlPane } from '$lib/overlays'
@@ -31,6 +32,8 @@
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
   } = $props()
+
+  const grid_settings = track_settings(() => ({ grid_step, show_grid, show_ticks }))
 </script>
 
 <ControlPane
@@ -43,7 +46,7 @@
   {@render children?.()}
   <SettingsSection
     title="Grid"
-    current_values={{ grid_step, show_grid, show_ticks }}
+    changed_keys={grid_settings.changed_keys}
     on_reset={() => {
       ;({ grid_step, show_grid, show_ticks } = GRID_DEFAULTS)
     }}

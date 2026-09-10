@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import PlotControls from '$lib/plot/core/components/PlotControls.svelte'
   import type {
@@ -68,6 +69,9 @@
     styles[kind] = { ...DEFAULTS.scatter[kind] }
     for (const key of Object.keys(DEFAULTS.scatter[kind])) on_touch?.(`${kind}.${key}`, false)
   }
+
+  const point_style_settings = track_settings(() => styles.point ?? {})
+  const line_style_settings = track_settings(() => styles.line ?? {})
 </script>
 
 <PlotControls
@@ -125,7 +129,7 @@
     {#if has_any_points && styles.show_points}
       <SettingsSection
         title="Point style"
-        current_values={styles.point ?? {}}
+        changed_keys={point_style_settings.changed_keys}
         on_reset={reset_style(`point`)}
         oninput={touch}
         layout="flow"
@@ -182,7 +186,7 @@
     {#if has_any_lines && styles.show_lines}
       <SettingsSection
         title="Line style"
-        current_values={styles.line ?? {}}
+        changed_keys={line_style_settings.changed_keys}
         on_reset={reset_style(`line`)}
         oninput={touch}
         layout="flow"

@@ -62,7 +62,7 @@ You can make fat and skinny bars:
 </script>
 
 <form>
-  <ColorScaleSelect bind:value={color_scale} min_select={1} selected={[color_scale]} />
+  <ColorScaleSelect bind:value={color_scale} min_select={1} />
   <PropertySelect bind:key={heatmap_key} bind:value={heat_label} />
 </form>
 

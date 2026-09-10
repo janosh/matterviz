@@ -6,7 +6,7 @@
   <title>Fermi Surface | Matterviz</title>
 </svelte:head>
 
-<h1>Fermi Surface</h1>
+<h1 id="fermi-surface">Fermi Surface</h1>
 
 <p class="demo-intro">
   Load <code>BXSF</code>

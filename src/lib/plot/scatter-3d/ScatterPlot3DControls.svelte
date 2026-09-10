@@ -14,6 +14,7 @@
 </script>
 
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
@@ -116,6 +117,25 @@
     [`show_bounding_box`, `Bounds`],
   ] as const
   const projection_planes = [`xy`, `xz`, `yz`] as const
+  const camera_settings = track_settings(() => ({
+    projection: camera_projection,
+    auto_rotate,
+  }))
+  const display_settings = track_settings(() =>
+    Object.fromEntries(display_toggles.map(([key]) => [key, display[key]])),
+  )
+  const projections_settings = track_settings(() => ({
+    ...Object.fromEntries(
+      projection_planes.map((plane) => [plane, display.projections?.[plane]]),
+    ),
+    opacity: display.projection_opacity,
+    scale: display.projection_scale,
+  }))
+  const axes_settings = track_settings(() => ({
+    x_range: x_axis.range,
+    y_range: y_axis.range,
+    z_range: z_axis.range,
+  }))
 </script>
 
 <ControlPane
@@ -133,7 +153,7 @@
   <!-- Camera Controls -->
   <SettingsSection
     title="Camera"
-    current_values={{ projection: camera_projection, auto_rotate }}
+    changed_keys={camera_settings.changed_keys}
     on_reset={() => ({ camera_projection, auto_rotate } = defaults)}
     layout="grid"
   >
@@ -152,7 +172,7 @@
   <!-- Display Controls -->
   <SettingsSection
     title="Display"
-    current_values={Object.fromEntries(display_toggles.map(([key]) => [key, display[key]]))}
+    changed_keys={display_settings.changed_keys}
     on_reset={() => {
       const { show_axes, show_grid, show_axis_labels, show_bounding_box } = defaults
       display = { ...display, show_axes, show_grid, show_axis_labels, show_bounding_box }
@@ -171,13 +191,7 @@
   {#if series.length > 0}
     <SettingsSection
       title="Projections"
-      current_values={{
-        ...Object.fromEntries(
-          projection_planes.map((plane) => [plane, display.projections?.[plane]]),
-        ),
-        opacity: display.projection_opacity,
-        scale: display.projection_scale,
-      }}
+      changed_keys={projections_settings.changed_keys}
       on_reset={() => {
         const { projections, projection_opacity, projection_scale } = defaults
         display = {
@@ -228,11 +242,7 @@
   <!-- Axes (merged X/Y/Z) -->
   <SettingsSection
     title="Axes"
-    current_values={{
-      x_range: x_axis.range,
-      y_range: y_axis.range,
-      z_range: z_axis.range,
-    }}
+    changed_keys={axes_settings.changed_keys}
     on_reset={() => {
       for (const { axis, set } of axes) set({ ...axis, range: [null, null] })
     }}

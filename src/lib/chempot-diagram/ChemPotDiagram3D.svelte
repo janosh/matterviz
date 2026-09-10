@@ -4,7 +4,11 @@
   import { Filter } from 'svelte-widgets/icons'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
+  import {
+    track_settings,
+    normalize_show_controls,
+    type ShowControlsProp,
+  } from '$lib/controls'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { Spinner } from 'svelte-widgets'
@@ -1153,6 +1157,13 @@
     const idx = color_modes.indexOf(color_mode)
     chempot.set(`color_mode`, color_modes[(idx + 1) % color_modes.length])
   }
+
+  const chempot_settings = track_settings(() => ({
+    ...chempot.values,
+    // a pinned camera is exactly the state Reset undoes, so it has to count as a change
+    // or the affordance never appears for it
+    camera_pinned: camera_position_override !== null,
+  }))
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -1270,12 +1281,7 @@
     >
       <SettingsSection
         title="ChemPot"
-        current_values={{
-          ...chempot.values,
-          // a pinned camera is exactly the state Reset undoes, so it has to count as a change
-          // or the affordance never appears for it
-          camera_pinned: camera_position_override !== null,
-        }}
+        changed_keys={chempot_settings.changed_keys}
         on_reset={reset_controls}
       >
         {#if has_multinary_system && plot_elements.length === 3}

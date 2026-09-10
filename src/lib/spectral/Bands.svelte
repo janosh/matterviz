@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ScatterPlotOptions } from '$lib/plot'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '$lib/brillouin'
   import type { BZPopupPoint } from '$lib/brillouin'
@@ -511,6 +512,12 @@
       internal_x_positions,
     )
   })
+
+  const path_settings = track_settings(() => ({
+    path_mode,
+    ...(band_type === `phonon` ? { units: unit } : {}),
+    ...(band_type === `electronic` ? { band_spin_mode, show_gap_annotation } : {}),
+  }))
 </script>
 
 {#if series_data.length > 0 && !strict_path_error}
@@ -598,11 +605,7 @@
       <SettingsSection
         title="Path"
         class="ctrl-line"
-        current_values={{
-          path_mode,
-          ...(band_type === `phonon` ? { units: unit } : {}),
-          ...(band_type === `electronic` ? { band_spin_mode, show_gap_annotation } : {}),
-        }}
+        changed_keys={path_settings.changed_keys}
         on_reset={() => {
           path_mode = `strict`
           if (band_type === `phonon`) units = `THz`

@@ -54,7 +54,7 @@
   const strategies = SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}
 </script>
 
-<h1>Coordination Number Histograms</h1>
+<h1 id="coordination-number-histograms">Coordination Number Histograms</h1>
 
 <p class="demo-intro">
   Histograms and structure colors share the selected bonding strategy. Click a discrete
@@ -62,7 +62,7 @@
 </p>
 
 <div class="bleed-1400">
-  <h2>Single Structure</h2>
+  <h2 id="single-structure">Single Structure</h2>
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
@@ -92,7 +92,7 @@
     {/if}
   </section>
 
-  <h2>Multiple Structures Overlay</h2>
+  <h2 id="multiple-structures-overlay">Multiple Structures Overlay</h2>
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />

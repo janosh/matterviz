@@ -386,7 +386,7 @@
   />
 </svelte:head>
 
-<h1>Convex Hulls</h1>
+<h1 id="convex-hulls">Convex Hulls</h1>
 
 <div class="full-bleed">
   {#snippet feature_list(feature_items: string[])}
@@ -401,7 +401,7 @@
   {/snippet}
 
   <section class="demo-section">
-    <h2>Ternary Chemical Systems</h2>
+    <h2 id="ternary-chemical-systems">Ternary Chemical Systems</h2>
     <div class="ternary-grid">
       {#each ternary_examples as { title, entries } (title)}
         <ConvexHull {entries} controls={{ title }} />
@@ -410,7 +410,7 @@
   </section>
 
   <section class="demo-section">
-    <h2>Quaternary Chemical Systems</h2>
+    <h2 id="quaternary-chemical-systems">Quaternary Chemical Systems</h2>
     {@render feature_list(quaternary_features)}
     <div class="quaternary-grid">
       {#each [...loaded_data.entries()].filter( ([point_value]) => point_value.includes(`quaternaries`) ) as [path, data] (path)}
@@ -425,7 +425,7 @@
   </section>
 
   <section class="demo-section">
-    <h2>Binary Chemical Systems</h2>
+    <h2 id="binary-chemical-systems">Binary Chemical Systems</h2>
     <div class="binary-grid">
       {#each binary_examples as { title, entries } (title)}
         <ConvexHull {entries} controls={{ title }} style="height: 500px" />
@@ -435,7 +435,7 @@
 
   {#if section_mounted(`stats`)}
     <section class="demo-section">
-      <h2>Statistics Panel</h2>
+      <h2 id="statistics-panel">Statistics Panel</h2>
       <p>
         Use <code>bind:this</code> to access the renderer, then derive
         <code>renderer?.get_model()</code> for an external statistics panel. The model contains all
@@ -461,7 +461,7 @@
         {/if}
       </div>
 
-      <h3>Side-by-Side Layout</h3>
+      <h3 id="side-by-side-layout">Side-by-Side Layout</h3>
       {@render feature_list(side_by_side_features)}
       <div class="side-by-side-example">
         <ConvexHull
@@ -483,7 +483,7 @@
 
   {#if section_mounted(`highlight`)}
     <section class="demo-section">
-      <h2>Highlighted Entries</h2>
+      <h2 id="highlighted-entries">Highlighted Entries</h2>
       {@render feature_list(highlighted_features)}
       <div class="highlight-grid">
         <ConvexHull
@@ -520,7 +520,7 @@
 
   {#if section_mounted(`magnetic`)}
     <section class="demo-section">
-      <h2>Magnetic States & Custom Categories</h2>
+      <h2 id="magnetic-states-custom-categories">Magnetic States & Custom Categories</h2>
       {@render feature_list(magnetic_features)}
       <p class="section-note">
         Synthetic orderings are assigned by entry-ID hash. Missing pure-element references are
@@ -553,7 +553,7 @@
 
   {#if section_mounted(`temperature`)}
     <section class="demo-section">
-      <h2>Temperature-Dependent Free Energies</h2>
+      <h2 id="temperature-dependent-free-energies">Temperature-Dependent Free Energies</h2>
       {@render feature_list(temp_features)}
       <div class="temp-grid">
         <ConvexHull
@@ -572,7 +572,7 @@
 
   {#if section_mounted(`gas`)}
     <section class="demo-section">
-      <h2>Gas Atmosphere Control</h2>
+      <h2 id="gas-atmosphere-control">Gas Atmosphere Control</h2>
       {@render feature_list(gas_features)}
       <div class="gas-selector">
         <label for="gas-select">Gas species:</label>
@@ -602,7 +602,7 @@
 
   {#if section_mounted(`quinary`)}
     <section class="demo-section">
-      <h2>Standalone Stats for Quinary Systems</h2>
+      <h2 id="standalone-stats-for-quinary-systems">Standalone Stats for Quinary Systems</h2>
       {@render feature_list(quinary_stats_features)}
       <div class="quinary-stats-controls">
         <label for="quinary-select">Quinary dataset:</label>

@@ -40,10 +40,10 @@
   <title>XrdPlot Test Page</title>
 </svelte:head>
 
-<h1>XrdPlot Component Playwright Tests</h1>
+<h1 id="xrdplot-component-playwright-tests">XrdPlot Component Playwright Tests</h1>
 
 <section id="single-pattern">
-  <h2>Single Series</h2>
+  <h2 id="single-series">Single Series</h2>
   <XrdPlot
     patterns={single_entries}
     annotate_peaks={3}
@@ -55,7 +55,7 @@
 </section>
 
 <section id="multi-pattern">
-  <h2>Multiple Series with Legend</h2>
+  <h2 id="multiple-series-with-legend">Multiple Series with Legend</h2>
   <XrdPlot
     patterns={multi_entries}
     annotate_peaks={0.5}

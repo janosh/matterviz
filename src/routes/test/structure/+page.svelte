@@ -93,10 +93,10 @@
   })
 </script>
 
-<h1>Structure Component Test Page</h1>
+<h1 id="structure-component-test-page">Structure Component Test Page</h1>
 
 <section>
-  <h2>Controls for Test Page</h2>
+  <h2 id="controls-for-test-page">Controls for Test Page</h2>
   <label>
     Controls Open: <input
       type="checkbox"
@@ -183,7 +183,7 @@
 <div data-testid="bond-edit-mode-status">Bond Edit Mode: {bond_edit_mode}</div>
 
 <div data-testid="event-calls-status" style="max-height: 50vh; overflow-y: auto">
-  <h3>Event Calls ({event_calls.length})</h3>
+  <h3 id="event-calls">Event Calls ({event_calls.length})</h3>
   <pre>{JSON.stringify(event_calls, null, 2)}</pre>
 </div>
 

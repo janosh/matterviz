@@ -180,7 +180,9 @@
   })
 </script>
 
-<h1 data-hydrated={hydrated}>Trajectory Component Test Page</h1>
+<h1 id="trajectory-component-test-page" data-hydrated={hydrated}>
+  Trajectory Component Test Page
+</h1>
 
 <Trajectory id="empty-state" show_controls="always" />
 
