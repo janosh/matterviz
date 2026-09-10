@@ -4,19 +4,18 @@
   import type { ComponentProps } from 'svelte'
   import { MultiSelect as Select } from 'svelte-widgets'
 
-  const options = Object.keys(ELEM_HEATMAP_LABELS)
+  const options = Object.keys(ELEM_HEATMAP_LABELS) as (keyof ChemicalElement)[]
   let {
-    value = $bindable(null),
     empty = false,
-    selected = empty ? [] : [options[1]],
+    value = $bindable(empty ? null : options[1]),
     min_select = 0,
     key = $bindable(null),
     ...rest
-  }: Omit<ComponentProps<typeof Select<string>>, `options` | `key`> & {
-    value?: keyof ChemicalElement | null
+  }: Omit<
+    Extract<ComponentProps<typeof Select<keyof ChemicalElement>>, { mode: `single` }>,
+    `options` | `key` | `mode`
+  > & {
     empty?: boolean
-    selected?: string[]
-    min_select?: number
     key?: string | null
   } = $props()
 
@@ -27,8 +26,7 @@
 
 <Select
   {options}
-  {selected}
-  max_select={1}
+  mode="single"
   max_options={options.length}
   {min_select}
   bind:value

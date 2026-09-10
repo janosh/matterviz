@@ -41,7 +41,7 @@
   let sync_y_zoom = $state(true)
 </script>
 
-<h1>BandsAndDos Component Test Page</h1>
+<h1 id="bandsanddos-component-test-page">BandsAndDos Component Test Page</h1>
 
 <h2 id="default">Default (Shared Y-axis)</h2>
 <button data-testid="toggle-y-zoom-sync" onclick={() => (sync_y_zoom = !sync_y_zoom)}>
@@ -129,7 +129,7 @@
 </p>
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem">
   <div>
-    <h3 style="text-align: center">Electronic (CaO)</h3>
+    <h3 id="electronic-cao" style="text-align: center">Electronic (CaO)</h3>
     <BandsAndDos
       band_structs={{ '': electronic_bands.cao_2605 }}
       doses={{ '': electronic_dos }}
@@ -139,7 +139,7 @@
     />
   </div>
   <div>
-    <h3 style="text-align: center">Phonon (Mock)</h3>
+    <h3 id="phonon-mock" style="text-align: center">Phonon (Mock)</h3>
     <BandsAndDos
       band_structs={{ '': mock_band_structure }}
       doses={{ '': mock_dos }}

@@ -94,9 +94,9 @@
   }
 </script>
 
-<h1>PlotLegend Integration Test Page</h1>
+<h1 id="plotlegend-integration-test-page">PlotLegend Integration Test Page</h1>
 
-<h2>Legend Component</h2>
+<h2 id="legend-component">Legend Component</h2>
 <PlotLegend
   id="main-legend"
   {series_data}
@@ -108,7 +108,7 @@
   on_double_click={handle_double_click}
 />
 
-<h2>Controls</h2>
+<h2 id="controls">Controls</h2>
 <label for="layout">Layout:</label>
 <select bind:value={legend_layout} id="layout">
   <option value="vertical">Vertical</option>
@@ -129,7 +129,7 @@
 <br />
 <br />
 
-<h2>State Trackers</h2>
+<h2 id="state-trackers">State Trackers</h2>
 <p data-testid="last-toggled">
   Last Toggled Index: {last_toggled_idx ?? `null`}
 </p>
@@ -137,7 +137,7 @@
   Last Isolated Index: {last_isolated_idx ?? `null`}
 </p>
 
-<h2>Custom Style Test Case</h2>
+<h2 id="custom-style-test-case">Custom Style Test Case</h2>
 <PlotLegend
   id="custom-style-legend"
   series_data={series_data.slice(0, 2)}

@@ -38,7 +38,7 @@
   const selected_structures = $derived(labeled_structures(selected_ids))
 </script>
 
-<h1>Bond-Angle Distributions (ADF)</h1>
+<h1 id="bond-angle-distributions-adf">Bond-Angle Distributions (ADF)</h1>
 
 <p class="demo-intro">
   Periodic image atoms are included in the bond search, so boundary sites remain correctly
@@ -46,7 +46,7 @@
 </p>
 
 <div class="bleed-1400">
-  <h2>Single Structure</h2>
+  <h2 id="single-structure">Single Structure</h2>
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
@@ -81,7 +81,7 @@
     {/if}
   </section>
 
-  <h2>Compare Structures</h2>
+  <h2 id="compare-structures">Compare Structures</h2>
   <p>
     Density normalization gives each structure unit area for cell-size-independent comparison.
   </p>
@@ -106,7 +106,7 @@
     style="height: 500px"
   />
 
-  <h2>Try Your Own Structure</h2>
+  <h2 id="try-your-own-structure">Try Your Own Structure</h2>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
   <BondAnglePlot structures={{}} split_mode="by_triplet" style="height: 500px" />
 </div>

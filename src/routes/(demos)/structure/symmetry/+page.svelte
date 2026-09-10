@@ -107,7 +107,7 @@
   )
 </script>
 
-<h1>Symmetry</h1>
+<h1 id="symmetry">Symmetry</h1>
 
 <p class="demo-intro">
   Purely client-side interactive symmetry analysis. Powered by
@@ -195,12 +195,12 @@
 
 <!-- Layout Examples Section -->
 <section style="margin: 4em 0">
-  <h2 style="text-align: center; margin-bottom: 2em">Layout Examples</h2>
+  <h2 id="layout-examples" style="text-align: center; margin-bottom: 2em">Layout Examples</h2>
 
   {#if top_ex_sym_data}
     <!-- Example 3: Two Column - Stats Left, Structure Right -->
     <div class="example-section">
-      <h3>Two Column - Stats + Structure</h3>
+      <h3 id="two-column-stats-structure">Two Column - Stats + Structure</h3>
       <div class="two-column-layout">
         <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
         <Structure
@@ -215,7 +215,7 @@
 
     <!-- Example 5: Grid Layout - Stats Above, Structure Below -->
     <div class="example-section">
-      <h3>Stacked Layout - Stats Above Structure</h3>
+      <h3 id="stacked-layout-stats-above-structure">Stacked Layout - Stats Above Structure</h3>
       <div class="stacked-layout">
         <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
         <Structure

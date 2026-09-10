@@ -1051,6 +1051,18 @@ describe(`StructureControls reactive props`, () => {
     expect(
       target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
     ).toBeNull()
+
+    state.scene_props.vector_scale = 2
+    state.structure = structure_with_vector(`force`)
+    await tick()
+    expect(
+      target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
+    ).toBeNull()
+    state.scene_props.vector_scale = 3
+    await tick()
+    doc_query<HTMLButtonElement>(`button[aria-label="Reset site vectors to defaults"]`).click()
+    await tick()
+    expect(state.scene_props.vector_scale).toBe(2)
   })
 
   test.each<[string, TrajectoryPositionStream | null | undefined, boolean, boolean, boolean]>([

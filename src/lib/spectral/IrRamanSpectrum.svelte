@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ScatterPlotOptions } from '$lib/plot'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
@@ -153,6 +154,15 @@
 
   let mode_count = $derived(spectrum?.modes?.length ?? 0)
   let active_count = $derived(sticks.y.filter((val) => val > 1e-12).length)
+
+  const spectrum_settings = track_settings(() => ({
+    kind,
+    units: unit,
+    presentation,
+    show_sticks,
+    ...(!is_transmittance ? { normalize } : {}),
+  }))
+  const broadening_settings = track_settings(() => ({ fwhm, shape_factor }))
 </script>
 
 {#if raman_unavailable}
@@ -186,13 +196,7 @@
       <SettingsSection
         title="Spectrum"
         class="ctrl-line"
-        current_values={{
-          kind,
-          units: unit,
-          presentation,
-          show_sticks,
-          ...(!is_transmittance ? { normalize } : {}),
-        }}
+        changed_keys={spectrum_settings.changed_keys}
         on_reset={() => {
           kind = `ir`
           units = `cm^-1`
@@ -235,7 +239,7 @@
       </SettingsSection>
       <SettingsSection
         title="Broadening"
-        current_values={{ fwhm, shape_factor }}
+        changed_keys={broadening_settings.changed_keys}
         on_reset={() => ([fwhm, shape_factor] = [(plot_range[1] - plot_range[0]) / 100, 0.5])}
         layout="flow"
       >

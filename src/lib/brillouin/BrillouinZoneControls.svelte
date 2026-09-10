@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { format_num } from '$lib/labels'
   import { ControlPane } from '$lib/overlays'
@@ -23,6 +24,12 @@
   }: Partial<Omit<BrillouinZoneSettings, `vector_scale`>> & {
     controls_open?: boolean
   } = $props()
+
+  const brillouin_zone_controls_settings = track_settings(() => ({ bz_order, show_vectors }))
+  const surface_settings = track_settings(() => ({ surface_color, surface_opacity }))
+  const edges_settings = track_settings(() => ({ edge_color, edge_width }))
+  const irreducible_bz_settings = track_settings(() => ({ show_ibz, ibz_color, ibz_opacity }))
+  const camera_settings = track_settings(() => ({ camera_projection }))
 </script>
 
 <ControlPane
@@ -36,7 +43,7 @@
   <SettingsGroup title="Geometry" open>
     <SettingsSection
       title="Brillouin zone controls"
-      current_values={{ bz_order, show_vectors }}
+      changed_keys={brillouin_zone_controls_settings.changed_keys}
       on_reset={() => ({ bz_order, show_vectors } = defaults)}
       layout="grid"
     >
@@ -56,7 +63,7 @@
 
     <SettingsSection
       title="Surface"
-      current_values={{ surface_color, surface_opacity }}
+      changed_keys={surface_settings.changed_keys}
       on_reset={() => ({ surface_color, surface_opacity } = defaults)}
       layout="grid"
     >
@@ -73,7 +80,7 @@
 
     <SettingsSection
       title="Edges"
-      current_values={{ edge_color, edge_width }}
+      changed_keys={edges_settings.changed_keys}
       on_reset={() => ({ edge_color, edge_width } = defaults)}
       layout="grid"
     >
@@ -90,7 +97,7 @@
 
     <SettingsSection
       title="Irreducible BZ"
-      current_values={{ show_ibz, ibz_color, ibz_opacity }}
+      changed_keys={irreducible_bz_settings.changed_keys}
       on_reset={() => ({ show_ibz, ibz_color, ibz_opacity } = defaults)}
       layout="grid"
     >
@@ -114,7 +121,7 @@
 
   <SettingsSection
     title="Camera"
-    current_values={{ camera_projection }}
+    changed_keys={camera_settings.changed_keys}
     on_reset={() => ({ camera_projection } = defaults)}
     layout="grid"
   >

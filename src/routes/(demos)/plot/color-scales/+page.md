@@ -40,9 +40,9 @@
   </section>
 {/snippet}
 
-<h1 style="text-align: center">Color Scales</h1>
+<h1 id="color-scales" style="text-align: center">Color Scales</h1>
 
-<h2 style="text-align: center">
+<h2 id="element-occurrence-counts" style="text-align: center">
   {{ MP: `Materials Project` }[data_name] ?? data_name} Element Occurrence Counts
 </h2>
 

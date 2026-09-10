@@ -35,7 +35,7 @@
 </script>
 
 <svelte:head><title>Host prediction tools | MatterViz</title></svelte:head>
-<h1>Host prediction tools</h1>
+<h1 id="host-prediction-tools">Host prediction tools</h1>
 <p>
   This runnable example adds deterministic charges, dipole arrows, density and a six-frame
   trajectory to an unchanged input crystal in a Web Worker. Set a delay to try cancelling or
@@ -50,7 +50,7 @@
     style="height: 650px"
   />
 {/if}
-<h2>Integrate a host tool</h2>
+<h2 id="integrate-a-host-tool">Integrate a host tool</h2>
 <p>
   Import <code>structure_host_tool</code> and <code>StructureToolProps</code> from
   <code>matterviz/structure</code>

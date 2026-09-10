@@ -36,7 +36,7 @@
   })
 </script>
 
-<h1>Synthesis Planner</h1>
+<h1 id="synthesis-planner">Synthesis Planner</h1>
 
 <p>
   Shortlist precursor routes, compare their tradeoffs, and explore how temperature and gas

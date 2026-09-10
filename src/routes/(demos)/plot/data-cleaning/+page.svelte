@@ -424,10 +424,10 @@ const { series: cleaned, quality } = clean_series(series, config)
   })
 </script>
 
-<h1>Data Cleaning Demo</h1>
+<h1 id="data-cleaning-demo">Data Cleaning Demo</h1>
 
 <section class="controls-panel">
-  <h2>Data Generation</h2>
+  <h2 id="data-generation">Data Generation</h2>
 
   <div class="control-row">
     <label>
@@ -489,7 +489,7 @@ const { series: cleaned, quality } = clean_series(series, config)
     </div>
   {/if}
 
-  <h2>Cleaning Options</h2>
+  <h2 id="cleaning-options">Cleaning Options</h2>
   <p class="description">
     <code>detect_instability</code> combines derivative variance, amplitude growth, and
     sign-change frequency over <code>window_size</code>; <code>oscillation_threshold</code> applies
@@ -576,7 +576,7 @@ const { series: cleaned, quality } = clean_series(series, config)
 </section>
 
 <section class="plot-section">
-  <h2>Single Series Cleaning</h2>
+  <h2 id="single-series-cleaning">Single Series Cleaning</h2>
 
   <div class="quality-report">
     <strong>Quality Report:</strong>
@@ -616,7 +616,7 @@ const { series: cleaned, quality } = clean_series(series, config)
 </section>
 
 <section class="plot-section">
-  <h2>Multi-Series Cleaning (Correlated Data)</h2>
+  <h2 id="multi-series-cleaning-correlated-data">Multi-Series Cleaning (Correlated Data)</h2>
   <p class="description">
     Synchronized filtering removes a row from every series when any value is invalid.
   </p>
@@ -630,7 +630,7 @@ const { series: cleaned, quality } = clean_series(series, config)
 
   <div class="multi-series-grid">
     <div>
-      <h3>Raw Data (NaN positions marked)</h3>
+      <h3 id="raw-data-nan-positions-marked">Raw Data (NaN positions marked)</h3>
       <ScatterPlot
         series={[
           {
@@ -690,7 +690,7 @@ const { series: cleaned, quality } = clean_series(series, config)
       />
     </div>
     <div>
-      <h3>Cleaned (series aligned)</h3>
+      <h3 id="cleaned-series-aligned">Cleaned (series aligned)</h3>
       <ScatterPlot
         series={[
           {
@@ -719,7 +719,7 @@ const { series: cleaned, quality } = clean_series(series, config)
 </section>
 
 <section class="plot-section">
-  <h2>Trajectory Alignment</h2>
+  <h2 id="trajectory-alignment">Trajectory Alignment</h2>
   <p class="description">
     Invalid coordinates remove the corresponding point from every trajectory array.
   </p>
@@ -732,7 +732,7 @@ const { series: cleaned, quality } = clean_series(series, config)
 
   <div class="multi-series-grid">
     <div>
-      <h3>Raw Data (NaN positions marked)</h3>
+      <h3 id="raw-data-nan-positions-marked-1">Raw Data (NaN positions marked)</h3>
       <ScatterPlot
         series={[
           {
@@ -769,7 +769,7 @@ const { series: cleaned, quality } = clean_series(series, config)
       />
     </div>
     <div>
-      <h3>Cleaned (NaN points removed)</h3>
+      <h3 id="cleaned-nan-points-removed">Cleaned (NaN points removed)</h3>
       <ScatterPlot
         series={[
           {

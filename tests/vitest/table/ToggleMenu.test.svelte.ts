@@ -43,6 +43,7 @@ describe(`ToggleMenu`, () => {
       async (visible) => {
         const columns = make_columns()
         columns[0].visible = visible
+        columns[0].description = `<b>Column details</b>`
         columns[2].label = `E<sub>hull</sub>`
         mount_menu(columns, { column_panel_open: false })
         const summary = doc_query(`summary`)
@@ -54,6 +55,10 @@ describe(`ToggleMenu`, () => {
         expect(document.querySelector(`[role="group"]`)).not.toBeNull()
         expect(document.querySelector(`.sections-container`)).toBeNull()
         expect(document.querySelector(`sub`)).not.toBeNull()
+        doc_query(`.toggle-label`).dispatchEvent(new MouseEvent(`mouseenter`))
+        await vi.waitFor(() =>
+          expect(document.querySelector(`.popover b`)?.textContent).toBe(`Column details`),
+        )
         await fire(doc_query(`.toggle-label`))
         expect(columns[0].visible).toBe(false)
       },

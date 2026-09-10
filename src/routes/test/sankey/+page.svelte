@@ -37,10 +37,10 @@
   <title>Sankey Test Page</title>
 </svelte:head>
 
-<h1>Sankey Component Playwright Tests</h1>
+<h1 id="sankey-component-playwright-tests">Sankey Component Playwright Tests</h1>
 
 <section id="basic-sankey">
-  <h2>Basic (horizontal)</h2>
+  <h2 id="basic-horizontal">Basic (horizontal)</h2>
   <Sankey
     data={flow}
     controls_open={false}
@@ -50,7 +50,7 @@
 </section>
 
 <section id="vertical-sankey">
-  <h2>Vertical</h2>
+  <h2 id="vertical">Vertical</h2>
   <Sankey
     data={flow}
     orientation="vertical"
@@ -60,7 +60,7 @@
 </section>
 
 <section id="gradient-sankey">
-  <h2>Gradient links + legend</h2>
+  <h2 id="gradient-links-legend">Gradient links + legend</h2>
   <Sankey
     data={flow}
     link_color_mode="gradient"
@@ -71,7 +71,7 @@
 </section>
 
 <section id="bipartite-sankey">
-  <h2>Bipartite (from flat arrays)</h2>
+  <h2 id="bipartite-from-flat-arrays">Bipartite (from flat arrays)</h2>
   <Sankey
     data={bipartite}
     node_align="left"
@@ -81,7 +81,7 @@
 </section>
 
 <section id="handlers-sankey">
-  <h2>With handlers</h2>
+  <h2 id="with-handlers">With handlers</h2>
   <Sankey
     data={flow}
     on_node_hover={(data) => {

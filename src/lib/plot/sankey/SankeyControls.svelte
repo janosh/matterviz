@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { SankeyNodeAlign, Orientation } from '$lib/plot'
@@ -36,6 +37,17 @@
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
   } = $props()
+
+  const sankey_settings = track_settings(() => ({
+    orientation,
+    node_align,
+    node_width,
+    node_padding,
+    link_opacity,
+    show_node_labels,
+    min_fraction,
+    max_links,
+  }))
 </script>
 
 <!-- select options come from the settings schema so labels/values have a single source of truth -->
@@ -55,16 +67,7 @@
   {@render children?.()}
   <SettingsSection
     title="Sankey"
-    current_values={{
-      orientation,
-      node_align,
-      node_width,
-      node_padding,
-      link_opacity,
-      show_node_labels,
-      min_fraction,
-      max_links,
-    }}
+    changed_keys={sankey_settings.changed_keys}
     on_reset={() => {
       ;({
         orientation,

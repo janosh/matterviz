@@ -8,7 +8,7 @@
     .map(({ route }) => route)
 </script>
 
-<h1>Pages for End-to-End Testing</h1>
+<h1 id="pages-for-end-to-end-testing">Pages for End-to-End Testing</h1>
 
 The files in this directory are used for end-to-end testing with Playwright.
 

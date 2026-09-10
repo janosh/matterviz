@@ -169,7 +169,7 @@
   )
 </script>
 
-<h1>XRD Patterns</h1>
+<h1 id="xrd-patterns">XRD Patterns</h1>
 
 <div class="bleed-1400">
   <StructurePicker bind:selected={compute_id} />
@@ -195,7 +195,7 @@
     {/if}
   </section>
 
-  <h2>X-ray vs neutron vs electron</h2>
+  <h2 id="x-ray-vs-neutron-vs-electron">X-ray vs neutron vs electron</h2>
   <p>
     Equal wavelengths keep peak positions aligned while probe-specific scattering factors
     change their intensities: the negative <code>b_coh</code> of H, Li, Ti, V and Mn can invert which
@@ -220,7 +220,7 @@
     style="height: 420px"
   />
 
-  <h2>Electron diffraction (SAED)</h2>
+  <h2 id="electron-diffraction-saed">Electron diffraction (SAED)</h2>
   <p>
     {compute_id} viewed down [uvw] at {accelerating_voltage} kV (λ = {format_num(
       electron_wavelength(accelerating_voltage),
@@ -256,7 +256,7 @@
     </section>
   {/if}
 
-  <h2>Overlay multiple structures</h2>
+  <h2 id="overlay-multiple-structures">Overlay multiple structures</h2>
   <StructurePicker bind:selected={selected_ids} />
   <section>
     <XrdPlot
@@ -288,7 +288,7 @@
     </div>
   </section>
 
-  <h2>XRD File Drop Demo</h2>
+  <h2 id="xrd-file-drop-demo">XRD File Drop Demo</h2>
   <p>
     Drag and drop XRD data files directly onto the plot. Supported formats include:
     <code>.xy</code>, <code>.xye</code>, <code>.csv</code>, <code>.dat</code>,

@@ -23,9 +23,9 @@
   <title>ColorBar Test Page</title>
 </svelte:head>
 
-<h1>ColorBar Component Playwright Tests</h1>
+<h1 id="colorbar-component-playwright-tests">ColorBar Component Playwright Tests</h1>
 
-<h2>Horizontal, Primary Ticks, Top Title</h2>
+<h2 id="horizontal-primary-ticks-top-title">Horizontal, Primary Ticks, Top Title</h2>
 <ColorBar
   id="horizontal-primary"
   title="Temperature (°C)"
@@ -36,7 +36,7 @@
   title_side="top"
 />
 
-<h2>Vertical, Secondary Ticks, Right Title</h2>
+<h2 id="vertical-secondary-ticks-right-title">Vertical, Secondary Ticks, Right Title</h2>
 <ColorBar
   id="vertical-secondary"
   orientation="vertical"
@@ -49,7 +49,7 @@
   bar_style="height: 300px"
 />
 
-<h2>Horizontal, Inside Ticks, Turbo Scale</h2>
+<h2 id="horizontal-inside-ticks-turbo-scale">Horizontal, Inside Ticks, Turbo Scale</h2>
 <ColorBar
   id="horizontal-inside"
   title="Intensity"
@@ -61,7 +61,7 @@
   title_side="left"
 />
 
-<h2>Vertical, Inside Ticks, Log Scale</h2>
+<h2 id="vertical-inside-ticks-log-scale">Vertical, Inside Ticks, Log Scale</h2>
 <ColorBar
   id="vertical-log"
   orientation="vertical"
@@ -74,7 +74,7 @@
   bar_style="height: 300px"
 />
 
-<h2>Horizontal, Date Ticks</h2>
+<h2 id="horizontal-date-ticks">Horizontal, Date Ticks</h2>
 <ColorBar
   id="horizontal-date"
   title="Timestamp"
@@ -86,7 +86,7 @@
   tick_side="primary"
 />
 
-<h2>Vertical, No Snap, Numeric Format</h2>
+<h2 id="vertical-no-snap-numeric-format">Vertical, No Snap, Numeric Format</h2>
 <ColorBar
   id="vertical-no-snap"
   orientation="vertical"
@@ -100,7 +100,7 @@
   bar_style="height: 300px"
 />
 
-<h2>Horizontal, Custom Styles</h2>
+<h2 id="horizontal-custom-styles-1">Horizontal, Custom Styles</h2>
 <ColorBar
   id="horizontal-custom-styles"
   title="Custom Styled"
@@ -112,7 +112,7 @@
   wrapper_style="background-color: lightgrey; padding: 10px;"
 />
 
-<h2>Vertical, Custom Scale Function & Domain</h2>
+<h2 id="vertical-custom-scale-function-domain">Vertical, Custom Scale Function & Domain</h2>
 <ColorBar
   id="vertical-custom-fn"
   orientation="vertical"
@@ -124,7 +124,7 @@
   bar_style="height: 300px"
 />
 
-<h2>Horizontal, Bind Nice Range (Snap=true)</h2>
+<h2 id="horizontal-bind-nice-range-snap-true">Horizontal, Bind Nice Range (Snap=true)</h2>
 <ColorBar
   id="horizontal-nice-range"
   title="Nice Range Output"
@@ -137,7 +137,9 @@
   Bound Nice Range: [{nice_range_output[0]}, {nice_range_output[1]}]
 </p>
 
-<h3>Vertical Log Scale Inside Ticks (Zero Min)</h3>
+<h3 id="vertical-log-scale-inside-ticks-zero-min">
+  Vertical Log Scale Inside Ticks (Zero Min)
+</h3>
 <ColorBar
   id="vertical-log-zero-min"
   range={[0, 1000]}

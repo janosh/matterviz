@@ -213,10 +213,10 @@
   <title>BarPlot Test Page</title>
 </svelte:head>
 
-<h1>BarPlot Component Playwright Tests</h1>
+<h1 id="barplot-component-playwright-tests">BarPlot Component Playwright Tests</h1>
 
 <section id="basic-bar">
-  <h2>Basic</h2>
+  <h2 id="basic">Basic</h2>
   <BarPlot
     series={basic_series}
     x_axis={{ label: `X` }}
@@ -231,7 +231,7 @@
 </section>
 
 <section id="legend-bar">
-  <h2>Legend and Overlay</h2>
+  <h2 id="legend-and-overlay">Legend and Overlay</h2>
   <BarPlot
     series={legend_series}
     x_axis={{ label: `Category` }}
@@ -242,7 +242,7 @@
 </section>
 
 <section id="modes-bar">
-  <h2>Modes and Orientation</h2>
+  <h2 id="modes-and-orientation">Modes and Orientation</h2>
   <BarPlot
     id="stacked-mixed"
     series={stacked_mixed_series}
@@ -273,7 +273,7 @@
 </section>
 
 <section id="handlers-bar">
-  <h2>With Handlers</h2>
+  <h2 id="with-handlers">With Handlers</h2>
   <BarPlot
     series={handlers_series}
     x_axis={{ label: `X` }}
@@ -298,7 +298,7 @@
 </section>
 
 <section id="y2-axis-bar">
-  <h2>Y2 Axis</h2>
+  <h2 id="y2-axis">Y2 Axis</h2>
   <BarPlot
     series={y2_axis_series}
     x_axis={{ label: `X` }}
@@ -310,7 +310,7 @@
 </section>
 
 <section id="y2-different-scale">
-  <h2>Y2 Different Scale</h2>
+  <h2 id="y2-different-scale-1">Y2 Different Scale</h2>
   <BarPlot
     series={y2_different_scale_series}
     x_axis={{ label: `X` }}
@@ -322,7 +322,7 @@
 </section>
 
 <section id="y2-stacked">
-  <h2>Y2 Stacked Mode</h2>
+  <h2 id="y2-stacked-mode">Y2 Stacked Mode</h2>
   <BarPlot
     series={y2_stacked_series}
     x_axis={{ label: `X` }}
@@ -335,7 +335,7 @@
 </section>
 
 <section id="y2-line-series">
-  <h2>Y2 Line Series</h2>
+  <h2 id="y2-line-series-1">Y2 Line Series</h2>
   <BarPlot
     series={y2_line_series}
     x_axis={{ label: `X` }}
@@ -347,7 +347,7 @@
 </section>
 
 <section id="categorical-bar">
-  <h2>Categorical Bar Charts</h2>
+  <h2 id="categorical-bar-charts">Categorical Bar Charts</h2>
   <BarPlot
     series={categorical_series}
     x_axis={{ label: `Material` }}
@@ -359,7 +359,7 @@
 </section>
 
 <section id="categorical-stacked">
-  <h2>Categorical Stacked</h2>
+  <h2 id="categorical-stacked-1">Categorical Stacked</h2>
   <BarPlot
     series={categorical_series}
     x_axis={{ label: `Material` }}
@@ -371,7 +371,7 @@
 </section>
 
 <section id="categorical-horizontal">
-  <h2>Categorical Horizontal</h2>
+  <h2 id="categorical-horizontal-1">Categorical Horizontal</h2>
   <BarPlot
     series={categorical_series}
     x_axis={{ label: `Material` }}
@@ -384,7 +384,7 @@
 </section>
 
 <section id="categorical-custom-order">
-  <h2>Categorical Custom Order</h2>
+  <h2 id="categorical-custom-order-1">Categorical Custom Order</h2>
   <BarPlot
     series={categorical_series}
     x_axis={{ label: `Material`, categories: [`Diamond`, `GaN`, `Si`, `GaAs`] }}
@@ -396,7 +396,7 @@
 </section>
 
 <section id="categorical-handlers">
-  <h2>Categorical With Handlers</h2>
+  <h2 id="categorical-with-handlers">Categorical With Handlers</h2>
   <BarPlot
     series={categorical_single_series}
     x_axis={{ label: `Element` }}
