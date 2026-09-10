@@ -116,7 +116,7 @@
 {#if show_slice && fermi_data}
   <section class="slice-section">
     <header>
-      <h2 style="margin: 0">2D Slice</h2>
+      <h2 id="2d-slice" style="margin: 0">2D Slice</h2>
       <MillerIndexInput bind:value={slice_miller} />
       <label>
         d:

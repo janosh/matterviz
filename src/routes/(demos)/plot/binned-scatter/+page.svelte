@@ -219,7 +219,7 @@
   <title>Binned Scatter Plot Demo</title>
 </svelte:head>
 
-<h1>Binned Scatter Plot</h1>
+<h1 id="binned-scatter-plot">Binned Scatter Plot</h1>
 <p>
   Dense scatter rendering with adaptive density bins, point picking, size scaling, a structure
   popup on material clicks, and per-family marginal distributions (top histogram + right KDE)

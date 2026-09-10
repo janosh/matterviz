@@ -197,14 +197,14 @@
   <title>ToggleMenu Demo</title>
 </svelte:head>
 
-<h1>ToggleMenu Component Demo</h1>
+<h1 id="togglemenu-component-demo">ToggleMenu Component Demo</h1>
 <p>
   A flexible toggle menu supporting grouped sections, collapsible headers, and disabled states.
 </p>
 
 <section class="demo-grid">
   <div class="demo-card">
-    <h2>1. Basic Flat List</h2>
+    <h2 id="1-basic-flat-list">1. Basic Flat List</h2>
     <p>No groups - displays as a simple grid of toggles.</p>
     <div class="demo-container">
       <ToggleMenu bind:columns={basic_columns} bind:column_panel_open={basic_open} />
@@ -216,7 +216,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>2. Grouped Sections</h2>
+    <h2 id="2-grouped-sections">2. Grouped Sections</h2>
     <p>Columns grouped by category with collapsible section headers.</p>
     <div class="demo-container">
       <ToggleMenu
@@ -232,7 +232,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>3. With Disabled Items</h2>
+    <h2 id="3-with-disabled-items">3. With Disabled Items</h2>
     <p>Some toggles are disabled and cannot be changed. Hover for tooltips.</p>
     <div class="demo-container">
       <ToggleMenu bind:columns={disabled_columns} bind:column_panel_open={disabled_open} />
@@ -247,7 +247,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>4. HTML Labels</h2>
+    <h2 id="4-html-labels">4. HTML Labels</h2>
     <p>Labels support HTML for subscripts, superscripts, etc.</p>
     <div class="demo-container">
       <ToggleMenu
@@ -259,7 +259,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>5. Pre-collapsed Sections</h2>
+    <h2 id="5-pre-collapsed-sections">5. Pre-collapsed Sections</h2>
     <p>Some sections start collapsed (Group B and D).</p>
     <div class="demo-container">
       <ToggleMenu
@@ -275,7 +275,7 @@
   </div>
 
   <div class="demo-card wide">
-    <h2>6. Multi-column Sections</h2>
+    <h2 id="6-multi-column-sections">6. Multi-column Sections</h2>
     <p>Each section header spans the full width and its items wrap into up to 3 columns.</p>
     <div class="demo-container">
       <ToggleMenu

@@ -142,7 +142,7 @@
   }
 </script>
 
-<h1>Bands Component Test Page</h1>
+<h1 id="bands-component-test-page">Bands Component Test Page</h1>
 
 <h2 id="single-bands">Single Band Structure</h2>
 <Bands band_structs={{ '': mock_band_structure }} data-testid="single-bands-plot" />

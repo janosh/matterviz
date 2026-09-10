@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import { ISO_COLORMAP_SELECT_PROPS } from '$lib/isosurface/coloring'
   import { format_num } from '$lib/labels'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
@@ -95,6 +96,29 @@
     // invalid states (e.g. empty string while user is typing a new value)
     if (Number.isFinite(parsed)) mu = parsed
   }
+
+  const chemical_potential_settings = track_settings(() => ({ mu }))
+  const bands_settings = track_settings(() => ({ selected_bands }))
+  const appearance_settings = track_settings(() => ({
+    color_property,
+    color_scale,
+    representation,
+    surface_opacity,
+  }))
+  const brillouin_zone_settings = track_settings(() => ({
+    show_bz,
+    bz_opacity,
+    show_vectors,
+    tile_bz,
+  }))
+  const clipping_plane_settings = track_settings(() => ({
+    clip_enabled,
+    clip_axis,
+    clip_position,
+    clip_flip,
+  }))
+  const interpolation_settings = track_settings(() => ({ interpolation_factor }))
+  const camera_settings = track_settings(() => ({ camera_projection }))
 </script>
 
 <ControlPane
@@ -108,7 +132,7 @@
   <SettingsGroup title="Surface" open>
     <SettingsSection
       title="Chemical potential"
-      current_values={{ mu }}
+      changed_keys={chemical_potential_settings.changed_keys}
       on_reset={() => (mu = defaults.mu)}
       layout="grid"
     >
@@ -138,7 +162,7 @@
     {#if available_bands.length > 0}
       <SettingsSection
         title="Bands"
-        current_values={{ selected_bands }}
+        changed_keys={bands_settings.changed_keys}
         on_reset={() => (selected_bands = [...available_bands])}
         layout="grid"
       >
@@ -165,7 +189,7 @@
 
     <SettingsSection
       title="Appearance"
-      current_values={{ color_property, color_scale, representation, surface_opacity }}
+      changed_keys={appearance_settings.changed_keys}
       on_reset={() =>
         ({ color_property, color_scale, representation, surface_opacity } = defaults)}
       layout="grid"
@@ -186,7 +210,6 @@
           <ColorScaleSelect
             {...ISO_COLORMAP_SELECT_PROPS}
             bind:value={color_scale}
-            selected={[color_scale]}
             aria-label="Fermi surface color scale"
           />
         </label>
@@ -208,7 +231,7 @@
 
     <SettingsSection
       title="Brillouin zone"
-      current_values={{ show_bz, bz_opacity, show_vectors, tile_bz }}
+      changed_keys={brillouin_zone_settings.changed_keys}
       on_reset={() => ({ show_bz, bz_opacity, show_vectors, tile_bz } = defaults)}
       layout="grid"
     >
@@ -237,7 +260,7 @@
 
     <SettingsSection
       title="Clipping plane"
-      current_values={{ clip_enabled, clip_axis, clip_position, clip_flip }}
+      changed_keys={clipping_plane_settings.changed_keys}
       on_reset={() => ({ clip_enabled, clip_axis, clip_position, clip_flip } = defaults)}
       layout="grid"
     >
@@ -269,7 +292,7 @@
     {#if band_data}
       <SettingsSection
         title="Interpolation"
-        current_values={{ interpolation_factor }}
+        changed_keys={interpolation_settings.changed_keys}
         on_reset={() => (interpolation_factor = defaults.interpolation_factor)}
         layout="grid"
       >
@@ -305,7 +328,7 @@
 
   <SettingsSection
     title="Camera"
-    current_values={{ camera_projection }}
+    changed_keys={camera_settings.changed_keys}
     on_reset={() => ({ camera_projection } = defaults)}
     layout="grid"
   >

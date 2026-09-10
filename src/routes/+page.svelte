@@ -24,7 +24,7 @@
   let open_vsx_ext_url = `https://open-vsx.org/extension/janosh/matterviz`
 </script>
 
-<h1 style="font-size: clamp(20pt, 5.5vw, 42pt)">MatterViz</h1>
+<h1 id="matterviz" style="font-size: clamp(20pt, 5.5vw, 42pt)">MatterViz</h1>
 
 <p>
   <code>matterviz</code> is a toolkit for building interactive web UIs for materials science: 3d
@@ -32,7 +32,7 @@
   heatmaps, scatter plots, etc. Check out of the examples in the navigation bar above.
 </p>
 
-<h2 style="margin-block: 1em">Installation</h2>
+<h2 id="installation" style="margin-block: 1em">Installation</h2>
 <p class="install">
   <span>
     {#each [[`VSCode`, vscode_ext_url, VSCode], [`Cursor`, open_vsx_ext_url, Cursor]] as const as [ext_name, ext_url, icon] (ext_name)}
@@ -68,7 +68,7 @@
   </span>
 </p>
 
-<h2><a href="/structure">Structure Viewer</a></h2>
+<h2 id="structure-viewer"><a href="/structure">Structure Viewer</a></h2>
 
 <div class="full-bleed" style="display: flex; flex-wrap: wrap; gap: 2em">
   {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_name, idx (file_name)}
@@ -87,7 +87,9 @@
   {/each}
 </div>
 
-<h3>Try dragging files onto the structure viewers</h3>
+<h3 id="try-dragging-files-onto-the-structure-viewers">
+  Try dragging files onto the structure viewers
+</h3>
 
 <p>
   Pick one of the example files below, or drag a local structure file onto a viewer:
@@ -115,7 +117,7 @@
   phosphate structure from a CIF file.
 </p>
 
-<h2><a href="/trajectory">Trajectory Viewer</a></h2>
+<h2 id="trajectory-viewer"><a href="/trajectory">Trajectory Viewer</a></h2>
 
 <Trajectory
   source="/trajectories/{default_trajectory_file}"
@@ -136,11 +138,11 @@
   active_files={[active_trajectory_file]}
 />
 
-<h2><a href="/periodic-table">Periodic Table</a></h2>
+<h2 id="periodic-table"><a href="/periodic-table">Periodic Table</a></h2>
 
 <PeriodicTableDemo />
 
-<h2>
+<h2 id="phonon-spectra-brillouin-zone-bands-dos">
   <a href="/reciprocal/brillouin-bands-dos">Phonon Spectra: Brillouin Zone · Bands · DOS</a>
 </h2>
 
@@ -152,7 +154,7 @@
 
 <PhononSpectraDemo class="full-bleed" style="min-height: 480px; margin-block: 1em" />
 
-<h2><a href="/reciprocal/fermi-surface">Fermi Surface</a></h2>
+<h2 id="fermi-surface"><a href="/reciprocal/fermi-surface">Fermi Surface</a></h2>
 
 <p>
   Render Fermi surfaces from XCrySDen (<code>.bxsf</code>), FermiSurfer (<code>.frmsf</code>)
@@ -162,7 +164,7 @@
 
 <FermiSurfaceDemo class="bleed-1400" />
 
-<h2><a href="/convex-hull">Convex Hull</a></h2>
+<h2 id="convex-hull"><a href="/convex-hull">Convex Hull</a></h2>
 
 <p>
   Interactive 3d convex hulls of real Materials Project systems, showing a ternary subset

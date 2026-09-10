@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   // Controls panel for isosurface visualization settings. Surfaces are grouped under their
   // geometry-source volume; each exposes isovalue, opacity, colour and optional cross-volume
   // scalar colouring (color source, colormap, value range).
@@ -155,6 +156,13 @@
     const is_default = range.every(([lo, hi]) => lo === 0 && hi === 1)
     settings.display_range = is_default ? undefined : range
   }
+
+  const isosurface_settings = track_settings(() => ({
+    wireframe: settings.wireframe,
+    halo: settings.halo,
+    layers: settings.layers.length,
+    display_range: settings.display_range?.flat().join(`,`) ?? ``,
+  }))
 </script>
 
 {#snippet range_bound_input(layer_idx: number, bound: 0 | 1, explicit_range?: Vec2)}
@@ -176,12 +184,7 @@
 
 <SettingsSection
   title="Isosurface"
-  current_values={{
-    wireframe: settings.wireframe,
-    halo: settings.halo,
-    layers: settings.layers.length,
-    display_range: settings.display_range?.flat().join(`,`) ?? ``,
-  }}
+  changed_keys={isosurface_settings.changed_keys}
   on_reset={() =>
     (settings =
       volumes.length > 0
@@ -353,7 +356,6 @@
             <ColorScaleSelect
               {...ISO_COLORMAP_SELECT_PROPS}
               value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
-              selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
               on_add={({ option }) => update_layer(layer_idx, { colormap: option })}
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}

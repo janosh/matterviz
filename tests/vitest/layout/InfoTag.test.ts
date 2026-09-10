@@ -6,15 +6,29 @@ import { doc_query, mock_clipboard_write } from '../setup'
 describe(`InfoTag`, () => {
   const get_tag = (): HTMLSpanElement => doc_query(`.info-tag`)
 
-  test(`renders with required props, HTML label, and displays value`, () => {
+  test(`renders HTML labels and sanitized hover details while retaining click actions`, async () => {
+    const onclick = vi.fn()
     mount(InfoTag, {
       target: document.body,
-      props: { label: `E<sub>hull</sub>:`, value: 42 },
+      props: {
+        label: `E<sub>hull</sub>:`,
+        value: 42,
+        title: `<b>Energy</b><script>bad()</script>`,
+        onclick,
+      },
     })
     const tag = get_tag()
     expect(tag.getAttribute(`role`)).toBe(`button`)
     expect(tag.querySelector(`sub`)?.textContent).toBe(`hull`)
     expect(doc_query(`em`).textContent).toBe(`42`)
+    tag.dispatchEvent(new MouseEvent(`mouseenter`))
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.popover b`)?.textContent).toBe(`Energy`),
+    )
+    expect(document.querySelector(`.popover script`)).toBeNull()
+    tag.click()
+    expect(onclick).toHaveBeenCalledOnce()
+    expect(tag.getAttribute(`role`)).toBe(`button`)
   })
 
   // variant and size are passed straight through as classes

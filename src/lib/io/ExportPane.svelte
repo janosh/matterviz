@@ -6,7 +6,7 @@
   import type { ExportItem, ExportSection } from './types'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-widgets/attachments'
+  import { Popover } from 'svelte-widgets'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // mdi:export-variant is not included in svelte-widgets' generated icon set.
@@ -80,12 +80,17 @@
   {@render header?.()}
   {#each sections as section, sec_idx (section.title ?? sec_idx)}
     {#if section.title}
-      <h4
-        {@attach section.tooltip
-          ? tooltip({ allow_html: true, content: sanitize_html(section.tooltip) })
-          : () => {}}
-      >
-        {section.title}
+      <h4>
+        {#if section.tooltip}
+          <Popover trigger_mode="hover" trap_focus={false} aria-label="Export section details">
+            {#snippet trigger(trigger_props)}
+              <span {...trigger_props}>{section.title}</span>
+            {/snippet}
+            {@html sanitize_html(section.tooltip)}
+          </Popover>
+        {:else}
+          {section.title}
+        {/if}
       </h4>
     {/if}
     <div class="export-grid">
@@ -97,9 +102,16 @@
         {@const why_suffix = why ? ` — ${why}` : ``}
         <span class="export-item" class:disabled={item.disabled}>
           {#if item.hint}
-            <span {@attach tooltip({ allow_html: true, content: sanitize_html(item.hint) })}
-              >{item.label}</span
+            <Popover
+              trigger_mode="hover"
+              trap_focus={false}
+              aria-label="Export format details"
             >
+              {#snippet trigger(trigger_props)}
+                <span {...trigger_props}>{item.label}</span>
+              {/snippet}
+              {@html sanitize_html(item.hint)}
+            </Popover>
           {:else}
             {item.label}
           {/if}

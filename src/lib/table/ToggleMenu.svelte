@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
+  import { Icon, Popover } from 'svelte-widgets'
   import { Columns, Reset } from 'svelte-widgets/icons'
   import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
   import type { Column } from '$lib/table'
   import { strip_html } from '$lib/utils'
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { slide } from 'svelte/transition'
 
   type MenuColumn = Omit<Column, `cell`>
@@ -172,18 +173,25 @@
 </script>
 
 {#snippet toggle_item(col: MenuColumn)}
-  <label
-    class={['toggle-label', { disabled: col.disabled }]}
-    {@attach tooltip({ allow_html: true, content: sanitize_html(col.description ?? ``) })}
-  >
-    <input
-      type="checkbox"
-      checked={col.visible !== false}
-      disabled={col.disabled}
-      onchange={(event) => toggle_column_visibility(col, event)}
-    />
-    {@html sanitize_html(col.label)}
-  </label>
+  {#snippet label(trigger_props: HTMLAttributes<HTMLLabelElement> = {})}
+    <label {...trigger_props} class={['toggle-label', { disabled: col.disabled }]}>
+      <input
+        type="checkbox"
+        checked={col.visible !== false}
+        disabled={col.disabled}
+        onchange={(event) => toggle_column_visibility(col, event)}
+      />
+      {@html sanitize_html(col.label)}
+    </label>
+  {/snippet}
+  {#if col.description}
+    <Popover trigger_mode="hover" trap_focus={false} aria-label="Column details">
+      {#snippet trigger(trigger_props)}{@render label(trigger_props)}{/snippet}
+      {@html sanitize_html(col.description)}
+    </Popover>
+  {:else}
+    {@render label()}
+  {/if}
 {/snippet}
 
 <svelte:window

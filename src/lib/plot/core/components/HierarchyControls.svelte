@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   // Shared controls pane for the hierarchical part-of-whole charts. Exported as
   // SunburstControls/TreemapControls from the chart barrels; `chart` picks the
@@ -98,6 +99,8 @@
       ;({ shape, inner_radius, pad_angle, label_rotation } = DEFAULTS.sunburst)
     } else ({ padding_inner, padding_top, padding_outer } = DEFAULTS.treemap)
   }
+
+  const hierarchy_settings = track_settings(() => current_values)
 </script>
 
 <!-- snippets live at the template top level (not inside the components below) so
@@ -117,7 +120,7 @@
   {@render children?.()}
   <SettingsSection
     title={chart === `sunburst` ? `Sunburst` : `Treemap`}
-    {current_values}
+    changed_keys={hierarchy_settings.changed_keys}
     on_reset={reset_to_defaults}
     layout="grid"
   >

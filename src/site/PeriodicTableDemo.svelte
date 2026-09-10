@@ -108,12 +108,7 @@
 >
   <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
   {#if heatmap_key}
-    <ColorScaleSelect
-      bind:value={color_scale}
-      min_select={1}
-      selected={[color_scale]}
-      style="flex: 1"
-    />
+    <ColorScaleSelect bind:value={color_scale} min_select={1} style="flex: 1" />
   {/if}
 </form>
 

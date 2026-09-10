@@ -1346,7 +1346,7 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
 </script>
 
 <div>
-  <h3>Interactive Multi-Series Plot</h3>
+  <h3 id="interactive-multi-series-plot">Interactive Multi-Series Plot</h3>
   <label>
     Display Mode:
     <select bind:value={display_mode}>
@@ -1393,7 +1393,9 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
     No point hovered
   {/if}
 
-  <h3 style="margin-top: 2em;">Random Points with Custom Controls and External Legend</h3>
+  <h3 id="random-points-with-custom-controls-and-external-legend" style="margin-top: 2em;">
+    Random Points with Custom Controls and External Legend
+  </h3>
   <div style="margin-bottom: 1em; display: flex; flex-wrap: wrap; gap: 1em;">
     {#each Object.keys(ticks) as axis (axis)}
       <label>

@@ -27,7 +27,7 @@
 </script>
 
 <div class="tdb-info-panel" {style}>
-  <h3>TDB File Parsed</h3>
+  <h3 id="tdb-file-parsed">TDB File Parsed</h3>
 
   <dl class="info-grid">
     <dt>System</dt>

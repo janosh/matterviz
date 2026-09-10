@@ -29,6 +29,7 @@ import type { HullModel } from 'matterviz/convex-hull'
 import type { StructureToolRun } from 'matterviz'
 import type { StructureSettings, StructureToolProps } from 'matterviz/structure'
 import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
+import { preprocess } from 'svelte/compiler'
 import svelte_config from '../../svelte.config'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
@@ -207,6 +208,13 @@ describe(`package.json exports`, () => {
     expect(existsSync(join(dist_dir, `file-viewer/parse-worker.js`))).toBe(true)
   })
 
+  test.skipIf(!has_dist)(`every packaged component ships its type declaration`, () => {
+    const missing = readdirSync(dist_dir, { recursive: true, encoding: `utf8` })
+      .filter((entry) => entry.endsWith(`.svelte`))
+      .filter((entry) => !existsSync(join(dist_dir, `${entry}.d.ts`)))
+    expect(missing).toEqual([])
+  })
+
   // svelte-package copies whatever sits in src/lib, gitignored or not: an ignored local dir
   // must never reach dist/ (and from there the npm tarball).
   // Untracked-but-not-ignored sources (new files awaiting a commit) count as sources.
@@ -322,26 +330,19 @@ describe(`package.json exports`, () => {
   })
 })
 
-// Preprocessors run over src/lib as well as the site, so whatever they inject ships in the
-// package. heading_ids is scoped to site files in svelte.config.ts: its slugs are never
-// referenced from library components, and a heading inside an {#each} (ChemPotDiagram's
-// per-projection <h4>) would repeat one id per iteration in a consumer's DOM.
+// Headings receive ids at runtime. Injecting them at build time would repeat one id per
+// iteration for headings inside an {#each}, including in published components.
 describe(`svelte.config preprocessors`, () => {
-  const { markup } = svelte_config.preprocess.find((pre) => pre.name === `heading-ids`) ?? {}
-  if (!markup) throw new Error(`no heading-ids preprocessor in svelte.config preprocess`)
   const content = `<h3>Drop Structure File</h3>`
 
   test.each([
-    [`src/lib/brillouin/BrillouinZone.svelte`, false],
-    [`src/routes/acknowledgements/+page.md`, true],
-    [`src/routes/(demos)/structure/+page.md`, true],
-    // Windows hands the preprocessor a back-slashed absolute path, which a `/`-only pattern
-    // reads as a site file — the packaged components would then ship injected ids
-    [String.raw`C:\repo\src\lib\brillouin\BrillouinZone.svelte`, false],
-  ])(`%s gets injected heading ids: %s`, async (path, expected) => {
+    `src/lib/brillouin/BrillouinZone.svelte`,
+    `src/routes/test/+page.svelte`,
+    String.raw`C:\repo\src\lib\brillouin\BrillouinZone.svelte`,
+  ])(`%s retains unmodified headings`, async (path) => {
     const filename = path.startsWith(`src/`) ? join(repo_root, path) : path
-    const result = await markup({ content, filename })
-    expect(result?.code.includes(`id="drop-structure-file"`) ?? false).toBe(expected)
+    const result = await preprocess(content, svelte_config.preprocess, { filename })
+    expect(result.code).toBe(content)
   })
 
   test.skipIf(!has_dist)(`packaged components carry no injected heading ids`, () => {

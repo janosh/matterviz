@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { StructureSettings } from './settings'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
@@ -479,7 +480,12 @@
       () => ({ [left]: scene_record()[left], [right]: scene_record()[right] }),
       (reference) => Object.assign(scene_props, reference),
     )
+  const section_baselines = new Map<
+    string,
+    { keys: string; tracker: ReturnType<typeof track_settings> }
+  >()
   const scene_section = (
+    name: string,
     rows: readonly Row[],
     accessors: Record<string, Accessor> = {},
     extra_keys: StructureSettingKey[] = [],
@@ -492,17 +498,26 @@
         accessors[current.key] = local(current.get, current.set)
       } else keys.push(current.key)
     }
+    const values = Object.fromEntries([
+      ...keys.map((key) => [key, scene_value(key)]),
+      ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
+    ])
+    const section_keys = Object.keys(values).join(`,`)
+    let baseline = section_baselines.get(name)
+    if (!baseline || baseline.keys !== section_keys) {
+      baseline = { keys: section_keys, tracker: track_settings(() => values) }
+      section_baselines.set(name, baseline)
+    }
+    const { changes, reset } = baseline.tracker
     return {
-      current_values: Object.fromEntries([
-        ...keys.map((key) => [key, scene_value(key)]),
-        ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
-      ]),
-      on_reset_key: (key: string, reference_value: unknown, reference_present: boolean) => {
-        const accessor = accessors[key]
-        if (accessor) return accessor.set(reference_value, reference_present)
-        if (reference_present) scene_record()[key] = reference_value
-        else Reflect.deleteProperty(scene_props, key)
-      },
+      changed_keys: changes(values),
+      on_reset_key: (key: string) =>
+        reset(key, (reference_value, reference_present) => {
+          const accessor = accessors[key]
+          if (accessor) return accessor.set(reference_value, reference_present)
+          if (reference_present) scene_record()[key] = reference_value
+          else Reflect.deleteProperty(scene_props, key)
+        }),
       setting_metadata: structure_setting_metadata,
     }
   }
@@ -905,6 +920,7 @@
           title="Visibility"
           layout="grid"
           {...scene_section(
+            `Visibility`,
             [...visibility_rows, ...visibility_mode_rows],
             vector_visibility_accessors(),
           )}
@@ -951,7 +967,7 @@
       <SettingsSection
         title="Atoms"
         layout="grid"
-        {...scene_section(atom_rows, {
+        {...scene_section(`Atoms`, atom_rows, {
           color_scheme: local(
             () => color_scheme,
             (value) => (color_scheme = value),
@@ -978,7 +994,7 @@
           <span>Color scheme</span>
           <Select
             options={Object.keys(ELEMENT_COLOR_SCHEMES)}
-            max_select={1}
+            mode="single"
             min_select={1}
             bind:value={color_scheme}
             li_option_style="padding: 3pt 6pt;"
@@ -1054,7 +1070,7 @@
       </SettingsSection>
 
       {#if scene_value(`show_bonds`) !== `never`}
-        <SettingsSection title="Bonds" layout="grid" {...scene_section(bond_rows)}>
+        <SettingsSection title="Bonds" layout="grid" {...scene_section(`Bonds`, bond_rows)}>
           {@render setting_rows(bond_rows)}
         </SettingsSection>
       {/if}
@@ -1063,7 +1079,7 @@
         <SettingsSection
           title="Polyhedra"
           layout="grid"
-          {...scene_section(polyhedra_rows, {
+          {...scene_section(`Polyhedra`, polyhedra_rows, {
             polyhedra_centers: scene_pair(
               `polyhedra_excluded_elements`,
               `polyhedra_included_elements`,
@@ -1091,6 +1107,7 @@
           title="Labels"
           layout="grid"
           {...scene_section(
+            `Labels`,
             label_rows,
             {
               // One CSS string drives two controls, so each half gets its own key: keying both
@@ -1148,7 +1165,9 @@
           <SettingsSection
             title="Site vectors"
             layout="grid"
-            {...scene_section(vector_rows, vector_scale_accessors(), [`vector_color_scale`])}
+            {...scene_section(`Site vectors`, vector_rows, vector_scale_accessors(), [
+              `vector_color_scale`,
+            ])}
           >
             {@render setting_rows(vector_rows)}
             {#if scene_value(`vector_color_mode`) === `magnitude`}
@@ -1187,7 +1206,7 @@
         <SettingsSection
           title="Cell"
           layout="grid"
-          {...scene_section(cell_rows, {
+          {...scene_section(`Cell`, cell_rows, {
             supercell_scaling: local(
               () => supercell_scaling,
               (value) => (supercell_scaling = value),
@@ -1258,6 +1277,7 @@
         title="View"
         layout="grid"
         {...scene_section(
+          `View`,
           view_rows,
           {
             multi_view: local(
@@ -1347,7 +1367,7 @@
       <SettingsSection
         title="Pointer sensitivity"
         layout="grid"
-        {...scene_section(pointer_rows)}
+        {...scene_section(`Pointer sensitivity`, pointer_rows)}
       >
         {@render setting_rows(pointer_rows)}
       </SettingsSection>
@@ -1357,7 +1377,7 @@
       <SettingsSection
         title="Background"
         layout="grid"
-        {...scene_section([], {
+        {...scene_section(`Background`, [], {
           background_color: local(
             () => background_color,
             (value) => (background_color = value),
@@ -1386,7 +1406,11 @@
         >
       </SettingsSection>
 
-      <SettingsSection title="Lighting" layout="grid" {...scene_section(lighting_rows)}>
+      <SettingsSection
+        title="Lighting"
+        layout="grid"
+        {...scene_section(`Lighting`, lighting_rows)}
+      >
         {@render setting_rows(lighting_rows)}
       </SettingsSection>
     </SettingsGroup>
@@ -1397,7 +1421,7 @@
           <SettingsSection
             title="Displacement Overlay"
             layout="grid"
-            {...scene_section(displacement_rows)}
+            {...scene_section(`Displacement Overlay`, displacement_rows)}
           >
             <!-- `!== null` (not truthiness) so the union discriminates: an empty error string
             would leave the else branch un-narrowed and rmsd possibly undefined -->
@@ -1427,6 +1451,7 @@
             title="Trajectory Trails"
             layout="grid"
             {...scene_section(
+              `Trajectory Trails`,
               [trail_toggle_row, ...trail_rows],
               {
                 trajectory_line_elements: local(

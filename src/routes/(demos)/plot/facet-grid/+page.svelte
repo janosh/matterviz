@@ -96,7 +96,7 @@
   <title>Facet Grid Plot Demo</title>
 </svelte:head>
 
-<h1>Facet Grid</h1>
+<h1 id="facet-grid">Facet Grid</h1>
 <p class="demo-intro">
   <code>FacetGrid</code> coordinates Cartesian child plots without hiding their APIs. Each plot
   reports intrinsic ranges and padding through <code>facet_layout</code>; the grid reconciles

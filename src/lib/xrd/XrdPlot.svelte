@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type {
     ScatterPlotOptions,
     BarPlotOptions,
@@ -269,6 +270,9 @@
     [`W`, `W`, `Caglioti W parameter`, 0.001, 0],
     [`shape_factor`, `η`, `Pseudo-Voigt shape factor (0=Gaussian, 1=Lorentzian)`, 0.05, 0, 1],
   ]
+
+  const dropped_structure_files_settings = track_settings(() => ({ radiation }))
+  const broadening_settings = track_settings(() => broadening_params)
 </script>
 
 {#snippet readout(label: string, angle: number, intensity: number)}
@@ -282,7 +286,7 @@
   {#if allow_file_drop}
     <SettingsSection
       title="Dropped structure files"
-      current_values={{ radiation }}
+      changed_keys={dropped_structure_files_settings.changed_keys}
       on_reset={() => (radiation = `xray`)}
     >
       <label class="toggle">
@@ -304,7 +308,7 @@
 
   <SettingsSection
     title="Broadening"
-    current_values={broadening_params}
+    changed_keys={broadening_settings.changed_keys}
     on_reset={() => {
       broadening_params = { ...DEFAULT_BROADENING }
       broadening_enabled = false

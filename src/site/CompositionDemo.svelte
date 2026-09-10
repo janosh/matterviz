@@ -51,7 +51,7 @@
 
 {#if show_grid}
   {#each [`pie`, `bubble`, `bar`] as const as mode (mode)}
-    <h2>As {mode} chart</h2>
+    <h2 id="as-chart">As {mode} chart</h2>
     <div class="composition-grid">
       {#each compositions as [name, formula] (formula)}
         <div class="composition-card">

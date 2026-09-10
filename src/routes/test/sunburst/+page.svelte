@@ -71,20 +71,22 @@
   <title>Sunburst Test Page</title>
 </svelte:head>
 
-<h1>Sunburst Component Playwright Tests</h1>
+<h1 id="sunburst-component-playwright-tests">Sunburst Component Playwright Tests</h1>
 
 <section id="basic-sunburst">
-  <h2>Basic (nested data)</h2>
+  <h2 id="basic-nested-data">Basic (nested data)</h2>
   <Sunburst data={energy} style="height: 360px" />
 </section>
 
 <section id="flat-sunburst">
-  <h2>Flat plotly-trace input + value_mode total + legend</h2>
+  <h2 id="flat-plotly-trace-input-value_mode-total-legend">
+    Flat plotly-trace input + value_mode total + legend
+  </h2>
   <Sunburst data={flat} value_mode="total" show_legend style="height: 360px" />
 </section>
 
 <section id="zoom-sunburst">
-  <h2>Click-to-zoom with handlers</h2>
+  <h2 id="click-to-zoom-with-handlers">Click-to-zoom with handlers</h2>
   <Sunburst
     data={energy}
     tween={{ duration: 50 }}
@@ -109,12 +111,12 @@
 </section>
 
 <section id="icicle-sunburst">
-  <h2>Icicle shape</h2>
+  <h2 id="icicle-shape">Icicle shape</h2>
   <Sunburst shape="icicle" data={energy} tween={{ duration: 50 }} style="height: 360px" />
 </section>
 
 <section id="other-sunburst">
-  <h2>Min-fraction bucketing + percent labels</h2>
+  <h2 id="min-fraction-bucketing-percent-labels">Min-fraction bucketing + percent labels</h2>
   <Sunburst
     data={[
       { label: `big`, value: 80 },
@@ -130,12 +132,14 @@
 </section>
 
 <section id="large-sunburst">
-  <h2>Large hierarchy (2920 arcs)</h2>
+  <h2 id="large-hierarchy-2920-arcs">Large hierarchy (2920 arcs)</h2>
   <Sunburst data={large} tween={{ duration: 50 }} show_labels={false} style="height: 400px" />
 </section>
 
 <section id="metric-sunburst">
-  <h2>Metric coloring (colorbar reserves space, no overlap)</h2>
+  <h2 id="metric-coloring-colorbar-reserves-space-no-overlap">
+    Metric coloring (colorbar reserves space, no overlap)
+  </h2>
   <Sunburst
     data={energy}
     color_values={(arc: PositionedArc) => arc.value}
@@ -144,7 +148,9 @@
 </section>
 
 <section id="spacegroup-sunburst">
-  <h2>Spacegroup sunburst (crystal system &rarr; spacegroup)</h2>
+  <h2 id="spacegroup-sunburst-crystal-system-rarr-spacegroup">
+    Spacegroup sunburst (crystal system &rarr; spacegroup)
+  </h2>
   <Sunburst data={spacegroup_sunburst_data(spacegroups)} style="height: 400px" />
 </section>
 

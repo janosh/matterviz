@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
@@ -61,6 +62,9 @@
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
   const set_bar = (key: keyof typeof DEFAULTS.histogram.bar) => (value: string | number) =>
     (bar = { ...bar, [key]: value })
+
+  const histogram_settings = track_settings(() => ({ bins, normalize, mode, show_legend }))
+  const bar_style_settings = track_settings(() => bar)
 </script>
 
 <!-- select options come from the settings schema so labels/values have a single source of truth -->
@@ -87,7 +91,7 @@
   {@render children?.({ x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Histogram"
-    current_values={{ bins, normalize, mode, show_legend }}
+    changed_keys={histogram_settings.changed_keys}
     on_reset={() => {
       ;({ bin_count: bins, normalize, mode } = DEFAULTS.histogram)
       // Resets to the configured mode, `auto` (undefined) by default, so a one-series
@@ -135,7 +139,7 @@
 
   <SettingsSection
     title="Bar style"
-    current_values={bar}
+    changed_keys={bar_style_settings.changed_keys}
     on_reset={() => {
       bar = { ...DEFAULTS.histogram.bar }
     }}

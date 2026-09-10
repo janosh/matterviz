@@ -108,7 +108,7 @@
   })
 </script>
 
-<h1>Isobaric Binary Phase Diagram</h1>
+<h1 id="isobaric-binary-phase-diagram">Isobaric Binary Phase Diagram</h1>
 
 <p class="demo-intro">
   Drop <code>.json</code>, <code>.json.gz</code>, <code>.svg</code>, or <code>.tdb</code> files onto

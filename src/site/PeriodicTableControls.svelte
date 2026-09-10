@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   // Docs playground for the periodic table's CSS custom properties: every control writes one
   // variable onto the document root, so all tables on the page follow it. Only the tile font
   // color is bindable: it maps to ElementTile's text_color prop, which the demo passes through.
@@ -121,6 +122,17 @@
     if (reference_present) colors.category[category] = reference_value as string
     else Reflect.deleteProperty(colors.category, category)
   }
+
+  const element_category_colors_settings = track_settings(
+    () => ({ ...colors.category }),
+    DEFAULT_CATEGORY_COLORS,
+  )
+  const element_tiles_settings = track_settings(
+    () => ({ ...pick(TILE_KEYS), tile_font_color }),
+    { ...defaults, tile_font_color: null },
+  )
+  const font_sizes_settings = track_settings(() => pick(FONT_KEYS), defaults)
+  const tooltip_settings = track_settings(() => pick(TOOLTIP_KEYS), defaults)
 </script>
 
 {#snippet slider(key: RangeKey)}
@@ -134,9 +146,11 @@
   <div class="settings-card category-colors">
     <SettingsSection
       title="Element category colors"
-      current_values={{ ...colors.category }}
-      reset_values={DEFAULT_CATEGORY_COLORS}
-      on_reset_key={reset_category_color}
+      changed_keys={element_category_colors_settings.changed_keys}
+      on_reset_key={(key) =>
+        element_category_colors_settings.reset(key, (value, present) =>
+          reset_category_color(key, value, present),
+        )}
       layout="grid"
     >
       {#each Object.keys(colors.category) as category (category)}
@@ -157,9 +171,11 @@
   <div class="settings-card">
     <SettingsSection
       title="Element tiles"
-      current_values={{ ...pick(TILE_KEYS), tile_font_color }}
-      reset_values={{ ...defaults, tile_font_color: null }}
-      on_reset_key={reset_control}
+      changed_keys={element_tiles_settings.changed_keys}
+      on_reset_key={(key) =>
+        element_tiles_settings.reset(key, (value, present) =>
+          reset_control(key, value, present),
+        )}
       layout="grid"
     >
       <label data-key="tile_gap">
@@ -195,9 +211,9 @@
   <div class="settings-card">
     <SettingsSection
       title="Font sizes"
-      current_values={pick(FONT_KEYS)}
-      reset_values={defaults}
-      on_reset_key={reset_control}
+      changed_keys={font_sizes_settings.changed_keys}
+      on_reset_key={(key) =>
+        font_sizes_settings.reset(key, (value, present) => reset_control(key, value, present))}
       layout="grid"
     >
       {#each FONT_KEYS as key (key)}
@@ -209,9 +225,9 @@
   <div class="settings-card">
     <SettingsSection
       title="Tooltip"
-      current_values={pick(TOOLTIP_KEYS)}
-      reset_values={defaults}
-      on_reset_key={reset_control}
+      changed_keys={tooltip_settings.changed_keys}
+      on_reset_key={(key) =>
+        tooltip_settings.reset(key, (value, present) => reset_control(key, value, present))}
       layout="grid"
     >
       {@render slider(`tooltip_font_size`)}

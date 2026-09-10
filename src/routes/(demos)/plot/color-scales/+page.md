@@ -28,7 +28,7 @@
       {/each}
     </span>
     <span>Log color scale <input type="checkbox" bind:checked={log_scale} /></span>
-    <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} />
+    <ColorScaleSelect bind:value={color_scale} />
     <ColorBar
       range={[1, Math.max(...heatmap_values)]}
       scale={color_scale}
@@ -40,9 +40,9 @@
   </section>
 {/snippet}
 
-<h1 style="text-align: center">Color Scales</h1>
+<h1 id="color-scales" style="text-align: center">Color Scales</h1>
 
-<h2 style="text-align: center">
+<h2 id="element-occurrence-counts" style="text-align: center">
   {{ MP: `Materials Project` }[data_name] ?? data_name} Element Occurrence Counts
 </h2>
 

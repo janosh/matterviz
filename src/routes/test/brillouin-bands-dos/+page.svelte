@@ -97,7 +97,7 @@
   }
 </script>
 
-<h1>BrillouinBandsDos Component Test Page</h1>
+<h1 id="brillouinbandsdos-component-test-page">BrillouinBandsDos Component Test Page</h1>
 
 <h2 id="default">Default (Shared Y-axis)</h2>
 <BrillouinBandsDos
@@ -230,7 +230,9 @@
 </p>
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
   <div>
-    <h3 style="text-align: center; margin-bottom: 0.5rem">Electronic (CaO)</h3>
+    <h3 id="electronic-cao" style="text-align: center; margin-bottom: 0.5rem">
+      Electronic (CaO)
+    </h3>
     <BrillouinBandsDos
       structure={mock_structure}
       band_structs={{ '': electronic_bands.cao_2605 }}
@@ -242,7 +244,9 @@
     />
   </div>
   <div>
-    <h3 style="text-align: center; margin-bottom: 0.5rem">Phonon (Mock Si)</h3>
+    <h3 id="phonon-mock-si" style="text-align: center; margin-bottom: 0.5rem">
+      Phonon (Mock Si)
+    </h3>
     <BrillouinBandsDos
       structure={mock_structure}
       band_structs={{ '': mock_band_structure }}

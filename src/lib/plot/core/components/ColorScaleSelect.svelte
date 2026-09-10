@@ -2,7 +2,7 @@
   import { ColorBar } from '$lib/plot'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
-  import { MultiSelect as Select } from 'svelte-widgets'
+  import { MultiSelect as Select, type MultiSelectProps } from 'svelte-widgets'
   import type { D3InterpolateName } from '$lib/colors'
 
   const ScaleSelect = Select<D3InterpolateName>
@@ -12,17 +12,15 @@
       key.startsWith(`interpolate`),
     ) as D3InterpolateName[],
     value = $bindable(options[0]),
-    // Seeded from `value`, the way MultiSelect seeds its own `selected` default. Hardcoding
-    // `[]` overrides that default, and MultiSelect's selected -> value sync then writes the
-    // empty selection back, nulling the caller's value on mount unless they also bind
-    // `selected` purely to work around it.
-    selected = $bindable(value == null ? [] : [value]),
     min_select = 1,
     placeholder = `Select a color scale`,
     color_bar = {},
     open = $bindable(false),
     ...rest
-  }: Omit<ComponentProps<typeof ScaleSelect>, `options`> & {
+  }: Omit<
+    Extract<MultiSelectProps<D3InterpolateName>, { mode: `single` }>,
+    `options` | `mode`
+  > & {
     options?: D3InterpolateName[]
     value?: D3InterpolateName
     color_bar?: ComponentProps<typeof ColorBar>
@@ -39,11 +37,10 @@
 
 <ScaleSelect
   {options}
-  max_select={1}
+  mode="single"
   max_options={options.length}
   {min_select}
   bind:value
-  bind:selected
   {placeholder}
   li_option_style="padding: 3pt 6pt;"
   li_selected_style="width: 100%; background-color: transparent;"

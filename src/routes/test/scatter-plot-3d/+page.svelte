@@ -26,7 +26,7 @@
   })
 </script>
 
-<h1>ScatterPlot3D Test Page</h1>
+<h1 id="scatterplot3d-test-page">ScatterPlot3D Test Page</h1>
 
 <ScatterPlot3D
   id="test-scatter-3d"

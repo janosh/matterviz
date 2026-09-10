@@ -47,7 +47,7 @@ test.describe(`Periodic Table`, () => {
   // A custom inset taller than periods 1–3 must overlay the slot, not stretch those rows
   // (which would open gaps between H/Li/Na and leave period-4 tiles a different size).
   test(`a tall inset does not stretch element-tile rows`, async ({ page }) => {
-    await page.goto(`/plot/color-scales`)
+    expect((await page.goto(`/plot/color-scales`))?.status()).toBe(200)
     const table = page.locator(`.periodic-table`).first()
     await expect(table).toBeVisible({ timeout: 20_000 })
     const tile = (symbol: string) => table.locator(`[data-element-symbol="${symbol}"]`)

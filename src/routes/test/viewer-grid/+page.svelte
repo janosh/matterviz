@@ -91,7 +91,7 @@
   })
 </script>
 
-<h1>Viewer Grid ({viewer_count} canvases)</h1>
+<h1 id="viewer-grid-canvases">Viewer Grid ({viewer_count} canvases)</h1>
 
 <div class="grid" data-testid="viewer-grid" data-backend={backend} bind:this={grid}>
   {#each structures as structure, idx (idx)}
