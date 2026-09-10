@@ -64,11 +64,11 @@ test(`electronegativity colorbar retains fitting ticks and thins only crowded la
 // The element matrix is ~103x103 and opts into `virtualize`. Windowing is measured from real
 // layout, so it can only be exercised in a browser.
 test.describe(`HeatmapMatrix virtualization`, () => {
-  const matrix = `.scroll-container .grid`
+  const matrix = `.scroll-container .heatmap > .grid`
 
   // The window is derived from layout, so it settles a frame or two after load
   const settle = async (page: Page) => {
-    await page.locator(matrix).first().scrollIntoViewIfNeeded()
+    await page.locator(matrix).scrollIntoViewIfNeeded()
     await page.waitForFunction(
       (selector) =>
         (document.querySelector(selector)?.querySelectorAll(`.cell`).length ?? 0) > 50,
