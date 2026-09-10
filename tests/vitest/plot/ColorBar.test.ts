@@ -3,6 +3,7 @@ import type { Vec2 } from '$lib'
 import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'
 
@@ -167,6 +168,30 @@ describe(`ColorBar tick_side='inside'`, () => {
 })
 
 describe(`ColorBar tick labels`, () => {
+  test(`updates the formatter when switching between numeric, date, and default labels`, async () => {
+    const selected_format = writable<string | undefined>(undefined)
+    const format_state = fromStore(selected_format)
+    mount_bar({
+      range: [0, 1],
+      tick_labels: 3,
+      snap_ticks: false,
+      get tick_format() {
+        return format_state.current
+      },
+    })
+    for (const [spec, expected] of [
+      [undefined, [`0`, `0.5`, `1`]],
+      [`.1f`, [`0.0`, `0.5`, `1.0`]],
+      [`%Y`, [`1970`, `1970`, `1970`]],
+      [`.0%`, [`0%`, `50%`, `100%`]],
+      [undefined, [`0`, `0.5`, `1`]],
+    ] as const) {
+      selected_format.set(spec)
+      await tick()
+      expect(tick_texts()).toEqual(expected)
+    }
+  })
+
   test.each([false, true])(
     `keeps fitting decimal ticks after resizing (reversed=%s)`,
     async (reversed) => {

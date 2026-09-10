@@ -3,7 +3,7 @@ import * as heatmap from '$lib/heatmap-matrix'
 import { ELEMENT_ORDERINGS, HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, expect_labelled_settings_grid } from '../setup'
+import { bind_props, doc_query, expect_labelled_settings_grid, query } from '../setup'
 import HeatmapDemo from '../../../src/routes/(demos)/plot/heatmap-matrix/+page.svelte'
 
 const mount_controls = (
@@ -28,6 +28,24 @@ const find_position_select = () =>
   )
 
 describe(`HeatmapMatrixControls`, () => {
+  test.each([true, `.2f`])(
+    `preserves the value format through repeated toggles: %s`,
+    async (show_values) => {
+      const state = { show_values }
+      mount(HeatmapMatrixControls, { target: document.body, props: bind_props({}, state) })
+      const values_label = [...document.querySelectorAll(`.heatmap-controls label`)].find(
+        (label) => label.textContent?.trim() === `Values`,
+      )
+      if (!values_label) throw new Error(`Missing Values control`)
+      const checkbox = query<HTMLInputElement>(values_label, `input`)
+      for (const expected of [false, show_values, false, show_values]) {
+        checkbox.click()
+        await tick()
+        expect(state.show_values).toBe(expected)
+      }
+    },
+  )
+
   test(`demo controls update only their own heatmap`, async () => {
     // A small full-matrix sample exercises the bindings without mounting 10,000 cells.
     const elements_to_axis = heatmap.elements_to_axis
@@ -65,10 +83,11 @@ describe(`HeatmapMatrixControls`, () => {
 
     const panes = document.querySelectorAll(`.heatmap-controls`)
     const setting = (pane_idx: number, name: string) => {
-      const label = [...panes[pane_idx].querySelectorAll(`label`)]
-        .find((label) => label.querySelector(`span`)?.textContent === name)
-      if (!label) throw new Error(`Missing ${name} control in pane ${pane_idx}`)
-      return label
+      const control_label = [...panes[pane_idx].querySelectorAll(`label`)].find(
+        (label) => label.querySelector(`span`)?.textContent === name,
+      )
+      if (!control_label) throw new Error(`Missing ${name} control in pane ${pane_idx}`)
+      return control_label
     }
     // These controls previously changed unconnected state in a separate panel.
     for (const [name, selector] of [
@@ -76,17 +95,17 @@ describe(`HeatmapMatrixControls`, () => {
       [`Row sums`, `.summary-row`],
       [`Col sums`, `.summary-col`],
     ]) {
-      doc_query<HTMLInputElement>(`input`, setting(0, name)).click()
+      query<HTMLInputElement>(setting(0, name), `input`).click()
       await tick()
       expect(matrices[0].querySelector(selector)).not.toBeNull()
       expect(matrices[1].querySelector(selector)).toBeNull()
     }
-    doc_query<HTMLInputElement>(`input`, setting(1, `Color bar`)).click()
+    query<HTMLInputElement>(setting(1, `Color bar`), `input`).click()
     await tick()
     expect(matrices[1].querySelector(`.colorbar`)).not.toBeNull()
     for (const pane_idx of [1, 0]) {
       const unchanged = labels(1 - pane_idx)
-      const search = doc_query<HTMLInputElement>(`input`, setting(pane_idx, `Search`))
+      const search = query<HTMLInputElement>(setting(pane_idx, `Search`), `input`)
       search.value = `Co`
       search.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
@@ -208,19 +227,29 @@ describe(`HeatmapMatrixControls`, () => {
     expect(find_position_select()).toBeDefined()
   })
 
-  test(`export buttons render with text and fire handler with format`, () => {
-    const export_handler = vi.fn()
-    mount_controls({ on_export: export_handler, export_formats: [`csv`, `json`] })
-    const buttons = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(`.pane-row button`),
-    )
-    expect(buttons).toHaveLength(2)
-    expect(buttons[0].textContent?.trim()).toBe(`Export CSV`)
-    expect(buttons[1].textContent?.trim()).toBe(`Export JSON`)
-    buttons[0].click()
-    expect(export_handler).toHaveBeenLastCalledWith(`csv`)
-    buttons[1].click()
-    expect(export_handler).toHaveBeenLastCalledWith(`json`)
-    expect(export_handler).toHaveBeenCalledTimes(2)
-  })
+  test.each([undefined, [], [`csv`, `json`]] as const)(
+    `export controls require a handler and formats: %j`,
+    (formats) => {
+      const export_handler = vi.fn()
+      mount_controls({
+        on_export: formats ? export_handler : undefined,
+        export_formats: formats ? [...formats] : undefined,
+      })
+      const buttons = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(`.pane-row button`),
+      )
+      expect(buttons).toHaveLength(formats?.length ?? 0)
+      if (!formats?.length) {
+        expect(document.querySelector(`.heatmap-controls .pane-row`)).toBeNull()
+        return
+      }
+      expect(buttons[0].textContent?.trim()).toBe(`Export CSV`)
+      expect(buttons[1].textContent?.trim()).toBe(`Export JSON`)
+      buttons[0].click()
+      expect(export_handler).toHaveBeenLastCalledWith(`csv`)
+      buttons[1].click()
+      expect(export_handler).toHaveBeenLastCalledWith(`json`)
+      expect(export_handler).toHaveBeenCalledTimes(2)
+    },
+  )
 })

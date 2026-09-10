@@ -180,7 +180,6 @@
     symmetric="lower"
     show_controls="hover"
     controls_props={{ children: subset_controls }}
-    export_formats={[]}
     tile_size="20px"
     gap="1px"
     on_double_click={(cell: CellContext) =>
@@ -248,9 +247,6 @@
     border-radius: var(--border-radius, 3pt);
     background: light-dark(#f0f0f0, #333);
     font-size: 0.85em;
-  }
-  .heatmap-controls-anchor {
-    position: relative;
   }
   .scroll-container {
     overflow-x: auto;

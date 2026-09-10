@@ -34,7 +34,6 @@
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
 
   let {
     title = $bindable(),
@@ -120,7 +119,7 @@
   })
   const ticks = $derived.by((): number[] => {
     if (Array.isArray(tick_labels)) {
-      return [...new SvelteSet(tick_labels.map(Number))].filter(Number.isFinite)
+      return [...new Set(tick_labels.map(Number))].filter(Number.isFinite)
     }
     const [lower, upper] = tick_scale.domain()
     if (n_ticks <= 0) return []
@@ -162,11 +161,12 @@
       return `inherit`
     }
   }
-  const format_tick = (value: number): string => {
-    if (!tick_format) return format_num(value)
-    if (tick_format.startsWith(`%`)) return timeFormat(tick_format)(new Date(value))
-    return format(tick_format)(value)
-  }
+  const format_tick = $derived.by(() => {
+    if (!tick_format) return format_num
+    if (!tick_format.startsWith(`%`)) return format(tick_format)
+    const format_date = timeFormat(tick_format)
+    return (value: number) => format_date(new Date(value))
+  })
 
   // Rendered bar length and font, so generated tick labels can be thinned once a narrow
   // host squeezes the bar below the width its labels need. Width stays 0 until measured

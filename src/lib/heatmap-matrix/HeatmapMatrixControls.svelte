@@ -56,7 +56,7 @@
   } = $props()
 
   // Stash custom format string so toggling the checkbox preserves it
-  let stashed_format = $state<string | null>(null)
+  let stashed_format: string | null = null
 </script>
 
 <ControlPane
@@ -130,12 +130,10 @@
         type="checkbox"
         checked={!!show_values}
         onchange={(evt) => {
-          if (evt.currentTarget.checked) {
-            show_values = stashed_format || true
-            return
+          if (!evt.currentTarget.checked) {
+            stashed_format = typeof show_values === `string` ? show_values : null
           }
-          stashed_format = typeof show_values === `string` ? show_values : null
-          show_values = false
+          show_values = evt.currentTarget.checked ? stashed_format || true : false
         }}
       />
     </label>
@@ -147,16 +145,18 @@
       <span>Col sums</span>
       <input type="checkbox" bind:checked={show_col_summaries} />
     </label>
-    <div class="setting">
-      <span>Export</span>
-      <div class="pane-row">
-        {#each export_formats as export_format (export_format)}
-          <button type="button" onclick={() => on_export?.(export_format)}>
-            Export {export_format.toUpperCase()}
-          </button>
-        {/each}
+    {#if on_export && export_formats.length}
+      <div class="setting">
+        <span>Export</span>
+        <div class="pane-row">
+          {#each export_formats as export_format (export_format)}
+            <button type="button" onclick={() => on_export?.(export_format)}>
+              Export {export_format.toUpperCase()}
+            </button>
+          {/each}
+        </div>
       </div>
-    </div>
+    {/if}
   </SettingsSection>
   {@render children?.({ controls_open })}
 </ControlPane>
