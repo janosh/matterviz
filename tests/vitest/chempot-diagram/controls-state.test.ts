@@ -96,7 +96,7 @@ test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
   const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
     (match.groups?.expr ?? ``).trim(),
   )
-  expect(sinks).toEqual([`sanitize_html(gc.label)`])
+  expect(sinks).toEqual([`sanitize_html(grid_item.label)`])
 })
 
 test(`ChemPotScene3D derives backside placement from current ranges`, () => {

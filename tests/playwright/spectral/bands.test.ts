@@ -41,7 +41,7 @@ test.describe(`Bands Component Tests`, () => {
   })
 
   // path_count null only requires that bands rendered
-  for (const [id, path_count, x_labels] of [
+  for (const [identifier, path_count, x_labels] of [
     [`union-path`, null, []],
     [`intersection-path`, null, []],
     [`union-non-canonical`, null, [`K`]], // K only exists in alt_path
@@ -49,8 +49,8 @@ test.describe(`Bands Component Tests`, () => {
     [`discontinuity`, 8, [`U | K`, `Γ`, `X`, `L`]],
     [`electronic-spin-down-only`, 4, []],
   ] as const) {
-    test(`renders ${id} plot with band paths and labels`, async ({ page }) => {
-      const plot = page.getByTestId(`${id}-plot`)
+    test(`renders ${identifier} plot with band paths and labels`, async ({ page }) => {
+      const plot = page.getByTestId(`${identifier}-plot`)
       await expect(plot).toBeVisible()
       const paths = band_paths(plot)
       await expect(paths.first()).toBeVisible()
@@ -81,7 +81,9 @@ test.describe(`Bands Component Tests`, () => {
   test(`applies custom line styling and hides legend when configured`, async ({ page }) => {
     const first_path = band_paths(page.getByTestId(`custom-styling-plot`)).first()
     await expect(first_path).toBeVisible()
-    expect(await first_path.evaluate((el) => getComputedStyle(el).stroke)).toBeTruthy()
+    expect(
+      await first_path.evaluate((element) => getComputedStyle(element).stroke),
+    ).toBeTruthy()
     await expect(page.getByTestId(`no-legend-plot`).locator(`.legend`)).toBeHidden()
   })
 

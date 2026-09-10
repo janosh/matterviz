@@ -150,7 +150,7 @@ export {
 
 // Atomic radii in Angstroms (used for relative sizing, not absolute rendering scale)
 export const atomic_radii: CompositionType = Object.fromEntries(
-  element_data.map((el) => [el.symbol, el.atomic_radius ?? 1]),
+  element_data.map((element) => [element.symbol, element.atomic_radius ?? 1]),
 )
 
 export function get_center_of_mass(structure: AnyStructure): Vec3 {

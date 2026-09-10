@@ -368,16 +368,19 @@ describe(`3D Export Color Preservation`, () => {
 
     // Ka is string-only (MTLLoader ignores it). Kd must also round-trip through MTLLoader,
     // which treats it as sRGB — writing linear values reads back ~2x too dark.
-    test.each(rgb_cases)(`$name Kd/Ka strings and MTLLoader round-trip`, ({ rgb, kd, ka }) => {
-      const mtl = mtl_for_color(rgb)
-      expect(mtl).toContain(`Kd ${kd}`)
-      expect(mtl).toContain(`Ka ${ka}`)
-      const { color } = new MTLLoader().parse(mtl, ``).create(`test`) as MeshPhongMaterial
-      for (const [idx, channel] of [color.r, color.g, color.b].entries()) {
-        // six-decimal sRGB quantization → ~1e-5 linear; linear-write error is ~0.29
-        expect(channel, `channel ${idx}`).toBeCloseTo(rgb[idx], 4)
-      }
-    })
+    test.each(rgb_cases)(
+      `$name Kd/Ka strings and MTLLoader round-trip`,
+      ({ rgb, kd: diffuse_color, ka: ambient_color }) => {
+        const mtl = mtl_for_color(rgb)
+        expect(mtl).toContain(`Kd ${diffuse_color}`)
+        expect(mtl).toContain(`Ka ${ambient_color}`)
+        const { color } = new MTLLoader().parse(mtl, ``).create(`test`) as MeshPhongMaterial
+        for (const [idx, channel] of [color.r, color.g, color.b].entries()) {
+          // six-decimal sRGB quantization → ~1e-5 linear; linear-write error is ~0.29
+          expect(channel, `channel ${idx}`).toBeCloseTo(rgb[idx], 4)
+        }
+      },
+    )
 
     test(`material properties and deduplication`, () => {
       const scene = new Scene()

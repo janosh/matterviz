@@ -66,8 +66,8 @@ export function formula_key_from_composition(composition: Record<string, number>
   const reduced = get_reduced_formula(composition)
   return Object.entries(reduced)
     .filter(([, amt]) => amt > 0)
-    .toSorted(([a], [b]) => a.localeCompare(b))
-    .map(([el, amt]) => (amt === 1 ? el : `${el}${amt}`))
+    .toSorted(([left_value], [right_value]) => left_value.localeCompare(right_value))
+    .map(([element, amt]) => (amt === 1 ? element : `${element}${amt}`))
     .join(``)
 }
 
@@ -289,7 +289,7 @@ export function chebyshev_centre(
   lims: Vec2[],
 ): { centre: number[]; radius: number } {
   const dim = lims.length
-  const lo = lims.map(([low]) => low)
+  const lower = lims.map(([low]) => low)
   const all_hs = [...entry_hs, ...build_border_hyperplanes(lims)]
   const n_rows = all_hs.length
   const r_col = dim // columns: y_0..y_{dim-1}, r, one slack per row, RHS
@@ -303,7 +303,7 @@ export function chebyshev_centre(
     for (let idx = 0; idx < dim; idx++) {
       line[idx] = halfspace[idx]
       norm_sq += halfspace[idx] ** 2
-      rhs -= halfspace[idx] * lo[idx]
+      rhs -= halfspace[idx] * lower[idx]
     }
     line[r_col] = Math.sqrt(norm_sq)
     line[slack_col + row] = 1
@@ -351,7 +351,7 @@ export function chebyshev_centre(
     pivot(leave, enter)
   }
 
-  const centre = [...lo]
+  const centre = [...lower]
   let radius = 0
   for (let row = 0; row < n_rows; row++) {
     const variable = basis[row]
@@ -432,9 +432,9 @@ export function apply_element_padding(
   // Single-pass: track min per axis, skipping default_min_limit values
   const mins = elem_indices.map(() => Infinity)
   for (const pts of Object.values(domains)) {
-    for (const pt of pts) {
+    for (const point of pts) {
       for (let idx = 0; idx < elem_indices.length; idx++) {
-        const val = pt[elem_indices[idx]]
+        const val = point[elem_indices[idx]]
         if (Math.abs(val - default_min_limit) > replace_threshold && val < mins[idx]) {
           mins[idx] = val
         }
@@ -455,8 +455,8 @@ export function pad_domain_points(
   padding: number,
 ): number[][] {
   const replace_threshold = Math.max(Math.abs(padding), EPS)
-  return pts.map((pt) => {
-    const padded = [...pt]
+  return pts.map((point) => {
+    const padded = [...point]
     for (let idx = 0; idx < elem_indices.length; idx++) {
       const col = elem_indices[idx]
       if (Math.abs(padded[col] - default_min_limit) < replace_threshold) {
@@ -527,7 +527,7 @@ const orthogonal_unit_vec = (basis: number[][], n_cols: number): number[] | null
 
 export function simple_pca(
   data: number[][],
-  k: number = 2,
+  order: number = 2,
 ): { scores: number[][]; eigenvectors: number[][]; means: number[] } {
   const n_rows = data.length
   const n_cols = data[0]?.length ?? 0
@@ -569,7 +569,7 @@ export function simple_pca(
   const cov_scale = cov.reduce((sum, row, idx) => sum + row[idx], 0) // trace = total variance
   const rank_eps = EPS * (cov_scale || 1)
 
-  for (let comp = 0; comp < k; comp++) {
+  for (let comp = 0; comp < order; comp++) {
     // Initial guess: the (deflated) covariance row with the largest norm. A fixed basis
     // vector can sit in the null space (elemental domains have zero variance along their
     // own axis), where power iteration stalls on the first step and returns a spurious
@@ -618,7 +618,9 @@ export function simple_pca(
 
   // Project data onto eigenvectors
   const scores = centered.map((row) =>
-    eigenvectors.map((ev) => row.reduce((sum, val, idx) => sum + val * ev[idx], 0)),
+    eigenvectors.map((eigenvector) =>
+      row.reduce((sum, val, idx) => sum + val * eigenvector[idx], 0),
+    ),
   )
 
   return { scores, eigenvectors, means }
@@ -626,8 +628,8 @@ export function simple_pca(
 
 // Compute orthonormal vector to a 2D line segment (for label offset in 2D diagrams)
 export function orthonormal_2d(line_pts: number[][]): Vec2 {
-  const [dx, dy] = subtract(line_pts[1], line_pts[0])
-  return normalize_vec<Vec2>([-dy, dx], [0, 1])
+  const [delta_x, delta_y] = subtract(line_pts[1], line_pts[0])
+  return normalize_vec<Vec2>([-delta_y, delta_x], [0, 1])
 }
 
 // Deduplicate points within an L-inf ball of radius `tol`, returning unique points and index
@@ -642,12 +644,12 @@ export function dedup_points(
   const unique: number[][] = []
   const orig_indices: number[] = []
   for (let idx = 0; idx < pts.length; idx++) {
-    const pt = pts[idx]
+    const point = pts[idx]
     const is_dup = unique.some((existing) =>
-      existing.every((val, dim) => Math.abs(val - pt[dim]) < tol),
+      existing.every((val, dim) => Math.abs(val - point[dim]) < tol),
     )
     if (!is_dup) {
-      unique.push(pt)
+      unique.push(point)
       orig_indices.push(idx)
     }
   }
@@ -663,7 +665,9 @@ function pca_plane(points: number[][]) {
       (mean, dim) => mean + score_x * eigenvectors[0][dim] + score_y * eigenvectors[1][dim],
     )
   const max_residual = Math.max(
-    ...points.map((pt, idx) => euclidean_dist(pt, unproject(scores[idx][0], scores[idx][1]))),
+    ...points.map((point, idx) =>
+      euclidean_dist(point, unproject(scores[idx][0], scores[idx][1])),
+    ),
   )
   return { scores, eigenvectors, means, unproject, max_residual }
 }
@@ -692,7 +696,9 @@ export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPla
   const normal = normalize_vec<Vec3>(cross_3d(eigenvectors[0], eigenvectors[1]), [0, 0, 0])
   if (normal.every((component) => component === 0)) return null
   const [u_vec, v_vec] = compute_in_plane_basis(normal)
-  const outline = convex_hull_2d(unique.map((pt) => [dot(u_vec, pt), dot(v_vec, pt)] as Vec2))
+  const outline = convex_hull_2d(
+    unique.map((point) => [dot(u_vec, point), dot(v_vec, point)] as Vec2),
+  )
   return {
     normal,
     offset: dot(normal, means),
@@ -703,7 +709,7 @@ export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPla
 // Mean of a set of points, per axis
 export const vertex_mean = (points: number[][]): Vec3 =>
   [0, 1, 2].map(
-    (axis) => points.reduce((sum, pt) => sum + pt[axis], 0) / points.length,
+    (axis) => points.reduce((sum, point) => sum + point[axis], 0) / points.length,
   ) as Vec3
 
 // Triangles of a non-indexed position buffer, as corner triples (9 numbers per face)
@@ -723,8 +729,8 @@ export function strip_closing_faces(positions: ArrayLike<number>): Float32Array 
   const hull_centroid = vertex_mean(faces.flat())
   const kept = faces
     .filter((corners) => {
-      const [va, vb, vc] = corners
-      const normal = cross_3d(subtract(vb, va), subtract(vc, va))
+      const [vertex_a, vertex_b, vertex_c] = corners
+      const normal = cross_3d(subtract(vertex_b, vertex_a), subtract(vertex_c, vertex_a))
       // oriented away from the hull centroid, so the buffer's own winding does not matter
       const sign = dot(normal, subtract(vertex_mean(corners), hull_centroid)) < 0 ? -1 : 1
       return normal.some((component) => component * sign > 0)
@@ -833,8 +839,8 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
 export function bbox_diagonal(points: number[][]): number {
   if (points.length < 2) return 0
   const sq_spans = points[0].map((_, col) => {
-    const [lo, hi] = array_extent(points.map((pt) => pt[col]))
-    return (hi - lo) ** 2
+    const [lower, upper] = array_extent(points.map((point) => point[col]))
+    return (upper - lower) ** 2
   })
   return Math.sqrt(sq_spans.reduce((sum, sq_span) => sum + sq_span, 0))
 }
@@ -858,7 +864,11 @@ export function scale_to_font_range(
 // Map Plotly/pymatgen's Z-up data axes to Three.js's Y-up render axes.
 export const swizzle_to_render =
   (scale: Vec3) =>
-  (d0: number, d1: number, d2: number): Vec3 => [d1 * scale[0], d2 * scale[1], d0 * scale[2]]
+  (distance_0: number, distance_1: number, distance_2: number): Vec3 => [
+    distance_1 * scale[0],
+    distance_2 * scale[1],
+    distance_0 * scale[2],
+  ]
 
 export interface VisibleDomainLabel {
   formula: string
@@ -981,7 +991,7 @@ export function build_chempot_hyperplanes(
     .map(({ entry }) => entry)
 
   let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
-  const missing_refs = elements.filter((el) => !el_refs[el])
+  const missing_refs = elements.filter((element) => !el_refs[element])
   if (missing_refs.length > 0) {
     throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
   }
@@ -1019,7 +1029,7 @@ export function compute_chempot_diagram(
   // In this mode, compute in full N-D and project afterward
   const is_projection =
     display_elements.length < all_data_elements.length &&
-    display_elements.every((el) => all_data_elements.includes(el))
+    display_elements.every((element) => all_data_elements.includes(element))
 
   // Computation elements: full element set for projection, display set for subsystem
   const compute_elements = is_projection ? all_data_elements : display_elements
@@ -1032,7 +1042,7 @@ export function compute_chempot_diagram(
     formal_chempots,
   )
   const compute_lims: Vec2[] = compute_elements.map(
-    (el) => limits?.[el] ?? [default_min_limit, 0],
+    (element) => limits?.[element] ?? [default_min_limit, 0],
   )
   const nd_domains = compute_domains(hyperplanes, compute_lims, hyperplane_entries)
 
@@ -1042,7 +1052,7 @@ export function compute_chempot_diagram(
   const domains = Object.fromEntries(
     Object.entries(nd_domains).map(([formula, pts]) => [
       formula,
-      pts.map((pt) => col_indices.map((idx) => pt[idx])),
+      pts.map((point) => col_indices.map((idx) => point[idx])),
     ]),
   )
   return {

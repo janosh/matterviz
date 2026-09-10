@@ -290,9 +290,9 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
   // via post-decompression magic-byte detection (else a text decode corrupts it)
   test(`keeps a gzipped binary payload (by magic) as ArrayBuffer`, async () => {
     const hdf5 = new Uint8Array([...hdf5_signature, 0x01, 0x02])
-    const gz = await compress(hdf5)
+    const grid_z = await compress(hdf5)
     // payload.gz -> payload (no binary extension): only magic bytes can save it
-    const result = await decompress_file(new File([gz], `payload.gz`))
+    const result = await decompress_file(new File([grid_z], `payload.gz`))
     expect(result.content).toBeInstanceOf(ArrayBuffer)
     expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(hdf5)
     expect(result.filename).toBe(`payload`)

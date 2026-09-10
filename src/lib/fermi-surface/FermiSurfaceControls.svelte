@@ -17,7 +17,7 @@
     controls_open = $bindable(false),
     fermi_data,
     band_data,
-    mu = $bindable(defaults.mu),
+    mu: mean = $bindable(defaults.mu),
     color_property = $bindable(defaults.color_property),
     color_scale = $bindable(defaults.color_scale),
     custom_property_label,
@@ -93,7 +93,7 @@
     const parsed = parse_num_token(event.currentTarget.value)
     // Only update mu when input is valid; keep last valid value during transient
     // invalid states (e.g. empty string while user is typing a new value)
-    if (Number.isFinite(parsed)) mu = parsed
+    if (Number.isFinite(parsed)) mean = parsed
   }
 </script>
 
@@ -108,8 +108,8 @@
   <SettingsGroup title="Surface" open>
     <SettingsSection
       title="Chemical potential"
-      current_values={{ mu }}
-      on_reset={() => (mu = defaults.mu)}
+      current_values={{ mu: mean }}
+      on_reset={() => (mean = defaults.mu)}
       layout="grid"
     >
       <label>
@@ -117,7 +117,7 @@
         <input
           type="number"
           step="0.01"
-          value={mu}
+          value={mean}
           oninput={handle_mu_change}
           style="width: 4em"
         />
@@ -126,7 +126,7 @@
           min="-1"
           max="1"
           step="0.01"
-          value={mu}
+          value={mean}
           oninput={handle_mu_change}
         />
       </label>

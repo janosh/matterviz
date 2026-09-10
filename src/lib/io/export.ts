@@ -206,11 +206,11 @@ function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
     .split(/[\s,]+/)
     .map(Number)
   if (parts?.length !== 4 || !parts.every(Number.isFinite)) return null
-  const [x, y, width, height] = parts
+  const [coord_x, coord_y, width, height] = parts
   if (width <= 0 || height <= 0) return null
   const padded: SvgViewbox = [
-    x - padding,
-    y - padding,
+    coord_x - padding,
+    coord_y - padding,
     width + 2 * padding,
     height + 2 * padding,
   ]

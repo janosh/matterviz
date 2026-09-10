@@ -209,7 +209,9 @@ describe(`Dos component`, () => {
     }
     const plot = await mount_sized(Dos, { doses: { '': doses } }, { selector: `.scatter` })
     const ticks = (axis: string) =>
-      [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map((el) => el.textContent)
+      [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map(
+        (element) => element.textContent,
+      )
     const [x_before, y_before] = [ticks(`x`), ticks(`y`)]
     expect(x_before.length + y_before.length).toBeGreaterThan(4)
     plot_svg(plot).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))

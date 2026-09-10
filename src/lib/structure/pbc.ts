@@ -28,8 +28,8 @@ const MIN_BOND_DIST = 0.4 // Å
 // [-512, 511], i.e. structures up to ~1000 cells per axis - far beyond any real case).
 // Integer Map keys avoid per-lookup string building in the phase-2 completion grid below.
 const CELL_OFFSET = 512
-const pack_cell_key = (x: number, y: number, z: number): number =>
-  (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
+const pack_cell_key = (coord_x: number, coord_y: number, coord_z: number): number =>
+  (coord_x + CELL_OFFSET) * 1048576 + (coord_y + CELL_OFFSET) * 1024 + (coord_z + CELL_OFFSET)
 
 // Wrap a single fractional coordinate to [0, 1), snapping near-1 values to 0 and rounding
 // to 15 digits to suppress floating-point noise. The one wrap helper for parsed coordinates,
@@ -207,14 +207,16 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
     // True when a copy of the candidate at `pos` would bond some displayed anchor,
     // i.e. it completes that anchor's coordination shell
     const bonds_an_anchor = (pos: Vec3, elem_id: number): boolean => {
-      const cx = Math.floor(pos[0] / max_bond_dist)
-      const cy = Math.floor(pos[1] / max_bond_dist)
-      const cz = Math.floor(pos[2] / max_bond_dist)
+      const center_x = Math.floor(pos[0] / max_bond_dist)
+      const center_y = Math.floor(pos[1] / max_bond_dist)
+      const center_z = Math.floor(pos[2] / max_bond_dist)
       const pair_row = elem_id * n_elem
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dz = -1; dz <= 1; dz++) {
-            const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
+      for (let delta_x = -1; delta_x <= 1; delta_x++) {
+        for (let delta_y = -1; delta_y <= 1; delta_y++) {
+          for (let delta_z = -1; delta_z <= 1; delta_z++) {
+            const cell = grid.get(
+              pack_cell_key(center_x + delta_x, center_y + delta_y, center_z + delta_z),
+            )
             if (!cell) continue
             for (const anchor_idx of cell) {
               const anchor_elem = site_elem_ids[anchor_src[anchor_idx]]

@@ -221,9 +221,9 @@ describe(`element filter`, () => {
     const drawn = segments_of(built)
     expect(drawn).toHaveLength(10)
     // Atom 0 walks along x, atom 2 along z; neither ever leaves y = 0
-    expect(drawn.every(([from, to]) => from[1] === 0 && to[1] === 0)).toBe(true)
-    expect(drawn.filter(([, to]) => to[0] > 0)).toHaveLength(5)
-    expect(drawn.filter(([, to]) => to[2] > 0)).toHaveLength(5)
+    expect(drawn.every(([from, target]) => from[1] === 0 && target[1] === 0)).toBe(true)
+    expect(drawn.filter(([, target]) => target[0] > 0)).toHaveLength(5)
+    expect(drawn.filter(([, target]) => target[2] > 0)).toHaveLength(5)
   })
 
   test(`empty results do not share mutable state`, () => {

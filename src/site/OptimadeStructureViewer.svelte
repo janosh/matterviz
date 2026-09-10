@@ -126,10 +126,13 @@
     }
   }
 
-  function navigate_to_structure(id: string) {
-    input_value = id
+  function navigate_to_structure(identifier: string) {
+    input_value = identifier
     if (routed)
-      void goto(`/optimade-${encode_structure_id(id)}`, { keepFocus: true, noScroll: true })
+      void goto(`/optimade-${encode_structure_id(identifier)}`, {
+        keepFocus: true,
+        noScroll: true,
+      })
   }
 </script>
 
@@ -167,18 +170,18 @@
       <p>Loading providers...</p>
     {:else}
       <div class="db-grid">
-        {#each available_providers as { id, attributes } (id)}
-          <div class:selected={id === selected_db}>
+        {#each available_providers as { id: identifier, attributes } (identifier)}
+          <div class:selected={identifier === selected_db}>
             <button
               class="db-select"
               {@attach tooltip({ allow_html: true, content: sanitize_html(attributes.name) })}
               onclick={() => {
-                selected_db = id
+                selected_db = identifier
                 input_value = ``
               }}
             >
               <Icon icon={Database} />
-              {id}
+              {identifier}
             </button>
             <a
               href={attributes.base_url}

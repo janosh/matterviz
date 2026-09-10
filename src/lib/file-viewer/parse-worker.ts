@@ -10,12 +10,12 @@ import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-pro
 import { parse_file_content, type ParseResult } from './parse'
 
 const prepare_parse_result = (
-  id: number,
+  identifier: number,
   result: ParseResult,
 ): { response: ParseWorkerResponse; transfer: Transferable[] } => {
   if (result.type !== `trajectory`)
     return {
-      response: { id, result },
+      response: { id: identifier, result },
       transfer:
         result.type === `structure`
           ? (result.prediction?.volumes ?? []).map(
@@ -26,7 +26,7 @@ const prepare_parse_result = (
   const run = result.data
   const run_port = serve_run_over_port(run)
   return {
-    response: { id, result: { ...result, data: summarize_run(run) }, run_port },
+    response: { id: identifier, result: { ...result, data: summarize_run(run) }, run_port },
     transfer: [run_port],
   }
 }
@@ -35,7 +35,7 @@ export const handle_parse_worker_request = async (
   request: ParseWorkerRequest,
   on_progress?: (progress: ParseProgress) => void,
 ): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
-  const { id, filename } = request
+  const { id: identifier, filename } = request
   try {
     const result = await parse_file_content(
       request.content,
@@ -44,11 +44,11 @@ export const handle_parse_worker_request = async (
       request.load_options,
       on_progress,
     )
-    return prepare_parse_result(id, result)
+    return prepare_parse_result(identifier, result)
   } catch (error) {
     return {
       response: {
-        id,
+        id: identifier,
         error: to_error(error).message,
         ...(error instanceof Hdf5GroupSelectionRequiredError && {
           hdf5_group_paths: error.groups,
@@ -60,17 +60,17 @@ export const handle_parse_worker_request = async (
 }
 
 self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
-  const { id } = event.data
+  const { id: identifier } = event.data
   void (async () => {
     const on_progress = (progress: ParseProgress): void =>
-      self.postMessage({ id, progress } satisfies ParseWorkerResponse)
+      self.postMessage({ id: identifier, progress } satisfies ParseWorkerResponse)
     const { response, transfer } = await handle_parse_worker_request(event.data, on_progress)
     try {
       self.postMessage(response, { transfer })
     } catch (error) {
       dispose_run_port(response.run_port)
       self.postMessage({
-        id,
+        id: identifier,
         error: `Failed to clone parse result: ${to_error(error).message}`,
       })
     }

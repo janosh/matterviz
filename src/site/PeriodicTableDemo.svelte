@@ -138,8 +138,8 @@
           y={heatmap_values}
           {y_unit}
           on_point_click={({ point }) => {
-            const el = element_data.find((el) => el.number === point.x)
-            if (el) selected.element = el
+            const element = element_data.find((element) => element.number === point.x)
+            if (element) selected.element = element
           }}
           color_scale={{ scheme: color_scale }}
           style="min-height: initial"

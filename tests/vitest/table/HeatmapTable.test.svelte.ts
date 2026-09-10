@@ -147,7 +147,7 @@ describe(`HeatmapTable`, () => {
   })
 
   it(`preserves both ends of long plain-text cells for middle ellipsis`, () => {
-    const id = `prefix-middle-suffix`
+    const identifier = `prefix-middle-suffix`
     // The flag must land wholly in the 8-grapheme suffix. Code-point slicing would retain
     // only its second regional indicator and this exact assertion would fail.
     const unicode_id = `long-prefix-value🇩🇪1234567`
@@ -155,7 +155,7 @@ describe(`HeatmapTable`, () => {
     mount_table({
       data: [
         {
-          ID: id,
+          ID: identifier,
           Unicode: unicode_id,
           Symbols: symbols,
           Short: `🇩🇪`,
@@ -167,8 +167,8 @@ describe(`HeatmapTable`, () => {
 
     const id_cell = doc_query(`td[data-col="ID"]`)
     const visual = doc_query(`td[data-col="ID"] .middle-ellipsis-visual`)
-    expect(id_cell.textContent?.trim()).toBe(id)
-    expect(id_cell.dataset.sortValue).toBe(id)
+    expect(id_cell.textContent?.trim()).toBe(identifier)
+    expect(id_cell.dataset.sortValue).toBe(identifier)
     expect(visual.dataset.start).toBe(`prefix-middl`)
     expect(visual.dataset.end).toBe(`e-suffix`)
     expect(visual.getAttribute(`aria-hidden`)).toBe(`true`)
@@ -747,7 +747,10 @@ describe(`HeatmapTable`, () => {
 
       const group_headers = [...header_rows[0].querySelectorAll(`th`)]
       expect(
-        group_headers.map((th) => [th.textContent?.trim(), th.getAttribute(`colspan`)]),
+        group_headers.map((header_cell) => [
+          header_cell.textContent?.trim(),
+          header_cell.getAttribute(`colspan`),
+        ]),
       ).toEqual([
         [``, null],
         [``, null],
@@ -788,7 +791,8 @@ describe(`HeatmapTable`, () => {
       const [group_row, header_row] = document.querySelectorAll(`thead tr`)
       const spans = (row: Element) =>
         [...row.querySelectorAll(`th`)].map(
-          (th) => `${th.textContent?.trim().replaceAll(/[↑↓\s]/g, ``)}/${th.colSpan}`,
+          (header_cell) =>
+            `${header_cell.textContent?.trim().replaceAll(/[↑↓\s]/g, ``)}/${header_cell.colSpan}`,
         )
       expect(spans(group_row)).toEqual([`g1/2`, `/1`])
       expect(spans(header_row)).toEqual([`A/1`, `C/1`, `B/1`])
@@ -1599,10 +1603,14 @@ describe(`HeatmapTable`, () => {
   describe(`Row Numbers`, () => {
     it(`shows 1-indexed numbers and # header when enabled`, () => {
       mount_sample({ show_row_numbers: true })
-      const headers = [...document.querySelectorAll(`th`)].map((th) => th.textContent?.trim())
+      const headers = [...document.querySelectorAll(`th`)].map((header_cell) =>
+        header_cell.textContent?.trim(),
+      )
       expect(headers).toContain(`#`)
       expect(
-        [...document.querySelectorAll(`td.row-num-col`)].map((td) => td.textContent?.trim()),
+        [...document.querySelectorAll(`td.row-num-col`)].map((cell) =>
+          cell.textContent?.trim(),
+        ),
       ).toEqual([`1`, `2`, `3`])
     })
   })
@@ -1705,7 +1713,7 @@ describe(`HeatmapTable`, () => {
       inner.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
       await fire(globalThis, new PointerEvent(`pointerup`))
       const selected = [...document.querySelectorAll<HTMLElement>(`td.cell-selected`)]
-      expect(selected.map((td) => td.dataset.rowIdx)).toEqual([`2`])
+      expect(selected.map((selected_cell) => selected_cell.dataset.rowIdx)).toEqual([`2`])
       expect(selected[0].classList.contains(`inner`)).toBe(false)
 
       // keyboard: ArrowUp from the outer row 2 cell lands on the outer row 1 cell
@@ -1876,7 +1884,10 @@ describe(`HeatmapTable`, () => {
     // Past the auto-detect cap a checklist would be unusable, but a column explicitly
     // configured as `category` must still get its full option list rather than an empty panel.
     it(`lists every option for an explicitly categorical column past the cap`, async () => {
-      const many = Array.from({ length: 60 }, (_v, idx) => ({ Tag: `t${idx}`, Score: idx }))
+      const many = Array.from({ length: 60 }, (_unused_value, idx) => ({
+        Tag: `t${idx}`,
+        Score: idx,
+      }))
       mount_table({
         data: many,
         columns: [
@@ -1909,8 +1920,8 @@ describe(`HeatmapTable`, () => {
       ]
       mount_table(bind_props({ data: metric_rows, columns, show_filters: true }, state))
       const headers = document.querySelectorAll<HTMLElement>(`th`)
-      const open_panel = async (th: HTMLElement) => {
-        th.querySelector<HTMLButtonElement>(`.column-filter-trigger`)?.click()
+      const open_panel = async (header_cell: HTMLElement) => {
+        header_cell.querySelector<HTMLButtonElement>(`.column-filter-trigger`)?.click()
         await tick()
         expect(document.querySelectorAll(`.column-filter-panel`)).toHaveLength(1) // one at a time
         return doc_query(`.column-filter-panel`)
@@ -1953,7 +1964,7 @@ describe(`HeatmapTable`, () => {
       expect(rendered_models()).toEqual([`C`])
 
       // none of this reached the header: nothing got sorted
-      expect([...headers].map((th) => th.getAttribute(`aria-sort`))).toEqual(
+      expect([...headers].map((header_cell) => header_cell.getAttribute(`aria-sort`))).toEqual(
         Array(3).fill(`none`),
       )
     })
@@ -2014,7 +2025,7 @@ describe(`HeatmapTable`, () => {
       await tick()
       const header_ids = () =>
         [...document.querySelectorAll<HTMLElement>(`th[data-col-id]`)].map(
-          (th) => th.dataset.colId,
+          (header_cell) => header_cell.dataset.colId,
         )
       expect(state.column_order).toEqual([`Tier`, `Model`, `Score`])
       expect(header_ids()).toEqual(state.column_order)
@@ -2213,7 +2224,9 @@ describe(`HeatmapTable`, () => {
       document.querySelector<HTMLButtonElement>(`.pane-toggle`)?.click()
       await tick()
       const color_labels = () =>
-        [...document.querySelectorAll(`.col-color-label`)].map((el) => el.textContent?.trim())
+        [...document.querySelectorAll(`.col-color-label`)].map((element) =>
+          element.textContent?.trim(),
+        )
       expect(color_labels()).toEqual([`Score`])
       expect(cell_at(0, 1).style.getPropertyValue(`--cell-bg`)).not.toBe(``) // it paints
 
@@ -2228,11 +2241,11 @@ describe(`HeatmapTable`, () => {
       mouse(type, { button: 0, ...init })
     const drag_cells = (
       from: [number, number],
-      to: [number, number],
+      target: [number, number],
       init: MouseEventInit = {},
     ) => {
       cell_at(...from).dispatchEvent(pointer(`pointerdown`, init))
-      cell_at(...to).dispatchEvent(pointer(`pointermove`))
+      cell_at(...target).dispatchEvent(pointer(`pointermove`))
       globalThis.window.dispatchEvent(pointer(`pointerup`))
     }
     const copy_shortcut = () =>

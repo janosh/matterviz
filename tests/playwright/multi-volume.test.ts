@@ -15,13 +15,13 @@ async function wait_for_scenario(page: Page, url: string) {
 
 test.describe(`Multi-volume isosurface demo`, () => {
   // One cross-volume color path + one fractional display-range path cover load/render
-  for (const [id, surfaces] of [
+  for (const [identifier, surfaces] of [
     [`glycine-esp`, undefined],
     [`caffeine-homo-lumo`, `Surfaces: 4`],
     [`fractional-range`, undefined],
   ] as const) {
-    test(`scenario ${id} loads volumes and renders`, async ({ page }) => {
-      await wait_for_scenario(page, `${DEMO_URL}?scenario=${id}`)
+    test(`scenario ${identifier} loads volumes and renders`, async ({ page }) => {
+      await wait_for_scenario(page, `${DEMO_URL}?scenario=${identifier}`)
       await expect(page.locator(`.demo-stats-bar`)).toContainText(`Volumes: 2`)
       if (surfaces) await expect(page.locator(`.demo-stats-bar`)).toContainText(surfaces)
       await wait_for_3d_canvas(page, `.structure`)

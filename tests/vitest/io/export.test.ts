@@ -29,10 +29,14 @@ afterEach(() => {
 
 // === Shared Helpers ===
 
-const make_mock_canvas = (toBlob_impl?: (cb: BlobCallback) => void): HTMLCanvasElement =>
+const make_mock_canvas = (
+  toBlob_impl?: (callback_fn: BlobCallback) => void,
+): HTMLCanvasElement =>
   ({
     toBlob: vi.fn(
-      toBlob_impl ?? ((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
+      toBlob_impl ??
+        ((callback_fn: BlobCallback) =>
+          callback_fn(new Blob([`test`], { type: `image/png` }))),
     ),
     width: 800,
     height: 600,
@@ -49,7 +53,7 @@ const make_mock_renderer = (): Partial<WebGPURenderer> => ({
   setSize: vi.fn(),
 })
 
-function make_canvas_with_renderer(toBlob_impl?: (cb: BlobCallback) => void): {
+function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => void): {
   canvas: HTMLCanvasElement
   renderer: Partial<WebGPURenderer>
 } {
@@ -74,7 +78,9 @@ const mock_offscreen_canvas = (): HTMLCanvasElement & {
     width: 0,
     height: 0,
     getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
-    toBlob: vi.fn((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
+    toBlob: vi.fn((callback_fn: BlobCallback) =>
+      callback_fn(new Blob([`test`], { type: `image/png` })),
+    ),
   }
   vi.spyOn(document, `createElement`).mockReturnValue(canvas as unknown as HTMLElement)
   return canvas as unknown as HTMLCanvasElement & { getContext: ReturnType<typeof vi.fn> }
@@ -197,7 +203,7 @@ describe(`canvas_to_png_blob`, () => {
   })
 
   test(`rejects when toBlob returns null`, async () => {
-    const canvas = make_mock_canvas((cb) => cb(null))
+    const canvas = make_mock_canvas((callback_fn) => callback_fn(null))
     await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Failed to generate PNG`)
   })
 

@@ -67,8 +67,8 @@ export interface Throttled<Args extends unknown[]> {
 // Trailing-edge throttle for high-frequency writebacks (e.g. pointer hover) so
 // they don't flood the Jupyter comm channel.
 export const throttle = <Args extends unknown[]>(
-  fn: (...args: Args) => void,
-  ms: number,
+  callback: (...args: Args) => void,
+  milliseconds: number,
 ): Throttled<Args> => {
   let last = 0
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -80,11 +80,11 @@ export const throttle = <Args extends unknown[]>(
   }
   const invoke = (args: Args): void => {
     last = Date.now()
-    fn(...args)
+    callback(...args)
   }
   const throttled = ((...args: Args): void => {
     const elapsed = Date.now() - last
-    if (elapsed >= ms) {
+    if (elapsed >= milliseconds) {
       clear() // drop any stale trailing call so it can't fire after this fresher one
       invoke(args)
       return
@@ -95,7 +95,7 @@ export const throttle = <Args extends unknown[]>(
       const pending = queued
       queued = null
       if (pending) invoke(pending)
-    }, ms - elapsed)
+    }, milliseconds - elapsed)
   }) as Throttled<Args>
   throttled.cancel = clear
   return throttled
@@ -224,5 +224,5 @@ export function reactive_widget(
     unsubs.push(stop)
   }
 
-  return { props, dispose: () => unsubs.forEach((fn) => fn()) }
+  return { props, dispose: () => unsubs.forEach((callback) => callback()) }
 }

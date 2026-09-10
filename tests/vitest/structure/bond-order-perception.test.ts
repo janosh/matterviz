@@ -331,7 +331,7 @@ describe(`aromaticity`, () => {
 })
 
 describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () => {
-  const pb = (
+  const perceived_bond = (
     idx_1: number,
     idx_2: number,
     order: PerceivedBond[`bond_order`],
@@ -363,63 +363,66 @@ describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () =
   test.each([
     {
       name: `explicit order wins over perceived`,
-      perceived: [pb(0, 1, 1)],
+      perceived: [perceived_bond(0, 1, 1)],
       explicit: [expl(0, 1, 2)],
       mode: `aromatic` as const,
       expected: [2],
     },
     {
       name: `explicit aromatic preserved over perceived single`,
-      perceived: [pb(0, 1, 1)],
+      perceived: [perceived_bond(0, 1, 1)],
       explicit: [expl(0, 1, `aromatic`)],
       mode: `aromatic` as const,
       expected: [`aromatic`],
     },
     {
       name: `explicit key is order-insensitive`,
-      perceived: [pb(0, 1, 1)],
+      perceived: [perceived_bond(0, 1, 1)],
       explicit: [expl(1, 0, 3)],
       mode: `aromatic` as const,
       expected: [3],
     },
     {
       name: `explicit periodic bonds only override matching cell shifts`,
-      perceived: [pb(0, 1, 1, undefined, [1, 0, 0]), pb(0, 1, 1, undefined, [-1, 0, 0])],
+      perceived: [
+        perceived_bond(0, 1, 1, undefined, [1, 0, 0]),
+        perceived_bond(0, 1, 1, undefined, [-1, 0, 0]),
+      ],
       explicit: [expl(0, 1, 3, [1, 0, 0])],
       mode: `aromatic` as const,
       expected: [3, 1],
     },
     {
       name: `non-explicit aromatic stays aromatic in aromatic mode`,
-      perceived: [pb(0, 1, `aromatic`, 2)],
+      perceived: [perceived_bond(0, 1, `aromatic`, 2)],
       explicit: [],
       mode: `aromatic` as const,
       expected: [`aromatic`],
     },
     {
       name: `non-explicit aromatic remapped to kekule_order in kekule mode`,
-      perceived: [pb(0, 1, `aromatic`, 2)],
+      perceived: [perceived_bond(0, 1, `aromatic`, 2)],
       explicit: [],
       mode: `kekule` as const,
       expected: [2],
     },
     {
       name: `explicit aromatic not remapped in kekule mode`,
-      perceived: [pb(0, 1, `aromatic`, 1)],
+      perceived: [perceived_bond(0, 1, `aromatic`, 1)],
       explicit: [expl(0, 1, `aromatic`)],
       mode: `kekule` as const,
       expected: [`aromatic`],
     },
     {
       name: `non-explicit non-aromatic perceived order passes through`,
-      perceived: [pb(0, 1, 3)],
+      perceived: [perceived_bond(0, 1, 3)],
       explicit: [expl(2, 3, 2)],
       mode: `kekule` as const,
       expected: [3],
     },
     {
       name: `aromatic without kekule_order falls back to aromatic`,
-      perceived: [pb(0, 1, `aromatic`)],
+      perceived: [perceived_bond(0, 1, `aromatic`)],
       explicit: [],
       mode: `kekule` as const,
       expected: [`aromatic`],

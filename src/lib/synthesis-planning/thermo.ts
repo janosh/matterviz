@@ -365,11 +365,11 @@ export function reaction_energy_at_temperature(
       const pressure =
         conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]
       const key = `${species}:${temperature}:${pressure}`
-      const mu =
+      const mean =
         samples?.get(key) ??
         compute_gas_chemical_potential(provider, species, temperature, pressure)
-      samples?.set(key, mu)
-      return sum + balanced.gas_exchange[idx] * mu * gas.n_atoms_per_fu
+      samples?.set(key, mean)
+      return sum + balanced.gas_exchange[idx] * mean * gas.n_atoms_per_fu
     }, 0)
 }
 

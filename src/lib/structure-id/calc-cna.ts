@@ -85,16 +85,20 @@ function fill_bond_masks(
 ): void {
   const cutoff_sq = cutoff * cutoff
   bond_masks.fill(0, 0, n_neighbors)
-  for (let ni = 0; ni < n_neighbors; ni++) {
-    const off_i = base + ni * 3
-    for (let nj = ni + 1; nj < n_neighbors; nj++) {
-      const off_j = base + nj * 3
+  for (let neighbor_idx = 0; neighbor_idx < n_neighbors; neighbor_idx++) {
+    const off_i = base + neighbor_idx * 3
+    for (
+      let other_neighbor_idx = neighbor_idx + 1;
+      other_neighbor_idx < n_neighbors;
+      other_neighbor_idx++
+    ) {
+      const off_j = base + other_neighbor_idx * 3
       const diff_x = deltas[off_i] - deltas[off_j]
       const diff_y = deltas[off_i + 1] - deltas[off_j + 1]
       const diff_z = deltas[off_i + 2] - deltas[off_j + 2]
       if (diff_x * diff_x + diff_y * diff_y + diff_z * diff_z > cutoff_sq) continue
-      bond_masks[ni] |= 1 << nj
-      bond_masks[nj] |= 1 << ni
+      bond_masks[neighbor_idx] |= 1 << other_neighbor_idx
+      bond_masks[other_neighbor_idx] |= 1 << neighbor_idx
     }
   }
 }
@@ -103,11 +107,11 @@ function fill_bond_masks(
 // as two-bit masks. Returns the bond count.
 function collect_common_bonds(common: number, n_neighbors: number): number {
   let n_bonds = 0
-  for (let ni = 0; ni < n_neighbors; ni++) {
-    const ni_bit = 1 << ni
+  for (let neighbor_idx = 0; neighbor_idx < n_neighbors; neighbor_idx++) {
+    const ni_bit = 1 << neighbor_idx
     if ((common & ni_bit) === 0) continue
     // Only partners with a lower index, so each bond is emitted exactly once
-    const partners = common & bond_masks[ni] & (ni_bit - 1)
+    const partners = common & bond_masks[neighbor_idx] & (ni_bit - 1)
     for (let bits = partners; bits !== 0; bits &= bits - 1) {
       common_bonds[n_bonds++] = ni_bit | (bits & -bits)
     }
@@ -149,8 +153,8 @@ function analyze_close_packed_signature(): CnaTypeCode {
   let n421 = 0
   let n422 = 0
   let n555 = 0
-  for (let ni = 0; ni < N_CLOSE_PACKED; ni++) {
-    const common = bond_masks[ni]
+  for (let neighbor_idx = 0; neighbor_idx < N_CLOSE_PACKED; neighbor_idx++) {
+    const common = bond_masks[neighbor_idx]
     const n_common = popcount(common)
     if (n_common !== 4 && n_common !== 5) return CNA_TYPES.other
     const n_bonds = collect_common_bonds(common, N_CLOSE_PACKED)
@@ -173,8 +177,8 @@ function analyze_close_packed_signature(): CnaTypeCode {
 function analyze_bcc_signature(): CnaTypeCode {
   let n444 = 0
   let n666 = 0
-  for (let ni = 0; ni < N_BCC; ni++) {
-    const common = bond_masks[ni]
+  for (let neighbor_idx = 0; neighbor_idx < N_BCC; neighbor_idx++) {
+    const common = bond_masks[neighbor_idx]
     const n_common = popcount(common)
     if (n_common !== 4 && n_common !== 6) return CNA_TYPES.other
     const n_bonds = collect_common_bonds(common, N_BCC)

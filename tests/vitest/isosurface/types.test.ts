@@ -24,7 +24,7 @@ test.each([
   { active: `b`, ids: [`b`, `a`], expected: `b` },
   { active: `b`, ids: [], expected: undefined },
 ])(`volume selection follows IDs: $active in $ids`, ({ active, ids, expected }) => {
-  const volumes = ids.map((id) => make_volume_fixture([[[1]]], { id }))
+  const volumes = ids.map((identifier) => make_volume_fixture([[[1]]], { id: identifier }))
   expect(normalize_active_volume_id(active, volumes)).toBe(expected)
 })
 
@@ -178,20 +178,24 @@ test.each([
   { ids: [` `], error: /nonempty string/ },
 ])(`rejects ambiguous volume IDs $ids`, ({ ids, error }) => {
   const volume = make_volume_fixture([[[1]]])
-  expect(() => index_volumes(ids.map((id) => ({ ...volume, id })))).toThrow(error)
+  expect(() =>
+    index_volumes(ids.map((identifier) => ({ ...volume, id: identifier }))),
+  ).toThrow(error)
 })
 
 describe(`remove_volume`, () => {
   test.each([`geometry`, `color`, `unrelated`] as const)(
     `removing a %s source preserves surviving identities`,
     (removed) => {
-      const volumes = [`geometry`, `color`, `unrelated`].map((id) =>
-        make_volume_fixture([[[1]]], { id }),
+      const volumes = [`geometry`, `color`, `unrelated`].map((identifier) =>
+        make_volume_fixture([[[1]]], { id: identifier }),
       )
       const layer = { ...auto_volume_layer(volumes[0]), color_volume_id: `color` }
       const result = remove_volume(volumes, [layer], removed)
-      expect(result.volumes.map(({ id }) => id)).toEqual(
-        volumes.filter(({ id }) => id !== removed).map(({ id }) => id),
+      expect(result.volumes.map(({ id: identifier }) => identifier)).toEqual(
+        volumes
+          .filter(({ id: identifier }) => identifier !== removed)
+          .map(({ id: identifier }) => identifier),
       )
       expect(result.layers).toEqual(
         removed === `geometry`
@@ -252,8 +256,8 @@ describe(`label_file_volumes`, () => {
 })
 
 describe(`merge_imported_volumes`, () => {
-  const source_volume = (id: string, source = `CHGCAR`, fill = 1) =>
-    make_volume_fixture([[[fill]]], { id, source, label: id })
+  const source_volume = (identifier: string, source = `CHGCAR`, fill = 1) =>
+    make_volume_fixture([[[fill]]], { id: identifier, source, label: identifier })
 
   test.each([`reorder`, `remove`, `append`] as const)(
     `source %s preserves retained geometry/color settings and selection`,
@@ -273,7 +277,9 @@ describe(`merge_imported_volumes`, () => {
       if (action !== `remove`) incoming.unshift(source_volume(`spin`))
       if (action === `append`) incoming.push(source_volume(`extra`))
       const result = merge_imported_volumes(original.toReversed(), [tuned, retained], incoming)
-      expect(result.volumes.find(({ id }) => id === `charge`)?.values[0]).toBe(9)
+      expect(
+        result.volumes.find(({ id: identifier }) => identifier === `charge`)?.values[0],
+      ).toBe(9)
       expect(result.layers[0]).toBe(tuned)
       expect(result.layers[1]).toEqual({
         ...retained,
@@ -286,7 +292,7 @@ describe(`merge_imported_volumes`, () => {
       ])
       expect(normalize_active_volume_id(`esp`, result.volumes)).toBe(`esp`)
       expect(result.n_added).toBe(action === `append` ? 1 : 0)
-      expect(result.volumes.map(({ id }) => id)).toEqual([
+      expect(result.volumes.map(({ id: identifier }) => identifier)).toEqual([
         `esp`,
         ...(action !== `remove` ? [`spin`] : []),
         `charge`,
@@ -313,7 +319,7 @@ describe(`volume_from_json`, () => {
   }
 
   test(`nested grid JSON becomes a flat z-fastest volume with computed data_range`, () => {
-    const grid = make_grid(2, 3, 4, (ix, iy, iz) => 100 * ix + 10 * iy + iz)
+    const grid = make_grid(2, 3, 4, (idx_x, idx_y, idx_z) => 100 * idx_x + 10 * idx_y + idx_z)
     const vol = volume_from_json({ ...base, grid, label: `rho` })
     expect(vol.dims).toEqual([2, 3, 4])
     expect(vol.order).toBe(`z_fastest`)

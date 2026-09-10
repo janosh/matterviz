@@ -30,13 +30,13 @@ const MAX_UPSAMPLED_POINTS = 20_000_000
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
 // (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)
-function catmull_rom_coeffs(t: number, out: Float64Array): void {
-  const t2 = t * t
-  const t3 = t2 * t
-  out[0] = 0.5 * (-t + 2 * t2 - t3)
-  out[1] = 0.5 * (2 - 5 * t2 + 3 * t3)
-  out[2] = 0.5 * (t + 4 * t2 - 3 * t3)
-  out[3] = 0.5 * (-t2 + t3)
+function catmull_rom_coeffs(fraction: number, out: Float64Array): void {
+  const param_2 = fraction * fraction
+  const param_3 = param_2 * fraction
+  out[0] = 0.5 * (-fraction + 2 * param_2 - param_3)
+  out[1] = 0.5 * (2 - 5 * param_2 + 3 * param_3)
+  out[2] = 0.5 * (fraction + 4 * param_2 - 3 * param_3)
+  out[3] = 0.5 * (-param_2 + param_3)
 }
 
 // Wrapped 4-point stencil offsets (already multiplied by the axis stride) around floor(coord).
@@ -66,15 +66,15 @@ export function upsample_grid(
 ): BandEnergyGrid {
   if (factor <= 1) return grid
 
-  const [nx, ny, nz] = grid_dimensions(grid)
+  const [size_x, size_y, size_z] = grid_dimensions(grid)
   const [stride_x, stride_y, stride_z] = scalar_grid_strides(grid)
   const { values } = grid
 
   // Endpoint-inclusive grids carry one duplicated boundary sample per axis; the wrap
   // period (count of unique points) doubles as the resampling span numerator
   const endpoint = periodic ? 0 : 1
-  const [px, py, pz] = [nx - endpoint, ny - endpoint, nz - endpoint]
-  const [new_nx, new_ny, new_nz] = [px, py, pz].map(
+  const [pixel_x, pixel_y, pixel_z] = [size_x - endpoint, size_y - endpoint, size_z - endpoint]
+  const [new_nx, new_ny, new_nz] = [pixel_x, pixel_y, pixel_z].map(
     (period) => Math.round(period * factor) + endpoint,
   )
   // Bound the point count, not the factor: output grows as factor³ per band, so the settings
@@ -83,7 +83,7 @@ export function upsample_grid(
   const upsampled_points = new_nx * new_ny * new_nz
   if (!(upsampled_points <= MAX_UPSAMPLED_POINTS)) {
     throw new Error(
-      `upsample_grid: factor ${factor} turns a ${nx}×${ny}×${nz} band grid into ` +
+      `upsample_grid: factor ${factor} turns a ${size_x}×${size_y}×${size_z} band grid into ` +
         `${new_nx}×${new_ny}×${new_nz} = ${upsampled_points.toPrecision(3)} points ` +
         `(${(upsampled_points * 8e-6).toPrecision(3)} MB per band), past the ` +
         `${MAX_UPSAMPLED_POINTS} cap. Lower options.interpolation_factor.`,
@@ -98,59 +98,62 @@ export function upsample_grid(
       span > 0 ? (idx / span) * period : 0,
     )
   }
-  const fx_arr = src_coords(new_nx, px)
-  const fy_arr = src_coords(new_ny, py)
-  const fz_arr = src_coords(new_nz, pz)
+  const fx_arr = src_coords(new_nx, pixel_x)
+  const fy_arr = src_coords(new_ny, pixel_y)
+  const fz_arr = src_coords(new_nz, pixel_z)
 
   // Per-axis stencil offsets and weights are precomputed once per output row/plane so the
   // innermost loop is 64 multiply-adds with no allocation or modulo
   const x_offsets = new Int32Array(4)
   const y_offsets = new Int32Array(4)
   const z_offsets = new Int32Array(4 * new_nz)
-  const cx = new Float64Array(4)
-  const cy = new Float64Array(4)
-  const cz = new Float64Array(4 * new_nz)
-  for (let iz = 0; iz < new_nz; iz++) {
-    const fz = fz_arr[iz]
-    wrapped_stencil(fz, pz, stride_z, z_offsets.subarray(4 * iz, 4 * iz + 4))
-    catmull_rom_coeffs(fz - Math.floor(fz), cz.subarray(4 * iz, 4 * iz + 4))
+  const coeffs_x = new Float64Array(4)
+  const coeffs_y = new Float64Array(4)
+  const coeffs_z = new Float64Array(4 * new_nz)
+  for (let idx_z = 0; idx_z < new_nz; idx_z++) {
+    const frac_z = fz_arr[idx_z]
+    wrapped_stencil(frac_z, pixel_z, stride_z, z_offsets.subarray(4 * idx_z, 4 * idx_z + 4))
+    catmull_rom_coeffs(
+      frac_z - Math.floor(frac_z),
+      coeffs_z.subarray(4 * idx_z, 4 * idx_z + 4),
+    )
   }
 
   const out = new Float64Array(new_nx * new_ny * new_nz)
   let out_idx = 0
-  for (let ix = 0; ix < new_nx; ix++) {
-    const fx = fx_arr[ix]
-    wrapped_stencil(fx, px, stride_x, x_offsets)
-    catmull_rom_coeffs(fx - Math.floor(fx), cx)
-    for (let iy = 0; iy < new_ny; iy++) {
-      const fy = fy_arr[iy]
-      wrapped_stencil(fy, py, stride_y, y_offsets)
-      catmull_rom_coeffs(fy - Math.floor(fy), cy)
-      for (let iz = 0; iz < new_nz; iz++) {
-        const z_base = 4 * iz
+  for (let idx_x = 0; idx_x < new_nx; idx_x++) {
+    const frac_x = fx_arr[idx_x]
+    wrapped_stencil(frac_x, pixel_x, stride_x, x_offsets)
+    catmull_rom_coeffs(frac_x - Math.floor(frac_x), coeffs_x)
+    for (let idx_y = 0; idx_y < new_ny; idx_y++) {
+      const frac_y = fy_arr[idx_y]
+      wrapped_stencil(frac_y, pixel_y, stride_y, y_offsets)
+      catmull_rom_coeffs(frac_y - Math.floor(frac_y), coeffs_y)
+      for (let idx_z = 0; idx_z < new_nz; idx_z++) {
+        const z_base = 4 * idx_z
         const oz0 = z_offsets[z_base]
         const oz1 = z_offsets[z_base + 1]
         const oz2 = z_offsets[z_base + 2]
         const oz3 = z_offsets[z_base + 3]
-        const cz0 = cz[z_base]
-        const cz1 = cz[z_base + 1]
-        const cz2 = cz[z_base + 2]
-        const cz3 = cz[z_base + 3]
+        const cz0 = coeffs_z[z_base]
+        const cz1 = coeffs_z[z_base + 1]
+        const cz2 = coeffs_z[z_base + 2]
+        const cz3 = coeffs_z[z_base + 3]
         // Interpolate along z, then y, then x
         let result = 0
-        for (let xi = 0; xi < 4; xi++) {
-          const x_off = x_offsets[xi]
+        for (let x_index = 0; x_index < 4; x_index++) {
+          const x_off = x_offsets[x_index]
           let y_sum = 0
-          for (let yi = 0; yi < 4; yi++) {
-            const row = x_off + y_offsets[yi]
+          for (let y_index = 0; y_index < 4; y_index++) {
+            const row = x_off + y_offsets[y_index]
             y_sum +=
-              cy[yi] *
+              coeffs_y[y_index] *
               (cz0 * values[row + oz0] +
                 cz1 * values[row + oz1] +
                 cz2 * values[row + oz2] +
                 cz3 * values[row + oz3])
           }
-          result += cx[xi] * y_sum
+          result += coeffs_x[x_index] * y_sum
         }
         out[out_idx++] = result
       }
@@ -178,8 +181,8 @@ export function extract_fermi_surface(
   band_data: BandGridData,
   options: FermiSurfaceOptions = {},
 ): FermiSurfaceData {
-  const { mu = 0, interpolation_factor = 1 } = options
-  const isovalue = band_data.fermi_energy + mu
+  const { mu: mean = 0, interpolation_factor = 1 } = options
+  const isovalue = band_data.fermi_energy + mean
   const isosurfaces: FermiIsosurface[] = []
   // BXSF grids are endpoint-inclusive (store both equivalent k=0 and k=1 → false);
   // FRMSF grids store k=i/n without the duplicated endpoint (→ true)
@@ -294,15 +297,15 @@ function slice_surface_with_plane(
   const { positions, indices, properties } = surface
   const n_vertices = vertex_count(surface)
   if (n_vertices === 0 || indices.length === 0) return []
-  const [nx, ny, nz] = plane_normal
+  const [normal_x, normal_y, normal_z] = plane_normal
 
   // Signed distance of each vertex to the plane
   const vertex_distances = new Float64Array(n_vertices)
   for (let idx = 0; idx < n_vertices; idx++) {
     vertex_distances[idx] =
-      positions[3 * idx] * nx +
-      positions[3 * idx + 1] * ny +
-      positions[3 * idx + 2] * nz -
+      positions[3 * idx] * normal_x +
+      positions[3 * idx + 1] * normal_y +
+      positions[3 * idx + 2] * normal_z -
       plane_distance
   }
 
@@ -319,10 +322,11 @@ function slice_surface_with_plane(
     v0_idx: number,
     v1_idx: number,
   ): { point: Vec3; property: number } | null => {
-    const d0 = vertex_distances[v0_idx]
-    const d1 = vertex_distances[v1_idx]
-    if (d0 >= 0 === d1 >= 0) return null
-    const frac = d0 === 0 ? 0 : d1 === 0 ? 1 : d0 / (d0 - d1)
+    const distance_0 = vertex_distances[v0_idx]
+    const distance_1 = vertex_distances[v1_idx]
+    if (distance_0 >= 0 === distance_1 >= 0) return null
+    const frac =
+      distance_0 === 0 ? 0 : distance_1 === 0 ? 1 : distance_0 / (distance_0 - distance_1)
     // Taken from the vertex itself at the ends, so a crossing that lands on one is bit-identical
     // to it - that is what lets the degenerate-segment test below compare points exactly
     const snap = frac === 0 ? v0_idx : frac === 1 ? v1_idx : -1
@@ -381,8 +385,8 @@ function slice_surface_with_plane(
   }
   if (face_segments.length === 0) return []
 
-  const [ux, uy, uz] = in_plane_u
-  const [vx, vy, vz] = in_plane_v
+  const [unit_x, unit_y, unit_z] = in_plane_u
+  const [vector_x, vector_y, vector_z] = in_plane_v
   const used_faces = new Set<number>()
   const isolines: Isoline[] = []
 
@@ -440,8 +444,8 @@ function slice_surface_with_plane(
     const is_closed = math.euclidean_dist(first, last) < CLOSED_CONTOUR_TOLERANCE
 
     const points_2d: Vec2[] = contour_points.map((point) => [
-      point[0] * ux + point[1] * uy + point[2] * uz,
-      point[0] * vx + point[1] * vy + point[2] * vz,
+      point[0] * unit_x + point[1] * unit_y + point[2] * unit_z,
+      point[0] * vector_x + point[1] * vector_y + point[2] * vector_z,
     ])
 
     isolines.push({

@@ -454,25 +454,30 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
     return fermi_surface_from_json(data.fermi_surface)
   }
 
-  const bs = [data.band_structure, data.bands].find(
+  const band_structure = [data.band_structure, data.bands].find(
     (cand): cand is Record<string, unknown> & { energies: unknown[] } =>
       is_plain_object(cand) && Array.isArray(cand.energies),
   )
-  if (bs) {
-    const first_spin = bs.energies[0]
+  if (band_structure) {
+    const first_spin = band_structure.energies[0]
     return band_grid_from_json(
       {
-        energies: bs.energies,
-        k_grid: bs.k_grid ?? bs.kgrid,
-        k_lattice: bs.k_lattice ?? bs.reciprocal_lattice,
-        fermi_energy: bs.fermi_energy ?? bs.efermi ?? 0,
+        energies: band_structure.energies,
+        k_grid: band_structure.k_grid ?? band_structure.kgrid,
+        k_lattice: band_structure.k_lattice ?? band_structure.reciprocal_lattice,
+        fermi_energy: band_structure.fermi_energy ?? band_structure.efermi ?? 0,
         n_bands:
           first_nonzero(
-            bs.n_bands,
-            bs.nbands,
+            band_structure.n_bands,
+            band_structure.nbands,
             Array.isArray(first_spin) ? first_spin.length : undefined,
           ) ?? 0,
-        n_spins: first_nonzero(bs.n_spins, bs.nspins, bs.energies.length) ?? 1,
+        n_spins:
+          first_nonzero(
+            band_structure.n_spins,
+            band_structure.nspins,
+            band_structure.energies.length,
+          ) ?? 1,
       },
       `band_structure JSON`,
     )

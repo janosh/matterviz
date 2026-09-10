@@ -15,7 +15,7 @@ export const structures = Object.entries(
   import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
 )
   .flatMap(([path, data]) => {
-    const id = glob_basename(path).split(`.`)[0]
+    const identifier = glob_basename(path).split(`.`)[0]
     const optimade = optimade_structure_from_raw(data)
     // optimade_to_structure throws on a malformed fixture on purpose: that should fail loudly
     // at build/test time rather than silently drop the structure from the demo list.
@@ -25,7 +25,7 @@ export const structures = Object.entries(
       : is_structure_like(data)
         ? structure_from_json(data)
         : null
-    return structure && is_crystal(structure) ? [{ ...structure, id }] : []
+    return structure && is_crystal(structure) ? [{ ...structure, id: identifier }] : []
   })
   .toSorted((struct_a, struct_b) =>
     (struct_a.id?.split(`-`)[1] ?? ``)

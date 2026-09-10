@@ -179,7 +179,15 @@
     }
     const cards: InfoPaneCard[] = [{ title: `Structure`, rows: structure_rows }]
     if (!(`lattice` in structure)) return cards
-    const { a, b, c, alpha, beta, gamma, volume } = structure.lattice
+    const {
+      a: lattice_a,
+      b: lattice_b,
+      c: lattice_c,
+      alpha,
+      beta,
+      gamma,
+      volume,
+    } = structure.lattice
     cards.push({
       title: `Cell`,
       rows: [
@@ -190,7 +198,7 @@
         },
         {
           label: `a, b, c`,
-          value: `${format_num(a, `.3~f`)}, ${format_num(b, `.3~f`)}, ${format_num(c, `.3~f`)} Å`,
+          value: `${format_num(lattice_a, `.3~f`)}, ${format_num(lattice_b, `.3~f`)}, ${format_num(lattice_c, `.3~f`)} Å`,
           key: `cell-abc`,
         },
         {

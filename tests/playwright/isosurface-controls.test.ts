@@ -33,13 +33,13 @@ async function get_center(locator: Locator) {
 }
 
 // Drag from a locator's center by a given offset
-async function drag_from(page: Page, locator: Locator, dx: number, dy: number) {
+async function drag_from(page: Page, locator: Locator, delta_x: number, delta_y: number) {
   // Scroll element into view so mouse coordinates are within the viewport
   await locator.scrollIntoViewIfNeeded()
-  const { x, y } = await get_center(locator)
-  await page.mouse.move(x, y)
+  const { x: coord_x, y: coord_y } = await get_center(locator)
+  await page.mouse.move(coord_x, coord_y)
   await page.mouse.down()
-  await page.mouse.move(x + dx, y + dy, { steps: 5 })
+  await page.mouse.move(coord_x + delta_x, coord_y + delta_y, { steps: 5 })
   await page.mouse.up()
 }
 

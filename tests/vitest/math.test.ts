@@ -17,8 +17,8 @@ describe(`combinations`, () => {
     [[`A`, `B`, `C`], 2, [[`A`, `B`], [`A`, `C`], [`B`, `C`]]],
     [[`A`, `B`, `C`, `D`], 1, [[`A`], [`B`], [`C`], [`D`]]],
     [[1, 2, 3], 2, [[1, 2], [1, 3], [2, 3]]],
-  ])(`C(%j, %i) -> %j`, (arr, k, expected) => {
-    expect(math.combinations(arr as unknown[], k)).toEqual(expected)
+  ])(`C(%j, %i) -> %j`, (arr, order, expected) => {
+    expect(math.combinations(arr as unknown[], order)).toEqual(expected)
   })
 
   // Neither base case catches a negative k - `k === 0` never fires and `arr.length < k` is
@@ -271,11 +271,27 @@ test(`a degenerate slab cell survives a calc_lattice_params round-trip`, () => {
     [0, 3, 0],
     [0, 0, 0],
   ]
-  const { a, b, c, alpha, beta, gamma } = math.calc_lattice_params(slab)
-  const round_tripped = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+  const {
+    a: lattice_a,
+    b: lattice_b,
+    c: lattice_c,
+    alpha,
+    beta,
+    gamma,
+  } = math.calc_lattice_params(slab)
+  const round_tripped = math.cell_to_lattice_matrix(
+    lattice_a,
+    lattice_b,
+    lattice_c,
+    alpha,
+    beta,
+    gamma,
+  )
   expect(round_tripped).toEqual(slab.map((row) => row.map((val) => expect.closeTo(val, 12))))
   // the sentinel that would break it
-  expect(() => math.cell_to_lattice_matrix(a, b, c, 0, 0, gamma)).toThrow(/realizable/)
+  expect(() =>
+    math.cell_to_lattice_matrix(lattice_a, lattice_b, lattice_c, 0, 0, gamma),
+  ).toThrow(/realizable/)
 })
 
 describe(`pbc_dist`, () => {
@@ -442,8 +458,8 @@ describe(`pbc_dist`, () => {
     const masks: Pbc3[] = [[true, true, true], [true, false, true], [false, true, false]]
     for (let trial = 0; trial < 25; trial++) {
       const from: Vec3 = [rand(), rand(), rand()]
-      const to: Vec3 = [rand(), rand(), rand()]
-      const frac_diff = math.subtract(cart_to_frac(to), cart_to_frac(from))
+      const target: Vec3 = [rand(), rand(), rand()]
+      const frac_diff = math.subtract(cart_to_frac(target), cart_to_frac(from))
       for (const pbc of masks) {
         // scan ±8 images around the round-to-nearest guess on each periodic axis; partial
         // masks need the range, since an unwrapped axis can only shrink via the others
@@ -461,11 +477,11 @@ describe(`pbc_dist`, () => {
             }
           }
         }
-        const displacement = math.min_image_displacement(from, to, lattice, converters, pbc)
+        const displacement = math.min_image_displacement(from, target, lattice, converters, pbc)
         expect(Math.hypot(...displacement)).toBeCloseTo(brute, 10)
-        expect(math.pbc_dist(from, to, lattice, undefined, pbc)).toBeCloseTo(brute, 10)
+        expect(math.pbc_dist(from, target, lattice, undefined, pbc)).toBeCloseTo(brute, 10)
         // antisymmetry
-        const reverse = math.min_image_displacement(to, from, lattice, converters, pbc)
+        const reverse = math.min_image_displacement(target, from, lattice, converters, pbc)
         expect(reverse).toEqual(displacement.map((val) => expect.closeTo(-val, 10)))
       }
     }
@@ -584,13 +600,22 @@ describe(`3x3 matrix and lattice utilities`, () => {
     })
 
     it(`round-trip consistency with calc_lattice_params`, () => {
-      const [a, b, c, alpha, beta, gamma] = [4.5, 5.2, 6.8, 85, 92, 105]
-      const matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+      const [lattice_a, lattice_b, lattice_c, alpha, beta, gamma] = [
+        4.5, 5.2, 6.8, 85, 92, 105,
+      ]
+      const matrix = math.cell_to_lattice_matrix(
+        lattice_a,
+        lattice_b,
+        lattice_c,
+        alpha,
+        beta,
+        gamma,
+      )
       const params = math.calc_lattice_params(matrix)
 
-      expect(params.a).toBeCloseTo(a, 10)
-      expect(params.b).toBeCloseTo(b, 10)
-      expect(params.c).toBeCloseTo(c, 10)
+      expect(params.a).toBeCloseTo(lattice_a, 10)
+      expect(params.b).toBeCloseTo(lattice_b, 10)
+      expect(params.c).toBeCloseTo(lattice_c, 10)
       expect(params.alpha).toBeCloseTo(alpha, 6)
       expect(params.beta).toBeCloseTo(beta, 6)
       expect(params.gamma).toBeCloseTo(gamma, 6)
@@ -739,8 +764,8 @@ test.each([
   [0.5, 0, 1, 0.5],
   [3, 3, 3, 3],
   [NaN, 0, 1, NaN],
-])(`clamp(%f, %f, %f) = %f`, (value, lo, hi, expected) => {
-  expect(math.clamp(value, lo, hi)).toBe(expected)
+])(`clamp(%f, %f, %f) = %f`, (value, lower, upper, expected) => {
+  expect(math.clamp(value, lower, upper)).toBe(expected)
 })
 
 // mean / sample_std / median agree with the textbook definitions and with d3-array
@@ -847,8 +872,8 @@ describe(`det_nxn 4x4 fast path`, () => {
     [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1], 1, `negative identity`],
     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
     [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
-  ])(`%s`, (r0, r1, r2, r3, expected) => {
-    expect(math.det_nxn([r0, r1, r2, r3])).toBeCloseTo(expected, 10)
+  ])(`%s`, (radius_0, radius_1, radius, radius_3, expected) => {
+    expect(math.det_nxn([radius_0, radius_1, radius, radius_3])).toBeCloseTo(expected, 10)
   })
 
   test(`barycentric coordinates (tetrahedron unit test)`, () => {
@@ -873,8 +898,8 @@ describe(`cross_3d`, () => {
     [[2, 3, 4], [5, 6, 7], [-3, 6, -3], `general`],
     [[0, 0, 0], [1, 2, 3], [0, 0, 0], `zero vector`],
     [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e20], `large numbers`],
-  ])(`%s`, (v1, v2, expected) => {
-    const result = math.cross_3d(v1, v2)
+  ])(`%s`, (vector_1, vector_2, expected) => {
+    const result = math.cross_3d(vector_1, vector_2)
     // For large values (≥1e10), use lower precision due to floating-point precision limits
     const precision = expected.some((val) => Math.abs(val) >= 1e10) ? 5 : 10
     expect(result).toEqual(expected.map((val) => expect.closeTo(val, precision)))
@@ -927,7 +952,7 @@ describe(`cell_heights`, () => {
     const heights = math.cell_heights(matrix)
     expect(heights).toEqual(expected.map((val) => expect.closeTo(val, 12)))
     // Height is never larger than the corresponding lattice vector length
-    heights.forEach((h, idx) => expect(h).toBeLessThanOrEqual(Math.hypot(...matrix[idx])))
+    heights.forEach((height_value, idx) => expect(height_value).toBeLessThanOrEqual(Math.hypot(...matrix[idx])))
   })
 
   test(`degenerate (zero-volume) cell → Infinity heights`, () => {
@@ -1009,8 +1034,8 @@ test.each([
   [10, 0, 0.5, 5, `reversed order midpoint`],
   [0, 10, 2, 20, `extrapolation t>1`],
   [0, 10, -0.5, -5, `extrapolation t<0`],
-])(`lerp(%f, %f, %f) = %f - %s`, (start, end, t, expected) => {
-  expect(math.lerp(start, end, t)).toBeCloseTo(expected)
+])(`lerp(%f, %f, %f) = %f - %s`, (start, end, fraction, expected) => {
+  expect(math.lerp(start, end, fraction)).toBeCloseTo(expected)
 })
 
 // oxfmt-ignore
@@ -1019,8 +1044,8 @@ it.each([
   [[0, 0, 0], [10, 20, 30], 1, [10, 20, 30]],
   [[0, 0, 0], [10, 20, 30], 0.5, [5, 10, 15]],
   [[-10, -20, -30], [10, 20, 30], 0.5, [0, 0, 0]],
-] as [Vec3, Vec3, number, Vec3][])(`lerp_vec3(%j, %j, %d) = %j`, (start, end, t, expect_v) => {
-  expect(math.lerp_vec3(start, end, t)).toEqual(expect_v)
+] as [Vec3, Vec3, number, Vec3][])(`lerp_vec3(%j, %j, %d) = %j`, (start, end, fraction, expect_v) => {
+  expect(math.lerp_vec3(start, end, fraction)).toEqual(expect_v)
 })
 
 describe(`normalize_vec`, () => {
@@ -1176,9 +1201,9 @@ describe(`convex_hull_2d`, () => {
     // Shoelace signed area should be positive for CCW
     let signed_area = 0
     for (let idx = 0; idx < hull.length; idx++) {
-      const [x0, y0] = hull[idx]
-      const [x1, y1] = hull[(idx + 1) % hull.length]
-      signed_area += x0 * y1 - x1 * y0
+      const [coord_x_0, coord_y_0] = hull[idx]
+      const [coord_x_1, coord_y_1] = hull[(idx + 1) % hull.length]
+      signed_area += coord_x_0 * coord_y_1 - coord_x_1 * coord_y_0
     }
     expect(signed_area).toBeGreaterThan(0)
   })
@@ -1234,8 +1259,9 @@ describe(`merge_coplanar_triangles`, () => {
       [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [0, 4, 7, 3], [1, 2, 6, 5],
     ]
     const coords: number[] = []
-    for (const [aa, bb, cc, dd] of quads) {
-      for (const idx of [aa, bb, cc, aa, cc, dd]) coords.push(...corners[idx])
+    for (const [corner_a, bounds, corner_c, corner_d] of quads) {
+      for (const idx of [corner_a, bounds, corner_c, corner_a, corner_c, corner_d])
+        coords.push(...corners[idx])
     }
     const input = new Float32Array(coords)
     const outward_count = (verts: Float32Array) => {
@@ -1278,8 +1304,10 @@ describe(`merge_coplanar_triangles`, () => {
     const out_verts = extract_triangle_verts(result)
     // oxfmt-ignore
     const expected_verts: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
-    for (const ev of expected_verts) {
-      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
+    for (const expected_vertex of expected_verts) {
+      expect(
+        out_verts.some((output_vertex) => vec3_close(output_vertex, expected_vertex)),
+      ).toBe(true)
     }
     // Fan triangulation: both output triangles must share the same fan origin.
     // This can ONLY be true if the merge ran (input tri1 starts with A, tri2 with C).
@@ -1329,8 +1357,8 @@ describe(`merge_coplanar_triangles`, () => {
       const result = math.merge_coplanar_triangles(input)
       expect(result).toHaveLength(expected_len)
       const out_verts = extract_triangle_verts(result)
-      for (const ev of expected_verts) {
-        expect(out_verts.some((ov) => vec3_close(ov, ev, tol))).toBe(true)
+      for (const expected_vertex of expected_verts) {
+        expect(out_verts.some((output_vertex) => vec3_close(output_vertex, expected_vertex, tol))).toBe(true)
       }
     },
   )
@@ -1356,9 +1384,13 @@ describe(`merge_coplanar_triangles`, () => {
     const result = math.merge_coplanar_triangles(input)
     let area = 0
     for (let idx = 0; idx < result.length; idx += 9) {
-      const [ax, ay, az, bx, by, bz, cx, cy, cz] = result.subarray(idx, idx + 9)
-      const cr = math.cross_3d([bx - ax, by - ay, bz - az], [cx - ax, cy - ay, cz - az])
-      area += 0.5 * Math.hypot(...cr)
+      const [axis_x, axis_y, axis_z, basis_x, basis_y, basis_z, center_x, center_y, center_z] =
+        result.subarray(idx, idx + 9)
+      const cross_product = math.cross_3d(
+        [basis_x - axis_x, basis_y - axis_y, basis_z - axis_z],
+        [center_x - axis_x, center_y - axis_y, center_z - axis_z],
+      )
+      area += 0.5 * Math.hypot(...cross_product)
     }
     expect(area).toBeCloseTo(1.0, 6)
   })
@@ -1460,17 +1492,19 @@ function extract_triangle_verts(positions: Float32Array): Vec3[] {
 }
 
 // Check if two Vec3 are close within tolerance
-const vec3_close = (va: Vec3, vb: Vec3, tol = 1e-4): boolean =>
-  Math.abs(va[0] - vb[0]) < tol &&
-  Math.abs(va[1] - vb[1]) < tol &&
-  Math.abs(va[2] - vb[2]) < tol
+const vec3_close = (vertex_a: Vec3, vertex_b: Vec3, tol = 1e-4): boolean =>
+  Math.abs(vertex_a[0] - vertex_b[0]) < tol &&
+  Math.abs(vertex_a[1] - vertex_b[1]) < tol &&
+  Math.abs(vertex_a[2] - vertex_b[2]) < tol
 
 // Check if two vertex sets contain the same vertices (unordered, within tolerance)
 function same_vertex_set(set_a: Vec3[], set_b: Vec3[]): boolean {
   if (set_a.length !== set_b.length) return false
   const used = new Set<number>()
-  for (const va of set_a) {
-    const match_idx = set_b.findIndex((vb, idx) => !used.has(idx) && vec3_close(va, vb))
+  for (const vertex_a of set_a) {
+    const match_idx = set_b.findIndex(
+      (vertex_b, idx) => !used.has(idx) && vec3_close(vertex_a, vertex_b),
+    )
     if (match_idx === -1) return false
     used.add(match_idx)
   }

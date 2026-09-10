@@ -196,13 +196,13 @@
     return [...ordered_known_entries, ...unknown_entries]
   })
 
-  function remap_element(from: ElementSymbol, to: ElementSymbol) {
-    if (from === to && element_mapping?.[from]) {
+  function remap_element(from: ElementSymbol, target: ElementSymbol) {
+    if (from === target && element_mapping?.[from]) {
       // Remove mapping if mapping back to original element
       const { [from]: _removed_mapping, ...mapping } = element_mapping
       element_mapping = Object.keys(mapping).length > 0 ? mapping : undefined
-    } else if (from !== to) {
-      element_mapping = { ...element_mapping, [from]: to }
+    } else if (from !== target) {
+      element_mapping = { ...element_mapping, [from]: target }
     }
     remap_menu_open = null
     remap_search = ``

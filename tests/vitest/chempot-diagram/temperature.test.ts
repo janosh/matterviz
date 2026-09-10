@@ -84,9 +84,9 @@ describe(`get_temp_filter_payload`, () => {
     { config: { interpolate_temperature: true, max_interpolation_gap: 1000 }, li: true },
     // unset keys fall back to CHEMPOT_DEFAULTS (interpolate across at most 500 K < 600 K)
     { config: {}, li: false },
-  ])(`$config keeps Li: $li`, ({ config, li }) => {
+  ])(`$config keeps Li: $li`, ({ config, li: lithium }) => {
     const payload = get_payload_at_700(config)
-    expect(has_formula(payload.temp_filtered_entries, `Li`)).toBe(li)
+    expect(has_formula(payload.temp_filtered_entries, `Li`)).toBe(lithium)
     // Guard against creating spurious formulas during temperature filtering/interpolation.
     expect(has_formula(payload.temp_filtered_entries, `LiO2`)).toBe(false)
   })

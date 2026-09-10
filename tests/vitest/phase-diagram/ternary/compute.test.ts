@@ -54,7 +54,7 @@ const expect_events_consistent = (diagram: TernaryPhaseDiagram) => {
     else stable = section.stable
   }
   for (const [idx, windows] of diagram.stability_windows.entries()) {
-    for (const [lo, hi] of windows) expect(hi).toBeGreaterThan(lo)
+    for (const [lower, upper] of windows) expect(upper).toBeGreaterThan(lower)
     expect(windows.length > 0).toBe(
       diagram.sections.some((section) => section.stable.includes(idx)),
     )
@@ -200,7 +200,7 @@ describe(`compute_ternary_phase_diagram`, () => {
     expect(reactions(diagram, 2)).toEqual([`NaLi → Li + Na`])
     expect(
       diagram.stability_windows.map((windows) =>
-        windows.map(([lo, hi]) => [Math.round(lo), Math.round(hi)]),
+        windows.map(([lower, upper]) => [Math.round(lower), Math.round(upper)]),
       ),
     ).toEqual([
       [[300, 1300]],
@@ -260,7 +260,9 @@ describe(`compute_ternary_phase_diagram`, () => {
     expect(narrow.events).toEqual([])
     expect(narrow.stability_windows[3]).toEqual([[500, 700]])
     const frozen = compute_ternary_phase_diagram(
-      toy_entries.map(({ temperatures: _t, free_energies: _g, ...rest }) => rest),
+      toy_entries.map(
+        ({ temperatures: _unused_param, free_energies: _unused_group, ...rest }) => rest,
+      ),
       { elements: toy_elements },
     )
     expect(frozen).toMatchObject({ sources: [`static`], events: [], t_range: [300, 1500] })
@@ -278,7 +280,7 @@ describe(`Li-Co-O with the SISSO model`, () => {
       `${import.meta.dirname}/../../../../src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`,
     ).filter((entry) =>
       Object.entries(entry.composition).every(
-        ([el, amt]) => amt <= 0 || [`Li`, `Co`, `O`].includes(el),
+        ([element, amt]) => amt <= 0 || [`Li`, `Co`, `O`].includes(element),
       ),
     )
     diagram = compute_ternary_phase_diagram(entries, { n_samples: 35 })
@@ -326,7 +328,8 @@ describe(`Li-Co-O with the SISSO model`, () => {
           .filter((entry) => entry.is_stable)
           .map(
             (entry) =>
-              frozen.phases.find((ph) => ph.entry.entry_id === entry.entry_id)?.label ?? ``,
+              frozen.phases.find((phase) => phase.entry.entry_id === entry.entry_id)?.label ??
+              ``,
           ),
       ),
     ].toSorted()

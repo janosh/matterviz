@@ -3,7 +3,7 @@ import { calc_coordination_nums } from '$lib/coordination'
 import * as math from '$lib/math'
 import type { Vec3 } from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
-import * as ap from '$lib/structure/atom-properties'
+import * as atom_properties from '$lib/structure/atom-properties'
 import { parse_poscar } from '$lib/structure/parse'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { get_orig_site_idx } from '$lib/structure/site'
@@ -32,7 +32,11 @@ describe(`Color Scales`, () => {
     [[1, 2, 3, 1, 2], `categorical`, false],
     [[5, 5, 5], `continuous`, false],
   ] as const)(`apply_color_scale %s`, (vals, scale_type, diff) => {
-    const { colors } = ap.apply_color_scale([...vals], `interpolateViridis`, scale_type)
+    const { colors } = atom_properties.apply_color_scale(
+      [...vals],
+      `interpolateViridis`,
+      scale_type,
+    )
     expect(colors).toHaveLength(vals.length)
     expect(colors.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(true)
     if (diff) expect(colors[0]).not.toBe(colors.at(-1))
@@ -40,7 +44,7 @@ describe(`Color Scales`, () => {
   })
 
   test(`categorical strings`, () => {
-    const { colors } = ap.apply_categorical_color_scale([`a`, `b`, `c`, `a`])
+    const { colors } = atom_properties.apply_categorical_color_scale([`a`, `b`, `c`, `a`])
     expect(colors).toHaveLength(4)
     expect(colors[0]).toBe(colors[3])
     expect(new Set(colors).size).toBe(3)
@@ -48,7 +52,7 @@ describe(`Color Scales`, () => {
 
   test(`large continuous range yields many distinct colors`, () => {
     const values = Array.from({ length: 100 }, (_, idx) => idx * 1000)
-    expect(new Set(ap.apply_color_scale(values).colors).size).toBeGreaterThan(50)
+    expect(new Set(atom_properties.apply_color_scale(values).colors).size).toBeGreaterThan(50)
   })
 })
 
@@ -59,7 +63,7 @@ describe(`Coordination`, () => {
     [`isolated atoms`, [{ xyz: [0, 0, 0] }, { xyz: [100, 100, 100] }], [0, 0]],
     [`linear chain (middle has two neighbors)`, [{ xyz: [0, 0, 0], element: `C` }, { xyz: [1.5, 0, 0], element: `C` }, { xyz: [3, 0, 0], element: `C` }], [1, 2, 1]],
   ] as [string, Parameters<typeof make_struct>[0], number[]][])(`%s coordination`, (_name, sites, expected) => {
-    const { values, colors } = ap.get_coordination_colors(make_struct(sites))
+    const { values, colors } = atom_properties.get_coordination_colors(make_struct(sites))
     expect(values).toEqual(expected)
     // equal coordination numbers share a color
     for (const [idx, value] of values.entries()) {
@@ -104,7 +108,7 @@ describe(`Coordination`, () => {
         ] },
     ])(`$name`, ({ sites, lattice_size, pbc = cubic_pbc, expected }) => {
       const structure = make_cubic_structure(sites, lattice_size, pbc)
-      const { values, colors } = ap.get_coordination_colors(structure)
+      const { values, colors } = atom_properties.get_coordination_colors(structure)
 
       expect(values).toEqual(expected)
       expect(colors).toHaveLength(sites.length)
@@ -118,7 +122,7 @@ describe(`Coordination`, () => {
       const strategy = `electroneg_ratio`
       const structure = make_cubic_structure(nacl_corner_sites, 5)
       const bar_plot_cn = calc_coordination_nums(structure, { strategy }).coordination_nums
-      const viewer_cn = ap.get_coordination_colors(structure, strategy).values
+      const viewer_cn = atom_properties.get_coordination_colors(structure, strategy).values
       const raw_cn = calc_coordination_nums(structure, {
         strategy,
         pbc: [false, false, false],
@@ -140,8 +144,14 @@ describe(`Coordination`, () => {
         const frac_to_cart = math.create_frac_to_cart(matrix)
         const range = Array.from({ length: 2 * shells + 1 }, (_, idx) => idx - shells)
         const offsets = range
-          .flatMap((dx) => range.flatMap((dy) => range.map((dz) => [dx, dy, dz] as Vec3)))
-          .filter(([dx, dy, dz]) => dx !== 0 || dy !== 0 || dz !== 0)
+          .flatMap((delta_x) =>
+            range.flatMap((delta_y) =>
+              range.map((delta_z) => [delta_x, delta_y, delta_z] as Vec3),
+            ),
+          )
+          .filter(
+            ([delta_x, delta_y, delta_z]) => delta_x !== 0 || delta_y !== 0 || delta_z !== 0,
+          )
         const images = structure.sites.flatMap((site, src) =>
           offsets.map((off) => {
             const abc = site.abc.map((coord, axis) => coord + off[axis]) as Vec3
@@ -197,9 +207,9 @@ describe(`Coordination`, () => {
         [`mixed-element rocksalt cell`, make_rocksalt(5.6)],
       ])(`coordination matches brute-force ground truth: %s`, (_name, structure) => {
         const reference = brute_force_cn(structure)
-        expect(ap.get_coordination_colors(structure).values).toEqual(reference)
+        expect(atom_properties.get_coordination_colors(structure).values).toEqual(reference)
         // Sanity: the structure actually forms bonds (else the comparison is vacuous)
-        expect(reference.some((cn) => cn > 0)).toBe(true)
+        expect(reference.some((coordination_num) => coordination_num > 0)).toBe(true)
       })
 
       test(`partial PBC keeps non-periodic coordinates outside the cell`, () => {
@@ -213,7 +223,7 @@ describe(`Coordination`, () => {
           ],
           { pbc: [true, true, false], charge: 0 },
         )
-        expect(ap.get_coordination_colors(structure).values).toEqual([0, 0])
+        expect(atom_properties.get_coordination_colors(structure).values).toEqual([0, 0])
       })
     })
   })
@@ -259,9 +269,12 @@ describe(`Coordination`, () => {
     )
     const displayed = get_pbc_image_sites(make_supercell(base, [2, 1, 1]))
     expect(displayed.sites.length).toBeGreaterThan(4)
-    const config = { ...ap.DEFAULT_ATOM_COLOR_CONFIG, mode: `coordination` } as const
-    const on_base = ap.get_atom_colors(base, config)
-    const expanded = ap.get_atom_colors(displayed, config, { base })
+    const config = {
+      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `coordination`,
+    } as const
+    const on_base = atom_properties.get_atom_colors(base, config)
+    const expanded = atom_properties.get_atom_colors(displayed, config, { base })
     expect(expanded.colors).toHaveLength(displayed.sites.length)
     expect(expanded.unique_values).toEqual(on_base.unique_values)
     displayed.sites.forEach((site, idx) => {
@@ -283,13 +296,19 @@ describe(`Wyckoff`, () => {
   })
 
   test(`no rows produce gray unknown`, () => {
-    const { colors, values, unique_values } = ap.get_wyckoff_colors(diagonal_c(1), [])
+    const { colors, values, unique_values } = atom_properties.get_wyckoff_colors(
+      diagonal_c(1),
+      [],
+    )
     expect([colors[0], values[0], unique_values]).toEqual([`#808080`, `unknown`, [`unknown`]])
   })
 
   test(`orbit ids are multiplicity+letter|element, categorical per row`, () => {
     const rows = [row(`3a`, `C`, [0, 1, 3]), row(`1b`, `C`, [2])]
-    const { colors, values, unique_values } = ap.get_wyckoff_colors(diagonal_c(4), rows)
+    const { colors, values, unique_values } = atom_properties.get_wyckoff_colors(
+      diagonal_c(4),
+      rows,
+    )
     expect(values).toEqual([`3a|C`, `3a|C`, `1b|C`, `3a|C`])
     expect(unique_values).toEqual([`1b|C`, `3a|C`])
     expect(colors[0]).toBe(colors[1])
@@ -298,7 +317,7 @@ describe(`Wyckoff`, () => {
   })
 
   test(`sites no row claims are gray unknown and ignore out-of-range indices`, () => {
-    const result = ap.get_wyckoff_colors(diagonal_c(2), [row(`1b`, `C`, [1, 7])])
+    const result = atom_properties.get_wyckoff_colors(diagonal_c(2), [row(`1b`, `C`, [1, 7])])
     expect(result.values).toEqual([`unknown`, `1b|C`])
     expect(result.colors[0]).toBe(`#808080`)
     expect(result.unique_values).toEqual([`1b|C`, `unknown`])
@@ -312,7 +331,7 @@ describe(`Wyckoff`, () => {
       { xyz: [0, 0, 0], element: `O` }, { xyz: [1, 1, 1], element: `F` },
       { xyz: [2, 2, 2], element: `Li` },
     ])
-    const result = ap.get_wyckoff_colors(structure, [
+    const result = atom_properties.get_wyckoff_colors(structure, [
       row(`2a`, `O`, [0, 1]),
       row(`1b`, `Li`, [2]),
     ])
@@ -325,7 +344,9 @@ describe(`Custom`, () => {
   const diagonal_c = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, { xyz: [2, 2, 2] }])
 
   test(`numeric values pass through`, () => {
-    expect(ap.get_custom_colors(diagonal_c, (site) => site.xyz[2]).values).toEqual([0, 1, 2])
+    expect(
+      atom_properties.get_custom_colors(diagonal_c, (site) => site.xyz[2]).values,
+    ).toEqual([0, 1, 2])
   })
 
   test(`string values are categorical`, () => {
@@ -334,7 +355,7 @@ describe(`Custom`, () => {
       { xyz: [0, 0, 0], element: `C` }, { xyz: [1, 1, 1], element: `O` },
       { xyz: [2, 2, 2], element: `C` },
     ])
-    const { values, colors } = ap.get_custom_colors(
+    const { values, colors } = atom_properties.get_custom_colors(
       structure,
       (site) => site.species[0].element,
     )
@@ -344,7 +365,9 @@ describe(`Custom`, () => {
   })
 
   test(`site index yields distinct colors`, () => {
-    expect(new Set(ap.get_custom_colors(diagonal_c, (_, idx) => idx).colors).size).toBe(3)
+    expect(
+      new Set(atom_properties.get_custom_colors(diagonal_c, (_, idx) => idx).colors).size,
+    ).toBe(3)
   })
 
   // a vals[0]-seeded extent left min = max = NaN, defeating the max === min guard
@@ -352,13 +375,18 @@ describe(`Custom`, () => {
   test(`non-finite values poison neither the extent nor the other atoms`, () => {
     // z = 0, 1, 2 -> vals = NaN, 1, 2, finite extent [1, 2], so t = 0.5, 0, 1: the NaN site
     // takes the midpoint of the same scale the finite pair spans
-    const ramp = ap.apply_color_scale([1, 1.5, 2]).colors
-    const nan_at_0 = ap.get_custom_colors(diagonal_c, (site) => site.xyz[2] || NaN)
+    const ramp = atom_properties.apply_color_scale([1, 1.5, 2]).colors
+    const nan_at_0 = atom_properties.get_custom_colors(
+      diagonal_c,
+      (site) => site.xyz[2] || NaN,
+    )
     expect(nan_at_0.colors).toEqual([ramp[1], ramp[0], ramp[2]])
     // an all-NaN column has no extent at all, and Infinity (which array_extent does not skip)
     // gives a finite-min/infinite-max one that collapsed every real value onto t = 0
     for (const fill of [() => NaN, (site: Site) => site.xyz[2] || Infinity]) {
-      expect(ap.get_custom_colors(diagonal_c, fill).colors).toEqual(ramp.map(() => ramp[1]))
+      expect(atom_properties.get_custom_colors(diagonal_c, fill).colors).toEqual(
+        ramp.map(() => ramp[1]),
+      )
     }
   })
 })
@@ -376,17 +404,19 @@ describe(`normalize_atom_color_config`, () => {
       property_key: `charge`,
       scale: `interpolatePlasma`,
       scale_type: `categorical`,
-    } as const satisfies ap.AtomColorConfig
-    expect(ap.normalize_atom_color_config(config)).toBe(config)
-    expect(ap.normalize_atom_color_config(as_serialized(config))).toEqual(config)
+    } as const satisfies atom_properties.AtomColorConfig
+    expect(atom_properties.normalize_atom_color_config(config)).toBe(config)
+    expect(atom_properties.normalize_atom_color_config(as_serialized(config))).toEqual(config)
   })
 
   test(`serialized custom mode cannot reach get_custom_colors without a function`, () => {
-    const config = as_serialized({ mode: `custom` }) as ap.AtomColorConfig
-    expect(ap.get_atom_colors(make_struct([{ xyz: [0, 0, 0] }]), config)).toEqual({
-      colors: [],
-      values: [],
-    })
+    const config = as_serialized({ mode: `custom` }) as atom_properties.AtomColorConfig
+    expect(atom_properties.get_atom_colors(make_struct([{ xyz: [0, 0, 0] }]), config)).toEqual(
+      {
+        colors: [],
+        values: [],
+      },
+    )
   })
 
   test.each([
@@ -394,7 +424,7 @@ describe(`normalize_atom_color_config`, () => {
       { mode: `coordination` },
       {
         mode: `coordination`,
-        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
         scale_type: `continuous`,
       },
     ],
@@ -402,7 +432,7 @@ describe(`normalize_atom_color_config`, () => {
       { mode: `wyckoff` },
       {
         mode: `wyckoff`,
-        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
         scale_type: `categorical`,
       },
     ],
@@ -411,7 +441,7 @@ describe(`normalize_atom_color_config`, () => {
       {
         mode: `property`,
         property_key: `charge`,
-        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
         scale_type: `continuous`,
       },
     ],
@@ -420,15 +450,15 @@ describe(`normalize_atom_color_config`, () => {
       {
         mode: `property`,
         property_key: CNA_TYPE_PROPERTY,
-        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
         scale_type: `categorical`,
       },
     ],
-    [{ mode: `property` }, ap.DEFAULT_ATOM_COLOR_CONFIG],
-    [as_serialized({ mode: `custom` }), ap.DEFAULT_ATOM_COLOR_CONFIG],
-    [{}, ap.DEFAULT_ATOM_COLOR_CONFIG],
+    [{ mode: `property` }, atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
+    [as_serialized({ mode: `custom` }), atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
+    [{}, atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
   ])(`normalizes partial or unsupported payload %#`, (input, expected) => {
-    expect(ap.normalize_atom_color_config(input)).toEqual(expected)
+    expect(atom_properties.normalize_atom_color_config(input)).toEqual(expected)
   })
 })
 
@@ -440,8 +470,8 @@ describe(`next_atom_color_config`, () => {
     [`property`, `charge`, `continuous`],
     [`property`, CNA_TYPE_PROPERTY, `categorical`],
   ] as const)(`%s %s → scale_type %s`, (mode, property_key, scale_type) => {
-    const config = ap.next_atom_color_config(
-      ap.DEFAULT_ATOM_COLOR_CONFIG,
+    const config = atom_properties.next_atom_color_config(
+      atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
       mode,
       [`charge`, CNA_TYPE_PROPERTY],
       property_key,
@@ -454,9 +484,9 @@ describe(`next_atom_color_config`, () => {
   })
 
   test(`repairs a stale property key before deriving scale type`, () => {
-    const config = ap.next_atom_color_config(
+    const config = atom_properties.next_atom_color_config(
       {
-        ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+        ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
         mode: `property`,
         property_key: `gone`,
       },
@@ -471,22 +501,30 @@ describe(`next_atom_color_config`, () => {
 
   test(`falls back to element mode when no colorable properties remain`, () => {
     expect(
-      ap.next_atom_color_config(ap.DEFAULT_ATOM_COLOR_CONFIG, `property`, []),
+      atom_properties.next_atom_color_config(
+        atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
+        `property`,
+        [],
+      ),
     ).toMatchObject({ mode: `element` })
   })
 
   test(`custom mode requires and preserves its color function`, () => {
     expect(() =>
-      ap.next_atom_color_config(ap.DEFAULT_ATOM_COLOR_CONFIG, `custom`, []),
+      atom_properties.next_atom_color_config(
+        atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
+        `custom`,
+        [],
+      ),
     ).toThrow(`without a color_fn`)
 
     const color_fn = () => `red`
-    const custom: ap.AtomColorConfig = {
-      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+    const custom: atom_properties.AtomColorConfig = {
+      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
       mode: `custom`,
       color_fn,
     }
-    expect(ap.next_atom_color_config(custom, `custom`, [])).toMatchObject({
+    expect(atom_properties.next_atom_color_config(custom, `custom`, [])).toMatchObject({
       mode: `custom`,
       color_fn,
     })
@@ -506,7 +544,7 @@ describe(`Site property coloring`, () => {
 
   test(`colors by a numeric key and reports its range`, () => {
     const structure = with_props([{ charge: -0.5 }, { charge: 1.5 }, { charge: 0.5 }])
-    const result = ap.get_site_property_colors(structure, `charge`)
+    const result = atom_properties.get_site_property_colors(structure, `charge`)
     expect(result.values).toEqual([-0.5, 1.5, 0.5])
     expect([result.min_value, result.max_value]).toEqual([-0.5, 1.5])
     expect(new Set(result.colors).size).toBe(3)
@@ -515,7 +553,7 @@ describe(`Site property coloring`, () => {
   // Degenerate range: apply_color_scale maps every value to t=0.5 when min === max
   test(`constant property keeps a finite mid-scale color`, () => {
     const structure = with_props([{ charge: 2 }, { charge: 2 }, { charge: 2 }])
-    const result = ap.get_site_property_colors(structure, `charge`)
+    const result = atom_properties.get_site_property_colors(structure, `charge`)
     expect(result.values).toEqual([2, 2, 2])
     expect([result.min_value, result.max_value]).toEqual([2, 2])
     expect(result.colors.every((color) => color === result.colors[0])).toBe(true)
@@ -528,14 +566,14 @@ describe(`Site property coloring`, () => {
       { velocity: [0, 0, 1] },
       { velocity: [1, 2, 2] },
     ])
-    const result = ap.get_site_property_colors(structure, `velocity`)
+    const result = atom_properties.get_site_property_colors(structure, `velocity`)
     expect(result.values).toEqual([5, 1, 3])
     expect([result.min_value, result.max_value]).toEqual([1, 5])
   })
 
   test(`grays out sites missing the property and keeps them out of the range`, () => {
     const structure = with_props([{ charge: 2 }, {}, { charge: 4 }, { charge: `n/a` }])
-    const result = ap.get_site_property_colors(structure, `charge`)
+    const result = atom_properties.get_site_property_colors(structure, `charge`)
     expect(result.values).toEqual([2, `unknown`, 4, `unknown`])
     expect([result.min_value, result.max_value]).toEqual([2, 4])
     expect(result.colors[1]).toBe(`#808080`)
@@ -557,17 +595,22 @@ describe(`Site property coloring`, () => {
       })),
     }
     const config = {
-      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
       mode: `property`,
       property_key: `amplitude`,
     } as const
-    const { values, colors } = ap.get_atom_colors(with_data, config, { base: supercell })
+    const { values, colors } = atom_properties.get_atom_colors(with_data, config, {
+      base: supercell,
+    })
     expect(values).toEqual([0.1, 0.9])
     expect(colors[0]).not.toBe(colors[1])
   })
 
   test(`returns empty when no site declares the key, so callers can fall back`, () => {
-    const result = ap.get_site_property_colors(with_props([{ charge: 1 }]), `velocity`)
+    const result = atom_properties.get_site_property_colors(
+      with_props([{ charge: 1 }]),
+      `velocity`,
+    )
     expect(result).toEqual({ colors: [], values: [] })
   })
 
@@ -583,13 +626,15 @@ describe(`Site property coloring`, () => {
       [`charge`],
     ],
   ])(`get_colorable_property_keys: %s`, (_desc, properties, expected) => {
-    expect(ap.get_colorable_property_keys(with_props([properties]))).toEqual(expected)
+    expect(atom_properties.get_colorable_property_keys(with_props([properties]))).toEqual(
+      expected,
+    )
   })
 
   test(`unions keys across sites`, () => {
     const structure = with_props([{ charge: 1 }, { c_pe: -2 }, undefined])
-    expect(ap.get_colorable_property_keys(structure)).toEqual([`c_pe`, `charge`])
-    expect(ap.get_colorable_property_keys(undefined)).toEqual([])
+    expect(atom_properties.get_colorable_property_keys(structure)).toEqual([`c_pe`, `charge`])
+    expect(atom_properties.get_colorable_property_keys(undefined)).toEqual([])
   })
 
   test.each([
@@ -600,8 +645,8 @@ describe(`Site property coloring`, () => {
       { charge: -0.5, velocity: [3, 4, 0] },
       { charge: 0.5, velocity: [0, 1, 0] },
     ])
-    const result = ap.get_atom_colors(structure, {
-      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+    const result = atom_properties.get_atom_colors(structure, {
+      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
       mode: `property`,
       property_key,
     })
@@ -621,17 +666,20 @@ describe(`get_atom_colors`, () => {
     [`wyckoff mode without symmetry data`, `wyckoff`, 2],
   ] as const)(`%s`, (_name, mode, expected_len) => {
     expect(
-      ap.get_atom_colors(structure, { ...ap.DEFAULT_ATOM_COLOR_CONFIG, mode }).colors,
+      atom_properties.get_atom_colors(structure, {
+        ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
+        mode,
+      }).colors,
     ).toHaveLength(expected_len)
   })
 
   test(`uses a custom color function`, () => {
-    const config: ap.AtomColorConfig = {
-      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+    const config: atom_properties.AtomColorConfig = {
+      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
       mode: `custom`,
       color_fn: (_site: Site, idx: number) => idx * 10,
     }
-    const { colors, values } = ap.get_atom_colors(structure, config)
+    const { colors, values } = atom_properties.get_atom_colors(structure, config)
     expect(values).toEqual([0, 10])
     expect(colors).toHaveLength(2)
   })
@@ -642,8 +690,8 @@ describe(`get_atom_colors`, () => {
     // oxfmt-ignore
     const chain = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1.5, 0, 0] }, { xyz: [3, 0, 0] }])
     const coord_colors = (scale: `interpolatePlasma` | `interpolateViridis`) =>
-      ap.get_atom_colors(chain, {
-        ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+      atom_properties.get_atom_colors(chain, {
+        ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
         mode: `coordination`,
         scale,
       })
@@ -662,7 +710,7 @@ test(`get_coordination_colors colours every site of a 1000-atom grid`, () => {
       element: ([`C`, `O`] as const)[idx % 2],
     })),
   )
-  expect(ap.get_coordination_colors(structure).colors).toHaveLength(1000)
+  expect(atom_properties.get_coordination_colors(structure).colors).toHaveLength(1000)
 })
 
 describe(`Selective dynamics`, () => {
@@ -695,7 +743,7 @@ describe(`Selective dynamics`, () => {
     [`an empty array`, [], `unknown`],
     [`unrecognized flag words`, [`yes`, `no`, `maybe`], `unknown`],
   ])(`categorizes %s as %s`, (_name, value, expected) => {
-    expect(ap.categorize_selective_dynamics(value)).toBe(expected)
+    expect(atom_properties.categorize_selective_dynamics(value)).toBe(expected)
   })
 
   test(`gives partially constrained atoms their own color, distinct from free and fixed`, () => {
@@ -705,7 +753,8 @@ describe(`Selective dynamics`, () => {
       [false, false, false],
       [true, true, true],
     ])
-    const { colors, values, unique_values } = ap.get_selective_dynamics_colors(structure)
+    const { colors, values, unique_values } =
+      atom_properties.get_selective_dynamics_colors(structure)
     expect(values).toEqual([`free`, `partially fixed`, `fixed`, `free`])
     // legend order is mobility-descending, not alphabetical
     expect(unique_values).toEqual([`free`, `partially fixed`, `fixed`])
@@ -718,14 +767,14 @@ describe(`Selective dynamics`, () => {
       [false, false, false],
       [true, true, true],
     ])
-    const config: ap.AtomColorConfig = {
-      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+    const config: atom_properties.AtomColorConfig = {
+      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
       mode: `selective_dynamics`,
     }
-    const via_mode = ap.get_atom_colors(structure, config)
+    const via_mode = atom_properties.get_atom_colors(structure, config)
     expect(via_mode.values).toEqual([`fixed`, `free`])
     expect(via_mode.colors).toHaveLength(2)
-    const via_property = ap.get_property_colors(structure, config)
+    const via_property = atom_properties.get_property_colors(structure, config)
     expect(via_property?.values).toEqual([`fixed`, `free`])
     // legend order stays mobility-descending, so `free` sorts ahead of `fixed`
     expect(via_property?.unique_values).toEqual([`free`, `fixed`])
@@ -736,19 +785,24 @@ describe(`Selective dynamics`, () => {
     [`some site declares the property`, [[true, true, true], undefined], true],
     [`no site declares the property`, [undefined, undefined], false],
   ])(`detects availability when %s`, (_name, flag_sets, expected) => {
-    expect(ap.structure_has_selective_dynamics(sd_struct(flag_sets))).toBe(expected)
+    expect(atom_properties.structure_has_selective_dynamics(sd_struct(flag_sets))).toBe(
+      expected,
+    )
   })
 
   test(`treats an empty structure as having no selective dynamics data`, () => {
-    expect(ap.get_selective_dynamics_colors(sd_struct([]))).toEqual({ colors: [], values: [] })
-    expect(ap.structure_has_selective_dynamics(undefined)).toBe(false)
+    expect(atom_properties.get_selective_dynamics_colors(sd_struct([]))).toEqual({
+      colors: [],
+      values: [],
+    })
+    expect(atom_properties.structure_has_selective_dynamics(undefined)).toBe(false)
   })
 
   test(`colors a real POSCAR slab by its frozen bottom layer`, () => {
     const structure = parse_poscar(selective_dynamics_poscar)
     if (!structure) throw new Error(`failed to parse selective-dynamics.poscar`)
-    expect(ap.structure_has_selective_dynamics(structure)).toBe(true)
-    const { values, colors } = ap.get_selective_dynamics_colors(structure)
+    expect(atom_properties.structure_has_selective_dynamics(structure)).toBe(true)
+    const { values, colors } = atom_properties.get_selective_dynamics_colors(structure)
     // fixture: 4 substrate atoms pinned (F F F), 4 adatoms free (T T T)
     expect(values).toEqual([...Array(4).fill(`fixed`), ...Array(4).fill(`free`)])
     expect(new Set(colors).size).toBe(2)
@@ -768,7 +822,7 @@ describe(`CNA structure type coloring`, () => {
   const all_codes = CNA_TYPE_NAMES.map((_name, code) => code)
   const palette = CNA_TYPE_NAMES.map((name) => CNA_TYPE_COLORS[name])
   const cna_colors = (codes: number[], type: `categorical` | `continuous` = `categorical`) =>
-    ap.get_site_property_colors(
+    atom_properties.get_site_property_colors(
       cna_struct(codes),
       CNA_TYPE_PROPERTY,
       `interpolateViridis`,
@@ -794,13 +848,15 @@ describe(`CNA structure type coloring`, () => {
 
   test(`reaches the palette through the shared atom color entry point`, () => {
     // next_atom_color_config → categorical for cna_type is covered above
-    const config: ap.AtomColorConfig = {
-      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+    const config: atom_properties.AtomColorConfig = {
+      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
       mode: `property`,
       property_key: CNA_TYPE_PROPERTY,
       scale_type: `categorical`,
     }
-    expect(ap.get_atom_colors(cna_struct(all_codes), config).colors).toEqual(palette)
+    expect(atom_properties.get_atom_colors(cna_struct(all_codes), config).colors).toEqual(
+      palette,
+    )
   })
 })
 
@@ -819,8 +875,10 @@ describe(`atom color mode availability`, () => {
         has_selective_dynamics: available,
         colorable_property_keys: available ? [`force`] : [],
       }
-      expect(ap.is_atom_color_mode_available(mode, context)).toBe(available || reason === null)
-      expect(ap.atom_color_mode_unavailable_reason(mode, context)).toEqual(
+      expect(atom_properties.is_atom_color_mode_available(mode, context)).toBe(
+        available || reason === null,
+      )
+      expect(atom_properties.atom_color_mode_unavailable_reason(mode, context)).toEqual(
         available || reason === null ? null : expect.stringContaining(reason),
       )
     }

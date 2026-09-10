@@ -84,10 +84,10 @@ const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
 // dataset [nx, ny, nz] disambiguates (when nx == nz both layouts match, so
 // default to the canonical zyx order).
 const charge_axis_order = (spatial_shape: number[], grid_dims: number[]): `zyx` | `xyz` => {
-  const [nx, ny, nz] = grid_dims
+  const [size_x, size_y, size_z] = grid_dims
   const matches = (dims: number[]) => dims.every((dim, idx) => dim === spatial_shape[idx])
-  if (matches([nz, ny, nx])) return `zyx`
-  if (matches([nx, ny, nz])) return `xyz`
+  if (matches([size_z, size_y, size_x])) return `zyx`
+  if (matches([size_x, size_y, size_z])) return `xyz`
   throw new Error(
     `vaspwave.h5 ${CHARGE_GRID_PATH} [${grid_dims}] is incompatible with ` +
       `${CHARGE_PATH} spatial shape [${spatial_shape}]`,

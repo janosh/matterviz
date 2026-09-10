@@ -66,7 +66,7 @@ export function unwrap_flat_positions(
   // Frame 0 is the reference and is copied verbatim
   unwrapped.set(positions.subarray(0, n_atoms * 3))
   const from: Vec3 = [0, 0, 0]
-  const to: Vec3 = [0, 0, 0]
+  const target: Vec3 = [0, 0, 0]
   const step: Vec3 = [0, 0, 0]
   // A fixed cell hands back the same matrix every frame; only NPT rebuilds the inverse.
   // Seeded from frame 0 because the loop starts at 1: without it, a null lattice at frame 1
@@ -96,13 +96,13 @@ export function unwrap_flat_positions(
       const off = base + atom_idx * 3
       for (let axis = 0; axis < 3; axis++) {
         from[axis] = positions[prev_off + axis]
-        to[axis] = positions[off + axis]
+        target[axis] = positions[off + axis]
       }
       // Plain difference only before any cell has been seen - nothing was wrapped yet
       if (lattice && converters) {
-        min_image_displacement_into(from, to, lattice, converters, pbc, step)
+        min_image_displacement_into(from, target, lattice, converters, pbc, step)
       } else {
-        for (let axis = 0; axis < 3; axis++) step[axis] = to[axis] - from[axis]
+        for (let axis = 0; axis < 3; axis++) step[axis] = target[axis] - from[axis]
       }
       for (let axis = 0; axis < 3; axis++) {
         unwrapped[off + axis] = unwrapped[prev_off + axis] + step[axis]
@@ -188,20 +188,20 @@ export const lag_axis_label = (time_unit: string): string =>
 // dt without a unit would mean inventing a time axis. Returns the unit to label axes with.
 export function resolve_lag_time_unit(
   analysis_name: string,
-  dt: number | undefined,
+  delta_time: number | undefined,
   time_unit: string | undefined,
   unit_example: string,
 ): string {
-  if (dt !== undefined && !(dt > 0)) {
-    throw new Error(`${analysis_name}: dt must be positive, got ${dt}`)
+  if (delta_time !== undefined && !(delta_time > 0)) {
+    throw new Error(`${analysis_name}: dt must be positive, got ${delta_time}`)
   }
-  if (dt !== undefined && !time_unit) {
+  if (delta_time !== undefined && !time_unit) {
     throw new Error(
-      `${analysis_name}: dt was supplied (${dt}) without time_unit; pass e.g. time_unit: ` +
+      `${analysis_name}: dt was supplied (${delta_time}) without time_unit; pass e.g. time_unit: ` +
         `'${unit_example}' so the lag axis carries real units`,
     )
   }
-  if (dt !== undefined && time_unit === `frame`) {
+  if (delta_time !== undefined && time_unit === `frame`) {
     throw new Error(
       `${analysis_name}: time_unit 'frame' cannot be combined with dt; omit dt for a ` +
         `frame-based lag axis`,

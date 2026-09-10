@@ -23,8 +23,8 @@ import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../setup'
 import pymatgen_quinary from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }
 
-const make_elem = (el: string, energy = -1.0) =>
-  make_phase({ [el]: 1 }, energy, { entry_id: el })
+const make_elem = (element: string, energy = -1.0) =>
+  make_phase({ [element]: 1 }, energy, { entry_id: element })
 
 describe(`normalize_hull_composition_keys`, () => {
   test.each([
@@ -188,7 +188,7 @@ function prepare_brute_force_e_hull(
       if (weights.every((val) => val >= -1e-9)) {
         best = Math.min(
           best,
-          weights.reduce((sum, wt, idx) => sum + wt * verts[idx][dim], 0),
+          weights.reduce((sum, weight, idx) => sum + weight * verts[idx][dim], 0),
         )
       }
     }
@@ -394,16 +394,16 @@ describe(`calculate_e_above_hull`, () => {
     { arity: 4, els: [`Li`, `Fe`, `P`, `O`] },
     { arity: 5, els: [`Li`, `Na`, `K`, `Rb`, `Cs`] },
   ])(`arity-$arity: compounds shape the hull unless exclude_from_hull`, ({ els }) => {
-    const comp = Object.fromEntries(els.map((el) => [el, 1]))
+    const comp = Object.fromEntries(els.map((element) => [element, 1]))
     const refs = [
-      ...els.map((el) => make_elem(el, 0)),
+      ...els.map((element) => make_elem(element, 0)),
       make_phase(comp, -1.0, { entry_id: `stable-compound` }),
     ]
     expect(
       calculate_e_above_hull(make_phase(comp, -0.5, { entry_id: `q` }), refs),
     ).toBeCloseTo(0.5, 10)
     const excluded_refs = [
-      ...els.map((el) => make_elem(el, 0)),
+      ...els.map((element) => make_elem(element, 0)),
       make_phase(comp, -2.0, { entry_id: `excluded`, exclude_from_hull: true }),
     ]
     // Below the elemental tie-plane → clamped to 0 (would be ~1.0 if the excluded compound counted)
@@ -419,7 +419,7 @@ describe(`calculate_e_above_hull`, () => {
   ] as { arity: number; comp: Record<string, number> }[])(
     `arity-$arity: all refs at e_form = 0 → hull is the tie-plane at 0`,
     ({ comp }) => {
-      const refs = Object.keys(comp).map((el) => make_elem(el, 0))
+      const refs = Object.keys(comp).map((element) => make_elem(element, 0))
       expect(
         calculate_e_above_hull(make_phase(comp, 0.5, { entry_id: `above` }), refs),
       ).toBeCloseTo(0.5, 10)
@@ -494,7 +494,9 @@ describe(`pymatgen cross-validation`, () => {
   const subsystem = (entries: PhaseData[], elements: string[]) => {
     const element_set = new Set(elements)
     return entries.filter((entry) =>
-      Object.entries(entry.composition).every(([el, amt]) => amt <= 0 || element_set.has(el)),
+      Object.entries(entry.composition).every(
+        ([element, amt]) => amt <= 0 || element_set.has(element),
+      ),
     )
   }
   type PymatgenEntry = {
@@ -527,16 +529,23 @@ describe(`pymatgen cross-validation`, () => {
 
   // Both from the stored e_form_per_atom and recomputed from raw energy + correction
   test.each(fixtures)(`%s: e_above_hull matches pymatgen to 1e-10`, (_name, entries) => {
-    const without_hull = entries.map(({ e_above_hull: _e, is_stable: _s, ...rest }) => rest)
-    const without_e_form = without_hull.map(({ e_form_per_atom: _f, ...rest }) => rest)
+    const without_hull = entries.map(
+      ({ e_above_hull: _unused_event, is_stable: _unused_text, ...rest }) => rest,
+    )
+    const without_e_form = without_hull.map(
+      ({ e_form_per_atom: _unused_func, ...rest }) => rest,
+    )
     for (const input of [without_hull, without_e_form]) {
       if (input === without_e_form && entries === quinary) continue // quinary has no raw energies
       const results = calculate_e_above_hull(input, input)
       let max_diff = 0
       for (const entry of entries) {
-        const id = entry.entry_id as string
-        max_diff = Math.max(max_diff, Math.abs(results[id] - (entry.e_above_hull as number)))
-        expect(results[id] < 1e-6).toBe(entry.is_stable)
+        const identifier = entry.entry_id as string
+        max_diff = Math.max(
+          max_diff,
+          Math.abs(results[identifier] - (entry.e_above_hull as number)),
+        )
+        expect(results[identifier] < 1e-6).toBe(entry.is_stable)
       }
       expect(max_diff).toBeLessThan(1e-10)
     }
@@ -685,7 +694,7 @@ describe(`process_hull_for_stats`, () => {
       const all = result?.entries ?? []
       const compounds = all
         .filter((entry) => !entry.is_element)
-        .toSorted((a, b) => a.energy - b.energy)
+        .toSorted((left_value, right_value) => left_value.energy - right_value.energy)
       expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
     },
   )

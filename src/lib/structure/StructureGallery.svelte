@@ -318,8 +318,8 @@
       for (const key of shown_property_keys) {
         const value = item.properties?.[key]
         if (typeof value !== `number` || !Number.isFinite(value)) continue
-        const [lo, hi] = spans.get(key) ?? [value, value]
-        spans.set(key, [Math.min(lo, value), Math.max(hi, value)])
+        const [lower, upper] = spans.get(key) ?? [value, value]
+        spans.set(key, [Math.min(lower, value), Math.max(upper, value)])
       }
     }
     // one distinct value has no rank, so it stays untinted

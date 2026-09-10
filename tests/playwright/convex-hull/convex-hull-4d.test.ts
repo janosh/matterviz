@@ -22,10 +22,10 @@ const open_pane = async (diagram: Locator, kind: `info` | `controls`) => {
 
 // Count and mean alpha of the semi-transparent pixels (the hull faces)
 const semi_transparent_pixels = (canvas: Locator) =>
-  canvas.evaluate((el) => {
-    const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+  canvas.evaluate((element) => {
+    const ctx = (element as HTMLCanvasElement).getContext(`2d`)
     if (!ctx) return { count: 0, avg_alpha: 0 }
-    const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+    const { data } = ctx.getImageData(0, 0, element.clientWidth, element.clientHeight)
     let [count, total] = [0, 0]
     for (let idx = 3; idx < data.length; idx += 4) {
       if (data[idx] > 0 && data[idx] < 255) {
@@ -140,11 +140,11 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     const box = await require_bbox(hull_canvas(diagram), `canvas`)
 
     // Drag on canvas then release outside
-    const cx = box.x + box.width / 2
-    const cy = box.y + box.height / 2
-    await page.mouse.move(cx, cy)
+    const center_x = box.x + box.width / 2
+    const center_y = box.y + box.height / 2
+    await page.mouse.move(center_x, center_y)
     await page.mouse.down()
-    await page.mouse.move(cx + 50, cy + 50)
+    await page.mouse.move(center_x + 50, center_y + 50)
     await page.mouse.move(box.x + box.width + 100, box.y - 100)
     await page.mouse.up()
 
@@ -152,9 +152,9 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await open_pane(diagram, `info`)
 
     // Drag then immediately click should be suppressed
-    await page.mouse.move(cx, cy)
+    await page.mouse.move(center_x, center_y)
     await page.mouse.down()
-    await page.mouse.move(cx + 30, cy + 30)
+    await page.mouse.move(center_x + 30, center_y + 30)
     await page.mouse.up()
     await hull_canvas(diagram).click({
       position: { x: box.width / 2, y: box.height / 2 },
@@ -182,10 +182,10 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
 
   test(`hull content is centered and within boundaries`, async ({ page }) => {
     const canvas = hull_canvas(quaternary_diagram(page))
-    const { centered, within_bounds, pixel_count } = await canvas.evaluate((el) => {
-      const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+    const { centered, within_bounds, pixel_count } = await canvas.evaluate((element) => {
+      const ctx = (element as HTMLCanvasElement).getContext(`2d`)
       if (!ctx) return { centered: false, within_bounds: false, pixel_count: 0 }
-      const { width, height } = el as HTMLCanvasElement
+      const { width, height } = element as HTMLCanvasElement
       const { data } = ctx.getImageData(0, 0, width, height)
       let [min_x, max_x, min_y, max_y, count] = [width, 0, height, 0, 0]
       for (let y_idx = 0; y_idx < height; y_idx++) {
@@ -199,10 +199,11 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
           }
         }
       }
-      const [cx, cy] = [(min_x + max_x) / 2, (min_y + max_y) / 2]
+      const [center_x, center_y] = [(min_x + max_x) / 2, (min_y + max_y) / 2]
       return {
         centered:
-          Math.abs(cx - width / 2) / width < 0.3 && Math.abs(cy - height / 2) / height < 0.3,
+          Math.abs(center_x - width / 2) / width < 0.3 &&
+          Math.abs(center_y - height / 2) / height < 0.3,
         within_bounds: min_x >= 5 && max_x <= width - 5 && min_y >= 5 && max_y <= height - 5,
         pixel_count: count,
       }
@@ -254,7 +255,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
 
 // Standalone: the performance page avoids the slow quaternary-grid data loading above
 test.describe(`ConvexHullCanvas dim=4 drag rotation`, () => {
-  for (const [direction, axis, [dx, dy], expect_increase] of [
+  for (const [direction, axis, [delta_x, delta_y], expect_increase] of [
     [`right`, `y`, [80, 0], true],
     [`down`, `x`, [0, 80], false],
   ] as const) {
@@ -269,11 +270,11 @@ test.describe(`ConvexHullCanvas dim=4 drag rotation`, () => {
       const rot_before = Number(await diagram.getAttribute(`data-rotation-${axis}`))
       expect(Number.isFinite(rot_before)).toBe(true)
       const box = await require_bbox(canvas, `canvas`)
-      const cx = box.x + box.width / 2
-      const cy = box.y + box.height / 2
-      await page.mouse.move(cx, cy)
+      const center_x = box.x + box.width / 2
+      const center_y = box.y + box.height / 2
+      await page.mouse.move(center_x, center_y)
       await page.mouse.down()
-      await page.mouse.move(cx + dx, cy + dy, { steps: 5 })
+      await page.mouse.move(center_x + delta_x, center_y + delta_y, { steps: 5 })
       await page.mouse.up()
       await page.waitForTimeout(50)
 

@@ -112,7 +112,9 @@
 
   let scatter_plot_values = $derived(
     element_data
-      .map((el) => (selected.heatmap_key ? el[selected.heatmap_key] : null))
+      .map((element_info) =>
+        selected.heatmap_key ? element_info[selected.heatmap_key] : null,
+      )
       .filter((val): val is number => typeof val === `number`),
   )
   let [y_label, y_unit] = $derived(

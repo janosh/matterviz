@@ -66,8 +66,8 @@
   let series: DataSeries[] = $derived(
     slice_data?.isolines.map((iso, idx) => ({
       id: `iso-${iso.band_index}-${idx}`,
-      x: iso.points_2d.map((pt) => pt[0]),
-      y: iso.points_2d.map((pt) => pt[1]),
+      x: iso.points_2d.map((point) => point[0]),
+      y: iso.points_2d.map((point) => point[1]),
       markers: `line` as const,
       visible: !hidden_bands.has(iso.band_index),
       label: `Band ${iso.band_index + 1}`,
@@ -85,11 +85,11 @@
 
     let [x_min, x_max, y_min, y_max] = [Infinity, -Infinity, Infinity, -Infinity]
     for (const iso of isolines) {
-      for (const [px, py] of iso.points_2d) {
-        if (px < x_min) x_min = px
-        if (px > x_max) x_max = px
-        if (py < y_min) y_min = py
-        if (py > y_max) y_max = py
+      for (const [pixel_x, pixel_y] of iso.points_2d) {
+        if (pixel_x < x_min) x_min = pixel_x
+        if (pixel_x > x_max) x_max = pixel_x
+        if (pixel_y < y_min) y_min = pixel_y
+        if (pixel_y > y_max) y_max = pixel_y
       }
     }
     if (!Number.isFinite(x_min)) return { min: [-1, -1], max: [1, 1] }
@@ -145,16 +145,18 @@
 >
   {#snippet user_content({ x_scale_fn, y_scale_fn, pad, width, height })}
     {#if show_axes && width && height}
-      {@const ox = x_scale_fn(0)}
-      {@const oy = y_scale_fn(0)}
-      {@const x1 = x_scale_fn(bounds.min[0])}
-      {@const x2 = x_scale_fn(bounds.max[0])}
-      {@const y1 = y_scale_fn(bounds.min[1])}
-      {@const y2 = y_scale_fn(bounds.max[1])}
-      <line {x1} y1={oy} {x2} y2={oy} class="fermi-axis" />
-      <line x1={ox} {y1} x2={ox} {y2} class="fermi-axis" />
-      <text x={x2 - 3} y={oy - 6} text-anchor="end" class="fermi-label">{labels[0]}</text>
-      <text x={ox + 6} y={Math.max(y2 + 12, pad.t + 12)} class="fermi-label">
+      {@const offset_x = x_scale_fn(0)}
+      {@const offset_y = y_scale_fn(0)}
+      {@const coord_x_1 = x_scale_fn(bounds.min[0])}
+      {@const coord_x = x_scale_fn(bounds.max[0])}
+      {@const coord_y_1 = y_scale_fn(bounds.min[1])}
+      {@const coord_y_2 = y_scale_fn(bounds.max[1])}
+      <line x1={coord_x_1} y1={offset_y} x2={coord_x} y2={offset_y} class="fermi-axis" />
+      <line x1={offset_x} y1={coord_y_1} x2={offset_x} y2={coord_y_2} class="fermi-axis" />
+      <text x={coord_x - 3} y={offset_y - 6} text-anchor="end" class="fermi-label"
+        >{labels[0]}</text
+      >
+      <text x={offset_x + 6} y={Math.max(coord_y_2 + 12, pad.t + 12)} class="fermi-label">
         {labels[1]}
       </text>
     {/if}

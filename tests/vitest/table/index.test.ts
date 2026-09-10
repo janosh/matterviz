@@ -39,7 +39,7 @@ const calc_cell_color = (
 ) => make_cell_color_scale(all_values, better, color_scale, scale_type)(val)
 
 describe(`column stats and color domains`, () => {
-  const values = [...Array.from({ length: 20 }, (_v, idx) => idx * 5), 10_000]
+  const values = [...Array.from({ length: 20 }, (_unused_value, idx) => idx * 5), 10_000]
 
   it(`summarizes a column in one pass, ignoring non-numeric entries`, () => {
     const stats = compute_column_stats([1, 2, 3, null, undefined, NaN], `higher`)

@@ -30,14 +30,14 @@ const fail = analysis_fail(`fit_einstein_diffusion`)
 // `count` is the sample number including this one.
 const welford_update = (
   mean: Float64Array,
-  m2: Float64Array,
+  moment_2: Float64Array,
   idx: number,
   count: number,
   value: number,
 ): void => {
   const delta = value - mean[idx]
   mean[idx] += delta / count
-  m2[idx] += delta * (value - mean[idx])
+  moment_2[idx] += delta * (value - mean[idx])
 }
 
 // Ordinary least squares of msd against time over the requested lag window.
@@ -69,8 +69,8 @@ export function fit_einstein_diffusion(
   if (lags.length === 0) return null
 
   const max_lag = lags[lags.length - 1]
-  const [lo, hi] = [start_fraction * max_lag, end_fraction * max_lag]
-  const picked = [...lags.keys()].filter((idx) => lags[idx] >= lo && lags[idx] <= hi)
+  const [lower, upper] = [start_fraction * max_lag, end_fraction * max_lag]
+  const picked = [...lags.keys()].filter((idx) => lags[idx] >= lower && lags[idx] <= upper)
   if (picked.length < 2) return null
 
   const mean_x = mean_of(picked.map((idx) => times[idx]))
@@ -78,11 +78,11 @@ export function fit_einstein_diffusion(
 
   let [sxx, sxy, syy] = [0, 0, 0]
   for (const idx of picked) {
-    const dx = times[idx] - mean_x
-    const dy = msd[idx] - mean_y
-    sxx += dx * dx
-    sxy += dx * dy
-    syy += dy * dy
+    const delta_x = times[idx] - mean_x
+    const delta_y = msd[idx] - mean_y
+    sxx += delta_x * delta_x
+    sxy += delta_x * delta_y
+    syy += delta_y * delta_y
   }
   if (sxx === 0) return null
 
@@ -114,7 +114,7 @@ export function calc_msd(
 ): MsdResult {
   const { n_frames, n_atoms, elements } = input
   const {
-    dt = 1,
+    dt: delta_time = 1,
     max_lag_fraction = 0.5,
     // Cap on the number of distinct lags evaluated before lag sub-sampling kicks in
     max_lags = 200,
@@ -166,10 +166,11 @@ export function calc_msd(
       for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
         const off_from = base_from + atom_idx * 3
         const off_to = base_to + atom_idx * 3
-        const dx = coords[off_to] - coords[off_from]
-        const dy = coords[off_to + 1] - coords[off_from + 1]
-        const dz = coords[off_to + 2] - coords[off_from + 2]
-        origin_sums[atom_group[atom_idx]] += dx * dx + dy * dy + dz * dz
+        const delta_x = coords[off_to] - coords[off_from]
+        const delta_y = coords[off_to + 1] - coords[off_from + 1]
+        const delta_z = coords[off_to + 2] - coords[off_from + 2]
+        origin_sums[atom_group[atom_idx]] +=
+          delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
       }
       n_origins++
       let total_for_origin = 0
@@ -188,16 +189,16 @@ export function calc_msd(
     origin_counts[lag_idx] = n_origins
   }
 
-  const times = lags.map((lag) => lag * dt)
+  const times = lags.map((lag) => lag * delta_time)
 
   const make_curve = ({ label, slot }: { label: string; slot: number }): MsdCurve => {
     const msd = Array.from(mean_msd[slot])
-    const m2 = m2_msd[slot]
+    const moment_2 = m2_msd[slot]
     // Standard error of the mean over (overlapping, hence correlated) time origins.
     // Welford's m2 is a sum of squared deviations, so the unbiased sample variance
     // divides by count - 1; using count under-reports by 41% at the n = 2 tail.
     const std_error = Array.from(origin_counts, (count, lag_idx) =>
-      count < 2 ? 0 : Math.sqrt(m2[lag_idx] / (count - 1) / count),
+      count < 2 ? 0 : Math.sqrt(moment_2[lag_idx] / (count - 1) / count),
     )
     return {
       label,
@@ -214,7 +215,7 @@ export function calc_msd(
     lags,
     times,
     curves: curve_slots(labels).map(make_curve),
-    dt,
+    dt: delta_time,
     time_unit,
     x_label: lag_axis_label(time_unit),
     n_frames,

@@ -18,20 +18,30 @@ FracCoord = tuple[float, float, float]
 
 
 def gaussian(
-    x: float, y: float, z: float, cx: float, cy: float, cz: float, sigma: float
+    coord_x: float,
+    coord_y: float,
+    coord_z: float,
+    center_x: float,
+    center_y: float,
+    center_z: float,
+    sigma: float,
 ) -> float:
-    """3D Gaussian function centered at (cx, cy, cz)."""
-    r2 = (x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2
-    return math.exp(-r2 / (2 * sigma**2))
+    """3D Gaussian function centered at (center_x, center_y, center_z)."""
+    radius_squared = (
+        (coord_x - center_x) ** 2
+        + (coord_y - center_y) ** 2
+        + (coord_z - center_z) ** 2
+    )
+    return math.exp(-radius_squared / (2 * sigma**2))
 
 
 def gaussian_coulomb(
-    x: float,
-    y: float,
-    z: float,
-    cx: float,
-    cy: float,
-    cz: float,
+    coord_x: float,
+    coord_y: float,
+    coord_z: float,
+    center_x: float,
+    center_y: float,
+    center_z: float,
     charge: float,
     sigma: float,
 ) -> float:
@@ -41,7 +51,7 @@ def gaussian_coulomb(
     q * sqrt(2/pi) / sigma. Far from the charge this decays like q/r, giving a
     physically shaped electrostatic potential for point partial charges.
     """
-    dist = math.dist((x, y, z), (cx, cy, cz))
+    dist = math.dist((coord_x, coord_y, coord_z), (center_x, center_y, center_z))
     if dist < 1e-9:
         return charge * math.sqrt(2.0 / math.pi) / sigma
     return charge * math.erf(dist / (math.sqrt(2.0) * sigma)) / dist
@@ -51,9 +61,9 @@ def gaussian_coulomb(
 
 
 def pbc_gaussian_sum(
-    x: float,
-    y: float,
-    z: float,
+    coord_x: float,
+    coord_y: float,
+    coord_z: float,
     centers: list[tuple[float, float, float]],
     weights: list[float],
     sigmas: list[float],
@@ -69,20 +79,24 @@ def pbc_gaussian_sum(
         for vec in lattice_vecs
     ]
     result = 0.0
-    for (cx, cy, cz), weight, sigma in zip(centers, weights, sigmas, strict=True):
+    for (center_x, center_y, center_z), weight, sigma in zip(
+        centers, weights, sigmas, strict=True
+    ):
         for dx_img in image_ranges[0]:
             for dy_img in image_ranges[1]:
                 for dz_img in image_ranges[2]:
-                    ix = cx
-                    iy = cy
-                    iz = cz
-                    for dim, (lx, ly, lz) in zip(
+                    index_x = center_x
+                    index_y = center_y
+                    index_z = center_z
+                    for dim, (lattice_x, lattice_y, lattice_z) in zip(
                         (dx_img, dy_img, dz_img), lattice_vecs, strict=True
                     ):
-                        ix += dim * lx
-                        iy += dim * ly
-                        iz += dim * lz
-                    result += weight * gaussian(x, y, z, ix, iy, iz, sigma)
+                        index_x += dim * lattice_x
+                        index_y += dim * lattice_y
+                        index_z += dim * lattice_z
+                    result += weight * gaussian(
+                        coord_x, coord_y, coord_z, index_x, index_y, index_z, sigma
+                    )
     return result
 
 
@@ -104,9 +118,11 @@ def write_cube(
         density_fn: function(x, y, z) -> value, called in Angstrom coords
         orbital: if True, write negative n_atoms + orbital header line
     """
-    nx, ny, nz = (n_grid, n_grid, n_grid) if isinstance(n_grid, int) else n_grid
+    count_x, count_y, count_z = (
+        (n_grid, n_grid, n_grid) if isinstance(n_grid, int) else n_grid
+    )
     origin = [-box_size / 2] * 3
-    voxel = box_size / max(nx, ny, nz)
+    voxel = box_size / max(count_x, count_y, count_z)
     voxel_bohr = voxel * ANG_TO_BOHR
     origin_bohr = [coord * ANG_TO_BOHR for coord in origin]
 
@@ -115,27 +131,27 @@ def write_cube(
     lines.append(
         f"    {n_sign}   {origin_bohr[0]:.6f}   {origin_bohr[1]:.6f}   {origin_bohr[2]:.6f}"
     )
-    lines.append(f"   {nx}   {voxel_bohr:.6f}   0.000000   0.000000")
-    lines.append(f"   {ny}   0.000000   {voxel_bohr:.6f}   0.000000")
-    lines.append(f"   {nz}   0.000000   0.000000   {voxel_bohr:.6f}")
+    lines.append(f"   {count_x}   {voxel_bohr:.6f}   0.000000   0.000000")
+    lines.append(f"   {count_y}   0.000000   {voxel_bohr:.6f}   0.000000")
+    lines.append(f"   {count_z}   0.000000   0.000000   {voxel_bohr:.6f}")
 
-    for z_num, ax, ay, az in atoms:
+    for z_num, atom_x, atom_y, atom_z in atoms:
         charge = float(z_num) if not orbital else 0.0
         lines.append(
-            f"    {z_num}   {charge:.6f}   {ax * ANG_TO_BOHR:.6f}"
-            f"   {ay * ANG_TO_BOHR:.6f}   {az * ANG_TO_BOHR:.6f}"
+            f"    {z_num}   {charge:.6f}   {atom_x * ANG_TO_BOHR:.6f}"
+            f"   {atom_y * ANG_TO_BOHR:.6f}   {atom_z * ANG_TO_BOHR:.6f}"
         )
     if orbital:
         lines.append("    1    1")
 
     values = []
-    for ix in range(nx):
-        x = origin[0] + ix * voxel
-        for iy in range(ny):
-            y = origin[1] + iy * voxel
-            for iz in range(nz):
-                z = origin[2] + iz * voxel
-                values.append(density_fn(x, y, z))
+    for index_x in range(count_x):
+        coord_x = origin[0] + index_x * voxel
+        for index_y in range(count_y):
+            coord_y = origin[1] + index_y * voxel
+            for index_z in range(count_z):
+                coord_z = origin[2] + index_z * voxel
+                values.append(density_fn(coord_x, coord_y, coord_z))
 
     for idx in range(0, len(values), 6):
         lines.append("  ".join(f"{val:.5E}" for val in values[idx : idx + 6]))
@@ -166,19 +182,19 @@ def write_chgcar(
             each is (density_fn, augmentation_text or None)
     """
     lines = [comment, "   1.0"]
-    for vx, vy, vz in lattice:
-        lines.append(f"     {vx:.4f}  {vy:.4f}  {vz:.4f}")
+    for vector_x, vector_y, vector_z in lattice:
+        lines.append(f"     {vector_x:.4f}  {vector_y:.4f}  {vector_z:.4f}")
 
     elem_names = "   ".join(sym for sym, _ in elements)
     elem_counts = "   ".join(str(len(coords)) for _, coords in elements)
     lines.extend([f"   {elem_names}", f"   {elem_counts}", "Direct"])
 
     for _, coords in elements:
-        for fx, fy, fz in coords:
-            lines.append(f"  {fx:.6f}  {fy:.6f}  {fz:.6f}")
+        for frac_x, frac_y, frac_z in coords:
+            lines.append(f"  {frac_x:.6f}  {frac_y:.6f}  {frac_z:.6f}")
     lines.append("")
 
-    nx, ny, nz = grid_dims
+    count_x, count_y, count_z = grid_dims
     all_blocks: list[
         tuple[Callable[[float, float, float, float, float, float], float], str | None]
     ] = [(density_fn, None)]
@@ -186,18 +202,36 @@ def write_chgcar(
         all_blocks.extend(extra_blocks)
 
     for block_fn, aug_text in all_blocks:
-        lines.append(f"   {nx}   {ny}   {nz}")
+        lines.append(f"   {count_x}   {count_y}   {count_z}")
         values = []
         # VASP volumetric ordering: x varies fastest, then y, then z.
-        for iz in range(nz):
-            for iy in range(ny):
-                for ix in range(nx):
-                    fx, fy, fz = ix / nx, iy / ny, iz / nz
+        for index_z in range(count_z):
+            for index_y in range(count_y):
+                for index_x in range(count_x):
+                    frac_x, frac_y, frac_z = (
+                        index_x / count_x,
+                        index_y / count_y,
+                        index_z / count_z,
+                    )
                     # Convert fractional to Cartesian
-                    x = fx * lattice[0][0] + fy * lattice[1][0] + fz * lattice[2][0]
-                    y = fx * lattice[0][1] + fy * lattice[1][1] + fz * lattice[2][1]
-                    z = fx * lattice[0][2] + fy * lattice[1][2] + fz * lattice[2][2]
-                    values.append(block_fn(x, y, z, fx, fy, fz))
+                    coord_x = (
+                        frac_x * lattice[0][0]
+                        + frac_y * lattice[1][0]
+                        + frac_z * lattice[2][0]
+                    )
+                    coord_y = (
+                        frac_x * lattice[0][1]
+                        + frac_y * lattice[1][1]
+                        + frac_z * lattice[2][1]
+                    )
+                    coord_z = (
+                        frac_x * lattice[0][2]
+                        + frac_y * lattice[1][2]
+                        + frac_z * lattice[2][2]
+                    )
+                    values.append(
+                        block_fn(coord_x, coord_y, coord_z, frac_x, frac_y, frac_z)
+                    )
 
         for idx in range(0, len(values), 5):
             lines.append(" ".join(f"{val:18.11E}" for val in values[idx : idx + 5]))
@@ -220,12 +254,14 @@ def generate_h2o_cube() -> str:
     ]
     bond_mids = [(0.0, 0.3786, -0.176), (0.0, -0.3786, -0.176)]
 
-    def density(x: float, y: float, z: float) -> float:
-        rho = 8.0 * gaussian(x, y, z, 0.0, 0.0, 0.1173, 0.7)
-        rho += gaussian(x, y, z, 0.0, 0.7572, -0.4692, 0.4)
-        rho += gaussian(x, y, z, 0.0, -0.7572, -0.4692, 0.4)
-        for bx, by, bz in bond_mids:
-            rho += 2.0 * gaussian(x, y, z, bx, by, bz, 0.35)
+    def density(coord_x: float, coord_y: float, coord_z: float) -> float:
+        rho = 8.0 * gaussian(coord_x, coord_y, coord_z, 0.0, 0.0, 0.1173, 0.7)
+        rho += gaussian(coord_x, coord_y, coord_z, 0.0, 0.7572, -0.4692, 0.4)
+        rho += gaussian(coord_x, coord_y, coord_z, 0.0, -0.7572, -0.4692, 0.4)
+        for bond_x, bond_y, bond_z in bond_mids:
+            rho += 2.0 * gaussian(
+                coord_x, coord_y, coord_z, bond_x, bond_y, bond_z, 0.35
+            )
         return rho
 
     return write_cube("Water molecule electron density", atoms, 30, 6.0, density)
@@ -238,19 +274,30 @@ def generate_benzene_orbital_cube() -> str:
     c_positions: list[tuple[float, float]] = []
     for idx in range(6):
         angle = idx * math.pi / 3
-        cx, cy = r_cc * math.cos(angle), r_cc * math.sin(angle)
-        c_positions.append((cx, cy))
-        atoms.append((6, cx, cy, 0.0))
+        center_x, center_y = r_cc * math.cos(angle), r_cc * math.sin(angle)
+        c_positions.append((center_x, center_y))
+        atoms.append((6, center_x, center_y, 0.0))
         atoms.append(
             (1, (r_cc + r_ch) * math.cos(angle), (r_cc + r_ch) * math.sin(angle), 0.0)
         )
 
     signs = [1, -1, 1, -1, 1, -1]
 
-    def density(x: float, y: float, z: float) -> float:
+    def density(coord_x: float, coord_y: float, coord_z: float) -> float:
         psi = 0.0
-        for (cx, cy), sign in zip(c_positions, signs, strict=True):
-            psi += sign * z * math.exp(-((x - cx) ** 2 + (y - cy) ** 2 + z**2) / 0.72)
+        for (center_x, center_y), sign in zip(c_positions, signs, strict=True):
+            psi += (
+                sign
+                * coord_z
+                * math.exp(
+                    -(
+                        (coord_x - center_x) ** 2
+                        + (coord_y - center_y) ** 2
+                        + coord_z**2
+                    )
+                    / 0.72
+                )
+            )
         return psi
 
     return write_cube(
@@ -270,11 +317,17 @@ def generate_ch4_esp_cube() -> str:
         (1, -tet, -tet, tet),
     ]
 
-    def density(x: float, y: float, z: float) -> float:
+    def density(coord_x: float, coord_y: float, coord_z: float) -> float:
         pot = 0.0
-        for z_num, ax, ay, az in atoms:
-            pot += z_num * gaussian(x, y, z, ax, ay, az, 0.4)
-            pot -= z_num * 0.8 * gaussian(x, y, z, ax, ay, az, 0.9)
+        for z_num, atom_x, atom_y, atom_z in atoms:
+            pot += z_num * gaussian(
+                coord_x, coord_y, coord_z, atom_x, atom_y, atom_z, 0.4
+            )
+            pot -= (
+                z_num
+                * 0.8
+                * gaussian(coord_x, coord_y, coord_z, atom_x, atom_y, atom_z, 0.9)
+            )
         return pot
 
     return write_cube("Methane electrostatic potential", atoms, 30, 7.0, density)
@@ -313,23 +366,40 @@ def generate_si_chgcar() -> str:
         (0.125, 0.875, 0.875),
     ]
     volume = lat_a**3
-    atom_cart = [(fx * lat_a, fy * lat_a, fz * lat_a) for fx, fy, fz in si_frac]
-    bond_cart = [(fx * lat_a, fy * lat_a, fz * lat_a) for fx, fy, fz in bond_frac]
+    atom_cart = [
+        (frac_x * lat_a, frac_y * lat_a, frac_z * lat_a)
+        for frac_x, frac_y, frac_z in si_frac
+    ]
+    bond_cart = [
+        (frac_x * lat_a, frac_y * lat_a, frac_z * lat_a)
+        for frac_x, frac_y, frac_z in bond_frac
+    ]
 
     def density(
-        x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        _fx: float,
+        _fy: float,
+        _fz: float,
     ) -> float:
         rho = pbc_gaussian_sum(
-            x,
-            y,
-            z,
+            coord_x,
+            coord_y,
+            coord_z,
             atom_cart,
             [14.0] * len(atom_cart),
             [0.8] * len(atom_cart),
             lattice,
         )
         rho += pbc_gaussian_sum(
-            x, y, z, bond_cart, [4.0] * len(bond_cart), [0.5] * len(bond_cart), lattice
+            coord_x,
+            coord_y,
+            coord_z,
+            bond_cart,
+            [4.0] * len(bond_cart),
+            [0.5] * len(bond_cart),
+            lattice,
         )
         return rho * volume
 
@@ -348,21 +418,39 @@ def generate_fe_bcc_spin_chgcar() -> str:
     lattice = [(lat_a, 0.0, 0.0), (0.0, lat_a, 0.0), (0.0, 0.0, lat_a)]
     fe_frac: list[FracCoord] = [(0.0, 0.0, 0.0), (0.5, 0.5, 0.5)]
     volume = lat_a**3
-    atom_cart = [(fx * lat_a, fy * lat_a, fz * lat_a) for fx, fy, fz in fe_frac]
+    atom_cart = [
+        (frac_x * lat_a, frac_y * lat_a, frac_z * lat_a)
+        for frac_x, frac_y, frac_z in fe_frac
+    ]
 
     def charge(
-        x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        _fx: float,
+        _fy: float,
+        _fz: float,
     ) -> float:
         return (
-            pbc_gaussian_sum(x, y, z, atom_cart, [26.0] * 2, [0.6] * 2, lattice)
+            pbc_gaussian_sum(
+                coord_x, coord_y, coord_z, atom_cart, [26.0] * 2, [0.6] * 2, lattice
+            )
             * volume
         )
 
     def magnetization(
-        x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        _fx: float,
+        _fy: float,
+        _fz: float,
     ) -> float:
         return (
-            pbc_gaussian_sum(x, y, z, atom_cart, [2.2] * 2, [0.5] * 2, lattice) * volume
+            pbc_gaussian_sum(
+                coord_x, coord_y, coord_z, atom_cart, [2.2] * 2, [0.5] * 2, lattice
+            )
+            * volume
         )
 
     aug_text = "\n".join(
@@ -405,8 +493,10 @@ def hbn_geometry() -> HbnGeometry:
     a2_x, a2_y = lat_a / 2, lat_a * math.sqrt(3) / 2
     lattice = [(lat_a, 0.0, 0.0), (a2_x, a2_y, 0.0), (0.0, 0.0, lat_c)]
 
-    def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
-        return (fx * lat_a + fy * a2_x, fy * a2_y, fz * lat_c)
+    def frac_to_cart(
+        frac_x: float, frac_y: float, frac_z: float
+    ) -> tuple[float, float, float]:
+        return (frac_x * lat_a + frac_y * a2_x, frac_y * a2_y, frac_z * lat_c)
 
     return HbnGeometry(lattice, lat_a * a2_y * lat_c, frac_to_cart)
 
@@ -420,19 +510,26 @@ def generate_hbn_chgcar() -> str:
     bond_cart = [geom.frac_to_cart(*frac) for frac in HBN_BOND_FRAC]
 
     def density(
-        x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        _fx: float,
+        _fy: float,
+        _fz: float,
     ) -> float:
         """Gaussian charge on B/N atoms plus bond-midpoint density."""
         rho = pbc_gaussian_sum(
-            x,
-            y,
-            z,
+            coord_x,
+            coord_y,
+            coord_z,
             atom_cart,
-            [float(zn) for zn in z_nums],
+            [float(atomic_number) for atomic_number in z_nums],
             [0.45] * 4,
             geom.lattice,
         )
-        rho += pbc_gaussian_sum(x, y, z, bond_cart, [3.0] * 2, [0.3] * 2, geom.lattice)
+        rho += pbc_gaussian_sum(
+            coord_x, coord_y, coord_z, bond_cart, [3.0] * 2, [0.3] * 2, geom.lattice
+        )
         return rho * geom.volume
 
     return write_chgcar(
@@ -465,8 +562,8 @@ def al_slab_geometry() -> tuple[
     a2_x, a2_y = AL_SLAB_A / 2, AL_SLAB_A * math.sqrt(3) / 2
     lattice = [(AL_SLAB_A, 0.0, 0.0), (a2_x, a2_y, 0.0), (0.0, 0.0, AL_SLAB_C)]
     atom_cart = [
-        (fx * AL_SLAB_A + fy * a2_x, fy * a2_y, fz * AL_SLAB_C)
-        for fx, fy, fz in AL_SLAB_FRAC
+        (frac_x * AL_SLAB_A + frac_y * a2_x, frac_y * a2_y, frac_z * AL_SLAB_C)
+        for frac_x, frac_y, frac_z in AL_SLAB_FRAC
     ]
     # Zero z vector: no periodic images across the vacuum gap
     lat_vecs_xy = [lattice[0], lattice[1], (0.0, 0.0, 0.0)]
@@ -479,12 +576,19 @@ def generate_al_slab_locpot() -> str:
     lattice, atom_cart, lat_vecs_xy, volume = al_slab_geometry()
 
     def density(
-        x: float, y: float, z: float, _fx: float, _fy: float, fz: float
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        _fx: float,
+        _fy: float,
+        frac_z: float,
     ) -> float:
         """Attractive atomic wells plus a slab-vs-vacuum background step."""
-        pot = -pbc_gaussian_sum(x, y, z, atom_cart, [13.0] * 4, [0.5] * 4, lat_vecs_xy)
+        pot = -pbc_gaussian_sum(
+            coord_x, coord_y, coord_z, atom_cart, [13.0] * 4, [0.5] * 4, lat_vecs_xy
+        )
         slab_center, slab_width = 0.375, 0.10
-        in_slab = math.exp(-((fz - slab_center) ** 2) / (2 * slab_width**2))
+        in_slab = math.exp(-((frac_z - slab_center) ** 2) / (2 * slab_width**2))
         pot += -2.0 * in_slab + 0.5 * (1 - in_slab)
         return pot * volume
 
@@ -525,23 +629,38 @@ GLYCINE_BOX = 10.0
 
 def generate_glycine_density_cube() -> str:
     """Glycine electron density (.cube, 50x50x50) — pairs with glycine-esp."""
-    atoms: list[Atom] = [(z, x, y, zc) for z, x, y, zc, _q in GLYCINE_ATOMS_CHARGES]
+    atoms: list[Atom] = [
+        (coord_z, coord_x, coord_y, position_z)
+        for coord_z, coord_x, coord_y, position_z, _charge in GLYCINE_ATOMS_CHARGES
+    ]
     # Bond midpoints add covalent-bond density between heavy atoms
     bonds = [(0, 3), (3, 6), (6, 7), (6, 8)]
 
-    def density(x: float, y: float, z: float) -> float:
+    def density(coord_x: float, coord_y: float, coord_z: float) -> float:
         rho = 0.0
-        for z_num, ax, ay, az, _q in GLYCINE_ATOMS_CHARGES:
+        for z_num, atom_x, atom_y, atom_z, _charge in GLYCINE_ATOMS_CHARGES:
             # Tight core + diffuse valence tail so a vdW-like outer surface still
             # follows the molecular skeleton instead of merging into one blob
             sigma_core = 0.28 if z_num == 1 else 0.38
-            rho += z_num * gaussian(x, y, z, ax, ay, az, sigma_core)
-            rho += 0.4 * z_num * gaussian(x, y, z, ax, ay, az, sigma_core * 1.8)
+            rho += z_num * gaussian(
+                coord_x, coord_y, coord_z, atom_x, atom_y, atom_z, sigma_core
+            )
+            rho += (
+                0.4
+                * z_num
+                * gaussian(
+                    coord_x, coord_y, coord_z, atom_x, atom_y, atom_z, sigma_core * 1.8
+                )
+            )
         for idx_a, idx_b in bonds:
-            _, ax, ay, az, _ = GLYCINE_ATOMS_CHARGES[idx_a]
-            _, bx, by, bz, _ = GLYCINE_ATOMS_CHARGES[idx_b]
-            mx, my, mz = (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2
-            rho += 1.2 * gaussian(x, y, z, mx, my, mz, 0.3)
+            _, atom_x, atom_y, atom_z, _ = GLYCINE_ATOMS_CHARGES[idx_a]
+            _, bond_x, bond_y, bond_z, _ = GLYCINE_ATOMS_CHARGES[idx_b]
+            mid_x, mid_y, mid_z = (
+                (atom_x + bond_x) / 2,
+                (atom_y + bond_y) / 2,
+                (atom_z + bond_z) / 2,
+            )
+            rho += 1.2 * gaussian(coord_x, coord_y, coord_z, mid_x, mid_y, mid_z, 0.3)
         return rho
 
     return write_cube(
@@ -555,13 +674,18 @@ def generate_glycine_density_cube() -> str:
 
 def generate_glycine_esp_cube() -> str:
     """Glycine electrostatic potential (.cube, 50x50x50) on the density grid."""
-    atoms: list[Atom] = [(z, x, y, zc) for z, x, y, zc, _q in GLYCINE_ATOMS_CHARGES]
+    atoms: list[Atom] = [
+        (coord_z, coord_x, coord_y, position_z)
+        for coord_z, coord_x, coord_y, position_z, _charge in GLYCINE_ATOMS_CHARGES
+    ]
 
-    def potential(x: float, y: float, z: float) -> float:
+    def potential(coord_x: float, coord_y: float, coord_z: float) -> float:
         """Sum of softened Coulomb potentials of the atomic partial charges."""
         pot = 0.0
-        for _z_num, ax, ay, az, charge in GLYCINE_ATOMS_CHARGES:
-            pot += gaussian_coulomb(x, y, z, ax, ay, az, charge, 0.5)
+        for _z_num, atom_x, atom_y, atom_z, charge in GLYCINE_ATOMS_CHARGES:
+            pot += gaussian_coulomb(
+                coord_x, coord_y, coord_z, atom_x, atom_y, atom_z, charge, 0.5
+            )
         return pot
 
     return write_cube(
@@ -578,10 +702,17 @@ def generate_al_slab_chgcar() -> str:
     lattice, atom_cart, lat_vecs_xy, volume = al_slab_geometry()
 
     def density(
-        x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        _fx: float,
+        _fy: float,
+        _fz: float,
     ) -> float:
         """Gaussian charge blobs on the four slab atoms."""
-        rho = pbc_gaussian_sum(x, y, z, atom_cart, [13.0] * 4, [0.55] * 4, lat_vecs_xy)
+        rho = pbc_gaussian_sum(
+            coord_x, coord_y, coord_z, atom_cart, [13.0] * 4, [0.55] * 4, lat_vecs_xy
+        )
         return rho * volume
 
     return write_chgcar(
@@ -607,17 +738,24 @@ def generate_hbn_elfcar() -> str:
     n_cart = [geom.frac_to_cart(*frac) for frac in HBN_N_FRAC]
     b_cart = [geom.frac_to_cart(*frac) for frac in HBN_B_FRAC]
 
-    def elf(x: float, y: float, z: float, _fx: float, _fy: float, _fz: float) -> float:
+    def elf(
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        _fx: float,
+        _fy: float,
+        _fz: float,
+    ) -> float:
         """Bounded [0, 1] localization built from bond, N, and B Gaussians."""
         val = 0.05  # interstitial baseline
         val += 0.85 * pbc_gaussian_sum(
-            x, y, z, bond_cart, [1.0] * 2, [0.45] * 2, geom.lattice
+            coord_x, coord_y, coord_z, bond_cart, [1.0] * 2, [0.45] * 2, geom.lattice
         )
         val += 0.6 * pbc_gaussian_sum(
-            x, y, z, n_cart, [1.0] * 2, [0.4] * 2, geom.lattice
+            coord_x, coord_y, coord_z, n_cart, [1.0] * 2, [0.4] * 2, geom.lattice
         )
         val += 0.3 * pbc_gaussian_sum(
-            x, y, z, b_cart, [1.0] * 2, [0.35] * 2, geom.lattice
+            coord_x, coord_y, coord_z, b_cart, [1.0] * 2, [0.35] * 2, geom.lattice
         )
         return min(val, 1.0) * geom.volume
 
@@ -645,15 +783,25 @@ def generate_large_grid_locpot() -> str:
     ]
     volume = 12.0 * 12.0 * 14.4
     lat_vecs = [lattice[0], lattice[1], lattice[2]]
-    atom_cart = [(fx * 12.0, fy * 12.0, fz * 14.4) for fx, fy, fz in si_frac]
+    atom_cart = [
+        (frac_x * 12.0, frac_y * 12.0, frac_z * 14.4)
+        for frac_x, frac_y, frac_z in si_frac
+    ]
 
     def potential(
-        x: float, y: float, z: float, fx: float, fy: float, fz: float
+        coord_x: float,
+        coord_y: float,
+        coord_z: float,
+        frac_x: float,
+        frac_y: float,
+        frac_z: float,
     ) -> float:
         """Attractive wells at nuclei plus a long-wavelength periodic modulation."""
-        pot = -pbc_gaussian_sum(x, y, z, atom_cart, [10.0] * 4, [0.9] * 4, lat_vecs)
-        pot += 0.8 * math.sin(2 * math.pi * fx) * math.cos(2 * math.pi * fy)
-        pot += 0.5 * math.cos(2 * math.pi * fz)
+        pot = -pbc_gaussian_sum(
+            coord_x, coord_y, coord_z, atom_cart, [10.0] * 4, [0.9] * 4, lat_vecs
+        )
+        pot += 0.8 * math.sin(2 * math.pi * frac_x) * math.cos(2 * math.pi * frac_y)
+        pot += 0.5 * math.cos(2 * math.pi * frac_z)
         # Round to 6 significant digits so the gzipped file stays small
         return float(f"{pot * volume:.5e}")
 

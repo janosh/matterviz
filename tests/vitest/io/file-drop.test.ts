@@ -121,7 +121,7 @@ describe(`create_file_drop_handler`, () => {
     const inner = new File([`a`], `a.cif`)
     vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: inner.name })
     // splice drains it, which is how readEntries signals the end: an empty second batch
-    const batch = [{ isFile: true, file: (ok: (arg: File) => void) => ok(inner) }]
+    const batch = [{ isFile: true, file: (valid: (arg: File) => void) => valid(inner) }]
     const entry = {
       isDirectory: true,
       createReader: () => ({

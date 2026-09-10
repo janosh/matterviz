@@ -163,9 +163,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   const stripe_texture = (() => {
     const width = 16
     const data = new Uint8Array(width * 4)
-    for (let px = 0; px < width; px++) {
-      const val = px < 9 ? 255 : 56
-      data.set([val, val, val, 255], px * 4)
+    for (let pixel_x = 0; pixel_x < width; pixel_x++) {
+      const val = pixel_x < 9 ? 255 : 56
+      data.set([val, val, val, 255], pixel_x * 4)
     }
     const tex = new DataTexture(data, width, 1, RGBAFormat)
     tex.wrapS = RepeatWrapping
@@ -235,8 +235,12 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       parts_by_group.set(color, group)
 
       if (elem.kind === `rotoinversion`) {
-        const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
-        const marker = new OctahedronGeometry(INVERSION_RADIUS * 0.8).translate(cx, cy, cz)
+        const [center_x, center_y, center_z] = frac_to_cart_direction(elem.point, cell)
+        const marker = new OctahedronGeometry(INVERSION_RADIUS * 0.8).translate(
+          center_x,
+          center_y,
+          center_z,
+        )
         // Cylinders are indexed; every part in a merged geometry must agree on indexing.
         marker.setIndex(
           Array.from({ length: marker.getAttribute(`position`).count }, (_unused, idx) => idx),
@@ -344,8 +348,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   const inversion_group: MaterialGroup | null = $derived.by(() => {
     void centers_key
     const markers = untrack(() => center_elements).map((elem) => {
-      const [cx, cy, cz] = frac_to_cart_direction(elem.point, cell)
-      return new OctahedronGeometry(INVERSION_RADIUS).translate(cx, cy, cz)
+      const [center_x, center_y, center_z] = frac_to_cart_direction(elem.point, cell)
+      return new OctahedronGeometry(INVERSION_RADIUS).translate(center_x, center_y, center_z)
     })
     if (markers.length === 0) return null
     const merged = mergeGeometries(markers)

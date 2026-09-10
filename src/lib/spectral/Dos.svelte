@@ -429,15 +429,15 @@
             : x_scale_fn(effective_fermi_level)
           : NaN}
       {#if Number.isFinite(fermi_pos)}
-        {@const [x1, x2, y1, y2] = is_horizontal
+        {@const [coord_x_1, coord_x, coord_y_1, coord_y_2] = is_horizontal
           ? [pad.l, width - pad.r, fermi_pos, fermi_pos]
           : [fermi_pos, fermi_pos, pad.t, height - pad.b]}
         <line
           class="fermi-level-line"
-          {x1}
-          {x2}
-          {y1}
-          {y2}
+          x1={coord_x_1}
+          x2={coord_x}
+          y1={coord_y_1}
+          y2={coord_y_2}
           stroke="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
           stroke-width="var(--dos-fermi-line-width, 1.5)"
           stroke-dasharray="var(--dos-fermi-line-dash, 6,3)"
@@ -468,14 +468,14 @@
             : x_scale_fn(reference_frequency)
           : NaN}
       {#if Number.isFinite(ref_pos)}
-        {@const [x1, x2, y1, y2] = is_horizontal
+        {@const [coord_x_1, coord_x, coord_y_1, coord_y_2] = is_horizontal
           ? [pad.l, width - pad.r, ref_pos, ref_pos]
           : [ref_pos, ref_pos, pad.t, height - pad.b]}
         <line
-          {x1}
-          {x2}
-          {y1}
-          {y2}
+          x1={coord_x_1}
+          x2={coord_x}
+          y1={coord_y_1}
+          y2={coord_y_2}
           stroke="var(--dos-reference-line-color, light-dark(#d48860, #c47850))"
           stroke-width="var(--dos-reference-line-width, 1)"
           stroke-dasharray="var(--dos-reference-line-dash, 4,3)"

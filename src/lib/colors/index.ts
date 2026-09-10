@@ -24,10 +24,12 @@ const d3_interpolators = Object.fromEntries(
   Object.entries(d3_sc).filter(
     ([name, candidate]) => name.startsWith(`interpolate`) && typeof candidate === `function`,
   ),
-) as Record<D3InterpolateName, (t: number) => string>
+) as Record<D3InterpolateName, (fraction: number) => string>
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
   Object.hasOwn(d3_interpolators, name)
-export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {
+export const get_d3_interpolator = (
+  name: D3InterpolateName,
+): ((fraction: number) => string) => {
   const interpolator = d3_interpolators[name]
   if (!interpolator) throw new Error(`Unknown D3 color interpolator: ${name}`)
   return interpolator

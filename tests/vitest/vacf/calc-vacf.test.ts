@@ -23,11 +23,11 @@ const direct_autocorrelation_sum = (
   for (let origin = 0; origin + lag < n_frames; origin++) {
     for (const atom_idx of atoms) {
       const from = (origin * n_atoms + atom_idx) * 3
-      const to = ((origin + lag) * n_atoms + atom_idx) * 3
+      const target = ((origin + lag) * n_atoms + atom_idx) * 3
       total +=
-        velocities[to] * velocities[from] +
-        velocities[to + 1] * velocities[from + 1] +
-        velocities[to + 2] * velocities[from + 2]
+        velocities[target] * velocities[from] +
+        velocities[target + 1] * velocities[from + 1] +
+        velocities[target + 2] * velocities[from + 2]
     }
   }
   return total
@@ -274,7 +274,7 @@ describe(`velocity sources`, () => {
 })
 
 describe(`central_difference_velocities`, () => {
-  it.each([1, 0.5])(`reproduces a quadratic derivative exactly at dt=%f`, (dt) => {
+  it.each([1, 0.5])(`reproduces a quadratic derivative exactly at dt=%f`, (delta_time) => {
     // r(n) = (n^2, 2n, 0) has central difference ((n+1)^2 - (n-1)^2) / 2 = 2n, which is
     // the exact derivative at dt=1; dividing by dt also pins the physical-time scaling.
     const n_frames = 8
@@ -283,11 +283,11 @@ describe(`central_difference_velocities`, () => {
       positions[frame_idx * 3] = frame_idx * frame_idx
       positions[frame_idx * 3 + 1] = 2 * frame_idx
     }
-    const velocities = central_difference_velocities(positions, n_frames, 1, dt)
+    const velocities = central_difference_velocities(positions, n_frames, 1, delta_time)
     expect(velocities).toHaveLength((n_frames - 2) * 3)
     for (let out_idx = 0; out_idx < n_frames - 2; out_idx++) {
-      expect(velocities[out_idx * 3]).toBe((2 * (out_idx + 1)) / dt)
-      expect(velocities[out_idx * 3 + 1]).toBe(2 / dt)
+      expect(velocities[out_idx * 3]).toBe((2 * (out_idx + 1)) / delta_time)
+      expect(velocities[out_idx * 3 + 1]).toBe(2 / delta_time)
       expect(velocities[out_idx * 3 + 2]).toBe(0)
     }
   })

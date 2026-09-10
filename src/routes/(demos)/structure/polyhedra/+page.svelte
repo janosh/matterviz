@@ -61,7 +61,7 @@
   ]
 
   let active_id = $state(examples[0].id)
-  let active = $derived(examples.find((ex) => ex.id === active_id) ?? examples[0])
+  let active = $derived(examples.find((example) => example.id === active_id) ?? examples[0])
   let supercell_scaling = $state(examples[0].supercell ?? `1x1x1`)
   // ?supercell=2x2x2 overrides; ?file= structures default to 1x1x1. Read client-side only
   // (prerender forbids url.searchParams) and once on mount so it doesn't fight user changes.

@@ -108,8 +108,10 @@ const octahedron_points: Vec3[] = [
   [0, 0, -1],
 ]
 const cube_points = (side: number): Vec3[] =>
-  [0, 1].flatMap((x) =>
-    [0, 1].flatMap((y) => [0, 1].map((z): Vec3 => [x * side, y * side, z * side])),
+  [0, 1].flatMap((coord_x) =>
+    [0, 1].flatMap((coord_y) =>
+      [0, 1].map((coord_z): Vec3 => [coord_x * side, coord_y * side, coord_z * side]),
+    ),
   )
 
 // `center` site at `origin` surrounded by an octahedron of `vertex` sites at `dist`
@@ -247,7 +249,9 @@ describe(`convex_hull_3d`, () => {
             [vert_a, vert_b],
             [vert_b, vert_c],
             [vert_c, vert_a],
-          ].map(([from, to]) => (from < to ? `${from}-${to}` : `${to}-${from}`)),
+          ].map(([from, target]) =>
+            from < target ? `${from}-${target}` : `${target}-${from}`,
+          ),
         ),
       )
       expect(hull.vertices.length - edges.size + hull.faces.length).toBe(2)
@@ -329,7 +333,11 @@ describe(`compute_polyhedra`, () => {
     expect(poly.faces).toHaveLength(8)
     expect(poly.volume).toBeCloseTo((4 / 3) * 2 ** 3, 6)
     // vertex_site_idxs maps each hull vertex to the site at that exact position
-    expect([...poly.vertex_site_idxs].toSorted((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(
+      [...poly.vertex_site_idxs].toSorted(
+        (left_value, right_value) => left_value - right_value,
+      ),
+    ).toEqual([1, 2, 3, 4, 5, 6])
     for (const [v_idx, site_idx] of poly.vertex_site_idxs.entries()) {
       expect(poly.vertices[v_idx]).toEqual(structure.sites[site_idx].xyz)
     }
@@ -576,7 +584,11 @@ describe(`VESTA-style detection rules`, () => {
     ])
     const [poly, ...rest] = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4, 5, 6]))
     expect(rest).toHaveLength(0)
-    expect([...poly.vertex_site_idxs].toSorted((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(
+      [...poly.vertex_site_idxs].toSorted(
+        (left_value, right_value) => left_value - right_value,
+      ),
+    ).toEqual([1, 2, 3, 4, 5, 6])
     expect(poly.faces).toHaveLength(8)
     // square base of side 2*sqrt(2) with apices 1.83 and 2.39 above/below it
     expect(poly.volume).toBeCloseTo((1 / 3) * 8 * (1.83 + 2.39), 10)
@@ -586,9 +598,12 @@ describe(`VESTA-style detection rules`, () => {
     const sites = [
       ...octahedron_sites(`Ti`, `O`, [8, 8, 8], 1.95),
       // 8 Ba neighbors that a noisy bond graph might connect to Ti
-      ...[-3.4, 3.4].flatMap((x) =>
-        [-3.4, 3.4].flatMap((y) =>
-          [-3.4, 3.4].map((z) => ({ element: `Ba`, xyz: add_vec([8, 8, 8], [x, y, z]) })),
+      ...[-3.4, 3.4].flatMap((coord_x) =>
+        [-3.4, 3.4].flatMap((coord_y) =>
+          [-3.4, 3.4].map((coord_z) => ({
+            element: `Ba`,
+            xyz: add_vec([8, 8, 8], [coord_x, coord_y, coord_z]),
+          })),
         ),
       ),
     ]

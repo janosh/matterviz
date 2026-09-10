@@ -43,6 +43,6 @@
     />
   </T.Mesh>
 {/if}
-{#each polyhedron.edges as [from, to], edge_idx (edge_idx)}
-  <Cylinder {from} {to} thickness={edge_width} color={edge_color} />
+{#each polyhedron.edges as [from, target], edge_idx (edge_idx)}
+  <Cylinder {from} to={target} thickness={edge_width} color={edge_color} />
 {/each}

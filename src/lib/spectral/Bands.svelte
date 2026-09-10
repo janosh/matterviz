@@ -62,7 +62,7 @@
     display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    id = undefined,
+    id: identifier = undefined,
     'data-testid': data_testid = undefined,
     point_hit_padding = 3,
     // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
@@ -144,10 +144,10 @@
 
   // Material labels are stable identities; use an empty label for an unnamed dataset.
   const structures = $derived(
-    Object.entries(band_structs).map(([label, bs]) => ({
+    Object.entries(band_structs).map(([label, band_structure]) => ({
       label,
-      bs,
-      keys: helpers.branch_segment_keys(bs),
+      bs: band_structure,
+      keys: helpers.branch_segment_keys(band_structure),
     })),
   )
   const num_structures = $derived(structures.length)
@@ -170,9 +170,9 @@
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
     const collected: Record<string, [BaseBandStructure, Branch][]> = {}
-    for (const { bs, keys } of structures) {
-      for (const [branch_idx, branch] of bs.branches.entries()) {
-        ;(collected[keys[branch_idx]] ??= []).push([bs, branch])
+    for (const { bs: band_structure, keys } of structures) {
+      for (const [branch_idx, branch] of band_structure.branches.entries()) {
+        ;(collected[keys[branch_idx]] ??= []).push([band_structure, branch])
       }
     }
     return collected
@@ -202,10 +202,11 @@
     const positions: Record<string, Vec2> = {}
     let current_x = 0
     for (const key of ordered) {
-      const [bs, branch] = all_segments[key][0]
+      const [band_structure, branch] = all_segments[key][0]
       const segment_len = helpers.is_discontinuity_branch(branch)
         ? 0
-        : bs.distance[branch.end_index] - bs.distance[branch.start_index]
+        : band_structure.distance[branch.end_index] -
+          band_structure.distance[branch.start_index]
       positions[key] = [current_x, current_x + segment_len]
       current_x += segment_len
     }
@@ -224,15 +225,16 @@
     let max_slope = 0
     const markers = rest.on_point_click ? `line+points` : `line`
 
-    for (const [bs_idx, { label, bs, keys }] of structures.entries()) {
+    for (const [bs_idx, { label, bs: band_structure, keys }] of structures.entries()) {
       const color = plot_color(bs_idx)
       const structure_label = label || `Structure ${bs_idx + 1}`
-      const gamma_indices = band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
-      const ribbon = bs.band_widths?.length
+      const gamma_indices =
+        band_type === `phonon` ? helpers.find_gamma_indices(band_structure) : []
+      const ribbon = band_structure.band_widths?.length
         ? { opacity: 0.3, max_width: 6, scale: 1, ...ribbon_config }
         : null
 
-      for (const [branch_idx, branch] of bs.branches.entries()) {
+      for (const [branch_idx, branch] of band_structure.branches.entries()) {
         const segment_key = keys[branch_idx]
         if (helpers.is_discontinuity_branch(branch) || !segments_to_plot.has(segment_key)) {
           continue
@@ -241,16 +243,22 @@
         const end_idx = branch.end_index + 1 // exclusive
         const [x_start, x_end] = internal_x_positions[segment_key] ?? [0, 1]
         const x_vals = helpers.scale_segment_distances(
-          bs.distance.slice(start_idx, end_idx),
+          band_structure.distance.slice(start_idx, end_idx),
           x_start,
           x_end,
         )
 
-        for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
-          const y_up = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
-          const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
+        for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
+          const y_up = convert_band_values(
+            band_structure.bands[band_idx].slice(start_idx, end_idx),
+          )
+          const is_acoustic = helpers.classify_acoustic(
+            band_structure,
+            band_idx,
+            gamma_indices,
+          )
           const style_up = get_line_style(color, is_acoustic === true, band_idx)
-          const spin_down_band = bs.spin_down_bands?.[band_idx]
+          const spin_down_band = band_structure.spin_down_bands?.[band_idx]
           const y_down =
             band_type === `electronic` && spin_down_band && spin_down_band.length >= end_idx
               ? convert_band_values(spin_down_band.slice(start_idx, end_idx))
@@ -277,7 +285,7 @@
               band_idx,
               spin,
               is_acoustic,
-              bs,
+              bs: band_structure,
               start_idx,
             })
             for (const { slope } of metadata) {
@@ -297,7 +305,10 @@
             })
           }
 
-          const width_values = bs.band_widths?.[band_idx]?.slice(start_idx, end_idx)
+          const width_values = band_structure.band_widths?.[band_idx]?.slice(
+            start_idx,
+            end_idx,
+          )
           if (ribbon && width_values?.some((width) => width > 0)) {
             all_ribbons.push({
               x_values: x_vals,
@@ -327,9 +338,9 @@
       }
     }
     for (const [segment_key, [x_start, x_end]] of Object.entries(internal_x_positions)) {
-      const [bs, branch] = all_segments[segment_key][0]
-      add_point(x_start, bs.qpoints[branch.start_index])
-      add_point(x_end, bs.qpoints[branch.end_index])
+      const [band_structure, branch] = all_segments[segment_key][0]
+      add_point(x_start, band_structure.qpoints[branch.start_index])
+      add_point(x_end, band_structure.qpoints[branch.end_index])
     }
     return points_at
   })
@@ -364,8 +375,8 @@
   // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
   // scale, so it follows zoom, resize and fullscreen
   let bz_popup_x = $state<number | null>(null)
-  const in_range = (value: number, [lo, hi]: Vec2) =>
-    value >= Math.min(lo, hi) && value <= Math.max(lo, hi)
+  const in_range = (value: number, [lower, upper]: Vec2) =>
+    value >= Math.min(lower, upper) && value <= Math.max(lower, upper)
   let bz_popup_points = $derived.by((): BZPopupPoint[] => {
     if (bz_popup_x === null || !k_lattice) return []
     return (sym_points_at_x[bz_popup_x] ?? []).map((point) => ({
@@ -395,9 +406,9 @@
   // two endpoints instead of re-flattening every band
   let raw_y_range = $derived.by((): Vec2 | undefined =>
     helpers.padded_frequency_range(
-      structures.flatMap(({ bs }) => [
-        ...bs.bands.flat(),
-        ...(bs.spin_down_bands?.flat() ?? []),
+      structures.flatMap(({ bs: band_structure }) => [
+        ...band_structure.bands.flat(),
+        ...(band_structure.spin_down_bands?.flat() ?? []),
       ]),
       band_type === `phonon`,
     ),
@@ -492,9 +503,13 @@
 
   // X-position of the externally hovered q-point (from BZ k-path), for the highlight line
   let highlight_x = $derived.by(() => {
-    const bs = structures[0]?.bs
-    if (highlighted_qpoint_index == null || !bs) return null
-    return helpers.qpoint_x_position(bs, highlighted_qpoint_index, internal_x_positions)
+    const band_structure = structures[0]?.bs
+    if (highlighted_qpoint_index == null || !band_structure) return null
+    return helpers.qpoint_x_position(
+      band_structure,
+      highlighted_qpoint_index,
+      internal_x_positions,
+    )
   })
 </script>
 
@@ -502,7 +517,7 @@
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {...rest}
-    {id}
+    id={identifier}
     data-testid={data_testid}
     series={series_data}
     {point_hit_padding}
@@ -521,12 +536,12 @@
     bind:resolved_padding
     children={frame_children}
   >
-    {#snippet tooltip({ x, y, y_formatted, label, metadata })}
+    {#snippet tooltip({ x: coord_x, y: coord_y, y_formatted, label, metadata })}
       {@const { name: y_label, unit: y_unit } = helpers.parse_axis_label(
         internal_y_axis.label ?? ``,
       )}
       {@const segment = Object.entries(internal_x_positions).find(
-        ([, [start, end]]) => x >= start && x <= end,
+        ([, [start, end]]) => coord_x >= start && coord_x <= end,
       )}
       {@const path =
         (segment && !segment[0].startsWith(`branch:`)
@@ -556,7 +571,7 @@
         {#if typeof is_acoustic === `boolean`}
           ({is_acoustic ? `acoustic` : `optical`})
         {:else if band_type === `electronic` && effective_fermi_level !== undefined}
-          ({y <= effective_fermi_level ? `valence` : `conduction`})
+          ({coord_y <= effective_fermi_level ? `valence` : `conduction`})
         {/if}
         {#if spin === `up` || spin === `down`}
           {spin === `up` ? `↑` : `↓`}
@@ -819,7 +834,7 @@
   {/snippet}
 {:else}
   <EmptyState
-    {id}
+    id={identifier}
     data-testid={data_testid}
     {...empty_state_attrs}
     message={empty_state_msg}

@@ -11,7 +11,7 @@
   import { add_alpha, plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import * as io from '$lib/io'
+  import * as file_io from '$lib/io'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'
@@ -71,7 +71,7 @@
     on_file_drop?: (
       content: string | ArrayBuffer,
       filename: string,
-      metadata: io.FileLoadMeta,
+      metadata: file_io.FileLoadMeta,
     ) => Promise<void> | void
     loading?: boolean
     error_msg?: string
@@ -126,8 +126,8 @@
   // Overall 2θ domain (degrees)
   const angle_range = $derived.by((): Vec2 => {
     const extents = pattern_entries.map((entry) => array_extent(entry.pattern.x))
-    const min_x = Math.min(...extents.map(([lo]) => lo))
-    const max_x = Math.max(0, ...extents.map(([, hi]) => hi))
+    const min_x = Math.min(...extents.map(([lower]) => lower))
+    const max_x = Math.max(0, ...extents.map(([, upper]) => upper))
     if (!Number.isFinite(min_x)) return [0, 90] // every pattern was empty
     return [min_x > 10 ? Math.floor(min_x) : 0, Math.ceil(max_x)]
   })
@@ -140,8 +140,8 @@
     if (broadening_enabled) return [] // Optimization: skip if not used
 
     return pattern_entries.map((entry, entry_idx) => {
-      const xs = entry.pattern.x
-      const ys = entry.pattern.y.map((val) => ((val || 0) / global_max_intensity) * 100)
+      const x_values = entry.pattern.x
+      const y_values = entry.pattern.y.map((val) => ((val || 0) / global_max_intensity) * 100)
       const metadata: Record<string, unknown>[] = []
       const labels: (string | null)[] = []
 
@@ -151,7 +151,7 @@
         const threshold = annotate_peaks < 1 ? annotate_peaks * 100 : -Infinity
         const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
         // Strongest first, so a crowded neighbourhood is won by its tallest peak
-        const candidates = ys
+        const candidates = y_values
           .map((y_val, idx) => ({ y_val, idx }))
           .filter(({ y_val }) => y_val > threshold)
           .toSorted((peak_a, peak_b) => peak_b.y_val - peak_a.y_val)
@@ -162,28 +162,28 @@
         const min_spacing = (angle_range[1] - angle_range[0]) * 0.03
         for (const { idx } of candidates) {
           const too_close = selected_indices.some(
-            (kept_idx) => Math.abs(xs[kept_idx] - xs[idx]) < min_spacing,
+            (kept_idx) => Math.abs(x_values[kept_idx] - x_values[idx]) < min_spacing,
           )
           if (!too_close) selected_indices.push(idx)
         }
       }
       const selected = new SvelteSet(selected_indices)
 
-      for (let idx = 0; idx < xs.length; idx++) {
+      for (let idx = 0; idx < x_values.length; idx++) {
         const hkls: Hkl[] = entry.pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? []
         metadata.push({ hkls, d: entry.pattern.d_hkls?.[idx], label: entry.label })
 
         if (selected.has(idx)) {
           // Angles are shown by default only while the plot holds at most two patterns
           const with_angle = show_angles ?? pattern_entries.length <= 2
-          const angle_text = with_angle ? `${format_value(xs[idx], `.2f`)}°` : ``
+          const angle_text = with_angle ? `${format_value(x_values[idx], `.2f`)}°` : ``
           labels.push([join_hkls(hkls), angle_text].filter(Boolean).join(` @ `))
         } else labels.push(null)
       }
 
       return {
-        x: xs,
-        y: ys,
+        x: x_values,
+        y: y_values,
         ...series_style(entry, entry_idx),
         bar_width: Math.max(peak_width, 0.8),
         visible: true,
@@ -239,7 +239,7 @@
   })
 
   // Dropped files: measured patterns are parsed, structure files get a computed pattern
-  const drop_zone = io.file_drop_zone({
+  const drop_zone = file_io.file_drop_zone({
     allow: () => allow_file_drop,
     // a throwing add_xrd_pattern is reported through on_error by the drop handler itself
     on_drop: async (content, filename, metadata) => {

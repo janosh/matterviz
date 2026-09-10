@@ -9,14 +9,14 @@
     parse_frequency_unit,
   } from './frequency-units'
 
-  let { units = $bindable(), id }: { units: FrequencyUnit; id: string } = $props()
+  let { units = $bindable(), id: identifier }: { units: FrequencyUnit; id: string } = $props()
   const unit = $derived(parse_frequency_unit(units) ?? units)
 </script>
 
 <label>
   <span>Frequency</span>
   <select
-    {id}
+    id={identifier}
     value={unit}
     onchange={(event) => (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
   >

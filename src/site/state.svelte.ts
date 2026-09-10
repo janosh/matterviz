@@ -82,7 +82,9 @@ export function group_nav_routes(
       .filter((route) => prefix_idx(route, group) !== -1)
       .filter((route) => groups.find((other) => prefix_idx(route, other) !== -1) === group)
       .toSorted(
-        (r1, r2) => prefix_idx(r1, group) - prefix_idx(r2, group) || r1.localeCompare(r2),
+        (radius_1, radius) =>
+          prefix_idx(radius_1, group) - prefix_idx(radius, group) ||
+          radius_1.localeCompare(radius),
       )
     if (children.length === 0) return []
     return [{ label: group.label, href: group.href, children }]

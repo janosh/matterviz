@@ -435,7 +435,8 @@
     const same_run = tool_overlay?.run_id === overlay?.run_id
     if (!same_run) removed_tool_fields.clear()
     else
-      for (const id of owned_volume_ids) if (!volume_by_id.has(id)) removed_tool_fields.add(id)
+      for (const identifier of owned_volume_ids)
+        if (!volume_by_id.has(identifier)) removed_tool_fields.add(identifier)
     tool_overlay = overlay
     tool_source = session.tool_input
     tool_source_revision = overlay ? tool_input_revision : ``
@@ -443,7 +444,9 @@
       active_volume_id !== undefined && owned_volume_set.has(active_volume_id)
     const preserve_active = restore_active || (same_run && owned_volume_ids.length > 0)
     if (!restore_active) original_active_volume_id = active_volume_id
-    const incoming = (overlay?.volumes ?? []).filter(({ id }) => !removed_tool_fields.has(id))
+    const incoming = (overlay?.volumes ?? []).filter(
+      ({ id: identifier }) => !removed_tool_fields.has(identifier),
+    )
     const result = replace_tool_volumes(
       volumetric_data ?? [],
       isosurface_settings.layers,
@@ -452,7 +455,7 @@
     )
     volumetric_data = result.volumes
     isosurface_settings = { ...isosurface_settings, layers: result.layers }
-    owned_volume_ids = incoming.map(({ id }) => id)
+    owned_volume_ids = incoming.map(({ id: identifier }) => identifier)
     active_volume_id = normalize_active_volume_id(
       incoming.length
         ? preserve_active

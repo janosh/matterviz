@@ -73,10 +73,10 @@ export async function open_info_and_controls(
 // sum-of-every-100th-pixel hash only sampled 8 fixed columns (stride 100 pixels in
 // row-major order), so small marker changes between those columns went undetected.
 export const get_canvas_hash = (canvas: Locator): Promise<string> =>
-  canvas.evaluate((el) => {
-    const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+  canvas.evaluate((element) => {
+    const ctx = (element as HTMLCanvasElement).getContext(`2d`)
     if (!ctx) return ``
-    const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+    const { data } = ctx.getImageData(0, 0, element.clientWidth, element.clientHeight)
     let hash = 0
     // Math.imul wraps to 32 bits, keeping the rolling hash in safe-integer range
     for (let idx = 0; idx < data.length; idx += 16) {

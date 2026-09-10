@@ -101,7 +101,7 @@ const legend_state = (target: ParentNode): Record<string, boolean> =>
   )
 const axis_labels = (target: ParentNode): string[] =>
   [...target.querySelectorAll(`.scatter .axis-label`)].map(
-    (el) => el.textContent?.trim() ?? ``,
+    (element) => element.textContent?.trim() ?? ``,
   )
 
 describe(`display modes`, () => {
@@ -307,13 +307,13 @@ describe(`controls`, () => {
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ steps }), step_labels }),
     )
-    const labels = [...target.querySelectorAll(`.step-label`)].map((el) =>
-      el.textContent?.trim(),
+    const labels = [...target.querySelectorAll(`.step-label`)].map((element) =>
+      element.textContent?.trim(),
     )
     expect(labels).toEqual(expected)
     // Ticks sit at the frame's fraction of the slider (1.5% inset, 98% span)
     const ticks = [...target.querySelectorAll<HTMLElement>(`.step-tick`)].map(
-      (el) => el.style.left,
+      (element) => element.style.left,
     )
     expect(ticks).toEqual(expected.map((label) => `${1.5 + (Number(label) / 10) * 98}%`))
   })

@@ -71,9 +71,9 @@ describe(`thermal_properties`, () => {
       const { zero_point_energy, free_energy, internal_energy, entropy, heat_capacity } =
         thermal_properties(dos, [temp])
       const energy = freq * THZ_TO_EV
-      const x = energy / (BOLTZMANN_EV_PER_K * temp)
-      const occupation = 1 / (Math.exp(x) - 1)
-      const log_term = Math.log(1 - Math.exp(-x))
+      const coord_x = energy / (BOLTZMANN_EV_PER_K * temp)
+      const occupation = 1 / (Math.exp(coord_x) - 1)
+      const log_term = Math.log(1 - Math.exp(-coord_x))
       const k_b = BOLTZMANN_EV_PER_K
       // only the peak has a nonzero trapezoid weight (n_modes / h · 2h / 2 = n_modes), so every
       // integral is exactly n_modes · f(ω0) up to rounding in (ω0 + h) − (ω0 − h): measured 2e-12
@@ -84,8 +84,11 @@ describe(`thermal_properties`, () => {
       expect(rel(free_energy[0], n_modes * (energy / 2 + k_b * temp * log_term))).toBeLessThan(
         1e-10,
       )
-      expect(rel(entropy[0], n_modes * k_b * (x * occupation - log_term))).toBeLessThan(1e-10)
-      const cv_ref = (n_modes * k_b * x ** 2 * Math.exp(x)) / (Math.exp(x) - 1) ** 2
+      expect(rel(entropy[0], n_modes * k_b * (coord_x * occupation - log_term))).toBeLessThan(
+        1e-10,
+      )
+      const cv_ref =
+        (n_modes * k_b * coord_x ** 2 * Math.exp(coord_x)) / (Math.exp(coord_x) - 1) ** 2
       expect(rel(heat_capacity[0], cv_ref)).toBeLessThan(1e-10)
     },
   )

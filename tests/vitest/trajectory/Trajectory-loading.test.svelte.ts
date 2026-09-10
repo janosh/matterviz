@@ -271,10 +271,10 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
       render: () =>
         `<div class="custom-error"><em></em><button type="button">ok</button></div>`,
       setup: (element) => {
-        const em = element.querySelector(`em`)
+        const emphasis = element.querySelector(`em`)
         const button = element.querySelector(`button`)
-        if (!em || !button) throw new Error(`custom error did not render`)
-        em.textContent = get_props().error_msg
+        if (!emphasis || !button) throw new Error(`custom error did not render`)
+        emphasis.textContent = get_props().error_msg
         button.addEventListener(`click`, () => get_props().on_dismiss())
       },
     }))
@@ -608,12 +608,12 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   // Picking a group re-parses the payload already in hand: re-fetching (and re-inflating) a
   // multi-GB HDF5 just to read a different group would double the wait
   test(`a group pick reuses the fetched payload instead of downloading again`, async () => {
-    const gz = await new Response(
+    const grid_z = await new Response(
       new Blob([ambiguous_bytes]).stream().pipeThrough(new CompressionStream(`gzip`)),
     ).arrayBuffer()
     const fetch_spy = vi
       .spyOn(globalThis, `fetch`)
-      .mockImplementation(() => Promise.resolve(new Response(gz)))
+      .mockImplementation(() => Promise.resolve(new Response(grid_z)))
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({
       source: `https://example.com/ambiguous.h5.gz`,

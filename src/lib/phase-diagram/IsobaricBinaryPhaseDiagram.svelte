@@ -223,7 +223,7 @@
         merged_config.font_size,
       )
       const gradient = get_multi_phase_gradient(region.name)
-      const [x_min, x_max] = array_extent(svg_vertices.map(([vx]) => vx))
+      const [x_min, x_max] = array_extent(svg_vertices.map(([vector_x]) => vector_x))
       return {
         ...region,
         svg_path: generate_region_path(svg_vertices),
@@ -289,13 +289,13 @@
     const info = effective_hover_info
     if (!info) return null
     const cursor = { cx: x_scale(info.composition), cy: y_scale(info.temperature) }
-    const endpoint = (phase: string, cx: number, cy: number) =>
-      ({ cx, cy, color: get_phase_color(phase, `hex`) }) as const
-    const { lever_rule: lr } = info
-    if (!lr) return null
+    const endpoint = (phase: string, center_x: number, center_y: number) =>
+      ({ cx: center_x, cy: center_y, color: get_phase_color(phase, `hex`) }) as const
+    const { lever_rule } = info
+    if (!lever_rule) return null
     const endpoints = [
-      endpoint(lr.left_phase, x_scale(lr.left_composition), cursor.cy),
-      endpoint(lr.right_phase, x_scale(lr.right_composition), cursor.cy),
+      endpoint(lever_rule.left_phase, x_scale(lever_rule.left_composition), cursor.cy),
+      endpoint(lever_rule.right_phase, x_scale(lever_rule.right_composition), cursor.cy),
     ] as const
     return { cursor, endpoints }
   })
@@ -440,7 +440,7 @@
     ? `Missing phase diagram data. Provide diagram data through the data prop.`
     : `${component_a}-${component_b} binary phase diagram`}
   ondrop={handle_svg_drop}
-  ondragover={(ev) => ev.preventDefault()}
+  ondragover={(event_value) => event_value.preventDefault()}
 >
   {#if input_error}
     <div class="error" role="alert">{input_error}</div>
@@ -616,7 +616,7 @@
           cursor,
           endpoints: [start, end],
         } = tie_line}
-        {@const tl = merged_config.tie_line}
+        {@const top_left = merged_config.tie_line}
         <g class="tie-line" class:locked={locked_hover_info}>
           {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
             <line
@@ -625,16 +625,16 @@
               x2={end.cx}
               y2={end.cy}
               {stroke}
-              stroke-width={tl.stroke_width + (stroke === `white` ? 1 : 0)}
+              stroke-width={top_left.stroke_width + (stroke === `white` ? 1 : 0)}
               stroke-linecap="round"
             />
           {/each}
-          {#each tie_line.endpoints as ep, idx (idx)}
+          {#each tie_line.endpoints as endpoint, idx (idx)}
             <circle
-              cx={ep.cx}
-              cy={ep.cy}
-              r={tl.endpoint_radius}
-              fill={ep.color}
+              cx={endpoint.cx}
+              cy={endpoint.cy}
+              r={top_left.endpoint_radius}
+              fill={endpoint.color}
               stroke="white"
               stroke-width={1.5}
             />
@@ -642,7 +642,7 @@
           <circle
             cx={cursor.cx}
             cy={cursor.cy}
-            r={tl.cursor_radius}
+            r={top_left.cursor_radius}
             fill={TIE_LINE_COLOR}
             stroke="white"
             stroke-width={2}

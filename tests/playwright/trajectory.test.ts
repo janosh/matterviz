@@ -92,12 +92,12 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test(`narrow viewer hides the filename and keeps the step slider off the FPS input`, async () => {
-    await trajectory_viewer.evaluate((el) => {
-      el.style.width = `1200px`
+    await trajectory_viewer.evaluate((element) => {
+      element.style.width = `1200px`
     })
     await expect(trajectory_viewer.locator(`button.filename`)).toBeVisible()
-    await trajectory_viewer.evaluate((el) => {
-      el.style.width = `800px`
+    await trajectory_viewer.evaluate((element) => {
+      element.style.width = `800px`
     })
     await expect(trajectory_viewer.locator(`button.filename`)).toBeHidden()
     const slider_box = await trajectory_viewer.locator(`.slider-container`).boundingBox()
@@ -685,11 +685,14 @@ test.describe(`Trajectory Component`, () => {
       // to go for any height below that to stick: .trajectory's own 500px floor
       // outranks an inline height, exactly as it does to Hive's card.
       const set_size = (width: number, height = 500) =>
-        trajectory.evaluate((el: HTMLElement, size) => Object.assign(el.style, size), {
-          width: `${width}px`,
-          height: `${height}px`,
-          minHeight: `0`,
-        })
+        trajectory.evaluate(
+          (element: HTMLElement, size) => Object.assign(element.style, size),
+          {
+            width: `${width}px`,
+            height: `${height}px`,
+            minHeight: `0`,
+          },
+        )
 
       // The class comes from a ResizeObserver, which a page full of software-WebGPU
       // canvases can leave waiting well past the default 5s expect timeout.
@@ -703,8 +706,8 @@ test.describe(`Trajectory Component`, () => {
       // The layout class alone would still pass if the grid ordered them the
       // other way round, or handed the plot its 350px floor and the structure
       // whatever was left.
-      const panes = await trajectory.evaluate((el) => {
-        const rect = (sel: string) => el.querySelector(sel)?.getBoundingClientRect()
+      const panes = await trajectory.evaluate((element) => {
+        const rect = (sel: string) => element.querySelector(sel)?.getBoundingClientRect()
         return { structure: rect(`.structure`), plot: rect(`.scatter`) }
       })
       if (!panes.structure || !panes.plot) throw new Error(`panes not found`)

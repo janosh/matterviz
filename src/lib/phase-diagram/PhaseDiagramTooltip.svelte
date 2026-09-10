@@ -106,10 +106,10 @@
     for (const boundary of boundaries) {
       if (![`liquidus`, `solidus`, `solvus`].includes(boundary.type)) continue
       // Find the boundary point closest in composition
-      for (const [bx, bt] of boundary.points) {
-        if (Math.abs(bx - composition) < 0.02) {
+      for (const [basis_x, boundary_temp] of boundary.points) {
+        if (Math.abs(basis_x - composition) < 0.02) {
           // Within 2% composition
-          const delta = temperature - bt
+          const delta = temperature - boundary_temp
           if (!min_dist || Math.abs(delta) < Math.abs(min_dist.delta_t)) {
             min_dist = { type: boundary.type, delta_t: delta }
           }

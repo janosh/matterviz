@@ -14,6 +14,11 @@ import {
   rects_overlap,
 } from '$lib/plot/core/layout'
 import type { Rect } from '$lib/plot/core/layout'
+import {
+  build_spatial_index,
+  query_topmost,
+  type SpatialIndex,
+} from '$lib/plot/core/spatial-index'
 import { DEFAULTS } from '$lib/settings'
 import { clamp01 } from '$lib/utils'
 import { ticks } from 'd3-array'
@@ -30,7 +35,7 @@ import { CONVEX_HULL_STYLE } from './index'
 import type { ConvexHullEntry, HighlightStyle, HullFaceColorMode, MarkerSymbol } from './types'
 
 export type Projected = { x: number; y: number; depth: number }
-export type ProjectPoint = (x: number, y: number, z: number) => Projected
+export type ProjectPoint = (coord_x: number, coord_y: number, coord_z: number) => Projected
 
 // Mean of the simplex corners (triangle or tetrahedron): the rotation centre of the view
 export const simplex_centroid = (corners: readonly (readonly number[])[]): number[] =>
@@ -225,25 +230,38 @@ export function draw_pulse_overlay(
   }
 }
 
-// Mouse hit-testing against the already-projected points in paint order, walked back to
-// front so the point drawn on top wins. `container_scale` is the same canvas_dims.scale the
-// markers were drawn with, so hit radii match drawn radii.
+type HullPickPoint<Entry> = { entry: Entry; cx: number; cy: number; radius: number }
+
+// Build once per camera/data/size change, in the same order the canvas paints points.
+export function build_hull_pick_index<Entry extends ConvexHullEntry>(
+  painted_points: readonly { entry: Entry; projected: Projected }[],
+  container_scale: number,
+): SpatialIndex<HullPickPoint<Entry>> {
+  let max_radius = 0
+  const points = painted_points.map(({ entry, projected }) => {
+    const radius = point_radius(entry) * container_scale + 5
+    max_radius = Math.max(max_radius, radius)
+    return { entry, cx: projected.x, cy: projected.y, radius }
+  })
+  return build_spatial_index(points, max_radius)
+}
+
+// Exact marker-radius picking with paint-order precedence, limited to nearby cells.
 export function find_hull_entry_at_mouse<Entry extends ConvexHullEntry>(
   canvas: HTMLCanvasElement | undefined,
   event: MouseEvent,
-  painted_points: readonly { entry: Entry; projected: Projected }[],
-  container_scale: number,
+  index: SpatialIndex<HullPickPoint<Entry>>,
 ): Entry | null {
   if (!canvas) return null
   const rect = canvas.getBoundingClientRect()
-  const mouse_x = event.clientX - rect.left
-  const mouse_y = event.clientY - rect.top
-  for (let idx = painted_points.length - 1; idx >= 0; idx--) {
-    const { entry, projected } = painted_points[idx]
-    const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
-    if (distance < point_radius(entry) * container_scale + 5) return entry
-  }
-  return null
+  const pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+  return (
+    query_topmost(
+      index,
+      pointer,
+      (point) => Math.hypot(pointer.x - point.cx, pointer.y - point.cy) < point.radius,
+    )?.entry ?? null
+  )
 }
 
 // === Simplex outline ===
@@ -259,9 +277,9 @@ export function draw_dashed_edges(
   ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
   ctx.beginPath()
   for (const [start, end] of edges) {
-    const [from, to] = [project(...start), project(...end)]
+    const [from, target] = [project(...start), project(...end)]
     ctx.moveTo(from.x, from.y)
-    ctx.lineTo(to.x, to.y)
+    ctx.lineTo(target.x, target.y)
   }
   ctx.stroke()
   ctx.setLineDash([]) // every later stroke sets its own strokeStyle
@@ -292,11 +310,11 @@ export function draw_corner_labels(
   for (const [corner_idx, corner] of corners.entries()) {
     const direction = corner.map((coord, axis) => coord - centroid[axis])
     const length = Math.hypot(...direction) || 1
-    const [x = 0, y = 0, z = 0] = corner.map(
+    const [coord_x = 0, coord_y = 0, coord_z = 0] = corner.map(
       (coord, axis) => coord + (direction[axis] / length) * offset,
     )
     const label = elements[corner_idx]
-    let { x: label_x, y: label_y } = project(x, y, z)
+    let { x: label_x, y: label_y } = project(coord_x, coord_y, coord_z)
     // Narrow canvases (phones) put the simplex corners at the very edge, which would cut
     // the symbols in half; pull them back inside instead.
     if (width && height) {
@@ -490,7 +508,8 @@ function dominant_element(
   const totals = elements.map(() => 0)
   for (const { composition } of vertices) {
     const atoms = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
-    for (const [idx, el] of elements.entries()) totals[idx] += (composition[el] ?? 0) / atoms
+    for (const [idx, element] of elements.entries())
+      totals[idx] += (composition[element] ?? 0) / atoms
   }
   return elements[totals.indexOf(Math.max(...totals))]
 }
@@ -567,19 +586,35 @@ export function draw_hull_faces(
       continue
     }
     // Screen-space linear gradient solving a*x + b*y + c = alpha at the three projected vertices
-    const [p1, p2, p3] = face.projected
-    const [a1, a2, a3] = face.vertices.map((vertex) => norm_alpha(vertex.e_form_per_atom ?? 0))
-    const det = p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)
-    const coef_a = (a1 * (p2.y - p3.y) + a2 * (p3.y - p1.y) + a3 * (p1.y - p2.y)) / det
-    const coef_b = (a1 * (p3.x - p2.x) + a2 * (p1.x - p3.x) + a3 * (p2.x - p1.x)) / det
+    const [point_1, point, point_3] = face.projected
+    const [value_a_1, value_a_2, value_a_3] = face.vertices.map((vertex) =>
+      norm_alpha(vertex.e_form_per_atom ?? 0),
+    )
+    const det =
+      point_1.x * (point.y - point_3.y) +
+      point.x * (point_3.y - point_1.y) +
+      point_3.x * (point_1.y - point.y)
+    const coef_a =
+      (value_a_1 * (point.y - point_3.y) +
+        value_a_2 * (point_3.y - point_1.y) +
+        value_a_3 * (point_1.y - point.y)) /
+      det
+    const coef_b =
+      (value_a_1 * (point_3.x - point.x) +
+        value_a_2 * (point_1.x - point_3.x) +
+        value_a_3 * (point.x - point_1.x)) /
+      det
     const mag = Math.hypot(coef_a, coef_b)
-    const [alpha_min, alpha_max] = [Math.min(a1, a2, a3), Math.max(a1, a2, a3)]
-    const alpha_mean = (a1 + a2 + a3) / 3
+    const [alpha_min, alpha_max] = [
+      Math.min(value_a_1, value_a_2, value_a_3),
+      Math.max(value_a_1, value_a_2, value_a_3),
+    ]
+    const alpha_mean = (value_a_1 + value_a_2 + value_a_3) / 3
     let fill: string | CanvasGradient = add_alpha(color, alpha_mean)
     if (Math.abs(det) > 1e-9 && mag > 1e-9) {
       const [dir_x, dir_y] = [coef_a / mag, coef_b / mag]
-      const center_x = (p1.x + p2.x + p3.x) / 3
-      const center_y = (p1.y + p2.y + p3.y) / 3
+      const center_x = (point_1.x + point.x + point_3.x) / 3
+      const center_y = (point_1.y + point.y + point_3.y) / 3
       const [s_min, s_max] = [(alpha_min - alpha_mean) / mag, (alpha_max - alpha_mean) / mag]
       const grad = ctx.createLinearGradient(
         center_x + dir_x * s_min,
@@ -642,7 +677,7 @@ export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
   face_gradient: boolean
   face_stroke_alpha(fill_alpha: number): number
   // Plain drag rotates the view (Cmd/Ctrl-drag pans)
-  rotate(camera: Camera, dx: number, dy: number): void
+  rotate(camera: Camera, delta_x: number, delta_y: number): void
   // Data coords → view coords [x, y, depth] about the simplex centroid, before to_screen
   rotate_point(camera: Camera, point: Vec3, energy_range: EnergyRange): Vec3
   // Dashed simplex outline, edges in data coords
@@ -666,7 +701,9 @@ function draw_energy_axis(
 ): void {
   const { min: e_min, max: e_max, center: e_mid } = energy_range
   if (Math.abs(e_max - e_min) < 1e-6) return
-  const projected_vertices = TRIANGLE_VERTICES.map(([vx, vy]) => project(vx, vy, e_mid))
+  const projected_vertices = TRIANGLE_VERTICES.map(([vector_x, vector_y]) =>
+    project(vector_x, vector_y, e_mid),
+  )
   const leftmost_idx = projected_vertices.reduce(
     (min_idx, proj, idx) => (proj.x < projected_vertices[min_idx].x ? idx : min_idx),
     0,
@@ -681,12 +718,12 @@ function draw_energy_axis(
   ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
   ctx.font = `${font_size}px Arial`
   for (const tick of ticks(e_min, e_max, 5)) {
-    const { x, y } = project(axis_x, axis_y, tick)
+    const { x: coord_x, y: coord_y } = project(axis_x, axis_y, tick)
     ctx.beginPath()
-    ctx.moveTo(x - tick_len, y)
-    ctx.lineTo(x, y)
+    ctx.moveTo(coord_x - tick_len, coord_y)
+    ctx.lineTo(coord_x, coord_y)
     ctx.stroke()
-    ctx.fillText(format_num(tick, `.2~`), x - tick_len - 4, y)
+    ctx.fillText(format_num(tick, `.2~`), coord_x - tick_len - 4, coord_y)
   }
 
   const { x: label_x, y: label_y } = project(axis_x, axis_y, e_mid)
@@ -739,38 +776,45 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
   corner_labels: { font_size: 16, offset: 0.05 },
   face_gradient: true,
   face_stroke_alpha: (fill_alpha) => Math.min(0.6, fill_alpha * 3),
-  rotate(camera, dx, dy) {
-    camera.azimuth += dx * 0.3 // drag right rotates clockwise around z
-    camera.elevation -= dy * 0.3 // drag down tilts the view down
+  rotate(camera, delta_x, delta_y) {
+    camera.azimuth += delta_x * 0.3 // drag right rotates clockwise around z
+    camera.elevation -= delta_y * 0.3 // drag down tilts the view down
   },
   // Rz(azimuth) then Rx(-elevation) about the centroid, energy scaled into the view
-  rotate_point(camera, [x, y, z], { center: e_ctr, z_scale }) {
+  rotate_point(camera, [coord_x, coord_y, coord_z], { center: e_ctr, z_scale }) {
     const [elev, azim] = [to_radians(camera.elevation), to_radians(camera.azimuth)]
     const [cos_az, sin_az] = [Math.cos(azim), Math.sin(azim)]
     const [cos_el, sin_el] = [Math.cos(-elev), Math.sin(-elev)]
-    const [dx, dy, dz] = [
-      x - TRIANGLE_CENTROID[0],
-      y - TRIANGLE_CENTROID[1],
-      (z - e_ctr) * z_scale,
+    const [delta_x, delta_y, delta_z] = [
+      coord_x - TRIANGLE_CENTROID[0],
+      coord_y - TRIANGLE_CENTROID[1],
+      (coord_z - e_ctr) * z_scale,
     ]
-    const [x1, y1] = [dx * cos_az - dy * sin_az, dx * sin_az + dy * cos_az]
-    return [x1, y1 * cos_el - dz * sin_el, y1 * sin_el + dz * cos_el]
+    const [coord_x_1, coord_y_1] = [
+      delta_x * cos_az - delta_y * sin_az,
+      delta_x * sin_az + delta_y * cos_az,
+    ]
+    return [
+      coord_x_1,
+      coord_y_1 * cos_el - delta_z * sin_el,
+      coord_y_1 * sin_el + delta_z * cos_el,
+    ]
   },
   // Dashed triangle prism: base triangle at E_form = 0, bottom triangle at the most negative
   // formation energy, and vertical edges connecting corresponding corners
   outline_edges({ min: e_form_min }) {
     const edges: [Vec3, Vec3][] = []
-    for (const [idx, [vx, vy]] of TRIANGLE_VERTICES.entries()) {
-      const [nx, ny] = TRIANGLE_VERTICES[(idx + 1) % 3]
+    for (const [idx, [vector_x, vector_y]] of TRIANGLE_VERTICES.entries()) {
+      const [size_x, size_y] = TRIANGLE_VERTICES[(idx + 1) % 3]
       for (const z_plane of [0, e_form_min]) {
         edges.push([
-          [vx, vy, z_plane],
-          [nx, ny, z_plane],
+          [vector_x, vector_y, z_plane],
+          [size_x, size_y, z_plane],
         ])
       }
       edges.push([
-        [vx, vy, 0],
-        [vx, vy, e_form_min],
+        [vector_x, vector_y, 0],
+        [vector_x, vector_y, e_form_min],
       ])
     }
     return edges
@@ -839,21 +883,28 @@ const QUATERNARY_HULL_STRATEGY: HullCanvasStrategy<QuaternaryCamera> = {
   corner_labels: { font_size: 18, offset: 0.06 },
   face_gradient: false,
   face_stroke_alpha: (fill_alpha) => Math.min(0.4, fill_alpha * 4),
-  rotate(camera, dx, dy) {
-    camera.rotation_y += dx * 0.005
-    camera.rotation_x = clamp(camera.rotation_x - dy * 0.005, -Math.PI / 3, Math.PI / 3)
+  rotate(camera, delta_x, delta_y) {
+    camera.rotation_y += delta_x * 0.005
+    camera.rotation_x = clamp(camera.rotation_x - delta_y * 0.005, -Math.PI / 3, Math.PI / 3)
   },
   // Ry(rotation_y) then Rx(rotation_x) about the centroid (Materials Project camera)
-  rotate_point(camera, [x, y, z]) {
-    const [cx, cy, cz] = [
-      x - TETRAHEDRON_CENTROID[0],
-      y - TETRAHEDRON_CENTROID[1],
-      z - TETRAHEDRON_CENTROID[2],
+  rotate_point(camera, [coord_x, coord_y, coord_z]) {
+    const [center_x, center_y, center_z] = [
+      coord_x - TETRAHEDRON_CENTROID[0],
+      coord_y - TETRAHEDRON_CENTROID[1],
+      coord_z - TETRAHEDRON_CENTROID[2],
     ]
     const [cos_x, sin_x] = [Math.cos(camera.rotation_x), Math.sin(camera.rotation_x)]
     const [cos_y, sin_y] = [Math.cos(camera.rotation_y), Math.sin(camera.rotation_y)]
-    const [x1, z1] = [cx * cos_y - cz * sin_y, cx * sin_y + cz * cos_y]
-    return [x1, cy * cos_x - z1 * sin_x, cy * sin_x + z1 * cos_x]
+    const [coord_x_1, coord_z_1] = [
+      center_x * cos_y - center_z * sin_y,
+      center_x * sin_y + center_z * cos_y,
+    ]
+    return [
+      coord_x_1,
+      center_y * cos_x - coord_z_1 * sin_x,
+      center_y * sin_x + coord_z_1 * cos_x,
+    ]
   },
   // Every pair of tetrahedron corners
   outline_edges: () =>

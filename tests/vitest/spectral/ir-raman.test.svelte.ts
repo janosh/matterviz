@@ -126,7 +126,7 @@ describe(`acoustic mode identification`, () => {
     (_name, spec, expected, freq_bound) => {
       const acoustic = spec.modes.filter((mode) => mode.is_acoustic)
       const indices = acoustic.map((mode) => mode.mode_idx)
-      expect(indices.toSorted((lo, hi) => lo - hi)).toEqual(expected)
+      expect(indices.toSorted((lower, upper) => lower - upper)).toEqual(expected)
       for (const mode of acoustic) {
         // Both bounds sit five or more orders under the smallest optical branch either
         // fixture carries (2 THz for CO2, 5.05 THz for NaCl), so this pins "zero-frequency"
@@ -316,11 +316,16 @@ describe(`raman_invariants`, () => {
     [`traceless uniaxial`, 1, 1, -2, 0, 7 * 9, 0.75],
     // Pure shear: a = 0, gamma^2 = 3 * xy^2
     [`pure shear`, 0, 0, 0, 3, 7 * 27, 0.75],
-  ])(`%s tensor`, (_name, xx, yy, zz, xy, activity, depolarization) => {
-    const invariants = raman_invariants(mat3([xx, xy, 0], [xy, yy, 0], [0, 0, zz]))
-    expect(invariants.activity).toBeCloseTo(activity, 12)
-    expect(invariants.depolarization_ratio).toBeCloseTo(depolarization, 12)
-  })
+  ])(
+    `%s tensor`,
+    (_name, tensor_xx, tensor_yy, tensor_zz, coords_xy, activity, depolarization) => {
+      const invariants = raman_invariants(
+        mat3([tensor_xx, coords_xy, 0], [coords_xy, tensor_yy, 0], [0, 0, tensor_zz]),
+      )
+      expect(invariants.activity).toBeCloseTo(activity, 12)
+      expect(invariants.depolarization_ratio).toBeCloseTo(depolarization, 12)
+    },
+  )
 
   it(`uses only the symmetric part of the tensor`, () => {
     const antisymmetric = mat3([0, 1, 0], [-1, 0, 0], [0, 0, 0])

@@ -18,7 +18,7 @@ import {
 // Minimal VolumetricData fixture for testing controls (2x2x2 grid with values 1..8)
 const make_volume = (overrides?: Partial<VolumetricData>): VolumetricData =>
   make_volume_fixture(
-    make_grid(2, 2, 2, (ix, iy, iz) => ix * 4 + iy * 2 + iz + 1),
+    make_grid(2, 2, 2, (idx_x, idx_y, idx_z) => idx_x * 4 + idx_y * 2 + idx_z + 1),
     {
       data_range: { min: 1, max: 8, abs_max: 8, mean: 4.5 },
       ...overrides,

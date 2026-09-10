@@ -92,7 +92,9 @@ export function structure_fit_frame(
     for (let corner_idx = 0; corner_idx < 8; corner_idx++) {
       const [a_on, b_on, c_on] = [corner_idx & 1, (corner_idx >> 1) & 1, (corner_idx >> 2) & 1]
       corners.push(
-        [0, 1, 2].map((ax) => a_on * a_vec[ax] + b_on * b_vec[ax] + c_on * c_vec[ax]) as Vec3,
+        [0, 1, 2].map(
+          (axis_x) => a_on * a_vec[axis_x] + b_on * b_vec[axis_x] + c_on * c_vec[axis_x],
+        ) as Vec3,
       )
     }
   }

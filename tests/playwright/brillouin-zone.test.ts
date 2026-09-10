@@ -45,8 +45,8 @@ test.describe(`BrillouinZone Component Tests`, () => {
     const read_zoom = () =>
       page.evaluate(() => (globalThis as { read_bz_zoom?: () => number }).read_bz_zoom?.())
     const set_bz_width = async (css_width: string) => {
-      await page.locator(BZ_SELECTOR).evaluate((el, width) => {
-        ;(el as HTMLElement).style.setProperty(`--bz-width`, width)
+      await page.locator(BZ_SELECTOR).evaluate((element, width) => {
+        ;(element as HTMLElement).style.setProperty(`--bz-width`, width)
       }, css_width)
       await page.waitForTimeout(200)
     }
@@ -144,12 +144,12 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await expect(checkbox).toBeChecked()
 
     await page.evaluate(() => {
-      const el = document.querySelector<HTMLInputElement>(
+      const element = document.querySelector<HTMLInputElement>(
         `[data-testid="fullscreen-checkbox"]`,
       )
-      if (el) {
-        el.checked = false
-        el.dispatchEvent(new Event(`change`, { bubbles: true }))
+      if (element) {
+        element.checked = false
+        element.dispatchEvent(new Event(`change`, { bubbles: true }))
       }
     })
     await expect(status).toHaveText(`false`)

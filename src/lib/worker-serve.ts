@@ -27,14 +27,19 @@ export function serve_worker<Input, Options, Result>(
 ): void {
   self.addEventListener(
     `message`,
-    ({ data: { id, input, options } }: MessageEvent<WorkerRequest<Input, Options>>) => {
+    ({
+      data: { id: identifier, input, options },
+    }: MessageEvent<WorkerRequest<Input, Options>>) => {
       try {
         const result = compute(input, options, (progress) =>
-          self.postMessage({ id, progress }),
+          self.postMessage({ id: identifier, progress }),
         )
-        self.postMessage({ id, result, error: null }, { transfer: transferables(result) })
+        self.postMessage(
+          { id: identifier, result, error: null },
+          { transfer: transferables(result) },
+        )
       } catch (err) {
-        self.postMessage({ id, result: null, error: to_error(err).message })
+        self.postMessage({ id: identifier, result: null, error: to_error(err).message })
       }
     },
   )

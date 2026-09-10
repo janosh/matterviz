@@ -265,14 +265,14 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
           seed = (seed * 1103515245 + 12345) & 0x7fffffff
           return seed / 0x7fffffff - 0.5
         }
-        for (let ix = 0; ix < n_rep; ix++) {
-          for (let iy = 0; iy < n_rep; iy++) {
-            for (let iz = 0; iz < n_rep; iz++) {
+        for (let idx_x = 0; idx_x < n_rep; idx_x++) {
+          for (let idx_y = 0; idx_y < n_rep; idx_y++) {
+            for (let idx_z = 0; idx_z < n_rep; idx_z++) {
               for (const { elem, frac } of basis) {
                 const abc = [
-                  (frac[0] + ix) / n_rep,
-                  (frac[1] + iy) / n_rep,
-                  (frac[2] + iz) / n_rep,
+                  (frac[0] + idx_x) / n_rep,
+                  (frac[1] + idx_y) / n_rep,
+                  (frac[2] + idx_z) / n_rep,
                 ]
                 const xyz = [abc[0] * super_a, abc[1] * super_a, abc[2] * super_a]
                 sites.push({

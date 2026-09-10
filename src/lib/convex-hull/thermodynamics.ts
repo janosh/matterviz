@@ -109,9 +109,9 @@ export function compute_e_form_per_atom(
   const energy_per_atom = get_energy_per_atom(entry)
   if (!(atoms > 0) || !Number.isFinite(energy_per_atom)) return null
   let ref_sum = 0
-  for (const [el, amount] of Object.entries(entry.composition)) {
+  for (const [element, amount] of Object.entries(entry.composition)) {
     if (!(amount > 0)) continue
-    const ref_epa = el_refs[el] ? get_energy_per_atom(el_refs[el]) : Number.NaN
+    const ref_epa = el_refs[element] ? get_energy_per_atom(el_refs[element]) : Number.NaN
     if (!Number.isFinite(ref_epa)) return null
     ref_sum += (amount / atoms) * ref_epa
   }
@@ -126,13 +126,13 @@ export function find_lowest_energy_unary_refs(
     if (!is_unary_entry(entry)) continue
     const energy_per_atom = get_energy_per_atom(entry)
     if (!Number.isFinite(energy_per_atom)) continue
-    const el = Object.keys(entry.composition).find(
+    const element = Object.keys(entry.composition).find(
       (key) => (entry.composition[key as ElementSymbol] ?? 0) > 0,
     )
-    if (!el) continue
-    const current = refs[el]
+    if (!element) continue
+    const current = refs[element]
     if (!current || energy_per_atom < get_energy_per_atom(current)) {
-      refs[el] = entry
+      refs[element] = entry
     }
   }
   return refs
@@ -172,10 +172,10 @@ function e_above_hull_distances(
   const elements = collect_hull_elements(reference_entries)
   const element_set = new Set<string>(elements)
   for (const entry of entries_of_interest) {
-    for (const el of Object.keys(entry.composition)) {
-      if (!element_set.has(el)) {
+    for (const element of Object.keys(entry.composition)) {
+      if (!element_set.has(element)) {
         throw new Error(
-          `Entry contains element ${el} not present in reference system: ${elements.join(`-`)}`,
+          `Entry contains element ${element} not present in reference system: ${elements.join(`-`)}`,
         )
       }
     }
@@ -216,8 +216,8 @@ function e_above_hull_distances(
   for (let el_idx = 0; el_idx < arity; el_idx++) {
     const corner: number[] = Array(arity).fill(0)
     if (el_idx > 0) corner[el_idx - 1] = 1
-    const present = ref_points.some((pt) =>
-      pt.slice(0, -1).every((val, dim) => Math.abs(val - corner[dim]) <= HULL_EPS),
+    const present = ref_points.some((point) =>
+      point.slice(0, -1).every((val, dim) => Math.abs(val - corner[dim]) <= HULL_EPS),
     )
     if (!present) ref_points.push(corner)
   }
@@ -382,7 +382,7 @@ function signed_distance(facet: HullFacet, point: number[]): number {
 // cofactors of the (dim-1)×dim edge matrix (a generalized cross product).
 function hyperplane(points: number[][]): { normal: number[]; offset: number } {
   const dim = points[0].length
-  const edges = points.slice(1).map((pt) => math.subtract(pt, points[0]))
+  const edges = points.slice(1).map((point) => math.subtract(point, points[0]))
   const normal = math.normalize_vec(
     Array.from({ length: dim }, (_, col) => {
       const minor = edges.map((edge) => edge.toSpliced(col, 1))
@@ -499,8 +499,9 @@ export function compute_quickhull_nd(
 ): HullFacet[] {
   if (points.length === 0) return []
   const dim = points[0].length
-  for (const pt of points) {
-    if (pt.length !== dim) throw new Error(`Vector dimension mismatch: ${pt.length} vs ${dim}`)
+  for (const point of points) {
+    if (point.length !== dim)
+      throw new Error(`Vector dimension mismatch: ${point.length} vs ${dim}`)
   }
   if (points.length < dim + 1) return []
   const initial = initial_simplex(points)

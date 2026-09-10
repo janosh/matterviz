@@ -10,7 +10,10 @@ export function replace_tool_volumes(
 ) {
   const previous = index_volumes(volumes)
   const owned = new Set(owned_ids)
-  const next_volumes = [...volumes.filter(({ id }) => !owned.has(id)), ...incoming]
+  const next_volumes = [
+    ...volumes.filter(({ id: identifier }) => !owned.has(identifier)),
+    ...incoming,
+  ]
   const next_layers = retain_volume_layers(layers, index_volumes(next_volumes))
   for (const volume of incoming)
     if (!previous.has(volume.id)) next_layers.push(auto_volume_layer(volume))

@@ -54,19 +54,19 @@ export const phonon_bands: Record<string, PhononBandStructure> = {}
 export const phonon_dos: Record<string, PhononDos> = {}
 
 for (const [path, data] of Object.entries(raw_imports)) {
-  const id = /\/(?<id>[^/]+)\.json(?:\.gz)?$/.exec(path)?.[1] ?? path
-  phonon_data[id] = data
+  const identifier = /\/(?<id>[^/]+)\.json(?:\.gz)?$/.exec(path)?.[1] ?? path
+  phonon_data[identifier] = data
   if (data.phonon_bandstructure) {
     const band_struct = normalize_band_structure(data.phonon_bandstructure)
     if (!band_struct || band_struct.type !== `phonon`)
-      throw new Error(`${id}: phonon_bandstructure is not a phonon band structure`)
-    phonon_bands[id] = { ...band_struct, type: `phonon` }
+      throw new Error(`${identifier}: phonon_bandstructure is not a phonon band structure`)
+    phonon_bands[identifier] = { ...band_struct, type: `phonon` }
   }
   if (data.phonon_dos) {
     const dos = normalize_dos(data.phonon_dos)
     if (!dos || dos.type !== `phonon`)
-      throw new Error(`${id}: phonon_dos is not a phonon density of states`)
-    phonon_dos[id] = dos
+      throw new Error(`${identifier}: phonon_dos is not a phonon density of states`)
+    phonon_dos[identifier] = dos
   }
 }
 

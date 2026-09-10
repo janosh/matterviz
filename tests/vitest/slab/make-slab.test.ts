@@ -671,10 +671,10 @@ const measured_layer_heights = (heights: number[]): number[] => {
   return starts
 }
 
-describe.each(FIXTURES)(`%s (%s)`, (id, _why) => {
+describe.each(FIXTURES)(`%s (%s)`, (identifier, _why) => {
   test.each(MILLER_SET)(`(%s) slab and terminations hold up`, (miller) => {
-    const crystal = structure_map.get(id)
-    if (!crystal) throw new Error(`fixture ${id} not found in $site/structures`)
+    const crystal = structure_map.get(identifier)
+    if (!crystal) throw new Error(`fixture ${identifier} not found in $site/structures`)
     const min_vacuum_thickness = 11
     // at least two repeats, so the reported one-repeat spacings can be compared against
     // real gaps that include the wrap from the top of one repeat to the bottom of the next

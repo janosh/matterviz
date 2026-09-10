@@ -84,7 +84,10 @@ describe(`partial occupancy render-site logic`, () => {
       ]
       const [merged, ...rest] = merge_split_partial_sites(sites)
       expect(rest).toEqual([]) // 2 Å apart in bucket terms, 2e-9 Å apart in real terms
-      expect(merged.site.species.map((sp) => sp.element).toSorted()).toEqual([`F`, `O`])
+      expect(merged.site.species.map((species) => species.element).toSorted()).toEqual([
+        `F`,
+        `O`,
+      ])
     }
   })
 

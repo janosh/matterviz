@@ -71,13 +71,17 @@ export function ir_intensity(
 // non-resonant Raman scattering.
 export function raman_invariants(tensor: Matrix3x3) {
   const sym = (row: number, col: number) => (tensor[row][col] + tensor[col][row]) / 2
-  const [xx, yy, zz] = [tensor[0][0], tensor[1][1], tensor[2][2]]
-  const [xy, yz, zx] = [sym(0, 1), sym(1, 2), sym(2, 0)]
+  const [tensor_xx, tensor_yy, tensor_zz] = [tensor[0][0], tensor[1][1], tensor[2][2]]
+  const [coords_xy, tilt_yz, tensor_zx] = [sym(0, 1), sym(1, 2), sym(2, 0)]
 
-  const isotropic = (xx + yy + zz) / 3 // a = trace/3
+  const isotropic = (tensor_xx + tensor_yy + tensor_zz) / 3 // a = trace/3
   // gamma^2
   const anisotropy_sq =
-    ((xx - yy) ** 2 + (yy - zz) ** 2 + (zz - xx) ** 2) / 2 + 3 * (xy ** 2 + yz ** 2 + zx ** 2)
+    ((tensor_xx - tensor_yy) ** 2 +
+      (tensor_yy - tensor_zz) ** 2 +
+      (tensor_zz - tensor_xx) ** 2) /
+      2 +
+    3 * (coords_xy ** 2 + tilt_yz ** 2 + tensor_zx ** 2)
   const denominator = 45 * isotropic ** 2 + 4 * anisotropy_sq
   return {
     isotropic,

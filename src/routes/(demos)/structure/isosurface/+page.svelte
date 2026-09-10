@@ -38,9 +38,11 @@
 
   // Use precomputed data_range from the active volume
   let data_range = $derived(
-    volumetric_data?.find(({ id }) => id === active_volume_id)?.data_range,
+    volumetric_data?.find(({ id: identifier }) => identifier === active_volume_id)?.data_range,
   )
-  let active_volume = $derived(volumetric_data?.find(({ id }) => id === active_volume_id))
+  let active_volume = $derived(
+    volumetric_data?.find(({ id: identifier }) => identifier === active_volume_id),
+  )
 
   function reset_loaded_content() {
     structure = undefined

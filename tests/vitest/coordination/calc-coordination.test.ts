@@ -54,7 +54,9 @@ describe(`calc_coordination_nums`, () => {
       calc_coordination_nums(rocksalt)
     expect(coordination_nums).toEqual(Array(8).fill(6))
     expect([...cn_histogram]).toEqual([[6, 8]])
-    expect([...cn_histogram_by_element].map(([el, hist]) => [el, [...hist]])).toEqual([
+    expect(
+      [...cn_histogram_by_element].map(([element, hist]) => [element, [...hist]]),
+    ).toEqual([
       [`Na`, [[6, 4]]],
       [`Cl`, [[6, 4]]],
     ])
@@ -80,18 +82,18 @@ describe(`calc_coordination_nums`, () => {
   // directions: in a one-atom simple cubic cell the six images are the whole shell.
   test(`one-atom cell counts each of its own images as a neighbour`, () => {
     const radius = element_by_symbol.get(`Po`)?.covalent_radius ?? 0
-    const po = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
+    const polonium = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
     const { coordination_nums, cn_histogram, cn_histogram_by_element } =
-      calc_coordination_nums(po)
+      calc_coordination_nums(polonium)
     expect(coordination_nums).toEqual([6])
     expect([...cn_histogram]).toEqual([[6, 1]])
-    expect([...cn_histogram_by_element].map(([el, hist]) => [el, [...hist]])).toEqual([
-      [`Po`, [[6, 1]]],
-    ])
+    expect(
+      [...cn_histogram_by_element].map(([element, hist]) => [element, [...hist]]),
+    ).toEqual([[`Po`, [[6, 1]]]])
     // a slab under an explicit pbc override loses the two vacuum-axis images
-    expect(calc_coordination_nums(po, { pbc: [true, true, false] }).coordination_nums).toEqual(
-      [4],
-    )
+    expect(
+      calc_coordination_nums(polonium, { pbc: [true, true, false] }).coordination_nums,
+    ).toEqual([4])
   })
 
   test(`buckets disordered sites by majority element, not species[0]`, () => {

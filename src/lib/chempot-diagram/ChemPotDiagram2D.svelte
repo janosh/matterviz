@@ -104,8 +104,8 @@
     domain_entries.map(([formula, pts]) => ({
       id: formula,
       label: formula,
-      x: pts.map((pt) => pt[0]),
-      y: pts.map((pt) => pt[1]),
+      x: pts.map((point) => point[0]),
+      y: pts.map((point) => point[1]),
       markers: `line+points` as const,
       line_style: { stroke: domain_colors.get(formula) ?? `black`, stroke_width: 3 },
       point_style: { fill: domain_colors.get(formula) ?? `black`, radius: 3 },
@@ -139,9 +139,9 @@
       let offset_x = 0
       let offset_y = 0
       if (pts.length >= 2) {
-        const [nx, ny] = orthonormal_2d(pts)
-        offset_x = nx * 0.25
-        offset_y = ny * 0.25
+        const [normal_x, normal_y] = orthonormal_2d(pts)
+        offset_x = normal_x * 0.25
+        offset_y = normal_y * 0.25
       }
       result.push({
         formula,

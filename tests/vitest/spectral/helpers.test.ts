@@ -210,14 +210,16 @@ describe(`apply_gaussian_smearing`, () => {
 
   // The two-pointer window is only valid on an ascending grid; anything else falls back to
   // scanning every point. Pin that fallback to an unwindowed reference.
-  const brute_force = (xs: number[], ys: number[], sigma: number): number[] => {
-    const weights = trapezoid_weights(xs)
-    return xs.map(
+  const brute_force = (x_values: number[], y_values: number[], sigma: number): number[] => {
+    const weights = trapezoid_weights(x_values)
+    return x_values.map(
       (energy) =>
-        xs.reduce((sum, other, jdx) => {
+        x_values.reduce((sum, other, jdx) => {
           const delta = energy - other
           if (Math.abs(delta) > 4 * sigma) return sum
-          return sum + ys[jdx] * weights[jdx] * Math.exp(-(delta ** 2) / (2 * sigma ** 2))
+          return (
+            sum + y_values[jdx] * weights[jdx] * Math.exp(-(delta ** 2) / (2 * sigma ** 2))
+          )
         }, 0) /
         (sigma * Math.sqrt(2 * Math.PI)),
     )
@@ -228,10 +230,10 @@ describe(`apply_gaussian_smearing`, () => {
     // every non-monotonic grid takes the same unwindowed fallback
     [`descending`, grid.toReversed()],
     [`with duplicates`, grid.map((val, idx) => (idx % 4 === 0 ? grid[0] : val))],
-  ])(`matches an unwindowed reference on a %s grid`, (_label, xs) => {
-    const ys = xs.map((_, idx) => ((idx * 37) % 11) + 0.5)
-    const smeared = apply_gaussian_smearing(xs, ys, 0.25)
-    const expected = brute_force(xs, ys, 0.25)
+  ])(`matches an unwindowed reference on a %s grid`, (_label, x_values) => {
+    const y_values = x_values.map((_, idx) => ((idx * 37) % 11) + 0.5)
+    const smeared = apply_gaussian_smearing(x_values, y_values, 0.25)
+    const expected = brute_force(x_values, y_values, 0.25)
     let max_abs_error = 0
     for (const [idx, val] of smeared.entries())
       max_abs_error = Math.max(max_abs_error, Math.abs(val - expected[idx]))
@@ -242,10 +244,15 @@ describe(`apply_gaussian_smearing`, () => {
 describe(`branch_segment_keys`, () => {
   it(`keys labelled branches by label pair, numbers repeats and positions unlabeled ones`, () => {
     // Γ→X→Γ→X→(unlabeled)
-    const bs = make_bs([`GAMMA`, null, `X`, null, `GAMMA`, `X`])
-    bs.branches.push({ start_index: 5, end_index: 5, name: `tail` })
-    bs.qpoints[5] = { label: null, frac_coords: [1, 0, 0] }
-    expect(branch_segment_keys(bs)).toEqual([`GAMMA_X`, `X_GAMMA`, `GAMMA_null`, `branch:3`])
+    const band_structure = make_bs([`GAMMA`, null, `X`, null, `GAMMA`, `X`])
+    band_structure.branches.push({ start_index: 5, end_index: 5, name: `tail` })
+    band_structure.qpoints[5] = { label: null, frac_coords: [1, 0, 0] }
+    expect(branch_segment_keys(band_structure)).toEqual([
+      `GAMMA_X`,
+      `X_GAMMA`,
+      `GAMMA_null`,
+      `branch:3`,
+    ])
     const repeated = make_bs([`GAMMA`, `X`, `GAMMA`, `X`])
     expect(branch_segment_keys(repeated)).toEqual([`GAMMA_X`, `X_GAMMA`, `GAMMA_X#2`])
   })
@@ -253,7 +260,7 @@ describe(`branch_segment_keys`, () => {
 
 describe(`qpoint_x_position / find_qpoint_at_rescaled_x`, () => {
   // Γ→X (3 steps) and X→K (2 steps), plotted into [0, 1] and [1, 1.5]
-  const bs = make_bs([`GAMMA`, null, null, `X`, null, `K`])
+  const band_structure = make_bs([`GAMMA`, null, null, `X`, null, `K`])
   const x_pos: Record<string, Vec2> = { GAMMA_X: [0, 1], X_K: [1, 1.5] }
 
   it.each([
@@ -263,16 +270,16 @@ describe(`qpoint_x_position / find_qpoint_at_rescaled_x`, () => {
     [4, 1.25],
     [1, 1 / 3],
   ])(`q-point %i sits at x = %f and maps back`, (idx, expected_x) => {
-    const x_val = qpoint_x_position(bs, idx, x_pos)
+    const x_val = qpoint_x_position(band_structure, idx, x_pos)
     expect(x_val).toBeCloseTo(expected_x, 12)
-    expect(find_qpoint_at_rescaled_x(bs, x_val ?? NaN, x_pos)).toBe(idx)
+    expect(find_qpoint_at_rescaled_x(band_structure, x_val ?? NaN, x_pos)).toBe(idx)
   })
 
   it(`rounds interior x to the nearest q-point and snaps off-path x to the nearest endpoint`, () => {
-    expect(find_qpoint_at_rescaled_x(bs, 0.6, x_pos)).toBe(2) // 0.6 · 3 = 1.8 → idx 2
-    expect(find_qpoint_at_rescaled_x(bs, 9, { GAMMA_X: [0, 1] })).toBe(3) // beyond the only segment
-    expect(find_qpoint_at_rescaled_x(bs, 0.5, {})).toBe(0) // no segments: fallback index
-    expect(qpoint_x_position(bs, 4, { GAMMA_X: [0, 1] })).toBeNull() // branch not plotted
+    expect(find_qpoint_at_rescaled_x(band_structure, 0.6, x_pos)).toBe(2) // 0.6 · 3 = 1.8 → idx 2
+    expect(find_qpoint_at_rescaled_x(band_structure, 9, { GAMMA_X: [0, 1] })).toBe(3) // beyond the only segment
+    expect(find_qpoint_at_rescaled_x(band_structure, 0.5, {})).toBe(0) // no segments: fallback index
+    expect(qpoint_x_position(band_structure, 4, { GAMMA_X: [0, 1] })).toBeNull() // branch not plotted
   })
 
   it(`distinguishes a repeated Gamma and resolves a zero-length discontinuity`, () => {
@@ -289,38 +296,40 @@ describe(`qpoint_x_position / find_qpoint_at_rescaled_x`, () => {
 
 describe(`extract_k_path_points`, () => {
   it(`maps fractional to Cartesian with row-vector reciprocal lattice vectors`, () => {
-    const bs = make_bs([`GAMMA`, `X`, `K`])
-    bs.qpoints[2].frac_coords = [1 / 3, 1 / 3, 0]
+    const band_structure = make_bs([`GAMMA`, `X`, `K`])
+    band_structure.qpoints[2].frac_coords = [1 / 3, 1 / 3, 0]
     const recip: Matrix3x3 = [
       [2, 0.5, 0],
       [0, 2, 0],
       [0, 0, 1],
     ]
-    const [gamma, x_point, k_point] = extract_k_path_points(bs, recip, { wrap_to_bz: false })
+    const [gamma, x_point, k_point] = extract_k_path_points(band_structure, recip, {
+      wrap_to_bz: false,
+    })
     expect(gamma).toEqual([0, 0, 0])
     expect(x_point).toEqual([1, 0.25, 0]) // 0.5·b1
     expect(k_point[0]).toBeCloseTo(2 / 3, 12)
     expect(k_point[1]).toBeCloseTo(0.5 / 3 + 2 / 3, 12)
     expect(extract_k_path_points(make_bs([], { qpoints: [] }), recip)).toEqual([])
-    expect(() => extract_k_path_points(bs, [[1, 0]] as never)).toThrow(/3×3/)
+    expect(() => extract_k_path_points(band_structure, [[1, 0]] as never)).toThrow(/3×3/)
     // the per-point conversion Bands uses for a clicked symmetry point agrees exactly
     expect(frac_k_to_cartesian([1 / 3, 1 / 3, 0], recip, false)).toEqual(k_point)
   })
 
   it(`k_path_labels pairs labeled q-points with their Cartesian positions`, () => {
-    const bs = make_bs([`GAMMA`, null, `X`])
+    const band_structure = make_bs([`GAMMA`, null, `X`])
     const points: Vec3[] = [
       [0, 0, 0],
       [0.5, 0, 0],
       [1, 0, 0],
     ]
-    expect(k_path_labels(bs, points)).toEqual([
+    expect(k_path_labels(band_structure, points)).toEqual([
       { position: [0, 0, 0], label: `Γ` },
       { position: [0.5, 0, 0], label: null },
       { position: [1, 0, 0], label: `X` },
     ])
     // points missing from a shorter path are skipped rather than paired with undefined
-    expect(k_path_labels(bs, points.slice(0, 1))).toEqual([
+    expect(k_path_labels(band_structure, points.slice(0, 1))).toEqual([
       { position: [0, 0, 0], label: `Γ` },
     ])
   })
@@ -332,21 +341,21 @@ describe(`extract_k_path_points`, () => {
       [1, -1, 1],
       [1, 1, -1],
     ]
-    const bs = make_bs([`K`], {
+    const band_structure = make_bs([`K`], {
       qpoints: [{ label: `K`, frac_coords: [0.3713, 0.3713, 0.7425] }],
     })
-    const [k_point] = extract_k_path_points(bs, fcc_recip)
+    const [k_point] = extract_k_path_points(band_structure, fcc_recip)
     const norm_sq = (vec: Vec3) => vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
     expect(k_point.map((val) => Math.round(val * 1e4) / 1e4)).toEqual([0.7425, 0.7425, 0.0001])
-    for (const n1 of [-1, 0, 1]) {
-      for (const n2 of [-1, 0, 1]) {
-        for (const n3 of [-1, 0, 1]) {
+    for (const count_1 of [-1, 0, 1]) {
+      for (const count of [-1, 0, 1]) {
+        for (const count_3 of [-1, 0, 1]) {
           const translated: Vec3 = [0, 1, 2].map(
             (axis) =>
               k_point[axis] +
-              n1 * fcc_recip[0][axis] +
-              n2 * fcc_recip[1][axis] +
-              n3 * fcc_recip[2][axis],
+              count_1 * fcc_recip[0][axis] +
+              count * fcc_recip[1][axis] +
+              count_3 * fcc_recip[2][axis],
           ) as Vec3
           expect(norm_sq(k_point)).toBeLessThanOrEqual(norm_sq(translated) + 1e-9)
         }
@@ -813,12 +822,12 @@ describe(`normalize_dos`, () => {
       [0.4, 0.9, 0.4],
     ],
     [`a plain array`, [0.2, 0.6, 0.2], [0.2, 0.6, 0.2], undefined],
-  ])(`electronic densities as %s`, (_label, densities, up, down) => {
+  ])(`electronic densities as %s`, (_label, densities, up_vector, down) => {
     expect(normalize_dos({ energies: [-5, 0, 5], densities, efermi: 2 })).toEqual({
       type: `electronic`,
       efermi: 2,
       energies: [-5, 0, 5],
-      densities: up,
+      densities: up_vector,
       spin_down_densities: down,
       spin_polarized: down !== undefined,
     })
@@ -933,20 +942,27 @@ it.each([
 })
 
 describe(`generate_ribbon_path`, () => {
-  const id = (val: number) => val
+  const identifier = (val: number) => val
   it(`traces the upper edge forward and the lower edge back, widths normalised to the max`, () => {
     // max width 2 at x = 1: half-width 10 px, so y = 5 ± 10; width 1 gives ± 5
-    const path = generate_ribbon_path([0, 1, 2], [5, 5, 5], [1, 2, 1], id, id, 10)
+    const path = generate_ribbon_path(
+      [0, 1, 2],
+      [5, 5, 5],
+      [1, 2, 1],
+      identifier,
+      identifier,
+      10,
+    )
     expect(path).toBe(
       `M0.00,0.00 L1.00,-5.00 L2.00,0.00 L2.00,10.00 L1.00,15.00 L0.00,10.00 Z`,
     )
-    expect(generate_ribbon_path([0, 1], [5, 5], [1, 1], (val) => 2 * val, id, 10, 2)).toBe(
-      `M0.00,-15.00 L2.00,-15.00 L2.00,25.00 L0.00,25.00 Z`,
-    )
+    expect(
+      generate_ribbon_path([0, 1], [5, 5], [1, 1], (val) => 2 * val, identifier, 10, 2),
+    ).toBe(`M0.00,-15.00 L2.00,-15.00 L2.00,25.00 L0.00,25.00 Z`)
     // non-finite widths count as 0
-    expect(generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, Infinity, 1], id, id, 10)).toContain(
-      `L1.00,0.00`,
-    )
+    expect(
+      generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, Infinity, 1], identifier, identifier, 10),
+    ).toContain(`L1.00,0.00`)
   })
 
   it.each([
@@ -955,7 +971,7 @@ describe(`generate_ribbon_path`, () => {
     [`mismatched widths`, [0, 1, 2], [0, 1, 2], [1, 1]],
     [`no positive width`, [0, 1, 2], [0, 1, 0], [0, -1, NaN]],
   ])(`returns "" for %s`, (_label, x_vals, y_vals, widths) => {
-    expect(generate_ribbon_path(x_vals, y_vals, widths, id, id, 10)).toBe(``)
+    expect(generate_ribbon_path(x_vals, y_vals, widths, identifier, identifier, 10)).toBe(``)
   })
 })
 
@@ -1112,10 +1128,10 @@ describe(`acoustic classification`, () => {
   ] as [[string | null, Vec3][], number[]][])(
     `find_gamma_indices(%j) → %j`,
     (qpoints, expected) => {
-      const bs = make_bs([], {
+      const band_structure = make_bs([], {
         qpoints: qpoints.map(([label, frac_coords]) => ({ label, frac_coords })),
       })
-      expect(find_gamma_indices(bs)).toEqual(expected)
+      expect(find_gamma_indices(band_structure)).toEqual(expected)
     },
   )
 
@@ -1135,14 +1151,14 @@ describe(`acoustic classification`, () => {
   })
 
   it(`is acoustic if any Gamma point is near zero and false for a missing band`, () => {
-    const bs = make_bs([null, null, null], { bands: [[5, 10, 0.1]] })
-    expect(classify_acoustic(bs, 0, [0, 2])).toBe(true)
-    expect(classify_acoustic(bs, 99, [0])).toBe(false)
+    const band_structure = make_bs([null, null, null], { bands: [[5, 10, 0.1]] })
+    expect(classify_acoustic(band_structure, 0, [0, 2])).toBe(true)
+    expect(classify_acoustic(band_structure, 99, [0])).toBe(false)
   })
 })
 
 describe(`build_point_metadata`, () => {
-  const bs = make_bs([`GAMMA`, null, `X`], {
+  const band_structure = make_bs([`GAMMA`, null, `X`], {
     bands: [
       [0, 5, 10],
       [3, 6, 9],
@@ -1159,7 +1175,7 @@ describe(`build_point_metadata`, () => {
       band_idx: 0,
       spin: `up`,
       is_acoustic: true,
-      bs,
+      bs: band_structure,
       start_idx: 0,
       ...overrides,
     })

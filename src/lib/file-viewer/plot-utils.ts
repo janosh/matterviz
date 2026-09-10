@@ -221,11 +221,11 @@ export function build_scatter3d_series(
   const built = build_point_axes(columns, mapping, [`x`, `y`, `z`])
   if (!built) return { x: [], y: [], z: [] }
   const {
-    axes: [x, y, z],
+    axes: [coord_x, coord_y, coord_z],
     color_values,
     size_values,
   } = built
-  return { x, y, z, markers: `points`, color_values, size_values }
+  return { x: coord_x, y: coord_y, z: coord_z, markers: `points`, color_values, size_values }
 }
 
 export function build_bar_series(
@@ -237,14 +237,14 @@ export function build_bar_series(
   if (!x_col || !y_col) return { x: [], y: [] }
 
   const raw_y = to_numbers(y_col.values)
-  const x: string[] = []
-  const y: number[] = []
+  const coord_x: string[] = []
+  const coord_y: number[] = []
   for (let idx = 0; idx < raw_y.length; idx++) {
     if (!isFinite(raw_y[idx])) continue
-    x.push(to_label(x_col.values[idx]))
-    y.push(raw_y[idx])
+    coord_x.push(to_label(x_col.values[idx]))
+    coord_y.push(raw_y[idx])
   }
-  return { x, y, color: `#4c6ef5` }
+  return { x: coord_x, y: coord_y, color: `#4c6ef5` }
 }
 
 export function build_histogram_series(

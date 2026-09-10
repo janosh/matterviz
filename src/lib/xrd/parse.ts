@@ -389,8 +389,8 @@ export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern> {
 
 function parse_brml_xml(xml_content: string): XrdPattern {
   const doc = parse_xml(xml_content, `BRML`)
-  const datum_rows = Array.from(doc.querySelectorAll(`Datum`), (el) =>
-    (el.textContent ?? ``).trim().split(`,`).map(Number),
+  const datum_rows = Array.from(doc.querySelectorAll(`Datum`), (element) =>
+    (element.textContent ?? ``).trim().split(`,`).map(Number),
   ).filter(
     (row) =>
       row.length >= 5 && Number.isFinite(row[2]) && Number.isFinite(row[row.length - 1]),

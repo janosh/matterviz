@@ -23,19 +23,19 @@ export interface ThermalProperties {
 // instead of overflowing e^x, and small x (high T) keeps 1 − e^{−x} ≈ x without cancellation.
 // x · e^{−x} is formed before any second factor of x so large finite x gives 0 · x = 0 rather
 // than ∞ · 0 = NaN. x = ∞ is the frozen mode (T = 0, or k_B T underflowed to a denormal).
-const mode_entropy = (x: number): number => {
-  if (x === Infinity) return 0
-  const one_minus_exp_neg = -Math.expm1(-x)
-  return (x * Math.exp(-x)) / one_minus_exp_neg - Math.log(one_minus_exp_neg)
+const mode_entropy = (coord_x: number): number => {
+  if (coord_x === Infinity) return 0
+  const one_minus_exp_neg = -Math.expm1(-coord_x)
+  return (coord_x * Math.exp(-coord_x)) / one_minus_exp_neg - Math.log(one_minus_exp_neg)
 }
 // C_v = (x / (1 − e^{−x}))² e^{−x}: the ratio → 1 as x → 0 so no 0/0 when x² underflows
-const mode_heat_capacity = (x: number): number => {
-  if (x === Infinity) return 0
-  const ratio = x / -Math.expm1(-x)
-  return ratio * Math.exp(-x) * ratio
+const mode_heat_capacity = (coord_x: number): number => {
+  if (coord_x === Infinity) return 0
+  const ratio = coord_x / -Math.expm1(-coord_x)
+  return ratio * Math.exp(-coord_x) * ratio
 }
 // ln(1 − e^{−x}), the free-energy integrand; 0 at x = ∞ so F(0 K) = ZPE exactly
-const mode_log_occupation = (x: number): number => Math.log(-Math.expm1(-x))
+const mode_log_occupation = (coord_x: number): number => Math.log(-Math.expm1(-coord_x))
 
 // Thermal properties at each temperature (K) from a phonon DOS whose frequencies are in `unit`
 // (THz by default, as in phonopy / pymatgen dumps)
@@ -89,15 +89,19 @@ export function thermal_properties(
   for (const temp of temperatures) {
     // 0 K gives x = ∞ for every mode: the ground state. `|| 0` turns a -0 (which passes the
     // ≥ 0 check) into +0, since x = -∞ would make every mode function NaN
-    const kt = BOLTZMANN_EV_PER_K * temp || 0
-    const xs = mode_energies.map((energy) => energy / kt)
-    const s_val = BOLTZMANN_EV_PER_K * integrate((idx) => mode_entropy(xs[idx]))
+    const thermal_energy = BOLTZMANN_EV_PER_K * temp || 0
+    const x_values = mode_energies.map((energy) => energy / thermal_energy)
+    const s_val = BOLTZMANN_EV_PER_K * integrate((idx) => mode_entropy(x_values[idx]))
     // F = ZPE + k_B T ∫ g ln(1 − e^{−x}); U follows as F + TS
-    const f_val = zero_point_energy + kt * integrate((idx) => mode_log_occupation(xs[idx]))
+    const f_val =
+      zero_point_energy +
+      thermal_energy * integrate((idx) => mode_log_occupation(x_values[idx]))
     free_energy.push(f_val)
     internal_energy.push(f_val + temp * s_val)
     entropy.push(s_val)
-    heat_capacity.push(BOLTZMANN_EV_PER_K * integrate((idx) => mode_heat_capacity(xs[idx])))
+    heat_capacity.push(
+      BOLTZMANN_EV_PER_K * integrate((idx) => mode_heat_capacity(x_values[idx])),
+    )
   }
   return {
     temperatures: [...temperatures],

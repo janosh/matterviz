@@ -5,7 +5,7 @@
   import type { Crystal } from '$lib/structure'
   import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
   import al2lu from '$site/structures/mp-1234.json'
-  import pd from '$site/structures/mp-2.json'
+  import palladium from '$site/structures/mp-2.json'
 
   // Synthetic RDF patterns for testing
   const synthetic_pattern: RdfEntry = {
@@ -49,7 +49,7 @@
 
   const structures = {
     'Al₂Lu': al2lu,
-    Pd: pd,
+    Pd: palladium,
     'Bi₂Zr₂O₈': bi2zr2o8,
   } as unknown as Record<string, Crystal>
 </script>

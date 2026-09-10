@@ -236,14 +236,14 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
   test(`multi-phase gradient ids are unique per instance`, async () => {
     await mount_diagram()
     await mount_diagram()
-    const ids = [...document.querySelectorAll(`linearGradient`)].map((el) => el.id)
+    const ids = [...document.querySelectorAll(`linearGradient`)].map((element) => element.id)
     expect(ids).toHaveLength(2) // one gradient (the α + β region) per instance
     expect(new Set(ids).size).toBe(2)
     // each gradient-filled region path must reference its own instance's gradient
     const fills = [...document.querySelectorAll(`.phase-regions path`)]
-      .map((el) => el.getAttribute(`fill`))
+      .map((element) => element.getAttribute(`fill`))
       .filter((fill) => fill?.startsWith(`url(`))
-    expect(fills).toEqual(ids.map((id) => `url(#${id})`))
+    expect(fills).toEqual(ids.map((identifier) => `url(#${identifier})`))
   })
 
   // the SVG drop routes through the shared file-drop handler rather than a FileReader, so

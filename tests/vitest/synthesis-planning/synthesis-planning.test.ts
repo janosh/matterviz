@@ -86,12 +86,12 @@ describe(`prepare_phase_set`, () => {
     expect(phase_set.elements).toEqual([`C`, `Li`, `O`, `Ti`])
     expect(find(phase_set.phases, `Li`).energy_per_atom).toBe(0)
     expect(find(phase_set.phases, `C`).id).toBe(`ref:C`)
-    const o2 = find(phase_set.phases, `O2`)
-    expect(o2.is_gas).toBe(true)
-    expect(o2.n_atoms_per_fu).toBe(2)
+    const oxygen = find(phase_set.phases, `O2`)
+    expect(oxygen.is_gas).toBe(true)
+    expect(oxygen.n_atoms_per_fu).toBe(2)
     // The O2 gas replaces the elemental O reference and sits below it by T·S
     expect(phase_set.phases.some((phase) => phase.formula === `O`)).toBe(false)
-    expect(o2.energy_per_atom).toBeLessThan(-1)
+    expect(oxygen.energy_per_atom).toBeLessThan(-1)
     const co2 = find(phase_set.phases, `CO2`)
     expect(co2.molar_mass).toBeCloseTo(44.01, 1)
     expect(co2.energy_per_atom).toBeLessThan(-1.6)
@@ -399,18 +399,18 @@ describe(`plan_synthesis`, () => {
 
   test(`ranks the textbook BaCO3 + TiO2 route first and flags Ba2TiO4 on the BaO + TiO2 line`, () => {
     const provider = get_default_gas_provider()
-    const mu = vi.spyOn(provider, `get_standard_chemical_potential`)
+    const mean = vi.spyOn(provider, `get_standard_chemical_potential`)
     const plan = plan_synthesis(base_request)
-    const cached_calls = mu.mock.calls.length
-    mu.mockClear()
+    const cached_calls = mean.mock.calls.length
+    mean.mockClear()
     expect(
       plan_synthesis({
         ...base_request,
         conditions: { ...base_request.conditions, gas_provider: provider },
       }),
     ).toEqual(plan)
-    expect(mu.mock.calls.length).toBeGreaterThan(cached_calls)
-    mu.mockRestore()
+    expect(mean.mock.calls.length).toBeGreaterThan(cached_calls)
+    mean.mockRestore()
     expect(plan.chemical_system).toBe(`Ba-C-O-Ti`)
     expect(plan.target.formula).toBe(`BaTiO3`)
     expect(plan.target_stability.is_stable).toBe(true)
@@ -424,7 +424,7 @@ describe(`plan_synthesis`, () => {
         ...base_request,
         max_routes: 1,
         keep_route_ids: [best.id, kept.id, `missing`],
-      }).routes.map(({ id }) => id),
+      }).routes.map(({ id: identifier }) => identifier),
     ).toEqual([best.id, kept.id])
     expect(best.reaction.equation).toBe(`BaCO3 + TiO2 → BaTiO3 + CO2`)
     expect(best.thermodynamics.gas_exchange.CO2).toBeCloseTo(1, 9)

@@ -14,7 +14,7 @@ import {
   WAVELENGTHS,
 } from '$lib/xrd'
 import type { XrdPattern } from '$lib/xrd'
-import fs from 'node:fs'
+import file_system from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
@@ -54,7 +54,7 @@ const intensity_of = (pattern: XrdPattern, target: string): number => {
 
 describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
   // Pair each structure file with its precomputed XRD pattern from ../fixtures/xrd
-  const file_pairs = fs
+  const file_pairs = file_system
     .readdirSync(structures_dir)
     .filter((name) => /\.json(?:\.gz)?$/.test(name) && xrd_patterns[fixture_id(name)])
     .map((name) => ({ name, expected: xrd_patterns[fixture_id(name)] }))
@@ -86,7 +86,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
       // Compare peak positions set-wise over the strongest expected peaks (by intensity)
       // to avoid discrepancies from low-intensity filtering differences between implementations
       const top_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
-        .toSorted((i1, i2) => expected.y[i2] - expected.y[i1])
+        .toSorted((index_1, index_2) => expected.y[index_2] - expected.y[index_1])
         .slice(0, Math.min(200, expected.x.length))
       const matched = top_indices.filter((idx) =>
         has_close(computed.x, expected.x[idx], angle_tol),

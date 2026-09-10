@@ -435,9 +435,11 @@ export function phonon_mode_run(
   const equilibrium = supercell.structure
   // Fractional coordinates move by the displacement in the lattice basis, so the inverse
   // matrix is applied to the (small) displacement and added to the fixed equilibrium abc
-  const [[ia, ib, ic], [ja, jb, jc], [ka, kb, kc]] = math.matrix_inverse_3x3(
-    equilibrium.lattice.matrix,
-  )
+  const [
+    [index_a, index_b, index_c],
+    [inverse_ja, inverse_jb, inverse_jc],
+    [ambient_color, inverse_kb, inverse_kc],
+  ] = math.matrix_inverse_3x3(equilibrium.lattice.matrix)
   const phase_of = (frame_idx: number) => (2 * Math.PI * frame_idx) / n_frames
 
   // Phonon eigenvectors conventionally evolve as exp(-iωt): u(φ) = Re(u) cos φ + Im(u) sin φ.
@@ -449,20 +451,22 @@ export function phonon_mode_run(
     const sin_phase = amplitude * Math.sin(phase)
     const sites = equilibrium.sites.map((site, site_idx) => {
       const offset = site_idx * 6
-      const dx = displacements[offset] * cos_phase + displacements[offset + 1] * sin_phase
-      const dy = displacements[offset + 2] * cos_phase + displacements[offset + 3] * sin_phase
-      const dz = displacements[offset + 4] * cos_phase + displacements[offset + 5] * sin_phase
+      const delta_x = displacements[offset] * cos_phase + displacements[offset + 1] * sin_phase
+      const delta_y =
+        displacements[offset + 2] * cos_phase + displacements[offset + 3] * sin_phase
+      const delta_z =
+        displacements[offset + 4] * cos_phase + displacements[offset + 5] * sin_phase
       const { xyz, abc, properties } = site
       return {
         species: site.species,
         label: site.label,
-        xyz: [xyz[0] + dx, xyz[1] + dy, xyz[2] + dz] as Vec3,
+        xyz: [xyz[0] + delta_x, xyz[1] + delta_y, xyz[2] + delta_z] as Vec3,
         abc: [
-          abc[0] + dx * ia + dy * ja + dz * ka,
-          abc[1] + dx * ib + dy * jb + dz * kb,
-          abc[2] + dx * ic + dy * jc + dz * kc,
+          abc[0] + delta_x * index_a + delta_y * inverse_ja + delta_z * ambient_color,
+          abc[1] + delta_x * index_b + delta_y * inverse_jb + delta_z * inverse_kb,
+          abc[2] + delta_x * index_c + delta_y * inverse_jc + delta_z * inverse_kc,
         ] as Vec3,
-        properties: { ...properties, [vector_key]: [dx, dy, dz] as Vec3 },
+        properties: { ...properties, [vector_key]: [delta_x, delta_y, delta_z] as Vec3 },
       }
     })
     return {

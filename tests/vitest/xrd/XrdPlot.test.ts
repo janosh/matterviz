@@ -142,7 +142,7 @@ describe(`XrdPlot`, () => {
       const target = await mount_xrd({ patterns: pattern, ...props })
 
       const bar_label_text = Array.from(target.querySelectorAll(`.bar-label`)).map(
-        (el) => el.textContent?.trim() ?? ``,
+        (element) => element.textContent?.trim() ?? ``,
       )
       expect(bar_label_text).toEqual(expected_labels)
       expect(axis_text(target, `x`)).toContain(swapped ? intensity_label : angle_label)
@@ -277,7 +277,7 @@ describe(`XrdPlot`, () => {
     })
 
     const label_texts = Array.from(target.querySelectorAll(`.bar-label`))
-      .map((el) => el.textContent?.trim())
+      .map((element) => element.textContent?.trim())
       .filter(Boolean)
 
     // The 5 most intense peaks are all in the 45.8x cluster, so overlap filtering leaves a
@@ -293,11 +293,19 @@ describe(`XrdPlot`, () => {
   ])(
     `%s pattern with %i points renders %s bars`,
     async (_kind, n_points, with_hkls, expected_bars) => {
-      const x = Array.from({ length: n_points }, (_, idx) => 5 + (80 * idx) / (n_points - 1))
-      const y = Array.from({ length: n_points }, (_, idx) => 1 + (idx % 7))
+      const coord_x = Array.from(
+        { length: n_points },
+        (_, idx) => 5 + (80 * idx) / (n_points - 1),
+      )
+      const coord_y = Array.from({ length: n_points }, (_, idx) => 1 + (idx % 7))
       const long_pattern: XrdPattern = with_hkls
-        ? { x, y, hkls: x.map(() => [{ hkl: [1, 0, 0] }]), d_hkls: x.map(() => 1) }
-        : { x, y }
+        ? {
+            x: coord_x,
+            y: coord_y,
+            hkls: coord_x.map(() => [{ hkl: [1, 0, 0] }]),
+            d_hkls: coord_x.map(() => 1),
+          }
+        : { x: coord_x, y: coord_y }
       const target = await mount_xrd({ patterns: long_pattern, annotate_peaks: 0 })
       const bars = target.querySelectorAll(`path[aria-label^="bar "]`)
       if (with_hkls) expect(bars).toHaveLength(expected_bars)
@@ -330,8 +338,8 @@ describe(`XrdPlot`, () => {
       // grows downward)
       const curve = profile_paths(target)[0]?.getAttribute(`d`)
       if (!curve) throw new Error(`no broadened profile path for scale ${scale}`)
-      const ys = (curve.match(/-?[\d.]+/g) ?? []).filter((_value, idx) => idx % 2 === 1)
-      return Math.min(...ys.map(Number))
+      const y_values = (curve.match(/-?[\d.]+/g) ?? []).filter((_value, idx) => idx % 2 === 1)
+      return Math.min(...y_values.map(Number))
     }
     // 100x apart on input, identical once both are scaled to a maximum of 100
     expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)

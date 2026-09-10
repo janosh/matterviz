@@ -106,25 +106,27 @@
     const point_style = visible_entries.map((entry): PointStyle => {
       const is_stable = entry_is_stable(entry)
       const base_radius = point_radius(entry)
-      const hl = is_highlighted(entry) ? merged_highlight_style : null
-      const colored = hl?.effect === `color` || hl?.effect === `both`
-      const sized = hl?.effect === `size` || hl?.effect === `both`
+      const highlight = is_highlighted(entry) ? merged_highlight_style : null
+      const colored = highlight?.effect === `color` || highlight?.effect === `both`
+      const sized = highlight?.effect === `size` || highlight?.effect === `both`
       return {
         fill: colored
-          ? hl?.color
+          ? highlight?.color
           : is_energy_mode
             ? undefined
             : is_stable
               ? stable_color
               : unstable_color,
         stroke: is_stable ? `#ffffff` : `#000000`,
-        radius: sized ? base_radius * (hl?.size_multiplier ?? 1) : base_radius,
+        radius: sized ? base_radius * (highlight?.size_multiplier ?? 1) : base_radius,
         symbol_type: entry.marker && marker_d3_name(entry.marker),
-        is_highlighted: Boolean(hl),
+        is_highlighted: Boolean(highlight),
         // size/colour effects are already applied above via radius/fill
         highlight_effect:
-          hl?.effect === `pulse` || hl?.effect === `glow` ? hl.effect : undefined,
-        highlight_color: hl?.color,
+          highlight?.effect === `pulse` || highlight?.effect === `glow`
+            ? highlight.effect
+            : undefined,
+        highlight_color: highlight?.color,
       }
     })
     return {
@@ -219,15 +221,19 @@
   y_range,
   width,
 }: UserContentProps)}
-  {@const [x0, x1, y0] = [x_scale_fn(0), x_scale_fn(1), y_scale_fn(y_range[0])]}
+  {@const [coord_x_0, coord_x_1, coord_y_0] = [
+    x_scale_fn(0),
+    x_scale_fn(1),
+    y_scale_fn(y_range[0]),
+  ]}
   {@const stroke = {
     stroke: `var(--scatter-grid-stroke, gray)`,
     'stroke-width': `var(--scatter-grid-width, 0.4)`,
     'stroke-dasharray': `var(--scatter-grid-dash, 4)`,
   }}
-  <line y1={pad.t} y2={height - pad.b} x1={x0} x2={x0} {...stroke} />
-  <line y1={pad.t} y2={height - pad.b} {x1} x2={x1} {...stroke} />
-  <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
+  <line y1={pad.t} y2={height - pad.b} x1={coord_x_0} x2={coord_x_0} {...stroke} />
+  <line y1={pad.t} y2={height - pad.b} x1={coord_x_1} x2={coord_x_1} {...stroke} />
+  <line x1={pad.l} x2={width - pad.r} y1={coord_y_0} y2={coord_y_0} {...stroke} />
 {/snippet}
 
 <ScatterPlot

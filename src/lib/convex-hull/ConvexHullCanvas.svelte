@@ -101,8 +101,10 @@
   let overlay_canvas = $state<HTMLCanvasElement>()
 
   const centroid = simplex_centroid(strategy.corners)
-  const project_point = (x: number, y: number, z: number): Projected =>
-    interactions.to_screen(...strategy.rotate_point(camera, [x, y, z], energy_range))
+  const project_point = (coord_x: number, coord_y: number, coord_z: number): Projected =>
+    interactions.to_screen(
+      ...strategy.rotate_point(camera, [coord_x, coord_y, coord_z], energy_range),
+    )
 
   // Shared canvas scaffold (camera zoom/pan, mouse/keyboard handlers, hover/drag/popup
   // state, point styling, canvas sizing, render scheduler)
@@ -194,9 +196,9 @@
   // Sync: main canvas drag → Three.js gizmo camera
   $effect(() => {
     if (gizmo_active || !gizmo_cam_ref || !gizmo_cam_state) return
-    const { position, up } = gizmo_cam_state
+    const { position, up: up_vector } = gizmo_cam_state
     gizmo_cam_ref.position.set(...position)
-    gizmo_cam_ref.up.set(...up)
+    gizmo_cam_ref.up.set(...up_vector)
     gizmo_cam_ref.lookAt(0, 0, 0)
     gizmo_orbit_ref?.update?.()
   })
@@ -204,8 +206,8 @@
   // Sync: gizmo → hull camera (during and after gizmo animation)
   function sync_gizmo_to_camera(): void {
     if (!gizmo_cam_ref || !strategy.gizmo) return
-    const { x, y, z } = gizmo_cam_ref.position
-    strategy.gizmo.from_three(camera, [x, y, z], interactions.view_scale)
+    const { x: coord_x, y: coord_y, z: coord_z } = gizmo_cam_ref.position
+    strategy.gizmo.from_three(camera, [coord_x, coord_y, coord_z], interactions.view_scale)
   }
 
   // `placement` positions the wrapper div, not the gizmo inside its canvas, so it is split

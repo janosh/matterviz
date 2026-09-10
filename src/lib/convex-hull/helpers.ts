@@ -128,10 +128,10 @@ export function get_energy_color_scale(
 ): ((value: number) => string) | null {
   const dists = color_mode === `energy` ? finite_hull_dists(plot_entries) : []
   if (dists.length === 0) return null
-  const [lo, max_dist] = array_extent(dists)
-  const hi = Math.max(max_dist, 0.1, lo + 1e-6)
+  const [lower, max_dist] = array_extent(dists)
+  const upper = Math.max(max_dist, 0.1, lower + 1e-6)
   const interpolator = get_d3_interpolator(color_scale)
-  return scaleSequential(interpolator).domain([lo, hi])
+  return scaleSequential(interpolator).domain([lower, upper])
 }
 
 // Point color resolver (shared)
@@ -405,15 +405,15 @@ export function compute_all_polymorph_stats(
     }))
     const ascending = (left: number, right: number) => left - right
     const energies = ranked.map(({ energy }) => energy).toSorted(ascending)
-    for (const [id, same_id] of Map.groupBy(ranked, (entry) => entry.id)) {
-      if (!id) continue
+    for (const [identifier, same_id] of Map.groupBy(ranked, (entry) => entry.id)) {
+      if (!identifier) continue
       // Duplicate IDs retain the last entry's result, excluding every copy of that ID.
       const energy = same_id[same_id.length - 1].energy
       const own = same_id.map((entry) => entry.energy).toSorted(ascending)
       const total = energies.length - own.length
       const lower = bisectLeft(energies, energy) - bisectLeft(own, energy)
       const higher = total - (bisectRight(energies, energy) - bisectRight(own, energy))
-      stats_map.set(id, { total, higher, lower, equal: total - higher - lower })
+      stats_map.set(identifier, { total, higher, lower, equal: total - higher - lower })
     }
   }
 
@@ -436,7 +436,9 @@ export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnaly
     if (!entry_has_temp_data(entry)) continue
     for (const temperature of entry.temperatures ?? []) unique_temperatures.add(temperature)
   }
-  const available_temperatures = [...unique_temperatures].toSorted((a, b) => a - b)
+  const available_temperatures = [...unique_temperatures].toSorted(
+    (left_value, right_value) => left_value - right_value,
+  )
   return {
     has_temp_data: available_temperatures.length > 0,
     available_temperatures,
@@ -554,6 +556,8 @@ export function get_entry_label(
     pairs = pairs.toSorted(([el1], [el2]) => elements.indexOf(el1) - elements.indexOf(el2))
   }
   return pairs
-    .map(([el, amt]) => (Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`))
+    .map(([element, amt]) =>
+      Math.abs(amt - 1) < 1e-6 ? element : `${element}${format_num(amt, `.2~`)}`,
+    )
     .join(``)
 }

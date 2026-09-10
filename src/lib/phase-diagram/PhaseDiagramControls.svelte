@@ -205,7 +205,8 @@
           <input
             type="color"
             value={css_color_to_hex(merged_config.colors[key], fallback)}
-            oninput={(ev) => update_nested(`colors`, key, ev.currentTarget.value)}
+            oninput={(event_value) =>
+              update_nested(`colors`, key, event_value.currentTarget.value)}
           />
         </label>
       {/each}
@@ -255,8 +256,8 @@
             min={2}
             max={15}
             value={axis_cfg.ticks ?? PHASE_DIAGRAM_DEFAULTS[`${axis_name}_ticks`]}
-            oninput={(ev) => {
-              const parsed_ticks = ev.currentTarget.valueAsNumber
+            oninput={(event_value) => {
+              const parsed_ticks = event_value.currentTarget.valueAsNumber
               if (!Number.isFinite(parsed_ticks)) return
               const new_ticks = clamp(Math.round(parsed_ticks), 2, 15)
               if (axis_name === `x`) x_axis = { ...x_axis, ticks: new_ticks }

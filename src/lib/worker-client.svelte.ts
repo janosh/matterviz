@@ -183,10 +183,10 @@ export function create_worker_client<
     if (pending_by_key.get(request.key) === request) pending_by_key.delete(request.key)
     if (request.id !== null && pending.get(request.id) === request) pending.delete(request.id)
   }
-  const track = (key: string, id: number | null): Request => {
+  const track = (key: string, identifier: number | null): Request => {
     const request: Request = {
       key,
-      id,
+      id: identifier,
       ...Promise.withResolvers<Result>(),
       waiters: 0,
       progress_listeners: new Set(),
@@ -196,7 +196,7 @@ export function create_worker_client<
       () => forget(request),
     )
     pending_by_key.set(key, request)
-    if (id !== null) pending.set(id, request)
+    if (identifier !== null) pending.set(identifier, request)
     return request
   }
 
@@ -247,27 +247,30 @@ export function create_worker_client<
     if (worker) return worker
     const active_worker = create_worker()
     worker = active_worker
-    worker.addEventListener(`message`, ({ data: { id, result, error, progress } }) => {
-      if (worker !== active_worker) return
-      // serve_worker's own `messageerror` reply: the request that failed to deserialize
-      // on the worker side has no id, so nothing can be settled individually
-      if (id === null) {
-        cancel(error ?? `${label} worker reported an error with no request id`)
-        return
-      }
-      const request = pending.get(id)
-      if (!request) return
-      if (progress !== undefined) {
-        for (const listener of request.progress_listeners) listener(progress)
-        return
-      }
-      forget(request)
-      if (error || result === undefined) {
-        request.reject(
-          new Error(error ?? `${label} worker returned no result for request ${id}`),
-        )
-      } else request.resolve(result)
-    })
+    worker.addEventListener(
+      `message`,
+      ({ data: { id: identifier, result, error, progress } }) => {
+        if (worker !== active_worker) return
+        // serve_worker's own `messageerror` reply: the request that failed to deserialize
+        // on the worker side has no id, so nothing can be settled individually
+        if (identifier === null) {
+          cancel(error ?? `${label} worker reported an error with no request id`)
+          return
+        }
+        const request = pending.get(identifier)
+        if (!request) return
+        if (progress !== undefined) {
+          for (const listener of request.progress_listeners) listener(progress)
+          return
+        }
+        forget(request)
+        if (error || result === undefined) {
+          request.reject(
+            new Error(error ?? `${label} worker returned no result for request ${identifier}`),
+          )
+        } else request.resolve(result)
+      },
+    )
     // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
     // caller awaiting forever, and its key stays in `pending_by_key` so each identical
     // retry is handed the same promise that will never settle.
@@ -319,13 +322,13 @@ export function create_worker_client<
     }
 
     const payload = dedupe_by_payload ? keyed_payload : build_payload(input)
-    const id = ++next_id
-    const request = track(request_key, id)
+    const identifier = ++next_id
+    const request = track(request_key, identifier)
     try {
       // Copied, never transferred: identity dedupe re-posts the same input later, and a
       // transferred typed-array buffer would be detached by then.
       // oxlint-disable-next-line unicorn/require-post-message-target-origin
-      wkr.postMessage({ id, input: payload, options: $state.snapshot(options) })
+      wkr.postMessage({ id: identifier, input: payload, options: $state.snapshot(options) })
     } catch (err) {
       request.reject(to_error(err))
     }

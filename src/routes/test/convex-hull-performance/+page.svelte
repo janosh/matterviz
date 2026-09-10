@@ -31,14 +31,14 @@
 
   function generate_entries(count: number, dim: Dimension, magnetic: boolean): PhaseData[] {
     const elements = ELEMENTS[dim]
-    const entries: PhaseData[] = elements.map((el) => ({
-      composition: { [el]: 1 } as Partial<Record<ElementSymbol, number>>,
+    const entries: PhaseData[] = elements.map((element) => ({
+      composition: { [element]: 1 } as Partial<Record<ElementSymbol, number>>,
       energy: 0,
-      entry_id: `ref-${el}`,
+      entry_id: `ref-${element}`,
       e_form_per_atom: 0,
       e_above_hull: 0,
       is_stable: true,
-      reduced_formula: el,
+      reduced_formula: element,
     }))
 
     for (let idx = 0; idx < count - elements.length; idx++) {
@@ -47,10 +47,10 @@
       const composition: Partial<Record<ElementSymbol, number>> = {}
       const formula: string[] = []
 
-      elements.forEach((el, elem_idx) => {
+      elements.forEach((element, elem_idx) => {
         const stoich = Math.max(1, Math.round((raw[elem_idx] / total) * 10))
-        composition[el] = stoich
-        formula.push(`${el}${stoich > 1 ? stoich : ``}`)
+        composition[element] = stoich
+        formula.push(`${element}${stoich > 1 ? stoich : ``}`)
       })
 
       const e_form =
@@ -63,11 +63,11 @@
       const structure: Crystal | undefined =
         idx < 5
           ? {
-              sites: elements.map((el, site_idx) => ({
-                species: [{ element: el, occu: 1, oxidation_state: 0 }],
+              sites: elements.map((element, site_idx) => ({
+                species: [{ element, occu: 1, oxidation_state: 0 }],
                 xyz: [site_idx * 2, 0, 0],
                 abc: [site_idx * 0.2, 0, 0],
-                label: el,
+                label: element,
                 properties: {},
               })),
               lattice: {

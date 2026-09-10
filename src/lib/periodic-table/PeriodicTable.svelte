@@ -466,8 +466,8 @@
 
   <!-- Tooltip -->
   {#if tooltip_element && tooltip !== false}
-    {@const el = tooltip_element}
-    {@const tooltip_value = heat_values[el.number - 1]}
+    {@const element = tooltip_element}
+    {@const tooltip_value = heat_values[element.number - 1]}
     <div
       class={[`tooltip`, tooltip_above && `above`]}
       style:left="{tooltip_pos.x}px"
@@ -477,15 +477,16 @@
     >
       {#if typeof tooltip === `function`}
         {@render tooltip({
-          element: el,
+          element: element,
           value: tooltip_value ?? null,
-          active: active_category === el.category || active_element?.name === el.name,
-          bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
+          active:
+            active_category === element.category || active_element?.name === element.name,
+          bg_color: color_overrides[element.symbol] ?? bg_color(tooltip_value, element),
           scale_context: { min: heat_range[0], max: heat_range[1], color_scale },
         })}
       {:else}
-        {el.name}<br />
-        <small>{el.symbol} • {el.number}</small>
+        {element.name}<br />
+        <small>{element.symbol} • {element.number}</small>
         {#if Array.isArray(tooltip_value)}
           <br />
           <small>Values: {tooltip_value.join(`, `)}</small>

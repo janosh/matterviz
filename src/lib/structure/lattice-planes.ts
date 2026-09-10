@@ -28,15 +28,15 @@ export const MAX_AUTO_PLANES = 100_000
 // Integer offsets whose plane crosses the unit cell: the extreme values of h·x + k·y + l·z
 // over the cell are reached at corners, i.e. the sums of the negative and positive indices.
 function lattice_plane_offsets(hkl: Vec3): number[] {
-  const lo = hkl.reduce((sum, val) => sum + Math.min(val, 0), 0)
-  const hi = hkl.reduce((sum, val) => sum + Math.max(val, 0), 0)
-  const n_planes = hi - lo + 1
+  const lower = hkl.reduce((sum, val) => sum + Math.min(val, 0), 0)
+  const upper = hkl.reduce((sum, val) => sum + Math.max(val, 0), 0)
+  const n_planes = upper - lower + 1
   if (n_planes > MAX_AUTO_PLANES) {
     throw new Error(
       `(${hkl.join(` `)}) has ${n_planes} lattice planes in the cell, more than the ${MAX_AUTO_PLANES} drawn automatically; pass explicit offsets to pick a subset`,
     )
   }
-  return Array.from({ length: n_planes }, (_, idx) => lo + idx)
+  return Array.from({ length: n_planes }, (_, idx) => lower + idx)
 }
 
 // Block-frame Miller indices scale with cell repeats, preserving spacing and orientation.
@@ -67,8 +67,8 @@ export function lattice_plane_polygons(
 
 // The 12 edges of the unit cube [0,1]³: every corner joins, along each of its zero
 // coordinates, the corner with that coordinate set to 1 (8 corners, 3 - #ones edges each)
-const UNIT_CUBE_CORNERS: Vec3[] = [0, 1].flatMap((x) =>
-  [0, 1].flatMap((y) => [0, 1].map((z): Vec3 => [x, y, z])),
+const UNIT_CUBE_CORNERS: Vec3[] = [0, 1].flatMap((coord_x) =>
+  [0, 1].flatMap((coord_y) => [0, 1].map((coord_z): Vec3 => [coord_x, coord_y, coord_z])),
 )
 const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = UNIT_CUBE_CORNERS.flatMap(
   (corner) =>

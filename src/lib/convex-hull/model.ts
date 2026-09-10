@@ -49,7 +49,7 @@ export function compute_energy_mode_info(
     entries.length > 0 && entries.every((entry) => typeof entry.e_above_hull === `number`)
   const unary_refs = thermo.find_lowest_energy_unary_refs(entries)
   const can_compute = entries.every((entry) =>
-    Object.keys(entry.composition).every((el) => el in unary_refs),
+    Object.keys(entry.composition).every((element) => element in unary_refs),
   )
   let energy_mode: EnergySourceMode = energy_source_mode
   if (!can_compute) energy_mode = `precomputed`
@@ -89,11 +89,9 @@ export function build_hull_model(
 ) {
   // Simplex position of a composition with E_form on the last plotted axis (y in 2D, z in 3D)
   const plot_position = (composition: CompositionType, e_form: number) => {
-    const [x, y = e_form, z = dim === 3 ? e_form : 0] = composition_to_simplex_coords(
-      composition,
-      elements,
-    )
-    return { x, y, z }
+    const [coord_x, coord_y = e_form, coord_z = dim === 3 ? e_form : 0] =
+      composition_to_simplex_coords(composition, elements)
+    return { x: coord_x, y: coord_y, z: coord_z }
   }
 
   // Plot coordinates: entries with a finite formation energy placed in the simplex, plus

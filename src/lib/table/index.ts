@@ -239,9 +239,9 @@ export function resolve_color_domain(
 export const merge_domains = (domains: [number, number][]): [number, number] | null =>
   domains.length === 0
     ? null
-    : domains.reduce(([lo, hi], [next_lo, next_hi]): [number, number] => [
-        Math.min(lo, next_lo),
-        Math.max(hi, next_hi),
+    : domains.reduce(([lower, upper], [next_lo, next_hi]): [number, number] => [
+        Math.min(lower, next_lo),
+        Math.max(upper, next_hi),
       ])
 
 // Build a memoized value→color mapper for one column. The O(column-length)
@@ -260,8 +260,10 @@ export function make_cell_color_scale(
   if (color_scale === null) return () => NULL_CELL_COLOR
 
   const numeric_vals = all_values.filter(
-    (v): v is number =>
-      typeof v === `number` && Number.isFinite(v) && (scale_type === `log` ? v > 0 : true),
+    (value): value is number =>
+      typeof value === `number` &&
+      Number.isFinite(value) &&
+      (scale_type === `log` ? value > 0 : true),
   )
   // a log column of nothing but zeros still colors them at the low end, hence the includes
   const has_log_zero = scale_type === `log` && all_values.includes(0)
@@ -301,9 +303,9 @@ export function make_cell_color_scale(
     // Negatives remain invalid on a log scale
     if (scale_type === `log` && val < 0) return NULL_CELL_COLOR
     const color_val = val === 0 && log_zero_value !== undefined ? log_zero_value : val
-    const bg = log_position
+    const background = log_position
       ? interpolator(clamp01(log_position(color_val)))
       : seq_scale(color_val)
-    return { bg, text: text_by_bg(bg) }
+    return { bg: background, text: text_by_bg(background) }
   }
 }

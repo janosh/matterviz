@@ -979,8 +979,8 @@ describe(`PeriodicTable`, () => {
         props: { heatmap_values: [1, 10, 100, 1000], log: true },
       })
 
-      const tick_text = Array.from(document.querySelectorAll(`.tick-label`)).map((el) =>
-        el.textContent?.trim(),
+      const tick_text = Array.from(document.querySelectorAll(`.tick-label`)).map((element) =>
+        element.textContent?.trim(),
       )
 
       expect(tick_text).toEqual([`1`, `10`, `100`, `1k`])

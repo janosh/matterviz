@@ -328,27 +328,27 @@ test.describe(`Bond component`, () => {
             }
             let min_x = width
             let max_x = 0
-            const y0 = Math.floor(height * 0.35)
-            const y1 = Math.floor(height * 0.65)
-            for (let y = y0; y < y1; y++) {
-              for (let x = 0; x < width; x++) {
-                const idx = (y * width + x) * 4
+            const coord_y_0 = Math.floor(height * 0.35)
+            const coord_y_1 = Math.floor(height * 0.65)
+            for (let coord_y = coord_y_0; coord_y < coord_y_1; coord_y++) {
+              for (let coord_x = 0; coord_x < width; coord_x++) {
+                const idx = (coord_y * width + coord_x) * 4
                 if (!is_bond_pixel(data[idx], data[idx + 1], data[idx + 2])) continue
-                if (x < min_x) min_x = x
-                if (x > max_x) max_x = x
+                if (coord_x < min_x) min_x = coord_x
+                if (coord_x > max_x) max_x = coord_x
               }
             }
             if (max_x - min_x < 40) {
               throw new Error(`bond bbox too narrow: x=[${min_x},${max_x}]`)
             }
-            const mean_bond_rgb = (x0: number, x1: number) => {
+            const mean_bond_rgb = (coord_x_0: number, coord_x_1: number) => {
               let red_sum = 0
               let green_sum = 0
               let blue_sum = 0
               let count = 0
-              for (let y = y0; y < y1; y++) {
-                for (let x = x0; x < x1; x++) {
-                  const idx = (y * width + x) * 4
+              for (let coord_y = coord_y_0; coord_y < coord_y_1; coord_y++) {
+                for (let coord_x = coord_x_0; coord_x < coord_x_1; coord_x++) {
+                  const idx = (coord_y * width + coord_x) * 4
                   const red = data[idx]
                   const green = data[idx + 1]
                   const blue = data[idx + 2]
@@ -360,7 +360,9 @@ test.describe(`Bond component`, () => {
                 }
               }
               if (count < 50) {
-                throw new Error(`too few bond pixels in x=[${x0},${x1}): ${count}`)
+                throw new Error(
+                  `too few bond pixels in x=[${coord_x_0},${coord_x_1}): ${count}`,
+                )
               }
               return { r: red_sum / count, g: green_sum / count, b: blue_sum / count, count }
             }
@@ -392,8 +394,8 @@ test.describe(`Bond component`, () => {
       await drag_canvas(canvas, { dx: 100 })
       await expect_canvas_changed(canvas, initial)
       const after_camera = await expect_canvas_changed_by(canvas, async () => {
-        const { x, y } = await canvas_center(canvas)
-        await page.mouse.move(x, y)
+        const { x: coord_x, y: coord_y } = await canvas_center(canvas)
+        await page.mouse.move(coord_x, coord_y)
         await page.mouse.wheel(0, -200)
       })
       expect(await count_canvas_content_pixels(page, after_camera)).toBeGreaterThan(100)
@@ -745,8 +747,13 @@ test.describe(`Bond component`, () => {
       }
       // midline between C-1 and O-3, and C-2's vertical gap from it, vs their horizontal span
       const label_geometry = async () => {
-        const [c1, c2, o3] = await Promise.all([`C-1`, `C-2`, `O-3`].map(label_center))
-        return { vertical_gap: c2.y - (c1.y + o3.y) / 2, horizontal_span: o3.x - c1.x }
+        const [value_c_1, value_c_2, oxygen_3] = await Promise.all(
+          [`C-1`, `C-2`, `O-3`].map(label_center),
+        )
+        return {
+          vertical_gap: value_c_2.y - (value_c_1.y + oxygen_3.y) / 2,
+          horizontal_span: oxygen_3.x - value_c_1.x,
+        }
       }
       await expect(label(`C-1`)).toBeVisible()
       await expect(label(`C-2`)).toBeVisible()

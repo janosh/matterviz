@@ -55,8 +55,8 @@ test.describe(`Periodic Table`, () => {
 
     const row_gap = async (above: string, below: string) => {
       const [upper, lower] = await Promise.all([
-        tile(above).evaluate((el) => el.getBoundingClientRect().bottom),
-        tile(below).evaluate((el) => el.getBoundingClientRect().top),
+        tile(above).evaluate((element) => element.getBoundingClientRect().bottom),
+        tile(below).evaluate((element) => element.getBoundingClientRect().top),
       ])
       return lower - upper
     }
@@ -64,7 +64,9 @@ test.describe(`Periodic Table`, () => {
 
     const heights = await table
       .locator(`.element-tile`)
-      .evaluateAll((elements) => elements.map((el) => el.getBoundingClientRect().height))
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().height),
+      )
     expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.5)
 
     const inset = table.locator(`.table-inset`)

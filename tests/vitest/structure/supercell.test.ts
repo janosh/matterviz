@@ -355,9 +355,9 @@ describe(`oblique cell bug tests`, () => {
   ])(
     `$name supercell folds all atoms into consistent in-bounds coordinates`,
     ({ cell, sites }) => {
-      const [a, b, c, alpha, beta, gamma] = cell
+      const [value_a, value_b, value_c, alpha, beta, gamma] = cell
       const structure = make_crystal(
-        math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma),
+        math.cell_to_lattice_matrix(value_a, value_b, value_c, alpha, beta, gamma),
         sites,
         { charge: 0 },
       )

@@ -754,11 +754,21 @@ const rotate_tensor_signal = (values: Float64Array, rotations: Matrix3x3[]): Flo
   const rotated = new Float64Array(values.length)
   for (let sample_idx = 0; sample_idx < rotations.length; sample_idx++) {
     const base = sample_idx * 9
-    const [xx, xy, xz, yx, yy, yz, zx, zy, zz] = values.subarray(base, base + 9)
+    const [
+      tensor_xx,
+      coords_xy,
+      tilt_xz,
+      tensor_yx,
+      tensor_yy,
+      tilt_yz,
+      tensor_zx,
+      tensor_zy,
+      tensor_zz,
+    ] = values.subarray(base, base + 9)
     const symmetric: Matrix3x3 = [
-      [xx, (xy + yx) / 2, (xz + zx) / 2],
-      [(yx + xy) / 2, yy, (yz + zy) / 2],
-      [(zx + xz) / 2, (zy + yz) / 2, zz],
+      [tensor_xx, (coords_xy + tensor_yx) / 2, (tilt_xz + tensor_zx) / 2],
+      [(tensor_yx + coords_xy) / 2, tensor_yy, (tilt_yz + tensor_zy) / 2],
+      [(tensor_zx + tilt_xz) / 2, (tensor_zy + tilt_yz) / 2, tensor_zz],
     ]
     const transformed = dot(
       dot(rotations[sample_idx], symmetric),
@@ -929,9 +939,20 @@ const calculate_raman = (
   const anisotropic_values = new Float64Array(n_samples * 6)
   for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
     const base = sample_idx * 9
-    const [xx, xy, xz, , yy, yz, , , zz] = rotated.subarray(base, base + 9)
-    isotropic_values[sample_idx] = (xx + yy + zz) / 3
-    anisotropic_values.set([xx - yy, yy - zz, zz - xx, xy, yz, xz], sample_idx * 6)
+    const [tensor_xx, coords_xy, tilt_xz, , tensor_yy, tilt_yz, , , tensor_zz] =
+      rotated.subarray(base, base + 9)
+    isotropic_values[sample_idx] = (tensor_xx + tensor_yy + tensor_zz) / 3
+    anisotropic_values.set(
+      [
+        tensor_xx - tensor_yy,
+        tensor_yy - tensor_zz,
+        tensor_zz - tensor_xx,
+        coords_xy,
+        tilt_yz,
+        tilt_xz,
+      ],
+      sample_idx * 6,
+    )
   }
   const raman_curve = (
     values: Float64Array,
@@ -1151,7 +1172,7 @@ const extract_displacements = (
 
 const detect_peaks = (
   vdos: TrajectorySpectrumCurve,
-  ir: TrajectorySpectrumCurve | null,
+  infrared: TrajectorySpectrumCurve | null,
   raman: TrajectorySpectrumCurve | null,
   prepared_positions: Float64Array,
   input: TrajectorySpectroscopyInput,
@@ -1159,7 +1180,7 @@ const detect_peaks = (
 ): TrajectorySpectralPeak[] => {
   const candidates = [
     ...curve_candidates(vdos, `vdos`),
-    ...curve_candidates(ir, `ir`),
+    ...curve_candidates(infrared, `ir`),
     ...curve_candidates(raman, `raman`),
   ].toSorted((left, right) => left.frequency - right.frequency)
   const groups: PeakCandidate[][] = []
@@ -1202,12 +1223,12 @@ const detect_peaks = (
       displacements[frequency_idx],
     ]),
   )
-  const ir_stats = curve_activity_stats(ir)
+  const ir_stats = curve_activity_stats(infrared)
   const raman_stats = curve_activity_stats(raman)
   return groups.map((group, group_idx) => {
     const frequency = frequencies[group_idx]
     const displacement = displacement_by_frequency.get(frequency)
-    const ir_score = curve_score(ir, frequency, ir_stats)
+    const ir_score = curve_score(infrared, frequency, ir_stats)
     const raman_score = curve_score(raman, frequency, raman_stats)
     const vdos_prominence = Math.max(
       0,
@@ -1396,7 +1417,7 @@ export const calc_trajectory_spectroscopy = (
     component_weights,
   )
 
-  let ir: TrajectorySpectrumCurve | null = null
+  let infrared: TrajectorySpectrumCurve | null = null
   if (input.infrared_signal) {
     const { series } = input.infrared_signal
     validate_trajectory_signal(series, [3], `IR ${input.infrared_signal.kind}`)
@@ -1410,7 +1431,7 @@ export const calc_trajectory_spectroscopy = (
     const ir_values = rotate_vector_signal(series, rotations)
     // dipole/polarization spectra get the ω² of the classical absorption coefficient; a
     // current signal is already the time derivative and must not be weighted again
-    ir = build_curve(
+    infrared = build_curve(
       ir_values,
       3,
       series.steps,
@@ -1428,7 +1449,7 @@ export const calc_trajectory_spectroscopy = (
     : null
   const peaks = detect_peaks(
     vdos,
-    ir,
+    infrared,
     raman ? raman[raman.selected_channel] : null,
     prepared.positions,
     input,
@@ -1436,7 +1457,7 @@ export const calc_trajectory_spectroscopy = (
   )
   return {
     vdos,
-    ir,
+    ir: infrared,
     raman,
     peaks,
     frequency_unit,
