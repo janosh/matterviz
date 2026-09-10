@@ -315,7 +315,9 @@ const color_scale_options: ColorScaleOption[] = [
 
 describe(`ColorBar Interactive Selects`, () => {
   afterEach(() => {
-    document.body.querySelectorAll(`.portal-select-dropdown`).forEach((el) => el.remove())
+    document.body
+      .querySelectorAll(`.portal-select-dropdown`)
+      .forEach((element) => element.remove())
   })
 
   test.each([

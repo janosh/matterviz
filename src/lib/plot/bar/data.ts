@@ -24,6 +24,8 @@ export type NumericBarSeries<Metadata = Record<string, unknown>> = Omit<
   `x`
 > & { x: readonly number[] }
 
+const DEFAULT_CATEGORY_WIDTH = 0.75
+
 // Map string x values (categories) to integer indices shared across all series.
 // Numeric-only input is passed through unchanged (same array identity).
 export function normalize_categorical<Metadata = Record<string, unknown>>(
@@ -55,7 +57,9 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
     // Resolve original index for each category (undefined if series lacks it)
     const orig_indices = category_list.map((cat) => orig_map.get(cat))
     const remap = <T>(arr: readonly T[] | null | undefined, fallback: T): T[] =>
-      orig_indices.map((oi) => (oi != null ? (arr?.[oi] ?? fallback) : fallback))
+      orig_indices.map((original_idx) =>
+        original_idx != null ? (arr?.[original_idx] ?? fallback) : fallback,
+      )
     // Reorder a per-point prop that may be a single value (broadcast, left as-is) or an
     // array (must follow the category reordering, else point styles misalign with bars)
     const remap_per_point = <T>(prop: T[] | T | undefined): T[] | T | undefined =>
@@ -67,14 +71,16 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
       x: category_indices,
       y: remap(srs.y, srs.render_mode === `line` ? NaN : 0),
       labels: remap(srs.labels, null),
-      metadata: orig_indices.map((oi) =>
-        oi != null ? (meta_arr ? meta_arr[oi] : srs.metadata) : undefined,
+      metadata: orig_indices.map((original_idx) =>
+        original_idx != null ? (meta_arr ? meta_arr[original_idx] : srs.metadata) : undefined,
       ) as Metadata[],
       point_style: remap_per_point(srs.point_style),
       point_hover: remap_per_point(srs.point_hover),
       point_label: remap_per_point(srs.point_label),
       point_offset: remap_per_point(srs.point_offset),
-      ...(bw_arr ? { bar_width: remap(bw_arr, 0.5) } : {}),
+      bar_width: bw_arr
+        ? remap(bw_arr, DEFAULT_CATEGORY_WIDTH)
+        : (srs.bar_width ?? DEFAULT_CATEGORY_WIDTH),
       ...(srs.color_values ? { color_values: remap(srs.color_values, null) } : {}),
       ...(srs.size_values ? { size_values: remap(srs.size_values, null) } : {}),
     }

@@ -15,7 +15,7 @@ import {
   SCALE_DEFAULTS,
 } from '$lib/plot/core/types'
 import { clamp01 } from '$lib/utils'
-import { extent, range } from 'd3-array'
+import { range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {
   scaleLinear,
@@ -42,7 +42,8 @@ const assert_tick_count = (count: number, requested: string, span: number): void
 }
 
 // Dedupe and sort numeric array (used in tick generation)
-const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].toSorted((a, b) => a - b)
+const dedupe_sort = (arr: number[]): number[] =>
+  [...new Set(arr)].toSorted((left_value, right_value) => left_value - right_value)
 
 // --- Arcsinh Scale Implementation ---
 // The arcsinh scale provides smooth transition between linear (near zero) and
@@ -75,8 +76,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   let current_domain: Vec2 = [0, 1]
   let current_range: Vec2 = [0, 1]
 
-  const arcsinh_transform = (x: number): number => Math.asinh(x / threshold)
-  const sinh_transform = (y: number): number => Math.sinh(y) * threshold
+  const arcsinh_transform = (coord_x: number): number => Math.asinh(coord_x / threshold)
+  const sinh_transform = (coord_y: number): number => Math.sinh(coord_y) * threshold
   const transformed_domain = (): Vec2 => [
     arcsinh_transform(current_domain[0]),
     arcsinh_transform(current_domain[1]),
@@ -133,13 +134,13 @@ export function generate_arcsinh_ticks(
   count = 10,
 ): number[] {
   // Normalize reversed domains (min > max)
-  const [lo, hi] = min <= max ? [min, max] : [max, min]
+  const [lower, upper] = min <= max ? [min, max] : [max, min]
 
   // For purely positive or purely negative ranges, use log-like spacing
-  if (lo >= 0) return generate_positive_arcsinh_ticks(lo, hi, threshold, count)
-  if (hi <= 0) {
+  if (lower >= 0) return generate_positive_arcsinh_ticks(lower, upper, threshold, count)
+  if (upper <= 0) {
     // Negative range: mirror the positive logic
-    return generate_positive_arcsinh_ticks(-hi, -lo, threshold, count)
+    return generate_positive_arcsinh_ticks(-upper, -lower, threshold, count)
       .map((tick) => -tick)
       .toReversed()
   }
@@ -151,11 +152,11 @@ export function generate_arcsinh_ticks(
   const ticks: number[] = [0]
 
   // Add positive ticks
-  const pos_ticks = generate_positive_arcsinh_ticks(0, hi, threshold, half_count)
+  const pos_ticks = generate_positive_arcsinh_ticks(0, upper, threshold, half_count)
   ticks.push(...pos_ticks.filter((tick) => tick > 0))
 
   // Add negative ticks (mirror of positive)
-  const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, threshold, half_count)
+  const neg_ticks = generate_positive_arcsinh_ticks(0, -lower, threshold, half_count)
   ticks.push(...neg_ticks.filter((tick) => tick > 0).map((tick) => -tick))
 
   return dedupe_sort(ticks)
@@ -258,8 +259,8 @@ export function create_axis_scales<A extends { scale_type?: ScaleType }>(
 ) {
   const x_px: Vec2 = [pad.l, width - pad.r]
   const y_px: Vec2 = [height - pad.b, pad.t]
-  const scale = (axis: A, domain: Vec2, px: Vec2) =>
-    create_scale(axis.scale_type ?? `linear`, domain, px)
+  const scale = (axis: A, domain: Vec2, pixel_x: Vec2) =>
+    create_scale(axis.scale_type ?? `linear`, domain, pixel_x)
   return {
     x: scale(axes.x, ranges.x, x_px),
     x2: scale(axes.x2, ranges.x2, x_px),
@@ -290,7 +291,7 @@ export function generate_ticks(
     return Object.keys(ticks_option)
       .map(Number)
       .filter((val) => Number.isFinite(val) && val >= min_val && val <= max_val)
-      .toSorted((a, b) => a - b)
+      .toSorted((left_value, right_value) => left_value - right_value)
   }
 
   // If ticks_option is already an array, use it directly
@@ -394,35 +395,36 @@ type ScaleValueSeries =
   | null
   | undefined
 
-// Finite colour extent and finite size values across series in one pass. NaN/null entries
-// fall back to the series colour/radius per point, so they must not widen either scale.
-// `color_range` is [0, 1] when no finite colour value was seen.
-export function collect_scale_values(series: readonly ScaleValueSeries[]): {
-  color_extent: RunningExtent
-  color_range: Vec2
-  size_values: number[]
-} {
-  const color_extent = empty_extent()
+// Collect only the channel a caller needs; color-only hosts must not scan size samples.
+export function collect_series_extent(
+  series: readonly ScaleValueSeries[],
+  channel: `color_values` | `size_values`,
+): RunningExtent {
+  const extent = empty_extent()
   for (const srs of series) {
-    if (srs?.color_values) accumulate_extent(color_extent, srs.color_values)
+    const values = srs?.[channel]
+    if (values) accumulate_extent(extent, values)
   }
-  const { min = 0, max = 1 } = color_extent
-  return { color_extent, color_range: [min, max], size_values: collect_size_values(series) }
+  return extent
 }
 
-// Finite size values across series, for charts that size points but never colour them
-export function collect_size_values(series: readonly ScaleValueSeries[]): number[] {
-  const size_values: number[] = []
-  for (const srs of series) {
-    // index loop: size_values may be a typed array or other non-iterable ArrayLike
-    const sizes = srs?.size_values ?? []
-    const n_sizes = sizes.length
-    for (let idx = 0; idx < n_sizes; idx++) {
-      const val = sizes[idx]
-      if (typeof val === `number` && Number.isFinite(val)) size_values.push(val)
-    }
-  }
-  return size_values
+// Finite colour and size extents without concatenating series. NaN/null entries
+// fall back to the series colour/radius per point, so they must not widen either scale.
+// `color_range` is [0, 1] when no finite colour value was seen.
+export function collect_scale_ranges(series: readonly ScaleValueSeries[]): {
+  color_extent: RunningExtent
+  color_range: Vec2
+  size_range: Vec2
+} {
+  const color_extent = collect_series_extent(series, `color_values`)
+  const { min = 0, max = 1 } = color_extent
+  return { color_extent, color_range: [min, max], size_range: collect_size_range(series) }
+}
+
+// Size bounds without retaining a copy of every sample. Reuse across radius/type changes.
+export function collect_size_range(series: readonly ScaleValueSeries[]): Vec2 {
+  const { min = 0, max = 1 } = collect_series_extent(series, `size_values`)
+  return [min, max]
 }
 
 // Pixel scale that holds values below a log axis's domain floor at the floor: 0 and negatives
@@ -445,9 +447,9 @@ export const log_floor_scale = (
 // panned axis does not. Ordering first keeps a deliberately descending range from collapsing:
 // a size scale mapping the largest value to the smallest radius, or a descending log axis,
 // where flooring lo then widening hi against it turned [1000, 1] into [1000, 1000].
-const positive_log_domain = (lo: number, hi: number, widen = 1.1): Vec2 => {
-  const descending = lo > hi
-  const [low, high] = descending ? [hi, lo] : [lo, hi]
+const positive_log_domain = (lower: number, upper: number, widen = 1.1): Vec2 => {
+  const descending = lower > upper
+  const [low, high] = descending ? [upper, lower] : [lower, upper]
   const floor = Math.max(low, math.LOG_EPS)
   const ceiling = Math.max(high, floor * widen)
   return descending ? [ceiling, floor] : [floor, ceiling]
@@ -600,9 +602,9 @@ export function get_tick_label(
 // colour instead of going NaN), positive bounds are kept however small (diffusivities, rates
 // sit far below the LOG_EPS axis floor) and in the caller's order (a descending range runs
 // high-to-low). Equal bounds widen by 10% so the scale isn't degenerate.
-export const log_color_domain = ([lo, hi]: Vec2): Vec2 => {
-  const safe_lo = lo > 0 ? lo : math.LOG_EPS
-  const safe_hi = hi > 0 ? hi : math.LOG_EPS
+export const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
+  const safe_lo = lower > 0 ? lower : math.LOG_EPS
+  const safe_hi = upper > 0 ? upper : math.LOG_EPS
   return safe_lo === safe_hi ? [safe_lo, safe_lo * 1.1] : [safe_lo, safe_hi]
 }
 
@@ -640,7 +642,7 @@ export function create_color_scale(
 // Returns a D3-compatible scale with both getter and setter for domain
 // Scale function reads from closure state on each call for stable identity
 function create_arcsinh_color_scale(
-  interpolator: (t: number) => string,
+  interpolator: (fraction: number) => string,
   initial_domain: Vec2,
   threshold: number,
 ) {
@@ -678,15 +680,8 @@ function create_arcsinh_color_scale(
 }
 
 // Create a size scale function from configuration
-export function create_size_scale(
-  config: SizeScaleConfig,
-  all_size_values: (number | null)[],
-) {
+export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2 = [0, 1]) {
   const [min_radius, max_radius] = config.radius_range ?? SCALE_DEFAULTS.radius
-  const auto_range =
-    all_size_values.length > 0
-      ? extent(all_size_values.filter((val): val is number => val !== null))
-      : [0, 1]
   const [min_val, max_val] = config.value_range ?? auto_range
   const safe_min = min_val ?? 0
   const safe_max = max_val ?? (safe_min > 0 ? safe_min * 1.1 : 1)

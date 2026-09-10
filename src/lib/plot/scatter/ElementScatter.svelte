@@ -8,7 +8,7 @@
   import { selected } from '$lib/state.svelte'
 
   let {
-    y,
+    y: coord_y,
     x_axis = {},
     y_axis = {},
     y_unit = ``,
@@ -33,7 +33,7 @@
     if (hovered) return // the pointer is on the plot, which owns tooltip_point itself
     const atomic_num = selected.element?.number
     tooltip_point = atomic_num
-      ? { x: atomic_num, y: y[atomic_num - 1], series_idx: 0, point_idx: atomic_num - 1 }
+      ? { x: atomic_num, y: coord_y[atomic_num - 1], series_idx: 0, point_idx: atomic_num - 1 }
       : null
   })
 </script>
@@ -45,9 +45,9 @@
   {...rest}
   series={[
     {
-      x: [...Array(y.length + 1).keys()].slice(1),
-      y,
-      color_values: y,
+      x: [...Array(coord_y.length + 1).keys()].slice(1),
+      y: coord_y,
+      color_values: coord_y,
       point_style: { radius: 2 },
     },
   ]}
@@ -58,11 +58,12 @@
   bind:show_controls
   bind:controls_open
 >
-  {#snippet tooltip({ x, y })}
-    {@const elem = element_data[x - 1]}
-    <strong>{elem ? `${x} ${elem.symbol} - ${elem.name}` : `Element ${x}`}</strong><br />
+  {#snippet tooltip({ x: coord_x, y: coord_y })}
+    {@const elem = element_data[coord_x - 1]}
+    <strong>{elem ? `${coord_x} ${elem.symbol} - ${elem.name}` : `Element ${coord_x}`}</strong
+    ><br />
     {@html sanitize_html(y_axis.label || `Value`)}: {format_num(
-      y,
+      coord_y,
       y_axis.format ?? `~s`,
     )}{y_unit ?? ``}
   {/snippet}

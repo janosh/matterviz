@@ -167,7 +167,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(tooltip).toBeVisible()
     await expect(tooltip).toContainText(`Energy`)
     await expect(tooltip).toContainText(`x density`)
-    await expect.poll(() => tooltip.evaluate((el) => el.closest(`svg`) === null)).toBe(true)
+    await expect
+      .poll(() => tooltip.evaluate((element) => element.closest(`svg`) === null))
+      .toBe(true)
 
     // a drag starting on the marginal hit area must not begin a zoom selection
     const before_drag = await get_tick_range(x_axis)
@@ -583,17 +585,21 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const hoverable = marker_boxes.filter(({ bbox }) => {
       if (!bbox) return false
       if (!header_box) return true
-      const cx = bbox.x + bbox.width / 2
-      const cy = bbox.y + bbox.height / 2
+      const center_x = bbox.x + bbox.width / 2
+      const center_y = bbox.y + bbox.height / 2
       return !(
-        cx >= header_box.x &&
-        cx <= header_box.x + header_box.width &&
-        cy >= header_box.y &&
-        cy <= header_box.y + header_box.height
+        center_x >= header_box.x &&
+        center_x <= header_box.x + header_box.width &&
+        center_y >= header_box.y &&
+        center_y <= header_box.y + header_box.height
       )
     })
-    const rightmost = hoverable.toSorted((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
-    const bottommost = hoverable.toSorted((a, b) => (b.bbox?.y ?? 0) - (a.bbox?.y ?? 0))[0]
+    const rightmost = hoverable.toSorted(
+      (left_value, right_value) => (right_value.bbox?.x ?? 0) - (left_value.bbox?.x ?? 0),
+    )[0]
+    const bottommost = hoverable.toSorted(
+      (left_value, right_value) => (right_value.bbox?.y ?? 0) - (left_value.bbox?.y ?? 0),
+    )[0]
     for (const { marker } of [rightmost, bottommost]) {
       await hover_to_show_tooltip(page, plot, marker)
       const tooltip_box = await require_bbox(tooltip, `tooltip`)
@@ -767,8 +773,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
           ...document.querySelectorAll(`#label-auto-placement-test g[data-series-id] text`),
         ].filter((label) => label.textContent?.startsWith(`Dense-`))
         const positions = labels.map((label) => {
-          const { x, y } = label.getBoundingClientRect()
-          return `${Math.round(x)},${Math.round(y)}`
+          const { x: coord_x, y: coord_y } = label.getBoundingClientRect()
+          return `${Math.round(coord_x)},${Math.round(coord_y)}`
         })
         return (
           labels.length === expected_count &&
@@ -816,11 +822,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
       if (!bbox) throw new Error(`${text} has no measurable bounding box`)
       return bbox
     }
-    const [tl, tr, bl, br] = [`Sparse-TL`, `Sparse-TR`, `Sparse-BL`, `Sparse-BR`].map(
-      sparse_box,
-    )
-    expect(Math.max(tl.x + tl.width, bl.x + bl.width)).toBeLessThan(Math.min(tr.x, br.x))
-    expect(Math.max(bl.y + bl.height, br.y + br.height)).toBeLessThan(Math.min(tl.y, tr.y))
+    const [top_left, top_right, bottom_left, bottom_right] = [
+      `Sparse-TL`,
+      `Sparse-TR`,
+      `Sparse-BL`,
+      `Sparse-BR`,
+    ].map(sparse_box)
+    expect(
+      Math.max(top_left.x + top_left.width, bottom_left.x + bottom_left.width),
+    ).toBeLessThan(Math.min(top_right.x, bottom_right.x))
+    expect(
+      Math.max(bottom_left.y + bottom_left.height, bottom_right.y + bottom_right.height),
+    ).toBeLessThan(Math.min(top_left.y, top_right.y))
   })
 
   // PAN FUNCTIONALITY TESTS

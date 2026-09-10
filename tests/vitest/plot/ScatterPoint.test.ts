@@ -251,11 +251,11 @@ describe(`ScatterPoint`, () => {
         props: { x: 100, y: 100, label, leader_line_threshold: 10, style: { radius: 3 } },
       })
       const line = doc_query(`line.leader-line`)
-      const x2 = Number(line.getAttribute(`x2`) ?? `0`)
+      const coord_x = Number(line.getAttribute(`x2`) ?? `0`)
       // Text center is at offset_x=60, half_w ≈ 9*10*0.2=18
       // x2 should be well before the text center (< 60) but past the midpoint
-      expect(x2).toBeLessThan(50)
-      expect(x2).toBeGreaterThan(20)
+      expect(coord_x).toBeLessThan(50)
+      expect(coord_x).toBeGreaterThan(20)
     })
 
     test(`leader line has correct CSS custom property defaults`, () => {

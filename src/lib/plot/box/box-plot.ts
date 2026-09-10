@@ -85,6 +85,10 @@ interface BoxStatsOptions {
   collect_outliers?: boolean
 }
 
+type BoxSummary = Pick<BoxStats, `min` | `max` | `q1` | `median` | `q3` | `mean` | `n`> & {
+  values: readonly number[]
+}
+
 const EMPTY_STATS: BoxStats = {
   min: NaN,
   max: NaN,
@@ -111,38 +115,35 @@ function collect_outliers_by_scan(
   return outliers
 }
 
-function tukey_scan(
-  values: readonly number[],
-  low_bound: number,
-  high_bound: number,
-  collect: boolean,
-  data_min: number,
-  data_max: number,
-): { whisker_low: number; whisker_high: number; outliers: number[] } {
-  let whisker_low = Infinity
-  let whisker_high = -Infinity
-  const outliers: number[] = []
-  for (const val of values) {
-    if (val < low_bound || val > high_bound) {
-      if (collect) outliers.push(val)
-    } else {
-      if (val < whisker_low) whisker_low = val
-      if (val > whisker_high) whisker_high = val
-    }
-  }
-  if (collect) outliers.sort(ascending)
-  return {
-    whisker_low: whisker_low === Infinity ? data_min : whisker_low,
-    whisker_high: whisker_high === -Infinity ? data_max : whisker_high,
-    outliers,
-  }
-}
-
 // Compute box plot statistics for a raw numeric distribution.
 // Quartiles use type-7 linear interpolation, matching d3/numpy/pandas defaults.
 // Non-finite values are filtered out; the input array is never mutated.
 export function compute_box_stats(
   values: readonly number[],
+  opts: BoxStatsOptions = {},
+): BoxStats {
+  return compute_box_whiskers(summarize_box_samples(values), opts)
+}
+
+// Data-dependent work is shared across whisker/outlier control changes.
+export function summarize_box_samples(values: readonly number[]): BoxSummary {
+  const vals = values.filter(Number.isFinite)
+  if (vals.length === 0) return { ...EMPTY_STATS, values: vals }
+  const [min, max] = array_extent(vals)
+  return {
+    values: vals,
+    min,
+    max,
+    mean: mean_of(vals),
+    q1: quantile_unordered(vals, 0.25),
+    median: quantile_unordered(vals, 0.5),
+    q3: quantile_unordered(vals, 0.75),
+    n: vals.length,
+  }
+}
+
+export function compute_box_whiskers(
+  summary: BoxSummary,
   opts: BoxStatsOptions = {},
 ): BoxStats {
   const {
@@ -153,20 +154,17 @@ export function compute_box_stats(
     collect_outliers = true,
   } = opts
 
-  const vals = values.filter((val) => Number.isFinite(val))
-  const n_vals = vals.length
+  const {
+    values: vals,
+    n: n_vals,
+    min: data_min,
+    max: data_max,
+    mean,
+    q1: quartile_1,
+    median,
+    q3: quartile_3,
+  } = summary
   if (n_vals === 0) return { ...EMPTY_STATS, outliers: [] }
-
-  const [data_min, data_max] = array_extent(vals)
-  const mean = mean_of(vals)
-
-  const qtl = (prob: number): number => quantile_unordered(vals, prob)
-  const collect_beyond = (lo: number, hi: number): number[] =>
-    collect_outliers_by_scan(vals, lo, hi, collect_outliers)
-
-  const q1 = qtl(0.25)
-  const median = qtl(0.5)
-  const q3 = qtl(0.75)
 
   let whisker_low: number
   let whisker_high: number
@@ -179,9 +177,12 @@ export function compute_box_stats(
     // Order-defensively so reversed input like [95, 5] still yields low <= high
     const pct_low = Math.min(...whisker_percentiles)
     const pct_high = Math.max(...whisker_percentiles)
-    whisker_low = qtl(clamp01(pct_low / 100))
-    whisker_high = qtl(clamp01(pct_high / 100))
-    outliers = collect_beyond(whisker_low, whisker_high)
+    // Quickselect mutates: leave the reusable summary untouched so switching to std
+    // later sees the same summation order as a fresh summary.
+    const scratch = [...vals]
+    whisker_low = quantile_unordered(scratch, clamp01(pct_low / 100))
+    whisker_high = quantile_unordered(scratch, clamp01(pct_high / 100))
+    outliers = collect_outliers_by_scan(scratch, whisker_low, whisker_high, collect_outliers)
   } else if (whisker_mode === `std`) {
     const std = sample_std(vals)
     const low_bound = mean - whisker_range * std
@@ -189,26 +190,33 @@ export function compute_box_stats(
     // Clamp whisker ends to the data extent so they never extend past real values
     whisker_low = Math.max(data_min, low_bound)
     whisker_high = Math.min(data_max, high_bound)
-    outliers = collect_beyond(low_bound, high_bound)
+    outliers = collect_outliers_by_scan(vals, low_bound, high_bound, collect_outliers)
   } else {
     // tukey (default): whiskers extend to the most extreme datum within range*IQR of the quartiles
-    const iqr = q3 - q1
-    ;({ whisker_low, whisker_high, outliers } = tukey_scan(
-      vals,
-      q1 - whisker_range * iqr,
-      q3 + whisker_range * iqr,
-      collect_outliers,
-      data_min,
-      data_max,
-    ))
+    const iqr = quartile_3 - quartile_1
+    const low_bound = quartile_1 - whisker_range * iqr
+    const high_bound = quartile_3 + whisker_range * iqr
+    whisker_low = Infinity
+    whisker_high = -Infinity
+    for (const val of vals) {
+      if (val < low_bound || val > high_bound) {
+        if (collect_outliers) outliers.push(val)
+      } else {
+        if (val < whisker_low) whisker_low = val
+        if (val > whisker_high) whisker_high = val
+      }
+    }
+    if (collect_outliers) outliers.sort(ascending)
+    if (whisker_low === Infinity) whisker_low = data_min
+    if (whisker_high === -Infinity) whisker_high = data_max
   }
 
   return {
     min: data_min,
     max: data_max,
-    q1,
+    q1: quartile_1,
     median,
-    q3,
+    q3: quartile_3,
     mean,
     whisker_low,
     whisker_high,

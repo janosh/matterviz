@@ -309,11 +309,11 @@ function measure_full_footprint(element: HTMLElement): ElementFootprint {
 // that returns the offset box, which underestimates elements with overflowing
 // absolutely-positioned descendants like colorbar tick labels.
 export const full_footprint_or = (
-  el: HTMLElement | null | undefined,
+  element: HTMLElement | null | undefined,
   fallback: Size,
 ): ElementFootprint =>
-  el?.offsetWidth && el?.offsetHeight
-    ? measure_full_footprint(el)
+  element?.offsetWidth && element?.offsetHeight
+    ? measure_full_footprint(element)
     : { ...fallback, offset_x: 0, offset_y: 0 }
 
 export const element_position_for_footprint = (
@@ -649,9 +649,9 @@ export function sample_series_obstacle_points(
       )
       for (let idx = 1; idx < n_samples; idx++) {
         const frac = idx / n_samples
-        const x = previous.x + (point.x - previous.x) * frac
-        const y = previous.y + (point.y - previous.y) * frac
-        obstacles.push({ x, y })
+        const coord_x = previous.x + (point.x - previous.x) * frac
+        const coord_y = previous.y + (point.y - previous.y) * frac
+        obstacles.push({ x: coord_x, y: coord_y })
       }
     }
     previous = point
@@ -745,9 +745,9 @@ export function compute_element_placement(
         ) {
           overlap_count++
         }
-        const dx = point_x - center_x
-        const dy = point_y - center_y
-        const distance_sq = dx * dx + dy * dy
+        const delta_x = point_x - center_x
+        const delta_y = point_y - center_y
+        const distance_sq = delta_x * delta_x + delta_y * delta_y
         if (distance_sq < min_distance_sq) min_distance_sq = distance_sq
       }
 

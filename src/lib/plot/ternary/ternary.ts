@@ -149,8 +149,8 @@ export function ternary_grid_lines(step: number): TernaryGridLine[] {
 // equilateral shape. `to_px` flips y since SVG grows downwards.
 export interface TernaryLayout {
   scale: number // px per unit of triangle side
-  to_px: (xy: readonly [number, number]) => Vec2
-  from_px: (px: Vec2) => Vec2
+  to_px: (coords_xy: readonly [number, number]) => Vec2
+  from_px: (pixel_x: Vec2) => Vec2
 }
 
 export function ternary_layout(width: number, height: number): TernaryLayout {

@@ -165,21 +165,21 @@ function find_cycle(
 // Reads the raw d3 layout fields (link.y0/y1 are stacking-axis centers, which in
 // vertical mode map to screen x; source.x1/target.x0 are depth positions = screen y).
 function vertical_link_path(link: D3Link<NodeExtra, LinkExtra>): string {
-  const x0 = link.y0 ?? 0
-  const x1 = link.y1 ?? 0
-  const y0 = (link.source as PositionedNode).x1
-  const y1 = (link.target as PositionedNode).x0
-  const ym = (y0 + y1) / 2
-  return `M${x0},${y0}C${x0},${ym} ${x1},${ym} ${x1},${y1}`
+  const coord_x_0 = link.y0 ?? 0
+  const coord_x_1 = link.y1 ?? 0
+  const coord_y_0 = (link.source as PositionedNode).x1
+  const coord_y_1 = (link.target as PositionedNode).x0
+  const mid_y = (coord_y_0 + coord_y_1) / 2
+  return `M${coord_x_0},${coord_y_0}C${coord_x_0},${mid_y} ${coord_x_1},${mid_y} ${coord_x_1},${coord_y_1}`
 }
 
 function horizontal_link_path(link: D3Link<NodeExtra, LinkExtra>): string {
-  const x0 = (link.source as PositionedNode).x1
-  const x1 = (link.target as PositionedNode).x0
-  const y0 = link.y0 ?? 0
-  const y1 = link.y1 ?? 0
-  const xm = (x0 + x1) / 2
-  return `M${x0},${y0}C${xm},${y0} ${xm},${y1} ${x1},${y1}`
+  const coord_x_0 = (link.source as PositionedNode).x1
+  const coord_x_1 = (link.target as PositionedNode).x0
+  const coord_y_0 = link.y0 ?? 0
+  const coord_y_1 = link.y1 ?? 0
+  const mid_x = (coord_x_0 + coord_x_1) / 2
+  return `M${coord_x_0},${coord_y_0}C${mid_x},${coord_y_0} ${mid_x},${coord_y_1} ${coord_x_1},${coord_y_1}`
 }
 
 // === Long-tail bucketing ===
@@ -292,9 +292,9 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   const remapped = new Map<number, string | number>()
   data.nodes.forEach((node, idx) => {
     if (!still_referenced.has(idx)) return
-    const id = keys[idx]
-    remapped.set(idx, id)
-    nodes.push({ ...node, id })
+    const identifier = keys[idx]
+    remapped.set(idx, identifier)
+    nodes.push({ ...node, id: identifier })
   })
 
   const links: SankeyLink<Metadata>[] = data.links
@@ -455,20 +455,20 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
       }
     } else {
       link.path = horizontal_link_path(link)
-      const x = (link.source.x1 + link.target.x0) / 2
-      const y = ((link.y0 ?? 0) + (link.y1 ?? 0)) / 2
-      link.mid = { x, y }
+      const coord_x = (link.source.x1 + link.target.x0) / 2
+      const coord_y = ((link.y0 ?? 0) + (link.y1 ?? 0)) / 2
+      link.mid = { x: coord_x, y: coord_y }
     }
   }
 
   // Transpose node boxes into screen space for vertical orientation
   if (is_vertical) {
     for (const node of graph.nodes) {
-      const { x0, x1, y0, y1 } = node
-      node.x0 = y0
-      node.x1 = y1
-      node.y0 = x0
-      node.y1 = x1
+      const { x0: coord_x_0, x1: coord_x_1, y0: coord_y_0, y1: coord_y_1 } = node
+      node.x0 = coord_y_0
+      node.x1 = coord_y_1
+      node.y0 = coord_x_0
+      node.y1 = coord_x_1
     }
   }
 

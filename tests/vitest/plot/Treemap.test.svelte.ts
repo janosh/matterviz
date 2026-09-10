@@ -84,6 +84,12 @@ describe(`Treemap`, () => {
     const plot = await mount_sized_treemap({ data: tree, on_node_hover })
     await fire(cell_rect(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+    expect(Boolean(plot.querySelector(`.hover-veil`)?.getAttribute(`d`))).toBe(true)
+    expect(
+      [...plot.querySelectorAll(`.cells rect`)].every(
+        (cell) => cell.getAttribute(`fill-opacity`) === `1`,
+      ),
+    ).toBe(true)
     expect(on_node_hover).toHaveBeenCalledOnce()
     expect(on_node_hover.mock.calls[0][0] as SunburstNodeHandlerProps).toMatchObject({
       type: `node`,
@@ -196,7 +202,7 @@ describe(`Treemap`, () => {
       ],
     })
     const row = query(plot, `.header-controls`)
-    const buttons = [...row.children].filter((el) => el.tagName === `BUTTON`)
+    const buttons = [...row.children].filter((element) => element.tagName === `BUTTON`)
     expect(buttons.length).toBeGreaterThan(1) // gear + fullscreen
     for (const btn of buttons) expect(getComputedStyle(btn).color).toBe(expected)
     // The controls pane is a child of the same row and must not be tinted with it
@@ -535,14 +541,19 @@ describe(`Treemap`, () => {
       expect(def.querySelector(`path`)?.getAttribute(`d`)?.length).toBeGreaterThan(0)
     }
     // "/" is a stroked line tile rotated -45°; dots are a filled tile with no stroke
-    const [hatched_def, dotted_def] = pattern_ids.map((id) => plot.querySelector(`#${id}`))
+    const [hatched_def, dotted_def] = pattern_ids.map((identifier) =>
+      plot.querySelector(`#${identifier}`),
+    )
     expect(hatched_def?.getAttribute(`patternTransform`)).toBe(`rotate(-45)`)
     expect(hatched_def?.querySelector(`path`)?.getAttribute(`fill`)).toBe(`none`)
     expect(dotted_def?.querySelector(`path`)?.getAttribute(`stroke`)).toBe(`none`)
     // patterned cells get a blurred halo in the node color behind the label, plain ones
     // don't; the halo repeats the label's lines but is decorative (no node idx, aria-hidden)
     const halos = [...plot.querySelectorAll<SVGTextElement>(`.cell-label.halo`)]
-    expect(halos.map((el) => el.style.fill)).toEqual([PLOT_COLORS[0], PLOT_COLORS[1]])
+    expect(halos.map((element) => element.style.fill)).toEqual([
+      PLOT_COLORS[0],
+      PLOT_COLORS[1],
+    ])
     const label_of = (node_idx: number) =>
       plot.querySelector(`.cell-label:not(.halo)[data-treemap-node-idx="${node_idx}"]`)
     for (const [idx, halo] of halos.entries()) {

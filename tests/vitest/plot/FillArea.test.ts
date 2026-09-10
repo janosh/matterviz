@@ -8,10 +8,10 @@ import { doc_query } from '../setup'
 
 // Mock scale functions
 const mock_x_scale = Object.assign((val: number) => val * 10, {
-  invert: (px: number) => px / 10,
+  invert: (pixel_x: number) => pixel_x / 10,
 })
 const mock_y_scale = Object.assign((val: number) => 100 - val * 10, {
-  invert: (py: number) => (100 - py) / 10,
+  invert: (pixel_y: number) => (100 - pixel_y) / 10,
 })
 
 const base_region: FillRegion = {

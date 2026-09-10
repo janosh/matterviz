@@ -15,8 +15,8 @@
   import type { TweenOptions } from 'svelte/motion'
 
   let {
-    x,
-    y,
+    x: coord_x,
+    y: coord_y,
     style = {},
     hover = {},
     label = {},
@@ -60,7 +60,7 @@
     duration: 600,
     easing: cubicOut,
   }
-  const coords = $derived({ x: x + offset.x, y: y + offset.y })
+  const coords = $derived({ x: coord_x + offset.x, y: coord_y + offset.y })
   // Seeded at the marker's own position so a plot appearing on screen draws it where the
   // data is instead of animating every point in from elsewhere.
   // Object.is, not ===, so a NaN coordinate compares equal to itself instead of retargeting

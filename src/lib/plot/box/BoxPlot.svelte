@@ -36,7 +36,7 @@
   import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
-  import { compute_box_stats } from '$lib/plot/box/box-plot'
+  import { compute_box_whiskers, summarize_box_samples } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
@@ -270,9 +270,10 @@
   const draws_violin = (srs: BoxPlotSeries<Metadata>): boolean => effective_kind(srs) !== `box`
   const draws_box = (srs: BoxPlotSeries<Metadata>): boolean => effective_kind(srs) !== `violin`
 
+  let box_summaries = $derived(series.map((srs) => summarize_box_samples(srs.y)))
   let box_stats = $derived(
-    series.map((srs) =>
-      compute_box_stats(srs.y ?? [], {
+    series.map((srs, idx) =>
+      compute_box_whiskers(box_summaries[idx], {
         whisker_mode: srs.whisker_mode ?? whisker_mode,
         whisker_range: srs.whisker_range ?? whisker_range,
         whisker_percentiles: srs.whisker_percentiles ?? whisker_percentiles,
@@ -335,16 +336,16 @@
   )
 
   type ViolinKde = KdeResult & { max_density: number }
-  // KDE per visible violin series, keyed by series index (bandwidth from the full sample)
+  // KDE depends on the distribution and bandwidth, not box statistics or whisker settings.
   let violin_kdes = $derived.by(() => {
-    const map = new SvelteMap<number, ViolinKde>()
-    for (const box_item of visible_boxes) {
-      if (!draws_violin(box_item.series)) continue
-      const samples = box_item.series.y ?? []
-      let clip = box_item.series.clip ?? kde_clip
+    const map = new Map<number, ViolinKde>()
+    for (const [series_idx, srs] of series.entries()) {
+      if (srs.visible === false || !draws_violin(srs)) continue
+      const samples = srs.y ?? []
+      let clip = srs.clip ?? kde_clip
       // On a log value axis the KDE grid tail (data_min - cut*bandwidth) is usually <= 0 →
       // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
-      if (get_scale_type_name(plot_axes[val_axis_key(box_item.series)].scale_type) === `log`) {
+      if (get_scale_type_name(plot_axes[val_axis_key(srs)].scale_type) === `log`) {
         const min_pos = samples.reduce(
           (min, val) => (val > 0 && val < min ? val : min),
           Infinity,
@@ -357,10 +358,10 @@
       }
       const kde = gaussian_kde(samples, {
         ...KDE_OPTS,
-        bandwidth: box_item.series.bandwidth ?? bandwidth,
+        bandwidth: srs.bandwidth ?? bandwidth,
         clip,
       })
-      map.set(box_item.idx, { ...kde, max_density: Math.max(0, array_max(kde.density)) })
+      map.set(series_idx, { ...kde, max_density: Math.max(0, array_max(kde.density)) })
     }
     return map
   })
@@ -394,8 +395,16 @@
   // nicing them would pin the floor at LOG_EPS and stretch the axis across a dozen decades.
   const range_values = (boxes: Box[], log_axis: boolean): number[] =>
     boxes.flatMap((box_item) => {
-      const { whisker_low, whisker_high, q1, q3, median, mean, outliers } = box_item.stats
-      const vals = [whisker_low, whisker_high, q1, q3, median]
+      const {
+        whisker_low,
+        whisker_high,
+        q1: quartile_1,
+        q3: quartile_3,
+        median,
+        mean,
+        outliers,
+      } = box_item.stats
+      const vals = [whisker_low, whisker_high, quartile_1, quartile_3, median]
       // keep the drawn mean line in range even when hidden outliers drag it past the whiskers
       if (show_mean) vals.push(mean)
       // outliers are sorted ascending; auto-range only needs their extremes (avoids
@@ -459,11 +468,11 @@
         const val_span = val_rng[1] - val_rng[0]
         if (cat_span === 0 || val_span === 0) continue
         const cross = (box_item.slot - cat_rng[0]) / cat_span
-        const lo = (whisker_low - val_rng[0]) / val_span
-        const hi = (whisker_high - val_rng[0]) / val_span
+        const lower = (whisker_low - val_rng[0]) / val_span
+        const upper = (whisker_high - val_rng[0]) / val_span
         const seg = vertical
-          ? clip_bar(true, cross, 1 - hi, 1 - lo)
-          : clip_bar(false, 1 - cross, lo, hi)
+          ? clip_bar(true, cross, 1 - upper, 1 - lower)
+          : clip_bar(false, 1 - cross, lower, upper)
         if (seg) segs.push(seg)
       }
       return segs
@@ -529,10 +538,12 @@
   function get_box_data(box_item: Box, color: string): BoxHover {
     const val_scale = box_val_scale(box_item.series)
     const cat_scale = vertical ? frame.scales.x : frame.scales.y
-    const cc = cat_scale(box_item.slot)
+    const corner_c = cat_scale(box_item.slot)
     const v_hi = val_scale(box_item.stats.whisker_high)
     const v_lo = val_scale(box_item.stats.whisker_low)
-    const [cx, cy] = vertical ? [cc, Math.min(v_hi, v_lo)] : [Math.max(v_hi, v_lo), cc]
+    const [center_x, center_y] = vertical
+      ? [corner_c, Math.min(v_hi, v_lo)]
+      : [Math.max(v_hi, v_lo), corner_c]
     const active_y_axis = (vertical ? (box_item.series.y_axis ?? `y`) : `y`) as `y` | `y2`
     const active_x_axis = (vertical ? `x` : (box_item.series.x_axis ?? `x`)) as `x` | `x2`
     return {
@@ -551,8 +562,8 @@
       x2_axis,
       y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
       y2_axis,
-      cx,
-      cy,
+      cx: center_x,
+      cy: center_y,
     }
   }
 
@@ -621,21 +632,26 @@
   }))
 </script>
 
-{#snippet seg(p1: Vec2, p2: Vec2, stroke: string, sw: number, dash?: string)}
+{#snippet seg(point_1: Vec2, point: Vec2, stroke: string, stroke_width: number, dash?: string)}
   <line
-    x1={p1[0]}
-    y1={p1[1]}
-    x2={p2[0]}
-    y2={p2[1]}
+    x1={point_1[0]}
+    y1={point_1[1]}
+    x2={point[0]}
+    y2={point[1]}
     {stroke}
-    stroke-width={sw}
+    stroke-width={stroke_width}
     stroke-dasharray={dash}
     clip-path="url(#{frame.clip_path_id})"
   />
 {/snippet}
 
-{#snippet ref_lines_layer(z: LayerZIndex)}
-  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
+{#snippet ref_lines_layer(coord_z: LayerZIndex)}
+  <ReferenceLinesLayer
+    {frame}
+    z={coord_z}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <CartesianFrame
@@ -696,11 +712,11 @@
           {@const draw_box = draws_box(box_item.series)}
           {@const kde = violin_kdes.get(box_item.idx)}
           {@const eff_side = box_item.series.side ?? side}
-          {@const bw =
+          {@const box_width_value =
             box_item.series.box_width ??
             (kde ? DEFAULTS.box.violin_box_width : DEFAULTS.box.box_width)}
-          {@const c_lo = cat_scale(box_item.slot - bw / 2)}
-          {@const c_hi = cat_scale(box_item.slot + bw / 2)}
+          {@const c_lo = cat_scale(box_item.slot - box_width_value / 2)}
+          {@const c_hi = cat_scale(box_item.slot + box_width_value / 2)}
           {@const c_center = cat_scale(box_item.slot)}
           {@const cap = (Math.abs(c_hi - c_lo) * (whisker_state.cap_fraction ?? 0.5)) / 2}
           {@const cap_lo = c_center - cap}
@@ -711,12 +727,12 @@
           {@const v_wl = val_scale(stats.whisker_low)}
           {@const v_wh = val_scale(stats.whisker_high)}
           {@const v_mean = val_scale(stats.mean)}
-          {@const pt = (cross: number, val: number): Vec2 =>
+          {@const point = (cross: number, val: number): Vec2 =>
             vertical ? [cross, val] : [val, cross]}
-          {@const [q1x, q1y] = pt(c_lo, v_q1)}
-          {@const [q3x, q3y] = pt(c_hi, v_q3)}
-          {@const [wlx, wly] = pt(c_lo, v_wl)}
-          {@const [whx, why] = pt(c_hi, v_wh)}
+          {@const [q1x, q1y] = point(c_lo, v_q1)}
+          {@const [q3x, q3y] = point(c_hi, v_q3)}
+          {@const [wlx, wly] = point(c_lo, v_wl)}
+          {@const [whx, why] = point(c_hi, v_wh)}
           {@const box_x = Math.min(q1x, q3x)}
           {@const box_y = Math.min(q1y, q3y)}
           {@const box_w = Math.abs(q3x - q1x)}
@@ -772,7 +788,7 @@
               {@const screen_side = to_screen_side(eff_side)}
               <path
                 class="violin-area"
-                d={violin_path(grid_px, offsets, c_center, screen_side, pt)}
+                d={violin_path(grid_px, offsets, c_center, screen_side, point)}
                 {fill}
                 fill-opacity={violin_state.opacity}
                 stroke={color}
@@ -781,14 +797,34 @@
               />
             {/if}
             {#if draw_box}
-              {@const wc = whisker_state.color}
-              {@const ww = whisker_state.width}
+              {@const whisker_color = whisker_state.color}
+              {@const whisker_width = whisker_state.width}
               <!-- whiskers + caps -->
-              {@render seg(pt(c_center, v_q1), pt(c_center, v_wl), wc, ww)}
-              {@render seg(pt(c_center, v_q3), pt(c_center, v_wh), wc, ww)}
+              {@render seg(
+                point(c_center, v_q1),
+                point(c_center, v_wl),
+                whisker_color,
+                whisker_width,
+              )}
+              {@render seg(
+                point(c_center, v_q3),
+                point(c_center, v_wh),
+                whisker_color,
+                whisker_width,
+              )}
               {#if cap > 0}
-                {@render seg(pt(cap_lo, v_wl), pt(cap_hi, v_wl), wc, ww)}
-                {@render seg(pt(cap_lo, v_wh), pt(cap_hi, v_wh), wc, ww)}
+                {@render seg(
+                  point(cap_lo, v_wl),
+                  point(cap_hi, v_wl),
+                  whisker_color,
+                  whisker_width,
+                )}
+                {@render seg(
+                  point(cap_lo, v_wh),
+                  point(cap_hi, v_wh),
+                  whisker_color,
+                  whisker_width,
+                )}
               {/if}
               <!-- IQR box -->
               <rect
@@ -807,15 +843,15 @@
               />
               <!-- median (solid) and mean (dashed) -->
               {@render seg(
-                pt(c_lo, v_med),
-                pt(c_hi, v_med),
+                point(c_lo, v_med),
+                point(c_hi, v_med),
                 median_state.color,
                 median_state.width,
               )}
               {#if show_mean}
                 {@render seg(
-                  pt(c_lo, v_mean),
-                  pt(c_hi, v_mean),
+                  point(c_lo, v_mean),
+                  point(c_hi, v_mean),
                   median_state.color,
                   median_state.width,
                   `3 2`,
@@ -850,11 +886,11 @@
             />
             {#if draw_box && show_outliers}
               {#each stats.outliers as outlier, out_idx (out_idx)}
-                {@const [ox, oy] = pt(c_center, val_scale(outlier))}
-                {#if ox >= pad.l && ox <= frame.width - pad.r && oy >= pad.t && oy <= frame.height - pad.b}
+                {@const [offset_x, offset_y] = point(c_center, val_scale(outlier))}
+                {#if offset_x >= pad.l && offset_x <= frame.width - pad.r && offset_y >= pad.t && offset_y <= frame.height - pad.b}
                   <circle
-                    cx={ox}
-                    cy={oy}
+                    cx={offset_x}
+                    cy={offset_y}
                     r={outlier_state.radius}
                     fill={color}
                     fill-opacity={outlier_state.opacity}

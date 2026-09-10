@@ -124,9 +124,9 @@
 
   function normal_sample(seed: number): number {
     const phase_1 = Math.sin(seed * 12.9898) * 43_758.5453
-    const phase_2 = Math.sin((seed + 37.719) * 78.233) * 24_634.6345
+    const phase = Math.sin((seed + 37.719) * 78.233) * 24_634.6345
     const uniform_1 = Math.max(1e-6, phase_1 - Math.floor(phase_1))
-    const uniform_2 = phase_2 - Math.floor(phase_2)
+    const uniform_2 = phase - Math.floor(phase)
     return Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
   }
 
@@ -138,8 +138,8 @@
   const make_series = (): DensePointSeries<MaterialPoint>[] =>
     family_configs.map((config, family_idx) => {
       const point_count = 2400
-      const x = new Float32Array(point_count)
-      const y = new Float32Array(point_count)
+      const coord_x = new Float32Array(point_count)
+      const coord_y = new Float32Array(point_count)
       const size_values = new Float32Array(point_count)
       const metadata: MaterialPoint[] = []
       const point_ids: string[] = []
@@ -169,8 +169,8 @@
         const formula = point_formula(config.elements, idx)
         const lattice_a = 4.5 + trend + family_idx * 0.2
 
-        x[idx] = e_form
-        y[idx] = band_gap
+        coord_x[idx] = e_form
+        coord_y[idx] = band_gap
         size_values[idx] = n_sites
         point_ids.push(material_id)
         metadata.push({
@@ -185,8 +185,17 @@
           lattice_a,
         })
       }
-      const { family: id, family: label, color } = config
-      return { id, label, color, x, y, size_values, point_ids, metadata }
+      const { family: identifier, family: label, color } = config
+      return {
+        id: identifier,
+        label,
+        color,
+        x: coord_x,
+        y: coord_y,
+        size_values,
+        point_ids,
+        metadata,
+      }
     })
 
   const series = make_series()

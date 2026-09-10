@@ -2,8 +2,9 @@ import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   accumulate_extent,
-  collect_scale_values,
-  collect_size_values,
+  collect_scale_ranges,
+  collect_series_extent,
+  collect_size_range,
   create_color_scale,
   create_scale,
   empty_extent,
@@ -24,7 +25,7 @@ import {
   is_time_scale,
 } from '$lib/plot/core/types'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 const sample_values = [1, 2, 3, 4, 5]
 const nice_range = (
@@ -193,9 +194,9 @@ describe(`scales`, () => {
     ])(
       `log range stays positive and ascending for $values with limits $limits`,
       ({ values, limits }) => {
-        const [lo, hi] = nice_range(values, limits, `log`, 0.05)
-        expect(lo).toBeGreaterThan(0)
-        expect(hi).toBeGreaterThan(lo)
+        const [lower, upper] = nice_range(values, limits, `log`, 0.05)
+        expect(lower).toBeGreaterThan(0)
+        expect(upper).toBeGreaterThan(lower)
       },
     )
 
@@ -204,8 +205,8 @@ describe(`scales`, () => {
       { xs: [0, 4.7], padding: 0.05, check: ([min, max]: Vec2) => min === 0 && max >= 4.7 },
       { xs: [-4.7, 0], padding: 0.05, check: ([min, max]: Vec2) => min <= -4.7 && max === 0 },
       { xs: [0], padding: 0, check: ([min, max]: Vec2) => min < 0 && max > 0 },
-    ])(`snaps observed zero edges for x=$xs`, ({ xs, padding, check }) => {
-      expect(check(nice_range(xs, [null, null], `linear`, padding))).toBe(true)
+    ])(`snaps observed zero edges for x=$xs`, ({ xs: x_values, padding, check }) => {
+      expect(check(nice_range(x_values, [null, null], `linear`, padding))).toBe(true)
     })
   })
 
@@ -276,10 +277,11 @@ describe(`scales`, () => {
     const descending = create_scale(`log`, [1000, 1], [0, 300])
     const px_of = (scale: (val: number) => number) => values.map((val) => scale(val))
     // decade-per-100px, to float dust: d3's log scale does not land exactly on 100
-    for (const [idx, px] of px_of(ascending).entries()) expect(px).toBeCloseTo(idx * 100, 9)
+    for (const [idx, pixel_x] of px_of(ascending).entries())
+      expect(pixel_x).toBeCloseTo(idx * 100, 9)
     const mirrored = px_of(ascending).toReversed()
-    for (const [idx, px] of px_of(descending).entries())
-      expect(px).toBeCloseTo(mirrored[idx], 9)
+    for (const [idx, pixel_x] of px_of(descending).entries())
+      expect(pixel_x).toBeCloseTo(mirrored[idx], 9)
     // invert has to stay live too: the geometric midpoint of the decade span sits mid-range
     expect(descending.invert(150)).toBeCloseTo(Math.sqrt(1000), 10)
   })
@@ -288,9 +290,7 @@ describe(`scales`, () => {
   // value to draw the smallest marker, and used to give every value the smallest radius.
   test(`inverts the radius encoding on a descending log value_range`, () => {
     const radii = (value_range: Vec2) =>
-      [1, 10, 100].map(
-        create_size_scale({ type: `log`, value_range, radius_range: [2, 10] }, []),
-      )
+      [1, 10, 100].map(create_size_scale({ type: `log`, value_range, radius_range: [2, 10] }))
     expect(radii([1, 100])).toEqual([2, 6, 10])
     expect(radii([100, 1])).toEqual([10, 6, 2])
   })
@@ -302,7 +302,7 @@ describe(`scales`, () => {
     (type) => {
       const radius = create_size_scale(
         { type, value_range: [1, 100], radius_range: [10, 2] },
-        [],
+        [0, 1],
       )
       // the last one is out of domain: it clamps to the end, not past it
       expect([radius(1), radius(100), radius(1000)]).toEqual([10, 2, 2])
@@ -334,27 +334,37 @@ describe(`scales`, () => {
     })
   })
 
-  describe(`collect_scale_values / collect_size_values`, () => {
+  describe(`collect_scale_ranges / collect_size_range`, () => {
     test.each([
-      [`plain arrays`, [{ size_values: [1, 2, 3] }, { size_values: [4] }], [1, 2, 3, 4]],
+      [`plain arrays`, [{ size_values: [1, 2, 3] }, { size_values: [4] }], [1, 4]],
       [`skips null/NaN/Infinity`, [{ size_values: [1, null, NaN, Infinity, 5] }], [1, 5]],
       [`typed arrays`, [{ size_values: new Float32Array([2, 8]) }], [2, 8]],
-      [`null series and missing sizes`, [null, undefined, {}, { size_values: null }], []],
+      [`null series and missing sizes`, [null, undefined, {}, { size_values: null }], [0, 1]],
     ])(`%s`, (_desc, series, expected) => {
-      expect(collect_size_values(series)).toEqual(expected)
+      expect(collect_size_range(series)).toEqual(expected)
       // the size-only pass matches the combined colour+size pass
-      expect(collect_scale_values(series).size_values).toEqual(expected)
+      expect(collect_scale_ranges(series).size_range).toEqual(expected)
     })
 
     test(`colour extent ignores nulls and non-finite values`, () => {
-      const { color_extent, color_range } = collect_scale_values([
-        { color_values: [3, null, NaN, 9] },
+      const read_sizes = vi.fn(() => [2, 4])
+      const series = [
+        {
+          color_values: [3, null, NaN, 9],
+          get size_values() {
+            return read_sizes()
+          },
+        },
         null,
         { color_values: new Float64Array([-1, Infinity]) },
-      ])
+      ]
+      const color_only = collect_series_extent(series, `color_values`)
+      expect(read_sizes).not.toHaveBeenCalled()
+      const { color_extent, color_range } = collect_scale_ranges(series)
+      expect(color_only).toEqual(color_extent)
       expect(color_extent).toEqual({ min: -1, max: 9, n_finite: 3 })
       expect(color_range).toEqual([-1, 9])
-      expect(collect_scale_values([{}]).color_range).toEqual([0, 1])
+      expect(collect_scale_ranges([{}]).color_range).toEqual([0, 1])
     })
   })
 
@@ -811,11 +821,11 @@ describe(`scales`, () => {
       { min: 500, max: -500, name: `symmetric` }, // reversed symmetric
     ])(`reversed domain ($name) [$min, $max] normalizes correctly`, ({ min, max }) => {
       const ticks = generate_arcsinh_ticks(min, max, 1, 8)
-      const [lo, hi] = [Math.min(min, max), Math.max(min, max)]
+      const [lower, upper] = [Math.min(min, max), Math.max(min, max)]
       // All ticks within normalized range
-      expect(ticks.every((tick) => tick >= lo && tick <= hi)).toBe(true)
+      expect(ticks.every((tick) => tick >= lower && tick <= upper)).toBe(true)
       // Reversed should equal normal order
-      expect(ticks).toEqual(generate_arcsinh_ticks(lo, hi, 1, 8))
+      expect(ticks).toEqual(generate_arcsinh_ticks(lower, upper, 1, 8))
     })
   })
 

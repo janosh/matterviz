@@ -71,6 +71,8 @@ export type DecorationScene = {
   width: number
   height: number
   base_pad: Required<Sides>
+  // Bands between the data area and outside decorations, such as marginal distributions.
+  reserved_pad?: Required<Sides>
   // What the axes alone need per side (tick labels, titles), before any caller padding.
   // Outside reservations stack on this rather than on base_pad, so a caller whose padding
   // already leaves room beyond the axis (a sibling panel's legend band) gets the decoration

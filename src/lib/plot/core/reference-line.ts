@@ -108,12 +108,12 @@ function clip_segment_to_rect(
   y_min: number,
   y_max: number,
 ): Vec4 | null {
-  const dx = p2x - p1x
-  const dy = p2y - p1y
+  const delta_x = p2x - p1x
+  const delta_y = p2y - p1y
 
   // p values represent the direction, q values the signed distance to boundary
   // Boundaries: left (x_min), right (x_max), bottom (y_min), top (y_max)
-  const p_vals = [-dx, dx, -dy, dy]
+  const p_vals = [-delta_x, delta_x, -delta_y, delta_y]
   const q_vals = [p1x - x_min, x_max - p1x, p1y - y_min, y_max - p1y]
 
   let [t_enter, t_leave] = [0, 1]
@@ -133,7 +133,12 @@ function clip_segment_to_rect(
 
   if (t_enter > t_leave) return null // Segment entirely outside
 
-  return [p1x + t_enter * dx, p1y + t_enter * dy, p1x + t_leave * dx, p1y + t_leave * dy]
+  return [
+    p1x + t_enter * delta_x,
+    p1y + t_enter * delta_y,
+    p1x + t_leave * delta_x,
+    p1y + t_leave * delta_y,
+  ]
 }
 
 // Compute the screen coordinates for a reference line against the axes it is drawn on (see
@@ -146,8 +151,10 @@ export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Ve
   const is_y_visible = (y_val: number): boolean => y_val >= y_min && y_val <= y_max
 
   // Apply span constraints (works for both x and y)
-  const apply_x_span = (x1: number, x2: number) => apply_span(x1, x2, ref_line.x_span)
-  const apply_y_span = (y1: number, y2: number) => apply_span(y1, y2, ref_line.y_span)
+  const apply_x_span = (coord_x_1: number, coord_x: number) =>
+    apply_span(coord_x_1, coord_x, ref_line.x_span)
+  const apply_y_span = (coord_y_1: number, coord_y_2: number) =>
+    apply_span(coord_y_1, coord_y_2, ref_line.y_span)
 
   const to_data_x = (rel: number): number => x_min + rel * (x_max - x_min)
   const to_data_y = (rel: number): number => y_min + rel * (y_max - y_min)
@@ -183,8 +190,8 @@ export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Ve
     } else {
       const [p1x, p1y] = normalize_point(ref_line.p1)
       const [p2x, p2y] = normalize_point(ref_line.p2)
-      const dx = p2x - p1x
-      if (Math.abs(dx) < 1e-10) {
+      const delta_x = p2x - p1x
+      if (Math.abs(delta_x) < 1e-10) {
         // Nearly vertical line - check x-bounds like we do for vertical type
         if (!is_x_visible(p1x)) return null
         x1_data = p1x
@@ -194,7 +201,7 @@ export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Ve
         slope = 0 // Won't be used
         intercept = 0
       } else {
-        slope = (p2y - p1y) / dx
+        slope = (p2y - p1y) / delta_x
         intercept = p1y - slope * p1x
       }
     }
@@ -257,10 +264,10 @@ const SIDE_BASELINE: Record<ReferenceAnnotationSide, ReferenceAnnotationBaseline
 }
 
 export function calculate_annotation_position(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
+  coord_x_1: number,
+  coord_y_1: number,
+  coord_x: number,
+  coord_y_2: number,
   annotation: {
     position?: `start` | `center` | `end`
     side?: `above` | `below` | `left` | `right`
@@ -281,16 +288,16 @@ export function calculate_annotation_position(
   const frac = position === `start` ? 0 : position === `center` ? 0.5 : 1
 
   // Calculate base position with edge padding applied along line direction
-  const dx = x2 - x1
-  const dy = y2 - y1
-  const len = Math.hypot(dx, dy)
+  const delta_x = coord_x - coord_x_1
+  const delta_y = coord_y_2 - coord_y_1
+  const len = Math.hypot(delta_x, delta_y)
 
-  let base_x = x1 + frac * dx
-  let base_y = y1 + frac * dy
+  let base_x = coord_x_1 + frac * delta_x
+  let base_y = coord_y_1 + frac * delta_y
 
   if (len > 0 && position !== `center`) {
-    const dir_x = dx / len
-    const dir_y = dy / len
+    const dir_x = delta_x / len
+    const dir_y = delta_y / len
     // At 'end', move back toward start; at 'start', move toward end
     const inward = position === `end` ? -edge_padding : edge_padding
     base_x += dir_x * inward
@@ -301,22 +308,27 @@ export function calculate_annotation_position(
   let perp_y = 0
   if (len > 0) {
     // Perpendicular vector (normalized)
-    const nx = -dy / len
-    const ny = dx / len
+    const normal_x = -delta_y / len
+    const size_y = delta_x / len
     let sign: number
     if (side === `above` || side === `below`) {
       // In SVG, y increases downward. Flip sign if 'above' and perpendicular points down (ny > 0),
       // or if 'below' and perpendicular points up (ny <= 0), to ensure offset is in correct direction
-      sign = (side === `above`) === ny > 0 ? -1 : 1
+      sign = (side === `above`) === size_y > 0 ? -1 : 1
     } else {
       // left/right offset to the side of the line in screen space (right -> +x, left -> -x), stable
       // regardless of endpoint order — vertical ref lines are stored bottom->top, which flips the
       // perpendicular. Horizontal lines (nx == 0) fall back to right = up (-y), left = down (+y).
       const want_right = side === `right`
-      sign = Math.abs(nx) > 1e-9 ? (want_right ? 1 : -1) * Math.sign(nx) : want_right ? -1 : 1
+      sign =
+        Math.abs(normal_x) > 1e-9
+          ? (want_right ? 1 : -1) * Math.sign(normal_x)
+          : want_right
+            ? -1
+            : 1
     }
-    perp_x = sign * nx * gap
-    perp_y = sign * ny * gap
+    perp_x = sign * normal_x * gap
+    perp_y = sign * size_y * gap
   }
 
   const text_anchor =
@@ -325,7 +337,7 @@ export function calculate_annotation_position(
   // Keep the text readable: never upside down
   let rotation: number | undefined
   if (annotation.rotate && len > 0) {
-    const angle = Math.atan2(dy, dx) * (180 / Math.PI)
+    const angle = Math.atan2(delta_y, delta_x) * (180 / Math.PI)
     rotation = angle > 90 ? angle - 180 : angle < -90 ? angle + 180 : angle
   }
 
@@ -417,16 +429,16 @@ const rotate_rect_around = (
     { x: rect.x + rect.width, y: rect.y },
     { x: rect.x + rect.width, y: rect.y + rect.height },
     { x: rect.x, y: rect.y + rect.height },
-  ].map(({ x, y }) => {
-    const delta_x = x - pivot.x
-    const delta_y = y - pivot.y
+  ].map(({ x: coord_x, y: coord_y }) => {
+    const delta_x = coord_x - pivot.x
+    const delta_y = coord_y - pivot.y
     return {
       x: pivot.x + delta_x * cos_rotation - delta_y * sin_rotation,
       y: pivot.y + delta_x * sin_rotation + delta_y * cos_rotation,
     }
   })
-  const [x_min, x_max] = array_extent(corners.map(({ x }) => x))
-  const [y_min, y_max] = array_extent(corners.map(({ y }) => y))
+  const [x_min, x_max] = array_extent(corners.map((corner) => corner.x))
+  const [y_min, y_max] = array_extent(corners.map((corner) => corner.y))
   return { x: x_min, y: y_min, width: x_max - x_min, height: y_max - y_min }
 }
 
@@ -437,8 +449,8 @@ const annotation_candidate = (
   position: ReferenceAnnotationPosition,
   side: ReferenceAnnotationSide,
 ): ReferenceAnnotationCandidate => {
-  const [x1, y1, x2, y2] = endpoints
-  const anchor = calculate_annotation_position(x1, y1, x2, y2, {
+  const [coord_x_1, coord_y_1, coord_x, coord_y_2] = endpoints
+  const anchor = calculate_annotation_position(coord_x_1, coord_y_1, coord_x, coord_y_2, {
     ...annotation,
     position,
     side,
@@ -511,9 +523,8 @@ export function solve_reference_annotations({
     lines: readonly IndexedRefLine[]
     clearance?: number
   }): DecorationSolution {
-  // `scene.base_pad` is the chart area the lines are drawn in (the base solution's pad plus
-  // any marginal-plot reservation), so normalized obstacles project onto the same pixels the
-  // annotation candidates were built from
+  // `scene.base_pad` includes marginal reservations, so normalized obstacles project onto
+  // the same pixels the annotation candidates were built from
   const annotations = solve_decorations({
     ...scene,
     exclusion_rects: [...exclusion_rects, ...decoration_placement_rects(base_solution)],

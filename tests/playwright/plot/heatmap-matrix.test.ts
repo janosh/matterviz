@@ -29,7 +29,7 @@ test.describe(`HeatmapMatrix virtualization`, () => {
       if (cells.length === 0) throw new Error(`matrix rendered no cells`)
       const view = grid.getBoundingClientRect()
       const rects = cells.map((cell) => cell.getBoundingClientRect())
-      const xs = cells.map((cell) => Number(cell.dataset.x))
+      const x_values = cells.map((cell) => Number(cell.dataset.x))
       return {
         // how far right/down the rendered block reaches, relative to the visible area
         covered_right: Math.max(...rects.map((rect) => rect.right)) - view.left,
@@ -37,8 +37,8 @@ test.describe(`HeatmapMatrix virtualization`, () => {
         view_width: view.width,
         view_height: view.height,
         content_width: grid.scrollWidth,
-        min_x: Math.min(...xs),
-        max_x: Math.max(...xs),
+        min_x: Math.min(...x_values),
+        max_x: Math.max(...x_values),
       }
     }, matrix)
 

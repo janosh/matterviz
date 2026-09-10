@@ -278,13 +278,18 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   // synthetic: no metadata, and color/pattern only where the members agree. Every
   // node carries its summed value so the subtree needs no re-aggregation.
   const merge_children = (members: Node[]): SunburstNode<Metadata>[] | undefined => {
-    const kids = members.flatMap((member) => member.children ?? [])
-    if (kids.length === 0) return undefined
     const groups = new Map<string | number, Node[]>()
-    kids.forEach((kid, idx) => {
-      const key = kid.data.label ?? kid.data.id ?? `#${idx}`
-      groups.set(key, [...(groups.get(key) ?? []), kid])
-    })
+    let child_idx = 0
+    for (const member of members) {
+      for (const kid of member.children ?? []) {
+        const key = kid.data.label ?? kid.data.id ?? `#${child_idx}`
+        child_idx++
+        const group = groups.get(key)
+        if (group) group.push(kid)
+        else groups.set(key, [kid])
+      }
+    }
+    if (groups.size === 0) return undefined
     return [...groups.values()].map((group) => {
       const value = group.reduce((sum, kid) => sum + (kid.value ?? 0), 0)
       const children = merge_children(group)
@@ -393,6 +398,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   const root_value = root.value ?? 0
   const palette_len = PLOT_COLORS.length
   let depth1_count = 0 // running index among depth-1 nodes, for palette cycling
+  const inherited_colors = new Map<string, Map<number, string>>()
 
   // Resolved fill for a node: explicit > depth-1 palette > inherited, optionally
   // lightened by depth. base = unlightened color descendants inherit.
@@ -408,9 +414,14 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         : (parent_base ?? `transparent`))
     let color = base
     if (!explicit && depth > 1 && level_lighten > 0) {
-      color = hsl(base)
-        .brighter(level_lighten * (depth - 1))
-        .formatHex()
+      let colors = inherited_colors.get(base)
+      if (!colors) inherited_colors.set(base, (colors = new Map()))
+      color =
+        colors.get(depth) ??
+        hsl(base)
+          .brighter(level_lighten * (depth - 1))
+          .formatHex()
+      colors.set(depth, color)
     }
     return { base, color }
   }
@@ -471,11 +482,12 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       // without a compact form the label is dropped rather than shortened.
       label_short = callable ? OTHER_ID_SEGMENT : undefined
     }
-    const id = node.data.id ?? (depth === 0 ? (label ?? ``) : `${parent_prefix}${segment}`)
+    const identifier =
+      node.data.id ?? (depth === 0 ? (label ?? ``) : `${parent_prefix}${segment}`)
 
-    const { x0, x1, y0, y1 } = node
+    const { x0: coord_x_0, x1: coord_x_1, y0: coord_y_0, y1: coord_y_1 } = node
     const arc = push_arc(parent, {
-      id,
+      id: identifier,
       label,
       label_short,
       value,
@@ -484,10 +496,10 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       is_leaf: !node.children?.length,
       ...(other_count && { is_other: true, other_count }),
       pattern: node.data.pattern,
-      x0,
-      x1,
-      y0,
-      y1,
+      x0: coord_x_0,
+      x1: coord_x_1,
+      y0: coord_y_0,
+      y1: coord_y_1,
       metadata: node.data.metadata,
     })
     node.children?.forEach((child, idx) => {
@@ -524,12 +536,12 @@ export function sunburst_from_paths<Metadata = Record<string, unknown>>(
     }
     let level = roots
     let trie: TrieNode | undefined
-    let id = ``
+    let identifier = ``
     for (const segment of row.path) {
-      id = id ? `${id}/${segment}` : `${segment}`
+      identifier = identifier ? `${identifier}/${segment}` : `${segment}`
       trie = level.get(segment)
       if (!trie) {
-        trie = { node: { id, label: `${segment}` }, children: new Map() }
+        trie = { node: { id: identifier, label: `${segment}` }, children: new Map() }
         level.set(segment, trie)
       }
       level = trie.children

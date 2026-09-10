@@ -137,19 +137,19 @@ export function place_treemap_label({
   const block_height = block.height * (font_size / max_font_size)
   const center_x = rect.x + rect.width / 2
   const center_y = rect.y + label_height / 2
-  const x = header ? rect.x + margin : center_x
+  const coord_x = header ? rect.x + margin : center_x
   let line_top = center_y - block_height / 2
   const placed_lines = block.lines.map((line) => {
     const font_scale = line_scale(line)
     const line_height = font_size * font_scale * LINE_HEIGHT
     line_top += line_height / 2
-    const y = line_top
+    const coord_y = line_top
     line_top += line_height / 2
-    return { ...line, font_scale, y }
+    return { ...line, font_scale, y: coord_y }
   })
 
   return {
-    x,
+    x: coord_x,
     lines: placed_lines,
     font_size,
     header,

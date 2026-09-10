@@ -122,31 +122,31 @@
     if (Array.isArray(tick_labels)) {
       return [...new SvelteSet(tick_labels.map(Number))].filter(Number.isFinite)
     }
-    const [lo, hi] = tick_scale.domain()
+    const [lower, upper] = tick_scale.domain()
     if (n_ticks <= 0) return []
-    if (n_ticks === 1) return [lo]
+    if (n_ticks === 1) return [lower]
     if (type_name === `arcsinh`) {
-      return generate_arcsinh_ticks(lo, hi, get_arcsinh_threshold(scale_type), n_ticks)
+      return generate_arcsinh_ticks(lower, upper, get_arcsinh_threshold(scale_type), n_ticks)
     }
     if (!snap_ticks) {
       // exactly n_ticks, evenly spaced in scale space
-      const position = color_ramp_scale(scale_type, [lo, hi], [0, 1])
+      const position = color_ramp_scale(scale_type, [lower, upper], [0, 1])
       return d3_range(n_ticks).map((idx) => position.invert(idx / (n_ticks - 1)))
     }
     if (type_name === `log`) {
       // integer powers of ten inside the niced domain (tolerance absorbs log10 round-off);
       // sub-decade domains with none fall back to the domain ends
       const powers = d3_range(
-        Math.ceil(Math.log10(lo) - 1e-10),
-        Math.floor(Math.log10(hi) + 1e-10) + 1,
+        Math.ceil(Math.log10(lower) - 1e-10),
+        Math.floor(Math.log10(upper) + 1e-10) + 1,
       ).map((exponent) => 10 ** exponent)
-      return powers.length ? powers : [lo, hi]
+      return powers.length ? powers : [lower, upper]
     }
     return tick_scale.ticks(n_ticks)
   })
   $effect.pre(() => {
-    const [lo, hi] = tick_scale.domain()
-    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lo, hi] : range
+    const [lower, upper] = tick_scale.domain()
+    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lower, upper] : range
   })
 
   const ramp = $derived(resolve_color_ramp(scale, range, scale_type))

@@ -1,7 +1,12 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
-import { normalize_to_scene, span_or } from '$lib/plot/scatter-3d/scene-coords'
+import {
+  hover_marker_geometry,
+  normalize_to_scene,
+  span_or,
+} from '$lib/plot/scatter-3d/scene-coords'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { Object3D, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mock_fullscreen, bind_props, expect_plot_controls, query } from '../setup'
 
@@ -320,6 +325,47 @@ describe(`ScatterPlot3D smoke tests`, () => {
 })
 
 describe(`scene coordinates`, () => {
+  test.each([`perspective`, `orthographic`] as const)(
+    `%s tooltip clears the halo by 8 screen pixels at every orbit angle and zoom`,
+    (projection) => {
+      const size = { width: 800, height: 400 }
+      const point = new Object3D()
+      point.position.set(1, 0.5, -0.5)
+      point.updateMatrixWorld()
+      const camera =
+        projection === `perspective`
+          ? new PerspectiveCamera(60, 2, 0.1, 100)
+          : new OrthographicCamera(-10, 10, 5, -5, 0.1, 100)
+      for (const elevation of [0, Math.PI / 4, Math.PI / 2 - 0.001, Math.PI / 2]) {
+        camera.position
+          .copy(point.position)
+          .add(new Vector3(10 * Math.cos(elevation), 10 * Math.sin(elevation), 0))
+        camera.lookAt(point.position)
+        camera.updateMatrixWorld()
+        for (const zoom of [1, 2]) {
+          camera.zoom = zoom
+          camera.updateProjectionMatrix()
+          for (const marker_radius of [0, 0.1, 0.25, 1]) {
+            const geometry = hover_marker_geometry(marker_radius)
+            // 1e-9 CSS pixels is far below visible precision for these matrix projections.
+            const pixels_per_unit =
+              projection === `perspective`
+                ? (size.height * zoom) / (20 * Math.tan(Math.PI / 6))
+                : (size.height * zoom) / 10
+            const [pixel_x, pixel_y] = geometry.tooltip_position(point, camera, size)
+            expect(Math.abs(geometry.radius - marker_radius * 1.15)).toBeLessThanOrEqual(
+              Number.EPSILON,
+            )
+            expect(Math.abs(pixel_x - size.width / 2)).toBeLessThan(1e-9)
+            expect(
+              Math.abs(pixel_y - (size.height / 2 - geometry.radius * pixels_per_unit - 8)),
+            ).toBeLessThan(1e-9)
+          }
+        }
+      }
+    },
+  )
+
   test.each<[[number | null, number | null] | undefined, [number, number]]>([
     [undefined, [0, 100]],
     [

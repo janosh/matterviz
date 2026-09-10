@@ -91,8 +91,9 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
   const { base_pad, width, height, obstacles_norm, gap = DEFAULT_DECORATION_GAP } = scene
   const axis_pad = scene.axis_pad ?? base_pad
   const { legend, colorbar } = standard_items(scene.items)
-  const base_w = width - base_pad.l - base_pad.r
-  const base_h = height - base_pad.t - base_pad.b
+  const reserved = scene.reserved_pad ?? { t: 0, b: 0, l: 0, r: 0 }
+  const base_w = width - base_pad.l - base_pad.r - reserved.l - reserved.r
+  const base_h = height - base_pad.t - base_pad.b - reserved.t - reserved.b
   const { width: legend_width = 0, height: legend_height = 0 } = legend?.footprint ?? {}
   // (unless the caller's right padding already has room for it, which costs no plot width)
   const too_wide =
@@ -137,8 +138,14 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
         : base_pad.r,
   }
   const legend_pos: DecorationPoint = legend_right
-    ? { x: width - legend_width - gap, y: base_pad.t + (base_h - legend_height) / 2 }
-    : { x: base_pad.l + (base_w - legend_width) / 2, y: height - legend_height - gap }
+    ? {
+        x: width - legend_width - gap,
+        y: base_pad.t + reserved.t + (base_h - legend_height) / 2,
+      }
+    : {
+        x: base_pad.l + reserved.l + (base_w - legend_width) / 2,
+        y: height - legend_height - gap,
+      }
 
   const legend_side = legend_right ? `right` : `bottom`
   return { pad, legend_outside, legend_side, legend_pos, colorbar_outside }
@@ -164,12 +171,15 @@ export const get_outside_placement = (
   }
   if (item.kind === `colorbar` && layout.colorbar_outside) {
     const horizontal = item.horizontal ?? false
-    const base_width = width - base_pad.l - base_pad.r
-    const base_height = height - base_pad.t - base_pad.b
+    const reserved = scene.reserved_pad ?? { t: 0, b: 0, l: 0, r: 0 }
+    const base_width = width - base_pad.l - base_pad.r - reserved.l - reserved.r
+    const base_height = height - base_pad.t - base_pad.b - reserved.t - reserved.b
     return {
       ...placement,
-      x: horizontal ? base_pad.l + (base_width - item_width) / 2 : width - item_width - gap,
-      y: horizontal ? gap : base_pad.t + (base_height - item_height) / 2,
+      x: horizontal
+        ? base_pad.l + reserved.l + (base_width - item_width) / 2
+        : width - item_width - gap,
+      y: horizontal ? gap : base_pad.t + reserved.t + (base_height - item_height) / 2,
       side: horizontal ? `top` : `right`,
     }
   }

@@ -108,8 +108,10 @@ describe(`Sankey`, () => {
     const [on_node_hover, on_link_hover] = [vi.fn(), vi.fn()]
     const plot = await mount_sized_sankey({ data, on_node_hover, on_link_hover })
     const rect = plot.querySelector<SVGRectElement>(`.nodes rect`)
-    const hover = (el: Element | null, x = 0, y = 0) => {
-      el?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
+    const hover = (element: Element | null, coord_x = 0, coord_y = 0) => {
+      element?.dispatchEvent(
+        new MouseEvent(`mousemove`, { bubbles: true, clientX: coord_x, clientY: coord_y }),
+      )
       return tick()
     }
     await hover(rect, 30, 40)
@@ -133,6 +135,17 @@ describe(`Sankey`, () => {
     await hover(rect, 490, 40)
     expect(tooltip()?.style.left).toBe(`332px`) // 490 - 18 - 140 (flipped left)
 
+    const opacities = () =>
+      [...plot.querySelectorAll(`.links path`)].map((path) =>
+        Number(path.getAttribute(`stroke-opacity`)),
+      )
+    const on_node = opacities()
+    expect(on_node[0]).toBeGreaterThan(on_node[1])
+    await hover(plot.querySelectorAll(`.nodes rect`)[1], 30, 40)
+    expect(opacities()).toEqual([on_node[1], on_node[0], on_node[2]])
+    await hover(rect, 30, 40)
+    expect(opacities()).toEqual(on_node)
+
     await hover(plot.querySelector(`.links path`), 200, 100)
     expect(on_node_hover).toHaveBeenLastCalledWith(null)
     expect(on_link_hover).toHaveBeenCalledOnce()
@@ -146,14 +159,14 @@ describe(`Sankey`, () => {
     // back onto the node: the link callback clears, the node callback re-fires
     await hover(rect, 30, 40)
     expect(on_link_hover).toHaveBeenLastCalledWith(null)
-    expect(on_node_hover).toHaveBeenCalledTimes(3)
+    expect(on_node_hover).toHaveBeenCalledTimes(5)
     expect(tooltip()?.textContent).toMatch(/A.*8/)
     // leaving the svg clears everything once
     plot.querySelector(`svg[role="application"]`)?.dispatchEvent(new MouseEvent(`mouseleave`))
     await tick()
     expect(tooltip()).toBeNull()
     expect(on_node_hover).toHaveBeenLastCalledWith(null)
-    expect([on_node_hover.mock.calls.length, on_link_hover.mock.calls.length]).toEqual([4, 2])
+    expect([on_node_hover.mock.calls.length, on_link_hover.mock.calls.length]).toEqual([6, 2])
   })
 
   test(`click handlers make marks focusable buttons and fire with node/link props`, async () => {
@@ -342,7 +355,9 @@ describe(`bucket_sankey_data`, () => {
     ], // nothing folds: only `e` is a foldable overflow, and a bucket of one is not made
   ])(`max_links: %s`, (_name, links, expected) => {
     const graph = {
-      nodes: [`src`, `a`, `b`, `c`, `d`, `e`, `mid`, `sink`].map((id) => ({ id })),
+      nodes: [`src`, `a`, `b`, `c`, `d`, `e`, `mid`, `sink`].map((identifier) => ({
+        id: identifier,
+      })),
       links,
     }
     expect(bucket_sankey_data(graph, { max_links: 3 }).links).toHaveLength(expected)

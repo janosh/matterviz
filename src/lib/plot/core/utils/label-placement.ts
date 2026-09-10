@@ -107,21 +107,21 @@ export function estimate_label_size(text: string, font_size_str?: string): Label
 // === Geometry helpers ===
 
 export function rect_overlap_area(rect_a: Rect, rect_b: Rect): number {
-  const ox = Math.max(
+  const offset_x = Math.max(
     0,
     Math.min(rect_a.x + rect_a.w, rect_b.x + rect_b.w) - Math.max(rect_a.x, rect_b.x),
   )
-  const oy = Math.max(
+  const offset_y = Math.max(
     0,
     Math.min(rect_a.y + rect_a.h, rect_b.y + rect_b.h) - Math.max(rect_a.y, rect_b.y),
   )
-  return ox * oy
+  return offset_x * offset_y
 }
 
 export function rect_circle_overlap(
   rect: Rect,
-  cx: number,
-  cy: number,
+  center_x: number,
+  center_y: number,
   radius: number,
 ): number {
   // Inflate rect by radius to create an exclusion zone around the marker
@@ -129,11 +129,11 @@ export function rect_circle_overlap(
   const top = rect.y - radius
   const right = rect.x + rect.w + radius
   const bottom = rect.y + rect.h + radius
-  if (cx < left || cx > right || cy < top || cy > bottom) return 0
+  if (center_x < left || center_x > right || center_y < top || center_y > bottom) return 0
   // Penalty proportional to how deep the marker center is inside the exclusion zone
-  const dx = Math.min(cx - left, right - cx)
-  const dy = Math.min(cy - top, bottom - cy)
-  return Math.min(dx, dy) + radius
+  const delta_x = Math.min(center_x - left, right - center_x)
+  const delta_y = Math.min(center_y - top, bottom - center_y)
+  return Math.min(delta_x, delta_y) + radius
 }
 
 export function segments_intersect(
@@ -164,15 +164,15 @@ export function segment_rect_intersects(
   sy2: number,
   rect: Rect,
 ): boolean {
-  const rx = rect.x,
-    ry = rect.y,
-    rx2 = rx + rect.w,
-    ry2 = ry + rect.h
+  const rect_x = rect.x,
+    rect_y = rect.y,
+    rx2 = rect_x + rect.w,
+    ry2 = rect_y + rect.h
   return (
-    segments_intersect(sx1, sy1, sx2, sy2, rx, ry, rx2, ry) ||
-    segments_intersect(sx1, sy1, sx2, sy2, rx2, ry, rx2, ry2) ||
-    segments_intersect(sx1, sy1, sx2, sy2, rx, ry2, rx2, ry2) ||
-    segments_intersect(sx1, sy1, sx2, sy2, rx, ry, rx, ry2)
+    segments_intersect(sx1, sy1, sx2, sy2, rect_x, rect_y, rx2, rect_y) ||
+    segments_intersect(sx1, sy1, sx2, sy2, rx2, rect_y, rx2, ry2) ||
+    segments_intersect(sx1, sy1, sx2, sy2, rect_x, ry2, rx2, ry2) ||
+    segments_intersect(sx1, sy1, sx2, sy2, rect_x, rect_y, rect_x, ry2)
   )
 }
 
@@ -220,8 +220,8 @@ export function label_leader_segment({
 // Positions are top-left corner of the label bounding box.
 // All positions keep a full `offset` gap from the marker edge.
 export function generate_candidates(
-  ax: number,
-  ay: number,
+  axis_x: number,
+  axis_y: number,
   point_radius: number,
   label_w: number,
   label_h: number,
@@ -229,14 +229,14 @@ export function generate_candidates(
 ): Point2D[] {
   const offset = point_radius + gap
   return [
-    { x: ax + offset, y: ay - label_h + offset / 2 }, // R  (baseline just below center)
-    { x: ax + offset, y: ay - label_h - offset / 2 }, // TR
-    { x: ax - label_w / 2, y: ay - label_h - offset }, // T
-    { x: ax - label_w - offset, y: ay - label_h - offset / 2 }, // TL
-    { x: ax - label_w - offset, y: ay - label_h + offset / 2 }, // L  (baseline just below center)
-    { x: ax - label_w - offset, y: ay + offset / 2 }, // BL
-    { x: ax - label_w / 2, y: ay + offset }, // B
-    { x: ax + offset, y: ay + offset / 2 }, // BR
+    { x: axis_x + offset, y: axis_y - label_h + offset / 2 }, // R  (baseline just below center)
+    { x: axis_x + offset, y: axis_y - label_h - offset / 2 }, // TR
+    { x: axis_x - label_w / 2, y: axis_y - label_h - offset }, // T
+    { x: axis_x - label_w - offset, y: axis_y - label_h - offset / 2 }, // TL
+    { x: axis_x - label_w - offset, y: axis_y - label_h + offset / 2 }, // L  (baseline just below center)
+    { x: axis_x - label_w - offset, y: axis_y + offset / 2 }, // BL
+    { x: axis_x - label_w / 2, y: axis_y + offset }, // B
+    { x: axis_x + offset, y: axis_y + offset / 2 }, // BR
   ]
 }
 
@@ -251,8 +251,8 @@ type NeighborIndex = ReturnType<typeof create_neighbor_index>
 
 export function create_neighbor_index(anchors: AnchorInfo[]) {
   // `far_*` rather than max_x/max_y so `collect`'s query box below doesn't shadow them
-  const [origin_x, far_x] = array_extent(anchors.map(({ x }) => x))
-  const [origin_y, far_y] = array_extent(anchors.map(({ y }) => y))
+  const [origin_x, far_x] = array_extent(anchors.map((anchor) => anchor.x))
+  const [origin_y, far_y] = array_extent(anchors.map((anchor) => anchor.y))
   // ~1 anchor per cell measured fastest; the dominant-extent floor caps collinear grids.
   const extent_x = far_x - origin_x
   const extent_y = far_y - origin_y
@@ -264,10 +264,10 @@ export function create_neighbor_index(anchors: AnchorInfo[]) {
   const cols = Math.floor(extent_x / size) + 1
   const rows = Math.floor(extent_y / size) + 1
   const lists: number[][] = Array.from({ length: cols * rows }, () => [])
-  anchors.forEach(({ x, y }, idx) =>
-    lists[Math.floor((y - origin_y) / size) * cols + Math.floor((x - origin_x) / size)].push(
-      idx,
-    ),
+  anchors.forEach(({ x: coord_x, y: coord_y }, idx) =>
+    lists[
+      Math.floor((coord_y - origin_y) / size) * cols + Math.floor((coord_x - origin_x) / size)
+    ].push(idx),
   )
   const buckets = lists.map((bucket) => Int32Array.from(bucket))
   const bits = new Uint32Array((anchors.length + 31) >>> 5)
@@ -276,13 +276,13 @@ export function create_neighbor_index(anchors: AnchorInfo[]) {
 
   // Grows `reach` to cover `label`, which every moved label needs before the next query
   const widen = (label: LabelState) => {
-    const { x, y } = anchors[label.anchor_idx]
+    const { x: coord_x, y: coord_y } = anchors[label.anchor_idx]
     reach = Math.max(
       reach,
-      Math.abs(label.x - x),
-      Math.abs(label.x + label.w - x),
-      Math.abs(label.y - y),
-      Math.abs(label.y + label.h - y),
+      Math.abs(label.x - coord_x),
+      Math.abs(label.x + label.w - coord_x),
+      Math.abs(label.y - coord_y),
+      Math.abs(label.y + label.h - coord_y),
     )
   }
 
@@ -368,12 +368,13 @@ export function compute_delta_energy(
   const count = neighbors.collect(box_min_x, box_max_x, box_min_y, box_max_y)
 
   for (let pos = 0; pos < count; pos++) {
-    const { x, y, radius } = anchors[candidates[pos]]
-    if (misses_box(x - radius, x + radius, y - radius, y + radius)) continue
+    const { x: coord_x, y: coord_y, radius } = anchors[candidates[pos]]
+    if (misses_box(coord_x - radius, coord_x + radius, coord_y - radius, coord_y + radius))
+      continue
     delta +=
       weights.marker *
-      (rect_circle_overlap(new_state, x, y, radius) -
-        rect_circle_overlap(old_state, x, y, radius))
+      (rect_circle_overlap(new_state, coord_x, coord_y, radius) -
+        rect_circle_overlap(old_state, coord_x, coord_y, radius))
   }
 
   // Pairwise interactions with all other labels, each reaching over its rect and its anchor
@@ -488,19 +489,19 @@ export function compute_label_positions(
   const candidate_gap = config.candidate_gap ?? 4
 
   for (const series of filtered_series) {
-    for (const pt of series.filtered_data ?? []) {
-      if (!pt.point_label?.auto_placement || !pt.point_label.text) continue
+    for (const point of series.filtered_data ?? []) {
+      if (!point.point_label?.auto_placement || !point.point_label.text) continue
 
       const x_scale = series.x_axis === `x2` ? scales.x2 : scales.x
       const y_scale = series.y_axis === `y2` ? scales.y2 : scales.y
-      const anchor_x = x_scale(pt.x) + (pt.point_offset?.x ?? 0)
-      const anchor_y = y_scale(pt.y) + (pt.point_offset?.y ?? 0)
+      const anchor_x = x_scale(point.x) + (point.point_offset?.x ?? 0)
+      const anchor_y = y_scale(point.y) + (point.point_offset?.y ?? 0)
       const label_size =
-        pt.point_label.size ??
-        estimate_label_size(pt.point_label.text, pt.point_label.font_size)
+        point.point_label.size ??
+        estimate_label_size(point.point_label.text, point.point_label.font_size)
       const label_w = Math.max(0, label_size.width)
       const label_h = Math.max(0, label_size.height)
-      const radius = Math.max(0, pt.point_style?.radius ?? 3)
+      const radius = Math.max(0, point.point_style?.radius ?? 3)
       // A non-finite anchor (log scale on a non-positive value, say) has nothing to place a
       // label against, and keeping it would make every delta NaN -- so every SA move loses to
       // `delta < 0` and the whole scene silently freezes at its greedy positions, not just
@@ -508,7 +509,7 @@ export function compute_label_positions(
       if (![anchor_x, anchor_y, label_w, label_h, radius].every(Number.isFinite)) continue
 
       label_infos.push({
-        id: `${pt.series_idx}-${pt.point_idx}`,
+        id: `${point.series_idx}-${point.point_idx}`,
         anchor: { x: anchor_x, y: anchor_y, radius },
         width: label_w,
         height: label_h,
@@ -568,17 +569,22 @@ export function compute_label_positions(
   const placed: LabelState[] = []
   const cold_labels: number[] = []
   for (let idx = 0; idx < num_labels; idx++) {
-    const { id, width: lw, height: lh, anchor } = label_infos[idx]
-    const offset = warm_start?.get(id)
+    const {
+      id: identifier,
+      width: legend_width,
+      height: legend_height,
+      anchor,
+    } = label_infos[idx]
+    const offset = warm_start?.get(identifier)
     if (!offset) {
       cold_labels.push(idx)
       continue
     }
     labels[idx] = {
-      x: anchor.x + offset.x - lw / 2,
-      y: anchor.y + offset.y - lh / 2,
-      w: lw,
-      h: lh,
+      x: anchor.x + offset.x - legend_width / 2,
+      y: anchor.y + offset.y - legend_height / 2,
+      w: legend_width,
+      h: legend_height,
       anchor_idx: idx,
     }
     placed.push(labels[idx])
@@ -587,12 +593,17 @@ export function compute_label_positions(
   // Greedy initialization for the rest: pick best candidate per label. With nothing carried
   // over this runs over every label in order, scoring against those already placed.
   for (const idx of cold_labels) {
-    const { candidates, width: lw, height: lh, anchor } = label_infos[idx]
+    const { candidates, width: legend_width, height: legend_height, anchor } = label_infos[idx]
     let best_candidate = candidates[0]
     let best_score = Infinity
 
     for (const candidate of candidates) {
-      const test_rect: Rect = { x: candidate.x, y: candidate.y, w: lw, h: lh }
+      const test_rect: Rect = {
+        x: candidate.x,
+        y: candidate.y,
+        w: legend_width,
+        h: legend_height,
+      }
       let score = weights.bounds * rect_out_of_bounds_area(test_rect, plot_bounds)
 
       for (const other of placed) {
@@ -604,7 +615,10 @@ export function compute_label_positions(
       }
       score +=
         weights.distance *
-        Math.hypot(candidate.x + lw / 2 - anchor.x, candidate.y + lh / 2 - anchor.y)
+        Math.hypot(
+          candidate.x + legend_width / 2 - anchor.x,
+          candidate.y + legend_height / 2 - anchor.y,
+        )
 
       if (score < best_score) {
         best_score = score
@@ -612,7 +626,13 @@ export function compute_label_positions(
       }
     }
 
-    labels[idx] = { x: best_candidate.x, y: best_candidate.y, w: lw, h: lh, anchor_idx: idx }
+    labels[idx] = {
+      x: best_candidate.x,
+      y: best_candidate.y,
+      w: legend_width,
+      h: legend_height,
+      anchor_idx: idx,
+    }
     placed.push(labels[idx])
   }
 
@@ -688,11 +708,11 @@ export function compute_label_positions(
   // scrolled out of view or got culled must not linger in the map.
   warm_start?.clear()
   const positions: Record<string, Point2D> = {}
-  for (const [idx, { id, anchor }] of label_infos.entries()) {
+  for (const [idx, { id: identifier, anchor }] of label_infos.entries()) {
     const label = labels[idx]
     const center = { x: label.x + label.w / 2, y: label.y + label.h / 2 }
-    positions[id] = center
-    warm_start?.set(id, { x: center.x - anchor.x, y: center.y - anchor.y })
+    positions[identifier] = center
+    warm_start?.set(identifier, { x: center.x - anchor.x, y: center.y - anchor.y })
   }
   return positions
 }

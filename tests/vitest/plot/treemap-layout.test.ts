@@ -14,6 +14,7 @@ import {
   normalize_treemap_label_lines,
   place_treemap_label,
 } from '$lib/plot/treemap/labels'
+import { treemap_hover_veil } from '$lib/plot/treemap/treemap'
 import { describe, expect, test } from 'vitest'
 
 const size = { width: 400, height: 300 }
@@ -76,7 +77,14 @@ describe(`compute_treemap_layout`, () => {
     // d3's squarify (golden-ratio target) tiles the 400x300 area as two 400x150
     // rows for the equal-value A/B pair; inside A's row, A2 (6) and A1 (4) sit side
     // by side at 240px and 160px. Zero padding -> areas exactly proportional.
-    expect(rects.map(({ x, y, width, height }) => [x, y, width, height])).toEqual(
+    expect(
+      rects.map(({ x: coord_x, y: coord_y, width, height }) => [
+        coord_x,
+        coord_y,
+        width,
+        height,
+      ]),
+    ).toEqual(
       [
         [0, 0, 400, 300],
         [0, 0, 400, 150], // A
@@ -88,6 +96,18 @@ describe(`compute_treemap_layout`, () => {
     // opt-out restores input order
     const unsorted = compute_treemap_layout(tree, size, { ...no_pad, sort: `none` })
     expect(unsorted.arcs.map((arc) => arc.id)).toEqual([``, `A`, `A/A1`, `A/A2`, `B`])
+  })
+
+  test(`hover veil covers unrelated subtrees once and preserves ancestors`, () => {
+    const { arcs, rects } = compute_treemap_layout(tree, size, no_pad)
+    expect(treemap_hover_veil(arcs, rects, null)).toBe(``)
+    expect(treemap_hover_veil(arcs, rects, 0)).toBe(``)
+    expect(treemap_hover_veil(arcs, rects, 1)).toBe(`M0,150h400v150h-400Z`)
+    expect(treemap_hover_veil(arcs, rects, 3)).toBe(`M0,0h240v150h-240ZM0,150h400v150h-400Z`)
+    // B dims A once, rather than painting A and both its children over one another.
+    expect(treemap_hover_veil(arcs, rects, 4)).toBe(`M0,0h400v150h-400Z`)
+    const zoomed = tile_rects(arcs, 1, size, no_pad)
+    expect(treemap_hover_veil(arcs, zoomed, 3)).toBe(`M0,0h240v300h-240Z`)
   })
 
   test(`padding_top reserves a header strip on branches only`, () => {
@@ -259,18 +279,18 @@ describe(`tile_rects`, () => {
 
 describe(`lerp_rects`, () => {
   const from = [{ x: 0, y: 0, width: 100, height: 100 }]
-  const to = [{ x: 50, y: 20, width: 200, height: 60 }]
+  const target = [{ x: 50, y: 20, width: 200, height: 60 }]
 
   test.each([
     [0, from[0]],
-    [1, to[0]],
+    [1, target[0]],
     [0.5, { x: 25, y: 10, width: 150, height: 80 }],
-  ])(`t=%f interpolates rects`, (t, expected) => {
-    expect(lerp_rects(from, to, t)[0]).toEqual(expected)
+  ])(`t=%f interpolates rects`, (fraction, expected) => {
+    expect(lerp_rects(from, target, fraction)[0]).toEqual(expected)
   })
 
   test(`length mismatch snaps to target (layout swap mid-tween)`, () => {
-    expect(lerp_rects([], to, 0.5)).toBe(to)
+    expect(lerp_rects([], target, 0.5)).toBe(target)
   })
 })
 
@@ -374,10 +394,10 @@ describe(`place_treemap_label`, () => {
 })
 
 describe(`align_tiling`, () => {
-  const rect = (x: number) => ({ x, y: 0, width: 10, height: 10 })
+  const rect = (coord_x: number) => ({ x: coord_x, y: 0, width: 10, height: 10 })
   // parent P (idx 0) with children; ids are what alignment matches on
   const arcs = (ids: string[]) =>
-    ids.map((id, idx) => ({ id, parent_idx: idx === 0 ? null : 0 }))
+    ids.map((identifier, idx) => ({ id: identifier, parent_idx: idx === 0 ? null : 0 }))
 
   test(`matches by id, not position`, () => {
     // `b` moved from index 1 to index 2 between the two tilings

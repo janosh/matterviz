@@ -5,7 +5,7 @@
 // overlap), inserted endpoints are evaluated on a monotone-cubic approximation: sub-pixel for
 // monotoneX/linear/step, but natural/basis/catmullRom edges can deviate more at the clip points.
 
-import type { Vec2 } from '$lib/math'
+import { partition_point, type Vec2 } from '$lib/math'
 import type { CurveFactory } from 'd3-shape'
 import {
   curveBasis,
@@ -77,10 +77,14 @@ export function resolve_series_ref(
 const sign = (val: number): number => (val < 0 ? -1 : 1)
 
 // Per-knot tangents reproducing d3 curveMonotoneX (slope3 interior, slope2 endpoints)
-function monotone_tangents(xs: readonly number[], ys: readonly number[]): number[] {
-  const num = xs.length
+function monotone_tangents(
+  x_values: readonly number[],
+  y_values: readonly number[],
+): number[] {
+  const num = x_values.length
   if (num <= 1) return Array(num).fill(0)
-  const secant = (idx: number) => (ys[idx + 1] - ys[idx]) / (xs[idx + 1] - xs[idx])
+  const secant = (idx: number) =>
+    (y_values[idx + 1] - y_values[idx]) / (x_values[idx + 1] - x_values[idx])
   if (num === 2) {
     const slope = secant(0)
     const safe = Number.isFinite(slope) ? slope : 0
@@ -88,13 +92,14 @@ function monotone_tangents(xs: readonly number[], ys: readonly number[]): number
   }
   const tangents = Array.from({ length: num }, () => 0)
   for (let idx = 1; idx < num - 1; idx++) {
-    const h0 = xs[idx] - xs[idx - 1]
-    const h1 = xs[idx + 1] - xs[idx]
-    const s0 = (ys[idx] - ys[idx - 1]) / (h0 || (h1 < 0 ? -0 : 0))
-    const s1 = (ys[idx + 1] - ys[idx]) / (h1 || (h0 < 0 ? -0 : 0))
-    const par = (s0 * h1 + s1 * h0) / (h0 + h1)
+    const height_0 = x_values[idx] - x_values[idx - 1]
+    const height_1 = x_values[idx + 1] - x_values[idx]
+    const slope_0 = (y_values[idx] - y_values[idx - 1]) / (height_0 || (height_1 < 0 ? -0 : 0))
+    const slope_1 = (y_values[idx + 1] - y_values[idx]) / (height_1 || (height_0 < 0 ? -0 : 0))
+    const par = (slope_0 * height_1 + slope_1 * height_0) / (height_0 + height_1)
     tangents[idx] =
-      (sign(s0) + sign(s1)) * Math.min(Math.abs(s0), Math.abs(s1), 0.5 * Math.abs(par)) || 0
+      (sign(slope_0) + sign(slope_1)) *
+        Math.min(Math.abs(slope_0), Math.abs(slope_1), 0.5 * Math.abs(par)) || 0
   }
   tangents[0] = (3 * secant(0) - tangents[1]) / 2
   tangents[num - 1] = (3 * secant(num - 2) - tangents[num - 2]) / 2
@@ -102,57 +107,57 @@ function monotone_tangents(xs: readonly number[], ys: readonly number[]): number
 }
 
 // Index of the bracket [lo, lo+1] containing x (xs ascending); clamps to interior brackets
-const bracket = (xs: readonly number[], x: number): number => {
-  let lo = 0
-  let hi = xs.length - 1
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1
-    if (xs[mid] <= x) lo = mid
-    else hi = mid
+const bracket = (x_values: readonly number[], coord_x: number): number => {
+  let lower = 0
+  let upper = x_values.length - 1
+  while (upper - lower > 1) {
+    const mid = (lower + upper) >> 1
+    if (x_values[mid] <= coord_x) lower = mid
+    else upper = mid
   }
-  return lo
+  return lower
 }
 
 // y clamped to the endpoint value when x is at/outside the domain (null when x is strictly inside)
 const endpoint_clamp = (
-  xs: readonly number[],
-  ys: readonly number[],
-  x: number,
+  x_values: readonly number[],
+  y_values: readonly number[],
+  coord_x: number,
 ): number | null => {
-  if (xs.length === 0) return NaN
-  if (x <= xs[0]) return ys[0]
-  if (x >= xs[xs.length - 1]) return ys[xs.length - 1]
+  if (x_values.length === 0) return NaN
+  if (coord_x <= x_values[0]) return y_values[0]
+  if (coord_x >= x_values[x_values.length - 1]) return y_values[x_values.length - 1]
   return null
 }
 
 // Evaluate the d3 curveMonotoneX through (xs, ys) at x (xs ascending). Clamps outside the domain.
 export function monotone_interpolate(
-  xs: readonly number[],
-  ys: readonly number[],
-  x: number,
+  x_values: readonly number[],
+  y_values: readonly number[],
+  coord_x: number,
   tangents?: readonly number[], // pass precomputed monotone_tangents to avoid recomputing per call
 ): number {
-  const edge = endpoint_clamp(xs, ys, x)
+  const edge = endpoint_clamp(x_values, y_values, coord_x)
   if (edge !== null) return edge
-  const lo = bracket(xs, x)
-  const [x0, x1] = [xs[lo], xs[lo + 1]]
-  const span = x1 - x0
-  if (span === 0) return ys[lo]
-  const tang = tangents ?? monotone_tangents(xs, ys)
+  const lower = bracket(x_values, coord_x)
+  const [coord_x_0, coord_x_1] = [x_values[lower], x_values[lower + 1]]
+  const span = coord_x_1 - coord_x_0
+  if (span === 0) return y_values[lower]
+  const tang = tangents ?? monotone_tangents(x_values, y_values)
   // d3 monotoneX uses equally-spaced x control points, so x is linear in t. y is the cubic Bezier
   // through [y0, y0+dx*t0, y1-dx*t1, y1] with dx = span/3.
-  const dx = span / 3
-  const p0 = ys[lo]
-  const p1 = ys[lo] + dx * tang[lo]
-  const p2 = ys[lo + 1] - dx * tang[lo + 1]
-  const p3 = ys[lo + 1]
-  const frac = (x - x0) / span
-  const mu = 1 - frac
+  const delta_x = span / 3
+  const point_0 = y_values[lower]
+  const point_1 = y_values[lower] + delta_x * tang[lower]
+  const point = y_values[lower + 1] - delta_x * tang[lower + 1]
+  const point_3 = y_values[lower + 1]
+  const frac = (coord_x - coord_x_0) / span
+  const mean = 1 - frac
   return (
-    mu * mu * mu * p0 +
-    3 * mu * mu * frac * p1 +
-    3 * mu * frac * frac * p2 +
-    frac * frac * frac * p3
+    mean * mean * mean * point_0 +
+    3 * mean * mean * frac * point_1 +
+    3 * mean * frac * frac * point +
+    frac * frac * frac * point_3
   )
 }
 
@@ -171,37 +176,52 @@ const MONOTONE_LIKE = new Set<FillCurveType>([
 interface PreparedBoundary {
   points: Pt[]
   curve: FillCurveType
-  eval: (x: number) => number
+  eval: (coord_x: number) => number
 }
 
 // Piecewise (non-cubic) evaluation honoring linear and the three step curves
 const piecewise_eval = (
-  xs: readonly number[],
-  ys: readonly number[],
-  x: number,
+  x_values: readonly number[],
+  y_values: readonly number[],
+  coord_x: number,
   curve: FillCurveType,
 ): number => {
-  const edge = endpoint_clamp(xs, ys, x)
+  const edge = endpoint_clamp(x_values, y_values, coord_x)
   if (edge !== null) return edge
-  const idx = bracket(xs, x)
-  const [x0, x1, y0, y1] = [xs[idx], xs[idx + 1], ys[idx], ys[idx + 1]]
-  if (curve === `stepAfter`) return y0 // hold previous until the next knot
-  if (curve === `stepBefore`) return y1 // jump to next value immediately past a knot
-  if (curve === `step`) return x < (x0 + x1) / 2 ? y0 : y1 // switch at the midpoint
-  const span = x1 - x0
-  return span === 0 ? y0 : y0 + ((x - x0) / span) * (y1 - y0)
+  const idx = bracket(x_values, coord_x)
+  const [coord_x_0, coord_x_1, coord_y_0, coord_y_1] = [
+    x_values[idx],
+    x_values[idx + 1],
+    y_values[idx],
+    y_values[idx + 1],
+  ]
+  if (curve === `stepAfter`) return coord_y_0 // hold previous until the next knot
+  if (curve === `stepBefore`) return coord_y_1 // jump to next value immediately past a knot
+  if (curve === `step`) return coord_x < (coord_x_0 + coord_x_1) / 2 ? coord_y_0 : coord_y_1 // switch at the midpoint
+  const span = coord_x_1 - coord_x_0
+  return span === 0
+    ? coord_y_0
+    : coord_y_0 + ((coord_x - coord_x_0) / span) * (coord_y_1 - coord_y_0)
 }
 
 // Build a boundary with a y(x) evaluator that precomputes tangents (monotone) once
 function prepare_boundary(boundary: ResolvedBoundary): PreparedBoundary {
   const { points, curve } = boundary
-  const xs = points.map((pt) => pt.x)
-  const ys = points.map((pt) => pt.y)
+  const x_values = points.map((point) => point.x)
+  const y_values = points.map((point) => point.y)
   if (MONOTONE_LIKE.has(curve)) {
-    const tangents = monotone_tangents(xs, ys)
-    return { points, curve, eval: (x) => monotone_interpolate(xs, ys, x, tangents) }
+    const tangents = monotone_tangents(x_values, y_values)
+    return {
+      points,
+      curve,
+      eval: (coord_x) => monotone_interpolate(x_values, y_values, coord_x, tangents),
+    }
   }
-  return { points, curve, eval: (x) => piecewise_eval(xs, ys, x, curve) }
+  return {
+    points,
+    curve,
+    eval: (coord_x) => piecewise_eval(x_values, y_values, coord_x, curve),
+  }
 }
 
 // True when a boundary carries its own x (series or data-with-x), so it needs no companion x
@@ -212,12 +232,12 @@ const defines_own_x = (boundary: FillBoundary): boolean =>
 // Keep only finite points, sorted by x
 const clean_pts = (pts: Pt[]): Pt[] =>
   pts
-    .filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y))
-    .toSorted((a, b) => a.x - b.x)
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .toSorted((left_value, right_value) => left_value.x - right_value.x)
 
 // Zip parallel x/y arrays into finite, x-sorted points
-const finite_points = (xs: readonly number[], ys: readonly number[]): Pt[] =>
-  clean_pts(xs.map((x, idx) => ({ x, y: ys[idx] })))
+const finite_points = (x_values: readonly number[], y_values: readonly number[]): Pt[] =>
+  clean_pts(x_values.map((coord_x, idx) => ({ x: coord_x, y: y_values[idx] })))
 
 interface DomainContext {
   x_domain: Vec2
@@ -250,12 +270,12 @@ export function resolve_boundary_points(
   // x positions used for companion-relative boundaries
   const span_xs =
     companion && companion.length > 0
-      ? companion.map((pt) => pt.x)
+      ? companion.map((point) => point.x)
       : [domains.x_domain[0], domains.x_domain[1]]
 
   // flat horizontal edge at constant y (number / constant / axis boundaries)
-  const flat_edge = (y: number): ResolvedBoundary => ({
-    points: horizontal(span_xs, y),
+  const flat_edge = (coord_y: number): ResolvedBoundary => ({
+    points: horizontal(span_xs, coord_y),
     curve: `linear`,
   })
   // function / data edges trace with monotoneX by default; a series edge inherits the
@@ -285,22 +305,22 @@ export function resolve_boundary_points(
   }
   if (boundary.type === `function`) {
     // sample densely so the traced curve hugs the function
-    const [x0, x1] = [span_xs[0], span_xs[span_xs.length - 1]]
+    const [coord_x_0, coord_x_1] = [span_xs[0], span_xs[span_xs.length - 1]]
     const steps = 100
     const points: Pt[] = []
     for (let idx = 0; idx <= steps; idx++) {
-      const x = x0 + ((x1 - x0) * idx) / steps
-      const y = boundary.fn(x)
-      if (Number.isFinite(y)) points.push({ x, y })
+      const coord_x = coord_x_0 + ((coord_x_1 - coord_x_0) * idx) / steps
+      const coord_y = boundary.fn(coord_x)
+      if (Number.isFinite(coord_y)) points.push({ x: coord_x, y: coord_y })
     }
     return curved_edge(points)
   }
   if (boundary.type === `data`) {
     if (boundary.values.length === 0) return null
     if (boundary.x) {
-      const { x, values } = boundary
-      assert_aligned_lengths(`Fill boundary`, { x, values })
-      return curved_edge(finite_points(x, values))
+      const { x: coord_x, values } = boundary
+      assert_aligned_lengths(`Fill boundary`, { x: coord_x, values })
+      return curved_edge(finite_points(coord_x, values))
     }
     // No x: align values to the companion's x by index (or fraction when lengths differ)
     const num_values = boundary.values.length
@@ -315,42 +335,44 @@ export function resolve_boundary_points(
 }
 
 // Two points spanning [first, last] of xs at constant y
-const horizontal = (xs: readonly number[], y: number): Pt[] =>
-  xs.length === 0
+const horizontal = (x_values: readonly number[], coord_y: number): Pt[] =>
+  x_values.length === 0
     ? []
     : [
-        { x: xs[0], y },
-        { x: xs[xs.length - 1], y },
+        { x: x_values[0], y: coord_y },
+        { x: x_values[x_values.length - 1], y: coord_y },
       ]
 
 // Clip a prepared boundary to [xa, xb], inserting on-curve endpoints so the edge starts/ends at xa/xb
-function clip_boundary(boundary: PreparedBoundary, xa: number, xb: number): Pt[] {
-  const inside = boundary.points.filter((pt) => pt.x > xa && pt.x < xb)
-  const start = { x: xa, y: boundary.eval(xa) }
-  const end = { x: xb, y: boundary.eval(xb) }
+function clip_boundary(boundary: PreparedBoundary, start_x: number, end_x: number): Pt[] {
+  const first = partition_point(boundary.points, (point) => point.x <= start_x)
+  const last = partition_point(boundary.points, (point) => point.x < end_x)
+  const inside = boundary.points.slice(first, last)
+  const start = { x: start_x, y: boundary.eval(start_x) }
+  const end = { x: end_x, y: boundary.eval(end_x) }
   const pts = [start, ...inside, end]
-  return pts.filter((pt) => Number.isFinite(pt.y))
+  return pts.filter((point) => Number.isFinite(point.y))
 }
 
 // Binary-search the x where a `where` toggle occurs between two grid samples (boundaries linear between them)
 function where_crossing(
-  xa: number,
-  xb: number,
+  start_x: number,
+  end_x: number,
   ya_up: number,
   ya_lo: number,
   yb_up: number,
   yb_lo: number,
-  where: (x: number, y_up: number, y_lo: number) => boolean,
+  where: (coord_x: number, y_up: number, y_lo: number) => boolean,
 ): number {
-  let left = xa
-  let right = xb
-  const cond_left = where(xa, ya_up, ya_lo)
+  let left = start_x
+  let right = end_x
+  const cond_left = where(start_x, ya_up, ya_lo)
   for (let iter = 0; iter < 24; iter++) {
     const mid = (left + right) / 2
-    const frac = (mid - xa) / (xb - xa)
-    const up = ya_up + frac * (yb_up - ya_up)
-    const lo = ya_lo + frac * (yb_lo - ya_lo)
-    if (where(mid, up, lo) === cond_left) left = mid
+    const frac = (mid - start_x) / (end_x - start_x)
+    const up_vector = ya_up + frac * (yb_up - ya_up)
+    const lower = ya_lo + frac * (yb_lo - ya_lo)
+    if (where(mid, up_vector, lower) === cond_left) left = mid
     else right = mid
   }
   return (left + right) / 2
@@ -360,19 +382,22 @@ function where_crossing(
 function where_intervals(
   upper: PreparedBoundary,
   lower: PreparedBoundary,
-  xa: number,
-  xb: number,
+  start_x: number,
+  end_x: number,
   where: FillRegion[`where`],
 ): Vec2[] {
-  if (!where) return [[xa, xb]]
+  if (!where) return [[start_x, end_x]]
   // detection grid: native x of both boundaries within the overlap, plus the endpoints
   const grid = [
     ...new Set(
-      [xa, xb, ...upper.points.map((pt) => pt.x), ...lower.points.map((pt) => pt.x)].filter(
-        (x) => x >= xa && x <= xb,
-      ),
+      [
+        start_x,
+        end_x,
+        ...upper.points.map((point) => point.x),
+        ...lower.points.map((point) => point.x),
+      ].filter((coord_x) => coord_x >= start_x && coord_x <= end_x),
     ),
-  ].toSorted((a, b) => a - b)
+  ].toSorted((left_value, right_value) => left_value - right_value)
 
   const intervals: Vec2[] = []
   let seg_start: number | null = null
@@ -383,12 +408,20 @@ function where_intervals(
   let prev_lo = NaN
   let prev_passes = false
   for (let idx = 0; idx < grid.length; idx++) {
-    const x = grid[idx]
-    const up = upper.eval(x)
-    const lo = lower.eval(x)
-    const passes = where(x, up, lo)
+    const coord_x = grid[idx]
+    const up_vector = upper.eval(coord_x)
+    const lower_2 = lower.eval(coord_x)
+    const passes = where(coord_x, up_vector, lower_2)
     if (idx > 0 && passes !== prev_passes) {
-      const cross = where_crossing(prev_x, x, prev_up, prev_lo, up, lo, where)
+      const cross = where_crossing(
+        prev_x,
+        coord_x,
+        prev_up,
+        prev_lo,
+        up_vector,
+        lower_2,
+        where,
+      )
       if (seg_start !== null) {
         intervals.push([seg_start, cross])
         seg_start = null
@@ -396,18 +429,18 @@ function where_intervals(
         seg_start = cross
       }
     }
-    if (passes && seg_start === null) seg_start = x
+    if (passes && seg_start === null) seg_start = coord_x
     if (!passes && seg_start !== null) {
-      intervals.push([seg_start, x])
+      intervals.push([seg_start, coord_x])
       seg_start = null
     }
-    prev_x = x
-    prev_up = up
-    prev_lo = lo
+    prev_x = coord_x
+    prev_up = up_vector
+    prev_lo = lower_2
     prev_passes = passes
   }
-  if (seg_start !== null) intervals.push([seg_start, xb])
-  return intervals.filter(([a, b]) => b > a)
+  if (seg_start !== null) intervals.push([seg_start, end_x])
+  return intervals.filter(([value_a, value_b]) => value_b > value_a)
 }
 
 // Compute renderable fill segments (data coordinates) for a region.
@@ -438,36 +471,36 @@ export function compute_fill_segments(
 
   // Prepare once: precomputes monotone tangents / lookup so the where + clip passes below are
   // O(grid) instead of recomputing an O(n) evaluator on every sample.
-  const up = prepare_boundary(upper)
-  const lo = prepare_boundary(lower)
+  const up_vector = prepare_boundary(upper)
+  const lower_2 = prepare_boundary(lower)
 
   // x-overlap = intersection of both x-domains, constrained by region.x_range
   const [x_lo, x_hi] = region.x_range ?? [null, null]
-  const xa = Math.max(up.points[0].x, lo.points[0].x, x_lo ?? -Infinity)
-  const xb = Math.min(
-    up.points[up.points.length - 1].x,
-    lo.points[lo.points.length - 1].x,
+  const start_x = Math.max(up_vector.points[0].x, lower_2.points[0].x, x_lo ?? -Infinity)
+  const end_x = Math.min(
+    up_vector.points[up_vector.points.length - 1].x,
+    lower_2.points[lower_2.points.length - 1].x,
     x_hi ?? Infinity,
   )
-  if (!(xb > xa)) return []
+  if (!(end_x > start_x)) return []
 
   const [y_min, y_max] = region.y_range ?? [null, null]
-  const clamp_y = (pt: Pt): Pt => ({
-    x: pt.x,
-    y: Math.min(y_max ?? Infinity, Math.max(y_min ?? -Infinity, pt.y)),
+  const clamp_y = (point: Pt): Pt => ({
+    x: point.x,
+    y: Math.min(y_max ?? Infinity, Math.max(y_min ?? -Infinity, point.y)),
   })
 
-  const intervals = where_intervals(up, lo, xa, xb, region.where)
+  const intervals = where_intervals(up_vector, lower_2, start_x, end_x, region.where)
   const segments: FillSegment[] = []
-  for (const [sa, sb] of intervals) {
-    const up_pts = clip_boundary(up, sa, sb).map(clamp_y)
-    const lo_pts = clip_boundary(lo, sa, sb).map(clamp_y)
+  for (const [shift_a, shift_b] of intervals) {
+    const up_pts = clip_boundary(up_vector, shift_a, shift_b).map(clamp_y)
+    const lo_pts = clip_boundary(lower_2, shift_a, shift_b).map(clamp_y)
     if (up_pts.length >= 2 && lo_pts.length >= 2) {
       segments.push({
         upper: up_pts,
         lower: lo_pts,
-        upper_curve: up.curve,
-        lower_curve: lo.curve,
+        upper_curve: up_vector.curve,
+        lower_curve: lower_2.curve,
       })
     }
   }
@@ -500,8 +533,8 @@ export const line_curve_factory = (curve: LineCurve | undefined): CurveFactory =
 
 const trace = (points: readonly Pt[], curve_type: FillCurveType): string =>
   line<Pt>()
-    .x((pt) => pt.x)
-    .y((pt) => pt.y)
+    .x((point) => point.x)
+    .y((point) => point.y)
     .curve(get_curve(curve_type))(points as Pt[]) ?? ``
 
 // Generate the closed SVG path for a fill segment (pixel coordinates). The upper edge is traced
@@ -535,13 +568,13 @@ export function convert_error_band_to_fill_region(
   const resolved = resolve_series_ref(error_band.series, series)
   if (!resolved) return null
 
-  const { x, y } = resolved
+  const { x: coord_x, y: coord_y } = resolved
   const { error } = error_band
 
   const [upper_err, lower_err] =
     typeof error === `object` && `upper` in error
-      ? [expand_error(error.upper, y.length), expand_error(error.lower, y.length)]
-      : [expand_error(error, y.length), expand_error(error, y.length)]
+      ? [expand_error(error.upper, coord_y.length), expand_error(error.lower, coord_y.length)]
+      : [expand_error(error, coord_y.length), expand_error(error, coord_y.length)]
 
   return {
     id: error_band.id,
@@ -549,8 +582,16 @@ export function convert_error_band_to_fill_region(
     // band edges are data boundaries (default monotoneX); inherit the central series' line
     // curve so the band traces with the same curve as the line it brackets
     curve: line_curve_to_fill(resolved.line_style?.curve),
-    upper: { type: `data`, x, values: y.map((val, idx) => val + upper_err[idx]) },
-    lower: { type: `data`, x, values: y.map((val, idx) => val - lower_err[idx]) },
+    upper: {
+      type: `data`,
+      x: coord_x,
+      values: coord_y.map((val, idx) => val + upper_err[idx]),
+    },
+    lower: {
+      type: `data`,
+      x: coord_x,
+      values: coord_y.map((val, idx) => val - lower_err[idx]),
+    },
     fill: error_band.fill ?? default_color ?? `#4e79a7`,
     pattern: error_band.pattern,
     fill_opacity: error_band.fill_opacity ?? 0.3,

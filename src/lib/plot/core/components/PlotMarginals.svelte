@@ -24,17 +24,18 @@
     curves_max,
     default_axis_for_side,
     default_marginal_label,
-    marginal_hit,
+    create_marginal_hit_test,
     marginal_strip_rect,
     marginal_value_format,
     marginal_value_scale,
   } from '$lib/plot/core/marginals'
+  import { create_scale } from '$lib/plot/core/scales'
   import { line_curve_factory } from '$lib/plot/core/fill-utils'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { format_value } from '$lib/labels'
   import { ticks as d3_ticks } from 'd3-array'
-  import { area, curveMonotoneX, curveMonotoneY, line } from 'd3-shape'
+  import { curveMonotoneX, curveMonotoneY, line } from 'd3-shape'
   import { portal } from 'svelte-widgets/attachments'
 
   let {
@@ -43,15 +44,17 @@
     width,
     height,
     pad,
+    outer_pad = { t: 0, b: 0, l: 0, r: 0 },
     has_axis = { top: false, bottom: true, left: true, right: false },
     axes,
-    id,
+    id: identifier,
   }: {
     marginals: ResolvedMarginals
     series: MarginalSeriesInput[]
     width: number
     height: number
     pad: Required<Sides>
+    outer_pad?: Required<Sides> // space occupied by outside legends/colorbars
     has_axis?: Record<MarginalSide, boolean>
     axes: MarginalAxes
     id: string // unique per host plot; used to scope each strip's clipPath
@@ -64,12 +67,12 @@
   // has no scaling viewBox, so wrapper px = svg user-space px = the coords PlotTooltip expects.
   const on_marginal_move = (
     event: PointerEvent,
-    ctx: MarginalRenderContext,
+    hit_test: (pixel_x: number, pixel_y: number) => MarginalHover | null,
   ): MarginalHover | null => {
     const svg = (event.currentTarget as Element).closest(`svg`)
     if (!svg) return null
     const box = svg.getBoundingClientRect()
-    return marginal_hit(ctx, event.clientX - box.left, event.clientY - box.top)
+    return hit_test(event.clientX - box.left, event.clientY - box.top)
   }
 
   // Keep strip pointer/mouse events off the host plot's own handlers (hover, pan, zoom)
@@ -129,7 +132,6 @@
     bars: Rect[]
     area_path: string
     line_path: string
-    rug_path: string
   }
   type ValueAxisRender = {
     spine: { x1: number; y1: number; x2: number; y2: number }
@@ -144,14 +146,16 @@
     rect: Rect
     clip_id: string
     ctx: MarginalRenderContext
+    hit_test: ((pixel_x: number, pixel_y: number) => MarginalHover | null) | null
     curves: CurveRender[]
+    transform?: string
     value_axis: ValueAxisRender | null
   }
 
   // The axis a marginal binds to (x2/y2 fall back to x1/y1), with scale_type defaulted to linear
   const axis_props = (axis: MarginalAxisBinding) => {
-    const ax = axes[axis] ?? (axis === `x2` ? axes.x : axes.y)
-    return { ...ax, scale_type: ax.scale_type ?? `linear` }
+    const axis_x = axes[axis] ?? (axis === `x2` ? axes.x : axes.y)
+    return { ...axis_x, scale_type: axis_x.scale_type ?? `linear` }
   }
 
   // Values a series contributes for a given side (x for top/bottom, y for left/right)
@@ -169,31 +173,27 @@
     is_x: boolean,
   ): { positions: number[]; weights: number[] | undefined } => {
     const positions: number[] = []
-    const weights: number[] = []
-    let has_weight = false
+    const has_weight = list.some(
+      (srs) => srs.weight && series_values(srs, is_x).positions.length,
+    )
+    const weights: number[] | undefined = has_weight ? [] : undefined
     for (const srs of list) {
       const { positions: pos, weights: wts } = series_values(srs, is_x)
       for (let idx = 0; idx < pos.length; idx++) {
         positions.push(pos[idx])
-        if (wts) {
-          has_weight = true
-          weights.push(wts[idx])
-        } else weights.push(1)
+        weights?.push(wts ? wts[idx] : 1)
       }
     }
-    return { positions, weights: has_weight ? weights : undefined }
+    return { positions, weights }
   }
 
   // Build the SVG primitives for one curve given the side's scales
   const build_curve_render = (
     curve: MarginalSeriesCurve,
-    side: MarginalSide,
-    is_x: boolean,
-    pos_scale: ScaleFn,
-    val_scale: ScaleFn,
-    baseline: number,
-    config: ResolvedMarginalConfig,
+    ctx: MarginalRenderContext,
   ): CurveRender => {
+    const { side, positional_scale: pos_scale, value_scale: val_scale, baseline, config } = ctx
+    const is_x = side === `top` || side === `bottom`
     const color = config.color ?? curve.color
     const fill = config.fill ?? color
     const fill_opacity = config.fill_opacity ?? 0.6
@@ -210,7 +210,6 @@
       bars: [],
       area_path: ``,
       line_path: ``,
-      rug_path: ``,
     }
 
     if (data.kind === `bars`) {
@@ -235,7 +234,9 @@
     }
 
     if (data.kind === `line`) {
-      const raw_pts = data.points.filter((pt) => isFinite(pt.pos) && isFinite(pt.value))
+      const raw_pts = data.points.filter(
+        (point) => isFinite(point.pos) && isFinite(point.value),
+      )
       if (raw_pts.length < 2) return base
       // area fills (kde/cdf) read better lighter than histogram bars
       base.fill_opacity = config.fill_opacity ?? 0.5
@@ -245,17 +246,23 @@
       const curve_fn = curve_name === `monotone` ? monotone : line_curve_factory(curve_name)
       // Position maps to x for top/bottom strips and to y for left/right strips; value is the
       // cross-axis. The line generator is symmetric; the area differs only in which axis baselines.
-      const px = (pt: LinePt) => (is_x ? pos_scale(pt.pos) : val_scale(pt.value))
-      const py = (pt: LinePt) => (is_x ? val_scale(pt.value) : pos_scale(pt.pos))
+      const pixel_x = (point: LinePt) => (is_x ? pos_scale(point.pos) : val_scale(point.value))
+      const pixel_y = (point: LinePt) => (is_x ? val_scale(point.value) : pos_scale(point.pos))
       // drop points whose scaled pixels are non-finite (degenerate/log scales) so the path stays
       // valid — mirrors marginal_hit, which also skips non-finite scaled coords
-      const pts = raw_pts.filter((pt) => isFinite(px(pt)) && isFinite(py(pt)))
+      const pts = raw_pts.filter(
+        (point) => isFinite(pixel_x(point)) && isFinite(pixel_y(point)),
+      )
       if (pts.length < 2) return base
-      const area_gen = is_x
-        ? area<LinePt>().x(px).y0(baseline).y1(py)
-        : area<LinePt>().y(py).x0(baseline).x1(px)
-      base.line_path = line<LinePt>().x(px).y(py).curve(curve_fn)(pts) ?? ``
-      base.area_path = area_gen.curve(curve_fn)(pts) ?? ``
+      base.line_path =
+        line<LinePt>().x(pixel_x).y(pixel_y).curve(curve_fn).digits(6)(pts) ?? ``
+      // The fill shares the line's curved edge. Its return edge is straight, so
+      // avoid interpolating the curve twice and tracing a baseline vertex per sample.
+      const first = pos_scale(pts[0].pos)
+      const last = pos_scale(pts[pts.length - 1].pos)
+      base.area_path = is_x
+        ? `${base.line_path}L${last},${baseline}L${first},${baseline}Z`
+        : `${base.line_path}L${baseline},${last}L${baseline},${first}Z`
       return base
     }
 
@@ -263,15 +270,13 @@
     const rug_len = Math.min(config.size, 10)
     const dir = side === `top` || side === `left` ? -1 : 1
     const tick_end = baseline + dir * rug_len
-    let rug_path = ``
     for (const position of data.positions) {
-      const px = pos_scale(position)
-      if (!isFinite(px)) continue
-      rug_path += is_x
-        ? `M${px} ${baseline}L${px} ${tick_end}`
-        : `M${baseline} ${px}L${tick_end} ${px}`
+      const pixel_x = pos_scale(position)
+      if (!isFinite(pixel_x)) continue
+      base.line_path += is_x
+        ? `M${pixel_x} ${baseline}L${pixel_x} ${tick_end}`
+        : `M${baseline} ${pixel_x}L${tick_end} ${pixel_x}`
     }
-    base.rug_path = rug_path
     return base
   }
 
@@ -289,32 +294,37 @@
   ): ValueAxisRender => {
     const fmt = marginal_value_format(config)
     const title = default_marginal_label(config)
-    const [v0, v1] = [val_scale(domain[0]), val_scale(domain[1])] // spine ends in px
+    const [vector_0, vector_1] = [val_scale(domain[0]), val_scale(domain[1])] // spine ends in px
     const gap = 6 // spine -> tick label
     // value px + label per tick, minus non-finite and the baseline tick (v0, plot-facing edge):
     // it's only `gap` px from the host plot's adjacent axis tick, so they'd overlap (e.g. a CDF
     // `0%` over the plot's top y-tick). The spine still spans full range — zero edge implied.
     const tick_px = d3_ticks(domain[0], domain[1], 3)
       .map((value) => ({ vpx: val_scale(value), text: format_value(value, fmt) }))
-      .filter(({ vpx }) => isFinite(vpx) && Math.abs(vpx - v0) > 1)
+      .filter(({ vpx }) => isFinite(vpx) && Math.abs(vpx - vector_0) > 1)
     if (is_x) {
       // labels left of the spine (anchor end); title rotated beyond the widest label
       const label_w = Math.max(0, ...tick_px.map(({ text }) => text.length)) * 6 // ~px at 0.65em
-      const ty = rect.y + rect.height / 2
+      const translate_y = rect.y + rect.height / 2
       const title_x = rect.x - gap - label_w - 10
       return {
-        spine: { x1: rect.x, y1: v0, x2: rect.x, y2: v1 },
+        spine: { x1: rect.x, y1: vector_0, x2: rect.x, y2: vector_1 },
         ticks: tick_px.map(({ vpx, text }) => ({ x: rect.x - gap, y: vpx, text })),
         anchor: `end`,
         baseline: `central`,
-        title: { x: title_x, y: ty, text: title, transform: `rotate(-90, ${title_x}, ${ty})` },
+        title: {
+          x: title_x,
+          y: translate_y,
+          text: title,
+          transform: `rotate(-90, ${title_x}, ${translate_y})`,
+        },
       }
     }
     // value axis at the strip's BOTTOM edge (= host plot's x-axis baseline) so it reads as an
     // extension of the main x-axis; labels hang below the spine, title below them
     const axis_y = rect.y + rect.height
     return {
-      spine: { x1: v0, y1: axis_y, x2: v1, y2: axis_y },
+      spine: { x1: vector_0, y1: axis_y, x2: vector_1, y2: axis_y },
       ticks: tick_px.map(({ vpx, text }) => ({ x: vpx, y: axis_y + gap, text })),
       anchor: `middle`,
       baseline: `hanging`,
@@ -322,30 +332,38 @@
     }
   }
 
-  // Compute the render model for every active side
-  const side_renders = $derived.by<SideRender[]>(() => {
-    if (!width || !height) return []
-    const visible = series.filter((srs) => srs.visible ?? true)
-    const out: SideRender[] = []
+  // Keep numeric axis inputs separate from pixel scales: host axes objects can be
+  // replaced on resize while their data domains remain unchanged.
+  const data_axis = (axis: MarginalAxisBinding) => {
+    const source = $derived(axes[axis] ?? (axis === `x2` ? axes.x : axes.y))
+    const lower = $derived(source.range[0])
+    const upper = $derived(source.range[1])
+    const scale_type = $derived(source.scale_type ?? `linear`)
+    return {
+      get range(): Vec2 {
+        return [lower, upper]
+      },
+      get scale_type() {
+        return scale_type
+      },
+    }
+  }
+  const data_axes = {
+    x: data_axis(`x`),
+    x2: data_axis(`x2`),
+    y: data_axis(`y`),
+    y2: data_axis(`y2`),
+  }
 
-    for (const side of MARGINAL_SIDES) {
+  const side_data = $derived.by(() => {
+    const visible = series.filter((srs) => srs.visible ?? true)
+    return MARGINAL_SIDES.flatMap((side) => {
       const config = marginals[side]
-      if (!config) continue
+      if (!config) return []
       const is_x = side === `top` || side === `bottom`
       const axis = config.axis ?? default_axis_for_side(side)
-      const {
-        scale: pos_scale,
-        range: positional_range,
-        scale_type,
-        format,
-        tick_label,
-        label: axis_title,
-      } = axis_props(axis)
-      const rect = marginal_strip_rect(side, pad, width, height, config, has_axis[side])
-      if (rect.width <= 0 || rect.height <= 0) continue
-
+      const { range: positional_range, scale_type } = data_axes[axis]
       const ctx_base = { config, side, positional_range, scale_type }
-
       // Only summarize series that render on the axis this side binds to (a top/x1 marginal
       // ignores x2 series; a right/y1 marginal ignores y2 series)
       const axis_series = visible.filter((srs) =>
@@ -385,38 +403,103 @@
         curves = single(compute(positions, weights))
       }
 
+      const max = curves_max(curves.map((entry) => entry.curve))
+      const domain: Vec2 = config.value_range ?? [0, max * 1.05]
+      const data = { ...ctx_base, series: axis_series, curves }
+      // Interpolate once in a fixed square. Catmull–Rom uses Euclidean distances,
+      // so changing the aspect ratio requires interpolating it again in pixels.
+      let geometry: {
+        curves: CurveRender[]
+        hit_test: ReturnType<typeof create_marginal_hit_test> | null
+      } | null = null
+      if (
+        !config.snippet &&
+        config.curve !== `catmull-rom` &&
+        curves.every(({ curve }) => curve.kind === `line`)
+      ) {
+        const rect = { x: 0, y: 0, width: 1024, height: 1024 }
+        const positional_scale = create_scale(scale_type, positional_range, [0, 1024])
+        const { scale: value_scale, baseline } = marginal_value_scale(side, rect, domain)
+        const ctx = { ...data, rect, positional_scale, value_scale, baseline }
+        geometry = {
+          curves: curves.map((curve) => build_curve_render(curve, ctx)),
+          hit_test: is_hoverable(config) ? create_marginal_hit_test(ctx) : null,
+        }
+      }
+      return [
+        {
+          axis,
+          is_x,
+          data,
+          max,
+          domain,
+          geometry,
+        },
+      ]
+    })
+  })
+
+  // Projection and styling depend on layout; distributions do not.
+  const side_renders = $derived.by<SideRender[]>(() => {
+    if (!width || !height) return []
+    const out: SideRender[] = []
+    for (const { axis, is_x, data, max, domain, geometry } of side_data) {
+      const { side, config, curves } = data
+      const { pixel_range, format, tick_label, label: axis_title } = axis_props(axis)
+      const pos_scale = create_scale(data.scale_type, data.positional_range, pixel_range)
+      const rect = marginal_strip_rect(
+        side,
+        pad,
+        width,
+        height,
+        config,
+        has_axis[side],
+        outer_pad,
+      )
+      if (rect.width <= 0 || rect.height <= 0) continue
+
       // Shared per-side value scale so per-series curves are directly comparable. Auto-scale adds
       // 5% headroom above the peak so the tallest curve's line stroke isn't clipped at the strip's
       // far edge (the clip rect sits exactly at value=max). A pinned value_range is honored as-is.
-      const max = curves_max(curves.map((entry) => entry.curve))
-      const domain: Vec2 = config.value_range ?? [0, max * 1.05]
       const { scale: val_scale, baseline } = marginal_value_scale(side, rect, domain)
 
       const ctx: MarginalRenderContext = {
-        ...ctx_base,
+        ...data,
         rect,
         positional_scale: pos_scale,
         value_scale: val_scale,
         baseline,
-        curves,
-        series: axis_series,
         format,
         tick_label,
         axis_title,
       }
 
+      const offset_x = is_x ? pixel_range[0] : rect.x
+      const offset_y = is_x ? rect.y : pixel_range[0]
+      const pos_span = pixel_range[1] - pixel_range[0]
+      const scale_x = (is_x ? pos_span : rect.width) / 1024
+      const scale_y = (is_x ? rect.height : pos_span) / 1024
+      const cached_hit = geometry?.hit_test
+      const hit_test =
+        cached_hit && pos_span !== 0
+          ? (pixel_x: number, pixel_y: number) => cached_hit(pixel_x, pixel_y, ctx)
+          : is_hoverable(config)
+            ? create_marginal_hit_test(ctx)
+            : null
       out.push({
         side,
         config,
         rect,
-        clip_id: `${id}-${side}`,
+        clip_id: `${identifier}-${side}`,
         ctx,
+        hit_test,
+        transform: geometry
+          ? `translate(${offset_x} ${offset_y}) scale(${scale_x} ${scale_y})`
+          : undefined,
         // A snippet renders the strip itself, so skip building the built-in SVG primitives
-        curves: config.snippet
-          ? []
-          : curves.map((curve) =>
-              build_curve_render(curve, side, is_x, pos_scale, val_scale, baseline, config),
-            ),
+        curves:
+          geometry?.curves ??
+          (config.snippet ? [] : curves.map((curve) => build_curve_render(curve, ctx))),
         // Value axis only when there's something to scale: a pinned value_range, or positive
         // non-rug content (max > 0). This skips rug (no value), empty curves (degenerate [0,0]
         // domain), and snippets (which draw their own).
@@ -431,7 +514,8 @@
 </script>
 
 {#each side_renders as render (render.side)}
-  {@const { side, config, rect, clip_id, ctx, curves, value_axis } = render}
+  {@const { side, config, rect, clip_id, ctx, hit_test, curves, transform, value_axis } =
+    render}
   <defs>
     <clipPath id={clip_id}>
       <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
@@ -462,20 +546,11 @@
               opacity={curve.opacity}
             />
           {/each}
-        {:else if curve.kind === `rug`}
-          {#if curve.rug_path}
-            <path
-              d={curve.rug_path}
-              fill="none"
-              stroke={curve.stroke}
-              stroke-width={curve.stroke_width}
-              opacity={curve.opacity}
-            />
-          {/if}
         {:else}
           {#if curve.area_path}
             <path
               d={curve.area_path}
+              {transform}
               fill={curve.fill}
               fill-opacity={curve.fill_opacity}
               stroke="none"
@@ -485,6 +560,8 @@
           {#if curve.line_path}
             <path
               d={curve.line_path}
+              {transform}
+              vector-effect={curve.kind === `line` ? `non-scaling-stroke` : undefined}
               fill="none"
               stroke={curve.stroke}
               stroke-width={curve.stroke_width}
@@ -524,7 +601,7 @@
        opts back in) and only on built-in strips the user hasn't opted out of via hover:false.
        stopPropagation keeps strip pointer/mouse moves from reaching the host plot's own
        hover/pan-zoom handlers (avoids a double tooltip and accidental drag-from-strip). -->
-  {#if is_hoverable(config)}
+  {#if hit_test}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <rect
       class={[`marginal-hit`, `marginal-hit-${side}`]}
@@ -536,7 +613,7 @@
       style="pointer-events: all"
       onpointermove={(event) => {
         event.stopPropagation()
-        hovered = on_marginal_move(event, ctx)
+        hovered = on_marginal_move(event, hit_test)
       }}
       onpointerleave={() => (hovered = null)}
       onmousemove={stop}
@@ -550,7 +627,7 @@
      portal relocates to the plot wrapper (an svg can't host an HTML sibling), so it reuses the
      same PlotTooltip, positioning, and z-index as each host plot's own tooltip. Only mounted when
      some strip is actually hoverable (skips the empty portal on plots with no/snippet marginals). -->
-{#if side_renders.some((render) => is_hoverable(render.config))}
+{#if side_renders.some((render) => render.hit_test)}
   <foreignObject width="0" height="0" style="overflow: visible">
     <div
       xmlns="http://www.w3.org/1999/xhtml"

@@ -20,14 +20,14 @@ describe(`compute_sankey_layout`, () => {
     expect(nodes).toHaveLength(3)
     expect(links).toHaveLength(2)
 
-    const [a, b, c] = nodes
-    expect(a.depth).toBe(0)
-    expect(b.depth).toBe(0)
-    expect(c.depth).toBe(1)
+    const [value_a, value_b, value_c] = nodes
+    expect(value_a.depth).toBe(0)
+    expect(value_b.depth).toBe(0)
+    expect(value_c.depth).toBe(1)
     // node.value = max(sum incoming, sum outgoing)
-    expect(a.value).toBe(1)
-    expect(b.value).toBe(2)
-    expect(c.value).toBe(3)
+    expect(value_a.value).toBe(1)
+    expect(value_b.value).toBe(2)
+    expect(value_c.value).toBe(3)
   })
 
   test(`node boxes and link ribbons match a raw d3-sankey layout to 1e-9`, () => {
@@ -61,9 +61,9 @@ describe(`compute_sankey_layout`, () => {
     })
     // hand-checked geometry: columns at x = 0 and 380; A (1/3 of the 290px left after
     // one padding gap) sits on top of B, which ends at the bottom edge
-    const [a, b, c] = nodes
-    expect([a.x0, a.x1, c.x0, c.x1]).toEqual([0, 20, 380, 400])
-    expect([a.y0, a.y1, b.y0, b.y1]).toEqual(
+    const [value_a, pad_bottom, value_c] = nodes
+    expect([value_a.x0, value_a.x1, value_c.x0, value_c.x1]).toEqual([0, 20, 380, 400])
+    expect([value_a.y0, value_a.y1, pad_bottom.y0, pad_bottom.y1]).toEqual(
       [0, 290 / 3, 290 / 3 + 10, 300].map((val) => expect.closeTo(val, 9)),
     )
     // ribbons run from the source's right edge to the target's left edge with the
@@ -76,8 +76,12 @@ describe(`compute_sankey_layout`, () => {
 
   test(`column heights respect d3 value scaling`, () => {
     const { nodes } = compute_sankey_layout(tri, dims)
-    const [a, b, c] = nodes
-    const [a_h, b_h, c_h] = [a.y1 - a.y0, b.y1 - b.y0, c.y1 - c.y0]
+    const [value_a, value_b, value_c] = nodes
+    const [a_h, b_h, c_h] = [
+      value_a.y1 - value_a.y0,
+      value_b.y1 - value_b.y0,
+      value_c.y1 - value_c.y0,
+    ]
     // busiest column (A + B + one padding gap) fills the full height; d3 scales all
     // columns by that limiting factor, so the lone node C does NOT fill the height
     expect(a_h + b_h + dims.node_padding).toBeCloseTo(dims.height, 6)
@@ -184,7 +188,9 @@ describe(`compute_sankey_layout`, () => {
     }
     const { nodes, links } = compute_sankey_layout(data, dims)
     expect(nodes).toHaveLength(3)
-    expect(nodes.every((nd) => Number.isFinite(nd.y0) && Number.isFinite(nd.y1))).toBe(true)
+    expect(nodes.every((node) => Number.isFinite(node.y0) && Number.isFinite(node.y1))).toBe(
+      true,
+    )
     for (const link of links) expect(link.path).not.toContain(`NaN`)
   })
 
@@ -233,7 +239,7 @@ describe(`compute_sankey_layout`, () => {
       links: [{ source: 0, target: 1, value: 5 }],
     }
     const { nodes } = compute_sankey_layout(data, dims)
-    expect(nodes.map((nd) => nd.label)).toEqual([`A`, `B`])
+    expect(nodes.map((node) => node.label)).toEqual([`A`, `B`])
     for (const node of nodes) {
       expect(node.y0).toBeGreaterThanOrEqual(-1e-6)
       expect(node.y1).toBeLessThanOrEqual(dims.height + 1e-6)
@@ -248,7 +254,7 @@ describe(`compute_sankey_layout`, () => {
       links: [{ source: 0, target: 2, value: 3 }], // skips node 1
     }
     const { nodes, links } = compute_sankey_layout(data, dims)
-    expect(nodes.map((nd) => nd.node_idx)).toEqual([0, 2])
+    expect(nodes.map((node) => node.node_idx)).toEqual([0, 2])
     expect(links[0].source.node_idx).toBe(0)
     expect(links[0].target.node_idx).toBe(2)
   })
@@ -340,7 +346,7 @@ describe(`sankey_from_links`, () => {
     expect(data.nodes.map((node) => node.label)).toEqual([`A`, `B`, `2`])
     // the layout resolves the highest-indexed link: node 2 collects both inflows
     const { nodes } = compute_sankey_layout(data, dims)
-    expect(nodes.map((nd) => [nd.label, nd.value])).toEqual([
+    expect(nodes.map((node) => [node.label, node.value])).toEqual([
       [`A`, 10],
       [`B`, 20],
       [`2`, 30],
@@ -352,7 +358,10 @@ describe(`sankey_from_links`, () => {
     // compute_sankey_layout must drop, else they pile up/overflow below the plot
     const data = sankey_from_links([0], [1], [5], [`A`, `B`, `extra1`, `extra2`])
     expect(data.nodes).toHaveLength(4) // builder keeps every label
-    expect(compute_sankey_layout(data, dims).nodes.map((nd) => nd.label)).toEqual([`A`, `B`])
+    expect(compute_sankey_layout(data, dims).nodes.map((node) => node.label)).toEqual([
+      `A`,
+      `B`,
+    ])
   })
 
   test.each([

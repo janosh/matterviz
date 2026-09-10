@@ -14,15 +14,15 @@
 </script>
 
 {#if start && current && isFinite(start.x) && isFinite(start.y) && isFinite(current.x) && isFinite(current.y)}
-  {@const x = Math.min(start.x, current.x)}
-  {@const y = Math.min(start.y, current.y)}
+  {@const coord_x = Math.min(start.x, current.x)}
+  {@const coord_y = Math.min(start.y, current.y)}
   {@const rect_width = Math.abs(start.x - current.x)}
   {@const rect_height = Math.abs(start.y - current.y)}
   <rect
     class="zoom-rect"
     class:select={mode === `select`}
-    {x}
-    {y}
+    x={coord_x}
+    y={coord_y}
     width={rect_width}
     height={rect_height}
   />

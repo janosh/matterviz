@@ -212,24 +212,24 @@ Simulated space group distributions from Materials Project database:
 
     // Monoclinic (3-15): ~20-25% of materials, especially 14 and 15
     for (let idx = 0; idx < 100; idx++) {
-      const sg =
+      const space_group =
         Math.random() < 0.6
           ? Math.random() < 0.5
             ? 14
             : 15
           : Math.floor(Math.random() * 13) + 3
-      data.push(sg)
+      data.push(space_group)
     }
 
     // Orthorhombic (16-74): ~30-35% of materials, especially 62, 63
     for (let idx = 0; idx < 140; idx++) {
-      const sg =
+      const space_group =
         Math.random() < 0.5
           ? Math.random() < 0.5
             ? 62
             : 63
           : Math.floor(Math.random() * 59) + 16
-      data.push(sg)
+      data.push(space_group)
     }
 
     // Tetragonal (75-142): ~10-15% of materials
@@ -239,30 +239,30 @@ Simulated space group distributions from Materials Project database:
 
     // Trigonal (143-167): ~5-8% of materials, R-3 family common
     for (let idx = 0; idx < 30; idx++) {
-      const sg =
+      const space_group =
         Math.random() < 0.4
           ? Math.random() < 0.5
             ? 148
             : 166
           : Math.floor(Math.random() * 25) + 143
-      data.push(sg)
+      data.push(space_group)
     }
 
     // Hexagonal (168-194): ~5-8% of materials, P63/mmc common
     for (let idx = 0; idx < 28; idx++) {
-      const sg = Math.random() < 0.4 ? 194 : Math.floor(Math.random() * 27) + 168
-      data.push(sg)
+      const space_group = Math.random() < 0.4 ? 194 : Math.floor(Math.random() * 27) + 168
+      data.push(space_group)
     }
 
     // Cubic (195-230): ~15-20% of materials, Fm-3m very common
     for (let idx = 0; idx < 70; idx++) {
-      const sg =
+      const space_group =
         Math.random() < 0.4
           ? 225
           : Math.random() < 0.3
             ? 229
             : Math.floor(Math.random() * 36) + 195
-      data.push(sg)
+      data.push(space_group)
     }
 
     return data

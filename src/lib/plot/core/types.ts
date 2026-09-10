@@ -161,8 +161,8 @@ type AlignedSeries = {
 }
 
 export function assert_series_lengths(series: AlignedSeries, series_idx?: number): void {
-  const { id, label, x, y, z, raw_y } = series
-  const name = id ?? label
+  const { id: identifier, label, x: coord_x, y: coord_y, z: coord_z, raw_y } = series
+  const name = identifier ?? label
   const where =
     name === undefined
       ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
@@ -177,7 +177,7 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
       ),
     ),
   )
-  assert_aligned_lengths(where, { x, y, z, raw_y, ...error_arrays })
+  assert_aligned_lengths(where, { x: coord_x, y: coord_y, z: coord_z, raw_y, ...error_arrays })
   series.line_underlays?.forEach((underlay, idx) =>
     assert_aligned_lengths(`${where} line_underlays[${idx}]`, {
       x: underlay.x,
@@ -425,10 +425,10 @@ export interface LegendItem {
 export type UserContentProps = {
   height: number
   width: number
-  x_scale_fn: (x: number) => number
-  x2_scale_fn?: (x: number) => number
-  y_scale_fn: (y: number) => number
-  y2_scale_fn?: (y: number) => number
+  x_scale_fn: (coord_x: number) => number
+  x2_scale_fn?: (coord_x: number) => number
+  y_scale_fn: (coord_y: number) => number
+  y2_scale_fn?: (coord_y: number) => number
   pad: Required<Sides>
   x_range: Vec2
   x2_range?: Vec2
@@ -455,6 +455,7 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   color?: string
   // Hatch/texture over the bar fill: a shape name, plotly-style shorthand or PatternOptions
   pattern?: FillPattern
+  // Width in category-axis units; defaults to 0.75 for string categories, 0.5 for numeric x.
   bar_width?: number | readonly number[]
   visible?: boolean
   metadata?: Metadata[] | Metadata
@@ -573,7 +574,7 @@ export type AxisLoader<Result> = (
 //   - `fn`: maps data values straight to colors over the domain it declares
 export type ColorBarScale =
   | D3InterpolateName
-  | { interpolator: (t: number) => string }
+  | { interpolator: (fraction: number) => string }
   | { fn: (value: number) => string; domain?: Vec2 }
 
 // Option for color scale dropdown in ColorBar

@@ -58,7 +58,7 @@
 </script>
 
 {#if endpoints && ref_line.visible !== false}
-  {@const [x1, y1, x2, y2] = endpoints}
+  {@const [coord_x_1, coord_y_1, coord_x_2, coord_y_2] = endpoints}
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <g
@@ -91,10 +91,10 @@
     <g clip-path="url(#{clip_path_id})">
       <!-- Invisible hit area for easier interaction (8px wide) -->
       <line
-        {x1}
-        {y1}
-        {x2}
-        {y2}
+        x1={coord_x_1}
+        y1={coord_y_1}
+        x2={coord_x_2}
+        y2={coord_y_2}
         stroke="transparent"
         stroke-width="8"
         style:pointer-events="stroke"
@@ -102,10 +102,10 @@
 
       <!-- Visible line -->
       <line
-        {x1}
-        {y1}
-        {x2}
-        {y2}
+        x1={coord_x_1}
+        y1={coord_y_1}
+        x2={coord_x_2}
+        y2={coord_y_2}
         stroke={style.color}
         stroke-width={style.width}
         stroke-dasharray={style.dash || null}
@@ -117,8 +117,16 @@
     <!-- Annotation (outside clip-path to remain visible) -->
     {#if annotation_placement && ref_line.annotation}
       {@const anno = ref_line.annotation}
-      {@const { x, y, text_anchor, dominant_baseline, rotation } = annotation_placement}
-      {@const annotation_transform = rotation ? `rotate(${rotation}, ${x}, ${y})` : undefined}
+      {@const {
+        x: coord_x,
+        y: coord_y,
+        text_anchor,
+        dominant_baseline,
+        rotation,
+      } = annotation_placement}
+      {@const annotation_transform = rotation
+        ? `rotate(${rotation}, ${coord_x}, ${coord_y})`
+        : undefined}
       {#if anno.background}
         {@const background_rect = reference_annotation_text_rect(
           annotation_placement,
@@ -137,8 +145,8 @@
         />
       {/if}
       <text
-        {x}
-        {y}
+        x={coord_x}
+        y={coord_y}
         text-anchor={text_anchor}
         dominant-baseline={dominant_baseline}
         transform={annotation_transform}

@@ -185,12 +185,12 @@ describe(`layout utility functions`, () => {
       [`top-left cluster`, { x: 100, y: 60 }, [200, 100], 1],
       [`bottom-right cluster`, { x: 400, y: 280 }, [200, 150], -1],
     ] as const)(`places away from %s`, (_, point, [x_split, y_split], direction) => {
-      const { x, y } = compute_element_placement({
+      const { x: coord_x, y: coord_y } = compute_element_placement({
         ...base_config,
         points: Array.from({ length: 15 }, () => point),
       })
-      expect(Math.sign(x - x_split)).toBe(direction)
-      expect(Math.sign(y - y_split)).toBe(direction)
+      expect(Math.sign(coord_x - x_split)).toBe(direction)
+      expect(Math.sign(coord_y - y_split)).toBe(direction)
     })
   })
 
@@ -561,18 +561,18 @@ describe(`layout utility functions`, () => {
         const tick_values = axis.tick_values ?? crowded
         const {
           b: reserved,
-          l,
-          r,
+          l: length_value,
+          r: radius,
         } = pad_for({
           x_axis: slot_axis(tick_values, axis, plot_width),
         })
         // same SVG-wide extent the padding pass scored the labels against
         const { band } = resolve_tick_layout(
           {
-            ...slot_axis(tick_values, axis, 400 - l - r),
-            axis_extent: { start: -l, end: 400 - l },
+            ...slot_axis(tick_values, axis, 400 - length_value - radius),
+            axis_extent: { start: -length_value, end: 400 - length_value },
           },
-          400 - l - r,
+          400 - length_value - radius,
           `x`,
         )
         const needed = band + title_room
@@ -588,21 +588,27 @@ describe(`layout utility functions`, () => {
       const angle = rotation_for(rotate_only, `x2`)
       expect(angle).toBe(-rotation_for(rotate_only, `x`))
       const x2_axis = slot_axis(crowded, {}, plot_width)
-      const { t, l, r } = pad_for({ x_axis: slot_axis([]), x2_axis })
-      const available_width = 400 - l - r
+      const {
+        t: fraction,
+        l: length_value,
+        r: radius,
+      } = pad_for({ x_axis: slot_axis([]), x2_axis })
+      const available_width = 400 - length_value - radius
       const projected_axis = slot_axis(crowded, {}, available_width)
       const band = resolve_tick_layout(
         {
           ...projected_axis,
-          tick_positions: projected_axis.tick_positions.map((position) => position + l),
+          tick_positions: projected_axis.tick_positions.map(
+            (position) => position + length_value,
+          ),
           axis_extent: { start: 0, end: 400 },
         },
         available_width,
         `x2`,
       ).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
-      expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
-      expect(t).toBeLessThanOrEqual(band + 8)
+      expect(fraction).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
+      expect(fraction).toBeLessThanOrEqual(band + 8)
     })
 
     it(`reserves room for wrapped labels above an x2 axis`, () => {
@@ -611,7 +617,7 @@ describe(`layout utility functions`, () => {
       // extent calc_auto_padding projects onto (zero padding here, so [0, axis_size]).
       const axis_size = 160
       const x2_axis = slot_axis(state_labels, {}, axis_size)
-      const { t } = calc_auto_padding({
+      const { t: pad_top } = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
         width: axis_size,
@@ -623,8 +629,8 @@ describe(`layout utility functions`, () => {
         `x2`,
       ).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
-      expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
-      expect(t).toBeLessThanOrEqual(band + 8)
+      expect(pad_top).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
+      expect(pad_top).toBeLessThanOrEqual(band + 8)
     })
 
     const default_b = DEFAULT_PLOT_PADDING.b
@@ -1016,12 +1022,12 @@ describe(`layout utility functions`, () => {
       [`ticks`, [0, 1, 2], TICK_LABEL_HEIGHT + 8],
       [`no ticks`, [], defaults.t],
     ])(`sets top padding for x2 with %s`, (_label, tick_values, expected) => {
-      const { t } = calc_auto_padding({
+      const { t: pad_top } = calc_auto_padding({
         padding: {},
         default_padding: defaults,
         x2_axis: slot_axis(tick_values),
       })
-      expect(t).toBe(expected)
+      expect(pad_top).toBe(expected)
     })
 
     it(`reserves x2 titles at their rendered offset without double counting`, () => {

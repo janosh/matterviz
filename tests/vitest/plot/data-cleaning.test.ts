@@ -35,19 +35,19 @@ it(`updates the accessible highlighted example when cleaning options change`, as
 })
 
 const linear = (length: number, slope = 1): { x: number[]; y: number[] } => {
-  const x = Array.from({ length }, (_, idx) => idx)
-  return { x, y: x.map((val) => slope * val) }
+  const coord_x = Array.from({ length }, (_, idx) => idx)
+  return { x: coord_x, y: coord_x.map((val) => slope * val) }
 }
 
 // Linear ramp followed by exponentially growing oscillations
 const unstable = (stable_length: number, unstable_length: number, growth_rate = 0.1) => {
-  const x = Array.from({ length: stable_length + unstable_length }, (_, idx) => idx)
-  const y = x.map((val, idx) => {
+  const coord_x = Array.from({ length: stable_length + unstable_length }, (_, idx) => idx)
+  const coord_y = coord_x.map((val, idx) => {
     if (idx < stable_length) return val * 0.1
     const unstable_idx = idx - stable_length
     return val * 0.1 + Math.exp(growth_rate * unstable_idx) * Math.sin(unstable_idx * 2)
   })
-  return { x, y }
+  return { x: coord_x, y: coord_y }
 }
 
 // Population variance about a known mean: asserts smoothing reduces spread
@@ -58,24 +58,24 @@ const alternating = (length: number, high = 10) =>
   Array.from({ length }, (_, idx) => (idx % 2 ? high : 0))
 
 // Series of y against its own index as x
-const indexed = (y: number[]) => ({ x: y.map((_, idx) => idx), y })
+const indexed = (coord_y: number[]) => ({ x: coord_y.map((_, idx) => idx), y: coord_y })
 // Cleans y against its index and returns the x (= original index) values that survived
-const kept_indices = (y: number[], config: Parameters<typeof clean_series>[1]) =>
-  clean_series(indexed(y), { ...config, in_place: false }).series.x
+const kept_indices = (coord_y: number[], config: Parameters<typeof clean_series>[1]) =>
+  clean_series(indexed(coord_y), { ...config, in_place: false }).series.x
 
 describe(`detect_instability`, () => {
   // A perfectly linear ramp has zero derivative variance everywhere, so the variance method has
   // no baseline scale: it must opt out rather than divide by an empty-baseline median
   it(`reports no onset for stable linear data, even with NaN holes`, () => {
-    const { x, y } = linear(100, 0.5)
-    expect(detect_instability(x, y)).toMatchObject({
+    const { x: coord_x, y: coord_y } = linear(100, 0.5)
+    expect(detect_instability(coord_x, coord_y)).toMatchObject({
       detected: false,
       onset_index: -1,
       method_scores: { derivative_variance: 0 },
     })
-    y[25] = NaN
-    y[26] = NaN
-    const with_holes = detect_instability(x, y)
+    coord_y[25] = NaN
+    coord_y[26] = NaN
+    const with_holes = detect_instability(coord_x, coord_y)
     expect(with_holes.detected).toBe(false)
     expect(with_holes.combined_score).toBeGreaterThanOrEqual(0)
   })
@@ -84,9 +84,9 @@ describe(`detect_instability`, () => {
     { y: [], window_size: 5 },
     { y: [42], window_size: 5 },
     { y: [1, 2, NaN, 4, 5, 6, 7, 8, 9], window_size: 5 }, // fewer finite points than 2 windows
-  ])(`returns the empty result for $y.length points`, ({ y, window_size }) => {
-    const x = y.map((_, idx) => idx)
-    expect(detect_instability(x, y, { window_size })).toEqual({
+  ])(`returns the empty result for $y.length points`, ({ y: coord_y, window_size }) => {
+    const coord_x = coord_y.map((_, idx) => idx)
+    expect(detect_instability(coord_x, coord_y, { window_size })).toEqual({
       detected: false,
       onset_index: -1,
       onset_x: NaN,
@@ -96,18 +96,18 @@ describe(`detect_instability`, () => {
   })
 
   it(`locates the onset of growing oscillations`, () => {
-    const { x, y } = unstable(50, 50, 0.2)
-    const result = detect_instability(x, y, { oscillation_threshold: 2 })
+    const { x: coord_x, y: coord_y } = unstable(50, 50, 0.2)
+    const result = detect_instability(coord_x, coord_y, { oscillation_threshold: 2 })
     expect(result.detected).toBe(true)
     expect(result.onset_index).toBeGreaterThanOrEqual(20)
     expect(result.onset_index).toBeLessThan(80)
-    expect(result.onset_x).toBe(x[result.onset_index])
+    expect(result.onset_x).toBe(coord_x[result.onset_index])
   })
 
   it.each([0, -0.5])(`weights method scores, excluding weight %s`, (disabled_weight) => {
-    const { x, y } = unstable(30, 30, 0.3)
+    const { x: coord_x, y: coord_y } = unstable(30, 30, 0.3)
     expect(
-      detect_instability(x, y, {
+      detect_instability(coord_x, coord_y, {
         oscillation_weights: {
           derivative_variance: disabled_weight,
           amplitude_growth: disabled_weight,
@@ -116,7 +116,7 @@ describe(`detect_instability`, () => {
       }),
     ).toMatchObject({ detected: false, onset_index: -1, combined_score: 0 })
     const only = (method: `derivative_variance` | `amplitude_growth`) =>
-      detect_instability(x, y, {
+      detect_instability(coord_x, coord_y, {
         oscillation_weights: {
           derivative_variance: disabled_weight,
           amplitude_growth: disabled_weight,
@@ -140,13 +140,15 @@ describe(`detect_instability`, () => {
     // a clean ramp scores 0 on derivative variance (flat baseline) and sign changes, and
     // exactly 1x baseline amplitude (score 1/10), so combined = (0 + 0.1 + 0) / 3. No
     // method reports an onset, so only the threshold comparison can flag it
-    const { x, y } = linear(100, 0.5)
-    const low = detect_instability(x, y, { oscillation_threshold: 0.0001 })
+    const { x: coord_x, y: coord_y } = linear(100, 0.5)
+    const low = detect_instability(coord_x, coord_y, { oscillation_threshold: 0.0001 })
     expect(low.combined_score).toBeCloseTo(0.1 / 3, 9)
     expect(low).toMatchObject({ detected: true, onset_index: -1 })
-    expect(detect_instability(x, y, { oscillation_threshold: 0.05 }).detected).toBe(false)
     expect(
-      detect_instability(x, y, {
+      detect_instability(coord_x, coord_y, { oscillation_threshold: 0.05 }).detected,
+    ).toBe(false)
+    expect(
+      detect_instability(coord_x, coord_y, {
         oscillation_weights: { sign_changes: -0.5 },
         oscillation_threshold: 0.06,
       }),
@@ -232,12 +234,12 @@ describe(`clean_series`, () => {
     { x: [0, 1, 2], y: [NaN, NaN, NaN], kept_x: [] },
     { x: [0, 1, 2], y: [Infinity, -Infinity, Infinity], kept_x: [] },
     { x: [0, 1, 2, 3, 4], y: [NaN, 1, 2, 3, NaN], kept_x: [1, 2, 3] },
-  ])(`removes invalid points of y=$y`, ({ x, y, kept_x }) => {
-    const { series, quality } = clean_series({ x, y }, { in_place: false })
+  ])(`removes invalid points of y=$y`, ({ x: coord_x, y: coord_y, kept_x }) => {
+    const { series, quality } = clean_series({ x: coord_x, y: coord_y }, { in_place: false })
     expect(series.x).toEqual(kept_x)
     expect(quality).toMatchObject({
-      points_removed: x.length - kept_x.length,
-      invalid_values_found: x.length - kept_x.length,
+      points_removed: coord_x.length - kept_x.length,
+      invalid_values_found: coord_x.length - kept_x.length,
     })
   })
 
@@ -305,16 +307,16 @@ describe(`clean_series`, () => {
       cleaned: Array<number>(2050).fill(7),
       count: 2048,
     },
-  ])(`interpolates $label in linear work`, ({ y, cleaned, count }) => {
+  ])(`interpolates $label in linear work`, ({ y: coord_y, cleaned, count }) => {
     const finite_check = vi.spyOn(Number, `isFinite`)
-    const { series, quality } = clean_series(indexed(y), {
+    const { series, quality } = clean_series(indexed(coord_y), {
       invalid_values: `interpolate`,
       in_place: false,
     })
     const checks = finite_check.mock.calls.length
     finite_check.mockRestore()
     // Includes detection/quality passes; rescanning the unfilled tail costs O(gap²).
-    expect(checks).toBeLessThan(100 * y.length)
+    expect(checks).toBeLessThan(100 * coord_y.length)
     expect(series.y).toEqual(cleaned)
     expect(quality).toMatchObject({ points_removed: 0, invalid_values_found: count })
   })
@@ -333,26 +335,26 @@ describe(`clean_series`, () => {
     { mode: undefined, x: [0, 1, 2, 3, 4], y: [0, 5, 10, 15, 20], removed: 0 }, // default clamp
     { mode: `filter`, x: [1, 2, 3], y: [5, 10, 15], removed: 2 },
     { mode: `null`, x: [0, 1, 2, 3, 4], y: [NaN, 5, 10, 15, NaN], removed: 0 },
-  ] as const)(`applies $mode bounds`, ({ mode, x, y, removed }) => {
+  ] as const)(`applies $mode bounds`, ({ mode, x: coord_x, y: coord_y, removed }) => {
     const { series, quality } = clean_series(
       { x: [0, 1, 2, 3, 4], y: [-10, 5, 10, 15, 100] },
       { bounds: { min: 0, max: 20, mode }, in_place: false },
     )
-    expect(series.x).toEqual(x)
-    expect(series.y).toEqual(y)
+    expect(series.x).toEqual(coord_x)
+    expect(series.y).toEqual(coord_y)
     expect(quality).toMatchObject({ bounds_violations: 2, points_removed: removed })
   })
 
   it(`resolves x-dependent bounds per point`, () => {
-    const x = [0, 1, 2, 3, 4]
+    const coord_x = [0, 1, 2, 3, 4]
     const clamp_max = clean_series(
-      { x, y: [0, 2, 4, 6, 8] },
+      { x: coord_x, y: [0, 2, 4, 6, 8] },
       { bounds: { max: (x_val) => x_val * 1.5 }, in_place: false },
     )
     expect(clamp_max.series.y).toEqual([0, 1.5, 3, 4.5, 6])
     expect(clamp_max.quality.bounds_violations).toBe(4)
     const clamp_min = clean_series(
-      { x, y: [0, 0, 0, 0, 0] },
+      { x: coord_x, y: [0, 0, 0, 0, 0] },
       { bounds: { min: (x_val) => x_val * 0.5 }, in_place: false },
     )
     expect(clamp_min.series.y).toEqual([0, 0.5, 1, 1.5, 2])
@@ -363,17 +365,17 @@ describe(`clean_series`, () => {
     { type: `savgol`, window: 5 },
     { type: `gaussian`, sigma: 1 },
   ] as const)(`applies $type smoothing`, (smooth) => {
-    const y = alternating(20)
-    const { series } = clean_series(indexed(y), { smooth, in_place: false })
-    expect(variance(series.y, 5)).toBeLessThan(variance(y, 5))
+    const coord_y = alternating(20)
+    const { series } = clean_series(indexed(coord_y), { smooth, in_place: false })
+    expect(variance(series.y, 5)).toBeLessThan(variance(coord_y, 5))
   })
 
   it(`gaussian smoothing is exact on a constant over a clustered x grid`, () => {
     // Nadaraya-Watson (sum(w*y)/sum(w)), not the DOS convolution: on this irregular grid a
     // density-weighted pass ranged 0.235..1.950 and a measure-weighted one droops at the ends
-    const x = [0, 0.1, 0.2, 0.3, 0.4, 2, 4, 6, 8, 9.6, 9.7, 9.8, 9.9, 10]
+    const coord_x = [0, 0.1, 0.2, 0.3, 0.4, 2, 4, 6, 8, 9.6, 9.7, 9.8, 9.9, 10]
     const { series } = clean_series(
-      { x, y: x.map(() => 1) },
+      { x: coord_x, y: coord_x.map(() => 1) },
       { smooth: { type: `gaussian`, sigma: 1 }, in_place: false },
     )
     for (const val of series.y) expect(val).toBeCloseTo(1, 12)
@@ -381,12 +383,12 @@ describe(`clean_series`, () => {
 
   describe(`savgol smoothing`, () => {
     const savgol = (
-      y: number[],
+      coord_y: number[],
       window: number,
       polynomial_order?: number,
       invalid_values?: InvalidValueMode,
     ) =>
-      clean_series(indexed(y), {
+      clean_series(indexed(coord_y), {
         smooth: { type: `savgol`, window, polynomial_order },
         invalid_values,
         in_place: false,
@@ -439,12 +441,12 @@ describe(`clean_series`, () => {
       { y: Array<number>(30).fill(5) }, // zero MAD
       // Regression: one-sided edge windows flagged the endpoints of every monotonic series
       { y: Array.from({ length: 30 }, (_, idx) => idx * 50) },
-    ])(`keeps every point of $y.length smooth values`, ({ y }) => {
-      const { series, quality } = clean_series(indexed(y), {
+    ])(`keeps every point of $y.length smooth values`, ({ y: coord_y }) => {
+      const { series, quality } = clean_series(indexed(coord_y), {
         local_outliers: outliers,
         in_place: false,
       })
-      expect(series.y).toEqual(y)
+      expect(series.y).toEqual(coord_y)
       expect(quality).toMatchObject({ outliers_removed: 0, points_removed: 0 })
     })
 
@@ -455,10 +457,10 @@ describe(`clean_series`, () => {
       { spikes: { 15: 100 }, length: 30, slope: 0 },
       { spikes: { 20: 50, 21: -30, 22: 60 }, length: 50, slope: 0 },
     ])(`removes exactly the spiked indices $spikes`, ({ spikes, length, slope }) => {
-      const y = Array.from({ length }, (_, idx) => idx * slope)
-      for (const [idx, val] of Object.entries(spikes)) y[Number(idx)] = val
-      const kept = new Set(kept_indices(y, { local_outliers: outliers }))
-      const removed = y.map((_, idx) => idx).filter((idx) => !kept.has(idx))
+      const coord_y = Array.from({ length }, (_, idx) => idx * slope)
+      for (const [idx, val] of Object.entries(spikes)) coord_y[Number(idx)] = val
+      const kept = new Set(kept_indices(coord_y, { local_outliers: outliers }))
+      const removed = coord_y.map((_, idx) => idx).filter((idx) => !kept.has(idx))
       expect(removed).toEqual(Object.keys(spikes).map(Number))
     })
 
@@ -499,16 +501,16 @@ describe(`clean_series`, () => {
     { truncation_mode: `mark_unstable`, length: 80 },
     { truncation_mode: `hard_cut`, length: undefined },
   ] as const)(`$truncation_mode on unstable data`, ({ truncation_mode, length }) => {
-    const { x, y } = unstable(40, 40, 0.3)
+    const { x: coord_x, y: coord_y } = unstable(40, 40, 0.3)
     const { series, quality } = clean_series(
-      { x, y },
+      { x: coord_x, y: coord_y },
       { oscillation_threshold: 2, truncation_mode, in_place: false },
     )
     expect(quality.oscillation_detected).toBe(true)
     if (truncation_mode === `hard_cut`) {
       expect(series.x).toHaveLength(80 - quality.points_removed)
       expect(series.x.length).toBeLessThan(80)
-      expect(quality.truncated_at_x).toBe(x[series.x.length])
+      expect(quality.truncated_at_x).toBe(coord_x[series.x.length])
     } else {
       expect(series.x).toHaveLength(length)
       expect(quality.stable_range?.[0]).toBe(0)
@@ -517,18 +519,25 @@ describe(`clean_series`, () => {
   })
 
   it(`removes local outliers after invalid values, keeping aux arrays aligned`, () => {
-    const { x, y } = linear(100, 0.5)
-    y[20] = NaN
-    y[50] = 500
+    const { x: coord_x, y: coord_y } = linear(100, 0.5)
+    coord_y[20] = NaN
+    coord_y[50] = 500
     const { series, quality } = clean_series(
-      { x, y, raw_y: x.map((val) => val * 4), metadata: x.map((id) => ({ id })) },
+      {
+        x: coord_x,
+        y: coord_y,
+        raw_y: coord_x.map((val) => val * 4),
+        metadata: coord_x.map((identifier) => ({ id: identifier })),
+      },
       { local_outliers: { window_half: 5, mad_threshold: 3 }, in_place: false },
     )
     expect(quality).toMatchObject({ invalid_values_found: 1, outliers_removed: 1 })
     expect(series.x).toHaveLength(98)
     expect(series.x).not.toContain(50)
     expect(series.raw_y).not.toContain(200)
-    expect((series.metadata as { id: number }[]).map(({ id }) => id)).not.toContain(50)
+    expect(
+      (series.metadata as { id: number }[]).map(({ id: identifier }) => identifier),
+    ).not.toContain(50)
   })
 
   it(`composes removal, clamping and smoothing`, () => {
@@ -548,10 +557,10 @@ describe(`clean_series`, () => {
   })
 
   it(`handles 50k points without recursion limits`, () => {
-    const { x } = linear(50_000)
-    const y = x.map((val) => Math.sin(val / 100) * 10)
+    const { x: coord_x } = linear(50_000)
+    const coord_y = coord_x.map((val) => Math.sin(val / 100) * 10)
     const { series, quality } = clean_series(
-      { x, y },
+      { x: coord_x, y: coord_y },
       {
         bounds: { min: -5, max: 5 },
         smooth: { type: `moving_avg`, window: 11 },
@@ -671,13 +680,15 @@ describe(`clean_xyz`, () => {
   })
 
   it(`smooths only the dependent y/z axes`, () => {
-    const x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    const y = alternating(10)
-    const z = alternating(10).toReversed()
-    const result = clean_xyz(x, y, z, { smooth: { type: `moving_avg`, window: 3 } })
-    expect(result.x).toEqual(x)
-    expect(variance(result.y, 5)).toBeLessThan(variance(y, 5))
-    expect(variance(result.z, 5)).toBeLessThan(variance(z, 5))
+    const coord_x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    const coord_y = alternating(10)
+    const coord_z = alternating(10).toReversed()
+    const result = clean_xyz(coord_x, coord_y, coord_z, {
+      smooth: { type: `moving_avg`, window: 3 },
+    })
+    expect(result.x).toEqual(coord_x)
+    expect(variance(result.y, 5)).toBeLessThan(variance(coord_y, 5))
+    expect(variance(result.z, 5)).toBeLessThan(variance(coord_z, 5))
   })
 
   // Regression: x-dependent bounds resolve against x even when filtering on another axis

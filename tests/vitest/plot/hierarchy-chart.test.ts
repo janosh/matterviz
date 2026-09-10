@@ -82,6 +82,14 @@ describe(`hierarchy chart helpers`, () => {
     expect(node_label_variants(with_short, `label`, `,`)).toEqual({ text: `A1`, short: `41%` })
   })
 
+  test(`hidden labels omit variants while preserving paint and accessibility`, () => {
+    const visible = compute_node_infos(arcs, node_info_opts)
+    const hidden = compute_node_infos(arcs, { ...node_info_opts, label_text: null })
+    expect(visible.some((info) => info.variants.length > 0)).toBe(true)
+    expect(hidden.every((info) => info.variants.length === 0)).toBe(true)
+    expect(hidden).toEqual(visible.map((info) => ({ ...info, variants: [] })))
+  })
+
   test(`computes metric colors with inferred, explicit, and missing ranges`, () => {
     for (const color_values of [undefined, () => null]) {
       expect(compute_metric_colors(arcs, color_values, `interpolateViridis`)).toBeNull()
@@ -102,15 +110,15 @@ describe(`hierarchy chart helpers`, () => {
 
   test(`dims, toggles, and builds legend state for categories`, () => {
     const empty = new SvelteSet<string | number>()
-    const undimmed = compute_node_dim(arcs, empty, null)
+    const undimmed = compute_node_dim(arcs, empty)
     expect(arcs.every((arc) => undimmed(arc.node_idx).opacity === 1)).toBe(true)
-    const hover = compute_node_dim(arcs, empty, alpha.node_idx)
-    expect([alpha, alpha_child, root, beta].map((arc) => hover(arc.node_idx).opacity)).toEqual(
-      [1, 1, 1, 0.3],
-    )
-    const muted = new SvelteSet([alpha.id])
-    expect(compute_node_dim(arcs, muted, null)(alpha.node_idx).opacity).toBe(0.12)
-    expect(compute_node_dim(arcs, muted, alpha.node_idx)(alpha.node_idx).opacity).toBe(0.12)
+    const muted = compute_node_dim(arcs, new SvelteSet([alpha.id]))
+    expect([alpha, alpha_child, root, beta].map((arc) => muted(arc.node_idx))).toEqual([
+      { opacity: 0.12, label_opacity: 0.12 },
+      { opacity: 0.12, label_opacity: 0.12 },
+      { opacity: 1, label_opacity: undefined },
+      { opacity: 1, label_opacity: undefined },
+    ])
 
     const toggled = new SvelteSet<string | number>([`x`])
     toggle_muted(toggled, `x`)

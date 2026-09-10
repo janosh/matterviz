@@ -22,12 +22,12 @@ const mount_matrix = (
     ComponentProps<typeof HeatmapMatrix>
   > = {},
 ): void => {
-  const { x, y, ...rest } = props
+  const { x: coord_x, y: coord_y, ...rest } = props
   mount(HeatmapMatrix, {
     target: document.body,
     props: {
-      x_items: x ? make_items(x) : x_items,
-      y_items: y ? make_items(y) : y_items,
+      x_items: coord_x ? make_items(coord_x) : x_items,
+      y_items: coord_y ? make_items(coord_y) : y_items,
       ...rest,
     },
   })
@@ -381,8 +381,8 @@ describe(`click and dblclick handlers`, () => {
       const on_dblclick = vi.fn()
       mount_matrix({ values: [[10, 20, 30]], on_click, on_double_click: on_dblclick })
       const cells = get_data_cells()
-      const fire = (el: HTMLElement, type: `click` | `dblclick`) => {
-        el.dispatchEvent(mouse(type))
+      const fire = (element: HTMLElement, type: `click` | `dblclick`) => {
+        element.dispatchEvent(mouse(type))
       }
 
       // Matching click + dblclick → dblclick only
@@ -495,8 +495,8 @@ describe(`edge cases`, () => {
     },
   ] as const)(
     `$desc renders $data data cells and $empty empty cells`,
-    ({ x, y, symmetric, data, empty }) => {
-      mount_matrix({ x, y, symmetric })
+    ({ x: coord_x, y: coord_y, symmetric, data, empty }) => {
+      mount_matrix({ x: coord_x, y: coord_y, symmetric })
       expect(get_data_cells()).toHaveLength(data)
       expect(get_empty_cells()).toHaveLength(empty)
     },
@@ -962,12 +962,23 @@ describe(`virtualization`, () => {
     mount_matrix({
       x: labels,
       y: labels,
-      values: labels.map((_u, row) => labels.map((_v, col) => row + col)),
+      values: labels.map((_unused_param_u, row) =>
+        labels.map((_unused_value, col) => row + col),
+      ),
       virtualize: true,
       tile_size: `${STRIDE}px`,
       ...extra,
     })
   }
+  test(`colors only rendered cells in a virtual window`, async () => {
+    const color_scale = vi.fn(red_scale)
+    mount_virtual({ color_scale, domain_mode: `fixed`, color_scale_range: [0, 60] })
+    await tick()
+    expect(query_all(`.cell[data-x]`).length).toBeLessThan(100)
+    expect(color_scale.mock.calls.length).toBeLessThan(200)
+    expect(color_scale.mock.calls.length).toBeGreaterThan(0)
+  })
+
   const rendered_idxs = (axis: `x` | `y`): number[] =>
     [
       ...new Set(query_all(`.cell[data-x]`).map((cell) => Number(cell.dataset[axis]))),

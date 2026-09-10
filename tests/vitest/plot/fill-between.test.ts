@@ -23,8 +23,8 @@ import { describe, expect, it } from 'vitest'
 // Reproduce the exact generator Line.svelte uses for series lines
 const series_line = (pts: readonly Pt[]): string =>
   line<Pt>()
-    .x((pt) => pt.x)
-    .y((pt) => pt.y)
+    .x((point) => point.x)
+    .y((point) => point.y)
     .curve(curveMonotoneX)(pts as Pt[]) ?? ``
 
 const domains = { x_domain: [0, 20] as Vec2, y_domain: [0, 100] as Vec2 }
@@ -43,31 +43,34 @@ const fill_path_is_cubic = (region: FillRegion, fill_series: DataSeries[]): bool
 
 describe(`monotone_interpolate`, () => {
   it(`returns exact y at knots`, () => {
-    const xs = [0, 10, 20, 30]
-    const ys = [0, 30, 15, 40]
-    for (let idx = 0; idx < xs.length; idx++) {
-      expect(monotone_interpolate(xs, ys, xs[idx])).toBeCloseTo(ys[idx], 9)
+    const x_values = [0, 10, 20, 30]
+    const y_values = [0, 30, 15, 40]
+    for (let idx = 0; idx < x_values.length; idx++) {
+      expect(monotone_interpolate(x_values, y_values, x_values[idx])).toBeCloseTo(
+        y_values[idx],
+        9,
+      )
     }
   })
 
   it(`clamps to endpoints outside the domain`, () => {
-    const xs = [0, 10]
-    const ys = [5, 25]
-    expect(monotone_interpolate(xs, ys, -5)).toBe(5)
-    expect(monotone_interpolate(xs, ys, 15)).toBe(25)
+    const x_values = [0, 10]
+    const y_values = [5, 25]
+    expect(monotone_interpolate(x_values, y_values, -5)).toBe(5)
+    expect(monotone_interpolate(x_values, y_values, 15)).toBe(25)
   })
 
   it(`is linear for collinear points`, () => {
-    const xs = [0, 10, 20]
-    const ys = [0, 10, 20]
-    expect(monotone_interpolate(xs, ys, 5)).toBeCloseTo(5)
-    expect(monotone_interpolate(xs, ys, 17)).toBeCloseTo(17)
+    const x_values = [0, 10, 20]
+    const y_values = [0, 10, 20]
+    expect(monotone_interpolate(x_values, y_values, 5)).toBeCloseTo(5)
+    expect(monotone_interpolate(x_values, y_values, 17)).toBeCloseTo(17)
   })
 
   it(`stays within neighboring knot bounds (monotonicity)`, () => {
-    const xs = [0, 10, 20, 30]
-    const ys = [0, 5, 100, 105] // monotone increasing
-    const mid = monotone_interpolate(xs, ys, 15)
+    const x_values = [0, 10, 20, 30]
+    const y_values = [0, 5, 100, 105] // monotone increasing
+    const mid = monotone_interpolate(x_values, y_values, 15)
     expect(mid).toBeGreaterThanOrEqual(5)
     expect(mid).toBeLessThanOrEqual(100)
   })
@@ -75,23 +78,27 @@ describe(`monotone_interpolate`, () => {
   // Pin the hand-rolled cubic to d3's actual curveMonotoneX output at a non-knot x. monotone_interpolate
   // re-implements d3 internals, so this guards against drift if d3 changes or the reimpl regresses.
   it(`matches d3 curveMonotoneX between knots`, () => {
-    const xs = [0, 10, 20, 30]
-    const ys = [0, 30, 15, 40]
-    const pts = xs.map((x, idx) => ({ x, y: ys[idx] }))
+    const x_values = [0, 10, 20, 30]
+    const y_values = [0, 30, 15, 40]
+    const pts = x_values.map((coord_x, idx) => ({ x: coord_x, y: y_values[idx] }))
     // d3 path: "M x0,y0 C c1x,c1y c2x,c2y x1,y1 C ..." — parse the first cubic segment
     const matches = series_line(pts).match(/-?\d+\.?\d*(?:e-?\d+)?/g) ?? []
     expect(matches.length).toBeGreaterThanOrEqual(8) // guards the 8-part destructure below
-    const [x0, y0, c1x, c1y, c2x, c2y, x1, y1] = matches.map(Number)
+    const [coord_x_0, coord_y_0, c1x, c1y, c2x, c2y, coord_x_1, coord_y_1] =
+      matches.map(Number)
     // d3 places monotoneX x-control points at the 1/3 marks, which makes x linear in the bezier
     // param. d3 rounds path coords to 3 decimals, so compare to 2 (still catches algorithmic drift).
-    expect(c1x).toBeCloseTo(x0 + (x1 - x0) / 3, 2)
-    expect(c2x).toBeCloseTo(x1 - (x1 - x0) / 3, 2)
-    for (const x of [2.5, 5, 7.5]) {
-      const frac = (x - x0) / (x1 - x0)
-      const mu = 1 - frac
+    expect(c1x).toBeCloseTo(coord_x_0 + (coord_x_1 - coord_x_0) / 3, 2)
+    expect(c2x).toBeCloseTo(coord_x_1 - (coord_x_1 - coord_x_0) / 3, 2)
+    for (const coord_x of [2.5, 5, 7.5]) {
+      const frac = (coord_x - coord_x_0) / (coord_x_1 - coord_x_0)
+      const mean = 1 - frac
       const d3_y =
-        mu ** 3 * y0 + 3 * mu ** 2 * frac * c1y + 3 * mu * frac ** 2 * c2y + frac ** 3 * y1
-      expect(monotone_interpolate(xs, ys, x)).toBeCloseTo(d3_y, 2)
+        mean ** 3 * coord_y_0 +
+        3 * mean ** 2 * frac * c1y +
+        3 * mean * frac ** 2 * c2y +
+        frac ** 3 * coord_y_1
+      expect(monotone_interpolate(x_values, y_values, coord_x)).toBeCloseTo(d3_y, 2)
     }
   })
 })
@@ -205,7 +212,7 @@ describe(`resolve_boundary_points`, () => {
     [`number shorthand`, 42, 42],
     [`constant`, { type: `constant`, value: 50 }, 50],
     [`axis`, { type: `axis`, axis: `y`, value: 7 }, 7],
-  ])(`resolves %s to a flat linear edge spanning the companion x`, (_, boundary, y) => {
+  ])(`resolves %s to a flat linear edge spanning the companion x`, (_, boundary, coord_y) => {
     const result = resolve_boundary_points(
       boundary as FillBoundary,
       series,
@@ -214,8 +221,8 @@ describe(`resolve_boundary_points`, () => {
     )
     expect(result?.curve).toBe(`linear`)
     expect(result?.points).toEqual([
-      { x: 0, y },
-      { x: 20, y },
+      { x: 0, y: coord_y },
+      { x: 20, y: coord_y },
     ])
   })
 
@@ -310,6 +317,41 @@ describe(`compute_fill_segments`, () => {
     expect(segments[0].upper.at(-1)?.x).toBe(15)
   })
 
+  it.each([false, true])(
+    `clips duplicate knots without including interval endpoints twice (%s)`,
+    (reverse) => {
+      const pairs = [
+        [0, 1],
+        [1, 2],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+      ]
+      if (reverse) pairs.reverse()
+      const [segment] = compute_fill_segments(
+        {
+          upper: {
+            type: `data`,
+            x: pairs.map(([coord_x]) => coord_x),
+            values: pairs.map(([, coord_y]) => coord_y),
+          },
+          lower: 0,
+          x_range: [1, 2],
+        },
+        [],
+        domains,
+      )
+      expect(segment.upper).toEqual([
+        { x: 1, y: 2 },
+        { x: 2, y: 3 },
+      ])
+      expect(segment.lower).toEqual([
+        { x: 1, y: 0 },
+        { x: 2, y: 0 },
+      ])
+    },
+  )
+
   it(`splits into segments where a where-condition toggles`, () => {
     // lower rises above upper only in the middle, so the fill is split
     const cross_series: DataSeries[] = [
@@ -320,7 +362,7 @@ describe(`compute_fill_segments`, () => {
       {
         upper: { type: `series`, series_idx: 1 },
         lower: { type: `series`, series_idx: 0 },
-        where: (_x, y_up, y_lo) => y_up > y_lo,
+        where: (_unused_coord_x, y_up, y_lo) => y_up > y_lo,
       },
       cross_series,
       { x_domain: [0, 4], y_domain: [-2, 2] },

@@ -1,3 +1,6 @@
+import { line } from 'd3-shape'
+import { line_curve_factory } from '$lib/plot/core/fill-utils'
+import type { Vec2 } from '$lib/math'
 import type { AxisRanges, DataSeries } from '$lib/plot'
 import { plot_color } from '$lib/colors'
 import { get_series_symbol } from '$lib/plot/core/data-transform'
@@ -7,6 +10,8 @@ import {
   filter_series_to_ranges,
   materialize_series_points,
   pick_tooltip_bg,
+  project_line_points,
+  strict_x_direction,
 } from '$lib/plot/scatter/scatter-data'
 import { describe, expect, test } from 'vitest'
 
@@ -87,14 +92,14 @@ describe(`filter_series_to_ranges`, () => {
       { x: [150, 250], y: [5, 5], x_axis: `x2` },
     ]
     const [y2_series, x2_series] = filter_to_ranges(series, ranges)
-    expect(y2_series.filtered_data.map((pt) => pt.y)).toEqual([40, -40]) // 60 > 50 excluded
-    expect(x2_series.filtered_data.map((pt) => pt.x)).toEqual([150]) // 250 > 200 excluded
+    expect(y2_series.filtered_data.map((point) => point.y)).toEqual([40, -40]) // 60 > 50 excluded
+    expect(x2_series.filtered_data.map((point) => point.x)).toEqual([150]) // 250 > 200 excluded
   })
 
   test(`handles inverted ranges via min/max of the bounds`, () => {
     const series: DataSeries[] = [{ x: [1, 5, 15], y: [2, 8, 3] }]
     const [result] = filter_to_ranges(series, { ...ranges, x: [10, 0], y: [10, 0] })
-    expect(result.filtered_data.map((pt) => pt.x)).toEqual([1, 5]) // 15 outside effective [0, 10]
+    expect(result.filtered_data.map((point) => point.x)).toEqual([1, 5]) // 15 outside effective [0, 10]
   })
 
   // Non-finite coords must drop even with an infinite range — `!isNaN` misses ±Infinity.
@@ -116,7 +121,7 @@ describe(`filter_series_to_ranges`, () => {
           }
     const series = [{ x: [1, bad_val, 3], y: [2, 2, bad_val] }] as unknown as DataSeries[]
     const [result] = filter_to_ranges(series, axis_ranges)
-    expect(result.filtered_data.map((pt) => pt.x)).toEqual([1])
+    expect(result.filtered_data.map((point) => point.x)).toEqual([1])
   })
 
   test(`rejects NaN range bounds; tolerates missing series arrays`, () => {
@@ -131,7 +136,7 @@ describe(`filter_series_to_ranges`, () => {
       ranges,
     )
     expect(result).toHaveLength(1)
-    expect(result[0].filtered_data.map((pt) => [pt.x, pt.y])).toEqual([[1, 4]])
+    expect(result[0].filtered_data.map((point) => [point.x, point.y])).toEqual([[1, 4]])
     expect(result[0].orig_series_idx).toBe(3)
   })
 
@@ -313,4 +318,81 @@ describe(`pick_tooltip_bg`, () => {
   ])(`%s`, (_desc, point, series, expected) => {
     expect(pick_tooltip_bg(point, series, color_scale)).toBe(expected)
   })
+})
+
+describe(`viewport line projection`, () => {
+  test.each([`linear`, `step`, `monotone`] as const)(
+    `preserves visible %s segments exactly`,
+    (curve) => {
+      for (const descending of [false, true]) {
+        for (const invalid_y of [false, true]) {
+          const x_values = Array.from({ length: 101 }, (_, idx) => idx)
+          if (descending) x_values.reverse()
+          const data = {
+            x: x_values,
+            y: x_values.map((value) => (invalid_y && value % 7 === 0 ? NaN : Math.sin(value))),
+          }
+          const x_scale = (value: number) => value * 10
+          const y_scale = (value: number) => value * 20
+          for (const range of [
+            [30.2, 40.8],
+            [40.8, 30.2],
+            [30.2, 30.8],
+            [-5, 2],
+            [98, 110],
+          ] as Vec2[]) {
+            const cropped = project_line_points(
+              data,
+              x_scale,
+              y_scale,
+              range,
+              strict_x_direction(data.x),
+              curve,
+            )
+            const full = project_line_points(data, x_scale, y_scale, range, 0, curve)
+            const lower = Math.min(...range) * 10
+            const upper = Math.max(...range) * 10
+            const segments = (points: Vec2[]) => {
+              let previous: Vec2 = [NaN, NaN]
+              const output: number[][] = []
+              const add = (...coords: number[]) => {
+                const end: Vec2 = [coords.at(-2) ?? NaN, coords.at(-1) ?? NaN]
+                if (
+                  Math.max(previous[0], end[0]) >= lower &&
+                  Math.min(previous[0], end[0]) <= upper
+                )
+                  output.push([...previous, ...coords])
+                previous = end
+              }
+              line()
+                .curve(line_curve_factory(curve))
+                .context({
+                  moveTo: (pixel_x: number, pixel_y: number) => {
+                    previous = [pixel_x, pixel_y]
+                  },
+                  lineTo: add,
+                  bezierCurveTo: add,
+                  closePath: () => {},
+                } as unknown as CanvasRenderingContext2D)(points)
+              return output
+            }
+            expect(segments(cropped)).toEqual(segments(full))
+            expect(cropped.length).toBeLessThan(full.length)
+          }
+        }
+      }
+    },
+  )
+
+  test.each([[1, 2, 2, 3], [3, 1, 2], [1, NaN, 3], [1, Infinity], [], [1]])(
+    `keeps full paths for non-strict x order %j`,
+    (...values) => {
+      expect(strict_x_direction(values)).toBe(0)
+      const data = { x: values, y: values.map(() => 1) }
+      const identity = (value: number) => value
+      expect(project_line_points(data, identity, identity, [1, 2], 0)).toEqual(
+        values.filter(Number.isFinite).map((value) => [value, 1]),
+      )
+    },
+  )
 })

@@ -132,8 +132,10 @@ describe(`TernaryPlot`, () => {
   test(`hover shows the fractions tooltip and fires the callback once per point`, async () => {
     const on_point_hover = vi.fn()
     const plot = await mount_ternary({ series, labels: [`Fe`, `Ni`, `Cr`], on_point_hover })
-    const hover = (el: Element | undefined, x = 0, y = 0) => {
-      el?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
+    const hover = (element: Element | undefined, coord_x = 0, coord_y = 0) => {
+      element?.dispatchEvent(
+        new MouseEvent(`mousemove`, { bubbles: true, clientX: coord_x, clientY: coord_y }),
+      )
       return tick()
     }
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
@@ -170,8 +172,8 @@ describe(`TernaryPlot`, () => {
     const padding = { t: 20, b: 20, l: 60, r: 60 }
     const plot = await mount_ternary({ series, padding })
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
-    const focus = (el: Element, type: string, relatedTarget: Element | null = null) => {
-      el.dispatchEvent(new FocusEvent(type, { bubbles: true, relatedTarget }))
+    const focus = (element: Element, type: string, relatedTarget: Element | null = null) => {
+      element.dispatchEvent(new FocusEvent(type, { bubbles: true, relatedTarget }))
       return tick()
     }
     const pure_c = markers(plot)[4] // left corner: the marker sits at x = 0 inside the padded <g>
@@ -224,6 +226,25 @@ describe(`TernaryPlot`, () => {
     const plot = await mount_ternary({ series: styled })
     expect(plot.querySelector(`.lines path`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
     expect(plot.querySelector(`.legend-item line`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
+  })
+
+  test(`line-only series have no marker blocks or keyboard stops`, async () => {
+    const plot = await mount_ternary({
+      series: [{ ...series[1], markers: `line` }, series[0]],
+    })
+    expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1)
+    expect(markers(plot)).toHaveLength(3)
+    expect(markers(plot).map((marker) => marker.getAttribute(`data-ternary-idx`))).toEqual([
+      `0`,
+      `1`,
+      `2`,
+    ])
+    expect(markers(plot)[0].getAttribute(`tabindex`)).toBe(`0`)
+    expect(
+      markers(plot)
+        .slice(1)
+        .every((marker) => marker.getAttribute(`tabindex`) === `-1`),
+    ).toBe(true)
   })
 
   test(`legend toggles update separate visibility state`, async () => {

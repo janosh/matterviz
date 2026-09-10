@@ -345,8 +345,8 @@ describe(`axis_scale_types`, () => {
     min_log_decades: 3,
   }
   const all_linear = { y: `linear`, y2: `linear` }
-  const residual = (y: number[], options: Partial<AxisValueSeries> = {}) =>
-    create_series(`Residual`, `eV`, { axis_group: `scf`, y, ...options })
+  const residual = (coord_y: number[], options: Partial<AxisValueSeries> = {}) =>
+    create_series(`Residual`, `eV`, { axis_group: `scf`, y: coord_y, ...options })
 
   test.each([
     [

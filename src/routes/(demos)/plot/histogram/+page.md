@@ -789,7 +789,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   const sample_size = 1000
   const std_dev = 12
   const data = generate_normal(sample_size, 50, std_dev)
-  const sorted = [...data].sort((a, b) => a - b)
+  const sorted = [...data].sort((left_value, right_value) => left_value - right_value)
   const actual_mean = data.reduce((sum, val) => sum + val, 0) / data.length
   const actual_median = sorted[Math.floor(sorted.length / 2)]
 
@@ -936,12 +936,12 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
     | `multimodal`
 
   // Generate various distributions
-  function generate_distribution(type: DistType, n: number, seed: number): number[] {
+  function generate_distribution(type: DistType, count: number, seed: number): number[] {
     const rng = seeded_rng(seed)
     const normal = () => box_muller(0, 1, rng)
     const data: number[] = []
 
-    for (let idx = 0; idx < n; idx++) {
+    for (let idx = 0; idx < count; idx++) {
       let val: number
       if (type === `normal`) {
         val = normal() * 1.5 - 2
@@ -956,8 +956,8 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
       } else if (type === `heavy-tail`) {
         val = normal() / (rng() + 0.1)
       } else if (type === `skewed`) {
-        const u = rng()
-        val = Math.pow(u, 3) * 15 - 2
+        const param_u = rng()
+        val = Math.pow(param_u, 3) * 15 - 2
       } else {
         // multimodal
         const mode = Math.floor(rng() * 4)

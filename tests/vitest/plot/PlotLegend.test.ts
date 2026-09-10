@@ -332,7 +332,7 @@ describe(`PlotLegend`, () => {
 
     const items = document.querySelectorAll(`.legend-item`)
     // active_fill_idx=1 marks only the Fill B item (fill_idx 1), not the series or Fill A
-    expect([...items].map((it) => it.classList.contains(`active`))).toEqual([
+    expect([...items].map((item) => item.classList.contains(`active`))).toEqual([
       false,
       false,
       true,

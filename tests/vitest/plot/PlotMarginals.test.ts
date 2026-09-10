@@ -1,8 +1,16 @@
+import * as marginal_utils from '$lib/plot/core/marginals'
 import type { DataSeries, MarginalSideInput } from '$lib/plot'
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
-import { clip_rect, mount_sized, query, svg_rect } from '../setup'
+import { describe, expect, test, vi } from 'vitest'
+import {
+  clip_rect,
+  mount_sized,
+  query,
+  resize_element,
+  svg_rect,
+  trigger_resize_observer,
+} from '../setup'
 
 const scatter_series: DataSeries = {
   x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -29,6 +37,79 @@ const marker_snippet = createRawSnippet(() => ({
 }))
 
 describe(`PlotMarginals integration`, () => {
+  test.each([`kde`, `cdf`] as const)(
+    `resizing %s reuses paths and the hover index on every side`,
+    async (type) => {
+      const compute = vi.spyOn(marginal_utils, `compute_marginal_curve`)
+      const index = vi.spyOn(marginal_utils, `create_marginal_hit_test`)
+      try {
+        const root = await mount_scatter({
+          series: [scatter_series],
+          marginals: { top: type, bottom: type, left: type, right: type },
+        })
+        const paths = () => Array.from(root.querySelectorAll(`.marginal path`))
+        const before = paths().map((path) => [
+          path.getAttribute(`d`),
+          path.getAttribute(`transform`),
+        ])
+        const counts = [compute.mock.calls.length, index.mock.calls.length]
+        expect(before).toHaveLength(8)
+        expect(counts.every((count) => count > 0)).toBe(true)
+        await resize_element(root, 900, 600)
+        trigger_resize_observer(root)
+        await tick()
+        paths().forEach((path, idx) => {
+          expect(path.getAttribute(`d`)).toBe(before[idx][0])
+          expect(path.getAttribute(`transform`)).not.toBe(before[idx][1])
+          if (path.getAttribute(`fill`) === `none`)
+            expect(path.getAttribute(`vector-effect`)).toBe(`non-scaling-stroke`)
+        })
+        expect(compute.mock.calls).toHaveLength(counts[0])
+        expect(index.mock.calls).toHaveLength(counts[1])
+      } finally {
+        compute.mockRestore()
+        index.mockRestore()
+      }
+    },
+  )
+
+  test.each([`linear`, `monotone`, `step`, `basis`, `natural`, `catmull-rom`] as const)(
+    `%s fills reuse the line and close with two baseline segments on every side`,
+    async (curve) => {
+      const config = { type: `cdf` as const, curve }
+      const root = await mount_scatter({
+        series: [scatter_series],
+        marginals: { top: config, bottom: config, left: config, right: config },
+      })
+      for (const side of marginal_utils.MARGINAL_SIDES) {
+        const line_path =
+          query(root, `.marginal-${side} path[fill="none"]`).getAttribute(`d`) ?? ``
+        const area_path =
+          query(root, `.marginal-${side} path[stroke="none"]`).getAttribute(`d`) ?? ``
+        expect(line_path.length).toBeGreaterThan(10)
+        expect(area_path.startsWith(line_path)).toBe(true)
+        const closure = area_path.slice(line_path.length)
+        expect(closure.match(/L/g)).toHaveLength(2)
+        expect(closure.endsWith(`Z`)).toBe(true)
+        expect(closure).not.toMatch(/NaN|Infinity/)
+      }
+    },
+  )
+
+  test(`Catmull–Rom recomputes pixel geometry when the aspect ratio changes`, async () => {
+    const root = await mount_scatter({
+      series: [scatter_series],
+      marginals: { top: { type: `cdf`, curve: `catmull-rom` } },
+    })
+    const path = query(root, `.marginal-top path`)
+    const before = path.getAttribute(`d`)
+    await resize_element(root, 900, 600)
+    trigger_resize_observer(root)
+    await tick()
+    expect(path.getAttribute(`d`)).not.toBe(before)
+    expect(path.hasAttribute(`transform`)).toBe(false)
+  })
+
   test(`no marginal strips render by default`, async () => {
     const root = await mount_scatter({ series: [scatter_series] })
     expect(root.querySelectorAll(`.marginal`)).toHaveLength(0)
@@ -91,7 +172,10 @@ describe(`PlotMarginals integration`, () => {
       series: [scatter_series],
       marginals: { top: { type: `rug`, opacity: 0.3, fill_opacity: 0.9 } },
     })
-    expect(root.querySelector(`.marginal-top path`)?.getAttribute(`opacity`)).toBe(`0.3`)
+    const path = query(root, `.marginal-top path`)
+    expect(path.getAttribute(`opacity`)).toBe(`0.3`)
+    expect(path.getAttribute(`fill`)).toBe(`none`)
+    expect(path.hasAttribute(`vector-effect`)).toBe(false)
   })
 
   test(`per_series: false merges series into a single curve`, async () => {
@@ -123,8 +207,8 @@ describe(`PlotMarginals integration`, () => {
     const bar_xs = [...root.querySelectorAll(`.marginal-top rect`)].map((rect) =>
       Number(rect.getAttribute(`x`)),
     )
-    expect(bar_xs.some((x) => x < mid)).toBe(true)
-    expect(bar_xs.some((x) => x > mid)).toBe(true)
+    expect(bar_xs.some((coord_x) => coord_x < mid)).toBe(true)
+    expect(bar_xs.some((coord_x) => coord_x > mid)).toBe(true)
   })
 
   test(`value_range pins the marginal value axis`, async () => {
@@ -260,12 +344,14 @@ describe(`PlotMarginals integration`, () => {
     })
     const line_path = query(root, `.marginal-top path[fill="none"]`)
     const nums = (line_path.getAttribute(`d`) ?? ``).match(/-?\d+\.?\d*/g)?.map(Number) ?? []
-    const ys = nums.filter((_, idx) => idx % 2 === 1)
-    expect(ys.length).toBeGreaterThan(2)
-    const ascending = [...ys].toSorted((a, b) => a - b)
+    const y_values = nums.filter((_, idx) => idx % 2 === 1)
+    expect(y_values.length).toBeGreaterThan(2)
+    const ascending = [...y_values].toSorted(
+      (left_value, right_value) => left_value - right_value,
+    )
     const is_monotonic =
-      ys.every((val, idx) => val === ascending[idx]) ||
-      ys.every((val, idx) => val === ascending[ascending.length - 1 - idx])
+      y_values.every((val, idx) => val === ascending[idx]) ||
+      y_values.every((val, idx) => val === ascending[ascending.length - 1 - idx])
     expect(is_monotonic).toBe(true)
   })
 })
@@ -274,17 +360,19 @@ describe(`marginal hover tooltips`, () => {
   // happy-dom has no layout: getBoundingClientRect() is all zeros, so clientX/clientY map straight
   // to wrapper px. Pick a coordinate just inside the plot-facing baseline where filled marginals
   // are rendered, not merely inside the transparent hit-rect.
-  const hover_strip = async (root: HTMLElement): Promise<Element | null> => {
+  const hover_strip = async (root: HTMLElement, fraction = 0.5): Promise<Element | null> => {
     const hit = query(root, `.marginal-hit`)
-    const { x, y, width, height } = svg_rect(hit)
+    const { x: coord_x, y: coord_y, width, height } = svg_rect(hit)
     const side = /marginal-hit-(?<side>top|right|bottom|left)/.exec(
       hit.getAttribute(`class`) ?? ``,
     )?.groups?.side
     const bar = side ? root.querySelector(`.marginal-${side} rect`) : null
-    const center_x = x + width / 2
-    const center_y = y + height / 2
-    let clientX = side === `left` ? x + width - 1 : side === `right` ? x + 1 : center_x
-    let clientY = side === `top` ? y + height - 1 : side === `bottom` ? y + 1 : center_y
+    const center_x = coord_x + width * fraction
+    const center_y = coord_y + height * fraction
+    let clientX =
+      side === `left` ? coord_x + width - 1 : side === `right` ? coord_x + 1 : center_x
+    let clientY =
+      side === `top` ? coord_y + height - 1 : side === `bottom` ? coord_y + 1 : center_y
     if (bar) {
       clientX = Number(bar.getAttribute(`x`)) + Number(bar.getAttribute(`width`)) / 2
       clientY = Number(bar.getAttribute(`y`)) + Number(bar.getAttribute(`height`)) / 2
@@ -333,10 +421,29 @@ describe(`marginal hover tooltips`, () => {
     [`hover: false`, { type: `histogram`, hover: false }],
     [`a custom snippet`, { type: `histogram`, snippet: marker_snippet }],
   ] as const)(`%s renders the strip but no hit-rect`, async (_desc, top) => {
+    const build_index = vi.spyOn(marginal_utils, `create_marginal_hit_test`)
     const root = await mount_scatter({ series: [scatter_series], marginals: { top } })
     expect(root.querySelector(`.marginal-top`)).not.toBeNull()
     expect(root.querySelector(`.marginal-hit`)).toBeNull()
+    await resize_element(root, 900, 600)
+    expect(build_index).not.toHaveBeenCalled()
   })
+
+  test.each(marginal_utils.MARGINAL_SIDES)(
+    `%s CDF hover retains the selected sample after resizing`,
+    async (side) => {
+      const root = await mount_scatter({
+        series: [scatter_series],
+        marginals: { [side]: `cdf` },
+      })
+      const before = (await hover_strip(root, 0.47))?.textContent
+      expect(before).toContain(`CDF:`)
+      await resize_element(root, 900, 600)
+      trigger_resize_observer(root)
+      await tick()
+      expect((await hover_strip(root, 0.47))?.textContent).toBe(before)
+    },
+  )
 
   // AXIS_DEFAULTS.format is `` (empty), so the pos fallback must use || (not ??) to avoid raw floats
   test(`tooltip position uses the compact default format when the axis format is empty`, async () => {

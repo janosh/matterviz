@@ -1,3 +1,4 @@
+import { type Camera, type Object3D, Vector3 } from 'three/webgpu'
 // Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
 // reference lines/planes.
 
@@ -42,4 +43,26 @@ export function create_to_threejs(
     y: normalize_to_scene(user_z, z_range, scene_z), // z → Y
     z: normalize_to_scene(user_y, y_range, scene_y), // y → Z
   })
+}
+
+// Anchor the tooltip above the halo in screen space, independent of orbit angle.
+// Scratch vectors live with the hovered point, not with each animation frame.
+export function hover_marker_geometry(marker_radius: number) {
+  const radius = marker_radius * 1.15
+  const center = new Vector3()
+  const top = new Vector3()
+  return {
+    radius,
+    tooltip_position: (
+      object: Object3D,
+      camera: Camera,
+      size: { width: number; height: number },
+    ): Vec2 => {
+      center.setFromMatrixPosition(object.matrixWorld)
+      top.setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(radius).add(center)
+      center.project(camera)
+      top.project(camera)
+      return [((center.x + 1) * size.width) / 2, ((1 - top.y) * size.height) / 2 - 8]
+    },
+  }
 }

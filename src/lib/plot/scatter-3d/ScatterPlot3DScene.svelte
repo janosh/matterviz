@@ -39,11 +39,11 @@
   import { first_point_style } from '$lib/plot/core/data-transform'
   import ReferenceLine3D from '$lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
-  import { normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
+  import { hover_marker_geometry, normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
   import type { RunningExtent } from '$lib/plot/core/scales'
   import {
     accumulate_extent,
-    collect_size_values,
+    collect_size_range,
     create_size_scale,
     empty_extent,
     nice_range_from_extent,
@@ -131,7 +131,10 @@
     camera = threlte_camera
   })
 
-  const { enabled: hover_enabled } = extras.interactivity()
+  const { enabled: hover_enabled } = extras.interactivity({
+    // Overlapping points must pick the front surface, not the last (farthest) hit.
+    filter: (hits) => hits.slice(0, 1),
+  })
 
   type AxisKey = `x` | `y` | `z`
 
@@ -209,24 +212,24 @@
     const grid_steps = 10
     const pts: { x: number; y: number; z: number }[] = []
     if (surface.type === `grid` && surface.z_fn) {
-      const [x0, x1] = surface.x_range ?? [-1, 1]
-      const [y0, y1] = surface.y_range ?? [-1, 1]
+      const [coord_x_0, coord_x_1] = surface.x_range ?? [-1, 1]
+      const [coord_y_0, coord_y_1] = surface.y_range ?? [-1, 1]
       for (let idx_x = 0; idx_x <= grid_steps; idx_x++) {
         for (let idx_y = 0; idx_y <= grid_steps; idx_y++) {
-          const x = x0 + (idx_x / grid_steps) * (x1 - x0),
-            y = y0 + (idx_y / grid_steps) * (y1 - y0)
-          pts.push({ x, y, z: surface.z_fn(x, y) })
+          const coord_x = coord_x_0 + (idx_x / grid_steps) * (coord_x_1 - coord_x_0),
+            coord_y = coord_y_0 + (idx_y / grid_steps) * (coord_y_1 - coord_y_0)
+          pts.push({ x: coord_x, y: coord_y, z: surface.z_fn(coord_x, coord_y) })
         }
       }
     } else if (surface.type === `parametric` && surface.parametric_fn) {
-      const [u0, u1] = surface.u_range ?? [0, 1]
-      const [v0, v1] = surface.v_range ?? [0, 1]
+      const [uniform_0, uniform_1] = surface.u_range ?? [0, 1]
+      const [vector_0, vector_1] = surface.v_range ?? [0, 1]
       for (let idx_u = 0; idx_u <= grid_steps; idx_u++) {
         for (let idx_v = 0; idx_v <= grid_steps; idx_v++) {
           pts.push(
             surface.parametric_fn(
-              u0 + (idx_u / grid_steps) * (u1 - u0),
-              v0 + (idx_v / grid_steps) * (v1 - v0),
+              uniform_0 + (idx_u / grid_steps) * (uniform_1 - uniform_0),
+              vector_0 + (idx_v / grid_steps) * (vector_1 - vector_0),
             ),
           )
         }
@@ -234,7 +237,7 @@
     } else if (surface.type === `triangulated` && surface.points) {
       pts.push(...surface.points)
     }
-    return pts.filter((pt) => isFinite(pt.x) && isFinite(pt.y) && isFinite(pt.z))
+    return pts.filter((point) => isFinite(point.x) && isFinite(point.y) && isFinite(point.z))
   }
 
   // Axis range: explicit bounds win as given; otherwise the finite extent is padded (5% of the
@@ -259,7 +262,7 @@
     for (const axis of [`x`, `y`, `z`] as const) {
       accumulate_extent(
         extents[axis],
-        surface_samples.map((pt) => pt[axis]),
+        surface_samples.map((point) => point[axis]),
       )
     }
     return extents
@@ -273,7 +276,8 @@
   const normalize_z = (value: number) => normalize_to_scene(value, z_range, scene_z)
 
   // Size scale (the color scale is computed by the wrapper and passed as a prop)
-  let size_scale_fn = $derived(create_size_scale(size_scale, collect_size_values(series)))
+  const auto_size_range = $derived(collect_size_range(series))
+  let size_scale_fn = $derived(create_size_scale(size_scale, auto_size_range))
 
   // Every point of every visible series in scene coordinates, built in one pass and in
   // (series_idx, point_idx) order. Swap Y/Z for Three.js: user Z → Three.js Y (vertical),
@@ -300,35 +304,31 @@
     return points
   })
 
-  // Group points by radius, with per-instance colors
-  type RadiusGroup = {
+  type PointInstance = {
+    point: InternalPoint3D<Metadata>
     radius: number
-    points: InternalPoint3D<Metadata>[]
-    colors: string[]
+    color: string
   }
 
-  const point_key = (pt: InternalPoint3D<Metadata>) => `${pt.series_idx}-${pt.point_idx}`
+  const point_key = (point: InternalPoint3D<Metadata>) =>
+    `${point.series_idx}-${point.point_idx}`
 
-  // point_radii lets the hover highlight look up a point's radius in O(1) instead of scanning
-  // every group's points
-  let { radius_groups, point_radii } = $derived.by(() => {
-    const groups: Record<string, RadiusGroup> = {}
-    const radii = new Map<string, number>()
-    for (const pt of processed_points) {
+  // Instance transforms already carry scale: every radius shares one sphere mesh.
+  // Keep the hover lookup current when point styles or size scaling change.
+  const point_instances = $derived.by(() => {
+    const instances = new Map<string, PointInstance>()
+    for (const point of processed_points) {
       const color =
-        pt.color_value != null
-          ? color_scale_fn(pt.color_value)
-          : (pt.point_style?.fill ?? plot_color(pt.series_idx))
+        point.color_value != null
+          ? color_scale_fn(point.color_value)
+          : (point.point_style?.fill ?? plot_color(point.series_idx))
       const radius =
-        pt.size_value != null
-          ? size_scale_fn(pt.size_value)
-          : (pt.point_style?.radius ?? styles.point?.size ?? 2) * 0.05
-      const key = radius.toFixed(4)
-      ;(groups[key] ??= { radius, points: [], colors: [] }).points.push(pt)
-      groups[key].colors.push(color)
-      radii.set(point_key(pt), radius)
+        point.size_value != null
+          ? size_scale_fn(point.size_value)
+          : (point.point_style?.radius ?? styles.point?.size ?? 2) * 0.05
+      instances.set(point_key(point), { point, radius, color })
     }
-    return { radius_groups: Object.values(groups), point_radii: radii }
+    return instances
   })
 
   // Projection settings - render point shadows on background planes
@@ -338,7 +338,7 @@
   // Projection plane configs: each fixes one axis to the backside position
   type ProjectionConfig = {
     key: `xy` | `xz` | `yz`
-    get_pos: (pt: InternalPoint3D<Metadata>) => Vec3
+    get_pos: (point: InternalPoint3D<Metadata>) => Vec3
   }
   let projection_configs = $derived(
     ([`xy`, `xz`, `yz`] as const)
@@ -347,10 +347,10 @@
         key,
         get_pos:
           key === `xy`
-            ? (pt) => [pt.x, pos.y, pt.z]
+            ? (point) => [point.x, pos.y, point.z]
             : key === `xz`
-              ? (pt) => [pt.x, pt.y, pos.z]
-              : (pt) => [pos.x, pt.y, pt.z],
+              ? (point) => [point.x, point.y, pos.z]
+              : (point) => [pos.x, point.y, point.z],
       })),
   )
 
@@ -389,8 +389,8 @@
       })
     }
     // processed_points are in (series_idx, point_idx) order, so one pass fills every polyline
-    for (const pt of processed_points) {
-      positions_by_series.get(pt.series_idx)?.push(pt.x, pt.y, pt.z)
+    for (const point of processed_points) {
+      positions_by_series.get(point.series_idx)?.push(point.x, point.y, point.z)
     }
     return eligible.filter((input) => input.positions.length >= 6) // >= 2 points
   })
@@ -481,20 +481,20 @@
     const { series_idx, point_idx } = point
     const srs = series[series_idx]
     if (!srs || point_idx >= srs.x.length) return null
-    const [x, y, z] = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
+    const [coord_x, coord_y, coord_z] = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
     return {
-      x,
-      y,
-      z,
+      x: coord_x,
+      y: coord_y,
+      z: coord_z,
       metadata: point.metadata ?? null,
       label: srs.label ?? null,
       series_idx,
       x_axis,
       y_axis,
       z_axis,
-      x_formatted: format_num(x, x_axis.format || `.3~g`),
-      y_formatted: format_num(y, y_axis.format || `.3~g`),
-      z_formatted: format_num(z, z_axis.format || `.3~g`),
+      x_formatted: format_num(coord_x, x_axis.format || `.3~g`),
+      y_formatted: format_num(coord_y, y_axis.format || `.3~g`),
+      z_formatted: format_num(coord_z, z_axis.format || `.3~g`),
       color_value: point.color_value,
       fullscreen: false,
       event,
@@ -535,15 +535,15 @@
           pos.z,
         ],
         get_grid_lines: (val: number): [Vec3, Vec3][] => {
-          const px = normalize_x(val)
+          const pixel_x = normalize_x(val)
           return [
             [
-              [px, -half_z, pos.z],
-              [px, half_z, pos.z],
+              [pixel_x, -half_z, pos.z],
+              [pixel_x, half_z, pos.z],
             ],
             [
-              [px, pos.y, -half_y],
-              [px, pos.y, half_y],
+              [pixel_x, pos.y, -half_y],
+              [pixel_x, pos.y, half_y],
             ],
           ]
         },
@@ -563,15 +563,15 @@
           normalize_y(val),
         ],
         get_grid_lines: (val: number): [Vec3, Vec3][] => {
-          const py = normalize_y(val)
+          const pixel_y = normalize_y(val)
           return [
             [
-              [-half_x, pos.y, py],
-              [half_x, pos.y, py],
+              [-half_x, pos.y, pixel_y],
+              [half_x, pos.y, pixel_y],
             ],
             [
-              [pos.x, -half_z, py],
-              [pos.x, half_z, py],
+              [pos.x, -half_z, pixel_y],
+              [pos.x, half_z, pixel_y],
             ],
           ]
         },
@@ -599,15 +599,15 @@
           pos.z,
         ],
         get_grid_lines: (val: number): [Vec3, Vec3][] => {
-          const pz = normalize_z(val)
+          const pixel_z = normalize_z(val)
           return [
             [
-              [-half_x, pz, pos.z],
-              [half_x, pz, pos.z],
+              [-half_x, pixel_z, pos.z],
+              [half_x, pixel_z, pos.z],
             ],
             [
-              [pos.x, pz, -half_y],
-              [pos.x, pz, half_y],
+              [pos.x, pixel_z, -half_y],
+              [pos.x, pixel_z, half_y],
             ],
           ]
         },
@@ -742,56 +742,59 @@
   <T is={line_data.line2} />
 {/each}
 
-<!-- Instanced scatter points with per-instance colors and event handling -->
-{#each radius_groups as group (group.radius)}
-  <extras.InstancedMesh
-    limit={group.points.length}
-    range={group.points.length}
-    frustumCulled={false}
-  >
-    <T.SphereGeometry args={[1, sphere_segments, sphere_segments]} />
-    <T.MeshStandardMaterial vertexColors={false} />
-    {#each group.points as point, idx (`${point.series_idx}-${point.point_idx}`)}
-      <extras.Instance
-        position={[point.x, point.y, point.z]}
-        scale={group.radius}
-        color={group.colors[idx]}
-        onpointerenter={() => handle_point_enter(point)}
-        onpointerleave={() => {
-          hovered_point = null
-          on_point_hover?.(null)
-        }}
-        onclick={(evt: MouseEvent) => handle_point_click(point, evt)}
-      />
-    {/each}
-  </extras.InstancedMesh>
-{/each}
-
-<!-- Plane Projections - render point shadows on enabled background planes -->
-{#each projection_configs as { key, get_pos } (key)}
-  {#each radius_groups as group (group.radius)}
+<!-- Threlte allocates instance buffers at mount; rebuild them when the point count changes. -->
+{#key point_instances.size}
+  <!-- Instanced scatter points with per-instance colors and event handling -->
+  {#if point_instances.size > 0}
     <extras.InstancedMesh
-      limit={group.points.length}
-      range={group.points.length}
+      limit={point_instances.size}
+      range={point_instances.size}
       frustumCulled={false}
     >
-      <T.SphereGeometry args={[1, 8, 8]} />
-      <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
-      {#each group.points as point, idx (`${key}-${point.series_idx}-${point.point_idx}`)}
+      <T.SphereGeometry args={[1, sphere_segments, sphere_segments]} />
+      <T.MeshStandardMaterial vertexColors={false} />
+      {#each point_instances as [key, { point, radius, color }] (key)}
         <extras.Instance
-          position={get_pos(point)}
-          scale={group.radius * proj_scale}
-          color={group.colors[idx]}
+          position={[point.x, point.y, point.z]}
+          scale={radius}
+          {color}
+          onpointerenter={() => handle_point_enter(point)}
+          onpointerleave={() => {
+            hovered_point = null
+            on_point_hover?.(null)
+          }}
+          onclick={(evt: MouseEvent) => handle_point_click(point, evt)}
         />
       {/each}
     </extras.InstancedMesh>
-  {/each}
-{/each}
+
+    <!-- Plane Projections - render point shadows on enabled background planes -->
+    {#each projection_configs as { key, get_pos } (key)}
+      <extras.InstancedMesh
+        limit={point_instances.size}
+        range={point_instances.size}
+        frustumCulled={false}
+      >
+        <T.SphereGeometry args={[1, 8, 8]} />
+        <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
+        {#each point_instances as [key, { point, radius, color }] (key)}
+          <extras.Instance position={get_pos(point)} scale={radius * proj_scale} {color} />
+        {/each}
+      </extras.InstancedMesh>
+    {/each}
+  {/if}
+{/key}
 
 <!-- Hover highlight -->
 {#if hovered_point}
-  {@const hp = hovered_point}
-  <T.Mesh position={[hp.x, hp.y, hp.z]} scale={(point_radii.get(point_key(hp)) ?? 0.1) * 1.5}>
+  {@const hover_point = hovered_point}
+  {@const hover_geometry = hover_marker_geometry(
+    point_instances.get(point_key(hover_point))?.radius ?? 0.1,
+  )}
+  <T.Mesh
+    position={[hover_point.x, hover_point.y, hover_point.z]}
+    scale={hover_geometry.radius}
+  >
     <T.SphereGeometry args={[1, 16, 16]} />
     <T.MeshStandardMaterial
       color="white"
@@ -803,14 +806,15 @@
       depthWrite={false}
     />
   </T.Mesh>
-{/if}
 
-<!-- Tooltip -->
-{#if hovered_point}
-  {@const hp = hovered_point}
-  {@const data = make_event_data(hp)}
+  {@const data = make_event_data(hover_point)}
   {#if data}
-    <extras.HTML position={[hp.x, hp.y + 0.3, hp.z]} center portal={tooltip_portal}>
+    <extras.HTML
+      position={[hover_point.x, hover_point.y, hover_point.z]}
+      calculatePosition={hover_geometry.tooltip_position}
+      style="translate: -50% -100%; pointer-events: none"
+      portal={tooltip_portal}
+    >
       {#if tooltip}
         {@render tooltip(data)}
       {:else}

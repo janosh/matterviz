@@ -29,8 +29,8 @@ describe(`pan_range_by_pixels`, () => {
     [`log shifts back a decade`, [10, 1000], -100, 200, `log`, [1, 100]],
     [`inverted linear stays inverted`, [100, 0], 50, 200, undefined, [75, -25]],
     [`degenerate range is a no-op`, [50, 50], 100, 200, undefined, [50, 50]],
-  ])(`%s`, (_desc, range, px, span, type, expected) => {
-    const result = pan_range_by_pixels(range, px, span, type)
+  ])(`%s`, (_desc, range, pixel_x, span, type, expected) => {
+    const result = pan_range_by_pixels(range, pixel_x, span, type)
     expect(result[0]).toBeCloseTo(expected[0], 9)
     expect(result[1]).toBeCloseTo(expected[1], 9)
   })
@@ -44,16 +44,16 @@ describe(`pan_range_by_pixels`, () => {
   })
 
   it(`log pan preserves the ratio between bounds (screen-uniform)`, () => {
-    const [lo, hi] = pan_range_by_pixels([2, 50], 37, 200, `log`)
-    expect(hi / lo).toBeCloseTo(25, 9)
+    const [lower, upper] = pan_range_by_pixels([2, 50], 37, 200, `log`)
+    expect(upper / lower).toBeCloseTo(25, 9)
   })
 
   it(`log recovers a stale non-positive bound instead of NaN`, () => {
     // the -5 bound is clamped to LOG_EPS before panning, so the panned range keeps the
     // clamped ratio 100 / LOG_EPS and its lower bound moved up from LOG_EPS
-    const [lo, hi] = pan_range_by_pixels([-5, 100], 10, 200, `log`)
-    expect(lo).toBeGreaterThan(LOG_EPS)
-    expect(Math.log(hi / lo)).toBeCloseTo(Math.log(100 / LOG_EPS), 9)
+    const [lower, upper] = pan_range_by_pixels([-5, 100], 10, 200, `log`)
+    expect(lower).toBeGreaterThan(LOG_EPS)
+    expect(Math.log(upper / lower)).toBeCloseTo(Math.log(100 / LOG_EPS), 9)
   })
 
   it(`arcsinh pan stays finite across zero`, () => {
@@ -87,9 +87,9 @@ describe(`zoom_range_by_factor`, () => {
   })
 
   it(`arcsinh zoom out across zero stays finite and symmetric-ish`, () => {
-    const [lo, hi] = zoom_range_by_factor([-100, 100], 0.5, `arcsinh`)
-    expect(Number.isFinite(lo) && Number.isFinite(hi)).toBe(true)
-    expect(lo).toBeCloseTo(-hi, 9) // asinh is odd, so symmetry is preserved
+    const [lower, upper] = zoom_range_by_factor([-100, 100], 0.5, `arcsinh`)
+    expect(Number.isFinite(lower) && Number.isFinite(upper)).toBe(true)
+    expect(lower).toBeCloseTo(-upper, 9) // asinh is odd, so symmetry is preserved
   })
 
   // invalid factors would emit Infinity/NaN into axis state - return the range unchanged
@@ -142,8 +142,8 @@ describe(`sync_y2_range`, () => {
       [0, 1],
       [0, 1000],
     ],
-  ])(`synced: sync_y2_range(%j, %j) = %j`, (y1, y2_base, expected) => {
-    expect(sync_y2_range(y1, y2_base, { mode: `synced` })).toEqual(expected)
+  ])(`synced: sync_y2_range(%j, %j) = %j`, (coord_y_1, y2_base, expected) => {
+    expect(sync_y2_range(coord_y_1, y2_base, { mode: `synced` })).toEqual(expected)
   })
 
   // [y1, y2_base, expected, align_value, desc]
@@ -166,10 +166,10 @@ describe(`sync_y2_range`, () => {
       align_value: 100,
       desc: `custom align 50%`,
     },
-  ] as const)(`align: $desc`, ({ y1, y2_base, expected, align_value }) => {
-    expect(sync_y2_range([...y1], [...y2_base], { mode: `align`, align_value })).toEqual([
-      ...expected,
-    ])
+  ] as const)(`align: $desc`, ({ y1: coord_y_1, y2_base, expected, align_value }) => {
+    expect(
+      sync_y2_range([...coord_y_1], [...y2_base], { mode: `align`, align_value }),
+    ).toEqual([...expected])
   })
 
   // A descending y1 is a supported mode, but the span math assumes value rises with position,
@@ -189,11 +189,14 @@ describe(`sync_y2_range`, () => {
       align_value: 100,
       desc: `custom align 50%`,
     },
-  ] as const)(`align on a descending y1: $desc`, ({ y1, y2_base, expected, align_value }) => {
-    expect(sync_y2_range([...y1], [...y2_base], { mode: `align`, align_value })).toEqual([
-      ...expected,
-    ])
-  })
+  ] as const)(
+    `align on a descending y1: $desc`,
+    ({ y1: coord_y_1, y2_base, expected, align_value }) => {
+      expect(
+        sync_y2_range([...coord_y_1], [...y2_base], { mode: `align`, align_value }),
+      ).toEqual([...expected])
+    },
+  )
 
   // Edge case: align_value outside y1_range — result must contain both data and align_value
   it.each<{ y1: Vec2; y2_base: Vec2; align_value: number }>([
@@ -201,14 +204,17 @@ describe(`sync_y2_range`, () => {
     { y1: [10, 20], y2_base: [60, 140], align_value: 30 },
     { y1: [0, 100], y2_base: [200, 300], align_value: -50 },
     { y1: [0, 100], y2_base: [-50, 50], align_value: 150 },
-  ])(`align edge: align_value=$align_value with y1=$y1`, ({ y1, y2_base, align_value }) => {
-    const result = sync_y2_range(y1, y2_base, {
-      mode: `align`,
-      align_value,
-    })
-    expect(result[0]).toBeLessThanOrEqual(Math.min(y2_base[0], align_value))
-    expect(result[1]).toBeGreaterThanOrEqual(Math.max(y2_base[1], align_value))
-  })
+  ])(
+    `align edge: align_value=$align_value with y1=$y1`,
+    ({ y1: coord_y_1, y2_base, align_value }) => {
+      const result = sync_y2_range(coord_y_1, y2_base, {
+        mode: `align`,
+        align_value,
+      })
+      expect(result[0]).toBeLessThanOrEqual(Math.min(y2_base[0], align_value))
+      expect(result[1]).toBeGreaterThanOrEqual(Math.max(y2_base[1], align_value))
+    },
+  )
 
   // Non-finite inputs fall back to y2_base_range
   it.each<[Vec2, Vec2]>([
@@ -232,8 +238,8 @@ describe(`sync_y2_range`, () => {
       [0, 100],
       [NaN, 50],
     ],
-  ])(`non-finite sync_y2_range(%j, %j) returns y2_base`, (y1, y2_base) => {
-    expect(sync_y2_range(y1, y2_base, { mode: `synced` })).toEqual(y2_base)
+  ])(`non-finite sync_y2_range(%j, %j) returns y2_base`, (coord_y_1, y2_base) => {
+    expect(sync_y2_range(coord_y_1, y2_base, { mode: `synced` })).toEqual(y2_base)
   })
 })
 

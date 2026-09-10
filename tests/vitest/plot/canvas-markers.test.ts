@@ -17,10 +17,10 @@ type Call = { op: string; args: unknown[] }
 const fake_ctx = () => {
   const calls: Call[] = []
   const ctx: Record<string, unknown> = { calls }
-  for (const op of `setTransform clearRect scale beginPath moveTo arc fill stroke save restore`.split(
+  for (const operation of `setTransform clearRect scale beginPath moveTo arc fill stroke save restore`.split(
     ` `,
   )) {
-    ctx[op] = (...args: unknown[]) => void calls.push({ op, args })
+    ctx[operation] = (...args: unknown[]) => void calls.push({ op: operation, args })
   }
   for (const prop of [`fillStyle`, `strokeStyle`, `lineWidth`, `globalAlpha`]) {
     Object.defineProperty(ctx, prop, {
@@ -41,7 +41,8 @@ const marker = (overrides: Partial<CanvasMarker> = {}): CanvasMarker => ({
   opacity: 1,
   ...overrides,
 })
-const ops = (ctx: { calls: Call[] }, op: string) => ctx.calls.filter((call) => call.op === op)
+const ops = (ctx: { calls: Call[] }, operation: string) =>
+  ctx.calls.filter((call) => call.op === operation)
 const filled_path = (ctx: { calls: Call[] }) => ops(ctx, `fill`)[0].args[0] as StubPath2D
 const draw = (
   markers: readonly CanvasMarker[],
@@ -62,7 +63,7 @@ describe(`canvas markers`, () => {
     const hidpi = draw([marker()], { width: 400, height: 300, pixel_ratio: 2 })
     expect(ops(hidpi, `clearRect`)[0].args).toEqual([0, 0, 800, 600])
     expect(ops(hidpi, `scale`)[0].args).toEqual([2, 2])
-    const empty_ops = draw([]).calls.map(({ op }) => op)
+    const empty_ops = draw([]).calls.map(({ op: operation }) => operation)
     expect(empty_ops).toEqual([`save`, `setTransform`, `clearRect`, `restore`])
   })
 
@@ -105,8 +106,8 @@ describe(`canvas markers`, () => {
     { symbol_size: -5 },
   ])(`skips markers with invalid geometry %o`, (overrides) => {
     const invalid_ctx = draw([marker(overrides)])
-    for (const op of [`arc`, `fill`, `stroke`]) {
-      expect(ops(invalid_ctx, op)).toHaveLength(0)
+    for (const operation of [`arc`, `fill`, `stroke`]) {
+      expect(ops(invalid_ctx, operation)).toHaveLength(0)
     }
   })
 

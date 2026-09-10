@@ -11,6 +11,7 @@ import {
   compute_bar_rect,
   compute_line_points,
   nearest_line_point,
+  visible_bar_indices,
 } from '$lib/plot/bar/geometry'
 import type { BarSeries } from '$lib/plot'
 import { describe, expect, test, vi } from 'vitest'
@@ -65,12 +66,22 @@ describe(`normalize_categorical`, () => {
     expect(internal_series[2].y).toEqual([NaN, NaN, 9])
   })
 
-  test(`respects explicit category order and drops absent categories`, () => {
-    const series: BarSeries[] = [{ x: [`a`, `b`, `c`], y: [1, 2, 3] }]
+  test.each([
+    [undefined, 0.75],
+    [0.4, 0.4],
+    [0, 0],
+    [
+      [0.2, 0.3, 0.4],
+      [0.4, 0.2],
+    ],
+    [[], [0.75, 0.75]],
+  ] as const)(`respects category order and width %j`, (bar_width, expected_width) => {
+    const series: BarSeries[] = [{ x: [`a`, `b`, `c`], y: [1, 2, 3], bar_width }]
     const { category_list, internal_series } = normalize_categorical(series, [`c`, `a`])
     expect(category_list).toEqual([`c`, `a`])
     expect(internal_series[0].x).toEqual([0, 1])
     expect(internal_series[0].y).toEqual([3, 1])
+    expect(internal_series[0].bar_width).toEqual(expected_width)
   })
 
   test(`warns on duplicate x values and keeps last occurrence`, () => {
@@ -110,19 +121,19 @@ describe(`normalize_categorical`, () => {
     ]
     const { internal_series } = normalize_categorical(series)
     // categories: ['b', 'c', 'a'] (first-seen order across series)
-    const [s1, s2] = internal_series
+    const [slope_1, slope_2] = internal_series
     for (const [prop, expected] of [
       [`labels`, [`B`, `C`, null]],
-      [`bar_width`, [0.2, 0.4, 0.5]],
+      [`bar_width`, [0.2, 0.4, 0.75]],
       [`color_values`, [7, 8, null]],
       [`size_values`, [5, 6, null]],
       [`point_style`, [{ fill: `red` }, { fill: `blue` }, undefined]],
       [`point_offset`, [{ x: 1, y: 1 }, { x: 2, y: 2 }, undefined]],
       [`metadata`, [{ tag: `scalar` }, { tag: `scalar` }, undefined]],
     ] as const)
-      expect(s1[prop]).toEqual(expected)
-    expect(s2.metadata).toEqual([{ id: 2 }, { id: 3 }, { id: 1 }])
-    expect(s2.point_style).toEqual({ fill: `green` })
+      expect(slope_1[prop]).toEqual(expected)
+    expect(slope_2.metadata).toEqual([{ id: 2 }, { id: 3 }, { id: 1 }])
+    expect(slope_2.point_style).toEqual({ fill: `green` })
   })
 })
 
@@ -133,8 +144,8 @@ describe(`compute_bar_auto_ranges`, () => {
     { y1: [3, 4], y2: [2, -5], expected: [-5, 5], desc: `mixed signs span totals, no clamp` },
     { y1: [3, 4], y2: [2, 0], expected: [0, 5], desc: `all-positive clamps min to 0` },
     { y1: [-3, -4], y2: [-2, 0], expected: [-5, 0], desc: `all-negative clamps max to 0` },
-  ])(`stacked totals: $desc`, ({ y1, y2, expected }) => {
-    const series = [bar({ y: y1 }), bar({ y: y2 })]
+  ])(`stacked totals: $desc`, ({ y1: coord_y_1, y2: coord_y_2, expected }) => {
+    const series = [bar({ y: coord_y_1 }), bar({ y: coord_y_2 })]
     expect(auto_ranges(series, { mode: `stacked` }).y).toEqual(expected)
   })
 
@@ -385,7 +396,7 @@ describe(`bar geometry`, () => {
     [`vertical`, {}, [[10, 8], [20, 10], [30, 12]]],
     [`horizontal`, { orientation: `horizontal` as const }, [[40, 3], [50, 6], [60, 9]]],
   ] as const)(`line_points maps %s coordinates`, (_name, overrides, coords) => {
-    expect(line_points(overrides).map(({ x, y }) => [x, y])).toEqual(coords)
+    expect(line_points(overrides).map(({ x: coord_x, y: coord_y }) => [coord_x, coord_y])).toEqual(coords)
   })
 
   test(`line_points keeps source indices and drops non-finite points`, () => {
@@ -418,7 +429,7 @@ describe(`bar geometry`, () => {
     const scalar = line_points({
       series: { ...series, metadata: { tag: `all` }, point_style: { fill: `red` } },
     })
-    expect(scalar.map((pt) => [pt.metadata, pt.point_style])).toEqual(
+    expect(scalar.map((point) => [point.metadata, point.point_style])).toEqual(
       Array.from({ length: 3 }, () => [{ tag: `all` }, { fill: `red` }]),
     )
   })
@@ -472,3 +483,35 @@ describe(`bar geometry`, () => {
     expect(nearest_line_point([], { x: 0, y: 0 })).toBeNull()
   })
 })
+
+test.each([`vertical`, `horizontal`] as const)(
+  `bar window keeps crossing bars and unclipped labels (%s)`,
+  (orientation) => {
+    const series = {
+      x: [-10, -1, 0, 5, 10, 11, 20, 30],
+      y: [5, 5, 0, 5, -5, 5, 5, 5],
+      bar_width: [0.5, 4, 1, 1, 1, 4, 1, 1],
+      labels: [null, null, null, null, null, null, null, `outside label`],
+    }
+    const indices = visible_bar_indices({
+      series,
+      orientation,
+      rect_at: (bar_idx) =>
+        compute_bar_rect({
+          cat_val: series.x[bar_idx],
+          val: series.y[bar_idx],
+          base: 0,
+          bar_width_val: series.bar_width[bar_idx],
+          series_idx: 0,
+          mode: `overlay`,
+          orientation,
+          group_info: { bar_series_count: 1, bar_series_indices: [0] },
+          cat_scale: (value) => value * 10,
+          val_scale: (value) => value * 10,
+        }),
+      clip: { x: 0, y: 0, width: 100, height: 100 },
+      stroke_width: 0,
+    })
+    expect(indices).toEqual([1, 3, 4, 5, 7])
+  },
+)

@@ -30,9 +30,9 @@ const mount_axis = async (props: Record<string, unknown>): Promise<SVGElement> =
 }
 
 const query = (root: Element, selector: string): Element => {
-  const el = root.querySelector(selector)
-  if (!el) throw new Error(`missing element: ${selector}`)
-  return el
+  const element = root.querySelector(selector)
+  if (!element) throw new Error(`missing element: ${selector}`)
+  return element
 }
 
 afterEach(() => {
@@ -94,9 +94,9 @@ describe(`PlotAxis`, () => {
       const ticks = query(svg, `g.${side}-axis`).querySelectorAll(`g.tick`)
       expect(ticks).toHaveLength(2)
       for (const [selector, attrs] of Object.entries(expected)) {
-        const el = query(ticks[0], selector)
+        const element = query(ticks[0], selector)
         for (const [attr, value] of Object.entries(attrs)) {
-          expect(el.getAttribute(attr)).toBe(value)
+          expect(element.getAttribute(attr)).toBe(value)
         }
       }
     },

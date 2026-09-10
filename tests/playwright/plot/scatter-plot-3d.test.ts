@@ -44,6 +44,161 @@ test(`portalled tooltip can escape while the canvas stays clipped`, async ({ pag
   ).toEqual({ canvas_clipped: true, tooltip_visible: true })
 })
 
+test(`sized points and projections share meshes and resize their instance buffers`, async ({
+  page,
+}) => {
+  test.skip(IS_CI, `Requires a hardware WebGPU adapter`)
+  await page.goto(`${TEST_URL}?points=64&varying_sizes&projections`)
+  const read = () =>
+    page.evaluate(() => {
+      const reader = Reflect.get(globalThis, `read_scatter_instances`) as
+        | (() => {
+            count: number
+            matrices: number[]
+            colors: number[]
+            projection: boolean
+          }[])
+        | undefined
+      return reader?.() ?? []
+    })
+  for (const count of [64, 256, 0, 11]) {
+    if (count !== 64)
+      await page.evaluate((next_count) => {
+        const set_count = Reflect.get(globalThis, `set_scatter_count`) as (
+          count: number,
+        ) => void
+        set_count(next_count)
+      }, count)
+    if (count === 0) {
+      await expect.poll(read).toEqual([])
+      continue
+    }
+    await expect
+      .poll(async () => (await read()).map((mesh) => mesh.count))
+      .toEqual([count, count, count, count])
+    await expect
+      .poll(async () => {
+        const meshes = await read()
+        // Matrices/colors are uploaded on the next render task, after count changes.
+        return meshes.every(
+          (mesh) => mesh.matrices.length === count * 16 && mesh.matrices.at(-16) !== 1,
+        )
+      })
+      .toBe(true)
+    const meshes = await read()
+    expect(meshes.map((mesh) => mesh.projection)).toEqual([false, true, true, true])
+    for (const mesh of meshes) {
+      expect(mesh.colors).toHaveLength(count * 3)
+      for (let idx = 0; idx < count; idx++) {
+        const expected_radius =
+          (0.05 + (0.15 * idx) / (count - 1)) * (mesh.projection ? 0.5 : 1)
+        // Instance matrices are f32: allow one f32 epsilon relative to radius.
+        for (const diagonal of [0, 5, 10])
+          expect(
+            Math.abs(mesh.matrices[idx * 16 + diagonal] - expected_radius),
+          ).toBeLessThanOrEqual(expected_radius * 2 ** -23)
+        expect(mesh.matrices[idx * 16 + 15]).toBe(1)
+      }
+      if (mesh.projection) expect(mesh.colors).toEqual(meshes[0].colors)
+    }
+  }
+})
+
+test(`hover follows rotated markers and its tooltip never intercepts the pointer`, async ({
+  page,
+}) => {
+  test.skip(IS_CI, `Requires a hardware WebGPU adapter`)
+  await page.goto(`${TEST_URL}?points=16&varying_sizes`)
+  const container = page.locator(CONTAINER_SELECTOR)
+  await wait_for_canvas_rendered(await wait_for_3d_canvas(page, CONTAINER_SELECTOR))
+  for (const position of [
+    [12, 0, 0],
+    [8, 8, 8],
+    [0.01, 12, 0.01],
+  ]) {
+    await page.evaluate((target_position) => {
+      const set_view = Reflect.get(globalThis, `set_scatter_view`) as (
+        position: number[],
+      ) => Promise<void>
+      return set_view(target_position)
+    }, position)
+    // Camera binding, orbit controls, and instance matrices settle over render frames.
+    let marker_y = 0
+    await expect
+      .poll(async () => {
+        const targets = await page.evaluate(() => {
+          const read_targets = Reflect.get(globalThis, `read_scatter_targets`) as () => {
+            point_idx: number
+            x: number
+            y: number
+          }[]
+          return read_targets()
+        })
+        const bounds = await container.boundingBox()
+        if (!bounds) return false
+        const target = targets.find(
+          ({ x, y }) =>
+            x > bounds.x + 100 &&
+            x < bounds.x + bounds.width - 100 &&
+            y > bounds.y + 120 &&
+            y < bounds.y + bounds.height - 30,
+        )
+        if (!target) return false
+        await page.mouse.move(target.x - 2, target.y)
+        await page.mouse.move(target.x, target.y)
+        const hovered = await page.evaluate(() => {
+          const read_hover = Reflect.get(globalThis, `read_scatter_hover`) as () =>
+            | number
+            | null
+          return read_hover()
+        })
+        marker_y = target.y
+        return hovered === target.point_idx
+      })
+      .toBe(true)
+    const tooltip = container.locator(`.tooltip`)
+    await expect(tooltip).toBeVisible()
+    const tooltip_bounds = await tooltip.boundingBox()
+    if (!tooltip_bounds) throw new Error(`Missing tooltip bounds at camera ${position}`)
+    const gap = marker_y - tooltip_bounds.y - tooltip_bounds.height
+    expect(gap).toBeGreaterThan(7) // 8px clearance plus the projected halo radius
+    expect(gap).toBeLessThan(32) // small test markers must not leave a large detached gap
+    expect(
+      await tooltip.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        return document.elementFromPoint(
+          bounds.x + bounds.width / 2,
+          bounds.y + bounds.height / 2,
+        )?.tagName
+      }),
+    ).toBe(`CANVAS`)
+    await expect(tooltip.locator(`..`)).toHaveCSS(`pointer-events`, `none`)
+  }
+
+  // With two samples, normalization places them on opposite ends of this diagonal.
+  // Looking straight down it overlaps both spheres: index 1 is the nearer surface.
+  await page.evaluate(async () => {
+    const set_count = Reflect.get(globalThis, `set_scatter_count`) as (count: number) => void
+    const set_view = Reflect.get(globalThis, `set_scatter_view`) as (
+      position: number[],
+    ) => Promise<void>
+    set_count(2)
+    await set_view([-10, 5, 10])
+  })
+  await expect
+    .poll(async () => {
+      const bounds = await container.boundingBox()
+      if (!bounds) return null
+      await page.mouse.move(bounds.x + bounds.width / 2 - 2, bounds.y + bounds.height / 2)
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+      return page.evaluate(() => {
+        const read_hover = Reflect.get(globalThis, `read_scatter_hover`) as () => number | null
+        return read_hover()
+      })
+    })
+    .toBe(1)
+})
+
 test.describe(`ScatterPlot3D`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)

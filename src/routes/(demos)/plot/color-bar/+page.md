@@ -56,7 +56,9 @@ You can make fat and skinny bars:
   let color_scale = $state<D3InterpolateName>(`interpolateCividis`)
   let heatmap_key = $state(``)
   let heat_label = $state(``)
-  let heatmap_values = $derived(heatmap_key ? element_data.map((el) => el[heatmap_key]) : [])
+  let heatmap_values = $derived(
+    heatmap_key ? element_data.map((element) => element[heatmap_key]) : [],
+  )
 </script>
 
 <form>
@@ -92,7 +94,7 @@ For more control, you can also manually add a `ColorBar` inside a custom `TableI
   import { ColorBar } from 'matterviz/plot'
   import { PeriodicTable, TableInset } from 'matterviz/periodic-table'
 
-  const heatmap_values = element_data.map((el) => el.atomic_mass)
+  const heatmap_values = element_data.map((element) => element.atomic_mass)
   const heat_range = [Math.min(...heatmap_values), Math.max(...heatmap_values)]
 </script>
 

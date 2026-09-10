@@ -199,8 +199,8 @@ describe(`create_legend_visibility`, () => {
 
   test.each([undefined, `a`, 0])(
     `initially hidden series %s can be shown without rewriting it`,
-    (id) => {
-      const initial = [{ id, x: [1], y: [2], visible: false }]
+    (identifier) => {
+      const initial = [{ id: identifier, x: [1], y: [2], visible: false }]
       const { store, vis, visible } = make_store(initial)
       expect(visible()).toEqual([false])
       vis.on_toggle(0)
@@ -240,8 +240,8 @@ describe(`create_legend_visibility`, () => {
   test.each([`toggle`, `group`, `isolate`] as const)(
     `%s follows shared legend IDs through drawing replacement and reorder`,
     (action) => {
-      const drawing = (id: string, legend_id: string): DataSeries => ({
-        id,
+      const drawing = (identifier: string, legend_id: string): DataSeries => ({
+        id: identifier,
         legend_id,
         label: `Same`,
         x: [],
