@@ -15,7 +15,7 @@ const live_observers = () => observers.filter((obs) => !obs.disconnected).length
 
 class FakeMutationObserver {
   disconnected = false
-  constructor(public cb: MutationCallback) {
+  constructor(public callback_fn: MutationCallback) {
     observers.push(this)
   }
   observe(target: Node): void {
@@ -64,7 +64,7 @@ const make_shadow_element = (): { host: HTMLElement; inner: HTMLElement } => {
 const trigger_dom_mutation = (): void => {
   const record = { type: `attributes`, attributeName: `class` } as unknown as MutationRecord
   for (const observer of observers) {
-    if (!observer.disconnected) observer.cb([record], observer)
+    if (!observer.disconnected) observer.callback_fn([record], observer)
   }
 }
 

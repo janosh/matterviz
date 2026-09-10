@@ -29,13 +29,19 @@ describe(`compute_sunburst_layout`, () => {
     const { arcs, root, max_depth } = compute_sunburst_layout(tree)
     expect(root).toBe(arcs[0])
     expect(max_depth).toBe(2)
-    const [c0, c1] = PLOT_COLORS
+    const [value_c_0, value_c_1] = PLOT_COLORS
     // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color, pattern] per
     // arc: pre-order indexing gives contiguous subtree ranges, auto-ids slash-join
     // labels, descendants inherit their depth-1 ancestor's palette color, and pattern
     // passes through per-node without inheriting
-    const fields = ({ id, node_idx, subtree_end, parent_idx, ...arc }: (typeof arcs)[0]) => [
-      id,
+    const fields = ({
+      id: identifier,
+      node_idx,
+      subtree_end,
+      parent_idx,
+      ...arc
+    }: (typeof arcs)[0]) => [
+      identifier,
       node_idx,
       subtree_end,
       parent_idx,
@@ -47,14 +53,14 @@ describe(`compute_sunburst_layout`, () => {
     ]
     expect(arcs.map(fields)).toEqual([
       [``, 0, 4, null, 0, 20, false, `transparent`, null],
-      [`A`, 1, 3, 0, 1, 10, false, c0, `/`],
-      [`A/A1`, 2, 2, 1, 2, 4, true, c0, { shape: `dots`, size: 6 }],
-      [`A/A2`, 3, 3, 1, 2, 6, true, c0, null],
-      [`B`, 4, 4, 0, 1, 10, true, c1, null],
+      [`A`, 1, 3, 0, 1, 10, false, value_c_0, `/`],
+      [`A/A1`, 2, 2, 1, 2, 4, true, value_c_0, { shape: `dots`, size: 6 }],
+      [`A/A2`, 3, 3, 1, 2, 6, true, value_c_0, null],
+      [`B`, 4, 4, 0, 1, 10, true, value_c_1, null],
     ])
     // sort 'none' preserves input order (A first half, B second, closing the circle);
     // children subdivide the parent span proportionally (4:6); y0 === depth
-    expect(arcs.map(({ x0, x1 }) => [x0, x1])).toEqual(
+    expect(arcs.map(({ x0: coord_x_0, x1: coord_x_1 }) => [coord_x_0, coord_x_1])).toEqual(
       [
         [0, 1],
         [0, 0.5],
@@ -157,14 +163,14 @@ describe(`compute_sunburst_layout`, () => {
     // Merged nodes under a bucket are synthetic: they exist only once bucketing has run,
     // so a persisted zoom root or expansion naming one must still be honoured
     test(`zoom_root_id and expanded_parents resolve synthetic merged nodes`, () => {
-      const user = (name: string, vasp: number, qe: number): SunburstNode => ({
+      const user = (name: string, vasp: number, quantum_espresso: number): SunburstNode => ({
         label: name,
         children: [
           {
             label: `gpu`,
             children: [
               { label: `vasp`, value: vasp },
-              { label: `qe`, value: qe },
+              { label: `qe`, value: quantum_espresso },
             ],
           },
           { label: `cpu`, value: 15 },

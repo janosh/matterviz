@@ -1,10 +1,12 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
 import { HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
-import type { AxisItem, ColorBarPosition } from '$lib/heatmap-matrix'
+import heatmap_source from '$lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
+import type { AxisItem, ColorBarPosition, HeatmapDomainMode } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
@@ -14,6 +16,11 @@ const make_items = (labels: readonly string[]): AxisItem[] =>
 
 const x_items = make_items([`A`, `B`, `C`])
 const y_items = make_items([`X`, `Y`, `Z`])
+const numbered_values = [
+  [1, 2, 3],
+  [4, 5, 6],
+  [7, 8, 9],
+]
 
 // `x`/`y` are a shorthand to build x_items/y_items from label arrays; pass x_items/y_items
 // directly for custom AxisItem objects (e.g. explicit sort_value)
@@ -22,12 +29,12 @@ const mount_matrix = (
     ComponentProps<typeof HeatmapMatrix>
   > = {},
 ): void => {
-  const { x, y, ...rest } = props
+  const { x: coord_x, y: coord_y, ...rest } = props
   mount(HeatmapMatrix, {
     target: document.body,
     props: {
-      x_items: x ? make_items(x) : x_items,
-      y_items: y ? make_items(y) : y_items,
+      x_items: coord_x ? make_items(coord_x) : x_items,
+      y_items: coord_y ? make_items(coord_y) : y_items,
       ...rest,
     },
   })
@@ -49,6 +56,8 @@ describe(`HeatmapMatrix rendering`, () => {
     // 3x3 = 9 cells
     const cells = get_data_cells()
     expect(cells).toHaveLength(9)
+    // happy-dom drops nested CSS rules; Playwright checks the rendered colors and animations.
+    expect(heatmap_source).toMatch(/\.cell\s*\{[^{}]*transition:\s*none;/)
     // axis labels
     const x_labels = get_x_labels()
     const y_labels = get_y_labels()
@@ -195,16 +204,6 @@ describe(`values and colors`, () => {
     expect(cells[3].style.backgroundColor).toBe(`red`)
   })
 
-  test(`custom color_scale function is applied`, () => {
-    mount_matrix({
-      x: [`A`],
-      y: [`X`],
-      values: [[0.5]],
-      color_scale: () => `rgb(255, 0, 0)`,
-    })
-    expect(doc_query(`.cell:not(.empty)`).style.backgroundColor).toBe(`rgb(255, 0, 0)`)
-  })
-
   test(`color_overrides takes precedence over computed color`, () => {
     mount_matrix({
       x: [`A`, `B`],
@@ -215,25 +214,6 @@ describe(`values and colors`, () => {
     const cells = get_data_cells()
     expect(cells[1].style.backgroundColor).toBe(`rgb(1, 2, 3)`)
     expect(cells[0].style.backgroundColor).not.toBe(`rgb(1, 2, 3)`)
-  })
-
-  test(`log mode anchors at smallest positive value when data has non-positives`, () => {
-    mount_matrix({
-      x: [`A`, `B`, `C`, `D`],
-      y: [`X`],
-      values: [[-1, 0.01, 1, 100]],
-      log: true,
-      missing: { color: `red` },
-      color_scale: (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`,
-    })
-    const cells = get_data_cells()
-    const red = (idx: number) => Number(/\d+/.exec(cells[idx].style.backgroundColor)?.[0])
-    expect(cells[0].style.backgroundColor).toBe(`red`) // non-positive -> missing color
-    // a Number.MIN_VALUE lower bound squashes all positives into [0.985, 1]; instead
-    // 0.01 must map to the bottom, 100 to the top, 1 to the log midpoint
-    expect(red(1)).toBe(0)
-    expect(Math.abs(red(2) - 127.5)).toBeLessThanOrEqual(1)
-    expect(red(3)).toBe(255)
   })
 
   // the legend reads the same lifted floor as the cells: a zero in the data must not floor
@@ -253,34 +233,32 @@ describe(`values and colors`, () => {
     expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0.01, 100])
   })
 
-  // the shared ramp must not floor positive log bounds at LOG_EPS (1e-9): 1e-12 is the
-  // bottom, 1e-9 the log midpoint, not the bottom color twice
-  test(`log mode keeps positive values below 1e-9 spread over the ramp`, () => {
-    mount_matrix({
-      x: [`A`, `B`, `C`],
-      y: [`X`],
-      values: [[1e-12, 1e-9, 1e-6]],
-      log: true,
-      color_scale: red_scale,
-    })
-    expect(get_data_cells().map(red_of)).toEqual([0, 128, 255])
-  })
-
   // 51 values 0..50: the 2nd/98th percentiles (interpolated, quantile_unordered) are 1 and 49,
   // so under `robust` 1 maps to the bottom of the ramp, 49 to the top, 0 and 50 saturate.
-  test(`robust domain clips to the 2nd-98th percentile`, () => {
+  test(`switching domains collects robust quantiles and restores the automatic range`, () => {
     const values = [Array.from({ length: 51 }, (_val, idx) => idx)]
-    mount_matrix({
-      x: values[0].map((val) => `c${val}`),
-      y: [`X`],
-      values,
-      domain_mode: `robust`,
-      color_scale: red_scale,
+    const domain = fromStore(writable<HeatmapDomainMode>(`auto`))
+    mount(HeatmapMatrix, {
+      target: document.body,
+      props: {
+        x_items: make_items(values[0].map((val) => `c${val}`)),
+        y_items: make_items([`X`]),
+        values,
+        color_scale: red_scale,
+        get domain_mode() {
+          return domain.current
+        },
+      },
     })
-    const reds = get_data_cells().map(red_of)
-    expect(reds.slice(0, 3)).toEqual([0, 0, Math.round(255 / 48)])
-    expect(reds.slice(-2)).toEqual([255, 255])
-    expect(reds[25]).toBe(Math.round((24 / 48) * 255))
+    for (const mode of [`auto`, `robust`, `auto`, `robust`] as const) {
+      flushSync(() => {
+        domain.current = mode
+      })
+      const reds = get_data_cells().map(red_of)
+      expect([0, 1, 2, 25, 49, 50].map((idx) => reds[idx])).toEqual(
+        mode === `robust` ? [0, 0, 5, 128, 255, 255] : [0, 5, 10, 128, 250, 255],
+      )
+    }
   })
 
   // A descending color_scale_range flips the legend's direction but must not flip which
@@ -307,7 +285,19 @@ describe(`values and colors`, () => {
   // a non-positive log floor is lifted to the smallest positive value so the data still spans
   // the ramp; a degenerate domain paints every mappable cell the midpoint color (also when
   // the lifted log floor lands on the max); a log domain entirely <= 0 maps nothing
-  test.each<[string, Partial<ComponentProps<typeof HeatmapMatrix>>, number[], number[]]>([
+  test.each<
+    [string, Partial<ComponentProps<typeof HeatmapMatrix>>, number[], (number | string)[]]
+  >([
+    [`custom color scale`, { color_scale: () => `rgb(255, 0, 0)` }, [0.5], [`rgb(255, 0, 0)`]],
+    // A ±1 tolerance around the midpoint 127.5 permits byte values 127 or 128.
+    [
+      `non-positive data lifts the log floor`,
+      { log: true, missing: { color: `red` } },
+      [-1, 0.01, 1, 100],
+      [`red`, 0, expect.toBeOneOf([127, 128]), 255],
+    ],
+    // Positive values below LOG_EPS (1e-9) must still span the whole ramp.
+    [`sub-1e-9 log bounds`, { log: true }, [1e-12, 1e-9, 1e-6], [0, 128, 255]],
     [
       `log floor lifted to the min positive value`,
       { log: true, color_scale_range: [-10, 10] },
@@ -331,7 +321,10 @@ describe(`values and colors`, () => {
       color_scale: red_scale,
       ...props,
     })
-    expect(get_data_cells().map(red_of)).toEqual(expected_reds)
+    const colors = get_data_cells().map((cell, idx) =>
+      typeof expected_reds[idx] === `string` ? cell.style.backgroundColor : red_of(cell),
+    )
+    expect(colors).toEqual(expected_reds)
   })
 
   test(`empty values array gives transparent cells`, () => {
@@ -346,11 +339,7 @@ describe(`click and dblclick handlers`, () => {
   test(`on_click receives correct CellContext`, () => {
     const handler = vi.fn()
     mount_matrix({
-      values: [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-      ],
+      values: numbered_values,
       on_click: handler,
     })
     // Click cell at x=1, y=2 (value=8)
@@ -381,35 +370,27 @@ describe(`click and dblclick handlers`, () => {
       const on_dblclick = vi.fn()
       mount_matrix({ values: [[10, 20, 30]], on_click, on_double_click: on_dblclick })
       const cells = get_data_cells()
-      const fire = (el: HTMLElement, type: `click` | `dblclick`) => {
-        el.dispatchEvent(mouse(type))
+      // Matching click/dblclick triggers double; orphaned or different-cell doubles become single.
+      for (const [click_idx, cell_idx, double] of [
+        [0, 0, true],
+        [null, 0, false],
+        [0, 1, false],
+      ] as const) {
+        on_click.mockClear()
+        on_dblclick.mockClear()
+        if (click_idx !== null) cells[click_idx].dispatchEvent(mouse(`click`))
+        cells[cell_idx].dispatchEvent(mouse(`dblclick`))
+        if (!double) expect(on_dblclick).not.toHaveBeenCalled()
+        vi.runAllTimers()
+        expect(on_click).toHaveBeenCalledTimes(double ? 0 : 1)
+        expect(on_dblclick).toHaveBeenCalledTimes(double ? 1 : 0)
+        const handler = double ? on_dblclick : on_click
+        expect(handler.mock.calls[0][0]).toMatchObject({
+          x_idx: cell_idx,
+          y_idx: 0,
+          value: cell_idx === 0 ? 10 : 20,
+        })
       }
-
-      // Matching click + dblclick → dblclick only
-      fire(cells[0], `click`)
-      fire(cells[0], `dblclick`)
-      vi.runAllTimers()
-      expect(on_click).not.toHaveBeenCalled()
-      expect(on_dblclick).toHaveBeenCalledOnce()
-
-      // Orphaned dblclick → schedule single-click
-      on_click.mockClear()
-      on_dblclick.mockClear()
-      fire(cells[0], `dblclick`)
-      expect(on_dblclick).not.toHaveBeenCalled()
-      vi.runAllTimers()
-      expect(on_click).toHaveBeenCalledOnce()
-      expect(on_click.mock.calls[0][0]).toMatchObject({ x_idx: 0, y_idx: 0, value: 10 })
-
-      // Click A then dblclick B → single-click B
-      on_click.mockClear()
-      on_dblclick.mockClear()
-      fire(cells[0], `click`)
-      fire(cells[1], `dblclick`)
-      expect(on_dblclick).not.toHaveBeenCalled()
-      vi.runAllTimers()
-      expect(on_click).toHaveBeenCalledOnce()
-      expect(on_click.mock.calls[0][0]).toMatchObject({ x_idx: 1, y_idx: 0, value: 20 })
     } finally {
       vi.useRealTimers()
     }
@@ -495,8 +476,8 @@ describe(`edge cases`, () => {
     },
   ] as const)(
     `$desc renders $data data cells and $empty empty cells`,
-    ({ x, y, symmetric, data, empty }) => {
-      mount_matrix({ x, y, symmetric })
+    ({ x: coord_x, y: coord_y, symmetric, data, empty }) => {
+      mount_matrix({ x: coord_x, y: coord_y, symmetric })
       expect(get_data_cells()).toHaveLength(data)
       expect(get_empty_cells()).toHaveLength(empty)
     },
@@ -515,117 +496,80 @@ describe(`hide_empty`, () => {
     ],
   }
 
-  test(`compact removes all-null columns and rows`, () => {
-    mount_matrix({ ...sparse, hide_empty: `compact` })
-    // Column B (all null) and row Y (all null) should be removed
-    const x_labels = get_x_labels()
-    const y_labels = get_y_labels()
-    expect(x_labels).toHaveLength(2)
-    expect(y_labels).toHaveLength(2)
-    expect(x_labels[0].textContent?.trim()).toBe(`A`)
-    expect(x_labels[1].textContent?.trim()).toBe(`C`)
-    expect(y_labels[0].textContent?.trim()).toBe(`X`)
-    expect(y_labels[1].textContent?.trim()).toBe(`Z`)
-    // 2x2 = 4 cells rendered
-    expect(get_data_cells()).toHaveLength(4)
-  })
-
-  test(`gaps keeps grid dimensions but hides empty rows/cols`, () => {
-    mount_matrix({ ...sparse, hide_empty: `gaps` })
-    // Same 2 visible labels per axis, but grid template uses full 3 cols/rows
-    expect(get_x_labels()).toHaveLength(2)
-    expect(get_y_labels()).toHaveLength(2)
-    const container = doc_query(`.grid`)
-    expect(container.style.getPropertyValue(`--n-cols`)).toBe(`3`)
-    expect(container.style.getPropertyValue(`--n-rows`)).toBe(`3`)
-    // Cells use original indices for grid placement (A=col 2, C=col 4, X=row 2, Z=row 4)
-    const cells = get_data_cells()
-    expect(cells[0].style.gridColumn).toBe(`2`) // A (idx 0 + 2)
-    expect(cells[0].style.gridRow).toBe(`2`) // X (idx 0 + 2)
-    expect(cells[3].style.gridColumn).toBe(`4`) // C (idx 2 + 2)
-    expect(cells[3].style.gridRow).toBe(`4`) // Z (idx 2 + 2)
-  })
-
-  test(`false shows all rows/cols including all-null ones`, () => {
-    mount_matrix({ ...sparse, hide_empty: false })
-    expect(get_x_labels()).toHaveLength(3)
-    expect(get_y_labels()).toHaveLength(3)
-    expect(get_data_cells()).toHaveLength(9)
-  })
+  test.each([`compact`, `gaps`, false] as const)(
+    `mode=%s filters rows and columns`,
+    (hide_empty) => {
+      mount_matrix({ ...sparse, hide_empty })
+      expect(get_x_labels().map((label) => label.textContent?.trim())).toEqual(
+        hide_empty ? [`A`, `C`] : sparse.x,
+      )
+      expect(get_y_labels().map((label) => label.textContent?.trim())).toEqual(
+        hide_empty ? [`X`, `Z`] : sparse.y,
+      )
+      const cells = get_data_cells()
+      expect(cells).toHaveLength(hide_empty ? 4 : 9)
+      if (hide_empty === `gaps`) {
+        const grid = doc_query(`.grid`)
+        expect(grid.style.getPropertyValue(`--n-cols`)).toBe(`3`)
+        expect(grid.style.getPropertyValue(`--n-rows`)).toBe(`3`)
+        // Gaps retain the original A/X and C/Z tracks despite missing B/Y.
+        expect([cells[0].style.gridColumn, cells[0].style.gridRow]).toEqual([`2`, `2`])
+        expect([cells[3].style.gridColumn, cells[3].style.gridRow]).toEqual([`4`, `4`])
+      }
+    },
+  )
 })
 
 describe(`axis label placement`, () => {
-  test(`stagger_axis_labels=true splits x(top/bottom) and y(left/right) sides`, () => {
-    mount_matrix({
-      x: [`A`, `B`, `C`, `D`],
-      y: [`W`, `X`, `Y`, `Z`],
-      stagger_axis_labels: true,
-    })
-    const x_labels = get_x_labels()
-    const y_labels = get_y_labels()
-    expect(x_labels[0].style.gridRow).toBe(`1`)
-    expect(x_labels[1].style.gridRow).toBe(`6`) // n_rows(4) + top row + bottom row
-    expect(y_labels[0].style.gridColumn).toBe(`1`)
-    expect(y_labels[1].style.gridColumn).toBe(`6`) // n_cols(4) + left col + right col
-    // even items keep the near edge class, odd ones get the far edge class
-    const has_class = (labels: HTMLElement[], cls: string) =>
-      labels.map((label) => label.classList.contains(cls))
-    expect(has_class(x_labels, `x-edge-top`)).toEqual([true, false, true, false])
-    expect(has_class(x_labels, `x-edge-bottom`)).toEqual([false, true, false, true])
-    expect(has_class(y_labels, `y-edge-left`)).toEqual([true, false, true, false])
-    expect(has_class(y_labels, `y-edge-right`)).toEqual([false, true, false, true])
-    expect(doc_query(`.grid`).style.getPropertyValue(`--extra-bottom-x`)).toBe(`1`)
-  })
+  test.each([false, true])(
+    `staggered labels avoid summary tracks: summaries=%s`,
+    (summaries) => {
+      mount_matrix({
+        x: [`A`, `B`, `C`, `D`],
+        y: [`W`, `X`, `Y`, `Z`],
+        ...(summaries && {
+          values: [
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12],
+            [13, 14, 15, 16],
+          ],
+          show_row_summaries: true,
+          show_col_summaries: true,
+        }),
+        stagger_axis_labels: true,
+      })
+      const far_track = summaries ? `7` : `6`
+      const tracks = [`1`, far_track, `1`, far_track]
+      for (const [labels, track, near, far] of [
+        [get_x_labels(), `gridRow`, `x-edge-top`, `x-edge-bottom`],
+        [get_y_labels(), `gridColumn`, `y-edge-left`, `y-edge-right`],
+      ] as const) {
+        expect(labels.map((label) => label.style[track])).toEqual(tracks)
+        const near_edges = labels.map((label) => label.classList.contains(near))
+        const far_edges = labels.map((label) => label.classList.contains(far))
+        expect(near_edges).toEqual([true, false, true, false])
+        expect(far_edges).toEqual([false, true, false, true])
+      }
+      expect(doc_query(`.grid`).style.getPropertyValue(`--extra-bottom-x`)).toBe(`1`)
+      if (summaries) {
+        expect(doc_query(`.summary-col`).style.gridRow).toBe(`6`)
+        expect(doc_query(`.summary-row`).style.gridColumn).toBe(`6`)
+      }
+    },
+  )
 
-  test(`symmetric diagonal mode moves only x labels toward diagonal`, () => {
-    mount_matrix({
-      symmetric: `lower`,
-      symmetric_label_position: `diagonal`,
-    })
-    const x_labels = get_x_labels()
-    const y_labels = get_y_labels()
-    expect(x_labels[0].style.gridRow).toBe(`1`)
-    expect(x_labels[1].style.gridRow).toBe(`2`)
-    expect(x_labels[2].style.gridRow).toBe(`3`)
-    for (const y_label of Array.from(y_labels)) {
-      expect(y_label.style.gridColumn).toBe(`1`)
-    }
-  })
-
-  test(`symmetric edge mode keeps x labels on top edge`, () => {
-    mount_matrix({
-      symmetric: `lower`,
-      symmetric_label_position: `edge`,
-    })
-    const x_labels = get_x_labels()
-    for (const x_label of Array.from(x_labels)) {
-      expect(x_label.style.gridRow).toBe(`1`)
-    }
-  })
-
-  test(`staggered labels avoid summary row and summary column tracks`, () => {
-    mount_matrix({
-      x: [`A`, `B`, `C`, `D`],
-      y: [`W`, `X`, `Y`, `Z`],
-      values: [
-        [1, 2, 3, 4],
-        [5, 6, 7, 8],
-        [9, 10, 11, 12],
-        [13, 14, 15, 16],
-      ],
-      stagger_axis_labels: true,
-      show_row_summaries: true,
-      show_col_summaries: true,
-    })
-    const x_labels = get_x_labels()
-    const y_labels = get_y_labels()
-    // With summaries enabled, odd labels move one extra track outward.
-    expect(x_labels[1].style.gridRow).toBe(`7`)
-    expect(y_labels[1].style.gridColumn).toBe(`7`)
-    // Summary tracks still occupy the immediate next track.
-    expect(doc_query(`.summary-col`).style.gridRow).toBe(`6`)
-    expect(doc_query(`.summary-row`).style.gridColumn).toBe(`6`)
-  })
+  test.each([
+    [`diagonal`, [`1`, `2`, `3`]],
+    [`edge`, [`1`, `1`, `1`]],
+  ] as const)(
+    `symmetric %s positions x labels and keeps y labels at the edge`,
+    (position, rows) => {
+      mount_matrix({ symmetric: `lower`, symmetric_label_position: position })
+      expect(get_x_labels().map((label) => label.style.gridRow)).toEqual(rows)
+      expect(get_y_labels().map((label) => label.style.gridColumn)).toEqual([`1`, `1`, `1`])
+    },
+  )
 })
 
 describe(`milestone feature props`, () => {
@@ -752,11 +696,7 @@ describe(`milestone feature props`, () => {
     mount_matrix({
       selection_mode: `range`,
       symmetric: `lower`,
-      values: [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-      ],
+      values: numbered_values,
       on_select: select_handler,
     })
     const cell_at = (x_idx: number, y_idx: number) =>
@@ -777,11 +717,7 @@ describe(`milestone feature props`, () => {
     mount_matrix({
       enable_brush: true,
       on_brush: brush_handler,
-      values: [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-      ],
+      values: numbered_values,
     })
     const cell_at = (x_idx: number, y_idx: number) =>
       doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
@@ -867,17 +803,22 @@ describe(`show_values`, () => {
     props: Partial<ComponentProps<typeof HeatmapMatrix>>,
   ): void => mount_matrix({ x: [`A`], y: [`X`], values: [[value]], ...props })
 
-  test(`true renders formatted numbers inside cells`, () => {
+  test.each([
+    [`default format`, [1.2345, 0.001], true],
+    [`custom format`, [Math.PI], `.1f`],
+    [`null produces no span`, [null, 1], true],
+  ] as const)(`%s`, (_description, row, show_values) => {
     mount_matrix({
-      x: [`A`, `B`],
+      x: [`A`, `B`].slice(0, row.length),
       y: [`X`],
-      values: [[1.2345, 0.001]],
-      show_values: true,
+      values: [[...row]],
+      show_values,
     })
-    const spans = document.querySelectorAll(`.cell-value`)
-    expect(spans).toHaveLength(2)
-    expect(spans[0].textContent).toBe(format_num(1.2345, `.3~g`))
-    expect(spans[1].textContent).toBe(format_num(0.001, `.3~g`))
+    expect(query_all(`.cell-value`).map((span) => span.textContent)).toEqual(
+      row
+        .filter((value) => value !== null)
+        .map((value) => format_num(value, show_values === true ? `.3~g` : show_values)),
+    )
   })
 
   test(`contrasts translucent cell colors against the matrix background`, async () => {
@@ -893,11 +834,6 @@ describe(`show_values`, () => {
     expect(doc_query(`.cell`).style.color).toBe(`white`)
   })
 
-  test(`custom format string is used`, () => {
-    mount_single_value(Math.PI, { show_values: `.1f` })
-    expect(doc_query(`.cell-value`).textContent).toBe(format_num(Math.PI, `.1f`))
-  })
-
   test(`ignored when custom cell snippet is provided`, () => {
     mount_single_value(42, {
       show_values: true,
@@ -907,31 +843,16 @@ describe(`show_values`, () => {
     })
     expect(document.querySelectorAll(`.cell-value`)).toHaveLength(0)
   })
-
-  test(`null values produce no span`, () => {
-    mount_matrix({
-      x: [`A`, `B`],
-      y: [`X`],
-      values: [[null, 1]],
-      show_values: true,
-    })
-    expect(document.querySelectorAll(`.cell-value`)).toHaveLength(1)
-  })
 })
 
 describe(`axis titles`, () => {
-  test(`x_axis.label renders below grid`, () => {
-    mount_matrix({ x_axis: { label: `Columns` } })
-    const title = doc_query(`.x-title`)
-    expect(title.textContent).toBe(`Columns`)
-  })
-
-  test(`y_axis.label renders with padding`, () => {
-    mount_matrix({ y_axis: { label: `Rows` } })
-    const title = doc_query(`.y-title`)
-    expect(title.textContent).toBe(`Rows`)
-    const shell = doc_query(`.heatmap`)
-    expect(shell.style.paddingLeft).toBe(`1.8em`)
+  test.each([
+    [`x`, `Columns`],
+    [`y`, `Rows`],
+  ])(`%s_axis.label renders its title`, (axis, label) => {
+    mount_matrix({ [`${axis}_axis`]: { label } })
+    expect(doc_query(`.${axis}-title`).textContent).toBe(label)
+    if (axis === `y`) expect(doc_query(`.heatmap`).style.paddingLeft).toBe(`1.8em`)
   })
 })
 
@@ -962,12 +883,30 @@ describe(`virtualization`, () => {
     mount_matrix({
       x: labels,
       y: labels,
-      values: labels.map((_u, row) => labels.map((_v, col) => row + col)),
+      values: labels.map((_unused_param_u, row) =>
+        labels.map((_unused_value, col) => row + col),
+      ),
       virtualize: true,
       tile_size: `${STRIDE}px`,
       ...extra,
     })
   }
+  test.each([`auto`, `fixed`, `robust`] as const)(
+    `%s with explicit bounds only reads and colors rendered cells`,
+    async (domain_mode) => {
+      const color_scale = vi.fn(red_scale)
+      const values = labels.map(() => labels.map(() => 1))
+      const offscreen_value = vi.fn(() => 1)
+      Object.defineProperty(values[29], 29, { get: offscreen_value })
+      mount_virtual({ values, color_scale, domain_mode, color_scale_range: [0, 60] })
+      await tick()
+      expect(offscreen_value).not.toHaveBeenCalled()
+      expect(query_all(`.cell[data-x]`).length).toBeLessThan(100)
+      expect(color_scale.mock.calls.length).toBeLessThan(200)
+      expect(color_scale.mock.calls.length).toBeGreaterThan(0)
+    },
+  )
+
   const rendered_idxs = (axis: `x` | `y`): number[] =>
     [
       ...new Set(query_all(`.cell[data-x]`).map((cell) => Number(cell.dataset[axis]))),

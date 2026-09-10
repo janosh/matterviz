@@ -63,7 +63,8 @@
         for (const [element, histogram] of entry.data.cn_histogram_by_element) {
           let target = by_element.get(element)
           if (!target) by_element.set(element, (target = new Map()))
-          for (const [cn, count] of histogram) target.set(cn, (target.get(cn) ?? 0) + count)
+          for (const [coordination_num, count] of histogram)
+            target.set(coordination_num, (target.get(coordination_num) ?? 0) + count)
         }
       }
       return Array.from(by_element.entries())
@@ -81,8 +82,8 @@
     // split_mode === `none`: every site of every structure in one series
     const combined = new Map<number, number>()
     for (const entry of entries_with_data) {
-      for (const [cn, count] of entry.data.cn_histogram) {
-        combined.set(cn, (combined.get(cn) ?? 0) + count)
+      for (const [coordination_num, count] of entry.data.cn_histogram) {
+        combined.set(coordination_num, (combined.get(coordination_num) ?? 0) + count)
       }
     }
     return [{ label: `All Sites`, histogram: combined, metadata: {} }]
@@ -97,7 +98,7 @@
   const bar_series = $derived<BarSeries<PlotMetadata>[]>(
     groups.map(({ label, histogram, color, metadata }, idx) => ({
       x: cns,
-      y: cns.map((cn) => histogram.get(cn) ?? 0),
+      y: cns.map((coordination_num) => histogram.get(coordination_num) ?? 0),
       label,
       color: color ?? plot_color(idx),
       bar_width: 0.8,

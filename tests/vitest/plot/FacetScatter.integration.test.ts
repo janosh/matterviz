@@ -39,7 +39,11 @@ const define_plot_case = (
 const standard_props = { show_controls: false, legend: null }
 const histogram_case: PlotCase = {
   ...define_plot_case(`Histogram`, Histogram, `.histogram`, standard_props),
-  to_series: (series) => series.map(({ x: _x, y, ...rest }) => ({ ...rest, values: y })),
+  to_series: (series) =>
+    series.map(({ x: _unused_coord_x, y: coord_y, ...rest }) => ({
+      ...rest,
+      values: coord_y,
+    })),
 }
 const plot_cases: PlotCase[] = [
   define_plot_case(`ScatterPlot`, ScatterPlot, `.scatter`, {
@@ -72,9 +76,9 @@ const panel_inputs: readonly FacetPanel<PanelDatum>[] = (
     [`bottom-left`, [20, 30], [200, 300], { t: 15, b: 55, l: 60, r: 15 }],
     [`bottom-right`, [30, 40], [300, 400], { t: 10, b: 35, l: 40, r: 45 }],
   ] as const
-).map(([key, x, y, padding]) => ({
+).map(([key, coord_x, coord_y, padding]) => ({
   key,
-  data: { series: [{ x: [0, ...x], y: [0, ...y] }], padding },
+  data: { series: [{ x: [0, ...coord_x], y: [0, ...coord_y] }], padding },
 }))
 const keys = panel_inputs.map(({ key }) => String(key))
 const auto_panels = panel_inputs.map(({ key, data }) => ({
@@ -198,7 +202,9 @@ describe(`FacetGrid + Cartesian plots`, () => {
         { x: 0, y: 0 },
       ]
       const clips = keys.map((key) => clip_rect(panel_for(key)))
-      expect(clips.map(({ x, y }) => ({ x, y }))).toEqual(expected_offsets)
+      expect(clips.map(({ x: coord_x, y: coord_y }) => ({ x: coord_x, y: coord_y }))).toEqual(
+        expected_offsets,
+      )
       const core_sizes = keys.map((key) => {
         const { rect, padding } = context_for(key)
         return {
@@ -323,15 +329,15 @@ describe(`FacetGrid + Cartesian plots`, () => {
       const { context_for, plot_mounts } = await mount_facet_plot(plot_case, auto_panels)
 
       await vi.waitFor(() => {
-        const { t = 0, l = 0 } = context_for(`top-left`).padding
-        const { b = 0 } = context_for(`bottom-left`).padding
-        const { r = 0 } = context_for(`top-right`).padding
-        expect([t, b, l, r].every((size) => size > 0)).toBe(true)
+        const { t: pad_top = 0, l: pad_left = 0 } = context_for(`top-left`).padding
+        const { b: pad_bottom = 0 } = context_for(`bottom-left`).padding
+        const { r: pad_right = 0 } = context_for(`top-right`).padding
+        expect([pad_top, pad_bottom, pad_left, pad_right].every((size) => size > 0)).toBe(true)
         expect(keys.map((key) => context_for(key).padding)).toEqual([
-          { t, b: 0, l, r: 0 },
-          { t, b: 0, l: 0, r },
-          { t: 0, b, l, r: 0 },
-          { t: 0, b, l: 0, r },
+          { t: pad_top, b: 0, l: pad_left, r: 0 },
+          { t: pad_top, b: 0, l: 0, r: pad_right },
+          { t: 0, b: pad_bottom, l: pad_left, r: 0 },
+          { t: 0, b: pad_bottom, l: 0, r: pad_right },
         ])
       })
       for (let settle_idx = 0; settle_idx < 10; settle_idx++) await tick()

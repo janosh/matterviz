@@ -1,4 +1,5 @@
 import { rescale_zoom_to_fit } from '$lib/chempot-diagram/camera'
+import ChemPotControls from '$lib/chempot-diagram/ChemPotControls.svelte'
 import {
   CHEMPOT_COLOR_MODE_OPTIONS,
   CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -7,7 +8,8 @@ import {
 import type { ChemPotDiagramConfig } from '$lib/chempot-diagram/types'
 import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
 import { readFileSync } from 'node:fs'
-import { describe, expect, test } from 'vitest'
+import { mount, tick, unmount } from 'svelte'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 
 const read_component_source = (component: string): string =>
   readFileSync(
@@ -91,12 +93,36 @@ test.each([
   expect(options.map(([value]) => value)).toEqual([...values])
 })
 
+test(`color scale and reversal labels target their own controls`, async () => {
+  const set = vi.fn()
+  const component = mount(ChemPotControls, {
+    target: document.body,
+    props: { values: CHEMPOT_DEFAULTS, set },
+  })
+  onTestFinished(() => unmount(component))
+  await tick()
+  for (const [text, tag] of [
+    [`Color scale:`, `SELECT`],
+    [`Reverse:`, `INPUT`],
+  ]) {
+    const label = [...document.querySelectorAll(`label`)].find((candidate) =>
+      candidate.textContent?.trim().startsWith(text),
+    )
+    expect(label?.control?.tagName).toBe(tag)
+    if (tag === `INPUT`) label?.control?.dispatchEvent(new Event(`change`, { bubbles: true }))
+  }
+  expect(set).toHaveBeenCalledWith(
+    `reverse_color_scale`,
+    !CHEMPOT_DEFAULTS.reverse_color_scale,
+  )
+})
+
 test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
   const source = [`ChemPotDiagram3D`, `ChemPotScene3D`].map(read_component_source).join(`\n`)
   const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
     (match.groups?.expr ?? ``).trim(),
   )
-  expect(sinks).toEqual([`sanitize_html(gc.label)`])
+  expect(sinks).toEqual([`sanitize_html(grid_item.label)`])
 })
 
 test(`ChemPotScene3D derives backside placement from current ranges`, () => {

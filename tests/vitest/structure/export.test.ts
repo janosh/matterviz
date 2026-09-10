@@ -39,9 +39,9 @@ const make_site = (
 })
 
 // oxfmt-ignore
-const diag_lattice = (a: number, b = a, c = a): LatticeType => ({
-  matrix: [[a, 0, 0], [0, b, 0], [0, 0, c]],
-  pbc: [true, true, true], a, b, c, alpha: 90, beta: 90, gamma: 90, volume: a * b * c,
+const diag_lattice = (lattice_a: number, lattice_b = lattice_a, lattice_c = lattice_a): LatticeType => ({
+  matrix: [[lattice_a, 0, 0], [0, lattice_b, 0], [0, 0, lattice_c]],
+  pbc: [true, true, true], a: lattice_a, b: lattice_b, c: lattice_c, alpha: 90, beta: 90, gamma: 90, volume: lattice_a * lattice_b * lattice_c,
 })
 
 const real_structure_json = `{"@module": "pymatgen.core.structure", "@class": "Structure", "charge": 0, "lattice": {"matrix": [[6.256930122878799, 0.0, 3.831264723736088e-16], [1.0061911048045417e-15, 6.256930122878799, 3.831264723736088e-16], [0.0, 0.0, 6.256930122878799]], "pbc": [true, true, true], "a": 6.256930122878799, "b": 6.256930122878799, "c": 6.256930122878799, "alpha": 90.0, "beta": 90.0, "gamma": 90.0, "volume": 244.95364960649798}, "sites": [{"species": [{"element": "Cs", "occu": 1}], "abc": [0.0, 0.0, 0.0], "xyz": [0.0, 0.0, 0.0], "label": "Cs", "properties": {}}]}`
@@ -124,16 +124,16 @@ describe(`Export functionality`, () => {
     })
 
     const TOL = 8
-    const to_any = (ps: {
+    const to_any = (partial_structure: {
       sites: AnyStructure[`sites`]
       lattice?: Omit<LatticeType, `pbc`> & Partial<Pick<LatticeType, `pbc`>>
     }) =>
       ({
-        sites: ps.sites,
+        sites: partial_structure.sites,
         charge: 0,
-        ...(ps.lattice && {
+        ...(partial_structure.lattice && {
           lattice: {
-            ...(ps.lattice as Omit<LatticeType, `pbc`>),
+            ...(partial_structure.lattice as Omit<LatticeType, `pbc`>),
             pbc: [true, true, true],
           },
         }),
@@ -351,8 +351,8 @@ describe(`Export functionality`, () => {
         ext: `xyz`, expected: `A_B_C_D_E_FH-H-1sites.xyz` },
       { desc: `handles consecutive invalid characters`, id: `___test///name:::here___`,
         ext: `cif`, expected: `test_name_here-H-1sites.cif` },
-    ])(`$desc`, ({ id, ext, expected }) => {
-      const structure = { id, sites: [make_site(`H`)] } as AnyStructure
+    ])(`$desc`, ({ id: identifier, ext, expected }) => {
+      const structure = { id: identifier, sites: [make_site(`H`)] } as AnyStructure
       const result = create_structure_filename(structure, ext)
       expect(result).toBe(expected)
       expect(result).not.toContain(`__`)
@@ -504,8 +504,8 @@ describe(`Export functionality`, () => {
       { desc: `sanitizes special characters`, id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3_hematite_` },
       { desc: `condenses consecutive underscores`, id: `test:::complex`, expected: `data_test_complex` },
       { desc: `falls back to generic name when id is missing`, id: undefined, expected: `data_structure` },
-    ])(`CIF data block name $desc`, ({ id, expected }) => {
-      const struct = { ...complex_structure, id, sites: [] }
+    ])(`CIF data block name $desc`, ({ id: identifier, expected }) => {
+      const struct = { ...complex_structure, id: identifier, sites: [] }
       const lines = structure_to_cif_str(struct).split(`\n`)
       expect(lines[1]).toBe(expected)
     })
@@ -626,9 +626,18 @@ describe(`Export functionality`, () => {
 
       // Round-trip: each element keeps its own partial occupancy through parse_cif
       const species = parse_cif(cif_content)?.sites.flatMap((site) => site.species) ?? []
-      expect(species.map((sp) => sp.element).toSorted()).toEqual([`Au`, `Cu`])
-      expect(species.find((sp) => sp.element === `Cu`)?.occu).toBeCloseTo(0.7, 8)
-      expect(species.find((sp) => sp.element === `Au`)?.occu).toBeCloseTo(0.3, 8)
+      expect(species.map((site_species) => site_species.element).toSorted()).toEqual([
+        `Au`,
+        `Cu`,
+      ])
+      expect(species.find((site_species) => site_species.element === `Cu`)?.occu).toBeCloseTo(
+        0.7,
+        8,
+      )
+      expect(species.find((site_species) => site_species.element === `Au`)?.occu).toBeCloseTo(
+        0.3,
+        8,
+      )
     })
 
     const occu_site = (occu: number | undefined) => ({

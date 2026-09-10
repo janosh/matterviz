@@ -44,7 +44,10 @@ const cubic_cell = (element: string, frac_coords: Vec3[], a_len = CUBIC_A): Crys
 const rock_salt = (cation: string, anion: string, a_len: number): Crystal =>
   make_crystal(a_len, [
     ...FCC_FRAC.map((abc) => [cation, abc] as SimpleSite),
-    ...FCC_FRAC.map(([fa, fb, fc]) => [anion, [fa + 0.5, fb, fc] as Vec3] as SimpleSite),
+    ...FCC_FRAC.map(
+      ([face_a, face_b, face_c]) =>
+        [anion, [face_a + 0.5, face_b, face_c] as Vec3] as SimpleSite,
+    ),
   ])
 
 // Cu3Au (L1_2): Au on the corner, Cu on the three face centres. Deliberately NON-equiatomic —

@@ -81,12 +81,12 @@ const activate_viewer = async (page: Page, canvas: Locator): Promise<void> => {
 }
 
 // BaTiO3 perovskite POSCAR, 4 Å cubic unless the c axis is stretched
-const batio3_poscar = (c = 4.0) =>
+const batio3_poscar = (value_c = 4.0) =>
   `BaTiO3
 1.0
 4.0 0.0 0.0
 0.0 4.0 0.0
-0.0 0.0 ${c}
+0.0 0.0 ${value_c}
 Ba Ti O
 1 1 3
 Direct
@@ -228,8 +228,8 @@ test.describe(`Structure Component Tests`, () => {
     // Resolve --cell-select-hover-surface without needing a real :hover (pointer-events
     // on .cell-select is none until the structure is hovered).
     const hover_surface_of = (): Promise<string> =>
-      toggle.evaluate((el) => {
-        const cell = el.closest(`.cell-select`)
+      toggle.evaluate((element) => {
+        const cell = element.closest(`.cell-select`)
         if (!(cell instanceof HTMLElement)) throw new Error(`missing .cell-select`)
         const probe = document.createElement(`div`)
         cell.append(probe)
@@ -238,7 +238,8 @@ test.describe(`Structure Component Tests`, () => {
         probe.remove()
         return background
       })
-    const background_of = () => toggle.evaluate((el) => getComputedStyle(el).backgroundColor)
+    const background_of = () =>
+      toggle.evaluate((element) => getComputedStyle(element).backgroundColor)
     const backgrounds: string[] = []
     for (const color_scheme of [`light`, `dark`] as const) {
       await page.evaluate((scheme) => {
@@ -256,9 +257,11 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`CellSelect typography stays legible in narrow legends`, async ({ page }) => {
     const structure = page.locator(`#test-structure`)
-    await structure.evaluate((el) => el.style.setProperty(`--struct-min-width`, `0`))
+    await structure.evaluate((element) => element.style.setProperty(`--struct-min-width`, `0`))
     await set_viewer_size(structure, 260, 400)
-    await expect.poll(() => structure.evaluate((el) => el.clientWidth)).toBeLessThan(300)
+    await expect
+      .poll(() => structure.evaluate((element) => element.clientWidth))
+      .toBeLessThan(300)
     await structure.hover()
     const cell_select = structure.locator(`.cell-select`)
     await cell_select.dispatchEvent(`mouseenter`)
@@ -1163,9 +1166,12 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
       await activate_viewer(page, canvas)
       const hits = await sweep_gizmo_handles(canvas)
       expect(hits.length, `gizmo handles on this canvas`).toBeGreaterThan(0)
-      const xs = hits.map((hit) => hit.x)
-      const ys = hits.map((hit) => hit.y)
-      return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+      const x_values = hits.map((hit) => hit.x)
+      const y_values = hits.map((hit) => hit.y)
+      return Math.max(
+        Math.max(...x_values) - Math.min(...x_values),
+        Math.max(...y_values) - Math.min(...y_values),
+      )
     }
 
     // Single view: one viewport cell, no grid

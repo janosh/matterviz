@@ -54,12 +54,14 @@ export const format_composition_formula = (
   const symbols = Object.keys(composition).filter(is_elem_symbol)
 
   return sort_fn(symbols)
-    .filter((el) => composition[el] && composition[el] > 0)
-    .map((el) => {
-      const amount = Number(composition[el])
-      if (amount === 1) return el
+    .filter((element) => composition[element] && composition[element] > 0)
+    .map((element) => {
+      const amount = Number(composition[element])
+      if (amount === 1) return element
       const formatted_amount = format_amount(amount, amount_format)
-      return plain_text ? `${el}${formatted_amount}` : `${el}<sub>${formatted_amount}</sub>`
+      return plain_text
+        ? `${element}${formatted_amount}`
+        : `${element}<sub>${formatted_amount}</sub>`
     })
     .join(delim)
 }
@@ -207,7 +209,7 @@ export function get_formula_label_segments(label: string): FormulaLabelSegment[]
 }
 
 // Baseline shifts for sub/superscript (SVG dy values are cumulative across tspans)
-const DY = { sub: 0.25, sup: -0.4 } as const
+const BASELINE_SHIFT = { sub: 0.25, sup: -0.4 } as const
 
 // Format chemical formula as SVG tspan elements with subscripts
 // Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
@@ -222,9 +224,9 @@ export function format_formula_svg(formula: string, use_subscripts = true): stri
       result += offset ? `<tspan dy="${-offset}em">${token.text}</tspan>` : token.text
       offset = 0
     } else {
-      const dy = token.sub !== undefined ? DY.sub : DY.sup
-      result += `<tspan dy="${dy}em" font-size="0.75em">${token.sub ?? token.sup}</tspan>`
-      offset += dy
+      const delta_y = token.sub !== undefined ? BASELINE_SHIFT.sub : BASELINE_SHIFT.sup
+      result += `<tspan dy="${delta_y}em" font-size="0.75em">${token.sub ?? token.sup}</tspan>`
+      offset += delta_y
     }
   }
 

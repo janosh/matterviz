@@ -86,8 +86,8 @@ describe(`cylinder_between`, () => {
     [[1, 2, 3], [1, 2, 3], [1, 2, 3], 0], // coincident → zero length
   ] as [Vec3, Vec3, Vec3, number][])(
     `%j → %j: midpoint %j, length %d`,
-    (from, to, mid, len) => {
-      const { position, rotation, length } = cylinder_between(from, to)
+    (from, target, mid, len) => {
+      const { position, rotation, length } = cylinder_between(from, target)
       position.forEach((val, idx) => expect(val).toBeCloseTo(mid[idx], 10))
       expect(length).toBeCloseTo(len, 10)
       const half = new Vector3(0, length / 2, 0).applyEuler(new Euler(...rotation))
@@ -102,7 +102,7 @@ describe(`cylinder_between`, () => {
         center
           .clone()
           .add(half)
-          .distanceTo(new Vector3(...to)),
+          .distanceTo(new Vector3(...target)),
       ).toBeCloseTo(0, 10)
     },
   )

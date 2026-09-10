@@ -22,9 +22,9 @@ const provenance: StructureToolProvenance = {
   units: { charge: `e`, density: `e/A^3` },
   settings: { seed: 0 },
 }
-const volume = (id: string) => ({
+const volume = (identifier: string) => ({
   ...make_volume(make_grid(2, 2, 2, () => 1)),
-  id,
+  id: identifier,
 })
 
 const controller_fixture = (
@@ -228,7 +228,7 @@ test(`field IDs preserve geometry and color references across replacement, reord
   const removed = replace_tool_volumes(
     result.volumes,
     result.layers,
-    incoming.map(({ id }) => id),
+    incoming.map(({ id: identifier }) => identifier),
     [volume(`density`)],
   )
   expect(removed.layers).toEqual([

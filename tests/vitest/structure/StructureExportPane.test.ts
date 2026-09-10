@@ -75,8 +75,8 @@ describe(`StructureExportPane`, () => {
     }
 
     // 2 buttons per format (download + copy) * 4 formats = 8
-    const text_section = Array.from(document.querySelectorAll(`h4`)).find((h4) =>
-      h4.textContent?.includes(`Export as text`),
+    const text_section = Array.from(document.querySelectorAll(`h4`)).find((heading) =>
+      heading.textContent?.includes(`Export as text`),
     )?.nextElementSibling
     const buttons = text_section?.querySelectorAll(`button`)
     expect(buttons?.length).toBe(8)

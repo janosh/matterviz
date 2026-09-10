@@ -35,41 +35,24 @@ const spin_polarized_dos: ElectronicDos = {
   efermi: 0,
 }
 
-const pymatgen_complete_dos: PymatgenCompleteDos = {
+const projected_dos = (densities: PymatgenCompleteDos[`densities`]) => ({
   energies: [-5, -2.5, 0, 2.5, 5],
-  densities: { '1': [0.1, 0.4, 1.0, 0.4, 0.1], '-1': [0.08, 0.35, 0.9, 0.35, 0.08] },
+  densities,
   efermi: 0,
+})
+const pymatgen_complete_dos: PymatgenCompleteDos = {
+  ...projected_dos({ '1': [0.1, 0.4, 1.0, 0.4, 0.1], '-1': [0.08, 0.35, 0.9, 0.35, 0.08] }),
   atom_dos: {
-    Fe: {
-      energies: [-5, -2.5, 0, 2.5, 5],
-      densities: {
-        '1': [0.05, 0.3, 0.8, 0.3, 0.05],
-        '-1': [0.04, 0.25, 0.7, 0.25, 0.04],
-      },
-      efermi: 0,
-    },
-    O: {
-      energies: [-5, -2.5, 0, 2.5, 5],
-      densities: { '1': [0.05, 0.1, 0.2, 0.1, 0.05], '-1': [0.04, 0.1, 0.2, 0.1, 0.04] },
-      efermi: 0,
-    },
+    Fe: projected_dos({
+      '1': [0.05, 0.3, 0.8, 0.3, 0.05],
+      '-1': [0.04, 0.25, 0.7, 0.25, 0.04],
+    }),
+    O: projected_dos({ '1': [0.05, 0.1, 0.2, 0.1, 0.05], '-1': [0.04, 0.1, 0.2, 0.1, 0.04] }),
   },
   spd_dos: {
-    s: {
-      energies: [-5, -2.5, 0, 2.5, 5],
-      densities: [0.02, 0.05, 0.1, 0.05, 0.02],
-      efermi: 0,
-    },
-    p: {
-      energies: [-5, -2.5, 0, 2.5, 5],
-      densities: [0.03, 0.1, 0.3, 0.1, 0.03],
-      efermi: 0,
-    },
-    d: {
-      energies: [-5, -2.5, 0, 2.5, 5],
-      densities: [0.05, 0.25, 0.6, 0.25, 0.05],
-      efermi: 0,
-    },
+    s: projected_dos([0.02, 0.05, 0.1, 0.05, 0.02]),
+    p: projected_dos([0.03, 0.1, 0.3, 0.1, 0.03]),
+    d: projected_dos([0.05, 0.25, 0.6, 0.25, 0.05]),
   },
 }
 
@@ -103,9 +86,6 @@ describe(`Dos component`, () => {
       { doses: { '': phonon_dos }, orientation: `horizontal` as const },
       1,
     ],
-    // conversion factors and per-mode normalization maths are pinned in helpers.test.ts
-    [`cm^-1 units`, { doses: { '': phonon_dos }, units: `cm^-1` as const }, 1],
-    [`normalized to max`, { doses: { '': phonon_dos }, normalize: `max` as const }, 1],
     [
       `mirror spin mode`,
       { doses: { '': spin_polarized_dos }, spin_mode: `mirror` as const },
@@ -130,18 +110,6 @@ describe(`Dos component`, () => {
       },
       2,
     ],
-    [
-      `all controls enabled`,
-      {
-        doses: { '': phonon_dos },
-        show_controls: true,
-        show_normalize_control: true,
-        show_units_control: true,
-        sigma: 0.5,
-        sigma_range: [0, 2] as Vec2,
-      },
-      1,
-    ],
   ])(`renders %s`, async (_desc, props, n_lines) => {
     mount(Dos, { target: document.body, props })
     await tick()
@@ -160,9 +128,15 @@ describe(`Dos component`, () => {
         show_controls: true,
         show_units_control: true,
         controls_open: true,
+        normalize: `max`,
+        show_normalize_control: true,
+        sigma: 0.5,
+        sigma_range: [0, 2],
       },
     })
     await tick()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
     expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
     const select = doc_query<HTMLSelectElement>(`#dos-units`)
     expect(select.value).toBe(`cm^-1`)
@@ -172,6 +146,13 @@ describe(`Dos component`, () => {
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
     expect(document.body.textContent).toContain(`Frequency (meV)`)
+    for (const section of [`dos`, `smearing`]) {
+      const selector = `button[title="Reset ${section} to defaults"]`
+      doc_query<HTMLButtonElement>(selector).click()
+      await tick()
+      expect(document.querySelector(selector)).toBeNull()
+    }
+    expect(select.value).toBe(`THz`)
   })
 
   // Dos forwards undefined to ScatterPlot's auto rule; explicit booleans still win.
@@ -209,7 +190,9 @@ describe(`Dos component`, () => {
     }
     const plot = await mount_sized(Dos, { doses: { '': doses } }, { selector: `.scatter` })
     const ticks = (axis: string) =>
-      [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map((el) => el.textContent)
+      [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map(
+        (element) => element.textContent,
+      )
     const [x_before, y_before] = [ticks(`x`), ticks(`y`)]
     expect(x_before.length + y_before.length).toBeGreaterThan(4)
     plot_svg(plot).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
@@ -269,6 +252,10 @@ describe(`Dos component`, () => {
     // dos_idx, spin-down at dos_idx * 2 + 1), so at least two fills appear
     const fill_colors = Array.from(area_paths).map((path) => path.getAttribute(`fill`))
     expect(new Set(fill_colors).size).toBeGreaterThanOrEqual(2)
+    const reset = `button[title="Reset spin display to defaults"]`
+    doc_query<HTMLButtonElement>(reset).click()
+    await tick()
+    expect(document.querySelector(reset)).toBeNull()
   })
 })
 

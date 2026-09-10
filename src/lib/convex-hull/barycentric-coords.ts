@@ -31,8 +31,8 @@ export function composition_to_barycentric_nd(
   if (n_elems < 2) {
     throw new Error(`Barycentric coordinates require at least 2 elements, got ${n_elems}`)
   }
-  const amounts = elements.map((el) => {
-    const val = composition[el]
+  const amounts = elements.map((element) => {
+    const val = composition[element]
     return val == null || Number.isNaN(val) ? 0 : val
   })
   const negative = elements.filter((_, idx) => amounts[idx] < 0)

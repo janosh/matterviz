@@ -84,11 +84,11 @@ export class LineScanner {
   // an exact integer mantissa scaled by one exact power of ten, which rounds exactly like
   // Number(); anything else (exponents, long mantissas, `1.0D-3`, symbols) is marked for the
   // slow path that num() takes on demand.
-  scan(line: string, from = 0, to = line.length): number {
+  scan(line: string, from = 0, target = line.length): number {
     this.line = line
     let { starts, ends, values } = this
     let count = 0
-    const len = to
+    const len = target
     let idx = from
     while (idx < len) {
       let code = line.charCodeAt(idx)
@@ -504,12 +504,12 @@ export function* iter_cif_loops(
   for (let idx = 0; idx < lines.length; idx++) {
     if (!is_cif_loop_header(lines[idx])) continue
     const headers: string[] = []
-    let jj = idx + 1
-    while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
-      headers.push(lines[jj].trim())
-      jj++
+    let col_index = idx + 1
+    while (col_index < lines.length && lines[col_index].trim().startsWith(`_`)) {
+      headers.push(lines[col_index].trim())
+      col_index++
     }
-    yield { headers, data_start: jj }
+    yield { headers, data_start: col_index }
   }
 }
 

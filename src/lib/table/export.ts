@@ -40,9 +40,9 @@ export const table_to_json = (
   JSON.stringify(
     rows.map((row) =>
       Object.fromEntries(
-        columns.map(({ id, key }) => {
+        columns.map(({ id: identifier, key }) => {
           const val = row[key]
-          return [id, typeof val === `string` ? strip_html(val) : val]
+          return [identifier, typeof val === `string` ? strip_html(val) : val]
         }),
       ),
     ),

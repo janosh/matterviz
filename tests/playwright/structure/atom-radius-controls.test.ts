@@ -21,9 +21,9 @@ test.describe(`Atom Radius Controls`, () => {
     return dropdown
   }
 
-  test.beforeEach(async ({ page: p }) => {
+  test.beforeEach(async ({ page: point_value }) => {
     test.skip(IS_CI, `Atom radius controls need a WebGL canvas, flaky in headless CI`)
-    page = p
+    page = point_value
     await goto_structure_test(page)
     legend = page.locator(`#test-structure .atom-legend`)
     await expect(legend.locator(`.legend-item`).first()).toBeVisible()

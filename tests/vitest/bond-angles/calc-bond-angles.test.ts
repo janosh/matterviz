@@ -39,9 +39,9 @@ const ligand_shell = (center: string, ligand: string, dirs: Vec3[], bond: number
     ...dirs.map((dir) => [ligand, scaled(dir, bond)] as [string, Vec3]),
   ])
 
-const fixture = (id: string) => {
-  const struct = structure_map.get(id)
-  if (!struct) throw new Error(`fixture ${id} not found in $site/structures`)
+const fixture = (identifier: string) => {
+  const struct = structure_map.get(identifier)
+  if (!struct) throw new Error(`fixture ${identifier} not found in $site/structures`)
   return struct
 }
 
@@ -117,8 +117,15 @@ describe(`calc_bond_angles analytic geometry`, () => {
     // methane: C at site 0, H at sites 1-4; the six angles are the C(4, 2) unordered H pairs
     const triplets = calc_bond_angles(methane)
     expect(triplets.every(({ center_idx }) => center_idx === 0)).toBe(true)
-    const pairs = triplets.map(({ neighbor_idxs }) => neighbor_idxs.toSorted((a, b) => a - b))
-    expect(pairs.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])).toEqual([
+    const pairs = triplets.map(({ neighbor_idxs }) =>
+      neighbor_idxs.toSorted((left_value, right_value) => left_value - right_value),
+    )
+    expect(
+      pairs.toSorted(
+        (left_value, right_value) =>
+          left_value[0] - right_value[0] || left_value[1] - right_value[1],
+      ),
+    ).toEqual([
       [1, 2],
       [1, 3],
       [1, 4],
@@ -156,8 +163,8 @@ describe(`calc_bond_angles analytic geometry`, () => {
 // register the other.
 test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
   `%s yields exactly sum_atoms C(coordination_number, 2) angles`,
-  (id) => {
-    const structure = fixture(id)
+  (identifier) => {
+    const structure = fixture(identifier)
     const { coordination_nums } = calc_coordination_nums(structure)
     const expected = coordination_nums.reduce(
       (sum, coordination_num) => sum + (coordination_num * (coordination_num - 1)) / 2,
@@ -210,8 +217,8 @@ describe(`periodic bonding`, () => {
     [`mp-1234`, 2016, 564],
   ])(
     `%s has %s angles across periodic boundaries but only %s in the finite box`,
-    (id, periodic, bare) => {
-      const structure = fixture(id)
+    (identifier, periodic, bare) => {
+      const structure = fixture(identifier)
       expect(calc_bond_angles(structure)).toHaveLength(periodic)
       expect(calc_bond_angles(structure, { pbc: [false, false, false] })).toHaveLength(bare)
     },

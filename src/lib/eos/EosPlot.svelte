@@ -33,16 +33,16 @@
   // Fit every requested form; a failed fit (no minimum, diverged) is shown as a dismissible
   // error and leaves the data points on the plot
   const fit_result = $derived.by(() => {
-    const ok: EosFit[] = []
+    const valid: EosFit[] = []
     const errors: string[] = []
     for (const kind of new Set(kinds)) {
       try {
-        ok.push(fit_eos(volumes, energies, kind))
+        valid.push(fit_eos(volumes, energies, kind))
       } catch (exc) {
         errors.push(to_error(exc).message)
       }
     }
-    return { fits: ok, error_msg: errors.join(`; `) || undefined }
+    return { fits: valid, error_msg: errors.join(`; `) || undefined }
   })
   $effect(() => {
     fits = fit_result.fits

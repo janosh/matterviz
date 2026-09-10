@@ -155,7 +155,7 @@
   <p data-testid="ibz-opacity">{ibz_opacity}</p>
   <p data-testid="ibz-data-status">{ibz_data ? `loaded` : `null`}</p>
   <p data-testid="ibz-vertices-count">{ibz_data?.vertices?.length ?? 0}</p>
-  <p data-testid="events">{event_calls.map((ec) => ec.event).join(`, `)}</p>
+  <p data-testid="events">{event_calls.map((event_call) => event_call.event).join(`, `)}</p>
 </section>
 
 <BrillouinZone

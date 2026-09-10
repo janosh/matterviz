@@ -20,8 +20,8 @@ const positive_uniform = (rng: Rng): number => Math.max(rng(), Number.EPSILON)
 export function box_muller(mean = 0, std_dev = 1, rng: Rng = Math.random): number {
   const rand_1 = positive_uniform(rng)
   const rand_2 = rng()
-  const z0 = Math.sqrt(-2 * Math.log(rand_1)) * Math.cos(2 * Math.PI * rand_2)
-  return mean + z0 * std_dev
+  const coord_z_0 = Math.sqrt(-2 * Math.log(rand_1)) * Math.cos(2 * Math.PI * rand_2)
+  return mean + coord_z_0 * std_dev
 }
 
 // Generate normal distribution data
@@ -73,10 +73,10 @@ export function generate_uniform(
 // Generate log-normal distribution data
 export const generate_log_normal = (
   count: number,
-  mu: number,
+  mean: number,
   sigma: number,
   rng: Rng = Math.random,
-) => Array.from({ length: count }, () => Math.exp(box_muller(mu, sigma, rng)))
+) => Array.from({ length: count }, () => Math.exp(box_muller(mean, sigma, rng)))
 
 // Generate power law distribution data
 export const generate_power_law = (
@@ -120,10 +120,11 @@ export function generate_gamma(
 
     // Fractional part: beta distribution approximation
     if (frac_alpha > 0 && !is_integer) {
-      const u1 = positive_uniform(rng)
-      const u2 = positive_uniform(rng)
+      const uniform_1 = positive_uniform(rng)
+      const uniform_2 = positive_uniform(rng)
       const beta_sample =
-        u1 ** (1 / frac_alpha) / (u1 ** (1 / frac_alpha) + u2 ** (1 / (1 - frac_alpha)))
+        uniform_1 ** (1 / frac_alpha) /
+        (uniform_1 ** (1 / frac_alpha) + uniform_2 ** (1 / (1 - frac_alpha)))
       sum += (-Math.log(positive_uniform(rng)) * beta_sample) / beta
     }
 

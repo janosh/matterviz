@@ -137,12 +137,16 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
     const kbar = /^\s*in kB\s(?<values>.*)/.exec(line)
     if (kbar) {
       // XX YY ZZ XY YZ ZX in kB, VASP's sign convention (positive = compressive)
-      const [xx, yy, zz, xy, yz, zx] = numbers_of(kbar.groups?.values ?? ``)
-      if ([xx, yy, zz, xy, yz, zx].every(Number.isFinite)) {
+      const [tensor_xx, tensor_yy, tensor_zz, coords_xy, tilt_yz, tensor_zx] = numbers_of(
+        kbar.groups?.values ?? ``,
+      )
+      if (
+        [tensor_xx, tensor_yy, tensor_zz, coords_xy, tilt_yz, tensor_zx].every(Number.isFinite)
+      ) {
         pending = vasp_stress_metadata([
-          [xx, xy, zx],
-          [xy, yy, yz],
-          [zx, yz, zz],
+          [tensor_xx, coords_xy, tensor_zx],
+          [coords_xy, tensor_yy, tilt_yz],
+          [tensor_zx, tilt_yz, tensor_zz],
         ])
       }
       continue

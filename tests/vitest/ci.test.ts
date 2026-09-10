@@ -70,15 +70,38 @@ test.each([
   }
 })
 
-test.each([`preview`, `source`, undefined])(
-  `browser mode %s preserves source-inspection coverage`,
-  async (mode) => {
+test.each([
+  [`preview`, true],
+  [`source`, true],
+  [undefined, false],
+] as const)(
+  `browser mode %s preserves source-inspection coverage and renderer selection (CI=%s)`,
+  async (mode, is_ci) => {
     vi.stubEnv(`MATTERVIZ_E2E_MODE`, mode)
+    vi.stubEnv(`CI`, String(is_ci))
     onTestFinished(() => {
       vi.unstubAllEnvs()
     })
     vi.resetModules()
     const { default: config } = await import(`../../playwright.config`)
+    expect(config.use.channel).toBe(`chromium`)
+    if (is_ci)
+      expect(config.workers, `software GPU tests must not overlap on a CI runner`).toBe(1)
+    for (const job of [`e2e-source`, `e2e-test-shards`]) {
+      const install_args = jobs[job].steps
+        .find(({ run }) => run?.includes(`playwright install`))
+        ?.run.split(/\s+/)
+      // The selected channel needs full Chromium, which --only-shell omits.
+      expect(install_args).toContain(`chromium`)
+      expect(install_args).not.toContain(`--only-shell`)
+    }
+    for (const argument of [
+      `--use-webgpu-adapter=swiftshader`,
+      `--use-vulkan=swiftshader`,
+      `--use-angle=swiftshader`,
+      `--disable-vulkan-surface`,
+    ])
+      expect(config.use.launchOptions.args.includes(argument), argument).toBe(is_ci)
     // These suites import /src/ modules directly or inspect live scene registries through helpers.
     const source_files = [`structure/host-tool`]
     for (const file of source_files) {

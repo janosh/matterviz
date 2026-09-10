@@ -62,17 +62,17 @@ function parse_lammps_box(
       origin: [bounds[0][3], bounds[1][3], bounds[2][3]],
     }
   }
-  const [[xlo_b, xhi_b, xy], [ylo_b, yhi_b, xz], [zlo_b, zhi_b, yz]] = bounds
-  const xlo = xlo_b - Math.min(0, xy, xz, xy + xz)
-  const xhi = xhi_b - Math.max(0, xy, xz, xy + xz)
-  const ylo = ylo_b - Math.min(0, yz)
-  const yhi = yhi_b - Math.max(0, yz)
-  const lz = zhi_b - zlo_b
+  const [[xlo_b, xhi_b, coords_xy], [ylo_b, yhi_b, tilt_xz], [zlo_b, zhi_b, tilt_yz]] = bounds
+  const xlo = xlo_b - Math.min(0, coords_xy, tilt_xz, coords_xy + tilt_xz)
+  const xhi = xhi_b - Math.max(0, coords_xy, tilt_xz, coords_xy + tilt_xz)
+  const ylo = ylo_b - Math.min(0, tilt_yz)
+  const yhi = yhi_b - Math.max(0, tilt_yz)
+  const length_z = zhi_b - zlo_b
   return {
     lattice_matrix: [
       [xhi - xlo, 0, 0],
-      [xy, yhi - ylo, 0],
-      [xz, yz, lz],
+      [coords_xy, yhi - ylo, 0],
+      [tilt_xz, tilt_yz, length_z],
     ],
     origin: [xlo, ylo, zlo_b],
   }
@@ -321,7 +321,9 @@ export function parse_lammps_trajectory(
       )
     }
     if (frame_uses_ids) {
-      const numeric_atom_ids = site_properties.map(({ id }) => id as number)
+      const numeric_atom_ids = site_properties.map(
+        ({ id: identifier }) => identifier as number,
+      )
       if (new Set(numeric_atom_ids).size !== numeric_atom_ids.length) {
         throw new Error(`LAMMPS frame at timestep ${timestep} has duplicate atom IDs`)
       }

@@ -40,9 +40,9 @@ test.each<[string | OxiComposition, string[], string[]]>([
   const element = mount_formula({ formula })
   expect(element).toBeInstanceOf(HTMLElement)
   expect(
-    [...document.querySelectorAll(`.element-symbol`)].map((el) => el.textContent),
+    [...document.querySelectorAll(`.element-symbol`)].map((node) => node.textContent),
   ).toEqual(symbols)
-  expect([...document.querySelectorAll(`sup`)].map((el) => el.textContent)).toEqual(sups)
+  expect([...document.querySelectorAll(`sup`)].map((node) => node.textContent)).toEqual(sups)
 })
 
 test.each([
@@ -67,14 +67,17 @@ test.each([
   expect(subscripts.map((sub) => sub.textContent)).toEqual(expected)
 })
 
-test.each([`span`, `div`, `h1`, `strong`, `p`])(`Formula renders with as="%s"`, (as) => {
-  mount_formula({ formula: `H2O`, as })
-  const element = document.querySelector(as)
-  expect(element).toBeInstanceOf(HTMLElement)
-  expect(element?.classList.contains(`formula`)).toBe(true)
-  expect(element?.textContent).toContain(`H`)
-  expect(element?.textContent).toContain(`O`)
-})
+test.each([`span`, `div`, `h1`, `strong`, `p`])(
+  `Formula renders with as="%s"`,
+  (asymmetry) => {
+    mount_formula({ formula: `H2O`, as: asymmetry })
+    const element = document.querySelector(asymmetry)
+    expect(element).toBeInstanceOf(HTMLElement)
+    expect(element?.classList.contains(`formula`)).toBe(true)
+    expect(element?.textContent).toContain(`H`)
+    expect(element?.textContent).toContain(`O`)
+  },
+)
 
 // Normalize any color format to lowercase hex
 function normalize_to_hex(color: string): string {

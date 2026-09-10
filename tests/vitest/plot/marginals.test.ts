@@ -1,3 +1,4 @@
+import { create_scale } from '$lib/plot/core/scales'
 import type { Vec2 } from '$lib/math'
 import {
   add_sides,
@@ -5,7 +6,7 @@ import {
   curves_max,
   default_marginal_label,
   MARGINAL_DEFAULTS,
-  marginal_hit,
+  create_marginal_hit_test,
   marginal_strip_rect,
   marginal_value_format,
   marginal_value_scale,
@@ -19,7 +20,7 @@ import type {
   MarginalSeriesCurve,
   ResolvedMarginalConfig,
 } from '$lib/plot/core/marginals'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 const resolved = (over: Partial<ResolvedMarginalConfig> = {}): ResolvedMarginalConfig => ({
   ...MARGINAL_DEFAULTS,
@@ -35,6 +36,14 @@ const as_line = (curve: MarginalCurve) => {
   if (curve.kind !== `line`) throw new Error(`expected line curve, got ${curve.kind}`)
   return curve
 }
+const compute = (
+  positions: ArrayLike<number>,
+  config: Partial<ResolvedMarginalConfig>,
+  range: Vec2,
+  scale: Parameters<typeof compute_marginal_curve>[4] = `linear`,
+  weights?: ArrayLike<number>,
+) => compute_marginal_curve(positions, weights, resolved(config), range, scale)
+
 const sum_bins = (curve: MarginalCurve): number =>
   as_bars(curve).bins.reduce((sum, bin) => sum + bin.value, 0)
 
@@ -196,7 +205,7 @@ describe(`marginal_value_scale`, () => {
   ] as const)(`%s`, (_desc, side, rect, domain, baseline, points) => {
     const result = marginal_value_scale(side, { ...rect }, [domain[0], domain[1]])
     expect(result.baseline).toBe(baseline)
-    for (const [value, px] of points) expect(result.scale(value)).toBe(px)
+    for (const [value, pixel_x] of points) expect(result.scale(value)).toBe(pixel_x)
   })
 })
 
@@ -223,13 +232,7 @@ describe(`compute_marginal_curve`, () => {
       1,
     ],
   ] as const)(`histogram %s`, (_desc, positions, weights, over, range_in, expected) => {
-    const curve = compute_marginal_curve(
-      positions,
-      weights,
-      resolved(over),
-      [range_in[0], range_in[1]],
-      `linear`,
-    )
+    const curve = compute(positions, over, [range_in[0], range_in[1]], `linear`, weights)
     expect(sum_bins(curve)).toBeCloseTo(expected, 6)
     expect(as_bars(curve).max).toBeGreaterThan(0)
   })
@@ -237,12 +240,10 @@ describe(`compute_marginal_curve`, () => {
   // density (unlike probability) integrates to 1: sum(value_i * bin_width_i) == 1
   test(`density normalization integrates to 1`, () => {
     const positions = Array.from({ length: 10 }, (_, idx) => idx)
-    const curve = compute_marginal_curve(
+    const curve = compute(
       positions,
-      undefined,
-      resolved({ type: `histogram`, bins: 10, normalize: `density` }),
+      { type: `histogram`, bins: 10, normalize: `density` },
       [0, 10],
-      `linear`,
     )
     const integral = as_bars(curve).bins.reduce(
       (sum, bin) => sum + bin.value * (bin.pos1 - bin.pos0),
@@ -255,21 +256,28 @@ describe(`compute_marginal_curve`, () => {
   // positions (and exact values where weights matter). negative weights are dropped (they'd make the
   // cumulative non-monotone); zero is kept harmlessly
   test.each([
-    [`sorts tied positions`, [3, 1, 2], undefined, range, [1, 2, 3], undefined],
+    [`sorts tied positions`, [3, 1, 2, 1], undefined, range, [1, 2, 3], [0.5, 0.75, 1]],
+    [`positive zero tie`, [2, 0, -0, 1], undefined, range, [0, 1, 2], [0.5, 0.75, 1]],
+    [`negative zero tie`, [2, -0, 0, 1], undefined, range, [-0, 1, 2], [0.5, 0.75, 1]],
+    [`already sorted`, [1, 1, 2, 3], undefined, range, [1, 2, 3], [0.5, 0.75, 1]],
+    [`reversed`, [3, 2, 1], undefined, range, [1, 2, 3], [1 / 3, 2 / 3, 1]],
+    [`unsorted weights`, [3, 1, 2, 1], [1, 1, 2, 4], range, [1, 2, 3], [0.625, 0.875, 1]],
     [`reflects weights`, [1, 2], [1, 3], [0, 3], [1, 2], [0.25, 1]],
     [`skips negative weights`, [1, 2, 3], [1, -5, 3], [0, 4], [1, 3], [0.25, 1]],
   ] as const)(`cdf %s`, (_desc, positions, weights, range_in, expected_pos, expected_vals) => {
-    const curve = compute_marginal_curve(
+    const input = [...positions]
+    const curve = compute(
       positions,
-      weights,
-      resolved({ type: `cdf` }),
+      { type: `cdf` },
       [range_in[0], range_in[1]],
       `linear`,
+      weights,
     )
+    expect(positions).toEqual(input)
     const { points, max } = as_line(curve)
     expect(max).toBe(1)
-    expect(points.map((pt) => pt.pos)).toEqual(expected_pos)
-    const values = points.map((pt) => pt.value)
+    expect(points.map((point) => point.pos)).toEqual(expected_pos)
+    const values = points.map((point) => point.value)
     expect(values.at(-1)).toBeCloseTo(1, 6)
     for (let idx = 1; idx < values.length; idx++) {
       expect(values[idx]).toBeGreaterThanOrEqual(values[idx - 1])
@@ -288,47 +296,32 @@ describe(`compute_marginal_curve`, () => {
       [0, 100],
     ],
     [`zero-variance data`, Array.from({ length: 20 }, () => 5), [0, 10]],
+    [`two unweighted samples`, [1, 2], [0, 3]],
   ] as const)(`kde produces a valid density line for %s`, (_desc, positions, range_in) => {
-    const curve = compute_marginal_curve(
-      positions,
-      undefined,
-      resolved({ type: `kde` }),
-      [range_in[0], range_in[1]],
-      `linear`,
-    )
+    const curve = compute(positions, { type: `kde` }, [range_in[0], range_in[1]])
     const { points, max } = as_line(curve)
     expect(points).toHaveLength(100)
     expect(max).toBeGreaterThan(0)
-    expect(points.every((pt) => Number.isFinite(pt.value) && pt.value >= 0)).toBe(true)
+    expect(points.every((point) => Number.isFinite(point.value) && point.value >= 0)).toBe(
+      true,
+    )
   })
 
   test(`rug keeps finite positions only`, () => {
-    const curve = compute_marginal_curve(
-      [1, 2, NaN, 3, Infinity],
-      undefined,
-      resolved({ type: `rug` }),
-      range,
-      `linear`,
-    )
+    const curve = compute([1, 2, NaN, 3, Infinity], { type: `rug` }, range)
     if (curve.kind !== `rug`) throw new Error(`expected rug`)
     expect(curve.positions).toEqual([1, 2, 3])
   })
 
   test(`non-finite positions are filtered before binning`, () => {
-    const curve = compute_marginal_curve(
-      [1, NaN, 2, Infinity, -Infinity],
-      undefined,
-      resolved({ bins: 4 }),
-      [0, 4],
-      `linear`,
-    )
+    const curve = compute([1, NaN, 2, Infinity, -Infinity], { bins: 4 }, [0, 4])
     expect(sum_bins(curve)).toBe(2)
   })
 
   test.each([`histogram`, `cdf`, `kde`, `rug`] as const)(
     `%s returns an empty curve for empty input`,
     (type) => {
-      const curve = compute_marginal_curve([], undefined, resolved({ type }), range, `linear`)
+      const curve = compute([], { type }, range)
       if (curve.kind === `bars`) expect(curve.bins).toHaveLength(0)
       else if (curve.kind === `line`) expect(curve.points).toHaveLength(0)
       else expect(curve.positions).toHaveLength(0)
@@ -339,69 +332,47 @@ describe(`compute_marginal_curve`, () => {
   test.each([
     [
       `histogram`,
-      (c: MarginalCurve) =>
-        c.kind === `bars` ? c.bins.reduce((sum, bin) => sum + bin.value, 0) : -1,
+      (value_c: MarginalCurve) =>
+        value_c.kind === `bars` ? value_c.bins.reduce((sum, bin) => sum + bin.value, 0) : -1,
       2,
     ],
-    [`rug`, (c: MarginalCurve) => (c.kind === `rug` ? c.positions.length : -1), 2],
-    [`cdf`, (c: MarginalCurve) => (c.kind === `line` ? c.points.length : -1), 2],
+    [
+      `rug`,
+      (value_c: MarginalCurve) => (value_c.kind === `rug` ? value_c.positions.length : -1),
+      2,
+    ],
+    [
+      `cdf`,
+      (value_c: MarginalCurve) => (value_c.kind === `line` ? value_c.points.length : -1),
+      2,
+    ],
   ] as const)(`%s drops samples outside the positional range`, (type, measure, expected) => {
-    const curve = compute_marginal_curve(
-      [1, 2, 100],
-      undefined,
-      resolved({ type }),
-      [0, 10],
-      `linear`,
-    )
+    const curve = compute([1, 2, 100], { type }, [0, 10])
     expect(measure(curve)).toBe(expected)
   })
 
   test(`cdf over a zoomed range still ends at 1`, () => {
-    const curve = compute_marginal_curve(
-      [1, 2, 100],
-      undefined,
-      resolved({ type: `cdf` }),
-      [0, 10],
-      `linear`,
-    )
+    const curve = compute([1, 2, 100], { type: `cdf` }, [0, 10])
     const { points } = as_line(curve)
-    expect(points.map((pt) => pt.pos)).toEqual([1, 2])
+    expect(points.map((point) => point.pos)).toEqual([1, 2])
     expect(points[points.length - 1].value).toBeCloseTo(1, 6)
   })
 
   test(`log kde grid spans the view range, not the smallest sample`, () => {
     // range[0] = 1 > 0, so no clamping: the grid must start at 1, not at the min sample (10)
-    const curve = compute_marginal_curve(
-      [10, 20],
-      undefined,
-      resolved({ type: `kde` }),
-      [1, 100],
-      `log`,
-    )
+    const curve = compute([10, 20], { type: `kde` }, [1, 100], `log`)
     expect(as_line(curve).points[0].pos).toBeCloseTo(1, 6)
   })
 
   test(`log axis drops non-positive positions`, () => {
-    const curve = compute_marginal_curve(
-      [-5, 0, 10],
-      undefined,
-      resolved({ bins: 4 }),
-      [0.001, 100],
-      `log`,
-    )
+    const curve = compute([-5, 0, 10], { bins: 4 }, [0.001, 100], `log`)
     expect(sum_bins(curve)).toBe(1)
   })
 
   // a degenerate log range (lower bound <= 0) must clamp the histogram bin domain to the smallest
   // positive sample, so no bin spans non-positive (non-renderable) positions
   test(`log histogram clamps the bin domain to positive on a degenerate range`, () => {
-    const curve = compute_marginal_curve(
-      [10, 20, 30],
-      undefined,
-      resolved({ bins: 4 }),
-      [-5, 100],
-      `log`,
-    )
+    const curve = compute([10, 20, 30], { bins: 4 }, [-5, 100], `log`)
     const { bins } = as_bars(curve)
     expect(bins.length).toBeGreaterThan(0)
     expect(Math.min(...bins.map((bin) => bin.pos0))).toBeGreaterThanOrEqual(10)
@@ -413,20 +384,8 @@ describe(`compute_marginal_curve`, () => {
     `%s handles a reversed (descending) positional range`,
     (type) => {
       const positions = [10, 20, 30, 40, 50]
-      const ascending = compute_marginal_curve(
-        positions,
-        undefined,
-        resolved({ type }),
-        [0, 100],
-        `linear`,
-      )
-      const descending = compute_marginal_curve(
-        positions,
-        undefined,
-        resolved({ type }),
-        [100, 0],
-        `linear`,
-      )
+      const ascending = compute(positions, { type }, [0, 100])
+      const descending = compute(positions, { type }, [100, 0])
       expect(descending).toEqual(ascending)
       if (descending.kind === `bars`) expect(descending.bins.length).toBeGreaterThan(0)
       if (descending.kind === `line`) expect(descending.points.length).toBeGreaterThan(0)
@@ -486,286 +445,201 @@ describe(`marginal_hit`, () => {
   })
 
   const bars_curve = (
-    bins: { pos0: number; pos1: number; value: number }[],
+    bins: [number, number, number][],
     color = `red`,
     label?: string,
   ): MarginalSeriesCurve => ({
     series_idx: 0,
     color,
     label,
-    curve: { kind: `bars`, bins, max: Math.max(0, ...bins.map((bin) => bin.value)) },
+    curve: {
+      kind: `bars`,
+      bins: bins.map(([pos0, pos1, value]) => ({ pos0, pos1, value })),
+      max: Math.max(0, ...bins.map(([, , value]) => value)),
+    },
   })
 
   const line_curve = (
-    points: { pos: number; value: number }[],
+    positions: readonly number[],
+    values: readonly number[],
     color = `green`,
     label?: string,
   ): MarginalSeriesCurve => ({
     series_idx: 0,
     color,
     label,
-    curve: { kind: `line`, points, max: Math.max(0, ...points.map((pt) => pt.value)) },
+    curve: {
+      kind: `line`,
+      points: positions.map((pos, idx) => ({ pos, value: values[idx] })),
+      max: Math.max(0, ...values),
+    },
   })
 
-  test(`bars: pointer inside a bin returns that bin`, () => {
-    const ctx = make_ctx([
-      bars_curve([
-        { pos0: 0, pos1: 5, value: 3 },
-        { pos0: 5, pos1: 10, value: 8 },
-      ]),
-    ])
-    // px=25 -> bin [0,5] (px span [0,50]); py near baseline so cross is inside the bar
-    const hit = marginal_hit(ctx, 25, 60)
-    expect(hit?.kind).toBe(`bars`)
-    expect(hit?.pos0).toBe(0)
-    expect(hit?.pos1).toBe(5)
-    expect(hit?.value).toBe(3)
-    expect(hit?.pos).toBe(2.5)
-    // px=75 -> bin [5,10]
-    expect(marginal_hit(ctx, 75, 60)?.value).toBe(8)
+  test(`cached picking projects once and preserves original-order ties`, () => {
+    const positional_scale = vi.fn((value: number) => 100 - value * 10)
+    const ctx = make_ctx([line_curve([8, 2, 8, NaN], [4, 3, 7, 1])], { positional_scale })
+    const hit_test = create_marginal_hit_test(ctx)
+    const count = positional_scale.mock.calls.length
+    expect(hit_test(50, 60)?.value).toBe(4)
+    expect(hit_test(80, 60)?.value).toBe(3)
+    expect(hit_test(20, 60)?.value).toBe(4)
+    expect(positional_scale.mock.calls).toHaveLength(count)
+    const plateau = make_ctx([line_curve([3e-300, 2e-300, 1e-300, 1e308], [1, 2, 3, 4])], {
+      positional_scale: (value) => value,
+    })
+    expect(create_marginal_hit_test(plateau)(5e307, 60)?.value).toBe(1)
   })
 
-  // px=150 is beyond the bin's [0,50] px span; px=25/py=30 sits inside the column but above the
-  // rendered bar (value=3 spans py 46..64)
+  test.each([`linear`, `log`, `arcsinh`] as const)(
+    `cached %s picking compares exact endpoints and ties in resized pixels`,
+    (scale_type) => {
+      const domain: Vec2 = [1, 100]
+      const ctx = make_ctx(
+        [
+          line_curve(
+            Array.from({ length: 100 }, (_, idx) => idx + 1),
+            Array(100).fill(0.5),
+          ),
+        ],
+        { positional_scale: create_scale(scale_type, domain, [0, 1024]) },
+      )
+      const hit_test = create_marginal_hit_test(ctx)
+      for (const pixel_range of [
+        [73, 674],
+        [91, 889],
+        [674, 73],
+      ] as Vec2[]) {
+        const positional_scale = vi.fn(create_scale(scale_type, domain, pixel_range))
+        const current = {
+          ...ctx,
+          positional_scale,
+          axis_title: `Resized axis`,
+          tick_label: (value: number) => `sample ${value}`,
+        }
+        const reference = create_marginal_hit_test(current)
+        for (let pos = 1; pos <= 100; pos++) {
+          const endpoint = positional_scale(pos)
+          const midpoint = (endpoint + positional_scale(Math.min(pos + 1, 100))) / 2
+          for (const pointer of [endpoint, midpoint]) {
+            expect(hit_test(pointer, 63, current)).toEqual(reference(pointer, 63))
+          }
+        }
+        positional_scale.mockClear()
+        expect(hit_test(positional_scale(50), 63, current)?.axis_title).toBe(`Resized axis`)
+        expect(positional_scale.mock.calls.length).toBeLessThan(20)
+      }
+    },
+  )
+
+  const two_bins = bars_curve([
+    [0, 5, 3],
+    [5, 10, 8],
+  ])
   test.each([
-    [`beyond the bin span`, 150, 60],
-    [`inside the column but above the bar`, 25, 30],
-  ] as const)(`bars: pointer %s returns null`, (_desc, px, py) => {
-    const ctx = make_ctx([bars_curve([{ pos0: 0, pos1: 5, value: 3 }])])
-    expect(marginal_hit(ctx, px, py)).toBeNull()
+    [`first bin`, 25, 60, { kind: `bars`, pos0: 0, pos1: 5, value: 3, pos: 2.5 }],
+    [`second bin`, 75, 60, { value: 8 }],
+    [`beyond span`, 150, 60, null],
+    [`above fill`, 25, 30, null],
+  ] as const)(`bars: %s`, (_name, pixel_x, pixel_y, expected) => {
+    const hit = marginal_hit(make_ctx([two_bins]), pixel_x, pixel_y)
+    if (expected === null) expect(hit).toBeNull()
+    else expect(hit).toMatchObject(expected)
   })
 
   test(`bars: overlaid series resolve to the tallest bar`, () => {
     const ctx = make_ctx([
-      bars_curve([{ pos0: 0, pos1: 5, value: 2 }], `red`, `low`),
-      bars_curve([{ pos0: 0, pos1: 5, value: 9 }], `blue`, `high`),
+      bars_curve([[0, 5, 2]], `red`, `low`),
+      bars_curve([[0, 5, 9]], `blue`, `high`),
     ])
-    const hit = marginal_hit(ctx, 25, 30)
-    expect(hit?.value).toBe(9)
-    expect(hit?.label).toBe(`high`)
-    expect(hit?.color).toBe(`blue`)
+    expect(marginal_hit(ctx, 25, 30)).toMatchObject({ value: 9, label: `high`, color: `blue` })
   })
 
-  test(`line: returns the nearest point by positional distance`, () => {
-    const ctx = make_ctx([
-      line_curve(
-        [
-          { pos: 0, value: 0 },
-          { pos: 5, value: 0.5 },
-          { pos: 10, value: 1 },
-        ],
-        `green`,
-        `kde`,
-      ),
-    ])
-    const hit = marginal_hit(ctx, 48, 62) // px=48 -> nearest pos 5 (px 50); py inside fill
-    expect(hit?.kind).toBe(`line`)
-    expect(hit?.pos).toBe(5)
-    expect(hit?.value).toBe(0.5)
-  })
-
-  test(`line: pointer outside every filled curve returns null`, () => {
-    const ctx = make_ctx([
-      line_curve(
-        [
-          { pos: 4, value: 0.5 },
-          { pos: 6, value: 0.5 },
-        ],
-        `green`,
-        `kde`,
-      ),
-    ])
-    // value=0.5 spans py 61..64, so py=30 is inside the strip but outside the rendered fill.
-    expect(marginal_hit(ctx, 50, 30)).toBeNull()
-  })
-
-  // Among overlaid fills containing the pointer, the OUTERMOST (curve reaching furthest from the
-  // baseline) wins — the curve the pointer visually sits within. Regression for the box-plot/KDE
-  // marginal whose tooltip showed the wrong series when hovering a taller curve's translucent fill.
-  test(`line: the outermost fill under the pointer wins, even over a lower curve's line`, () => {
-    const ctx = make_ctx([
-      line_curve(
-        [
-          { pos: 4, value: 0.2 },
-          { pos: 6, value: 0.2 },
-        ],
-        `red`,
-        `A`,
-      ),
-      line_curve(
-        [
-          { pos: 4, value: 0.9 },
-          { pos: 6, value: 0.9 },
-        ],
-        `blue`,
-        `B`,
-      ),
-    ])
-    // value_scale = 64 - val*6, baseline 64: A's line at py 62.8, B's at py 58.6. B's fill reaches
-    // furthest (py 58.6..64), so a pointer at py 63 sits on A's line but inside B's outer fill -> B.
-    expect(marginal_hit(ctx, 50, 63)?.label).toBe(`B`)
-  })
-
-  // a curve the pointer is NOT inside must not win, even with a larger absolute extent. This guards
-  // the containment check for custom (reduce) line curves with signed values: fills land on opposite
-  // sides of the baseline and don't nest, so "tallest" alone would pick the wrong (unhovered) curve.
-  test(`line: a curve on the opposite side of the baseline never wins`, () => {
-    const ctx = make_ctx([
-      line_curve(
-        [
-          { pos: 4, value: 0.5 },
-          { pos: 6, value: 0.5 },
-        ],
-        `red`,
-        `A`,
-      ),
-      line_curve(
-        [
-          { pos: 4, value: -0.8 },
-          { pos: 6, value: -0.8 },
-        ],
-        `blue`,
-        `B`,
-      ),
-    ])
-    // value_scale = 64 - v*6, baseline 64: A's fill is py 61..64 (above), B's is 64..68.8 (below).
-    // A pointer at py 61 is inside A's fill only, so A wins despite B's larger absolute extent.
-    expect(marginal_hit(ctx, 50, 61)?.label).toBe(`A`)
+  test(`left/right strips use y as the positional axis`, () => {
+    expect(marginal_hit(make_ctx([two_bins], { side: `left` }), 30, 75)).toMatchObject({
+      pos0: 5,
+      value: 8,
+    })
   })
 
   test.each([
-    [`within tolerance`, 22, 2],
-    [`beyond tolerance returns null`, 45, null],
-  ])(`rug: nearest tick %s`, (_desc, px, expected) => {
-    const ctx = make_ctx([
-      {
-        series_idx: 0,
-        color: `gray`,
-        curve: { kind: `rug`, positions: [2, 7] }, // px 20, 70
-      },
-    ])
-    const hit = marginal_hit(ctx, px, 50)
-    expect(hit?.pos ?? null).toBe(expected)
-  })
-
-  // a `left` strip (is_x=false): positional coord = py, value runs along x. marginal_hit must use py
-  test(`left/right strip uses the cross (y) coord as the positional axis`, () => {
-    const ctx = make_ctx(
-      [
-        bars_curve([
-          { pos0: 0, pos1: 5, value: 3 },
-          {
-            pos0: 5,
-            pos1: 10,
-            value: 8,
-          },
-        ]),
-      ],
-      { side: `left` },
-    )
-    // py=75 -> bin [5,10] (py span [50,100]); px=30 sits inside the value fill.
-    const hit = marginal_hit(ctx, 30, 75)
-    expect(hit?.pos0).toBe(5)
-    expect(hit?.value).toBe(8)
-  })
-
-  // hit-testing skips non-finite data so custom reduce/data curves can't yield ghost hits (matching
-  // the renderer, which filters non-finite primitives)
-  test.each([
-    [`NaN edges`, [{ pos0: NaN, pos1: NaN, value: 5 }]],
-    [`Infinity value`, [{ pos0: 0, pos1: 5, value: Infinity }]],
-  ])(`bars: a non-finite bin is skipped (%s)`, (_desc, bins) => {
-    const ctx = make_ctx([bars_curve(bins)])
+    [`NaN edges`, NaN, NaN, 5],
+    [`Infinity value`, 0, 5, Infinity],
+  ])(`bars: skips %s`, (_name, start, end, value) => {
+    const ctx = make_ctx([bars_curve([[start, end, value]])])
     expect(marginal_hit(ctx, 25, 60)).toBeNull()
   })
 
-  // each series is the outermost fill where it peaks, so each remains selectable there
-  test(`line: each overlaid series is selectable where its fill is on top`, () => {
+  test.each([
+    [`nearest point`, [0, 5, 10], [0, 0.5, 1], 48, 62, { kind: `line`, pos: 5, value: 0.5 }],
+    [`outside fill`, [4, 6], [0.5, 0.5], 50, 30, null],
+    [`leading NaN`, [NaN, 4, 6], [1, 0.5, 0.5], 42, 62, { pos: 4, value: 0.5 }],
+  ] as const)(`line: %s`, (_name, positions, values, pixel_x, pixel_y, expected) => {
+    const hit = marginal_hit(make_ctx([line_curve(positions, values)]), pixel_x, pixel_y)
+    if (expected === null) expect(hit).toBeNull()
+    else expect(hit).toMatchObject(expected)
+  })
+
+  // Overlapping fills choose the outermost containing curve, including signed values.
+  test.each([
+    [`outermost`, [4, 6], [0.2, 0.2], [0.9, 0.9], [[50, 63]], [`B`]],
+    [`opposite baseline sides`, [4, 6], [0.5, 0.5], [-0.8, -0.8], [[50, 61]], [`A`]],
+    [
+      `each series at its peak`,
+      [2, 8],
+      [0.9, 0.1],
+      [0.1, 0.9],
+      [
+        [20, 59],
+        [80, 59],
+      ],
+      [`A`, `B`],
+    ],
+  ] as const)(
+    `line: %s`,
+    (_name, positions, first_values, second_values, pointers, labels) => {
+      const ctx = make_ctx([
+        line_curve(positions, first_values, `red`, `A`),
+        line_curve(positions, second_values, `blue`, `B`),
+      ])
+      expect(
+        pointers.map(([pixel_x, pixel_y]) => marginal_hit(ctx, pixel_x, pixel_y)?.label),
+      ).toEqual(labels)
+    },
+  )
+
+  test.each([
+    [`within tolerance`, [2, 7], 22, 2],
+    [`beyond tolerance`, [2, 7], 45, null],
+    [`non-finite tick`, [Infinity], 25, null],
+  ] as const)(`rug: %s`, (_name, positions, pixel_x, expected) => {
     const ctx = make_ctx([
-      line_curve(
-        [
-          { pos: 2, value: 0.9 },
-          { pos: 8, value: 0.1 },
-        ],
-        `red`,
-        `A`,
-      ),
-      line_curve(
-        [
-          { pos: 2, value: 0.1 },
-          { pos: 8, value: 0.9 },
-        ],
-        `blue`,
-        `B`,
-      ),
+      { series_idx: 0, color: `gray`, curve: { kind: `rug`, positions: [...positions] } },
     ])
-    // A peaks left (pos 2), B peaks right (pos 8); at py 59 only the peaking series' fill reaches
-    expect(marginal_hit(ctx, 20, 59)?.label).toBe(`A`)
-    expect(marginal_hit(ctx, 80, 59)?.label).toBe(`B`)
+    const hit = marginal_hit(ctx, pixel_x, 50)
+    if (expected === null) expect(hit).toBeNull()
+    else expect(hit?.pos).toBe(expected)
   })
 
   test(`empty curves return null`, () => {
     expect(marginal_hit(make_ctx([]), 25, 30)).toBeNull()
   })
 
-  test(`line: a leading non-finite point does not poison the search`, () => {
-    // two finite points (renderer/hit need >= 2); the NaN point must be skipped, not break the scan
-    const ctx = make_ctx([
-      line_curve([
-        { pos: NaN, value: 1 },
-        { pos: 4, value: 0.5 },
-        { pos: 6, value: 0.5 },
-      ]),
-    ])
-    const hit = marginal_hit(ctx, 42, 62) // px=42 -> nearest finite pos 4; py inside fill
-    expect(hit?.pos).toBe(4)
-    expect(hit?.value).toBe(0.5)
-  })
-
-  test(`rug: a non-finite tick is skipped (no false in-tolerance hit)`, () => {
-    const ctx = make_ctx([
-      { series_idx: 0, color: `gray`, curve: { kind: `rug`, positions: [Infinity] } },
-    ])
-    expect(marginal_hit(ctx, 25, 50)).toBeNull()
-  })
-
-  // a ctx field (config.color override, ctx.format) reaches the hover payload at the matched bin
   test.each([
-    [
-      `config.color overrides the per-series color`,
-      { config: resolved({ color: `purple` }) },
-      `color`,
-      `purple`,
-    ],
-    [`format from ctx is forwarded to the hover payload`, { format: `.2f` }, `format`, `.2f`],
-  ] as const)(`%s`, (_desc, over, field, expected) => {
-    const ctx = make_ctx([bars_curve([{ pos0: 0, pos1: 5, value: 3 }], `red`)], over)
-    expect(marginal_hit(ctx, 25, 60)?.[field]).toBe(expected)
+    [{ config: resolved({ color: `purple` }) }, { color: `purple` }],
+    [{ format: `.2f` }, { format: `.2f` }],
+  ])(`forwards bar hover context %j`, (overrides, expected) => {
+    expect(marginal_hit(make_ctx([two_bins], overrides), 25, 60)).toMatchObject(expected)
   })
 
-  test(`tick_label maps the matched pos to a categorical label`, () => {
-    const ctx = make_ctx(
-      [
-        line_curve([
-          { pos: 0, value: 0.3 },
-          { pos: 1, value: 0.7 },
-        ]),
-      ],
-      { tick_label: (pos) => [`Cubic`, `Hexagonal`][Math.round(pos)] },
-    )
-    expect(marginal_hit(ctx, 9, 62)?.pos_label).toBe(`Hexagonal`) // px=9 -> pos 1, py inside fill
-  })
-
-  test(`axis_title threads through to the hover payload`, () => {
-    const curve = line_curve([
-      { pos: 4, value: 0.5 },
-      { pos: 6, value: 0.5 },
-    ])
-    expect(marginal_hit(make_ctx([curve], { axis_title: `Error` }), 50, 62)?.axis_title).toBe(
-      `Error`,
-    )
-    // absent axis_title leaves the field undefined (PlotMarginals falls back to "pos"/"range")
-    expect(marginal_hit(make_ctx([curve]), 50, 62)?.axis_title).toBeUndefined()
+  test(`forwards categorical labels and optional axis titles`, () => {
+    const curve = line_curve([0, 1], [0.3, 0.7])
+    const ctx = make_ctx([curve], {
+      tick_label: (pos) => [`Cubic`, `Hexagonal`][Math.round(pos)],
+    })
+    expect(marginal_hit(ctx, 9, 62)?.pos_label).toBe(`Hexagonal`)
+    const titled = make_ctx([line_curve([4, 6], [0.5, 0.5])])
+    expect(marginal_hit({ ...titled, axis_title: `Error` }, 50, 62)?.axis_title).toBe(`Error`)
+    expect(marginal_hit(titled, 50, 62)?.axis_title).toBeUndefined()
   })
 })
 
@@ -778,29 +652,15 @@ describe(`weighted marginals`, () => {
   const weights = [1, 99]
 
   test(`rejects a weighted kde instead of dropping the weights`, () => {
-    expect(() =>
-      compute_marginal_curve(positions, weights, resolved({ type: `kde` }), [0, 3], `linear`),
-    ).toThrow(/cannot weight its samples/)
-  })
-
-  test(`still accepts an unweighted kde`, () => {
-    expect(() =>
-      compute_marginal_curve(
-        positions,
-        undefined,
-        resolved({ type: `kde` }),
-        [0, 3],
-        `linear`,
-      ),
-    ).not.toThrow()
+    expect(() => compute(positions, { type: `kde` }, [0, 3], `linear`, weights)).toThrow(
+      /cannot weight its samples/,
+    )
   })
 
   // the 99:1 mass ratio has to change the curve, which it cannot if the weights are dropped
   test.each([`histogram`, `cdf`] as const)(`honours weights for %s`, (type) => {
     const curve_of = (wts: number[] | undefined) =>
-      JSON.stringify(
-        compute_marginal_curve(positions, wts, resolved({ type, bins: 3 }), [0, 3], `linear`),
-      )
+      JSON.stringify(compute(positions, { type, bins: 3 }, [0, 3], `linear`, wts))
     expect(curve_of(weights)).not.toBe(curve_of(undefined))
   })
 })
@@ -816,13 +676,7 @@ describe(`log-axis marginals bin in the axis' own space`, () => {
   const log_range: Vec2 = [1e-3, 1e2]
 
   test(`histogram bars are equal width in log space and evenly filled`, () => {
-    const curve = compute_marginal_curve(
-      samples,
-      undefined,
-      resolved({ type: `histogram`, bins: 60 }),
-      log_range,
-      `log`,
-    )
+    const curve = compute(samples, { type: `histogram`, bins: 60 }, log_range, `log`)
     const bars = as_bars(curve)
     expect(bars.bins).toHaveLength(60) // d3's nice thresholds returned 50 for a requested 60
     const widths = bars.bins.map((bin) => Math.log10(bin.pos1) - Math.log10(bin.pos0))
@@ -833,13 +687,7 @@ describe(`log-axis marginals bin in the axis' own space`, () => {
   })
 
   test(`the kde grid spreads evenly across the strip`, () => {
-    const curve = compute_marginal_curve(
-      samples,
-      undefined,
-      resolved({ type: `kde` }),
-      log_range,
-      `log`,
-    )
+    const curve = compute(samples, { type: `kde` }, log_range, `log`)
     const points = as_line(curve).points
     const midpoint = 10 ** (-3 + 2.5) // half way across a five-decade strip
     const lower_half = points.filter((point) => point.pos < midpoint).length
@@ -849,12 +697,16 @@ describe(`log-axis marginals bin in the axis' own space`, () => {
   })
 
   test(`a linear axis bins in data units, unchanged`, () => {
-    const bars = as_bars(
-      compute_marginal_curve([0, 5, 10], undefined, resolved({ bins: 2 }), [0, 10], `linear`),
-    )
+    const bars = as_bars(compute([0, 5, 10], { bins: 2 }, [0, 10]))
     expect(bars.bins.map((bin) => [bin.pos0, bin.pos1])).toEqual([
       [0, 5],
       [5, 10],
     ])
   })
 })
+
+const marginal_hit = (
+  ctx: Parameters<typeof create_marginal_hit_test>[0],
+  pixel_x: number,
+  pixel_y: number,
+) => create_marginal_hit_test(ctx)(pixel_x, pixel_y)

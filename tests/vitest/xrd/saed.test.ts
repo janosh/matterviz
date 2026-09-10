@@ -44,7 +44,9 @@ const spot_radius = (spot: SaedSpot): number => Math.hypot(...spot.position_2d)
 const find_spot = (spots: SaedSpot[], target: Vec3): SaedSpot => {
   const found = spots.find((spot) => spot.hkl.every((val, idx) => val === target[idx]))
   if (!found) {
-    throw new Error(`no spot ${target.join(``)} in [${spots.map((sp) => sp.hkl.join(``))}]`)
+    throw new Error(
+      `no spot ${target.join(``)} in [${spots.map((species) => species.hkl.join(``))}]`,
+    )
   }
   return found
 }

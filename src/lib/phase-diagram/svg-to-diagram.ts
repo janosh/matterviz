@@ -13,7 +13,7 @@ const round = (val: number): number => Math.round(val * 1e6) / 1e6
 type SvgFormat = `matplotlib` | `simple`
 
 interface LinearScale {
-  to_data: (px: number) => number
+  to_data: (pixel_x: number) => number
   to_px: (value: number) => number
   domain: Vec2 // [min_data, max_data]
 }
@@ -51,8 +51,14 @@ const detect_format = (doc: Document): SvgFormat =>
   doc.querySelector(`[id^="xtick_"], [id^="ytick_"]`) ? `matplotlib` : `simple`
 
 // Non-null results of `fn` over every element matching `selector`
-const query_map = <T>(doc: Document, selector: string, fn: (el: Element) => T | null): T[] =>
-  Array.from(doc.querySelectorAll(selector), fn).filter((item): item is T => item !== null)
+const query_map = <T>(
+  doc: Document,
+  selector: string,
+  callback: (element: Element) => T | null,
+): T[] =>
+  Array.from(doc.querySelectorAll(selector), callback).filter(
+    (item): item is T => item !== null,
+  )
 
 // === Axis Scale Extraction ===
 
@@ -62,8 +68,8 @@ function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
     query_map(doc, `[id^="${axis}tick_"]`, (group) => {
       const value = extract_comment_number(group)
       const use_el = group.querySelector(`use`)
-      const px = use_el && parse_float_attr(use_el, axis)
-      return value !== null && px !== null ? { px, value } : null
+      const pixel_x = use_el && parse_float_attr(use_el, axis)
+      return value !== null && pixel_x !== null ? { px: pixel_x, value } : null
     })
   return [ticks_of(`x`), ticks_of(`y`)]
 }
@@ -72,17 +78,19 @@ function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
 // (px from its y1), x values <text class="tick-text-x"> (px from its x attribute); both are
 // offset by the parent group's translate
 function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
-  const tick_of = (text_el: Element, px: number | null, axis: 0 | 1): Tick | null => {
+  const tick_of = (text_el: Element, pixel_x: number | null, axis: 0 | 1): Tick | null => {
     const value = leading_number(text_el.textContent)
-    if (isNaN(value) || px === null) return null
-    return { px: px + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
+    if (isNaN(value) || pixel_x === null) return null
+    return { px: pixel_x + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
   }
   return [
-    query_map(doc, `.tick-text-x`, (el) => tick_of(el, parse_float_attr(el, `x`), 0)),
-    query_map(doc, `.tick-text`, (el) => {
-      const tick_line = el.previousElementSibling
+    query_map(doc, `.tick-text-x`, (element) =>
+      tick_of(element, parse_float_attr(element, `x`), 0),
+    ),
+    query_map(doc, `.tick-text`, (element) => {
+      const tick_line = element.previousElementSibling
       if (!tick_line?.matches(`.tick-line, line`)) return null
-      return tick_of(el, parse_float_attr(tick_line, `y1`), 1)
+      return tick_of(element, parse_float_attr(tick_line, `y1`), 1)
     }),
   ]
 }
@@ -110,7 +118,7 @@ function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
   const px_per_unit = px_range / range
 
   return {
-    to_data: (px: number) => first.value + (px - first.px) / px_per_unit,
+    to_data: (pixel_x: number) => first.value + (pixel_x - first.px) / px_per_unit,
     to_px: (value: number) => first.px + (value - first.value) * px_per_unit,
     domain: [first.value, last.value],
   }
@@ -129,9 +137,10 @@ function extract_boundary_lines(doc: Document, format: SvgFormat): Vec4[] {
       // Multi-segment paths are not straight boundaries
       const segments = parse_path_segments(d_attr)
       if (segments.length !== 1) return null
-      const [x1, y1, x2, y2] = segments[0]
+      const [coord_x_1, coord_y_1, coord_x, coord_y_2] = segments[0]
       // Skip tick mark lines (short lines, typically < 10px)
-      if (Math.abs(x2 - x1) < 15 && Math.abs(y2 - y1) < 15) return null
+      if (Math.abs(coord_x - coord_x_1) < 15 && Math.abs(coord_y_2 - coord_y_1) < 15)
+        return null
       // Hairlines are axis furniture (matplotlib draws ticks and spines at 0.8 px); an
       // unparsable/absent stroke-width (0) is kept as a boundary
       const stroke_width = parse_stroke_width(path_el)
@@ -220,11 +229,11 @@ function extract_labels(doc: Document, format: SvgFormat): Label[] {
 const BACKGROUND_FILLS = new Set([`#fff`, `#ffffff`, `white`, `rgb(255,255,255)`])
 
 // Fill colour of an element from style="fill: ..." or the fill attribute; null if unset/none
-function element_fill(el: Element): string | null {
+function element_fill(element: Element): string | null {
   const style_match = /(?:^|;)\s*fill\s*:\s*(?<fill>[^;]+)/.exec(
-    el.getAttribute(`style`) ?? ``,
+    element.getAttribute(`style`) ?? ``,
   )
-  const fill = (style_match?.groups?.fill ?? el.getAttribute(`fill`))?.trim()
+  const fill = (style_match?.groups?.fill ?? element.getAttribute(`fill`))?.trim()
   if (!fill || fill === `none` || fill === `transparent`) return null
   if (BACKGROUND_FILLS.has(fill.toLowerCase().replaceAll(/\s+/g, ``))) return null
   return fill
@@ -245,20 +254,32 @@ function segments_to_rings(segments: Vec4[]): Vec2[][] {
 // Closed pixel-space outline of a rect/polygon/path element, or of a <use> instance of one
 // shifted by its x/y offset (matplotlib's fill_between puts the polygon in <defs> and fills
 // the <use>), as the rings SVG would fill. Other transforms are not applied.
-function shape_rings(el: Element): Vec2[][] | null {
-  const tag = el.tagName.toLowerCase()
+function shape_rings(element: Element): Vec2[][] | null {
+  const tag = element.tagName.toLowerCase()
   if (tag === `use`) {
-    const href = el.getAttribute(`href`) ?? el.getAttribute(`xlink:href`) ?? ``
+    const href = element.getAttribute(`href`) ?? element.getAttribute(`xlink:href`) ?? ``
     const target = href.startsWith(`#`)
-      ? el.ownerDocument.querySelector(`[id="${href.slice(1).replaceAll(`"`, `\\"`)}"]`)
+      ? element.ownerDocument.querySelector(`[id="${href.slice(1).replaceAll(`"`, `\\"`)}"]`)
       : null
     const rings = target && target.tagName.toLowerCase() !== `use` ? shape_rings(target) : null
-    const [dx, dy] = [parse_float_attr(el, `x`) ?? 0, parse_float_attr(el, `y`) ?? 0]
-    return rings?.map((ring) => ring.map(([x_px, y_px]) => [x_px + dx, y_px + dy])) ?? null
+    const [delta_x, delta_y] = [
+      parse_float_attr(element, `x`) ?? 0,
+      parse_float_attr(element, `y`) ?? 0,
+    ]
+    return (
+      rings?.map((ring) => ring.map(([x_px, y_px]) => [x_px + delta_x, y_px + delta_y])) ??
+      null
+    )
   }
   if (tag === `rect`) {
-    const [x_px, y_px] = [parse_float_attr(el, `x`) ?? 0, parse_float_attr(el, `y`) ?? 0]
-    const [width, height] = [parse_float_attr(el, `width`), parse_float_attr(el, `height`)]
+    const [x_px, y_px] = [
+      parse_float_attr(element, `x`) ?? 0,
+      parse_float_attr(element, `y`) ?? 0,
+    ]
+    const [width, height] = [
+      parse_float_attr(element, `width`),
+      parse_float_attr(element, `height`),
+    ]
     if (width === null || height === null) return null
     const [max_x, max_y] = [x_px + width, y_px + height]
     return [
@@ -271,12 +292,12 @@ function shape_rings(el: Element): Vec2[][] | null {
     ]
   }
   if (tag === `polygon`) {
-    const nums = ((el.getAttribute(`points`) ?? ``).match(NUMBER_REGEX) ?? []).map(Number)
+    const nums = ((element.getAttribute(`points`) ?? ``).match(NUMBER_REGEX) ?? []).map(Number)
     return [
       Array.from({ length: nums.length >> 1 }, (_, idx) => [nums[2 * idx], nums[2 * idx + 1]]),
     ]
   }
-  const d_attr = tag === `path` ? el.getAttribute(`d`) : null
+  const d_attr = tag === `path` ? element.getAttribute(`d`) : null
   return d_attr === null ? null : segments_to_rings(parse_path_segments(d_attr))
 }
 
@@ -284,10 +305,10 @@ function shape_rings(el: Element): Vec2[][] | null {
 // are skipped since shape_rings ignores transforms (their pixel coords would be wrong).
 function extract_filled_shapes(doc: Document): FilledShape[] {
   const shapes: FilledShape[] = []
-  for (const el of Array.from(doc.querySelectorAll(`rect, polygon, path, use`))) {
-    const fill = element_fill(el)
-    if (fill === null || el.hasAttribute(`transform`)) continue
-    const rings = shape_rings(el) ?? []
+  for (const element of Array.from(doc.querySelectorAll(`rect, polygon, path, use`))) {
+    const fill = element_fill(element)
+    if (fill === null || element.hasAttribute(`transform`)) continue
+    const rings = shape_rings(element) ?? []
     const verts = rings.flat()
     if (verts.length < 3) continue // fewer than 3 corners encloses no area
     const [min_x, max_x] = array_extent(verts.map(([x_px]) => x_px))
@@ -377,21 +398,23 @@ function infer_regions(
   for (const col_walls of h_walls) for (const row of [0, n_rows]) col_walls[row] = true
   for (const col of [0, n_cols]) v_walls[col].fill(true)
   // Cell intervals of `coords` that the span [lo, hi] covers
-  const spanned_cells = (lo: number, hi: number, coords: number[]): number[] =>
+  const spanned_cells = (lower: number, upper: number, coords: number[]): number[] =>
     coords
       .slice(0, -1)
       .flatMap((cell_min, idx) =>
-        lo <= cell_min + 1e-6 && hi >= coords[idx + 1] - 1e-6 ? [idx] : [],
+        lower <= cell_min + 1e-6 && upper >= coords[idx + 1] - 1e-6 ? [idx] : [],
       )
-  for (const hb of horizontals) {
-    const row = find_coord_index(y_coords, hb.y1)
+  for (const horizontal_bond of horizontals) {
+    const row = find_coord_index(y_coords, horizontal_bond.y1)
     if (row === -1) continue
-    for (const col of spanned_cells(hb.x1, hb.x2, x_coords)) h_walls[col][row] = true
+    for (const col of spanned_cells(horizontal_bond.x1, horizontal_bond.x2, x_coords))
+      h_walls[col][row] = true
   }
-  for (const vb of verticals) {
-    const col = find_coord_index(x_coords, vb.x1)
+  for (const vertex_b of verticals) {
+    const col = find_coord_index(x_coords, vertex_b.x1)
     if (col === -1) continue
-    for (const row of spanned_cells(vb.y1, vb.y2, y_coords)) v_walls[col][row] = true
+    for (const row of spanned_cells(vertex_b.y1, vertex_b.y2, y_coords))
+      v_walls[col][row] = true
   }
 
   // Flood-fill to assign region IDs
@@ -500,11 +523,11 @@ export function trace_region_outline(
 
   const vertex_key = ([col, row]: Vec2) => `${col},${row}`
   const outgoing = new Map<string, Vec2[]>()
-  const add_edge = (from: Vec2, to: Vec2) => {
+  const add_edge = (from: Vec2, target: Vec2) => {
     const key = vertex_key(from)
     const edges = outgoing.get(key)
-    if (edges) edges.push(to)
-    else outgoing.set(key, [to])
+    if (edges) edges.push(target)
+    else outgoing.set(key, [target])
   }
 
   let start: Vec2 | null = null
@@ -547,7 +570,8 @@ export function trace_region_outline(
     let next = candidates[0]
     if (prev && candidates.length > 1) {
       const [in_dx, in_dy] = [current[0] - prev[0], current[1] - prev[1]]
-      const turn = (to: Vec2) => in_dx * (to[1] - current[1]) - in_dy * (to[0] - current[0])
+      const turn = (target: Vec2) =>
+        in_dx * (target[1] - current[1]) - in_dy * (target[0] - current[0])
       next = candidates.reduce((best, cand) => (turn(cand) < turn(best) ? cand : best))
     }
     candidates.splice(candidates.indexOf(next), 1)
@@ -628,17 +652,17 @@ function leading_number(text: string | null | undefined): number {
 }
 
 // Parse stroke-width from style or direct attribute (0 if missing, `2px` units ok)
-function parse_stroke_width(el: Element): number {
-  const width = /stroke-width:\s*(?<width>[\d.]+)/.exec(el.getAttribute(`style`) ?? ``)?.groups
-    ?.width
+function parse_stroke_width(element: Element): number {
+  const width = /stroke-width:\s*(?<width>[\d.]+)/.exec(element.getAttribute(`style`) ?? ``)
+    ?.groups?.width
   if (width !== undefined) return Number(width)
-  const parsed = leading_number(el.getAttribute(`stroke-width`))
+  const parsed = leading_number(element.getAttribute(`stroke-width`))
   return isNaN(parsed) ? 0 : parsed
 }
 
 // Parse a float attribute from an SVG element
-function parse_float_attr(el: Element, attr: string): number | null {
-  const val = el.getAttribute(attr)
+function parse_float_attr(element: Element, attr: string): number | null {
+  const val = element.getAttribute(attr)
   if (val === null) return null
   const parsed = leading_number(val)
   return isNaN(parsed) ? null : parsed
@@ -698,10 +722,10 @@ function parse_path_segments(path_str: string): Vec4[] {
   let [cursor_x, cursor_y] = [0, 0]
   let [start_x, start_y] = [0, 0]
   let last_cmd = ``
-  const line_to = (x2: number, y2: number) => {
-    segments.push([cursor_x, cursor_y, x2, y2])
-    cursor_x = x2
-    cursor_y = y2
+  const line_to = (coord_x: number, coord_y_2: number) => {
+    segments.push([cursor_x, cursor_y, coord_x, coord_y_2])
+    cursor_x = coord_x
+    cursor_y = coord_y_2
   }
 
   // Numbers to skip before the endpoint x,y for each lineto-like command (curves are
@@ -756,13 +780,13 @@ function parse_path_segments(path_str: string): Vec4[] {
 
 // Parse translate(x, y) or translate(x) from a transform attribute
 // Single-arg translate uses implicit y=0 per SVG spec
-function parse_translate(el: Element | null): Vec2 | null {
+function parse_translate(element: Element | null): Vec2 | null {
   const match = /translate\(\s*(?<x>[\d.eE+-]+)(?:\s*[,\s]\s*(?<y>[\d.eE+-]+))?\s*\)/.exec(
-    el?.getAttribute(`transform`) ?? ``,
+    element?.getAttribute(`transform`) ?? ``,
   )
   if (!match?.groups) return null
-  const { x, y } = match.groups
-  return [Number(x), y ? Number(y) : 0]
+  const { x: coord_x, y: coord_y } = match.groups
+  return [Number(coord_x), coord_y ? Number(coord_y) : 0]
 }
 
 // Collect unique sorted values from an array (with epsilon deduplication)

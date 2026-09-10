@@ -79,25 +79,28 @@
   </select>
 </label>
 {#if values.color_mode !== `none` && values.color_mode !== `arity`}
-  <label class="pane-row">
-    <span>Color scale:</span>
-    <select
-      value={values.color_scale}
-      onchange={(event) => set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
-    >
-      {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
-        <option {value}>{label}</option>
-      {/each}
-    </select>
-    <span class="reverse-scale-toggle">
+  <div class="pane-row">
+    <label style="flex: 1; min-width: 0">
+      <span>Color scale:</span>
+      <select
+        value={values.color_scale}
+        onchange={(event) =>
+          set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
+      >
+        {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
+          <option {value}>{label}</option>
+        {/each}
+      </select>
+    </label>
+    <label>
       <span>Reverse:</span>
       <input
         type="checkbox"
         checked={values.reverse_color_scale}
         onchange={() => set(`reverse_color_scale`, !values.reverse_color_scale)}
       />
-    </span>
-  </label>
+    </label>
+  </div>
 {/if}
 
 <style>
@@ -114,7 +117,7 @@
     }
   }
   label,
-  .reverse-scale-toggle {
+  .pane-row {
     display: flex;
     align-items: center;
     gap: 4pt;

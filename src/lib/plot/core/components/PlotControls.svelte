@@ -47,8 +47,8 @@
   }: PlotControlsProps = $props()
 
   // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
-  const range_spans_zero = (lo: number, hi: number): boolean =>
-    Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0
+  const range_spans_zero = (lower: number, upper: number): boolean =>
+    Math.min(lower, upper) <= 0 && Math.max(lower, upper) >= 0
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
   const axis_record = <Value>(get_value: (axis: AxisKey) => Value): Record<AxisKey, Value> =>

@@ -51,18 +51,18 @@
       [`bubble`, ScatterPlot, `Bubble Chart`],
       [`bar`, Graph, `Bar Chart`],
     ] as const
-  ).map(([id, icon, label]) => ({
-    id,
+  ).map(([identifier, icon, label]) => ({
+    id: identifier,
     icon,
     label,
-    action: () => (mode = id),
+    action: () => (mode = identifier),
   }))
 
-  const color_scheme_actions = ELEMENT_COLOR_SCHEME_NAMES.map((id) => ({
-    id,
+  const color_scheme_actions = ELEMENT_COLOR_SCHEME_NAMES.map((identifier) => ({
+    id: identifier,
     icon: ColorPalette,
-    label: id,
-    action: () => (color_scheme = id),
+    label: identifier,
+    action: () => (color_scheme = identifier),
   }))
 
   const export_actions = (
@@ -72,7 +72,12 @@
       [`export_svg`, Download, `Export SVG`],
       [`export_png`, Download, `Export PNG`],
     ] as const
-  ).map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
+  ).map(([identifier, icon, label]) => ({
+    id: identifier,
+    icon,
+    label,
+    action: () => handle_export(identifier),
+  }))
 
   const context_menu_actions = $derived([
     { title: `Display Mode`, selected: mode, actions: mode_actions },

@@ -43,7 +43,7 @@ export function chem_sys_sunburst_data(
   const normalize = (entry: string): string | null => {
     let elements: string[]
     if (entry.includes(`-`)) {
-      elements = entry.split(`-`).map((el) => el.trim())
+      elements = entry.split(`-`).map((element) => element.trim())
       if (!elements.every(is_elem_symbol)) return null
     } else {
       try {

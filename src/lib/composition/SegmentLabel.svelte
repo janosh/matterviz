@@ -4,8 +4,8 @@ SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export.
   import { type ChartLabelOptions, type ChartSegment, segment_suffix } from './chart'
 
   let {
-    x,
-    y,
+    x: coord_x,
+    y: coord_y,
     segment,
     font_scale,
     text_color,
@@ -22,7 +22,13 @@ SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export.
   const suffix = $derived(segment_suffix(segment, label_opts))
 </script>
 
-<text {x} {y} text-anchor="middle" dominant-baseline="central" style:fill={text_color}>
+<text
+  x={coord_x}
+  y={coord_y}
+  text-anchor="middle"
+  dominant-baseline="central"
+  style:fill={text_color}
+>
   <tspan style:font-size="{14 * font_scale}px" font-weight="700">{segment.element}</tspan>
   {#if suffix}
     <tspan style:font-size="{8 * font_scale}px" font-weight="500" dx="1" dy="5">{suffix}</tspan

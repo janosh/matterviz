@@ -52,7 +52,7 @@
     band_data = $bindable(),
     structure,
     bz_data = $bindable(),
-    mu = $bindable(DEFAULTS.fermi.mu),
+    mu: mean = $bindable(DEFAULTS.fermi.mu),
     controls_open = $bindable(false),
     color_property = $bindable(DEFAULTS.fermi.color_property),
     color_scale = $bindable(DEFAULTS.fermi.color_scale),
@@ -216,7 +216,7 @@
       return
     }
     const grid = grid_data
-    const options = { mu, interpolation_factor }
+    const options = { mu: mean, interpolation_factor }
     const timeout = setTimeout(async () => {
       extracting = true
       await tick()
@@ -344,7 +344,7 @@
           bind:controls_open
           fermi_data={surface_data}
           band_data={grid_data}
-          bind:mu
+          bind:mu={mean}
           bind:color_property
           bind:color_scale
           {custom_property_label}

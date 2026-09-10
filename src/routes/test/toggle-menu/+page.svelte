@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ToggleMenu } from '$lib/table'
+  import { HeatmapTable, ToggleMenu } from '$lib/table'
   import type { Column } from '$lib/table'
 
   // === Example 1: Basic flat list (no groups) ===
@@ -184,6 +184,15 @@
   let multicolumn_open = $state(false)
   let multicolumn_collapsed: string[] = $state([])
 
+  let table_columns: Column[] = $state([
+    { id: `Name`, label: `Name` },
+    { id: `Score`, label: `Score`, color_scale: `interpolateViridis` },
+  ])
+  let show_heatmap = $state(false)
+  let heatmap_opacity = $state(0.5)
+  let show_row_numbers = $state(true)
+  let column_prefs = $state({ Score: { color_scale: null, width: 120 } })
+
   // Derive visibility counts for display (reactive without effects)
   let basic_visible = $derived(
     basic_columns
@@ -201,6 +210,29 @@
 <p>
   A flexible toggle menu supporting grouped sections, collapsible headers, and disabled states.
 </p>
+
+<section id="table-controls">
+  <h2>Table controls</h2>
+  <HeatmapTable
+    data={[
+      { Name: `Alpha`, Score: 3 },
+      { Name: `Beta`, Score: 1 },
+      { Name: `Gamma`, Score: 2 },
+    ]}
+    columns={table_columns}
+    bind:show_heatmap
+    bind:heatmap_opacity
+    {show_row_numbers}
+    bind:column_prefs
+    show_controls="always"
+    search
+    export_data
+    show_column_toggle
+    show_row_select
+    row_key="Name"
+    pagination={{ page_size: 2, page_sizes: [1, 2, 3] }}
+  />
+</section>
 
 <section class="demo-grid">
   <div class="demo-card">

@@ -143,7 +143,7 @@
     const pair_counts = new SvelteMap<string, number>()
     for (const entry of all_entries) {
       const active = Object.keys(entry.composition).filter(
-        (el) => (entry.composition[el as keyof typeof entry.composition] ?? 0) > 0,
+        (element) => (entry.composition[element as keyof typeof entry.composition] ?? 0) > 0,
       )
       for (const [idx_a, el_a] of active.entries()) {
         for (const el_b of active.slice(idx_a + 1)) {

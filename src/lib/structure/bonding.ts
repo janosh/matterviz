@@ -95,14 +95,14 @@ export const is_spectator_center = (element: string): boolean =>
 export function has_framework_potential(elements: Iterable<string>): boolean {
   const els = [...new Set(elements)] // dedupe so callers can pass per-site element lists
   let max_en = -Infinity
-  for (const el of els) {
-    const en = element_by_symbol.get(el as ElementSymbol)?.electronegativity
-    if (en != null && en > max_en) max_en = en
+  for (const element of els) {
+    const energy = element_by_symbol.get(element as ElementSymbol)?.electronegativity
+    if (energy != null && energy > max_en) max_en = energy
   }
-  return els.some((el) => {
-    if (is_spectator_center(el)) return false
-    const en = element_by_symbol.get(el as ElementSymbol)?.electronegativity
-    return en != null && en < max_en
+  return els.some((element) => {
+    if (is_spectator_center(element)) return false
+    const energy = element_by_symbol.get(element as ElementSymbol)?.electronegativity
+    return energy != null && energy < max_en
   })
 }
 
@@ -187,13 +187,13 @@ export function remap_bonds_after_deletion(
   // indices below it via binary search (O(log m) per lookup vs re-filtering the set each call).
   const sorted = [...deleted_indices].toSorted((idx_a, idx_b) => idx_a - idx_b)
   const shift = (idx: number) => {
-    let [lo, hi] = [0, sorted.length]
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1
-      if (sorted[mid] < idx) lo = mid + 1
-      else hi = mid
+    let [lower, upper] = [0, sorted.length]
+    while (lower < upper) {
+      const mid = (lower + upper) >> 1
+      if (sorted[mid] < idx) lower = mid + 1
+      else upper = mid
     }
-    return idx - lo // lo == count of deleted indices < idx
+    return idx - lower // lo == count of deleted indices < idx
   }
   return bonds
     .filter(
@@ -711,10 +711,11 @@ const grow_i32 = (buffer: Int32Array, needed: number, cap = Infinity): Int32Arra
 // seen from exactly one side, so with own-bin pairs taken only for larger slot indices the
 // sweep below computes every pair once.
 const FORWARD_BIN_OFFSETS: [number, number, number][] = []
-for (let dx = -1; dx <= 1; dx++) {
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dz = -1; dz <= 1; dz++) {
-      if (dx * 9 + dy * 3 + dz > 0) FORWARD_BIN_OFFSETS.push([dx, dy, dz])
+for (let delta_x = -1; delta_x <= 1; delta_x++) {
+  for (let delta_y = -1; delta_y <= 1; delta_y++) {
+    for (let delta_z = -1; delta_z <= 1; delta_z++) {
+      if (delta_x * 9 + delta_y * 3 + delta_z > 0)
+        FORWARD_BIN_OFFSETS.push([delta_x, delta_y, delta_z])
     }
   }
 }
@@ -764,7 +765,11 @@ function neighbor_query_cutoff(
         `neighbor_query: periodic lattice is degenerate (cell heights ${heights.join(`, `)} A)`,
       )
     }
-    const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = lattice
+    const [
+      [axis_x, axis_y, axis_z],
+      [basis_x, basis_y, basis_z],
+      [center_x, center_y, center_z],
+    ] = lattice
     const { cart_to_frac } = math.create_lattice_converters(lattice)
     // An image shifted by s along a periodic axis can reach the cell only if frac + s lands
     // within pad = cutoff / height of [0, 1]
@@ -790,16 +795,16 @@ function neighbor_query_cutoff(
       const site_frac = cart_to_frac(sites[idx].xyz)
       let n_site_images = 1
       for (let axis = 0; axis < 3; axis++) {
-        const at = idx * 3 + axis
-        wrap[at] = pbc[axis] ? -Math.floor(site_frac[axis]) : 0
-        frac[at] = site_frac[axis] + wrap[at]
-        let lo = -max_shift[axis]
-        let hi = max_shift[axis]
-        while (lo < 0 && !in_reach(frac[at], lo, axis)) lo++
-        while (hi > 0 && !in_reach(frac[at], hi, axis)) hi--
-        shift_lo[at] = lo
-        shift_hi[at] = hi
-        n_site_images *= hi - lo + 1
+        const offset = idx * 3 + axis
+        wrap[offset] = pbc[axis] ? -Math.floor(site_frac[axis]) : 0
+        frac[offset] = site_frac[axis] + wrap[offset]
+        let lower = -max_shift[axis]
+        let upper = max_shift[axis]
+        while (lower < 0 && !in_reach(frac[offset], lower, axis)) lower++
+        while (upper > 0 && !in_reach(frac[offset], upper, axis)) upper--
+        shift_lo[offset] = lower
+        shift_hi[offset] = upper
+        n_site_images *= upper - lower + 1
       }
       n_images += n_site_images - 1
     }
@@ -818,12 +823,12 @@ function neighbor_query_cutoff(
     cloud_shift = grow_i32(cloud_shift, n_cloud * 3)
     let slot = 0
     const push_cloud = (idx: number, shift_a: number, shift_b: number, shift_c: number) => {
-      const fa = frac[idx * 3] + shift_a
-      const fb = frac[idx * 3 + 1] + shift_b
-      const fc = frac[idx * 3 + 2] + shift_c
-      cloud_pos[slot * 3] = fa * ax + fb * bx + fc * cx
-      cloud_pos[slot * 3 + 1] = fa * ay + fb * by + fc * cy
-      cloud_pos[slot * 3 + 2] = fa * az + fb * bz + fc * cz
+      const face_a = frac[idx * 3] + shift_a
+      const face_b = frac[idx * 3 + 1] + shift_b
+      const face_c = frac[idx * 3 + 2] + shift_c
+      cloud_pos[slot * 3] = face_a * axis_x + face_b * basis_x + face_c * center_x
+      cloud_pos[slot * 3 + 1] = face_a * axis_y + face_b * basis_y + face_c * center_y
+      cloud_pos[slot * 3 + 2] = face_a * axis_z + face_b * basis_z + face_c * center_z
       cloud_src[slot] = idx
       cloud_shift[slot * 3] = wrap[idx * 3] + shift_a
       cloud_shift[slot * 3 + 1] = wrap[idx * 3 + 1] + shift_b
@@ -833,10 +838,14 @@ function neighbor_query_cutoff(
     // Base slots first so cloud index === site index for the centers
     for (let idx = 0; idx < n_sites; idx++) push_cloud(idx, 0, 0, 0)
     for (let idx = 0; idx < n_sites; idx++) {
-      const at = idx * 3
-      for (let shift_a = shift_lo[at]; shift_a <= shift_hi[at]; shift_a++) {
-        for (let shift_b = shift_lo[at + 1]; shift_b <= shift_hi[at + 1]; shift_b++) {
-          for (let shift_c = shift_lo[at + 2]; shift_c <= shift_hi[at + 2]; shift_c++) {
+      const offset = idx * 3
+      for (let shift_a = shift_lo[offset]; shift_a <= shift_hi[offset]; shift_a++) {
+        for (let shift_b = shift_lo[offset + 1]; shift_b <= shift_hi[offset + 1]; shift_b++) {
+          for (
+            let shift_c = shift_lo[offset + 2];
+            shift_c <= shift_hi[offset + 2];
+            shift_c++
+          ) {
             if (shift_a === 0 && shift_b === 0 && shift_c === 0) continue
             push_cloud(idx, shift_a, shift_b, shift_c)
           }
@@ -890,10 +899,10 @@ function neighbor_query_cutoff(
   const bin_of = new Int32Array(n_cloud)
   const bin_start = new Int32Array(n_bins + 1)
   for (let slot = 0; slot < n_cloud; slot++) {
-    const ix = Math.floor((cloud_pos[slot * 3] - mins[0]) / bin[0])
-    const iy = Math.floor((cloud_pos[slot * 3 + 1] - mins[1]) / bin[1])
-    const iz = Math.floor((cloud_pos[slot * 3 + 2] - mins[2]) / bin[2])
-    const bin_idx = ix + n_x * (iy + n_y * iz)
+    const idx_x = Math.floor((cloud_pos[slot * 3] - mins[0]) / bin[0])
+    const idx_y = Math.floor((cloud_pos[slot * 3 + 1] - mins[1]) / bin[1])
+    const idx_z = Math.floor((cloud_pos[slot * 3 + 2] - mins[2]) / bin[2])
+    const bin_idx = idx_x + n_x * (idx_y + n_y * idx_z)
     bin_of[slot] = bin_idx
     bin_start[bin_idx + 1]++
   }
@@ -926,9 +935,9 @@ function neighbor_query_cutoff(
     const pos_y = cloud_pos[slot_a * 3 + 1]
     const pos_z = cloud_pos[slot_a * 3 + 2]
     const bin_idx = bin_of[slot_a]
-    const ix = bin_idx % n_x
-    const iy = Math.floor(bin_idx / n_x) % n_y
-    const iz = Math.floor(bin_idx / (n_x * n_y))
+    const idx_x = bin_idx % n_x
+    const idx_y = Math.floor(bin_idx / n_x) % n_y
+    const idx_z = Math.floor(bin_idx / (n_x * n_y))
     const stop_at_images = slot_a >= n_sites
     let n_ranges = 0
     // own bin: only the slots after this one (all images when this one is an image)
@@ -937,12 +946,20 @@ function neighbor_query_cutoff(
       range_end[0] = bin_start[bin_idx + 1]
       n_ranges = 1
     }
-    for (const [dx, dy, dz] of FORWARD_BIN_OFFSETS) {
-      const jx = ix + dx
-      const jy = iy + dy
-      const jz = iz + dz
-      if (jx < 0 || jx >= n_x || jy < 0 || jy >= n_y || jz < 0 || jz >= n_z) continue
-      const other = jx + n_x * (jy + n_y * jz)
+    for (const [delta_x, delta_y, delta_z] of FORWARD_BIN_OFFSETS) {
+      const neighbor_x = idx_x + delta_x
+      const neighbor_y = idx_y + delta_y
+      const neighbor_z = idx_z + delta_z
+      if (
+        neighbor_x < 0 ||
+        neighbor_x >= n_x ||
+        neighbor_y < 0 ||
+        neighbor_y >= n_y ||
+        neighbor_z < 0 ||
+        neighbor_z >= n_z
+      )
+        continue
+      const other = neighbor_x + n_x * (neighbor_y + n_y * neighbor_z)
       range_start[n_ranges] = bin_start[other]
       range_end[n_ranges] = bin_start[other + 1]
       n_ranges++
@@ -1136,9 +1153,9 @@ export function neighbor_query(
       options.sorted ?? true,
     )
   }
-  const { k, pbc } = options
-  if (!Number.isInteger(k) || k < 1) {
-    throw new Error(`neighbor_query: k must be a positive integer, got ${k}`)
+  const { k: order, pbc } = options
+  if (!Number.isInteger(order) || order < 1) {
+    throw new Error(`neighbor_query: k must be a positive integer, got ${order}`)
   }
   const n_sites = structure.sites.length
   if (n_sites === 0) return neighbor_query_cutoff(structure, 1, pbc, true)
@@ -1146,12 +1163,12 @@ export function neighbor_query(
   const atom_volume = total_volume / n_sites
   // radius of the sphere holding k+1 atoms at the mean density, widened 30% so the first
   // pass usually suffices even for an anisotropic first shell
-  let cutoff = 1.3 * ((3 * (k + 1) * atom_volume) / (4 * Math.PI)) ** (1 / 3)
+  let cutoff = 1.3 * ((3 * (order + 1) * atom_volume) / (4 * Math.PI)) ** (1 / 3)
   for (;;) {
     const list = neighbor_query_cutoff(structure, cutoff, pbc, true)
     let short = false
     for (let center = 0; center < n_sites && !short; center++) {
-      short = list.offsets[center + 1] - list.offsets[center] < k
+      short = list.offsets[center + 1] - list.offsets[center] < order
     }
     if (short && cutoff < max_cutoff) {
       cutoff = Math.min(cutoff * 1.4, max_cutoff)
@@ -1161,7 +1178,7 @@ export function neighbor_query(
     const offsets = new Int32Array(n_sites + 1)
     for (let center = 0; center < n_sites; center++) {
       const count = list.offsets[center + 1] - list.offsets[center]
-      offsets[center + 1] = offsets[center] + Math.min(k, count)
+      offsets[center + 1] = offsets[center] + Math.min(order, count)
     }
     const total = offsets[n_sites]
     const neighbors = new Int32Array(total)

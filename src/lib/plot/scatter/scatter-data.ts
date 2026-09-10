@@ -1,6 +1,6 @@
 // Pure data-transform helpers extracted from ScatterPlot.svelte. Everything here is
 // stateless: component $state/$derived values are passed in as parameters.
-import { partition_point } from '$lib/math'
+import { partition_point, type Vec2 } from '$lib/math'
 import { error_getter } from '$lib/plot/core/error-bars'
 import type { D3SymbolName } from '$lib/labels'
 import { plot_color } from '$lib/colors'
@@ -14,6 +14,7 @@ import type {
   FillRegion,
   InternalPoint,
   LegendItem,
+  LineCurve,
   PointStyle,
 } from '$lib/plot/core/types'
 import { assert_series_lengths, DEFAULT_MARKERS } from '$lib/plot/core/types'
@@ -33,6 +34,7 @@ const prop_getter = <T>(
 export type MaterializedSeries<Metadata = Record<string, unknown>> = DataSeries<Metadata> & {
   points: InternalPoint<Metadata>[]
   x_direction: -1 | 0 | 1
+  line_direction: -1 | 0 | 1
   _id: string | number
   orig_series_idx: number
 }
@@ -51,8 +53,8 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     const data_series = series[series_idx]
     // Missing series yield no points, and empty series are dropped when filtering
     if (!data_series) continue
-    const { x: xs, y: ys, color_values, size_values } = data_series
-    if (!Array.isArray(xs) || !Array.isArray(ys)) continue
+    const { x: x_values, y: y_values, color_values, size_values } = data_series
+    if (!Array.isArray(x_values) || !Array.isArray(y_values)) continue
     assert_series_lengths(data_series, series_idx)
     if (!(data_series.visible ?? true)) continue
 
@@ -65,13 +67,13 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     const get_point_offset = prop_getter(data_series.point_offset)
 
     const points: InternalPoint<Metadata>[] = []
-    for (let point_idx = 0; point_idx < xs.length; point_idx++) {
-      const x = xs[point_idx]
-      const y = ys[point_idx]
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+    for (let point_idx = 0; point_idx < x_values.length; point_idx++) {
+      const coord_x = x_values[point_idx]
+      const coord_y = y_values[point_idx]
+      if (!Number.isFinite(coord_x) || !Number.isFinite(coord_y)) continue
       points.push({
-        x,
-        y,
+        x: coord_x,
+        y: coord_y,
         color_value: color_values?.[point_idx],
         metadata: get_metadata(point_idx),
         point_style: get_point_style(point_idx),
@@ -95,6 +97,7 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
         : points.every((point, idx) => idx === 0 || point.x <= points[idx - 1].x)
           ? -1
           : 0,
+      line_direction: strict_x_direction(x_values),
       _id: data_series.id ?? series_idx,
       orig_series_idx: series_idx,
     })
@@ -204,8 +207,8 @@ export const scatter_legend_rows = <Metadata>(
 }[] =>
   series.flatMap((data_series, series_idx) => {
     if (!data_series) return []
-    const { legend_id, id, legend_group } = data_series
-    const key = legend_id ?? id
+    const { legend_id, id: identifier, legend_group } = data_series
+    const key = legend_id ?? identifier
     return {
       series_idx,
       ...(key != null && {
@@ -372,4 +375,60 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
     if (is_opaque_color(line_color_candidate)) return line_color_candidate
   }
   return `rgba(0, 0, 0, 0.7)`
+}
+
+// Strict ordering enables bounded spline context. Duplicate/non-finite x values keep
+// their original full path because d3 can coalesce those vertices internally.
+export const strict_x_direction = (values: readonly number[]): -1 | 0 | 1 => {
+  let previous = values[0]
+  if (values.length < 2 || !Number.isFinite(previous)) return 0
+  const direction = values[1] > previous ? 1 : -1
+  for (let idx = 1; idx < values.length; idx++) {
+    const value = values[idx]
+    if (!Number.isFinite(value) || (direction > 0 ? value <= previous : value >= previous))
+      return 0
+    previous = value
+  }
+  return direction
+}
+
+// Retain boundary-crossing segments and enough neighboring vertices for d3's local
+// monotone tangents. Natural/basis/Catmull–Rom curves retain their complete path.
+export function project_line_points(
+  data: Pick<DataSeries, `x` | `y`>,
+  x_scale: (value: number) => number,
+  y_scale: (value: number) => number,
+  x_range: Vec2,
+  direction: -1 | 0 | 1,
+  curve: LineCurve = `monotone`,
+): Vec2[] {
+  const { x: coord_x, y: coord_y } = data
+  let start = 0
+  let end = coord_x.length
+  const local_curve = curve === `linear` || curve === `step` || curve === `monotone`
+  const [lower, upper] = [Math.min(...x_range), Math.max(...x_range)]
+  const finite_at = (idx: number) =>
+    Number.isFinite(x_scale(coord_x[idx])) && Number.isFinite(y_scale(coord_y[idx]))
+  if (direction && local_curve && Number.isFinite(lower) && Number.isFinite(upper)) {
+    const context = curve === `linear` ? 1 : 2
+    const first = partition_point(coord_x, (value) =>
+      direction > 0 ? value < lower : value > upper,
+    )
+    const last = partition_point(coord_x, (value) =>
+      direction > 0 ? value <= upper : value >= lower,
+    )
+    // Count finite context vertices, since invalid projected points do not reach d3.
+    start = first
+    for (let count = 0; start > 0 && count < context;) if (finite_at(--start)) count++
+    end = last
+    for (let count = 0; end < coord_x.length && count < context; end++)
+      if (finite_at(end)) count++
+  }
+  const points: Vec2[] = []
+  for (let idx = start; idx < end; idx++) {
+    const pixel_x = x_scale(coord_x[idx])
+    const pixel_y = y_scale(coord_y[idx])
+    if (Number.isFinite(pixel_x) && Number.isFinite(pixel_y)) points.push([pixel_x, pixel_y])
+  }
+  return points
 }

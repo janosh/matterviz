@@ -160,7 +160,7 @@ describe(`Line`, () => {
     mount(Line, {
       target: document.body,
       props: {
-        points: points.map((pt): Vec2 => [...pt]),
+        points: points.map((point): Vec2 => [...point]),
         origin: [0, 100],
         curve,
         line_tween: { duration: 0 },
@@ -236,7 +236,7 @@ describe(`Line`, () => {
     mount(Line, {
       target: document.body,
       props: {
-        points: points.map((pt): Vec2 => [...pt]),
+        points: points.map((point): Vec2 => [...point]),
         origin: [0, 100],
         line_tween: { duration: 0 },
       },

@@ -16,8 +16,8 @@ const request: OpportunityRequest = {
   gas: `CO2`,
   temperatures: [0, 1000, 2000],
   log_pressures: [-8, 0],
-  routes: plan.routes.slice(0, 2).map(({ id, reaction }) => ({
-    id,
+  routes: plan.routes.slice(0, 2).map(({ id: identifier, reaction }) => ({
+    id: identifier,
     precursor_ids: reaction.reactants
       .filter(({ phase }) => !phase.is_gas)
       .map(({ phase }) => phase.id),
@@ -49,7 +49,7 @@ test(`cached sweep matches planner hull and selectivity at temperature/pressure 
     })
     expect(cell.e_above_hull).toBeCloseTo(expected.target_stability.e_above_hull, 12)
     for (const actual of cell.routes) {
-      const route = expected.routes.find(({ id }) => id === actual.id)
+      const route = expected.routes.find(({ id: identifier }) => identifier === actual.id)
       // The map intentionally retains fixed-shortlist routes when the planner excludes them as uphill.
       if (!route) {
         expect(actual.driving_force).toBeGreaterThanOrEqual(0)

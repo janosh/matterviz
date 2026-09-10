@@ -102,8 +102,8 @@ export const fetch_optimade_providers = (): Promise<OptimadeProvider[]> =>
 
 // URL encoding for structure IDs with special characters (encodeURIComponent
 // leaves dots alone, but a trailing `.` in a path segment is routinely stripped by servers)
-export const encode_structure_id = (id: string) =>
-  encodeURIComponent(id).replaceAll(`.`, `%2E`)
+export const encode_structure_id = (identifier: string) =>
+  encodeURIComponent(identifier).replaceAll(`.`, `%2E`)
 
 export function detect_provider_from_id(structure_id: string, providers: OptimadeProvider[]) {
   const prefix = structure_id.split(`-`)[0].toLowerCase()

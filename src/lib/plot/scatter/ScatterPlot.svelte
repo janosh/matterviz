@@ -40,7 +40,7 @@
   import type { RunningExtent } from '$lib/plot/core/scales'
   import {
     accumulate_extent,
-    collect_scale_values,
+    collect_scale_ranges,
     create_color_scale,
     create_scale,
     create_size_scale,
@@ -109,6 +109,8 @@
     filter_series_to_ranges,
     legend_row_dedupe,
     materialize_series_points,
+    project_line_points,
+    strict_x_direction,
     pick_tooltip_bg,
     scatter_legend_rows,
   } from './scatter-data'
@@ -368,9 +370,9 @@
   // Hidden series widen no axis, so toggling one off lets the view tighten on every axis.
   let extents_by_axis = $derived.by(() => {
     const all_x = empty_extent()
-    const y = empty_extent()
-    const y2 = empty_extent()
-    const x2 = empty_extent()
+    const coord_y = empty_extent()
+    const coord_y_2 = empty_extent()
+    const coord_x = empty_extent()
     let has_x2_points = false
     let has_y2_points = false
 
@@ -381,9 +383,9 @@
         // x drives the point count: a y array of a different length is read through x.length
         const n_points = layer_x.length
         accumulate_extent(all_x, layer_x, n_points)
-        const y_extent = series_y_axis === `y2` ? y2 : y
+        const y_extent = series_y_axis === `y2` ? coord_y_2 : coord_y
         accumulate_extent(y_extent, layer_y, n_points)
-        if (x_ax === `x2`) accumulate_extent(x2, layer_x, n_points)
+        if (x_ax === `x2`) accumulate_extent(coord_x, layer_x, n_points)
         // Error bars reach past their point, so the axis has to reach with them or the
         // caps get clipped. Underlays carry no error of their own, hence the identity
         // check: only the series itself contributes.
@@ -393,7 +395,7 @@
           for (const bound of [x_bounds?.lo, x_bounds?.hi]) {
             if (bound) {
               accumulate_extent(all_x, bound, n_points)
-              if (x_ax === `x2`) accumulate_extent(x2, bound, n_points)
+              if (x_ax === `x2`) accumulate_extent(coord_x, bound, n_points)
             }
           }
           for (const bound of [y_bounds?.lo, y_bounds?.hi]) {
@@ -412,7 +414,7 @@
         has_y2_points ||= series_y_axis === `y2` && has_drawable_point
       }
     }
-    return { all_x, y, y2, x2, has_x2_points, has_y2_points }
+    return { all_x, y: coord_y, y2: coord_y_2, x2: coord_x, has_x2_points, has_y2_points }
   })
 
   let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
@@ -474,8 +476,9 @@
         if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
         const project = series_projector(series_data)
         for (const point of series_data.filtered_data) {
-          const [cx, cy] = project.point(point)
-          if (cx >= x_lo && cx <= x_hi && cy >= y_lo && cy <= y_hi) picked.push(point)
+          const [center_x, center_y] = project.point(point)
+          if (center_x >= x_lo && center_x <= x_hi && center_y >= y_lo && center_y <= y_hi)
+            picked.push(point)
         }
       }
       selected_points = picked.map(({ series_idx, point_idx }) => ({ series_idx, point_idx }))
@@ -619,12 +622,12 @@
         }))
       : [],
   )
-  // Finite color extent and finite size values across all series, one pass. NaN/null entries
+  // Finite color and size bounds across all series. NaN/null entries
   // fall back to the series color/radius per point, so they must not widen either scale.
-  const color_size_values = $derived(collect_scale_values(assigned_series))
-  const has_color_values = $derived(color_size_values.color_extent.n_finite > 0)
-  const auto_color_range = $derived(color_size_values.color_range)
-  let size_scale_fn = $derived(create_size_scale(size_scale, color_size_values.size_values))
+  const scale_ranges = $derived(collect_scale_ranges(assigned_series))
+  const has_color_values = $derived(scale_ranges.color_extent.n_finite > 0)
+  const auto_color_range = $derived(scale_ranges.color_range)
+  let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
   const color_scale_config = $derived<ColorScaleConfig>(
     typeof color_scale === `string` ? { scheme: color_scale } : color_scale,
   )
@@ -640,6 +643,15 @@
       y: [y_min, y_max],
       y2: [y2_min, y2_max],
     }),
+  )
+  const underlay_directions = $derived(
+    new Map(
+      assigned_series.flatMap((srs) =>
+        (srs.line_underlays ?? []).map(
+          (layer) => [layer.x, strict_x_direction(layer.x)] as const,
+        ),
+      ),
+    ),
   )
   type FilteredSeries = (typeof filtered_series)[number]
 
@@ -789,16 +801,31 @@
         const [lo, hi] = [scale(value - error[0]) + offset, scale(value + error[1]) + offset]
         return Number.isFinite(lo) && Number.isFinite(hi) ? [lo, hi] : null
       },
-      line: (line: Pick<DataSeries, `x` | `y`>): Vec2[] => {
-        const screen: Vec2[] = []
-        for (let idx = 0; idx < line.x.length; idx++) {
-          const screen_x = x_scale(line.x[idx])
-          const screen_y = y_line_scale(line.y[idx])
-          if (Number.isFinite(screen_x) && Number.isFinite(screen_y)) {
-            screen.push([screen_x, screen_y])
-          }
-        }
-        return screen
+      line: (
+        line: Pick<DataSeries, `x` | `y` | `line_style`>,
+        direction: -1 | 0 | 1,
+      ): Vec2[] => {
+        const margin =
+          2 * Math.max(line.line_style?.stroke_width ?? 2, styles.line?.width ?? 2)
+        // Dashes measure from the full path's origin; morph tweens also need stable
+        // vertex correspondence, including on pan release. Use the configured policy,
+        // since dragging only temporarily disables animation.
+        const dashed = [line.line_style?.line_dash, styles.line?.dash].some(
+          (dash) => dash && dash !== `none` && dash !== `solid`,
+        )
+        const duration = resolved_line_tween?.duration
+        const crop = !dashed && typeof duration === `number` && duration <= 0
+        return project_line_points(
+          line,
+          x_scale,
+          y_line_scale,
+          [
+            Number(x_scale.invert(pad.l - margin)),
+            Number(x_scale.invert(width - pad.r + margin)),
+          ],
+          crop ? direction : 0,
+          line.line_style?.curve,
+        )
       },
     }
   }
@@ -1058,8 +1085,9 @@
   const effective_point_tween = $derived(
     use_canvas_markers || pan_zoom.is_panning ? { duration: 0 } : point_tween,
   )
+  const resolved_line_tween = $derived(resolve_line_tween(line_tween, line_tween_load))
   const effective_line_tween = $derived(
-    pan_zoom.is_panning ? { duration: 0 } : resolve_line_tween(line_tween, line_tween_load),
+    pan_zoom.is_panning ? { duration: 0 } : resolved_line_tween,
   )
 
   const hover_radius = $derived(hover_config.threshold_px ?? 20)
@@ -1521,8 +1549,13 @@
   {/each}
 {/snippet}
 
-{#snippet ref_lines_layer(z: LayerZIndex)}
-  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
+{#snippet ref_lines_layer(coord_z: LayerZIndex)}
+  <ReferenceLinesLayer
+    {frame}
+    z={coord_z}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <CartesianFrame
@@ -1613,10 +1646,10 @@
           {@const project = series_projector(series_data)}
           {@const series_default_color = plot_color(series_data.orig_series_idx ?? 0)}
           {@const apply_line_controls = applies_style_controls(series_data)}
-          {@const ls = series_data.line_style}
-          {@const tc = (key: string) => apply_line_controls && touched.has(key)}
+          {@const line_style = series_data.line_style}
+          {@const control_touched = (key: string) => apply_line_controls && touched.has(key)}
           {@const color_fallback =
-            ls?.stroke ??
+            line_style?.stroke ??
             first_point_style(series_data)?.fill ??
             (series_data.color_values?.[0] != null
               ? color_scale_fn(series_data.color_values[0])
@@ -1628,7 +1661,7 @@
           >
             {#each series_data.line_underlays ?? [] as underlay}
               <Line
-                points={project.line(underlay)}
+                points={project.line(underlay, underlay_directions.get(underlay.x) ?? 0)}
                 line_color={underlay.line_style?.stroke ?? series_default_color}
                 line_width={underlay.line_style?.stroke_width ?? 1}
                 line_dash={underlay.line_style?.line_dash}
@@ -1638,14 +1671,18 @@
               />
             {/each}
             <Line
-              points={project.line(series_data)}
-              line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
-              line_width={(tc(`line.width`) ? styles.line?.width : null) ??
-                ls?.stroke_width ??
+              points={project.line(series_data, series_data.line_direction)}
+              line_color={(control_touched(`line.color`) ? styles.line?.color : null) ??
+                color_fallback}
+              line_width={(control_touched(`line.width`) ? styles.line?.width : null) ??
+                line_style?.stroke_width ??
                 2}
-              line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
-              stroke-opacity={tc(`line.opacity`) ? styles.line?.opacity : undefined}
-              curve={ls?.curve}
+              line_dash={(control_touched(`line.dash`) ? styles.line?.dash : null) ??
+                line_style?.line_dash}
+              stroke-opacity={control_touched(`line.opacity`)
+                ? styles.line?.opacity
+                : undefined}
+              curve={line_style?.curve}
               area_color="transparent"
               line_tween={effective_line_tween}
             />
@@ -1655,12 +1692,12 @@
     {/if}
 
     <!-- Error bars sit under the markers so a cap never hides the point it belongs to -->
-    {#each error_bar_paths as { series_pos, d, stroke } (series_pos)}
+    {#each error_bar_paths as { series_pos, d: datum, stroke } (series_pos)}
       <path
         class="error-bars"
         clip-path="url(#{frame.clip_path_id})"
         opacity={is_legend_dimmed(filtered_series[series_pos]?.orig_series_idx) ? 0.25 : 1}
-        {d}
+        d={datum}
         {stroke}
       />
     {/each}
@@ -1700,12 +1737,12 @@
             onkeydown={roving.handle_keydown}
           >
             {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
-              {@const [cx, cy] = project.point(point)}
+              {@const [center_x, center_y] = project.point(point)}
               {@const offset = point.point_offset ?? ZERO_OFFSET}
               {@const appearance = marker_of(point)}
               <ScatterPoint
-                x={cx - offset.x}
-                y={cy - offset.y}
+                x={center_x - offset.x}
+                y={center_y - offset.y}
                 is_dimmed={is_legend_dimmed(point.series_idx)}
                 is_hovered={same_logical_point(point, tooltip_point)}
                 is_selected={same_logical_point(point, selected_point) ||
@@ -1724,7 +1761,7 @@
                   cursor: points_interactive ? `pointer` : undefined,
                 }}
                 hover={point.point_hover ?? {}}
-                label={resolve_point_label(point, cx, cy)}
+                label={resolve_point_label(point, center_x, center_y)}
                 {offset}
                 point_tween={effective_point_tween}
                 hit_padding={points_interactive ? point_hit_padding : 0}
@@ -1787,15 +1824,17 @@
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}
-          {@const hp = handler_props}
-          {#if has_multiple_series && hp.label}<strong>{hp.label}</strong><br />{/if}
+          {@const tooltip_props = handler_props}
+          {#if has_multiple_series && tooltip_props.label}<strong>{tooltip_props.label}</strong
+            ><br />{/if}
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
-          {@html sanitize_html(hp.x_axis.label || `x`)}: {hp.x_formatted}<br />
-          {@html sanitize_html(hp.y_axis.label || `y`)}: {hp.y_formatted}
-          {#if hp.color_bar?.value != null}
-            <br />{@html sanitize_html(hp.color_bar.title || `Color`)}: {format_value(
-              hp.color_bar.value,
-              hp.color_bar.tick_format || `.3~g`,
+          {@html sanitize_html(tooltip_props.x_axis.label || `x`)}: {tooltip_props.x_formatted}<br
+          />
+          {@html sanitize_html(tooltip_props.y_axis.label || `y`)}: {tooltip_props.y_formatted}
+          {#if tooltip_props.color_bar?.value != null}
+            <br />{@html sanitize_html(tooltip_props.color_bar.title || `Color`)}: {format_value(
+              tooltip_props.color_bar.value,
+              tooltip_props.color_bar.tick_format || `.3~g`,
             )}
           {/if}
         {/if}

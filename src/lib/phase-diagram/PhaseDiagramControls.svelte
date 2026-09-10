@@ -94,24 +94,39 @@
     [`cursor_radius`, `Cursor radius`, `Radius of the cursor position marker`, 2, 10, 1],
   ] as const
 
-  const visibility_settings = track_settings(() => ({
-    show_boundaries,
-    show_labels,
-    show_special_points,
-    show_grid,
-    show_component_labels,
-  }))
-  const appearance_settings = track_settings(() => ({
-    font_size: merged_config.font_size,
-    special_point_radius: merged_config.special_point_radius,
-  }))
-  const colors_settings = track_settings(() => merged_config.colors)
-  const tie_line_display_settings = track_settings(() => merged_config.tie_line)
-  const axes_settings = track_settings(() => ({
-    x_ticks: x_axis.ticks,
-    y_ticks: y_axis.ticks,
-  }))
-  const export_settings = track_settings(() => ({ png_dpi }))
+  const visibility_settings = track_settings(
+    () => ({
+      show_boundaries,
+      show_labels,
+      show_special_points,
+      show_grid,
+      show_component_labels,
+    }),
+    PHASE_DIAGRAM_DEFAULTS,
+  )
+  const appearance_settings = track_settings(
+    () => ({
+      font_size: merged_config.font_size,
+      special_point_radius: merged_config.special_point_radius,
+    }),
+    PHASE_DIAGRAM_DEFAULTS,
+  )
+  const colors_settings = track_settings(
+    () => merged_config.colors,
+    PHASE_DIAGRAM_DEFAULTS.colors,
+  )
+  const tie_line_display_settings = track_settings(
+    () => merged_config.tie_line,
+    PHASE_DIAGRAM_DEFAULTS.tie_line,
+  )
+  const axes_settings = track_settings(
+    () => ({
+      x_ticks: x_axis.ticks ?? PHASE_DIAGRAM_DEFAULTS.x_ticks,
+      y_ticks: y_axis.ticks ?? PHASE_DIAGRAM_DEFAULTS.y_ticks,
+    }),
+    PHASE_DIAGRAM_DEFAULTS,
+  )
+  const export_settings = track_settings(() => ({ png_dpi }), PHASE_DIAGRAM_DEFAULTS)
 </script>
 
 <ControlPane
@@ -216,7 +231,8 @@
           <input
             type="color"
             value={css_color_to_hex(merged_config.colors[key], fallback)}
-            oninput={(ev) => update_nested(`colors`, key, ev.currentTarget.value)}
+            oninput={(event_value) =>
+              update_nested(`colors`, key, event_value.currentTarget.value)}
           />
         </label>
       {/each}
@@ -266,8 +282,8 @@
             min={2}
             max={15}
             value={axis_cfg.ticks ?? PHASE_DIAGRAM_DEFAULTS[`${axis_name}_ticks`]}
-            oninput={(ev) => {
-              const parsed_ticks = ev.currentTarget.valueAsNumber
+            oninput={(event_value) => {
+              const parsed_ticks = event_value.currentTarget.valueAsNumber
               if (!Number.isFinite(parsed_ticks)) return
               const new_ticks = clamp(Math.round(parsed_ticks), 2, 15)
               if (axis_name === `x`) x_axis = { ...x_axis, ticks: new_ticks }

@@ -71,12 +71,12 @@ export const bin_transform = (
 // On a log axis any bound <= 0 is invalid, so treat it as unset (null): callers then fall back to
 // the positive count-based bound rather than pinning the log domain at <= 0 (a broken scale).
 export function log_safe_range(axis: Pick<AxisConfig, `range` | `scale_type`>): RangeLimit {
-  const [lo, hi] = axis.range ?? [null, null]
-  if (get_scale_type_name(axis.scale_type ?? `linear`) !== `log`) return [lo, hi]
+  const [lower, upper] = axis.range ?? [null, null]
+  if (get_scale_type_name(axis.scale_type ?? `linear`) !== `log`) return [lower, upper]
   // drop any bound <= 0 (guard the type first: `null <= 0` is true in JS)
   const drop_non_positive = (bound: number | null) =>
     typeof bound === `number` && bound <= 0 ? null : bound
-  return [drop_non_positive(lo), drop_non_positive(hi)]
+  return [drop_non_positive(lower), drop_non_positive(upper)]
 }
 
 // A bin count is an ALLOCATION (edges, counts, one <rect> each): 5e7 bins is a 400 MB
@@ -107,33 +107,38 @@ export function bin_geometry(
       `bin_geometry: n_bins must be finite and at most ${MAX_BINS}, got ${n_bins}`,
     )
   }
-  let lo = Math.min(domain[0], domain[1])
-  let hi = Math.max(domain[0], domain[1])
+  let lower = Math.min(domain[0], domain[1])
+  let upper = Math.max(domain[0], domain[1])
   const type_name = get_scale_type_name(scale_type)
   if (type_name === `log`) {
-    lo = Math.max(lo, LOG_EPS)
-    hi = Math.max(hi, LOG_EPS)
+    lower = Math.max(lower, LOG_EPS)
+    upper = Math.max(upper, LOG_EPS)
   }
   // Identity transform inlined on the linear path: the closure call costs ~70% on 1e6 samples
   const is_linear = type_name === `linear`
   const { fwd, inv } = bin_transform(scale_type)
-  const pos_lo = fwd(lo)
-  const pos_hi = fwd(hi)
+  const pos_lo = fwd(lower)
+  const pos_hi = fwd(upper)
   // A domain that is collapsed, invalid, or so narrow that it rounds to one point in bin space
   // (log10 of two adjacent doubles) gets one bin holding the samples inside it
-  if (!(hi > lo) || !Number.isFinite(lo) || !Number.isFinite(hi) || !(pos_hi > pos_lo)) {
+  if (
+    !(upper > lower) ||
+    !Number.isFinite(lower) ||
+    !Number.isFinite(upper) ||
+    !(pos_hi > pos_lo)
+  ) {
     // oxfmt-ignore
-    return { lo, hi, edges: Float64Array.of(lo, hi), degenerate: true, is_linear, fwd, pos_lo, scale: 0 }
+    return { lo: lower, hi: upper, edges: Float64Array.of(lower, upper), degenerate: true, is_linear, fwd, pos_lo, scale: 0 }
   }
-  const n = Math.max(1, Math.floor(n_bins))
-  const scale = n / (pos_hi - pos_lo)
-  const edges = new Float64Array(n + 1)
-  for (let idx = 1; idx < n; idx++) {
-    edges[idx] = is_linear ? lo + idx / scale : inv(pos_lo + idx / scale)
+  const count = Math.max(1, Math.floor(n_bins))
+  const scale = count / (pos_hi - pos_lo)
+  const edges = new Float64Array(count + 1)
+  for (let idx = 1; idx < count; idx++) {
+    edges[idx] = is_linear ? lower + idx / scale : inv(pos_lo + idx / scale)
   }
-  edges[0] = lo
-  edges[n] = hi
-  return { lo, hi, edges, degenerate: false, is_linear, fwd, pos_lo, scale }
+  edges[0] = lower
+  edges[count] = upper
+  return { lo: lower, hi: upper, edges, degenerate: false, is_linear, fwd, pos_lo, scale }
 }
 
 // Bin index for a value already known to sit within [lo, hi]. The clamp covers val === hi (goes
@@ -143,10 +148,10 @@ export function bin_geometry(
 // 4.0 ms inlined, which is worth the duplication on that one path and nowhere else.
 export function bin_index_of(val: number, geometry: ReturnType<typeof bin_geometry>): number {
   const { edges, is_linear, fwd, pos_lo, scale } = geometry
-  const n = edges.length - 1
+  const count = edges.length - 1
   const pos = is_linear ? val : fwd(val)
-  let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, n - 1)
-  if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
+  let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, count - 1)
+  if (val >= edges[bin_idx + 1] && bin_idx < count - 1) bin_idx++
   else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
   return bin_idx
 }
@@ -165,7 +170,7 @@ export function bin_values(
   weights?: ArrayLike<number>,
 ): { edges: Float64Array; counts: Uint32Array | Float64Array } {
   const geometry = bin_geometry(domain, n_bins, scale_type)
-  const { lo, hi, edges, degenerate, is_linear, fwd, pos_lo, scale } = geometry
+  const { lo: lower, hi: upper, edges, degenerate, is_linear, fwd, pos_lo, scale } = geometry
   const n_values = values.length
   // A short array yields `undefined` weights, and one of those turns the whole Float64Array
   // into NaN. Individual non-finite weights drop in the loops below, like non-finite VALUES.
@@ -177,21 +182,21 @@ export function bin_values(
   if (degenerate) {
     let count = 0
     for (let idx = 0; idx < n_values; idx++) {
-      if (!(values[idx] >= lo && values[idx] <= hi)) continue
+      if (!(values[idx] >= lower && values[idx] <= upper)) continue
       if (!weights) count += 1
       else if (Number.isFinite(weights[idx])) count += weights[idx]
     }
     return { edges, counts: weights ? Float64Array.of(count) : Uint32Array.of(count) }
   }
-  const n = edges.length - 1
-  const counts = weights ? new Float64Array(n) : new Uint32Array(n)
+  const count_2 = edges.length - 1
+  const counts = weights ? new Float64Array(count_2) : new Uint32Array(count_2)
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
     // NaN fails both comparisons, so this also filters non-finite input
-    if (!(val >= lo && val <= hi)) continue
+    if (!(val >= lower && val <= upper)) continue
     const pos = is_linear ? val : fwd(val)
-    let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, n - 1)
-    if (val >= edges[bin_idx + 1] && bin_idx < n - 1) bin_idx++
+    let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, count_2 - 1)
+    if (val >= edges[bin_idx + 1] && bin_idx < count_2 - 1) bin_idx++
     else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
     if (!weights) counts[bin_idx] += 1
     else if (Number.isFinite(weights[idx])) counts[bin_idx] += weights[idx]
@@ -209,14 +214,14 @@ export function normalize_counts(
   let total = 0
   for (const count of counts) total += count
   return Array.from(counts, (count, idx) => {
-    const [x0, x1] = [edges[idx], edges[idx + 1]]
+    const [coord_x_0, coord_x_1] = [edges[idx], edges[idx + 1]]
     const value =
       normalize === `count` || total === 0
         ? count
         : normalize === `probability`
           ? count / total
-          : count / (total * (x1 - x0 || 1))
-    return { x0, x1, count, value }
+          : count / (total * (coord_x_1 - coord_x_0 || 1))
+    return { x0: coord_x_0, x1: coord_x_1, count, value }
   })
 }
 
@@ -226,26 +231,32 @@ interface HistogramBinConfig {
   x_scale_type?: ScaleType
   x2_scale_type?: ScaleType
   bins: number
-  normalize?: HistogramNormalize
-  // Resolved bar fill per series (a lone series takes `bar.color`, else `color` or the palette)
-  series_color: (series_data: HistogramSeries, series_idx: number) => string
 }
 
-// Bin each series over the domain of the x axis it renders on. Pad-independent so the legend
-// obstacle field can reuse it.
-export function compute_histogram_bins(
+// Raw counts depend only on samples and the bin geometry, not normalization or styling.
+export function compute_histogram_counts(
   entries: readonly { series_data: HistogramSeries; series_idx: number }[],
   config: HistogramBinConfig,
-): BinnedSeries[] {
-  const { bins: n_bins, normalize = `count`, series_color } = config
+) {
   return entries.map(({ series_data, series_idx }) => {
     const use_x2 = series_data.x_axis === `x2`
     const { edges, counts } = bin_values(
       series_data.values,
       use_x2 ? config.x2_domain : config.x_domain,
-      n_bins,
+      config.bins,
       use_x2 ? config.x2_scale_type : config.x_scale_type,
     )
+    return { series_data, series_idx, edges, counts }
+  })
+}
+
+// Reuse raw counts when changing units or colors; only the small bin arrays change.
+export function compute_histogram_bins(
+  counted: ReturnType<typeof compute_histogram_counts>,
+  normalize: HistogramNormalize,
+  series_color: (series_data: HistogramSeries, series_idx: number) => string,
+): BinnedSeries[] {
+  return counted.map(({ series_data, series_idx, edges, counts }) => {
     const bins = normalize_counts(edges, counts, normalize)
     let max_value = 0
     let min_value = Infinity
@@ -290,13 +301,13 @@ export function compute_count_range(
   if (max_value === 0) return [type_name === `log` ? 1 : 0, 1]
 
   const min_count = type_name === `log` ? min_value : 0
-  const [y0, y1] = nice_range_from_extent(
+  const [coord_y_0, coord_y_1] = nice_range_from_extent(
     accumulate_extent(empty_extent(), [min_count, max_value]),
     y_limit,
     scale_type,
     range_padding,
   )
   // Keep singleton log bins visible; a missing lower limit falls back to the positive minimum.
-  if (type_name === `log`) return [y_limit[0] ?? min_count / 1.1, y1]
-  return [Math.max(0, y0), y1]
+  if (type_name === `log`) return [y_limit[0] ?? min_count / 1.1, coord_y_1]
+  return [Math.max(0, coord_y_0), coord_y_1]
 }

@@ -75,28 +75,19 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
 
     test(`hull updates when temperature changes`, async ({ page }) => {
       const diagram = page.locator(`.temp-grid .scatter.convex-hull-2d`).first()
-      await expect(diagram).toBeVisible()
-
-      const temp_slider = diagram.locator(`.temperature-slider`)
-      const range_input = temp_slider.locator(`input[type="range"]`)
-
-      // Get initial temperature
-      const temp_input = temp_slider.locator(`.slider-header input[type="number"]`)
-      const initial_temp = await temp_input.inputValue()
-
-      // Change temperature to a different value
-      await range_input.fill(`12`) // Index 12 = 1500K (max)
-
-      // Verify temperature changed
-      await expect(temp_input).toHaveValue(`1500`)
-      expect(await temp_input.inputValue()).not.toBe(initial_temp)
-
-      // Component should still render without errors
-      await expect(diagram).toBeVisible()
-
-      // Markers should still be visible (hull was recomputed)
-      const markers = diagram.locator(`path.marker`)
-      await expect(markers.first()).toBeVisible()
+      const temperature = diagram.getByRole(`spinbutton`, { name: `Temperature (Kelvin)` })
+      const marker_positions = () =>
+        diagram
+          .locator(`path.marker`)
+          .evaluateAll((markers) =>
+            markers.map((marker) => marker.parentElement?.getAttribute(`transform`)),
+          )
+      await expect(diagram.locator(`path.marker`).first()).toBeVisible()
+      const initial_positions = await marker_positions()
+      await temperature.fill(`1500`)
+      await temperature.press(`Tab`)
+      await expect(temperature).toHaveValue(`1500`)
+      await expect.poll(marker_positions).not.toEqual(initial_positions)
     })
   })
 
@@ -189,11 +180,34 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
   })
 })
 
-test.describe(`Temperature Slider - Accessibility`, () => {
+test.describe(`Temperature and pressure controls`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Temperature slider tests timeout in CI`)
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     await expect(page.locator(`.temp-grid`)).toBeVisible({ timeout: 30_000 })
+  })
+
+  test(`gas pressure updates its chemical potential and rendered hull`, async ({ page }) => {
+    const diagram = page.locator(`.gas-grid .scatter.convex-hull-2d`).first()
+    await expect(diagram.locator(`path.marker`).first()).toBeVisible()
+    const pressure = diagram.getByRole(`textbox`, { name: `O2 pressure (bar)` })
+    const potential = diagram.locator(`.pressure-controls .sr-only`)
+    const initial_potential = await potential.textContent()
+    const marker_positions = () =>
+      diagram
+        .locator(`path.marker`)
+        .evaluateAll((markers) =>
+          markers.map((marker) => marker.parentElement?.getAttribute(`transform`)),
+        )
+    const initial_positions = await marker_positions()
+    await pressure.fill(`1e-6`)
+    await pressure.press(`Tab`)
+    await expect(pressure).toHaveValue(`1e-6`)
+    await expect(potential).not.toHaveText(initial_potential ?? ``)
+    await expect.poll(marker_positions).not.toEqual(initial_positions)
+    await pressure.fill(`invalid`)
+    await pressure.press(`Tab`)
+    await expect(pressure).toHaveValue(`1e-6`)
   })
 
   test(`slider has aria-label for accessibility`, async ({ page }) => {

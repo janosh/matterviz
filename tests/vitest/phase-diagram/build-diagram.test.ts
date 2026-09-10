@@ -100,7 +100,9 @@ describe(`build_diagram`, () => {
       ],
     ])
     // boundary type inferred from the curve name, default style from the type
-    expect(result.boundaries.map(({ id, type, style }) => [id, type, style])).toEqual([
+    expect(
+      result.boundaries.map(({ id: identifier, type, style }) => [identifier, type, style]),
+    ).toEqual([
       [`liquidus`, `liquidus`, expect.objectContaining({ color: `#1565c0`, width: 2.5 })],
       [`solidus`, `solidus`, expect.anything()],
     ])

@@ -213,12 +213,21 @@
     const canvas = renderer?.domElement
     if (!visible || !canvas) return null
     const bounds = canvas.getBoundingClientRect()
-    const px = event.clientX - bounds.left
-    const py = event.clientY - bounds.top
-    const { x, y, width, height } = rect
-    if (px < x || px > x + width || py < y || py > y + height) return null
+    const pixel_x = event.clientX - bounds.left
+    const pixel_y = event.clientY - bounds.top
+    const { x: coord_x, y: coord_y, width, height } = rect
+    if (
+      pixel_x < coord_x ||
+      pixel_x > coord_x + width ||
+      pixel_y < coord_y ||
+      pixel_y > coord_y + height
+    )
+      return null
 
-    pointer_ndc.set(((px - x) / width) * 2 - 1, -(((py - y) / height) * 2 - 1))
+    pointer_ndc.set(
+      ((pixel_x - coord_x) / width) * 2 - 1,
+      -(((pixel_y - coord_y) / height) * 2 - 1),
+    )
     sync_gizmo_camera()
     raycaster.setFromCamera(pointer_ndc, gizmo_camera)
     const hit = raycaster.intersectObjects(handle_meshes, false)[0]
@@ -281,7 +290,7 @@
       [`pointerup`, handle_pointer_up],
       [`pointerleave`, handle_pointer_leave],
     ] as const
-    for (const [type, fn] of listeners) container.addEventListener(type, fn, opts)
+    for (const [type, callback] of listeners) container.addEventListener(type, callback, opts)
     return () => controller.abort()
   })
 

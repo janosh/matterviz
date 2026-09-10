@@ -290,7 +290,7 @@
   // Quaternary Li-Fe-Ni-O: programmatic generation
   const temp_quaternary_entries: PhaseData[] = [
     // Pure elements
-    ...[`Li`, `Fe`, `Ni`, `O`].map((el, idx) => make_phase({ [el]: 1 }, idx)),
+    ...[`Li`, `Fe`, `Ni`, `O`].map((element, idx) => make_phase({ [element]: 1 }, idx)),
     // All binary pairs
     ...[
       [`Li`, `Fe`],
@@ -299,9 +299,9 @@
       [`Fe`, `Ni`],
       [`Fe`, `O`],
       [`Ni`, `O`],
-    ].flatMap(([a, b], idx) => [
-      make_phase({ [a]: 0.5, [b]: 0.5 }, 500 + idx),
-      make_phase({ [a]: 0.5, [b]: 0.5 }, 600 + idx, 2.5),
+    ].flatMap(([value_a, value_b], idx) => [
+      make_phase({ [value_a]: 0.5, [value_b]: 0.5 }, 500 + idx),
+      make_phase({ [value_a]: 0.5, [value_b]: 0.5 }, 600 + idx, 2.5),
     ]),
     // Ternary faces (4 faces × 2 polymorphs)
     ...[
@@ -309,9 +309,9 @@
       [`Li`, `Fe`, `O`],
       [`Li`, `Ni`, `O`],
       [`Fe`, `Ni`, `O`],
-    ].flatMap(([a, b, c], idx) => [
-      make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 700 + idx),
-      make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 800 + idx, 3.5),
+    ].flatMap(([value_a, value_b, value_c], idx) => [
+      make_phase({ [value_a]: 0.33, [value_b]: 0.33, [value_c]: 0.34 }, 700 + idx),
+      make_phase({ [value_a]: 0.33, [value_b]: 0.33, [value_c]: 0.34 }, 800 + idx, 3.5),
     ]),
     // Quaternary interior with dramatic order-disorder transitions
     ...[
@@ -347,7 +347,9 @@
     composition: comp,
     energy,
     temperatures,
-    free_energies: temperatures.map((T) => energy - entropy * (T - 300) * 0.001),
+    free_energies: temperatures.map(
+      (temperature_2) => energy - entropy * (temperature_2 - 300) * 0.001,
+    ),
   })
 
   // Gas demo: Fe-O binary - entropy increases with O content (oxides have higher S)
@@ -411,7 +413,7 @@
     <h2 id="quaternary-chemical-systems">Quaternary Chemical Systems</h2>
     {@render feature_list(quaternary_features)}
     <div class="quaternary-grid">
-      {#each [...loaded_data.entries()].filter( ([p]) => p.includes(`quaternaries`) ) as [path, data] (path)}
+      {#each [...loaded_data.entries()].filter( ([point_value]) => point_value.includes(`quaternaries`) ) as [path, data] (path)}
         {@const title = hull_system_name(path)}
         <ConvexHull
           entries={entries_map.get(path) || data}

@@ -35,8 +35,8 @@
     defs_id?: string
     path: string
     clip_path_id: string
-    x_scale_fn: ((x: number) => number) & { invert?: (y: number) => number | Date }
-    y_scale_fn: ((y: number) => number) & { invert?: (y: number) => number }
+    x_scale_fn: ((coord_x: number) => number) & { invert?: (coord_y: number) => number | Date }
+    y_scale_fn: ((coord_y: number) => number) & { invert?: (coord_y: number) => number }
     is_hovered?: boolean
     on_click?: (event: FillHandlerEvent) => void
     on_hover?: (event: FillHandlerEvent | null) => void
@@ -117,17 +117,17 @@
     const svg_rect = (
       target instanceof SVGElement ? target.ownerSVGElement : null
     )?.getBoundingClientRect()
-    const px = client_x - (svg_rect?.left ?? 0)
-    const py = client_y - (svg_rect?.top ?? 0)
-    const raw_x = x_scale_fn.invert?.(px) ?? 0
+    const pixel_x = client_x - (svg_rect?.left ?? 0)
+    const pixel_y = client_y - (svg_rect?.top ?? 0)
+    const raw_x = x_scale_fn.invert?.(pixel_x) ?? 0
     return {
       event,
       region_idx,
       region_id: region.id,
       x: raw_x instanceof Date ? raw_x.getTime() : raw_x,
-      y: y_scale_fn.invert?.(py) ?? 0,
-      px,
-      py,
+      y: y_scale_fn.invert?.(pixel_y) ?? 0,
+      px: pixel_x,
+      py: pixel_y,
       label: region.label,
       metadata: region.metadata,
     }

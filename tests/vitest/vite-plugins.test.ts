@@ -16,7 +16,7 @@ function make_plugin(command: `build` | `serve` = `serve`) {
   const plugin = vite_plugin_json_gz()
   const config_resolved = plugin.configResolved as (cfg: { command: string }) => void
   config_resolved.call({}, { command })
-  return plugin.load as (this: { error: (msg: string) => void }, id: string) => unknown
+  return plugin.load as (this: { error: (msg: string) => void }, identifier: string) => unknown
 }
 
 describe(`vite_plugin_json_gz`, () => {
@@ -39,9 +39,9 @@ describe(`vite_plugin_json_gz`, () => {
 
   test.each([`foo.json`, `bar.ts`, `data.gz`, `${fixture_path}?url`, `${fixture_path}?raw`])(
     `returns null for non-matching id: %s`,
-    (id) => {
+    (identifier) => {
       const load = make_plugin()
-      expect(load.call({ error: () => {} }, id)).toBeNull()
+      expect(load.call({ error: () => {} }, identifier)).toBeNull()
     },
   )
 
@@ -106,13 +106,16 @@ describe(`vite_plugin_moyo_wasm_source`, () => {
   const glue_id = `/node_modules/@spglib/moyo-wasm/moyo_wasm.js`
   const glue_literal = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
   const glue_code = `const wasm_url = ${glue_literal};\nexport default wasm_url`
-  const transform = (code: string, id: string) => {
+  const transform = (code: string, identifier: string) => {
     const plugin = vite_plugin_moyo_wasm_source(
       `test-moyo`,
       `WASM_SOURCE`,
       `import x from 'y'\n`,
     )
-    return (plugin.transform as (code: string, id: string) => unknown)(code, id)
+    return (plugin.transform as (code: string, identifier: string) => unknown)(
+      code,
+      identifier,
+    )
   }
 
   test(`replaces the glue literal with the source expression and prepends the prelude`, () => {
@@ -125,7 +128,7 @@ describe(`vite_plugin_moyo_wasm_source`, () => {
   test.each([
     [`non-moyo id`, glue_code, `/node_modules/other/index.js`],
     [`moyo id without the glue literal`, `export const unrelated = 1`, glue_id],
-  ])(`leaves %s untouched`, (_label, code, id) => {
-    expect(transform(code, id)).toBeNull()
+  ])(`leaves %s untouched`, (_label, code, identifier) => {
+    expect(transform(code, identifier)).toBeNull()
   })
 })

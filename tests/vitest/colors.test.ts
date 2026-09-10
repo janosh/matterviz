@@ -240,8 +240,8 @@ describe(`css_color_to_hex`, () => {
     [undefined, `#abcdef`, `#abcdef`, `uses custom fallback for undefined`],
     // Element color scheme values
     [ELEMENT_COLOR_SCHEMES.Jmol.H, fallback, `#ffffff`, `parses Jmol H color`],
-  ] as const)(`%s: %s`, (input, fb, expected, _description) => {
-    expect(css_color_to_hex(input, fb)).toBe(expected)
+  ] as const)(`%s: %s`, (input, face_b, expected, _description) => {
+    expect(css_color_to_hex(input, face_b)).toBe(expected)
   })
 })
 

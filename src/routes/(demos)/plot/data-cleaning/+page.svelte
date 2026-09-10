@@ -241,8 +241,12 @@
   let multi_series_data = $derived.by(() => {
     void regenerate_counter
     const time = Array.from({ length: 50 }, (_, idx) => idx) // timestamps
-    const temperature = time.map((t) => 25 + 5 * Math.sin(t * 0.2) + (Math.random() - 0.5) * 3)
-    const pressure = time.map((t) => 101 + 4 * Math.cos(t * 0.15) + (Math.random() - 0.5) * 4)
+    const temperature = time.map(
+      (time_value) => 25 + 5 * Math.sin(time_value * 0.2) + (Math.random() - 0.5) * 3,
+    )
+    const pressure = time.map(
+      (time_value) => 101 + 4 * Math.cos(time_value * 0.15) + (Math.random() - 0.5) * 4,
+    )
     // Sensor glitches at different times - if one reading is bad, both are suspect
     temperature[10] = NaN
     temperature[25] = NaN
@@ -283,8 +287,12 @@
     const length = 50
     // Spiral trajectory: x and y are coordinates, t is the parameter (like time)
     const t_vals = Array.from({ length }, (_, idx) => idx)
-    const x_vals = t_vals.map((t) => 10 + 8 * Math.cos(t * 0.25) * (1 + t * 0.02))
-    const y_vals = t_vals.map((t) => 10 + 8 * Math.sin(t * 0.25) * (1 + t * 0.02))
+    const x_vals = t_vals.map(
+      (time_value) => 10 + 8 * Math.cos(time_value * 0.25) * (1 + time_value * 0.02),
+    )
+    const y_vals = t_vals.map(
+      (time_value) => 10 + 8 * Math.sin(time_value * 0.25) * (1 + time_value * 0.02),
+    )
     // Add NaN at different positions - these points will be removed from BOTH x and y
     x_vals[15] = NaN // NaN in x at t=15
     y_vals[35] = NaN // NaN in y at t=35
@@ -363,7 +371,10 @@
     [`smi`, /\b(?:DataSeries|CleaningConfig)\b/], // type
     [`c1`, /-?\d+(?:\.\d+)?|\b(?:true|false|NaN)\b/], // number, boolean, NaN
   ] as const
-  const SYNTAX_RE = new RegExp(SYNTAX_RULES.map(([, re]) => `(${re.source})`).join(`|`), `g`)
+  const SYNTAX_RE = new RegExp(
+    SYNTAX_RULES.map(([, real]) => `(${real.source})`).join(`|`),
+    `g`,
+  )
 
   const highlight = (code: string) =>
     sanitize_html(
@@ -600,9 +611,9 @@ const { series: cleaned, quality } = clean_series(series, config)
     legend={{ layout: `horizontal`, style: `justify-content: center;` }}
     style="height: 400px"
   >
-    {#snippet tooltip({ x, y, label })}
+    {#snippet tooltip({ x: coord_x, y: coord_y, label })}
       <strong>{label}</strong><br />
-      x: {x.toFixed(1)}, y: {Number.isFinite(y) ? y.toFixed(2) : `NaN`}
+      x: {coord_x.toFixed(1)}, y: {Number.isFinite(coord_y) ? coord_y.toFixed(2) : `NaN`}
     {/snippet}
   </ScatterPlot>
 
@@ -737,10 +748,10 @@ const { series: cleaned, quality } = clean_series(series, config)
         series={[
           {
             x: xyz_data.x.filter(
-              (x, idx) => Number.isFinite(x) && Number.isFinite(xyz_data.y[idx]),
+              (coord_x, idx) => Number.isFinite(coord_x) && Number.isFinite(xyz_data.y[idx]),
             ),
             y: xyz_data.y.filter(
-              (y, idx) => Number.isFinite(y) && Number.isFinite(xyz_data.x[idx]),
+              (coord_y, idx) => Number.isFinite(coord_y) && Number.isFinite(xyz_data.x[idx]),
             ),
             label: `Trajectory`,
             point_style: { fill: `#e74c3c`, radius: 4 },

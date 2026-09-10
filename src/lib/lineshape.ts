@@ -65,11 +65,11 @@ export function broaden_peaks(
   }
   // f64, not f32: at cm^-1 values in the thousands f32 resolves to ~2.4e-4, which shows up
   // as grid-dependent noise whenever the same peaks are broadened over two different spans
-  const xs = new Float64Array(n_steps)
-  const ys = new Float64Array(n_steps)
-  for (let idx = 0; idx < n_steps; idx++) xs[idx] = min_x + idx * step_size
+  const x_values = new Float64Array(n_steps)
+  const y_values = new Float64Array(n_steps)
+  for (let idx = 0; idx < n_steps; idx++) x_values[idx] = min_x + idx * step_size
   // min_x + n*step accumulates its own error, so pin the endpoint exactly when it is included
-  if (spans_to_max) xs[n_steps - 1] = max_x
+  if (spans_to_max) x_values[n_steps - 1] = max_x
 
   const { x: peak_pos, y: peak_int } = peaks
 
@@ -79,13 +79,13 @@ export function broaden_peaks(
   // supercell pattern carries thousands of reflections.
   let tallest = 0
   for (let idx = 0; idx < peak_int.length; idx++) {
-    const x0 = peak_pos[idx]
+    const coord_x_0 = peak_pos[idx]
     const intensity = peak_int[idx]
     // All three are silent otherwise: a NaN intensity makes every grid point NaN, an Infinite
     // one puts the floor at Infinity and drops every real peak, and a non-finite position
     // fails both reach tests below, dropping that peak alone.
-    if (!Number.isFinite(x0)) {
-      throw new TypeError(`peak positions must be finite, got ${x0} at index ${idx}`)
+    if (!Number.isFinite(coord_x_0)) {
+      throw new TypeError(`peak positions must be finite, got ${coord_x_0} at index ${idx}`)
     }
     if (!Number.isFinite(intensity)) {
       throw new TypeError(`peak intensities must be finite, got ${intensity}`)
@@ -96,7 +96,7 @@ export function broaden_peaks(
 
   let fill_steps = 0
   for (let peak_idx = 0; peak_idx < peak_pos.length; peak_idx++) {
-    const x0 = peak_pos[peak_idx]
+    const coord_x_0 = peak_pos[peak_idx]
     const intensity = peak_int[peak_idx]
 
     // <=, not <: an all-zero pattern puts the floor at 0, and a strict < would then walk
@@ -105,12 +105,12 @@ export function broaden_peaks(
     // immaterial — it is 1e-5 of the tallest.
     if (intensity <= intensity_floor) continue
 
-    const fwhm = fwhm_fn(x0)
+    const fwhm = fwhm_fn(coord_x_0)
     // The width gates the skip test below, not just the profile, so an unusable one would
     // silently drop the peak (negative) or contribute nothing (0, NaN, Infinity) instead of
     // failing. step_size and range are validated the same way above.
     if (!Number.isFinite(fwhm) || fwhm <= 0) {
-      throw new Error(`fwhm_fn must return > 0 and finite, got ${fwhm} at peak ${x0}`)
+      throw new Error(`fwhm_fn must return > 0 and finite, got ${fwhm} at peak ${coord_x_0}`)
     }
     // Lorentzian tails are long, so a narrow window truncates them visibly; 20 * FWHM is
     // wide enough that the residual is below plotting resolution. Deliberately NOT bounded
@@ -121,9 +121,9 @@ export function broaden_peaks(
     // Skip peaks whose tails cannot reach the grid. The margin is the peak's own window, not
     // a fixed number of x-units: cm^-1 spectra run FWHM of tens, where an off-grid peak
     // still contributes visibly.
-    if (x0 + window < min_x || x0 - window > max_x) continue
-    const start_idx = Math.max(0, Math.floor((x0 - window - min_x) / step_size))
-    const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_x) / step_size))
+    if (coord_x_0 + window < min_x || coord_x_0 - window > max_x) continue
+    const start_idx = Math.max(0, Math.floor((coord_x_0 - window - min_x) / step_size))
+    const end_idx = Math.min(n_steps - 1, Math.ceil((coord_x_0 + window - min_x) / step_size))
     // Counted while filling: a measuring pre-pass would itself be unbounded work
     fill_steps += end_idx - start_idx + 1
     if (fill_steps > MAX_BROADENING_FILL_STEPS) {
@@ -143,8 +143,8 @@ export function broaden_peaks(
     const lorentz_prefactor = shape_factor / (Math.PI * gamma)
     const inv_gamma_sq = 1 / (gamma * gamma)
     for (let idx = start_idx; idx <= end_idx; idx++) {
-      const offset_sq = (xs[idx] - x0) ** 2
-      ys[idx] +=
+      const offset_sq = (x_values[idx] - coord_x_0) ** 2
+      y_values[idx] +=
         intensity *
         (gauss_prefactor * Math.exp(gauss_exponent * offset_sq) +
           lorentz_prefactor / (1 + offset_sq * inv_gamma_sq))
@@ -153,5 +153,5 @@ export function broaden_peaks(
 
   // Only x/y come back: a continuous profile has no single reflection (or mode) per grid
   // point, so any per-peak labelling the caller attached does not survive
-  return { x: Array.from(xs), y: Array.from(ys) }
+  return { x: Array.from(x_values), y: Array.from(y_values) }
 }

@@ -8,8 +8,8 @@
   // measured layout auto-padding reserves for them; titles with selectable `options`
   // render a PortalSelect trigger inside a foreignObject sized to the closed trigger.
   let {
-    x,
-    y,
+    x: coord_x,
+    y: coord_y,
     rotate = false,
     label = ``,
     options,
@@ -40,7 +40,7 @@
     resolve_axis_title_layout({ label, options, selected_key }, wrap_width),
   )
   const first_line_y = $derived(
-    y - ((title_layout.lines.length - 1) * title_layout.line_height) / 2,
+    coord_y - ((title_layout.lines.length - 1) * title_layout.line_height) / 2,
   )
   // Keep browser wrapping from splitting the trigger when canvas metrics under-estimate page fonts.
   const trigger_width = $derived(Math.max(wrap_width, title_layout.width))
@@ -52,11 +52,12 @@
   }
 </script>
 
-<g transform={rotate ? `rotate(-90, ${x}, ${y})` : undefined}>
+<g transform={rotate ? `rotate(-90, ${coord_x}, ${coord_y})` : undefined}>
   {#if options?.length}
     <foreignObject
-      x={x - trigger_width / 2}
-      y={y - title_layout.height / 2}
+      data-export-exclude
+      x={coord_x - trigger_width / 2}
+      y={coord_y - title_layout.height / 2}
       width={trigger_width}
       height={title_layout.height}
       style="overflow: visible; pointer-events: none"
@@ -86,20 +87,26 @@
         {/if}
       </div>
     </foreignObject>
-  {:else if title_layout.lines.length}
+  {/if}
+  {#if title_layout.lines.length}
     <text
+      data-export-only={options?.length ? true : undefined}
+      display={options?.length ? `none` : undefined}
       class={[`axis-label`, `${axis_type}-label`]}
       dominant-baseline="central"
       fill={color ?? `currentColor`}
       pointer-events="none"
       text-anchor="middle"
       aria-label={title_layout.label}
-      {x}
-      {y}
+      x={coord_x}
+      y={coord_y}
     >
       <!-- contiguous markup keeps textContent free of layout whitespace -->
       {#each title_layout.lines as line, line_idx}
-        <tspan {x} y={first_line_y + line_idx * title_layout.line_height} aria-hidden="true"
+        <tspan
+          x={coord_x}
+          y={first_line_y + line_idx * title_layout.line_height}
+          aria-hidden="true"
           >{#each line.segments as segment}<tspan
               baseline-shift={segment.shift}
               font-size={segment.shift ? `75%` : undefined}>{segment.text}</tspan

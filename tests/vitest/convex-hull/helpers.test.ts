@@ -102,21 +102,26 @@ describe(`canvas-draw: markers and hit testing`, () => {
       draw.find_hull_entry_at_mouse(
         canvas,
         { clientX: client_x, clientY: 110 } as MouseEvent,
-        [point],
-        scale,
+        draw.build_hull_pick_index([point], scale),
       )
     expect(hit(118)).toBe(entry) // 8 px away < 4 + 5
+    expect(hit(119)).toBeNull() // strict radius boundary
     expect(hit(120)).toBeNull() // 10 px away
     expect(hit(120, 2)).toBe(entry) // radius scales with the container: 4 * 2 + 5 = 13 > 10
-    expect(draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, [point], 1)).toBeNull()
+    expect(
+      draw.find_hull_entry_at_mouse(
+        undefined,
+        {} as MouseEvent,
+        draw.build_hull_pick_index([point], 1),
+      ),
+    ).toBeNull()
     // points are painted in array order, so the last one at the cursor is the one on top
     const behind = { ...point, entry: { ...entry, entry_id: `behind` } }
     expect(
       draw.find_hull_entry_at_mouse(
         canvas,
         { clientX: 110, clientY: 110 } as MouseEvent,
-        [behind, point],
-        1,
+        draw.build_hull_pick_index([behind, point], 1),
       ),
     ).toBe(entry)
   })
@@ -128,7 +133,11 @@ describe(`canvas-draw: markers and hit testing`, () => {
       restore: vi.fn(),
       fillText,
     } as unknown as CanvasRenderingContext2D
-    const project = vi.fn((x: number, y: number, z: number) => ({ x, y, depth: z }))
+    const project = vi.fn((coord_x: number, coord_y: number, coord_z: number) => ({
+      x: coord_x,
+      y: coord_y,
+      depth: coord_z,
+    }))
     draw.draw_corner_labels(
       ctx,
       [
@@ -231,19 +240,19 @@ describe(`helpers: thresholds and tooltips`, () => {
   )
 
   test(`build_entry_tooltip_text contains key fields`, () => {
-    const t1 = helpers.build_entry_tooltip_text({
+    const param_1 = helpers.build_entry_tooltip_text({
       composition: { Li: 1 },
       energy: -1,
     })
-    expect(t1).toBe(`Li (Lithium)\n`)
-    const t2 = helpers.build_entry_tooltip_text({
+    expect(param_1).toBe(`Li (Lithium)\n`)
+    const param_2 = helpers.build_entry_tooltip_text({
       composition: { Li: 1, O: 1 },
       energy: -6,
       e_form_per_atom: -3,
       e_above_hull: 0,
       entry_id: `mp-1`,
     })
-    expect(t2).toBe(
+    expect(param_2).toBe(
       `\nComposition: Li: ½, O: ½\nE<sub>above hull</sub>: 0 eV/atom\nE<sub>form</sub>: −3 eV/atom\nID: mp-1`,
     )
   })

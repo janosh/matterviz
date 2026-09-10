@@ -13,11 +13,11 @@ export const has_explicit_position = (style?: string | null): boolean =>
 // A decoration's pixel footprint: its rendered box once laid out, else `fallback` (offset dims
 // read 0 before first render). Used to decide crowding before the real size is known.
 export const measured_footprint = (
-  el: HTMLElement | null | undefined,
+  element: HTMLElement | null | undefined,
   fallback: DecorationSize,
 ): DecorationSize =>
-  el?.offsetWidth && el?.offsetHeight
-    ? { width: el.offsetWidth, height: el.offsetHeight }
+  element?.offsetWidth && element?.offsetHeight
+    ? { width: element.offsetWidth, height: element.offsetHeight }
     : fallback
 
 // One mark's contribution: projected points, plus whether a line through them is drawn (which
@@ -38,8 +38,13 @@ export function with_obstacle_frame(
   return build_obstacles_norm(build({ base_w, base_h }), base_w, base_h)
 }
 
-const inside_unit_square = ({ x, y }: DecorationPoint): boolean =>
-  Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1
+const inside_unit_square = ({ x: coord_x, y: coord_y }: DecorationPoint): boolean =>
+  Number.isFinite(coord_x) &&
+  Number.isFinite(coord_y) &&
+  coord_x >= 0 &&
+  coord_x <= 1 &&
+  coord_y >= 0 &&
+  coord_y <= 1
 
 // Liang-Barsky clipping keeps sampling proportional to the visible segment rather
 // than spending the fixed sample budget on far-offscreen portions.
@@ -149,7 +154,7 @@ export const project_obstacles = (
   obstacles_norm: readonly DecorationPoint[],
   plot_bounds: Rect,
 ): DecorationPoint[] =>
-  obstacles_norm.map(({ x, y }) => ({
-    x: plot_bounds.x + x * plot_bounds.width,
-    y: plot_bounds.y + y * plot_bounds.height,
+  obstacles_norm.map(({ x: coord_x, y: coord_y }) => ({
+    x: plot_bounds.x + coord_x * plot_bounds.width,
+    y: plot_bounds.y + coord_y * plot_bounds.height,
   }))

@@ -90,10 +90,10 @@
   <svg {width} {height} role="img" aria-label="Electron diffraction pattern down {zone_text}">
     <!-- Direct beam (000), drawn as a ring so it is not mistaken for a reflection -->
     <circle class="direct-beam" cx={center.x} cy={center.y} r={max_radius * 0.9} />
-    {#each placed_spots as { spot, cx, cy, radius, opacity, label } (spot.hkl.join(`,`))}
+    {#each placed_spots as { spot, cx: center_x, cy: center_y, radius, opacity, label } (spot.hkl.join(`,`))}
       <circle
-        {cx}
-        {cy}
+        cx={center_x}
+        cy={center_y}
         r={radius}
         {opacity}
         class={['spot', { 'higher-zone': spot.laue_zone > 0 }]}
@@ -105,7 +105,9 @@
         >
       </circle>
       {#if label}
-        <text class="hkl-label" x={cx + radius + 3} y={cy - radius - 2}>{label}</text>
+        <text class="hkl-label" x={center_x + radius + 3} y={center_y - radius - 2}
+          >{label}</text
+        >
       {/if}
     {/each}
     {#if show_scale_bar && scale_bar}

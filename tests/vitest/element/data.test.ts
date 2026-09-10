@@ -38,7 +38,7 @@ test(`element data basics`, () => {
   expect(element_data[0].atomic_mass).toBe(1.008)
   expect(element_data[0].electronegativity).toBe(2.2)
   expect(element_data[0].electron_configuration).toBe(`1s1`)
-  expect(element_data.every((el) => typeof el.density === `number`)).toBe(true)
+  expect(element_data.every((element) => typeof element.density === `number`)).toBe(true)
   expect(element_by_symbol.size).toBe(element_data.length)
   for (const element of element_data)
     expect(element_by_symbol.get(element.symbol)).toBe(element)
@@ -122,10 +122,10 @@ describe(`atomic_radius`, () => {
   })
 
   test(`all radii in valid range (0.1, 3.0) Å`, () => {
-    for (const el of element_data) {
-      if (el.atomic_radius !== null) {
-        expect(el.atomic_radius, el.symbol).toBeGreaterThan(0.1)
-        expect(el.atomic_radius, el.symbol).toBeLessThan(3.0)
+    for (const element of element_data) {
+      if (element.atomic_radius !== null) {
+        expect(element.atomic_radius, element.symbol).toBeGreaterThan(0.1)
+        expect(element.atomic_radius, element.symbol).toBeLessThan(3.0)
       }
     }
   })
@@ -157,10 +157,10 @@ describe(`covalent_radius`, () => {
   })
 
   test(`all radii in valid range (0.1, 2.6] Å`, () => {
-    for (const el of element_data) {
-      if (el.covalent_radius !== null) {
-        expect(el.covalent_radius, el.symbol).toBeGreaterThan(0.1)
-        expect(el.covalent_radius, el.symbol).toBeLessThanOrEqual(2.6)
+    for (const element of element_data) {
+      if (element.covalent_radius !== null) {
+        expect(element.covalent_radius, element.symbol).toBeGreaterThan(0.1)
+        expect(element.covalent_radius, element.symbol).toBeLessThanOrEqual(2.6)
       }
     }
   })
@@ -202,17 +202,17 @@ describe(`electronegativity`, () => {
   test(`fluorine has highest electronegativity`, () => {
     const max = Math.max(
       ...element_data
-        .filter((el) => el.electronegativity !== null)
-        .map((el) => el.electronegativity as number),
+        .filter((element) => element.electronegativity !== null)
+        .map((element) => element.electronegativity as number),
     )
     expect(get_element(`F`).electronegativity).toBe(max)
   })
 
   test(`all values in range [0.7, 4.0]`, () => {
-    for (const el of element_data) {
-      if (el.electronegativity !== null) {
-        expect(el.electronegativity, el.symbol).toBeGreaterThanOrEqual(0.7)
-        expect(el.electronegativity, el.symbol).toBeLessThanOrEqual(4.0)
+    for (const element of element_data) {
+      if (element.electronegativity !== null) {
+        expect(element.electronegativity, element.symbol).toBeGreaterThanOrEqual(0.7)
+        expect(element.electronegativity, element.symbol).toBeLessThanOrEqual(4.0)
       }
     }
   })
@@ -263,10 +263,10 @@ describe(`first_ionization`, () => {
   })
 
   test(`all values in range (3, 25) eV`, () => {
-    for (const el of element_data) {
-      if (el.first_ionization !== null) {
-        expect(el.first_ionization, el.symbol).toBeGreaterThan(3)
-        expect(el.first_ionization, el.symbol).toBeLessThan(25)
+    for (const element of element_data) {
+      if (element.first_ionization !== null) {
+        expect(element.first_ionization, element.symbol).toBeGreaterThan(3)
+        expect(element.first_ionization, element.symbol).toBeLessThan(25)
       }
     }
   })
@@ -294,14 +294,14 @@ describe(`atomic_mass`, () => {
 
 describe(`data completeness`, () => {
   test(`all elements have valid structure`, () => {
-    for (const [idx, el] of element_data.entries()) {
-      expect(el.symbol, `element ${idx}`).toMatch(/^[A-Z][a-z]?$/)
-      expect(el.name, el.symbol).not.toBe(``)
-      expect(el.number, el.symbol).toBe(idx + 1)
-      expect(el.period, el.symbol).toBeGreaterThanOrEqual(1)
-      expect(el.period, el.symbol).toBeLessThanOrEqual(7)
-      expect(el.column, el.symbol).toBeGreaterThanOrEqual(1)
-      expect(el.column, el.symbol).toBeLessThanOrEqual(18)
+    for (const [idx, element] of element_data.entries()) {
+      expect(element.symbol, `element ${idx}`).toMatch(/^[A-Z][a-z]?$/)
+      expect(element.name, element.symbol).not.toBe(``)
+      expect(element.number, element.symbol).toBe(idx + 1)
+      expect(element.period, element.symbol).toBeGreaterThanOrEqual(1)
+      expect(element.period, element.symbol).toBeLessThanOrEqual(7)
+      expect(element.column, element.symbol).toBeGreaterThanOrEqual(1)
+      expect(element.column, element.symbol).toBeLessThanOrEqual(18)
     }
   })
 

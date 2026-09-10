@@ -6,8 +6,8 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    x,
-    y,
+    x: coord_x,
+    y: coord_y,
     bg_color,
     offset = { x: 6, y: 0 },
     fixed = false,
@@ -55,7 +55,7 @@
     const bounds =
       constrain_to ??
       (fixed ? { width: globalThis.innerWidth, height: globalThis.innerHeight } : undefined)
-    if (!bounds) return { x: x + offset.x, y: y + offset.y }
+    if (!bounds) return { x: coord_x + offset.x, y: coord_y + offset.y }
     const tooltip_size = {
       width: measured_width || fallback_size?.width || 0,
       height: measured_height || fallback_size?.height || 0,
@@ -67,11 +67,11 @@
     // matches so a flip keeps its distance.
     const gap = Math.max(Math.abs(offset.x), DEFAULT_CURSOR_SIZE.width)
     return place_tooltip({
-      anchor: { x, y },
+      anchor: { x: coord_x, y: coord_y },
       tooltip_size,
       bounds: { x: 0, y: 0, ...bounds },
       exclusion_rects: avoid_cursor
-        ? [...exclusion_rects, { x, y, ...DEFAULT_CURSOR_SIZE }]
+        ? [...exclusion_rects, { x: coord_x, y: coord_y, ...DEFAULT_CURSOR_SIZE }]
         : exclusion_rects,
       offset: avoid_cursor ? { x: offset.x >= 0 ? gap : -gap, y: offset.y } : offset,
     })

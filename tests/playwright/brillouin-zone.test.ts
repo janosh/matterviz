@@ -45,8 +45,8 @@ test.describe(`BrillouinZone Component Tests`, () => {
     const read_zoom = () =>
       page.evaluate(() => (globalThis as { read_bz_zoom?: () => number }).read_bz_zoom?.())
     const set_bz_width = async (css_width: string) => {
-      await page.locator(BZ_SELECTOR).evaluate((el, width) => {
-        ;(el as HTMLElement).style.setProperty(`--bz-width`, width)
+      await page.locator(BZ_SELECTOR).evaluate((element, width) => {
+        ;(element as HTMLElement).style.setProperty(`--bz-width`, width)
       }, css_width)
       await page.waitForTimeout(200)
     }
@@ -79,28 +79,64 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await expect(checkbox).not.toBeChecked()
     await checkbox.check()
     await expect(status_locator(page, `controls-open`)).toHaveText(`true`)
+    const selects = page.locator(
+      `${BZ_SELECTOR} .draggable-pane .settings-section.grid > label > select`,
+    )
+    await expect(selects).toHaveCount(2)
+    const fields = await selects.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const style = getComputedStyle(node)
+        const { right, height } = node.getBoundingClientRect()
+        return {
+          right,
+          height,
+          margin: style.margin,
+          font: style.fontSize,
+          row_font: node.parentElement && getComputedStyle(node.parentElement).fontSize,
+        }
+      }),
+    )
+    // Collapsible groups indent their labels, but control heights and right edges align.
+    expect(fields[0]).toEqual(fields[1])
+    expect(fields[0].margin).toBe(`0px`)
+    expect(fields[0].font).toBe(fields[0].row_font)
+    const pane = page.locator(`${BZ_SELECTOR} .bz-controls`)
+    const reset_edges = pane.getByRole(`button`, { name: `Reset edges to defaults` })
+    await expect(reset_edges).toBeVisible()
+    await reset_edges.click()
+    await expect(pane.locator(`input[type="range"][step="0.001"]`)).toHaveValue(`0.002`)
+    await expect(reset_edges).toHaveCount(0)
     await checkbox.uncheck()
+    await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
+    const info_toggle = page.locator(`#info-pane-open`)
+    await expect(info_toggle).not.toBeChecked()
+    await info_toggle.check()
+    await expect(status_locator(page, `info-pane-open`)).toHaveText(`true`)
+    await info_toggle.uncheck()
+    for (const mode of [`never`, `always`, `hover`]) {
+      await page.locator(`#show-controls`).selectOption(mode)
+      await expect(status_locator(page, `show-controls`)).toHaveText(mode)
+    }
+    await checkbox.check()
+    await expect(status_locator(page, `controls-open`)).toHaveText(`true`)
+    await page.locator(BZ_SELECTOR).click()
+    await page.keyboard.press(`Escape`)
     await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
   })
 
-  test(`info pane toggles`, async ({ page }) => {
-    const checkbox = page.locator(`#info-pane-open`)
-    await expect(checkbox).not.toBeChecked()
-    await checkbox.check()
-    await expect(status_locator(page, `info-pane-open`)).toHaveText(`true`)
-    await checkbox.uncheck()
-  })
-
-  test(`show controls setting cycles`, async ({ page }) => {
-    const select = page.locator(`#show-controls`)
-    const show_controls_status = status_locator(page, `show-controls`)
-
-    await select.selectOption(`never`)
-    await expect(show_controls_status).toHaveText(`never`)
-    await select.selectOption(`always`)
-    await expect(show_controls_status).toHaveText(`always`)
-    await select.selectOption(`hover`)
-    await expect(show_controls_status).toHaveText(`hover`)
+  test(`exports the rendered zone as PNG and JSON`, async ({ page }) => {
+    const viewer = page.locator(BZ_SELECTOR)
+    await viewer.hover()
+    await viewer.locator(`.bz-export-toggle`).click()
+    const pane = viewer.locator(`.export-pane`)
+    await pane.locator(`input[type="number"]`).fill(`96`)
+    for (const format of [`PNG`, `JSON`]) {
+      const downloaded = page.waitForEvent(`download`)
+      await pane.getByRole(`button`, { name: `Download ${format}`, exact: true }).click()
+      const download = await downloaded
+      expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${format.toLowerCase()}$`))
+      expect(await download.failure()).toBeNull()
+    }
   })
 
   test(`handles camera rotation and zoom`, async ({ page }) => {
@@ -144,24 +180,16 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await expect(checkbox).toBeChecked()
 
     await page.evaluate(() => {
-      const el = document.querySelector<HTMLInputElement>(
+      const element = document.querySelector<HTMLInputElement>(
         `[data-testid="fullscreen-checkbox"]`,
       )
-      if (el) {
-        el.checked = false
-        el.dispatchEvent(new Event(`change`, { bubbles: true }))
+      if (element) {
+        element.checked = false
+        element.dispatchEvent(new Event(`change`, { bubbles: true }))
       }
     })
     await expect(status).toHaveText(`false`)
     await expect(checkbox).not.toBeChecked()
-  })
-
-  test(`Escape closes panes`, async ({ page }) => {
-    await page.locator(`#controls-open`).check()
-    await expect(status_locator(page, `controls-open`)).toHaveText(`true`)
-    await page.locator(BZ_SELECTOR).click()
-    await page.keyboard.press(`Escape`)
-    await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
   })
 })
 
@@ -198,82 +226,43 @@ test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
     await wait_for_3d_canvas(page, BZ_SELECTOR)
   })
 
-  test(`IBZ toggle control works`, async ({ page }) => {
+  test(`IBZ loads, changes the rendering and clears when disabled`, async ({ page }) => {
     const checkbox = page.locator(`#show-ibz`)
     const status = page.locator(`[data-testid="show-ibz"]`)
-
+    const data_status = page.locator(`[data-testid="ibz-data-status"]`)
+    const vertices_count = page.locator(`[data-testid="ibz-vertices-count"]`)
+    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
     await expect(checkbox).not.toBeChecked()
     await expect(status).toHaveText(`false`)
-
+    await expect(data_status).toHaveText(`null`)
+    await expect(vertices_count).toHaveText(`0`)
+    const without_ibz = await canvas.screenshot()
     await checkbox.check()
     await expect(status).toHaveText(`true`)
     await expect(checkbox).toBeChecked()
-
+    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
+    await expect
+      .poll(async () => Number(await vertices_count.textContent()), { timeout: 5000 })
+      .toBeGreaterThan(0)
+    await expect
+      .poll(async () => (await canvas.screenshot()).equals(without_ibz), { timeout: 5000 })
+      .toBe(false)
     await checkbox.uncheck()
     await expect(status).toHaveText(`false`)
-  })
-
-  test(`IBZ data loads when enabled`, async ({ page }) => {
-    const checkbox = page.locator(`#show-ibz`)
-    const data_status = page.locator(`[data-testid="ibz-data-status"]`)
-    const vertices_count = page.locator(`[data-testid="ibz-vertices-count"]`)
-
-    // Initially null
     await expect(data_status).toHaveText(`null`)
-    await expect(vertices_count).toHaveText(`0`)
-
-    // Enable IBZ
-    await checkbox.check()
-
-    // Wait for IBZ data to load (async operation via moyo-wasm)
-    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
-
-    // Should have vertices
-    await expect(async () => {
-      const count = await vertices_count.textContent()
-      expect(Number(count ?? `0`)).toBeGreaterThan(0)
-    }).toPass({ timeout: 5000 })
   })
 
-  test(`IBZ color control updates`, async ({ page }) => {
-    const color_input = page.locator(`#ibz-color`)
-    const color_status = page.locator(`[data-testid="ibz-color"]`)
-
-    await expect(color_status).toHaveText(`#ff8844`)
-
-    await color_input.fill(`#00ff00`)
-    await expect(color_status).toHaveText(`#00ff00`)
-  })
-
-  test(`IBZ opacity control updates`, async ({ page }) => {
-    const opacity_input = page.locator(`#ibz-opacity`)
-    const opacity_status = page.locator(`[data-testid="ibz-opacity"]`)
-
-    await expect(opacity_status).toHaveText(`0.5`)
-
-    await opacity_input.fill(`0.8`)
-    await expect(opacity_status).toHaveText(`0.8`)
-  })
-
-  test(`IBZ renders differently from full BZ`, async ({ page }) => {
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
-    const show_ibz = page.locator(`#show-ibz`)
-
-    // Screenshot without IBZ
-    const without_ibz = await canvas.screenshot()
-
-    // Enable IBZ and wait for it to load
-    await show_ibz.check()
-    await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
-      timeout: IBZ_LOAD_TIMEOUT,
+  for (const [setting, initial, changed] of [
+    [`color`, `#ff8844`, `#00ff00`],
+    [`opacity`, `0.5`, `0.8`],
+  ]) {
+    test(`IBZ ${setting} control updates`, async ({ page }) => {
+      const status = page.locator(`[data-testid="ibz-${setting}"]`)
+      await expect(status).toHaveText(initial)
+      await page.locator(`#ibz-${setting}`).fill(changed)
+      await expect(status).toHaveText(changed)
     })
-
-    // Screenshot with IBZ - should be different (retry handles render timing)
-    await expect(async () => {
-      const with_ibz = await canvas.screenshot()
-      expect(with_ibz.equals(without_ibz)).toBe(false)
-    }).toPass({ timeout: 5000 })
-  })
+  }
 
   test(`IBZ can be enabled via URL parameter`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?show_ibz=true`, { waitUntil: `networkidle` })
@@ -289,18 +278,5 @@ test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
     await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
       timeout: IBZ_LOAD_TIMEOUT,
     })
-  })
-
-  test(`IBZ data cleared when disabled`, async ({ page }) => {
-    const checkbox = page.locator(`#show-ibz`)
-    const data_status = page.locator(`[data-testid="ibz-data-status"]`)
-
-    // Enable IBZ and wait for data
-    await checkbox.check()
-    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
-
-    // Disable IBZ
-    await checkbox.uncheck()
-    await expect(data_status).toHaveText(`null`)
   })
 })

@@ -16,8 +16,8 @@ const stub_animation_frames = () => {
   let next_id = 1
   const request_raf = vi
     .spyOn(globalThis, `requestAnimationFrame`)
-    .mockImplementation((cb) => {
-      callbacks.push(cb)
+    .mockImplementation((callback_fn) => {
+      callbacks.push(callback_fn)
       return next_id++
     })
   const cancel_raf = vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
@@ -72,14 +72,14 @@ function make_player(overrides: Partial<Host> = {}) {
 
 describe(`create_sequence_player`, () => {
   test.each([
-    [`previous at the first item`, 0, (pl: Player) => pl.previous(), 0, 0],
-    [`next at the last item`, 4, (pl: Player) => pl.next(), 4, 0],
-    [`seek below zero`, 2, (pl: Player) => pl.seek(-5), 0, 1],
-    [`seek past the end`, 2, (pl: Player) => pl.seek(99), 4, 1],
-    [`seek rounds fractional indices`, 0, (pl: Player) => pl.seek(2.6), 3, 1],
-    [`seek ignores NaN`, 2, (pl: Player) => pl.seek(Number.NaN), 2, 0],
-    [`seek to the current index is a no-op`, 2, (pl: Player) => pl.seek(2), 2, 0],
-    [`go_to seeks and pauses`, 1, (pl: Player) => pl.go_to(3), 3, 1],
+    [`previous at the first item`, 0, (player: Player) => player.previous(), 0, 0],
+    [`next at the last item`, 4, (player: Player) => player.next(), 4, 0],
+    [`seek below zero`, 2, (player: Player) => player.seek(-5), 0, 1],
+    [`seek past the end`, 2, (player: Player) => player.seek(99), 4, 1],
+    [`seek rounds fractional indices`, 0, (player: Player) => player.seek(2.6), 3, 1],
+    [`seek ignores NaN`, 2, (player: Player) => player.seek(Number.NaN), 2, 0],
+    [`seek to the current index is a no-op`, 2, (player: Player) => player.seek(2), 2, 0],
+    [`go_to seeks and pauses`, 1, (player: Player) => player.go_to(3), 3, 1],
   ])(`%s clamps within [0, count)`, (_name, start, act, expected, set_calls) => {
     const { host, player, set_index } = make_player({ index: start })
     act(player)

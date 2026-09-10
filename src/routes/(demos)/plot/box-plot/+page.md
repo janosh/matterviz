@@ -11,16 +11,19 @@ Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switc
   import { BoxPlot } from 'matterviz'
 
   // Simple seeded normal-ish distributions for the demo
-  const make_dist = (seed, n = 250, center = 0, spread = 1) => {
+  const make_dist = (seed, count = 250, center = 0, spread = 1) => {
     let state = seed
     const next = () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
       return state / 0x7fffffff
     }
-    return Array.from({ length: n }, () => {
-      const u1 = Math.max(next(), 1e-9)
-      const u2 = next()
-      return center + spread * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+    return Array.from({ length: count }, () => {
+      const uniform_1 = Math.max(next(), 1e-9)
+      const uniform_2 = next()
+      return (
+        center +
+        spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
+      )
     })
   }
 
@@ -53,16 +56,19 @@ Quartiles use the type-7 rule `q(p) = x[(n - 1) p]` with linear interpolation be
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
 
-  const make_dist = (seed, n = 300, center = 0, spread = 1) => {
+  const make_dist = (seed, count = 300, center = 0, spread = 1) => {
     let state = seed
     const next = () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
       return state / 0x7fffffff
     }
-    return Array.from({ length: n }, () => {
-      const u1 = Math.max(next(), 1e-9)
-      const u2 = next()
-      return center + spread * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+    return Array.from({ length: count }, () => {
+      const uniform_1 = Math.max(next(), 1e-9)
+      const uniform_2 = next()
+      return (
+        center +
+        spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
+      )
     })
   }
 
@@ -93,16 +99,19 @@ Set `show_value_labels` to print the median (or mean, via `value_label_stat`) ab
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
 
-  const make_dist = (seed, n = 300, center = 0, spread = 1) => {
+  const make_dist = (seed, count = 300, center = 0, spread = 1) => {
     let state = seed
     const next = () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
       return state / 0x7fffffff
     }
-    return Array.from({ length: n }, () => {
-      const u1 = Math.max(next(), 1e-9)
-      const u2 = next()
-      return center + spread * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+    return Array.from({ length: count }, () => {
+      const uniform_1 = Math.max(next(), 1e-9)
+      const uniform_2 = next()
+      return (
+        center +
+        spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
+      )
     })
   }
 

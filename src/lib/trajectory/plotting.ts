@@ -126,25 +126,29 @@ export const X_QUANTITY_LABELS = {
 // Read `ys` at `value` on the strictly increasing `xs` grid, interpolating between grid
 // points and clamping past either end. Running it with the two arrays swapped inverts the
 // map, which is how to_frame undoes to_x.
-function interpolate(xs: readonly number[], ys: readonly number[], value: number): number {
-  if (xs.length === 0) return value
-  if (value <= xs[0]) return ys[0]
-  const last_idx = xs.length - 1
-  if (value >= xs[last_idx]) return ys[last_idx]
+function interpolate(
+  x_values: readonly number[],
+  y_values: readonly number[],
+  value: number,
+): number {
+  if (x_values.length === 0) return value
+  if (value <= x_values[0]) return y_values[0]
+  const last_idx = x_values.length - 1
+  if (value >= x_values[last_idx]) return y_values[last_idx]
   // An eagerly parsed trajectory grids on the frame index itself, so the search collapses
   // to a lookup. Valid whenever it hits: xs[value] === value means value IS that grid point.
-  if (Number.isInteger(value) && xs[value] === value) return ys[value]
+  if (Number.isInteger(value) && x_values[value] === value) return y_values[value]
 
   let low = 0
   let high = last_idx
   while (high - low > 1) {
     const mid = (low + high) >> 1
-    if (xs[mid] <= value) low = mid
+    if (x_values[mid] <= value) low = mid
     else high = mid
   }
-  const span = xs[high] - xs[low]
-  if (span === 0) return ys[low]
-  return ys[low] + ((value - xs[low]) / span) * (ys[high] - ys[low])
+  const span = x_values[high] - x_values[low]
+  if (span === 0) return y_values[low]
+  return y_values[low] + ((value - x_values[low]) / span) * (y_values[high] - y_values[low])
 }
 
 // Frame numbering for a trajectory with no samples to grid on
@@ -323,17 +327,19 @@ export function summarize_properties(
   const by_frame = new Map(rows.map((row) => [row.frame_number, x_of(row)]))
   return [...cached_property_statistics(rows)].map(([key, { values, frame_indices }]) => {
     const n_samples = values.length
-    const xs = frame_indices.map((frame_number) => by_frame.get(frame_number) ?? frame_number)
-    const mean_x = mean(xs)
+    const x_values = frame_indices.map(
+      (frame_number) => by_frame.get(frame_number) ?? frame_number,
+    )
+    const mean_x = mean(x_values)
     const mean_y = mean(values)
     let [sxx, sxy] = [0, 0]
     for (const [idx, value] of values.entries()) {
-      const dx = xs[idx] - mean_x
-      sxx += dx * dx
-      sxy += dx * (value - mean_y)
+      const delta_x = x_values[idx] - mean_x
+      sxx += delta_x * delta_x
+      sxy += delta_x * (value - mean_y)
     }
     const [min, max] = array_extent(values)
-    const span = xs.length > 1 ? xs[xs.length - 1] - xs[0] : 0
+    const span = x_values.length > 1 ? x_values[x_values.length - 1] - x_values[0] : 0
     return {
       key,
       n_samples,

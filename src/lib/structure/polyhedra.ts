@@ -100,30 +100,30 @@ const face_of = (
   vert_b: number,
   vert_c: number,
 ): HullFace => {
-  const [ax, ay, az] = points[vert_a]
-  const abx = points[vert_b][0] - ax
-  const aby = points[vert_b][1] - ay
-  const abz = points[vert_b][2] - az
-  const acx = points[vert_c][0] - ax
-  const acy = points[vert_c][1] - ay
-  const acz = points[vert_c][2] - az
-  let nx = aby * acz - abz * acy
-  let ny = abz * acx - abx * acz
-  let nz = abx * acy - aby * acx
-  const len = Math.hypot(nx, ny, nz)
+  const [axis_x, axis_y, axis_z] = points[vert_a]
+  const abx = points[vert_b][0] - axis_x
+  const aby = points[vert_b][1] - axis_y
+  const abz = points[vert_b][2] - axis_z
+  const acx = points[vert_c][0] - axis_x
+  const acy = points[vert_c][1] - axis_y
+  const acz = points[vert_c][2] - axis_z
+  let size_x = aby * acz - abz * acy
+  let size_y = abz * acx - abx * acz
+  let size_z = abx * acy - aby * acx
+  const len = Math.hypot(size_x, size_y, size_z)
   if (len > 0) {
-    nx /= len
-    ny /= len
-    nz /= len
-  } else [nx, ny, nz] = [0, 0, 1]
+    size_x /= len
+    size_y /= len
+    size_z /= len
+  } else [size_x, size_y, size_z] = [0, 0, 1]
   return {
     vert_a,
     vert_b,
     vert_c,
-    nx,
-    ny,
-    nz,
-    offset: nx * ax + ny * ay + nz * az,
+    nx: size_x,
+    ny: size_y,
+    nz: size_z,
+    offset: size_x * axis_x + size_y * axis_y + size_z * axis_z,
     outside: [],
     deleted: false,
   }
@@ -143,13 +143,13 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
   const unique: Vec3[] = []
   const unique_input_idx: number[] = []
   for (let p_idx = 0; p_idx < points.length; p_idx++) {
-    const [px, py, pz] = points[p_idx]
+    const [pixel_x, pixel_y, pixel_z] = points[p_idx]
     let is_dup = false
     for (const other of unique) {
-      const dx = px - other[0]
-      const dy = py - other[1]
-      const dz = pz - other[2]
-      if (dx * dx + dy * dy + dz * dz < 1e-12) {
+      const delta_x = pixel_x - other[0]
+      const delta_y = pixel_y - other[1]
+      const delta_z = pixel_z - other[2]
+      if (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z < 1e-12) {
         is_dup = true
         break
       }
@@ -170,13 +170,13 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
   // Bounding-box diagonal sets the numerical tolerance scale
   let [min_x, min_y, min_z] = unique[0]
   let [max_x, max_y, max_z] = unique[0]
-  for (const [px, py, pz] of unique) {
-    if (px < min_x) min_x = px
-    if (px > max_x) max_x = px
-    if (py < min_y) min_y = py
-    if (py > max_y) max_y = py
-    if (pz < min_z) min_z = pz
-    if (pz > max_z) max_z = pz
+  for (const [pixel_x, pixel_y, pixel_z] of unique) {
+    if (pixel_x < min_x) min_x = pixel_x
+    if (pixel_x > max_x) max_x = pixel_x
+    if (pixel_y < min_y) min_y = pixel_y
+    if (pixel_y > max_y) max_y = pixel_y
+    if (pixel_z < min_z) min_z = pixel_z
+    if (pixel_z > max_z) max_z = pixel_z
   }
   const diag = Math.hypot(max_x - min_x, max_y - min_y, max_z - min_z)
   const eps = eps_scale * Math.max(1, diag)
@@ -190,18 +190,18 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
       if (unique[idx][axis] < unique[lo_idx][axis]) lo_idx = idx
       if (unique[idx][axis] > unique[hi_idx][axis]) hi_idx = idx
     }
-    const dx = unique[hi_idx][0] - unique[lo_idx][0]
-    const dy = unique[hi_idx][1] - unique[lo_idx][1]
-    const dz = unique[hi_idx][2] - unique[lo_idx][2]
-    const dist = Math.hypot(dx, dy, dz)
+    const delta_x = unique[hi_idx][0] - unique[lo_idx][0]
+    const delta_y = unique[hi_idx][1] - unique[lo_idx][1]
+    const delta_z = unique[hi_idx][2] - unique[lo_idx][2]
+    const dist = Math.hypot(delta_x, delta_y, delta_z)
     if (dist > max_dist) [max_dist, pt_0, pt_1] = [dist, lo_idx, hi_idx]
   }
   if (max_dist < eps) return degenerate // all points coincide
 
-  const [ox, oy, oz] = unique[pt_0]
-  let dir_x = unique[pt_1][0] - ox
-  let dir_y = unique[pt_1][1] - oy
-  let dir_z = unique[pt_1][2] - oz
+  const [offset_x, offset_y, offset_z] = unique[pt_0]
+  let dir_x = unique[pt_1][0] - offset_x
+  let dir_y = unique[pt_1][1] - offset_y
+  let dir_z = unique[pt_1][2] - offset_z
   const dir_len = Math.hypot(dir_x, dir_y, dir_z)
   dir_x /= dir_len
   dir_y /= dir_len
@@ -209,11 +209,12 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
   let pt_2 = -1
   max_dist = eps
   for (let idx = 0; idx < unique.length; idx++) {
-    const rx = unique[idx][0] - ox
-    const ry = unique[idx][1] - oy
-    const rz = unique[idx][2] - oz
-    const proj = rx * dir_x + ry * dir_y + rz * dir_z
-    const perp_sq = rx * rx + ry * ry + rz * rz - proj * proj
+    const relative_x = unique[idx][0] - offset_x
+    const relative_y = unique[idx][1] - offset_y
+    const relative_z = unique[idx][2] - offset_z
+    const proj = relative_x * dir_x + relative_y * dir_y + relative_z * dir_z
+    const perp_sq =
+      relative_x * relative_x + relative_y * relative_y + relative_z * relative_z - proj * proj
     if (perp_sq > max_dist * max_dist) {
       max_dist = Math.sqrt(perp_sq)
       pt_2 = idx
@@ -284,15 +285,15 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
       if (face.deleted || dist_to_face(face, unique[eye]) <= eps) continue
       face.deleted = true
       for (const point_idx of face.outside) if (point_idx !== eye) orphans.push(point_idx)
-      for (const [from, to] of [
+      for (const [from, target] of [
         [face.vert_a, face.vert_b],
         [face.vert_b, face.vert_c],
         [face.vert_c, face.vert_a],
       ]) {
-        const reverse_key = to * 65536 + from
+        const reverse_key = target * 65536 + from
         if (edge_set.has(reverse_key))
           edge_set.delete(reverse_key) // internal edge
-        else edge_set.add(from * 65536 + to)
+        else edge_set.add(from * 65536 + target)
       }
     }
 
@@ -300,8 +301,8 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
     const new_faces: HullFace[] = []
     for (const packed of edge_set) {
       const from = Math.floor(packed / 65536)
-      const to = packed % 65536
-      const face = face_of(unique, from, to, eye)
+      const target = packed % 65536
+      const face = face_of(unique, from, target, eye)
       faces.push(face)
       new_faces.push(face)
     }
@@ -330,28 +331,31 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
   }
 
   // Volume via signed tetrahedra from the hull centroid (positive with outward winding)
-  let [cx, cy, cz] = [0, 0, 0]
-  for (const [vx, vy, vz] of vertices) {
-    cx += vx
-    cy += vy
-    cz += vz
+  let [center_x, center_y, center_z] = [0, 0, 0]
+  for (const [vector_x, vector_y, vector_z] of vertices) {
+    center_x += vector_x
+    center_y += vector_y
+    center_z += vector_z
   }
-  cx /= vertices.length
-  cy /= vertices.length
-  cz /= vertices.length
+  center_x /= vertices.length
+  center_y /= vertices.length
+  center_z /= vertices.length
   let volume = 0
   for (const [idx_a, idx_b, idx_c] of remapped) {
-    const ax = vertices[idx_a][0] - cx
-    const ay = vertices[idx_a][1] - cy
-    const az = vertices[idx_a][2] - cz
-    const bx = vertices[idx_b][0] - cx
-    const by = vertices[idx_b][1] - cy
-    const bz = vertices[idx_b][2] - cz
-    const dx = vertices[idx_c][0] - cx
-    const dy = vertices[idx_c][1] - cy
-    const dz = vertices[idx_c][2] - cz
+    const axis_x = vertices[idx_a][0] - center_x
+    const axis_y = vertices[idx_a][1] - center_y
+    const axis_z = vertices[idx_a][2] - center_z
+    const basis_x = vertices[idx_b][0] - center_x
+    const basis_y = vertices[idx_b][1] - center_y
+    const basis_z = vertices[idx_b][2] - center_z
+    const delta_x = vertices[idx_c][0] - center_x
+    const delta_y = vertices[idx_c][1] - center_y
+    const delta_z = vertices[idx_c][2] - center_z
     volume +=
-      (ax * (by * dz - bz * dy) + ay * (bz * dx - bx * dz) + az * (bx * dy - by * dx)) / 6
+      (axis_x * (basis_y * delta_z - basis_z * delta_y) +
+        axis_y * (basis_z * delta_x - basis_x * delta_z) +
+        axis_z * (basis_x * delta_y - basis_y * delta_x)) /
+      6
   }
 
   return { vertices, input_idxs, faces: remapped, volume: Math.abs(volume) }
@@ -375,7 +379,7 @@ export function build_adjacency(
   bonds: readonly BondPair[],
 ): Map<number, PolyhedronNeighbor[]> {
   const adjacency = new Map<number, PolyhedronNeighbor[]>()
-  const link = (from: number, to: number, offset: Vec3 | null) => {
+  const link = (from: number, target: number, offset: Vec3 | null) => {
     let neighbors = adjacency.get(from)
     if (!neighbors) adjacency.set(from, (neighbors = []))
     // The same site can appear twice through different periodic images, so dedupe on
@@ -383,7 +387,7 @@ export function build_adjacency(
     // this linear scan beats building a string key for every bond in a supercell.
     const is_dup = neighbors.some(
       (nbr) =>
-        nbr.site_idx === to &&
+        nbr.site_idx === target &&
         (nbr.offset === null
           ? offset === null
           : offset !== null &&
@@ -391,7 +395,7 @@ export function build_adjacency(
             nbr.offset[1] === offset[1] &&
             nbr.offset[2] === offset[2]),
     )
-    if (!is_dup) neighbors.push({ site_idx: to, offset })
+    if (!is_dup) neighbors.push({ site_idx: target, offset })
   }
   for (const { site_idx_1, site_idx_2, pos_1, pos_2, cell_shift } of bonds) {
     if (site_idx_1 === site_idx_2) continue
@@ -401,10 +405,14 @@ export function build_adjacency(
     } else {
       // pos_2 already carries the lattice translation (structure_bond_to_bond_pair), so
       // the bond vector is the center -> neighbor displacement; the reverse is its negation
-      const [dx, dy, dz] = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
+      const [delta_x, delta_y, delta_z] = [
+        pos_2[0] - pos_1[0],
+        pos_2[1] - pos_1[1],
+        pos_2[2] - pos_1[2],
+      ]
       const flip = (val: number) => (val === 0 ? 0 : -val) // no -0, matching negate_cell_shift
-      link(site_idx_1, site_idx_2, [dx, dy, dz])
-      link(site_idx_2, site_idx_1, [flip(dx), flip(dy), flip(dz)])
+      link(site_idx_1, site_idx_2, [delta_x, delta_y, delta_z])
+      link(site_idx_2, site_idx_1, [flip(delta_x), flip(delta_y), flip(delta_z)])
     }
   }
   return adjacency
@@ -473,7 +481,7 @@ export function compute_polyhedra(
   const included = new Set(included_center_elements)
   const site_elements = sites.map((site) => get_majority_element(site))
   const unique_elements = [
-    ...new Set(site_elements.filter((el): el is ElementSymbol => el !== null)),
+    ...new Set(site_elements.filter((element): element is ElementSymbol => element !== null)),
   ]
 
   // Per-center-element caches: which neighbor elements qualify as vertices and
@@ -522,7 +530,7 @@ export function compute_polyhedra(
     if (!element || excluded.has(element)) continue
     const { accepts, radii_sums } = center_info(element)
     if (accepts.size === 0) continue
-    const [cx, cy, cz] = sites[site_idx].xyz
+    const [center_x, center_y, center_z] = sites[site_idx].xyz
 
     // Every bonded anion is a vertex, deliberately without a distance trim (see the shell
     // penalties in electroneg_ratio): the 2.39 A Ti-O bond of tetragonal BaTiO3 (1.31x the
@@ -534,7 +542,9 @@ export function compute_polyhedra(
       const n_elem = site_elements[idx]
       if (!n_elem || !accepts.has(n_elem)) continue
       const pos: Vec3 =
-        offset === null ? sites[idx].xyz : [cx + offset[0], cy + offset[1], cz + offset[2]]
+        offset === null
+          ? sites[idx].xyz
+          : [center_x + offset[0], center_y + offset[1], center_z + offset[2]]
       // One physical neighbor reached twice would inflate the coordination number that
       // gates max_neighbors and the boundary-completeness check (the hull dedupes the
       // vertex itself, so only the count is wrong). 1e-6 Å because the two paths build
@@ -555,7 +565,7 @@ export function compute_polyhedra(
       // Bond softness: how stretched the bonds are vs the covalent-radii sum
       const r_sum = radii_sums.get(n_elem)
       if (r_sum !== undefined) {
-        norm_sum += Math.hypot(pos[0] - cx, pos[1] - cy, pos[2] - cz) / r_sum
+        norm_sum += Math.hypot(pos[0] - center_x, pos[1] - center_y, pos[2] - center_z) / r_sum
         norm_count++
       }
     }
@@ -591,15 +601,16 @@ export function compute_polyhedra(
     entry.count++
     norm_by_species.set(element, entry)
   }
-  const species_norm = (el: ElementSymbol): number | null => {
-    const entry = norm_by_species.get(el)
+  const species_norm = (element: ElementSymbol): number | null => {
+    const entry = norm_by_species.get(element)
     return entry ? entry.sum / entry.count : null
   }
   const has_strong_species = [...norm_by_species.keys()].some(
-    (el) => (species_norm(el) ?? Infinity) <= WEAK_BOND_NORM && !is_spectator_center(el),
+    (element) =>
+      (species_norm(element) ?? Infinity) <= WEAK_BOND_NORM && !is_spectator_center(element),
   )
-  const is_weak_species = (el: ElementSymbol): boolean =>
-    has_strong_species && (species_norm(el) ?? 0) > WEAK_BOND_NORM
+  const is_weak_species = (element: ElementSymbol): boolean =>
+    has_strong_species && (species_norm(element) ?? 0) > WEAK_BOND_NORM
 
   const visible = candidates.filter(({ element }) => {
     if (included.has(element)) return true
@@ -628,16 +639,16 @@ export function compute_polyhedra(
     if (vertex_site_idxs.length !== max_cn_by_orig.get(orig_idx)) continue
     if (vertex_site_idxs.length > max_neighbors && !included.has(element)) continue
 
-    const [px, py, pz] = sites[site_idx].xyz
-    const pos_key = `${Math.round(px * 1e3)},${Math.round(py * 1e3)},${Math.round(pz * 1e3)}`
+    const [pixel_x, pixel_y, pixel_z] = sites[site_idx].xyz
+    const pos_key = `${Math.round(pixel_x * 1e3)},${Math.round(pixel_y * 1e3)},${Math.round(pixel_z * 1e3)}`
     if (seen_positions.has(pos_key)) continue
     seen_positions.add(pos_key)
 
     const hull = convex_hull_3d(vertex_positions)
     if (hull.faces.length === 0) continue
     const spans = [0, 1, 2].map((axis) => {
-      const [lo, hi] = array_extent(hull.vertices.map((vert) => vert[axis]))
-      return hi - lo
+      const [lower, upper] = array_extent(hull.vertices.map((vert) => vert[axis]))
+      return upper - lower
     })
     if (hull.volume < VOLUME_EPS * array_max(spans) ** 3) continue
 
@@ -698,18 +709,21 @@ export function merge_polyhedra_buffers(
 
     edge_normals.clear()
     for (const [idx_a, idx_b, idx_c] of poly.faces) {
-      const [ax, ay, az] = verts[idx_a]
-      const [bx, by, bz] = verts[idx_b]
-      const [px, py, pz] = verts[idx_c]
+      const [axis_x, axis_y, axis_z] = verts[idx_a]
+      const [basis_x, basis_y, basis_z] = verts[idx_b]
+      const [pixel_x, pixel_y, pixel_z] = verts[idx_c]
       // Scalar face normal for crease detection
-      let nx = (by - ay) * (pz - az) - (bz - az) * (py - ay)
-      let ny = (bz - az) * (px - ax) - (bx - ax) * (pz - az)
-      let nz = (bx - ax) * (py - ay) - (by - ay) * (px - ax)
-      const len = Math.hypot(nx, ny, nz)
+      let normal_x =
+        (basis_y - axis_y) * (pixel_z - axis_z) - (basis_z - axis_z) * (pixel_y - axis_y)
+      let size_y =
+        (basis_z - axis_z) * (pixel_x - axis_x) - (basis_x - axis_x) * (pixel_z - axis_z)
+      let size_z =
+        (basis_x - axis_x) * (pixel_y - axis_y) - (basis_y - axis_y) * (pixel_x - axis_x)
+      const len = Math.hypot(normal_x, size_y, size_z)
       if (len > 0) {
-        nx /= len
-        ny /= len
-        nz /= len
+        normal_x /= len
+        size_y /= len
+        size_z /= len
       }
 
       for (const v_idx of [idx_a, idx_b, idx_c]) {
@@ -723,17 +737,25 @@ export function merge_polyhedra_buffers(
         offset += 3
       }
 
-      for (const [from, to] of [
+      for (const [from, target] of [
         [idx_a, idx_b],
         [idx_b, idx_c],
         [idx_c, idx_a],
       ]) {
-        const key = from < to ? from * 65536 + to : to * 65536 + from
+        const key = from < target ? from * 65536 + target : target * 65536 + from
         const entry = edge_normals.get(key)
         if (entry) {
           entry.shared = true
-          entry.crease = nx * entry.nx + ny * entry.ny + nz * entry.nz < 1 - coplanar_tol
-        } else edge_normals.set(key, { nx, ny, nz, crease: false, shared: false })
+          entry.crease =
+            normal_x * entry.nx + size_y * entry.ny + size_z * entry.nz < 1 - coplanar_tol
+        } else
+          edge_normals.set(key, {
+            nx: normal_x,
+            ny: size_y,
+            nz: size_z,
+            crease: false,
+            shared: false,
+          })
       }
     }
 
@@ -752,13 +774,13 @@ export function merge_polyhedra_buffers(
       const from_idx = Math.floor(key / 65536)
       const to_idx = key % 65536
       const from = verts[from_idx]
-      const to = verts[to_idx]
+      const target = verts[to_idx]
       edge_positions[edge_offset] = from[0]
       edge_positions[edge_offset + 1] = from[1]
       edge_positions[edge_offset + 2] = from[2]
-      edge_positions[edge_offset + 3] = to[0]
-      edge_positions[edge_offset + 4] = to[1]
-      edge_positions[edge_offset + 5] = to[2]
+      edge_positions[edge_offset + 3] = target[0]
+      edge_positions[edge_offset + 4] = target[1]
+      edge_positions[edge_offset + 5] = target[2]
       edge_colors.set(vert_rgb.subarray(from_idx * 3, from_idx * 3 + 3), edge_offset)
       edge_colors.set(vert_rgb.subarray(to_idx * 3, to_idx * 3 + 3), edge_offset + 3)
       edge_offset += 6

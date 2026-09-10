@@ -238,13 +238,13 @@ const make_hull_points = (n_entries: number): number[][] => {
 
 // 1M points spread over a 512x512 bin grid: every bin row sees traffic
 const make_dense_series = (n_points: number) => {
-  const x = new Float32Array(n_points)
-  const y = new Float32Array(n_points)
+  const coord_x = new Float32Array(n_points)
+  const coord_y = new Float32Array(n_points)
   for (let idx = 0; idx < n_points; idx++) {
-    x[idx] = (idx % 10_000) / 10_000
-    y[idx] = ((idx * 48_271) % 1_000_000) / 1_000_000
+    coord_x[idx] = (idx % 10_000) / 10_000
+    coord_y[idx] = ((idx * 48_271) % 1_000_000) / 1_000_000
   }
-  return [{ x, y }]
+  return [{ x: coord_x, y: coord_y }]
 }
 
 // Cartesian positions of an `edge`^3 cubic grid with the given spacing

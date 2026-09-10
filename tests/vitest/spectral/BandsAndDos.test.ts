@@ -117,9 +117,9 @@ describe(`bands/DOS wrappers`, () => {
             `${idx === 1 && width === 400 ? `.x-axis` : `.y-axis`} .tick text`,
           ),
         ].map((label) => Number(label.textContent))
-      const units_select = (id: string) => {
-        const select = root.querySelector<HTMLSelectElement>(`#${id}-units`)
-        if (!select) throw new Error(`Missing ${id} unit selector`)
+      const units_select = (identifier: string) => {
+        const select = root.querySelector<HTMLSelectElement>(`#${identifier}-units`)
+        if (!select) throw new Error(`Missing ${identifier} unit selector`)
         return select
       }
       for (const idx of [0, 1]) expect(Math.max(...frequency_ticks(idx))).toBeGreaterThan(10)
@@ -176,7 +176,7 @@ describe(`bands/DOS wrappers`, () => {
     )
     expect(() => flushSync()).not.toThrow()
     const tick_text = (plot: Element) =>
-      [...plot.querySelectorAll(`.y-axis .tick text`)].map((el) => el.textContent)
+      [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) => element.textContent)
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
     expect(tick_text(bands_plot)).toEqual(tick_text(dos_plot))
     expect(tick_text(bands_plot).length).toBeGreaterThan(2)
@@ -192,21 +192,23 @@ describe(`bands/DOS wrappers`, () => {
       height: 400,
     })
     const y_ticks = (plot: Element) =>
-      [...plot.querySelectorAll(`.y-axis .tick text`)].map((el) => Number(el.textContent))
+      [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) =>
+        Number(element.textContent),
+      )
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
     const initial = y_ticks(bands_plot)
     expect(initial.length).toBeGreaterThan(2)
 
     const bands_svg = plot_svg(bands_plot)
     const clip = clip_rect(bands_plot)
-    const at = (fx: number, fy: number): MouseEventInit => ({
+    const position = (frac_x: number, frac_y: number): MouseEventInit => ({
       bubbles: true,
-      clientX: clip.x + clip.width * fx,
-      clientY: clip.y + clip.height * fy,
+      clientX: clip.x + clip.width * frac_x,
+      clientY: clip.y + clip.height * frac_y,
     })
-    bands_svg.dispatchEvent(new MouseEvent(`mousedown`, at(0.1, 0.3)))
-    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...at(0.9, 0.6) }))
-    await fire(window, new MouseEvent(`mouseup`, at(0.9, 0.6)))
+    bands_svg.dispatchEvent(new MouseEvent(`mousedown`, position(0.1, 0.3)))
+    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...position(0.9, 0.6) }))
+    await fire(window, new MouseEvent(`mouseup`, position(0.9, 0.6)))
     const zoomed = y_ticks(bands_plot)
     expect(Math.max(...zoomed) - Math.min(...zoomed)).toBeLessThan(
       Math.max(...initial) - Math.min(...initial),

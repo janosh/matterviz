@@ -239,11 +239,11 @@ export function enumerate_reciprocal_points(
   // Sort by (g_norm asc, -h, -k, -l) to mimic pymatgen ordering. All terms are finite, so a
   // zero difference means equality and `||` falls through exactly like an explicit tie check.
   points.sort(
-    (p1, p2) =>
-      p1.g_norm - p2.g_norm ||
-      p2.hkl[0] - p1.hkl[0] ||
-      p2.hkl[1] - p1.hkl[1] ||
-      p2.hkl[2] - p1.hkl[2],
+    (point_1, point) =>
+      point_1.g_norm - point.g_norm ||
+      point.hkl[0] - point_1.hkl[0] ||
+      point.hkl[1] - point_1.hkl[1] ||
+      point.hkl[2] - point_1.hkl[2],
   )
   return points
 }
@@ -305,7 +305,7 @@ export function structure_factors_squared(
       if (coeffs === undefined) {
         // only X-rays read Z: neutrons scatter off the nucleus and the Mott-Bethe electron
         // form cancels it analytically
-        const z = is_neutron || is_electron ? 0 : form_factor_z(element_symbol)
+        const coord_z = is_neutron || is_electron ? 0 : form_factor_z(element_symbol)
         const fit = is_neutron ? [] : gaussian_params(element_symbol)
         let b_coh = 0
         if (is_neutron) {
@@ -323,7 +323,7 @@ export function structure_factors_squared(
         coeffs = {
           a: Float64Array.from(fit, (row) => row[0]),
           b: Float64Array.from(fit, (row) => row[1]),
-          z,
+          z: coord_z,
           dw: debye_waller_factors[element_symbol] ?? 0,
           s_sq_max: is_neutron ? Infinity : gaussian_turning_point(element_symbol),
           b_coh,
@@ -391,7 +391,14 @@ export function structure_factors_squared(
     let f_real = 0
     let f_imag = 0
     for (let elem = 0; elem < n_elements; elem++) {
-      const { a: a_arr, b: b_arr, z: atomic_number, dw, s_sq_max, b_coh } = elements[elem]
+      const {
+        a: a_arr,
+        b: b_arr,
+        z: atomic_number,
+        dw: debye_waller,
+        s_sq_max,
+        b_coh,
+      } = elements[elem]
       // Atomic scattering factor. X-rays see f = Z − XRAY_GAUSSIAN_PREFACTOR·s²·Σ aᵢ·exp(−bᵢ·s²)
       // (pymatgen fitted params); the Mott–Bethe electron form cancels that s² analytically
       // (see $lib/scattering), so both share one sum_terms. Neutrons see the constant b_coh.
@@ -411,7 +418,7 @@ export function structure_factors_squared(
           : Math.max(0, atomic_number - XRAY_GAUSSIAN_PREFACTOR * s_sq * sum_terms)
       }
       // Thermal damping is geometric, not electronic: it applies to every radiation
-      if (has_debye_waller) factor *= Math.exp(-dw * s_sq_point)
+      if (has_debye_waller) factor *= Math.exp(-debye_waller * s_sq_point)
 
       // S_e = Σ occu·exp(2πi·hkl·r) over this element's species, phase factor assembled from
       // the per-axis tables (occupancy already folded into the h table)
@@ -535,16 +542,16 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   // Scale intensities so that the max intensity is 100, and filter by scaled tol
   const max_intensity = math.array_max(peaks.map((peak) => peak.intensity))
 
-  const xs: number[] = []
-  const ys: number[] = []
+  const x_values: number[] = []
+  const y_values: number[] = []
   const hkls_out: HklObj[][] = []
   const d_out: number[] = []
 
   // Already in ascending 2θ: peaks were appended in |g| order
   for (const peak of peaks) {
     if ((peak.intensity / max_intensity) * 100 <= scaled_tol) continue
-    xs.push(peak.two_theta)
-    ys.push(peak.intensity)
+    x_values.push(peak.two_theta)
+    y_values.push(peak.intensity)
     hkls_out.push(get_unique_families(peak.hkls))
     d_out.push(peak.d_hkl)
   }
@@ -554,11 +561,13 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   // or a suppressed form factor puts every peak under 1 and a floor of 1 silently
   // under-scales the whole pattern (Mo Kα on a 2 Å H cell topped out at 43.6, not 100).
   if (options.scaled ?? true) {
-    const max_y = math.array_max(ys)
-    if (max_y > 0) for (let idx = 0; idx < ys.length; idx++) ys[idx] = (ys[idx] / max_y) * 100
+    const max_y = math.array_max(y_values)
+    if (max_y > 0)
+      for (let idx = 0; idx < y_values.length; idx++)
+        y_values[idx] = (y_values[idx] / max_y) * 100
   }
 
-  return { x: xs, y: ys, hkls: hkls_out, d_hkls: d_out }
+  return { x: x_values, y: y_values, hkls: hkls_out, d_hkls: d_out }
 }
 
 // Dropped file content as a plot entry: measured data files (.xy, .brml, …) are parsed,

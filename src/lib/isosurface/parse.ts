@@ -190,8 +190,8 @@ export function parse_chgcar(content: string): VolumetricFileData {
   let cur: { line: string; next: number }
 
   // Parse atomic positions
-  let cart_to_frac: (v: Vec3) => Vec3
-  let frac_to_cart: (v: Vec3) => Vec3
+  let cart_to_frac: (value: Vec3) => Vec3
+  let frac_to_cart: (value: Vec3) => Vec3
   try {
     ;({ cart_to_frac, frac_to_cart } = math.create_lattice_converters(lattice))
   } catch (error) {
@@ -404,7 +404,7 @@ export function parse_cube(
 
   // Parse atomic positions
   const sites: Site[] = []
-  let cube_cart_to_frac: (v: Vec3) => Vec3
+  let cube_cart_to_frac: (value: Vec3) => Vec3
   try {
     cube_cart_to_frac = math.create_cart_to_frac(lattice)
   } catch (error) {

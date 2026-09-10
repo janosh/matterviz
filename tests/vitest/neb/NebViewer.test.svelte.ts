@@ -96,6 +96,22 @@ describe(`NebPlot`, () => {
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(expected)
   })
 
+  test(`profile reset clears authored overrides`, async () => {
+    const plot = await mount_plot({
+      paths: reaction_paths,
+      coord_mode: `image_index`,
+      energy_reference: `absolute`,
+      show_spline: false,
+      controls_open: true,
+    })
+    doc_query<HTMLButtonElement>(`button[title="Reset profile to defaults"]`).click()
+    await tick()
+    expect(query<HTMLSelectElement>(plot, `#neb-coord-mode`).value).toBe(`arc_length`)
+    expect(query<HTMLSelectElement>(plot, `#neb-energy-reference`).value).toBe(`initial`)
+    expect(query<HTMLInputElement>(plot, `#neb-show-spline`).checked).toBe(true)
+    expect(plot.querySelector(`button[title="Reset profile to defaults"]`)).toBeNull()
+  })
+
   test(`annotates the fitted saddle of the active path`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
     const spline = path_spline(direct_path)

@@ -45,8 +45,8 @@ Set `markers` to `points`, `line`, or `line+points`; series and gear controls ex
   type PointMeta = { id?: string; series_label?: string }
 
   function on_point_click({ point }: { point: InternalPoint<PointMeta> }): void {
-    const { x, y, metadata, series_idx, point_idx } = point
-    clicked_point_info = `Clicked: Point (${x}, ${y}), Series: '${
+    const { x: coord_x, y: coord_y, metadata, series_idx, point_idx } = point
+    clicked_point_info = `Clicked: Point (${coord_x}, ${coord_y}), Series: '${
       metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)
     }', Point Index: ${point_idx}`
     if (metadata) {
@@ -55,8 +55,8 @@ Set `markers` to `points`, `line`, or `line+points`; series and gear controls ex
   }
 
   function handle_point_double_click({ point }: { point: InternalPoint<PointMeta> }): void {
-    const { x, y, metadata, series_idx, point_idx } = point
-    double_clicked_point_info = `Double-clicked: Point (${x}, ${y}), Series: '${
+    const { x: coord_x, y: coord_y, metadata, series_idx, point_idx } = point
+    double_clicked_point_info = `Double-clicked: Point (${coord_x}, ${coord_y}), Series: '${
       metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)
     }', Point Index: ${point_idx}`
     if (metadata) {
@@ -69,8 +69,8 @@ Set `markers` to `points`, `line`, or `line+points`; series and gear controls ex
   ): void {
     const point = payload?.point ?? null
     if (point) {
-      const { x, y, metadata, series_idx, point_idx } = point
-      hovered_point_info = `Hovering: Point (${x}, ${y}), Series: '${
+      const { x: coord_x, y: coord_y, metadata, series_idx, point_idx } = point
+      hovered_point_info = `Hovering: Point (${coord_x}, ${coord_y}), Series: '${
         metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)
       }', Point Index: ${point_idx}`
       if (metadata) {
@@ -129,11 +129,11 @@ The example below combines the common controls: per-side `type`, `per_series` (o
   // deterministic gaussian clusters (seeded LCG keeps the demo stable)
   let seed = 7
   const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
-  const normal = (mu, sd) =>
-    mu + sd * Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(2 * Math.PI * rand())
-  const cluster = (n, mx, my, sd, fill, label) => ({
-    x: Array.from({ length: n }, () => normal(mx, sd)),
-    y: Array.from({ length: n }, () => normal(my, sd)),
+  const normal = (mean, std_dev) =>
+    mean + std_dev * Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(2 * Math.PI * rand())
+  const cluster = (count, mean_x, mean_y, std_dev, fill, label) => ({
+    x: Array.from({ length: count }, () => normal(mean_x, std_dev)),
+    y: Array.from({ length: count }, () => normal(mean_y, std_dev)),
     markers: 'points', // scattered clusters: no connecting lines
     point_style: { fill, radius: 3, fill_opacity: 0.55 },
     label,
@@ -154,13 +154,15 @@ The example below combines the common controls: per-side `type`, `per_series` (o
   <label
     >Top:
     <select bind:value={top_type}
-      >{#each types as t (t)}<option>{t}</option>{/each}</select
+      >{#each types as marginal_type (marginal_type)}<option>{marginal_type}</option
+        >{/each}</select
     >
   </label>
   <label
     >Right:
     <select bind:value={right_type}
-      >{#each types as t (t)}<option>{t}</option>{/each}</select
+      >{#each types as marginal_type (marginal_type)}<option>{marginal_type}</option
+        >{/each}</select
     >
   </label>
   <label
@@ -208,8 +210,8 @@ For anything the built-ins don't cover, a per-side `snippet` draws the strip fro
 ```svelte
 {#snippet mean_marker(ctx)}
   {#each ctx.series as srs (srs.label)}
-    {@const xs = Array.from(srs.x ?? [])}
-    {@const mean = xs.reduce((sum, val) => sum + val, 0) / (xs.length || 1)}
+    {@const x_values = Array.from(srs.x ?? [])}
+    {@const mean = x_values.reduce((sum, val) => sum + val, 0) / (x_values.length || 1)}
     <circle cx={ctx.positional_scale(mean)} cy={ctx.rect.y + 10} r="3" fill={srs.color} />
   {/each}
 {/snippet}
@@ -225,16 +227,16 @@ The connecting line between points chooses its interpolation via `line_style.cur
   import { ScatterPlot } from 'matterviz'
 
   // sharp zigzag so the interpolation style is unmistakable
-  const x = Array.from({ length: 11 }, (_, idx) => idx)
-  const y = [0, 8, 1, 9, 2, 7, 1, 8, 0, 6, 2]
+  const coord_x = Array.from({ length: 11 }, (_, idx) => idx)
+  const coord_y = [0, 8, 1, 9, 2, 7, 1, 8, 0, 6, 2]
 
   const curves = ['linear', 'monotone', 'natural', 'step', 'basis', 'catmull-rom']
   let curve = $state('linear')
 
   let series = $derived([
     {
-      x,
-      y,
+      x: coord_x,
+      y: coord_y,
       point_style: { fill: 'steelblue', radius: 4 },
       line_style: { curve },
       markers: 'line+points',
@@ -392,16 +394,16 @@ Point styles, custom tooltips, and hover effects:
   change={(point) => (hovered_point = point)}
   style="height: 400px"
 >
-  {#snippet tooltip({ x, y, metadata })}
+  {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
     <strong>{metadata.series_name}</strong>
-    Point at ({x}, {y})
+    Point at ({coord_x}, {coord_y})
   {/snippet}
 </ScatterPlot>
 
 Hovered point:
 {#if hovered_point}
-  {@const { x, y, metadata } = hovered_point}
-  ({x}, {y}) in '{metadata.series_name}'
+  {@const { x: coord_x, y: coord_y, metadata } = hovered_point}
+  ({coord_x}, {coord_y}) in '{metadata.series_name}'
 {:else}
   None
 {/if}
@@ -438,11 +440,11 @@ Per-point styles, sizes, and marker symbols in one series. Point size follows di
     const radius = 1 + idx * 0.3
 
     // Convert to cartesian coordinates
-    const x = Math.cos(angle) * radius
-    const y = Math.sin(angle) * radius
+    const coord_x = Math.cos(angle) * radius
+    const coord_y = Math.sin(angle) * radius
 
-    spiral_data.x.push(x)
-    spiral_data.y.push(y)
+    spiral_data.x.push(coord_x)
+    spiral_data.y.push(coord_y)
     spiral_data.size_values.push(radius) // Use spiral radius for sizing
 
     // Store angle in metadata
@@ -515,9 +517,9 @@ Per-point styles, sizes, and marker symbols in one series. Point size follows di
   {size_scale}
   style="height: 500px"
 >
-  {#snippet tooltip({ x, y, metadata })}
+  {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
     <strong>Spiral Point</strong><br />
-    Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
+    Position: ({coord_x.toFixed(2)}, {coord_y.toFixed(2)})<br />
     Angle: {metadata.angle.toFixed(2)} rad<br />
     Value (Radius): {metadata.radius.toFixed(2)}
   {/snippet}
@@ -591,9 +593,9 @@ Categorized data with color coding, custom tick intervals, and negative values:
   y_axis={{ label: 'Y Value', range: [-15, 15], ticks: ticks.y }}
   style="height: 400px;"
 >
-  {#snippet tooltip({ x, y, metadata })}
+  {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
     <strong>{metadata.category}</strong><br />
-    Position: ({x.toFixed(2)}, {y.toFixed(2)})
+    Position: ({coord_x.toFixed(2)}, {coord_y.toFixed(2)})
   {/snippet}
 </ScatterPlot>
 
@@ -719,7 +721,7 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
       style: `max-width: none; justify-content: center;`,
     }}
   >
-    {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
+    {#snippet tooltip({ x: coord_x, y: coord_y, x_formatted, y_formatted, metadata })}
       <strong>{metadata?.series}</strong><br />
       Date: {x_formatted}<br />
       Value: {y_formatted}
@@ -774,18 +776,18 @@ Points that share coordinates stay separately identifiable and interactive:
   change={(point) => (hovered_point = point)}
   style="height: 350px"
 >
-  {#snippet tooltip({ x, y, metadata })}
-    {@const { label, id } = metadata}
+  {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
+    {@const { label, id: identifier } = metadata}
     <strong>{label}</strong><br />
-    Coordinates: ({x}, {y})<br />
-    ID: {id}
+    Coordinates: ({coord_x}, {coord_y})<br />
+    ID: {identifier}
   {/snippet}
 </ScatterPlot>
 
 <strong>Currently hovered:</strong>
 {#if hovered_point}
-  {@const { x, y, metadata } = hovered_point}
-  {metadata?.label || 'Unknown point'} at ({x}, {y})
+  {@const { x: coord_x, y: coord_y, metadata } = hovered_point}
+  {metadata?.label || 'Unknown point'} at ({coord_x}, {coord_y})
 {:else}
   nothing
 {/if}
@@ -1031,10 +1033,10 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
     {size_scale}
     style="height: 400px"
   >
-    {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
+    {#snippet tooltip({ x: coord_x, y: coord_y, x_formatted, y_formatted, metadata })}
       <strong>{metadata.label ?? metadata.series}</strong><br />
-      X: {x_formatted || x.toPrecision(3)}<br />
-      Y: {y_formatted || y.toPrecision(3)}
+      X: {x_formatted || coord_x.toPrecision(3)}<br />
+      Y: {y_formatted || coord_y.toPrecision(3)}
     {/snippet}
   </ScatterPlot>
 </div>
@@ -1081,12 +1083,12 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
 
     // Add some points near zero for linear region demo
     const near_zero = rng() < 0.2
-    const x = near_zero ? (rng() - 0.5) * 20 : sign_x * magnitude * (0.5 + rng() * 0.5)
-    const y = near_zero ? (rng() - 0.5) * 20 : sign_y * magnitude * (0.3 + rng() * 0.7)
-    const color = (x * y) / 1000 // Correlation between x, y creates gradient
+    const coord_x = near_zero ? (rng() - 0.5) * 20 : sign_x * magnitude * (0.5 + rng() * 0.5)
+    const coord_y = near_zero ? (rng() - 0.5) * 20 : sign_y * magnitude * (0.3 + rng() * 0.7)
+    const color = (coord_x * coord_y) / 1000 // Correlation between x, y creates gradient
 
-    x_vals.push(x)
-    y_vals.push(y)
+    x_vals.push(coord_x)
+    y_vals.push(coord_y)
     color_vals.push(color)
     metadata.push({
       idx,
@@ -1224,10 +1226,10 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   color_bar={{ title: `X × Y / 1000` }}
   style="height: 450px"
 >
-  {#snippet tooltip({ x, y, color_value, metadata })}
+  {#snippet tooltip({ x: coord_x, y: coord_y, color_value, metadata })}
     <strong>Point #{metadata.idx + 1}</strong><br />
-    X: {x.toFixed(1)}<br />
-    Y: {y.toFixed(1)}<br />
+    X: {coord_x.toFixed(1)}<br />
+    Y: {coord_y.toFixed(1)}<br />
     Color: {color_value?.toFixed(2)}<br />
     Quadrant: {metadata.quadrant}<br />
     Magnitude: {metadata.magnitude}
@@ -1379,16 +1381,16 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
     style="height: 400px;"
     legend={null}
   >
-    {#snippet tooltip({ x, y, metadata })}
+    {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
       <strong>{metadata.category}</strong><br />
-      Point {metadata.idx + 1} ({x}, {y.toFixed(2)})<br />
+      Point {metadata.idx + 1} ({coord_x}, {coord_y.toFixed(2)})<br />
       Symbol: {metadata.symbol}
     {/snippet}
   </ScatterPlot>
 
   {#if hovered_point}
-    {@const { x, y, metadata } = hovered_point}
-    Hovered point: ({x}, {y.toFixed(2)}) from '{metadata.category}'
+    {@const { x: coord_x, y: coord_y, metadata } = hovered_point}
+    Hovered point: ({coord_x}, {coord_y.toFixed(2)}) from '{metadata.category}'
   {:else}
     No point hovered
   {/if}
@@ -1453,9 +1455,9 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
       `,
     }}
   >
-    {#snippet tooltip({ x, y, metadata })}
+    {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
       <strong>{metadata.series}</strong><br />
-      Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
+      Position: ({coord_x.toFixed(2)}, {coord_y.toFixed(2)})<br />
       Point Index: {metadata.point}
     {/snippet}
   </ScatterPlot>
@@ -1640,9 +1642,9 @@ When points cluster tightly, manual labels overlap. Set `auto_placement: true` o
       point_label: [],
     }
     for (let idx = 0; idx < positions.length; idx++) {
-      const [px, py] = positions[idx]
-      points.x.push(px)
-      points.y.push(py)
+      const [pixel_x, pixel_y] = positions[idx]
+      points.x.push(pixel_x)
+      points.y.push(pixel_y)
       points.point_style.push({ fill: 'darkorange', radius: 10 })
       points.point_label.push({
         text: `${label_prefix}${idx + 1}`,
@@ -1764,16 +1766,16 @@ Adjust SA iterations and the leader-line threshold to see how placement changes:
 
   const series = $derived([
     {
-      x: elements.map((el) => el.x),
-      y: elements.map((el) => el.y),
-      point_style: elements.map((el) => ({
-        fill: el.y > 60 ? '#3b82f6' : el.y > 30 ? '#f59e0b' : '#ef4444',
+      x: elements.map((element) => element.x),
+      y: elements.map((element) => element.y),
+      point_style: elements.map((element) => ({
+        fill: element.y > 60 ? '#3b82f6' : element.y > 30 ? '#f59e0b' : '#ef4444',
         radius: 5,
         stroke: 'white',
         stroke_width: 1,
       })),
-      point_label: elements.map((el) => ({
-        text: el.text,
+      point_label: elements.map((element) => ({
+        text: element.text,
         auto_placement: true,
         font_size: '11px',
       })),
@@ -1894,9 +1896,9 @@ Lines that leave the fixed `x_axis.range` / `y_axis.range` are clipped at the pl
   const generate_line = (start_x, start_y, end_x, end_y, steps, label) => {
     const line = { x: [], y: [], label }
     for (let idx = 0; idx <= steps; idx++) {
-      const t = idx / steps
-      line.x.push(start_x + (end_x - start_x) * t)
-      line.y.push(start_y + (end_y - start_y) * t)
+      const fraction = idx / steps
+      line.x.push(start_x + (end_x - start_x) * fraction)
+      line.y.push(start_y + (end_y - start_y) * fraction)
     }
     return line
   }
@@ -1905,10 +1907,10 @@ Lines that leave the fixed `x_axis.range` / `y_axis.range` are clipped at the pl
   const generate_parabola = (start_x, end_x, curvature, vertical_shift, steps, label) => {
     const curve = { x: [], y: [], label }
     for (let idx = 0; idx <= steps; idx++) {
-      const x = start_x + (end_x - start_x) * (idx / steps)
+      const coord_x = start_x + (end_x - start_x) * (idx / steps)
       // Simple downward-opening parabola: y = -curvature * x^2 + shift
-      curve.x.push(x)
-      curve.y.push(-curvature * x * x + vertical_shift)
+      curve.x.push(coord_x)
+      curve.y.push(-curvature * coord_x * coord_x + vertical_shift)
     }
     return curve
   }
@@ -1925,9 +1927,9 @@ Lines that leave the fixed `x_axis.range` / `y_axis.range` are clipped at the pl
   ) => {
     const wave = { x: [], y: [], label }
     for (let idx = 0; idx <= steps; idx++) {
-      const x = start_x + (end_x - start_x) * (idx / steps)
-      wave.x.push(x)
-      wave.y.push(amplitude * Math.sin(frequency * x) + vertical_shift)
+      const coord_x = start_x + (end_x - start_x) * (idx / steps)
+      wave.x.push(coord_x)
+      wave.y.push(amplitude * Math.sin(frequency * coord_x) + vertical_shift)
     }
     return wave
   }
@@ -2048,9 +2050,9 @@ Group legend items with `legend_group` (e.g. DFT methods, ML potentials, experim
   legend={{ draggable: true }}
   style="height: 400px"
 >
-  {#snippet tooltip({ x, y, label })}
+  {#snippet tooltip({ x: coord_x, y: coord_y, label })}
     <strong>{label}</strong><br />
-    Sample {x}: {y.toFixed(2)} eV
+    Sample {coord_x}: {coord_y.toFixed(2)} eV
   {/snippet}
 </ScatterPlot>
 ```
@@ -2063,24 +2065,24 @@ Display multiple scatter plots in a responsive 2×2 grid:
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
-  const make_data = (fn) => {
+  const make_data = (callback) => {
     const x_vals = Array.from({ length: 30 }, (_, idx) => idx)
-    return { x: x_vals, y: x_vals.map(fn) }
+    return { x: x_vals, y: x_vals.map(callback) }
   }
 
   const plots = [
-    { title: 'Linear', data: make_data((x) => 2 * x + Math.random() * 10) },
+    { title: 'Linear', data: make_data((coord_x) => 2 * coord_x + Math.random() * 10) },
     {
       title: 'Quadratic',
-      data: make_data((x) => (x - 15) ** 2 / 10 + Math.random() * 5),
+      data: make_data((coord_x) => (coord_x - 15) ** 2 / 10 + Math.random() * 5),
     },
     {
       title: 'Exponential',
-      data: make_data((x) => Math.exp(x / 10) + Math.random() * 2),
+      data: make_data((coord_x) => Math.exp(coord_x / 10) + Math.random() * 2),
     },
     {
       title: 'Sine',
-      data: make_data((x) => 15 + 10 * Math.sin(x / 3) + Math.random() * 2),
+      data: make_data((coord_x) => 15 + 10 * Math.sin(coord_x / 3) + Math.random() * 2),
     },
   ]
 </script>
@@ -2302,7 +2304,7 @@ Use the `where` condition to fill only where a condition is true, e.g. highlight
     {
       upper: { type: 'series', series_idx: 0 },
       lower: { type: 'series', series_idx: 1 },
-      where: (_x, y_upper, y_lower) => y_upper > y_lower,
+      where: (_unused_coord_x, y_upper, y_lower) => y_upper > y_lower,
       fill: 'rgba(46, 204, 113, 0.4)',
       label: 'A > B',
       curve: 'monotoneX',
@@ -2310,7 +2312,7 @@ Use the `where` condition to fill only where a condition is true, e.g. highlight
     {
       upper: { type: 'series', series_idx: 1 },
       lower: { type: 'series', series_idx: 0 },
-      where: (_x, y_upper, y_lower) => y_upper > y_lower,
+      where: (_unused_coord_x, y_upper, y_lower) => y_upper > y_lower,
       fill: 'rgba(230, 126, 34, 0.4)',
       label: 'B > A',
       curve: 'monotoneX',
@@ -2818,10 +2820,10 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
 
 <div style="margin-bottom: 1em">
   <strong>Z-Index:</strong>
-  {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as zi (zi)}
+  {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as z_index_2 (z_index_2)}
     <label style="margin-left: 1em">
-      <input type="radio" bind:group={z_index} value={zi} />
-      {zi}
+      <input type="radio" bind:group={z_index} value={z_index_2} />
+      {z_index_2}
     </label>
   {/each}
 </div>
@@ -3423,7 +3425,7 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
 
   const temperature_data = {
     x: time,
-    y: time.map((t) => 20 + 15 * Math.sin(t * 0.3) + Math.random() * 3),
+    y: time.map((time_value) => 20 + 15 * Math.sin(time_value * 0.3) + Math.random() * 3),
     label: `Temperature (°C)`,
     point_style: { fill: `#e74c3c`, radius: 4 },
     line_style: { stroke: `#e74c3c`, stroke_width: 2 },
@@ -3432,7 +3434,9 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
   }
   const pressure_data = {
     x: time,
-    y: time.map((t) => 100 + 30 * Math.sin(t * 0.3 + 0.5) + Math.random() * 5),
+    y: time.map(
+      (time_value) => 100 + 30 * Math.sin(time_value * 0.3 + 0.5) + Math.random() * 5,
+    ),
     label: `Pressure (kPa)`,
     point_style: { fill: `#3498db`, radius: 4 },
     line_style: { stroke: `#3498db`, stroke_width: 2 },
@@ -3481,7 +3485,9 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
 
   const make_series = (label, color, y_axis, freq, offset, amp, noise) => ({
     x: x_vals,
-    y: x_vals.map((x) => offset + amp * Math.sin(x * freq) + Math.random() * noise),
+    y: x_vals.map(
+      (coord_x) => offset + amp * Math.sin(coord_x * freq) + Math.random() * noise,
+    ),
     label,
     y_axis,
     markers: `line+points`,
@@ -3522,7 +3528,9 @@ Plot two series with independent x-scales on the same chart. The primary x-axis 
 
   // Emission spectrum vs wavelength (bottom x-axis, nm)
   const wavelengths = [380, 430, 480, 530, 580, 630, 680, 730, 780]
-  const intensity = wavelengths.map((wl) => 0.85 * Math.exp(-0.5 * ((wl - 550) / 80) ** 2))
+  const intensity = wavelengths.map(
+    (wavelength) => 0.85 * Math.exp(-0.5 * ((wavelength - 550) / 80) ** 2),
+  )
 
   const wavelength_series = {
     x: wavelengths,
@@ -3535,7 +3543,7 @@ Plot two series with independent x-scales on the same chart. The primary x-axis 
 
   // Same spectrum plotted against energy (top x2-axis, eV); E = 1240 / λ
   const energy_series = {
-    x: wavelengths.map((wl) => 1240 / wl),
+    x: wavelengths.map((wavelength) => 1240 / wavelength),
     y: intensity,
     label: `Energy (eV)`,
     x_axis: `x2`,

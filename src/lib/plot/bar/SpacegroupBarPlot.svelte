@@ -46,28 +46,35 @@
 
   // Normalize input data to space group numbers
   const normalized_data = $derived(
-    data.map(spg.normalize_spacegroup).filter((sg): sg is number => sg !== null),
+    data
+      .map(spg.normalize_spacegroup)
+      .filter((space_group): space_group is number => space_group !== null),
   )
 
   // Histogram of space group number counts
   const histogram = $derived.by(() => {
     const hist = new SvelteMap<number, number>()
-    for (const sg of normalized_data) hist.set(sg, (hist.get(sg) ?? 0) + 1)
+    for (const space_group of normalized_data)
+      hist.set(space_group, (hist.get(space_group) ?? 0) + 1)
     return hist
   })
 
   // Total counts per crystal system
   const crystal_system_counts = $derived.by(() => {
     const counts = new SvelteMap<CrystalSystem, number>()
-    for (const [sg, count] of histogram) {
-      const system = spg.spacegroup_to_crystal_sys(sg)
+    for (const [space_group, count] of histogram) {
+      const system = spg.spacegroup_to_crystal_sys(space_group)
       if (system) counts.set(system, (counts.get(system) ?? 0) + count)
     }
     return counts
   })
 
   // Create sorted list of space groups for x-axis
-  const sorted_spacegroups = $derived(Array.from(histogram.keys()).toSorted((a, b) => a - b))
+  const sorted_spacegroups = $derived(
+    Array.from(histogram.keys()).toSorted(
+      (left_value, right_value) => left_value - right_value,
+    ),
+  )
 
   // Always show full space group range (1-230)
   const x_range: Vec2 = [0.5, MAX_SPACEGROUP + 0.5]
@@ -92,13 +99,13 @@
   // Smart tick selection: thin out ticks for dense data
   const x_axis_ticks = $derived.by(() => {
     const non_zero_count = sorted_spacegroups.filter(
-      (sg) => (histogram.get(sg) ?? 0) > 0,
+      (space_group) => (histogram.get(space_group) ?? 0) > 0,
     ).length
 
     // If data is dense (>40 space groups with data), show only multiples of 5
     const candidates =
       non_zero_count > 40
-        ? sorted_spacegroups.filter((sg) => sg % 5 === 0)
+        ? sorted_spacegroups.filter((space_group) => space_group % 5 === 0)
         : sorted_spacegroups
     // Vertical ticks are rotated 90°, so each label needs ~one line height along the
     // axis. Greedily drop ticks that would land on the previous kept label. (Horizontal
@@ -106,9 +113,9 @@
     const min_gap =
       orientation === `vertical` && plot_width ? TICK_LABEL_HEIGHT_PX * sg_per_px : 0
     let last_kept = -Infinity
-    return candidates.filter((sg) => {
-      if (sg - last_kept < min_gap) return false
-      last_kept = sg
+    return candidates.filter((space_group) => {
+      if (space_group - last_kept < min_gap) return false
+      last_kept = space_group
       return true
     })
   })
@@ -118,13 +125,13 @@
     const series_by_system = new SvelteMap<CrystalSystem, { x: number[]; y: number[] }>()
 
     // Group data by crystal system
-    for (const sg of sorted_spacegroups) {
-      const system = spg.spacegroup_to_crystal_sys(sg)
+    for (const space_group of sorted_spacegroups) {
+      const system = spg.spacegroup_to_crystal_sys(space_group)
       if (!system) continue
       let series = series_by_system.get(system)
       if (!series) series_by_system.set(system, (series = { x: [], y: [] }))
-      series.x.push(sg)
-      series.y.push(histogram.get(sg) ?? 0)
+      series.x.push(space_group)
+      series.y.push(histogram.get(space_group) ?? 0)
     }
 
     // Convert to BarSeries array, maintaining order of crystal systems
@@ -209,9 +216,11 @@
 </script>
 
 {#snippet tooltip(info: BarHandlerProps)}
-  {@const { x: sg, y: count } = info}
-  {@const system = spg.spacegroup_to_crystal_sys(sg)}
-  Space Group: {format_value(sg, `.0f`)} ({spg.SPACEGROUP_NUM_TO_SYMBOL[sg]})<br />
+  {@const { x: space_group, y: count } = info}
+  {@const system = spg.spacegroup_to_crystal_sys(space_group)}
+  Space Group: {format_value(space_group, `.0f`)} ({spg.SPACEGROUP_NUM_TO_SYMBOL[
+    space_group
+  ]})<br />
   {#if system}
     Crystal System: {system}<br />
   {/if}
@@ -227,8 +236,8 @@
 }: {
   width: number
   height: number
-  x_scale_fn: (x: number) => number
-  y_scale_fn: (y: number) => number
+  x_scale_fn: (coord_x: number) => number
+  y_scale_fn: (coord_y: number) => number
   pad: { t: number; b: number; l: number; r: number }
 })}
   <g class="crystal-system-overlays" pointer-events="none">

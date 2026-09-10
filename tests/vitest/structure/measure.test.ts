@@ -40,9 +40,9 @@ describe(`measure: distances`, () => {
   test(`pbc displacement`, () => {
     const lat = cubic(10)
 
-    const v1: Vec3 = [0.5, 0.5, 0.5]
-    const v2: Vec3 = [9.8, 9.6, 9.5]
-    expect_vec3_close(displacement_pbc(v1, v2, lat), [-0.7, -0.9, -1.0], 10)
+    const vector_1: Vec3 = [0.5, 0.5, 0.5]
+    const vector_2: Vec3 = [9.8, 9.6, 9.5]
+    expect_vec3_close(displacement_pbc(vector_1, vector_2, lat), [-0.7, -0.9, -1.0], 10)
 
     const pos: Vec3 = [5.0, 5.0, 5.0]
     expect(displacement_pbc(pos, pos, lat)).toEqual([0, 0, 0])
@@ -123,8 +123,8 @@ describe(`measure: angles`, () => {
     [`opposite directions`, [1, 0, 0], [-1, 0, 0], 180],
     [`same direction`, [1, 0, 0], [2, 0, 0], 0],
     [`identical vectors`, [1, 1, 1], [1, 1, 1], 0],
-  ] as [string, Vec3, Vec3, number][])(`basic angles: %s`, (_desc, v1, v2, deg) => {
-    expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(deg, 10)
+  ] as [string, Vec3, Vec3, number][])(`basic angles: %s`, (_desc, vector_1, vector_2, deg) => {
+    expect(angle_between_vectors(vector_1, vector_2, `degrees`)).toBeCloseTo(deg, 10)
   })
 
   // interior angle at `vertex` between the two `others` corners of a triangle
@@ -163,22 +163,22 @@ describe(`measure: angles`, () => {
       [1, 1, 1],
       [-1, -1, -1],
     ],
-  ] as [Vec3, Vec3][])(`angle symmetry: angle(v1,v2) = angle(v2,v1)`, (v1, v2) => {
-    expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(
-      angle_between_vectors(v2, v1, `degrees`),
+  ] as [Vec3, Vec3][])(`angle symmetry: angle(v1,v2) = angle(v2,v1)`, (vector_1, vector_2) => {
+    expect(angle_between_vectors(vector_1, vector_2, `degrees`)).toBeCloseTo(
+      angle_between_vectors(vector_2, vector_1, `degrees`),
       12,
     )
   })
 
   test.each([0.1, 2, 100])(`angle is independent of vector magnitude (scale %p)`, (scale) => {
-    const v1: Vec3 = [1, 2, 3]
-    const v2: Vec3 = [4, 5, 6]
-    const base_angle = angle_between_vectors(v1, v2, `degrees`)
-    const scaled_v1: Vec3 = [v1[0] * scale, v1[1] * scale, v1[2] * scale]
-    const scaled_v2: Vec3 = [v2[0] * scale, v2[1] * scale, v2[2] * scale]
+    const vector_1: Vec3 = [1, 2, 3]
+    const vector_2: Vec3 = [4, 5, 6]
+    const base_angle = angle_between_vectors(vector_1, vector_2, `degrees`)
+    const scaled_v1: Vec3 = [vector_1[0] * scale, vector_1[1] * scale, vector_1[2] * scale]
+    const scaled_v2: Vec3 = [vector_2[0] * scale, vector_2[1] * scale, vector_2[2] * scale]
 
-    expect(angle_between_vectors(scaled_v1, v2, `degrees`)).toBeCloseTo(base_angle, 10)
-    expect(angle_between_vectors(v1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
+    expect(angle_between_vectors(scaled_v1, vector_2, `degrees`)).toBeCloseTo(base_angle, 10)
+    expect(angle_between_vectors(vector_1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
     expect(angle_between_vectors(scaled_v1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
   })
 
@@ -244,8 +244,8 @@ describe(`measure: dihedral angles`, () => {
     [`a triclinic cell boundary`, [[6, 0, 0], [1.5, 5.5, 0], [0.8, 1.2, 7]], [[5.7, 5.2, 6.8], [0.4, 0.3, 0.2], [1.9, 4.9, 6.5], [2.6, 1.1, 0.7]], 39.60948324],
   ] as [string, Matrix3x3, Vec3[], number][])(
     `applies the minimum image convention across %s`,
-    (_name, lattice, [p1, p2, p3, p4], expected) => {
-      expect(dihedral_angle(p1, p2, p3, p4, lattice, PBC_ALL)).toBeCloseTo(expected, 7)
+    (_name, lattice, [point_1, point, point_3, point_4], expected) => {
+      expect(dihedral_angle(point_1, point, point_3, point_4, lattice, PBC_ALL)).toBeCloseTo(expected, 7)
     },
   )
 
@@ -254,16 +254,22 @@ describe(`measure: dihedral angles`, () => {
     // that is a short bond through the boundary; along c (vacuum) it is a genuine 9.4 A gap.
     const lattice = cubic(10)
     // oxfmt-ignore
-    const [p1, p2, p3, p4]: Vec3[] = [[9.7, 0.4, 0.3], [0.2, 0.4, 0.3], [0.2, 9.8, 0.3], [0.2, 9.8, 9.7]]
+    const [point_1, point, point_3, point_4]: Vec3[] = [[9.7, 0.4, 0.3], [0.2, 0.4, 0.3], [0.2, 9.8, 0.3], [0.2, 9.8, 9.7]]
     // p3->p4 runs +9.4 A up the vacuum instead of -0.6 A through it, flipping the torsion sign
-    expect(dihedral_angle(p1, p2, p3, p4, lattice, SLAB_PBC)).toBeCloseTo(-90, 10)
-    expect(dihedral_angle(p1, p2, p3, p4, lattice, PBC_ALL)).toBeCloseTo(90, 10)
+    expect(dihedral_angle(point_1, point, point_3, point_4, lattice, SLAB_PBC)).toBeCloseTo(
+      -90,
+      10,
+    )
+    expect(dihedral_angle(point_1, point, point_3, point_4, lattice, PBC_ALL)).toBeCloseTo(
+      90,
+      10,
+    )
   })
 
   test(`ignoring periodicity across a boundary gives a badly wrong torsion`, () => {
-    const [p1, p2, p3, p4] = corner_chain
-    const with_pbc = dihedral_angle(p1, p2, p3, p4, cubic(10), PBC_ALL)
-    const without_pbc = dihedral_angle(p1, p2, p3, p4, null)
+    const [point_1, point, point_3, point_4] = corner_chain
+    const with_pbc = dihedral_angle(point_1, point, point_3, point_4, cubic(10), PBC_ALL)
+    const without_pbc = dihedral_angle(point_1, point, point_3, point_4, null)
     // absolute value is covered by the corner MIC case; this pins that open-boundary diverges
     expect(Math.abs(with_pbc - without_pbc)).toBeGreaterThan(90)
   })
@@ -282,10 +288,10 @@ describe(`measure: dihedral angles`, () => {
 
   test(`radians mode agrees with degrees mode`, () => {
     // oxfmt-ignore
-    const [p1, p2, p3, p4]: Vec3[] = [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0, 1]]
-    const rad = dihedral_angle(p1, p2, p3, p4, null, undefined, `radians`)
+    const [point_1, point, point_3, point_4]: Vec3[] = [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0, 1]]
+    const rad = dihedral_angle(point_1, point, point_3, point_4, null, undefined, `radians`)
     expect(rad).toBeCloseTo(Math.PI / 2, 12)
-    const degrees = dihedral_angle(p1, p2, p3, p4, null)
+    const degrees = dihedral_angle(point_1, point, point_3, point_4, null)
     // Digit COUNT, not a tolerance — passing 1e-9 here would mean 10^-1e-9/2, i.e. half a
     // degree. to_degrees multiplies by a precomputed fl(180/PI) while this line divides by
     // PI, so the two orderings disagree by up to 1 ulp (measured 2.84e-14 over 200k angles

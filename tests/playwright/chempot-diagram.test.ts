@@ -4,23 +4,17 @@ import { IS_CI } from './helpers'
 
 const TEST_URL = `/convex-hull/chempot-diagram`
 
-const get_section_by_heading = async (page: Page, heading_text: RegExp): Promise<Locator> => {
-  const section = page
-    .locator(`section`)
-    .filter({
-      has: page.getByRole(`heading`, { name: heading_text }),
-    })
-    .first()
-  await expect(section).toBeVisible({ timeout: 20_000 })
-  await section.scrollIntoViewIfNeeded()
-  return section
-}
 const get_diagram_by_heading = async (
   page: Page,
   heading_text: RegExp,
   diagram_selector: string,
 ): Promise<Locator> => {
-  const section = await get_section_by_heading(page, heading_text)
+  const section = page
+    .locator(`section`)
+    .filter({ has: page.getByRole(`heading`, { name: heading_text }) })
+    .first()
+  await expect(section).toBeVisible({ timeout: 20_000 })
+  await section.scrollIntoViewIfNeeded()
   const diagram = section.locator(diagram_selector).first()
   await expect(diagram).toBeVisible()
   return diagram
@@ -73,11 +67,6 @@ const expect_download_suffix = async (
 const get_export_button = (export_pane: Locator, label_text: string): Locator =>
   export_pane.locator(`.export-item:has-text("${label_text}") button`).first()
 
-const count_checked = (checkboxes: Locator): Promise<number> =>
-  checkboxes.evaluateAll(
-    (nodes) => nodes.filter((node) => (node as HTMLInputElement).checked).length,
-  )
-
 const open_pane = async (diagram: Locator, toggle: Locator, pane: Locator): Promise<void> => {
   await diagram.hover()
   await toggle.click({ force: true })
@@ -120,13 +109,6 @@ const assert_pin_toggle_and_escape = async (
     .poll(async () => ((await tooltip.count()) ? ((await tooltip.textContent()) ?? ``) : ``))
     .not.toContain(`Pinned · Press Esc to unlock`)
 }
-const get_projection_values = (
-  x_select: Locator,
-  y_select: Locator,
-  z_select: Locator,
-): Promise<[string, string, string]> =>
-  Promise.all([x_select.inputValue(), y_select.inputValue(), z_select.inputValue()])
-
 test.describe(`ChemPot Diagram interactions`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ChemPot interactions rely on WebGL-heavy rendering`)
@@ -205,16 +187,13 @@ test.describe(`ChemPot Diagram interactions`, () => {
     )
     await open_pane(diagram, controls_toggle, controls_pane)
 
-    const x_select = controls_pane.locator(`#chempot-proj-x`).first()
-    const y_select = controls_pane.locator(`#chempot-proj-y`).first()
-    const z_select = controls_pane.locator(`#chempot-proj-z`).first()
-    await expect(x_select).toBeVisible()
-    await expect(y_select).toBeVisible()
-    await expect(z_select).toBeVisible()
-
-    await x_select.selectOption(`O`)
-    const selected_projection = await get_projection_values(x_select, y_select, z_select)
-    expect(new Set(selected_projection).size).toBe(3)
+    const projection = [`x`, `y`, `z`].map((axis) =>
+      controls_pane.locator(`#chempot-proj-${axis}`).first(),
+    )
+    const read_projection = () => Promise.all(projection.map((select) => select.inputValue()))
+    for (const select of projection) await expect(select).toBeVisible()
+    await projection[0].selectOption(`O`)
+    expect(new Set(await read_projection()).size).toBe(3)
 
     const preset_buttons = controls_pane.locator(`.projection-presets button`)
     await expect.poll(() => preset_buttons.count()).toBeGreaterThan(1)
@@ -225,11 +204,21 @@ test.describe(`ChemPot Diagram interactions`, () => {
     expect(preset_text).toMatch(/^[A-Za-z]+-[A-Za-z]+-[A-Za-z]+$/)
     const expected_projection = preset_text.split(`-`)
     await alternate_preset.click()
-    await expect
-      .poll(() => get_projection_values(x_select, y_select, z_select))
-      .toEqual(expected_projection)
+    await expect.poll(read_projection).toEqual(expected_projection)
 
     const formula_toggle = diagram.locator(`button.chempot-formula-toggle`).first()
+    await expect(controls_toggle).toHaveCSS(`position`, `static`)
+    // The gear must not cover the adjacent formula button in the chrome row.
+    await expect
+      .poll(() =>
+        formula_toggle.evaluate((button) => {
+          const rect = button.getBoundingClientRect()
+          return button.contains(
+            document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+          )
+        }),
+      )
+      .toBe(true)
     const formula_pane = diagram
       .locator(`.draggable-pane`)
       .filter({
@@ -243,11 +232,12 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await checkboxes.first().check({ force: true })
     await expect(checkboxes.first()).toBeChecked()
 
+    const checked_formulas = formula_pane.locator(`input[type="checkbox"]:checked`)
     await formula_pane.getByRole(`button`, { name: `Clear` }).click()
-    await expect.poll(() => count_checked(checkboxes)).toBe(0)
+    await expect(checked_formulas).toHaveCount(0)
 
     await formula_pane.getByRole(`button`, { name: `Surface` }).click()
-    await expect.poll(() => count_checked(checkboxes)).toBeGreaterThan(0)
+    await expect.poll(() => checked_formulas.count()).toBeGreaterThan(0)
 
     const search_input = formula_pane.getByPlaceholder(`Formula filter`)
     await search_input.fill(`__no_matching_formula__`)

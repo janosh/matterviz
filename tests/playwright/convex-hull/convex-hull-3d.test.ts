@@ -15,12 +15,12 @@ const ternary_diagram = (page: Page) => page.locator(`.convex-hull-3d`).first()
 const scan_for_entry = async (
   box: { x: number; y: number; width: number; height: number },
   step: number,
-  hit: (x: number, y: number) => Promise<boolean>,
+  hit: (coord_x: number, coord_y: number) => Promise<boolean>,
 ): Promise<{ x: number; y: number }> => {
   for (let x_frac = 0.1; x_frac <= 0.9; x_frac += step) {
     for (let y_frac = 0.1; y_frac <= 0.9; y_frac += step) {
-      const [x, y] = [box.x + box.width * x_frac, box.y + box.height * y_frac]
-      if (await hit(x, y)) return { x, y }
+      const [coord_x, coord_y] = [box.x + box.width * x_frac, box.y + box.height * y_frac]
+      if (await hit(coord_x, coord_y)) return { x: coord_x, y: coord_y }
     }
   }
   throw new Error(
@@ -71,8 +71,8 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const canvas = diagram.locator(`canvas`).first()
     const box = await require_bbox(canvas, `canvas`)
-    const entry_pos = await scan_for_entry(box, 0.04, async (x, y) => {
-      await page.mouse.move(x, y)
+    const entry_pos = await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
+      await page.mouse.move(coord_x, coord_y)
       return (await diagram.getAttribute(`data-has-hover`)) === `true`
     })
     await page.mouse.click(entry_pos.x, entry_pos.y)
@@ -189,7 +189,9 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     // Color scale label is clickable and its multiselect rendered
     const color_label = controls.getByText(`Color scale`, { exact: true })
     await expect(color_label).toBeVisible()
-    expect(await color_label.evaluate((el) => getComputedStyle(el).cursor)).toBe(`pointer`)
+    expect(await color_label.evaluate((element) => getComputedStyle(element).cursor)).toBe(
+      `pointer`,
+    )
     await expect(controls.locator(`.multiselect`)).toBeVisible()
   })
 
@@ -200,8 +202,8 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     const box = await require_bbox(diagram.locator(`canvas`).first(), `canvas`)
 
     // Find an entry by scanning - selection indicates we hit one
-    const entry_pos = await scan_for_entry(box, 0.04, async (x, y) => {
-      await page.mouse.click(x, y)
+    const entry_pos = await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
+      await page.mouse.click(coord_x, coord_y)
       await page.waitForTimeout(30)
       return (await diagram.getAttribute(`data-has-selection`)) === `true`
     })
@@ -224,8 +226,8 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     const diagram = ternary_diagram(page)
     const box = await require_bbox(diagram.locator(`canvas`).first(), `canvas`)
     const tooltip = diagram.locator(`.plot-tooltip`)
-    await scan_for_entry(box, 0.04, async (x, y) => {
-      await page.mouse.move(x, y)
+    await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
+      await page.mouse.move(coord_x, coord_y)
       return (await tooltip.allTextContents()).join(``).includes(`Fractional:`)
     })
     await expect(tooltip).toBeVisible()
@@ -268,8 +270,8 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
 
     // Hover first: only click a compound known to carry a structure in this fixture.
     const tooltip = diagram.locator(`.plot-tooltip`)
-    const entry_pos = await scan_for_entry(box, 0.02, async (x, y) => {
-      await page.mouse.move(x, y)
+    const entry_pos = await scan_for_entry(box, 0.02, async (coord_x, coord_y) => {
+      await page.mouse.move(coord_x, coord_y)
       return (await tooltip.allTextContents()).some((text) => /test-[0-4]\b/.test(text))
     })
     await page.mouse.click(entry_pos.x, entry_pos.y)
@@ -296,7 +298,9 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await content.evaluate((element) => (element.scrollTop = 0))
 
     // Pane has pointer-events: auto (prevents event leaking to canvas)
-    expect(await pane.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe(`auto`)
+    expect(await pane.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe(
+      `auto`,
+    )
 
     // Dragging the handle should NOT rotate the hull behind it
     const canvas = diagram.locator(`canvas`).first()

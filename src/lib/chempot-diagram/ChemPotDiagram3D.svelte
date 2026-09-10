@@ -224,8 +224,8 @@
   let y_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let z_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
 
-  function to_vec3(pt: number[]): THREE.Vector3 {
-    const [x_val, y_val, z_val] = to_render_xyz(pt)
+  function to_vec3(point: number[]): THREE.Vector3 {
+    const [x_val, y_val, z_val] = to_render_xyz(point)
     return new THREE.Vector3(x_val, y_val, z_val)
   }
 
@@ -371,8 +371,8 @@
     const points = render_domains.flatMap((domain) => domain.points_3d)
     if (points.length === 0) return [1, 1, 1]
     const spans = [1, 2, 0].map((axis) => {
-      const [lo, hi] = array_extent(points.map((point) => point[axis]))
-      return Math.max(hi - lo, 1e-6)
+      const [lower, upper] = array_extent(points.map((point) => point[axis]))
+      return Math.max(upper - lower, 1e-6)
     })
     const max_span = Math.max(...spans)
     return spans.map((span) => clamp(max_span / span, 1, 4)) as Vec3
@@ -724,7 +724,7 @@
     // geometry directly since ConvexGeometry requires 4+ points for a 3D hull
     if (unique_points.length === 3) {
       const geom = new THREE.BufferGeometry()
-      const vectors = unique_points.map((pt) => to_vec3(pt))
+      const vectors = unique_points.map((point) => to_vec3(point))
       const verts = new Float32Array(vectors.flatMap((vec) => [vec.x, vec.y, vec.z]))
       geom.setAttribute(`position`, new THREE.Float32BufferAttribute(verts, 3))
       geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
@@ -740,8 +740,8 @@
     const tol = 1e-4
     const vertex_owners = new Map<string, string[]>()
     for (const domain of render_domains) {
-      for (const pt of domain.points_3d) {
-        const key = pt.map((val) => (Math.round(val / tol) * tol).toFixed(4)).join(`,`)
+      for (const point of domain.points_3d) {
+        const key = point.map((val) => (Math.round(val / tol) * tol).toFixed(4)).join(`,`)
         const owners = vertex_owners.get(key)
         if (owners) {
           if (!owners.includes(domain.formula)) owners.push(domain.formula)
@@ -1275,6 +1275,7 @@
       series={controls_series}
       toggle_props={{
         class: `chempot-controls-toggle`,
+        style: `position: static`,
         title: `3D plot controls`,
       }}
       pane_props={{ class: `chempot-controls-pane` }}

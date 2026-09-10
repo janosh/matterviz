@@ -35,7 +35,7 @@ import {
   sides_equal,
 } from '$lib/plot/core/layout'
 import type { ResolvedMarginals } from '$lib/plot/core/marginals'
-import { add_sides, reserve_marginal_pad } from '$lib/plot/core/marginals'
+import { reserve_marginal_pad } from '$lib/plot/core/marginals'
 import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
 import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
 import type { PlotTitleProp } from '$lib/plot/core/plot-title'
@@ -369,9 +369,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // Keep a dropped legend inside the plot when the plot or the legend resizes
   $effect(() => {
     if (!legend_manual_position || legend_is_dragging) return
-    const { x, y } = legend_manual_position
+    const { x: coord_x, y: coord_y } = legend_manual_position
     const constrained = constrain_legend_position(legend_manual_position, legend_footprint)
-    if (constrained.x !== x || constrained.y !== y) legend_manual_position = constrained
+    if (constrained.x !== coord_x || constrained.y !== coord_y)
+      legend_manual_position = constrained
   })
   const legend_drag_start = (event: MouseEvent): void => {
     const legend_el = event.currentTarget
@@ -426,9 +427,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     }),
   )
   const pinned_rects = $derived([...legend_pinned_rects, ...(opts.exclusion_rects?.() ?? [])])
+  const marginal_pad = $derived(reserve_marginal_pad(opts.marginals()))
   const base_decoration_solution = $derived(
     solve_decorations({
       base_pad: effective_base_pad,
+      reserved_pad: marginal_pad,
       axis_pad: facet.padding(axis_pad),
       width,
       height,
@@ -437,8 +440,19 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       items: [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])],
     }),
   )
-  const marginal_pad = $derived(reserve_marginal_pad(opts.marginals()))
-  const pad = $derived(add_sides(base_decoration_solution.pad, marginal_pad))
+  const pad = $derived(base_decoration_solution.pad)
+  const outside_pad = $derived.by(() => {
+    const bands = { t: 0, b: 0, l: 0, r: 0 }
+    for (const placement of base_decoration_solution.placements) {
+      const { location, side, footprint } = placement
+      if (location !== `outside`) continue
+      if (side === `top`) bands.t = Math.max(bands.t, placement.y + footprint.height)
+      else if (side === `bottom`) bands.b = Math.max(bands.b, height - placement.y)
+      else if (side === `left`) bands.l = Math.max(bands.l, placement.x + footprint.width)
+      else if (side === `right`) bands.r = Math.max(bands.r, width - placement.x)
+    }
+    return bands
+  })
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
@@ -448,12 +462,12 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // there (their ranges/scales are [0, 1] sentinels, which would drop or misplace the line),
   // so charts without secondary axes (BinnedScatterPlot) still honour `x_axis: 'x2'`
   const ref_line_axes = $derived.by(() => {
-    const x2 = opts.has_x2() ? `x2` : `x`
-    const y2 = opts.has_y2() ? `y2` : `y`
+    const coord_x = opts.has_x2() ? `x2` : `x`
+    const coord_y_2 = opts.has_y2() ? `y2` : `y`
     const { current } = ranges
     return {
-      ranges: { x: current.x, x2: current[x2], y: current.y, y2: current[y2] },
-      scales: { x: scales.x, x2: scales[x2], y: scales.y, y2: scales[y2] },
+      ranges: { x: current.x, x2: current[coord_x], y: current.y, y2: current[coord_y_2] },
+      scales: { x: scales.x, x2: scales[coord_x], y: scales.y, y2: scales[coord_y_2] },
     }
   })
   const decoration_solution = $derived(
@@ -641,6 +655,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get title_config() {
       return title_config
+    },
+    get outside_pad() {
+      return outside_pad
     },
     get decoration_solution() {
       return decoration_solution

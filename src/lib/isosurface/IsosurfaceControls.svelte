@@ -47,7 +47,7 @@
 
   const volume_by_id = $derived(index_volumes(volumes))
   const resolve_geo_idx = (layer: IsosurfaceLayer): number =>
-    volumes.findIndex(({ id }) => id === layer.volume_id)
+    volumes.findIndex(({ id: identifier }) => identifier === layer.volume_id)
   const color_vol_of = (layer: IsosurfaceLayer): VolumetricData | undefined =>
     layer.color_volume_id === undefined ? undefined : volume_by_id.get(layer.color_volume_id)
 
@@ -153,16 +153,17 @@
     const value = raw_value.trim() === `` ? bound : Number(raw_value)
     if (Number.isNaN(value)) return
     range[axis][bound] = value
-    const is_default = range.every(([lo, hi]) => lo === 0 && hi === 1)
+    const is_default = range.every(([lower, upper]) => lower === 0 && upper === 1)
     settings.display_range = is_default ? undefined : range
   }
 
-  const isosurface_settings = track_settings(() => ({
-    wireframe: settings.wireframe,
-    halo: settings.halo,
-    layers: settings.layers.length,
-    display_range: settings.display_range?.flat().join(`,`) ?? ``,
-  }))
+  const default_settings = () =>
+    volumes.length > 0
+      ? auto_isosurface_settings(volumes[0])
+      : { ...DEFAULT_ISOSURFACE_SETTINGS }
+  const isosurface_settings = $derived(
+    track_settings(() => ({ ...settings }), { ...default_settings() }),
+  )
 </script>
 
 {#snippet range_bound_input(layer_idx: number, bound: 0 | 1, explicit_range?: Vec2)}
@@ -185,11 +186,7 @@
 <SettingsSection
   title="Isosurface"
   changed_keys={isosurface_settings.changed_keys}
-  on_reset={() =>
-    (settings =
-      volumes.length > 0
-        ? auto_isosurface_settings(volumes[0])
-        : { ...DEFAULT_ISOSURFACE_SETTINGS })}
+  on_reset={() => (settings = default_settings())}
   layout="grid"
   class="isosurface-settings"
 >

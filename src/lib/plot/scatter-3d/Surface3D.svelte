@@ -67,10 +67,17 @@
       geom.setIndex(triangles.flat())
     } else if (res_a && res_b && res_a >= 2 && res_b >= 2) {
       const indices: number[] = []
-      for (let ib = 0; ib < res_b - 1; ib++) {
-        for (let ia = 0; ia < res_a - 1; ia++) {
-          const tl = ib * res_a + ia
-          indices.push(tl, tl + res_a, tl + 1, tl + 1, tl + res_a, tl + res_a + 1)
+      for (let index_b = 0; index_b < res_b - 1; index_b++) {
+        for (let index_a = 0; index_a < res_a - 1; index_a++) {
+          const top_left = index_b * res_a + index_a
+          indices.push(
+            top_left,
+            top_left + res_a,
+            top_left + 1,
+            top_left + 1,
+            top_left + res_a,
+            top_left + res_a + 1,
+          )
         }
       }
       geom.setIndex(indices)
@@ -92,14 +99,14 @@
 
     if (config.type === `grid` && config.z_fn) {
       if (res_a < 2 || res_b < 2) return new THREE.BufferGeometry()
-      const [x0, x1] = config.x_range ?? x_range
-      const [y0, y1] = config.y_range ?? y_range
-      const x_step = (x1 - x0) / (res_a - 1)
-      const y_step = (y1 - y0) / (res_b - 1)
-      for (let ib = 0; ib < res_b; ib++) {
-        for (let ia = 0; ia < res_a; ia++) {
-          const x_val = x0 + ia * x_step
-          const y_val = y0 + ib * y_step
+      const [coord_x_0, coord_x_1] = config.x_range ?? x_range
+      const [coord_y_0, coord_y_1] = config.y_range ?? y_range
+      const x_step = (coord_x_1 - coord_x_0) / (res_a - 1)
+      const y_step = (coord_y_1 - coord_y_0) / (res_b - 1)
+      for (let index_b = 0; index_b < res_b; index_b++) {
+        for (let index_a = 0; index_a < res_a; index_a++) {
+          const x_val = coord_x_0 + index_a * x_step
+          const y_val = coord_y_0 + index_b * y_step
           add_vertex(positions, colors, x_val, y_val, config.z_fn(x_val, y_val))
         }
       }
@@ -108,22 +115,25 @@
 
     if (config.type === `parametric` && config.parametric_fn) {
       if (res_a < 2 || res_b < 2) return new THREE.BufferGeometry()
-      const [u0, u1] = config.u_range ?? [0, 1]
-      const [v0, v1] = config.v_range ?? [0, 1]
-      const u_step = (u1 - u0) / (res_a - 1)
-      const v_step = (v1 - v0) / (res_b - 1)
-      for (let ib = 0; ib < res_b; ib++) {
-        for (let ia = 0; ia < res_a; ia++) {
-          const pt = config.parametric_fn(u0 + ia * u_step, v0 + ib * v_step)
-          add_vertex(positions, colors, pt.x, pt.y, pt.z)
+      const [uniform_0, uniform_1] = config.u_range ?? [0, 1]
+      const [vector_0, vector_1] = config.v_range ?? [0, 1]
+      const u_step = (uniform_1 - uniform_0) / (res_a - 1)
+      const v_step = (vector_1 - vector_0) / (res_b - 1)
+      for (let index_b = 0; index_b < res_b; index_b++) {
+        for (let index_a = 0; index_a < res_a; index_a++) {
+          const point = config.parametric_fn(
+            uniform_0 + index_a * u_step,
+            vector_0 + index_b * v_step,
+          )
+          add_vertex(positions, colors, point.x, point.y, point.z)
         }
       }
       return build_geometry(positions, colors, res_a, res_b)
     }
 
     if (config.type === `triangulated` && config.points?.length) {
-      for (const pt of config.points) {
-        add_vertex(positions, colors, pt.x, pt.y, pt.z)
+      for (const point of config.points) {
+        add_vertex(positions, colors, point.x, point.y, point.z)
       }
       return build_geometry(positions, colors, undefined, undefined, config.triangles)
     }

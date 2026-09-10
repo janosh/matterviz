@@ -16,11 +16,8 @@ export default {
     timeout: 60_000,
   },
   use: {
-    // chrome-headless-shell (the headless default) pins ANGLE to swiftshader-webgl while WebGPU
-    // still asks for a real adapter, so the renderer never inits and 3D tests fail for reasons
-    // unrelated to the code. This channel is the full browser, which has a working WebGPU stack.
-    // CI is already green on the shell and forces a software adapter below, so leave it alone.
-    ...(is_ci ? {} : { channel: `chromium` as const }),
+    // Use Chromium's modern headless mode consistently in CI and local runs.
+    channel: `chromium`,
     // 3D failures on CI's software renderer say nothing as a bare log line. First retry only:
     // recording costs time on an already saturated box.
     trace: `on-first-retry`,
@@ -32,15 +29,22 @@ export default {
         `--enable-unsafe-webgpu`,
         `--enable-features=Vulkan`,
         `--enable-unsafe-swiftshader`,
-        ...(is_ci ? [`--use-webgpu-adapter=swiftshader`] : []),
+        // Select SwiftShader directly in ANGLE: its generic Vulkan backend requires native
+        // surface extensions that Chromium's bundled SwiftShader does not provide.
+        ...(is_ci
+          ? [
+              `--use-webgpu-adapter=swiftshader`,
+              `--use-vulkan=swiftshader`,
+              `--use-angle=swiftshader`,
+              `--disable-vulkan-surface`,
+            ]
+          : []),
       ],
     },
   },
-  // Software WebGPU spreads one canvas over several SwiftShader threads, so a worker per vCPU
-  // starves the render path: shard 3/4 took 6.1 min with 4 failures at 4 workers, 3.3 min with
-  // 1 at 2 workers. A real GPU allows more.
-  // Production pages need no Vite transforms alongside SwiftShader, freeing one worker.
-  workers: is_ci ? (e2e_mode === `preview` ? 3 : 2) : 16,
+  // Software GPU browsers compete for a runner's CPU and memory. Keep each CI shard serial;
+  // the shards still run in parallel on separate runners.
+  workers: is_ci ? 1 : 16,
   // Shard by test, not by file: structure.test.ts holds ~130 tests and most files 1-4, so
   // file-level sharding would pile the big ones onto one runner. Ordering-sensitive files opt
   // into test.describe.configure({ mode: `serial` }).

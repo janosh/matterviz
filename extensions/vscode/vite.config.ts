@@ -22,8 +22,10 @@ export default defineConfig(({ mode }) => ({
       ? {
           // just ignore svelte files in test mode
           name: `svelte-mock`,
-          resolveId: (id: string) => (id.endsWith(`.svelte`) ? id : null),
-          load: (id: string) => (id.endsWith(`.svelte`) ? `export default {}` : null),
+          resolveId: (identifier: string) =>
+            identifier.endsWith(`.svelte`) ? identifier : null,
+          load: (identifier: string) =>
+            identifier.endsWith(`.svelte`) ? `export default {}` : null,
         }
       : svelte(),
     mode === `test` ? mock_vscode() : null,

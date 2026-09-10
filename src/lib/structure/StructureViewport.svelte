@@ -179,8 +179,8 @@
 
   const read_orbit_target = (): Vec3 | undefined => {
     if (!orbit_controls?.target) return
-    const { x, y, z } = orbit_controls.target
-    return [x, y, z]
+    const { x: coord_x, y: coord_y, z: coord_z } = orbit_controls.target
+    return [coord_x, coord_y, coord_z]
   }
 
   const read_camera_position = (): Vec3 | undefined =>

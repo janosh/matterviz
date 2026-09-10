@@ -31,25 +31,25 @@ export type Matrix4Tuple = [
 ]
 
 // Generate all k-element combinations from an array.
-export function combinations<T>(arr: T[], k: number): T[][] {
+export function combinations<T>(arr: T[], order: number): T[][] {
   // Neither base case catches a negative k (`arr.length < k` is false for one), so the
   // recursion ran away into a stack overflow instead of reporting the caller's bad argument
-  if (!Number.isInteger(k) || k < 0) {
-    throw new RangeError(`combinations needs a non-negative integer k, got ${k}`)
+  if (!Number.isInteger(order) || order < 0) {
+    throw new RangeError(`combinations needs a non-negative integer k, got ${order}`)
   }
-  if (k === 0) return [[]]
-  if (arr.length < k) return []
+  if (order === 0) return [[]]
+  if (arr.length < order) return []
   // Backtracking, same lexicographic order; 12x faster than the recursive spread/concat
   // form, which allocated two arrays plus a spread per sub-combination per level (n=30 k=5).
   const out: T[][] = []
-  const combo: T[] = Array.from({ length: k })
+  const combo: T[] = Array.from({ length: order })
   const walk = (start: number, depth: number): void => {
-    if (depth === k) {
+    if (depth === order) {
       out.push(combo.slice())
       return
     }
     // stop once too few elements remain to fill the rest of the combination
-    for (let idx = start; idx <= arr.length - (k - depth); idx++) {
+    for (let idx = start; idx <= arr.length - (order - depth); idx++) {
       combo[depth] = arr[idx]
       walk(idx + 1, depth + 1)
     }
@@ -69,12 +69,12 @@ export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
 
 // Clamp value into [lo, hi]. NaN passes through (Math.min/max propagate it), so callers
 // that need a finite result must check first.
-export const clamp = (value: number, lo: number, hi: number): number =>
-  Math.max(lo, Math.min(hi, value))
+export const clamp = (value: number, lower: number, upper: number): number =>
+  Math.max(lower, Math.min(upper, value))
 
 // Index of the first value for which an initial-prefix predicate is false.
 export const partition_point = <Value>(
-  values: readonly Value[],
+  values: ArrayLike<Value>,
   comes_before: (value: Value) => boolean,
 ): number => {
   let lower_idx = 0
@@ -100,7 +100,7 @@ export const first_non_increasing_index = (values: ArrayLike<number>): number | 
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
   const [a_vec, b_vec, c_vec] = matrix
-  const [a, b, c] = matrix.map((vec) => Math.hypot(...vec))
+  const [length_a, length_b, length_c] = matrix.map((vec) => Math.hypot(...vec))
   const volume = Math.abs(det_3x3(matrix))
 
   // Convert to angles in degrees. Two ways this yields NaN without the guard: parallel
@@ -119,11 +119,11 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
     if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
     return Math.acos(clamp(dot / denom, -1, 1)) * RAD_TO_DEG
   }
-  const alpha = safe_angle(dot(b_vec, c_vec), b, c)
-  const beta = safe_angle(dot(a_vec, c_vec), a, c)
-  const gamma = safe_angle(dot(a_vec, b_vec), a, b)
+  const alpha = safe_angle(dot(b_vec, c_vec), length_b, length_c)
+  const beta = safe_angle(dot(a_vec, c_vec), length_a, length_c)
+  const gamma = safe_angle(dot(a_vec, b_vec), length_a, length_b)
 
-  return { a, b, c, alpha, beta, gamma, volume }
+  return { a: length_a, b: length_b, c: length_c, alpha, beta, gamma, volume }
 }
 
 export const scale = <T extends number[]>(vec: T, factor: number): T =>
@@ -148,25 +148,26 @@ export function euclidean_dist(vec1: readonly number[], vec2: readonly number[])
 // scalars and allocates only the returned Vec3.
 export const min_image_displacement = (
   from: Vec3,
-  to: Vec3,
+  target: Vec3,
   lattice_matrix: Matrix3x3,
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
-): Vec3 => min_image_displacement_into(from, to, lattice_matrix, converters, pbc, [0, 0, 0])
+): Vec3 =>
+  min_image_displacement_into(from, target, lattice_matrix, converters, pbc, [0, 0, 0])
 
 // Allocation-free variant for frame-major unwrap loops: writes the displacement into `out`
 // and returns it
 export function min_image_displacement_into(
   from: Vec3,
-  to: Vec3,
+  target: Vec3,
   lattice_matrix: Matrix3x3,
   converters: LatticeConverters | undefined,
   pbc: Pbc,
   out: Vec3,
 ): Vec3 {
-  const delta_x = to[0] - from[0]
-  const delta_y = to[1] - from[1]
-  const delta_z = to[2] - from[2]
+  const delta_x = target[0] - from[0]
+  const delta_y = target[1] - from[1]
+  const delta_z = target[2] - from[2]
   if (!pbc[0] && !pbc[1] && !pbc[2]) {
     out[0] = delta_x
     out[1] = delta_y
@@ -176,7 +177,11 @@ export function min_image_displacement_into(
 
   const { lattice, reciprocal, reciprocal_axis_norms } =
     converters ?? create_lattice_converters(lattice_matrix)
-  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = lattice
+  const [
+    [lattice_ax, lattice_ay, lattice_az],
+    [lattice_bx, lattice_by, lattice_bz],
+    [lattice_cx, lattice_cy, lattice_cz],
+  ] = lattice
   const [[ra0, ra1, ra2], [rb0, rb1, rb2], [rc0, rc1, rc2]] = reciprocal
   // fractional displacement: frac_i = b_i · delta
   const frac_a = ra0 * delta_x + ra1 * delta_y + ra2 * delta_z
@@ -186,9 +191,9 @@ export function min_image_displacement_into(
   const wrapped_a = pbc[0] ? frac_a - Math.round(frac_a) : frac_a
   const wrapped_b = pbc[1] ? frac_b - Math.round(frac_b) : frac_b
   const wrapped_c = pbc[2] ? frac_c - Math.round(frac_c) : frac_c
-  let best_x = wrapped_a * ax + wrapped_b * bx + wrapped_c * cx
-  let best_y = wrapped_a * ay + wrapped_b * by + wrapped_c * cy
-  let best_z = wrapped_a * az + wrapped_b * bz + wrapped_c * cz
+  let best_x = wrapped_a * lattice_ax + wrapped_b * lattice_bx + wrapped_c * lattice_cx
+  let best_y = wrapped_a * lattice_ay + wrapped_b * lattice_by + wrapped_c * lattice_cy
+  let best_z = wrapped_a * lattice_az + wrapped_b * lattice_bz + wrapped_c * lattice_cz
   let best_dist_sq = best_x * best_x + best_y * best_y + best_z * best_z
   const search_radius = Math.sqrt(best_dist_sq) + EPS
 
@@ -217,9 +222,9 @@ export function min_image_displacement_into(
       const cand_b = frac_b + shift_b
       for (let shift_c = c_min; shift_c <= c_max; shift_c++) {
         const cand_c = frac_c + shift_c
-        const cand_x = cand_a * ax + cand_b * bx + cand_c * cx
-        const cand_y = cand_a * ay + cand_b * by + cand_c * cy
-        const cand_z = cand_a * az + cand_b * bz + cand_c * cz
+        const cand_x = cand_a * lattice_ax + cand_b * lattice_bx + cand_c * lattice_cx
+        const cand_y = cand_a * lattice_ay + cand_b * lattice_by + cand_c * lattice_cy
+        const cand_z = cand_a * lattice_az + cand_b * lattice_bz + cand_c * lattice_cz
         const cand_dist_sq = cand_x * cand_x + cand_y * cand_y + cand_z * cand_z
         if (cand_dist_sq < best_dist_sq) {
           best_dist_sq = cand_dist_sq
@@ -244,8 +249,14 @@ export const pbc_dist = (
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
 ): number => {
-  const [dx, dy, dz] = min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc)
-  return Math.hypot(dx, dy, dz)
+  const [delta_x, delta_y, delta_z] = min_image_displacement(
+    pos1,
+    pos2,
+    lattice_matrix,
+    converters,
+    pbc,
+  )
+  return Math.hypot(delta_x, delta_y, delta_z)
 }
 
 export function det_3x3(matrix: Matrix3x3): number {
@@ -303,12 +314,12 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 
 // Multiply a 3x3 matrix by a 3D vector
 export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
-  const [a, b, c] = matrix
-  const [x, y, z] = vector
+  const [row_a, row_b, row_c] = matrix
+  const [coord_x, coord_y, coord_z] = vector
   return [
-    a[0] * x + a[1] * y + a[2] * z,
-    b[0] * x + b[1] * y + b[2] * z,
-    c[0] * x + c[1] * y + c[2] * z,
+    row_a[0] * coord_x + row_a[1] * coord_y + row_a[2] * coord_z,
+    row_b[0] * coord_x + row_b[1] * coord_y + row_b[2] * coord_z,
+    row_c[0] * coord_x + row_c[1] * coord_y + row_c[2] * coord_z,
   ]
 }
 
@@ -413,11 +424,10 @@ export function vec9_to_mat3x3(flat_array: number[]): Matrix3x3 {
   if (flat_array.length !== 9) {
     throw new Error(`Expected 9-element array, got ${flat_array.length} elements`)
   }
-  const [a1, a2, a3, a4, a5, a6, a7, a8, a9] = flat_array
   return [
-    [a1, a2, a3],
-    [a4, a5, a6],
-    [a7, a8, a9],
+    [flat_array[0], flat_array[1], flat_array[2]],
+    [flat_array[3], flat_array[4], flat_array[5]],
+    [flat_array[6], flat_array[7], flat_array[8]],
   ]
 }
 
@@ -487,9 +497,9 @@ export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters
 
 // Convert unit cell parameters to lattice matrix (crystallographic convention)
 export function cell_to_lattice_matrix(
-  a: number,
-  b: number,
-  c: number,
+  lattice_a: number,
+  value_b: number,
+  value_c: number,
   alpha: number,
   beta: number,
   gamma: number,
@@ -507,7 +517,7 @@ export function cell_to_lattice_matrix(
   // diagnostic anywhere. Fail here instead, naming the offending parameters.
   const radicand =
     1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
-  const cell_desc = `a=${a} b=${b} c=${c} alpha=${alpha} beta=${beta} gamma=${gamma}`
+  const cell_desc = `a=${lattice_a} b=${value_b} c=${value_c} alpha=${alpha} beta=${beta} gamma=${gamma}`
   // sin_gamma first: at gamma = 180° the radicand also lands (just) below zero, and
   // "a and b are collinear" is the more actionable of the two diagnoses
   // Tolerance, not === 0: Math.sin(Math.PI) is 1.22e-16, so gamma = 180° would slip past
@@ -528,12 +538,12 @@ export function cell_to_lattice_matrix(
   const vol_factor = Math.sqrt(radicand)
 
   // Standard crystallographic lattice vectors
-  const c_x = c * cos_beta
-  const c_y = (c * (cos_alpha - cos_beta * cos_gamma)) / sin_gamma
-  const c_z = (c * vol_factor) / sin_gamma
+  const c_x = value_c * cos_beta
+  const c_y = (value_c * (cos_alpha - cos_beta * cos_gamma)) / sin_gamma
+  const c_z = (value_c * vol_factor) / sin_gamma
   return [
-    [a, 0, 0],
-    [b * cos_gamma, b * sin_gamma, 0],
+    [lattice_a, 0, 0],
+    [value_b * cos_gamma, value_b * sin_gamma, 0],
     [c_x, c_y, c_z],
   ]
 }
@@ -622,12 +632,24 @@ export function get_coefficient_of_variation(values: number[]): number {
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
 function det_4x4(matrix: Matrix4x4): number {
-  const [[a0, a1, a2, a3], [b0, b1, b2, b3], [c0, c1, c2, c3], [d0, d1, d2, d3]] = matrix
+  const [row_a, row_b, row_c, row_d] = matrix
   return (
-    a0 * (b1 * (c2 * d3 - c3 * d2) - b2 * (c1 * d3 - c3 * d1) + b3 * (c1 * d2 - c2 * d1)) -
-    a1 * (b0 * (c2 * d3 - c3 * d2) - b2 * (c0 * d3 - c3 * d0) + b3 * (c0 * d2 - c2 * d0)) +
-    a2 * (b0 * (c1 * d3 - c3 * d1) - b1 * (c0 * d3 - c3 * d0) + b3 * (c0 * d1 - c1 * d0)) -
-    a3 * (b0 * (c1 * d2 - c2 * d1) - b1 * (c0 * d2 - c2 * d0) + b2 * (c0 * d1 - c1 * d0))
+    row_a[0] *
+      (row_b[1] * (row_c[2] * row_d[3] - row_c[3] * row_d[2]) -
+        row_b[2] * (row_c[1] * row_d[3] - row_c[3] * row_d[1]) +
+        row_b[3] * (row_c[1] * row_d[2] - row_c[2] * row_d[1])) -
+    row_a[1] *
+      (row_b[0] * (row_c[2] * row_d[3] - row_c[3] * row_d[2]) -
+        row_b[2] * (row_c[0] * row_d[3] - row_c[3] * row_d[0]) +
+        row_b[3] * (row_c[0] * row_d[2] - row_c[2] * row_d[0])) +
+    row_a[2] *
+      (row_b[0] * (row_c[1] * row_d[3] - row_c[3] * row_d[1]) -
+        row_b[1] * (row_c[0] * row_d[3] - row_c[3] * row_d[0]) +
+        row_b[3] * (row_c[0] * row_d[1] - row_c[1] * row_d[0])) -
+    row_a[3] *
+      (row_b[0] * (row_c[1] * row_d[2] - row_c[2] * row_d[1]) -
+        row_b[1] * (row_c[0] * row_d[2] - row_c[2] * row_d[0]) +
+        row_b[2] * (row_c[0] * row_d[1] - row_c[1] * row_d[0]))
   )
 }
 
@@ -639,7 +661,7 @@ const lu_decompose = (
   matrix: number[][],
 ): { lu: number[][]; perm: number[]; n_swaps: number } | null => {
   const size = matrix.length
-  const lu = matrix.map((row) => [...row])
+  const lu_matrix = matrix.map((row) => [...row])
   const perm = Array.from({ length: size }, (_, idx) => idx)
   // array_max skips NaN: a NaN floor from a plain Math.max scan makes every
   // `max_val <= pivot_floor` false, so no column is ever called singular
@@ -647,30 +669,30 @@ const lu_decompose = (
   let n_swaps = 0
 
   for (let col = 0; col < size; col++) {
-    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
+    let [max_row, max_val] = [col, Math.abs(lu_matrix[col][col])]
     for (let row = col + 1; row < size; row++) {
-      const val = Math.abs(lu[row][col])
+      const val = Math.abs(lu_matrix[row][col])
       if (val > max_val) [max_val, max_row] = [val, row]
     }
     if (max_val <= pivot_floor) return null // singular
 
     if (max_row !== col) {
-      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
+      ;[lu_matrix[col], lu_matrix[max_row]] = [lu_matrix[max_row], lu_matrix[col]]
       ;[perm[col], perm[max_row]] = [perm[max_row], perm[col]]
       n_swaps++
     }
 
     // Eliminate below pivot
-    const pivot = lu[col][col]
+    const pivot = lu_matrix[col][col]
     for (let row = col + 1; row < size; row++) {
-      const factor = lu[row][col] / pivot
-      lu[row][col] = factor
+      const factor = lu_matrix[row][col] / pivot
+      lu_matrix[row][col] = factor
       for (let inner = col + 1; inner < size; inner++) {
-        lu[row][inner] -= factor * lu[col][inner]
+        lu_matrix[row][inner] -= factor * lu_matrix[col][inner]
       }
     }
   }
-  return { lu, perm, n_swaps }
+  return { lu: lu_matrix, perm, n_swaps }
 }
 
 // Compute NxN determinant using LU decomposition with partial pivoting
@@ -726,14 +748,14 @@ export const frac_cutoff_per_axis = (matrix: Matrix3x3, dist: number): Vec3 =>
   cell_heights(matrix).map((height) => dist / height) as Vec3
 
 // Scalar linear interpolation
-export const lerp = (start: number, end: number, t: number): number =>
-  start + t * (end - start)
+export const lerp = (start: number, end: number, fraction: number): number =>
+  start + fraction * (end - start)
 
 // Vec3 linear interpolation
-export const lerp_vec3 = (start: Vec3, end: Vec3, t: number): Vec3 => [
-  start[0] + t * (end[0] - start[0]),
-  start[1] + t * (end[1] - start[1]),
-  start[2] + t * (end[2] - start[2]),
+export const lerp_vec3 = (start: Vec3, end: Vec3, fraction: number): Vec3 => [
+  start[0] + fraction * (end[0] - start[0]),
+  start[1] + fraction * (end[1] - start[1]),
+  start[2] + fraction * (end[2] - start[2]),
 ]
 
 // Vec3 -> Vec3, number[] -> number[] (same length, mutable)
@@ -930,11 +952,11 @@ export function merge_coplanar_triangles(
     }
 
     // Map 2D hull vertices back to nearest 3D vertex
-    const hull_3d: Vec3[] = hull.map((pt) => {
+    const hull_3d: Vec3[] = hull.map((point) => {
       let best_dist = Infinity
       let best_idx = 0
       for (let idx = 0; idx < pts_2d.length; idx++) {
-        const dist = (pts_2d[idx][0] - pt[0]) ** 2 + (pts_2d[idx][1] - pt[1]) ** 2
+        const dist = (pts_2d[idx][0] - point[0]) ** 2 + (pts_2d[idx][1] - point[1]) ** 2
         if (dist < best_dist) {
           best_dist = dist
           best_idx = idx
@@ -1018,11 +1040,11 @@ export function compute_bounding_box_2d(vertices: Vec2[]): {
   let [min_x, min_y] = vertices[0]
   let [max_x, max_y] = vertices[0]
 
-  for (const [x, y] of vertices) {
-    if (x < min_x) min_x = x
-    if (x > max_x) max_x = x
-    if (y < min_y) min_y = y
-    if (y > max_y) max_y = y
+  for (const [coord_x, coord_y] of vertices) {
+    if (coord_x < min_x) min_x = coord_x
+    if (coord_x > max_x) max_x = coord_x
+    if (coord_y < min_y) min_y = coord_y
+    if (coord_y > max_y) max_y = coord_y
   }
 
   const width = max_x - min_x
@@ -1035,27 +1057,27 @@ export function compute_bounding_box_2d(vertices: Vec2[]): {
 export function polygon_centroid(vertices: Vec2[]): Vec2 {
   if (vertices.length === 0) return [0, 0]
   const vertex_average = (): Vec2 => [
-    vertices.reduce((acc, [x]) => acc + x, 0) / vertices.length,
-    vertices.reduce((acc, [, y]) => acc + y, 0) / vertices.length,
+    vertices.reduce((acc, [coord_x]) => acc + coord_x, 0) / vertices.length,
+    vertices.reduce((acc, [, coord_y]) => acc + coord_y, 0) / vertices.length,
   ]
   if (vertices.length < 3) return vertex_average()
 
-  let [signed_area, cx, cy] = [0, 0, 0]
+  let [signed_area, center_x, center_y] = [0, 0, 0]
 
   for (let idx = 0; idx < vertices.length; idx++) {
-    const [x0, y0] = vertices[idx]
-    const [x1, y1] = vertices[(idx + 1) % vertices.length]
-    const cross = x0 * y1 - x1 * y0
+    const [coord_x_0, coord_y_0] = vertices[idx]
+    const [coord_x_1, coord_y_1] = vertices[(idx + 1) % vertices.length]
+    const cross = coord_x_0 * coord_y_1 - coord_x_1 * coord_y_0
     signed_area += cross
-    cx += (x0 + x1) * cross
-    cy += (y0 + y1) * cross
+    center_x += (coord_x_0 + coord_x_1) * cross
+    center_y += (coord_y_0 + coord_y_1) * cross
   }
 
   signed_area *= 0.5
   if (Math.abs(signed_area) < EPS) return vertex_average()
 
   const factor = 1 / (6 * signed_area)
-  return [cx * factor, cy * factor]
+  return [center_x * factor, center_y * factor]
 }
 
 // Solve the linear system `coefficients · x = rhs` via LU decomposition with partial
@@ -1088,22 +1110,22 @@ export function solve_linear_system(
   // General NxN: LU decomposition with partial pivoting + forward/back substitution
   const decomposed = lu_decompose(coefficients)
   if (!decomposed) return null
-  const { lu, perm } = decomposed
+  const { lu: lu_matrix, perm } = decomposed
 
   // Apply permutation to rhs, then forward substitution (L y = P rhs)
   const solution = perm.map((idx) => rhs[idx])
   for (let row = 1; row < size; row++) {
     for (let col = 0; col < row; col++) {
-      solution[row] -= lu[row][col] * solution[col]
+      solution[row] -= lu_matrix[row][col] * solution[col]
     }
   }
 
   // Back substitution (U x = y), in place
   for (let row = size - 1; row >= 0; row--) {
     for (let col = row + 1; col < size; col++) {
-      solution[row] -= lu[row][col] * solution[col]
+      solution[row] -= lu_matrix[row][col] * solution[col]
     }
-    solution[row] /= lu[row][row]
+    solution[row] /= lu_matrix[row][row]
   }
 
   return solution
@@ -1117,14 +1139,14 @@ const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
 // (lower chain; pass reversed input for the upper chain).
 const monotone_chain = (sorted: Vec2[], tolerance = 0): Vec2[] => {
   const chain: Vec2[] = []
-  for (const pt of sorted) {
+  for (const point of sorted) {
     while (
       chain.length >= 2 &&
-      cross_2d(chain[chain.length - 2], chain[chain.length - 1], pt) <= tolerance
+      cross_2d(chain[chain.length - 2], chain[chain.length - 1], point) <= tolerance
     ) {
       chain.pop()
     }
-    chain.push(pt)
+    chain.push(point)
   }
   return chain
 }
@@ -1201,12 +1223,14 @@ export function quickselect(values: number[], kth: number): number {
 const lerp_quantile = (lo_val: number, hi_val: number, frac: number): number =>
   frac === 0 ? lo_val : lo_val * (1 - frac) + hi_val * frac
 
-export function quantile_unordered(values: number[], p: number): number {
-  const idx = (values.length - 1) * p
-  const lo = Math.floor(idx)
-  const hi = Math.ceil(idx)
-  const lo_val = quickselect(values, lo)
-  return hi === lo ? lo_val : lerp_quantile(lo_val, quickselect(values, hi), idx - lo)
+export function quantile_unordered(values: number[], point_value: number): number {
+  const idx = (values.length - 1) * point_value
+  const lower = Math.floor(idx)
+  const upper = Math.ceil(idx)
+  const lo_val = quickselect(values, lower)
+  return upper === lower
+    ? lo_val
+    : lerp_quantile(lo_val, quickselect(values, upper), idx - lower)
 }
 
 // === Linear programming ===

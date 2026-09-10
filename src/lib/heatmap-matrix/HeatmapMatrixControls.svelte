@@ -56,7 +56,7 @@
   } = $props()
 
   // Stash custom format string so toggling the checkbox preserves it
-  let stashed_format = $state<string | null>(null)
+  let stashed_format: string | null = null
 </script>
 
 <ControlPane
@@ -109,7 +109,7 @@
     </label>
     {#if show_color_bar}
       <label>
-        <span>Position</span>
+        <span>Color bar side</span>
         <select bind:value={color_bar_position}>
           <option value="right">Right</option>
           <option value="bottom">Bottom</option>
@@ -130,12 +130,10 @@
         type="checkbox"
         checked={!!show_values}
         onchange={(evt) => {
-          if (evt.currentTarget.checked) {
-            show_values = stashed_format || true
-            return
+          if (!evt.currentTarget.checked) {
+            stashed_format = typeof show_values === `string` ? show_values : null
           }
-          stashed_format = typeof show_values === `string` ? show_values : null
-          show_values = false
+          show_values = evt.currentTarget.checked ? stashed_format || true : false
         }}
       />
     </label>
@@ -147,18 +145,20 @@
       <span>Col sums</span>
       <input type="checkbox" bind:checked={show_col_summaries} />
     </label>
-    <div class="setting">
-      <span>Export</span>
-      <div class="pane-row">
-        {#each export_formats as export_format (export_format)}
-          <button type="button" onclick={() => on_export?.(export_format)}>
-            Export {export_format.toUpperCase()}
-          </button>
-        {/each}
+    {#if on_export && export_formats.length}
+      <div class="setting">
+        <span>Export</span>
+        <div class="pane-row">
+          {#each export_formats as export_format (export_format)}
+            <button type="button" onclick={() => on_export?.(export_format)}>
+              Export {export_format.toUpperCase()}
+            </button>
+          {/each}
+        </div>
       </div>
-    </div>
+    {/if}
+    {@render children?.({ controls_open })}
   </SettingsSection>
-  {@render children?.({ controls_open })}
 </ControlPane>
 
 <style>
@@ -170,18 +170,5 @@
     display: flex;
     gap: 10pt;
     flex-wrap: wrap;
-  }
-  select,
-  input:not([type]) {
-    height: 1.8em;
-    padding: 0 0.5em;
-    border-radius: var(--border-radius, 3pt);
-    border: 1px solid light-dark(#ccc, #555);
-    background: light-dark(white, #333);
-    color: inherit;
-    font: inherit;
-    box-sizing: border-box;
-    flex: 1;
-    min-width: 0;
   }
 </style>

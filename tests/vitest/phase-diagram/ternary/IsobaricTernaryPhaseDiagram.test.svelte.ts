@@ -282,12 +282,12 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     // one tinted face (closePath) per interior hover; a composition on the AB-AC tie-line
     // decomposes into two phases and tints both neighbouring tie-triangles
     expect(face_tints.overlay).toBe(5)
-    const [ab, ac] = [`AB`, `AC`].map((id) => {
-      const phase = model.phases.find((candidate) => candidate.entry.entry_id === id)
-      if (!phase) throw new Error(`${id} not in the model`)
+    const [phase_ab, phase_ac] = [`AB`, `AC`].map((identifier) => {
+      const phase = model.phases.find((candidate) => candidate.entry.entry_id === identifier)
+      if (!phase) throw new Error(`${identifier} not in the model`)
       return phase.xy
     })
-    await hover([(ab[0] + ac[0]) / 2, (ab[1] + ac[1]) / 2])
+    await hover([(phase_ab[0] + phase_ac[0]) / 2, (phase_ab[1] + phase_ac[1]) / 2])
     expect(face_tints.overlay).toBe(7)
     state.selected_phase = 0
     flushSync()

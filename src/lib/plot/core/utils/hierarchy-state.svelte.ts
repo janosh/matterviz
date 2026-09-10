@@ -105,7 +105,7 @@ interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
 
   readonly data: () => SunburstNode<Metadata> | SunburstNode<Metadata>[]
   readonly layout_options: () => SunburstLayoutOptions
-  readonly label_text: () => SunburstLabelText
+  readonly label_text: () => SunburstLabelText | null
   readonly value_format: () => string
   readonly width: () => number
   readonly height: () => number
@@ -122,10 +122,6 @@ interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
   // Only charts that gate focusability on clickability pass this (Sunburst);
   // its presence is what puts `clickable` on the computed node infos
   readonly clickable?: (arc: PositionedArc<Metadata>) => boolean
-  // Whether node_dim dims the nodes outside the hovered subtree/ancestry (Treemap, per
-  // cell). Sunburst draws one veil path over its arcs instead, so its node_dim only
-  // changes on legend muting and a hover never rewrites thousands of arcs.
-  readonly per_node_hover_dim: boolean
 
   readonly zoom_root_id: () => string | number | null
   readonly set_zoom_root_id: (value: string | number | null) => void
@@ -248,15 +244,7 @@ export class HierarchyChartState<
   )
   color_for = (arc: PositionedArc<Metadata>): string =>
     this.metric?.colors[arc.node_idx] ?? arc.color
-  // Legend muting per node, plus hover dimming (hovered node + ancestors/descendants stay
-  // fully opaque, others dim) for charts that dim per node
-  node_dim = $derived.by(() =>
-    compute_node_dim(
-      this.arcs,
-      this.muted_ids,
-      this.#opts.per_node_hover_dim ? this.hovered_idx : null,
-    ),
-  )
+  node_dim = $derived(compute_node_dim(this.arcs, this.muted_ids))
 
   label_font = $derived(resolve_label_font(this.svg_element))
   // Per-node label text, measured width, fill/label colors, aria string (and

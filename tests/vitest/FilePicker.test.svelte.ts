@@ -265,8 +265,8 @@ describe(`FilePicker`, () => {
       target: document.body,
       props: { files: mock_files, show_category_filters: true },
     })
-    const click = (el: HTMLElement) => {
-      el.click()
+    const click = (element: HTMLElement) => {
+      element.click()
       flushSync()
     }
     const crystal = legend_btn(`crystal`)

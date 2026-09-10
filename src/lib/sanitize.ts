@@ -125,9 +125,9 @@ function sanitize_svg_content(
   tags: ReadonlySet<string>,
   attrs: readonly string[],
 ): string {
-  const dp = get_purify()
-  if (!dp) return sanitize_allowlist_ssr(html, tags, new Set(attrs))
-  const wrapped = dp.sanitize(`<svg>${html}</svg>`, {
+  const purifier = get_purify()
+  if (!purifier) return sanitize_allowlist_ssr(html, tags, new Set(attrs))
+  const wrapped = purifier.sanitize(`<svg>${html}</svg>`, {
     ALLOWED_TAGS: [...tags, `svg`],
     ALLOWED_ATTR: [...attrs],
   })
@@ -177,16 +177,16 @@ export function sanitize_html(html: unknown): string {
   // only after setConfig() rebuilds the allow-lists below, and that dominates — 0.036 us here
   // vs 319 us for the two sanitize() calls on the same five axis labels.
   if (!str.includes(`<`)) return cache_sanitize(str, str)
-  const dp = get_purify()
-  if (!dp) return cache_sanitize(str, sanitize_html_ssr(str))
+  const purifier = get_purify()
+  if (!purifier) return cache_sanitize(str, sanitize_html_ssr(str))
   // oxfmt-ignore
-  const safe = dp.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
+  const safe = purifier.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
     `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `textarea`,
     `select`, `button`, `meta`, `link`, `base`, `template`, `noscript`,
   ] })
   return cache_sanitize(
     str,
-    dp.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS }),
+    purifier.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS }),
   )
 }
 

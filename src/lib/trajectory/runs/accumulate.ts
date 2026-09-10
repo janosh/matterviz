@@ -181,11 +181,11 @@ class PositionAccumulator {
         )
       }
       const atom_id = site.properties?.id
-      const id = typeof atom_id === `number` ? atom_id : null
+      const identifier = typeof atom_id === `number` ? atom_id : null
       if (is_first_frame) {
         this.elements.push(element)
-        if (atom_idx === 0) this.atom_ids = id === null ? null : []
-        this.atom_ids?.push(id)
+        if (atom_idx === 0) this.atom_ids = identifier === null ? null : []
+        this.atom_ids?.push(identifier)
       } else if (this.elements[atom_idx] !== element) {
         throw new Error(
           `Atom ordering changed at frame ${source_frame_number}: site ${atom_idx} was ` +
@@ -193,10 +193,10 @@ class PositionAccumulator {
             `analysis tracks atoms by index, so the ordering must be stable. LAMMPS dumps ` +
             `are unsorted unless the run used "dump_modify <id> sort id".`,
         )
-      } else if (this.atom_ids && this.atom_ids[atom_idx] !== id) {
+      } else if (this.atom_ids && this.atom_ids[atom_idx] !== identifier) {
         throw new Error(
           `Atom identity changed at frame ${source_frame_number}: site ${atom_idx} had ` +
-            `atom ID ${this.atom_ids[atom_idx]} in the first frame but ${id} here. The atom ` +
+            `atom ID ${this.atom_ids[atom_idx]} in the first frame but ${identifier} here. The atom ` +
             `set changed (GCMC, deposition), so displacement analysis cannot pair atoms ` +
             `across frames.`,
         )

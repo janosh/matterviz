@@ -29,11 +29,11 @@ const tree: TreemapNode[] = [
 
 // duration 0 makes zoom transitions synchronous for assertions
 const mount_sized_treemap = (
-  props: Partial<ComponentProps<typeof Treemap>>,
+  props: Partial<ComponentProps<typeof Treemap>> = {},
 ): Promise<HTMLElement> =>
   mount_sized(
     Treemap,
-    { tween: { duration: 0 }, ...props },
+    { data: tree, tween: { duration: 0 }, ...props },
     { selector: `.treemap`, width: 500, height: 360 },
   )
 
@@ -42,10 +42,8 @@ const mount_sized_treemap = (
 // value A/B pair keeps input order (stable sort).
 const IDX = { A: 1, A2: 2, A1: 3, B: 4 } as const
 
-const cell_rect = (plot: HTMLElement, label: keyof typeof IDX): SVGRectElement => {
-  const rect = query<SVGRectElement>(plot, `.cells [data-treemap-node-idx="${IDX[label]}"]`)
-  return rect
-}
+const cell_rect = (plot: HTMLElement, label: keyof typeof IDX): SVGRectElement =>
+  query<SVGRectElement>(plot, `.cells [data-treemap-node-idx="${IDX[label]}"]`)
 
 const n_cells = (plot: HTMLElement) => plot.querySelectorAll(`.cells rect`).length
 // Sorted node indices of all rendered cells (which cells survive zoom/max_depth)
@@ -56,7 +54,7 @@ const shown_idxs = (plot: HTMLElement) =>
 
 describe(`Treemap`, () => {
   test(`renders cells with resolved colors and value-proportional areas`, async () => {
-    const plot = await mount_sized_treemap({ data: tree })
+    const plot = await mount_sized_treemap()
     expect(n_cells(plot)).toBe(4) // A, A1, A2, B (hidden root not rendered)
     const fill = (label: keyof typeof IDX) => cell_rect(plot, label).getAttribute(`fill`)
     expect(fill(`A`)).toBe(`#e15759`) // explicit
@@ -81,9 +79,15 @@ describe(`Treemap`, () => {
 
   test(`shows a tooltip and fires hover callback with breadcrumb payload`, async () => {
     const on_node_hover = vi.fn()
-    const plot = await mount_sized_treemap({ data: tree, on_node_hover })
+    const plot = await mount_sized_treemap({ on_node_hover })
     await fire(cell_rect(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+    expect(Boolean(plot.querySelector(`.hover-veil`)?.getAttribute(`d`))).toBe(true)
+    expect(
+      [...plot.querySelectorAll(`.cells rect`)].every(
+        (cell) => cell.getAttribute(`fill-opacity`) === `1`,
+      ),
+    ).toBe(true)
     expect(on_node_hover).toHaveBeenCalledOnce()
     expect(on_node_hover.mock.calls[0][0] as SunburstNodeHandlerProps).toMatchObject({
       type: `node`,
@@ -101,7 +105,7 @@ describe(`Treemap`, () => {
   test(`clicking a branch cell zooms in (fires on_zoom + on_node_click, hides siblings)`, async () => {
     const on_node_click = vi.fn()
     const on_zoom = vi.fn()
-    const plot = await mount_sized_treemap({ data: tree, on_node_click, on_zoom })
+    const plot = await mount_sized_treemap({ on_node_click, on_zoom })
     await fire(cell_rect(plot, `A`))
     expect(on_node_click).toHaveBeenCalledOnce()
     expect(on_zoom).toHaveBeenCalledOnce()
@@ -124,7 +128,6 @@ describe(`Treemap`, () => {
     async (_kind, label) => {
       const [on_zoom, on_node_click] = [vi.fn(), vi.fn()]
       const plot = await mount_sized_treemap({
-        data: tree,
         on_node_click,
         on_zoom,
         zoom_on_click: false,
@@ -138,7 +141,7 @@ describe(`Treemap`, () => {
 
   test(`clicking a leaf zooms into it (plotly semantics); clicking the zoomed leaf zooms back out`, async () => {
     const [on_zoom, on_node_click] = [vi.fn(), vi.fn()]
-    const plot = await mount_sized_treemap({ data: tree, on_zoom, on_node_click })
+    const plot = await mount_sized_treemap({ on_zoom, on_node_click })
     await fire(cell_rect(plot, `B`))
     expect(on_node_click).toHaveBeenCalledOnce()
     expect(on_zoom).toHaveBeenLastCalledWith({ root: expect.objectContaining({ id: `B` }) })
@@ -160,7 +163,7 @@ describe(`Treemap`, () => {
   ] as const)(
     `keyboard Enter on a %s zooms and moves focus to cell %i`,
     async (_kind, label, focus_idx, cells_after) => {
-      const plot = await mount_sized_treemap({ data: tree })
+      const plot = await mount_sized_treemap()
       const cell = cell_rect(plot, label)
       cell.focus()
       await fire(cell, keydown(`Enter`))
@@ -173,7 +176,7 @@ describe(`Treemap`, () => {
   )
 
   test(`breadcrumb 'all' zooms back out to the root`, async () => {
-    const plot = await mount_sized_treemap({ data: tree })
+    const plot = await mount_sized_treemap()
     await fire(cell_rect(plot, `A`))
     await fire(plot.querySelector(`.breadcrumb`)) // 'all'
     await tick()
@@ -196,7 +199,7 @@ describe(`Treemap`, () => {
       ],
     })
     const row = query(plot, `.header-controls`)
-    const buttons = [...row.children].filter((el) => el.tagName === `BUTTON`)
+    const buttons = [...row.children].filter((element) => element.tagName === `BUTTON`)
     expect(buttons.length).toBeGreaterThan(1) // gear + fullscreen
     for (const btn of buttons) expect(getComputedStyle(btn).color).toBe(expected)
     // The controls pane is a child of the same row and must not be tinted with it
@@ -324,7 +327,7 @@ describe(`Treemap`, () => {
       expected: [IDX.A, IDX.B], // A1/A2 at depth 2 are cut off
     },
   ])(`$name`, async ({ props, expected, min_cell_width }) => {
-    const plot = await mount_sized_treemap({ data: tree, ...props })
+    const plot = await mount_sized_treemap({ ...props })
     expect(shown_idxs(plot)).toEqual(expected)
     if (min_cell_width) {
       const width = Number(plot.querySelector(`.cells rect`)?.getAttribute(`width`))
@@ -342,7 +345,7 @@ describe(`Treemap`, () => {
         fire(plot.querySelector(`svg[role="application"]`), mouse(`dblclick`)),
     ],
   ] as const)(`%s zooms a depth-1 view back to the root`, async (_trigger, zoom_out) => {
-    const plot = await mount_sized_treemap({ data: tree, zoom_root_id: `A` })
+    const plot = await mount_sized_treemap({ zoom_root_id: `A` })
     expect(n_cells(plot)).toBe(2)
     // Escape only fires when interacting with the chart: focus a cell first
     plot.querySelector<SVGRectElement>(`.cells rect[tabindex="0"]`)?.focus()
@@ -351,7 +354,7 @@ describe(`Treemap`, () => {
   })
 
   test(`branch cells show header labels, leaves centered labels`, async () => {
-    const plot = await mount_sized_treemap({ data: tree, padding_top: 18 })
+    const plot = await mount_sized_treemap({ padding_top: 18 })
     const labels = [...plot.querySelectorAll(`.cell-label`)]
     const texts = labels.map((lbl) => lbl.textContent?.trim())
     expect(texts).toEqual(expect.arrayContaining([`A`, `A1`, `A2`, `B`]))
@@ -370,7 +373,7 @@ describe(`Treemap`, () => {
       { padding_top: 12, parent_label_font_size: 30, label_fit: `hide` },
     ],
   ] as const)(`hide mode drops a parent label when %s`, async (_reason, props) => {
-    const plot = await mount_sized_treemap({ data: tree, ...props })
+    const plot = await mount_sized_treemap({ ...props })
     const texts = [...plot.querySelectorAll(`.cell-label`)].map((label) =>
       label.textContent?.trim(),
     )
@@ -379,13 +382,12 @@ describe(`Treemap`, () => {
   })
 
   test(`show_labels=false renders no labels`, async () => {
-    const plot = await mount_sized_treemap({ data: tree, show_labels: false })
+    const plot = await mount_sized_treemap({ show_labels: false })
     expect(plot.querySelectorAll(`.cell-label`)).toHaveLength(0)
   })
 
   test(`label_formatter renders styled lines without replacing cell interactions`, async () => {
     const plot = await mount_sized_treemap({
-      data: tree,
       label_fit: `clip`,
       label_formatter: (arc: TreemapArc) => [
         {
@@ -414,7 +416,7 @@ describe(`Treemap`, () => {
 
   test(`label_formatter is never invoked for the hidden root`, async () => {
     const label_formatter = vi.fn((arc: TreemapArc) => arc.label ?? `${arc.id}`)
-    await mount_sized_treemap({ data: tree, label_formatter })
+    await mount_sized_treemap({ label_formatter })
     const seen_depths = label_formatter.mock.calls.map(([arc]) => arc.depth)
     expect(label_formatter).toHaveBeenCalledTimes(4) // A, A2, A1, B - not the root
     expect(seen_depths).not.toContain(0)
@@ -466,7 +468,7 @@ describe(`Treemap`, () => {
   })
 
   test(`legend lists depth-1 categories and muting dims the subtree`, async () => {
-    const plot = await mount_sized_treemap({ data: tree, show_legend: true })
+    const plot = await mount_sized_treemap({ show_legend: true })
     const legend_items = plot.querySelectorAll(`.legend .legend-item`)
     expect(legend_items).toHaveLength(2) // A, B
     await fire(legend_items[0], mouse(`click`))
@@ -478,7 +480,6 @@ describe(`Treemap`, () => {
 
   test(`color_values colors cells by metric and shows a colorbar`, async () => {
     const plot = await mount_sized_treemap({
-      data: tree,
       color_values: (arc: { is_leaf: boolean; value: number }) =>
         arc.is_leaf ? arc.value : null,
       color_bar: { title: `count`, orientation: `vertical` },
@@ -535,14 +536,19 @@ describe(`Treemap`, () => {
       expect(def.querySelector(`path`)?.getAttribute(`d`)?.length).toBeGreaterThan(0)
     }
     // "/" is a stroked line tile rotated -45°; dots are a filled tile with no stroke
-    const [hatched_def, dotted_def] = pattern_ids.map((id) => plot.querySelector(`#${id}`))
+    const [hatched_def, dotted_def] = pattern_ids.map((identifier) =>
+      plot.querySelector(`#${identifier}`),
+    )
     expect(hatched_def?.getAttribute(`patternTransform`)).toBe(`rotate(-45)`)
     expect(hatched_def?.querySelector(`path`)?.getAttribute(`fill`)).toBe(`none`)
     expect(dotted_def?.querySelector(`path`)?.getAttribute(`stroke`)).toBe(`none`)
     // patterned cells get a blurred halo in the node color behind the label, plain ones
     // don't; the halo repeats the label's lines but is decorative (no node idx, aria-hidden)
     const halos = [...plot.querySelectorAll<SVGTextElement>(`.cell-label.halo`)]
-    expect(halos.map((el) => el.style.fill)).toEqual([PLOT_COLORS[0], PLOT_COLORS[1]])
+    expect(halos.map((element) => element.style.fill)).toEqual([
+      PLOT_COLORS[0],
+      PLOT_COLORS[1],
+    ])
     const label_of = (node_idx: number) =>
       plot.querySelector(`.cell-label:not(.halo)[data-treemap-node-idx="${node_idx}"]`)
     for (const [idx, halo] of halos.entries()) {
@@ -575,7 +581,7 @@ describe(`Treemap`, () => {
   })
 
   test(`cells expose button semantics with a roving tabindex`, async () => {
-    const plot = await mount_sized_treemap({ data: tree })
+    const plot = await mount_sized_treemap()
     const branch = cell_rect(plot, `A`)
     expect(branch.getAttribute(`role`)).toBe(`button`)
     expect(branch.getAttribute(`aria-label`)).toBe(`A: 10`)

@@ -35,7 +35,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { make_crystal, read_binary_test_file, read_maybe_gz, rejection_of } from '../setup'
 import type { H5Spec } from './fixtures'
 import {
-  ds,
+  create_dataset,
   flat_frames,
   h5_bytes,
   make_grouped_h5_buffer,
@@ -287,8 +287,8 @@ describe(`XDATCAR`, () => {
     [`2 1 3`, [10, 5, 15]],
   ])(`applies the shared VASP scale grammar "%s"`, async (scale, expected_abc) => {
     const run = await open(xdatcar(`H\n1`, two_frames, scale), `XDATCAR`)
-    const { a, b, c } = lattice_of(run.preview)
-    expect([a, b, c]).toEqual(expected_abc)
+    const { a: lattice_a, b: lattice_b, c: lattice_c } = lattice_of(run.preview)
+    expect([lattice_a, lattice_b, lattice_c]).toEqual(expected_abc)
   })
 
   // A writer still appending leaves a frame with missing lines or a half-written last
@@ -333,7 +333,7 @@ describe(`vasprun.xml`, () => {
     frac: number[][],
     forces: number[][],
     energy: number,
-    { n_scf = 2, md = false, close = true } = {},
+    { n_scf = 2, md: molecular_dynamics = false, close = true } = {},
   ): string =>
     [
       `<calculation>`,
@@ -351,7 +351,7 @@ describe(`vasprun.xml`, () => {
         [0, -6, 0],
         [0, 0, -9],
       ]),
-      `<energy>\n<i name="e_fr_energy"> ${energy} </i>\n<i name="e_wo_entrp"> ${energy + 0.001} </i>\n<i name="e_0_energy"> ${energy + 0.002} </i>${md ? `\n<i name="kinetic"> 0.5 </i>\n<i name="total"> ${energy + 0.5} </i>` : ``}\n</energy>`,
+      `<energy>\n<i name="e_fr_energy"> ${energy} </i>\n<i name="e_wo_entrp"> ${energy + 0.001} </i>\n<i name="e_0_energy"> ${energy + 0.002} </i>${molecular_dynamics ? `\n<i name="kinetic"> 0.5 </i>\n<i name="total"> ${energy + 0.5} </i>` : ``}\n</energy>`,
       ...(close ? [`</calculation>`] : []),
     ].join(`\n`)
   const atominfo = (rows: [string, number][], types: [number, string, number][]) =>
@@ -493,7 +493,12 @@ describe(`OUTCAR`, () => {
     lat_a: number,
     rows: number[][],
     energy: number,
-    { n_scf = 4, md = false, ml = false, truncate_rows = 0 } = {},
+    {
+      n_scf = 4,
+      md: molecular_dynamics = false,
+      ml: machine_learning = false,
+      truncate_rows = 0,
+    } = {},
   ): string =>
     [
       // every SCF iteration prints its own (unconverged) TOTEN, which must not leak into
@@ -503,12 +508,12 @@ describe(`OUTCAR`, () => {
         (_val, scf_idx) =>
           `----- Iteration ${step}(${scf_idx + 1}) -----\n  free energy    TOTEN  =  ${energy + 1} eV`,
       ),
-      `  ${ml ? `ML ` : ``}FORCE on cell =-STRESS in cart. coord. units (eV/cell)`,
+      `  ${machine_learning ? `ML ` : ``}FORCE on cell =-STRESS in cart. coord. units (eV/cell)`,
       `  in kB      -1.00000    -2.00000    -3.00000     0.10000     0.20000     0.30000`,
       `  external pressure =       -2.00 kB  Pullay stress =        0.00 kB`,
       lattice_block(lat_a),
       ``,
-      `  POSITION                                       TOTAL-FORCE (eV/Angst)${ml ? ` (ML)` : ``}`,
+      `  POSITION                                       TOTAL-FORCE (eV/Angst)${machine_learning ? ` (ML)` : ``}`,
       ` -----------------------------------------------------------------------------------`,
       ...rows
         .slice(0, rows.length - truncate_rows)
@@ -519,10 +524,10 @@ describe(`OUTCAR`, () => {
             ` -----------------------------------------------------------------------------------`,
             `    total drift:                                0.000000      0.000000      0.000000`,
             ``,
-            `  free  energy   ${ml ? `ML ` : ``}TOTEN  =       ${energy} eV`,
+            `  free  energy   ${machine_learning ? `ML ` : ``}TOTEN  =       ${energy} eV`,
             ``,
-            `  ${ml ? `ML ` : ``}energy  without entropy=      ${energy + 0.001}  ${ml ? `ML ` : ``}energy(sigma->0) =      ${energy + 0.002}`,
-            ...(md
+            `  ${machine_learning ? `ML ` : ``}energy  without entropy=      ${energy + 0.001}  ${machine_learning ? `ML ` : ``}energy(sigma->0) =      ${energy + 0.002}`,
+            ...(molecular_dynamics
               ? [
                   `  kinetic energy EKIN   =         0.250000`,
                   `  kin. lattice  EKIN_LAT=         0.000000  (temperature  300.50 K)`,
@@ -827,9 +832,9 @@ describe(`LAMMPS`, () => {
       `Invalid LAMMPS orthogonal BOX BOUNDS at timestep 0 (lines 6-8): 0.0 10.0 | 0.0 xx | 0.0 10.0`],
     [`duplicate atom IDs`, `${frame_0}\n${lammps_frame(`id type x y z`, [`1 1 1.5 0 0`, `1 1 7.5 0 0`], { timestep: 1 })}`,
       `LAMMPS frame at timestep 1 has duplicate atom IDs`],
-    ...[`0`, `bad`, `NaN`, `Infinity`].map((id) => [
-      `invalid atom ID ${id}`, lammps_frame(`id element x y z`, [`${id} H 1 0 0`]),
-      `LAMMPS atom line 10 (timestep 0) has invalid ID "${id}"`,
+    ...[`0`, `bad`, `NaN`, `Infinity`].map((identifier) => [
+      `invalid atom ID ${identifier}`, lammps_frame(`id element x y z`, [`${identifier} H 1 0 0`]),
+      `LAMMPS atom line 10 (timestep 0) has invalid ID "${identifier}"`,
     ]),
     [`a frame that loses the ID column`, `${frame_0}\n${lammps_frame(`type x y z`, [`1 1 0 0`, `1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS frame at timestep 1 lost the atom ID column`],
@@ -1681,15 +1686,15 @@ describe(`HDF5`, () => {
   ) =>
     h5_bytes(prefix, (file) => {
       const data = file.create_group(`data`)
-      ds(
+      create_dataset(
         data,
         `positions`,
         flat_frames(steps.length, (frame_idx) => [frame_idx, 0, 0]),
         [steps.length, 1, 3],
       )
-      ds(data, `atomic_numbers`, [1], [1])
+      create_dataset(data, `atomic_numbers`, [1], [1])
       const steps_group = file.create_group(`steps`)
-      ds(steps_group, `positions`, steps, [steps.length])
+      create_dataset(steps_group, `positions`, steps, [steps.length])
       extra(data, steps_group)
     })
   // Two gold atoms, two written frames and a zero-filled third (an interrupted writer)
@@ -1700,13 +1705,13 @@ describe(`HDF5`, () => {
   ) =>
     h5_bytes(prefix, (file) => {
       const data = file.create_group(`data`)
-      ds(
+      create_dataset(
         data,
         `positions`,
         [...frame_positions, ...frame_positions, ...zero_positions],
         [3, 2, 3],
       )
-      ds(
+      create_dataset(
         data,
         `atomic_numbers`,
         dynamic_topology ? [...two_gold_atoms, ...two_gold_atoms, 0, 0] : two_gold_atoms,
@@ -1739,17 +1744,17 @@ describe(`HDF5`, () => {
       const data = file.create_group(`data`)
       const steps = file.create_group(`steps`)
       const frame_steps = Array.from({ length: n_frames }, (_unused, idx) => idx)
-      ds(
+      create_dataset(
         data,
         `positions`,
         flat_frames(n_frames, () => [0, 0, 0, 1.4, 1.4, 1.4]),
         [n_frames, 2, 3],
       )
-      ds(data, `atomic_numbers`, [6, 6], [2])
-      ds(data, `cell`, cells.flat(), [n_frames, 3, 3])
-      ds(data, `pbc`, pbc, [3])
-      ds(steps, `positions`, frame_steps, [n_frames])
-      ds(steps, `cell`, frame_steps, [n_frames])
+      create_dataset(data, `atomic_numbers`, [6, 6], [2])
+      create_dataset(data, `cell`, cells.flat(), [n_frames, 3, 3])
+      create_dataset(data, `pbc`, pbc, [3])
+      create_dataset(steps, `positions`, frame_steps, [n_frames])
+      create_dataset(steps, `cell`, frame_steps, [n_frames])
     })
     const run = await open(buffer, `torch-sim.h5`)
     expect(run.frame_count).toBe(n_frames)
@@ -1859,8 +1864,8 @@ describe(`HDF5`, () => {
   it(`materialises singleton TorchSim and Reference MD inputs with eager signals`, async () => {
     const torch = await open(
       await h_walk_h5(`singleton-torch`, [0], (data, steps) => {
-        ds(data, `dipole`, [1, 2, 3], [1, 3])
-        ds(steps, `dipole`, [0], [1])
+        create_dataset(data, `dipole`, [1, 2, 3], [1, 3])
+        create_dataset(steps, `dipole`, [0], [1])
       }),
       `singleton.h5`,
     )
@@ -1881,8 +1886,8 @@ describe(`HDF5`, () => {
       torn_data_h5(
         `torn-steps`,
         (data, steps) => {
-          ds(data, `pbc`, [1, 1, 1, 1, 1, 1, 0, 0, 0], [3, 3])
-          ds(steps, `positions`, position_steps, [3])
+          create_dataset(data, `pbc`, [1, 1, 1, 1, 1, 1, 0, 0, 0], [3, 3])
+          create_dataset(steps, `positions`, position_steps, [3])
         },
         dynamic_topology,
       )
@@ -1930,9 +1935,11 @@ describe(`HDF5`, () => {
     async ({ position_steps, frames, error }) => {
       const content = await h5_bytes(`torn-scan`, (file) => {
         const data = file.create_group(`data`)
-        ds(data, `positions`, frames.flat(), [frames.length, 1, 3])
-        ds(data, `atomic_numbers`, [1], [1])
-        ds(file.create_group(`steps`), `positions`, position_steps, [position_steps.length])
+        create_dataset(data, `positions`, frames.flat(), [frames.length, 1, 3])
+        create_dataset(data, `atomic_numbers`, [1], [1])
+        create_dataset(file.create_group(`steps`), `positions`, position_steps, [
+          position_steps.length,
+        ])
       })
       const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
       onTestFinished(() => slice_spy.mockRestore())
@@ -1946,14 +1953,15 @@ describe(`HDF5`, () => {
 
   it(`trims zero-filled response and energy step tails with the geometry`, async () => {
     const content = await torn_data_h5(`torn-response-steps`, (data, steps) => {
-      ds(
+      create_dataset(
         data,
         `velocities`,
         [...frame_positions, ...frame_positions, ...zero_positions],
         [3, 2, 3],
       )
-      ds(data, `energy`, [-1, -2, 0], [3])
-      for (const name of [`positions`, `velocities`, `energy`]) ds(steps, name, [0, 1, 0], [3])
+      create_dataset(data, `energy`, [-1, -2, 0], [3])
+      for (const name of [`positions`, `velocities`, `energy`])
+        create_dataset(steps, name, [0, 1, 0], [3])
     })
     const run = await open(content, `torn-response-steps.h5`)
     expect((await frames_of(run)).map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
@@ -1964,8 +1972,8 @@ describe(`HDF5`, () => {
 
   it(`keeps non-aligned energy on its native signal cadence`, async () => {
     const content = await h_walk_h5(`native-energy`, [0, 1, 2, 3], (data, steps) => {
-      ds(data, `energy`, [-1, -2, -3], [3])
-      ds(steps, `energy`, [0, 2, 4], [3])
+      create_dataset(data, `energy`, [-1, -2, -3], [3])
+      create_dataset(steps, `energy`, [0, 2, 4], [3])
     })
     const run = await open(content, `native-energy.h5`)
     expect(
@@ -1981,7 +1989,7 @@ describe(`HDF5`, () => {
   it(`streams uniform dynamic PBC and rejects genuinely varying flags`, async () => {
     const steps = Array.from({ length: 12 }, (_unused, frame_idx) => frame_idx)
     const make_buffer = (pbc: number[]) =>
-      h_walk_h5(`dynamic-pbc`, steps, (data) => ds(data, `pbc`, pbc, [12, 3]))
+      h_walk_h5(`dynamic-pbc`, steps, (data) => create_dataset(data, `pbc`, pbc, [12, 3]))
     const uniform = await open(
       await make_buffer(flat_frames(12, () => [1, 0, 1])),
       `uniform-pbc.h5`,
@@ -2003,7 +2011,7 @@ describe(`HDF5`, () => {
     const n_frames = 12
     const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2)
     const content = await h_walk_h5(`long-generic`, steps, (data) =>
-      ds(
+      create_dataset(
         data,
         `cells`,
         flat_frames(n_frames, (frame_idx) => [10 + frame_idx, 0, 0, 0, 10, 0, 0, 0, 10]),
@@ -2134,8 +2142,8 @@ describe(`HDF5`, () => {
         for (const name of [`frames`, `molecules`, `simulation`]) file.create_group(name)
         for (const name of [`run_a`, `run_b`]) {
           const group = file.create_group(name)
-          ds(group, `positions`, [0, 0, 0], [1, 1, 3])
-          ds(group, `atomic_numbers`, [1], [1])
+          create_dataset(group, `positions`, [0, 0, 0], [1, 1, 3])
+          create_dataset(group, `atomic_numbers`, [1], [1])
         }
       })],
     [`two complete groups`, () => make_grouped_h5_buffer(two_runs)],
@@ -2181,12 +2189,12 @@ describe(`HDF5`, () => {
       ) => {
         const data = parent.create_group(`data`)
         const steps = parent.create_group(`steps`)
-        ds(data, `positions`, [offset, 0, 0, offset + 0.1, 0, 0], [2, 1, 3])
-        ds(data, `atomic_numbers`, [atomic_number], [1])
-        ds(data, `masses`, [mass], [1])
-        ds(data, `dipole`, [offset, 0, 0, offset + 1, 0, 0], [2, 3])
-        ds(steps, `positions`, [0, 2], [2])
-        ds(steps, `dipole`, [0, 2], [2])
+        create_dataset(data, `positions`, [offset, 0, 0, offset + 0.1, 0, 0], [2, 1, 3])
+        create_dataset(data, `atomic_numbers`, [atomic_number], [1])
+        create_dataset(data, `masses`, [mass], [1])
+        create_dataset(data, `dipole`, [offset, 0, 0, offset + 1, 0, 0], [2, 3])
+        create_dataset(steps, `positions`, [0, 2], [2])
+        create_dataset(steps, `dipole`, [0, 2], [2])
       }
       const run_a = file.create_group(`run_a`)
       write_run(run_a, 79, 1, 197)
@@ -2283,8 +2291,8 @@ describe(`HDF5`, () => {
   // oxfmt-ignore
   it.each([
     [`a PBC attribute outside 0/1`, () => h5_bytes(`invalid-pbc-attribute`, (file) => {
-        ds(file, `positions`, [0, 0, 0], [1, 1, 3])
-        ds(file, `atomic_numbers`, [1], [1])
+        create_dataset(file, `positions`, [0, 0, 0], [1, 1, 3])
+        create_dataset(file, `atomic_numbers`, [1], [1])
         file.create_attribute(`pbc`, [0, 2, 1])
       }), undefined, `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`],
     [`non-increasing independent signal steps`, () => make_torch_sim_signal_buffer({ dipole_steps: [2, 2] }), undefined, /\/steps\/dipole must increase strictly/],

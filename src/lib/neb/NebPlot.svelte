@@ -141,11 +141,14 @@
     select_image(active.key, nearest_image_idx(active.coords, data.x))
   }
 
-  const profile_settings = track_settings(() => ({
-    coord_mode,
-    energy_reference,
-    show_spline,
-  }))
+  const profile_settings = track_settings(
+    () => ({
+      coord_mode,
+      energy_reference,
+      show_spline,
+    }),
+    { coord_mode: `arc_length`, energy_reference: `initial`, show_spline: true },
+  )
 </script>
 
 <ScatterPlot
@@ -204,8 +207,15 @@
     {@const bottom = height - pad.b}
     {@const in_x = (val: number) => Number.isFinite(val) && val >= left && val <= right}
     {@const in_y = (val: number) => Number.isFinite(val) && val >= top && val <= bottom}
-    {#snippet seg(xy: [number, number, number, number], extra: SegAttrs)}
-      <line x1={xy[0]} y1={xy[1]} x2={xy[2]} y2={xy[3]} stroke={active.color} {...extra} />
+    {#snippet seg(coords_xy: [number, number, number, number], extra: SegAttrs)}
+      <line
+        x1={coords_xy[0]}
+        y1={coords_xy[1]}
+        x2={coords_xy[2]}
+        y2={coords_xy[3]}
+        stroke={active.color}
+        {...extra}
+      />
     {/snippet}
     <!-- active image marker: a full-height rule so the 3D view and plot stay tied together -->
     {@const marker_x = x_scale_fn(current_coord)}

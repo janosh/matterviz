@@ -19,7 +19,7 @@
     const ranges = frame.ranges.current
     const lines: { x1: number; x2: number; y1: number; y2: number }[] = []
     for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
-      const [lo, hi] = ranges[axis]
+      const [lower, upper] = ranges[axis]
       const scale_type = axes[axis].scale_type
       if (
         !display[`${axis}_zero_line`] ||
@@ -27,8 +27,8 @@
         (axis === `y2` && !frame.has_y2) ||
         get_scale_type_name(scale_type) === `log` ||
         is_time_scale(scale_type) ||
-        Math.min(lo, hi) > 0 ||
-        Math.max(lo, hi) < 0
+        Math.min(lower, upper) > 0 ||
+        Math.max(lower, upper) < 0
       )
         continue
       const zero = scales[axis](0)

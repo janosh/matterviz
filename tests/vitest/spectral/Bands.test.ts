@@ -358,6 +358,13 @@ describe(`Bands component`, () => {
       select.value = `meV`
       await fire(select, new Event(`change`, { bubbles: true }))
       expect(document.body.textContent).toContain(`Frequency (meV)`)
+      const selector = `button[title="Reset path to defaults"]`
+      await fire(
+        doc_query<HTMLButtonElement>(selector),
+        new MouseEvent(`click`, { bubbles: true }),
+      )
+      expect(select.value).toBe(`THz`)
+      expect(document.querySelector(selector)).toBeNull()
     },
   )
 
@@ -368,7 +375,9 @@ describe(`Bands component`, () => {
       { selector: `.scatter` },
     )
     const y_ticks = () =>
-      [...document.querySelectorAll(`.y-axis .tick text`)].map((el) => Number(el.textContent))
+      [...document.querySelectorAll(`.y-axis .tick text`)].map((element) =>
+        Number(element.textContent),
+      )
     // 0..3.9 THz
     expect(Math.max(...y_ticks())).toBeLessThan(5)
     const select = doc_query<HTMLSelectElement>(`#bands-units`)
@@ -465,7 +474,9 @@ describe(`Bands component`, () => {
     const svg = plot_svg()
     // the padded energy range differs from the nice()-rounded auto range too
     const y_ticks = () =>
-      [...document.querySelectorAll(`.y-axis .tick text`)].map((el) => el.textContent)
+      [...document.querySelectorAll(`.y-axis .tick text`)].map(
+        (element) => element.textContent,
+      )
     const y_before = y_ticks()
     // x of the last symmetry-point tick (X) and where the Fermi line stops
     const last_tick_x = () =>
@@ -581,15 +592,15 @@ describe(`Bands component`, () => {
     const svg = plot_svg()
     const { x: clip_x, width: clip_width } = clip_rect()
     const pan = async (from_x: number, to_x: number) => {
-      const y = 100
+      const coord_y = 100
       svg.dispatchEvent(
-        mouse(`mousedown`, { button: 0, shiftKey: true, clientX: from_x, clientY: y }),
+        mouse(`mousedown`, { button: 0, shiftKey: true, clientX: from_x, clientY: coord_y }),
       )
       window.dispatchEvent(
-        new MouseEvent(`mousemove`, { buttons: 1, clientX: to_x, clientY: y }),
+        new MouseEvent(`mousemove`, { buttons: 1, clientX: to_x, clientY: coord_y }),
       )
       await tick()
-      await fire(window, new MouseEvent(`mouseup`, { clientX: to_x, clientY: y }))
+      await fire(window, new MouseEvent(`mouseup`, { clientX: to_x, clientY: coord_y }))
     }
     const mid = clip_x + clip_width / 2
     await pan(mid, mid - clip_width / 2)

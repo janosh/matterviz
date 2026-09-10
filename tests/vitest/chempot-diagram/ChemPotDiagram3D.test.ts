@@ -132,7 +132,9 @@ test(`display toggles and partial number input never recompute the diagram`, asy
     entries,
     config: { default_min_limit: -25 },
   })
-  document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)?.click()
+  const controls_toggle = document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)
+  expect(controls_toggle?.style.position).toBe(`static`)
+  controls_toggle?.click()
   flushSync()
   const pane_inputs = [...document.querySelectorAll<HTMLInputElement>(`.draggable-pane input`)]
   const by_label = (text: string) =>
@@ -212,7 +214,7 @@ test(`hull faces are labelled by the domain that owns their vertices`, async () 
   const render_pts = new Map(
     render_domains.map(({ formula, points_3d }) => [
       formula,
-      points_3d.map((pt) => swiz(pt[0], pt[1], pt[2])),
+      points_3d.map((point) => swiz(point[0], point[1], point[2])),
     ]),
   )
   const pos = hull_geometry.getAttribute(`position`).array
@@ -225,8 +227,8 @@ test(`hull faces are labelled by the domain that owns their vertices`, async () 
   for (let face_idx = 0; face_idx < n_faces; face_idx++) {
     const claimants = [...render_pts].filter(([, pts]) =>
       [0, 3, 6].every((vert) =>
-        pts.some((pt) =>
-          pt.every((val, axis) => Math.abs(val - pos[face_idx * 9 + vert + axis]) < 1e-3),
+        pts.some((point) =>
+          point.every((val, axis) => Math.abs(val - pos[face_idx * 9 + vert + axis]) < 1e-3),
         ),
       ),
     )

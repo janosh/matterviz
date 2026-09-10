@@ -71,28 +71,32 @@ describe(`gas-thermodynamics: chemical potential calculations`, () => {
   const provider = get_default_gas_provider()
 
   test(`compute_gas_chemical_potential at P=P_REF equals μ°(T)`, () => {
-    const T = 500
+    const temperature = 500
     for (const gas of GAS_SPECIES) {
-      const mu_standard = provider.get_standard_chemical_potential(gas, T)
-      const mu_computed = compute_gas_chemical_potential(provider, gas, T, P_REF)
+      const mu_standard = provider.get_standard_chemical_potential(gas, temperature)
+      const mu_computed = compute_gas_chemical_potential(provider, gas, temperature, P_REF)
       expect(mu_computed).toBeCloseTo(mu_standard, 10)
     }
   })
 
   test(`RT*ln(P) contribution is correct (per-atom)`, () => {
-    const T = 1000
-    const P = 0.1 // One order of magnitude below P_REF
-    const mu = compute_gas_chemical_potential(provider, `O2`, T, P)
-    const mu_ref = provider.get_standard_chemical_potential(`O2`, T)
+    const temperature = 1000
+    const pressure_2 = 0.1 // One order of magnitude below P_REF
+    const mean = compute_gas_chemical_potential(provider, `O2`, temperature, pressure_2)
+    const mu_ref = provider.get_standard_chemical_potential(`O2`, temperature)
 
     // μ_per_atom(T,P) - μ°_per_atom(T) = RT*ln(P/P_REF) / num_atoms
     // For O2, num_atoms = 2
-    const expected_delta = (BOLTZMANN_EV_PER_K * T * Math.log(P / P_REF)) / 2
-    expect(mu - mu_ref).toBeCloseTo(expected_delta, 10)
-    expect(gas_pressure_term(`O2`, T, P)).toBeCloseTo(expected_delta, 14)
+    const expected_delta =
+      (BOLTZMANN_EV_PER_K * temperature * Math.log(pressure_2 / P_REF)) / 2
+    expect(mean - mu_ref).toBeCloseTo(expected_delta, 10)
+    expect(gas_pressure_term(`O2`, temperature, pressure_2)).toBeCloseTo(expected_delta, 14)
     // per atom: a triatomic gas spreads the same molecular term over three atoms
-    expect(gas_pressure_term(`CO2`, T, P)).toBeCloseTo((expected_delta * 2) / 3, 14)
-    expect(gas_pressure_term(`O2`, T, P_REF)).toBe(0)
+    expect(gas_pressure_term(`CO2`, temperature, pressure_2)).toBeCloseTo(
+      (expected_delta * 2) / 3,
+      14,
+    )
+    expect(gas_pressure_term(`O2`, temperature, P_REF)).toBe(0)
   })
 })
 
@@ -261,10 +265,10 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
       enabled_gases: [`O2`],
       pressures: { O2: 1.0 }, // High pressure
     }
-    const T = 500
+    const temperature = 500
 
-    const [result_low_P] = apply_gas_corrections(entries, config_low_P, T)
-    const [result_high_P] = apply_gas_corrections(entries, config_high_P, T)
+    const [result_low_P] = apply_gas_corrections(entries, config_low_P, temperature)
+    const [result_high_P] = apply_gas_corrections(entries, config_high_P, temperature)
 
     // Higher pressure → higher chemical potential (less negative correction)
     expect(result_high_P.energy).toBeGreaterThan(result_low_P.energy)
@@ -280,8 +284,8 @@ describe(`gas-thermodynamics: formatting`, () => {
     [0, 3, `+0 eV`],
     [-1.23456, 2, `\u22121.23 eV`],
     [-1.23456, 4, `\u22121.2346 eV`],
-  ])(`format_chemical_potential(%s, %s) = %s`, (mu, decimals, expected) => {
-    expect(format_chemical_potential(mu, decimals)).toBe(expected)
+  ])(`format_chemical_potential(%s, %s) = %s`, (mean, decimals, expected) => {
+    expect(format_chemical_potential(mean, decimals)).toBe(expected)
   })
 })
 
@@ -294,7 +298,9 @@ describe(`gas-thermodynamics: boundary pressures`, () => {
 
   test(`μ is finite and increases monotonically from P_MIN to P_MAX`, () => {
     const pressures = [P_MIN, 1e-8, 1e-6, 1e-4, 1e-2, 1, P_MAX]
-    const mus = pressures.map((P) => compute_gas_chemical_potential(provider, `O2`, 300, P))
+    const mus = pressures.map((pressure_2) =>
+      compute_gas_chemical_potential(provider, `O2`, 300, pressure_2),
+    )
     expect(mus.every(Number.isFinite)).toBe(true)
     for (let idx = 1; idx < mus.length; idx++) expect(mus[idx]).toBeGreaterThan(mus[idx - 1])
     // the -RT ln(P) term makes μ strongly negative at low pressure and lifts it at high pressure

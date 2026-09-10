@@ -73,12 +73,12 @@ export class CellSelection {
 
   // Keyboard step from `from` to `to`: Shift grows the newest rectangle from where it
   // started, a plain arrow replaces the selection with the 1x1 cell it lands on.
-  step(from: CellPos, to: CellPos, extend: boolean): void {
+  step(from: CellPos, target: CellPos, extend: boolean): void {
     const anchor = extend
       ? (this.rects.at(-1) ?? { start_row: from.row, start_col: from.col })
-      : { start_row: to.row, start_col: to.col }
+      : { start_row: target.row, start_col: target.col }
     const kept = extend ? this.rects.slice(0, -1) : []
-    this.rects = [...kept, { ...anchor, end_row: to.row, end_col: to.col }]
+    this.rects = [...kept, { ...anchor, end_row: target.row, end_col: target.col }]
   }
 
   // Selected cells as TSV blocks (one per rectangle, blank line between), read through

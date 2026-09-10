@@ -29,8 +29,8 @@ import {
 import { open_trajectory } from '$lib/trajectory/open'
 import { summarize_run, type TrajectoryRun } from '$lib/trajectory/run'
 import { Buffer } from 'node:buffer'
-import * as fs from 'node:fs'
-import * as os from 'node:os'
+import * as file_system from 'node:fs'
+import * as operating_system from 'node:os'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import {
@@ -90,8 +90,8 @@ export const log_info = (message: string): void => {
 // not in tests)
 const find_asset = (ext_path: string, prefix: string, suffix: string): string | undefined => {
   const assets_dir = path.join(ext_path, `dist`, `assets`)
-  if (!fs.existsSync(assets_dir)) return undefined
-  return fs
+  if (!file_system.existsSync(assets_dir)) return undefined
+  return file_system
     .readdirSync(assets_dir)
     .find((name: string) => name.startsWith(prefix) && name.endsWith(suffix))
 }
@@ -792,14 +792,14 @@ async function collect_debug_info(): Promise<string> {
   report += `- **Editor**: ${vscode.env.appName}\n`
   report += `- **Editor Version**: ${vscode.version}\n`
   report += `- **MatterViz Version**: ${extension_version}\n`
-  report += `- **OS**: ${os.type()} ${os.platform()} ${os.arch()}\n`
-  report += `- **OS Version**: ${os.release()}\n`
+  report += `- **OS**: ${operating_system.type()} ${operating_system.platform()} ${operating_system.arch()}\n`
+  report += `- **OS Version**: ${operating_system.release()}\n`
   report += `- **UI Kind**: ${ui_kind}\n`
   report += `- **Remote Session**: ${is_remote ? `Yes (${remote_name})` : `No (Local)`}\n\n`
 
   report += `### System Resources\n\n`
-  report += `- **Total Memory**: ${format_bytes(os.totalmem())}\n`
-  report += `- **Free Memory**: ${format_bytes(os.freemem())}\n`
+  report += `- **Total Memory**: ${format_bytes(operating_system.totalmem())}\n`
+  report += `- **Free Memory**: ${format_bytes(operating_system.freemem())}\n`
   report += `- **Process RSS**: ${format_bytes(memory_usage.rss)}\n`
   report += `- **Process Heap Used**: ${format_bytes(memory_usage.heapUsed)}\n`
   report += `- **Process Heap Total**: ${format_bytes(memory_usage.heapTotal)}\n\n`

@@ -99,8 +99,8 @@ describe(`ToggleMenu`, () => {
       expect(details.contains(menu)).toBe(false)
       const unrelated = document.createElement(`div`)
       document.body.append(unrelated)
-      const press = (el: Element) =>
-        el.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+      const press = (element: Element) =>
+        element.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
 
       press(menu.querySelectorAll(`input[type="checkbox"]`)[0])
       await tick()
@@ -158,8 +158,10 @@ describe(`ToggleMenu`, () => {
   describe(`Grouped sections`, () => {
     it.each([`__proto__`, `constructor`])(
       `accepts %s as a column ID and group`,
-      async (id) => {
-        const columns = [{ id, label: `Metric`, group: id, visible: false }]
+      async (identifier) => {
+        const columns = [
+          { id: identifier, label: `Metric`, group: identifier, visible: false },
+        ]
         mount_menu(columns)
         const checkbox = doc_query<HTMLInputElement>(`input[type="checkbox"]`)
         expect(checkbox.checked).toBe(false)

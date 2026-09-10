@@ -47,12 +47,12 @@ export interface AtomPropertyColors {
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = DEFAULTS.structure.atom_color_scale
 
-const to_hex = (interp_fn: (t: number) => string, frac: number) =>
+const to_hex = (interp_fn: (fraction: number) => string, frac: number) =>
   rgb(interp_fn(frac)).formatHex()
 const make_categorical = <T>(
   vals: T[],
   scale: D3InterpolateName,
-  sort_fn?: (a: T, b: T) => number,
+  sort_fn?: (value_a: T, value_b: T) => number,
 ): { colors: string[]; unique_values: T[] } => {
   const interp_fn = get_d3_interpolator(scale)
   const uniq = sort_fn
@@ -364,11 +364,11 @@ export function get_site_property_colors(
 
 export function get_custom_colors(
   structure: AnyStructure,
-  fn: AtomColorFn,
+  callback: AtomColorFn,
   scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const vals = structure.sites.map((site, idx) => fn(site, idx))
+  const vals = structure.sites.map((site, idx) => callback(site, idx))
   const is_num = vals.every((val) => typeof val === `number`)
 
   if (is_num) {

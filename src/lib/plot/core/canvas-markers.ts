@@ -97,9 +97,9 @@ export function draw_markers(
   }
 
   for (const marker of markers) {
-    const { cx, cy, radius, symbol_size } = marker
+    const { cx: center_x, cy: center_y, radius, symbol_size } = marker
     const marker_size = symbol_size ?? radius
-    const valid_position = Number.isFinite(cx) && Number.isFinite(cy)
+    const valid_position = Number.isFinite(center_x) && Number.isFinite(center_y)
     const valid_size = Number.isFinite(marker_size) && marker_size > 0
     if (!valid_position || !valid_size) continue
 
@@ -144,14 +144,14 @@ export function draw_markers(
       (marker.symbol_type === undefined || marker.symbol_type === `Circle`) &&
       marker.symbol_size == null
     ) {
-      ctx.moveTo(cx + radius, cy) // break path so adjacent arcs don't connect
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+      ctx.moveTo(center_x + radius, center_y) // break path so adjacent arcs don't connect
+      ctx.arc(center_x, center_y, radius, 0, Math.PI * 2)
       has_circles = true
     } else {
       open_symbols ??= new Path2D()
       symbol_transform ??= new DOMMatrix()
-      symbol_transform.e = cx
-      symbol_transform.f = cy
+      symbol_transform.e = center_x
+      symbol_transform.f = center_y
       open_symbols.addPath(
         symbol_path(marker.symbol_type, radius, marker.symbol_size),
         symbol_transform,

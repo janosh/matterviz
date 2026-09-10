@@ -29,6 +29,8 @@ test.describe(`BarPlot Component Tests`, () => {
     const plot = page.locator(`#basic-bar .bar-plot`)
     const bars = bars_of(plot)
     await expect(bars).toHaveCount(4)
+    // Shell theme fades must not spawn fill/stroke animations on thousands of SVG marks.
+    await expect(bars.first()).toHaveCSS(`transition-duration`, `0s`)
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
 
@@ -138,7 +140,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const dims_before = await bar_boxes(plot, 12)
     // with range_padding 0 the 4 wide bars aren't majority-vertical; just require
     // unambiguous verticals to exist so the flip below is observable
-    const vertical_before = dims_before.filter((bb) => bb.height > bb.width).length
+    const vertical_before = dims_before.filter((bounds) => bounds.height > bounds.width).length
     expect(vertical_before).toBeGreaterThan(0)
 
     const { pane } = await open_plot_controls(plot)
@@ -159,8 +161,8 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect
       .poll(async () => {
         const dims = await bar_boxes(plot, 12)
-        const horizontal = dims.filter((bb) => bb.width > bb.height).length
-        const vertical = dims.filter((bb) => bb.height > bb.width).length
+        const horizontal = dims.filter((bounds) => bounds.width > bounds.height).length
+        const vertical = dims.filter((bounds) => bounds.height > bounds.width).length
         return horizontal > vertical && vertical < vertical_before
       })
       .toBe(true)
@@ -176,7 +178,7 @@ test.describe(`BarPlot Component Tests`, () => {
       const plot = page.locator(plot_id)
       await expect(bars_of(plot).first()).toBeVisible()
       // mixed signs place bars on both sides of the baseline
-      const positions = (await bar_boxes(plot)).map((bb) => bb[axis])
+      const positions = (await bar_boxes(plot)).map((bounds) => bounds[axis])
       expect(Math.max(...positions) - Math.min(...positions)).toBeGreaterThan(0)
     }
 
@@ -193,7 +195,9 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`per-bar width arrays change bar widths`, async ({ page }) => {
-    const widths = (await bar_boxes(page.locator(`#width-array`))).map((bb) => bb.width)
+    const widths = (await bar_boxes(page.locator(`#width-array`))).map(
+      (bounds) => bounds.width,
+    )
     expect(new Set(widths.map((width) => Math.round(width))).size).toBeGreaterThan(1)
   })
 
@@ -212,8 +216,8 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(scaled.locator(`g.y2-axis .tick text`).first()).toBeVisible()
     expect(await tick_texts(scaled, `y`)).not.toEqual(await tick_texts(scaled, `y2`))
     const stacked = await ready_plot(page, `#y2-stacked`)
-    const ys = (await bar_boxes(stacked)).map((bb) => Math.round(bb.y))
-    expect(new Set(ys).size).toBeGreaterThan(1)
+    const y_values = (await bar_boxes(stacked)).map((bounds) => Math.round(bounds.y))
+    expect(new Set(y_values).size).toBeGreaterThan(1)
 
     const line_plot = page.locator(`#y2-line-series .bar-plot`)
     await line_plot.scrollIntoViewIfNeeded()

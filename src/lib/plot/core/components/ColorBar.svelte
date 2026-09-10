@@ -34,7 +34,6 @@
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
 
   let {
     title = $bindable(),
@@ -120,33 +119,33 @@
   })
   const ticks = $derived.by((): number[] => {
     if (Array.isArray(tick_labels)) {
-      return [...new SvelteSet(tick_labels.map(Number))].filter(Number.isFinite)
+      return [...new Set(tick_labels.map(Number))].filter(Number.isFinite)
     }
-    const [lo, hi] = tick_scale.domain()
+    const [lower, upper] = tick_scale.domain()
     if (n_ticks <= 0) return []
-    if (n_ticks === 1) return [lo]
+    if (n_ticks === 1) return [lower]
     if (type_name === `arcsinh`) {
-      return generate_arcsinh_ticks(lo, hi, get_arcsinh_threshold(scale_type), n_ticks)
+      return generate_arcsinh_ticks(lower, upper, get_arcsinh_threshold(scale_type), n_ticks)
     }
     if (!snap_ticks) {
       // exactly n_ticks, evenly spaced in scale space
-      const position = color_ramp_scale(scale_type, [lo, hi], [0, 1])
+      const position = color_ramp_scale(scale_type, [lower, upper], [0, 1])
       return d3_range(n_ticks).map((idx) => position.invert(idx / (n_ticks - 1)))
     }
     if (type_name === `log`) {
       // integer powers of ten inside the niced domain (tolerance absorbs log10 round-off);
       // sub-decade domains with none fall back to the domain ends
       const powers = d3_range(
-        Math.ceil(Math.log10(lo) - 1e-10),
-        Math.floor(Math.log10(hi) + 1e-10) + 1,
+        Math.ceil(Math.log10(lower) - 1e-10),
+        Math.floor(Math.log10(upper) + 1e-10) + 1,
       ).map((exponent) => 10 ** exponent)
-      return powers.length ? powers : [lo, hi]
+      return powers.length ? powers : [lower, upper]
     }
     return tick_scale.ticks(n_ticks)
   })
   $effect.pre(() => {
-    const [lo, hi] = tick_scale.domain()
-    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lo, hi] : range
+    const [lower, upper] = tick_scale.domain()
+    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lower, upper] : range
   })
 
   const ramp = $derived(resolve_color_ramp(scale, range, scale_type))
@@ -162,38 +161,63 @@
       return `inherit`
     }
   }
-  const format_tick = (value: number): string => {
-    if (!tick_format) return format_num(value)
-    if (tick_format.startsWith(`%`)) return timeFormat(tick_format)(new Date(value))
-    return format(tick_format)(value)
-  }
+  const format_tick = $derived.by(() => {
+    if (!tick_format) return format_num
+    if (!tick_format.startsWith(`%`)) return format(tick_format)
+    const format_date = timeFormat(tick_format)
+    return (value: number) => format_date(new Date(value))
+  })
 
   // Rendered bar length and font, so generated tick labels can be thinned once a narrow
   // host squeezes the bar below the width its labels need. Width stays 0 until measured
   // (and in environments without layout), which leaves the tick list untouched.
   let bar_px = $state(0)
-  let bar_font = $state(DEFAULT_FONT_SPEC)
+  let tick_font = $state(DEFAULT_FONT_SPEC)
+  let tick_spacing = $state(8) // label padding plus a 4px gap
+  // Hosts with a background need room for the centered labels beyond the gradient ends.
+  const tick_label_width = $derived(
+    Math.max(
+      0,
+      ...ticks.map((value) => measure_text_line(format_tick(value), tick_font).width),
+    ) +
+      tick_spacing -
+      4,
+  )
   const observe_bar = observe_size<HTMLDivElement>(({ width }, node) => {
     bar_px = width
-    bar_font = resolve_font_spec(node)
+    const label = node.querySelector<HTMLElement>(`.tick-label`)
+    if (label) {
+      tick_font = resolve_font_spec(label)
+      const style = getComputedStyle(label)
+      tick_spacing =
+        Number(style.paddingLeft.replace(`px`, ``)) +
+        Number(style.paddingRight.replace(`px`, ``)) +
+        4
+    }
   })
   // Tick values are unique (deduped above, or generated), so they key the rendered labels
   const visible_ticks = $derived.by(() => {
     const base = tick_side === `inside` ? ticks.slice(1, -1) : ticks
     // explicit tick arrays are the caller's choice; vertical labels stack and never collide
-    if (Array.isArray(tick_labels) || orientation !== `horizontal` || !bar_px) return base
-    // labels are centered on their tick, so n labels need ~(n - 1) label widths of bar
-    const label_px =
-      Math.max(...base.map((tick) => measure_text_line(format_tick(tick), bar_font).width)) + 8 // breathing room between neighbours
-    const max_fit = Math.floor(bar_px / label_px) + 1
-    if (base.length <= max_fit) return base
-    // evenly spaced picks that always include both ends, so the range stays readable
-    const n_keep = Math.max(max_fit, 2)
+    if (Array.isArray(tick_labels) || !bar_px || is_vertical || base.length <= 2) return base
+    // Compare actual neighbors: alternating short and long labels often fit even when
+    // budgeting the widest label for every tick would drop an arbitrary middle value.
+    const bounds = base.map((tick) => {
+      const center = (tick_scale(tick) * bar_px) / 100
+      const half_width = measure_text_line(format_tick(tick), tick_font).width / 2
+      return { left: center - half_width, right: center + half_width }
+    })
     const last = base.length - 1
-    const picks = new Set(
-      Array.from({ length: n_keep }, (_, idx) => Math.round((idx * last) / (n_keep - 1))),
-    )
-    return base.filter((_, idx) => picks.has(idx))
+    let previous_right = bounds[0].right
+    return base.filter((_, idx) => {
+      if (idx === 0 || idx === last) return true // always retain the range ends
+      const { left, right } = bounds[idx]
+      if (left < previous_right + tick_spacing || right + tick_spacing > bounds[last].left) {
+        return false
+      }
+      previous_right = right
+      return true
+    })
   })
 
   const wrapper_flex_dir = $derived(
@@ -284,6 +308,7 @@
 <div
   bind:this={colorbar_node}
   style:flex-direction={wrapper_flex_dir}
+  style:--cbar-tick-label-width={`${tick_label_width}px`}
   {...rest}
   style={div_style + (rest.style ?? ``)}
   class={[`colorbar`, rest.class]}

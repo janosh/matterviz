@@ -91,10 +91,10 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   const points: Vec3[] = Array(count)
 
   let write_idx = 0
-  for (let kk = 0; kk < scale_z; kk++) {
-    for (let jj = 0; jj < scale_y; jj++) {
-      for (let ii = 0; ii < scale_x; ii++) {
-        points[write_idx++] = [ii, jj, kk]
+  for (let depth_index = 0; depth_index < scale_z; depth_index++) {
+    for (let col_index = 0; col_index < scale_y; col_index++) {
+      for (let row_index = 0; row_index < scale_x; row_index++) {
+        points[write_idx++] = [row_index, col_index, depth_index]
       }
     }
   }
@@ -188,7 +188,11 @@ export function make_supercell(
   const new_sites: Site[] = Array(n_sites * total_cells)
 
   // Destructure lattice vectors for fast inline arithmetic (avoid function calls in hot loop)
-  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = orig_matrix
+  const [
+    [axis_x, axis_y, axis_z],
+    [basis_x, basis_y, basis_z],
+    [center_x, center_y, center_z],
+  ] = orig_matrix
 
   let write_idx = 0
   const sites = structure.sites
@@ -233,42 +237,48 @@ export function make_supercell(
   const needs_label_separator = supercell_scaling.some((scale) => scale > 10)
 
   // Loop order: k, j, i to match typical pymatgen/standard ordering
-  for (let kk = 0; kk < scale_z; kk++) {
-    for (let jj = 0; jj < scale_y; jj++) {
-      for (let ii = 0; ii < scale_x; ii++) {
+  for (let depth_index = 0; depth_index < scale_z; depth_index++) {
+    for (let col_index = 0; col_index < scale_y; col_index++) {
+      for (let row_index = 0; row_index < scale_x; row_index++) {
         // 1x1x1 short-circuits above, so every site gets a cell-index suffix. Bare
         // concatenation stops being injective once an index reaches two digits — a
         // [12,12,2] supercell gave 288 sites but only 284 distinct labels, since
         // (1,10,0) and (11,0,0) both render as "_1100" — so separate the indices when
         // any axis can produce one. Small supercells keep the compact form.
-        const label_suffix = needs_label_separator ? `_${ii}_${jj}_${kk}` : `_${ii}${jj}${kk}`
+        const label_suffix = needs_label_separator
+          ? `_${row_index}_${col_index}_${depth_index}`
+          : `_${row_index}${col_index}${depth_index}`
 
         // Translation = ii * vec_a + jj * vec_b + kk * vec_c (inlined for performance)
-        const tx = ii * ax + jj * bx + kk * cx
-        const ty = ii * ay + jj * by + kk * cy
-        const tz = ii * az + jj * bz + kk * cz
+        const translate_x = row_index * axis_x + col_index * basis_x + depth_index * center_x
+        const translate_y = row_index * axis_y + col_index * basis_y + depth_index * center_y
+        const translate_z = row_index * axis_z + col_index * basis_z + depth_index * center_z
 
         for (let site_idx = 0; site_idx < n_sites; site_idx++) {
           const site = sites[site_idx]
-          let [wx, wy, wz] = [0, 0, 0]
+          let [wrapped_x, wrapped_y, wrapped_z] = [0, 0, 0]
           if (any_frac_shift) {
             const [shift_a, shift_b, shift_c] = [
-              frac_shift[0][ii * n_sites + site_idx],
-              frac_shift[1][jj * n_sites + site_idx],
-              frac_shift[2][kk * n_sites + site_idx],
+              frac_shift[0][row_index * n_sites + site_idx],
+              frac_shift[1][col_index * n_sites + site_idx],
+              frac_shift[2][depth_index * n_sites + site_idx],
             ]
-            wx = shift_a * ax + shift_b * bx + shift_c * cx
-            wy = shift_a * ay + shift_b * by + shift_c * cy
-            wz = shift_a * az + shift_b * bz + shift_c * cz
+            wrapped_x = shift_a * axis_x + shift_b * basis_x + shift_c * center_x
+            wrapped_y = shift_a * axis_y + shift_b * basis_y + shift_c * center_y
+            wrapped_z = shift_a * axis_z + shift_b * basis_z + shift_c * center_z
           }
 
           new_sites[write_idx++] = {
             species: site.species,
-            xyz: [site.xyz[0] + tx + wx, site.xyz[1] + ty + wy, site.xyz[2] + tz + wz],
+            xyz: [
+              site.xyz[0] + translate_x + wrapped_x,
+              site.xyz[1] + translate_y + wrapped_y,
+              site.xyz[2] + translate_z + wrapped_z,
+            ],
             abc: [
-              wrapped_frac[0][ii * n_sites + site_idx],
-              wrapped_frac[1][jj * n_sites + site_idx],
-              wrapped_frac[2][kk * n_sites + site_idx],
+              wrapped_frac[0][row_index * n_sites + site_idx],
+              wrapped_frac[1][col_index * n_sites + site_idx],
+              wrapped_frac[2][depth_index * n_sites + site_idx],
             ],
             label: `${site.label}${label_suffix}`,
             properties: site_properties[site_idx],

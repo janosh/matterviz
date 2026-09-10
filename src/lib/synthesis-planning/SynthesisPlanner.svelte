@@ -213,9 +213,9 @@
     // Preserve reaction definitions when changing conditions removes an uphill route from results.
     map_routes = untrack(() =>
       ids.flatMap(
-        (id) =>
-          current_routes.find((route) => route.id === id) ??
-          map_routes.find((route) => route.id === id) ??
+        (identifier) =>
+          current_routes.find((route) => route.id === identifier) ??
+          map_routes.find((route) => route.id === identifier) ??
           [],
       ),
     )
@@ -223,7 +223,7 @@
   $effect(() => {
     if (computed_plan && computed_plan.target.id !== shortlist_target) {
       if (shortlist_target || !shortlist_ids.length)
-        shortlist_ids = routes.slice(0, 2).map(({ id }) => id)
+        shortlist_ids = routes.slice(0, 2).map(({ id: identifier }) => identifier)
       shortlist_target = computed_plan.target.id
     }
   })
@@ -282,7 +282,9 @@
           ...selected_route.reaction.reactants.map(({ phase }) => phase.id),
           selected_route.reaction.products[0].phase.id,
           ...selected_route.selectivity.competitors.slice(0, 5).map((comp) => comp.phase.id),
-        ].filter((id) => !id.startsWith(`gas:`) && !id.startsWith(`ref:`))
+        ].filter(
+          (identifier) => !identifier.startsWith(`gas:`) && !identifier.startsWith(`ref:`),
+        )
       : [],
   )
 

@@ -77,7 +77,7 @@ describe(`resolve_plot_title`, () => {
     expect(layout.align).toBe(align)
     const lines = [...(layout.title?.lines ?? []), ...(layout.subtitle?.lines ?? [])]
     expect(lines).toHaveLength(2)
-    expect(lines.every(({ x }) => x === expected_x)).toBe(true)
+    expect(lines.every(({ x: coord_x }) => coord_x === expected_x)).toBe(true)
   })
 
   it(`positions a separately styled subtitle after the measured title block and gap`, () => {

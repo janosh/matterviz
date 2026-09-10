@@ -127,10 +127,13 @@ const tumbling_spectra = (
         atom_base,
       )
     }
-    const xx = cosine * cosine * tensor[0] + sine * sine * tensor[4]
-    const yy = sine * sine * tensor[0] + cosine * cosine * tensor[4]
-    const xy = cosine * sine * (tensor[0] - tensor[4])
-    rotating_tensors.set([xx, xy, 0, xy, yy, 0, 0, 0, tensor[8]], frame_idx * 9)
+    const tensor_xx = cosine * cosine * tensor[0] + sine * sine * tensor[4]
+    const tensor_yy = sine * sine * tensor[0] + cosine * cosine * tensor[4]
+    const coords_xy = cosine * sine * (tensor[0] - tensor[4])
+    rotating_tensors.set(
+      [tensor_xx, coords_xy, 0, coords_xy, tensor_yy, 0, 0, 0, tensor[8]],
+      frame_idx * 9,
+    )
   }
   const as_input = (
     positions: Float64Array,
@@ -518,13 +521,13 @@ describe(`calc_trajectory_spectroscopy`, () => {
       },
     }
     const result = calc_trajectory_spectroscopy(input, RAW_SPECTRUM)
-    const ir = result.ir
-    expect(ir).not.toBeNull()
-    if (!ir) return
-    const maximum_idx = ir.power.indexOf(Math.max(...ir.power))
-    expect(ir.frequencies[maximum_idx]).toBeCloseTo(0.125, 14)
-    expect(ir.sample_interval).toBe(2)
-    expect(ir.nyquist).toBe(0.25)
+    const infrared = result.ir
+    expect(infrared).not.toBeNull()
+    if (!infrared) return
+    const maximum_idx = infrared.power.indexOf(Math.max(...infrared.power))
+    expect(infrared.frequencies[maximum_idx]).toBeCloseTo(0.125, 14)
+    expect(infrared.sample_interval).toBe(2)
+    expect(infrared.nyquist).toBe(0.25)
   })
 
   // Uniform within computed f64 roundoff: a decimal grid, and the same grid translated to a

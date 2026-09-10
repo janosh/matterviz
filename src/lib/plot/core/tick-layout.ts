@@ -422,12 +422,12 @@ interface Candidate {
 type LabelInput = { full_text: string; display_lines?: readonly string[]; visible?: boolean }
 
 const create_candidate = (
-  id: string,
+  identifier: string,
   strategy: TickStrategy,
   labels: readonly LabelInput[],
   rotation_deg = 0,
 ): Candidate => ({
-  id,
+  id: identifier,
   strategy,
   rotation_deg,
   labels: labels.map((label, tick_index) => ({
@@ -442,17 +442,17 @@ const create_candidate = (
 
 const with_labels = (
   candidate: Candidate,
-  id: string,
+  identifier: string,
   strategy: TickStrategy,
   labels: readonly CandidateLabel[],
-): Candidate => ({ id, strategy, rotation_deg: candidate.rotation_deg, labels })
+): Candidate => ({ id: identifier, strategy, rotation_deg: candidate.rotation_deg, labels })
 
 // Alternate visible labels between two rows without moving their tick slots
-const stagger_candidate = (candidate: Candidate, id: string): Candidate => {
+const stagger_candidate = (candidate: Candidate, identifier: string): Candidate => {
   let visible_order = 0
   return with_labels(
     candidate,
-    id,
+    identifier,
     `stagger`,
     candidate.labels.map((label) => ({
       ...label,
@@ -464,11 +464,11 @@ const stagger_candidate = (candidate: Candidate, id: string): Candidate => {
 const thinned_candidate = (
   candidate: Candidate,
   visible_indices: ReadonlySet<number>,
-  id: string,
+  identifier: string,
 ): Candidate =>
   with_labels(
     candidate,
-    id,
+    identifier,
     `thin`,
     candidate.labels.map((label) => ({
       ...label,
@@ -504,13 +504,13 @@ const ellipsize_line = (
 
 const ellipsis_candidate = (
   candidate: Candidate,
-  id: string,
+  identifier: string,
   max_width_px: number | readonly number[],
   measure_text: (text: string) => number,
 ): Candidate =>
   with_labels(
     candidate,
-    id,
+    identifier,
     `ellipsis`,
     candidate.labels.map((label) => {
       const label_max_width =

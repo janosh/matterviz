@@ -257,7 +257,13 @@
   ])
 
   const frame_range_settings = track_settings(() => ({ start_frame, end_frame }))
-  const video_settings_settings = track_settings(() => ({ video_fps, resolution_multiplier }))
+  const video_settings_settings = track_settings(
+    () => ({ video_fps, resolution_multiplier }),
+    {
+      video_fps: 30,
+      resolution_multiplier: 1,
+    },
+  )
 </script>
 
 <ExportPane

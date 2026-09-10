@@ -1,40 +1,36 @@
 import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
 import {
-  build_pick_index,
   bin_points,
   density_bin_at_point,
   density_screen_cell,
   first_point_in_bin,
   scale_bin_transform,
   series_extents,
+  series_x_order,
+  visible_points,
   should_render_points,
 } from '$lib/plot/scatter/adaptive-density'
-import { query_nearest } from '$lib/plot/core/spatial-index'
+import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
 import type { DensePointSeries } from '$lib/plot/scatter/adaptive-density'
 import { describe, expect, it } from 'vitest'
 
 describe(`adaptive density utilities`, () => {
-  const series: DensePointSeries<{ id: string }>[] = [
+  const series = [
     {
       x: [0, 0.1, 0.9, 1.8, 2.1],
       y: [0, 0.1, 0.8, 1.9, 2.2],
       point_ids: [`a`, `b`, `c`, `d`, `outside`],
       metadata: [{ id: `a` }, { id: `b` }, { id: `c` }, { id: `d` }, { id: `outside` }],
     },
-  ]
+  ] satisfies DensePointSeries<{ id: string }>[]
   const misaligned_series = [{ label: `dense`, x: [0, 1], y: [2] }]
-  const pick_options = {
-    x_range: [0, 2] as Vec2,
-    y_range: [0, 2] as Vec2,
-    x_scale: (x: number) => x * 100,
-    y_scale: (y: number) => y * 100,
-    radius_px: 20,
-  }
+  const pixel_scale = (value: number) => value * 100
+  const projected_points = () =>
+    visible_points(series, [0, 2], [0, 2], pixel_scale, pixel_scale)
 
   it.each([
     [`extent calculation`, () => series_extents(misaligned_series)],
     [`density binning`, () => bin_points(misaligned_series, [0, 1], [0, 2], 2, 2)],
-    [`pick indexing`, () => build_pick_index(misaligned_series, pick_options)],
   ] as const)(`rejects misaligned coordinates during %s`, (_name, run) => {
     expect(run).toThrow(`aligned arrays`)
   })
@@ -94,25 +90,12 @@ describe(`adaptive density utilities`, () => {
   })
 
   it(`indexes visible points for fast nearest-neighbor picking`, () => {
-    const index = build_pick_index(series, pick_options)
+    const index = build_spatial_index(projected_points(), 20)
     const picked = query_nearest(index, { x: 12, y: 9 })
 
     expect(index.cells.size).toBe(3)
     expect(picked?.point_id).toBe(`b`)
     expect(picked?.metadata).toEqual({ id: `b` })
-  })
-
-  it(`finds the only point inside a singleton density bin`, () => {
-    const density = bin_points(series, [0, 2], [0, 2], 2, 2)
-    const picked = first_point_in_bin(
-      series,
-      density,
-      { x_bin: 1, y_bin: 1 },
-      pick_options.x_scale,
-      pick_options.y_scale,
-    )
-
-    expect(picked?.point_id).toBe(`d`)
   })
 
   it(`uses exact density-bin assignment for boundary points`, () => {
@@ -127,36 +110,28 @@ describe(`adaptive density utilities`, () => {
     const density = bin_points(boundary_series, [0, 1], [0, 1], 2, 2)
 
     expect([...density.counts]).toEqual([0, 1, 0, 0])
-    expect(
+    const point_in = (x_bin: number) =>
       first_point_in_bin(
         boundary_series,
         density,
-        { x_bin: 0, y_bin: 0 },
-        pick_options.x_scale,
-        pick_options.y_scale,
-      ),
-    ).toBeNull()
-    expect(
-      first_point_in_bin(
-        boundary_series,
-        density,
-        { x_bin: 1, y_bin: 0 },
-        pick_options.x_scale,
-        pick_options.y_scale,
-      )?.point_id,
-    ).toBe(`boundary`)
+        { x_bin, y_bin: 0 },
+        pixel_scale,
+        pixel_scale,
+      )
+    expect(point_in(0)).toBeNull()
+    expect(point_in(1)?.point_id).toBe(`boundary`)
   })
 
   it.each([
     { range_padding: undefined, x: [-0.105, 2.205], y: [-0.11, 2.31] }, // default 5%
     { range_padding: 0, x: [0, 2.1], y: [0, 2.2] },
     { range_padding: 0.1, x: [-0.21, 2.31], y: [-0.22, 2.42] },
-  ])(`honours range_padding=$range_padding`, ({ range_padding, x, y }) => {
+  ])(`honours range_padding=$range_padding`, ({ range_padding, x: coord_x, y: coord_y }) => {
     const extents = series_extents(series, undefined, undefined, range_padding)
-    expect(extents.x[0]).toBeCloseTo(x[0], 12)
-    expect(extents.x[1]).toBeCloseTo(x[1], 12)
-    expect(extents.y[0]).toBeCloseTo(y[0], 12)
-    expect(extents.y[1]).toBeCloseTo(y[1], 12)
+    expect(extents.x[0]).toBeCloseTo(coord_x[0], 12)
+    expect(extents.x[1]).toBeCloseTo(coord_x[1], 12)
+    expect(extents.y[0]).toBeCloseTo(coord_y[0], 12)
+    expect(extents.y[1]).toBeCloseTo(coord_y[1], 12)
   })
 
   it(`expands constant extents when range_padding is zero`, () => {
@@ -206,26 +181,30 @@ describe(`adaptive density utilities`, () => {
 
   it(`pads arcsinh extents in transform space and keeps extremes finite`, () => {
     const { forward, inverse } = scale_bin_transform(`arcsinh`)
-    const t = forward(1e6)
+    const fraction = forward(1e6)
     const equal = series_extents([{ x: [1e6, 1e6], y: [0, 1] }], `arcsinh`, `linear`).x
-    expect(equal[0]).toBeCloseTo(inverse(t - 0.5))
-    expect(equal[1]).toBeCloseTo(inverse(t + 0.5))
-    const t0 = forward(1)
-    const t1 = forward(1000)
-    const pad = (t1 - t0) * 0.05
+    expect(equal[0]).toBeCloseTo(inverse(fraction - 0.5))
+    expect(equal[1]).toBeCloseTo(inverse(fraction + 0.5))
+    const param_0 = forward(1)
+    const param_1 = forward(1000)
+    const pad = (param_1 - param_0) * 0.05
     const distinct = series_extents([{ x: [1, 1000], y: [0, 1] }], `arcsinh`, `linear`).x
-    expect(distinct[0]).toBeCloseTo(inverse(t0 - pad))
-    expect(distinct[1]).toBeCloseTo(inverse(t1 + pad))
-    const [lo, hi] = series_extents([{ x: [1, 1.7e308], y: [0, 1] }], `arcsinh`, `linear`).x
-    expect(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo).toBe(true)
+    expect(distinct[0]).toBeCloseTo(inverse(param_0 - pad))
+    expect(distinct[1]).toBeCloseTo(inverse(param_1 + pad))
+    const [lower, upper] = series_extents(
+      [{ x: [1, 1.7e308], y: [0, 1] }],
+      `arcsinh`,
+      `linear`,
+    ).x
+    expect(Number.isFinite(lower) && Number.isFinite(upper) && upper > lower).toBe(true)
   })
 
   it(`does not pick outside visible ranges or radius`, () => {
-    const hidden = query_nearest(
-      build_pick_index(series, { ...pick_options, radius_px: 30 }),
-      { x: 210, y: 220 },
-    )
-    const far = query_nearest(build_pick_index(series, { ...pick_options, radius_px: 10 }), {
+    const hidden = query_nearest(build_spatial_index(projected_points(), 30), {
+      x: 210,
+      y: 220,
+    })
+    const far = query_nearest(build_spatial_index(projected_points(), 10), {
       x: 140,
       y: 0,
     })
@@ -243,12 +222,11 @@ describe(`adaptive density utilities`, () => {
           return Reflect.get(target, prop, receiver)
         },
       })
-    const counted_series: DensePointSeries<{ id: string }>[] = [
+    const counted_series = [
       {
-        x: counted([0, 0.1, 0.9, 1.8]),
-        y: counted([0, 0.1, 0.8, 1.9]),
-        point_ids: [`a`, `b`, `c`, `d`],
-        metadata: [{ id: `a` }, { id: `b` }, { id: `c` }, { id: `d` }],
+        ...series[0],
+        x: counted(series[0].x),
+        y: counted(series[0].y),
       },
     ]
     const density = bin_points(counted_series, [0, 2], [0, 2], 2, 2)
@@ -258,11 +236,12 @@ describe(`adaptive density utilities`, () => {
       counted_series,
       density,
       { x_bin: 1, y_bin: 1 },
-      pick_options.x_scale,
-      pick_options.y_scale,
+      pixel_scale,
+      pixel_scale,
     )
 
     expect(picked?.point_id).toBe(`d`)
+    expect(picked?.metadata).toEqual({ id: `d` })
     expect(accesses).toBe(2)
   })
 
@@ -292,5 +271,49 @@ describe(`adaptive density utilities`, () => {
       expect(bin?.x_range.map(Math.round)).toEqual([10, 100])
       expect(bin?.y_range.map(Math.round)).toEqual([10, 100])
     })
+  })
+})
+
+describe(`ordered x windows`, () => {
+  it.each([
+    [new Float64Array([0, 1, 1, 2, 3]), 1],
+    [new Float64Array([3, 2, 1, 1, 0]), -1],
+    [[1, 1, 1], 1],
+    [[0, 2, 1], 0],
+    [[0, NaN, 2], 0],
+    [[Infinity], 0],
+    [[], 0],
+  ] as const)(`preserves bins and point identities for %j`, (x_values, expected_order) => {
+    const series = [
+      {
+        x: x_values,
+        y: Array.from({ length: x_values.length }, (_, idx) => idx % 3),
+        point_ids: Array.from({ length: x_values.length }, (_, idx) => `point ${idx}`),
+      },
+    ]
+    const order = series_x_order(series)
+    expect(order).toEqual([expected_order])
+    for (const range of [
+      [1, 2],
+      [2, 1],
+      [1, 1],
+      [-5, -1],
+      [4, 5],
+      [-Infinity, Infinity],
+      [NaN, 2],
+      [0, NaN],
+    ] satisfies Vec2[]) {
+      for (const axis of [`x`, `y`] as const) {
+        const x_range: Vec2 = axis === `x` ? range : [0, 2]
+        const y_range: Vec2 = axis === `y` ? range : [0, 2]
+        const binned = bin_points(series, x_range, y_range, 4, 4, undefined, order)
+        expect(binned).toEqual(bin_points(series, x_range, y_range, 4, 4))
+        const scale = (value: number) => value * 10
+        const points = [...visible_points(series, x_range, y_range, scale, scale, order)]
+        expect(points).toEqual([...visible_points(series, x_range, y_range, scale, scale)])
+        expect(binned.visible_count).toBe(points.length)
+        if (range.some(Number.isNaN)) expect(points).toEqual([])
+      }
+    }
   })
 })

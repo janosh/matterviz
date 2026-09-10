@@ -108,15 +108,12 @@ const render_pane = (props: {
 }
 
 beforeEach(() => {
-  mocks.collect.mockReset()
-  mocks.compute.mockReset()
-  mocks.cancel.mockReset()
-  mocks.release.mockReset()
+  for (const mock of Object.values(mocks)) mock.mockReset()
+  mocks.collect.mockResolvedValue(make_input())
 })
 
 test(`recomputes from changed settings and marks the prior result as stale`, async () => {
   const recomputation = Promise.withResolvers<TrajectorySpectroscopyResult>()
-  mocks.collect.mockResolvedValue(make_input())
   mocks.compute
     .mockResolvedValueOnce(make_result(`first`))
     .mockReturnValueOnce(recomputation.promise)
@@ -168,10 +165,32 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
   await vi.waitFor(() => expect(fieldset?.disabled).toBe(false))
 })
 
+test(`failed inline calculations keep editable settings and a retry action`, async () => {
+  mocks.compute
+    .mockRejectedValueOnce(new Error(`Invalid analysis settings`))
+    .mockResolvedValueOnce(make_result(`retry`))
+  const props = $state({
+    run: make_run(),
+    result: undefined as TrajectorySpectroscopyResult | undefined,
+  })
+  const target = render_pane(props)
+  await vi.waitFor(() => expect(target.textContent).toContain(`Invalid analysis settings`))
+  const timestep = query<HTMLInputElement>(target, `input[aria-label="Simulation timestep"]`)
+  timestep.value = `2`
+  timestep.dispatchEvent(new Event(`input`, { bubbles: true }))
+  const retry = [...target.querySelectorAll(`button`)].find((button) =>
+    button.textContent?.includes(`Compute spectroscopy`),
+  )
+  expect(retry).toBeDefined()
+  retry?.click()
+  await vi.waitFor(() => expect(props.result?.metadata.name).toBe(`retry`))
+  expect(mocks.compute.mock.calls[1][0]).toMatchObject({ time_step: 2 })
+  expect(target.textContent).not.toContain(`Invalid analysis settings`)
+})
+
 test(`a trajectory switch cancels blocked work and starts the replacement`, async () => {
   const first_result = Promise.withResolvers<TrajectorySpectroscopyResult>()
   const second_result = Promise.withResolvers<TrajectorySpectroscopyResult>()
-  mocks.collect.mockResolvedValue(make_input())
   mocks.compute
     .mockReturnValueOnce(first_result.promise)
     .mockReturnValueOnce(second_result.promise)
@@ -201,7 +220,6 @@ test(`a trajectory switch cancels blocked work and starts the replacement`, asyn
 })
 
 test(`unmounting aborts the in-flight request and releases the worker`, async () => {
-  mocks.collect.mockResolvedValue(make_input())
   mocks.compute.mockReturnValueOnce(
     Promise.withResolvers<TrajectorySpectroscopyResult>().promise,
   )

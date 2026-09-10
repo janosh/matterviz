@@ -6,7 +6,9 @@ test.describe(`XrdPlot Component Tests`, () => {
     await page.goto(`/test/xrd-plot`, { waitUntil: `networkidle` })
   })
 
-  test(`renders single series with axis labels and bars`, async ({ page }) => {
+  test(`renders single series with axes, annotated peaks and hkl tooltips`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#single-pattern .bar-plot`)
     await expect(plot).toBeVisible()
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
@@ -14,19 +16,7 @@ test.describe(`XrdPlot Component Tests`, () => {
     // Bars are rendered as path elements inside .bar-series
     await expect(plot.locator(`svg .bar-series path`).first()).toBeVisible()
     await expect_bottom_within(get_chart_svg(plot), plot.locator(`.axis-label.x-label`))
-  })
-
-  test(`shows labels for annotated peaks`, async ({ page }) => {
-    const plot = page.locator(`#single-pattern .bar-plot`)
-    await expect(plot).toBeVisible()
-    // Peak labels are rendered as text above bars for selected indices
-    const labels = plot.locator(`text.bar-label`)
-    // Some labels should be present for annotated peaks
-    await expect(labels.first()).toBeVisible()
-  })
-
-  test(`tooltip includes hkl and d-spacing when available`, async ({ page }) => {
-    const plot = page.locator(`#single-pattern .bar-plot`)
+    await expect(plot.locator(`text.bar-label`).first()).toBeVisible()
     // The first peak lies on the y-axis; use the unobstructed second peak.
     const bar = plot.locator(`svg .bar-series path`).nth(1)
     await expect(bar).toBeVisible()
@@ -37,6 +27,24 @@ test.describe(`XrdPlot Component Tests`, () => {
     await expect(tooltip).toContainText(`2θ: 30°`)
     await expect(tooltip).toContainText(`hkl: 110`)
     await expect(tooltip).toContainText(`d: 2.98 Å`)
+  })
+
+  test(`broadening toggles the rendered profile and resets to sticks`, async ({ page }) => {
+    const plot = page.locator(`#single-pattern`)
+    await plot.locator(`.pane-toggle`).click()
+    const pane = page.locator(`.draggable-pane:visible`).first()
+    await pane.getByLabel(`Simulate Broadening`, { exact: true }).click()
+    await expect(plot.locator(`.scatter`)).toBeVisible()
+    await expect(plot.locator(`.bar-plot`)).toHaveCount(0)
+    // Switching the renderer remounts the pane, so reopen it if it was closed.
+    if (!(await pane.isVisible())) await plot.locator(`.pane-toggle`).click()
+    const reset = pane.getByRole(`button`, {
+      name: `Reset broadening to defaults`,
+      exact: true,
+    })
+    await reset.click()
+    await expect(plot.locator(`.bar-plot`)).toBeVisible()
+    await expect(plot.locator(`.scatter`)).toHaveCount(0)
   })
 
   test(`legend appears for multiple patterns and toggles series`, async ({ page }) => {

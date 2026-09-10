@@ -11,8 +11,10 @@ describe(`bar_path`, () => {
     [0, 0, 10, 0, 5, true, `M0,0h10v0h-10Z`],
   ])(
     `returns simple rect path when radius is 0, negative, NaN or the bar is flat (x=%d, y=%d, w=%d, h=%d, r=%d, vertical=%s)`,
-    (x, y, w, h, r, vertical, expected) => {
-      expect(bar_path(x, y, w, h, r, vertical)).toBe(expected)
+    (coord_x, coord_y, width_value, height_value, radius, vertical, expected) => {
+      expect(bar_path(coord_x, coord_y, width_value, height_value, radius, vertical)).toBe(
+        expected,
+      )
     },
   )
 
@@ -30,10 +32,17 @@ describe(`bar_path`, () => {
   it.each([
     [`width`, 4, 60, `M10,80V22A2,2 0 0 1 12,20H12A2,2 0 0 1 14,22V80Z`],
     [`height`, 40, 3, `M10,23V21.5A1.5,1.5 0 0 1 11.5,20H48.5A1.5,1.5 0 0 1 50,21.5V23Z`],
-  ])(`clamps the radius to half the bar %s`, (_side, w, h, expected) => {
-    expect(bar_path(10, 20, w, h, 5, true)).toBe(expected)
-    expect(bar_path(10, 20, w, h, 5, true)).toBe(
-      bar_path(10, 20, w, h, Math.min(w, h) / 2, true),
+  ])(`clamps the radius to half the bar %s`, (_side, width_value, height_value, expected) => {
+    expect(bar_path(10, 20, width_value, height_value, 5, true)).toBe(expected)
+    expect(bar_path(10, 20, width_value, height_value, 5, true)).toBe(
+      bar_path(
+        10,
+        20,
+        width_value,
+        height_value,
+        Math.min(width_value, height_value) / 2,
+        true,
+      ),
     )
   })
 })

@@ -7,6 +7,7 @@
   import type { LabelOpts, Projected } from '$lib/convex-hull/canvas-draw'
   import {
     build_hull_faces,
+    build_hull_pick_index,
     draw_corner_labels,
     draw_face,
     draw_hull_labels,
@@ -66,9 +67,9 @@
     y: layout.origin_y - y_pos * layout.size,
     depth: 0,
   })
-  const xy_at = (px: number, py: number): Vec2 => [
-    (px - layout.origin_x) / layout.size,
-    (layout.origin_y - py) / layout.size,
+  const xy_at = (pixel_x: number, pixel_y: number): Vec2 => [
+    (pixel_x - layout.origin_x) / layout.size,
+    (layout.origin_y - pixel_y) / layout.size,
   ]
 
   // === Entries in ConvexHullEntry shape for the shared canvas helpers ===
@@ -177,6 +178,7 @@
       .toReversed()
       .map((entry) => ({ entry, projected: project(entry.x, entry.y) })),
   )
+  const pick_index = $derived(build_hull_pick_index(points, layout.scale))
   const point_opts = $derived({
     scale: layout.scale,
     shadow_factor: 0,
@@ -209,8 +211,8 @@
       ctx.strokeStyle = add_alpha(text_color, 0.12)
       ctx.lineWidth = 1
       ctx.setLineDash([3, 4])
-      const grid_point = (from: readonly number[], to: readonly number[], frac: number) =>
-        project(lerp(from[0], to[0], frac), lerp(from[1], to[1], frac))
+      const grid_point = (from: readonly number[], target: readonly number[], frac: number) =>
+        project(lerp(from[0], target[0], frac), lerp(from[1], target[1], frac))
       for (let step = 1; step < 10; step++) {
         const frac = step / 10
         for (const [start, end] of [
@@ -343,7 +345,7 @@
   function handle_pointer_move(event: MouseEvent): void {
     if (!canvas) return
     const position: Vec2 = [event.clientX, event.clientY]
-    const entry = find_hull_entry_at_mouse(canvas, event, points, layout.scale)
+    const entry = find_hull_entry_at_mouse(canvas, event, pick_index)
     hover_phase = entry ? entry.phase_idx : null
     canvas.style.cursor = entry ? `pointer` : ``
     if (hover_phase !== null) {
@@ -357,11 +359,11 @@
       return
     }
     const rect = canvas.getBoundingClientRect()
-    const xy = xy_at(event.clientX - rect.left, event.clientY - rect.top)
-    const barycentric = xy_to_ternary(xy)
+    const coords_xy = xy_at(event.clientX - rect.left, event.clientY - rect.top)
+    const barycentric = xy_to_ternary(coords_xy)
     if (!inside_triangle(barycentric, 1e-6)) return handle_pointer_leave()
-    const decomposition = decompose_composition(model, section, xy)
-    hover_composition = decomposition && { xy, decomposition }
+    const decomposition = decompose_composition(model, section, coords_xy)
+    hover_composition = decomposition && { xy: coords_xy, decomposition }
     on_hover?.({ kind: `composition`, barycentric, decomposition, position })
   }
   function handle_pointer_leave(): void {

@@ -1,8 +1,9 @@
 import type { PhaseDiagramData } from '$lib/phase-diagram'
 import { PhaseDiagramControls } from '$lib/phase-diagram'
-import { type ComponentProps, mount } from 'svelte'
+import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, query } from '../setup'
+import { PHASE_DIAGRAM_DEFAULTS } from '$lib/phase-diagram/utils'
 
 const sample_data: PhaseDiagramData = {
   components: [`Cu`, `Ni`],
@@ -23,11 +24,26 @@ const mount_controls = (props: ComponentProps<typeof PhaseDiagramControls> = {})
 describe(`PhaseDiagramControls`, () => {
   test(`renders sections and controls when open`, () => {
     const target = mount_controls({ enable_export: true })
+    expect(target.innerHTML).toContain(`Phase diagram controls`)
     const expected_text =
       `Visibility|Labels|Grid|Comp. labels|Appearance|Font size|Colors|Background|` +
       `Boundaries|Tie-line display|Line width|Endpoint radius|Cursor radius|Axes|` +
       `X-axis ticks|Y-axis ticks|Export|PNG DPI`
     for (const text of expected_text.split(`|`)) expect(target.textContent).toContain(text)
+    const checkboxes = [...target.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)]
+    for (const label_text of [`Boundaries`, `Labels`, `Grid`, `Comp. labels`]) {
+      const checkbox = checkboxes.find((input) =>
+        input.closest(`label`)?.textContent?.includes(label_text),
+      )
+      expect(checkbox?.checked, `checkbox "${label_text}" not found`).toBe(true)
+    }
+    const dpi_value = target.querySelector<HTMLElement>(`.dpi-value`)
+    const input = dpi_value?.querySelector(`input`)
+    const readout = dpi_value?.querySelector(`span`)
+    if (!dpi_value || !input || !readout) throw new Error(`DPI controls are missing`)
+    expect(dpi_value.style.display).toBe(`inline-flex`)
+    expect(input.style.opacity).not.toBe(`0.8`)
+    expect(readout.style.opacity).toBe(`0.8`)
   })
 
   test(`hides export section when enable_export is false`, () => {
@@ -47,13 +63,14 @@ describe(`PhaseDiagramControls`, () => {
     ].find((input) => input.closest(`label`)?.textContent?.includes(`X-axis ticks`))
     if (!tick_input) throw new Error(`X-axis tick input not found`)
 
-    tick_input.value = ``
-    tick_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(state.x_axis.ticks).toBe(5)
-
-    tick_input.value = `99`
-    tick_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(state.x_axis.ticks).toBe(15)
+    for (const [input, expected] of [
+      [``, 5],
+      [`99`, 15],
+    ] as const) {
+      tick_input.value = input
+      tick_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      expect(state.x_axis.ticks).toBe(expected)
+    }
   })
 
   test.each([
@@ -61,28 +78,23 @@ describe(`PhaseDiagramControls`, () => {
     { data: { ...sample_data, special_points: [] }, expected: false, desc: `without` },
   ])(`Special pts toggle shown=$expected $desc`, ({ data, expected }) => {
     const target = mount_controls({ data })
+    expect(target.innerHTML).toContain(`Cu-Ni`)
     const visibility_grid = target.querySelector(`.visibility-grid`)
     expect(visibility_grid).toBeInstanceOf(HTMLElement)
     expect(visibility_grid?.innerHTML.includes(`Special pts`)).toBe(expected)
   })
 
-  test(`visibility checkboxes default to enabled`, () => {
-    const target = mount_controls()
-    const checkboxes = [...target.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)]
-    for (const label_text of [`Boundaries`, `Labels`, `Grid`, `Comp. labels`]) {
-      const checkbox = checkboxes.find((input) =>
-        input.closest(`label`)?.textContent?.includes(label_text),
-      )
-      expect(checkbox?.checked, `checkbox "${label_text}" not found`).toBe(true)
-    }
-  })
-
-  test(`renders with custom config values`, () => {
+  test(`renders and resets custom config values`, async () => {
     const target = mount_controls({
       data: sample_data, // special points present → the radius input renders
+      show_labels: false,
+      x_axis: { ticks: 9 },
+      png_dpi: 72,
       config: {
         font_size: 16,
         special_point_radius: 8,
+        colors: { boundary: `#ff00ff` },
+        tie_line: { stroke_width: 4 },
       },
     })
     const number_value = (min: number, max: number) =>
@@ -91,29 +103,22 @@ describe(`PhaseDiagramControls`, () => {
       )?.value
     expect(number_value(8, 20)).toBe(`16`) // font size
     expect(number_value(2, 12)).toBe(`8`) // special point radius
-  })
-
-  test(`keeps the DPI input and readout inline while de-emphasizing only the readout`, () => {
-    const target = mount_controls({ enable_export: true })
-    const dpi_value = target.querySelector<HTMLElement>(`.dpi-value`)
-    const input = dpi_value?.querySelector(`input`)
-    const readout = dpi_value?.querySelector(`span`)
-    if (!dpi_value || !input || !readout) throw new Error(`DPI controls are missing`)
-    expect(dpi_value.style.display).toBe(`inline-flex`)
-    expect(input.style.opacity).not.toBe(`0.8`)
-    expect(readout.style.opacity).toBe(`0.8`)
-  })
-
-  test(`renders component-specific and generic titles`, () => {
-    expect(mount_controls({ data: sample_data }).innerHTML).toContain(`Cu-Ni`)
-    expect(mount_controls().innerHTML).toContain(`Phase diagram controls`)
-  })
-
-  test(`hides pane content when controls_open is false`, () => {
-    const target = mount_controls({ controls_open: false })
-    const pane = target.querySelector(`.draggable-pane`) as HTMLElement
-    expect(pane).toBeInstanceOf(HTMLElement)
-    expect(pane?.style.display).toBe(`none`)
+    query<HTMLButtonElement>(
+      target,
+      `button[aria-label="Reset appearance to defaults"]`,
+    ).click()
+    await tick()
+    expect(number_value(8, 20)).toBe(String(PHASE_DIAGRAM_DEFAULTS.font_size))
+    expect(number_value(2, 12)).toBe(String(PHASE_DIAGRAM_DEFAULTS.special_point_radius))
+    expect(
+      target.querySelector(`button[aria-label="Reset appearance to defaults"]`),
+    ).toBeNull()
+    for (const section of [`visibility`, `colors`, `tie-line display`, `axes`, `export`]) {
+      const selector = `button[aria-label="Reset ${section} to defaults"]`
+      query<HTMLButtonElement>(target, selector).click()
+      await tick()
+      expect(target.querySelector(selector)).toBeNull()
+    }
   })
 
   test.each([
@@ -122,5 +127,7 @@ describe(`PhaseDiagramControls`, () => {
   ])(`keeps the generated toggle title when controls_open=%s`, (controls_open, expected) => {
     const target = mount_controls({ controls_open })
     expect(target.querySelector<HTMLButtonElement>(`button[title]`)?.title).toBe(expected)
+    const pane = query(target, `.draggable-pane`)
+    expect(pane.style.display === `none`).toBe(!controls_open)
   })
 })

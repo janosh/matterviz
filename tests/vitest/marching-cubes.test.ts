@@ -45,9 +45,11 @@ const marching_cubes = (
 const gaussian_grid = (size: number): number[][][] => {
   const center = (size - 1) / 2
   const sigma = size / 4
-  return make_grid(size, size, size, (ix, iy, iz) => {
-    const [dx, dy, dz] = [ix - center, iy - center, iz - center]
-    return Math.exp(-(dx * dx + dy * dy + dz * dz) / (2 * sigma * sigma))
+  return make_grid(size, size, size, (idx_x, idx_y, idx_z) => {
+    const [delta_x, delta_y, delta_z] = [idx_x - center, idx_y - center, idx_z - center]
+    return Math.exp(
+      -(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z) / (2 * sigma * sigma),
+    )
   })
 }
 
@@ -58,8 +60,8 @@ const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void
   }
 }
 
-const indexed_grid = (nx: number, ny: number, nz: number): number[][][] =>
-  make_grid(nx, ny, nz, (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx)
+const indexed_grid = (size_x: number, size_y: number, size_z: number): number[][][] =>
+  make_grid(size_x, size_y, size_z, (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx)
 
 const as_scalar_grid = (
   grid: number[][][],
@@ -67,15 +69,19 @@ const as_scalar_grid = (
   precision: `f32` | `f64` = `f64`,
 ): ScalarGrid3D => {
   const dimensions: Vec3 = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
-  const [nx, ny, nz] = dimensions
+  const [size_x, size_y, size_z] = dimensions
   const data: ScalarGridArray =
-    precision === `f32` ? new Float32Array(nx * ny * nz) : new Float64Array(nx * ny * nz)
-  for (let ix = 0; ix < nx; ix++) {
-    for (let iy = 0; iy < ny; iy++) {
-      for (let iz = 0; iz < nz; iz++) {
+    precision === `f32`
+      ? new Float32Array(size_x * size_y * size_z)
+      : new Float64Array(size_x * size_y * size_z)
+  for (let idx_x = 0; idx_x < size_x; idx_x++) {
+    for (let idx_y = 0; idx_y < size_y; idx_y++) {
+      for (let idx_z = 0; idx_z < size_z; idx_z++) {
         const offset =
-          order === `x_fastest` ? ix + nx * (iy + ny * iz) : iz + nz * (iy + ny * ix)
-        data[offset] = grid[ix][iy][iz]
+          order === `x_fastest`
+            ? idx_x + size_x * (idx_y + size_y * idx_z)
+            : idx_z + size_z * (idx_y + size_y * idx_x)
+        data[offset] = grid[idx_x][idx_y][idx_z]
       }
     }
   }
@@ -100,8 +106,8 @@ describe(`marching_cubes`, () => {
     { dims: [0, 0, 0], iso: 0.5, label: `empty grid` },
     { dims: [4, 4, 4], iso: 2, label: `isovalue above all values` },
     { dims: [4, 4, 4], iso: 0.5, label: `isovalue below all values` },
-  ])(`returns empty result for $label`, ({ dims: [nx, ny, nz], iso }) => {
-    const result = marching_cubes(make_grid(nx, ny, nz, 1), iso, IDENTITY)
+  ])(`returns empty result for $label`, ({ dims: [size_x, size_y, size_z], iso }) => {
+    const result = marching_cubes(make_grid(size_x, size_y, size_z, 1), iso, IDENTITY)
     expect([result.vertices, result.faces, result.normals]).toEqual([[], [], []])
   })
 
@@ -145,9 +151,13 @@ describe(`marching_cubes`, () => {
   })
 
   test(`ScalarGrid3D x_fastest and z_fastest match nested grids`, () => {
-    const grid = make_grid(5, 4, 6, (ix, iy, iz) => {
-      const [dx, dy, dz] = [(ix - 2) / 2, (iy - 1.5) / 1.5, (iz - 2.5) / 2.5]
-      return Math.exp(-(dx * dx + dy * dy + dz * dz))
+    const grid = make_grid(5, 4, 6, (idx_x, idx_y, idx_z) => {
+      const [delta_x, delta_y, delta_z] = [
+        (idx_x - 2) / 2,
+        (idx_y - 1.5) / 1.5,
+        (idx_z - 2.5) / 2.5,
+      ]
+      return Math.exp(-(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z))
     })
     const expected = marching_cubes(grid, 0.45, IDENTITY, NON_PERIODIC)
     expect(expected.faces.length).toBeGreaterThan(0)
@@ -167,8 +177,9 @@ describe(`marching_cubes`, () => {
 
   test(`ScalarGrid3D preserves periodic wrapped geometry`, () => {
     const min_frac = (idx: number, size: number) => Math.min(idx / size, 1 - idx / size)
-    const grid = make_grid(5, 4, 6, (ix, iy, iz) => {
-      const radius = min_frac(ix, 5) ** 2 + min_frac(iy, 4) ** 2 + min_frac(iz, 6) ** 2
+    const grid = make_grid(5, 4, 6, (idx_x, idx_y, idx_z) => {
+      const radius =
+        min_frac(idx_x, 5) ** 2 + min_frac(idx_y, 4) ** 2 + min_frac(idx_z, 6) ** 2
       return Math.exp(-radius / 0.04)
     })
     const expected = marching_cubes(grid, 0.35, IDENTITY, PERIODIC)
@@ -264,8 +275,11 @@ describe(`marching_cubes`, () => {
   })
 
   test(`periodic wraps boundaries without cell-spanning triangles`, () => {
-    const corner_grid = make_grid(4, 4, 4, (ix, iy, iz) =>
-      (ix === 0 && iy === 0 && iz === 0) || (ix === 3 && iy === 3 && iz === 3) ? 2 : 0,
+    const corner_grid = make_grid(4, 4, 4, (idx_x, idx_y, idx_z) =>
+      (idx_x === 0 && idx_y === 0 && idx_z === 0) ||
+      (idx_x === 3 && idx_y === 3 && idx_z === 3)
+        ? 2
+        : 0,
     )
     expect(
       marching_cubes(corner_grid, 1, IDENTITY, PERIODIC).faces.length,
@@ -275,8 +289,8 @@ describe(`marching_cubes`, () => {
 
     // Gaussian at frac (0,0,0): regression for edge-cache keys merging opposite faces
     const min_frac = (idx: number) => Math.min(idx / 8, 1 - idx / 8)
-    const wrap_grid = make_grid(8, 8, 8, (ix, iy, iz) =>
-      Math.exp(-(min_frac(ix) ** 2 + min_frac(iy) ** 2 + min_frac(iz) ** 2) / 0.045),
+    const wrap_grid = make_grid(8, 8, 8, (idx_x, idx_y, idx_z) =>
+      Math.exp(-(min_frac(idx_x) ** 2 + min_frac(idx_y) ** 2 + min_frac(idx_z) ** 2) / 0.045),
     )
     const { vertices, faces } = marching_cubes(wrap_grid, 0.3, IDENTITY, PERIODIC)
     expect(faces.length).toBeGreaterThan(0)
@@ -294,7 +308,7 @@ describe(`marching_cubes`, () => {
 
   test(`edge vertices sit at the linearly interpolated crossing`, () => {
     // value = ix², iso 2 crosses the x-edge between ix=1 (1) and ix=2 (4) at frac 1/3
-    const grid = make_grid(4, 4, 4, (ix) => ix * ix)
+    const grid = make_grid(4, 4, 4, (idx_x) => idx_x * idx_x)
     const { vertices } = marching_cubes(grid, 2, IDENTITY, NON_PERIODIC)
     expect(vertices.length).toBeGreaterThan(0)
     for (const [x_coord] of vertices) expect(x_coord).toBeCloseTo((1 + 1 / 3) / 3, 6)
@@ -352,8 +366,8 @@ describe(`marching_cubes`, () => {
         [0.5, Math.sqrt(3) / 2, 0],
         [0, 0, 1],
       ] as Matrix3x3,
-      grid: Array.from({ length: 4 }, (_, ix) =>
-        Array.from({ length: 5 }, () => Array.from({ length: 6 }, () => ix)),
+      grid: Array.from({ length: 4 }, (_, idx_x) =>
+        Array.from({ length: 5 }, () => Array.from({ length: 6 }, () => idx_x)),
       ),
       iso: 1.5,
       check: (normal: Vec3, lattice: Matrix3x3) => {
@@ -366,16 +380,16 @@ describe(`marching_cubes`, () => {
     {
       label: `unequal grid spacing`,
       lattice: IDENTITY,
-      grid: Array.from({ length: 3 }, (_x, ix) =>
-        Array.from({ length: 5 }, (_y, iy) =>
-          Array.from({ length: 4 }, () => ix / 2 + iy / 4),
+      grid: Array.from({ length: 3 }, (_unused_coord_x, idx_x) =>
+        Array.from({ length: 5 }, (_unused_coord_y, idx_y) =>
+          Array.from({ length: 4 }, () => idx_x / 2 + idx_y / 4),
         ),
       ),
       iso: 0.75,
-      check: ([x, y, z]: Vec3) => {
-        expect(Math.abs(x)).toBeCloseTo(Math.SQRT1_2, 5)
-        expect(Math.abs(y)).toBeCloseTo(Math.SQRT1_2, 5)
-        expect(z).toBeCloseTo(0, 5)
+      check: ([coord_x, coord_y, coord_z]: Vec3) => {
+        expect(Math.abs(coord_x)).toBeCloseTo(Math.SQRT1_2, 5)
+        expect(Math.abs(coord_y)).toBeCloseTo(Math.SQRT1_2, 5)
+        expect(coord_z).toBeCloseTo(0, 5)
       },
     },
   ])(`normals: $label`, ({ lattice, grid, iso, check }) => {
@@ -392,8 +406,8 @@ describe(`marching_cubes`, () => {
         [1, 0, 0],
         [0, 0, 1],
       ]
-      const grid = Array.from({ length: 4 }, (_x, ix) =>
-        Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => ix)),
+      const grid = Array.from({ length: 4 }, (_unused_coord_x, idx_x) =>
+        Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => idx_x)),
       )
       const result = marching_cubes(grid, 1.5, singular_lattice, {
         ...NON_PERIODIC,
@@ -410,9 +424,9 @@ describe(`marching_cubes`, () => {
       // Index-space gradient scaling: mean normal stable across anisotropic resolutions
       const mean_x = (resolution: number) => {
         const { normals: resolution_normals } = marching_cubes(
-          Array.from({ length: resolution }, (_x, ix) =>
+          Array.from({ length: resolution }, (_unused_coord_x, idx_x) =>
             Array.from({ length: 2 * resolution }, () =>
-              Array.from({ length: 2 * resolution }, () => ix / (resolution - 1)),
+              Array.from({ length: 2 * resolution }, () => idx_x / (resolution - 1)),
             ),
           ),
           0.5,
@@ -430,7 +444,7 @@ describe(`marching_cubes`, () => {
 
   test.each([1, 2])(`vertices span the lattice cell from the origin at scale=%d`, (scale) => {
     const lattice = cubic_matrix(scale)
-    const grid = make_grid(4, 4, 4, (ix) => (ix / 3) * 2)
+    const grid = make_grid(4, 4, 4, (idx_x) => (idx_x / 3) * 2)
     const result = marching_cubes(grid, 1.0, lattice, { periodic: false })
     expect(result.vertices.length).toBeGreaterThan(0)
     for (const vert of result.vertices) {
@@ -447,8 +461,8 @@ describe(`marching_cubes`, () => {
     const size = 40
     const center = (size - 1) / 2
     const radius_idx = 14
-    const grid = make_grid(size, size, size, (ix, iy, iz) =>
-      Math.hypot(ix - center, iy - center, iz - center),
+    const grid = make_grid(size, size, size, (idx_x, idx_y, idx_z) =>
+      Math.hypot(idx_x - center, idx_y - center, idx_z - center),
     )
     const lattice = cubic_matrix(10)
     const spacing = 10 / (size - 1)

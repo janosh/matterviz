@@ -51,22 +51,22 @@
     const offset_of = get_offset
     const kids = container.children
     for (let idx = 0; idx < items.length; idx++) {
-      const el = kids[idx] as HTMLElement | undefined
-      if (!el) break
+      const element = kids[idx] as HTMLElement | undefined
+      if (!element) break
       const entry = items[idx]
       projector.place(entry.position, offset_of(entry.site_idx), entry.radius * 0.5, placement)
       // Hide labels behind the camera (same check as threlte's <HTML>)
       if (!placement.visible) {
-        if (el.style.display !== `none`) el.style.display = `none`
+        if (element.style.display !== `none`) element.style.display = `none`
         continue
       }
-      if (el.style.display === `none`) el.style.display = ``
+      if (element.style.display === `none`) element.style.display = ``
       const transform = `translate(-50%, -50%) translate3d(${placement.x.toFixed(1)}px, ${placement.y.toFixed(
         1,
       )}px, 0)`
       if (last_transforms[idx] !== transform) {
         last_transforms[idx] = transform
-        el.style.transform = transform
+        element.style.transform = transform
       }
     }
   }
@@ -84,10 +84,10 @@
     update_positions()
   })
 
-  const portal_to_dom = (el: HTMLElement) => {
+  const portal_to_dom = (element: HTMLElement) => {
     if (!dom) return
-    dom.append(el)
-    return () => el.remove()
+    dom.append(element)
+    return () => element.remove()
   }
 </script>
 
