@@ -90,10 +90,10 @@ function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
       const node = stack.pop()
       if (node === undefined) break
       frag.push(node)
-      for (const nb of adjacency[node]) {
-        if (!seen.has(nb)) {
-          seen.add(nb)
-          stack.push(nb)
+      for (const neighbor of adjacency[node]) {
+        if (!seen.has(neighbor)) {
+          seen.add(neighbor)
+          stack.push(neighbor)
         }
       }
     }
@@ -138,18 +138,18 @@ function assign_bond_orders(
   const orders = Array.from({ length: edges.length }, () => 1)
   const valence = Array.from({ length: target_valence.length }, () => 0)
   // a self-bond (periodic image of the atom itself) counts once, like any other edge
-  const add_valence = (from: number, to: number): void => {
+  const add_valence = (from: number, target: number): void => {
     valence[from]++
-    if (to !== from) valence[to]++
+    if (target !== from) valence[target]++
   }
-  for (const { from, to } of edges) add_valence(from, to)
+  for (const { from, to: target } of edges) add_valence(from, target)
   for (;;) {
     let best = -1
     let best_deficit = 0
-    for (const [edge_idx, { from, to }] of edges.entries()) {
+    for (const [edge_idx, { from, to: target }] of edges.entries()) {
       const shared_deficit = Math.min(
         target_valence[from] - valence[from],
-        target_valence[to] - valence[to],
+        target_valence[target] - valence[target],
       )
       if (shared_deficit > best_deficit && orders[edge_idx] < 3) {
         best_deficit = shared_deficit
@@ -238,15 +238,18 @@ function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
 function ring_is_planar(ring: number[], sites: Site[]): boolean {
   if (ring.length < 3) return false
   const points = ring.map((atom_idx) => sites[atom_idx].xyz)
-  const [nx, ny, nz] = cross_3d(subtract(points[1], points[0]), subtract(points[2], points[0]))
-  const len = Math.hypot(nx, ny, nz)
+  const [size_x, size_y, size_z] = cross_3d(
+    subtract(points[1], points[0]),
+    subtract(points[2], points[0]),
+  )
+  const len = Math.hypot(size_x, size_y, size_z)
   if (len < 1e-6) return false
   return points.every((point) => {
     const dev =
       Math.abs(
-        (point[0] - points[0][0]) * nx +
-          (point[1] - points[0][1]) * ny +
-          (point[2] - points[0][2]) * nz,
+        (point[0] - points[0][0]) * size_x +
+          (point[1] - points[0][1]) * size_y +
+          (point[2] - points[0][2]) * size_z,
       ) / len
     return dev < 0.3
   })
@@ -301,10 +304,10 @@ export function perceive_bond_orders(
     }
   }
   const edges_by_frag: Edge[][] = frags.map(() => [])
-  for (const { from, to, bond } of edges) {
+  for (const { from, to: target, bond } of edges) {
     edges_by_frag[frag_of_atom[from]].push({
       from: local_idx_of[from],
-      to: local_idx_of[to],
+      to: local_idx_of[target],
       bond,
     })
   }
@@ -391,8 +394,12 @@ export function perceive_bond_orders(
           return Number(has_any_multiple_bond(atom_idx) || !has_non_ring_neighbor(atom_idx))
         return 0
       })
-      const pi = pi_by_atom.reduce((sum, val) => sum + val, 0)
-      if (pi_by_atom.every((val) => val > 0) && pi >= 2 && (pi - 2) % 4 === 0) {
+      const pi_electrons = pi_by_atom.reduce((sum, val) => sum + val, 0)
+      if (
+        pi_by_atom.every((val) => val > 0) &&
+        pi_electrons >= 2 &&
+        (pi_electrons - 2) % 4 === 0
+      ) {
         const this_ring = ring_id++
         local_edges.forEach((edge) => {
           if (edge_is_in_ring(edge)) {

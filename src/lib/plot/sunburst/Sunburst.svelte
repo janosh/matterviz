@@ -142,7 +142,7 @@
         expanded_parents: chart_state.expanded_parents,
         other_label,
       }),
-    label_text: () => label_text,
+    label_text: () => (show_labels ? label_text : null),
     value_format: () => value_format,
     width: () => width,
     height: () => height,
@@ -165,7 +165,6 @@
     on_node_hover: (payload) => on_node_hover?.(payload),
     on_zoom: (payload) => on_zoom?.(payload),
     clickable: (arc) => arc_clickable(arc),
-    per_node_hover_dim: false, // hover dimming is the veil path below
     visible: (idx) => screen_arcs[idx]?.visible ?? false,
     node_center: (idx) => {
       const screen = screen_arcs[idx]
@@ -225,8 +224,8 @@
   let radius = $derived(
     Math.max(0, Math.min(chart_state.inner_width, chart_state.inner_height) / 2),
   )
-  let cx = $derived(chart_state.plot_left + chart_state.inner_width / 2)
-  let cy = $derived(chart_state.pad.t + chart_state.inner_height / 2)
+  let center_x = $derived(chart_state.plot_left + chart_state.inner_width / 2)
+  let center_y = $derived(chart_state.pad.t + chart_state.inner_height / 2)
   // Min 14px center hole when zoomed so there's always a zoom-out click target
   let hole_r = $derived(Math.max(inner_radius * radius, chart_state.zoomed ? 14 : 0))
 
@@ -327,7 +326,7 @@
   let chart_transform = $derived(
     shape === `icicle`
       ? `translate(${chart_state.plot_left}, ${chart_state.pad.t})`
-      : `translate(${cx}, ${cy})`,
+      : `translate(${center_x}, ${center_y})`,
   )
 
   // Arc centroid in container (pad-offset) pixel space, for tooltip + legend placement
@@ -340,7 +339,7 @@
     }
     const mid_a = (screen.a0 + screen.a1) / 2
     const mid_r = (screen.r0 + screen.r1) / 2
-    return { x: cx + Math.sin(mid_a) * mid_r, y: cy - Math.cos(mid_a) * mid_r }
+    return { x: center_x + Math.sin(mid_a) * mid_r, y: center_y - Math.cos(mid_a) * mid_r }
   }
 
   const arc_clickable = (arc: PositionedArc<Metadata>): boolean =>
@@ -636,6 +635,12 @@
   }
   .arcs.batched path {
     stroke: none;
+  }
+  .arcs path:focus {
+    outline: none;
+    stroke: var(--sunburst-focus-stroke, var(--accent-color, #1976d2));
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
   }
   .arc-paints,
   .arc-borders {

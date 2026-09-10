@@ -22,7 +22,7 @@
     formula,
     color_scheme = `Vesta`,
     ordering = `original`,
-    as = `span`,
+    as: asymmetry = `span`,
     amount_format = AMOUNT_FORMAT,
     tooltip_side = `bottom`,
     tooltip_offset = 5,
@@ -121,12 +121,17 @@
       left: [left - tooltip_offset, top + height / 2],
       right: [right + tooltip_offset, top + height / 2],
     }
-    const [x, y] = positions[tooltip_side]
-    tooltip_pos = { x, y }
+    const [coord_x, coord_y] = positions[tooltip_side]
+    tooltip_pos = { x: coord_x, y: coord_y }
   }
 </script>
 
-<svelte:element this={as} {...rest} class={[`formula`, rest.class]} oncopy={handle_copy}>
+<svelte:element
+  this={asymmetry}
+  {...rest}
+  class={[`formula`, rest.class]}
+  oncopy={handle_copy}
+>
   {#each sorted_elements as { element, amount, oxidation_state }, idx (idx)}
     {@const color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`}
     {@const brightness = perceived_brightness(color)}
@@ -170,7 +175,7 @@
 </svelte:element>
 
 {#if hovered_elem_data}
-  {@const { x, y } = tooltip_pos}
+  {@const { x: coord_x, y: coord_y } = tooltip_pos}
   {@const tile_color =
     ELEMENT_COLOR_SCHEMES[color_scheme]?.[hovered_elem_data.symbol] ?? `#666666`}
   {@const transforms = {
@@ -179,7 +184,10 @@
     left: `translate(-100%, -50%)`,
     right: `translateY(-50%)`,
   }}
-  <div class="tooltip" style="left: {x}px; top: {y}px; transform: {transforms[tooltip_side]}">
+  <div
+    class="tooltip"
+    style="left: {coord_x}px; top: {coord_y}px; transform: {transforms[tooltip_side]}"
+  >
     <ElementTile
       element={hovered_elem_data}
       show_name={false}

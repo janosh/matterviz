@@ -265,18 +265,24 @@ describe(`collect_frame_property_rows`, () => {
 
   // An indexed trajectory holds only its first frames in memory; reading `frames` directly
   // would export a 1-row table for a 3-frame range.
-  test(`resolves the full range of an indexed trajectory, not the in-memory window`, async () => {
-    const async_resolver = make_async_resolver()
-    const { rows, source } = await collect_frame_property_rows(
-      0,
-      2,
-      async_resolver,
-      run_without_properties,
-    )
-    expect(source).toBe(`frames`)
-    expect(async_resolver.mock.calls).toEqual([[0], [1], [2]])
-    expect(rows.map(({ properties }) => properties.energy)).toEqual([-10.5, -11.25, -11.5])
-  })
+  test.each([
+    [`absent properties`, run_without_properties, make_async_resolver],
+    [
+      `sparse properties`,
+      with_property_rows(trajectory, [plot_metadata[0], plot_metadata[2]]),
+      () => vi.fn(resolver),
+    ],
+  ] as const)(
+    `resolves every indexed frame with %s`,
+    async (_description, run, make_resolver) => {
+      const resolver_spy = make_resolver()
+      const { rows, source } = await collect_frame_property_rows(0, 2, resolver_spy, run)
+      expect(source).toBe(`frames`)
+      expect(rows).toHaveLength(3)
+      expect(resolver_spy.mock.calls).toEqual([[0], [1], [2]])
+      expect(rows.map(({ properties }) => properties.energy)).toEqual([-10.5, -11.25, -11.5])
+    },
+  )
 
   test(`reads run properties instead of frames when they cover the range`, async () => {
     const spy_resolver = vi.fn(resolver)
@@ -297,16 +303,6 @@ describe(`collect_frame_property_rows`, () => {
       [2, 9],
     ])
     expect(rows[2].properties).toEqual({ energy: -11.5, force_max: 0.01 })
-  })
-
-  // Sampled property rows usually skip frames; using them would export fewer rows than frames
-  test(`falls back to the resolver when properties miss a frame in the range`, async () => {
-    const sparse = with_property_rows(trajectory, [plot_metadata[0], plot_metadata[2]])
-    const spy_resolver = vi.fn(resolver)
-    const { rows, source } = await collect_frame_property_rows(0, 2, spy_resolver, sparse)
-    expect(source).toBe(`frames`)
-    expect(spy_resolver).toHaveBeenCalledTimes(3)
-    expect(rows).toHaveLength(3)
   })
 
   // the property-row shortcut must not skip the range check the resolver path applies
@@ -499,9 +495,19 @@ describe(`TrajectoryExportPane property export`, () => {
       open_pane({
         run: trajectory,
         wrapper,
+        video_fps: 45,
+        resolution_multiplier: 2,
         on_step_change: can_navigate ? vi.fn() : undefined,
       })
       await tick()
+      const reset_selector = `button[aria-label="Reset video settings to defaults"]`
+      doc_query<HTMLButtonElement>(reset_selector).click()
+      await tick()
+      expect(document.querySelector(reset_selector)).toBeNull()
+      const number_inputs = document.querySelectorAll<HTMLInputElement>(
+        `.settings-section input[type="number"]`,
+      )
+      expect(number_inputs[2].value).toBe(`30`)
       expect(doc_query<HTMLButtonElement>(`button[aria-label="Download WebM"]`).disabled).toBe(
         true,
       )
@@ -526,7 +532,7 @@ describe(`TrajectoryExportPane property export`, () => {
           expect(io_export.export_trajectory_video).toHaveBeenCalledExactlyOnceWith(
             replacement,
             `run.extxyz.webm`,
-            expect.objectContaining({ total_frames: 3 }),
+            expect.objectContaining({ total_frames: 3, fps: 30, resolution_multiplier: 1 }),
           ),
         )
         replacement.remove()

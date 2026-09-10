@@ -283,33 +283,33 @@ class WrappedPositionIndex {
     })
   }
 
-  private cell_key(pos: Vec3, dx: number, dy: number, dz: number): string {
+  private cell_key(pos: Vec3, delta_x: number, delta_y: number, delta_z: number): string {
     const n_cells = this.n_cells
     const cell = (coord: number, offset: number) => {
       const wrapped = coord - Math.floor(coord)
       return (((Math.floor(wrapped * n_cells) + offset) % n_cells) + n_cells) % n_cells
     }
-    return `${cell(pos[0], dx)},${cell(pos[1], dy)},${cell(pos[2], dz)}`
+    return `${cell(pos[0], delta_x)},${cell(pos[1], delta_y)},${cell(pos[2], delta_z)}`
   }
 
   // Indices of stored positions within `tolerance` of `query` modulo ℤ³
   query(raw_query: Vec3, out: Set<number>): void {
     const query = this.transform ? this.transform(raw_query) : raw_query
     const tol = this.tolerance
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dz = -1; dz <= 1; dz++) {
-          const bucket = this.buckets.get(this.cell_key(query, dx, dy, dz))
+    for (let delta_x = -1; delta_x <= 1; delta_x++) {
+      for (let delta_y = -1; delta_y <= 1; delta_y++) {
+        for (let delta_z = -1; delta_z <= 1; delta_z++) {
+          const bucket = this.buckets.get(this.cell_key(query, delta_x, delta_y, delta_z))
           if (!bucket) continue
           for (const idx of bucket) {
             const pos = this.coords[idx]
-            const d0 = pos[0] - query[0]
-            const d1 = pos[1] - query[1]
-            const d2 = pos[2] - query[2]
+            const distance_0 = pos[0] - query[0]
+            const distance_1 = pos[1] - query[1]
+            const distance_2 = pos[2] - query[2]
             if (
-              Math.abs(d0 - Math.round(d0)) < tol &&
-              Math.abs(d1 - Math.round(d1)) < tol &&
-              Math.abs(d2 - Math.round(d2)) < tol
+              Math.abs(distance_0 - Math.round(distance_0)) < tol &&
+              Math.abs(distance_1 - Math.round(distance_1)) < tol &&
+              Math.abs(distance_2 - Math.round(distance_2)) < tol
             )
               out.add(idx)
           }

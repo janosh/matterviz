@@ -21,13 +21,18 @@ export const DEFAULT_BROADENING: BroadeningParams = {
 // FWHM^2 = U·tan^2(theta) + V·tan(theta) + W. Throws on a negative radicand: flooring it at
 // 1e-9 gave a 3.16e-5 deg FWHM, far under the 0.02 deg grid step, dumping a peak's whole
 // area-normalized intensity on one grid point.
-export function caglioti_fwhm(two_theta: number, U: number, V: number, W: number): number {
+export function caglioti_fwhm(
+  two_theta: number,
+  coeff_u: number,
+  coeff_v: number,
+  coeff_w: number,
+): number {
   const tan_theta = Math.tan(to_radians(two_theta / 2))
-  const radicand = U * tan_theta ** 2 + V * tan_theta + W
+  const radicand = coeff_u * tan_theta ** 2 + coeff_v * tan_theta + coeff_w
   if (!(radicand > 0)) {
     throw new Error(
       `Caglioti FWHM² = U·tan²θ + V·tanθ + W is ${radicand} at 2θ = ${two_theta}° ` +
-        `(U=${U}, V=${V}, W=${W}). Widths must be real and positive; raise W or U.`,
+        `(U=${coeff_u}, V=${coeff_v}, W=${coeff_w}). Widths must be real and positive; raise W or U.`,
     )
   }
   return Math.sqrt(radicand)

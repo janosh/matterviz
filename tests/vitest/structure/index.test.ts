@@ -70,39 +70,41 @@ const ref_data: Record<
 }
 
 describe.each(structures)(`structure-utils`, (structure) => {
-  const { id } = structure
-  const expected = id ? ref_data[id] : undefined
+  const { id: identifier } = structure
+  const expected = identifier ? ref_data[identifier] : undefined
 
   test(`element counts, density, and ref-data properties`, () => {
     const counts = struct_utils.get_element_counts(structure)
 
     for (const [element, count] of Object.entries(counts)) {
-      expect(element, id).toMatch(/^[A-Z][a-z]{0,2}$/)
-      expect(count, `${id}: ${element}`).toBeGreaterThan(0)
-      expect(Number.isInteger(count), `${id}: ${element}`).toBe(true)
+      expect(element, identifier).toMatch(/^[A-Z][a-z]{0,2}$/)
+      expect(count, `${identifier}: ${element}`).toBeGreaterThan(0)
+      expect(Number.isInteger(count), `${identifier}: ${element}`).toBe(true)
     }
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
-    expect(total, id).toBe(structure.sites.length)
+    expect(total, identifier).toBe(structure.sites.length)
 
     const density = struct_utils.get_density(structure)
     if (structure.lattice) {
       // Physical sanity: 0.01 g/cm³ (aerogels) to 30 g/cm³ (beyond osmium)
-      expect(density, `${id}: density`).toBeGreaterThan(0.01)
-      expect(density, `${id}: density`).toBeLessThan(30)
-      expect(Number.isFinite(density), `${id}: density finite`).toBe(true)
+      expect(density, `${identifier}: density`).toBeGreaterThan(0.01)
+      expect(density, `${identifier}: density`).toBeLessThan(30)
+      expect(Number.isFinite(density), `${identifier}: density finite`).toBe(true)
     } else {
-      expect(density === 0 || Number.isNaN(density), `${id}: no-lattice density`).toBe(true)
+      expect(density === 0 || Number.isNaN(density), `${identifier}: no-lattice density`).toBe(
+        true,
+      )
     }
 
     if (!expected) return
 
-    expect(counts, id).toEqual(expected.amounts)
-    expect(density, id).toBeCloseTo(expected.density, 3)
+    expect(counts, identifier).toEqual(expected.amounts)
+    expect(density, identifier).toBeCloseTo(expected.density, 3)
 
     const com = struct_utils.get_center_of_mass(structure)
     expect(
       com.map((val) => Math.round(val * 1e3) / 1e3),
-      `${id} center_of_mass`,
+      `${identifier} center_of_mass`,
     ).toEqual(expected.center_of_mass)
   })
 })
@@ -176,21 +178,21 @@ describe(`structure_fit_frame`, () => {
     label: element,
     properties: {},
   })
-  const cubic = (a: number, sites: Site[]): AnyStructure => ({
+  const cubic = (value_a: number, sites: Site[]): AnyStructure => ({
     sites,
     lattice: {
       matrix: [
-        [a, 0, 0],
-        [0, a, 0],
-        [0, 0, a],
+        [value_a, 0, 0],
+        [0, value_a, 0],
+        [0, 0, value_a],
       ],
-      a,
-      b: a,
-      c: a,
+      a: value_a,
+      b: value_a,
+      c: value_a,
       alpha: 90,
       beta: 90,
       gamma: 90,
-      volume: a ** 3,
+      volume: value_a ** 3,
       pbc: [true, true, true],
     },
   })
@@ -217,13 +219,15 @@ describe(`structure_fit_frame`, () => {
       ).center,
     ).toEqual([2, 0, 0])
 
-    const a = 4.21
-    const empty = structure_fit_frame(cubic(a, []), { atom_radius_scale: 0 })
-    empty.center.forEach((coord) => expect(coord).toBeCloseTo(a / 2, 10))
-    expect(empty.extent).toBeCloseTo(a * Math.sqrt(3) * DEFAULT_FIT_PADDING, 10)
-    const with_atom = extent(cubic(a, [site(`Mg`, [0, 0, 0])]), { atom_radius_scale: 0.7 })
+    const value_a = 4.21
+    const empty = structure_fit_frame(cubic(value_a, []), { atom_radius_scale: 0 })
+    empty.center.forEach((coord) => expect(coord).toBeCloseTo(value_a / 2, 10))
+    expect(empty.extent).toBeCloseTo(value_a * Math.sqrt(3) * DEFAULT_FIT_PADDING, 10)
+    const with_atom = extent(cubic(value_a, [site(`Mg`, [0, 0, 0])]), {
+      atom_radius_scale: 0.7,
+    })
     expect(with_atom).toBeGreaterThan(empty.extent)
-    expect(with_atom).toBeLessThan((a * Math.sqrt(3) + 2.1) * DEFAULT_FIT_PADDING * 1.2)
+    expect(with_atom).toBeLessThan((value_a * Math.sqrt(3) + 2.1) * DEFAULT_FIT_PADDING * 1.2)
 
     const { sites: _dropped, ...no_sites } = cubic(2, [])
     expect(extent(no_sites as AnyStructure, { atom_radius_scale: 0 })).toBeCloseTo(
@@ -653,10 +657,10 @@ describe(`characteristic_atom_spacing`, () => {
   ] satisfies [string, Vec3][])(`sees past the vacuum of a cluster %s`, (_name, centre) => {
     const cluster = gold_cluster(box, centre)
     const naive = Math.cbrt(cluster.lattice.volume / cluster.sites.length)
-    const nn = nn_median(cluster)
-    expect(nn).toBeCloseTo(2.878, 2) // fcc Au first shell, the spacing to recover
-    expect(naive / nn).toBeGreaterThan(2) // what the plain cell volume claimed
-    expect(characteristic_atom_spacing(cluster) / nn).toBeCloseTo(0.89, 1)
+    const nearest_neighbor = nn_median(cluster)
+    expect(nearest_neighbor).toBeCloseTo(2.878, 2) // fcc Au first shell, the spacing to recover
+    expect(naive / nearest_neighbor).toBeGreaterThan(2) // what the plain cell volume claimed
+    expect(characteristic_atom_spacing(cluster) / nearest_neighbor).toBeCloseTo(0.89, 1)
   })
 
   test.each([

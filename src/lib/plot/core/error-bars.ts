@@ -71,12 +71,12 @@ export function error_bounds(
 ): { lo: number[]; hi: number[] } | null {
   const get = error_getter(error)
   if (!get) return null
-  const [lo, hi] = [Array<number>(count), Array<number>(count)]
+  const [lower, upper] = [Array<number>(count), Array<number>(count)]
   for (let idx = 0; idx < count; idx++) {
     const value = values[idx]
     const [below, above] = get(idx)
-    lo[idx] = value - below
-    hi[idx] = value + above
+    lower[idx] = value - below
+    upper[idx] = value + above
   }
-  return { lo, hi }
+  return { lo: lower, hi: upper }
 }

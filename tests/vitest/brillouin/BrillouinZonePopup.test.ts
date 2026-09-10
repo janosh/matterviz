@@ -32,7 +32,7 @@ test(`lists every marked point and closes from its own button`, () => {
 
   // one entry per point sharing the clicked x (a K | U discontinuity label)
   const stats = doc_query(`.bz-popup-stats`)
-  expect([...stats.querySelectorAll(`strong`)].map((el) => el.textContent)).toEqual([
+  expect([...stats.querySelectorAll(`strong`)].map((element) => element.textContent)).toEqual([
     `K`,
     `U`,
     `U`,

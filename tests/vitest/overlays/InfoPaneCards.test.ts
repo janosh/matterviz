@@ -9,7 +9,7 @@ const card = (idx: number) => ({
   rows: [{ label: `Label`, value: `Value ${idx}` }],
 })
 const titles = () =>
-  [...document.querySelectorAll(`.info-card h4`)].map((el) => el.textContent?.trim())
+  [...document.querySelectorAll(`.info-card h4`)].map((element) => element.textContent?.trim())
 
 describe(`InfoPaneCards`, () => {
   test(`renders duplicate unkeyed rows`, () => {

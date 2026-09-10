@@ -3,17 +3,20 @@
   import { BoxPlot } from '$lib/plot'
 
   // Deterministic pseudo-random distribution generator (seeded) for stable test renders
-  const make_dist = (seed: number, n = 200, center = 0, spread = 1): number[] => {
+  const make_dist = (seed: number, count = 200, center = 0, spread = 1): number[] => {
     let state = seed
     const next = () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
       return state / 0x7fffffff
     }
-    return Array.from({ length: n }, () => {
+    return Array.from({ length: count }, () => {
       // Box-Muller for a rough normal distribution
-      const u1 = Math.max(next(), 1e-9)
-      const u2 = next()
-      return center + spread * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+      const uniform_1 = Math.max(next(), 1e-9)
+      const uniform_2 = next()
+      return (
+        center +
+        spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
+      )
     })
   }
 

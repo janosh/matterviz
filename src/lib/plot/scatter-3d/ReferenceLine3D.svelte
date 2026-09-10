@@ -53,32 +53,40 @@
     if (ref_line.type === `line`) {
       // Extend line through two points to bounding box
       const [p1x, p1y, p1z] = ref_line.p1
-      const [dx, dy, dz] = [ref_line.p2[0] - p1x, ref_line.p2[1] - p1y, ref_line.p2[2] - p1z]
+      const [delta_x, delta_y, delta_z] = [
+        ref_line.p2[0] - p1x,
+        ref_line.p2[1] - p1y,
+        ref_line.p2[2] - p1z,
+      ]
       // Find t values at each boundary plane
       const t_values = [
-        ...(dx !== 0 ? [(x_min - p1x) / dx, (x_max - p1x) / dx] : []),
-        ...(dy !== 0 ? [(y_min - p1y) / dy, (y_max - p1y) / dy] : []),
-        ...(dz !== 0 ? [(z_min - p1z) / dz, (z_max - p1z) / dz] : []),
+        ...(delta_x !== 0 ? [(x_min - p1x) / delta_x, (x_max - p1x) / delta_x] : []),
+        ...(delta_y !== 0 ? [(y_min - p1y) / delta_y, (y_max - p1y) / delta_y] : []),
+        ...(delta_z !== 0 ? [(z_min - p1z) / delta_z, (z_max - p1z) / delta_z] : []),
       ]
       // Keep only t values where the resulting point is inside bounds
       const eps = 1e-6
       const valid_t = t_values.filter((t_value) => {
-        const [px, py, pz] = [p1x + t_value * dx, p1y + t_value * dy, p1z + t_value * dz]
+        const [pixel_x, pixel_y, pixel_z] = [
+          p1x + t_value * delta_x,
+          p1y + t_value * delta_y,
+          p1z + t_value * delta_z,
+        ]
         return (
-          px >= x_min - eps &&
-          px <= x_max + eps &&
-          py >= y_min - eps &&
-          py <= y_max + eps &&
-          pz >= z_min - eps &&
-          pz <= z_max + eps
+          pixel_x >= x_min - eps &&
+          pixel_x <= x_max + eps &&
+          pixel_y >= y_min - eps &&
+          pixel_y <= y_max + eps &&
+          pixel_z >= z_min - eps &&
+          pixel_z <= z_max + eps
         )
       })
       if (valid_t.length < 2) return null
       const t_min = Math.min(...valid_t)
       const t_max = Math.max(...valid_t)
       return endpoints_from(
-        [p1x + t_min * dx, p1y + t_min * dy, p1z + t_min * dz],
-        [p1x + t_max * dx, p1y + t_max * dy, p1z + t_max * dz],
+        [p1x + t_min * delta_x, p1y + t_min * delta_y, p1z + t_min * delta_z],
+        [p1x + t_max * delta_x, p1y + t_max * delta_y, p1z + t_max * delta_z],
       )
     }
     return null
@@ -102,10 +110,10 @@
       line2 = null
       return
     }
-    const [p1, p2] = endpoints
+    const [point_1, point] = endpoints
 
     const geo = new LineGeometry()
-    geo.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z])
+    geo.setPositions([point_1.x, point_1.y, point_1.z, point.x, point.y, point.z])
 
     const mat = new THREE.Line2NodeMaterial({
       color: new THREE.Color(style.color).getHex(),

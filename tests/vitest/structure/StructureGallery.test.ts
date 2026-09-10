@@ -91,8 +91,8 @@ const live_cards = (): number => document.querySelectorAll(`.structure-card .str
 const pager_text = (root: ParentNode = document): string | null =>
   root.querySelector(`.structure-gallery-pager`)?.textContent?.replaceAll(/\s/g, ``) ?? null
 
-const many_labels = (from: number, to: number): string[] =>
-  many_items.slice(from, to).map((item) => item.label)
+const many_labels = (from: number, target: number): string[] =>
+  many_items.slice(from, target).map((item) => item.label)
 
 describe(`StructureGallery`, () => {
   test(`renders structures in a horizontal strip`, () => {
@@ -584,11 +584,11 @@ describe(`StructureGallery`, () => {
     properties: { energy, sites: 4 + idx, spacegroup: `Fm-3m` },
   }))
   const prop_cells = (): { key: string; value: string; style: string }[] =>
-    [...document.querySelectorAll(`.card-properties dt`)].map((dt) => ({
-      key: dt.textContent ?? ``,
-      value: dt.nextElementSibling?.textContent?.trim() ?? ``,
+    [...document.querySelectorAll(`.card-properties dt`)].map((delta_time) => ({
+      key: delta_time.textContent ?? ``,
+      value: delta_time.nextElementSibling?.textContent?.trim() ?? ``,
       // the tint dresses the whole pair, so it lives on the wrapper, not the value
-      style: (dt.parentElement?.getAttribute(`style`) ?? ``).replace(/;$/, ``),
+      style: (delta_time.parentElement?.getAttribute(`style`) ?? ``).replace(/;$/, ``),
     }))
 
   test(`lists each item's properties, in first-seen key order, units after the value`, () => {

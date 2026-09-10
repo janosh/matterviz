@@ -1,9 +1,15 @@
 import type { Vec2 } from '$lib/math'
-import { PlotControls } from '$lib/plot'
+import { PlotControls, SankeyControls, SunburstControls, TernaryControls } from '$lib/plot'
 import { DEFAULTS } from '$lib/settings'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
+
+const type_into = (input: HTMLInputElement, value: string) => {
+  input.value = value
+  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  flushSync()
+}
 
 describe(`PlotControls`, () => {
   const mount_controls = (props: ComponentProps<typeof PlotControls> = {}) => {
@@ -31,9 +37,7 @@ describe(`PlotControls`, () => {
       const auto_x_range: Vec2 = [0, 100]
       mount_controls(bind_props({ auto_x_range }, state))
       const input = doc_query<HTMLInputElement>(`input.range-input`)
-      input.value = value
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
+      type_into(input, value)
       expect(input.classList.contains(`invalid`)).toBe(false)
       expect(state.x_axis.range).toEqual(expected_range)
     })
@@ -68,21 +72,16 @@ describe(`PlotControls`, () => {
         auto_x2_range: [0, 100],
       }
       mount_controls(bind_props(props, state))
-      const set_input = (input: HTMLInputElement, value: string) => {
-        input.value = value
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        flushSync()
-      }
       const [x_min, x_max] = [
         ...document.querySelectorAll<HTMLInputElement>(`input.range-input`),
       ]
-      set_input(x_min, `50`)
+      type_into(x_min, `50`)
       expect(state.x_axis.range).toEqual([50, 100]) // max falls back to the auto range
-      set_input(x_max, `20`) // min >= max: both inputs flagged, range left untouched
+      type_into(x_max, `20`) // min >= max: both inputs flagged, range left untouched
       expect(x_min.classList.contains(`invalid`)).toBe(true)
       expect(x_max.classList.contains(`invalid`)).toBe(true)
       expect(state.x_axis.range).toEqual([50, 100])
-      set_input(x_max, `80`)
+      type_into(x_max, `80`)
       expect(x_min.classList.contains(`invalid`)).toBe(false)
       expect(state.x_axis.range).toEqual([50, 80])
 
@@ -120,9 +119,7 @@ describe(`PlotControls`, () => {
       const state = $state<{ x_axis: { format?: string } }>({ x_axis: { format: `.3f` } })
       mount_controls(bind_props({}, state))
       const input = doc_query<HTMLInputElement>(`[data-testid="tick-format-section"] input`)
-      input.value = `.1e`
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
+      type_into(input, `.1e`)
       expect(state.x_axis.format).toBe(`.1e`)
       doc_query<HTMLButtonElement>(
         `button[aria-label="Reset tick format to defaults"]`,
@@ -145,11 +142,6 @@ describe(`PlotControls`, () => {
     const tick_inputs = () => [
       ...document.querySelectorAll<HTMLInputElement>(`[data-testid="ticks-section"] input`),
     ]
-    const type_into = (input: HTMLInputElement, value: string) => {
-      input.value = value
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
-    }
 
     test(`writes integer counts into the live axis ticks, empty hands back to auto`, () => {
       const state = $state<{ x_axis: { ticks?: number }; y_axis: { ticks?: number } }>({
@@ -266,20 +258,14 @@ describe(`PlotControls`, () => {
     (show_controls) => {
       mount_controls({ show_controls })
       expect(document.querySelector(`.plot-controls-pane`)).toBeNull()
-
-      // When shown, toggle + pane use the `plot-controls-*` prefix (regression guard:
-      // an empty controls_name default produced leading-hyphen `-controls-*` names).
-      document.body.innerHTML = ``
-      mount_controls()
-      expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
-      const pane = document.querySelector(`.plot-controls-pane`)
-      expect(pane).not.toBeNull()
-      expect(pane?.classList.contains(`compact-settings`)).toBe(true)
     },
   )
 
   test(`packs related display and axis fields onto shared rows`, async () => {
     mount_controls({ auto_x_range: [0, 1], auto_y_range: [0, 1] })
+    // Shared names avoid the old empty-prefix "-controls-*" classes.
+    expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
+    expect(doc_query(`.plot-controls-pane`).classList.contains(`compact-settings`)).toBe(true)
     // Poll for the rows instead of reading the DOM straight after mount: the pane's sections
     // fill in once the mount's queued effects have flushed.
     await vi.waitFor(() => {
@@ -305,3 +291,41 @@ describe(`PlotControls`, () => {
     expect(blur_spy).toHaveBeenCalled()
   })
 })
+
+// Authored non-default values must be compared against the defaults restored by Reset.
+test.each([
+  {
+    title: `sankey`,
+    mount_controls: () =>
+      mount(SankeyControls, {
+        target: document.body,
+        props: { controls_open: true, node_width: 40 },
+      }),
+  },
+  ...([`sunburst`, `treemap`] as const).map((chart) => ({
+    title: chart,
+    mount_controls: () =>
+      mount(SunburstControls, {
+        target: document.body,
+        props: { chart, controls_open: true, max_depth: 3 },
+      }),
+  })),
+  {
+    title: `grid`,
+    mount_controls: () =>
+      mount(TernaryControls, {
+        target: document.body,
+        props: { controls_open: true, grid_step: 0.25 },
+      }),
+  },
+])(
+  `$title reset clears authored deviations from defaults`,
+  async ({ title, mount_controls }) => {
+    mount_controls()
+    await tick()
+    const selector = `button[title="Reset ${title} to defaults"]`
+    doc_query<HTMLButtonElement>(selector).click()
+    await tick()
+    expect(document.querySelector(selector)).toBeNull()
+  },
+)

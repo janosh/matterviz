@@ -15,10 +15,10 @@ import { cubic_matrix, install_stub_worker, make_grid, make_volume } from '../se
 // Periodic Gaussian blob centred in a 10 A cubic cell
 const blob_volume = (n_pts = 16) =>
   make_volume(
-    make_grid(n_pts, n_pts, n_pts, (ix, iy, iz) => {
+    make_grid(n_pts, n_pts, n_pts, (idx_x, idx_y, idx_z) => {
       const dist = (idx: number) =>
         Math.min(Math.abs(idx / n_pts - 0.5), 1 - Math.abs(idx / n_pts - 0.5))
-      return Math.exp(-(dist(ix) ** 2 + dist(iy) ** 2 + dist(iz) ** 2) / 0.03)
+      return Math.exp(-(dist(idx_x) ** 2 + dist(idx_y) ** 2 + dist(idx_z) ** 2) / 0.03)
     }),
     { lattice: cubic_matrix(10), periodic: true },
   )
@@ -86,8 +86,8 @@ describe(`compute_isosurface_geometries`, () => {
     expect(result.lattice).toEqual(volume.lattice)
     for (const [idx, val] of result.grid.values.entries()) {
       // oxfmt-ignore
-      const [ix, iy, iz] = [Math.floor(idx / 81) % 8, (Math.floor(idx / 9) % 9) % 8, (idx % 9) % 8]
-      expect(val).toBe(volume.values[(ix * 8 + iy) * 8 + iz])
+      const [idx_x, idx_y, idx_z] = [Math.floor(idx / 81) % 8, (Math.floor(idx / 9) % 9) % 8, (idx % 9) % 8]
+      expect(val).toBe(volume.values[(idx_x * 8 + idx_y) * 8 + idx_z])
     }
   })
 
@@ -97,8 +97,8 @@ describe(`compute_isosurface_geometries`, () => {
   test(`over budget: the resampled grid keeps its endpoints exact`, () => {
     const n_pts = 101
     const values = new Float64Array(n_pts ** 3)
-    for (let ix = 0; ix < n_pts; ix++) {
-      values.fill(ix / (n_pts - 1), ix * n_pts * n_pts, (ix + 1) * n_pts * n_pts)
+    for (let idx_x = 0; idx_x < n_pts; idx_x++) {
+      values.fill(idx_x / (n_pts - 1), idx_x * n_pts * n_pts, (idx_x + 1) * n_pts * n_pts)
     }
     const volume = make_flat_volume(values, [n_pts, n_pts, n_pts], {
       id: `density`,

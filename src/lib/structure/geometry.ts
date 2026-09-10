@@ -3,20 +3,24 @@
 import { add, EPS, scale, subtract, type Vec3 } from '$lib/math'
 import { Euler, Quaternion, Vector3 } from 'three/webgpu'
 
-const UP = new Vector3(0, 1, 0)
+const UP_VECTOR = new Vector3(0, 1, 0)
 
 // Quaternion rotating the +Y axis onto `direction` (zero-length → identity). Cylinder and
 // cone geometries run along +Y, so this orients them toward an arbitrary direction.
 export function quaternion_from_direction(direction: Vec3): Quaternion {
   const vec = new Vector3(...direction)
   if (vec.lengthSq() < EPS * EPS) return new Quaternion() // ~zero length → no rotation
-  return new Quaternion().setFromUnitVectors(UP, vec.normalize())
+  return new Quaternion().setFromUnitVectors(UP_VECTOR, vec.normalize())
 }
 
 // Same orientation as an Euler rotation tuple, for Threlte `rotation` props
 export function rotation_from_direction(direction: Vec3): Vec3 {
-  const { x, y, z } = new Euler().setFromQuaternion(quaternion_from_direction(direction))
-  return [x, y, z]
+  const {
+    x: coord_x,
+    y: coord_y,
+    z: coord_z,
+  } = new Euler().setFromQuaternion(quaternion_from_direction(direction))
+  return [coord_x, coord_y, coord_z]
 }
 
 export function arrow_axis_geometry(

@@ -1,21 +1,136 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+
+test(`settings align native fields and custom rows at different pane widths`, async ({
+  page,
+}) => {
+  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
+  await page.locator(`.heatmap-matrix-controls-toggle`).first().click({ force: true })
+  const pane = page.locator(`.heatmap-controls`).first()
+  for (const pane_width of [320, 440]) {
+    await pane.evaluate((node, width) => {
+      node.style.width = `${width}px`
+    }, pane_width)
+    const layout = await pane.evaluate((node) => {
+      const section = node.querySelector(`.settings-section.grid`)
+      if (!section) throw new Error(`Missing heatmap settings grid`)
+      const fields = [...node.querySelectorAll(`select, input:not([type])`)]
+      const rows = [...node.querySelectorAll(`.settings-section.grid > :is(label, .setting)`)]
+      const row_bounds = rows.map((row) => row.getBoundingClientRect())
+      return {
+        fields: fields.map((field) => {
+          const { left, width, height } = field.getBoundingClientRect()
+          return { left, width, height, font: getComputedStyle(field).fontSize }
+        }),
+        row_gaps: row_bounds
+          .slice(1)
+          .map((bounds, idx) => bounds.top - row_bounds[idx].bottom),
+        expected_gap: Number(getComputedStyle(section).rowGap.replace(`px`, ``)),
+        custom_rows: rows.slice(-2).map((row) => row.querySelector(`span`)?.textContent),
+      }
+    })
+    expect(layout.fields).toHaveLength(7)
+    for (const field of layout.fields) expect(field).toEqual(layout.fields[0])
+    expect(layout.custom_rows).toEqual([`Ordering`, `Hide empty`])
+    expect(layout.expected_gap).toBeGreaterThan(0)
+    for (const gap of layout.row_gaps) expect(gap).toBeCloseTo(layout.expected_gap, 1)
+  }
+})
+
+test(`CSV and JSON exports download the filtered heatmap data`, async ({ page }) => {
+  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
+  await page.locator(`.heatmap-matrix-controls-toggle`).first().click({ force: true })
+  const pane = page.locator(`.heatmap-controls`).first()
+  await pane.getByPlaceholder(`Filter labels/keys`).fill(`Co`)
+  await expect(page.locator(`.heatmap`).first().locator(`.cell`)).toHaveCount(1)
+  for (const format of [`csv`, `json`]) {
+    const downloaded = page.waitForEvent(`download`)
+    await pane.getByRole(`button`, { name: `Export ${format.toUpperCase()}` }).click()
+    const file = await downloaded
+    expect(file.suggestedFilename()).toBe(`electronegativity-difference.${format}`)
+    const file_path = await file.path()
+    if (!file_path) throw new Error(`No downloaded ${format} file`)
+    const content = await readFile(file_path, `utf8`)
+    if (format === `csv`) expect(content).toBe(`y_key,Co\nCo,0`)
+    else expect(JSON.parse(content)).toEqual([{ y_key: `Co`, Co: 0 }])
+  }
+})
+
+test(`domain and normalization changes recolor cells without per-cell animations`, async ({
+  page,
+}) => {
+  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
+  const cells = page.locator(`.heatmap`).first().locator(`.cell`)
+  await expect(cells).toHaveCount(10_000)
+  for (const [option, values] of [
+    [`robust`, [`fixed`, `robust`, `auto`]],
+    [`log`, [`log`, `linear`]],
+  ]) {
+    const select = page.locator(`select:has(option[value="${option}"])`).first()
+    for (const value of values) {
+      await select.selectOption(value, { force: true })
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      )
+      const state = await cells.evaluateAll((nodes) => ({
+        animations: nodes.reduce((total, node) => total + node.getAnimations().length, 0),
+        colors_match: nodes.every((node) => {
+          const color = (node as HTMLElement).style.backgroundColor
+          return (
+            getComputedStyle(node).backgroundColor ===
+            (color === `transparent` ? `rgba(0, 0, 0, 0)` : color)
+          )
+        }),
+      }))
+      expect(state).toEqual({ animations: 0, colors_match: true })
+      // Log endpoints such as 0.001 need more background padding than short linear ticks.
+      const colorbar = page.locator(`.heatmap .colorbar`).first()
+      const contained = await colorbar.evaluate((node) => {
+        const bounds = node.getBoundingClientRect()
+        return [...node.querySelectorAll(`.tick-label`)].every((label) => {
+          const tick_bounds = label.getBoundingClientRect()
+          return tick_bounds.left >= bounds.left && tick_bounds.right <= bounds.right
+        })
+      })
+      expect(contained).toBe(true)
+    }
+  }
+})
+
+test(`electronegativity colorbar retains fitting ticks and thins only crowded labels`, async ({
+  page,
+}) => {
+  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
+  const colorbar = page.locator(`.heatmap .colorbar`).first()
+  const bar = colorbar.locator(`.bar`)
+  const labels = bar.locator(`.tick-label`)
+  const expected = [`0`, `0.5`, `1`, `1.5`, `2`, `2.5`, `3`, `3.5`]
+  await expect(labels).toHaveText(expected)
+  for (const width of [70, 167]) {
+    await bar.evaluate((node, bar_width) => {
+      node.style.width = `${bar_width}px`
+    }, width)
+    if (width === 167) await expect(labels).toHaveText(expected)
+    else await expect.poll(() => labels.count()).toBeLessThan(expected.length)
+    await expect(labels.first()).toHaveText(`0`)
+    await expect(labels.last()).toHaveText(`3.5`)
+    const bounds = await labels.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { left, right } = node.getBoundingClientRect()
+        return { left, right }
+      }),
+    )
+    for (let idx = 1; idx < bounds.length; idx++) {
+      expect(bounds[idx].left).toBeGreaterThanOrEqual(bounds[idx - 1].right)
+    }
+  }
+})
 
 // The element matrix is ~103x103 and opts into `virtualize`. Windowing is measured from real
 // layout, so it can only be exercised in a browser.
 test.describe(`HeatmapMatrix virtualization`, () => {
-  const matrix = `.scroll-container .grid`
-
-  // The window is derived from layout, so it settles a frame or two after load
-  const settle = async (page: Page) => {
-    await page.locator(matrix).first().scrollIntoViewIfNeeded()
-    await page.waitForFunction(
-      (selector) =>
-        (document.querySelector(selector)?.querySelectorAll(`.cell`).length ?? 0) > 50,
-      matrix,
-    )
-    await page.waitForTimeout(500)
-  }
+  const matrix = `.scroll-container .heatmap > .grid`
 
   // Coverage, not just cell count: a window that is too small still renders a tidy block of
   // cells, it just leaves visible grid area blank. Measuring how far the rendered cells reach
@@ -29,7 +144,7 @@ test.describe(`HeatmapMatrix virtualization`, () => {
       if (cells.length === 0) throw new Error(`matrix rendered no cells`)
       const view = grid.getBoundingClientRect()
       const rects = cells.map((cell) => cell.getBoundingClientRect())
-      const xs = cells.map((cell) => Number(cell.dataset.x))
+      const x_values = cells.map((cell) => Number(cell.dataset.x))
       return {
         // how far right/down the rendered block reaches, relative to the visible area
         covered_right: Math.max(...rects.map((rect) => rect.right)) - view.left,
@@ -37,15 +152,26 @@ test.describe(`HeatmapMatrix virtualization`, () => {
         view_width: view.width,
         view_height: view.height,
         content_width: grid.scrollWidth,
-        min_x: Math.min(...xs),
-        max_x: Math.max(...xs),
+        min_x: Math.min(...x_values),
+        max_x: Math.max(...x_values),
       }
     }, matrix)
 
   test(`covers the visible area when the matrix overflows`, async ({ page }) => {
     await page.setViewportSize({ width: 520, height: 800 })
     await page.goto(`/plot/heatmap-matrix`, { waitUntil: `load` })
-    await settle(page)
+    await page.locator(matrix).scrollIntoViewIfNeeded()
+    await expect(page.locator(`${matrix} .cell[data-x][data-y]`).first()).toBeVisible()
+    // Wait for the measured window itself, not an arbitrary cell count or timeout.
+    await expect
+      .poll(async () => {
+        const measured = await coverage(page)
+        return {
+          uncovered_right: Math.max(0, measured.view_width - measured.covered_right),
+          uncovered_bottom: Math.max(0, measured.view_height - measured.covered_bottom),
+        }
+      })
+      .toEqual({ uncovered_right: 0, uncovered_bottom: 0 })
 
     const before = await coverage(page)
     expect(before.content_width).toBeGreaterThan(before.view_width) // precondition: overflows
@@ -57,7 +183,7 @@ test.describe(`HeatmapMatrix virtualization`, () => {
       const grid = document.querySelector(selector)
       if (grid) grid.scrollLeft = 300
     }, matrix)
-    await page.waitForTimeout(400)
+    await expect.poll(async () => (await coverage(page)).min_x).toBeGreaterThan(before.min_x)
 
     const after = await coverage(page)
     expect(after.min_x).toBeGreaterThan(before.min_x) // window tracked the scroll

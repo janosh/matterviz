@@ -66,22 +66,22 @@ export function prepare_diagram(
       `Ternary phase diagram needs exactly 3 elements, got ${elements.length}: ${elements.join(`-`)}`,
     )
   }
-  const foreign = found.filter((el) => !elements.includes(el))
+  const foreign = found.filter((element) => !elements.includes(element))
   if (foreign.length > 0)
     throw new Error(
       `Entries contain ${foreign.join(`, `)} outside the ${elements.join(`-`)} system`,
     )
   // Synthetic corners for elements without a hull-eligible reference entry (dG_f = 0 by
   // definition); an exclude_from_hull element is drawn but cannot anchor the hull
-  for (const el of elements) {
+  for (const element of elements) {
     const has_corner = (entry: PhaseData) =>
-      is_unary_entry(entry) && entry.composition[el] && !entry.exclude_from_hull
+      is_unary_entry(entry) && entry.composition[element] && !entry.exclude_from_hull
     if (!normalized.some(has_corner)) {
       normalized.push({
-        composition: { [el]: 1 },
+        composition: { [element]: 1 },
         energy: 0,
-        entry_id: `synthetic-element:${el}`,
-        reduced_formula: el,
+        entry_id: `synthetic-element:${element}`,
+        reduced_formula: element,
       })
     }
   }
@@ -238,9 +238,9 @@ function assign_facets(
   const facet_of = new Int32Array(phases.length).fill(-1)
   const weights = new Float64Array(3 * phases.length)
   const scratch = new Float64Array(3)
-  for (const [idx, { xy }] of phases.entries()) {
+  for (const [idx, { xy: coords_xy }] of phases.entries()) {
     const facet_idx = facets.findIndex((facet) =>
-      facet_weights(phases, facet, xy[0], xy[1], scratch),
+      facet_weights(phases, facet, coords_xy[0], coords_xy[1], scratch),
     )
     if (facet_idx === -1) continue
     facet_of[idx] = facet_idx
@@ -265,11 +265,11 @@ function decomposition_of(facet: number[], weights: ArrayLike<number>): Decompos
 export function decompose_composition(
   model: Pick<DiagramModel, `phases`>,
   section: Pick<IsothermalSection, `facets`>,
-  xy: Vec2,
+  coords_xy: Vec2,
 ): Decomposition | null {
   const scratch = new Float64Array(3)
   const facet = section.facets.find((candidate) =>
-    facet_weights(model.phases, candidate, xy[0], xy[1], scratch),
+    facet_weights(model.phases, candidate, coords_xy[0], coords_xy[1], scratch),
   )
   return facet ? decomposition_of(facet, scratch) : null
 }
@@ -515,23 +515,23 @@ function make_event(
 // dG_f change of any phase over the interval. Phases whose data starts/ends inside stay in.
 function interval_candidates(
   model: DiagramModel,
-  lo: IsothermalSection,
-  hi: IsothermalSection,
+  lower: IsothermalSection,
+  upper: IsothermalSection,
 ): number[] {
-  const max_shift = lo.dg_form.reduce((max, value, idx) => {
-    const shift = Math.abs(hi.dg_form[idx] - value)
+  const max_shift = lower.dg_form.reduce((max, value, idx) => {
+    const shift = Math.abs(upper.dg_form[idx] - value)
     return shift > max ? shift : max // NaN never wins
   }, 0)
   const margin = 3 * max_shift + 1e-6
   return model.phases
     .filter(({ idx, is_element }) => {
       const near = Math.min(
-        ...[lo.e_above_hull[idx], hi.e_above_hull[idx]].filter(Number.isFinite),
+        ...[lower.e_above_hull[idx], upper.e_above_hull[idx]].filter(Number.isFinite),
       )
       return (
         is_element ||
         near <= margin ||
-        Number.isFinite(lo.dg_form[idx]) !== Number.isFinite(hi.dg_form[idx])
+        Number.isFinite(lower.dg_form[idx]) !== Number.isFinite(upper.dg_form[idx])
       )
     })
     .map(({ idx }) => idx)
@@ -539,23 +539,23 @@ function interval_candidates(
 
 function locate_events(
   model: DiagramModel,
-  lo: HullTopology,
-  hi: HullTopology,
+  lower: HullTopology,
+  upper: HullTopology,
   candidates: number[],
   tolerance: number,
   events: PhaseEvent[],
 ): void {
-  if (signature(lo) === signature(hi)) return
-  const mid_t = (lo.temperature + hi.temperature) / 2
+  if (signature(lower) === signature(upper)) return
+  const mid_t = (lower.temperature + upper.temperature) / 2
   // A data-range edge is bisected like a transition (so transitions right before it are still
   // found) but is not itself an event
-  if (hi.temperature - lo.temperature <= tolerance) {
-    if (lo.valid && hi.valid) events.push(make_event(model, mid_t, lo, hi))
+  if (upper.temperature - lower.temperature <= tolerance) {
+    if (lower.valid && upper.valid) events.push(make_event(model, mid_t, lower, upper))
     return
   }
   const mid = hull_topology(model, mid_t, candidates)
-  locate_events(model, lo, mid, candidates, tolerance, events)
-  locate_events(model, mid, hi, candidates, tolerance, events)
+  locate_events(model, lower, mid, candidates, tolerance, events)
+  locate_events(model, mid, upper, candidates, tolerance, events)
 }
 
 // === Sweep ===
@@ -641,18 +641,18 @@ export function compute_ternary_phase_diagram(
   const tolerance = options.event_tolerance ?? DEFAULT_EVENT_TOLERANCE
   const events: PhaseEvent[] = []
   for (let idx = 0; idx + 1 < topologies.length; idx++) {
-    const [lo, hi] = [topologies[idx], topologies[idx + 1]]
+    const [lower, upper] = [topologies[idx], topologies[idx + 1]]
     if (tolerance > 0)
       locate_events(
         model,
-        lo,
-        hi,
+        lower,
+        upper,
         interval_candidates(model, sections[idx], sections[idx + 1]),
         tolerance,
         events,
       )
-    else if (lo.valid && hi.valid && signature(lo) !== signature(hi))
-      events.push(make_event(model, (lo.temperature + hi.temperature) / 2, lo, hi))
+    else if (lower.valid && upper.valid && signature(lower) !== signature(upper))
+      events.push(make_event(model, (lower.temperature + upper.temperature) / 2, lower, upper))
   }
   return {
     elements: model.elements,

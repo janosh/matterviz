@@ -82,7 +82,7 @@ export function create_structure_tool_controller(
       const previous = current
       const stale_output = previous && !previous.is_current()
       const abort = new AbortController()
-      const id = ++next_id
+      const identifier = ++next_id
       const signal = abort.signal
       const is_current = (): boolean =>
         !disposed &&
@@ -100,7 +100,7 @@ export function create_structure_tool_controller(
       // Abort listeners can synchronously start another run; it must retain ownership.
       previous?.abort.abort()
       return {
-        id,
+        id: identifier,
         structure: structuredClone(input),
         signal,
         on_overlay(overlay) {
@@ -109,7 +109,7 @@ export function create_structure_tool_controller(
           on_prediction({
             ...copy_prediction_overlay(overlay, input.sites.length),
             input,
-            run_id: id,
+            run_id: identifier,
             provenance: captured_provenance,
           })
         },

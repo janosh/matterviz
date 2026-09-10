@@ -64,12 +64,13 @@
   const t_of = (y_pos: number) => (y_pos / HEIGHT + 0.5) * (t_max - t_min) + t_min
   // Triangle xy → scene xz at height y (z flipped so the triangle reads like the 2D section
   // from above); at_t places it at a temperature
-  const at = ([x_pos, y_pos]: readonly number[], y_scene = 0): Vec3 => [
+  const position_2 = ([x_pos, y_pos]: readonly number[], y_scene = 0): Vec3 => [
     x_pos - CENTER[0],
     y_scene,
     CENTER[1] - y_pos,
   ]
-  const at_t = (xy: readonly number[], temp: number): Vec3 => at(xy, y_of(temp))
+  const at_t = (coords_xy: readonly number[], temp: number): Vec3 =>
+    position_2(coords_xy, y_of(temp))
   const corners = TRIANGLE_VERTICES
   const cycle = (idx: number) => corners[(idx + 1) % 3]
 
@@ -102,7 +103,7 @@
     ]),
   )
   const plane_geometry = buffer_geom(
-    corners.flatMap((corner) => at(corner)),
+    corners.flatMap((corner) => position_2(corner)),
     [0, 1, 2],
   )
   const unit_cylinder = new CylinderGeometry(1, 1, 1, 10)
@@ -147,12 +148,16 @@
     return buffer_geom(positions, index)
   })
   const rods = $derived(
-    diagram.phases.flatMap(({ idx, xy, is_element }) =>
-      diagram.stability_windows[idx].map(([lo, hi], window_idx) => ({
+    diagram.phases.flatMap(({ idx, xy: coords_xy, is_element }) =>
+      diagram.stability_windows[idx].map(([lower, upper], window_idx) => ({
         key: `${idx}-${window_idx}`,
         phase: idx,
-        position: [at(xy)[0], (y_of(lo) + y_of(hi)) / 2, at(xy)[2]] as Vec3,
-        length: y_of(hi) - y_of(lo),
+        position: [
+          position_2(coords_xy)[0],
+          (y_of(lower) + y_of(upper)) / 2,
+          position_2(coords_xy)[2],
+        ] as Vec3,
+        length: y_of(upper) - y_of(lower),
         is_element,
       })),
     ),
@@ -173,21 +178,21 @@
   })
   const build_facets = memo((facets: number[][]) =>
     buffer_geom(
-      facets.flatMap((facet) => facet.flatMap((idx) => at(diagram.phases[idx].xy))),
+      facets.flatMap((facet) => facet.flatMap((idx) => position_2(diagram.phases[idx].xy))),
       facets.flatMap((_, idx) => [3 * idx, 3 * idx + 1, 3 * idx + 2]),
     ),
   )
   const build_tie_lines = memo((edges: Vec2[]) =>
     buffer_geom(
       edges.flatMap(([idx_a, idx_b]) => [
-        ...at(diagram.phases[idx_a].xy),
-        ...at(diagram.phases[idx_b].xy),
+        ...position_2(diagram.phases[idx_a].xy),
+        ...position_2(diagram.phases[idx_b].xy),
       ]),
     ),
   )
   const build_points = memo((stable: number[]) =>
     stable.map((idx) => {
-      const [x_pos, , z_pos] = at(diagram.phases[idx].xy)
+      const [x_pos, , z_pos] = position_2(diagram.phases[idx].xy)
       return {
         phase: idx,
         position: [x_pos, 0, z_pos] as Vec3,
@@ -220,13 +225,13 @@
 
   // Labels: temperature ticks up the left edge, elements past the bottom corners
   const tick_pos = (temp: number): Vec3 => [
-    at(corners[2])[0] - 0.07,
+    position_2(corners[2])[0] - 0.07,
     y_of(temp),
-    at(corners[2])[2] + 0.04,
+    position_2(corners[2])[2] + 0.04,
   ]
   const corner_labels = $derived(
     diagram.elements.map((element, idx) => {
-      const [x_pos, , z_pos] = at(corners[idx])
+      const [x_pos, , z_pos] = position_2(corners[idx])
       const len = Math.hypot(x_pos, z_pos) || 1
       return {
         element,

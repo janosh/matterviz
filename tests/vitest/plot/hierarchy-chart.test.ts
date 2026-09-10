@@ -16,7 +16,6 @@ import {
 } from '$lib/plot/core/utils/hierarchy-chart'
 import type { PositionedArc, SunburstNode } from '$lib/plot/core/utils/hierarchy-layout'
 import { compute_sunburst_layout } from '$lib/plot/core/utils/hierarchy-layout'
-import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 
 // oxfmt-ignore
@@ -101,25 +100,25 @@ describe(`hierarchy chart helpers`, () => {
   })
 
   test(`dims, toggles, and builds legend state for categories`, () => {
-    const empty = new SvelteSet<string | number>()
-    const undimmed = compute_node_dim(arcs, empty, null)
+    const empty = new Set<string | number>()
+    const undimmed = compute_node_dim(arcs, empty)
     expect(arcs.every((arc) => undimmed(arc.node_idx).opacity === 1)).toBe(true)
-    const hover = compute_node_dim(arcs, empty, alpha.node_idx)
-    expect([alpha, alpha_child, root, beta].map((arc) => hover(arc.node_idx).opacity)).toEqual(
-      [1, 1, 1, 0.3],
-    )
-    const muted = new SvelteSet([alpha.id])
-    expect(compute_node_dim(arcs, muted, null)(alpha.node_idx).opacity).toBe(0.12)
-    expect(compute_node_dim(arcs, muted, alpha.node_idx)(alpha.node_idx).opacity).toBe(0.12)
+    const muted = compute_node_dim(arcs, new Set([alpha.id]))
+    expect([alpha, alpha_child, root, beta].map((arc) => muted(arc.node_idx))).toEqual([
+      { opacity: 0.12, label_opacity: 0.12 },
+      { opacity: 0.12, label_opacity: 0.12 },
+      { opacity: 1, label_opacity: undefined },
+      { opacity: 1, label_opacity: undefined },
+    ])
 
-    const toggled = new SvelteSet<string | number>([`x`])
+    const toggled = new Set<string | number>([`x`])
     toggle_muted(toggled, `x`)
     toggle_muted(toggled, `y`)
     expect([...toggled]).toEqual([`y`])
 
     const items = hierarchy_legend_items(
       arcs.filter((arc) => arc.depth === 1),
-      new SvelteSet([beta.id]),
+      new Set([beta.id]),
       (arc) => `c-${arc.label}`,
     ).map(({ series_idx, label, visible, display_style }) => [
       series_idx,
@@ -147,7 +146,8 @@ describe(`hierarchy chart helpers`, () => {
   })
 
   test(`computes label variants, colors, accessibility text, and clickability`, () => {
-    const child_info = compute_node_infos(arcs, node_info_opts)[alpha_child.node_idx]
+    const infos = compute_node_infos(arcs, node_info_opts)
+    const child_info = infos[alpha_child.node_idx]
     // dark fill -> white label; measured at 10px -> 6px per character
     expect(child_info).toMatchObject({
       fill: `#336699`,
@@ -156,6 +156,11 @@ describe(`hierarchy chart helpers`, () => {
       variants: [{ text: `a1`, width: 12 }],
     })
     expect(child_info.clickable).toBeUndefined()
+    // Hiding labels skips their variants, preserving paint and accessibility.
+    const hidden = compute_node_infos(arcs, { ...node_info_opts, label_text: null })
+    expect(infos.some((info) => info.variants.length > 0)).toBe(true)
+    expect(hidden.every((info) => info.variants.length === 0)).toBe(true)
+    expect(hidden).toEqual(infos.map((info) => ({ ...info, variants: [] })))
     // light fills get black labels; fills JS can't resolve (translucent, CSS vars)
     // inherit the surrounding text color instead of guessing
     const label_fills = [`#ffe0b3`, `rgba(0, 0, 0, 0.5)`, `var(--x)`].map(
@@ -223,7 +228,7 @@ describe(`hierarchy chart helpers`, () => {
     // legend swatches carry the raw pattern spec for the legend to resolve at its own scale
     const legend = hierarchy_legend_items(
       patterned.filter((arc) => arc.depth === 1),
-      new SvelteSet(),
+      new Set(),
       () => `#336699`,
     )
     expect(legend.map((item) => item.display_style.pattern)).toEqual([

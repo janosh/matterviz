@@ -2,7 +2,6 @@ import { contrast_color_memo, type D3InterpolateName, get_d3_interpolator } from
 import { array_extent, quantile_unordered } from '$lib/math'
 import { color_ramp_scale } from '$lib/plot/core/color-ramp'
 import { clamp01 } from '$lib/utils'
-import { max, min } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
@@ -239,13 +238,13 @@ export function resolve_color_domain(
 export const merge_domains = (domains: [number, number][]): [number, number] | null =>
   domains.length === 0
     ? null
-    : domains.reduce(([lo, hi], [next_lo, next_hi]): [number, number] => [
-        Math.min(lo, next_lo),
-        Math.max(hi, next_hi),
+    : domains.reduce(([lower, upper], [next_lo, next_hi]): [number, number] => [
+        Math.min(lower, next_lo),
+        Math.max(upper, next_hi),
       ])
 
 // Build a memoized value→color mapper for one column. The O(column-length)
-// work (numeric filter + min/max) and d3 scale construction happen ONCE here;
+// work (numeric min/max) and d3 scale construction happen ONCE here;
 // the returned function is O(1) per cell. HeatmapTable derives one mapper per
 // colored column instead of rescanning the full column for every cell render.
 export function make_cell_color_scale(
@@ -259,24 +258,28 @@ export function make_cell_color_scale(
 ): (val: number | null | undefined) => CellColor {
   if (color_scale === null) return () => NULL_CELL_COLOR
 
-  const numeric_vals = all_values.filter(
-    (v): v is number =>
-      typeof v === `number` && Number.isFinite(v) && (scale_type === `log` ? v > 0 : true),
-  )
-  // a log column of nothing but zeros still colors them at the low end, hence the includes
-  const has_log_zero = scale_type === `log` && all_values.includes(0)
-  if (numeric_vals.length === 0 && !has_log_zero && !domain) return () => NULL_CELL_COLOR
-
-  // On a log scale numeric_vals holds only positives, so its min doubles as the smallest
-  // positive value.
-  const lowest = min(numeric_vals)
-  const range: [number, number] = domain ? [...domain] : [lowest ?? 0, max(numeric_vals) ?? 1]
-
-  // A supplied domain may reach to or below zero (quantile clipping, a shared group), which
-  // a log scale can't take. Lift its low end so it is the column's smallest positive value
-  // rather than the LOG_EPS floor.
-  if (scale_type === `log` && range[0] <= 0 && lowest != null && range[1] > 0) {
-    range[0] = lowest
+  const range: [number, number] = domain ? [...domain] : [0, 1]
+  // Resolved domains need no column scan, except when a log lower bound needs lifting
+  // to the smallest positive value (quantile clipping or a shared-domain group).
+  if (!domain || (scale_type === `log` && range[0] <= 0 && range[1] > 0)) {
+    let lowest = Infinity
+    let highest = -Infinity
+    let has_log_zero = false
+    for (const value of all_values) {
+      if (typeof value !== `number` || !Number.isFinite(value)) continue
+      if (scale_type === `log` && value <= 0) {
+        has_log_zero ||= value === 0
+        continue
+      }
+      if (value < lowest) lowest = value
+      if (value > highest) highest = value
+    }
+    // A log column of nothing but zeros still colors them at the low end.
+    if (!domain && lowest === Infinity && !has_log_zero) return () => NULL_CELL_COLOR
+    if (!domain) {
+      range[0] = lowest === Infinity ? 0 : lowest
+      range[1] = highest === -Infinity ? 1 : highest
+    } else if (lowest !== Infinity) range[0] = lowest
   }
   if (better === `lower`) range.reverse()
 
@@ -301,9 +304,9 @@ export function make_cell_color_scale(
     // Negatives remain invalid on a log scale
     if (scale_type === `log` && val < 0) return NULL_CELL_COLOR
     const color_val = val === 0 && log_zero_value !== undefined ? log_zero_value : val
-    const bg = log_position
+    const background = log_position
       ? interpolator(clamp01(log_position(color_val)))
       : seq_scale(color_val)
-    return { bg, text: text_by_bg(bg) }
+    return { bg: background, text: text_by_bg(background) }
   }
 }

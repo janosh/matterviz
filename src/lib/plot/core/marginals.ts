@@ -3,8 +3,9 @@
 // kde / cdf / rug). The PlotMarginals.svelte renderer consumes these; each plot only adapts
 // its data to MarginalSeriesInput and folds reserve_marginal_pad into its `pad`.
 
-import type { Vec2 } from '$lib/math'
+import { partition_point, type Vec2 } from '$lib/math'
 import { sorted_range } from '$lib/plot/core/interactions'
+import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { Rect, Sides } from '$lib/plot/core/layout'
 import type { LineCurve, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
@@ -129,10 +130,10 @@ export interface MarginalSeriesCurve {
 // A 1-D scale: data value -> pixel (positional axis or marginal-value direction)
 export type ScaleFn = (value: number) => number
 
-// Scale fn, current range, and scale type for one axis a marginal can bind to. Plots pass an
+// Pixel span, data range, and scale type for one axis a marginal can bind to. Plots pass an
 // `axes` map (x + y required, x2/y2 optional) to PlotMarginals; x2/y2 fall back to x/y.
 export interface MarginalAxis {
-  scale: ScaleFn
+  pixel_range: Vec2
   range: Vec2
   scale_type?: ScaleType
   format?: string // axis number format, surfaced in marginal hover tooltips
@@ -146,16 +147,16 @@ export type MarginalAxes = {
   y2?: MarginalAxis
 }
 
-// Build a MarginalAxis from a host plot's scale fn + current range, reading scale_type/format/label
+// Capture the host scale's pixel span and current domain, reading scale_type/format/label
 // off the plot's AxisConfig (DRYs the per-axis object every host plot passes to PlotMarginals; the
 // renderer defaults a missing scale_type to `linear`). `tick_label` maps a position to a label.
 export const marginal_axis = (
-  scale: ScaleFn,
+  scale: PlotScaleFn,
   range: Vec2,
   axis: { scale_type?: ScaleType; format?: string; label?: string },
   tick_label?: (value: number) => string | undefined,
 ): MarginalAxis => ({
-  scale,
+  pixel_range: scale.range() as Vec2,
   range,
   scale_type: axis.scale_type,
   format: axis.format,
@@ -179,7 +180,7 @@ export interface MarginalRenderContext extends MarginalComputeContext {
 // Pixel tolerance for rug-tick hit-testing (a tick farther than this from the pointer is a miss)
 const MARGINAL_HIT_TOLERANCE_PX = 10
 
-// Tooltip payload describing the marginal datum nearest the pointer (returned by marginal_hit)
+// Tooltip payload describing the marginal datum nearest the pointer (returned by a marginal hit test)
 export interface MarginalHover {
   side: MarginalSide
   x: number // wrapper px for tooltip placement (the pointer position)
@@ -198,134 +199,191 @@ export interface MarginalHover {
   axis_title?: string // title of the shared positional axis (e.g. `Error`), if any
 }
 
-// Pure hit-test: given a strip's render context and a pointer position in wrapper px, return the
-// nearest datum as a MarginalHover (or null for a miss). ctx.curves is kind-homogeneous, so we
-// branch once on the first curve's kind, matching only along the shared positional axis. Non-finite
-// data is skipped (consistent with the renderer) so custom reduce/data curves can't yield ghost hits.
-export function marginal_hit(
+// Prepare projection and ordering once per rendered strip. Queries examine only the
+// neighboring positions, preserving original-order ties even on reversed/custom axes.
+// A query may supply a resized context whose positional scale preserves or reverses the
+// cached ordering. Compare in current pixels to retain exact boundary hits and distance ties.
+export function create_marginal_hit_test(
   ctx: MarginalRenderContext,
-  px: number,
-  py: number,
-): MarginalHover | null {
-  const { side, curves, positional_scale, value_scale, baseline, config, scale_type } = ctx
-  const is_x = is_x_side(side)
-  const pointer_pos = is_x ? px : py // along the shared positional axis
-  const pointer_cross = is_x ? py : px // across the strip thickness (the value direction)
-  const kind = curves[0]?.curve.kind
-  if (!kind) return null
-  const contains_cross = (value_px: number) =>
-    Number.isFinite(value_px) &&
-    pointer_cross >= Math.min(baseline, value_px) &&
-    pointer_cross <= Math.max(baseline, value_px)
-
-  const hover = (
-    curve: MarginalSeriesCurve,
-    extra: { pos: number; pos0?: number; pos1?: number; value?: number },
-  ): MarginalHover => ({
+): (
+  pixel_x: number,
+  pixel_y: number,
+  current?: MarginalRenderContext,
+) => MarginalHover | null {
+  const {
     side,
-    x: px,
-    y: py,
-    color: config.color ?? curve.color,
-    label: curve.label,
-    kind,
+    curves,
+    positional_scale: initial_pos_scale,
+    value_scale: initial_value_scale,
     config,
     scale_type,
-    format: ctx.format,
-    pos_label: ctx.tick_label?.(extra.pos),
-    axis_title: ctx.axis_title,
-    ...extra,
-  })
-
-  if (kind === `bars`) {
-    // Among bins whose rendered rect contains the pointer, pick the largest-value (tallest) bar.
-    // Baseline-anchored bars nest, so the tallest containing bar wins render-order independently.
-    let best: {
-      curve: MarginalSeriesCurve
-      bar: { pos0: number; pos1: number; value: number }
-    } | null = null
-    for (const series_curve of curves) {
-      if (series_curve.curve.kind !== `bars`) continue
-      for (const bar of series_curve.curve.bins) {
-        if (!Number.isFinite(bar.value) || bar.value <= 0) continue // finite positive only (matches renderer)
-        const edge_a = positional_scale(bar.pos0)
-        const edge_b = positional_scale(bar.pos1)
-        if (!Number.isFinite(edge_a) || !Number.isFinite(edge_b)) continue
-        if (pointer_pos < Math.min(edge_a, edge_b) || pointer_pos > Math.max(edge_a, edge_b)) {
-          continue
-        }
-        if (!contains_cross(value_scale(bar.value))) continue
-        if (!best || bar.value > best.bar.value) best = { curve: series_curve, bar }
+  } = ctx
+  type LineHit = {
+    curve: MarginalSeriesCurve
+    pos: number
+    value: number
+    px_pos: number
+    order: number
+    px_val: number
+  }
+  type Position = { pos: number; px_pos: number; order: number }
+  const ordered = <Point extends Position>(points: Point[]): Point[] => {
+    if (!points.every((point, idx) => idx === 0 || points[idx - 1].px_pos <= point.px_pos))
+      points.sort((left, right) => left.px_pos - right.px_pos || left.order - right.order)
+    return points.filter((point, idx) => idx === 0 || point.px_pos !== points[idx - 1].px_pos)
+  }
+  const nearest = <Point extends Position>(
+    points: readonly Point[],
+    pos: number,
+    project: (point: Point) => number,
+  ): Point | undefined => {
+    if (points.length === 0 || !Number.isFinite(pos)) return undefined
+    const reversed = project(points[0]) > project(points[points.length - 1])
+    const idx = partition_point(points, (point) =>
+      reversed ? project(point) > pos : project(point) < pos,
+    )
+    let best = points[idx] ?? points[idx - 1]
+    let distance = Math.abs(project(best) - pos)
+    // Check both neighbors and any equal-distance plateau. At very large coordinates,
+    // subtraction can round several distinct positions to the same distance.
+    for (const step of [-1, 1]) {
+      for (
+        let cursor = step < 0 ? idx - 1 : idx + 1;
+        cursor >= 0 && cursor < points.length;
+        cursor += step
+      ) {
+        const point = points[cursor]
+        const next_distance = Math.abs(project(point) - pos)
+        if (next_distance > distance) break
+        if (next_distance < distance || point.order < best.order) best = point
+        distance = next_distance
       }
     }
-    if (!best) return null
-    const { bar } = best
-    return hover(best.curve, {
-      pos: (bar.pos0 + bar.pos1) / 2,
-      pos0: bar.pos0,
-      pos1: bar.pos1,
-      value: bar.value,
+    return Number.isFinite(distance) ? best : undefined
+  }
+
+  const lines = new Map<MarginalSeriesCurve, LineHit[]>()
+  const rugs = new Map<MarginalSeriesCurve, Position[]>()
+  for (const curve of curves) {
+    if (curve.curve.kind === `line`) {
+      const points: LineHit[] = []
+      for (const [order, point] of curve.curve.points.entries()) {
+        const px_pos = initial_pos_scale(point.pos)
+        const px_val = initial_value_scale(point.value)
+        if (Number.isFinite(px_pos) && Number.isFinite(px_val))
+          points.push({ pos: point.pos, value: point.value, curve, px_pos, px_val, order })
+      }
+      // A constant-position curve with >=2 finite vertices still has a pickable edge.
+      if (points.length >= 2) lines.set(curve, ordered(points))
+    } else if (curve.curve.kind === `rug`) {
+      const points: Position[] = []
+      for (const [order, pos] of curve.curve.positions.entries()) {
+        const px_pos = initial_pos_scale(pos)
+        if (Number.isFinite(px_pos)) points.push({ pos, px_pos, order })
+      }
+      rugs.set(curve, ordered(points))
+    }
+  }
+  return (pixel_x, pixel_y, current = ctx) => {
+    const { positional_scale, value_scale, baseline } = current
+    const project = (point: Position) =>
+      current === ctx ? point.px_pos : positional_scale(point.pos)
+    const is_x = is_x_side(side)
+    const pointer_pos = is_x ? pixel_x : pixel_y // along the shared positional axis
+    const pointer_cross = is_x ? pixel_y : pixel_x // across the strip thickness (the value direction)
+    const kind = curves[0]?.curve.kind
+    if (!kind) return null
+    const contains_cross = (value_px: number) =>
+      Number.isFinite(value_px) &&
+      pointer_cross >= Math.min(baseline, value_px) &&
+      pointer_cross <= Math.max(baseline, value_px)
+
+    const hover = (
+      curve: MarginalSeriesCurve,
+      extra: { pos: number; pos0?: number; pos1?: number; value?: number },
+    ): MarginalHover => ({
+      side,
+      x: pixel_x,
+      y: pixel_y,
+      color: config.color ?? curve.color,
+      label: curve.label,
+      kind,
+      config,
+      scale_type,
+      format: current.format,
+      pos_label: current.tick_label?.(extra.pos),
+      axis_title: current.axis_title,
+      ...extra,
     })
-  }
 
-  if (kind === `line`) {
-    // Each series fills from `baseline` to its curve. Among the fills that contain the pointer, pick
-    // the one whose curve reaches FURTHEST from the baseline (the outermost fill) — that's the curve
-    // the pointer visually sits within, and it's render-order independent so every series stays
-    // selectable where its fill is on top. For each series take its point nearest the pointer
-    // position (its value at the cursor). A pointer outside every fill is a miss.
-    type LineHit = {
-      curve: MarginalSeriesCurve
-      pos: number
-      value: number
-      px_pos: number
-      px_val: number
-    }
-    let chosen: LineHit | null = null
-    let best_extent = -1
-    for (const series_curve of curves) {
-      if (series_curve.curve.kind !== `line`) continue
-      const pts: LineHit[] = []
-      let min_pos = Infinity
-      let max_pos = -Infinity
-      for (const pt of series_curve.curve.points) {
-        const px_pos = positional_scale(pt.pos)
-        const px_val = value_scale(pt.value)
-        if (!Number.isFinite(px_pos) || !Number.isFinite(px_val)) continue
-        pts.push({ curve: series_curve, pos: pt.pos, value: pt.value, px_pos, px_val })
-        min_pos = Math.min(min_pos, px_pos)
-        max_pos = Math.max(max_pos, px_pos)
-      }
-      if (pts.length < 2) continue // renderer skips line/area paths without two finite points
-      if (pointer_pos < min_pos || pointer_pos > max_pos) continue
-      let near: LineHit | null = null
-      let near_dist = Infinity
-      for (const pt of pts) {
-        const pos_dist = Math.abs(pt.px_pos - pointer_pos)
-        if (pos_dist < near_dist) {
-          near_dist = pos_dist
-          near = pt
+    if (kind === `bars`) {
+      // Among bins whose rendered rect contains the pointer, pick the largest-value (tallest) bar.
+      // Baseline-anchored bars nest, so the tallest containing bar wins render-order independently.
+      let best: {
+        curve: MarginalSeriesCurve
+        bar: { pos0: number; pos1: number; value: number }
+      } | null = null
+      for (const series_curve of curves) {
+        if (series_curve.curve.kind !== `bars`) continue
+        for (const bar of series_curve.curve.bins) {
+          if (!Number.isFinite(bar.value) || bar.value <= 0) continue // finite positive only (matches renderer)
+          const edge_a = positional_scale(bar.pos0)
+          const edge_b = positional_scale(bar.pos1)
+          if (!Number.isFinite(edge_a) || !Number.isFinite(edge_b)) continue
+          if (
+            pointer_pos < Math.min(edge_a, edge_b) ||
+            pointer_pos > Math.max(edge_a, edge_b)
+          ) {
+            continue
+          }
+          if (!contains_cross(value_scale(bar.value))) continue
+          if (!best || bar.value > best.bar.value) best = { curve: series_curve, bar }
         }
       }
-      if (!near || !contains_cross(near.px_val)) continue
-      const extent = Math.abs(near.px_val - baseline)
-      if (extent > best_extent) [best_extent, chosen] = [extent, near]
+      if (!best) return null
+      const { bar } = best
+      return hover(best.curve, {
+        pos: (bar.pos0 + bar.pos1) / 2,
+        pos0: bar.pos0,
+        pos1: bar.pos1,
+        value: bar.value,
+      })
     }
-    return chosen ? hover(chosen.curve, { pos: chosen.pos, value: chosen.value }) : null
-  }
 
-  // rug: nearest tick along the positional axis, within a pixel tolerance (no value/cross axis)
-  let best: { curve: MarginalSeriesCurve; pos: number; dist: number } | null = null
-  for (const series_curve of curves) {
-    if (series_curve.curve.kind !== `rug`) continue
-    for (const pos of series_curve.curve.positions) {
-      const px_pos = positional_scale(pos)
-      if (!Number.isFinite(px_pos)) continue
-      const dist = Math.abs(px_pos - pointer_pos)
-      if (dist < (best?.dist ?? Infinity)) best = { curve: series_curve, pos, dist }
+    if (kind === `line`) {
+      // Each series fills from `baseline` to its curve. Among the fills that contain the pointer, pick
+      // the one whose curve reaches FURTHEST from the baseline (the outermost fill) — that's the curve
+      // the pointer visually sits within, and it's render-order independent so every series stays
+      // selectable where its fill is on top. For each series take its point nearest the pointer
+      // position (its value at the cursor). A pointer outside every fill is a miss.
+      let chosen: LineHit | null = null
+      let best_extent = -1
+      for (const points of lines.values()) {
+        const first = project(points[0]),
+          last = project(points[points.length - 1])
+        if (pointer_pos < Math.min(first, last) || pointer_pos > Math.max(first, last))
+          continue
+        const near = nearest(points, pointer_pos, project)
+        if (!near) continue
+        const value_px = current === ctx ? near.px_val : value_scale(near.value)
+        if (!contains_cross(value_px)) continue
+        const extent = Math.abs(value_px - baseline)
+        if (extent > best_extent) [best_extent, chosen] = [extent, near]
+      }
+      return chosen ? hover(chosen.curve, { pos: chosen.pos, value: chosen.value }) : null
     }
+
+    // rug: nearest tick along the positional axis, within a pixel tolerance (no value/cross axis)
+    let best: { curve: MarginalSeriesCurve; pos: number; dist: number } | null = null
+    for (const [series_curve, points] of rugs) {
+      const near = nearest(points, pointer_pos, project)
+      if (!near) continue
+      const dist = Math.abs(project(near) - pointer_pos)
+      if (dist < (best?.dist ?? Infinity)) best = { curve: series_curve, pos: near.pos, dist }
+    }
+    if (!best || best.dist > MARGINAL_HIT_TOLERANCE_PX) return null
+    return hover(best.curve, { pos: best.pos })
   }
-  if (!best || best.dist > MARGINAL_HIT_TOLERANCE_PX) return null
-  return hover(best.curve, { pos: best.pos })
 }
 
 // Deliberately NOT part of settings.ts DEFAULTS, which would pull marginals into the
@@ -416,11 +474,11 @@ export function reserve_marginal_pad(resolved: ResolvedMarginals): Required<Side
 }
 
 // Sum two padding objects (used to fold marginal reservation into the decoration pad)
-export const add_sides = (a: Required<Sides>, b: Required<Sides>): Required<Sides> => ({
-  t: a.t + b.t,
-  b: a.b + b.b,
-  l: a.l + b.l,
-  r: a.r + b.r,
+export const add_sides = (left: Required<Sides>, right: Required<Sides>): Required<Sides> => ({
+  t: left.t + right.t,
+  b: left.b + right.b,
+  l: left.l + right.l,
+  r: left.r + right.r,
 })
 
 // Default axis a side binds to when `config.axis` is unset
@@ -446,7 +504,7 @@ export const outer_strip_reservation = (
 ): number => (config && !is_flush(config.placement, has_axis) ? config.size + config.gap : 0)
 
 // Pixel rect of a marginal strip. The cross dimension spans the plot area (so it aligns with
-// the shared positional scale); the thickness is `config.size`, positioned per placement.
+// the shared positional scale); outer strips sit inside any outside decoration bands.
 export function marginal_strip_rect(
   side: MarginalSide,
   pad: Required<Sides>,
@@ -454,23 +512,26 @@ export function marginal_strip_rect(
   height: number,
   config: ResolvedMarginalConfig,
   has_axis: boolean,
+  outer_pad: Required<Sides> = { t: 0, b: 0, l: 0, r: 0 },
 ): Rect {
   const { size, gap } = config
   const flush = is_flush(config.placement, has_axis)
   const is_x = is_x_side(side)
   const grows_negative = side === `top` || side === `left`
-  // thickness-axis position of the strip's near edge: flush sits a gap from the plot, outer at
-  // the container edge (top/left strips go before the plot, bottom/right strips after it)
+  // Flush strips sit a gap from the plot; outer strips sit inside any outside decorations.
   const plot_near = is_x ? pad.t : pad.l
   const plot_far = is_x ? height - pad.b : width - pad.r
   const container_far = is_x ? height : width
+  const outer_band =
+    outer_pad[is_x ? (grows_negative ? `t` : `b`) : grows_negative ? `l` : `r`]
+  const outer_offset = outer_band ? outer_band + gap : 0
   const thick = flush
     ? grows_negative
       ? plot_near - gap - size
       : plot_far + gap
     : grows_negative
-      ? 0
-      : container_far - size
+      ? outer_offset
+      : container_far - outer_offset - size
   // cross axis spans the plot area so the strip aligns with the shared positional scale
   const cross_min = is_x ? pad.l : pad.t
   const cross = Math.max(0, (is_x ? width - pad.r : height - pad.b) - cross_min)
@@ -486,8 +547,8 @@ export function marginal_value_scale(
   rect: Rect,
   domain: Vec2,
 ): { scale: (value: number) => number; baseline: number } {
-  const [lo, hi] = domain
-  const span = hi - lo || 1
+  const [lower, upper] = domain
+  const span = upper - lower || 1
   const is_x = is_x_side(side)
   const thickness = is_x ? rect.height : rect.width
   const near = is_x ? rect.y : rect.x // strip edge at the smaller pixel coordinate
@@ -496,7 +557,7 @@ export function marginal_value_scale(
   const grows_negative = side === `top` || side === `left`
   const baseline = grows_negative ? near + thickness : near
   const sign = grows_negative ? -1 : 1
-  return { scale: (val) => baseline + sign * ((val - lo) / span) * thickness, baseline }
+  return { scale: (val) => baseline + sign * ((val - lower) / span) * thickness, baseline }
 }
 
 // Drop non-finite positions (and matching weights), restrict to the current positional range
@@ -508,13 +569,13 @@ const clean_pairs = (
   positional_range: Vec2,
   scale_type: ScaleType,
 ): { positions: number[]; weights: number[] | undefined } => {
-  const [lo, hi] = positional_range // ascending (canonicalized by compute_marginal_curve)
+  const [lower, upper] = positional_range // ascending (canonicalized by compute_marginal_curve)
   const require_positive = get_scale_type_name(scale_type) === `log`
   const out_pos: number[] = []
   const out_wts: number[] | undefined = weights ? [] : undefined
   for (let idx = 0; idx < positions.length; idx++) {
     const pos = positions[idx]
-    if (!Number.isFinite(pos) || pos < lo || pos > hi) continue
+    if (!Number.isFinite(pos) || pos < lower || pos > upper) continue
     if (require_positive && pos <= 0) continue
     if (weights && out_wts) {
       const weight = weights[idx]
@@ -542,27 +603,40 @@ function compute_histogram(
   const { edges, counts } = bin_values(positions, pos_range, config.bins, scale_type, weights)
   let max = 0
   const bins = normalize_counts(edges, counts, config.normalize ?? `count`).map(
-    ({ x0, x1, value }) => {
+    ({ x0: pos0, x1: pos1, value }) => {
       if (value > max) max = value
-      return { pos0: x0, pos1: x1, value }
+      return { pos0, pos1, value }
     },
   )
   return { kind: `bars`, bins, max }
 }
 
 function compute_cdf(positions: number[], weights: number[] | undefined): MarginalCurve {
-  const order = positions.map((_, idx) => idx).toSorted((a, b) => positions[a] - positions[b])
+  let sorted_positions: ArrayLike<number> = positions
+  let order: number[] | null = null
+  // Sort only fresh scratch buffers in place, avoiding a second full-size copy.
+  // oxlint-disable eslint-plugin-unicorn/no-array-sort
+  if (!positions.every((pos, idx) => idx === 0 || positions[idx - 1] <= pos)) {
+    if (weights)
+      order = positions
+        .map((_, idx) => idx)
+        .sort((left, right) => positions[left] - positions[right])
+    else sorted_positions = Float64Array.from(positions).sort()
+  }
+  // oxlint-enable eslint-plugin-unicorn/no-array-sort
   const total = weights ? weights.reduce((sum, weight) => sum + weight, 0) : positions.length
   const points: { pos: number; value: number }[] = []
   let cum = 0
-  for (const idx of order) {
+  for (let sorted_idx = 0; sorted_idx < positions.length; sorted_idx++) {
+    const idx = order?.[sorted_idx] ?? sorted_idx
     cum += weights ? weights[idx] : 1
-    const pos = positions[idx]
+    const pos = sorted_positions[idx]
     const value = total > 0 ? cum / total : 0
     // collapse ties so positions stay strictly increasing (keeps monotone curves well-behaved)
     const last = points[points.length - 1]
     if (last?.pos === pos) last.value = value
-    else points.push({ pos, value })
+    // Native numeric sorting puts -0 before +0; retain the first input zero's sign.
+    else points.push({ pos: pos === 0 ? positions[positions.indexOf(0)] : pos, value })
   }
   return { kind: `line`, points, max: 1 }
 }

@@ -274,19 +274,22 @@ const no_file_drop = { allow_file_drop: false }
 // Exported so tests can mount a single widget's wiring directly.
 export const mount_spec = (
   model: AnyModel,
-  el: HTMLElement,
+  element: HTMLElement,
   spec: WidgetSpec,
 ): (() => void) => {
-  el.style.boxSizing = `border-box`
-  el.style.maxWidth = `100%`
-  el.style.marginRight = `2em` // avoid overflow in vscode-interactive cell container
+  element.style.boxSizing = `border-box`
+  element.style.maxWidth = `100%`
+  element.style.marginRight = `2em` // avoid overflow in vscode-interactive cell container
   const interaction = spec.interactions?.(model)
   const { props, dispose } = reactive_widget(
     model,
     [...(spec.base_drive ?? top_level_base_drive), ...spec.drive],
     { ...spec.static_props, ...interaction?.props },
   )
-  const instance = mount(spec.component as Parameters<typeof mount>[0], { target: el, props })
+  const instance = mount(spec.component as Parameters<typeof mount>[0], {
+    target: element,
+    props,
+  })
   return () => {
     interaction?.cleanup?.()
     dispose()
@@ -664,7 +667,7 @@ export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromE
 
 // Detect widget type and render
 const render: Render = (props) => {
-  const { model, el } = props
+  const { model, el: element } = props
   const widget_type = get_prop(model, `widget_type`) as string | undefined
   // guard with Object.hasOwn so prototype keys (toString, constructor, ...) don't
   // resolve as specs and silently bypass the unknown-widget_type error
@@ -672,18 +675,18 @@ const render: Render = (props) => {
     widget_type && Object.hasOwn(WIDGETS, widget_type) ? WIDGETS[widget_type] : undefined
   if (!spec) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
 
-  cleanup_element(el)
-  inject_app_css(el)
+  cleanup_element(element)
+  inject_app_css(element)
   // The widget's theme is its own color-scheme, now and as the host's changes: light-dark()
   // tokens, native form controls and svelte-widgets all resolve against it, and setting it on
   // the element (not the host page's root) leaves the notebook's own scheme alone.
-  const stop_theme = watch_theme(el, (theme) => (el.style.colorScheme = theme))
-  const unmount_widget = mount_spec(model, el, spec)
-  cleanups.set(el, () => {
+  const stop_theme = watch_theme(element, (theme) => (element.style.colorScheme = theme))
+  const unmount_widget = mount_spec(model, element, spec)
+  cleanups.set(element, () => {
     stop_theme()
     unmount_widget()
   })
-  return () => cleanup_element(el)
+  return () => cleanup_element(element)
 }
 
 export default { render }

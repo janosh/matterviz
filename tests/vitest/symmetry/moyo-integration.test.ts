@@ -24,14 +24,14 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../setup'
 
 // Helper to get structure or throw with descriptive error
-function get_structure(id: string) {
-  const structure = structure_map.get(id)
-  if (!structure) throw new Error(`Structure ${id} not found`)
+function get_structure(identifier: string) {
+  const structure = structure_map.get(identifier)
+  if (!structure) throw new Error(`Structure ${identifier} not found`)
   return structure
 }
 
-const analyze = (id: string, symprec = 1e-4) =>
-  analyze_structure_symmetry(get_structure(id), { symprec })
+const analyze = (identifier: string, symprec = 1e-4) =>
+  analyze_structure_symmetry(get_structure(identifier), { symprec })
 
 const analyze_crystal = (crystal: Crystal, symprec = 1e-4) =>
   analyze_structure_symmetry(crystal, { symprec })
@@ -259,8 +259,8 @@ describe(`moyo-wasm integration`, () => {
   test.each([
     [`mp-1183085-Ac4Mg2-orthorhombic`, [`Ac`, `Mg`]],
     [`mp-1183089-Ac4Mg2-monoclinic`, [`Ac`, `Mg`]],
-  ])(`%s Wyckoff table includes expected elements`, async (id, expected) => {
-    const rows = wyckoff_positions_from_moyo(await analyze(id))
+  ])(`%s Wyckoff table includes expected elements`, async (identifier, expected) => {
+    const rows = wyckoff_positions_from_moyo(await analyze(identifier))
     expect(rows.map((pos) => pos.elem)).toEqual(expect.arrayContaining(expected))
     // every row must carry a proper "multiplicity + letter" label (no bogus letter-less
     // rows from misindexing the input-cell wyckoffs array with std_cell indices)
@@ -277,8 +277,8 @@ describe(`moyo-wasm integration`, () => {
     [`mp-1`, 229, `I m -3 m`, [`2aCs`]],
     [`mp-2`, 225, `F m -3 m`, [`4aPd`]],
     [`mp-1234`, 227, `F d -3 m`, [`8bLu`, `16cAl`]],
-  ])(`%s has space group %i`, async (id, expected_sg, hm_symbol, rows) => {
-    const sym_data = await analyze(id)
+  ])(`%s has space group %i`, async (identifier, expected_sg, hm_symbol, rows) => {
+    const sym_data = await analyze(identifier)
     expect(sym_data.number).toBe(expected_sg)
     expect(sym_data.hm_symbol).toBe(hm_symbol)
     expect(wyckoff_positions_from_moyo(sym_data).map((row) => row.wyckoff + row.elem)).toEqual(
@@ -291,14 +291,18 @@ describe(`moyo-wasm integration`, () => {
   // hexagonal/trigonal cells where W is not symmetric.
   test.each([`mp-862690-Ac4-hexagonal`, `mp-1183089-Ac4Mg2-monoclinic`])(
     `%s: every symmetry op maps each site onto a symmetry-equivalent site`,
-    async (id) => {
-      const structure = get_structure(id)
-      const sym_data = await analyze(id) // throws if structure is not periodic
+    async (identifier) => {
+      const structure = get_structure(identifier)
+      const sym_data = await analyze(identifier) // throws if structure is not periodic
       expect(sym_data.operations.length).toBeGreaterThan(1)
 
-      const frac_dist = (p1: Vec3, p2: Vec3) =>
+      const frac_dist = (point_1: Vec3, point: Vec3) =>
         // minimum-image distance in frac coords
-        Math.hypot(...p1.map((c1, idx) => c1 - p2[idx] - Math.round(c1 - p2[idx])))
+        Math.hypot(
+          ...point_1.map(
+            (value_c_1, idx) => value_c_1 - point[idx] - Math.round(value_c_1 - point[idx]),
+          ),
+        )
 
       for (const site of structure.sites) {
         for (const image of apply_symmetry_operations(site.abc, sym_data.operations)) {
@@ -435,8 +439,8 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     [`Fe-BCC`],
     [`mp-862690-Ac4-hexagonal`],
     [`mp-1183089-Ac4Mg2-monoclinic`],
-  ])(`%s: Wyckoff multiplicities sum to std cell atom count`, async (id) => {
-    const sym_data = await analyze(id)
+  ])(`%s: Wyckoff multiplicities sum to std cell atom count`, async (identifier) => {
+    const sym_data = await analyze(identifier)
     const rows = wyckoff_positions_from_moyo(sym_data)
     const total_multiplicity = rows.reduce(
       (sum, row) => sum + Number(/^\d+/.exec(row.wyckoff)?.[0]),

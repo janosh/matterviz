@@ -199,11 +199,15 @@ function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
 // r ∈ {-1,0,1}³ cover all cases for moyo translations, which lie in [0,1)³.
 function invariant_translations(mat: Matrix3x3, centerings: readonly Vec3[]): Vec3[] {
   const result: Vec3[] = []
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dz = -1; dz <= 1; dz++) {
+  for (let delta_x = -1; delta_x <= 1; delta_x++) {
+    for (let delta_y = -1; delta_y <= 1; delta_y++) {
+      for (let delta_z = -1; delta_z <= 1; delta_z++) {
         for (const centering of [[0, 0, 0] as Vec3, ...centerings]) {
-          const cand: Vec3 = [dx + centering[0], dy + centering[1], dz + centering[2]]
+          const cand: Vec3 = [
+            delta_x + centering[0],
+            delta_y + centering[1],
+            delta_z + centering[2],
+          ]
           if (cand.every((val) => Math.abs(val) < ELEM_TOL)) continue
           const mapped = math.mat3x3_vec3_multiply(mat, cand)
           if (mapped.some((val, idx) => Math.abs(val - cand[idx]) > ELEM_TOL)) continue
@@ -221,10 +225,10 @@ function reduce_intrinsic_translation(w_intrinsic: Vec3, candidates: readonly Ve
   let best_sq = math.dot(w_intrinsic, w_intrinsic)
   for (const cand of candidates) {
     const reduced = math.subtract(w_intrinsic, cand)
-    const sq = math.dot(reduced, reduced)
-    if (sq < best_sq - ELEM_TOL) {
+    const squared_norm = math.dot(reduced, reduced)
+    if (squared_norm < best_sq - ELEM_TOL) {
       best = reduced
-      best_sq = sq
+      best_sq = squared_norm
     }
   }
   return best
@@ -332,13 +336,13 @@ function build_rotation_info(
 ): RotationInfo | null {
   const mat = mat_round(mat3_from_flat_col_major(rotation))
   const det = Math.round(math.det_3x3(mat))
-  const tr = Math.round(trace(mat))
+  const top_right = Math.round(trace(mat))
 
-  if (det === 1 && tr === 3) return null // identity or pure translation
+  if (det === 1 && top_right === 3) return null // identity or pure translation
 
   const { proj, order: mat_order } = invariant_projector(mat)
 
-  if (det === -1 && tr === -3) {
+  if (det === -1 && top_right === -3) {
     return {
       mat,
       proj,
@@ -357,8 +361,8 @@ function build_rotation_info(
   if (det === 1) {
     // proper rotation (order from trace: −1→2, 0→3, 1→4, 2→6)
     const proper_order_by_trace: Record<number, number> = { [-1]: 2, 0: 3, 1: 4, 2: 6 }
-    const order = proper_order_by_trace[tr]
-    if (!order) throw new Error(`Invalid proper rotation trace ${tr}`)
+    const order = proper_order_by_trace[top_right]
+    if (!order) throw new Error(`Invalid proper rotation trace ${top_right}`)
     const axis = axis_from_projector(proj, mat_order)
     if (!axis) throw new Error(`Failed to extract rotation axis`)
     // shortest lattice period along the axis (1 for primitive lattices; can be 1/2 via
@@ -397,7 +401,7 @@ function build_rotation_info(
   const axis = axis_from_projector(proper_proj, proper_order)
   if (!axis) throw new Error(`Failed to extract improper-operation axis`)
 
-  if (tr === 1) {
+  if (top_right === 1) {
     // Plane-equation normal: the −1 eigenvector of Wᵀ, obtained as the +1 eigenvector of
     // −Wᵀ exactly the way `axis` above is the +1 eigenvector of −W. Integer and primitive
     // like `axis`, but a covector — see the normal_eq field docs for why they differ.
@@ -421,8 +425,8 @@ function build_rotation_info(
   }
 
   const rotoinv_order_by_trace: Record<number, number> = { 0: 3, [-1]: 4, [-2]: 6 }
-  const order = rotoinv_order_by_trace[tr]
-  if (!order) throw new Error(`Invalid improper rotation trace ${tr}`)
+  const order = rotoinv_order_by_trace[top_right]
+  if (!order) throw new Error(`Invalid improper rotation trace ${top_right}`)
   return {
     mat,
     proj,
@@ -469,10 +473,10 @@ function element_locus_key(point: Vec3, info: RotationInfo): string {
 }
 
 // Classify the operation (info.mat, w) given precomputed rotation-dependent data
-function classify_with_rotation_info(info: RotationInfo, w: Vec3): SymmetryElement {
+function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): SymmetryElement {
   const { mat, proj, mat_order, kind, order, axis } = info
-  const w_intrinsic = math.mat3x3_vec3_multiply(proj, w)
-  const w_loc = math.subtract(w, w_intrinsic)
+  const w_intrinsic = math.mat3x3_vec3_multiply(proj, width_value)
+  const w_loc = math.subtract(width_value, w_intrinsic)
   const point = wrap_to_unit_cell(fixed_point(mat, w_loc, mat_order))
   const locus = element_locus_key(point, info)
 
@@ -569,10 +573,14 @@ export function symmetry_elements_from_ops(
       info_cache.set(rot_key, info)
     }
     if (info === null) continue // identity / pure translation
-    for (let dx = 0; dx <= 1; dx++) {
-      for (let dy = 0; dy <= 1; dy++) {
-        for (let dz = 0; dz <= 1; dz++) {
-          const shifted: Vec3 = [translation[0] + dx, translation[1] + dy, translation[2] + dz]
+    for (let delta_x = 0; delta_x <= 1; delta_x++) {
+      for (let delta_y = 0; delta_y <= 1; delta_y++) {
+        for (let delta_z = 0; delta_z <= 1; delta_z++) {
+          const shifted: Vec3 = [
+            translation[0] + delta_x,
+            translation[1] + delta_y,
+            translation[2] + delta_z,
+          ]
           const elem = classify_with_rotation_info(info, shifted)
           // A rotoinversion fixes a center, not every point along its axis line.
           const center =

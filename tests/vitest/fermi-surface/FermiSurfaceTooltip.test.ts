@@ -119,9 +119,9 @@ describe(`FermiSurfaceTooltip`, () => {
         fn: (data: FermiHoverData) => `Spin: ${data.spin}`,
         expected: `Spin: up`,
       },
-    ])(`renders $key as function`, ({ key, fn, expected }) => {
+    ])(`renders $key as function`, ({ key, fn: callback, expected }) => {
       const hover_data = mock_hover_data({ band_index: 5, spin: `up` })
-      mount_tooltip({ hover_data, tooltip: { [key]: fn } })
+      mount_tooltip({ hover_data, tooltip: { [key]: callback } })
       expect(document.body.textContent).toContain(expected)
     })
 

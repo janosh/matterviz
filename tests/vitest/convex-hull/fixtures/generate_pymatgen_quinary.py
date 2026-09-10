@@ -46,13 +46,15 @@ def generate_quinary_reference() -> dict:
     ]
 
     # Build phase diagram
-    pd = PhaseDiagram(entries)
+    phase_diagram = PhaseDiagram(entries)
 
     # Extract data for each entry
     output_entries = []
     for idx, entry in enumerate(entries):
-        comp_dict = {str(el): float(amt) for el, amt in entry.composition.items()}
-        e_above_hull_raw = pd.get_e_above_hull(entry)
+        comp_dict = {
+            str(element): float(amt) for element, amt in entry.composition.items()
+        }
+        e_above_hull_raw = phase_diagram.get_e_above_hull(entry)
         e_above_hull = float(e_above_hull_raw) if e_above_hull_raw is not None else 0.0
 
         output_entries.append(

@@ -117,7 +117,9 @@ export const normalize_active_volume_id = (
   active_volume_id: string | undefined,
   volumes: readonly VolumetricData[],
 ): string | undefined =>
-  volumes.some(({ id }) => id === active_volume_id) ? active_volume_id : volumes[0]?.id
+  volumes.some(({ id: identifier }) => identifier === active_volume_id)
+    ? active_volume_id
+    : volumes[0]?.id
 
 // Result of parsing a volumetric file (contains both structure and volumetric data)
 export interface VolumetricFileData {
@@ -266,7 +268,7 @@ export function remove_volume(
   layers: IsosurfaceLayer[],
   removed_id: string,
 ): { volumes: VolumetricData[]; layers: IsosurfaceLayer[] } {
-  const retained = volumes.filter(({ id }) => id !== removed_id)
+  const retained = volumes.filter(({ id: identifier }) => identifier !== removed_id)
   return { volumes: retained, layers: retain_volume_layers(layers, index_volumes(retained)) }
 }
 
@@ -306,7 +308,7 @@ export function merge_imported_volumes(
     if (replacement) return [replacement]
     return volume.source !== undefined && sources.has(volume.source) ? [] : [volume]
   })
-  const added = incoming.filter(({ id }) => !previous.has(id))
+  const added = incoming.filter(({ id: identifier }) => !previous.has(identifier))
   volumes.push(...added)
   const layers = retain_volume_layers(existing_layers, index_volumes(volumes))
   for (const volume of added) layers.push(auto_volume_layer(volume, layers.length))

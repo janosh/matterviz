@@ -78,8 +78,15 @@ export const parse_in_worker = async (
     }
     const abort = (): void => settle(to_error(signal?.reason ?? parse_abort_error()))
     worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
-      const { id, result, error, progress, run_port, hdf5_group_paths } = event.data ?? {}
-      if (settled || id !== request.id) {
+      const {
+        id: identifier,
+        result,
+        error,
+        progress,
+        run_port,
+        hdf5_group_paths,
+      } = event.data ?? {}
+      if (settled || identifier !== request.id) {
         dispose_run_port(run_port)
         return
       }

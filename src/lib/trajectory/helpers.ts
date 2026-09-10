@@ -212,43 +212,43 @@ export const split_lines = (content: string): string[] => {
 // costs more memory than the text itself and a full copy pass before a single frame is read.
 
 // Offset just past the end of the line that starts at `from` (the index of its `\n`, or `to`)
-export const line_end = (text: string, from: number, to = text.length): number => {
+export const line_end = (text: string, from: number, target = text.length): number => {
   const idx = text.indexOf(`\n`, from)
-  return idx === -1 || idx > to ? to : idx
+  return idx === -1 || idx > target ? target : idx
 }
 
 // Bounds of the text with surrounding whitespace removed, as `content.trim()` would leave it
 const trimmed_bounds = (text: string): [number, number] => {
   let from = 0
-  let to = text.length
-  while (from < to && text.charCodeAt(from) <= 32) from++
-  while (to > from && text.charCodeAt(to - 1) <= 32) to--
-  return [from, to]
+  let target = text.length
+  while (from < target && text.charCodeAt(from) <= 32) from++
+  while (target > from && text.charCodeAt(target - 1) <= 32) target--
+  return [from, target]
 }
 
 // Non-negative integer written alone on the line (whitespace around it allowed), else -1
-const parse_count_line = (text: string, from: number, to: number): number => {
+const parse_count_line = (text: string, from: number, target: number): number => {
   let idx = from
-  while (idx < to && text.charCodeAt(idx) <= 32) idx++
+  while (idx < target && text.charCodeAt(idx) <= 32) idx++
   let count = 0
   let digits = 0
-  for (; idx < to; idx++) {
+  for (; idx < target; idx++) {
     const code = text.charCodeAt(idx)
     if (code < 48 || code > 57) break
     count = count * 10 + (code - 48)
     digits++
   }
-  while (idx < to && text.charCodeAt(idx) <= 32) idx++
-  return digits > 0 && idx === to ? count : -1
+  while (idx < target && text.charCodeAt(idx) <= 32) idx++
+  return digits > 0 && idx === target ? count : -1
 }
 
 const atom_line_scanner = new LineScanner()
 
 // Symbol (<= 3 chars, non-numeric) followed by three numeric coordinates. Coordinates go
 // through the same strict parser as the frame reader so a Fortran `1.0D-3` token counts.
-export const is_xyz_atom_line = (text: string, from = 0, to = text.length): boolean => {
+export const is_xyz_atom_line = (text: string, from = 0, target = text.length): boolean => {
   const scanner = atom_line_scanner
-  if (scanner.scan(text, from, to) < 4) return false
+  if (scanner.scan(text, from, target) < 4) return false
   const symbol_len = scanner.token_length(0)
   return (
     symbol_len <= 3 &&
@@ -335,15 +335,15 @@ export function parse_extxyz_columns(comment: string): {
 // and must not be hidden from the frame walk by the plain-XYZ `symbol x y z` assumption.
 function make_xyz_atom_line_test(
   comment: string,
-): (text: string, from?: number, to?: number) => boolean {
+): (text: string, from?: number, target?: number) => boolean {
   const { pos_col, min_cols, layout } = parse_extxyz_columns(comment)
   if (!layout) return is_xyz_atom_line
   // Only a declared STRING species column can be checked for a symbol shape; `Z:I:1` names
   // the atom with a number, so there is nothing non-numeric to assert
   const species_col = layout.species?.type === `s` ? layout.species.offset : -1
-  return (text, from = 0, to = text.length) => {
+  return (text, from = 0, target = text.length) => {
     const scanner = atom_line_scanner
-    if (scanner.scan(text, from, to) < min_cols) return false
+    if (scanner.scan(text, from, target) < min_cols) return false
     if (
       species_col >= 0 &&
       (scanner.token_length(species_col) > 3 || !Number.isNaN(scanner.num(species_col)))
@@ -375,15 +375,15 @@ const read_xyz_header = (
   text: string,
   start: number,
   line: number,
-  to = text.length,
+  target = text.length,
 ): Omit<XyzFrameSpec, `end`> | null => {
-  const count_end = line_end(text, start, to)
+  const count_end = line_end(text, start, target)
   const num_atoms = parse_count_line(text, start, count_end)
   if (num_atoms <= 0) return null
-  const comment_start = Math.min(count_end + 1, to)
-  const comment_end = line_end(text, comment_start, to)
+  const comment_start = Math.min(count_end + 1, target)
+  const comment_end = line_end(text, comment_start, target)
   const comment = text.slice(comment_start, comment_end).replace(/\r$/, ``)
-  return { start, line, num_atoms, comment, atoms_start: Math.min(comment_end + 1, to) }
+  return { start, line, num_atoms, comment, atoms_start: Math.min(comment_end + 1, target) }
 }
 
 // Walk XYZ frames by their atom-count lines, sampling the first three atom lines of each
@@ -392,14 +392,14 @@ const read_xyz_header = (
 // such candidate after the final complete frame is the generator's return value (a later one
 // is a numeric comment line or stray number inside that frame's own block).
 export function* iter_xyz_frames(text: string): Generator<XyzFrameSpec, XyzFrameSpec | null> {
-  const [from, to] = trimmed_bounds(text)
+  const [from, target] = trimmed_bounds(text)
   let pos = from
   let line = 1
   let torn: XyzFrameSpec | null = null
-  while (pos < to) {
-    const header = read_xyz_header(text, pos, line, to)
+  while (pos < target) {
+    const header = read_xyz_header(text, pos, line, target)
     if (!header) {
-      pos = line_end(text, pos, to) + 1
+      pos = line_end(text, pos, target) + 1
       line++
       continue
     }
@@ -410,24 +410,24 @@ export function* iter_xyz_frames(text: string): Generator<XyzFrameSpec, XyzFrame
     let atom_lines = 0
     let valid_coords = 0
     let cursor = atoms_start
-    while (atom_lines < num_atoms && cursor < to) {
-      const eol = line_end(text, cursor, to)
+    while (atom_lines < num_atoms && cursor < target) {
+      const eol = line_end(text, cursor, target)
       // The input's last line may be half-written by a writer still appending. A frame of
       // three atoms or fewer samples it, so it never disqualifies the frame here; the caller
       // decodes or drops it (index_xyz_frames), which a frame never indexed cannot be.
-      if (atom_lines < 3 && (eol >= to || is_atom_line(text, cursor, eol))) valid_coords++
+      if (atom_lines < 3 && (eol >= target || is_atom_line(text, cursor, eol))) valid_coords++
       atom_lines++
       cursor = eol + 1
     }
     if (valid_coords < Math.min(atom_lines, 3)) {
-      pos = line_end(text, pos, to) + 1
+      pos = line_end(text, pos, target) + 1
       line++
       continue
     }
-    const spec: XyzFrameSpec = { ...header, end: Math.min(cursor, to) }
+    const spec: XyzFrameSpec = { ...header, end: Math.min(cursor, target) }
     if (atom_lines < num_atoms) {
       torn ??= spec
-      pos = line_end(text, pos, to) + 1
+      pos = line_end(text, pos, target) + 1
       line++
       continue
     }

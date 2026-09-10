@@ -36,11 +36,15 @@ An interactive search filter for chemical formulas. The search mode is automatic
   const els = `Li Na K Mg Ca Fe Co Ni Cu Zn Mn Ti Al`.split(` `)
   const materials = []
   // Unaries (elemental forms)
-  for (const el of els) materials.push({ [el]: 1 }, { [el]: 2 })
+  for (const element of els) materials.push({ [element]: 1 }, { [element]: 2 })
   // Binaries (oxides and sulfides)
-  for (const el of els) {
+  for (const element of els) {
     for (const amt of [1, 2]) {
-      materials.push({ [el]: amt, O: 2 }, { [el]: amt, O: 3 }, { [el]: amt, S: 2 })
+      materials.push(
+        { [element]: amt, O: 2 },
+        { [element]: amt, O: 3 },
+        { [element]: amt, S: 2 },
+      )
     }
   }
   // Ternaries (mixed metal oxides)
@@ -233,8 +237,8 @@ Additional features in `FormulaFilter`:
 
   const els = [`Li`, `Na`, `Mg`, `Ca`, `Fe`, `Co`, `Ni`, `Cu`, `Zn`, `Mn`, `Ti`, `Al`]
   const materials = []
-  for (const el of els) {
-    materials.push({ [el]: 1, O: 2 }, { [el]: 2, O: 3 }, { [el]: 1, S: 2 })
+  for (const element of els) {
+    materials.push({ [element]: 1, O: 2 }, { [element]: 2, O: 3 }, { [element]: 1, S: 2 })
   }
   for (let idx = 0; idx < 8; idx++) {
     for (let jdx = idx + 1; jdx < 10; jdx++) {

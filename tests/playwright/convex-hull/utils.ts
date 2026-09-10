@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 // The performance page builds synthetic entries client-side (no fixture download), so it is
 // the fast route to a hull of a given size; resolves to the rendered diagram
@@ -59,12 +59,12 @@ export async function open_info_and_controls(
   const info_btn = diagram.locator(`.info-btn`)
   await dom_click(info_btn)
   const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
-  await ensure_pane_visible(info, info_btn)
+  await expect(info).toBeVisible()
 
   const controls_btn = diagram.locator(`.legend-controls-btn`)
   await dom_click(controls_btn)
   const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
-  await ensure_pane_visible(controls, controls_btn)
+  await expect(controls).toBeVisible()
 
   return { info, controls }
 }
@@ -73,10 +73,10 @@ export async function open_info_and_controls(
 // sum-of-every-100th-pixel hash only sampled 8 fixed columns (stride 100 pixels in
 // row-major order), so small marker changes between those columns went undetected.
 export const get_canvas_hash = (canvas: Locator): Promise<string> =>
-  canvas.evaluate((el) => {
-    const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+  canvas.evaluate((element) => {
+    const ctx = (element as HTMLCanvasElement).getContext(`2d`)
     if (!ctx) return ``
-    const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+    const { data } = ctx.getImageData(0, 0, element.clientWidth, element.clientHeight)
     let hash = 0
     // Math.imul wraps to 32 bits, keeping the rolling hash in safe-integer range
     for (let idx = 0; idx < data.length; idx += 16) {

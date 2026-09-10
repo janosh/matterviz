@@ -53,7 +53,7 @@
   import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
-    collect_scale_values,
+    collect_scale_ranges,
     create_axis_scales,
     create_color_scale,
     create_size_scale,
@@ -77,7 +77,12 @@
     compute_stacked_offsets,
     normalize_categorical,
   } from './data'
-  import { compute_bar_rect, compute_line_points, nearest_line_point } from './geometry'
+  import {
+    compute_bar_rect,
+    compute_line_points,
+    nearest_line_point,
+    visible_bar_indices,
+  } from './geometry'
   import type { LineSeriesPoint as BarLineSeriesPoint } from './geometry'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
@@ -301,8 +306,8 @@
         : null,
     ),
   )
-  const has_finite_point = ({ x, y }: BarSeries<Metadata>) =>
-    x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(y[idx]))
+  const has_finite_point = ({ x: coord_x, y: coord_y }: BarSeries<Metadata>) =>
+    coord_x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(coord_y[idx]))
   // Only show secondary axes for series with at least one drawable bar. Horizontal bars put
   // their secondary values on x2, so y2 is never shown in that orientation.
   let show_x2 = $derived(
@@ -336,6 +341,58 @@
   ): ((val: number) => number) =>
     log_floor_scale(scales[axis], plot_axes[axis].scale_type, frame.ranges.current[axis])
 
+  // Rendering, clipping and decoration placement use the same series geometry.
+  const bar_geometry = (
+    srs: (typeof internal_series)[number],
+    series_idx: number,
+    cat_scale: (value: number) => number = vertical
+      ? frame.scales[srs.x_axis === `x2` ? `x2` : `x`]
+      : frame.scales.y,
+    val_scale: (value: number) => number = value_scale_for(
+      vertical ? (srs.y_axis === `y2` ? `y2` : `y`) : srs.x_axis === `x2` ? `x2` : `x`,
+    ),
+  ) => {
+    const layout = { series_idx, mode, orientation, group_info, cat_scale, val_scale }
+    const bases = mode === `stacked` ? stacked_offsets[series_idx] : undefined
+    const { x: coord_x, y: coord_y, bar_width } = srs
+    return (bar_idx: number) =>
+      compute_bar_rect({
+        ...layout,
+        cat_val: coord_x[bar_idx],
+        val: coord_y[bar_idx],
+        base: bases?.[bar_idx] ?? 0,
+        bar_width_val: Array.isArray(bar_width)
+          ? (bar_width[bar_idx] ?? 0.5)
+          : (bar_width ?? 0.5),
+      })
+  }
+
+  // Small plots keep stable per-bar reactive geometry; virtualizing a few hundred
+  // marks costs more reconciliation than it saves. Large zoomed plots skip hidden marks.
+  const small_bar_indices = $derived(
+    internal_series.map((srs) =>
+      srs.render_mode !== `line` && srs.x.length < 1000 ? srs.x.map((_, idx) => idx) : [],
+    ),
+  )
+  const rendered_bars = $derived(
+    internal_series.map((srs, series_idx) => {
+      if (srs.visible === false || srs.render_mode === `line`) return []
+      if (srs.x.length < 1000) return small_bar_indices[series_idx]
+      return visible_bar_indices({
+        series: srs,
+        rect_at: bar_geometry(srs, series_idx),
+        orientation,
+        clip: {
+          x: frame.pad.l,
+          y: frame.pad.t,
+          width: frame.chart_width,
+          height: frame.chart_height,
+        },
+        stroke_width: bar_state.stroke_width,
+      })
+    }),
+  )
+
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
   // against the decoration-independent base plot so outside padding cannot feed back into
   // the crowding decision. Bars contribute their grouped/stacked screen rectangles and
@@ -354,7 +411,6 @@
       internal_series.forEach((srs, series_idx) => {
         if (!(srs?.visible ?? true)) return
         const is_line = srs.render_mode === `line`
-        const series_offsets = stacked_offsets[series_idx] ?? []
         const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
         const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
         const category_scale = vertical
@@ -368,9 +424,13 @@
         if (is_line) {
           const line_points = srs.x.map((x_val, point_idx) => {
             const y_val = srs.y[point_idx]
-            const x = vertical ? category_scale(x_val) / base_w : value_scale(y_val) / base_w
-            const y = vertical ? value_scale(y_val) / base_h : category_scale(x_val) / base_h
-            return { x: clamp01(x), y: clamp01(y) }
+            const coord_x = vertical
+              ? category_scale(x_val) / base_w
+              : value_scale(y_val) / base_w
+            const coord_y = vertical
+              ? value_scale(y_val) / base_h
+              : category_scale(x_val) / base_h
+            return { x: clamp01(coord_x), y: clamp01(coord_y) }
           })
           const markers = srs.markers ?? DEFAULT_MARKERS
           obstacle_series.push({
@@ -380,26 +440,10 @@
           return
         }
 
+        const rect_at = bar_geometry(srs, series_idx, category_scale, value_scale)
         srs.x.forEach((x_val, bar_idx) => {
-          const value = srs.y[bar_idx]
-          if (!Number.isFinite(x_val) || !Number.isFinite(value)) return
-          const base = mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
-          const bar_width_val = Array.isArray(srs.bar_width)
-            ? (srs.bar_width[bar_idx] ?? 0.5)
-            : (srs.bar_width ?? 0.5)
-          const rect = compute_bar_rect({
-            cat_val: x_val,
-            val: value,
-            base,
-            bar_width_val,
-            series_idx,
-            mode,
-            orientation,
-            group_info,
-            cat_scale: category_scale,
-            val_scale: value_scale,
-          })
-          const { rect_x, rect_y, rect_w, rect_h } = rect
+          if (!Number.isFinite(x_val) || !Number.isFinite(srs.y[bar_idx])) return
+          const { rect_x, rect_y, rect_w, rect_h } = rect_at(bar_idx)
           // cross = across the bar, value = along it; sample both edges and the middle
           const [cross0, cross_len, value_start, value_len] = vertical
             ? [rect_x / base_w, rect_w / base_w, rect_y / base_h, rect_h / base_h]
@@ -435,12 +479,12 @@
       y_axis: srs?.y_axis,
     })),
   )
-  // Finite color/size values of the visible line series drive the shared color/size scales
-  const scale_values = $derived(
-    collect_scale_values(visible_series.filter((srs) => srs.render_mode === `line`)),
+  // Finite color/size bounds of the visible line series drive the shared color/size scales
+  const scale_ranges = $derived(
+    collect_scale_ranges(visible_series.filter((srs) => srs.render_mode === `line`)),
   )
-  let color_scale_fn = $derived(create_color_scale(color_scale, scale_values.color_range))
-  let size_scale_fn = $derived(create_size_scale(size_scale, scale_values.size_values))
+  let color_scale_fn = $derived(create_color_scale(color_scale, scale_ranges.color_range))
+  let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
 
   let effective_cat_ticks = $derived(
     category_tick_labels(category_list, plot_axes[cat_axis].ticks),
@@ -482,16 +526,17 @@
     color: string,
   ): BarHandlerProps<Metadata> {
     const srs = internal_series[series_idx]
-    const [x, y] = [srs.x[bar_idx], srs.y[bar_idx]]
-    const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
+    const [coord_x, coord_y] = [srs.x[bar_idx], srs.y[bar_idx]]
+    const [orient_x, orient_y] =
+      orientation === `horizontal` ? [coord_y, coord_x] : [coord_x, coord_y]
     const metadata = Array.isArray(srs.metadata) ? srs.metadata[bar_idx] : srs.metadata
     const label = srs.labels?.[bar_idx] ?? null
     const active_y_axis = srs.y_axis ?? `y`
     const active_x_axis = srs.x_axis ?? `x`
-    const category_label = category_list[x]
+    const category_label = category_list[coord_x]
     return {
-      x,
-      y,
+      x: coord_x,
+      y: coord_y,
       orient_x,
       orient_y,
       x_axis: active_x_axis === `x2` ? x2_axis : x_axis,
@@ -519,10 +564,10 @@
     return pointer && nearest_line_point(points, pointer)
   }
 
-  const line_point_fill = (pt: LineSeriesPoint, series_color: string): string =>
-    pt.color_value != null
-      ? color_scale_fn(pt.color_value)
-      : (pt.point_style?.fill ?? series_color)
+  const line_point_fill = (point: LineSeriesPoint, series_color: string): string =>
+    point.color_value != null
+      ? color_scale_fn(point.color_value)
+      : (point.point_style?.fill ?? series_color)
 
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
@@ -561,8 +606,13 @@
   )
 </script>
 
-{#snippet ref_lines_layer(z: LayerZIndex)}
-  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
+{#snippet ref_lines_layer(coord_z: LayerZIndex)}
+  <ReferenceLinesLayer
+    {frame}
+    z={coord_z}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <CartesianFrame
@@ -651,30 +701,30 @@
               })}
               <!-- Use exact scale endpoints to avoid fractional-padding ULP gaps. -->
               {@const points_in_view = points.filter(
-                ({ x, y }) =>
-                  x >= pad.l &&
-                  x <= frame.width - pad.r &&
-                  y >= pad.t &&
-                  y <= frame.height - pad.b,
+                ({ x: coord_x, y: coord_y }) =>
+                  coord_x >= pad.l &&
+                  coord_x <= frame.width - pad.r &&
+                  coord_y >= pad.t &&
+                  coord_y <= frame.height - pad.b,
               )}
               {@const polyline_str =
                 show_line && points.length > 1
-                  ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
+                  ? points.map((point) => `${point.x},${point.y}`).join(` `)
                   : ``}
               {@const set_hover = (
-                pt: LineSeriesPoint | null,
+                point: LineSeriesPoint | null,
                 evt: MouseEvent | FocusEvent,
               ) => {
-                if (!pt) return clear_point_hover()
+                if (!point) return clear_point_hover()
                 hovered = true
-                const fill = line_point_fill(pt, color)
-                hover_info = get_bar_data(series_idx, pt.idx, fill)
-                on_point_hover?.({ ...hover_info, event: evt, point: pt })
+                const fill = line_point_fill(point, color)
+                hover_info = get_bar_data(series_idx, point.idx, fill)
+                on_point_hover?.({ ...hover_info, event: evt, point: point })
               }}
-              {@const do_click = (pt: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
-                const fill = line_point_fill(pt, color)
-                const point_data = get_bar_data(series_idx, pt.idx, fill)
-                on_point_click?.({ ...point_data, event: evt, point: pt })
+              {@const do_click = (point: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
+                const fill = line_point_fill(point, color)
+                const point_data = get_bar_data(series_idx, point.idx, fill)
+                on_point_click?.({ ...point_data, event: evt, point: point })
               }}
               {#if polyline_str}
                 <polyline
@@ -704,8 +754,8 @@
                     set_hover(find_closest_point(evt, points_in_view), evt)}
                   onmouseleave={clear_point_hover}
                   onclick={(evt) => {
-                    const pt = find_closest_point(evt, points_in_view)
-                    if (pt) do_click(pt, evt)
+                    const point = find_closest_point(evt, points_in_view)
+                    if (point) do_click(point, evt)
                   }}
                 />
               {/if}
@@ -716,7 +766,7 @@
                     evt.target instanceof Element
                       ? evt.target.closest(`[data-bar-idx]`)?.getAttribute(`data-bar-idx`)
                       : null
-                  return points_in_view.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
+                  return points_in_view.find((point) => point.idx === parseInt(attr ?? ``, 10))
                 }}
                 {@const leaving = (evt: MouseEvent | FocusEvent) =>
                   (evt.relatedTarget instanceof Element
@@ -727,13 +777,13 @@
                   class="line-points"
                   role="group"
                   onmouseover={(evt) => {
-                    const pt = get_pt(evt)
-                    if (pt) set_hover(pt, evt)
+                    const point = get_pt(evt)
+                    if (point) set_hover(point, evt)
                   }}
                   onfocusin={(evt) => {
                     roving.focusin(evt)
-                    const pt = get_pt(evt)
-                    if (pt) set_hover(pt, evt)
+                    const point = get_pt(evt)
+                    if (point) set_hover(point, evt)
                   }}
                   onmouseout={(evt) => {
                     if (leaving(evt)) set_hover(null, evt)
@@ -742,81 +792,68 @@
                     if (leaving(evt)) set_hover(null, evt)
                   }}
                   onclick={(evt) => {
-                    const pt = get_pt(evt)
-                    if (pt && clickable) do_click(pt, evt)
+                    const point = get_pt(evt)
+                    if (point && clickable) do_click(point, evt)
                   }}
                   onkeydown={(evt) => {
                     if (roving.handle_keydown(evt)) return
-                    const pt = get_pt(evt)
-                    if (pt && clickable && is_activation_key(evt)) {
+                    const point = get_pt(evt)
+                    if (point && clickable && is_activation_key(evt)) {
                       evt.preventDefault()
-                      do_click(pt, evt)
+                      do_click(point, evt)
                     }
                   }}
                 >
-                  {#each points_in_view as pt (pt.idx)}
-                    {@const sty = pt.point_style}
-                    {@const fl = line_point_fill(pt, color)}
+                  {#each points_in_view as point (point.idx)}
+                    {@const sty = point.point_style}
+                    {@const fill = line_point_fill(point, color)}
                     {@const rad =
-                      pt.size_value != null
-                        ? size_scale_fn(pt.size_value)
+                      point.size_value != null
+                        ? size_scale_fn(point.size_value)
                         : (sty?.radius ?? 4)}
                     {@const hov =
-                      hover_info?.series_idx === series_idx && hover_info?.bar_idx === pt.idx}
+                      hover_info?.series_idx === series_idx &&
+                      hover_info?.bar_idx === point.idx}
                     <ScatterPoint
-                      x={pt.x}
-                      y={pt.y}
+                      x={point.x}
+                      y={point.y}
                       is_hovered={hov}
                       style={{
                         ...sty,
                         radius: rad,
-                        fill: fl,
+                        fill: fill,
                         stroke: sty?.stroke ?? `transparent`,
                         stroke_width: sty?.stroke_width ?? 1,
                         fill_opacity: sty?.fill_opacity ?? 1,
                         stroke_opacity: sty?.stroke_opacity ?? 1,
                         cursor: clickable ? `pointer` : undefined,
                       }}
-                      hover={pt.point_hover ?? {}}
-                      label={pt.point_label ?? {}}
-                      offset={pt.point_offset ?? { x: 0, y: 0 }}
-                      --point-fill-color={fl}
-                      data-bar-idx={pt.idx}
-                      {...{ [ROVING_ATTR]: roving_key(series_idx, pt.idx) }}
-                      tabindex={roving.tabindex(roving_key(series_idx, pt.idx))}
+                      hover={point.point_hover ?? {}}
+                      label={point.point_label ?? {}}
+                      offset={point.point_offset ?? { x: 0, y: 0 }}
+                      --point-fill-color={fill}
+                      data-bar-idx={point.idx}
+                      {...{ [ROVING_ATTR]: roving_key(series_idx, point.idx) }}
+                      tabindex={roving.tabindex(roving_key(series_idx, point.idx))}
                     />
                   {/each}
                 </g>
               {/if}
             {:else}
               <!-- Render as bars -->
-              {#each srs.x as x_val, bar_idx (bar_idx)}
-                {@const y_val = srs.y[bar_idx]}
-                {@const base =
-                  mode === `stacked` ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0) : 0}
+              {@const rect_at = bar_geometry(srs, series_idx)}
+              {#each rendered_bars[series_idx] as bar_idx (bar_idx)}
                 {@const color = srs.color ?? bar_state.color}
-                {@const bar_width_val = Array.isArray(srs.bar_width)
-                  ? (srs.bar_width[bar_idx] ?? 0.5)
-                  : (srs.bar_width ?? 0.5)}
-                {@const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`}
-                {@const [cat_scale, val_scale] = vertical
-                  ? [
-                      frame.scales[x_axis_key],
-                      value_scale_for(srs.y_axis === `y2` ? `y2` : `y`),
-                    ]
-                  : [frame.scales.y, value_scale_for(x_axis_key)]}
-                {@const { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h } = compute_bar_rect({
-                  cat_val: x_val,
-                  val: y_val,
-                  base,
-                  bar_width_val,
-                  series_idx,
-                  mode,
-                  orientation,
-                  group_info,
-                  cat_scale,
-                  val_scale,
-                })}
+                {@const {
+                  c0: cat_start,
+                  c1: cat_end,
+                  v0: value_base,
+                  v1: value_tip,
+                  rect_x,
+                  rect_y,
+                  rect_w,
+                  rect_h,
+                } = rect_at(bar_idx)}
                 {#if Number.isFinite(rect_x) && Number.isFinite(rect_y) && Number.isFinite(rect_w) && Number.isFinite(rect_h) && (vertical ? rect_h : rect_w) > 0}
                   <path
                     d={bar_path(
@@ -826,7 +863,7 @@
                       rect_h,
                       bar_state.border_radius ?? 0,
                       vertical,
-                      vertical ? v1 > v0 : v1 < v0,
+                      vertical ? value_tip > value_base : value_tip < value_base,
                     )}
                     fill={series_patterns[series_idx]?.url ?? color}
                     opacity={mode === `overlay` ? bar_state.opacity : 1}
@@ -867,10 +904,12 @@
                     }}
                   />
                   {#if srs.labels?.[bar_idx]}
-                    {@const label_x = vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
+                    {@const label_x = vertical
+                      ? (cat_start + cat_end) / 2
+                      : Math.max(value_base, value_tip) + 4}
                     {@const label_y = vertical
-                      ? Math.max(0, Math.min(v0, v1) - 6)
-                      : (c0 + c1) / 2}
+                      ? Math.max(0, Math.min(value_base, value_tip) - 6)
+                      : (cat_start + cat_end) / 2}
                     {@const label_rotation = bar_state.label_rotation ?? 0}
                     <text
                       x={label_x}
@@ -926,16 +965,16 @@
       <!-- Value axis via value_scale_for, like the bars: a non-positive value on a log axis
       draws at the 1px floor where the raw scale anchors the tooltip at NaN. The category axis
       keeps the bars' raw scale, so a log one cannot floor the anchor off its bar. -->
-      {@const cx = (vertical ? frame.scales[tip_x_key] : value_scale_for(tip_x_key))(
+      {@const center_x = (vertical ? frame.scales[tip_x_key] : value_scale_for(tip_x_key))(
         hover_info.orient_x + (orientation === `horizontal` ? stack_base : 0),
       )}
-      {@const cy = (vertical ? value_scale_for(tip_y_key) : frame.scales.y)(
+      {@const center_y = (vertical ? value_scale_for(tip_y_key) : frame.scales.y)(
         hover_info.orient_y + (vertical ? stack_base : 0),
       )}
       <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip
-        x={cx}
-        y={cy}
+        x={center_x}
+        y={center_y}
         avoid_cursor={false}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width: frame.width, height: frame.height }}

@@ -69,6 +69,7 @@ test.describe(`FermiSurface smoke`, () => {
 
   test(`Show BZ toggle hides the BZ opacity slider`, async ({ page }) => {
     const pane = await open_controls(page)
+    await expect(pane.getByText(`μ offset (eV)`, { exact: true })).toHaveCount(0)
     const show_bz = pane.getByLabel(`Show BZ`)
     const bz_opacity = pane.getByLabel(`BZ opacity`)
     await expect(show_bz).toBeChecked()
@@ -77,6 +78,37 @@ test.describe(`FermiSurface smoke`, () => {
     await expect(bz_opacity).toBeHidden()
     await show_bz.check()
     await expect(bz_opacity).toBeVisible()
+  })
+
+  test(`surface controls and mesh downloads work`, async ({ page }) => {
+    const pane = await open_controls(page)
+    const bands = pane.locator(`.band-checkbox input`)
+    await pane.getByRole(`button`, { name: `None`, exact: true }).click()
+    await expect(pane.locator(`.band-checkbox input:checked`)).toHaveCount(0)
+    await pane.getByRole(`button`, { name: `All`, exact: true }).click()
+    for (const band of await bands.all()) await expect(band).toBeChecked()
+    for (const style of [`wireframe`, `transparent`, `solid`]) {
+      await pane.getByLabel(`Style`).selectOption(style)
+      await expect(pane.getByLabel(`Style`)).toHaveValue(style)
+    }
+    await pane.getByLabel(`Enable`, { exact: true }).check()
+    for (const axis of [`x`, `y`, `z`]) {
+      await pane.getByLabel(`Axis`).selectOption(axis)
+      await expect(pane.getByLabel(`Axis`)).toHaveValue(axis)
+    }
+    await pane.getByLabel(`Flip`, { exact: true }).check()
+    await pane.getByRole(`button`, { name: `Reset clipping plane to defaults` }).click()
+    await expect(pane.getByLabel(`Enable`, { exact: true })).not.toBeChecked()
+    await pane.getByLabel(`Projection`).selectOption(`orthographic`)
+    await pane.getByRole(`button`, { name: `Reset camera to defaults` }).click()
+    await expect(pane.getByLabel(`Projection`)).toHaveValue(`perspective`)
+    for (const format of [`STL`, `OBJ`, `GLB`]) {
+      const downloaded = page.waitForEvent(`download`)
+      await pane.getByRole(`button`, { name: format, exact: true }).click()
+      const download = await downloaded
+      expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${format.toLowerCase()}$`))
+      expect(await download.failure()).toBeNull()
+    }
   })
 
   test(`a dropped BXSF grid replaces the demo file`, async ({ page }) => {
@@ -88,5 +120,12 @@ test.describe(`FermiSurface smoke`, () => {
     await expect(viewer.locator(`.spinner`)).toHaveCount(0, { timeout: LOAD_TIMEOUT })
     await expect(viewer.locator(`[role="alert"], .status-message.error`)).toHaveCount(0)
     await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
+    const pane = await open_controls(page)
+    const offset = pane.getByRole(`spinbutton`)
+    await expect(offset).toHaveValue(`0`)
+    await offset.fill(`0.25`)
+    await expect(offset).toHaveValue(`0.25`)
+    await pane.getByRole(`button`, { name: `Reset chemical potential to defaults` }).click()
+    await expect(offset).toHaveValue(`0`)
   })
 })

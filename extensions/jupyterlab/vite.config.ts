@@ -26,9 +26,9 @@ const preload_helper_id = `\0vite/preload-helper.js`
 const stub_vite_preload = (): Plugin => ({
   name: `stub-vite-preload`,
   enforce: `pre`,
-  resolveId: (id: string) => (id === preload_helper_id ? id : null),
-  load: (id: string) =>
-    id === preload_helper_id
+  resolveId: (identifier: string) => (identifier === preload_helper_id ? identifier : null),
+  load: (identifier: string) =>
+    identifier === preload_helper_id
       ? `export const __vitePreload = (base_module) => base_module()`
       : null,
 })
@@ -57,7 +57,7 @@ export default defineConfig({
       // App-mode would drop `export default plugin` and Lab would load a no-op.
       preserveEntrySignatures: `strict`,
       // Shared Lab singletons — private copies break plugin-token identity.
-      external: (id: string) => /^@(?:jupyterlab|lumino)\//.test(id),
+      external: (identifier: string) => /^@(?:jupyterlab|lumino)\//.test(identifier),
       output: {
         format: `es`,
         entryFileNames: `index.js`,

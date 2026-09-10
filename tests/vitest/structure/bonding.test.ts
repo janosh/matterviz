@@ -737,16 +737,16 @@ const bcc = (element: ElementSymbol) =>
   ])
 // Expand Wyckoff representatives through the 8 operations of Pnma (No. 62), deduping
 // the special positions (4a, 4c) that fewer ops map to distinct sites
-const pnma = (element: ElementSymbol, [x, y, z]: Vec3) => {
+const pnma = (element: ElementSymbol, [coord_x, coord_y, coord_z]: Vec3) => {
   const images: Vec3[] = [
-    [x, y, z],
-    [-x + 0.5, -y, z + 0.5],
-    [-x, y + 0.5, -z],
-    [x + 0.5, -y + 0.5, -z + 0.5],
-    [-x, -y, -z],
-    [x + 0.5, y, -z + 0.5],
-    [x, -y + 0.5, z],
-    [-x + 0.5, y + 0.5, z + 0.5],
+    [coord_x, coord_y, coord_z],
+    [-coord_x + 0.5, -coord_y, coord_z + 0.5],
+    [-coord_x, coord_y + 0.5, -coord_z],
+    [coord_x + 0.5, -coord_y + 0.5, -coord_z + 0.5],
+    [-coord_x, -coord_y, -coord_z],
+    [coord_x + 0.5, coord_y, -coord_z + 0.5],
+    [coord_x, -coord_y + 0.5, coord_z],
+    [-coord_x + 0.5, coord_y + 0.5, coord_z + 0.5],
   ]
   const unique = new Map<string, Vec3>()
   for (const image of images) {
@@ -756,15 +756,15 @@ const pnma = (element: ElementSymbol, [x, y, z]: Vec3) => {
   }
   return sites_at(element, [...unique.values()])
 }
-const tetragonal = (a: number, c: number): Vec3[] => [
-  [a, 0, 0],
-  [0, a, 0],
-  [0, 0, c],
+const tetragonal = (value_a: number, value_c: number): Vec3[] => [
+  [value_a, 0, 0],
+  [0, value_a, 0],
+  [0, 0, value_c],
 ]
-const hexagonal = (a: number, c: number): Vec3[] => [
-  [a, 0, 0],
-  [-a / 2, (a * Math.sqrt(3)) / 2, 0],
-  [0, 0, c],
+const hexagonal = (value_a: number, value_c: number): Vec3[] => [
+  [value_a, 0, 0],
+  [-value_a / 2, (value_a * Math.sqrt(3)) / 2, 0],
+  [0, 0, value_c],
 ]
 
 // [label, lattice, sites, expected coordination number per element]
@@ -1234,10 +1234,10 @@ describe(`compute_bonds memo`, () => {
     // Two Structure components on one page compute bonds for different structures in the same
     // flush (as do the 4 panes of the multi-side view). A single global memo slot would evict
     // each other every call; the per-structure WeakMap keeps both warm so repeat calls hit.
-    const a1 = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    const b1 = bonding.compute_bonds(other_structure, `electroneg_ratio`, {})
-    expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(a1)
-    expect(bonding.compute_bonds(other_structure, `electroneg_ratio`, {})).toBe(b1)
+    const value_a_1 = bonding.compute_bonds(structure, `electroneg_ratio`, {})
+    const value_b_1 = bonding.compute_bonds(other_structure, `electroneg_ratio`, {})
+    expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(value_a_1)
+    expect(bonding.compute_bonds(other_structure, `electroneg_ratio`, {})).toBe(value_b_1)
   })
 
   test(`alternating strategies/options on one structure reuse results (no slot thrash)`, () => {
@@ -1371,13 +1371,17 @@ describe(`spatial grid coverage`, () => {
   test(`grid scan finds partners in the own cell and all 26 neighbors`, () => {
     const center = (2 * 0.76 * 2) / 2
     const offset = center + 0.1
-    const partner_sites = [-1, 0, 1].flatMap((dx) =>
-      [-1, 0, 1].flatMap((dy) =>
+    const partner_sites = [-1, 0, 1].flatMap((delta_x) =>
+      [-1, 0, 1].flatMap((delta_y) =>
         [-1, 0, 1]
-          .filter((dz) => dx || dy || dz)
-          .map((dz) => ({
+          .filter((delta_z) => delta_x || delta_y || delta_z)
+          .map((delta_z) => ({
             element: `C` as const,
-            xyz: [center + dx * offset, center + dy * offset, center + dz * offset] as Vec3,
+            xyz: [
+              center + delta_x * offset,
+              center + delta_y * offset,
+              center + delta_z * offset,
+            ] as Vec3,
           })),
       ),
     )
@@ -1398,7 +1402,7 @@ describe(`spatial grid coverage`, () => {
       .electroneg_ratio(structure, { strength_threshold: 0 })
       .filter((bond) => bond.site_idx_1 === 0 || bond.site_idx_2 === 0)
       .map((bond) => (bond.site_idx_1 === 0 ? bond.site_idx_2 : bond.site_idx_1))
-    expect(partners.toSorted((a, b) => a - b)).toEqual(
+    expect(partners.toSorted((left_value, right_value) => left_value - right_value)).toEqual(
       Array.from({ length: 27 }, (_, idx) => idx + 1),
     )
   })
@@ -1413,21 +1417,25 @@ describe(`neighbor_query`, () => {
     const found = new Map<string, { dist: number; delta: Vec3 }>()
     for (const [center, site_a] of structure.sites.entries()) {
       for (const [partner, site_b] of structure.sites.entries()) {
-        for (const sa of range(0)) {
-          for (const sb of range(1)) {
-            for (const sc of range(2)) {
-              if (center === partner && sa === 0 && sb === 0 && sc === 0) continue
+        for (const shift_a of range(0)) {
+          for (const shift_b of range(1)) {
+            for (const shift_c of range(2)) {
+              if (center === partner && shift_a === 0 && shift_b === 0 && shift_c === 0)
+                continue
               const delta = [0, 1, 2].map(
-                (ax) =>
-                  site_b.xyz[ax] +
-                  sa * vec_a[ax] +
-                  sb * vec_b[ax] +
-                  sc * vec_c[ax] -
-                  site_a.xyz[ax],
+                (axis_x) =>
+                  site_b.xyz[axis_x] +
+                  shift_a * vec_a[axis_x] +
+                  shift_b * vec_b[axis_x] +
+                  shift_c * vec_c[axis_x] -
+                  site_a.xyz[axis_x],
               ) as Vec3
               const dist = Math.hypot(...delta)
               if (dist <= cutoff)
-                found.set(`${center}|${partner}|${sa},${sb},${sc}`, { dist, delta })
+                found.set(`${center}|${partner}|${shift_a},${shift_b},${shift_c}`, {
+                  dist,
+                  delta,
+                })
             }
           }
         }
@@ -1482,8 +1490,8 @@ describe(`neighbor_query`, () => {
       const got = actual.get(key)
       if (!got) throw new Error(`missing ${key}`)
       max_dist_err = Math.max(max_dist_err, Math.abs(got.dist - dist))
-      for (let ax = 0; ax < 3; ax++) {
-        max_delta_err = Math.max(max_delta_err, Math.abs(got.delta[ax] - delta[ax]))
+      for (let axis_x = 0; axis_x < 3; axis_x++) {
+        max_delta_err = Math.max(max_delta_err, Math.abs(got.delta[axis_x] - delta[axis_x]))
       }
     }
     // wrapped-then-shifted vs direct arithmetic: a few ulps of ~10 A coordinates
@@ -1520,9 +1528,9 @@ describe(`neighbor_query`, () => {
       const center = knn.offsets.findLastIndex((offset) => offset <= slot)
       const partner = fcc_cu.sites[knn.neighbors[slot]].xyz
       const img = knn.images.subarray(slot * 3, slot * 3 + 3)
-      for (let ax = 0; ax < 3; ax++) {
-        const expected = partner[ax] + img[ax] * 3.6 - fcc_cu.sites[center].xyz[ax]
-        expect(knn.deltas[slot * 3 + ax]).toBeCloseTo(expected, 12)
+      for (let axis_x = 0; axis_x < 3; axis_x++) {
+        const expected = partner[axis_x] + img[axis_x] * 3.6 - fcc_cu.sites[center].xyz[axis_x]
+        expect(knn.deltas[slot * 3 + axis_x]).toBeCloseTo(expected, 12)
       }
       expect(Math.hypot(...knn.deltas.subarray(slot * 3, slot * 3 + 3))).toBeCloseTo(
         knn.distances[slot],

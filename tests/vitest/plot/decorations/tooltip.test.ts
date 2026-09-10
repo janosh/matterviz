@@ -12,11 +12,9 @@ const base_config: TooltipPlacementConfig = {
 describe(`tooltip decoration placement`, () => {
   test(`generates the four anchor quadrants in stable order`, () => {
     expect(
-      get_tooltip_placement_candidates(base_config).map(({ direction, x, y }) => [
-        direction,
-        x,
-        y,
-      ]),
+      get_tooltip_placement_candidates(base_config).map(
+        ({ direction, x: coord_x, y: coord_y }) => [direction, coord_x, coord_y],
+      ),
     ).toEqual([
       [`right-below`, 55, 57],
       [`left-below`, 25, 57],
@@ -72,7 +70,9 @@ describe(`tooltip decoration placement`, () => {
       offset: { x: 5, y: 5 },
     }
     const candidates = get_tooltip_placement_candidates(config)
-    expect(candidates.every(({ x, y }) => x === 10 && y === 20)).toBe(true)
+    expect(
+      candidates.every(({ x: coord_x, y: coord_y }) => coord_x === 10 && coord_y === 20),
+    ).toBe(true)
     expect(place_tooltip(config)).toMatchObject({ x: 10, y: 20 })
   })
 

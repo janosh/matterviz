@@ -11,16 +11,16 @@ import { describe, expect, it } from 'vitest'
 import { make_rng, max_abs_error } from './helpers'
 
 // O(n^2) reference transform, same sign convention as fft_in_place
-function naive_dft(re: readonly number[], im: readonly number[]) {
-  const n_points = re.length
+function naive_dft(real: readonly number[], imaginary: readonly number[]) {
+  const n_points = real.length
   const out_re = Array.from({ length: n_points }, () => 0)
   const out_im = Array.from({ length: n_points }, () => 0)
   for (let bin = 0; bin < n_points; bin++) {
     for (let idx = 0; idx < n_points; idx++) {
       const angle = (-2 * Math.PI * bin * idx) / n_points
       const [cos_a, sin_a] = [Math.cos(angle), Math.sin(angle)]
-      out_re[bin] += re[idx] * cos_a - im[idx] * sin_a
-      out_im[bin] += re[idx] * sin_a + im[idx] * cos_a
+      out_re[bin] += real[idx] * cos_a - imaginary[idx] * sin_a
+      out_im[bin] += real[idx] * sin_a + imaginary[idx] * cos_a
     }
   }
   return { re: out_re, im: out_im }
@@ -36,16 +36,16 @@ describe(`fft_in_place`, () => {
       const re_src = Array.from({ length: n_points }, () => rng() * 2 - 1)
       const im_src = Array.from({ length: n_points }, () => rng() * 2 - 1)
       const reference = naive_dft(re_src, im_src)
-      const re = Float64Array.from(re_src)
-      const im = Float64Array.from(im_src)
-      fft_in_place(re, im)
+      const real = Float64Array.from(re_src)
+      const imaginary = Float64Array.from(im_src)
+      fft_in_place(real, imaginary)
 
       // Both paths sum n terms of unit-scale products, so error grows like sqrt(n) * eps.
       // The bound is scaled by the signal magnitude for exactly that reason.
       const scale = Math.max(...reference.re.map(Math.abs), ...reference.im.map(Math.abs))
       const worst = Math.max(
-        max_abs_error([...re], reference.re),
-        max_abs_error([...im], reference.im),
+        max_abs_error([...real], reference.re),
+        max_abs_error([...imaginary], reference.im),
       )
       expect(worst).toBeLessThan(1e-12 * scale)
     },
@@ -53,16 +53,18 @@ describe(`fft_in_place`, () => {
 
   it(`puts a pure cosine in exactly two bins with amplitude n/2`, () => {
     // x_n = cos(2 pi k0 n / N) has X_k0 = X_{N-k0} = N/2 and 0 everywhere else
-    const [n_points, k0] = [64, 7]
-    const re = Float64Array.from({ length: n_points }, (_unused, idx) =>
-      Math.cos((2 * Math.PI * k0 * idx) / n_points),
+    const [n_points, frequency_0] = [64, 7]
+    const real_2 = Float64Array.from({ length: n_points }, (_unused, idx) =>
+      Math.cos((2 * Math.PI * frequency_0 * idx) / n_points),
     )
-    const im = new Float64Array(n_points)
-    fft_in_place(re, im)
-    const magnitudes = Array.from(re, (real, bin) => Math.hypot(real, im[bin]))
-    expect(magnitudes[k0]).toBeCloseTo(n_points / 2, 10)
-    expect(magnitudes[n_points - k0]).toBeCloseTo(n_points / 2, 10)
-    const off_peak = magnitudes.filter((_unused, bin) => bin !== k0 && bin !== n_points - k0)
+    const imaginary = new Float64Array(n_points)
+    fft_in_place(real_2, imaginary)
+    const magnitudes = Array.from(real_2, (real, bin) => Math.hypot(real, imaginary[bin]))
+    expect(magnitudes[frequency_0]).toBeCloseTo(n_points / 2, 10)
+    expect(magnitudes[n_points - frequency_0]).toBeCloseTo(n_points / 2, 10)
+    const off_peak = magnitudes.filter(
+      (_unused, bin) => bin !== frequency_0 && bin !== n_points - frequency_0,
+    )
     // Everything else is pure cancellation noise, ~n * eps * n/2 at worst
     expect(Math.max(...off_peak)).toBeLessThan(1e-12 * n_points)
   })

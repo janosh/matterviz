@@ -42,7 +42,9 @@ test(`shortlisting is limited to four, independent of the viewed route, and surv
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
   }
-  expect(state.shortlist_ids).toEqual(routes.slice(0, 4).map(({ id }) => id))
+  expect(state.shortlist_ids).toEqual(
+    routes.slice(0, 4).map(({ id: identifier }) => identifier),
+  )
   expect(state.selected_route_id).toBe(routes[4].id)
   expect(select.disabled).toBe(true)
   expect(
@@ -171,7 +173,10 @@ test.each([0, -2])(
         simplicity: 0,
       },
     }))
-    mount_comparison({ routes: tied, shortlist_ids: tied.map(({ id }) => id) })
+    mount_comparison({
+      routes: tied,
+      shortlist_ids: tied.map(({ id: identifier }) => identifier),
+    })
     await tick()
     const cells = [...document.querySelectorAll(`tbody tr:first-child td`)]
     expect(cells).toHaveLength(2)

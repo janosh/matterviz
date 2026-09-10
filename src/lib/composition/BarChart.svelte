@@ -61,7 +61,7 @@
     const raw_segments = composition_segments(composition, color_scheme, patterns, pattern_uid)
     return raw_segments.map((segment) => {
       const width = segment.fraction * size
-      const x = cursor
+      const coord_x = cursor
       cursor += width
       const label = segment.element + segment_suffix(segment, label_opts)
       const base_scale = clamp(width / 40, 1, 2)
@@ -75,7 +75,7 @@
           else n_below++
         }
       } else if (width >= MIN_LABEL_WIDTH) label_pos = `inside`
-      return { ...segment, x, width, font_scale, label_pos }
+      return { ...segment, x: coord_x, width, font_scale, label_pos }
     })
   })
 </script>

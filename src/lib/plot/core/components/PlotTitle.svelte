@@ -7,8 +7,8 @@
   let {
     config,
     width,
-    x = 0,
-    y = 0,
+    x: coord_x = 0,
+    y: coord_y = 0,
   }: {
     config?: PlotTitleConfig | null
     width: number
@@ -34,7 +34,7 @@
   // Re-measured when geometry changes or a metrics revision (fonts ready) invalidates the cache
   const layout = $derived.by(() => {
     void font_metrics_revision
-    return resolve_plot_title(config, { width, x, y })
+    return resolve_plot_title(config, { width, x: coord_x, y: coord_y })
   })
 </script>
 

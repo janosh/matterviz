@@ -57,7 +57,7 @@ const fe_o_elements = new Set([`Fe`, `O`])
 const binary_entries = entries.filter((entry) =>
   Object.entries(entry.composition)
     .filter(([, amt]) => amt > 0)
-    .every(([el]) => fe_o_elements.has(el)),
+    .every(([element]) => fe_o_elements.has(element)),
 )
 
 const cpd_ternary = compute_chempot_diagram(entries, {
@@ -109,14 +109,14 @@ const pmg_to_ours: Record<string, string> = {
 
 // Reorder pymatgen [Li, Fe, O] columns to our [Fe, Li, O]
 const reorder_cols = (pts: number[][]): number[][] =>
-  pts.map(([li, fe, oxygen]) => [fe, li, oxygen])
+  pts.map(([lithium, iron, oxygen]) => [iron, lithium, oxygen])
 
 const sort_rows = (pts: number[][]): number[][] =>
   [...pts]
     .map((row) => row.map((val) => Math.round(val * 1e6) / 1e6))
-    .toSorted((a, b) => {
-      for (let idx = 0; idx < a.length; idx++) {
-        if (a[idx] !== b[idx]) return a[idx] - b[idx]
+    .toSorted((left_value, right_value) => {
+      for (let idx = 0; idx < left_value.length; idx++) {
+        if (left_value[idx] !== right_value[idx]) return left_value[idx] - right_value[idx]
       }
       return 0
     })
@@ -144,10 +144,10 @@ function expect_within_lims({
   lims: Vec2[]
 }) {
   for (const pts of Object.values(domains)) {
-    for (const pt of pts) {
-      for (const [axis, [lo, hi]] of lims.entries()) {
-        expect(pt[axis]).toBeGreaterThanOrEqual(lo - 1e-4)
-        expect(pt[axis]).toBeLessThanOrEqual(hi + 1e-4)
+    for (const point of pts) {
+      for (const [axis, [lower, upper]] of lims.entries()) {
+        expect(point[axis]).toBeGreaterThanOrEqual(lower - 1e-4)
+        expect(point[axis]).toBeLessThanOrEqual(upper + 1e-4)
       }
     }
   }
@@ -161,10 +161,10 @@ function expect_elemental_touch({
   domains: Record<string, number[][]>
   elements: string[]
 }) {
-  for (const [el_idx, el] of elements.entries()) {
+  for (const [el_idx, element] of elements.entries()) {
     expect(
-      dedup_vertices(domains[el]).some((pt) => Math.abs(pt[el_idx]) < 0.01),
-      `${el} formal domain should touch mu_${el}=0`,
+      dedup_vertices(domains[element]).some((point) => Math.abs(point[el_idx]) < 0.01),
+      `${element} formal domain should touch mu_${element}=0`,
     ).toBe(true)
   }
 }
@@ -172,9 +172,12 @@ function expect_elemental_touch({
 // Every vertex satisfies every halfspace a·x + b <= 0 (rows are [...normal, offset])
 function expect_feasible(domains: Record<string, number[][]>, halfspaces: number[][]) {
   for (const [formula, pts] of Object.entries(domains)) {
-    for (const pt of dedup_vertices(pts)) {
-      for (const hs of halfspaces) {
-        const val = pt.reduce((sum, coord, idx) => sum + hs[idx] * coord, hs[pt.length])
+    for (const point of dedup_vertices(pts)) {
+      for (const halfspace of halfspaces) {
+        const val = point.reduce(
+          (sum, coord, idx) => sum + halfspace[idx] * coord,
+          halfspace[point.length],
+        )
         expect(val, `Vertex of ${formula} violates halfspace`).toBeLessThanOrEqual(1e-4)
       }
     }
@@ -205,8 +208,8 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
       expected: { Li: 0, Fe: 0, O: 0 },
     },
   ])(`el_refs ($label)`, ({ refs, expected }) => {
-    for (const [el, energy] of Object.entries(expected)) {
-      expect(refs[el].energy).toBeCloseTo(energy, 5)
+    for (const [element, energy] of Object.entries(expected)) {
+      expect(refs[element].energy).toBeCloseTo(energy, 5)
     }
   })
 
@@ -324,23 +327,23 @@ describe(`physical invariants`, () => {
   })
 
   test(`vertices within limits and every element has a domain`, () => {
-    for (const el of cpd_ternary.elements) {
-      expect(cpd_ternary.domains[el], `Element ${el} has no domain`).toBeDefined()
+    for (const element of cpd_ternary.elements) {
+      expect(cpd_ternary.domains[element], `Element ${element} has no domain`).toBeDefined()
     }
     expect_within_lims(cpd_ternary)
   })
 
   test(`elemental domains touch the el_ref energy axis`, () => {
     const fe_ref_e = ternary_hull_input.el_refs.Fe.energy
-    const fe_vals = dedup_vertices(cpd_ternary.domains.Fe).map((pt) => pt[0])
+    const fe_vals = dedup_vertices(cpd_ternary.domains.Fe).map((point) => point[0])
     expect(fe_vals.some((val) => Math.abs(val - fe_ref_e) < 0.01)).toBe(true)
   })
 
   test(`formal chempots touch mu=0 and are non-positive`, () => {
     expect_elemental_touch(cpd_ternary_formal)
     for (const pts of Object.values(cpd_ternary_formal.domains)) {
-      for (const pt of pts) {
-        for (const chempot of pt) {
+      for (const point of pts) {
+        for (const chempot of point) {
           expect(chempot, `Formal chempot should be <= 0`).toBeLessThanOrEqual(1e-4)
         }
       }
@@ -357,9 +360,9 @@ describe(`physical invariants`, () => {
         (_, col) => unique.reduce((sum, row) => sum + row[col], 0) / unique.length,
       )
       let best_energy = Infinity
-      for (const hs of ternary_hull_input.hyperplanes) {
-        let val = hs[dim]
-        for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * centroid[jdx]
+      for (const halfspace of ternary_hull_input.hyperplanes) {
+        let val = halfspace[dim]
+        for (let jdx = 0; jdx < dim; jdx++) val += halfspace[jdx] * centroid[jdx]
         if (val < best_energy) best_energy = val
       }
       expect(best_energy).toBeLessThanOrEqual(1e-4)
@@ -483,7 +486,7 @@ describe(`analytic binary A-B-AB`, () => {
       limits: { A: [-5, 0] },
     })
     for (const pts of Object.values(domains)) {
-      for (const pt of pts) expect(pt[0]).toBeGreaterThanOrEqual(-5 - 1e-9)
+      for (const point of pts) expect(point[0]).toBeGreaterThanOrEqual(-5 - 1e-9)
     }
     // mu_B = -3 needs mu_A <= -9 for AB to be unstable, outside A's range: no B domain
     expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`])
@@ -902,7 +905,8 @@ describe(`simple_pca`, () => {
   ])(`returns an orthonormal basis for %s`, (_case, data) => {
     const { eigenvectors } = simple_pca(data, 2)
     expect(eigenvectors).toHaveLength(2)
-    for (const ev of eigenvectors) expect(Math.hypot(...ev)).toBeCloseTo(1, 12)
+    for (const eigenvector of eigenvectors)
+      expect(Math.hypot(...eigenvector)).toBeCloseTo(1, 12)
     const dot = eigenvectors[0].reduce((sum, val, idx) => sum + val * eigenvectors[1][idx], 0)
     expect(Math.abs(dot)).toBeLessThan(1e-12) // was 0.577 for collinear, 1.0 for coincident
   })
@@ -927,9 +931,12 @@ describe(`simple_pca`, () => {
         return point
       })
       const { scores, eigenvectors } = simple_pca(polygon, 2)
-      for (const ev of eigenvectors) expect(Math.abs(ev[flat_axis])).toBeLessThan(1e-9)
+      for (const eigenvector of eigenvectors)
+        expect(Math.abs(eigenvector[flat_axis])).toBeLessThan(1e-9)
       // the two components reconstruct every vertex: projection is lossless
-      const mean = [0, 1, 2].map((dim) => polygon.reduce((sum, pt) => sum + pt[dim], 0) / 6)
+      const mean = [0, 1, 2].map(
+        (dim) => polygon.reduce((sum, point) => sum + point[dim], 0) / 6,
+      )
       for (const [idx, point] of polygon.entries()) {
         const rebuilt = mean.map(
           (mean_val, dim) =>
@@ -1010,9 +1017,9 @@ describe(`orthonormal_2d`, () => {
     expect(vec[0]).toBeCloseTo(expected[0], 5)
     expect(vec[1]).toBeCloseTo(expected[1], 5)
     expect(Math.hypot(vec[0], vec[1])).toBeCloseTo(1.0, 8)
-    const dx = pts[1][0] - pts[0][0]
-    const dy = pts[1][1] - pts[0][1]
-    expect(Math.abs(vec[0] * dx + vec[1] * dy)).toBeLessThan(1e-10)
+    const delta_x = pts[1][0] - pts[0][0]
+    const delta_y = pts[1][1] - pts[0][1]
+    expect(Math.abs(vec[0] * delta_x + vec[1] * delta_y)).toBeLessThan(1e-10)
   })
 })
 
@@ -1083,14 +1090,14 @@ describe(`config.elements projection vs subsystem`, () => {
         default_min_limit: -50,
         formal_chempots: false,
       })
-      const is_interior = (pt: number[], min_lim: number) =>
-        pt.every((val) => Math.abs(val - min_lim) > 1 && Math.abs(val) > 1)
+      const is_interior = (point: number[], min_lim: number) =>
+        point.every((val) => Math.abs(val - min_lim) > 1 && Math.abs(val) > 1)
 
-      const feo_tight_interior = dedup_vertices(tight.domains.FeO ?? []).filter((pt) =>
-        is_interior(pt, -15),
+      const feo_tight_interior = dedup_vertices(tight.domains.FeO ?? []).filter((point) =>
+        is_interior(point, -15),
       )
-      const feo_wide_interior = dedup_vertices(wide.domains.FeO ?? []).filter((pt) =>
-        is_interior(pt, -50),
+      const feo_wide_interior = dedup_vertices(wide.domains.FeO ?? []).filter((point) =>
+        is_interior(point, -50),
       )
 
       expect(sort_rows(feo_tight_interior)).toEqual(
@@ -1161,7 +1168,8 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     expect(ytos_y_ti_o.domains[key], `Domain for ${key} (Y2Ti2O7)`).toBeDefined()
     expect(dedup_vertices(ytos_y_ti_o.domains[key]).length).toBeGreaterThanOrEqual(3)
     for (const pts of Object.values(ytos_y_ti_o.domains)) {
-      for (const pt of pts) for (const chempot of pt) expect(chempot).toBeLessThanOrEqual(1e-4)
+      for (const point of pts)
+        for (const chempot of point) expect(chempot).toBeLessThanOrEqual(1e-4)
     }
     expect_within_lims(ytos_y_ti_o)
     expect_elemental_touch(ytos_y_ti_o)
@@ -1171,8 +1179,8 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     const oty_only = ytos_entries.filter((entry) => {
       const els = Object.entries(entry.composition)
         .filter(([, amt]) => amt > 0)
-        .map(([el]) => el)
-      return els.every((el) => [`O`, `Ti`, `Y`].includes(el))
+        .map(([element]) => element)
+      return els.every((element) => [`O`, `Ti`, `Y`].includes(element))
     })
     const subsystem = compute_chempot_diagram(oty_only, {
       elements: [`O`, `Ti`, `Y`],
@@ -1291,7 +1299,7 @@ describe(`fit_plane`, () => {
   test.each([1e6, 1e3, 1, 1e-3, 1e-6, 1e-9])(
     `fits a plane at coordinate scale %s`,
     (scale) => {
-      const plane = fit_plane(on_plane.map((pt) => pt.map((val) => val * scale)))
+      const plane = fit_plane(on_plane.map((point) => point.map((val) => val * scale)))
       if (!plane) throw new Error(`expected a plane at scale ${scale}`)
       const sign = Math.sign(plane.offset) || 1 // either face normal is valid
       expect(plane.normal.map((val) => val * sign)).toEqual(
@@ -1700,7 +1708,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
     // should match its col 2 range in default [Fe,Li,O] order
     const o_values = (domain: number[][], o_axis: number) =>
       dedup_vertices(domain)
-        .map((pt) => [pt[o_axis]])
+        .map((point) => [point[o_axis]])
         .toSorted(([val_a], [val_b]) => val_a - val_b)
     expect(o_values(reordered.domains.Fe, 0)).toEqual(
       close_rows(o_values(cpd_ternary.domains.Fe, 2), 4),
@@ -1738,7 +1746,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
       expect(min_value).toBeLessThan(max_value)
     }
     for (const pts of Object.values(result.domains)) {
-      for (const pt of pts) expect(pt).toHaveLength(n_axes)
+      for (const point of pts) expect(point).toHaveLength(n_axes)
     }
   })
 })
@@ -1836,8 +1844,8 @@ describe(`best_form_energy_for_formula`, () => {
   test(`formation energy from real data: Fe-Li-O system`, () => {
     const { el_refs: raw_refs } = get_min_entries_and_el_refs(entries)
     // All elemental refs should have zero formation energy
-    for (const [el, ref] of Object.entries(raw_refs)) {
-      expect(e_form(ref, raw_refs), `${el} should have e_form=0`).toBeCloseTo(0, 8)
+    for (const [element, ref] of Object.entries(raw_refs)) {
+      expect(e_form(ref, raw_refs), `${element} should have e_form=0`).toBeCloseTo(0, 8)
     }
     // Fe2O3 formation energy per atom of the lowest-energy Fe2O3 entry vs the raw refs
     expect(best_form_energy_for_formula(entries, `Fe2O3`, raw_refs)).toBeCloseTo(-1.657416, 5)

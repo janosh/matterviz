@@ -108,7 +108,7 @@ type Element_constructor<T extends Element> = abstract new (...args: never[]) =>
 // the group at all. Pair with `one_tab_stop`.
 export const roving_tabindexes = (root: ParentNode): string[] =>
   [...root.querySelectorAll(`[data-roving-key]`)].map(
-    (el) => el.getAttribute(`tabindex`) ?? ``,
+    (element) => element.getAttribute(`tabindex`) ?? ``,
   )
 
 // The expected shape: the first mark in DOM order holds the group's only tab stop. DOM
@@ -158,19 +158,21 @@ export const plot_svg = (root: ParentNode = document): SVGSVGElement =>
   query(root, `svg[role="application"]`)
 
 // x/y/width/height attributes of an SVG rect (or any element carrying them) as numbers
-export const svg_rect = (el: Element): Rect => ({
-  x: Number(el.getAttribute(`x`)),
-  y: Number(el.getAttribute(`y`)),
-  width: Number(el.getAttribute(`width`)),
-  height: Number(el.getAttribute(`height`)),
+export const svg_rect = (element: Element): Rect => ({
+  x: Number(element.getAttribute(`x`)),
+  y: Number(element.getAttribute(`y`)),
+  width: Number(element.getAttribute(`width`)),
+  height: Number(element.getAttribute(`height`)),
 })
 // The plot-area clip rect of a Cartesian chart, i.e. where its data can be hit
 export const clip_rect = (root: ParentNode = document): Rect =>
   svg_rect(query(root, `defs clipPath rect`))
 
 // Pixel position an element is translate()d to
-export const translate_of = (el: Element | null | undefined): { x: number; y: number } => {
-  const transform = el?.getAttribute(`transform`) ?? ``
+export const translate_of = (
+  element: Element | null | undefined,
+): { x: number; y: number } => {
+  const transform = element?.getAttribute(`transform`) ?? ``
   const match = /translate\((?<x>[-\d.e]+)[ ,]+(?<y>[-\d.e]+)\)/.exec(transform)
   if (!match?.groups) throw new Error(`no translate in transform="${transform}"`)
   return { x: Number(match.groups.x), y: Number(match.groups.y) }
@@ -196,7 +198,7 @@ export const hdf5_group_option = (
 
 export const make_ambiguous_hdf5 = async (): Promise<ArrayBuffer> => {
   const h5wasm = await import(`h5wasm`)
-  const { FS } = await h5wasm.ready
+  const { FS: file_system } = await h5wasm.ready
   const filename = `ambiguous-${Math.random().toString(36).slice(2)}.h5`
   const file = new h5wasm.File(filename, `w`)
   const molecules = file.create_group(`molecules`)
@@ -212,8 +214,8 @@ export const make_ambiguous_hdf5 = async (): Promise<ArrayBuffer> => {
     }
   }
   file.close()
-  const bytes = FS.readFile(filename)
-  FS.unlink(filename)
+  const bytes = file_system.readFile(filename)
+  file_system.unlink(filename)
   return Uint8Array.from(bytes).buffer
 }
 
@@ -328,9 +330,9 @@ export const axis_label_pivot_y = (root: ParentNode, selector: string): number =
 
 // Walk up from `el` to the owning <svg>: true if any ancestor applies a clip-path.
 // Used to assert reference-line annotations render unclipped at the plot edges.
-export const inside_clip_path = (el: Element | null | undefined): boolean => {
+export const inside_clip_path = (element: Element | null | undefined): boolean => {
   for (
-    let node = el?.parentElement;
+    let node = element?.parentElement;
     node && node.tagName.toLowerCase() !== `svg`;
     node = node.parentElement
   )
@@ -533,15 +535,15 @@ export async function mount_sized<Comp extends Component<any>>(
 }
 
 export const make_grid = (
-  nx: number,
-  ny: number,
-  nz: number,
-  fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
+  size_x: number,
+  size_y: number,
+  size_z: number,
+  fill: number | ((idx_x: number, idx_y: number, idx_z: number) => number) = 1,
 ): number[][][] =>
-  Array.from({ length: nx }, (_x_row, ix) =>
-    Array.from({ length: ny }, (_y_row, iy) =>
-      Array.from({ length: nz }, (_z_row, iz) =>
-        typeof fill === `function` ? fill(ix, iy, iz) : fill,
+  Array.from({ length: size_x }, (_x_row, idx_x) =>
+    Array.from({ length: size_y }, (_y_row, idx_y) =>
+      Array.from({ length: size_z }, (_z_row, idx_z) =>
+        typeof fill === `function` ? fill(idx_x, idx_y, idx_z) : fill,
       ),
     ),
   )
@@ -585,10 +587,10 @@ export const CATEGORY_COUNTS: Record<ElementCategory, number> = {
 // Value at grid point (ix, iy, iz) of a flat volume
 export const grid_value = (
   volume: Pick<VolumetricData, `values` | `dims`>,
-  ix: number,
-  iy: number,
-  iz: number,
-): number => volume.values[(ix * volume.dims[1] + iy) * volume.dims[2] + iz]
+  idx_x: number,
+  idx_y: number,
+  idx_z: number,
+): number => volume.values[(idx_x * volume.dims[1] + idx_y) * volume.dims[2] + idx_z]
 
 // Linear fractional field; trilinear interpolation reproduces it exactly.
 export const make_linear_volume = (
@@ -834,7 +836,15 @@ export function make_crystal(
   // degenerate (singular) lattices as long as all sites pass abc coords
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
   let cart_to_frac: ((vec: Vec3) => Vec3) | undefined
-  const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
+  const {
+    a: lattice_a,
+    b: lattice_b,
+    c: lattice_c,
+    alpha,
+    beta,
+    gamma,
+    volume,
+  } = math.calc_lattice_params(lattice_matrix)
   const pbc = options.pbc ?? [true, true, true]
 
   const sites: Site[] = site_inputs.map((raw_input, idx) => {
@@ -869,7 +879,17 @@ export function make_crystal(
   })
 
   return {
-    lattice: { matrix: lattice_matrix, pbc, a, b, c, alpha, beta, gamma, volume },
+    lattice: {
+      matrix: lattice_matrix,
+      pbc,
+      a: lattice_a,
+      b: lattice_b,
+      c: lattice_c,
+      alpha,
+      beta,
+      gamma,
+      volume,
+    },
     sites,
     ...(options.charge !== undefined && { charge: options.charge }),
   }
@@ -977,18 +997,18 @@ export const IDENTITY_MATRIX3: math.Matrix3x3 = [
 ]
 
 // Diagonal cubic lattice matrix with edge length `a`
-export const cubic_matrix = (a: number): math.Matrix3x3 => [
-  [a, 0, 0],
-  [0, a, 0],
-  [0, 0, a],
+export const cubic_matrix = (lattice_a: number): math.Matrix3x3 => [
+  [lattice_a, 0, 0],
+  [0, lattice_a, 0],
+  [0, 0, lattice_a],
 ]
 
 // Primitive fcc cell of the conventional cubic cell with edge `a` (the 1-atom Cu / 2-atom
 // diamond input that moyo standardizes to the 4-/8-atom conventional cell)
-export const fcc_primitive_matrix = (a: number): math.Matrix3x3 => [
-  [0, a / 2, a / 2],
-  [a / 2, 0, a / 2],
-  [a / 2, a / 2, 0],
+export const fcc_primitive_matrix = (value_a: number): math.Matrix3x3 => [
+  [0, value_a / 2, value_a / 2],
+  [value_a / 2, 0, value_a / 2],
+  [value_a / 2, value_a / 2, 0],
 ]
 
 // === Fermi surface fixtures ===
@@ -1060,8 +1080,22 @@ export const make_bxsf = (fermi_energy = 7) =>
 // Encode a 3x3 matrix as a flat 9-array in COLUMN-major order — how moyo/nalgebra serialize
 // rotation matrices on the wire (inverse of mat3_from_flat_col_major in symmetry-elements).
 export const col_major = (mat: math.Matrix3x3): number[] => {
-  const [[a1, a2, a3], [a4, a5, a6], [a7, a8, a9]] = mat
-  return [a1, a4, a7, a2, a5, a8, a3, a6, a9]
+  const [
+    [value_a_1, value_a_2, value_a_3],
+    [value_a_4, value_a_5, value_a_6],
+    [value_a_7, value_a_8, value_a_9],
+  ] = mat
+  return [
+    value_a_1,
+    value_a_4,
+    value_a_7,
+    value_a_2,
+    value_a_5,
+    value_a_8,
+    value_a_3,
+    value_a_6,
+    value_a_9,
+  ]
 }
 
 // Build an orbit-path SymmetryDataset mock from std-cell-aligned fields. The input cell is
@@ -1076,11 +1110,11 @@ export const make_wyckoff_dataset = (
 ): SymmetryDataset => {
   const letter = (idx: number) => /[a-z]+$/.exec(wyckoffs[idx] ?? ``)?.[0] ?? null
   // Orbit representative = first site sharing this letter + element (null letter ⇒ own orbit)
-  const orbits = wyckoffs.map((_w, idx) =>
+  const orbits = wyckoffs.map((_unused_width_value, idx) =>
     letter(idx) === null
       ? idx
       : wyckoffs.findIndex(
-          (_v, jdx) => letter(jdx) === letter(idx) && numbers[jdx] === numbers[idx],
+          (_unused_value, jdx) => letter(jdx) === letter(idx) && numbers[jdx] === numbers[idx],
         ),
   )
   return {
@@ -1330,7 +1364,7 @@ export const install_stub_worker = <Message extends { id: number } = StubWorkerM
     removeEventListener(type: string, handler: (event: unknown) => void): void {
       this.listeners.set(
         type,
-        (this.listeners.get(type) ?? []).filter((fn) => fn !== handler),
+        (this.listeners.get(type) ?? []).filter((callback) => callback !== handler),
       )
     }
     emit(type: string, event: unknown): void {

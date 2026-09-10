@@ -77,8 +77,8 @@ describe(`ternary_to_xy / xy_to_ternary`, () => {
       [1 / 3, 1 / 3, 1 / 3],
       [0.5, TRIANGLE_HEIGHT / 3],
     ], // centroid
-  ] as [Vec3, [number, number]][])(`%j sits at %j`, (fractions, xy) => {
-    expect(round(ternary_to_xy(fractions))).toEqual(round(xy))
+  ] as [Vec3, [number, number]][])(`%j sits at %j`, (fractions, coords_xy) => {
+    expect(round(ternary_to_xy(fractions))).toEqual(round(coords_xy))
   })
 
   test.each([[[0.2, 0.3, 0.5]], [[1, 0, 0]], [[0.05, 0.9, 0.05]], [[1 / 3, 1 / 3, 1 / 3]]] as [
@@ -108,7 +108,9 @@ describe(`ternary_grid_lines`, () => {
     const lines = ternary_grid_lines(step)
     expect(lines).toHaveLength(3 * n_per_component)
     for (const component of [0, 1, 2] as const) {
-      const values = lines.filter((line) => line.component === component).map((ln) => ln.value)
+      const values = lines
+        .filter((line) => line.component === component)
+        .map((line) => line.value)
       expect(values).toHaveLength(n_per_component)
       expect(values.every((val) => val > 0 && val < 1)).toBe(true)
     }
@@ -125,9 +127,9 @@ describe(`ternary_grid_lines`, () => {
   test(`each line is the locus of its component and ticks on the next component's zero edge`, () => {
     for (const line of ternary_grid_lines(0.2)) {
       const from = xy_to_ternary(line.from)
-      const to = xy_to_ternary(line.to)
+      const target = xy_to_ternary(line.to)
       expect(from[line.component]).toBeCloseTo(line.value, 12)
-      expect(to[line.component]).toBeCloseTo(line.value, 12)
+      expect(target[line.component]).toBeCloseTo(line.value, 12)
       // the tick end is where the cyclically next component vanishes
       const next = (line.component + 1) % 3
       expect(from[next]).toBeCloseTo(0, 12)
@@ -175,14 +177,14 @@ describe(`ternary_layout`, () => {
 
   test(`from_px inverts to_px`, () => {
     const { to_px, from_px } = ternary_layout(640, 480)
-    for (const xy of [
+    for (const coords_xy of [
       [0, 0],
       [1, 0],
       [0.5, TRIANGLE_HEIGHT],
       [0.3, 0.2],
     ] as const) {
-      const round_trip = from_px(to_px(xy))
-      expect(round(round_trip)).toEqual(round(xy))
+      const round_trip = from_px(to_px(coords_xy))
+      expect(round(round_trip)).toEqual(round(coords_xy))
     }
   })
 })

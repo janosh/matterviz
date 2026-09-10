@@ -115,7 +115,9 @@ describe(`Theme System`, () => {
         expect(app_css).toMatch(override)
       }
       // no token is defined twice at the root
-      const names = [...tokens.matchAll(/^\s+(?<name>--[\w-]+):/gm)].map((m) => m.groups?.name)
+      const names = [...tokens.matchAll(/^\s+(?<name>--[\w-]+):/gm)].map(
+        (matrix) => matrix.groups?.name,
+      )
       expect(new Set(names).size).toBe(names.length)
     })
 

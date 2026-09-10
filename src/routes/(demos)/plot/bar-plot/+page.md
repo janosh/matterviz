@@ -528,14 +528,14 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 
   // Handlers get `category_label` alongside metadata for string-valued x
   function handle_click(data) {
-    const { metadata, category_label, y } = data
-    clicked_info = `${metadata.phase} at ${category_label}: ${metadata.structure} structure, ${y}% stable (${metadata.stability})`
+    const { metadata, category_label, y: coord_y } = data
+    clicked_info = `${metadata.phase} at ${category_label}: ${metadata.structure} structure, ${coord_y}% stable (${metadata.stability})`
   }
 
   function handle_hover(data) {
     if (data) {
-      const { metadata, category_label, y } = data
-      hovered_info = `${metadata.phase} at ${category_label}: ${y}% stability`
+      const { metadata, category_label, y: coord_y } = data
+      hovered_info = `${metadata.phase} at ${category_label}: ${coord_y}% stability`
     } else hovered_info = `Hover over a bar`
   }
 
@@ -551,11 +551,11 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
   on_bar_hover={handle_hover}
   style="height: 400px"
 >
-  {#snippet tooltip({ metadata, category_label, y })}
+  {#snippet tooltip({ metadata, category_label, y: coord_y })}
     <div style="font-weight: 600">{metadata.phase}</div>
     <div>Temp: {category_label}</div>
     <div>Structure: {metadata.structure}</div>
-    <div>Stability: {y}% ({metadata.stability})</div>
+    <div>Stability: {coord_y}% ({metadata.stability})</div>
   {/snippet}
 </BarPlot>
 
@@ -619,9 +619,9 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 </div>
 
 <BarPlot series={energy_data} x_axis={{ label: `Element` }} {y_axis} style="height: 400px">
-  {#snippet tooltip({ y, category_label })}
+  {#snippet tooltip({ y: coord_y, category_label })}
     <strong>{category_label}</strong><br />
-    Energy: {y.toLocaleString()} eV
+    Energy: {coord_y.toLocaleString()} eV
   {/snippet}
 </BarPlot>
 ```
@@ -1277,9 +1277,9 @@ Display multiple bar plots in a responsive 2×2 grid:
 <script lang="ts">
   import { BarPlot } from 'matterviz'
 
-  const make_data = (fn, label_fn) => {
+  const make_data = (callback, label_fn) => {
     const x_vals = Array.from({ length: 6 }, (_, idx) => idx + 1)
-    return { x: x_vals.map(label_fn), y: x_vals.map(fn) }
+    return { x: x_vals.map(label_fn), y: x_vals.map(callback) }
   }
 
   const plots = [

@@ -122,15 +122,15 @@ export const gaussian_turning_point = (element: ScatteringSpecies): number => {
     }
     return total
   }
-  let [lo, hi] = [0, 1]
-  while (slope(hi) > 0 && hi < 1e4) hi *= 2
+  let [lower, upper] = [0, 1]
+  while (slope(upper) > 0 && upper < 1e4) upper *= 2
   for (let iter = 0; iter < 80; iter++) {
-    const mid = (lo + hi) / 2
-    if (slope(mid) > 0) lo = mid
-    else hi = mid
+    const mid = (lower + upper) / 2
+    if (slope(mid) > 0) lower = mid
+    else upper = mid
   }
-  turning_point_cache.set(element, hi)
-  return hi
+  turning_point_cache.set(element, upper)
+  return upper
 }
 
 // X-ray atomic form factor in electrons, f_x(s) = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²), held

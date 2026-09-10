@@ -164,7 +164,7 @@
         Selected <strong>{selected.label}</strong>
         {#if selected.entry.entry_id}<code>{selected.entry.entry_id}</code>{/if}
         — stable {windows
-          .map(([lo, hi]) => `${format_num(lo, `.0f`)}–${format_num(hi, `.0f`)} K`)
+          .map(([lower, upper]) => `${format_num(lower, `.0f`)}–${format_num(upper, `.0f`)} K`)
           .join(`, `) || `nowhere`}{#each selected_events as event, idx (idx)};
           {format_num(event.temperature, `.0f`)} K: {event.reactions
             .map((rxn) => format_reaction(bound, rxn))

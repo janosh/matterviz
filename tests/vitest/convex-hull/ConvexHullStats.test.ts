@@ -69,7 +69,9 @@ const mount_stats_table = (props: Partial<Props> = {}) => {
   switch_to_table()
 }
 const get_headers = () =>
-  Array.from(document.querySelectorAll(`th`)).map((th) => th.textContent?.trim())
+  Array.from(document.querySelectorAll(`th`)).map((header_cell) =>
+    header_cell.textContent?.trim(),
+  )
 const normalize_formula_text = (text: string): string => text.replaceAll(/\s+/g, ` `).trim()
 const get_table_filter_select = (label_text: string): HTMLSelectElement | null => {
   const filter_labels = Array.from(document.querySelectorAll(`.table-filters label`))
@@ -367,8 +369,8 @@ describe(`ConvexHullStats`, () => {
       })
 
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
-      const cells = Array.from(document.querySelectorAll(`td`)).map((td) =>
-        td.textContent?.trim(),
+      const cells = Array.from(document.querySelectorAll(`td`)).map((cell) =>
+        cell.textContent?.trim(),
       )
       expect(cells).not.toContain(`Zr`)
     })
@@ -525,7 +527,7 @@ describe(`ConvexHullStats`, () => {
       const options = Array.from(
         document.querySelectorAll<HTMLButtonElement>(`.dropdown-pane .dropdown-option`),
       )
-      options.find((el) => el.textContent?.includes(format))?.click()
+      options.find((element) => element.textContent?.includes(format))?.click()
       flushSync()
 
       expect(document.querySelector(`.dropdown-pane`)).toBeNull()

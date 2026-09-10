@@ -246,12 +246,12 @@ describe(`POSCAR Parser`, () => {
     // First N atom's original z=1.00000000 must wrap to exactly 0
     expect(result.sites[4].abc[2]).toBe(0)
 
-    const { a, b, c, matrix } = result.lattice
+    const { a: lattice_a, b: lattice_b, c: lattice_c, matrix } = result.lattice
     for (const site of result.sites) {
       expect_abc_in_unit_cell(site)
       expect_xyz_matches_abc(site, matrix, 10)
       // xyz must stay within the cell bounds (small tolerance for wrapping)
-      ;[a, b, c].forEach((len, axis) => {
+      ;[lattice_a, lattice_b, lattice_c].forEach((len, axis) => {
         expect(site.xyz[axis]).toBeGreaterThanOrEqual(-0.1)
         expect(site.xyz[axis]).toBeLessThan(len + 0.1)
       })
@@ -560,9 +560,14 @@ describe(`Auto-detection & Error Handling`, () => {
 })
 
 // `_cell_*` tags for a cell with edges a, b, c (Å) and angles (°); cubic unless told otherwise
-const cif_cell = (a: number | string, b = a, c = a, angles = [90, 90, 90]): string =>
+const cif_cell = (
+  value_a: number | string,
+  value_b = value_a,
+  value_c = value_a,
+  angles = [90, 90, 90],
+): string =>
   [
-    ...[a, b, c].map((len, idx) => `_cell_length_${`abc`[idx]}  ${len}`),
+    ...[value_a, value_b, value_c].map((len, idx) => `_cell_length_${`abc`[idx]}  ${len}`),
     ...angles.map((ang, idx) => `_cell_angle_${[`alpha`, `beta`, `gamma`][idx]}  ${ang}`),
   ].join(`\n`)
 // Cubic 5 Å cell plus the standard label/symbol/fract_x/y/z atom-site loop header
@@ -699,8 +704,8 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(element_counts(result)).toEqual({ C: 296, H: 252, N: 16, P: 24, Ru: 4, S: 24 })
 
     // Basic lattice sanity
-    const { a, b, c } = result.lattice ?? {}
-    expect([a, b, c].every(Number.isFinite)).toBe(true)
+    const { a: lattice_a, b: lattice_b, c: lattice_c } = result.lattice ?? {}
+    expect([lattice_a, lattice_b, lattice_c].every(Number.isFinite)).toBe(true)
   })
 
   // Lattice-centering reconstruction from the space-group H-M symbol. Applied
@@ -739,7 +744,10 @@ O2   O   0.410  0.140  0.880  1.000`
 
     // round + sort coords so float error (e.g. R's 1/3) and order don't matter
     const sorted_coords = (sites: { abc: number[] }[]): number[][] =>
-      rounded_abc(sites).toSorted((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
+      rounded_abc(sites).toSorted(
+        (corner_a, bounds) =>
+          corner_a[0] - bounds[0] || corner_a[1] - bounds[1] || corner_a[2] - bounds[2],
+      )
 
     // expand a single origin atom to the full centered cell, checking the exact
     // images so a swapped/missing centering vector can't pass on count alone
@@ -960,8 +968,8 @@ O2   O   0.410  0.140  0.880  1.000`
   // fabricated atom there instead of the images the ops describe.
   test.each([`lower`, `upper`])(`expands %scase symmetry ops alike`, (which) => {
     const ops = [`x, y, z`, `-x, -y, z`, `-x, y, -z`, `x, -y, -z`]
-    const rows = (which === `upper` ? ops.map((op) => op.toUpperCase()) : ops)
-      .map((op) => `'${op}'`)
+    const rows = (which === `upper` ? ops.map((operation) => operation.toUpperCase()) : ops)
+      .map((operation) => `'${operation}'`)
       .join(`\n`)
     const cif = `data_t\n${cell5}\nloop_\n_symmetry_equiv_pos_as_xyz\n${rows}\n${site_loop}\nSi1 Si 0.25 0.1 0.3`
     const result = parse_cif(cif)
@@ -1186,8 +1194,20 @@ O2   O   0.410  0.140  0.880  1.000`
       const result = parse_cif(tio2_cif)
       assert(result && `lattice` in result, `Failed to parse TiO2 CIF`)
 
-      const { a, b, c, alpha, beta, gamma, volume } = result.lattice
-      expect_vec3_close([a, b, c], [4.59983732, 4.59983732, 2.95921356], 8)
+      const {
+        a: lattice_a,
+        b: lattice_b,
+        c: lattice_c,
+        alpha,
+        beta,
+        gamma,
+        volume,
+      } = result.lattice
+      expect_vec3_close(
+        [lattice_a, lattice_b, lattice_c],
+        [4.59983732, 4.59983732, 2.95921356],
+        8,
+      )
       expect_vec3_close([alpha, beta, gamma], [90, 90, 90], 8)
       expect(volume).toBeCloseTo(4.59983732 * 4.59983732 * 2.95921356, 6)
 
@@ -1834,9 +1854,9 @@ describe(`parse_structure_file`, () => {
 })
 
 const optimade = (
-  id: string,
+  identifier: string,
   attributes: OptimadeStructure[`attributes`],
-): OptimadeStructure => ({ id, type: `structures`, attributes })
+): OptimadeStructure => ({ id: identifier, type: `structures`, attributes })
 
 // oxfmt-ignore
 const cubic_vectors = (len: number) => [[len, 0, 0], [0, len, 0], [0, 0, len]]

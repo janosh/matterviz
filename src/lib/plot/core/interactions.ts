@@ -63,7 +63,7 @@ export function normalize_y2_sync(sync: Y2SyncConfig | Y2SyncMode | undefined): 
 
 // Helper to check if all values in ranges are finite
 const all_finite = (...ranges: Vec2[]) =>
-  ranges.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))
+  ranges.every(([value_a, value_b]) => Number.isFinite(value_a) && Number.isFinite(value_b))
 
 // Calculate synced y2 range based on sync mode
 export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncConfig): Vec2 {
@@ -133,19 +133,24 @@ function axis_transform(scale_type: ScaleType | undefined): {
   }
   if (name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    const to = (val: number) => Math.asinh(val / threshold)
+    const target = (val: number) => Math.asinh(val / threshold)
     const from = (val: number) => Math.sinh(val) * threshold
-    return { to, from }
+    return { to: target, from }
   }
   return { to: (val) => val, from: (val) => val }
 }
 
 // Snapshot the four axis ranges as fresh tuples at pan/zoom/touch interaction start
-export const snapshot_ranges = ({ x, x2, y, y2 }: AxisRanges): AxisRanges => ({
-  x: [...x],
-  x2: [...x2],
-  y: [...y],
-  y2: [...y2],
+export const snapshot_ranges = ({
+  x: coord_x,
+  x2: coord_x_2,
+  y: coord_y,
+  y2: coord_y_2,
+}: AxisRanges): AxisRanges => ({
+  x: [...coord_x],
+  x2: [...coord_x_2],
+  y: [...coord_y],
+  y2: [...coord_y_2],
 })
 
 // Pan a range by a pixel delta, uniformly in screen space: linear axes shift by a
@@ -158,10 +163,10 @@ export function pan_range_by_pixels(
   scale_type?: ScaleType,
 ): Vec2 {
   if (pixel_span === 0) return range
-  const { to, from } = axis_transform(scale_type)
-  const [t0, t1] = [to(range[0]), to(range[1])]
-  const t_delta = (pixel_delta / pixel_span) * (t1 - t0)
-  return [from(t0 + t_delta), from(t1 + t_delta)]
+  const { to: target, from } = axis_transform(scale_type)
+  const [param_0, param_1] = [target(range[0]), target(range[1])]
+  const t_delta = (pixel_delta / pixel_span) * (param_1 - param_0)
+  return [from(param_0 + t_delta), from(param_1 + t_delta)]
 }
 
 // Zoom a range about its screen-space center by `factor` (pinch: >1 zooms in).
@@ -173,10 +178,10 @@ export function zoom_range_by_factor(
 ): Vec2 {
   // Guard invalid factors (0/negative/NaN) that would emit Infinity/NaN into axis state
   if (!Number.isFinite(factor) || factor <= 0) return range
-  const { to, from } = axis_transform(scale_type)
-  const [t0, t1] = [to(range[0]), to(range[1])]
-  const center = (t0 + t1) / 2
-  const half_span = (t1 - t0) / factor / 2
+  const { to: target, from } = axis_transform(scale_type)
+  const [param_0, param_1] = [target(range[0]), target(range[1])]
+  const center = (param_0 + param_1) / 2
+  const half_span = (param_1 - param_0) / factor / 2
   return [from(center - half_span), from(center + half_span)]
 }
 
@@ -203,7 +208,10 @@ export function remove_drag_listeners(
 
 // Sorted [min, max] from two scalar bounds (rect-zoom inverts drag start/end,
 // which arrive in either order depending on drag direction)
-export const sorted_range = (a: number, b: number): Vec2 => [Math.min(a, b), Math.max(a, b)]
+export const sorted_range = (value_a: number, value_b: number): Vec2 => [
+  Math.min(value_a, value_b),
+  Math.max(value_a, value_b),
+]
 
 // Same for an axis range, which an inverted axis (e.g. [1, 0]) stores high-to-low.
 // Returns the input itself when already sorted so callers can keep identity.
@@ -217,29 +225,30 @@ export const range_bounds = (range: Vec2): Vec2 =>
 // to keep the axis pointing the way the user configured it. Sorting unconditionally wrote an
 // ascending range onto a descending axis, silently mirroring the whole plot until reset.
 export function invert_rect_range(
-  scale: { invert: (px: number) => number | Date },
+  scale: { invert: (pixel_x: number) => number | Date },
   a_px: number,
   b_px: number,
   current?: Vec2,
 ): Vec2 | null {
-  const [lo, hi] = sorted_range(
+  const [lower, upper] = sorted_range(
     to_epoch_num(scale.invert(a_px)),
     to_epoch_num(scale.invert(b_px)),
   )
-  const range: Vec2 = current && current[0] > current[1] ? [hi, lo] : [lo, hi]
+  const range: Vec2 = current && current[0] > current[1] ? [upper, lower] : [lower, upper]
   return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
 }
 
 // Strict per-bound equality of two [min, max] ranges
-export const vec2_equal = (a: Vec2, b: Vec2): boolean => a[0] === b[0] && a[1] === b[1]
+export const vec2_equal = (value_a: Vec2, value_b: Vec2): boolean =>
+  value_a[0] === value_b[0] && value_a[1] === value_b[1]
 
 // True when all four axis ranges match. The range-sync effects use this to skip
 // no-op writes that would otherwise re-trigger the effect and loop.
-export const axis_ranges_equal = (a: AxisRanges, b: AxisRanges): boolean =>
-  vec2_equal(a.x, b.x) &&
-  vec2_equal(a.x2, b.x2) &&
-  vec2_equal(a.y, b.y) &&
-  vec2_equal(a.y2, b.y2)
+export const axis_ranges_equal = (value_a: AxisRanges, value_b: AxisRanges): boolean =>
+  vec2_equal(value_a.x, value_b.x) &&
+  vec2_equal(value_a.x2, value_b.x2) &&
+  vec2_equal(value_a.y, value_b.y) &&
+  vec2_equal(value_a.y2, value_b.y2)
 
 type AxisRangeOverride = { range?: [number | null, number | null] }
 type AutoRanges = {
@@ -272,8 +281,8 @@ export function resolve_axis_ranges(
     y: resolve(axes.y, auto.y),
     y2: resolve(axes.y2, auto.y2),
   }
-  for (const [lo, hi] of [next.x, next.x2, next.y, next.y2]) {
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null
+  for (const [lower, upper] of [next.x, next.x2, next.y, next.y2]) {
+    if (!Number.isFinite(lower) || !Number.isFinite(upper)) return null
   }
   return next
 }

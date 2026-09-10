@@ -70,7 +70,7 @@ export function central_difference_velocities(
   positions: Float64Array,
   n_frames: number,
   n_atoms: number,
-  dt: number,
+  delta_time: number,
 ): Float64Array {
   if (n_frames < 3) {
     fail(
@@ -78,10 +78,10 @@ export function central_difference_velocities(
         `neighbours), got ${n_frames}`,
     )
   }
-  if (!(dt > 0)) fail(`dt must be positive for central differences, got ${dt}`)
+  if (!(delta_time > 0)) fail(`dt must be positive for central differences, got ${delta_time}`)
   const frame_size = n_atoms * 3
   const velocities = new Float64Array((n_frames - 2) * frame_size)
-  const inverse_two_dt = 1 / (2 * dt)
+  const inverse_two_dt = 1 / (2 * delta_time)
   for (let frame_idx = 1; frame_idx < n_frames - 1; frame_idx++) {
     const prev_base = (frame_idx - 1) * frame_size
     const next_base = (frame_idx + 1) * frame_size
@@ -110,8 +110,8 @@ export function autocorrelation_sums(
   // >= 2 n_frames so the circular correlation of the padded series equals the linear one
   // for every lag below n_frames
   const n_fft = next_power_of_two(2 * n_frames)
-  const re = new Float64Array(n_fft)
-  const im = new Float64Array(n_fft)
+  const real = new Float64Array(n_fft)
+  const imaginary = new Float64Array(n_fft)
   const power = Array.from({ length: n_groups }, () => new Float64Array(n_fft))
   const frame_size = n_atoms * 3
   // Component offsets within a frame, bucketed by group, so two components of the same
@@ -130,17 +130,18 @@ export function autocorrelation_sums(
       // unpaired last component leaves b = 0, where the identity reduces to |Z(k)|^2.
       const first = components[pair_idx]
       const second = pair_idx + 1 < components.length ? components[pair_idx + 1] : null
-      re.fill(0)
-      im.fill(0)
+      real.fill(0)
+      imaginary.fill(0)
       for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-        re[frame_idx] = velocities[frame_idx * frame_size + first]
-        if (second !== null) im[frame_idx] = velocities[frame_idx * frame_size + second]
+        real[frame_idx] = velocities[frame_idx * frame_size + first]
+        if (second !== null) imaginary[frame_idx] = velocities[frame_idx * frame_size + second]
       }
-      fft_in_place(re, im)
+      fft_in_place(real, imaginary)
       for (let bin = 0; bin < n_fft; bin++) {
         const mirror = bin === 0 ? 0 : n_fft - bin
         group_power[bin] +=
-          (re[bin] ** 2 + im[bin] ** 2 + re[mirror] ** 2 + im[mirror] ** 2) / 2
+          (real[bin] ** 2 + imaginary[bin] ** 2 + real[mirror] ** 2 + imaginary[mirror] ** 2) /
+          2
       }
     }
   }
@@ -154,8 +155,8 @@ export function autocorrelation_sums(
     power.push(total_power)
   }
   const sums = power.map((group_power) => {
-    im.fill(0)
-    fft_in_place(group_power, im)
+    imaginary.fill(0)
+    fft_in_place(group_power, imaginary)
     const group_sums = new Float64Array(max_lag + 1)
     for (let lag = 0; lag <= max_lag; lag++) group_sums[lag] = group_power[lag] / n_fft
     return group_sums
@@ -173,7 +174,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     elements,
   } = input
   const {
-    dt = 1,
+    dt: delta_time = 1,
     max_lag_fraction = 0.5,
     max_lags = 4096,
     velocity_source: requested_source = `auto`,
@@ -219,7 +220,12 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     // already-unwrapped flag though: re-folding LAMMPS xu/yu/zu truncates real motion.
     const coords = unwrapped_positions_of(input)
     unwrapped = coords.unwrapped
-    velocities = central_difference_velocities(coords.coords, n_position_frames, n_atoms, dt)
+    velocities = central_difference_velocities(
+      coords.coords,
+      n_position_frames,
+      n_atoms,
+      delta_time,
+    )
     n_frames = n_position_frames - 2
   }
   if (n_frames < 2) fail(`need at least 2 velocity frames to form a lag, got ${n_frames}`)
@@ -244,7 +250,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   )
 
   // === axes ===
-  const times = lags.map((lag) => lag * dt)
+  const times = lags.map((lag) => lag * delta_time)
   // Differentiated velocities are Å per lag-axis time unit by construction. Stored ones
   // carry whatever the file used, so without an explicit label the honest answer is that
   // the unit is unknown rather than a guessed Å/ps.
@@ -271,7 +277,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   const bin_spacing = (): number => {
     if (frequency_unit === `1/frame`) return 1 / n_fft
     const factor = md_frequency_factor(time_unit, frequency_unit)
-    if (factor !== null) return factor / (n_fft * dt)
+    if (factor !== null) return factor / (n_fft * delta_time)
     const convertible = Object.keys(TIME_UNIT_TO_THZ).join(`, `)
     const reason =
       time_unit === `frame`
@@ -320,7 +326,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     lags,
     times,
     curves: curve_slots(labels).map(make_curve),
-    dt,
+    dt: delta_time,
     time_unit,
     x_label: lag_axis_label(time_unit),
     frequencies,

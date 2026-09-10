@@ -52,6 +52,7 @@
   import {
     compute_count_range,
     compute_histogram_bins,
+    compute_histogram_counts,
     log_safe_range,
   } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -225,28 +226,30 @@
   let axis_data = $derived.by(() => {
     const x1_extent = empty_extent()
     const x2_extent = empty_extent()
-    const y2_extent = empty_extent()
+    let has_y2_points = false
     for (const srs of selected_series) {
-      accumulate_extent(srs.x_axis === `x2` ? x2_extent : x1_extent, srs.values)
-      if (srs.y_axis === `y2`) accumulate_extent(y2_extent, srs.values)
+      const extent = srs.x_axis === `x2` ? x2_extent : x1_extent
+      const previous_count = extent.n_finite
+      accumulate_extent(extent, srs.values)
+      has_y2_points ||= srs.y_axis === `y2` && extent.n_finite > previous_count
     }
-    return { x1_extent, x2_extent, y2_extent }
+    return { x1_extent, x2_extent, has_y2_points }
   })
   let has_x2_points = $derived(axis_data.x2_extent.n_finite > 0)
-  let has_y2_points = $derived(axis_data.y2_extent.n_finite > 0)
+  let has_y2_points = $derived(axis_data.has_y2_points)
 
   // === Binning ===
   // Pad-independent (no pixel scales) so the legend obstacle field and the count ranges reuse it
-  const bin_over = (x_domain: Vec2, x2_domain: Vec2): BinnedSeries[] =>
-    compute_histogram_bins(selected_series_entries, {
+  const count_over = (x_domain: Vec2, x2_domain: Vec2) =>
+    compute_histogram_counts(selected_series_entries, {
       x_domain,
       x2_domain,
       x_scale_type: final_x_axis.scale_type,
       x2_scale_type: final_x2_axis.scale_type,
       bins,
-      normalize,
-      series_color,
     })
+  const display_bins = (counted: ReturnType<typeof count_over>) =>
+    compute_histogram_bins(counted, normalize, series_color)
   const count_ranges = (binned: readonly BinnedSeries[]) => {
     const on_axis = (axis: `y` | `y2`) =>
       binned.filter((hist) => (hist.y_axis ?? `y`) === axis)
@@ -274,16 +277,24 @@
   })
   // Bins over the data-driven x domains; they also fix the count ranges so a pan/zoom along x
   // doesn't rescale y.
-  const auto_bins = $derived(bin_over(auto_x_ranges.x, auto_x_ranges.x2))
+  const auto_counts = $derived(count_over(auto_x_ranges.x, auto_x_ranges.x2))
+  const auto_bins = $derived(display_bins(auto_counts))
   let auto_ranges = $derived({ ...auto_x_ranges, ...count_ranges(auto_bins) })
   // Histogram count ranges depend on the bin domain. Once FacetGrid resolves shared x domains,
   // re-bin against those domains before reporting y so the reconciled count range cannot clip bars.
-  const intrinsic_ranges = $derived.by(() => {
-    if (!facet_layout) return auto_ranges
-    const x_domain = facet_layout.ranges.x ?? auto_ranges.x
-    const x2_domain = facet_layout.ranges.x2 ?? auto_ranges.x2
-    return { ...auto_ranges, ...count_ranges(bin_over(x_domain, x2_domain)) }
-  })
+  const facet_counts = $derived(
+    facet_layout
+      ? count_over(
+          facet_layout.ranges.x ?? auto_x_ranges.x,
+          facet_layout.ranges.x2 ?? auto_x_ranges.x2,
+        )
+      : auto_counts,
+  )
+  const intrinsic_ranges = $derived(
+    facet_layout
+      ? { ...auto_ranges, ...count_ranges(display_bins(facet_counts)) }
+      : auto_ranges,
+  )
 
   // Controls read the resolved auto value and write back an explicit override.
   const should_show_legend = $derived(
@@ -340,9 +351,9 @@
         // reversed range as degenerate emptied the obstacle field, so auto-placed decorations
         // landed on the bars. Matches BoxPlot.svelte's guard.
         if (x_span === 0 || y_span === 0) continue
-        for (const { x0, x1, value } of hist.bins) {
+        for (const { x0: coord_x_0, x1: coord_x_1, value } of hist.bins) {
           if (value <= 0) continue
-          const x_norm = ((x0 + x1) / 2 - rx0) / x_span
+          const x_norm = ((coord_x_0 + coord_x_1) / 2 - rx0) / x_span
           const top = 1 - (value - ry0) / y_span
           const baseline = 1 + ry0 / y_span // normalized y of value=0 (bar foot)
           const seg = clip_bar(true, x_norm, top, baseline)
@@ -371,12 +382,14 @@
 
   // Bins over the current (possibly panned/zoomed) x domains. Until the view moves these are
   // the auto-domain bins, so the common case bins each series exactly once.
-  let histogram_bins = $derived.by(() => {
+  const current_counts = $derived.by(() => {
     if (selected_series.length === 0 || !frame.width || !frame.height) return []
-    const { x, x2 } = frame.ranges.current
-    if (vec2_equal(x, auto_x_ranges.x) && vec2_equal(x2, auto_x_ranges.x2)) return auto_bins
-    return bin_over(x, x2)
+    const { x: coord_x, x2: coord_x_2 } = frame.ranges.current
+    if (vec2_equal(coord_x, auto_x_ranges.x) && vec2_equal(coord_x_2, auto_x_ranges.x2))
+      return auto_counts
+    return count_over(coord_x, coord_x_2)
   })
+  let histogram_bins = $derived(display_bins(current_counts))
 
   // One tab stop for all bins instead of one per bin: a 100-bin histogram would
   // otherwise take 100 presses to tab past. Arrow keys walk the bars.
@@ -410,10 +423,13 @@
   )
 
   // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height
-  const bar_data = (hist: BinnedSeries, { x0, x1, count, value }: HistogramBin) => {
+  const bar_data = (
+    hist: BinnedSeries,
+    { x0: coord_x_0, x1: coord_x_1, count, value }: HistogramBin,
+  ) => {
     const active_x_axis = hist.x_axis ?? `x`
     const active_y_axis = hist.y_axis ?? `y`
-    const center = (x0 + x1) / 2
+    const center = (coord_x_0 + coord_x_1) / 2
     return {
       value: center,
       count,
@@ -470,8 +486,13 @@
   }))
 </script>
 
-{#snippet ref_lines_layer(z: LayerZIndex)}
-  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
+{#snippet ref_lines_layer(coord_z: LayerZIndex)}
+  <ReferenceLinesLayer
+    {frame}
+    z={coord_z}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <CartesianFrame
@@ -579,9 +600,16 @@
   {#snippet overlays()}
     <!-- Tooltip (outside SVG for proper HTML rendering) -->
     {#if hover_info && hovered}
-      {@const { value, count, y, property, active_y_axis, active_x_axis } = hover_info}
+      {@const {
+        value,
+        count,
+        y: coord_y,
+        property,
+        active_y_axis,
+        active_x_axis,
+      } = hover_info}
       {@const tooltip_x = (active_x_axis === `x2` ? frame.scales.x2 : frame.scales.x)(value)}
-      {@const tooltip_y = (active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(y)}
+      {@const tooltip_y = (active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(coord_y)}
       <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip
         x={tooltip_x}
@@ -598,7 +626,7 @@
           <div>Value: {format_value_or_num(value, hover_info.x_axis.format)}</div>
           <div>Count: {format_value_or_num(count, `d`)}</div>
           {#if normalize !== `count`}
-            <div>{value_axis_defaults.label}: {format_value_or_num(y, `.3~g`)}</div>
+            <div>{value_axis_defaults.label}: {format_value_or_num(coord_y, `.3~g`)}</div>
           {/if}
           {#if mode === `overlay`}<div>{property}</div>{/if}
         {/if}

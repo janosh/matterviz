@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { ChemicalElement, ElementSymbol } from '$lib/element'
-  import type {
-    AxisItem,
-    CellContext,
-    ElementAxisOrderingKey,
-    SymmetricMode,
+  import type { AxisItem, CellContext, ElementAxisOrderingKey } from '$lib/heatmap-matrix'
+  import {
+    ELEMENT_ORDERINGS,
+    ORDERING_LABELS,
+    elements_to_axis,
+    HeatmapMatrix,
   } from '$lib/heatmap-matrix'
-  import { elements_to_axis, HeatmapMatrix, HeatmapMatrixControls } from '$lib/heatmap-matrix'
   import { format_num } from '$lib/labels'
+  import { download } from '$lib/io/fetch'
 
   // === Demo 1: Full element matrix with ordering controls, tooltip, and click ===
   let ordering = $state<ElementAxisOrderingKey>(`atomic_number`)
@@ -15,11 +16,6 @@
   let axis_items = $derived(elements_to_axis(undefined, ordering))
   let clicked_cell = $state<CellContext | null>(null)
   let dblclick_info: string | null = $state(null)
-  let normalize_mode = $state<`linear` | `log`>(`linear`)
-  let domain_mode = $state<`auto` | `robust` | `fixed`>(`auto`)
-  let show_color_bar = $state(true)
-  let color_bar_position = $state<`right` | `bottom`>(`bottom`)
-  let search_query = $state(``)
   let selected_cells = $state<{ x_idx: number; y_idx: number }[]>([])
   let pinned_cell = $state<{ x_idx: number; y_idx: number } | null>(null)
   let last_export_status = $state<string | null>(null)
@@ -43,14 +39,11 @@
   let en_diff_values = $derived(en_diff_matrix(axis_items))
 
   // === Demo 2: Small subset with custom tooltip, symmetric mode, and color scale ===
-  let symmetric_mode = $state<SymmetricMode>(`lower`)
-  let show_values = $state<boolean | string>(false)
-  let show_row_summaries = $state(false)
-  let show_col_summaries = $state(false)
+  let subset_ordering = $state<ElementAxisOrderingKey>(`atomic_number`)
   const demo_symbols = `Li,Na,K,Mg,Ca,Al,Fe,Cu,Zn,Ag,Au,Pt,Ti,Ni,Co,Mn,Cr,V,Si,Ge`.split(
     `,`,
   ) as ElementSymbol[]
-  let small_axis = $derived(elements_to_axis(demo_symbols, ordering))
+  let small_axis = $derived(elements_to_axis(demo_symbols, subset_ordering))
   let small_values = $derived(en_diff_matrix(small_axis))
 
   // === Demo 3: Non-element axis items (property ranges) ===
@@ -73,6 +66,34 @@
     }),
   )
 </script>
+
+{#snippet ordering_options()}
+  {#each ELEMENT_ORDERINGS as ordering_key (ordering_key)}
+    <option value={ordering_key}>{ORDERING_LABELS[ordering_key]}</option>
+  {/each}
+{/snippet}
+
+{#snippet full_controls()}
+  <label>
+    <span>Ordering</span>
+    <select bind:value={ordering}>{@render ordering_options()}</select>
+  </label>
+  <label>
+    <span>Hide empty</span>
+    <select bind:value={hide_mode}>
+      <option value="compact">compact</option>
+      <option value="gaps">gaps</option>
+      <option value={false}>off</option>
+    </select>
+  </label>
+{/snippet}
+
+{#snippet subset_controls()}
+  <label>
+    <span>Ordering</span>
+    <select bind:value={subset_ordering}>{@render ordering_options()}</select>
+  </label>
+{/snippet}
 
 <h1 id="heatmap-matrix">Heatmap Matrix</h1>
 <p class="demo-intro">
@@ -100,12 +121,10 @@
       y_items={axis_items}
       values={en_diff_values}
       color_scale="interpolateViridis"
-      normalize={normalize_mode}
-      {domain_mode}
-      {show_color_bar}
-      {color_bar_position}
+      show_color_bar
+      show_controls="hover"
+      controls_props={{ children: full_controls }}
       hide_empty={hide_mode}
-      {search_query}
       virtualize
       selection_mode="multi"
       bind:selected_cells
@@ -116,30 +135,18 @@
         (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
           payload.x_range[1]
         }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
-      on_export={(format_name) =>
-        (last_export_status = `Exported ${format_name.toUpperCase()}`)}
+      on_export={(format_name, payload) => {
+        download(
+          typeof payload === `string` ? payload : JSON.stringify(payload, null, 2),
+          `electronegativity-difference.${format_name}`,
+          format_name === `csv` ? `text/csv;charset=utf-8` : `application/json`,
+        )
+        last_export_status = `Exported ${format_name.toUpperCase()}`
+      }}
       tooltip
       on_click={(cell: CellContext) => (clicked_cell = cell)}
     />
   </div>
-  <HeatmapMatrixControls
-    bind:ordering
-    bind:normalize={normalize_mode}
-    bind:domain_mode
-    bind:show_color_bar
-    bind:color_bar_position
-    bind:search_query
-    on_export={(format_name) => (last_export_status = `Exported ${format_name.toUpperCase()}`)}
-  >
-    <label>
-      Hide empty
-      <select bind:value={hide_mode}>
-        <option value="compact">compact</option>
-        <option value="gaps">gaps</option>
-        <option value={false}>off</option>
-      </select>
-    </label>
-  </HeatmapMatrixControls>
 </div>
 {#if clicked_cell}
   <div class="click-info">
@@ -177,10 +184,9 @@
     y_items={small_axis}
     values={small_values}
     color_scale="interpolatePlasma"
-    symmetric={symmetric_mode}
-    {show_values}
-    {show_row_summaries}
-    {show_col_summaries}
+    symmetric="lower"
+    show_controls="hover"
+    controls_props={{ children: subset_controls }}
     tile_size="20px"
     gap="1px"
     on_double_click={(cell: CellContext) =>
@@ -198,13 +204,6 @@
       |&Delta;EN| = {format_cell_value(ctx.value)}
     {/snippet}
   </HeatmapMatrix>
-  <HeatmapMatrixControls
-    bind:ordering
-    bind:symmetric={symmetric_mode}
-    bind:show_values
-    bind:show_row_summaries
-    bind:show_col_summaries
-  />
 </div>
 {#if dblclick_info}
   <p style="margin-top: 0.5em; font-size: 0.9em">Last double-click: {dblclick_info}</p>
@@ -255,9 +254,6 @@
     border-radius: var(--border-radius, 3pt);
     background: light-dark(#f0f0f0, #333);
     font-size: 0.85em;
-  }
-  .heatmap-controls-anchor {
-    position: relative;
   }
   .scroll-container {
     overflow-x: auto;

@@ -6,7 +6,7 @@
 
   let {
     from,
-    to,
+    to: target,
     color = `#808080`,
     thickness = 0.1,
     opacity = 1,
@@ -19,7 +19,7 @@
     opacity?: number // < 1 renders semi/fully transparent (e.g. invisible hover proxies)
   } = $props()
 
-  let { position, rotation, length } = $derived(cylinder_between(from, to))
+  let { position, rotation, length } = $derived(cylinder_between(from, target))
 </script>
 
 <T.Mesh {...rest} {position} {rotation} scale={[thickness, length, thickness]}>

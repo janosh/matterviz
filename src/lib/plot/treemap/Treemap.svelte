@@ -33,6 +33,7 @@
     header_strip,
     lerp_rects,
     tile_rects,
+    treemap_hover_veil,
   } from '$lib/plot/treemap/treemap'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -150,7 +151,7 @@
         expanded_parents: chart_state.expanded_parents,
         other_label,
       }),
-    label_text: () => label_text,
+    label_text: () => (show_labels ? label_text : null),
     value_format: () => value_format,
     width: () => width,
     height: () => height,
@@ -172,7 +173,6 @@
     on_node_click: (payload) => on_node_click?.(payload),
     on_node_hover: (payload) => on_node_hover?.(payload),
     on_zoom: (payload) => on_zoom?.(payload),
-    per_node_hover_dim: true,
     visible: (idx) => idx_visible(idx),
     node_center: (idx) => (rects[idx] ? rect_center(rects[idx]) : null),
     // Place against the settled (target) tiling, not the animated one - placement
@@ -229,10 +229,13 @@
       duration: 400,
       easing: cubicInOut,
       ...tween,
-      interpolate: (from: Tiling, to: Tiling) => {
+      interpolate: (from: Tiling, target: Tiling) => {
         // Realigned once per transition, not per frame
-        const start = align_tiling(from, to)
-        return (t: number) => ({ rects: lerp_rects(start, to.rects, t), arcs: to.arcs })
+        const start = align_tiling(from, target)
+        return (fraction: number) => ({
+          rects: lerp_rects(start, target.rects, fraction),
+          arcs: target.arcs,
+        })
       },
     })),
     {
@@ -249,6 +252,9 @@
     ;[prev_zoom_id, prev_data] = [chart_state.zoom_root?.id ?? null, data]
   })
   let rects = $derived(rects_tween.current.rects)
+  let hover_veil = $derived(
+    treemap_hover_veil(chart_state.arcs, rects, chart_state.hovered_idx),
+  )
 
   // Deepest level rendered below the current zoom root (0 = unlimited)
   let depth_cutoff = $derived(
@@ -484,6 +490,16 @@
             {/if}
           {/each}
         </g>
+
+        {#if hover_veil && !cell_content}
+          <path
+            class="hover-veil"
+            d={hover_veil}
+            fill="var(--page-bg, white)"
+            opacity="0.7"
+            pointer-events="none"
+          />
+        {/if}
 
         <!-- Cell labels: selectable text; data-treemap-node-idx forwards hover/click
       to the underlying cell via the chart-group delegation in the shell -->

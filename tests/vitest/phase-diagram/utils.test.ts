@@ -525,8 +525,8 @@ describe(`convert_temp`, () => {
     { value: 0, from: `K`, to: `°C`, expected: -273.15 },
     { value: 0, from: `K`, to: `°F`, expected: -459.67 },
     { value: 1234.5, from: `°C`, to: `°F`, expected: 2254.1 },
-  ] as const)(`$value $from → $expected $to`, ({ value, from, to, expected }) => {
-    expect(convert_temp(value, from, to)).toBeCloseTo(expected, 9)
+  ] as const)(`$value $from → $expected $to`, ({ value, from, to: target, expected }) => {
+    expect(convert_temp(value, from, target)).toBeCloseTo(expected, 9)
   })
 
   test.each([`K`, `°C`, `°F`] as const)(`°F → %s → °F round-trips to 1e-9`, (unit) => {

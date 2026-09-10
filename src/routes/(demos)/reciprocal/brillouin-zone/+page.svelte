@@ -111,8 +111,8 @@
 </label>
 
 <div class="full-bleed grid">
-  {#each examples as { id, label, description, show_ibz } (id)}
-    {@const structure = structure_map.get(id)}
+  {#each examples as { id: identifier, label, description, show_ibz } (identifier)}
+    {@const structure = structure_map.get(identifier)}
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
@@ -149,8 +149,8 @@
 </h2>
 
 <div class="full-bleed grid">
-  {#each higher_order_examples as { id, label, description, order } (`${id}-${order}`)}
-    {@const structure = id ? structure_map.get(id) : undefined}
+  {#each higher_order_examples as { id: identifier, label, description, order } (`${identifier}-${order}`)}
+    {@const structure = identifier ? structure_map.get(identifier) : undefined}
     <div>
       <h2>{label}</h2>
       <p>{description}</p>

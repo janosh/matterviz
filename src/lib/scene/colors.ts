@@ -16,11 +16,11 @@ const parse_scratch = new Color()
 // Uncached: for one-shot conversions already cached by the caller (isosurface colormap LUTs),
 // which would otherwise evict the element colors the memo below exists for.
 export function parse_linear_rgb(css_color: string): LinearRgb {
-  const { r, g, b } = parse_rgb(css_color)
-  if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+  const { r: radius, g: group, b: value_b } = parse_rgb(css_color)
+  if (Number.isFinite(radius) && Number.isFinite(group) && Number.isFinite(value_b)) {
     // d3 keeps out-of-gamut channels as authored (`rgb(300, -20, 0)`); CSS clamps them
     const to_unit = (channel: number) => clamp(channel, 0, 255) / 255
-    parse_scratch.setRGB(to_unit(r), to_unit(g), to_unit(b), SRGBColorSpace)
+    parse_scratch.setRGB(to_unit(radius), to_unit(group), to_unit(value_b), SRGBColorSpace)
   } else parse_scratch.setRGB(0.5, 0.5, 0.5)
   return [parse_scratch.r, parse_scratch.g, parse_scratch.b]
 }

@@ -33,10 +33,10 @@ describe(`OPTIMADE API utilities`, () => {
     [`user@id`],
     [`odbx.9/1.2-3_4?param=value#fragment`],
     [``],
-  ])(`should round-trip encode/decode: %s`, (id) => {
-    const encoded = encode_structure_id(id)
+  ])(`should round-trip encode/decode: %s`, (identifier) => {
+    const encoded = encode_structure_id(identifier)
     const decoded = decodeURIComponent(encoded)
-    expect(decoded).toBe(id)
+    expect(decoded).toBe(identifier)
   })
 
   test(`should encode dots as %2E and slashes as %2F`, () => {

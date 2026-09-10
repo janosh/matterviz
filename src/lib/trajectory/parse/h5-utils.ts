@@ -508,8 +508,8 @@ export async function open_h5_source(
   source: ArrayBuffer | Blob,
   filename?: string,
 ): Promise<{ h5_file: h5wasm.File; close: () => void }> {
-  const h5 = await import(`h5wasm`)
-  const { FS } = await h5.ready
+  const hdf5_2 = await import(`h5wasm`)
+  const { FS: file_system } = await hdf5_2.ready
   const file_basename =
     filename
       ?.split(`/`)
@@ -530,22 +530,22 @@ export async function open_h5_source(
   try {
     if (source instanceof Blob) {
       const source_file = typeof File !== `undefined` && source instanceof File
-      FS.mkdir(path)
+      file_system.mkdir(path)
       cleanup_source = () => {
-        best_effort(() => FS.unmount(path))
-        best_effort(() => FS.rmdir(path))
+        best_effort(() => file_system.unmount(path))
+        best_effort(() => file_system.rmdir(path))
       }
       const mount_options = source_file
         ? { files: [source] }
         : { blobs: [{ name: file_basename, data: source }] }
-      FS.mount(FS.filesystems.WORKERFS, mount_options, path)
+      file_system.mount(file_system.filesystems.WORKERFS, mount_options, path)
       source_path = `${path}/${source_file ? source.name : file_basename}`
     } else {
       source_path = `${file_basename}-${unique_suffix}.h5`
-      cleanup_source = () => best_effort(() => FS.unlink(source_path))
-      FS.writeFile(source_path, new Uint8Array(source))
+      cleanup_source = () => best_effort(() => file_system.unlink(source_path))
+      file_system.writeFile(source_path, new Uint8Array(source))
     }
-    h5_file = new h5.File(source_path, `r`)
+    h5_file = new hdf5_2.File(source_path, `r`)
   } catch (error) {
     cleanup_source()
     throw error

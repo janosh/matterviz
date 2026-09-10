@@ -29,8 +29,8 @@ const TEXT_EXT_RE =
 // already resolves data-theme from the OS, so OS support is preserved).
 const starry_night_theme_plugin: Plugin = {
   name: `vite-plugin-starry-night-theme`,
-  transform(code, id) {
-    if (!id.includes(`starry-night/style/both.css`)) return null
+  transform(code, identifier) {
+    if (!identifier.includes(`starry-night/style/both.css`)) return null
     const dark_query =
       /@media \(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{(?<dark_rules>[^}]*)\}\s*\}/u
     // warn (don't silently no-op) if upstream restructured both.css and the regex stops matching
@@ -61,8 +61,8 @@ const raw_text_plugin: Plugin = {
     const abs = shared.resolve_from_importer(clean, importer)
     return abs + query
   },
-  load(id) {
-    const [clean_id, query] = shared.split_query(id)
+  load(identifier) {
+    const [clean_id, query] = shared.split_query(identifier)
     if (query.includes(`url`)) return null
     const is_raw_gz = clean_id.endsWith(`.json.gz`) && query.includes(`raw`)
     if (!TEXT_EXT_RE.test(clean_id) && !is_raw_gz) return null

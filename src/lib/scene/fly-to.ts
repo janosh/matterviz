@@ -56,13 +56,13 @@ export function create_fly_to(hooks: FlyToHooks) {
     to_dir.set(...dir).divideScalar(dir_length)
 
     const controls = hooks.controls()
-    const { up } = camera
+    const { up: up_vector } = camera
     const target = controls?.target ?? ORIGIN
     const distance = camera.position.distanceTo(target) || 1
     // Looking straight down `up` is degenerate for OrbitControls (polar angle 0), so tilt off
     // the pole. `to_dir` is a unit vector, so the dot is its cosine to the up vector.
-    if (Math.abs(to_dir.dot(up)) > 0.999) {
-      if (Math.abs(up.z) > 0.5) to_dir.y += 1e-3
+    if (Math.abs(to_dir.dot(up_vector)) > 0.999) {
+      if (Math.abs(up_vector.z) > 0.5) to_dir.y += 1e-3
       else to_dir.z += 1e-3
       to_dir.normalize()
     }
@@ -74,7 +74,7 @@ export function create_fly_to(hooks: FlyToHooks) {
     // Opposite handles share no unique great circle: orbit around the camera's up axis so
     // the flight stays level. (Parallel directions land here too; their angle is 0.)
     if (axis.length() < MIN_SIN_ANGLE)
-      axis.copy(up).addScaledVector(from_dir, -up.dot(from_dir))
+      axis.copy(up_vector).addScaledVector(from_dir, -up_vector.dot(from_dir))
     axis.normalize()
 
     animation = { angle: from_dir.angleTo(to_dir), distance, elapsed: 0 }

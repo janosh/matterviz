@@ -97,13 +97,13 @@ describe(`periodic reaction coordinate`, () => {
   // Configuration-space distance between two images: the arc length of a two-image path
   const image_distance = (
     from: AnyStructure,
-    to: AnyStructure,
+    target: AnyStructure,
     options: PathMetricOptions = {},
   ): number =>
     reaction_coordinate(
       [
         { structure: from, energy: 0 },
-        { structure: to, energy: 0 },
+        { structure: target, energy: 0 },
       ],
       options,
     )[1]
@@ -141,9 +141,9 @@ describe(`periodic reaction coordinate`, () => {
 
   test(`multi-atom distance is the root-sum-square of per-atom displacements`, () => {
     const from = make_crystal(on_x_axis(0, 9.7))
-    const to = make_crystal([[0, 3, 0], ...on_x_axis(0.1)])
+    const target = make_crystal([[0, 3, 0], ...on_x_axis(0.1)])
     // atom 0 moves 3 Å, atom 1 wraps 0.4 Å → sqrt(9 + 0.16)
-    expect(image_distance(from, to)).toBeCloseTo(Math.sqrt(9.16), 12)
+    expect(image_distance(from, target)).toBeCloseTo(Math.sqrt(9.16), 12)
   })
 
   test(`molecules without a lattice fall through to Euclidean distances`, () => {
@@ -300,23 +300,23 @@ describe(`plot hover mapping`, () => {
 // Piecewise cubic Hermite evaluation (clamped to the knots) for probing fitted slopes; the
 // production curve is sampled by fit_path_spline, which uses the same basis
 const eval_hermite = (
-  xs: readonly number[],
-  ys: readonly number[],
+  x_values: readonly number[],
+  y_values: readonly number[],
   slopes: readonly number[],
   coord: number,
 ): number => {
-  const last = xs.length - 1
-  if (coord <= xs[0]) return ys[0]
-  if (coord >= xs[last]) return ys[last]
+  const last = x_values.length - 1
+  if (coord <= x_values[0]) return y_values[0]
+  if (coord >= x_values[last]) return y_values[last]
   let seg = 0
-  while (seg < last - 1 && coord > xs[seg + 1]) seg++
-  const width = xs[seg + 1] - xs[seg]
-  const t_val = (coord - xs[seg]) / width
+  while (seg < last - 1 && coord > x_values[seg + 1]) seg++
+  const width = x_values[seg + 1] - x_values[seg]
+  const t_val = (coord - x_values[seg]) / width
   const [t_sq, t_cu] = [t_val ** 2, t_val ** 3]
   return (
-    (2 * t_cu - 3 * t_sq + 1) * ys[seg] +
+    (2 * t_cu - 3 * t_sq + 1) * y_values[seg] +
     (t_cu - 2 * t_sq + t_val) * slopes[seg] * width +
-    (-2 * t_cu + 3 * t_sq) * ys[seg + 1] +
+    (-2 * t_cu + 3 * t_sq) * y_values[seg + 1] +
     (t_cu - t_sq) * slopes[seg + 1] * width
   )
 }
@@ -329,24 +329,24 @@ describe(`natural cubic slopes`, () => {
     // xs = [0,1,2], ys = [0,1,0]: natural BCs give curvatures [0, -3, 0], hence
     // slopes [1 - (-3)/6, -1 - (-6)/6, -1 + (-3)/6] = [1.5, 0, -1.5]
     [`a hand-solved symmetric tent`, [0, 1, 2], [0, 1, 0], [1.5, 0, -1.5]],
-  ])(`reproduce the exact derivative for %s`, (_name, xs, ys, expected) => {
+  ])(`reproduce the exact derivative for %s`, (_name, x_values, y_values, expected) => {
     // A cubic spline reproduces linear data exactly; only f64 round-off separates them
-    for (const [idx, slope] of natural_cubic_slopes(xs, ys).entries()) {
+    for (const [idx, slope] of natural_cubic_slopes(x_values, y_values).entries()) {
       expect(slope).toBeCloseTo(expected[idx], 12)
     }
   })
 
   test(`impose zero curvature at both ends, as the natural boundary condition requires`, () => {
-    const xs = [0, 1, 2, 3.5]
-    const ys = [0, 1.4, 0.6, 2.2]
-    const slopes = natural_cubic_slopes(xs, ys)
+    const x_values = [0, 1, 2, 3.5]
+    const y_values = [0, 1.4, 0.6, 2.2]
+    const slopes = natural_cubic_slopes(x_values, y_values)
     const step = 1e-3
     // A central second difference is exact for a cubic, so the only error is
     // cancellation: ~eps·|y|/step² ≈ 5e-10, far below the 1e-6 bound used here
     const curvature = (coord: number) =>
-      (eval_hermite(xs, ys, slopes, coord + step) -
-        2 * eval_hermite(xs, ys, slopes, coord) +
-        eval_hermite(xs, ys, slopes, coord - step)) /
+      (eval_hermite(x_values, y_values, slopes, coord + step) -
+        2 * eval_hermite(x_values, y_values, slopes, coord) +
+        eval_hermite(x_values, y_values, slopes, coord - step)) /
       step ** 2
     // The spline's curvature is linear within each segment, so sampling twice and
     // extrapolating back to the end knot must land on zero
@@ -355,11 +355,11 @@ describe(`natural cubic slopes`, () => {
   })
 
   test(`interpolate every knot value exactly`, () => {
-    const xs = [0, 0.7, 2.1, 5]
-    const ys = [1, -2, 3.5, 0.25]
-    const slopes = natural_cubic_slopes(xs, ys)
-    for (const [idx, coord] of xs.entries()) {
-      expect(eval_hermite(xs, ys, slopes, coord)).toBeCloseTo(ys[idx], 12)
+    const x_values = [0, 0.7, 2.1, 5]
+    const y_values = [1, -2, 3.5, 0.25]
+    const slopes = natural_cubic_slopes(x_values, y_values)
+    for (const [idx, coord] of x_values.entries()) {
+      expect(eval_hermite(x_values, y_values, slopes, coord)).toBeCloseTo(y_values[idx], 12)
     }
   })
 
@@ -368,8 +368,8 @@ describe(`natural cubic slopes`, () => {
     [`decreasing knots`, [0, 2, 1], [0, 1, 2], /strictly increase/],
     [`a single knot`, [0], [1], /at least 2 knots/],
     [`mismatched lengths`, [0, 1, 2], [0, 1], /matching x\/y lengths/],
-  ])(`throw for %s`, (_name, xs, ys, pattern) => {
-    expect(() => natural_cubic_slopes(xs, ys)).toThrow(pattern)
+  ])(`throw for %s`, (_name, x_values, y_values, pattern) => {
+    expect(() => natural_cubic_slopes(x_values, y_values)).toThrow(pattern)
   })
 })
 
@@ -392,8 +392,8 @@ describe(`fitted saddle versus highest image`, () => {
     [`a saddle between two images`, [0, 1, 2, 3], [0, 0.9, 0.9, 0], false],
     [`a saddle clearly at one image`, [0, 1, 2, 3], [0, 0.2, 1.4, 0.3], false],
     [`a monotonic uphill path`, [0, 1, 2], [0, 0.5, 1.0], true],
-  ])(`fitted max is never below the highest image for %s`, (_name, xs, ys, at_image) => {
-    const spline = fit_path_spline(xs, ys)
+  ])(`fitted max is never below the highest image for %s`, (_name, x_values, y_values, at_image) => {
+    const spline = fit_path_spline(x_values, y_values)
     expect(spline.fitted_max.energy).toBeGreaterThanOrEqual(spline.highest_image.energy)
     expect(spline.saddle_at_image).toBe(at_image)
   })
@@ -414,7 +414,9 @@ describe(`fitted saddle versus highest image`, () => {
     // inserting the saddle must keep the sample arrays parallel and the coords sorted
     expect(spline.energies).toHaveLength(spline.coords.length)
     expect(spline.energies.every(Number.isFinite)).toBe(true)
-    expect(spline.coords).toEqual(spline.coords.toSorted((a, b) => a - b))
+    expect(spline.coords).toEqual(
+      spline.coords.toSorted((left_value, right_value) => left_value - right_value),
+    )
   })
 
   test(`sampled curve passes through every image energy`, () => {

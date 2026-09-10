@@ -196,11 +196,17 @@ describe(`Sunburst`, () => {
       ],
     })
     const halos = [...plot.querySelectorAll<SVGTextElement>(`.arc-label.halo`)]
-    expect(halos.map((el) => el.textContent?.trim())).toEqual([`dotted`, `replaced`])
+    expect(halos.map((element) => element.textContent?.trim())).toEqual([`dotted`, `replaced`])
     // stroke + fill via style (the replace-mode halo is a CSS var, unreliable as attribute);
     // the halo is decorative and must not steal hover/click from the arc underneath
-    expect(halos.map((el) => el.style.fill)).toEqual([`#4e79a7`, `var(--page-bg, white)`])
-    expect(halos.map((el) => el.style.stroke)).toEqual([`#4e79a7`, `var(--page-bg, white)`])
+    expect(halos.map((element) => element.style.fill)).toEqual([
+      `#4e79a7`,
+      `var(--page-bg, white)`,
+    ])
+    expect(halos.map((element) => element.style.stroke)).toEqual([
+      `#4e79a7`,
+      `var(--page-bg, white)`,
+    ])
     for (const halo of halos) {
       expect(halo.getAttribute(`aria-hidden`)).toBe(`true`)
       expect(halo.hasAttribute(`data-sunburst-node-idx`)).toBe(false)
@@ -292,13 +298,13 @@ describe(`Sunburst`, () => {
       ],
     })
     const labels = [...plot.querySelectorAll<SVGTextElement>(`.arc-label`)]
-    const label = labels.find((el) => el.textContent?.trim().startsWith(`pretrain`))
+    const label = labels.find((element) => element.textContent?.trim().startsWith(`pretrain`))
     const text = label?.textContent?.trim() ?? ``
     expect(text.endsWith(`…`)).toBe(true)
     expect(text.length).toBeLessThan(name.length)
     expect(label?.getAttribute(`style`)).toContain(`font-size: 0.7em`)
     // the roomy sibling keeps its full name at full size
-    const wide = labels.find((el) => el.textContent?.trim() === `wide`)
+    const wide = labels.find((element) => element.textContent?.trim() === `wide`)
     expect(wide?.getAttribute(`style`) ?? ``).not.toContain(`font-size`)
     // a value-only label is never cropped: on a chart small enough that this 10%
     // slice cannot hold "90,000,000,000.1" even at 0.7em, the value stays hidden
@@ -315,8 +321,8 @@ describe(`Sunburst`, () => {
       },
       { selector: `.sunburst`, width: 260, height: 200 },
     )
-    const texts = [...values_only.querySelectorAll(`.arc-label`)].map((el) =>
-      el.textContent?.trim(),
+    const texts = [...values_only.querySelectorAll(`.arc-label`)].map((element) =>
+      element.textContent?.trim(),
     )
     expect(texts).toEqual([`810,000,000,000`])
   })
@@ -338,7 +344,7 @@ describe(`Sunburst`, () => {
       )
     const label_opacity = (text: string) =>
       [...plot.querySelectorAll(`.arc-label`)]
-        .find((el) => el.textContent?.trim().startsWith(text))
+        .find((element) => element.textContent?.trim().startsWith(text))
         ?.getAttribute(`fill-opacity`)
     await fire(plot.querySelector(`.legend-item`)) // mute A
     expect(opacities()).toEqual([`0.12`, `0.12`, `0.12`, `1`])
@@ -525,9 +531,9 @@ describe(`Sunburst`, () => {
       shape: `icicle`,
       tween: { duration: 50 }, // real tween: the collapsing row is still mounted at t=0
     })
-    const l1 = plot.querySelector<SVGPathElement>(`[data-sunburst-node-idx="1"]`)
-    l1?.focus()
-    await fire(l1, keydown(`Enter`)) // zoom to L1
+    const level_1 = plot.querySelector<SVGPathElement>(`[data-sunburst-node-idx="1"]`)
+    level_1?.focus()
+    await fire(level_1, keydown(`Enter`)) // zoom to L1
     await tick() // focus handoff runs in tick().then()
     await tick()
     expect(document.activeElement?.getAttribute(`data-sunburst-node-idx`)).toBe(`2`)
@@ -623,7 +629,7 @@ describe(`Sunburst zoom navigation`, () => {
   test(`arrow keys move focus between siblings and across levels`, async () => {
     const plot = await mount_sized_sunburst({ data: tree })
     arc_path(plot, `A`).focus()
-    for (const [arrow, from, to] of [
+    for (const [arrow, from, target] of [
       [`ArrowRight`, `A`, `B`], // next sibling
       [`ArrowRight`, `B`, `A`], // wraps around
       [`ArrowLeft`, `B`, `A`], // previous sibling
@@ -631,7 +637,9 @@ describe(`Sunburst zoom navigation`, () => {
       [`ArrowUp`, `A1`, `A`], // back to parent
     ] as const) {
       await fire(arc_path(plot, from), keydown(arrow))
-      expect(document.activeElement, `${arrow} ${from}->${to}`).toBe(arc_path(plot, to))
+      expect(document.activeElement, `${arrow} ${from}->${target}`).toBe(
+        arc_path(plot, target),
+      )
     }
   })
 
@@ -641,13 +649,16 @@ describe(`Sunburst zoom navigation`, () => {
     const plot = await mount_sized_sunburst({ data: tree })
     const tab_stops = () =>
       [...plot.querySelectorAll(`.arcs path`)].filter(
-        (el) => el.getAttribute(`tabindex`) === `0`,
+        (element) => element.getAttribute(`tabindex`) === `0`,
       )
     expect(tab_stops()).toEqual([arc_path(plot, `A`)]) // first visible arc
     // B is a leaf: not clickable, still focusable and labelled
     const leaf = arc_path(plot, `B`)
     expect(leaf.getAttribute(`role`)).toBeNull()
     expect(leaf.getAttribute(`aria-label`)).toBe(`B: 10`)
+    leaf.focus()
+    expect(document.activeElement).toBe(leaf)
+    expect(getComputedStyle(leaf).outlineStyle).toBe(`none`)
     await fire(leaf, new FocusEvent(`focusin`, { bubbles: true }))
     expect(tab_stops()).toEqual([leaf]) // tab stop follows focus
 
@@ -671,7 +682,9 @@ describe(`Sunburst display options`, () => {
     [`label+parent-percent`, `A1 (40%)`],
   ] as const)(`label_text=%s renders %j`, async (label_text, expected) => {
     const plot = await mount_sized_sunburst({ data: tree, label_text })
-    const labels = [...plot.querySelectorAll(`.arc-label`)].map((el) => el.textContent?.trim())
+    const labels = [...plot.querySelectorAll(`.arc-label`)].map((element) =>
+      element.textContent?.trim(),
+    )
     expect(labels).toContain(expected)
   })
 
@@ -780,7 +793,9 @@ describe(`controls pane`, () => {
     expect(n_arcs(plot)).toBe(4)
     // the max-depth number input is bound via the num_row snippet's get/set pair
     const inputs = [...plot.querySelectorAll<HTMLInputElement>(`input[type="number"]`)]
-    const max_depth_input = inputs.find((el) => el.min === `0` && el.max === `10`)
+    const max_depth_input = inputs.find(
+      (element) => element.min === `0` && element.max === `10`,
+    )
     if (!max_depth_input) throw new Error(`max depth input not found`)
     max_depth_input.value = `1`
     await fire(max_depth_input, new Event(`input`, { bubbles: true }))
@@ -795,7 +810,7 @@ describe(`controls pane`, () => {
     // number inputs are identified by their schema-derived max
     const set = async (max: string, value: string) => {
       const input = [...plot.querySelectorAll<HTMLInputElement>(`input[type="number"]`)].find(
-        (el) => el.min === `0` && el.max === max,
+        (element) => element.min === `0` && element.max === max,
       )
       if (!input) throw new Error(`no number input with max ${max}`)
       input.value = value
@@ -837,11 +852,15 @@ describe(`icicle shape`, () => {
       ]
       const plot = await mount_sized_sunburst({ data, shape: `icicle` })
       const transforms = [...plot.querySelectorAll(`.arc-label`)].map(
-        (el) => el.getAttribute(`transform`) ?? ``,
+        (element) => element.getAttribute(`transform`) ?? ``,
       )
       // narrow cells use vertical labels, the wide one stays horizontal
-      expect(transforms.filter((tf) => tf.includes(`rotate(-90)`)).length).toBeGreaterThan(0)
-      expect(transforms.filter((tf) => !tf.includes(`rotate`)).length).toBeGreaterThan(0)
+      expect(
+        transforms.filter((transform) => transform.includes(`rotate(-90)`)).length,
+      ).toBeGreaterThan(0)
+      expect(
+        transforms.filter((transform) => !transform.includes(`rotate`)).length,
+      ).toBeGreaterThan(0)
     } finally {
       get_context.mockRestore()
     }

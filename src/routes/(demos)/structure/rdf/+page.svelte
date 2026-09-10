@@ -9,11 +9,11 @@
   import { structure_files } from '$site/structures'
   import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
   import al2lu from '$site/structures/mp-1234.json'
-  import pd from '$site/structures/mp-2.json'
+  import palladium from '$site/structures/mp-2.json'
 
   const structures = {
     'Al₂Lu': al2lu,
-    Pd: pd,
+    Pd: palladium,
     'Bi₂Zr₂O₈': bi2zr2o8,
   } as unknown as Record<string, Crystal>
 
@@ -60,9 +60,9 @@
       [0.5, 0, 0.5],
       [0.5, 0.5, 0],
     ]
-    const sites = fcc.flatMap(([fa, fb, fc]) => [
-      cubic_site(cation, [fa, fb, fc], a_len),
-      cubic_site(anion, [(fa + 0.5) % 1, fb, fc], a_len),
+    const sites = fcc.flatMap(([face_a, face_b, face_c]) => [
+      cubic_site(cation, [face_a, face_b, face_c], a_len),
+      cubic_site(anion, [(face_a + 0.5) % 1, face_b, face_c], a_len),
     ])
     return { lattice: cubic_lattice(a_len), sites }
   }
@@ -87,10 +87,10 @@
     const total = Object.values(comp).reduce((sum, count) => sum + count, 0)
     const sites: Crystal[`sites`] = []
 
-    for (const [el, frac] of Object.entries(comp)) {
+    for (const [element, frac] of Object.entries(comp)) {
       for (let _ = 0; _ < Math.round((frac / total) * n_atoms); _++) {
         const abc: Vec3 = [rand(), rand(), rand()]
-        sites.push(cubic_site(el as ElementSymbol, abc, box_size))
+        sites.push(cubic_site(element as ElementSymbol, abc, box_size))
       }
     }
     return { lattice: cubic_lattice(box_size), sites }

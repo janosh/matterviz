@@ -66,10 +66,12 @@ const fraction_vector = (
 }
 
 const phase_elements = (composition: CompositionType): ElementSymbol[] =>
-  (Object.keys(composition) as ElementSymbol[]).filter((el) => (composition[el] ?? 0) > 0)
+  (Object.keys(composition) as ElementSymbol[]).filter(
+    (element) => (composition[element] ?? 0) > 0,
+  )
 
 function make_phase(
-  id: string,
+  identifier: string,
   composition: CompositionType,
   energy_per_atom: number,
   elements: ElementSymbol[],
@@ -85,7 +87,7 @@ function make_phase(
       : get_reduced_formula(composition)
   const formula = common?.formula ?? plain_formula(reduced)
   return {
-    id,
+    id: identifier,
     formula,
     composition: reduced,
     energy_per_atom,
@@ -109,8 +111,8 @@ function gas_phases(
   const temperature = conditions.temperature ?? 0
   return (conditions.open_species ?? []).map((gas) => {
     const pressure = conditions.partial_pressures?.[gas] ?? DEFAULT_GAS_PRESSURES[gas]
-    const mu = compute_gas_chemical_potential(provider, gas, temperature, pressure)
-    return make_phase(`gas:${gas}`, GAS_STOICHIOMETRY[gas], mu, elements, true)
+    const mean = compute_gas_chemical_potential(provider, gas, temperature, pressure)
+    return make_phase(`gas:${gas}`, GAS_STOICHIOMETRY[gas], mean, elements, true)
   })
 }
 
@@ -152,12 +154,12 @@ export function prepare_phase_set(
       n_skipped++
       return
     }
-    const id = entry.entry_id ?? `${formula_of(entry.composition)}#${entry_idx}`
-    if (by_id.has(id)) {
-      warnings.push(`Duplicate entry id ${id}; keeping the first occurrence`)
+    const identifier = entry.entry_id ?? `${formula_of(entry.composition)}#${entry_idx}`
+    if (by_id.has(identifier)) {
+      warnings.push(`Duplicate entry id ${identifier}; keeping the first occurrence`)
       return
     }
-    by_id.set(id, make_phase(id, entry.composition, e_form, elements, false))
+    by_id.set(identifier, make_phase(identifier, entry.composition, e_form, elements, false))
   })
   if (n_skipped > 0) {
     warnings.push(

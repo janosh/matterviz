@@ -236,8 +236,11 @@ describe(`ConvexHullTooltip`, () => {
         fn: (entry: PhaseData) => `E: ${entry.e_above_hull}`,
         expected: `E: 0.1`,
       },
-    ])(`renders $key as function`, ({ key, fn, expected }) => {
-      mount_tooltip({ entry: mock_entry({ entry_id: `mp-999` }), tooltip: { [key]: fn } })
+    ])(`renders $key as function`, ({ key, fn: callback, expected }) => {
+      mount_tooltip({
+        entry: mock_entry({ entry_id: `mp-999` }),
+        tooltip: { [key]: callback },
+      })
       expect(document.body.textContent).toContain(expected)
     })
 

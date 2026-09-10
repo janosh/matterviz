@@ -43,11 +43,14 @@ describe(`PlotTooltip`, () => {
     [`#000000`, `white`, `rgb(0, 0, 0)`, `rgb(255, 255, 255)`],
     [`#4fc3f7`, `black`, `rgb(79, 195, 247)`, `rgb(0, 0, 0)`],
     [null, ``, ``, ``],
-  ])(`sets background %s and contrasting text %s`, (bg, _text, expected_bg, expected_text) => {
-    const tooltip = mount_tooltip({ bg_color: bg })
-    expect(d3_color(tooltip.style.backgroundColor)?.formatRgb() ?? ``).toBe(expected_bg)
-    expect(d3_color(tooltip.style.color)?.formatRgb() ?? ``).toBe(expected_text)
-  })
+  ])(
+    `sets background %s and contrasting text %s`,
+    (background, _text, expected_bg, expected_text) => {
+      const tooltip = mount_tooltip({ bg_color: background })
+      expect(d3_color(tooltip.style.backgroundColor)?.formatRgb() ?? ``).toBe(expected_bg)
+      expect(d3_color(tooltip.style.color)?.formatRgb() ?? ``).toBe(expected_text)
+    },
+  )
 
   test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {
     const tooltip = mount_tooltip({
@@ -168,10 +171,10 @@ describe(`PlotTooltip`, () => {
     [`right edge flips left`, innerWidth - 20, 100, innerWidth - 20 - 10 - 60, 105],
     [`bottom edge flips up`, 100, innerHeight - 10, 110, innerHeight - 10 - 5 - 30],
     [`corner clamps`, innerWidth + 50, innerHeight + 50, innerWidth - 60, innerHeight - 30],
-  ])(`fixed placement at viewport %s`, (_desc, x, y, left, top) => {
+  ])(`fixed placement at viewport %s`, (_desc, coord_x, coord_y, left, top) => {
     const tooltip = mount_tooltip({
-      x,
-      y,
+      x: coord_x,
+      y: coord_y,
       fixed: true,
       offset: { x: 10, y: 5 },
       fallback_size: { width: 60, height: 30 },

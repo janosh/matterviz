@@ -30,7 +30,9 @@
     conditions.open_species?.includes(gas) ? gas : conditions.open_species?.[0],
   )
   const active_route_id = $derived(
-    routes.some(({ id }) => id === selected_route_id) ? selected_route_id : routes[0]?.id,
+    routes.some(({ id: identifier }) => identifier === selected_route_id)
+      ? selected_route_id
+      : routes[0]?.id,
   )
   const range = (min: number, max: number) =>
     Array.from({ length: 9 }, (_, idx) => min + ((max - min) * idx) / 8)
@@ -49,8 +51,8 @@
   const request_json = $derived(
     JSON.stringify({
       target,
-      routes: routes.map(({ id, reaction }) => ({
-        id,
+      routes: routes.map(({ id: identifier, reaction }) => ({
+        id: identifier,
         precursor_ids: reaction.reactants
           .filter(({ phase }) => !phase.is_gas)
           .map(({ phase }) => phase.id),
@@ -108,19 +110,20 @@
   const shown_route = (cell: OpportunityCell) =>
     metric === `preferred`
       ? best_route(cell)
-      : cell.routes.find(({ id }) => id === active_route_id)
+      : cell.routes.find(({ id: identifier }) => identifier === active_route_id)
   const cell_color = (cell: OpportunityCell): string => {
     if (metric === `stability`)
       return `hsl(215 65% ${92 - 55 * Math.min(1, cell.e_above_hull / 0.3)}%)`
     const route = shown_route(cell)
     if (!route) return `#aaa`
-    if (metric === `preferred`) return palette[routes.findIndex(({ id }) => id === route.id)]
+    if (metric === `preferred`)
+      return palette[routes.findIndex(({ id: identifier }) => identifier === route.id)]
     const margin = route.selectivity_margin
     return `hsl(${margin < 0 ? 150 : 8} 55% ${90 - 40 * Math.min(1, Math.abs(margin) / 0.3)}%)`
   }
   const cell_label = (cell: OpportunityCell): string => {
     const route = shown_route(cell)
-    return `${format_num(cell.temperature, `.0f`)} K; ${scan_gas} ${format_num(cell.pressure, `.2g`)} bar; target ${format_num(cell.e_above_hull * 1000, `.1f`)} meV/atom above hull${route ? `; route ${routes.findIndex(({ id }) => id === route.id) + 1}: driving force ${format_num(route.driving_force * 1000, `.1f`)}, selectivity ${format_num(route.selectivity_margin * 1000, `.1f`)} meV/atom` : `; no downhill shortlisted route`}`
+    return `${format_num(cell.temperature, `.0f`)} K; ${scan_gas} ${format_num(cell.pressure, `.2g`)} bar; target ${format_num(cell.e_above_hull * 1000, `.1f`)} meV/atom above hull${route ? `; route ${routes.findIndex(({ id: identifier }) => identifier === route.id) + 1}: driving force ${format_num(route.driving_force * 1000, `.1f`)}, selectivity ${format_num(route.selectivity_margin * 1000, `.1f`)} meV/atom` : `; no downhill shortlisted route`}`
   }
   function apply_cell(cell: OpportunityCell) {
     if (!scan_gas) return
@@ -230,7 +233,9 @@
               onclick={() => apply_cell(cell)}
               >{metric === `preferred`
                 ? best_route(cell)
-                  ? routes.findIndex(({ id }) => id === best_route(cell)?.id) + 1
+                  ? routes.findIndex(
+                      ({ id: identifier }) => identifier === best_route(cell)?.id,
+                    ) + 1
                   : `–`
                 : ``}</button
             >
@@ -238,8 +243,9 @@
         {/each}
       </div>
       {#if metric === `selectivity`}<p>
-          Selectivity shown for: {routes.find(({ id }) => id === active_route_id)?.reaction
-            .equation}
+          Selectivity shown for: {routes.find(
+            ({ id: identifier }) => identifier === active_route_id,
+          )?.reaction.equation}
         </p>{/if}
       <p>
         {metric === `stability`

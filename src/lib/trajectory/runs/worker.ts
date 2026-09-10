@@ -69,35 +69,35 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
     }
   }
   port1.addEventListener(`message`, (event: MessageEvent<RunPortRequest>) => {
-    const { id, method, args } = event.data
+    const { id: identifier, method, args } = event.data
     if (method === `dispose` || !served) return dispose()
     if (method === `abort`) return controllers.get(Number(args[0]))?.abort(abort_error())
     const controller = new AbortController()
-    controllers.set(id, controller)
+    controllers.set(identifier, controller)
     queue = queue.then(async () => {
       const active = served
       if (!active) return
       if (controller.signal.aborted) {
-        controllers.delete(id)
-        return post({ id, error: `Request aborted` })
+        controllers.delete(identifier)
+        return post({ id: identifier, error: `Request aborted` })
       }
       try {
         if (method === `read_frame`) {
           const frame = await active.read_frame(Number(args[0]), controller.signal)
-          post({ id, result: frame })
+          post({ id: identifier, result: frame })
         } else if (method === `collect_positions`) {
           if (!active.collect_positions) throw new Error(`Run cannot collect positions`)
           const stream = await active.collect_positions({
             ...(args[0] as PositionStreamOptions | undefined),
-            on_progress: (progress) => post({ id, progress }),
+            on_progress: (progress) => post({ id: identifier, progress }),
             signal: controller.signal,
           })
-          post({ id, result: stream }, position_stream_transferables(stream))
+          post({ id: identifier, result: stream }, position_stream_transferables(stream))
         } else throw new Error(`Unsupported run port method: ${String(method)}`)
       } catch (error) {
-        post({ id, error: to_error(error).message })
+        post({ id: identifier, error: to_error(error).message })
       } finally {
-        controllers.delete(id)
+        controllers.delete(identifier)
       }
     })
   })
@@ -178,21 +178,21 @@ export const worker_run = (
     if (disposed_reason) return Promise.reject(disposed_reason)
     if (signal?.aborted) return Promise.reject(to_error(signal.reason ?? abort_error()))
     return new Promise<Result>((resolve, reject) => {
-      const id = next_id++
+      const identifier = next_id++
       const on_abort = (): void => {
-        if (!pending.delete(id)) return
+        if (!pending.delete(identifier)) return
         try {
           port.postMessage({
             id: next_id++,
             method: `abort`,
-            args: [id],
+            args: [identifier],
           } satisfies RunPortRequest)
         } catch {
           // Aborting a request on a dead port changes nothing
         }
         reject(to_error(signal?.reason ?? abort_error()))
       }
-      pending.set(id, {
+      pending.set(identifier, {
         resolve: (value) => resolve(value as Result),
         reject,
         on_progress,
@@ -201,7 +201,7 @@ export const worker_run = (
       })
       signal?.addEventListener(`abort`, on_abort, { once: true })
       try {
-        port.postMessage({ id, method, args } satisfies RunPortRequest)
+        port.postMessage({ id: identifier, method, args } satisfies RunPortRequest)
       } catch (error) {
         dispose(to_error(error))
       }

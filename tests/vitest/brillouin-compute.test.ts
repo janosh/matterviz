@@ -62,8 +62,8 @@ const C3_HEX_SQ: Matrix3x3 = [
 const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
   vertices.some((vertex) => vertex.every((coord, idx) => Math.abs(coord - target[idx]) < tol))
 
-const edge_key = (v1: Vec3, v2: Vec3) =>
-  [v1, v2]
+const edge_key = (vector_1: Vec3, vector_2: Vec3) =>
+  [vector_1, vector_2]
     .map((vertex) => vertex.map((coord) => coord.toFixed(8)).join(`,`))
     .toSorted()
     .join(`|`)
@@ -134,12 +134,12 @@ type Polygon = { normal: Vec3; dist: number; vertex_ids: Set<number> }
 const polygon_faces = (vertices: Vec3[], faces: number[][]): Polygon[] => {
   const polygons: Polygon[] = []
   for (const face of faces) {
-    const [v0, v1, v2] = face.map((idx) => vertices[idx])
+    const [vector_0, vector_1, vector_2] = face.map((idx) => vertices[idx])
     const normal = math.normalize_vec(
-      math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
+      math.cross_3d(math.subtract(vector_1, vector_0), math.subtract(vector_2, vector_0)),
       [0, 0, 0],
     )
-    const dist = math.dot(normal, v0)
+    const dist = math.dot(normal, vector_0)
     const match = polygons.find(
       (poly) =>
         Math.abs(poly.dist - dist) < 1e-8 && math.euclidean_dist(poly.normal, normal) < 1e-8,
@@ -164,7 +164,7 @@ const polygon_centroid = (vertices: Vec3[], poly: Polygon): Vec3 =>
 const min_dist_to = (points: Vec3[], target: Vec3) =>
   Math.min(...points.map((point) => math.euclidean_dist(point, target)))
 const edge_midpoints = (edges: Vec3[][]) =>
-  edges.map(([from, to]) => math.scale(math.add(from, to), 0.5))
+  edges.map(([from, target]) => math.scale(math.add(from, target), 0.5))
 // Number of sharp edges meeting at `point` (vertex degree)
 const vertex_degree = (edges: Vec3[][], point: Vec3) =>
   edges.filter((edge) => edge.some((end) => math.euclidean_dist(end, point) < 1e-9)).length
@@ -183,13 +183,13 @@ test(`reciprocal_lattice with two_pi matches the reference data for all crystal 
 describe(`compute_brillouin_zone`, () => {
   test(`valid BZ + inversion symmetry for all crystal systems`, () => {
     for (const [_type, data] of Object.entries(reference_data)) {
-      const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
-      expect(bz.vertices.length).toBeGreaterThan(3)
-      expect(bz.faces.length).toBeGreaterThan(3)
-      expect(bz.edges.length).toBeGreaterThan(0)
-      expect(bz.volume).toBeCloseTo(data.bz_volume_approximation, 6)
-      for (const vert of bz.vertices) {
-        expect(has_vertex(bz.vertices, vert.map((coord) => -coord) as Vec3)).toBe(true)
+      const basis_z = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
+      expect(basis_z.vertices.length).toBeGreaterThan(3)
+      expect(basis_z.faces.length).toBeGreaterThan(3)
+      expect(basis_z.edges.length).toBeGreaterThan(0)
+      expect(basis_z.volume).toBeCloseTo(data.bz_volume_approximation, 6)
+      for (const vert of basis_z.vertices) {
+        expect(has_vertex(basis_z.vertices, vert.map((coord) => -coord) as Vec3)).toBe(true)
       }
     }
   })
@@ -200,9 +200,9 @@ describe(`compute_brillouin_zone`, () => {
   test.each(Object.entries(REAL_LATTICES))(
     `%s: first BZ volume = (2π)³/|det(real)| to 1e-12 relative`,
     (_name, real) => {
-      const bz = compute_brillouin_zone(recip_2pi(real), 1)
+      const basis_z = compute_brillouin_zone(recip_2pi(real), 1)
       const expected = (2 * Math.PI) ** 3 / Math.abs(math.det_3x3(real))
-      expect(Math.abs(bz.volume - expected)).toBeLessThan(1e-12 * expected)
+      expect(Math.abs(basis_z.volume - expected)).toBeLessThan(1e-12 * expected)
     },
   )
 
@@ -224,11 +224,11 @@ describe(`compute_brillouin_zone`, () => {
   ] as [string, string, Record<number, number>, number, number][])(
     `%s: %s with faces %o, %d vertices, %d edges`,
     (name, _shape, face_hist, n_vertices, n_edges) => {
-      const bz = compute_brillouin_zone(recip_2pi(REAL_LATTICES[name]), 1)
-      const polygons = polygon_faces(bz.vertices, bz.faces)
+      const basis_z = compute_brillouin_zone(recip_2pi(REAL_LATTICES[name]), 1)
+      const polygons = polygon_faces(basis_z.vertices, basis_z.faces)
       expect(polygon_histogram(polygons)).toEqual(face_hist)
-      expect(bz.vertices).toHaveLength(n_vertices)
-      expect(bz.edges).toHaveLength(n_edges)
+      expect(basis_z.vertices).toHaveLength(n_vertices)
+      expect(basis_z.edges).toHaveLength(n_edges)
       // every hull vertex is a corner of some polygon (no stray coplanar points)
       expect(new Set(polygons.flatMap((poly) => [...poly.vertex_ids])).size).toBe(n_vertices)
     },
@@ -274,13 +274,13 @@ describe(`compute_brillouin_zone`, () => {
     ] as [string, string, `vertex` | `face` | `edge`, Vec3, number | null][])(
       `%s %s is a %s point`,
       (name, _label, kind, point, count) => {
-        const bz = compute_brillouin_zone(recip_2pi(REAL_LATTICES[name]), 1)
+        const basis_z = compute_brillouin_zone(recip_2pi(REAL_LATTICES[name]), 1)
         if (kind === `vertex`) {
-          expect(min_dist_to(bz.vertices, point)).toBeLessThan(1e-9)
-          expect(vertex_degree(bz.edges, point)).toBe(count)
+          expect(min_dist_to(basis_z.vertices, point)).toBeLessThan(1e-9)
+          expect(vertex_degree(basis_z.edges, point)).toBe(count)
         } else if (kind === `face`) {
-          const polygons = polygon_faces(bz.vertices, bz.faces)
-          const centroids = polygons.map((poly) => polygon_centroid(bz.vertices, poly))
+          const polygons = polygon_faces(basis_z.vertices, basis_z.faces)
+          const centroids = polygons.map((poly) => polygon_centroid(basis_z.vertices, poly))
           const face_idx = centroids.findIndex((ctr) => math.euclidean_dist(ctr, point) < 1e-9)
           expect(face_idx, `no face centred on the point`).toBeGreaterThanOrEqual(0)
           expect(polygons[face_idx].vertex_ids.size).toBe(count)
@@ -292,7 +292,7 @@ describe(`compute_brillouin_zone`, () => {
             expect(math.dot(poly.normal, point) - poly.dist).toBeLessThan(1e-9)
           }
         } else {
-          expect(min_dist_to(edge_midpoints(bz.edges), point)).toBeLessThan(1e-9)
+          expect(min_dist_to(edge_midpoints(basis_z.edges), point)).toBeLessThan(1e-9)
         }
       },
     )
@@ -327,44 +327,51 @@ describe(`BZ edge filtering`, () => {
     [`orthorhombic`, 12],
     [`hexagonal`, 18],
   ] as [keyof typeof reference_data, number][])(`%s has %d edges`, (name, expected_count) => {
-    const bz = compute_brillouin_zone(reference_data[name].reciprocal_lattice as Matrix3x3, 1)
-    expect(bz.edges).toHaveLength(expected_count)
+    const basis_z = compute_brillouin_zone(
+      reference_data[name].reciprocal_lattice as Matrix3x3,
+      1,
+    )
+    expect(basis_z.edges).toHaveLength(expected_count)
   })
 
   test(`valid edge topology, lengths, and face indices`, () => {
     for (const [_type, data] of Object.entries(reference_data)) {
-      const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
+      const basis_z = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
       const keys = new Set<string>()
       const edge_to_faces = new Map<string, number>()
-      const max_len = Math.cbrt(bz.volume) * 10
+      const max_len = Math.cbrt(basis_z.volume) * 10
 
-      for (const face of bz.faces) {
+      for (const face of basis_z.faces) {
         expect(face.length).toBeGreaterThanOrEqual(3)
         for (const idx of face) {
           expect(idx).toBeGreaterThanOrEqual(0)
-          expect(idx).toBeLessThan(bz.vertices.length)
+          expect(idx).toBeLessThan(basis_z.vertices.length)
         }
         for (let idx = 0; idx < face.length; idx++) {
           const key = edge_key(
-            bz.vertices[face[idx]],
-            bz.vertices[face[(idx + 1) % face.length]],
+            basis_z.vertices[face[idx]],
+            basis_z.vertices[face[(idx + 1) % face.length]],
           )
           edge_to_faces.set(key, (edge_to_faces.get(key) ?? 0) + 1)
         }
       }
 
-      for (const [v1, v2] of bz.edges) {
-        expect(has_vertex(bz.vertices, v1)).toBe(true)
-        expect(has_vertex(bz.vertices, v2)).toBe(true)
-        const key = edge_key(v1, v2)
+      for (const [vector_1, vector_2] of basis_z.edges) {
+        expect(has_vertex(basis_z.vertices, vector_1)).toBe(true)
+        expect(has_vertex(basis_z.vertices, vector_2)).toBe(true)
+        const key = edge_key(vector_1, vector_2)
         expect(keys.has(key)).toBe(false)
         keys.add(key)
         expect(edge_to_faces.get(key)).toBe(2)
-        const len = Math.hypot(v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2])
+        const len = Math.hypot(
+          vector_2[0] - vector_1[0],
+          vector_2[1] - vector_1[1],
+          vector_2[2] - vector_1[2],
+        )
         expect(len).toBeGreaterThan(0)
         expect(len).toBeLessThan(max_len)
       }
-      expect(bz.edges.length).toBeLessThan((3 * bz.faces.length) / 2)
+      expect(basis_z.edges.length).toBeLessThan((3 * basis_z.faces.length) / 2)
     }
   })
 })
@@ -454,8 +461,10 @@ describe(`compute_convex_hull`, () => {
   })
 
   // All 8 corners of the [-1, 1]³ cube
-  const cube_verts = [-1, 1].flatMap((z) =>
-    [-1, 1].flatMap((y) => [-1, 1].map((x) => [x, y, z] as Vec3)),
+  const cube_verts = [-1, 1].flatMap((coord_z) =>
+    [-1, 1].flatMap((coord_y) =>
+      [-1, 1].map((coord_x) => [coord_x, coord_y, coord_z] as Vec3),
+    ),
   )
   const tetrahedron_verts: Vec3[] = [
     [0, 0, 0],
@@ -496,12 +505,12 @@ describe(`BZ order`, () => {
     [3, 4, null, null],
   ])(`cubic order %d: hull volume = %d·V₁`, (order, ratio, n_verts, n_edges) => {
     const k_lattice = recip_2pi(CUBIC_5)
-    const bz = compute_brillouin_zone(k_lattice, order as 2 | 3)
+    const basis_z = compute_brillouin_zone(k_lattice, order as 2 | 3)
     const vol_1 = (2 * Math.PI) ** 3 / 125
-    expect(Math.abs(bz.volume - ratio * vol_1)).toBeLessThan(1e-12 * vol_1)
-    expect(bz.order).toBe(order)
-    if (n_verts !== null) expect(bz.vertices).toHaveLength(n_verts)
-    if (n_edges !== null) expect(bz.edges).toHaveLength(n_edges)
+    expect(Math.abs(basis_z.volume - ratio * vol_1)).toBeLessThan(1e-12 * vol_1)
+    expect(basis_z.order).toBe(order)
+    if (n_verts !== null) expect(basis_z.vertices).toHaveLength(n_verts)
+    if (n_edges !== null) expect(basis_z.edges).toHaveLength(n_edges)
   })
 
   test(`order >3 clamps to 3`, () => {
@@ -608,9 +617,9 @@ const group_closure = (generators: Matrix3x3[]): Matrix3x3[] => {
   let frontier: Matrix3x3[] = [IDENTITY_MAT]
   while (frontier.length > 0) {
     const next: Matrix3x3[] = []
-    for (const op of frontier) {
+    for (const operation of frontier) {
       for (const gen of generators) {
-        const prod = math.dot(op, gen)
+        const prod = math.dot(operation, gen)
         if (ops.has(key(prod))) continue
         ops.set(key(prod), prod)
         next.push(prod)
@@ -642,7 +651,7 @@ const MIRROR_Z_MAT: Matrix3x3 = [
 const D6H_OPS = group_closure([C6_HEX, C2_HEX_A1, MIRROR_Z_MAT])
 
 describe(`compute_irreducible_bz`, () => {
-  const bz = compute_brillouin_zone(recip_2pi(CUBIC_5), 1)
+  const basis_z = compute_brillouin_zone(recip_2pi(CUBIC_5), 1)
 
   // All 48 signed permutation matrices (proper + improper rotations of the cube)
   const oh_ops: Matrix3x3[] = []
@@ -704,9 +713,9 @@ describe(`compute_irreducible_bz`, () => {
   )
 
   test(`P1 (identity only) → full BZ`, () => {
-    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
-    expect(ibz.vertices).toHaveLength(bz.vertices.length)
-    expect(ibz.volume).toBeCloseTo(bz.volume, 6)
+    const ibz = compute_irreducible_bz(basis_z, [IDENTITY_MAT])
+    expect(ibz.vertices).toHaveLength(basis_z.vertices.length)
+    expect(ibz.volume).toBeCloseTo(basis_z.volume, 6)
   })
 
   test.each([
@@ -730,8 +739,8 @@ describe(`compute_irreducible_bz`, () => {
       digits: 6,
     },
   ])(`$label → volume ratio $ratio`, ({ ops, ratio, digits, check_faces }) => {
-    const ibz = compute_irreducible_bz(bz, ops)
-    expect(ibz.volume / bz.volume).toBeCloseTo(ratio, digits)
+    const ibz = compute_irreducible_bz(basis_z, ops)
+    expect(ibz.volume / basis_z.volume).toBeCloseTo(ratio, digits)
     expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
     if (check_faces) {
       expect(ibz.faces.length).toBeGreaterThanOrEqual(4)
@@ -777,25 +786,31 @@ describe(`fractional_to_cartesian_rotation`, () => {
   ] as [string, Matrix3x3, Matrix3x3, number][])(
     `%s: R is a proper rotation mapping the reciprocal lattice onto itself`,
     (_, frac_rot, k_latt, trace) => {
-      const R = fractional_to_cartesian_rotation(frac_rot, k_latt)
+      const rotation_matrix = fractional_to_cartesian_rotation(frac_rot, k_latt)
 
       // Orthogonal (RᵀR = I), proper (det = +1), right angle (trace = 1 + 2·cosθ — also
       // rules out the identity fallback, which trivially passes the other invariants)
       math
-        .dot(math.transpose_3x3_matrix(R), R)
-        .forEach((row, ii) =>
-          row.forEach((val, jj) =>
-            expect(val, `RᵀR[${ii}][${jj}]`).toBeCloseTo(ii === jj ? 1 : 0, 10),
+        .dot(math.transpose_3x3_matrix(rotation_matrix), rotation_matrix)
+        .forEach((row, row_index) =>
+          row.forEach((val, col_index) =>
+            expect(val, `RᵀR[${row_index}][${col_index}]`).toBeCloseTo(
+              row_index === col_index ? 1 : 0,
+              10,
+            ),
           ),
         )
-      expect(math.det_3x3(R)).toBeCloseTo(1, 10)
-      expect(R[0][0] + R[1][1] + R[2][2], `trace`).toBeCloseTo(trace, 10)
+      expect(math.det_3x3(rotation_matrix)).toBeCloseTo(1, 10)
+      expect(
+        rotation_matrix[0][0] + rotation_matrix[1][1] + rotation_matrix[2][2],
+        `trace`,
+      ).toBeCloseTo(trace, 10)
 
       // R must map the reciprocal lattice onto itself: coordinates of R·bᵢ in the
       // reciprocal basis (k_cart = Bᵀ·q) must be integers
       const basis_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_latt))
       for (const b_vec of k_latt) {
-        for (const coord of math.dot(basis_inv, math.dot(R, b_vec))) {
+        for (const coord of math.dot(basis_inv, math.dot(rotation_matrix, b_vec))) {
           expect(coord, `R·b lattice coords`).toBeCloseTo(Math.round(coord), 8)
         }
       }
@@ -935,8 +950,10 @@ describe(`scene sizing helpers`, () => {
       [0, 0, 4],
     ]
     // a cube of side 2 centered on the origin: the enclosing sphere has diameter 2*sqrt(3)
-    const cube: Vec3[] = [-1, 1].flatMap((x) =>
-      [-1, 1].flatMap((y) => [-1, 1].map((z): Vec3 => [x, y, z])),
+    const cube: Vec3[] = [-1, 1].flatMap((coord_x) =>
+      [-1, 1].flatMap((coord_y) =>
+        [-1, 1].map((coord_z): Vec3 => [coord_x, coord_y, coord_z]),
+      ),
     )
     const tiny = cube.map((vert) => math.scale(vert, 0.02))
     const coincident = Array.from({ length: 4 }, (): Vec3 => [0.1, 0.1, 0.1])
@@ -976,8 +993,10 @@ describe(`scene sizing helpers`, () => {
     // visibly rescales the moment the computed vertices land
     test(`the cubic fallback matches what its own vertices would give`, () => {
       // Wigner-Seitz zone of the cubic reciprocal lattice above: a cube of side 4
-      const zone: Vec3[] = [-2, 2].flatMap((x) =>
-        [-2, 2].flatMap((y) => [-2, 2].map((z): Vec3 => [x, y, z])),
+      const zone: Vec3[] = [-2, 2].flatMap((coord_x) =>
+        [-2, 2].flatMap((coord_y) =>
+          [-2, 2].map((coord_z): Vec3 => [coord_x, coord_y, coord_z]),
+        ),
       )
       expect(bz_fit_extent(undefined, k_lattice)).toBeCloseTo(
         bz_fit_extent(zone, k_lattice),

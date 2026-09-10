@@ -91,16 +91,18 @@ For row selection, supply `row_key` as a property name or a function returning a
       Date.parse(`2026-06-25T18:05:00Z`),
       new Date(`2026-06-25T16:10:00Z`),
     ],
-  ].map(([v1, v2, v3, v4, v5, v6, v7, v8]) => ({
-    Formula: v1,
-    'E<sub>above hull</sub>': v2,
-    'E<sub>gap</sub>': v3,
-    'E<sub>form</sub>': v4,
-    'Created Date': v5,
-    'Calculated At': v6,
-    'Last Updated': v7,
-    'Synthesis Time': v8,
-  }))
+  ].map(
+    ([vector_1, vector_2, vector_3, vector_4, vector_5, vector_6, vector_7, vector_8]) => ({
+      Formula: vector_1,
+      'E<sub>above hull</sub>': vector_2,
+      'E<sub>gap</sub>': vector_3,
+      'E<sub>form</sub>': vector_4,
+      'Created Date': vector_5,
+      'Calculated At': vector_6,
+      'Last Updated': vector_7,
+      'Synthesis Time': vector_8,
+    }),
+  )
 
   // oxfmt-ignore
   const columns = [
@@ -168,8 +170,8 @@ All 118 chemical elements with physical and chemical properties. Features column
   import { element_data, format_num, HeatmapTable } from 'matterviz'
 
   // Get unique categories and phases for filters
-  const categories = [...new Set(element_data.map((el) => el.category))].sort()
-  const phases = [...new Set(element_data.map((el) => el.phase))].sort()
+  const categories = [...new Set(element_data.map((element) => element.category))].sort()
+  const phases = [...new Set(element_data.map((element) => element.phase))].sort()
 
   let category_filter = $state(`all`)
   let phase_filter = $state(`all`)
@@ -179,29 +181,29 @@ All 118 chemical elements with physical and chemical properties. Features column
   // Transform and filter element data
   let data = $derived(
     element_data
-      .filter((el) => category_filter === `all` || el.category === category_filter)
-      .filter((el) => phase_filter === `all` || el.phase === phase_filter)
-      .map((el) => ({
-        symbol: el.radioactive ? `☢️ ${el.symbol}` : el.symbol,
-        name: el.name,
-        atomic_number: el.number,
-        atomic_mass: el.atomic_mass,
-        category: el.category,
-        period: el.period,
-        group: el.column,
-        n_valence: el.n_valence,
-        density: el.density,
-        atomic_radius: el.atomic_radius,
-        covalent_radius: el.covalent_radius,
-        electronegativity: el.electronegativity,
-        electron_affinity: el.electron_affinity,
-        first_ionization: el.first_ionization,
-        specific_heat: el.specific_heat,
-        melting_point: el.melting_point,
-        boiling_point: el.boiling_point,
-        phase: el.phase,
-        year: el.year,
-        element_symbol: el.symbol, // raw symbol for selected row display
+      .filter((element) => category_filter === `all` || element.category === category_filter)
+      .filter((element) => phase_filter === `all` || element.phase === phase_filter)
+      .map((element) => ({
+        symbol: element.radioactive ? `☢️ ${element.symbol}` : element.symbol,
+        name: element.name,
+        atomic_number: element.number,
+        atomic_mass: element.atomic_mass,
+        category: element.category,
+        period: element.period,
+        group: element.column,
+        n_valence: element.n_valence,
+        density: element.density,
+        atomic_radius: element.atomic_radius,
+        covalent_radius: element.covalent_radius,
+        electronegativity: element.electronegativity,
+        electron_affinity: element.electron_affinity,
+        first_ionization: element.first_ionization,
+        specific_heat: element.specific_heat,
+        melting_point: element.melting_point,
+        boiling_point: element.boiling_point,
+        phase: element.phase,
+        year: element.year,
+        element_symbol: element.symbol, // raw symbol for selected row display
       })),
   )
 
@@ -382,7 +384,7 @@ All 118 chemical elements with physical and chemical properties. Features column
       <option value="all">All ({element_data.length})</option>
       {#each categories as cat (cat)}
         <option value={cat}>
-          {cat} ({element_data.filter((el) => el.category === cat).length})
+          {cat} ({element_data.filter((element) => element.category === cat).length})
         </option>
       {/each}
     </select>
@@ -447,12 +449,12 @@ Drag columns to reorder them within a group (handy for side-by-side metrics):
     [`Pyrite`, 0.035, 0.071, 0.95, 0.24],
     [`Zincblende`, 0.031, 0.063, 0.96, 0.21],
     [`Rutile`, 0.047, 0.095, 0.92, 0.38],
-  ].map(([v1, v2, v3, v4, v5]) => ({
-    Structure: v1,
-    MAE: v2,
-    RMSE: v3,
-    'R²': v4,
-    'Max Error': v5,
+  ].map(([vector_1, vector_2, vector_3, vector_4, vector_5]) => ({
+    Structure: vector_1,
+    MAE: vector_2,
+    RMSE: vector_3,
+    'R²': vector_4,
+    'Max Error': vector_5,
   }))
 
   // oxfmt-ignore
@@ -627,8 +629,8 @@ The table correctly handles numeric strings with uncertainty notation for both s
     [`mp-804`, `SiC`, `3.26 ± 0.04`, `3.217 ± 0.005`, `490 +- 20`],
     [`mp-35`, `GaN`, `3.40 ± 0.05`, `6.150 ± 0.010`, `130 +- 8`],
     [`mp-5020`, `NaCl`, `8.50 ± 0.12`, `2.165 ± 0.003`, `6.5 +- 0.3`],
-  ].map(([id, formula, gap, density, thermal]) => ({
-    ID: id,
+  ].map(([identifier, formula, gap, density, thermal]) => ({
+    ID: identifier,
     Formula: formula,
     'E<sub>gap</sub> (eV)': gap,
     'ρ (g/cm³)': density,
@@ -713,11 +715,11 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
     [`Al₂O₃`, 8.8, 1e-14, 30],
     [`MgO`, 7.8, 1e-15, 60],
     [`TiO₂`, 3.2, 1e-12, 8.5],
-  ].map(([v1, v2, v3, v4]) => ({
-    Material: v1,
-    'E<sub>gap</sub> (eV)': v2,
-    'σ (S/m)': v3,
-    'κ (W/m·K)': v4,
+  ].map(([vector_1, vector_2, vector_3, vector_4]) => ({
+    Material: vector_1,
+    'E<sub>gap</sub> (eV)': vector_2,
+    'σ (S/m)': vector_3,
+    'κ (W/m·K)': vector_4,
   }))
 
   let columns = $derived([

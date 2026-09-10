@@ -68,7 +68,7 @@ def fetch_subsystem(
     elements: tuple[str, ...], hull_cutoff: float = HULL_CUTOFF
 ) -> list[dict[str, Any]]:
     """All entries of exactly these elements within hull_cutoff of the hull."""
-    element_list = ",".join(f'"{el}"' for el in elements)
+    element_list = ",".join(f'"{element}"' for element in elements)
     params: dict[str, Any] = {
         "filter": (
             f"elements HAS ALL {element_list} AND nelements={len(elements)} "
@@ -83,7 +83,9 @@ def fetch_subsystem(
     while url:
         # Next links come from the response: stay on the Alexandria host and never revisit
         if urlparse(url).netloc != urlparse(BASE_URL).netloc or url in visited:
-            raise RuntimeError(f"Refusing to follow pagination link for {elements}: {url}")
+            raise RuntimeError(
+                f"Refusing to follow pagination link for {elements}: {url}"
+            )
         visited.add(url)
         payload: dict[str, Any] | None = None
         for attempt in range(4):
@@ -112,9 +114,15 @@ def fetch_subsystem(
 
 def volume_per_atom(lattice: list[list[float]], n_sites: int) -> float:
     """Cell volume from the lattice vectors' scalar triple product, divided by site count."""
-    (ax, ay, az), (bx, by, bz), (cx, cy, cz) = lattice
+    (
+        (atom_x, atom_y, atom_z),
+        (bond_x, bond_y, bond_z),
+        (center_x, center_y, center_z),
+    ) = lattice
     volume = abs(
-        ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)
+        atom_x * (bond_y * center_z - bond_z * center_y)
+        - atom_y * (bond_x * center_z - bond_z * center_x)
+        + atom_z * (bond_x * center_y - bond_y * center_x)
     )
     return volume / n_sites
 
@@ -164,7 +172,9 @@ def fetch_system(
         for subset in itertools.combinations(elements, size):
             items = fetch_subsystem(subset, hull_cutoff)
             converted = [to_entry(item) for item in items]
-            entries.extend(entry for entry in converted if o_fraction(entry) <= max_o_fraction)
+            entries.extend(
+                entry for entry in converted if o_fraction(entry) <= max_o_fraction
+            )
             print(f"{system}: {'-'.join(subset)} -> {len(items)} entries")
     entries.sort(key=lambda entry: (len(entry["composition"]), entry["e_above_hull"]))
     os.makedirs(directory, exist_ok=True)

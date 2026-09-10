@@ -73,12 +73,12 @@
   let vol_id_counter = 0
   const vol_ids = new WeakMap<VolumetricData, number>()
   const vol_id = (vol: VolumetricData): number => {
-    let id = vol_ids.get(vol)
-    if (id === undefined) {
-      id = ++vol_id_counter
-      vol_ids.set(vol, id)
+    let identifier = vol_ids.get(vol)
+    if (identifier === undefined) {
+      identifier = ++vol_id_counter
+      vol_ids.set(vol, identifier)
     }
-    return id
+    return identifier
   }
 
   // Finite extraction range for this volume. Periodic volumes always use one

@@ -50,11 +50,11 @@ const twiddles_for = (n_points: number): { re: Float64Array; im: Float64Array } 
   return table
 }
 
-export function fft_in_place(re: Float64Array, im: Float64Array): void {
-  const n_points = re.length
-  if (im.length !== n_points) {
+export function fft_in_place(real: Float64Array, imaginary: Float64Array): void {
+  const n_points = real.length
+  if (imaginary.length !== n_points) {
     throw new Error(
-      `fft_in_place: real part has ${n_points} entries but imaginary part has ${im.length}`,
+      `fft_in_place: real part has ${n_points} entries but imaginary part has ${imaginary.length}`,
     )
   }
   if (n_points < 1) throw new Error(`fft_in_place: signal is empty`)
@@ -69,12 +69,12 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
     for (; rev & bit; bit >>= 1) rev ^= bit
     rev ^= bit
     if (idx < rev) {
-      const re_value = re[idx]
-      re[idx] = re[rev]
-      re[rev] = re_value
-      const im_value = im[idx]
-      im[idx] = im[rev]
-      im[rev] = im_value
+      const re_value = real[idx]
+      real[idx] = real[rev]
+      real[rev] = re_value
+      const im_value = imaginary[idx]
+      imaginary[idx] = imaginary[rev]
+      imaginary[rev] = im_value
     }
   }
 
@@ -88,12 +88,12 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
         const tw_im = twiddle_im[offset * table_step]
         const even_idx = start + offset
         const odd_idx = even_idx + half
-        const odd_re = re[odd_idx] * tw_re - im[odd_idx] * tw_im
-        const odd_im = re[odd_idx] * tw_im + im[odd_idx] * tw_re
-        re[odd_idx] = re[even_idx] - odd_re
-        im[odd_idx] = im[even_idx] - odd_im
-        re[even_idx] += odd_re
-        im[even_idx] += odd_im
+        const odd_re = real[odd_idx] * tw_re - imaginary[odd_idx] * tw_im
+        const odd_im = real[odd_idx] * tw_im + imaginary[odd_idx] * tw_re
+        real[odd_idx] = real[even_idx] - odd_re
+        imaginary[odd_idx] = imaginary[even_idx] - odd_im
+        real[even_idx] += odd_re
+        imaginary[even_idx] += odd_im
       }
     }
   }
@@ -328,8 +328,8 @@ export function even_cosine_spectrum(
     throw new Error(`even_cosine_spectrum: need at least 2 values, got ${n_values}`)
   }
   const n_fft = cosine_spectrum_length(n_values, zero_pad_factor)
-  const re = new Float64Array(n_fft)
-  const im = new Float64Array(n_fft)
+  const real = new Float64Array(n_fft)
+  const imaginary = new Float64Array(n_fft)
   for (let idx = 0; idx < n_values; idx++) {
     const value = values[idx]
     if (!Number.isFinite(value)) {
@@ -337,9 +337,9 @@ export function even_cosine_spectrum(
         `even_cosine_spectrum: value at index ${idx} is ${value}, not finite`,
       )
     }
-    re[idx] = value
-    if (idx > 0) re[n_fft - idx] = value
+    real[idx] = value
+    if (idx > 0) real[n_fft - idx] = value
   }
-  fft_in_place(re, im)
-  return { spectrum: re.slice(0, n_fft / 2 + 1), n_fft }
+  fft_in_place(real, imaginary)
+  return { spectrum: real.slice(0, n_fft / 2 + 1), n_fft }
 }

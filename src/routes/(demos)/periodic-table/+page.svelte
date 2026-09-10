@@ -9,16 +9,19 @@
 
   // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value
   const four_fold_quadrants = [
-    [`Atomic Radius (pm)`, (el: ChemicalElement) => el.atomic_radius || 0],
-    [`Electronegativity × 100`, (el: ChemicalElement) => (el.electronegativity || 0) * 100],
-    [`Covalent Radius (pm)`, (el: ChemicalElement) => el.covalent_radius || 0],
+    [`Atomic Radius (pm)`, (element: ChemicalElement) => element.atomic_radius || 0],
+    [
+      `Electronegativity × 100`,
+      (element: ChemicalElement) => (element.electronegativity || 0) * 100,
+    ],
+    [`Covalent Radius (pm)`, (element: ChemicalElement) => element.covalent_radius || 0],
     [
       `|Electron Affinity| (kJ/mol)`,
-      (el: ChemicalElement) => Math.abs(el.electron_affinity || 0),
+      (element: ChemicalElement) => Math.abs(element.electron_affinity || 0),
     ],
   ] as const
-  const four_fold_data = element_data.map((el) =>
-    four_fold_quadrants.map(([, value_of]) => value_of(el)),
+  const four_fold_data = element_data.map((element) =>
+    four_fold_quadrants.map(([, value_of]) => value_of(element)),
   )
   const four_fold_ranges = four_fold_quadrants.map(([title], quadrant_idx): [string, Vec2] => {
     const values = four_fold_data.map((quadrants) => quadrants[quadrant_idx])
@@ -42,9 +45,9 @@
   let missing_active_category: ElementCategory | null = $state(null)
 
   // Missing color demo derived values (null = missing, distinct from a real 0)
-  let missing_get_element_value = $derived((el: ChemicalElement): number | null => {
+  let missing_get_element_value = $derived((element: ChemicalElement): number | null => {
     if (!missing_heatmap_key) return null
-    const value = el[missing_heatmap_key as keyof typeof el]
+    const value = element[missing_heatmap_key as keyof typeof element]
     return typeof value === `number` ? value : null
   })
 
@@ -228,7 +231,7 @@
       <h3 style="margin: 0 0 0.5em; text-align: center; font-size: 0.9em">{title}</h3>
       <PeriodicTable
         tile_props={{ show_name: false, show_number: false, show_symbol: false }}
-        heatmap_values={element_data.map((el) => el[property] || 0)}
+        heatmap_values={element_data.map((element) => element[property] || 0)}
         {color_scale}
         gap="1px"
         style="--ptable-inner-transition-offset: 0.3"
@@ -243,7 +246,7 @@
   {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolateBlues` }, { title: `Density`, property: `density`, color_scale: `interpolateReds` }, { title: `Melting Point`, property: `melting_point`, color_scale: `interpolateOranges` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateGreens` }] as const as { title, property, color_scale } (title)}
     <PeriodicTable
       tile_props={{ show_name: false, show_number: false }}
-      heatmap_values={element_data.map((el) => el[property] || 0)}
+      heatmap_values={element_data.map((element) => element[property] || 0)}
       {color_scale}
       show_color_bar={false}
     >

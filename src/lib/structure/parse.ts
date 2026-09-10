@@ -360,14 +360,18 @@ const apply_symmetry_ops = (
   // position keeps the row's _atom_site_label; generated images get a `_k` suffix so labels
   // stay unique and a CIF written back out still reads as the same refinement.
   const add_position = (coords: Vec3): void => {
-    for (const [dx, dy, dz] of shifts) {
-      const wrapped = wrap_to_unit_cell([coords[0] + dx, coords[1] + dy, coords[2] + dz])
+    for (const [delta_x, delta_y, delta_z] of shifts) {
+      const wrapped = wrap_to_unit_cell([
+        coords[0] + delta_x,
+        coords[1] + delta_y,
+        coords[2] + delta_z,
+      ])
       const key = cif_coords_key(wrapped)
       if (seen.has(key)) continue
       seen.add(key)
       const suffix = equivalent_atoms.length > 0 ? `_${equivalent_atoms.length}` : ``
-      const id = atom.id && `${atom.id}${suffix}`
-      equivalent_atoms.push({ ...atom, coords: wrapped, id })
+      const identifier = atom.id && `${atom.id}${suffix}`
+      equivalent_atoms.push({ ...atom, coords: wrapped, id: identifier })
     }
   }
 
@@ -551,8 +555,15 @@ const parse_cif_atom_data = (
   )
   // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
   const raw_id = indices.label === undefined ? undefined : raw_data[indices.label]
-  const id = raw_id && ![`.`, `?`].includes(raw_id) ? raw_id : undefined
-  return { id, element, ambiguity, coords: coords_triplet, coords_type, occupancy: occu }
+  const identifier = raw_id && ![`.`, `?`].includes(raw_id) ? raw_id : undefined
+  return {
+    id: identifier,
+    element,
+    ambiguity,
+    coords: coords_triplet,
+    coords_type,
+    occupancy: occu,
+  }
 }
 
 // The two spellings of the symop column tag (old `_symmetry_` and current `_space_group_`)
@@ -726,11 +737,11 @@ export const parse_cif = (content: string): Crystal | null =>
       diag_error(`Insufficient cell parameters in CIF file`)
       return null
     }
-    const [a, b, c, alpha, beta, gamma] = cell_params
+    const [lattice_a, lattice_b, lattice_c, alpha, beta, gamma] = cell_params
     const lattice_matrix = cell_params_to_matrix(cell_params)
     const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
     const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, {
-      axis_lengths: [a, b, c],
+      axis_lengths: [lattice_a, lattice_b, lattice_c],
     }).convert
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
@@ -757,7 +768,9 @@ export const parse_cif = (content: string): Crystal | null =>
     const observed_counts = count_elements(atoms.map((atom) => atom.element))
     const already_enumerated =
       Object.keys(atom_type_counts).length > 0 &&
-      Object.entries(atom_type_counts).every(([el, exp]) => (observed_counts[el] ?? 0) >= exp)
+      Object.entries(atom_type_counts).every(
+        ([element, exp]) => (observed_counts[element] ?? 0) >= exp,
+      )
 
     const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops)
 
@@ -1149,10 +1162,14 @@ export function optimade_structure_from_raw(raw: unknown): OptimadeStructure | n
   const payload = raw && typeof raw === `object` && `data` in raw ? raw.data : raw
   const candidate = Array.isArray(payload) ? payload[0] : payload
   if (!candidate || typeof candidate !== `object`) return null
-  const { type, id, attributes } = candidate as Record<`type` | `id` | `attributes`, unknown>
+  const {
+    type,
+    id: identifier,
+    attributes,
+  } = candidate as Record<`type` | `id` | `attributes`, unknown>
   const is_structure =
     type === `structures` &&
-    typeof id === `string` &&
+    typeof identifier === `string` &&
     typeof attributes === `object` &&
     attributes !== null
   return is_structure ? (candidate as OptimadeStructure) : null

@@ -200,17 +200,21 @@ function set_svg_font_family(svg: SVGElement) {
 type SvgViewbox = [x: number, y: number, width: number, height: number]
 
 function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
-  const parts = svg
-    .getAttribute(`viewBox`)
-    ?.trim()
-    .split(/[\s,]+/)
-    .map(Number)
+  const viewbox = svg.getAttribute(`viewBox`)?.trim()
+  // Without a viewBox, SVG coordinates use the viewport's resolved length units.
+  const style = viewbox ? null : getComputedStyle(svg)
+  const parts = viewbox
+    ? viewbox.split(/[\s,]+/).map(Number)
+    : style
+      ? // oxlint-disable-next-line unicorn/prefer-number-coercion -- computed CSS dimensions include px
+        [0, 0, Number.parseFloat(style.width), Number.parseFloat(style.height)]
+      : null
   if (parts?.length !== 4 || !parts.every(Number.isFinite)) return null
-  const [x, y, width, height] = parts
+  const [coord_x, coord_y, width, height] = parts
   if (width <= 0 || height <= 0) return null
   const padded: SvgViewbox = [
-    x - padding,
-    y - padding,
+    coord_x - padding,
+    coord_y - padding,
     width + 2 * padding,
     height + 2 * padding,
   ]
@@ -299,17 +303,28 @@ function serialize_svg_for_export(
   svg_element: SVGElement,
   inline_styles: readonly string[] = [],
   viewbox_padding = 0,
-  strip_dimensions = false,
+  raster_size?: [width: number, height: number],
 ): string {
   const clone = svg_element.cloneNode(true) as SVGElement
   if (inline_styles.length) inline_computed_styles(svg_element, clone, inline_styles)
   // After the style pass, which walks source and clone in parallel by index
   inline_foreign_canvases(svg_element, clone)
-  const padded_viewbox = viewbox_padding > 0 ? svg_viewbox(clone, viewbox_padding) : null
+  // Interactive HTML controls taint a rasterized SVG. Components supply static SVG
+  // replacements using the same label layout, while transient tooltips are omitted.
+  for (const element of clone.querySelectorAll(`[data-export-exclude]`)) element.remove()
+  for (const element of clone.querySelectorAll(`[data-export-only]`)) {
+    element.removeAttribute(`display`)
+    element.removeAttribute(`data-export-only`)
+  }
+  const padded_viewbox =
+    viewbox_padding > 0 || raster_size ? svg_viewbox(svg_element, viewbox_padding) : null
   if (padded_viewbox) clone.setAttribute(`viewBox`, padded_viewbox.join(` `))
-  if (strip_dimensions) {
-    clone.removeAttribute(`width`)
-    clone.removeAttribute(`height`)
+  if (raster_size) {
+    const [width, height] = raster_size
+    clone.setAttribute(`width`, String(width))
+    clone.setAttribute(`height`, String(height))
+    clone.style.width = `${width}px`
+    clone.style.height = `${height}px`
   }
   set_svg_font_family(clone)
   if (!clone.hasAttribute(`xmlns`)) {
@@ -351,16 +366,13 @@ export function export_svg_as_svg(
   }
 }
 
-// Rasterize an SVG to a PNG Blob. Rejects when viewBox is missing or a dimension is zero.
+// Rasterize an SVG using its viewBox or viewport dimensions.
 export function svg_to_png_blob(
   svg_element: SVGElement,
   png_dpi = DEFAULT_PNG_DPI,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
 ): Promise<Blob> {
-  if (!svg_element.getAttribute(`viewBox`)?.trim())
-    return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
-
   const padding = resolve_viewbox_padding(svg_element, options)
   const padded_viewbox = svg_viewbox(svg_element, padding)
   if (!padded_viewbox)
@@ -382,7 +394,10 @@ export function svg_to_png_blob(
   canvas.width = pixel_width
   canvas.height = pixel_height
 
-  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, padding > 0)
+  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, [
+    pixel_width,
+    pixel_height,
+  ])
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
   let url_revoked = false
@@ -471,7 +486,7 @@ export function get_ffmpeg_conversion_command(input_filename: string): string {
   return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
 }
 
-// Export trajectory video as WebM with frame-by-frame rendering to prevent dropped frames.
+// Export trajectory video as WebM while advancing through the requested frames.
 // Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
 export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
@@ -529,7 +544,9 @@ export async function export_trajectory_video(
     // (canvas dimensions include device pixel ratio and any resolution_multiplier)
     const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
 
-    stream = canvas.captureStream(0)
+    // WebGPU canvases need automatic capture: a zero-rate stream can ignore requestFrame()
+    // and finalize as a header-only WebM even while trajectory frames render successfully.
+    stream = canvas.captureStream(fps)
     recorder = new MediaRecorder(stream, {
       mimeType: `video/webm;codecs=vp9`,
       videoBitsPerSecond: bitrate,
@@ -548,7 +565,7 @@ export async function export_trajectory_video(
 
     const frame_duration = 1000 / fps
 
-    // Render each frame sequentially with precise timing
+    // Advance frames sequentially, allowing rendering time between steps.
     for (let idx = 0; idx < total_frames; idx++) {
       const frame_start = performance.now()
 
@@ -557,7 +574,7 @@ export async function export_trajectory_video(
       // Update trajectory step
       if (on_step) await on_step(idx)
 
-      // Double RAF ensures Three.js completes rendering before capture
+      // Give the renderer two animation frames to display the updated step.
       await new Promise((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(resolve)),
       )

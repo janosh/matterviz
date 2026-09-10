@@ -28,7 +28,7 @@
   } from '$lib/plot/sankey/sankey-types'
   import { DEFAULTS } from '$lib/settings'
   import { to_error } from '$lib/utils'
-  import type { Snippet } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
 
@@ -196,8 +196,8 @@
     if (hovered_node != null) {
       const node = node_by_idx.get(hovered_node)
       if (!node) return null
-      const links = new SvelteSet<number>()
-      const nodes = new SvelteSet<number>([hovered_node])
+      const links = new Set<number>()
+      const nodes = new Set<number>([hovered_node])
       for (const link of [...(node.sourceLinks ?? []), ...(node.targetLinks ?? [])]) {
         links.add((link as PositionedLink).link_idx)
         nodes.add((link.source as PositionedNode).node_idx)
@@ -207,16 +207,38 @@
     }
     if (hover_info?.type === `link`) {
       return {
-        links: new SvelteSet([hover_info.link_idx]),
-        nodes: new SvelteSet([hover_info.source_idx, hover_info.target_idx]),
+        links: new Set([hover_info.link_idx]),
+        nodes: new Set([hover_info.source_idx, hover_info.target_idx]),
       }
     }
     return null
   })
 
+  // Missing SvelteSet members subscribe to the whole set. Indexed state gives every
+  // mark its own dependency, so moving between targets only updates their adjacency.
+  const active_nodes = $state<boolean[]>([])
+  const active_links = $state<boolean[]>([])
+  const has_active = $derived(active !== null)
+  let previous_active: typeof active = null
+  $effect.pre(() => {
+    const next_active = active
+    untrack(() => {
+      for (const [key, flags] of [
+        [`nodes`, active_nodes],
+        [`links`, active_links],
+      ] as const) {
+        for (const idx of previous_active?.[key] ?? [])
+          if (!next_active?.[key].has(idx)) flags[idx] = false
+        for (const idx of next_active?.[key] ?? [])
+          if (!previous_active?.[key].has(idx)) flags[idx] = true
+      }
+      previous_active = next_active
+    })
+  })
+
   const node_opacity = (node: PositionedNode): number => {
     if (muted_nodes.has(node.id)) return 0.12
-    if (active && !active.nodes.has(node.node_idx)) return 0.3
+    if (has_active && !active_nodes[node.node_idx]) return 0.3
     return 1
   }
 
@@ -224,8 +246,8 @@
     if (muted_nodes.has(link.source.id) || muted_nodes.has(link.target.id)) {
       return link_opacity * 0.15
     }
-    if (active) {
-      return active.links.has(link.link_idx)
+    if (has_active) {
+      return active_links[link.link_idx]
         ? Math.min(1, link_opacity + 0.35)
         : link_opacity * 0.25
     }
@@ -316,10 +338,10 @@
   // Only nodes that survive the layout (orphans with no links are dropped, see
   // compute_sankey_layout) - keeps the legend in sync with what's drawn.
   let legend_data = $derived(
-    layout.nodes.map(({ node_idx: idx, id, label }) => ({
+    layout.nodes.map(({ node_idx: idx, id: identifier, label }) => ({
       series_idx: idx,
-      label: label ?? `${id}`,
-      visible: !muted_nodes.has(id),
+      label: label ?? `${identifier}`,
+      visible: !muted_nodes.has(identifier),
       display_style: { symbol_type: `Square` as const, symbol_color: node_colors[idx] },
     })),
   )
@@ -341,8 +363,8 @@
   })
 
   function toggle_node(series_idx: number) {
-    const id = node_by_idx.get(series_idx)?.id ?? series_idx
-    if (!muted_nodes.delete(id)) muted_nodes.add(id)
+    const identifier = node_by_idx.get(series_idx)?.id ?? series_idx
+    if (!muted_nodes.delete(identifier)) muted_nodes.add(identifier)
   }
 
   // Node label placement: horizontal -> beside node; vertical -> above node

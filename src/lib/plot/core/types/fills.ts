@@ -92,7 +92,7 @@ export interface FillRegion {
 
   // Conditional fill: only fill where condition is true
   // Example: where: (x, y_upper, y_lower) => y_upper > y_lower
-  where?: (x: number, y_upper: number, y_lower: number) => boolean
+  where?: (coord_x: number, y_upper: number, y_lower: number) => boolean
 
   // Styling
   fill?: string | FillGradient

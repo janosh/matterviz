@@ -16,7 +16,7 @@ describe(`PortalSelect`, () => {
   afterEach(() => {
     document.body
       .querySelectorAll(`.portal-select-dropdown, .portal-select-trigger`)
-      .forEach((el) => el.remove())
+      .forEach((element) => element.remove())
   })
 
   test(`renders trigger with ARIA attributes and correct button type`, () => {

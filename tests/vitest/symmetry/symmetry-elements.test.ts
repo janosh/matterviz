@@ -105,20 +105,13 @@ describe(`classify_symmetry_op`, () => {
     },
   )
 
-  test(`P2_1/c operation 2: screw 2_1 along b at (0, y, 1/4)`, () => {
-    // ITA #14: (−x, y+1/2, −z+1/2)
-    const elem = classify_symmetry_op(col_major(ROT2_Y), [0, 0.5, 0.5])
-    expect(elem).toMatchObject({ kind: `screw`, label: `2_1`, axis: [0, 1, 0] })
-    expect(elem?.translation).toEqual([0, 0.5, 0])
-    expect(elem?.point).toEqual([0, 0, 0.25])
-  })
-
-  test(`P2_1/c operation 4: c-glide normal b at y = 1/4`, () => {
-    // ITA #14: (x, −y+1/2, z+1/2)
-    const elem = classify_symmetry_op(col_major(MIRROR_Y), [0, 0.5, 0.5])
-    expect(elem).toMatchObject({ kind: `glide`, label: `c`, axis: [0, 1, 0] })
-    expect(elem?.translation).toEqual([0, 0, 0.5])
-    expect(elem?.point).toEqual([0, 0.25, 0])
+  // ITA #14: (−x, y+1/2, −z+1/2) and (x, −y+1/2, z+1/2)
+  test.each([
+    [ROT2_Y, `screw`, `2_1`, [0, 0.5, 0], [0, 0, 0.25]],
+    [MIRROR_Y, `glide`, `c`, [0, 0, 0.5], [0, 0.25, 0]],
+  ] as const)(`P2_1/c %j yields %s %s`, (rotation, kind, label, translation, point) => {
+    const elem = classify_symmetry_op(col_major(rotation), [0, 0.5, 0.5])
+    expect(elem).toMatchObject({ kind, label, axis: [0, 1, 0], translation, point })
   })
 
   test.each([
@@ -133,8 +126,7 @@ describe(`classify_symmetry_op`, () => {
       const elem = classify_symmetry_op(col_major(MIRROR_Z), translation)
       expect(elem?.label).toBe(label)
       expect(elem?.axis).toEqual([0, 0, 1])
-      if (glide_vec === null) expect(elem?.translation).toBeNull()
-      else expect(elem?.translation).toEqual(glide_vec)
+      expect(elem?.translation).toEqual(glide_vec)
     },
   )
 
@@ -220,9 +212,10 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(elements).toHaveLength(8)
     expect(elements.every((elem) => elem.kind === `inversion`)).toBe(true)
     const centers = new Set(elements.map((elem) => elem.point.join(`,`)))
-    for (const x of [0, 0.5]) {
-      for (const y of [0, 0.5]) {
-        for (const z of [0, 0.5]) expect(centers).toContain([x, y, z].join(`,`))
+    for (const coord_x of [0, 0.5]) {
+      for (const coord_y of [0, 0.5]) {
+        for (const coord_z of [0, 0.5])
+          expect(centers).toContain([coord_x, coord_y, coord_z].join(`,`))
       }
     }
   })
@@ -282,20 +275,41 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     // 4-fold axes along cell edges, 3-fold along body diagonals, 2-fold along face
     // diagonals, mirrors normal to ⟨100⟩ and ⟨110⟩, inversion at the origin
     expect(
-      has((el) => el.kind === `rotation` && el.order === 4 && String(el.axis) === `0,0,1`),
+      has(
+        (element) =>
+          element.kind === `rotation` &&
+          element.order === 4 &&
+          String(element.axis) === `0,0,1`,
+      ),
     ).toBe(true)
     expect(
-      has((el) => el.kind === `rotation` && el.order === 3 && String(el.axis) === `1,1,1`),
+      has(
+        (element) =>
+          element.kind === `rotation` &&
+          element.order === 3 &&
+          String(element.axis) === `1,1,1`,
+      ),
     ).toBe(true)
     expect(
-      has((el) => el.kind === `rotation` && el.order === 2 && String(el.axis) === `1,1,0`),
+      has(
+        (element) =>
+          element.kind === `rotation` &&
+          element.order === 2 &&
+          String(element.axis) === `1,1,0`,
+      ),
     ).toBe(true)
-    expect(has((el) => el.kind === `mirror` && String(el.axis) === `0,0,1`)).toBe(true)
-    expect(has((el) => el.kind === `mirror` && String(el.axis) === `1,1,0`)).toBe(true)
-    expect(has((el) => el.kind === `inversion` && String(el.point) === `0,0,0`)).toBe(true)
-    expect(has((el) => el.kind === `rotoinversion`)).toBe(true)
+    expect(
+      has((element) => element.kind === `mirror` && String(element.axis) === `0,0,1`),
+    ).toBe(true)
+    expect(
+      has((element) => element.kind === `mirror` && String(element.axis) === `1,1,0`),
+    ).toBe(true)
+    expect(
+      has((element) => element.kind === `inversion` && String(element.point) === `0,0,0`),
+    ).toBe(true)
+    expect(has((element) => element.kind === `rotoinversion`)).toBe(true)
     // F-centering composes mirrors into glides
-    expect(has((el) => el.kind === `glide`)).toBe(true)
+    expect(has((element) => element.kind === `glide`)).toBe(true)
   })
 
   test(`Fd-3m (#227, diamond) has d-glides, 4_1 screws, and -3 rotoinversions`, () => {
@@ -375,7 +389,9 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
         translation: [0, 0, 0],
       })) as MoyoDataset[`operations`],
     )
-    const planes = elements.filter((el) => el.kind === `mirror` || el.kind === `glide`)
+    const planes = elements.filter(
+      (element) => element.kind === `mirror` || element.kind === `glide`,
+    )
     expect(planes).toHaveLength(2)
   })
 
@@ -387,13 +403,17 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       // centering vectors (needed to reduce screw/glide translations in centered cells)
       const centerings = ops
         .filter(
-          (op) =>
-            String(op.rotation) === `1,0,0,0,1,0,0,0,1` &&
-            op.translation.some((val) => Math.abs(val - Math.round(val)) > 1e-6),
+          (operation) =>
+            String(operation.rotation) === `1,0,0,0,1,0,0,0,1` &&
+            operation.translation.some((val) => Math.abs(val - Math.round(val)) > 1e-6),
         )
-        .map((op) => op.translation)
-      for (const op of ops) {
-        const elem = classify_symmetry_op(op.rotation, op.translation, centerings)
+        .map((operation) => operation.translation)
+      for (const operation of ops) {
+        const elem = classify_symmetry_op(
+          operation.rotation,
+          operation.translation,
+          centerings,
+        )
         if (elem === null) continue
         expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndg])$/)
         if (elem.axis) {
@@ -426,9 +446,9 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       (elem) => elem.axis && elem.kind !== `mirror` && elem.kind !== `glide`,
     )
     const order_4 = axes.filter((elem) => elem.order === 4)
-    const order_2 = axes.filter((elem) => elem.order === 2)
+    const order = axes.filter((elem) => elem.order === 2)
     expect(order_4.length).toBeGreaterThan(0)
-    const two_fold_loci = new Set(order_2.map((elem) => elem.locus))
+    const two_fold_loci = new Set(order.map((elem) => elem.locus))
     for (const elem of order_4) expect(two_fold_loci).toContain(elem.locus)
     // the legacy intercept key (point − λ·axis, unwrapped) misses some of these coincidences
     const intercept_key = (elem: SymmetryElement): string => {
@@ -437,7 +457,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       const intercept = elem.point.map((val, idx) => val - lambda * axis[idx])
       return `${axis.join(`,`)}|${intercept.map((val) => val.toFixed(4)).join(`,`)}`
     }
-    const two_fold_intercepts = new Set(order_2.map(intercept_key))
+    const two_fold_intercepts = new Set(order.map(intercept_key))
     expect(order_4.some((elem) => !two_fold_intercepts.has(intercept_key(elem)))).toBe(true)
   })
 
@@ -451,7 +471,9 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
         .map((elem) => String(elem.axis)),
     )
     expect(two_fold_axes).toEqual(new Set([`1,0,0`, `0,1,0`, `1,1,0`]))
-    expect(elements.some((el) => el.order === 3 && String(el.axis) === `0,0,1`)).toBe(true)
+    expect(
+      elements.some((element) => element.order === 3 && String(element.axis) === `0,0,1`),
+    ).toBe(true)
   })
 
   test(`I2_13 (#199): body centering halves the <111> axis period`, () => {
@@ -481,7 +503,9 @@ describe(`cell clipping helpers`, () => {
     (_name, point, direction, low_end, high_end) => {
       const seg = clip_line_to_cell(point, direction, cubic_2)
       expect(seg).not.toBeNull()
-      const sorted = (seg as [Vec3, Vec3]).toSorted((v1, v2) => v1[2] - v2[2])
+      const sorted = (seg as [Vec3, Vec3]).toSorted(
+        (vector_1, vector_2) => vector_1[2] - vector_2[2],
+      )
       expect(sorted).toEqual([low_end, high_end])
     },
   )

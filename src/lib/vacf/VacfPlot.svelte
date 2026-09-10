@@ -50,12 +50,12 @@
   })
 
   const curve_series = (
-    xs: number[],
+    x_values: number[],
     pick: (curve: VacfResult[`curves`][number]) => number[],
     metadata?: (curve: VacfResult[`curves`][number]) => Record<string, unknown>[],
   ): DataSeries[] =>
     (result?.curves ?? []).map((curve, idx) => ({
-      x: xs,
+      x: x_values,
       y: pick(curve),
       label: `${curve.label} (${curve.n_atoms} atoms)`,
       visible: idx < max_visible_curves,

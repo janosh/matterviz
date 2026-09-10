@@ -200,7 +200,7 @@ describe(`clip_bar`, () => {
     const seg = clip_bar(vertical, cross, 0, 1)
     expect(seg).not.toBeNull()
     const fixed_axis = vertical ? `x` : `y`
-    expect(seg?.points.every((pt) => pt[fixed_axis] === cross)).toBe(true)
+    expect(seg?.points.every((point) => point[fixed_axis] === cross)).toBe(true)
   })
 })
 
@@ -221,7 +221,7 @@ describe(`build_obstacles_norm`, () => {
     const pts = build_obstacles_norm(seg ? [seg] : [], 300, 200)
     expect(pts.length).toBeGreaterThan(0)
     expect(pts.length).toBeLessThan(100)
-    expect(pts.every((pt) => isFinite(pt.x) && isFinite(pt.y))).toBe(true)
+    expect(pts.every((point) => isFinite(point.x) && isFinite(point.y))).toBe(true)
   })
 
   test(`drops non-finite points`, () => {
@@ -255,7 +255,10 @@ describe(`build_obstacles_norm`, () => {
       200,
     )
     expect(obstacles.length).toBeGreaterThan(20)
-    const all_visible = obstacles.every(({ x, y }) => x >= 0 && x <= 1 && y >= 0 && y <= 1)
+    const all_visible = obstacles.every(
+      ({ x: coord_x, y: coord_y }) =>
+        coord_x >= 0 && coord_x <= 1 && coord_y >= 0 && coord_y <= 1,
+    )
     expect(all_visible).toBe(true)
   })
 })

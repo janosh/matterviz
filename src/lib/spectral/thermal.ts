@@ -18,25 +18,6 @@ export interface ThermalProperties {
   heat_capacity: number[] // C_v, eV/K
 }
 
-// Per-mode functions of x = ħω / k_B T in units of k_B. Written with exp(−x) and expm1 so
-// both limits are exact in floating point: large x (low T, stiff modes) underflows to 0
-// instead of overflowing e^x, and small x (high T) keeps 1 − e^{−x} ≈ x without cancellation.
-// x · e^{−x} is formed before any second factor of x so large finite x gives 0 · x = 0 rather
-// than ∞ · 0 = NaN. x = ∞ is the frozen mode (T = 0, or k_B T underflowed to a denormal).
-const mode_entropy = (x: number): number => {
-  if (x === Infinity) return 0
-  const one_minus_exp_neg = -Math.expm1(-x)
-  return (x * Math.exp(-x)) / one_minus_exp_neg - Math.log(one_minus_exp_neg)
-}
-// C_v = (x / (1 − e^{−x}))² e^{−x}: the ratio → 1 as x → 0 so no 0/0 when x² underflows
-const mode_heat_capacity = (x: number): number => {
-  if (x === Infinity) return 0
-  const ratio = x / -Math.expm1(-x)
-  return ratio * Math.exp(-x) * ratio
-}
-// ln(1 − e^{−x}), the free-energy integrand; 0 at x = ∞ so F(0 K) = ZPE exactly
-const mode_log_occupation = (x: number): number => Math.log(-Math.expm1(-x))
-
 // Thermal properties at each temperature (K) from a phonon DOS whose frequencies are in `unit`
 // (THz by default, as in phonopy / pymatgen dumps)
 export function thermal_properties(
@@ -81,23 +62,42 @@ export function thermal_properties(
     const segment = grid[Math.min(pos + 1, last)] - grid[Math.max(pos - 1, 0)]
     return (densities[idx] * segment) / 2
   })
-  const integrate = (integrand: (idx: number) => number): number =>
-    weights.reduce((total, weight, idx) => total + weight * integrand(idx), 0)
-
-  const zero_point_energy = integrate((idx) => mode_energies[idx] / 2)
+  const zero_point_energy = weights.reduce(
+    (total, weight, idx) => total + weight * (mode_energies[idx] / 2),
+    0,
+  )
   const [free_energy, internal_energy, entropy, heat_capacity]: number[][] = [[], [], [], []]
   for (const temp of temperatures) {
     // 0 K gives x = ∞ for every mode: the ground state. `|| 0` turns a -0 (which passes the
     // ≥ 0 check) into +0, since x = -∞ would make every mode function NaN
-    const kt = BOLTZMANN_EV_PER_K * temp || 0
-    const xs = mode_energies.map((energy) => energy / kt)
-    const s_val = BOLTZMANN_EV_PER_K * integrate((idx) => mode_entropy(xs[idx]))
+    const thermal_energy = BOLTZMANN_EV_PER_K * temp || 0
+    let entropy_sum = 0
+    let log_sum = 0
+    let heat_capacity_sum = 0
+    // Share exp/expm1/log across all three integrals without storing a per-temperature grid.
+    // exp(−x) avoids low-T overflow; expm1 keeps 1 − exp(−x) accurate at high T.
+    for (let idx = 0; idx < weights.length; idx++) {
+      const mode_x = mode_energies[idx] / thermal_energy
+      const exp_neg = Math.exp(-mode_x)
+      const one_minus_exp_neg = -Math.expm1(-mode_x)
+      const log_occupation = Math.log(one_minus_exp_neg)
+      const ratio = mode_x / one_minus_exp_neg
+      // At T = 0 (or underflowed k_B T), x = ∞ is a frozen mode. For finite x,
+      // multiply by exp(−x) before the second x factor, whose square may overflow.
+      const mode_entropy =
+        mode_x === Infinity ? 0 : (mode_x * exp_neg) / one_minus_exp_neg - log_occupation
+      const mode_heat_capacity = mode_x === Infinity ? 0 : ratio * exp_neg * ratio
+      entropy_sum += weights[idx] * mode_entropy
+      log_sum += weights[idx] * log_occupation
+      heat_capacity_sum += weights[idx] * mode_heat_capacity
+    }
+    const s_val = BOLTZMANN_EV_PER_K * entropy_sum
     // F = ZPE + k_B T ∫ g ln(1 − e^{−x}); U follows as F + TS
-    const f_val = zero_point_energy + kt * integrate((idx) => mode_log_occupation(xs[idx]))
+    const f_val = zero_point_energy + thermal_energy * log_sum
     free_energy.push(f_val)
     internal_energy.push(f_val + temp * s_val)
     entropy.push(s_val)
-    heat_capacity.push(BOLTZMANN_EV_PER_K * integrate((idx) => mode_heat_capacity(xs[idx])))
+    heat_capacity.push(BOLTZMANN_EV_PER_K * heat_capacity_sum)
   }
   return {
     temperatures: [...temperatures],

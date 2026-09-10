@@ -15,8 +15,8 @@ export type InvalidValueMode = `remove` | `propagate` | `interpolate`
 export type TruncationMode = `hard_cut` | `mark_unstable`
 
 export interface PhysicalBounds {
-  min?: number | ((x: number) => number) // Static or x-dependent minimum
-  max?: number | ((x: number) => number) // Static or x-dependent maximum
+  min?: number | ((coord_x: number) => number) // Static or x-dependent minimum
+  max?: number | ((coord_x: number) => number) // Static or x-dependent maximum
   mode?: `clamp` | `filter` | `null` // How to handle violations (default: clamp)
 }
 
@@ -107,16 +107,16 @@ function compute_local_variance(values: number[], window_size: number): number[]
   const result: number[] = Array(len)
   for (let idx = 0; idx < len; idx++) {
     const end = Math.min(len, idx + half_window + 1)
-    let [mean, m2, count] = [0, 0, 0]
+    let [mean, moment_2, count] = [0, 0, 0]
     for (let jdx = Math.max(0, idx - half_window); jdx < end; jdx++) {
       const val = values[jdx]
       if (!Number.isFinite(val)) continue
       count++
       const delta = val - mean
       mean += delta / count
-      m2 += delta * (val - mean)
+      moment_2 += delta * (val - mean)
     }
-    result[idx] = count > 1 ? m2 / (count - 1) : 0
+    result[idx] = count > 1 ? moment_2 / (count - 1) : 0
   }
   return result
 }
@@ -620,12 +620,12 @@ export function clean_series<T extends DataSeries>(
   else y_arr = invalid_result.cleaned
 
   if (config.bounds) {
-    const { y, violations, filtered_indices } = apply_bounds(
-      pick(series.x, kept),
-      y_arr,
-      config.bounds,
-    )
-    y_arr = y
+    const {
+      y: coord_y,
+      violations,
+      filtered_indices,
+    } = apply_bounds(pick(series.x, kept), y_arr, config.bounds)
+    y_arr = coord_y
     quality.bounds_violations = violations
     drop(filtered_indices)
   }
@@ -676,7 +676,7 @@ export function clean_multi_series(
       (bounds?.mode !== `filter` ||
         y_arrays.every((array) => is_in_bounds(array[idx], x_values[idx], bounds))),
   )
-  const x = pick(x_values, kept_indices)
+  const coord_x = pick(x_values, kept_indices)
   const quality = y_arrays.map((array) => {
     let invalid_count = 0
     for (let idx = 0; idx < length; idx++) if (!Number.isFinite(array[idx])) invalid_count++
@@ -688,13 +688,13 @@ export function clean_multi_series(
       cleaned = handle_invalid_values(cleaned, `interpolate`).cleaned
     }
     if (bounds && bounds.mode !== `filter`) {
-      const result = apply_bounds(x, cleaned, bounds)
+      const result = apply_bounds(coord_x, cleaned, bounds)
       cleaned = result.y
       quality[array_idx].bounds_violations = result.violations
     }
-    return smooth ? apply_smoothing(x, cleaned, smooth) : cleaned
+    return smooth ? apply_smoothing(coord_x, cleaned, smooth) : cleaned
   })
-  return { x, cleaned_y, quality }
+  return { x: coord_x, cleaned_y, quality }
 }
 
 // Clean correlated x/y/z for 3D data. All three arrays are filtered to the intersection of

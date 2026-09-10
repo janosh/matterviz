@@ -43,7 +43,9 @@
     current_diagram_input = null
     if (has_ext(filename, `.tdb`)) {
       const result = parse_tdb(text)
-      const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
+      const system_name = get_system_name(
+        result.data.elements.map((element) => element.symbol),
+      )
       const precomputed_data = find_precomputed_diagram(system_name) ?? null
       tdb = { result, system_name, precomputed_data }
       if (precomputed_data) current_data = precomputed_data

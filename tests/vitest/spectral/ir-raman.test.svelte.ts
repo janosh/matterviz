@@ -126,7 +126,7 @@ describe(`acoustic mode identification`, () => {
     (_name, spec, expected, freq_bound) => {
       const acoustic = spec.modes.filter((mode) => mode.is_acoustic)
       const indices = acoustic.map((mode) => mode.mode_idx)
-      expect(indices.toSorted((lo, hi) => lo - hi)).toEqual(expected)
+      expect(indices.toSorted((lower, upper) => lower - upper)).toEqual(expected)
       for (const mode of acoustic) {
         // Both bounds sit five or more orders under the smallest optical branch either
         // fixture carries (2 THz for CO2, 5.05 THz for NaCl), so this pins "zero-frequency"
@@ -316,11 +316,16 @@ describe(`raman_invariants`, () => {
     [`traceless uniaxial`, 1, 1, -2, 0, 7 * 9, 0.75],
     // Pure shear: a = 0, gamma^2 = 3 * xy^2
     [`pure shear`, 0, 0, 0, 3, 7 * 27, 0.75],
-  ])(`%s tensor`, (_name, xx, yy, zz, xy, activity, depolarization) => {
-    const invariants = raman_invariants(mat3([xx, xy, 0], [xy, yy, 0], [0, 0, zz]))
-    expect(invariants.activity).toBeCloseTo(activity, 12)
-    expect(invariants.depolarization_ratio).toBeCloseTo(depolarization, 12)
-  })
+  ])(
+    `%s tensor`,
+    (_name, tensor_xx, tensor_yy, tensor_zz, coords_xy, activity, depolarization) => {
+      const invariants = raman_invariants(
+        mat3([tensor_xx, coords_xy, 0], [coords_xy, tensor_yy, 0], [0, 0, tensor_zz]),
+      )
+      expect(invariants.activity).toBeCloseTo(activity, 12)
+      expect(invariants.depolarization_ratio).toBeCloseTo(depolarization, 12)
+    },
+  )
 
   it(`uses only the symmetric part of the tensor`, () => {
     const antisymmetric = mat3([0, 1, 0], [-1, 0, 0], [0, 0, 0])
@@ -932,11 +937,47 @@ describe(`IrRamanSpectrum component`, () => {
     await expect_plot_controls(document, controls_state, `ir-raman`)
   })
 
-  it(`hides sticks when show_sticks is false`, async () => {
-    render({ fwhm: 25, show_sticks: false })
-    await tick()
-    expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(0)
-  })
+  it.each([`multiple peaks`, `single peak`])(
+    `resets authored spectrum and stable broadening defaults for %s`,
+    async (variant) => {
+      render({
+        spectrum:
+          variant === `single peak`
+            ? { ...co2_spectrum, modes: [co2_spectrum.modes[8]] }
+            : co2_spectrum,
+        units: `THz`,
+        fwhm: 3,
+        shape_factor: 0.9,
+        normalize: null,
+        presentation: `transmittance`,
+        show_sticks: false,
+        controls_open: true,
+      })
+      await tick()
+      expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(0)
+      const reset_section = async (section: string) => {
+        const selector = `button[title="Reset ${section} to defaults"]`
+        doc_query<HTMLButtonElement>(selector).click()
+        await tick()
+        expect(document.querySelector(selector)).toBeNull()
+      }
+      await reset_section(`spectrum`)
+      expect(doc_query<HTMLSelectElement>(`#ir-raman-units`).value).toBe(`cm^-1`)
+      expect(doc_query<HTMLInputElement>(`#ir-raman-sticks`).checked).toBe(true)
+      expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(
+        variant === `single peak` ? 1 : 3,
+      )
+      await reset_section(`broadening`)
+      const fwhm_input = doc_query<HTMLInputElement>(`#ir-raman-fwhm`)
+      const reset_width = Number(fwhm_input.value)
+      if (variant === `single peak`) expect(reset_width).toBe(10)
+      fwhm_input.value = String(reset_width * 2)
+      fwhm_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      await reset_section(`broadening`)
+      expect(Number(fwhm_input.value)).toBe(reset_width)
+    },
+  )
 
   it(`selects a mode from a stick by pointer or keyboard`, async () => {
     const on_mode_select = vi.fn()
@@ -966,37 +1007,26 @@ describe(`IrRamanSpectrum component`, () => {
     expect(document.body.textContent).toMatch(/No IR-active modes/)
   })
 
-  // FWHM is quoted in whatever unit is on the axis, so switching units has to carry it
-  // across; otherwise 25 cm^-1 silently becomes 25 THz, i.e. 834 cm^-1 of broadening.
-  it.each([`THz`, `meV`] as const)(`rescales fwhm from cm^-1 to %s`, async (units) => {
-    type Props = { spectrum: typeof co2_spectrum; units: FrequencyUnit; fwhm: number }
-    const props: Props = $state({ spectrum: co2_spectrum, units: `cm^-1`, fwhm: 25 })
-    mount(IrRamanSpectrum, { target: document.body, props })
-    await tick()
-    props.units = units
-    await tick()
-    const ratio = convert_frequencies([1], units)[0] / convert_frequencies([1], `cm^-1`)[0]
-    // Pure multiplication by a ratio of f64 constants, so demand near-exact agreement
-    expect(props.fwhm).toBeCloseTo(25 * ratio, 12)
-  })
-
-  // `cm-1`/`cm⁻¹` are the spellings found in the wild; they map to cm^-1 at the prop boundary
-  // (no throw, no fwhm rescale since the unit did not actually change)
-  it.each([`cm-1`, `cm⁻¹`])(`accepts %s as an alias of cm^-1`, async (alias) => {
-    type Props = { spectrum: typeof co2_spectrum; units: FrequencyUnit; fwhm: number }
-    const props: Props = $state({
-      spectrum: co2_spectrum,
-      units: alias as FrequencyUnit,
-      fwhm: 25,
-    })
+  // Physical unit changes rescale FWHM; alternate cm^-1 spellings preserve it exactly.
+  it.each([
+    [`cm^-1`, `THz`],
+    [`cm^-1`, `meV`],
+    [`cm-1`, `cm^-1`],
+    [`cm⁻¹`, `cm^-1`],
+  ] as const)(`fwhm follows the unit transition %s → %s`, async (initial, units) => {
+    const props = $state({ spectrum: co2_spectrum, units: initial as FrequencyUnit, fwhm: 25 })
     mount(IrRamanSpectrum, { target: document.body, props })
     await tick()
     expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
     expect(props.fwhm).toBe(25)
-    // flipping to the canonical spelling is the same unit: fwhm must not rescale either
-    props.units = `cm^-1`
+    props.units = units
     await tick()
-    expect(props.fwhm).toBe(25)
+    if (units === `cm^-1`) expect(props.fwhm).toBe(25)
+    else {
+      const ratio = convert_frequencies([1], units)[0] / convert_frequencies([1], `cm^-1`)[0]
+      // Pure multiplication by a ratio of f64 constants, so demand near-exact agreement.
+      expect(props.fwhm).toBeCloseTo(25 * ratio, 12)
+    }
   })
 
   // The curve itself is not measurable here — the plot's line path stays empty under

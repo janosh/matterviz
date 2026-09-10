@@ -26,13 +26,13 @@ const dimensions = (width: number, line_height = 10, line_count = 1): TickLabelD
 })
 
 const tick_item = (
-  id: string,
+  identifier: string,
   axis: number,
   width = 20,
   overrides: Partial<TickLabelItem> = {},
 ): TickLabelItem => ({
-  id,
-  lines: [`${id}-label`],
+  id: identifier,
+  lines: [`${identifier}-label`],
   position: { axis, cross_axis: 0 },
   anchor: `middle`,
   dimensions: dimensions(width),

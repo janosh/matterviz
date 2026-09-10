@@ -37,22 +37,26 @@ export const rolls_measured_sites = (mode: MeasureMode): boolean => mode in ORDE
 // pbc flags disable wrapping along non-periodic axes (e.g. slab vacuum directions).
 export function displacement_pbc(
   from: Vec3,
-  to: Vec3,
+  target: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
   converters?: LatticeConverters,
   pbc?: Pbc,
 ): Vec3 {
-  if (!lattice_matrix) return subtract(to, from)
-  return min_image_displacement(from, to, lattice_matrix, converters, pbc)
+  if (!lattice_matrix) return subtract(target, from)
+  return min_image_displacement(from, target, lattice_matrix, converters, pbc)
 }
 
-export function angle_between_vectors(v1: Vec3, v2: Vec3, mode: AngleMode = `degrees`) {
-  const n1 = Math.hypot(v1[0], v1[1], v1[2])
-  const n2 = Math.hypot(v2[0], v2[1], v2[2])
-  if (n1 === 0 || n2 === 0) return 0
+export function angle_between_vectors(
+  vector_1: Vec3,
+  vector_2: Vec3,
+  mode: AngleMode = `degrees`,
+) {
+  const count_1 = Math.hypot(vector_1[0], vector_1[1], vector_1[2])
+  const count = Math.hypot(vector_2[0], vector_2[1], vector_2[2])
+  if (count_1 === 0 || count === 0) return 0
 
   // Normalize dot product to get cosine, clamped to [-1, 1] to avoid acos NaN
-  const ang = Math.acos(clamp(dot(v1, v2) / (n1 * n2), -1, 1))
+  const ang = Math.acos(clamp(dot(vector_1, vector_2) / (count_1 * count), -1, 1))
   return mode === `degrees` ? to_degrees(ang) : ang
 }
 
@@ -146,19 +150,19 @@ export function compute_displacements(
 // to eclipse the rear bond p3->p4. Enantiomers and gauche+/gauche- conformers therefore stay
 // distinguishable, and the sign labels their handedness correctly.
 export function dihedral_angle(
-  p1: Vec3,
-  p2: Vec3,
-  p3: Vec3,
-  p4: Vec3,
+  point_1: Vec3,
+  point: Vec3,
+  point_3: Vec3,
+  point_4: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
   pbc?: Pbc,
   mode: AngleMode = `degrees`,
 ): number {
   // One converter set for all three bonds instead of three (this runs per label render)
   const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
-  const bond_12 = displacement_pbc(p1, p2, lattice_matrix, converters, pbc)
-  const bond_23 = displacement_pbc(p2, p3, lattice_matrix, converters, pbc)
-  const bond_34 = displacement_pbc(p3, p4, lattice_matrix, converters, pbc)
+  const bond_12 = displacement_pbc(point_1, point, lattice_matrix, converters, pbc)
+  const bond_23 = displacement_pbc(point, point_3, lattice_matrix, converters, pbc)
+  const bond_34 = displacement_pbc(point_3, point_4, lattice_matrix, converters, pbc)
 
   // Plane normals of the p1-p2-p3 and p2-p3-p4 triangles
   const normal_123 = cross_3d(bond_12, bond_23)

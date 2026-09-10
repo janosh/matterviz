@@ -1,3 +1,4 @@
+import * as density_utils from '$lib/plot/scatter/adaptive-density'
 import type { Vec2 } from '$lib/math'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
@@ -64,8 +65,8 @@ const unit_axes = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] a
 // Plot-area centre in client coords, read off the rendered chart rect rather than hardcoded
 // so tuning the default padding can't silently move these hit tests off their target.
 const plot_center = (): { x: number; y: number } => {
-  const { x, y, width, height } = clip_rect()
-  return { x: x + width / 2, y: y + height / 2 }
+  const { x: coord_x, y: coord_y, width, height } = clip_rect()
+  return { x: coord_x + width / 2, y: coord_y + height / 2 }
 }
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
@@ -94,7 +95,9 @@ const tick_labels = (axis: `x` | `y`): string[] =>
 const capture_radii = (overrides: Partial<CanvasRenderingContext2D> = {}): number[] => {
   const radii: number[] = []
   mock_canvas_context({
-    arc: vi.fn((_x: number, _y: number, radius: number) => radii.push(radius)),
+    arc: vi.fn((_unused_coord_x: number, _unused_coord_y: number, radius: number) =>
+      radii.push(radius),
+    ),
     ...overrides,
   })
   return radii
@@ -229,10 +232,10 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`auto-ranges finite pairs on logarithmic axes`, async () => {
     const plotted_x: number[] = []
-    const arc = vi.fn((x: number, y: number) => {
-      expect(Number.isFinite(x)).toBe(true)
-      expect(Number.isFinite(y)).toBe(true)
-      plotted_x.push(x)
+    const arc = vi.fn((coord_x: number, coord_y: number) => {
+      expect(Number.isFinite(coord_x)).toBe(true)
+      expect(Number.isFinite(coord_y)).toBe(true)
+      plotted_x.push(coord_x)
     })
     mock_canvas_context({ arc })
 
@@ -566,9 +569,9 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`skips non-finite coordinates in point rendering`, async () => {
-    const arc = vi.fn((x: number, y: number, radius: number) => {
-      expect(Number.isFinite(x)).toBe(true)
-      expect(Number.isFinite(y)).toBe(true)
+    const arc = vi.fn((coord_x: number, coord_y: number, radius: number) => {
+      expect(Number.isFinite(coord_x)).toBe(true)
+      expect(Number.isFinite(coord_y)).toBe(true)
       expect(radius).toBe(4)
     })
     const ctx = mock_canvas_context({ arc })
@@ -616,6 +619,49 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     expect(radii).toEqual(expected_radii)
+  })
+
+  test(`radius changes reuse size bounds and projected visible points`, async () => {
+    const extents = vi.spyOn(density_utils, `series_extents`)
+    let x_axis = $state({ range: [0, 1] as Vec2 })
+    const radii = capture_radii()
+    let size_scale = $state({ radius_range: [2, 8] as Vec2 })
+    const read_x = vi.fn(() => 0.5)
+    const read_size = vi.fn(() => 10)
+    const coord_x = {
+      length: 1,
+      get 0() {
+        return read_x()
+      },
+    }
+    const sizes = {
+      length: 1,
+      get 0() {
+        return read_size()
+      },
+    }
+    mount_plot({
+      series: [{ x: coord_x, y: [0.5], size_values: sizes }],
+      ...point_mode(),
+      get x_axis() {
+        return x_axis
+      },
+      get size_scale() {
+        return size_scale
+      },
+    })
+    await settle()
+    const reads = [read_x.mock.calls.length, read_size.mock.calls.length]
+    const first_radius = radii.at(-1)
+    size_scale = { radius_range: [4, 16] }
+    await settle()
+    expect(radii.at(-1)).toBe(2 * (first_radius ?? 0))
+    expect([read_x.mock.calls.length, read_size.mock.calls.length]).toEqual(reads)
+    const extent_calls = extents.mock.calls.length
+    expect(extent_calls).toBeGreaterThan(0)
+    x_axis = { range: [0.25, 0.75] }
+    await settle()
+    expect(extents.mock.calls).toHaveLength(extent_calls)
   })
 
   // A point drawn at radius 18 must stay pickable 17px off its center
@@ -770,7 +816,7 @@ describe(`BinnedScatterPlot`, () => {
       expect(values.length, axis).toBeGreaterThan(1)
       return [Math.min(...values), Math.max(...values)]
     }
-    const within = (span: Vec2, [lo, hi]: Vec2) => span[0] >= lo && span[1] <= hi
+    const within = (span: Vec2, [lower, upper]: Vec2) => span[0] >= lower && span[1] <= upper
     const full_view = () => {
       expect(tick_span(`x`)).toEqual([0, 1])
       expect(tick_span(`y`)).toEqual([0, 1])
@@ -787,9 +833,9 @@ describe(`BinnedScatterPlot`, () => {
     full_view()
 
     // A drag inside the plot area zooms both axes to the dragged fraction of the unit range
-    const [x0, x1] = [area.x + 0.25 * area.width, area.x + 0.75 * area.width]
-    const [y0, y1] = [area.y + 0.25 * area.height, area.y + 0.75 * area.height]
-    await drag([x0, y0], [x1, y1])
+    const [coord_x_0, coord_x_1] = [area.x + 0.25 * area.width, area.x + 0.75 * area.width]
+    const [coord_y_0, coord_y_1] = [area.y + 0.25 * area.height, area.y + 0.75 * area.height]
+    await drag([coord_x_0, coord_y_0], [coord_x_1, coord_y_1])
     expect(within(tick_span(`x`), [0.25, 0.75])).toBe(true)
     expect(within(tick_span(`y`), [0.25, 0.75])).toBe(true)
     expect(tick_span(`x`)[1] - tick_span(`x`)[0]).toBeLessThan(0.5)
@@ -1249,6 +1295,7 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`waits for plot dimensions before scanning explicit-range data`, async () => {
     let accesses = 0
+    let x_axis = $state({ range: [0, 1] as Vec2 })
     const counted = (values: number[]) =>
       new Proxy(values, {
         get(target, prop, receiver) {
@@ -1267,27 +1314,35 @@ describe(`BinnedScatterPlot`, () => {
       ],
       ...density_mode(),
       ...unit_axes,
+      get x_axis() {
+        return x_axis
+      },
     })
     await settle()
 
     expect(render_mode()).toBe(`density`)
-    expect(accesses).toBe(n_points * 2)
+    // One x-order scan, one x/y binning scan, and two binary boundary searches.
+    expect(accesses).toBeGreaterThanOrEqual(n_points * 3)
+    expect(accesses).toBeLessThanOrEqual(n_points * 3 + 2 * Math.ceil(Math.log2(n_points)))
 
     accesses = 0
     hover_plot(420, 280)
     expect(accesses).toBe(0)
+    x_axis = { range: [0.4, 0.41] }
+    await settle()
+    expect(accesses).toBeLessThan(100)
   })
 
   test(`mounts and bins one million auto-ranged points`, async () => {
     const n_points = 1_000_000
-    const x = new Float32Array(n_points)
-    const y = new Float32Array(n_points)
+    const coord_x = new Float32Array(n_points)
+    const coord_y = new Float32Array(n_points)
     for (let idx = 0; idx < n_points; idx++) {
-      x[idx] = (idx % 10_000) / 10_000
-      y[idx] = ((idx * PSEUDO_RANDOM_MULTIPLIER) % 1_000_000) / 1_000_000
+      coord_x[idx] = (idx % 10_000) / 10_000
+      coord_y[idx] = ((idx * PSEUDO_RANDOM_MULTIPLIER) % 1_000_000) / 1_000_000
     }
 
-    mount_plot({ series: [{ x, y }], ...density_mode_with_colorbar() })
+    mount_plot({ series: [{ x: coord_x, y: coord_y }], ...density_mode_with_colorbar() })
     await settle()
 
     expect(render_mode()).toBe(`density`)

@@ -30,8 +30,8 @@ const make_async_run = (frame_list: TrajectoryFrame[]) => {
       }
       pending.push(entry)
       signal?.addEventListener(`abort`, () => {
-        const at = pending.indexOf(entry)
-        if (at !== -1) pending.splice(at, 1)
+        const offset = pending.indexOf(entry)
+        if (offset !== -1) pending.splice(offset, 1)
         reject(signal.reason instanceof Error ? signal.reason : new Error(`Read aborted`))
       })
     })
@@ -208,10 +208,12 @@ describe(`frame loading`, () => {
 describe(`scrub vs commit`, () => {
   it(`coalesces a slider burst into one rAF write, settles after the quiet period, and no-ops on a non-finite index`, () => {
     const raf_callbacks: FrameRequestCallback[] = []
-    const raf = vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((cb) => {
-      raf_callbacks.push(cb)
-      return raf_callbacks.length
-    })
+    const raf = vi
+      .spyOn(globalThis, `requestAnimationFrame`)
+      .mockImplementation((callback_fn) => {
+        raf_callbacks.push(callback_fn)
+        return raf_callbacks.length
+      })
     const run = trajectory_from_frames(frames(20))
     const { host, session, events, destroy } = make_session({ run })
     session.scrub(4)

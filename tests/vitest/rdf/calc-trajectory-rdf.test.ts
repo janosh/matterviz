@@ -212,13 +212,13 @@ describe(`collect_trajectory_rdf`, () => {
 })
 
 describe(`rdf_shell`, () => {
-  const r = Array.from({ length: 50 }, (_unused, idx) => (idx + 0.5) * 0.1)
+  const radius = Array.from({ length: 50 }, (_unused, idx) => (idx + 0.5) * 0.1)
   const gaussian = (center: number, height: number, width = 0.2) =>
-    r.map((rad) => height * Math.exp(-(((rad - center) / width) ** 2)))
+    radius.map((rad) => height * Math.exp(-(((rad - center) / width) ** 2)))
 
   test(`finds the first peak, the minimum after it and integrates the shell`, () => {
     const g_r = gaussian(2.05, 4).map((val, idx) => val + gaussian(4.05, 2)[idx])
-    const shell = rdf_shell(r, g_r, 0.05)
+    const shell = rdf_shell(radius, g_r, 0.05)
     expect(shell.first_peak_r).toBeCloseTo(2.05, 6)
     expect(shell.first_peak_height).toBeCloseTo(4, 6)
     // the curve bottoms out between the two Gaussians
@@ -230,7 +230,7 @@ describe(`rdf_shell`, () => {
   })
 
   test.each<[string, number[], Partial<ReturnType<typeof rdf_shell>>]>([
-    [`a flat g(r) = 1`, r.map(() => 1), { first_peak_r: null, coordination: null }],
+    [`a flat g(r) = 1`, radius.map(() => 1), { first_peak_r: null, coordination: null }],
     // still falling at the cutoff: the peak is reported, the shell is not closed
     [
       `a peak near the cutoff`,
@@ -242,11 +242,11 @@ describe(`rdf_shell`, () => {
     // a crystal's gap between shells runs to the cutoff: the shell still closes at the gap
     [
       `a shell followed by zeros`,
-      r.map((rad) => (Math.abs(rad - 2.05) < 0.08 ? 5 : 0)),
+      radius.map((rad) => (Math.abs(rad - 2.05) < 0.08 ? 5 : 0)),
       { first_peak_r: expect.closeTo(2.05, 6), first_min_r: expect.closeTo(2.25, 6) },
     ],
     [`too few bins`, [1, 2], { first_peak_r: null }],
   ])(`handles %s`, (_label, g_r, expected) => {
-    expect(rdf_shell(r.slice(0, g_r.length), g_r, 0.1)).toMatchObject(expected)
+    expect(rdf_shell(radius.slice(0, g_r.length), g_r, 0.1)).toMatchObject(expected)
   })
 })

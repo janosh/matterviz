@@ -34,16 +34,18 @@ export const require_bbox = async (locator: Locator, label = `element`): Promise
 // Bounding boxes of the first `count` matches (all by default), skipping unrendered ones
 export const bounding_boxes = async (locator: Locator, count = Infinity): Promise<Box[]> =>
   (
-    await Promise.all((await locator.all()).slice(0, count).map((el) => el.boundingBox()))
+    await Promise.all(
+      (await locator.all()).slice(0, count).map((element) => element.boundingBox()),
+    )
   ).filter(is_present)
 
 // x/y/width/height attributes of an SVG <rect>
 export const svg_rect = (rect: Locator): Promise<Box> =>
-  rect.evaluate((el) => ({
-    x: Number(el.getAttribute(`x`)),
-    y: Number(el.getAttribute(`y`)),
-    width: Number(el.getAttribute(`width`)),
-    height: Number(el.getAttribute(`height`)),
+  rect.evaluate((element) => ({
+    x: Number(element.getAttribute(`x`)),
+    y: Number(element.getAttribute(`y`)),
+    width: Number(element.getAttribute(`width`)),
+    height: Number(element.getAttribute(`height`)),
   }))
 
 export const tick_texts = (plot: Locator, axis: `x` | `y` | `y2`): Promise<string[]> =>
@@ -143,8 +145,8 @@ export const canvas_center = async (
 export async function drag_canvas(
   canvas: Locator,
   {
-    dx = 100,
-    dy = 0,
+    dx: delta_x = 100,
+    dy: delta_y = 0,
     button = `left`,
     steps = 5,
   }: {
@@ -155,10 +157,10 @@ export async function drag_canvas(
   } = {},
 ): Promise<void> {
   const page = canvas.page()
-  const { x, y } = await canvas_center(canvas)
-  await page.mouse.move(x - dx / 2, y - dy / 2)
+  const { x: coord_x, y: coord_y } = await canvas_center(canvas)
+  await page.mouse.move(coord_x - delta_x / 2, coord_y - delta_y / 2)
   await page.mouse.down({ button })
-  await page.mouse.move(x + dx / 2, y + dy / 2, { steps })
+  await page.mouse.move(coord_x + delta_x / 2, coord_y + delta_y / 2, { steps })
   await page.mouse.up({ button })
 }
 
@@ -306,8 +308,8 @@ export async function open_settings_pane(page: Page): Promise<Locator> {
 
 // Set an input value and dispatch events
 export const set_input_value = async (input: Locator, value: string): Promise<void> => {
-  await input.evaluate((el, val) => {
-    const inp = el as HTMLInputElement
+  await input.evaluate((element, val) => {
+    const inp = element as HTMLInputElement
     inp.value = val
     inp.dispatchEvent(new Event(`input`, { bubbles: true }))
     inp.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -326,9 +328,9 @@ export async function drop_file(
 ): Promise<void> {
   const data_transfer = await page.evaluateHandle(
     ([text, name, type]) => {
-      const dt = new DataTransfer()
-      dt.items.add(new File([text], name, { type }))
-      return dt
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([text], name, { type }))
+      return transfer
     },
     [content, filename, mime] as const,
   )
@@ -548,11 +550,11 @@ export async function expect_shift_drag_pans(page: Page, plot: Locator): Promise
 
   const area = await measure_plot_area(plot)
   const { clip, svg_box } = area
-  const y = svg_box.y + clip.y + clip.height / 2
+  const coord_y = svg_box.y + clip.y + clip.height / 2
   await page.keyboard.down(`Shift`)
-  await page.mouse.move(svg_box.x + clip.x + clip.width * 0.3, y)
+  await page.mouse.move(svg_box.x + clip.x + clip.width * 0.3, coord_y)
   await page.mouse.down()
-  await page.mouse.move(svg_box.x + clip.x + clip.width * 0.7, y, { steps: 10 })
+  await page.mouse.move(svg_box.x + clip.x + clip.width * 0.7, coord_y, { steps: 10 })
   await expect(zoom_rect).toBeHidden()
   await page.mouse.up()
   await page.keyboard.up(`Shift`)
@@ -615,12 +617,12 @@ export async function canvas_screenshot(canvas: Locator): Promise<Buffer> {
   if (!box) throw new Error(`Canvas has no bounding box`)
   const page = canvas.page()
   const viewport = page.viewportSize() ?? { width: 1280, height: 720 }
-  const x = Math.min(Math.max(0, box.x), viewport.width - 1)
-  const y = Math.min(Math.max(0, box.y), viewport.height - 1)
-  const width = Math.max(1, Math.min(Math.ceil(box.width), viewport.width - x))
-  const height = Math.max(1, Math.min(Math.ceil(box.height), viewport.height - y))
+  const coord_x = Math.min(Math.max(0, box.x), viewport.width - 1)
+  const coord_y = Math.min(Math.max(0, box.y), viewport.height - 1)
+  const width = Math.max(1, Math.min(Math.ceil(box.width), viewport.width - coord_x))
+  const height = Math.max(1, Math.min(Math.ceil(box.height), viewport.height - coord_y))
   return page.screenshot({
-    clip: { x, y, width, height },
+    clip: { x: coord_x, y: coord_y, width, height },
     animations: `disabled`,
     timeout: get_canvas_timeout(),
   })
@@ -682,16 +684,17 @@ export function sweep_gizmo_handles(
       const hits: GizmoHandleHit[] = []
       for (let row = 0; row < steps; row++) {
         for (let col = 0; col < steps; col++) {
-          const x = bounds.left + ((col + 0.5) / steps) * probe
-          const y = bounds.bottom - lift - ((row + 0.5) / steps) * probe
+          const coord_x = bounds.left + ((col + 0.5) / steps) * probe
+          const coord_y = bounds.bottom - lift - ((row + 0.5) / steps) * probe
           const move = new PointerEvent(`pointermove`, {
-            clientX: x,
-            clientY: y,
+            clientX: coord_x,
+            clientY: coord_y,
             bubbles: true,
           })
           cvs.dispatchEvent(move)
           await new Promise((resolve) => requestAnimationFrame(resolve))
-          if (cvs.style.cursor === `pointer`) hits.push({ key: `${row},${col}`, x, y })
+          if (cvs.style.cursor === `pointer`)
+            hits.push({ key: `${row},${col}`, x: coord_x, y: coord_y })
         }
       }
       return hits

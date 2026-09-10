@@ -75,16 +75,14 @@ test.describe(`Site Vectors`, () => {
     await expect(section.locator(`label`).filter({ hasText: /^Color$/ })).toHaveCount(0)
 
     for (const key of VECTOR_KEYS.multi) {
-      const toggle = labels_with(pane_div, key).first()
+      const toggle = pane_div.locator(`[data-key="vector_config:${key}"]`)
       await expect(toggle.locator(`input[type="checkbox"]`)).toBeVisible()
       await expect(toggle.locator(`input[type="color"]`)).toBeVisible()
       await expect(labels_with(pane_div, `${key} scale`)).toBeVisible()
     }
 
     // toggling a layer off hides its scale slider and changes the canvas
-    const magmom_toggle = labels_with(pane_div, `magmom`).filter({
-      has: page.locator(`input[type="color"]`),
-    })
+    const magmom_toggle = pane_div.locator(`[data-key="vector_config:magmom"]`)
     await expect_canvas_changed_by(structure_canvas(page), async () => {
       await magmom_toggle.locator(`input[type="checkbox"]`).click()
       await expect(labels_with(pane_div, `magmom scale`)).toBeHidden()
@@ -100,9 +98,9 @@ test.describe(`Site Vectors`, () => {
     )
 
     const { pane_div } = await open_structure_control_pane(page)
-    await expect(pane_div.locator(`text=Site Vectors`)).toBeVisible()
-    await expect(labels_with(pane_div, `force`).first()).toBeVisible()
-    await expect(labels_with(pane_div, `Origin Gap`)).toHaveCount(0)
+    await expect(pane_div.getByRole(`region`, { name: /site vectors/i })).toBeVisible()
+    await expect(pane_div.locator(`[data-key="vector_config:force"]`)).toBeVisible()
+    await expect(pane_div.locator(`[data-key="vector_origin_gap"]`)).toHaveCount(0)
     await expect(labels_with(pane_div, `force scale`)).toHaveCount(0)
   })
 })

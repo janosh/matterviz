@@ -187,14 +187,14 @@ test.describe(`StructureScene Component Tests`, () => {
     // partial occupancies render next to each species
     await expect(elements.locator(`.occupancy`)).toHaveText([`0.645`, `0.345`, `0.01`])
     // tooltip must respect its max-width (wrap) rather than grow unbounded
-    const { width, max_width, line_count } = await elements.evaluate((el) => {
-      const tip = el.closest(`[role="tooltip"]`) as HTMLElement
-      const species = el.querySelector(`.species`) as HTMLElement
+    const { width, max_width, line_count } = await elements.evaluate((element) => {
+      const tip = element.closest(`[role="tooltip"]`) as HTMLElement
+      const species = element.querySelector(`.species`) as HTMLElement
       return {
         width: tip.getBoundingClientRect().width,
         max_width: Number(getComputedStyle(tip).maxWidth.replace(`px`, ``)),
         // rows = total height / single species (one-line) height
-        line_count: Math.round(el.clientHeight / species.clientHeight),
+        line_count: Math.round(element.clientHeight / species.clientHeight),
       }
     })
     expect(max_width).toBeGreaterThan(0)
@@ -215,14 +215,14 @@ test.describe(`StructureScene Component Tests`, () => {
     const tooltip = site_tooltip(page)
 
     // Points along the formerly-dead equatorial band through the ball center.
-    for (const dx of [0, -24, 24, -12, 12]) {
+    for (const delta_x of [0, -24, 24, -12, 12]) {
       await hover_canvas_corner(canvas)
       await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
       await canvas.hover({
-        position: { x: box.width / 2 + dx, y: box.height / 2 },
+        position: { x: box.width / 2 + delta_x, y: box.height / 2 },
         force: true,
       })
-      await expect(tooltip, `point (${dx}, 0) should be hoverable`).toBeVisible({
+      await expect(tooltip, `point (${delta_x}, 0) should be hoverable`).toBeVisible({
         timeout: get_canvas_timeout(),
       })
     }

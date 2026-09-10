@@ -137,7 +137,9 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
       await Promise.all(before_bars.slice(0, 5).map((handle) => handle.boundingBox()))
     ).filter(is_present)
 
-    const vertical_count_before = before_boxes.filter((bb) => bb.height > bb.width).length
+    const vertical_count_before = before_boxes.filter(
+      (bounds) => bounds.height > bounds.width,
+    ).length
     expect(vertical_count_before).toBeGreaterThan(2)
 
     // Switch to horizontal
@@ -150,7 +152,9 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
         await Promise.all(after_bars.slice(0, 5).map((handle) => handle.boundingBox()))
       ).filter(is_present)
 
-      const horizontal_count_after = after_boxes.filter((bb) => bb.width > bb.height).length
+      const horizontal_count_after = after_boxes.filter(
+        (bounds) => bounds.width > bounds.height,
+      ).length
       expect(horizontal_count_after).toBeGreaterThan(2)
     }).toPass({ timeout: 2000 })
   })
@@ -249,11 +253,11 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     ).filter(is_present)
 
     // Check bars have reasonable width (not zero or negative)
-    const widths = bar_boxes.map((bb) => bb.width)
+    const widths = bar_boxes.map((bounds) => bounds.width)
     expect(Math.min(...widths)).toBeGreaterThan(0.5)
 
     // Check bars have reasonable heights
-    const heights = bar_boxes.map((bb) => bb.height)
+    const heights = bar_boxes.map((bounds) => bounds.height)
     expect(Math.min(...heights)).toBeGreaterThan(0)
   })
 

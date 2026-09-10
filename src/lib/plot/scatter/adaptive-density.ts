@@ -1,6 +1,5 @@
-import { clamp, LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
+import { clamp, partition_point, LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
 import { range_bounds } from '$lib/plot/core/interactions'
-import { build_spatial_index, type SpatialIndex } from '$lib/plot/core/spatial-index'
 import type { ScaleType } from '$lib/plot/core/types'
 import {
   assert_series_lengths,
@@ -33,6 +32,33 @@ export interface DenseInternalPoint<Metadata = Record<string, unknown>> {
   cy: number
 }
 
+// Cache once per dataset. Unordered/non-finite x values use the ordinary range scan.
+export const series_x_order = (series: readonly DensePointSeries<unknown>[]): (-1 | 0 | 1)[] =>
+  series.map(({ x: coord_x }) => {
+    if (!coord_x.length) return 0
+    let previous = coord_x[0]
+    if (!Number.isFinite(previous)) return 0
+    let ascending = true
+    let descending = true
+    for (let idx = 1; idx < coord_x.length; idx++) {
+      const value = coord_x[idx]
+      if (!Number.isFinite(value)) return 0
+      ascending &&= value >= previous
+      descending &&= value <= previous
+      previous = value
+      if (!ascending && !descending) return 0
+    }
+    return ascending ? 1 : -1
+  })
+
+const x_window = (values: NumericArray, min: number, max: number, order: -1 | 0 | 1): Vec2 =>
+  order === 0 || Number.isNaN(min) || Number.isNaN(max)
+    ? [0, values.length]
+    : [
+        partition_point(values, (value) => (order > 0 ? value < min : value > max)),
+        partition_point(values, (value) => (order > 0 ? value <= max : value >= min)),
+      ]
+
 interface DensityBinResult {
   counts: Uint32Array
   first_point_idxs: Int32Array
@@ -50,16 +76,6 @@ export interface DensityBin {
   x_range: Vec2
   y_range: Vec2
 }
-
-interface PickNearestOptions {
-  x_range: Vec2
-  y_range: Vec2
-  x_scale: (value: number) => number
-  y_scale: (value: number) => number
-  radius_px?: number
-}
-
-type PickIndex<Metadata = Record<string, unknown>> = SpatialIndex<DenseInternalPoint<Metadata>>
 
 export interface PlotRect {
   x: number
@@ -162,15 +178,15 @@ export function series_extents(
   for (const srs of series) {
     const n_points = srs.x.length
     for (let idx = 0; idx < n_points; idx++) {
-      const x = srs.x[idx]
-      const y = srs.y[idx]
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      const coord_x = srs.x[idx]
+      const coord_y = srs.y[idx]
+      if (!Number.isFinite(coord_x) || !Number.isFinite(coord_y)) continue
       // Align with bin_points / log scale floor so sub-LOG_EPS samples don't widen extent
-      if ((log_x && x < LOG_EPS) || (log_y && y < LOG_EPS)) continue
-      if (x < x_min) x_min = x
-      if (x > x_max) x_max = x
-      if (y < y_min) y_min = y
-      if (y > y_max) y_max = y
+      if ((log_x && coord_x < LOG_EPS) || (log_y && coord_y < LOG_EPS)) continue
+      if (coord_x < x_min) x_min = coord_x
+      if (coord_x > x_max) x_max = coord_x
+      if (coord_y < y_min) y_min = coord_y
+      if (coord_y > y_max) y_max = coord_y
     }
   }
 
@@ -192,13 +208,14 @@ export function bin_points(
   x_bins: number,
   y_bins: number,
   transforms?: BinTransforms,
+  x_order: readonly (-1 | 0 | 1)[] = [],
 ): DensityBinResult {
   series.forEach(assert_series_lengths)
   const cells = x_bins * y_bins
   if (!Number.isFinite(cells) || cells > MAX_DENSITY_CELLS) {
-    const mb = Math.round((cells * BYTES_PER_CELL) / 1e6)
+    const megabytes = Math.round((cells * BYTES_PER_CELL) / 1e6)
     throw new Error(
-      `bin_points: a ${x_bins} x ${y_bins} grid is ${cells} cells (${mb} MB), past the ${MAX_DENSITY_CELLS} cap. Raise density.bin_px or shrink the plot.`,
+      `bin_points: a ${x_bins} x ${y_bins} grid is ${cells} cells (${megabytes} MB), past the ${MAX_DENSITY_CELLS} cap. Raise density.bin_px or shrink the plot.`,
     )
   }
   const counts = new Uint32Array(cells)
@@ -220,22 +237,14 @@ export function bin_points(
 
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const srs = series[series_idx]
-    const n_points = srs.x.length
-    for (let point_idx = 0; point_idx < n_points; point_idx++) {
-      const x = srs.x[point_idx]
-      const y = srs.y[point_idx]
-      if (
-        !Number.isFinite(x) ||
-        !Number.isFinite(y) ||
-        x < x_min ||
-        x > x_max ||
-        y < y_min ||
-        y > y_max
-      )
-        continue
+    const [start, end] = x_window(srs.x, x_min, x_max, x_order[series_idx] ?? 0)
+    for (let point_idx = start; point_idx < end; point_idx++) {
+      const coord_x = srs.x[point_idx]
+      const coord_y = srs.y[point_idx]
+      if (!in_bounds(coord_x, x_min, x_max) || !in_bounds(coord_y, y_min, y_max)) continue
 
-      const raw_x_bin = Math.floor((x_fwd(x) - t_x_min) * x_bin_scale)
-      const raw_y_bin = Math.floor((y_fwd(y) - t_y_min) * y_bin_scale)
+      const raw_x_bin = Math.floor((x_fwd(coord_x) - t_x_min) * x_bin_scale)
+      const raw_y_bin = Math.floor((y_fwd(coord_y) - t_y_min) * y_bin_scale)
       const x_bin = raw_x_bin < 0 ? 0 : raw_x_bin > last_x_bin ? last_x_bin : raw_x_bin
       const y_bin = raw_y_bin < 0 ? 0 : raw_y_bin > last_y_bin ? last_y_bin : raw_y_bin
       const idx = y_bin * x_bins + x_bin
@@ -327,13 +336,13 @@ const internal_point = <Metadata>(
   x_scale: (value: number) => number,
   y_scale: (value: number) => number,
 ): DenseInternalPoint<Metadata> => {
-  const x = srs.x[point_idx]
-  const y = srs.y[point_idx]
+  const coord_x = srs.x[point_idx]
+  const coord_y = srs.y[point_idx]
   return {
-    x,
-    y,
-    cx: x_scale(x),
-    cy: y_scale(y),
+    x: coord_x,
+    y: coord_y,
+    cx: x_scale(coord_x),
+    cy: y_scale(coord_y),
     series_idx,
     point_idx,
     metadata: get_metadata_at(srs.metadata, point_idx),
@@ -350,31 +359,20 @@ export function* visible_points<Metadata>(
   y_range: Vec2,
   x_scale: (value: number) => number,
   y_scale: (value: number) => number,
+  x_order: readonly (-1 | 0 | 1)[] = [],
 ): Generator<DenseInternalPoint<Metadata>> {
   const [x_min, x_max] = range_bounds(x_range)
   const [y_min, y_max] = range_bounds(y_range)
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const srs = series[series_idx]
-    const n_points = srs.x.length
-    for (let point_idx = 0; point_idx < n_points; point_idx++) {
-      const x = srs.x[point_idx]
-      const y = srs.y[point_idx]
-      if (!in_bounds(x, x_min, x_max) || !in_bounds(y, y_min, y_max)) continue
+    const [start, end] = x_window(srs.x, x_min, x_max, x_order[series_idx] ?? 0)
+    for (let point_idx = start; point_idx < end; point_idx++) {
+      const coord_x = srs.x[point_idx]
+      const coord_y = srs.y[point_idx]
+      if (!in_bounds(coord_x, x_min, x_max) || !in_bounds(coord_y, y_min, y_max)) continue
       yield internal_point(srs, series_idx, point_idx, x_scale, y_scale)
     }
   }
-}
-
-export function build_pick_index<Metadata>(
-  series: readonly DensePointSeries<Metadata>[],
-  options: PickNearestOptions,
-): PickIndex<Metadata> {
-  series.forEach(assert_series_lengths)
-  const { x_range, y_range, x_scale, y_scale, radius_px = 12 } = options
-  return build_spatial_index(
-    visible_points(series, x_range, y_range, x_scale, y_scale),
-    radius_px,
-  )
 }
 
 export function first_point_in_bin<Metadata>(

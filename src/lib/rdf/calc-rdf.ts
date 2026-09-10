@@ -96,17 +96,17 @@ function histogram_pairs(
 }
 
 function normalize_histogram(
-  { n_bins, bin_size, volume, r }: PreparedRdf,
+  { n_bins, bin_size, volume, r: radius }: PreparedRdf,
   g_r: number[],
   pair_weight: number,
   element_pair: [string, string] | undefined,
 ): RdfPattern {
   if (pair_weight > 0) {
     for (let idx = 0; idx < n_bins; idx++) {
-      g_r[idx] /= (pair_weight * 4 * Math.PI * r[idx] ** 2 * bin_size) / volume
+      g_r[idx] /= (pair_weight * 4 * Math.PI * radius[idx] ** 2 * bin_size) / volume
     }
   }
-  return { r, g_r, element_pair }
+  return { r: radius, g_r, element_pair }
 }
 
 // g(r) of one structure: the full RDF, or the partial g_ab(r) with center_species a and

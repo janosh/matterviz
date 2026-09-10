@@ -258,10 +258,10 @@ describe(`per-request options`, () => {
       if (use_worker) {
         const [worker] = workers()
         expect(worker.posted).toHaveLength(1)
-        const { id } = first_post(worker)
-        worker.emit(`message`, { data: { id, progress: 0.5 } })
-        worker.emit(`message`, { data: { id, progress: 1 } })
-        worker.emit(`message`, { data: { id, result: `done`, error: null } })
+        const { id: identifier } = first_post(worker)
+        worker.emit(`message`, { data: { id: identifier, progress: 0.5 } })
+        worker.emit(`message`, { data: { id: identifier, progress: 1 } })
+        worker.emit(`message`, { data: { id: identifier, result: `done`, error: null } })
       }
       await expect(Promise.all([first, second])).resolves.toEqual([`done`, `done`])
       expect(seen).toEqual([

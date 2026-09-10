@@ -92,7 +92,7 @@ export function parse_tdb(content: string): TdbParseResult {
     )
   }
 
-  const real_elements = elements.map((el) => el.symbol).filter(is_real_element)
+  const real_elements = elements.map((element) => element.symbol).filter(is_real_element)
   const binary_system: [string, string] | undefined =
     real_elements.length === 2 ? [real_elements[0], real_elements[1]] : undefined
 
@@ -259,7 +259,7 @@ function parse_tdb_line(line: string, data: TdbData): void {
 export const get_system_name = (elements: string[]): string =>
   elements
     .filter(is_real_element)
-    .map((el) => el.toUpperCase())
+    .map((element) => element.toUpperCase())
     .toSorted()
     .join(`-`)
 
@@ -328,7 +328,7 @@ export function extract_tdb_reference(comments: string[]): string | null {
   const ref_keywords = [`reference`, `citation`, `database`, `assessed by`]
   for (const comment of comments) {
     const lower = comment.toLowerCase()
-    if (ref_keywords.some((kw) => lower.includes(kw))) {
+    if (ref_keywords.some((keyword) => lower.includes(keyword))) {
       const ref = comment.replace(/^\$\s*/, ``).trim()
       // Skip incomplete references (must have substantial content after keyword)
       if (ref.length > 30 && !ref.endsWith(`from`)) return ref

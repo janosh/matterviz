@@ -6,7 +6,7 @@ import type * as OpenTrajectoryModule from '$lib/trajectory/open'
 import type { TrajectoryFrame } from '$lib/trajectory'
 import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
-import { IS_CI } from './helpers'
+import { drop_file, IS_CI } from './helpers'
 
 // Extended timeout for elements that load after trajectory data (plots, controls)
 const LOAD_TIMEOUT = 15_000
@@ -92,12 +92,12 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test(`narrow viewer hides the filename and keeps the step slider off the FPS input`, async () => {
-    await trajectory_viewer.evaluate((el) => {
-      el.style.width = `1200px`
+    await trajectory_viewer.evaluate((element) => {
+      element.style.width = `1200px`
     })
     await expect(trajectory_viewer.locator(`button.filename`)).toBeVisible()
-    await trajectory_viewer.evaluate((el) => {
-      el.style.width = `800px`
+    await trajectory_viewer.evaluate((element) => {
+      element.style.width = `800px`
     })
     await expect(trajectory_viewer.locator(`button.filename`)).toBeHidden()
     const slider_box = await trajectory_viewer.locator(`.slider-container`).boundingBox()
@@ -405,6 +405,75 @@ test.describe(`Trajectory Component`, () => {
     await expect(play_button).toHaveText(`▶`)
   })
 
+  test(`spectroscopy settings remain usable after a failed calculation`, async ({ page }) => {
+    const content = Array.from(
+      { length: 8 },
+      (_unused, frame_idx) =>
+        `2\nLattice="2 0 0 0 2 0 0 0 2" Properties=species:S:1:pos:R:3\nH ${frame_idx * 0.01} 0 0\nO 1 1 1\n`,
+    ).join(``)
+    await drop_file(page, trajectory_viewer, content, `spectroscopy.xyz`)
+    await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `7`)
+    await controls.locator(`.analysis-button`).click()
+    await trajectory_viewer
+      .getByRole(`button`, {
+        name: `Trajectory IR/Raman & VDOS`,
+        exact: true,
+      })
+      .click()
+    const analysis = trajectory_viewer.locator(`.trajectory-spectroscopy-inline`)
+    await expect(analysis.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
+    await analysis.locator(`.plot-controls-toggle`).click()
+    await analysis.getByLabel(`Simulation timestep`).fill(`1`)
+    await analysis.getByLabel(`Simulation time unit`).fill(`invalid`)
+    await analysis
+      .getByRole(`button`, { name: `Recompute spectroscopy`, exact: true })
+      .press(`Enter`)
+    await expect(analysis).toContainText(`time_unit 'invalid' cannot be converted`)
+    await analysis.getByLabel(`Simulation time unit`).fill(`fs`)
+    await analysis
+      .getByRole(`button`, { name: `Compute spectroscopy`, exact: true })
+      .press(`Enter`)
+    await expect(analysis.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
+    await expect(analysis).not.toContainText(`time_unit 'invalid' cannot be converted`)
+  })
+
+  test(`tiny trajectory WebM export contains decodable video`, async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 1400 })
+    await trajectory_viewer.scrollIntoViewIfNeeded()
+    await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
+    const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
+    await pane.getByRole(`button`, { name: `0.5x`, exact: true }).click()
+    const export_button = pane.getByRole(`button`, { name: `Download WebM`, exact: true })
+    const [download] = await Promise.all([
+      page.waitForEvent(`download`),
+      export_button.click(),
+    ])
+    const path = await download.path()
+    if (!path) throw new Error(`WebM download has no file`)
+    const video_data = await readFile(path)
+    expect(download.suggestedFilename()).toMatch(/\.webm$/)
+    const dimensions = await page.evaluate(
+      (encoded) =>
+        new Promise<number[]>((resolve, reject) => {
+          const video = document.createElement(`video`)
+          const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
+          const url = URL.createObjectURL(new Blob([bytes], { type: `video/webm` }))
+          video.addEventListener(`loadedmetadata`, () => {
+            URL.revokeObjectURL(url)
+            resolve([video.videoWidth, video.videoHeight])
+          })
+          video.addEventListener(`error`, () => {
+            URL.revokeObjectURL(url)
+            reject(new Error(video.error?.message ?? `WebM decode failed`))
+          })
+          video.src = url
+        }),
+      video_data.toString(`base64`),
+    )
+    expect(dimensions.every((value) => value > 0)).toBe(true)
+    await expect(export_button).toBeEnabled()
+  })
+
   test.describe(`layout and configuration options`, () => {
     test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
@@ -498,33 +567,27 @@ test.describe(`Trajectory Component`, () => {
       await expect(first_item).toHaveClass(/hidden/)
     })
 
-    test(`plot navigation can be disabled via plot_skimming prop`, async ({ page }) => {
-      const trajectory = page.locator(`#no-plot-skimming`)
-      const scatter_plot = trajectory.locator(`.scatter`)
-      const step_input = trajectory.locator(`.step-input`)
-      await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
-
-      const initial_step = await step_input.inputValue()
-      const plot_points = scatter_plot.locator(`.marker`)
-      expect(await plot_points.count()).toBeGreaterThan(1)
-      await plot_points.nth(1).click()
-      await expect(step_input).toHaveValue(initial_step)
-    })
-
-    test(`plot navigation requires a click by default`, async ({ page }) => {
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const scatter_plot = trajectory.locator(`.scatter`)
-      const step_input = trajectory.locator(`.step-input`)
-      await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
-
-      const plot_points = scatter_plot.locator(`.marker`)
-      expect(await plot_points.count()).toBeGreaterThan(1)
-      const before = await step_input.inputValue()
-      await plot_points.nth(1).hover()
-      await expect(step_input).toHaveValue(before)
-      await plot_points.nth(1).click()
-      await expect(step_input).not.toHaveValue(before)
-    })
+    for (const [selector, navigation_enabled] of [
+      [`#no-plot-skimming`, false],
+      [`#loaded-trajectory`, true],
+    ] as const) {
+      test(`plot navigation enabled=${navigation_enabled} requires a click`, async ({
+        page,
+      }) => {
+        const trajectory = page.locator(selector)
+        const scatter_plot = trajectory.locator(`.scatter`)
+        const step_input = trajectory.locator(`.step-input`)
+        await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
+        const plot_points = scatter_plot.locator(`.marker`)
+        expect(await plot_points.count()).toBeGreaterThan(1)
+        const initial_step = await step_input.inputValue()
+        await plot_points.nth(1).hover()
+        await expect(step_input).toHaveValue(initial_step)
+        await plot_points.nth(1).click()
+        if (navigation_enabled) await expect(step_input).not.toHaveValue(initial_step)
+        else await expect(step_input).toHaveValue(initial_step)
+      })
+    }
 
     test(`plot hides when values are constant`, async ({ page }) => {
       const constant_trajectory = page.locator(`#constant-values`)
@@ -685,11 +748,14 @@ test.describe(`Trajectory Component`, () => {
       // to go for any height below that to stick: .trajectory's own 500px floor
       // outranks an inline height, exactly as it does to Hive's card.
       const set_size = (width: number, height = 500) =>
-        trajectory.evaluate((el: HTMLElement, size) => Object.assign(el.style, size), {
-          width: `${width}px`,
-          height: `${height}px`,
-          minHeight: `0`,
-        })
+        trajectory.evaluate(
+          (element: HTMLElement, size) => Object.assign(element.style, size),
+          {
+            width: `${width}px`,
+            height: `${height}px`,
+            minHeight: `0`,
+          },
+        )
 
       // The class comes from a ResizeObserver, which a page full of software-WebGPU
       // canvases can leave waiting well past the default 5s expect timeout.
@@ -703,8 +769,8 @@ test.describe(`Trajectory Component`, () => {
       // The layout class alone would still pass if the grid ordered them the
       // other way round, or handed the plot its 350px floor and the structure
       // whatever was left.
-      const panes = await trajectory.evaluate((el) => {
-        const rect = (sel: string) => el.querySelector(sel)?.getBoundingClientRect()
+      const panes = await trajectory.evaluate((element) => {
+        const rect = (sel: string) => element.querySelector(sel)?.getBoundingClientRect()
         return { structure: rect(`.structure`), plot: rect(`.scatter`) }
       })
       if (!panes.structure || !panes.plot) throw new Error(`panes not found`)

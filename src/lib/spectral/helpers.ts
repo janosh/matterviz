@@ -124,8 +124,8 @@ export function trapezoid_weights(grid: readonly number[]): number[] {
   if (last < 1) return weights
   const order = grid.map((_, idx) => idx).toSorted((a_idx, b_idx) => grid[a_idx] - grid[b_idx])
   for (const [pos, idx] of order.entries()) {
-    const lo = grid[order[Math.max(pos - 1, 0)]]
-    weights[idx] = (grid[order[Math.min(pos + 1, last)]] - lo) / 2
+    const lower = grid[order[Math.max(pos - 1, 0)]]
+    weights[idx] = (grid[order[Math.min(pos + 1, last)]] - lower) / 2
   }
   return weights
 }
@@ -233,7 +233,7 @@ const parse_qpoint = (qpt: unknown, label_entries: [string, Vec3][]): types.QPoi
 
   const label =
     ((is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
-      label_entries.find(([, c]) => euclidean_dist(frac_coords, c) < 1e-4)?.[0]) ??
+      label_entries.find(([, value_c]) => euclidean_dist(frac_coords, value_c) < 1e-4)?.[0]) ??
     null
   return { label, frac_coords }
 }
@@ -340,7 +340,7 @@ function convert_pymatgen_band_structure(
       ),
     )
   // Discontinuity detection (5x median step)
-  const sorted = steps.toSorted((a, b) => a - b)
+  const sorted = steps.toSorted((left_value, right_value) => left_value - right_value)
   const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
   // Ascending indices of the q-points that start a new segment after a path jump
   const disc_indices = steps.flatMap((step, idx) => (step > threshold ? [idx + 1] : []))
@@ -375,7 +375,7 @@ function convert_pymatgen_band_structure(
         ...disc_indices.flatMap((idx) => [idx - 1, idx]),
         qpoints.length - 1,
       ]),
-    ].toSorted((a, b) => a - b)
+    ].toSorted((left_value, right_value) => left_value - right_value)
     branches = boundaries.slice(1).flatMap((end_index, idx) => {
       const start_index = boundaries[idx]
       if (disc_set.has(end_index)) return []
@@ -595,14 +595,14 @@ export const k_path_labels = (
 function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
   let best = cart
   let best_norm = cart[0] ** 2 + cart[1] ** 2 + cart[2] ** 2
-  for (let n1 = -1; n1 <= 1; n1++) {
-    for (let n2 = -1; n2 <= 1; n2++) {
-      for (let n3 = -1; n3 <= 1; n3++) {
-        if (n1 === 0 && n2 === 0 && n3 === 0) continue
+  for (let count_1 = -1; count_1 <= 1; count_1++) {
+    for (let count = -1; count <= 1; count++) {
+      for (let count_3 = -1; count_3 <= 1; count_3++) {
+        if (count_1 === 0 && count === 0 && count_3 === 0) continue
         const cand: Vec3 = [
-          cart[0] + n1 * recip[0][0] + n2 * recip[1][0] + n3 * recip[2][0],
-          cart[1] + n1 * recip[0][1] + n2 * recip[1][1] + n3 * recip[2][1],
-          cart[2] + n1 * recip[0][2] + n2 * recip[1][2] + n3 * recip[2][2],
+          cart[0] + count_1 * recip[0][0] + count * recip[1][0] + count_3 * recip[2][0],
+          cart[1] + count_1 * recip[0][1] + count * recip[1][1] + count_3 * recip[2][1],
+          cart[2] + count_1 * recip[0][2] + count * recip[1][2] + count_3 * recip[2][2],
         ]
         const norm = cand[0] ** 2 + cand[1] ** 2 + cand[2] ** 2
         if (norm < best_norm - 1e-9) [best, best_norm] = [cand, norm]
@@ -786,8 +786,8 @@ export function generate_ribbon_path(
   x_values: number[],
   y_values: number[],
   width_values: number[],
-  x_scale_fn: (x: number) => number,
-  y_scale_fn: (y: number) => number,
+  x_scale_fn: (coord_x: number) => number,
+  y_scale_fn: (coord_y: number) => number,
   max_width_px: number,
   scale: number = 1,
 ): string {
@@ -828,8 +828,8 @@ export function generate_ribbon_path(
 export const closed_edge_path = (upper_points: string[], lower_points: string[]): string =>
   [
     `M${upper_points[0]}`,
-    ...upper_points.slice(1).map((pt) => `L${pt}`),
-    ...lower_points.toReversed().map((pt) => `L${pt}`),
+    ...upper_points.slice(1).map((point) => `L${point}`),
+    ...lower_points.toReversed().map((point) => `L${point}`),
     `Z`,
   ].join(` `)
 
@@ -918,7 +918,9 @@ export function compute_frequency_range(
   const dos = Object.values(doses)
   return padded_frequency_range(
     [
-      ...bands.flatMap((bs) => [...bs.bands, ...(bs.spin_down_bands ?? [])].flat()),
+      ...bands.flatMap((band_structure) =>
+        [...band_structure.bands, ...(band_structure.spin_down_bands ?? [])].flat(),
+      ),
       ...dos.flatMap((entry) =>
         entry.type === `phonon` ? entry.frequencies : entry.energies,
       ),
@@ -1010,10 +1012,10 @@ export interface BandPointMeta extends Record<string, unknown> {
 
 // Local slope (dω/dk or dE/dk): central difference for interior points, one-sided at the ends
 const compute_slope = (x_vals: number[], y_vals: number[], idx: number): number | null => {
-  const lo = Math.max(0, idx - 1)
-  const hi = Math.min(x_vals.length - 1, idx + 1)
-  const dx = x_vals[hi] - x_vals[lo]
-  return dx ? (y_vals[hi] - y_vals[lo]) / dx : null
+  const lower = Math.max(0, idx - 1)
+  const upper = Math.min(x_vals.length - 1, idx + 1)
+  const delta_x = x_vals[upper] - x_vals[lower]
+  return delta_x ? (y_vals[upper] - y_vals[lower]) / delta_x : null
 }
 
 // A q-point counts as Gamma when every fractional coordinate is within 0.01 of an integer
@@ -1021,8 +1023,10 @@ export const is_gamma_point = (frac_coords: Vec3): boolean =>
   frac_coords.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01)
 
 // Indices of the Gamma points (q ≈ integer lattice point) in a band structure
-export const find_gamma_indices = (bs: types.BaseBandStructure): number[] =>
-  bs.qpoints.flatMap(({ frac_coords }, q_idx) => (is_gamma_point(frac_coords) ? [q_idx] : []))
+export const find_gamma_indices = (band_structure: types.BaseBandStructure): number[] =>
+  band_structure.qpoints.flatMap(({ frac_coords }, q_idx) =>
+    is_gamma_point(frac_coords) ? [q_idx] : [],
+  )
 
 // Threshold below which a band's frequency at Gamma is considered acoustic (THz).
 // Assumes bands are stored in THz (normalize_band_structure converts to THz).
@@ -1031,14 +1035,15 @@ export const ACOUSTIC_FREQ_THRESHOLD = 0.5
 // Classify a band as acoustic based on near-zero frequency at Gamma points.
 // Returns true (acoustic), false (optical), or null (no Gamma points → can't determine).
 export function classify_acoustic(
-  bs: types.BaseBandStructure,
+  band_structure: types.BaseBandStructure,
   band_idx: number,
   gamma_indices: number[],
   threshold = ACOUSTIC_FREQ_THRESHOLD,
 ): boolean | null {
   if (gamma_indices.length === 0) return null
   return gamma_indices.some(
-    (gamma_idx) => Math.abs(bs.bands[band_idx]?.[gamma_idx] ?? Infinity) < threshold,
+    (gamma_idx) =>
+      Math.abs(band_structure.bands[band_idx]?.[gamma_idx] ?? Infinity) < threshold,
   )
 }
 
@@ -1052,20 +1057,20 @@ export function build_point_metadata(opts: {
   bs: types.BaseBandStructure
   start_idx: number
 }): BandPointMeta[] {
-  const { x_vals, y_vals, band_idx, spin, is_acoustic, bs, start_idx } = opts
+  const { x_vals, y_vals, band_idx, spin, is_acoustic, bs: band_structure, start_idx } = opts
   return x_vals.map((_, pt_idx) => {
     const global_idx = start_idx + pt_idx
-    const qpoint = bs.qpoints[global_idx]
+    const qpoint = band_structure.qpoints[global_idx]
     return {
       aria_label: `Select band ${band_idx + 1}, q-point ${global_idx + 1}`,
       band_idx,
       qpoint_idx: global_idx,
       spin,
       is_acoustic,
-      nb_bands: bs.nb_bands,
+      nb_bands: band_structure.nb_bands,
       frac_coords: qpoint?.frac_coords ?? null,
       qpoint_label: qpoint?.label ?? null,
-      band_width: bs.band_widths?.[band_idx]?.[global_idx] ?? null,
+      band_width: band_structure.band_widths?.[band_idx]?.[global_idx] ?? null,
       slope: compute_slope(x_vals, y_vals, pt_idx),
     }
   })

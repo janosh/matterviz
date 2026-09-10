@@ -18,9 +18,15 @@ const parse_grid = (content: string, filename?: string): BandGridData => {
   return parsed
 }
 // Energy at grid point (ix, iy, iz) of a flat z-fastest band grid
-const energy_at = (data: BandGridData, ix: number, iy: number, iz: number, band = 0) => {
-  const [, ny, nz] = data.k_grid
-  return data.energies[0][band].values[(ix * ny + iy) * nz + iz]
+const energy_at = (
+  data: BandGridData,
+  idx_x: number,
+  idx_y: number,
+  idx_z: number,
+  band = 0,
+) => {
+  const [, size_y, size_z] = data.k_grid
+  return data.energies[0][band].values[(idx_x * size_y + idx_y) * size_z + idx_z]
 }
 
 describe(`parse_fermi_file`, () => {
@@ -190,7 +196,7 @@ END_BLOCK_BANDGRID_3D
       [0, `3 3 3`, [0.5, 0.5, 0.5]],
       [0, `4 3 2`, [0.5, 0.5, 0.5]],
     ])(`lshift=%i on a %s grid gives grid_shift %j`, (lshift, dims, expected) => {
-      const [nx, ny, nz] = dims.split(` `).map(Number)
+      const [size_x, size_y, size_z] = dims.split(` `).map(Number)
       const content = `${[
         dims,
         String(lshift),
@@ -198,7 +204,7 @@ END_BLOCK_BANDGRID_3D
         `1.0 0.0 0.0`,
         `0.0 1.0 0.0`,
         `0.0 0.0 1.0`,
-        ...Array.from({ length: nx * ny * nz }, (_, idx) => `${idx * 0.01}`),
+        ...Array.from({ length: size_x * size_y * size_z }, (_, idx) => `${idx * 0.01}`),
       ].join(`\n`)}\n`
       expect(parse_grid(content, `shift.frmsf`).grid_shift).toEqual(expected)
     })
@@ -501,8 +507,8 @@ describe(`type guards`, () => {
     { fn: is_band_grid_data, data: mock_band_grid, expected: true },
     { fn: is_band_grid_data, data: mock_fermi_surface, expected: false },
     { fn: is_band_grid_data, data: null, expected: false },
-  ])(`$fn.name($data) = $expected`, ({ fn, data, expected }) => {
-    expect(fn(data)).toBe(expected)
+  ])(`$fn.name($data) = $expected`, ({ fn: callback, data, expected }) => {
+    expect(callback(data)).toBe(expected)
   })
 })
 

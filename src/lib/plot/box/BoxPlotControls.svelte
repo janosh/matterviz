@@ -36,14 +36,17 @@
     children?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
   } = $props()
 
-  const box_violin_settings = track_settings(() => ({
-    orientation,
-    kind,
-    side,
-    whisker_mode,
-    show_outliers,
-    show_mean,
-  }))
+  const box_violin_settings = track_settings(
+    () => ({
+      orientation,
+      kind,
+      side,
+      whisker_mode,
+      show_outliers,
+      show_mean,
+    }),
+    { orientation: `vertical`, ...DEFAULTS.box },
+  )
 </script>
 
 <!-- select options come from the settings schema so labels/values have a single source of truth -->

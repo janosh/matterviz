@@ -1,3 +1,11 @@
+import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
+import {
+  accumulate_extent,
+  empty_extent,
+  nice_range_from_extent,
+  type RunningExtent,
+} from '$lib/plot/core/scales'
+import { type Camera, type Object3D, Vector3 } from 'three/webgpu'
 // Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
 // reference lines/planes.
 
@@ -42,4 +50,90 @@ export function create_to_threejs(
     y: normalize_to_scene(user_z, z_range, scene_z), // z → Y
     z: normalize_to_scene(user_y, y_range, scene_y), // y → Z
   })
+}
+
+// Anchor the tooltip above the halo in screen space, independent of orbit angle.
+// Scratch vectors live with the hovered point, not with each animation frame.
+export function hover_marker_geometry(marker_radius: number) {
+  const radius = marker_radius * 1.15
+  const center = new Vector3()
+  const top = new Vector3()
+  return {
+    radius,
+    tooltip_position: (
+      object: Object3D,
+      camera: Camera,
+      size: { width: number; height: number },
+    ): Vec2 => {
+      center.setFromMatrixPosition(object.matrixWorld)
+      top.setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(radius).add(center)
+      center.project(camera)
+      top.project(camera)
+      return [((center.x + 1) * size.width) / 2, ((1 - top.y) * size.height) / 2 - 8]
+    },
+  }
+}
+
+// Sample surface bounds on the same grid for the renderer and the axis controls.
+export function sample_surface(
+  surface: Surface3DConfig,
+): { x: number; y: number; z: number }[] {
+  const grid_steps = 10
+  const pts = surface.type === `triangulated` ? (surface.points ?? []) : []
+  if (surface.type === `grid` && surface.z_fn) {
+    const [coord_x_0, coord_x_1] = surface.x_range ?? [-1, 1]
+    const [coord_y_0, coord_y_1] = surface.y_range ?? [-1, 1]
+    for (let idx_x = 0; idx_x <= grid_steps; idx_x++) {
+      for (let idx_y = 0; idx_y <= grid_steps; idx_y++) {
+        const coord_x = coord_x_0 + (idx_x / grid_steps) * (coord_x_1 - coord_x_0),
+          coord_y = coord_y_0 + (idx_y / grid_steps) * (coord_y_1 - coord_y_0)
+        pts.push({ x: coord_x, y: coord_y, z: surface.z_fn(coord_x, coord_y) })
+      }
+    }
+  } else if (surface.type === `parametric` && surface.parametric_fn) {
+    const [uniform_0, uniform_1] = surface.u_range ?? [0, 1]
+    const [vector_0, vector_1] = surface.v_range ?? [0, 1]
+    for (let idx_u = 0; idx_u <= grid_steps; idx_u++) {
+      for (let idx_v = 0; idx_v <= grid_steps; idx_v++) {
+        pts.push(
+          surface.parametric_fn(
+            uniform_0 + (idx_u / grid_steps) * (uniform_1 - uniform_0),
+            vector_0 + (idx_v / grid_steps) * (vector_1 - vector_0),
+          ),
+        )
+      }
+    }
+  }
+  return pts.filter((point) => isFinite(point.x) && isFinite(point.y) && isFinite(point.z))
+}
+
+// Explicit bounds win; automatic bounds use the renderer's padding and nice ticks.
+export const compute_range = (
+  extent: RunningExtent,
+  range: [number | null, number | null] = [null, null],
+): Vec2 =>
+  range[0] != null && range[1] != null
+    ? [range[0], range[1]]
+    : nice_range_from_extent(extent, range, `linear`, 0.05)
+
+export function collect_3d_extents(
+  series: readonly DataSeries3D[],
+  surface_samples: readonly { x: number; y: number; z: number }[],
+) {
+  const extents = { x: empty_extent(), y: empty_extent(), z: empty_extent() }
+  for (const srs of series) {
+    if (!srs) continue
+    for (const axis of [`x`, `y`, `z`] as const) accumulate_extent(extents[axis], srs[axis])
+  }
+  for (const axis of [`x`, `y`, `z`] as const) {
+    const extent = extents[axis]
+    for (const point of surface_samples) {
+      const value = point[axis]
+      if (typeof value !== `number` || !Number.isFinite(value)) continue
+      extent.n_finite++
+      if (extent.min === undefined || value < extent.min) extent.min = value
+      if (extent.max === undefined || value > extent.max) extent.max = value
+    }
+  }
+  return extents
 }

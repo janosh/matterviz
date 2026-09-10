@@ -317,7 +317,9 @@ Use `OxiComposition` objects and customize number formatting:
       placeholder="Amt"
     />
     <input type="number" bind:value={element.oxidation} style="width: 60px" placeholder="Ox" />
-    <button onclick={() => (elements = elements.filter((el) => el.id !== element.id))}>
+    <button
+      onclick={() => (elements = elements.filter((element_2) => element_2.id !== element.id))}
+    >
       ×
     </button>
   </div>

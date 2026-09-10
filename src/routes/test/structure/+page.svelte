@@ -74,16 +74,16 @@
   $effect(() => {
     const controller = new AbortController()
     const { signal } = controller
-    const on = (name: string, handler: (detail: Record<string, unknown>) => void) =>
+    const enabled = (name: string, handler: (detail: Record<string, unknown>) => void) =>
       window.addEventListener(name, (event) => handler((event as CustomEvent).detail), {
         signal,
       })
-    on(`set-scene-props`, (detail) => Object.assign(scene_props, detail))
-    on(`set-structure`, (detail) => {
+    enabled(`set-scene-props`, (detail) => Object.assign(scene_props, detail))
+    enabled(`set-structure`, (detail) => {
       structure = detail.structure as Crystal
       Object.assign(scene_props, { vector_configs: detail.vector_configs ?? {} })
     })
-    on(`set-bonds`, (detail) => (bonds = detail.bonds as StructureBond[] | undefined))
+    enabled(`set-bonds`, (detail) => (bonds = detail.bonds as StructureBond[] | undefined))
     return () => controller.abort()
   })
 

@@ -38,16 +38,19 @@
     children?: Snippet
   } = $props()
 
-  const sankey_settings = track_settings(() => ({
-    orientation,
-    node_align,
-    node_width,
-    node_padding,
-    link_opacity,
-    show_node_labels,
-    min_fraction,
-    max_links,
-  }))
+  const sankey_settings = track_settings(
+    () => ({
+      orientation,
+      node_align,
+      node_width,
+      node_padding,
+      link_opacity,
+      show_node_labels,
+      min_fraction,
+      max_links,
+    }),
+    DEFAULTS.sankey,
+  )
 </script>
 
 <!-- select options come from the settings schema so labels/values have a single source of truth -->

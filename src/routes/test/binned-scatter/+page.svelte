@@ -34,18 +34,18 @@
 
   function make_series(test_mode: TestMode, count: number): DensePointSeries[] {
     if (test_mode === `singleton`) {
-      const x = Float32Array.from([0.9, 0.1, 0.2])
-      const y = Float32Array.from([0.9, 0.1, 0.8])
-      return [{ x, y, point_ids: [`singleton`, `low`, `left-high`] }]
+      const coord_x = Float32Array.from([0.9, 0.1, 0.2])
+      const coord_y = Float32Array.from([0.9, 0.1, 0.8])
+      return [{ x: coord_x, y: coord_y, point_ids: [`singleton`, `low`, `left-high`] }]
     }
 
-    const x = new Float32Array(count)
-    const y = new Float32Array(count)
+    const coord_x = new Float32Array(count)
+    const coord_y = new Float32Array(count)
     for (let idx = 0; idx < count; idx++) {
-      x[idx] = (idx % 10_000) / 10_000
-      y[idx] = ((idx * PSEUDO_RANDOM_MULTIPLIER) % 1_000_000) / 1_000_000
+      coord_x[idx] = (idx % 10_000) / 10_000
+      coord_y[idx] = ((idx * PSEUDO_RANDOM_MULTIPLIER) % 1_000_000) / 1_000_000
     }
-    return [{ x, y }]
+    return [{ x: coord_x, y: coord_y }]
   }
 
   async function wait_for_plot_ready(

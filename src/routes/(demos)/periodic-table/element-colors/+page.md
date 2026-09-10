@@ -12,10 +12,10 @@
   import { ELEMENT_COLOR_SCHEMES } from 'matterviz/colors'
 
   // Create multi-scheme color data - each element gets an array of 3 colors
-  const multi_scheme_colors = element_data.map((el) => [
-    ELEMENT_COLOR_SCHEMES.Jmol[el.symbol] ?? '#666666',
-    ELEMENT_COLOR_SCHEMES.Vesta[el.symbol] ?? '#666666',
-    ELEMENT_COLOR_SCHEMES.Alloy[el.symbol] ?? '#666666',
+  const multi_scheme_colors = element_data.map((element) => [
+    ELEMENT_COLOR_SCHEMES.Jmol[element.symbol] ?? '#666666',
+    ELEMENT_COLOR_SCHEMES.Vesta[element.symbol] ?? '#666666',
+    ELEMENT_COLOR_SCHEMES.Alloy[element.symbol] ?? '#666666',
   ])
 </script>
 
@@ -100,13 +100,13 @@
   }
 </script>
 
-{#each Object.entries(ELEMENT_COLOR_SCHEMES) as [id, scheme] (id)}
+{#each Object.entries(ELEMENT_COLOR_SCHEMES) as [identifier, scheme] (identifier)}
   {@const color_overrides = Object.fromEntries(
     ELEM_SYMBOLS.map((key) => [key, scheme[key] ?? 'transparent']),
   )}
   <section>
-    <h3 {id}>{id}</h3>
-    <p class="subtitle">{@html subtitles[id]}</p>
+    <h3 id={identifier}>{identifier}</h3>
+    <p class="subtitle">{@html subtitles[identifier]}</p>
   </section>
   <PeriodicTable {color_overrides} labels={scheme} />
 {/each}

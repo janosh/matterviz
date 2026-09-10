@@ -30,8 +30,8 @@ const ordered_items = (items: readonly DecorationItem[]): DecorationItem[] =>
   })
 
 const validate_unique_ids = (items: readonly DecorationItem[]): void => {
-  const ids = items.map(({ id }) => id)
-  const duplicate_id = ids.find((id, idx) => ids.indexOf(id) !== idx)
+  const ids = items.map((item) => item.id)
+  const duplicate_id = ids.find((identifier, idx) => ids.indexOf(identifier) !== idx)
   if (duplicate_id !== undefined) {
     throw new Error(`Decoration ids must be unique, got duplicate id "${duplicate_id}"`)
   }
@@ -40,12 +40,17 @@ const validate_unique_ids = (items: readonly DecorationItem[]): void => {
 export const decoration_placement_rects = ({
   placements,
 }: Pick<DecorationSolution, `placements`>): Rect[] =>
-  placements.map(({ x, y, footprint }) => ({ x, y, ...footprint }))
+  placements.map((placement) => ({
+    x: placement.x,
+    y: placement.y,
+    ...placement.footprint,
+  }))
 
 export const get_decoration_placement = (
   { placements }: Pick<DecorationSolution, `placements`>,
-  id: string,
-): DecorationPlacement | undefined => placements.find((placement) => placement.id === id)
+  identifier: string,
+): DecorationPlacement | undefined =>
+  placements.find((placement) => placement.id === identifier)
 
 // data-decoration-* attributes hosts stamp on a placed element so tests and tooling can read
 // where the solver put it (all omitted while unplaced)
@@ -99,7 +104,9 @@ const with_auto_legend_tracks = (
 export const solve_decorations = (scene: DecorationScene): DecorationSolution => {
   validate_unique_ids(scene.items)
   const outside_layout = place_outside_decorations(scene)
-  const { pad } = outside_layout
+  const pad = { ...outside_layout.pad }
+  if (scene.reserved_pad)
+    for (const side of [`t`, `b`, `l`, `r`] as const) pad[side] += scene.reserved_pad[side]
   const plot_bounds: Rect = {
     x: pad.l,
     y: pad.t,

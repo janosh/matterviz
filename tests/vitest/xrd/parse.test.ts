@@ -14,7 +14,7 @@ import {
 import { array_max } from '$lib/math'
 import { decimate_pattern } from '$lib/xrd'
 import { zipSync } from 'fflate'
-import fs from 'node:fs'
+import file_system from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { describe, expect, test } from 'vitest'
@@ -499,10 +499,10 @@ describe(`parse_brml_file`, () => {
       x: [15, 15.01, 15.02, 15.03, 15.04],
       y: [50, 75, 100, 90, 60],
     },
-  ])(`reads $desc`, async ({ xml, x, y }) => {
+  ])(`reads $desc`, async ({ xml, x: coord_x, y: coord_y }) => {
     const result = await parse_brml_file(zip({ 'Experiment0/RawData0.xml': xml }))
-    result.x.forEach((val, idx) => expect(val).toBeCloseTo(x[idx], 9))
-    result.y.forEach((val, idx) => expect(val).toBeCloseTo(y[idx], 9))
+    result.x.forEach((val, idx) => expect(val).toBeCloseTo(coord_x[idx], 9))
+    result.y.forEach((val, idx) => expect(val).toBeCloseTo(coord_y[idx], 9))
   })
 
   test(`falls back to any XML entry carrying Datum rows when no RawData file exists`, async () => {
@@ -538,16 +538,16 @@ describe(`parse_brml_file`, () => {
 })
 
 describe(`parse_xrd_file routing`, () => {
-  const xy = `10.0 100\n20.0 200`
+  const coords_xy = `10.0 100\n20.0 200`
   test.each([
-    [`data.xy`, xy],
-    [`data.xy`, new TextEncoder().encode(xy).buffer], // ArrayBuffer text
+    [`data.xy`, coords_xy],
+    [`data.xy`, new TextEncoder().encode(coords_xy).buffer], // ArrayBuffer text
     [`data.xye`, `10.0 100 5\n20.0 200 10`],
     [`data.csv`, `10.0,100\n20.0,200`],
-    [`data.dat`, xy],
-    [`data.txt`, xy],
-    [`DATA.XY`, xy], // case-insensitive
-    [`data.xy.gz`, xy], // .gz stripped (content already inflated)
+    [`data.dat`, coords_xy],
+    [`data.txt`, coords_xy],
+    [`DATA.XY`, coords_xy], // case-insensitive
+    [`data.xy.gz`, coords_xy], // .gz stripped (content already inflated)
 
     [`rigaku.asc`, `*START = 10\n*STEP = 10\n*BEGIN\n100, 200\n*END`],
     [`scan.ras`, `*RAS_INT_START\n10 100 1\n20 200 1\n*RAS_INT_END`],
@@ -583,7 +583,7 @@ describe(`parse_xrd_file routing`, () => {
   })
 
   test.each([`data.pdf`, `datafile`])(`rejects %s`, async (filename) => {
-    await expect(parse_xrd_file(xy, filename)).rejects.toThrow(
+    await expect(parse_xrd_file(coords_xy, filename)).rejects.toThrow(
       /Unsupported XRD file extension/,
     )
   })
@@ -608,7 +608,7 @@ describe(`is_xrd_data_file`, () => {
 describe(`real example files`, () => {
   const site_xrd_dir = path.resolve(`src/site/xrd`)
   const load = async (filename: string) => {
-    let content = fs.readFileSync(path.join(site_xrd_dir, filename))
+    let content = file_system.readFileSync(path.join(site_xrd_dir, filename))
     const base_name = filename.replace(/\.gz$/i, ``)
     if (filename !== base_name) content = zlib.gunzipSync(content)
     const is_binary = /\.(?:brml|raw)$/i.test(base_name)
@@ -657,7 +657,9 @@ describe(`real example files`, () => {
   })
 
   test(`every example file is covered above`, () => {
-    const files = fs.readdirSync(site_xrd_dir).filter((name) => is_xrd_data_file(name))
+    const files = file_system
+      .readdirSync(site_xrd_dir)
+      .filter((name) => is_xrd_data_file(name))
     expect(files).toHaveLength(17)
   })
 
