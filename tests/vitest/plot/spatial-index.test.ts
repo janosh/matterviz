@@ -1,6 +1,10 @@
 import type { Point2D } from '$lib/math'
 import type { Positioned } from '$lib/plot/core/spatial-index'
-import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
+import {
+  build_spatial_index,
+  query_nearest,
+  query_topmost,
+} from '$lib/plot/core/spatial-index'
 import { describe, expect, test } from 'vitest'
 
 const linear_nearest = <T extends Positioned>(
@@ -73,12 +77,12 @@ describe(`spatial index`, () => {
       ).toBe(`first`)
     }
 
-    for (const [cx, cy] of [
+    for (const [center_x, center_y] of [
       [NaN, 5],
       [5, Infinity],
       [(1 << 15) * 20 + 100, 0],
     ]) {
-      expect(build_spatial_index([{ cx, cy }], 20).count).toBe(0)
+      expect(build_spatial_index([{ cx: center_x, cy: center_y }], 20).count).toBe(0)
     }
 
     const clustered = Array.from({ length: 100 }, (_, idx) => ({
@@ -105,4 +109,32 @@ describe(`spatial index`, () => {
       expect(query_nearest(index, pointer)).toBe(linear_nearest(items, pointer, radius_px))
     }
   })
+})
+
+test(`topmost picking preserves paint order with overlapping variable radii`, () => {
+  const items = Array.from({ length: 800 }, (_, idx) => ({
+    cx: ((idx * 7919) % 997) - 100,
+    cy: ((idx * 37) % 601) - 100,
+    radius: 1 + (idx % 30),
+  }))
+  const index = build_spatial_index(items, 30)
+  for (let idx = 0; idx < 500; idx++) {
+    const pointer = { x: ((idx * 137) % 1100) - 100, y: ((idx * 97) % 750) - 100 }
+    const contains = (point: (typeof items)[number]) =>
+      Math.hypot(point.cx - pointer.x, point.cy - pointer.y) < point.radius
+    expect(query_topmost(index, pointer, contains)).toBe(items.findLast(contains) ?? null)
+  }
+  const overlap = [
+    { cx: 0, cy: 0 },
+    { cx: 1, cy: 0 },
+    { cx: -1, cy: 0 },
+  ]
+  expect(query_topmost(build_spatial_index(overlap, 10), { x: 0, y: 0 }, () => true)).toBe(
+    overlap[2],
+  )
+  // Absolute cell increments stall beyond f64 integer precision; both axes must terminate.
+  for (const coord of [NaN, Infinity, -Infinity, 2 ** 60, -(2 ** 60), Number.MAX_VALUE]) {
+    expect(query_topmost(index, { x: coord, y: 0 }, () => true)).toBeNull()
+    expect(query_topmost(index, { x: 0, y: coord }, () => true)).toBeNull()
+  }
 })

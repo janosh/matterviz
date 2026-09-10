@@ -1726,9 +1726,9 @@
             const offsets = new Map<string, Vec3>()
             for (const [idx, key] of site_keys.entries()) {
               const angle = (2 * Math.PI * idx) / n_keys
-              const dx = math.scale(u_vec, gap_abs * Math.cos(angle))
-              const dy = math.scale(v_vec, gap_abs * Math.sin(angle))
-              offsets.set(key, math.add(dx, dy))
+              const delta_x = math.scale(u_vec, gap_abs * Math.cos(angle))
+              const delta_y = math.scale(v_vec, gap_abs * Math.sin(angle))
+              offsets.set(key, math.add(delta_x, delta_y))
             }
             return offsets
           })
@@ -1875,10 +1875,10 @@
   // Build lazily on the first tooltip after a topology change, then visit only its neighbors.
   let bond_neighbors = $derived.by(() => {
     const neighbors = new Map<number, number[]>()
-    const add = (from: number, to: number) => {
+    const add = (from: number, target: number) => {
       const entries = neighbors.get(from)
-      if (entries) entries.push(to)
-      else neighbors.set(from, [to])
+      if (entries) entries.push(target)
+      else neighbors.set(from, [target])
     }
     for (const { site_idx_1, site_idx_2 } of filtered_bond_pairs) {
       add(site_idx_1, site_idx_2)
@@ -2358,16 +2358,20 @@
             space="world"
             onobjectChange={() => {
               if (!transform_object?.position || !drag_start_centroid) return
-              const { x: tx, y: ty, z: tz } = transform_object.position
+              const {
+                x: translate_x,
+                y: translate_y,
+                z: translate_z,
+              } = transform_object.position
               const delta: Vec3 = [
-                tx - drag_start_centroid[0],
-                ty - drag_start_centroid[1],
-                tz - drag_start_centroid[2],
+                translate_x - drag_start_centroid[0],
+                translate_y - drag_start_centroid[1],
+                translate_z - drag_start_centroid[2],
               ]
               // Update reference point so deltas are incremental, not cumulative.
               // Without this, each frame compounds: sites already moved by previous
               // delta get the full cumulative delta re-applied.
-              drag_start_centroid = [tx, ty, tz]
+              drag_start_centroid = [translate_x, translate_y, translate_z]
               on_sites_moved?.(selected_sites, delta)
             }}
             onmouseDown={() => {
@@ -2396,8 +2400,8 @@
             }
           }}
           onclick={(event: { point: { x: number; y: number; z: number } }) => {
-            const { x, y, z } = event.point
-            on_add_atom?.([x, y, z] as Vec3, add_element as ElementSymbol)
+            const { x: coord_x, y: coord_y, z: coord_z } = event.point
+            on_add_atom?.([coord_x, coord_y, coord_z] as Vec3, add_element as ElementSymbol)
           }}
         >
           <T.PlaneGeometry
@@ -2462,23 +2466,26 @@
           {@const site_a = structure.sites[idx_a]}
           {@const site_b = structure.sites[idx_b]}
           {#if center && site_a && site_b}
-            {@const disp = (to: Vec3) =>
+            {@const disp = (target: Vec3) =>
               measure.displacement_pbc(
                 center.xyz,
-                to,
+                target,
                 lattice?.matrix,
                 undefined,
                 lattice?.pbc,
               )}
-            {@const v1 = disp(site_a.xyz)}
-            {@const v2 = disp(site_b.xyz)}
-            {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
-            {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
-            {@const angle_deg = measure.angle_between_vectors(v1, v2, `degrees`)}
-            {#if n1 > math.EPS && n2 > math.EPS}
+            {@const vector_1 = disp(site_a.xyz)}
+            {@const vector_2 = disp(site_b.xyz)}
+            {@const count_1 = Math.hypot(vector_1[0], vector_1[1], vector_1[2])}
+            {@const count = Math.hypot(vector_2[0], vector_2[1], vector_2[2])}
+            {@const angle_deg = measure.angle_between_vectors(vector_1, vector_2, `degrees`)}
+            {#if count_1 > math.EPS && count > math.EPS}
               <!-- rays end on the minimum-image positions the angle was measured from, not
                 the raw in-cell ones, so the drawn wedge matches the reported number -->
-              {@const ray_ends = [math.add(center.xyz, v1), math.add(center.xyz, v2)]}
+              {@const ray_ends = [
+                math.add(center.xyz, vector_1),
+                math.add(center.xyz, vector_2),
+              ]}
               {#each ray_ends as ray_end, ray_idx (ray_idx)}
                 <Cylinder
                   from={center.xyz}
@@ -2487,7 +2494,10 @@
                   color={measure_line_color}
                 />
               {/each}
-              {@const bisector = math.add(math.scale(v1, 1 / n1), math.scale(v2, 1 / n2))}
+              {@const bisector = math.add(
+                math.scale(vector_1, 1 / count_1),
+                math.scale(vector_2, 1 / count),
+              )}
               {@const bis_norm = Math.hypot(...bisector) || 1}
               {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
               {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
@@ -2510,8 +2520,8 @@
               lattice?.matrix,
               lattice?.pbc,
             )}
-            {#each [[draw_1, draw_2], [draw_2, draw_3], [draw_3, draw_4]] as [from, to], seg_idx (seg_idx)}
-              <Cylinder {from} {to} thickness={0.05} color={measure_line_color} />
+            {#each [[draw_1, draw_2], [draw_2, draw_3], [draw_3, draw_4]] as [from, target], seg_idx (seg_idx)}
+              <Cylinder {from} to={target} thickness={0.05} color={measure_line_color} />
             {/each}
             {@const torsion_deg = measure.dihedral_angle(
               pos_1,

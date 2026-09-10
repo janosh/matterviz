@@ -78,10 +78,15 @@
     })
   }
 
-  const cross_section_settings = track_settings(() => ({
-    ...resolved_settings,
-    active_volume_id,
-  }))
+  const cross_section_settings = $derived(
+    track_settings(
+      () => ({
+        ...resolved_settings,
+        active_volume_id,
+      }),
+      { ...create_volume_slice_settings(), active_volume_id: volumes[0]?.id },
+    ),
+  )
 </script>
 
 {#snippet color_bound_input(bound_idx: 0 | 1)}

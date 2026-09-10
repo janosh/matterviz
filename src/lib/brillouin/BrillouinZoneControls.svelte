@@ -25,11 +25,17 @@
     controls_open?: boolean
   } = $props()
 
-  const brillouin_zone_controls_settings = track_settings(() => ({ bz_order, show_vectors }))
-  const surface_settings = track_settings(() => ({ surface_color, surface_opacity }))
-  const edges_settings = track_settings(() => ({ edge_color, edge_width }))
-  const irreducible_bz_settings = track_settings(() => ({ show_ibz, ibz_color, ibz_opacity }))
-  const camera_settings = track_settings(() => ({ camera_projection }))
+  const brillouin_zone_controls_settings = track_settings(
+    () => ({ bz_order, show_vectors }),
+    defaults,
+  )
+  const surface_settings = track_settings(() => ({ surface_color, surface_opacity }), defaults)
+  const edges_settings = track_settings(() => ({ edge_color, edge_width }), defaults)
+  const irreducible_bz_settings = track_settings(
+    () => ({ show_ibz, ibz_color, ibz_opacity }),
+    defaults,
+  )
+  const camera_settings = track_settings(() => ({ camera_projection }), defaults)
 </script>
 
 <ControlPane

@@ -12,7 +12,7 @@
   // line resolves its axes through resolve_ref_line_axes, exactly like the annotation solver.
   let {
     frame,
-    z = `below-lines`,
+    z: coord_z = `below-lines`,
     on_click,
     on_hover,
   }: {
@@ -23,7 +23,7 @@
   } = $props()
 
   const lines = $derived(
-    frame.ref_lines.filter((line) => (line.z_index ?? `below-lines`) === z),
+    frame.ref_lines.filter((line) => (line.z_index ?? `below-lines`) === coord_z),
   )
 </script>
 

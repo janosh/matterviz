@@ -577,7 +577,9 @@ describe(`map_wyckoff_to_all_atoms`, () => {
         mock_sym_data(),
         tolerance,
       )
-      expect(result[0].site_indices.toSorted((a, b) => a - b)).toEqual(expected)
+      expect(
+        result[0].site_indices.toSorted((left_value, right_value) => left_value - right_value),
+      ).toEqual(expected)
     },
   )
 
@@ -646,16 +648,19 @@ describe(`wyckoff_sequence`, () => {
 })
 
 describe(`enrich_wyckoff_rows`, () => {
-  const db = [make_db_entry(`a`, `0,0,0`, `m-3m`, 1), make_db_entry(`c`, `x,1/4,0`, `mm2`, 4)]
+  const database = [
+    make_db_entry(`a`, `0,0,0`, `m-3m`, 1),
+    make_db_entry(`c`, `x,1/4,0`, `mm2`, 4),
+  ]
 
   test.each<[string, WyckoffPos, MoyoWyckoffPosition[], Partial<WyckoffPos>]>([
-    [`1a`, make_row(`1a`), db, { coordinates: `0,0,0`, site_symmetry: `m-3m` }],
-    [`4c`, make_row(`4c`), db, { coordinates: `x,1/4,0`, site_symmetry: `mm2` }],
+    [`1a`, make_row(`1a`), database, { coordinates: `0,0,0`, site_symmetry: `m-3m` }],
+    [`4c`, make_row(`4c`), database, { coordinates: `x,1/4,0`, site_symmetry: `mm2` }],
     // moyo-provided site symmetry wins over the database fallback
     [
       `1a with moyo site symmetry`,
       make_row(`1a`, { site_symmetry: `-43m` }),
-      db,
+      database,
       { coordinates: `0,0,0`, site_symmetry: `-43m` },
     ],
     // alpha (uppercase A) general positions match too
@@ -674,7 +679,7 @@ describe(`enrich_wyckoff_rows`, () => {
 
   test.each<[string, WyckoffPos[], MoyoWyckoffPosition[]]>([
     [`empty database`, [make_row(`1a`)], []],
-    [`letter missing from database`, [make_row(`2d`)], db],
+    [`letter missing from database`, [make_row(`2d`)], database],
   ])(`passes rows through unchanged with %s`, (_desc, rows, db_positions) => {
     const enriched = enrich_wyckoff_rows(rows, db_positions)
     expect(enriched).toEqual(rows)

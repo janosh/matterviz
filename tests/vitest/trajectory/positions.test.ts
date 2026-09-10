@@ -36,8 +36,8 @@ describe(`resolve_lag_time_unit`, () => {
     [undefined, undefined, `frame`],
     [undefined, `frame`, `frame`],
     [0.5, `fs`, `fs`],
-  ])(`dt=%s time_unit=%s labels the lag axis %s`, (dt, time_unit, expected) => {
-    expect(resolve_lag_time_unit(`calc_msd`, dt, time_unit, `fs`)).toBe(expected)
+  ])(`dt=%s time_unit=%s labels the lag axis %s`, (delta_time, time_unit, expected) => {
+    expect(resolve_lag_time_unit(`calc_msd`, delta_time, time_unit, `fs`)).toBe(expected)
   })
 
   it.each([
@@ -47,8 +47,10 @@ describe(`resolve_lag_time_unit`, () => {
     [0.5, undefined, /dt was supplied \(0\.5\) without time_unit; pass e.g. time_unit: 'fs'/],
     [0.5, ``, /without time_unit/],
     [0.5, `frame`, /time_unit 'frame' cannot be combined with dt/],
-  ])(`rejects dt=%s with time_unit=%s`, (dt, time_unit, expected) => {
-    expect(() => resolve_lag_time_unit(`calc_msd`, dt, time_unit, `fs`)).toThrow(expected)
+  ])(`rejects dt=%s with time_unit=%s`, (delta_time, time_unit, expected) => {
+    expect(() => resolve_lag_time_unit(`calc_msd`, delta_time, time_unit, `fs`)).toThrow(
+      expected,
+    )
   })
 })
 

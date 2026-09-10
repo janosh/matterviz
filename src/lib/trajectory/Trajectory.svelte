@@ -90,7 +90,7 @@
     type MaterialSource,
     type OpenedMaterial,
   } from '$lib/file-viewer/open'
-  import * as io from '$lib/io'
+  import * as file_io from '../io'
   import { Hdf5GroupSelectionRequiredError, type OpenTrajectoryOptions } from './open'
   import { get_unsupported_format_message } from './parse'
   import TrajectoryError from './TrajectoryError.svelte'
@@ -326,7 +326,7 @@
   }
   const source_name = ({ input }: PendingSource): string => {
     if (typeof input === `string` || input instanceof URL) {
-      return io.basename_from_url(String(input))
+      return file_io.basename_from_url(String(input))
     }
     if (typeof File !== `undefined` && input instanceof File) return input.name
     return `filename` in input ? input.filename : ``
@@ -344,7 +344,7 @@
     }
     // Inflating a gzipped HDF5 into browser-managed storage happens before any parse progress
     // arrives and can take a while, so say so instead of showing a bare spinner
-    if (!pending.payload && io.hdf5_compression_format(source_name(pending)) === `gzip`) {
+    if (!pending.payload && file_io.hdf5_compression_format(source_name(pending)) === `gzip`) {
       progress = {
         current: 0,
         total: 100,
@@ -746,8 +746,8 @@
   )
   let has_y2_series = $derived(
     plot_series.some(
-      ({ y, y_axis: axis_name, visible }) =>
-        axis_name === `y2` && visible && y.some(Number.isFinite),
+      ({ y: coord_y, y_axis: axis_name, visible }) =>
+        axis_name === `y2` && visible && coord_y.some(Number.isFinite),
     ),
   )
   // Keep plot configuration referentially stable while only the active frame changes:
@@ -755,8 +755,18 @@
   // Caller padding is honoured as a floor: the y2 axis needs its right margin whatever the
   // caller asked for, and a caller cannot know whether a y2 series is currently visible
   let trajectory_scatter_padding = $derived.by(() => {
-    const { t = 20, b = 60, r = 0, ...user } = scatter_props.padding ?? {}
-    return { ...user, t, b, r: Math.max(r, has_y2_series ? 100 : 20) }
+    const {
+      t: pad_top = 20,
+      b: pad_bottom = 60,
+      r: pad_right = 0,
+      ...user
+    } = scatter_props.padding ?? {}
+    return {
+      ...user,
+      t: pad_top,
+      b: pad_bottom,
+      r: Math.max(pad_right, has_y2_series ? 100 : 20),
+    }
   })
   let trajectory_hover_config = $derived({ ...scatter_props.hover_config, mode: `x` as const })
   // Hold the plot's active-frame tick still during a pointer burst; snap it when settled
@@ -868,7 +878,7 @@
   class={[`trajectory sequence-viewer`, actual_layout, rest.class]}
   class:show-both-views={show_plot && show_structure && !spectroscopy_open}
   class:spectroscopy-mode={spectroscopy_open}
-  {@attach io.raw_file_drop_zone({
+  {@attach file_io.raw_file_drop_zone({
     allow: () => allow_file_drop,
     max_files: 1,
     on_drop: (input) => {
@@ -1271,10 +1281,16 @@
             padding={trajectory_scatter_padding}
             hover_config={trajectory_hover_config}
           >
-            {#snippet tooltip({ x, y, raw_y, metadata, label }: ScatterHandlerProps)}
-              {x_axis.label}: {format_num(x, `~g`)}<br />
+            {#snippet tooltip({
+              x: coord_x,
+              y: coord_y,
+              raw_y,
+              metadata,
+              label,
+            }: ScatterHandlerProps)}
+              {x_axis.label}: {format_num(coord_x, `~g`)}<br />
               {@html sanitize_html(metadata?.series_label || label || `Value`)}: {format_num(
-                y,
+                coord_y,
               )}
               {#if typeof raw_y === `number`}
                 <small style="opacity: 0.65">&nbsp;(raw: {format_num(raw_y)})</small>

@@ -14,12 +14,12 @@ const is_species_array = (val: unknown): val is { element: ElementSymbol }[] =>
   Array.isArray(val) &&
   val.length > 0 &&
   val.every(
-    (sp) =>
-      sp != null &&
-      typeof sp === `object` &&
-      `element` in sp &&
-      typeof sp.element === `string` &&
-      sp.element.trim().length > 0,
+    (species) =>
+      species != null &&
+      typeof species === `object` &&
+      `element` in species &&
+      typeof species.element === `string` &&
+      species.element.trim().length > 0,
   )
 
 const frac_coords_of = (value: unknown, frame_idx: number, n_sites: number): Vec3[] => {

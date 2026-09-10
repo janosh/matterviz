@@ -15,11 +15,15 @@ import type {
 } from './types'
 
 // Convert temperature between units (K, °C, °F)
-export function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
-  if (from === to) return value
+export function convert_temp(value: number, from: TempUnit, target: TempUnit): number {
+  if (from === target) return value
   const kelvin =
     from === `°C` ? value + 273.15 : from === `°F` ? (value - 32) * (5 / 9) + 273.15 : value
-  return to === `K` ? kelvin : to === `°C` ? kelvin - 273.15 : (kelvin - 273.15) * (9 / 5) + 32
+  return target === `K`
+    ? kelvin
+    : target === `°C`
+      ? kelvin - 273.15
+      : (kelvin - 273.15) * (9 / 5) + 32
 }
 
 // Centralized defaults for phase diagram configuration (single source of truth)
@@ -205,7 +209,7 @@ export function compute_label_properties(
   if (/[\s_-]/.test(label)) {
     const chars_per_line = Math.max(3, Math.floor(avail_w / char_width))
     const lines = wrap_text(label, chars_per_line)
-    const wrapped_w = Math.max(...lines.map((ln) => ln.length)) * char_width
+    const wrapped_w = Math.max(...lines.map((label_line) => label_line.length)) * char_width
     const wrapped_h = lines.length * line_height
 
     if (wrapped_w <= avail_w && wrapped_h <= avail_h) {
@@ -324,8 +328,8 @@ function order_phases_along_tie_line(
   all_regions: readonly PhaseRegion[],
   phases: [string, string],
   temperature: number,
-  lo: number,
-  hi: number,
+  lower: number,
+  upper: number,
 ): [string, string] {
   const swapped: [string, string] = [phases[1], phases[0]]
   const probe = (position: number, direction: -1 | 1): string | null => {
@@ -340,9 +344,9 @@ function order_phases_along_tie_line(
     }
     return null
   }
-  const left_neighbor = probe(lo, -1)
+  const left_neighbor = probe(lower, -1)
   if (left_neighbor) return left_neighbor === phases[0] ? phases : swapped
-  const right_neighbor = probe(hi, 1)
+  const right_neighbor = probe(upper, 1)
   if (right_neighbor) return right_neighbor === phases[1] ? phases : swapped
   return phases
 }
@@ -371,24 +375,24 @@ export function calculate_lever_rule(
     composition,
   )
   if (!bounds) return null
-  const [lo, hi] = bounds
-  if (hi - lo < 1e-10) return null
+  const [lower, upper] = bounds
+  if (upper - lower < 1e-10) return null
 
   const [left_phase, right_phase] = order_phases_along_tie_line(
     region,
     all_regions,
     [phases[0], phases[1]],
     temperature,
-    lo,
-    hi,
+    lower,
+    upper,
   )
-  const fraction_right = (composition - lo) / (hi - lo)
+  const fraction_right = (composition - lower) / (upper - lower)
 
   return {
     left_phase,
     right_phase,
-    left_composition: lo,
-    right_composition: hi,
+    left_composition: lower,
+    right_composition: upper,
     fraction_left: 1 - fraction_right,
     fraction_right,
   }
@@ -400,12 +404,12 @@ export function lever_rule_rows(
   info: PhaseHoverInfo,
   comp_unit: CompUnit,
 ): [string, number, string][] | null {
-  const { lever_rule: lr } = info
-  if (!lr) return null
+  const { lever_rule } = info
+  if (!lever_rule) return null
   const comp = (val: number) => format_composition(val, comp_unit)
   return [
-    [lr.left_phase, lr.fraction_left, comp(lr.left_composition)],
-    [lr.right_phase, lr.fraction_right, comp(lr.right_composition)],
+    [lever_rule.left_phase, lever_rule.fraction_left, comp(lever_rule.left_composition)],
+    [lever_rule.right_phase, lever_rule.fraction_right, comp(lever_rule.right_composition)],
   ]
 }
 
@@ -467,9 +471,9 @@ export function compute_x_domain(
   x_range: [number | null, number | null] | undefined,
   data: PhaseDiagramData | null,
 ): Vec2 {
-  const [lo, hi] = x_range ?? [null, null]
-  if (lo != null && hi != null) return [lo, hi]
-  if (!data) return [lo ?? 0, hi ?? 1]
+  const [lower, upper] = x_range ?? [null, null]
+  if (lower != null && upper != null) return [lower, upper]
+  if (!data) return [lower ?? 0, upper ?? 1]
 
   const [data_min, data_max] = array_extent(
     [
@@ -478,20 +482,20 @@ export function compute_x_domain(
       ...(data.special_points ?? []).map((point) => point.position),
     ].map(([x_val]) => x_val),
   )
-  if (data_min > data_max) return [lo ?? 0, hi ?? 1] // no finite data
+  if (data_min > data_max) return [lower ?? 0, upper ?? 1] // no finite data
 
   // Auto-extend to 0/1 when an edge region is named after the pure component AND the
   // data already nearly reaches that boundary
   const comp_at_edge = (comp: string, x_val: number) => {
     if (!comp) return false
-    const re = new RegExp(`\\b${comp.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`)
+    const real = new RegExp(`\\b${comp.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`)
     return data.regions.some(
       (region) =>
-        re.test(region.name) &&
+        real.test(region.name) &&
         region.vertices.some((vertex) => Math.abs(vertex[0] - x_val) < 1e-6),
     )
   }
   const x_min = data_min < 0.05 && comp_at_edge(data.components[0], data_min) ? 0 : data_min
   const x_max = data_max > 0.95 && comp_at_edge(data.components[1], data_max) ? 1 : data_max
-  return [lo ?? x_min, hi ?? x_max]
+  return [lower ?? x_min, upper ?? x_max]
 }

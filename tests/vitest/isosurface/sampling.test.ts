@@ -79,7 +79,9 @@ describe(`create_volume_sampler`, () => {
 
     // Smooth periodic field: cos(2π fx)
     const n_pts = 32
-    const grid = make_grid(n_pts, n_pts, n_pts, (ix) => Math.cos((2 * Math.PI * ix) / n_pts))
+    const grid = make_grid(n_pts, n_pts, n_pts, (idx_x) =>
+      Math.cos((2 * Math.PI * idx_x) / n_pts),
+    )
     const cos = create_volume_sampler(make_volume(grid, { lattice: cubic, periodic: true }))
     expect(Math.abs(cos([9.999, 5, 5]) - cos([0.001, 5, 5]))).toBeLessThan(0.01)
   })
@@ -208,9 +210,9 @@ describe(`create_volume_sampler reads the current volume fields`, () => {
     ],
   ] as const)(
     `follows a %s change on the same volume object`,
-    (_field, make, at, before, mutate, after) => {
+    (_field, make, position, before, mutate, after) => {
       const vol = make()
-      const point = at as [number, number, number]
+      const point = position as [number, number, number]
       expect(create_volume_sampler(vol)(point)).toBeCloseTo(before, 10)
       mutate(vol)
       expect(create_volume_sampler(vol)(point)).toBeCloseTo(after, 10)
@@ -419,9 +421,13 @@ describe(`extract_volume_range`, () => {
 
   test(`self-sampling an integer-supercell surface recovers its isovalue`, () => {
     const n_pts = 8
-    const grid = make_grid(n_pts, n_pts, n_pts, (ix, iy, iz) => {
+    const grid = make_grid(n_pts, n_pts, n_pts, (idx_x, idx_y, idx_z) => {
       const phase = (2 * Math.PI) / n_pts
-      return Math.sin(ix * phase) + 0.35 * Math.cos(iy * phase) + 0.2 * Math.sin(iz * phase)
+      return (
+        Math.sin(idx_x * phase) +
+        0.35 * Math.cos(idx_y * phase) +
+        0.2 * Math.sin(idx_z * phase)
+      )
     })
     const volume = make_volume(grid, { lattice: cubic, periodic: true })
     const extracted = extract_volume_range(volume, [
@@ -474,9 +480,9 @@ describe(`extract_volume_range`, () => {
       ],
       1000,
     )
-    const [nx, ny, nz] = extracted.dims
-    expect(nx * ny * nz).toBeLessThanOrEqual(1000)
-    expect(Math.min(nx, ny, nz)).toBeGreaterThanOrEqual(2)
+    const [size_x, size_y, size_z] = extracted.dims
+    expect(size_x * size_y * size_z).toBeLessThanOrEqual(1000)
+    expect(Math.min(size_x, size_y, size_z)).toBeGreaterThanOrEqual(2)
     // Lattice still spans the full requested range despite reduced resolution
     expect(extracted.lattice[0][0]).toBeCloseTo(50)
   })
@@ -503,10 +509,10 @@ describe(`extract_volume_range`, () => {
     expect(extracted.lattice[0][0]).toBeCloseTo(10)
     expect(extracted.lattice[1][1]).toBeCloseTo(5)
     expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0, 10)
-    const [nx, ny] = extracted.dims
+    const [size_x, size_y] = extracted.dims
     expect(extracted.dims).toEqual([11, 6, 11])
     // Endpoint values match the source field at the crop bounds
-    expect(grid_value(extracted, nx - 1, 0, 0)).toBeCloseTo(1, 10)
-    expect(grid_value(extracted, 0, ny - 1, 0)).toBeCloseTo(1, 10) // 2 * 0.5
+    expect(grid_value(extracted, size_x - 1, 0, 0)).toBeCloseTo(1, 10)
+    expect(grid_value(extracted, 0, size_y - 1, 0)).toBeCloseTo(1, 10) // 2 * 0.5
   })
 })

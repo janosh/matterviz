@@ -27,33 +27,33 @@ const dense_obstacles = Array.from({ length: 21 }, (_row, x_idx) =>
   })),
 ).flat()
 
-const placement_rect = ({ x, y, footprint }: DecorationPlacement): Rect => ({
-  x,
-  y,
+const placement_rect = ({ x: coord_x, y: coord_y, footprint }: DecorationPlacement): Rect => ({
+  x: coord_x,
+  y: coord_y,
   ...footprint,
 })
 
 const reference_candidate = (
-  x: number,
-  y: number,
+  coord_x: number,
+  coord_y: number,
   position: ReferenceAnnotationCandidate[`position`] = `end`,
   side: ReferenceAnnotationCandidate[`side`] = `above`,
 ): ReferenceAnnotationCandidate => ({
   position,
   side,
-  x,
-  y,
+  x: coord_x,
+  y: coord_y,
   text_anchor: `middle`,
   dominant_baseline: `middle`,
-  rect: { x: x - 20, y: y - 10, width: 40, height: 20 },
+  rect: { x: coord_x - 20, y: coord_y - 10, width: 40, height: 20 },
 })
 
 const reference_item = (
-  id: string,
+  identifier: string,
   candidates: readonly ReferenceAnnotationCandidate[],
   pinned = false,
 ): ReferenceAnnotationDecorationItem => ({
-  id,
+  id: identifier,
   kind: `reference-annotation`,
   footprint: { width: candidates[0].rect.width, height: candidates[0].rect.height },
   candidates,
@@ -98,6 +98,30 @@ describe(`decoration solver`, () => {
       }
     }
   }
+
+  test.each([false, true])(`reserves marginal bands before placement, dense=%s`, (dense) => {
+    const reserved_pad = { t: 86, b: 66, l: 46, r: 106 }
+    const scene = scene_for(
+      [{ id: `legend`, kind: `legend`, footprint: { width: 100, height: 60 } }],
+      dense ? dense_obstacles : [{ x: 0.9, y: 0.9 }],
+    )
+    const solution = solve_decorations({ ...scene, reserved_pad })
+    const legend = solution.placements[0]
+    expect(legend.location).toBe(dense ? `outside` : `interior`)
+    expect(solution.plot_bounds).toEqual({
+      x: solution.pad.l,
+      y: solution.pad.t,
+      width: width - solution.pad.l - solution.pad.r,
+      height: height - solution.pad.t - solution.pad.b,
+    })
+    for (const side of [`t`, `b`, `l`, `r`] as const)
+      expect(solution.pad[side]).toBeGreaterThanOrEqual(base_pad[side] + reserved_pad[side])
+    if (!dense)
+      expect(rect_within_rect(placement_rect(legend), solution.plot_bounds)).toBe(true)
+    else if (legend.side === `right`)
+      expect(legend.x).toBeGreaterThanOrEqual(width - solution.pad.r + reserved_pad.r)
+    else expect(legend.y).toBeGreaterThanOrEqual(height - solution.pad.b + reserved_pad.b)
+  })
 
   test(`keeps all interior placements mutually exclusive`, () => {
     const solution = solve_decorations(
@@ -149,7 +173,7 @@ describe(`decoration solver`, () => {
             [310, 250],
             [520, 320],
             [120, 320],
-          ].map(([x, y]) => reference_candidate(x, y, `center`)),
+          ].map(([coord_x, coord_y]) => reference_candidate(coord_x, coord_y, `center`)),
         ),
       ],
     }
@@ -199,8 +223,10 @@ describe(`decoration solver`, () => {
         dense_obstacles,
       ),
     )
-    const legend = solution.placements.find(({ id }) => id === `legend`)
-    const colorbar = solution.placements.find(({ id }) => id === `colorbar`)
+    const legend = solution.placements.find(({ id: identifier }) => identifier === `legend`)
+    const colorbar = solution.placements.find(
+      ({ id: identifier }) => identifier === `colorbar`,
+    )
     expect(legend).toMatchObject({ location: `outside`, side: `bottom` })
     expect(colorbar).toMatchObject({ location: `outside`, side: `right` })
     expect(solution.pad).toEqual({
@@ -288,7 +314,9 @@ describe(`decoration solver`, () => {
     const solution = solve_decorations(
       scene_for([reference_item(`reference`, [colliding_candidate, clear_candidate]), note]),
     )
-    const reference = solution.placements.find(({ id }) => id === `reference`)
+    const reference = solution.placements.find(
+      ({ id: identifier }) => identifier === `reference`,
+    )
     expect(reference?.reference_annotation).toEqual(clear_candidate)
   })
 
@@ -313,7 +341,10 @@ describe(`decoration solver`, () => {
         reference_item(`z-pinned`, [shared_candidate], true),
       ]),
     )
-    expect(solution.placements.map(({ id }) => id)).toEqual([`z-pinned`, `a-auto`])
+    expect(solution.placements.map(({ id: identifier }) => identifier)).toEqual([
+      `z-pinned`,
+      `a-auto`,
+    ])
     expect(solution.placements[1].reference_annotation).toEqual(clear_candidate)
   })
 })

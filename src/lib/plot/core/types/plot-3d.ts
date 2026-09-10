@@ -55,17 +55,17 @@ export interface Surface3DConfig {
   x_range?: Vec2
   y_range?: Vec2
   resolution?: number | Vec2 // grid resolution (x, y)
-  z_fn?: (x: number, y: number) => number
+  z_fn?: (coord_x: number, coord_y: number) => number
   // For parametric surfaces: u,v parameterization
   u_range?: Vec2
   v_range?: Vec2
-  parametric_fn?: (u: number, v: number) => Point3D
+  parametric_fn?: (param_u: number, value: number) => Point3D
   // For triangulated surfaces: explicit geometry (only x,y,z needed, not scatter-specific fields)
   points?: Point3D[]
   triangles?: Vec3[] // indices into points array
   // Appearance
   color?: string
-  color_fn?: (x: number, y: number, z: number) => string
+  color_fn?: (coord_x: number, coord_y: number, coord_z: number) => string
   opacity?: number
   wireframe?: boolean
   wireframe_color?: string

@@ -26,8 +26,8 @@ vi.mock(`$lib/convex-hull/canvas-draw`, async (import_actual) => {
     find_hull_entry_at_mouse: (
       _canvas: unknown,
       _event: unknown,
-      points: readonly { entry: unknown }[],
-    ) => points[0]?.entry ?? null,
+      index: ReturnType<typeof canvas_draw.build_hull_pick_index>,
+    ) => index.cells.values().next().value?.[0]?.item.entry ?? null,
   }
 })
 
@@ -127,7 +127,9 @@ describe(`convex hull replacement state`, () => {
   // keeps the consumer's DOM attributes; the five-element case goes through the branch that
   // used to cherry-pick id/class/style and dropped hidden, onclick, aria-* and data-*
   const missing_text = `Missing convex hull data`
-  const five_elements = [`Li`, `Fe`, `Co`, `Ni`, `O`].map((el) => make_phase({ [el]: 1 }))
+  const five_elements = [`Li`, `Fe`, `Co`, `Ni`, `O`].map((element) =>
+    make_phase({ [element]: 1 }),
+  )
   test.each([
     [`undefined entries`, {}, missing_text, `status`],
     [`empty entries`, { entries: [] }, missing_text, `status`],
@@ -240,7 +242,7 @@ describe(`convex hull replacement state`, () => {
       async (_name, kept_elements, plot_selector) => {
         const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
         const entries = [
-          ...kept_elements.map((el) => with_temps({ [el]: 1 }, [300, 600], el)),
+          ...kept_elements.map((element) => with_temps({ [element]: 1 }, [300, 600], element)),
           with_temps({ O: 1 }, [300], `O`),
         ]
         const state = { temperature }
@@ -312,7 +314,7 @@ describe(`convex hull replacement state`, () => {
     `pymatgen %s species keys in the entries prop render a binary hull`,
     async (_name, composition, elements) => {
       const entries = [
-        ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
+        ...elements.map((element) => make_phase({ [element]: 1 }, 0, { entry_id: element })),
         make_phase({ ...composition }, -10, { entry_id: `compound` }),
       ]
       const target = await mount_hull({ entries })
@@ -625,7 +627,7 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
     // the hull polyline visits the three stable compounds between the two element corners
     const hull_path = [...plot.querySelectorAll<SVGPathElement>(`path`)]
       .map((path) => path.getAttribute(`d`) ?? ``)
-      .find((d) => d.startsWith(`M`) && d.split(`L`).length === 5)
+      .find((datum) => datum.startsWith(`M`) && datum.split(`L`).length === 5)
     expect(hull_path).toBeDefined()
     // a monotone spline would emit cubic (C) commands; facets must be M followed by L only
     expect(hull_path).toMatch(/^M[-\d.,]+(?:L[-\d.,]+){4}$/)

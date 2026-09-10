@@ -5,6 +5,7 @@ import {
   bin_values,
   compute_count_range,
   compute_histogram_bins,
+  compute_histogram_counts,
   log_safe_range,
   normalize_counts,
 } from '$lib/plot/histogram/histogram'
@@ -81,9 +82,16 @@ const series_of = (values: number[], extra: Partial<HistogramSeries> = {}): Hist
 // oxfmt-ignore
 const histogram_cfg = { x_domain: [0, 10] as Vec2, x2_domain: [100, 200] as Vec2, bins: 5, series_color: () => `steelblue` }
 const histogram_bins = (
-  entries: Parameters<typeof compute_histogram_bins>[0],
-  overrides: Partial<Parameters<typeof compute_histogram_bins>[1]> = {},
-) => compute_histogram_bins(entries, { ...histogram_cfg, ...overrides })
+  entries: Parameters<typeof compute_histogram_counts>[0],
+  overrides: Partial<Parameters<typeof compute_histogram_counts>[1]> & {
+    normalize?: Parameters<typeof compute_histogram_bins>[1]
+  } = {},
+) =>
+  compute_histogram_bins(
+    compute_histogram_counts(entries, { ...histogram_cfg, ...overrides }),
+    overrides.normalize ?? `count`,
+    histogram_cfg.series_color,
+  )
 // count range of a set of series binned over histogram_cfg's domains
 const count_range = (
   series: HistogramSeries[],
@@ -117,11 +125,11 @@ describe(`Histogram`, () => {
     [`spread-out values`, { series: [{ values: [1000, 2000, 3000, 4000, 5000], label: `B` }], bins: 5 }, 1, 20],
     [`two series`, { series: [{ values: [0, 0, 0, 0, 0], label: `A` }, { values: [1, 2, 3, 4, 5], label: `B` }], bins: 5 }, 5, 50],
     [`an explicit y range`, { series: [{ values: [1, 1, 1, 1, 1] }], bins: 5, y_axis: { range: [0, 3] } }, 1, 3],
-  ] as const)(`count axis spans the tallest bin for %s`, async (_name, props, lo, hi) => {
+  ] as const)(`count axis spans the tallest bin for %s`, async (_name, props, lower, upper) => {
     const ticks = await y_ticks_after(props)
     expect(ticks.length).toBeGreaterThan(0)
-    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(lo)
-    expect(Math.max(...ticks)).toBeLessThanOrEqual(hi)
+    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(lower)
+    expect(Math.max(...ticks)).toBeLessThanOrEqual(upper)
   })
 
   test(`fewer bins and a clipped x range change the count domain`, async () => {
@@ -390,38 +398,51 @@ describe(`Histogram`, () => {
     expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(2)
   })
 
-  test(`binds style and normalize controls to the public props`, async () => {
-    const state = { bar: { color: `#112233` }, normalize: `count` as const }
-    await mount_histogram(
-      bind_props(
-        {
-          series: [series_of([1], { label: `Only` })],
-          show_controls: true,
-          controls_open: true,
+  test.each([`y`, `y2`] as const)(
+    `binds style and normalize controls on %s`,
+    async (y_axis) => {
+      let sample_reads = 0
+      const values = [1]
+      Object.defineProperty(values, 0, {
+        get: () => {
+          sample_reads++
+          return 1
         },
-        state,
-      ),
-    )
-    const fill_input = doc_query<HTMLInputElement>(`input[type="color"]`)
-    fill_input.value = `#abcdef`
-    fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(state.bar).toEqual({ color: `#abcdef` })
-    // the controls pane's normalize select writes back into a bound normalize prop
-    const normalize_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
-      (select) => select.parentElement?.textContent?.includes(`Normalize`),
-    )
-    if (!normalize_select) throw new Error(`Histogram normalize select not found`)
-    expect(normalize_select.value).toBe(`count`)
-    normalize_select.value = `density`
-    // Svelte's select binding reads the chosen option via querySelector(':checked'), which
-    // happy-dom doesn't match on <option> (it would fall back to the first option)
-    vi.spyOn(normalize_select, `querySelector`).mockImplementation(
-      () => normalize_select.selectedOptions[0],
-    )
-    normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await tick()
-    expect(state.normalize).toBe(`density`)
-  })
+      })
+      const state = { bar: { color: `#112233` }, normalize: `count` as const }
+      await mount_histogram(
+        bind_props(
+          {
+            series: [series_of(values, { label: `Only`, y_axis })],
+            show_controls: true,
+            controls_open: true,
+          },
+          state,
+        ),
+      )
+      const initial_reads = sample_reads
+      const fill_input = doc_query<HTMLInputElement>(`input[type="color"]`)
+      fill_input.value = `#abcdef`
+      fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      expect(state.bar).toEqual({ color: `#abcdef` })
+      // the controls pane's normalize select writes back into a bound normalize prop
+      const normalize_select = [
+        ...document.querySelectorAll<HTMLSelectElement>(`select`),
+      ].find((select) => select.parentElement?.textContent?.includes(`Normalize`))
+      if (!normalize_select) throw new Error(`Histogram normalize select not found`)
+      expect(normalize_select.value).toBe(`count`)
+      normalize_select.value = `density`
+      // Svelte's select binding reads the chosen option via querySelector(':checked'), which
+      // happy-dom doesn't match on <option> (it would fall back to the first option)
+      vi.spyOn(normalize_select, `querySelector`).mockImplementation(
+        () => normalize_select.selectedOptions[0],
+      )
+      normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+      expect(state.normalize).toBe(`density`)
+      expect(sample_reads).toBe(initial_reads)
+    },
+  )
 
   test(`bar hover/click handlers receive the bin center, count and label`, async () => {
     const on_bar_hover = vi.fn()
@@ -501,6 +522,7 @@ describe(`Histogram`, () => {
       show_controls: true,
       controls_open: true,
       show_legend: undefined,
+      bins: 10,
     })
     const legend_checkbox = [
       ...document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
@@ -601,10 +623,12 @@ describe(`Histogram`, () => {
     expect(counts_of([1000, 10], [1, 10_000], 4, `log`)).toEqual([0, 1, 0, 1])
     // a domain a few ulps wide collapses in log10 space (scale would be Infinity and every
     // sample would be dropped): treat it as one bin holding the in-domain samples
-    const lo = 1e10
-    const hi = lo * (1 + 4 * Number.EPSILON)
-    expect(bin_values([lo, (lo + hi) / 2, hi, 2e10], [lo, hi], 3, `log`)).toEqual({
-      edges: Float64Array.of(lo, hi),
+    const lower = 1e10
+    const upper = lower * (1 + 4 * Number.EPSILON)
+    expect(
+      bin_values([lower, (lower + upper) / 2, upper, 2e10], [lower, upper], 3, `log`),
+    ).toEqual({
+      edges: Float64Array.of(lower, upper),
       counts: Uint32Array.of(3),
     })
     // a zero/negative log lower bound is clamped to LOG_EPS instead of producing NaN edges
@@ -650,7 +674,10 @@ describe(`Histogram`, () => {
     const probability = normalize_counts(edges, counts, `probability`)
     expect(probability.map(({ value }) => value)).toEqual([3 / 12, 5 / 12, 4 / 12])
     const density = normalize_counts(edges, counts, `density`)
-    const integral = density.reduce((sum, { x0, x1, value }) => sum + value * (x1 - x0), 0)
+    const integral = density.reduce(
+      (sum, { x0: coord_x_0, x1: coord_x_1, value }) => sum + value * (coord_x_1 - coord_x_0),
+      0,
+    )
     expect(Math.abs(integral - 1)).toBeLessThan(1e-12)
     // density = count / (total * width): the widest bin is the flattest
     expect(density[2].value).toBeCloseTo(4 / (12 * 900), 15)

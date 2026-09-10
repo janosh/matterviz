@@ -81,6 +81,15 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
     await expect(page.locator(`input[placeholder="Enter structure ID"]`)).toBeVisible()
     await expect(page.locator(`button.fetch-button`)).toBeVisible()
+
+    await page.goto(`/how-to/hook-up-to-external-api`)
+    const source = page
+      .locator(`details`)
+      .filter({ hasText: `OptimadeStructureViewer.svelte` })
+    const syntax_token = source.locator(`pre code [class^="pl-"]`).first()
+    await expect(syntax_token).toBeAttached({ timeout: DATA_LOAD_TIMEOUT })
+    await source.locator(`summary`).click()
+    await expect(syntax_token).toBeVisible()
   })
 
   for (const structure_id of [`invalid-id-12345`, `mp-100%`, `mp-%2F`, `mp-a/b?c#d`]) {

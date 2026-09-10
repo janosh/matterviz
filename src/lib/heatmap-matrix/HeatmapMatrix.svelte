@@ -2,7 +2,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color_memo, is_color, resolve_backdrop } from '$lib/colors'
   import { format_num } from '$lib/labels'
-  import { array_extent, quantile_unordered, type Vec2 } from '$lib/math'
+  import { quantile_unordered, type Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot/core/types'
   import {
     type ColorRamp,
@@ -38,7 +38,11 @@
   } from './index'
 
   type SelectionMode = `single` | `multi` | `range`
-  type AxisOrder = `label` | `key` | `sort_value` | ((a: AxisItem, b: AxisItem) => number)
+  type AxisOrder =
+    | `label`
+    | `key`
+    | `sort_value`
+    | ((value_a: AxisItem, value_b: AxisItem) => number)
   type CellPos = { x_idx: number; y_idx: number }
   type Axis = `x` | `y`
 
@@ -193,12 +197,13 @@
   function sort_indices(indices: number[], items: AxisItem[], order?: AxisOrder): number[] {
     if (!order) return indices
     const text = order === `key` ? axis_key : (item: AxisItem) => item.label
-    const cmp: (a: AxisItem, b: AxisItem) => number =
+    const cmp: (value_a: AxisItem, value_b: AxisItem) => number =
       typeof order === `function`
         ? order
         : order === `sort_value`
-          ? (a, b) => (a.sort_value ?? Infinity) - (b.sort_value ?? Infinity)
-          : (a, b) => text(a).localeCompare(text(b))
+          ? (left_value, right_value) =>
+              (left_value.sort_value ?? Infinity) - (right_value.sort_value ?? Infinity)
+          : (left_value, right_value) => text(left_value).localeCompare(text(right_value))
     return indices.toSorted((idx_a, idx_b) => cmp(items[idx_a], items[idx_b]))
   }
   let search_query_norm = $derived(search_query.trim().toLowerCase())
@@ -245,23 +250,31 @@
   let use_log = $derived(normalize === `log` || log)
   // One pass over the visible numeric values: min, max, smallest positive (the log floor when
   // the domain reaches <= 0; a Number.MIN_VALUE floor gave log_min ~ -744 and squashed every
-  // color to the top) and the values themselves for the robust quantiles. Only filtered-in
+  // color to the top). Only robust domains collect values for quantiles. Only filtered-in
   // rows/columns count, so filtering rescales the colors.
   let value_stats = $derived.by(() => {
     const numeric: number[] = []
+    const collect = domain_mode === `robust`
+    let min = Infinity
+    let max = -Infinity
     let pos = Infinity
     for (const y_idx of vis_y) {
       for (const x_idx of vis_x) {
         if (is_hidden_cell(x_idx, y_idx)) continue
         const value = get_value(x_idx, y_idx)
         if (typeof value !== `number` || !Number.isFinite(value)) continue
-        numeric.push(value)
+        if (collect) numeric.push(value)
+        if (value < min) min = value
+        if (value > max) max = value
         if (value > 0 && value < pos) pos = value
       }
     }
-    // no values: a placeholder domain, since array_extent yields the identity +-Infinity
-    const [min, max] = numeric.length ? array_extent(numeric) : [0, 1]
-    return { numeric, min, max, min_pos: Number.isFinite(pos) ? pos : null }
+    return {
+      numeric,
+      min: min === Infinity ? 0 : min,
+      max: max === -Infinity ? 1 : max,
+      min_pos: pos === Infinity ? null : pos,
+    }
   })
   // Lazy: only evaluated while domain_mode === 'robust' reads it. quantile_unordered partially
   // sorts in place, so it gets a copy.
@@ -271,38 +284,37 @@
     const [q_lo, q_hi] = [quantile_unordered(scratch, 0.02), quantile_unordered(scratch, 0.98)]
     return q_lo <= q_hi ? [q_lo, q_hi] : [q_hi, q_lo]
   })
-  let [cs_min, cs_max] = $derived.by((): Vec2 => {
-    const [fixed_min, fixed_max] = color_scale_range
-    if (domain_mode === `fixed` && fixed_min !== null && fixed_max !== null) {
-      return [fixed_min, fixed_max]
-    }
-    const [auto_min, auto_max] =
-      domain_mode === `robust` ? robust_domain : [value_stats.min, value_stats.max]
-    return [fixed_min ?? auto_min, fixed_max ?? auto_max]
-  })
+  let data_domain = $derived(
+    domain_mode === `robust` ? robust_domain : [value_stats.min, value_stats.max],
+  )
+  // Resolve each unspecified bound lazily; explicit ranges need no data-domain scan.
+  let [cs_min, cs_max] = $derived([
+    color_scale_range[0] ?? data_domain[0],
+    color_scale_range[1] ?? data_domain[1],
+  ])
   let color_bar_scale = $derived(to_color_bar_scale(color_scale))
   // The shared ramp clamps a non-positive log floor at LOG_EPS; lift it to the smallest
   // positive value instead so the colors still spread over the data. A degenerate domain
   // maps everything to the midpoint color; a log domain entirely <= 0 maps nothing (null).
   let ramp = $derived.by((): ColorRamp | null => {
-    const [lo, hi] = [Math.min(cs_min, cs_max), Math.max(cs_min, cs_max)]
-    let floor = lo
-    if (use_log && lo !== hi) {
-      if (hi <= 0) return null
-      if (lo <= 0) floor = value_stats.min_pos ?? hi
+    const [lower, upper] = [Math.min(cs_min, cs_max), Math.max(cs_min, cs_max)]
+    let floor = lower
+    if (use_log && lower !== upper) {
+      if (upper <= 0) return null
+      if (lower <= 0) floor = value_stats.min_pos ?? upper
     }
-    if (floor === hi) {
+    if (floor === upper) {
       const mid_color = resolve_color_ramp(color_bar_scale, [0, 1]).color_fn(0.5)
-      return { color_fn: () => mid_color, domain: [lo, hi] }
+      return { color_fn: () => mid_color, domain: [lower, upper] }
     }
-    return resolve_color_ramp(color_bar_scale, [floor, hi], use_log ? `log` : `linear`)
+    return resolve_color_ramp(color_bar_scale, [floor, upper], use_log ? `log` : `linear`)
   })
   // Color bar span in the caller's bound order: the cell ramp's domain, so a lifted log floor
   // shows on the bar too instead of the raw cs_min <= 0 flooring it at LOG_EPS
   let color_bar_range = $derived.by((): Vec2 => {
     if (!ramp) return [cs_min, cs_max]
-    const [lo, hi] = ramp.domain
-    return cs_min <= cs_max ? [lo, hi] : [hi, lo]
+    const [lower, upper] = ramp.domain
+    return cs_min <= cs_max ? [lower, upper] : [upper, lower]
   })
   // fill for cells with no mappable value (default transparent)
   let missing_fill = $derived(missing.color ?? `transparent`)
@@ -311,28 +323,17 @@
     val === null ||
     (typeof val === `string` ? !is_color(val) : !Number.isFinite(val) || (use_log && val <= 0))
   function value_to_color(val: CellValue): string | null {
-    if (val === null || cell_is_missing(val)) return missing_fill || null
-    if (typeof val === `string`) return val
-    if (!ramp) return missing_fill || null
-    // values below a lifted log floor saturate at the bottom of the ramp
-    return ramp.color_fn(Math.max(val, ramp.domain[0]))
+    if (cell_is_missing(val)) return missing_fill || null
+    if (typeof val !== `number`) return val
+    return ramp ? ramp.color_fn(val) : missing_fill || null
   }
-  // Background per cell as a flat array indexed y_idx * n_x + x_idx. O(n_x * n_y) strings,
-  // computed once per data/domain change rather than per render.
-  let n_x = $derived(x_items.length)
-  const flat_idx = (x_idx: number, y_idx: number): number => y_idx * n_x + x_idx
-  let bg_flat = $derived.by(() => {
-    const colors: (string | null)[] = Array(n_x * y_items.length)
-    for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
-      for (let x_idx = 0; x_idx < n_x; x_idx++) {
-        const override = color_overrides[make_color_override_key(x_keys[x_idx], y_keys[y_idx])]
-        colors[flat_idx(x_idx, y_idx)] = is_hidden_cell(x_idx, y_idx)
-          ? null
-          : (override ?? value_to_color(get_value(x_idx, y_idx)))
-      }
-    }
-    return colors
-  })
+  // Resolve only rendered or inspected cells. Svelte tracks each call's data/scale
+  // dependencies, so virtualized matrices never allocate colors for offscreen cells.
+  const background_at = (x_idx: number, y_idx: number): string | null =>
+    is_hidden_cell(x_idx, y_idx)
+      ? null
+      : (color_overrides[make_color_override_key(x_keys[x_idx], y_keys[y_idx])] ??
+        value_to_color(get_value(x_idx, y_idx)))
 
   let matrix_el: HTMLDivElement | undefined = $state()
   // Cell fills may be translucent (color overrides, missing-cell fills), so contrast needs to
@@ -341,7 +342,6 @@
   // Contrast color per cell, resolved on demand: every cell needs one only when cells carry
   // content (a cell snippet or show_values), otherwise just the selected cells' outlines do.
   const contrast_for_bg = contrast_color_memo({ backdrop: () => page_backdrop.current })
-  const contrast_at = (idx: number): string | null => contrast_for_bg(bg_flat[idx])
 
   const build_cell_context = (x_idx: number, y_idx: number): CellContext => ({
     x_item: x_items[x_idx],
@@ -349,7 +349,7 @@
     x_idx,
     y_idx,
     value: get_value(x_idx, y_idx),
-    bg_color: bg_flat[flat_idx(x_idx, y_idx)],
+    bg_color: background_at(x_idx, y_idx),
   })
 
   // === Grid layout ===
@@ -864,7 +864,6 @@
       {#if show_y_labels}{@render axis_label(`y`, y_idx)}{/if}
 
       {#each render_vis_x as x_idx (x_keys[x_idx])}
-        {@const idx = flat_idx(x_idx, y_idx)}
         {#if is_hidden_cell(x_idx, y_idx)}
           <div
             class="cell empty"
@@ -872,6 +871,7 @@
             style:grid-row={grid_line(`y`, y_idx)}
           ></div>
         {:else}
+          {@const bg_color = background_at(x_idx, y_idx)}
           {@const raw = get_value(x_idx, y_idx)}
           {@const cell_missing = cell_is_missing(raw)}
           {@const selected = selected_key_set.has(cell_pos_key(x_idx, y_idx))}
@@ -882,9 +882,11 @@
             data-x={x_idx}
             data-y={y_idx}
             style={cell_missing ? missing.style : undefined}
-            style:background-color={bg_flat[idx]}
-            style:color={cell || show_values ? contrast_at(idx) : undefined}
-            style:--heatmap-selected-outline-color={selected ? contrast_at(idx) : undefined}
+            style:background-color={bg_color}
+            style:color={cell || show_values ? contrast_for_bg(bg_color) : undefined}
+            style:--heatmap-selected-outline-color={selected
+              ? contrast_for_bg(bg_color)
+              : undefined}
             style:grid-column={grid_line(`x`, x_idx)}
             style:grid-row={grid_line(`y`, y_idx)}
           >
@@ -966,7 +968,7 @@
     :global(.color-bar) {
       position: absolute;
       background: color-mix(in srgb, var(--page-bg, #fff) 80%, transparent);
-      padding: 0.3rem 0.4rem;
+      padding: 0.3rem max(0.4rem, calc(var(--cbar-tick-label-width, 0px) / 2 + 2px));
       border-radius: var(--border-radius, 3pt);
     }
     &.color-bar-right :global(.color-bar-right) {
@@ -1014,6 +1016,8 @@
     min-width: 0; /* spacer in top-left when both axes have labels */
   }
   .cell {
+    /* Recolor dense grids immediately; theme/button transitions create one animation per cell. */
+    transition: none;
     width: 100%;
     height: 100%;
     min-width: 0;

@@ -20,7 +20,7 @@ vi.mock(`@threlte/core`, async (original) => ({
   useThrelte: () => fake_threlte,
 }))
 
-const fake_camera = (id: number) => ({ id }) as unknown as Camera
+const fake_camera = (identifier: number) => ({ id: identifier }) as unknown as Camera
 const fake_scene = { name: `scene` } as unknown as Scene
 
 test(`bind_renderer registers the canvas and re-binds on every camera swap until teardown`, () => {

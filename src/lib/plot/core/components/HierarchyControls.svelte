@@ -12,7 +12,7 @@
     SunburstValueMode,
   } from '$lib/plot/core/utils/hierarchy-layout'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
-  import type { Snippet } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { ControlPane } from '$lib/overlays'
 
@@ -100,7 +100,10 @@
     } else ({ padding_inner, padding_top, padding_outer } = DEFAULTS.treemap)
   }
 
-  const hierarchy_settings = track_settings(() => current_values)
+  const hierarchy_settings = track_settings(
+    () => current_values,
+    untrack(() => DEFAULTS[chart]),
+  )
 </script>
 
 <!-- snippets live at the template top level (not inside the components below) so

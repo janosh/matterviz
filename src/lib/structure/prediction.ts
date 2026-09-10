@@ -156,9 +156,9 @@ export function copy_prediction_overlay(
     const { values: raw_values, ...metadata_fields } = record(raw, path)
     const metadata = copy_prediction_metadata(metadata_fields, path)
     nonempty(metadata.id, `${path}.id`)
-    const id = metadata.id as string
-    if (ids.has(id)) invalid(`${path}.id`, `must be unique: ${id}`)
-    ids.add(id)
+    const identifier = metadata.id as string
+    if (ids.has(identifier)) invalid(`${path}.id`, `must be unique: ${identifier}`)
+    ids.add(identifier)
     if (
       !(raw_values instanceof Float64Array) &&
       !(

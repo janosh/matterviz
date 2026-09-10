@@ -1,4 +1,5 @@
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
+import { svg_to_svg_string } from '$lib/io/export'
 import { AXIS_LABEL_HEIGHT, AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
 import { get_text_metrics_revision } from '$lib/plot/core/text-metrics'
 import { TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
@@ -30,9 +31,9 @@ const mount_axis = async (props: Record<string, unknown>): Promise<SVGElement> =
 }
 
 const query = (root: Element, selector: string): Element => {
-  const el = root.querySelector(selector)
-  if (!el) throw new Error(`missing element: ${selector}`)
-  return el
+  const element = root.querySelector(selector)
+  if (!element) throw new Error(`missing element: ${selector}`)
+  return element
 }
 
 afterEach(() => {
@@ -94,9 +95,9 @@ describe(`PlotAxis`, () => {
       const ticks = query(svg, `g.${side}-axis`).querySelectorAll(`g.tick`)
       expect(ticks).toHaveLength(2)
       for (const [selector, attrs] of Object.entries(expected)) {
-        const el = query(ticks[0], selector)
+        const element = query(ticks[0], selector)
         for (const [attr, value] of Object.entries(attrs)) {
-          expect(el.getAttribute(attr)).toBe(value)
+          expect(element.getAttribute(attr)).toBe(value)
         }
       }
     },
@@ -326,73 +327,56 @@ describe(`PlotAxis`, () => {
     )
   })
 
-  test(`interactive title renders a listbox trigger in a foreignObject sized to it`, async () => {
-    mock_text_measurement()
-    const on_axis_change = vi.fn()
-    const svg = await mount_axis({
-      side: `x`,
-      ticks: [50],
-      axis: {
-        options: [
-          { key: `energy`, label: `Energy`, unit: `eV` },
-          { key: `volume`, label: `Long volume property`, unit: `Å³` },
-        ],
-        selected_key: `volume`,
-      },
-      label_x: 100,
-      label_y: 50,
-      on_axis_change,
-    })
-    const trigger = query(svg, `button.axis-trigger`)
-    const foreign_obj = query(svg, `foreignObject`)
-    const wrapper = query(svg, `.interactive-axis-label`)
-
-    expect(trigger.textContent).toContain(`Long volume property (Å³)`)
-    expect(trigger.getAttribute(`aria-haspopup`)).toBe(`listbox`)
-    expect(wrapper.classList.contains(`loading`)).toBe(false)
-    expect(svg.querySelector(`.spinner`)).toBeNull()
-    expect(Number(foreign_obj.getAttribute(`width`))).toBeGreaterThan(
-      `Long volume property (Å³)`.length * 7,
-    )
-    expect(Number(foreign_obj.getAttribute(`height`))).toBe(24) // closed PortalSelect trigger
-    // Clicks on the title must not start a pan/zoom drag on the host plot (Svelte delegates
-    // mousedown, so the stop is observable on the event rather than via a native ancestor)
-    const stop_spy = vi.spyOn(MouseEvent.prototype, `stopPropagation`)
-    wrapper.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
-    expect(stop_spy).toHaveBeenCalledTimes(1)
-  })
-
   test.each([
-    [undefined, `Energy (eV)`],
-    [`volume`, `Volume (Å³)`],
-  ])(`interactive title with selected_key=%s shows %s`, async (selected_key, expected) => {
-    const options = [
-      { key: `energy`, label: `Energy`, unit: `eV` },
-      { key: `volume`, label: `Volume`, unit: `Å³` },
-    ]
-    const svg = await mount_axis({
-      side: `x`,
-      ticks: [50],
-      axis: { options, selected_key },
-      label_x: 100,
-      label_y: 50,
-    })
-    expect(query(svg, `button.axis-trigger`).textContent).toContain(expected)
-  })
+    [`volume`, `Long volume property`, false, `Long volume property (Å³)`],
+    [undefined, `Volume`, false, `Energy (eV)`],
+    [`volume`, `Volume`, false, `Volume (Å³)`],
+    [undefined, undefined, true, `Energy (eV)`],
+  ] as const)(
+    `interactive title key=%s label=%s loading=%s`,
+    async (selected_key, volume_label, axis_loading, expected) => {
+      mock_text_measurement()
+      const svg = await mount_axis({
+        side: `x`,
+        ticks: [50],
+        axis: {
+          options: [
+            { key: `energy`, label: `Energy`, unit: `eV` },
+            ...(volume_label ? [{ key: `volume`, label: volume_label, unit: `Å³` }] : []),
+          ],
+          selected_key,
+        },
+        label_x: 100,
+        label_y: 50,
+        axis_loading,
+      })
+      const trigger = query(svg, `button.axis-trigger`)
+      const foreign_obj = query(svg, `foreignObject`)
+      const wrapper = query(svg, `.interactive-axis-label`)
 
-  test(`loading interactive title shows a spinner and disables the trigger`, async () => {
-    const svg = await mount_axis({
-      side: `x`,
-      ticks: [50],
-      axis: { options: [{ key: `energy`, label: `Energy`, unit: `eV` }] },
-      label_x: 100,
-      label_y: 50,
-      axis_loading: true,
-    })
-    expect(svg.querySelector(`.spinner`)).not.toBeNull()
-    expect((query(svg, `button.axis-trigger`) as HTMLButtonElement).disabled).toBe(true)
-    expect(query(svg, `.interactive-axis-label`).classList.contains(`loading`)).toBe(true)
-  })
+      expect(trigger.textContent).toContain(expected)
+      expect(trigger.getAttribute(`aria-haspopup`)).toBe(`listbox`)
+      expect(wrapper.classList.contains(`loading`)).toBe(axis_loading)
+      expect(svg.querySelector(`.spinner`) !== null).toBe(axis_loading)
+      expect((trigger as HTMLButtonElement).disabled).toBe(axis_loading)
+      expect(Number(foreign_obj.getAttribute(`width`))).toBeGreaterThan(expected.length * 7)
+      expect(Number(foreign_obj.getAttribute(`height`))).toBe(24) // closed PortalSelect trigger
+      const static_label = query(svg, `text[data-export-only]`)
+      expect(static_label.getAttribute(`display`)).toBe(`none`)
+      const exported = new DOMParser().parseFromString(svg_to_svg_string(svg), `image/svg+xml`)
+      expect(exported.querySelector(`foreignObject`)).toBeNull()
+      const exported_label = exported.querySelector(`text.axis-label`)
+      expect(exported_label?.textContent).toContain(expected)
+      expect(exported_label?.hasAttribute(`display`)).toBe(false)
+      expect(svg.contains(foreign_obj)).toBe(true)
+      expect(static_label.getAttribute(`display`)).toBe(`none`)
+      // Clicks on the title must not start a pan/zoom drag on the host plot (Svelte delegates
+      // mousedown, so the stop is observable on the event rather than via a native ancestor)
+      const stop_spy = vi.spyOn(MouseEvent.prototype, `stopPropagation`)
+      wrapper.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      expect(stop_spy).toHaveBeenCalledTimes(1)
+    },
+  )
 
   // Regression guard: x and x2 rotate their tick labels to opposite anchors.
   test.each([

@@ -63,8 +63,13 @@
   const set_bar = (key: keyof typeof DEFAULTS.histogram.bar) => (value: string | number) =>
     (bar = { ...bar, [key]: value })
 
-  const histogram_settings = track_settings(() => ({ bins, normalize, mode, show_legend }))
-  const bar_style_settings = track_settings(() => bar)
+  const histogram_settings = track_settings(() => ({ bins, normalize, mode, show_legend }), {
+    bins: DEFAULTS.histogram.bin_count,
+    normalize: DEFAULTS.histogram.normalize,
+    mode: DEFAULTS.histogram.mode,
+    show_legend: legend_mode_to_prop(DEFAULTS.histogram.show_legend),
+  })
+  const bar_style_settings = track_settings(() => resolved_bar, DEFAULTS.histogram.bar)
 </script>
 
 <!-- select options come from the settings schema so labels/values have a single source of truth -->

@@ -56,7 +56,7 @@ describe(`parse_tdb`, () => {
       `Al-Zn binary system test database`,
       `Comment line should be captured`,
     ])
-    expect(data.elements.map((el) => el.symbol)).toEqual([`/-`, `VA`, `AL`, `ZN`])
+    expect(data.elements.map((element) => element.symbol)).toEqual([`/-`, `VA`, `AL`, `ZN`])
     expect(data.elements[2]).toEqual({
       symbol: `AL`,
       reference_phase: `FCC_A1`,
@@ -113,7 +113,10 @@ describe(`parse_tdb`, () => {
 
   test(`handles Windows line endings`, () => {
     const content = `ELEMENT AL FCC_A1 0.02698 4577.3 28.32!\r\nELEMENT ZN HCP_ZN 0.06538 5656.8 41.63!`
-    expect(parse_tdb(content).data.elements.map((el) => el.symbol)).toEqual([`AL`, `ZN`])
+    expect(parse_tdb(content).data.elements.map((element) => element.symbol)).toEqual([
+      `AL`,
+      `ZN`,
+    ])
   })
 
   test(`joins continuation lines until the closing !`, () => {

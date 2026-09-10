@@ -76,13 +76,13 @@ describe(`next_event_id`, () => {
 describe(`reactive_widget`, () => {
   test(`seeds props from driven specs + merges extra`, () => {
     const model = new MockModel({ a: 1, b: `x` })
-    const cb = () => {}
+    const callback_fn = () => {}
     const { props } = reactive_widget(as_model(model), drive_props([`a`, `b`]), {
-      on_click: cb,
+      on_click: callback_fn,
     })
     expect(props.a).toBe(1)
     expect(props.b).toBe(`x`)
-    expect(props.on_click).toBe(cb)
+    expect(props.on_click).toBe(callback_fn)
   })
 
   test(`drive: Python trait change propagates into props`, () => {
@@ -250,28 +250,28 @@ describe(`throttle`, () => {
 
   test(`fires leading call immediately, coalesces trailing burst`, () => {
     vi.useFakeTimers()
-    const fn = vi.fn()
-    const throttled = throttle(fn, 100)
+    const callback = vi.fn()
+    const throttled = throttle(callback, 100)
     throttled(1) // leading -> immediate
     throttled(2)
     throttled(3) // coalesced into trailing
-    expect(fn).toHaveBeenCalledTimes(1)
-    expect(fn).toHaveBeenLastCalledWith(1)
+    expect(callback).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenLastCalledWith(1)
     vi.advanceTimersByTime(100)
-    expect(fn).toHaveBeenCalledTimes(2)
-    expect(fn).toHaveBeenLastCalledWith(3) // latest queued args win
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(callback).toHaveBeenLastCalledWith(3) // latest queued args win
     vi.useRealTimers()
   })
 
   test(`cancel() drops the pending trailing call`, () => {
     vi.useFakeTimers()
-    const fn = vi.fn()
-    const throttled = throttle(fn, 100)
+    const callback = vi.fn()
+    const throttled = throttle(callback, 100)
     throttled(1) // leading
     throttled(2) // queued
     throttled.cancel()
     vi.advanceTimersByTime(200)
-    expect(fn).toHaveBeenCalledTimes(1) // trailing call was cancelled
+    expect(callback).toHaveBeenCalledTimes(1) // trailing call was cancelled
     vi.useRealTimers()
   })
 
@@ -279,15 +279,15 @@ describe(`throttle`, () => {
     // if the event loop stalls past the window, a fresh immediate call must
     // cancel the older queued trailing call so stale data can't fire after it
     vi.useFakeTimers()
-    const fn = vi.fn()
-    const throttled = throttle(fn, 100)
-    const t0 = Date.now()
+    const callback = vi.fn()
+    const throttled = throttle(callback, 100)
+    const param_0 = Date.now()
     throttled(1) // leading -> immediate
     throttled(2) // queued (trailing timer pending)
-    vi.setSystemTime(t0 + 500) // clock jumps past the window without running timers
+    vi.setSystemTime(param_0 + 500) // clock jumps past the window without running timers
     throttled(3) // newer call fires immediately
     vi.runAllTimers() // flush any leftover timer
-    expect(fn.mock.calls.map((call) => call[0])).toEqual([1, 3]) // no stale 2 after 3
+    expect(callback.mock.calls.map((call) => call[0])).toEqual([1, 3]) // no stale 2 after 3
     vi.useRealTimers()
   })
 })

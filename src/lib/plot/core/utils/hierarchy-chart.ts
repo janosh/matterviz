@@ -133,7 +133,7 @@ export interface HierarchyNodeInfo {
 export function compute_node_infos<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   opts: {
-    label_text: SunburstLabelText
+    label_text: SunburstLabelText | null
     value_format: string
     font: Readonly<FontSpec>
     color_for: (arc: PositionedArc<Metadata>) => string
@@ -155,7 +155,8 @@ export function compute_node_infos<Metadata>(
     return label_fill
   }
   return arcs.map((arc) => {
-    const { text, extended, short } = node_label_variants(arc, label_text, value_format)
+    const { text, extended, short } =
+      label_text === null ? { text: `` } : node_label_variants(arc, label_text, value_format)
     const fill = color_for(arc)
     const pattern = arc.pattern && resolve_pattern(arc.pattern, fill, pattern_prefix)
     const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
@@ -193,19 +194,17 @@ export function compute_metric_colors<Metadata>(
   color_range?: Vec2,
 ): { range: Vec2; colors: string[] } | null {
   if (!color_values) return null
-  const vals = arcs.map((arc) => {
-    const val = arc.depth === 0 ? null : color_values(arc)
-    return val != null && Number.isFinite(val) ? val : null
-  })
-  // iterative min/max: spreading into Math.min/max overflows the call stack
-  // for very large arc arrays
+  // Collect finite values and their extent together; spreading a large array into
+  // Math.min/max would overflow the call stack.
   let min_val = Infinity
   let max_val = -Infinity
-  for (const val of vals) {
-    if (val == null) continue
+  const vals = arcs.map((arc) => {
+    const val = arc.depth === 0 ? null : color_values(arc)
+    if (val == null || !Number.isFinite(val)) return null
     if (val < min_val) min_val = val
     if (val > max_val) max_val = val
-  }
+    return val
+  })
   if (min_val > max_val) return null // no finite values
   const range = color_range ?? [min_val, max_val]
   const scale = create_color_scale({ scheme: color_scale, value_range: range }, range)
@@ -217,26 +216,17 @@ export function compute_metric_colors<Metadata>(
 
 const MUTED_OPACITY = 0.12
 
-// Legend muting + hover dimming for one node. The hovered node + its ancestors/descendants stay
-// fully opaque, other nodes dim to 0.3; muted categories dim hardest. Pre-order indexing makes
-// the ancestor/descendant tests O(1): a subtree is the contiguous range [node_idx, subtree_end].
-// An accessor, not an array: only on-screen nodes are read, so an array allocated the whole
-// hierarchy on every hover move.
+// Legend muting for visible nodes. Hover uses one overlay in each chart, so pointer
+// movement never invalidates the fill and label opacity of every node.
 export function compute_node_dim<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   muted_ids: ReadonlySet<string | number>,
-  hovered_idx: number | null,
 ): (idx: number) => { opacity: number; label_opacity: number | undefined } {
-  const hov = hovered_idx != null ? arcs[hovered_idx] : null
-  const active = (arc: PositionedArc<Metadata>): boolean =>
-    !hov ||
-    (arc.node_idx >= hov.node_idx && arc.node_idx <= hov.subtree_end) ||
-    (hov.node_idx >= arc.node_idx && hov.node_idx <= arc.subtree_end)
   return (idx) => {
     const arc = arcs[idx]
     const muted = arc.path.length > 0 && muted_ids.has(arc.path[0])
     return {
-      opacity: muted ? MUTED_OPACITY : active(arc) ? 1 : 0.3,
+      opacity: muted ? MUTED_OPACITY : 1,
       // labels dim only when muted, not when hover-inactive (undefined omits the attr)
       label_opacity: muted ? MUTED_OPACITY : undefined,
     }
@@ -246,9 +236,9 @@ export function compute_node_dim<Metadata>(
 // Toggle one depth-1 category's muted state (legend click)
 export function toggle_muted(
   muted_ids: Set<string | number>,
-  id: string | number | undefined,
+  identifier: string | number | undefined,
 ): void {
-  if (id !== undefined && !muted_ids.delete(id)) muted_ids.add(id)
+  if (identifier !== undefined && !muted_ids.delete(identifier)) muted_ids.add(identifier)
 }
 
 // Legend: one item per depth-1 category; toggling mutes (dims) rather than removes

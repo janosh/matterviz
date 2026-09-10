@@ -40,11 +40,11 @@ export function extract_point_group_from_operations(
 // Throws (via matrix_inverse_3x3) for a singular W or k_lattice: rotation matrices are
 // never singular, so that always means corrupt input rather than something to paper over.
 export function fractional_to_cartesian_rotation(
-  W: Matrix3x3,
+  rotation_matrix: Matrix3x3,
   k_lattice: Matrix3x3,
 ): Matrix3x3 {
   const B_T = math.transpose_3x3_matrix(k_lattice)
-  const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(W))
+  const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(rotation_matrix))
   // R_cart = Bᵀ · W^{-T} · B^{-T}
   return math.dot(math.dot(B_T, W_inv_T), math.matrix_inverse_3x3(B_T))
 }
@@ -61,20 +61,21 @@ function bragg_planes(
   ranges: Vec3,
   max_len = Infinity,
 ): (BraggPlane & { key: string })[] {
-  const [b1, b2, b3] = k_lattice
+  const [value_b_1, value_b_2, value_b_3] = k_lattice
   const planes: (BraggPlane & { key: string; len_sq: number })[] = []
-  for (let n1 = -ranges[0]; n1 <= ranges[0]; n1++) {
-    for (let n2 = -ranges[1]; n2 <= ranges[1]; n2++) {
-      for (let n3 = -ranges[2]; n3 <= ranges[2]; n3++) {
-        if (n1 === 0 && n2 === 0 && n3 === 0) continue
+  for (let count_1 = -ranges[0]; count_1 <= ranges[0]; count_1++) {
+    for (let count = -ranges[1]; count <= ranges[1]; count++) {
+      for (let count_3 = -ranges[2]; count_3 <= ranges[2]; count_3++) {
+        if (count_1 === 0 && count === 0 && count_3 === 0) continue
         const g_vec: Vec3 = [0, 1, 2].map(
-          (axis) => n1 * b1[axis] + n2 * b2[axis] + n3 * b3[axis],
+          (axis) =>
+            count_1 * value_b_1[axis] + count * value_b_2[axis] + count_3 * value_b_3[axis],
         ) as Vec3
         const len_sq = g_vec[0] ** 2 + g_vec[1] ** 2 + g_vec[2] ** 2
         if (len_sq > max_len ** 2) continue
         const len = Math.hypot(...g_vec)
         const normal: Vec3 = [g_vec[0] / len, g_vec[1] / len, g_vec[2] / len]
-        planes.push({ normal, dist: len / 2, key: `${n1},${n2},${n3}`, len_sq })
+        planes.push({ normal, dist: len / 2, key: `${count_1},${count},${count_3}`, len_sq })
       }
     }
   }
@@ -92,16 +93,18 @@ class VertexDeduplicator {
   has_duplicate(vertex: Vec3): boolean {
     const [base_x, base_y, base_z] = vertex.map((val) => Math.floor(val / this.cell_size))
 
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dz = -1; dz <= 1; dz++) {
-          const neighbors = this.grid.get(`${base_x + dx},${base_y + dy},${base_z + dz}`)
+    for (let delta_x = -1; delta_x <= 1; delta_x++) {
+      for (let delta_y = -1; delta_y <= 1; delta_y++) {
+        for (let delta_z = -1; delta_z <= 1; delta_z++) {
+          const neighbors = this.grid.get(
+            `${base_x + delta_x},${base_y + delta_y},${base_z + delta_z}`,
+          )
           if (
             neighbors?.some(
-              ([v1, v2, v3]) =>
-                Math.abs(v1 - vertex[0]) < TOL &&
-                Math.abs(v2 - vertex[1]) < TOL &&
-                Math.abs(v3 - vertex[2]) < TOL,
+              ([vector_1, vector_2, vector_3]) =>
+                Math.abs(vector_1 - vertex[0]) < TOL &&
+                Math.abs(vector_2 - vertex[1]) < TOL &&
+                Math.abs(vector_3 - vertex[2]) < TOL,
             )
           )
             return true
@@ -131,11 +134,11 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
   const cross = new Float64Array(n_planes * n_planes * 3)
   for (let idx_j = 0; idx_j < n_planes; idx_j++) {
     for (let idx_k = idx_j + 1; idx_k < n_planes; idx_k++) {
-      const [cx, cy, cz] = math.cross_3d(normals[idx_j], normals[idx_k])
+      const [center_x, center_y, center_z] = math.cross_3d(normals[idx_j], normals[idx_k])
       const offset = (idx_j * n_planes + idx_k) * 3
-      cross[offset] = cx
-      cross[offset + 1] = cy
-      cross[offset + 2] = cz
+      cross[offset] = center_x
+      cross[offset + 1] = center_y
+      cross[offset + 2] = center_z
     }
   }
 
@@ -143,26 +146,29 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
   const vertices: Vec3[] = []
 
   for (let idx_i = 0; idx_i < n_planes; idx_i++) {
-    const [nx, ny, nz] = normals[idx_i]
+    const [normal_x, normal_y, normal_z] = normals[idx_i]
     const dist_i = distances[idx_i]
     for (let idx_j = idx_i + 1; idx_j < n_planes; idx_j++) {
       const dist_j = distances[idx_j]
       const off_ij = (idx_i * n_planes + idx_j) * 3
       for (let idx_k = idx_j + 1; idx_k < n_planes; idx_k++) {
         const off_jk = (idx_j * n_planes + idx_k) * 3
-        const det = nx * cross[off_jk] + ny * cross[off_jk + 1] + nz * cross[off_jk + 2]
+        const det =
+          normal_x * cross[off_jk] +
+          normal_y * cross[off_jk + 1] +
+          normal_z * cross[off_jk + 2]
         if (Math.abs(det) <= PARALLEL_TOL) continue // (near-)parallel normals: no unique point
 
         const dist_k = distances[idx_k]
         const off_ik = (idx_i * n_planes + idx_k) * 3 // nₖ × nᵢ = −(nᵢ × nₖ)
-        const vx =
+        const vector_x =
           (dist_i * cross[off_jk] - dist_j * cross[off_ik] + dist_k * cross[off_ij]) / det
-        const vy =
+        const vector_y =
           (dist_i * cross[off_jk + 1] -
             dist_j * cross[off_ik + 1] +
             dist_k * cross[off_ij + 1]) /
           det
-        const vz =
+        const vector_z =
           (dist_i * cross[off_jk + 2] -
             dist_j * cross[off_ik + 2] +
             dist_k * cross[off_ij + 2]) /
@@ -171,15 +177,18 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
         // Count how many planes this vertex is beyond (with early termination)
         let beyond_count = 0
         for (let p_idx = 0; p_idx < n_planes; p_idx++) {
-          const [px, py, pz] = normals[p_idx]
-          if (vx * px + vy * py + vz * pz > distances[p_idx] + TOL) {
+          const [pixel_x, pixel_y, pixel_z] = normals[p_idx]
+          if (
+            vector_x * pixel_x + vector_y * pixel_y + vector_z * pixel_z >
+            distances[p_idx] + TOL
+          ) {
             beyond_count++
             if (beyond_count >= order) break
           }
         }
         if (beyond_count >= order) continue
 
-        const vertex: Vec3 = [vx, vy, vz]
+        const vertex: Vec3 = [vector_x, vector_y, vector_z]
         if (!dedup.has_duplicate(vertex)) {
           vertices.push(vertex)
           dedup.add(vertex)
@@ -286,12 +295,12 @@ export function generate_bz_vertices(
 function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
   return Math.abs(
     faces.reduce((sum, face) => {
-      const [v0, v1, v2] = face.slice(0, 3).map((idx) => vertices[idx])
+      const [vector_0, vector_1, vector_2] = face.slice(0, 3).map((idx) => vertices[idx])
       const area_normal = math.scale(
-        math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
+        math.cross_3d(math.subtract(vector_1, vector_0), math.subtract(vector_2, vector_0)),
         0.5,
       )
-      return sum + math.dot(v0, area_normal) / 3
+      return sum + math.dot(vector_0, area_normal) / 3
     }, 0),
   )
 }
@@ -364,8 +373,8 @@ export function compute_convex_hull(
       const node = half_edge.head()
       let unique_idx = node_to_unique.get(node)
       if (unique_idx === undefined) {
-        const { x, y, z } = node.point
-        unique_idx = unique_verts.push([x, y, z]) - 1
+        const { x: coord_x, y: coord_y, z: coord_z } = node.point
+        unique_idx = unique_verts.push([coord_x, coord_y, coord_z]) - 1
         node_to_unique.set(node, unique_idx)
       }
       tri.push(unique_idx)
@@ -376,9 +385,11 @@ export function compute_convex_hull(
 
   // Compute face normals and build edge-to-face adjacency
   const face_normals = faces.map((face) => {
-    const [v0, v1, v2] = face.slice(0, 3).map((vertex_idx) => unique_verts[vertex_idx])
+    const [vector_0, vector_1, vector_2] = face
+      .slice(0, 3)
+      .map((vertex_idx) => unique_verts[vertex_idx])
     return math.normalize_vec(
-      math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
+      math.cross_3d(math.subtract(vector_1, vector_0), math.subtract(vector_2, vector_0)),
       [0, 0, 0],
     )
   })
@@ -435,7 +446,10 @@ export function compute_brillouin_zone(
     order: Math.min(order, 3),
     vertices: hull.vertices,
     faces: hull.faces,
-    edges: hull.edges.map(([i1, i2]) => [hull.vertices[i1], hull.vertices[i2]]),
+    edges: hull.edges.map(([index_1, index_2]) => [
+      hull.vertices[index_1],
+      hull.vertices[index_2],
+    ]),
     k_lattice,
     volume: compute_hull_volume(hull.vertices, hull.faces),
   }
@@ -544,29 +558,29 @@ function clip_polyhedron_by_plane(
   const edge_set = new Set<string>()
   for (const face of faces) {
     for (let idx = 0; idx < face.length; idx++) {
-      const i1 = face[idx]
-      const i2 = face[(idx + 1) % face.length]
-      edge_set.add(i1 < i2 ? `${i1},${i2}` : `${i2},${i1}`)
+      const index_1 = face[idx]
+      const index_2 = face[(idx + 1) % face.length]
+      edge_set.add(index_1 < index_2 ? `${index_1},${index_2}` : `${index_2},${index_1}`)
     }
   }
 
   // Add intersection points where edges cross the plane
   for (const key of edge_set) {
-    const [i1, i2] = key.split(`,`).map(Number)
-    const d1 = signed_dists[i1]
-    const d2 = signed_dists[i2]
+    const [index_1, index_2] = key.split(`,`).map(Number)
+    const distance_1 = signed_dists[index_1]
+    const distance_2 = signed_dists[index_2]
 
     // Edge crosses plane if exactly one endpoint is inside the half-space
-    const inside1 = d1 <= TOL
-    const inside2 = d2 <= TOL
+    const inside1 = distance_1 <= TOL
+    const inside2 = distance_2 <= TOL
     if (inside1 !== inside2) {
-      const denom = d1 - d2
+      const denom = distance_1 - distance_2
       // Skip if denominator too small (tighter than TOL for numerical stability)
       if (Math.abs(denom) < 1e-12) continue
-      const frac = d1 / denom
+      const frac = distance_1 / denom
       // Only add intersection if it's not at an endpoint (which is already kept)
       if (frac > TOL && frac < 1 - TOL) {
-        result.push(math.lerp_vec3(vertices[i1], vertices[i2], frac))
+        result.push(math.lerp_vec3(vertices[index_1], vertices[index_2], frac))
       }
     }
   }
@@ -598,8 +612,8 @@ export function compute_irreducible_bz(
 ): IrreducibleBZData {
   // Convert fractional rotations to Cartesian k-space rotations
   // R_cart = Bᵀ · W^{-T} · B^{-T}, where B is k_lattice (reciprocal vectors as rows)
-  const cartesian_ops = point_group_ops.map((W) =>
-    fractional_to_cartesian_rotation(W, bz_data.k_lattice),
+  const cartesian_ops = point_group_ops.map((rotation_matrix) =>
+    fractional_to_cartesian_rotation(rotation_matrix, bz_data.k_lattice),
   )
   const clipping_planes = compute_ibz_clipping_planes(cartesian_ops)
 
@@ -631,7 +645,10 @@ export function compute_irreducible_bz(
   return {
     vertices: hull.vertices,
     faces: hull.faces,
-    edges: hull.edges.map(([i1, i2]) => [hull.vertices[i1], hull.vertices[i2]]),
+    edges: hull.edges.map(([index_1, index_2]) => [
+      hull.vertices[index_1],
+      hull.vertices[index_2],
+    ]),
     volume: compute_hull_volume(hull.vertices, hull.faces),
   }
 }

@@ -34,6 +34,8 @@ export const hull_system_name = (path: string): string =>
 export const filter_by_elements = (entries: PhaseData[], elements: string[]): PhaseData[] => {
   const element_set = new SvelteSet(elements)
   return entries.filter((entry) =>
-    Object.entries(entry.composition).every(([el, amt]) => !amt || element_set.has(el)),
+    Object.entries(entry.composition).every(
+      ([element, amt]) => !amt || element_set.has(element),
+    ),
   )
 }

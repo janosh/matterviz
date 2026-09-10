@@ -28,11 +28,18 @@ vi.mock(`$lib/isosurface/async-geometry.svelte`, () => ({ compute_geometries_asy
 const SIZE = 10
 // Gaussian blob centred in the cell (positive field) and a signed variant with a negative
 // blob in the opposite corner so the -isovalue lobe has somewhere to live
-const blob = (ix: number, iy: number, iz: number, cx: number, cy: number, cz: number) =>
-  Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2 + (iz - cz) ** 2) / 4)
+const blob = (
+  idx_x: number,
+  idx_y: number,
+  idx_z: number,
+  center_x: number,
+  center_y: number,
+  center_z: number,
+) =>
+  Math.exp(-((idx_x - center_x) ** 2 + (idx_y - center_y) ** 2 + (idx_z - center_z) ** 2) / 4)
 const positive_volume = () =>
   make_volume(
-    make_grid(SIZE, SIZE, SIZE, (ix, iy, iz) => blob(ix, iy, iz, 5, 5, 5)),
+    make_grid(SIZE, SIZE, SIZE, (idx_x, idx_y, idx_z) => blob(idx_x, idx_y, idx_z, 5, 5, 5)),
     {
       label: `density`,
     },
@@ -43,7 +50,8 @@ const signed_volume = () =>
       SIZE,
       SIZE,
       SIZE,
-      (ix, iy, iz) => blob(ix, iy, iz, 3, 3, 3) - blob(ix, iy, iz, 7, 7, 7),
+      (idx_x, idx_y, idx_z) =>
+        blob(idx_x, idx_y, idx_z, 3, 3, 3) - blob(idx_x, idx_y, idx_z, 7, 7, 7),
     ),
     { label: `spin` },
   )

@@ -10,20 +10,23 @@ import { describe, expect, test } from 'vitest'
 // Linearly interpolated crossings of half the peak maximum, i.e. the observed FWHM of the
 // output grid. Measuring the grid (rather than trusting the requested width) is what makes
 // this a real check on the profile shape.
-function measure_fwhm(xs: number[], ys: number[]): number {
-  const max_y = Math.max(...ys)
-  const max_idx = ys.indexOf(max_y)
+function measure_fwhm(x_values: number[], y_values: number[]): number {
+  const max_y = Math.max(...y_values)
+  const max_idx = y_values.indexOf(max_y)
   const half = max_y / 2
 
   const interpolate = (idx_lo: number, idx_hi: number): number => {
-    const [y_lo, y_hi] = [ys[idx_lo], ys[idx_hi]]
-    return xs[idx_lo] + ((half - y_lo) / (y_hi - y_lo)) * (xs[idx_hi] - xs[idx_lo])
+    const [y_lo, y_hi] = [y_values[idx_lo], y_values[idx_hi]]
+    return (
+      x_values[idx_lo] +
+      ((half - y_lo) / (y_hi - y_lo)) * (x_values[idx_hi] - x_values[idx_lo])
+    )
   }
 
   let left_idx = max_idx
-  while (left_idx > 0 && ys[left_idx] > half) left_idx--
+  while (left_idx > 0 && y_values[left_idx] > half) left_idx--
   let right_idx = max_idx
-  while (right_idx < ys.length - 1 && ys[right_idx] > half) right_idx++
+  while (right_idx < y_values.length - 1 && y_values[right_idx] > half) right_idx++
 
   return interpolate(right_idx, right_idx - 1) - interpolate(left_idx, left_idx + 1)
 }
@@ -116,8 +119,8 @@ describe(`compute_broadened_pattern`, () => {
   // the same thing whatever the pattern is normalised to. An absolute floor silently erased
   // whole IR spectra, whose e^2/amu intensities can sit below any constant.
   test(`drops peaks negligible against the tallest, keeps a uniformly faint pattern`, () => {
-    const broaden = (y: number[], x: number[] = [20, 25]) =>
-      compute_broadened_pattern({ x, y }, DEFAULT_BROADENING, [10, 30], 0.1)
+    const broaden = (coord_y: number[], coord_x: number[] = [20, 25]) =>
+      compute_broadened_pattern({ x: coord_x, y: coord_y }, DEFAULT_BROADENING, [10, 30], 0.1)
     const at_25 = (curve: { x: number[]; y: number[] }) =>
       curve.y[curve.x.findIndex((x_val) => x_val >= 24.9)]
 
@@ -208,8 +211,8 @@ describe(`broaden_peaks`, () => {
   ])(`%s: unit peak integrates to %f`, (_name, eta, expected_area) => {
     // the half-height at ±FWHM/2 is measured by the measure_fwhm table below
     const step = 0.002
-    const { y } = broaden_peaks({ x: [50], y: [1] }, () => 2, eta, [0, 100], step)
-    expect(y.reduce((sum, val) => sum + val, 0) * step).toBeCloseTo(expected_area, 4)
+    const { y: coord_y } = broaden_peaks({ x: [50], y: [1] }, () => 2, eta, [0, 100], step)
+    expect(coord_y.reduce((sum, val) => sum + val, 0) * step).toBeCloseTo(expected_area, 4)
   })
 
   test.each([NaN, -0.1, 1.2])(`rejects shape_factor %s`, (shape_factor) => {
@@ -373,8 +376,8 @@ describe(`broaden_peaks`, () => {
   // a diverging fwhm_fn drives arbitrarily high over a grid that is itself perfectly legal
   test(`caps total fill work, not just the grid allocation`, () => {
     const peaks_at = (count: number) => {
-      const x = Array.from({ length: count }, (_unused, idx) => 20 + idx * 1e-3)
-      return { x, y: x.map(() => 100) }
+      const coord_x = Array.from({ length: count }, (_unused, idx) => 20 + idx * 1e-3)
+      return { x: coord_x, y: coord_x.map(() => 100) }
     }
     // every window covers the whole 10001-point grid: 20000 * 10001 = 2.0002e8 steps
     expect(() => broaden_peaks(peaks_at(20_000), () => 1000, 0.5, [0, 100], 0.01)).toThrow(

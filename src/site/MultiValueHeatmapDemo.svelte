@@ -7,11 +7,14 @@
   import { ColorBar } from '$lib/plot'
 
   // Each element shows two values as diagonal triangles (atomic mass + density)
-  const two_fold_data = element_data.map((el) => [el.atomic_mass, el.density || 0])
+  const two_fold_data = element_data.map((element) => [
+    element.atomic_mass,
+    element.density || 0,
+  ])
 
-  const atomic_mass_range = array_extent(element_data.map((el) => el.atomic_mass))
+  const atomic_mass_range = array_extent(element_data.map((element) => element.atomic_mass))
 
-  const densities = element_data.map((el) => el.density || 0)
+  const densities = element_data.map((element) => element.density || 0)
   const density_range: Vec2 = [
     array_min(densities.filter((dens) => dens > 0)),
     array_max(densities),

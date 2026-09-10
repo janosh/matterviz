@@ -18,7 +18,7 @@
     controls_open = $bindable(false),
     fermi_data,
     band_data,
-    mu = $bindable(defaults.mu),
+    mu: chemical_potential = $bindable(defaults.mu),
     color_property = $bindable(defaults.color_property),
     color_scale = $bindable(defaults.color_scale),
     custom_property_label,
@@ -94,31 +94,45 @@
     const parsed = parse_num_token(event.currentTarget.value)
     // Only update mu when input is valid; keep last valid value during transient
     // invalid states (e.g. empty string while user is typing a new value)
-    if (Number.isFinite(parsed)) mu = parsed
+    if (Number.isFinite(parsed)) chemical_potential = parsed
   }
 
-  const chemical_potential_settings = track_settings(() => ({ mu }))
-  const bands_settings = track_settings(() => ({ selected_bands }))
-  const appearance_settings = track_settings(() => ({
-    color_property,
-    color_scale,
-    representation,
-    surface_opacity,
-  }))
-  const brillouin_zone_settings = track_settings(() => ({
-    show_bz,
-    bz_opacity,
-    show_vectors,
-    tile_bz,
-  }))
-  const clipping_plane_settings = track_settings(() => ({
-    clip_enabled,
-    clip_axis,
-    clip_position,
-    clip_flip,
-  }))
-  const interpolation_settings = track_settings(() => ({ interpolation_factor }))
-  const camera_settings = track_settings(() => ({ camera_projection }))
+  const chemical_potential_settings = track_settings(
+    () => ({ mu: chemical_potential }),
+    defaults,
+  )
+  const bands_settings = $derived(
+    track_settings(() => ({ selected_bands }), { selected_bands: available_bands }),
+  )
+  const appearance_settings = track_settings(
+    () => ({
+      color_property,
+      color_scale,
+      representation,
+      surface_opacity,
+    }),
+    defaults,
+  )
+  const brillouin_zone_settings = track_settings(
+    () => ({
+      show_bz,
+      bz_opacity,
+      show_vectors,
+      tile_bz,
+    }),
+    defaults,
+  )
+  const clipping_plane_settings = track_settings(
+    () => ({
+      clip_enabled,
+      clip_axis,
+      clip_position,
+      clip_flip,
+    }),
+    defaults,
+  )
+  const interpolation_settings = track_settings(() => ({ interpolation_factor }), defaults)
+  const camera_settings = track_settings(() => ({ camera_projection }), defaults)
 </script>
 
 <ControlPane
@@ -130,34 +144,36 @@
   toggle_props={{ title: `Fermi surface controls` }}
 >
   <SettingsGroup title="Surface" open>
-    <SettingsSection
-      title="Chemical potential"
-      changed_keys={chemical_potential_settings.changed_keys}
-      on_reset={() => (mu = defaults.mu)}
-      layout="grid"
-    >
-      <label>
-        <span>μ offset (eV)</span>
-        <input
-          type="number"
-          step="0.01"
-          value={mu}
-          oninput={handle_mu_change}
-          style="width: 4em"
-        />
-        <input
-          type="range"
-          min="-1"
-          max="1"
-          step="0.01"
-          value={mu}
-          oninput={handle_mu_change}
-        />
-      </label>
-      {#if fermi_data}
-        <small>E_F = {format_num(fermi_data.fermi_energy, `.3f`)} eV</small>
-      {/if}
-    </SettingsSection>
+    {#if fermi_data}
+      <small>E_F = {format_num(fermi_data.fermi_energy, `.3f`)} eV</small>
+    {/if}
+    {#if band_data}
+      <SettingsSection
+        title="Chemical potential"
+        changed_keys={chemical_potential_settings.changed_keys}
+        on_reset={() => (chemical_potential = defaults.mu)}
+        layout="grid"
+      >
+        <label>
+          <span>μ offset (eV)</span>
+          <input
+            type="number"
+            step="0.01"
+            value={chemical_potential}
+            oninput={handle_mu_change}
+            style="width: 4em"
+          />
+          <input
+            type="range"
+            min="-1"
+            max="1"
+            step="0.01"
+            value={chemical_potential}
+            oninput={handle_mu_change}
+          />
+        </label>
+      </SettingsSection>
+    {/if}
 
     {#if available_bands.length > 0}
       <SettingsSection
@@ -311,20 +327,22 @@
     {/if}
   </SettingsGroup>
 
-  <SettingsSection title="Export" layout="grid">
-    <div class="export-buttons">
-      {#each export_formats as [format, blurb] (format)}
-        <button
-          type="button"
-          onclick={() => on_export?.(format)}
-          title="Export as {format.toUpperCase()} ({blurb})"
-        >
-          {format.toUpperCase()}
-        </button>
-      {/each}
-    </div>
-    <small>Export visible Fermi surfaces</small>
-  </SettingsSection>
+  {#if on_export}
+    <SettingsSection title="Export" layout="grid">
+      <div class="export-buttons">
+        {#each export_formats as [format, blurb] (format)}
+          <button
+            type="button"
+            onclick={() => on_export?.(format)}
+            title="Export as {format.toUpperCase()} ({blurb})"
+          >
+            {format.toUpperCase()}
+          </button>
+        {/each}
+      </div>
+      <small>Export visible Fermi surfaces</small>
+    </SettingsSection>
+  {/if}
 
   <SettingsSection
     title="Camera"

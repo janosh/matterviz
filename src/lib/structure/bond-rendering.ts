@@ -24,12 +24,12 @@ export function write_bond_transform(
   radius_scale = 1,
 ): void {
   const matrix_offset = instance_idx * 16
-  const dx = pos_2[0] - pos_1[0]
-  const dy = pos_2[1] - pos_1[1]
-  const dz = pos_2[2] - pos_1[2]
+  const delta_x = pos_2[0] - pos_1[0]
+  const delta_y = pos_2[1] - pos_1[1]
+  const delta_z = pos_2[2] - pos_1[2]
   // sqrt is much faster than hypot here; overflow would require coordinates above ~1e154.
   // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- see above
-  const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
+  const height = Math.sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z)
 
   // The mesh buffer is persistent, so every slot must be reset before sparse matrix writes.
   matrix_buffer.fill(0, matrix_offset, matrix_offset + 16)
@@ -43,9 +43,9 @@ export function write_bond_transform(
     return
   }
 
-  const dir_x = dx / height
-  const dir_y = dy / height
-  const dir_z = dz / height
+  const dir_x = delta_x / height
+  const dir_y = delta_y / height
+  const dir_z = delta_z / height
   let right_x = 1
   let right_z = 0
   let up_x = 0
@@ -64,9 +64,9 @@ export function write_bond_transform(
   // Column-major Three.js matrix: scaled right, bond delta, scaled up, midpoint.
   matrix_buffer[matrix_offset] = right_x * radius_scale
   matrix_buffer[matrix_offset + 2] = right_z * radius_scale
-  matrix_buffer[matrix_offset + 4] = dx
-  matrix_buffer[matrix_offset + 5] = dy
-  matrix_buffer[matrix_offset + 6] = dz
+  matrix_buffer[matrix_offset + 4] = delta_x
+  matrix_buffer[matrix_offset + 5] = delta_y
+  matrix_buffer[matrix_offset + 6] = delta_z
   matrix_buffer[matrix_offset + 8] = up_x * radius_scale
   matrix_buffer[matrix_offset + 9] = up_y * radius_scale
   matrix_buffer[matrix_offset + 10] = up_z * radius_scale

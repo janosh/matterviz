@@ -102,17 +102,17 @@ export function project_arcs<Metadata>(
   for (const arc of arcs) {
     const raw_a0 = x_of(arc.x0)
     const raw_a1 = x_of(arc.x1)
-    let a0 = raw_a0
-    let a1 = raw_a1
+    let value_a_0 = raw_a0
+    let value_a_1 = raw_a1
     if (descendant_transforms && group_gap) {
       const inherited_transform =
         arc.parent_idx == null
           ? identity_transform
           : (descendant_transforms[arc.parent_idx] ?? identity_transform)
-      a0 = raw_a0 * inherited_transform.scale + inherited_transform.offset
-      a1 = raw_a1 * inherited_transform.scale + inherited_transform.offset
+      value_a_0 = raw_a0 * inherited_transform.scale + inherited_transform.offset
+      value_a_1 = raw_a1 * inherited_transform.scale + inherited_transform.offset
       let descendant_transform = inherited_transform
-      const group_span = a1 - a0
+      const group_span = value_a_1 - value_a_0
       // Fade a selected ring's gap as it collapses into the zoom root. Otherwise
       // its hidden arc would keep the visible descendants inset from the full circle.
       const visible_group_gap = target_gap * clamp01(arc.y1 - win.y0 - 1)
@@ -121,22 +121,32 @@ export function project_arcs<Metadata>(
         const inset = applied_gap / 2
         const retained_scale = (group_span - applied_gap) / group_span
         const transformed_scale = inherited_transform.scale * retained_scale
-        a0 += inset
-        a1 -= inset
+        value_a_0 += inset
+        value_a_1 -= inset
         descendant_transform = {
           scale: transformed_scale,
-          offset: a0 - raw_a0 * transformed_scale,
+          offset: value_a_0 - raw_a0 * transformed_scale,
         }
       }
       descendant_transforms[arc.node_idx] = descendant_transform
     }
-    const r0 = y_of(arc.y0)
-    const r1 = y_of(arc.y1)
+    const radius_0 = y_of(arc.y0)
+    const radius_1 = y_of(arc.y1)
     // Visibility follows the pre-gap extent: the affine subtree inset always
     // retains positive width and therefore cannot erase an otherwise-visible leaf.
     const is_visible =
-      arc.depth > 0 && raw_a1 - raw_a0 > min_x_extent && a1 > a0 && r1 - r0 > 0.1
-    const screen = { arc, a0, a1, r0, r1, visible: is_visible }
+      arc.depth > 0 &&
+      raw_a1 - raw_a0 > min_x_extent &&
+      value_a_1 > value_a_0 &&
+      radius_1 - radius_0 > 0.1
+    const screen = {
+      arc,
+      a0: value_a_0,
+      a1: value_a_1,
+      r0: radius_0,
+      r1: radius_1,
+      visible: is_visible,
+    }
     all.push(screen)
     if (screen.visible) visible.push(screen)
   }
@@ -151,18 +161,27 @@ const polar = (angle: number, radius: number): string =>
 // and radii r0..r1. A full ring is drawn as two half-circle arcs per boundary (an SVG arc
 // can't end where it starts), the inner one counter-clockwise so it is a hole under either
 // fill rule; r0 = 0 gives a plain disk/wedge.
-export function annular_sector_path(a0: number, a1: number, r0: number, r1: number): string {
-  if (a1 - a0 >= TWO_PI - 1e-9) {
+export function annular_sector_path(
+  value_a_0: number,
+  value_a_1: number,
+  radius_0: number,
+  radius_1: number,
+): string {
+  if (value_a_1 - value_a_0 >= TWO_PI - 1e-9) {
     const circle = (radius: number, sweep: 0 | 1) =>
       `M${polar(0, radius)}A${radius},${radius},0,1,${sweep},${polar(Math.PI, radius)}A${radius},${radius},0,1,${sweep},${polar(0, radius)}Z`
-    return circle(r1, 1) + (r0 > 0 ? circle(r0, 0) : ``)
+    return circle(radius_1, 1) + (radius_0 > 0 ? circle(radius_0, 0) : ``)
   }
-  const large = a1 - a0 > Math.PI ? 1 : 0
-  return `M${polar(a0, r1)}A${r1},${r1},0,${large},1,${polar(a1, r1)}L${polar(a1, r0)}A${r0},${r0},0,${large},0,${polar(a0, r0)}Z`
+  const large = value_a_1 - value_a_0 > Math.PI ? 1 : 0
+  return `M${polar(value_a_0, radius_1)}A${radius_1},${radius_1},0,${large},1,${polar(value_a_1, radius_1)}L${polar(value_a_1, radius_0)}A${radius_0},${radius_0},0,${large},0,${polar(value_a_0, radius_0)}Z`
 }
 
-export const rect_path = (x0: number, x1: number, y0: number, y1: number): string =>
-  `M${x0},${y0}H${x1}V${y1}H${x0}Z`
+export const rect_path = (
+  coord_x_0: number,
+  coord_x_1: number,
+  coord_y_0: number,
+  coord_y_1: number,
+): string => `M${coord_x_0},${coord_y_0}H${coord_x_1}V${coord_y_1}H${coord_x_0}Z`
 
 // One evenodd path that dims everything but the hovered node's subtree and ancestors: the
 // chart area minus the hovered arc's wedge (its descendants partition that wedge outward)
@@ -185,9 +204,10 @@ export function hover_veil_path<Metadata>(
     : annular_sector_path(0, TWO_PI, 0, geom.radius)
   path += cell(hovered.a0, hovered.a1, hovered.r0, outer)
   for (let idx = hovered.arc.parent_idx; idx != null; idx = screen_arcs[idx].arc.parent_idx) {
-    const { a0, a1, r0, r1 } = screen_arcs[idx]
+    const { a0: value_a_0, a1: value_a_1, r0: radius_0, r1: radius_1 } = screen_arcs[idx]
     // ancestors at or above the zoom root are collapsed into the hole: nothing to cut out
-    if (a1 > a0 && r1 > r0) path += cell(a0, a1, r0, r1)
+    if (value_a_1 > value_a_0 && radius_1 > radius_0)
+      path += cell(value_a_0, value_a_1, radius_0, radius_1)
   }
   return path
 }
@@ -205,7 +225,7 @@ export function hover_veil_path<Metadata>(
 // already scaled text width, and the one-line-height requirement shrinks with it.
 // `font_line_height` is the vertical room a label line actually takes, leading included.
 export function arc_label_slots(
-  d: { a0: number; a1: number; r0: number; r1: number },
+  datum: { a0: number; a1: number; r0: number; r1: number },
   shape: SunburstShape,
   rotation: SunburstLabelRotation,
   max_radius?: number,
@@ -231,16 +251,16 @@ export function arc_label_slots(
   }
 
   if (shape === `icicle`) {
-    const cell_w = d.a1 - d.a0
-    const cell_h = d.r1 - d.r0
-    const center = `translate(${(d.a0 + d.a1) / 2}, ${(d.r0 + d.r1) / 2})`
+    const cell_w = datum.a1 - datum.a0
+    const cell_h = datum.r1 - datum.r0
+    const center = `translate(${(datum.a0 + datum.a1) / 2}, ${(datum.r0 + datum.r1) / 2})`
     return [...slot(cell_w, cell_h, center), ...slot(cell_h, cell_w, `${center} rotate(-90)`)]
   }
 
-  const mid_a = (d.a0 + d.a1) / 2
-  const mid_r = (d.r0 + d.r1) / 2
-  const angular_px = (d.a1 - d.a0) * mid_r // arc length at mid radius
-  const radial_px = d.r1 - d.r0
+  const mid_a = (datum.a0 + datum.a1) / 2
+  const mid_r = (datum.r0 + datum.r1) / 2
+  const angular_px = (datum.a1 - datum.a0) * mid_r // arc length at mid radius
+  const radial_px = datum.r1 - datum.r0
   const modes: SunburstLabelRotation[] =
     rotation === `auto`
       ? radial_px >= angular_px

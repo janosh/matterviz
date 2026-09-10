@@ -350,8 +350,8 @@ describe(`PdfPlot`, () => {
     await tick()
 
     // the total plus the three unordered H/Ni pairs
-    const labels = [...target.querySelectorAll(`.legend-label`)].map((el) =>
-      el.textContent?.trim(),
+    const labels = [...target.querySelectorAll(`.legend-label`)].map((element) =>
+      element.textContent?.trim(),
     )
     expect(labels).toHaveLength(4)
     for (const pair of [`H-H`, `H-Ni`, `Ni-Ni`]) {

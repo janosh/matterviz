@@ -101,11 +101,11 @@ describe(`resolve_pattern`, () => {
     [`dots`, Math.PI / 4, `M0 5a5 5 0 1 0 10 0`],
     [`triangles`, (3 * Math.sqrt(3)) / 16, `M5 0L`],
   ])(`%s saturate at solidity %f`, (shape, max_solidity, edge_touching_start) => {
-    const at = (solidity: number) =>
+    const position = (solidity: number) =>
       resolve_pattern({ shape, size: 10, solidity }, BLUE, `p`).d
-    expect(at(1)).toBe(at(max_solidity))
-    expect(at(1).startsWith(edge_touching_start)).toBe(true)
-    expect(at(max_solidity - 0.01)).not.toBe(at(max_solidity))
+    expect(position(1)).toBe(position(max_solidity))
+    expect(position(1).startsWith(edge_touching_start)).toBe(true)
+    expect(position(max_solidity - 0.01)).not.toBe(position(max_solidity))
   })
 
   test(`scale shrinks tile, line width and dashes alike`, () => {
@@ -140,9 +140,9 @@ describe(`resolve_pattern`, () => {
   test.each([`zigzag`, `waves`] as const)(
     `%s overshoots both tile edges by half a tile so seams carry the full stroke`,
     (shape) => {
-      const { d, width } = resolve_pattern({ shape, size: 8 }, BLUE, `p`)
-      expect(d.startsWith(`M-4 `)).toBe(true)
-      expect(d).toContain(`${1.5 * width} `)
+      const { d: datum, width } = resolve_pattern({ shape, size: 8 }, BLUE, `p`)
+      expect(datum.startsWith(`M-4 `)).toBe(true)
+      expect(datum).toContain(`${1.5 * width} `)
     },
   )
 

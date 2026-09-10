@@ -39,8 +39,10 @@ def create_structure_for_lattice_type(lattice_type: str) -> Structure:
     }
 
     # Create lattice
-    a, b, c, alpha, beta, gamma = lattice_params[lattice_type]
-    lattice = Lattice.from_parameters(a, b, c, alpha, beta, gamma)
+    lattice_a, lattice_b, lattice_c, alpha, beta, gamma = lattice_params[lattice_type]
+    lattice = Lattice.from_parameters(
+        lattice_a, lattice_b, lattice_c, alpha, beta, gamma
+    )
 
     # Create a simple structure with one atom at origin
     # Use Si as a generic atom (atomic number 14)
@@ -102,7 +104,7 @@ def get_brillouin_zone_data(structure: Structure) -> dict[str, Any]:
             pos.tolist() if isinstance(pos, np.ndarray) else pos
             for pos in result["primitive_positions"]
         ],
-        "primitive_types": [int(t) for t in result["primitive_types"]],
+        "primitive_types": [int(atom_type) for atom_type in result["primitive_types"]],
     }
 
     # Try to get explicit BZ vertices if available
@@ -112,13 +114,13 @@ def get_brillouin_zone_data(structure: Structure) -> dict[str, Any]:
 
     # Generate k-space grid for Voronoi construction (same as our TS implementation)
     k_points = []
-    for i in range(-1, 2):
-        for j in range(-1, 2):
-            for k in range(-1, 2):
+    for idx_a in range(-1, 2):
+        for idx_b in range(-1, 2):
+            for idx_c in range(-1, 2):
                 point = (
-                    i * reciprocal_lattice[0]
-                    + j * reciprocal_lattice[1]
-                    + k * reciprocal_lattice[2]
+                    idx_a * reciprocal_lattice[0]
+                    + idx_b * reciprocal_lattice[1]
+                    + idx_c * reciprocal_lattice[2]
                 )
                 k_points.append(point.tolist())
 

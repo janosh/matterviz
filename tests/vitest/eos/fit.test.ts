@@ -38,7 +38,17 @@ const REFERENCE = {
   string,
   { volumes: number[]; energies: number[]; fits: Record<EosKind, number[]> }
 >
-const to_params = ([e0, v0, b0, b0_prime]: number[]): EosParams => ({ e0, v0, b0, b0_prime })
+const to_params = ([
+  equilibrium_energy,
+  equilibrium_volume,
+  bulk_modulus,
+  b0_prime,
+]: number[]): EosParams => ({
+  e0: equilibrium_energy,
+  v0: equilibrium_volume,
+  b0: bulk_modulus,
+  b0_prime,
+})
 const rel_err = (val: number, ref: number) => Math.abs(val - ref) / Math.abs(ref)
 const rmse = (kind: EosKind, params: EosParams, volumes: number[], energies: number[]) =>
   Math.hypot(...volumes.map((vol, idx) => eos_energy(kind, params, vol) - energies[idx])) /

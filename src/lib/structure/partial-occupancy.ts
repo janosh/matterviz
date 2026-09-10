@@ -82,17 +82,20 @@ export const merge_split_partial_sites = (
       render_sites.push(make_render_site(site_idx, [site_idx]))
       continue
     }
-    const [bx, by, bz] = site.xyz.map(bucket_of)
+    const [basis_x, basis_y, basis_z] = site.xyz.map(bucket_of)
     // candidates arrive in group-creation order, so the first hit is the one `find` returned
     let group_idx = -1
-    for (const candidate of groups_by_bucket.get(`${bx},${by},${bz}`) ?? []) {
+    for (const candidate of groups_by_bucket.get(`${basis_x},${basis_y},${basis_z}`) ?? []) {
       const { center } = groups[candidate]
-      const [dx, dy, dz] = [
+      const [delta_x, delta_y, delta_z] = [
         center[0] - site.xyz[0],
         center[1] - site.xyz[1],
         center[2] - site.xyz[2],
       ]
-      if (dx * dx + dy * dy + dz * dz <= MERGE_DISTANCE_TOLERANCE ** 2) {
+      if (
+        delta_x * delta_x + delta_y * delta_y + delta_z * delta_z <=
+        MERGE_DISTANCE_TOLERANCE ** 2
+      ) {
         group_idx = candidate
         break
       }
@@ -103,10 +106,10 @@ export const merge_split_partial_sites = (
     }
     const new_idx = groups.length
     groups.push({ center: site.xyz, indices: [site_idx] })
-    for (const off_x of neighbor_offsets(site.xyz[0], bx)) {
-      for (const off_y of neighbor_offsets(site.xyz[1], by)) {
-        for (const off_z of neighbor_offsets(site.xyz[2], bz)) {
-          const key = `${bx + off_x},${by + off_y},${bz + off_z}`
+    for (const off_x of neighbor_offsets(site.xyz[0], basis_x)) {
+      for (const off_y of neighbor_offsets(site.xyz[1], basis_y)) {
+        for (const off_z of neighbor_offsets(site.xyz[2], basis_z)) {
+          const key = `${basis_x + off_x},${basis_y + off_y},${basis_z + off_z}`
           const bucket = groups_by_bucket.get(key)
           if (bucket) bucket.push(new_idx)
           else groups_by_bucket.set(key, [new_idx])

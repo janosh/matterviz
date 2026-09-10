@@ -93,7 +93,7 @@ Add a surface defined by a z = f(x, y) function. The surface is colored by the z
     x_range: [-2, 2],
     y_range: [-2, 2],
     resolution: 30,
-    z_fn: (x, y) => x * x - y * y,
+    z_fn: (coord_x, coord_y) => coord_x * coord_x - coord_y * coord_y,
     opacity: 0.8,
     wireframe: true,
     wireframe_color: `#444`,
@@ -112,11 +112,11 @@ Add a surface defined by a z = f(x, y) function. The surface is colored by the z
 
   // Calculate z values using the surface function
   for (let idx = 0; idx < n_points; idx++) {
-    const x = points_on_surface.x[idx]
-    const y = points_on_surface.y[idx]
-    const z = x * x - y * y
-    points_on_surface.z.push(z)
-    points_on_surface.color_values.push(z)
+    const coord_x = points_on_surface.x[idx]
+    const coord_y = points_on_surface.y[idx]
+    const coord_z = coord_x * coord_x - coord_y * coord_y
+    points_on_surface.z.push(coord_z)
+    points_on_surface.color_values.push(coord_z)
   }
 </script>
 
@@ -148,15 +148,17 @@ A torus built from parametric equations:
     u_range: [0, Math.PI * 2],
     v_range: [0, Math.PI * 2],
     resolution: [40, 20],
-    parametric_fn: (u, v) => ({
-      x: (major_radius + minor_radius * Math.cos(v)) * Math.cos(u),
-      y: (major_radius + minor_radius * Math.cos(v)) * Math.sin(u),
-      z: minor_radius * Math.sin(v),
+    parametric_fn: (param_u, value) => ({
+      x: (major_radius + minor_radius * Math.cos(value)) * Math.cos(param_u),
+      y: (major_radius + minor_radius * Math.cos(value)) * Math.sin(param_u),
+      z: minor_radius * Math.sin(value),
     }),
-    color_fn: (x, y, z) => {
+    color_fn: (coord_x, coord_y, coord_z) => {
       // Color by angle around the tube
       const hue =
-        (Math.atan2(z, Math.sqrt(x * x + y * y) - major_radius) + Math.PI) / (2 * Math.PI)
+        (Math.atan2(coord_z, Math.sqrt(coord_x * coord_x + coord_y * coord_y) - major_radius) +
+          Math.PI) /
+        (2 * Math.PI)
       return `hsl(${hue * 360}, 70%, 50%)`
     },
     opacity: 0.85,
@@ -186,16 +188,16 @@ Display 3D trajectories as connected lines with markers at each data point. Each
 
   const curve_1 = {
     x: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 2
-      return Math.sin(3 * t)
+      const angle = (idx / n_points) * Math.PI * 2
+      return Math.sin(3 * angle)
     }),
     y: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 2
-      return Math.sin(4 * t)
+      const angle = (idx / n_points) * Math.PI * 2
+      return Math.sin(4 * angle)
     }),
     z: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 2
-      return Math.sin(5 * t)
+      const angle = (idx / n_points) * Math.PI * 2
+      return Math.sin(5 * angle)
     }),
     point_style: { fill: `#e74c3c`, radius: 4 },
     line_style: { stroke: `#e74c3c`, stroke_width: 3 },
@@ -204,16 +206,16 @@ Display 3D trajectories as connected lines with markers at each data point. Each
 
   const curve_2 = {
     x: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 2
-      return Math.sin(2 * t + Math.PI / 4)
+      const angle = (idx / n_points) * Math.PI * 2
+      return Math.sin(2 * angle + Math.PI / 4)
     }),
     y: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 2
-      return Math.sin(3 * t)
+      const angle = (idx / n_points) * Math.PI * 2
+      return Math.sin(3 * angle)
     }),
     z: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 2
-      return Math.cos(2 * t)
+      const angle = (idx / n_points) * Math.PI * 2
+      return Math.cos(2 * angle)
     }),
     point_style: { fill: `#3498db`, radius: 4 },
     line_style: { stroke: `#3498db`, stroke_width: 3 },
@@ -223,12 +225,12 @@ Display 3D trajectories as connected lines with markers at each data point. Each
   // Spring/helix trajectory
   const curve_3 = {
     x: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 4
-      return 0.7 * Math.cos(t)
+      const angle = (idx / n_points) * Math.PI * 4
+      return 0.7 * Math.cos(angle)
     }),
     y: Array.from({ length: n_points }, (_, idx) => {
-      const t = (idx / n_points) * Math.PI * 4
-      return 0.7 * Math.sin(t)
+      const angle = (idx / n_points) * Math.PI * 4
+      return 0.7 * Math.sin(angle)
     }),
     z: Array.from({ length: n_points }, (_, idx) => {
       return (idx / n_points) * 2 - 1
@@ -268,10 +270,10 @@ Points can be sized based on data values using the `size_scale` prop:
   }
 
   for (let idx = 0; idx < n_points; idx++) {
-    const x = random_data.x[idx]
-    const y = random_data.y[idx]
-    const z = random_data.z[idx]
-    const distance = Math.sqrt(x * x + y * y + z * z)
+    const coord_x = random_data.x[idx]
+    const coord_y = random_data.y[idx]
+    const coord_z = random_data.z[idx]
+    const distance = Math.sqrt(coord_x * coord_x + coord_y * coord_y + coord_z * coord_z)
     random_data.size_values.push(distance)
     random_data.color_values.push(distance)
   }
@@ -305,19 +307,19 @@ Enable automatic rotation with the `auto_rotate` prop. Use the controls pane (ge
   for (let arm_idx = 0; arm_idx < n_arms; arm_idx++) {
     const arm_offset = (arm_idx / n_arms) * Math.PI * 2
     for (let point_idx = 0; point_idx < points_per_arm; point_idx++) {
-      const t = point_idx / points_per_arm
-      const radius = t * 4 + 0.5
-      const angle = t * 4 + arm_offset
-      const spread = (1 - t) * 0.5 // More spread at center
+      const fraction = point_idx / points_per_arm
+      const radius = fraction * 4 + 0.5
+      const angle = fraction * 4 + arm_offset
+      const spread = (1 - fraction) * 0.5 // More spread at center
 
-      const x = radius * Math.cos(angle) + (Math.random() - 0.5) * spread
-      const y = radius * Math.sin(angle) + (Math.random() - 0.5) * spread
-      const z = (Math.random() - 0.5) * spread * 0.5 // Thin disk
+      const coord_x = radius * Math.cos(angle) + (Math.random() - 0.5) * spread
+      const coord_y = radius * Math.sin(angle) + (Math.random() - 0.5) * spread
+      const coord_z = (Math.random() - 0.5) * spread * 0.5 // Thin disk
 
-      galaxy_data.x.push(x)
-      galaxy_data.y.push(y)
-      galaxy_data.z.push(z)
-      galaxy_data.color_values.push(t) // Color by distance from center
+      galaxy_data.x.push(coord_x)
+      galaxy_data.y.push(coord_y)
+      galaxy_data.z.push(coord_z)
+      galaxy_data.color_values.push(fraction) // Color by distance from center
     }
   }
 
@@ -356,7 +358,7 @@ Combine multiple surfaces in the same plot:
     x_range: [-1, 1],
     y_range: [-1, 1],
     resolution: 25,
-    z_fn: (x, y) => x * x + y * y - 0.5,
+    z_fn: (coord_x, coord_y) => coord_x * coord_x + coord_y * coord_y - 0.5,
     color: `#3498db`,
     opacity: 0.6,
   }
@@ -581,14 +583,14 @@ Create complex 3D visualizations by combining reference lines, planes, and surfa
 
   for (let idx = 0; idx < n_points; idx++) {
     const theta = Math.random() * 2 * Math.PI
-    const r = Math.sqrt(Math.random()) * 1.5
-    const x = r * Math.cos(theta)
-    const y = r * Math.sin(theta)
-    const z = x * x + y * y
-    paraboloid_points.x.push(x)
-    paraboloid_points.y.push(y)
-    paraboloid_points.z.push(z)
-    paraboloid_points.color_values.push(z)
+    const radius = Math.sqrt(Math.random()) * 1.5
+    const coord_x = radius * Math.cos(theta)
+    const coord_y = radius * Math.sin(theta)
+    const coord_z = coord_x * coord_x + coord_y * coord_y
+    paraboloid_points.x.push(coord_x)
+    paraboloid_points.y.push(coord_y)
+    paraboloid_points.z.push(coord_z)
+    paraboloid_points.color_values.push(coord_z)
   }
 
   // Surface definition
@@ -597,7 +599,7 @@ Create complex 3D visualizations by combining reference lines, planes, and surfa
     x_range: [-1.5, 1.5],
     y_range: [-1.5, 1.5],
     resolution: 25,
-    z_fn: (x, y) => x * x + y * y,
+    z_fn: (coord_x, coord_y) => coord_x * coord_x + coord_y * coord_y,
     opacity: 0.5,
     wireframe: true,
     wireframe_color: `#666`,
@@ -675,9 +677,9 @@ Define a plane by specifying three non-collinear points:
   import { ScatterPlot3D } from 'matterviz'
 
   // Three points defining a plane
-  const p1 = [1, 0, 0]
-  const p2 = [0, 1, 0]
-  const p3 = [0, 0, 1]
+  const point_1 = [1, 0, 0]
+  const point = [0, 1, 0]
+  const point_3 = [0, 0, 1]
 
   // Generate random points near the plane
   const n_points = 50
@@ -691,22 +693,28 @@ Define a plane by specifying three non-collinear points:
   }
 
   for (let idx = 0; idx < n_points; idx++) {
-    const t1 = Math.random()
-    const t2 = Math.random() * (1 - t1)
-    const t3 = 1 - t1 - t2
+    const param_1 = Math.random()
+    const param_2 = Math.random() * (1 - param_1)
+    const param_3 = 1 - param_1 - param_2
     const noise = (Math.random() - 0.5) * 0.3
-    plane_points.x.push(p1[0] * t1 + p2[0] * t2 + p3[0] * t3 + noise)
-    plane_points.y.push(p1[1] * t1 + p2[1] * t2 + p3[1] * t3 + noise)
-    plane_points.z.push(p1[2] * t1 + p2[2] * t2 + p3[2] * t3 + noise)
+    plane_points.x.push(
+      point_1[0] * param_1 + point[0] * param_2 + point_3[0] * param_3 + noise,
+    )
+    plane_points.y.push(
+      point_1[1] * param_1 + point[1] * param_2 + point_3[1] * param_3 + noise,
+    )
+    plane_points.z.push(
+      point_1[2] * param_1 + point[2] * param_2 + point_3[2] * param_3 + noise,
+    )
   }
 
   // Reference plane through the three points
   const ref_planes = [
     {
       type: `points`,
-      p1,
-      p2,
-      p3,
+      p1: point_1,
+      p2: point,
+      p3: point_3,
       label: `Fitted Plane`,
       style: {
         color: `#9b59b6`,
@@ -723,28 +731,28 @@ Define a plane by specifying three non-collinear points:
     {
       type: `segment`,
       p1: [0, 0, 0],
-      p2: p1,
+      p2: point_1,
       style: { color: `#e74c3c`, width: 2 },
       label: `To P1`,
     },
     {
       type: `segment`,
       p1: [0, 0, 0],
-      p2: p2,
+      p2: point,
       style: { color: `#2ecc71`, width: 2 },
       label: `To P2`,
     },
     {
       type: `segment`,
       p1: [0, 0, 0],
-      p2: p3,
+      p2: point_3,
       style: { color: `#f39c12`, width: 2 },
       label: `To P3`,
     },
     // Triangle edges
-    { type: `segment`, p1, p2, style: { color: `#3498db`, width: 3 } },
-    { type: `segment`, p1: p2, p2: p3, style: { color: `#3498db`, width: 3 } },
-    { type: `segment`, p1: p3, p2: p1, style: { color: `#3498db`, width: 3 } },
+    { type: `segment`, p1: point_1, p2: point, style: { color: `#3498db`, width: 3 } },
+    { type: `segment`, p1: point, p2: point_3, style: { color: `#3498db`, width: 3 } },
+    { type: `segment`, p1: point_3, p2: point_1, style: { color: `#3498db`, width: 3 } },
   ]
 </script>
 
@@ -774,14 +782,14 @@ Surfaces can be colored using a custom color function that receives x, y, z coor
     x_range: [-1, 1],
     y_range: [-1, 1],
     resolution: 40,
-    z_fn: (x, y) => {
-      const r = Math.sqrt(x * x + y * y)
-      return Math.sin(r * 4) * Math.exp(-r * 0.8) * 0.5
+    z_fn: (coord_x, coord_y) => {
+      const radius = Math.sqrt(coord_x * coord_x + coord_y * coord_y)
+      return Math.sin(radius * 4) * Math.exp(-radius * 0.8) * 0.5
     },
-    color_fn: (x, y, z) => {
+    color_fn: (coord_x, coord_y, coord_z) => {
       // Color based on angle and height
-      const angle = (Math.atan2(y, x) + Math.PI) / (2 * Math.PI)
-      const height = (z + 0.5) / 1
+      const angle = (Math.atan2(coord_y, coord_x) + Math.PI) / (2 * Math.PI)
+      const height = (coord_z + 0.5) / 1
       return `hsl(${angle * 360}, ${50 + height * 50}%, ${40 + height * 30}%)`
     },
     opacity: 0.7,

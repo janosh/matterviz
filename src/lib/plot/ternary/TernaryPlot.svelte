@@ -6,7 +6,6 @@
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
   import { StatusMessage } from 'svelte-widgets'
   import { format_value } from '$lib/labels'
-  import { array_extent } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { BasePlotProps, ColorBarScale, LegendConfig, PointStyle } from '$lib/plot'
   import { ColorBar, PlotLegend, PlotTooltip } from '$lib/plot'
@@ -148,11 +147,11 @@
   }
   let placed = $derived.by(() => {
     try {
-      const points = series.flatMap((srs, series_idx) =>
+      const groups = series_in.map((srs, series_idx) =>
         srs.points.map((triple, point_idx): PlacedPoint => {
           const fractions = ternary_fractions(
             triple,
-            `${series_label(series_idx)} point ${point_idx}`,
+            `${srs.label ?? `Series ${series_idx + 1}`} point ${point_idx}`,
           )
           return {
             series_idx,
@@ -164,19 +163,34 @@
           }
         }),
       )
-      return { points, error: null }
+      return { groups, error: null }
     } catch (err) {
-      return { points: [] as PlacedPoint[], error: to_error(err).message }
+      return { groups: [] as PlacedPoint[][], error: to_error(err).message }
     }
   })
-  let rendered = $derived(placed.points.filter((point) => is_visible(point.series_idx)))
-
-  // Color values of visible series decide whether a color bar shows and what it spans
-  let color_values = $derived(
-    rendered.flatMap((point) => (point.color_value === null ? [] : [point.color_value])),
+  const visible_points = $derived(
+    placed.groups.flatMap((points, idx) => (is_visible(idx) ? points : [])),
   )
-  let color_bar_visible = $derived(color_bar !== null && color_values.length > 0)
-  let effective_color_range = $derived<Vec2>(color_range ?? array_extent(color_values))
+  // Line-only series need no per-point DOM blocks or keyboard stops.
+  const rendered = $derived(
+    placed.groups.flatMap((points, idx) =>
+      is_visible(idx) && draws_points(idx) ? points : [],
+    ),
+  )
+
+  // Only the bounds are needed; avoid allocating one array per colored point.
+  const color_extent = $derived.by((): Vec2 => {
+    let min = Infinity
+    let max = -Infinity
+    for (const { color_value } of visible_points) {
+      if (color_value === null) continue
+      if (color_value < min) min = color_value
+      if (color_value > max) max = color_value
+    }
+    return [min, max]
+  })
+  let color_bar_visible = $derived(color_bar !== null && color_extent[0] <= color_extent[1])
+  let effective_color_range = $derived<Vec2>(color_range ?? color_extent)
   let color_ramp = $derived(
     resolve_color_ramp(color_scale, effective_color_range, color_bar?.scale_type),
   )
@@ -207,12 +221,11 @@
   const is_hovered = (point: PlacedPoint): boolean =>
     hover_info?.series_idx === point.series_idx && hover_info.point_idx === point.point_idx
 
-  // Lines connect a series' points in order. Hidden series contribute no rendered points,
-  // so they drop out on the length check rather than needing a visibility test.
+  // Lines connect each visible series directly from its ordered point group.
   let line_paths = $derived(
     series.flatMap((srs, series_idx) => {
-      if (!srs.markers?.includes(`line`)) return []
-      const points = rendered.filter((point) => point.series_idx === series_idx).map(pixel)
+      if (!is_visible(series_idx) || !srs.markers?.includes(`line`)) return []
+      const points = (placed.groups[series_idx] ?? []).map(pixel)
       if (points.length < 2) return []
       const line_style = srs.line_style ?? {}
       return [
@@ -317,7 +330,7 @@
       element_size: { width: 120, height: 60 },
       axis_clearance: legend?.axis_clearance,
       exclude_rects: [],
-      points: rendered.map(svg_pixel),
+      points: visible_points.map(svg_pixel),
     })
   })
   const is_dimmed = (series_idx: number): boolean =>
@@ -346,7 +359,7 @@
       },
       () => ({
         header: [`series`, ...labels, `color_value`],
-        rows: rendered.map((point) => [
+        rows: visible_points.map((point) => [
           series_label(point.series_idx),
           ...point.fractions,
           point.color_value,
@@ -399,9 +412,9 @@
         {#if show_grid}
           <g class="grid">
             {#each grid as line (`${line.component}-${line.value}`)}
-              {@const [x1, y1] = layout.to_px(line.from)}
-              {@const [x2, y2] = layout.to_px(line.to)}
-              <line {x1} {y1} {x2} {y2} />
+              {@const [coord_x_1, coord_y_1] = layout.to_px(line.from)}
+              {@const [coord_x_2, coord_y_2] = layout.to_px(line.to)}
+              <line x1={coord_x_1} y1={coord_y_1} x2={coord_x_2} y2={coord_y_2} />
             {/each}
           </g>
         {/if}
@@ -457,28 +470,26 @@
           onkeydown={handle_keydown}
         >
           {#each rendered as point, flat_idx (`${point.series_idx}-${point.point_idx}`)}
-            {#if draws_points(point.series_idx)}
-              {@const [px_x, px_y] = pixel(point)}
-              {@const key = roving_key(point.series_idx, point.point_idx)}
-              <ScatterPoint
-                x={px_x}
-                y={px_y}
-                style={{
-                  radius: 4,
-                  ...point.style,
-                  fill: point.style.fill ?? point_color(point),
-                  cursor: on_point_click ? `pointer` : undefined,
-                }}
-                is_hovered={is_hovered(point)}
-                is_dimmed={is_dimmed(point.series_idx)}
-                hit_padding={4}
-                data-ternary-idx={flat_idx}
-                role={on_point_click ? `button` : `img`}
-                tabindex={roving.tabindex(key)}
-                {...{ [ROVING_ATTR]: key }}
-                aria-label={accessible_label(point)}
-              />
-            {/if}
+            {@const [px_x, px_y] = pixel(point)}
+            {@const key = roving_key(point.series_idx, point.point_idx)}
+            <ScatterPoint
+              x={px_x}
+              y={px_y}
+              style={{
+                radius: 4,
+                ...point.style,
+                fill: point.style.fill ?? point_color(point),
+                cursor: on_point_click ? `pointer` : undefined,
+              }}
+              is_hovered={is_hovered(point)}
+              is_dimmed={is_dimmed(point.series_idx)}
+              hit_padding={4}
+              data-ternary-idx={flat_idx}
+              role={on_point_click ? `button` : `img`}
+              tabindex={roving.tabindex(key)}
+              {...{ [ROVING_ATTR]: key }}
+              aria-label={accessible_label(point)}
+            />
           {/each}
         </g>
       </g>
@@ -577,5 +588,14 @@
   }
   .lines path {
     transition: opacity 0.15s ease;
+  }
+  .points :global([data-ternary-idx]:focus) {
+    outline: none;
+  }
+  .points :global([data-ternary-idx]:focus > .marker) {
+    stroke: var(--ternary-focus-stroke, var(--accent-color, #1976d2));
+    stroke-width: 1.5px;
+    stroke-opacity: 1;
+    vector-effect: non-scaling-stroke;
   }
 </style>

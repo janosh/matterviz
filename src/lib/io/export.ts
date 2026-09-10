@@ -200,17 +200,21 @@ function set_svg_font_family(svg: SVGElement) {
 type SvgViewbox = [x: number, y: number, width: number, height: number]
 
 function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
-  const parts = svg
-    .getAttribute(`viewBox`)
-    ?.trim()
-    .split(/[\s,]+/)
-    .map(Number)
+  const viewbox = svg.getAttribute(`viewBox`)?.trim()
+  // Without a viewBox, SVG coordinates use the viewport's resolved length units.
+  const style = viewbox ? null : getComputedStyle(svg)
+  const parts = viewbox
+    ? viewbox.split(/[\s,]+/).map(Number)
+    : style
+      ? // oxlint-disable-next-line unicorn/prefer-number-coercion -- computed CSS dimensions include px
+        [0, 0, Number.parseFloat(style.width), Number.parseFloat(style.height)]
+      : null
   if (parts?.length !== 4 || !parts.every(Number.isFinite)) return null
-  const [x, y, width, height] = parts
+  const [coord_x, coord_y, width, height] = parts
   if (width <= 0 || height <= 0) return null
   const padded: SvgViewbox = [
-    x - padding,
-    y - padding,
+    coord_x - padding,
+    coord_y - padding,
     width + 2 * padding,
     height + 2 * padding,
   ]
@@ -299,17 +303,28 @@ function serialize_svg_for_export(
   svg_element: SVGElement,
   inline_styles: readonly string[] = [],
   viewbox_padding = 0,
-  strip_dimensions = false,
+  raster_size?: [width: number, height: number],
 ): string {
   const clone = svg_element.cloneNode(true) as SVGElement
   if (inline_styles.length) inline_computed_styles(svg_element, clone, inline_styles)
   // After the style pass, which walks source and clone in parallel by index
   inline_foreign_canvases(svg_element, clone)
-  const padded_viewbox = viewbox_padding > 0 ? svg_viewbox(clone, viewbox_padding) : null
+  // Interactive HTML controls taint a rasterized SVG. Components supply static SVG
+  // replacements using the same label layout, while transient tooltips are omitted.
+  for (const element of clone.querySelectorAll(`[data-export-exclude]`)) element.remove()
+  for (const element of clone.querySelectorAll(`[data-export-only]`)) {
+    element.removeAttribute(`display`)
+    element.removeAttribute(`data-export-only`)
+  }
+  const padded_viewbox =
+    viewbox_padding > 0 || raster_size ? svg_viewbox(svg_element, viewbox_padding) : null
   if (padded_viewbox) clone.setAttribute(`viewBox`, padded_viewbox.join(` `))
-  if (strip_dimensions) {
-    clone.removeAttribute(`width`)
-    clone.removeAttribute(`height`)
+  if (raster_size) {
+    const [width, height] = raster_size
+    clone.setAttribute(`width`, String(width))
+    clone.setAttribute(`height`, String(height))
+    clone.style.width = `${width}px`
+    clone.style.height = `${height}px`
   }
   set_svg_font_family(clone)
   if (!clone.hasAttribute(`xmlns`)) {
@@ -351,16 +366,13 @@ export function export_svg_as_svg(
   }
 }
 
-// Rasterize an SVG to a PNG Blob. Rejects when viewBox is missing or a dimension is zero.
+// Rasterize an SVG using its viewBox or viewport dimensions.
 export function svg_to_png_blob(
   svg_element: SVGElement,
   png_dpi = DEFAULT_PNG_DPI,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
 ): Promise<Blob> {
-  if (!svg_element.getAttribute(`viewBox`)?.trim())
-    return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
-
   const padding = resolve_viewbox_padding(svg_element, options)
   const padded_viewbox = svg_viewbox(svg_element, padding)
   if (!padded_viewbox)
@@ -382,7 +394,10 @@ export function svg_to_png_blob(
   canvas.width = pixel_width
   canvas.height = pixel_height
 
-  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, padding > 0)
+  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, [
+    pixel_width,
+    pixel_height,
+  ])
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
   let url_revoked = false
@@ -471,7 +486,46 @@ export function get_ffmpeg_conversion_command(input_filename: string): string {
   return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
 }
 
-// Export trajectory video as WebM with frame-by-frame rendering to prevent dropped frames.
+// Recorder state changes synchronously; its encoder starts and stops asynchronously.
+function run_recorder_action(
+  recorder: MediaRecorder,
+  action: 'start' | 'stop',
+  after_action?: () => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const listeners = new AbortController()
+    const finish = (error?: Error): void => {
+      clearTimeout(timeout)
+      listeners.abort()
+      if (error) reject(error)
+      else resolve()
+    }
+    const timeout = setTimeout(
+      () => finish(new Error(`Recording timeout - recorder did not ${action}`)),
+      5000,
+    )
+    recorder.addEventListener(action, () => finish(), { signal: listeners.signal })
+    recorder.addEventListener(
+      `error`,
+      (event) => {
+        const message =
+          event instanceof ErrorEvent && event.error instanceof Error
+            ? event.error.message
+            : event.type
+        finish(new Error(`MediaRecorder error: ${message}`))
+      },
+      { signal: listeners.signal },
+    )
+    try {
+      recorder[action]()
+      after_action?.()
+    } catch (error) {
+      finish(to_error(error))
+    }
+  })
+}
+
+// Export trajectory video as WebM while advancing through the requested frames.
 // Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
 export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
@@ -509,14 +563,19 @@ export async function export_trajectory_video(
   let orig_size: Vector2 | undefined
   let recorder: MediaRecorder | undefined = undefined
   let stream: MediaStream | undefined
-  const cleanup_stream = (): void => {
-    const active_stream = stream
-    stream = undefined
-    for (const track of active_stream?.getTracks() ?? []) track.stop()
-  }
   const chunks: Blob[] = []
 
   try {
+    const prepare_step = async (idx: number): Promise<void> => {
+      on_progress?.((idx / total_frames) * 100)
+      await on_step?.(idx)
+      // Threlte resizes the canvas and updates the scene in its animation loop.
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      )
+    }
+    // Snapshot the mounted dimensions, not the canvas's initial 300 x 150 drawing buffer.
+    if (total_frames > 0) await prepare_step(0)
     if (resolution_multiplier !== 1 && renderer) {
       orig_pixel_ratio = renderer.getPixelRatio()
       orig_size = renderer.getSize(new Vector2())
@@ -529,7 +588,22 @@ export async function export_trajectory_video(
     // (canvas dimensions include device pixel ratio and any resolution_multiplier)
     const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
 
-    stream = canvas.captureStream(0)
+    // Record a stable 2D surface: direct WebGPU streams can contain no frames, and restoring
+    // the renderer's resolution must not resize the recording before its encoder finishes.
+    const capture_canvas = document.createElement(`canvas`)
+    capture_canvas.width = canvas.width
+    capture_canvas.height = canvas.height
+    const context = capture_canvas.getContext(`2d`)
+    if (!context) throw new Error(`Canvas 2D context not available for video export`)
+    const copy_frame = (): void => {
+      const view = scene_registry.get(canvas)
+      if (renderer && view) renderer.render(view.scene, view.camera)
+      context.clearRect(0, 0, capture_canvas.width, capture_canvas.height)
+      context.drawImage(canvas, 0, 0)
+    }
+    // A stream captures its initial canvas too; never give it an unpainted first frame.
+    if (total_frames > 0) copy_frame()
+    stream = capture_canvas.captureStream(fps)
     recorder = new MediaRecorder(stream, {
       mimeType: `video/webm;codecs=vp9`,
       videoBitsPerSecond: bitrate,
@@ -543,27 +617,26 @@ export async function export_trajectory_video(
       requestFrame?: () => void
     }
 
-    // Start recording
-    recorder.start()
+    // Repaint once the stream is listening, then wait for the encoder's first frame. A cold
+    // encoder can otherwise start after a short trajectory has already called stop().
+    await run_recorder_action(recorder, `start`, () => {
+      if (total_frames > 0) {
+        copy_frame()
+        track.requestFrame?.()
+      }
+    })
 
     const frame_duration = 1000 / fps
 
-    // Render each frame sequentially with precise timing
+    // Advance frames sequentially, allowing rendering time between steps.
     for (let idx = 0; idx < total_frames; idx++) {
       const frame_start = performance.now()
 
-      on_progress?.((idx / total_frames) * 100)
-
-      // Update trajectory step
-      if (on_step) await on_step(idx)
-
-      // Double RAF ensures Three.js completes rendering before capture
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      )
-
-      // Capture frame
-      track.requestFrame?.()
+      if (idx > 0) {
+        await prepare_step(idx)
+        copy_frame()
+        track.requestFrame?.()
+      }
 
       // Wait for remaining frame time to maintain consistent FPS
       const elapsed = performance.now() - frame_start
@@ -572,51 +645,22 @@ export async function export_trajectory_video(
         await new Promise((resolve) => setTimeout(resolve, remaining))
       }
     }
+    await run_recorder_action(recorder, `stop`)
+    const blob = new Blob(chunks, { type: `video/webm` })
+    download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
+    on_progress?.(100)
   } catch (error) {
     if (recorder && recorder.state !== `inactive`) recorder.stop()
-    cleanup_stream()
     throw error
   } finally {
-    // Restore original renderer settings
-    if (orig_pixel_ratio !== undefined && orig_size && renderer) {
-      renderer.setPixelRatio(orig_pixel_ratio)
-      renderer.setSize(orig_size.width, orig_size.height, false)
+    try {
+      // Restore original renderer settings after the encoder has finished reading frames.
+      if (orig_pixel_ratio !== undefined && orig_size && renderer) {
+        renderer.setPixelRatio(orig_pixel_ratio)
+        renderer.setSize(orig_size.width, orig_size.height, false)
+      }
+    } finally {
+      for (const track of stream?.getTracks() ?? []) track.stop()
     }
   }
-
-  // Finalize recording. A promise settles once, so late `error`/timeout callbacks are no-ops.
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  const stopped = new Promise<void>((resolve, reject) => {
-    recorder.addEventListener(`stop`, () => {
-      try {
-        const blob = new Blob(chunks, { type: `video/webm` })
-        download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
-        on_progress?.(100)
-        resolve()
-      } catch (error) {
-        reject(to_error(error))
-      }
-    })
-    recorder.addEventListener(`error`, (event) => {
-      const error_msg =
-        event instanceof ErrorEvent && event.error instanceof Error
-          ? event.error.message
-          : event.type
-      reject(new Error(`MediaRecorder error: ${error_msg}`))
-    })
-    // A recorder that never fires `stop` would otherwise leave the export pending forever
-    timeout = setTimeout(
-      () => reject(new Error(`Recording timeout - recorder did not stop`)),
-      5000,
-    )
-    try {
-      recorder.stop()
-    } catch (error) {
-      reject(to_error(error))
-    }
-  })
-  return stopped.finally(() => {
-    clearTimeout(timeout)
-    cleanup_stream()
-  })
 }

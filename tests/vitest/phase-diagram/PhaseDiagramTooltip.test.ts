@@ -118,16 +118,19 @@ describe(`PhaseDiagramTooltip`, () => {
     },
     { type: `melting_point`, x: 0.5, badge: `Melting point`, desc: null },
     { type: `custom`, x: 0.5, badge: `Custom`, desc: null },
-  ] as const)(`special point $type at x=$x → "$badge"`, ({ type, x, badge, desc }) => {
-    const hover_info = create_hover_info({
-      special_point: { id: `sp`, type, position: [x, 933] },
-    })
-    mount_tooltip({ hover_info, component_a: `Al`, component_b: `Cu` })
-    expect(document.querySelector(`.special-point-badge`)?.textContent).toBe(badge)
-    expect(document.querySelector(`.special-point-description`)?.textContent ?? null).toBe(
-      desc,
-    )
-  })
+  ] as const)(
+    `special point $type at x=$x → "$badge"`,
+    ({ type, x: coord_x, badge, desc }) => {
+      const hover_info = create_hover_info({
+        special_point: { id: `sp`, type, position: [coord_x, 933] },
+      })
+      mount_tooltip({ hover_info, component_a: `Al`, component_b: `Cu` })
+      expect(document.querySelector(`.special-point-badge`)?.textContent).toBe(badge)
+      expect(document.querySelector(`.special-point-description`)?.textContent ?? null).toBe(
+        desc,
+      )
+    },
+  )
 
   describe(`lever rule`, () => {
     const lever_rule: LeverRuleResult = {

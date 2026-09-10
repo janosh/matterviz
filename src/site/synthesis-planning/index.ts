@@ -50,13 +50,13 @@ const PRESETS: Record<
 }
 
 const demo_system = (
-  id: string,
+  identifier: string,
   label: string,
   load: () => Promise<PhaseData[]>,
 ): SynthesisDemoSystem => {
   const preset = PRESETS[label.replace(/ \(.*\)$/, ``)]
   return {
-    id,
+    id: identifier,
     label,
     load,
     description: preset?.description ?? ``,

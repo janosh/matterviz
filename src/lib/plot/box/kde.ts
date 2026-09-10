@@ -40,9 +40,9 @@ const silverman_from_stats = (n_vals: number, std: number, iqr: number): number 
 export function silverman_bandwidth(samples: readonly number[]): number {
   if (samples.length < 2) return 1
   const scratch = [...samples]
-  const q1 = quantile_unordered(scratch, 0.25)
-  const q3 = quantile_unordered(scratch, 0.75)
-  return silverman_from_stats(samples.length, sample_std(samples), q3 - q1)
+  const quartile_1 = quantile_unordered(scratch, 0.25)
+  const quartile_3 = quantile_unordered(scratch, 0.75)
+  return silverman_from_stats(samples.length, sample_std(samples), quartile_3 - quartile_1)
 }
 
 // Scott's rule: std * n^(-1/5) for 1-D data (order-independent, never touches `samples`)
@@ -171,27 +171,30 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
 
   const n_eval = eval_samples.length
 
-  let lo = range ? range[0] : data_min - cut * band
-  let hi = range ? range[1] : data_max + cut * band
+  let lower = range ? range[0] : data_min - cut * band
+  let upper = range ? range[1] : data_max + cut * band
   if (clip) {
-    if (clip[0] != null) lo = Math.max(lo, clip[0])
-    if (clip[1] != null) hi = Math.min(hi, clip[1])
+    if (clip[0] != null) lower = Math.max(lower, clip[0])
+    if (clip[1] != null) upper = Math.min(upper, clip[1])
   }
   // A collapsed range renders constant samples; only inverted bounds leave no valid grid.
-  if (hi < lo) return { grid: [], density: [], bandwidth: band }
+  if (upper < lower) return { grid: [], density: [], bandwidth: band }
 
   const grid = Array.from({ length: n_points }, () => 0)
   // Spaced in the transformed coordinate when one is given and both ends survive it finite
   // (a log transform of a non-positive bound does not), else evenly in data units
-  const [pos_lo, pos_hi] = [grid_transform?.fwd(lo) ?? NaN, grid_transform?.fwd(hi) ?? NaN]
-  const at =
+  const [pos_lo, pos_hi] = [
+    grid_transform?.fwd(lower) ?? NaN,
+    grid_transform?.fwd(upper) ?? NaN,
+  ]
+  const position =
     grid_transform && Number.isFinite(pos_lo) && Number.isFinite(pos_hi)
       ? (frac: number) => grid_transform.inv(pos_lo + (pos_hi - pos_lo) * frac)
-      : (frac: number) => lo + (hi - lo) * frac
-  for (let idx = 0; idx < n_points; idx++) grid[idx] = at(idx / (n_points - 1))
+      : (frac: number) => lower + (upper - lower) * frac
+  for (let idx = 0; idx < n_points; idx++) grid[idx] = position(idx / (n_points - 1))
   // the transform can round the ends off; the grid must still span exactly [lo, hi]
-  grid[0] = lo
-  grid[n_points - 1] = hi
+  grid[0] = lower
+  grid[n_points - 1] = upper
   const density =
     max_samples && n_eval > KDE_EXACT_SAMPLE_LIMIT
       ? binned_density(eval_samples, grid, band)

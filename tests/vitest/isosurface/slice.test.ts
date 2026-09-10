@@ -26,11 +26,11 @@ function expect_slice(result: ReturnType<typeof sample_hkl_slice>) {
 describe(`trilinear_interpolate`, () => {
   // Periodic: gx = fx * nx, so grid point ix sits at fx = ix / nx and fx wraps modulo 1.
   // Non-periodic: gx = fx * (nx - 1) and anything outside [0, 1] reads 0.
-  const x_ramp = flat(4, 4, 4, (ix) => ix)
+  const x_ramp = flat(4, 4, 4, (idx_x) => idx_x)
   test.each([
     [
       `grid point (1, 2, 3) of an ix*100 + iy*10 + iz field`,
-      flat(4, 4, 4, (ix, iy, iz) => ix * 100 + iy * 10 + iz),
+      flat(4, 4, 4, (idx_x, idx_y, idx_z) => idx_x * 100 + idx_y * 10 + idx_z),
       [0.25, 0.5, 0.75],
       true,
       123,
@@ -54,18 +54,20 @@ describe(`trilinear_interpolate`, () => {
     ],
   ] as [string, ReturnType<typeof flat>, Vec3, boolean, number][])(
     `%s`,
-    (_label, grid, [fx, fy, fz], periodic, expected) => {
-      expect(trilinear_interpolate(grid, fx, fy, fz, periodic)).toBeCloseTo(expected)
+    (_label, grid, [frac_x, frac_y, frac_z], periodic, expected) => {
+      expect(trilinear_interpolate(grid, frac_x, frac_y, frac_z, periodic)).toBeCloseTo(
+        expected,
+      )
     },
   )
 
   test(`non-periodic grid is exact and continuous at the upper boundary`, () => {
-    const grid = flat(4, 4, 4, (ix) => ix)
+    const grid = flat(4, 4, 4, (idx_x) => idx_x)
     // fx=1 must hit grid[3]=3 (floor-based xd gave grid[nx-2]=2, vs f(0.999)≈2.997)
     expect(trilinear_interpolate(grid, 1, 0, 0, false)).toBe(3)
     expect(trilinear_interpolate(grid, 0.999, 0, 0, false)).toBeCloseTo(2.997)
-    const grid_y = flat(4, 4, 4, (_ix, iy) => iy)
-    const grid_z = flat(4, 4, 4, (_ix, _iy, iz) => iz)
+    const grid_y = flat(4, 4, 4, (_ix, idx_y) => idx_y)
+    const grid_z = flat(4, 4, 4, (_ix, _iy, idx_z) => idx_z)
     expect(trilinear_interpolate(grid_y, 0, 1, 0, false)).toBe(3)
     expect(trilinear_interpolate(grid_z, 0, 0, 1, false)).toBe(3)
   })
@@ -77,7 +79,7 @@ describe(`trilinear_interpolate`, () => {
 
 describe(`sample_hkl_slice`, () => {
   // Cubic 5A cell with a 4x4x4 grid where value = iz (gradient along z)
-  const z_gradient = make_volume(make_grid(4, 4, 4, (_ix, _iy, iz) => iz))
+  const z_gradient = make_volume(make_grid(4, 4, 4, (_ix, _iy, idx_z) => idx_z))
 
   test(`returns null for h=k=l=0`, () => {
     expect(sample_hkl_slice(z_gradient, [0, 0, 0], 0.5)).toBeNull()
@@ -119,7 +121,7 @@ describe(`sample_hkl_slice`, () => {
       [0, 0, 6.66],
     ]
     const vol = make_volume(
-      make_grid(4, 4, 4, (ix) => ix),
+      make_grid(4, 4, 4, (idx_x) => idx_x),
       { lattice: hex_lattice },
     )
     const result = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))

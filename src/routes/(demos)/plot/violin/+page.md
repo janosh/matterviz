@@ -13,12 +13,14 @@ across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
 
-  const make_dist = (seed, n = 200, center = 0, spread = 1) => {
+  const make_dist = (seed, count = 200, center = 0, spread = 1) => {
     let state = seed
     const next = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
-    return Array.from({ length: n }, () => {
-      const u1 = Math.max(next(), 1e-9)
-      return center + spread * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * next())
+    return Array.from({ length: count }, () => {
+      const uniform_1 = Math.max(next(), 1e-9)
+      return (
+        center + spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * next())
+      )
     })
   }
 
@@ -48,12 +50,14 @@ inside the violin, the way `plotly.express.violin(box=True)` does.
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
 
-  const make_dist = (seed, n = 250, center = 0, spread = 1) => {
+  const make_dist = (seed, count = 250, center = 0, spread = 1) => {
     let state = seed
     const next = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
-    return Array.from({ length: n }, () => {
-      const u1 = Math.max(next(), 1e-9)
-      return center + spread * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * next())
+    return Array.from({ length: count }, () => {
+      const uniform_1 = Math.max(next(), 1e-9)
+      return (
+        center + spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * next())
+      )
     })
   }
 
@@ -83,12 +87,14 @@ keeps the density physical; `show_value_labels` with `value_label_stat="mean"` p
   import { BoxPlot } from 'matterviz'
 
   // Half-normal-ish positive samples (RMSD is >= 0)
-  const make_rmsd = (seed, n = 250, scale = 0.05) => {
+  const make_rmsd = (seed, count = 250, scale = 0.05) => {
     let state = seed
     const next = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
-    return Array.from({ length: n }, () => {
-      const u1 = Math.max(next(), 1e-9)
-      return Math.abs(scale * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * next()))
+    return Array.from({ length: count }, () => {
+      const uniform_1 = Math.max(next(), 1e-9)
+      return Math.abs(
+        scale * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * next()),
+      )
     })
   }
 
@@ -124,12 +130,14 @@ slot. Series in a shared slot are identified by the legend rather than colored a
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
 
-  const make_dist = (seed, n = 200, center = 0, spread = 1) => {
+  const make_dist = (seed, count = 200, center = 0, spread = 1) => {
     let state = seed
     const next = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
-    return Array.from({ length: n }, () => {
-      const u1 = Math.max(next(), 1e-9)
-      return center + spread * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * next())
+    return Array.from({ length: count }, () => {
+      const uniform_1 = Math.max(next(), 1e-9)
+      return (
+        center + spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * next())
+      )
     })
   }
 

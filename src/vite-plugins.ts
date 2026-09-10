@@ -40,8 +40,8 @@ export function vite_plugin_json_gz({
           return clean ? resolve_from_importer(clean, importer) : null
         }
       : undefined,
-    load(id) {
-      const clean = claim(id)
+    load(identifier) {
+      const clean = claim(identifier)
       if (!clean) return null
       try {
         const json_str = gunzipSync(readFileSync(clean)).toString(`utf-8`)
@@ -52,7 +52,7 @@ export function vite_plugin_json_gz({
         if (is_build) return { code: json_str, moduleType: `json` }
         return `export default ${json_str}`
       } catch (error) {
-        return this.error(`Failed to decompress ${id}: ${error}`)
+        return this.error(`Failed to decompress ${identifier}: ${error}`)
       }
     },
   }
@@ -90,8 +90,8 @@ export const vite_plugin_moyo_wasm_source = (
 ): Plugin => ({
   name,
   enforce: `pre`,
-  transform(code, id) {
-    if (!id.includes(`@spglib/moyo-wasm`) || !code.includes(moyo_glue_url)) return null
+  transform(code, identifier) {
+    if (!identifier.includes(`@spglib/moyo-wasm`) || !code.includes(moyo_glue_url)) return null
     return { code: prelude + code.replace(moyo_glue_url, source), map: null }
   },
 })

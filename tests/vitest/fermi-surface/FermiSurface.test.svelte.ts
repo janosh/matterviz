@@ -102,10 +102,10 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
   const grid_n = 6
   const values = new Float64Array(grid_n ** 3)
   let idx = 0
-  for (let ix = 0; ix < grid_n; ix++) {
-    for (let iy = 0; iy < grid_n; iy++) {
-      for (let iz = 0; iz < grid_n; iz++) {
-        values[idx++] = Math.hypot(ix / 5 - 0.5, iy / 5 - 0.5, iz / 5 - 0.5)
+  for (let idx_x = 0; idx_x < grid_n; idx_x++) {
+    for (let idx_y = 0; idx_y < grid_n; idx_y++) {
+      for (let idx_z = 0; idx_z < grid_n; idx_z++) {
+        values[idx++] = Math.hypot(idx_x / 5 - 0.5, idx_y / 5 - 0.5, idx_z / 5 - 0.5)
       }
     }
   }
@@ -283,10 +283,10 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
     toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
   })
   const grid_n = 5
-  const nested = Array.from({ length: grid_n }, (_x, ix) =>
-    Array.from({ length: grid_n }, (_y, iy) =>
-      Array.from({ length: grid_n }, (_z, iz) =>
-        Math.hypot(ix / 4 - 0.5, iy / 4 - 0.5, iz / 4 - 0.5),
+  const nested = Array.from({ length: grid_n }, (_unused_coord_x, idx_x) =>
+    Array.from({ length: grid_n }, (_unused_coord_y, idx_y) =>
+      Array.from({ length: grid_n }, (_unused_coord_z, idx_z) =>
+        Math.hypot(idx_x / 4 - 0.5, idx_y / 4 - 0.5, idx_z / 4 - 0.5),
       ),
     ),
   )

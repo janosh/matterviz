@@ -93,8 +93,8 @@ describe(`timestep seeding`, () => {
     mount_pane(bind_props({ time_unit_fallback: `ps` }, defaults))
     defaults.default_dt = 2
     await settle()
-    const { use_dt, dt, unit } = timestep_inputs()
-    expect([use_dt.checked, dt.valueAsNumber, unit.value, unit.disabled]).toEqual([
+    const { use_dt, dt: delta_time, unit } = timestep_inputs()
+    expect([use_dt.checked, delta_time.valueAsNumber, unit.value, unit.disabled]).toEqual([
       false,
       1,
       `ps`,
@@ -105,7 +105,7 @@ describe(`timestep seeding`, () => {
     await click_collect() // Late timing metadata must still seed an already collected input.
     defaults.default_time_unit = `fs`
     await settle()
-    expect([use_dt.checked, dt.valueAsNumber, unit.value, unit.disabled]).toEqual([
+    expect([use_dt.checked, delta_time.valueAsNumber, unit.value, unit.disabled]).toEqual([
       true,
       2,
       `fs`,
@@ -114,8 +114,8 @@ describe(`timestep seeding`, () => {
     expect(pane_text()).toContain(`2 fs per collected frame`)
 
     // clearing the number input writes null, which is "no timestep", not 0
-    dt.value = ``
-    dt.dispatchEvent(new Event(`input`))
+    delta_time.value = ``
+    delta_time.dispatchEvent(new Event(`input`))
     await settle()
     expect(pane_text()).toContain(`no valid timestep is available`)
   })
@@ -131,8 +131,8 @@ describe(`timestep seeding`, () => {
     async (_label, default_dt, default_time_unit) => {
       mount_pane({ default_dt, default_time_unit, time_unit_fallback: `ps` })
       await settle()
-      const { use_dt, dt, unit } = timestep_inputs()
-      expect([use_dt.checked, dt.valueAsNumber, unit.value]).toEqual([false, 1, `ps`])
+      const { use_dt, dt: delta_time, unit } = timestep_inputs()
+      expect([use_dt.checked, delta_time.valueAsNumber, unit.value]).toEqual([false, 1, `ps`])
     },
   )
 
@@ -340,9 +340,9 @@ describe(`frame window`, () => {
       button.click()
       await settle()
       if (sparse) {
-        const { dt, unit } = timestep_inputs()
-        dt.value = `3`
-        dt.dispatchEvent(new Event(`input`, { bubbles: true }))
+        const { dt: delta_time, unit } = timestep_inputs()
+        delta_time.value = `3`
+        delta_time.dispatchEvent(new Event(`input`, { bubbles: true }))
         unit.value = `ps`
         unit.dispatchEvent(new Event(`input`, { bubbles: true }))
         await settle()
@@ -370,8 +370,8 @@ describe(`frame window`, () => {
         },
       )
       await settle()
-      const { use_dt, dt, unit } = timestep_inputs()
-      expect([use_dt.checked, dt.valueAsNumber, unit.value]).toEqual([true, 1, `fs`])
+      const { use_dt, dt: delta_time, unit } = timestep_inputs()
+      expect([use_dt.checked, delta_time.valueAsNumber, unit.value]).toEqual([true, 1, `fs`])
     },
   )
 

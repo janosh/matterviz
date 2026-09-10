@@ -266,9 +266,9 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom,
   )
   // Rotated view coordinates → canvas position (y flipped for canvas coordinates)
-  const to_screen = (x: number, y: number, depth: number): draw.Projected => ({
-    x: canvas_dims.width / 2 + camera.center_x + x * view_scale,
-    y: canvas_dims.height / 2 + camera.center_y - y * view_scale,
+  const to_screen = (coord_x: number, coord_y: number, depth: number): draw.Projected => ({
+    x: canvas_dims.width / 2 + camera.center_x + coord_x * view_scale,
+    y: canvas_dims.height / 2 + camera.center_y - coord_y * view_scale,
     depth,
   })
 
@@ -303,13 +303,13 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   const handle_mouse_move = (event: MouseEvent) => {
     if (!is_dragging) return
-    const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
-    if (dx !== 0 || dy !== 0) drag_started = true
+    const [delta_x, delta_y] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
+    if (delta_x !== 0 || delta_y !== 0) drag_started = true
     if (event.metaKey || event.ctrlKey) {
       // Cmd/Ctrl: pan instead of rotate
-      camera.center_x += dx
-      camera.center_y += dy
-    } else strategy.rotate(camera, dx, dy)
+      camera.center_x += delta_x
+      camera.center_y += delta_y
+    } else strategy.rotate(camera, delta_x, delta_y)
     last_mouse = { x: event.clientX, y: event.clientY }
   }
 
@@ -325,12 +325,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   // Against the cached projections, so a hover costs no re-projection
   const find_entry_at_mouse = (event: MouseEvent): ConvexHullEntry | null =>
-    draw.find_hull_entry_at_mouse(
-      inputs.canvas(),
-      event,
-      sorted_points_cache,
-      canvas_dims.scale,
-    )
+    draw.find_hull_entry_at_mouse(inputs.canvas(), event, pick_index)
 
   const handle_hover = (event: MouseEvent) => {
     if (is_dragging) return
@@ -369,6 +364,10 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       .map((entry) => ({ entry, projected: inputs.project_point(entry.x, entry.y, entry.z) }))
       .toSorted((left, right) => left.projected.depth - right.projected.depth)
   })
+
+  const pick_index = $derived(
+    draw.build_hull_pick_index(sorted_points_cache, canvas_dims.scale),
+  )
 
   const draw_points = (target: CanvasRenderingContext2D) =>
     draw.draw_hull_points(target, sorted_points_cache, hull_point_opts())

@@ -155,14 +155,35 @@
   let mode_count = $derived(spectrum?.modes?.length ?? 0)
   let active_count = $derived(sticks.y.filter((val) => val > 1e-12).length)
 
-  const spectrum_settings = track_settings(() => ({
-    kind,
-    units: unit,
-    presentation,
-    show_sticks,
-    ...(!is_transmittance ? { normalize } : {}),
-  }))
-  const broadening_settings = track_settings(() => ({ fwhm, shape_factor }))
+  const spectrum_settings = track_settings(
+    () => ({
+      kind,
+      units: unit,
+      presentation,
+      show_sticks,
+      normalize,
+    }),
+    {
+      kind: `ir`,
+      units: `cm^-1`,
+      presentation: `absorbance`,
+      show_sticks: true,
+      normalize: `max`,
+    },
+  )
+  // One percent of the unbroadened span; a single peak uses the initial 10 cm^-1 width.
+  // Including the FWHM-dependent plot padding would move the target after every reset.
+  const broadening_defaults = $derived.by(() => {
+    const [lower = 0, upper = 0] = extent(sticks.x)
+    return {
+      fwhm:
+        upper > lower ? (upper - lower) / 100 : convert_frequencies([10], unit, `cm^-1`)[0],
+      shape_factor: 0.5,
+    }
+  })
+  const broadening_settings = $derived(
+    track_settings(() => ({ fwhm, shape_factor }), broadening_defaults),
+  )
 </script>
 
 {#if raman_unavailable}
@@ -202,7 +223,7 @@
           units = `cm^-1`
           presentation = `absorbance`
           show_sticks = true
-          if (!is_transmittance) normalize = `max`
+          normalize = `max`
         }}
         layout="flow"
       >
@@ -240,7 +261,7 @@
       <SettingsSection
         title="Broadening"
         changed_keys={broadening_settings.changed_keys}
-        on_reset={() => ([fwhm, shape_factor] = [(plot_range[1] - plot_range[0]) / 100, 0.5])}
+        on_reset={() => ({ fwhm, shape_factor } = broadening_defaults)}
         layout="flow"
       >
         <div class="style-row">

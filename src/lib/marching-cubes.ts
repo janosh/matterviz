@@ -345,8 +345,8 @@ export function marching_cubes(
   const { periodic = true, normals: compute_norms = true, position_offset } = options
   const [offset_x, offset_y, offset_z] = position_offset ?? [0, 0, 0]
 
-  const [nx, ny, nz] = grid_dimensions(grid)
-  if (nx < 2 || ny < 2 || nz < 2) {
+  const [size_x, size_y, size_z] = grid_dimensions(grid)
+  if (size_x < 2 || size_y < 2 || size_z < 2) {
     return {
       positions: new Float32Array(0),
       indices: new Uint32Array(0),
@@ -359,9 +359,9 @@ export function marching_cubes(
 
   // Non-periodic grids: n points span [0,1] with spacing 1/(n-1) — endpoints at 0 and 1.
   // Periodic grids: n points span [0,1) with spacing 1/n — point n wraps back to 0.
-  const max_x = periodic ? nx : nx - 1
-  const max_y = periodic ? ny : ny - 1
-  const max_z = periodic ? nz : nz - 1
+  const max_x = periodic ? size_x : size_x - 1
+  const max_y = periodic ? size_y : size_y - 1
+  const max_z = periodic ? size_z : size_z - 1
   const inv_nx = 1 / max_x
   const inv_ny = 1 / max_y
   const inv_nz = 1 / max_z
@@ -425,25 +425,25 @@ export function marching_cubes(
   let grad_x = 0
   let grad_y = 0
   let grad_z = 0
-  const gradient_at = (ix: number, iy: number, iz: number): void => {
-    const wx = ix % nx
-    const wy = iy % ny
-    const wz = iz % nz
-    const x_off = wx * stride_x
-    const y_off = wy * stride_y
-    const z_off = wz * stride_z
-    grad_x = axis_gradient(y_off + z_off, wx, nx, stride_x) * max_x
-    grad_y = axis_gradient(x_off + z_off, wy, ny, stride_y) * max_y
-    grad_z = axis_gradient(x_off + y_off, wz, nz, stride_z) * max_z
+  const gradient_at = (idx_x: number, idx_y: number, idx_z: number): void => {
+    const wrapped_x = idx_x % size_x
+    const wrapped_y = idx_y % size_y
+    const wrapped_z = idx_z % size_z
+    const x_off = wrapped_x * stride_x
+    const y_off = wrapped_y * stride_y
+    const z_off = wrapped_z * stride_z
+    grad_x = axis_gradient(y_off + z_off, wrapped_x, size_x, stride_x) * max_x
+    grad_y = axis_gradient(x_off + z_off, wrapped_y, size_y, stride_y) * max_y
+    grad_z = axis_gradient(x_off + y_off, wrapped_z, size_z, stride_z) * max_z
   }
 
   const cube_values = new Float64Array(8)
 
   // Get or create the vertex on edge `edge_idx` of the cube at (ix, iy, iz)
   const get_vertex_on_edge = (
-    ix: number,
-    iy: number,
-    iz: number,
+    idx_x: number,
+    idx_y: number,
+    idx_z: number,
     edge_idx: number,
   ): number => {
     const v1_idx = EDGE_V1[edge_idx]
@@ -461,13 +461,13 @@ export function marching_cubes(
     let cache_idx: number
     if (ox1 !== ox2) {
       cache = x_edge_cache
-      cache_idx = (iy + oy1) * edge_stride + iz + oz1
+      cache_idx = (idx_y + oy1) * edge_stride + idx_z + oz1
     } else if (oy1 !== oy2) {
       cache = ox1 === 0 ? y_edge_current : y_edge_next
-      cache_idx = (iy + Math.min(oy1, oy2)) * edge_stride + iz + oz1
+      cache_idx = (idx_y + Math.min(oy1, oy2)) * edge_stride + idx_z + oz1
     } else {
       cache = ox1 === 0 ? z_edge_current : z_edge_next
-      cache_idx = (iy + oy1) * edge_stride + iz + Math.min(oz1, oz2)
+      cache_idx = (idx_y + oy1) * edge_stride + idx_z + Math.min(oz1, oz2)
     }
     const cached = cache[cache_idx]
     if (cached >= 0) return cached
@@ -476,43 +476,43 @@ export function marching_cubes(
     const val_2 = cube_values[v2_idx]
     const value_delta = val_2 - val_1
     const frac = Math.abs(value_delta) < 1e-10 ? 0 : (isovalue - val_1) / value_delta
-    const fx = (ix + ox1 + frac * (ox2 - ox1)) * inv_nx
-    const fy = (iy + oy1 + frac * (oy2 - oy1)) * inv_ny
-    const fz = (iz + oz1 + frac * (oz2 - oz1)) * inv_nz
+    const frac_x = (idx_x + ox1 + frac * (ox2 - ox1)) * inv_nx
+    const frac_y = (idx_y + oy1 + frac * (oy2 - oy1)) * inv_ny
+    const frac_z = (idx_z + oz1 + frac * (oz2 - oz1)) * inv_nz
 
     const vert_idx = n_vertices++
     positions = grow(positions, 3 * n_vertices)
-    positions[3 * vert_idx] = fx * kx0 + fy * ky0 + fz * kz0 + offset_x
-    positions[3 * vert_idx + 1] = fx * kx1 + fy * ky1 + fz * kz1 + offset_y
-    positions[3 * vert_idx + 2] = fx * kx2 + fy * ky2 + fz * kz2 + offset_z
+    positions[3 * vert_idx] = frac_x * kx0 + frac_y * ky0 + frac_z * kz0 + offset_x
+    positions[3 * vert_idx + 1] = frac_x * kx1 + frac_y * ky1 + frac_z * kz1 + offset_y
+    positions[3 * vert_idx + 2] = frac_x * kx2 + frac_y * ky2 + frac_z * kz2 + offset_z
 
     if (compute_norms) {
       // Gradient interpolated along the edge with the same fraction as the position, so
       // shading is smooth rather than constant per lower endpoint
-      gradient_at(ix + ox1, iy + oy1, iz + oz1)
-      let gx = grad_x
-      let gy = grad_y
-      let gz = grad_z
+      gradient_at(idx_x + ox1, idx_y + oy1, idx_z + oz1)
+      let gradient_x = grad_x
+      let gradient_y = grad_y
+      let gradient_z = grad_z
       if (frac > 0) {
-        gradient_at(ix + ox2, iy + oy2, iz + oz2)
-        gx += frac * (grad_x - gx)
-        gy += frac * (grad_y - gy)
-        gz += frac * (grad_z - gz)
+        gradient_at(idx_x + ox2, idx_y + oy2, idx_z + oz2)
+        gradient_x += frac * (grad_x - gradient_x)
+        gradient_y += frac * (grad_y - gradient_y)
+        gradient_z += frac * (grad_z - gradient_z)
       }
       if (normal_transform) {
         const [[t00, t01, t02], [t10, t11, t12], [t20, t21, t22]] = normal_transform
-        const cart_x = t00 * gx + t01 * gy + t02 * gz
-        const cart_y = t10 * gx + t11 * gy + t12 * gz
-        gz = t20 * gx + t21 * gy + t22 * gz
-        gx = cart_x
-        gy = cart_y
+        const cart_x = t00 * gradient_x + t01 * gradient_y + t02 * gradient_z
+        const cart_y = t10 * gradient_x + t11 * gradient_y + t12 * gradient_z
+        gradient_z = t20 * gradient_x + t21 * gradient_y + t22 * gradient_z
+        gradient_x = cart_x
+        gradient_y = cart_y
       }
-      const length = Math.hypot(gx, gy, gz)
+      const length = Math.hypot(gradient_x, gradient_y, gradient_z)
       normals = grow(normals, 3 * n_vertices)
       if (length > 1e-10) {
-        normals[3 * vert_idx] = gx / length
-        normals[3 * vert_idx + 1] = gy / length
-        normals[3 * vert_idx + 2] = gz / length
+        normals[3 * vert_idx] = gradient_x / length
+        normals[3 * vert_idx + 1] = gradient_y / length
+        normals[3 * vert_idx + 2] = gradient_z / length
       } else {
         normals[3 * vert_idx] = 0
         normals[3 * vert_idx + 1] = 0
@@ -524,24 +524,24 @@ export function marching_cubes(
     return vert_idx
   }
 
-  for (let ix = 0; ix < max_x; ix++) {
+  for (let idx_x = 0; idx_x < max_x; idx_x++) {
     x_edge_cache.fill(-1)
     y_edge_next.fill(-1)
     z_edge_next.fill(-1)
-    const x_offset = ix * stride_x
-    const x1_offset = ((ix + 1) % nx) * stride_x
+    const x_offset = idx_x * stride_x
+    const x1_offset = ((idx_x + 1) % size_x) * stride_x
 
-    for (let iy = 0; iy < max_y; iy++) {
-      const y_offset = iy * stride_y
-      const y1_offset = ((iy + 1) % ny) * stride_y
+    for (let idx_y = 0; idx_y < max_y; idx_y++) {
+      const y_offset = idx_y * stride_y
+      const y1_offset = ((idx_y + 1) % size_y) * stride_y
       const offset_00 = x_offset + y_offset
       const offset_10 = x1_offset + y_offset
       const offset_11 = x1_offset + y1_offset
       const offset_01 = x_offset + y1_offset
 
-      for (let iz = 0; iz < max_z; iz++) {
-        const z_offset = iz * stride_z
-        const z1_offset = ((iz + 1) % nz) * stride_z
+      for (let idx_z = 0; idx_z < max_z; idx_z++) {
+        const z_offset = idx_z * stride_z
+        const z1_offset = ((idx_z + 1) % size_z) * stride_z
         cube_values[0] = values[offset_00 + z_offset]
         cube_values[1] = values[offset_10 + z_offset]
         cube_values[2] = values[offset_11 + z_offset]
@@ -566,15 +566,15 @@ export function marching_cubes(
 
         const tri_list = TRI_TABLE[cube_index]
         for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
-          const v0 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx])
-          const v1 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx + 1])
-          const v2 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx + 2])
+          const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
+          const vector_1 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 1])
+          const vector_2 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 2])
           // Skip degenerate triangles (two edges collapsed onto one cached vertex)
-          if (v0 === v1 || v1 === v2 || v0 === v2) continue
+          if (vector_0 === vector_1 || vector_1 === vector_2 || vector_0 === vector_2) continue
           indices = grow(indices, n_indices + 3)
-          indices[n_indices++] = v0
-          indices[n_indices++] = v1
-          indices[n_indices++] = v2
+          indices[n_indices++] = vector_0
+          indices[n_indices++] = vector_1
+          indices[n_indices++] = vector_2
         }
       }
     }
@@ -617,14 +617,14 @@ export function compute_vertex_normals(
     const e2_y = positions[3 * idx2 + 1] - v0_y
     const e2_z = positions[3 * idx2 + 2] - v0_z
     // Cross product (face normal × 2 × area) accumulated onto the triangle's vertices
-    const nx = e1_y * e2_z - e1_z * e2_y
-    const ny = e1_z * e2_x - e1_x * e2_z
-    const nz = e1_x * e2_y - e1_y * e2_x
+    const normal_x = e1_y * e2_z - e1_z * e2_y
+    const size_y = e1_z * e2_x - e1_x * e2_z
+    const size_z = e1_x * e2_y - e1_y * e2_x
     for (let corner = 0; corner < 3; corner++) {
       const idx = 3 * indices[tri + corner]
-      normals[idx] += nx
-      normals[idx + 1] += ny
-      normals[idx + 2] += nz
+      normals[idx] += normal_x
+      normals[idx + 1] += size_y
+      normals[idx + 2] += size_z
     }
   }
   for (let idx = 0; idx < normals.length; idx += 3) {

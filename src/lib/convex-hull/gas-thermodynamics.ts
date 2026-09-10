@@ -165,9 +165,9 @@ export function analyze_gas_data(
   // Find all elements in the chemical system
   const all_elements = new Set<ElementSymbol>()
   for (const entry of entries) {
-    for (const el of Object.keys(entry.composition)) {
-      if ((entry.composition[el as ElementSymbol] ?? 0) > 0) {
-        all_elements.add(el as ElementSymbol)
+    for (const element of Object.keys(entry.composition)) {
+      if ((entry.composition[element as ElementSymbol] ?? 0) > 0) {
+        all_elements.add(element as ElementSymbol)
       }
     }
   }
@@ -176,10 +176,10 @@ export function analyze_gas_data(
   const gas_elements: ElementSymbol[] = []
   const relevant_gases: GasSpecies[] = []
 
-  for (const el of all_elements) {
-    const gas = element_to_gas[el]
+  for (const element of all_elements) {
+    const gas = element_to_gas[element]
     if (gas && enabled_gases.includes(gas)) {
-      gas_elements.push(el)
+      gas_elements.push(element)
       if (!relevant_gases.includes(gas)) {
         relevant_gases.push(gas)
       }
@@ -226,12 +226,12 @@ export function compute_gas_correction(
 
   for (const [el_str, amount] of Object.entries(entry.composition)) {
     if (typeof amount !== `number` || amount <= 0) continue
-    const el = el_str as ElementSymbol
+    const element = el_str as ElementSymbol
 
-    const gas = element_to_gas[el]
+    const gas = element_to_gas[element]
     if (!gas || !enabled_gases.has(gas)) continue
 
-    const stoich = GAS_STOICHIOMETRY[gas][el] ?? 1
+    const stoich = GAS_STOICHIOMETRY[gas][element] ?? 1
     const num_atoms = gas_num_atoms(gas)
 
     // Per atom of gas at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
@@ -306,12 +306,14 @@ export function apply_gas_corrections(
   if (shifted_elements.size === 0) return entries
   return corrected.map((entry) =>
     // amt > 0: a zero-amount element is absent, so its key must not invalidate a live cache
-    Object.entries(entry.composition).some(([el, amt]) => amt > 0 && shifted_elements.has(el))
+    Object.entries(entry.composition).some(
+      ([element, amt]) => amt > 0 && shifted_elements.has(element),
+    )
       ? drop_cached_hull_data(entry)
       : entry,
   )
 }
 
 // Format chemical potential for display (e.g., "-1.23 eV")
-export const format_chemical_potential = (mu: number, decimals = 3): string =>
-  `${mu >= 0 ? `+` : ``}${format_num(mu, `.${decimals}~f`)} eV`
+export const format_chemical_potential = (mean: number, decimals = 3): string =>
+  `${mean >= 0 ? `+` : ``}${format_num(mean, `.${decimals}~f`)} eV`

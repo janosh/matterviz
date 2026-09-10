@@ -72,15 +72,15 @@
       const [start, end] = [angle, angle + span]
       angle = end
       const large_arc = span > 180 ? 1 : 0
-      const [x1, y1] = polar(outer_radius, start)
-      const [x2, y2] = polar(outer_radius, end)
-      const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2} ${y2}`
+      const [coord_x_1, coord_y_1] = polar(outer_radius, start)
+      const [coord_x, coord_y_2] = polar(outer_radius, end)
+      const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${coord_x} ${coord_y_2}`
       let path: string
       if (ring_inner > 0) {
-        const [x3, y3] = polar(ring_inner, end)
-        const [x4, y4] = polar(ring_inner, start)
-        path = `M ${x1} ${y1} ${outer_arc} L ${x3} ${y3} A ${ring_inner} ${ring_inner} 0 ${large_arc} 0 ${x4} ${y4} Z`
-      } else path = `M ${center} ${center} L ${x1} ${y1} ${outer_arc} Z`
+        const [coord_x_3, coord_y_3] = polar(ring_inner, end)
+        const [coord_x_4, coord_y_4] = polar(ring_inner, start)
+        path = `M ${coord_x_1} ${coord_y_1} ${outer_arc} L ${coord_x_3} ${coord_y_3} A ${ring_inner} ${ring_inner} 0 ${large_arc} 0 ${coord_x_4} ${coord_y_4} Z`
+      } else path = `M ${center} ${center} L ${coord_x_1} ${coord_y_1} ${outer_arc} Z`
 
       const outside = span < THIN_SLICE
       const label_radius = outside

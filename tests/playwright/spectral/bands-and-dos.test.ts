@@ -49,7 +49,9 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const dos_plot = plots.nth(1)
 
     // Check grid layout
-    expect(await container.evaluate((el) => getComputedStyle(el).display)).toBe(`grid`)
+    expect(await container.evaluate((element) => getComputedStyle(element).display)).toBe(
+      `grid`,
+    )
 
     // Shared top/bottom padding must align the actual drawable regions, not only
     // the equal-height outer plot containers.
@@ -118,7 +120,9 @@ test.describe(`BandsAndDos Component Tests`, () => {
       .first()
       .locator(`path[fill="none"]`)
       .first()
-    expect(await bands_path.evaluate((el) => getComputedStyle(el).stroke)).toBeTruthy()
+    expect(
+      await bands_path.evaluate((element) => getComputedStyle(element).stroke),
+    ).toBeTruthy()
 
     // Check DOS props passed (normalization)
     const dos_container = page.locator(`[data-testid="bands-and-dos-dos-norm"]`)

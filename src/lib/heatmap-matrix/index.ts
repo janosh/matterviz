@@ -77,7 +77,7 @@ export type ElementAxisOrderingKey = keyof typeof ORDERING_LABELS
 // Full ordering type: built-in key or custom comparator function
 type ElementAxisOrdering =
   | ElementAxisOrderingKey
-  | ((a: ChemicalElement, b: ChemicalElement) => number)
+  | ((value_a: ChemicalElement, value_b: ChemicalElement) => number)
 
 // Shared types used by both HeatmapMatrix and HeatmapMatrixControls. Prefixed because
 // bond-angles has its own NormalizeMode and both modules are star-exported from $lib.
@@ -127,27 +127,29 @@ export function elements_to_axis(
 
   if (symbols) {
     const symbol_set = new Set(symbols)
-    elements = elements.filter((el) => symbol_set.has(el.symbol))
+    elements = elements.filter((element) => symbol_set.has(element.symbol))
   }
 
   if (typeof ordering === `function`) {
     elements.sort(ordering)
   } else if (ordering === `alphabetical`) {
-    elements.sort((a, b) => a.symbol.localeCompare(b.symbol))
+    elements.sort((left_value, right_value) =>
+      left_value.symbol.localeCompare(right_value.symbol),
+    )
   } else {
     // Number.MAX_VALUE, not Infinity (Infinity - Infinity is NaN), sorts nullish last
     const key = PROPERTY_MAP[ordering] ?? ordering
-    const num = (el: ChemicalElement) =>
-      (el[key as keyof ChemicalElement] ?? Number.MAX_VALUE) as number
+    const num = (element: ChemicalElement) =>
+      (element[key as keyof ChemicalElement] ?? Number.MAX_VALUE) as number
     elements.sort((el_a, el_b) => num(el_a) - num(el_b))
   }
 
-  return elements.map((el, idx) => ({
-    label: el.symbol,
-    key: el.symbol,
+  return elements.map((element, idx) => ({
+    label: element.symbol,
+    key: element.symbol,
     sort_value: idx,
-    category: el.category,
-    data: el,
+    category: element.category,
+    data: element,
   }))
 }
 

@@ -191,8 +191,8 @@ test(`property captions sit under the viewer, in a row of their own`, async ({ p
       const caption = card?.querySelector(`.card-properties`)
       const chip = card?.querySelector(`.card-info`)
       if (!card || !caption || !chip || !card.querySelector(`canvas`)) return null
-      const [box, cap, chip_box] = [card, caption, chip].map((el) =>
-        el.getBoundingClientRect(),
+      const [box, cap, chip_box] = [card, caption, chip].map((element) =>
+        element.getBoundingClientRect(),
       )
       return {
         clears_chip: cap.top >= chip_box.bottom,

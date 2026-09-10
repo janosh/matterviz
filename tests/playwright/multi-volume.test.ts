@@ -15,13 +15,13 @@ async function wait_for_scenario(page: Page, url: string) {
 
 test.describe(`Multi-volume isosurface demo`, () => {
   // One cross-volume color path + one fractional display-range path cover load/render
-  for (const [id, surfaces] of [
+  for (const [identifier, surfaces] of [
     [`glycine-esp`, undefined],
     [`caffeine-homo-lumo`, `Surfaces: 4`],
     [`fractional-range`, undefined],
   ] as const) {
-    test(`scenario ${id} loads volumes and renders`, async ({ page }) => {
-      await wait_for_scenario(page, `${DEMO_URL}?scenario=${id}`)
+    test(`scenario ${identifier} loads volumes and renders`, async ({ page }) => {
+      await wait_for_scenario(page, `${DEMO_URL}?scenario=${identifier}`)
       await expect(page.locator(`.demo-stats-bar`)).toContainText(`Volumes: 2`)
       if (surfaces) await expect(page.locator(`.demo-stats-bar`)).toContainText(surfaces)
       await wait_for_3d_canvas(page, `.structure`)
@@ -63,7 +63,7 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await expect(page.locator(`.status-message.error`)).toHaveCount(0)
   })
 
-  test(`controls group surfaces by volume and mark color-source-only volumes`, async ({
+  test(`controls group volumes, reset colors and add a surface for the color-source volume`, async ({
     page,
   }) => {
     await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
@@ -90,13 +90,14 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await reset_button.click()
     await expect(reset_button).toHaveCount(0)
     await expect(color_scale_select.locator(`.selected`)).toContainText(`RdBu`)
-  })
-
-  test(`add-surface button adds a surface for the color-source volume`, async ({ page }) => {
-    await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
-    const pane = await open_settings_pane(page)
+    const section_reset = pane.getByRole(`button`, {
+      name: `Reset isosurface to defaults`,
+      exact: true,
+    })
+    await section_reset.click()
+    await expect(section_reset).toHaveCount(0)
+    await expect(page.locator(`.demo-stats-bar`)).toContainText(`Surfaces: 1`)
     await pane.locator(`button[aria-label="Add surface for glycine-esp.cube"]`).click()
-    const groups = pane.locator(`.volume-group`)
     await expect(groups.nth(1).locator(`.layer-row`)).toHaveCount(1)
     // ESP is a signed field so its auto layer shows +/- lobes: 1 + 2 surfaces
     await expect(page.locator(`.demo-stats-bar`)).toContainText(`Surfaces: 3`)

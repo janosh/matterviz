@@ -212,12 +212,12 @@ describe(`camera fly-to`, () => {
   const make_rig = (
     camera_pos: Vec3 = [0, 0, 10],
     target_pos: Vec3 = [0, 0, 0],
-    up: Vec3 = [0, 1, 0],
+    up_vector: Vec3 = [0, 1, 0],
     duration_ms = 400,
   ) => {
     const camera = new PerspectiveCamera()
     camera.position.set(...camera_pos)
-    camera.up.set(...up)
+    camera.up.set(...up_vector)
     const controls: FlyToControls = {
       target: new Vector3(...target_pos),
       enabled: true,
@@ -310,8 +310,8 @@ describe(`camera fly-to`, () => {
     [`+y to -y`, [0, 10, 0], [0, -1, 0], [0, 1, 0], [0, 0, 10]],
   ] as [string, Vec3, Vec3, Vec3, Vec3][])(
     `orbits antipodal handles at full radius: %s`,
-    (_name, camera_pos, dir, up, expected_midpoint) => {
-      const { camera, controls, fly, offset } = make_rig(camera_pos, [0, 0, 0], up)
+    (_name, camera_pos, dir, up_vector, expected_midpoint) => {
+      const { camera, controls, fly, offset } = make_rig(camera_pos, [0, 0, 0], up_vector)
       fly.start(dir)
       let swept_deg = 0
       for (let frame = 0; frame < 20; frame += 1) {

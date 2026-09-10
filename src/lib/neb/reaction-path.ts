@@ -93,17 +93,17 @@ function path_geometry(
 // Per-atom displacement vectors taking every atom by its shortest route.
 function image_displacements(
   from: AnyStructure,
-  to: AnyStructure,
+  target_2: AnyStructure,
   geometry: PathGeometry,
 ): Vec3[] {
-  if (from.sites.length !== to.sites.length) {
+  if (from.sites.length !== target_2.sites.length) {
     throw new Error(
-      `image_displacements: image site counts differ (${from.sites.length} vs ${to.sites.length}); ` +
+      `image_displacements: image site counts differ (${from.sites.length} vs ${target_2.sites.length}); ` +
         `reaction-path images must contain the same atoms in the same order`,
     )
   }
   return from.sites.map(({ xyz }, site_idx) => {
-    const target = to.sites[site_idx].xyz
+    const target = target_2.sites[site_idx].xyz
     if (!geometry) return [target[0] - xyz[0], target[1] - xyz[1], target[2] - xyz[2]]
     const { converters, pbc } = geometry
     return min_image_displacement(xyz, target, converters.lattice, converters, pbc)
@@ -225,29 +225,33 @@ export function projected_force_slopes(
 // === Piecewise cubic interpolation ===
 
 // Validate a strictly increasing knot sequence and return the interval widths.
-function knot_widths(xs: readonly number[], ys: readonly number[]): number[] {
-  if (xs.length !== ys.length) {
+function knot_widths(x_values: readonly number[], y_values: readonly number[]): number[] {
+  if (x_values.length !== y_values.length) {
     throw new Error(
-      `Spline needs matching x/y lengths, got ${xs.length} x-values and ${ys.length} y-values`,
+      `Spline needs matching x/y lengths, got ${x_values.length} x-values and ${y_values.length} y-values`,
     )
   }
-  if (xs.length < 2) throw new Error(`Spline needs at least 2 knots, got ${xs.length}`)
-  return xs.slice(1).map((next, idx) => {
-    if (!(next - xs[idx] > 0)) {
+  if (x_values.length < 2)
+    throw new Error(`Spline needs at least 2 knots, got ${x_values.length}`)
+  return x_values.slice(1).map((next, idx) => {
+    if (!(next - x_values[idx] > 0)) {
       throw new Error(
-        `Spline knots must strictly increase, got x[${idx}]=${xs[idx]} and x[${
+        `Spline knots must strictly increase, got x[${idx}]=${x_values[idx]} and x[${
           idx + 1
         }]=${next}`,
       )
     }
-    return next - xs[idx]
+    return next - x_values[idx]
   })
 }
 
 // Knot slopes of the natural cubic spline (zero curvature at both ends) through (xs, ys).
-export function natural_cubic_slopes(xs: readonly number[], ys: readonly number[]): number[] {
-  const widths = knot_widths(xs, ys)
-  const n_knots = xs.length
+export function natural_cubic_slopes(
+  x_values: readonly number[],
+  y_values: readonly number[],
+): number[] {
+  const widths = knot_widths(x_values, y_values)
+  const n_knots = x_values.length
   // Second derivatives, zero at both ends by the natural boundary condition
   const curvature = Array.from<number>({ length: n_knots }).fill(0)
 
@@ -259,7 +263,10 @@ export function natural_cubic_slopes(xs: readonly number[], ys: readonly number[
   const d_prime = Array.from<number>({ length: n_interior }).fill(0)
   for (let row = 0; row < n_interior; row++) {
     const [left, right] = [widths[row], widths[row + 1]]
-    const rhs = 6 * ((ys[row + 2] - ys[row + 1]) / right - (ys[row + 1] - ys[row]) / left)
+    const rhs =
+      6 *
+      ((y_values[row + 2] - y_values[row + 1]) / right -
+        (y_values[row + 1] - y_values[row]) / left)
     const denom = 2 * (left + right) - (row > 0 ? left * c_prime[row - 1] : 0)
     c_prime[row] = right / denom
     d_prime[row] = (rhs - (row > 0 ? left * d_prime[row - 1] : 0)) / denom
@@ -270,36 +277,47 @@ export function natural_cubic_slopes(xs: readonly number[], ys: readonly number[
 
   const slopes = widths.map(
     (width, knot) =>
-      (ys[knot + 1] - ys[knot]) / width -
+      (y_values[knot + 1] - y_values[knot]) / width -
       (width * (2 * curvature[knot] + curvature[knot + 1])) / 6,
   )
   const last = n_knots - 1
   const width = widths[last - 1]
   slopes.push(
-    (ys[last] - ys[last - 1]) / width +
+    (y_values[last] - y_values[last - 1]) / width +
       (width * (curvature[last - 1] + 2 * curvature[last])) / 6,
   )
   return slopes
 }
 
 // Cubic Hermite basis evaluated on a unit interval; `m0`/`m1` are tangents in t-space.
-const hermite = (p0: number, p1: number, m0: number, m1: number, t_val: number): number => {
+const hermite = (
+  point_0: number,
+  point_1: number,
+  moment_0: number,
+  moment_1: number,
+  t_val: number,
+): number => {
   const t_sq = t_val * t_val
   const t_cu = t_sq * t_val
   return (
-    (2 * t_cu - 3 * t_sq + 1) * p0 +
-    (t_cu - 2 * t_sq + t_val) * m0 +
-    (-2 * t_cu + 3 * t_sq) * p1 +
-    (t_cu - t_sq) * m1
+    (2 * t_cu - 3 * t_sq + 1) * point_0 +
+    (t_cu - 2 * t_sq + t_val) * moment_0 +
+    (-2 * t_cu + 3 * t_sq) * point_1 +
+    (t_cu - t_sq) * moment_1
   )
 }
 
 // Interior critical points of one Hermite segment, as t-values in (0, 1).
-function segment_critical_points(p0: number, p1: number, m0: number, m1: number): number[] {
+function segment_critical_points(
+  point_0: number,
+  point_1: number,
+  moment_0: number,
+  moment_1: number,
+): number[] {
   // d/dt of the Hermite cubic is the quadratic quad_a·t² + quad_b·t + quad_c
-  const quad_a = 6 * p0 - 6 * p1 + 3 * m0 + 3 * m1
-  const quad_b = -6 * p0 + 6 * p1 - 4 * m0 - 2 * m1
-  const quad_c = m0
+  const quad_a = 6 * point_0 - 6 * point_1 + 3 * moment_0 + 3 * moment_1
+  const quad_b = -6 * point_0 + 6 * point_1 - 4 * moment_0 - 2 * moment_1
+  const quad_c = moment_0
   const in_range = (t_val: number) => t_val > 0 && t_val < 1
   if (quad_a === 0) return quad_b === 0 ? [] : [-quad_c / quad_b].filter(in_range)
   const discriminant = quad_b * quad_b - 4 * quad_a * quad_c
@@ -404,9 +422,9 @@ export function fit_path_spline(
     best.between_images[0] !== best.between_images[1] &&
     !sample_coords.includes(best.coord)
   ) {
-    const at = sample_coords.findIndex((coord) => coord > best.coord)
-    sample_coords.splice(at, 0, best.coord)
-    sample_energies.splice(at, 0, best.energy)
+    const offset = sample_coords.findIndex((coord) => coord > best.coord)
+    sample_coords.splice(offset, 0, best.coord)
+    sample_energies.splice(offset, 0, best.energy)
   }
 
   return {

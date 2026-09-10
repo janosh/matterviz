@@ -128,20 +128,25 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
   expect(document.querySelector(`.detail`)).toBe(detail)
   expect(state.shortlist_ids).toEqual(shortlist)
   expect(state.selected_route_id).toBe(alternative.id)
-  const recipe = state.plan?.routes.find(({ id }) => id === route_id)?.recipe
+  const recipe = state.plan?.routes.find(
+    ({ id: identifier }) => identifier === route_id,
+  )?.recipe
   expect(recipe?.assumptions.temperature_K).toBe(`1100`)
   expect(recipe?.target_mass_g).toBe(2)
   expect(JSON.stringify(state.plan)).toContain(`"temperature_K":"1100"`)
 
   state.target = `BaCO3`
   await vi.waitFor(() => expect(state.plan?.target.formula).toBe(`BaCO3`))
-  expect(state.shortlist_ids).toEqual(state.plan?.routes.slice(0, 2).map(({ id }) => id))
+  expect(state.shortlist_ids).toEqual(
+    state.plan?.routes.slice(0, 2).map(({ id: identifier }) => identifier),
+  )
   state.target = `BaTiO3`
   state.conditions = { temperature: 0, open_species: [`CO2`, `O2`] }
   await vi.waitFor(() => expect(state.plan?.target.formula).toBe(`BaTiO3`))
   expect(slider.value).toBe(`0`)
   expect(
-    state.plan?.routes.find(({ id }) => id === route_id)?.recipe.assumptions.temperature_K,
+    state.plan?.routes.find(({ id: identifier }) => identifier === route_id)?.recipe
+      .assumptions.temperature_K,
   ).toBe(`1100`)
 })
 

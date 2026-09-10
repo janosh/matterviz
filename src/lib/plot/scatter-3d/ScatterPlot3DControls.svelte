@@ -27,8 +27,8 @@
     DataSeries3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
-  import { calc_auto_range } from '$lib/plot/core/utils'
-  import type { Snippet } from 'svelte'
+  import { sample_surface, collect_3d_extents, compute_range } from './scene-coords'
+  import { type Snippet, untrack } from 'svelte'
 
   const defaults = {
     camera_projection: `perspective` as CameraProjection3D,
@@ -66,10 +66,12 @@
     children?: Snippet
   } = $props()
 
-  // Auto ranges for reset buttons without allocating flattened coordinate arrays.
-  let auto_x_range = $derived(calc_auto_range(series, (series_data) => series_data.x))
-  let auto_y_range = $derived(calc_auto_range(series, (series_data) => series_data.y))
-  let auto_z_range = $derived(calc_auto_range(series, (series_data) => series_data.z))
+  // Match the rendered ranges, including surfaces and tick-friendly bounds.
+  const surface_samples = $derived(surfaces.flatMap(sample_surface))
+  const data_extents = $derived(collect_3d_extents(series, surface_samples))
+  const auto_x_range = $derived(compute_range(data_extents.x))
+  const auto_y_range = $derived(compute_range(data_extents.y))
+  const auto_z_range = $derived(compute_range(data_extents.z))
 
   const set_display = (key: `projection_opacity` | `projection_scale`) => (val?: number) => {
     // Guard against cleared/invalid input - preserve existing value
@@ -117,25 +119,53 @@
     [`show_bounding_box`, `Bounds`],
   ] as const
   const projection_planes = [`xy`, `xz`, `yz`] as const
-  const camera_settings = track_settings(() => ({
-    projection: camera_projection,
-    auto_rotate,
-  }))
-  const display_settings = track_settings(() =>
-    Object.fromEntries(display_toggles.map(([key]) => [key, display[key]])),
+  const camera_settings = track_settings(
+    () => ({
+      projection: camera_projection,
+      auto_rotate,
+    }),
+    { projection: defaults.camera_projection, auto_rotate: defaults.auto_rotate },
   )
-  const projections_settings = track_settings(() => ({
-    ...Object.fromEntries(
-      projection_planes.map((plane) => [plane, display.projections?.[plane]]),
+  const display_settings = track_settings(
+    () =>
+      Object.fromEntries(display_toggles.map(([key]) => [key, display[key] ?? defaults[key]])),
+    defaults,
+  )
+  const projections_settings = track_settings(
+    () => ({
+      ...Object.fromEntries(
+        projection_planes.map((plane) => [
+          plane,
+          display.projections?.[plane] ?? defaults.projections[plane],
+        ]),
+      ),
+      opacity: display.projection_opacity ?? defaults.projection_opacity,
+      scale: display.projection_scale ?? defaults.projection_scale,
+    }),
+    {
+      ...defaults.projections,
+      opacity: defaults.projection_opacity,
+      scale: defaults.projection_scale,
+    },
+  )
+  const initial_axis_labels = untrack(() => axes.map(({ axis }) => axis.label))
+  const axes_settings = track_settings(
+    () =>
+      Object.fromEntries(
+        axes.flatMap(({ name, axis }) => [
+          [`${name}_range`, axis.range ?? [null, null]],
+          [`${name}_label`, axis.label],
+        ]),
+      ),
+    untrack(() =>
+      Object.fromEntries(
+        axes.flatMap(({ name }, idx) => [
+          [`${name}_range`, [null, null]],
+          [`${name}_label`, initial_axis_labels[idx]],
+        ]),
+      ),
     ),
-    opacity: display.projection_opacity,
-    scale: display.projection_scale,
-  }))
-  const axes_settings = track_settings(() => ({
-    x_range: x_axis.range,
-    y_range: y_axis.range,
-    z_range: z_axis.range,
-  }))
+  )
 </script>
 
 <ControlPane
@@ -244,7 +274,9 @@
     title="Axes"
     changed_keys={axes_settings.changed_keys}
     on_reset={() => {
-      for (const { axis, set } of axes) set({ ...axis, range: [null, null] })
+      axes.forEach(({ axis, set }, idx) =>
+        set({ ...axis, label: initial_axis_labels[idx], range: [null, null] }),
+      )
     }}
     layout="grid"
   >

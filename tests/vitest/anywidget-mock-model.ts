@@ -17,18 +17,18 @@ export class MockModel {
   set(key: string, value: unknown): void {
     this.set_count += 1
     this.state[key] = value
-    this.listeners[`change:${key}`]?.forEach((fn) => fn())
+    this.listeners[`change:${key}`]?.forEach((callback) => callback())
   }
   // simulate a trait update arriving from Python
   push_from_python(key: string, value: unknown): void {
     this.state[key] = value
-    this.listeners[`change:${key}`]?.forEach((fn) => fn())
+    this.listeners[`change:${key}`]?.forEach((callback) => callback())
   }
-  on(event: string, fn: () => void): void {
-    ;(this.listeners[event] ??= new Set()).add(fn)
+  on(event: string, callback: () => void): void {
+    ;(this.listeners[event] ??= new Set()).add(callback)
   }
-  off(event: string, fn: () => void): void {
-    this.listeners[event]?.delete(fn)
+  off(event: string, callback: () => void): void {
+    this.listeners[event]?.delete(callback)
   }
   save_changes(): void {
     this.save_count += 1

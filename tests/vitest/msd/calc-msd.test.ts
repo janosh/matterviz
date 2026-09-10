@@ -369,14 +369,17 @@ describe(`time axis`, () => {
   it.each([
     [`no dt is supplied`, {}, 1, `frame`, `Lag (frames)`],
     [`dt and a unit are supplied`, { dt: 0.5, time_unit: `ps` }, 0.5, `ps`, `Lag time (ps)`],
-  ])(`labels the time axis and D units when %s`, (_label, options, dt, unit, x_label) => {
-    const result = calc_msd(ballistic([0.1, 0, 0], 20), options)
-    expect(result.dt).toBe(dt)
-    expect(result.time_unit).toBe(unit)
-    expect(result.x_label).toBe(x_label)
-    expect(result.times).toEqual(result.lags.map((lag) => lag * dt))
-    expect(result.curves[0].fit?.units).toBe(`Å²/${unit}`)
-  })
+  ])(
+    `labels the time axis and D units when %s`,
+    (_label, options, delta_time, unit, x_label) => {
+      const result = calc_msd(ballistic([0.1, 0, 0], 20), options)
+      expect(result.dt).toBe(delta_time)
+      expect(result.time_unit).toBe(unit)
+      expect(result.x_label).toBe(x_label)
+      expect(result.times).toEqual(result.lags.map((lag) => lag * delta_time))
+      expect(result.curves[0].fit?.units).toBe(`Å²/${unit}`)
+    },
+  )
 
   it(`refuses to invent a time unit when dt is supplied without one`, () => {
     expect(() => calc_msd(ballistic([0.1, 0, 0], 20), { dt: 0.5 })).toThrow(

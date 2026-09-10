@@ -23,10 +23,15 @@ export const read_pan_offset = (camera: Camera | undefined): Vec2 =>
 
 // (Re)apply an image shift at the current canvas size; a zero shift clears the offset so the
 // projection is bit-identical to a never-panned camera.
-export function set_pan_offset(camera: Camera, [dx, dy]: Vec2, width: number, height: number) {
+export function set_pan_offset(
+  camera: Camera,
+  [delta_x, delta_y]: Vec2,
+  width: number,
+  height: number,
+) {
   if (!is_pannable(camera)) return
-  if (dx === 0 && dy === 0) camera.clearViewOffset()
-  else camera.setViewOffset(width, height, -dx, -dy, width, height)
+  if (delta_x === 0 && delta_y === 0) camera.clearViewOffset()
+  else camera.setViewOffset(width, height, -delta_x, -delta_y, width, height)
 }
 
 // Camera reset: back to an unshifted image (three re-derives the projection matrix itself)
@@ -90,14 +95,19 @@ export function attach_pan_gesture(
     panning = false
     opts.controls()?.dispatchEvent({ type: `end` })
   }
-  const pan_by = (dx: number, dy: number) => {
+  const pan_by = (delta_x: number, delta_y: number) => {
     const controls = opts.controls()
     if (!controls) return
     begin()
     const [pan_x, pan_y] = read_pan_offset(controls.object)
     const { width, height } = opts.size()
     const speed = opts.speed()
-    set_pan_offset(controls.object, [pan_x + dx * speed, pan_y + dy * speed], width, height)
+    set_pan_offset(
+      controls.object,
+      [pan_x + delta_x * speed, pan_y + delta_y * speed],
+      width,
+      height,
+    )
     controls.dispatchEvent({ type: `change` })
   }
 
@@ -116,9 +126,9 @@ export function attach_pan_gesture(
   const on_pointer_move = (event: PointerEvent) => {
     const touch = touch_pointers.get(event.pointerId)
     if (touch) {
-      const [dx, dy] = [event.clientX - touch[0], event.clientY - touch[1]]
+      const [delta_x, delta_y] = [event.clientX - touch[0], event.clientY - touch[1]]
       touch_pointers.set(event.pointerId, [event.clientX, event.clientY])
-      if (touch_pointers.size === 2) pan_by(dx / 2, dy / 2)
+      if (touch_pointers.size === 2) pan_by(delta_x / 2, delta_y / 2)
     } else if (mouse_pointer?.id === event.pointerId) {
       pan_by(event.clientX - mouse_pointer.x, event.clientY - mouse_pointer.y)
       mouse_pointer = { ...mouse_pointer, x: event.clientX, y: event.clientY }

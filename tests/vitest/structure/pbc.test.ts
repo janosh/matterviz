@@ -489,7 +489,7 @@ test.each([
   // Fractional coords are finite but deliberately NOT forced inside [0, 1]: for
   // visualization/bonding we want images at their true periodic positions (possibly
   // outside the cell), only reachable from the original by integer translations.
-  for (const [orig_idx, __, img_abc] of image_atoms) {
+  for (const [orig_idx, _unused, img_abc] of image_atoms) {
     expect(img_abc.every((coord) => Number.isFinite(coord))).toBe(true)
     assert_integer_translation(structure.sites[orig_idx].abc, img_abc, 1e-8)
   }

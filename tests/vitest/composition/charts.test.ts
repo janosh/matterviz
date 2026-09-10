@@ -31,13 +31,18 @@ describe(`shared segment helpers`, () => {
   })
 
   test(`composition_segments resolves per-element patterns and label contrast against the tile`, () => {
-    const [fe, o] = composition_segments({ Fe: 2, O: 3 }, `Jmol`, { Fe: `/` }, `chart-7`)
-    expect(o.pattern).toBeUndefined()
-    expect(fe.pattern?.id).toMatch(/^chart-7-pat-[0-9a-z]+$/)
-    expect(fe.pattern?.bg).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
+    const [iron, oxygen] = composition_segments(
+      { Fe: 2, O: 3 },
+      `Jmol`,
+      { Fe: `/` },
+      `chart-7`,
+    )
+    expect(oxygen.pattern).toBeUndefined()
+    expect(iron.pattern?.id).toMatch(/^chart-7-pat-[0-9a-z]+$/)
+    expect(iron.pattern?.bg).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
     // overlay keeps the element color as the tile backdrop, so the label contrasts against it
-    expect(fe.color).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
-    expect([`black`, `white`]).toContain(fe.text_color)
+    expect(iron.color).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
+    expect([`black`, `white`]).toContain(iron.text_color)
     // replace mode leaves the tile transparent -> label inherits the page text color
     const [replace] = composition_segments({ Fe: 1 }, `Jmol`, { Fe: { mode: `replace` } }, `p`)
     expect(replace.text_color).toBe(`currentColor`)
@@ -93,13 +98,15 @@ describe(`shared segment helpers`, () => {
     [{ show_amounts: true, show_percentages: true }, `2=40%`],
     [{ show_amounts: false, show_percentages: false }, ``],
   ])(`segment_suffix %j -> %s`, (opts, expected) => {
-    const [fe] = composition_segments({ Fe: 2, O: 3 }, `Vesta`, {}, `p`)
-    expect(segment_suffix(fe, opts)).toBe(expected)
+    const [iron] = composition_segments({ Fe: 2, O: 3 }, `Vesta`, {}, `p`)
+    expect(segment_suffix(iron, opts)).toBe(expected)
   })
 
   test(`segment_suffix avoids SI prefixes and float noise for sub-1 amounts`, () => {
-    const [li] = composition_segments({ Li: 0.1 + 0.2, O: 1 }, `Vesta`, {}, `p`)
-    expect(segment_suffix(li, { show_amounts: true, show_percentages: false })).toBe(`0.3`)
+    const [lithium] = composition_segments({ Li: 0.1 + 0.2, O: 1 }, `Vesta`, {}, `p`)
+    expect(segment_suffix(lithium, { show_amounts: true, show_percentages: false })).toBe(
+      `0.3`,
+    )
   })
 
   test.each([
@@ -187,11 +194,11 @@ describe(`BubbleChart`, () => {
     expect(hydrogen.r / oxygen.r).toBeCloseTo(2, 9) // area ratio 4:1 -> radius ratio 2:1
     const dist = Math.hypot(hydrogen.x - oxygen.x, hydrogen.y - oxygen.y)
     expect(dist).toBeCloseTo(hydrogen.r + oxygen.r, 9) // tangent, not overlapping
-    for (const { x, y, r } of circles) {
-      expect(x - r).toBeGreaterThanOrEqual(-1e-9)
-      expect(x + r).toBeLessThanOrEqual(200 + 1e-9)
-      expect(y - r).toBeGreaterThanOrEqual(-1e-9)
-      expect(y + r).toBeLessThanOrEqual(200 + 1e-9)
+    for (const { x: coord_x, y: coord_y, r: radius } of circles) {
+      expect(coord_x - radius).toBeGreaterThanOrEqual(-1e-9)
+      expect(coord_x + radius).toBeLessThanOrEqual(200 + 1e-9)
+      expect(coord_y - radius).toBeGreaterThanOrEqual(-1e-9)
+      expect(coord_y + radius).toBeLessThanOrEqual(200 + 1e-9)
     }
   })
 
@@ -236,10 +243,10 @@ describe(`BarChart`, () => {
 
   test(`thin segments alternate external labels above and below the bar`, () => {
     mount_chart(BarChart, { composition: { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 }, size: 300 })
-    const ys = [...document.querySelectorAll(`text.external-label`)].map((label) =>
+    const y_values = [...document.querySelectorAll(`text.external-label`)].map((label) =>
       Number(label.getAttribute(`y`)),
     )
-    expect(ys).toEqual([10, 64, 10, 64, 10, 64]) // LABEL_HEIGHT/2 and below-row center
+    expect(y_values).toEqual([10, 64, 10, 64, 10, 64]) // LABEL_HEIGHT/2 and below-row center
     expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(0)
   })
 

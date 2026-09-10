@@ -50,7 +50,7 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
   if (!conditions.open_species?.includes(gas)) throw new Error(`Scan gas ${gas} must be open`)
   if (!routes.length || routes.length > 4)
     throw new Error(`Scan requires 1–4 routes, got ${routes.length}`)
-  if (new Set(routes.map(({ id }) => id)).size !== routes.length)
+  if (new Set(routes.map(({ id: identifier }) => identifier)).size !== routes.length)
     throw new Error(`Scan route IDs must be unique`)
   if (
     !temperatures.length ||
@@ -77,13 +77,13 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
   const gases = phases.filter((phase) => phase.is_gas)
   const gas_species = gases.map((phase) => phase.id.slice(4) as GasSpecies)
   const provider = conditions.gas_provider ?? get_default_gas_provider()
-  const resolve_precursor = (id: string): PlannerPhase => {
-    const phase = phases.find((candidate) => candidate.id === id)
+  const resolve_precursor = (identifier: string): PlannerPhase => {
+    const phase = phases.find((candidate) => candidate.id === identifier)
     if (!phase || phase.is_gas)
-      throw new Error(`Scan precursor ${id} is not a working solid phase`)
+      throw new Error(`Scan precursor ${identifier} is not a working solid phase`)
     return phase
   }
-  const prepared = routes.map(({ id, precursor_ids }) => {
+  const prepared = routes.map(({ id: identifier, precursor_ids }) => {
     const precursors = precursor_ids.map(resolve_precursor)
     const prepare_product = (product: PlannerPhase, require_all: boolean) => {
       const balanced = balance_reaction(precursors, product, gases, require_all)
@@ -110,14 +110,14 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
     }
     const target_product = prepare_product(target, true)
     if (!target_product)
-      throw new Error(`Scan route ${id} cannot balance to ${target.formula}`)
+      throw new Error(`Scan route ${identifier} cannot balance to ${target.formula}`)
     const excluded = new Set([target.id, ...precursor_ids])
     const competitors = phases.flatMap((phase) => {
       if (phase.is_gas || excluded.has(phase.id)) return []
       const product = prepare_product(phase, false)
       return product ? [product] : []
     })
-    return { id, target_product, competitors }
+    return { id: identifier, target_product, competitors }
   })
   return temperatures.flatMap((temperature) =>
     log_pressures.map((log_pressure) => {
@@ -148,7 +148,7 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
         temperature,
         pressure,
         e_above_hull,
-        routes: prepared.map(({ id, target_product, competitors }) => {
+        routes: prepared.map(({ id: identifier, target_product, competitors }) => {
           let strongest = 0
           for (const { product, force } of competitors) {
             if (product.e_above_hull > COMPETITOR_E_ABOVE_HULL + ENERGY_TOL) continue
@@ -156,7 +156,11 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
             if (driving_force < -ENERGY_TOL) strongest = Math.min(strongest, driving_force)
           }
           const driving_force = target_product.force()
-          return { id, driving_force, selectivity_margin: driving_force - strongest }
+          return {
+            id: identifier,
+            driving_force,
+            selectivity_margin: driving_force - strongest,
+          }
         }),
       }
     }),

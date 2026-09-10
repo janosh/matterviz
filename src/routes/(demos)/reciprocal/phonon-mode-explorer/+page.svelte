@@ -3,7 +3,7 @@
   import { page } from '$app/state'
   import FilePicker from '$lib/FilePicker.svelte'
   import { Spinner, StatusMessage } from 'svelte-widgets'
-  import * as io from '$lib/io'
+  import * as file_io from '$lib/io'
   import type { Vec3 } from '$lib/math'
   import type {
     IrRamanOptions,
@@ -242,7 +242,7 @@
     uploaded_dataset &&
       `Local upload · ${uploaded_dataset.modes.path_segments.length > 0 ? `bands` : `modes`} and atomic motion`,
   )
-  const fixture_files: io.FileInfo[] = Object.entries(FIXTURE_META).map(
+  const fixture_files: file_io.FileInfo[] = Object.entries(FIXTURE_META).map(
     ([name, { label, path }]) => ({
       name,
       url: ``,
@@ -328,21 +328,21 @@
     url_initialized = true
   }
 
-  const select_fixture = async (file: io.FileInfo): Promise<void> => {
+  const select_fixture = async (file: file_io.FileInfo): Promise<void> => {
     // a click supersedes whatever the URL asked for, even if that load is still in flight
     url_initialized = true
     const fixture = await activate_fixture(file.name)
     if (fixture) apply_explorer_state(initial_state(fixture.dataset))
   }
 
-  const handle_file_drop = io.create_file_drop_handler({
+  const handle_file_drop = file_io.create_file_drop_handler({
     allow: () => true,
     max_files: 1,
     on_drop: (content, filename, metadata) => {
       if (!/\.ya?ml$/i.test(filename)) {
         throw new Error(`expected a .yaml or .yml phonopy mode file, got '${filename}'`)
       }
-      const modes = parse_phonon_modes(io.as_text(content))
+      const modes = parse_phonon_modes(file_io.as_text(content))
       uploaded_dataset = { modes, filename: metadata.source_filename ?? filename }
       apply_explorer_state(initial_state(uploaded_dataset))
       load_error = undefined
@@ -444,7 +444,7 @@
   class:dragover
   aria-busy={upload_loading || fixture_loading}
   ondrop={handle_file_drop}
-  {...io.drag_over_handlers({
+  {...file_io.drag_over_handlers({
     allow: () => true,
     set_dragover: (value) => (dragover = value),
   })}

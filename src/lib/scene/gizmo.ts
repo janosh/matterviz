@@ -49,13 +49,18 @@ export function gizmo_rect(
   const responsive = clamp(0.18 * Math.min(width, height), 70, 100)
   const box = Math.min(size ?? responsive, width, height)
   const gap = 5
-  const x = placement.endsWith(`-left`)
+  const coord_x = placement.endsWith(`-left`)
     ? (offset.left ?? gap)
     : width - box - (offset.right ?? gap)
-  const y = placement.startsWith(`top`)
+  const coord_y = placement.startsWith(`top`)
     ? (offset.top ?? gap)
     : height - box - (offset.bottom ?? gap)
-  return { x: clamp(x, 0, width - box), y: clamp(y, 0, height - box), width: box, height: box }
+  return {
+    x: clamp(coord_x, 0, width - box),
+    y: clamp(coord_y, 0, height - box),
+    width: box,
+    height: box,
+  }
 }
 
 // Gizmo edge length for a multi-view pane. Panes are ~half the viewer, so the fixed

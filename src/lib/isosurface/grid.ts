@@ -47,29 +47,40 @@ export function grid_dimensions(grid: ScalarGrid3D): Vec3 {
   return dimensions
 }
 
-export function scalar_grid_strides({ dims: [nx, ny, nz], order }: ScalarGrid3D): Vec3 {
-  if (order === `x_fastest`) return [1, nx, nx * ny]
-  if (order === `z_fastest`) return [ny * nz, nz, 1]
+export function scalar_grid_strides({
+  dims: [size_x, size_y, size_z],
+  order,
+}: ScalarGrid3D): Vec3 {
+  if (order === `x_fastest`) return [1, size_x, size_x * size_y]
+  if (order === `z_fastest`) return [size_y * size_z, size_z, 1]
   throw new RangeError(`Unsupported scalar grid order: ${String(order)}`)
 }
 
 // Copy a nested [x][y][z] array into a z-fastest Float64Array. Rows must all have the
 // same length; ragged input throws instead of silently producing a misaligned grid.
 export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
-  const [nx, ny, nz] = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
-  const dims: Vec3 = [nx, ny, nz]
-  const values = new Float64Array(nx * ny * nz)
+  const [size_x, size_y, size_z] = [
+    grid.length,
+    grid[0]?.length ?? 0,
+    grid[0]?.[0]?.length ?? 0,
+  ]
+  const dims: Vec3 = [size_x, size_y, size_z]
+  const values = new Float64Array(size_x * size_y * size_z)
   let offset = 0
   for (const plane of grid) {
-    if (plane.length !== ny) {
-      throw new RangeError(`Ragged grid: expected ${ny} rows per plane, got ${plane.length}`)
+    if (plane.length !== size_y) {
+      throw new RangeError(
+        `Ragged grid: expected ${size_y} rows per plane, got ${plane.length}`,
+      )
     }
     for (const row of plane) {
-      if (row.length !== nz) {
-        throw new RangeError(`Ragged grid: expected ${nz} values per row, got ${row.length}`)
+      if (row.length !== size_z) {
+        throw new RangeError(
+          `Ragged grid: expected ${size_z} values per row, got ${row.length}`,
+        )
       }
       values.set(row, offset)
-      offset += nz
+      offset += size_z
     }
   }
   return { values, dims, order: `z_fastest` }
@@ -79,22 +90,22 @@ export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
 // dividing by `divisor` on the way. The block must hold exactly nx·ny·nz values.
 export function transpose_x_fastest(
   data: ArrayLike<number>,
-  [nx, ny, nz]: Vec3,
+  [size_x, size_y, size_z]: Vec3,
   divisor: number,
 ): Float64Array {
-  const values = new Float64Array(nx * ny * nz)
+  const values = new Float64Array(size_x * size_y * size_z)
   if (data.length !== values.length) {
     throw new RangeError(
-      `transpose_x_fastest: got ${data.length} values for a ${nx}×${ny}×${nz} grid (${values.length})`,
+      `transpose_x_fastest: got ${data.length} values for a ${size_x}×${size_y}×${size_z} grid (${values.length})`,
     )
   }
-  const ny_nz = ny * nz
+  const ny_nz = size_y * size_z
   let flat_idx = 0
-  for (let iz = 0; iz < nz; iz++) {
-    for (let iy = 0; iy < ny; iy++) {
-      const out_base = iy * nz + iz
-      for (let ix = 0; ix < nx; ix++) {
-        values[ix * ny_nz + out_base] = data[flat_idx++] / divisor
+  for (let idx_z = 0; idx_z < size_z; idx_z++) {
+    for (let idx_y = 0; idx_y < size_y; idx_y++) {
+      const out_base = idx_y * size_z + idx_z
+      for (let idx_x = 0; idx_x < size_x; idx_x++) {
+        values[idx_x * ny_nz + out_base] = data[flat_idx++] / divisor
       }
     }
   }

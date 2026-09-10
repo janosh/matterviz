@@ -134,7 +134,7 @@
     if (k_path_points.length < 3) return Infinity
     const lens = k_path_points
       .slice(1)
-      .map((pt, idx) => Math.hypot(...math.subtract(pt, k_path_points[idx])))
+      .map((point, idx) => Math.hypot(...math.subtract(point, k_path_points[idx])))
       .toSorted((len_a, len_b) => len_a - len_b)
     return lens[Math.floor(lens.length / 2)] * 10
   })
@@ -204,11 +204,11 @@
   // K-path hover: report the nearer endpoint's q-point index of the hovered segment
   function handle_kpath_hover(event: ThreltePointerEvent, seg_idx: number): void {
     const { point } = event
-    const [from, to] = [k_path_points[seg_idx], k_path_points[seg_idx + 1]]
-    if (!from || !to) return
-    const dist_sq = (pt: Vec3) =>
-      (point.x - pt[0]) ** 2 + (point.y - pt[1]) ** 2 + (point.z - pt[2]) ** 2
-    on_kpath_hover?.(dist_sq(from) <= dist_sq(to) ? seg_idx : seg_idx + 1)
+    const [from, target] = [k_path_points[seg_idx], k_path_points[seg_idx + 1]]
+    if (!from || !target) return
+    const dist_sq = (point_2: Vec3) =>
+      (point.x - point_2[0]) ** 2 + (point.y - point_2[1]) ** 2 + (point.z - point_2[2]) ** 2
+    on_kpath_hover?.(dist_sq(from) <= dist_sq(target) ? seg_idx : seg_idx + 1)
   }
 </script>
 

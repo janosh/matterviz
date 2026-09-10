@@ -70,7 +70,7 @@
 {#if enabled_gases.length > 0}
   <div {...rest} class={[`pressure-controls`, rest.class]}>
     {#each enabled_gases as gas (gas)}
-      {@const mu = get_mu(gas)}
+      {@const mean = get_mu(gas)}
       <VerticalSlider
         class="pressure-slider"
         bind:value={
@@ -81,7 +81,7 @@
         max={100}
         step={0.5}
         aria_label="{gas} partial pressure"
-        tooltip_content={`${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mu, 3)}`}
+        tooltip_content={`${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mean, 3)}`}
       >
         {#snippet header(position)}
           {@const pressure = slider_to_pressure(position)}
@@ -106,7 +106,7 @@
         {/snippet}
       </VerticalSlider>
       <span class="sr-only" aria-live="polite">
-        {gas} chemical potential: {format_chemical_potential(mu, 2)}
+        {gas} chemical potential: {format_chemical_potential(mean, 2)}
       </span>
     {/each}
   </div>

@@ -77,12 +77,15 @@ describe(`XrdPlot`, () => {
       },
     ],
     [`all empty patterns`, { patterns: both_empty }],
-  ] as [string, XrdProps][])(`renders %s without Infinity/NaN in DOM`, (_desc, props) => {
-    const target = document.createElement(`div`)
-    mount(XrdPlot, { target, props })
+  ] as [string, XrdProps][])(`renders %s without Infinity/NaN in DOM`, async (desc, props) => {
+    const target = await mount_xrd(props)
     const text = target.textContent ?? ``
     expect(text).not.toContain(`Infinity`)
     expect(text).not.toContain(`NaN`)
+    // An all-empty [Infinity, 0] domain suppresses ticks instead of using [0, 90].
+    if (desc === `all empty patterns`) {
+      expect(target.querySelectorAll(`.x-axis .tick`).length).toBeGreaterThan(0)
+    }
   })
 
   test.each([
@@ -109,17 +112,6 @@ describe(`XrdPlot`, () => {
     await expect_plot_controls(target, controls_state, `direct`)
   })
 
-  test(`all-empty patterns produce valid axis ticks from [0, 90] fallback`, async () => {
-    const target = await mount_xrd({ patterns: both_empty })
-    // With correct [0, 90] fallback, x-axis should have tick elements.
-    // With the bug (angle_range = [Infinity, 0]), isFinite guard skips all ticks.
-    const x_axis_ticks = target.querySelectorAll(`.x-axis .tick`)
-    expect(
-      x_axis_ticks.length,
-      `x-axis should have ticks from [0, 90] fallback`,
-    ).toBeGreaterThan(0)
-  })
-
   // `swapped` marks the horizontal layout, where the 2θ and intensity axes trade places
   test.each([
     [
@@ -136,17 +128,39 @@ describe(`XrdPlot`, () => {
     ],
     [`vertical`, { orientation: `vertical` }, all_hkl_labels, false],
     [`horizontal`, { orientation: `horizontal` }, all_hkl_labels, true],
+    [
+      `vertical custom labels`,
+      {
+        orientation: `vertical`,
+        x_axis: { label: `Custom 2θ Label` },
+        y_axis: { label: `Custom Intensity Label` },
+      },
+      all_hkl_labels,
+      false,
+    ],
+    [
+      `horizontal custom labels`,
+      {
+        orientation: `horizontal`,
+        x_axis: { label: angle_label },
+        y_axis: { label: intensity_label },
+      },
+      all_hkl_labels,
+      true,
+    ],
   ] as [string, Omit<XrdProps, `patterns`>, string[], boolean][])(
     `format/orientation=%s`,
     async (_param, props, expected_labels, swapped) => {
       const target = await mount_xrd({ patterns: pattern, ...props })
 
       const bar_label_text = Array.from(target.querySelectorAll(`.bar-label`)).map(
-        (el) => el.textContent?.trim() ?? ``,
+        (element) => element.textContent?.trim() ?? ``,
       )
       expect(bar_label_text).toEqual(expected_labels)
-      expect(axis_text(target, `x`)).toContain(swapped ? intensity_label : angle_label)
-      expect(axis_text(target, `y`)).toContain(swapped ? angle_label : intensity_label)
+      const angle_title = props.x_axis?.label ?? angle_label
+      const intensity_title = props.y_axis?.label ?? intensity_label
+      expect(axis_text(target, `x`)).toContain(swapped ? intensity_title : angle_title)
+      expect(axis_text(target, `y`)).toContain(swapped ? angle_title : intensity_title)
       expect(target.querySelectorAll(`.bar-series`)).toHaveLength(1)
     },
   )
@@ -186,35 +200,6 @@ describe(`XrdPlot`, () => {
     expect(text_content).not.toContain(`10${bar}2`) // the naive last-digit-only form
     expect(text_content).toContain(`1${bar}2${bar}0`) // [1, -12, 0]
   })
-
-  // Axis labels are SVG text (.axis-label) whose textContent is the plain title
-  test.each([
-    [
-      `vertical orientation with custom labels`,
-      {
-        orientation: `vertical`,
-        x_axis: { label: `Custom 2θ Label` },
-        y_axis: { label: `Custom Intensity Label` },
-      },
-      [`Custom 2θ Label`, `Custom Intensity Label`],
-    ],
-    [
-      `horizontal orientation swaps labels`,
-      {
-        orientation: `horizontal`,
-        x_axis: { label: angle_label },
-        y_axis: { label: intensity_label },
-      },
-      [`Intensity`, `2θ`],
-    ],
-  ] as [string, Omit<XrdProps, `patterns`>, [string, string]][])(
-    `axis labels: %s`,
-    async (_desc, props, [expect_x_axis, expect_y_axis]) => {
-      const target = await mount_xrd({ patterns: pattern, ...props })
-      expect(axis_text(target, `x`)).toContain(expect_x_axis)
-      expect(axis_text(target, `y`)).toContain(expect_y_axis)
-    },
-  )
 
   test(`updates axis titles when orientation changes after mount`, async () => {
     const target = create_sized_container()
@@ -277,7 +262,7 @@ describe(`XrdPlot`, () => {
     })
 
     const label_texts = Array.from(target.querySelectorAll(`.bar-label`))
-      .map((el) => el.textContent?.trim())
+      .map((element) => element.textContent?.trim())
       .filter(Boolean)
 
     // The 5 most intense peaks are all in the 45.8x cluster, so overlap filtering leaves a
@@ -293,11 +278,19 @@ describe(`XrdPlot`, () => {
   ])(
     `%s pattern with %i points renders %s bars`,
     async (_kind, n_points, with_hkls, expected_bars) => {
-      const x = Array.from({ length: n_points }, (_, idx) => 5 + (80 * idx) / (n_points - 1))
-      const y = Array.from({ length: n_points }, (_, idx) => 1 + (idx % 7))
+      const coord_x = Array.from(
+        { length: n_points },
+        (_, idx) => 5 + (80 * idx) / (n_points - 1),
+      )
+      const coord_y = Array.from({ length: n_points }, (_, idx) => 1 + (idx % 7))
       const long_pattern: XrdPattern = with_hkls
-        ? { x, y, hkls: x.map(() => [{ hkl: [1, 0, 0] }]), d_hkls: x.map(() => 1) }
-        : { x, y }
+        ? {
+            x: coord_x,
+            y: coord_y,
+            hkls: coord_x.map(() => [{ hkl: [1, 0, 0] }]),
+            d_hkls: coord_x.map(() => 1),
+          }
+        : { x: coord_x, y: coord_y }
       const target = await mount_xrd({ patterns: long_pattern, annotate_peaks: 0 })
       const bars = target.querySelectorAll(`path[aria-label^="bar "]`)
       if (with_hkls) expect(bars).toHaveLength(expected_bars)
@@ -330,8 +323,8 @@ describe(`XrdPlot`, () => {
       // grows downward)
       const curve = profile_paths(target)[0]?.getAttribute(`d`)
       if (!curve) throw new Error(`no broadened profile path for scale ${scale}`)
-      const ys = (curve.match(/-?[\d.]+/g) ?? []).filter((_value, idx) => idx % 2 === 1)
-      return Math.min(...ys.map(Number))
+      const y_values = (curve.match(/-?[\d.]+/g) ?? []).filter((_value, idx) => idx % 2 === 1)
+      return Math.min(...y_values.map(Number))
     }
     // 100x apart on input, identical once both are scaled to a maximum of 100
     expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)
@@ -341,6 +334,8 @@ describe(`XrdPlot`, () => {
     const target = await mount_xrd({
       patterns: pattern,
       broadening_enabled: true,
+      allow_file_drop: true,
+      radiation: `neutron`,
       show_controls: true,
       controls_open: true,
     })
@@ -375,29 +370,26 @@ describe(`XrdPlot`, () => {
     expect(target.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     // and it CLEARS on the next valid W, profile and all - a thrown error could not come back
     expect(await set_w(`0.02`)).toEqual([``, 1])
+    for (const section of [`dropped structure files`, `broadening`]) {
+      const selector = `button[aria-label="Reset ${section} to defaults"]`
+      query<HTMLButtonElement>(target, selector).click()
+      await tick()
+      expect(target.querySelector(selector)).toBeNull()
+    }
+    expect(query<HTMLSelectElement>(target, `.toggle select`).value).toBe(`xray`)
+    expect(profile_paths(target)).toHaveLength(0)
   })
 
   test(`dragover class toggles correctly`, async () => {
     const target = await mount_xrd({ patterns: pattern, allow_file_drop: true })
 
-    // Verify dragover class toggles
-    const bar_plot = target.querySelector(`.bar-plot`)
-    expect(bar_plot).toBeInstanceOf(HTMLElement)
-    expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
-
-    // Simulate dragover
-    const drag_event = new DragEvent(`dragover`, { bubbles: true, cancelable: true })
-    bar_plot?.dispatchEvent(drag_event)
-
-    await tick()
-    expect(bar_plot?.classList.contains(`dragover`)).toBe(true)
-
-    // Simulate dragleave
-    const leave_event = new DragEvent(`dragleave`, { bubbles: true, cancelable: true })
-    bar_plot?.dispatchEvent(leave_event)
-
-    await tick()
-    expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
+    const bar_plot = query(target, `.bar-plot`)
+    expect(bar_plot.classList.contains(`dragover`)).toBe(false)
+    for (const event_type of [`dragover`, `dragleave`]) {
+      bar_plot.dispatchEvent(new DragEvent(event_type, { bubbles: true, cancelable: true }))
+      await tick()
+      expect(bar_plot.classList.contains(`dragover`)).toBe(event_type === `dragover`)
+    }
   })
 
   test.each([

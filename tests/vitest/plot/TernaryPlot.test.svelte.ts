@@ -6,6 +6,7 @@ import {
   bind_props,
   mount_sized,
   one_tab_stop,
+  query,
   roving_tabindexes,
   translate_of,
 } from '../setup'
@@ -132,8 +133,10 @@ describe(`TernaryPlot`, () => {
   test(`hover shows the fractions tooltip and fires the callback once per point`, async () => {
     const on_point_hover = vi.fn()
     const plot = await mount_ternary({ series, labels: [`Fe`, `Ni`, `Cr`], on_point_hover })
-    const hover = (el: Element | undefined, x = 0, y = 0) => {
-      el?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
+    const hover = (element: Element | undefined, coord_x = 0, coord_y = 0) => {
+      element?.dispatchEvent(
+        new MouseEvent(`mousemove`, { bubbles: true, clientX: coord_x, clientY: coord_y }),
+      )
       return tick()
     }
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
@@ -170,8 +173,8 @@ describe(`TernaryPlot`, () => {
     const padding = { t: 20, b: 20, l: 60, r: 60 }
     const plot = await mount_ternary({ series, padding })
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
-    const focus = (el: Element, type: string, relatedTarget: Element | null = null) => {
-      el.dispatchEvent(new FocusEvent(type, { bubbles: true, relatedTarget }))
+    const focus = (element: Element, type: string, relatedTarget: Element | null = null) => {
+      element.dispatchEvent(new FocusEvent(type, { bubbles: true, relatedTarget }))
       return tick()
     }
     const pure_c = markers(plot)[4] // left corner: the marker sits at x = 0 inside the padded <g>
@@ -192,6 +195,12 @@ describe(`TernaryPlot`, () => {
     const plot = await mount_ternary({ series, on_point_click })
     const [first] = markers(plot)
     expect(first.getAttribute(`role`)).toBe(`button`)
+    first.focus()
+    await tick()
+    expect(getComputedStyle(first).outlineStyle).toBe(`none`)
+    const marker_style = getComputedStyle(query(first, `.marker`))
+    expect(marker_style.strokeWidth).toBe(`1.5px`)
+    expect(marker_style.vectorEffect).toBe(`non-scaling-stroke`)
     first.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     first.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     await tick()
@@ -219,12 +228,25 @@ describe(`TernaryPlot`, () => {
     expect(plot.querySelector(`.legend`) !== null).toBe(visible)
   })
 
-  test(`legend line swatch uses line_style.color like the rendered path`, async () => {
-    const styled = [series[0], { ...series[1], line_style: { color: `#00ff00` } }]
-    const plot = await mount_ternary({ series: styled })
-    expect(plot.querySelector(`.lines path`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
-    expect(plot.querySelector(`.legend-item line`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
-  })
+  test.each([
+    [`line`, 3],
+    [`line+points`, 5],
+  ] as const)(
+    `%s styles match the legend and only markers get keyboard stops`,
+    async (mode, n_markers) => {
+      const plot = await mount_ternary({
+        series: [{ ...series[1], markers: mode, line_style: { color: `#00ff00` } }, series[0]],
+      })
+      expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1)
+      expect(plot.querySelector(`.lines path`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
+      expect(plot.querySelector(`.legend-item line`)?.getAttribute(`stroke`)).toBe(`#00ff00`)
+      expect(markers(plot)).toHaveLength(n_markers)
+      expect(markers(plot).map((marker) => marker.getAttribute(`data-ternary-idx`))).toEqual(
+        Array.from({ length: n_markers }, (_, idx) => `${idx}`),
+      )
+      expect(roving_tabindexes(plot)).toEqual(one_tab_stop(n_markers))
+    },
+  )
 
   test(`legend toggles update separate visibility state`, async () => {
     const bound = $state({
@@ -275,8 +297,9 @@ describe(`TernaryPlot`, () => {
             [0, 1, 0],
             [0, 0, 1],
           ],
-          color_values: [0, 5, null],
+          color_values: [0, 5, null, 1000], // a value without a point must not widen the range
         },
+        { points: [[1, 1, 1]], color_values: [-1000], visible: false },
       ],
       color_scale: {
         fn: (value: number) => (value > 2 ? `rgb(255, 0, 0)` : `rgb(0, 0, 255)`),
@@ -292,10 +315,17 @@ describe(`TernaryPlot`, () => {
     const colorbar = plot.querySelector(`.colorbar`)?.textContent
     expect(colorbar).toContain(`E (eV)`)
     expect(colorbar).toContain(`5`) // spans the min/max of the non-null color values
+    const ticks = [...plot.querySelectorAll(`.colorbar .tick-label`)].map((label) =>
+      Number(label.textContent),
+    )
+    expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0, 5])
   })
 
   test.each<Partial<ComponentProps<typeof TernaryPlot>>>([
     { series: [{ points: [[1, 1, 1]] }] }, // no color_values
+    { series: [{ points: [[1, 1, 1]], color_values: [null] }] },
+    { series: [{ points: [[1, 1, 1]], color_values: [NaN] }] },
+    { series: [{ points: [[1, 1, 1]], color_values: [Infinity] }] },
     { series: [{ points: [[1, 1, 1]], color_values: [1] }], color_bar: null },
   ])(`no color bar for %j`, async (props) => {
     const plot = await mount_ternary(props)

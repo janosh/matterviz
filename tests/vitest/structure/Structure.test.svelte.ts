@@ -762,14 +762,17 @@ test.each([false, true])(
       ({ label }) => label === `added.CHGCAR`,
     )?.id
     flushSync(() => tool_props.on_overlay({ ...overlay, site_properties: [{ charge: 1 }] }))
-    expect(state.volumetric_data.find(({ id }) => id === state.active_volume_id)?.label).toBe(
-      `added.CHGCAR`,
-    )
+    expect(
+      state.volumetric_data.find(({ id: identifier }) => identifier === state.active_volume_id)
+        ?.label,
+    ).toBe(`added.CHGCAR`)
     const predicted_layer = state.isosurface_settings.layers.find(
       ({ isovalue }) => isovalue === 0.321,
     )
     expect(
-      state.volumetric_data.find(({ id }) => id === predicted_layer?.volume_id)?.label,
+      state.volumetric_data.find(
+        ({ id: identifier }) => identifier === predicted_layer?.volume_id,
+      )?.label,
     ).toBe(`Prediction`)
     // A selected prediction field should return to the imported volume on clear.
     flushSync(() => {
@@ -780,9 +783,10 @@ test.each([false, true])(
     expect(state.volumetric_data.map(({ label }) => label)).toEqual(
       with_base ? [`Original`, `added.CHGCAR`] : [`added.CHGCAR`],
     )
-    expect(state.volumetric_data.find(({ id }) => id === state.active_volume_id)?.label).toBe(
-      `added.CHGCAR`,
-    )
+    expect(
+      state.volumetric_data.find(({ id: identifier }) => identifier === state.active_volume_id)
+        ?.label,
+    ).toBe(`added.CHGCAR`)
   },
 )
 

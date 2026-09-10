@@ -34,7 +34,7 @@
 <div
   {...rest}
   class={[`view-mode-control`, rest.class]}
-  {@attach click_outside({ callback: () => (open = false) })}
+  {@attach click_outside({ enabled: open, callback: () => (open = false) })}
 >
   <button
     type="button"

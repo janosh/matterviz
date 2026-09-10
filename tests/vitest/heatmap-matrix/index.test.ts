@@ -27,9 +27,9 @@ describe(`elements_to_axis`, () => {
       expect(item.category).toBe(item.data?.category)
     }
     // data is typed ChemicalElement
-    const fe = axis.find((item) => item.label === `Fe`)
-    expect(fe?.data?.number).toBe(26)
-    expect(fe?.data?.name).toBe(`Iron`)
+    const iron = axis.find((item) => item.label === `Fe`)
+    expect(iron?.data?.number).toBe(26)
+    expect(iron?.data?.name).toBe(`Iron`)
   })
 
   test(`filters to subset of symbols`, () => {
@@ -89,7 +89,10 @@ describe(`built-in orderings`, () => {
 
 describe(`custom comparator`, () => {
   test(`reverse atomic number`, () => {
-    const axis = elements_to_axis(undefined, (a, b) => b.number - a.number)
+    const axis = elements_to_axis(
+      undefined,
+      (value_a, value_b) => value_b.number - value_a.number,
+    )
     expect(axis[0].label).toBe(`Og`)
     expect(axis[117].label).toBe(`H`)
   })
@@ -97,7 +100,8 @@ describe(`custom comparator`, () => {
   test(`sort by name length with subset`, () => {
     const axis = elements_to_axis(
       [`B`, `Fe`, `Au`, `C`],
-      (a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name),
+      (value_a, value_b) =>
+        value_a.name.length - value_b.name.length || value_a.name.localeCompare(value_b.name),
     )
     // Gold(4), Iron(4), Boron(5), Carbon(6)
     expect(axis.map((item) => item.label)).toEqual([`Au`, `Fe`, `B`, `C`])

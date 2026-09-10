@@ -3,8 +3,9 @@ import type { Vec2 } from '$lib'
 import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, trigger_resize_observer } from '../setup'
 
 const mount_bar = (props: Record<string, unknown>) =>
   mount(ColorBar, { target: document.body, props })
@@ -167,6 +168,67 @@ describe(`ColorBar tick_side='inside'`, () => {
 })
 
 describe(`ColorBar tick labels`, () => {
+  test(`updates the formatter when switching between numeric, date, and default labels`, async () => {
+    const selected_format = writable<string | undefined>(undefined)
+    const format_state = fromStore(selected_format)
+    mount_bar({
+      range: [0, 1],
+      tick_labels: 3,
+      snap_ticks: false,
+      get tick_format() {
+        return format_state.current
+      },
+    })
+    const label_widths: number[] = []
+    const epoch_year = String(new Date(0).getFullYear())
+    for (const [spec, expected] of [
+      [undefined, [`0`, `0.5`, `1`]],
+      [`.1f`, [`0.0`, `0.5`, `1.0`]],
+      [`%Y`, [epoch_year, epoch_year, epoch_year]],
+      [`.0%`, [`0%`, `50%`, `100%`]],
+      [undefined, [`0`, `0.5`, `1`]],
+    ] as const) {
+      selected_format.set(spec)
+      await tick()
+      expect(tick_texts()).toEqual(expected)
+      label_widths.push(
+        Number(
+          doc_query(`.colorbar`)
+            .style.getPropertyValue(`--cbar-tick-label-width`)
+            .replace(`px`, ``),
+        ),
+      )
+    }
+    expect(label_widths[2]).toBeGreaterThan(label_widths[0])
+    expect(label_widths.at(-1)).toBe(label_widths[0])
+  })
+
+  test.each([false, true])(
+    `keeps fitting decimal ticks after resizing (reversed=%s)`,
+    async (reversed) => {
+      mount_bar({ range: reversed ? [3.5, 0] : [0, 3.5], tick_labels: 5 })
+      const bar = doc_query(`.colorbar .bar`)
+      // happy-dom doesn't resolve the padding shorthand's CSS variable into longhands.
+      for (const label of tick_spans()) {
+        label.style.paddingLeft = `2px`
+        label.style.paddingRight = `2px`
+      }
+      const expected = [`0`, `0.5`, `1`, `1.5`, `2`, `2.5`, `3`, `3.5`]
+      if (reversed) expected.reverse()
+      for (const width of [167, 70, 167]) {
+        Object.defineProperty(bar, `clientWidth`, { value: width, configurable: true })
+        trigger_resize_observer(bar)
+        await tick()
+        if (width === 167) expect(tick_texts()).toEqual(expected)
+        else {
+          expect(tick_texts().length).toBeLessThan(expected.length)
+          expect(tick_texts()[0]).toBe(expected[0])
+          expect(tick_texts().at(-1)).toBe(expected.at(-1))
+        }
+      }
+    },
+  )
+
   const day = (month: number, date: number, hours = 0, minutes = 0, seconds = 0) =>
     new Date(2024, month, date, hours, minutes, seconds).getTime()
   test.each([
@@ -315,85 +377,42 @@ const color_scale_options: ColorScaleOption[] = [
 
 describe(`ColorBar Interactive Selects`, () => {
   afterEach(() => {
-    document.body.querySelectorAll(`.portal-select-dropdown`).forEach((el) => el.remove())
+    document.body
+      .querySelectorAll(`.portal-select-dropdown`)
+      .forEach((element) => element.remove())
   })
 
   test.each([
-    {
-      props: { property_options, selected_property_key: `energy` },
-      selector: `button.property-select`,
-      expected: `Energy (eV)`,
-      desc: `property select with explicit key`,
+    [{ property_options, selected_property_key: `energy` }, `Energy (eV)`, undefined],
+    [{ property_options }, `Energy (eV)`, undefined],
+    [{ color_scale_options, selected_color_scale_key: `viridis` }, undefined, `Viridis`],
+    [{ color_scale_options }, undefined, `Viridis`],
+    [{}, undefined, undefined],
+  ] as const)(
+    `renders controls and static title for %j`,
+    (props, property_label, scale_label) => {
+      const component = mount_bar({ ...props, title: `Static`, range: [0, 10] })
+      for (const [selector, expected] of [
+        [`button.property-select`, property_label],
+        [`button.color-scale-select`, scale_label],
+      ] as const) {
+        const trigger = document.querySelector(selector)
+        // Exact label after the arrow: no internal interpolator name leaks into the UI.
+        if (expected) expect(trigger?.textContent?.replace(`▾`, ``).trim()).toBe(expected)
+        else expect(trigger).toBeNull()
+      }
+      const static_label = document.querySelector(`.title-row > .label`)
+      if (property_label) expect(static_label).toBeNull()
+      else expect(static_label?.textContent).toBe(`Static`)
+      void unmount(component)
     },
-    {
-      props: { property_options },
-      selector: `button.property-select`,
-      expected: `Energy (eV)`,
-      desc: `property select auto-initializes to first`,
-    },
-    {
-      props: { color_scale_options, selected_color_scale_key: `viridis` },
-      selector: `button.color-scale-select`,
-      expected: `Viridis`,
-      desc: `color scale select with explicit key`,
-    },
-    {
-      props: { color_scale_options },
-      selector: `button.color-scale-select`,
-      expected: `Viridis`,
-      desc: `color scale select auto-initializes to first`,
-    },
-  ])(`renders $desc`, ({ props, selector, expected }) => {
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: { ...props, range: [0, 10] },
-    })
-    const trigger = document.body.querySelector(selector)
-    expect(trigger).not.toBeNull()
-    // exact label after the dropdown arrow: no `interpolate` scale-name prefix or other leak
-    expect(trigger?.textContent?.replace(`▾`, ``).trim()).toBe(expected)
-    void unmount(component)
-  })
-
-  test.each([
-    { selector: `button.property-select`, desc: `property select` },
-    { selector: `button.color-scale-select`, desc: `color scale select` },
-  ])(`does not render $desc when options not provided`, ({ selector }) => {
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: { range: [0, 10] },
-    })
-    expect(document.body.querySelector(selector)).toBeNull()
-    void unmount(component)
-  })
-
-  test(`shows static title when no property_options, hides when provided`, () => {
-    // Without property_options: shows static title
-    const comp1 = mount(ColorBar, {
-      target: document.body,
-      props: { title: `Static`, range: [0, 10] },
-    })
-    expect(document.body.querySelector(`.colorbar .label`)?.textContent).toBe(`Static`)
-    void unmount(comp1)
-
-    // With property_options: hides static title
-    const comp2 = mount(ColorBar, {
-      target: document.body,
-      props: { title: `Hidden`, property_options, range: [0, 10] },
-    })
-    expect(document.body.querySelector(`.title-row > .label`)).toBeNull()
-    expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
-    void unmount(comp2)
-  })
+  )
 
   test(`accepts custom interpolators in color scale options`, async () => {
     const interpolator = vi.fn(() => `rgb(1, 2, 3)`)
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: {
-        color_scale_options: [{ key: `custom`, label: `Custom`, scale: { interpolator } }],
-        range: [0, 10],
-      },
+    const component = mount_bar({
+      color_scale_options: [{ key: `custom`, label: `Custom`, scale: { interpolator } }],
+      range: [0, 10],
     })
     await tick()
     expect(interpolator).toHaveBeenCalled()
@@ -406,9 +425,8 @@ describe(`ColorBar Interactive Selects`, () => {
       selected_property_key: `energy`,
       selected_color_scale_key: `viridis`,
     }
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: bind_props(
+    const component = mount_bar(
+      bind_props(
         {
           property_options: [{ key: `band_gap`, label: `Band Gap`, unit: `eV` }],
           color_scale_options: [
@@ -417,7 +435,7 @@ describe(`ColorBar Interactive Selects`, () => {
         },
         state,
       ),
-    })
+    )
 
     await tick()
     expect(state.selected_property_key).toBe(`band_gap`)

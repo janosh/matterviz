@@ -206,7 +206,8 @@ describe(`tokenize_formula_markup`, () => {
 // sub/superscript, since empty tspans may not apply dy everywhere) resets the running offset
 const svg_sub = (digits: string) => `<tspan dy="0.25em" font-size="0.75em">${digits}</tspan>`
 const svg_sup = (sign: string) => `<tspan dy="-0.4em" font-size="0.75em">${sign}</tspan>`
-const svg_reset = (dy: number, content = `\u200B`) => `<tspan dy="${dy}em">${content}</tspan>`
+const svg_reset = (delta_y: number, content = `\u200B`) =>
+  `<tspan dy="${delta_y}em">${content}</tspan>`
 
 type Formatter = (formula: string, use_subscripts?: boolean) => string
 describe.each<[string, Formatter, [string, string][]]>([

@@ -325,7 +325,7 @@
   // contiguous: the header emits one colspan per group, so a split group mislabels its members.
   let ordered_columns = $derived.by(() => {
     const ordered = [...new Set(column_order)]
-      .map((id) => columns_by_id.get(id))
+      .map((identifier) => columns_by_id.get(identifier))
       .filter((col) => col != null)
     const ordered_ids = new Set(ordered.map((col) => col.id))
     const merged = [...ordered, ...columns.filter((col) => !ordered_ids.has(col.id))]
@@ -345,7 +345,7 @@
     const new_order = ordered_columns.map((col) => col.id)
     const unchanged =
       new_order.length === column_order.length &&
-      new_order.every((id, idx) => id === column_order[idx])
+      new_order.every((identifier, idx) => identifier === column_order[idx])
     if (!unchanged) column_order = new_order
   })
   let visible_columns = $derived(
@@ -724,13 +724,13 @@
   // Sticky columns all pin to the left edge, so each must clear the measured widths of the
   // ones before it. Headers report their width through this attachment (body cells share it).
   let sticky_widths = $state<Record<string, number>>({})
-  const track_sticky_width = (th: HTMLElement) => {
-    const col_id = th.dataset.colId ?? ``
-    const measure = () => (sticky_widths[col_id] = th.offsetWidth)
+  const track_sticky_width = (header_cell: HTMLElement) => {
+    const col_id = header_cell.dataset.colId ?? ``
+    const measure = () => (sticky_widths[col_id] = header_cell.offsetWidth)
     measure()
     if (typeof ResizeObserver === `undefined`) return
     const observer = new ResizeObserver(measure)
-    observer.observe(th)
+    observer.observe(header_cell)
     return () => observer.disconnect()
   }
   let sticky_offsets = $derived.by(() => {
@@ -765,22 +765,22 @@
   }
   let cols = $derived<ColumnView[]>(
     visible_columns.map((col) => {
-      const id = col.id
-      const width = prefs_of(id).width
-      const stats = column_stats.get(id)
+      const identifier = col.id
+      const width = prefs_of(identifier).width
+      const stats = column_stats.get(identifier)
       const size = (edge: `min-width` | `max-width`) =>
         width ? `; width: ${width}px; ${edge}: ${width}px` : ``
       return {
         col,
-        id,
-        key: key_of_id(id),
-        numeric: numeric_columns.has(id),
-        sticky_left: col.sticky ? `${sticky_offsets[id] ?? 0}px` : undefined,
+        id: identifier,
+        key: key_of_id(identifier),
+        numeric: numeric_columns.has(identifier),
+        sticky_left: col.sticky ? `${sticky_offsets[identifier] ?? 0}px` : undefined,
         width,
         head_style: `${col.style ?? ``}${size(`min-width`)}` || undefined,
         cell_style: `${col.cell_style ?? col.style ?? ``}${size(`max-width`)}` || undefined,
         dt_mode: is_datetime_column(col) ? datetime_mode(col) : null,
-        color: column_color_scales.get(id),
+        color: column_color_scales.get(identifier),
         stats,
         bar: col.render_as === `bar` || col.render_as === `both`,
         best: col.highlight_best ? (stats?.best ?? null) : null,
@@ -792,8 +792,8 @@
   // quantile-clipped domain saturates instead of overflowing the cell.
   const bar_fraction = (num: number | null, view: ColumnView): number | null => {
     if (num === null || !view.stats) return null
-    const [lo, hi] = view.stats.domain
-    const frac = hi === lo ? 1 : (num - lo) / (hi - lo)
+    const [lower, upper] = view.stats.domain
+    const frac = upper === lower ? 1 : (num - lower) / (upper - lower)
     // `lower is better` puts the best value at the full end, matching the color scale
     const oriented = better_of(view.col) === `lower` ? 1 - frac : frac
     return clamp01(oriented)
@@ -850,11 +850,11 @@
   // Remove `col_id` from column_order and reinsert it at `target_id`'s position
   function move_column_to(col_id: string, target_id: string) {
     const from = column_order.indexOf(col_id)
-    const to = column_order.indexOf(target_id)
-    if (from === -1 || to === -1 || from === to) return
+    const target = column_order.indexOf(target_id)
+    if (from === -1 || target === -1 || from === target) return
     const next = [...column_order]
     next.splice(from, 1)
-    next.splice(to, 0, col_id)
+    next.splice(target, 0, col_id)
     column_order = next
   }
   // Shift a column one step left/right within its group (keyboard counterpart of dragging)
@@ -973,6 +973,12 @@
     const target = event.target instanceof Element ? event.target : null
     // header popovers close on any pointerdown outside them
     if (!target?.closest(`.header-popover`)) header_popover = null
+    if (
+      open_dropdown === `export` &&
+      !container_el?.querySelector(`.dropdown-wrapper`)?.contains(target)
+    ) {
+      open_dropdown = null
+    }
     // A drag's suppress flag is consumed by the click right after pointerup; if that click
     // never fired (released outside the table), any NEW interaction must not inherit it
     suppress_row_click = false
@@ -1010,12 +1016,12 @@
       move_column(visible_columns[col], col_step)
       return true
     }
-    const to = {
+    const target = {
       row: clamp(row + row_step, 0, sorted_data.length - 1),
       col: clamp(col + col_step, 0, visible_columns.length - 1),
     }
-    selection.step({ row, col }, to, event.shiftKey)
-    focus_cell(to.row, to.col)
+    selection.step({ row, col }, target, event.shiftKey)
+    focus_cell(target.row, target.col)
     return true
   }
 
@@ -1140,16 +1146,21 @@
 
   // === Row selection ===
   function get_row_id(row: Row): RowId {
-    const id =
+    const identifier =
       typeof row_key === `function`
         ? row_key(row)
         : row_key !== undefined
           ? row[row_key]
           : undefined
-    if (typeof id !== `string` && (typeof id !== `number` || !Number.isFinite(id))) {
-      throw new Error(`row_key must return a string or finite number; received ${String(id)}`)
+    if (
+      typeof identifier !== `string` &&
+      (typeof identifier !== `number` || !Number.isFinite(identifier))
+    ) {
+      throw new Error(
+        `row_key must return a string or finite number; received ${String(identifier)}`,
+      )
     }
-    return id
+    return identifier
   }
   $effect(() => {
     if (!show_row_select && row_key === undefined) return
@@ -1157,9 +1168,9 @@
       throw new Error(`row_key is required when show_row_select is enabled`)
     const ids = new Set<RowId>()
     for (const row of data) {
-      const id = get_row_id(row)
-      if (ids.has(id)) throw new Error(`Duplicate row id: ${id}`)
-      ids.add(id)
+      const identifier = get_row_id(row)
+      if (ids.has(identifier)) throw new Error(`Duplicate row id: ${identifier}`)
+      ids.add(identifier)
     }
   })
   let selected_id_set = $derived(new Set(selected_ids))
@@ -1167,7 +1178,7 @@
   function toggle_row_select(row: Row) {
     const row_id = get_row_id(row)
     selected_ids = selected_id_set.has(row_id)
-      ? selected_ids.filter((id) => id !== row_id)
+      ? selected_ids.filter((identifier) => identifier !== row_id)
       : [...selected_ids, row_id]
   }
   // Select-all scope: the current page under pagination, every sorted+filtered row otherwise
@@ -1179,7 +1190,7 @@
   function toggle_select_all() {
     if (all_page_selected) {
       const scope_ids = new Set(select_all_rows.map(get_row_id))
-      selected_ids = selected_ids.filter((id) => !scope_ids.has(id))
+      selected_ids = selected_ids.filter((identifier) => !scope_ids.has(identifier))
     } else
       selected_ids = [
         ...selected_ids,
@@ -1225,7 +1236,7 @@
   }
   // Keep the bindable `hidden_columns` list authoritative while ToggleMenu edits a projection
   function set_column_visible(col_id: string, visible: boolean) {
-    const others = hidden_columns.filter((id) => id !== col_id)
+    const others = hidden_columns.filter((identifier) => identifier !== col_id)
     hidden_columns = visible ? others : [...others, col_id]
   }
   let toggle_columns = $derived(
@@ -1273,7 +1284,7 @@
       ) ?? []),
     ]
     const widest = array_max(
-      cells.map((el) => el.scrollWidth + el.offsetWidth - el.clientWidth),
+      cells.map((element) => element.scrollWidth + element.offsetWidth - element.clientWidth),
     )
     if (widest > 0) set_pref(col_id, `width`, clamp(widest + 8, 50, 500))
   }
@@ -1285,9 +1296,14 @@
   const controls_config = $derived(normalize_show_controls(show_controls))
   let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
 
-  const heatmap_settings = track_settings(() => ({ show_heatmap, heatmap_opacity }))
-  const display_settings = track_settings(() => ({ show_row_numbers }))
-  const column_colors_settings = track_settings(() => split_color_prefs().color)
+  const heatmap_settings = track_settings(() => ({ show_heatmap, heatmap_opacity }), {
+    show_heatmap: true,
+    heatmap_opacity: 1,
+  })
+  const display_settings = track_settings(() => ({ show_row_numbers }), {
+    show_row_numbers: false,
+  })
+  const column_colors_settings = track_settings(() => split_color_prefs().color, {})
 </script>
 
 {#snippet column_label(label: string, description?: string)}
@@ -1320,6 +1336,7 @@
 {#snippet icon_btn(icon: IconData, tip: string, on_click: () => void, active = false)}
   <button
     class={['icon-btn', { active }]}
+    aria-label={tip}
     onclick={on_click}
     {@attach tooltip({ content: tip, placement: `top` })}
   >
@@ -1370,10 +1387,6 @@
   data-density={density}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onclickcapture={suppress_click_after_cell_drag}
-  onmouseleave={() => {
-    open_dropdown = null
-    context_menu_at = null
-  }}
 >
   {#if controls_config.mode !== `never`}
     <section
@@ -1572,7 +1585,7 @@
           <tr class="group-header" bind:clientHeight={group_header_height}>
             {#if show_row_select}<th class="select-col"></th>{/if}
             {#if show_row_numbers}<th class="row-num-col"></th>{/if}
-            {#each cols as { col, id, sticky_left } (id)}
+            {#each cols as { col, id: identifier, sticky_left } (identifier)}
               {#if !col.group}
                 <th class:sticky-col={col.sticky} style:left={sticky_left}></th>
                 <!-- the group header renders once per group, on the group's first column -->
@@ -1800,7 +1813,7 @@
                 <td class="select-col">{show_row_numbers ? `` : stat}</td>
               {/if}
               {#if show_row_numbers}<td class="row-num-col">{stat}</td>{/if}
-              {#each cols as { col, id, numeric, stats, sticky_left }, col_idx (id)}
+              {#each cols as { col, id: identifier, numeric, stats, sticky_left }, col_idx (identifier)}
                 <td
                   class:sticky-col={col.sticky}
                   class:numeric-col={numeric}

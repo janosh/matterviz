@@ -121,7 +121,7 @@ describe(`PropertyFilter`, () => {
     expect(Boolean(document.querySelector(`.log-label`))).toBe(position !== null)
     if (!svg) return
     const children = [...container().children]
-    const svg_idx = children.findIndex((el) => el.contains(svg))
+    const svg_idx = children.findIndex((element) => element.contains(svg))
     const row_idx = children.indexOf(doc_query(`.filter-row`))
     expect(svg_idx < row_idx).toBe(position === `top`)
   })

@@ -47,10 +47,12 @@ vi.mock(`node:path`, async (importOriginal) => {
   const actual = await importOriginal<typeof node_path>()
   return {
     ...actual,
-    basename: vi.fn((p: string) => p.split(`/`).pop() ?? ``),
-    dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
+    basename: vi.fn((point_value: string) => point_value.split(`/`).pop() ?? ``),
+    dirname: vi.fn(
+      (point_value: string) => point_value.split(`/`).slice(0, -1).join(`/`) || `/`,
+    ),
     join: vi.fn((...paths: string[]) => paths.join(`/`)),
-    isAbsolute: vi.fn((p: string) => p.startsWith(`/`)),
+    isAbsolute: vi.fn((point_value: string) => point_value.startsWith(`/`)),
   }
 })
 
@@ -124,7 +126,7 @@ const mock_vscode = vi.hoisted(() => ({
   },
   commands: { registerCommand: vi.fn(), executeCommand: vi.fn() },
   Uri: {
-    file: vi.fn((p: string) => ({ fsPath: p })),
+    file: vi.fn((point_value: string) => ({ fsPath: point_value })),
     joinPath: vi.fn((_base: unknown, ...paths: string[]) => ({
       fsPath: paths.join(`/`),
     })),
@@ -248,7 +250,8 @@ describe(`MatterViz Extension`, () => {
       ),
       // All trajectory keywords in filenames
       ...TRAJ_KEYWORDS.map(
-        (kw: string) => [`${kw}_output.dat`, `TRAJ_KW ${kw}`] as [string, string],
+        (keyword: string) =>
+          [`${keyword}_output.dat`, `TRAJ_KW ${keyword}`] as [string, string],
       ),
       // VASP special filenames + additional VS Code-only formats
       [`POSCAR`, `VASP`],

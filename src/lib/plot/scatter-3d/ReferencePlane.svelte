@@ -32,8 +32,12 @@
 
   // Quad geometry from 4 data-space corners (two triangles: 0-1-2 and 0-2-3)
   const quad = (corners: Vec3[]): THREE.BufferGeometry => {
-    const [c0, c1, c2, c3] = corners.map((corner) => to_coords(...corner))
-    const verts = [c0, c1, c2, c0, c2, c3].flatMap((corner) => [corner.x, corner.y, corner.z])
+    const [value_c_0, value_c_1, value_c_2, value_c_3] = corners.map((corner) =>
+      to_coords(...corner),
+    )
+    const verts = [value_c_0, value_c_1, value_c_2, value_c_0, value_c_2, value_c_3].flatMap(
+      (corner) => [corner.x, corner.y, corner.z],
+    )
     const geo = new THREE.BufferGeometry()
     geo.setAttribute(`position`, new THREE.BufferAttribute(new Float32Array(verts), 3))
     geo.computeVertexNormals()
@@ -76,12 +80,20 @@
       return create_plane_from_normal(ref_plane.normal, ref_plane.point)
     }
     if (ref_plane.type === `points`) {
-      const { p1, p2, p3 } = ref_plane
-      const v1: Vec3 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
-      const v2: Vec3 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
-      const cross = cross_3d(v1, v2)
+      const { p1: point_1, p2: point, p3: point_3 } = ref_plane
+      const vector_1: Vec3 = [
+        point[0] - point_1[0],
+        point[1] - point_1[1],
+        point[2] - point_1[2],
+      ]
+      const vector_2: Vec3 = [
+        point_3[0] - point_1[0],
+        point_3[1] - point_1[1],
+        point_3[2] - point_1[2],
+      ]
+      const cross = cross_3d(vector_1, vector_2)
       if (Math.hypot(...cross) < 1e-9) return null // collinear points
-      return create_plane_from_normal(normalize_vec(cross), p1)
+      return create_plane_from_normal(normalize_vec(cross), point_1)
     }
     return null
   }
@@ -105,12 +117,12 @@
     const v_dir = cross_3d(normalized, u_dir)
     // Scale to cover bounding box
     const scale = Math.max(x_max - x_min, y_max - y_min, z_max - z_min) * 2
-    const [px, py, pz] = point
+    const [pixel_x, pixel_y, pixel_z] = point
     // Helper to offset point by u*su + v*sv
-    const corner = (su: number, sv: number): Vec3 => [
-      px + u_dir[0] * su + v_dir[0] * sv,
-      py + u_dir[1] * su + v_dir[1] * sv,
-      pz + u_dir[2] * su + v_dir[2] * sv,
+    const corner = (offset_u: number, offset_v: number): Vec3 => [
+      pixel_x + u_dir[0] * offset_u + v_dir[0] * offset_v,
+      pixel_y + u_dir[1] * offset_u + v_dir[1] * offset_v,
+      pixel_z + u_dir[2] * offset_u + v_dir[2] * offset_v,
     ]
     return quad([
       corner(-scale, -scale),

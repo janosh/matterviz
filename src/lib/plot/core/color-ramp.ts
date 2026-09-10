@@ -25,7 +25,7 @@ export const color_ramp_scale = (scale_type: ScaleType, domain: Vec2, output: Ve
 
 // A bare interpolator function is not a ColorBarScale; wrap it.
 export const to_color_bar_scale = (
-  scale: D3InterpolateName | ((t: number) => string),
+  scale: D3InterpolateName | ((fraction: number) => string),
 ): ColorBarScale => (typeof scale === `string` ? scale : { interpolator: scale })
 
 // A prebuilt `fn` scale maps data itself over the domain it declares (else `range`);
@@ -42,8 +42,8 @@ export const resolve_color_ramp = (
   }
   const interpolator =
     typeof scale === `object` ? scale.interpolator : get_d3_interpolator(scale)
-  const [lo, hi] = range[0] <= range[1] ? range : [range[1], range[0]]
-  const position = color_ramp_scale(scale_type, [lo, hi], [0, 1])
+  const [lower, upper] = range[0] <= range[1] ? range : [range[1], range[0]]
+  const position = color_ramp_scale(scale_type, [lower, upper], [0, 1])
   return { color_fn: (value) => interpolator(clamp01(position(value))), domain: range }
 }
 

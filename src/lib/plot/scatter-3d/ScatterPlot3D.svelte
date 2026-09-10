@@ -31,7 +31,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
-  import { collect_scale_values, create_color_scale } from '$lib/plot/core/scales'
+  import { collect_series_extent, create_color_scale } from '$lib/plot/core/scales'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -177,7 +177,8 @@
   )
 
   // Finite colour extent across all series; [0, 1] when no series carries colour values
-  let { color_extent, color_range: auto_color_range } = $derived(collect_scale_values(series))
+  const color_extent = $derived(collect_series_extent(series, `color_values`))
+  const auto_color_range = $derived<Vec2>([color_extent.min ?? 0, color_extent.max ?? 1])
   let color_scale_fn = $derived(create_color_scale(normalized_color_scale, auto_color_range))
 
   // Legend data

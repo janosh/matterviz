@@ -22,8 +22,8 @@ export type IsosurfaceProfileMeta = Record<string, boolean | number | string>
 // renders skip the performance.measure + clearMeasures round trip entirely. The benchmark
 // route switches it on before observing.
 let profiling_enabled = false
-export const set_isosurface_profiling = (on: boolean): void => {
-  profiling_enabled = on
+export const set_isosurface_profiling = (enabled: boolean): void => {
+  profiling_enabled = enabled
 }
 
 // Record a stage whose duration was measured elsewhere. The entry is cleared from the

@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
+import { readFile } from 'node:fs/promises'
 
 // CI environments are slower - use longer timeouts
 const LOAD_TIMEOUT = IS_CI ? 20_000 : 8000
@@ -19,36 +20,47 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     })
   })
 
-  test(`renders complete diagram structure`, async ({ page }) => {
-    const { svg } = get_diagram_elements(page)
-
-    // Phase regions with multiple paths
-    const regions = svg.locator(`.phase-regions path`)
-    expect(await regions.count()).toBeGreaterThanOrEqual(3)
-
-    // Both axes with tick labels
-    expect(await svg.locator(`g.x-axis > g text`).count()).toBeGreaterThanOrEqual(4)
-    expect(await svg.locator(`g.y-axis > g text`).count()).toBeGreaterThanOrEqual(4)
-
-    // Boundaries
-    expect(await svg.locator(`.boundaries path`).count()).toBeGreaterThanOrEqual(1)
-
-    // Special points (eutectic/peritectic) - select marker circles, not hit-areas
-    const special_point_markers = svg.locator(`.special-points .special-point-marker`)
-    expect(await special_point_markers.count()).toBeGreaterThanOrEqual(1)
-    await expect(special_point_markers.first()).toHaveAttribute(`fill`, /#\w+/)
-
-    // Grid lines
-    expect(await svg.locator(`.grid line`).count()).toBeGreaterThanOrEqual(8)
-
-    // Region labels with text
-    const labels = svg.locator(`.region-labels text`)
-    expect(await labels.count()).toBeGreaterThanOrEqual(2)
-    expect((await labels.first().textContent())?.length).toBeGreaterThan(0)
-
-    // Component labels A and B at corners
-    await expect(svg.locator(`text`).filter({ hasText: /^A$/ })).toBeVisible()
-    await expect(svg.locator(`text`).filter({ hasText: /^B$/ })).toBeVisible()
+  test(`renders accessible diagram structure, axes and styled special points`, async ({
+    page,
+  }) => {
+    const { diagram, svg } = get_diagram_elements(page)
+    for (const [selector, minimum] of [
+      [`.phase-regions path`, 3],
+      [`g.x-axis > g text`, 4],
+      [`g.y-axis > g text`, 4],
+      [`.boundaries path`, 1],
+      [`.special-points .special-point-marker`, 1],
+      [`.grid line`, 8],
+      [`.region-labels text`, 2],
+    ] as const)
+      expect(await svg.locator(selector).count(), selector).toBeGreaterThanOrEqual(minimum)
+    await expect(diagram).toHaveAttribute(`role`, `img`)
+    await expect(diagram).toHaveAttribute(`aria-label`, /phase diagram/i)
+    await expect(svg).toHaveAttribute(`role`, `application`)
+    await expect(svg).toHaveAttribute(`aria-label`, /phase diagram/i)
+    await expect(svg).toHaveAttribute(`tabindex`, `0`)
+    await expect(svg.locator(`.region-labels text`).first()).not.toHaveText(``)
+    for (const component of [`A`, `B`]) {
+      await expect(
+        svg.locator(`text`).filter({ hasText: new RegExp(`^${component}$`) }),
+      ).toBeVisible()
+    }
+    const x_ticks = svg.locator(`g.x-axis > g text`)
+    await expect(x_ticks.first()).toHaveText(`0`)
+    expect(Number(await x_ticks.last().textContent())).toBeGreaterThanOrEqual(80)
+    await expect(
+      svg.locator(`g.y-axis text`).filter({ hasText: /Temperature/i }),
+    ).toBeVisible()
+    await expect(
+      svg.locator(`g.x-axis text`).filter({ hasText: /B.*%|at%|wt%/i }),
+    ).toBeVisible()
+    const special_points = svg.locator(`.special-points`)
+    await expect(special_points).toBeVisible()
+    const marker = special_points.locator(`.special-point-marker`).first()
+    await expect(marker).toHaveAttribute(`fill`, /#\w+/)
+    await expect(marker).toHaveAttribute(`stroke`, `white`)
+    const labels = special_points.locator(`text`)
+    if (await labels.count()) await expect(labels.first()).not.toHaveText(``)
   })
 
   test(`tooltip shows phase info on hover and hides on leave`, async ({ page }) => {
@@ -118,9 +130,10 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await pane.locator(`input[type="checkbox"]`).first().uncheck()
     await expect(boundaries).toBeHidden()
 
-    // Toggle back on
-    await pane.locator(`input[type="checkbox"]`).first().check()
+    const reset_visibility = pane.getByRole(`button`, { name: `Reset visibility to defaults` })
+    await reset_visibility.click()
     await expect(boundaries).toBeVisible()
+    await expect(reset_visibility).toHaveCount(0)
   })
 
   test(`export pane has format options and functional buttons`, async ({ page }) => {
@@ -131,48 +144,39 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     const pane = diagram.locator(`.export-pane`)
     await expect(pane).toBeVisible()
 
-    // Format labels present
-    await expect(pane).toContainText(`PNG`)
-    await expect(pane).toContainText(`SVG`)
-    await expect(pane).toContainText(`JSON`)
-
-    // Download and copy buttons exist (some may be disabled until SVG renders)
-    const buttons = pane.locator(`button`)
-    expect(await buttons.count()).toBeGreaterThanOrEqual(4) // 2 per format minimum
-
-    // DPI input exists
-    await expect(pane.locator(`input[type="number"]`)).toBeVisible()
+    await pane.locator(`input[type="number"]`).fill(`96`)
+    for (const format of [`SVG`, `PNG`, `JSON`]) {
+      const downloaded = page.waitForEvent(`download`)
+      await pane.getByRole(`button`, { name: `Download ${format}`, exact: true }).click()
+      const download = await downloaded
+      expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${format.toLowerCase()}$`))
+      const filepath = await download.path()
+      if (!filepath) throw new Error(`Missing ${format} download`)
+      const contents = await readFile(filepath)
+      expect(contents.length).toBeGreaterThan(100)
+      if (format === `SVG`) expect(contents.toString()).toContain(`<svg`)
+      else if (format === `PNG`) expect(contents.subarray(1, 4).toString()).toBe(`PNG`)
+      else expect(JSON.parse(contents.toString()).components).toHaveLength(2)
+    }
+    await page.context().grantPermissions([`clipboard-read`, `clipboard-write`])
+    for (const format of [`SVG`, `JSON`]) {
+      await pane.getByRole(`button`, { name: `Copy ${format} to clipboard` }).click()
+      await expect
+        .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+        .toContain(format === `SVG` ? `<svg` : `"components"`)
+    }
   })
 
-  test(`axes have correct labels and range`, async ({ page }) => {
-    const { svg } = get_diagram_elements(page)
-
-    // X-axis: composition 0-100
-    const x_ticks = svg.locator(`g.x-axis > g text`)
-    const first_tick = (await x_ticks.first().textContent())?.trim()
-    expect(first_tick ? Number(first_tick) : NaN).toBe(0)
-    const last_tick = (await x_ticks.last().textContent())?.trim()
-    expect(last_tick ? Number(last_tick) : NaN).toBeGreaterThanOrEqual(80)
-
-    // Y-axis: temperature label
-    await expect(
-      svg.locator(`g.y-axis text`).filter({ hasText: /Temperature/i }),
-    ).toBeVisible()
-
-    // X-axis: composition label with component B
-    await expect(
-      svg.locator(`g.x-axis text`).filter({ hasText: /B.*%|at%|wt%/i }),
-    ).toBeVisible()
-  })
-
-  test(`ARIA attributes for accessibility`, async ({ page }) => {
+  test(`editor updates the component name in the rendered diagram`, async ({ page }) => {
     const { diagram, svg } = get_diagram_elements(page)
-
-    await expect(diagram).toHaveAttribute(`role`, `img`)
-    await expect(diagram).toHaveAttribute(`aria-label`, /phase diagram/i)
-    await expect(svg).toHaveAttribute(`role`, `application`)
-    await expect(svg).toHaveAttribute(`aria-label`, /phase diagram/i)
-    await expect(svg).toHaveAttribute(`tabindex`, `0`)
+    await diagram.locator(`.pd-editor-toggle`).click()
+    const editor = diagram.locator(`.pd-editor-pane`)
+    await editor.locator(`.json-value.string`).filter({ hasText: `"A"` }).first().dblclick()
+    const input = editor.locator(`.edit-input`)
+    await input.fill(`Edited`)
+    await input.press(`Enter`)
+    await expect(diagram).toHaveAttribute(`aria-label`, `Edited-B binary phase diagram`)
+    await expect(svg.locator(`text`).filter({ hasText: `Edited` })).toBeVisible()
   })
 
   test(`no tooltip in axis/margin areas`, async ({ page }) => {
@@ -204,61 +208,28 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
   test(`file picker switches diagrams`, async ({ page }) => {
     const { svg } = get_diagram_elements(page)
-    // The file-item has class="active" directly on itself (not inside)
     const files = page.locator(`.file-picker .file-item`)
-    const count = await files.count()
-    if (count < 2) test.skip(true, `Requires at least 2 diagram files to test switching`)
-
-    // Get the initially active file
+    test.skip((await files.count()) < 2, `Requires at least 2 diagram files to test switching`)
     const active_file = page.locator(`.file-picker .file-item.active`)
     await expect(active_file).toBeVisible({ timeout: 5000 })
     const initial_active_text = (await active_file.textContent())?.trim()
-
-    // Find a non-active JSON file (one without .active class that ends in .json)
-    // TDB files may not load properly so skip them
-    const all_inactive = await page.locator(`.file-picker .file-item:not(.active)`).all()
-    let clicked_file_name: string | null = null
-    let clicked_file = null
-
-    for (const file of all_inactive) {
-      const text = await file.textContent()
-      // Only use JSON files, not TDB files
-      if (text?.includes(`.json`)) {
-        clicked_file = file
-        clicked_file_name = text.trim()
-        break
-      }
-    }
-
-    if (!clicked_file || !clicked_file_name) {
-      test.skip(true, `No inactive JSON file found to test switching`)
-      return
-    }
-
-    // Click the inactive file
-    await clicked_file.click()
-
-    // Wait for the diagram to reload by checking that phase regions are still visible
-    // and then verify the clicked file has become active
+    // TDB files may not load properly; use an inactive JSON fixture.
+    const candidate = page
+      .locator(`.file-picker .file-item:not(.active)`)
+      .filter({ hasText: /\.json/ })
+      .first()
+    test.skip((await candidate.count()) === 0, `No inactive JSON file found to test switching`)
+    const filename = (await candidate.textContent())?.trim()
+    if (!filename) throw new Error(`Inactive JSON file has no name`)
+    await candidate.click()
     await expect(svg.locator(`.phase-regions path`).first()).toBeVisible({
       timeout: LOAD_TIMEOUT,
     })
-
-    // Wait for the file to become active (async loading)
-    await expect(page.locator(`.file-picker .file-item.active`)).toContainText(
-      clicked_file_name.replace(/\.json\.gz$/, ``).replace(/\.json$/, ``),
-      { timeout: 5000 },
-    )
-
-    // Verify the active file changed
-    const new_active_text = (
-      await page.locator(`.file-picker .file-item.active`).textContent()
-    )?.trim()
-    expect(new_active_text).not.toBe(initial_active_text)
-
-    // Verify diagram still renders correctly after switch
-    const region_count = await svg.locator(`.phase-regions path`).count()
-    expect(region_count).toBeGreaterThanOrEqual(1)
+    await expect(active_file).toContainText(filename.replace(/\.json(?:\.gz)?$/, ``), {
+      timeout: 5000,
+    })
+    expect((await active_file.textContent())?.trim()).not.toBe(initial_active_text)
+    expect(await svg.locator(`.phase-regions path`).count()).toBeGreaterThanOrEqual(1)
   })
 
   test(`tie-line and lever rule in two-phase regions`, async ({ page }) => {
@@ -276,7 +247,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     if (!box) throw new Error(`No SVG bounding box`)
 
     const tie_line = svg.locator(`.tie-line`)
-    let found_tie_line = false
 
     // Scan middle portion of diagram where two-phase regions typically are
     const margin = { left: 60, right: 15, top: 25, bottom: 50 }
@@ -286,15 +256,13 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     const plot_bottom = box.y + box.height - margin.bottom
 
     // Scan positions covering α+L (left side) and β+L (right side) regions
-    outer: for (const x_frac of [0.1, 0.15, 0.2, 0.7, 0.75, 0.8]) {
+    for (const x_frac of [0.1, 0.15, 0.2, 0.7, 0.75, 0.8]) {
       for (const y_frac of [0.3, 0.4, 0.5, 0.6]) {
         const x_pos = plot_left + (plot_right - plot_left) * x_frac
         const y_pos = plot_top + (plot_bottom - plot_top) * y_frac
         await page.mouse.move(x_pos, y_pos)
 
         if (await tie_line.isVisible().catch(() => false)) {
-          found_tie_line = true
-
           // Verify tie-line structure (2 lines: white outline + colored, 3 circles: 2 endpoints + cursor)
           expect(await tie_line.locator(`line`).count()).toBe(2)
           expect(await tie_line.locator(`circle`).count()).toBe(3)
@@ -304,67 +272,36 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
           await expect(tooltip).toBeVisible()
           await expect(tooltip.locator(`.lever`)).toBeVisible()
           await expect(tooltip).toContainText(`Lever Rule`)
-          break outer
+          return
         }
       }
     }
 
-    expect(found_tie_line).toBe(true)
+    throw new Error(`No tie-line found in the two-phase scan positions`)
   })
 
-  test(`click locks tooltip, persists on mouse leave`, async ({ page }) => {
-    const { diagram, svg } = get_diagram_elements(page)
-    const region = svg.locator(`.phase-regions path`).first()
-
-    await region.hover()
-    const tooltip = diagram.locator(`.tooltip-container`)
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip).not.toHaveClass(/locked/)
-
-    // Click to lock
-    await region.click()
-    await expect(tooltip).toHaveClass(/locked/)
-    await expect(diagram.locator(`.tooltip-lock-indicator`)).toBeVisible()
-
-    // Move away - tooltip should stay visible (locked state persists)
-    await page.mouse.move(10, 10)
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip).toHaveClass(/locked/)
-  })
-
-  test(`click again unlocks tooltip`, async ({ page }) => {
-    const { diagram, svg } = get_diagram_elements(page)
-    const region = svg.locator(`.phase-regions path`).first()
-
-    // Lock tooltip
-    await region.hover()
-    await region.click()
-    const tooltip = diagram.locator(`.tooltip-container`)
-    await expect(tooltip).toHaveClass(/locked/)
-
-    // Click again to unlock
-    await region.click()
-    await expect(tooltip).not.toHaveClass(/locked/)
-
-    // Move away - tooltip should disappear now
-    await page.mouse.move(10, 10)
-    await expect(tooltip).toHaveCount(0)
-  })
-
-  test(`Escape key unlocks tooltip`, async ({ page }) => {
-    const { diagram, svg } = get_diagram_elements(page)
-    const region = svg.locator(`.phase-regions path`).first()
-
-    // Lock tooltip
-    await region.hover()
-    await region.click()
-    const tooltip = diagram.locator(`.tooltip-container`)
-    await expect(tooltip).toHaveClass(/locked/)
-
-    // Press Escape to unlock
-    await page.keyboard.press(`Escape`)
-    await expect(tooltip).not.toHaveClass(/locked/)
-  })
+  for (const unlock of [`click`, `Escape`]) {
+    test(`click locks tooltip and ${unlock} unlocks it`, async ({ page }) => {
+      const { diagram, svg } = get_diagram_elements(page)
+      const region = svg.locator(`.phase-regions path`).first()
+      const tooltip = diagram.locator(`.tooltip-container`)
+      await region.hover()
+      await expect(tooltip).toBeVisible()
+      await expect(tooltip).not.toHaveClass(/locked/)
+      await region.click()
+      await expect(tooltip).toHaveClass(/locked/)
+      await expect(diagram.locator(`.tooltip-lock-indicator`)).toBeVisible()
+      if (unlock === `click`) {
+        await page.mouse.move(10, 10)
+        await expect(tooltip).toBeVisible()
+        await expect(tooltip).toHaveClass(/locked/)
+        await region.click()
+      } else await page.keyboard.press(`Escape`)
+      await expect(tooltip).not.toHaveClass(/locked/)
+      await page.mouse.move(10, 10)
+      await expect(tooltip).toHaveCount(0)
+    })
+  }
 
   test(`Enter/Space toggles tooltip lock when SVG focused`, async ({ page }) => {
     const { diagram, svg } = get_diagram_elements(page)
@@ -400,27 +337,5 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(pane).toBeVisible()
     await page.keyboard.press(`e`)
     await expect(pane).toBeHidden()
-  })
-
-  test(`special points have labels and correct styling`, async ({ page }) => {
-    const { svg } = get_diagram_elements(page)
-    const special_points = svg.locator(`.special-points`)
-
-    await expect(special_points).toBeVisible()
-
-    // Select marker circles specifically (not hit-area circles which are transparent)
-    const markers = special_points.locator(`.special-point-marker`)
-    expect(await markers.count()).toBeGreaterThanOrEqual(1)
-
-    // Check styling: fill color, white stroke
-    const first_marker = markers.first()
-    await expect(first_marker).toHaveAttribute(`fill`, /#\w+/)
-    await expect(first_marker).toHaveAttribute(`stroke`, `white`)
-
-    // Check for label text if present
-    const labels = special_points.locator(`text`)
-    if ((await labels.count()) > 0) {
-      expect((await labels.first().textContent())?.length).toBeGreaterThan(0)
-    }
   })
 })

@@ -74,7 +74,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // Custom widths
     const widths_container = page.locator(`[data-testid="bz-bands-dos-custom-widths"]`)
     const grid_style = await widths_container.evaluate(
-      (el) => getComputedStyle(el).gridTemplateColumns,
+      (element) => getComputedStyle(element).gridTemplateColumns,
     )
     expect(grid_style).toBeTruthy()
 
@@ -85,7 +85,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       .first()
       .locator(line_path_selector)
       .first()
-    const stroke = await first_path.evaluate((el) => getComputedStyle(el).stroke)
+    const stroke = await first_path.evaluate((element) => getComputedStyle(element).stroke)
     expect(stroke).toContain(`rgb(255, 0, 0)`)
   })
 

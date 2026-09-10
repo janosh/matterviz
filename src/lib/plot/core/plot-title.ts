@@ -234,10 +234,14 @@ export function resolve_plot_title(
   measure: PlotTitleMeasure = measure_text_line,
 ): ResolvedPlotTitle {
   const { gap, max_lines } = validate_layout_input(config, input)
-  const { width: available_width, x = 0, y: top_y = 0 } = input
+  const { width: available_width, x: coord_x = 0, y: top_y = 0 } = input
   const { align = `middle` } = config ?? {}
   const anchor_x =
-    align === `start` ? x : align === `end` ? x + available_width : x + available_width / 2
+    align === `start`
+      ? coord_x
+      : align === `end`
+        ? coord_x + available_width
+        : coord_x + available_width / 2
   const title_font = normalized_font(config?.font, DEFAULT_PLOT_TITLE_FONT)
   const subtitle_font = normalized_font(config?.subtitle_font, DEFAULT_PLOT_SUBTITLE_FONT)
   const title_label = normalize_label(config?.text)

@@ -144,10 +144,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
-      - run: pnpm exec playwright install chromium --only-shell
+      - run: pnpm exec playwright install chromium --no-shell
       - run: pnpm exec playwright test
         env:
           MATTERVIZ_E2E_MODE: source
+          DEBUG: pw:browser
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -169,7 +170,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/setup
       - name: Install Chromium
-        run: npx playwright install chromium --only-shell
+        run: pnpm exec playwright install chromium --no-shell
       - uses: actions/download-artifact@v8
         with:
           name: browser-test-site
@@ -178,6 +179,7 @@ jobs:
         run: pnpm exec playwright test --shard=${{ matrix.shard }}/6
         env:
           MATTERVIZ_E2E_MODE: preview
+          DEBUG: pw:browser
       - name: Upload failure traces
         if: failure()
         uses: actions/upload-artifact@v7

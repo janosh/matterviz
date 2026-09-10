@@ -63,14 +63,15 @@ const HEXAGONAL: Matrix3x3 = [
 // Flat z-fastest band grid from a per-index function
 const make_band_grid = (
   dims: Vec3,
-  fn: (ix: number, iy: number, iz: number) => number,
+  callback: (idx_x: number, idx_y: number, idx_z: number) => number,
 ): BandEnergyGrid => {
-  const [nx, ny, nz] = dims
-  const values = new Float64Array(nx * ny * nz)
+  const [size_x, size_y, size_z] = dims
+  const values = new Float64Array(size_x * size_y * size_z)
   let idx = 0
-  for (let ix = 0; ix < nx; ix++) {
-    for (let iy = 0; iy < ny; iy++) {
-      for (let iz = 0; iz < nz; iz++) values[idx++] = fn(ix, iy, iz)
+  for (let idx_x = 0; idx_x < size_x; idx_x++) {
+    for (let idx_y = 0; idx_y < size_y; idx_y++) {
+      for (let idx_z = 0; idx_z < size_z; idx_z++)
+        values[idx++] = callback(idx_x, idx_y, idx_z)
     }
   }
   return { values, dims, order: `z_fastest` }
@@ -79,7 +80,7 @@ const make_band_grid = (
 // Single-band grid sampling `energy_fn` at fractional coordinates (ix + shift)/denom
 const make_band_data = (
   grid_n: number,
-  energy_fn: (fx: number, fy: number, fz: number) => number,
+  energy_fn: (frac_x: number, frac_y: number, frac_z: number) => number,
   opts: {
     k_lattice?: Matrix3x3
     periodic?: boolean
@@ -90,12 +91,16 @@ const make_band_data = (
   const { k_lattice = IDENTITY_MATRIX3, periodic, grid_shift, fermi_energy = 0 } = opts
   const denom = periodic ? grid_n : grid_n - 1
   const dims: Vec3 = [grid_n, grid_n, grid_n]
-  const [sx, sy, sz] = grid_shift ?? [0, 0, 0]
+  const [shift_x, shift_y, shift_z] = grid_shift ?? [0, 0, 0]
   return {
     energies: [
       [
-        make_band_grid(dims, (ix, iy, iz) =>
-          energy_fn((ix + sx) / denom, (iy + sy) / denom, (iz + sz) / denom),
+        make_band_grid(dims, (idx_x, idx_y, idx_z) =>
+          energy_fn(
+            (idx_x + shift_x) / denom,
+            (idx_y + shift_y) / denom,
+            (idx_z + shift_z) / denom,
+          ),
         ),
       ],
     ],
@@ -109,14 +114,19 @@ const make_band_data = (
   }
 }
 
-const sphere = (fx: number, fy: number, fz: number) => Math.hypot(fx - 0.5, fy - 0.5, fz - 0.5)
+const sphere = (frac_x: number, frac_y: number, frac_z: number) =>
+  Math.hypot(frac_x - 0.5, frac_y - 0.5, frac_z - 0.5)
 
 describe(`extract_fermi_surface`, () => {
   // Band data with a spherical isosurface: energy = distance² from grid center (in index units)
   const create_spherical_band_data = (grid_size: number, fermi_energy: number): BandGridData =>
-    make_band_data(grid_size, (fx, fy, fz) => (sphere(fx, fy, fz) * (grid_size - 1)) ** 2, {
-      fermi_energy,
-    })
+    make_band_data(
+      grid_size,
+      (frac_x, frac_y, frac_z) => (sphere(frac_x, frac_y, frac_z) * (grid_size - 1)) ** 2,
+      {
+        fermi_energy,
+      },
+    )
 
   test(`extracts Fermi surface from band data`, () => {
     const band_data = create_spherical_band_data(10, 9) // Fermi level at radius^2 = 9
@@ -182,14 +192,14 @@ describe(`free-electron sphere (numerical verification)`, () => {
   // (FRMSF); extraction centres the cell on Γ so k = (frac − 0.5)·b. `center_x`
   // moves the sphere centre along k_x using the minimum-image distance, so a sphere at the
   // zone-boundary X point wraps across the ±k_x faces.
-  const free_electron = (n: number, periodic: boolean, center_x = 0): BandGridData => {
+  const free_electron = (count: number, periodic: boolean, center_x = 0): BandGridData => {
     const k_of = (frac: number) => (frac - 0.5) * B_LEN
-    const min_image = (dk: number) => dk - B_LEN * Math.round(dk / B_LEN)
+    const min_image = (delta_k: number) => delta_k - B_LEN * Math.round(delta_k / B_LEN)
     return make_band_data(
-      n,
-      (fx, fy, fz) => {
-        const dx = min_image(k_of(fx) - center_x)
-        return HBAR2_OVER_2M * (dx * dx + k_of(fy) ** 2 + k_of(fz) ** 2)
+      count,
+      (frac_x, frac_y, frac_z) => {
+        const delta_x = min_image(k_of(frac_x) - center_x)
+        return HBAR2_OVER_2M * (delta_x * delta_x + k_of(frac_y) ** 2 + k_of(frac_z) ** 2)
       },
       { k_lattice: CUBIC, periodic, fermi_energy: E_F },
     )
@@ -198,11 +208,11 @@ describe(`free-electron sphere (numerical verification)`, () => {
   // Memoised: the 48³ extraction is reused by several tests below and the result is never
   // mutated
   const sphere_cache = new Map<string, FermiIsosurface>()
-  const extract_sphere = (n: number, periodic: boolean, interpolation_factor = 1) => {
-    const key = `${n}|${periodic}|${interpolation_factor}`
+  const extract_sphere = (count: number, periodic: boolean, interpolation_factor = 1) => {
+    const key = `${count}|${periodic}|${interpolation_factor}`
     const cached = sphere_cache.get(key)
     if (cached) return cached
-    const { isosurfaces } = extract_fermi_surface(free_electron(n, periodic), {
+    const { isosurfaces } = extract_fermi_surface(free_electron(count, periodic), {
       interpolation_factor,
     })
     expect(isosurfaces).toHaveLength(1)
@@ -221,8 +231,8 @@ describe(`free-electron sphere (numerical verification)`, () => {
     { n: 48, periodic: true, max_rel_err: 3e-3 },
   ])(
     `area ≈ 4πk_F² within $max_rel_err at N=$n (periodic=$periodic)`,
-    ({ n, periodic, max_rel_err }) => {
-      const iso = extract_sphere(n, periodic)
+    ({ n: count, periodic, max_rel_err }) => {
+      const iso = extract_sphere(count, periodic)
       const rel_err = rel_area_error(iso)
       expect(rel_err).toBeLessThan(0) // marching cubes inscribes the sphere
       expect(Math.abs(rel_err)).toBeLessThan(max_rel_err)
@@ -245,15 +255,18 @@ describe(`free-electron sphere (numerical verification)`, () => {
     { n: 24, periodic: false },
     { n: 48, periodic: false },
     { n: 24, periodic: true },
-  ])(`every vertex lies on the sphere (N=$n, periodic=$periodic)`, ({ n, periodic }) => {
-    const iso = extract_sphere(n, periodic)
-    const spacing = B_LEN / (periodic ? n : n - 1)
-    let max_dr = 0
-    for (const vertex of vertices_of(iso)) {
-      max_dr = Math.max(max_dr, Math.abs(Math.hypot(...vertex) - K_F))
-    }
-    expect(max_dr).toBeLessThan(0.05 * spacing)
-  })
+  ])(
+    `every vertex lies on the sphere (N=$n, periodic=$periodic)`,
+    ({ n: count, periodic }) => {
+      const iso = extract_sphere(count, periodic)
+      const spacing = B_LEN / (periodic ? count : count - 1)
+      let max_dr = 0
+      for (const vertex of vertices_of(iso)) {
+        max_dr = Math.max(max_dr, Math.abs(Math.hypot(...vertex) - K_F))
+      }
+      expect(max_dr).toBeLessThan(0.05 * spacing)
+    },
+  )
 
   test(`2x tricubic upsampling of N=24 matches the N=48 area error (−2.2e-3 vs −8.7e-3 raw)`, () => {
     const err_raw = Math.abs(rel_area_error(extract_sphere(24, false)))
@@ -373,22 +386,25 @@ describe(`grid/lattice conventions`, () => {
     ({ periodic, dims, factor, expected }) => {
       // Catmull-Rom reproduces linear fields exactly, so an x-linear grid must resample to
       // ix·period/span wherever the 4-point stencil does not reach the periodic seam
-      const grid = make_band_grid(dims, (ix) => ix)
-      const up = upsample_grid(grid, factor, periodic)
-      expect(up.dims).toEqual(expected)
-      expect(up.order).toBe(`z_fastest`)
-      expect(up.values).toHaveLength(expected[0] * expected[1] * expected[2])
-      const [new_nx, ny, nz] = expected
+      const grid = make_band_grid(dims, (idx_x) => idx_x)
+      const up_vector = upsample_grid(grid, factor, periodic)
+      expect(up_vector.dims).toEqual(expected)
+      expect(up_vector.order).toBe(`z_fastest`)
+      expect(up_vector.values).toHaveLength(expected[0] * expected[1] * expected[2])
+      const [new_nx, size_y, size_z] = expected
       const period = periodic ? dims[0] : dims[0] - 1
       const span = periodic ? new_nx : new_nx - 1
       let n_checked = 0
-      for (let ix = 0; ix < new_nx; ix++) {
-        const src_x = (ix * period) / span
+      for (let idx_x = 0; idx_x < new_nx; idx_x++) {
+        const src_x = (idx_x * period) / span
         const base = Math.floor(src_x)
         if (base < 1 || base + 2 > period - 1) continue // stencil touches the wrap seam
-        for (let iy = 0; iy < ny; iy++) {
-          for (let iz = 0; iz < nz; iz++) {
-            expect(up.values[(ix * ny + iy) * nz + iz]).toBeCloseTo(src_x, 12)
+        for (let idx_y = 0; idx_y < size_y; idx_y++) {
+          for (let idx_z = 0; idx_z < size_z; idx_z++) {
+            expect(up_vector.values[(idx_x * size_y + idx_y) * size_z + idx_z]).toBeCloseTo(
+              src_x,
+              12,
+            )
           }
         }
         n_checked++
@@ -398,7 +414,7 @@ describe(`grid/lattice conventions`, () => {
   )
 
   test(`upsample_grid with factor ≤ 1 returns the input grid untouched`, () => {
-    const grid = make_band_grid([3, 3, 3], (ix, iy, iz) => ix + iy + iz)
+    const grid = make_band_grid([3, 3, 3], (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z)
     expect(upsample_grid(grid, 1)).toBe(grid)
   })
 
@@ -412,7 +428,7 @@ describe(`grid/lattice conventions`, () => {
     [`a NaN factor`, [8, 8, 8] as Vec3, Number.NaN, /factor NaN/],
     [`31³ at 4x`, [31, 31, 31] as Vec3, 4, null],
   ])(`upsample_grid bounds %s by point count`, (_label, dims, factor, expected) => {
-    const grid = make_band_grid(dims, (ix) => ix)
+    const grid = make_band_grid(dims, (idx_x) => idx_x)
     if (expected) expect(() => upsample_grid(grid, factor)).toThrow(expected)
     else expect(upsample_grid(grid, factor).dims).toEqual([121, 121, 121])
   })
@@ -425,8 +441,8 @@ describe(`grid/lattice conventions`, () => {
     const band_data: BandGridData = {
       energies: [
         [
-          make_band_grid([1, grid_n, grid_n], (_ix, iy, iz) =>
-            Math.hypot(iy / (grid_n - 1) - 0.5, iz / (grid_n - 1) - 0.5),
+          make_band_grid([1, grid_n, grid_n], (_ix, idx_y, idx_z) =>
+            Math.hypot(idx_y / (grid_n - 1) - 0.5, idx_z / (grid_n - 1) - 0.5),
           ),
         ],
       ],
@@ -450,9 +466,9 @@ describe(`compute_fermi_slice`, () => {
   // The even grid has no on-plane vertex and always worked, so it pins the fix as a no-op there.
   test.each([21, 22, 31])(
     `slices a %i-point grid through Γ, on-plane vertices and all`,
-    (n) => {
+    (count) => {
       const fermi_data = extract_fermi_surface(
-        make_band_data(n, sphere, { fermi_energy: 0.25 }),
+        make_band_data(count, sphere, { fermi_energy: 0.25 }),
       )
       const { isolines } = compute_fermi_slice(fermi_data, {
         miller_indices: [0, 0, 1],
@@ -460,8 +476,8 @@ describe(`compute_fermi_slice`, () => {
       })
       // the isosurface is a sphere of radius 0.25, so its central slice is one circle of that radius
       expect(isolines).toHaveLength(1)
-      for (const [px, py] of isolines[0].points_2d) {
-        expect(Math.hypot(px, py)).toBeCloseTo(0.25, 2)
+      for (const [pixel_x, pixel_y] of isolines[0].points_2d) {
+        expect(Math.hypot(pixel_x, pixel_y)).toBeCloseTo(0.25, 2)
       }
     },
   )
@@ -495,15 +511,17 @@ describe(`compute_fermi_slice`, () => {
     expect(isoline.band_index).toBe(0)
     // Every contour point lies on the z=0.05 plane on the box perimeter (|x| or |y| = 0.5);
     // box corners are exactly representable in Float32 and 0.05 interpolates within 1e-8
-    for (const [px, py, pz] of isoline.points) {
-      expect(pz).toBeCloseTo(0.05, 7)
-      expect(Math.max(Math.abs(px), Math.abs(py))).toBeCloseTo(0.5, 12)
+    for (const [pixel_x, pixel_y, pixel_z] of isoline.points) {
+      expect(pixel_z).toBeCloseTo(0.05, 7)
+      expect(Math.max(Math.abs(pixel_x), Math.abs(pixel_y))).toBeCloseTo(0.5, 12)
     }
     // Consecutive points must be close: contours are traced, not random scribbles
     for (let idx = 0; idx < isoline.points_2d.length - 1; idx++) {
-      const [x1, y1] = isoline.points_2d[idx]
-      const [x2, y2] = isoline.points_2d[idx + 1]
-      expect(Math.hypot(x2 - x1, y2 - y1)).toBeLessThanOrEqual(1.0 + 1e-12)
+      const [coord_x_1, coord_y_1] = isoline.points_2d[idx]
+      const [coord_x, coord_y_2] = isoline.points_2d[idx + 1]
+      expect(Math.hypot(coord_x - coord_x_1, coord_y_2 - coord_y_1)).toBeLessThanOrEqual(
+        1.0 + 1e-12,
+      )
     }
   })
 
@@ -558,7 +576,11 @@ describe(`detect_irreducible_bz`, () => {
   // A small electron pocket around Gamma in a large supercell spans the full zone, yet every
   // coordinate is inside 0.005 1/A, so the absolute 0.01 1/A tolerance this used to carry read
   // it as a wedge and the surface got tiled 48 times.
-  const pocket: Vec3[] = positive_verts.map((_v, idx) => [idx % 2 ? 5e-3 : -5e-3, 4e-3, 3e-3])
+  const pocket: Vec3[] = positive_verts.map((_unused_value, idx) => [
+    idx % 2 ? 5e-3 : -5e-3,
+    4e-3,
+    3e-3,
+  ])
   // that same supercell's genuine wedge, with round-off pushing one vertex past zero
   const small_wedge: Vec3[] = positive_verts.map((vert, idx) =>
     idx ? (vert.map((val) => val * 0.1) as Vec3) : [-1e-9, 0, 0.05],
@@ -619,17 +641,17 @@ describe(`lattice_point_group_matrices`, () => {
     math.reciprocal_lattice(real_lattices[name], { two_pi: true })
 
   // Column-major 4x4 applied to a column vector
-  const apply = (mat: Matrix4Tuple, [vx, vy, vz]: Vec3): Vec3 => [
-    mat[0] * vx + mat[4] * vy + mat[8] * vz,
-    mat[1] * vx + mat[5] * vy + mat[9] * vz,
-    mat[2] * vx + mat[6] * vy + mat[10] * vz,
+  const apply = (mat: Matrix4Tuple, [vector_x, vector_y, vector_z]: Vec3): Vec3 => [
+    mat[0] * vector_x + mat[4] * vector_y + mat[8] * vector_z,
+    mat[1] * vector_x + mat[5] * vector_y + mat[9] * vector_z,
+    mat[2] * vector_x + mat[6] * vector_y + mat[10] * vector_z,
   ]
   // Largest distance from any transformed BZ vertex to the nearest original BZ vertex
   const max_vertex_mismatch = (ops: Matrix4Tuple[], vertices: Vec3[]): number => {
     let worst = 0
-    for (const op of ops) {
+    for (const operation of ops) {
       for (const vertex of vertices) {
-        const image = apply(op, vertex)
+        const image = apply(operation, vertex)
         const nearest = Math.min(...vertices.map((other) => math.euclidean_dist(other, image)))
         worst = Math.max(worst, nearest)
       }
@@ -653,11 +675,12 @@ describe(`lattice_point_group_matrices`, () => {
     const k_lattice = k_lattice_of(name)
     const ops = lattice_point_group_matrices(k_lattice)
     expect(ops).toHaveLength(n_ops)
-    expect(new Set(ops.map((op) => op.map((val) => val.toFixed(9)).join(`,`))).size).toBe(
-      n_ops,
-    )
+    expect(
+      new Set(ops.map((operation) => operation.map((val) => val.toFixed(9)).join(`,`))).size,
+    ).toBe(n_ops)
     for (const [idx, val] of ops[0].entries()) expect(val).toBeCloseTo(IDENTITY_4x4[idx], 12)
-    for (const op of ops) expect(Math.abs(det_4x4_rotation(op))).toBeCloseTo(1, 10)
+    for (const operation of ops)
+      expect(Math.abs(det_4x4_rotation(operation))).toBeCloseTo(1, 10)
 
     // Every operation must permute the Brillouin-zone vertices (measured ≤ 1.2e-15)
     const { vertices } = compute_brillouin_zone(k_lattice)
@@ -695,13 +718,17 @@ describe(`lattice_point_group_matrices`, () => {
     [`reduced`, (k_lattice: Matrix3x3) => k_lattice],
     [
       `sheared`,
-      ([b1, b2, b3]: Matrix3x3): Matrix3x3 => [b1, math.add(math.scale(b1, 5), b2), b3],
+      ([value_b_1, value_b_2, value_b_3]: Matrix3x3): Matrix3x3 => [
+        value_b_1,
+        math.add(math.scale(value_b_1, 5), value_b_2),
+        value_b_3,
+      ],
     ],
   ])(`cubic operations are the 48 signed axis permutations (%s basis)`, (_name, rebase) => {
     const ops = lattice_point_group_matrices(rebase(k_lattice_of(`cubic`)))
     expect(ops).toHaveLength(48)
-    for (const op of ops) {
-      const rotation = [0, 1, 2].map((row) => [0, 1, 2].map((col) => op[col * 4 + row]))
+    for (const operation of ops) {
+      const rotation = [0, 1, 2].map((row) => [0, 1, 2].map((col) => operation[col * 4 + row]))
       for (const line of rotation) {
         expect(line.filter((val) => Math.abs(Math.abs(val) - 1) < 1e-12)).toHaveLength(1)
         expect(line.filter((val) => Math.abs(val) < 1e-12)).toHaveLength(2)

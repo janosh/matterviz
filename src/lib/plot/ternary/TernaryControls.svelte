@@ -33,7 +33,10 @@
     children?: Snippet
   } = $props()
 
-  const grid_settings = track_settings(() => ({ grid_step, show_grid, show_ticks }))
+  const grid_settings = track_settings(
+    () => ({ grid_step, show_grid, show_ticks }),
+    GRID_DEFAULTS,
+  )
 </script>
 
 <ControlPane

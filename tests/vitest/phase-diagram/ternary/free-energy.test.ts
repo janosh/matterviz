@@ -13,9 +13,9 @@ import { describe, expect, test } from 'vitest'
 import { make_phase } from '../../setup'
 
 const elements: ElementSymbol[] = [`Li`, `Co`, `O`]
-const li = make_phase({ Li: 1 }, -1.9, { entry_id: `Li` })
-const co = make_phase({ Co: 1 }, -7, { entry_id: `Co` })
-const o2 = make_phase({ O: 2 }, -2.45, { entry_id: `O2` })
+const lithium = make_phase({ Li: 1 }, -1.9, { entry_id: `Li` })
+const cobalt = make_phase({ Co: 1 }, -7, { entry_id: `Co` })
+const oxygen_2 = make_phase({ O: 2 }, -2.45, { entry_id: `O2` })
 const refs = (2 / 3) * -1.9 + (1 / 3) * -2.45 // Li2O reference energy per atom
 const temps = [300, 500, 700]
 const li2o_tab = make_phase({ Li: 2, O: 1 }, -4.5, {
@@ -26,8 +26,11 @@ const li2o_vol = make_phase({ Li: 2, O: 1 }, -4.5, {
   volume_per_atom: 8,
   e_form_per_atom: -2.1,
 })
-const dg = (entries: Parameters<typeof build_free_energy_model>[0], options = {}, idx = 3) =>
-  build_free_energy_model(entries, elements, options).phases[idx]
+const phase_energy = (
+  entries: Parameters<typeof build_free_energy_model>[0],
+  options = {},
+  idx = 3,
+) => build_free_energy_model(entries, elements, options).phases[idx]
 
 test.each([
   [{ volume_per_atom: 12 }, 12],
@@ -53,21 +56,26 @@ test(`SISSO descriptor: reduced mass, G^delta and the elemental table`, () => {
   expect(g_element_experimental(`O`, 300)).toBe(oxygen[0])
   expect(g_element_experimental(`O`, 350)).toBeCloseTo((oxygen[0] + oxygen[1]) / 2, 12)
   expect(g_element_experimental(`O`, 2000)).toBe(oxygen.at(-1))
-  for (const [el, t_out] of [
+  for (const [element, t_out] of [
     [`O`, 299],
     [`O`, 2001],
     [`Og`, 500],
   ] as const)
-    expect(g_element_experimental(el, t_out)).toBeNaN()
+    expect(g_element_experimental(element, t_out)).toBeNaN()
 })
 
 describe(`build_free_energy_model`, () => {
   test(`static, tabulated and element references`, () => {
-    const static_dg = dg([li, co, o2, make_phase({ Li: 2, O: 1 }, -4.5)])
+    const static_dg = phase_energy([
+      lithium,
+      cobalt,
+      oxygen_2,
+      make_phase({ Li: 2, O: 1 }, -4.5),
+    ])
     expect(static_dg.source).toBe(`static`)
     expect(static_dg.dg_form(300)).toBeCloseTo(-4.5 - refs, 10)
     expect(static_dg.dg_form(1500)).toBe(static_dg.dg_form(300))
-    const tab = build_free_energy_model([li, co, o2, li2o_tab], elements)
+    const tab = build_free_energy_model([lithium, cobalt, oxygen_2, li2o_tab], elements)
     expect(tab.phases[3]).toMatchObject({ source: `tabulated`, t_range: [300, 700] })
     expect(tab.phases[3].dg_form(400)).toBeCloseTo(-4.55 - refs, 10)
     expect(tab.phases[3].dg_form(800)).toBeNaN()
@@ -79,7 +87,7 @@ describe(`build_free_energy_model`, () => {
       free_energies: [-1.9, -2, -2.1],
     })
     const model = build_free_energy_model(
-      [li_tab, co, o2, make_phase({ Li: 2, O: 1 }, -4.5)],
+      [li_tab, cobalt, oxygen_2, make_phase({ Li: 2, O: 1 }, -4.5)],
       elements,
     )
     expect(model.reference_t_range).toEqual([300, 700])
@@ -99,12 +107,15 @@ describe(`build_free_energy_model`, () => {
     [`tabulated`, `tabulated`],
     [`sisso`, `sisso`],
   ] as const)(`mode %s picks %s for an entry with tables and a volume`, (mode, source) => {
-    expect(dg([li, co, o2, { ...li2o_tab, volume_per_atom: 8 }], { mode }).source).toBe(source)
+    expect(
+      phase_energy([lithium, cobalt, oxygen_2, { ...li2o_tab, volume_per_atom: 8 }], { mode })
+        .source,
+    ).toBe(source)
   })
 
   test(`sisso: dH_f + G^delta - sum x_e G_e(T); elements at their polymorph offset`, () => {
     const model = build_free_energy_model(
-      [li, make_phase({ Li: 1 }, -1.85), co, o2, li2o_vol],
+      [lithium, make_phase({ Li: 1 }, -1.85), cobalt, oxygen_2, li2o_vol],
       elements,
       { mode: `sisso` },
     )
@@ -126,55 +137,70 @@ describe(`build_free_energy_model`, () => {
     expect(model.phases[1].dg_form(1000)).toBeCloseTo(0.05, 10)
     expect(default_t_range(model)).toEqual([300, 2000])
     // dH_f derived from the unary references when e_form_per_atom is absent
-    const derived = dg([li, co, o2, { ...li2o_vol, e_form_per_atom: undefined }], {
-      mode: `sisso`,
-    })
-    const explicit = dg([li, co, o2, { ...li2o_vol, e_form_per_atom: -4.5 - refs }], {
-      mode: `sisso`,
-    })
+    const derived = phase_energy(
+      [lithium, cobalt, oxygen_2, { ...li2o_vol, e_form_per_atom: undefined }],
+      {
+        mode: `sisso`,
+      },
+    )
+    const explicit = phase_energy(
+      [lithium, cobalt, oxygen_2, { ...li2o_vol, e_form_per_atom: -4.5 - refs }],
+      {
+        mode: `sisso`,
+      },
+    )
     expect(derived.dg_form(900)).toBeCloseTo(explicit.dg_form(900), 10)
   })
 
   test(`gas atmosphere shifts the oxygen reference`, () => {
     const li2o = make_phase({ Li: 2, O: 1 }, -4.5)
     const gas_config = { enabled_gases: [`O2` as const] }
-    const at = (pressure: number, extra = {}) =>
-      dg([li, co, o2, li2o], { gas_config, gas_pressures: { O2: pressure }, ...extra })
+    const position = (pressure: number, extra = {}) =>
+      phase_energy([lithium, cobalt, oxygen_2, li2o], {
+        gas_config,
+        gas_pressures: { O2: pressure },
+        ...extra,
+      })
     // 0 K references: the full mu(T, p) - mu(0 K, 1 bar) raises dG_f, more so at higher T
-    const base = dg([li, co, o2, li2o])
-    const shift_300 = at(1).dg_form(300) - base.dg_form(300)
+    const base = phase_energy([lithium, cobalt, oxygen_2, li2o])
+    const shift_300 = position(1).dg_form(300) - base.dg_form(300)
     expect(shift_300).toBeGreaterThan(0)
-    expect(at(1).dg_form(1000) - base.dg_form(1000)).toBeGreaterThan(shift_300)
+    expect(position(1).dg_form(1000) - base.dg_form(1000)).toBeGreaterThan(shift_300)
     // The shift scales with the oxygen fraction (LiO2 has twice Li2O's x_O) and the
     // per-element memo must follow the temperature, not freeze at the first one asked
-    const with_lio2 = [li, co, o2, li2o, make_phase({ Li: 1, O: 2 }, -4)]
+    const with_lio2 = [lithium, cobalt, oxygen_2, li2o, make_phase({ Li: 1, O: 2 }, -4)]
     const shift_of = (idx: number) =>
-      dg(with_lio2, { gas_config, gas_pressures: { O2: 1 } }, idx).dg_form(300) -
-      dg(with_lio2, {}, idx).dg_form(300)
+      phase_energy(with_lio2, { gas_config, gas_pressures: { O2: 1 } }, idx).dg_form(300) -
+      phase_energy(with_lio2, {}, idx).dg_form(300)
     expect(shift_of(4) / shift_of(3)).toBeCloseTo(2, 10)
-    const one_model = at(1)
+    const one_model = position(1)
     const [g_300, g_1000] = [one_model.dg_form(300), one_model.dg_form(1000)]
-    expect(g_1000 - g_300).toBeCloseTo(at(1).dg_form(1000) - at(1).dg_form(300), 10)
+    expect(g_1000 - g_300).toBeCloseTo(
+      position(1).dg_form(1000) - position(1).dg_form(300),
+      10,
+    )
     expect(one_model.dg_form(300)).toBe(g_300)
     // Elements are their own reference and never shift
     expect(
-      build_free_energy_model([li, co, o2, li2o], elements, { gas_config }).phases[2].dg_form(
-        1000,
-      ),
+      build_free_energy_model([lithium, cobalt, oxygen_2, li2o], elements, {
+        gas_config,
+      }).phases[2].dg_form(1000),
     ).toBe(0)
     // Lower pO2 destabilizes oxides by x_O k_B T ln(p) / 2
-    expect(at(1e-10).dg_form(1000) - at(1).dg_form(1000)).toBeCloseTo(
+    expect(position(1e-10).dg_form(1000) - position(1).dg_form(1000)).toBeCloseTo(
       ((1 / 3) * BOLTZMANN_EV_PER_K * 1000 * Math.log(1e10)) / 2,
       8,
     )
     // SISSO references already hold the 1 bar gas, so only the pressure term remains
     const sisso = (pressure?: number) =>
-      dg([li, co, o2, li2o_vol], {
+      phase_energy([lithium, cobalt, oxygen_2, li2o_vol], {
         mode: `sisso`,
         gas_config,
         gas_pressures: pressure === undefined ? undefined : { O2: pressure },
       }).dg_form(1000)
-    const plain = dg([li, co, o2, li2o_vol], { mode: `sisso` }).dg_form(1000)
+    const plain = phase_energy([lithium, cobalt, oxygen_2, li2o_vol], {
+      mode: `sisso`,
+    }).dg_form(1000)
     expect(sisso(1)).toBeCloseTo(plain, 10)
     expect(sisso(1e-6) - plain).toBeCloseTo(
       ((1 / 3) * BOLTZMANN_EV_PER_K * 1000 * Math.log(1e6)) / 2,
@@ -182,10 +208,16 @@ describe(`build_free_energy_model`, () => {
     )
     // A tabulated O reference already carries its own entropy: pressure term only, no matter
     // where the compound's G(T) comes from
-    const o2_tab = { ...o2, temperatures: [300, 1000], free_energies: [-2.45, -2.45] }
+    const o2_tab = { ...oxygen_2, temperatures: [300, 1000], free_energies: [-2.45, -2.45] }
     const tab_at = (pressure: number) =>
-      dg([li, co, o2_tab, li2o], { gas_config, gas_pressures: { O2: pressure } }).dg_form(1000)
-    expect(tab_at(1)).toBeCloseTo(dg([li, co, o2_tab, li2o]).dg_form(1000), 10)
+      phase_energy([lithium, cobalt, o2_tab, li2o], {
+        gas_config,
+        gas_pressures: { O2: pressure },
+      }).dg_form(1000)
+    expect(tab_at(1)).toBeCloseTo(
+      phase_energy([lithium, cobalt, o2_tab, li2o]).dg_form(1000),
+      10,
+    )
     expect(tab_at(1e-6) - tab_at(1)).toBeCloseTo(
       ((1 / 3) * BOLTZMANN_EV_PER_K * 1000 * Math.log(1e6)) / 2,
       8,
@@ -195,14 +227,14 @@ describe(`build_free_energy_model`, () => {
   test(`references: exclude_from_hull entries are skipped, disjoint tables throw`, () => {
     const li_low = make_phase({ Li: 1 }, -9, { exclude_from_hull: true })
     const model = build_free_energy_model(
-      [li_low, li, co, o2, make_phase({ Li: 2, O: 1 }, -4.5)],
+      [li_low, lithium, cobalt, oxygen_2, make_phase({ Li: 2, O: 1 }, -4.5)],
       elements,
     )
-    expect(model.unary_refs.Li).toBe(li)
+    expect(model.unary_refs.Li).toBe(lithium)
     expect(model.phases[0].dg_form(300)).toBeCloseTo(-9 + 1.9, 10)
-    const o2_late = { ...o2, temperatures: [800, 1200], free_energies: [-2.45, -2.45] }
-    const li_early = { ...li, temperatures: [300, 700], free_energies: [-1.9, -1.9] }
-    expect(() => build_free_energy_model([li_early, co, o2_late], elements)).toThrow(
+    const o2_late = { ...oxygen_2, temperatures: [800, 1200], free_energies: [-2.45, -2.45] }
+    const li_early = { ...lithium, temperatures: [300, 700], free_energies: [-1.9, -1.9] }
+    expect(() => build_free_energy_model([li_early, cobalt, o2_late], elements)).toThrow(
       /share no temperature range: Li 300–700 K, O 800–1200 K/,
     )
   })

@@ -39,7 +39,7 @@ const calc_cell_color = (
 ) => make_cell_color_scale(all_values, better, color_scale, scale_type)(val)
 
 describe(`column stats and color domains`, () => {
-  const values = [...Array.from({ length: 20 }, (_v, idx) => idx * 5), 10_000]
+  const values = [...Array.from({ length: 20 }, (_unused_value, idx) => idx * 5), 10_000]
 
   it(`summarizes a column in one pass, ignoring non-numeric entries`, () => {
     const stats = compute_column_stats([1, 2, 3, null, undefined, NaN], `higher`)
@@ -145,146 +145,87 @@ describe(`column stats and color domains`, () => {
     expect(merge_domains([])).toBeNull()
   })
 
-  it(`clamps values outside a supplied domain`, () => {
-    const scale = make_cell_color_scale(
-      [0, 10, 10_000],
-      `higher`,
-      `interpolateViridis`,
-      `linear`,
-      [0, 10],
-    )
-    expect(scale(10_000).bg).toBe(scale(10).bg)
-    expect(scale(5).bg).not.toBe(scale(10).bg)
-  })
+  it.each([`linear`, `log`] as const)(
+    `clamps %s colors without rescanning a supplied domain`,
+    (scale_type) => {
+      const column_values = [0, 10, 10_000]
+      Object.defineProperty(column_values, 0, {
+        get: () => {
+          throw new Error(`explicit domain must not read column values`)
+        },
+      })
+      const scale = make_cell_color_scale(
+        column_values,
+        `higher`,
+        `interpolateViridis`,
+        scale_type,
+        [1, 10],
+      )
+      expect(scale(10_000).bg).toBe(scale(10).bg)
+      expect(scale(5).bg).not.toBe(scale(10).bg)
+    },
+  )
 })
 
 describe(`make_cell_color_scale`, () => {
-  it.each<{
-    name: string
-    val: number | null | undefined
-    all_values: CellVal[]
-    color_scale: D3InterpolateName | null
-    scale_type?: `linear` | `log`
-  }>([
-    {
-      name: `null value`,
-      val: null,
-      all_values: [1, 2, 3],
-      color_scale: `interpolateViridis`,
-    },
-    {
-      name: `undefined value`,
-      val: undefined,
-      all_values: [1, 2, 3],
-      color_scale: `interpolateViridis`,
-    },
-    {
-      name: `NaN value`,
-      val: NaN,
-      all_values: [1, 50, 100],
-      color_scale: `interpolateViridis`,
-    },
-    {
-      name: `null color_scale`,
-      val: 5,
-      all_values: [1, 5, 10],
-      color_scale: null,
-    },
-    {
-      name: `empty all_values`,
-      val: 5,
-      all_values: [],
-      color_scale: `interpolateViridis`,
-    },
-    {
-      name: `only non-numeric all_values`,
-      val: 50,
-      all_values: [null, `a`, undefined],
-      color_scale: `interpolateViridis`,
-    },
-    {
-      name: `all NaN all_values`,
-      val: 50,
-      all_values: [NaN, NaN],
-      color_scale: `interpolateViridis`,
-    },
-    {
-      name: `negative with log scale`,
-      val: -5,
-      all_values: [-5, 50, 100],
-      color_scale: `interpolateViridis`,
-      scale_type: `log`,
-    },
-  ])(`returns null colors for $name`, ({ val, all_values, color_scale, scale_type }) => {
-    const result = calc_cell_color(val, all_values, `higher`, color_scale, scale_type)
-    expect(result).toEqual({ bg: null, text: null })
+  it.each<
+    [
+      name: string,
+      val: number | null | undefined,
+      all_values: CellVal[],
+      color_scale?: D3InterpolateName | null,
+      scale_type?: `linear` | `log`,
+    ]
+  >([
+    [`null value`, null, [1, 2, 3]],
+    [`undefined value`, undefined, [1, 2, 3]],
+    [`NaN value`, NaN, [1, 50, 100]],
+    [`null color_scale`, 5, [1, 5, 10], null],
+    [`empty column`, 5, []],
+    [`only non-numeric values`, 50, [null, `a`, undefined]],
+    [`all NaN values`, 50, [NaN, NaN]],
+    [`negative with log scale`, -5, [-5, 50, 100], undefined, `log`],
+    [`log column without nonnegative values`, 1, [-5, -1, Infinity], undefined, `log`],
+  ])(`returns null colors for %s`, (_name, val, all_values, color_scale, scale_type) => {
+    expect(calc_cell_color(val, all_values, `higher`, color_scale, scale_type)).toEqual({
+      bg: null,
+      text: null,
+    })
   })
 
-  it.each([
-    { name: `undefined better`, val: 50, all_values: [1, 50, 100], better: undefined },
-    {
-      name: `zero with linear scale`,
-      val: 0,
-      all_values: [0, 50, 100],
-      better: `higher` as const,
-    },
-    {
-      name: `all-zero log scale`,
-      val: 0,
-      all_values: [0, 0],
-      better: `higher` as const,
-      scale_type: `log` as const,
-    },
-    {
-      name: `negative with linear scale`,
-      val: -50,
-      all_values: [-100, 0, 100],
-      better: `higher` as const,
-    },
-    {
-      name: `log scale positive values`,
-      val: 100,
-      all_values: [10, 100, 1000],
-      better: `higher` as const,
-      scale_type: `log` as const,
-    },
-    {
-      name: `mixed types in all_values`,
-      val: 50,
-      all_values: [null, `text`, 10, 50, 100, undefined, true, { obj: 1 }],
-      better: `higher` as const,
-    },
-    {
-      name: `single numeric value`,
-      val: 42,
-      all_values: [42],
-      better: `higher` as const,
-    },
-    {
-      name: `NaN filtered from all_values`,
-      val: 50,
-      all_values: [1, NaN, 100],
-      better: `higher` as const,
-    },
-  ])(`returns valid colors for $name`, ({ val, all_values, better, scale_type }) => {
+  it.each<
+    [
+      name: string,
+      val: number,
+      all_values: CellVal[],
+      better: `higher` | undefined,
+      scale_type?: `linear` | `log`,
+    ]
+  >([
+    [`undefined better`, 50, [1, 50, 100], undefined],
+    [`zero with linear scale`, 0, [0, 50, 100], `higher`],
+    [`all-zero log scale`, 0, [0, 0], `higher`, `log`],
+    [`log zero mixed with invalid values`, 0, [null, -1, -0, NaN], `higher`, `log`],
+    [`negative with linear scale`, -50, [-100, 0, 100], `higher`],
+    [`log scale positive values`, 100, [10, 100, 1000], `higher`, `log`],
+    [`mixed types`, 50, [null, `text`, 10, 50, 100, undefined, true, { obj: 1 }], `higher`],
+    [`single numeric value`, 42, [42], `higher`],
+    [`NaN filtered from column`, 50, [1, NaN, 100], `higher`],
+  ])(`returns valid colors for %s`, (_name, val, all_values, better, scale_type) => {
     const result = calc_cell_color(val, all_values, better, `interpolateViridis`, scale_type)
     expect(result.bg).not.toBeNull()
     expect(result.text).not.toBeNull()
   })
 
-  it(`returns appropriate contrast text colors`, () => {
+  it(`uses contrasting endpoints and reverses the gradient for lower values`, () => {
     const values = [1, 50, 100]
-    expect(calc_cell_color(1, values, `higher`, `interpolateViridis`).text).toBe(`white`)
-    expect(calc_cell_color(100, values, `higher`, `interpolateViridis`).text).toBe(`black`)
-  })
-
-  it(`uses distinct endpoint colors and reverses the gradient for lower values`, () => {
-    const values = [1, 50, 100]
-    const low_higher = calc_cell_color(1, values, `higher`).bg
-    const high_higher = calc_cell_color(100, values, `higher`).bg
-    expect(low_higher).not.toBe(high_higher)
-    expect(low_higher).toBe(calc_cell_color(100, values, `lower`).bg)
-    expect(high_higher).toBe(calc_cell_color(1, values, `lower`).bg)
+    const low = calc_cell_color(1, values, `higher`)
+    const high = calc_cell_color(100, values, `higher`)
+    expect(low.text).toBe(`white`)
+    expect(high.text).toBe(`black`)
+    expect(low.bg).not.toBe(high.bg)
+    expect(low.bg).toBe(calc_cell_color(100, values, `lower`).bg)
+    expect(high.bg).toBe(calc_cell_color(1, values, `lower`).bg)
   })
 
   it(`maps log-scale zero to the lowest positive endpoint color`, () => {

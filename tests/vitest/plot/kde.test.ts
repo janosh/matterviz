@@ -29,8 +29,8 @@ const np_rng = (seed: number) => {
 const normal_samples = (count: number, seed = 1): number[] => {
   const rand = np_rng(seed)
   return Array.from({ length: count }, () => {
-    const u1 = Math.max(rand(), 1e-12)
-    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rand())
+    const uniform_1 = Math.max(rand(), 1e-12)
+    return Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * rand())
   })
 }
 

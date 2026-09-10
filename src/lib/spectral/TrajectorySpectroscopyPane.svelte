@@ -335,7 +335,9 @@
       style="height: 100%; min-height: 0"
     />
   {:else if error_msg}
-    <StatusMessage type="error" message={error_msg} />
+    {#if inline}
+      {@render settings_content()}
+    {/if}
   {:else if run && calculation_busy}
     <div class="analysis-status">
       <Spinner text={calculation_label} style="--spinner-margin: 0" />

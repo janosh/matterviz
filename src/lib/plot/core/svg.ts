@@ -42,30 +42,31 @@ export function violin_path(
 // points the other way, i.e. negative values. The radius is clamped to half the bar's
 // width and height so thin bars degrade to plain rectangles instead of self-intersecting arcs.
 export function bar_path(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
+  coord_x: number,
+  coord_y: number,
+  width_value: number,
+  height_value: number,
   radius: number,
   vertical: boolean = true,
   flip: boolean = false,
 ): string {
-  const r = Math.min(radius, w / 2, h / 2)
-  if (!(r > 0)) return `M${x},${y}h${w}v${h}h${-w}Z`
+  const radius_2 = Math.min(radius, width_value / 2, height_value / 2)
+  if (!(radius_2 > 0))
+    return `M${coord_x},${coord_y}h${width_value}v${height_value}h${-width_value}Z`
 
   const sweep = flip ? 0 : 1
   if (vertical) {
-    const y_start = flip ? y : y + h
-    const y_arc = flip ? y + h - r : y + r
-    const y_tip = flip ? y + h : y
-    return `M${x},${y_start}V${y_arc}A${r},${r} 0 0 ${sweep} ${x + r},${y_tip}H${
-      x + w - r
-    }A${r},${r} 0 0 ${sweep} ${x + w},${y_arc}V${y_start}Z`
+    const y_start = flip ? coord_y : coord_y + height_value
+    const y_arc = flip ? coord_y + height_value - radius_2 : coord_y + radius_2
+    const y_tip = flip ? coord_y + height_value : coord_y
+    return `M${coord_x},${y_start}V${y_arc}A${radius_2},${radius_2} 0 0 ${sweep} ${coord_x + radius_2},${y_tip}H${
+      coord_x + width_value - radius_2
+    }A${radius_2},${radius_2} 0 0 ${sweep} ${coord_x + width_value},${y_arc}V${y_start}Z`
   }
-  const x_start = flip ? x + w : x
-  const x_arc = flip ? x + r : x + w - r
-  const x_tip = flip ? x : x + w
-  return `M${x_start},${y}H${x_arc}A${r},${r} 0 0 ${sweep} ${x_tip},${y + r}V${
-    y + h - r
-  }A${r},${r} 0 0 ${sweep} ${x_arc},${y + h}H${x_start}Z`
+  const x_start = flip ? coord_x + width_value : coord_x
+  const x_arc = flip ? coord_x + radius_2 : coord_x + width_value - radius_2
+  const x_tip = flip ? coord_x : coord_x + width_value
+  return `M${x_start},${coord_y}H${x_arc}A${radius_2},${radius_2} 0 0 ${sweep} ${x_tip},${coord_y + radius_2}V${
+    coord_y + height_value - radius_2
+  }A${radius_2},${radius_2} 0 0 ${sweep} ${x_arc},${coord_y + height_value}H${x_start}Z`
 }

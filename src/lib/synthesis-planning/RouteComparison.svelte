@@ -215,13 +215,13 @@
         onchange={(event) => {
           const route_id = event.currentTarget.value
           if (route_id && compared.length < 4)
-            shortlist_ids = [...compared.map(({ id }) => id), route_id]
+            shortlist_ids = [...compared.map(({ id: identifier }) => identifier), route_id]
           event.currentTarget.value = ``
         }}
       >
         <option value="">Choose a route…</option>
         {#each routes as route, idx (route.id)}
-          {#if !compared.some(({ id }) => id === route.id)}
+          {#if !compared.some(({ id: identifier }) => identifier === route.id)}
             <option value={route.id}
               >#{idx + 1}: {route.intermediate_step
                 ? `${route.intermediate_step.reaction.equation}; then `
@@ -267,8 +267,8 @@
                   aria-label={`Remove ${route.reaction.equation} from comparison`}
                   onclick={() =>
                     (shortlist_ids = compared
-                      .filter(({ id }) => id !== route.id)
-                      .map(({ id }) => id))}>Remove</button
+                      .filter(({ id: identifier }) => identifier !== route.id)
+                      .map(({ id: identifier }) => identifier))}>Remove</button
                 >
               </th>
             {/each}

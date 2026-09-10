@@ -7,7 +7,7 @@ import type {
   TrajectoryXQuantity,
   TrajHandlerData,
 } from '$lib/trajectory'
-import { Trajectory } from '$lib/trajectory'
+import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
 import * as plotting from '$lib/trajectory/plotting'
 import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
@@ -20,6 +20,17 @@ import {
 } from '../setup'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+
+vi.mock(`$app/environment`, () => ({ browser: false }))
+vi.mock(`$app/state`, () => ({
+  page: {
+    url: {
+      get searchParams(): never {
+        throw new Error(`Cannot access url.searchParams on a page with prerendering enabled`)
+      },
+    },
+  },
+}))
 
 type Props = ComponentProps<typeof Trajectory>
 type Pane = Props[`active_pane`]
@@ -73,6 +84,27 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
   ...overrides,
 })
 
+test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
+  // Exercise the page's prerender guard without mounting every 3D viewer in its gallery.
+  const viewer = vi.fn()
+  vi.doMock(`$lib/trajectory`, () => ({
+    trajectory_from_frames,
+    Trajectory: viewer,
+  }))
+  try {
+    const { default: TrajectoryTestPage } =
+      await import('../../../src/routes/test/trajectory/+page.svelte')
+    mounted.push(mount(TrajectoryTestPage, { target: document.body }))
+    flushSync()
+    expect(viewer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: `loaded-trajectory` }),
+    )
+  } finally {
+    vi.doUnmock(`$lib/trajectory`)
+  }
+})
+
 // Structure renders its own view-mode/fullscreen buttons, so control queries stay in the bar
 const CONTROLS = `.trajectory-controls`
 const menu_option = (target: ParentNode, text: string): HTMLButtonElement => {
@@ -101,7 +133,7 @@ const legend_state = (target: ParentNode): Record<string, boolean> =>
   )
 const axis_labels = (target: ParentNode): string[] =>
   [...target.querySelectorAll(`.scatter .axis-label`)].map(
-    (el) => el.textContent?.trim() ?? ``,
+    (element) => element.textContent?.trim() ?? ``,
   )
 
 describe(`display modes`, () => {
@@ -307,13 +339,13 @@ describe(`controls`, () => {
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ steps }), step_labels }),
     )
-    const labels = [...target.querySelectorAll(`.step-label`)].map((el) =>
-      el.textContent?.trim(),
+    const labels = [...target.querySelectorAll(`.step-label`)].map((element) =>
+      element.textContent?.trim(),
     )
     expect(labels).toEqual(expected)
     // Ticks sit at the frame's fraction of the slider (1.5% inset, 98% span)
     const ticks = [...target.querySelectorAll<HTMLElement>(`.step-tick`)].map(
-      (el) => el.style.left,
+      (element) => element.style.left,
     )
     expect(ticks).toEqual(expected.map((label) => `${1.5 + (Number(label) / 10) * 98}%`))
   })

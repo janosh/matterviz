@@ -9,7 +9,12 @@ import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { ShowControlsProp } from '$lib/controls'
 import type { Vec2 } from '$lib/math'
 import { type AxisConfig, COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
-import { AXIS_LABEL_HEIGHT, DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
+import {
+  AXIS_LABEL_HEIGHT,
+  DEFAULT_PLOT_PADDING,
+  rect_within_rect,
+  rects_overlap,
+} from '$lib/plot/core/layout'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -246,7 +251,9 @@ const legend_outside = (plot: HTMLElement): boolean => {
 }
 // Reference-line annotation label with the given text
 const annotation_of = (plot: HTMLElement, text: string): Element => {
-  const label = [...plot.querySelectorAll(`svg text`)].find((el) => el.textContent === text)
+  const label = [...plot.querySelectorAll(`svg text`)].find(
+    (element) => element.textContent === text,
+  )
   if (!label) throw new Error(`missing ${text} annotation`)
   return label
 }
@@ -321,7 +328,7 @@ describe(`cartesian frame`, () => {
       )
       const tick_values = (axis: `x` | `x2` | `y` | `y2`): number[] =>
         [...plot.querySelectorAll(`g.${axis}-axis g.tick text`)]
-          .map((el) => Number(el.textContent))
+          .map((element) => Number(element.textContent))
           .filter(Number.isFinite)
       const tick_span = (axis: `x` | `x2` | `y` | `y2`): Vec2 => {
         const values = tick_values(axis)
@@ -337,16 +344,16 @@ describe(`cartesian frame`, () => {
       // jsdom reports a zero-origin bounding rect, so client coords are plot-local; drag the
       // middle half of the plot width and the second quarter of its height
       const clip = clip_rect(plot)
-      const at = (fx: number, fy: number): MouseEventInit => ({
+      const position = (frac_x: number, frac_y: number): MouseEventInit => ({
         bubbles: true,
-        clientX: clip.x + clip.width * fx,
-        clientY: clip.y + clip.height * fy,
+        clientX: clip.x + clip.width * frac_x,
+        clientY: clip.y + clip.height * frac_y,
       })
       doc_query(`svg[role="application"]`).dispatchEvent(
-        new MouseEvent(`mousedown`, at(0.25, 0.25)),
+        new MouseEvent(`mousedown`, position(0.25, 0.25)),
       )
-      window.dispatchEvent(new MouseEvent(`mousemove`, at(0.75, 0.5)))
-      window.dispatchEvent(new MouseEvent(`mouseup`, at(0.75, 0.5)))
+      window.dispatchEvent(new MouseEvent(`mousemove`, position(0.75, 0.5)))
+      window.dispatchEvent(new MouseEvent(`mouseup`, position(0.75, 0.5)))
       await tick()
 
       for (const axis of shown_axes) {
@@ -486,7 +493,7 @@ describe(`cartesian frame`, () => {
       const plot = await mount_chart(chart, { ...chart.props(), show_legend: true })
       const visible_states = () =>
         [...plot.querySelectorAll(`.legend-item`)].map(
-          (el) => !el.classList.contains(`hidden`),
+          (element) => !element.classList.contains(`hidden`),
         )
       expect(visible_states()).toEqual([true, true, true])
       const dblclick = async () => {
@@ -520,6 +527,52 @@ describe(`cartesian frame`, () => {
       })
       expect(legend_outside(dense)).toBe(true)
     },
+  )
+
+  test.each(frame_charts)(
+    `$name keeps automatic legends clear of marginal strips`,
+    async (chart) => {
+      vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(120)
+      vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(44)
+      for (const placement of [`auto`, `flush`, `outer`] as const) {
+        for (const dense of [false, true]) {
+          const plot = await mount_chart(
+            chart,
+            {
+              ...(dense ? chart.dense_props() : chart.props()),
+              show_legend: true,
+              legend: {},
+              marginals: Object.fromEntries(
+                [`top`, `right`, `bottom`, `left`].map((side) => [
+                  side,
+                  { type: `cdf`, size: 60, placement },
+                ]),
+              ),
+            },
+            { width: 800, height: 600 },
+          )
+          const legend = {
+            x: legend_px(plot, `left`),
+            y: legend_px(plot, `top`),
+            width: 120,
+            height: 44,
+          }
+          if (!dense) expect(rect_within_rect(legend, clip_rect(plot))).toBe(true)
+          const strips = plot.querySelectorAll(`.marginal-hit`)
+          expect(strips).toHaveLength(4)
+          for (const strip of strips) {
+            const rect = {
+              x: Number(strip.getAttribute(`x`)),
+              y: Number(strip.getAttribute(`y`)),
+              width: Number(strip.getAttribute(`width`)),
+              height: Number(strip.getAttribute(`height`)),
+            }
+            expect(rects_overlap(legend, rect), `${placement}, dense=${dense}`).toBe(false)
+          }
+        }
+      }
+    },
+    20_000,
   )
 
   // An outside legend is placed from its measured size: bottom-centred with an 8px gap, at
@@ -827,17 +880,19 @@ describe(`cartesian frame`, () => {
       const clearance = COLOR_BAR_DEFAULTS.axis_clearance
       await vi.waitFor(() => {
         const colorbar = doc_query(`.colorbar-wrapper`)
-        const [x, y, width, height] = [`x`, `y`, `width`, `height`].map((key) =>
+        const [coord_x, coord_y, width, height] = [`x`, `y`, `width`, `height`].map((key) =>
           Number(colorbar.getAttribute(`data-decoration-${key}`)),
         )
         const area = clip_rect(plot)
         expect({ width, height }).toEqual({ width: 240, height: 46 })
-        expect(x).toBeGreaterThanOrEqual(area.x + clearance)
-        expect(y).toBeGreaterThanOrEqual(area.y + clearance)
-        expect(x + width).toBeLessThanOrEqual(area.x + area.width - clearance)
-        expect(y + height).toBeLessThanOrEqual(area.y + area.height - clearance)
-        expect(Math.min(x - area.x, area.x + area.width - (x + width))).toBe(clearance)
-        expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(x + 10)
+        expect(coord_x).toBeGreaterThanOrEqual(area.x + clearance)
+        expect(coord_y).toBeGreaterThanOrEqual(area.y + clearance)
+        expect(coord_x + width).toBeLessThanOrEqual(area.x + area.width - clearance)
+        expect(coord_y + height).toBeLessThanOrEqual(area.y + area.height - clearance)
+        expect(Math.min(coord_x - area.x, area.x + area.width - (coord_x + width))).toBe(
+          clearance,
+        )
+        expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(coord_x + 10)
       })
     },
   )

@@ -62,9 +62,9 @@ const as_model = (mock: MockModel) => mock as unknown as ModelArg
 // stub it mounted so the test can read driven props / drive $bindable writeback.
 const run_widget = (widget_type: string, model: MockModel) => {
   reset_stub() // clear any prior stub so a failed mount throws instead of returning stale
-  const el = document.createElement(`div`)
-  document.body.append(el)
-  mount_spec(as_model(model), el, WIDGETS[widget_type])
+  const element = document.createElement(`div`)
+  document.body.append(element)
+  mount_spec(as_model(model), element, WIDGETS[widget_type])
   flushSync() // settle the initial writeback effects (all no-ops)
   return latest_stub()
 }
@@ -73,7 +73,8 @@ const run_widget = (widget_type: string, model: MockModel) => {
 // so each prop computes to a distinct, defined value.
 const seeded_model = (widget_type: string, spec: (typeof WIDGETS)[string]): MockModel => {
   const state: Record<string, unknown> = { widget_type }
-  for (const dep of new Set(spec.drive.flatMap((dp) => dp.deps))) state[dep] = `seed:${dep}`
+  for (const dep of new Set(spec.drive.flatMap((driven_prop) => driven_prop.deps)))
+    state[dep] = `seed:${dep}`
   return new MockModel(state)
 }
 
@@ -88,9 +89,9 @@ describe(`drive wiring (all widgets)`, () => {
     (widget_type, spec) => {
       const model = seeded_model(widget_type, spec)
       const stub = run_widget(widget_type, model)
-      for (const dp of spec.drive) {
-        if (dp.writeback) continue // covered by writeback round-trip tests below
-        expect(stub.read()[dp.prop]).toEqual(dp.compute(as_model(model)))
+      for (const driven_prop of spec.drive) {
+        if (driven_prop.writeback) continue // covered by writeback round-trip tests below
+        expect(stub.read()[driven_prop.prop]).toEqual(driven_prop.compute(as_model(model)))
       }
     },
   )
@@ -100,14 +101,14 @@ describe(`drive wiring (all widgets)`, () => {
     (widget_type, spec) => {
       const model = seeded_model(widget_type, spec)
       const stub = run_widget(widget_type, model)
-      for (const dp of spec.drive) {
-        if (dp.writeback) continue
+      for (const driven_prop of spec.drive) {
+        if (driven_prop.writeback) continue
         // bump every dep (not just the first) so a missing listener on a multi-dep
         // derived prop is caught, not only deps[0]
-        for (const dep of dp.deps) {
+        for (const dep of driven_prop.deps) {
           model.push_from_python(dep, `bumped:${dep}`)
           flushSync()
-          expect(stub.read()[dp.prop]).toEqual(dp.compute(as_model(model)))
+          expect(stub.read()[driven_prop.prop]).toEqual(driven_prop.compute(as_model(model)))
         }
       }
     },
@@ -503,8 +504,8 @@ describe(`render() lifecycle`, () => {
       selected_sites: [],
       hovered_site_idx: null,
     })
-    const el = document.createElement(`div`)
-    document.body.append(el)
+    const element = document.createElement(`div`)
+    document.body.append(element)
     const listener_count = () =>
       Object.values(model.listeners).reduce((sum, set) => sum + set.size, 0)
 
@@ -513,7 +514,7 @@ describe(`render() lifecycle`, () => {
     // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
     const dispose = anywidget_module.default.render({
       model: as_model(model),
-      el,
+      el: element,
     } as never) as () => void
     flushSync()
     expect(listener_count()).toBeGreaterThan(0) // drive listeners registered

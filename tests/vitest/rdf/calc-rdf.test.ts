@@ -8,16 +8,17 @@ import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../setup'
 
-const fixture = (id: string): Crystal => {
-  const structure = structure_map.get(id)
-  if (!structure || !is_crystal(structure)) throw new Error(`Test crystal ${id} not found`)
+const fixture = (identifier: string): Crystal => {
+  const structure = structure_map.get(identifier)
+  if (!structure || !is_crystal(structure))
+    throw new Error(`Test crystal ${identifier} not found`)
   return structure
 }
 const lu_al_structure = fixture(`mp-1234`)
 const pd_structure = fixture(`mp-2`)
 const bi2zr2o8_structure = fixture(`Bi2Zr2O8-Fm3m`)
 
-const bin_width = ({ r }: RdfPattern) => r[1] - r[0]
+const bin_width = ({ r: radius }: RdfPattern) => radius[1] - radius[0]
 const max_abs_diff = (left: number[], right: number[]) =>
   Math.max(...left.map((val, idx) => Math.abs(val - right[idx])))
 
@@ -43,10 +44,10 @@ const simple_cubic_shells = (a_len: number, cutoff: number): Map<number, number>
   const reach = Math.ceil(cutoff / a_len)
   const span = Array.from({ length: 2 * reach + 1 }, (_unused, idx) => idx - reach)
   const shells = new Map<number, number>()
-  for (const ii of span) {
-    for (const jj of span) {
-      for (const kk of span) {
-        const dist = a_len * Math.hypot(ii, jj, kk)
+  for (const row_index of span) {
+    for (const col_index of span) {
+      for (const depth_index of span) {
+        const dist = a_len * Math.hypot(row_index, col_index, depth_index)
         if (dist > 0 && dist < cutoff) shells.set(dist, (shells.get(dist) ?? 0) + 1)
       }
     }
@@ -384,14 +385,14 @@ describe(`calculate_all_pair_rdfs`, () => {
         const opts = { cutoff: 8, n_bins: 50, pbc }
         const patterns = calculate_all_pair_rdfs(structure, opts)
         expect(patterns.map((pattern) => pattern.element_pair)).toEqual(pairs)
-        for (const { element_pair, r, g_r } of patterns) {
+        for (const { element_pair, r: radius, g_r } of patterns) {
           const [center_species, neighbor_species] = element_pair ?? []
           const direct = calculate_rdf(structure, {
             ...opts,
             center_species,
             neighbor_species,
           })
-          expect(r).toBe(patterns[0].r)
+          expect(radius).toBe(patterns[0].r)
           expect(g_r).toEqual(direct.g_r)
         }
       }

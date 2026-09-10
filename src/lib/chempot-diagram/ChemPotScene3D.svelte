@@ -139,10 +139,10 @@
   const niced_range = $derived(
     axis_indices.map((axis): Vec2 => {
       const ticks = data_ticks[axis]
-      const lo = ticks[0]
-      const hi = ticks.at(-1) ?? lo
+      const lower = ticks[0]
+      const upper = ticks.at(-1) ?? lower
       const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1
-      return axis === 2 ? [Math.floor(data_bbox.mins[2]), hi] : [lo - step, hi + step]
+      return axis === 2 ? [Math.floor(data_bbox.mins[2]), upper] : [lower - step, upper + step]
     }),
   )
   const back = $derived(
@@ -251,31 +251,33 @@
   const projection_planes = $derived.by(() => {
     const projections = display.projections
     if (!projections) return []
-    const [r0, r1, r2] = niced_range
+    const [radius_0, radius_1, radius] = niced_range
     const projection_scale = display.projection_scale ?? 0.5
-    const [s0, s1, s2] = niced_range.map(([lo, hi]) => (hi - lo) * projection_scale)
-    const mid = ([lo, hi]: Vec2) => (lo + hi) / 2
+    const [slope_0, slope_1, slope_2] = niced_range.map(
+      ([lower, upper]) => (upper - lower) * projection_scale,
+    )
+    const mid = ([lower, upper]: Vec2) => (lower + upper) / 2
     // Each plane sits at the backside of the one axis it is normal to, centered on the others
     const planes: { key: string; pos: Vec3; rot: Vec3; size: Vec2; color: string }[] = [
       {
         key: `xy`,
-        pos: swiz(mid(r0), mid(r1), back[2]),
+        pos: swiz(mid(radius_0), mid(radius_1), back[2]),
         rot: [-Math.PI / 2, 0, 0],
-        size: [s1, s0],
+        size: [slope_1, slope_0],
         color: `#5dade2`,
       },
       {
         key: `xz`,
-        pos: swiz(mid(r0), back[1], mid(r2)),
+        pos: swiz(mid(radius_0), back[1], mid(radius)),
         rot: [0, Math.PI / 2, 0],
-        size: [s0, s2],
+        size: [slope_0, slope_2],
         color: `#58d68d`,
       },
       {
         key: `yz`,
-        pos: swiz(back[0], mid(r1), mid(r2)),
+        pos: swiz(back[0], mid(radius_1), mid(radius)),
         rot: [0, 0, 0],
-        size: [s1, s2],
+        size: [slope_1, slope_2],
         color: `#f5b041`,
       },
     ]
@@ -284,16 +286,16 @@
 
   const bounding_box_geometry = $derived.by(() => {
     if (!display.show_bounding_box) return null
-    const [r0, r1, r2] = niced_range
+    const [radius_0, radius_1, radius] = niced_range
     const vertices = [
-      swiz(r0[0], r1[0], r2[0]),
-      swiz(r0[1], r1[0], r2[0]),
-      swiz(r0[1], r1[1], r2[0]),
-      swiz(r0[0], r1[1], r2[0]),
-      swiz(r0[0], r1[0], r2[1]),
-      swiz(r0[1], r1[0], r2[1]),
-      swiz(r0[1], r1[1], r2[1]),
-      swiz(r0[0], r1[1], r2[1]),
+      swiz(radius_0[0], radius_1[0], radius[0]),
+      swiz(radius_0[1], radius_1[0], radius[0]),
+      swiz(radius_0[1], radius_1[1], radius[0]),
+      swiz(radius_0[0], radius_1[1], radius[0]),
+      swiz(radius_0[0], radius_1[0], radius[1]),
+      swiz(radius_0[1], radius_1[0], radius[1]),
+      swiz(radius_0[1], radius_1[1], radius[1]),
+      swiz(radius_0[0], radius_1[1], radius[1]),
     ]
     const edges = [
       [0, 1],
@@ -456,30 +458,32 @@
   </T.LineSegments>
 {/if}
 
-{#each grid_config as gc (gc.axis)}
-  {#if gc.line_geom}
-    <T.Line geometry={gc.line_geom}>
-      <T.LineBasicMaterial color={gc.color} linewidth={2} />
+{#each grid_config as grid_item (grid_item.axis)}
+  {#if grid_item.line_geom}
+    <T.Line geometry={grid_item.line_geom}>
+      <T.LineBasicMaterial color={grid_item.color} linewidth={2} />
     </T.Line>
-    {#each gc.tick_geoms as tick_geom, tdx (tdx)}
+    {#each grid_item.tick_geoms as tick_geom, tdx (tdx)}
       <T.Line geometry={tick_geom}>
-        <T.LineBasicMaterial color={gc.color} />
+        <T.LineBasicMaterial color={grid_item.color} />
       </T.Line>
     {/each}
   {/if}
-  {#each gc.grid_geoms as grid_geom, gdx (gdx)}
+  {#each grid_item.grid_geoms as grid_geom, gdx (gdx)}
     <T.Line geometry={grid_geom}>
       <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
     </T.Line>
   {/each}
   {#if display.show_axis_labels}
-    {#each gc.tick_labels as tick, tick_idx (tick_idx)}
+    {#each grid_item.tick_labels as tick, tick_idx (tick_idx)}
       <extras.HTML position={tick.pos} center zIndexRange={[1, 0]}>
         <span class="tick-label axis-tick-label">{tick.text}</span>
       </extras.HTML>
     {/each}
-    <extras.HTML position={gc.label_pos} center zIndexRange={[1, 0]}>
-      <span class="axis-label" style:color={gc.color}>{@html sanitize_html(gc.label)}</span>
+    <extras.HTML position={grid_item.label_pos} center zIndexRange={[1, 0]}>
+      <span class="axis-label" style:color={grid_item.color}
+        >{@html sanitize_html(grid_item.label)}</span
+      >
     </extras.HTML>
   {/if}
 {/each}

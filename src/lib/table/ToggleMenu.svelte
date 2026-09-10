@@ -208,6 +208,7 @@
   bind:this={details_el}
   open={column_panel_open}
   {@attach click_outside({
+    enabled: column_panel_open,
     callback: () => (column_panel_open = false),
     inside: [dropdown_selector],
   })}

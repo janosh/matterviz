@@ -201,7 +201,15 @@ describe(`project_arcs`, () => {
     ).toEqual(projection)
     expect(select_group).not.toHaveBeenCalled()
     expect(
-      projection.visible.map(({ arc, a0, a1, r0, r1 }) => [arc.label, a0, a1, r0, r1]),
+      projection.visible.map(
+        ({ arc, a0: value_a_0, a1: value_a_1, r0: radius_0, r1: radius_1 }) => [
+          arc.label,
+          value_a_0,
+          value_a_1,
+          radius_0,
+          radius_1,
+        ],
+      ),
     ).toEqual([
       [`a`, 0, 100, 0, 150],
       [`a1`, 0, 100, 150, 300],
@@ -283,8 +291,10 @@ describe(`annular_sector_path`, () => {
       [0, Math.PI / 2, 0, 100],
       [`M`, 0, -100, `A`, 100, 100, 0, 0, 1, 100, 0, `L`, 0, 0, `A`, 0, 0, 0, 0, 0, 0, 0, `Z`],
     ],
-  ])(`%s`, (_label, [a0, a1, r0, r1], expected) => {
-    expect(tokens(annular_sector_path(a0, a1, r0, r1))).toEqual(expected)
+  ])(`%s`, (_label, [value_a_0, value_a_1, radius_0, radius_1], expected) => {
+    expect(tokens(annular_sector_path(value_a_0, value_a_1, radius_0, radius_1))).toEqual(
+      expected,
+    )
   })
 
   test(`full ring: two half-circle outer arcs plus a counter-clockwise inner hole`, () => {

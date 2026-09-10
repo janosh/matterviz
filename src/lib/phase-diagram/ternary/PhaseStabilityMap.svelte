@@ -100,7 +100,8 @@
   const [t_min, t_max] = $derived(diagram.t_range)
   const plot_width = $derived.by(() => Math.max(1, surface.dims.width - label_width - 8))
   const x_of = (temp: number) => label_width + ((temp - t_min) / (t_max - t_min)) * plot_width
-  const t_of = (px: number) => t_min + ((px - label_width) / plot_width) * (t_max - t_min)
+  const t_of = (pixel_x: number) =>
+    t_min + ((pixel_x - label_width) / plot_width) * (t_max - t_min)
   const row_top = (row: number) => top_pad + row * row_height
   const ramp = $derived(get_d3_interpolator(settings.color_scale))
   const color_of = (e_above_hull: number) => {
@@ -150,8 +151,8 @@
         )
       }
       ctx.fillStyle = TERNARY_COLORS.stable // exact windows on top
-      for (const [lo, hi] of stability_windows[phase]) {
-        ctx.fillRect(x_of(lo), top, Math.max(1.5, x_of(hi) - x_of(lo)), bar_height)
+      for (const [lower, upper] of stability_windows[phase]) {
+        ctx.fillRect(x_of(lower), top, Math.max(1.5, x_of(upper) - x_of(lower)), bar_height)
       }
       ctx.fillStyle = text_color
       if (row_height >= 9) draw_label(ctx, diagram.phases[phase].label, top + bar_height / 2)

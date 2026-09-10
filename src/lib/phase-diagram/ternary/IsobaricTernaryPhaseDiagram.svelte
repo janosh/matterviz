@@ -142,7 +142,8 @@
       ...new Set(
         Object.entries(DEFAULT_ELEMENT_TO_GAS)
           .filter(
-            ([el, gas]) => present.has(el) && Object.keys(GAS_STOICHIOMETRY[gas]).length === 1,
+            ([element, gas]) =>
+              present.has(element) && Object.keys(GAS_STOICHIOMETRY[gas]).length === 1,
           )
           .map(([, gas]) => gas),
       ),
@@ -311,7 +312,7 @@
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
   const windows_text = (phase: number) =>
     (diagram_raw?.stability_windows[phase] ?? [])
-      .map(([lo, hi]) => `${format_num(lo, `.0f`)}–${format_num(hi, `.0f`)} K`)
+      .map(([lower, upper]) => `${format_num(lower, `.0f`)}–${format_num(upper, `.0f`)} K`)
       .join(`, `) || `never stable in range`
   const meV = (value: number) =>
     Number.isFinite(value)
@@ -552,7 +553,7 @@
         {@const { barycentric, decomposition } = hover.data}
         <div>
           {model.elements
-            .map((el, idx) => `${el} ${format_num(barycentric[idx] * 100, `.1f`)}%`)
+            .map((element, idx) => `${element} ${format_num(barycentric[idx] * 100, `.1f`)}%`)
             .join(` · `)}
         </div>
         {#if decomposition}

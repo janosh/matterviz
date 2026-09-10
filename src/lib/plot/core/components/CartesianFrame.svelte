@@ -269,6 +269,7 @@
         width={frame.width}
         height={frame.height}
         pad={frame.pad}
+        outer_pad={frame.outside_pad}
         has_axis={marginal_axis_presence(frame.has_x2, frame.has_y2)}
         axes={marginal_axes}
         id={frame.clip_path_id}

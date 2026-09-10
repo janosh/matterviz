@@ -1,4 +1,6 @@
 import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
+import * as kde_math from '$lib/plot/box/kde'
+import * as box_math from '$lib/plot/box/box-plot'
 import type { Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
@@ -125,7 +127,9 @@ describe(`BoxPlot`, () => {
   // > 0, show_mean off); the IQR box is a <rect class="iqr-box">
   const theme_stroke = `var(--text-color, black)`
   const box_line_strokes = (plot: HTMLElement): (string | null)[] =>
-    [...plot.querySelectorAll(`.box-series line`)].map((el) => el.getAttribute(`stroke`))
+    [...plot.querySelectorAll(`.box-series line`)].map((element) =>
+      element.getAttribute(`stroke`),
+    )
 
   // whiskers, median and box outline default to a theme CSS variable (like the axis/tick/grid
   // colors) so they track light/dark themes instead of being permanently black; an explicit
@@ -312,6 +316,7 @@ describe(`BoxPlot`, () => {
   // Hiding series shrinks the obstacle field the frame's solver reads, so an outside legend
   // moves back inside once the remaining boxes leave room for it
   test(`legend returns inside the plot once dense boxes are isolated`, async () => {
+    const summary_spy = vi.spyOn(box_math, `summarize_box_samples`)
     const plot = await mount_sized_box_plot({
       series: Array.from({ length: 24 }, (_, series_idx) => ({
         y: [-20, -10, 0, 10, 20],
@@ -321,6 +326,8 @@ describe(`BoxPlot`, () => {
       legend: { tween: { duration: 0 } },
     })
     await tick()
+    const initial_summary_calls = summary_spy.mock.calls.length
+    expect(initial_summary_calls).toBe(24)
     const legend = plot.querySelector<HTMLElement>(`.legend`)
     const clip_rect = plot.querySelector(`clipPath rect`)
     if (!legend || !clip_rect) throw new Error(`legend or clip rectangle not found`)
@@ -332,6 +339,7 @@ describe(`BoxPlot`, () => {
       .querySelector(`.legend-item`)
       ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     await vi.waitFor(() => expect(is_outside()).toBe(false))
+    expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
   })
 
   // === Violin support ===
@@ -417,17 +425,19 @@ describe(`BoxPlot`, () => {
         kind: `violin+box`,
       })
       // whisker segments run along the value axis at the category center
-      const [c1, c2] = orientation === `horizontal` ? [`y1`, `y2`] : [`x1`, `x2`]
+      const [value_c_1, value_c_2] = orientation === `horizontal` ? [`y1`, `y2`] : [`x1`, `x2`]
       const whisker = [...plot.querySelectorAll(`.box-series line`)].find(
-        (ln) => ln.getAttribute(c1) === ln.getAttribute(c2),
+        (line) => line.getAttribute(value_c_1) === line.getAttribute(value_c_2),
       )
-      const center = Number(whisker?.getAttribute(c1))
+      const center = Number(whisker?.getAttribute(value_c_1))
       expect(Number.isFinite(center)).toBe(true)
-      const { xs, ys } = path_coords(
+      const { xs: x_values, ys: y_values } = path_coords(
         plot.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``,
       )
       // signed offsets from the center line: hump on the positive side, inner edge on it
-      const deltas = (orientation === `horizontal` ? ys : xs).map((px) => (px - center) * sign)
+      const deltas = (orientation === `horizontal` ? y_values : x_values).map(
+        (pixel_x) => (pixel_x - center) * sign,
+      )
       expect(Math.max(...deltas)).toBeGreaterThan(5)
       expect(Math.min(...deltas)).toBeGreaterThanOrEqual(-1)
     },
@@ -467,7 +477,7 @@ describe(`BoxPlot`, () => {
       kind: `violin+box`,
     })
     const attrs = [...plot.querySelectorAll(`.box-series line, .box-series rect`)].flatMap(
-      (el) => [...el.attributes].map((attr) => attr.value),
+      (element) => [...element.attributes].map((attr) => attr.value),
     )
     expect(attrs.length).toBeGreaterThan(0)
     expect(
@@ -477,8 +487,8 @@ describe(`BoxPlot`, () => {
     const path = plot.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``
     expect(path.length).toBeGreaterThan(0)
     expect(path).not.toContain(`NaN`)
-    const { ys } = path_coords(path)
-    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(100)
+    const { ys: y_values } = path_coords(path)
+    expect(Math.max(...y_values) - Math.min(...y_values)).toBeGreaterThan(100)
   })
 
   test(`series pattern fills the box body from a scoped <pattern> def`, async () => {
@@ -513,8 +523,11 @@ describe(`BoxPlot`, () => {
   })
 
   test(`controls pane: Box / violin reset reverts changed settings to defaults`, async () => {
+    const kde_spy = vi.spyOn(kde_math, `gaussian_kde`)
+    const summary_spy = vi.spyOn(box_math, `summarize_box_samples`)
     const plot = await mount_sized_box_plot({
       series: [basic],
+      kind: `violin+box`,
       show_controls: true,
       controls_open: true,
     })
@@ -530,6 +543,10 @@ describe(`BoxPlot`, () => {
       checkbox_by_label(`Show outliers`),
     ]
     expect([mean.checked, outliers.checked]).toEqual([false, true])
+    const initial_summary_calls = summary_spy.mock.calls.length
+    expect(initial_summary_calls).toBeGreaterThan(0)
+    const initial_kde_calls = kde_spy.mock.calls.length
+    expect(initial_kde_calls).toBeGreaterThan(0)
     // no outliers drawn once they're toggled off; the mean line appears
     mean.click()
     outliers.click()
@@ -537,6 +554,8 @@ describe(`BoxPlot`, () => {
     expect([mean.checked, outliers.checked]).toEqual([true, false])
     expect(plot.querySelectorAll(`.box-series circle`)).toHaveLength(0)
     expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(1)
+    expect(kde_spy).toHaveBeenCalledTimes(initial_kde_calls)
+    expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
 
     const reset_btn = plot.querySelector<HTMLButtonElement>(
       `button[aria-label="Reset box / violin to defaults"]`,
@@ -547,5 +566,8 @@ describe(`BoxPlot`, () => {
     await tick()
     expect([mean.checked, outliers.checked]).toEqual([false, true])
     expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(0)
+    expect(
+      plot.querySelector(`button[aria-label="Reset box / violin to defaults"]`),
+    ).toBeNull()
   })
 })

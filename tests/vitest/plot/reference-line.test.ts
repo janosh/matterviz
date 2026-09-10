@@ -101,7 +101,7 @@ test(`reference annotations dodge obstacles projected onto the marginal-padded c
       ...scene,
       base_solution,
       base_pad: pad,
-      obstacles_norm: obstacles_norm.map(([x, y]) => ({ x, y })),
+      obstacles_norm: obstacles_norm.map(([coord_x, coord_y]) => ({ x: coord_x, y: coord_y })),
       // pinned, so the same candidate is chosen and only its collision score can change
       lines: [
         {
@@ -199,11 +199,14 @@ describe(`resolve_line_endpoints`, () => {
     [{ type: `diagonal`, slope: -1, intercept: 100 }, [0, 100, 100, 0]],
     [{ type: `diagonal`, slope: 1, intercept: 0, x_span: [20, 80] }, [20, 20, 80, 80]],
     [{ type: `diagonal`, slope: 1, intercept: 0, y_span: [30, 70] }, [30, 30, 70, 70]],
-  ] as const)(`%o resolves expected endpoints`, (line, [x1, y1, x2, y2]) => {
-    expect(resolve_line_endpoints(line as RefLine, line_axes)).toEqual(
-      scaled_endpoints([x1, y1, x2, y2]),
-    )
-  })
+  ] as const)(
+    `%o resolves expected endpoints`,
+    (line, [coord_x_1, coord_y_1, coord_x, coord_y_2]) => {
+      expect(resolve_line_endpoints(line as RefLine, line_axes)).toEqual(
+        scaled_endpoints([coord_x_1, coord_y_1, coord_x, coord_y_2]),
+      )
+    },
+  )
 
   // Liang-Barsky segment clipping: preserves angle by computing true intersections
   test.each([
@@ -237,10 +240,10 @@ describe(`resolve_line_endpoints`, () => {
       p2: [75, 125] as Vec2,
       expected: [25 + 25 / 3, 0, 25 + 125 / 3, 100],
     },
-  ])(`segment clipping: $desc`, ({ p1, p2, expected }) => {
-    expect(resolve_line_endpoints({ type: `segment`, p1, p2 }, line_axes)).toEqual(
-      scaled_endpoints(expected),
-    )
+  ])(`segment clipping: $desc`, ({ p1: point_1, p2: point, expected }) => {
+    expect(
+      resolve_line_endpoints({ type: `segment`, p1: point_1, p2: point }, line_axes),
+    ).toEqual(scaled_endpoints(expected))
   })
 
   test.each([

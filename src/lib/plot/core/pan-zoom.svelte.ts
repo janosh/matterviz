@@ -107,9 +107,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   const on_window_mouse_up = () => {
     if (drag_state) {
       // Ignore minuscule drag rects (e.g. accidental clicks)
-      const dx = Math.abs(drag_state.start.x - drag_state.current.x)
-      const dy = Math.abs(drag_state.start.y - drag_state.current.y)
-      if (dx > 5 && dy > 5) {
+      const delta_x = Math.abs(drag_state.start.x - drag_state.current.x)
+      const delta_y = Math.abs(drag_state.start.y - drag_state.current.y)
+      if (delta_x > 5 && delta_y > 5) {
         suppress_click = true
         const finish =
           drag_state.mode === `select` && opts.on_rect_select
@@ -226,18 +226,24 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
     // Pan along the dominant wheel direction
     if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      const dx = evt.deltaX * sensitivity
-      opts.set_range(`x`, pan_range_by_pixels(ranges.x, dx, dims.width, opts.scale_type(`x`)))
+      const delta_x = evt.deltaX * sensitivity
+      opts.set_range(
+        `x`,
+        pan_range_by_pixels(ranges.x, delta_x, dims.width, opts.scale_type(`x`)),
+      )
       opts.set_range(
         `x2`,
-        pan_range_by_pixels(ranges.x2, dx, dims.width, opts.scale_type(`x2`)),
+        pan_range_by_pixels(ranges.x2, delta_x, dims.width, opts.scale_type(`x2`)),
       )
     } else {
-      const dy = evt.deltaY * sensitivity
-      opts.set_range(`y`, pan_range_by_pixels(ranges.y, dy, dims.height, opts.scale_type(`y`)))
+      const delta_y = evt.deltaY * sensitivity
+      opts.set_range(
+        `y`,
+        pan_range_by_pixels(ranges.y, delta_y, dims.height, opts.scale_type(`y`)),
+      )
       opts.set_range(
         `y2`,
-        pan_range_by_pixels(ranges.y2, dy, dims.height, opts.scale_type(`y2`)),
+        pan_range_by_pixels(ranges.y2, delta_y, dims.height, opts.scale_type(`y2`)),
       )
     }
   }
@@ -277,26 +283,32 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (!touch_state || evt.touches.length !== 2) return
     evt.preventDefault()
 
-    const [t1, t2] = Array.from(evt.touches)
-    const [s1, s2] = touch_state.start_touches
+    const [param_1, param_2] = Array.from(evt.touches)
+    const [slope_1, slope_2] = touch_state.start_touches
 
     // Calculate center movement for pan
-    const start_center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 }
-    const curr_center = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 }
-    const dx = curr_center.x - start_center.x
-    const dy = curr_center.y - start_center.y
+    const start_center = { x: (slope_1.x + slope_2.x) / 2, y: (slope_1.y + slope_2.y) / 2 }
+    const curr_center = {
+      x: (param_1.clientX + param_2.clientX) / 2,
+      y: (param_1.clientY + param_2.clientY) / 2,
+    }
+    const delta_x = curr_center.x - start_center.x
+    const delta_y = curr_center.y - start_center.y
 
     // Calculate pinch scale (curr/start so spread = zoom in, pinch = zoom out)
-    const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
+    const start_dist = Math.hypot(slope_2.x - slope_1.x, slope_2.y - slope_1.y)
     // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
     if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
-    const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
+    const curr_dist = Math.hypot(
+      param_2.clientX - param_1.clientX,
+      param_2.clientY - param_1.clientY,
+    )
     const scale = curr_dist / start_dist
 
     // Pinch zoom about the view center if scale changed significantly, else pan
     if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
       zoom_all_axes(touch_state, scale)
-    } else pan_all_axes(touch_state, -dx, dy)
+    } else pan_all_axes(touch_state, -delta_x, delta_y)
   }
 
   const on_touch_end = () => {

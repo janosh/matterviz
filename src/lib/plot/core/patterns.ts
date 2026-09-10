@@ -115,20 +115,20 @@ const num = (val: number): string =>
   Number.isInteger(val) ? `${val}` : `${Number(val.toFixed(3))}`
 
 // Circle of `radius` centered at (cx, cy) as two arcs
-const circle_path = (cx: number, cy: number, radius: number): string =>
-  `M${num(cx - radius)} ${num(cy)}a${num(radius)} ${num(radius)} 0 1 0 ${num(2 * radius)} 0` +
+const circle_path = (center_x: number, center_y: number, radius: number): string =>
+  `M${num(center_x - radius)} ${num(center_y)}a${num(radius)} ${num(radius)} 0 1 0 ${num(2 * radius)} 0` +
   `a${num(radius)} ${num(radius)} 0 1 0 ${num(-2 * radius)} 0Z`
 
 // Regular hexagon outline (pointy-top) with circumradius `radius` centered at (cx, cy)
-const hexagon_path = (cx: number, cy: number, radius: number): string => {
+const hexagon_path = (center_x: number, center_y: number, radius: number): string => {
   const half_w = (SQRT3 / 2) * radius
   return (
-    `M${num(cx)} ${num(cy - radius)}` +
-    `L${num(cx + half_w)} ${num(cy - radius / 2)}` +
-    `L${num(cx + half_w)} ${num(cy + radius / 2)}` +
-    `L${num(cx)} ${num(cy + radius)}` +
-    `L${num(cx - half_w)} ${num(cy + radius / 2)}` +
-    `L${num(cx - half_w)} ${num(cy - radius / 2)}Z`
+    `M${num(center_x)} ${num(center_y - radius)}` +
+    `L${num(center_x + half_w)} ${num(center_y - radius / 2)}` +
+    `L${num(center_x + half_w)} ${num(center_y + radius / 2)}` +
+    `L${num(center_x)} ${num(center_y + radius)}` +
+    `L${num(center_x - half_w)} ${num(center_y + radius / 2)}` +
+    `L${num(center_x - half_w)} ${num(center_y - radius / 2)}Z`
   )
 }
 
@@ -147,18 +147,18 @@ interface TileGeometry {
 // (a horizontal line rotated -45° is `/`), so dashes stay seamless along straight lines.
 function tile_geometry(shape: PatternShape, size: number, solidity: number): TileGeometry {
   const half = size / 2
-  const stroked = (d: string, stroke_length: number, rotation = 0): TileGeometry => ({
+  const stroked = (datum: string, stroke_length: number, rotation = 0): TileGeometry => ({
     width: size,
     height: size,
-    d,
+    d: datum,
     stroked: true,
     rotation,
     stroke_length,
   })
-  const filled = (d: string): TileGeometry => ({
+  const filled = (datum: string): TileGeometry => ({
     width: size,
     height: size,
-    d,
+    d: datum,
     stroked: false,
     rotation: 0,
     stroke_length: 0,
@@ -175,41 +175,41 @@ function tile_geometry(shape: PatternShape, size: number, solidity: number): Til
   // leaves a butt-cap wedge at every seam. Overshooting half a period on both sides lets
   // the clipped tile carry the full stroke width through the edge (stroke_length stays
   // per tile).
-  const [lo, hi] = [size * 0.25, size * 0.75]
+  const [lower, upper] = [size * 0.25, size * 0.75]
   if (shape === `zigzag`) {
-    const d =
-      `M${num(-half)} ${num(lo)}L0 ${num(hi)}L${num(half)} ${num(lo)}` +
-      `L${num(size)} ${num(hi)}L${num(1.5 * size)} ${num(lo)}`
-    return stroked(d, 2 * Math.hypot(half, half))
+    const datum =
+      `M${num(-half)} ${num(lower)}L0 ${num(upper)}L${num(half)} ${num(lower)}` +
+      `L${num(size)} ${num(upper)}L${num(1.5 * size)} ${num(lower)}`
+    return stroked(datum, 2 * Math.hypot(half, half))
   }
   if (shape === `waves`) {
     // Q + T (reflected control) gives matching tangents at each joint -> smooth sine
-    const d =
+    const datum =
       `M${num(-half)} ${num(half)}Q${num(-size / 4)} ${num(size * 0.9)} 0 ${num(half)}` +
       `T${num(half)} ${num(half)}T${num(size)} ${num(half)}T${num(1.5 * size)} ${num(half)}`
-    return stroked(d, size * 1.2)
+    return stroked(datum, size * 1.2)
   }
   if (shape === `bricks`) {
     // two courses per tile; edge lines are drawn at both 0 and size so the half clipped
     // off one tile is completed by its neighbour
-    const d =
+    const datum =
       `M0 0H${num(size)}M0 ${num(size)}H${num(size)}M0 ${num(half)}H${num(size)}` +
       `M${num(half)} 0V${num(half)}M0 ${num(half)}V${num(size)}M${num(size)} ${num(
         half,
       )}V${num(size)}`
-    return stroked(d, 3 * size)
+    return stroked(datum, 3 * size)
   }
   if (shape === `hexagons`) {
     // honeycomb: one full hexagon plus the two half hexagons straddling the side edges
     const radius = half
     const width = SQRT3 * radius
     const height = 3 * radius
-    const d =
+    const datum =
       hexagon_path(width / 2, radius, radius) +
       hexagon_path(0, 2.5 * radius, radius) +
       hexagon_path(width, 2.5 * radius, radius)
     // each of the tile's two hexagons contributes 6 edges shared pairwise -> 6 edges of R
-    return { width, height, d, stroked: true, rotation: 0, stroke_length: 6 * radius }
+    return { width, height, d: datum, stroked: true, rotation: 0, stroke_length: 6 * radius }
   }
   if (shape === `circles`) {
     const radius = size * 0.3
@@ -295,7 +295,7 @@ export function resolve_pattern(
   const replace = opts.mode === `replace`
   // Auto-contrast against the color the texture is painted over; translucent, CSS-variable
   // or otherwise unparsable colors fall back to currentColor so the texture still shows
-  const fg = opts.fg ?? (replace ? base_color : opaque_contrast_color(base_color))
+  const foreground = opts.fg ?? (replace ? base_color : opaque_contrast_color(base_color))
   const rotation = geometry.rotation + angle
   const dash = opts.dash ?? `solid`
   const resolved = {
@@ -303,7 +303,7 @@ export function resolve_pattern(
     height: geometry.height,
     transform: rotation ? `rotate(${num(rotation)})` : undefined,
     bg: opts.bg ?? (replace ? `transparent` : base_color),
-    fg,
+    fg: foreground,
     fg_opacity: replace ? 1 : 0.5,
     d: geometry.d,
     stroked: geometry.stroked,
@@ -318,8 +318,8 @@ export function resolve_pattern(
     // Shifting by a quarter period puts both dots fully inside the tile.
     dashoffset: geometry.stroked && dash === `dotted` ? num(size / 4) : undefined,
   }
-  const id = `${prefix}-pat-${hash_str(JSON.stringify(resolved))}`
-  return { id, url: `url(#${id})`, ...resolved }
+  const identifier = `${prefix}-pat-${hash_str(JSON.stringify(resolved))}`
+  return { id: identifier, url: `url(#${identifier})`, ...resolved }
 }
 
 // Distinct patterns among a chart's marks (by id, first-seen order), for one PatternDefs render

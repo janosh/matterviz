@@ -93,16 +93,41 @@ export function tile_rects<Metadata>(
   // compute_sunburst_layout warns). Clamping keeps overflow inside the chart,
   // mirroring the sunburst's clamp01 window projection.
   tiled.each((node) => {
-    const x = clamp(node.x0, 0, size.width)
-    const y = clamp(node.y0, 0, size.height)
+    const coord_x = clamp(node.x0, 0, size.width)
+    const coord_y = clamp(node.y0, 0, size.height)
     rects[node.data.node_idx] = {
-      x,
-      y,
-      width: Math.max(0, clamp(node.x1, 0, size.width) - x),
-      height: Math.max(0, clamp(node.y1, 0, size.height) - y),
+      x: coord_x,
+      y: coord_y,
+      width: Math.max(0, clamp(node.x1, 0, size.width) - coord_x),
+      height: Math.max(0, clamp(node.y1, 0, size.height) - coord_y),
     }
   })
   return rects
+}
+
+// Cover maximal unrelated subtrees once, leaving the hovered subtree and ancestor
+// headers exposed. Pre-order ranges skip descendants already covered by a parent.
+export function treemap_hover_veil<Metadata>(
+  arcs: readonly PositionedArc<Metadata>[],
+  rects: readonly Rect[],
+  hovered_idx: number | null,
+): string {
+  if (hovered_idx === null) return ``
+  const paths: string[] = []
+  for (let idx = 0; idx < arcs.length;) {
+    const arc = arcs[idx]
+    if (idx < hovered_idx && hovered_idx <= arc.subtree_end) {
+      idx++
+      continue
+    }
+    const rect = rects[idx]
+    if (idx !== hovered_idx && rect.width > 0 && rect.height > 0) {
+      const { x: coord_x, y: coord_y, width, height } = rect
+      paths.push(`M${coord_x},${coord_y}h${width}v${height}h${-width}Z`)
+    }
+    idx = arc.subtree_end + 1
+  }
+  return paths.join(``)
 }
 
 // A tiling plus the arcs it was computed from, so the two can be realigned when the
@@ -148,16 +173,20 @@ export function align_tiling(prev: Tiling, next: Tiling): Rect[] {
 
 // Interpolate between two tilings (zoom animation). Rects are aligned by
 // node_idx; frames allocate one array but reuse rect objects at t = 0/1.
-export function lerp_rects(prev: readonly Rect[], next: readonly Rect[], t: number): Rect[] {
-  if (t >= 1 || prev.length !== next.length) return next as Rect[]
-  if (t <= 0) return prev as Rect[]
-  return next.map((to, idx) => {
+export function lerp_rects(
+  prev: readonly Rect[],
+  next: readonly Rect[],
+  fraction: number,
+): Rect[] {
+  if (fraction >= 1 || prev.length !== next.length) return next as Rect[]
+  if (fraction <= 0) return prev as Rect[]
+  return next.map((target, idx) => {
     const from = prev[idx]
     return {
-      x: from.x + (to.x - from.x) * t,
-      y: from.y + (to.y - from.y) * t,
-      width: from.width + (to.width - from.width) * t,
-      height: from.height + (to.height - from.height) * t,
+      x: from.x + (target.x - from.x) * fraction,
+      y: from.y + (target.y - from.y) * fraction,
+      width: from.width + (target.width - from.width) * fraction,
+      height: from.height + (target.height - from.height) * fraction,
     }
   })
 }

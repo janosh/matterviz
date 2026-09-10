@@ -55,13 +55,20 @@
     }
     const cards: InfoPaneCard[] = [{ title: `Brillouin Zone`, rows: zone_rows }]
     if (structure?.lattice) {
-      const { a, b, c, alpha, beta, gamma } = structure.lattice
+      const {
+        a: lattice_a,
+        b: lattice_b,
+        c: lattice_c,
+        alpha,
+        beta,
+        gamma,
+      } = structure.lattice
       cards.push({
         title: `Real Lattice`,
         rows: [
           {
             label: `a, b, c`,
-            value: `${[a, b, c].map((val) => format_num(val, `.3~f`)).join(`, `)} Å`,
+            value: `${[lattice_a, lattice_b, lattice_c].map((val) => format_num(val, `.3~f`)).join(`, `)} Å`,
             key: `real-lattice-abc`,
           },
           {

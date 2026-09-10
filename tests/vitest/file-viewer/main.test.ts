@@ -110,8 +110,12 @@ test(`parses a POSCAR structure through the worker-safe entry`, async () => {
 })
 
 test(`multi-frame XYZ text opens as a trajectory run`, async () => {
-  const h2 = (step: number, dz: number): string => `2\nstep=${step}\nH 0 0 0\nH 0 0 ${dz}`
-  const result = await parse_file_content(`${h2(0, 0.74)}\n${h2(1, 0.78)}`, `h2.xyz`)
+  const hydrogen_frame = (step: number, delta_z: number): string =>
+    `2\nstep=${step}\nH 0 0 0\nH 0 0 ${delta_z}`
+  const result = await parse_file_content(
+    `${hydrogen_frame(0, 0.74)}\n${hydrogen_frame(1, 0.78)}`,
+    `h2.xyz`,
+  )
   expect(result.type).toBe(`trajectory`)
   const run = result.data as TrajectoryRun
   expect(run.frame_count).toBe(2)

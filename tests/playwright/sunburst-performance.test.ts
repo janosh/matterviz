@@ -136,9 +136,9 @@ test.describe(`Sunburst performance`, () => {
   test(`hover sweep across the outer ring dims via one veil path and keeps frames short`, async ({
     page,
   }) => {
-    const { cx, cy, radius } = await load_page(page)
+    const { cx: center_x, cy: center_y, radius } = await load_page(page)
     // A hover must not touch per-arc fill-opacity: dimming is the single .hover-veil path
-    await page.mouse.move(cx + radius * 0.8, cy)
+    await page.mouse.move(center_x + radius * 0.8, center_y)
     await expect(page.locator(`.hover-veil`)).toHaveCount(1)
     expect(
       await page.locator(`.arcs path[fill-opacity]:not([fill-opacity="1"])`).count(),
@@ -148,8 +148,8 @@ test.describe(`Sunburst performance`, () => {
     for (let step = 0; step < 30; step++) {
       const angle = (step / 30) * 2 * Math.PI
       await page.mouse.move(
-        cx + Math.sin(angle) * radius * 0.8,
-        cy - Math.cos(angle) * radius * 0.8,
+        center_x + Math.sin(angle) * radius * 0.8,
+        center_y - Math.cos(angle) * radius * 0.8,
       )
     }
     const { frames, longest_ms } = await sampling
@@ -160,11 +160,11 @@ test.describe(`Sunburst performance`, () => {
   })
 
   test(`zooming in and out animates without multi-hundred-ms frames`, async ({ page }) => {
-    const { cx, cy, radius } = await load_page(page)
+    const { cx: center_x, cy: center_y, radius } = await load_page(page)
     // 12 o'clock sits on a pad gap between groups, so aim slightly clockwise of it
     const target = [
-      cx + Math.sin(0.3) * radius * 0.45,
-      cy - Math.cos(0.3) * radius * 0.45,
+      center_x + Math.sin(0.3) * radius * 0.45,
+      center_y - Math.cos(0.3) * radius * 0.45,
     ] as const
     await page.mouse.move(...target)
     const zoom_in = sample_frames(page, 500)
@@ -176,7 +176,7 @@ test.describe(`Sunburst performance`, () => {
     )
 
     const zoom_out = sample_frames(page, 500)
-    await page.mouse.click(cx, cy) // center hole zooms back out
+    await page.mouse.click(center_x, center_y) // center hole zooms back out
     const zoom_out_frames = await zoom_out
     expect((await read_metrics(page)).zoom_root_id).toBeNull()
     console.info(

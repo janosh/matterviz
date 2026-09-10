@@ -55,8 +55,8 @@ test.describe(`Periodic Table`, () => {
 
     const row_gap = async (above: string, below: string) => {
       const [upper, lower] = await Promise.all([
-        tile(above).evaluate((el) => el.getBoundingClientRect().bottom),
-        tile(below).evaluate((el) => el.getBoundingClientRect().top),
+        tile(above).evaluate((element) => element.getBoundingClientRect().bottom),
+        tile(below).evaluate((element) => element.getBoundingClientRect().top),
       ])
       return lower - upper
     }
@@ -64,7 +64,9 @@ test.describe(`Periodic Table`, () => {
 
     const heights = await table
       .locator(`.element-tile`)
-      .evaluateAll((elements) => elements.map((el) => el.getBoundingClientRect().height))
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().height),
+      )
     expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.5)
 
     const inset = table.locator(`.table-inset`)
@@ -169,4 +171,92 @@ test.describe(`Periodic Table`, () => {
       expect(new_box.x).not.toBe(initial_box.x)
     })
   })
+})
+
+test(`periodic-table settings update rendered styles and reset each section`, async ({
+  page,
+}) => {
+  await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
+  await page.getByRole(`button`, { name: `Periodic Table Controls`, exact: true }).click()
+  const controls = page.locator(`.controls-grid`)
+  const css_value = (property: string) =>
+    page.evaluate(
+      (css_property) =>
+        getComputedStyle(document.documentElement).getPropertyValue(css_property).trim(),
+      property,
+    )
+  for (const [key, value, property, expected] of [
+    [`tile_gap`, `1cqw`, `--ptable-gap`, `1cqw`],
+    [`tile_border_radius`, `3`, `--elem-tile-border-radius`, `3pt`],
+    [`inner_transition_offset`, `1`, `--ptable-inner-transition-offset`, `1`],
+    [`tile_transition_duration`, `0.8`, `--elem-tile-transition-duration`, `0.8s`],
+    [`hover_border_width`, `3`, `--elem-tile-hover-border-width`, `3px`],
+    [`symbol_font_size`, `50`, `--elem-symbol-font-size`, `50cqw`],
+    [`number_font_size`, `30`, `--elem-number-font-size`, `30cqw`],
+    [`name_font_size`, `20`, `--elem-name-font-size`, `20cqw`],
+    [`value_font_size`, `24`, `--elem-value-font-size`, `24cqw`],
+    [`symbol_font_weight`, `700`, `--elem-symbol-font-weight`, `700`],
+    [`number_font_weight`, `600`, `--elem-number-font-weight`, `600`],
+    [`tooltip_font_size`, `18`, `--tooltip-font-size`, `18px`],
+    [`tooltip_border_radius`, `12`, `--tooltip-border-radius`, `12px`],
+    [`tooltip_padding`, `8px 12px`, `--tooltip-padding`, `8px 12px`],
+    [`tooltip_line_height`, `1.5`, `--tooltip-line-height`, `1.5`],
+  ]) {
+    const row = controls.locator(`[data-key="${key}"]`)
+    const input = row.locator(`input:not([type=range])`)
+    const original = await input.inputValue()
+    const original_css = await css_value(property)
+    await input.fill(value)
+    await expect.poll(() => css_value(property)).toBe(expected)
+    const range = row.locator(`input[type=range]`)
+    if (await range.count()) await expect(range).toHaveValue(value)
+    await row.getByRole(`button`, { name: /^Reset/ }).click()
+    await expect(input).toHaveValue(original)
+    await expect.poll(() => css_value(property)).toBe(original_css)
+  }
+  const table = page.locator(`.periodic-table`).first()
+  for (const row of await controls.locator(`.category-colors label[data-key]`).all()) {
+    const category = await row.getAttribute(`data-key`)
+    const tiles = table.locator(`[data-category="${category}"]`)
+    const original = await tiles
+      .first()
+      .evaluate((element) => getComputedStyle(element).backgroundColor)
+    await row.locator(`input`).fill(`#123456`)
+    await expect(tiles.first()).toHaveCSS(`background-color`, `rgb(18, 52, 86)`)
+    await row.getByRole(`button`, { name: /^Reset/ }).click()
+    await expect(tiles.first()).toHaveCSS(`background-color`, original)
+  }
+  const original_gap = await table.evaluate((element) => getComputedStyle(element).gap)
+  await controls.locator(`[data-key="tile_gap"] input`).fill(`1cqw`)
+  await expect
+    .poll(() => table.evaluate((element) => getComputedStyle(element).gap))
+    .not.toBe(original_gap)
+  await controls
+    .getByRole(`button`, { name: `Reset element tiles to defaults`, exact: true })
+    .click()
+  await expect(table).toHaveCSS(`gap`, original_gap)
+
+  const automatic = controls.getByLabel(`Automatic font contrast`)
+  const font_color = controls.getByLabel(`Tile font color`, { exact: true })
+  await expect(font_color).toBeDisabled()
+  await automatic.uncheck()
+  await font_color.fill(`#ff0000`)
+  await expect(table.locator(`[data-element-symbol="H"]`)).toHaveCSS(`color`, `rgb(255, 0, 0)`)
+  await controls
+    .getByRole(`button`, { name: `Reset element tiles to defaults`, exact: true })
+    .click()
+  await expect(automatic).toBeChecked()
+  await expect(font_color).toBeDisabled()
+
+  const alignment = controls.locator(`[data-key="tooltip_text_align"] select`)
+  await alignment.selectOption(`left`)
+  await expect.poll(() => css_value(`--tooltip-text-align`)).toBe(`left`)
+  const background = controls.locator(`[data-key="tooltip_bg_color"] input`)
+  await background.fill(`#123456`)
+  await expect.poll(() => css_value(`--tooltip-bg`)).toBe(`#123456`)
+  await controls
+    .getByRole(`button`, { name: `Reset tooltip to defaults`, exact: true })
+    .click()
+  await expect(alignment).toHaveValue(`center`)
+  await expect(background).toHaveValue(`#000000`)
 })

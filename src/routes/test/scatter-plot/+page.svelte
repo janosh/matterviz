@@ -277,11 +277,11 @@
       const radius = 1 + idx * 0.3
 
       // Convert to cartesian coordinates
-      const x = Math.cos(angle) * radius
-      const y = Math.sin(angle) * radius
+      const coord_x = Math.cos(angle) * radius
+      const coord_y = Math.sin(angle) * radius
 
-      data.x.push(x)
-      data.y.push(y)
+      data.x.push(coord_x)
+      data.y.push(coord_y)
       data.size_values.push(radius) // Use spiral radius for sizing
 
       // Store angle in metadata
@@ -462,8 +462,8 @@
     color_scale={{ scheme: `interpolateTurbo` }}
     color_bar={{ title: `Color Bar Title`, responsive: true }}
   >
-    {#snippet tooltip({ x, y, color_value })}
-      Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
+    {#snippet tooltip({ x: coord_x, y: coord_y, color_value })}
+      Point ({coord_x.toFixed(1)}, {coord_y.toFixed(1)})<br />
       Color value: {color_value?.toFixed(2)}
     {/snippet}
   </ScatterPlot>
@@ -554,9 +554,9 @@
     {size_scale}
     style="height: 500px; width: 100%"
   >
-    {#snippet tooltip({ x, y, metadata })}
+    {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
       <strong>Spiral Point</strong><br />
-      Position: ({format_num(x, `.2~`)}, {format_num(y, `.2~`)})<br />
+      Position: ({format_num(coord_x, `.2~`)}, {format_num(coord_y, `.2~`)})<br />
       {#if metadata}
         Angle: {format_num(metadata.angle as number, `.2~`)} rad<br />
         Value (Radius): {format_num(metadata.radius as number, `.2~`)}

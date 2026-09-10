@@ -48,7 +48,7 @@
 
   let series = $derived.by<DataSeries[]>(() => {
     if (!result) return []
-    const { times, curves, lags, dt } = result
+    const { times, curves, lags, dt: delta_time } = result
     return curves.flatMap((curve, idx): DataSeries[] => {
       const color = plot_color(idx)
       const visible = idx < max_visible_curves
@@ -68,7 +68,10 @@
       }
       const { fit } = curve
       if (!show_fit || !fit) return [msd_series]
-      const [fit_start, fit_end] = [fit.lag_window[0] * dt, fit.lag_window[1] * dt]
+      const [fit_start, fit_end] = [
+        fit.lag_window[0] * delta_time,
+        fit.lag_window[1] * delta_time,
+      ]
       return [
         msd_series,
         {

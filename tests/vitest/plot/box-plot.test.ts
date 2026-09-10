@@ -1,4 +1,9 @@
-import { compute_box_stats, WHISKER_MODES } from '$lib/plot'
+import {
+  compute_box_stats,
+  compute_box_whiskers,
+  summarize_box_samples,
+  WHISKER_MODES,
+} from '$lib/plot'
 import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, test } from 'vitest'
 
@@ -8,6 +13,16 @@ import { describe, expect, test } from 'vitest'
 const one_to_ten = Array.from({ length: 10 }, (_, idx) => idx + 1)
 
 describe(`compute_box_stats`, () => {
+  test(`prepared samples remain reusable when percentile selection precedes std whiskers`, () => {
+    const values = Array.from({ length: 200 }, (_, idx) => Math.sin(idx * 1.7) * 1e8 + idx)
+    const summary = summarize_box_samples(values)
+    Object.freeze(summary.values)
+    for (const whisker_mode of [`std`, `percentile`, `std`, `tukey`, `minmax`] as const) {
+      expect(compute_box_whiskers(summary, { whisker_mode })).toEqual(
+        compute_box_stats(values, { whisker_mode }),
+      )
+    }
+  })
   test(`quartiles match d3 type-7 interpolation`, () => {
     const stats = compute_box_stats(one_to_ten, { whisker_mode: `tukey` })
     expect(stats.n).toBe(10)
@@ -34,9 +49,9 @@ describe(`compute_box_stats`, () => {
     { desc: `8 points, interpolated`, data: [1, 2, 4, 8, 16, 32, 64, 128], q1: 3.5, median: 12, q3: 40, whiskers: [1, 64], outliers: [128] },
     // IQR = 13 -> fences [-14, 38]: 40 is an outlier and the upper whisker stops at 23
     { desc: `10 points with a 1.5 IQR outlier`, data: [40, 2, 3, 5, 7, 11, 13, 17, 19, 23], q1: 5.5, median: 12, q3: 18.5, whiskers: [2, 23], outliers: [40] },
-  ])(`type-7 quartiles and tukey whiskers: $desc`, ({ data, q1, median, q3, whiskers, outliers }) => {
+  ])(`type-7 quartiles and tukey whiskers: $desc`, ({ data, q1: quartile_1, median, q3: quartile_3, whiskers, outliers }) => {
     const stats = compute_box_stats(data)
-    expect([stats.q1, stats.median, stats.q3]).toEqual([q1, median, q3])
+    expect([stats.q1, stats.median, stats.q3]).toEqual([quartile_1, median, quartile_3])
     expect([stats.whisker_low, stats.whisker_high]).toEqual(whiskers)
     expect(stats.outliers).toEqual(outliers)
     expect([stats.q1, stats.median, stats.q3]).toEqual(
@@ -124,8 +139,8 @@ describe(`compute_box_stats`, () => {
       expect(Number.isNaN(stats.median)).toBe(true)
     } else {
       // degenerate distributions yield a flat box: all stats collapse to the single value
-      const { q1, median, q3, mean, whisker_low, whisker_high } = stats
-      for (const stat of [q1, median, q3, mean, whisker_low, whisker_high]) {
+      const { q1: quartile_1, median, q3: quartile_3, mean, whisker_low, whisker_high } = stats
+      for (const stat of [quartile_1, median, quartile_3, mean, whisker_low, whisker_high]) {
         expect(stat).toBe(values[0])
       }
     }
@@ -171,22 +186,22 @@ describe(`compute_box_stats`, () => {
             : Math.floor((rand() - 0.5) * 20),
       )
       const sorted = [...arr].toSorted((left, right) => left - right)
-      const q1 = d3_quantile(sorted, 0.25) as number
-      const q3 = d3_quantile(sorted, 0.75) as number
+      const quartile_1 = d3_quantile(sorted, 0.25) as number
+      const quartile_3 = d3_quantile(sorted, 0.75) as number
       const stats = compute_box_stats(arr, { whisker_mode: `tukey` })
       worst_quartile = Math.max(
         worst_quartile,
-        Math.abs(stats.q1 - q1),
+        Math.abs(stats.q1 - quartile_1),
         Math.abs(stats.median - (d3_quantile(sorted, 0.5) as number)),
-        Math.abs(stats.q3 - q3),
+        Math.abs(stats.q3 - quartile_3),
       )
-      const iqr = q3 - q1
-      const lo = q1 - 1.5 * iqr
-      const hi = q3 + 1.5 * iqr
-      const in_bounds = sorted.filter((val) => val >= lo && val <= hi)
+      const iqr = quartile_3 - quartile_1
+      const lower = quartile_1 - 1.5 * iqr
+      const upper = quartile_3 + 1.5 * iqr
+      const in_bounds = sorted.filter((val) => val >= lower && val <= upper)
       expect(stats.whisker_low).toBeCloseTo(in_bounds[0], 9)
       expect(stats.whisker_high).toBeCloseTo(in_bounds[in_bounds.length - 1], 9)
-      expect(stats.outliers).toEqual(sorted.filter((val) => val < lo || val > hi))
+      expect(stats.outliers).toEqual(sorted.filter((val) => val < lower || val > upper))
     }
     expect(worst_quartile).toBeLessThan(1e-9)
   })

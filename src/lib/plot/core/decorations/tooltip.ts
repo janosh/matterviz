@@ -34,8 +34,8 @@ const OVERLAP_WEIGHT = 1_000_000
 const DISTANCE_WEIGHT = 1000
 
 const validate_rect = (rect: Rect, label: string): void => {
-  const { x, y, width, height } = rect
-  if (![x, y, width, height].every(Number.isFinite) || width < 0 || height < 0) {
+  const { x: coord_x, y: coord_y, width, height } = rect
+  if (![coord_x, coord_y, width, height].every(Number.isFinite) || width < 0 || height < 0) {
     throw new Error(`${label} has invalid geometry: ${JSON.stringify(rect)}`)
   }
 }
@@ -93,14 +93,14 @@ export function get_tooltip_placement_candidates({
     const below = direction.endsWith(`below`)
     const raw_x = right ? anchor.x + offset_x : anchor.x - offset_x - width
     const raw_y = below ? anchor.y + offset_y : anchor.y - offset_y - height
-    const x = clamp_axis(raw_x, width, bounds.x, bounds.width)
-    const y = clamp_axis(raw_y, height, bounds.y, bounds.height)
-    const rect = { x, y, width, height }
+    const coord_x = clamp_axis(raw_x, width, bounds.x, bounds.width)
+    const coord_y = clamp_axis(raw_y, height, bounds.y, bounds.height)
+    const rect = { x: coord_x, y: coord_y, width, height }
     const overlap_area = exclusion_rects.reduce(
       (total, exclusion_rect) => total + intersection_area(rect, exclusion_rect),
       0,
     )
-    const distance_penalty = Math.hypot(x - raw_x, y - raw_y)
+    const distance_penalty = Math.hypot(coord_x - raw_x, coord_y - raw_y)
     // A flip's cost is the physical move to the opposite side. This selects the relevant
     // axis at a single edge instead of relying on quadrant order when one-axis flips tie.
     const flip_penalty =
@@ -113,8 +113,8 @@ export function get_tooltip_placement_candidates({
     )
     return {
       direction,
-      x,
-      y,
+      x: coord_x,
+      y: coord_y,
       rect,
       overlap_area,
       distance_penalty,

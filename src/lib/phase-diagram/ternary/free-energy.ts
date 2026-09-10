@@ -68,7 +68,7 @@ function atomic_fractions(entry: PhaseData): Fractions {
     ([, amt]) => (amt ?? 0) > 0,
   ) as Fractions
   const total = pairs.reduce((sum, [, amt]) => sum + amt, 0)
-  return pairs.map(([el, amt]) => [el, amt / total])
+  return pairs.map(([element, amt]) => [element, amt / total])
 }
 
 // === SISSO descriptor (Bartel et al. 2018, Nature Communications 9, 4168) ===
@@ -76,7 +76,9 @@ function atomic_fractions(entry: PhaseData): Fractions {
 // Reduced mass (amu) per Eq. 6: sum over element pairs of (a_i + a_j) m_i m_j / (m_i + m_j),
 // divided by (n_elements - 1) sum(a). Undefined for single elements.
 export function sisso_reduced_mass(fractions: Fractions): number | null {
-  const masses = fractions.map(([el]) => element_by_symbol.get(el)?.atomic_mass ?? NaN)
+  const masses = fractions.map(
+    ([element]) => element_by_symbol.get(element)?.atomic_mass ?? NaN,
+  )
   if (fractions.length < 2 || !masses.every((mass) => mass > 0)) return null
   let mass_sum = 0
   for (const [idx_a, [, frac_a]] of fractions.entries()) {
@@ -115,7 +117,7 @@ export function g_element_experimental(element: ElementSymbol, temperature: numb
 // Compounds need a volume and a reduced mass; elements only their experimental G(T)
 export function sisso_supports(entry: PhaseData): boolean {
   const fractions = atomic_fractions(entry)
-  if (!fractions.every(([el]) => el in G_ELEMENTS)) return false
+  if (!fractions.every(([element]) => element in G_ELEMENTS)) return false
   return (
     fractions.length === 1 ||
     (get_volume_per_atom(entry) !== null && sisso_reduced_mass(fractions) !== null)
@@ -213,7 +215,10 @@ const tabulated_range = ({ temperatures = [] }: PhaseData): Vec2 => array_extent
 const intersect_ranges = (ranges: (Vec2 | null)[]): Vec2 | null => {
   const defined = ranges.filter((range) => range !== null)
   return defined.length
-    ? [array_max(defined.map(([lo]) => lo)), array_min(defined.map(([, hi]) => hi))]
+    ? [
+        array_max(defined.map(([lower]) => lower)),
+        array_min(defined.map(([, upper]) => upper)),
+      ]
     : null
 }
 
@@ -236,28 +241,31 @@ export function build_free_energy_model(
     entries.filter((entry) => !entry.exclude_from_hull),
   )
   // Without a reference entry the element's corner sits at dG_f = 0 (synthetic element)
-  for (const el of elements) unary_refs[el] ??= { composition: { [el]: 1 }, energy: 0 }
+  for (const element of elements)
+    unary_refs[element] ??= { composition: { [element]: 1 }, energy: 0 }
   const gas_shift = build_gas_shift(options.gas_config, options.gas_pressures)
 
   // Reference G_e(T) per element from its lowest-energy unary entry
-  const refs = elements.map((el) => {
-    const ref = unary_refs[el]
+  const refs = elements.map((element) => {
+    const ref = unary_refs[element]
     const tabulated = mode !== `static` && has_tabulated_g(ref)
     return [
-      el,
+      element,
       own_g_per_atom(ref, tabulated),
       tabulated ? tabulated_range(ref) : null,
     ] as const
   })
-  const ref_g = Object.fromEntries(refs.map(([el, g_of]) => [el, g_of])) as Partial<
+  const ref_g = Object.fromEntries(refs.map(([element, g_of]) => [element, g_of])) as Partial<
     Record<ElementSymbol, (temperature: number) => number>
   >
-  const ref_tabulated = new Set(refs.filter(([, , range]) => range).map(([el]) => el))
+  const ref_tabulated = new Set(
+    refs.filter(([, , range]) => range).map(([element]) => element),
+  )
   const reference_t_range = intersect_ranges(refs.map(([, , range]) => range))
   if (reference_t_range && !(reference_t_range[0] < reference_t_range[1])) {
     const tables = refs
       .filter(([, , range]) => range)
-      .map(([el, , range]) => `${el} ${range?.join(`–`)} K`)
+      .map(([element, , range]) => `${element} ${range?.join(`–`)} K`)
     throw new Error(`Elemental references share no temperature range: ${tables.join(`, `)}`)
   }
   const compounds_use_sisso = entries.some(
@@ -273,16 +281,21 @@ export function build_free_energy_model(
     const shift = (temperature: number): number =>
       gas_shift && !unary
         ? fractions.reduce(
-            (sum, [el, frac]) =>
+            (sum, [element, frac]) =>
               sum +
-              frac * gas_shift(el, temperature, source === `sisso` || ref_tabulated.has(el)),
+              frac *
+                gas_shift(
+                  element,
+                  temperature,
+                  source === `sisso` || ref_tabulated.has(element),
+                ),
             0,
           )
         : 0
     const weighted = (
       temperature: number,
-      g_of: (el: ElementSymbol, temperature: number) => number,
-    ) => fractions.reduce((sum, [el, frac]) => sum + frac * g_of(el, temperature), 0)
+      g_of: (element: ElementSymbol, temperature: number) => number,
+    ) => fractions.reduce((sum, [element, frac]) => sum + frac * g_of(element, temperature), 0)
 
     if (source === `sisso`) {
       // Unary entries: the experimental reference makes the ground state dG_f = 0 and leaves
@@ -317,7 +330,7 @@ export function build_free_energy_model(
       ]),
       dg_form: (temperature) =>
         own_g(temperature) -
-        weighted(temperature, (el, temp) => ref_g[el]?.(temp) ?? 0) -
+        weighted(temperature, (element, temp) => ref_g[element]?.(temp) ?? 0) -
         shift(temperature),
     }
   })
@@ -330,6 +343,6 @@ export function default_t_range(model: FreeEnergyModel): Vec2 {
   if (model.reference_t_range) return model.reference_t_range
   const ranges = model.phases.map((phase) => phase.t_range).filter((range) => range !== null)
   return ranges.length
-    ? [array_min(ranges.map(([lo]) => lo)), array_max(ranges.map(([, hi]) => hi))]
+    ? [array_min(ranges.map(([lower]) => lower)), array_max(ranges.map(([, upper]) => upper))]
     : [300, 1500]
 }

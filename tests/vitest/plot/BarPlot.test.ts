@@ -29,6 +29,30 @@ const mount_sized_bar_plot = (
 describe(`BarPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
 
+  test.each([`vertical`, `horizontal`] as const)(
+    `only mounts bars crossing the %s viewport and keeps source indices`,
+    async (orientation) => {
+      const on_bar_click = vi.fn()
+      const category_axis = { range: [40, 50] as [number, number] }
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: Array.from({ length: 2000 }, (_, idx) => idx), y: Array(2000).fill(5) }],
+        orientation,
+        on_bar_click,
+        ...(orientation === `vertical`
+          ? { x_axis: category_axis }
+          : { y_axis: category_axis }),
+      })
+      const paths = [...plot.querySelectorAll(`.bar-series path`)]
+      expect(paths).toHaveLength(11)
+      expect(paths[0].getAttribute(`aria-label`)).toContain(`bar 41 `)
+      paths[0].dispatchEvent(mouse(`click`))
+      expect(on_bar_click).toHaveBeenCalledWith(
+        expect.objectContaining({ bar_idx: 40, x: 40, y: 5, event: expect.any(MouseEvent) }),
+      )
+      expect(paths.map((path) => path.getAttribute(`tabindex`))).toEqual(one_tab_stop(11))
+    },
+  )
+
   // Both mark kinds regressed the same policy in opposite directions: every bar was
   // tabindex=0 (230 tab stops on a spacegroup plot), while the line-point group put
   // its only 0 on the *hovered* point - so with nothing hovered every point was -1
@@ -178,9 +202,9 @@ describe(`BarPlot`, () => {
     [`value-axis zero when horizontal`, [-1.1, 1.4, 3.4], undefined, `x`, `horizontal`],
   ] as const)(
     `categorical bars render the %s`,
-    async (_name, y, display, axis, orientation) => {
+    async (_name, coord_y, display, axis, orientation) => {
       const plot = await mount_sized_bar_plot({
-        series: [{ x: [`Si`, `GaAs`, `GaN`], y: [...y] }],
+        series: [{ x: [`Si`, `GaAs`, `GaN`], y: [...coord_y] }],
         orientation,
         ...(display ? { display } : {}),
       })
@@ -544,8 +568,8 @@ describe(`BarPlot`, () => {
         series: [{ x: [`A`, `B`, `C`, `D`, `E`], y: [1, 2, 3, 4, 5], color: `blue` }],
         x_axis: { range: [1.5, 3.5] }, // panned view: only C and D remain in range
       })
-      const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)].map((el) =>
-        el.textContent?.trim(),
+      const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)].map((element) =>
+        element.textContent?.trim(),
       )
       expect(labels).toEqual([`C`, `D`])
     })
@@ -581,10 +605,10 @@ describe(`BarPlot`, () => {
   test(`renders grouped and ungrouped legend entries`, async () => {
     const series = (
       label: string,
-      y: number[],
+      coord_y: number[],
       color: string,
       legend_group?: string,
-    ): BarSeries => ({ x: [1, 2, 3], y, label, color, legend_group })
+    ): BarSeries => ({ x: [1, 2, 3], y: coord_y, label, color, legend_group })
     const grouped_series: BarSeries[] = [
       series(`PBE`, [10, 20, 15], `blue`, `DFT`),
       series(`LDA`, [12, 18, 17], `lightblue`, `DFT`),
@@ -645,13 +669,13 @@ describe(`BarPlot`, () => {
         path_data,
       )?.groups
       if (!match) throw new Error(`unexpected square bar path: ${path_data}`)
-      const x = Number(match.x)
-      const y = Number(match.y)
+      const coord_x = Number(match.x)
+      const coord_y = Number(match.y)
       const width = Number(match.width)
       const height = Number(match.height)
       return {
-        x: Math.min(x, x + width),
-        y: Math.min(y, y + height),
+        x: Math.min(coord_x, coord_x + width),
+        y: Math.min(coord_y, coord_y + height),
         width: Math.abs(width),
         height: Math.abs(height),
       }
@@ -674,8 +698,8 @@ describe(`BarPlot`, () => {
       show_legend: true,
       bar: { border_radius: 0 },
     })
-    const { x, y } = legend_position(plot)
-    const legend_rect = { x, y, width: 120, height: 60 }
+    const { x: coord_x, y: coord_y } = legend_position(plot)
+    const legend_rect = { x: coord_x, y: coord_y, width: 120, height: 60 }
     const overlaps = bar_rects(plot).some(
       (bar_rect) =>
         legend_rect.x < bar_rect.x + bar_rect.width &&

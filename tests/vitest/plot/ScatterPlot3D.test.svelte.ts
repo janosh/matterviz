@@ -1,9 +1,28 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
+import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
-import { normalize_to_scene, span_or } from '$lib/plot/scatter-3d/scene-coords'
+import {
+  hover_marker_geometry,
+  normalize_to_scene,
+  sample_surface,
+  collect_3d_extents,
+  span_or,
+} from '$lib/plot/scatter-3d/scene-coords'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { Object3D, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mock_fullscreen, bind_props, expect_plot_controls, query } from '../setup'
+
+vi.mock(`$app/environment`, () => ({ browser: false }))
+vi.mock(`$app/state`, () => ({
+  page: {
+    url: {
+      get searchParams(): never {
+        throw new Error(`Cannot access url.searchParams on a page with prerendering enabled`)
+      },
+    },
+  },
+}))
 
 // Smoke tests to ensure component mounts without errors.
 // Meaningful 3D rendering tests require Playwright visual regression testing,
@@ -19,7 +38,7 @@ const basic_series: DataSeries3D = {
 
 const grid_surface: Surface3DConfig = {
   type: `grid`,
-  x_range: [-1, 1],
+  x_range: [-10, 10],
   y_range: [-1, 1],
   resolution: 10,
   z_fn: (x_coord, y_coord) => x_coord * x_coord + y_coord * y_coord,
@@ -33,7 +52,7 @@ const parametric_surface: Surface3DConfig = {
   v_range: [0, Math.PI],
   resolution: [10, 10],
   parametric_fn: (u_param, v_param) => ({
-    x: Math.sin(v_param) * Math.cos(u_param) * 0.5,
+    x: Math.sin(v_param) * Math.cos(u_param) * 10,
     y: Math.sin(v_param) * Math.sin(u_param) * 0.5,
     z: Math.cos(v_param) * 0.5,
   }),
@@ -43,8 +62,8 @@ const parametric_surface: Surface3DConfig = {
 const triangulated_surface: Surface3DConfig = {
   type: `triangulated`,
   points: [
-    { x: 0, y: 0, z: 0 },
-    { x: 1, y: 0, z: 0 },
+    { x: -10, y: 0, z: 0 },
+    { x: 10, y: 0, z: 0 },
     { x: 0.5, y: 1, z: 0.5 },
   ],
   triangles: [[0, 1, 2]],
@@ -77,6 +96,12 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await tick()
   }
 
+  test(`page initializes without query access during prerendering`, async () => {
+    mounted_component = mount(ScatterTestPage, { target: container })
+    await tick()
+    expect(container.querySelector(`#test-scatter-3d`)).toBeInstanceOf(HTMLElement)
+  })
+
   test.each<[string, ComponentProps<typeof ScatterPlot3D>]>([
     [`empty series`, { series: [] }],
     [
@@ -91,8 +116,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
   ])(`mounts with %s`, async (_desc, props) => {
     await mount_plot(props)
     expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
-    const pane = container.querySelector(`.draggable-pane`)
-    if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
+    const pane = query(container, `.draggable-pane`)
     expect(pane.style.display).toBe(props.controls_open ? `grid` : `none`)
   })
 
@@ -267,31 +291,51 @@ describe(`ScatterPlot3D smoke tests`, () => {
   // The standalone controls component is exported from $lib/plot, so its prop names are
   // public API: it must speak controls_open/show_controls like every other *Controls
   // component rather than the generic DraggablePane `open`.
-  test(`standalone controls write display and axis changes`, async () => {
-    const controls_state = {
-      display: { show_axes: true },
-      x_axis: { label: `X`, range: [null, null] as [null, null] },
-    }
-    mounted_component = mount(ScatterPlot3DControls, {
-      target: container,
-      props: bind_props({ series: [basic_series] }, controls_state),
-    })
-    await tick()
+  // Each surface extends beyond the scatter samples, so controls must include its bounds.
+  test.each([
+    { name: `scatter`, max_value: 5.5, surface: undefined },
+    ...[grid_surface, parametric_surface, triangulated_surface].map((surface) => ({
+      name: surface.type,
+      max_value: 12,
+      surface,
+    })),
+  ])(
+    `standalone $name controls write display and axis changes`,
+    async ({ surface, max_value }) => {
+      const controls_state = $state({
+        display: { show_axes: true },
+        x_axis: { label: `X`, range: [null, null] as [number | null, number | null] },
+      })
+      mounted_component = mount(ScatterPlot3DControls, {
+        target: container,
+        props: bind_props(
+          { series: [basic_series], surfaces: surface ? [surface] : [] },
+          controls_state,
+        ),
+      })
+      await tick()
 
-    const show_axes = container.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
-    const x_min = container.querySelector<HTMLInputElement>(`[aria-label="X min"]`)
-    if (!show_axes || !x_min) {
-      throw new Error(`expected standalone 3D controls not rendered`)
-    }
+      const show_axes = query<HTMLInputElement>(container, `input[type="checkbox"]`)
+      const x_min = query<HTMLInputElement>(container, `[aria-label="X min"]`)
 
-    show_axes.click()
-    x_min.value = `2`
-    x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
-    flushSync()
+      show_axes.click()
+      x_min.value = `2`
+      x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
 
-    expect(controls_state.display.show_axes).toBe(false)
-    expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, 5.2] })
-  })
+      expect(controls_state.display.show_axes).toBe(false)
+      expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, max_value] })
+      const label_input = query<HTMLInputElement>(container, `[aria-label="X label"]`)
+      label_input.value = `Energy`
+      label_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(controls_state.x_axis.label).toBe(`Energy`)
+      query<HTMLButtonElement>(container, `button[title="Reset axes to defaults"]`).click()
+      flushSync()
+      expect(controls_state.x_axis).toEqual({ label: `X`, range: [null, null] })
+      expect(container.querySelector(`button[title="Reset axes to defaults"]`)).toBeNull()
+    },
+  )
 
   test(`standalone controls expose show_controls and a two-way controls_open`, async () => {
     const controls_state = { controls_open: true }
@@ -320,6 +364,78 @@ describe(`ScatterPlot3D smoke tests`, () => {
 })
 
 describe(`scene coordinates`, () => {
+  test(`filters large triangulated surfaces and includes their bounds without mutating inputs`, () => {
+    const count = 200_000 // spreading these into push() exceeds the JS argument limit
+    const points = Array.from({ length: count }, (_, idx) => ({ x: idx, y: -idx, z: 2 * idx }))
+    points.push({ x: NaN, y: 1, z: 0 }, { x: 1, y: Infinity, z: 0 })
+    Object.freeze(points)
+    const sampled = sample_surface({ type: `triangulated`, points })
+    expect(sampled).toHaveLength(count)
+    expect(sampled).not.toBe(points)
+    expect(sampled[0]).toBe(points[0])
+    expect(sampled.at(-1)).toBe(points[count - 1])
+    expect(points).toHaveLength(count + 2)
+    expect(collect_3d_extents([basic_series], sampled)).toEqual({
+      x: { min: 0, max: count - 1, n_finite: count + 5 },
+      y: { min: 1 - count, max: 10, n_finite: count + 5 },
+      z: { min: 0, max: 2 * (count - 1), n_finite: count + 5 },
+    })
+    expect(
+      collect_3d_extents(
+        [],
+        [
+          { x: -0, y: NaN, z: Infinity },
+          { x: 0, y: 2, z: NaN },
+        ],
+      ),
+    ).toEqual({
+      x: { min: -0, max: -0, n_finite: 2 },
+      y: { min: 2, max: 2, n_finite: 1 },
+      z: { n_finite: 0 },
+    })
+  })
+
+  test.each([`perspective`, `orthographic`] as const)(
+    `%s tooltip clears the halo by 8 screen pixels at every orbit angle and zoom`,
+    (projection) => {
+      const size = { width: 800, height: 400 }
+      const point = new Object3D()
+      point.position.set(1, 0.5, -0.5)
+      point.updateMatrixWorld()
+      const camera =
+        projection === `perspective`
+          ? new PerspectiveCamera(60, 2, 0.1, 100)
+          : new OrthographicCamera(-10, 10, 5, -5, 0.1, 100)
+      for (const elevation of [0, Math.PI / 4, Math.PI / 2 - 0.001, Math.PI / 2]) {
+        camera.position
+          .copy(point.position)
+          .add(new Vector3(10 * Math.cos(elevation), 10 * Math.sin(elevation), 0))
+        camera.lookAt(point.position)
+        camera.updateMatrixWorld()
+        for (const zoom of [1, 2]) {
+          camera.zoom = zoom
+          camera.updateProjectionMatrix()
+          for (const marker_radius of [0, 0.1, 0.25, 1]) {
+            const geometry = hover_marker_geometry(marker_radius)
+            // 1e-9 CSS pixels is far below visible precision for these matrix projections.
+            const pixels_per_unit =
+              projection === `perspective`
+                ? (size.height * zoom) / (20 * Math.tan(Math.PI / 6))
+                : (size.height * zoom) / 10
+            const [pixel_x, pixel_y] = geometry.tooltip_position(point, camera, size)
+            expect(Math.abs(geometry.radius - marker_radius * 1.15)).toBeLessThanOrEqual(
+              Number.EPSILON,
+            )
+            expect(Math.abs(pixel_x - size.width / 2)).toBeLessThan(1e-9)
+            expect(
+              Math.abs(pixel_y - (size.height / 2 - geometry.radius * pixels_per_unit - 8)),
+            ).toBeLessThan(1e-9)
+          }
+        }
+      }
+    },
+  )
+
   test.each<[[number | null, number | null] | undefined, [number, number]]>([
     [undefined, [0, 100]],
     [

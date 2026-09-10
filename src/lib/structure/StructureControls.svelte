@@ -612,7 +612,9 @@
       scene_props.polyhedra_excluded_elements = [...new Set([...excluded, element])]
       scene_props.polyhedra_included_elements = included.filter((el) => el !== element)
     } else {
-      scene_props.polyhedra_excluded_elements = excluded.filter((el) => el !== element)
+      scene_props.polyhedra_excluded_elements = excluded.filter(
+        (element_2) => element_2 !== element,
+      )
       scene_props.polyhedra_included_elements = [...new Set([...included, element])]
     }
   }

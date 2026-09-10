@@ -3,6 +3,7 @@
 // template so the coordinate math is unit-testable.
 
 import type { Point2D } from '$lib/math'
+import type { Rect } from '$lib/plot/core/layout'
 import { process_prop } from '$lib/plot/core/data-transform'
 import type { BarMode, InternalPoint, Orientation } from '$lib/plot/core/types'
 import type { GroupInfo, NumericBarSeries } from './data'
@@ -50,7 +51,7 @@ export function compute_line_points<Metadata = Record<string, unknown>>(opts: {
         point_idx: idx,
       }
     })
-    .filter((pt) => isFinite(pt.x) && isFinite(pt.y))
+    .filter((point) => isFinite(point.x) && isFinite(point.y))
 }
 
 // Nearest polyline vertex to the cursor. Deliberately unbounded (unlike the scatter
@@ -107,19 +108,61 @@ export function compute_bar_rect(opts: {
         (group_info.bar_series_count - 1) / 2) *
       (bar_width_val / group_info.bar_series_count)
     : 0
-  const c0 = cat_scale(cat_val + group_offset - half)
-  const c1 = cat_scale(cat_val + group_offset + half)
-  const v0 = val_scale(base)
-  const v1 = val_scale(base + val)
-  const cat_extent = Math.max(1, Math.abs(c1 - c0))
-  const val_extent = val === 0 ? 0 : Math.max(1, Math.abs(v1 - v0))
+  const cat_start = cat_scale(cat_val + group_offset - half)
+  const cat_end = cat_scale(cat_val + group_offset + half)
+  const value_base = val_scale(base)
+  const value_tip = val_scale(base + val)
+  const cat_extent = Math.max(1, Math.abs(cat_end - cat_start))
+  const val_extent = val === 0 ? 0 : Math.max(1, Math.abs(value_tip - value_base))
   // Keep a floored value extent anchored at the baseline instead of crossing it. When the tip
   // collapses onto the base (e.g. a value at the log-axis floor) the sign decides the side.
-  const tip_before_base = v1 !== v0 ? v1 < v0 : is_vertical ? val > 0 : val < 0
-  const val_start = tip_before_base ? v0 - val_extent : v0
+  const tip_before_base =
+    value_tip !== value_base ? value_tip < value_base : is_vertical ? val > 0 : val < 0
+  const val_start = tip_before_base ? value_base - val_extent : value_base
   const [rect_x, rect_y] = is_vertical
-    ? [Math.min(c0, c1), val_start]
-    : [val_start, Math.min(c0, c1)]
+    ? [Math.min(cat_start, cat_end), val_start]
+    : [val_start, Math.min(cat_start, cat_end)]
   const [rect_w, rect_h] = is_vertical ? [cat_extent, val_extent] : [val_extent, cat_extent]
-  return { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h }
+  return {
+    c0: cat_start,
+    c1: cat_end,
+    v0: value_base,
+    v1: value_tip,
+    rect_x,
+    rect_y,
+    rect_w,
+    rect_h,
+  }
+}
+
+// Resolve bars before creating reactive DOM blocks. Labeled bars remain available because
+// their text can extend beyond the clip, even when the bar itself is outside the viewport.
+export function visible_bar_indices<Metadata>(opts: {
+  series: NumericBarSeries<Metadata>
+  rect_at: (bar_idx: number) => BarRect
+  orientation: Orientation
+  clip: Rect
+  stroke_width?: number
+}): number[] {
+  const { series, rect_at, orientation, clip, stroke_width = 1 } = opts
+  const margin = 2 * stroke_width
+  const output: number[] = []
+  for (let bar_idx = 0; bar_idx < series.x.length; bar_idx++) {
+    const { rect_x, rect_y, rect_w, rect_h } = rect_at(bar_idx)
+    if (
+      ![rect_x, rect_y, rect_w, rect_h].every(Number.isFinite) ||
+      (orientation === `vertical` ? rect_h : rect_w) <= 0
+    )
+      continue
+    if (
+      !series.labels?.[bar_idx] &&
+      (rect_x + rect_w + margin < clip.x ||
+        rect_x - margin > clip.x + clip.width ||
+        rect_y + rect_h + margin < clip.y ||
+        rect_y - margin > clip.y + clip.height)
+    )
+      continue
+    output.push(bar_idx)
+  }
+  return output
 }

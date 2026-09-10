@@ -4,6 +4,7 @@ import type { AxisConfig, AxisRanges, DataSeries, FillRegion } from '$lib/plot/c
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
+import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { materialize_series_points } from '$lib/plot/scatter/scatter-data'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -42,6 +43,43 @@ const mount_sized_scatter_plot = (
   props: Partial<ComponentProps<typeof ScatterPlot>>,
 ): Promise<HTMLElement> => mount_sized(ScatterPlot, props, { selector: `.scatter` })
 
+test(`CDF geometry refreshes after domain, scale, style, and data changes`, async () => {
+  const state = $state<{
+    series: DataSeries[]
+    x_axis: AxisConfig
+    marginals: ComponentProps<typeof ScatterPlot>[`marginals`]
+  }>({
+    series: [{ x: [1, 2, 4, 8], y: [1, 2, 3, 4] }],
+    x_axis: { range: [1, 8], scale_type: `linear` },
+    marginals: { top: { type: `cdf`, stroke: `red` } },
+  })
+  const root = await mount_sized_scatter_plot(bind_props({}, state))
+  const path = () => query(root, `.marginal-top path[fill="none"]`)
+  let previous = path().getAttribute(`d`)
+  for (const update of [
+    () => {
+      state.x_axis.range = [1, 4]
+    },
+    () => {
+      state.x_axis.scale_type = `log`
+    },
+    () => {
+      state.series[0].x = [1, 1.5, 3, 4]
+    },
+  ]) {
+    update()
+    flushSync()
+    await tick()
+    expect(path().getAttribute(`d`)).not.toBe(previous)
+    previous = path().getAttribute(`d`)
+  }
+  state.marginals = { top: { type: `cdf`, stroke: `blue`, curve: `step` } }
+  flushSync()
+  await tick()
+  expect(path().getAttribute(`stroke`)).toBe(`blue`)
+  expect(path().getAttribute(`d`)).not.toBe(previous)
+})
+
 const axis_tick_labels = (plot: HTMLElement, side: `x` | `y` | `y2`): (string | null)[] =>
   [...plot.querySelectorAll(`.${side}-axis .tick text`)].map((label) => label.textContent)
 const marker_radius = (marker: Element): number => {
@@ -62,21 +100,23 @@ const next_animation_frame = (): Promise<void> =>
 const stub_svg_rect = (svg: SVGSVGElement) => {
   svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 300 })
 }
-const click_at = (element: Element, at: { x: number; y: number }) =>
-  element.dispatchEvent(mouse(`click`, { detail: 1, clientX: at.x, clientY: at.y }))
+const click_at = (element: Element, position: { x: number; y: number }) =>
+  element.dispatchEvent(
+    mouse(`click`, { detail: 1, clientX: position.x, clientY: position.y }),
+  )
 // Moves the pointer `dx`/`dy` px off the nth marker and returns where it landed
 const move_to_marker = async (
   plot: HTMLElement,
   marker_idx: number,
-  { dx = 0, dy = 0 } = {},
+  { dx: delta_x = 0, dy: delta_y = 0 } = {},
 ): Promise<{ x: number; y: number }> => {
   const svg = plot_svg(plot)
   stub_svg_rect(svg)
-  const { x, y } = marker_position(plot, marker_idx)
-  const at = { x: x + dx, y: y + dy }
-  svg.dispatchEvent(mouse(`mousemove`, { clientX: at.x, clientY: at.y }))
+  const { x: coord_x, y: coord_y } = marker_position(plot, marker_idx)
+  const position = { x: coord_x + delta_x, y: coord_y + delta_y }
+  svg.dispatchEvent(mouse(`mousemove`, { clientX: position.x, clientY: position.y }))
   await next_animation_frame()
-  return at
+  return position
 }
 const solved_decoration_rect = (element: Element): Rect => {
   const values = [`x`, `y`, `width`, `height`].map((key) =>
@@ -85,8 +125,8 @@ const solved_decoration_rect = (element: Element): Rect => {
   if (values.some((value) => value == null)) {
     throw new Error(`Decoration has no solved rectangle: ${element.outerHTML}`)
   }
-  const [x, y, width, height] = values.map(Number)
-  return { x, y, width, height }
+  const [coord_x, coord_y, width, height] = values.map(Number)
+  return { x: coord_x, y: coord_y, width, height }
 }
 const mock_decoration_measurements = (width = 100, height = 60) => {
   vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(width)
@@ -212,8 +252,8 @@ describe(`ScatterPlot`, () => {
       const nums = (bar?.getAttribute(`d`) ?? ``).match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
       expect(nums.length).toBeGreaterThan(0)
       // The bar must have non-zero pixel height, i.e. both ends are on the canvas
-      const ys = nums.filter((_, idx) => idx % 2 === 1)
-      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(1)
+      const y_values = nums.filter((_, idx) => idx % 2 === 1)
+      expect(Math.max(...y_values) - Math.min(...y_values)).toBeGreaterThan(1)
     })
 
     // Mismatched lengths are a data bug that silently mislabels uncertainty otherwise
@@ -424,9 +464,9 @@ describe(`ScatterPlot`, () => {
         point_tween: { duration: 60_000 },
       })
       const clip = clip_rect(tweened)
-      const { x, y } = marker_position(tweened, 0)
+      const { x: coord_x, y: coord_y } = marker_position(tweened, 0)
       expect(
-        Math.hypot(x - (clip.x + clip.width / 2), y - (clip.y + clip.height / 2)),
+        Math.hypot(coord_x - (clip.x + clip.width / 2), coord_y - (clip.y + clip.height / 2)),
       ).toBeGreaterThan(10)
       expect(tweened.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
     })
@@ -489,11 +529,11 @@ describe(`ScatterPlot`, () => {
       })
       await tick()
       const marker = plot.querySelector(`path.marker`)
-      const { x, y } = marker_position(plot, 0)
+      const { x: coord_x, y: coord_y } = marker_position(plot, 0)
       marker?.dispatchEvent(mouse(`click`))
       const handler_props = on_point_click.mock.calls[0]?.[0]
-      expect(handler_props?.cx).toBeCloseTo(x)
-      expect(handler_props?.cy).toBeCloseTo(y)
+      expect(handler_props?.cx).toBeCloseTo(coord_x)
+      expect(handler_props?.cy).toBeCloseTo(coord_y)
     })
   })
 
@@ -663,6 +703,66 @@ describe(`ScatterPlot`, () => {
       expect(items.map((item) => item.classList.contains(`active`))).toEqual(
         grouped ? [true, false] : [false, true, false],
       )
+    },
+  )
+
+  test.each([0, 300])(
+    `keeps line cropping consistent through pan for duration %s`,
+    async (duration) => {
+      const x_values = Array.from({ length: 101 }, (_, idx) => idx)
+      const y_values = x_values.map((value) => Math.sin(value))
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          {
+            x: x_values,
+            y: y_values,
+            markers: `line`,
+            x_axis: `x2`,
+            line_style: { line_dash: `4 2` },
+            line_underlays: [{ x: x_values, y: y_values }],
+          },
+        ],
+        x2_axis: { range: [30.2, 40.8] },
+        line_tween: { duration },
+      })
+      const paths = [...plot.querySelectorAll(`g[data-series-id] > path[fill="none"]`)]
+      expect(paths).toHaveLength(2)
+      const check_vertices = () => {
+        const vertices = paths.map((path) => path.getAttribute(`d`)?.match(/C/g)?.length ?? 0)
+        if (duration > 0) expect(vertices[0]).toBe(100)
+        else {
+          expect(vertices[0]).toBeGreaterThan(10)
+          expect(vertices[0]).toBeLessThan(20)
+        }
+        expect(vertices[1]).toBe(100)
+      }
+      check_vertices()
+      vi.spyOn(performance, `now`).mockReturnValue(performance.now() + SETTLE_MS + 1)
+      const clip = clip_rect(plot)
+      plot_svg(plot).dispatchEvent(
+        mouse(`mousedown`, {
+          button: 0,
+          shiftKey: true,
+          clientX: clip.x + 10,
+          clientY: clip.y + 10,
+        }),
+      )
+      await tick()
+      check_vertices()
+      window.dispatchEvent(
+        new MouseEvent(`mousemove`, {
+          buttons: 1,
+          clientX: clip.x + 15,
+          clientY: clip.y + 10,
+        }),
+      )
+      await tick()
+      check_vertices()
+      const dragged_paths = paths.map((path) => path.getAttribute(`d`))
+      window.dispatchEvent(new MouseEvent(`mouseup`))
+      await tick()
+      check_vertices()
+      expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
     },
   )
 
@@ -1036,14 +1136,14 @@ describe(`ScatterPlot`, () => {
       ),
       x_axis: { ticks: `month`, scale_type: `time` as const, format: `%b %Y` },
     },
-  ])(`tick formatting`, async ({ x, x_axis, y_axis }) => {
-    const y = x.map((_value, idx) => 12 * (idx + 1))
+  ])(`tick formatting`, async ({ x: coord_x, x_axis, y_axis }) => {
+    const coord_y = coord_x.map((_value, idx) => 12 * (idx + 1))
     const plot = await mount_sized_scatter_plot({
-      series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
+      series: [{ x: coord_x, y: coord_y, point_style: { fill: `steelblue`, radius: 5 } }],
       x_axis,
       y_axis,
     })
-    expect(plot.querySelectorAll(`.marker`)).toHaveLength(x.length)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(coord_x.length)
     const x_tick_labels = [...plot.querySelectorAll(`.x-axis .tick text`)].map(
       (tick_label) => tick_label.textContent,
     )
@@ -1211,9 +1311,9 @@ describe(`ScatterPlot`, () => {
   test.each([
     { y: [-10, -5, 0, 5, 10], y_range: [-15, 15] as Vec2 },
     { y: [5, 10, 15, 20, 25], y_range: [0, 30] as Vec2 },
-  ])(`zero lines`, async ({ y, y_range }) => {
+  ])(`zero lines`, async ({ y: coord_y, y_range }) => {
     const plot = await mount_sized_scatter_plot({
-      series: [{ x: [1, 2, 3, 4, 5], y }],
+      series: [{ x: [1, 2, 3, 4, 5], y: coord_y }],
       y_axis: { range: y_range },
     })
     expect(plot.querySelectorAll(`.zero-line`)).toHaveLength(1)
@@ -1345,8 +1445,10 @@ describe(`ScatterPlot`, () => {
     stub_svg_rect(svg)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(2)
     const sweep_markers = () => {
-      for (const { x, y } of [0, 1].map((idx) => marker_position(plot, idx))) {
-        svg.dispatchEvent(mouse(`mousemove`, { clientX: x, clientY: y }))
+      for (const { x: coord_x, y: coord_y } of [0, 1].map((idx) =>
+        marker_position(plot, idx),
+      )) {
+        svg.dispatchEvent(mouse(`mousemove`, { clientX: coord_x, clientY: coord_y }))
       }
     }
     sweep_markers()
@@ -1386,8 +1488,8 @@ describe(`ScatterPlot`, () => {
         legend: null,
       })
       // hover far above/below the target marker: x mode ignores the vertical distance
-      const { y } = marker_position(plot, target_idx)
-      await move_to_marker(plot, target_idx, { dy: (y < 150 ? 290 : 10) - y })
+      const { y: coord_y } = marker_position(plot, target_idx)
+      await move_to_marker(plot, target_idx, { dy: (coord_y < 150 ? 290 : 10) - coord_y })
 
       expect(on_point_hover).toHaveBeenCalledOnce()
       expect(on_point_hover.mock.calls[0][0]).toMatchObject({
@@ -1492,8 +1594,8 @@ describe(`ScatterPlot`, () => {
     await tick()
 
     const fill_item = (label: string) =>
-      [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((el) =>
-        el.textContent?.includes(label),
+      [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((element) =>
+        element.textContent?.includes(label),
       )
     const fire = async (label: string, type: `click` | `dblclick`) => {
       fill_item(label)?.dispatchEvent(mouse(type))
@@ -1730,16 +1832,16 @@ describe(`ScatterPlot`, () => {
     const clip = clip_rect(plot)
     expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
     const line_d = plot.querySelector(`g[data-series-id] path[fill="none"]`)?.getAttribute(`d`)
-    const ys = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map((match) =>
+    const y_values = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map((match) =>
       Number(match.groups?.y),
     )
-    expect(ys).toHaveLength(4)
+    expect(y_values).toHaveLength(4)
     const bottom = clip.y + clip.height
     // Non-positive values sit on the bottom edge, not at -Infinity/NaN
-    expect(ys[0]).toBeCloseTo(bottom, 6)
-    expect(ys[2]).toBeCloseTo(bottom, 6)
-    expect(ys[3]).toBeLessThan(ys[1])
-    expect(ys.every(Number.isFinite)).toBe(true)
+    expect(y_values[0]).toBeCloseTo(bottom, 6)
+    expect(y_values[2]).toBeCloseTo(bottom, 6)
+    expect(y_values[3]).toBeLessThan(y_values[1])
+    expect(y_values.every(Number.isFinite)).toBe(true)
   })
 
   // Shift-drag pans by a constant data offset: moving the cursor by a quarter of the plot

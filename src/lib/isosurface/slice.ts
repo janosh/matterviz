@@ -89,10 +89,10 @@ const add_unique_point = (points: Vec3[], point: Vec3): void => {
   points.push(point)
 }
 
-const plane_basis = (normal: Vec3, up?: Vec3): [Vec3, Vec3] => {
-  if (!up) return math.compute_in_plane_basis(normal)
-  const normal_projection = math.dot(up, normal)
-  const projected = math.subtract(up, math.scale(normal, normal_projection))
+const plane_basis = (normal: Vec3, up_vector?: Vec3): [Vec3, Vec3] => {
+  if (!up_vector) return math.compute_in_plane_basis(normal)
+  const normal_projection = math.dot(up_vector, normal)
+  const projected = math.subtract(up_vector, math.scale(normal, normal_projection))
   if (Math.hypot(...projected) < PLANE_TOLERANCE) {
     return math.compute_in_plane_basis(normal)
   }

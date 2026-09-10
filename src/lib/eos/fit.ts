@@ -36,76 +36,96 @@ export interface EosFit extends EosParams {
 // from physical B0' ≈ 3–6, so they are left as NaN rather than special-cased. The fitter never
 // lands on them (a NaN trial cost is rejected as "not downhill").
 export function eos_energy(kind: EosKind, params: EosParams, volume: number): number {
-  const { e0, v0, b0, b0_prime } = params
+  const { e0: equilibrium_energy, v0: equilibrium_volume, b0: bulk_modulus, b0_prime } = params
   if (kind === `birch_murnaghan`) {
-    const strain = (v0 / volume) ** (2 / 3) - 1
-    return e0 + ((9 * b0 * v0) / 16) * ((b0_prime - 4) * strain ** 3 + 2 * strain ** 2)
+    const strain = (equilibrium_volume / volume) ** (2 / 3) - 1
+    return (
+      equilibrium_energy +
+      ((9 * bulk_modulus * equilibrium_volume) / 16) *
+        ((b0_prime - 4) * strain ** 3 + 2 * strain ** 2)
+    )
   }
   const pm1 = b0_prime - 1
   if (kind === `murnaghan`) {
     return (
-      e0 + ((b0 * volume) / b0_prime) * ((v0 / volume) ** b0_prime / pm1 + 1) - (b0 * v0) / pm1
+      equilibrium_energy +
+      ((bulk_modulus * volume) / b0_prime) *
+        ((equilibrium_volume / volume) ** b0_prime / pm1 + 1) -
+      (bulk_modulus * equilibrium_volume) / pm1
     )
   }
-  const t_arg = (3 * pm1 * ((volume / v0) ** (1 / 3) - 1)) / 2
-  return e0 + ((4 * b0 * v0) / pm1 ** 2) * (1 - (1 + t_arg) * Math.exp(-t_arg))
+  const t_arg = (3 * pm1 * ((volume / equilibrium_volume) ** (1 / 3) - 1)) / 2
+  return (
+    equilibrium_energy +
+    ((4 * bulk_modulus * equilibrium_volume) / pm1 ** 2) * (1 - (1 + t_arg) * Math.exp(-t_arg))
+  )
 }
 
 // ∂E/∂(E0, V0, B0, B0') of each form at one volume, for the least-squares Jacobian
 export function eos_gradient(kind: EosKind, params: EosParams, volume: number): EosParams {
-  const { e0, v0, b0, b0_prime } = params
-  const b0_deriv = (eos_energy(kind, params, volume) - e0) / b0 // E − E0 is linear in B0
+  const { e0: equilibrium_energy, v0: equilibrium_volume, b0: bulk_modulus, b0_prime } = params
+  const b0_deriv = (eos_energy(kind, params, volume) - equilibrium_energy) / bulk_modulus // E − E0 is linear in B0
   if (kind === `birch_murnaghan`) {
-    const strain = (v0 / volume) ** (2 / 3) - 1
+    const strain = (equilibrium_volume / volume) ** (2 / 3) - 1
     const h_val = (b0_prime - 4) * strain ** 3 + 2 * strain ** 2
     const h_deriv = 3 * (b0_prime - 4) * strain ** 2 + 4 * strain
     // ds/dV0 = (2/3)(s + 1)/V0
     return {
       e0: 1,
-      v0: ((9 * b0) / 16) * (h_val + (2 / 3) * (strain + 1) * h_deriv),
+      v0: ((9 * bulk_modulus) / 16) * (h_val + (2 / 3) * (strain + 1) * h_deriv),
       b0: b0_deriv,
-      b0_prime: ((9 * b0 * v0) / 16) * strain ** 3,
+      b0_prime: ((9 * bulk_modulus * equilibrium_volume) / 16) * strain ** 3,
     }
   }
   const pm1 = b0_prime - 1
   if (kind === `murnaghan`) {
-    const ratio = v0 / volume
+    const ratio = equilibrium_volume / volume
     const ratio_pow = ratio ** b0_prime
     return {
       e0: 1,
-      v0: (b0 * (ratio ** pm1 - 1)) / pm1,
+      v0: (bulk_modulus * (ratio ** pm1 - 1)) / pm1,
       b0: b0_deriv,
       b0_prime:
-        (-(b0 * volume) / b0_prime ** 2) * (ratio_pow / pm1 + 1) +
-        ((b0 * volume) / b0_prime) * ratio_pow * (Math.log(ratio) / pm1 - 1 / pm1 ** 2) +
-        (b0 * v0) / pm1 ** 2,
+        (-(bulk_modulus * volume) / b0_prime ** 2) * (ratio_pow / pm1 + 1) +
+        ((bulk_modulus * volume) / b0_prime) *
+          ratio_pow *
+          (Math.log(ratio) / pm1 - 1 / pm1 ** 2) +
+        (bulk_modulus * equilibrium_volume) / pm1 ** 2,
     }
   }
-  const eta = (volume / v0) ** (1 / 3)
+  const eta = (volume / equilibrium_volume) ** (1 / 3)
   const t_arg = (3 * pm1 * (eta - 1)) / 2
   const exp_neg = Math.exp(-t_arg)
   const g_val = 1 - (1 + t_arg) * exp_neg
   // dG/dt = t e^(−t); dt/dV0 = −(B0' − 1) η / (2 V0); dt/dB0' = t / (B0' − 1)
   return {
     e0: 1,
-    v0: ((4 * b0) / pm1 ** 2) * (g_val - (t_arg * exp_neg * pm1 * eta) / 2),
+    v0: ((4 * bulk_modulus) / pm1 ** 2) * (g_val - (t_arg * exp_neg * pm1 * eta) / 2),
     b0: b0_deriv,
-    b0_prime: ((4 * b0 * v0) / pm1 ** 3) * (t_arg ** 2 * exp_neg - 2 * g_val),
+    b0_prime:
+      ((4 * bulk_modulus * equilibrium_volume) / pm1 ** 3) *
+      (t_arg ** 2 * exp_neg - 2 * g_val),
   }
 }
 
 // P(V) = −dE/dV of each form, in eV/A^3
 export function eos_pressure(kind: EosKind, params: EosParams, volume: number): number {
-  const { v0, b0, b0_prime } = params
+  const { v0: equilibrium_volume, b0: bulk_modulus, b0_prime } = params
   if (kind === `birch_murnaghan`) {
-    const ratio = (v0 / volume) ** (1 / 3)
+    const ratio = (equilibrium_volume / volume) ** (1 / 3)
     return (
-      1.5 * b0 * (ratio ** 7 - ratio ** 5) * (1 + 0.75 * (b0_prime - 4) * (ratio ** 2 - 1))
+      1.5 *
+      bulk_modulus *
+      (ratio ** 7 - ratio ** 5) *
+      (1 + 0.75 * (b0_prime - 4) * (ratio ** 2 - 1))
     )
   }
-  if (kind === `murnaghan`) return (b0 / b0_prime) * ((v0 / volume) ** b0_prime - 1)
-  const eta = (volume / v0) ** (1 / 3)
-  return ((3 * b0 * (1 - eta)) / eta ** 2) * Math.exp(1.5 * (b0_prime - 1) * (1 - eta))
+  if (kind === `murnaghan`)
+    return (bulk_modulus / b0_prime) * ((equilibrium_volume / volume) ** b0_prime - 1)
+  const eta = (volume / equilibrium_volume) ** (1 / 3)
+  return (
+    ((3 * bulk_modulus * (1 - eta)) / eta ** 2) * Math.exp(1.5 * (b0_prime - 1) * (1 - eta))
+  )
 }
 
 export const PARAM_KEYS = [`e0`, `v0`, `b0`, `b0_prime`] as const
@@ -136,11 +156,14 @@ function parabola_guess(volumes: readonly number[], energies: readonly number[])
   if (!(curvature > 0)) {
     throw new Error(`EOS fit: energies have no minimum in volume (curvature ${curvature})`)
   }
-  const v0 = (v_a + v_b) / 2 - slope / (2 * curvature)
+  const equilibrium_volume = (v_a + v_b) / 2 - slope / (2 * curvature)
   return {
-    e0: e_a + slope * (v0 - v_a) + curvature * (v0 - v_a) * (v0 - v_b),
-    v0,
-    b0: 2 * curvature * v0,
+    e0:
+      e_a +
+      slope * (equilibrium_volume - v_a) +
+      curvature * (equilibrium_volume - v_a) * (equilibrium_volume - v_b),
+    v0: equilibrium_volume,
+    b0: 2 * curvature * equilibrium_volume,
     b0_prime: 4,
   }
 }
@@ -208,8 +231,15 @@ export function fit_eos(
         damping *= 4
         continue
       }
-      const [e0, v0, b0, b0_prime] = PARAM_KEYS.map((key, idx) => params[key] + step[idx])
-      const trial = { e0, v0, b0, b0_prime }
+      const [equilibrium_energy, equilibrium_volume, bulk_modulus, b0_prime] = PARAM_KEYS.map(
+        (key, idx) => params[key] + step[idx],
+      )
+      const trial = {
+        e0: equilibrium_energy,
+        v0: equilibrium_volume,
+        b0: bulk_modulus,
+        b0_prime,
+      }
       const trial_res = residuals(trial)
       const trial_cost = dot(trial_res, trial_res)
       // uphill and non-finite trials raise the damping
@@ -234,8 +264,12 @@ export function fit_eos(
     converged = !moved
   }
 
-  const { v0, b0, b0_prime } = params
-  if (!Object.values(params).every(Number.isFinite) || v0 <= 0 || b0 <= 0) {
+  const { v0: equilibrium_volume, b0: bulk_modulus, b0_prime } = params
+  if (
+    !Object.values(params).every(Number.isFinite) ||
+    equilibrium_volume <= 0 ||
+    bulk_modulus <= 0
+  ) {
     throw new Error(`EOS fit (${kind}) diverged: ${JSON.stringify(params)}`)
   }
   if (!converged) {
@@ -246,9 +280,9 @@ export function fit_eos(
   // V0 outside the scanned volumes is an extrapolation the data cannot support and B0' <= 1
   // sits on the 1/(B0' - 1)^2 pole of the Murnaghan and Vinet forms
   const [v_min, v_max] = [array_min(volumes), array_max(volumes)]
-  if (v0 < v_min || v0 > v_max || b0_prime <= 1) {
+  if (equilibrium_volume < v_min || equilibrium_volume > v_max || b0_prime <= 1) {
     throw new Error(
-      `EOS fit (${kind}) is unphysical: V0 = ${v0} A^3 must lie inside the scanned range [${v_min}, ${v_max}] A^3 and B0' = ${b0_prime} must exceed 1`,
+      `EOS fit (${kind}) is unphysical: V0 = ${equilibrium_volume} A^3 must lie inside the scanned range [${v_min}, ${v_max}] A^3 and B0' = ${b0_prime} must exceed 1`,
     )
   }
   return { kind, ...params, rmse: Math.sqrt(current_cost / volumes.length) }

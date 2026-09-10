@@ -21,7 +21,7 @@
   import { decoration_data_attrs, get_decoration_placement } from '$lib/plot/core/decorations'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import { get_relative_coords, range_bounds } from '$lib/plot/core/interactions'
-  import { query_nearest } from '$lib/plot/core/spatial-index'
+  import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'
   import { plot_color } from '$lib/colors'
@@ -32,13 +32,13 @@
     reserve_marginal_pad,
   } from '$lib/plot/core/marginals'
   import {
-    build_pick_index,
     bin_points,
     density_bin_at_point,
     density_screen_cell,
     first_point_in_bin,
     scale_bin_transform,
     series_extents,
+    series_x_order,
     should_render_points,
     visible_points,
   } from '$lib/plot/scatter/adaptive-density'
@@ -48,7 +48,7 @@
     DensePointSeries,
   } from '$lib/plot/scatter/adaptive-density'
   import {
-    collect_size_values,
+    collect_size_range,
     create_color_scale,
     create_size_scale,
   } from '$lib/plot/core/scales'
@@ -206,12 +206,17 @@
     axis.range?.[0] ?? fallback[0],
     axis.range?.[1] ?? fallback[1],
   ]
-  const auto_ranges = $derived.by(() => {
-    const data_ranges =
-      needs_data_range(x_axis.range) || needs_data_range(y_axis.range)
-        ? series_extents(series, x_scale_type, y_scale_type, range_padding)
-        : { x: unit_range, y: unit_range }
-    return { x: pin_range(x_axis, data_ranges.x), y: pin_range(y_axis, data_ranges.y) }
+  const needs_auto_range = $derived(
+    needs_data_range(x_axis.range) || needs_data_range(y_axis.range),
+  )
+  const data_ranges = $derived(
+    needs_auto_range
+      ? series_extents(series, x_scale_type, y_scale_type, range_padding)
+      : { x: unit_range, y: unit_range },
+  )
+  const auto_ranges = $derived({
+    x: pin_range(x_axis, data_ranges.x),
+    y: pin_range(y_axis, data_ranges.y),
   })
 
   const frame = create_cartesian_frame({
@@ -276,8 +281,9 @@
     x: scale_bin_transform(x_scale_type),
     y: scale_bin_transform(y_scale_type),
   })
-  // Bin only once the container is measured, so a plot with explicit ranges scans its data
-  // exactly once rather than for a placeholder size too
+  // Wait for measured dimensions before indexing and binning, avoiding an extra pass
+  // for the placeholder plot size.
+  const x_order = $derived(series_x_order(series))
   const density_result = $derived(
     bin_points(
       has_plot_size ? series : [],
@@ -286,6 +292,7 @@
       density_bins.x,
       density_bins.y,
       bin_transforms,
+      has_plot_size ? x_order : [],
     ),
   )
   const bin_at = (coords: Point2D) =>
@@ -396,7 +403,8 @@
       ? `points`
       : `density`
   })
-  const size_scale_fn = $derived(create_size_scale(size_scale, collect_size_values(series)))
+  const auto_size_range = $derived(collect_size_range(series))
+  const size_scale_fn = $derived(create_size_scale(size_scale, auto_size_range))
   const min_point_radius = $derived(
     size_scale.radius_range?.[0] ?? SCALE_DEFAULTS.binned_radius[0],
   )
@@ -405,16 +413,15 @@
       ? (size_scale.radius_range?.[1] ?? SCALE_DEFAULTS.binned_radius[1])
       : (size_scale.pick_radius ?? SCALE_DEFAULTS.binned_radius[1]),
   )
-  const pick_index = $derived(
+  // Share projected points between painting, picking, and labels. Size controls and
+  // selection changes then reuse the viewport instead of rescanning the entire dataset.
+  const points_in_view = $derived(
     render_mode === `points`
-      ? build_pick_index(series, {
-          x_range,
-          y_range,
-          x_scale: x_scale_fn,
-          y_scale: y_scale_fn,
-          radius_px: pick_radius_px,
-        })
-      : null,
+      ? [...visible_points(series, x_range, y_range, x_scale_fn, y_scale_fn, x_order)]
+      : [],
+  )
+  const pick_index = $derived(
+    render_mode === `points` ? build_spatial_index(points_in_view, pick_radius_px) : null,
   )
   const actual_label_placement_config = $derived({
     sa_iterations: 2000,
@@ -453,8 +460,8 @@
   // animation phase for the selected marker, or null for a plain one.
   function draw_marker(
     ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
+    center_x: number,
+    center_y: number,
     radius: number,
     color: string,
     alpha: number,
@@ -464,14 +471,20 @@
     ctx.fillStyle = color
     ctx.globalAlpha = alpha
     ctx.beginPath()
-    ctx.arc(cx, cy, radius * (pulse == null ? 1 : 1.08 + 0.08 * pulse), 0, 2 * Math.PI)
+    ctx.arc(
+      center_x,
+      center_y,
+      radius * (pulse == null ? 1 : 1.08 + 0.08 * pulse),
+      0,
+      2 * Math.PI,
+    )
     ctx.fill()
     if (pulse == null) return
     ctx.globalAlpha = 0.35 + 0.25 * pulse
     ctx.strokeStyle = color
     ctx.lineWidth = 1.5 + pulse
     ctx.beginPath()
-    ctx.arc(cx, cy, radius * (1.45 + 0.25 * pulse), 0, 2 * Math.PI)
+    ctx.arc(center_x, center_y, radius * (1.45 + 0.25 * pulse), 0, 2 * Math.PI)
     ctx.stroke()
   }
 
@@ -513,28 +526,27 @@
   const in_view = $derived.by(() => {
     const [x_min, x_max] = range_bounds(x_range)
     const [y_min, y_max] = range_bounds(y_range)
-    return (x: number, y: number) => x >= x_min && x <= x_max && y >= y_min && y <= y_max
+    return (coord_x: number, coord_y: number) =>
+      coord_x >= x_min && coord_x <= x_max && coord_y >= y_min && coord_y <= y_max
   })
 
   // Every point except the selected one, which pulses and so lives on the overlay. Reads
   // neither the pulse nor the hover, so this layer only repaints when the data or view move.
   function draw_points(ctx: CanvasRenderingContext2D) {
-    for (const [series_idx, srs] of series.entries()) {
-      const color = srs.color ?? plot_color(series_idx)
-      const n_points = srs.x.length
-      for (let point_idx = 0; point_idx < n_points; point_idx++) {
-        const x = srs.x[point_idx]
-        const y = srs.y[point_idx]
-        if (!in_view(x, y)) continue
-        if (
-          selected_point?.series_idx === series_idx &&
-          selected_point.point_idx === point_idx
-        ) {
-          continue
-        }
-        const radius = point_radius_for_value(srs.size_values?.[point_idx])
-        draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 0.65, null)
-      }
+    for (const point of points_in_view) {
+      const { series_idx, point_idx, cx: center_x, cy: center_y, size_value } = point
+      if (selected_point?.series_idx === series_idx && selected_point.point_idx === point_idx)
+        continue
+      const color = series[series_idx].color ?? plot_color(series_idx)
+      draw_marker(
+        ctx,
+        center_x,
+        center_y,
+        point_radius_for_value(size_value),
+        color,
+        0.65,
+        null,
+      )
     }
     ctx.globalAlpha = 1
   }
@@ -552,11 +564,11 @@
       if (!mark) continue
       const { series_idx, point_idx } = mark
       const srs = series[series_idx]
-      const [x, y] = [srs?.x[point_idx], srs?.y[point_idx]]
-      if (!in_view(x, y)) continue
+      const [coord_x, coord_y] = [srs?.x[point_idx], srs?.y[point_idx]]
+      if (!in_view(coord_x, coord_y)) continue
       const radius = point_radius_for_value(srs.size_values?.[point_idx])
       const color = srs.color ?? plot_color(series_idx)
-      draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 1, pulse)
+      draw_marker(ctx, x_scale_fn(coord_x), y_scale_fn(coord_y), radius, color, 1, pulse)
     }
     ctx.globalAlpha = 1
   }
@@ -671,7 +683,7 @@
   const point_label_payloads = $derived.by(() => {
     if (!point_labels_settings.render || render_mode !== `points`) return []
     const payloads: BinnedPointPayload<Metadata, PointData>[] = []
-    for (const point of visible_points(series, x_range, y_range, x_scale_fn, y_scale_fn)) {
+    for (const point of points_in_view) {
       payloads.push(point_payload(point))
       if (payloads.length > point_labels_settings.max_count) return []
     }
@@ -871,8 +883,8 @@
 
     <!-- Overlay ref lines ignore z-order: every level renders here, below the axes -->
     <g class="reference-lines">
-      {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as const as z (z)}
-        <ReferenceLinesLayer {frame} {z} />
+      {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as const as coord_z (coord_z)}
+        <ReferenceLinesLayer {frame} z={coord_z} />
       {/each}
     </g>
     <PlotAxes {frame} display={grid_display} />
