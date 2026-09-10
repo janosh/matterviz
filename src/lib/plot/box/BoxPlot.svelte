@@ -65,7 +65,6 @@
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { violin_path } from '$lib/plot/core/svg'
   import { resolve_pattern } from '$lib/plot/core/patterns'
@@ -270,7 +269,8 @@
   const draws_violin = (srs: BoxPlotSeries<Metadata>): boolean => effective_kind(srs) !== `box`
   const draws_box = (srs: BoxPlotSeries<Metadata>): boolean => effective_kind(srs) !== `violin`
 
-  let box_summaries = $derived(series.map((srs) => summarize_box_samples(srs.y)))
+  // Legend visibility changes no samples, so summaries depend on the authored data.
+  let box_summaries = $derived(series_in.map((srs) => summarize_box_samples(srs.y)))
   let box_stats = $derived(
     series.map((srs, idx) =>
       compute_box_whiskers(box_summaries[idx], {
@@ -302,14 +302,14 @@
     () => (slot_list.length > 0 ? cat_axis : null),
   )
 
-  let slot_lookup = $derived(new SvelteMap(slot_list.map((slot, idx) => [slot, idx])))
+  let slot_lookup = $derived(new Map(slot_list.map((slot, idx) => [slot, idx])))
   const slot_of = (idx: number): number =>
     use_categories ? (slot_lookup.get(slot_key(series[idx], idx)) ?? idx) : idx
   let slot_indices = $derived(slot_list.map((_, idx) => idx))
   // A slot's tick label is colored only when a single series occupies it. Precompute
   // slot -> color in one pass so the PlotAxis tick_color callback stays O(1) per tick.
   let slot_colors = $derived.by(() => {
-    const colors = new SvelteMap<number, string | undefined>()
+    const colors = new Map<number, string | undefined>()
     for (const [idx] of series.entries()) {
       const slot = slot_of(idx)
       colors.set(slot, colors.has(slot) ? undefined : box_color(idx))

@@ -122,34 +122,13 @@
   })
 
   type LinePt = { pos: number; value: number }
-  type CurveRender = {
-    kind: MarginalCurve[`kind`]
-    fill: string
-    fill_opacity: number
-    stroke: string
-    stroke_width: number
-    opacity: number
-    bars: Rect[]
-    area_path: string
-    line_path: string
-  }
+  type CurveRender = ReturnType<typeof build_curve_render>
   type ValueAxisRender = {
     spine: { x1: number; y1: number; x2: number; y2: number }
     ticks: { x: number; y: number; text: string }[]
     anchor: string // text-anchor shared by all tick labels
     baseline: string // dominant-baseline shared by all tick labels
     title: { x: number; y: number; text: string; transform?: string }
-  }
-  type SideRender = {
-    side: MarginalSide
-    config: ResolvedMarginalConfig
-    rect: Rect
-    clip_id: string
-    ctx: MarginalRenderContext
-    hit_test: ((pixel_x: number, pixel_y: number) => MarginalHover | null) | null
-    curves: CurveRender[]
-    transform?: string
-    value_axis: ValueAxisRender | null
   }
 
   // The axis a marginal binds to (x2/y2 fall back to x1/y1), with scale_type defaulted to linear
@@ -188,10 +167,7 @@
   }
 
   // Build the SVG primitives for one curve given the side's scales
-  const build_curve_render = (
-    curve: MarginalSeriesCurve,
-    ctx: MarginalRenderContext,
-  ): CurveRender => {
+  const build_curve_render = (curve: MarginalSeriesCurve, ctx: MarginalRenderContext) => {
     const { side, positional_scale: pos_scale, value_scale: val_scale, baseline, config } = ctx
     const is_x = side === `top` || side === `bottom`
     const color = config.color ?? curve.color
@@ -200,14 +176,14 @@
     const stroke = config.stroke ?? color
     const { stroke_width, opacity } = config
     const data = curve.curve
-    const base: CurveRender = {
+    const base = {
       kind: data.kind,
       fill,
       fill_opacity,
       stroke,
       stroke_width,
       opacity,
-      bars: [],
+      bars: [] as Rect[],
       area_path: ``,
       line_path: ``,
     }
@@ -440,10 +416,9 @@
   })
 
   // Projection and styling depend on layout; distributions do not.
-  const side_renders = $derived.by<SideRender[]>(() => {
+  const side_renders = $derived.by(() => {
     if (!width || !height) return []
-    const out: SideRender[] = []
-    for (const { axis, is_x, data, max, domain, geometry } of side_data) {
+    return side_data.flatMap(({ axis, is_x, data, max, domain, geometry }) => {
       const { side, config, curves } = data
       const { pixel_range, format, tick_label, label: axis_title } = axis_props(axis)
       const pos_scale = create_scale(data.scale_type, data.positional_range, pixel_range)
@@ -456,7 +431,7 @@
         has_axis[side],
         outer_pad,
       )
-      if (rect.width <= 0 || rect.height <= 0) continue
+      if (rect.width <= 0 || rect.height <= 0) return []
 
       // Shared per-side value scale so per-series curves are directly comparable. Auto-scale adds
       // 5% headroom above the peak so the tallest curve's line stroke isn't clipped at the strip's
@@ -486,30 +461,31 @@
           : is_hoverable(config)
             ? create_marginal_hit_test(ctx)
             : null
-      out.push({
-        side,
-        config,
-        rect,
-        clip_id: `${identifier}-${side}`,
-        ctx,
-        hit_test,
-        transform: geometry
-          ? `translate(${offset_x} ${offset_y}) scale(${scale_x} ${scale_y})`
-          : undefined,
-        // A snippet renders the strip itself, so skip building the built-in SVG primitives
-        curves:
-          geometry?.curves ??
-          (config.snippet ? [] : curves.map((curve) => build_curve_render(curve, ctx))),
-        // Value axis only when there's something to scale: a pinned value_range, or positive
-        // non-rug content (max > 0). This skips rug (no value), empty curves (degenerate [0,0]
-        // domain), and snippets (which draw their own).
-        value_axis:
-          config.value_axis && !config.snippet && (config.value_range != null || max > 0)
-            ? build_value_axis(is_x, rect, val_scale, domain, config)
-            : null,
-      })
-    }
-    return out
+      return [
+        {
+          side,
+          config,
+          rect,
+          clip_id: `${identifier}-${side}`,
+          ctx,
+          hit_test,
+          transform: geometry
+            ? `translate(${offset_x} ${offset_y}) scale(${scale_x} ${scale_y})`
+            : undefined,
+          // A snippet renders the strip itself, so skip building the built-in SVG primitives
+          curves:
+            geometry?.curves ??
+            (config.snippet ? [] : curves.map((curve) => build_curve_render(curve, ctx))),
+          // Value axis only when there's something to scale: a pinned value_range, or positive
+          // non-rug content (max > 0). This skips rug (no value), empty curves (degenerate [0,0]
+          // domain), and snippets (which draw their own).
+          value_axis:
+            config.value_axis && !config.snippet && (config.value_range != null || max > 0)
+              ? build_value_axis(is_x, rect, val_scale, domain, config)
+              : null,
+        },
+      ]
+    })
   })
 </script>
 

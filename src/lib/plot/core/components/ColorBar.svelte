@@ -172,28 +172,43 @@
   // host squeezes the bar below the width its labels need. Width stays 0 until measured
   // (and in environments without layout), which leaves the tick list untouched.
   let bar_px = $state(0)
-  let bar_font = $state(DEFAULT_FONT_SPEC)
+  let tick_font = $state(DEFAULT_FONT_SPEC)
+  let tick_spacing = $state(8) // label padding plus a 4px gap
   const observe_bar = observe_size<HTMLDivElement>(({ width }, node) => {
     bar_px = width
-    bar_font = resolve_font_spec(node)
+    const label = node.querySelector<HTMLElement>(`.tick-label`)
+    if (label) {
+      tick_font = resolve_font_spec(label)
+      const style = getComputedStyle(label)
+      tick_spacing =
+        Number(style.paddingLeft.replace(`px`, ``)) +
+        Number(style.paddingRight.replace(`px`, ``)) +
+        4
+    }
   })
   // Tick values are unique (deduped above, or generated), so they key the rendered labels
   const visible_ticks = $derived.by(() => {
     const base = tick_side === `inside` ? ticks.slice(1, -1) : ticks
     // explicit tick arrays are the caller's choice; vertical labels stack and never collide
-    if (Array.isArray(tick_labels) || orientation !== `horizontal` || !bar_px) return base
-    // labels are centered on their tick, so n labels need ~(n - 1) label widths of bar
-    const label_px =
-      Math.max(...base.map((tick) => measure_text_line(format_tick(tick), bar_font).width)) + 8 // breathing room between neighbours
-    const max_fit = Math.floor(bar_px / label_px) + 1
-    if (base.length <= max_fit) return base
-    // evenly spaced picks that always include both ends, so the range stays readable
-    const n_keep = Math.max(max_fit, 2)
+    if (Array.isArray(tick_labels) || !bar_px || is_vertical || base.length <= 2) return base
+    // Compare actual neighbors: alternating short and long labels often fit even when
+    // budgeting the widest label for every tick would drop an arbitrary middle value.
+    const bounds = base.map((tick) => {
+      const center = (tick_scale(tick) * bar_px) / 100
+      const half_width = measure_text_line(format_tick(tick), tick_font).width / 2
+      return { left: center - half_width, right: center + half_width }
+    })
     const last = base.length - 1
-    const picks = new Set(
-      Array.from({ length: n_keep }, (_, idx) => Math.round((idx * last) / (n_keep - 1))),
-    )
-    return base.filter((_, idx) => picks.has(idx))
+    let previous_right = bounds[0].right
+    return base.filter((_, idx) => {
+      if (idx === 0 || idx === last) return true // always retain the range ends
+      const { left, right } = bounds[idx]
+      if (left < previous_right + tick_spacing || right + tick_spacing > bounds[last].left) {
+        return false
+      }
+      previous_right = right
+      return true
+    })
   })
 
   const wrapper_flex_dir = $derived(

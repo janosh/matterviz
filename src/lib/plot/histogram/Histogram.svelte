@@ -226,15 +226,17 @@
   let axis_data = $derived.by(() => {
     const x1_extent = empty_extent()
     const x2_extent = empty_extent()
-    const y2_extent = empty_extent()
+    let has_y2_points = false
     for (const srs of selected_series) {
-      accumulate_extent(srs.x_axis === `x2` ? x2_extent : x1_extent, srs.values)
-      if (srs.y_axis === `y2`) accumulate_extent(y2_extent, srs.values)
+      const extent = srs.x_axis === `x2` ? x2_extent : x1_extent
+      const previous_count = extent.n_finite
+      accumulate_extent(extent, srs.values)
+      has_y2_points ||= srs.y_axis === `y2` && extent.n_finite > previous_count
     }
-    return { x1_extent, x2_extent, y2_extent }
+    return { x1_extent, x2_extent, has_y2_points }
   })
   let has_x2_points = $derived(axis_data.x2_extent.n_finite > 0)
-  let has_y2_points = $derived(axis_data.y2_extent.n_finite > 0)
+  let has_y2_points = $derived(axis_data.has_y2_points)
 
   // === Binning ===
   // Pad-independent (no pixel scales) so the legend obstacle field and the count ranges reuse it

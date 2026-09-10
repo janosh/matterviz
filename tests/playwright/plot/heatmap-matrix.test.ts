@@ -1,6 +1,36 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
+test(`electronegativity colorbar retains fitting ticks and thins only crowded labels`, async ({
+  page,
+}) => {
+  await page.goto(`/plot/heatmap-matrix`)
+  await page.waitForLoadState(`networkidle`)
+  const colorbar = page.locator(`.heatmap .colorbar`).first()
+  const bar = colorbar.locator(`.bar`)
+  const labels = bar.locator(`.tick-label`)
+  const expected = [`0`, `0.5`, `1`, `1.5`, `2`, `2.5`, `3`, `3.5`]
+  await expect(labels).toHaveText(expected)
+  for (const width of [70, 167]) {
+    await bar.evaluate((node, bar_width) => {
+      node.style.width = `${bar_width}px`
+    }, width)
+    if (width === 167) await expect(labels).toHaveText(expected)
+    else await expect.poll(() => labels.count()).toBeLessThan(expected.length)
+    await expect(labels.first()).toHaveText(`0`)
+    await expect(labels.last()).toHaveText(`3.5`)
+    const bounds = await labels.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { left, right } = node.getBoundingClientRect()
+        return { left, right }
+      }),
+    )
+    for (let idx = 1; idx < bounds.length; idx++) {
+      expect(bounds[idx].left).toBeGreaterThanOrEqual(bounds[idx - 1].right)
+    }
+  }
+})
+
 // The element matrix is ~103x103 and opts into `virtualize`. Windowing is measured from real
 // layout, so it can only be exercised in a browser.
 test.describe(`HeatmapMatrix virtualization`, () => {

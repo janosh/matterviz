@@ -371,18 +371,15 @@
   // Per-series fat-line inputs (ordered positions + resolved stroke style) as a derived so
   // the effect below can diff against previous lines and only rebuild what changed
   let line_inputs = $derived.by((): SeriesLineInput[] => {
-    const eligible: SeriesLineInput[] = []
-    const positions_by_series = new Map<number, number[]>()
+    const inputs = new Map<number, SeriesLineInput>()
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
       const line_style = srs?.line_style
       if (!line_style || !(srs.visible ?? true)) continue
-      const positions: number[] = []
-      positions_by_series.set(series_idx, positions)
       const color = line_style.stroke ?? first_point_style(srs)?.fill ?? plot_color(series_idx)
-      eligible.push({
+      inputs.set(series_idx, {
         series_idx,
-        positions,
+        positions: [],
         color,
         width: line_style.stroke_width ?? 2,
         dashed: Boolean(line_style.line_dash),
@@ -390,9 +387,9 @@
     }
     // processed_points are in (series_idx, point_idx) order, so one pass fills every polyline
     for (const point of processed_points) {
-      positions_by_series.get(point.series_idx)?.push(point.x, point.y, point.z)
+      inputs.get(point.series_idx)?.positions.push(point.x, point.y, point.z)
     }
-    return eligible.filter((input) => input.positions.length >= 6) // >= 2 points
+    return [...inputs.values()].filter((input) => input.positions.length >= 6) // >= 2 points
   })
 
   const same_line_input = (prev: SeriesLineData, next: SeriesLineInput): boolean =>
@@ -402,11 +399,7 @@
     prev.positions.length === next.positions.length &&
     prev.positions.every((coord, idx) => coord === next.positions[idx])
 
-  // Track previous lines for reuse/cleanup. `.raw`, since the array is only ever reassigned:
-  // a deep proxy put a signal behind every coordinate, and `same_line_input` reads every index
-  // on each diff - 227 ms instead of 5.8 ms at 50k points, plus 31 MB of signal objects held
-  // for the component's life. It also makes the `line === series_lines[idx]` reuse check below
-  // honest, which only worked before because the reused entries were the proxies themselves.
+  // Reassign the array without proxying every coordinate; identity checks below reuse lines.
   let series_lines: SeriesLineData[] = $state.raw([])
 
   $effect(() => {
@@ -513,13 +506,8 @@
     if (data) on_point_click?.(data)
   }
 
-  // Axis configuration for rendering
-  const tick_length = 0.15
-
-  // Axis rendering config - all positions use backside `pos` values. Each entry also owns its
-  // line geometries (main axis, ticks, grid), rebuilt as a whole when pos/ticks/ranges change.
-  // Main axis lines: X spans full X at backside Y/Z; user Y (Three.js Z) spans full Z at
-  // backside X/Y; user Z (Three.js Y) spans full Y at backside X/Z.
+  // User x/y/z map to scene x/z/y. Each axis supplies its orientation and label offsets;
+  // spine, tick, and grid geometry follow the same construction in that local frame.
   let axes_config = $derived(
     [
       {
@@ -527,26 +515,14 @@
         color: `#ef4444`,
         axis: x_axis,
         ticks: x_ticks,
-        line_geom: line_geometry([-half_x, pos.y, pos.z], [half_x, pos.y, pos.z]),
-        get_tick_pos: (val: number): Vec3 => [normalize_x(val), pos.y, pos.z],
-        get_tick_end: (val: number): Vec3 => [
-          normalize_x(val),
-          pos.y + sign_y * tick_length,
-          pos.z,
-        ],
-        get_grid_lines: (val: number): [Vec3, Vec3][] => {
-          const pixel_x = normalize_x(val)
-          return [
-            [
-              [pixel_x, -half_z, pos.z],
-              [pixel_x, half_z, pos.z],
-            ],
-            [
-              [pixel_x, pos.y, -half_y],
-              [pixel_x, pos.y, half_y],
-            ],
-          ]
-        },
+        half: half_x,
+        cross_half: half_z,
+        depth_half: half_y,
+        cross: pos.y,
+        depth: pos.z,
+        sign: sign_y,
+        normalize: normalize_x,
+        orient: (along: number, cross: number, depth: number): Vec3 => [along, cross, depth],
         tick_label_pos: (val: number): Vec3 => [normalize_x(val), pos.y + sign_y * 0.4, pos.z],
         axis_label_pos: [0, pos.y + sign_y * 0.9, pos.z] as Vec3,
       },
@@ -555,26 +531,14 @@
         color: `#22c55e`,
         axis: y_axis,
         ticks: y_ticks,
-        line_geom: line_geometry([pos.x, pos.y, -half_y], [pos.x, pos.y, half_y]),
-        get_tick_pos: (val: number): Vec3 => [pos.x, pos.y, normalize_y(val)],
-        get_tick_end: (val: number): Vec3 => [
-          pos.x,
-          pos.y + sign_y * tick_length,
-          normalize_y(val),
-        ],
-        get_grid_lines: (val: number): [Vec3, Vec3][] => {
-          const pixel_y = normalize_y(val)
-          return [
-            [
-              [-half_x, pos.y, pixel_y],
-              [half_x, pos.y, pixel_y],
-            ],
-            [
-              [pos.x, -half_z, pixel_y],
-              [pos.x, half_z, pixel_y],
-            ],
-          ]
-        },
+        half: half_y,
+        cross_half: half_z,
+        depth_half: half_x,
+        cross: pos.y,
+        depth: pos.x,
+        sign: sign_y,
+        normalize: normalize_y,
+        orient: (along: number, cross: number, depth: number): Vec3 => [depth, cross, along],
         tick_label_pos: (val: number): Vec3 => [
           pos.x + sign_x * 0.5,
           pos.y + sign_y * 0.4,
@@ -591,38 +555,41 @@
         color: `#3b82f6`,
         axis: z_axis,
         ticks: z_ticks,
-        line_geom: line_geometry([pos.x, -half_z, pos.z], [pos.x, half_z, pos.z]),
-        get_tick_pos: (val: number): Vec3 => [pos.x, normalize_z(val), pos.z],
-        get_tick_end: (val: number): Vec3 => [
-          pos.x + sign_x * tick_length,
-          normalize_z(val),
-          pos.z,
-        ],
-        get_grid_lines: (val: number): [Vec3, Vec3][] => {
-          const pixel_z = normalize_z(val)
-          return [
-            [
-              [-half_x, pixel_z, pos.z],
-              [half_x, pixel_z, pos.z],
-            ],
-            [
-              [pos.x, pixel_z, -half_y],
-              [pos.x, pixel_z, half_y],
-            ],
-          ]
-        },
+        half: half_z,
+        cross_half: half_x,
+        depth_half: half_y,
+        cross: pos.x,
+        depth: pos.z,
+        sign: sign_x,
+        normalize: normalize_z,
+        orient: (along: number, cross: number, depth: number): Vec3 => [cross, along, depth],
         tick_label_pos: (val: number): Vec3 => [pos.x + sign_x * 0.5, normalize_z(val), pos.z],
         axis_label_pos: [pos.x + sign_x, 0, pos.z] as Vec3,
       },
-    ].map((entry) => ({
-      ...entry,
-      tick_geoms: entry.ticks.map((val) =>
-        line_geometry(entry.get_tick_pos(val), entry.get_tick_end(val)),
-      ),
-      grid_geoms: entry.ticks.map((val) =>
-        entry.get_grid_lines(val).map(([start, end]) => line_geometry(start, end)),
-      ),
-    })),
+    ].map(
+      ({ half, cross_half, depth_half, cross, depth, sign, normalize, orient, ...entry }) => ({
+        ...entry,
+        line_geom: line_geometry(orient(-half, cross, depth), orient(half, cross, depth)),
+        tick_geoms: entry.ticks.map((val) =>
+          line_geometry(
+            orient(normalize(val), cross, depth),
+            orient(normalize(val), cross + sign * 0.15, depth),
+          ),
+        ),
+        grid_geoms: entry.ticks.map((val) => {
+          const along = normalize(val)
+          const across = line_geometry(
+            orient(along, -cross_half, depth),
+            orient(along, cross_half, depth),
+          )
+          const behind = line_geometry(
+            orient(along, cross, -depth_half),
+            orient(along, cross, depth_half),
+          )
+          return entry.key === `y` ? [behind, across] : [across, behind]
+        }),
+      }),
+    ),
   )
 
   // Release the previous axis/tick/grid geometries whenever axes_config rebuilds and on unmount

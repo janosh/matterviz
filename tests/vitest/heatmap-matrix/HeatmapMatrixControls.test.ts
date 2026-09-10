@@ -1,8 +1,10 @@
 import type { ElementAxisOrderingKey } from '$lib/heatmap-matrix'
+import * as heatmap from '$lib/heatmap-matrix'
 import { ELEMENT_ORDERINGS, HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, expect_labelled_settings_grid } from '../setup'
+import HeatmapDemo from '../../../src/routes/(demos)/plot/heatmap-matrix/+page.svelte'
 
 const mount_controls = (
   props: Partial<ComponentProps<typeof HeatmapMatrixControls>> = {},
@@ -26,6 +28,73 @@ const find_position_select = () =>
   )
 
 describe(`HeatmapMatrixControls`, () => {
+  test(`demo controls update only their own heatmap`, async () => {
+    // A small full-matrix sample exercises the bindings without mounting 10,000 cells.
+    const elements_to_axis = heatmap.elements_to_axis
+    vi.spyOn(heatmap, `elements_to_axis`).mockImplementation((symbols, ordering) =>
+      elements_to_axis(symbols ?? [`H`, `Li`, `Be`, `Co`, `Ni`, `Cu`], ordering),
+    )
+    mount(HeatmapDemo, { target: document.body })
+    await tick()
+    const matrices = document.querySelectorAll(`.heatmap-controls-anchor .heatmap`)
+    const orderings = [
+      ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
+    ].filter((select) => select.querySelector(`option[value="atomic_number"]`))
+    expect(orderings).toHaveLength(2)
+    // Svelte reads :checked on options, which happy-dom doesn't match.
+    for (const select of orderings) {
+      vi.spyOn(select, `querySelector`).mockImplementation(() => select.selectedOptions[0])
+    }
+    const labels = (idx: number) =>
+      [...matrices[idx].querySelectorAll(`.x-label`)].map((label) => label.textContent)
+    const initial_full = labels(0)
+    const initial_subset = labels(1)
+    expect(initial_full.length).toBeGreaterThan(0)
+    orderings[1].value = `atomic_mass`
+    orderings[1].dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    const reordered_subset = labels(1)
+    expect(reordered_subset).not.toEqual(initial_subset)
+    expect(labels(0)).toEqual(initial_full)
+    expect(orderings[0].value).toBe(`atomic_number`)
+    orderings[0].value = `alphabetical`
+    orderings[0].dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(labels(0)).not.toEqual(initial_full)
+    expect(labels(1)).toEqual(reordered_subset)
+
+    const panes = document.querySelectorAll(`.heatmap-controls`)
+    const setting = (pane_idx: number, name: string) => {
+      const label = [...panes[pane_idx].querySelectorAll(`label`)]
+        .find((label) => label.querySelector(`span`)?.textContent === name)
+      if (!label) throw new Error(`Missing ${name} control in pane ${pane_idx}`)
+      return label
+    }
+    // These controls previously changed unconnected state in a separate panel.
+    for (const [name, selector] of [
+      [`Values`, `.cell-value`],
+      [`Row sums`, `.summary-row`],
+      [`Col sums`, `.summary-col`],
+    ]) {
+      doc_query<HTMLInputElement>(`input`, setting(0, name)).click()
+      await tick()
+      expect(matrices[0].querySelector(selector)).not.toBeNull()
+      expect(matrices[1].querySelector(selector)).toBeNull()
+    }
+    doc_query<HTMLInputElement>(`input`, setting(1, `Color bar`)).click()
+    await tick()
+    expect(matrices[1].querySelector(`.colorbar`)).not.toBeNull()
+    for (const pane_idx of [1, 0]) {
+      const unchanged = labels(1 - pane_idx)
+      const search = doc_query<HTMLInputElement>(`input`, setting(pane_idx, `Search`))
+      search.value = `Co`
+      search.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      expect(labels(pane_idx)).toEqual([`Co`])
+      expect(labels(1 - pane_idx)).toEqual(unchanged)
+    }
+  })
+
   test(`renders toggle, ordering options, and pane with correct classes`, () => {
     mount_controls()
     const toggle = get_toggle()

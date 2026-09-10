@@ -4,7 +4,7 @@ import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, trigger_resize_observer } from '../setup'
 
 const mount_bar = (props: Record<string, unknown>) =>
   mount(ColorBar, { target: document.body, props })
@@ -167,6 +167,32 @@ describe(`ColorBar tick_side='inside'`, () => {
 })
 
 describe(`ColorBar tick labels`, () => {
+  test.each([false, true])(
+    `keeps fitting decimal ticks after resizing (reversed=%s)`,
+    async (reversed) => {
+      mount_bar({ range: reversed ? [3.5, 0] : [0, 3.5], tick_labels: 5 })
+      const bar = doc_query(`.colorbar .bar`)
+      // happy-dom doesn't resolve the padding shorthand's CSS variable into longhands.
+      for (const label of tick_spans()) {
+        label.style.paddingLeft = `2px`
+        label.style.paddingRight = `2px`
+      }
+      const expected = [`0`, `0.5`, `1`, `1.5`, `2`, `2.5`, `3`, `3.5`]
+      if (reversed) expected.reverse()
+      for (const width of [167, 70, 167]) {
+        Object.defineProperty(bar, `clientWidth`, { value: width, configurable: true })
+        trigger_resize_observer(bar)
+        await tick()
+        if (width === 167) expect(tick_texts()).toEqual(expected)
+        else {
+          expect(tick_texts().length).toBeLessThan(expected.length)
+          expect(tick_texts()[0]).toBe(expected[0])
+          expect(tick_texts().at(-1)).toBe(expected.at(-1))
+        }
+      }
+    },
+  )
+
   const day = (month: number, date: number, hours = 0, minutes = 0, seconds = 0) =>
     new Date(2024, month, date, hours, minutes, seconds).getTime()
   test.each([

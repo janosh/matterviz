@@ -87,103 +87,34 @@ describe(`scales`, () => {
   })
 
   describe(`nice_range_from_extent`, () => {
-    test.each([
-      {
-        values: sample_values,
-        limits: [null, null],
-        scale_type: `linear`,
-        is_time: false,
-        padding: 0.05,
-        check: (range: Vec2) => {
-          expect(range[0]).toBeLessThan(1)
-          expect(range[1]).toBeGreaterThan(5)
-        },
-      },
-      {
-        values: sample_values,
-        limits: [0, 10],
-        scale_type: `linear`,
-        is_time: false,
-        padding: 0.05,
-        check: (range: Vec2) => expect(range).toEqual([0, 10]),
-      },
-      {
-        values: [1, 10, 100],
-        limits: [null, null],
-        scale_type: `log`,
-        is_time: false,
-        padding: 0.1,
-        check: (range: Vec2) => {
-          expect(range[0]).toBeLessThan(1)
-          expect(range[1]).toBeGreaterThan(100)
-        },
-      },
-      {
-        values: [new Date(2023, 0, 1).getTime(), new Date(2023, 11, 1).getTime()],
-        limits: [null, null],
-        scale_type: `linear`,
-        is_time: true,
-        padding: 0.1,
-        check: (range: Vec2) => {
-          expect(range[0]).toBeLessThan(new Date(2023, 0, 1).getTime())
-          expect(range[1]).toBeGreaterThan(new Date(2023, 11, 1).getTime())
-        },
-      },
-      {
-        values: [42],
-        limits: [null, null],
-        scale_type: `linear`,
-        is_time: false,
-        padding: 0.1,
-        check: (range: Vec2) => {
-          expect(range[0]).toBeLessThan(42)
-          expect(range[1]).toBeGreaterThan(42)
-        },
-      },
-      {
-        values: [],
-        limits: [null, null],
-        scale_type: `linear`,
-        is_time: false,
-        padding: 0.1,
-        check: (range: Vec2) => expect(range).toEqual([0, 1]),
-      },
-      {
-        values: sample_values,
-        limits: [null, 1000],
-        scale_type: `linear`,
-        is_time: false,
-        padding: 0.05,
-        check: (range: Vec2) => {
-          expect(range[0]).toBeLessThan(1)
-          expect(range[1]).toBe(1000)
-        },
-      },
-      {
-        values: sample_values,
-        limits: [0, null],
-        scale_type: `linear`,
-        is_time: false,
-        padding: 0.05,
-        check: (range: Vec2) => {
-          expect(range[0]).toBe(0)
-          expect(range[1]).toBeGreaterThanOrEqual(5)
-        },
-      },
-    ])(
-      `nice range: $scale_type, $values.length values`,
-      ({ values, limits, scale_type, is_time, padding, check }) => {
-        const range = nice_range(
-          values,
-          limits as [number | null, number | null],
-          scale_type as ScaleType,
-          padding,
-          is_time,
-        )
-        expect(range).toHaveLength(2)
-        check(range)
-      },
-    )
+    test.each<[number[], ScaleType, number, boolean]>([
+      [sample_values, `linear`, 0.05, false],
+      [[1, 10, 100], `log`, 0.1, false],
+      [[new Date(2023, 0, 1).getTime(), new Date(2023, 11, 1).getTime()], `linear`, 0.1, true],
+      [[42], `linear`, 0.1, false],
+    ])(`pads %j on a %s scale`, (values, scale_type, padding, is_time) => {
+      const range = nice_range(values, [null, null], scale_type, padding, is_time)
+      expect(range).toHaveLength(2)
+      expect(range[0]).toBeLessThan(Math.min(...values))
+      expect(range[1]).toBeGreaterThan(Math.max(...values))
+    })
+
+    test.each<[[number | null, number | null], number | undefined, number | undefined]>([
+      [[0, 10], 0, 10],
+      [[null, 1000], undefined, 1000],
+      [[0, null], 0, undefined],
+    ])(`respects explicit bounds %j`, (limits, lower, upper) => {
+      const range = nice_range(sample_values, limits, `linear`, 0.05)
+      expect(range).toHaveLength(2)
+      if (lower === undefined) expect(range[0]).toBeLessThan(1)
+      else expect(range[0]).toBe(lower)
+      if (upper === undefined) expect(range[1]).toBeGreaterThanOrEqual(5)
+      else expect(range[1]).toBe(upper)
+    })
+
+    test(`empty input uses the unit range`, () => {
+      expect(nice_range([], [null, null], `linear`, 0.1)).toEqual([0, 1])
+    })
 
     // a log axis given a non-positive bound (explicit negative min, all data <= 0) must still
     // come out ascending and strictly positive instead of the inverted [LOG_EPS, 0]

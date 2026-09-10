@@ -316,6 +316,7 @@ describe(`BoxPlot`, () => {
   // Hiding series shrinks the obstacle field the frame's solver reads, so an outside legend
   // moves back inside once the remaining boxes leave room for it
   test(`legend returns inside the plot once dense boxes are isolated`, async () => {
+    const summary_spy = vi.spyOn(box_math, `summarize_box_samples`)
     const plot = await mount_sized_box_plot({
       series: Array.from({ length: 24 }, (_, series_idx) => ({
         y: [-20, -10, 0, 10, 20],
@@ -325,6 +326,8 @@ describe(`BoxPlot`, () => {
       legend: { tween: { duration: 0 } },
     })
     await tick()
+    const initial_summary_calls = summary_spy.mock.calls.length
+    expect(initial_summary_calls).toBe(24)
     const legend = plot.querySelector<HTMLElement>(`.legend`)
     const clip_rect = plot.querySelector(`clipPath rect`)
     if (!legend || !clip_rect) throw new Error(`legend or clip rectangle not found`)
@@ -336,6 +339,7 @@ describe(`BoxPlot`, () => {
       .querySelector(`.legend-item`)
       ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     await vi.waitFor(() => expect(is_outside()).toBe(false))
+    expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
   })
 
   // === Violin support ===

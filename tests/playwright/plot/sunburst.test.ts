@@ -39,6 +39,24 @@ test.describe(`Sunburst Component Tests`, () => {
     await expect(plot.locator(`.legend`)).toBeVisible()
   })
 
+  for (const variant of [`basic`, `icicle`, `large`]) {
+    test(`${variant} focus border follows the slice instead of its bounding box`, async ({
+      page,
+    }) => {
+      const plot = page.locator(`#${variant}-sunburst .sunburst`)
+      const slice = plot.locator(`.arcs path`).last()
+      await slice.focus()
+      await expect(slice).toBeFocused()
+      await expect(slice).toHaveCSS(`outline-style`, `none`)
+      await expect(slice).toHaveCSS(`stroke-width`, `2px`)
+      await expect(slice).not.toHaveCSS(`stroke`, `none`)
+      await expect(slice).toHaveCSS(`vector-effect`, `non-scaling-stroke`)
+      await page.keyboard.press(`ArrowLeft`)
+      await expect(slice).not.toBeFocused()
+      await expect(plot.locator(`.arcs path:focus`)).toHaveCSS(`stroke-width`, `2px`)
+    })
+  }
+
   test(`shows tooltip and updates handler info on arc hover`, async ({ page }) => {
     const { section, plot } = zoom_section(page)
     // hover the CSP leaf's label (pre-order idx 4): it sits on top of its arc and

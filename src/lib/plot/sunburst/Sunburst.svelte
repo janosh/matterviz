@@ -636,6 +636,12 @@
   .arcs.batched path {
     stroke: none;
   }
+  .arcs path:focus {
+    outline: none;
+    stroke: var(--sunburst-focus-stroke, var(--accent-color, #1976d2));
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+  }
   .arc-paints,
   .arc-borders {
     /* Keep the settled ink composited while the hover veil changes above it. */

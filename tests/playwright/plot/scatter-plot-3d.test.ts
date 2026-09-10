@@ -1,3 +1,4 @@
+import type { Vec3 } from '$lib/math'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   expect_canvas_changed,
@@ -7,6 +8,26 @@ import {
   wait_for_3d_canvas,
   wait_for_canvas_rendered,
 } from '../helpers'
+
+// One typed browser-test probe keeps the page and Playwright assertions in sync.
+export interface ScatterProbe {
+  set_count: (count: number) => void
+  set_view: (position: Vec3) => Promise<void>
+  zoom: () => number
+  hover: () => number | null
+  targets: () => { point_idx: number; x: number; y: number; depth: number }[]
+  instances: () => {
+    count: number
+    matrices: number[]
+    colors: number[]
+    projection: boolean
+  }[]
+}
+declare global {
+  interface Window {
+    scatter_probe: ScatterProbe
+  }
+}
 
 const TEST_URL = `/test/scatter-plot-3d`
 const CONTAINER_SELECTOR = `#test-scatter-3d`
@@ -49,26 +70,11 @@ test(`sized points and projections share meshes and resize their instance buffer
 }) => {
   test.skip(IS_CI, `Requires a hardware WebGPU adapter`)
   await page.goto(`${TEST_URL}?points=64&varying_sizes&projections`)
-  const read = () =>
-    page.evaluate(() => {
-      const reader = Reflect.get(globalThis, `read_scatter_instances`) as
-        | (() => {
-            count: number
-            matrices: number[]
-            colors: number[]
-            projection: boolean
-          }[])
-        | undefined
-      return reader?.() ?? []
-    })
+  await page.waitForFunction(() => Boolean(window.scatter_probe))
+  const read = () => page.evaluate(() => window.scatter_probe.instances())
   for (const count of [64, 256, 0, 11]) {
     if (count !== 64)
-      await page.evaluate((next_count) => {
-        const set_count = Reflect.get(globalThis, `set_scatter_count`) as (
-          count: number,
-        ) => void
-        set_count(next_count)
-      }, count)
+      await page.evaluate((next_count) => window.scatter_probe.set_count(next_count), count)
     if (count === 0) {
       await expect.poll(read).toEqual([])
       continue
@@ -115,25 +121,16 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
     [12, 0, 0],
     [8, 8, 8],
     [0.01, 12, 0.01],
-  ]) {
-    await page.evaluate((target_position) => {
-      const set_view = Reflect.get(globalThis, `set_scatter_view`) as (
-        position: number[],
-      ) => Promise<void>
-      return set_view(target_position)
-    }, position)
+  ] satisfies Vec3[]) {
+    await page.evaluate(
+      (next_position) => window.scatter_probe.set_view(next_position),
+      position,
+    )
     // Camera binding, orbit controls, and instance matrices settle over render frames.
     let marker_y = 0
     await expect
       .poll(async () => {
-        const targets = await page.evaluate(() => {
-          const read_targets = Reflect.get(globalThis, `read_scatter_targets`) as () => {
-            point_idx: number
-            x: number
-            y: number
-          }[]
-          return read_targets()
-        })
+        const targets = await page.evaluate(() => window.scatter_probe.targets())
         const bounds = await container.boundingBox()
         if (!bounds) return false
         const target = targets.find(
@@ -146,12 +143,7 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
         if (!target) return false
         await page.mouse.move(target.x - 2, target.y)
         await page.mouse.move(target.x, target.y)
-        const hovered = await page.evaluate(() => {
-          const read_hover = Reflect.get(globalThis, `read_scatter_hover`) as () =>
-            | number
-            | null
-          return read_hover()
-        })
+        const hovered = await page.evaluate(() => window.scatter_probe.hover())
         marker_y = target.y
         return hovered === target.point_idx
       })
@@ -178,12 +170,8 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
   // With two samples, normalization places them on opposite ends of this diagonal.
   // Looking straight down it overlaps both spheres: index 1 is the nearer surface.
   await page.evaluate(async () => {
-    const set_count = Reflect.get(globalThis, `set_scatter_count`) as (count: number) => void
-    const set_view = Reflect.get(globalThis, `set_scatter_view`) as (
-      position: number[],
-    ) => Promise<void>
-    set_count(2)
-    await set_view([-10, 5, 10])
+    window.scatter_probe.set_count(2)
+    await window.scatter_probe.set_view([-10, 5, 10])
   })
   await expect
     .poll(async () => {
@@ -191,10 +179,7 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
       if (!bounds) return null
       await page.mouse.move(bounds.x + bounds.width / 2 - 2, bounds.y + bounds.height / 2)
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-      return page.evaluate(() => {
-        const read_hover = Reflect.get(globalThis, `read_scatter_hover`) as () => number | null
-        return read_hover()
-      })
+      return page.evaluate(() => window.scatter_probe.hover())
     })
     .toBe(1)
 })
@@ -274,8 +259,7 @@ test.describe(`ScatterPlot3D`, () => {
     await page.mouse.wheel(0, -200)
 
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
-    const read_zoom = (): Promise<number> =>
-      page.evaluate(() => (Reflect.get(globalThis, `read_scatter_zoom`) as () => number)())
+    const read_zoom = (): Promise<number> => page.evaluate(() => window.scatter_probe.zoom())
     const zoom_before_resize = await read_zoom()
 
     await page.locator(CONTAINER_SELECTOR).evaluate((element) => {
@@ -335,65 +319,35 @@ test.describe(`ScatterPlot3D Projections`, () => {
     })
   }
 
-  // Parameterized slider default and range tests
-  for (const { name, label, default_val, min, max } of [
-    { name: `opacity`, label: `Opacity`, default_val: `0.3`, min: `0`, max: `1` },
-    { name: `size`, label: `Size`, default_val: `0.5`, min: `0.1`, max: `1` },
-  ] as const) {
-    test(`${name} slider has correct defaults (${default_val}, ${min}-${max})`, async ({
+  for (const [label, default_val, min, test_val] of [
+    [`Opacity`, `0.3`, `0`, `0.7`],
+    [`Size`, `0.5`, `0.1`, `0.8`],
+  ]) {
+    test(`${label}: defaults, projection appearance, and number input sync`, async ({
       page,
     }) => {
-      await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-      const pane = await open_controls_pane(page)
-
-      const row = get_slider_row(pane, label)
-      const slider = row.locator(`input[type="range"]`)
-      await expect(slider).toHaveValue(default_val)
-      await expect(slider).toHaveAttribute(`min`, min)
-      await expect(slider).toHaveAttribute(`max`, max)
-      await expect(slider).toHaveAttribute(`step`, `0.05`)
-
-      await expect(row.locator(`input[type="number"]`)).toHaveValue(default_val)
-    })
-  }
-
-  // Parameterized slider visual effect tests
-  for (const { name, label } of [
-    { name: `opacity`, label: `Opacity` },
-    { name: `size`, label: `Size` },
-  ] as const) {
-    test(`${name} slider changes projection appearance`, async ({ page }) => {
       const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       await wait_for_canvas_rendered(canvas)
       const pane = await open_controls_pane(page)
+      const row = get_slider_row(pane, label)
+      const slider = row.locator(`input[type="range"]`)
+      const number_input = row.locator(`input[type="number"]`)
+      await expect(slider).toHaveValue(default_val)
+      await expect(slider).toHaveAttribute(`min`, min)
+      await expect(slider).toHaveAttribute(`max`, `1`)
+      await expect(slider).toHaveAttribute(`step`, `0.05`)
+      await expect(number_input).toHaveValue(default_val)
 
-      // Enable XY projection first
+      // Enable XY, then change the slider to its maximum and verify a visible change.
       await get_projection_checkbox(pane, `XY`).click()
       await page.waitForTimeout(200)
       const before = await canvas.screenshot()
-
-      // Change slider to max
-      await get_slider_row(pane, label).locator(`input[type="range"]`).fill(`1`)
-
+      await slider.fill(`1`)
       await expect_canvas_changed(canvas, before, get_canvas_timeout())
-    })
-  }
 
-  // Parameterized number input sync tests
-  for (const { name, label, test_val } of [
-    { name: `opacity`, label: `Opacity`, test_val: `0.7` },
-    { name: `size`, label: `Size`, test_val: `0.8` },
-  ] as const) {
-    test(`${name} number input syncs with slider`, async ({ page }) => {
-      await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-      const pane = await open_controls_pane(page)
-
-      const row = get_slider_row(pane, label)
-      const number_input = row.locator(`input[type="number"]`)
       await number_input.fill(test_val)
       await number_input.press(`Enter`)
-
-      await expect(row.locator(`input[type="range"]`)).toHaveValue(test_val)
+      await expect(slider).toHaveValue(test_val)
     })
   }
 

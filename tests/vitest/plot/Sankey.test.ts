@@ -167,6 +167,12 @@ describe(`Sankey`, () => {
     expect(tooltip()).toBeNull()
     expect(on_node_hover).toHaveBeenLastCalledWith(null)
     expect([on_node_hover.mock.calls.length, on_link_hover.mock.calls.length]).toEqual([6, 2])
+    expect(new Set(opacities()).size).toBe(1)
+    await hover(plot.querySelectorAll(`.nodes rect`)[1], 30, 40)
+    expect(opacities()).toEqual([on_node[1], on_node[0], on_node[2]])
+    expect(
+      [...plot.querySelectorAll<SVGGElement>(`.node`)].map((node) => node.style.opacity),
+    ).toEqual([`0.3`, `1`, `1`, `0.3`])
   })
 
   test(`click handlers make marks focusable buttons and fire with node/link props`, async () => {

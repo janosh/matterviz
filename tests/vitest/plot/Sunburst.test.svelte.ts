@@ -656,6 +656,9 @@ describe(`Sunburst zoom navigation`, () => {
     const leaf = arc_path(plot, `B`)
     expect(leaf.getAttribute(`role`)).toBeNull()
     expect(leaf.getAttribute(`aria-label`)).toBe(`B: 10`)
+    leaf.focus()
+    expect(document.activeElement).toBe(leaf)
+    expect(getComputedStyle(leaf).outlineStyle).toBe(`none`)
     await fire(leaf, new FocusEvent(`focusin`, { bubbles: true }))
     expect(tab_stops()).toEqual([leaf]) // tab stop follows focus
 

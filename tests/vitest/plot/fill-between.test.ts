@@ -20,6 +20,9 @@ import type {
 import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
 
+const make_point = (x_value: number, y_value: number): Pt => ({ x: x_value, y: y_value })
+const series_ref = (series_idx: number) => ({ type: `series` as const, series_idx })
+
 // Reproduce the exact generator Line.svelte uses for series lines
 const series_line = (pts: readonly Pt[]): string =>
   line<Pt>()
@@ -80,7 +83,7 @@ describe(`monotone_interpolate`, () => {
   it(`matches d3 curveMonotoneX between knots`, () => {
     const x_values = [0, 10, 20, 30]
     const y_values = [0, 30, 15, 40]
-    const pts = x_values.map((coord_x, idx) => ({ x: coord_x, y: y_values[idx] }))
+    const pts = x_values.map((coord_x, idx) => make_point(coord_x, y_values[idx]))
     // d3 path: "M x0,y0 C c1x,c1y c2x,c2y x1,y1 C ..." — parse the first cubic segment
     const matches = series_line(pts).match(/-?\d+\.?\d*(?:e-?\d+)?/g) ?? []
     expect(matches.length).toBeGreaterThanOrEqual(8) // guards the 8-part destructure below
@@ -111,16 +114,16 @@ describe(`resolve_series_ref`, () => {
   ]
 
   it.each([
-    [`by index`, { type: `series` as const, series_idx: 1 }, `series-b`],
+    [`by index`, series_ref(1), `series-b`],
     [`by string id`, { type: `series` as const, series_id: `series-a` }, `series-a`],
   ])(`resolves series %s`, (_, ref, expected_id) => {
     expect(resolve_series_ref(ref, mock_series)?.id).toBe(expected_id)
   })
 
   it.each([
-    [`invalid index`, { type: `series` as const, series_idx: 99 }],
+    [`invalid index`, series_ref(99)],
     [`non-existent id`, { type: `series` as const, series_id: `non-existent` }],
-    [`negative index`, { type: `series` as const, series_idx: -1 }],
+    [`negative index`, series_ref(-1)],
   ])(`returns null for %s`, (_, ref) => {
     expect(resolve_series_ref(ref, mock_series)).toBeNull()
   })
@@ -128,24 +131,17 @@ describe(`resolve_series_ref`, () => {
 
 describe(`resolve_boundary_points`, () => {
   const series: DataSeries[] = [{ x: [0, 10, 20], y: [10, 20, 30], id: `test` }]
-  const companion: Pt[] = [
-    { x: 0, y: 0 },
-    { x: 20, y: 0 },
-  ]
+  const companion: Pt[] = [make_point(0, 0), make_point(20, 0)]
 
   it(`resolves a series boundary to its native points with monotoneX`, () => {
-    const result = resolve_boundary_points({ type: `series`, series_idx: 0 }, series, domains)
+    const result = resolve_boundary_points(series_ref(0), series, domains)
     expect(result?.curve).toBe(`monotoneX`)
-    expect(result?.points).toEqual([
-      { x: 0, y: 10 },
-      { x: 10, y: 20 },
-      { x: 20, y: 30 },
-    ])
+    expect(result?.points).toEqual([make_point(0, 10), make_point(10, 20), make_point(20, 30)])
   })
 
   it.each([
     [
-      { type: `series`, series_idx: 0 },
+      series_ref(0),
       [{ id: `fill`, x: [0, 1], y: [2] }],
       `Series "fill": aligned arrays must have equal lengths, got x=2, y=1`,
     ],
@@ -171,41 +167,25 @@ describe(`resolve_boundary_points`, () => {
     const curved_series: DataSeries[] = [
       { x: [0, 10, 20], y: [10, 20, 30], line_style: line_curve ? { curve: line_curve } : {} },
     ]
-    const result = resolve_boundary_points(
-      { type: `series`, series_idx: 0 },
-      curved_series,
-      domains,
-    )
+    const result = resolve_boundary_points(series_ref(0), curved_series, domains)
     expect(result?.curve).toBe(expected)
   })
 
-  // end-to-end: the inherited curve survives compute_fill_segments -> generate_fill_path, so a
-  // linear series fill edge renders straight (no cubic `C`) while the default stays cubic
+  // The series curve survives segment/path generation for both fills and error bands.
   it.each([
     [undefined, true], // default monotone -> cubic fill edge
     [`linear`, false], // straight segments -> no cubic
-  ] as const)(`series fill path cubic=%j for line curve %s`, (line_curve, has_cubic) => {
+  ] as const)(`fill and error-band paths inherit line curve %s`, (line_curve, has_cubic) => {
     const curved_series: DataSeries[] = [
       { x: [0, 10, 20], y: [10, 20, 15], line_style: line_curve ? { curve: line_curve } : {} },
     ]
-    const region: FillRegion = { upper: { type: `series`, series_idx: 0 }, lower: 0 }
-    expect(fill_path_is_cubic(region, curved_series)).toBe(has_cubic)
-  })
-
-  // error bands inherit the central series' line curve (data boundaries default monotoneX)
-  it.each([
-    [undefined, true], // default monotone -> cubic band edges
-    [`linear`, false], // straight band edges
-  ] as const)(`error-band fill path cubic=%j for line curve %s`, (line_curve, has_cubic) => {
-    const curved_series: DataSeries[] = [
-      { x: [0, 10, 20], y: [10, 20, 15], line_style: line_curve ? { curve: line_curve } : {} },
-    ]
-    const region = convert_error_band_to_fill_region(
-      { series: { type: `series`, series_idx: 0 }, error: 2 },
+    const band = convert_error_band_to_fill_region(
+      { series: series_ref(0), error: 2 },
       curved_series,
     )
-    expect(region).not.toBeNull()
-    expect(fill_path_is_cubic(region as FillRegion, curved_series)).toBe(has_cubic)
+    if (!band) throw new Error(`expected an error-band fill region`)
+    for (const region of [band, { upper: series_ref(0), lower: 0 }])
+      expect(fill_path_is_cubic(region, curved_series)).toBe(has_cubic)
   })
 
   it.each([
@@ -220,10 +200,7 @@ describe(`resolve_boundary_points`, () => {
       companion,
     )
     expect(result?.curve).toBe(`linear`)
-    expect(result?.points).toEqual([
-      { x: 0, y: coord_y },
-      { x: 20, y: coord_y },
-    ])
+    expect(result?.points).toEqual([make_point(0, coord_y), make_point(20, coord_y)])
   })
 
   it(`samples a function boundary across the span`, () => {
@@ -234,8 +211,8 @@ describe(`resolve_boundary_points`, () => {
       companion,
     )
     expect(result?.curve).toBe(`monotoneX`)
-    expect(result?.points[0]).toEqual({ x: 0, y: 0 })
-    expect(result?.points.at(-1)).toEqual({ x: 20, y: 100 })
+    expect(result?.points[0]).toEqual(make_point(0, 0))
+    expect(result?.points.at(-1)).toEqual(make_point(20, 100))
   })
 
   it(`resolves data with explicit x natively`, () => {
@@ -244,11 +221,7 @@ describe(`resolve_boundary_points`, () => {
       series,
       domains,
     )
-    expect(result?.points).toEqual([
-      { x: 0, y: 1 },
-      { x: 10, y: 2 },
-      { x: 20, y: 3 },
-    ])
+    expect(result?.points).toEqual([make_point(0, 1), make_point(10, 2), make_point(20, 3)])
   })
 
   it(`aligns data without x to the companion x positions`, () => {
@@ -256,23 +229,13 @@ describe(`resolve_boundary_points`, () => {
       { type: `data`, values: [1, 2, 3] },
       series,
       domains,
-      [
-        { x: 0, y: 0 },
-        { x: 5, y: 0 },
-        { x: 10, y: 0 },
-      ],
+      [make_point(0, 0), make_point(5, 0), make_point(10, 0)],
     )
-    expect(result?.points).toEqual([
-      { x: 0, y: 1 },
-      { x: 5, y: 2 },
-      { x: 10, y: 3 },
-    ])
+    expect(result?.points).toEqual([make_point(0, 1), make_point(5, 2), make_point(10, 3)])
   })
 
   it(`returns null for an unresolvable series reference`, () => {
-    expect(
-      resolve_boundary_points({ type: `series`, series_idx: 99 }, series, domains),
-    ).toBeNull()
+    expect(resolve_boundary_points(series_ref(99), series, domains)).toBeNull()
   })
 })
 
@@ -284,20 +247,20 @@ describe(`compute_fill_segments`, () => {
 
   it(`traces both edges through the series' own points (single segment)`, () => {
     const segments = compute_fill_segments(
-      { upper: { type: `series`, series_idx: 1 }, lower: { type: `series`, series_idx: 0 } },
+      { upper: series_ref(1), lower: series_ref(0) },
       series,
       domains,
     )
     expect(segments).toHaveLength(1)
     expect(segments[0].upper).toEqual([
-      { x: 0, y: 30 },
-      { x: 10, y: 35 },
-      { x: 20, y: 33 },
+      make_point(0, 30),
+      make_point(10, 35),
+      make_point(20, 33),
     ])
     expect(segments[0].lower).toEqual([
-      { x: 0, y: 10 },
-      { x: 10, y: 12 },
-      { x: 20, y: 11 },
+      make_point(0, 10),
+      make_point(10, 12),
+      make_point(20, 11),
     ])
     expect(segments[0].upper_curve).toBe(`monotoneX`)
   })
@@ -305,8 +268,8 @@ describe(`compute_fill_segments`, () => {
   it(`clips to the x-overlap and region.x_range with on-curve endpoints`, () => {
     const segments = compute_fill_segments(
       {
-        upper: { type: `series`, series_idx: 1 },
-        lower: { type: `series`, series_idx: 0 },
+        upper: series_ref(1),
+        lower: series_ref(0),
         x_range: [5, 15],
       },
       series,
@@ -341,14 +304,8 @@ describe(`compute_fill_segments`, () => {
         [],
         domains,
       )
-      expect(segment.upper).toEqual([
-        { x: 1, y: 2 },
-        { x: 2, y: 3 },
-      ])
-      expect(segment.lower).toEqual([
-        { x: 1, y: 0 },
-        { x: 2, y: 0 },
-      ])
+      expect(segment.upper).toEqual([make_point(1, 2), make_point(2, 3)])
+      expect(segment.lower).toEqual([make_point(1, 0), make_point(2, 0)])
     },
   )
 
@@ -360,8 +317,8 @@ describe(`compute_fill_segments`, () => {
     ]
     const segments = compute_fill_segments(
       {
-        upper: { type: `series`, series_idx: 1 },
-        lower: { type: `series`, series_idx: 0 },
+        upper: series_ref(1),
+        lower: series_ref(0),
         where: (_unused_coord_x, y_up, y_lo) => y_up > y_lo,
       },
       cross_series,
@@ -376,7 +333,7 @@ describe(`compute_fill_segments`, () => {
       { x: [20, 30], y: [5, 5], id: `b` },
     ]
     const segments = compute_fill_segments(
-      { upper: { type: `series`, series_idx: 1 }, lower: { type: `series`, series_idx: 0 } },
+      { upper: series_ref(1), lower: series_ref(0) },
       disjoint,
       { x_domain: [0, 30], y_domain: [0, 10] },
     )
@@ -388,8 +345,8 @@ describe(`compute_fill_segments`, () => {
     // knot's y (30 in [0,10), 35 in [10,20)) — linear interpolation would give 32.5 and 34.
     const segments = compute_fill_segments(
       {
-        upper: { type: `series`, series_idx: 1 },
-        lower: { type: `series`, series_idx: 0 },
+        upper: series_ref(1),
+        lower: series_ref(0),
         curve: `stepAfter`,
         x_range: [5, 15],
       },
@@ -397,25 +354,17 @@ describe(`compute_fill_segments`, () => {
       domains,
     )
     expect(segments[0].upper_curve).toBe(`stepAfter`)
-    expect(segments[0].upper[0]).toEqual({ x: 5, y: 30 })
-    expect(segments[0].upper.at(-1)).toEqual({ x: 15, y: 35 })
+    expect(segments[0].upper[0]).toEqual(make_point(5, 30))
+    expect(segments[0].upper.at(-1)).toEqual(make_point(15, 35))
   })
 })
 
 describe(`generate_fill_path`, () => {
-  const upper: Pt[] = [
-    { x: 0, y: 10 },
-    { x: 50, y: 5 },
-    { x: 100, y: 8 },
-  ]
-  const lower: Pt[] = [
-    { x: 0, y: 40 },
-    { x: 50, y: 45 },
-    { x: 100, y: 42 },
-  ]
+  const upper: Pt[] = [make_point(0, 10), make_point(50, 5), make_point(100, 8)]
+  const lower: Pt[] = [make_point(0, 40), make_point(50, 45), make_point(100, 42)]
 
   it(`returns empty string when a boundary has fewer than 2 points`, () => {
-    expect(generate_fill_path([{ x: 0, y: 0 }], lower)).toBe(``)
+    expect(generate_fill_path([make_point(0, 0)], lower)).toBe(``)
     expect(generate_fill_path([], [])).toBe(``)
   })
 
@@ -451,7 +400,7 @@ describe(`generate_fill_path`, () => {
 
 describe(`convert_error_band_to_fill_region`, () => {
   const mock_series: DataSeries[] = [{ x: [1, 2, 3], y: [10, 20, 30], id: `test-series` }]
-  const base_ref = { type: `series` as const, series_idx: 0 }
+  const base_ref = series_ref(0)
 
   it.each([
     [`symmetric constant`, { error: 5 }, [15, 25, 35], [5, 15, 25]],
@@ -476,10 +425,7 @@ describe(`convert_error_band_to_fill_region`, () => {
 
   it(`returns null for invalid series reference`, () => {
     expect(
-      convert_error_band_to_fill_region(
-        { series: { type: `series`, series_idx: 99 }, error: 5 },
-        mock_series,
-      ),
+      convert_error_band_to_fill_region({ series: series_ref(99), error: 5 }, mock_series),
     ).toBeNull()
   })
 
@@ -509,9 +455,9 @@ describe(`convert_error_band_to_fill_region`, () => {
       y_domain: [0, 40],
     })
     expect(segments[0].upper).toEqual([
-      { x: 1, y: 12 },
-      { x: 2, y: 22 },
-      { x: 3, y: 32 },
+      make_point(1, 12),
+      make_point(2, 22),
+      make_point(3, 32),
     ])
   })
 })

@@ -219,18 +219,20 @@
   const active_nodes = $state<boolean[]>([])
   const active_links = $state<boolean[]>([])
   const has_active = $derived(active !== null)
-  let previous_nodes = new Set<number>()
-  let previous_links = new Set<number>()
+  let previous_active: typeof active = null
   $effect.pre(() => {
-    const next_nodes = active?.nodes ?? new Set<number>()
-    const next_links = active?.links ?? new Set<number>()
+    const next_active = active
     untrack(() => {
-      for (const idx of previous_nodes) if (!next_nodes.has(idx)) active_nodes[idx] = false
-      for (const idx of next_nodes) if (!previous_nodes.has(idx)) active_nodes[idx] = true
-      for (const idx of previous_links) if (!next_links.has(idx)) active_links[idx] = false
-      for (const idx of next_links) if (!previous_links.has(idx)) active_links[idx] = true
-      previous_nodes = next_nodes
-      previous_links = next_links
+      for (const [key, flags] of [
+        [`nodes`, active_nodes],
+        [`links`, active_links],
+      ] as const) {
+        for (const idx of previous_active?.[key] ?? [])
+          if (!next_active?.[key].has(idx)) flags[idx] = false
+        for (const idx of next_active?.[key] ?? [])
+          if (!previous_active?.[key].has(idx)) flags[idx] = true
+      }
+      previous_active = next_active
     })
   })
 

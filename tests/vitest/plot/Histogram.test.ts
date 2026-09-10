@@ -398,48 +398,51 @@ describe(`Histogram`, () => {
     expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(2)
   })
 
-  test(`binds style and normalize controls to the public props`, async () => {
-    let sample_reads = 0
-    const values = [1]
-    Object.defineProperty(values, 0, {
-      get: () => {
-        sample_reads++
-        return 1
-      },
-    })
-    const state = { bar: { color: `#112233` }, normalize: `count` as const }
-    await mount_histogram(
-      bind_props(
-        {
-          series: [series_of(values, { label: `Only` })],
-          show_controls: true,
-          controls_open: true,
+  test.each([`y`, `y2`] as const)(
+    `binds style and normalize controls on %s`,
+    async (y_axis) => {
+      let sample_reads = 0
+      const values = [1]
+      Object.defineProperty(values, 0, {
+        get: () => {
+          sample_reads++
+          return 1
         },
-        state,
-      ),
-    )
-    const initial_reads = sample_reads
-    const fill_input = doc_query<HTMLInputElement>(`input[type="color"]`)
-    fill_input.value = `#abcdef`
-    fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(state.bar).toEqual({ color: `#abcdef` })
-    // the controls pane's normalize select writes back into a bound normalize prop
-    const normalize_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
-      (select) => select.parentElement?.textContent?.includes(`Normalize`),
-    )
-    if (!normalize_select) throw new Error(`Histogram normalize select not found`)
-    expect(normalize_select.value).toBe(`count`)
-    normalize_select.value = `density`
-    // Svelte's select binding reads the chosen option via querySelector(':checked'), which
-    // happy-dom doesn't match on <option> (it would fall back to the first option)
-    vi.spyOn(normalize_select, `querySelector`).mockImplementation(
-      () => normalize_select.selectedOptions[0],
-    )
-    normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await tick()
-    expect(state.normalize).toBe(`density`)
-    expect(sample_reads).toBe(initial_reads)
-  })
+      })
+      const state = { bar: { color: `#112233` }, normalize: `count` as const }
+      await mount_histogram(
+        bind_props(
+          {
+            series: [series_of(values, { label: `Only`, y_axis })],
+            show_controls: true,
+            controls_open: true,
+          },
+          state,
+        ),
+      )
+      const initial_reads = sample_reads
+      const fill_input = doc_query<HTMLInputElement>(`input[type="color"]`)
+      fill_input.value = `#abcdef`
+      fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      expect(state.bar).toEqual({ color: `#abcdef` })
+      // the controls pane's normalize select writes back into a bound normalize prop
+      const normalize_select = [
+        ...document.querySelectorAll<HTMLSelectElement>(`select`),
+      ].find((select) => select.parentElement?.textContent?.includes(`Normalize`))
+      if (!normalize_select) throw new Error(`Histogram normalize select not found`)
+      expect(normalize_select.value).toBe(`count`)
+      normalize_select.value = `density`
+      // Svelte's select binding reads the chosen option via querySelector(':checked'), which
+      // happy-dom doesn't match on <option> (it would fall back to the first option)
+      vi.spyOn(normalize_select, `querySelector`).mockImplementation(
+        () => normalize_select.selectedOptions[0],
+      )
+      normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+      expect(state.normalize).toBe(`density`)
+      expect(sample_reads).toBe(initial_reads)
+    },
+  )
 
   test(`bar hover/click handlers receive the bin center, count and label`, async () => {
     const on_bar_hover = vi.fn()

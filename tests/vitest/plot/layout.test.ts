@@ -24,6 +24,13 @@ import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layo
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 
+const tick_layout = (
+  axis: MeasuredAxis,
+  size: number,
+  tick_label: MeasuredAxis['tick_label'],
+  side: Parameters<typeof resolve_tick_layout>[2] = `x`,
+) => resolve_tick_layout({ ...axis, tick_label }, size, side)
+
 describe(`layout utility functions`, () => {
   // tick_positions is required: layout reads real geometry rather than guessing equal slots.
   // Cases that only care about tick text project evenly spaced centres over a nominal axis.
@@ -671,20 +678,13 @@ describe(`layout utility functions`, () => {
 
     it(`uses irregular projected positions for bounded thinning`, () => {
       const tick_values = [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`]
-      const layout = resolve_tick_layout(
-        {
-          ...positioned_axis(tick_values, [0, 42, 47, 200], 200),
-          tick_label: {
-            auto_layout: {
-              strategies: [`upright`, `thin`],
-              min_visible_ticks: 2,
-              endpoint_policy: `preserve`,
-            },
-          },
+      const layout = tick_layout(positioned_axis(tick_values, [0, 42, 47, 200], 200), 200, {
+        auto_layout: {
+          strategies: [`upright`, `thin`],
+          min_visible_ticks: 2,
+          endpoint_policy: `preserve`,
         },
-        200,
-        `x`,
-      )
+      })
       expect(layout.strategy).toBe(`thin`)
       expect(layout.visible_tick_indices).toEqual([0, 3])
       expect(layout.labels.map(({ visible }) => visible)).toEqual([true, false, false, true])
@@ -697,20 +697,13 @@ describe(`layout utility functions`, () => {
         { length: tick_count },
         (_unused, tick_idx) => `Phase ${tick_idx} formation energy average temperature`,
       )
-      const layout = resolve_tick_layout(
-        {
-          ...uniform_axis(tick_values, axis_size),
-          tick_label: {
-            auto_layout: {
-              strategies: [`thin`],
-              min_visible_ticks: 2,
-              endpoint_policy: `preserve`,
-            },
-          },
+      const layout = tick_layout(uniform_axis(tick_values, axis_size), axis_size, {
+        auto_layout: {
+          strategies: [`thin`],
+          min_visible_ticks: 2,
+          endpoint_policy: `preserve`,
         },
-        axis_size,
-        `x`,
-      )
+      })
 
       // Density-based, so both endpoints survive and the interior collapses to one tick —
       // a collision-pair count would have thinned all the way down to min_visible_ticks.
@@ -725,26 +718,25 @@ describe(`layout utility functions`, () => {
         { length: tick_count },
         (_unused, tick_idx) => `Category label ${tick_idx}`,
       )
-      const layout = resolve_tick_layout(
+      const layout = tick_layout(
         {
           ...uniform_axis(tick_values, axis_size, 20),
-          // side-padding overhang, as in a frame; without it only 90° keeps the first label in
+          // With the frame's side-padding overhang, the first label need not rotate to 90°.
           axis_extent: {
             start: -DEFAULT_PLOT_PADDING.l,
             end: axis_size + DEFAULT_PLOT_PADDING.r,
           },
-          tick_label: {
-            auto_layout: {
-              strategies: [`thin`, `rotate`],
-              min_visible_ticks: 4,
-              max_angle: 90,
-              max_band: 140,
-              endpoint_policy: `preserve`,
-            },
-          },
         },
         axis_size,
-        `x`,
+        {
+          auto_layout: {
+            strategies: [`thin`, `rotate`],
+            min_visible_ticks: 4,
+            max_angle: 90,
+            max_band: 140,
+            endpoint_policy: `preserve`,
+          },
+        },
       )
 
       expect(layout).toMatchObject({ strategy: `thin`, rotation: -60 })
@@ -752,17 +744,14 @@ describe(`layout utility functions`, () => {
     })
 
     it(`hides non-finite projected ticks while preserving source index alignment`, () => {
-      const layout = resolve_tick_layout(
-        {
-          ...positioned_axis(
-            [`zero`, `not-a-number`, `infinite`, `last`],
-            [0, Number.NaN, Number.POSITIVE_INFINITY, 100],
-            100,
-          ),
-          tick_label: { auto_layout: { strategies: [`upright`] } },
-        },
+      const layout = tick_layout(
+        positioned_axis(
+          [`zero`, `not-a-number`, `infinite`, `last`],
+          [0, Number.NaN, Number.POSITIVE_INFINITY, 100],
+          100,
+        ),
         100,
-        `x`,
+        { auto_layout: { strategies: [`upright`] } },
       )
 
       expect(layout.labels).toHaveLength(4)
@@ -780,12 +769,10 @@ describe(`layout utility functions`, () => {
     it(`rotated y labels trade their anchor at the axis ends like upright x labels`, () => {
       // a 90° y label runs along the axis, so the edge labels anchor inward instead of
       // spilling past the first and last tick
-      const layout = resolve_tick_layout(
-        {
-          ...uniform_axis([`Bottom edge`, `Top edge`], 100),
-          tick_label: { rotation: 90 },
-        },
+      const layout = tick_layout(
+        uniform_axis([`Bottom edge`, `Top edge`], 100),
         100,
+        { rotation: 90 },
         `y`,
       )
       const anchors = layout.labels.map(({ anchor }) => anchor)
@@ -794,27 +781,19 @@ describe(`layout utility functions`, () => {
     })
 
     it(`chooses inward edge anchors from actual axis bounds`, () => {
-      const layout = resolve_tick_layout(
-        {
-          ...uniform_axis([`Left edge`, `Right edge`], 100),
-          tick_label: { auto_layout: { strategies: [`upright`] } },
-        },
-        100,
-        `x`,
-      )
+      const layout = tick_layout(uniform_axis([`Left edge`, `Right edge`], 100), 100, {
+        auto_layout: { strategies: [`upright`] },
+      })
       expect(layout.labels.map(({ anchor }) => anchor)).toEqual([`start`, `end`])
     })
 
     it(`keeps readable text when every default candidate violates a hard constraint`, () => {
-      const layout = resolve_tick_layout(
-        {
-          ...uniform_axis([`temperature`, `temperature`, `temperature`], 100),
-          tick_label: {
-            auto_layout: { max_angle: 45, max_band: 40 },
-          },
-        },
+      const layout = tick_layout(
+        uniform_axis([`temperature`, `temperature`, `temperature`], 100),
         100,
-        `x`,
+        {
+          auto_layout: { max_angle: 45, max_band: 40 },
+        },
       )
       expect(layout.strategy).not.toBe(`ellipsis`)
       expect(layout.visible_tick_indices.length).toBeGreaterThan(0)
@@ -829,17 +808,17 @@ describe(`layout utility functions`, () => {
     it.each([`y`, `y2`] as const)(
       `wraps %s-axis labels by default and honors max_lines`,
       (side) => {
-        const layout = resolve_tick_layout(
+        const layout = tick_layout(
           {
             tick_values: [`Formation Energy`],
             tick_positions: [50],
             axis_extent: { start: 100, end: 0 },
-            tick_label: {
-              max_lines: 2,
-              auto_layout: { strategies: [`wrap`] },
-            },
           },
           100,
+          {
+            max_lines: 2,
+            auto_layout: { strategies: [`wrap`] },
+          },
           side,
         )
         expect(layout).toMatchObject({ rotation: 0, strategy: `wrap` })
@@ -850,28 +829,19 @@ describe(`layout utility functions`, () => {
 
     it(`uses ellipsis only when explicitly enabled and keeps the full text`, () => {
       const tick_values = [`Formation`, `Temperature`]
-      const layout = resolve_tick_layout(
-        {
-          ...uniform_axis(tick_values, 120),
-          tick_label: { auto_layout: { strategies: [`ellipsis`] } },
-        },
-        120,
-        `x`,
-      )
+      const layout = tick_layout(uniform_axis(tick_values, 120), 120, {
+        auto_layout: { strategies: [`ellipsis`] },
+      })
       expect(layout.strategy).toBe(`ellipsis`)
       expect(layout.labels.map(({ full_text }) => full_text)).toEqual(tick_values)
       expect(layout.labels.every(({ lines }) => lines[0].endsWith(`…`))).toBe(true)
     })
 
     it(`keeps explicit rotation when the axis geometry collapses`, () => {
-      const layout = resolve_tick_layout(
-        {
-          tick_values: [`Jan`, `Feb`],
-          tick_positions: [50, 50],
-          tick_label: { rotation: 45 },
-        },
+      const layout = tick_layout(
+        { tick_values: [`Jan`, `Feb`], tick_positions: [50, 50] },
         0,
-        `x`,
+        { rotation: 45 },
       )
       expect(layout.rotation).toBe(45)
       expect(layout.labels.every(({ rotation }) => rotation === 45)).toBe(true)
@@ -883,13 +853,10 @@ describe(`layout utility functions`, () => {
       [`y2`, false, `start`],
       [`y2`, true, `end`],
     ] as const)(`anchors collapsed %s labels inside=%s at %s`, (side, inside, expected) => {
-      const layout = resolve_tick_layout(
-        {
-          tick_values: [`Label`],
-          tick_positions: [0],
-          tick_label: { inside },
-        },
+      const layout = tick_layout(
+        { tick_values: [`Label`], tick_positions: [0] },
         0,
+        { inside },
         side,
       )
       expect(layout.labels[0].anchor).toBe(expected)
