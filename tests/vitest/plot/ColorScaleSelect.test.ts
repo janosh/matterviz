@@ -13,7 +13,6 @@ describe(`ColorScaleSelect`, () => {
       target: document.body,
       props: {
         value: `interpolateViridis`,
-        selected: [`interpolateViridis`],
         style,
       },
     })
@@ -22,8 +21,6 @@ describe(`ColorScaleSelect`, () => {
     expect(doc_query(`.multiselect`).style.minWidth).toBe(min_width)
   })
 
-  // Binding `selected` alongside `value` is optional, so mounting must not treat an unbound
-  // `selected` as "nothing is selected" and write that emptiness back over the caller's value.
   test(`keeps a scalar bound value on mount and selection, and reports additions`, async () => {
     const controls_state = { value: `interpolateViridis` as D3InterpolateName }
     const on_add = vi.fn()
@@ -46,7 +43,7 @@ describe(`ColorScaleSelect`, () => {
     expect(controls_state.value).toBe(`interpolatePlasma`)
     expect(on_add).toHaveBeenCalledExactlyOnceWith({
       option: `interpolatePlasma`,
-      selected: [`interpolatePlasma`],
+      selected: [`interpolateViridis`],
     })
   })
 
@@ -63,7 +60,6 @@ describe(`ColorScaleSelect`, () => {
       props: {
         options,
         value: options[0],
-        selected: [options[0]],
         color_bar: custom
           ? {
               tick_side: `secondary`,

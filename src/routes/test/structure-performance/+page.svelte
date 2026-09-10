@@ -163,7 +163,7 @@
   }
 </script>
 
-<h1>Structure Performance Test</h1>
+<h1 id="structure-performance-test">Structure Performance Test</h1>
 
 <div class="controls">
   <label>
@@ -249,7 +249,7 @@
 </div>
 
 <div class="controls">
-  <h2>Quick Presets</h2>
+  <h2 id="quick-presets">Quick Presets</h2>
   {#each [[100, `Small`], [500, `Medium`], [1000, `Large`], [2500, `Very Large`], [5000, `Huge`]] as [count, label] (count)}
     <button
       onclick={() => {

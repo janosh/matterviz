@@ -24,7 +24,7 @@
   )
 </script>
 
-<h1>Icon Gallery</h1>
+<h1 id="icon-gallery">Icon Gallery</h1>
 
 <p>
   The <a href="https://github.com/janosh/svelte-widgets/blob/main/src/lib/Icon.svelte"
@@ -82,7 +82,7 @@
   </div>
 {/if}
 
-<h2>Usage</h2>
+<h2 id="usage">Usage</h2>
 
 <Usage />
 

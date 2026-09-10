@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import {
     estimate_video_bitrate,
@@ -254,6 +255,9 @@
       ],
     },
   ])
+
+  const frame_range_settings = track_settings(() => ({ start_frame, end_frame }))
+  const video_settings_settings = track_settings(() => ({ video_fps, resolution_multiplier }))
 </script>
 
 <ExportPane
@@ -271,7 +275,7 @@
     <!-- Shared by the data and video exports, so it sits outside the MediaRecorder gate -->
     <SettingsSection
       title="Frame Range"
-      current_values={{ start_frame, end_frame }}
+      changed_keys={frame_range_settings.changed_keys}
       on_reset={() => {
         start_frame = 0
         end_frame = last_frame_idx
@@ -302,7 +306,7 @@
   {:else}
     <SettingsSection
       title="Video Settings"
-      current_values={{ video_fps, resolution_multiplier }}
+      changed_keys={video_settings_settings.changed_keys}
       on_reset={() => {
         video_fps = 30
         resolution_multiplier = 1

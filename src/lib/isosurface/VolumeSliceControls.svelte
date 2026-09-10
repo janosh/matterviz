@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
   import {
     normalize_active_volume_id,
@@ -76,6 +77,11 @@
       color_range: bound_idx === 0 ? [value, maximum] : [minimum, value],
     })
   }
+
+  const cross_section_settings = track_settings(() => ({
+    ...resolved_settings,
+    active_volume_id,
+  }))
 </script>
 
 {#snippet color_bound_input(bound_idx: 0 | 1)}
@@ -91,7 +97,7 @@
 
 <SettingsSection
   title="Cross-section"
-  current_values={{ ...resolved_settings, active_volume_id }}
+  changed_keys={cross_section_settings.changed_keys}
   on_reset={() => {
     active_volume_id = undefined
     update_settings(create_volume_slice_settings())

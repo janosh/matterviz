@@ -21,7 +21,7 @@
     download(li_mgo_hop_json, LI_MGO_HOP_FILENAME, `application/json`)
 </script>
 
-<h1>Reaction Paths (NEB)</h1>
+<h1 id="reaction-paths-neb">Reaction Paths (NEB)</h1>
 
 <p class="fixture-note">
   This demo uses synthetic Li-in-MgO geometries, energies, and forces to exercise the viewer;
@@ -40,7 +40,7 @@
 
   <p>Arc length uses minimum-image displacements across periodic boundaries.</p>
 
-  <h2>Discrete and fitted barriers</h2>
+  <h2 id="discrete-and-fitted-barriers">Discrete and fitted barriers</h2>
   <p>
     The highest computed image is #{analysis.ts_image_idx}, at
     {format_num(analysis.forward_barrier, `.4~`)} eV. The {spline.method} fit peaks
@@ -49,7 +49,7 @@
     reports both values explicitly.
   </p>
 
-  <h2>Comparing mechanisms</h2>
+  <h2 id="comparing-mechanisms">Comparing mechanisms</h2>
   <p>
     Both paths share endpoints, hence the same reaction energy; only the route and the barrier
     differ. The direct hop demonstrates force-projected fitting; the curved hop demonstrates
@@ -57,7 +57,7 @@
   </p>
   <NebPlot paths={reaction_paths} energy_reference="initial" style="height: 420px" />
 
-  <h2>Input format</h2>
+  <h2 id="input-format">Input format</h2>
   <p>
     Drop <code>matterviz-reaction-path</code> JSON, multi-frame extended XYZ from
     <code>ase.io.write("neb.xyz", images)</code>, or loose single-structure files onto the

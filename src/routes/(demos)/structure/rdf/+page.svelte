@@ -97,10 +97,10 @@
   })
 </script>
 
-<h1>Radial Distribution Functions (RDF)</h1>
+<h1 id="radial-distribution-functions-rdf">Radial Distribution Functions (RDF)</h1>
 
 <div class="bleed-1400">
-  <h2>Element-Pair RDFs</h2>
+  <h2 id="element-pair-rdfs">Element-Pair RDFs</h2>
   <section class="demo-2col">
     <Structure structure={structures[`Al₂Lu`]} />
     <RdfPlot
@@ -112,7 +112,7 @@
     />
   </section>
 
-  <h2>Full RDF</h2>
+  <h2 id="full-rdf">Full RDF</h2>
   <RdfPlot
     structures={structures[`Al₂Lu`]}
     mode="full"
@@ -121,7 +121,7 @@
     style="height: 500px"
   />
 
-  <h2>Pair Distribution Function G(r)</h2>
+  <h2 id="pair-distribution-function-g-r">Pair Distribution Function G(r)</h2>
   <p>
     The reduced PDF G(r) = 4πrρ₀(g(r) − 1) combines partial RDFs with radiation-dependent
     Faber–Ziman weights, so the curve depends on the probe and follows −4πrρ₀ below the closest
@@ -136,7 +136,7 @@
     style="height: 500px"
   />
 
-  <h2>Negative Scattering Length: NiH</h2>
+  <h2 id="negative-scattering-length-nih">Negative Scattering Length: NiH</h2>
   <p>
     Switching from X-ray to neutron flips the Ni–H correlation because H has negative b<sub
       >coh</sub
@@ -153,7 +153,7 @@
     />
   </section>
 
-  <h2>Complex: Bi₂Zr₂O₈</h2>
+  <h2 id="complex-bi₂zr₂o₈">Complex: Bi₂Zr₂O₈</h2>
   <section class="demo-2col">
     <Structure structure={structures[`Bi₂Zr₂O₈`]} />
     <RdfPlot
@@ -165,7 +165,7 @@
     />
   </section>
 
-  <h2>Compare Structures</h2>
+  <h2 id="compare-structures">Compare Structures</h2>
   <div class="demo-controls">
     {#each Object.keys(structures) as key, idx (key)}
       <button
@@ -205,7 +205,7 @@
     style="height: 500px"
   />
 
-  <h2>Amorphous Structure</h2>
+  <h2 id="amorphous-structure">Amorphous Structure</h2>
 
   <div class="demo-controls">
     {#each [[`element_pairs`, `Element Pairs`], [`full`, `Full`]] as const as [mode, label] (mode)}
@@ -235,7 +235,7 @@
     />
   </section>
 
-  <h2>Try Your Own Structure</h2>
+  <h2 id="try-your-own-structure">Try Your Own Structure</h2>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
   <RdfPlot mode="element_pairs" allow_file_drop cutoff={7} style="height: 500px" />
 </div>

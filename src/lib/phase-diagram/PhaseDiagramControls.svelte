@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import { ControlPane } from '$lib/overlays'
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
@@ -92,6 +93,25 @@
     ],
     [`cursor_radius`, `Cursor radius`, `Radius of the cursor position marker`, 2, 10, 1],
   ] as const
+
+  const visibility_settings = track_settings(() => ({
+    show_boundaries,
+    show_labels,
+    show_special_points,
+    show_grid,
+    show_component_labels,
+  }))
+  const appearance_settings = track_settings(() => ({
+    font_size: merged_config.font_size,
+    special_point_radius: merged_config.special_point_radius,
+  }))
+  const colors_settings = track_settings(() => merged_config.colors)
+  const tie_line_display_settings = track_settings(() => merged_config.tie_line)
+  const axes_settings = track_settings(() => ({
+    x_ticks: x_axis.ticks,
+    y_ticks: y_axis.ticks,
+  }))
+  const export_settings = track_settings(() => ({ png_dpi }))
 </script>
 
 <ControlPane
@@ -109,13 +129,7 @@
   <SettingsGroup title="Diagram" open>
     <SettingsSection
       title="Visibility"
-      current_values={{
-        show_boundaries,
-        show_labels,
-        show_special_points,
-        show_grid,
-        show_component_labels,
-      }}
+      changed_keys={visibility_settings.changed_keys}
       on_reset={() =>
         ({
           show_boundaries,
@@ -153,10 +167,7 @@
 
     <SettingsSection
       title="Appearance"
-      current_values={{
-        font_size: merged_config.font_size,
-        special_point_radius: merged_config.special_point_radius,
-      }}
+      changed_keys={appearance_settings.changed_keys}
       on_reset={() => {
         update_config(`font_size`, PHASE_DIAGRAM_DEFAULTS.font_size)
         update_config(`special_point_radius`, PHASE_DIAGRAM_DEFAULTS.special_point_radius)
@@ -195,7 +206,7 @@
     ] as const}
     <SettingsSection
       title="Colors"
-      current_values={{ ...merged_config.colors }}
+      changed_keys={colors_settings.changed_keys}
       on_reset={() => (config = { ...config, colors: { ...PHASE_DIAGRAM_DEFAULTS.colors } })}
       layout="grid"
     >
@@ -215,7 +226,7 @@
   <SettingsGroup title="Interaction" open>
     <SettingsSection
       title="Tie-line display"
-      current_values={{ ...merged_config.tie_line }}
+      changed_keys={tie_line_display_settings.changed_keys}
       on_reset={() => {
         config = { ...config, tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line } }
       }}
@@ -240,7 +251,7 @@
     ] as const}
     <SettingsSection
       title="Axes"
-      current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
+      changed_keys={axes_settings.changed_keys}
       on_reset={() => {
         x_axis = { ...x_axis, ticks: PHASE_DIAGRAM_DEFAULTS.x_ticks }
         y_axis = { ...y_axis, ticks: PHASE_DIAGRAM_DEFAULTS.y_ticks }
@@ -271,7 +282,7 @@
   {#if enable_export}
     <SettingsSection
       title="Export"
-      current_values={{ png_dpi }}
+      changed_keys={export_settings.changed_keys}
       on_reset={() => (png_dpi = PHASE_DIAGRAM_DEFAULTS.png_dpi)}
       layout="grid"
     >

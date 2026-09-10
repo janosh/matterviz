@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import type { Orientation, PlotConfig, ViolinKind, ViolinSide, WhiskerMode } from '$lib/plot'
@@ -34,6 +35,15 @@
     controls_open?: boolean
     children?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
   } = $props()
+
+  const box_violin_settings = track_settings(() => ({
+    orientation,
+    kind,
+    side,
+    whisker_mode,
+    show_outliers,
+    show_mean,
+  }))
 </script>
 
 <!-- select options come from the settings schema so labels/values have a single source of truth -->
@@ -56,7 +66,7 @@
   {@render children?.({ orientation, x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Box / violin"
-    current_values={{ orientation, kind, side, whisker_mode, show_outliers, show_mean }}
+    changed_keys={box_violin_settings.changed_keys}
     on_reset={() => {
       orientation = `vertical`
       ;({ kind, side, whisker_mode, show_outliers, show_mean } = DEFAULTS.box)

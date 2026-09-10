@@ -122,7 +122,7 @@
   const sf6_scene_props = { show_polyhedra: `always` as const, polyhedra_opacity: 0.5 }
 </script>
 
-<h1>Coordination Polyhedra</h1>
+<h1 id="coordination-polyhedra">Coordination Polyhedra</h1>
 
 <p>
   Coordination polyhedra are drawn as convex hulls of anion neighbors around cation-like
@@ -195,7 +195,7 @@
   {/key}
 </div>
 
-<h2>Molecules</h2>
+<h2 id="molecules">Molecules</h2>
 
 <p>
   Polyhedra default to crystals only (<code>show_polyhedra: 'crystals'</code>) but also work

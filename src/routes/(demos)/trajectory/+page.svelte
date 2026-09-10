@@ -17,7 +17,7 @@
   const lammps_loading_options = { atom_type_mapping: { 1: `Cu`, 2: `Zr` } } as const
 </script>
 
-<h1>Trajectory</h1>
+<h1 id="trajectory">Trajectory</h1>
 
 <p>
   <code>Trajectory</code> accepts a URL, <code>File</code> or
@@ -60,7 +60,7 @@
   />
 </div>
 
-<h2>Bindable <code>visible_properties</code></h2>
+<h2 id="bindable-visible_properties">Bindable <code>visible_properties</code></h2>
 <p>Legend toggles update the bound list of displayed trajectory properties.</p>
 <strong
   style="display: block; margin: 1em auto; padding: 1em; background: var(--surface-bg-hover); border-radius: var(--border-radius); font-family: monospace; font-size: 0.9em"

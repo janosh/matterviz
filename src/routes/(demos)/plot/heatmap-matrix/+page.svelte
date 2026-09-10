@@ -74,7 +74,7 @@
   )
 </script>
 
-<h1>Heatmap Matrix</h1>
+<h1 id="heatmap-matrix">Heatmap Matrix</h1>
 <p class="demo-intro">
   This demo is based on the
   <a href="https://viz.whsunresearch.group/gliquid/interactive-matrix.html">
@@ -83,7 +83,9 @@
 </p>
 
 <!-- Demo 1: Full 118x118 element matrix -->
-<h2>Element Pair Electronegativity Difference</h2>
+<h2 id="element-pair-electronegativity-difference">
+  Element Pair Electronegativity Difference
+</h2>
 <p>
   Full 118-element matrix colored by |&Delta;EN|. Elements without electronegativity data
   (noble gases, some superheavy) are auto-hidden with <code>hide_empty="compact"</code>. Hover
@@ -164,7 +166,7 @@
 {/if}
 
 <!-- Demo 2: Subset with symmetric mode, custom tooltip, dblclick, and different color scale -->
-<h2>Symmetric Subset with Custom Tooltip</h2>
+<h2 id="symmetric-subset-with-custom-tooltip">Symmetric Subset with Custom Tooltip</h2>
 <p>
   Demonstrates switchable <code>symmetric</code> modes and a custom <code>tooltip</code> snippet.
 </p>
@@ -209,7 +211,7 @@
 {/if}
 
 <!-- Demo 3: Arbitrary non-element axes -->
-<h2>Arbitrary Axis Items</h2>
+<h2 id="arbitrary-axis-items">Arbitrary Axis Items</h2>
 <p>
   Axes don't have to be elements. This demo uses property-range bins as both axes, showing that <code
     >HeatmapMatrix</code

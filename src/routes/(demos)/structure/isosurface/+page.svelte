@@ -141,7 +141,7 @@
   <title>Isosurface Visualization | Matterviz</title>
 </svelte:head>
 
-<h1>Isosurface Visualization</h1>
+<h1 id="isosurface-visualization">Isosurface Visualization</h1>
 
 <p>
   Render isosurfaces from volumetric data overlaid on atomic structures. Supports VASP

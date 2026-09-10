@@ -4,7 +4,7 @@
   let orbital_period = $state(2)
 </script>
 
-<h1>Bohr Atoms</h1>
+<h1 id="bohr-atoms">Bohr Atoms</h1>
 
 <p>
   This solar-system-like visualization of the elements is known as the Bohr model. It was

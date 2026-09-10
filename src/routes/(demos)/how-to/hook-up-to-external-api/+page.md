@@ -1,6 +1,7 @@
 <script lang="ts">
   import { OptimadeStructureViewer } from '$site'
   import { FileDetails } from 'svelte-widgets'
+  import { default_highlighter } from 'svelte-widgets/highlight'
   import optimade_viewer_src from '$site/OptimadeStructureViewer.svelte?raw'
 
   let structure_id = $state(`mp-756175`)
@@ -23,4 +24,4 @@ The [OPTIMADE](https://www.optimade.org) standard gives a common API over 50+ ma
 
 ## Source Code
 
-<FileDetails files={[src_file]} />
+<FileDetails files={[src_file]} highlight={default_highlighter.highlight} />

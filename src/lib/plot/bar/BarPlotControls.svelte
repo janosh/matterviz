@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import type { BarMode, PlotConfig } from '$lib/plot'
@@ -27,6 +28,8 @@
   } = $props()
 
   const initial_layout = untrack(() => ({ orientation, mode }))
+
+  const layout_settings = track_settings(() => ({ orientation, mode }))
 </script>
 
 <PlotControls
@@ -43,7 +46,7 @@
   <SettingsSection
     title="Layout"
     class="ctrl-line"
-    current_values={{ orientation, mode }}
+    changed_keys={layout_settings.changed_keys}
     on_reset={() => ({ orientation, mode } = initial_layout)}
     layout="flow"
   >

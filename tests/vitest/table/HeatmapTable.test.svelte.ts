@@ -190,7 +190,7 @@ describe(`HeatmapTable`, () => {
     expect(document.querySelectorAll(`thead th`)).toHaveLength(0)
   })
 
-  it(`delegates and sanitizes tooltips across cell re-renders`, async () => {
+  it(`delegates plain-text tooltips across cell re-renders`, async () => {
     const cell = (text: string, tip: string) => `<span title="${tip}">${text}</span>`
     const unsafe_title = `&lt;img src=x onerror=alert(1)&gt;unsafe`
     const rows: RowData[] = $state([
@@ -204,8 +204,8 @@ describe(`HeatmapTable`, () => {
     const unsafe_cell = doc_query(`td[data-col="Score"] span[title]`)
     unsafe_cell.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
     const tooltip_content = doc_query(`.custom-tooltip .tooltip-content`)
-    expect(tooltip_content.innerHTML).not.toMatch(/onerror|javascript:/i)
-    expect(tooltip_content.textContent).toContain(`unsafe`)
+    expect(tooltip_content.querySelector(`img`)).toBeNull()
+    expect(tooltip_content.textContent).toBe(`<img src=x onerror=alert(1)>unsafe`)
 
     const alpha = () => doc_query(`td[data-col="Model"] span`)
     const activate_tooltip = (expected_title: string) => {
@@ -575,15 +575,17 @@ describe(`HeatmapTable`, () => {
     expect(cell_at(0, 0).style.color).toBe(`white`)
   })
 
-  it(`handles accessibility features`, () => {
+  it(`exposes rich column descriptions on keyboard focus`, async () => {
     mount_table({
       data: sample_data,
-      columns: [{ id: `Col`, label: `Col`, description: `Description`, sticky: true }],
+      columns: [{ id: `Col`, label: `Col`, description: `<b>Description</b>`, sticky: true }],
     })
 
     const header = document.querySelector(`th`)
-    expect(header?.getAttribute(`title`) ?? header?.getAttribute(`data-title`)).toBe(
-      `Description`,
+    const trigger = doc_query(`th button`)
+    trigger.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.popover b`)?.textContent).toBe(`Description`),
     )
     expect(header?.classList.contains(`sticky-col`)).toBe(true)
   })

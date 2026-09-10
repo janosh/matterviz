@@ -82,10 +82,10 @@
   })
 </script>
 
-<h1>Chemical Potential Diagram</h1>
+<h1 id="chemical-potential-diagram">Chemical Potential Diagram</h1>
 
 <section data-demo-id="binary">
-  <h2>Binary System (Li-O) &mdash; 2D</h2>
+  <h2 id="binary-system-li-o-mdash-2d">Binary System (Li-O) &mdash; 2D</h2>
   <p>
     Demonstrates pinned tooltips, formal-potential and bounds controls, color modes, and
     export.
@@ -107,7 +107,7 @@
 </section>
 
 <section data-demo-id="ternary">
-  <h2>Ternary System (Li-Co-O) &mdash; 3D</h2>
+  <h2 id="ternary-system-li-co-o-mdash-3d">Ternary System (Li-Co-O) &mdash; 3D</h2>
   <p>
     Demonstrates pinned tooltips, camera and display controls, color modes, and 3D export.
     Projection axis switching is hidden here since it only appears for systems with 4+
@@ -130,7 +130,7 @@
 </section>
 
 <section data-demo-id="li_fe_o">
-  <h2>Ternary System (Li-Fe-O) &mdash; 3D</h2>
+  <h2 id="ternary-system-li-fe-o-mdash-3d">Ternary System (Li-Fe-O) &mdash; 3D</h2>
   <p>
     Reference data from pymatgen for checking domain topology, labels, and energy-aware
     coloring.
@@ -150,7 +150,9 @@
 </section>
 
 <section data-demo-id="temp_li_fe_o">
-  <h2>Ternary System (Li-Fe-O) with Temperature Slider &mdash; 3D</h2>
+  <h2 id="ternary-system-li-fe-o-with-temperature-slider-mdash-3d">
+    Ternary System (Li-Fe-O) with Temperature Slider &mdash; 3D
+  </h2>
   <p>
     This demo uses the same synthetic G(T) dataset recipe as the convex-hull demo page. Drag
     the temperature slider to recompute stability domains from free energies.
@@ -171,7 +173,9 @@
 </section>
 
 <section data-demo-id="quaternary">
-  <h2>Quaternary System (Li-Co-Ni-O) &mdash; All Ternary Projections</h2>
+  <h2 id="quaternary-system-li-co-ni-o-mdash-all-ternary-projections">
+    Quaternary System (Li-Co-Ni-O) &mdash; All Ternary Projections
+  </h2>
   <p>
     Grid mode exposes all C(n,3) ternary projections instead of hiding the unselected chemical
     potentials behind one projection.
@@ -195,7 +199,9 @@
 </section>
 
 <section data-demo-id="ytos_ti_s_y">
-  <h2>YTOS Quaternary &mdash; Ti-S-Y Projection</h2>
+  <h2 id="ytos-quaternary-mdash-ti-s-y-projection">
+    YTOS Quaternary &mdash; Ti-S-Y Projection
+  </h2>
   <p>
     Y-Ti-O-S projected onto Ti-S-Y, with runtime axis switching and a Y<sub>2</sub>Ti<sub
       >2</sub
@@ -219,7 +225,9 @@
 </section>
 
 <section data-demo-id="ytos_ti_y_o">
-  <h2>YTOS &mdash; Ti-Y-O with Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub></h2>
+  <h2 id="ytos-mdash-ti-y-o-with-y2ti2o7">
+    YTOS &mdash; Ti-Y-O with Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub>
+  </h2>
   <p>
     The same domains projected onto Ti-Y-O with a Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub>
     overlay.

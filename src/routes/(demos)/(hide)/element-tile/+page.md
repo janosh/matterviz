@@ -71,7 +71,7 @@ Two to four segments split the tile. `split_layout` picks between the layouts th
   const tile_style = 'width: 5em; height: 5em;'
 </script>
 
-<h4>Auto-determined Layouts</h4>
+<h4 id="auto-determined-layouts">Auto-determined Layouts</h4>
 <p>
   Without <code>split_layout</code>, the layout follows the segment count.
 </p>
@@ -81,7 +81,7 @@ Two to four segments split the tile. `split_layout` picks between the layouts th
   <ElementTile element={element_data[2]} segments={segments(4)} style={tile_style} />
 </div>
 
-<h4>Explicit Layout Control</h4>
+<h4 id="explicit-layout-control">Explicit Layout Control</h4>
 <div class="examples">
   <!-- 3 segments: horizontal vs vertical -->
   <ElementTile

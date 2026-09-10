@@ -89,7 +89,9 @@
   />
 </svelte:head>
 
-<h1>Ternary Composition–Temperature Phase Diagrams</h1>
+<h1 id="ternary-composition-temperature-phase-diagrams">
+  Ternary Composition–Temperature Phase Diagrams
+</h1>
 
 <p>
   The stability landscape of a ternary system as a function of temperature, computed from the
@@ -152,7 +154,7 @@
   {@const bound = diagram}
   {@const windows = selected ? bound.stability_windows[selected.idx] : []}
   <section class="demo-section">
-    <h2>Bound state</h2>
+    <h2 id="bound-state">Bound state</h2>
     <p>
       T = <strong>{format_num(temperature, `.0f`)} K</strong> · {bound.events.length} transitions
       between {format_num(bound.t_range[0], `.0f`)} and {format_num(bound.t_range[1], `.0f`)} K ·
@@ -175,7 +177,7 @@
 {/if}
 
 <section class="demo-section">
-  <h2>How to read it</h2>
+  <h2 id="how-to-read-it">How to read it</h2>
   <ul class="feature-list">
     <li>
       <strong>Isothermal section</strong>: tie-triangles are the three-phase regions at the

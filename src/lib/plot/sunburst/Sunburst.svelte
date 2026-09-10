@@ -247,11 +247,14 @@
   let screen_arcs = $derived(projection.all)
   // Rendering iterates only non-collapsed arcs - when zoomed into a small subtree of
   // a large hierarchy this keeps per-frame template work proportional to what's on screen
-  let visible_arcs = $derived(projection.visible)
+  // Keep each-block items stable during the tween: only geometry changes per frame.
+  // Iterating freshly allocated ScreenArcs also invalidated every static fill, aria,
+  // cursor and tabindex binding for every slice on every animation frame.
+  let visible_nodes = $derived(projection.visible.map((screen) => screen.arc))
 
   // Every visible arc is focusable and labelled, not just the clickable ones, so arrow keys
   // reach leaf tooltips instead of dead-ending. role="button" stays limited to clickable arcs.
-  let roving_idx = $derived(chart_state.roving_idx(visible_arcs[0]?.arc.node_idx ?? null))
+  let roving_idx = $derived(chart_state.roving_idx(visible_nodes[0]?.node_idx ?? null))
 
   let arc_gen = $derived(
     d3_arc<ScreenArc>()
@@ -268,6 +271,48 @@
     shape === `icicle`
       ? rect_path(screen.a0, screen.a1, screen.r0, screen.r1)
       : (arc_gen(screen) ?? ``)
+
+  let arc_paths = $derived(projection.visible.map(screen_path))
+  // WebKit rasterizes a patterned fill separately for every SVG path. Hundreds of
+  // thin slices can spend hundreds of milliseconds painting even on a hover. Paint
+  // dense charts as compound paths sharing fill/opacity, with transparent per-node
+  // paths above them for the same hit testing, focus, tooltip and export semantics.
+  let batch_paints = $derived(!arc_content && visible_nodes.length > 100)
+  let paint_batches = $derived.by(() => {
+    if (!batch_paints) return []
+    const batches = new Map<string, { fill: string; opacity: number; arcs: ScreenArc[] }>()
+    for (const screen of projection.visible) {
+      const { node_idx } = screen.arc
+      const info = chart_state.node_infos[node_idx]
+      const fill = info.pattern?.url ?? info.fill
+      const { opacity } = chart_state.node_dim(node_idx)
+      const key = `${opacity}:${fill}`
+      let batch = batches.get(key)
+      if (!batch) {
+        batch = { fill, opacity, arcs: [] }
+        batches.set(key, batch)
+      }
+      const previous = batch.arcs.at(-1)
+      if (
+        pad_angle === 0 &&
+        previous?.a1 === screen.a0 &&
+        previous.r0 === screen.r0 &&
+        previous.r1 === screen.r1
+      ) {
+        // A continuous run needs one textured sector, not a compound path with
+        // hundreds of narrow holes. Borders are painted separately below.
+        previous.a1 = screen.a1
+      } else {
+        batch.arcs.push({ ...screen })
+      }
+    }
+    return [...batches].map(([key, { fill, opacity, arcs }]) => ({
+      key,
+      fill,
+      opacity,
+      path: arcs.map(screen_path).join(``),
+    }))
+  })
 
   // Hover dimming as one path with holes for the hovered subtree and its ancestors (see
   // hover_veil_path). Re-derives per frame while zooming, but only walks the ancestry.
@@ -413,22 +458,30 @@
       {tooltip}
     >
       {#snippet marks()}
+        {#if batch_paints}
+          <g class="arc-paints" aria-hidden="true" pointer-events="none">
+            {#each paint_batches as batch (batch.key)}
+              <path d={batch.path} fill={batch.fill} fill-opacity={batch.opacity} />
+            {/each}
+          </g>
+          <path class="arc-borders" d={arc_paths.join(``)} fill="none" pointer-events="none" />
+        {/if}
         <!-- Arcs -->
-        <g class="arcs">
-          {#each visible_arcs as screen (screen.arc.node_idx)}
+        <g class="arcs" class:batched={batch_paints}>
+          {#each visible_nodes as arc, visible_idx (arc.node_idx)}
             {#if arc_content}
-              {@render arc_content(screen)}
+              {@render arc_content(screen_arcs[arc.node_idx])}
             {:else}
-              {@const info = chart_state.node_infos[screen.arc.node_idx]}
-              {@const opacity = chart_state.node_dim(screen.arc.node_idx).opacity}
+              {@const info = chart_state.node_infos[arc.node_idx]}
+              {@const opacity = chart_state.node_dim(arc.node_idx).opacity}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <path
-                d={screen_path(screen)}
-                data-sunburst-node-idx={screen.arc.node_idx}
-                fill={info.pattern?.url ?? info.fill}
+                d={arc_paths[visible_idx]}
+                data-sunburst-node-idx={arc.node_idx}
+                fill={batch_paints ? `transparent` : (info.pattern?.url ?? info.fill)}
                 fill-opacity={opacity}
                 role={info.clickable ? `button` : undefined}
-                tabindex={screen.arc.node_idx === roving_idx ? 0 : -1}
+                tabindex={arc.node_idx === roving_idx ? 0 : -1}
                 aria-label={info.aria}
                 style:cursor={info.clickable ? `pointer` : `default`}
               />
@@ -444,11 +497,11 @@
       to the underlying arc via the chart-group delegation in the shell -->
         {#if show_labels}
           <g class="arc-labels">
-            {#each visible_arcs as screen (screen.arc.node_idx)}
-              {@const lbl = label_attrs(screen)}
+            {#each visible_nodes as arc (arc.node_idx)}
+              {@const lbl = label_attrs(screen_arcs[arc.node_idx])}
               {#if lbl}
-                {@const info = chart_state.node_infos[screen.arc.node_idx]}
-                {@const dim = chart_state.node_dim(screen.arc.node_idx)}
+                {@const info = chart_state.node_infos[arc.node_idx]}
+                {@const dim = chart_state.node_dim(arc.node_idx)}
                 {@const font_style =
                   lbl.font_scale === 1 ? `` : `; font-size: ${lbl.font_scale}em`}
                 {#if info.label_halo}
@@ -466,7 +519,7 @@
                 {/if}
                 <text
                   class="arc-label"
-                  data-sunburst-node-idx={screen.arc.node_idx}
+                  data-sunburst-node-idx={arc.node_idx}
                   transform={lbl.transform}
                   fill={info.label_fill}
                   fill-opacity={dim.label_opacity}
@@ -567,18 +620,29 @@
     fill: var(--text-color);
     font-size: var(--sunburst-font-size, 11px);
   }
-  .arcs path {
+  .arcs path,
+  .arc-borders {
     /* stroke via CSS (not presentation attributes): var() substitution in SVG
     presentation attributes is not reliably supported across browsers */
     stroke: var(--sunburst-arc-stroke, var(--page-bg, white));
     stroke-width: var(--sunburst-arc-stroke-width, 0.25);
+  }
+  .arcs:not(.batched) path {
     transition:
       fill-opacity 0.15s ease,
       transform 0.15s ease;
     /* hover 'pull': scaling about the chart center offsets the arc radially */
     transform-origin: 0 0;
   }
-  :global(.sunburst:not(.icicle)) .arcs path:hover {
+  .arcs.batched path {
+    stroke: none;
+  }
+  .arc-paints,
+  .arc-borders {
+    /* Keep the settled ink composited while the hover veil changes above it. */
+    will-change: transform;
+  }
+  :global(.sunburst:not(.icicle)) .arcs:not(.batched) path:hover {
     transform: scale(var(--sunburst-hover-scale, 1.02));
   }
   .hover-veil {
@@ -587,6 +651,7 @@
     fill-opacity: var(--sunburst-dim-veil-opacity, 0.7);
     fill-rule: evenodd;
     pointer-events: none;
+    will-change: transform;
   }
   .arc-label {
     text-anchor: middle;

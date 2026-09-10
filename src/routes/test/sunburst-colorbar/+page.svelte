@@ -15,7 +15,7 @@
   <title>Sunburst Vertical Colorbar Tests</title>
 </svelte:head>
 
-<h1>Sunburst Vertical Colorbar Tests</h1>
+<h1 id="sunburst-vertical-colorbar-tests">Sunburst Vertical Colorbar Tests</h1>
 
 {#each color_bar_sides as color_bar_side}
   <section id="vertical-colorbar-{color_bar_side}">
