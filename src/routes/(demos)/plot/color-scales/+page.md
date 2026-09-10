@@ -28,7 +28,7 @@
       {/each}
     </span>
     <span>Log color scale <input type="checkbox" bind:checked={log_scale} /></span>
-    <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} />
+    <ColorScaleSelect bind:value={color_scale} />
     <ColorBar
       range={[1, Math.max(...heatmap_values)]}
       scale={color_scale}

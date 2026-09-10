@@ -2,7 +2,7 @@
   import { ColorBar } from '$lib/plot'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
-  import { MultiSelect as Select } from 'svelte-widgets'
+  import { MultiSelect as Select, type MultiSelectProps } from 'svelte-widgets'
   import type { D3InterpolateName } from '$lib/colors'
 
   const ScaleSelect = Select<D3InterpolateName>
@@ -18,7 +18,7 @@
     open = $bindable(false),
     ...rest
   }: Omit<
-    Extract<ComponentProps<typeof ScaleSelect>, { mode: `single` }>,
+    Extract<MultiSelectProps<D3InterpolateName>, { mode: `single` }>,
     `options` | `mode`
   > & {
     options?: D3InterpolateName[]
