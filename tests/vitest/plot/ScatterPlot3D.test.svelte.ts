@@ -1,4 +1,5 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
+import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
 import {
   hover_marker_geometry,
@@ -9,6 +10,17 @@ import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { Object3D, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mock_fullscreen, bind_props, expect_plot_controls, query } from '../setup'
+
+vi.mock(`$app/environment`, () => ({ browser: false }))
+vi.mock(`$app/state`, () => ({
+  page: {
+    url: {
+      get searchParams(): never {
+        throw new Error(`Cannot access url.searchParams on a page with prerendering enabled`)
+      },
+    },
+  },
+}))
 
 // Smoke tests to ensure component mounts without errors.
 // Meaningful 3D rendering tests require Playwright visual regression testing,
@@ -81,6 +93,12 @@ describe(`ScatterPlot3D smoke tests`, () => {
     mounted_component = mount(ScatterPlot3D, { target: container, props })
     await tick()
   }
+
+  test(`page initializes without query access during prerendering`, async () => {
+    mounted_component = mount(ScatterTestPage, { target: container })
+    await tick()
+    expect(container.querySelector(`#test-scatter-3d`)).toBeInstanceOf(HTMLElement)
+  })
 
   test.each<[string, ComponentProps<typeof ScatterPlot3D>]>([
     [`empty series`, { series: [] }],

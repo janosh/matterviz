@@ -4,6 +4,7 @@
   import { ScatterPlot3D } from '$lib'
   import { tick } from 'svelte'
   import { page } from '$app/state'
+  import { browser } from '$app/environment'
   import type { DataSeries3D, InternalPoint3D } from '$lib/plot/core/types'
   import {
     type Camera,
@@ -16,8 +17,9 @@
 
   // Generate test data with color values to trigger ColorBar rendering
   // This replicates the original issue where ColorBar could block gizmo clicks
-  const initial_count = Number(page.url.searchParams.get(`points`) ?? 50)
-  const varying_sizes = page.url.searchParams.has(`varying_sizes`)
+  const params = browser ? page.url.searchParams : undefined
+  const initial_count = Number(params?.get(`points`) ?? 50)
+  const varying_sizes = params?.has(`varying_sizes`)
   const make_helix = (n_points: number): DataSeries3D => ({
     x: Array.from({ length: n_points }, (_, idx) => Math.cos(idx * 0.2)),
     y: Array.from({ length: n_points }, (_, idx) => idx * 0.1),
@@ -37,9 +39,9 @@
   let scene = $state<Scene>()
   let display = $state({
     projections: {
-      xy: page.url.searchParams.has(`projections`),
-      xz: page.url.searchParams.has(`projections`),
-      yz: page.url.searchParams.has(`projections`),
+      xy: params?.has(`projections`) ?? false,
+      xz: params?.has(`projections`) ?? false,
+      yz: params?.has(`projections`) ?? false,
     },
   })
   let wrapper: HTMLDivElement | undefined = $state()
