@@ -1,6 +1,7 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
 import { HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
+import heatmap_source from '$lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
 import type { AxisItem, ColorBarPosition } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
@@ -49,6 +50,8 @@ describe(`HeatmapMatrix rendering`, () => {
     // 3x3 = 9 cells
     const cells = get_data_cells()
     expect(cells).toHaveLength(9)
+    // happy-dom drops nested CSS rules; Playwright checks the rendered colors and animations.
+    expect(heatmap_source).toMatch(/\.cell\s*\{[^{}]*transition:\s*none;/)
     // axis labels
     const x_labels = get_x_labels()
     const y_labels = get_y_labels()
@@ -970,14 +973,21 @@ describe(`virtualization`, () => {
       ...extra,
     })
   }
-  test(`colors only rendered cells in a virtual window`, async () => {
-    const color_scale = vi.fn(red_scale)
-    mount_virtual({ color_scale, domain_mode: `fixed`, color_scale_range: [0, 60] })
-    await tick()
-    expect(query_all(`.cell[data-x]`).length).toBeLessThan(100)
-    expect(color_scale.mock.calls.length).toBeLessThan(200)
-    expect(color_scale.mock.calls.length).toBeGreaterThan(0)
-  })
+  test.each([`auto`, `fixed`, `robust`] as const)(
+    `%s with explicit bounds only reads and colors rendered cells`,
+    async (domain_mode) => {
+      const color_scale = vi.fn(red_scale)
+      const values = labels.map(() => labels.map(() => 1))
+      const offscreen_value = vi.fn(() => 1)
+      Object.defineProperty(values[29], 29, { get: offscreen_value })
+      mount_virtual({ values, color_scale, domain_mode, color_scale_range: [0, 60] })
+      await tick()
+      expect(offscreen_value).not.toHaveBeenCalled()
+      expect(query_all(`.cell[data-x]`).length).toBeLessThan(100)
+      expect(color_scale.mock.calls.length).toBeLessThan(200)
+      expect(color_scale.mock.calls.length).toBeGreaterThan(0)
+    },
+  )
 
   const rendered_idxs = (axis: `x` | `y`): number[] =>
     [

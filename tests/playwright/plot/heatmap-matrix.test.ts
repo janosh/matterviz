@@ -1,11 +1,41 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
+test(`domain and normalization changes recolor cells without per-cell animations`, async ({
+  page,
+}) => {
+  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
+  const cells = page.locator(`.heatmap`).first().locator(`.cell`)
+  await expect(cells).toHaveCount(10_000)
+  for (const [option, values] of [
+    [`robust`, [`fixed`, `robust`, `auto`]],
+    [`log`, [`log`, `linear`]],
+  ]) {
+    const select = page.locator(`select:has(option[value="${option}"])`).first()
+    for (const value of values) {
+      await select.selectOption(value, { force: true })
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      )
+      const state = await cells.evaluateAll((nodes) => ({
+        animations: nodes.reduce((total, node) => total + node.getAnimations().length, 0),
+        colors_match: nodes.every((node) => {
+          const color = (node as HTMLElement).style.backgroundColor
+          return (
+            getComputedStyle(node).backgroundColor ===
+            (color === `transparent` ? `rgba(0, 0, 0, 0)` : color)
+          )
+        }),
+      }))
+      expect(state).toEqual({ animations: 0, colors_match: true })
+    }
+  }
+})
+
 test(`electronegativity colorbar retains fitting ticks and thins only crowded labels`, async ({
   page,
 }) => {
-  await page.goto(`/plot/heatmap-matrix`)
-  await page.waitForLoadState(`networkidle`)
+  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
   const colorbar = page.locator(`.heatmap .colorbar`).first()
   const bar = colorbar.locator(`.bar`)
   const labels = bar.locator(`.tick-label`)

@@ -465,12 +465,11 @@ body.fullscreen .draggable-pane {
    These are only needed by the standalone matterviz demo site.
    When embedded in a host framework, its unlayered CSS takes precedence. */
 @layer matterviz-shell {
-  /* Targeted theme transitions for performance */
+  /* Animate shell controls, not SVG data marks: a palette change can update thousands of
+     marks at once. Plot components own their intentional hover/geometry transitions. */
   :where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),
-  :where(select, label, .theme-control, .toc, svg, path, circle, rect, text),
-  :where(.info-pane, .pane-header, .pane-content, .close-button),
-  :where(nav > a),
-  :where(.theme-control, .theme-control label, .theme-control select) {
+  :where(select, label, .theme-control, .toc),
+  :where(.info-pane, .pane-header, .pane-content, .close-button) {
     transition:
       background-color var(--theme-transition-duration) ease,
       color var(--theme-transition-duration) ease,

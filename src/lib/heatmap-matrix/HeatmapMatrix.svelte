@@ -276,15 +276,14 @@
     const [q_lo, q_hi] = [quantile_unordered(scratch, 0.02), quantile_unordered(scratch, 0.98)]
     return q_lo <= q_hi ? [q_lo, q_hi] : [q_hi, q_lo]
   })
-  let [cs_min, cs_max] = $derived.by((): Vec2 => {
-    const [fixed_min, fixed_max] = color_scale_range
-    if (domain_mode === `fixed` && fixed_min !== null && fixed_max !== null) {
-      return [fixed_min, fixed_max]
-    }
-    const [auto_min, auto_max] =
-      domain_mode === `robust` ? robust_domain : [value_stats.min, value_stats.max]
-    return [fixed_min ?? auto_min, fixed_max ?? auto_max]
-  })
+  let data_domain = $derived(
+    domain_mode === `robust` ? robust_domain : [value_stats.min, value_stats.max],
+  )
+  // Resolve each unspecified bound lazily; explicit ranges need no data-domain scan.
+  let [cs_min, cs_max] = $derived([
+    color_scale_range[0] ?? data_domain[0],
+    color_scale_range[1] ?? data_domain[1],
+  ])
   let color_bar_scale = $derived(to_color_bar_scale(color_scale))
   // The shared ramp clamps a non-positive log floor at LOG_EPS; lift it to the smallest
   // positive value instead so the colors still spread over the data. A degenerate domain
@@ -316,11 +315,9 @@
     val === null ||
     (typeof val === `string` ? !is_color(val) : !Number.isFinite(val) || (use_log && val <= 0))
   function value_to_color(val: CellValue): string | null {
-    if (val === null || cell_is_missing(val)) return missing_fill || null
-    if (typeof val === `string`) return val
-    if (!ramp) return missing_fill || null
-    // values below a lifted log floor saturate at the bottom of the ramp
-    return ramp.color_fn(Math.max(val, ramp.domain[0]))
+    if (cell_is_missing(val)) return missing_fill || null
+    if (typeof val !== `number`) return val
+    return ramp ? ramp.color_fn(val) : missing_fill || null
   }
   // Resolve only rendered or inspected cells. Svelte tracks each call's data/scale
   // dependencies, so virtualized matrices never allocate colors for offscreen cells.
@@ -1011,6 +1008,8 @@
     min-width: 0; /* spacer in top-left when both axes have labels */
   }
   .cell {
+    /* Recolor dense grids immediately; theme/button transitions create one animation per cell. */
+    transition: none;
     width: 100%;
     height: 100%;
     min-width: 0;

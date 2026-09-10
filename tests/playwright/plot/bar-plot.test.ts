@@ -29,6 +29,8 @@ test.describe(`BarPlot Component Tests`, () => {
     const plot = page.locator(`#basic-bar .bar-plot`)
     const bars = bars_of(plot)
     await expect(bars).toHaveCount(4)
+    // Shell theme fades must not spawn fill/stroke animations on thousands of SVG marks.
+    await expect(bars.first()).toHaveCSS(`transition-duration`, `0s`)
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
 
