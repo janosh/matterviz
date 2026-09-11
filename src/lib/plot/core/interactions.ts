@@ -257,7 +257,8 @@ type AxisRangeOverride = {
 type AutoRanges = Record<keyof AxisRanges, readonly number[]>
 
 // A single explicit bound pins that endpoint, never the axis direction. If it crosses the
-// automatic endpoint, extend that endpoint by the auto span (at least 10% of the bound).
+// automatic endpoint, extend it by the auto span (at least 10% of a numeric bound;
+// time axes preserve the duration, using one day for a collapsed automatic range).
 // Two explicit endpoints may intentionally describe a descending or collapsed range.
 export function resolve_axis_range(
   { range, scale_type }: AxisRangeOverride,
@@ -270,7 +271,8 @@ export function resolve_axis_range(
   if (lower < upper || lower_fixed === upper_fixed || !all_finite([lower, upper]))
     return [lower, upper]
 
-  if (get_scale_type_name(scale_type) === `log`) {
+  const type_name = get_scale_type_name(scale_type)
+  if (type_name === `log`) {
     if ((lower_fixed ? lower : upper) <= 0) return [lower, upper]
     const factor = Math.max(
       Math.max(auto[0], auto[1]) / Math.max(Math.min(auto[0], auto[1]), LOG_EPS),
@@ -280,7 +282,11 @@ export function resolve_axis_range(
   }
   const { to, from } = axis_transform(scale_type)
   const bound = to(lower_fixed ? lower : upper)
-  const span = Math.max(Math.abs(to(auto[1]) - to(auto[0])), Math.abs(bound) * 0.1) || 1
+  const auto_span = Math.abs(to(auto[1]) - to(auto[0]))
+  const span =
+    type_name === `time`
+      ? auto_span || 86_400_000
+      : Math.max(auto_span, Math.abs(bound) * 0.1) || 1
   return lower_fixed ? [lower, from(bound + span)] : [from(bound - span), upper]
 }
 

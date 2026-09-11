@@ -342,10 +342,17 @@ describe(`ColorBar gradient`, () => {
     { range: [1, 9], expected: [0, 5, 10] },
     { range: [9, 1], expected: [10, 5, 0] },
   ] satisfies { range: Vec2; expected: number[] }[])(
-    `samples the colors of the displayed tick domain for $range`,
+    `samples the explicit mapping over the displayed domain despite palette options for $range`,
     ({ range, expected }) => {
       const color = (value: number) => `rgb(${20 * value}, 0, 0)`
-      mount_bar({ range, tick_labels: 4, steps: 3, scale: { fn: color } })
+      mount_bar({
+        range,
+        tick_labels: 4,
+        steps: 3,
+        scale: { fn: color },
+        color_scale_options,
+        selected_color_scale_key: `plasma`,
+      })
       const labels = tick_texts()
       expect([labels[0], labels.at(-1)]).toEqual([expected[0], expected.at(-1)].map(String))
       expect(doc_query(`.colorbar .bar`).getAttribute(`style`)).toContain(

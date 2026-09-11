@@ -343,6 +343,8 @@ describe(`axis_ranges_equal`, () => {
 describe(`resolve_axis_ranges`, () => {
   const auto = { x: [0, 10], x2: [0, 20], y: [0, 30], y2: [0, 40] }
   const no_overrides = { x: {}, x2: {}, y: {}, y2: {} }
+  const epoch = Date.UTC(2026, 0, 1)
+  const day = 86_400_000
 
   it(`merges explicit over auto per-bound; null/missing bounds fall back to auto`, () => {
     const resolved = resolve_axis_ranges(
@@ -365,6 +367,10 @@ describe(`resolve_axis_ranges`, () => {
     [`log`, [1, 10], [100, null], [100, 1000]],
     [`log`, [1, 10], [null, 0.01], [0.001, 0.01]],
     [`log`, [1, 10], [10, 1], [10, 1]],
+    [`time`, [epoch, epoch + 1000], [epoch + day, null], [epoch + day, epoch + day + 1000]],
+    [`time`, [epoch, epoch + 1000], [null, epoch - day], [epoch - day - 1000, epoch - day]],
+    [`time`, [epoch, epoch], [epoch, null], [epoch, epoch + day]],
+    [`time`, [epoch, epoch], [null, epoch], [epoch - day, epoch]],
   ])(
     `orders one-sided %s bounds over %j with limits %j`,
     (scale_type, data, range, expected) => {

@@ -1005,22 +1005,78 @@ describe(`StructureControls reactive props`, () => {
     expect(target.querySelector(`.setting-reset-button`)).toBeNull()
   })
 
+  test.each<Partial<StructureSettings>>([
+    {},
+    { vector_configs: undefined },
+    { vector_configs: {} },
+    { vector_configs: { magmom: { visible: true, color: `#abcdef`, scale: 3 } } },
+    { vector_configs: { force: { visible: true } } },
+  ])(`vector resets preserve nested ownership and other rows' edits: %j`, async (initial) => {
+    const state = $state<{ scene_props: Partial<StructureSettings> }>({ scene_props: initial })
+    const expected = $state.snapshot(state.scene_props)
+    const target = await mount_bound_controls(state, { structure: vector_structure })
+    const reset_row = async (key: string) => {
+      doc_query<HTMLButtonElement>(`[data-key="${key}"] .setting-reset-button`).click()
+      await tick()
+    }
+    set_input(
+      doc_query<HTMLInputElement>(`[data-key="vector_scale:force"] input[type="number"]`),
+      `2.5`,
+    )
+    await tick()
+    expect(state.scene_props.vector_configs?.force).toStrictEqual({
+      ...expected.vector_configs?.force,
+      scale: 2.5,
+    })
+    expect(
+      target.querySelector(`[data-key="vector_config:force"] .setting-reset-button`),
+    ).toBeNull()
+
+    doc_query<HTMLInputElement>(
+      `[data-key="vector_config:force"] input[type="checkbox"]`,
+    ).click()
+    await tick()
+    await reset_row(`vector_config:force`)
+    expect(state.scene_props.vector_configs?.force).toStrictEqual({
+      ...expected.vector_configs?.force,
+      scale: 2.5,
+    })
+    const color = doc_query<HTMLInputElement>(
+      `[data-key="vector_config:force"] input[type="color"]`,
+    )
+    color.value = `#123456`
+    color.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    await reset_row(`vector_scale:force`)
+    expect(state.scene_props.vector_configs?.force).toStrictEqual({
+      ...expected.vector_configs?.force,
+      color: `#123456`,
+    })
+    await reset_row(`vector_config:force`)
+    expect(state.scene_props).toStrictEqual(expected)
+    expect(target.querySelector(`.setting-reset-button`)).toBeNull()
+  })
+
   // Section resets include site-vector scales stored in vector_configs.
   test(`offers section resets only after changes and restores defaults`, async () => {
     // every key defined at its default, so the mount-time snapshot the reset offer compares
     // against isn't perturbed by `bind:` writing back into an undefined prop
+    const vector_defaults: StructureSettings['vector_configs'] = default_vector_configs([
+      `force`,
+      `magmom`,
+    ])
     const state = $state({
-      scene_props: { ...DEFAULTS.structure, atom_radius: 1.4 },
+      scene_props: {
+        ...DEFAULTS.structure,
+        atom_radius: 1.4,
+        vector_configs: vector_defaults,
+      },
     })
 
     const target = await mount_bound_controls(state, {
       structure: vector_structure,
       displacement_summary: { rmsd: 0.12, max_displacement: 0.34, error: null },
     })
-    const vector_defaults = default_vector_configs([`force`, `magmom`])
-    state.scene_props.vector_configs = vector_defaults
-    await tick()
-
     const reset_button = (section: string) =>
       target.querySelector<HTMLButtonElement>(
         `button[aria-label="Reset ${section} to defaults"]`,

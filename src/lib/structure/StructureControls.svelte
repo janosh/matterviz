@@ -484,10 +484,10 @@
   // whose rows drive several settings at once. No section-level reset: SettingsSection replays
   // `on_reset_key` over every changed key, so the section heading and the per-row buttons both
   // restore what this pane mounted with. "Reset all" under Preferences returns to shipped defaults.
-  type Accessor = { get: () => unknown; set: (value: unknown, present: boolean) => void }
-  const local = <T>(get: () => T, set: (value: T, present: boolean) => void): Accessor => ({
+  type Accessor = { get: () => unknown; set: (value: unknown) => void }
+  const local = <T>(get: () => T, set: (value: T) => void): Accessor => ({
     get,
-    set: (value, present) => set(value as T, present),
+    set: (value) => set(value as T),
   })
   // One row driving two scene props (a mode plus its color, say). Sharing a key means the row's
   // reset restores both halves at once instead of leaving a half-reverted pair behind.
@@ -498,7 +498,11 @@
     )
   const section_baselines = new Map<
     string,
-    { keys: string; tracker: ReturnType<typeof track_settings> }
+    {
+      keys: string
+      tracker: ReturnType<typeof track_settings>
+      accessors: Record<string, Accessor>
+    }
   >()
   const scene_section = (
     name: string,
@@ -522,7 +526,7 @@
     const section_keys = [...keys, ...Object.keys(accessors)].join(`,`)
     let baseline = section_baselines.get(name)
     if (!baseline || baseline.keys !== section_keys) {
-      baseline = { keys: section_keys, tracker: track_settings(read_values) }
+      baseline = { keys: section_keys, tracker: track_settings(read_values), accessors }
       section_baselines.set(name, baseline)
     }
     const { tracker } = baseline
@@ -530,8 +534,8 @@
       changed_keys: tracker.changed_keys,
       on_reset_key: (key: string) => {
         const initial = tracker.initial
-        const accessor = accessors[key]
-        if (accessor) accessor.set(initial[key], Object.hasOwn(initial, key))
+        const accessor = baseline.accessors[key]
+        if (accessor) accessor.set(initial[key])
         else restore_scene_keys([key], initial)
       },
       setting_metadata: structure_setting_metadata,
@@ -709,46 +713,61 @@
 
   let any_vectors_visible = $derived(available_vector_keys.some(is_key_visible))
 
-  function update_vector_config(key: string, patch: Partial<VectorLayerConfig>) {
-    const configs = { ...scene_props.vector_configs }
-    configs[key] = {
-      ...(configs[key] ?? { visible: true, color: null, scale: null }),
-      ...patch,
+  function update_vector_config(key: string, patch: VectorLayerConfig) {
+    const configs = scene_props.vector_configs
+    scene_props.vector_configs = {
+      ...configs,
+      [key]: { ...configs?.[key], ...patch },
     }
-    scene_props.vector_configs = configs
   }
-  // A vector row in Visibility owns visibility and color only. Tracking the whole config there
-  // would make a per-key scale edit (owned by Site vectors) light up that section's reset,
-  // which would then wipe the scale on its way past.
-  const vector_visibility_accessors = (): Record<string, Accessor> =>
+  // Each vector row tracks only its fields' displayed values, but restores their original
+  // ownership. Keep other rows' edits when removing a config created by this row.
+  const vector_accessors = (
+    prefix: string,
+    fields: (keyof VectorLayerConfig)[],
+  ): Record<string, Accessor> =>
     Object.fromEntries(
-      available_vector_keys.map((key, key_idx) => [
-        `vector_config:${key}`,
-        local(
-          () => ({
-            visible: is_key_visible(key),
-            color:
-              scene_props.vector_configs?.[key]?.color ??
-              (available_vector_keys.length > 1
-                ? VECTOR_PALETTE[key_idx % VECTOR_PALETTE.length]
-                : null),
-          }),
-          (reference, present) =>
-            update_vector_config(key, present ? reference : { visible: true, color: null }),
-        ),
-      ]),
-    )
-  // Per-key scales live in vector_configs rather than on a scene_props key of their own, so
-  // without an accessor a scale-only edit would never reveal a reset
-  const vector_scale_accessors = (): Record<string, Accessor> =>
-    Object.fromEntries(
-      available_vector_keys.map((key) => [
-        `vector_scale:${key}`,
-        local(
-          () => scene_props.vector_configs?.[key]?.scale ?? null,
-          (scale) => update_vector_config(key, { scale }),
-        ),
-      ]),
+      available_vector_keys.map((key, key_idx) => {
+        const initial = scene_props.vector_configs
+        const initial_present = Object.hasOwn(scene_props, `vector_configs`)
+        const entry_present = Object.hasOwn(initial ?? {}, key)
+        const initial_config = $state.snapshot(initial?.[key])
+        const display_defaults = {
+          visible: true,
+          scale: null,
+          color:
+            available_vector_keys.length > 1
+              ? VECTOR_PALETTE[key_idx % VECTOR_PALETTE.length]
+              : null,
+        }
+        return [
+          `${prefix}:${key}`,
+          local(
+            () =>
+              Object.fromEntries(
+                fields.map((field) => [
+                  field,
+                  scene_props.vector_configs?.[key]?.[field] ?? display_defaults[field],
+                ]),
+              ),
+            () => {
+              const configs = { ...scene_props.vector_configs }
+              const config = { ...configs[key] }
+              for (const field of fields) {
+                if (Object.hasOwn(initial_config ?? {}, field))
+                  Reflect.set(config, field, initial_config?.[field])
+                else Reflect.deleteProperty(config, field)
+              }
+              if (Object.keys(config).length || initial_config) configs[key] = config
+              else if (entry_present) Reflect.set(configs, key, initial_config)
+              else Reflect.deleteProperty(configs, key)
+              if (Object.keys(configs).length || initial) scene_props.vector_configs = configs
+              else if (initial_present) scene_props.vector_configs = initial
+              else delete scene_props.vector_configs
+            },
+          ),
+        ]
+      }),
     )
 
   function update_label_offset(axis_idx: number, value: number) {
@@ -940,7 +959,7 @@
           {...scene_section(
             `Visibility`,
             [...visibility_rows, ...visibility_mode_rows],
-            vector_visibility_accessors(),
+            vector_accessors(`vector_config`, [`visible`, `color`]),
           )}
         >
           <div class="toggle-grid">
@@ -1002,8 +1021,7 @@
           atom_color_property_key: local(
             () =>
               `property_key` in atom_color_config ? atom_color_config.property_key : undefined,
-            (value, present) =>
-              set_atom_color_mode(present && value ? `property` : `element`, value),
+            (value) => set_atom_color_mode(value ? `property` : `element`, value),
           ),
         })}
       >
@@ -1183,9 +1201,12 @@
           <SettingsSection
             title="Site vectors"
             layout="grid"
-            {...scene_section(`Site vectors`, vector_rows, vector_scale_accessors(), [
-              `vector_color_scale`,
-            ])}
+            {...scene_section(
+              `Site vectors`,
+              vector_rows,
+              vector_accessors(`vector_scale`, [`scale`]),
+              [`vector_color_scale`],
+            )}
           >
             {@render setting_rows(vector_rows)}
             {#if scene_value(`vector_color_mode`) === `magnitude`}

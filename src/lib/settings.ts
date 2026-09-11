@@ -89,11 +89,12 @@ const VECTOR_COLOR_MODES = [
 ] as const
 export type VectorColorMode = (typeof VECTOR_COLOR_MODES)[number]
 
-// Per-key configuration for site vector layers (force, magmom, spin, etc.)
+// Per-key overrides for site vector layers (force, magmom, spin, etc.).
+// Omitted fields retain automatic visibility, color, and scale.
 export type VectorLayerConfig = {
-  visible: boolean
-  color: string | null // null = auto from palette
-  scale: number | null // null = use global scale only (multiplier of 1.0)
+  visible?: boolean
+  color?: string | null // null = auto from palette
+  scale?: number | null // null = use global scale only (multiplier of 1.0)
 }
 
 export const ATOM_COLOR_MODE_OPTIONS = [

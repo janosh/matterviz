@@ -473,10 +473,10 @@ function nice_range(
   is_time: boolean,
 ): Vec2 {
   const [min, max] = limits
-  let [data_min, data_max] = resolve_axis_range({ range: limits, scale_type }, [
-    min_ext ?? 0,
-    max_ext ?? 1,
-  ])
+  let [data_min, data_max] = resolve_axis_range(
+    { range: limits, scale_type: is_time ? `time` : scale_type },
+    [min_ext ?? 0, max_ext ?? 1],
+  )
   const type_name = get_scale_type_name(scale_type)
   const can_snap_zero =
     min_ext !== undefined &&

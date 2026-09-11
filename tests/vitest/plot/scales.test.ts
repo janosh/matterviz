@@ -118,6 +118,25 @@ describe(`scales`, () => {
       expect(nice_range([], [null, null], `linear`, 0.1)).toEqual([0, 1])
     })
 
+    test.each([3_600_000, 0])(
+      `crossed time limits preserve the data duration (%s ms), or use one day`,
+      (duration) => {
+        const epoch = Date.UTC(2026, 0, 1)
+        const day = 86_400_000
+        const values = [epoch, epoch + duration]
+        for (const scale_type of [`linear`, `time`] as const) {
+          expect(nice_range(values, [epoch + day, null], scale_type, 0.05, true)).toEqual([
+            epoch + day,
+            epoch + day + (duration || day),
+          ])
+          expect(nice_range(values, [null, epoch - day], scale_type, 0.05, true)).toEqual([
+            epoch - day - (duration || day),
+            epoch - day,
+          ])
+        }
+      },
+    )
+
     test.each<{ values: number[]; limits: [number | null, number | null] }>([
       { values: [0, 5], limits: [100, null] },
       { values: [0, 5], limits: [null, -100] },

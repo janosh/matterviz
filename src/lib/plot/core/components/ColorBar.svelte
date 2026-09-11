@@ -36,7 +36,7 @@
 
   let {
     title,
-    scale = SCALE_DEFAULTS.scheme,
+    scale,
     bar_style,
     title_style,
     wrapper_style,
@@ -86,7 +86,7 @@
     // The caller owns loading and commits selected_property_key/range/title together.
     loading?: boolean
     on_property_change?: (key: string) => void
-    // With options, the selected option supplies the scale; otherwise `scale` is used.
+    // The selected option supplies the scale unless the caller provides `scale` explicitly.
     color_scale_options?: ColorScaleOption[]
     // Defaults to the first option; an explicit key must match an option.
     selected_color_scale_key?: string
@@ -156,7 +156,11 @@
     return option
   })
   const ramp = $derived(
-    resolve_color_ramp(selected_color_scale?.scale ?? scale, range, scale_type),
+    resolve_color_ramp(
+      scale ?? selected_color_scale?.scale ?? SCALE_DEFAULTS.scheme,
+      range,
+      scale_type,
+    ),
   )
   // Sample the displayed domain without changing the caller's data-to-color mapping.
   const gradient_stops = $derived(
