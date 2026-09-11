@@ -233,9 +233,15 @@ test(`a failed post frees the key before an immediate retry`, async () => {
   await expect(second).resolves.toBe(`done`)
 })
 
-test.each([`abort`, `cancel`, `progress`, `progress-error`, `error`] as const)(
+test.each([
+  [`abort`, /abort/i, 0],
+  [`cancel`, /cancel/i, 0],
+  [`progress`, null, 1],
+  [`progress-error`, /progress failed/, 1],
+  [`error`, /provider failed/, 1],
+] as const)(
   `main-thread-only requests share the client lifecycle: %s`,
-  async (action) => {
+  async (action, expected_error, provider_calls) => {
     const provider = vi.fn(() => {
       if (action === `error`) throw new Error(`provider failed`)
       return `done`
@@ -264,19 +270,12 @@ test.each([`abort`, `cancel`, `progress`, `progress-error`, `error`] as const)(
     const pending = run({ provider }, { provider }, { signal: controller.signal, on_progress })
     if (action === `abort`) controller.abort()
     else if (action === `cancel`) run.cancel()
-    if (action === `progress`) {
+    if (expected_error) await expect(pending).rejects.toThrow(expected_error)
+    else {
       await expect(pending).resolves.toBe(`done`)
       expect(on_progress).toHaveBeenCalledExactlyOnceWith(1)
-    } else {
-      await expect(pending).rejects.toThrow(
-        action === `error`
-          ? /provider failed/
-          : action === `progress-error`
-            ? /progress failed/
-            : /abort|cancel/i,
-      )
     }
-    expect(provider).toHaveBeenCalledTimes(action === `abort` || action === `cancel` ? 0 : 1)
+    expect(provider).toHaveBeenCalledTimes(provider_calls)
     expect(build_payload).not.toHaveBeenCalled()
     expect(workers()).toHaveLength(0)
   },

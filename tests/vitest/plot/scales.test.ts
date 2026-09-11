@@ -99,18 +99,18 @@ describe(`scales`, () => {
       expect(range[1]).toBeGreaterThan(Math.max(...values))
     })
 
-    test.each<[[number | null, number | null], number | undefined, number | undefined]>([
-      [[0, 10], 0, 10],
-      [[0.123, 4.987], 0.123, 4.987],
-      [[4.987, 0.123], 4.987, 0.123],
-      [[null, 1000], undefined, 1000],
-      [[0, null], 0, undefined],
-    ])(`respects explicit bounds %j`, (limits, lower, upper) => {
-      const range = nice_range(sample_values, limits, `linear`, 0.05)
+    test.each<[number | null, number | null]>([
+      [0, 10],
+      [0.123, 4.987],
+      [4.987, 0.123],
+      [null, 1000],
+      [0, null],
+    ])(`respects explicit bounds [%s, %s]`, (lower, upper) => {
+      const range = nice_range(sample_values, [lower, upper], `linear`, 0.05)
       expect(range).toHaveLength(2)
-      if (lower === undefined) expect(range[0]).toBeLessThan(1)
+      if (lower === null) expect(range[0]).toBeLessThan(1)
       else expect(range[0]).toBe(lower)
-      if (upper === undefined) expect(range[1]).toBeGreaterThanOrEqual(5)
+      if (upper === null) expect(range[1]).toBeGreaterThanOrEqual(5)
       else expect(range[1]).toBe(upper)
     })
 
@@ -118,36 +118,18 @@ describe(`scales`, () => {
       expect(nice_range([], [null, null], `linear`, 0.1)).toEqual([0, 1])
     })
 
-    test.each<[number[], [number | null, number | null]]>([
-      [
-        [0, 5],
-        [100, null],
-      ],
-      [
-        [0, 5],
-        [null, -100],
-      ],
-      [
-        [0, 5],
-        [5, null],
-      ],
-      [
-        [0, 5],
-        [null, 0],
-      ],
-      [[0], [0, null]],
-      [[0], [null, 0]],
-      [[], [100, null]],
-      [[], [null, -100]],
-      [
-        [1, 10],
-        [100.123, null],
-      ],
-      [
-        [1, 10],
-        [null, 0.0123],
-      ],
-    ])(`keeps one-sided bounds ordered for data %j and limits %j`, (values, limits) => {
+    test.each<{ values: number[]; limits: [number | null, number | null] }>([
+      { values: [0, 5], limits: [100, null] },
+      { values: [0, 5], limits: [null, -100] },
+      { values: [0, 5], limits: [5, null] },
+      { values: [0, 5], limits: [null, 0] },
+      { values: [0], limits: [0, null] },
+      { values: [0], limits: [null, 0] },
+      { values: [], limits: [100, null] },
+      { values: [], limits: [null, -100] },
+      { values: [1, 10], limits: [100.123, null] },
+      { values: [1, 10], limits: [null, 0.0123] },
+    ])(`keeps one-sided bounds ordered for $values and $limits`, ({ values, limits }) => {
       for (const scale_type of [`linear`, `time`, `arcsinh`, `log`] as const) {
         // Log limits must be positive; non-positive log bounds have separate coverage.
         if (scale_type === `log` && limits.some((bound) => bound !== null && bound <= 0))

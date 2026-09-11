@@ -8,6 +8,7 @@ import type {
   TrajHandlerData,
 } from '$lib/trajectory'
 import { Trajectory } from '$lib/trajectory'
+import TrajectoryTestPage from '../../../src/routes/test/trajectory/+page.svelte'
 import * as plotting from '$lib/trajectory/plotting'
 import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
@@ -20,6 +21,17 @@ import {
 } from '../setup'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+
+vi.mock(`$app/environment`, () => ({ browser: false }))
+vi.mock(`$app/state`, () => ({
+  page: {
+    url: {
+      get searchParams(): never {
+        throw new Error(`Cannot access url.searchParams on a page with prerendering enabled`)
+      },
+    },
+  },
+}))
 
 type Props = ComponentProps<typeof Trajectory>
 type Pane = Props[`active_pane`]
@@ -71,6 +83,12 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
   display_mode: `structure+scatter`,
   show_controls: `always`,
   ...overrides,
+})
+
+test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
+  mounted.push(mount(TrajectoryTestPage, { target: document.body }))
+  await tick()
+  expect(document.querySelector(`#loaded-trajectory`)).toBeInstanceOf(HTMLElement)
 })
 
 // Structure renders its own view-mode/fullscreen buttons, so control queries stay in the bar

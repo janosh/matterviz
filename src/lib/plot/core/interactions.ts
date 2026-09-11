@@ -254,12 +254,7 @@ type AxisRangeOverride = {
   range?: [number | null, number | null]
   scale_type?: ScaleType
 }
-type AutoRanges = {
-  x: readonly number[]
-  x2: readonly number[]
-  y: readonly number[]
-  y2: readonly number[]
-}
+type AutoRanges = Record<keyof AxisRanges, readonly number[]>
 
 // A single explicit bound pins that endpoint, never the axis direction. If it crosses the
 // automatic endpoint, extend that endpoint by the auto span (at least 10% of the bound).
@@ -294,12 +289,7 @@ export function resolve_axis_range(
 // the caller can skip the sync - writing NaN breaks scales and, since NaN !== NaN,
 // makes the change comparison never settle (an infinite effect loop).
 export function resolve_axis_ranges(
-  axes: {
-    x: AxisRangeOverride
-    x2: AxisRangeOverride
-    y: AxisRangeOverride
-    y2: AxisRangeOverride
-  },
+  axes: Record<keyof AxisRanges, AxisRangeOverride>,
   auto: AutoRanges,
 ): AxisRanges | null {
   const next: AxisRanges = {
@@ -308,10 +298,7 @@ export function resolve_axis_ranges(
     y: resolve_axis_range(axes.y, auto.y),
     y2: resolve_axis_range(axes.y2, auto.y2),
   }
-  for (const [lower, upper] of [next.x, next.x2, next.y, next.y2]) {
-    if (!Number.isFinite(lower) || !Number.isFinite(upper)) return null
-  }
-  return next
+  return all_finite(next.x, next.x2, next.y, next.y2) ? next : null
 }
 
 // Threshold for distinguishing pinch-zoom from pan in touch gestures

@@ -314,14 +314,15 @@
   // A getter, not a const: the parent may rebind scene_props to a fresh object
   const scene_record = () => scene_props as Record<string, unknown>
   // Defaults are display-only: reset must restore caller-owned values and omitted keys.
-  const scene_snapshot = (keys: readonly string[]) =>
-    Object.fromEntries(
-      keys.flatMap((key) => {
-        // Read missing keys too so Svelte tracks their later addition.
-        const value = scene_record()[key]
-        return Object.hasOwn(scene_props, key) ? [[key, value] as const] : []
-      }),
-    )
+  const scene_snapshot = (keys: readonly string[]) => {
+    const snapshot: Record<string, unknown> = {}
+    for (const key of keys) {
+      // Read missing keys too so Svelte tracks their later addition.
+      const value = scene_record()[key]
+      if (Object.hasOwn(scene_props, key)) snapshot[key] = value
+    }
+    return snapshot
+  }
   const restore_scene_keys = (keys: readonly string[], reference: Record<string, unknown>) => {
     for (const key of keys) {
       if (Object.hasOwn(reference, key)) scene_record()[key] = reference[key]
@@ -513,12 +514,11 @@
         accessors[current.key] = local(current.get, current.set)
       } else keys.push(current.key)
     }
-    const read_values = () => ({
-      ...scene_snapshot(keys),
-      ...Object.fromEntries(
-        Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
-      ),
-    })
+    const read_values = () => {
+      const values = scene_snapshot(keys)
+      for (const [key, accessor] of Object.entries(accessors)) values[key] = accessor.get()
+      return values
+    }
     const section_keys = [...keys, ...Object.keys(accessors)].join(`,`)
     let baseline = section_baselines.get(name)
     if (!baseline || baseline.keys !== section_keys) {
@@ -530,9 +530,8 @@
       changed_keys: tracker.changed_keys,
       on_reset_key: (key: string) => {
         const initial = tracker.initial
-        const present = Object.hasOwn(initial, key)
         const accessor = accessors[key]
-        if (accessor) accessor.set(initial[key], present)
+        if (accessor) accessor.set(initial[key], Object.hasOwn(initial, key))
         else restore_scene_keys([key], initial)
       },
       setting_metadata: structure_setting_metadata,

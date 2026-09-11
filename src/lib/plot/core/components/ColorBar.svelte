@@ -117,11 +117,12 @@
     if (snap_ticks && !Array.isArray(tick_labels) && `nice` in percent) percent.nice(n_ticks)
     return percent
   })
+  const tick_domain = $derived(tick_scale.domain() as Vec2)
   const ticks = $derived.by((): number[] => {
     if (Array.isArray(tick_labels)) {
       return [...new Set(tick_labels.map(Number))].filter(Number.isFinite)
     }
-    const [lower, upper] = tick_scale.domain()
+    const [lower, upper] = tick_domain
     if (n_ticks <= 0) return []
     if (n_ticks === 1) return [lower]
     if (type_name === `arcsinh`) {
@@ -144,8 +145,7 @@
     return tick_scale.ticks(n_ticks)
   })
   $effect.pre(() => {
-    const [lower, upper] = tick_scale.domain()
-    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lower, upper] : range
+    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [...tick_domain] : range
   })
 
   const selected_color_scale = $derived.by(() => {
@@ -160,11 +160,7 @@
   )
   // Sample the displayed domain without changing the caller's data-to-color mapping.
   const gradient_stops = $derived(
-    sample_color_ramp(
-      { ...ramp, domain: tick_scale.domain() as Vec2 },
-      scale_type,
-      steps,
-    ).join(`, `),
+    sample_color_ramp({ ...ramp, domain: tick_domain }, scale_type, steps).join(`, `),
   )
   // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {

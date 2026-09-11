@@ -65,6 +65,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
       timeout: HYDRATION_TIMEOUT,
     })
+    if (query) await expect(page.locator(`.trajectory`)).toHaveCount(1)
   })
 
   test(`empty state displays correctly`, async ({ page }) => {

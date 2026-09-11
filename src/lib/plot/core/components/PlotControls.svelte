@@ -73,13 +73,6 @@
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
   const is_axis_key = (key: string): key is AxisKey =>
     (all_axes as readonly string[]).includes(key)
-  const reset_axis_field = (
-    field: `range` | `ticks` | `format`,
-    key: string,
-    value: unknown,
-  ) => {
-    if (is_axis_key(key)) update_axis(key, { [field]: value })
-  }
   // The Ticks inputs only edit numeric tick counts; an explicit tick list/map/interval set on
   // the axis is left alone (and shown as `custom`), and an empty input hands back to auto
   const tick_count = (axis: AxisKey): number | undefined => {
@@ -178,9 +171,19 @@
     ...display_values(),
     ...display_extra_values,
   }))
-  const axis_range_settings = track_settings(() =>
-    axis_record((axis) => axis_config(axis).range),
-  )
+  // Each field owns both its complete baseline and the callback that restores it.
+  const track_axis_field = (field: `range` | `ticks` | `format`) => {
+    const settings = track_settings(() => axis_record((axis) => axis_config(axis)[field]))
+    return {
+      get changed_keys() {
+        return settings.changed_keys
+      },
+      on_reset_key: (key: string) => {
+        if (is_axis_key(key)) update_axis(key, { [field]: settings.initial[key] })
+      },
+    }
+  }
+  const axis_range_settings = track_axis_field(`range`)
   const scale_type_settings = track_settings(
     () => axis_values(`scale`, (axis) => get_scale_type_name(axis_config(axis).scale_type)),
     axis_values(`scale`, () => `linear`),
@@ -191,10 +194,8 @@
     { y2_sync: `none`, align_value: undefined },
   )
   // Track the full configuration: custom lists, labels and intervals must also reset.
-  const ticks_settings = track_settings(() => axis_record((axis) => axis_config(axis).ticks))
-  const tick_format_settings = track_settings(() =>
-    axis_record((axis) => axis_config(axis).format),
-  )
+  const ticks_settings = track_axis_field(`ticks`)
+  const tick_format_settings = track_axis_field(`format`)
 </script>
 
 {#snippet axis_checks(
@@ -257,8 +258,7 @@
   <SettingsSection
     title="Axis range"
     class="ctrl-line axis-fields"
-    changed_keys={axis_range_settings.changed_keys}
-    on_reset_key={(key) => reset_axis_field(`range`, key, axis_range_settings.initial[key])}
+    {...axis_range_settings}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
@@ -321,9 +321,7 @@
       title="Y2 sync"
       class="ctrl-line"
       changed_keys={y2_sync_settings.changed_keys}
-      on_reset={() => {
-        y2_axis = { ...y2_axis, sync: undefined }
-      }}
+      on_reset={() => update_axis(`y2`, { sync: undefined })}
       layout="flow"
     >
       <label {@attach tooltip({ content: y2_sync_tip })}>
@@ -378,8 +376,7 @@
     title="Ticks"
     data-testid="ticks-section"
     class="ctrl-line axis-fields"
-    changed_keys={ticks_settings.changed_keys}
-    on_reset_key={(key) => reset_axis_field(`ticks`, key, ticks_settings.initial[key])}
+    {...ticks_settings}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
@@ -407,8 +404,7 @@
     title="Tick format"
     data-testid="tick-format-section"
     class="ctrl-line formats tick-format-section"
-    changed_keys={tick_format_settings.changed_keys}
-    on_reset_key={(key) => reset_axis_field(`format`, key, tick_format_settings.initial[key])}
+    {...tick_format_settings}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
