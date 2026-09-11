@@ -7,8 +7,7 @@ import type {
   TrajectoryXQuantity,
   TrajHandlerData,
 } from '$lib/trajectory'
-import { Trajectory } from '$lib/trajectory'
-import TrajectoryTestPage from '../../../src/routes/test/trajectory/+page.svelte'
+import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
 import * as plotting from '$lib/trajectory/plotting'
 import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
@@ -86,9 +85,24 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
 })
 
 test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
-  mounted.push(mount(TrajectoryTestPage, { target: document.body }))
-  await tick()
-  expect(document.querySelector(`#loaded-trajectory`)).toBeInstanceOf(HTMLElement)
+  // Exercise the page's prerender guard without mounting every 3D viewer in its gallery.
+  const viewer = vi.fn()
+  vi.doMock(`$lib/trajectory`, () => ({
+    trajectory_from_frames,
+    Trajectory: viewer,
+  }))
+  try {
+    const { default: TrajectoryTestPage } =
+      await import('../../../src/routes/test/trajectory/+page.svelte')
+    mounted.push(mount(TrajectoryTestPage, { target: document.body }))
+    flushSync()
+    expect(viewer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: `loaded-trajectory` }),
+    )
+  } finally {
+    vi.doUnmock(`$lib/trajectory`)
+  }
 })
 
 // Structure renders its own view-mode/fullscreen buttons, so control queries stay in the bar
