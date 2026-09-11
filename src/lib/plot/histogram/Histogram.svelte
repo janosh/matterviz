@@ -307,8 +307,8 @@
     range_sources: () => ({
       x: final_x_axis,
       x2: final_x2_axis,
-      y: { range: log_safe_range(final_y_axis) },
-      y2: { range: log_safe_range(final_y2_axis) },
+      y: { range: log_safe_range(final_y_axis), scale_type: final_y_axis.scale_type },
+      y2: { range: log_safe_range(final_y2_axis), scale_type: final_y2_axis.scale_type },
     }),
     range_sync: `per-axis`,
     has_x2: () => has_x2_points,

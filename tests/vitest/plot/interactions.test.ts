@@ -353,6 +353,31 @@ describe(`resolve_axis_ranges`, () => {
     expect(resolved).toEqual({ x: [1, 9], x2: [0, 5], y: [3, 30], y2: [0, 40] })
   })
 
+  it.each<[ScaleType, Vec2, [number | null, number | null], Vec2]>([
+    [`linear`, [0, 5], [100, null], [100, 110]],
+    [`linear`, [0, 5], [null, -100], [-110, -100]],
+    [`linear`, [0, 5], [5, null], [5, 10]],
+    [`linear`, [0, 5], [null, 0], [-5, 0]],
+    [`linear`, [0, 0], [0, null], [0, 1]],
+    [`linear`, [0, 0], [null, 0], [-1, 0]],
+    [`linear`, [0, 1], [1e20, null], [1e20, 1.1e20]],
+    [`linear`, [0, 5], [4.987, 0.123], [4.987, 0.123]],
+    [`log`, [1, 10], [100, null], [100, 1000]],
+    [`log`, [1, 10], [null, 0.01], [0.001, 0.01]],
+    [`log`, [1, 10], [10, 1], [10, 1]],
+  ])(
+    `orders one-sided %s bounds over %j with limits %j`,
+    (scale_type, data, range, expected) => {
+      const axis = { range, scale_type }
+      expect(
+        resolve_axis_ranges(
+          { x: axis, x2: axis, y: axis, y2: axis },
+          { x: data, x2: data, y: data, y2: data },
+        ),
+      ).toEqual({ x: expected, x2: expected, y: expected, y2: expected })
+    },
+  )
+
   it(`returns null when any resolved bound is non-finite`, () => {
     expect(resolve_axis_ranges(no_overrides, { ...auto, y: [0, NaN] })).toBeNull()
     const inf = { ...no_overrides, x: { range: [0, Infinity] as Vec2 } }

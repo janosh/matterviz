@@ -90,7 +90,14 @@ export const parse_in_worker = async (
         dispose_run_port(run_port)
         return
       }
-      if (progress) return on_progress?.(progress)
+      if (progress) {
+        try {
+          on_progress?.(progress)
+        } catch (progress_error) {
+          settle(to_error(progress_error))
+        }
+        return
+      }
       if (!result) {
         return settle(
           hdf5_group_paths

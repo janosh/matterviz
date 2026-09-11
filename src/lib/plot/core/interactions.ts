@@ -250,12 +250,43 @@ export const axis_ranges_equal = (value_a: AxisRanges, value_b: AxisRanges): boo
   vec2_equal(value_a.y, value_b.y) &&
   vec2_equal(value_a.y2, value_b.y2)
 
-type AxisRangeOverride = { range?: [number | null, number | null] }
+type AxisRangeOverride = {
+  range?: [number | null, number | null]
+  scale_type?: ScaleType
+}
 type AutoRanges = {
   x: readonly number[]
   x2: readonly number[]
   y: readonly number[]
   y2: readonly number[]
+}
+
+// A single explicit bound pins that endpoint, never the axis direction. If it crosses the
+// automatic endpoint, extend that endpoint by the auto span (at least 10% of the bound).
+// Two explicit endpoints may intentionally describe a descending or collapsed range.
+export function resolve_axis_range(
+  { range, scale_type }: AxisRangeOverride,
+  auto: readonly number[],
+): Vec2 {
+  const lower = range?.[0] ?? auto[0]
+  const upper = range?.[1] ?? auto[1]
+  const lower_fixed = range?.[0] != null
+  const upper_fixed = range?.[1] != null
+  if (lower < upper || lower_fixed === upper_fixed || !all_finite([lower, upper]))
+    return [lower, upper]
+
+  if (get_scale_type_name(scale_type) === `log`) {
+    if ((lower_fixed ? lower : upper) <= 0) return [lower, upper]
+    const factor = Math.max(
+      Math.max(auto[0], auto[1]) / Math.max(Math.min(auto[0], auto[1]), LOG_EPS),
+      1.1,
+    )
+    return lower_fixed ? [lower, lower * factor] : [upper / factor, upper]
+  }
+  const { to, from } = axis_transform(scale_type)
+  const bound = to(lower_fixed ? lower : upper)
+  const span = Math.max(Math.abs(to(auto[1]) - to(auto[0])), Math.abs(bound) * 0.1) || 1
+  return lower_fixed ? [lower, from(bound + span)] : [from(bound - span), upper]
 }
 
 // Merge each axis's explicit range over its auto range (per-bound: a null bound
@@ -271,15 +302,11 @@ export function resolve_axis_ranges(
   },
   auto: AutoRanges,
 ): AxisRanges | null {
-  const resolve = (axis: AxisRangeOverride, fallback: readonly number[]): Vec2 => [
-    axis.range?.[0] ?? fallback[0],
-    axis.range?.[1] ?? fallback[1],
-  ]
   const next: AxisRanges = {
-    x: resolve(axes.x, auto.x),
-    x2: resolve(axes.x2, auto.x2),
-    y: resolve(axes.y, auto.y),
-    y2: resolve(axes.y2, auto.y2),
+    x: resolve_axis_range(axes.x, auto.x),
+    x2: resolve_axis_range(axes.x2, auto.x2),
+    y: resolve_axis_range(axes.y, auto.y),
+    y2: resolve_axis_range(axes.y2, auto.y2),
   }
   for (const [lower, upper] of [next.x, next.x2, next.y, next.y2]) {
     if (!Number.isFinite(lower) || !Number.isFinite(upper)) return null

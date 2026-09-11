@@ -260,28 +260,38 @@ describe(`parse_in_worker`, () => {
     } satisfies Partial<Hdf5GroupSelectionRequiredError>)
   })
 
-  it(`forwards progress events before the run result`, async () => {
-    const progress = vi.fn()
-    const worker = make_fake_worker((request) => {
-      queueMicrotask(() =>
-        worker.emit(
-          `message`,
-          new MessageEvent(`message`, {
-            data: { id: request.id, progress: { current: 1, total: 2, stage: `read` } },
-          }),
-        ),
-      )
-      return trajectory_response(request)
-    })
-    const result = await parse_in_worker(`text`, `run.xyz`, false, {
-      on_progress: progress,
-      worker_factory: () => worker,
-    })
-    if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
-    const run = result.data
-    expect(progress).toHaveBeenCalledWith({ current: 1, total: 2, stage: `read` })
-    run.dispose()
-  })
+  it.each([false, true])(
+    `handles progress before the result (callback throws: %s)`,
+    async (throws) => {
+      const failure = new Error(`Progress observer failed`)
+      const progress = vi.fn(() => {
+        if (throws) throw failure
+      })
+      const worker = make_fake_worker((request) => {
+        queueMicrotask(() =>
+          worker.emit(
+            `message`,
+            new MessageEvent(`message`, {
+              data: { id: request.id, progress: { current: 1, total: 2, stage: `read` } },
+            }),
+          ),
+        )
+        return trajectory_response(request)
+      })
+      const pending = parse_in_worker(`text`, `run.xyz`, false, {
+        on_progress: progress,
+        worker_factory: () => worker,
+      })
+      if (throws) await expect(pending).rejects.toBe(failure)
+      else {
+        const result = await pending
+        if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
+        result.data.dispose()
+      }
+      expect(progress).toHaveBeenCalledWith({ current: 1, total: 2, stage: `read` })
+      expect(worker.terminate).toHaveBeenCalledOnce()
+    },
+  )
 })
 
 describe(`parse worker handler`, () => {

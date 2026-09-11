@@ -338,6 +338,22 @@ describe(`ColorBar tick labels`, () => {
 })
 
 describe(`ColorBar gradient`, () => {
+  test.each([
+    { range: [1, 9], expected: [0, 5, 10] },
+    { range: [9, 1], expected: [10, 5, 0] },
+  ] satisfies { range: Vec2; expected: number[] }[])(
+    `samples the colors of the displayed tick domain for $range`,
+    ({ range, expected }) => {
+      const color = (value: number) => `rgb(${20 * value}, 0, 0)`
+      mount_bar({ range, tick_labels: 4, steps: 3, scale: { fn: color } })
+      const labels = tick_texts()
+      expect([labels[0], labels.at(-1)]).toEqual([expected[0], expected.at(-1)].map(String))
+      expect(doc_query(`.colorbar .bar`).getAttribute(`style`)).toContain(
+        expected.map(color).join(`, `),
+      )
+    },
+  )
+
   test(`log gradient spans positive bounds below LOG_EPS`, () => {
     mount_bar({ range: [1e-12, 1e-6], scale_type: `log`, steps: 3, tick_labels: 4 })
     const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``

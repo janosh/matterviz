@@ -308,6 +308,9 @@ export function compute_count_range(
     range_padding,
   )
   // Keep singleton log bins visible; a missing lower limit falls back to the positive minimum.
-  if (type_name === `log`) return [y_limit[0] ?? min_count / 1.1, coord_y_1]
+  if (type_name === `log`) {
+    const lower = min_count / 1.1
+    return [y_limit[0] ?? (lower < coord_y_1 ? lower : coord_y_0), coord_y_1]
+  }
   return [Math.max(0, coord_y_0), coord_y_1]
 }

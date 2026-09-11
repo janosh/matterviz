@@ -948,6 +948,63 @@ describe(`StructureControls reactive props`, () => {
     expect(center_label(`e`)).toBeUndefined()
   })
 
+  test.each<Partial<StructureSettings>>([
+    {},
+    {
+      atom_radius: undefined,
+      polyhedra_color: undefined,
+      trajectory_line_elements: undefined,
+    },
+    {
+      atom_radius: DEFAULTS.structure.atom_radius,
+      polyhedra_color: DEFAULTS.structure.polyhedra_color,
+      polyhedra_color_mode: DEFAULTS.structure.polyhedra_color_mode,
+      polyhedra_included_elements: [],
+      trajectory_line_elements: null,
+    },
+  ])(`row resets preserve caller-owned settings and omitted keys: %j`, async (initial) => {
+    const state = $state<{ scene_props: Partial<StructureSettings> }>({
+      scene_props: { show_polyhedra: `always`, trajectory_line_trail_frames: 0, ...initial },
+    })
+    const expected = { ...state.scene_props }
+    const stream = make_position_stream(
+      [
+        [
+          [0, 0, 0],
+          [1, 0, 0],
+        ],
+      ],
+      [`H`, `He`],
+    )
+    const target = await mount_bound_controls(state, {
+      show_trajectory_lines: true,
+      trajectory_position_stream: stream,
+    })
+    expect(state.scene_props).toStrictEqual(expected)
+    expect(target.querySelector(`.setting-reset-button`)).toBeNull()
+
+    Object.assign(state.scene_props, {
+      atom_radius: 2,
+      polyhedra_color_mode: `uniform`,
+      polyhedra_color: `#123456`,
+      polyhedra_excluded_elements: [`Fe`],
+      polyhedra_included_elements: [`O`],
+      trajectory_line_elements: [`H`],
+    })
+    await tick()
+    for (const key of [
+      `atom_radius`,
+      `polyhedra_color`,
+      `polyhedra_centers`,
+      `trajectory_line_elements`,
+    ]) {
+      doc_query<HTMLButtonElement>(`[data-key="${key}"] .setting-reset-button`).click()
+      await tick()
+    }
+    expect(state.scene_props).toStrictEqual(expected)
+    expect(target.querySelector(`.setting-reset-button`)).toBeNull()
+  })
+
   // Section resets include site-vector scales stored in vector_configs.
   test(`offers section resets only after changes and restores defaults`, async () => {
     // every key defined at its default, so the mount-time snapshot the reset offer compares

@@ -313,6 +313,21 @@
   }
   // A getter, not a const: the parent may rebind scene_props to a fresh object
   const scene_record = () => scene_props as Record<string, unknown>
+  // Defaults are display-only: reset must restore caller-owned values and omitted keys.
+  const scene_snapshot = (keys: readonly string[]) =>
+    Object.fromEntries(
+      keys.flatMap((key) => {
+        // Read missing keys too so Svelte tracks their later addition.
+        const value = scene_record()[key]
+        return Object.hasOwn(scene_props, key) ? [[key, value] as const] : []
+      }),
+    )
+  const restore_scene_keys = (keys: readonly string[], reference: Record<string, unknown>) => {
+    for (const key of keys) {
+      if (Object.hasOwn(reference, key)) scene_record()[key] = reference[key]
+      else Reflect.deleteProperty(scene_props, key)
+    }
+  }
   const scene_value = (key: StructureSettingKey): unknown =>
     scene_record()[key] ?? DEFAULTS.structure[key]
   const row_value = (current: Row): unknown =>
@@ -477,8 +492,8 @@
   // reset restores both halves at once instead of leaving a half-reverted pair behind.
   const scene_pair = (left: StructureSettingKey, right: StructureSettingKey) =>
     local(
-      () => ({ [left]: scene_record()[left], [right]: scene_record()[right] }),
-      (reference) => Object.assign(scene_props, reference),
+      () => scene_snapshot([left, right]),
+      (reference) => restore_scene_keys([left, right], reference),
     )
   const section_baselines = new Map<
     string,
@@ -488,9 +503,9 @@
     name: string,
     rows: readonly Row[],
     accessors: Record<string, Accessor> = {},
-    extra_keys: StructureSettingKey[] = [],
+    extra_keys: (keyof StructureSettings)[] = [],
   ) => {
-    const keys = [...extra_keys]
+    const keys: string[] = [...extra_keys]
     for (const current of rows) {
       if (current.pair) {
         accessors[current.pair.key] = scene_pair(current.key, current.pair.key)
@@ -498,11 +513,12 @@
         accessors[current.key] = local(current.get, current.set)
       } else keys.push(current.key)
     }
-    const read_values = () =>
-      Object.fromEntries([
-        ...keys.map((key) => [key, scene_value(key)]),
-        ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
-      ])
+    const read_values = () => ({
+      ...scene_snapshot(keys),
+      ...Object.fromEntries(
+        Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
+      ),
+    })
     const section_keys = [...keys, ...Object.keys(accessors)].join(`,`)
     let baseline = section_baselines.get(name)
     if (!baseline || baseline.keys !== section_keys) {
@@ -517,8 +533,7 @@
         const present = Object.hasOwn(initial, key)
         const accessor = accessors[key]
         if (accessor) accessor.set(initial[key], present)
-        else if (present) scene_record()[key] = initial[key]
-        else Reflect.deleteProperty(scene_props, key)
+        else restore_scene_keys([key], initial)
       },
       setting_metadata: structure_setting_metadata,
     }
@@ -1454,17 +1469,10 @@
           <SettingsSection
             title="Trajectory Trails"
             layout="grid"
-            {...scene_section(
-              `Trajectory Trails`,
-              [trail_toggle_row, ...trail_rows],
-              {
-                trajectory_line_elements: local(
-                  () => scene_props.trajectory_line_elements,
-                  (value) => (scene_props.trajectory_line_elements = value),
-                ),
-              },
-              [`trajectory_line_trail_frames`],
-            )}
+            {...scene_section(`Trajectory Trails`, [trail_toggle_row, ...trail_rows], {}, [
+              `trajectory_line_trail_frames`,
+              `trajectory_line_elements`,
+            ])}
           >
             {@render setting_rows([trail_toggle_row])}
             {#if show_trajectory_lines && trajectory_position_stream}

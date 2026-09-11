@@ -45,17 +45,14 @@
   let visible_series = $derived(non_null_series.filter((srs) => srs.visible ?? true))
   let has_multiple_series = $derived(non_null_series.length > 1)
 
-  // Derive what marker types are present, and whether color/size are data-driven
+  // Marker visibility is plot-wide; manual styling applies only to the selected series.
   const markers_include = (mode: string) =>
     visible_series.some((srs) => (srs?.markers ?? DEFAULT_MARKERS).includes(mode))
   let has_any_lines = $derived(markers_include(`line`))
   let has_any_points = $derived(markers_include(`points`))
-  let has_color_data = $derived(
-    visible_series.some((srs) => srs?.color_values?.some((val) => val != null)),
-  )
-  let has_size_data = $derived(
-    visible_series.some((srs) => srs?.size_values?.some((val) => val != null)),
-  )
+  const selected_series = $derived(series[selected_series_idx])
+  const has_color_data = $derived(selected_series?.color_values?.some((val) => val != null))
+  const has_size_data = $derived(selected_series?.size_values?.some((val) => val != null))
 
   const touch = ({ target }: Event) => {
     if (!(target instanceof Element)) return
@@ -71,8 +68,8 @@
   }
 
   const style_settings = {
-    point: track_settings(() => styles.point ?? {}),
-    line: track_settings(() => styles.line ?? {}),
+    point: track_settings(() => styles.point ?? {}, DEFAULTS.scatter.point),
+    line: track_settings(() => styles.line ?? {}, DEFAULTS.scatter.line),
   }
   const style_sections = [
     {

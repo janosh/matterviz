@@ -440,7 +440,10 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   histogram: {
     component: Histogram,
     base_drive: style_base_drive,
-    drive: cartesian_plot_drive([`show_legend`, `bins`, `mode`, `selected_series_idx`, `bar`]),
+    drive: [
+      ...cartesian_plot_drive([`show_legend`, `bins`, `mode`, `bar`]),
+      writeback_prop(`selected_series_idx`, 0),
+    ],
   },
   composition: {
     component: Composition,

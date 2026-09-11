@@ -394,7 +394,6 @@ describe(`widget config wiring`, () => {
         controls_open: true,
         controls_toggle_props: { title: `Plot options` },
         controls_pane_props: { style: `width: 20rem` },
-        selected_series_idx: 2,
       })
       const stub = run_widget(widget_type, model)
       expect(stub.read().y_axis).toEqual({ label: `Count`, range: [1, 5] })
@@ -404,11 +403,6 @@ describe(`widget config wiring`, () => {
       expect(stub.read().controls_pane_props).toEqual({ style: `width: 20rem` })
       expect(`y_range` in stub.read()).toBe(false)
       expect(`controls` in stub.read()).toBe(false)
-      if (widget_type === `histogram`) {
-        expect(stub.read().selected_series_idx).toBe(2)
-        model.push_from_python(`selected_series_idx`, 1)
-        expect(stub.read().selected_series_idx).toBe(1)
-      }
     },
   )
 
@@ -471,6 +465,7 @@ describe(`writeback wiring`, () => {
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `structure+scatter`, `scatter`, `structure`],
     [`scatter_plot`, `controls_open`, false, true, false],
+    [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
   ] as const)(
     `%s %s round-trips and falls back when cleared`,

@@ -1,4 +1,5 @@
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
+import { resolve_axis_range } from '$lib/plot/core/interactions'
 import {
   accumulate_extent,
   empty_extent,
@@ -112,9 +113,7 @@ export const compute_range = (
   extent: RunningExtent,
   range: [number | null, number | null] = [null, null],
 ): Vec2 =>
-  range[0] != null && range[1] != null
-    ? [range[0], range[1]]
-    : span_or(range, nice_range_from_extent(extent, [null, null], `linear`, 0.05))
+  resolve_axis_range({ range }, nice_range_from_extent(extent, [null, null], `linear`, 0.05))
 
 export function collect_3d_extents(
   series: readonly DataSeries3D[],

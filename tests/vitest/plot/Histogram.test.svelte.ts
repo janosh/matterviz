@@ -152,7 +152,8 @@ describe(`Histogram`, () => {
       y_ticks_after({
         series: log_series,
         bins: 5,
-        y_axis: { scale_type: `log`, ...(range ? { range } : {}) },
+        // Read fractional log ranges without the raw-count default's integer rounding.
+        y_axis: { scale_type: `log`, format: `.6~g`, ...(range ? { range } : {}) },
       })
     const valid_ticks = [await log_ticks(), await log_ticks([1, null])]
     for (const ticks of valid_ticks) {
@@ -164,6 +165,21 @@ describe(`Histogram`, () => {
       [null, -5],
     ] as const) {
       expect(await log_ticks([...invalid_range])).toEqual(valid_ticks[0])
+    }
+    for (const range of [
+      [100.123, null],
+      [null, 0.0123],
+    ] as const) {
+      const [lower, upper] = count_range(log_series, `log`, [...range])
+      expect(lower).toBeGreaterThan(0)
+      expect(lower).toBeLessThan(upper)
+      if (range[0] !== null) expect(lower).toBe(range[0])
+      if (range[1] !== null) expect(upper).toBe(range[1])
+      const ticks = await log_ticks([...range])
+      expect(ticks.length).toBeGreaterThan(0)
+      expect(Math.min(...ticks)).toBeGreaterThan(0)
+      expect(Math.min(...ticks)).toBeGreaterThanOrEqual(lower)
+      expect(Math.max(...ticks)).toBeLessThanOrEqual(upper)
     }
 
     await mount_histogram({

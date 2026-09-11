@@ -233,7 +233,7 @@ test(`a failed post frees the key before an immediate retry`, async () => {
   await expect(second).resolves.toBe(`done`)
 })
 
-test.each([`abort`, `cancel`, `progress`, `error`] as const)(
+test.each([`abort`, `cancel`, `progress`, `progress-error`, `error`] as const)(
   `main-thread-only requests share the client lifecycle: %s`,
   async (action) => {
     const provider = vi.fn(() => {
@@ -258,7 +258,9 @@ test.each([`abort`, `cancel`, `progress`, `error`] as const)(
       requires_main_thread: () => true,
     })
     const controller = new AbortController()
-    const on_progress = vi.fn()
+    const on_progress = vi.fn(() => {
+      if (action === `progress-error`) throw new Error(`progress failed`)
+    })
     const pending = run({ provider }, { provider }, { signal: controller.signal, on_progress })
     if (action === `abort`) controller.abort()
     else if (action === `cancel`) run.cancel()
@@ -267,10 +269,14 @@ test.each([`abort`, `cancel`, `progress`, `error`] as const)(
       expect(on_progress).toHaveBeenCalledExactlyOnceWith(1)
     } else {
       await expect(pending).rejects.toThrow(
-        action === `error` ? /provider failed/ : /abort|cancel/i,
+        action === `error`
+          ? /provider failed/
+          : action === `progress-error`
+            ? /progress failed/
+            : /abort|cancel/i,
       )
     }
-    expect(provider).toHaveBeenCalledTimes(action === `progress` || action === `error` ? 1 : 0)
+    expect(provider).toHaveBeenCalledTimes(action === `abort` || action === `cancel` ? 0 : 1)
     expect(build_payload).not.toHaveBeenCalled()
     expect(workers()).toHaveLength(0)
   },
@@ -304,6 +310,55 @@ test.each([
 })
 
 describe(`per-request options`, () => {
+  test.each([
+    { use_worker: true, shared: true },
+    { use_worker: false, shared: true },
+    { use_worker: true, shared: false },
+    { use_worker: false, shared: false },
+  ])(
+    `throwing progress rejects only its caller (worker=$use_worker, shared=$shared)`,
+    async ({ use_worker, shared }) => {
+      if (!use_worker) vi.stubGlobal(`Worker`, undefined)
+      const run = make_client((_input, _options, on_progress) => {
+        on_progress?.(0.5)
+        on_progress?.(1)
+        return `done`
+      })
+      const input = { tag: `a` }
+      const error = new Error(`progress failed`)
+      const throwing = vi.fn(() => {
+        throw error
+      })
+      const failed = run(input, {}, { on_progress: throwing })
+      const progress = vi.fn()
+      const kept = shared ? run(input, {}, { on_progress: progress }) : undefined
+      if (use_worker) {
+        const [worker] = workers()
+        const { id } = first_post(worker)
+        expect(() => worker.emit(`message`, { data: { id, progress: 0.5 } })).not.toThrow()
+        expect(worker.terminated).toBe(shared ? 0 : 1)
+        worker.emit(`message`, { data: { id, progress: 1 } })
+        reply(worker)
+      }
+      await expect(failed).rejects.toBe(error)
+      expect(throwing).toHaveBeenCalledExactlyOnceWith(0.5)
+      if (kept) {
+        await expect(kept).resolves.toBe(`done`)
+        expect(progress.mock.calls).toEqual([[0.5], [1]])
+      }
+      // Failed/finished subscriptions must not poison this input's dedupe key.
+      const retry = run(input, {})
+      if (use_worker) {
+        const worker = workers().at(-1)
+        if (!worker) throw new Error(`retry did not create a worker`)
+        const { id } = worker.posted.at(-1)?.message ?? {}
+        worker.emit(`message`, { data: { id, result: `done`, error: null } })
+      }
+      await expect(retry).resolves.toBe(`done`)
+      run.release()
+    },
+  )
+
   test.each([true, false])(
     `progress defers new subscriptions and skips cancelled ones (worker=%s)`,
     async (use_worker) => {

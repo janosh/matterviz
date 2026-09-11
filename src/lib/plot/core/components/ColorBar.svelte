@@ -158,7 +158,14 @@
   const ramp = $derived(
     resolve_color_ramp(selected_color_scale?.scale ?? scale, range, scale_type),
   )
-  const gradient_stops = $derived(sample_color_ramp(ramp, scale_type, steps).join(`, `))
+  // Sample the displayed domain without changing the caller's data-to-color mapping.
+  const gradient_stops = $derived(
+    sample_color_ramp(
+      { ...ramp, domain: tick_scale.domain() as Vec2 },
+      scale_type,
+      steps,
+    ).join(`, `),
+  )
   // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
     try {

@@ -1,5 +1,6 @@
 import type { Vec2 } from '$lib/math'
 import { PlotControls, SankeyControls, SunburstControls, TernaryControls } from '$lib/plot'
+import ScatterPlotControls from '$lib/plot/scatter/ScatterPlotControls.svelte'
 import type { AxisConfig } from '$lib/plot'
 import type { TicksOption } from '$lib/plot/core/scales'
 import { DEFAULTS } from '$lib/settings'
@@ -318,6 +319,40 @@ describe(`PlotControls`, () => {
 
 // Authored non-default values must be compared against the defaults restored by Reset.
 test.each([
+  ...(
+    [
+      { title: `scale type`, x_axis: { scale_type: `log` } },
+      { title: `y2 sync`, y2_axis: { sync: { mode: `align`, align_value: 5 } } },
+    ] as const
+  ).map(({ title, ...props }) => ({
+    title,
+    mount_controls: () =>
+      mount(PlotControls, {
+        target: document.body,
+        props: { controls_open: true, auto_ranges: { y2: [0, 1] }, ...props },
+      }),
+  })),
+  ...([`point`, `line`] as const).map((kind) => ({
+    title: `${kind} style`,
+    mount_controls: () => {
+      const state = $state({
+        styles: {
+          ...DEFAULTS.scatter,
+          [kind]: { ...DEFAULTS.scatter[kind], opacity: 0.2 },
+        },
+      })
+      return mount(ScatterPlotControls, {
+        target: document.body,
+        props: bind_props(
+          {
+            controls_open: true,
+            series: [{ x: [0, 1], y: [0, 1], markers: `line+points` as const }],
+          },
+          state,
+        ),
+      })
+    },
+  })),
   {
     title: `sankey`,
     mount_controls: () =>

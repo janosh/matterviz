@@ -101,6 +101,8 @@ describe(`scales`, () => {
 
     test.each<[[number | null, number | null], number | undefined, number | undefined]>([
       [[0, 10], 0, 10],
+      [[0.123, 4.987], 0.123, 4.987],
+      [[4.987, 0.123], 4.987, 0.123],
       [[null, 1000], undefined, 1000],
       [[0, null], 0, undefined],
     ])(`respects explicit bounds %j`, (limits, lower, upper) => {
@@ -114,6 +116,55 @@ describe(`scales`, () => {
 
     test(`empty input uses the unit range`, () => {
       expect(nice_range([], [null, null], `linear`, 0.1)).toEqual([0, 1])
+    })
+
+    test.each<[number[], [number | null, number | null]]>([
+      [
+        [0, 5],
+        [100, null],
+      ],
+      [
+        [0, 5],
+        [null, -100],
+      ],
+      [
+        [0, 5],
+        [5, null],
+      ],
+      [
+        [0, 5],
+        [null, 0],
+      ],
+      [[0], [0, null]],
+      [[0], [null, 0]],
+      [[], [100, null]],
+      [[], [null, -100]],
+      [
+        [1, 10],
+        [100.123, null],
+      ],
+      [
+        [1, 10],
+        [null, 0.0123],
+      ],
+    ])(`keeps one-sided bounds ordered for data %j and limits %j`, (values, limits) => {
+      for (const scale_type of [`linear`, `time`, `arcsinh`, `log`] as const) {
+        // Log limits must be positive; non-positive log bounds have separate coverage.
+        if (scale_type === `log` && limits.some((bound) => bound !== null && bound <= 0))
+          continue
+        const [lower, upper] = nice_range(
+          values,
+          limits,
+          scale_type,
+          0.05,
+          scale_type === `time`,
+        )
+        expect(Number.isFinite(lower) && Number.isFinite(upper)).toBe(true)
+        expect(lower).toBeLessThan(upper)
+        if (limits[0] !== null) expect(lower).toBe(limits[0])
+        if (limits[1] !== null) expect(upper).toBe(limits[1])
+        if (scale_type === `log`) expect(lower).toBeGreaterThan(0)
+      }
     })
 
     // a log axis given a non-positive bound (explicit negative min, all data <= 0) must still
@@ -187,8 +238,7 @@ describe(`scales`, () => {
               [0, 10],
               [-5, null],
             ] as [number | null, number | null][]) {
-              // limits are niced too (log clamps 0 to LOG_EPS), so only finiteness is fixed; a
-              // log axis pinned below zero over non-positive data comes back as [LOG_EPS, 0]
+              // Non-positive log bounds are clamped, so only finiteness is fixed here.
               const [low, high] = nice_range(values, limits, scale_type, padding)
               expect(Number.isFinite(low) && Number.isFinite(high)).toBe(true)
             }

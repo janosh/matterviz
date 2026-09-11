@@ -9,7 +9,7 @@ import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { host_run } from '$lib/trajectory/runs/host'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
-import { describe, expect, it, test } from 'vitest'
+import { describe, expect, it, test, vi } from 'vitest'
 import { max_abs_error } from '../numeric-helpers'
 import { make_trajectory_frame, read_binary_test_file } from '../setup'
 import { synthetic_extxyz } from './fixtures'
@@ -281,6 +281,36 @@ describe(`collect_positions parity with the memory run`, () => {
 })
 
 describe(`worker-served run lifecycle`, () => {
+  it(`rejects a throwing progress callback, aborts its work and preserves other requests`, async () => {
+    const served = trajectory_from_frames(reference_frames)
+    let collect_signal: AbortSignal | undefined
+    served.collect_positions = ({ signal, on_progress } = {}) =>
+      new Promise((_resolve, reject) => {
+        collect_signal = signal
+        signal?.addEventListener(`abort`, () => reject(new Error(`Collection aborted`)), {
+          once: true,
+        })
+        on_progress?.({ current: 0, total: 1, stage: `read` })
+      })
+    const run = worker_run(serve_run_over_port(served), summarize_run(served))
+    const controller = new AbortController()
+    const remove_listener = vi.spyOn(controller.signal, `removeEventListener`)
+    const failure = new Error(`Progress observer failed`)
+    const collecting = run.collect_positions?.({
+      signal: controller.signal,
+      on_progress: () => {
+        throw failure
+      },
+    })
+    const reading = run.read_frame(1)
+    await expect(collecting).rejects.toBe(failure)
+    await expect(reading).resolves.toEqual(reference_frames[1])
+    expect(collect_signal?.aborted).toBe(true)
+    expect(remove_listener).toHaveBeenCalledWith(`abort`, expect.any(Function))
+    await expect(run.read_frame(2)).resolves.toEqual(reference_frames[2])
+    run.dispose()
+  })
+
   it(`streams property batches from the served run and releases on dispose`, async () => {
     const served = trajectory_from_frames(reference_frames, {
       properties: [{ frame_number: 0, step: 0, properties: { energy: 1 } }],

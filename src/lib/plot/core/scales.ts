@@ -1,7 +1,7 @@
 import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
-import { range_bounds } from '$lib/plot/core/interactions'
+import { range_bounds, resolve_axis_range } from '$lib/plot/core/interactions'
 import type {
   ColorScaleConfig,
   ScaleType,
@@ -473,8 +473,10 @@ function nice_range(
   is_time: boolean,
 ): Vec2 {
   const [min, max] = limits
-  let data_min = min ?? min_ext ?? 0
-  let data_max = max ?? max_ext ?? 1
+  let [data_min, data_max] = resolve_axis_range({ range: limits, scale_type }, [
+    min_ext ?? 0,
+    max_ext ?? 1,
+  ])
   const type_name = get_scale_type_name(scale_type)
   const can_snap_zero =
     min_ext !== undefined &&
@@ -482,8 +484,8 @@ function nice_range(
     min_ext < max_ext &&
     !is_time &&
     type_name !== `log`
-  const snap_zero_min = can_snap_zero && min === null && min_ext === 0
-  const snap_zero_max = can_snap_zero && max === null && max_ext === 0
+  const snap_zero_min = can_snap_zero && min === null && min_ext === 0 && data_min === 0
+  const snap_zero_max = can_snap_zero && max === null && max_ext === 0 && data_max === 0
 
   // Apply padding *only if* limits were NOT provided
   if (min === null && max === null && has_points) {
@@ -552,7 +554,11 @@ function nice_range(
 
   scale.nice()
   const [nice_min = data_min, nice_max = data_max] = scale.domain()
-  return [snap_zero_min ? 0 : nice_min, snap_zero_max ? 0 : nice_max]
+  // Nice ticks may expand automatic endpoints, but must not round a valid explicit bound.
+  return [
+    min !== null && (type_name !== `log` || min > 0) ? min : snap_zero_min ? 0 : nice_min,
+    max !== null && (type_name !== `log` || max > 0) ? max : snap_zero_max ? 0 : nice_max,
+  ]
 }
 
 // Logarithmic ticks: powers of 10 inside the domain; 1-2-5 mantissas when the domain spans

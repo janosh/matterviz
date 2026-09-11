@@ -769,18 +769,20 @@ describe(`ScatterPlot`, () => {
   test.each([`points`, `line`, `line+points`] as const)(
     `%s controls can target another series independently of labels`,
     async (markers) => {
-      const state = $state({ selected_series_idx: 0 })
+      const state = $state<{ selected_series_idx: number; series: DataSeries[] }>({
+        selected_series_idx: 0,
+        series: [0, 1].map(() => ({
+          x: [0, 1],
+          y: [0, 1],
+          label: `Repeated`,
+          markers,
+          point_style: { fill: `red` },
+          line_style: { stroke: `red` },
+        })),
+      })
       const plot = await mount_sized_scatter_plot(
         bind_props(
           {
-            series: [0, 1].map(() => ({
-              x: [0, 1],
-              y: [0, 1],
-              label: `Repeated`,
-              markers,
-              point_style: { fill: `red` },
-              line_style: { stroke: `red` },
-            })),
             controls_open: true,
             point_tween: { duration: 0 },
           },
@@ -842,6 +844,22 @@ describe(`ScatterPlot`, () => {
           const marks = plot.querySelectorAll(`[data-series-id="1"] ${selector}`)
           expect([...marks].map((mark) => mark.getAttribute(numeric_attribute))).toEqual(
             Array(marks.length).fill(value),
+          )
+        }
+      }
+      // Data-driven styling on another series must not hide the selected series' controls.
+      state.series[0].color_values = [0, 1]
+      state.series[0].size_values = [0, 1]
+      for (const selected_idx of [0, 1]) {
+        state.selected_series_idx = selected_idx
+        await tick()
+        for (const [key, applies] of [
+          [`point.size`, markers.includes(`points`)],
+          [`point.color`, markers.includes(`points`)],
+          [`line.color`, markers.includes(`line`)],
+        ] as const) {
+          expect(plot.querySelector(`[data-key="${key}"]`) !== null).toBe(
+            selected_idx === 1 && applies,
           )
         }
       }

@@ -181,14 +181,15 @@
   const axis_range_settings = track_settings(() =>
     axis_record((axis) => axis_config(axis).range),
   )
-  const scale_type_settings = track_settings(() =>
-    axis_values(`scale`, (axis) => get_scale_type_name(axis_config(axis).scale_type)),
+  const scale_type_settings = track_settings(
+    () => axis_values(`scale`, (axis) => get_scale_type_name(axis_config(axis).scale_type)),
+    axis_values(`scale`, () => `linear`),
   )
   const current_sync = $derived(normalize_y2_sync(y2_axis.sync))
-  const y2_sync_settings = track_settings(() => ({
-    y2_sync: current_sync.mode,
-    align_value: current_sync.align_value,
-  }))
+  const y2_sync_settings = track_settings(
+    () => ({ y2_sync: current_sync.mode, align_value: current_sync.align_value }),
+    { y2_sync: `none`, align_value: undefined },
+  )
   // Track the full configuration: custom lists, labels and intervals must also reset.
   const ticks_settings = track_settings(() => axis_record((axis) => axis_config(axis).ticks))
   const tick_format_settings = track_settings(() =>

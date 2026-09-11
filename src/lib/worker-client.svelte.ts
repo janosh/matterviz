@@ -37,7 +37,8 @@ export interface WorkerRequestOptions<Progress = unknown> {
   // worker itself is only torn down when no other caller still awaits a request on it, since
   // terminating it would lose their results too.
   signal?: AbortSignal
-  // Receives every `{ id, progress }` message the worker posts for this request
+  // Receives every progress report. Throwing rejects only this caller; other callers
+  // keep receiving progress and the result, on both worker and main-thread paths.
   on_progress?: (progress: Progress) => void
 }
 
@@ -88,7 +89,10 @@ export function create_worker_client<
     resolve: (data: Result) => void
     reject: (err: Error) => void
     // Each caller owns one subscription, even when callbacks or options are shared.
-    waiters: Set<Pick<WorkerRequestOptions<Progress>, `on_progress`>>
+    waiters: Set<{
+      on_progress?: (progress: Progress) => void
+      reject: (error: Error) => void
+    }>
   }
 
   let worker: Worker | null = null
@@ -211,14 +215,12 @@ export function create_worker_client<
     request: Request,
     { signal, on_progress }: WorkerRequestOptions<Progress>,
   ): Promise<Result> => {
-    const waiter = { on_progress }
+    const waiter = { on_progress, reject: request.reject }
     request.waiters.add(waiter)
-    if (!signal) return request.promise
+    if (!signal && !on_progress) return request.promise
     const { promise, resolve, reject } = Promise.withResolvers<Result>()
-    const on_abort = () => {
-      if (pending_by_key.get(request.key) !== request) return
-      const error = abort_error(signal, label)
-      request.waiters.delete(waiter)
+    waiter.reject = (error) => {
+      if (!request.waiters.delete(waiter)) return
       if (request.waiters.size === 0) {
         // Drop abandoned work; construct the next worker on demand, without an idle replacement.
         request.reject(error)
@@ -226,20 +228,25 @@ export function create_worker_client<
       }
       reject(error)
     }
-    signal.addEventListener(`abort`, on_abort, { once: true })
+    const on_abort = () => {
+      if (signal) waiter.reject(abort_error(signal, label))
+    }
+    signal?.addEventListener(`abort`, on_abort, { once: true })
     // Settled requests no longer need the caller's abort listener.
-    void request.promise
-      .then(resolve, reject)
-      .then(() => signal.removeEventListener(`abort`, on_abort))
-    return promise
+    void request.promise.then(resolve, reject)
+    return promise.finally(() => signal?.removeEventListener(`abort`, on_abort))
   }
 
   const report_progress = (request: Request, progress: Progress): void => {
     // New subscriptions start with the next report; aborts during this report take effect now.
     const current_waiters = [...request.waiters]
     for (const waiter of current_waiters) {
-      const { on_progress } = waiter
-      if (request.waiters.has(waiter)) on_progress?.(progress)
+      if (!request.waiters.has(waiter)) continue
+      try {
+        waiter.on_progress?.(progress)
+      } catch (error) {
+        waiter.reject(to_error(error))
+      }
     }
   }
 

@@ -415,8 +415,28 @@ describe(`scene coordinates`, () => {
       [0.123, 4.987],
       [0.123, 4.987],
     ],
+    [
+      [100, null],
+      [100, 110],
+    ],
+    [
+      [null, -100],
+      [-110, -100],
+    ],
+    [
+      [5.5, null],
+      [5.5, 11],
+    ],
+    [
+      [null, 0],
+      [-5.5, 0],
+    ],
+    [
+      [4.987, 0.123],
+      [4.987, 0.123],
+    ],
   ] as [Parameters<typeof compute_range>[1], [number, number]][])(
-    `manual bounds %j leave automatic endpoints unchanged`,
+    `manual bounds %j only expand automatic endpoints when needed`,
     (range, expected) => {
       expect(compute_range({ min: 0, max: 5, n_finite: 2 }, range)).toEqual(expected)
     },
