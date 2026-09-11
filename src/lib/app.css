@@ -375,7 +375,8 @@ body.fullscreen .draggable-pane {
   --settings-row-gap: 4pt;
 }
 .draggable-pane.compact-settings .pane-content {
-  font-size: 0.9em;
+  /* Touch toolbar icons grow independently of the pane's text. */
+  font-size: 0.9rem;
 }
 .draggable-pane.compact-settings .settings-section-heading {
   margin: 8pt 0 2pt;
@@ -450,18 +451,23 @@ body.fullscreen .draggable-pane {
   min-width: 0;
 }
 .draggable-pane.compact-settings
-  :is(.style-row, section.flow)
+  :is(.style-row, .flow)
   > :is(label, .setting):has(input[type='range']) {
   display: grid;
-  grid-template-columns: 4.5em var(--ctrl-value-w, 3.2em) minmax(4em, 1fr);
+  grid-template-columns: 7em var(--ctrl-value-w, 3.2em) minmax(0, 1fr);
   align-items: center;
   column-gap: 6pt;
   flex: none;
   min-width: 0;
   margin: 0;
+  > input:is([type='number'], [type='range']) {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
 }
 .draggable-pane.compact-settings .style-row > :is(label, .setting):has(input[type='range']) {
-  flex: 1 1 14em;
+  flex: 1 1 18em;
 }
 .draggable-pane.compact-settings
   .style-row

@@ -205,7 +205,7 @@ describe(`Histogram`, () => {
     await mount_histogram({
       series: [`A`, `B`, `C`].map((label) => ({ values: [1, 2, 3], label })),
       mode: `single`,
-      selected_property: `B`,
+      selected_series_idx: 1,
       bins: 3,
       show_legend: true,
       bar: { color: `rebeccapurple` },
@@ -236,11 +236,11 @@ describe(`Histogram`, () => {
       [`0`, `1`],
     ],
     [
-      `ignores an unmatched selected_property in single mode`,
+      `selects the first visible series for an unavailable index`,
       {
         series: [{ values: [1, 2, 3], label: `Band Gap` }],
         mode: `single`,
-        selected_property: `Energy`,
+        selected_series_idx: 99,
       },
       [`0`],
     ],
@@ -375,27 +375,65 @@ describe(`Histogram`, () => {
     expect(await legend_overlaps_bars([2, 0])).toBe(false)
   })
 
-  test(`property options allow duplicate and empty series labels`, async () => {
-    await mount_histogram({
-      series: [`Repeated`, `Repeated`, ``, undefined].map((label) =>
-        series_of([1], { label }),
+  test(`single mode selects exactly one series by its original index, including duplicate and empty labels`, async () => {
+    const state = $state({ selected_series_idx: 0 })
+    await mount_histogram(
+      bind_props(
+        {
+          series: [
+            series_of([1], { label: `Hidden`, visible: false }),
+            ...[`Repeated`, `Repeated`, ``, undefined].map((label) =>
+              series_of([1], { label }),
+            ),
+          ],
+          mode: `single`,
+          show_controls: true,
+          controls_open: true,
+          show_legend: true,
+        },
+        state,
       ),
-      mode: `single`,
-      show_controls: true,
-      controls_open: true,
-    })
+    )
 
-    const property_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
-      (select) => select.closest(`label`)?.textContent?.includes(`Property`),
+    const series_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
+      (select) => select.closest(`label`)?.textContent?.includes(`Series`),
     )
-    const option_labels = [...(property_select?.options ?? [])].map(
-      (option) => option.textContent,
+    if (!series_select) throw new Error(`Missing histogram series selector`)
+    // happy-dom neither matches :checked on options nor refreshes selectedOptions.
+    vi.spyOn(series_select, `querySelector`).mockImplementation(
+      () => series_select.options[series_select.selectedIndex],
     )
-    expect(option_labels).toEqual([`Repeated`, `Repeated`, `Series`, `Series`])
-    // the select shows the active series (first visible label) even though the bound
-    // selected_property was never set: single mode never shows "all"
-    expect(property_select?.value).toBe(`Repeated`)
-    expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(2)
+    const option_labels = [...series_select.options].map((option) => option.textContent)
+    expect(option_labels).toEqual([`Repeated`, `Repeated`, `Series 4`, `Series 5`])
+    expect(series_select.value).toBe(`1`)
+    expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
+    for (const series_idx of [1, 2, 3, 4]) {
+      series_select.value = String(series_idx)
+      series_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+      expect(state.selected_series_idx).toBe(series_idx)
+      const groups = [...document.querySelectorAll(`g.histogram-series`)]
+      expect(groups.map((group) => group.getAttribute(`data-series-idx`))).toEqual([
+        String(series_idx),
+      ])
+    }
+    const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
+    for (const series_idx of [1, 2, 3, 4]) {
+      legend_items[series_idx].click()
+      await tick()
+    }
+    expect(series_select.disabled).toBe(true)
+    expect(series_select.options[series_select.selectedIndex].textContent).toBe(
+      `No visible series`,
+    )
+    expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(0)
+    legend_items[3].click()
+    await tick()
+    expect(series_select.disabled).toBe(false)
+    expect(series_select.value).toBe(`3`)
+    expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
+      `3`,
+    )
   })
 
   test.each([`y`, `y2`] as const)(
@@ -425,6 +463,20 @@ describe(`Histogram`, () => {
       fill_input.value = `#abcdef`
       fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       expect(state.bar).toEqual({ color: `#abcdef` })
+      const stroke_color = doc_query<HTMLInputElement>(`input[aria-label="Stroke color"]`)
+      stroke_color.value = `#fedcba`
+      stroke_color.dispatchEvent(new Event(`input`, { bubbles: true }))
+      const stroke_opacity = [...document.querySelectorAll<HTMLLabelElement>(`label`)]
+        .find((label) => label.textContent?.trim() === `Stroke opacity`)
+        ?.querySelector<HTMLInputElement>(`input[type="number"]`)
+      if (!stroke_opacity) throw new Error(`Missing stroke opacity input`)
+      stroke_opacity.value = `0.25`
+      stroke_opacity.dispatchEvent(new Event(`input`, { bubbles: true }))
+      expect(state.bar).toEqual({
+        color: `#abcdef`,
+        stroke_color: `#fedcba`,
+        stroke_opacity: 0.25,
+      })
       // the controls pane's normalize select writes back into a bound normalize prop
       const normalize_select = [
         ...document.querySelectorAll<HTMLSelectElement>(`select`),

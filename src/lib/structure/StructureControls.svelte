@@ -498,26 +498,28 @@
         accessors[current.key] = local(current.get, current.set)
       } else keys.push(current.key)
     }
-    const values = Object.fromEntries([
-      ...keys.map((key) => [key, scene_value(key)]),
-      ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
-    ])
-    const section_keys = Object.keys(values).join(`,`)
+    const read_values = () =>
+      Object.fromEntries([
+        ...keys.map((key) => [key, scene_value(key)]),
+        ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
+      ])
+    const section_keys = [...keys, ...Object.keys(accessors)].join(`,`)
     let baseline = section_baselines.get(name)
     if (!baseline || baseline.keys !== section_keys) {
-      baseline = { keys: section_keys, tracker: track_settings(() => values) }
+      baseline = { keys: section_keys, tracker: track_settings(read_values) }
       section_baselines.set(name, baseline)
     }
-    const { changes, reset } = baseline.tracker
+    const { tracker } = baseline
     return {
-      changed_keys: changes(values),
-      on_reset_key: (key: string) =>
-        reset(key, (reference_value, reference_present) => {
-          const accessor = accessors[key]
-          if (accessor) return accessor.set(reference_value, reference_present)
-          if (reference_present) scene_record()[key] = reference_value
-          else Reflect.deleteProperty(scene_props, key)
-        }),
+      changed_keys: tracker.changed_keys,
+      on_reset_key: (key: string) => {
+        const initial = tracker.initial
+        const present = Object.hasOwn(initial, key)
+        const accessor = accessors[key]
+        if (accessor) accessor.set(initial[key], present)
+        else if (present) scene_record()[key] = initial[key]
+        else Reflect.deleteProperty(scene_props, key)
+      },
       setting_metadata: structure_setting_metadata,
     }
   }

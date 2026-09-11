@@ -4,7 +4,7 @@
 // Wire protocol (worker side): every request arrives as `{ id, input, options }`. The worker
 // replies with `{ id, result, error }` once, and may post any number of `{ id, progress }`
 // messages before that for callers that passed `on_progress`.
-import { to_error } from '$lib/utils'
+import { is_plain_object, to_error } from '$lib/utils'
 
 interface WorkerClientConfig<Input, Options, Result, Progress> {
   // Names the module in error messages, e.g. `MSD`
@@ -24,6 +24,9 @@ interface WorkerClientConfig<Input, Options, Result, Progress> {
   // cloneable, so callers rebuild field by field rather than deep-snapshotting - a proxied
   // typed array still reads back as its raw buffer, which keeps megabyte payloads cheap.
   build_payload: (input: Input) => unknown
+  // Custom providers contain functions that cannot cross the worker boundary. Such requests
+  // still use this client's progress, cancellation and error handling, without deduplication.
+  requires_main_thread?: (input: Input, options: Options | undefined) => boolean
   // Key requests by canonicalized payload + options, treating the top-level payload array
   // as a multiset. Nested arrays remain ordered.
   dedupe_by_payload?: `unordered`
@@ -52,7 +55,7 @@ export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   release: () => void
 }
 
-export const abort_error = (signal: AbortSignal, label: string): Error =>
+const abort_error = (signal: AbortSignal, label: string): Error =>
   signal.reason instanceof Error
     ? signal.reason
     : new DOMException(
@@ -73,6 +76,7 @@ export function create_worker_client<
     create_worker,
     compute_sync,
     build_payload,
+    requires_main_thread,
     dedupe_by_payload = false,
   } = config
 
@@ -83,9 +87,8 @@ export function create_worker_client<
     promise: Promise<Result>
     resolve: (data: Result) => void
     reject: (err: Error) => void
-    // Callers still awaiting this request; the last one to abort drops it
-    waiters: number
-    progress_listeners: Set<(progress: Progress) => void>
+    // Each caller owns one subscription, even when callbacks or options are shared.
+    waiters: Set<Pick<WorkerRequestOptions<Progress>, `on_progress`>>
   }
 
   let worker: Worker | null = null
@@ -101,23 +104,17 @@ export function create_worker_client<
   const cancel = (reason = `${label} worker request cancelled`): void => {
     const error = new Error(reason)
     for (const request of pending_by_key.values()) request.reject(error)
-    pending.clear()
-    pending_by_key.clear()
     terminate_worker()
   }
 
-  const make_tokenizer = () => {
-    let next_token = 0
-    const tokens = new WeakMap<object, number>()
-    return (value: object): number => {
-      const existing = tokens.get(value)
-      if (existing !== undefined) return existing
-      tokens.set(value, ++next_token)
-      return next_token
-    }
+  let next_token = 0
+  const tokens = new WeakMap<object, number>()
+  const identity_token = (value: object): number => {
+    const existing = tokens.get(value)
+    if (existing !== undefined) return existing
+    tokens.set(value, ++next_token)
+    return next_token
   }
-  const input_token = make_tokenizer()
-  const non_plain_token = make_tokenizer()
 
   // Identity for the input, canonical serialization for the options. Hashing megabytes of
   // positions would cost more than the compute, so identity stands in for contents; a partial
@@ -153,8 +150,7 @@ export function create_worker_client<
         ]
       }
 
-      const prototype = Object.getPrototypeOf(item)
-      if (prototype === Object.prototype || prototype === null) {
+      if (is_plain_object(item)) {
         return [
           `object`,
           Object.entries(item)
@@ -163,7 +159,7 @@ export function create_worker_client<
         ]
       }
 
-      return [`identity`, Object.prototype.toString.call(item), non_plain_token(item)]
+      return [`identity`, Object.prototype.toString.call(item), identity_token(item)]
     }
     return JSON.stringify(encode(value))
   }
@@ -176,25 +172,29 @@ export function create_worker_client<
     )
     return JSON.stringify(item_keys.toSorted())
   }
-  // Forget a request once it settles. .then(onOk, onErr) rather than .finally: the latter
-  // forwards the rejection into a derived promise nobody awaits, which surfaces as an
-  // unhandled rejection
+  // Remove requests synchronously when they settle, so an immediate retry cannot join a
+  // failed postMessage and abandoned computations cannot keep delivering progress.
   const forget = (request: Request): void => {
     if (pending_by_key.get(request.key) === request) pending_by_key.delete(request.key)
     if (request.id !== null && pending.get(request.id) === request) pending.delete(request.id)
+    request.waiters.clear()
   }
   const track = (key: string, identifier: number | null): Request => {
+    const { promise, resolve, reject } = Promise.withResolvers<Result>()
     const request: Request = {
       key,
       id: identifier,
-      ...Promise.withResolvers<Result>(),
-      waiters: 0,
-      progress_listeners: new Set(),
+      promise,
+      resolve: (result) => {
+        forget(request)
+        resolve(result)
+      },
+      reject: (error) => {
+        forget(request)
+        reject(error)
+      },
+      waiters: new Set(),
     }
-    request.promise.then(
-      () => forget(request),
-      () => forget(request),
-    )
     pending_by_key.set(key, request)
     if (identifier !== null) pending.set(identifier, request)
     return request
@@ -205,31 +205,25 @@ export function create_worker_client<
   const release = (): void => {
     if (pending.size === 0) terminate_worker()
   }
-  // Settle abandoned requests and free their worker when no other request still needs it.
-  // Construct the next worker on demand: aborting on unmount must not leave an idle replacement.
-  const drop = (request: Request, error: Error): void => {
-    forget(request)
-    request.reject(error)
-    release()
-  }
-
   // Hand one caller a view of a (possibly shared) request that honours its own signal and
   // progress callback without affecting the other callers
   const join = (
     request: Request,
     { signal, on_progress }: WorkerRequestOptions<Progress>,
   ): Promise<Result> => {
-    request.waiters++
-    // Each subscription owns its listener, even when callers reuse the same callback.
-    const listener = on_progress ? (progress: Progress) => on_progress(progress) : undefined
-    if (listener) request.progress_listeners.add(listener)
+    const waiter = { on_progress }
+    request.waiters.add(waiter)
     if (!signal) return request.promise
     const { promise, resolve, reject } = Promise.withResolvers<Result>()
     const on_abort = () => {
       if (pending_by_key.get(request.key) !== request) return
       const error = abort_error(signal, label)
-      if (listener) request.progress_listeners.delete(listener)
-      if (--request.waiters === 0) drop(request, error)
+      request.waiters.delete(waiter)
+      if (request.waiters.size === 0) {
+        // Drop abandoned work; construct the next worker on demand, without an idle replacement.
+        request.reject(error)
+        release()
+      }
       reject(error)
     }
     signal.addEventListener(`abort`, on_abort, { once: true })
@@ -238,6 +232,15 @@ export function create_worker_client<
       .then(resolve, reject)
       .then(() => signal.removeEventListener(`abort`, on_abort))
     return promise
+  }
+
+  const report_progress = (request: Request, progress: Progress): void => {
+    // New subscriptions start with the next report; aborts during this report take effect now.
+    const current_waiters = [...request.waiters]
+    for (const waiter of current_waiters) {
+      const { on_progress } = waiter
+      if (request.waiters.has(waiter)) on_progress?.(progress)
+    }
   }
 
   // Constructor failures reject the request instead of silently moving expensive work onto
@@ -260,10 +263,9 @@ export function create_worker_client<
         const request = pending.get(identifier)
         if (!request) return
         if (progress !== undefined) {
-          for (const listener of request.progress_listeners) listener(progress)
+          report_progress(request, progress)
           return
         }
-        forget(request)
         if (error || result === undefined) {
           request.reject(
             new Error(error ?? `${label} worker returned no result for request ${identifier}`),
@@ -294,45 +296,51 @@ export function create_worker_client<
   ): Promise<Result> => {
     const { signal } = request_options
     if (signal?.aborted) return Promise.reject(abort_error(signal, label))
+    const main_thread = requires_main_thread?.(input, options) ?? false
     // Content-keyed clients build once before the lookup and reuse that same snapshot for
     // postMessage. Identity-keyed clients defer payload construction until a cache miss.
-    const keyed_payload = dedupe_by_payload ? build_payload(input) : undefined
-    const input_key = dedupe_by_payload
-      ? payload_key_of(keyed_payload)
-      : `input:${input_token(input)}`
-    const request_key = `${input_key.length}:${input_key}${canonical_key_of(options)}`
+    const keyed_payload = !main_thread && dedupe_by_payload ? build_payload(input) : undefined
+    const input_key =
+      !main_thread && dedupe_by_payload
+        ? payload_key_of(keyed_payload)
+        : `input:${identity_token(input)}`
+    const request_key = main_thread
+      ? `main:${++next_id}`
+      : `${input_key.length}:${input_key}${canonical_key_of(options)}`
     const existing = pending_by_key.get(request_key)
     if (existing) return join(existing, request_options)
 
-    const wkr = ensure_worker()
-    if (!wkr) {
-      const request = track(request_key, null)
+    const wkr = main_thread ? null : ensure_worker()
+    const payload = wkr
+      ? dedupe_by_payload
+        ? keyed_payload
+        : build_payload(input)
+      : undefined
+    const identifier = wkr ? ++next_id : null
+    const request = track(request_key, identifier)
+    const promise = join(request, request_options)
+    if (wkr) {
+      try {
+        // Copied, never transferred: identity dedupe re-posts the same input later, and a
+        // transferred typed-array buffer would be detached by then.
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin
+        wkr.postMessage({ id: identifier, input: payload, options: $state.snapshot(options) })
+      } catch (err) {
+        request.reject(to_error(err))
+      }
+    } else {
       Promise.resolve()
         .then(() => {
           // An abort/cancel in this tick must prevent queued main-thread work from starting.
           if (pending_by_key.get(request.key) !== request) return
-          const result = compute_sync(input, options, (progress) => {
-            for (const listener of request.progress_listeners) listener(progress)
-          })
-          forget(request)
+          const result = compute_sync(input, options, (progress) =>
+            report_progress(request, progress),
+          )
           request.resolve(result)
         })
         .catch((err: unknown) => request.reject(to_error(err)))
-      return join(request, request_options)
     }
-
-    const payload = dedupe_by_payload ? keyed_payload : build_payload(input)
-    const identifier = ++next_id
-    const request = track(request_key, identifier)
-    try {
-      // Copied, never transferred: identity dedupe re-posts the same input later, and a
-      // transferred typed-array buffer would be detached by then.
-      // oxlint-disable-next-line unicorn/require-post-message-target-origin
-      wkr.postMessage({ id: identifier, input: payload, options: $state.snapshot(options) })
-    } catch (err) {
-      request.reject(to_error(err))
-    }
-    return join(request, request_options)
+    return promise
   }
 
   // Never throw synchronously: callers handle errors via .catch() only, so key construction

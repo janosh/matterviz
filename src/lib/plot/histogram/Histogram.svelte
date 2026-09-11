@@ -93,7 +93,7 @@
     ),
     legend = {},
     bar = $bindable({}),
-    selected_property = $bindable(``),
+    selected_series_idx = $bindable(0),
     mode = $bindable(DEFAULTS.histogram.mode),
     tooltip,
     user_content,
@@ -131,7 +131,9 @@
       show_legend?: boolean
       legend?: LegendConfig | null
       bar?: BarStyle
-      selected_property?: string
+      // Index in `series` displayed in single mode; an unavailable index selects the first
+      // visible series. Labels are display text and need not be unique or present.
+      selected_series_idx?: number
       mode?: `single` | `overlay`
       tooltip?: Snippet<[HistogramHandlerProps]>
       user_content?: Snippet<[UserContentProps]>
@@ -198,36 +200,25 @@
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
   // === Series selection ===
-  let visible_series_labels = $derived(
-    series
-      .filter((series_data) => series_data.visible ?? true)
-      .map((series_data) => series_data.label)
-      .filter((label): label is string => typeof label === `string` && label.length > 0),
-  )
-  // In single mode an unset or stale `selected_property` falls back to the first visible label
-  // (an invalid binding is corrected on the next write, not by an effect).
-  const active_property = $derived(
-    visible_series_labels.includes(selected_property)
-      ? selected_property
-      : (visible_series_labels[0] ?? ``),
+  const active_series_idx = $derived(
+    (series[selected_series_idx]?.visible ?? true) && series[selected_series_idx]
+      ? selected_series_idx
+      : series.findIndex((series_data) => series_data.visible ?? true),
   )
   let selected_series_entries = $derived(
-    series
-      .map((series_data, series_idx) => ({ series_data, series_idx }))
-      .filter(
-        ({ series_data }) =>
-          (series_data.visible ?? true) &&
-          (mode !== `single` || !active_property || series_data.label === active_property),
-      ),
+    series.flatMap((series_data, series_idx) =>
+      (series_data.visible ?? true) && (mode !== `single` || series_idx === active_series_idx)
+        ? [{ series_data, series_idx }]
+        : [],
+    ),
   )
-  let selected_series = $derived(selected_series_entries.map(({ series_data }) => series_data))
 
   // Value extents per x axis and whether any sample lands on a secondary axis, in one pass.
   let axis_data = $derived.by(() => {
     const x1_extent = empty_extent()
     const x2_extent = empty_extent()
     let has_y2_points = false
-    for (const srs of selected_series) {
+    for (const { series_data: srs } of selected_series_entries) {
       const extent = srs.x_axis === `x2` ? x2_extent : x1_extent
       const previous_count = extent.n_finite
       accumulate_extent(extent, srs.values)
@@ -383,7 +374,7 @@
   // Bins over the current (possibly panned/zoomed) x domains. Until the view moves these are
   // the auto-domain bins, so the common case bins each series exactly once.
   const current_counts = $derived.by(() => {
-    if (selected_series.length === 0 || !frame.width || !frame.height) return []
+    if (selected_series_entries.length === 0 || !frame.width || !frame.height) return []
     const { x: coord_x, x2: coord_x_2 } = frame.ranges.current
     if (vec2_equal(coord_x, auto_x_ranges.x) && vec2_equal(coord_x_2, auto_x_ranges.x2))
       return auto_counts
@@ -644,20 +635,21 @@
       bind:mode
       bind:show_legend
       resolved_show_legend={should_show_legend}
-      bind:selected_property={() => active_property, (value) => (selected_property = value)}
+      bind:selected_series_idx={
+        () => active_series_idx, (value) => (selected_series_idx = value)
+      }
       bind:display
       bind:bar
       bind:x_axis
       bind:x2_axis
       bind:y_axis
       bind:y2_axis
-      auto_x_range={auto_ranges.x}
-      auto_x2_range={auto_ranges.x2}
-      auto_y_range={auto_ranges.y}
-      auto_y2_range={auto_ranges.y2}
+      auto_ranges={{
+        ...auto_ranges,
+        x2: has_x2_points ? auto_ranges.x2 : undefined,
+        y2: has_y2_points ? auto_ranges.y2 : undefined,
+      }}
       {series}
-      {has_x2_points}
-      {has_y2_points}
       children={controls_extra}
     />
 

@@ -329,13 +329,15 @@ describe(`PlotAxis`, () => {
 
   test.each([
     [`volume`, `Long volume property`, false, `Long volume property (Å³)`],
-    [undefined, `Volume`, false, `Energy (eV)`],
+    [undefined, `Volume`, false, `Select axis…`],
     [`volume`, `Volume`, false, `Volume (Å³)`],
-    [undefined, undefined, true, `Energy (eV)`],
+    [undefined, undefined, true, `Select axis…`],
+    [`removed`, `Volume`, false, `Select axis…`],
   ] as const)(
     `interactive title key=%s label=%s loading=%s`,
     async (selected_key, volume_label, axis_loading, expected) => {
       mock_text_measurement()
+      const on_axis_change = vi.fn()
       const svg = await mount_axis({
         side: `x`,
         ticks: [50],
@@ -349,6 +351,7 @@ describe(`PlotAxis`, () => {
         label_x: 100,
         label_y: 50,
         axis_loading,
+        on_axis_change,
       })
       const trigger = query(svg, `button.axis-trigger`)
       const foreign_obj = query(svg, `foreignObject`)
@@ -375,6 +378,21 @@ describe(`PlotAxis`, () => {
       const stop_spy = vi.spyOn(MouseEvent.prototype, `stopPropagation`)
       wrapper.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
       expect(stop_spy).toHaveBeenCalledTimes(1)
+      if (!axis_loading && selected_key !== `volume`) {
+        const button = trigger as HTMLButtonElement
+        button.focus()
+        button.click()
+        await tick()
+        button.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))
+        await tick()
+        const first_option = document.querySelector<HTMLButtonElement>(`[role="option"]`)
+        expect(document.activeElement).toBe(first_option)
+        first_option?.dispatchEvent(
+          new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+        )
+        await tick()
+        expect(on_axis_change).toHaveBeenCalledExactlyOnceWith(`energy`)
+      }
     },
   )
 

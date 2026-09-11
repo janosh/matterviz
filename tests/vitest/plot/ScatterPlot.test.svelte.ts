@@ -567,18 +567,18 @@ describe(`ScatterPlot`, () => {
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
-  // Auto visibility uses rendered entries after label deduplication and fill-region folding.
+  // Auto visibility uses rendered entries after shared-identity and fill-region folding.
   const labeled_series = (...labels: string[]) => labels.map((label) => ({ ...basic, label }))
   const fill_region: FillRegion = { lower: 0, upper: 4, fill: `steelblue` }
   type LegendAutoCase = [string, Partial<ComponentProps<typeof ScatterPlot>>, number]
   // oxfmt-ignore
   const legend_auto_cases: LegendAutoCase[] = [
     [`distinct labels auto-show`, { series: labeled_series(`A`, `B`) }, 2],
-    [`duplicate labels auto-hide`, { series: labeled_series(`Dup`, `Dup`) }, 0],
+    [`duplicate labels remain distinct`, { series: labeled_series(`Dup`, `Dup`) }, 2],
     [`IDs cannot collide with label/group keys`, { series: [{ ...basic, id: `foo`, label: `First` }, { ...basic, legend_group: `string`, label: `foo` }] }, 2],
     [`distinct IDs keep identical labels separate`, { series: labeled_series(`Dup`, `Dup`).map((srs, idx) => ({ ...srs, id: idx })) }, 2],
     [`shared legend IDs combine distinct drawing IDs and labels`, { series: labeled_series(`A`, `B`).map((srs, idx) => ({ ...srs, id: idx, legend_id: `shared` })), show_legend: true }, 1],
-    [`explicit true opens one deduped entry`, { series: labeled_series(`Dup`, `Dup`), show_legend: true }, 1],
+    [`explicit true shows a single series`, { series: labeled_series(`Only`), show_legend: true }, 1],
     [`labelled fill region counts`, { series: labeled_series(`A`), fill_regions: [{ ...fill_region, label: `Band` }] }, 2],
     [`unlabelled fill region does not count`, { series: labeled_series(`A`), fill_regions: [fill_region] }, 0],
   ]
@@ -763,6 +763,88 @@ describe(`ScatterPlot`, () => {
       await tick()
       check_vertices()
       expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
+    },
+  )
+
+  test.each([`points`, `line`, `line+points`] as const)(
+    `%s controls can target another series independently of labels`,
+    async (markers) => {
+      const state = $state({ selected_series_idx: 0 })
+      const plot = await mount_sized_scatter_plot(
+        bind_props(
+          {
+            series: [0, 1].map(() => ({
+              x: [0, 1],
+              y: [0, 1],
+              label: `Repeated`,
+              markers,
+              point_style: { fill: `red` },
+              line_style: { stroke: `red` },
+            })),
+            controls_open: true,
+            point_tween: { duration: 0 },
+          },
+          state,
+        ),
+      )
+      const series_select = [...plot.querySelectorAll<HTMLSelectElement>(`select`)].find(
+        (select) => select.parentElement?.textContent?.startsWith(`Series`),
+      )
+      if (!series_select) throw new Error(`Missing series selector for ${markers}`)
+      // happy-dom does not match :checked on options, which Svelte uses for select bindings.
+      vi.spyOn(series_select, `querySelector`).mockImplementation(
+        () => series_select.options[series_select.selectedIndex],
+      )
+      series_select.value = `1`
+      series_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+      expect(state.selected_series_idx).toBe(1)
+      for (const [kind, selector, attribute] of [
+        ...(markers.includes(`points`) ? [[`point`, `.marker`, `fill`]] : []),
+        ...(markers.includes(`line`) ? [[`line`, `path[fill="none"]`, `stroke`]] : []),
+      ]) {
+        const input = doc_query(`[data-key="${kind}.color"] input`, HTMLInputElement)
+        input.value = `#0000ff`
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        await tick()
+        for (const [series_idx, color] of [`red`, `#0000ff`].entries()) {
+          const marks = plot.querySelectorAll(`[data-series-id="${series_idx}"] ${selector}`)
+          expect(marks.length).toBeGreaterThan(0)
+          for (const mark of marks) {
+            if (kind === `point`) {
+              const wrapper = mark.closest(`[style*="--point-fill-color"]`)
+              if (!wrapper) throw new Error(`Missing marker color wrapper`)
+              expect(getComputedStyle(wrapper).getPropertyValue(`--point-fill-color`)).toBe(
+                color,
+              )
+            } else expect(mark.getAttribute(attribute)).toBe(color)
+          }
+        }
+        const numeric_edits =
+          kind === `point`
+            ? [
+                [`opacity`, `0.35`, `fill-opacity`],
+                [`stroke_width`, `2.5`, `stroke-width`],
+                [`stroke_opacity`, `0.6`, `stroke-opacity`],
+              ]
+            : [
+                [`width`, `7`, `stroke-width`],
+                [`opacity`, `0.4`, `stroke-opacity`],
+              ]
+        for (const [key, value, numeric_attribute] of numeric_edits) {
+          const range_input = doc_query(
+            `[data-key="${kind}.${key}"] input[type="range"]`,
+            HTMLInputElement,
+          )
+          range_input.value = value
+          range_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+          await tick()
+          const marks = plot.querySelectorAll(`[data-series-id="1"] ${selector}`)
+          expect([...marks].map((mark) => mark.getAttribute(numeric_attribute))).toEqual(
+            Array(marks.length).fill(value),
+          )
+        }
+      }
     },
   )
 

@@ -104,22 +104,16 @@
     }
   })
 
-  const reset_control = (
-    key: string,
-    reference_value: unknown,
-    reference_present: boolean,
-  ): void => {
-    if (!reference_present) throw new Error(`Missing reset value for control ${key}`)
-    if (key === `tile_font_color`) tile_font_color = reference_value as string | null
-    else if (key in defaults) Reflect.set(controls, key, reference_value)
+  const reset_control = (key: string): void => {
+    if (key === `tile_font_color`) tile_font_color = null
+    else if (Object.hasOwn(defaults, key))
+      Reflect.set(controls, key, Reflect.get(defaults, key))
     else throw new Error(`Unknown control key ${key}`)
   }
-  const reset_category_color = (
-    category: string,
-    reference_value: unknown,
-    reference_present: boolean,
-  ): void => {
-    if (reference_present) colors.category[category] = reference_value as string
+  const reset_category_color = (category: string): void => {
+    const initial = element_category_colors_settings.initial
+    if (Object.hasOwn(initial, category))
+      colors.category[category] = initial[category] as string
     else Reflect.deleteProperty(colors.category, category)
   }
 
@@ -147,10 +141,7 @@
     <SettingsSection
       title="Element category colors"
       changed_keys={element_category_colors_settings.changed_keys}
-      on_reset_key={(key) =>
-        element_category_colors_settings.reset(key, (value, present) =>
-          reset_category_color(key, value, present),
-        )}
+      on_reset_key={reset_category_color}
       layout="grid"
     >
       {#each Object.keys(colors.category) as category (category)}
@@ -172,10 +163,7 @@
     <SettingsSection
       title="Element tiles"
       changed_keys={element_tiles_settings.changed_keys}
-      on_reset_key={(key) =>
-        element_tiles_settings.reset(key, (value, present) =>
-          reset_control(key, value, present),
-        )}
+      on_reset_key={reset_control}
       layout="grid"
     >
       <label data-key="tile_gap">
@@ -212,8 +200,7 @@
     <SettingsSection
       title="Font sizes"
       changed_keys={font_sizes_settings.changed_keys}
-      on_reset_key={(key) =>
-        font_sizes_settings.reset(key, (value, present) => reset_control(key, value, present))}
+      on_reset_key={reset_control}
       layout="grid"
     >
       {#each FONT_KEYS as key (key)}
@@ -226,8 +213,7 @@
     <SettingsSection
       title="Tooltip"
       changed_keys={tooltip_settings.changed_keys}
-      on_reset_key={(key) =>
-        tooltip_settings.reset(key, (value, present) => reset_control(key, value, present))}
+      on_reset_key={reset_control}
       layout="grid"
     >
       {@render slider(`tooltip_font_size`)}

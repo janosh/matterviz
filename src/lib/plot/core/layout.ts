@@ -116,16 +116,17 @@ const parse_axis_title_segments = (value: string): AxisTitleSegment[] => {
 const selected_axis_title = (
   axis: Pick<AxisConfig, `label` | `options` | `selected_key`>,
 ): { label: string; segments: AxisTitleSegment[]; interactive: boolean } => {
-  const option =
-    axis.options?.find(({ key }) => key === axis.selected_key) ?? axis.options?.[0]
+  const option = axis.options?.find(({ key }) => key === axis.selected_key)
+  const interactive = Boolean(axis.options?.length)
+  const placeholder = axis.label?.length ? axis.label : interactive ? `Select axis…` : ``
   const value = option?.unit
     ? `${option.label} (${option.unit})`
-    : (option?.label ?? axis.label ?? ``)
+    : (option?.label ?? placeholder)
   const segments = parse_axis_title_segments(value)
   return {
     label: segments.map(({ text }) => text).join(``),
     segments,
-    interactive: option !== undefined,
+    interactive,
   }
 }
 

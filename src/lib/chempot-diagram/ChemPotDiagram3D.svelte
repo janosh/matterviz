@@ -27,12 +27,8 @@
     webgpu_available,
   } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
-  import type {
-    AxisConfig3D,
-    CameraProjection3D,
-    DataSeries3D,
-    DisplayConfig3D,
-  } from '$lib/plot/core/types'
+  import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '$lib/plot/core/types'
+  import { collect_3d_extents, compute_range } from '$lib/plot/scatter-3d/scene-coords'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, onMount } from 'svelte'
@@ -606,14 +602,23 @@
   const dedup_3d = (pts: number[][], tol: number = 1e-4): number[][] =>
     dedup_points(pts, tol).unique
 
-  const controls_series = $derived<DataSeries3D[]>([
-    {
-      x: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[1])),
-      y: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[2])),
-      z: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[0])),
-      label: `domains`,
-    },
-  ])
+  const controls_auto_ranges = $derived.by(() => {
+    const extents = collect_3d_extents(
+      [],
+      render_domains.flatMap((domain) =>
+        domain.points_3d.map(([coord_z, coord_x, coord_y]) => ({
+          x: coord_x,
+          y: coord_y,
+          z: coord_z,
+        })),
+      ),
+    )
+    return {
+      x: compute_range(extents.x),
+      y: compute_range(extents.y),
+      z: compute_range(extents.z),
+    }
+  })
 
   // Overlay geometry is per domain and depends only on that domain's points and the axis
   // stretch, so it is cached per formula and kept while the formula stays an overlay:
@@ -1272,7 +1277,7 @@
       bind:display
       bind:camera_projection
       bind:auto_rotate
-      series={controls_series}
+      auto_ranges={controls_auto_ranges}
       toggle_props={{
         class: `chempot-controls-toggle`,
         style: `position: static`,

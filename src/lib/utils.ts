@@ -1,13 +1,8 @@
-// Loose: any non-null non-array object, so Date/Map/RegExp/typed arrays pass (what the
-// JSON-validation callers want). Use is_plain_record where a class instance is a leaf.
-export const is_plain_object = (val: unknown): val is Record<string, unknown> =>
-  typeof val === `object` && val !== null && !Array.isArray(val)
-
-// Strict: object literals, JSON.parse output and null-prototype objects only
-export const is_plain_record = (val: unknown): val is Record<string, unknown> => {
-  if (typeof val !== `object` || val === null) return false
-  const proto: unknown = Object.getPrototypeOf(val)
-  return proto === Object.prototype || proto === null
+// Object literals, JSON mappings and null-prototype records; class instances are leaves.
+export const is_plain_object = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== `object` || value === null) return false
+  const prototype: unknown = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
 }
 
 // Clamp a number to the [0, 1] range.

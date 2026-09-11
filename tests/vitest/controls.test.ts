@@ -70,11 +70,11 @@ describe(`track_settings`, () => {
     values.nested = { opacity: 1 }
     values.added = undefined
     expect(tracked.changed_keys).toEqual([`range`, `nested`, `added`])
-    for (const key of tracked.changed_keys)
-      tracked.reset(key, (value, present) => {
-        if (present) values[key] = value
-        else Reflect.deleteProperty(values, key)
-      })
+    const initial = tracked.initial
+    for (const key of tracked.changed_keys) {
+      if (Object.hasOwn(initial, key)) values[key] = initial[key]
+      else Reflect.deleteProperty(values, key)
+    }
     expect(tracked.changed_keys).toEqual([])
     expect(Object.hasOwn(values, `optional`)).toBe(true)
     expect(Object.hasOwn(values, `added`)).toBe(false)
@@ -82,9 +82,7 @@ describe(`track_settings`, () => {
     expect(tracked.changed_keys).toEqual([`range`])
     delete values.nested
     expect(tracked.changed_keys).toEqual([`range`, `nested`])
-    tracked.reset(`nested`, (value) => {
-      values.nested = value
-    })
+    values.nested = tracked.initial.nested
     expect(values.nested).toEqual({ opacity: 0.5 })
   })
 
@@ -95,6 +93,10 @@ describe(`track_settings`, () => {
     [new Date(0), new Date(1), true],
     [NaN, NaN, false],
     [null, undefined, true],
+    [[], Object.assign([], { length: 2 }), true],
+    [{}, new Map(), true],
+    [{}, /pattern/, true],
+    [{}, Object.create({ setting: true }), true],
   ])(`compares %j against %j (changed=%s)`, (initial, current, changed) => {
     const values: { value: unknown } = { value: initial }
     const tracked = track_settings(() => values)
@@ -108,9 +110,7 @@ describe(`track_settings`, () => {
     const tracked = track_settings(() => values, defaults)
     defaults.color = `green`
     expect(tracked.changed_keys).toEqual([`color`])
-    tracked.reset(`color`, (value) => {
-      values.color = String(value)
-    })
+    values.color = String(tracked.initial.color)
     expect(values.color).toBe(`red`)
     expect(tracked.changed_keys).toEqual([])
   })

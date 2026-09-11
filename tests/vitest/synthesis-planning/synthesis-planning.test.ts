@@ -29,7 +29,6 @@ import type {
   SynthesisPlanRequest,
   SynthesisReaction,
 } from '$lib/synthesis-planning'
-import { plan_synthesis_with_progress } from '$lib/synthesis-planning/plan'
 import { create_thermo_cache } from '$lib/synthesis-planning/thermo'
 import { describe_atmosphere } from '$lib/synthesis-planning/scoring'
 import { get_default_gas_provider } from '$lib/convex-hull/gas-thermodynamics'
@@ -638,7 +637,7 @@ describe(`plan_synthesis`, () => {
 
   test(`progress-capable kernel preserves the exact synchronous result`, () => {
     const progress: SynthesisPlanProgress[] = []
-    const result = plan_synthesis_with_progress(base_request, {
+    const result = plan_synthesis(base_request, {
       on_progress: (update) => progress.push(update),
     })
     expect(result).toEqual(plan_synthesis(base_request))

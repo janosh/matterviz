@@ -1,11 +1,17 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
-import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
+import type {
+  AxisConfig3D,
+  DataSeries3D,
+  DisplayConfig3D,
+  Surface3DConfig,
+} from '$lib/plot/core/types'
 import {
   hover_marker_geometry,
   normalize_to_scene,
   sample_surface,
   collect_3d_extents,
+  compute_range,
   span_or,
 } from '$lib/plot/scatter-3d/scene-coords'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
@@ -300,16 +306,16 @@ describe(`ScatterPlot3D smoke tests`, () => {
       surface,
     })),
   ])(
-    `standalone $name controls write display and axis changes`,
+    `$name controls preserve default display and independently automatic axis bounds`,
     async ({ surface, max_value }) => {
-      const controls_state = $state({
-        display: { show_axes: true },
-        x_axis: { label: `X`, range: [null, null] as [number | null, number | null] },
+      const controls_state = $state<{ display: DisplayConfig3D; x_axis: AxisConfig3D }>({
+        display: {},
+        x_axis: { label: `X`, range: [null, null] },
       })
-      mounted_component = mount(ScatterPlot3DControls, {
+      mounted_component = mount(ScatterPlot3D, {
         target: container,
         props: bind_props(
-          { series: [basic_series], surfaces: surface ? [surface] : [] },
+          { series: [basic_series], surfaces: surface ? [surface] : [], controls_open: true },
           controls_state,
         ),
       })
@@ -317,14 +323,34 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
       const show_axes = query<HTMLInputElement>(container, `input[type="checkbox"]`)
       const x_min = query<HTMLInputElement>(container, `[aria-label="X min"]`)
+      const x_max = query<HTMLInputElement>(container, `[aria-label="X max"]`)
+      expect(show_axes.checked).toBe(true)
+      expect(x_min.value).toBe(``)
+      expect(x_max.value).toBe(``)
+      expect(Number(x_max.placeholder)).toBe(max_value)
 
       show_axes.click()
       x_min.value = `2`
       x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
       flushSync()
 
-      expect(controls_state.display.show_axes).toBe(false)
-      expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, max_value] })
+      expect(controls_state.display).toEqual({ show_axes: false })
+      expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, null] })
+      // Manual edits preserve an automatic opposite bound, exact small values, and clearing.
+      for (const [value, expected] of [
+        [`0.00000001`, 1e-8],
+        [``, null],
+      ] as const) {
+        x_min.value = value
+        x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
+        flushSync()
+        expect(controls_state.x_axis.range).toEqual([expected, null])
+        expect(x_min.value).toBe(expected === null ? `` : String(expected))
+      }
+      x_max.value = `7`
+      x_max.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(controls_state.x_axis.range).toEqual([null, 7])
       const label_input = query<HTMLInputElement>(container, `[aria-label="X label"]`)
       label_input.value = `Energy`
       label_input.dispatchEvent(new Event(`input`, { bubbles: true }))
@@ -343,7 +369,11 @@ describe(`ScatterPlot3D smoke tests`, () => {
       target: container,
       props: bind_props(
         {
-          series: [basic_series],
+          auto_ranges: {
+            x: [0, 5] as [number, number],
+            y: [0, 10] as [number, number],
+            z: [0, 3] as [number, number],
+          },
           toggle_props: { 'data-testid': `scatter-3d-toggle` },
           pane_props: { 'data-testid': `scatter-3d-pane` },
         },
@@ -356,7 +386,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await unmount(mounted_component)
     mounted_component = mount(ScatterPlot3DControls, {
       target: container,
-      props: { series: [basic_series], show_controls: false },
+      props: { show_controls: false },
     })
     await tick()
     expect(container.querySelector(`.draggable-pane`)).toBeNull()
@@ -364,6 +394,34 @@ describe(`ScatterPlot3D smoke tests`, () => {
 })
 
 describe(`scene coordinates`, () => {
+  test.each([
+    [
+      [null, null],
+      [0, 5.5],
+    ],
+    [
+      [0.123, null],
+      [0.123, 5.5],
+    ],
+    [
+      [1e-8, null],
+      [1e-8, 5.5],
+    ],
+    [
+      [null, 4.987],
+      [0, 4.987],
+    ],
+    [
+      [0.123, 4.987],
+      [0.123, 4.987],
+    ],
+  ] as [Parameters<typeof compute_range>[1], [number, number]][])(
+    `manual bounds %j leave automatic endpoints unchanged`,
+    (range, expected) => {
+      expect(compute_range({ min: 0, max: 5, n_finite: 2 }, range)).toEqual(expected)
+    },
+  )
+
   test(`filters large triangulated surfaces and includes their bounds without mutating inputs`, () => {
     const count = 200_000 // spreading these into push() exceeds the JS argument limit
     const points = Array.from({ length: count }, (_, idx) => ({ x: idx, y: -idx, z: 2 * idx }))

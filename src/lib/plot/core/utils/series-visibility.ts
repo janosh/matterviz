@@ -25,7 +25,6 @@ export const legend_mode_to_prop = (mode: LegendVisibilityMode): boolean | undef
 type VisSeries = {
   id?: string | number
   legend_id?: string | number
-  label?: string | null
   legend_group?: string
   unit?: string
   axis_group?: string
@@ -46,10 +45,7 @@ export const same_legend_item = (
 ): boolean =>
   target.legend_id != null || item?.legend_id != null
     ? target.legend_id != null && target.legend_id === item?.legend_id
-    : target.id != null || item?.id != null || !target.label
-      ? target_idx === idx
-      : target.label === item?.label &&
-        (target.legend_group ?? ``) === (item.legend_group ?? ``)
+    : target_idx === idx
 
 const can_share_axis = (series1: VisSeries, series2: VisSeries): boolean =>
   series1.axis_group?.trim() || series2.axis_group?.trim()

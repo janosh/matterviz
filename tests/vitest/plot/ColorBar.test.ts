@@ -65,11 +65,14 @@ describe(`ColorBar layout`, () => {
     expect(tick_spans()[0].classList).toContain(`tick-secondary`)
   })
 
-  test(`rejects invalid scale input`, () => {
+  test(`rejects invalid scales and unknown palette keys`, () => {
     // Bare scheme names were silently prefixed before; only the canonical `interpolate*`
     // name resolves now. The cast exercises the runtime guard JavaScript callers hit.
     const scale = `Viridis` as ColorBarScale
     expect(() => mount_bar({ scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
+    expect(() =>
+      mount_bar({ color_scale_options, selected_color_scale_key: `removed` }),
+    ).toThrow(`Unknown color scale key: removed`)
   })
 
   // Labels are absolutely positioned, so without a gutter they overflow into neighbors.
@@ -384,7 +387,8 @@ describe(`ColorBar Interactive Selects`, () => {
 
   test.each([
     [{ property_options, selected_property_key: `energy` }, `Energy (eV)`, undefined],
-    [{ property_options }, `Energy (eV)`, undefined],
+    [{ property_options }, `Static`, undefined],
+    [{ property_options, selected_property_key: `missing` }, `Static`, undefined],
     [{ color_scale_options, selected_color_scale_key: `viridis` }, undefined, `Viridis`],
     [{ color_scale_options }, undefined, `Viridis`],
     [{}, undefined, undefined],
@@ -420,31 +424,73 @@ describe(`ColorBar Interactive Selects`, () => {
     void unmount(component)
   })
 
-  test(`resets stale selected keys to valid options`, async () => {
-    const state = {
-      selected_property_key: `energy`,
-      selected_color_scale_key: `viridis`,
-    }
-    const component = mount_bar(
-      bind_props(
-        {
-          property_options: [{ key: `band_gap`, label: `Band Gap`, unit: `eV` }],
-          color_scale_options: [
-            { key: `magma`, label: `Magma`, scale: `interpolateMagma` },
-          ] satisfies ColorScaleOption[],
-        },
-        state,
-      ),
+  test(`property selection reports intent and loading without mutating caller data`, async () => {
+    const state = fromStore(
+      writable({ key: `energy`, range: [0, 10] as Vec2, loading: false }),
     )
-
+    const on_property_change = vi.fn()
+    mount_bar({
+      property_options,
+      get selected_property_key() {
+        return state.current.key
+      },
+      get range() {
+        return state.current.range
+      },
+      get loading() {
+        return state.current.loading
+      },
+      on_property_change,
+    })
     await tick()
-    expect(state.selected_property_key).toBe(`band_gap`)
-    expect(state.selected_color_scale_key).toBe(`magma`)
-    expect(document.body.querySelector(`.bar`)?.getAttribute(`style`)).toContain(
-      d3_sc.interpolateMagma(0),
-    )
-    void unmount(component)
+    const trigger = doc_query<HTMLButtonElement>(`.property-select`)
+    trigger.click()
+    await tick()
+    const volume_option = [
+      ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
+    ].find((option) => option.textContent?.includes(`Volume`))
+    if (!volume_option) throw new Error(`Missing volume option`)
+    volume_option.click()
+    await tick()
+    expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
+    expect(trigger.textContent).toContain(`Energy`)
+    expect(state.current.range).toEqual([0, 10])
+    state.current = { ...state.current, loading: true }
+    await tick()
+    expect(trigger.disabled).toBe(true)
+    state.current = { key: `volume`, range: [10, 20], loading: false }
+    await tick()
+    expect(trigger.disabled).toBe(false)
+    expect(trigger.textContent).toContain(`Volume`)
+    expect(tick_texts()).toContain(`20`)
   })
 
-  // Note: data_loader interaction tests (spinner, rollback) need Playwright e2e.
+  test(`palette keys and replacement options always drive both the label and gradient`, async () => {
+    const state = fromStore(writable({ key: `plasma`, options: color_scale_options }))
+    mount_bar({
+      get selected_color_scale_key() {
+        return state.current.key
+      },
+      get color_scale_options() {
+        return state.current.options
+      },
+      steps: 3,
+    })
+    for (const [key, label, scale] of [
+      [`plasma`, `Plasma`, d3_sc.interpolatePlasma],
+      [`inferno`, `Inferno`, d3_sc.interpolateInferno],
+    ] as const) {
+      state.current = { ...state.current, key }
+      await tick()
+      expect(doc_query(`.color-scale-select`).textContent).toContain(label)
+      expect(doc_query(`.bar`).getAttribute(`style`)).toContain(scale(0))
+    }
+    state.current = {
+      key: `inferno`,
+      options: [{ key: `inferno`, label: `Updated`, scale: `interpolateMagma` }],
+    }
+    await tick()
+    expect(doc_query(`.color-scale-select`).textContent).toContain(`Updated`)
+    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateMagma(0))
+  })
 })

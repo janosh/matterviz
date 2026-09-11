@@ -18,7 +18,6 @@
   } from '$lib/plot/core/text-metrics'
   import type {
     AxisOption,
-    ColorBarDataLoaderFn,
     ColorBarScale,
     ColorScaleOption,
     Orientation,
@@ -36,14 +35,14 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    title = $bindable(),
-    scale = $bindable(SCALE_DEFAULTS.scheme),
+    title,
+    scale = SCALE_DEFAULTS.scheme,
     bar_style,
     title_style,
     wrapper_style,
     tick_labels = 4,
     tick_format,
-    range = $bindable([0, 1]),
+    range = [0, 1],
     orientation = `horizontal`,
     snap_ticks = true,
     steps = 50,
@@ -52,8 +51,8 @@
     tick_side = `primary`,
     scale_type = `linear`,
     property_options,
-    selected_property_key = $bindable(),
-    data_loader,
+    selected_property_key,
+    loading = false,
     on_property_change,
     color_scale_options,
     selected_color_scale_key = $bindable(),
@@ -84,10 +83,12 @@
     // Property selection (makes the title an interactive dropdown)
     property_options?: AxisOption[]
     selected_property_key?: string
-    data_loader?: ColorBarDataLoaderFn
-    on_property_change?: (key: string, range: Vec2) => void
-    // Color scale selection dropdown
+    // The caller owns loading and commits selected_property_key/range/title together.
+    loading?: boolean
+    on_property_change?: (key: string) => void
+    // With options, the selected option supplies the scale; otherwise `scale` is used.
     color_scale_options?: ColorScaleOption[]
+    // Defaults to the first option; an explicit key must match an option.
     selected_color_scale_key?: string
     on_color_scale_change?: (key: string) => void
     // Opaque surface behind the bar, used to resolve translucent scale colors.
@@ -98,7 +99,6 @@
   const backdrop = resolve_backdrop(() => colorbar_node, {
     override: () => backdrop_color,
   })
-  let loading = $state(false) // property data fetch in flight
 
   const is_vertical = $derived(orientation === `vertical`)
   const actual_title_side = $derived.by(() => {
@@ -148,7 +148,16 @@
     nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lower, upper] : range
   })
 
-  const ramp = $derived(resolve_color_ramp(scale, range, scale_type))
+  const selected_color_scale = $derived.by(() => {
+    if (!color_scale_options?.length) return
+    if (selected_color_scale_key === undefined) return color_scale_options[0]
+    const option = color_scale_options.find(({ key }) => key === selected_color_scale_key)
+    if (!option) throw new Error(`Unknown color scale key: ${selected_color_scale_key}`)
+    return option
+  })
+  const ramp = $derived(
+    resolve_color_ramp(selected_color_scale?.scale ?? scale, range, scale_type),
+  )
   const gradient_stops = $derived(sample_color_ramp(ramp, scale_type, steps).join(`, `))
   // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
@@ -262,47 +271,6 @@
     height: ${is_vertical ? `var(--cbar-height, 100%)` : `var(--cbar-height, auto)`};
     min-height: ${is_vertical ? `var(--cbar-min-height, 150px)` : `auto`};
     max-height: ${is_vertical ? `var(--cbar-max-height, 1000px)` : `none`}; ${wrapper_style ?? ``}`)
-
-  // Keep bindable selected keys valid so state matches the select's first-option fallback.
-  $effect(() => {
-    if (!property_options?.length) return
-    if (property_options.some((option) => option.key === selected_property_key)) return
-    selected_property_key = property_options[0].key
-  })
-  $effect(() => {
-    if (!color_scale_options?.length) return
-    if (color_scale_options.some((option) => option.key === selected_color_scale_key)) return
-    selected_color_scale_key = color_scale_options[0].key
-    scale = color_scale_options[0].scale
-  })
-
-  async function handle_property_change(new_key: string, prev_key?: string) {
-    if (!data_loader) return
-    // prev_key comes from PortalSelect since its binding updates before this callback
-    const prev = { title, range, selected_property_key: prev_key }
-    loading = true
-    try {
-      const result = await data_loader(new_key)
-      range = result.range
-      if (result.title !== undefined) title = result.title
-      on_property_change?.(new_key, result.range)
-    } catch (err) {
-      console.error(`ColorBar property change failed for ${new_key}:`, err)
-      ;({ selected_property_key, range, title } = prev)
-    } finally {
-      loading = false
-    }
-  }
-
-  function handle_color_scale_change(new_key: string, prev_key?: string) {
-    const opt = color_scale_options?.find((item) => item.key === new_key)
-    if (!opt) {
-      selected_color_scale_key = prev_key // keep key and scale in sync
-      return
-    }
-    scale = opt.scale
-    on_color_scale_change?.(new_key)
-  }
 </script>
 
 <div
@@ -318,9 +286,10 @@
       {#if property_options?.length}
         <PortalSelect
           options={property_options}
-          bind:selected_key={selected_property_key}
-          on_select={handle_property_change}
+          selected_key={selected_property_key}
+          on_select={on_property_change}
           disabled={loading}
+          placeholder={title ?? `Select property…`}
           class="property-select"
         />
         {#if loading}
@@ -335,9 +304,11 @@
       {#if color_scale_options?.length}
         <PortalSelect
           options={color_scale_options}
-          bind:selected_key={selected_color_scale_key}
-          on_select={handle_color_scale_change}
-          format_option={(opt) => opt.label}
+          selected_key={selected_color_scale?.key}
+          on_select={(key) => {
+            selected_color_scale_key = key
+            on_color_scale_change?.(key)
+          }}
           class="color-scale-select"
         />
       {/if}

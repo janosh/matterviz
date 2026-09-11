@@ -32,12 +32,7 @@
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
-    auto_x_range = [0, 1],
-    auto_x2_range = undefined,
-    auto_y_range = [0, 1],
-    auto_y2_range = undefined,
-    has_x2_points = false,
-    has_y2_points = false,
+    auto_ranges = {},
     controls_title = `plot`,
     controls_name = `plot`,
     toggle_props = {},
@@ -51,6 +46,8 @@
     Math.min(lower, upper) <= 0 && Math.max(lower, upper) >= 0
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
+  const auto_range = (axis: AxisKey): Vec2 | undefined =>
+    auto_ranges[axis] ?? (axis === `x` || axis === `y` ? [0, 1] : undefined)
   const axis_record = <Value>(get_value: (axis: AxisKey) => Value): Record<AxisKey, Value> =>
     Object.fromEntries(all_axes.map((axis) => [axis, get_value(axis)])) as Record<
       AxisKey,
@@ -74,17 +71,14 @@
   const axis_labels = { x: `X`, x2: `X2`, y: `Y`, y2: `Y2` } as const
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
-  // Keep full tick configurations: the numeric tick-count control cannot represent lists or intervals.
   const is_axis_key = (key: string): key is AxisKey =>
     (all_axes as readonly string[]).includes(key)
-  const mount_ticks = untrack(() => axis_record((axis) => axis_config(axis).ticks))
   const reset_axis_field = (
     field: `range` | `ticks` | `format`,
     key: string,
     value: unknown,
   ) => {
-    if (is_axis_key(key))
-      update_axis(key, { [field]: field === `ticks` ? mount_ticks[key] : value })
+    if (is_axis_key(key)) update_axis(key, { [field]: value })
   }
   // The Ticks inputs only edit numeric tick counts; an explicit tick list/map/interval set on
   // the axis is left alone (and shown as `custom`), and an empty input hands back to auto
@@ -105,29 +99,17 @@
     else if (axis === `y`) y_axis = { ...y_axis, ...updates }
     else y2_axis = { ...y2_axis, ...updates }
   }
-  let auto_ranges = $derived({
-    x: auto_x_range,
-    x2: auto_x2_range,
-    y: auto_y_range,
-    y2: auto_y2_range,
-  } satisfies Record<AxisKey, Vec2 | undefined>)
-  // secondary axes only exist once their series do; primary axes always have an auto range
-  let axis_present = $derived({ x: true, x2: has_x2_points, y: true, y2: has_y2_points })
   let visible_axes = $derived(
     all_axes
-      .filter((axis) => axis_present[axis])
+      .filter((axis) => axis === `x` || axis === `y` || auto_ranges[axis] !== undefined)
       .map((axis) => [axis, axis_labels[axis]] as const),
   )
   // whether each axis range spans zero, gating the zero-line toggles
   let includes_zero = $derived(
     axis_record((axis) => {
-      const auto = auto_ranges[axis]
+      const auto = auto_range(axis)
       const { range } = axis_config(axis)
-      return (
-        axis_present[axis] &&
-        auto != null &&
-        range_spans_zero(range?.[0] ?? auto[0], range?.[1] ?? auto[1])
-      )
+      return auto != null && range_spans_zero(range?.[0] ?? auto[0], range?.[1] ?? auto[1])
     }),
   )
   const format_placeholders: Record<AxisKey, string> = {
@@ -182,7 +164,7 @@
     range_inputs = { ...range_inputs, [axis]: next }
     if (range_invalid(next)) return
     const [min, max] = next
-    const auto = auto_ranges[axis]
+    const auto = auto_range(axis)
     // Without an auto range, only a complete min/max pair can be applied
     if (!auto && (min === null || max === null)) return
     const next_range =
@@ -207,7 +189,8 @@
     y2_sync: current_sync.mode,
     align_value: current_sync.align_value,
   }))
-  const ticks_settings = track_settings(() => axis_record(tick_count))
+  // Track the full configuration: custom lists, labels and intervals must also reset.
+  const ticks_settings = track_settings(() => axis_record((axis) => axis_config(axis).ticks))
   const tick_format_settings = track_settings(() =>
     axis_record((axis) => axis_config(axis).format),
   )
@@ -274,8 +257,7 @@
     title="Axis range"
     class="ctrl-line axis-fields"
     changed_keys={axis_range_settings.changed_keys}
-    on_reset_key={(key) =>
-      axis_range_settings.reset(key, (value) => reset_axis_field(`range`, key, value))}
+    on_reset_key={(key) => reset_axis_field(`range`, key, axis_range_settings.initial[key])}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
@@ -329,7 +311,7 @@
     {/each}
   </SettingsSection>
 
-  {#if has_y2_points}
+  {#if auto_ranges.y2}
     {@const y2_sync_tip = `Controls Y2 axis range:
 • Independent: Y2 has its own range based on its data
 • Synced: Y2 has exact same range as Y1
@@ -396,8 +378,7 @@
     data-testid="ticks-section"
     class="ctrl-line axis-fields"
     changed_keys={ticks_settings.changed_keys}
-    on_reset_key={(key) =>
-      ticks_settings.reset(key, (value) => reset_axis_field(`ticks`, key, value))}
+    on_reset_key={(key) => reset_axis_field(`ticks`, key, ticks_settings.initial[key])}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
@@ -426,8 +407,7 @@
     data-testid="tick-format-section"
     class="ctrl-line formats tick-format-section"
     changed_keys={tick_format_settings.changed_keys}
-    on_reset_key={(key) =>
-      tick_format_settings.reset(key, (value) => reset_axis_field(`format`, key, value))}
+    on_reset_key={(key) => reset_axis_field(`format`, key, tick_format_settings.initial[key])}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}

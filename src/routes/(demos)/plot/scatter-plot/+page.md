@@ -1979,6 +1979,8 @@ Lines that leave the fixed `x_axis.range` / `y_axis.range` are clipped at the pl
 
 Group legend items with `legend_group` (e.g. DFT methods, ML potentials, experiment). Click the group header to toggle all series in the group, or the chevron (▶) to collapse/expand.
 
+Series with identical labels remain independent. To combine several drawing series into one legend entry that toggles together, give them the same `legend_id` and unique `id` values. `legend_group` creates a collapsible section; `legend_id` identifies a shared entry within it.
+
 ```svelte example
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
@@ -3136,7 +3138,7 @@ Interactive axis labels plus an interactive ColorBar for 3-axis exploration. Col
 - **Color property** (click ColorBar title/property dropdown)
 - **Color scheme** (click ColorBar color scale dropdown)
 
-All changes trigger lazy data loading with simulated network delays.
+Axis changes simulate delayed loading. Color property and palette changes use the already loaded data immediately.
 
 ```svelte example
 <script lang="ts">
@@ -3228,12 +3230,6 @@ All changes trigger lazy data loading with simulated network delays.
     ]
   }
 
-  // Get range for a property
-  function get_range(key) {
-    const vals = all_data.map((row) => row[key])
-    return [Math.min(...vals), Math.max(...vals)]
-  }
-
   // State
   let x_key = $state(`density`)
   let y_key = $state(`formation_energy`)
@@ -3270,16 +3266,7 @@ All changes trigger lazy data loading with simulated network delays.
     if (axis === `y`) y_key = property_key
   }
 
-  // Returns ColorBar-specific data. Series update handled in on_property_change.
-  async function colorbar_data_loader(property_key) {
-    await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 400))
-    const prop = properties[property_key]
-    const range = get_range(property_key)
-    const title = `${prop.label} (${prop.unit})`
-    return { range, title }
-  }
-
-  // Called after ColorBar successfully loads new property data
+  // All properties are already loaded; publish the new color property directly.
   function on_property_change(property_key) {
     color_switches++
     color_key = property_key
@@ -3325,7 +3312,6 @@ All changes trigger lazy data loading with simulated network delays.
     title: `${properties[color_key].label} (${properties[color_key].unit})`,
     property_options: color_property_options,
     selected_property_key: color_key,
-    data_loader: colorbar_data_loader,
     on_property_change,
     color_scale_options,
     selected_color_scale_key: color_scale_key,

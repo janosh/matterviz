@@ -114,7 +114,7 @@ export const compute_range = (
 ): Vec2 =>
   range[0] != null && range[1] != null
     ? [range[0], range[1]]
-    : nice_range_from_extent(extent, range, `linear`, 0.05)
+    : span_or(range, nice_range_from_extent(extent, [null, null], `linear`, 0.05))
 
 export function collect_3d_extents(
   series: readonly DataSeries3D[],

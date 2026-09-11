@@ -75,7 +75,8 @@
       >
         <PortalSelect
           {options}
-          bind:selected_key={() => selected_key, () => {}}
+          {selected_key}
+          placeholder={label || title_layout.label}
           {on_select}
           disabled={loading}
           class="axis-trigger"

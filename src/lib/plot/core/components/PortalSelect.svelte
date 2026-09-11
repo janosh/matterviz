@@ -13,16 +13,19 @@
 
   let {
     options,
-    selected_key = $bindable(),
+    selected_key,
     on_select,
     disabled = false,
+    placeholder = `Select…`,
     format_option = (opt: Option) => (opt.unit ? `${opt.label} (${opt.unit})` : opt.label),
     ...rest
   }: Omit<HTMLButtonAttributes, `onclick`> & {
-    options: Option[]
+    options: readonly Option[]
+    // Controlled selection: the caller commits a new key, including after async loading.
     selected_key?: string
-    on_select?: (key: string, prev_key?: string) => void | Promise<void>
+    on_select?: (key: string) => void
     disabled?: boolean
+    placeholder?: string
     format_option?: (opt: Option) => string
   } = $props()
 
@@ -30,9 +33,7 @@
   let trigger_el: HTMLButtonElement | undefined = $state()
   let dropdown_el: HTMLDivElement | undefined = $state()
 
-  const selected_option = $derived(
-    options.find((opt) => opt.key === selected_key) ?? options[0],
-  )
+  const selected_option = $derived(options.find((opt) => opt.key === selected_key))
 
   function open_dropdown() {
     if (!trigger_el || !options.length) return
@@ -47,20 +48,12 @@
     if (return_focus) trigger_el?.focus()
   }
 
-  async function select(key: string) {
-    if (key !== selected_key) {
-      const prev_key = selected_key
-      selected_key = key // Optimistic update for responsive UI
-      try {
-        await on_select?.(key, prev_key)
-      } catch {
-        selected_key = prev_key // Roll back on error
-      }
-    }
+  function select(key: string) {
     close_dropdown()
+    if (key !== selected_key) on_select?.(key)
   }
 
-  // Arrow/Enter stay on window (focus may be on the trigger, outside the portalled list).
+  // Handle both the trigger and portalled list before a host widget stops key propagation.
   // Escape is handled by click_outside({ escape: true }) below — not duplicated here.
   function handle_keydown(evt: KeyboardEvent) {
     // Cmd/Ctrl+Arrow scrolls the page; the list only answers bare keys
@@ -88,9 +81,7 @@
   })
 </script>
 
-<svelte:window onkeydown={dropdown_open ? handle_keydown : undefined} />
-
-{#if selected_option}
+{#if options.length}
   <button
     bind:this={trigger_el}
     type="button"
@@ -99,9 +90,13 @@
     aria-expanded={dropdown_open}
     aria-haspopup="listbox"
     {...rest}
+    onkeydown={(evt) => {
+      rest.onkeydown?.(evt)
+      if (dropdown_open && !evt.defaultPrevented) handle_keydown(evt)
+    }}
     class={[`portal-select-trigger`, rest.class]}
   >
-    {@html sanitize_html(format_option(selected_option))}
+    {@html sanitize_html(selected_option ? format_option(selected_option) : placeholder)}
     <span class="arrow">▾</span>
   </button>
 {/if}
@@ -115,6 +110,8 @@
     bind:this={dropdown_el}
     class="portal-select-dropdown"
     role="listbox"
+    tabindex="-1"
+    onkeydown={handle_keydown}
     {@attach portal(trigger_el?.closest(`dialog[open]`) ?? document.body)}
     {@attach float({
       anchor: trigger_el,

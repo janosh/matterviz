@@ -1,10 +1,36 @@
 import {
   decode_url_safe_base64,
   escape_html,
+  is_plain_object,
   parse_leading_num,
   parse_num_token,
 } from '$lib/utils'
 import { describe, expect, test } from 'vitest'
+
+test.each([
+  [{}, true],
+  [Object.create(null), true],
+  [JSON.parse(`{"value": 1}`), true],
+  [new Proxy({ value: 1 }, {}), true],
+  [null, false],
+  [undefined, false],
+  [0, false],
+  [`value`, false],
+  [[], false],
+  [new Date(0), false],
+  [new Map(), false],
+  [new Set(), false],
+  [/pattern/, false],
+  [new Float64Array(2), false],
+  [
+    new (class RecordLike {
+      value = 1
+    })(),
+    false,
+  ],
+])(`is_plain_object(%j) = %s`, (value, expected) => {
+  expect(is_plain_object(value)).toBe(expected)
+})
 
 test.each([
   [`<script>alert('xss')</script>`, `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`],

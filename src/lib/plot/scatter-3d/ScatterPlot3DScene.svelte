@@ -39,18 +39,13 @@
   import { first_point_style } from '$lib/plot/core/data-transform'
   import ReferenceLine3D from '$lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
-  import {
-    hover_marker_geometry,
-    normalize_to_scene,
-    sample_surface,
-    collect_3d_extents,
-    compute_range,
-  } from '$lib/plot/scatter-3d/scene-coords'
+  import { hover_marker_geometry, normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
   import { collect_size_range, create_size_scale } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 
   let {
     series = [],
+    ranges,
     x_axis = {},
     y_axis = {},
     z_axis = {},
@@ -87,6 +82,8 @@
     height = 0,
   }: {
     series?: DataSeries3D<Metadata>[]
+    // Final data-coordinate ranges, computed by the host alongside its controls.
+    ranges: Record<`x` | `y` | `z`, Vec2>
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
@@ -206,11 +203,7 @@
   const sign_x = $derived(pos.x < 0 ? -1 : 1)
   const sign_y = $derived(pos.y < 0 ? -1 : 1)
 
-  const surface_samples = $derived(surfaces.flatMap(sample_surface))
-  const data_extents = $derived(collect_3d_extents(series, surface_samples))
-  let x_range = $derived(compute_range(data_extents.x, x_axis.range))
-  let y_range = $derived(compute_range(data_extents.y, y_axis.range))
-  let z_range = $derived(compute_range(data_extents.z, z_axis.range))
+  const { x: x_range, y: y_range, z: z_range } = $derived(ranges)
 
   const normalize_x = (value: number) => normalize_to_scene(value, x_range, scene_x)
   const normalize_y = (value: number) => normalize_to_scene(value, y_range, scene_y)
@@ -609,13 +602,13 @@
           </T.Line>
         {/each}
       {/if}
-      <extras.HTML position={tick_label_pos(tick_val)} center>
+      <extras.HTML position={tick_label_pos(tick_val)} center zIndexRange={[1, 0]}>
         <span class="tick-label">{format_num(tick_val, axis.format || `.2~g`)}</span>
       </extras.HTML>
     {/each}
     <!-- Axis label -->
     {#if display.show_axis_labels !== false}
-      <extras.HTML position={axis_label_pos} center>
+      <extras.HTML position={axis_label_pos} center zIndexRange={[1, 0]}>
         <span class="axis-label" style:color>{axis.label || key.toUpperCase()}</span>
       </extras.HTML>
     {/if}
@@ -722,6 +715,7 @@
       calculatePosition={hover_geometry.tooltip_position}
       style="translate: -50% -100%; pointer-events: none"
       portal={tooltip_portal}
+      zIndexRange={[1000, 1000]}
     >
       {#if tooltip}
         {@render tooltip(data)}

@@ -2,6 +2,8 @@
 
 `ScatterPlot3D` uses instanced Three.js/Threlte points and supports multiple series, `color_values`, and optional surfaces. Legend clicks update `hidden_series`, an array of series IDs (or indices for series without IDs). Bind it to control visibility; input series stay unchanged. Per-series `visible` provides the initial state when `hidden_series` is omitted.
 
+Axis ranges accept independently automatic bounds: `{ range: [0, null] }` fixes the minimum while the maximum follows the data. Clear a range input to restore automatic sizing; its placeholder shows the computed bound. Standalone `ScatterPlot3DControls` takes `auto_ranges={{ x, y, z }}`; the low-level `ScatterPlot3DScene` takes final `ranges` in the same shape.
+
 ## Basic 3D Scatter Plot
 
 ```svelte example

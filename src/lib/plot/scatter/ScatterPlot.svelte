@@ -1853,14 +1853,13 @@
       bind:y2_axis
       bind:display
       bind:styles
-      auto_x_range={intrinsic_ranges.x}
-      auto_x2_range={intrinsic_ranges.x2}
-      auto_y_range={intrinsic_ranges.y}
-      auto_y2_range={intrinsic_ranges.y2}
+      auto_ranges={{
+        ...intrinsic_ranges,
+        x2: has_x2_points ? intrinsic_ranges.x2 : undefined,
+        y2: has_y2_points ? intrinsic_ranges.y2 : undefined,
+      }}
       bind:selected_series_idx
       series={assigned_series}
-      {has_x2_points}
-      {has_y2_points}
       children={controls_extra}
       on_touch={(key, is_touched) => (is_touched ? touched.add(key) : touched.delete(key))}
     />

@@ -1,6 +1,7 @@
 // Tests for PortalSelect component
 import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
 import { mount, tick, unmount } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 type Option = { key: string; label: string; unit?: string }
@@ -31,7 +32,8 @@ describe(`PortalSelect`, () => {
   test.each([
     { key: `energy`, expected: `Energy (eV)`, desc: `with unit` },
     { key: `pressure`, expected: `Pressure`, notExpected: `(`, desc: `without unit` },
-    { key: undefined, expected: `Energy (eV)`, desc: `fallback to first when undefined` },
+    { key: undefined, expected: `Select…`, desc: `no selection` },
+    { key: `missing`, expected: `Select…`, desc: `unavailable selection` },
   ])(`displays option $desc`, ({ key, expected, notExpected }) => {
     const comp = mount(PortalSelect, {
       target: document.body,
@@ -58,11 +60,41 @@ describe(`PortalSelect`, () => {
     void unmount(comp)
   })
 
+  test.each([false, true])(
+    `composes caller keyboard handling with navigation (prevent_default=%s)`,
+    async (prevent_default) => {
+      const onkeydown = vi.fn((evt: KeyboardEvent) => {
+        if (prevent_default) evt.preventDefault()
+      })
+      const comp = mount(PortalSelect, {
+        target: document.body,
+        props: { options, onkeydown },
+      })
+      await tick()
+      const trigger = get_trigger()
+      trigger?.focus()
+      trigger?.click()
+      await tick()
+      trigger?.dispatchEvent(
+        new KeyboardEvent(`keydown`, {
+          key: `ArrowDown`,
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+      expect(onkeydown).toHaveBeenCalledOnce()
+      expect(document.activeElement).toBe(
+        prevent_default ? trigger : document.querySelector(`[role="option"]`),
+      )
+      await unmount(comp)
+    },
+  )
+
   test(`uses custom format_option function`, () => {
     const format_option = (opt: Option) => `[${opt.key}] ${opt.label}`
     const comp = mount(PortalSelect, {
       target: document.body,
-      props: { options, format_option },
+      props: { options, selected_key: `energy`, format_option },
     })
     expect(get_trigger()?.textContent).toContain(`[energy] Energy`)
     void unmount(comp)
@@ -72,17 +104,24 @@ describe(`PortalSelect`, () => {
     const html_options = [{ key: `gap`, label: `E<sub>gap</sub>`, unit: `eV` }]
     const comp = mount(PortalSelect, {
       target: document.body,
-      props: { options: html_options },
+      props: { options: html_options, selected_key: `gap` },
     })
     expect(get_trigger()?.querySelector(`sub`)?.textContent).toBe(`gap`)
     void unmount(comp)
   })
 
-  test(`opens a portalled listbox, selects an option, then closes`, async () => {
+  test(`reports selection immediately and waits for the caller to commit it`, async () => {
     const on_select = vi.fn()
+    const selected = fromStore(writable(`energy`))
     const comp = mount(PortalSelect, {
       target: document.body,
-      props: { options, selected_key: `energy`, on_select },
+      props: {
+        options,
+        get selected_key() {
+          return selected.current
+        },
+        on_select,
+      },
     })
     await tick() // let bind:this land before the handler reads the trigger
     get_trigger()?.click()
@@ -100,12 +139,14 @@ describe(`PortalSelect`, () => {
     ])
     expect(items[0].getAttribute(`aria-selected`)).toBe(`true`)
 
-    // select() awaits on_select before closing, so the teardown lands a microtask later
     items[1].click()
-    await vi.waitFor(() =>
-      expect(document.body.querySelector(`.portal-select-dropdown`)).toBeNull(),
-    )
-    expect(on_select).toHaveBeenCalledWith(`volume`, `energy`)
+    await tick()
+    expect(document.body.querySelector(`.portal-select-dropdown`)).toBeNull()
+    expect(on_select).toHaveBeenCalledWith(`volume`)
+    expect(get_trigger()?.textContent).toContain(`Energy`)
+    selected.current = `pressure`
+    await tick()
+    expect(get_trigger()?.textContent).toContain(`Pressure`)
     expect(get_trigger()?.getAttribute(`aria-expanded`)).toBe(`false`)
     void unmount(comp)
   })

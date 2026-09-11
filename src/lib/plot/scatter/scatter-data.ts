@@ -203,17 +203,15 @@ export const scatter_legend_rows = <Metadata>(
   series_idx: number
   label: string
   legend_group: string | undefined
-  legend_key?: string
+  legend_key: string
 }[] =>
   series.flatMap((data_series, series_idx) => {
     if (!data_series) return []
     const { legend_id, id: identifier, legend_group } = data_series
-    const key = legend_id ?? identifier
+    const key = legend_id ?? identifier ?? series_idx
     return {
       series_idx,
-      ...(key != null && {
-        legend_key: JSON.stringify([legend_id != null ? `legend` : `id`, typeof key, key]),
-      }),
+      legend_key: JSON.stringify([legend_id != null ? `legend` : `id`, typeof key, key]),
       label: scatter_series_label(data_series) ?? `Series ${series_idx + 1}`,
       legend_group,
     }

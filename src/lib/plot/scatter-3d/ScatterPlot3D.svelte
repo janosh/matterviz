@@ -41,6 +41,7 @@
     DISPLAY_DEFAULTS_3D,
   } from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
+  import { collect_3d_extents, compute_range, sample_surface } from './scene-coords'
 
   let {
     // Data props
@@ -169,6 +170,19 @@
   let resolved_y_axis = $derived({ label: `Y`, ...axis_defaults, ...y_axis })
   let resolved_z_axis = $derived({ label: `Z`, ...axis_defaults, ...z_axis })
   let resolved_display = $derived({ ...DISPLAY_DEFAULTS_3D, ...display })
+  // Sample bounds once for both the scene and controls.
+  const surface_samples = $derived(surfaces.flatMap(sample_surface))
+  const data_extents = $derived(collect_3d_extents(series, surface_samples))
+  const auto_ranges = $derived({
+    x: compute_range(data_extents.x),
+    y: compute_range(data_extents.y),
+    z: compute_range(data_extents.z),
+  })
+  const ranges = $derived({
+    x: compute_range(data_extents.x, x_axis.range),
+    y: compute_range(data_extents.y, y_axis.range),
+    z: compute_range(data_extents.z, z_axis.range),
+  })
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(
     typeof color_scale === `string`
@@ -225,21 +239,14 @@
       {show_controls}
       bind:controls_open
       {toggle_props}
-      pane_props={{
-        ...controls_pane_props,
-        // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
-        style: `--pane-z-index: var(--z-index-overlay-dialog, 100000002); ${
-          controls_pane_props?.style ?? ``
-        }`,
-      }}
-      bind:x_axis={() => resolved_x_axis, (value) => (x_axis = value)}
-      bind:y_axis={() => resolved_y_axis, (value) => (y_axis = value)}
-      bind:z_axis={() => resolved_z_axis, (value) => (z_axis = value)}
-      bind:display={() => resolved_display, (value) => (display = value)}
+      pane_props={controls_pane_props}
+      bind:x_axis
+      bind:y_axis
+      bind:z_axis
+      bind:display
       bind:camera_projection
       bind:auto_rotate
-      {series}
-      {surfaces}
+      {auto_ranges}
       children={controls_extra}
     />
   {/snippet}
@@ -251,6 +258,7 @@
         <ScatterPlot3DScene
           {series}
           {surfaces}
+          {ranges}
           {ref_lines}
           {ref_planes}
           x_axis={resolved_x_axis}

@@ -70,8 +70,31 @@
     for (const key of Object.keys(DEFAULTS.scatter[kind])) on_touch?.(`${kind}.${key}`, false)
   }
 
-  const point_style_settings = track_settings(() => styles.point ?? {})
-  const line_style_settings = track_settings(() => styles.line ?? {})
+  const style_settings = {
+    point: track_settings(() => styles.point ?? {}),
+    line: track_settings(() => styles.line ?? {}),
+  }
+  const style_sections = [
+    {
+      kind: `point`,
+      title: `Point style`,
+      rows: [
+        [`size`, `color`, `opacity`],
+        [`stroke_width`, `stroke_color`, `stroke_opacity`],
+      ],
+    },
+    { kind: `line`, title: `Line style`, rows: [[`width`, `color`, `dash`, `opacity`]] },
+  ] as const
+  const numeric_fields = {
+    size: { label: `Size`, min: 1, max: 20, step: 0.5 },
+    width: { label: `Width`, min: 0.5, max: 10, step: 0.5 },
+    opacity: { label: `Opacity`, min: 0, max: 1, step: 0.05 },
+    stroke_width: { label: `Stroke`, min: 0, max: 5, step: 0.1 },
+    stroke_opacity: { label: `Stroke opacity`, min: 0, max: 1, step: 0.05 },
+  }
+  const style_values = (
+    kind: `point` | `line`,
+  ): StyleOverrides[`point`] & StyleOverrides[`line`] => styles[kind]
 </script>
 
 <PlotControls
@@ -126,121 +149,62 @@
   {/snippet}
 
   {#snippet post_children()}
-    {#if has_any_points && styles.show_points}
-      <SettingsSection
-        title="Point style"
-        changed_keys={point_style_settings.changed_keys}
-        on_reset={reset_style(`point`)}
-        oninput={touch}
-        layout="flow"
-      >
-        {#if styles.point}
-          <div class="style-row">
-            {#if !has_size_data}
-              <NumberRangeInput
-                data-key="point.size"
-                min={1}
-                max={20}
-                step={0.5}
-                bind:value={styles.point.size}>Size</NumberRangeInput
-              >
-            {/if}
-            {#if !has_color_data}
-              <label data-key="point.color">
-                <span>Color</span>
-                <input type="color" bind:value={styles.point.color} />
-              </label>
-            {/if}
-            <NumberRangeInput
-              data-key="point.opacity"
-              min={0}
-              max={1}
-              step={0.05}
-              bind:value={styles.point.opacity}>Opacity</NumberRangeInput
-            >
-          </div>
-          <div class="style-row">
-            <NumberRangeInput
-              data-key="point.stroke_width"
-              min={0}
-              max={5}
-              step={0.1}
-              bind:value={styles.point.stroke_width}>Stroke</NumberRangeInput
-            >
-            <label data-key="point.stroke_color">
-              <span>Color</span>
-              <input type="color" bind:value={styles.point.stroke_color} />
-            </label>
-            <NumberRangeInput
-              data-key="point.stroke_opacity"
-              min={0}
-              max={1}
-              step={0.05}
-              bind:value={styles.point.stroke_opacity}>Stroke opacity</NumberRangeInput
-            >
-          </div>
-        {/if}
+    {#if has_multiple_series && ((has_any_points && styles.show_points) || (has_any_lines && styles.show_lines))}
+      <SettingsSection title="Style target" class="ctrl-line" layout="flow">
+        <label>
+          <span>Series</span>
+          <select bind:value={selected_series_idx}>
+            {#each series as srs, idx (idx)}
+              {#if srs}<option value={idx}>{srs.label || `Series ${idx + 1}`}</option>{/if}
+            {/each}
+          </select>
+        </label>
       </SettingsSection>
     {/if}
-
-    {#if has_any_lines && styles.show_lines}
-      <SettingsSection
-        title="Line style"
-        changed_keys={line_style_settings.changed_keys}
-        on_reset={reset_style(`line`)}
-        oninput={touch}
-        layout="flow"
-      >
-        {#if styles.line}
-          {#if has_multiple_series}
-            <div class="ctrl-line">
-              <label>
-                <span>Series</span>
-                <select bind:value={selected_series_idx}>
-                  {#each series as srs, idx (idx)}
-                    {#if srs}
-                      <option value={idx}>
-                        {srs.label ?? `Series ${idx + 1}`}
-                      </option>
+    {#each style_sections as { kind, title, rows } (kind)}
+      {@const style = style_values(kind)}
+      {#if kind === `point` ? has_any_points && styles.show_points : has_any_lines && styles.show_lines}
+        <SettingsSection
+          {title}
+          changed_keys={style_settings[kind].changed_keys}
+          on_reset={reset_style(kind)}
+          oninput={touch}
+        >
+          {#if style}
+            {#each rows as fields}
+              <div class="style-row">
+                {#each fields as key (key)}
+                  {#if (key !== `size` || !has_size_data) && (key !== `color` || !has_color_data)}
+                    {#if key === `color` || key === `stroke_color`}
+                      <label data-key={`${kind}.${key}`}>
+                        <span>Color</span>
+                        <input type="color" bind:value={style[key]} />
+                      </label>
+                    {:else if key === `dash`}
+                      <label data-key="line.dash">
+                        <span>Style</span>
+                        <select bind:value={style.dash}>
+                          <option value="solid">Solid</option>
+                          <option value="4,4">Dashed</option>
+                          <option value="2,2">Dotted</option>
+                          <option value="8,4,2,4">Dash-dot</option>
+                        </select>
+                      </label>
+                    {:else}
+                      {@const { label, ...limits } = numeric_fields[key]}
+                      <NumberRangeInput
+                        {...limits}
+                        data-key={`${kind}.${key}`}
+                        bind:value={style[key]}>{label}</NumberRangeInput
+                      >
                     {/if}
-                  {/each}
-                </select>
-              </label>
-            </div>
+                  {/if}
+                {/each}
+              </div>
+            {/each}
           {/if}
-          <div class="style-row">
-            <NumberRangeInput
-              data-key="line.width"
-              min={0.5}
-              max={10}
-              step={0.5}
-              bind:value={styles.line.width}>Width</NumberRangeInput
-            >
-            {#if !has_color_data}
-              <label data-key="line.color">
-                <span>Color</span>
-                <input type="color" bind:value={styles.line.color} />
-              </label>
-            {/if}
-            <label data-key="line.dash">
-              <span>Style</span>
-              <select bind:value={styles.line.dash}>
-                <option value="solid">Solid</option>
-                <option value="4,4">Dashed</option>
-                <option value="2,2">Dotted</option>
-                <option value="8,4,2,4">Dash-dot</option>
-              </select>
-            </label>
-            <NumberRangeInput
-              data-key="line.opacity"
-              min={0}
-              max={1}
-              step={0.05}
-              bind:value={styles.line.opacity}>Opacity</NumberRangeInput
-            >
-          </div>
-        {/if}
-      </SettingsSection>
-    {/if}
+        </SettingsSection>
+      {/if}
+    {/each}
   {/snippet}
 </PlotControls>

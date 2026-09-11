@@ -231,23 +231,25 @@ describe(`build_legend_data`, () => {
     ])
   })
 
-  test(`dedupes by legend_group::label across series and fills, keeping first occurrence`, () => {
+  test(`labels cannot merge independent series or hide a fill entry`, () => {
     const series: DataSeries[] = [
       { x: [1], y: [1], label: `dup`, point_style: { fill: `red` } },
-      { x: [2], y: [2], label: `dup`, point_style: { fill: `blue` } }, // same key -> dropped
-      { x: [3], y: [3], label: `dup`, legend_group: `g1` }, // different group -> kept
+      { x: [2], y: [2], label: `dup`, point_style: { fill: `blue` } },
+      { x: [3], y: [3], label: `dup`, legend_group: `g1` },
     ]
     const fills = [
-      { idx: 0, source_type: `fill_region`, source_idx: 0, label: `dup` }, // dup of series label
+      { idx: 0, source_type: `fill_region`, source_idx: 0, label: `dup` },
       { idx: 1, label: `hidden`, show_in_legend: false },
       { idx: 2, source_type: `error_band`, source_idx: 0 }, // no label -> dropped
       { idx: 3, source_type: `error_band`, source_idx: 1, label: `kept`, visible: false },
     ] as unknown as LegendFill[]
     const items = build_legend_data(series, fills, color_scale)
-    expect(items.map((item) => item.label)).toEqual([`dup`, `dup`, `kept`])
+    expect(items.map((item) => item.label)).toEqual([`dup`, `dup`, `dup`, `dup`, `kept`])
     expect(items[0]).toMatchObject({ series_idx: 0, display_style: { symbol_color: `red` } })
-    expect(items[1]).toMatchObject({ series_idx: 2, legend_group: `g1` })
-    expect(items[2]).toMatchObject({ item_type: `fill`, visible: false })
+    expect(items[1]).toMatchObject({ series_idx: 1, display_style: { symbol_color: `blue` } })
+    expect(items[2]).toMatchObject({ series_idx: 2, legend_group: `g1` })
+    expect(items[3]).toMatchObject({ item_type: `fill`, fill_idx: 0, visible: true })
+    expect(items[4]).toMatchObject({ item_type: `fill`, visible: false })
   })
 
   test(`markers control which styles appear; line color cascades`, () => {
