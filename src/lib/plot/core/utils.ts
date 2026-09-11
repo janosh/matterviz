@@ -1,4 +1,3 @@
-import type { Vec2 } from '$lib/math'
 import type { TweenOptions } from 'svelte/motion'
 
 // Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Returns a
@@ -21,22 +20,6 @@ export const resolve_line_tween = (
   (load.series > LINE_TWEEN.max_series || load.points > LINE_TWEEN.max_points
     ? { duration: 0 }
     : undefined)
-
-export function calc_auto_range<Item>(
-  items: Iterable<Item>,
-  get_values: (item: Item) => Iterable<number>,
-): Vec2 {
-  let [min_value, max_value] = [Infinity, -Infinity]
-  for (const item of items)
-    for (const value of get_values(item)) {
-      if (!Number.isFinite(value)) continue
-      min_value = Math.min(min_value, value)
-      max_value = Math.max(max_value, value)
-    }
-  if (min_value === Infinity) return [0, 1]
-  const padding = (max_value - min_value) * 0.05 || 0.5
-  return [min_value - padding, max_value + padding]
-}
 
 // Attachment factory reporting an element's rendered size (immediately, on resize, and zeroed
 // on unmount) without an extra measuring wrapper div. The element is passed along for callers

@@ -544,9 +544,28 @@ export async function export_trajectory_video(
     // (canvas dimensions include device pixel ratio and any resolution_multiplier)
     const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
 
-    // WebGPU canvases need automatic capture: a zero-rate stream can ignore requestFrame()
-    // and finalize as a header-only WebM even while trajectory frames render successfully.
-    stream = canvas.captureStream(fps)
+    // Record a stable 2D surface: direct WebGPU streams can contain no frames, and restoring
+    // the renderer's resolution must not resize the recording before its encoder finishes.
+    const capture_canvas = document.createElement(`canvas`)
+    capture_canvas.width = canvas.width
+    capture_canvas.height = canvas.height
+    const context = capture_canvas.getContext(`2d`)
+    if (!context) throw new Error(`Canvas 2D context not available for video export`)
+    const capture_step = async (idx: number): Promise<void> => {
+      on_progress?.((idx / total_frames) * 100)
+      await on_step?.(idx)
+      // Let reactive scene updates reach the renderer before copying its drawing buffer.
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      )
+      const view = scene_registry.get(canvas)
+      if (renderer && view) renderer.render(view.scene, view.camera)
+      context.clearRect(0, 0, capture_canvas.width, capture_canvas.height)
+      context.drawImage(canvas, 0, 0)
+    }
+    // A stream captures its initial canvas too; never give it an unpainted first frame.
+    if (total_frames > 0) await capture_step(0)
+    stream = capture_canvas.captureStream(fps)
     recorder = new MediaRecorder(stream, {
       mimeType: `video/webm;codecs=vp9`,
       videoBitsPerSecond: bitrate,
@@ -569,17 +588,7 @@ export async function export_trajectory_video(
     for (let idx = 0; idx < total_frames; idx++) {
       const frame_start = performance.now()
 
-      on_progress?.((idx / total_frames) * 100)
-
-      // Update trajectory step
-      if (on_step) await on_step(idx)
-
-      // Give the renderer two animation frames to display the updated step.
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      )
-
-      // Capture frame
+      if (idx > 0) await capture_step(idx)
       track.requestFrame?.()
 
       // Wait for remaining frame time to maintain consistent FPS

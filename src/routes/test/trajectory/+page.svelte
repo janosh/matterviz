@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state'
   import type { AnyStructure } from '$lib/structure'
   import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
   import { onMount } from 'svelte'
@@ -175,6 +176,7 @@
 
   let current_step = $state(0)
   let hydrated = $state(false)
+  const single_viewer = $derived(page.url.searchParams.has(`single-viewer`))
   onMount(() => {
     hydrated = true
   })
@@ -184,7 +186,9 @@
   Trajectory Component Test Page
 </h1>
 
-<Trajectory id="empty-state" show_controls="always" />
+{#if !single_viewer}
+  <Trajectory id="empty-state" show_controls="always" />
+{/if}
 
 <Trajectory
   id="loaded-trajectory"
@@ -195,57 +199,59 @@
   show_controls="always"
 />
 
-<Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />
+{#if !single_viewer}
+  <Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />
 
-<Trajectory
-  id="vertical-layout"
-  trajectory={test_trajectory}
-  layout="vertical"
-  show_controls="hover"
-  step_labels={[-1]}
-/>
+  <Trajectory
+    id="vertical-layout"
+    trajectory={test_trajectory}
+    layout="vertical"
+    show_controls="hover"
+    step_labels={[-1]}
+  />
 
-<Trajectory
-  id="no-controls"
-  trajectory={test_trajectory}
-  show_controls={false}
-  layout="horizontal"
-/>
+  <Trajectory
+    id="no-controls"
+    trajectory={test_trajectory}
+    show_controls={false}
+    layout="horizontal"
+  />
 
-<Trajectory
-  id="negative-step-labels"
-  trajectory={test_trajectory}
-  step_labels={-1}
-  layout="horizontal"
-/>
+  <Trajectory
+    id="negative-step-labels"
+    trajectory={test_trajectory}
+    step_labels={-1}
+    layout="horizontal"
+  />
 
-<Trajectory
-  id="array-step-labels"
-  trajectory={test_trajectory}
-  step_labels={[0, 2]}
-  layout="horizontal"
-/>
+  <Trajectory
+    id="array-step-labels"
+    trajectory={test_trajectory}
+    step_labels={[0, 2]}
+    layout="horizontal"
+  />
 
-<Trajectory
-  id="custom-controls"
-  trajectory={test_trajectory}
-  layout="horizontal"
-  show_controls="always"
->
-  {#snippet trajectory_controls({ current_step_idx, total_frames, on_step_change })}
-    <button onclick={() => on_step_change(0)}>First</button>
-    <span>Step {current_step_idx + 1} of {total_frames}</span>
-    <button onclick={() => on_step_change(total_frames - 1)}>Last</button>
-  {/snippet}
-</Trajectory>
+  <Trajectory
+    id="custom-controls"
+    trajectory={test_trajectory}
+    layout="horizontal"
+    show_controls="always"
+  >
+    {#snippet trajectory_controls({ current_step_idx, total_frames, on_step_change })}
+      <button onclick={() => on_step_change(0)}>First</button>
+      <span>Step {current_step_idx + 1} of {total_frames}</span>
+      <button onclick={() => on_step_change(total_frames - 1)}>Last</button>
+    {/snippet}
+  </Trajectory>
 
-<Trajectory id="constant-values" trajectory={constant_trajectory} layout="horizontal" />
+  <Trajectory id="constant-values" trajectory={constant_trajectory} layout="horizontal" />
 
-<Trajectory id="single-frame" trajectory={single_frame_trajectory} layout="horizontal" />
+  <Trajectory id="single-frame" trajectory={single_frame_trajectory} layout="horizontal" />
 
-<Trajectory
-  id="no-plot-skimming"
-  trajectory={test_trajectory}
-  layout="horizontal"
-  plot_skimming={false}
-/>
+  <Trajectory
+    id="no-plot-skimming"
+    trajectory={test_trajectory}
+    layout="horizontal"
+    plot_skimming={false}
+  />
+{/if}

@@ -103,11 +103,15 @@ test.describe(`FermiSurface smoke`, () => {
     await pane.getByRole(`button`, { name: `Reset camera to defaults` }).click()
     await expect(pane.getByLabel(`Projection`)).toHaveValue(`perspective`)
     for (const format of [`STL`, `OBJ`, `GLB`]) {
-      const downloaded = page.waitForEvent(`download`)
+      const extensions = format === `OBJ` ? [`obj`, `mtl`] : [format.toLowerCase()]
+      const downloads = extensions.map((extension) =>
+        page.waitForEvent(`download`, (download) =>
+          download.suggestedFilename().endsWith(`.${extension}`),
+        ),
+      )
       await pane.getByRole(`button`, { name: format, exact: true }).click()
-      const download = await downloaded
-      expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${format.toLowerCase()}$`))
-      expect(await download.failure()).toBeNull()
+      for (const download of await Promise.all(downloads))
+        expect(await download.failure()).toBeNull()
     }
   })
 

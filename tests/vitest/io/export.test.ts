@@ -7,6 +7,7 @@ import {
   export_trajectory_video,
   get_ffmpeg_conversion_command,
   renderer_registry,
+  scene_registry,
   svg_to_png_blob,
   svg_to_svg_string,
 } from '$lib/io/export'
@@ -542,11 +543,28 @@ describe(`export_trajectory_video`, () => {
       getVideoTracks: vi.fn().mockReturnValue([tracks[0]]),
       getTracks: vi.fn().mockReturnValue(tracks),
     }
-    const canvas = {
+    const { canvas, renderer } = make_canvas_with_renderer()
+    const view = { scene: {} as Scene, camera: {} as Camera }
+    scene_registry.set(canvas, view)
+    let current_step = -1
+    let rendered_step = -1
+    const captured_steps: number[] = []
+    renderer.render.mockImplementation(() => (rendered_step = current_step))
+    const capture_canvas = {
       captureStream: vi.fn().mockReturnValue(stream),
-      width: 800,
-      height: 600,
-    } as unknown as HTMLCanvasElement
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        clearRect: vi.fn(),
+        drawImage: (source: HTMLCanvasElement) => {
+          expect(source).toBe(canvas)
+          captured_steps.push(rendered_step)
+        },
+      }),
+    }
+    vi.spyOn(document, `createElement`).mockReturnValue(
+      capture_canvas as unknown as HTMLCanvasElement,
+    )
     const expected_error = new Error(
       outcome === `step-error` ? `step failed` : `download failed`,
     )
@@ -556,16 +574,19 @@ describe(`export_trajectory_video`, () => {
       })
     }
     if (outcome === `timeout`) vi.useFakeTimers()
-    const on_step = vi.fn()
-    if (outcome === `step-error`) on_step.mockRejectedValue(expected_error)
+    const on_step = vi.fn((step: number) => {
+      current_step = step
+      if (outcome === `step-error` && step === 1) throw expected_error
+    })
 
     const export_promise = export_trajectory_video(canvas, `test.webm`, {
       fps: 24,
-      total_frames: outcome === `step-error` ? 1 : 0,
+      total_frames: outcome === `success` || outcome === `step-error` ? 2 : 0,
       on_step,
     })
     if (outcome === `success`) {
       await expect(export_promise).resolves.toBeUndefined()
+      expect(renderer.render).toHaveBeenLastCalledWith(view.scene, view.camera)
     } else if (outcome === `timeout`) {
       const timeout_error = export_promise.catch((error: unknown) => error)
       await vi.advanceTimersByTimeAsync(5000)
@@ -577,7 +598,12 @@ describe(`export_trajectory_video`, () => {
     }
 
     expect(recorder_stop).toHaveBeenCalledOnce()
-    expect(canvas.captureStream).toHaveBeenCalledWith(24)
+    expect(capture_canvas.captureStream).toHaveBeenCalledWith(24)
+    expect([capture_canvas.width, capture_canvas.height]).toEqual([800, 600])
+    expect(captured_steps).toEqual(
+      outcome === `success` ? [0, 1] : outcome === `step-error` ? [0] : [],
+    )
+    expect(tracks[0].requestFrame).toHaveBeenCalledTimes(captured_steps.length)
     for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
   })
 })

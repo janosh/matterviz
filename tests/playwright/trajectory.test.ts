@@ -58,7 +58,9 @@ test.describe(`Trajectory Component`, () => {
     test_info.setTimeout(test_info.timeout + HYDRATION_TIMEOUT)
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
-    await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+    const query = test_info.tags.includes(`@single-viewer`) ? `?single-viewer` : ``
+    if (query) await page.setViewportSize({ width: 1500, height: 1400 })
+    await page.goto(`/test/trajectory${query}`, { waitUntil: `domcontentloaded` })
     await expect(trajectory_viewer).toBeVisible({ timeout: 30_000 })
     await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
       timeout: HYDRATION_TIMEOUT,
@@ -437,42 +439,73 @@ test.describe(`Trajectory Component`, () => {
     await expect(analysis).not.toContainText(`time_unit 'invalid' cannot be converted`)
   })
 
-  test(`tiny trajectory WebM export contains decodable video`, async ({ page }) => {
-    await page.setViewportSize({ width: 1500, height: 1400 })
-    await trajectory_viewer.scrollIntoViewIfNeeded()
-    await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
-    const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
-    await pane.getByRole(`button`, { name: `0.5x`, exact: true }).click()
-    const export_button = pane.getByRole(`button`, { name: `Download WebM`, exact: true })
-    const [download] = await Promise.all([
-      page.waitForEvent(`download`),
-      export_button.click(),
-    ])
-    const path = await download.path()
-    if (!path) throw new Error(`WebM download has no file`)
-    const video_data = await readFile(path)
-    expect(download.suggestedFilename()).toMatch(/\.webm$/)
-    const dimensions = await page.evaluate(
-      (encoded) =>
-        new Promise<number[]>((resolve, reject) => {
-          const video = document.createElement(`video`)
-          const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
-          const url = URL.createObjectURL(new Blob([bytes], { type: `video/webm` }))
-          video.addEventListener(`loadedmetadata`, () => {
-            URL.revokeObjectURL(url)
-            resolve([video.videoWidth, video.videoHeight])
-          })
-          video.addEventListener(`error`, () => {
-            URL.revokeObjectURL(url)
-            reject(new Error(video.error?.message ?? `WebM decode failed`))
-          })
-          video.src = url
-        }),
-      video_data.toString(`base64`),
-    )
-    expect(dimensions.every((value) => value > 0)).toBe(true)
-    await expect(export_button).toBeEnabled()
-  })
+  test(
+    `tiny trajectory WebM export contains decodable video`,
+    { tag: `@single-viewer` },
+    async ({ page }) => {
+      await trajectory_viewer.scrollIntoViewIfNeeded()
+      await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
+      const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
+      await pane.getByRole(`button`, { name: `0.5x`, exact: true }).click()
+      const export_button = pane.getByRole(`button`, { name: `Download WebM`, exact: true })
+      const [download] = await Promise.all([
+        page.waitForEvent(`download`),
+        export_button.click(),
+      ])
+      const path = await download.path()
+      if (!path) throw new Error(`WebM download has no file`)
+      const video_data = await readFile(path)
+      expect(download.suggestedFilename()).toMatch(/\.webm$/)
+      const decoded = await page.evaluate(
+        (encoded) =>
+          new Promise<{ width: number; height: number; color_span: number }>(
+            (resolve, reject) => {
+              const video = document.createElement(`video`)
+              const bytes = Uint8Array.from(atob(encoded), (character) =>
+                character.charCodeAt(0),
+              )
+              const url = URL.createObjectURL(new Blob([bytes], { type: `video/webm` }))
+              video.requestVideoFrameCallback(() => {
+                video.pause()
+                URL.revokeObjectURL(url)
+                const canvas = document.createElement(`canvas`)
+                canvas.width = video.videoWidth
+                canvas.height = video.videoHeight
+                const context = canvas.getContext(`2d`)
+                if (!context) return reject(new Error(`Canvas 2D context not available`))
+                context.drawImage(video, 0, 0)
+                const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+                let min_channel = 255
+                let max_channel = 0
+                for (let idx = 0; idx < pixels.length; idx++) {
+                  if (idx % 4 === 3) continue
+                  min_channel = Math.min(min_channel, pixels[idx])
+                  max_channel = Math.max(max_channel, pixels[idx])
+                }
+                resolve({
+                  width: video.videoWidth,
+                  height: video.videoHeight,
+                  color_span: max_channel - min_channel,
+                })
+              })
+              video.addEventListener(`error`, () => {
+                URL.revokeObjectURL(url)
+                reject(new Error(video.error?.message ?? `WebM decode failed`))
+              })
+              video.muted = true
+              video.src = url
+              video.play().catch(reject)
+            },
+          ),
+        video_data.toString(`base64`),
+      )
+      expect(decoded.width).toBeGreaterThan(0)
+      expect(decoded.height).toBeGreaterThan(0)
+      // A valid container holding only a blank frame is still a broken trajectory export.
+      expect(decoded.color_span).toBeGreaterThan(40)
+      await expect(export_button).toBeEnabled()
+    },
+  )
 
   test.describe(`layout and configuration options`, () => {
     test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
