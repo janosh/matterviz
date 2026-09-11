@@ -16,8 +16,8 @@ export default {
     timeout: 60_000,
   },
   use: {
-    // Use full Chromium for native local WebGPU, and headless-shell with SwiftShader on CI.
-    ...(is_ci ? {} : { channel: `chromium` as const }),
+    // Use Chromium's modern headless mode consistently in CI and local runs.
+    channel: `chromium`,
     // 3D failures on CI's software renderer say nothing as a bare log line. First retry only:
     // recording costs time on an already saturated box.
     trace: `on-first-retry`,

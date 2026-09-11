@@ -84,6 +84,11 @@ test.each([
     })
     vi.resetModules()
     const { default: config } = await import(`../../playwright.config`)
+    expect(config.use.channel).toBe(`chromium`)
+    for (const job of [`e2e-source`, `e2e-test-shards`]) {
+      const install = jobs[job].steps.find(({ run }) => run?.includes(`playwright install`))
+      expect(install?.run).toBe(`pnpm exec playwright install chromium --no-shell`)
+    }
     for (const argument of [
       `--use-webgpu-adapter=swiftshader`,
       `--use-vulkan=swiftshader`,
