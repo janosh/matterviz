@@ -451,7 +451,10 @@ test.describe(`Trajectory Component`, () => {
       const export_button = pane.getByRole(`button`, { name: `Download WebM`, exact: true })
       const [download] = await Promise.all([
         page.waitForEvent(`download`),
-        export_button.click(),
+        export_button.click().then(async () => {
+          await expect(export_button).toBeEnabled()
+          expect(await pane.locator(`.error-message`).allTextContents()).toEqual([])
+        }),
       ])
       const path = await download.path()
       if (!path) throw new Error(`WebM download has no file`)
@@ -504,7 +507,6 @@ test.describe(`Trajectory Component`, () => {
       expect(decoded.height).toBeGreaterThan(0)
       // A valid container holding only a blank frame is still a broken trajectory export.
       expect(decoded.color_span).toBeGreaterThan(40)
-      await expect(export_button).toBeEnabled()
     },
   )
 

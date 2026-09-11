@@ -70,15 +70,27 @@ test.each([
   }
 })
 
-test.each([`preview`, `source`, undefined])(
-  `browser mode %s preserves source-inspection coverage`,
-  async (mode) => {
+test.each([
+  [`preview`, true],
+  [`source`, true],
+  [undefined, false],
+] as const)(
+  `browser mode %s preserves source-inspection coverage and renderer selection (CI=%s)`,
+  async (mode, is_ci) => {
     vi.stubEnv(`MATTERVIZ_E2E_MODE`, mode)
+    vi.stubEnv(`CI`, String(is_ci))
     onTestFinished(() => {
       vi.unstubAllEnvs()
     })
     vi.resetModules()
     const { default: config } = await import(`../../playwright.config`)
+    for (const argument of [
+      `--use-webgpu-adapter=swiftshader`,
+      `--use-vulkan=swiftshader`,
+      `--use-angle=vulkan`,
+      `--disable-vulkan-surface`,
+    ])
+      expect(config.use.launchOptions.args.includes(argument), argument).toBe(is_ci)
     // These suites import /src/ modules directly or inspect live scene registries through helpers.
     const source_files = [`structure/host-tool`]
     for (const file of source_files) {

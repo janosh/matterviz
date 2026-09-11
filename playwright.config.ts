@@ -16,10 +16,7 @@ export default {
     timeout: 60_000,
   },
   use: {
-    // chrome-headless-shell (the headless default) pins ANGLE to swiftshader-webgl while WebGPU
-    // still asks for a real adapter, so the renderer never inits and 3D tests fail for reasons
-    // unrelated to the code. This channel is the full browser, which has a working WebGPU stack.
-    // CI is already green on the shell and forces a software adapter below, so leave it alone.
+    // Use full Chromium for native local WebGPU, and headless-shell with SwiftShader on CI.
     ...(is_ci ? {} : { channel: `chromium` as const }),
     // 3D failures on CI's software renderer say nothing as a bare log line. First retry only:
     // recording costs time on an already saturated box.
@@ -32,7 +29,16 @@ export default {
         `--enable-unsafe-webgpu`,
         `--enable-features=Vulkan`,
         `--enable-unsafe-swiftshader`,
-        ...(is_ci ? [`--use-webgpu-adapter=swiftshader`] : []),
+        // Use one software Vulkan driver for Dawn, ANGLE and Chromium's compositor.
+        // Selecting only the WebGPU adapter leaves the compositor on the system driver.
+        ...(is_ci
+          ? [
+              `--use-webgpu-adapter=swiftshader`,
+              `--use-vulkan=swiftshader`,
+              `--use-angle=vulkan`,
+              `--disable-vulkan-surface`,
+            ]
+          : []),
       ],
     },
   },
