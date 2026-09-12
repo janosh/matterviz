@@ -9,7 +9,7 @@ import { capitalize, symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
 import type { GizmoOptions } from '$lib/scene/gizmo'
 import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
-import { is_plain_record } from '$lib/utils'
+import { is_plain_object } from '$lib/utils'
 
 // One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration. A leaf
@@ -89,11 +89,12 @@ const VECTOR_COLOR_MODES = [
 ] as const
 export type VectorColorMode = (typeof VECTOR_COLOR_MODES)[number]
 
-// Per-key configuration for site vector layers (force, magmom, spin, etc.)
+// Per-key overrides for site vector layers (force, magmom, spin, etc.).
+// Omitted fields retain automatic visibility, color, and scale.
 export type VectorLayerConfig = {
-  visible: boolean
-  color: string | null // null = auto from palette
-  scale: number | null // null = use global scale only (multiplier of 1.0)
+  visible?: boolean
+  color?: string | null // null = auto from palette
+  scale?: number | null // null = use global scale only (multiplier of 1.0)
 }
 
 export const ATOM_COLOR_MODE_OPTIONS = [
@@ -1286,7 +1287,7 @@ export const is_valid_setting_value = (value: unknown, setting: SettingType): bo
   if (setting.enum) return typeof value === `string` && Object.hasOwn(setting.enum, value)
   if (typeof setting.value === `number`) return valid_number(value, setting)
   if (Array.isArray(setting.value)) return valid_array(value, setting, setting.value)
-  if (is_plain_record(setting.value)) return is_plain_record(value)
+  if (is_plain_object(setting.value)) return is_plain_object(value)
   return same_primitive_type(value, setting.value)
 }
 
@@ -1294,7 +1295,7 @@ export const is_valid_setting_value = (value: unknown, setting: SettingType): bo
 // which structuredClone rejects with DataCloneError.
 const clone_value = <Value>(value: Value): Value => {
   if (Array.isArray(value)) return value.map(clone_value) as Value
-  if (!is_plain_record(value)) return value
+  if (!is_plain_object(value)) return value
   return Object.fromEntries(
     Object.entries(value).map(([key, nested]) => [key, clone_value(nested)]),
   ) as Value
@@ -1324,7 +1325,7 @@ export type PartialSettings = DeepPartial<DefaultSettings>
 // Recurse wherever both sides are plain records; anything else the user supplies (a primitive,
 // array, null, Date, ...) replaces the default, and an undefined user value keeps it
 const merge_deep = <T>(defaults: T, user: unknown): T => {
-  if (!is_plain_record(defaults) || !is_plain_record(user)) {
+  if (!is_plain_object(defaults) || !is_plain_object(user)) {
     return (user === undefined ? defaults : user) as T
   }
   const merged: Record<string, unknown> = { ...defaults }

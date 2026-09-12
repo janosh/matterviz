@@ -1,6 +1,5 @@
 <script lang="ts">
   import { track_settings } from '$lib/controls'
-  import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import type { Orientation, PlotConfig, ViolinKind, ViolinSide, WhiskerMode } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
@@ -31,8 +30,6 @@
     show_mean?: boolean
     kind?: ViolinKind
     side?: ViolinSide
-    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
-    controls_open?: boolean
     children?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
   } = $props()
 
@@ -70,10 +67,9 @@
   <SettingsSection
     title="Box / violin"
     changed_keys={box_violin_settings.changed_keys}
-    on_reset={() => {
-      orientation = `vertical`
-      ;({ kind, side, whisker_mode, show_outliers, show_mean } = DEFAULTS.box)
-    }}
+    on_reset={() =>
+      ({ orientation, kind, side, whisker_mode, show_outliers, show_mean } =
+        box_violin_settings.snapshot())}
     layout="flow"
   >
     <div class="ctrl-line">

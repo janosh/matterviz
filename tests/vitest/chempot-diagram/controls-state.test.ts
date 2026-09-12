@@ -36,25 +36,26 @@ describe(`create_chempot_overrides`, () => {
     config = { formal_chempots: false, element_padding: 0 }
     expect(overrides.resolve(`formal_chempots`)).toBe(false)
     expect(overrides.resolve(`element_padding`)).toBe(0)
+    expect(overrides.changed_keys).toEqual([])
 
     // user override layer beats config
     overrides.set(`formal_chempots`, true)
     overrides.set(`element_padding`, 2.5)
     expect(overrides.resolve(`formal_chempots`)).toBe(true)
     expect(overrides.resolve(`element_padding`)).toBe(2.5)
-
-    // `values` snapshots every key at its resolved value (a SettingsSection's current_values)
-    expect(overrides.values).toEqual({
-      formal_chempots: true,
-      element_padding: 2.5,
-      color_mode: `arity`,
-      formulas_to_draw: [],
-    })
+    expect(overrides.changed_keys).toEqual([`formal_chempots`, `element_padding`])
 
     // reset clears all overrides at once, falling back to config
     overrides.reset()
     expect(overrides.resolve(`formal_chempots`)).toBe(false)
     expect(overrides.resolve(`element_padding`)).toBe(0)
+    expect(overrides.changed_keys).toEqual([])
+    overrides.set(`element_padding`, 0)
+    expect(overrides.changed_keys).toEqual([`element_padding`])
+    config = { element_padding: 1 }
+    overrides.reset()
+    expect(overrides.resolve(`element_padding`)).toBe(1)
+    expect(overrides.changed_keys).toEqual([])
   })
 
   test(`throws for keys without a default, accepts custom_defaults`, () => {

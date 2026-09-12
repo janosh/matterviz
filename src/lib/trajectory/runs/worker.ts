@@ -128,21 +128,15 @@ export const worker_run = (
   let next_id = 0
   let disposed_reason: Error | null = null
   type Pending = {
-    resolve: (value: unknown) => void
-    reject: (error: Error) => void
+    settle: (value?: unknown, error?: Error) => void
     on_progress?: (progress: ParseProgress) => void
-    signal?: AbortSignal
-    on_abort: () => void
+    cancel: (reason: Error) => void
   }
   const pending = new Map<number, Pending>()
   const dispose = (reason = disposed_error(`Worker-served trajectory`)): void => {
     if (disposed_reason) return
     disposed_reason = reason
-    for (const request of pending.values()) {
-      request.signal?.removeEventListener(`abort`, request.on_abort)
-      request.reject(reason)
-    }
-    pending.clear()
+    for (const request of pending.values()) request.settle(undefined, reason)
     properties.finish()
     dispose_run_port(port)
     release()
@@ -158,11 +152,15 @@ export const worker_run = (
     }
     const request = pending.get(reply.id)
     if (!request) return
-    if (reply.progress) return request.on_progress?.(reply.progress)
-    pending.delete(reply.id)
-    request.signal?.removeEventListener(`abort`, request.on_abort)
-    if (reply.error) request.reject(new Error(reply.error))
-    else request.resolve(reply.result)
+    if (reply.progress) {
+      try {
+        request.on_progress?.(reply.progress)
+      } catch (error) {
+        request.cancel(to_error(error))
+      }
+      return
+    }
+    request.settle(reply.result, reply.error ? new Error(reply.error) : undefined)
   })
   port.addEventListener(`messageerror`, () =>
     dispose(new Error(`Worker-served trajectory reply failed to deserialize`)),
@@ -179,8 +177,14 @@ export const worker_run = (
     if (signal?.aborted) return Promise.reject(to_error(signal.reason ?? abort_error()))
     return new Promise<Result>((resolve, reject) => {
       const identifier = next_id++
-      const on_abort = (): void => {
+      const settle = (value?: unknown, error?: Error): void => {
         if (!pending.delete(identifier)) return
+        signal?.removeEventListener(`abort`, on_abort)
+        if (error) reject(error)
+        else resolve(value as Result)
+      }
+      const cancel = (reason: Error): void => {
+        if (!pending.has(identifier)) return
         try {
           port.postMessage({
             id: next_id++,
@@ -190,15 +194,10 @@ export const worker_run = (
         } catch {
           // Aborting a request on a dead port changes nothing
         }
-        reject(to_error(signal?.reason ?? abort_error()))
+        settle(undefined, reason)
       }
-      pending.set(identifier, {
-        resolve: (value) => resolve(value as Result),
-        reject,
-        on_progress,
-        signal,
-        on_abort,
-      })
+      const on_abort = (): void => cancel(to_error(signal?.reason ?? abort_error()))
+      pending.set(identifier, { settle, on_progress, cancel })
       signal?.addEventListener(`abort`, on_abort, { once: true })
       try {
         port.postMessage({ id: identifier, method, args } satisfies RunPortRequest)

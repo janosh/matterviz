@@ -336,9 +336,8 @@ function two_step_routes(
   return routes
 }
 
-// Internal worker entry with progress reporting. Keep plan_synthesis as the deterministic public
-// kernel: progress is observational and never changes enumeration, scoring or result ordering.
-export function plan_synthesis_with_progress(
+// Progress is observational; it never changes enumeration, scoring or result ordering.
+export function plan_synthesis(
   request: SynthesisPlanRequest,
   options: { on_progress?: (progress: SynthesisPlanProgress) => void } = {},
 ): SynthesisPlan {
@@ -480,6 +479,3 @@ export function plan_synthesis_with_progress(
     warnings: ctx.warnings,
   }
 }
-
-export const plan_synthesis = (request: SynthesisPlanRequest): SynthesisPlan =>
-  plan_synthesis_with_progress(request)

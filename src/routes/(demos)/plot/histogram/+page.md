@@ -142,6 +142,8 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
 
 Compare distributions with vastly different scales using **dual y-axes**. Some distributions use the left axis, while others use the independent right y2-axis:
 
+Use `mode="single"` with `bind:selected_series_idx` to show one series at a time. The index refers to the original `series` array, so duplicate or missing labels work independently. If that series is hidden or removed, the chart displays the first visible series.
+
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'

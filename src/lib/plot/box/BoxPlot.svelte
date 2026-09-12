@@ -975,12 +975,11 @@
       bind:y_axis
       bind:y2_axis={y2_axis_prop}
       bind:display
-      auto_x_range={auto_ranges.x}
-      auto_x2_range={auto_ranges.x2}
-      auto_y_range={auto_ranges.y}
-      auto_y2_range={auto_ranges.y2}
-      has_x2_points={show_x2}
-      has_y2_points={show_y2}
+      auto_ranges={{
+        ...auto_ranges,
+        x2: show_x2 ? auto_ranges.x2 : undefined,
+        y2: show_y2 ? auto_ranges.y2 : undefined,
+      }}
       children={controls_extra}
     />
   {/snippet}

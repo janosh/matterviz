@@ -1101,22 +1101,27 @@ describe(`layout utility functions`, () => {
       ).toBe(AXIS_LABEL_HEIGHT)
     })
 
-    it(`measures the selected interactive trigger including unit and closed arrow`, () => {
+    it.each([
+      [`volume`, undefined, `Long volume property (Å³)`],
+      [undefined, `Choose a property`, `Choose a property`],
+      [`removed`, undefined, `Select axis…`],
+    ])(`measures interactive title key=%s label=%s`, (selected_key, label, expected) => {
       mock_text_measurement(6)
       const axis = {
         options: [
           { key: `energy`, label: `Energy`, unit: `eV` },
           { key: `volume`, label: `Long volume property`, unit: `Å³` },
         ],
-        selected_key: `volume`,
+        selected_key,
+        label,
       }
       const layout = resolve_axis_title_layout(axis)
       const plain_width = resolve_axis_title_layout({
-        label: `Long volume property (Å³)`,
+        label: expected,
       }).width
 
       expect(layout).toMatchObject({
-        label: `Long volume property (Å³)`,
+        label: expected,
         height: 24,
         interactive: true,
       })

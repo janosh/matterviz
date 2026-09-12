@@ -10,7 +10,7 @@ import { get_temp_filter_payload, get_valid_temperature } from './temperature'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
 // Per-key user overrides with `override ?? config ?? default` resolution; `reset()`
-// clears all overrides (the panes' "Reset defaults" buttons). Defaults come from
+// clears all overrides (the panes' "Clear overrides" buttons). Defaults come from
 // CHEMPOT_DEFAULTS unless overridden via custom_defaults; keys without either throw upfront.
 export function create_chempot_overrides<Key extends keyof ChemPotDiagramConfig>(
   config: () => ChemPotDiagramConfig,
@@ -39,11 +39,8 @@ export function create_chempot_overrides<Key extends keyof ChemPotDiagramConfig>
     reset: (): void => {
       overrides = {}
     },
-    // Every key at its resolved value (a SettingsSection's current_values)
-    get values(): { [P in Key]: NonNullable<ChemPotDiagramConfig[P]> } {
-      return Object.fromEntries(
-        keys.map((key) => [key, overrides[key] ?? config()[key] ?? defaults[key]]),
-      ) as { [P in Key]: NonNullable<ChemPotDiagramConfig[P]> }
+    get changed_keys(): Key[] {
+      return Object.keys(overrides) as Key[]
     },
   }
 }
@@ -157,8 +154,8 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     resolve,
     set,
     reset,
-    get values() {
-      return overrides.values
+    get changed_keys() {
+      return overrides.changed_keys
     },
     get formal_chempots() {
       return resolve(`formal_chempots`)

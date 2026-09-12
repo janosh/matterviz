@@ -27,12 +27,17 @@ describe(`pan_range_by_pixels`, () => {
     [`time is linear in ms`, [0, 1000], 100, 200, `time`, [500, 1500]],
     [`log shifts by one decade`, [1, 100], 100, 200, `log`, [10, 1000]],
     [`log shifts back a decade`, [10, 1000], -100, 200, `log`, [1, 100]],
+    [`log preserves tiny positive bounds`, [1e-20, 1e-18], 100, 200, `log`, [1e-19, 1e-17]],
     [`inverted linear stays inverted`, [100, 0], 50, 200, undefined, [75, -25]],
     [`degenerate range is a no-op`, [50, 50], 100, 200, undefined, [50, 50]],
   ])(`%s`, (_desc, range, pixel_x, span, type, expected) => {
     const result = pan_range_by_pixels(range, pixel_x, span, type)
-    expect(result[0]).toBeCloseTo(expected[0], 9)
-    expect(result[1]).toBeCloseTo(expected[1], 9)
+    for (const [idx, value] of expected.entries()) {
+      // Relative error matters for tiny domains; allow 128 eps for log/exp transforms.
+      expect(Math.abs(result[idx] - value)).toBeLessThanOrEqual(
+        128 * Number.EPSILON * Math.abs(value),
+      )
+    }
   })
 
   it(`log pan cannot cross zero, no matter how far`, () => {
@@ -46,6 +51,12 @@ describe(`pan_range_by_pixels`, () => {
   it(`log pan preserves the ratio between bounds (screen-uniform)`, () => {
     const [lower, upper] = pan_range_by_pixels([2, 50], 37, 200, `log`)
     expect(upper / lower).toBeCloseTo(25, 9)
+  })
+
+  it.each([-20_000, 20_000])(`rejects unrepresentable log pan (%s px)`, (pixels) => {
+    expect(() => pan_range_by_pixels([1e-300, 1e-290], pixels, 200, `log`)).toThrow(
+      /log.*range/i,
+    )
   })
 
   it(`log recovers a stale non-positive bound instead of NaN`, () => {
@@ -74,16 +85,24 @@ describe(`zoom_range_by_factor`, () => {
     [`linear zoom out about center`, [2.5, 7.5], 0.5, undefined, [0, 10]],
     [`log zoom in keeps geometric center`, [1, 10_000], 2, `log`, [10, 1000]],
     [`log zoom out`, [10, 1000], 0.5, `log`, [1, 10_000]],
+    [`log zoom preserves tiny bounds`, [1e-20, 1e-16], 2, `log`, [1e-19, 1e-17]],
     [`inverted linear stays inverted`, [10, 0], 2, undefined, [7.5, 2.5]],
   ])(`%s`, (_desc, range, factor, type, expected) => {
     const result = zoom_range_by_factor(range, factor, type)
-    expect(result[0]).toBeCloseTo(expected[0], 9)
-    expect(result[1]).toBeCloseTo(expected[1], 9)
+    for (const [idx, value] of expected.entries()) {
+      expect(Math.abs(result[idx] - value)).toBeLessThanOrEqual(
+        128 * Number.EPSILON * Math.abs(value),
+      )
+    }
   })
 
   it(`log zoom never produces non-positive bounds`, () => {
     const result = zoom_range_by_factor([0.001, 10], 0.01, `log`)
     expect(result.every((val) => Number.isFinite(val) && val > 0)).toBe(true)
+  })
+
+  it.each([0.0001, 0.001])(`rejects unrepresentable log zoom (factor=%s)`, (factor) => {
+    expect(() => zoom_range_by_factor([1e-20, 1e20], factor, `log`)).toThrow(/log.*range/i)
   })
 
   it(`arcsinh zoom out across zero stays finite and symmetric-ish`, () => {
@@ -343,6 +362,8 @@ describe(`axis_ranges_equal`, () => {
 describe(`resolve_axis_ranges`, () => {
   const auto = { x: [0, 10], x2: [0, 20], y: [0, 30], y2: [0, 40] }
   const no_overrides = { x: {}, x2: {}, y: {}, y2: {} }
+  const epoch = Date.UTC(2026, 0, 1)
+  const day = 86_400_000
 
   it(`merges explicit over auto per-bound; null/missing bounds fall back to auto`, () => {
     const resolved = resolve_axis_ranges(
@@ -352,6 +373,35 @@ describe(`resolve_axis_ranges`, () => {
     // x: full override, x2/y: one-sided pins, y2: full fallback
     expect(resolved).toEqual({ x: [1, 9], x2: [0, 5], y: [3, 30], y2: [0, 40] })
   })
+
+  it.each<[ScaleType, Vec2, [number | null, number | null], Vec2]>([
+    [`linear`, [0, 5], [100, null], [100, 110]],
+    [`linear`, [0, 5], [null, -100], [-110, -100]],
+    [`linear`, [0, 5], [5, null], [5, 10]],
+    [`linear`, [0, 5], [null, 0], [-5, 0]],
+    [`linear`, [0, 0], [0, null], [0, 1]],
+    [`linear`, [0, 0], [null, 0], [-1, 0]],
+    [`linear`, [0, 1], [1e20, null], [1e20, 1.1e20]],
+    [`linear`, [0, 5], [4.987, 0.123], [4.987, 0.123]],
+    [`log`, [1, 10], [100, null], [100, 1000]],
+    [`log`, [1, 10], [null, 0.01], [0.001, 0.01]],
+    [`log`, [1, 10], [10, 1], [10, 1]],
+    [`time`, [epoch, epoch + 1000], [epoch + day, null], [epoch + day, epoch + day + 1000]],
+    [`time`, [epoch, epoch + 1000], [null, epoch - day], [epoch - day - 1000, epoch - day]],
+    [`time`, [epoch, epoch], [epoch, null], [epoch, epoch + day]],
+    [`time`, [epoch, epoch], [null, epoch], [epoch - day, epoch]],
+  ])(
+    `orders one-sided %s bounds over %j with limits %j`,
+    (scale_type, data, range, expected) => {
+      const axis = { range, scale_type }
+      expect(
+        resolve_axis_ranges(
+          { x: axis, x2: axis, y: axis, y2: axis },
+          { x: data, x2: data, y: data, y2: data },
+        ),
+      ).toEqual({ x: expected, x2: expected, y: expected, y2: expected })
+    },
+  )
 
   it(`returns null when any resolved bound is non-finite`, () => {
     expect(resolve_axis_ranges(no_overrides, { ...auto, y: [0, NaN] })).toBeNull()

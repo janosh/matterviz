@@ -9,6 +9,7 @@
     sample_color_ramp,
   } from '$lib/plot/core/color-ramp'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
+  import { validate_log_range } from '$lib/plot/core/interactions'
   import { generate_arcsinh_ticks } from '$lib/plot/core/scales'
   import { observe_size } from '$lib/plot/core/utils'
   import {
@@ -18,7 +19,6 @@
   } from '$lib/plot/core/text-metrics'
   import type {
     AxisOption,
-    ColorBarDataLoaderFn,
     ColorBarScale,
     ColorScaleOption,
     Orientation,
@@ -36,14 +36,14 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    title = $bindable(),
-    scale = $bindable(SCALE_DEFAULTS.scheme),
+    title,
+    scale,
     bar_style,
     title_style,
     wrapper_style,
     tick_labels = 4,
     tick_format,
-    range = $bindable([0, 1]),
+    range = [0, 1],
     orientation = `horizontal`,
     snap_ticks = true,
     steps = 50,
@@ -52,11 +52,11 @@
     tick_side = `primary`,
     scale_type = `linear`,
     property_options,
-    selected_property_key = $bindable(),
-    data_loader,
+    selected_property_key,
+    loading = false,
     on_property_change,
     color_scale_options,
-    selected_color_scale_key = $bindable(),
+    selected_color_scale_key,
     on_color_scale_change,
     backdrop: backdrop_color,
     ...rest
@@ -84,11 +84,13 @@
     // Property selection (makes the title an interactive dropdown)
     property_options?: AxisOption[]
     selected_property_key?: string
-    data_loader?: ColorBarDataLoaderFn
-    on_property_change?: (key: string, range: Vec2) => void
-    // Color scale selection dropdown
+    // The caller owns loading and commits selected_property_key/range/title together.
+    loading?: boolean
+    on_property_change?: (key: string) => void
+    // Dropdown labels only; the caller supplies the committed color mapping through `scale`.
     color_scale_options?: ColorScaleOption[]
     selected_color_scale_key?: string
+    // The caller commits the selected key and `scale` together.
     on_color_scale_change?: (key: string) => void
     // Opaque surface behind the bar, used to resolve translucent scale colors.
     backdrop?: string
@@ -98,15 +100,17 @@
   const backdrop = resolve_backdrop(() => colorbar_node, {
     override: () => backdrop_color,
   })
-  let loading = $state(false) // property data fetch in flight
 
   const is_vertical = $derived(orientation === `vertical`)
-  const actual_title_side = $derived.by(() => {
-    if (title_side) return title_side
-    if (tick_side === `inside`) return `left`
-    if (is_vertical) return tick_side === `primary` ? `left` : `right`
-    return tick_side === `primary` ? `top` : `bottom`
+  const opposite_side = { top: `bottom`, bottom: `top`, left: `right`, right: `left` } as const
+  const outside_tick_side = $derived.by(() => {
+    if (tick_side === `inside`) return null
+    if (is_vertical) return tick_side === `primary` ? `right` : `left`
+    return tick_side === `primary` ? `bottom` : `top`
   })
+  const actual_title_side = $derived(
+    title_side || (outside_tick_side ? opposite_side[outside_tick_side] : `left`),
+  )
   const n_ticks = $derived(Array.isArray(tick_labels) ? tick_labels.length : tick_labels)
   const type_name = $derived(get_scale_type_name(scale_type))
 
@@ -115,17 +119,21 @@
   const tick_scale = $derived.by(() => {
     const percent = color_ramp_scale(scale_type, range, is_vertical ? [100, 0] : [0, 100])
     if (snap_ticks && !Array.isArray(tick_labels) && `nice` in percent) percent.nice(n_ticks)
+    if (type_name === `log`) validate_log_range(percent.domain() as Vec2)
     return percent
   })
+  const tick_domain = $derived(tick_scale.domain() as Vec2)
   const ticks = $derived.by((): number[] => {
     if (Array.isArray(tick_labels)) {
       return [...new Set(tick_labels.map(Number))].filter(Number.isFinite)
     }
-    const [lower, upper] = tick_scale.domain()
+    const [lower, upper] = tick_domain
     if (n_ticks <= 0) return []
     if (n_ticks === 1) return [lower]
     if (type_name === `arcsinh`) {
-      return generate_arcsinh_ticks(lower, upper, get_arcsinh_threshold(scale_type), n_ticks)
+      const threshold = get_arcsinh_threshold(scale_type)
+      const values = generate_arcsinh_ticks(lower, upper, threshold, n_ticks)
+      return lower > upper ? values.toReversed() : values
     }
     if (!snap_ticks) {
       // exactly n_ticks, evenly spaced in scale space
@@ -135,21 +143,25 @@
     if (type_name === `log`) {
       // integer powers of ten inside the niced domain (tolerance absorbs log10 round-off);
       // sub-decade domains with none fall back to the domain ends
-      const powers = d3_range(
-        Math.ceil(Math.log10(lower) - 1e-10),
-        Math.floor(Math.log10(upper) + 1e-10) + 1,
-      ).map((exponent) => 10 ** exponent)
-      return powers.length ? powers : [lower, upper]
+      const log_min = Math.log10(Math.min(lower, upper))
+      const log_max = Math.log10(Math.max(lower, upper))
+      const powers = d3_range(Math.ceil(log_min - 1e-10), Math.floor(log_max + 1e-10) + 1).map(
+        (exponent) => 10 ** exponent,
+      )
+      if (!powers.length) return [lower, upper]
+      return lower > upper ? powers.toReversed() : powers
     }
     return tick_scale.ticks(n_ticks)
   })
   $effect.pre(() => {
-    const [lower, upper] = tick_scale.domain()
-    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lower, upper] : range
+    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [...tick_domain] : range
   })
 
-  const ramp = $derived(resolve_color_ramp(scale, range, scale_type))
-  const gradient_stops = $derived(sample_color_ramp(ramp, scale_type, steps).join(`, `))
+  const ramp = $derived(resolve_color_ramp(scale ?? SCALE_DEFAULTS.scheme, range, scale_type))
+  // Sample the displayed domain without changing the caller's data-to-color mapping.
+  const gradient_stops = $derived(
+    sample_color_ramp({ ...ramp, domain: tick_domain }, scale_type, steps).join(`, `),
+  )
   // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
     try {
@@ -174,14 +186,15 @@
   let bar_px = $state(0)
   let tick_font = $state(DEFAULT_FONT_SPEC)
   let tick_spacing = $state(8) // label padding plus a 4px gap
+  const tick_metrics = $derived(
+    ticks.map((value) => {
+      const label = format_tick(value)
+      return { value, label, width: measure_text_line(label, tick_font).width }
+    }),
+  )
   // Hosts with a background need room for the centered labels beyond the gradient ends.
   const tick_label_width = $derived(
-    Math.max(
-      0,
-      ...ticks.map((value) => measure_text_line(format_tick(value), tick_font).width),
-    ) +
-      tick_spacing -
-      4,
+    Math.max(0, ...tick_metrics.map(({ width }) => width)) + tick_spacing - 4,
   )
   const observe_bar = observe_size<HTMLDivElement>(({ width }, node) => {
     bar_px = width
@@ -197,14 +210,14 @@
   })
   // Tick values are unique (deduped above, or generated), so they key the rendered labels
   const visible_ticks = $derived.by(() => {
-    const base = tick_side === `inside` ? ticks.slice(1, -1) : ticks
+    const base = tick_side === `inside` ? tick_metrics.slice(1, -1) : tick_metrics
     // explicit tick arrays are the caller's choice; vertical labels stack and never collide
     if (Array.isArray(tick_labels) || !bar_px || is_vertical || base.length <= 2) return base
     // Compare actual neighbors: alternating short and long labels often fit even when
     // budgeting the widest label for every tick would drop an arbitrary middle value.
-    const bounds = base.map((tick) => {
-      const center = (tick_scale(tick) * bar_px) / 100
-      const half_width = measure_text_line(format_tick(tick), tick_font).width / 2
+    const bounds = base.map(({ value, width }) => {
+      const center = (tick_scale(value) * bar_px) / 100
+      const half_width = width / 2
       return { left: center - half_width, right: center + half_width }
     })
     const last = base.length - 1
@@ -236,20 +249,9 @@
   )
   // Push the title away from outside ticks that sit on the same edge
   const actual_title_style = $derived.by(() => {
-    const outside_tick_side =
-      tick_side === `inside`
-        ? null
-        : is_vertical
-          ? tick_side === `primary`
-            ? `right`
-            : `left`
-          : tick_side === `primary`
-            ? `bottom`
-            : `top`
-    const opposite = { top: `bottom`, bottom: `top`, left: `right`, right: `left` } as const
     const overlap_margin =
       actual_title_side === outside_tick_side
-        ? `margin-${opposite[actual_title_side]}: var(--cbar-label-overlap-offset, 1em);`
+        ? `margin-${opposite_side[actual_title_side]}: var(--cbar-label-overlap-offset, 1em);`
         : ``
     const size_constraint = is_vertical_side
       ? `max-width: var(--cbar-label-max-width, 2em);`
@@ -262,47 +264,6 @@
     height: ${is_vertical ? `var(--cbar-height, 100%)` : `var(--cbar-height, auto)`};
     min-height: ${is_vertical ? `var(--cbar-min-height, 150px)` : `auto`};
     max-height: ${is_vertical ? `var(--cbar-max-height, 1000px)` : `none`}; ${wrapper_style ?? ``}`)
-
-  // Keep bindable selected keys valid so state matches the select's first-option fallback.
-  $effect(() => {
-    if (!property_options?.length) return
-    if (property_options.some((option) => option.key === selected_property_key)) return
-    selected_property_key = property_options[0].key
-  })
-  $effect(() => {
-    if (!color_scale_options?.length) return
-    if (color_scale_options.some((option) => option.key === selected_color_scale_key)) return
-    selected_color_scale_key = color_scale_options[0].key
-    scale = color_scale_options[0].scale
-  })
-
-  async function handle_property_change(new_key: string, prev_key?: string) {
-    if (!data_loader) return
-    // prev_key comes from PortalSelect since its binding updates before this callback
-    const prev = { title, range, selected_property_key: prev_key }
-    loading = true
-    try {
-      const result = await data_loader(new_key)
-      range = result.range
-      if (result.title !== undefined) title = result.title
-      on_property_change?.(new_key, result.range)
-    } catch (err) {
-      console.error(`ColorBar property change failed for ${new_key}:`, err)
-      ;({ selected_property_key, range, title } = prev)
-    } finally {
-      loading = false
-    }
-  }
-
-  function handle_color_scale_change(new_key: string, prev_key?: string) {
-    const opt = color_scale_options?.find((item) => item.key === new_key)
-    if (!opt) {
-      selected_color_scale_key = prev_key // keep key and scale in sync
-      return
-    }
-    scale = opt.scale
-    on_color_scale_change?.(new_key)
-  }
 </script>
 
 <div
@@ -318,9 +279,10 @@
       {#if property_options?.length}
         <PortalSelect
           options={property_options}
-          bind:selected_key={selected_property_key}
-          on_select={handle_property_change}
+          selected_key={selected_property_key}
+          on_select={on_property_change}
           disabled={loading}
+          placeholder={title ?? `Select property…`}
           class="property-select"
         />
         {#if loading}
@@ -335,9 +297,8 @@
       {#if color_scale_options?.length}
         <PortalSelect
           options={color_scale_options}
-          bind:selected_key={selected_color_scale_key}
-          on_select={handle_color_scale_change}
-          format_option={(opt) => opt.label}
+          selected_key={selected_color_scale_key}
+          on_select={on_color_scale_change}
           class="color-scale-select"
         />
       {/if}
@@ -352,15 +313,15 @@
       visible_ticks.length > 0 && tick_side !== `inside` && `tick-${tick_side}`,
     ]}
   >
-    {#each visible_ticks as tick (tick)}
-      {@const position_percent = tick_scale(tick)}
+    {#each visible_ticks as { value, label } (value)}
+      {@const position_percent = tick_scale(value)}
       <span
         class={[`tick-label`, orientation, `tick-${tick_side}`]}
         style:left={is_vertical ? undefined : `${position_percent}%`}
         style:top={is_vertical ? `${position_percent}%` : undefined}
-        style:color={tick_side === `inside` ? inside_tick_color(tick) : `inherit`}
+        style:color={tick_side === `inside` ? inside_tick_color(value) : `inherit`}
       >
-        {format_tick(tick)}
+        {label}
       </span>
     {/each}
   </div>

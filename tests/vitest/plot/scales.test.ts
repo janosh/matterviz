@@ -49,14 +49,16 @@ describe(`scales`, () => {
       [`linear`, [0, 100], [0, 500]],
       [`log`, [1, 1000], [0, 300]],
       [`log`, [0.1, 100], [50, 350]],
+      [`log`, [1e-20, 1e-10], [0, 100]],
+      [`log`, [1e-10, 1e-20], [0, 100]],
       [`arcsinh`, [-100, 100], [0, 500]],
       [`arcsinh`, [0, 1000], [0, 300]],
     ])(`%s scale`, (scale_type, domain, range) => {
       const scale = create_scale(scale_type as ScaleType, domain as Vec2, range as Vec2)
-      expect(scale.domain()).toEqual(
-        scale_type === `log` ? [Math.max(domain[0], math.LOG_EPS), domain[1]] : domain,
-      )
+      expect(scale.domain()).toEqual(domain)
       expect(scale.range()).toEqual(range)
+      expect(scale(domain[0])).toBe(range[0])
+      expect(scale(domain[1])).toBe(range[1])
     })
 
     test.each([
@@ -90,30 +92,107 @@ describe(`scales`, () => {
     test.each<[number[], ScaleType, number, boolean]>([
       [sample_values, `linear`, 0.05, false],
       [[1, 10, 100], `log`, 0.1, false],
+      [[1e-20, 1e-10], `log`, 0.1, false],
+      [[1e-20], `log`, 0.1, false],
+      [[0, 1e-30, 1e-20], `log`, 0.05, false],
+      [[-1, 1e-30, 1e-20], `log`, 0.05, false],
       [[new Date(2023, 0, 1).getTime(), new Date(2023, 11, 1).getTime()], `linear`, 0.1, true],
       [[42], `linear`, 0.1, false],
     ])(`pads %j on a %s scale`, (values, scale_type, padding, is_time) => {
       const range = nice_range(values, [null, null], scale_type, padding, is_time)
+      const domain = scale_type === `log` ? values.filter((value) => value > 0) : values
       expect(range).toHaveLength(2)
-      expect(range[0]).toBeLessThan(Math.min(...values))
-      expect(range[1]).toBeGreaterThan(Math.max(...values))
+      expect(range[0]).toBeLessThan(Math.min(...domain))
+      expect(range[1]).toBeGreaterThan(Math.max(...domain))
+      if (scale_type === `log`) expect(range[0]).toBeGreaterThan(0)
     })
 
-    test.each<[[number | null, number | null], number | undefined, number | undefined]>([
-      [[0, 10], 0, 10],
-      [[null, 1000], undefined, 1000],
-      [[0, null], 0, undefined],
-    ])(`respects explicit bounds %j`, (limits, lower, upper) => {
-      const range = nice_range(sample_values, limits, `linear`, 0.05)
+    test.each([0.09, 0.9, 9, 90])(`pads log singleton %s only once before nicing`, (value) => {
+      const upper = 10 ** Math.round(Math.log10(value))
+      expect(nice_range([value], [null, null], `log`, 0.05)).toEqual([upper / 10, upper])
+    })
+
+    test.each([
+      { values: [1e-300, 1e300], max: null },
+      { values: [1e-300, 1e300], max: 1e-301 },
+      { values: [1e308], max: null },
+    ])(
+      `rejects unrepresentable log ranges for $values with upper bound $max`,
+      ({ values, max }) => {
+        expect(() => nice_range(values, [null, max], `log`, 0.05)).toThrow(/log.*range/i)
+      },
+    )
+
+    test.each<[number | null, number | null]>([
+      [0, 10],
+      [0.123, 4.987],
+      [4.987, 0.123],
+      [null, 1000],
+      [0, null],
+    ])(`respects explicit bounds [%s, %s]`, (lower, upper) => {
+      const range = nice_range(sample_values, [lower, upper], `linear`, 0.05)
       expect(range).toHaveLength(2)
-      if (lower === undefined) expect(range[0]).toBeLessThan(1)
+      if (lower === null) expect(range[0]).toBeLessThan(1)
       else expect(range[0]).toBe(lower)
-      if (upper === undefined) expect(range[1]).toBeGreaterThanOrEqual(5)
+      if (upper === null) expect(range[1]).toBeGreaterThanOrEqual(5)
       else expect(range[1]).toBe(upper)
     })
 
     test(`empty input uses the unit range`, () => {
       expect(nice_range([], [null, null], `linear`, 0.1)).toEqual([0, 1])
+    })
+
+    test.each([3_600_000, 0])(
+      `crossed time limits preserve the data duration (%s ms), or use one day`,
+      (duration) => {
+        const epoch = Date.UTC(2026, 0, 1)
+        const day = 86_400_000
+        const values = [epoch, epoch + duration]
+        for (const scale_type of [`linear`, `time`] as const) {
+          expect(nice_range(values, [epoch + day, null], scale_type, 0.05, true)).toEqual([
+            epoch + day,
+            epoch + day + (duration || day),
+          ])
+          expect(nice_range(values, [null, epoch - day], scale_type, 0.05, true)).toEqual([
+            epoch - day - (duration || day),
+            epoch - day,
+          ])
+        }
+      },
+    )
+
+    test.each<{ values: number[]; limits: [number | null, number | null] }>([
+      { values: [0, 5], limits: [100, null] },
+      { values: [0, 5], limits: [null, -100] },
+      { values: [0, 5], limits: [5, null] },
+      { values: [0, 5], limits: [null, 0] },
+      { values: [0], limits: [0, null] },
+      { values: [0], limits: [null, 0] },
+      { values: [], limits: [100, null] },
+      { values: [], limits: [null, -100] },
+      { values: [1, 10], limits: [100.123, null] },
+      { values: [1, 10], limits: [null, 0.0123] },
+      { values: [1, 10], limits: [null, 1e-9] },
+      { values: [1, 10], limits: [null, 1e-20] },
+      { values: [1e-20, 1e-10], limits: [1e-9, null] },
+    ])(`keeps one-sided bounds ordered for $values and $limits`, ({ values, limits }) => {
+      for (const scale_type of [`linear`, `time`, `arcsinh`, `log`] as const) {
+        // Log limits must be positive; non-positive log bounds have separate coverage.
+        if (scale_type === `log` && limits.some((bound) => bound !== null && bound <= 0))
+          continue
+        const [lower, upper] = nice_range(
+          values,
+          limits,
+          scale_type,
+          0.05,
+          scale_type === `time`,
+        )
+        expect(Number.isFinite(lower) && Number.isFinite(upper)).toBe(true)
+        expect(lower).toBeLessThan(upper)
+        if (limits[0] !== null) expect(lower).toBe(limits[0])
+        if (limits[1] !== null) expect(upper).toBe(limits[1])
+        if (scale_type === `log`) expect(lower).toBeGreaterThan(0)
+      }
     })
 
     // a log axis given a non-positive bound (explicit negative min, all data <= 0) must still
@@ -158,16 +237,18 @@ describe(`scales`, () => {
         const finite_values = values.filter(
           (value): value is number => typeof value === `number` && Number.isFinite(value),
         )
+        const positive_values = finite_values.filter((value) => value > 0)
         expect(acc).toEqual({
           ...(finite_values.length > 0
             ? { min: Math.min(...finite_values), max: Math.max(...finite_values) }
             : {}),
           n_finite: finite_values.length,
+          ...(positive_values.length ? { min_positive: Math.min(...positive_values) } : {}),
         })
       }
       const acc = accumulate_extent(empty_extent(), [4, 8], 5)
       accumulate_extent(acc, [-1, 2])
-      expect(acc).toEqual({ min: -1, max: 8, n_finite: 4 })
+      expect(acc).toEqual({ min: -1, max: 8, min_positive: 2, n_finite: 4 })
 
       for (const scale_type of [`linear`, `log`, `arcsinh`] as const) {
         for (const padding of scale_type === `log` ? [0, 0.1] : [0, 0.05]) {
@@ -187,8 +268,7 @@ describe(`scales`, () => {
               [0, 10],
               [-5, null],
             ] as [number | null, number | null][]) {
-              // limits are niced too (log clamps 0 to LOG_EPS), so only finiteness is fixed; a
-              // log axis pinned below zero over non-positive data comes back as [LOG_EPS, 0]
+              // Non-positive log bounds are clamped, so only finiteness is fixed here.
               const [low, high] = nice_range(values, limits, scale_type, padding)
               expect(Number.isFinite(low) && Number.isFinite(high)).toBe(true)
             }
@@ -293,7 +373,7 @@ describe(`scales`, () => {
       expect(read_sizes).not.toHaveBeenCalled()
       const { color_extent, color_range } = collect_scale_ranges(series)
       expect(color_only).toEqual(color_extent)
-      expect(color_extent).toEqual({ min: -1, max: 9, n_finite: 3 })
+      expect(color_extent).toEqual({ min: -1, max: 9, min_positive: 3, n_finite: 3 })
       expect(color_range).toEqual([-1, 9])
       expect(collect_scale_ranges([{}]).color_range).toEqual([0, 1])
     })
@@ -351,12 +431,19 @@ describe(`scales`, () => {
         min: 1e-12,
         max: 1,
         ticks: 5,
-        expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1],
+        expected: [
+          1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1,
+        ],
       },
+      { min: 1e-20, max: 1e-18, ticks: 5, expected: [1e-20, 1e-19, 1e-18] },
     ])(`log ticks: $min to $max (ticks=$ticks)`, ({ min, max, ticks, expected }) => {
       const result = generate_log_ticks(min, max, ticks)
       expect(result).toHaveLength(expected.length)
-      result.forEach((tick, idx) => expect(tick).toBeCloseTo(expected[idx], 12))
+      result.forEach((tick, idx) =>
+        expect(Math.abs(tick - expected[idx])).toBeLessThanOrEqual(
+          32 * Number.EPSILON * expected[idx],
+        ),
+      )
     })
 
     test(`explicit tick arrays pass through untouched`, () => {

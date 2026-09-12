@@ -176,6 +176,7 @@
   .header-controls.always-visible,
   .chart-shell:hover .header-controls,
   .header-controls:focus-within,
+  .header-controls:has(:global(.pane-open)),
   .header-controls:has(:global([aria-expanded='true'])) {
     opacity: 1;
   }

@@ -1,4 +1,6 @@
 import type { PhaseData } from '$lib/convex-hull/types'
+import { get_default_gas_provider } from '$lib/convex-hull/gas-thermodynamics'
+import { compute_ternary_phase_diagram_async } from '$lib/phase-diagram/ternary/async-compute.svelte'
 import {
   compute_section,
   compute_ternary_phase_diagram,
@@ -8,8 +10,11 @@ import {
   format_reaction,
   prepare_diagram,
 } from '$lib/phase-diagram/ternary/compute'
-import type { TernaryPhaseDiagram } from '$lib/phase-diagram/ternary/types'
-import { beforeAll, describe, expect, test } from 'vitest'
+import type {
+  TernaryPhaseDiagram,
+  TernaryPhaseDiagramOptions,
+} from '$lib/phase-diagram/ternary/types'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { load_json, make_phase } from '../../setup'
 import { toy_elements, toy_entries, toy_temps } from './fixtures'
 
@@ -242,7 +247,7 @@ describe(`compute_ternary_phase_diagram`, () => {
     expect_evaluator_matches(entries, wide, [300, 499, 500, 700, 849, 851, 1100, 1101, 1500])
   })
 
-  test(`options: coarse grid without bisection, explicit range, progress, static data`, () => {
+  test(`options: coarse grid without bisection, explicit range, progress, static data`, async () => {
     const coarse = compute_ternary_phase_diagram(toy_entries, {
       elements: toy_elements,
       event_tolerance: 0,
@@ -259,6 +264,33 @@ describe(`compute_ternary_phase_diagram`, () => {
     expect(seen).toEqual([`1/3`, `2/3`, `3/3`])
     expect(narrow.events).toEqual([])
     expect(narrow.stability_windows[3]).toEqual([[500, 700]])
+    // Both main-thread routes deliver progress and reject cancellation before doing work.
+    for (const provider of [undefined, get_default_gas_provider()]) {
+      const on_progress = vi.fn()
+      const options: TernaryPhaseDiagramOptions = {
+        elements: toy_elements,
+        temperatures: [500, 600, 700],
+        t_range: [500, 700],
+        free_energy: { gas_config: { provider } },
+      }
+      const controller = new AbortController()
+      const cancelled = compute_ternary_phase_diagram_async(toy_entries, options, {
+        signal: controller.signal,
+        on_progress,
+      })
+      controller.abort()
+      await expect(cancelled).rejects.toMatchObject({ name: `AbortError` })
+      expect(on_progress).not.toHaveBeenCalled()
+      const result = await compute_ternary_phase_diagram_async(toy_entries, options, {
+        on_progress,
+      })
+      expect(result).toEqual(compute_ternary_phase_diagram(toy_entries, options))
+      expect(on_progress.mock.calls.map(([update]) => update)).toEqual([
+        { done: 1, total: 3 },
+        { done: 2, total: 3 },
+        { done: 3, total: 3 },
+      ])
+    }
     const frozen = compute_ternary_phase_diagram(
       toy_entries.map(
         ({ temperatures: _unused_param, free_energies: _unused_group, ...rest }) => rest,

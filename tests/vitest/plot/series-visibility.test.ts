@@ -69,14 +69,14 @@ describe(`legend toggles`, () => {
   test.each<[string, Partial<DataSeries>[], boolean[]]>([
     [`toggles a single series`, [{ visible: true }, { visible: true }], [false, true]],
     [
-      `toggles matching labels`,
+      `keeps matching labels independent`,
       [{ label: `A` }, { label: `B` }, { label: `A` }],
-      [false, true, false],
+      [false, true, true],
     ],
     [
-      `treats missing and empty legend groups alike`,
+      `does not use legend groups as series identities`,
       [{ label: `A` }, { label: `A`, legend_group: `` }, { label: `A`, legend_group: `B` }],
-      [false, false, true],
+      [false, true, true],
     ],
     [`shares an axis without units`, [{ visible: false }, {}], [true, true]],
     [
@@ -224,18 +224,21 @@ describe(`create_legend_visibility`, () => {
     vis.on_group_toggle(`group`, [0, 1])
     expect(visible()).toEqual([true, true, true])
   })
-  test(`explicit IDs with identical labels toggle and isolate independently`, () => {
-    const { vis, visible } = make_store([
-      { id: `a`, label: `Same`, x: [1], y: [2] },
-      { id: `b`, label: `Same`, x: [3], y: [4] },
-    ])
-    vis.on_toggle(0)
-    expect(visible()).toEqual([false, true])
-    vis.on_double_click(0)
-    expect(visible()).toEqual([true, false])
-    vis.on_double_click(0)
-    expect(visible()).toEqual([false, true])
-  })
+  test.each([false, true])(
+    `identical labels toggle and isolate independently (explicit IDs=%s)`,
+    (explicit_ids) => {
+      const { vis, visible } = make_store([
+        { id: explicit_ids ? `a` : undefined, label: `Same`, x: [1], y: [2] },
+        { id: explicit_ids ? `b` : undefined, label: `Same`, x: [3], y: [4] },
+      ])
+      vis.on_toggle(0)
+      expect(visible()).toEqual([false, true])
+      vis.on_double_click(0)
+      expect(visible()).toEqual([true, false])
+      vis.on_double_click(0)
+      expect(visible()).toEqual([false, true])
+    },
+  )
 
   test.each([`toggle`, `group`, `isolate`] as const)(
     `%s follows shared legend IDs through drawing replacement and reorder`,

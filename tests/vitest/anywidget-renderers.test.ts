@@ -465,6 +465,7 @@ describe(`writeback wiring`, () => {
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `structure+scatter`, `scatter`, `structure`],
     [`scatter_plot`, `controls_open`, false, true, false],
+    [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
   ] as const)(
     `%s %s round-trips and falls back when cleared`,

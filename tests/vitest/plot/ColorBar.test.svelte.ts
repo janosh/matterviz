@@ -1,14 +1,20 @@
 import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
 import type { Vec2 } from '$lib'
-import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
+import type {
+  AxisOption,
+  ColorBarScale,
+  ColorScaleOption,
+  ScaleType,
+} from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
-import { fromStore, writable } from 'svelte/store'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'
 
-const mount_bar = (props: Record<string, unknown>) =>
-  mount(ColorBar, { target: document.body, props })
+const mount_bar = (props: Record<string, unknown>) => {
+  const component = mount(ColorBar, { target: document.body, props })
+  onTestFinished(() => unmount(component))
+}
 const tick_spans = () => [
   ...document.querySelectorAll<HTMLElement>(`.colorbar > div.bar > span.tick-label`),
 ]
@@ -65,12 +71,19 @@ describe(`ColorBar layout`, () => {
     expect(tick_spans()[0].classList).toContain(`tick-secondary`)
   })
 
-  test(`rejects invalid scale input`, () => {
+  test(`rejects invalid scales`, () => {
     // Bare scheme names were silently prefixed before; only the canonical `interpolate*`
     // name resolves now. The cast exercises the runtime guard JavaScript callers hit.
     const scale = `Viridis` as ColorBarScale
     expect(() => mount_bar({ scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
   })
+
+  test.each([{ range: [1e308, 1.1e308] }, { range: [Number.MIN_VALUE, 1e-300] }])(
+    `rejects unrepresentable log tick domains for $range`,
+    ({ range }) => {
+      expect(() => mount_bar({ range, scale_type: `log` })).toThrow(/log.*range/i)
+    },
+  )
 
   // Labels are absolutely positioned, so without a gutter they overflow into neighbors.
   test.each([
@@ -88,22 +101,31 @@ describe(`ColorBar layout`, () => {
   // The title row defaults to the side opposite the ticks; inside ticks leave it on the
   // row axis. An explicit title_side wins and lands as a class on the title row.
   test.each([
-    [`horizontal`, `primary`, undefined, `column`],
-    [`horizontal`, `secondary`, undefined, `column-reverse`],
-    [`vertical`, `primary`, undefined, `row`],
-    [`vertical`, `secondary`, undefined, `row-reverse`],
-    [`horizontal`, `inside`, undefined, `row`],
-    [`vertical`, `inside`, undefined, `row`],
-    [`horizontal`, `primary`, `top`, `column`],
-    [`vertical`, `primary`, `right`, `row-reverse`],
+    [`horizontal`, `primary`, undefined, `column`, null],
+    [`horizontal`, `secondary`, undefined, `column-reverse`, null],
+    [`vertical`, `primary`, undefined, `row`, null],
+    [`vertical`, `secondary`, undefined, `row-reverse`, null],
+    [`horizontal`, `inside`, undefined, `row`, null],
+    [`vertical`, `inside`, undefined, `row`, null],
+    [`horizontal`, `primary`, `top`, `column`, null],
+    [`horizontal`, `primary`, `bottom`, `column-reverse`, `top`],
+    [`horizontal`, `secondary`, `top`, `column`, `bottom`],
+    [`vertical`, `primary`, `right`, `row-reverse`, `left`],
+    [`vertical`, `secondary`, `left`, `row`, `right`],
   ] as const)(
     `orientation=%s tick_side=%s title_side=%s -> flex-direction %s`,
-    (orientation, tick_side, title_side, flex_dir) => {
+    (orientation, tick_side, title_side, flex_dir, margin_side) => {
       mount_bar({ title: `Title`, orientation, tick_side, title_side })
       expect(doc_query(`.colorbar`).style.flexDirection).toBe(flex_dir)
       expect(doc_query(`.colorbar .label`).textContent).toBe(`Title`)
+      const title_row = doc_query(`.colorbar .title-row`)
+      if (margin_side) {
+        expect(title_row.style.getPropertyValue(`margin-${margin_side}`)).toBe(
+          `var(--cbar-label-overlap-offset, 1em)`,
+        )
+      } else expect(title_row.style.cssText).not.toContain(`margin-`)
       if (title_side) {
-        expect(doc_query(`.colorbar .title-row`).classList.contains(title_side)).toBe(true)
+        expect(title_row.classList.contains(title_side)).toBe(true)
       }
     },
   )
@@ -169,16 +191,8 @@ describe(`ColorBar tick_side='inside'`, () => {
 
 describe(`ColorBar tick labels`, () => {
   test(`updates the formatter when switching between numeric, date, and default labels`, async () => {
-    const selected_format = writable<string | undefined>(undefined)
-    const format_state = fromStore(selected_format)
-    mount_bar({
-      range: [0, 1],
-      tick_labels: 3,
-      snap_ticks: false,
-      get tick_format() {
-        return format_state.current
-      },
-    })
+    const state = $state<{ tick_format?: string }>({ tick_format: undefined })
+    mount_bar(bind_props({ range: [0, 1], tick_labels: 3, snap_ticks: false }, state))
     const label_widths: number[] = []
     const epoch_year = String(new Date(0).getFullYear())
     for (const [spec, expected] of [
@@ -188,7 +202,7 @@ describe(`ColorBar tick labels`, () => {
       [`.0%`, [`0%`, `50%`, `100%`]],
       [undefined, [`0`, `0.5`, `1`]],
     ] as const) {
-      selected_format.set(spec)
+      state.tick_format = spec
       await tick()
       expect(tick_texts()).toEqual(expected)
       label_widths.push(
@@ -291,50 +305,64 @@ describe(`ColorBar tick labels`, () => {
     expect(texts[4]).toBe(`23:59`)
   })
 
-  test.each([
-    {
-      scale_type: `log`,
-      range: [1, 1000],
-      ticks: [`1`, `10`, `100`, `1k`],
-      left: [0, 100 / 3, 200 / 3, 100],
-    },
+  test.each<[ScaleType, Vec2, string[]]>([
+    [`log`, [1, 1000], [`1`, `10`, `100`, `1k`]],
     // nice() widens the log domain to whole decades: [0.05, 3] -> [0.01, 10]
-    {
-      scale_type: `log`,
-      range: [0.05, 3],
-      ticks: [`0.01`, `0.1`, `1`, `10`],
-      left: [0, 100 / 3, 200 / 3, 100],
-    },
-    {
-      scale_type: `linear`,
-      range: [100, 0],
-      ticks: [`100`, `80`, `60`, `40`, `20`, `0`],
-      left: [0, 20, 40, 60, 80, 100],
-    },
+    [`log`, [0.05, 3], [`0.01`, `0.1`, `1`, `10`]],
+    [`linear`, [100, 0], [`100`, `80`, `60`, `40`, `20`, `0`]],
     // positive bounds below the LOG_EPS axis floor (1e-9) keep their full span
-    {
-      scale_type: `log`,
-      range: [1e-12, 1e-6],
-      ticks: [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `0.000001`],
-      left: [0, 100 / 6, 200 / 6, 50, 400 / 6, 500 / 6, 100],
-    },
+    [`log`, [1e-12, 1e-6], [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `0.000001`]],
     // a descending log range runs high-to-low instead of collapsing to one point
-    {
-      scale_type: `log`,
-      range: [1000, 1],
-      ticks: [`1k`, `1`],
-      left: [0, 100],
-    },
-  ] as const)(`$scale_type ticks for range $range`, ({ scale_type, range, ticks, left }) => {
-    mount_bar({ range: [...range], scale_type, tick_labels: 4, snap_ticks: true })
+    [`log`, [1000, 1], [`1k`, `100`, `10`, `1`]],
+  ])(`%s ticks for range %j`, (scale_type, range, ticks) => {
+    mount_bar({ range, scale_type, tick_labels: 4, snap_ticks: true })
     expect(tick_texts()).toEqual(ticks)
     tick_spans().forEach((span, idx) =>
-      expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(left[idx], 6),
+      expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(
+        (100 * idx) / (ticks.length - 1),
+        6,
+      ),
     )
   })
+
+  test.each([`log`, `arcsinh`] as const)(
+    `descending %s ticks stay in visual order after measurement and inside the bar`,
+    async (scale_type) => {
+      const state = $state<{ tick_side: `primary` | `inside` }>({ tick_side: `primary` })
+      mount_bar(bind_props({ range: [1000, 1], scale_type, tick_labels: 4 }, state))
+      await tick()
+      expect(tick_texts()).toEqual([`1k`, `100`, `10`, `1`])
+      state.tick_side = `inside`
+      await tick()
+      expect(tick_texts()).toEqual([`100`, `10`])
+    },
+  )
 })
 
 describe(`ColorBar gradient`, () => {
+  test.each([
+    { range: [1, 9], expected: [0, 5, 10] },
+    { range: [9, 1], expected: [10, 5, 0] },
+  ] satisfies { range: Vec2; expected: number[] }[])(
+    `samples the explicit mapping over the displayed domain despite palette options for $range`,
+    ({ range, expected }) => {
+      const color = (value: number) => `rgb(${20 * value}, 0, 0)`
+      mount_bar({
+        range,
+        tick_labels: 4,
+        steps: 3,
+        scale: { fn: color },
+        color_scale_options,
+        selected_color_scale_key: `plasma`,
+      })
+      const labels = tick_texts()
+      expect([labels[0], labels.at(-1)]).toEqual([expected[0], expected.at(-1)].map(String))
+      expect(doc_query(`.colorbar .bar`).getAttribute(`style`)).toContain(
+        expected.map(color).join(`, `),
+      )
+    },
+  )
+
   test(`log gradient spans positive bounds below LOG_EPS`, () => {
     mount_bar({ range: [1e-12, 1e-6], scale_type: `log`, steps: 3, tick_labels: 4 })
     const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
@@ -343,7 +371,7 @@ describe(`ColorBar gradient`, () => {
   })
 
   test(`descending range reverses the gradient and reports the niced range`, async () => {
-    const state = { nice_range: [0, 1] as Vec2 }
+    const state = $state({ nice_range: [0, 1] as Vec2 })
     mount_bar(bind_props({ range: [99, 0] as Vec2, tick_labels: 4, steps: 3 }, state))
     await tick()
     expect(state.nice_range).toEqual([100, 0])
@@ -355,10 +383,17 @@ describe(`ColorBar gradient`, () => {
 
   test(`samples a custom interpolator once per step across [0, 1]`, () => {
     const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`)
-    mount_bar({ scale: { interpolator: custom_scale }, range: [0, 1] }) // default steps=50
+    mount_bar({
+      scale: { interpolator: custom_scale },
+      range: [0, 1],
+      color_scale_options: [{ key: `custom`, label: `Custom` }],
+      selected_color_scale_key: `custom`,
+    }) // default steps=50
     expect(custom_scale).toHaveBeenCalledTimes(50)
     expect(custom_scale).toHaveBeenNthCalledWith(1, expect.closeTo(0))
     expect(custom_scale).toHaveBeenNthCalledWith(50, expect.closeTo(1))
+    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(`rgb(255, 0, 0)`)
+    expect(doc_query(`.color-scale-select`).textContent).toContain(`Custom`)
   })
 })
 
@@ -370,28 +405,24 @@ const property_options: AxisOption[] = [
 ]
 
 const color_scale_options: ColorScaleOption[] = [
-  { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
-  { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
-  { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
+  { key: `viridis`, label: `Viridis` },
+  { key: `plasma`, label: `Plasma` },
+  { key: `inferno`, label: `Inferno` },
 ]
 
 describe(`ColorBar Interactive Selects`, () => {
-  afterEach(() => {
-    document.body
-      .querySelectorAll(`.portal-select-dropdown`)
-      .forEach((element) => element.remove())
-  })
-
   test.each([
     [{ property_options, selected_property_key: `energy` }, `Energy (eV)`, undefined],
-    [{ property_options }, `Energy (eV)`, undefined],
+    [{ property_options }, `Static`, undefined],
+    [{ property_options, selected_property_key: `missing` }, `Static`, undefined],
     [{ color_scale_options, selected_color_scale_key: `viridis` }, undefined, `Viridis`],
-    [{ color_scale_options }, undefined, `Viridis`],
+    [{ color_scale_options }, undefined, `Select…`],
+    [{ color_scale_options, selected_color_scale_key: `missing` }, undefined, `Select…`],
     [{}, undefined, undefined],
   ] as const)(
     `renders controls and static title for %j`,
     (props, property_label, scale_label) => {
-      const component = mount_bar({ ...props, title: `Static`, range: [0, 10] })
+      mount_bar({ ...props, title: `Static`, range: [0, 10] })
       for (const [selector, expected] of [
         [`button.property-select`, property_label],
         [`button.color-scale-select`, scale_label],
@@ -404,47 +435,83 @@ describe(`ColorBar Interactive Selects`, () => {
       const static_label = document.querySelector(`.title-row > .label`)
       if (property_label) expect(static_label).toBeNull()
       else expect(static_label?.textContent).toBe(`Static`)
-      void unmount(component)
     },
   )
 
-  test(`accepts custom interpolators in color scale options`, async () => {
-    const interpolator = vi.fn(() => `rgb(1, 2, 3)`)
-    const component = mount_bar({
-      color_scale_options: [{ key: `custom`, label: `Custom`, scale: { interpolator } }],
-      range: [0, 10],
-    })
-    await tick()
-    expect(interpolator).toHaveBeenCalled()
-    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(`rgb(1, 2, 3)`)
-    void unmount(component)
-  })
-
-  test(`resets stale selected keys to valid options`, async () => {
-    const state = {
+  test(`property selection reports intent and loading without mutating caller data`, async () => {
+    const state = $state({
       selected_property_key: `energy`,
-      selected_color_scale_key: `viridis`,
-    }
-    const component = mount_bar(
-      bind_props(
-        {
-          property_options: [{ key: `band_gap`, label: `Band Gap`, unit: `eV` }],
-          color_scale_options: [
-            { key: `magma`, label: `Magma`, scale: `interpolateMagma` },
-          ] satisfies ColorScaleOption[],
-        },
-        state,
-      ),
-    )
-
+      range: [0, 10] as Vec2,
+      loading: false,
+    })
+    const on_property_change = vi.fn()
+    mount_bar(bind_props({ property_options, on_property_change }, state))
     await tick()
-    expect(state.selected_property_key).toBe(`band_gap`)
-    expect(state.selected_color_scale_key).toBe(`magma`)
-    expect(document.body.querySelector(`.bar`)?.getAttribute(`style`)).toContain(
-      d3_sc.interpolateMagma(0),
-    )
-    void unmount(component)
+    const trigger = doc_query<HTMLButtonElement>(`.property-select`)
+    trigger.click()
+    await tick()
+    const volume_option = [
+      ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
+    ].find((option) => option.textContent?.includes(`Volume`))
+    if (!volume_option) throw new Error(`Missing volume option`)
+    volume_option.click()
+    await tick()
+    expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
+    expect(trigger.textContent).toContain(`Energy`)
+    expect(state.range).toEqual([0, 10])
+    state.loading = true
+    await tick()
+    expect(trigger.disabled).toBe(true)
+    Object.assign(state, { selected_property_key: `volume`, range: [10, 20], loading: false })
+    await tick()
+    expect(trigger.disabled).toBe(false)
+    expect(trigger.textContent).toContain(`Volume`)
+    expect(tick_texts()).toContain(`20`)
   })
 
-  // Note: data_loader interaction tests (spinner, rollback) need Playwright e2e.
+  test.each([false, true])(
+    `palette selection waits for the caller to commit (function scale: %s)`,
+    async (function_scale) => {
+      const state = $state({
+        selected_color_scale_key: `plasma`,
+        color_scale_options,
+        scale: function_scale ? { fn: d3_sc.interpolatePlasma } : `interpolatePlasma`,
+      })
+      const on_color_scale_change = vi.fn()
+      mount_bar(bind_props({ on_color_scale_change, steps: 3 }, state))
+      await tick()
+      const trigger = doc_query<HTMLButtonElement>(`.color-scale-select`)
+      const initial_gradient = doc_query(`.bar`).getAttribute(`style`)
+      expect(trigger.textContent).toContain(`Plasma`)
+      expect(initial_gradient).toContain(d3_sc.interpolatePlasma(0))
+      trigger.click()
+      await tick()
+      const inferno_option = [
+        ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
+      ].find((option) => option.textContent?.includes(`Inferno`))
+      if (!inferno_option) throw new Error(`Missing inferno option`)
+      inferno_option.click()
+      await tick()
+      expect(on_color_scale_change).toHaveBeenCalledExactlyOnceWith(`inferno`)
+      expect(state.selected_color_scale_key).toBe(`plasma`)
+      expect(trigger.textContent).toContain(`Plasma`)
+      expect(doc_query(`.bar`).getAttribute(`style`)).toBe(initial_gradient)
+
+      Object.assign(state, {
+        selected_color_scale_key: `inferno`,
+        scale: function_scale ? { fn: d3_sc.interpolateInferno } : `interpolateInferno`,
+      })
+      await tick()
+      expect(trigger.textContent).toContain(`Inferno`)
+      expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateInferno(0))
+      Object.assign(state, {
+        selected_color_scale_key: `inferno`,
+        color_scale_options: [{ key: `inferno`, label: `Updated` }],
+        scale: function_scale ? { fn: d3_sc.interpolateMagma } : `interpolateMagma`,
+      })
+      await tick()
+      expect(doc_query(`.color-scale-select`).textContent).toContain(`Updated`)
+      expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateMagma(0))
+    },
+  )
 })

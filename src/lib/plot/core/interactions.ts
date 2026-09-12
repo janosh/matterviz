@@ -121,23 +121,31 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
 // metric (the space where equal pixel steps are equal steps; identity for
 // linear/time). Pan and pinch must be uniform in *screen* space - doing the math
 // linearly on a log axis stretches one end of the view and shifts past zero into
-// an all-NaN domain. log clamps at LOG_EPS so a non-positive bound (stale explicit
-// range) recovers instead of propagating -Infinity.
-function axis_transform(scale_type: ScaleType | undefined): {
-  to: (val: number) => number
-  from: (val: number) => number
+// an all-NaN domain. Non-positive log bounds recover at LOG_EPS; positive values retain
+// their scale however small.
+export function axis_transform(scale_type?: ScaleType): {
+  forward: (val: number) => number
+  inverse: (val: number) => number
 } {
   const name = get_scale_type_name(scale_type)
   if (name === `log`) {
-    return { to: (val) => Math.log(Math.max(val, LOG_EPS)), from: Math.exp }
+    return { forward: (val) => Math.log(val > 0 ? val : LOG_EPS), inverse: Math.exp }
   }
   if (name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    const target = (val: number) => Math.asinh(val / threshold)
-    const from = (val: number) => Math.sinh(val) * threshold
-    return { to: target, from }
+    return {
+      forward: (val) => Math.asinh(val / threshold),
+      inverse: (val) => Math.sinh(val) * threshold,
+    }
   }
-  return { to: (val) => val, from: (val) => val }
+  return { forward: (val) => val, inverse: (val) => val }
+}
+
+// Underflow to zero is just as invalid for a log axis as overflow to Infinity.
+export function validate_log_range(range: Vec2): Vec2 {
+  if (range.some((value) => !Number.isFinite(value) || value <= 0))
+    throw new RangeError(`Cannot represent logarithmic range [${range.join(`, `)}]`)
+  return range
 }
 
 // Snapshot the four axis ranges as fresh tuples at pan/zoom/touch interaction start
@@ -163,10 +171,11 @@ export function pan_range_by_pixels(
   scale_type?: ScaleType,
 ): Vec2 {
   if (pixel_span === 0) return range
-  const { to: target, from } = axis_transform(scale_type)
-  const [param_0, param_1] = [target(range[0]), target(range[1])]
+  const { forward, inverse } = axis_transform(scale_type)
+  const [param_0, param_1] = [forward(range[0]), forward(range[1])]
   const t_delta = (pixel_delta / pixel_span) * (param_1 - param_0)
-  return [from(param_0 + t_delta), from(param_1 + t_delta)]
+  const next: Vec2 = [inverse(param_0 + t_delta), inverse(param_1 + t_delta)]
+  return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
 }
 
 // Zoom a range about its screen-space center by `factor` (pinch: >1 zooms in).
@@ -178,11 +187,12 @@ export function zoom_range_by_factor(
 ): Vec2 {
   // Guard invalid factors (0/negative/NaN) that would emit Infinity/NaN into axis state
   if (!Number.isFinite(factor) || factor <= 0) return range
-  const { to: target, from } = axis_transform(scale_type)
-  const [param_0, param_1] = [target(range[0]), target(range[1])]
+  const { forward, inverse } = axis_transform(scale_type)
+  const [param_0, param_1] = [forward(range[0]), forward(range[1])]
   const center = (param_0 + param_1) / 2
   const half_span = (param_1 - param_0) / factor / 2
-  return [from(center - half_span), from(center + half_span)]
+  const next: Vec2 = [inverse(center - half_span), inverse(center + half_span)]
+  return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
 }
 
 // Coerce a scale.invert result (number, or Date for time scales) to an epoch number
@@ -250,12 +260,45 @@ export const axis_ranges_equal = (value_a: AxisRanges, value_b: AxisRanges): boo
   vec2_equal(value_a.y, value_b.y) &&
   vec2_equal(value_a.y2, value_b.y2)
 
-type AxisRangeOverride = { range?: [number | null, number | null] }
-type AutoRanges = {
-  x: readonly number[]
-  x2: readonly number[]
-  y: readonly number[]
-  y2: readonly number[]
+type AxisRangeOverride = {
+  range?: [number | null, number | null]
+  scale_type?: ScaleType
+}
+type AutoRanges = Record<keyof AxisRanges, readonly number[]>
+
+// A single explicit bound pins that endpoint, never the axis direction. If it crosses the
+// automatic endpoint, extend it by the auto span (at least 10% of a numeric bound;
+// time axes preserve the duration, using one day for a collapsed automatic range).
+// Two explicit endpoints may intentionally describe a descending or collapsed range.
+export function resolve_axis_range(
+  { range, scale_type }: AxisRangeOverride,
+  auto: readonly number[],
+): Vec2 {
+  const lower = range?.[0] ?? auto[0]
+  const upper = range?.[1] ?? auto[1]
+  const lower_fixed = range?.[0] != null
+  const upper_fixed = range?.[1] != null
+  if (lower < upper || lower_fixed === upper_fixed || !all_finite([lower, upper]))
+    return [lower, upper]
+
+  const type_name = get_scale_type_name(scale_type)
+  if (type_name === `log`) {
+    if ((lower_fixed ? lower : upper) <= 0) return [lower, upper]
+    const auto_min = Math.min(auto[0], auto[1])
+    const factor = Math.max(
+      Math.max(auto[0], auto[1]) / (auto_min > 0 ? auto_min : LOG_EPS),
+      1.1,
+    )
+    return validate_log_range(lower_fixed ? [lower, lower * factor] : [upper / factor, upper])
+  }
+  const { forward, inverse } = axis_transform(scale_type)
+  const bound = forward(lower_fixed ? lower : upper)
+  const auto_span = Math.abs(forward(auto[1]) - forward(auto[0]))
+  const span =
+    type_name === `time`
+      ? auto_span || 86_400_000
+      : Math.max(auto_span, Math.abs(bound) * 0.1) || 1
+  return lower_fixed ? [lower, inverse(bound + span)] : [inverse(bound - span), upper]
 }
 
 // Merge each axis's explicit range over its auto range (per-bound: a null bound
@@ -263,28 +306,16 @@ type AutoRanges = {
 // the caller can skip the sync - writing NaN breaks scales and, since NaN !== NaN,
 // makes the change comparison never settle (an infinite effect loop).
 export function resolve_axis_ranges(
-  axes: {
-    x: AxisRangeOverride
-    x2: AxisRangeOverride
-    y: AxisRangeOverride
-    y2: AxisRangeOverride
-  },
+  axes: Record<keyof AxisRanges, AxisRangeOverride>,
   auto: AutoRanges,
 ): AxisRanges | null {
-  const resolve = (axis: AxisRangeOverride, fallback: readonly number[]): Vec2 => [
-    axis.range?.[0] ?? fallback[0],
-    axis.range?.[1] ?? fallback[1],
-  ]
   const next: AxisRanges = {
-    x: resolve(axes.x, auto.x),
-    x2: resolve(axes.x2, auto.x2),
-    y: resolve(axes.y, auto.y),
-    y2: resolve(axes.y2, auto.y2),
+    x: resolve_axis_range(axes.x, auto.x),
+    x2: resolve_axis_range(axes.x2, auto.x2),
+    y: resolve_axis_range(axes.y, auto.y),
+    y2: resolve_axis_range(axes.y2, auto.y2),
   }
-  for (const [lower, upper] of [next.x, next.x2, next.y, next.y2]) {
-    if (!Number.isFinite(lower) || !Number.isFinite(upper)) return null
-  }
-  return next
+  return all_finite(next.x, next.x2, next.y, next.y2) ? next : null
 }
 
 // Threshold for distinguishing pinch-zoom from pan in touch gestures

@@ -90,7 +90,7 @@ export type Markers = `line` | `points` | `line+points` | `none`
 export interface DataSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Omitted IDs use array positions; supply stable IDs for reordering or persisted visibility
   // Shared legend/visibility identity for several drawing series. hidden_series uses this
-  // key when supplied; each drawing still needs its own unique id.
+  // key when supplied; each drawing still needs its own unique id. Labels alone never group series.
   legend_id?: string | number
   x: readonly number[]
   y: readonly number[]
@@ -409,8 +409,10 @@ export interface LegendItem {
   display_style: {
     symbol_type?: D3SymbolName
     symbol_color?: string
+    symbol_opacity?: number
     line_color?: string
     line_dash?: string
+    line_opacity?: number
     // Fill region styling
     fill_color?: string
     fill_opacity?: number
@@ -581,13 +583,7 @@ export type ColorBarScale =
 export interface ColorScaleOption {
   key: string // e.g., 'viridis', 'plasma'
   label: string // e.g., 'Viridis', 'Plasma'
-  scale: ColorBarScale
 }
-
-// Data loader for ColorBar property changes
-export type ColorBarDataLoaderFn = (
-  property_key: string,
-) => Promise<{ range: Vec2; title?: string }>
 
 // Display configuration for grid lines and zero lines
 export interface DisplayConfig {
@@ -603,6 +599,8 @@ export interface DisplayConfig {
 
 // Style overrides for point and line properties
 export interface StyleOverrides {
+  // Sparse overrides for the selected series. Omitted fields use authored per-series styles;
+  // clearing an override restores those styles even when the override equaled a default.
   point?: {
     size?: number
     color?: string
@@ -651,15 +649,11 @@ export interface PlotControlsProps
   // join the row's reset snapshot so its reset button also restores them
   display_children?: Snippet
   display_extra_values?: Record<string, unknown>
-  on_display_extra_reset?: () => void
-  // Auto ranges for reset functionality
-  auto_x_range?: Vec2
-  auto_x2_range?: Vec2
-  auto_y_range?: Vec2
-  auto_y2_range?: Vec2
-  // Helper flags
-  has_x2_points?: boolean
-  has_y2_points?: boolean
+  on_display_extra_reset?: (reference: Record<string, unknown>) => void
+  // Data-derived ranges for display; cleared bounds stay null in caller state.
+  // Include x2/y2 to expose their controls;
+  // omitting a secondary axis hides it. Each omitted primary range defaults to [0, 1].
+  auto_ranges?: Partial<Record<AxisKey, Vec2>>
   // Saves the figure or the numbers behind it. Omit to hide the Export section - a
   // chart that can't serialize its data should not offer a CSV button that does nothing.
   on_export?: (format: ChartExportFormat) => void

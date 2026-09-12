@@ -90,7 +90,7 @@ interface CartesianFrameOptions {
   facet_ranges?: () => AxisRanges
   // Axis configs whose `range` overrides feed the range sync. Defaults to `axes`;
   // Histogram log-sanitizes its count axes here.
-  range_sources?: () => Record<FacetAxis, Pick<AxisConfig, `range`>>
+  range_sources?: () => Record<FacetAxis, Pick<AxisConfig, `range` | `scale_type`>>
   // Unset resnaps every axis whenever any of them changes. `per-axis` leaves a panned
   // axis alone when a different axis's auto range moves; `expand` additionally keeps the
   // current view on an axis whose auto range has no data behind it (every series hidden,

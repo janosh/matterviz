@@ -225,7 +225,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
 ## Interactive Property and Color Scale Selection
 
-The `ColorBar` now supports interactive dropdowns for switching properties and color scales. Use `property_options` with a `data_loader` for lazy-loading property data, and `color_scale_options` for color scheme switching.
+Use `property_options`, `selected_property_key`, and `on_property_change` for property selection. The caller owns the data: set `loading` while fetching, then update the selected key and range together when the request succeeds. Palette selection follows the same pattern: `on_color_scale_change` requests a key, and the caller commits it through `selected_color_scale_key`. The caller derives `scale` from that same key so the chart and legend share one color mapping. Palette options only provide keys and labels.
 
 ```svelte example
 <script lang="ts">
@@ -249,53 +249,36 @@ The `ColorBar` now supports interactive dropdowns for switching properties and c
     bulk_modulus: [5, 450],
   }
 
-  // Color scale options
-  const color_scale_options = [
-    { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
-    { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
-    { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
-    { key: `magma`, label: `Magma`, scale: `interpolateMagma` },
-    { key: `cividis`, label: `Cividis`, scale: `interpolateCividis` },
-    { key: `turbo`, label: `Turbo`, scale: `interpolateTurbo` },
-  ]
+  const color_scales = {
+    viridis: `interpolateViridis`,
+    plasma: `interpolatePlasma`,
+    inferno: `interpolateInferno`,
+    magma: `interpolateMagma`,
+    cividis: `interpolateCividis`,
+    turbo: `interpolateTurbo`,
+  }
+  const color_scale_options = Object.keys(color_scales).map((key) => ({
+    key,
+    label: key[0].toUpperCase() + key.slice(1),
+  }))
 
   // State
   let selected_property = $state(`formation_energy`)
   let selected_color_scale = $state(`viridis`)
-  let current_range = $state(property_ranges.formation_energy)
-  let switch_count = $state(0)
-  let last_load_time = $state(0)
-
-  // Data loader with simulated delay
-  async function data_loader(property_key: string) {
-    const start = performance.now()
-    // Simulate network delay (200-800ms)
-    await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 600))
-    last_load_time = Math.round(performance.now() - start)
-    switch_count++
-
-    const opt = property_options.find((option) => option.key === property_key)
-    return {
-      range: property_ranges[property_key],
-      title: opt ? `${opt.label} (${opt.unit})` : property_key,
-    }
-  }
+  let current_range = $derived(property_ranges[selected_property])
 </script>
-
-<p>
-  Switches: {switch_count} | Last load: {last_load_time}ms
-</p>
 
 <ColorBar
   title="Formation Energy (eV/atom)"
   range={current_range}
   tick_labels={5}
   {property_options}
-  bind:selected_property_key={selected_property}
-  {data_loader}
-  on_property_change={(key, range) => (current_range = range)}
+  selected_property_key={selected_property}
+  on_property_change={(key) => (selected_property = key)}
   {color_scale_options}
-  bind:selected_color_scale_key={selected_color_scale}
+  scale={color_scales[selected_color_scale]}
+  selected_color_scale_key={selected_color_scale}
+  on_color_scale_change={(key) => (selected_color_scale = key)}
   --cbar-width="600px"
   --cbar-padding="2em"
 />
@@ -313,11 +296,15 @@ Vertical orientation with the title on different sides:
     { key: `stress`, label: `Stress`, unit: `GPa` },
   ]
 
-  const color_scale_options = [
-    { key: `blues`, label: `Blues`, scale: `interpolateBlues` },
-    { key: `reds`, label: `Reds`, scale: `interpolateReds` },
-    { key: `greens`, label: `Greens`, scale: `interpolateGreens` },
-  ]
+  const color_scales = {
+    blues: `interpolateBlues`,
+    reds: `interpolateReds`,
+    greens: `interpolateGreens`,
+  }
+  const color_scale_options = Object.keys(color_scales).map((key) => ({
+    key,
+    label: key[0].toUpperCase() + key.slice(1),
+  }))
 
   const ranges = {
     energy: [-5, 2],
@@ -327,20 +314,10 @@ Vertical orientation with the title on different sides:
 
   let prop_left = $state(`energy`)
   let prop_right = $state(`force`)
-  let range_left = $state(ranges.energy)
-  let range_right = $state(ranges.force)
-
-  async function loader_left(key) {
-    await new Promise((resolve) => setTimeout(resolve, 300))
-    const opt = property_options.find((option) => option.key === key)
-    return { range: ranges[key], title: opt?.label }
-  }
-
-  async function loader_right(key) {
-    await new Promise((resolve) => setTimeout(resolve, 300))
-    const opt = property_options.find((option) => option.key === key)
-    return { range: ranges[key], title: opt?.label }
-  }
+  let scale_left = $state(`blues`)
+  let scale_right = $state(`blues`)
+  let range_left = $derived(ranges[prop_left])
+  let range_right = $derived(ranges[prop_right])
 </script>
 
 <div
@@ -352,10 +329,12 @@ Vertical orientation with the title on different sides:
     orientation="vertical"
     title_side="left"
     {property_options}
-    bind:selected_property_key={prop_left}
-    data_loader={loader_left}
-    on_property_change={(_, range) => (range_left = range)}
+    selected_property_key={prop_left}
+    on_property_change={(key) => (prop_left = key)}
     {color_scale_options}
+    scale={color_scales[scale_left]}
+    selected_color_scale_key={scale_left}
+    on_color_scale_change={(key) => (scale_left = key)}
     bar_style="height: 200px;"
   />
 
@@ -365,10 +344,12 @@ Vertical orientation with the title on different sides:
     orientation="vertical"
     title_side="right"
     {property_options}
-    bind:selected_property_key={prop_right}
-    data_loader={loader_right}
-    on_property_change={(_, range) => (range_right = range)}
+    selected_property_key={prop_right}
+    on_property_change={(key) => (prop_right = key)}
     {color_scale_options}
+    scale={color_scales[scale_right]}
+    selected_color_scale_key={scale_right}
+    on_color_scale_change={(key) => (scale_right = key)}
     bar_style="height: 200px;"
   />
 </div>

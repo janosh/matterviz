@@ -1,9 +1,7 @@
 <script lang="ts">
   import { track_settings } from '$lib/controls'
-  import type { ShowControlsProp } from '$lib/controls'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
   import type { BarStyle, HistogramSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
@@ -21,7 +19,7 @@
     // explicit type arg keeps `undefined` (auto) in the prop type
     show_legend = $bindable<boolean | undefined>(),
     resolved_show_legend = false,
-    selected_property = $bindable(``),
+    selected_series_idx = $bindable(0),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -29,10 +27,6 @@
     display = $bindable({}),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    auto_x2_range = undefined,
-    auto_y2_range = undefined,
-    has_x2_points = false,
-    has_y2_points = false,
     children,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
@@ -46,19 +40,12 @@
     // undefined = auto (same contract as Histogram / resolve_legend_visibility)
     show_legend?: boolean | undefined
     resolved_show_legend?: boolean
-    selected_property?: string
-    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
-    controls_open?: boolean
-    auto_x2_range?: Vec2
-    auto_y2_range?: Vec2
-    has_x2_points?: boolean
-    has_y2_points?: boolean
+    // Index in the original series array, independent of its label or visibility.
+    selected_series_idx?: number
     children?: Snippet<[Required<PlotConfig>]>
   } = $props()
 
-  let has_multiple_series = $derived(series.filter(Boolean).length > 1)
-  let visible_series = $derived(series.filter((srs) => srs && (srs.visible ?? true)))
-  let series_options = $derived(visible_series.map((srs) => srs.label || `Series`))
+  let visible_series = $derived(series.filter((srs) => srs.visible ?? true))
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
   const set_bar = (key: keyof typeof DEFAULTS.histogram.bar) => (value: string | number) =>
     (bar = { ...bar, [key]: value })
@@ -87,22 +74,13 @@
   bind:x2_axis
   bind:y_axis
   bind:y2_axis
-  {auto_x2_range}
-  {auto_y2_range}
-  {has_x2_points}
-  {has_y2_points}
   {...rest}
 >
   {@render children?.({ x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Histogram"
     changed_keys={histogram_settings.changed_keys}
-    on_reset={() => {
-      ;({ bin_count: bins, normalize, mode } = DEFAULTS.histogram)
-      // Resets to the configured mode, `auto` (undefined) by default, so a one-series
-      // plot does not suddenly grow a legend
-      show_legend = legend_mode_to_prop(DEFAULTS.histogram.show_legend)
-    }}
+    on_reset={() => ({ bins, normalize, mode, show_legend } = histogram_settings.snapshot())}
     layout="flow"
   >
     <NumberRangeInput min={5} max={100} step={5} bind:value={bins}>Bins</NumberRangeInput>
@@ -113,7 +91,7 @@
           {@render options(enum_labels(SETTINGS_CONFIG.histogram.normalize))}
         </select>
       </label>
-      {#if has_multiple_series}
+      {#if series.length > 1}
         <label>
           <span>Mode</span>
           <select bind:value={mode}>
@@ -121,11 +99,14 @@
           </select>
         </label>
         {#if mode === `single`}
-          <label>
-            <span>Property</span>
-            <select bind:value={selected_property}>
-              {#each series_options as option, option_idx (option_idx)}
-                <option value={option}>{option}</option>
+          <label style="flex-basis: 100%">
+            <span>Series</span>
+            <select bind:value={selected_series_idx} disabled={!visible_series.length}>
+              {#if !visible_series.length}<option value={-1}>No visible series</option>{/if}
+              {#each series as { label, visible = true }, series_idx (series_idx)}
+                {#if visible}
+                  <option value={series_idx}>{label || `Series ${series_idx + 1}`}</option>
+                {/if}
               {/each}
             </select>
           </label>
@@ -145,9 +126,7 @@
   <SettingsSection
     title="Bar style"
     changed_keys={bar_style_settings.changed_keys}
-    on_reset={() => {
-      bar = { ...DEFAULTS.histogram.bar }
-    }}
+    on_reset={() => (bar = bar_style_settings.snapshot())}
     layout="flow"
   >
     <div class="style-row">
@@ -171,37 +150,22 @@
       bind:value={() => resolved_bar.stroke_width, set_bar(`stroke_width`)}
       >Stroke width</NumberRangeInput
     >
-    <label>
-      <span>Stroke</span>
-      <span class="stroke-value">
+    <div class="style-row">
+      <label>
+        <span>Color</span>
         <input
           type="color"
+          aria-label="Stroke color"
           bind:value={() => resolved_bar.stroke_color, set_bar(`stroke_color`)}
         />
-        <input
-          type="number"
-          min="0"
-          max="1"
-          step="0.05"
-          bind:value={() => resolved_bar.stroke_opacity, set_bar(`stroke_opacity`)}
-        />
-      </span>
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
+      </label>
+      <NumberRangeInput
+        min={0}
+        max={1}
+        step={0.05}
         bind:value={() => resolved_bar.stroke_opacity, set_bar(`stroke_opacity`)}
-        title="Opacity"
-      />
-    </label>
+        >Stroke opacity</NumberRangeInput
+      >
+    </div>
   </SettingsSection>
 </PlotControls>
-
-<style>
-  .stroke-value {
-    display: flex;
-    align-items: center;
-    gap: 4pt;
-  }
-</style>

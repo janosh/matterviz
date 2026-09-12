@@ -1,13 +1,19 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
-import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
+import type {
+  AxisConfig3D,
+  DataSeries3D,
+  DisplayConfig3D,
+  Surface3DConfig,
+} from '$lib/plot/core/types'
 import {
   hover_marker_geometry,
   normalize_to_scene,
   sample_surface,
-  collect_3d_extents,
+  get_3d_auto_ranges,
   span_or,
 } from '$lib/plot/scatter-3d/scene-coords'
+import { resolve_axis_range } from '$lib/plot/core/interactions'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { Object3D, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -300,16 +306,16 @@ describe(`ScatterPlot3D smoke tests`, () => {
       surface,
     })),
   ])(
-    `standalone $name controls write display and axis changes`,
+    `$name controls preserve default display and independently automatic axis bounds`,
     async ({ surface, max_value }) => {
-      const controls_state = $state({
-        display: { show_axes: true },
-        x_axis: { label: `X`, range: [null, null] as [number | null, number | null] },
+      const controls_state = $state<{ display: DisplayConfig3D; x_axis: AxisConfig3D }>({
+        display: {},
+        x_axis: { label: `X`, range: [0.25, null] },
       })
-      mounted_component = mount(ScatterPlot3DControls, {
+      mounted_component = mount(ScatterPlot3D, {
         target: container,
         props: bind_props(
-          { series: [basic_series], surfaces: surface ? [surface] : [] },
+          { series: [basic_series], surfaces: surface ? [surface] : [], controls_open: true },
           controls_state,
         ),
       })
@@ -317,23 +323,78 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
       const show_axes = query<HTMLInputElement>(container, `input[type="checkbox"]`)
       const x_min = query<HTMLInputElement>(container, `[aria-label="X min"]`)
+      const x_max = query<HTMLInputElement>(container, `[aria-label="X max"]`)
+      expect(show_axes.checked).toBe(true)
+      expect(x_min.value).toBe(`0.25`)
+      expect(x_max.value).toBe(``)
+      expect(Number(x_max.placeholder)).toBe(max_value)
 
       show_axes.click()
       x_min.value = `2`
       x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
       flushSync()
 
-      expect(controls_state.display.show_axes).toBe(false)
-      expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, max_value] })
+      expect(controls_state.display).toEqual({ show_axes: false })
+      controls_state.display.projections = { xy: true }
+      controls_state.display.projection_opacity = 0.7
+      controls_state.display.projection_scale = 0.9
+      flushSync()
+      query<HTMLButtonElement>(
+        container,
+        `button[title="Reset projections to defaults"]`,
+      ).click()
+      flushSync()
+      expect(controls_state.display).toEqual({
+        show_axes: false,
+        projections: { xy: false, xz: false, yz: false },
+        projection_opacity: 0.3,
+        projection_scale: 0.5,
+      })
+      query<HTMLButtonElement>(container, `button[title="Reset display to defaults"]`).click()
+      flushSync()
+      expect(controls_state.display).toMatchObject({
+        show_axes: true,
+        show_grid: true,
+        show_axis_labels: true,
+        show_bounding_box: false,
+        projection_opacity: 0.3,
+        projection_scale: 0.5,
+      })
+      expect(
+        container.querySelector(`button[title="Reset projections to defaults"]`),
+      ).toBeNull()
+      expect(container.querySelector(`button[title="Reset display to defaults"]`)).toBeNull()
+      expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, null] })
+      // Manual edits preserve an automatic opposite bound, exact small values, and clearing.
+      for (const [value, expected] of [
+        [`0.00000001`, 1e-8],
+        [``, null],
+      ] as const) {
+        x_min.value = value
+        x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
+        flushSync()
+        expect(controls_state.x_axis.range).toEqual([expected, null])
+        expect(x_min.value).toBe(expected === null ? `` : String(expected))
+      }
+      x_max.value = `7`
+      x_max.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(controls_state.x_axis.range).toEqual([null, 7])
       const label_input = query<HTMLInputElement>(container, `[aria-label="X label"]`)
       label_input.value = `Energy`
       label_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       flushSync()
       expect(controls_state.x_axis.label).toBe(`Energy`)
-      query<HTMLButtonElement>(container, `button[title="Reset axes to defaults"]`).click()
+      query<HTMLButtonElement>(
+        container,
+        `button[title="Restore axes to initial values"]`,
+      ).click()
       flushSync()
-      expect(controls_state.x_axis).toEqual({ label: `X`, range: [null, null] })
-      expect(container.querySelector(`button[title="Reset axes to defaults"]`)).toBeNull()
+      expect(controls_state.x_axis).toEqual({ label: `X`, range: [0.25, null] })
+      expect(x_min.value).toBe(`0.25`)
+      expect(
+        container.querySelector(`button[title="Restore axes to initial values"]`),
+      ).toBeNull()
     },
   )
 
@@ -343,7 +404,11 @@ describe(`ScatterPlot3D smoke tests`, () => {
       target: container,
       props: bind_props(
         {
-          series: [basic_series],
+          auto_ranges: {
+            x: [0, 5] as [number, number],
+            y: [0, 10] as [number, number],
+            z: [0, 3] as [number, number],
+          },
           toggle_props: { 'data-testid': `scatter-3d-toggle` },
           pane_props: { 'data-testid': `scatter-3d-pane` },
         },
@@ -356,7 +421,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await unmount(mounted_component)
     mounted_component = mount(ScatterPlot3DControls, {
       target: container,
-      props: { series: [basic_series], show_controls: false },
+      props: { show_controls: false },
     })
     await tick()
     expect(container.querySelector(`.draggable-pane`)).toBeNull()
@@ -364,6 +429,26 @@ describe(`ScatterPlot3D smoke tests`, () => {
 })
 
 describe(`scene coordinates`, () => {
+  // oxfmt-ignore
+  test.each<[[number | null, number | null], [number, number]]>([
+    [[null, null], [0, 5.5]],
+    [[0.123, null], [0.123, 5.5]],
+    [[1e-8, null], [1e-8, 5.5]],
+    [[null, 4.987], [0, 4.987]],
+    [[0.123, 4.987], [0.123, 4.987]],
+    [[100, null], [100, 110]],
+    [[null, -100], [-110, -100]],
+    [[5.5, null], [5.5, 11]],
+    [[null, 0], [-5.5, 0]],
+    [[4.987, 0.123], [4.987, 0.123]],
+  ])(
+    `manual bounds %j only expand automatic endpoints when needed`,
+    (range, expected) => {
+      const auto_ranges = get_3d_auto_ranges([{ x: [0, 5], y: [0, 5], z: [0, 5] }], [])
+      expect(resolve_axis_range({ range }, auto_ranges.x)).toEqual(expected)
+    },
+  )
+
   test(`filters large triangulated surfaces and includes their bounds without mutating inputs`, () => {
     const count = 200_000 // spreading these into push() exceeds the JS argument limit
     const points = Array.from({ length: count }, (_, idx) => ({ x: idx, y: -idx, z: 2 * idx }))
@@ -375,13 +460,13 @@ describe(`scene coordinates`, () => {
     expect(sampled[0]).toBe(points[0])
     expect(sampled.at(-1)).toBe(points[count - 1])
     expect(points).toHaveLength(count + 2)
-    expect(collect_3d_extents([basic_series], sampled)).toEqual({
-      x: { min: 0, max: count - 1, n_finite: count + 5 },
-      y: { min: 1 - count, max: 10, n_finite: count + 5 },
-      z: { min: 0, max: 2 * (count - 1), n_finite: count + 5 },
+    expect(get_3d_auto_ranges([basic_series], sampled)).toEqual({
+      x: [0, 220_000],
+      y: [-220_000, 20_000],
+      z: [0, 450_000],
     })
     expect(
-      collect_3d_extents(
+      get_3d_auto_ranges(
         [],
         [
           { x: -0, y: NaN, z: Infinity },
@@ -389,9 +474,9 @@ describe(`scene coordinates`, () => {
         ],
       ),
     ).toEqual({
-      x: { min: -0, max: -0, n_finite: 2 },
-      y: { min: 2, max: 2, n_finite: 1 },
-      z: { n_finite: 0 },
+      x: [-1, 1],
+      y: [1.8, 2.2],
+      z: [0, 1],
     })
   })
 

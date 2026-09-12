@@ -365,6 +365,7 @@
               x2="20"
               y2="5"
               stroke={series.display_style.line_color ?? `currentColor`}
+              stroke-opacity={series.display_style.line_opacity}
               stroke-width="2"
               stroke-dasharray={series.display_style.line_dash ?? `none`}
             />
@@ -388,6 +389,7 @@
             <path
               d={d3_symbol().type(shape).size(50)() ?? ``}
               fill={stroke_only ? `none` : (pattern?.url ?? color)}
+              opacity={series.display_style.symbol_opacity}
               stroke={stroke_only ? color : `none`}
               stroke-width="1.5"
             />

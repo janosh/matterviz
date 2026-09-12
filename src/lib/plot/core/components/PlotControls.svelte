@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
   // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
   // to trigger $bindable reactivity propagation to parent components.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
@@ -12,7 +12,6 @@
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig, AxisKey, PlotControlsProps } from '$lib/plot/core/types'
   import { normalize_y2_sync } from '$lib/plot/core/interactions'
-  import { untrack } from 'svelte'
   import {
     get_scale_type_name,
     is_scale_type_name,
@@ -32,12 +31,7 @@
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
-    auto_x_range = [0, 1],
-    auto_x2_range = undefined,
-    auto_y_range = [0, 1],
-    auto_y2_range = undefined,
-    has_x2_points = false,
-    has_y2_points = false,
+    auto_ranges = {},
     controls_title = `plot`,
     controls_name = `plot`,
     toggle_props = {},
@@ -51,13 +45,13 @@
     Math.min(lower, upper) <= 0 && Math.max(lower, upper) >= 0
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
+  const auto_range = (axis: AxisKey): Vec2 | undefined =>
+    auto_ranges[axis] ?? (axis === `x` || axis === `y` ? [0, 1] : undefined)
   const axis_record = <Value>(get_value: (axis: AxisKey) => Value): Record<AxisKey, Value> =>
     Object.fromEntries(all_axes.map((axis) => [axis, get_value(axis)])) as Record<
       AxisKey,
       Value
     >
-  const axis_values = <Value>(suffix: string, get_value: (axis: AxisKey) => Value) =>
-    Object.fromEntries(all_axes.map((axis) => [`${axis}_${suffix}`, get_value(axis)]))
   // secondary axes have no zero line / x2 grid defaults in the schema
   const zero_line_default = (axis: AxisKey): boolean =>
     (axis === `x` || axis === `y`) && DEFAULTS.plot.display[`${axis}_zero_line`]
@@ -70,28 +64,12 @@
         [`${axis}_grid`, display[`${axis}_grid`] ?? grid_default(axis)],
       ]),
     )
-  const display_reset_values = untrack(display_values)
-  const axis_labels = { x: `X`, x2: `X2`, y: `Y`, y2: `Y2` } as const
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
-  // Keep full tick configurations: the numeric tick-count control cannot represent lists or intervals.
   const is_axis_key = (key: string): key is AxisKey =>
     (all_axes as readonly string[]).includes(key)
-  const mount_ticks = untrack(() => axis_record((axis) => axis_config(axis).ticks))
-  const reset_axis_field = (
-    field: `range` | `ticks` | `format`,
-    key: string,
-    value: unknown,
-  ) => {
-    if (is_axis_key(key))
-      update_axis(key, { [field]: field === `ticks` ? mount_ticks[key] : value })
-  }
   // The Ticks inputs only edit numeric tick counts; an explicit tick list/map/interval set on
   // the axis is left alone (and shown as `custom`), and an empty input hands back to auto
-  const tick_count = (axis: AxisKey): number | undefined => {
-    const { ticks } = axis_config(axis)
-    return typeof ticks === `number` ? ticks : undefined
-  }
   const MAX_TICK_COUNT = 100
   const update_tick_count = (axis: AxisKey, value: string) => {
     if (value === ``) return update_axis(axis, { ticks: undefined })
@@ -105,29 +83,17 @@
     else if (axis === `y`) y_axis = { ...y_axis, ...updates }
     else y2_axis = { ...y2_axis, ...updates }
   }
-  let auto_ranges = $derived({
-    x: auto_x_range,
-    x2: auto_x2_range,
-    y: auto_y_range,
-    y2: auto_y2_range,
-  } satisfies Record<AxisKey, Vec2 | undefined>)
-  // secondary axes only exist once their series do; primary axes always have an auto range
-  let axis_present = $derived({ x: true, x2: has_x2_points, y: true, y2: has_y2_points })
   let visible_axes = $derived(
     all_axes
-      .filter((axis) => axis_present[axis])
-      .map((axis) => [axis, axis_labels[axis]] as const),
+      .filter((axis) => axis === `x` || axis === `y` || auto_ranges[axis] !== undefined)
+      .map((axis) => [axis, axis.toUpperCase()] as const),
   )
   // whether each axis range spans zero, gating the zero-line toggles
   let includes_zero = $derived(
     axis_record((axis) => {
-      const auto = auto_ranges[axis]
+      const auto = auto_range(axis)
       const { range } = axis_config(axis)
-      return (
-        axis_present[axis] &&
-        auto != null &&
-        range_spans_zero(range?.[0] ?? auto[0], range?.[1] ?? auto[1])
-      )
+      return auto != null && range_spans_zero(range?.[0] ?? auto[0], range?.[1] ?? auto[1])
     }),
   )
   const format_placeholders: Record<AxisKey, string> = {
@@ -137,35 +103,27 @@
     y2: `.2f / .1e / .0%`,
   }
 
-  // Validation function for format specifiers
-  function is_valid_format(format_string: string): boolean {
-    if (!format_string) return true
+  const format_invalid = (value: string): boolean => {
     try {
-      if (format_string.startsWith(`%`)) {
-        timeFormat(format_string)(new Date())
-        return true
-      }
-      format(format_string)(123.456)
-      return true
-    } catch {
+      if (value.startsWith(`%`)) timeFormat(value)(new Date())
+      else if (value) format(value)(123.456)
       return false
+    } catch {
+      return true
     }
   }
-
-  // Handle format input changes
-  const format_input_handler = (format_type: AxisKey) => (event: Event) => {
-    const input = event.target
-    if (!(input instanceof HTMLInputElement)) return
-    if (!is_valid_format(input.value)) {
-      input.classList.add(`invalid`)
-      return
+  const format_inputs = axis_record((axis) => {
+    let value = $derived(axis_config(axis).format ?? ``)
+    return {
+      get: () => value,
+      set: (next: string) => {
+        value = next
+        if (!format_invalid(next)) update_axis(axis, { format: next })
+      },
     }
-    input.classList.remove(`invalid`)
-    update_axis(format_type, { format: input.value })
-  }
+  })
 
-  // Range inputs mirror the axis configs; a partial or inverted entry stays local (and
-  // flagged invalid) until it resolves or the config changes from outside.
+  // Empty endpoints stay automatic in caller state. Invalid pairs stay local until corrected.
   type RangeInput = [number | null, number | null]
   let range_inputs = $derived(
     axis_record((axis): RangeInput => {
@@ -181,36 +139,45 @@
     next[bound] = Number.isFinite(parsed) ? parsed : null
     range_inputs = { ...range_inputs, [axis]: next }
     if (range_invalid(next)) return
-    const [min, max] = next
-    const auto = auto_ranges[axis]
-    // Without an auto range, only a complete min/max pair can be applied
-    if (!auto && (min === null || max === null)) return
-    const next_range =
-      min === null && max === null
-        ? undefined
-        : ([min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2)
-    update_axis(axis, { range: next_range })
+    update_axis(axis, { range: next })
   }
 
-  const display_settings = track_settings(() => ({
-    ...display_values(),
-    ...display_extra_values,
-  }))
-  const axis_range_settings = track_settings(() =>
-    axis_record((axis) => axis_config(axis).range),
+  const display_settings = track_settings(
+    () => ({
+      ...display_values(),
+      ...display_extra_values,
+    }),
+    `initial`,
   )
-  const scale_type_settings = track_settings(() =>
-    axis_values(`scale`, (axis) => get_scale_type_name(axis_config(axis).scale_type)),
+  // Each field owns both its complete baseline and the callback that restores it.
+  const track_axis_field = (field: `range` | `ticks` | `format`) => {
+    const settings = track_settings(
+      () => axis_record((axis) => axis_config(axis)[field]),
+      `initial`,
+    )
+    return {
+      labels: INITIAL_SETTINGS_LABELS,
+      get changed_keys() {
+        return settings.changed_keys
+      },
+      on_reset_key: (key: string) => {
+        if (is_axis_key(key)) update_axis(key, { [field]: settings.snapshot([key])[key] })
+      },
+    }
+  }
+  const axis_range_settings = track_axis_field(`range`)
+  const scale_type_settings = track_settings(
+    () => axis_record((axis) => get_scale_type_name(axis_config(axis).scale_type)),
+    axis_record(() => `linear` as const),
   )
   const current_sync = $derived(normalize_y2_sync(y2_axis.sync))
-  const y2_sync_settings = track_settings(() => ({
-    y2_sync: current_sync.mode,
-    align_value: current_sync.align_value,
-  }))
-  const ticks_settings = track_settings(() => axis_record(tick_count))
-  const tick_format_settings = track_settings(() =>
-    axis_record((axis) => axis_config(axis).format),
+  const y2_sync_settings = track_settings(
+    () => ({ y2_sync: current_sync.mode, align_value: current_sync.align_value }),
+    { y2_sync: `none`, align_value: undefined },
   )
+  // Track the full configuration: custom lists, labels and intervals must also reset.
+  const ticks_settings = track_axis_field(`ticks`)
+  const tick_format_settings = track_axis_field(`format`)
 </script>
 
 {#snippet axis_checks(
@@ -229,7 +196,8 @@
             <input
               type="checkbox"
               checked={display[`${axis}_${key}`] ?? fallback(axis)}
-              onchange={(event) => (display[`${axis}_${key}`] = event.currentTarget.checked)}
+              onchange={(event) =>
+                (display = { ...display, [`${axis}_${key}`]: event.currentTarget.checked })}
             />
             {axis_label}
           </label>
@@ -254,9 +222,16 @@
     title="Display"
     class="ctrl-line"
     changed_keys={display_settings.changed_keys}
+    labels={INITIAL_SETTINGS_LABELS}
     on_reset={() => {
-      display = { ...display, ...display_reset_values }
-      on_display_extra_reset?.()
+      const reference = display_settings.snapshot()
+      display = {
+        ...display,
+        ...Object.fromEntries(
+          Object.keys(display_values()).map((key) => [key, reference[key]]),
+        ),
+      }
+      on_display_extra_reset?.(reference)
     }}
     layout="flow"
   >
@@ -273,9 +248,7 @@
   <SettingsSection
     title="Axis range"
     class="ctrl-line axis-fields"
-    changed_keys={axis_range_settings.changed_keys}
-    on_reset_key={(key) =>
-      axis_range_settings.reset(key, (value) => reset_axis_field(`range`, key, value))}
+    {...axis_range_settings}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
@@ -329,7 +302,7 @@
     {/each}
   </SettingsSection>
 
-  {#if has_y2_points}
+  {#if auto_ranges.y2}
     {@const y2_sync_tip = `Controls Y2 axis range:
 • Independent: Y2 has its own range based on its data
 • Synced: Y2 has exact same range as Y1
@@ -338,9 +311,7 @@
       title="Y2 sync"
       class="ctrl-line"
       changed_keys={y2_sync_settings.changed_keys}
-      on_reset={() => {
-        y2_axis = { ...y2_axis, sync: undefined }
-      }}
+      on_reset={() => update_axis(`y2`, { sync: undefined })}
       layout="flow"
     >
       <label {@attach tooltip({ content: y2_sync_tip })}>
@@ -351,16 +322,14 @@
           onchange={(evt) => {
             const val = evt.currentTarget.value
             const mode = is_y2_sync_mode(val) ? val : `none`
-            if (mode === `none`) {
-              y2_axis = { ...y2_axis, sync: undefined }
-            } else if (mode === `align`) {
-              y2_axis = {
-                ...y2_axis,
-                sync: { mode, align_value: current_sync.align_value ?? 0 },
-              }
-            } else {
-              y2_axis = { ...y2_axis, sync: mode }
-            }
+            update_axis(`y2`, {
+              sync:
+                mode === `none`
+                  ? undefined
+                  : mode === `align`
+                    ? { mode, align_value: current_sync.align_value ?? 0 }
+                    : mode,
+            })
           }}
         >
           <option value="none">Independent</option>
@@ -377,13 +346,12 @@
             aria-label="Value to align on both axes"
             onchange={(evt) => {
               const val = parseFloat(evt.currentTarget.value)
-              y2_axis = {
-                ...y2_axis,
+              update_axis(`y2`, {
                 sync: {
                   mode: `align`,
                   align_value: Number.isFinite(val) ? val : 0,
                 },
-              }
+              })
             }}
           />
         </label>
@@ -395,14 +363,12 @@
     title="Ticks"
     data-testid="ticks-section"
     class="ctrl-line axis-fields"
-    changed_keys={ticks_settings.changed_keys}
-    on_reset_key={(key) =>
-      ticks_settings.reset(key, (value) => reset_axis_field(`ticks`, key, value))}
+    {...ticks_settings}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
-      {@const count = tick_count(axis)}
-      {@const custom = count === undefined && axis_config(axis).ticks !== undefined}
+      {@const ticks = axis_config(axis).ticks}
+      {@const custom = ticks !== undefined && typeof ticks !== `number`}
       <label>
         <span>{label}</span>
         <input
@@ -410,7 +376,7 @@
           min="1"
           max={MAX_TICK_COUNT}
           step="1"
-          value={count ?? ``}
+          value={typeof ticks === `number` ? ticks : ``}
           placeholder={custom ? `custom` : `auto`}
           disabled={custom}
           aria-label="{label} axis tick count"
@@ -425,9 +391,7 @@
     title="Tick format"
     data-testid="tick-format-section"
     class="ctrl-line formats tick-format-section"
-    changed_keys={tick_format_settings.changed_keys}
-    on_reset_key={(key) =>
-      tick_format_settings.reset(key, (value) => reset_axis_field(`format`, key, value))}
+    {...tick_format_settings}
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
@@ -435,9 +399,9 @@
         <span>{label}-axis</span>
         <input
           type="text"
-          value={axis_config(axis).format ?? ``}
+          bind:value={format_inputs[axis].get, format_inputs[axis].set}
+          class:invalid={format_invalid(format_inputs[axis].get())}
           placeholder={format_placeholders[axis]}
-          oninput={format_input_handler(axis)}
         />
       </label>
     {/each}

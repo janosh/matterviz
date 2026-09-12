@@ -20,7 +20,11 @@
   import type { DecorationItem } from '$lib/plot/core/decorations'
   import { decoration_data_attrs, get_decoration_placement } from '$lib/plot/core/decorations'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
-  import { get_relative_coords, range_bounds } from '$lib/plot/core/interactions'
+  import {
+    axis_transform,
+    get_relative_coords,
+    range_bounds,
+  } from '$lib/plot/core/interactions'
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'
@@ -36,7 +40,6 @@
     density_bin_at_point,
     density_screen_cell,
     first_point_in_bin,
-    scale_bin_transform,
     series_extents,
     series_x_order,
     should_render_points,
@@ -278,8 +281,8 @@
   })
   // Bin in scale space so the heatmap, hover, and zoom stay aligned with log/arcsinh axes
   const bin_transforms = $derived({
-    x: scale_bin_transform(x_scale_type),
-    y: scale_bin_transform(y_scale_type),
+    x: axis_transform(x_scale_type),
+    y: axis_transform(y_scale_type),
   })
   // Wait for measured dimensions before indexing and binning, avoiding an extra pass
   // for the placeholder plot size.

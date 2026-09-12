@@ -1,6 +1,12 @@
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '$lib/math'
-import type { AxisConfig, AxisRanges, DataSeries, FillRegion } from '$lib/plot/core/types'
+import type {
+  AxisConfig,
+  AxisRanges,
+  DataSeries,
+  FillRegion,
+  StyleOverrides,
+} from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
@@ -567,18 +573,18 @@ describe(`ScatterPlot`, () => {
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
-  // Auto visibility uses rendered entries after label deduplication and fill-region folding.
+  // Auto visibility uses rendered entries after shared-identity and fill-region folding.
   const labeled_series = (...labels: string[]) => labels.map((label) => ({ ...basic, label }))
   const fill_region: FillRegion = { lower: 0, upper: 4, fill: `steelblue` }
   type LegendAutoCase = [string, Partial<ComponentProps<typeof ScatterPlot>>, number]
   // oxfmt-ignore
   const legend_auto_cases: LegendAutoCase[] = [
     [`distinct labels auto-show`, { series: labeled_series(`A`, `B`) }, 2],
-    [`duplicate labels auto-hide`, { series: labeled_series(`Dup`, `Dup`) }, 0],
+    [`duplicate labels remain distinct`, { series: labeled_series(`Dup`, `Dup`) }, 2],
     [`IDs cannot collide with label/group keys`, { series: [{ ...basic, id: `foo`, label: `First` }, { ...basic, legend_group: `string`, label: `foo` }] }, 2],
     [`distinct IDs keep identical labels separate`, { series: labeled_series(`Dup`, `Dup`).map((srs, idx) => ({ ...srs, id: idx })) }, 2],
     [`shared legend IDs combine distinct drawing IDs and labels`, { series: labeled_series(`A`, `B`).map((srs, idx) => ({ ...srs, id: idx, legend_id: `shared` })), show_legend: true }, 1],
-    [`explicit true opens one deduped entry`, { series: labeled_series(`Dup`, `Dup`), show_legend: true }, 1],
+    [`explicit true shows a single series`, { series: labeled_series(`Only`), show_legend: true }, 1],
     [`labelled fill region counts`, { series: labeled_series(`A`), fill_regions: [{ ...fill_region, label: `Band` }] }, 2],
     [`unlabelled fill region does not count`, { series: labeled_series(`A`), fill_regions: [fill_region] }, 0],
   ]
@@ -711,11 +717,14 @@ describe(`ScatterPlot`, () => {
     async (duration) => {
       const x_values = Array.from({ length: 101 }, (_, idx) => idx)
       const y_values = x_values.map((value) => Math.sin(value))
+      const color_values = x_values.map((value) => (value === 100 ? 1 : null))
+      const color_scan = vi.spyOn(color_values, `find`)
       const plot = await mount_sized_scatter_plot({
         series: [
           {
             x: x_values,
             y: y_values,
+            color_values,
             markers: `line`,
             x_axis: `x2`,
             line_style: { line_dash: `4 2` },
@@ -737,6 +746,8 @@ describe(`ScatterPlot`, () => {
         expect(vertices[1]).toBe(100)
       }
       check_vertices()
+      expect(color_scan).toHaveBeenCalled()
+      color_scan.mockClear()
       vi.spyOn(performance, `now`).mockReturnValue(performance.now() + SETTLE_MS + 1)
       const clip = clip_rect(plot)
       plot_svg(plot).dispatchEvent(
@@ -763,36 +774,216 @@ describe(`ScatterPlot`, () => {
       await tick()
       check_vertices()
       expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
+      expect(color_scan).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([`points`, `line`, `line+points`] as const)(
+    `%s controls can target another series independently of labels`,
+    async (markers) => {
+      let styles = $state.raw<StyleOverrides>({
+        point: { opacity: 0.2 },
+        line: { opacity: 0.2 },
+      })
+      const state = $state<{
+        selected_series_idx: number
+        series: DataSeries[]
+        styles: StyleOverrides
+      }>({
+        selected_series_idx: 0,
+        get styles() {
+          return styles
+        },
+        set styles(value) {
+          styles = value
+        },
+        series: [0, 1].map(() => ({
+          x: [0, 1],
+          y: [0, 1],
+          label: `Repeated`,
+          markers,
+          point_style: { fill: `red` },
+          line_style: { stroke: `red` },
+          color_values: [NaN, Infinity],
+          size_values: [NaN, Infinity],
+        })),
+      })
+      const plot = await mount_sized_scatter_plot(
+        bind_props(
+          {
+            controls_open: true,
+            point_tween: { duration: 0 },
+          },
+          state,
+        ),
+      )
+      const series_select = [...plot.querySelectorAll<HTMLSelectElement>(`select`)].find(
+        (select) => select.parentElement?.textContent?.startsWith(`Series`),
+      )
+      if (!series_select) throw new Error(`Missing series selector for ${markers}`)
+      // happy-dom does not match :checked on options, which Svelte uses for select bindings.
+      vi.spyOn(series_select, `querySelector`).mockImplementation(
+        () => series_select.options[series_select.selectedIndex],
+      )
+      series_select.value = `1`
+      series_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+      expect(state.selected_series_idx).toBe(1)
+      for (const [kind, selector, attribute] of [
+        ...(markers.includes(`points`) ? [[`point`, `.marker`, `fill`]] : []),
+        ...(markers.includes(`line`) ? [[`line`, `path[fill="none"]`, `stroke`]] : []),
+      ]) {
+        const reset_style = `button[title="Clear ${kind} style overrides"]`
+        expect(plot.querySelector(reset_style)).not.toBeNull()
+        const toggle = [...plot.querySelectorAll(`label`)]
+          .find((label) => label.textContent?.trim() === `Show ${kind}s`)
+          ?.querySelector(`input`)
+        if (!toggle) throw new Error(`Missing ${kind} visibility toggle`)
+        toggle.click()
+        await tick()
+        expect(toggle.checked).toBe(false)
+        expect(plot.querySelector(`[data-key="${kind}.opacity"]`)).toBeNull()
+        expect(series_select.isConnected).toBe(markers === `line+points`)
+        toggle.click()
+        await tick()
+        expect(toggle.checked).toBe(true)
+        toggle.click()
+        await tick()
+        expect(state.styles).toMatchObject({ [`show_${kind}s`]: false })
+        doc_query<HTMLButtonElement>(
+          `button[aria-label="Restore display to initial values"]`,
+        ).click()
+        await tick()
+        expect(state.styles).not.toHaveProperty(`show_${kind}s`)
+        expect(toggle.checked).toBe(true)
+        const input = doc_query(`[data-key="${kind}.color"] input`, HTMLInputElement)
+        input.value = `#0000ff`
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        await tick()
+        for (const [series_idx, color] of [`red`, `#0000ff`].entries()) {
+          const legend_item = plot.querySelectorAll(`.legend-item`)[series_idx]
+          const swatch = legend_item.querySelector(kind === `point` ? `path` : `line`)
+          expect(swatch?.getAttribute(kind === `point` ? `fill` : `stroke`)).toBe(color)
+          const marks = plot.querySelectorAll(`[data-series-id="${series_idx}"] ${selector}`)
+          expect(marks.length).toBeGreaterThan(0)
+          for (const mark of marks) {
+            if (kind === `point`) {
+              const wrapper = mark.closest(`[style*="--point-fill-color"]`)
+              if (!wrapper) throw new Error(`Missing marker color wrapper`)
+              expect(getComputedStyle(wrapper).getPropertyValue(`--point-fill-color`)).toBe(
+                color,
+              )
+            } else expect(mark.getAttribute(attribute)).toBe(color)
+          }
+        }
+        const numeric_edits =
+          kind === `point`
+            ? [
+                [`opacity`, `0.35`, `fill-opacity`],
+                [`stroke_width`, `2.5`, `stroke-width`],
+                [`stroke_opacity`, `0.6`, `stroke-opacity`],
+              ]
+            : [
+                [`width`, `7`, `stroke-width`],
+                [`opacity`, `0.4`, `stroke-opacity`],
+              ]
+        for (const [key, value, numeric_attribute] of numeric_edits) {
+          const range_input = doc_query(
+            `[data-key="${kind}.${key}"] input[type="range"]`,
+            HTMLInputElement,
+          )
+          range_input.value = value
+          range_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+          await tick()
+          const marks = plot.querySelectorAll(`[data-series-id="1"] ${selector}`)
+          expect([...marks].map((mark) => mark.getAttribute(numeric_attribute))).toEqual(
+            Array(marks.length).fill(value),
+          )
+          if (key === `opacity`) {
+            const legend_item = plot.querySelectorAll(`.legend-item`)[1]
+            const swatch = legend_item.querySelector(kind === `point` ? `path` : `line`)
+            expect(swatch?.getAttribute(kind === `point` ? `opacity` : `stroke-opacity`)).toBe(
+              value,
+            )
+          }
+        }
+        doc_query<HTMLButtonElement>(reset_style).click()
+        await tick()
+        expect(state.styles).not.toHaveProperty(kind)
+        expect(plot.querySelector(reset_style)).toBeNull()
+      }
+      // Data-driven styling on another series must not hide the selected series' controls.
+      state.series[0].color_values = [0, 1]
+      state.series[0].size_values = [0, 1]
+      for (const selected_idx of [0, 1]) {
+        state.selected_series_idx = selected_idx
+        await tick()
+        for (const [key, applies] of [
+          [`point.size`, markers.includes(`points`)],
+          [`point.color`, markers.includes(`points`)],
+          [`line.color`, markers.includes(`line`)],
+        ] as const) {
+          expect(plot.querySelector(`[data-key="${key}"]`) !== null).toBe(
+            selected_idx === 1 && applies,
+          )
+        }
+      }
+      // Removing the selected series restores one shared target in the chart and pane.
+      state.series = [
+        {
+          x: [0, 1],
+          y: [0, 1],
+          markers,
+          line_style: { stroke_width: 7 },
+          point_style: { radius: 9 },
+        },
+      ]
+      state.styles = {}
+      await tick()
+      const field = markers === `line` ? `line.width` : `point.size`
+      expect(
+        plot.querySelector<HTMLInputElement>(`[data-key="${field}"] input[type="range"]`)
+          ?.value,
+      ).toBe(markers === `line` ? `7` : `9`)
     },
   )
 
   test(`line underlays stay out of legends, controls, and hover`, async () => {
     const on_point_hover = vi.fn()
-    const plot = await mount_sized_scatter_plot({
-      series: [
+    const state = $state<{ styles: StyleOverrides; show_controls: boolean }>({
+      styles: {},
+      show_controls: true,
+    })
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
         {
-          id: `trend`,
-          x: [0, 1, 2],
-          y: [0, 1, 0],
-          label: `Energy`,
-          markers: `line+points`,
-          line_style: { stroke: `red`, stroke_width: 3 },
-          line_underlays: [
+          series: [
             {
+              id: `trend`,
               x: [0, 1, 2],
-              y: [100, 100, 100],
-              line_style: { stroke: `blue`, stroke_width: 1 },
+              y: [0, 1, 0],
+              label: `Energy`,
+              markers: `line+points`,
+              line_style: { stroke: `red`, stroke_width: 3 },
+              line_underlays: [
+                {
+                  x: [0, 1, 2],
+                  y: [100, 100, 100],
+                  line_style: { stroke: `blue`, stroke_width: 1 },
+                },
+              ],
             },
           ],
-        },
-      ],
-      x_axis: { range: [0, 2] },
-      hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
-      point_tween: { duration: 0 },
-      on_point_hover,
-      show_legend: true,
-      controls_open: true,
-    })
+          x_axis: { range: [0, 2] },
+          hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+          point_tween: { duration: 0 },
+          on_point_hover,
+          show_legend: true,
+          controls_open: true,
+        } satisfies ComponentProps<typeof ScatterPlot>,
+        state,
+      ),
+    )
 
     const lines = plot.querySelectorAll(`g[data-series-id="trend"] path[fill="none"]`)
     expect(lines).toHaveLength(2)
@@ -808,15 +999,35 @@ describe(`ScatterPlot`, () => {
       `[data-key="line.width"] input[type="range"]`,
       HTMLInputElement,
     )
-    line_width_input.value = `5`
-    line_width_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
-    expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `5`])
+    expect(line_width_input.value).toBe(`3`)
+    expect(state.styles).toEqual({})
+    // An explicit override equal to the shipped default must still offer Reset.
+    for (const width of [`5`, `2`]) {
+      line_width_input.value = width
+      line_width_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, width])
+      expect(state.styles).toEqual({ line: { width: Number(width) } })
+      expect(plot.querySelector(`[aria-label="Clear line style overrides"]`)).not.toBeNull()
+    }
 
-    // Reset untouches the key, so the authored stroke_width wins again (not the default 2)
-    doc_query(`[aria-label="Reset line style to defaults"]`, HTMLButtonElement).click()
+    // Clearing the override restores the authored width in the plot and controls.
+    doc_query(`[aria-label="Clear line style overrides"]`, HTMLButtonElement).click()
     await tick()
     expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `3`])
+    expect(line_width_input.value).toBe(`3`)
+    expect(state.styles).toEqual({})
+    expect(plot.querySelector(`[aria-label="Clear line style overrides"]`)).toBeNull()
+
+    state.show_controls = false
+    state.styles = { line: { width: 4, color: `green`, dash: `4 2`, opacity: 0.5 } }
+    await tick()
+    expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `4`])
+    for (const line of [lines[1], doc_query(`.legend-item line`, SVGElement)]) {
+      expect(line.getAttribute(`stroke`)).toBe(`green`)
+      expect(line.getAttribute(`stroke-dasharray`)).toBe(`4 2`)
+      expect(line.getAttribute(`stroke-opacity`)).toBe(`0.5`)
+    }
 
     await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()
@@ -1813,36 +2024,41 @@ describe(`ScatterPlot`, () => {
     expect(fills[1]).not.toMatch(/NaN/)
   })
 
-  test(`log y axis holds non-positive line points at the domain floor and drops their markers`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        {
-          x: [1, 2, 3, 4],
-          y: [0, 10, -5, 1000],
-          markers: `line+points`,
-          line_style: { curve: `linear` },
-        },
-      ],
-      y_axis: { scale_type: `log` },
-      point_tween: { duration: 0 },
-      line_tween: { duration: 0 },
-      legend: null,
-      show_controls: false,
-    })
-    const clip = clip_rect(plot)
-    expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
-    const line_d = plot.querySelector(`g[data-series-id] path[fill="none"]`)?.getAttribute(`d`)
-    const y_values = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map((match) =>
-      Number(match.groups?.y),
-    )
-    expect(y_values).toHaveLength(4)
-    const bottom = clip.y + clip.height
-    // Non-positive values sit on the bottom edge, not at -Infinity/NaN
-    expect(y_values[0]).toBeCloseTo(bottom, 6)
-    expect(y_values[2]).toBeCloseTo(bottom, 6)
-    expect(y_values[3]).toBeLessThan(y_values[1])
-    expect(y_values.every(Number.isFinite)).toBe(true)
-  })
+  test.each([1, 1e-30])(
+    `log y axis holds non-positive line points at the domain floor (factor=%s)`,
+    async (factor) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          {
+            x: [1, 2, 3, 4],
+            y: [0, 10, -5, 1000].map((value) => value * factor),
+            markers: `line+points`,
+            line_style: { curve: `linear` },
+          },
+        ],
+        y_axis: { scale_type: `log` },
+        point_tween: { duration: 0 },
+        line_tween: { duration: 0 },
+        legend: null,
+        show_controls: false,
+      })
+      const clip = clip_rect(plot)
+      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
+      const line_d = plot
+        .querySelector(`g[data-series-id] path[fill="none"]`)
+        ?.getAttribute(`d`)
+      const y_values = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map(
+        (match) => Number(match.groups?.y),
+      )
+      expect(y_values).toHaveLength(4)
+      const bottom = clip.y + clip.height
+      // Non-positive values sit on the bottom edge, not at -Infinity/NaN
+      expect(y_values[0]).toBeCloseTo(bottom, 6)
+      expect(y_values[2]).toBeCloseTo(bottom, 6)
+      expect(y_values[3]).toBeLessThan(y_values[1])
+      expect(y_values.every(Number.isFinite)).toBe(true)
+    },
+  )
 
   // Shift-drag pans by a constant data offset: moving the cursor by a quarter of the plot
   // width shifts the view by a quarter of the x span. Gestures only move the live view, which

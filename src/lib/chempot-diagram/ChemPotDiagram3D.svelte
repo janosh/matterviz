@@ -4,11 +4,7 @@
   import { Filter } from 'svelte-widgets/icons'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
-  import {
-    track_settings,
-    normalize_show_controls,
-    type ShowControlsProp,
-  } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { Spinner } from 'svelte-widgets'
@@ -27,12 +23,8 @@
     webgpu_available,
   } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
-  import type {
-    AxisConfig3D,
-    CameraProjection3D,
-    DataSeries3D,
-    DisplayConfig3D,
-  } from '$lib/plot/core/types'
+  import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '$lib/plot/core/types'
+  import { get_3d_auto_ranges } from '$lib/plot/scatter-3d/scene-coords'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, onMount } from 'svelte'
@@ -358,6 +350,7 @@
     for (let idx = 0; idx < result.length; idx++) result[idx].label_font_size = fonts[idx]
     return result
   })
+  const domain_points = $derived(render_domains.flatMap((domain) => domain.points_3d))
 
   // Formula overlays are cut out of the base hull/edges and drawn in their own colour
   const overlay_formulas = $derived(new SvelteSet(formulas_to_draw))
@@ -368,10 +361,9 @@
   // Stretch short axes (up to 4x) to improve screen-space utilization for highly anisotropic
   // systems. Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): Vec3 => {
-    const points = render_domains.flatMap((domain) => domain.points_3d)
-    if (points.length === 0) return [1, 1, 1]
+    if (domain_points.length === 0) return [1, 1, 1]
     const spans = [1, 2, 0].map((axis) => {
-      const [lower, upper] = array_extent(points.map((point) => point[axis]))
+      const [lower, upper] = array_extent(domain_points.map((point) => point[axis]))
       return Math.max(upper - lower, 1e-6)
     })
     const max_span = Math.max(...spans)
@@ -384,10 +376,9 @@
 
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
-    const points = render_domains.flatMap((domain) => domain.points_3d)
-    if (points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
+    if (domain_points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
     // Center and max distance from it, in rendered coordinates (swizzled + axis scaling)
-    const rendered = points.map(to_render_xyz)
+    const rendered = domain_points.map(to_render_xyz)
     const center = vertex_mean(rendered)
     let max_dist = 0
     for (const [x_val, y_val, z_val] of rendered) {
@@ -593,7 +584,7 @@
   // domain and face, and only a button click reads it. Raycasting instead is broken — FrontSide
   // culling means rays fired from inside the hull hit nothing and every domain scores 0.
   function get_surface_formulas(): string[] {
-    const envelope = render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d))
+    const envelope = render_hull_geometry(domain_points)
     const faces = envelope && strip_closing_faces(envelope.getAttribute(`position`).array)
     envelope?.dispose()
     // A domain is visible from outside exactly when it owns a face of the envelope
@@ -606,14 +597,16 @@
   const dedup_3d = (pts: number[][], tol: number = 1e-4): number[][] =>
     dedup_points(pts, tol).unique
 
-  const controls_series = $derived<DataSeries3D[]>([
-    {
-      x: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[1])),
-      y: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[2])),
-      z: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[0])),
-      label: `domains`,
-    },
-  ])
+  const controls_auto_ranges = $derived(
+    get_3d_auto_ranges(
+      [],
+      domain_points.map(([coord_z, coord_x, coord_y]) => ({
+        x: coord_x,
+        y: coord_y,
+        z: coord_z,
+      })),
+    ),
+  )
 
   // Overlay geometry is per domain and depends only on that domain's points and the axis
   // stretch, so it is cached per formula and kept while the formula stays an overlay:
@@ -1158,12 +1151,12 @@
     chempot.set(`color_mode`, color_modes[(idx + 1) % color_modes.length])
   }
 
-  const chempot_settings = track_settings(() => ({
-    ...chempot.values,
-    // a pinned camera is exactly the state Reset undoes, so it has to count as a change
-    // or the affordance never appears for it
-    camera_pinned: camera_position_override !== null,
-  }))
+  const changed_controls = $derived([
+    ...chempot.changed_keys,
+    ...(camera_position_override !== null ? [`camera`] : []),
+    ...(projection_elements_override !== null ? [`projection`] : []),
+    ...(formula_filter_query ? [`formula_filter`] : []),
+  ])
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -1272,7 +1265,7 @@
       bind:display
       bind:camera_projection
       bind:auto_rotate
-      series={controls_series}
+      auto_ranges={controls_auto_ranges}
       toggle_props={{
         class: `chempot-controls-toggle`,
         style: `position: static`,
@@ -1282,7 +1275,8 @@
     >
       <SettingsSection
         title="ChemPot"
-        changed_keys={chempot_settings.changed_keys}
+        changed_keys={changed_controls}
+        labels={{ reset_section: (title) => `Clear ${title.toLowerCase()} overrides` }}
         on_reset={reset_controls}
       >
         {#if has_multinary_system && plot_elements.length === 3}

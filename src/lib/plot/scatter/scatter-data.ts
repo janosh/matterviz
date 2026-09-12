@@ -2,9 +2,9 @@
 // stateless: component $state/$derived values are passed in as parameters.
 import { partition_point, type Vec2 } from '$lib/math'
 import { error_getter } from '$lib/plot/core/error-bars'
-import type { D3SymbolName } from '$lib/labels'
 import { plot_color } from '$lib/colors'
 import { symbol_names } from '$lib/labels'
+import { DEFAULTS } from '$lib/settings'
 import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
 import { range_bounds } from '$lib/plot/core/interactions'
@@ -16,6 +16,7 @@ import type {
   LegendItem,
   LineCurve,
   PointStyle,
+  StyleOverrides,
 } from '$lib/plot/core/types'
 import { assert_series_lengths, DEFAULT_MARKERS } from '$lib/plot/core/types'
 
@@ -159,12 +160,7 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
 }
 
 // Display style attached to each legend item (matches PlotLegend expectations)
-type LegendDisplayStyle = {
-  symbol_type?: D3SymbolName
-  symbol_color?: string
-  line_color?: string
-  line_dash?: string
-}
+type LegendDisplayStyle = LegendItem[`display_style`]
 
 // Minimal shape of a computed fill region needed for legend entries
 export type LegendFill = FillRegion & {
@@ -203,17 +199,15 @@ export const scatter_legend_rows = <Metadata>(
   series_idx: number
   label: string
   legend_group: string | undefined
-  legend_key?: string
+  legend_key: string
 }[] =>
   series.flatMap((data_series, series_idx) => {
     if (!data_series) return []
     const { legend_id, id: identifier, legend_group } = data_series
-    const key = legend_id ?? identifier
+    const key = legend_id ?? identifier ?? series_idx
     return {
       series_idx,
-      ...(key != null && {
-        legend_key: JSON.stringify([legend_id != null ? `legend` : `id`, typeof key, key]),
-      }),
+      legend_key: JSON.stringify([legend_id != null ? `legend` : `id`, typeof key, key]),
       label: scatter_series_label(data_series) ?? `Series ${series_idx + 1}`,
       legend_group,
     }
@@ -238,69 +232,84 @@ export const legend_row_dedupe = () => {
   }
 }
 
+// Shared by drawing and legend swatches, including the fallback when no stroke is authored.
+export function scatter_line_style<Metadata>(
+  series: DataSeries<Metadata>,
+  series_idx: number,
+  color_scale: (value: number) => string,
+  override?: StyleOverrides[`line`],
+) {
+  let color = override?.color ?? series.line_style?.stroke ?? first_point_style(series)?.fill
+  if (color == null) {
+    const value = series.color_values?.find(
+      (candidate) => candidate != null && Number.isFinite(candidate),
+    )
+    color = value != null ? color_scale(value) : plot_color(series_idx)
+  }
+  return {
+    color,
+    width: override?.width ?? series.line_style?.stroke_width ?? 2,
+    dash: override?.dash ?? series.line_style?.line_dash,
+    opacity: override?.opacity,
+  }
+}
+
 // Prepare legend items from series + computed fill regions; first matching identity wins.
 export function build_legend_data<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   computed_fills: readonly LegendFill[],
   color_scale_fn: (value: number) => string,
-  // Marker shape override (StyleOverrides.point.symbol_type); swatches must match the markers
-  default_symbol?: D3SymbolName,
+  styles: StyleOverrides = {},
+  selected_series_idx = 0,
 ): LegendItem[] {
   const display_style_for = (
     data_series: DataSeries<Metadata>,
     series_idx: number,
   ): LegendDisplayStyle => {
-    // Series-index defaults give auto-cycled colors/symbols
     const series_default_color = plot_color(series_idx)
-    const display_style: LegendDisplayStyle = {
-      symbol_type: default_symbol ?? get_series_symbol(series_idx),
-      symbol_color: series_default_color,
-      line_color: series_default_color,
-    }
-    const series_markers = data_series?.markers ?? DEFAULT_MARKERS
+    const display_style: LegendDisplayStyle = {}
+    const series_markers = data_series.markers ?? DEFAULT_MARKERS
     const point_style = first_point_style(data_series)
+    const point_override = series_idx === selected_series_idx ? styles.point : undefined
 
-    if (!series_markers.includes(`points`)) {
-      // No points marker: no symbol swatch in the legend
-      display_style.symbol_type = undefined
-      display_style.symbol_color = undefined
-    } else if (point_style) {
+    if (series_markers.includes(`points`) && styles.show_points !== false) {
+      display_style.symbol_type = styles.point?.symbol_type ?? get_series_symbol(series_idx)
       if (
-        !Array.isArray(data_series?.point_style) &&
-        typeof point_style.symbol_type === `string` &&
+        !Array.isArray(data_series.point_style) &&
+        typeof point_style?.symbol_type === `string` &&
         symbol_names.includes(point_style.symbol_type)
       ) {
         display_style.symbol_type = point_style.symbol_type
       }
-      if (point_style.fill) display_style.symbol_color = point_style.fill
+      const color_value = data_series.color_values?.[0]
+      display_style.symbol_color =
+        color_value != null && Number.isFinite(color_value)
+          ? color_scale_fn(color_value)
+          : (point_override?.color ?? point_style?.fill ?? series_default_color)
+      display_style.symbol_opacity = point_override?.opacity ?? point_style?.fill_opacity
       // Fall back to stroke when the fill is missing/none/transparent, by alpha channel: a
       // `startsWith('rgba(')` test called every rgba() color transparent.
-      if (point_style.stroke && is_transparent_or_none(display_style.symbol_color)) {
-        display_style.symbol_color = point_style.stroke
+      const stroke = point_override?.stroke_color ?? point_style?.stroke
+      const stroke_only = [`Plus`, `Times`, `Asterisk`].includes(display_style.symbol_type)
+      if (stroke_only || (stroke && is_transparent_or_none(display_style.symbol_color))) {
+        display_style.symbol_color = stroke ?? `currentColor`
+        display_style.symbol_opacity =
+          point_override?.stroke_opacity ??
+          point_style?.stroke_opacity ??
+          (stroke == null ? DEFAULTS.scatter.point.stroke_opacity : 1)
       }
     }
 
-    if (series_markers.includes(`line`)) {
-      // Explicit line stroke, then color scale, then point colors, then series default
-      let line_color = data_series?.line_style?.stroke
-      if (!line_color) {
-        const first_cv = Array.isArray(data_series?.color_values)
-          ? data_series?.color_values?.find((color_val: number | null) => color_val != null)
-          : undefined
-        /* oxlint-disable @typescript-eslint/prefer-nullish-coalescing -- empty-string colors should fall through */
-        line_color =
-          (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
-          point_style?.fill ||
-          point_style?.stroke ||
-          series_default_color
-        /* oxlint-enable @typescript-eslint/prefer-nullish-coalescing */
-      }
-      display_style.line_color = line_color
-      display_style.line_dash = data_series?.line_style?.line_dash
-    } else {
-      // No line marker: no line swatch in the legend
-      display_style.line_dash = undefined
-      display_style.line_color = undefined
+    if (series_markers.includes(`line`) && styles.show_lines !== false) {
+      const line = scatter_line_style(
+        data_series,
+        series_idx,
+        color_scale_fn,
+        series_idx === selected_series_idx ? styles.line : undefined,
+      )
+      display_style.line_color = line.color
+      display_style.line_dash = line.dash
+      display_style.line_opacity = line.opacity
     }
 
     return display_style

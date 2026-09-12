@@ -183,7 +183,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(pane).toBeHidden()
   })
 
-  test(`controls pane mode/property selects and bar style inputs drive the overlay`, async ({
+  test(`controls pane mode/series selects and bar style inputs fit and drive the overlay`, async ({
     page,
   }) => {
     const histogram = page.locator(`#multiple-series-overlay`)
@@ -192,11 +192,11 @@ test.describe(`Histogram Component Tests`, () => {
 
     const mode_select = pane.getByRole(`combobox`, { name: `Mode` })
     await mode_select.selectOption(`single`)
-    const property_select = pane.getByRole(`combobox`, { name: `Property` })
-    await expect(property_select).toBeVisible()
-    expect(await property_select.locator(`option`).count()).toBeGreaterThan(1)
-    await property_select.selectOption({ index: 1 })
-    await expect(property_select).not.toHaveValue(``)
+    const series_select = pane.getByRole(`combobox`, { name: `Series`, exact: true })
+    await expect(series_select).toBeVisible()
+    expect(await series_select.locator(`option`).count()).toBeGreaterThan(1)
+    await series_select.selectOption(`1`)
+    await expect(series_select).toHaveValue(`1`)
     await expect.poll(() => series_groups(histogram).count()).toBe(1)
     await mode_select.selectOption(`overlay`)
     await expect.poll(() => series_groups(histogram).count()).toBeGreaterThan(1)
@@ -210,11 +210,43 @@ test.describe(`Histogram Component Tests`, () => {
     for (const [label, value, attribute] of [
       [`Opacity`, `0.8`, `opacity`],
       [`Stroke width`, `1.5`, `stroke-width`],
+      [`Stroke opacity`, `0.3`, `stroke-opacity`],
     ] as const) {
       await pane
         .locator(`label:has(span:text-is("${label}")) input[type="number"]`)
         .fill(value)
       await expect(bars.first()).toHaveAttribute(attribute, value)
+    }
+    // Keep color and opacity independently operable, and let sliders fill their cells.
+    const stroke_color = pane.getByLabel(`Stroke color`, { exact: true })
+    await stroke_color.fill(`#ff0000`)
+    await expect(bars.first()).toHaveAttribute(`stroke`, `#ff0000`)
+    for (const width of [390, 320, 1280]) {
+      await page.setViewportSize({ width, height: 844 })
+      await stroke_color.scrollIntoViewIfNeeded()
+      const color_box = await stroke_color.boundingBox()
+      expect(color_box?.width).toBeGreaterThan(20)
+      const rows = pane.locator(`label:has(> input[type="range"])`)
+      for (const row of await rows.all()) {
+        const children = await bounding_boxes(row.locator(`:scope > *`))
+        const row_box = await row.boundingBox()
+        if (!row_box) throw new Error(`Missing controls row bounds`)
+        for (let idx = 0; idx < children.length; idx++) {
+          expect(children[idx].x).toBeGreaterThanOrEqual(row_box.x)
+          expect(children[idx].x + children[idx].width).toBeLessThanOrEqual(
+            row_box.x + row_box.width + 1,
+          )
+          if (idx)
+            expect(children[idx].x).toBeGreaterThanOrEqual(
+              children[idx - 1].x + children[idx - 1].width,
+            )
+        }
+        const slider = children.at(-1)
+        expect(slider?.width).toBeGreaterThan(40)
+        expect(
+          Math.abs((slider?.x ?? 0) + (slider?.width ?? 0) - row_box.x - row_box.width),
+        ).toBeLessThan(1)
+      }
     }
   })
 

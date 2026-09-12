@@ -20,6 +20,7 @@ import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { unzipSync } from 'fflate'
 import { mount, tick } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, make_crystal, with_property_rows } from '../setup'
 
@@ -546,9 +547,22 @@ describe(`TrajectoryExportPane property export`, () => {
   )
 
   test(`downloads the whole frame range as CSV`, async () => {
-    open_pane({ run: trajectory })
+    const state = fromStore(writable({ ...trajectory, frame_count: 1 }))
+    mount(TrajectoryExportPane, {
+      target: document.body,
+      props: {
+        export_pane_open: true,
+        filename: `run.extxyz`,
+        get run() {
+          return state.current
+        },
+      },
+    })
     await tick()
     const reset_selector = `button[aria-label="Reset frame range to defaults"]`
+    expect(document.querySelector(reset_selector)).toBeNull()
+    state.current = trajectory
+    await tick()
     expect(document.querySelector(reset_selector)).toBeNull()
 
     const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)

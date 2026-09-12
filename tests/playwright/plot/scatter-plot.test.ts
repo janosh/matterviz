@@ -741,7 +741,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(green_line).toHaveAttribute(`stroke-width`, `4`)
   })
 
-  test(`touched controls override only their property; reset restores control defaults`, async ({
+  test(`sparse overrides change only their property; reset restores authored styles`, async ({
     page,
   }) => {
     const plot = page.locator(`#control-precedence-plot.scatter`)
@@ -750,6 +750,20 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const green_line = plot.locator(`g[data-series-id="1"] path[fill="none"]`)
     const initial_width = (await crimson_marker.boundingBox())?.width ?? NaN
     const { pane } = await open_plot_controls(plot)
+    await expect(pane.locator(`.style-row > label`).first()).toBeVisible()
+
+    for (const width of [320, 390, 900]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect(pane).toBeVisible()
+      const fields_fit = await pane.evaluate((node) => {
+        const pane_rect = node.getBoundingClientRect()
+        return [...node.querySelectorAll(`.style-row > label`)].every((field) => {
+          const rect = field.getBoundingClientRect()
+          return rect.width > 0 && rect.left >= pane_rect.left && rect.right <= pane_rect.right
+        })
+      })
+      expect(fields_fit, `style fields fit at ${width}px`).toBe(true)
+    }
 
     // point size on series 0: marker grows, its color/stroke and series 1 are untouched
     await pane.locator(`[data-key="point.size"] input[type="range"]`).fill(`20`)
@@ -762,16 +776,24 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(await green_marker.getAttribute(`fill`)).toContain(`forestgreen`)
     await expect(green_marker).toHaveAttribute(`stroke-width`, `2`)
 
-    // section reset untouches every key in it, so the authored radius shows again
-    await pane.getByRole(`button`, { name: `Reset point style to defaults` }).click()
+    // section reset removes its overrides, so the authored radius shows again
+    await pane.getByRole(`button`, { name: `Clear point style overrides` }).click()
     await expect
       .poll(async () => (await crimson_marker.boundingBox())?.width ?? 0)
       .toBeCloseTo(initial_width, 0)
     await expect(crimson_marker).toHaveAttribute(`stroke-width`, `3`)
 
-    // line width on series 1: width changes, line color and points stay
+    // Point-only display still offers a series target, with independently editable colors.
+    await pane.getByLabel(`Show lines`, { exact: true }).uncheck()
     const series_select = pane.getByRole(`combobox`, { name: /Series/ })
     await series_select.selectOption(`1`)
+    await pane.locator(`[data-key="point.color"] input`).fill(`#0000ff`)
+    await expect(green_marker).toHaveCSS(`fill`, `rgb(0, 0, 255)`)
+    await expect(crimson_marker).toHaveCSS(`fill`, `rgb(220, 20, 60)`)
+    await pane.getByRole(`button`, { name: `Clear point style overrides` }).click()
+    await pane.getByLabel(`Show lines`, { exact: true }).check()
+
+    // line width on series 1: width changes, line color and points stay
     await pane.locator(`[data-key="line.width"] input[type="range"]`).fill(`8`)
     await expect(green_line).toHaveAttribute(`stroke-width`, `8`)
     await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)

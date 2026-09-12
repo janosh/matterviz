@@ -269,7 +269,9 @@ describe(`StructureControls inputs`, () => {
       opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
 
-      doc_query<HTMLButtonElement>(`button[aria-label="Reset labels to defaults"]`).click()
+      doc_query<HTMLButtonElement>(
+        `button[aria-label="Restore labels to initial values"]`,
+      ).click()
       await tick()
 
       // reset restores what the pane mounted with, so the two halves of the one bg string come
@@ -660,7 +662,9 @@ describe(`StructureControls reactive props`, () => {
     })
     // Persisted values define this session's reset snapshot, so they do not immediately
     // masquerade as unsaved changes.
-    expect(target.querySelector(`button[aria-label="Reset atoms to defaults"]`)).toBeNull()
+    expect(
+      target.querySelector(`button[aria-label="Restore atoms to initial values"]`),
+    ).toBeNull()
   })
 
   test(`persists changed settings and pane size after debounce`, async () => {
@@ -948,25 +952,150 @@ describe(`StructureControls reactive props`, () => {
     expect(center_label(`e`)).toBeUndefined()
   })
 
+  test.each<Partial<StructureSettings>>([
+    {},
+    {
+      atom_radius: undefined,
+      polyhedra_color: undefined,
+      trajectory_line_elements: undefined,
+    },
+    {
+      atom_radius: DEFAULTS.structure.atom_radius,
+      polyhedra_color: DEFAULTS.structure.polyhedra_color,
+      polyhedra_color_mode: DEFAULTS.structure.polyhedra_color_mode,
+      polyhedra_included_elements: [],
+      trajectory_line_elements: null,
+    },
+  ])(`row resets preserve caller-owned settings and omitted keys: %j`, async (initial) => {
+    const state = $state<{ scene_props: Partial<StructureSettings> }>({
+      scene_props: { show_polyhedra: `always`, trajectory_line_trail_frames: 0, ...initial },
+    })
+    const expected = { ...state.scene_props }
+    const stream = make_position_stream(
+      [
+        [
+          [0, 0, 0],
+          [1, 0, 0],
+        ],
+      ],
+      [`H`, `He`],
+    )
+    const target = await mount_bound_controls(state, {
+      show_trajectory_lines: true,
+      trajectory_position_stream: stream,
+    })
+    expect(state.scene_props).toStrictEqual(expected)
+    expect(target.querySelector(`.setting-reset-button`)).toBeNull()
+
+    Object.assign(state.scene_props, {
+      atom_radius: 2,
+      polyhedra_color_mode: `uniform`,
+      polyhedra_color: `#123456`,
+      polyhedra_excluded_elements: [`Fe`],
+      polyhedra_included_elements: [`O`],
+      trajectory_line_elements: [`H`],
+    })
+    await tick()
+    for (const key of [
+      `atom_radius`,
+      `polyhedra_color`,
+      `polyhedra_centers`,
+      `trajectory_line_elements`,
+    ]) {
+      doc_query<HTMLButtonElement>(`[data-key="${key}"] .setting-reset-button`).click()
+      await tick()
+    }
+    expect(state.scene_props).toStrictEqual(expected)
+    expect(target.querySelector(`.setting-reset-button`)).toBeNull()
+  })
+
+  test.each<Partial<StructureSettings>>([
+    {},
+    { vector_configs: undefined },
+    { vector_configs: {} },
+    { vector_configs: { magmom: { visible: true, color: `#abcdef`, scale: 3 } } },
+    { vector_configs: { force: {} } },
+    { vector_configs: { force: { visible: undefined, color: undefined, scale: undefined } } },
+    { vector_configs: { force: { color: null, scale: null } } },
+    { vector_configs: { force: { visible: true } } },
+    { vector_configs: { force: { visible: true, color: `#2468ac`, scale: 4 } } },
+  ])(`vector resets preserve nested ownership and other rows' edits: %j`, async (initial) => {
+    const state = $state<{ scene_props: Partial<StructureSettings> }>({ scene_props: initial })
+    const expected = $state.snapshot(state.scene_props)
+    const target = await mount_bound_controls(state, { structure: vector_structure })
+    const reset_row = async (key: string) => {
+      doc_query<HTMLButtonElement>(`[data-key="${key}"] .setting-reset-button`).click()
+      await tick()
+    }
+    set_input(
+      doc_query<HTMLInputElement>(`[data-key="vector_scale:force"] input[type="number"]`),
+      `2.5`,
+    )
+    await tick()
+    expect(state.scene_props.vector_configs?.force).toStrictEqual({
+      ...expected.vector_configs?.force,
+      scale: 2.5,
+    })
+    expect(
+      target.querySelector(`[data-key="vector_config:force"] .setting-reset-button`),
+    ).toBeNull()
+
+    doc_query<HTMLInputElement>(
+      `[data-key="vector_config:force"] input[type="checkbox"]`,
+    ).click()
+    await tick()
+    // Returning to the displayed default still leaves an override when visible was omitted.
+    if (expected.vector_configs?.force?.visible === undefined) {
+      doc_query<HTMLInputElement>(
+        `[data-key="vector_config:force"] input[type="checkbox"]`,
+      ).click()
+      await tick()
+      expect(state.scene_props.vector_configs?.force?.visible).toBe(true)
+    }
+    await reset_row(`vector_config:force`)
+    expect(state.scene_props.vector_configs?.force).toStrictEqual({
+      ...expected.vector_configs?.force,
+      scale: 2.5,
+    })
+    const color = doc_query<HTMLInputElement>(
+      `[data-key="vector_config:force"] input[type="color"]`,
+    )
+    color.value = `#123456`
+    color.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    await reset_row(`vector_scale:force`)
+    expect(state.scene_props.vector_configs?.force).toStrictEqual({
+      ...expected.vector_configs?.force,
+      color: `#123456`,
+    })
+    await reset_row(`vector_config:force`)
+    expect(state.scene_props).toStrictEqual(expected)
+    expect(target.querySelector(`.setting-reset-button`)).toBeNull()
+  })
+
   // Section resets include site-vector scales stored in vector_configs.
   test(`offers section resets only after changes and restores defaults`, async () => {
     // every key defined at its default, so the mount-time snapshot the reset offer compares
     // against isn't perturbed by `bind:` writing back into an undefined prop
+    const vector_defaults: StructureSettings['vector_configs'] = default_vector_configs([
+      `force`,
+      `magmom`,
+    ])
     const state = $state({
-      scene_props: { ...DEFAULTS.structure, atom_radius: 1.4 },
+      scene_props: {
+        ...DEFAULTS.structure,
+        atom_radius: 1.4,
+        vector_configs: vector_defaults,
+      },
     })
 
     const target = await mount_bound_controls(state, {
       structure: vector_structure,
       displacement_summary: { rmsd: 0.12, max_displacement: 0.34, error: null },
     })
-    const vector_defaults = default_vector_configs([`force`, `magmom`])
-    state.scene_props.vector_configs = vector_defaults
-    await tick()
-
     const reset_button = (section: string) =>
       target.querySelector<HTMLButtonElement>(
-        `button[aria-label="Reset ${section} to defaults"]`,
+        `button[aria-label="Restore ${section} to initial values"]`,
       )
     // nothing differs from the mount-time snapshot yet, so no section offers a reset
     const sections = [`displacement overlay`, `atoms`, `polyhedra`, `site vectors`]
@@ -1049,18 +1178,20 @@ describe(`StructureControls reactive props`, () => {
     state.structure = structure_with_vector(`magmom`)
     await tick()
     expect(
-      target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
+      target.querySelector(`button[aria-label="Restore site vectors to initial values"]`),
     ).toBeNull()
 
     state.scene_props.vector_scale = 2
     state.structure = structure_with_vector(`force`)
     await tick()
     expect(
-      target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
+      target.querySelector(`button[aria-label="Restore site vectors to initial values"]`),
     ).toBeNull()
     state.scene_props.vector_scale = 3
     await tick()
-    doc_query<HTMLButtonElement>(`button[aria-label="Reset site vectors to defaults"]`).click()
+    doc_query<HTMLButtonElement>(
+      `button[aria-label="Restore site vectors to initial values"]`,
+    ).click()
     await tick()
     expect(state.scene_props.vector_scale).toBe(2)
   })

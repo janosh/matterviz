@@ -65,6 +65,29 @@ test(`portalled tooltip can escape while the canvas stays clipped`, async ({ pag
   ).toEqual({ canvas_clipped: true, tooltip_visible: true })
 })
 
+test(`touch controls keep every axis row visible`, async ({ browser }) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  })
+  try {
+    await page.goto(TEST_URL, { waitUntil: `networkidle` })
+    const pane = await open_controls_pane(page)
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      const pane_bounds = await pane.boundingBox()
+      const last_field = await pane.getByLabel(`Z max`, { exact: true }).boundingBox()
+      if (!pane_bounds || !last_field) throw new Error(`Missing touch controls at ${width}px`)
+      expect(last_field.y + last_field.height).toBeLessThanOrEqual(
+        pane_bounds.y + pane_bounds.height,
+      )
+    }
+  } finally {
+    await page.close()
+  }
+})
+
 test(`sized points and projections share meshes and resize their instance buffers`, async ({
   page,
 }) => {
@@ -288,16 +311,44 @@ test.describe(`ScatterPlot3D`, () => {
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     const pane = await open_controls_pane(page)
     const axis_label = pane.getByRole(`textbox`, { name: `X label`, exact: true })
+    // An open pane stays readable after both pointer and keyboard focus leave the chart.
+    await page.mouse.move(0, 0)
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    })
+    await expect(page.locator(`${CONTAINER_SELECTOR} .header-controls`)).toHaveCSS(
+      `opacity`,
+      `1`,
+    )
     const initial_label = await axis_label.inputValue()
     const x_min = pane.getByRole(`spinbutton`, { name: `X min`, exact: true })
     const x_max = pane.getByRole(`spinbutton`, { name: `X max`, exact: true })
-    await expect(x_min).toHaveValue(`-1.2`)
-    await expect(x_max).toHaveValue(`1.2`)
+    await expect(x_min).toHaveValue(``)
+    await expect(x_max).toHaveValue(``)
+    await expect(x_min).toHaveAttribute(`placeholder`, `−1.2`)
+    await expect(x_max).toHaveAttribute(`placeholder`, `1.2`)
+    await x_min.fill(`0.123`)
+    // First helix point has x=1; inspect its rendered transform, not just the input binding.
+    // Instanced transforms are Float32, so compare against the exactly rounded scene position.
+    const expected_x = Math.fround(((1 - 0.123) / (1.2 - 0.123) - 0.5) * 10)
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.scatter_probe.instances().find((mesh) => !mesh.projection)?.matrices[12],
+        ),
+      )
+      .toBe(expected_x)
+    await expect(x_max).toHaveValue(``)
     await x_min.fill(`0`)
-    await expect(x_max).toHaveValue(`1.2`)
+    await expect(x_max).toHaveValue(``)
+    await x_min.fill(`0.00000001`)
+    await expect(x_min).toHaveValue(`1e-8`)
+    await x_min.fill(``)
+    await expect(x_min).toHaveValue(``)
     await axis_label.fill(`Energy`)
     const reset_axes = pane.getByRole(`button`, {
-      name: `Reset axes to defaults`,
+      name: `Restore axes to initial values`,
       exact: true,
     })
     await expect(reset_axes).toBeVisible()
@@ -313,6 +364,61 @@ test.describe(`ScatterPlot3D`, () => {
     await expect(
       pane.getByRole(`button`, { name: `Reset camera to defaults`, exact: true }),
     ).toHaveCount(0)
+    for (const width of [320, 390, 900]) {
+      await page.setViewportSize({ width, height: 844 })
+      await axis_label.scrollIntoViewIfNeeded()
+      const pane_bounds = await pane.boundingBox()
+      if (!pane_bounds) throw new Error(`Missing controls pane at viewport width ${width}`)
+      const covered_labels = await page.locator(CONTAINER_SELECTOR).evaluate((container) => {
+        const pane_element = container.querySelector(`.draggable-pane`)
+        if (!pane_element) throw new Error(`Missing open controls pane`)
+        const pane_rect = pane_element.getBoundingClientRect()
+        return [...container.querySelectorAll(`.tick-label, .axis-label`)]
+          .filter((label) => !label.closest(`.colorbar`))
+          .flatMap((label) => {
+            const rect = label.getBoundingClientRect()
+            const center_x = rect.x + rect.width / 2
+            const center_y = rect.y + rect.height / 2
+            if (
+              center_x <= pane_rect.left ||
+              center_x >= pane_rect.right ||
+              center_y <= pane_rect.top ||
+              center_y >= pane_rect.bottom
+            )
+              return []
+            return [pane_element.contains(document.elementFromPoint(center_x, center_y))]
+          })
+      })
+      expect(covered_labels.length).toBeGreaterThan(0)
+      expect(covered_labels.every(Boolean)).toBe(true)
+      for (const name of [`X`, `Y`, `Z`]) {
+        const fields = await Promise.all(
+          [`label`, `min`, `max`].map((field) =>
+            pane.getByLabel(`${name} ${field}`, { exact: true }).boundingBox(),
+          ),
+        )
+        const [label, minimum, maximum] = fields
+        if (!label || !minimum || !maximum)
+          throw new Error(`Missing ${name} fields at viewport width ${width}`)
+        expect(minimum.y).toBe(label.y)
+        expect(maximum.y).toBe(label.y)
+        expect(minimum.x).toBeGreaterThanOrEqual(label.x + label.width)
+        expect(maximum.x).toBeGreaterThanOrEqual(minimum.x + minimum.width)
+        expect(maximum.x + maximum.width).toBeLessThanOrEqual(
+          pane_bounds.x + pane_bounds.width,
+        )
+        expect(maximum.y + maximum.height).toBeLessThanOrEqual(
+          pane_bounds.y + pane_bounds.height,
+        )
+      }
+    }
+    const container = page.locator(CONTAINER_SELECTOR)
+    await container.getByRole(`button`, { name: `Enter fullscreen` }).click()
+    await expect(container).toHaveClass(/fullscreen/)
+    await open_controls_pane(page)
+    await projection.selectOption(`orthographic`)
+    await expect(projection).toHaveValue(`orthographic`)
+    await container.getByRole(`button`, { name: `Exit fullscreen` }).click()
   })
 })
 
