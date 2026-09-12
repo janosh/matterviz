@@ -125,11 +125,12 @@ describe(`PlotControls`, () => {
       { format: `xyz`, valid: false },
       { format: `.`, valid: false },
     ])(`validates "$format" as $valid`, ({ format, valid }) => {
-      mount_controls()
+      const state = $state({ x_axis: { format: `.3f` } })
+      mount_controls(bind_props({}, state))
       const input = doc_query<HTMLInputElement>(`input[type="text"]`)
-      input.value = format
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      type_into(input, format)
       expect(input.classList.contains(`invalid`)).toBe(!valid)
+      expect(state.x_axis.format).toBe(valid ? format : `.3f`)
     })
 
     test(`reset restores the format the axis was mounted with`, () => {

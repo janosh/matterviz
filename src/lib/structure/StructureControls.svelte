@@ -720,36 +720,29 @@
       [key]: { ...configs?.[key], ...patch },
     }
   }
-  // Each vector row tracks only its fields' displayed values, but restores their original
-  // ownership. Keep other rows' edits when removing a config created by this row.
+  // Track each row's raw fields so explicit defaults remain resettable to omitted values.
+  // Keep other rows' edits when removing a config created by this row.
   const vector_accessors = (
     prefix: string,
     fields: (keyof VectorLayerConfig)[],
   ): Record<string, Accessor> =>
     Object.fromEntries(
-      available_vector_keys.map((key, key_idx) => {
+      available_vector_keys.map((key) => {
         const initial = scene_props.vector_configs
         const initial_present = Object.hasOwn(scene_props, `vector_configs`)
         const entry_present = Object.hasOwn(initial ?? {}, key)
         const initial_config = $state.snapshot(initial?.[key])
-        const display_defaults = {
-          visible: true,
-          scale: null,
-          color:
-            available_vector_keys.length > 1
-              ? VECTOR_PALETTE[key_idx % VECTOR_PALETTE.length]
-              : null,
-        }
         return [
           `${prefix}:${key}`,
           local(
-            () =>
-              Object.fromEntries(
-                fields.map((field) => [
-                  field,
-                  scene_props.vector_configs?.[key]?.[field] ?? display_defaults[field],
-                ]),
-              ),
+            () => {
+              const config = scene_props.vector_configs?.[key] ?? {}
+              return Object.fromEntries(
+                fields
+                  .filter((field) => Object.hasOwn(config, field))
+                  .map((field) => [field, config[field]]),
+              )
+            },
             () => {
               const configs = { ...scene_props.vector_configs }
               const config = { ...configs[key] }

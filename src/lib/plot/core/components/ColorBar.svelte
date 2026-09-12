@@ -101,12 +101,15 @@
   })
 
   const is_vertical = $derived(orientation === `vertical`)
-  const actual_title_side = $derived.by(() => {
-    if (title_side) return title_side
-    if (tick_side === `inside`) return `left`
-    if (is_vertical) return tick_side === `primary` ? `left` : `right`
-    return tick_side === `primary` ? `top` : `bottom`
+  const opposite_side = { top: `bottom`, bottom: `top`, left: `right`, right: `left` } as const
+  const outside_tick_side = $derived.by(() => {
+    if (tick_side === `inside`) return null
+    if (is_vertical) return tick_side === `primary` ? `right` : `left`
+    return tick_side === `primary` ? `bottom` : `top`
   })
+  const actual_title_side = $derived(
+    title_side || (outside_tick_side ? opposite_side[outside_tick_side] : `left`),
+  )
   const n_ticks = $derived(Array.isArray(tick_labels) ? tick_labels.length : tick_labels)
   const type_name = $derived(get_scale_type_name(scale_type))
 
@@ -190,14 +193,15 @@
   let bar_px = $state(0)
   let tick_font = $state(DEFAULT_FONT_SPEC)
   let tick_spacing = $state(8) // label padding plus a 4px gap
+  const tick_metrics = $derived(
+    ticks.map((value) => {
+      const label = format_tick(value)
+      return { value, label, width: measure_text_line(label, tick_font).width }
+    }),
+  )
   // Hosts with a background need room for the centered labels beyond the gradient ends.
   const tick_label_width = $derived(
-    Math.max(
-      0,
-      ...ticks.map((value) => measure_text_line(format_tick(value), tick_font).width),
-    ) +
-      tick_spacing -
-      4,
+    Math.max(0, ...tick_metrics.map(({ width }) => width)) + tick_spacing - 4,
   )
   const observe_bar = observe_size<HTMLDivElement>(({ width }, node) => {
     bar_px = width
@@ -213,14 +217,14 @@
   })
   // Tick values are unique (deduped above, or generated), so they key the rendered labels
   const visible_ticks = $derived.by(() => {
-    const base = tick_side === `inside` ? ticks.slice(1, -1) : ticks
+    const base = tick_side === `inside` ? tick_metrics.slice(1, -1) : tick_metrics
     // explicit tick arrays are the caller's choice; vertical labels stack and never collide
     if (Array.isArray(tick_labels) || !bar_px || is_vertical || base.length <= 2) return base
     // Compare actual neighbors: alternating short and long labels often fit even when
     // budgeting the widest label for every tick would drop an arbitrary middle value.
-    const bounds = base.map((tick) => {
-      const center = (tick_scale(tick) * bar_px) / 100
-      const half_width = measure_text_line(format_tick(tick), tick_font).width / 2
+    const bounds = base.map(({ value, width }) => {
+      const center = (tick_scale(value) * bar_px) / 100
+      const half_width = width / 2
       return { left: center - half_width, right: center + half_width }
     })
     const last = base.length - 1
@@ -252,20 +256,9 @@
   )
   // Push the title away from outside ticks that sit on the same edge
   const actual_title_style = $derived.by(() => {
-    const outside_tick_side =
-      tick_side === `inside`
-        ? null
-        : is_vertical
-          ? tick_side === `primary`
-            ? `right`
-            : `left`
-          : tick_side === `primary`
-            ? `bottom`
-            : `top`
-    const opposite = { top: `bottom`, bottom: `top`, left: `right`, right: `left` } as const
     const overlap_margin =
       actual_title_side === outside_tick_side
-        ? `margin-${opposite[actual_title_side]}: var(--cbar-label-overlap-offset, 1em);`
+        ? `margin-${opposite_side[actual_title_side]}: var(--cbar-label-overlap-offset, 1em);`
         : ``
     const size_constraint = is_vertical_side
       ? `max-width: var(--cbar-label-max-width, 2em);`
@@ -330,15 +323,15 @@
       visible_ticks.length > 0 && tick_side !== `inside` && `tick-${tick_side}`,
     ]}
   >
-    {#each visible_ticks as tick (tick)}
-      {@const position_percent = tick_scale(tick)}
+    {#each visible_ticks as { value, label } (value)}
+      {@const position_percent = tick_scale(value)}
       <span
         class={[`tick-label`, orientation, `tick-${tick_side}`]}
         style:left={is_vertical ? undefined : `${position_percent}%`}
         style:top={is_vertical ? `${position_percent}%` : undefined}
-        style:color={tick_side === `inside` ? inside_tick_color(tick) : `inherit`}
+        style:color={tick_side === `inside` ? inside_tick_color(value) : `inherit`}
       >
-        {format_tick(tick)}
+        {label}
       </span>
     {/each}
   </div>

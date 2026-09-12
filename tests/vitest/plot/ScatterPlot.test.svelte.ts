@@ -805,6 +805,18 @@ describe(`ScatterPlot`, () => {
         ...(markers.includes(`points`) ? [[`point`, `.marker`, `fill`]] : []),
         ...(markers.includes(`line`) ? [[`line`, `path[fill="none"]`, `stroke`]] : []),
       ]) {
+        const toggle = [...plot.querySelectorAll(`label`)]
+          .find((label) => label.textContent?.trim() === `Show ${kind}s`)
+          ?.querySelector(`input`)
+        if (!toggle) throw new Error(`Missing ${kind} visibility toggle`)
+        toggle.click()
+        await tick()
+        expect(toggle.checked).toBe(false)
+        expect(plot.querySelector(`[data-key="${kind}.opacity"]`)).toBeNull()
+        expect(series_select.isConnected).toBe(markers === `line+points`)
+        toggle.click()
+        await tick()
+        expect(toggle.checked).toBe(true)
         const input = doc_query(`[data-key="${kind}.color"] input`, HTMLInputElement)
         input.value = `#0000ff`
         input.dispatchEvent(new Event(`input`, { bubbles: true }))

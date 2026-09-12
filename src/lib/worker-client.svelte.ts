@@ -296,69 +296,64 @@ export function create_worker_client<
     return worker
   }
 
-  const compute_unsafe = (
-    input: Input,
-    options: Options | undefined,
-    request_options: WorkerRequestOptions<Progress>,
-  ): Promise<Result> => {
-    const { signal } = request_options
-    if (signal?.aborted) return Promise.reject(abort_error(signal, label))
-    const main_thread = requires_main_thread?.(input, options) ?? false
-    // Content-keyed clients build once before the lookup and reuse that same snapshot for
-    // postMessage. Identity-keyed clients defer payload construction until a cache miss.
-    const keyed_payload = !main_thread && dedupe_by_payload ? build_payload(input) : undefined
-    const input_key =
-      !main_thread && dedupe_by_payload
-        ? payload_key_of(keyed_payload)
-        : `input:${identity_token(input)}`
-    const request_key = main_thread
-      ? `main:${++next_id}`
-      : `${input_key.length}:${input_key}${canonical_key_of(options)}`
-    const existing = pending_by_key.get(request_key)
-    if (existing) return join(existing, request_options)
-
-    const wkr = main_thread ? null : ensure_worker()
-    const payload = wkr
-      ? dedupe_by_payload
-        ? keyed_payload
-        : build_payload(input)
-      : undefined
-    const identifier = wkr ? ++next_id : null
-    const request = track(request_key, identifier)
-    const promise = join(request, request_options)
-    if (wkr) {
-      try {
-        // Copied, never transferred: identity dedupe re-posts the same input later, and a
-        // transferred typed-array buffer would be detached by then.
-        // oxlint-disable-next-line unicorn/require-post-message-target-origin
-        wkr.postMessage({ id: identifier, input: payload, options: $state.snapshot(options) })
-      } catch (err) {
-        request.reject(to_error(err))
-      }
-    } else {
-      Promise.resolve()
-        .then(() => {
-          // An abort/cancel in this tick must prevent queued main-thread work from starting.
-          if (pending_by_key.get(request.key) !== request) return
-          const result = compute_sync(input, options, (progress) =>
-            report_progress(request, progress),
-          )
-          request.resolve(result)
-        })
-        .catch((err: unknown) => request.reject(to_error(err)))
-    }
-    return promise
-  }
-
-  // Never throw synchronously: callers handle errors via .catch() only, so key construction
-  // or Worker instantiation failures (e.g. CSP) must reject instead
+  // Never throw synchronously: key construction and worker startup errors also reject.
   const client = (
     input: Input,
     options?: Options,
     request_options: WorkerRequestOptions<Progress> = {},
   ): Promise<Result> => {
     try {
-      return compute_unsafe(input, options, request_options)
+      const { signal } = request_options
+      if (signal?.aborted) return Promise.reject(abort_error(signal, label))
+      const main_thread = requires_main_thread?.(input, options) ?? false
+      // Content-keyed clients build once before the lookup and reuse that same snapshot for
+      // postMessage. Identity-keyed clients defer payload construction until a cache miss.
+      const keyed_payload =
+        !main_thread && dedupe_by_payload ? build_payload(input) : undefined
+      const input_key =
+        !main_thread && dedupe_by_payload
+          ? payload_key_of(keyed_payload)
+          : `input:${identity_token(input)}`
+      const request_key = main_thread
+        ? `main:${++next_id}`
+        : `${input_key.length}:${input_key}${canonical_key_of(options)}`
+      const existing = pending_by_key.get(request_key)
+      if (existing) return join(existing, request_options)
+
+      const wkr = main_thread ? null : ensure_worker()
+      const payload = wkr
+        ? dedupe_by_payload
+          ? keyed_payload
+          : build_payload(input)
+        : undefined
+      const identifier = wkr ? ++next_id : null
+      const request = track(request_key, identifier)
+      const promise = join(request, request_options)
+      if (wkr) {
+        try {
+          // Copied, never transferred: identity dedupe re-posts the same input later, and a
+          // transferred typed-array buffer would be detached by then.
+          wkr.postMessage({
+            id: identifier,
+            input: payload,
+            options: $state.snapshot(options),
+          }) // oxlint-disable-line unicorn/require-post-message-target-origin
+        } catch (err) {
+          request.reject(to_error(err))
+        }
+      } else {
+        Promise.resolve()
+          .then(() => {
+            // An abort/cancel in this tick must prevent queued main-thread work from starting.
+            if (pending_by_key.get(request.key) !== request) return
+            const result = compute_sync(input, options, (progress) =>
+              report_progress(request, progress),
+            )
+            request.resolve(result)
+          })
+          .catch((err: unknown) => request.reject(to_error(err)))
+      }
+      return promise
     } catch (err) {
       return Promise.reject(to_error(err))
     }

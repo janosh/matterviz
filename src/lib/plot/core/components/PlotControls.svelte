@@ -68,17 +68,12 @@
       ]),
     )
   const display_reset_values = untrack(display_values)
-  const axis_labels = { x: `X`, x2: `X2`, y: `Y`, y2: `Y2` } as const
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
   const is_axis_key = (key: string): key is AxisKey =>
     (all_axes as readonly string[]).includes(key)
   // The Ticks inputs only edit numeric tick counts; an explicit tick list/map/interval set on
   // the axis is left alone (and shown as `custom`), and an empty input hands back to auto
-  const tick_count = (axis: AxisKey): number | undefined => {
-    const { ticks } = axis_config(axis)
-    return typeof ticks === `number` ? ticks : undefined
-  }
   const MAX_TICK_COUNT = 100
   const update_tick_count = (axis: AxisKey, value: string) => {
     if (value === ``) return update_axis(axis, { ticks: undefined })
@@ -95,7 +90,7 @@
   let visible_axes = $derived(
     all_axes
       .filter((axis) => axis === `x` || axis === `y` || auto_ranges[axis] !== undefined)
-      .map((axis) => [axis, axis_labels[axis]] as const),
+      .map((axis) => [axis, axis.toUpperCase()] as const),
   )
   // whether each axis range spans zero, gating the zero-line toggles
   let includes_zero = $derived(
@@ -112,31 +107,17 @@
     y2: `.2f / .1e / .0%`,
   }
 
-  // Validation function for format specifiers
-  function is_valid_format(format_string: string): boolean {
-    if (!format_string) return true
+  const update_format = (axis: AxisKey, input: HTMLInputElement): void => {
+    const { value } = input
     try {
-      if (format_string.startsWith(`%`)) {
-        timeFormat(format_string)(new Date())
-        return true
-      }
-      format(format_string)(123.456)
-      return true
+      if (value.startsWith(`%`)) timeFormat(value)(new Date())
+      else if (value) format(value)(123.456)
     } catch {
-      return false
-    }
-  }
-
-  // Handle format input changes
-  const format_input_handler = (format_type: AxisKey) => (event: Event) => {
-    const input = event.target
-    if (!(input instanceof HTMLInputElement)) return
-    if (!is_valid_format(input.value)) {
       input.classList.add(`invalid`)
       return
     }
     input.classList.remove(`invalid`)
-    update_axis(format_type, { format: input.value })
+    update_axis(axis, { format: value })
   }
 
   // Range inputs mirror the axis configs; a partial or inverted entry stays local (and
@@ -332,16 +313,14 @@
           onchange={(evt) => {
             const val = evt.currentTarget.value
             const mode = is_y2_sync_mode(val) ? val : `none`
-            if (mode === `none`) {
-              y2_axis = { ...y2_axis, sync: undefined }
-            } else if (mode === `align`) {
-              y2_axis = {
-                ...y2_axis,
-                sync: { mode, align_value: current_sync.align_value ?? 0 },
-              }
-            } else {
-              y2_axis = { ...y2_axis, sync: mode }
-            }
+            update_axis(`y2`, {
+              sync:
+                mode === `none`
+                  ? undefined
+                  : mode === `align`
+                    ? { mode, align_value: current_sync.align_value ?? 0 }
+                    : mode,
+            })
           }}
         >
           <option value="none">Independent</option>
@@ -358,13 +337,12 @@
             aria-label="Value to align on both axes"
             onchange={(evt) => {
               const val = parseFloat(evt.currentTarget.value)
-              y2_axis = {
-                ...y2_axis,
+              update_axis(`y2`, {
                 sync: {
                   mode: `align`,
                   align_value: Number.isFinite(val) ? val : 0,
                 },
-              }
+              })
             }}
           />
         </label>
@@ -380,8 +358,8 @@
     layout="flow"
   >
     {#each visible_axes as [axis, label] (axis)}
-      {@const count = tick_count(axis)}
-      {@const custom = count === undefined && axis_config(axis).ticks !== undefined}
+      {@const ticks = axis_config(axis).ticks}
+      {@const custom = ticks !== undefined && typeof ticks !== `number`}
       <label>
         <span>{label}</span>
         <input
@@ -389,7 +367,7 @@
           min="1"
           max={MAX_TICK_COUNT}
           step="1"
-          value={count ?? ``}
+          value={typeof ticks === `number` ? ticks : ``}
           placeholder={custom ? `custom` : `auto`}
           disabled={custom}
           aria-label="{label} axis tick count"
@@ -414,7 +392,7 @@
           type="text"
           value={axis_config(axis).format ?? ``}
           placeholder={format_placeholders[axis]}
-          oninput={format_input_handler(axis)}
+          oninput={(event) => update_format(axis, event.currentTarget)}
         />
       </label>
     {/each}

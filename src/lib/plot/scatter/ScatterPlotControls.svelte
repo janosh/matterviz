@@ -42,14 +42,6 @@
   } = $props()
 
   let non_null_series = $derived(series.filter((srs) => srs != null))
-  let visible_series = $derived(non_null_series.filter((srs) => srs.visible ?? true))
-  let has_multiple_series = $derived(non_null_series.length > 1)
-
-  // Marker visibility is plot-wide; manual styling applies only to the selected series.
-  const markers_include = (mode: string) =>
-    visible_series.some((srs) => (srs?.markers ?? DEFAULT_MARKERS).includes(mode))
-  let has_any_lines = $derived(markers_include(`line`))
-  let has_any_points = $derived(markers_include(`points`))
   const selected_series = $derived(series[selected_series_idx])
   const has_color_data = $derived(selected_series?.color_values?.some((val) => val != null))
   const has_size_data = $derived(selected_series?.size_values?.some((val) => val != null))
@@ -67,21 +59,38 @@
     for (const key of Object.keys(DEFAULTS.scatter[kind])) on_touch?.(`${kind}.${key}`, false)
   }
 
-  const style_settings = {
-    point: track_settings(() => styles.point ?? {}, DEFAULTS.scatter.point),
-    line: track_settings(() => styles.line ?? {}, DEFAULTS.scatter.line),
-  }
   const style_sections = [
     {
       kind: `point`,
       title: `Point style`,
+      description: `Toggle visibility of data points in the scatter plot`,
+      settings: track_settings(() => styles.point ?? {}, DEFAULTS.scatter.point),
       rows: [
         [`size`, `color`, `opacity`],
         [`stroke_width`, `stroke_color`, `stroke_opacity`],
       ],
     },
-    { kind: `line`, title: `Line style`, rows: [[`width`, `color`, `dash`, `opacity`]] },
+    {
+      kind: `line`,
+      title: `Line style`,
+      description: `Toggle visibility of connecting lines between data points`,
+      settings: track_settings(() => styles.line ?? {}, DEFAULTS.scatter.line),
+      rows: [[`width`, `color`, `dash`, `opacity`]],
+    },
   ] as const
+  // Availability is plot-wide; manual styling applies only to the selected series.
+  const available_styles = $derived(
+    style_sections.filter(({ kind }) =>
+      non_null_series.some(
+        (srs) =>
+          (srs.visible ?? true) &&
+          (srs.markers ?? DEFAULT_MARKERS).includes(kind === `point` ? `points` : `line`),
+      ),
+    ),
+  )
+  const visible_styles = $derived(
+    available_styles.filter(({ kind }) => styles[`show_${kind}s`]),
+  )
   const numeric_fields = {
     size: { label: `Size`, min: 1, max: 20, step: 0.5 },
     width: { label: `Width`, min: 0.5, max: 10, step: 0.5 },
@@ -123,30 +132,16 @@
   })}
 
   {#snippet display_children()}
-    {#if has_any_points}
-      <label
-        {@attach tooltip({
-          content: `Toggle visibility of data points in the scatter plot`,
-        })}
-      >
-        <input type="checkbox" bind:checked={styles.show_points} />
-        Show points
+    {#each available_styles as { kind, description } (kind)}
+      <label {@attach tooltip({ content: description })}>
+        <input type="checkbox" bind:checked={styles[`show_${kind}s`]} />
+        Show {kind}s
       </label>
-    {/if}
-    {#if has_any_lines}
-      <label
-        {@attach tooltip({
-          content: `Toggle visibility of connecting lines between data points`,
-        })}
-      >
-        <input type="checkbox" bind:checked={styles.show_lines} />
-        Show lines
-      </label>
-    {/if}
+    {/each}
   {/snippet}
 
   {#snippet post_children()}
-    {#if has_multiple_series && ((has_any_points && styles.show_points) || (has_any_lines && styles.show_lines))}
+    {#if non_null_series.length > 1 && visible_styles.length}
       <SettingsSection title="Style target" class="ctrl-line" layout="flow">
         <label>
           <span>Series</span>
@@ -158,50 +153,48 @@
         </label>
       </SettingsSection>
     {/if}
-    {#each style_sections as { kind, title, rows } (kind)}
+    {#each visible_styles as { kind, title, rows, settings } (kind)}
       {@const style = style_values(kind)}
-      {#if kind === `point` ? has_any_points && styles.show_points : has_any_lines && styles.show_lines}
-        <SettingsSection
-          {title}
-          changed_keys={style_settings[kind].changed_keys}
-          on_reset={reset_style(kind)}
-          oninput={touch}
-        >
-          {#if style}
-            {#each rows as fields}
-              <div class="style-row">
-                {#each fields as key (key)}
-                  {#if (key !== `size` || !has_size_data) && (key !== `color` || !has_color_data)}
-                    {#if key === `color` || key === `stroke_color`}
-                      <label data-key={`${kind}.${key}`}>
-                        <span>Color</span>
-                        <input type="color" bind:value={style[key]} />
-                      </label>
-                    {:else if key === `dash`}
-                      <label data-key="line.dash">
-                        <span>Style</span>
-                        <select bind:value={style.dash}>
-                          <option value="solid">Solid</option>
-                          <option value="4,4">Dashed</option>
-                          <option value="2,2">Dotted</option>
-                          <option value="8,4,2,4">Dash-dot</option>
-                        </select>
-                      </label>
-                    {:else}
-                      {@const { label, ...limits } = numeric_fields[key]}
-                      <NumberRangeInput
-                        {...limits}
-                        data-key={`${kind}.${key}`}
-                        bind:value={style[key]}>{label}</NumberRangeInput
-                      >
-                    {/if}
+      <SettingsSection
+        {title}
+        changed_keys={settings.changed_keys}
+        on_reset={reset_style(kind)}
+        oninput={touch}
+      >
+        {#if style}
+          {#each rows as fields}
+            <div class="style-row">
+              {#each fields as key (key)}
+                {#if (key !== `size` || !has_size_data) && (key !== `color` || !has_color_data)}
+                  {#if key === `color` || key === `stroke_color`}
+                    <label data-key={`${kind}.${key}`}>
+                      <span>Color</span>
+                      <input type="color" bind:value={style[key]} />
+                    </label>
+                  {:else if key === `dash`}
+                    <label data-key="line.dash">
+                      <span>Style</span>
+                      <select bind:value={style.dash}>
+                        <option value="solid">Solid</option>
+                        <option value="4,4">Dashed</option>
+                        <option value="2,2">Dotted</option>
+                        <option value="8,4,2,4">Dash-dot</option>
+                      </select>
+                    </label>
+                  {:else}
+                    {@const { label, ...limits } = numeric_fields[key]}
+                    <NumberRangeInput
+                      {...limits}
+                      data-key={`${kind}.${key}`}
+                      bind:value={style[key]}>{label}</NumberRangeInput
+                    >
                   {/if}
-                {/each}
-              </div>
-            {/each}
-          {/if}
-        </SettingsSection>
-      {/if}
+                {/if}
+              {/each}
+            </div>
+          {/each}
+        {/if}
+      </SettingsSection>
     {/each}
   {/snippet}
 </PlotControls>

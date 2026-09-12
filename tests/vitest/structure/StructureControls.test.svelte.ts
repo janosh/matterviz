@@ -1010,6 +1010,9 @@ describe(`StructureControls reactive props`, () => {
     { vector_configs: undefined },
     { vector_configs: {} },
     { vector_configs: { magmom: { visible: true, color: `#abcdef`, scale: 3 } } },
+    { vector_configs: { force: {} } },
+    { vector_configs: { force: { visible: undefined, color: undefined, scale: undefined } } },
+    { vector_configs: { force: { color: null, scale: null } } },
     { vector_configs: { force: { visible: true } } },
   ])(`vector resets preserve nested ownership and other rows' edits: %j`, async (initial) => {
     const state = $state<{ scene_props: Partial<StructureSettings> }>({ scene_props: initial })
@@ -1036,6 +1039,14 @@ describe(`StructureControls reactive props`, () => {
       `[data-key="vector_config:force"] input[type="checkbox"]`,
     ).click()
     await tick()
+    // Returning to the displayed default still leaves an override when visible was omitted.
+    if (expected.vector_configs?.force?.visible === undefined) {
+      doc_query<HTMLInputElement>(
+        `[data-key="vector_config:force"] input[type="checkbox"]`,
+      ).click()
+      await tick()
+      expect(state.scene_props.vector_configs?.force?.visible).toBe(true)
+    }
     await reset_row(`vector_config:force`)
     expect(state.scene_props.vector_configs?.force).toStrictEqual({
       ...expected.vector_configs?.force,

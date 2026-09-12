@@ -91,22 +91,31 @@ describe(`ColorBar layout`, () => {
   // The title row defaults to the side opposite the ticks; inside ticks leave it on the
   // row axis. An explicit title_side wins and lands as a class on the title row.
   test.each([
-    [`horizontal`, `primary`, undefined, `column`],
-    [`horizontal`, `secondary`, undefined, `column-reverse`],
-    [`vertical`, `primary`, undefined, `row`],
-    [`vertical`, `secondary`, undefined, `row-reverse`],
-    [`horizontal`, `inside`, undefined, `row`],
-    [`vertical`, `inside`, undefined, `row`],
-    [`horizontal`, `primary`, `top`, `column`],
-    [`vertical`, `primary`, `right`, `row-reverse`],
+    [`horizontal`, `primary`, undefined, `column`, null],
+    [`horizontal`, `secondary`, undefined, `column-reverse`, null],
+    [`vertical`, `primary`, undefined, `row`, null],
+    [`vertical`, `secondary`, undefined, `row-reverse`, null],
+    [`horizontal`, `inside`, undefined, `row`, null],
+    [`vertical`, `inside`, undefined, `row`, null],
+    [`horizontal`, `primary`, `top`, `column`, null],
+    [`horizontal`, `primary`, `bottom`, `column-reverse`, `top`],
+    [`horizontal`, `secondary`, `top`, `column`, `bottom`],
+    [`vertical`, `primary`, `right`, `row-reverse`, `left`],
+    [`vertical`, `secondary`, `left`, `row`, `right`],
   ] as const)(
     `orientation=%s tick_side=%s title_side=%s -> flex-direction %s`,
-    (orientation, tick_side, title_side, flex_dir) => {
+    (orientation, tick_side, title_side, flex_dir, margin_side) => {
       mount_bar({ title: `Title`, orientation, tick_side, title_side })
       expect(doc_query(`.colorbar`).style.flexDirection).toBe(flex_dir)
       expect(doc_query(`.colorbar .label`).textContent).toBe(`Title`)
+      const title_row = doc_query(`.colorbar .title-row`)
+      if (margin_side) {
+        expect(title_row.style.getPropertyValue(`margin-${margin_side}`)).toBe(
+          `var(--cbar-label-overlap-offset, 1em)`,
+        )
+      } else expect(title_row.style.cssText).not.toContain(`margin-`)
       if (title_side) {
-        expect(doc_query(`.colorbar .title-row`).classList.contains(title_side)).toBe(true)
+        expect(title_row.classList.contains(title_side)).toBe(true)
       }
     },
   )
