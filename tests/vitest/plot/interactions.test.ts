@@ -53,6 +53,12 @@ describe(`pan_range_by_pixels`, () => {
     expect(upper / lower).toBeCloseTo(25, 9)
   })
 
+  it.each([-20_000, 20_000])(`rejects unrepresentable log pan (%s px)`, (pixels) => {
+    expect(() => pan_range_by_pixels([1e-300, 1e-290], pixels, 200, `log`)).toThrow(
+      /log.*range/i,
+    )
+  })
+
   it(`log recovers a stale non-positive bound instead of NaN`, () => {
     // the -5 bound is clamped to LOG_EPS before panning, so the panned range keeps the
     // clamped ratio 100 / LOG_EPS and its lower bound moved up from LOG_EPS
@@ -93,6 +99,10 @@ describe(`zoom_range_by_factor`, () => {
   it(`log zoom never produces non-positive bounds`, () => {
     const result = zoom_range_by_factor([0.001, 10], 0.01, `log`)
     expect(result.every((val) => Number.isFinite(val) && val > 0)).toBe(true)
+  })
+
+  it.each([0.0001, 0.001])(`rejects unrepresentable log zoom (factor=%s)`, (factor) => {
+    expect(() => zoom_range_by_factor([1e-20, 1e20], factor, `log`)).toThrow(/log.*range/i)
   })
 
   it(`arcsinh zoom out across zero stays finite and symmetric-ish`, () => {

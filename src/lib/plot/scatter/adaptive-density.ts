@@ -1,5 +1,5 @@
 import { clamp, partition_point, type Point2D, type Vec2 } from '$lib/math'
-import { axis_transform, range_bounds } from '$lib/plot/core/interactions'
+import { axis_transform, range_bounds, validate_log_range } from '$lib/plot/core/interactions'
 import type { ScaleType } from '$lib/plot/core/types'
 import { assert_series_lengths, get_scale_type_name } from '$lib/plot/core/types'
 
@@ -128,11 +128,16 @@ const padded_extent = (
   const t_max = forward(max)
   if (t_min === t_max) {
     if (log_scale) {
-      return [Math.max(Number.MIN_VALUE, min / Math.sqrt(10)), min * Math.sqrt(10)]
+      return validate_log_range([
+        Math.max(Number.MIN_VALUE, min / Math.sqrt(10)),
+        min * Math.sqrt(10),
+      ])
     }
     return [inverse(t_min - 0.5), inverse(t_max + 0.5)]
   }
   const padding = (t_max - t_min) * range_padding
+  if (log_scale)
+    return validate_log_range([inverse(t_min - padding), inverse(t_max + padding)])
   const finite = (val: number) => clamp(val, -Number.MAX_VALUE, Number.MAX_VALUE)
   return [finite(inverse(t_min - padding)), finite(inverse(t_max + padding))]
 }

@@ -9,6 +9,7 @@
     sample_color_ramp,
   } from '$lib/plot/core/color-ramp'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
+  import { validate_log_range } from '$lib/plot/core/interactions'
   import { generate_arcsinh_ticks } from '$lib/plot/core/scales'
   import { observe_size } from '$lib/plot/core/utils'
   import {
@@ -118,6 +119,7 @@
   const tick_scale = $derived.by(() => {
     const percent = color_ramp_scale(scale_type, range, is_vertical ? [100, 0] : [0, 100])
     if (snap_ticks && !Array.isArray(tick_labels) && `nice` in percent) percent.nice(n_ticks)
+    if (type_name === `log`) validate_log_range(percent.domain() as Vec2)
     return percent
   })
   const tick_domain = $derived(tick_scale.domain() as Vec2)
@@ -129,7 +131,9 @@
     if (n_ticks <= 0) return []
     if (n_ticks === 1) return [lower]
     if (type_name === `arcsinh`) {
-      return generate_arcsinh_ticks(lower, upper, get_arcsinh_threshold(scale_type), n_ticks)
+      const threshold = get_arcsinh_threshold(scale_type)
+      const values = generate_arcsinh_ticks(lower, upper, threshold, n_ticks)
+      return lower > upper ? values.toReversed() : values
     }
     if (!snap_ticks) {
       // exactly n_ticks, evenly spaced in scale space
@@ -139,11 +143,13 @@
     if (type_name === `log`) {
       // integer powers of ten inside the niced domain (tolerance absorbs log10 round-off);
       // sub-decade domains with none fall back to the domain ends
-      const powers = d3_range(
-        Math.ceil(Math.log10(lower) - 1e-10),
-        Math.floor(Math.log10(upper) + 1e-10) + 1,
-      ).map((exponent) => 10 ** exponent)
-      return powers.length ? powers : [lower, upper]
+      const log_min = Math.log10(Math.min(lower, upper))
+      const log_max = Math.log10(Math.max(lower, upper))
+      const powers = d3_range(Math.ceil(log_min - 1e-10), Math.floor(log_max + 1e-10) + 1).map(
+        (exponent) => 10 ** exponent,
+      )
+      if (!powers.length) return [lower, upper]
+      return lower > upper ? powers.toReversed() : powers
     }
     return tick_scale.ticks(n_ticks)
   })

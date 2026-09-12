@@ -103,18 +103,25 @@
     y2: `.2f / .1e / .0%`,
   }
 
-  const update_format = (axis: AxisKey, input: HTMLInputElement): void => {
-    const { value } = input
+  const format_invalid = (value: string): boolean => {
     try {
       if (value.startsWith(`%`)) timeFormat(value)(new Date())
       else if (value) format(value)(123.456)
+      return false
     } catch {
-      input.classList.add(`invalid`)
-      return
+      return true
     }
-    input.classList.remove(`invalid`)
-    update_axis(axis, { format: value })
   }
+  const format_inputs = axis_record((axis) => {
+    let value = $derived(axis_config(axis).format ?? ``)
+    return {
+      get: () => value,
+      set: (next: string) => {
+        value = next
+        if (!format_invalid(next)) update_axis(axis, { format: next })
+      },
+    }
+  })
 
   // Empty endpoints stay automatic in caller state. Invalid pairs stay local until corrected.
   type RangeInput = [number | null, number | null]
@@ -189,7 +196,8 @@
             <input
               type="checkbox"
               checked={display[`${axis}_${key}`] ?? fallback(axis)}
-              onchange={(event) => (display[`${axis}_${key}`] = event.currentTarget.checked)}
+              onchange={(event) =>
+                (display = { ...display, [`${axis}_${key}`]: event.currentTarget.checked })}
             />
             {axis_label}
           </label>
@@ -391,9 +399,9 @@
         <span>{label}-axis</span>
         <input
           type="text"
-          value={axis_config(axis).format ?? ``}
+          bind:value={format_inputs[axis].get, format_inputs[axis].set}
+          class:invalid={format_invalid(format_inputs[axis].get())}
           placeholder={format_placeholders[axis]}
-          oninput={(event) => update_format(axis, event.currentTarget)}
         />
       </label>
     {/each}

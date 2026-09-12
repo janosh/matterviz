@@ -94,19 +94,34 @@ describe(`scales`, () => {
       [[1, 10, 100], `log`, 0.1, false],
       [[1e-20, 1e-10], `log`, 0.1, false],
       [[1e-20], `log`, 0.1, false],
+      [[0, 1e-30, 1e-20], `log`, 0.05, false],
+      [[-1, 1e-30, 1e-20], `log`, 0.05, false],
       [[new Date(2023, 0, 1).getTime(), new Date(2023, 11, 1).getTime()], `linear`, 0.1, true],
       [[42], `linear`, 0.1, false],
     ])(`pads %j on a %s scale`, (values, scale_type, padding, is_time) => {
       const range = nice_range(values, [null, null], scale_type, padding, is_time)
+      const domain = scale_type === `log` ? values.filter((value) => value > 0) : values
       expect(range).toHaveLength(2)
-      expect(range[0]).toBeLessThan(Math.min(...values))
-      expect(range[1]).toBeGreaterThan(Math.max(...values))
+      expect(range[0]).toBeLessThan(Math.min(...domain))
+      expect(range[1]).toBeGreaterThan(Math.max(...domain))
+      if (scale_type === `log`) expect(range[0]).toBeGreaterThan(0)
     })
 
     test.each([0.09, 0.9, 9, 90])(`pads log singleton %s only once before nicing`, (value) => {
       const upper = 10 ** Math.round(Math.log10(value))
       expect(nice_range([value], [null, null], `log`, 0.05)).toEqual([upper / 10, upper])
     })
+
+    test.each([
+      { values: [1e-300, 1e300], max: null },
+      { values: [1e-300, 1e300], max: 1e-301 },
+      { values: [1e308], max: null },
+    ])(
+      `rejects unrepresentable log ranges for $values with upper bound $max`,
+      ({ values, max }) => {
+        expect(() => nice_range(values, [null, max], `log`, 0.05)).toThrow(/log.*range/i)
+      },
+    )
 
     test.each<[number | null, number | null]>([
       [0, 10],
@@ -222,16 +237,18 @@ describe(`scales`, () => {
         const finite_values = values.filter(
           (value): value is number => typeof value === `number` && Number.isFinite(value),
         )
+        const positive_values = finite_values.filter((value) => value > 0)
         expect(acc).toEqual({
           ...(finite_values.length > 0
             ? { min: Math.min(...finite_values), max: Math.max(...finite_values) }
             : {}),
           n_finite: finite_values.length,
+          ...(positive_values.length ? { min_positive: Math.min(...positive_values) } : {}),
         })
       }
       const acc = accumulate_extent(empty_extent(), [4, 8], 5)
       accumulate_extent(acc, [-1, 2])
-      expect(acc).toEqual({ min: -1, max: 8, n_finite: 4 })
+      expect(acc).toEqual({ min: -1, max: 8, min_positive: 2, n_finite: 4 })
 
       for (const scale_type of [`linear`, `log`, `arcsinh`] as const) {
         for (const padding of scale_type === `log` ? [0, 0.1] : [0, 0.05]) {
@@ -356,7 +373,7 @@ describe(`scales`, () => {
       expect(read_sizes).not.toHaveBeenCalled()
       const { color_extent, color_range } = collect_scale_ranges(series)
       expect(color_only).toEqual(color_extent)
-      expect(color_extent).toEqual({ min: -1, max: 9, n_finite: 3 })
+      expect(color_extent).toEqual({ min: -1, max: 9, min_positive: 3, n_finite: 3 })
       expect(color_range).toEqual([-1, 9])
       expect(collect_scale_ranges([{}]).color_range).toEqual([0, 1])
     })

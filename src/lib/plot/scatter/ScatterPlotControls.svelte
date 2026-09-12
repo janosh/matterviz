@@ -40,8 +40,8 @@
 
   let non_null_series = $derived(series.filter((srs) => srs != null))
   const selected_series = $derived(series[selected_series_idx])
-  const has_color_data = $derived(selected_series?.color_values?.some((val) => val != null))
-  const has_size_data = $derived(selected_series?.size_values?.some((val) => val != null))
+  const has_color_data = $derived(selected_series?.color_values?.some(Number.isFinite))
+  const has_size_data = $derived(selected_series?.size_values?.some(Number.isFinite))
 
   const style_sections = [
     {
@@ -128,10 +128,12 @@
     show_lines: styles.show_lines,
   }}
   on_display_extra_reset={(reference) => {
+    const next = { ...styles }
     for (const key of [`show_points`, `show_lines`] as const) {
-      if (reference[key] === undefined) delete styles[key]
-      else styles[key] = Boolean(reference[key])
+      if (reference[key] === undefined) delete next[key]
+      else next[key] = Boolean(reference[key])
     }
+    styles = next
   }}
   {...rest}
 >
@@ -152,7 +154,7 @@
           type="checkbox"
           bind:checked={
             () => styles[`show_${kind}s`] ?? DEFAULTS.scatter[`show_${kind}s`],
-            (value) => (styles[`show_${kind}s`] = value)
+            (value) => (styles = { ...styles, [`show_${kind}s`]: value })
           }
         />
         Show {kind}s
@@ -179,7 +181,11 @@
         {title}
         changed_keys={Object.keys(styles[kind] ?? {})}
         labels={{ reset_section: (title) => `Clear ${title.toLowerCase()} overrides` }}
-        on_reset={() => delete styles[kind]}
+        on_reset={() => {
+          const next = { ...styles }
+          delete next[kind]
+          styles = next
+        }}
       >
         {#each rows as fields}
           <div class="style-row">

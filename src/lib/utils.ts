@@ -40,8 +40,14 @@ export const parse_leading_num = (line: string): number =>
   parse_num_token(line.trim().split(/\s+/)[0])
 
 // Coerce an unknown thrown value into an Error (for typed Promise rejections / error callbacks).
-export const to_error = (value: unknown): Error =>
-  value instanceof Error ? value : new Error(String(value))
+export function to_error(value: unknown): Error {
+  try {
+    if (value instanceof Error) return value
+    return new Error(String(value), { cause: value })
+  } catch {
+    return new Error(`Thrown value cannot be converted to a string`, { cause: value })
+  }
+}
 
 export function make_change_detector(): (value: unknown) => boolean {
   const unset = Symbol(`unset`)

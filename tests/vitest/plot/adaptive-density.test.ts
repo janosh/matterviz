@@ -201,6 +201,13 @@ describe(`adaptive density utilities`, () => {
     expect(Number.isFinite(lower) && Number.isFinite(upper) && upper > lower).toBe(true)
   })
 
+  it.each([{ values: [1e-300, 1e300] }, { values: [Number.MAX_VALUE, Number.MAX_VALUE] }])(
+    `rejects unrepresentable logarithmic extent padding for $values`,
+    ({ values }) => {
+      expect(() => series_extents([{ x: values, y: [1, 2] }], `log`)).toThrow(/log.*range/i)
+    },
+  )
+
   it(`does not pick outside visible ranges or radius`, () => {
     const hidden = query_nearest(build_spatial_index(projected_points(), 30), {
       x: 210,

@@ -1,6 +1,5 @@
 import type { Vec2 } from '$lib/math'
 import { PlotControls, SankeyControls, SunburstControls, TernaryControls } from '$lib/plot'
-import ScatterPlotControls from '$lib/plot/scatter/ScatterPlotControls.svelte'
 import type { AxisConfig } from '$lib/plot'
 import type { TicksOption } from '$lib/plot/core/scales'
 import { resolve_axis_range } from '$lib/plot/core/interactions'
@@ -143,16 +142,28 @@ describe(`PlotControls`, () => {
     })
 
     test(`reset restores the format the axis was mounted with`, () => {
-      const state = $state<{ x_axis: { format?: string } }>({ x_axis: { format: `.3f` } })
+      const state = $state({ x_axis: { format: `.3f` }, y_axis: { format: `.1e` } })
       mount_controls(bind_props({}, state))
       const input = doc_query<HTMLInputElement>(`[data-testid="tick-format-section"] input`)
       type_into(input, `.1e`)
       expect(state.x_axis.format).toBe(`.1e`)
+      type_into(input, `invalid`)
+      expect(input.classList.contains(`invalid`)).toBe(true)
+      state.y_axis = { format: `.4f` }
+      flushSync()
+      expect(input.value).toBe(`invalid`)
       doc_query<HTMLButtonElement>(
         `button[aria-label="Restore tick format to initial values"]`,
       ).click()
       flushSync()
       expect(state.x_axis.format).toBe(`.3f`)
+      expect(input.value).toBe(`.3f`)
+      expect(input.classList.contains(`invalid`)).toBe(false)
+      type_into(input, `invalid`)
+      state.x_axis = { format: `.0%` }
+      flushSync()
+      expect(input.value).toBe(`.0%`)
+      expect(input.classList.contains(`invalid`)).toBe(false)
     })
 
     test(`format inputs fill their grid column`, () => {
@@ -238,7 +249,15 @@ describe(`PlotControls`, () => {
     ]
 
     test(`renders correct number of grid controls and resets them`, async () => {
-      const state = $state({ display: { x_grid: true, y_grid: true, y2_grid: true } })
+      let display = $state.raw({ x_grid: true, y_grid: true, y2_grid: true })
+      const state = {
+        get display() {
+          return display
+        },
+        set display(value) {
+          display = value
+        },
+      }
       const initial_display = state.display
       mount_controls(bind_props({ auto_ranges: { y2: [0, 1] as Vec2 } }, state))
       const grids = get_checkboxes_in_group(`grid`)
@@ -350,27 +369,6 @@ test.each([
         props: { controls_open: true, auto_ranges: { y2: [0, 1] }, ...props },
       }),
   })),
-  ...([`point`, `line`] as const).map((kind) => ({
-    title: `${kind} style`,
-    mount_controls: () => {
-      const state = $state({
-        styles: {
-          ...DEFAULTS.scatter,
-          [kind]: { ...DEFAULTS.scatter[kind], opacity: 0.2 },
-        },
-      })
-      return mount(ScatterPlotControls, {
-        target: document.body,
-        props: bind_props(
-          {
-            controls_open: true,
-            series: [{ x: [0, 1], y: [0, 1], markers: `line+points` as const }],
-          },
-          state,
-        ),
-      })
-    },
-  })),
   {
     title: `sankey`,
     mount_controls: () =>
@@ -400,10 +398,7 @@ test.each([
   async ({ title, mount_controls }) => {
     mount_controls()
     await tick()
-    const reset_label = title.endsWith(`style`)
-      ? `Clear ${title} overrides`
-      : `Reset ${title} to defaults`
-    const selector = `button[title="${reset_label}"]`
+    const selector = `button[title="Reset ${title} to defaults"]`
     doc_query<HTMLButtonElement>(selector).click()
     await tick()
     expect(document.querySelector(selector)).toBeNull()

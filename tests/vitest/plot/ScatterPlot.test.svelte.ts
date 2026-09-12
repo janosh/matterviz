@@ -781,13 +781,22 @@ describe(`ScatterPlot`, () => {
   test.each([`points`, `line`, `line+points`] as const)(
     `%s controls can target another series independently of labels`,
     async (markers) => {
+      let styles = $state.raw<StyleOverrides>({
+        point: { opacity: 0.2 },
+        line: { opacity: 0.2 },
+      })
       const state = $state<{
         selected_series_idx: number
         series: DataSeries[]
         styles: StyleOverrides
       }>({
         selected_series_idx: 0,
-        styles: {},
+        get styles() {
+          return styles
+        },
+        set styles(value) {
+          styles = value
+        },
         series: [0, 1].map(() => ({
           x: [0, 1],
           y: [0, 1],
@@ -795,6 +804,8 @@ describe(`ScatterPlot`, () => {
           markers,
           point_style: { fill: `red` },
           line_style: { stroke: `red` },
+          color_values: [NaN, Infinity],
+          size_values: [NaN, Infinity],
         })),
       })
       const plot = await mount_sized_scatter_plot(
@@ -822,6 +833,8 @@ describe(`ScatterPlot`, () => {
         ...(markers.includes(`points`) ? [[`point`, `.marker`, `fill`]] : []),
         ...(markers.includes(`line`) ? [[`line`, `path[fill="none"]`, `stroke`]] : []),
       ]) {
+        const reset_style = `button[title="Clear ${kind} style overrides"]`
+        expect(plot.querySelector(reset_style)).not.toBeNull()
         const toggle = [...plot.querySelectorAll(`label`)]
           .find((label) => label.textContent?.trim() === `Show ${kind}s`)
           ?.querySelector(`input`)
@@ -833,6 +846,15 @@ describe(`ScatterPlot`, () => {
         expect(series_select.isConnected).toBe(markers === `line+points`)
         toggle.click()
         await tick()
+        expect(toggle.checked).toBe(true)
+        toggle.click()
+        await tick()
+        expect(state.styles).toMatchObject({ [`show_${kind}s`]: false })
+        doc_query<HTMLButtonElement>(
+          `button[aria-label="Restore display to initial values"]`,
+        ).click()
+        await tick()
+        expect(state.styles).not.toHaveProperty(`show_${kind}s`)
         expect(toggle.checked).toBe(true)
         const input = doc_query(`[data-key="${kind}.color"] input`, HTMLInputElement)
         input.value = `#0000ff`
@@ -885,6 +907,10 @@ describe(`ScatterPlot`, () => {
             )
           }
         }
+        doc_query<HTMLButtonElement>(reset_style).click()
+        await tick()
+        expect(state.styles).not.toHaveProperty(kind)
+        expect(plot.querySelector(reset_style)).toBeNull()
       }
       // Data-driven styling on another series must not hide the selected series' controls.
       state.series[0].color_values = [0, 1]
@@ -1998,36 +2024,41 @@ describe(`ScatterPlot`, () => {
     expect(fills[1]).not.toMatch(/NaN/)
   })
 
-  test(`log y axis holds non-positive line points at the domain floor and drops their markers`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        {
-          x: [1, 2, 3, 4],
-          y: [0, 10, -5, 1000],
-          markers: `line+points`,
-          line_style: { curve: `linear` },
-        },
-      ],
-      y_axis: { scale_type: `log` },
-      point_tween: { duration: 0 },
-      line_tween: { duration: 0 },
-      legend: null,
-      show_controls: false,
-    })
-    const clip = clip_rect(plot)
-    expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
-    const line_d = plot.querySelector(`g[data-series-id] path[fill="none"]`)?.getAttribute(`d`)
-    const y_values = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map((match) =>
-      Number(match.groups?.y),
-    )
-    expect(y_values).toHaveLength(4)
-    const bottom = clip.y + clip.height
-    // Non-positive values sit on the bottom edge, not at -Infinity/NaN
-    expect(y_values[0]).toBeCloseTo(bottom, 6)
-    expect(y_values[2]).toBeCloseTo(bottom, 6)
-    expect(y_values[3]).toBeLessThan(y_values[1])
-    expect(y_values.every(Number.isFinite)).toBe(true)
-  })
+  test.each([1, 1e-30])(
+    `log y axis holds non-positive line points at the domain floor (factor=%s)`,
+    async (factor) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          {
+            x: [1, 2, 3, 4],
+            y: [0, 10, -5, 1000].map((value) => value * factor),
+            markers: `line+points`,
+            line_style: { curve: `linear` },
+          },
+        ],
+        y_axis: { scale_type: `log` },
+        point_tween: { duration: 0 },
+        line_tween: { duration: 0 },
+        legend: null,
+        show_controls: false,
+      })
+      const clip = clip_rect(plot)
+      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
+      const line_d = plot
+        .querySelector(`g[data-series-id] path[fill="none"]`)
+        ?.getAttribute(`d`)
+      const y_values = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map(
+        (match) => Number(match.groups?.y),
+      )
+      expect(y_values).toHaveLength(4)
+      const bottom = clip.y + clip.height
+      // Non-positive values sit on the bottom edge, not at -Infinity/NaN
+      expect(y_values[0]).toBeCloseTo(bottom, 6)
+      expect(y_values[2]).toBeCloseTo(bottom, 6)
+      expect(y_values[3]).toBeLessThan(y_values[1])
+      expect(y_values.every(Number.isFinite)).toBe(true)
+    },
+  )
 
   // Shift-drag pans by a constant data offset: moving the cursor by a quarter of the plot
   // width shifts the view by a quarter of the x span. Gestures only move the live view, which

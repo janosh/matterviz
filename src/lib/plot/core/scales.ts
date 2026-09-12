@@ -1,7 +1,12 @@
 import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
-import { range_bounds, resolve_axis_range } from '$lib/plot/core/interactions'
+import {
+  axis_transform,
+  range_bounds,
+  resolve_axis_range,
+  validate_log_range,
+} from '$lib/plot/core/interactions'
 import type {
   ColorScaleConfig,
   ScaleType,
@@ -362,7 +367,12 @@ export function generate_ticks(
 }
 
 // Finite raw-array extent with a count for padding and renderability checks.
-export type RunningExtent = { min?: number; max?: number; n_finite: number }
+export type RunningExtent = {
+  min?: number
+  max?: number
+  min_positive?: number
+  n_finite: number
+}
 
 export const empty_extent = (): RunningExtent => ({ n_finite: 0 })
 
@@ -374,13 +384,16 @@ export function accumulate_extent(
   count = values.length,
 ): RunningExtent {
   const n_values = Math.max(0, count)
+  let min_positive = acc.min_positive ?? Infinity
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
     if (typeof val !== `number` || !Number.isFinite(val)) continue
     acc.n_finite++
     if (acc.min === undefined || val < acc.min) acc.min = val
     if (acc.max === undefined || val > acc.max) acc.max = val
+    if (val > 0 && val < min_positive) min_positive = val
   }
+  if (min_positive < Infinity) acc.min_positive = min_positive
   return acc
 }
 
@@ -451,22 +464,24 @@ export const positive_log_domain = (lower: number, upper: number, widen = 1.1): 
         ? Math.min(math.LOG_EPS, Math.max(Number.MIN_VALUE, high / 10))
         : math.LOG_EPS
   const ceiling = high > floor ? high : floor * widen
-  return descending ? [ceiling, floor] : [floor, ceiling]
+  return validate_log_range(descending ? [ceiling, floor] : [floor, ceiling])
 }
 
 export function nice_range_from_extent(
-  { min: min_ext, max: max_ext, n_finite }: RunningExtent,
+  { min: min_ext, max: max_ext, min_positive, n_finite }: RunningExtent,
   limits: [number | null, number | null],
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
 ): Vec2 {
   const [min, max] = limits
+  const type_name = get_scale_type_name(scale_type)
+  // Invalid log samples must not hide a smaller positive sample in the same series.
+  if (!is_time && type_name === `log`) min_ext = min_positive ?? min_ext
   let [data_min, data_max] = resolve_axis_range(
     { range: limits, scale_type: is_time ? `time` : scale_type },
     [min_ext ?? 0, max_ext ?? 1],
   )
-  const type_name = get_scale_type_name(scale_type)
   const can_snap_zero =
     min_ext !== undefined &&
     max_ext !== undefined &&
@@ -478,29 +493,19 @@ export function nice_range_from_extent(
 
   // Apply padding *only if* limits were NOT provided
   if (min === null && max === null && n_finite > 0) {
+    const { forward, inverse } =
+      !is_time && type_name === `log`
+        ? { forward: Math.log10, inverse: (value: number) => 10 ** value }
+        : axis_transform(is_time ? `time` : scale_type)
     if (data_min !== data_max) {
-      // Apply percentage padding based on scale type if there's a range
-      if (!is_time && type_name === `log`) {
-        const [positive_min, positive_max] = positive_log_domain(data_min, data_max)
-        const log_min = Math.log10(positive_min)
-        const log_max = Math.log10(positive_max)
-        const log_span = log_max - log_min
-        data_min = 10 ** (log_min - log_span * padding_factor)
-        data_max = 10 ** (log_max + log_span * padding_factor)
-      } else if (!is_time && type_name === `arcsinh`) {
-        // Arcsinh: apply padding in arcsinh-transformed space
-        const threshold = get_arcsinh_threshold(scale_type)
-        const asinh_min = Math.asinh(data_min / threshold)
-        const asinh_max = Math.asinh(data_max / threshold)
-        const asinh_span = asinh_max - asinh_min
-        data_min = Math.sinh(asinh_min - asinh_span * padding_factor) * threshold
-        data_max = Math.sinh(asinh_max + asinh_span * padding_factor) * threshold
-      } else {
-        // Linear and time scales use padding in data units.
-        const padding_abs = (data_max - data_min) * padding_factor
-        data_min -= padding_abs
-        data_max += padding_abs
-      }
+      if (!is_time && type_name === `log`)
+        [data_min, data_max] = positive_log_domain(data_min, data_max)
+      // Pad in the scale's metric; linear and time transforms are identity functions.
+      const lower = forward(data_min)
+      const upper = forward(data_max)
+      const padding = (upper - lower) * padding_factor
+      data_min = inverse(lower - padding)
+      data_max = inverse(upper + padding)
       // Handle single data point case with fixed relative padding
     } else if (is_time) {
       data_min -= MS_PER_DAY
@@ -511,16 +516,16 @@ export function nice_range_from_extent(
       data_max *= 1.1
     } else if (type_name === `arcsinh`) {
       // Arcsinh: 10% padding in transformed space
-      const threshold = get_arcsinh_threshold(scale_type)
-      const asinh_val = Math.asinh(data_min / threshold)
+      const asinh_val = forward(data_min)
       const padding = Math.abs(asinh_val) * 0.1 || 0.1 // Use 0.1 if transformed value is 0 (i.e. data_min = 0)
-      data_min = Math.sinh(asinh_val - padding) * threshold
-      data_max = Math.sinh(asinh_val + padding) * threshold
+      data_min = inverse(asinh_val - padding)
+      data_max = inverse(asinh_val + padding)
     } else {
       const padding_abs = data_min === 0 ? 1 : Math.abs(data_min * 0.1) // 10% additive padding, or 1 if value is 0
       data_min -= padding_abs
       data_max += padding_abs
     }
+    if (!is_time && type_name === `log`) validate_log_range([data_min, data_max])
   }
 
   // If time or no range after padding, return the (potentially padded) domain directly
@@ -541,10 +546,11 @@ export function nice_range_from_extent(
   scale.nice()
   const [nice_min = data_min, nice_max = data_max] = scale.domain()
   // Nice ticks may expand automatic endpoints, but must not round a valid explicit bound.
-  return [
+  const result: Vec2 = [
     min !== null && (type_name !== `log` || min > 0) ? min : snap_zero_min ? 0 : nice_min,
     max !== null && (type_name !== `log` || max > 0) ? max : snap_zero_max ? 0 : nice_max,
   ]
+  return type_name === `log` ? validate_log_range(result) : result
 }
 
 // Logarithmic ticks: powers of 10 inside the domain; 1-2-5 mantissas when the domain spans
@@ -595,7 +601,9 @@ export function get_tick_label(
 export const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
   const safe_lo = lower > 0 ? lower : math.LOG_EPS
   const safe_hi = upper > 0 ? upper : math.LOG_EPS
-  return safe_lo === safe_hi ? [safe_lo, safe_lo * 1.1] : [safe_lo, safe_hi]
+  return validate_log_range(
+    safe_lo === safe_hi ? [safe_lo, safe_lo * 1.1] : [safe_lo, safe_hi],
+  )
 }
 
 // Create a color scale function from configuration

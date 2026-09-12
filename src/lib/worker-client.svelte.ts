@@ -56,13 +56,10 @@ export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   release: () => void
 }
 
-const abort_error = (signal: AbortSignal, label: string): Error =>
-  signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException(
-        String(signal.reason ?? `${label} worker request aborted`),
-        `AbortError`,
-      )
+const abort_error = (signal: AbortSignal, label: string): Error => {
+  const error = to_error(signal.reason ?? `${label} worker request aborted`)
+  return error === signal.reason ? error : new DOMException(error.message, `AbortError`)
+}
 
 export function create_worker_client<
   Input extends object,

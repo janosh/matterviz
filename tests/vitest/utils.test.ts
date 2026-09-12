@@ -4,8 +4,25 @@ import {
   is_plain_object,
   parse_leading_num,
   parse_num_token,
+  to_error,
 } from '$lib/utils'
 import { describe, expect, test } from 'vitest'
+
+test.each([
+  `failure`,
+  42,
+  null,
+  undefined,
+  Symbol(`failure`),
+  Object.create(null),
+  { toString: null },
+])(`normalizes arbitrary thrown values without throwing: %j`, (value) => {
+  const error = to_error(value)
+  expect(error).toBeInstanceOf(Error)
+  expect(error.cause).toBe(value)
+  expect(error.message).not.toBe(``)
+  expect(to_error(error)).toBe(error)
+})
 
 test.each([
   [{}, true],

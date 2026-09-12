@@ -1,6 +1,11 @@
 import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
 import type { Vec2 } from '$lib'
-import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
+import type {
+  AxisOption,
+  ColorBarScale,
+  ColorScaleOption,
+  ScaleType,
+} from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
@@ -72,6 +77,13 @@ describe(`ColorBar layout`, () => {
     const scale = `Viridis` as ColorBarScale
     expect(() => mount_bar({ scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
   })
+
+  test.each([{ range: [1e308, 1.1e308] }, { range: [Number.MIN_VALUE, 1e-300] }])(
+    `rejects unrepresentable log tick domains for $range`,
+    ({ range }) => {
+      expect(() => mount_bar({ range, scale_type: `log` })).toThrow(/log.*range/i)
+    },
+  )
 
   // Labels are absolutely positioned, so without a gutter they overflow into neighbors.
   test.each([
@@ -293,47 +305,38 @@ describe(`ColorBar tick labels`, () => {
     expect(texts[4]).toBe(`23:59`)
   })
 
-  test.each([
-    {
-      scale_type: `log`,
-      range: [1, 1000],
-      ticks: [`1`, `10`, `100`, `1k`],
-      left: [0, 100 / 3, 200 / 3, 100],
-    },
+  test.each<[ScaleType, Vec2, string[]]>([
+    [`log`, [1, 1000], [`1`, `10`, `100`, `1k`]],
     // nice() widens the log domain to whole decades: [0.05, 3] -> [0.01, 10]
-    {
-      scale_type: `log`,
-      range: [0.05, 3],
-      ticks: [`0.01`, `0.1`, `1`, `10`],
-      left: [0, 100 / 3, 200 / 3, 100],
-    },
-    {
-      scale_type: `linear`,
-      range: [100, 0],
-      ticks: [`100`, `80`, `60`, `40`, `20`, `0`],
-      left: [0, 20, 40, 60, 80, 100],
-    },
+    [`log`, [0.05, 3], [`0.01`, `0.1`, `1`, `10`]],
+    [`linear`, [100, 0], [`100`, `80`, `60`, `40`, `20`, `0`]],
     // positive bounds below the LOG_EPS axis floor (1e-9) keep their full span
-    {
-      scale_type: `log`,
-      range: [1e-12, 1e-6],
-      ticks: [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `0.000001`],
-      left: [0, 100 / 6, 200 / 6, 50, 400 / 6, 500 / 6, 100],
-    },
+    [`log`, [1e-12, 1e-6], [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `0.000001`]],
     // a descending log range runs high-to-low instead of collapsing to one point
-    {
-      scale_type: `log`,
-      range: [1000, 1],
-      ticks: [`1k`, `1`],
-      left: [0, 100],
-    },
-  ] as const)(`$scale_type ticks for range $range`, ({ scale_type, range, ticks, left }) => {
-    mount_bar({ range: [...range], scale_type, tick_labels: 4, snap_ticks: true })
+    [`log`, [1000, 1], [`1k`, `100`, `10`, `1`]],
+  ])(`%s ticks for range %j`, (scale_type, range, ticks) => {
+    mount_bar({ range, scale_type, tick_labels: 4, snap_ticks: true })
     expect(tick_texts()).toEqual(ticks)
     tick_spans().forEach((span, idx) =>
-      expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(left[idx], 6),
+      expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(
+        (100 * idx) / (ticks.length - 1),
+        6,
+      ),
     )
   })
+
+  test.each([`log`, `arcsinh`] as const)(
+    `descending %s ticks stay in visual order after measurement and inside the bar`,
+    async (scale_type) => {
+      const state = $state<{ tick_side: `primary` | `inside` }>({ tick_side: `primary` })
+      mount_bar(bind_props({ range: [1000, 1], scale_type, tick_labels: 4 }, state))
+      await tick()
+      expect(tick_texts()).toEqual([`1k`, `100`, `10`, `1`])
+      state.tick_side = `inside`
+      await tick()
+      expect(tick_texts()).toEqual([`100`, `10`])
+    },
+  )
 })
 
 describe(`ColorBar gradient`, () => {

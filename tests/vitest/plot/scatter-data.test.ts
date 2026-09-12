@@ -266,20 +266,42 @@ describe(`build_legend_data`, () => {
     expect(styles[2].line_color).toBe(`scale(0.5)`)
   })
 
-  test(`point stroke replaces transparent/none fill for symbol color`, () => {
-    const series: DataSeries[] = [
-      { x: [1], y: [1], point_style: { fill: `none`, stroke: `purple` } },
-      { x: [2], y: [2], point_style: [{ fill: `rgba(0, 0, 0, 0)`, stroke: `teal` }] },
-      // alpha, not the `rgba(` prefix, decides: a visible fill is kept over the stroke
-      { x: [3], y: [3], point_style: { fill: `rgba(255, 0, 0, 0.5)`, stroke: `teal` } },
-    ]
-    const items = build_legend_data(series, [], color_scale)
-    expect(items.map((item) => item.display_style.symbol_color)).toEqual([
-      `purple`,
-      `teal`,
-      `rgba(255, 0, 0, 0.5)`,
-    ])
-  })
+  test.each([`Plus`, `Times`, `Asterisk`] as const)(
+    `%s and transparent fills use point stroke in the legend`,
+    (symbol_type) => {
+      const series: DataSeries[] = [
+        { x: [1], y: [1], point_style: { fill: `none`, stroke: `purple` } },
+        { x: [2], y: [2], point_style: [{ fill: `rgba(0, 0, 0, 0)`, stroke: `teal` }] },
+        // alpha, not the `rgba(` prefix, decides: a visible fill is kept over the stroke
+        { x: [3], y: [3], point_style: { fill: `rgba(255, 0, 0, 0.5)`, stroke: `teal` } },
+        {
+          x: [1],
+          y: [1],
+          point_style: {
+            symbol_type,
+            fill: `red`,
+            fill_opacity: 0,
+            stroke: `blue`,
+            stroke_opacity: 0.75,
+          },
+        },
+      ]
+      const items = build_legend_data(series, [], color_scale)
+      expect(items.map((item) => item.display_style.symbol_color)).toEqual([
+        `purple`,
+        `teal`,
+        `rgba(255, 0, 0, 0.5)`,
+        `blue`,
+      ])
+      expect(items[3].display_style.symbol_opacity).toBe(0.75)
+      const styles = { point: { stroke_color: `orange`, stroke_opacity: 0.25 } }
+      const overridden = build_legend_data(series, [], color_scale, styles, 3)
+      expect(overridden[3].display_style).toMatchObject({
+        symbol_color: `orange`,
+        symbol_opacity: 0.25,
+      })
+    },
+  )
 
   test(`a null series holds its index but contributes no legend row`, () => {
     const series = [

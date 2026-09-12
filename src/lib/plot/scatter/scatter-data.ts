@@ -4,6 +4,7 @@ import { partition_point, type Vec2 } from '$lib/math'
 import { error_getter } from '$lib/plot/core/error-bars'
 import { plot_color } from '$lib/colors'
 import { symbol_names } from '$lib/labels'
+import { DEFAULTS } from '$lib/settings'
 import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
 import { range_bounds } from '$lib/plot/core/interactions'
@@ -289,10 +290,13 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
       // Fall back to stroke when the fill is missing/none/transparent, by alpha channel: a
       // `startsWith('rgba(')` test called every rgba() color transparent.
       const stroke = point_override?.stroke_color ?? point_style?.stroke
-      if (stroke && is_transparent_or_none(display_style.symbol_color)) {
-        display_style.symbol_color = stroke
+      const stroke_only = [`Plus`, `Times`, `Asterisk`].includes(display_style.symbol_type)
+      if (stroke_only || (stroke && is_transparent_or_none(display_style.symbol_color))) {
+        display_style.symbol_color = stroke ?? `currentColor`
         display_style.symbol_opacity =
-          point_override?.stroke_opacity ?? point_style?.stroke_opacity
+          point_override?.stroke_opacity ??
+          point_style?.stroke_opacity ??
+          (stroke == null ? DEFAULTS.scatter.point.stroke_opacity : 1)
       }
     }
 

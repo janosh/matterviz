@@ -313,18 +313,24 @@ test.each([
 })
 
 describe(`per-request options`, () => {
-  test.each([
-    { use_worker: true, shared: true },
-    { use_worker: false, shared: true },
-    { use_worker: true, shared: false },
-    { use_worker: false, shared: false },
-  ])(
+  test.each(
+    [
+      { use_worker: true, shared: true },
+      { use_worker: false, shared: true },
+      { use_worker: true, shared: false },
+      { use_worker: false, shared: false },
+    ].flatMap((config) =>
+      [new Error(`progress failed`), Object.create(null), { toString: null }].map((error) => ({
+        ...config,
+        error,
+      })),
+    ),
+  )(
     `throwing progress rejects only its caller (worker=$use_worker, shared=$shared)`,
-    async ({ use_worker, shared }) => {
+    async ({ use_worker, shared, error }) => {
       if (!use_worker) vi.stubGlobal(`Worker`, undefined)
       const run = make_progress_client()
       const input = { tag: `a` }
-      const error = new Error(`progress failed`)
       const throwing = vi.fn(() => {
         throw error
       })
@@ -339,7 +345,12 @@ describe(`per-request options`, () => {
         worker.emit(`message`, { data: { id, progress: 1 } })
         reply(worker)
       }
-      await expect(failed).rejects.toBe(error)
+      if (error instanceof Error) await expect(failed).rejects.toBe(error)
+      else
+        await expect(failed).rejects.toMatchObject({
+          cause: error,
+          message: `Thrown value cannot be converted to a string`,
+        })
       expect(throwing).toHaveBeenCalledExactlyOnceWith(0.5)
       if (kept) {
         await expect(kept).resolves.toBe(`done`)
@@ -439,6 +450,7 @@ describe(`per-request options`, () => {
   test.each([
     [`same options and explicit reason`, {}, {}, new Error(`superseded`)],
     [`changed options and default reason`, { lag: 1 }, { lag: 2 }, undefined],
+    [`unprintable abort reason`, {}, {}, Object.create(null)],
   ] as const)(
     `aborting the only waiter frees its key and creates one replacement: %s`,
     async (_label, options, next_options, reason) => {
@@ -449,7 +461,7 @@ describe(`per-request options`, () => {
       const [old_worker] = workers()
       controller.abort(reason)
       await expect(aborted).rejects.toEqual(
-        reason ?? expect.objectContaining({ name: `AbortError` }),
+        reason instanceof Error ? reason : expect.objectContaining({ name: `AbortError` }),
       )
       expect(old_worker.terminated).toBe(1)
       expect(old_worker.posted).toHaveLength(1)

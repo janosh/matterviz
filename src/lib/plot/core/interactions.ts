@@ -141,6 +141,13 @@ export function axis_transform(scale_type?: ScaleType): {
   return { forward: (val) => val, inverse: (val) => val }
 }
 
+// Underflow to zero is just as invalid for a log axis as overflow to Infinity.
+export function validate_log_range(range: Vec2): Vec2 {
+  if (range.some((value) => !Number.isFinite(value) || value <= 0))
+    throw new RangeError(`Cannot represent logarithmic range [${range.join(`, `)}]`)
+  return range
+}
+
 // Snapshot the four axis ranges as fresh tuples at pan/zoom/touch interaction start
 export const snapshot_ranges = ({
   x: coord_x,
@@ -167,7 +174,8 @@ export function pan_range_by_pixels(
   const { forward, inverse } = axis_transform(scale_type)
   const [param_0, param_1] = [forward(range[0]), forward(range[1])]
   const t_delta = (pixel_delta / pixel_span) * (param_1 - param_0)
-  return [inverse(param_0 + t_delta), inverse(param_1 + t_delta)]
+  const next: Vec2 = [inverse(param_0 + t_delta), inverse(param_1 + t_delta)]
+  return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
 }
 
 // Zoom a range about its screen-space center by `factor` (pinch: >1 zooms in).
@@ -183,7 +191,8 @@ export function zoom_range_by_factor(
   const [param_0, param_1] = [forward(range[0]), forward(range[1])]
   const center = (param_0 + param_1) / 2
   const half_span = (param_1 - param_0) / factor / 2
-  return [inverse(center - half_span), inverse(center + half_span)]
+  const next: Vec2 = [inverse(center - half_span), inverse(center + half_span)]
+  return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
 }
 
 // Coerce a scale.invert result (number, or Date for time scales) to an epoch number
@@ -280,7 +289,7 @@ export function resolve_axis_range(
       Math.max(auto[0], auto[1]) / (auto_min > 0 ? auto_min : LOG_EPS),
       1.1,
     )
-    return lower_fixed ? [lower, lower * factor] : [upper / factor, upper]
+    return validate_log_range(lower_fixed ? [lower, lower * factor] : [upper / factor, upper])
   }
   const { forward, inverse } = axis_transform(scale_type)
   const bound = forward(lower_fixed ? lower : upper)
