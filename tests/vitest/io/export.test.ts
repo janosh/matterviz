@@ -514,6 +514,39 @@ describe(`export_trajectory_video`, () => {
     expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
   })
 
+  test.each([`before-start`, `progress`, `render-wait`])(
+    `cancels during %s without recording`,
+    async (phase) => {
+      vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+      const request_frame = vi.fn().mockReturnValue(123)
+      const cancel_frame = vi.fn()
+      vi.stubGlobal(`requestAnimationFrame`, request_frame)
+      vi.stubGlobal(`cancelAnimationFrame`, cancel_frame)
+      const { canvas, renderer } = make_canvas_with_renderer()
+      const controller = new AbortController()
+      const cancel = () => controller.abort(new Error(`cancelled`))
+      const on_step = vi.fn()
+      if (phase === `before-start`) cancel()
+      const result = export_trajectory_video(canvas, `test.webm`, {
+        signal: controller.signal,
+        on_step,
+        on_progress: () => {
+          if (phase === `progress`) cancel()
+        },
+      })
+      const rejected = result.catch((error: unknown) => error)
+      if (phase === `render-wait`) {
+        await vi.waitFor(() => expect(request_frame).toHaveBeenCalledOnce())
+        cancel()
+        expect(cancel_frame).toHaveBeenCalledWith(123)
+      }
+      expect(await rejected).toEqual(new Error(`cancelled`))
+      expect(on_step).toHaveBeenCalledTimes(phase === `render-wait` ? 1 : 0)
+      expect(renderer.init).toHaveBeenCalledTimes(phase === `before-start` ? 0 : 1)
+      expect(download).not.toHaveBeenCalled()
+    },
+  )
+
   test.each([
     [`success`, undefined],
     [`download-error`, `download failed`],
@@ -522,8 +555,17 @@ describe(`export_trajectory_video`, () => {
     [`start-error`, `MediaRecorder error: encoder failed`],
     [`start-timeout`, `Recording timeout - recorder did not start`],
     [`stop-error`, `stop failed`],
+    [`abort-step`, `cancelled`],
+    [`abort-read`, `cancelled`],
+    [`abort-start`, `cancelled`],
+    [`abort-delay`, `cancelled`],
+    [`abort-stop`, `cancelled`],
+    [`abort-finish`, `cancelled`],
+    [`finish-error`, `restore failed`],
   ] as const)(`releases recording resources after %s`, async (outcome, error_message) => {
     vi.useFakeTimers()
+    const controller = new AbortController()
+    const cancel = () => controller.abort(new Error(`cancelled`))
     const recorder_stop = vi.fn()
     let recording_started = false
     class MockMediaRecorder extends EventTarget {
@@ -533,6 +575,7 @@ describe(`export_trajectory_video`, () => {
       state: MediaRecorder[`state`] = `inactive`
       start = vi.fn(() => {
         this.state = `recording`
+        if (outcome === `abort-start`) setTimeout(cancel, 1)
         if (outcome === `start-timeout`) return
         // Cold encoders can start after the entire short trajectory would have finished.
         setTimeout(() => {
@@ -542,14 +585,16 @@ describe(`export_trajectory_video`, () => {
           }
           recording_started = true
           this.dispatchEvent(new Event(`start`))
+          if (outcome === `abort-delay`) setTimeout(cancel, 1)
         }, 500)
       })
       stop = vi.fn(() => {
-        if (!outcome.startsWith(`start-`))
+        if (!outcome.startsWith(`start-`) && outcome !== `abort-start`)
           expect(recording_started, `do not stop before the encoder starts`).toBe(true)
         recorder_stop()
         if (outcome === `stop-error`) throw new Error(`stop failed`)
         this.state = `inactive`
+        if (outcome === `abort-stop`) cancel()
         if (outcome !== `timeout`) this.dispatchEvent(new Event(`stop`))
       })
     }
@@ -566,7 +611,15 @@ describe(`export_trajectory_video`, () => {
     const { canvas, renderer } = make_canvas_with_renderer()
     const view = { scene: {} as Scene, camera: {} as Camera }
     scene_registry.set(canvas, view)
-    const total_frames = outcome === `success` || outcome === `step-error` ? 2 : 0
+    const total_frames = [
+      `success`,
+      `step-error`,
+      `abort-step`,
+      `abort-delay`,
+      `abort-read`,
+    ].includes(outcome)
+      ? 2
+      : 0
     if (total_frames) {
       canvas.width = 300
       canvas.height = 150
@@ -597,12 +650,15 @@ describe(`export_trajectory_video`, () => {
         throw expected_error
       })
     }
-    const on_step = vi.fn((step: number) => {
+    const read = Promise.withResolvers<undefined>()
+    const on_step = vi.fn(async (step: number) => {
       canvas.width = 800
       canvas.height = 600
       renderer.getSize.mockReturnValue(new Vector2(800, 600))
       current_step = step
       if (outcome === `step-error` && step === 1) throw expected_error
+      if (outcome === `abort-step` && step === 1) cancel()
+      if (outcome === `abort-read` && step === 1) await read.promise
     })
 
     const export_promise = export_trajectory_video(canvas, `test.webm`, {
@@ -610,8 +666,22 @@ describe(`export_trajectory_video`, () => {
       total_frames,
       on_step,
       resolution_multiplier: 2,
+      signal: controller.signal,
+      on_finish: () => {
+        expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+        for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
+        if (outcome === `abort-finish`) cancel()
+        if (outcome === `finish-error`) throw expected_error
+      },
     })
     const result = export_promise.catch((error: unknown) => error)
+    if (outcome === `abort-read`) {
+      await vi.advanceTimersByTimeAsync(600)
+      expect(on_step).toHaveBeenLastCalledWith(1, controller.signal)
+      cancel()
+      expect(recorder_stop).toHaveBeenCalledOnce()
+      read.resolve(undefined)
+    }
     await vi.runAllTimersAsync()
     if (error_message) expect(await result).toEqual(expected_error)
     else {
@@ -625,10 +695,13 @@ describe(`export_trajectory_video`, () => {
     expect(capture_canvas.captureStream).toHaveBeenCalledWith(24)
     expect([capture_canvas.width, capture_canvas.height]).toEqual([800, 600])
     expect(captured_steps).toEqual(
-      outcome === `success` ? [0, 0, 1] : outcome === `step-error` ? [0, 0] : [],
+      outcome === `success` ? [0, 0, 1] : total_frames ? [0, 0] : [],
     )
     expect(tracks[0].requestFrame).toHaveBeenCalledTimes(
-      outcome === `success` ? 2 : outcome === `step-error` ? 1 : 0,
+      outcome === `success` ? 2 : total_frames ? 1 : 0,
+    )
+    expect(download).toHaveBeenCalledTimes(
+      [`success`, `download-error`].includes(outcome) ? 1 : 0,
     )
     for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
   })

@@ -2,7 +2,9 @@ import {
   AtomInstances,
   atom_sphere_segments,
   enable_atom_sphere_picking,
+  update_ordered_atom_positions,
 } from '$lib/structure/atom-instances'
+import { make_site } from '$lib/structure/site'
 import {
   DoubleSide,
   Euler,
@@ -17,6 +19,68 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { expect, test } from 'vitest'
+
+test(`coordinate-only frames reuse atom records, but appearance topology changes rebuild them`, () => {
+  const sites = [
+    make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`),
+    make_site(`Si`, [0.5, 0, 0], [1, 0, 0], `Si1`),
+  ]
+  const atoms = sites.map((site, site_idx) => ({
+    site_idx,
+    element: site.species[0].element,
+    species: site.species,
+    occupancy: 1,
+    position: site.xyz,
+    radius: 0.7,
+    color: `blue`,
+    is_image_atom: false,
+    has_partial_occupancy: false,
+  }))
+  const moved = sites.map((site) => ({
+    ...site,
+    xyz: [site.xyz[0] + 0.25, 0, 0] as [number, number, number],
+  }))
+  const updated = update_ordered_atom_positions(atoms, moved)
+  expect(updated).not.toBe(atoms)
+  expect(updated?.[0]).toBe(atoms[0])
+  expect(updated?.map(({ position }) => position)).toEqual([
+    [0.25, 0, 0],
+    [1.25, 0, 0],
+  ])
+  expect(sites[0].xyz).toEqual([0, 0, 0])
+  const [first, last] = moved
+  for (const changed of [
+    { ...last, species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }] },
+    { ...last, species: [{ ...last.species[0], occu: 0.5 }] },
+    { ...last, properties: { orig_site_idx: 1 } },
+    { ...last, properties: { completion_image: true } },
+  ]) {
+    expect(
+      update_ordered_atom_positions(atoms, [{ ...first, xyz: [9, 0, 0] }, changed]),
+    ).toBeNull()
+    // Rejecting a later slot cannot partially update earlier render records.
+    expect(atoms[0].position).toEqual([0.25, 0, 0])
+  }
+  expect(update_ordered_atom_positions(atoms, moved.slice(0, 1))).toBeNull()
+  moved[0].species[0].element = `C`
+  expect(update_ordered_atom_positions(atoms, moved)).toBeNull()
+  moved[0].species[0].element = `Si`
+  const partial_site = { ...last, species: [{ ...last.species[0], occu: 0.5 }] }
+  const partial_atom = {
+    ...atoms[1],
+    species: partial_site.species,
+    occupancy: 0.5,
+    has_partial_occupancy: true,
+  }
+  partial_site.species[0].occu = 1
+  expect(
+    update_ordered_atom_positions(
+      [atoms[0], partial_atom],
+      [{ ...first, xyz: [9, 0, 0] }, partial_site],
+    ),
+  ).toBeNull()
+  expect(atoms[0].position).toEqual([0.25, 0, 0])
+})
 
 test.each([8, 15, 20])(
   `atom buffers and picking match native instancing at %i segments`,

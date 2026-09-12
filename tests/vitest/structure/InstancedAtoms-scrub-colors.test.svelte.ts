@@ -3,12 +3,7 @@ import type { InstancedAtom } from '$lib/structure/atom-instances'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { flushSync, mount, unmount } from 'svelte'
 import { useThrelte } from '@threlte/core'
-import {
-  Color,
-  type InstancedMesh,
-  PerspectiveCamera,
-  type SphereGeometry,
-} from 'three/webgpu'
+import { Color, type InstancedMesh, PerspectiveCamera, SphereGeometry } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
@@ -54,10 +49,11 @@ const h2o = (offset = 0): InstancedAtom[] => [
   atom(`#ffffff`, 2 + offset),
 ]
 
-let teardown: (() => void) | undefined
-afterEach(() => {
-  teardown?.()
+let teardown: (() => Promise<void>) | undefined
+afterEach(async () => {
+  await teardown?.()
   teardown = undefined
+  vi.restoreAllMocks()
   threlte_stub.reset()
   const { camera, size } = useThrelte()
   camera.current.copy(new PerspectiveCamera(50, 1, 0.1, 1000))
@@ -65,9 +61,9 @@ afterEach(() => {
 })
 
 const mount_atoms = (atoms: InstancedAtom[]) => {
-  const props = $state({ atoms, ghost: false })
+  const props = $state({ atoms, ghost: false, sphere_segments: 20 })
   const component = mount(InstancedAtoms, { target: document.body, props })
-  teardown = () => void unmount(component)
+  teardown = () => unmount(component)
   flushSync()
   return props
 }
@@ -120,8 +116,9 @@ test.each([
     distant_segments: 12,
   },
 ])(
-  `Detail follows zoom, viewport and off-axis bounds at $fov degrees`,
-  ({ fov, height, x_pos, radius, distant_segments }) => {
+  `Detail follows zoom, viewport and requests without uploading unchanged atoms at $fov degrees`,
+  async ({ fov, height, x_pos, radius, distant_segments }) => {
+    const dispose_geometry = vi.spyOn(SphereGeometry.prototype, `dispose`)
     const {
       camera: { current: camera },
       size,
@@ -137,6 +134,28 @@ test.each([
     )
     const segments = () => (current_mesh().geometry as SphereGeometry).parameters.widthSegments
     expect(segments()).toBe(distant_segments)
+    const mesh = current_mesh()
+    const matrix_buffer = mesh.instanceMatrix.array
+    const matrix_values = matrix_buffer.slice()
+    const matrix_version = mesh.instanceMatrix.version
+    const geometries = new Map<number, SphereGeometry>()
+    const remember_geometry = () => {
+      const geometry = current_mesh().geometry as SphereGeometry
+      const detail = geometry.parameters.widthSegments
+      const previous = geometries.get(detail)
+      if (previous) expect(geometry).toBe(previous)
+      else geometries.set(detail, geometry)
+      // Three attaches disposal listeners that own the mesh's shared instance buffers.
+      expect(dispose_geometry).not.toHaveBeenCalled()
+    }
+    remember_geometry()
+    const unchanged_atoms = () => {
+      expect(current_mesh()).toBe(mesh)
+      expect(mesh.instanceMatrix.array).toBe(matrix_buffer)
+      expect(mesh.instanceMatrix.array).toEqual(matrix_values)
+      expect(mesh.instanceMatrix.version).toBe(matrix_version)
+      remember_geometry()
+    }
     for (const [depth, expected] of [
       [1, 20],
       [100, distant_segments],
@@ -146,12 +165,28 @@ test.each([
       frame_task.update()
       flushSync()
       expect(segments()).toBe(expected)
+      unchanged_atoms()
+    }
+    camera.position.z = 1
+    camera.updateMatrixWorld(true)
+    for (const requested of [8, 32, 12, 20]) {
+      props.sphere_segments = requested
+      flushSync()
+      frame_task.update()
+      flushSync()
+      expect(segments()).toBe(requested)
+      unchanged_atoms()
     }
     props.atoms = h2o()
     flushSync()
     frame_task.update()
     flushSync()
     expect(segments()).toBe(20)
+    remember_geometry()
+    await teardown?.()
+    teardown = undefined
+    expect(dispose_geometry).toHaveBeenCalledTimes(geometries.size)
+    expect(new Set(dispose_geometry.mock.contexts)).toEqual(new Set(geometries.values()))
   },
 )
 

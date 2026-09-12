@@ -223,8 +223,10 @@ export async function sweep_frames<Result>(
     const frame = await run.read_frame(frame_number, signal)
     signal?.throwIfAborted()
     results.push(await visit(frame, frame_number))
+    signal?.throwIfAborted()
     on_progress?.(done + 1, frame_numbers.length)
   }
+  signal?.throwIfAborted()
   return { results, frame_numbers, frame_stride }
 }
 

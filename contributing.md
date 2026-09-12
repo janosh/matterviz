@@ -44,6 +44,12 @@ Moving-average smoothing uses compensated sums and scales only when a window cou
 
 On 2026-09-09, 200,000-value benchmarks on an Apple M5 Max with Node 24.21.0 (seed `20260909`, five warm-ups, median of eleven alternating runs) measured 6–19% overhead on ordinary inputs and 53% on overflow-scale inputs versus the previous implementation that scaled every input. For example, a signed random series with a 501-point window took 11.50 ms versus 9.70 ms; the overflow-scale case took 22.76 ms versus 14.84 ms. These are local measurements, not performance guarantees. All five benchmark datasets matched the previous outputs exactly, and all seven numerical edge cases matched their expected outputs: maximum absolute and relative error were both zero. We accept this cost to preserve tiny values; optimize against both correctness and timing rather than dropping those safeguards.
 
+### Scatter interaction benchmarks
+
+Run `MATTERVIZ_PERF=1 pnpm exec playwright test scatter-performance --workers 1` on an otherwise idle machine. This opt-in Chromium benchmark renders seeded 100k/500k canvas points at a fixed viewport, warms both directions, then records 12 alternating pan, pinch-zoom, palette and radius updates. Every operation and measurement phase resets the view and styles; padded ranges keep all points visible, checked after every update. JSON attachments contain raw timings, median and nearest-rank p95 of completed-gesture redraw latency: event dispatch through two animation frames, allowing Svelte to flush and a paint opportunity, including frame scheduling rather than physical display latency.
+
+Six separate updates per operation use CDP heap sampling, including objects collected by either GC, to estimate allocated JavaScript bytes per update. These estimates include page/harness overhead and exclude native canvas/GPU memory; they are not retained-heap deltas. Allocation profiles are attached for inspection in DevTools. Timing excludes profiler overhead. Compare the same browser, hardware and build mode; the default starts Vite development mode, while `MATTERVIZ_E2E_MODE=preview` starts an already-built site. Playwright may reuse an existing server, so the report records the page's actual build mode. There are no machine-specific performance gates.
+
 ### Test Requirements
 
 **New features should include tests.** Bug fixes should include a test that fails on the old code and passes with your fix.

@@ -38,6 +38,12 @@ const pack_cell_key = (coord_x: number, coord_y: number, coord_z: number): numbe
 export const wrap_frac_coord = (coord: number): number => {
   const wrapped = coord - Math.floor(coord)
   if (wrapped >= 1 - 1e-10) return 0
+  const scaled = wrapped * 1e15
+  const fraction = scaled - Math.floor(scaled)
+  // Near a decimal halfway boundary, scaled * EPSILON bounds multiplication error.
+  // Outside that bound, rounding the product selects the same integer as toFixed.
+  // Close boundaries retain toFixed's exact decimal rounding of the original float.
+  if (Math.abs(fraction - 0.5) > scaled * Number.EPSILON) return Math.round(scaled) / 1e15
   return Number(wrapped.toFixed(15))
 }
 

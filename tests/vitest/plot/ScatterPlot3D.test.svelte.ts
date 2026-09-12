@@ -1,4 +1,6 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
+import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
+import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type {
   AxisConfig3D,
@@ -14,9 +16,18 @@ import {
   span_or,
 } from '$lib/plot/scatter-3d/scene-coords'
 import { resolve_axis_range } from '$lib/plot/core/interactions'
+import { mount_scene } from '../scene/mount'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { Object3D, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import {
+  type BufferGeometry,
+  Line,
+  Mesh,
+  Object3D,
+  OrthographicCamera,
+  PerspectiveCamera,
+  Vector3,
+} from 'three/webgpu'
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { mock_fullscreen, bind_props, expect_plot_controls, query } from '../setup'
 
 vi.mock(`$app/environment`, () => ({ browser: false }))
@@ -75,6 +86,67 @@ const triangulated_surface: Surface3DConfig = {
   triangles: [[0, 1, 2]],
   opacity: 0.8,
 }
+
+test.each([`surface`, `axes`] as const)(
+  `%s releases replaced geometry without Threlte retaining or disposing it again`,
+  async (kind) => {
+    const inputs = $state({ extent: 1 })
+    onTestFinished(() => {
+      vi.restoreAllMocks()
+    })
+    const { scene, disposable_objects, unmount_scene } = mount_scene((anchor) => {
+      if (kind === `surface`)
+        return Surface3D(anchor, {
+          config: {
+            type: `grid`,
+            resolution: 3,
+            wireframe: true,
+            z_fn: (coord_x: number, coord_y: number) => coord_x + coord_y,
+          },
+          get x_range(): [number, number] {
+            return [0, inputs.extent]
+          },
+        })
+      return ScatterPlot3DScene(anchor, {
+        get ranges(): ComponentProps<typeof ScatterPlot3DScene>[`ranges`] {
+          return { x: [0, inputs.extent], y: [0, inputs.extent], z: [0, inputs.extent] }
+        },
+        x_axis: { ticks: [0, 1] },
+        y_axis: { ticks: [0, 1] },
+        z_axis: { ticks: [0, 1] },
+        display: { show_axis_labels: false },
+        gizmo: false,
+      })
+    })
+    const geometries = new Map<BufferGeometry, ReturnType<typeof vi.spyOn>>()
+    try {
+      for (const extent of [1, 2, 4, 1]) {
+        inputs.extent = extent
+        flushSync()
+        const active = new Set<BufferGeometry>()
+        scene.traverse((object) => {
+          if (!(object instanceof Mesh || object instanceof Line)) return
+          const { geometry } = object
+          // Background planes own their constructor-created geometry through Threlte.
+          if ([`BufferGeometry`, `WireframeGeometry`].includes(geometry.type))
+            active.add(geometry)
+        })
+        expect(active.size).toBe(kind === `surface` ? 2 : 21)
+        for (const geometry of active) {
+          if (!geometries.has(geometry))
+            geometries.set(geometry, vi.spyOn(geometry, `dispose`))
+        }
+        for (const [geometry, dispose] of geometries) {
+          expect(dispose).toHaveBeenCalledTimes(active.has(geometry) ? 0 : 1)
+          if (!active.has(geometry)) expect(disposable_objects.has(geometry)).toBe(false)
+        }
+      }
+    } finally {
+      await unmount_scene()
+    }
+    for (const dispose of geometries.values()) expect(dispose).toHaveBeenCalledTimes(1)
+  },
+)
 
 describe(`ScatterPlot3D smoke tests`, () => {
   let container: HTMLDivElement

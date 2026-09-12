@@ -106,25 +106,43 @@ describe(`collect_structure_id_sweep`, () => {
     ])
   })
 
-  it(`stops between frames once its signal aborts and hands the signal to every compute`, async () => {
-    const controller = new AbortController()
-    const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
-    const sweep = collect_structure_id_sweep(repeat_fcc(20), {
-      max_frames: 4,
-      options: { skip_csp: true },
-      signal: controller.signal,
-      on_progress: (done) => {
-        if (done === 2) controller.abort(new Error(`pane closed`))
-      },
-    })
-    await expect(sweep).rejects.toThrow(`pane closed`)
-    // frames 0 and 5 were analysed; the abort landed before frame 10 was requested
-    expect(compute_spy).toHaveBeenCalledTimes(2)
-    for (const call of compute_spy.mock.calls) {
-      expect(call[2]).toEqual({ signal: controller.signal })
-    }
-    compute_spy.mockRestore()
-  })
+  it.each([
+    [2, `progress`],
+    [4, `progress`],
+    [4, `compute`],
+  ] as const)(
+    `stops when frame %i aborts during %s and forwards the signal`,
+    async (abort_at, phase) => {
+      const controller = new AbortController()
+      const compute = async_compute.calc_structure_id_async
+      const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
+      if (phase === `compute`) {
+        compute_spy.mockImplementation(async (...args) => {
+          const result = await compute(...args)
+          if (compute_spy.mock.calls.length === abort_at)
+            controller.abort(new Error(`pane closed`))
+          return result
+        })
+      }
+      const progress = vi.fn((done: number) => {
+        if (phase === `progress` && done === abort_at)
+          controller.abort(new Error(`pane closed`))
+      })
+      const sweep = collect_structure_id_sweep(repeat_fcc(20), {
+        max_frames: 4,
+        options: { skip_csp: true },
+        signal: controller.signal,
+        on_progress: progress,
+      })
+      await expect(sweep).rejects.toThrow(`pane closed`)
+      expect(compute_spy).toHaveBeenCalledTimes(abort_at)
+      expect(progress).toHaveBeenCalledTimes(abort_at - Number(phase === `compute`))
+      for (const call of compute_spy.mock.calls) {
+        expect(call[2]).toEqual({ signal: controller.signal })
+      }
+      compute_spy.mockRestore()
+    },
+  )
 
   it(`refuses a sweep whose frames disagree on the atom count`, async () => {
     const trajectory = frame_run([make_fcc([2, 2, 2]), with_vacancy(make_fcc([2, 2, 2]), 0)])

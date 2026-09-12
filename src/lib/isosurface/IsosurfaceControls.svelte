@@ -50,26 +50,31 @@
     volumes.findIndex(({ id: identifier }) => identifier === layer.volume_id)
   const color_vol_of = (layer: IsosurfaceLayer): VolumetricData | undefined =>
     layer.color_volume_id === undefined ? undefined : volume_by_id.get(layer.color_volume_id)
+  const update_settings = (updates: Partial<IsosurfaceSettings>) =>
+    (settings = { ...settings, ...updates })
 
   function update_layer(idx: number, updates: Partial<IsosurfaceLayer>) {
-    settings.layers = settings.layers.map((layer, layer_idx) =>
-      layer_idx === idx ? { ...layer, ...updates } : layer,
-    )
+    update_settings({
+      layers: settings.layers.map((layer, layer_idx) =>
+        layer_idx === idx ? { ...layer, ...updates } : layer,
+      ),
+    })
   }
 
   function remove_layer(idx: number) {
-    settings.layers = settings.layers.filter((_layer, layer_idx) => layer_idx !== idx)
+    update_settings({
+      layers: settings.layers.filter((_layer, layer_idx) => layer_idx !== idx),
+    })
   }
 
   function add_surface(vol_idx: number) {
     const vol = volumes[vol_idx]
     if (!vol) return
-    const layers = [...settings.layers]
+    const { layers } = settings
     // nth shell of this volume: steps the isovalue/opacity ladder so it never coincides
     // with the surfaces the volume already has
     const shell_idx = layers.filter((layer) => layer.volume_id === vol.id).length
-    layers.push(auto_volume_layer(vol, layers.length, shell_idx))
-    settings.layers = layers
+    update_settings({ layers: [...layers, auto_volume_layer(vol, layers.length, shell_idx)] })
     active_volume_id = vol.id
   }
 
@@ -78,7 +83,7 @@
     if (!volume) return
     const result = remove_volume(volumes, settings.layers, volume.id)
     volumes = result.volumes
-    settings.layers = result.layers
+    update_settings({ layers: result.layers })
     active_volume_id = normalize_active_volume_id(active_volume_id, volumes)
   }
 
@@ -154,7 +159,7 @@
     if (Number.isNaN(value)) return
     range[axis][bound] = value
     const is_default = range.every(([lower, upper]) => lower === 0 && upper === 1)
-    settings.display_range = is_default ? undefined : range
+    update_settings({ display_range: is_default ? undefined : range })
   }
 
   const default_settings = () =>
@@ -200,11 +205,10 @@
       type="checkbox"
       checked={settings.layers.some((layer) => layer.show_negative)}
       onchange={(event) => {
-        const checked = event.currentTarget.checked
-        settings.layers = settings.layers.map((layer) => ({
-          ...layer,
-          show_negative: checked,
-        }))
+        const show_negative = event.currentTarget.checked
+        update_settings({
+          layers: settings.layers.map((layer) => ({ ...layer, show_negative })),
+        })
       }}
     />
   </label>
@@ -212,7 +216,10 @@
     <span {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}
       >Wireframe</span
     >
-    <input type="checkbox" bind:checked={settings.wireframe} />
+    <input
+      type="checkbox"
+      bind:checked={() => settings.wireframe, (wireframe) => update_settings({ wireframe })}
+    />
   </label>
 
   <!-- Surfaces grouped under their geometry-source volume -->
@@ -397,7 +404,13 @@
     >
       <span>Halo</span>
       <span>{format_num(settings.halo, `.2f`)}</span>
-      <input type="range" min={0} max={0.5} step={0.01} bind:value={settings.halo} />
+      <input
+        type="range"
+        min={0}
+        max={0.5}
+        step={0.01}
+        bind:value={() => settings.halo, (halo) => update_settings({ halo })}
+      />
     </label>
     <div class="setting display-range">
       <span
@@ -429,7 +442,7 @@
           <button
             type="button"
             class="icon-btn"
-            onclick={() => (settings.display_range = undefined)}
+            onclick={() => update_settings({ display_range: undefined })}
             aria-label="Reset display range"
             {@attach tooltip({ content: `Follow the structure supercell again` })}
           >

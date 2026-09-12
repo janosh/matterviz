@@ -118,6 +118,25 @@ describe(`validate_position_stream_layout`, () => {
 })
 
 describe(`accumulate_positions step plausibility`, () => {
+  it.each([`read`, `progress`])(`rejects cancellation during the final %s`, async (phase) => {
+    const controller = new AbortController()
+    const frame = make_frame(0, [[0, 0, 0]])
+    const abort = () => controller.abort(new Error(`collection cancelled`))
+    await expect(
+      accumulate_positions(
+        500,
+        (frame_idx) => {
+          if (phase === `read` && frame_idx === 499) abort()
+          return frame
+        },
+        {
+          signal: controller.signal,
+          on_progress: phase === `progress` ? abort : undefined,
+        },
+      ),
+    ).rejects.toThrow(`collection cancelled`)
+  })
+
   it.each([
     [2, 2],
     [3, 1],

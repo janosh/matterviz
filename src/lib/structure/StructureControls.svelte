@@ -134,6 +134,8 @@
   let controls_pane = $state<HTMLDivElement | null>(null)
   let controls_pane_size = $state<StructurePaneSize>()
   let settings_import_status = $state<{ message: string; error: boolean }>()
+  const update_scene = (updates: Partial<StructureSettings>) =>
+    (scene_props = { ...scene_props, ...updates })
 
   // Per-site scalars/vec3s available to color by (charge, velocity, c_pe, ...). Empty for
   // structures whose parser produced no extra columns, in which case the mode is disabled.
@@ -152,7 +154,7 @@
 
   const apply_view_state = (state: StructureViewState): void => {
     const structure_settings = structuredClone(state.settings.structure)
-    Object.assign(scene_props, structure_settings)
+    update_scene(structure_settings)
     show_image_atoms =
       structure_settings.show_image_atoms ?? DEFAULTS.structure.show_image_atoms
     show_trajectory_lines =
@@ -278,7 +280,7 @@
 
   const reset_all_view_settings = (): void => {
     apply_view_state(DEFAULT_STRUCTURE_VIEW_STATE)
-    scene_props.vector_configs = {}
+    update_scene({ vector_configs: {} })
     if (persist_settings) clear_structure_view_state()
     set_status(`Restored all viewer defaults`)
   }
@@ -311,8 +313,6 @@
       throw new Error(`Missing range bounds for "${title}": min=${min}, max=${max}`)
     return { min, max, step, title }
   }
-  // A getter, not a const: the parent may rebind scene_props to a fresh object
-  const scene_record = () => scene_props as Record<string, unknown>
   // Snapshot only owned fields; defaults are display-only, and missing keys must stay missing.
   const own_fields = (record: object, keys: readonly string[]) => {
     const snapshot: Record<string, unknown> = {}
@@ -323,23 +323,25 @@
     }
     return snapshot
   }
-  const restore_fields = (
-    record: object,
+  const restore_fields = <T extends object>(
+    record: T,
     keys: readonly string[],
     reference: Record<string, unknown>,
   ) => {
+    const restored = { ...record }
     for (const key of keys) {
-      if (Object.hasOwn(reference, key)) Reflect.set(record, key, reference[key])
-      else Reflect.deleteProperty(record, key)
+      if (Object.hasOwn(reference, key)) Reflect.set(restored, key, reference[key])
+      else Reflect.deleteProperty(restored, key)
     }
+    return restored
   }
   const scene_value = (key: StructureSettingKey): unknown =>
-    scene_record()[key] ?? DEFAULTS.structure[key]
+    (scene_props as Record<string, unknown>)[key] ?? DEFAULTS.structure[key]
   const row_value = (current: Row): unknown =>
     current.get ? current.get() : scene_value(current.key)
   const set_row_value = (current: Row, value: unknown): void => {
     if (current.set) current.set(value)
-    else scene_record()[current.key] = value
+    else update_scene({ [current.key]: value })
   }
   const visibility_rows: Row[] = [
     row(`show_atoms`, `Atoms`),
@@ -497,7 +499,7 @@
   const scene_pair = (left: StructureSettingKey, right: StructureSettingKey) =>
     local(
       () => own_fields(scene_props, [left, right]),
-      (reference) => restore_fields(scene_props, [left, right], reference),
+      (reference) => (scene_props = restore_fields(scene_props, [left, right], reference)),
     )
   const section_baselines = new Map<
     string,
@@ -542,8 +544,9 @@
       for (const key of requested_keys) {
         const accessor = baseline.accessors[key]
         if (accessor) accessor.set(reference[key])
-        else restore_fields(scene_props, [key], reference)
       }
+      const scene_keys = requested_keys.filter((key) => !baseline.accessors[key])
+      if (scene_keys.length) scene_props = restore_fields(scene_props, scene_keys, reference)
     }
     return {
       changed_keys: tracker.changed_keys,
@@ -640,15 +643,15 @@
   function toggle_polyhedra_element(element: string) {
     const excluded = scene_props.polyhedra_excluded_elements ?? []
     const included = scene_props.polyhedra_included_elements ?? []
-    if (is_polyhedra_center_enabled(element)) {
-      scene_props.polyhedra_excluded_elements = [...new Set([...excluded, element])]
-      scene_props.polyhedra_included_elements = included.filter((el) => el !== element)
-    } else {
-      scene_props.polyhedra_excluded_elements = excluded.filter(
-        (element_2) => element_2 !== element,
-      )
-      scene_props.polyhedra_included_elements = [...new Set([...included, element])]
-    }
+    const enabled = is_polyhedra_center_enabled(element)
+    update_scene({
+      polyhedra_excluded_elements: enabled
+        ? [...new Set([...excluded, element])]
+        : excluded.filter((entry) => entry !== element),
+      polyhedra_included_elements: enabled
+        ? included.filter((entry) => entry !== element)
+        : [...new Set([...included, element])],
+    })
   }
 
   // Species in the collected trajectory stream, for the trail filter. A Li-ion conductor
@@ -660,9 +663,11 @@
 
   function toggle_trail_element(element: ElementSymbol) {
     const current = scene_props.trajectory_line_elements ?? trail_elements
-    scene_props.trajectory_line_elements = is_trail_element_on(element)
-      ? current.filter((elem) => elem !== element)
-      : [...current, element]
+    update_scene({
+      trajectory_line_elements: is_trail_element_on(element)
+        ? current.filter((elem) => elem !== element)
+        : [...current, element],
+    })
   }
 
   const hex_color_pattern = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i
@@ -704,10 +709,12 @@
     site_label_bg_hex = hex_color
     // Fully transparent round-trips as `transparent`, else merely touching the slider rewrites
     // that default into an equivalent color-mix nobody asked for.
-    scene_props.site_label_bg_color =
-      opacity === 0
-        ? `transparent`
-        : `color-mix(in srgb, ${hex_color} ${format_num(opacity, `.1~%`)}, transparent)`
+    update_scene({
+      site_label_bg_color:
+        opacity === 0
+          ? `transparent`
+          : `color-mix(in srgb, ${hex_color} ${format_num(opacity, `.1~%`)}, transparent)`,
+    })
   }
   // The swatch, the opacity slider and the two reset accessors all pair the same getter with the
   // same setter. Naming each pair once stops a change to one from desynchronising the others.
@@ -727,10 +734,12 @@
 
   function update_vector_config(key: string, patch: VectorLayerConfig) {
     const configs = scene_props.vector_configs
-    scene_props.vector_configs = {
-      ...configs,
-      [key]: { ...configs?.[key], ...patch },
-    }
+    update_scene({
+      vector_configs: {
+        ...configs,
+        [key]: { ...configs?.[key], ...patch },
+      },
+    })
   }
   // Track each row's raw fields so explicit defaults remain resettable to omitted values.
   // Keep other rows' edits when removing a config created by this row.
@@ -750,14 +759,15 @@
             () => own_fields(scene_props.vector_configs?.[key] ?? {}, fields),
             (reference) => {
               const configs = { ...scene_props.vector_configs }
-              const config = { ...configs[key] }
-              restore_fields(config, fields, reference)
+              const config = restore_fields(configs[key] ?? {}, fields, reference)
               if (Object.keys(config).length || initial_config) configs[key] = config
               else if (entry_present) Reflect.set(configs, key, initial_config)
               else Reflect.deleteProperty(configs, key)
-              if (Object.keys(configs).length || initial) scene_props.vector_configs = configs
-              else if (initial_present) scene_props.vector_configs = initial
-              else delete scene_props.vector_configs
+              const updated = { ...scene_props }
+              if (Object.keys(configs).length || initial) updated.vector_configs = configs
+              else if (initial_present) updated.vector_configs = initial
+              else delete updated.vector_configs
+              scene_props = updated
             },
           ),
         ]
@@ -766,7 +776,7 @@
 
   function update_label_offset(axis_idx: number, value: number) {
     const offset = scene_props.site_label_offset ?? DEFAULTS.structure.site_label_offset
-    scene_props.site_label_offset = offset.with(axis_idx, value) as Vec3
+    update_scene({ site_label_offset: offset.with(axis_idx, value) as Vec3 })
   }
 
   // Cell styling/tiling needs a lattice; image atoms and cell reduction need periodicity.
@@ -783,7 +793,9 @@
 
   function update_rotation(axis_idx: number, degrees: number) {
     const radians = to_radians(((clamp(degrees, 0, 360) % 360) + 360) % 360)
-    scene_props.rotation = (scene_props.rotation ?? [0, 0, 0]).with(axis_idx, radians) as Vec3
+    update_scene({
+      rotation: (scene_props.rotation ?? [0, 0, 0]).with(axis_idx, radians) as Vec3,
+    })
   }
 
   // Sample colors for common elements, used to preview an element color scheme
@@ -881,7 +893,7 @@
                 type="color"
                 bind:value={
                   () => scene_value(pair.key) as string,
-                  (value) => (scene_record()[pair.key] = value)
+                  (value) => update_scene({ [pair.key]: value })
                 }
               />
             {/if}
@@ -1010,7 +1022,7 @@
           ),
           atom_color_scale: local(
             () => atom_color_config.scale,
-            (value) => (atom_color_config.scale = value),
+            (scale) => (atom_color_config = { ...atom_color_config, scale }),
           ),
           atom_color_property_key: local(
             () =>
@@ -1089,7 +1101,8 @@
             <span>Color scale</span>
             <ColorScaleSelect
               bind:value={
-                () => atom_color_config.scale, (scale) => (atom_color_config.scale = scale)
+                () => atom_color_config.scale,
+                (scale) => (atom_color_config = { ...atom_color_config, scale })
               }
               color_bar={{ tick_labels: 0, wrapper_style: `width: 100%;` }}
               style="min-width: 0; border: none"
@@ -1207,7 +1220,10 @@
               <label {...setting_row(`vector_color_scale`)}>
                 <span>Color scale</span>
                 <ColorScaleSelect
-                  bind:value={scene_props.vector_color_scale}
+                  bind:value={
+                    () => scene_props.vector_color_scale,
+                    (vector_color_scale) => update_scene({ vector_color_scale })
+                  }
                   style="min-width: 0; border: none"
                 />
               </label>
@@ -1503,8 +1519,11 @@
                 setting="trajectory_line_trail_frames"
                 {...number_range_props(SETTINGS_CONFIG.structure.trajectory_line_trail_frames)}
                 max={Math.max(1, trajectory_position_stream.n_frames)}
-                bind:value={scene_props.trajectory_line_trail_frames}
-                >Trail length <small>(0 = all)</small></NumberRangeInput
+                bind:value={
+                  () => scene_props.trajectory_line_trail_frames,
+                  (trajectory_line_trail_frames) =>
+                    update_scene({ trajectory_line_trail_frames })
+                }>Trail length <small>(0 = all)</small></NumberRangeInput
               >
               {@render setting_rows(trail_rows)}
               {#if trajectory_lines_result}

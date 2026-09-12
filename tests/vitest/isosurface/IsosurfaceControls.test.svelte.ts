@@ -73,13 +73,17 @@ const mount_controls = (
     active_volume_id: string
   }>,
 ) => {
-  // $state props so bindable mutations from button clicks re-render the component
-  // and are observable on the returned object
+  let settings = $state.raw(props?.settings ?? { ...DEFAULT_ISOSURFACE_SETTINGS })
   const state_props = $state({
-    settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
     volumes: [make_volume()],
     active_volume_id: `0`,
     ...props,
+    get settings() {
+      return settings
+    },
+    set settings(value) {
+      settings = value
+    },
   })
   mount(IsosurfaceControls, { target: document.body, props: state_props })
   flushSync()
@@ -146,7 +150,29 @@ describe(`IsosurfaceControls`, () => {
     checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
     expect(props.settings.layers.map((layer) => layer.show_negative)).toEqual([true, true])
+    expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(4)
   })
+
+  test.each([`Wireframe`, `Halo`])(
+    `%s edits notify a raw caller and preserve layers`,
+    (label) => {
+      const initial = { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer()] }
+      const props = mount_controls({ settings: initial })
+      const input = find_label(label)?.querySelector<HTMLInputElement>(`input`)
+      if (!input) throw new Error(`${label} input not found`)
+      if (label === `Wireframe`) input.click()
+      else {
+        input.value = `0.25`
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      }
+      flushSync()
+      expect(props.settings).not.toBe(initial)
+      expect(props.settings.layers).toBe(initial.layers)
+      expect(props.settings[label === `Wireframe` ? `wireframe` : `halo`]).toBe(
+        label === `Wireframe` ? true : 0.25,
+      )
+    },
+  )
 
   // Reset mirrors a fresh file load (auto_isosurface_settings): one auto layer on volume 0,
   // further volumes stay available as colour sources or for manually added surfaces
@@ -158,7 +184,8 @@ describe(`IsosurfaceControls`, () => {
       if (scenario === `initial`) settings.layers[0].opacity = 0.2
       const props = mount_controls({ volumes, settings })
       if (scenario === `new volume`) props.volumes = [make_volume({ id: `new` })]
-      else if (scenario === `layer edit`) props.settings.layers[0].opacity = 0.2
+      else if (scenario === `layer edit`)
+        props.settings = { ...props.settings, layers: [make_layer(`0`, { opacity: 0.2 })] }
       flushSync()
       const selector = `button[aria-label="Reset isosurface to defaults"]`
       doc_query<HTMLButtonElement>(selector).click()

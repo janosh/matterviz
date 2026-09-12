@@ -14,8 +14,103 @@ import {
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
 import { create_scale } from '$lib/plot/core/scales'
+import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
 import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+
+it.each([`wheel_x`, `wheel_y`, `drag`, `touch_pan`, `pinch`] as const)(
+  `%s validates every axis before writing ranges and can recover after rejection`,
+  (gesture) => {
+    const axes = [`x`, `x2`, `y`, `y2`] as const
+    const log_axis = gesture === `wheel_x` ? `x2` : `y2`
+    const ranges: AxisRanges = { x: [0, 10], x2: [0, 10], y: [0, 10], y2: [0, 10] }
+    ranges[log_axis] = [1e-300, 1e300]
+    const original = structuredClone(ranges)
+    const set_range = vi.fn((axis: keyof AxisRanges, range: Vec2) => {
+      ranges[axis] = range
+    })
+    const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
+    const controller = create_pan_zoom({
+      axes: () => axes,
+      ranges: () => ranges,
+      scale_type: (axis) => (axis === log_axis ? `log` : `linear`),
+      plot_bounds: () => ({ x: 0, y: 0, width: 200, height: 200 }),
+      pan: () => ({}),
+      set_range,
+      svg: () => svg,
+      on_rect_zoom: vi.fn(),
+      on_reset: vi.fn(),
+    })
+    onTestFinished(() => controller.destroy())
+    let move: (reject: boolean) => void
+    const wheel = gesture.startsWith(`wheel`)
+    if (wheel) {
+      controller.set_focused(true)
+      controller.on_window_key_down(new KeyboardEvent(`keydown`, { key: `Shift` }))
+      move = (reject) =>
+        controller.on_wheel(
+          new WheelEvent(`wheel`, {
+            [gesture === `wheel_x` ? `deltaX` : `deltaY`]: reject ? 200 : 1,
+          }),
+        )
+    } else if (gesture === `drag`) {
+      const listeners = vi.spyOn(window, `addEventListener`)
+      onTestFinished(() => listeners.mockRestore())
+      controller.on_mouse_down(
+        new MouseEvent(`mousedown`, {
+          button: 0,
+          shiftKey: true,
+          clientX: 100,
+          clientY: 100,
+        }),
+      )
+      const listener = listeners.mock.calls.find(([event]) => event === `mousemove`)?.[1]
+      if (typeof listener !== `function`) throw new Error(`Pan listener missing`)
+      // Call the registered listener directly so the thrown error reaches the assertion.
+      move = (reject) =>
+        listener(
+          new MouseEvent(`mousemove`, {
+            buttons: 1,
+            clientX: 101,
+            clientY: reject ? 300 : 101,
+          }),
+        )
+    } else {
+      const touches = (left: number, right: number, coord_y: number): TouchEvent =>
+        new TouchEvent(`touchmove`, {
+          touches: [left, right].map(
+            (clientX, identifier) =>
+              new Touch({ clientX, clientY: coord_y, identifier, target: svg }),
+          ),
+        })
+      controller.on_touch_start(touches(50, 150, 100))
+      move = (reject) =>
+        controller.on_touch_move(
+          gesture === `pinch`
+            ? touches(reject ? 99 : 0, reject ? 101 : 200, 100)
+            : touches(51, 151, reject ? 300 : 101),
+        )
+    }
+    expect(() => move(true)).toThrow(RangeError)
+    expect(set_range).not.toHaveBeenCalled()
+    expect(ranges).toEqual(original)
+
+    move(false)
+    const updated_axes = wheel ? axes.filter((axis) => axis.startsWith(log_axis[0])) : axes
+    expect(set_range.mock.calls.map(([axis]) => axis)).toEqual(updated_axes)
+    for (const axis of updated_axes.filter((candidate) => candidate !== log_axis)) {
+      const delta = !wheel && axis.startsWith(`x`) ? -0.05 : 0.05
+      expect(ranges[axis]).toEqual(gesture === `pinch` ? [2.5, 7.5] : [delta, 10 + delta])
+    }
+    expect(Object.values(ranges).flat().every(Number.isFinite)).toBe(true)
+    if (wheel) {
+      const untouched_axes = axes.filter((axis) => !updated_axes.includes(axis))
+      for (const axis of untouched_axes) expect(ranges[axis]).toEqual(original[axis])
+    } else if (gesture === `drag`) window.dispatchEvent(new MouseEvent(`mouseup`))
+    else controller.on_touch_end()
+    if (!wheel) expect(controller.is_panning).toBe(false)
+  },
+)
 
 describe(`pan_range_by_pixels`, () => {
   // pan must be uniform in *screen* space: constant shift on linear axes,

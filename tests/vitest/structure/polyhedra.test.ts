@@ -539,6 +539,15 @@ describe(`compute_polyhedra`, () => {
   test(`empty inputs return no polyhedra`, () => {
     expect(compute_polyhedra(make_nacl_cluster(), [])).toHaveLength(0)
     expect(compute_polyhedra({ sites: [] }, octahedral_bonds)).toHaveLength(0)
+    const elemental = make_nacl_cluster()
+    for (const site of elemental.sites)
+      site.species = [{ element: `Si`, occu: 1, oxidation_state: 0 }]
+    // A composition with no eligible anion pairs must skip the bond graph entirely.
+    const bonds = [...octahedral_bonds]
+    const read_bond = vi.fn(() => octahedral_bonds[0])
+    Object.defineProperty(bonds, 0, { get: read_bond })
+    expect(compute_polyhedra(elemental, bonds)).toEqual([])
+    expect(read_bond).not.toHaveBeenCalled()
   })
 
   test(`recomputes when same structure coordinates mutate`, () => {

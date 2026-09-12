@@ -1066,8 +1066,12 @@
               }
               run={trajectory}
               {wrapper}
+              {current_step_idx}
               filename={trajectory.provenance.filename || `trajectory`}
-              on_step_change={session.commit}
+              on_step_change={(idx) => {
+                player.pause()
+                session.commit(idx)
+              }}
               resolve_frame={session.resolve_frame}
               pane_props={{ style: pane_max_height }}
             />

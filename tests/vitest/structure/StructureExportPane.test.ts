@@ -10,7 +10,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, simple_structure } from '../setup'
 
 const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
-  mount(StructureExportPane, { target: document.body, props })
+  mount(StructureExportPane, {
+    target: document.body,
+    props: { export_pane_open: true, ...props },
+  })
 
 // Mock the export functions
 vi.mock(`$lib/structure/export`, async (import_original) => {
@@ -67,7 +70,14 @@ describe(`StructureExportPane`, () => {
   }
 
   test(`displays text export actions and linked format descriptions`, async () => {
-    mount_pane({ structure: simple_structure })
+    const validate = vi.spyOn(export_funcs, `xyz_export_unavailable_reason`)
+    mount_pane({ structure: simple_structure, export_pane_open: false })
+    expect(validate).not.toHaveBeenCalled()
+    expect(document.querySelector(`.export-item`)).toBeNull()
+    doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
+    await tick()
+    expect(validate).toHaveBeenCalledOnce()
+    validate.mockRestore()
 
     const format_labels = [`JSON`, `XYZ`, `CIF`, `POSCAR`]
     for (const label of format_labels) {

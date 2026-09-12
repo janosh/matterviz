@@ -524,6 +524,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   })
 
   const pan_zoom = create_pan_zoom({
+    axes: () => FACET_AXES.filter((axis) => axis !== `y2` || y2_sync.mode === `none`),
     ranges: () => ranges.current,
     scale_type: (axis) => opts.axes()[axis].scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size

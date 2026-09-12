@@ -471,12 +471,6 @@ export function compute_polyhedra(
   const { sites } = structure
   if (sites.length === 0 || bonds.length === 0) return []
 
-  // Only bonds carrying a cell_shift can name a neighbor the graph already reaches under
-  // another site index (an explicit record against the base atom vs a proximity match
-  // against its image copy). Absent those, positions are unique by construction and the
-  // coincidence scan below is skipped so large supercells don't pay for it.
-  const has_shifted_bonds = bonds.some((bond) => bond.cell_shift?.some((val) => val !== 0))
-  const adjacency = build_adjacency(bonds)
   const excluded = new Set(excluded_center_elements)
   const included = new Set(included_center_elements)
   const site_elements = sites.map((site) => get_majority_element(site))
@@ -513,6 +507,17 @@ export function compute_polyhedra(
     }
     return info
   }
+
+  // Check for eligible anion shells before allocating the potentially million-edge graph.
+  if (
+    !unique_elements.some(
+      (element) => !excluded.has(element) && center_info(element).accepts.size > 0,
+    )
+  )
+    return []
+  // Only shifted bonds can reach the same physical neighbor through different site indices.
+  const has_shifted_bonds = bonds.some((bond) => bond.cell_shift?.some((val) => val !== 0))
+  const adjacency = build_adjacency(bonds)
 
   // Pass 1: candidate centers with their anion-vertex sets
   type Candidate = {

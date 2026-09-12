@@ -87,6 +87,51 @@ const hover_canvas_corner = (canvas: Locator) =>
 
 const site_tooltip = (page: Page) => page.locator(`[role="tooltip"]:has(.coordinates)`)
 
+test(`large atom mesh keeps drawing across zoom detail transitions @source`, async ({
+  page,
+}) => {
+  const console_errors = collect_console_errors(page)
+  await goto_structure_test(page)
+  await set_structure(
+    page,
+    {
+      sites: Array.from({ length: 2197 }, (_unused, idx) => ({
+        species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+        xyz: [(idx % 13) * 3, (Math.floor(idx / 13) % 13) * 3, Math.floor(idx / 169) * 3],
+        abc: [0, 0, 0],
+        properties: {},
+      })),
+    },
+    { show_bonds: `never`, show_image_atoms: false, sphere_segments: 20, auto_rotate: 0 },
+  )
+  const canvas = structure_canvas(page)
+  const detail = () =>
+    canvas.evaluate(async (element) => {
+      const module_path = `/src/lib/io/export.ts`
+      const { scene_registry } = await import(/* @vite-ignore */ module_path)
+      const scene = scene_registry.get(element)?.scene
+      const levels: number[] = []
+      scene?.traverse(
+        (node: { count?: number; geometry?: { parameters?: { widthSegments?: number } } }) => {
+          const segments = node.geometry?.parameters?.widthSegments
+          if (node.count === 2197 && segments !== undefined) levels.push(segments)
+        },
+      )
+      return levels
+    })
+  await expect.poll(detail).toEqual([8])
+  await hover_canvas_center(canvas)
+  await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -2200))
+  await expect.poll(async () => (await detail())[0]).toBeGreaterThan(8)
+  // Camera changes after the first detail switch must still produce pixels. A live rAF
+  // loop alone misses WebGPU refusing draws against a destroyed instance buffer.
+  await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -500))
+  await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, 2700))
+  await expect.poll(detail).toEqual([8])
+  // Do not apply the general software-GPU noise filter to resource-lifetime errors.
+  expect(console_errors).toEqual([])
+})
+
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     // Skip in CI - 3D canvas and camera control tests are unreliable

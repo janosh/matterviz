@@ -190,19 +190,40 @@ describe(`frame loading`, () => {
     destroy()
   })
 
-  it(`prefetches ahead after a settled step, one async read at a time`, async () => {
-    const { run, reads, resolve_next } = make_async_run(frames(8))
-    const { host, destroy } = make_session({ run })
-    host.index = 2
-    flushSync()
-    await resolve_next()
-    expect(reads).toEqual([2])
-    vi.advanceTimersByTime(10)
-    expect(reads).toEqual([2, 3])
-    await resolve_next()
-    expect(reads).toEqual([2, 3]) // second frame ahead waits for the next settle
-    destroy()
-  })
+  it.each([
+    [false, 3, 4, [2]],
+    [false, 5, 4, [2]],
+    [false, 6, 4, [2, 3]],
+    [false, 200_000, 4, [2, 3]],
+    [true, 6, 4, [2, 3]],
+    [true, 200_000, 1, [2]],
+    [true, 200_000, 2, [2, 3]],
+    [true, 200_000, 4, [2, 3, 4]],
+  ] as const)(
+    `prefetch preserves the displayed frame: sync=%s, atoms=%i, frames=%i`,
+    async (synchronous, cache_max_atoms, cache_max_frames, expected_reads) => {
+      const frame_list = frames(8)
+      const delayed = make_async_run(frame_list)
+      const run = synchronous ? trajectory_from_frames(frame_list) : delayed.run
+      const read_frame = vi.spyOn(run, `read_frame`)
+      const { host, session, destroy } = make_session(
+        { run },
+        { cache_max_atoms, cache_max_frames },
+      )
+      read_frame.mockClear()
+      // Synchronous runs prefetch when revisiting a cached frame.
+      if (synchronous) await session.resolve_frame(2)
+      host.index = 2
+      flushSync()
+      await delayed.resolve_next()
+      expect(read_frame.mock.calls.map(([idx]) => idx)).toEqual([2])
+      vi.advanceTimersByTime(10)
+      await delayed.resolve_next()
+      expect((await session.resolve_frame(2))?.step).toBe(20)
+      expect(read_frame.mock.calls.map(([idx]) => idx)).toEqual(expected_reads)
+      destroy()
+    },
+  )
 })
 
 describe(`scrub vs commit`, () => {
@@ -309,6 +330,23 @@ describe(`property mirroring`, () => {
 })
 
 describe(`resolve_frame`, () => {
+  it(`forwards cancellation to frame reads and allows retry`, async () => {
+    const { run, reads, pending, resolve_next } = make_async_run(frames(6))
+    const { session, destroy } = make_session({ run })
+    const controller = new AbortController()
+    const cancelled = new Error(`cancelled`)
+    const aborted = session.resolve_frame(4, controller.signal)
+    controller.abort(cancelled)
+    await expect(aborted).rejects.toBe(cancelled)
+    expect(pending).toHaveLength(0)
+    await expect(session.resolve_frame(4, controller.signal)).rejects.toBe(cancelled)
+    const retried = session.resolve_frame(4)
+    await resolve_next()
+    expect((await retried)?.step).toBe(40)
+    expect(reads).toEqual([4, 4])
+    destroy()
+  })
+
   it(`reads any frame through the cache and returns null after a run swap`, async () => {
     const { run, reads, resolve_next } = make_async_run(frames(6))
     const { host, session, destroy } = make_session({ run })
