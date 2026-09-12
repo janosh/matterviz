@@ -42,12 +42,6 @@ export function create_chempot_overrides<Key extends keyof ChemPotDiagramConfig>
     get changed_keys(): Key[] {
       return Object.keys(overrides) as Key[]
     },
-    // Every key at its resolved value (a SettingsSection's current_values)
-    get values(): { [P in Key]: NonNullable<ChemPotDiagramConfig[P]> } {
-      return Object.fromEntries(
-        keys.map((key) => [key, overrides[key] ?? config()[key] ?? defaults[key]]),
-      ) as { [P in Key]: NonNullable<ChemPotDiagramConfig[P]> }
-    },
   }
 }
 
@@ -162,9 +156,6 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     reset,
     get changed_keys() {
       return overrides.changed_keys
-    },
-    get values() {
-      return overrides.values
     },
     get formal_chempots() {
       return resolve(`formal_chempots`)

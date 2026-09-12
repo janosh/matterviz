@@ -3,12 +3,13 @@ import type { Vec2 } from '$lib'
 import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
-import { fromStore, writable } from 'svelte/store'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'
 
-const mount_bar = (props: Record<string, unknown>) =>
-  mount(ColorBar, { target: document.body, props })
+const mount_bar = (props: Record<string, unknown>) => {
+  const component = mount(ColorBar, { target: document.body, props })
+  onTestFinished(() => unmount(component))
+}
 const tick_spans = () => [
   ...document.querySelectorAll<HTMLElement>(`.colorbar > div.bar > span.tick-label`),
 ]
@@ -178,16 +179,8 @@ describe(`ColorBar tick_side='inside'`, () => {
 
 describe(`ColorBar tick labels`, () => {
   test(`updates the formatter when switching between numeric, date, and default labels`, async () => {
-    const selected_format = writable<string | undefined>(undefined)
-    const format_state = fromStore(selected_format)
-    mount_bar({
-      range: [0, 1],
-      tick_labels: 3,
-      snap_ticks: false,
-      get tick_format() {
-        return format_state.current
-      },
-    })
+    const state = $state<{ tick_format?: string }>({ tick_format: undefined })
+    mount_bar(bind_props({ range: [0, 1], tick_labels: 3, snap_ticks: false }, state))
     const label_widths: number[] = []
     const epoch_year = String(new Date(0).getFullYear())
     for (const [spec, expected] of [
@@ -197,7 +190,7 @@ describe(`ColorBar tick labels`, () => {
       [`.0%`, [`0%`, `50%`, `100%`]],
       [undefined, [`0`, `0.5`, `1`]],
     ] as const) {
-      selected_format.set(spec)
+      state.tick_format = spec
       await tick()
       expect(tick_texts()).toEqual(expected)
       label_widths.push(
@@ -375,7 +368,7 @@ describe(`ColorBar gradient`, () => {
   })
 
   test(`descending range reverses the gradient and reports the niced range`, async () => {
-    const state = { nice_range: [0, 1] as Vec2 }
+    const state = $state({ nice_range: [0, 1] as Vec2 })
     mount_bar(bind_props({ range: [99, 0] as Vec2, tick_labels: 4, steps: 3 }, state))
     await tick()
     expect(state.nice_range).toEqual([100, 0])
@@ -387,10 +380,17 @@ describe(`ColorBar gradient`, () => {
 
   test(`samples a custom interpolator once per step across [0, 1]`, () => {
     const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`)
-    mount_bar({ scale: { interpolator: custom_scale }, range: [0, 1] }) // default steps=50
+    mount_bar({
+      scale: { interpolator: custom_scale },
+      range: [0, 1],
+      color_scale_options: [{ key: `custom`, label: `Custom` }],
+      selected_color_scale_key: `custom`,
+    }) // default steps=50
     expect(custom_scale).toHaveBeenCalledTimes(50)
     expect(custom_scale).toHaveBeenNthCalledWith(1, expect.closeTo(0))
     expect(custom_scale).toHaveBeenNthCalledWith(50, expect.closeTo(1))
+    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(`rgb(255, 0, 0)`)
+    expect(doc_query(`.color-scale-select`).textContent).toContain(`Custom`)
   })
 })
 
@@ -408,12 +408,6 @@ const color_scale_options: ColorScaleOption[] = [
 ]
 
 describe(`ColorBar Interactive Selects`, () => {
-  afterEach(() => {
-    document.body
-      .querySelectorAll(`.portal-select-dropdown`)
-      .forEach((element) => element.remove())
-  })
-
   test.each([
     [{ property_options, selected_property_key: `energy` }, `Energy (eV)`, undefined],
     [{ property_options }, `Static`, undefined],
@@ -425,7 +419,7 @@ describe(`ColorBar Interactive Selects`, () => {
   ] as const)(
     `renders controls and static title for %j`,
     (props, property_label, scale_label) => {
-      const component = mount_bar({ ...props, title: `Static`, range: [0, 10] })
+      mount_bar({ ...props, title: `Static`, range: [0, 10] })
       for (const [selector, expected] of [
         [`button.property-select`, property_label],
         [`button.color-scale-select`, scale_label],
@@ -438,42 +432,17 @@ describe(`ColorBar Interactive Selects`, () => {
       const static_label = document.querySelector(`.title-row > .label`)
       if (property_label) expect(static_label).toBeNull()
       else expect(static_label?.textContent).toBe(`Static`)
-      void unmount(component)
     },
   )
 
-  test(`accepts a custom interpolator with palette controls`, async () => {
-    const interpolator = vi.fn(() => `rgb(1, 2, 3)`)
-    const component = mount_bar({
-      color_scale_options: [{ key: `custom`, label: `Custom` }],
-      selected_color_scale_key: `custom`,
-      scale: { interpolator },
-      range: [0, 10],
-    })
-    await tick()
-    expect(interpolator).toHaveBeenCalled()
-    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(`rgb(1, 2, 3)`)
-    void unmount(component)
-  })
-
   test(`property selection reports intent and loading without mutating caller data`, async () => {
-    const state = fromStore(
-      writable({ key: `energy`, range: [0, 10] as Vec2, loading: false }),
-    )
-    const on_property_change = vi.fn()
-    mount_bar({
-      property_options,
-      get selected_property_key() {
-        return state.current.key
-      },
-      get range() {
-        return state.current.range
-      },
-      get loading() {
-        return state.current.loading
-      },
-      on_property_change,
+    const state = $state({
+      selected_property_key: `energy`,
+      range: [0, 10] as Vec2,
+      loading: false,
     })
+    const on_property_change = vi.fn()
+    mount_bar(bind_props({ property_options, on_property_change }, state))
     await tick()
     const trigger = doc_query<HTMLButtonElement>(`.property-select`)
     trigger.click()
@@ -486,11 +455,11 @@ describe(`ColorBar Interactive Selects`, () => {
     await tick()
     expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
     expect(trigger.textContent).toContain(`Energy`)
-    expect(state.current.range).toEqual([0, 10])
-    state.current = { ...state.current, loading: true }
+    expect(state.range).toEqual([0, 10])
+    state.loading = true
     await tick()
     expect(trigger.disabled).toBe(true)
-    state.current = { key: `volume`, range: [10, 20], loading: false }
+    Object.assign(state, { selected_property_key: `volume`, range: [10, 20], loading: false })
     await tick()
     expect(trigger.disabled).toBe(false)
     expect(trigger.textContent).toContain(`Volume`)
@@ -500,29 +469,13 @@ describe(`ColorBar Interactive Selects`, () => {
   test.each([false, true])(
     `palette selection waits for the caller to commit (function scale: %s)`,
     async (function_scale) => {
-      const state = fromStore(
-        writable({
-          key: `plasma`,
-          options: color_scale_options,
-          scale: (function_scale
-            ? { fn: d3_sc.interpolatePlasma }
-            : `interpolatePlasma`) as ColorBarScale,
-        }),
-      )
-      const on_color_scale_change = vi.fn()
-      mount_bar({
-        get scale() {
-          return state.current.scale
-        },
-        get selected_color_scale_key() {
-          return state.current.key
-        },
-        get color_scale_options() {
-          return state.current.options
-        },
-        on_color_scale_change,
-        steps: 3,
+      const state = $state({
+        selected_color_scale_key: `plasma`,
+        color_scale_options,
+        scale: function_scale ? { fn: d3_sc.interpolatePlasma } : `interpolatePlasma`,
       })
+      const on_color_scale_change = vi.fn()
+      mount_bar(bind_props({ on_color_scale_change, steps: 3 }, state))
       await tick()
       const trigger = doc_query<HTMLButtonElement>(`.color-scale-select`)
       const initial_gradient = doc_query(`.bar`).getAttribute(`style`)
@@ -537,23 +490,22 @@ describe(`ColorBar Interactive Selects`, () => {
       inferno_option.click()
       await tick()
       expect(on_color_scale_change).toHaveBeenCalledExactlyOnceWith(`inferno`)
-      expect(state.current.key).toBe(`plasma`)
+      expect(state.selected_color_scale_key).toBe(`plasma`)
       expect(trigger.textContent).toContain(`Plasma`)
       expect(doc_query(`.bar`).getAttribute(`style`)).toBe(initial_gradient)
 
-      state.current = {
-        ...state.current,
-        key: `inferno`,
+      Object.assign(state, {
+        selected_color_scale_key: `inferno`,
         scale: function_scale ? { fn: d3_sc.interpolateInferno } : `interpolateInferno`,
-      }
+      })
       await tick()
       expect(trigger.textContent).toContain(`Inferno`)
       expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateInferno(0))
-      state.current = {
-        key: `inferno`,
-        options: [{ key: `inferno`, label: `Updated` }],
+      Object.assign(state, {
+        selected_color_scale_key: `inferno`,
+        color_scale_options: [{ key: `inferno`, label: `Updated` }],
         scale: function_scale ? { fn: d3_sc.interpolateMagma } : `interpolateMagma`,
-      }
+      })
       await tick()
       expect(doc_query(`.color-scale-select`).textContent).toContain(`Updated`)
       expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateMagma(0))

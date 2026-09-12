@@ -350,6 +350,7 @@
     for (let idx = 0; idx < result.length; idx++) result[idx].label_font_size = fonts[idx]
     return result
   })
+  const domain_points = $derived(render_domains.flatMap((domain) => domain.points_3d))
 
   // Formula overlays are cut out of the base hull/edges and drawn in their own colour
   const overlay_formulas = $derived(new SvelteSet(formulas_to_draw))
@@ -360,10 +361,9 @@
   // Stretch short axes (up to 4x) to improve screen-space utilization for highly anisotropic
   // systems. Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): Vec3 => {
-    const points = render_domains.flatMap((domain) => domain.points_3d)
-    if (points.length === 0) return [1, 1, 1]
+    if (domain_points.length === 0) return [1, 1, 1]
     const spans = [1, 2, 0].map((axis) => {
-      const [lower, upper] = array_extent(points.map((point) => point[axis]))
+      const [lower, upper] = array_extent(domain_points.map((point) => point[axis]))
       return Math.max(upper - lower, 1e-6)
     })
     const max_span = Math.max(...spans)
@@ -376,10 +376,9 @@
 
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
-    const points = render_domains.flatMap((domain) => domain.points_3d)
-    if (points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
+    if (domain_points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
     // Center and max distance from it, in rendered coordinates (swizzled + axis scaling)
-    const rendered = points.map(to_render_xyz)
+    const rendered = domain_points.map(to_render_xyz)
     const center = vertex_mean(rendered)
     let max_dist = 0
     for (const [x_val, y_val, z_val] of rendered) {
@@ -585,7 +584,7 @@
   // domain and face, and only a button click reads it. Raycasting instead is broken — FrontSide
   // culling means rays fired from inside the hull hit nothing and every domain scores 0.
   function get_surface_formulas(): string[] {
-    const envelope = render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d))
+    const envelope = render_hull_geometry(domain_points)
     const faces = envelope && strip_closing_faces(envelope.getAttribute(`position`).array)
     envelope?.dispose()
     // A domain is visible from outside exactly when it owns a face of the envelope
@@ -601,13 +600,11 @@
   const controls_auto_ranges = $derived(
     get_3d_auto_ranges(
       [],
-      render_domains.flatMap((domain) =>
-        domain.points_3d.map(([coord_z, coord_x, coord_y]) => ({
-          x: coord_x,
-          y: coord_y,
-          z: coord_z,
-        })),
-      ),
+      domain_points.map(([coord_z, coord_x, coord_y]) => ({
+        x: coord_x,
+        y: coord_y,
+        z: coord_z,
+      })),
     ),
   )
 

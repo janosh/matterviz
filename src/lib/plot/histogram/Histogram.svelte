@@ -205,13 +205,15 @@
       ? selected_series_idx
       : series.findIndex((series_data) => series_data.visible ?? true),
   )
-  let selected_series_entries = $derived(
-    series.flatMap((series_data, series_idx) =>
-      (series_data.visible ?? true) && (mode !== `single` || series_idx === active_series_idx)
-        ? [{ series_data, series_idx }]
-        : [],
-    ),
-  )
+  const selected_series_entries = $derived.by(() => {
+    if (mode === `single`)
+      return active_series_idx < 0
+        ? []
+        : [{ series_data: series[active_series_idx], series_idx: active_series_idx }]
+    return series.flatMap((series_data, series_idx) =>
+      (series_data.visible ?? true) ? [{ series_data, series_idx }] : [],
+    )
+  })
 
   // Value extents per x axis and whether any sample lands on a secondary axis, in one pass.
   let axis_data = $derived.by(() => {
