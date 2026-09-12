@@ -37,6 +37,7 @@
     filename = `trajectory`,
     video_fps = $bindable(30),
     resolution_multiplier = $bindable(1),
+    current_step_idx = 0,
     on_step_change = undefined,
     resolve_frame = undefined,
     pane_props = {},
@@ -51,6 +52,7 @@
     filename?: string
     video_fps?: number
     resolution_multiplier?: number
+    current_step_idx?: number
     // Function to change trajectory step during export
     on_step_change?: (step_idx: number) => Promise<void> | void
     // Loads one frame by index. Indexed trajectories keep only a few frames in `frames`, so
@@ -64,8 +66,15 @@
   type TableFormat = `csv` | `json`
 
   // Which export is running (one at a time) and how far along it is
-  let running = $state<{ label: string; progress: number } | null>(null)
+  let running = $state<{
+    label: string
+    progress: number
+    controller: AbortController
+  } | null>(null)
   let export_error = $state<string | null>(null)
+  $effect(() => {
+    if (run) return () => running?.controller.abort()
+  })
 
   let total_frames_available = $derived(run?.frame_count ?? 0)
   let last_frame_idx = $derived(Math.max(0, total_frames_available - 1))
@@ -110,8 +119,8 @@
     return (bitrate * export_frame_count) / video_fps / 8 / 1024 / 1024
   })
 
-  const frame_at: TrajectoryFrameResolver = (idx) =>
-    resolve_frame ? resolve_frame(idx) : (run?.read_frame(idx) ?? null)
+  const frame_at: TrajectoryFrameResolver = (idx, signal) =>
+    resolve_frame ? resolve_frame(idx, signal) : (run?.read_frame(idx, signal) ?? null)
 
   const on_progress = (done: number, total: number) => {
     if (running) running.progress = (done / total) * 100
@@ -121,15 +130,21 @@
   // download or a clipboard write) or returns the text to copy.
   async function run_export<Result>(
     label: string,
-    task: () => Promise<Result>,
+    task: (signal: AbortSignal) => Promise<Result>,
   ): Promise<Result | null> {
+    if (running) return null
     export_error = null
-    running = { label, progress: 0 }
+    const controller = new AbortController()
+    running = { label, progress: 0, controller }
     try {
-      return await task()
+      const result = await task(controller.signal)
+      controller.signal.throwIfAborted()
+      return result
     } catch (error) {
-      console.error(`Trajectory ${label} export failed:`, error)
-      export_error = to_error(error).message
+      if (!controller.signal.aborted) {
+        console.error(`Trajectory ${label} export failed:`, error)
+        export_error = to_error(error).message
+      }
       return null
     } finally {
       running = null
@@ -139,7 +154,7 @@
   // Every frame in the range, resolved one at a time (or read off run properties when they cover
   // the range), so an indexed trajectory exports its full range and not the ~10 frames it
   // holds in memory.
-  const serialize_table = async (format: TableFormat) => {
+  const serialize_table = async (format: TableFormat, signal: AbortSignal) => {
     if (!run) throw new Error(`No trajectory to export`)
     const table = await collect_frame_property_rows(
       start_frame,
@@ -147,17 +162,29 @@
       frame_at,
       run,
       on_progress,
+      signal,
     )
     return format === `csv` ? frame_rows_to_csv(table) : frame_rows_to_json(table)
   }
 
+  const download_export = (
+    label: string,
+    output_name: string,
+    mime: string,
+    serialize: (signal: AbortSignal) => Promise<string | Blob>,
+  ) =>
+    run_export(label, async (signal) => {
+      const data = await serialize(signal)
+      signal.throwIfAborted()
+      download(data, output_name, mime)
+    })
+
   const download_table = (format: TableFormat) =>
-    run_export(format.toUpperCase(), async () =>
-      download(
-        await serialize_table(format),
-        `${trajectory_export_basename(filename)}_frames_${range}.${format}`,
-        format === `csv` ? `text/csv` : `application/json`,
-      ),
+    download_export(
+      format.toUpperCase(),
+      `${trajectory_export_basename(filename)}_frames_${range}.${format}`,
+      format === `csv` ? `text/csv` : `application/json`,
+      (signal) => serialize_table(format, signal),
     )
 
   async function export_video(format: VideoFormat) {
@@ -171,15 +198,37 @@
             : `Invalid frame range`
       return
     }
-    await run_export(format.toUpperCase(), async () => {
+    const original_step = current_step_idx
+    const export_run = run
+    const first_frame = start_frame
+    await run_export(format.toUpperCase(), async (signal) => {
+      // The viewer pauses playback here, before a lazy frame read can take over.
+      await on_step_change(original_step)
       await export_trajectory_video(canvas, `${filename}.webm`, {
         fps: video_fps,
         total_frames: export_frame_count,
         resolution_multiplier,
+        signal,
         on_progress: (progress) => {
           if (running) running.progress = progress
         },
-        on_step: (idx) => on_step_change(start_frame + idx),
+        on_step: async (idx) => {
+          const frame_idx = first_frame + idx
+          // Wait for lazy frame data before committing the index and rendering it.
+          const frame = await frame_at(frame_idx, signal)
+          signal.throwIfAborted()
+          if (!frame) throw new Error(`Trajectory frame ${frame_idx} is unavailable`)
+          await on_step_change(frame_idx)
+        },
+        on_finish: async () => {
+          if (run !== export_run) return
+          try {
+            const frame = await frame_at(original_step)
+            if (!frame) throw new Error(`Trajectory frame ${original_step} is unavailable`)
+          } finally {
+            if (run === export_run) await on_step_change(original_step)
+          }
+        },
       })
       if (format === `mp4`) {
         navigator.clipboard
@@ -199,17 +248,18 @@
           disabled: data_export_disabled || Boolean(xyz_reason),
           disabled_reason: xyz_reason,
           on_download: () =>
-            run_export(`extXYZ`, async () =>
-              download(
-                await serialize_extxyz_frame_range(
+            download_export(
+              `extXYZ`,
+              `${trajectory_export_basename(filename)}.extxyz`,
+              `chemical/x-xyz`,
+              (signal) =>
+                serialize_extxyz_frame_range(
                   start_frame,
                   end_frame,
                   frame_at,
                   on_progress,
+                  signal,
                 ),
-                `${trajectory_export_basename(filename)}.extxyz`,
-                `chemical/x-xyz`,
-              ),
             ),
         },
         {
@@ -218,19 +268,20 @@
           disabled: data_export_disabled || Boolean(poscar_reason),
           disabled_reason: poscar_reason,
           on_download: () =>
-            run_export(`POSCAR ZIP`, async () =>
-              download(
-                await create_poscar_frame_range_zip(
+            download_export(
+              `POSCAR ZIP`,
+              `${trajectory_export_basename(filename)}_poscar_${range}.zip`,
+              `application/zip`,
+              (signal) =>
+                create_poscar_frame_range_zip(
                   start_frame,
                   end_frame,
                   frame_at,
                   filename,
                   total_frames_available,
                   on_progress,
+                  signal,
                 ),
-                `${trajectory_export_basename(filename)}_poscar_${range}.zip`,
-                `application/zip`,
-              ),
             ),
         },
       ],
@@ -243,14 +294,14 @@
           hint: `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`,
           disabled: data_export_disabled,
           on_download: () => download_table(`csv`),
-          copy_text: () => run_export(`CSV`, () => serialize_table(`csv`)),
+          copy_text: () => run_export(`CSV`, (signal) => serialize_table(`csv`, signal)),
         },
         {
           label: `JSON`,
           hint: `Same per-frame numbers as the CSV, with a separate units map`,
           disabled: data_export_disabled,
           on_download: () => download_table(`json`),
-          copy_text: () => run_export(`JSON`, () => serialize_table(`json`)),
+          copy_text: () => run_export(`JSON`, (signal) => serialize_table(`json`, signal)),
         },
       ],
     },
@@ -301,6 +352,11 @@
   {#if running}
     <div class="export-info">
       Exporting {running.label}… {format_num(running.progress, `.0f`)}%
+      <button
+        type="button"
+        aria-label="Cancel export"
+        onclick={() => running?.controller.abort()}>Cancel</button
+      >
     </div>
   {/if}
   {#if export_error}

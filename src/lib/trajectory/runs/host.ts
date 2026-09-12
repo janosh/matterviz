@@ -15,6 +15,10 @@ export const host_run = (
   let disposed = false
   return {
     ...fields,
+    // Keep the snapshot unproxied when Svelte binds the run to reactive state.
+    get preview() {
+      return summary.preview
+    },
     provenance: { ...summary.provenance, format: summary.provenance.format ?? `host` },
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)

@@ -133,18 +133,19 @@ class History<Entry> {
   }
 }
 
-// Joins per-site signature entries; a control character cannot occur in a label or element
-const SITE_SEPARATOR = `\u0001`
+type SiteTopology = Pick<Site, `label` | `species`>
 
 // Whether two site lists describe the same atoms in the same order. Plain loops, no
 // closures: this runs over every site of every trajectory frame
-function same_topology(sites: readonly Site[], last: readonly Site[]): boolean {
+function same_topology(
+  sites: readonly SiteTopology[],
+  last: readonly SiteTopology[],
+): boolean {
   if (sites.length !== last.length) return false
   for (let idx = 0; idx < sites.length; idx++) {
     const { label, species } = sites[idx]
     const previous = last[idx]
     if (label !== previous.label) return false
-    if (species === previous.species) continue
     if (species.length !== previous.species.length) return false
     for (let entry_idx = 0; entry_idx < species.length; entry_idx++) {
       const entry = species[entry_idx]
@@ -339,27 +340,17 @@ export class StructureSession {
     })
   })
   // Site-indexed UI state is only valid while atom count, order and species are unchanged.
-  // Trajectory frames almost always keep the topology, so compare against the previous sites
-  // field by field first: that is an order of magnitude cheaper than rebuilding the string
-  // for every site, which parsers that allocate fresh species arrays per frame would force.
-  private last_topology: { sites: readonly Site[]; signature: string } | undefined
-  private readonly topology_signature = $derived.by((): string => {
-    const sites = this.inputs.structure()?.sites
-    if (!Array.isArray(sites)) return ``
+  // Keep an owned snapshot: callers can mutate labels/species in place. Equal trajectory
+  // frames reuse it, so invalidation needs neither serialization nor per-frame allocations.
+  private last_topology: readonly SiteTopology[] | undefined
+  private readonly topology = $derived.by(() => {
+    const sites = this.inputs.structure()?.sites ?? []
     const last = this.last_topology
-    if (last && same_topology(sites, last.sites)) return last.signature
-    const signature = sites
-      .map(
-        ({ label, species }) =>
-          `${label}\0${species
-            .map(({ element, occu, oxidation_state }) =>
-              [element, occu, oxidation_state ?? ``].join(`:`),
-            )
-            .join(`,`)}`,
-      )
-      .join(SITE_SEPARATOR)
-    this.last_topology = { sites, signature }
-    return signature
+    if (last && same_topology(sites, last)) return last
+    return (this.last_topology = sites.map(({ label, species }) => ({
+      label,
+      species: species.map((entry) => ({ ...entry })),
+    })))
   })
 
   // === selection, validated against the displayed structure ===
@@ -452,7 +443,7 @@ export class StructureSession {
     $effect.pre(() => {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
-      const topology_changed = changed(`topology`, this.topology_signature)
+      const topology_changed = changed(`topology`, this.topology)
       const transform_changed = [
         changed(`supercell_scaling`, inputs.supercell_scaling()),
         changed(`show_image_atoms`, inputs.show_image_atoms()),

@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { enable_atom_sphere_picking } from './atom-instances'
+  import {
+    enable_atom_sphere_picking,
+    update_ordered_atom_positions,
+    type InstancedAtom,
+  } from './atom-instances'
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -40,19 +43,16 @@
     camera_position_for_target,
     characteristic_atom_spacing,
     Cylinder,
-    get_all_site_vectors,
     get_center_of_mass,
     get_orig_site_idx,
-    get_structure_vector_keys,
     is_image_site,
     Lattice,
     ortho_zoom_for_extent,
     perspective_distance_for_extent,
     site_base_radius,
     structure_fit_frame,
-    vector_display_defaults,
-    VECTOR_PALETTE,
   } from '$lib/structure'
+  import { build_vector_layers, type VectorLayer } from './arrow-instances'
   import ArrowInstances from './ArrowInstances.svelte'
   import InstancedAtoms from './InstancedAtoms.svelte'
   import type { LatticePlane } from './lattice-planes'
@@ -73,7 +73,6 @@
   } from '$lib/structure/partial-occupancy'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { rgb } from 'd3-color'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
@@ -1079,14 +1078,21 @@
   })
 
   // Content AABB fit for ortho zoom / look-at. Frozen while dragging atoms.
+  // Snapshot reactive overrides once per change. An empty SvelteMap.get() in the atom
+  // loop otherwise allocates a reactive dependency for every atom in a large trajectory.
+  const radius_options = $derived({
+    same_size_atoms,
+    element_radius_overrides: { ...element_radius_overrides },
+    site_radius_overrides: site_radius_overrides.size
+      ? new Map(site_radius_overrides)
+      : undefined,
+  })
   let last_fit_frame = { center: [0, 0, 0] as Vec3, extent: 10 }
   let fit_frame = $derived.by(() => {
     if (dragging_atoms) return last_fit_frame
     return (last_fit_frame = structure_fit_frame(structure, {
       atom_radius_scale: show_atoms ? atom_radius : 0,
-      same_size_atoms,
-      element_radius_overrides,
-      site_radius_overrides,
+      ...radius_options,
     }))
   })
   let fit_extent = $derived(fit_frame.extent)
@@ -1249,12 +1255,27 @@
     structure?.sites ? merge_split_partial_sites(structure.sites, hidden_elements) : [],
   )
 
-  let atom_data = $derived.by(() => {
-    if (!show_atoms) return []
+  // One reactive read per palette entry instead of one proxy access per atom/bond.
+  const palette = $derived({ ...colors.element })
+  type RenderAtom = InstancedAtom &
+    ReturnType<typeof compute_slice_geometry>[number] & {
+      site_idx: number
+      species: Site[`species`]
+      has_partial_occupancy: boolean
+      is_image_atom: boolean
+    }
+  const atom_appearance = $derived({ palette, radius_options, effective_atom_radius })
+  let previous_atoms: { appearance: object; atoms: RenderAtom[] } | undefined
+
+  let atom_data: RenderAtom[] = $derived.by(() => {
+    if (!show_atoms) {
+      previous_atoms = undefined
+      return []
+    }
     // Hoist everything constant across sites: this loop runs >10k times for a 3x3x3
     // supercell, and the collections below live on a $state object or are SvelteMap/
     // SvelteSet, whose get/has allocate a signal per key.
-    const element_colors = colors.element
+    const element_colors = palette
     const { values: prop_values, colors: prop_colors } = property_colors ?? {}
     const filter_prop_vals = hidden_prop_vals.size > 0
     const filter_elements = hidden_elements.size > 0
@@ -1264,8 +1285,17 @@
     // Props arrive through two spread layers (Structure → Viewport → here), so every read
     // inside the loop would walk that proxy chain per site: read them once
     const radius_scale = effective_atom_radius
-    const radius_opts = { same_size_atoms, element_radius_overrides, site_radius_overrides }
+    const radius_opts = radius_options
     const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
+    const reusable = !filter_prop_vals && !filter_elements && !prop_colors && !hidden_centers
+    const appearance = atom_appearance
+    if (reusable && previous_atoms?.appearance === appearance && structure) {
+      const updated = update_ordered_atom_positions(previous_atoms.atoms, structure.sites)
+      if (updated) {
+        previous_atoms = { appearance, atoms: updated }
+        return updated
+      }
+    }
 
     const atoms = []
     for (const { site_idx, site, is_image_atom } of render_sites) {
@@ -1312,6 +1342,7 @@
         })
       }
     }
+    previous_atoms = reusable ? { appearance, atoms } : undefined
     return atoms
   })
 
@@ -1553,7 +1584,7 @@
 
     // Resolve once per site, not once per bond endpoint. Bond writes these values directly
     // into its persistent instance-color buffers without allocating per-cylinder objects.
-    const [element_colors, fallback_color] = [colors.element, bond_color]
+    const [element_colors, fallback_color] = [palette, bond_color]
     return structure.sites.map((site) => {
       const element = get_majority_element(site)
       return (element && element_colors?.[element]) || fallback_color
@@ -1566,7 +1597,24 @@
   // want one anchor per site. Full-occupancy atoms render as ONE InstancedMesh per set
   // (per-atom color/radius live in instance buffers); image atoms get their own mesh because
   // they ghost (desaturate + translucent) and lose interactivity in edit-atoms mode.
+  let previous_groups:
+    | { atoms: RenderAtom[]; first_by_site: Map<number, RenderAtom> }
+    | undefined
   let atom_groups = $derived.by(() => {
+    const atoms = atom_data
+    if (
+      previous_groups &&
+      atoms.length === previous_groups.atoms.length &&
+      atoms.every((atom, idx) => atom === previous_groups?.atoms[idx])
+    ) {
+      previous_groups.atoms = atoms
+      return {
+        first_by_site: previous_groups.first_by_site,
+        base: atoms,
+        image: [],
+        partial: [],
+      }
+    }
     const first_by_site = new Map<number, (typeof atom_data)[number]>()
     const base: typeof atom_data = []
     const image: typeof atom_data = []
@@ -1576,6 +1624,8 @@
       if (atom.has_partial_occupancy) partial.push(atom)
       else (atom.is_image_atom ? image : base).push(atom)
     }
+    previous_groups =
+      image.length === 0 && partial.length === 0 ? { atoms, first_by_site } : undefined
     return { first_by_site, base, image, partial }
   })
   const site_anchor = ({ site_idx, position, radius }: (typeof atom_data)[number]) => ({
@@ -1589,7 +1639,7 @@
   // angles. Give each such site one invisible full-sphere hit target so it's as
   // reliably hoverable as an ordered atom (single solid sphere). One per site.
   let partial_hit_targets = $derived(
-    interactive
+    interactive && atom_groups.partial.length > 0
       ? [...atom_groups.first_by_site.values()]
           .filter((atom) => atom.has_partial_occupancy)
           .map((atom) => ({ ...site_anchor(atom), is_image_atom: atom.is_image_atom }))
@@ -1646,160 +1696,30 @@
     return targets
   })
 
-  // sRGB blend from spin-down blue to spin-up red by the z-component direction of a magnetic
-  // vector (0 = down, 1 = up; a zero vector sits in the middle)
-  const [spin_down_rgb, spin_up_rgb] = [rgb(`#3498db`), rgb(`#e74c3c`)]
-  function spin_direction_color(vec: Vec3): string {
-    const mag = Math.hypot(...vec)
-    const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5
-    return rgb(
-      math.lerp(spin_down_rgb.r, spin_up_rgb.r, z_frac),
-      math.lerp(spin_down_rgb.g, spin_up_rgb.g, z_frac),
-      math.lerp(spin_down_rgb.b, spin_up_rgb.b, z_frac),
-    ).formatHex()
-  }
-
-  // Build one arrow layer per visible vector key. Auto-scales the longest
-  // vector to 1.8× char_atom_spacing (cube root of volume per atom).
-  // When vector_normalize is on, effective_max is 1 so all arrows get equal length.
-  // Single active key preserves legacy coloring (element for force,
-  // spin-direction for magmom/spin). Multiple keys use flat palette colors.
-  let vector_layers = $derived.by(() => {
-    if (!structure?.sites) return []
-    const keys = get_structure_vector_keys(structure)
-    const active_keys = keys.filter((key) => vector_configs[key]?.visible !== false)
-    if (active_keys.length === 0) return []
-
-    // Build per-site lookup; skip hidden sites so they don't contribute
-    // arrows or affect autoscaling. null entries = hidden site.
-    const active_set = new Set(active_keys)
-    let max_mag = 0
-    // Per-site prop reads walk the Structure → Viewport → scene spread chain; read once
-    const nothing_hidden = hidden_elements.size === 0 && hidden_prop_vals.size === 0
-    const [color_mode, uniform_color, normalize_arrows, element_colors] = [
-      vector_color_mode,
-      vector_color,
-      vector_normalize,
-      colors.element,
-    ]
-    const site_vec_maps = structure.sites.map((site, site_idx) => {
-      if (nothing_hidden ? site.species.length === 0 : !is_site_visible(site_idx)) return null
-      const map = new Map<string, Vec3>()
-      for (const { key, vec } of get_all_site_vectors(site, false)) {
-        map.set(key, vec)
-        if (active_set.has(key)) {
-          max_mag = Math.max(max_mag, Math.hypot(...vec))
-        }
-      }
-      return map
-    })
-
-    // When normalize is on, treat all magnitudes as 1 so arrows have equal length
-    const effective_max = vector_normalize ? 1 : max_mag
-    const auto_scale = effective_max > 1e-10 ? (char_atom_spacing * 1.8) / effective_max : 1
-    const is_single = active_keys.length === 1
-    const effective_global_scale = auto_scale * vector_scale
-
-    // When vector_origin_gap > 0 and multiple vectors exist at a site,
-    // arrange arrow origins on a regular polygon centered on the atom, in a
-    // plane perpendicular to the mean vector direction. The gap is a fraction
-    // of the visual atom radius (0 = center, 0.5 = halfway to surface).
-    // get_site_radius() returns the uniform scale applied to SphereGeometry(0.5),
-    // so visual_radius = get_site_radius() * 0.5.
-    const site_offsets =
-      vector_origin_gap > 0 && !is_single
-        ? structure.sites.map((site, site_idx) => {
-            const vec_map = site_vec_maps[site_idx]
-            if (!vec_map) return null
-            const site_keys = active_keys.filter((key) => vec_map.has(key))
-            const n_keys = site_keys.length
-            if (n_keys <= 1) return null
-            const visual_radius = get_site_radius(site, site_idx) * 0.5
-            const gap_abs = vector_origin_gap * visual_radius
-            let mean: Vec3 = [0, 0, 0]
-            for (const key of site_keys) {
-              const vec = vec_map.get(key)
-              if (vec) mean = math.add(mean, math.normalize_vec(vec)) as Vec3
-            }
-            const mean_dir = math.normalize_vec(mean, [0, 1, 0] as Vec3)
-            const [u_vec, v_vec] = math.compute_in_plane_basis(mean_dir)
-            const offsets = new Map<string, Vec3>()
-            for (const [idx, key] of site_keys.entries()) {
-              const angle = (2 * Math.PI * idx) / n_keys
-              const delta_x = math.scale(u_vec, gap_abs * Math.cos(angle))
-              const delta_y = math.scale(v_vec, gap_abs * Math.sin(angle))
-              offsets.set(key, math.add(delta_x, delta_y))
-            }
-            return offsets
-          })
-        : null
-
-    const mag_interpolator = get_d3_interpolator(vector_color_scale)
-
-    return active_keys.map((key, layer_idx) => {
-      const layer_cfg = vector_configs[key]
-      const display_defaults = vector_display_defaults(key)
-      const layer_scale = effective_global_scale * (layer_cfg?.scale ?? 1.0)
-      const layer_color = layer_cfg?.color ?? VECTOR_PALETTE[layer_idx % VECTOR_PALETTE.length]
-
-      const arrows = structure.sites
-        .map((site, site_idx) => {
-          const vec_map = site_vec_maps[site_idx]
-          if (!vec_map) return null
-          const vec = vec_map.get(key)
-          if (!vec) return null
-
-          // Resolve color mode: explicit per-key color always wins,
-          // then multi-key uses palette, then mode-based coloring
-          let arrow_color: string
-          if (layer_cfg?.color) {
-            arrow_color = layer_cfg.color
-          } else if (!is_single) arrow_color = layer_color
-          else {
-            const effective_mode =
-              color_mode === `auto`
-                ? key.startsWith(`magmom`) || key.startsWith(`spin`)
-                  ? `spin_direction`
-                  : `element`
-                : color_mode
-            if (effective_mode === `magnitude`) {
-              const mag = Math.hypot(...vec)
-              const norm = max_mag > 1e-10 ? mag / max_mag : 0
-              arrow_color = mag_interpolator(norm)
-            } else if (effective_mode === `spin_direction`) {
-              arrow_color = spin_direction_color(vec)
-            } else if (effective_mode === `uniform`) {
-              arrow_color = uniform_color
-            } else {
-              const majority_element = get_majority_element(site)
-              arrow_color =
-                (majority_element && element_colors?.[majority_element]) || uniform_color
-            }
-          }
-
-          const offset = site_offsets?.[site_idx]?.get(key)
-          const position = offset ? math.add(site.xyz, offset) : site.xyz
-          const arrow_vec = normalize_arrows ? math.normalize_vec(vec) : vec
-
-          return {
-            site_idx,
-            position,
-            vector: arrow_vec,
-            scale: layer_scale,
-            color: arrow_color,
-          }
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-
-      return {
-        key,
-        arrows,
-        shaft_radius: eff_shaft_radius * display_defaults.shaft_radius,
-        arrow_head_radius: eff_head_radius * display_defaults.arrow_head_radius,
-        arrow_head_length: eff_head_length * display_defaults.arrow_head_length,
-      }
-    })
-  })
+  let previous_vector_layers: VectorLayer[] = []
+  let vector_layers = $derived(
+    (previous_vector_layers = build_vector_layers(
+      structure,
+      {
+        vector_configs,
+        nothing_hidden: hidden_elements.size === 0 && hidden_prop_vals.size === 0,
+        is_site_visible,
+        vector_color_mode,
+        vector_color,
+        vector_normalize,
+        palette,
+        char_atom_spacing,
+        vector_scale,
+        vector_origin_gap,
+        get_site_radius,
+        vector_color_scale,
+        eff_shaft_radius,
+        eff_head_radius,
+        eff_head_length,
+      },
+      previous_vector_layers,
+    )),
+  )
 
   // Displacement overlay. Computed against base_structure (the untransformed cell) rather than
   // the displayed one so supercell copies and PBC image atoms don't have to exist in the

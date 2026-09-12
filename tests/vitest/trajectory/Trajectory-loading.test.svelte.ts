@@ -5,6 +5,9 @@ import * as parse_worker from '$lib/file-viewer/parse-in-worker'
 import type { TrajectoryController, TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
 import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
+import { summarize_run } from '$lib/trajectory/run'
+import { host_run } from '$lib/trajectory/runs/host'
+import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import {
@@ -710,38 +713,60 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
 })
 
 describe(`bindable re-exposure`, () => {
-  test(`current_step_idx, display_mode, active_pane and trajectory round-trip`, async () => {
-    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    const props = $state<Props>({
-      source: new File([MULTI_FRAME_XYZ], `bound.xyz`),
-      trajectory: undefined,
-      current_step_idx: 0,
-      display_mode: `structure`,
-      active_pane: null,
-      show_controls: `always`,
-      on_file_load,
-    })
-    const target = mount_viewer(props)
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    expect(props.trajectory?.provenance.filename).toBe(`bound.xyz`)
-    expect(props.trajectory?.frame_count).toBe(2)
+  test.each([`memory`, `worker`, `host`])(
+    `current_step_idx, display_mode, active_pane and trajectory round-trip (%s)`,
+    async (kind) => {
+      const backing = make_run(`bound.xyz`, 2)
+      const summary = summarize_run(backing)
+      const run =
+        kind === `worker`
+          ? worker_run(serve_run_over_port(backing), summary)
+          : kind === `host`
+            ? host_run(
+                summary,
+                async (frame_idx) => backing.read_frame(frame_idx),
+                () => backing.dispose(),
+              )
+            : backing
+      stub_worker(async () => run)
+      const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
+      const props = $state<Props>({
+        source: new File([MULTI_FRAME_XYZ], `bound.xyz`),
+        trajectory: undefined,
+        current_step_idx: 0,
+        display_mode: `structure`,
+        active_pane: null,
+        show_controls: `always`,
+        on_file_load,
+      })
+      const target = mount_viewer(props)
+      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+      expect(props.trajectory?.provenance.filename).toBe(`bound.xyz`)
+      expect(props.trajectory?.frame_count).toBe(2)
+      // Binding a run must not turn its immutable preview into millions of reactive fields.
+      const opened_run = on_file_load.mock.calls[0][0].trajectory
+      expect(props.trajectory?.preview).toBe(opened_run?.preview)
+      expect(props.trajectory?.preview.structure.sites[0]).toBe(
+        opened_run?.preview.structure.sites[0],
+      )
 
-    props.current_step_idx = 1
-    await tick()
-    expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`1`)
-    target.querySelector<HTMLButtonElement>(`[aria-label="Previous step"]`)?.click()
-    await tick()
-    expect(props.current_step_idx).toBe(0)
+      props.current_step_idx = 1
+      await tick()
+      expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`1`)
+      target.querySelector<HTMLButtonElement>(`[aria-label="Previous step"]`)?.click()
+      await tick()
+      expect(props.current_step_idx).toBe(0)
 
-    props.display_mode = `scatter`
-    await tick()
-    expect(target.querySelector(`.structure`)).toBeNull()
+      props.display_mode = `scatter`
+      await tick()
+      expect(target.querySelector(`.structure`)).toBeNull()
 
-    doc_query<HTMLButtonElement>(`.trajectory-info-toggle`).click()
-    await tick()
-    expect(props.active_pane).toBe(`info`)
-    props.active_pane = null
-    await tick()
-    expect(target.querySelector(`.viewer-pane-open`)).toBeNull()
-  })
+      doc_query<HTMLButtonElement>(`.trajectory-info-toggle`).click()
+      await tick()
+      expect(props.active_pane).toBe(`info`)
+      props.active_pane = null
+      await tick()
+      expect(target.querySelector(`.viewer-pane-open`)).toBeNull()
+    },
+  )
 })

@@ -311,29 +311,37 @@ describe(`worker-served run lifecycle`, () => {
     run.dispose()
   })
 
-  it(`streams property batches from the served run and releases on dispose`, async () => {
-    const served = trajectory_from_frames(reference_frames, {
-      properties: [{ frame_number: 0, step: 0, properties: { energy: 1 } }],
-    })
-    // Progressive source: replace the static properties with a streaming one
-    const progressive = new TrajectoryProperties()
-    Object.defineProperty(served, `properties`, { value: progressive })
-    let released = 0
-    const port = serve_run_over_port(served)
-    const run = worker_run(port, summarize_run(served), () => released++)
-    expect(run.properties.rows).toHaveLength(0)
-    progressive.push([
-      { frame_number: 0, step: 0, properties: { energy: -1 } },
-      { frame_number: 1, step: 10, properties: { energy: -2 } },
-    ])
-    progressive.finish()
-    await run.properties.done
-    expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-1, -2])
-    run.dispose()
-    run.dispose()
-    expect(released).toBe(1)
-    await expect(Promise.resolve(run.read_frame(2))).rejects.toThrow(/disposed/)
-  })
+  it.each([false, true])(
+    `streams properties with completion inside a listener: %s`,
+    async (finish_during_batch) => {
+      const served = trajectory_from_frames(reference_frames, {
+        properties: [{ frame_number: 0, step: 0, properties: { energy: 1 } }],
+      })
+      // Progressive source: replace the static properties with a streaming one
+      const progressive = new TrajectoryProperties()
+      Object.defineProperty(served, `properties`, { value: progressive })
+      if (finish_during_batch) {
+        progressive.subscribe((_batch, complete) => {
+          if (!complete) progressive.finish()
+        })
+      }
+      let released = 0
+      const port = serve_run_over_port(served)
+      const run = worker_run(port, summarize_run(served), () => released++)
+      expect(run.properties.rows).toHaveLength(0)
+      progressive.push([
+        { frame_number: 0, step: 0, properties: { energy: -1 } },
+        { frame_number: 1, step: 10, properties: { energy: -2 } },
+      ])
+      progressive.finish()
+      await run.properties.done
+      expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-1, -2])
+      run.dispose()
+      run.dispose()
+      expect(released).toBe(1)
+      await expect(Promise.resolve(run.read_frame(2))).rejects.toThrow(/disposed/)
+    },
+  )
 
   it(`a disposed served run rejects in-flight reads`, async () => {
     const run = make_worker_run()
@@ -344,6 +352,101 @@ describe(`worker-served run lifecycle`, () => {
 })
 
 describe(`TrajectoryProperties`, () => {
+  it(`delivers nested batches before completion and snapshots queued rows`, () => {
+    const properties = new TrajectoryProperties()
+    properties.subscribe((batch) => {
+      if (batch[0]?.frame_number !== 0) return
+      const nested = [{ frame_number: 1, step: 1, properties: {} }]
+      properties.push(nested)
+      nested[0] = { frame_number: 99, step: 99, properties: {} }
+      properties.finish()
+    })
+    const seen: [number[], boolean][] = []
+    properties.subscribe((batch, complete) =>
+      seen.push([batch.map(({ frame_number }) => frame_number), complete]),
+    )
+    properties.push([{ frame_number: 0, step: 0, properties: {} }])
+    expect(seen).toEqual([
+      [[0], false],
+      [[1], false],
+      [[], true],
+    ])
+    expect(properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
+  })
+
+  it.each([
+    [false, 1],
+    [true, 1],
+    [true, 2],
+  ] as const)(
+    `drains notifications after listener errors (finish: %s, errors: %s)`,
+    (finish_before_throw, error_count) => {
+      const properties = new TrajectoryProperties()
+      const failures = Array.from(
+        { length: error_count },
+        (_, idx) => new Error(`listener ${idx} failed`),
+      )
+      for (const failure of failures) {
+        const unsubscribe = properties.subscribe(() => {
+          unsubscribe()
+          if (finish_before_throw) properties.finish()
+          throw failure
+        })
+      }
+      const listener = vi.fn()
+      properties.subscribe(listener)
+      let caught_error: unknown
+      try {
+        properties.push([{ frame_number: 0, step: 0, properties: {} }])
+      } catch (error) {
+        caught_error = error
+      }
+      if (error_count === 1) expect(caught_error).toBe(failures[0])
+      else {
+        expect(caught_error).toBeInstanceOf(AggregateError)
+        if (caught_error instanceof AggregateError)
+          expect(caught_error.errors).toEqual(failures)
+      }
+      expect(listener).toHaveBeenNthCalledWith(
+        1,
+        [{ frame_number: 0, step: 0, properties: {} }],
+        false,
+      )
+      if (finish_before_throw) {
+        expect(listener).toHaveBeenNthCalledWith(2, [], true)
+        properties.finish()
+      } else {
+        properties.push([{ frame_number: 1, step: 1, properties: {} }])
+        expect(listener).toHaveBeenNthCalledWith(
+          2,
+          [{ frame_number: 1, step: 1, properties: {} }],
+          false,
+        )
+      }
+      expect(listener).toHaveBeenCalledTimes(2)
+    },
+  )
+
+  it.each([`push`, `finish`] as const)(
+    `%s notifies later subscribers when a listener unsubscribes itself`,
+    (method) => {
+      const properties = new TrajectoryProperties()
+      const first = vi.fn(() => unsubscribe())
+      const unsubscribe = properties.subscribe(first)
+      const second = vi.fn()
+      properties.subscribe(second)
+      const notify = () =>
+        method === `push`
+          ? properties.push([{ frame_number: 0, step: 0, properties: {} }])
+          : properties.finish()
+      notify()
+      expect(second).toHaveBeenCalledTimes(1)
+      notify()
+      expect(first).toHaveBeenCalledTimes(1)
+      expect(second).toHaveBeenCalledTimes(method === `push` ? 2 : 1)
+    },
+  )
+
   it(`keeps rows sorted and deduplicated across out-of-order batches`, () => {
     const properties = new TrajectoryProperties()
     const seen: number[][] = []

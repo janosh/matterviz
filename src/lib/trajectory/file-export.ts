@@ -16,6 +16,7 @@ import type { TrajectoryRun } from './run'
 // Resolve one frame by index; null when the index is out of range or the load failed.
 export type TrajectoryFrameResolver = (
   frame_idx: number,
+  signal?: AbortSignal,
 ) => TrajectoryFrame | null | Promise<TrajectoryFrame | null>
 
 // Strip compression and known trajectory suffixes so `run.extxyz.gz` exports as `run`, then
@@ -107,20 +108,24 @@ async function* iter_export_frames(
   end_frame: number,
   resolve_frame: TrajectoryFrameResolver,
   on_progress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): AsyncGenerator<[frame_idx: number, frame: TrajectoryFrame]> {
   const total = frame_range_length(start_frame, end_frame)
   for (let frame_idx = start_frame; frame_idx <= end_frame; frame_idx++) {
+    signal?.throwIfAborted()
     // Same reason as serialize_frame below: a lazy resolver reading frame 3127 off disk fails
     // with an I/O or parse message that names no frame.
     let frame: TrajectoryFrame | null | undefined
     try {
-      frame = await resolve_frame(frame_idx)
+      frame = await resolve_frame(frame_idx, signal)
     } catch (error) {
+      signal?.throwIfAborted()
       throw new Error(
         `Failed to load trajectory frame ${frame_idx}: ${to_error(error).message}`,
         { cause: error },
       )
     }
+    signal?.throwIfAborted()
     // Emitting a short file would look like a successful export of a shorter run
     if (!frame?.structure?.sites) {
       throw new Error(`Trajectory frame ${frame_idx} is not available for export`)
@@ -128,6 +133,7 @@ async function* iter_export_frames(
     yield [frame_idx, frame]
     const completed = frame_idx - start_frame + 1
     on_progress?.(completed, total)
+    signal?.throwIfAborted()
     if (completed < total && completed % YIELD_EVERY_FRAMES === 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0))
     }
@@ -154,6 +160,7 @@ export async function serialize_extxyz_frame_range(
   end_frame: number,
   resolve_frame: TrajectoryFrameResolver,
   on_progress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   const chunks: string[] = []
   for await (const [frame_idx, frame] of iter_export_frames(
@@ -161,6 +168,7 @@ export async function serialize_extxyz_frame_range(
     end_frame,
     resolve_frame,
     on_progress,
+    signal,
   ))
     chunks.push(serialize_frame(frame_idx, () => trajectory_frame_to_extxyz_str(frame)))
   return `${chunks.join(`\n`)}\n`
@@ -174,6 +182,7 @@ export async function create_poscar_frame_range_zip(
   filename: string,
   total_frames: number,
   on_progress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const encoder = new TextEncoder()
   const files: Record<string, Uint8Array> = {}
@@ -182,6 +191,7 @@ export async function create_poscar_frame_range_zip(
     end_frame,
     resolve_frame,
     on_progress,
+    signal,
   )) {
     files[poscar_frame_filename(filename, frame_idx, total_frames)] = encoder.encode(
       serialize_frame(frame_idx, () => `${structure_to_poscar_str(frame.structure)}\n`),
@@ -252,12 +262,15 @@ export async function collect_frame_property_rows(
   resolve_frame: TrajectoryFrameResolver,
   run: TrajectoryRun,
   on_progress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<TrajectoryPropertyTable> {
+  signal?.throwIfAborted()
   const total = frame_range_length(start_frame, end_frame)
 
   const ready_rows = property_rows(run.properties.rows, start_frame, end_frame)
   if (ready_rows) {
     on_progress?.(total, total)
+    signal?.throwIfAborted()
     return { start_frame, end_frame, source: `properties`, rows: ready_rows }
   }
 
@@ -267,6 +280,7 @@ export async function collect_frame_property_rows(
     end_frame,
     resolve_frame,
     on_progress,
+    signal,
   )) {
     rows.push({
       frame: frame_idx,

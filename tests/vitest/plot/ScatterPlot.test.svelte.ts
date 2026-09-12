@@ -2135,7 +2135,10 @@ describe(`ScatterPlot`, () => {
   // tick-count edit) re-ran the range effect and snapped it over in one jump.
   test(`explicit y range + synced y2: no loop, view.y writes re-derive y2`, async () => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    const state = $state<{ view: Partial<AxisRanges> | undefined }>({ view: undefined })
+    const state = $state<{ view: Partial<AxisRanges> | undefined; y2_axis: AxisConfig }>({
+      view: undefined,
+      y2_axis: { sync: `synced` },
+    })
     const plot = await mount_sized_scatter_plot(
       bind_props(
         {
@@ -2144,7 +2147,6 @@ describe(`ScatterPlot`, () => {
             { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
           ],
           y_axis: { range: [0, 10] as Vec2 },
-          y2_axis: { sync: `synced` as const },
           point_tween: { duration: 0 },
           legend: null,
           show_controls: false,
@@ -2161,6 +2163,22 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `y`)).toContain(`5`)
     expect(axis_tick_labels(plot, `y`)).not.toContain(`10`)
     expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
+    expect(error_spy).not.toHaveBeenCalled()
+
+    // y2 follows the linear y gesture; independently panning its log scale would overflow.
+    state.y2_axis = { sync: `synced`, scale_type: `log` }
+    await tick()
+    state.view = { y: [1, 1e300] }
+    await tick()
+    const svg = plot_svg()
+    svg.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
+    svg.dispatchEvent(
+      new WheelEvent(`wheel`, { deltaY: clip_rect(plot).height / 10, bubbles: true }),
+    )
+    await tick()
+    expect(state.view?.y).toEqual([1e299, 1.1e300])
+    expect(state.view?.y2).toEqual(state.view?.y)
     expect(error_spy).not.toHaveBeenCalled()
   })
 })
