@@ -29,13 +29,13 @@ export default {
         `--enable-unsafe-webgpu`,
         `--enable-features=Vulkan`,
         `--enable-unsafe-swiftshader`,
-        // Use one software Vulkan driver for Dawn, ANGLE and Chromium's compositor.
-        // Selecting only the WebGPU adapter leaves the compositor on the system driver.
+        // Select SwiftShader directly in ANGLE: its generic Vulkan backend requires native
+        // surface extensions that Chromium's bundled SwiftShader does not provide.
         ...(is_ci
           ? [
               `--use-webgpu-adapter=swiftshader`,
               `--use-vulkan=swiftshader`,
-              `--use-angle=vulkan`,
+              `--use-angle=swiftshader`,
               `--disable-vulkan-surface`,
             ]
           : []),

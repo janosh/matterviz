@@ -95,7 +95,7 @@ test.each([
     for (const argument of [
       `--use-webgpu-adapter=swiftshader`,
       `--use-vulkan=swiftshader`,
-      `--use-angle=vulkan`,
+      `--use-angle=swiftshader`,
       `--disable-vulkan-surface`,
     ])
       expect(config.use.launchOptions.args.includes(argument), argument).toBe(is_ci)
