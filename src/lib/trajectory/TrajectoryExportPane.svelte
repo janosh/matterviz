@@ -256,7 +256,12 @@
     },
   ])
 
-  const frame_range_settings = track_settings(() => ({ start_frame, end_frame }))
+  const frame_range_settings = $derived(
+    track_settings(() => ({ start_frame, end_frame }), {
+      start_frame: 0,
+      end_frame: last_frame_idx,
+    }),
+  )
   const video_settings_settings = track_settings(
     () => ({ video_fps, resolution_multiplier }),
     {
@@ -282,10 +287,7 @@
     <SettingsSection
       title="Frame Range"
       changed_keys={frame_range_settings.changed_keys}
-      on_reset={() => {
-        start_frame = 0
-        end_frame = last_frame_idx
-      }}
+      on_reset={() => ({ start_frame, end_frame } = frame_range_settings.snapshot())}
     >
       <NumberRangeInput min={0} max={last_frame_idx} step={1} bind:value={start_frame}
         >Start Frame</NumberRangeInput
@@ -313,10 +315,8 @@
     <SettingsSection
       title="Video Settings"
       changed_keys={video_settings_settings.changed_keys}
-      on_reset={() => {
-        video_fps = 30
-        resolution_multiplier = 1
-      }}
+      on_reset={() =>
+        ({ video_fps, resolution_multiplier } = video_settings_settings.snapshot())}
     >
       <NumberRangeInput min={10} max={60} step={1} bind:value={video_fps}
         >Frame Rate (FPS)</NumberRangeInput

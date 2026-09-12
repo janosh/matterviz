@@ -67,10 +67,9 @@
   <SettingsSection
     title="Box / violin"
     changed_keys={box_violin_settings.changed_keys}
-    on_reset={() => {
-      orientation = `vertical`
-      ;({ kind, side, whisker_mode, show_outliers, show_mean } = DEFAULTS.box)
-    }}
+    on_reset={() =>
+      ({ orientation, kind, side, whisker_mode, show_outliers, show_mean } =
+        box_violin_settings.snapshot())}
     layout="flow"
   >
     <div class="ctrl-line">

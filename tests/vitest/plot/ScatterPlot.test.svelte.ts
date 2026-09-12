@@ -1,6 +1,12 @@
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '$lib/math'
-import type { AxisConfig, AxisRanges, DataSeries, FillRegion } from '$lib/plot/core/types'
+import type {
+  AxisConfig,
+  AxisRanges,
+  DataSeries,
+  FillRegion,
+  StyleOverrides,
+} from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
@@ -880,31 +886,40 @@ describe(`ScatterPlot`, () => {
 
   test(`line underlays stay out of legends, controls, and hover`, async () => {
     const on_point_hover = vi.fn()
-    const plot = await mount_sized_scatter_plot({
-      series: [
+    const state = $state<{ styles: StyleOverrides; show_controls: boolean }>({
+      styles: {},
+      show_controls: true,
+    })
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
         {
-          id: `trend`,
-          x: [0, 1, 2],
-          y: [0, 1, 0],
-          label: `Energy`,
-          markers: `line+points`,
-          line_style: { stroke: `red`, stroke_width: 3 },
-          line_underlays: [
+          series: [
             {
+              id: `trend`,
               x: [0, 1, 2],
-              y: [100, 100, 100],
-              line_style: { stroke: `blue`, stroke_width: 1 },
+              y: [0, 1, 0],
+              label: `Energy`,
+              markers: `line+points`,
+              line_style: { stroke: `red`, stroke_width: 3 },
+              line_underlays: [
+                {
+                  x: [0, 1, 2],
+                  y: [100, 100, 100],
+                  line_style: { stroke: `blue`, stroke_width: 1 },
+                },
+              ],
             },
           ],
-        },
-      ],
-      x_axis: { range: [0, 2] },
-      hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
-      point_tween: { duration: 0 },
-      on_point_hover,
-      show_legend: true,
-      controls_open: true,
-    })
+          x_axis: { range: [0, 2] },
+          hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+          point_tween: { duration: 0 },
+          on_point_hover,
+          show_legend: true,
+          controls_open: true,
+        } satisfies ComponentProps<typeof ScatterPlot>,
+        state,
+      ),
+    )
 
     const lines = plot.querySelectorAll(`g[data-series-id="trend"] path[fill="none"]`)
     expect(lines).toHaveLength(2)
@@ -920,15 +935,30 @@ describe(`ScatterPlot`, () => {
       `[data-key="line.width"] input[type="range"]`,
       HTMLInputElement,
     )
-    line_width_input.value = `5`
-    line_width_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
-    expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `5`])
+    expect(line_width_input.value).toBe(`3`)
+    expect(state.styles).toEqual({})
+    // An explicit override equal to the shipped default must still offer Reset.
+    for (const width of [`5`, `2`]) {
+      line_width_input.value = width
+      line_width_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, width])
+      expect(state.styles).toEqual({ line: { width: Number(width) } })
+      expect(plot.querySelector(`[aria-label="Clear line style overrides"]`)).not.toBeNull()
+    }
 
-    // Reset untouches the key, so the authored stroke_width wins again (not the default 2)
-    doc_query(`[aria-label="Reset line style to defaults"]`, HTMLButtonElement).click()
+    // Clearing the override restores the authored width in the plot and controls.
+    doc_query(`[aria-label="Clear line style overrides"]`, HTMLButtonElement).click()
     await tick()
     expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `3`])
+    expect(line_width_input.value).toBe(`3`)
+    expect(state.styles).toEqual({})
+    expect(plot.querySelector(`[aria-label="Clear line style overrides"]`)).toBeNull()
+
+    state.show_controls = false
+    state.styles = { line: { width: 4 } }
+    await tick()
+    expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `4`])
 
     await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()

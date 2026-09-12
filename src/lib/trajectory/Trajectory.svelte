@@ -90,7 +90,7 @@
     type MaterialSource,
     type OpenedMaterial,
   } from '$lib/file-viewer/open'
-  import * as file_io from '$lib/io'
+  import * as file_io from '../io'
   import { Hdf5GroupSelectionRequiredError, type OpenTrajectoryOptions } from './open'
   import { get_unsupported_format_message } from './parse'
   import TrajectoryError from './TrajectoryError.svelte'

@@ -4,11 +4,7 @@
   import { Filter } from 'svelte-widgets/icons'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
-  import {
-    track_settings,
-    normalize_show_controls,
-    type ShowControlsProp,
-  } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { Spinner } from 'svelte-widgets'
@@ -28,7 +24,7 @@
   } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '$lib/plot/core/types'
-  import { collect_3d_extents, compute_range } from '$lib/plot/scatter-3d/scene-coords'
+  import { get_3d_auto_ranges } from '$lib/plot/scatter-3d/scene-coords'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, onMount } from 'svelte'
@@ -602,8 +598,8 @@
   const dedup_3d = (pts: number[][], tol: number = 1e-4): number[][] =>
     dedup_points(pts, tol).unique
 
-  const controls_auto_ranges = $derived.by(() => {
-    const extents = collect_3d_extents(
+  const controls_auto_ranges = $derived(
+    get_3d_auto_ranges(
       [],
       render_domains.flatMap((domain) =>
         domain.points_3d.map(([coord_z, coord_x, coord_y]) => ({
@@ -612,13 +608,8 @@
           z: coord_z,
         })),
       ),
-    )
-    return {
-      x: compute_range(extents.x),
-      y: compute_range(extents.y),
-      z: compute_range(extents.z),
-    }
-  })
+    ),
+  )
 
   // Overlay geometry is per domain and depends only on that domain's points and the axis
   // stretch, so it is cached per formula and kept while the formula stays an overlay:
@@ -1163,12 +1154,12 @@
     chempot.set(`color_mode`, color_modes[(idx + 1) % color_modes.length])
   }
 
-  const chempot_settings = track_settings(() => ({
-    ...chempot.values,
-    // a pinned camera is exactly the state Reset undoes, so it has to count as a change
-    // or the affordance never appears for it
-    camera_pinned: camera_position_override !== null,
-  }))
+  const changed_controls = $derived([
+    ...chempot.changed_keys,
+    ...(camera_position_override !== null ? [`camera`] : []),
+    ...(projection_elements_override !== null ? [`projection`] : []),
+    ...(formula_filter_query ? [`formula_filter`] : []),
+  ])
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -1287,7 +1278,8 @@
     >
       <SettingsSection
         title="ChemPot"
-        changed_keys={chempot_settings.changed_keys}
+        changed_keys={changed_controls}
+        labels={{ reset_section: (title) => `Clear ${title.toLowerCase()} overrides` }}
         on_reset={reset_controls}
       >
         {#if has_multinary_system && plot_elements.length === 3}

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { css_color_to_hex } from '$lib/colors'
+  import { first_point_style } from '$lib/plot/core/data-transform'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import PlotControls from '$lib/plot/core/components/PlotControls.svelte'
   import type {
@@ -26,16 +27,12 @@
     // observe the pane being shown/opened, matching BarPlotControls
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    on_touch,
     children,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     series?: readonly DataSeries[]
     styles?: StyleOverrides
     selected_series_idx?: number
-    // Reports a style key the user changed (is_touched) or reset back to untouched, so the
-    // host only overrides authored per-series styles for keys the user actually set
-    on_touch?: (key: string, is_touched: boolean) => void
     children?: Snippet<
       [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
     >
@@ -46,25 +43,11 @@
   const has_color_data = $derived(selected_series?.color_values?.some((val) => val != null))
   const has_size_data = $derived(selected_series?.size_values?.some((val) => val != null))
 
-  const touch = ({ target }: Event) => {
-    if (!(target instanceof Element)) return
-    const key = target.closest(`[data-key]`)?.getAttribute(`data-key`)
-    if (key) on_touch?.(key, true)
-  }
-
-  // Reset restores the defaults in the pane and untouches every key, so authored
-  // per-series styles show again instead of being overridden by the defaults
-  const reset_style = (kind: `point` | `line`) => () => {
-    styles[kind] = { ...DEFAULTS.scatter[kind] }
-    for (const key of Object.keys(DEFAULTS.scatter[kind])) on_touch?.(`${kind}.${key}`, false)
-  }
-
   const style_sections = [
     {
       kind: `point`,
       title: `Point style`,
       description: `Toggle visibility of data points in the scatter plot`,
-      settings: track_settings(() => styles.point ?? {}, DEFAULTS.scatter.point),
       rows: [
         [`size`, `color`, `opacity`],
         [`stroke_width`, `stroke_color`, `stroke_opacity`],
@@ -74,7 +57,6 @@
       kind: `line`,
       title: `Line style`,
       description: `Toggle visibility of connecting lines between data points`,
-      settings: track_settings(() => styles.line ?? {}, DEFAULTS.scatter.line),
       rows: [[`width`, `color`, `dash`, `opacity`]],
     },
   ] as const
@@ -89,7 +71,9 @@
     ),
   )
   const visible_styles = $derived(
-    available_styles.filter(({ kind }) => styles[`show_${kind}s`]),
+    available_styles.filter(
+      ({ kind }) => styles[`show_${kind}s`] ?? DEFAULTS.scatter[`show_${kind}s`],
+    ),
   )
   const numeric_fields = {
     size: { label: `Size`, min: 1, max: 20, step: 0.5 },
@@ -100,7 +84,35 @@
   }
   const style_values = (
     kind: `point` | `line`,
-  ): StyleOverrides[`point`] & StyleOverrides[`line`] => styles[kind]
+  ): NonNullable<StyleOverrides[`point`] & StyleOverrides[`line`]> => {
+    const point = first_point_style(selected_series)
+    const line = selected_series?.line_style
+    const authored =
+      kind === `point`
+        ? {
+            size: point?.radius,
+            color: point?.fill,
+            opacity: point?.fill_opacity,
+            stroke_width: point?.stroke_width,
+            stroke_color: point?.stroke,
+            stroke_opacity: point?.stroke_opacity,
+          }
+        : {
+            width: line?.stroke_width,
+            color: line?.stroke ?? point?.fill,
+            dash: line?.line_dash,
+          }
+    const values = { ...DEFAULTS.scatter[kind] }
+    for (const [key, value] of Object.entries(authored))
+      if (value !== undefined) Reflect.set(values, key, value)
+    return { ...values, ...styles[kind] }
+  }
+  const set_style =
+    (kind: `point` | `line`, key: string) => (value: string | number | undefined) => {
+      const override = { ...styles[kind], [key]: value }
+      if (value === undefined) Reflect.deleteProperty(override, key)
+      styles = { ...styles, [kind]: override }
+    }
 </script>
 
 <PlotControls
@@ -115,9 +127,11 @@
     show_points: styles.show_points,
     show_lines: styles.show_lines,
   }}
-  on_display_extra_reset={() => {
-    styles.show_points = DEFAULTS.scatter.show_points
-    styles.show_lines = DEFAULTS.scatter.show_lines
+  on_display_extra_reset={(reference) => {
+    for (const key of [`show_points`, `show_lines`] as const) {
+      if (reference[key] === undefined) delete styles[key]
+      else styles[key] = Boolean(reference[key])
+    }
   }}
   {...rest}
 >
@@ -134,7 +148,13 @@
   {#snippet display_children()}
     {#each available_styles as { kind, description } (kind)}
       <label {@attach tooltip({ content: description })}>
-        <input type="checkbox" bind:checked={styles[`show_${kind}s`]} />
+        <input
+          type="checkbox"
+          bind:checked={
+            () => styles[`show_${kind}s`] ?? DEFAULTS.scatter[`show_${kind}s`],
+            (value) => (styles[`show_${kind}s`] = value)
+          }
+        />
         Show {kind}s
       </label>
     {/each}
@@ -153,47 +173,51 @@
         </label>
       </SettingsSection>
     {/if}
-    {#each visible_styles as { kind, title, rows, settings } (kind)}
+    {#each visible_styles as { kind, title, rows } (kind)}
       {@const style = style_values(kind)}
       <SettingsSection
         {title}
-        changed_keys={settings.changed_keys}
-        on_reset={reset_style(kind)}
-        oninput={touch}
+        changed_keys={Object.keys(styles[kind] ?? {})}
+        labels={{ reset_section: (title) => `Clear ${title.toLowerCase()} overrides` }}
+        on_reset={() => delete styles[kind]}
       >
-        {#if style}
-          {#each rows as fields}
-            <div class="style-row">
-              {#each fields as key (key)}
-                {#if (key !== `size` || !has_size_data) && (key !== `color` || !has_color_data)}
-                  {#if key === `color` || key === `stroke_color`}
-                    <label data-key={`${kind}.${key}`}>
-                      <span>Color</span>
-                      <input type="color" bind:value={style[key]} />
-                    </label>
-                  {:else if key === `dash`}
-                    <label data-key="line.dash">
-                      <span>Style</span>
-                      <select bind:value={style.dash}>
-                        <option value="solid">Solid</option>
-                        <option value="4,4">Dashed</option>
-                        <option value="2,2">Dotted</option>
-                        <option value="8,4,2,4">Dash-dot</option>
-                      </select>
-                    </label>
-                  {:else}
-                    {@const { label, ...limits } = numeric_fields[key]}
-                    <NumberRangeInput
-                      {...limits}
-                      data-key={`${kind}.${key}`}
-                      bind:value={style[key]}>{label}</NumberRangeInput
-                    >
-                  {/if}
+        {#each rows as fields}
+          <div class="style-row">
+            {#each fields as key (key)}
+              {#if (key !== `size` || !has_size_data) && (key !== `color` || !has_color_data)}
+                {#if key === `color` || key === `stroke_color`}
+                  <label data-key={`${kind}.${key}`}>
+                    <span>Color</span>
+                    <input
+                      type="color"
+                      bind:value={
+                        () => css_color_to_hex(style[key], `#000000`), set_style(kind, key)
+                      }
+                    />
+                  </label>
+                {:else if key === `dash`}
+                  <label data-key="line.dash">
+                    <span>Style</span>
+                    <select bind:value={() => style.dash, set_style(kind, key)}>
+                      <option value="solid">Solid</option>
+                      <option value="4,4">Dashed</option>
+                      <option value="2,2">Dotted</option>
+                      <option value="8,4,2,4">Dash-dot</option>
+                    </select>
+                  </label>
+                {:else}
+                  {@const { label, ...limits } = numeric_fields[key]}
+                  <NumberRangeInput
+                    {...limits}
+                    data-key={`${kind}.${key}`}
+                    bind:value={() => style[key], set_style(kind, key)}
+                    >{label}</NumberRangeInput
+                  >
                 {/if}
-              {/each}
-            </div>
-          {/each}
-        {/if}
+              {/if}
+            {/each}
+          </div>
+        {/each}
       </SettingsSection>
     {/each}
   {/snippet}

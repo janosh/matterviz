@@ -64,13 +64,13 @@ describe(`track_settings`, () => {
       nested: { opacity: 0.5 },
       optional: undefined,
     }
-    const tracked = track_settings(() => values)
+    const tracked = track_settings(() => values, `initial`)
     expect(tracked.changed_keys).toEqual([])
     ;(values.range as number[])[1] = 20
     values.nested = { opacity: 1 }
     values.added = undefined
     expect(tracked.changed_keys).toEqual([`range`, `nested`, `added`])
-    const initial = tracked.initial
+    const initial = tracked.snapshot(tracked.changed_keys)
     for (const key of tracked.changed_keys) {
       if (Object.hasOwn(initial, key)) values[key] = initial[key]
       else Reflect.deleteProperty(values, key)
@@ -82,8 +82,13 @@ describe(`track_settings`, () => {
     expect(tracked.changed_keys).toEqual([`range`])
     delete values.nested
     expect(tracked.changed_keys).toEqual([`range`, `nested`])
-    values.nested = tracked.initial.nested
+    const nested_snapshot = tracked.snapshot([`nested`, `missing`])
+    expect(nested_snapshot).toEqual({ nested: { opacity: 0.5 } })
+    values.nested = nested_snapshot.nested
     expect(values.nested).toEqual({ opacity: 0.5 })
+    ;(values.nested as { opacity: number }).opacity = 0.9
+    expect(tracked.snapshot([`nested`])).toEqual({ nested: { opacity: 0.5 } })
+    expect(tracked.snapshot([`optional`])).toEqual({ optional: undefined })
   })
 
   it.each([
@@ -99,7 +104,7 @@ describe(`track_settings`, () => {
     [{}, Object.create({ setting: true }), true],
   ])(`compares %j against %j (changed=%s)`, (initial, current, changed) => {
     const values: { value: unknown } = { value: initial }
-    const tracked = track_settings(() => values)
+    const tracked = track_settings(() => values, `initial`)
     values.value = current
     expect(tracked.changed_keys).toEqual(changed ? [`value`] : [])
   })
@@ -110,7 +115,7 @@ describe(`track_settings`, () => {
     const tracked = track_settings(() => values, defaults)
     defaults.color = `green`
     expect(tracked.changed_keys).toEqual([`color`])
-    values.color = String(tracked.initial.color)
+    values.color = tracked.snapshot([`color`]).color
     expect(values.color).toBe(`red`)
     expect(tracked.changed_keys).toEqual([])
   })

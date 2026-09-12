@@ -131,11 +131,13 @@ export function create_worker_client<
     let next_reference = 0
     const encode = (item: unknown): unknown[] => {
       if (item === null || item === undefined) return [String(item)]
-      if (typeof item === `number`) {
-        return [`number`, Object.is(item, -0) ? `-0` : String(item)]
-      }
-      if (typeof item === `string` || typeof item === `boolean` || typeof item === `bigint`) {
-        return [typeof item, String(item)]
+      if (
+        typeof item === `number` ||
+        typeof item === `string` ||
+        typeof item === `boolean` ||
+        typeof item === `bigint`
+      ) {
+        return [typeof item, Object.is(item, -0) ? `-0` : String(item)]
       }
       if (typeof item !== `object`) {
         throw new TypeError(`${label} worker options cannot contain ${typeof item} values`)
@@ -308,12 +310,11 @@ export function create_worker_client<
       const main_thread = requires_main_thread?.(input, options) ?? false
       // Content-keyed clients build once before the lookup and reuse that same snapshot for
       // postMessage. Identity-keyed clients defer payload construction until a cache miss.
-      const keyed_payload =
-        !main_thread && dedupe_by_payload ? build_payload(input) : undefined
-      const input_key =
-        !main_thread && dedupe_by_payload
-          ? payload_key_of(keyed_payload)
-          : `input:${identity_token(input)}`
+      const content_keyed = !main_thread && dedupe_by_payload
+      const keyed_payload = content_keyed ? build_payload(input) : undefined
+      const input_key = content_keyed
+        ? payload_key_of(keyed_payload)
+        : `input:${identity_token(input)}`
       const request_key = main_thread
         ? `main:${++next_id}`
         : `${input_key.length}:${input_key}${canonical_key_of(options)}`
@@ -326,15 +327,14 @@ export function create_worker_client<
           ? keyed_payload
           : build_payload(input)
         : undefined
-      const identifier = wkr ? ++next_id : null
-      const request = track(request_key, identifier)
+      const request = track(request_key, wkr ? ++next_id : null)
       const promise = join(request, request_options)
       if (wkr) {
         try {
           // Copied, never transferred: identity dedupe re-posts the same input later, and a
           // transferred typed-array buffer would be detached by then.
           wkr.postMessage({
-            id: identifier,
+            id: request.id,
             input: payload,
             options: $state.snapshot(options),
           }) // oxlint-disable-line unicorn/require-post-message-target-origin
@@ -358,7 +358,5 @@ export function create_worker_client<
       return Promise.reject(to_error(err))
     }
   }
-  client.cancel = cancel
-  client.release = release
-  return client
+  return Object.assign(client, { cancel, release })
 }

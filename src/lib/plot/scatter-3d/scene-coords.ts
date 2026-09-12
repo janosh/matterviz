@@ -1,5 +1,4 @@
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
-import { resolve_axis_range } from '$lib/plot/core/interactions'
 import {
   accumulate_extent,
   empty_extent,
@@ -81,41 +80,25 @@ export function sample_surface(
 ): { x: number; y: number; z: number }[] {
   const grid_steps = 10
   const pts = surface.type === `triangulated` ? (surface.points ?? []) : []
-  if (surface.type === `grid` && surface.z_fn) {
-    const [coord_x_0, coord_x_1] = surface.x_range ?? [-1, 1]
-    const [coord_y_0, coord_y_1] = surface.y_range ?? [-1, 1]
-    for (let idx_x = 0; idx_x <= grid_steps; idx_x++) {
-      for (let idx_y = 0; idx_y <= grid_steps; idx_y++) {
-        const coord_x = coord_x_0 + (idx_x / grid_steps) * (coord_x_1 - coord_x_0),
-          coord_y = coord_y_0 + (idx_y / grid_steps) * (coord_y_1 - coord_y_0)
-        pts.push({ x: coord_x, y: coord_y, z: surface.z_fn(coord_x, coord_y) })
-      }
-    }
-  } else if (surface.type === `parametric` && surface.parametric_fn) {
-    const [uniform_0, uniform_1] = surface.u_range ?? [0, 1]
-    const [vector_0, vector_1] = surface.v_range ?? [0, 1]
+  const is_grid = surface.type === `grid`
+  if ((is_grid && surface.z_fn) || (surface.type === `parametric` && surface.parametric_fn)) {
+    const [min_u, max_u] = is_grid ? (surface.x_range ?? [-1, 1]) : (surface.u_range ?? [0, 1])
+    const [min_v, max_v] = is_grid ? (surface.y_range ?? [-1, 1]) : (surface.v_range ?? [0, 1])
     for (let idx_u = 0; idx_u <= grid_steps; idx_u++) {
       for (let idx_v = 0; idx_v <= grid_steps; idx_v++) {
-        pts.push(
-          surface.parametric_fn(
-            uniform_0 + (idx_u / grid_steps) * (uniform_1 - uniform_0),
-            vector_0 + (idx_v / grid_steps) * (vector_1 - vector_0),
-          ),
-        )
+        const param_u = min_u + (idx_u / grid_steps) * (max_u - min_u)
+        const param_v = min_v + (idx_v / grid_steps) * (max_v - min_v)
+        if (is_grid && surface.z_fn)
+          pts.push({ x: param_u, y: param_v, z: surface.z_fn(param_u, param_v) })
+        else if (surface.parametric_fn) pts.push(surface.parametric_fn(param_u, param_v))
       }
     }
   }
   return pts.filter((point) => isFinite(point.x) && isFinite(point.y) && isFinite(point.z))
 }
 
-// Explicit bounds win; automatic bounds use the renderer's padding and nice ticks.
-export const compute_range = (
-  extent: RunningExtent,
-  range: [number | null, number | null] = [null, null],
-): Vec2 =>
-  resolve_axis_range({ range }, nice_range_from_extent(extent, [null, null], `linear`, 0.05))
-
-export function collect_3d_extents(
+// Share one extent collection and padding policy between 3D renderers and controls.
+export function get_3d_auto_ranges(
   series: readonly DataSeries3D[],
   surface_samples: readonly { x: number; y: number; z: number }[],
 ) {
@@ -134,5 +117,7 @@ export function collect_3d_extents(
       if (extent.max === undefined || value > extent.max) extent.max = value
     }
   }
-  return extents
+  const auto_range = (extent: RunningExtent): Vec2 =>
+    nice_range_from_extent(extent, [null, null], `linear`, 0.05)
+  return { x: auto_range(extents.x), y: auto_range(extents.y), z: auto_range(extents.z) }
 }

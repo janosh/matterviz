@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
   import { get_electro_neg_formula } from '$lib/composition/format'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
@@ -239,8 +238,6 @@
       ],
     },
   ])
-
-  const chempot_settings = track_settings(() => chempot.values)
 </script>
 
 {#snippet domain_labels(props: UserContentProps)}
@@ -276,7 +273,8 @@
 {#snippet chempot_controls(_props: unknown)}
   <SettingsSection
     title="ChemPot"
-    changed_keys={chempot_settings.changed_keys}
+    changed_keys={chempot.changed_keys}
+    labels={{ reset_section: (title) => `Clear ${title.toLowerCase()} overrides` }}
     on_reset={chempot.reset}
   >
     <ChemPotControls values={chempot} set={chempot.set} />

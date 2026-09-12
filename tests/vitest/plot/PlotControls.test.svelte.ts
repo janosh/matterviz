@@ -3,6 +3,7 @@ import { PlotControls, SankeyControls, SunburstControls, TernaryControls } from 
 import ScatterPlotControls from '$lib/plot/scatter/ScatterPlotControls.svelte'
 import type { AxisConfig } from '$lib/plot'
 import type { TicksOption } from '$lib/plot/core/scales'
+import { resolve_axis_range } from '$lib/plot/core/interactions'
 import { DEFAULTS } from '$lib/settings'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -30,13 +31,13 @@ describe(`PlotControls`, () => {
       { value: `42`, desc: `valid integer`, expected_range: [42, 50] },
       { value: `3.14`, desc: `valid float`, expected_range: [3.14, 50] },
       { value: `-10`, desc: `negative number`, expected_range: [-10, 50] },
-      { value: ``, desc: `empty string`, expected_range: [0, 50] },
-      { value: `1e`, desc: `partial exponential (NaN)`, expected_range: [0, 50] },
-      { value: `1e999`, desc: `overflow (Infinity)`, expected_range: [0, 50] },
-      { value: `-1e999`, desc: `overflow (-Infinity)`, expected_range: [0, 50] },
-      { value: `abc`, desc: `non-numeric (NaN)`, expected_range: [0, 50] },
+      { value: ``, desc: `empty string`, expected_range: [null, 50] },
+      { value: `1e`, desc: `partial exponential (NaN)`, expected_range: [null, 50] },
+      { value: `1e999`, desc: `overflow (Infinity)`, expected_range: [null, 50] },
+      { value: `-1e999`, desc: `overflow (-Infinity)`, expected_range: [null, 50] },
+      { value: `abc`, desc: `non-numeric (NaN)`, expected_range: [null, 50] },
     ])(`sanitizes $desc: "$value"`, ({ value, expected_range }) => {
-      const state = $state<{ x_axis: { range?: Vec2 } }>({ x_axis: { range: [5, 50] } })
+      const state = $state<{ x_axis: AxisConfig }>({ x_axis: { range: [5, 50] } })
       const auto_ranges = { x: [0, 100] as Vec2 }
       mount_controls(bind_props({ auto_ranges }, state))
       const input = doc_query<HTMLInputElement>(`input.range-input`)
@@ -48,7 +49,7 @@ describe(`PlotControls`, () => {
 
   describe(`auto range fallback`, () => {
     test.each([{ x: [0, 100] as Vec2 }, { x2: [0, 100] as Vec2 }])(
-      `partial automatic ranges %j preserve primary defaults`,
+      `partial automatic ranges %j preserve cleared endpoints`,
       (auto_ranges) => {
         const state = $state<{ y_axis: AxisConfig }>({ y_axis: { range: [0.2, 0.8] } })
         mount_controls(bind_props({ auto_ranges }, state))
@@ -58,11 +59,11 @@ describe(`PlotControls`, () => {
         const inputs = row?.querySelectorAll<HTMLInputElement>(`input.range-input`)
         if (inputs?.length !== 2) throw new Error(`Missing Y range inputs`)
         type_into(inputs[0], ``)
-        expect(state.y_axis.range).toEqual([0, 0.8])
+        expect(state.y_axis.range).toEqual([null, 0.8])
         type_into(inputs[1], ``)
-        expect(state.y_axis.range).toEqual([0, 1])
+        expect(state.y_axis.range).toEqual([null, null])
         type_into(inputs[0], `0.25`)
-        expect(state.y_axis.range).toEqual([0.25, 1])
+        expect(state.y_axis.range).toEqual([0.25, null])
       },
     )
 
@@ -82,10 +83,12 @@ describe(`PlotControls`, () => {
 
     test(`flags inverted ranges, applies valid ones and resets after an axis disappears`, async () => {
       let x2_range = $state<Vec2 | undefined>([0, 100])
-      const state = $state<{ x_axis: { range?: [number, number] } }>({ x_axis: {} })
+      let auto_x = $state<Vec2>([0, 100])
+      const state = $state<{ x_axis: AxisConfig }>({ x_axis: {} })
+      const resolved_range = () => resolve_axis_range(state.x_axis, auto_x)
       const props: ComponentProps<typeof PlotControls> = {
         get auto_ranges() {
-          return { x: [0, 100] as Vec2, x2: x2_range }
+          return { x: auto_x, x2: x2_range }
         },
       }
       mount_controls(bind_props(props, state))
@@ -93,18 +96,24 @@ describe(`PlotControls`, () => {
         ...document.querySelectorAll<HTMLInputElement>(`input.range-input`),
       ]
       type_into(x_min, `50`)
-      expect(state.x_axis.range).toEqual([50, 100]) // max falls back to the auto range
+      expect(state.x_axis.range).toEqual([50, null])
+      expect(resolved_range()).toEqual([50, 100])
+      flushSync(() => (auto_x = [0, 200]))
+      expect(resolved_range()).toEqual([50, 200])
+      expect(x_max.value).toBe(``)
       type_into(x_max, `20`) // min >= max: both inputs flagged, range left untouched
       expect(x_min.classList.contains(`invalid`)).toBe(true)
       expect(x_max.classList.contains(`invalid`)).toBe(true)
-      expect(state.x_axis.range).toEqual([50, 100])
+      expect(state.x_axis.range).toEqual([50, null])
       type_into(x_max, `80`)
       expect(x_min.classList.contains(`invalid`)).toBe(false)
       expect(state.x_axis.range).toEqual([50, 80])
 
       await tick()
       flushSync(() => (x2_range = undefined))
-      doc_query<HTMLButtonElement>(`button[aria-label="Reset axis range to defaults"]`).click()
+      doc_query<HTMLButtonElement>(
+        `button[aria-label="Restore axis range to initial values"]`,
+      ).click()
       flushSync()
       expect(state.x_axis.range).toBeUndefined()
       expect(x_min.value).toBe(``)
@@ -140,7 +149,7 @@ describe(`PlotControls`, () => {
       type_into(input, `.1e`)
       expect(state.x_axis.format).toBe(`.1e`)
       doc_query<HTMLButtonElement>(
-        `button[aria-label="Reset tick format to defaults"]`,
+        `button[aria-label="Restore tick format to initial values"]`,
       ).click()
       flushSync()
       expect(state.x_axis.format).toBe(`.3f`)
@@ -179,7 +188,9 @@ describe(`PlotControls`, () => {
       expect(state.y_axis.ticks).toBeUndefined()
       // x2 has no binding here, so the input is still rendered and editable without throwing
       type_into(x2_input, `3`)
-      doc_query<HTMLButtonElement>(`button[aria-label="Reset ticks to defaults"]`).click()
+      doc_query<HTMLButtonElement>(
+        `button[aria-label="Restore ticks to initial values"]`,
+      ).click()
       flushSync()
       expect(state.x_axis.ticks).toBeUndefined()
       expect(state.y_axis.ticks).toBe(4)
@@ -199,7 +210,9 @@ describe(`PlotControls`, () => {
         else if (typeof state.x_axis.ticks === `object`) state.x_axis.ticks[0] = `changed`
         else state.x_axis.ticks = `month`
         flushSync()
-        doc_query<HTMLButtonElement>(`button[aria-label="Reset ticks to defaults"]`).click()
+        doc_query<HTMLButtonElement>(
+          `button[aria-label="Restore ticks to initial values"]`,
+        ).click()
         flushSync()
         expect(state.x_axis.ticks).toEqual(initial_ticks)
         // Replacing a custom configuration with a count must preserve the same reset baseline.
@@ -207,7 +220,9 @@ describe(`PlotControls`, () => {
         flushSync()
         expect(x_input.disabled).toBe(false)
         expect(x_input.value).toBe(`7`)
-        doc_query<HTMLButtonElement>(`button[aria-label="Reset ticks to defaults"]`).click()
+        doc_query<HTMLButtonElement>(
+          `button[aria-label="Restore ticks to initial values"]`,
+        ).click()
         flushSync()
         expect(state.x_axis.ticks).toEqual(initial_ticks)
         expect(x_input.disabled).toBe(true)
@@ -229,14 +244,16 @@ describe(`PlotControls`, () => {
       const grids = get_checkboxes_in_group(`grid`)
       expect(grids).toHaveLength(3)
       expect(
-        document.querySelector(`button[aria-label="Reset display to defaults"]`),
+        document.querySelector(`button[aria-label="Restore display to initial values"]`),
       ).toBeNull()
 
       grids[0].click()
       await tick()
       expect(state.display.x_grid).toBe(false)
 
-      doc_query<HTMLButtonElement>(`button[aria-label="Reset display to defaults"]`).click()
+      doc_query<HTMLButtonElement>(
+        `button[aria-label="Restore display to initial values"]`,
+      ).click()
       await tick()
       expect(state.display).not.toBe(initial_display)
       expect(state.display).toMatchObject({
@@ -248,7 +265,7 @@ describe(`PlotControls`, () => {
         y2_grid: true,
       })
       expect(
-        document.querySelector(`button[aria-label="Reset display to defaults"]`),
+        document.querySelector(`button[aria-label="Restore display to initial values"]`),
       ).toBeNull()
     })
 
@@ -383,7 +400,10 @@ test.each([
   async ({ title, mount_controls }) => {
     mount_controls()
     await tick()
-    const selector = `button[title="Reset ${title} to defaults"]`
+    const reset_label = title.endsWith(`style`)
+      ? `Clear ${title} overrides`
+      : `Reset ${title} to defaults`
+    const selector = `button[title="${reset_label}"]`
     doc_query<HTMLButtonElement>(selector).click()
     await tick()
     expect(document.querySelector(selector)).toBeNull()

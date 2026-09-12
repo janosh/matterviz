@@ -78,6 +78,17 @@ const module_dirs = readdirSync(lib_dir, { withFileTypes: true })
   .map((entry) => entry.name)
 
 describe(`package.json exports`, () => {
+  test.skipIf(!has_dist)(`packaged namespace imports do not leak SvelteKit aliases`, () => {
+    const offenders = readdirSync(dist_dir, { recursive: true, encoding: `utf8` })
+      .filter((file) => /\.(?:svelte|js|ts)$/.test(file))
+      .filter((file) =>
+        /^\s*import\s+(?:type\s+)?\*\s+as\s+\w+\s+from\s*(?<quote>['"])\$(?:lib|site|root)(?:\/|\k<quote>)/m.test(
+          readFileSync(join(dist_dir, file), `utf8`),
+        ),
+      )
+    expect(offenders).toEqual([])
+  })
+
   test(`reusable file-viewer barrel excludes the side-effectful webview bootstrap`, () => {
     const source = readFileSync(join(lib_dir, `file-viewer/index.ts`), `utf8`)
     expect(source).not.toMatch(/from\s+['"]\.\/main['"]/)

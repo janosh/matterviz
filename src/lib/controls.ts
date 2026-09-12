@@ -77,19 +77,27 @@ const settings_equal = (left: unknown, right: unknown): boolean => {
   )
 }
 
-export function track_settings(
-  get_values: () => Record<string, unknown>,
-  defaults?: Record<string, unknown>,
+export const INITIAL_SETTINGS_LABELS = {
+  reset_section: (title: string) => `Restore ${title.toLowerCase()} to initial values`,
+  reset_key: (label: string) => `Restore ${label.toLowerCase()} to initial value`,
+}
+
+// The reset target is explicit: capture mounted values, or compare with a supplied reference.
+// A supplied reference is restricted to the fields this section exposes at capture time.
+export function track_settings<Values extends Record<string, unknown>>(
+  get_values: () => Values,
+  reset_reference: `initial` | Record<string, unknown>,
 ) {
   const initial = untrack(() => {
     const values = get_values()
-    const reference = defaults
-      ? Object.fromEntries(
-          Object.keys(values)
-            .filter((key) => Object.hasOwn(defaults, key))
-            .map((key) => [key, defaults[key]]),
-        )
-      : values
+    const reference =
+      reset_reference !== `initial`
+        ? Object.fromEntries(
+            Object.keys(values)
+              .filter((key) => Object.hasOwn(reset_reference, key))
+              .map((key) => [key, reset_reference[key]]),
+          )
+        : values
     return copy_setting(reference) as Record<string, unknown>
   })
   return {
@@ -101,9 +109,16 @@ export function track_settings(
           !settings_equal(values[key], initial[key]),
       )
     },
-    // Return a fresh snapshot so callers can assign it directly without mutating the baseline.
-    get initial() {
-      return copy_setting(initial) as Record<string, unknown>
+    // Clone only the requested fields; omitted keys remain omitted so resets can delete them.
+    snapshot<Key extends keyof Values = keyof Values>(
+      keys?: readonly Key[],
+    ): Pick<Values, Key> {
+      const snapshot: Record<string, unknown> = {}
+      for (const key of keys ?? Object.keys(initial)) {
+        if (Object.hasOwn(initial, key))
+          Reflect.set(snapshot, key, copy_setting(Reflect.get(initial, key)))
+      }
+      return snapshot as Pick<Values, Key>
     },
   }
 }

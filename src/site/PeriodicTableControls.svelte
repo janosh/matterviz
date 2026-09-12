@@ -111,7 +111,7 @@
     else throw new Error(`Unknown control key ${key}`)
   }
   const reset_category_color = (category: string): void => {
-    const initial = element_category_colors_settings.initial
+    const initial = element_category_colors_settings.snapshot([category])
     if (Object.hasOwn(initial, category))
       colors.category[category] = initial[category] as string
     else Reflect.deleteProperty(colors.category, category)

@@ -80,12 +80,7 @@
   <SettingsSection
     title="Histogram"
     changed_keys={histogram_settings.changed_keys}
-    on_reset={() => {
-      ;({ bin_count: bins, normalize, mode } = DEFAULTS.histogram)
-      // Resets to the configured mode, `auto` (undefined) by default, so a one-series
-      // plot does not suddenly grow a legend
-      show_legend = legend_mode_to_prop(DEFAULTS.histogram.show_legend)
-    }}
+    on_reset={() => ({ bins, normalize, mode, show_legend } = histogram_settings.snapshot())}
     layout="flow"
   >
     <NumberRangeInput min={5} max={100} step={5} bind:value={bins}>Bins</NumberRangeInput>
@@ -131,9 +126,7 @@
   <SettingsSection
     title="Bar style"
     changed_keys={bar_style_settings.changed_keys}
-    on_reset={() => {
-      bar = { ...DEFAULTS.histogram.bar }
-    }}
+    on_reset={() => (bar = bar_style_settings.snapshot())}
     layout="flow"
   >
     <div class="style-row">

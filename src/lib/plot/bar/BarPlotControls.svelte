@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import type { BarMode, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { Orientation, PlotControlsProps } from '$lib/plot/core/types'
-  import { type Snippet, untrack } from 'svelte'
+  import type { Snippet } from 'svelte'
 
   let {
     orientation = $bindable(`vertical`),
@@ -24,9 +24,7 @@
     children?: Snippet<[{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]>
   } = $props()
 
-  const initial_layout = untrack(() => ({ orientation, mode }))
-
-  const layout_settings = track_settings(() => ({ orientation, mode }))
+  const layout_settings = track_settings(() => ({ orientation, mode }), `initial`)
 </script>
 
 <PlotControls
@@ -44,7 +42,8 @@
     title="Layout"
     class="ctrl-line"
     changed_keys={layout_settings.changed_keys}
-    on_reset={() => ({ orientation, mode } = initial_layout)}
+    labels={INITIAL_SETTINGS_LABELS}
+    on_reset={() => ({ orientation, mode } = layout_settings.snapshot())}
     layout="flow"
   >
     <label>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
   import type { StructureSettings } from './settings'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
@@ -313,20 +313,24 @@
   }
   // A getter, not a const: the parent may rebind scene_props to a fresh object
   const scene_record = () => scene_props as Record<string, unknown>
-  // Defaults are display-only: reset must restore caller-owned values and omitted keys.
-  const scene_snapshot = (keys: readonly string[]) => {
+  // Snapshot only owned fields; defaults are display-only, and missing keys must stay missing.
+  const own_fields = (record: object, keys: readonly string[]) => {
     const snapshot: Record<string, unknown> = {}
     for (const key of keys) {
       // Read missing keys too so Svelte tracks their later addition.
-      const value = scene_record()[key]
-      if (Object.hasOwn(scene_props, key)) snapshot[key] = value
+      const value: unknown = Reflect.get(record, key)
+      if (Object.hasOwn(record, key)) snapshot[key] = value
     }
     return snapshot
   }
-  const restore_scene_keys = (keys: readonly string[], reference: Record<string, unknown>) => {
+  const restore_fields = (
+    record: object,
+    keys: readonly string[],
+    reference: Record<string, unknown>,
+  ) => {
     for (const key of keys) {
-      if (Object.hasOwn(reference, key)) scene_record()[key] = reference[key]
-      else Reflect.deleteProperty(scene_props, key)
+      if (Object.hasOwn(reference, key)) Reflect.set(record, key, reference[key])
+      else Reflect.deleteProperty(record, key)
     }
   }
   const scene_value = (key: StructureSettingKey): unknown =>
@@ -481,9 +485,8 @@
   // be registered in one and forgotten in the other: plain rows reset scene_props[key] directly,
   // rows with accessors or pairs reset through them. `extra_keys` covers bespoke controls
   // (rotation sliders, label offset) that still live on scene_props; `accessors` the pseudo-keys
-  // whose rows drive several settings at once. No section-level reset: SettingsSection replays
-  // `on_reset_key` over every changed key, so the section heading and the per-row buttons both
-  // restore what this pane mounted with. "Reset all" under Preferences returns to shipped defaults.
+  // whose rows drive several settings at once. Row and section resets share the same reference;
+  // a section copies its changed fields in one batch. "Reset all" under Preferences restores defaults.
   type Accessor = { get: () => unknown; set: (value: unknown) => void }
   const local = <T>(get: () => T, set: (value: T) => void): Accessor => ({
     get,
@@ -493,8 +496,8 @@
   // reset restores both halves at once instead of leaving a half-reverted pair behind.
   const scene_pair = (left: StructureSettingKey, right: StructureSettingKey) =>
     local(
-      () => scene_snapshot([left, right]),
-      (reference) => restore_scene_keys([left, right], reference),
+      () => own_fields(scene_props, [left, right]),
+      (reference) => restore_fields(scene_props, [left, right], reference),
     )
   const section_baselines = new Map<
     string,
@@ -519,25 +522,34 @@
       } else keys.push(current.key)
     }
     const read_values = () => {
-      const values = scene_snapshot(keys)
+      const values = own_fields(scene_props, keys)
       for (const [key, accessor] of Object.entries(accessors)) values[key] = accessor.get()
       return values
     }
     const section_keys = [...keys, ...Object.keys(accessors)].join(`,`)
     let baseline = section_baselines.get(name)
     if (!baseline || baseline.keys !== section_keys) {
-      baseline = { keys: section_keys, tracker: track_settings(read_values), accessors }
+      baseline = {
+        keys: section_keys,
+        tracker: track_settings(read_values, `initial`),
+        accessors,
+      }
       section_baselines.set(name, baseline)
     }
     const { tracker } = baseline
+    const reset_keys = (requested_keys: readonly string[]) => {
+      const reference = tracker.snapshot(requested_keys)
+      for (const key of requested_keys) {
+        const accessor = baseline.accessors[key]
+        if (accessor) accessor.set(reference[key])
+        else restore_fields(scene_props, [key], reference)
+      }
+    }
     return {
       changed_keys: tracker.changed_keys,
-      on_reset_key: (key: string) => {
-        const initial = tracker.initial
-        const accessor = baseline.accessors[key]
-        if (accessor) accessor.set(initial[key])
-        else restore_scene_keys([key], initial)
-      },
+      labels: INITIAL_SETTINGS_LABELS,
+      on_reset_key: (key: string) => reset_keys([key]),
+      on_reset: () => reset_keys(tracker.changed_keys),
       setting_metadata: structure_setting_metadata,
     }
   }
@@ -731,26 +743,15 @@
         const initial = scene_props.vector_configs
         const initial_present = Object.hasOwn(scene_props, `vector_configs`)
         const entry_present = Object.hasOwn(initial ?? {}, key)
-        const initial_config = $state.snapshot(initial?.[key])
+        const initial_config = initial?.[key]
         return [
           `${prefix}:${key}`,
           local(
-            () => {
-              const config = scene_props.vector_configs?.[key] ?? {}
-              return Object.fromEntries(
-                fields
-                  .filter((field) => Object.hasOwn(config, field))
-                  .map((field) => [field, config[field]]),
-              )
-            },
-            () => {
+            () => own_fields(scene_props.vector_configs?.[key] ?? {}, fields),
+            (reference) => {
               const configs = { ...scene_props.vector_configs }
               const config = { ...configs[key] }
-              for (const field of fields) {
-                if (Object.hasOwn(initial_config ?? {}, field))
-                  Reflect.set(config, field, initial_config?.[field])
-                else Reflect.deleteProperty(config, field)
-              }
+              restore_fields(config, fields, reference)
               if (Object.keys(config).length || initial_config) configs[key] = config
               else if (entry_present) Reflect.set(configs, key, initial_config)
               else Reflect.deleteProperty(configs, key)

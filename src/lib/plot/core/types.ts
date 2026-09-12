@@ -581,7 +581,6 @@ export type ColorBarScale =
 export interface ColorScaleOption {
   key: string // e.g., 'viridis', 'plasma'
   label: string // e.g., 'Viridis', 'Plasma'
-  scale: ColorBarScale
 }
 
 // Display configuration for grid lines and zero lines
@@ -598,6 +597,8 @@ export interface DisplayConfig {
 
 // Style overrides for point and line properties
 export interface StyleOverrides {
+  // Sparse overrides for the selected series. Omitted fields use authored per-series styles;
+  // clearing an override restores those styles even when the override equaled a default.
   point?: {
     size?: number
     color?: string
@@ -646,8 +647,9 @@ export interface PlotControlsProps
   // join the row's reset snapshot so its reset button also restores them
   display_children?: Snippet
   display_extra_values?: Record<string, unknown>
-  on_display_extra_reset?: () => void
-  // Data-derived ranges used when a bound is cleared. Include x2/y2 to expose their controls;
+  on_display_extra_reset?: (reference: Record<string, unknown>) => void
+  // Data-derived ranges for display; cleared bounds stay null in caller state.
+  // Include x2/y2 to expose their controls;
   // omitting a secondary axis hides it. Each omitted primary range defaults to [0, 1].
   auto_ranges?: Partial<Record<AxisKey, Vec2>>
   // Saves the figure or the numbers behind it. Omit to hide the Export section - a

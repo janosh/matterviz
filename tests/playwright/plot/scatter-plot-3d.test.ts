@@ -348,7 +348,7 @@ test.describe(`ScatterPlot3D`, () => {
     await expect(x_min).toHaveValue(``)
     await axis_label.fill(`Energy`)
     const reset_axes = pane.getByRole(`button`, {
-      name: `Reset axes to defaults`,
+      name: `Restore axes to initial values`,
       exact: true,
     })
     await expect(reset_axes).toBeVisible()

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
   // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
   // to trigger $bindable reactivity propagation to parent components.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
@@ -12,7 +12,6 @@
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig, AxisKey, PlotControlsProps } from '$lib/plot/core/types'
   import { normalize_y2_sync } from '$lib/plot/core/interactions'
-  import { untrack } from 'svelte'
   import {
     get_scale_type_name,
     is_scale_type_name,
@@ -53,8 +52,6 @@
       AxisKey,
       Value
     >
-  const axis_values = <Value>(suffix: string, get_value: (axis: AxisKey) => Value) =>
-    Object.fromEntries(all_axes.map((axis) => [`${axis}_${suffix}`, get_value(axis)]))
   // secondary axes have no zero line / x2 grid defaults in the schema
   const zero_line_default = (axis: AxisKey): boolean =>
     (axis === `x` || axis === `y`) && DEFAULTS.plot.display[`${axis}_zero_line`]
@@ -67,7 +64,6 @@
         [`${axis}_grid`, display[`${axis}_grid`] ?? grid_default(axis)],
       ]),
     )
-  const display_reset_values = untrack(display_values)
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
   const is_axis_key = (key: string): key is AxisKey =>
@@ -120,8 +116,7 @@
     update_axis(axis, { format: value })
   }
 
-  // Range inputs mirror the axis configs; a partial or inverted entry stays local (and
-  // flagged invalid) until it resolves or the config changes from outside.
+  // Empty endpoints stay automatic in caller state. Invalid pairs stay local until corrected.
   type RangeInput = [number | null, number | null]
   let range_inputs = $derived(
     axis_record((axis): RangeInput => {
@@ -137,37 +132,36 @@
     next[bound] = Number.isFinite(parsed) ? parsed : null
     range_inputs = { ...range_inputs, [axis]: next }
     if (range_invalid(next)) return
-    const [min, max] = next
-    const auto = auto_range(axis)
-    // Without an auto range, only a complete min/max pair can be applied
-    if (!auto && (min === null || max === null)) return
-    const next_range =
-      min === null && max === null
-        ? undefined
-        : ([min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2)
-    update_axis(axis, { range: next_range })
+    update_axis(axis, { range: next })
   }
 
-  const display_settings = track_settings(() => ({
-    ...display_values(),
-    ...display_extra_values,
-  }))
+  const display_settings = track_settings(
+    () => ({
+      ...display_values(),
+      ...display_extra_values,
+    }),
+    `initial`,
+  )
   // Each field owns both its complete baseline and the callback that restores it.
   const track_axis_field = (field: `range` | `ticks` | `format`) => {
-    const settings = track_settings(() => axis_record((axis) => axis_config(axis)[field]))
+    const settings = track_settings(
+      () => axis_record((axis) => axis_config(axis)[field]),
+      `initial`,
+    )
     return {
+      labels: INITIAL_SETTINGS_LABELS,
       get changed_keys() {
         return settings.changed_keys
       },
       on_reset_key: (key: string) => {
-        if (is_axis_key(key)) update_axis(key, { [field]: settings.initial[key] })
+        if (is_axis_key(key)) update_axis(key, { [field]: settings.snapshot([key])[key] })
       },
     }
   }
   const axis_range_settings = track_axis_field(`range`)
   const scale_type_settings = track_settings(
-    () => axis_values(`scale`, (axis) => get_scale_type_name(axis_config(axis).scale_type)),
-    axis_values(`scale`, () => `linear`),
+    () => axis_record((axis) => get_scale_type_name(axis_config(axis).scale_type)),
+    axis_record(() => `linear`),
   )
   const current_sync = $derived(normalize_y2_sync(y2_axis.sync))
   const y2_sync_settings = track_settings(
@@ -220,9 +214,16 @@
     title="Display"
     class="ctrl-line"
     changed_keys={display_settings.changed_keys}
+    labels={INITIAL_SETTINGS_LABELS}
     on_reset={() => {
-      display = { ...display, ...display_reset_values }
-      on_display_extra_reset?.()
+      const reference = display_settings.snapshot()
+      display = {
+        ...display,
+        ...Object.fromEntries(
+          Object.keys(display_values()).map((key) => [key, reference[key]]),
+        ),
+      }
+      on_display_extra_reset?.(reference)
     }}
     layout="flow"
   >

@@ -81,7 +81,6 @@
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
-  import { SvelteSet } from 'svelte/reactivity'
   import type { Pt } from '$lib/plot/core/fill-utils'
   import {
     compute_fill_segments,
@@ -131,7 +130,7 @@
     y2_axis = $bindable({}),
     // Clone so the controls' checkbox writes never mutate the shared DEFAULTS
     display = $bindable({ ...DEFAULTS.plot.display }),
-    styles: styles_init = {},
+    styles = $bindable({}),
     show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
     controls_toggle_props,
@@ -334,20 +333,8 @@
   const is_time_x = $derived(is_time_scale(final_x_axis.scale_type))
   const is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type))
   const final_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
-  // Local state for styles (initialized from prop, owned by this component for controls)
-  // Using $state because styles has bindings in ScatterPlotControls
-  // untrack() explicitly captures initial prop value (intentional - props provide initial config)
-  let styles = $state(
-    untrack(() => ({
-      show_points: DEFAULTS.scatter.show_points,
-      show_lines: DEFAULTS.scatter.show_lines,
-      point: { ...DEFAULTS.scatter.point, ...styles_init?.point },
-      line: { ...DEFAULTS.scatter.line, ...styles_init?.line },
-      ...styles_init,
-    })),
-  )
-  // Control keys the user has modified; only those override authored per-series styles
-  let touched = new SvelteSet<string>()
+  const show_points = $derived(styles.show_points ?? DEFAULTS.scatter.show_points)
+  const show_lines = $derived(styles.show_lines ?? DEFAULTS.scatter.show_lines)
 
   // Fill region hover state
   let hovered_fill_key = $state<string | null>(null)
@@ -570,7 +557,7 @@
             x: norm_x(point.x) + (point.point_offset?.x ?? 0) / base_w,
             y: 1 - norm_y(point.y) + (point.point_offset?.y ?? 0) / base_h,
           })),
-          draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
+          draws_line: show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
         }
       }),
     ),
@@ -659,7 +646,7 @@
   // Disabling the morph for high-cardinality plots (e.g. phonon bands) keeps them
   // snappy; Line.svelte short-circuits the Tween when duration <= 0.
   let line_tween_load = $derived.by(() => {
-    if (!styles.show_lines) return { series: 0, points: 0 }
+    if (!show_lines) return { series: 0, points: 0 }
     let [n_series, n_points] = [0, 0]
     for (const srs of filtered_series) {
       if (!(srs.markers ?? DEFAULT_MARKERS).includes(`line`)) continue
@@ -671,7 +658,7 @@
   })
 
   let visible_marker_count = $derived.by(() => {
-    if (!styles.show_points) return 0
+    if (!show_points) return 0
     let count = 0
     for (const series_data of filtered_series) {
       if ((series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) {
@@ -682,9 +669,8 @@
   })
 
   // Apply controls to the selected series (by original index, which survives range filtering)
-  const applies_style_controls = (series_data: { orig_series_idx?: number }): boolean =>
-    normalize_show_controls(show_controls).visible(`controls`) &&
-    (!has_multiple_series || series_data.orig_series_idx === selected_series_idx)
+  const is_style_target = (series_data: { orig_series_idx?: number }): boolean =>
+    !has_multiple_series || series_data.orig_series_idx === selected_series_idx
 
   const is_finite_num = (val: number | null | undefined): val is number =>
     typeof val === `number` && Number.isFinite(val)
@@ -697,16 +683,7 @@
   // allocates one object per point instead of an appearance object spread into a marker.
   const series_appearance = (series_data: FilteredSeries) => {
     const series_idx = series_data.orig_series_idx ?? 0
-    const control_touched = applies_style_controls(series_data) ? touched : null
-    const point_ctrl = styles.point
-    const ctrl = <T>(key: string, value: T | null | undefined): T | null =>
-      control_touched?.has(key) ? (value ?? null) : null
-    const ctrl_radius = ctrl(`point.size`, point_ctrl?.size)
-    const ctrl_fill = ctrl(`point.color`, point_ctrl?.color)
-    const ctrl_fill_opacity = ctrl(`point.opacity`, point_ctrl?.opacity)
-    const ctrl_stroke = ctrl(`point.stroke_color`, point_ctrl?.stroke_color)
-    const ctrl_stroke_width = ctrl(`point.stroke_width`, point_ctrl?.stroke_width)
-    const ctrl_stroke_opacity = ctrl(`point.stroke_opacity`, point_ctrl?.stroke_opacity)
+    const point_ctrl = is_style_target(series_data) ? styles.point : undefined
     const [sparse_radius, dense_radius] = (series_data.markers ?? DEFAULT_MARKERS).includes(
       `line`,
     )
@@ -715,9 +692,8 @@
     const default_radius =
       visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
     const default_fill = plot_color(series_idx)
-    // styles.point.symbol_type is only ever set by a caller (DEFAULTS.scatter.point has none),
-    // so it needs no touched gate: it replaces the per-series cycle, never an authored style
-    const default_symbol = point_ctrl?.symbol_type ?? get_series_symbol(series_idx)
+    // A global symbol replaces the series cycle; authored point symbols still win.
+    const default_symbol = styles.point?.symbol_type ?? get_series_symbol(series_idx)
     const fallback_stroke = wrapper_text_color.current
     const { stroke_width: default_stroke_width, stroke_opacity: default_stroke_opacity } =
       DEFAULTS.scatter.point
@@ -730,24 +706,24 @@
         opacity = 1,
       ): CanvasMarker => {
         const pt = point.point_style
-        const stroke = ctrl_stroke ?? pt?.stroke
+        const stroke = point_ctrl?.stroke_color ?? pt?.stroke
         return {
           cx,
           cy,
           opacity,
           radius: is_finite_num(point.size_value)
             ? size_fn(point.size_value)
-            : (ctrl_radius ?? pt?.radius ?? default_radius),
+            : (point_ctrl?.size ?? pt?.radius ?? default_radius),
           symbol_size: pt?.symbol_size ?? undefined,
           symbol_type: pt?.symbol_type ?? default_symbol,
           fill: is_finite_num(point.color_value)
             ? color_fn(point.color_value)
-            : (ctrl_fill ?? pt?.fill ?? default_fill),
-          fill_opacity: ctrl_fill_opacity ?? pt?.fill_opacity ?? 1,
+            : (point_ctrl?.color ?? pt?.fill ?? default_fill),
+          fill_opacity: point_ctrl?.opacity ?? pt?.fill_opacity ?? 1,
           stroke: stroke ?? fallback_stroke,
-          stroke_width: ctrl_stroke_width ?? pt?.stroke_width ?? default_stroke_width,
+          stroke_width: point_ctrl?.stroke_width ?? pt?.stroke_width ?? default_stroke_width,
           stroke_opacity:
-            ctrl_stroke_opacity ??
+            point_ctrl?.stroke_opacity ??
             pt?.stroke_opacity ??
             (stroke == null ? default_stroke_opacity : 1),
         }
@@ -758,10 +734,10 @@
         const pt = point.point_style
         const fill = is_finite_num(point.color_value)
           ? null
-          : (ctrl_fill ?? pt?.fill ?? default_fill)
+          : (point_ctrl?.color ?? pt?.fill ?? default_fill)
         return (
           (fill == null || canvas_safe_color(fill)) &&
-          canvas_safe_color(ctrl_stroke ?? pt?.stroke ?? fallback_stroke)
+          canvas_safe_color(point_ctrl?.stroke_color ?? pt?.stroke ?? fallback_stroke)
         )
       },
     }
@@ -870,7 +846,7 @@
       (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)
     const needs_svg_events =
       on_point_click || (point_events && Object.values(point_events).some(Boolean))
-    if (!canvas_requested || !styles.show_points || needs_svg_events) return null
+    if (!canvas_requested || !show_points || needs_svg_events) return null
     const selected = selected_point
     const keys = selected_keys
     const markers: CanvasMarker[] = []
@@ -1640,14 +1616,13 @@
     {@render fill_regions_layer(fills_by_z[`below-lines`])}
     {@render ref_lines_layer(`below-lines`)}
 
-    {#if styles.show_lines}
+    {#if show_lines}
       {#each filtered_series as series_data (series_data._id)}
         {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)}
           {@const project = series_projector(series_data)}
           {@const series_default_color = plot_color(series_data.orig_series_idx ?? 0)}
-          {@const apply_line_controls = applies_style_controls(series_data)}
           {@const line_style = series_data.line_style}
-          {@const control_touched = (key: string) => apply_line_controls && touched.has(key)}
+          {@const line_override = is_style_target(series_data) ? styles.line : undefined}
           {@const color_fallback =
             line_style?.stroke ??
             first_point_style(series_data)?.fill ??
@@ -1672,16 +1647,10 @@
             {/each}
             <Line
               points={project.line(series_data, series_data.line_direction)}
-              line_color={(control_touched(`line.color`) ? styles.line?.color : null) ??
-                color_fallback}
-              line_width={(control_touched(`line.width`) ? styles.line?.width : null) ??
-                line_style?.stroke_width ??
-                2}
-              line_dash={(control_touched(`line.dash`) ? styles.line?.dash : null) ??
-                line_style?.line_dash}
-              stroke-opacity={control_touched(`line.opacity`)
-                ? styles.line?.opacity
-                : undefined}
+              line_color={line_override?.color ?? color_fallback}
+              line_width={line_override?.width ?? line_style?.stroke_width ?? 2}
+              line_dash={line_override?.dash ?? line_style?.line_dash}
+              stroke-opacity={line_override?.opacity}
               curve={line_style?.curve}
               area_color="transparent"
               line_tween={effective_line_tween}
@@ -1721,7 +1690,7 @@
     <!-- Canvas mode retains only labelled/hovered/selected points here. Point centers are
          range-filtered, but marker geometry may extend beyond the plot edge: keep complete
          icons visible, only lines and area geometry are clipped. -->
-    {#if styles.show_points}
+    {#if show_points}
       {#each filtered_series as series_data, series_pos (series_data._id)}
         {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`points`)}
           {@const rendered_points = use_canvas_markers
@@ -1861,7 +1830,6 @@
       bind:selected_series_idx
       series={assigned_series}
       children={controls_extra}
-      on_touch={(key, is_touched) => (is_touched ? touched.add(key) : touched.delete(key))}
     />
 
     {#if width > 0 && height > 0 && color_bar && has_color_values}

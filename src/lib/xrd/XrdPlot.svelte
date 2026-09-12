@@ -12,7 +12,7 @@
   import { add_alpha, plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import * as file_io from '$lib/io'
+  import * as file_io from '../io'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'

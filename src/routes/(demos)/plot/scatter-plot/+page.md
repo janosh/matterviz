@@ -4,6 +4,10 @@
 
 Set `markers` to `points`, `line`, or `line+points`; series and gear controls expose styling.
 
+Axis ranges preserve automatic endpoints: `{ range: [50, null] }` fixes the minimum while the maximum follows changing data. Clearing either range input restores automatic sizing for that endpoint. “Restore initial values” returns the section to the values it mounted with; “Reset to defaults” uses the shipped defaults.
+
+`styles` contains sparse overrides for the selected series and supports `bind:styles`. Controls show authored styles until a field is overridden. “Clear style overrides” removes those edits and reveals the authored styles again, including when an explicit override equals a shipped default.
+
 ```svelte example
 <script lang="ts">
   import { type InternalPoint, ScatterPlot } from 'matterviz'
@@ -3198,14 +3202,18 @@ Axis changes simulate delayed loading. Color property and palette changes use th
     },
   }
 
-  // Color scale options for ColorBar dropdown
-  const color_scale_options = [
-    { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
-    { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
-    { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
-    { key: `turbo`, label: `Turbo`, scale: `interpolateTurbo` },
-    { key: `cool`, label: `Cool`, scale: `interpolateCool` },
-  ]
+  // One committed palette drives both the chart's mapping and the ColorBar selection.
+  const color_scales = {
+    viridis: `interpolateViridis`,
+    plasma: `interpolatePlasma`,
+    inferno: `interpolateInferno`,
+    turbo: `interpolateTurbo`,
+    cool: `interpolateCool`,
+  }
+  const color_scale_options = Object.keys(color_scales).map((key) => ({
+    key,
+    label: key[0].toUpperCase() + key.slice(1),
+  }))
 
   // Build series with color values
   function build_series(x_key, y_key, color_key) {
@@ -3303,11 +3311,7 @@ Axis changes simulate delayed loading. Color property and palette changes use th
     selected_key: y_key,
   }}
   on_axis_change={handle_axis_change}
-  color_scale={{
-    scheme:
-      color_scale_options.find((option) => option.key === color_scale_key)?.scale ??
-      `interpolateViridis`,
-  }}
+  color_scale={{ scheme: color_scales[color_scale_key] }}
   color_bar={{
     title: `${properties[color_key].label} (${properties[color_key].unit})`,
     property_options: color_property_options,

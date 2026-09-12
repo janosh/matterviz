@@ -8,6 +8,7 @@
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
+  import { resolve_axis_range } from '$lib/plot/core/interactions'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -41,7 +42,7 @@
     DISPLAY_DEFAULTS_3D,
   } from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
-  import { collect_3d_extents, compute_range, sample_surface } from './scene-coords'
+  import { get_3d_auto_ranges, sample_surface } from './scene-coords'
 
   let {
     // Data props
@@ -172,16 +173,11 @@
   let resolved_display = $derived({ ...DISPLAY_DEFAULTS_3D, ...display })
   // Sample bounds once for both the scene and controls.
   const surface_samples = $derived(surfaces.flatMap(sample_surface))
-  const data_extents = $derived(collect_3d_extents(series, surface_samples))
-  const auto_ranges = $derived({
-    x: compute_range(data_extents.x),
-    y: compute_range(data_extents.y),
-    z: compute_range(data_extents.z),
-  })
+  const auto_ranges = $derived(get_3d_auto_ranges(series, surface_samples))
   const ranges = $derived({
-    x: compute_range(data_extents.x, x_axis.range),
-    y: compute_range(data_extents.y, y_axis.range),
-    z: compute_range(data_extents.z, z_axis.range),
+    x: resolve_axis_range({ range: x_axis.range }, auto_ranges.x),
+    y: resolve_axis_range({ range: y_axis.range }, auto_ranges.y),
+    z: resolve_axis_range({ range: z_axis.range }, auto_ranges.z),
   })
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(

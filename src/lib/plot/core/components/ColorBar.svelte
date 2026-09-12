@@ -55,7 +55,7 @@
     loading = false,
     on_property_change,
     color_scale_options,
-    selected_color_scale_key = $bindable(),
+    selected_color_scale_key,
     on_color_scale_change,
     backdrop: backdrop_color,
     ...rest
@@ -86,10 +86,10 @@
     // The caller owns loading and commits selected_property_key/range/title together.
     loading?: boolean
     on_property_change?: (key: string) => void
-    // The selected option supplies the scale unless the caller provides `scale` explicitly.
+    // Dropdown labels only; the caller supplies the committed color mapping through `scale`.
     color_scale_options?: ColorScaleOption[]
-    // Defaults to the first option; an explicit key must match an option.
     selected_color_scale_key?: string
+    // The caller commits the selected key and `scale` together.
     on_color_scale_change?: (key: string) => void
     // Opaque surface behind the bar, used to resolve translucent scale colors.
     backdrop?: string
@@ -151,20 +151,7 @@
     nice_range = snap_ticks && !Array.isArray(tick_labels) ? [...tick_domain] : range
   })
 
-  const selected_color_scale = $derived.by(() => {
-    if (!color_scale_options?.length) return
-    if (selected_color_scale_key === undefined) return color_scale_options[0]
-    const option = color_scale_options.find(({ key }) => key === selected_color_scale_key)
-    if (!option) throw new Error(`Unknown color scale key: ${selected_color_scale_key}`)
-    return option
-  })
-  const ramp = $derived(
-    resolve_color_ramp(
-      scale ?? selected_color_scale?.scale ?? SCALE_DEFAULTS.scheme,
-      range,
-      scale_type,
-    ),
-  )
+  const ramp = $derived(resolve_color_ramp(scale ?? SCALE_DEFAULTS.scheme, range, scale_type))
   // Sample the displayed domain without changing the caller's data-to-color mapping.
   const gradient_stops = $derived(
     sample_color_ramp({ ...ramp, domain: tick_domain }, scale_type, steps).join(`, `),
@@ -304,11 +291,8 @@
       {#if color_scale_options?.length}
         <PortalSelect
           options={color_scale_options}
-          selected_key={selected_color_scale?.key}
-          on_select={(key) => {
-            selected_color_scale_key = key
-            on_color_scale_change?.(key)
-          }}
+          selected_key={selected_color_scale_key}
+          on_select={on_color_scale_change}
           class="color-scale-select"
         />
       {/if}

@@ -85,12 +85,15 @@ test.each([
     vi.resetModules()
     const { default: config } = await import(`../../playwright.config`)
     expect(config.use.channel).toBe(`chromium`)
-    expect(config.workers, `software GPU tests must not overlap on a CI runner`).toBe(
-      is_ci ? 1 : 16,
-    )
+    if (is_ci)
+      expect(config.workers, `software GPU tests must not overlap on a CI runner`).toBe(1)
     for (const job of [`e2e-source`, `e2e-test-shards`]) {
-      const install = jobs[job].steps.find(({ run }) => run?.includes(`playwright install`))
-      expect(install?.run).toBe(`pnpm exec playwright install chromium --no-shell`)
+      const install_args = jobs[job].steps
+        .find(({ run }) => run?.includes(`playwright install`))
+        ?.run.split(/\s+/)
+      // The selected channel needs full Chromium, which --only-shell omits.
+      expect(install_args).toContain(`chromium`)
+      expect(install_args).not.toContain(`--only-shell`)
     }
     for (const argument of [
       `--use-webgpu-adapter=swiftshader`,

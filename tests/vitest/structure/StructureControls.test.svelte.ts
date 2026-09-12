@@ -269,7 +269,9 @@ describe(`StructureControls inputs`, () => {
       opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
 
-      doc_query<HTMLButtonElement>(`button[aria-label="Reset labels to defaults"]`).click()
+      doc_query<HTMLButtonElement>(
+        `button[aria-label="Restore labels to initial values"]`,
+      ).click()
       await tick()
 
       // reset restores what the pane mounted with, so the two halves of the one bg string come
@@ -660,7 +662,9 @@ describe(`StructureControls reactive props`, () => {
     })
     // Persisted values define this session's reset snapshot, so they do not immediately
     // masquerade as unsaved changes.
-    expect(target.querySelector(`button[aria-label="Reset atoms to defaults"]`)).toBeNull()
+    expect(
+      target.querySelector(`button[aria-label="Restore atoms to initial values"]`),
+    ).toBeNull()
   })
 
   test(`persists changed settings and pane size after debounce`, async () => {
@@ -1014,6 +1018,7 @@ describe(`StructureControls reactive props`, () => {
     { vector_configs: { force: { visible: undefined, color: undefined, scale: undefined } } },
     { vector_configs: { force: { color: null, scale: null } } },
     { vector_configs: { force: { visible: true } } },
+    { vector_configs: { force: { visible: true, color: `#2468ac`, scale: 4 } } },
   ])(`vector resets preserve nested ownership and other rows' edits: %j`, async (initial) => {
     const state = $state<{ scene_props: Partial<StructureSettings> }>({ scene_props: initial })
     const expected = $state.snapshot(state.scene_props)
@@ -1090,7 +1095,7 @@ describe(`StructureControls reactive props`, () => {
     })
     const reset_button = (section: string) =>
       target.querySelector<HTMLButtonElement>(
-        `button[aria-label="Reset ${section} to defaults"]`,
+        `button[aria-label="Restore ${section} to initial values"]`,
       )
     // nothing differs from the mount-time snapshot yet, so no section offers a reset
     const sections = [`displacement overlay`, `atoms`, `polyhedra`, `site vectors`]
@@ -1173,18 +1178,20 @@ describe(`StructureControls reactive props`, () => {
     state.structure = structure_with_vector(`magmom`)
     await tick()
     expect(
-      target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
+      target.querySelector(`button[aria-label="Restore site vectors to initial values"]`),
     ).toBeNull()
 
     state.scene_props.vector_scale = 2
     state.structure = structure_with_vector(`force`)
     await tick()
     expect(
-      target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
+      target.querySelector(`button[aria-label="Restore site vectors to initial values"]`),
     ).toBeNull()
     state.scene_props.vector_scale = 3
     await tick()
-    doc_query<HTMLButtonElement>(`button[aria-label="Reset site vectors to defaults"]`).click()
+    doc_query<HTMLButtonElement>(
+      `button[aria-label="Restore site vectors to initial values"]`,
+    ).click()
     await tick()
     expect(state.scene_props.vector_scale).toBe(2)
   })

@@ -515,14 +515,14 @@ describe(`export_trajectory_video`, () => {
   })
 
   test.each([
-    [`successful finalization`, `success`],
-    [`download failure`, `download-error`],
-    [`recording timeout`, `timeout`],
-    [`step failure`, `step-error`],
-    [`encoder startup failure`, `start-error`],
-    [`encoder startup timeout`, `start-timeout`],
-    [`recorder stop failure`, `stop-error`],
-  ] as const)(`releases recording resources after %s`, async (_label, outcome) => {
+    [`success`, undefined],
+    [`download-error`, `download failed`],
+    [`timeout`, `Recording timeout - recorder did not stop`],
+    [`step-error`, `step failed`],
+    [`start-error`, `MediaRecorder error: encoder failed`],
+    [`start-timeout`, `Recording timeout - recorder did not start`],
+    [`stop-error`, `stop failed`],
+  ] as const)(`releases recording resources after %s`, async (outcome, error_message) => {
     vi.useFakeTimers()
     const recorder_stop = vi.fn()
     let recording_started = false
@@ -591,13 +591,7 @@ describe(`export_trajectory_video`, () => {
     vi.spyOn(document, `createElement`).mockReturnValue(
       capture_canvas as unknown as HTMLCanvasElement,
     )
-    const expected_error = new Error(
-      outcome === `step-error`
-        ? `step failed`
-        : outcome === `stop-error`
-          ? `stop failed`
-          : `download failed`,
-    )
+    const expected_error = new Error(error_message)
     if (outcome === `download-error`) {
       vi.mocked(download).mockImplementationOnce(() => {
         throw expected_error
@@ -619,19 +613,10 @@ describe(`export_trajectory_video`, () => {
     })
     const result = export_promise.catch((error: unknown) => error)
     await vi.runAllTimersAsync()
-    if (outcome === `success`) {
+    if (error_message) expect(await result).toEqual(expected_error)
+    else {
       await expect(export_promise).resolves.toBeUndefined()
       expect(renderer.render).toHaveBeenLastCalledWith(view.scene, view.camera)
-    } else if (outcome === `timeout` || outcome === `start-timeout`) {
-      expect(await result).toEqual(
-        new Error(
-          `Recording timeout - recorder did not ${outcome === `timeout` ? `stop` : `start`}`,
-        ),
-      )
-    } else if (outcome === `start-error`) {
-      await expect(export_promise).rejects.toThrow(`MediaRecorder error: encoder failed`)
-    } else {
-      await expect(export_promise).rejects.toThrow(expected_error)
     }
 
     expect(recorder_stop).toHaveBeenCalledTimes(outcome === `stop-error` ? 2 : 1)

@@ -225,7 +225,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
 ## Interactive Property and Color Scale Selection
 
-Use `property_options`, `selected_property_key`, and `on_property_change` for property selection. The caller owns the data: set `loading` while fetching, then update the selected key and range together when the request succeeds. `color_scale_options` supplies palettes, and `selected_color_scale_key` chooses the gradient directly.
+Use `property_options`, `selected_property_key`, and `on_property_change` for property selection. The caller owns the data: set `loading` while fetching, then update the selected key and range together when the request succeeds. Palette selection follows the same pattern: `on_color_scale_change` requests a key, and the caller commits it through `selected_color_scale_key`. The caller derives `scale` from that same key so the chart and legend share one color mapping. Palette options only provide keys and labels.
 
 ```svelte example
 <script lang="ts">
@@ -249,15 +249,18 @@ Use `property_options`, `selected_property_key`, and `on_property_change` for pr
     bulk_modulus: [5, 450],
   }
 
-  // Color scale options
-  const color_scale_options = [
-    { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
-    { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
-    { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
-    { key: `magma`, label: `Magma`, scale: `interpolateMagma` },
-    { key: `cividis`, label: `Cividis`, scale: `interpolateCividis` },
-    { key: `turbo`, label: `Turbo`, scale: `interpolateTurbo` },
-  ]
+  const color_scales = {
+    viridis: `interpolateViridis`,
+    plasma: `interpolatePlasma`,
+    inferno: `interpolateInferno`,
+    magma: `interpolateMagma`,
+    cividis: `interpolateCividis`,
+    turbo: `interpolateTurbo`,
+  }
+  const color_scale_options = Object.keys(color_scales).map((key) => ({
+    key,
+    label: key[0].toUpperCase() + key.slice(1),
+  }))
 
   // State
   let selected_property = $state(`formation_energy`)
@@ -273,7 +276,9 @@ Use `property_options`, `selected_property_key`, and `on_property_change` for pr
   selected_property_key={selected_property}
   on_property_change={(key) => (selected_property = key)}
   {color_scale_options}
-  bind:selected_color_scale_key={selected_color_scale}
+  scale={color_scales[selected_color_scale]}
+  selected_color_scale_key={selected_color_scale}
+  on_color_scale_change={(key) => (selected_color_scale = key)}
   --cbar-width="600px"
   --cbar-padding="2em"
 />
@@ -291,11 +296,15 @@ Vertical orientation with the title on different sides:
     { key: `stress`, label: `Stress`, unit: `GPa` },
   ]
 
-  const color_scale_options = [
-    { key: `blues`, label: `Blues`, scale: `interpolateBlues` },
-    { key: `reds`, label: `Reds`, scale: `interpolateReds` },
-    { key: `greens`, label: `Greens`, scale: `interpolateGreens` },
-  ]
+  const color_scales = {
+    blues: `interpolateBlues`,
+    reds: `interpolateReds`,
+    greens: `interpolateGreens`,
+  }
+  const color_scale_options = Object.keys(color_scales).map((key) => ({
+    key,
+    label: key[0].toUpperCase() + key.slice(1),
+  }))
 
   const ranges = {
     energy: [-5, 2],
@@ -305,6 +314,8 @@ Vertical orientation with the title on different sides:
 
   let prop_left = $state(`energy`)
   let prop_right = $state(`force`)
+  let scale_left = $state(`blues`)
+  let scale_right = $state(`blues`)
   let range_left = $derived(ranges[prop_left])
   let range_right = $derived(ranges[prop_right])
 </script>
@@ -321,6 +332,9 @@ Vertical orientation with the title on different sides:
     selected_property_key={prop_left}
     on_property_change={(key) => (prop_left = key)}
     {color_scale_options}
+    scale={color_scales[scale_left]}
+    selected_color_scale_key={scale_left}
+    on_color_scale_change={(key) => (scale_left = key)}
     bar_style="height: 200px;"
   />
 
@@ -333,6 +347,9 @@ Vertical orientation with the title on different sides:
     selected_property_key={prop_right}
     on_property_change={(key) => (prop_right = key)}
     {color_scale_options}
+    scale={color_scales[scale_right]}
+    selected_color_scale_key={scale_right}
+    on_color_scale_change={(key) => (scale_right = key)}
     bar_style="height: 200px;"
   />
 </div>

@@ -65,14 +65,11 @@ describe(`ColorBar layout`, () => {
     expect(tick_spans()[0].classList).toContain(`tick-secondary`)
   })
 
-  test(`rejects invalid scales and unknown palette keys`, () => {
+  test(`rejects invalid scales`, () => {
     // Bare scheme names were silently prefixed before; only the canonical `interpolate*`
     // name resolves now. The cast exercises the runtime guard JavaScript callers hit.
     const scale = `Viridis` as ColorBarScale
     expect(() => mount_bar({ scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
-    expect(() =>
-      mount_bar({ color_scale_options, selected_color_scale_key: `removed` }),
-    ).toThrow(`Unknown color scale key: removed`)
   })
 
   // Labels are absolutely positioned, so without a gutter they overflow into neighbors.
@@ -405,9 +402,9 @@ const property_options: AxisOption[] = [
 ]
 
 const color_scale_options: ColorScaleOption[] = [
-  { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
-  { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
-  { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
+  { key: `viridis`, label: `Viridis` },
+  { key: `plasma`, label: `Plasma` },
+  { key: `inferno`, label: `Inferno` },
 ]
 
 describe(`ColorBar Interactive Selects`, () => {
@@ -422,7 +419,8 @@ describe(`ColorBar Interactive Selects`, () => {
     [{ property_options }, `Static`, undefined],
     [{ property_options, selected_property_key: `missing` }, `Static`, undefined],
     [{ color_scale_options, selected_color_scale_key: `viridis` }, undefined, `Viridis`],
-    [{ color_scale_options }, undefined, `Viridis`],
+    [{ color_scale_options }, undefined, `Select…`],
+    [{ color_scale_options, selected_color_scale_key: `missing` }, undefined, `Select…`],
     [{}, undefined, undefined],
   ] as const)(
     `renders controls and static title for %j`,
@@ -444,10 +442,12 @@ describe(`ColorBar Interactive Selects`, () => {
     },
   )
 
-  test(`accepts custom interpolators in color scale options`, async () => {
+  test(`accepts a custom interpolator with palette controls`, async () => {
     const interpolator = vi.fn(() => `rgb(1, 2, 3)`)
     const component = mount_bar({
-      color_scale_options: [{ key: `custom`, label: `Custom`, scale: { interpolator } }],
+      color_scale_options: [{ key: `custom`, label: `Custom` }],
+      selected_color_scale_key: `custom`,
+      scale: { interpolator },
       range: [0, 10],
     })
     await tick()
@@ -497,32 +497,66 @@ describe(`ColorBar Interactive Selects`, () => {
     expect(tick_texts()).toContain(`20`)
   })
 
-  test(`palette keys and replacement options always drive both the label and gradient`, async () => {
-    const state = fromStore(writable({ key: `plasma`, options: color_scale_options }))
-    mount_bar({
-      get selected_color_scale_key() {
-        return state.current.key
-      },
-      get color_scale_options() {
-        return state.current.options
-      },
-      steps: 3,
-    })
-    for (const [key, label, scale] of [
-      [`plasma`, `Plasma`, d3_sc.interpolatePlasma],
-      [`inferno`, `Inferno`, d3_sc.interpolateInferno],
-    ] as const) {
-      state.current = { ...state.current, key }
+  test.each([false, true])(
+    `palette selection waits for the caller to commit (function scale: %s)`,
+    async (function_scale) => {
+      const state = fromStore(
+        writable({
+          key: `plasma`,
+          options: color_scale_options,
+          scale: (function_scale
+            ? { fn: d3_sc.interpolatePlasma }
+            : `interpolatePlasma`) as ColorBarScale,
+        }),
+      )
+      const on_color_scale_change = vi.fn()
+      mount_bar({
+        get scale() {
+          return state.current.scale
+        },
+        get selected_color_scale_key() {
+          return state.current.key
+        },
+        get color_scale_options() {
+          return state.current.options
+        },
+        on_color_scale_change,
+        steps: 3,
+      })
       await tick()
-      expect(doc_query(`.color-scale-select`).textContent).toContain(label)
-      expect(doc_query(`.bar`).getAttribute(`style`)).toContain(scale(0))
-    }
-    state.current = {
-      key: `inferno`,
-      options: [{ key: `inferno`, label: `Updated`, scale: `interpolateMagma` }],
-    }
-    await tick()
-    expect(doc_query(`.color-scale-select`).textContent).toContain(`Updated`)
-    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateMagma(0))
-  })
+      const trigger = doc_query<HTMLButtonElement>(`.color-scale-select`)
+      const initial_gradient = doc_query(`.bar`).getAttribute(`style`)
+      expect(trigger.textContent).toContain(`Plasma`)
+      expect(initial_gradient).toContain(d3_sc.interpolatePlasma(0))
+      trigger.click()
+      await tick()
+      const inferno_option = [
+        ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
+      ].find((option) => option.textContent?.includes(`Inferno`))
+      if (!inferno_option) throw new Error(`Missing inferno option`)
+      inferno_option.click()
+      await tick()
+      expect(on_color_scale_change).toHaveBeenCalledExactlyOnceWith(`inferno`)
+      expect(state.current.key).toBe(`plasma`)
+      expect(trigger.textContent).toContain(`Plasma`)
+      expect(doc_query(`.bar`).getAttribute(`style`)).toBe(initial_gradient)
+
+      state.current = {
+        ...state.current,
+        key: `inferno`,
+        scale: function_scale ? { fn: d3_sc.interpolateInferno } : `interpolateInferno`,
+      }
+      await tick()
+      expect(trigger.textContent).toContain(`Inferno`)
+      expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateInferno(0))
+      state.current = {
+        key: `inferno`,
+        options: [{ key: `inferno`, label: `Updated` }],
+        scale: function_scale ? { fn: d3_sc.interpolateMagma } : `interpolateMagma`,
+      }
+      await tick()
+      expect(doc_query(`.color-scale-select`).textContent).toContain(`Updated`)
+      expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateMagma(0))
+    },
+  )
 })

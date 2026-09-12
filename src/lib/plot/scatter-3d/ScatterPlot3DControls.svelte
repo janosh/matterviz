@@ -14,7 +14,7 @@
 </script>
 
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
   import { format_num } from '$lib/labels'
   import type { ShowControlsProp } from '$lib/controls'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
@@ -23,7 +23,7 @@
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig3D, CameraProjection3D } from '$lib/plot/core/types'
-  import { type Snippet, untrack } from 'svelte'
+  import type { Snippet } from 'svelte'
 
   const defaults = {
     camera_projection: `perspective` as CameraProjection3D,
@@ -90,52 +90,33 @@
     [`show_bounding_box`, `Bounds`],
   ] as const
   const projection_planes = [`xy`, `xz`, `yz`] as const
-  const camera_settings = track_settings(
-    () => ({
-      projection: camera_projection,
-      auto_rotate,
-    }),
-    { projection: defaults.camera_projection, auto_rotate: defaults.auto_rotate },
-  )
+  const camera_settings = track_settings(() => ({ camera_projection, auto_rotate }), defaults)
   const display_settings = track_settings(
     () =>
-      Object.fromEntries(display_toggles.map(([key]) => [key, display[key] ?? defaults[key]])),
+      Object.fromEntries(
+        display_toggles.map(([key]) => [key, display[key] ?? defaults[key]]),
+      ) as Record<(typeof display_toggles)[number][0], boolean>,
     defaults,
   )
   const projections_settings = track_settings(
     () => ({
-      ...Object.fromEntries(
+      projections: Object.fromEntries(
         projection_planes.map((plane) => [
           plane,
           display.projections?.[plane] ?? defaults.projections[plane],
         ]),
       ),
-      opacity: display.projection_opacity ?? defaults.projection_opacity,
-      scale: display.projection_scale ?? defaults.projection_scale,
+      projection_opacity: display.projection_opacity ?? defaults.projection_opacity,
+      projection_scale: display.projection_scale ?? defaults.projection_scale,
     }),
-    {
-      ...defaults.projections,
-      opacity: defaults.projection_opacity,
-      scale: defaults.projection_scale,
-    },
+    defaults,
   )
-  const initial_axis_labels = untrack(() => axes.map(({ axis }) => axis.label))
   const axes_settings = track_settings(
-    () =>
-      Object.fromEntries(
-        axes.flatMap(({ name, axis }) => [
-          [`${name}_range`, axis.range ?? [null, null]],
-          [`${name}_label`, axis.label],
-        ]),
-      ),
-    untrack(() =>
-      Object.fromEntries(
-        axes.flatMap(({ name }, idx) => [
-          [`${name}_range`, [null, null]],
-          [`${name}_label`, initial_axis_labels[idx]],
-        ]),
-      ),
-    ),
+    () => ({
+      ranges: axes.map(({ axis }) => axis.range),
+      labels: axes.map(({ axis }) => axis.label),
+    }),
+    `initial`,
   )
 </script>
 
@@ -155,7 +136,7 @@
   <SettingsSection
     title="Camera"
     changed_keys={camera_settings.changed_keys}
-    on_reset={() => ({ camera_projection, auto_rotate } = defaults)}
+    on_reset={() => ({ camera_projection, auto_rotate } = camera_settings.snapshot())}
   >
     <label>
       <span>Projection</span>
@@ -173,10 +154,7 @@
   <SettingsSection
     title="Display"
     changed_keys={display_settings.changed_keys}
-    on_reset={() => {
-      const { show_axes, show_grid, show_axis_labels, show_bounding_box } = defaults
-      display = { ...display, show_axes, show_grid, show_axis_labels, show_bounding_box }
-    }}
+    on_reset={() => (display = { ...display, ...display_settings.snapshot() })}
     class="ctrl-line"
     style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr))"
   >
@@ -196,15 +174,7 @@
   <SettingsSection
     title="Projections"
     changed_keys={projections_settings.changed_keys}
-    on_reset={() => {
-      const { projections, projection_opacity, projection_scale } = defaults
-      display = {
-        ...display,
-        projections: { ...projections },
-        projection_opacity,
-        projection_scale,
-      }
-    }}
+    on_reset={() => (display = { ...display, ...projections_settings.snapshot() })}
   >
     <div style="display: flex; align-items: center; gap: 1em">
       <span>Planes</span>
@@ -242,9 +212,11 @@
   <SettingsSection
     title="Axes"
     changed_keys={axes_settings.changed_keys}
+    labels={INITIAL_SETTINGS_LABELS}
     on_reset={() => {
+      const reference = axes_settings.snapshot()
       axes.forEach(({ axis, set }, idx) =>
-        set({ ...axis, label: initial_axis_labels[idx], range: [null, null] }),
+        set({ ...axis, label: reference.labels[idx], range: reference.ranges[idx] }),
       )
     }}
   >
