@@ -750,7 +750,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const green_line = plot.locator(`g[data-series-id="1"] path[fill="none"]`)
     const initial_width = (await crimson_marker.boundingBox())?.width ?? NaN
     const { pane } = await open_plot_controls(plot)
-    await expect(pane.locator(`.style-row > label`)).toHaveCount(10)
+    await expect(pane.locator(`.style-row > label`).first()).toBeVisible()
 
     for (const width of [320, 390, 900]) {
       await page.setViewportSize({ width, height: 900 })

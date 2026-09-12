@@ -1,10 +1,10 @@
+import { axis_transform } from '$lib/plot/core/interactions'
 import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
 import {
   bin_points,
   density_bin_at_point,
   density_screen_cell,
   first_point_in_bin,
-  scale_bin_transform,
   series_extents,
   series_x_order,
   visible_points,
@@ -163,24 +163,26 @@ describe(`adaptive density utilities`, () => {
     expect(extents.y).toEqual([1.1, 20.9])
   })
 
-  it(`handles log empty domains, floor exclusion, and zero-span decades`, () => {
+  it(`handles log empty domains, tiny positive values, and zero-span decades`, () => {
     expect(series_extents([{ x: [-10, -1], y: [1, 2] }], `log`, `linear`).x).toEqual([1, 10])
-    expect(series_extents([{ x: [1e-300, 2e-300], y: [1, 2] }], `log`, `linear`).x).toEqual([
-      1, 10,
-    ])
+    const tiny = series_extents([{ x: [1e-300, 2e-300], y: [1, 2] }], `log`, `linear`).x
+    expect(tiny[0]).toBeGreaterThan(0)
+    expect(tiny[0]).toBeLessThan(1e-300)
+    expect(tiny[1]).toBeGreaterThan(2e-300)
+    expect(tiny[1]).toBeLessThan(3e-300)
     const half_decade = Math.sqrt(10)
     expect(series_extents([{ x: [-10, 10], y: [1, 2] }], `log`, `linear`)).toEqual({
       x: [10 / half_decade, 10 * half_decade],
       y: [1.5, 2.5],
     })
     expect(series_extents([{ x: [LOG_EPS, LOG_EPS], y: [1, 2] }], `log`, `linear`).x).toEqual([
-      LOG_EPS,
+      LOG_EPS / half_decade,
       LOG_EPS * half_decade,
     ])
   })
 
   it(`pads arcsinh extents in transform space and keeps extremes finite`, () => {
-    const { forward, inverse } = scale_bin_transform(`arcsinh`)
+    const { forward, inverse } = axis_transform(`arcsinh`)
     const fraction = forward(1e6)
     const equal = series_extents([{ x: [1e6, 1e6], y: [0, 1] }], `arcsinh`, `linear`).x
     expect(equal[0]).toBeCloseTo(inverse(fraction - 0.5))
@@ -246,19 +248,20 @@ describe(`adaptive density utilities`, () => {
   })
 
   describe(`log-scale binning`, () => {
-    const log_xy = { x: scale_bin_transform(`log`), y: scale_bin_transform(`log`) }
+    const log_xy = { x: axis_transform(`log`), y: axis_transform(`log`) }
     const range: Vec2 = [1, 100]
 
-    it(`bins log-scale data in transformed space`, () => {
-      const log_series: DensePointSeries[] = [{ x: [10], y: [10] }]
-      const linear = bin_points(log_series, range, range, 3, 3)
-      const log_binned = bin_points(log_series, range, range, 3, 3, log_xy)
+    it.each([1, 1e-20])(`bins log-scale data in transformed space (factor=%s)`, (factor) => {
+      const log_series: DensePointSeries[] = [{ x: [10 * factor], y: [10 * factor] }]
+      const domain: Vec2 = [factor, 100 * factor]
+      const linear = bin_points(log_series, domain, domain, 3, 3)
+      const log_binned = bin_points(log_series, domain, domain, 3, 3, log_xy)
       // x=10 sits at 9% of the linear span (bin 0) but is the geometric midpoint of [1, 100]
       expect([...linear.counts].indexOf(1)).toBe(0)
       expect([...log_binned.counts].indexOf(1)).toBe(1 * 3 + 1) // center bin
       // linear/undefined scale types fall back to the identity transform
-      expect(scale_bin_transform(`linear`).forward(42)).toBe(42)
-      expect(scale_bin_transform(undefined).inverse(42)).toBe(42)
+      expect(axis_transform(`linear`).forward(42)).toBe(42)
+      expect(axis_transform(undefined).inverse(42)).toBe(42)
     })
 
     it(`maps density bins back through the inverse transform`, () => {

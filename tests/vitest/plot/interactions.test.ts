@@ -27,12 +27,17 @@ describe(`pan_range_by_pixels`, () => {
     [`time is linear in ms`, [0, 1000], 100, 200, `time`, [500, 1500]],
     [`log shifts by one decade`, [1, 100], 100, 200, `log`, [10, 1000]],
     [`log shifts back a decade`, [10, 1000], -100, 200, `log`, [1, 100]],
+    [`log preserves tiny positive bounds`, [1e-20, 1e-18], 100, 200, `log`, [1e-19, 1e-17]],
     [`inverted linear stays inverted`, [100, 0], 50, 200, undefined, [75, -25]],
     [`degenerate range is a no-op`, [50, 50], 100, 200, undefined, [50, 50]],
   ])(`%s`, (_desc, range, pixel_x, span, type, expected) => {
     const result = pan_range_by_pixels(range, pixel_x, span, type)
-    expect(result[0]).toBeCloseTo(expected[0], 9)
-    expect(result[1]).toBeCloseTo(expected[1], 9)
+    for (const [idx, value] of expected.entries()) {
+      // Relative error matters for tiny domains; allow 128 eps for log/exp transforms.
+      expect(Math.abs(result[idx] - value)).toBeLessThanOrEqual(
+        128 * Number.EPSILON * Math.abs(value),
+      )
+    }
   })
 
   it(`log pan cannot cross zero, no matter how far`, () => {
@@ -74,11 +79,15 @@ describe(`zoom_range_by_factor`, () => {
     [`linear zoom out about center`, [2.5, 7.5], 0.5, undefined, [0, 10]],
     [`log zoom in keeps geometric center`, [1, 10_000], 2, `log`, [10, 1000]],
     [`log zoom out`, [10, 1000], 0.5, `log`, [1, 10_000]],
+    [`log zoom preserves tiny bounds`, [1e-20, 1e-16], 2, `log`, [1e-19, 1e-17]],
     [`inverted linear stays inverted`, [10, 0], 2, undefined, [7.5, 2.5]],
   ])(`%s`, (_desc, range, factor, type, expected) => {
     const result = zoom_range_by_factor(range, factor, type)
-    expect(result[0]).toBeCloseTo(expected[0], 9)
-    expect(result[1]).toBeCloseTo(expected[1], 9)
+    for (const [idx, value] of expected.entries()) {
+      expect(Math.abs(result[idx] - value)).toBeLessThanOrEqual(
+        128 * Number.EPSILON * Math.abs(value),
+      )
+    }
   })
 
   it(`log zoom never produces non-positive bounds`, () => {

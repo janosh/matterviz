@@ -2,9 +2,14 @@
 // uniform in the x scale's transformed space (linear, log10, arcsinh) and counted in one pass
 // into typed arrays, so a million samples bin in a few milliseconds.
 
-import { clamp, LOG_EPS, type Vec2 } from '$lib/math'
+import { clamp, type Vec2 } from '$lib/math'
 import type { FillPattern } from '$lib/plot/core/patterns'
-import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/plot/core/scales'
+import {
+  accumulate_extent,
+  empty_extent,
+  nice_range_from_extent,
+  positive_log_domain,
+} from '$lib/plot/core/scales'
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
@@ -111,8 +116,7 @@ export function bin_geometry(
   let upper = Math.max(domain[0], domain[1])
   const type_name = get_scale_type_name(scale_type)
   if (type_name === `log`) {
-    lower = Math.max(lower, LOG_EPS)
-    upper = Math.max(upper, LOG_EPS)
+    ;[lower, upper] = positive_log_domain(lower, upper, 1)
   }
   // Identity transform inlined on the linear path: the closure call costs ~70% on 1e6 samples
   const is_linear = type_name === `linear`

@@ -251,7 +251,9 @@ test.each([
   [`abort`, /abort/i, 0],
   [`cancel`, /cancel/i, 0],
   [`progress`, null, 1],
-  [`progress-error`, /progress failed/, 1],
+  [`progress-error`, /progress failed/, 0],
+  [`progress-abort`, /abort/i, 0],
+  [`progress-cancel`, /cancel/i, 0],
   [`error`, /provider failed/, 1],
 ] as const)(
   `main-thread-only requests share the client lifecycle: %s`,
@@ -280,6 +282,8 @@ test.each([
     const controller = new AbortController()
     const on_progress = vi.fn(() => {
       if (action === `progress-error`) throw new Error(`progress failed`)
+      if (action === `progress-abort`) controller.abort()
+      if (action === `progress-cancel`) run.cancel()
     })
     const pending = run({ provider }, { provider }, { signal: controller.signal, on_progress })
     if (action === `abort`) controller.abort()

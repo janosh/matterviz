@@ -1,5 +1,5 @@
 // Unit tests for controls visibility configuration
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { normalize_show_controls, track_settings } from '$lib/controls'
 
 describe(`normalize_show_controls`, () => {
@@ -63,6 +63,7 @@ describe(`track_settings`, () => {
       range: [0, 10],
       nested: { opacity: 0.5 },
       optional: undefined,
+      [`__proto__`]: { opacity: 0.5 },
     }
     const tracked = track_settings(() => values, `initial`)
     expect(tracked.changed_keys).toEqual([])
@@ -89,6 +90,10 @@ describe(`track_settings`, () => {
     ;(values.nested as { opacity: number }).opacity = 0.9
     expect(tracked.snapshot([`nested`])).toEqual({ nested: { opacity: 0.5 } })
     expect(tracked.snapshot([`optional`])).toEqual({ optional: undefined })
+    const own_key_snapshot = tracked.snapshot([`__proto__`])
+    expect(Object.hasOwn(own_key_snapshot, `__proto__`)).toBe(true)
+    expect(Object.getPrototypeOf(own_key_snapshot)).toBe(Object.prototype)
+    expect(own_key_snapshot.__proto__).toEqual({ opacity: 0.5 })
   })
 
   it.each([
@@ -116,7 +121,35 @@ describe(`track_settings`, () => {
     defaults.color = `green`
     expect(tracked.changed_keys).toEqual([`color`])
     values.color = tracked.snapshot([`color`]).color
+    expectTypeOf(tracked.snapshot().color).toEqualTypeOf<string>()
     expect(values.color).toBe(`red`)
     expect(tracked.changed_keys).toEqual([])
+
+    const count_values = () => ({ count: 1 })
+    const absent = track_settings(count_values, {}).snapshot()
+    expect(absent).toEqual({})
+    expectTypeOf(absent.count).toEqualTypeOf<number | undefined>()
+    const optional: { count?: number } = {}
+    const optional_reference = track_settings(count_values, optional).snapshot()
+    expectTypeOf(optional_reference.count).toEqualTypeOf<number | undefined>()
+    const dictionary: Record<string, number> = {}
+    const dictionary_reference = track_settings(count_values, dictionary).snapshot()
+    expect(dictionary_reference).toEqual({})
+    expectTypeOf(dictionary_reference.count).toEqualTypeOf<number | undefined>()
+    const undefined_reference = track_settings(count_values, { count: undefined }).snapshot()
+    expect(undefined_reference).toEqual({ count: undefined })
+    expectTypeOf(undefined_reference.count).toEqualTypeOf<number | undefined>()
+    const string_defaults: Record<string, string> = { count: `broken` }
+    const string_reference = track_settings(count_values, string_defaults).snapshot()
+    expect(string_reference).toEqual({ count: `broken` })
+    expectTypeOf(string_reference.count).toEqualTypeOf<number | string | undefined>()
+    const optional_values = track_settings(() => optional, { count: 0 }).snapshot()
+    expect(optional_values).toEqual({})
+    expectTypeOf(optional_values.count).toEqualTypeOf<number | undefined>()
+    expectTypeOf(
+      track_settings(count_values, `initial`).snapshot().count,
+    ).toEqualTypeOf<number>()
+    // @ts-expect-error A numeric setting cannot reset to a string.
+    track_settings(count_values, { count: `broken` })
   })
 })

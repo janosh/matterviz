@@ -49,14 +49,16 @@ describe(`scales`, () => {
       [`linear`, [0, 100], [0, 500]],
       [`log`, [1, 1000], [0, 300]],
       [`log`, [0.1, 100], [50, 350]],
+      [`log`, [1e-20, 1e-10], [0, 100]],
+      [`log`, [1e-10, 1e-20], [0, 100]],
       [`arcsinh`, [-100, 100], [0, 500]],
       [`arcsinh`, [0, 1000], [0, 300]],
     ])(`%s scale`, (scale_type, domain, range) => {
       const scale = create_scale(scale_type as ScaleType, domain as Vec2, range as Vec2)
-      expect(scale.domain()).toEqual(
-        scale_type === `log` ? [Math.max(domain[0], math.LOG_EPS), domain[1]] : domain,
-      )
+      expect(scale.domain()).toEqual(domain)
       expect(scale.range()).toEqual(range)
+      expect(scale(domain[0])).toBe(range[0])
+      expect(scale(domain[1])).toBe(range[1])
     })
 
     test.each([
@@ -90,6 +92,8 @@ describe(`scales`, () => {
     test.each<[number[], ScaleType, number, boolean]>([
       [sample_values, `linear`, 0.05, false],
       [[1, 10, 100], `log`, 0.1, false],
+      [[1e-20, 1e-10], `log`, 0.1, false],
+      [[1e-20], `log`, 0.1, false],
       [[new Date(2023, 0, 1).getTime(), new Date(2023, 11, 1).getTime()], `linear`, 0.1, true],
       [[42], `linear`, 0.1, false],
     ])(`pads %j on a %s scale`, (values, scale_type, padding, is_time) => {
@@ -97,6 +101,11 @@ describe(`scales`, () => {
       expect(range).toHaveLength(2)
       expect(range[0]).toBeLessThan(Math.min(...values))
       expect(range[1]).toBeGreaterThan(Math.max(...values))
+    })
+
+    test.each([0.09, 0.9, 9, 90])(`pads log singleton %s only once before nicing`, (value) => {
+      const upper = 10 ** Math.round(Math.log10(value))
+      expect(nice_range([value], [null, null], `log`, 0.05)).toEqual([upper / 10, upper])
     })
 
     test.each<[number | null, number | null]>([
@@ -148,6 +157,9 @@ describe(`scales`, () => {
       { values: [], limits: [null, -100] },
       { values: [1, 10], limits: [100.123, null] },
       { values: [1, 10], limits: [null, 0.0123] },
+      { values: [1, 10], limits: [null, 1e-9] },
+      { values: [1, 10], limits: [null, 1e-20] },
+      { values: [1e-20, 1e-10], limits: [1e-9, null] },
     ])(`keeps one-sided bounds ordered for $values and $limits`, ({ values, limits }) => {
       for (const scale_type of [`linear`, `time`, `arcsinh`, `log`] as const) {
         // Log limits must be positive; non-positive log bounds have separate coverage.
@@ -402,12 +414,19 @@ describe(`scales`, () => {
         min: 1e-12,
         max: 1,
         ticks: 5,
-        expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1],
+        expected: [
+          1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1,
+        ],
       },
+      { min: 1e-20, max: 1e-18, ticks: 5, expected: [1e-20, 1e-19, 1e-18] },
     ])(`log ticks: $min to $max (ticks=$ticks)`, ({ min, max, ticks, expected }) => {
       const result = generate_log_ticks(min, max, ticks)
       expect(result).toHaveLength(expected.length)
-      result.forEach((tick, idx) => expect(tick).toBeCloseTo(expected[idx], 12))
+      result.forEach((tick, idx) =>
+        expect(Math.abs(tick - expected[idx])).toBeLessThanOrEqual(
+          32 * Number.EPSILON * expected[idx],
+        ),
+      )
     })
 
     test(`explicit tick arrays pass through untouched`, () => {

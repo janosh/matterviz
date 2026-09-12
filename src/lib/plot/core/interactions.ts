@@ -121,23 +121,24 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
 // metric (the space where equal pixel steps are equal steps; identity for
 // linear/time). Pan and pinch must be uniform in *screen* space - doing the math
 // linearly on a log axis stretches one end of the view and shifts past zero into
-// an all-NaN domain. log clamps at LOG_EPS so a non-positive bound (stale explicit
-// range) recovers instead of propagating -Infinity.
-function axis_transform(scale_type: ScaleType | undefined): {
-  to: (val: number) => number
-  from: (val: number) => number
+// an all-NaN domain. Non-positive log bounds recover at LOG_EPS; positive values retain
+// their scale however small.
+export function axis_transform(scale_type?: ScaleType): {
+  forward: (val: number) => number
+  inverse: (val: number) => number
 } {
   const name = get_scale_type_name(scale_type)
   if (name === `log`) {
-    return { to: (val) => Math.log(Math.max(val, LOG_EPS)), from: Math.exp }
+    return { forward: (val) => Math.log(val > 0 ? val : LOG_EPS), inverse: Math.exp }
   }
   if (name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    const target = (val: number) => Math.asinh(val / threshold)
-    const from = (val: number) => Math.sinh(val) * threshold
-    return { to: target, from }
+    return {
+      forward: (val) => Math.asinh(val / threshold),
+      inverse: (val) => Math.sinh(val) * threshold,
+    }
   }
-  return { to: (val) => val, from: (val) => val }
+  return { forward: (val) => val, inverse: (val) => val }
 }
 
 // Snapshot the four axis ranges as fresh tuples at pan/zoom/touch interaction start
@@ -163,10 +164,10 @@ export function pan_range_by_pixels(
   scale_type?: ScaleType,
 ): Vec2 {
   if (pixel_span === 0) return range
-  const { to: target, from } = axis_transform(scale_type)
-  const [param_0, param_1] = [target(range[0]), target(range[1])]
+  const { forward, inverse } = axis_transform(scale_type)
+  const [param_0, param_1] = [forward(range[0]), forward(range[1])]
   const t_delta = (pixel_delta / pixel_span) * (param_1 - param_0)
-  return [from(param_0 + t_delta), from(param_1 + t_delta)]
+  return [inverse(param_0 + t_delta), inverse(param_1 + t_delta)]
 }
 
 // Zoom a range about its screen-space center by `factor` (pinch: >1 zooms in).
@@ -178,11 +179,11 @@ export function zoom_range_by_factor(
 ): Vec2 {
   // Guard invalid factors (0/negative/NaN) that would emit Infinity/NaN into axis state
   if (!Number.isFinite(factor) || factor <= 0) return range
-  const { to: target, from } = axis_transform(scale_type)
-  const [param_0, param_1] = [target(range[0]), target(range[1])]
+  const { forward, inverse } = axis_transform(scale_type)
+  const [param_0, param_1] = [forward(range[0]), forward(range[1])]
   const center = (param_0 + param_1) / 2
   const half_span = (param_1 - param_0) / factor / 2
-  return [from(center - half_span), from(center + half_span)]
+  return [inverse(center - half_span), inverse(center + half_span)]
 }
 
 // Coerce a scale.invert result (number, or Date for time scales) to an epoch number
@@ -274,20 +275,21 @@ export function resolve_axis_range(
   const type_name = get_scale_type_name(scale_type)
   if (type_name === `log`) {
     if ((lower_fixed ? lower : upper) <= 0) return [lower, upper]
+    const auto_min = Math.min(auto[0], auto[1])
     const factor = Math.max(
-      Math.max(auto[0], auto[1]) / Math.max(Math.min(auto[0], auto[1]), LOG_EPS),
+      Math.max(auto[0], auto[1]) / (auto_min > 0 ? auto_min : LOG_EPS),
       1.1,
     )
     return lower_fixed ? [lower, lower * factor] : [upper / factor, upper]
   }
-  const { to, from } = axis_transform(scale_type)
-  const bound = to(lower_fixed ? lower : upper)
-  const auto_span = Math.abs(to(auto[1]) - to(auto[0]))
+  const { forward, inverse } = axis_transform(scale_type)
+  const bound = forward(lower_fixed ? lower : upper)
+  const auto_span = Math.abs(forward(auto[1]) - forward(auto[0]))
   const span =
     type_name === `time`
       ? auto_span || 86_400_000
       : Math.max(auto_span, Math.abs(bound) * 0.1) || 1
-  return lower_fixed ? [lower, from(bound + span)] : [from(bound - span), upper]
+  return lower_fixed ? [lower, inverse(bound + span)] : [inverse(bound - span), upper]
 }
 
 // Merge each axis's explicit range over its auto range (per-bound: a null bound

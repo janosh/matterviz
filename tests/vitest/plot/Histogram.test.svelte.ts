@@ -689,6 +689,13 @@ describe(`Histogram`, () => {
     expect(Array.from(counts)).toEqual([2, 2, 3])
     // values exactly on a log edge snap to the upper bin even though log10(1000) rounds below 3
     expect(counts_of([1000, 10], [1, 10_000], 4, `log`)).toEqual([0, 1, 0, 1])
+    const tiny = bin_values([1e-20, 5e-20, 5e-19, 1e-18], [1e-20, 1e-18], 2, `log`)
+    expect(Array.from(tiny.counts)).toEqual([2, 2])
+    for (const [idx, expected] of [1e-20, 1e-19, 1e-18].entries()) {
+      expect(Math.abs(tiny.edges[idx] - expected)).toBeLessThanOrEqual(
+        128 * Number.EPSILON * expected,
+      )
+    }
     // a domain a few ulps wide collapses in log10 space (scale would be Infinity and every
     // sample would be dropped): treat it as one bin holding the in-domain samples
     const lower = 1e10
@@ -703,6 +710,12 @@ describe(`Histogram`, () => {
     const clamped = bin_values([0.5, 1], [0, 1], 2, `log`)
     expect(clamped.edges[0]).toBe(1e-9)
     expect(Array.from(clamped.counts)).toEqual([0, 2])
+    // Repair below a tiny positive upper bound, keeping bin edges ascending like the axis.
+    const tiny_recovered = bin_values([1e-20, 2e-19, 8e-19, 1e-18], [0, 1e-18], 2, `log`)
+    expect(Array.from(tiny_recovered.counts)).toEqual([1, 2])
+    expect(tiny_recovered.edges[0]).toBeGreaterThan(0)
+    expect(tiny_recovered.edges[0]).toBeLessThan(2e-19)
+    expect(tiny_recovered.edges[2]).toBe(1e-18)
     const arcsinh = bin_values([-10, -1, 1, 10], [-10, 10], 2, `arcsinh`)
     expect(Math.abs(arcsinh.edges[1])).toBeLessThan(1e-12)
     expect(Array.from(arcsinh.counts)).toEqual([2, 2])

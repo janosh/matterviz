@@ -161,7 +161,7 @@
   const axis_range_settings = track_axis_field(`range`)
   const scale_type_settings = track_settings(
     () => axis_record((axis) => get_scale_type_name(axis_config(axis).scale_type)),
-    axis_record(() => `linear`),
+    axis_record(() => `linear` as const),
   )
   const current_sync = $derived(normalize_y2_sync(y2_axis.sync))
   const y2_sync_settings = track_settings(

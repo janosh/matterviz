@@ -717,11 +717,14 @@ describe(`ScatterPlot`, () => {
     async (duration) => {
       const x_values = Array.from({ length: 101 }, (_, idx) => idx)
       const y_values = x_values.map((value) => Math.sin(value))
+      const color_values = x_values.map((value) => (value === 100 ? 1 : null))
+      const color_scan = vi.spyOn(color_values, `find`)
       const plot = await mount_sized_scatter_plot({
         series: [
           {
             x: x_values,
             y: y_values,
+            color_values,
             markers: `line`,
             x_axis: `x2`,
             line_style: { line_dash: `4 2` },
@@ -743,6 +746,8 @@ describe(`ScatterPlot`, () => {
         expect(vertices[1]).toBe(100)
       }
       check_vertices()
+      expect(color_scan).toHaveBeenCalled()
+      color_scan.mockClear()
       vi.spyOn(performance, `now`).mockReturnValue(performance.now() + SETTLE_MS + 1)
       const clip = clip_rect(plot)
       plot_svg(plot).dispatchEvent(
@@ -769,14 +774,20 @@ describe(`ScatterPlot`, () => {
       await tick()
       check_vertices()
       expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
+      expect(color_scan).not.toHaveBeenCalled()
     },
   )
 
   test.each([`points`, `line`, `line+points`] as const)(
     `%s controls can target another series independently of labels`,
     async (markers) => {
-      const state = $state<{ selected_series_idx: number; series: DataSeries[] }>({
+      const state = $state<{
+        selected_series_idx: number
+        series: DataSeries[]
+        styles: StyleOverrides
+      }>({
         selected_series_idx: 0,
+        styles: {},
         series: [0, 1].map(() => ({
           x: [0, 1],
           y: [0, 1],
@@ -828,6 +839,9 @@ describe(`ScatterPlot`, () => {
         input.dispatchEvent(new Event(`input`, { bubbles: true }))
         await tick()
         for (const [series_idx, color] of [`red`, `#0000ff`].entries()) {
+          const legend_item = plot.querySelectorAll(`.legend-item`)[series_idx]
+          const swatch = legend_item.querySelector(kind === `point` ? `path` : `line`)
+          expect(swatch?.getAttribute(kind === `point` ? `fill` : `stroke`)).toBe(color)
           const marks = plot.querySelectorAll(`[data-series-id="${series_idx}"] ${selector}`)
           expect(marks.length).toBeGreaterThan(0)
           for (const mark of marks) {
@@ -863,6 +877,13 @@ describe(`ScatterPlot`, () => {
           expect([...marks].map((mark) => mark.getAttribute(numeric_attribute))).toEqual(
             Array(marks.length).fill(value),
           )
+          if (key === `opacity`) {
+            const legend_item = plot.querySelectorAll(`.legend-item`)[1]
+            const swatch = legend_item.querySelector(kind === `point` ? `path` : `line`)
+            expect(swatch?.getAttribute(kind === `point` ? `opacity` : `stroke-opacity`)).toBe(
+              value,
+            )
+          }
         }
       }
       // Data-driven styling on another series must not hide the selected series' controls.
@@ -881,6 +902,23 @@ describe(`ScatterPlot`, () => {
           )
         }
       }
+      // Removing the selected series restores one shared target in the chart and pane.
+      state.series = [
+        {
+          x: [0, 1],
+          y: [0, 1],
+          markers,
+          line_style: { stroke_width: 7 },
+          point_style: { radius: 9 },
+        },
+      ]
+      state.styles = {}
+      await tick()
+      const field = markers === `line` ? `line.width` : `point.size`
+      expect(
+        plot.querySelector<HTMLInputElement>(`[data-key="${field}"] input[type="range"]`)
+          ?.value,
+      ).toBe(markers === `line` ? `7` : `9`)
     },
   )
 
@@ -956,9 +994,14 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`[aria-label="Clear line style overrides"]`)).toBeNull()
 
     state.show_controls = false
-    state.styles = { line: { width: 4 } }
+    state.styles = { line: { width: 4, color: `green`, dash: `4 2`, opacity: 0.5 } }
     await tick()
     expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `4`])
+    for (const line of [lines[1], doc_query(`.legend-item line`, SVGElement)]) {
+      expect(line.getAttribute(`stroke`)).toBe(`green`)
+      expect(line.getAttribute(`stroke-dasharray`)).toBe(`4 2`)
+      expect(line.getAttribute(`stroke-opacity`)).toBe(`0.5`)
+    }
 
     await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()

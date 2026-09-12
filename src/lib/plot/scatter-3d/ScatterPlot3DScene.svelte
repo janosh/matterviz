@@ -84,9 +84,9 @@
     series?: DataSeries3D<Metadata>[]
     // Final data-coordinate ranges, computed by the host alongside its controls.
     ranges: Record<`x` | `y` | `z`, Vec2>
-    x_axis?: AxisConfig3D
-    y_axis?: AxisConfig3D
-    z_axis?: AxisConfig3D
+    x_axis?: Omit<AxisConfig3D, `range`>
+    y_axis?: Omit<AxisConfig3D, `range`>
+    z_axis?: Omit<AxisConfig3D, `range`>
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
     surfaces?: Surface3DConfig[]

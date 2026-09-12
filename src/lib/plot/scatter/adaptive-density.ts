@@ -1,11 +1,7 @@
-import { clamp, partition_point, LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
-import { range_bounds } from '$lib/plot/core/interactions'
+import { clamp, partition_point, type Point2D, type Vec2 } from '$lib/math'
+import { axis_transform, range_bounds } from '$lib/plot/core/interactions'
 import type { ScaleType } from '$lib/plot/core/types'
-import {
-  assert_series_lengths,
-  get_arcsinh_threshold,
-  get_scale_type_name,
-} from '$lib/plot/core/types'
+import { assert_series_lengths, get_scale_type_name } from '$lib/plot/core/types'
 
 export type NumericArray = ArrayLike<number>
 
@@ -86,29 +82,10 @@ export interface PlotRect {
 
 // Monotonic transform pair: density bins are uniform in transformed (scale) space so
 // they align with the axis pixel grid on log/arcsinh axes
-interface BinTransform {
-  forward: (value: number) => number
-  inverse: (value: number) => number
-}
+type BinTransform = ReturnType<typeof axis_transform>
 type BinTransforms = { x?: BinTransform; y?: BinTransform }
 
-const identity: BinTransform = { forward: (val) => val, inverse: (val) => val }
-
-// Map an axis scale_type to the transform density binning should happen in
-export function scale_bin_transform(scale_type?: ScaleType): BinTransform {
-  const type_name = get_scale_type_name(scale_type)
-  if (type_name === `log`) {
-    // Clamp to LOG_EPS (same floor as the rendered log scale) so bin edges align with the
-    // axis; non-positive samples are already dropped by the range filter in bin_points
-    return { forward: (val) => Math.log(Math.max(val, LOG_EPS)), inverse: Math.exp }
-  }
-  if (type_name !== `arcsinh`) return identity
-  const threshold = get_arcsinh_threshold(scale_type)
-  return {
-    forward: (val) => Math.asinh(val / threshold),
-    inverse: (val) => Math.sinh(val) * threshold,
-  }
-}
+const identity = axis_transform()
 
 // Data range of one bin: edges are uniform in transformed space, mapped back via inverse
 const bin_range = (
@@ -146,13 +123,12 @@ const padded_extent = (
   const log_scale = get_scale_type_name(scale_type) === `log`
   if (!Number.isFinite(min) || !Number.isFinite(max)) return log_scale ? [1, 10] : [0, 1]
 
-  const { forward, inverse } = scale_bin_transform(scale_type)
+  const { forward, inverse } = axis_transform(scale_type)
   const t_min = forward(min)
   const t_max = forward(max)
   if (t_min === t_max) {
     if (log_scale) {
-      const center = Math.max(min, LOG_EPS)
-      return [Math.max(LOG_EPS, center / Math.sqrt(10)), center * Math.sqrt(10)]
+      return [Math.max(Number.MIN_VALUE, min / Math.sqrt(10)), min * Math.sqrt(10)]
     }
     return [inverse(t_min - 0.5), inverse(t_max + 0.5)]
   }
@@ -181,8 +157,7 @@ export function series_extents(
       const coord_x = srs.x[idx]
       const coord_y = srs.y[idx]
       if (!Number.isFinite(coord_x) || !Number.isFinite(coord_y)) continue
-      // Align with bin_points / log scale floor so sub-LOG_EPS samples don't widen extent
-      if ((log_x && coord_x < LOG_EPS) || (log_y && coord_y < LOG_EPS)) continue
+      if ((log_x && coord_x <= 0) || (log_y && coord_y <= 0)) continue
       if (coord_x < x_min) x_min = coord_x
       if (coord_x > x_max) x_max = coord_x
       if (coord_y < y_min) y_min = coord_y

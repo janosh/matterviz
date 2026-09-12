@@ -112,6 +112,7 @@
     strict_x_direction,
     pick_tooltip_bg,
     scatter_legend_rows,
+    scatter_line_style,
   } from './scatter-data'
 
   // Marker-density thresholds and decoration sampling cap
@@ -668,10 +669,12 @@
     return count
   })
 
-  // Apply controls to the selected series (by original index, which survives range filtering)
-  const is_style_target = (series_data: { orig_series_idx?: number }): boolean =>
-    !has_multiple_series || series_data.orig_series_idx === selected_series_idx
-
+  // One effective selection drives drawing, legends, and controls after data replacement.
+  const active_series_idx = $derived(
+    assigned_series[selected_series_idx]
+      ? selected_series_idx
+      : assigned_series.findIndex(Boolean),
+  )
   const is_finite_num = (val: number | null | undefined): val is number =>
     typeof val === `number` && Number.isFinite(val)
 
@@ -682,8 +685,8 @@
   // builds the CanvasMarker directly (position + opacity included) so the canvas path
   // allocates one object per point instead of an appearance object spread into a marker.
   const series_appearance = (series_data: FilteredSeries) => {
-    const series_idx = series_data.orig_series_idx ?? 0
-    const point_ctrl = is_style_target(series_data) ? styles.point : undefined
+    const series_idx = series_data.orig_series_idx
+    const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
     const [sparse_radius, dense_radius] = (series_data.markers ?? DEFAULT_MARKERS).includes(
       `line`,
     )
@@ -1022,7 +1025,8 @@
       assigned_series,
       computed_fills,
       color_scale_fn,
-      styles.point?.symbol_type,
+      styles,
+      active_series_idx,
     ),
   )
   const active_legend_idx = $derived.by(() => {
@@ -1618,21 +1622,20 @@
 
     {#if show_lines}
       {#each filtered_series as series_data (series_data._id)}
+        {@const series_idx = series_data.orig_series_idx}
         {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)}
           {@const project = series_projector(series_data)}
-          {@const series_default_color = plot_color(series_data.orig_series_idx ?? 0)}
-          {@const line_style = series_data.line_style}
-          {@const line_override = is_style_target(series_data) ? styles.line : undefined}
-          {@const color_fallback =
-            line_style?.stroke ??
-            first_point_style(series_data)?.fill ??
-            (series_data.color_values?.[0] != null
-              ? color_scale_fn(series_data.color_values[0])
-              : series_default_color)}
+          {@const series_default_color = plot_color(series_idx)}
+          {@const line = scatter_line_style(
+            assigned_series[series_idx],
+            series_idx,
+            color_scale_fn,
+            series_idx === active_series_idx ? styles.line : undefined,
+          )}
           <g
             data-series-id={series_data._id}
             clip-path="url(#{clip_path_id})"
-            opacity={is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1}
+            opacity={is_legend_dimmed(series_idx) ? 0.25 : 1}
           >
             {#each series_data.line_underlays ?? [] as underlay}
               <Line
@@ -1647,11 +1650,11 @@
             {/each}
             <Line
               points={project.line(series_data, series_data.line_direction)}
-              line_color={line_override?.color ?? color_fallback}
-              line_width={line_override?.width ?? line_style?.stroke_width ?? 2}
-              line_dash={line_override?.dash ?? line_style?.line_dash}
-              stroke-opacity={line_override?.opacity}
-              curve={line_style?.curve}
+              line_color={line.color}
+              line_width={line.width}
+              line_dash={line.dash}
+              stroke-opacity={line.opacity}
+              curve={series_data.line_style?.curve}
               area_color="transparent"
               line_tween={effective_line_tween}
             />
@@ -1827,7 +1830,9 @@
         x2: has_x2_points ? intrinsic_ranges.x2 : undefined,
         y2: has_y2_points ? intrinsic_ranges.y2 : undefined,
       }}
-      bind:selected_series_idx
+      bind:selected_series_idx={
+        () => active_series_idx, (value) => (selected_series_idx = value)
+      }
       series={assigned_series}
       children={controls_extra}
     />

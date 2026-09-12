@@ -409,8 +409,10 @@ export interface LegendItem {
   display_style: {
     symbol_type?: D3SymbolName
     symbol_color?: string
+    symbol_opacity?: number
     line_color?: string
     line_dash?: string
+    line_opacity?: number
     // Fill region styling
     fill_color?: string
     fill_opacity?: number

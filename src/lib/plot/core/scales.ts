@@ -233,10 +233,8 @@ export function create_scale(
   const type_name = get_scale_type_name(scale_type)
 
   if (type_name === `log`) {
-    // Clamp BOTH ends to the positive floor: panning shifts ranges linearly, so a log axis
-    // panned past zero can arrive with max <= 0 — an unclamped max makes every scale output
-    // (and invert) NaN, blanking the chart and polluting axis ranges. A clamped degenerate
-    // domain just renders flat and stays recoverable, so this one does not widen.
+    // Recover non-positive bounds without flooring valid small values. A fully invalid
+    // domain stays finite and recoverable, without widening a collapsed view.
     return scaleLog()
       .domain(positive_log_domain(min_val, max_val, 1))
       .range(output_range)
@@ -440,37 +438,28 @@ export const log_floor_scale = (
   return (val) => scale(Math.max(val, floor))
 }
 
-// Log domain floored at LOG_EPS, kept in the caller's direction. The upper bound is widened
-// from the *floored* lower bound, so a non-positive `lo` (explicit negative range bound,
-// all-zero data) cannot leave an inverted [LOG_EPS, hi <= 0] domain behind; `widen` above 1
-// additionally keeps equal bounds off a degenerate scale, which a plotted range wants and a
-// panned axis does not. Ordering first keeps a deliberately descending range from collapsing:
-// a size scale mapping the largest value to the smallest radius, or a descending log axis,
-// where flooring lo then widening hi against it turned [1000, 1] into [1000, 1000].
-const positive_log_domain = (lower: number, upper: number, widen = 1.1): Vec2 => {
+// Preserve positive bounds and direction. Replace a non-positive lower bound below the
+// positive upper bound, using LOG_EPS only when no smaller recovery value is needed.
+// `widen` expands collapsed domains for automatic ranges, but stays 1 for exact views.
+export const positive_log_domain = (lower: number, upper: number, widen = 1.1): Vec2 => {
   const descending = lower > upper
   const [low, high] = descending ? [upper, lower] : [lower, upper]
-  const floor = Math.max(low, math.LOG_EPS)
-  const ceiling = Math.max(high, floor * widen)
+  const floor =
+    low > 0
+      ? low
+      : high > 0
+        ? Math.min(math.LOG_EPS, Math.max(Number.MIN_VALUE, high / 10))
+        : math.LOG_EPS
+  const ceiling = high > floor ? high : floor * widen
   return descending ? [ceiling, floor] : [floor, ceiling]
 }
 
-export const nice_range_from_extent = (
-  { min, max, n_finite }: RunningExtent,
+export function nice_range_from_extent(
+  { min: min_ext, max: max_ext, n_finite }: RunningExtent,
   limits: [number | null, number | null],
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
-): Vec2 => nice_range(min, max, n_finite > 0, limits, scale_type, padding_factor, is_time)
-
-function nice_range(
-  min_ext: number | undefined,
-  max_ext: number | undefined,
-  has_points: boolean,
-  limits: [number | null, number | null],
-  scale_type: ScaleType,
-  padding_factor: number,
-  is_time: boolean,
 ): Vec2 {
   const [min, max] = limits
   let [data_min, data_max] = resolve_axis_range(
@@ -488,21 +477,17 @@ function nice_range(
   const snap_zero_max = can_snap_zero && max === null && max_ext === 0 && data_max === 0
 
   // Apply padding *only if* limits were NOT provided
-  if (min === null && max === null && has_points) {
+  if (min === null && max === null && n_finite > 0) {
     if (data_min !== data_max) {
       // Apply percentage padding based on scale type if there's a range
-      const span = data_max - data_min
-      if (is_time) {
-        const padding_ms = span * padding_factor
-        data_min -= padding_ms
-        data_max += padding_ms
-      } else if (type_name === `log`) {
-        const log_min = Math.log10(Math.max(data_min, math.LOG_EPS))
-        const log_max = Math.log10(Math.max(data_max, math.LOG_EPS))
+      if (!is_time && type_name === `log`) {
+        const [positive_min, positive_max] = positive_log_domain(data_min, data_max)
+        const log_min = Math.log10(positive_min)
+        const log_max = Math.log10(positive_max)
         const log_span = log_max - log_min
         data_min = 10 ** (log_min - log_span * padding_factor)
         data_max = 10 ** (log_max + log_span * padding_factor)
-      } else if (type_name === `arcsinh`) {
+      } else if (!is_time && type_name === `arcsinh`) {
         // Arcsinh: apply padding in arcsinh-transformed space
         const threshold = get_arcsinh_threshold(scale_type)
         const asinh_min = Math.asinh(data_min / threshold)
@@ -511,8 +496,8 @@ function nice_range(
         data_min = Math.sinh(asinh_min - asinh_span * padding_factor) * threshold
         data_max = Math.sinh(asinh_max + asinh_span * padding_factor) * threshold
       } else {
-        // Linear scale
-        const padding_abs = span * padding_factor
+        // Linear and time scales use padding in data units.
+        const padding_abs = (data_max - data_min) * padding_factor
         data_min -= padding_abs
         data_max += padding_abs
       }
@@ -521,7 +506,8 @@ function nice_range(
       data_min -= MS_PER_DAY
       data_max += MS_PER_DAY
     } else if (type_name === `log`) {
-      data_min = Math.max(math.LOG_EPS, data_min / 1.1) // 10% multiplicative padding
+      ;[data_min, data_max] = positive_log_domain(data_min, data_max, 1)
+      data_min = Math.max(Number.MIN_VALUE, data_min / 1.1)
       data_max *= 1.1
     } else if (type_name === `arcsinh`) {
       // Arcsinh: 10% padding in transformed space
@@ -570,9 +556,7 @@ export function generate_log_ticks(
   ticks_option?: TicksOption,
 ): number[] {
   if (Array.isArray(ticks_option)) return ticks_option
-  min = Math.max(min, math.LOG_EPS)
-  // Widen only a collapsed domain; a merely narrow one must not grow ticks past its max
-  if (max <= min) max = min * 1.1
+  ;[min, max] = positive_log_domain(Math.min(min, max), Math.max(min, max))
   const min_power = Math.floor(Math.log10(min))
   const max_power = Math.ceil(Math.log10(max))
   const in_range = (tick: number): boolean => tick >= min && tick <= max
@@ -606,7 +590,7 @@ export function get_tick_label(
 // Log domain for colour ramps, shared by every colour-scale builder so they agree on the
 // floor: non-positive bounds fall back to LOG_EPS (a domain entirely <= 0 collapses to one
 // colour instead of going NaN), positive bounds are kept however small (diffusivities, rates
-// sit far below the LOG_EPS axis floor) and in the caller's order (a descending range runs
+// sit far below LOG_EPS) and in the caller's order (a descending range runs
 // high-to-low). Equal bounds widen by 10% so the scale isn't degenerate.
 export const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
   const safe_lo = lower > 0 ? lower : math.LOG_EPS

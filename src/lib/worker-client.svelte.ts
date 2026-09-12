@@ -346,9 +346,11 @@ export function create_worker_client<
           .then(() => {
             // An abort/cancel in this tick must prevent queued main-thread work from starting.
             if (pending_by_key.get(request.key) !== request) return
-            const result = compute_sync(input, options, (progress) =>
-              report_progress(request, progress),
-            )
+            const result = compute_sync(input, options, (progress) => {
+              report_progress(request, progress)
+              // A synchronous progress boundary can stop work abandoned by its last caller.
+              if (!request.waiters.size) throw new Error(`${label} request has no subscribers`)
+            })
             request.resolve(result)
           })
           .catch((err: unknown) => request.reject(to_error(err)))
