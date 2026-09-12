@@ -519,17 +519,37 @@ describe(`export_trajectory_video`, () => {
     [`download failure`, `download-error`],
     [`recording timeout`, `timeout`],
     [`step failure`, `step-error`],
+    [`encoder startup failure`, `start-error`],
+    [`encoder startup timeout`, `start-timeout`],
+    [`recorder stop failure`, `stop-error`],
   ] as const)(`releases recording resources after %s`, async (_label, outcome) => {
+    vi.useFakeTimers()
     const recorder_stop = vi.fn()
+    let recording_started = false
     class MockMediaRecorder extends EventTarget {
       static isTypeSupported(): boolean {
         return true
       }
       state: MediaRecorder[`state`] = `inactive`
-      start = vi.fn(() => (this.state = `recording`))
+      start = vi.fn(() => {
+        this.state = `recording`
+        if (outcome === `start-timeout`) return
+        // Cold encoders can start after the entire short trajectory would have finished.
+        setTimeout(() => {
+          if (outcome === `start-error`) {
+            this.dispatchEvent(new ErrorEvent(`error`, { error: new Error(`encoder failed`) }))
+            return
+          }
+          recording_started = true
+          this.dispatchEvent(new Event(`start`))
+        }, 500)
+      })
       stop = vi.fn(() => {
-        this.state = `inactive`
+        if (!outcome.startsWith(`start-`))
+          expect(recording_started, `do not stop before the encoder starts`).toBe(true)
         recorder_stop()
+        if (outcome === `stop-error`) throw new Error(`stop failed`)
+        this.state = `inactive`
         if (outcome !== `timeout`) this.dispatchEvent(new Event(`stop`))
       })
     }
@@ -546,6 +566,12 @@ describe(`export_trajectory_video`, () => {
     const { canvas, renderer } = make_canvas_with_renderer()
     const view = { scene: {} as Scene, camera: {} as Camera }
     scene_registry.set(canvas, view)
+    const total_frames = outcome === `success` || outcome === `step-error` ? 2 : 0
+    if (total_frames) {
+      canvas.width = 300
+      canvas.height = 150
+      renderer.getSize.mockReturnValue(new Vector2(300, 150))
+    }
     let current_step = -1
     let rendered_step = -1
     const captured_steps: number[] = []
@@ -566,44 +592,59 @@ describe(`export_trajectory_video`, () => {
       capture_canvas as unknown as HTMLCanvasElement,
     )
     const expected_error = new Error(
-      outcome === `step-error` ? `step failed` : `download failed`,
+      outcome === `step-error`
+        ? `step failed`
+        : outcome === `stop-error`
+          ? `stop failed`
+          : `download failed`,
     )
     if (outcome === `download-error`) {
       vi.mocked(download).mockImplementationOnce(() => {
         throw expected_error
       })
     }
-    if (outcome === `timeout`) vi.useFakeTimers()
     const on_step = vi.fn((step: number) => {
+      canvas.width = 800
+      canvas.height = 600
+      renderer.getSize.mockReturnValue(new Vector2(800, 600))
       current_step = step
       if (outcome === `step-error` && step === 1) throw expected_error
     })
 
     const export_promise = export_trajectory_video(canvas, `test.webm`, {
       fps: 24,
-      total_frames: outcome === `success` || outcome === `step-error` ? 2 : 0,
+      total_frames,
       on_step,
+      resolution_multiplier: 2,
     })
+    const result = export_promise.catch((error: unknown) => error)
+    await vi.runAllTimersAsync()
     if (outcome === `success`) {
       await expect(export_promise).resolves.toBeUndefined()
       expect(renderer.render).toHaveBeenLastCalledWith(view.scene, view.camera)
-    } else if (outcome === `timeout`) {
-      const timeout_error = export_promise.catch((error: unknown) => error)
-      await vi.advanceTimersByTimeAsync(5000)
-      expect(await timeout_error).toEqual(
-        new Error(`Recording timeout - recorder did not stop`),
+    } else if (outcome === `timeout` || outcome === `start-timeout`) {
+      expect(await result).toEqual(
+        new Error(
+          `Recording timeout - recorder did not ${outcome === `timeout` ? `stop` : `start`}`,
+        ),
       )
+    } else if (outcome === `start-error`) {
+      await expect(export_promise).rejects.toThrow(`MediaRecorder error: encoder failed`)
     } else {
       await expect(export_promise).rejects.toThrow(expected_error)
     }
 
-    expect(recorder_stop).toHaveBeenCalledOnce()
+    expect(recorder_stop).toHaveBeenCalledTimes(outcome === `stop-error` ? 2 : 1)
+    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
     expect(capture_canvas.captureStream).toHaveBeenCalledWith(24)
     expect([capture_canvas.width, capture_canvas.height]).toEqual([800, 600])
     expect(captured_steps).toEqual(
-      outcome === `success` ? [0, 1] : outcome === `step-error` ? [0] : [],
+      outcome === `success` ? [0, 0, 1] : outcome === `step-error` ? [0, 0] : [],
     )
-    expect(tracks[0].requestFrame).toHaveBeenCalledTimes(captured_steps.length)
+    expect(tracks[0].requestFrame).toHaveBeenCalledTimes(
+      outcome === `success` ? 2 : outcome === `step-error` ? 1 : 0,
+    )
     for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
   })
 })

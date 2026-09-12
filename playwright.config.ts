@@ -42,11 +42,9 @@ export default {
       ],
     },
   },
-  // Software WebGPU spreads one canvas over several SwiftShader threads, so a worker per vCPU
-  // starves the render path: shard 3/4 took 6.1 min with 4 failures at 4 workers, 3.3 min with
-  // 1 at 2 workers. A real GPU allows more.
-  // Production pages need no Vite transforms alongside SwiftShader, freeing one worker.
-  workers: is_ci ? (e2e_mode === `preview` ? 3 : 2) : 16,
+  // Software GPU browsers compete for a runner's CPU and memory. Keep each CI shard serial;
+  // the shards still run in parallel on separate runners.
+  workers: is_ci ? 1 : 16,
   // Shard by test, not by file: structure.test.ts holds ~130 tests and most files 1-4, so
   // file-level sharding would pile the big ones onto one runner. Ordering-sensitive files opt
   // into test.describe.configure({ mode: `serial` }).

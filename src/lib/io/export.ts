@@ -486,6 +486,45 @@ export function get_ffmpeg_conversion_command(input_filename: string): string {
   return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
 }
 
+// Recorder state changes synchronously; its encoder starts and stops asynchronously.
+function run_recorder_action(
+  recorder: MediaRecorder,
+  action: 'start' | 'stop',
+  after_action?: () => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const listeners = new AbortController()
+    const finish = (error?: Error): void => {
+      clearTimeout(timeout)
+      listeners.abort()
+      if (error) reject(error)
+      else resolve()
+    }
+    const timeout = setTimeout(
+      () => finish(new Error(`Recording timeout - recorder did not ${action}`)),
+      5000,
+    )
+    recorder.addEventListener(action, () => finish(), { signal: listeners.signal })
+    recorder.addEventListener(
+      `error`,
+      (event) => {
+        const message =
+          event instanceof ErrorEvent && event.error instanceof Error
+            ? event.error.message
+            : event.type
+        finish(new Error(`MediaRecorder error: ${message}`))
+      },
+      { signal: listeners.signal },
+    )
+    try {
+      recorder[action]()
+      after_action?.()
+    } catch (error) {
+      finish(to_error(error))
+    }
+  })
+}
+
 // Export trajectory video as WebM while advancing through the requested frames.
 // Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
 export async function export_trajectory_video(
@@ -524,14 +563,19 @@ export async function export_trajectory_video(
   let orig_size: Vector2 | undefined
   let recorder: MediaRecorder | undefined = undefined
   let stream: MediaStream | undefined
-  const cleanup_stream = (): void => {
-    const active_stream = stream
-    stream = undefined
-    for (const track of active_stream?.getTracks() ?? []) track.stop()
-  }
   const chunks: Blob[] = []
 
   try {
+    const prepare_step = async (idx: number): Promise<void> => {
+      on_progress?.((idx / total_frames) * 100)
+      await on_step?.(idx)
+      // Threlte resizes the canvas and updates the scene in its animation loop.
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      )
+    }
+    // Snapshot the mounted dimensions, not the canvas's initial 300 x 150 drawing buffer.
+    if (total_frames > 0) await prepare_step(0)
     if (resolution_multiplier !== 1 && renderer) {
       orig_pixel_ratio = renderer.getPixelRatio()
       orig_size = renderer.getSize(new Vector2())
@@ -551,20 +595,14 @@ export async function export_trajectory_video(
     capture_canvas.height = canvas.height
     const context = capture_canvas.getContext(`2d`)
     if (!context) throw new Error(`Canvas 2D context not available for video export`)
-    const capture_step = async (idx: number): Promise<void> => {
-      on_progress?.((idx / total_frames) * 100)
-      await on_step?.(idx)
-      // Let reactive scene updates reach the renderer before copying its drawing buffer.
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      )
+    const copy_frame = (): void => {
       const view = scene_registry.get(canvas)
       if (renderer && view) renderer.render(view.scene, view.camera)
       context.clearRect(0, 0, capture_canvas.width, capture_canvas.height)
       context.drawImage(canvas, 0, 0)
     }
     // A stream captures its initial canvas too; never give it an unpainted first frame.
-    if (total_frames > 0) await capture_step(0)
+    if (total_frames > 0) copy_frame()
     stream = capture_canvas.captureStream(fps)
     recorder = new MediaRecorder(stream, {
       mimeType: `video/webm;codecs=vp9`,
@@ -579,8 +617,14 @@ export async function export_trajectory_video(
       requestFrame?: () => void
     }
 
-    // Start recording
-    recorder.start()
+    // Repaint once the stream is listening, then wait for the encoder's first frame. A cold
+    // encoder can otherwise start after a short trajectory has already called stop().
+    await run_recorder_action(recorder, `start`, () => {
+      if (total_frames > 0) {
+        copy_frame()
+        track.requestFrame?.()
+      }
+    })
 
     const frame_duration = 1000 / fps
 
@@ -588,8 +632,11 @@ export async function export_trajectory_video(
     for (let idx = 0; idx < total_frames; idx++) {
       const frame_start = performance.now()
 
-      if (idx > 0) await capture_step(idx)
-      track.requestFrame?.()
+      if (idx > 0) {
+        await prepare_step(idx)
+        copy_frame()
+        track.requestFrame?.()
+      }
 
       // Wait for remaining frame time to maintain consistent FPS
       const elapsed = performance.now() - frame_start
@@ -598,51 +645,22 @@ export async function export_trajectory_video(
         await new Promise((resolve) => setTimeout(resolve, remaining))
       }
     }
+    await run_recorder_action(recorder, `stop`)
+    const blob = new Blob(chunks, { type: `video/webm` })
+    download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
+    on_progress?.(100)
   } catch (error) {
     if (recorder && recorder.state !== `inactive`) recorder.stop()
-    cleanup_stream()
     throw error
   } finally {
-    // Restore original renderer settings
-    if (orig_pixel_ratio !== undefined && orig_size && renderer) {
-      renderer.setPixelRatio(orig_pixel_ratio)
-      renderer.setSize(orig_size.width, orig_size.height, false)
+    try {
+      // Restore original renderer settings after the encoder has finished reading frames.
+      if (orig_pixel_ratio !== undefined && orig_size && renderer) {
+        renderer.setPixelRatio(orig_pixel_ratio)
+        renderer.setSize(orig_size.width, orig_size.height, false)
+      }
+    } finally {
+      for (const track of stream?.getTracks() ?? []) track.stop()
     }
   }
-
-  // Finalize recording. A promise settles once, so late `error`/timeout callbacks are no-ops.
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  const stopped = new Promise<void>((resolve, reject) => {
-    recorder.addEventListener(`stop`, () => {
-      try {
-        const blob = new Blob(chunks, { type: `video/webm` })
-        download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
-        on_progress?.(100)
-        resolve()
-      } catch (error) {
-        reject(to_error(error))
-      }
-    })
-    recorder.addEventListener(`error`, (event) => {
-      const error_msg =
-        event instanceof ErrorEvent && event.error instanceof Error
-          ? event.error.message
-          : event.type
-      reject(new Error(`MediaRecorder error: ${error_msg}`))
-    })
-    // A recorder that never fires `stop` would otherwise leave the export pending forever
-    timeout = setTimeout(
-      () => reject(new Error(`Recording timeout - recorder did not stop`)),
-      5000,
-    )
-    try {
-      recorder.stop()
-    } catch (error) {
-      reject(to_error(error))
-    }
-  })
-  return stopped.finally(() => {
-    clearTimeout(timeout)
-    cleanup_stream()
-  })
 }
