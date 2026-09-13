@@ -144,10 +144,20 @@ export const worker_run = (
   port.addEventListener(`message`, (event: MessageEvent<RunPortReply>) => {
     const reply = event.data
     if (`properties` in reply) {
-      if (!properties.complete) {
+      if (properties.complete) return
+      let errors: unknown[] | undefined
+      try {
         properties.push(reply.properties)
-        if (reply.complete) properties.finish()
+      } catch (error) {
+        errors = [error]
       }
+      try {
+        if (reply.complete) properties.finish()
+      } catch (error) {
+        ;(errors ??= []).push(error)
+      }
+      if (errors?.length === 1) throw errors[0]
+      if (errors) throw new AggregateError(errors, `Worker property notifications failed`)
       return
     }
     const request = pending.get(reply.id)
@@ -209,6 +219,10 @@ export const worker_run = (
 
   return {
     ...fields,
+    // Keep the snapshot unproxied when Svelte binds the run to reactive state.
+    get preview() {
+      return summary.preview
+    },
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)
       if (disposed_reason) return Promise.reject(disposed_reason)

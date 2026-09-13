@@ -18,6 +18,7 @@ import {
 } from '$lib/structure/atom-properties'
 import {
   structure_host_tool,
+  prediction_from_json,
   type StructureToolProps,
   type StructureToolRun,
   type StructureToolViewProps,
@@ -2342,9 +2343,30 @@ describe(`source acquisition`, () => {
   })
 })
 
+const mock_prediction_export = () => {
+  const download = vi.fn<(data: string, filename: string, mime_type: string) => void>()
+  vi.stubGlobal(`download`, download)
+  return async (prediction: ComponentProps<typeof Structure>[`prediction`]) => {
+    // Export rows are created on opening; exercise the same control as the user.
+    expect(document.querySelector(`[title="Download Export prediction"]`)).toBeNull()
+    doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
+    await tick()
+    const export_button = doc_query<HTMLButtonElement>(`[title="Download Export prediction"]`)
+    expect(export_button.disabled).toBe(false)
+    export_button.click()
+    expect(download).toHaveBeenCalledExactlyOnceWith(
+      expect.any(String),
+      `prediction-7.json`,
+      `application/json`,
+    )
+    expect(prediction_from_json(download.mock.calls[0][0])).toEqual(prediction)
+  }
+}
+
 test.each([`replace`, `mutate`, `restart`] as const)(
   `imported prediction ownership after %s`,
   async (action) => {
+    const check_export = mock_prediction_export()
     let host: StructureToolProps | undefined
     if (action === `restart`)
       structure_host_tool.component = (_anchor, props) => {
@@ -2381,7 +2403,7 @@ test.each([`replace`, `mutate`, `restart`] as const)(
     expect(state.volumetric_data).toHaveLength(1)
     expect(state.cell_type).toBe(`original`)
     expect(state.supercell_scaling).toBe(`1x1x1`)
-    expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
+    await check_export(state.prediction)
     if (action === `mutate` && state.structure)
       state.structure.sites[0].species[0].element = `H`
     else state.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
@@ -2400,6 +2422,7 @@ test.each([`replace`, `mutate`, `restart`] as const)(
 )
 
 test(`import survives a synchronous restart from the previous run's abort listener`, async () => {
+  const check_export = mock_prediction_export()
   const props = $state<ComponentProps<typeof Structure>>({
     structure: make_crystal(1, [{ element: `Cu`, abc: [0, 0, 0] }]),
     show_controls: `always`,
@@ -2423,7 +2446,7 @@ test(`import survives a synchronous restart from the previous run's abort listen
   }
   await tick()
   expect(props.volumetric_data).toHaveLength(1)
-  expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
+  await check_export(props.prediction)
   if (!restarted) throw new Error(`Abort listener did not restart`)
   expect(restarted.structure).toEqual(input)
   expect(restarted.signal.aborted).toBe(false)

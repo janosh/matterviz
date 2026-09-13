@@ -585,19 +585,19 @@
   {#each axes_config as { key, color, axis, ticks, tick_label_pos, axis_label_pos, line_geom, tick_geoms, grid_geoms } (key)}
     <!-- Main axis line -->
     <T.Line>
-      <T is={line_geom} />
+      <T is={line_geom} dispose={false} />
       <T.LineBasicMaterial {color} linewidth={2} />
     </T.Line>
     <!-- Ticks and grid -->
     {#each ticks as tick_val, tick_idx (tick_val)}
       <T.Line>
-        <T is={tick_geoms[tick_idx]} />
+        <T is={tick_geoms[tick_idx]} dispose={false} />
         <T.LineBasicMaterial {color} />
       </T.Line>
       {#if display.show_grid !== false}
         {#each grid_geoms[tick_idx] as grid_geom, grid_idx (grid_idx)}
           <T.Line>
-            <T is={grid_geom} />
+            <T is={grid_geom} dispose={false} />
             <T.LineBasicMaterial color="#888" opacity={0.4} transparent />
           </T.Line>
         {/each}

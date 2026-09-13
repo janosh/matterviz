@@ -64,29 +64,44 @@ describe(`ToggleMenu`, () => {
       },
     )
 
-    it(`portals the dropdown and right-aligns it to the trigger`, async () => {
-      mount_menu()
-      await tick()
+    it.each([
+      [240, 20, 140, 46],
+      [0, 20, 8, 46],
+      [innerWidth - 60, 20, innerWidth - 168, 46],
+      [240, innerHeight - 42, 140, innerHeight - 226],
+    ])(
+      `positions the portaled dropdown at trigger (%s, %s)`,
+      async (left, top, expected_left, expected_top) => {
+        mount_menu()
+        await tick()
 
-      const summary = doc_query(`summary`)
-      const menu = doc_query(`.column-menu`)
-      expect(menu?.parentElement).toBe(document.body)
-      const trigger_rect_spy = vi
-        .spyOn(summary, `getBoundingClientRect`)
-        .mockReturnValue(new DOMRect(240, 20, 60, 22))
-      const menu_rect_spy = vi
-        .spyOn(menu, `getBoundingClientRect`)
-        .mockReturnValue(new DOMRect(0, 0, 160, 180))
-      await fire(summary)
-      await fire(summary)
-      await vi.waitFor(() => {
-        expect(menu.style.left).toBe(`140px`)
-        expect(menu.style.top).toBe(`46px`)
-        expect(menu.style.visibility).toBe(`visible`)
-      })
-      trigger_rect_spy.mockRestore()
-      menu_rect_spy.mockRestore()
-    })
+        const summary = doc_query(`summary`)
+        const menu = doc_query(`.column-menu`)
+        expect(menu?.parentElement).toBe(document.body)
+        const trigger_rect_spy = vi
+          .spyOn(summary, `getBoundingClientRect`)
+          .mockReturnValue(new DOMRect(left, top, 60, 22))
+        const menu_rect_spy = vi
+          .spyOn(menu, `getBoundingClientRect`)
+          .mockReturnValue(new DOMRect(0, 0, 160, 180))
+        await fire(summary)
+        await fire(summary)
+        await vi.waitFor(() => {
+          expect(menu.style.left).toBe(`${expected_left}px`)
+          expect(menu.style.top).toBe(`${expected_top}px`)
+          expect(menu.hidden).toBe(false)
+          expect(getComputedStyle(menu).visibility).not.toBe(`hidden`)
+        })
+        trigger_rect_spy.mockReturnValue(new DOMRect(260, 30, 60, 22))
+        window.dispatchEvent(new Event(`resize`))
+        await vi.waitFor(() => {
+          expect(menu.style.left).toBe(`160px`)
+          expect(menu.style.top).toBe(`56px`)
+        })
+        trigger_rect_spy.mockRestore()
+        menu_rect_spy.mockRestore()
+      },
+    )
 
     it(`keeps panel open on presses inside the portaled dropdown`, async () => {
       mount_menu()
@@ -325,7 +340,15 @@ describe(`ToggleMenu`, () => {
 
   describe(`Reset functionality`, () => {
     const mount_bound_menu = () => {
-      const state = $state({ columns: make_columns().slice(0, 2) })
+      let columns = $state.raw(make_columns().slice(0, 2))
+      const state = {
+        get columns() {
+          return columns
+        },
+        set columns(value: Column[]) {
+          columns = value
+        },
+      }
       mount(ToggleMenu, {
         target: document.body,
         props: bind_props({ column_panel_open: true }, state),

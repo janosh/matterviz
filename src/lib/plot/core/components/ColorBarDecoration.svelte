@@ -25,7 +25,7 @@
   onmouseenter={() => decoration.tween.set_locked(true)}
   onmouseleave={() => decoration.tween.set_locked(false)}
   class="colorbar-wrapper"
-  role="img"
+  role="group"
   aria-label="Color scale legend"
   {...decoration.data_attrs}
   {...rest}

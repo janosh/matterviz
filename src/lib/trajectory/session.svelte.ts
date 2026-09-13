@@ -193,9 +193,19 @@ export function create_trajectory_session(
   function schedule_prefetch(run: TrajectoryRun, from_idx: number): void {
     if (scrubbing || prefetching) return
     cancel_prefetch()
+    // Do not decode a speculative frame that cannot coexist with the displayed frame.
+    // Besides immediately evicting useful data, large replies block the main thread and GC.
+    const frame_atoms =
+      cache.get(from_idx)?.structure.sites.length ?? run.preview.structure.sites.length
+    const prefetch_limit = Math.min(
+      2,
+      cache_max_frames - 1,
+      Math.floor(cache_max_atoms / frame_atoms) - 1,
+    )
+    if (prefetch_limit < 1) return
     prefetch_timer = setTimeout(() => {
       prefetch_timer = undefined
-      for (const ahead of [1, 2]) {
+      for (let ahead = 1; ahead <= prefetch_limit; ahead++) {
         const idx = from_idx + ahead
         if (idx >= run.frame_count || cache.has(idx) || cache_owner !== run) continue
         try {
@@ -349,13 +359,18 @@ export function create_trajectory_session(
   // Any frame, for export: cached when available, otherwise read through the run without
   // disturbing the displayed frame. A run swap mid-export must not emit the old run's frames
   // into the new one's file, so the frame is only returned while the run is still current.
-  async function resolve_frame(frame_idx: number): Promise<TrajectoryFrame | null> {
+  async function resolve_frame(
+    frame_idx: number,
+    signal?: AbortSignal,
+  ): Promise<TrajectoryFrame | null> {
+    signal?.throwIfAborted()
     const run = inputs.run()
     if (!run || frame_idx < 0 || frame_idx >= run.frame_count) return null
     claim_cache(run)
     const cached = cache_get(frame_idx)
     if (cached) return cached
-    const frame = await run.read_frame(frame_idx)
+    const frame = await run.read_frame(frame_idx, signal)
+    signal?.throwIfAborted()
     if (inputs.run() !== run) return null
     cache_put(run, frame_idx, frame) // so re-exporting a range does not re-parse it
     return frame

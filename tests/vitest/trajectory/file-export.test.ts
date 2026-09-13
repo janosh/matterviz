@@ -19,7 +19,7 @@ import {
 import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { unzipSync } from 'fflate'
-import { mount, tick } from 'svelte'
+import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, make_crystal, with_property_rows } from '../setup'
@@ -86,9 +86,9 @@ describe(`poscar_frame_filename`, () => {
 describe(`trajectory_frame_to_extxyz_str`, () => {
   // Frame-level fields (step, energy, …) live outside the structure the single-structure
   // exporter sees; scalars/booleans join the comment, arrays/strings/non-finites do not.
-  test(`merges frame scalars into the comment and skips the rest`, () => {
-    const comment = trajectory_frame_to_extxyz_str(
-      make_frame(5, two_sites, {
+  test.each([0, 2])(`merges frame scalars into the comment for %i sites`, (site_count) => {
+    const lines = trajectory_frame_to_extxyz_str(
+      make_frame(5, two_sites.slice(0, site_count), {
         energy: -11.25,
         force_max: 0.1,
         temperature: 300,
@@ -98,7 +98,9 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
         stress: [1, 2, 3, 4, 5, 6],
         label: `some string`,
       }),
-    ).split(`\n`)[1]
+    ).split(`\n`)
+    expect(lines).toHaveLength(site_count + 2)
+    const comment = lines[1]
     expect(comment).toContain(`Properties=species:S:1:pos:R:3`)
     expect(comment).toContain(`step=5`)
     expect(comment).toContain(`energy=-11.25`)
@@ -152,7 +154,7 @@ describe(`serialize_extxyz_frame_range`, () => {
     const on_progress = vi.fn()
     const async_resolver = make_async_resolver()
     const text = await serialize_extxyz_frame_range(0, 2, async_resolver, on_progress)
-    expect(async_resolver.mock.calls).toEqual([[0], [1], [2]])
+    expect(async_resolver.mock.calls.map(([idx]) => idx)).toEqual([0, 1, 2])
     expect(on_progress.mock.calls).toEqual([
       [1, 3],
       [2, 3],
@@ -242,6 +244,39 @@ const plot_metadata: TrajectoryMetadata[] = [
 const run_with_properties = trajectory_from_frames(frames, { properties: plot_metadata })
 const run_without_properties = with_property_rows(trajectory, [])
 
+test.each([`extXYZ`, `POSCAR`, `properties`] as const)(
+  `%s export stops before reading another frame after cancellation`,
+  async (format) => {
+    const controller = new AbortController()
+    const { signal } = controller
+    const cancelled = new Error(`cancelled`)
+    const resolve_frame = vi.fn(async (idx: number, read_signal?: AbortSignal) => {
+      expect(read_signal).toBe(signal)
+      if (idx === 1) controller.abort(cancelled)
+      return frames[idx]
+    })
+    const write = {
+      extXYZ: () => serialize_extxyz_frame_range(0, 2, resolve_frame, undefined, signal),
+      POSCAR: () =>
+        create_poscar_frame_range_zip(0, 2, resolve_frame, `run`, 3, undefined, signal),
+      properties: () =>
+        collect_frame_property_rows(
+          0,
+          2,
+          resolve_frame,
+          run_without_properties,
+          undefined,
+          signal,
+        ),
+    }[format]
+    await expect(write()).rejects.toBe(cancelled)
+    expect(resolve_frame.mock.calls.map(([idx]) => idx)).toEqual([0, 1])
+    resolve_frame.mockClear()
+    await expect(write()).rejects.toBe(cancelled)
+    expect(resolve_frame).not.toHaveBeenCalled()
+  },
+)
+
 describe(`collect_frame_property_rows`, () => {
   test(`one row per frame carrying the extractor's numbers`, async () => {
     const on_progress = vi.fn()
@@ -280,7 +315,7 @@ describe(`collect_frame_property_rows`, () => {
       const { rows, source } = await collect_frame_property_rows(0, 2, resolver_spy, run)
       expect(source).toBe(`frames`)
       expect(rows).toHaveLength(3)
-      expect(resolver_spy.mock.calls).toEqual([[0], [1], [2]])
+      expect(resolver_spy.mock.calls.map(([idx]) => idx)).toEqual([0, 1, 2])
       expect(rows.map(({ properties }) => properties.energy)).toEqual([-10.5, -11.25, -11.5])
     },
   )
@@ -403,10 +438,13 @@ describe(`TrajectoryExportPane property export`, () => {
     vi.unstubAllGlobals()
   })
 
-  const open_pane = (props: Record<string, unknown>) =>
+  const open_pane = (props: ComponentProps<typeof TrajectoryExportPane>) =>
     mount(TrajectoryExportPane, {
       target: document.body,
-      props: { export_pane_open: true, filename: `run.extxyz`, ...props },
+      props: Object.defineProperties(
+        { export_pane_open: true, filename: `run.extxyz` },
+        Object.getOwnPropertyDescriptors(props),
+      ),
     })
 
   const click = async (aria_label: string) => {
@@ -546,42 +584,193 @@ describe(`TrajectoryExportPane property export`, () => {
     },
   )
 
-  test(`downloads the whole frame range as CSV`, async () => {
-    const state = fromStore(writable({ ...trajectory, frame_count: 1 }))
-    mount(TrajectoryExportPane, {
-      target: document.body,
-      props: {
-        export_pane_open: true,
-        filename: `run.extxyz`,
+  test.each([
+    [`success`, ``],
+    [`failure`, `recording failed`],
+    [`restore-null`, `Trajectory frame 2 is unavailable`],
+    [`restore-error`, `restore failed`],
+    [`cancel`, ``],
+    [`cancel-read`, ``],
+    [`unmount`, ``],
+    [`unmount-restore`, ``],
+    [`run-swap`, ``],
+  ] as const)(
+    `video export handles %s without downloading cancelled output`,
+    async (outcome, error_message) => {
+      vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+      const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+      const wrapper = document.createElement(`div`)
+      wrapper.append(document.createElement(`canvas`))
+      const state = fromStore(writable(trajectory))
+      let current_step_idx = 2
+      const read = Promise.withResolvers<undefined>()
+      const restore = Promise.withResolvers<undefined>()
+      const on_step_change = vi.fn((idx: number) => {
+        current_step_idx = idx
+      })
+      const resolve_frame = vi.fn(async (idx: number, signal?: AbortSignal) => {
+        if (idx === 0 && signal) await read.promise
+        if (idx === 2) {
+          await restore.promise
+          if (outcome === `restore-null`) return null
+          if (outcome === `restore-error`) throw new Error(error_message)
+        }
+        return frames[idx]
+      })
+      let export_signal: AbortSignal | undefined
+      vi.mocked(io_export.export_trajectory_video).mockImplementationOnce(
+        async (_canvas, filename, { signal, on_step, on_finish } = {}) => {
+          export_signal = signal
+          try {
+            await on_step?.(0, signal)
+            if (outcome === `failure`) throw new Error(`recording failed`)
+            if ([`cancel`, `cancel-read`, `unmount`, `run-swap`].includes(outcome))
+              await new Promise<void>((_resolve, reject) => {
+                signal?.addEventListener(
+                  `abort`,
+                  () => reject(new DOMException(`cancelled`, `AbortError`)),
+                  { once: true },
+                )
+              })
+          } finally {
+            await on_finish?.()
+          }
+          signal?.throwIfAborted()
+          download(new Blob(), filename, `video/webm`)
+        },
+      )
+      const pane = open_pane({
         get run() {
           return state.current
         },
-      },
-    })
-    await tick()
-    const reset_selector = `button[aria-label="Reset frame range to defaults"]`
-    expect(document.querySelector(reset_selector)).toBeNull()
-    state.current = trajectory
-    await tick()
-    expect(document.querySelector(reset_selector)).toBeNull()
+        wrapper,
+        current_step_idx,
+        on_step_change,
+        resolve_frame,
+      })
+      await click(`Download WebM`)
+      await vi.waitFor(() => expect(resolve_frame).toHaveBeenCalledWith(0, export_signal))
+      const export_settled = vi.fn()
+      const export_result = vi.mocked(io_export.export_trajectory_video).mock.results[0]
+      void Promise.resolve(export_result.value).then(export_settled, export_settled)
+      expect(current_step_idx).toBe(2)
+      if (outcome === `cancel-read`) await click(`Cancel export`)
+      read.resolve(undefined)
+      if (outcome !== `cancel-read`) await vi.waitFor(() => expect(current_step_idx).toBe(0))
+      if (outcome === `cancel`) await click(`Cancel export`)
+      if (outcome === `unmount`) await unmount(pane)
+      if (outcome === `run-swap`) {
+        state.current = trajectory_from_frames(frames.slice(0, 1))
+        await tick()
+        await vi.waitFor(() => expect(export_signal?.aborted).toBe(true))
+        expect(resolve_frame).toHaveBeenCalledOnce()
+        expect(current_step_idx).toBe(0)
+      } else if (outcome !== `unmount`) {
+        await vi.waitFor(() =>
+          expect(resolve_frame.mock.calls.some(([idx]) => idx === 2)).toBe(true),
+        )
+        const restore_signal = resolve_frame.mock.calls.find(([idx]) => idx === 2)?.[1]
+        expect(restore_signal).toBeInstanceOf(AbortSignal)
+        expect(restore_signal).not.toBe(export_signal)
+        expect(restore_signal?.aborted).toBe(false)
+        expect(current_step_idx).toBe(outcome === `cancel-read` ? 2 : 0)
+        if (outcome === `unmount-restore`) {
+          await unmount(pane)
+          expect(restore_signal?.aborted).toBe(true)
+        } else {
+          restore.resolve(undefined)
+          await vi.waitFor(() => expect(current_step_idx).toBe(2))
+        }
+      }
+      await vi.waitFor(() => expect(export_settled).toHaveBeenCalledOnce())
+      expect(download).toHaveBeenCalledTimes(outcome === `success` ? 1 : 0)
+      if (outcome.startsWith(`unmount`)) {
+        expect(current_step_idx).toBe(0)
+        expect(resolve_frame).toHaveBeenCalledTimes(outcome === `unmount` ? 1 : 2)
+        expect(on_step_change.mock.calls.map(([idx]) => idx)).toEqual([2, 0])
+      }
+      if (outcome === `cancel-read`) expect(on_step_change).not.toHaveBeenCalledWith(0)
+      if (!outcome.startsWith(`unmount`)) {
+        await vi.waitFor(() =>
+          expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
+        )
+        expect(document.querySelector(`.error-message`)?.textContent ?? ``).toBe(
+          error_message ? `⚠️ ${error_message}` : ``,
+        )
+        resolve_frame.mockImplementation(async (idx) => frames[idx])
+        await click(`Download WebM`)
+        await vi.waitFor(() =>
+          expect(io_export.export_trajectory_video).toHaveBeenCalledTimes(2),
+        )
+        await vi.waitFor(() =>
+          expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
+        )
+      }
+      error_spy.mockRestore()
+    },
+  )
 
-    const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
-    start_input.value = `1`
-    start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
-    doc_query<HTMLButtonElement>(reset_selector).click()
-    await tick()
-    expect(document.querySelector(reset_selector)).toBeNull()
+  test.each([`extXYZ`, `POSCAR ZIP`, `CSV`, `JSON`])(
+    `cancelled %s exports never download`,
+    async (format) => {
+      const read = Promise.withResolvers<undefined>()
+      const resolve_frame = vi.fn((idx: number) => read.promise.then(() => frames[idx]))
+      open_pane({ run: run_without_properties, resolve_frame })
+      await click(`Download ${format}`)
+      await vi.waitFor(() => expect(resolve_frame).toHaveBeenCalledOnce())
+      await click(`Cancel export`)
+      read.resolve(undefined)
+      await vi.waitFor(() =>
+        expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
+      )
+      expect(resolve_frame).toHaveBeenCalledOnce()
+      expect(download).not.toHaveBeenCalled()
+      expect(document.querySelector(`.error-message`)).toBeNull()
+    },
+  )
 
-    await click(`Download CSV`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    const [, name, mime] = vi.mocked(download).mock.calls[0]
-    expect(name).toBe(`run_frames_0-2.csv`)
-    expect(mime).toBe(`text/csv`)
-    const lines = downloaded_text()
-    expect(lines).toHaveLength(4)
-    expect(lines[0]).toContain(`energy (eV)`)
-  })
+  // Indexed runs must use resolve_frame to export every frame, not their in-memory window.
+  test.each([
+    [`stored properties`, trajectory, []],
+    [`indexed frames`, run_without_properties, [0, 1, 2]],
+  ] as const)(
+    `downloads the whole frame range as CSV from %s after resetting the range`,
+    async (_source, run, expected_reads) => {
+      const resolve_frame = make_async_resolver()
+      const state = fromStore(writable({ ...run, frame_count: 1 }))
+      open_pane({
+        get run() {
+          return state.current
+        },
+        resolve_frame,
+      })
+      await tick()
+      const reset_selector = `button[aria-label="Reset frame range to defaults"]`
+      expect(document.querySelector(reset_selector)).toBeNull()
+      state.current = run
+      await tick()
+      expect(document.querySelector(reset_selector)).toBeNull()
+
+      const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
+      start_input.value = `1`
+      start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      doc_query<HTMLButtonElement>(reset_selector).click()
+      await tick()
+      expect(document.querySelector(reset_selector)).toBeNull()
+
+      await click(`Download CSV`)
+      await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+      const [, name, mime] = vi.mocked(download).mock.calls[0]
+      expect(name).toBe(`run_frames_0-2.csv`)
+      expect(mime).toBe(`text/csv`)
+      expect(resolve_frame.mock.calls.map(([idx]) => idx)).toEqual(expected_reads)
+      const lines = downloaded_text()
+      expect(lines).toHaveLength(4)
+      expect(lines[0]).toContain(`energy (eV)`)
+      expect(lines.slice(1).map((line) => line.split(`,`)[0])).toEqual([`0`, `1`, `2`])
+    },
+  )
 
   // The phonon explorer E2E drives this exact path (End Frame → Download extXYZ) to compare
   // frames, so the button name and the range it honours are a contract, not a detail
@@ -614,21 +803,5 @@ describe(`TrajectoryExportPane property export`, () => {
       -10.5, -11.25, -11.5,
     ])
     expect(download).not.toHaveBeenCalled()
-  })
-
-  // The pane must route through resolve_frame, not `trajectory.frames`, or a streamed
-  // trajectory would export a 1-row CSV for a 3-frame run
-  test(`exports every frame of an indexed trajectory, not its in-memory window`, async () => {
-    const resolve_frame = make_async_resolver()
-    open_pane({ run: run_without_properties, resolve_frame })
-    await click(`Download CSV`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    expect(resolve_frame.mock.calls).toEqual([[0], [1], [2]])
-    expect(vi.mocked(download).mock.calls[0][1]).toBe(`run_frames_0-2.csv`)
-    expect(
-      downloaded_text()
-        .slice(1)
-        .map((line) => line.split(`,`)[0]),
-    ).toEqual([`0`, `1`, `2`])
   })
 })

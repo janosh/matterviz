@@ -71,6 +71,24 @@ const hover_to_show_tooltip = async (
 const legend_item = (plot: Locator, label: string) =>
   plot.locator(`.legend-item >> text=${label}`).locator(`..`)
 
+test(`interactive axis labels hide export text and switch properties`, async ({ page }) => {
+  await page.goto(`/plot/scatter-plot`, { waitUntil: `networkidle` })
+  for (const axis of [`x`, `y`]) {
+    const label = page.locator(`.interactive-axis-label.${axis}-label`).first()
+    const export_label = page.locator(`text.${axis}-label[data-export-only]`).first()
+    await expect(export_label).toHaveCSS(`display`, `none`)
+    await expect(label).toHaveCSS(`display`, `flex`)
+    const trigger = label.getByRole(`button`)
+    await trigger.click()
+    const option = page.locator(`.portal-select-dropdown [aria-selected="false"]`).first()
+    const selected_text = (await option.textContent())?.trim()
+    if (!selected_text) throw new Error(`Missing axis property label`)
+    await option.click()
+    await expect(trigger).toContainText(selected_text)
+    await expect(export_label).toHaveCSS(`display`, `none`)
+  }
+})
+
 test.describe(`ScatterPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
@@ -643,6 +661,25 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const scatter_plot = page.locator(`#legend-multi-default.scatter`)
     const markers = scatter_plot.locator(`path.marker`)
     await expect(markers).toHaveCount(4)
+    // Host button styles must not shrink fullscreen relative to the gear toggle.
+    await page.addStyleTag({ content: `button { font-size: 13px; }` })
+    for (const suffix of [``, ` svg`]) {
+      const gear = await require_bbox(scatter_plot.locator(`.pane-toggle${suffix}`))
+      const fullscreen = await require_bbox(scatter_plot.locator(`.fullscreen-btn${suffix}`))
+      expect([fullscreen.width, fullscreen.height]).toEqual([gear.width, gear.height])
+    }
+    const fullscreen_button = scatter_plot.locator(`.fullscreen-btn`)
+    for (const active of [false, true]) {
+      await expect(fullscreen_button).toHaveAttribute(`aria-pressed`, String(active))
+      const gear = await require_bbox(scatter_plot.locator(`.pane-toggle svg path`))
+      const glyph = await require_bbox(fullscreen_button.locator(`svg path`))
+      // Square glyphs read larger: keep them 4–8% smaller than the rounded gear.
+      for (const dim of [`width`, `height`] as const) {
+        expect(glyph[dim] / gear[dim]).toBeLessThan(0.96)
+        expect(glyph[dim] / gear[dim]).toBeGreaterThan(0.92)
+      }
+      await fullscreen_button.click()
+    }
     const { toggle, pane } = await open_plot_controls(scatter_plot)
 
     const show_points_checkbox = pane.getByLabel(`Show points`)

@@ -1132,19 +1132,32 @@ describe(`ScatterPlot`, () => {
     expect(on_plot_click).not.toHaveBeenCalled()
   })
 
-  test(`does not render a colorbar in a zero-sized plot`, async () => {
-    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(0)
-    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(0)
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ ...basic, color_values: basic.x }],
-        color_bar: {},
-      },
-    })
-    await tick()
-    expect(document.querySelector(`.colorbar-wrapper`)).toBeNull()
-  })
+  test.each([
+    { width: 0, color_values: [0, 1], has_scale: false },
+    { width: 400, color_values: [0, 1], has_scale: true },
+    { width: 400, color_values: [NaN, Infinity], has_scale: false },
+  ])(
+    `empty categories preserve colorbar visibility at width $width with $color_values`,
+    async ({ width, color_values, has_scale }) => {
+      vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
+      vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(width ? 300 : 0)
+      const color_bar = $state({
+        categories: {},
+        property_options: [{ key: `energy`, label: `Energy` }],
+      })
+      mount(ScatterPlot, {
+        target: document.body,
+        props: { series: [{ x: [0, 1], y: [0, 1], color_values }], color_bar },
+      })
+      await tick()
+      expect(Boolean(document.querySelector(`.colorbar .bar`))).toBe(has_scale)
+      expect(document.querySelector(`.category-legend`)).toBeNull()
+      expect(Boolean(document.querySelector(`.property-select`))).toBe(width > 0)
+      color_bar.property_options = []
+      await tick()
+      expect(Boolean(document.querySelector(`.colorbar-wrapper`))).toBe(has_scale)
+    },
+  )
 
   test.each([
     [`points only`, `points`, 5, 3, undefined],
@@ -1310,6 +1323,36 @@ describe(`ScatterPlot`, () => {
       const [instant, tweened] = [await geometry(0), await geometry(60_000)]
       expect(tweened.filter(Boolean).length).toBeGreaterThan(0)
       expect(tweened).toEqual(instant)
+    },
+  )
+
+  test.each([`x`, `y`] as const)(
+    `animates %s quantity changes across new ranges and reordered series`,
+    async (axis) => {
+      const state = $state<{ series: DataSeries[] }>({
+        series: [
+          { id: `other`, x: [1, 10], y: [1, 10] },
+          { id: `tracked`, x: [3, 7], y: [3, 7] },
+        ],
+      })
+      const plot = await mount_sized_scatter_plot(
+        bind_props({ point_tween: { duration: 60_000 }, legend: null }, state),
+      )
+      const marker = () => query(plot, `[data-series-id="tracked"] .marker`)
+      const original = marker()
+      const position = original.parentElement?.getAttribute(`transform`)
+      vi.spyOn(performance, `now`).mockReturnValue(performance.now() + SETTLE_MS + 1)
+
+      state.series = state.series.toReversed().map((series) => ({
+        ...series,
+        [axis]: series.id === `tracked` ? [240, 180] : [100, 300],
+      }))
+      flushSync()
+      await tick()
+
+      expect(marker()).toBe(original)
+      // The same marker starts its tween at the old position instead of snapping.
+      expect(marker().parentElement?.getAttribute(`transform`)).toBe(position)
     },
   )
 
@@ -2135,7 +2178,10 @@ describe(`ScatterPlot`, () => {
   // tick-count edit) re-ran the range effect and snapped it over in one jump.
   test(`explicit y range + synced y2: no loop, view.y writes re-derive y2`, async () => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    const state = $state<{ view: Partial<AxisRanges> | undefined }>({ view: undefined })
+    const state = $state<{ view: Partial<AxisRanges> | undefined; y2_axis: AxisConfig }>({
+      view: undefined,
+      y2_axis: { sync: `synced` },
+    })
     const plot = await mount_sized_scatter_plot(
       bind_props(
         {
@@ -2144,7 +2190,6 @@ describe(`ScatterPlot`, () => {
             { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
           ],
           y_axis: { range: [0, 10] as Vec2 },
-          y2_axis: { sync: `synced` as const },
           point_tween: { duration: 0 },
           legend: null,
           show_controls: false,
@@ -2161,6 +2206,22 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `y`)).toContain(`5`)
     expect(axis_tick_labels(plot, `y`)).not.toContain(`10`)
     expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
+    expect(error_spy).not.toHaveBeenCalled()
+
+    // y2 follows the linear y gesture; independently panning its log scale would overflow.
+    state.y2_axis = { sync: `synced`, scale_type: `log` }
+    await tick()
+    state.view = { y: [1, 1e300] }
+    await tick()
+    const svg = plot_svg()
+    svg.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
+    svg.dispatchEvent(
+      new WheelEvent(`wheel`, { deltaY: clip_rect(plot).height / 10, bubbles: true }),
+    )
+    await tick()
+    expect(state.view?.y).toEqual([1e299, 1.1e300])
+    expect(state.view?.y2).toEqual(state.view?.y)
     expect(error_spy).not.toHaveBeenCalled()
   })
 })

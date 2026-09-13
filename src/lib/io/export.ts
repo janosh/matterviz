@@ -490,14 +490,16 @@ export function get_ffmpeg_conversion_command(input_filename: string): string {
 function run_recorder_action(
   recorder: MediaRecorder,
   action: 'start' | 'stop',
+  signal?: AbortSignal,
   after_action?: () => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted()
     const listeners = new AbortController()
     const finish = (error?: Error): void => {
       clearTimeout(timeout)
       listeners.abort()
-      if (error) reject(error)
+      if (error !== undefined) reject(error)
       else resolve()
     }
     const timeout = setTimeout(
@@ -505,6 +507,10 @@ function run_recorder_action(
       5000,
     )
     recorder.addEventListener(action, () => finish(), { signal: listeners.signal })
+    signal?.addEventListener(`abort`, () => finish(to_error(signal.reason)), {
+      signal: listeners.signal,
+      once: true,
+    })
     recorder.addEventListener(
       `error`,
       (event) => {
@@ -525,6 +531,27 @@ function run_recorder_action(
   })
 }
 
+// Cancel scheduled work too: animation frames may never fire in a hidden/unmounted viewer.
+function wait_for_video_tick(signal?: AbortSignal, duration?: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted()
+    const finish = () => {
+      signal?.removeEventListener(`abort`, abort)
+      resolve()
+    }
+    const handle =
+      duration === undefined
+        ? requestAnimationFrame(finish)
+        : window.setTimeout(finish, duration)
+    const abort = () => {
+      if (duration === undefined) cancelAnimationFrame(handle)
+      else clearTimeout(handle)
+      reject(to_error(signal?.reason))
+    }
+    signal?.addEventListener(`abort`, abort, { once: true })
+  })
+}
+
 // Export trajectory video as WebM while advancing through the requested frames.
 // Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
 export async function export_trajectory_video(
@@ -534,8 +561,11 @@ export async function export_trajectory_video(
     fps?: number
     total_frames?: number
     on_progress?: (progress: number) => void
-    on_step?: (step_idx: number) => void | Promise<void>
+    on_step?: (step_idx: number, signal?: AbortSignal) => void | Promise<void>
+    // Restore caller-owned state after recording cleanup, before any download.
+    on_finish?: () => void | Promise<void>
     resolution_multiplier?: number
+    signal?: AbortSignal
   } = {},
 ): Promise<void> {
   const {
@@ -543,9 +573,12 @@ export async function export_trajectory_video(
     total_frames = 100,
     on_progress,
     on_step,
+    on_finish,
     resolution_multiplier = 1,
+    signal,
   } = options
 
+  signal?.throwIfAborted()
   if (
     !canvas ||
     typeof MediaRecorder === `undefined` ||
@@ -557,6 +590,7 @@ export async function export_trajectory_video(
   // Recording captures the canvas stream while Threlte drives frames, but resizing the
   // renderer below touches GPU resources, so make sure the device exists first.
   if (renderer) await device_ready(renderer)
+  signal?.throwIfAborted()
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined
@@ -564,15 +598,21 @@ export async function export_trajectory_video(
   let recorder: MediaRecorder | undefined = undefined
   let stream: MediaStream | undefined
   const chunks: Blob[] = []
+  const stop_recorder = () => {
+    if (recorder && recorder.state !== `inactive`) recorder.stop()
+  }
+  // Stop capturing immediately even when a custom frame callback is still settling.
+  signal?.addEventListener(`abort`, stop_recorder, { once: true })
 
   try {
     const prepare_step = async (idx: number): Promise<void> => {
+      signal?.throwIfAborted()
       on_progress?.((idx / total_frames) * 100)
-      await on_step?.(idx)
+      signal?.throwIfAborted()
+      await on_step?.(idx, signal)
       // Threlte resizes the canvas and updates the scene in its animation loop.
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      )
+      await wait_for_video_tick(signal)
+      await wait_for_video_tick(signal)
     }
     // Snapshot the mounted dimensions, not the canvas's initial 300 x 150 drawing buffer.
     if (total_frames > 0) await prepare_step(0)
@@ -596,6 +636,7 @@ export async function export_trajectory_video(
     const context = capture_canvas.getContext(`2d`)
     if (!context) throw new Error(`Canvas 2D context not available for video export`)
     const copy_frame = (): void => {
+      signal?.throwIfAborted()
       const view = scene_registry.get(canvas)
       if (renderer && view) renderer.render(view.scene, view.camera)
       context.clearRect(0, 0, capture_canvas.width, capture_canvas.height)
@@ -619,7 +660,7 @@ export async function export_trajectory_video(
 
     // Repaint once the stream is listening, then wait for the encoder's first frame. A cold
     // encoder can otherwise start after a short trajectory has already called stop().
-    await run_recorder_action(recorder, `start`, () => {
+    await run_recorder_action(recorder, `start`, signal, () => {
       if (total_frames > 0) {
         copy_frame()
         track.requestFrame?.()
@@ -642,17 +683,15 @@ export async function export_trajectory_video(
       const elapsed = performance.now() - frame_start
       const remaining = Math.max(0, frame_duration - elapsed)
       if (remaining > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remaining))
+        await wait_for_video_tick(signal, remaining)
       }
     }
-    await run_recorder_action(recorder, `stop`)
-    const blob = new Blob(chunks, { type: `video/webm` })
-    download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
-    on_progress?.(100)
+    await run_recorder_action(recorder, `stop`, signal)
   } catch (error) {
-    if (recorder && recorder.state !== `inactive`) recorder.stop()
+    stop_recorder()
     throw error
   } finally {
+    signal?.removeEventListener(`abort`, stop_recorder)
     try {
       // Restore original renderer settings after the encoder has finished reading frames.
       if (orig_pixel_ratio !== undefined && orig_size && renderer) {
@@ -660,7 +699,15 @@ export async function export_trajectory_video(
         renderer.setSize(orig_size.width, orig_size.height, false)
       }
     } finally {
-      for (const track of stream?.getTracks() ?? []) track.stop()
+      try {
+        for (const track of stream?.getTracks() ?? []) track.stop()
+      } finally {
+        await on_finish?.()
+      }
     }
   }
+  signal?.throwIfAborted()
+  const blob = new Blob(chunks, { type: `video/webm` })
+  download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
+  on_progress?.(100)
 }

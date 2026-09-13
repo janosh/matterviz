@@ -351,7 +351,8 @@
       opacity 0.2s,
       background-color 0.2s;
   }
-  .plot-frame :global(.pane-toggle) {
+  .plot-frame :global(.pane-toggle),
+  .plot-frame :global(.fullscreen-btn) {
     font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
   }
   .header-controls.always-visible,

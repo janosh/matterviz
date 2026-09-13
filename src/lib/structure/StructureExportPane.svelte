@@ -222,7 +222,7 @@
 <ExportPane
   bind:export_pane_open
   bind:png_dpi
-  {sections}
+  sections={export_pane_open ? sections : []}
   {pane_props}
   toggle_props={{
     title: export_pane_open ? `` : enable_3d_export ? `Export Structure` : `Export Slice`,

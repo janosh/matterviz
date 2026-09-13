@@ -558,6 +558,15 @@ describe(`wrap_to_unit_cell`, () => {
     [2 - 1e-10, 0],
     [-1e-10, 0],
     [-1e-9, 1 - 1e-9],
+    // Decimal halfways must round the original float, not an already-rounded product.
+    [1.4999999999999997e-15, 1e-15],
+    [1.5e-15, 1e-15],
+    [1.5000000000000001e-15, 2e-15],
+    [0.8195337599609045, 0.819533759960904],
+    [0.3840773708652705, 0.38407737086527],
+    [Number.MIN_VALUE, 0],
+    [-0, 0],
+    [Number.NaN, Number.NaN],
   ])(`wraps %d to exactly %d`, (input, expected) => {
     expect(wrap_to_unit_cell([input, input, input])).toEqual([expected, expected, expected])
   })

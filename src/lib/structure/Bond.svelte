@@ -28,7 +28,6 @@
   const { invalidate } = useThrelte()
 
   let mesh: InstancedMesh | undefined = $state()
-  let allocated_mesh: InstancedMesh | undefined
   // Reusable buffers to avoid reallocation on every update
   let colors_start = new Float32Array(0)
   let colors_end = new Float32Array(0)
@@ -40,11 +39,6 @@
   let instance_count = $derived(count_bond_instances(bonds))
   let peak_capacity = 0
   let capacity = $derived((peak_capacity = Math.max(peak_capacity, instance_count)))
-  $effect(() => {
-    if (!mesh || mesh === allocated_mesh) return
-    allocated_mesh?.dispose()
-    allocated_mesh = mesh
-  })
 
   // Appearance knobs live in uniforms so tweaking them mutates the existing material rather
   // than rebuilding the node graph (a $derived would leak a material per lighting change).
@@ -96,9 +90,10 @@
     let first_changed_idx = instance_count
     let last_changed_idx = -1
     let instance_idx = 0
+    const endpoint_colors = site_colors
     for (const bond of bonds) {
-      const instance_color_start = site_colors[bond.site_idx_1]
-      const instance_color_end = site_colors[bond.site_idx_2]
+      const instance_color_start = endpoint_colors[bond.site_idx_1]
+      const instance_color_end = endpoint_colors[bond.site_idx_2]
       if (instance_color_start === undefined || instance_color_end === undefined) {
         throw new RangeError(
           `Missing bond endpoint color for site indices ${bond.site_idx_1}, ${bond.site_idx_2}`,
@@ -164,10 +159,13 @@
   $effect(() => () => bond_material.dispose())
 </script>
 
+<!-- Dispose each retired mesh immediately; its child owns the shared cylinder geometry. -->
 <T.InstancedMesh
   args={[undefined, bond_material, capacity]}
   bind:ref={mesh}
+  dispose={false}
+  oncreate={(mesh) => () => mesh.dispose()}
   frustumCulled={false}
 >
-  <T.CylinderGeometry args={[1, 1, 1, 8]} />
+  <T.CylinderGeometry args={[1, 1, 1, 8]} dispose={true} />
 </T.InstancedMesh>

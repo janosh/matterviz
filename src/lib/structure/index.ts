@@ -235,7 +235,7 @@ export const default_vector_configs = (keys: string[]) =>
     ]),
   )
 
-function try_parse_vec3(val: unknown): Vec3 | null {
+export function try_parse_vec3(val: unknown): Vec3 | null {
   if (
     Array.isArray(val) &&
     val.length === 3 &&

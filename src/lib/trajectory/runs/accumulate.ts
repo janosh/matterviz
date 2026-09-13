@@ -504,5 +504,6 @@ export async function accumulate_positions(
     }
   }
 
+  signal?.throwIfAborted()
   return accumulator.finish()
 }

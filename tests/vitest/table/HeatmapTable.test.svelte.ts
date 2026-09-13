@@ -18,6 +18,8 @@ import {
   tick,
   unmount,
 } from 'svelte'
+import * as animations from 'svelte/animate'
+import { prefersReducedMotion as reduced_motion } from 'svelte/motion'
 import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'
 import { fire, bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
 
@@ -244,25 +246,54 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Sorting and Data Updates`, () => {
-    it(`sorts correctly and handles missing values`, async () => {
-      const data = [
-        { Model: `A`, Score: undefined, Value: 100 },
-        { Model: `B`, Score: 0.85, Value: undefined },
-        { Model: `C`, Score: 0.75, Value: 300 },
-      ]
+    it.each([
+      { row_animation_ms: 300, reduced: false, virtual: false, duration: 300 },
+      { row_animation_ms: 0, reduced: false, virtual: false, duration: 0 },
+      { row_animation_ms: 300, reduced: true, virtual: false, duration: 0 },
+      { row_animation_ms: 300, reduced: false, virtual: true, duration: 0 },
+    ])(
+      `sorts missing values with row animation $duration ms ($reduced/$virtual)`,
+      async ({ row_animation_ms, reduced, virtual, duration }) => {
+        const flip = vi.spyOn(animations, `flip`).mockReturnValue({ duration: 0 })
+        const preference = vi.spyOn(reduced_motion, `current`, `get`).mockReturnValue(reduced)
+        const bounds = vi
+          .spyOn(HTMLTableRowElement.prototype, `getBoundingClientRect`)
+          .mockImplementation(function (this: HTMLTableRowElement) {
+            return new DOMRect(0, this.rowIndex * 20, 200, 20)
+          })
+        onTestFinished(() => {
+          flip.mockRestore()
+          preference.mockRestore()
+          bounds.mockRestore()
+        })
+        const data = [
+          { Model: `A`, Score: undefined, Value: 100 },
+          { Model: `B`, Score: 0.85, Value: undefined },
+          { Model: `C`, Score: 0.75, Value: 300 },
+        ]
 
-      mount_table({ data, columns: sample_columns })
+        mount_table({ data, columns: sample_columns, row_animation_ms, virtual })
 
-      // Test initial sort
-      const value_header = document.querySelectorAll(`th`)[2]
-      await click(value_header)
-
-      expect(col_values(`Value`)).toEqual([`100`, `300`, `n/a`])
-
-      // Test sort direction toggle
-      await click(value_header)
-      expect(col_values(`Value`)).toEqual([`300`, `100`, `n/a`])
-    })
+        const value_header = document.querySelectorAll(`th`)[2]
+        // Missing values stay last in both sort directions.
+        for (const expected of [
+          [`100`, `300`, `n/a`],
+          [`300`, `100`, `n/a`],
+        ]) {
+          await click(value_header)
+          expect(col_values(`Value`)).toEqual(expected)
+        }
+        if (duration) {
+          await vi.waitFor(() => expect(flip).toHaveBeenCalled())
+          expect(flip.mock.calls.every(([, , params]) => params?.duration === duration)).toBe(
+            true,
+          )
+        } else {
+          expect(flip).not.toHaveBeenCalled()
+          expect(bounds).not.toHaveBeenCalled()
+        }
+      },
+    )
 
     it(`maintains sort state on data updates`, async () => {
       const state = $state({ data: sample_data })

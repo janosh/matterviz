@@ -27,10 +27,18 @@ const ase_buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
 // A port pair in-process: worker side serves a memory run, client side is a worker_run
 const make_worker_run = (): TrajectoryRun => {
   const served = trajectory_from_frames(reference_frames)
-  let released = 0
-  const port = serve_run_over_port(served)
-  const run = worker_run(port, summarize_run(served), () => released++)
-  return Object.assign(run, { released: () => released })
+  return worker_run(serve_run_over_port(served), summarize_run(served))
+}
+
+const expect_listener_errors = (notify: () => void, failures: Error[]): void => {
+  const attempt = vi.fn(notify)
+  expect(attempt).toThrow(Error)
+  const error: unknown = attempt.mock.results[0].value
+  if (failures.length === 1) expect(error).toBe(failures[0])
+  else {
+    expect(error).toBeInstanceOf(AggregateError)
+    expect(error).toHaveProperty(`errors`, failures)
+  }
 }
 
 const make_host_run = (): TrajectoryRun => {
@@ -311,29 +319,73 @@ describe(`worker-served run lifecycle`, () => {
     run.dispose()
   })
 
-  it(`streams property batches from the served run and releases on dispose`, async () => {
-    const served = trajectory_from_frames(reference_frames, {
-      properties: [{ frame_number: 0, step: 0, properties: { energy: 1 } }],
-    })
-    // Progressive source: replace the static properties with a streaming one
-    const progressive = new TrajectoryProperties()
-    Object.defineProperty(served, `properties`, { value: progressive })
-    let released = 0
-    const port = serve_run_over_port(served)
-    const run = worker_run(port, summarize_run(served), () => released++)
-    expect(run.properties.rows).toHaveLength(0)
-    progressive.push([
-      { frame_number: 0, step: 0, properties: { energy: -1 } },
-      { frame_number: 1, step: 10, properties: { energy: -2 } },
-    ])
-    progressive.finish()
-    await run.properties.done
-    expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-1, -2])
-    run.dispose()
-    run.dispose()
-    expect(released).toBe(1)
-    await expect(Promise.resolve(run.read_frame(2))).rejects.toThrow(/disposed/)
-  })
+  it.each([
+    [false, 0],
+    [true, 0],
+    [false, 1],
+    [false, 2],
+  ] as const)(
+    `streams properties (nested completion: %s, listener failures: %s)`,
+    async (finish_during_batch, error_count) => {
+      const served = trajectory_from_frames(reference_frames)
+      // Progressive source: replace the static properties with a streaming one
+      const progressive = new TrajectoryProperties()
+      Object.defineProperty(served, `properties`, { value: progressive })
+      if (finish_during_batch) {
+        progressive.subscribe((_batch, complete) => {
+          if (!complete) progressive.finish()
+        })
+      }
+      const release = vi.fn()
+      const port = serve_run_over_port(served)
+      const add_listener = vi.spyOn(port, `addEventListener`)
+      const run = worker_run(port, summarize_run(served), release)
+      expect(run.properties.rows).toHaveLength(0)
+      const batch = [
+        { frame_number: 0, step: 0, properties: { energy: -1 } },
+        { frame_number: 1, step: 10, properties: { energy: -2 } },
+      ]
+      if (error_count) {
+        const failures = [
+          new Error(`Batch observer failed`),
+          new Error(`Finish observer failed`),
+        ]
+        run.properties.subscribe((_batch, complete) => {
+          if (!complete) throw failures[0]
+          if (error_count === 2) throw failures[1]
+        })
+        const observer = vi.fn()
+        run.properties.subscribe(observer)
+        const handler = add_listener.mock.calls.find(([type]) => type === `message`)?.[1]
+        if (typeof handler !== `function`) throw new Error(`Missing worker message handler`)
+        // Invoke directly so the test can assert errors normally reported by the event loop.
+        expect_listener_errors(
+          () =>
+            handler.call(
+              port,
+              new MessageEvent(`message`, {
+                data: { properties: batch, complete: true },
+              }),
+            ),
+          failures.slice(0, error_count),
+        )
+        expect(observer.mock.calls).toEqual([
+          [batch, false],
+          [[], true],
+        ])
+        expect(run.properties.complete).toBe(true)
+      } else {
+        progressive.push(batch)
+        progressive.finish()
+      }
+      await run.properties.done
+      expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-1, -2])
+      run.dispose()
+      run.dispose()
+      expect(release).toHaveBeenCalledOnce()
+      await expect(Promise.resolve(run.read_frame(2))).rejects.toThrow(/disposed/)
+    },
+  )
 
   it(`a disposed served run rejects in-flight reads`, async () => {
     const run = make_worker_run()
@@ -344,6 +396,81 @@ describe(`worker-served run lifecycle`, () => {
 })
 
 describe(`TrajectoryProperties`, () => {
+  it(`delivers nested batches before completion and snapshots queued rows`, () => {
+    const properties = new TrajectoryProperties()
+    properties.subscribe((batch) => {
+      if (batch[0]?.frame_number !== 0) return
+      const nested = [{ frame_number: 1, step: 1, properties: {} }]
+      properties.push(nested)
+      nested[0] = { frame_number: 99, step: 99, properties: {} }
+      properties.finish()
+    })
+    const seen: [number[], boolean][] = []
+    properties.subscribe((batch, complete) =>
+      seen.push([batch.map(({ frame_number }) => frame_number), complete]),
+    )
+    properties.push([{ frame_number: 0, step: 0, properties: {} }])
+    expect(seen).toEqual([
+      [[0], false],
+      [[1], false],
+      [[], true],
+    ])
+    expect(properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
+  })
+
+  it.each([
+    [false, 1],
+    [true, 1],
+    [true, 2],
+  ] as const)(
+    `drains notifications after listener errors (finish: %s, errors: %s)`,
+    (finish_before_throw, error_count) => {
+      const properties = new TrajectoryProperties()
+      const failures = Array.from(
+        { length: error_count },
+        (_, idx) => new Error(`listener ${idx} failed`),
+      )
+      for (const failure of failures) {
+        const unsubscribe = properties.subscribe(() => {
+          unsubscribe()
+          if (finish_before_throw) properties.finish()
+          throw failure
+        })
+      }
+      const listener = vi.fn()
+      properties.subscribe(listener)
+      const first_batch = [{ frame_number: 0, step: 0, properties: {} }]
+      const next_batch = [{ frame_number: 1, step: 1, properties: {} }]
+      expect_listener_errors(() => properties.push(first_batch), failures)
+      if (finish_before_throw) properties.finish()
+      else properties.push(next_batch)
+      expect(listener.mock.calls).toEqual([
+        [first_batch, false],
+        [finish_before_throw ? [] : next_batch, finish_before_throw],
+      ])
+    },
+  )
+
+  it.each([`push`, `finish`] as const)(
+    `%s notifies later subscribers when a listener unsubscribes itself`,
+    (method) => {
+      const properties = new TrajectoryProperties()
+      const first = vi.fn(() => unsubscribe())
+      const unsubscribe = properties.subscribe(first)
+      const second = vi.fn()
+      properties.subscribe(second)
+      const notify = () =>
+        method === `push`
+          ? properties.push([{ frame_number: 0, step: 0, properties: {} }])
+          : properties.finish()
+      notify()
+      expect(second).toHaveBeenCalledTimes(1)
+      notify()
+      expect(first).toHaveBeenCalledTimes(1)
+      expect(second).toHaveBeenCalledTimes(method === `push` ? 2 : 1)
+    },
+  )
+
   it(`keeps rows sorted and deduplicated across out-of-order batches`, () => {
     const properties = new TrajectoryProperties()
     const seen: number[][] = []

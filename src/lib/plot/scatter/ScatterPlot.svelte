@@ -529,8 +529,7 @@
   // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too.
   const colorbar = create_colorbar_decoration({
     id: `colorbar`,
-    enabled: () =>
-      Boolean(color_bar && has_color_values && !color_bar.wrapper_style && width && height),
+    enabled: () => show_colorbar && !color_bar?.wrapper_style,
     horizontal: () => (color_bar?.orientation ?? `horizontal`) === `horizontal`,
     clearance: () => color_bar?.axis_clearance,
     dims: () => ({ width, height }),
@@ -613,7 +612,18 @@
   // Finite color and size bounds across all series. NaN/null entries
   // fall back to the series color/radius per point, so they must not widen either scale.
   const scale_ranges = $derived(collect_scale_ranges(assigned_series))
-  const has_color_values = $derived(scale_ranges.color_extent.n_finite > 0)
+  const has_color_scale = $derived(
+    scale_ranges.color_extent.n_finite > 0 ||
+      Object.keys(color_bar?.categories ?? {}).length > 0,
+  )
+  const show_colorbar = $derived(
+    Boolean(
+      width > 0 &&
+      height > 0 &&
+      color_bar &&
+      (has_color_scale || color_bar.property_options?.length),
+    ),
+  )
   const auto_color_range = $derived(scale_ranges.color_range)
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
   const color_scale_config = $derived<ColorScaleConfig>(
@@ -1708,7 +1718,7 @@
             onfocusin={roving.focusin}
             onkeydown={roving.handle_keydown}
           >
-            {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
+            {#each rendered_points as point (point.point_idx)}
               {@const [center_x, center_y] = project.point(point)}
               {@const offset = point.point_offset ?? ZERO_OFFSET}
               {@const appearance = marker_of(point)}
@@ -1837,7 +1847,7 @@
       children={controls_extra}
     />
 
-    {#if width > 0 && height > 0 && color_bar && has_color_values}
+    {#if color_bar && show_colorbar}
       {@const color_domain = [
         color_scale_config.value_range?.[0] ?? auto_color_range[0],
         color_scale_config.value_range?.[1] ?? auto_color_range[1],
@@ -1846,6 +1856,7 @@
         decoration={colorbar}
         wrapper_style={color_bar.wrapper_style}
         color_bar={{
+          show_scale: has_color_scale,
           tick_labels: 4,
           tick_side: `primary`,
           scale: { fn: color_scale_fn, domain: color_domain },
@@ -1916,9 +1927,6 @@
     font-weight: var(--scatter-font-weight, normal);
     color: var(--text-color);
     white-space: nowrap;
-    /* Use line-height to center text vertically without flexbox */
-    line-height: var(--scatter-axis-label-line-height, 20px); /* Match foreignObject height */
-    display: block;
   }
   .current-frame-indicator {
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));

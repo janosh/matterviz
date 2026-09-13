@@ -46,6 +46,17 @@ const mount_bound_controls = (
   mount_controls(
     bind_props({ structure: simple_structure, controls_open: true, ...props }, state),
   )
+const raw_scene_state = (initial: Partial<StructureSettings>) => {
+  let scene_props = $state.raw(initial)
+  return {
+    get scene_props() {
+      return scene_props
+    },
+    set scene_props(value) {
+      scene_props = value
+    },
+  }
+}
 const set_input = (input: HTMLInputElement, value: string): void => {
   input.value = value
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
@@ -74,10 +85,6 @@ const import_settings_file = async (
     )
   })
 }
-type AtomColorConfigProps = NonNullable<
-  ComponentProps<typeof StructureControls>['atom_color_config']
->
-
 // simple_structure with two vector site properties, so the Site vectors section and its
 // per-key scale inputs render
 const vector_structure = {
@@ -400,8 +407,14 @@ describe(`StructureControls schema rows`, () => {
   // silently drops out of the schema tables (or loses its data-key) fails here by name.
   test(`render every control row and write each back to its own target`, async () => {
     const stream = trail_stream()
-    const state = $state({
-      scene_props: {
+    const toggles = $state({
+      trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
+      show_image_atoms: true,
+      show_trajectory_lines: true,
+      multi_view: false,
+    })
+    const state = bind_props(
+      raw_scene_state({
         ...DEFAULTS.structure,
         show_bonds: `always` as const,
         show_polyhedra: `always` as const,
@@ -409,12 +422,9 @@ describe(`StructureControls schema rows`, () => {
         auto_bond_order: true,
         polyhedra_color_mode: `uniform` as const,
         vector_color_mode: `uniform` as const,
-      },
-      trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
-      show_image_atoms: true,
-      show_trajectory_lines: true,
-      multi_view: false,
-    })
+      }),
+      toggles,
+    )
     const target = await mount_bound_controls(state, {
       structure: vector_structure,
       displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
@@ -455,20 +465,19 @@ describe(`StructureControls schema rows`, () => {
     expect(schema_rows.length).toBeGreaterThan(40)
     for (const row of schema_rows) {
       const key = row.dataset.key ?? ``
-      const owner = owner_of(key)
       const number = row.querySelector<HTMLInputElement>(`input[type="number"]`)
       const checkbox = row.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
       if (number) {
         const written = (Number(number.min) + Number(number.max)) / 2
         set_input(number, `${written}`)
         await tick()
-        expect(owner[key], key).toBe(written)
+        expect(owner_of(key)[key], key).toBe(written)
       } else if (checkbox && !key.startsWith(`show_`)) {
         // (show_* toggles unmount the sections the later rows live in)
-        const before = owner[key]
+        const before = owner_of(key)[key]
         checkbox.click()
         await tick()
-        expect(owner[key], key).toBe(!before)
+        expect(owner_of(key)[key], key).toBe(!before)
       }
     }
     // the cell rows are plain scene_props rows
@@ -491,13 +500,11 @@ describe(`StructureControls schema rows`, () => {
   })
 
   test(`per-axis inputs replace one component and leave the others`, async () => {
-    const state = $state({
-      scene_props: {
-        ...DEFAULTS.structure,
-        show_site_labels: true,
-        site_label_offset: [0.1, 0.2, 0.3] as Vec3,
-        rotation: [0, Math.PI, 0] as Vec3,
-      },
+    const state = raw_scene_state({
+      ...DEFAULTS.structure,
+      show_site_labels: true,
+      site_label_offset: [0.1, 0.2, 0.3] as Vec3,
+      rotation: [0, Math.PI, 0] as Vec3,
     })
     const target = await mount_bound_controls(state)
     const offset_inputs = target.querySelectorAll<HTMLInputElement>(
@@ -540,8 +547,27 @@ describe(`StructureControls schema rows`, () => {
 })
 
 describe(`StructureControls layout`, () => {
+  test(`reset baseline remains the mount snapshot before the pane first opens`, async () => {
+    const state = $state({ controls_open: false, scene_props: { atom_radius: 1.2 } })
+    const target = await mount_bound_controls(state)
+    state.scene_props.atom_radius = 1.6
+    await tick()
+    state.controls_open = true
+    await tick()
+    const reset = target.querySelector<HTMLButtonElement>(
+      `[data-key="atom_radius"] .setting-reset-button`,
+    )
+    expect(reset).not.toBeNull()
+    reset?.click()
+    await tick()
+    expect(state.scene_props.atom_radius).toBe(1.2)
+  })
+
   test(`integrates topic groups and settings search`, async () => {
-    const target = await mount_controls({ structure: simple_structure, controls_open: true })
+    const state = $state({ controls_open: false, scene_props: { atom_radius: 1.2 } })
+    const target = await mount_bound_controls(state)
+    state.controls_open = true
+    await tick()
     const groups = [...target.querySelectorAll<HTMLDetailsElement>(`details.settings-group`)]
     expect(
       groups.map((group) => [group.querySelector(`.group-title`)?.textContent, group.open]),
@@ -553,6 +579,10 @@ describe(`StructureControls layout`, () => {
     ])
     expect(groups[0]?.matches(`:first-of-type`)).toBe(true)
     expect(groups[3]?.matches(`:first-of-type`)).toBe(false)
+    const descriptions = target.querySelector<HTMLButtonElement>(`.description-toggle`)
+    descriptions?.click()
+    await tick()
+    expect(descriptions?.getAttribute(`aria-expanded`)).toBe(`true`)
 
     doc_query<HTMLButtonElement>(`.open-search`).click()
     await tick()
@@ -569,6 +599,19 @@ describe(`StructureControls layout`, () => {
         .querySelector<HTMLElement>(`[data-key="rotation_damping"]`)
         ?.hasAttribute(`data-search-hidden`),
     ).toBe(false)
+    state.controls_open = false
+    await tick()
+    state.scene_props.atom_radius = 1.6
+    state.controls_open = true
+    await tick()
+    expect(target.querySelector<HTMLInputElement>(`input[type="search"]`)?.value).toBe(`damp`)
+    expect(target.querySelector(`.description-toggle`)?.getAttribute(`aria-expanded`)).toBe(
+      `true`,
+    )
+    expect(
+      target.querySelector<HTMLInputElement>(`[data-key="atom_radius"] input[type="number"]`)
+        ?.valueAsNumber,
+    ).toBe(1.6)
   })
 
   test(`uses labelled grids and schema-backed sliders`, async () => {
@@ -633,8 +676,7 @@ const mount_persisted_controls = async () => {
       multi_view: true,
     }),
   )
-  const state = $state({
-    scene_props: { ...DEFAULTS.structure },
+  const toggles = $state({
     color_scheme: DEFAULTS.color_scheme,
     background_color: undefined,
     background_opacity: DEFAULTS.background_opacity,
@@ -643,13 +685,17 @@ const mount_persisted_controls = async () => {
     supercell_scaling: `1x1x1`,
     multi_view: false,
   })
+  const initial_scene = { ...DEFAULTS.structure }
+  const state = bind_props(raw_scene_state(initial_scene), toggles)
   const target = await mount_bound_controls(state, { persist_settings: true })
-  return { target, state }
+  return { target, state, initial_scene }
 }
 
 describe(`StructureControls reactive props`, () => {
   test(`restores persisted settings and treats them as the reset snapshot`, async () => {
-    const { state, target } = await mount_persisted_controls()
+    const { state, target, initial_scene } = await mount_persisted_controls()
+    expect(state.scene_props).not.toBe(initial_scene)
+    expect(initial_scene).toStrictEqual(DEFAULTS.structure)
     expect(state).toMatchObject({
       scene_props: { atom_radius: 1.35, ambient_light: 2.5, cell_edge_opacity: 0.75 },
       color_scheme: `Jmol`,
@@ -669,7 +715,7 @@ describe(`StructureControls reactive props`, () => {
 
   test(`persists changed settings and pane size after debounce`, async () => {
     const { state } = await mount_persisted_controls()
-    state.scene_props.atom_radius = 1.6
+    state.scene_props = { ...state.scene_props, atom_radius: 1.6 }
     const pane = doc_query(`.controls-pane`)
     // A real resize takes ownership from the pane's automatic anchoring.
     doc_query(`[data-resize-edge="right"]`).dispatchEvent(
@@ -698,12 +744,12 @@ describe(`StructureControls reactive props`, () => {
   // serialized state differ from the baseline anyway.
   test(`re-saves a setting driven away from and back to its restored value`, async () => {
     const { state } = await mount_persisted_controls()
-    state.scene_props.atom_radius = 1.6
+    state.scene_props = { ...state.scene_props, atom_radius: 1.6 }
     await vi.waitFor(() =>
       expect(load_structure_view_state()?.settings.structure.atom_radius).toBe(1.6),
     )
 
-    state.scene_props.atom_radius = 1.35
+    state.scene_props = { ...state.scene_props, atom_radius: 1.35 }
     await vi.waitFor(() =>
       expect(load_structure_view_state()?.settings.structure.atom_radius).toBe(1.35),
     )
@@ -711,11 +757,19 @@ describe(`StructureControls reactive props`, () => {
 
   test(`reset-all restores defaults and clears persisted state`, async () => {
     const { state } = await mount_persisted_controls()
-    state.scene_props.vector_configs = {
-      force: { visible: false, color: `#ff0000`, scale: 4 },
+    state.scene_props = {
+      ...state.scene_props,
+      vector_configs: { force: { visible: false, color: `#ff0000`, scale: 4 } },
     }
+    const before_reset = state.scene_props
     doc_query<HTMLButtonElement>(`button.reset-all-settings`).click()
     await tick()
+    expect(state.scene_props).not.toBe(before_reset)
+    expect(before_reset).toMatchObject({
+      atom_radius: 1.35,
+      ambient_light: 2.5,
+      vector_configs: { force: { visible: false, color: `#ff0000`, scale: 4 } },
+    })
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     expect(state.scene_props.ambient_light).toBe(DEFAULTS.structure.ambient_light)
     expect(state.scene_props.vector_configs).toEqual({})
@@ -748,7 +802,8 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`copies and imports viewer settings through the visible actions`, async () => {
-    const state = $state({ scene_props: { ...DEFAULTS.structure } })
+    const initial_scene = { ...DEFAULTS.structure }
+    const state = raw_scene_state(initial_scene)
     const target = await mount_bound_controls(state, { persist_settings: false })
     vi.mocked(navigator.clipboard.writeText).mockClear()
     doc_query<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`).click()
@@ -768,6 +823,8 @@ describe(`StructureControls reactive props`, () => {
     )
     expect(state.scene_props.atom_radius).toBe(1.8)
     expect(state.scene_props.camera_projection).toBe(`perspective`)
+    expect(state.scene_props).not.toBe(initial_scene)
+    expect(initial_scene).toStrictEqual(DEFAULTS.structure)
   })
 
   test.each([
@@ -786,8 +843,8 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`atom color mode row reset restores its derived scale type`, async () => {
-    const state = $state<{ atom_color_config: AtomColorConfigProps }>({
-      atom_color_config: next_atom_color_config(
+    let atom_color_config = $state.raw(
+      next_atom_color_config(
         {
           mode: `element`,
           scale: DEFAULTS.structure.atom_color_scale,
@@ -796,7 +853,15 @@ describe(`StructureControls reactive props`, () => {
         DEFAULTS.structure.atom_color_mode,
         [],
       ),
-    })
+    )
+    const state = {
+      get atom_color_config() {
+        return atom_color_config
+      },
+      set atom_color_config(value) {
+        atom_color_config = value
+      },
+    }
     const structure = structuredClone(simple_structure)
     const first_site = structure.sites[0]
     if (!first_site) throw new Error(`Expected the structure fixture to contain a site`)
@@ -811,6 +876,21 @@ describe(`StructureControls reactive props`, () => {
     mode_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
     expect(state.atom_color_config.scale_type).toBe(`categorical`)
+
+    doc_query<HTMLInputElement>(`input[aria-label="Color scale"]`).dispatchEvent(
+      new MouseEvent(`mouseup`, { bubbles: true }),
+    )
+    await tick()
+    const turbo = [...document.querySelectorAll<HTMLElement>(`[role="option"]`)].find(
+      (option) => option.textContent?.includes(`Turbo`),
+    )
+    if (!turbo) throw new Error(`Turbo color scale option not found`)
+    turbo.click()
+    await tick()
+    expect(state.atom_color_config.scale).toBe(`interpolateTurbo`)
+    doc_query<HTMLButtonElement>(`[data-key="atom_color_scale"] .setting-reset-button`).click()
+    await tick()
+    expect(state.atom_color_config.scale).toBe(DEFAULTS.structure.atom_color_scale)
 
     doc_query<HTMLButtonElement>(`[data-key="atom_color_mode"] .setting-reset-button`).click()
     await tick()
@@ -829,12 +909,10 @@ describe(`StructureControls reactive props`, () => {
   // in that string to live, so that one value is remembered here.
   test(`site label colors round-trip through scene props`, async () => {
     const bg_color = `color-mix(in srgb, #000000 20%, transparent)`
-    const state = $state({
-      scene_props: {
-        show_site_labels: true,
-        site_label_color: `#111111`,
-        site_label_bg_color: bg_color,
-      },
+    const state = raw_scene_state({
+      show_site_labels: true,
+      site_label_color: `#111111`,
+      site_label_bg_color: bg_color,
     })
 
     const target = await mount_bound_controls(state)
@@ -905,12 +983,10 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`polyhedra center checkbox tracks configured intent, not just render state`, async () => {
-    const state = $state({
-      scene_props: {
-        show_polyhedra: `crystals` as const,
-        polyhedra_included_elements: [`O`],
-        polyhedra_excluded_elements: [] as string[],
-      },
+    const state = raw_scene_state({
+      show_polyhedra: `crystals` as const,
+      polyhedra_included_elements: [`O`],
+      polyhedra_excluded_elements: [] as string[],
     })
 
     // nothing rendered yet (e.g. O blocked by CN cap), but O is force-included
@@ -931,6 +1007,10 @@ describe(`StructureControls reactive props`, () => {
     await tick()
     expect(state.scene_props.polyhedra_included_elements).not.toContain(`O`)
     expect(center_checkbox(`O`)?.checked).toBe(false)
+    center_checkbox(`H`)?.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(state.scene_props.polyhedra_included_elements).toContain(`H`)
+    expect(center_checkbox(`H`)?.checked).toBe(true)
   })
 
   test(`renders multi-character element symbols as single center checkboxes`, async () => {
@@ -967,8 +1047,10 @@ describe(`StructureControls reactive props`, () => {
       trajectory_line_elements: null,
     },
   ])(`row resets preserve caller-owned settings and omitted keys: %j`, async (initial) => {
-    const state = $state<{ scene_props: Partial<StructureSettings> }>({
-      scene_props: { show_polyhedra: `always`, trajectory_line_trail_frames: 0, ...initial },
+    const state = raw_scene_state({
+      show_polyhedra: `always`,
+      trajectory_line_trail_frames: 0,
+      ...initial,
     })
     const expected = { ...state.scene_props }
     const stream = make_position_stream(
@@ -987,15 +1069,19 @@ describe(`StructureControls reactive props`, () => {
     expect(state.scene_props).toStrictEqual(expected)
     expect(target.querySelector(`.setting-reset-button`)).toBeNull()
 
-    Object.assign(state.scene_props, {
+    state.scene_props = {
+      ...state.scene_props,
       atom_radius: 2,
       polyhedra_color_mode: `uniform`,
       polyhedra_color: `#123456`,
       polyhedra_excluded_elements: [`Fe`],
       polyhedra_included_elements: [`O`],
       trajectory_line_elements: [`H`],
-    })
+    }
     await tick()
+    find_label(target, `He`, true)?.querySelector<HTMLInputElement>(`input`)?.click()
+    await tick()
+    expect(state.scene_props.trajectory_line_elements).toEqual([`H`, `He`])
     for (const key of [
       `atom_radius`,
       `polyhedra_color`,
@@ -1020,7 +1106,7 @@ describe(`StructureControls reactive props`, () => {
     { vector_configs: { force: { visible: true } } },
     { vector_configs: { force: { visible: true, color: `#2468ac`, scale: 4 } } },
   ])(`vector resets preserve nested ownership and other rows' edits: %j`, async (initial) => {
-    const state = $state<{ scene_props: Partial<StructureSettings> }>({ scene_props: initial })
+    const state = raw_scene_state(initial)
     const expected = $state.snapshot(state.scene_props)
     const target = await mount_bound_controls(state, { structure: vector_structure })
     const reset_row = async (key: string) => {

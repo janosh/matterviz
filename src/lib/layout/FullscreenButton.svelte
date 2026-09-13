@@ -4,6 +4,7 @@
   // `declare const` of it into the packaged declaration, which is a TS2440 conflict and also
   // collapses the props type below to `any`.
   import { FullscreenButton as WidgetFullscreenButton } from 'svelte-widgets'
+  import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
   import { forward_window_keydown } from 'svelte-widgets/attachments'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
 
@@ -70,6 +71,12 @@
   bind:fullscreen
   {wrapper}
   {...rest}
+  icons={{
+    // Fill 76.8% of the icon box to visually balance the rounded gear.
+    enter: { ...Fullscreen, viewBox: `2.885417 2.885417 18.229166 18.229166` },
+    exit: { ...ExitFullscreen, viewBox: `1.583333 1.583333 20.833334 20.833334` },
+    ...rest.icons,
+  }}
   {hidden}
   style={[rest.style, hidden && `display: none`].filter(Boolean).join(`; `)}
 />

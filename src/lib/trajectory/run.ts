@@ -40,18 +40,19 @@ type PropertiesListener = (batch: TrajectoryMetadata[], complete: boolean) => vo
 export class TrajectoryProperties {
   rows: readonly TrajectoryMetadata[]
   complete: boolean
+  private readonly completion = Promise.withResolvers<undefined>()
   // Resolves once `finish()` ran (immediately for static runs)
-  readonly done: Promise<void>
-  private resolve_done: () => void = () => {}
-  private readonly listeners: PropertiesListener[] = []
+  readonly done: Promise<void> = this.completion.promise
+  // Replace on subscription changes so a callback cannot shift the active notification loop.
+  private listeners: readonly PropertiesListener[] = []
+  private notifying = false
+  // A null batch marks completion; queued data batches own their array snapshot.
+  private readonly pending_notifications: (TrajectoryMetadata[] | null)[] = []
 
   constructor(rows: TrajectoryMetadata[] = [], complete = false) {
     this.rows = sort_rows(rows)
     this.complete = complete
-    this.done = new Promise<void>((resolve) => {
-      this.resolve_done = resolve
-    })
-    if (complete) this.resolve_done()
+    if (complete) this.completion.resolve(undefined)
   }
 
   push(batch: readonly TrajectoryMetadata[]): void {
@@ -63,23 +64,56 @@ export class TrajectoryProperties {
       (last === undefined || batch[0].frame_number > last.frame_number) &&
       batch.every((row, idx) => idx === 0 || row.frame_number > batch[idx - 1].frame_number)
     this.rows = in_order ? merged : sort_rows(merged)
-    for (const listener of this.listeners) listener([...batch], false)
+    this.notify(batch)
   }
 
   finish(): void {
     if (this.complete) return
     this.complete = true
-    this.resolve_done()
-    for (const listener of this.listeners) listener([], true)
+    this.completion.resolve(undefined)
+    this.notify(null)
+  }
+
+  // Reentrant pushes and completion follow the current batch, including across worker ports.
+  // Only reentrant calls allocate queue entries; ordinary notifications dispatch directly.
+  private notify(batch: readonly TrajectoryMetadata[] | null): void {
+    if (this.notifying) {
+      this.pending_notifications.push(batch && [...batch])
+      return
+    }
+    this.notifying = true
+    let errors: unknown[] | undefined
+    try {
+      for (;;) {
+        for (const listener of this.listeners) {
+          try {
+            listener(batch ? [...batch] : [], batch === null)
+          } catch (error) {
+            // Finish delivery before propagating errors so worker clients receive completion.
+            errors ??= []
+            errors.push(error)
+          }
+        }
+        const next = this.pending_notifications.shift()
+        if (next === undefined) break
+        batch = next
+      }
+    } finally {
+      this.notifying = false
+      this.pending_notifications.length = 0
+    }
+    if (errors?.length === 1) throw errors[0]
+    if (errors)
+      throw new AggregateError(errors, `${errors.length} trajectory property listeners failed`)
   }
 
   // Plain (non-reactive) change notification for workers and hosts that forward batches.
   // Returns an unsubscribe function.
   subscribe(listener: PropertiesListener): () => void {
-    this.listeners.push(listener)
+    this.listeners = [...this.listeners, listener]
     return () => {
       const idx = this.listeners.indexOf(listener)
-      if (idx !== -1) this.listeners.splice(idx, 1)
+      if (idx !== -1) this.listeners = this.listeners.toSpliced(idx, 1)
     }
   }
 }
@@ -221,7 +255,10 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
   return {
     ...fields,
     frame_count,
-    preview,
+    // Keep the snapshot unproxied when Svelte binds the run to reactive state.
+    get preview() {
+      return preview
+    },
     read_frame: (frame_idx, signal) => {
       assert_frame_idx({ frame_count }, frame_idx)
       live()

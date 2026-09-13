@@ -25,13 +25,14 @@ type RectDragState = {
   bounds: DOMRect
   mode: RectDragMode
 }
-const AXES = [`x`, `x2`, `y`, `y2`] as const
 // How long after the last wheel notch a wheel pan still counts as in progress. Long enough to
 // bridge the gap between notches of one gesture, short enough that animation resumes promptly.
 const WHEEL_PAN_IDLE_MS = 150
 
 interface PanZoomOptions {
   // ALL reactive inputs are getter thunks - read fresh per event, never captured values
+  // Derived axes follow their source through set_range and must not transform independently.
+  axes: () => readonly Axis[]
   ranges: () => AxisRanges
   scale_type: (axis: Axis) => ScaleType | undefined
   plot_bounds: () => Rect
@@ -122,27 +123,32 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     cancel_rect_drag()
   }
 
-  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
-  // scale's transform space (log axes pan by a constant factor, linear by a shift)
-  const pan_all_axes = (init: AxisRanges, dx_px: number, dy_px: number) => {
+  // Transform the whole batch before writing: a rejected log range must leave every
+  // axis unchanged. Keep x, x2, y, y2 write order for callers that synchronize y2 to y.
+  const pan_axes = (
+    init: AxisRanges,
+    dx_px: number,
+    dy_px: number,
+    axes: readonly Axis[] = opts.axes(),
+  ) => {
     const dims = opts.plot_bounds()
-    for (const axis of AXES) {
+    const ranges = axes.map((axis) => {
       const horizontal = axis === `x` || axis === `x2`
-      opts.set_range(
-        axis,
-        pan_range_by_pixels(
-          init[axis],
-          horizontal ? dx_px : dy_px,
-          horizontal ? dims.width : dims.height,
-          opts.scale_type(axis),
-        ),
+      return pan_range_by_pixels(
+        init[axis],
+        horizontal ? dx_px : dy_px,
+        horizontal ? dims.width : dims.height,
+        opts.scale_type(axis),
       )
-    }
+    })
+    ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
   }
   const zoom_all_axes = (init: AxisRanges, factor: number) => {
-    for (const axis of AXES) {
-      opts.set_range(axis, zoom_range_by_factor(init[axis], factor, opts.scale_type(axis)))
-    }
+    const axes = opts.axes()
+    const ranges = axes.map((axis) =>
+      zoom_range_by_factor(init[axis], factor, opts.scale_type(axis)),
+    )
+    ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
   }
 
   // Wheel panning has no gesture end to listen for, so it reports itself as active for a
@@ -165,7 +171,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (!(evt.buttons & 1)) return on_pan_end()
     if (!pan_drag_state) return
     const sensitivity = opts.pan()?.drag_sensitivity ?? 1
-    pan_all_axes(
+    pan_axes(
       pan_drag_state,
       -(evt.clientX - pan_drag_state.start.x) * sensitivity,
       (evt.clientY - pan_drag_state.start.y) * sensitivity,
@@ -220,32 +226,15 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
     evt.preventDefault()
     mark_wheel_panning()
-    const dims = opts.plot_bounds()
     const sensitivity = pan_cfg?.wheel_sensitivity ?? 1
-    const ranges = opts.ranges()
-
     // Pan along the dominant wheel direction
-    if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      const delta_x = evt.deltaX * sensitivity
-      opts.set_range(
-        `x`,
-        pan_range_by_pixels(ranges.x, delta_x, dims.width, opts.scale_type(`x`)),
-      )
-      opts.set_range(
-        `x2`,
-        pan_range_by_pixels(ranges.x2, delta_x, dims.width, opts.scale_type(`x2`)),
-      )
-    } else {
-      const delta_y = evt.deltaY * sensitivity
-      opts.set_range(
-        `y`,
-        pan_range_by_pixels(ranges.y, delta_y, dims.height, opts.scale_type(`y`)),
-      )
-      opts.set_range(
-        `y2`,
-        pan_range_by_pixels(ranges.y2, delta_y, dims.height, opts.scale_type(`y2`)),
-      )
-    }
+    const direction = Math.abs(evt.deltaX) > Math.abs(evt.deltaY) ? `x` : `y`
+    pan_axes(
+      opts.ranges(),
+      evt.deltaX * sensitivity,
+      evt.deltaY * sensitivity,
+      opts.axes().filter((axis) => axis.startsWith(direction)),
+    )
   }
 
   // Touch handlers for pinch-zoom and two-finger pan
@@ -308,7 +297,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     // Pinch zoom about the view center if scale changed significantly, else pan
     if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
       zoom_all_axes(touch_state, scale)
-    } else pan_all_axes(touch_state, -delta_x, delta_y)
+    } else pan_axes(touch_state, -delta_x, delta_y)
   }
 
   const on_touch_end = () => {

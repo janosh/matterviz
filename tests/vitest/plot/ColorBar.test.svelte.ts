@@ -19,6 +19,16 @@ const tick_spans = () => [
   ...document.querySelectorAll<HTMLElement>(`.colorbar > div.bar > span.tick-label`),
 ]
 const tick_texts = () => tick_spans().map((span) => span.textContent)
+const select_option = async (trigger: HTMLButtonElement, label: string) => {
+  trigger.click()
+  await tick()
+  const option = [...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`)].find(
+    (node) => node.textContent?.includes(label),
+  )
+  if (!option) throw new Error(`Missing ${label} option`)
+  option.click()
+  await tick()
+}
 
 describe(`ColorBar layout`, () => {
   test(`forwards title/bar/wrapper styles and positions horizontal ticks`, () => {
@@ -438,36 +448,53 @@ describe(`ColorBar Interactive Selects`, () => {
     },
   )
 
-  test(`property selection reports intent and loading without mutating caller data`, async () => {
-    const state = $state({
-      selected_property_key: `energy`,
-      range: [0, 10] as Vec2,
-      loading: false,
-    })
-    const on_property_change = vi.fn()
-    mount_bar(bind_props({ property_options, on_property_change }, state))
-    await tick()
-    const trigger = doc_query<HTMLButtonElement>(`.property-select`)
-    trigger.click()
-    await tick()
-    const volume_option = [
-      ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
-    ].find((option) => option.textContent?.includes(`Volume`))
-    if (!volume_option) throw new Error(`Missing volume option`)
-    volume_option.click()
-    await tick()
-    expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
-    expect(trigger.textContent).toContain(`Energy`)
-    expect(state.range).toEqual([0, 10])
-    state.loading = true
-    await tick()
-    expect(trigger.disabled).toBe(true)
-    Object.assign(state, { selected_property_key: `volume`, range: [10, 20], loading: false })
-    await tick()
-    expect(trigger.disabled).toBe(false)
-    expect(trigger.textContent).toContain(`Volume`)
-    expect(tick_texts()).toContain(`20`)
-  })
+  test.each([undefined, {}, { Public: `#123456`, Partial: `#abcdef` }])(
+    `property selection reports intent and loading with categories=%j`,
+    async (categories) => {
+      const state = $state({
+        selected_property_key: `energy`,
+        range: [0, 10] as Vec2,
+        loading: false,
+        show_scale: true,
+      })
+      const on_property_change = vi.fn()
+      mount_bar(bind_props({ property_options, on_property_change, categories }, state))
+      await tick()
+      const trigger = doc_query<HTMLButtonElement>(`.property-select`)
+      await select_option(trigger, `Volume`)
+      expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
+      expect(trigger.textContent).toContain(`Energy`)
+      expect(state.range).toEqual([0, 10])
+      state.loading = true
+      await tick()
+      expect(trigger.disabled).toBe(true)
+      Object.assign(state, {
+        selected_property_key: `volume`,
+        range: [10, 20],
+        loading: false,
+      })
+      await tick()
+      expect(trigger.disabled).toBe(false)
+      expect(trigger.textContent).toContain(`Volume`)
+      if (categories && Object.keys(categories).length) {
+        expect(document.querySelector(`.colorbar .bar`)).toBeNull()
+        const swatches = [...document.querySelectorAll<HTMLElement>(`.category-legend > span`)]
+        expect(
+          swatches.map((node) => [
+            node.textContent?.trim(),
+            node.querySelector(`span`)?.style.color,
+          ]),
+        ).toEqual([
+          [`● Public`, `#123456`],
+          [`● Partial`, `#abcdef`],
+        ])
+      } else expect(tick_texts()).toContain(`20`)
+      state.show_scale = false
+      await tick()
+      expect(document.querySelector(`.colorbar .bar, .category-legend`)).toBeNull()
+      expect(trigger.isConnected).toBe(true)
+    },
+  )
 
   test.each([false, true])(
     `palette selection waits for the caller to commit (function scale: %s)`,
@@ -484,14 +511,7 @@ describe(`ColorBar Interactive Selects`, () => {
       const initial_gradient = doc_query(`.bar`).getAttribute(`style`)
       expect(trigger.textContent).toContain(`Plasma`)
       expect(initial_gradient).toContain(d3_sc.interpolatePlasma(0))
-      trigger.click()
-      await tick()
-      const inferno_option = [
-        ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
-      ].find((option) => option.textContent?.includes(`Inferno`))
-      if (!inferno_option) throw new Error(`Missing inferno option`)
-      inferno_option.click()
-      await tick()
+      await select_option(trigger, `Inferno`)
       expect(on_color_scale_change).toHaveBeenCalledExactlyOnceWith(`inferno`)
       expect(state.selected_color_scale_key).toBe(`plasma`)
       expect(trigger.textContent).toContain(`Plasma`)

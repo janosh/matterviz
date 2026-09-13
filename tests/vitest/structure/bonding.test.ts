@@ -1473,16 +1473,46 @@ describe(`neighbor_query`, () => {
       { element: `Cl`, abc: [0.25, 0.75, 0.6] },
     ],
   )
+  // Several consecutive sites share each bin; reordering revisits bins after crossing
+  // their edges. Clusters near opposite faces also populate repeated periodic-image bins.
+  const clustered = make_crystal(
+    4,
+    Array.from({ length: 24 }, (_, idx) => ({
+      element: `Si`,
+      abc: [
+        [0.01, 0.48, 0.99][Math.floor(idx / 8)],
+        0.01 + (idx % 4) * 0.005,
+        0.98 + (Math.floor(idx / 4) % 2) * 0.005,
+      ] as Vec3,
+    })),
+  )
 
   test.each([
-    [`triclinic, full pbc`, [true, true, true], 5.5],
-    [`triclinic, slab (pbc z off)`, [true, true, false], 5.5],
-    [`triclinic, wire (only pbc y)`, [false, true, false], 6.0],
-    [`triclinic, no pbc`, [false, false, false], 6.0],
-  ] as const)(`matches brute force over ±3 images: %s`, (_label, pbc, cutoff) => {
-    const list = bonding.neighbor_query(triclinic, { cutoff, pbc })
+    [`triclinic, full pbc`, triclinic, [true, true, true], 5.5],
+    [`triclinic, slab (pbc z off)`, triclinic, [true, true, false], 5.5],
+    [`triclinic, wire (only pbc y)`, triclinic, [false, true, false], 6.0],
+    [`triclinic, no pbc`, triclinic, [false, false, false], 6.0],
+    [`clustered, full pbc`, clustered, [true, true, true], 2.1],
+    [`clustered, no pbc`, clustered, [false, false, false], 2.1],
+    [
+      `reversed clusters, full pbc`,
+      { ...clustered, sites: clustered.sites.toReversed() },
+      [true, true, true],
+      2.1,
+    ],
+    [
+      `interleaved clusters, full pbc`,
+      {
+        ...clustered,
+        sites: clustered.sites.map((_, idx) => clustered.sites[(idx * 7) % 24]),
+      },
+      [true, true, true],
+      2.1,
+    ],
+  ] as const)(`matches brute force over ±3 images: %s`, (_label, structure, pbc, cutoff) => {
+    const list = bonding.neighbor_query(structure, { cutoff, pbc })
     const actual = as_map(list)
-    const expected = brute_force(triclinic, cutoff, pbc)
+    const expected = brute_force(structure, cutoff, pbc)
     expect([...actual.keys()].toSorted()).toEqual([...expected.keys()].toSorted())
     let max_dist_err = 0
     let max_delta_err = 0

@@ -314,9 +314,14 @@ describe(`selection validity`, () => {
     expect(session.hovered_site_idx).toBeNull()
   })
 
-  it.each([{}, NaN])(
-    `keeps selection across frames with series key %j and clears it on topology or series change`,
-    (series_key) => {
+  it.each([
+    [{}, `label`],
+    [NaN, `element`],
+    [{}, `occu`],
+    [NaN, `oxidation_state`],
+  ] as const)(
+    `keeps selection across frames with series key %j and clears it on %s or series change`,
+    (series_key, field) => {
       const base = crystal()
       const { host, session } = make_session({ structure: base, series_key })
       host.selected_sites = [0]
@@ -343,6 +348,14 @@ describe(`selection validity`, () => {
           idx === 0 ? { ...site, species: [{ ...site.species[0], element: `Xe` }] } : site,
         ),
       }
+      flushSync()
+      expect(host.selected_sites).toEqual([])
+      host.selected_sites = [0]
+      flushSync()
+      const site = host.structure.sites[0]
+      if (field === `label`) site.label = `changed`
+      else if (field === `element`) site.species[0].element = `Ne`
+      else site.species[0][field] = 0.5
       flushSync()
       expect(host.selected_sites).toEqual([])
       host.selected_sites = [0]

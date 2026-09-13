@@ -441,14 +441,24 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test(
-    `tiny trajectory WebM export contains decodable video`,
+    `tiny trajectory WebM export cancels, restores its frame, and retries with decodable video`,
     { tag: `@single-viewer` },
     async ({ page }) => {
       await trajectory_viewer.scrollIntoViewIfNeeded()
+      const step_input = controls.locator(`.step-input`)
+      await step_input.fill(`2`)
       await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
       const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
       await pane.getByRole(`button`, { name: `0.5x`, exact: true }).click()
+      await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
       const export_button = pane.getByRole(`button`, { name: `Download WebM`, exact: true })
+      let downloads = 0
+      page.on(`download`, () => downloads++)
+      await export_button.click()
+      await pane.getByRole(`button`, { name: `Cancel export`, exact: true }).click()
+      await expect(export_button).toBeEnabled()
+      await expect(step_input).toHaveValue(`2`)
+      expect(downloads).toBe(0)
       const [download] = await Promise.all([
         page.waitForEvent(`download`),
         export_button.click().then(async () => {
@@ -456,6 +466,8 @@ test.describe(`Trajectory Component`, () => {
           expect(await pane.locator(`.error-message`).allTextContents()).toEqual([])
         }),
       ])
+      await expect(step_input).toHaveValue(`2`)
+      expect(downloads).toBe(1)
       const path = await download.path()
       if (!path) throw new Error(`WebM download has no file`)
       const video_data = await readFile(path)

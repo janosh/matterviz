@@ -1,4 +1,6 @@
 import type { Vec3 } from '$lib/math'
+import type { Site } from './index'
+import { is_image_site } from './site'
 import {
   InstancedMesh,
   type Intersection,
@@ -12,6 +14,41 @@ import {
 } from 'three/webgpu'
 
 export type InstancedAtom = { position: Vec3; radius: number; color?: string }
+
+// Reuse viewer-owned render records for coordinate-only updates of ordered atoms. Validate
+// every slot before changing any record; composition, occupancy or image changes rebuild it.
+export function update_ordered_atom_positions<
+  Atom extends InstancedAtom & {
+    site_idx: number
+    element: string
+    species: Site[`species`]
+    is_image_atom: boolean
+    occupancy: number
+  },
+>(atoms: readonly Atom[], sites: readonly Site[]): Atom[] | null {
+  if (atoms.length !== sites.length) return null
+  for (let idx = 0; idx < sites.length; idx++) {
+    const site = sites[idx]
+    const atom = atoms[idx]
+    if (
+      atom.site_idx !== idx ||
+      atom.is_image_atom ||
+      atom.occupancy !== 1 ||
+      is_image_site(site) ||
+      site.properties?.completion_image ||
+      site.species.length !== 1 ||
+      site.species[0].occu !== 1 ||
+      atom.element !== site.species[0].element
+    )
+      return null
+  }
+  for (let idx = 0; idx < sites.length; idx++) {
+    atoms[idx].position = sites[idx].xyz
+    atoms[idx].species = sites[idx].species
+  }
+  // A fresh array invalidates instance buffers while the per-atom records and lookup survive.
+  return atoms.slice()
+}
 
 // Scratch is shared across synchronous raycasts, like Three’s native mesh picking.
 const hit_sphere = new Sphere(new Vector3(), 0.5)
@@ -40,18 +77,8 @@ export class AtomInstances extends InstancedMesh<SphereGeometry> {
   max_radius = 0
 
   update_atoms(atoms: readonly InstancedAtom[]): void {
-    if (!this.geometry.boundingSphere) this.geometry.computeBoundingSphere()
-    const sphere = this.geometry.boundingSphere
-    if (!sphere) return
     const matrices = this.instanceMatrix.array
-    let min_x = Infinity,
-      min_y = Infinity,
-      min_z = Infinity
-    let max_x = -Infinity,
-      max_y = -Infinity,
-      max_z = -Infinity
     this.count = Math.min(atoms.length, this.instanceMatrix.count)
-    this.max_radius = 0
     for (let idx = 0; idx < this.count; idx++) {
       const { position, radius } = atoms[idx]
       const offset = idx * 16
@@ -62,6 +89,28 @@ export class AtomInstances extends InstancedMesh<SphereGeometry> {
       matrices[offset + 12] = position[0]
       matrices[offset + 13] = position[1]
       matrices[offset + 14] = position[2]
+    }
+    this.update_bounds()
+    this.instanceMatrix.clearUpdateRanges()
+    this.instanceMatrix.addUpdateRange(0, this.count * 16)
+    this.instanceMatrix.needsUpdate = true
+  }
+
+  // Changing tessellation updates picking bounds without re-uploading atom transforms.
+  update_bounds(): void {
+    if (!this.geometry.boundingSphere) this.geometry.computeBoundingSphere()
+    const sphere = this.geometry.boundingSphere
+    if (!sphere) return
+    const matrices = this.instanceMatrix.array
+    let min_x = Infinity,
+      min_y = Infinity,
+      min_z = Infinity
+    let max_x = -Infinity,
+      max_y = -Infinity,
+      max_z = -Infinity
+    this.max_radius = 0
+    for (let idx = 0; idx < this.count; idx++) {
+      const offset = idx * 16
       const scale = matrices[offset]
       const extent = Math.abs(scale) * sphere.radius
       const pos_x = matrices[offset + 12] + scale * sphere.center.x
@@ -82,9 +131,6 @@ export class AtomInstances extends InstancedMesh<SphereGeometry> {
       bounds.center.set((min_x + max_x) / 2, (min_y + max_y) / 2, (min_z + max_z) / 2)
       bounds.radius = Math.hypot(max_x - min_x, max_y - min_y, max_z - min_z) / 2
     }
-    this.instanceMatrix.clearUpdateRanges()
-    this.instanceMatrix.addUpdateRange(0, this.count * 16)
-    this.instanceMatrix.needsUpdate = true
   }
 
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {

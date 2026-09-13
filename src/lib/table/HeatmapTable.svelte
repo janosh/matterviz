@@ -86,6 +86,8 @@
     Search as SearchIcon,
   } from 'svelte-widgets/icons'
   import { onMount, type Snippet, tick, untrack } from 'svelte'
+  import { flip } from 'svelte/animate'
+  import { prefersReducedMotion as reduced_motion } from 'svelte/motion'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -114,6 +116,7 @@
     pagination = false,
     virtual = false,
     row_key,
+    row_animation_ms = 0,
     selected_ids = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
@@ -170,6 +173,8 @@
     virtual?: VirtualScroll
     // Required for selection; identifies rows across sorting and data replacement.
     row_key?: Extract<keyof Row, string> | ((row: Row) => RowId)
+    // Row reorder duration in ms; disabled for reduced motion and virtualized tables.
+    row_animation_ms?: number
     selected_ids?: RowId[]
     // Column IDs hidden through the column toggle. Bindable for persistence.
     hidden_columns?: string[]
@@ -1711,94 +1716,113 @@
         ondblclick={on_row_double_click ? row_handler(on_row_double_click) : undefined}
       >
         {@render virtual_spacer(spacer_top)}
-        {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
-          {@const abs_idx = display_range.start + row_idx}
-          {@const row_selected = show_row_select && is_row_selected(row)}
-          <tr
-            style={row.style}
-            class={[row.class, { selected: row_selected }]}
-            data-row-idx={abs_idx}
-            tabindex={on_row_click ? 0 : undefined}
-          >
-            {#if show_row_select}
-              <td class="select-col">
-                <input
-                  type="checkbox"
-                  checked={row_selected}
-                  onchange={() => toggle_row_select(row)}
-                />
-              </td>
-            {/if}
-            {#if show_row_numbers}<td class="row-num-col">{abs_idx + 1}</td>{/if}
-            {#each cols as view, col_idx (view.id)}
-              {@const { col } = view}
-              {@const val = row[view.key]}
-              {@const num = parse_numeric_val(val)}
-              {@const color = calc_color(num, view)}
-              {@const date_val = view.dt_mode
-                ? format_datetime_cell(val, col, view.dt_mode)
-                : null}
-              <td
-                data-col={col.label}
-                data-sort-value={is_html_str(val)
-                  ? null
-                  : val instanceof Date
-                    ? val.getTime()
-                    : val}
-                data-row-idx={abs_idx}
-                data-col-idx={col_idx}
-                style:left={view.sticky_left}
-                class:sticky-col={col.sticky}
-                class:numeric-col={view.numeric}
-                class:cell-selected={selection.has(abs_idx, col_idx)}
-                class:best-cell={view.best !== null && num === view.best}
-                tabindex={!keyboard_cells
-                  ? undefined
-                  : tab_stop.row === abs_idx && tab_stop.col === col_idx
-                    ? 0
-                    : -1}
-                style:--cell-bg={col.render_as === `bar` ? null : color.bg}
-                style:color={col.render_as === `bar` ? null : color.text}
-                style={view.cell_style}
-              >
-                {#if view.bar}
-                  {@const fraction = bar_fraction(num, view)}
-                  {#if fraction !== null}
-                    <!-- sits behind the cell text, so the number stays readable. With `both`,
-                         the fill already paints the cell in color.bg, so a bar of that same
-                         color would be invisible; contrast against the text instead. -->
-                    <span
-                      class="data-bar"
-                      aria-hidden="true"
-                      style:width="{fraction * 100}%"
-                      style:background={col.render_as === `both`
-                        ? `currentColor`
-                        : (color.bg ?? `var(--accent-color, #4a9eff)`)}
-                    ></span>
-                  {/if}
+        {#snippet row_cells(row: Row & RowData, abs_idx: number, row_selected: boolean)}
+          {#if show_row_select}
+            <td class="select-col">
+              <input
+                type="checkbox"
+                checked={row_selected}
+                onchange={() => toggle_row_select(row)}
+              />
+            </td>
+          {/if}
+          {#if show_row_numbers}<td class="row-num-col">{abs_idx + 1}</td>{/if}
+          {#each cols as view, col_idx (view.id)}
+            {@const { col } = view}
+            {@const val = row[view.key]}
+            {@const num = parse_numeric_val(val)}
+            {@const color = calc_color(num, view)}
+            {@const date_val = view.dt_mode
+              ? format_datetime_cell(val, col, view.dt_mode)
+              : null}
+            <td
+              data-col={col.label}
+              data-sort-value={is_html_str(val)
+                ? null
+                : val instanceof Date
+                  ? val.getTime()
+                  : val}
+              data-row-idx={abs_idx}
+              data-col-idx={col_idx}
+              style:left={view.sticky_left}
+              class:sticky-col={col.sticky}
+              class:numeric-col={view.numeric}
+              class:cell-selected={selection.has(abs_idx, col_idx)}
+              class:best-cell={view.best !== null && num === view.best}
+              tabindex={!keyboard_cells
+                ? undefined
+                : tab_stop.row === abs_idx && tab_stop.col === col_idx
+                  ? 0
+                  : -1}
+              style:--cell-bg={col.render_as === `bar` ? null : color.bg}
+              style:color={col.render_as === `bar` ? null : color.text}
+              style={view.cell_style}
+            >
+              {#if view.bar}
+                {@const fraction = bar_fraction(num, view)}
+                {#if fraction !== null}
+                  <!-- sits behind the cell text, so the number stays readable. With `both`,
+                     the fill already paints the cell in color.bg, so a bar of that same
+                     color would be invisible; contrast against the text instead. -->
+                  <span
+                    class="data-bar"
+                    aria-hidden="true"
+                    style:width="{fraction * 100}%"
+                    style:background={col.render_as === `both`
+                      ? `currentColor`
+                      : (color.bg ?? `var(--accent-color, #4a9eff)`)}
+                  ></span>
                 {/if}
-                {#if col.cell}
-                  {@render col.cell({ row, col, val })}
-                {:else if cell}
-                  {@render cell({ row, col, val })}
-                {:else if date_val != null}
-                  {@render plain_text(date_val)}
-                {:else if typeof val === `number` && !Number.isNaN(val)}
-                  {format_num(val, col.format ?? default_num_format)}
-                {:else if is_invalid(val)}
-                  <!-- data-title feeds the delegated tooltip, so no per-cell attachment -->
-                  <span data-title="Not available">n/a</span>
-                {:else if typeof val === `string` && !is_html_str(val)}
-                  {@render plain_text(val)}
-                {:else}
-                  {@html render_html(val)}
-                {/if}
-              </td>
-            {/each}
-          </tr>
-        {:else}
+              {/if}
+              {#if col.cell}
+                {@render col.cell({ row, col, val })}
+              {:else if cell}
+                {@render cell({ row, col, val })}
+              {:else if date_val != null}
+                {@render plain_text(date_val)}
+              {:else if typeof val === `number` && !Number.isNaN(val)}
+                {format_num(val, col.format ?? default_num_format)}
+              {:else if is_invalid(val)}
+                <!-- data-title feeds the delegated tooltip, so no per-cell attachment -->
+                <span data-title="Not available">n/a</span>
+              {:else if typeof val === `string` && !is_html_str(val)}
+                {@render plain_text(val)}
+              {:else}
+                {@html render_html(val)}
+              {/if}
+            </td>
+          {/each}
+        {/snippet}
+        {#if display_rows.length === 0}
           <tr class="empty-row"><td colspan={body_colspan}>No data</td></tr>
-        {/each}
+        {:else if row_animation_ms > 0 && !virtual_config && !reduced_motion.current}
+          {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
+            {@const abs_idx = display_range.start + row_idx}
+            {@const row_selected = show_row_select && is_row_selected(row)}
+            <tr
+              animate:flip={{ duration: row_animation_ms }}
+              style={row.style}
+              class={[row.class, { selected: row_selected }]}
+              data-row-idx={abs_idx}
+              tabindex={on_row_click ? 0 : undefined}
+            >
+              {@render row_cells(row, abs_idx, row_selected)}
+            </tr>
+          {/each}
+        {:else}
+          {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
+            {@const abs_idx = display_range.start + row_idx}
+            {@const row_selected = show_row_select && is_row_selected(row)}
+            <tr
+              style={row.style}
+              class={[row.class, { selected: row_selected }]}
+              data-row-idx={abs_idx}
+              tabindex={on_row_click ? 0 : undefined}
+            >
+              {@render row_cells(row, abs_idx, row_selected)}
+            </tr>
+          {/each}
+        {/if}
         {@render virtual_spacer(spacer_bottom)}
       </tbody>
       {#if summary_stats.length > 0}

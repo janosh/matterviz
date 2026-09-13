@@ -171,13 +171,13 @@
 
 {#if geometry}
   <T.Mesh>
-    <T is={geometry} />
+    <T is={geometry} dispose={false} />
     <T.MeshStandardMaterial {...material_props} />
   </T.Mesh>
 
   {#if wireframe_geometry}
     <T.LineSegments>
-      <T is={wireframe_geometry} />
+      <T is={wireframe_geometry} dispose={false} />
       <T.LineBasicMaterial {...wireframe_props} />
     </T.LineSegments>
   {/if}

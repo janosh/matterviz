@@ -41,20 +41,21 @@
     invalidate()
   })
 
-  // Keep resources across updates: disposing/re-uploading unchanged geometry can also
-  // abort Svelte's flush after a failed GPU upload, leaving stale atoms and bonds.
   let mesh = $state.raw<AtomInstances | null>(null)
+  // Three's WebGPU geometry disposal also frees the mesh's instance attributes. Keep
+  // detail geometries alive together with those shared buffers, and reuse them on zoom-out.
+  const detail_geometries = new Map<number, SphereGeometry>()
   let colored_css: (string | undefined)[] = []
   let colored_ghost = false
   $effect(() => {
     let current = untrack(() => mesh)
     if (!current && atoms.length === 0) return
     const segments = Math.min(detail_segments, sphere_segments)
-    const geometry =
-      current?.geometry.parameters.widthSegments === segments
-        ? current.geometry
-        : new SphereGeometry(0.5, segments, segments)
-    if (current && current.geometry !== geometry) current.geometry.dispose()
+    let geometry = detail_geometries.get(segments)
+    if (!geometry) {
+      geometry = new SphereGeometry(0.5, segments, segments)
+      detail_geometries.set(segments, geometry)
+    }
     const capacity = current?.instanceMatrix.count ?? 0
     // Grow geometrically (three caches TSL by mesh uuid); shrink via mesh.count.
     if (!current || atoms.length > capacity) {
@@ -67,15 +68,23 @@
       current.frustumCulled = false
       mesh = current
     }
-    // Detail changes can alter the sphere's exact float32 bounds.
-    current.geometry = geometry
-    current.update_atoms(atoms)
+    if (current.geometry !== geometry) {
+      current.geometry = geometry
+      // Detail changes can alter the sphere's exact float32 bounds, but not atom transforms.
+      current.update_bounds()
+    }
+    invalidate()
+  })
+  $effect(() => {
+    if (!mesh) return
+    mesh.update_atoms(atoms)
     invalidate()
   })
   // Dispose only on unmount, never on updates that reuse a resource.
   $effect(() => () => {
     mesh?.dispose()
-    mesh?.geometry.dispose()
+    for (const geometry of detail_geometries.values()) geometry.dispose()
+    detail_geometries.clear()
     material.dispose()
   })
 
@@ -147,5 +156,5 @@
 </script>
 
 {#if mesh}
-  <T is={mesh} {...pointer_props} />
+  <T is={mesh} {...pointer_props} dispose={false} />
 {/if}
