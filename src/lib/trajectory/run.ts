@@ -286,8 +286,11 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
     dispose: () => {
       if (disposed) return
       disposed = true
-      fields.properties.finish()
-      release?.()
+      try {
+        fields.properties.finish()
+      } finally {
+        release?.()
+      }
     },
   }
 }

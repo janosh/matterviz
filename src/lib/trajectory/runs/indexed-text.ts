@@ -98,23 +98,33 @@ export const indexed_text_run = (
   // Yield before each batch so the preview appears before scanning property columns.
   // Disposal finishes `properties`, stopping work on the next event-loop turn.
   void (async () => {
-    for (let frame_idx = 0; frame_idx < frame_count;) {
-      await yield_to_event_loop()
-      if (properties.complete) return
-      const end = Math.min(frame_idx + PROPERTY_BATCH, frame_count)
-      const deadline = performance.now() + PROPERTY_BUDGET_MS
-      const batch: TrajectoryMetadata[] = []
-      do {
+    try {
+      for (let frame_idx = 0; frame_idx < frame_count;) {
+        await yield_to_event_loop()
+        if (properties.complete) return
+        const end = Math.min(frame_idx + PROPERTY_BATCH, frame_count)
+        const deadline = performance.now() + PROPERTY_BUDGET_MS
+        const batch: TrajectoryMetadata[] = []
+        do {
+          try {
+            batch.push(source.property_row(frame_idx))
+          } catch (error) {
+            collector.warn(`Skipping plot data of frame ${frame_idx}`, error)
+          }
+          frame_idx++
+        } while (frame_idx < end && performance.now() < deadline)
         try {
-          batch.push(source.property_row(frame_idx))
+          properties.push(batch)
         } catch (error) {
-          collector.warn(`Skipping plot data of frame ${frame_idx}`, error)
+          // push() committed the rows and notified every subscriber before rethrowing.
+          collector.warn(`Plot data subscriber failed after frame ${frame_idx - 1}`, error)
         }
-        frame_idx++
-      } while (frame_idx < end && performance.now() < deadline)
-      properties.push(batch)
+      }
+    } finally {
+      properties.finish()
     }
-    properties.finish()
-  })()
+  })().catch((error: unknown) =>
+    collector.warn(`Indexed ${format} plot data extraction failed`, error),
+  )
   return run
 }

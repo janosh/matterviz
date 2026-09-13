@@ -480,8 +480,8 @@ describe(`MatterViz Extension`, () => {
 
   test(`large compressed EXTXYZ request opens an indexed run, streams plot rows and serves frames`, async () => {
     const file_path = `/test/movie.extxyz.gz`
-    // The preview precedes all plot rows; time-budgeted scans stream them in later turns.
-    const n_frames = 2100
+    // Exceed the host's 5000-row flush plus a 2000-row scan chunk, leaving a final tail.
+    const n_frames = 7100
     const trajectory = Array.from(
       { length: n_frames },
       (_unused, idx) => `1\nframe=${idx} energy=${-idx}\nH ${idx} 0 0`,
@@ -517,6 +517,7 @@ describe(`MatterViz Extension`, () => {
     const stream_calls = mock_webview.postMessage.mock.calls
       .map(([message]) => message as StreamMessage)
       .filter((message) => message.command === `plot_metadata_stream`)
+    expect(stream_calls.length).toBeGreaterThan(1)
     expect(stream_calls.at(-1)).toMatchObject({ file_path, complete: true })
     expect(stream_calls.every((message) => message.file_path === file_path)).toBe(true)
     expect(

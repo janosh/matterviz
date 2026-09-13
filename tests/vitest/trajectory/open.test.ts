@@ -41,25 +41,42 @@ describe(`loading policy`, () => {
     expect(lazy.provenance.format).toBe(`xyz`)
   })
 
-  it(`extracts the plot rows of an indexed run progressively in batches`, async () => {
-    const long = synthetic_extxyz(2100, 3)
-    const lazy = await open(long, `long.extxyz`, { index_above_bytes: 0 })
-    expect(lazy.properties.complete).toBe(false)
-    expect(lazy.properties.rows).toHaveLength(0)
-    expect(lazy.preview.structure.sites).toHaveLength(3)
-    const seen: [number, boolean][] = []
-    lazy.properties.subscribe((batch, complete) => seen.push([batch.length, complete]))
-    await lazy.properties.done
-    // Every batch follows the preview; a time budget can yield before the 2000-row ceiling.
-    expect(seen.at(-1)).toEqual([0, true])
-    const batches = seen.slice(0, -1)
-    expect(batches.every(([size, complete]) => size > 0 && size <= 2000 && !complete)).toBe(
-      true,
-    )
-    expect(batches.reduce((total, [size]) => total + size, 0)).toBe(2100)
-    expect(lazy.properties.rows).toHaveLength(2100)
-    expect(lazy.properties.rows.at(-1)).toMatchObject({ frame_number: 2099, step: 20990 })
-  })
+  it.each([`none`, `batch`, `completion`, `both`])(
+    `extracts all indexed plot rows with %s subscriber errors`,
+    async (failure) => {
+      const long = synthetic_extxyz(2100, 3)
+      const lazy = await open(long, `long.extxyz`, { index_above_bytes: 0 })
+      expect(lazy.properties.complete).toBe(false)
+      expect(lazy.properties.rows).toHaveLength(0)
+      expect(lazy.preview.structure.sites).toHaveLength(3)
+      if (failure !== `none`)
+        lazy.properties.subscribe((_batch, complete) => {
+          const phase = complete ? `completion` : `batch`
+          if (failure === `both` || failure === phase) {
+            throw new Error(`Observer failed at ${phase}`)
+          }
+        })
+      const seen: [number, boolean][] = []
+      lazy.properties.subscribe((batch, complete) => seen.push([batch.length, complete]))
+      await lazy.properties.done
+      // Completion resolves before its listeners run; let the terminal catch report errors.
+      await Promise.resolve()
+      for (const phase of [`batch`, `completion`]) {
+        expect(
+          lazy.warnings.some((warning) => warning.includes(`Observer failed at ${phase}`)),
+        ).toBe(failure === phase || failure === `both`)
+      }
+      // Every batch follows the preview; a time budget can yield before the 2000-row ceiling.
+      expect(seen.at(-1)).toEqual([0, true])
+      const batches = seen.slice(0, -1)
+      expect(batches.every(([size, complete]) => size > 0 && size <= 2000 && !complete)).toBe(
+        true,
+      )
+      expect(batches.reduce((total, [size]) => total + size, 0)).toBe(2100)
+      expect(lazy.properties.rows).toHaveLength(2100)
+      expect(lazy.properties.rows.at(-1)).toMatchObject({ frame_number: 2099, step: 20990 })
+    },
+  )
 
   it.each([`before scanning`, `after the first batch`])(
     `stops indexed property work when disposed %s`,

@@ -1610,17 +1610,36 @@ describe(`neighbor_query`, () => {
       view.setBigUint64(0, view.getBigUint64(0) + BigInt(value < 0 ? -direction : direction))
       return view.getFloat64(0)
     }
-    const positions = Array.from({ length: 2000 }, (_, idx): Vec3 => [
-      origin + Math.floor(idx / 144) * 0.2,
-      origin + (Math.floor(idx / 12) % 12) * 0.2,
-      origin + (idx % 12) * 0.2,
-    ])
+    // 2,000 sites in 27 coarse bins activate the dense grid for every perturbation.
+    const structure = make_crystal(
+      10,
+      Array.from({ length: 2000 }, (_, idx) => ({
+        element: `Si`,
+        xyz: [
+          origin + Math.floor(idx / 144) * 0.2,
+          origin + (Math.floor(idx / 12) % 12) * 0.2,
+          origin + (idx % 12) * 0.2,
+        ] as Vec3,
+      })),
+    )
     for (const first_ulp of [-1, 0, 1]) {
       for (const second_ulp of [-1, 0, 1]) {
-        positions[1] = [next_float(origin + 0.5, first_ulp), origin, origin]
-        positions[2] = [next_float(origin + 1.5, second_ulp), origin, origin]
+        structure.sites[1].xyz = [next_float(origin + 0.5, first_ulp), origin, origin]
+        structure.sites[2].xyz = [next_float(origin + 1.5, second_ulp), origin, origin]
+        const delta_x = structure.sites[2].xyz[0] - structure.sites[1].xyz[0]
+        const dist_sq = delta_x * delta_x
+        const expected = dist_sq <= 1 ? [Math.sqrt(dist_sq)] : []
+        const visits: number[][] = [[], []]
+        bonding.visit_neighbor_distances(
+          structure,
+          { cutoff: 1, pbc: [false, false, false] },
+          (center, neighbor, distance) => {
+            if (center === 1 && neighbor === 2) visits[0].push(distance)
+            if (center === 2 && neighbor === 1) visits[1].push(distance)
+          },
+        )
         // .5 - 1 ULP and 1.5 have rounded distance 1, but unpadded half bins 0 and 3.
-        expect(expect_dense_stream_matches_list(positions, 1)).toBe(0)
+        expect(visits).toEqual([expected, expected])
       }
     }
   })
@@ -1651,16 +1670,21 @@ describe(`neighbor_query`, () => {
     }
     // Rounded subtraction gives distance 1; unpadded whole bins 0 and 2 miss this pair.
     expect(expected.get(positions.length + 2)).toBe(1)
+    let max_error = 0
     bonding.visit_neighbor_distances(
       structure,
       { cutoff: 1, pbc: [false, false, false] },
       (center, neighbor, distance) => {
         const key = center * positions.length + neighbor
-        expect(distance).toBe(expected.get(key))
+        const reference = expected.get(key)
+        if (reference === undefined)
+          throw new Error(`Unexpected contact ${center}, ${neighbor}`)
+        max_error = Math.max(max_error, Math.abs(distance - reference))
         expected.delete(key)
       },
     )
     expect(expected.size).toBe(0)
+    expect(max_error).toBe(0)
   })
 
   test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {

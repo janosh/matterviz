@@ -421,12 +421,23 @@ describe(`should_hide_plot`, () => {
     { name: `leading NaN values`, frames: multi, series: [create_series([NaN, 1, 2])], expected: false },
     { name: `only one Infinity sample`, frames: multi, series: [create_series([NaN, Infinity, NaN])], expected: true },
     { name: `repeated Infinity samples`, frames: multi, series: [create_series([Infinity, Infinity, NaN])], expected: false },
-    { name: `leading Infinity under infinite tolerance`, frames: multi, series: [create_series([Infinity, 1])], tolerance: Infinity, expected: false },
     { name: `near-constant under a loose tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 1e10, expected: true },
     { name: `near-constant under zero tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 0, expected: false },
   ])(`$name → hide=$expected`, ({ frames, series, tolerance, expected }) => {
     expect(should_hide_plot(frames.length, series, tolerance)).toBe(expected)
   })
+
+  it.each([Infinity, -Infinity])(
+    `treats %s as varying in either order, even with infinite tolerance`,
+    (value) => {
+      for (const values of [
+        [value, 1],
+        [1, value],
+      ]) {
+        expect(should_hide_plot(2, [create_series(values)], Infinity)).toBe(false)
+      }
+    },
+  )
 
   it(`stops reading a large series once its first varying pair settles visibility`, () => {
     const series = create_series([1, 2, 3])

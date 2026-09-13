@@ -499,7 +499,12 @@ export function should_hide_plot(
     for (const value of srs.y) {
       if (isNaN(value)) continue
       if (first === undefined) first = value
-      else if (!Number.isFinite(first) || !(Math.abs(value - first) <= tolerance)) return false
+      else if (
+        !Number.isFinite(first) ||
+        !Number.isFinite(value) ||
+        !(Math.abs(value - first) <= tolerance)
+      )
+        return false
     }
     return true
   })

@@ -3,7 +3,12 @@
 // identical data, progressive properties and dispose semantics.
 import type { ParseProgress, TrajectoryFrame } from '$lib/trajectory'
 import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
-import { summarize_run, TrajectoryProperties, type TrajectoryRun } from '$lib/trajectory/run'
+import {
+  summarize_run,
+  sync_run,
+  TrajectoryProperties,
+  type TrajectoryRun,
+} from '$lib/trajectory/run'
 import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { host_run } from '$lib/trajectory/runs/host'
@@ -396,6 +401,30 @@ describe(`worker-served run lifecycle`, () => {
 })
 
 describe(`TrajectoryProperties`, () => {
+  it(`releases a synchronous source even when its completion subscriber throws`, async () => {
+    const properties = new TrajectoryProperties()
+    const release = vi.fn()
+    const run = sync_run({
+      label: `test trajectory`,
+      frame_count: 1,
+      read: () => reference_frames[0],
+      properties,
+      release,
+      provenance: {},
+      metadata: {},
+      warnings: [],
+    })
+    const failure = new Error(`Completion observer failed`)
+    properties.subscribe(() => {
+      throw failure
+    })
+    expect(() => run.dispose()).toThrow(failure)
+    await properties.done
+    run.dispose()
+    expect(release).toHaveBeenCalledOnce()
+    expect(() => run.read_frame(0)).toThrow(/disposed/)
+  })
+
   it(`delivers nested batches before completion and snapshots queued rows`, () => {
     const properties = new TrajectoryProperties()
     properties.subscribe((batch) => {
