@@ -1,6 +1,6 @@
 // $site/imports glob helpers and the structure demo picker built from them
 import { fixture_ext, glob_default, glob_text, site_file_info } from '$site/imports'
-import { structure_files } from '$site/structures'
+import { parse_structure_fixture, structure_files } from '$site/structures'
 import { expect, test } from 'vitest'
 
 // glob_text unwraps the module-namespace shape the Rolldown prod build returns
@@ -17,7 +17,7 @@ test.each([
   [`dev raw string`, `data_test`, `data_test`],
   [`prod string default`, { default: `data_test` }, `data_test`],
   [`prod parsed default re-stringified`, { default: parsed }, JSON.stringify(parsed)],
-  [`nullish`, null, ``], // structure_file_text's missing-entry check relies on ``
+  [`nullish`, null, ``],
 ])(`glob_text %s`, (_desc, input, expected) => {
   expect(glob_text(input)).toBe(expected)
 })
@@ -43,6 +43,8 @@ test(`structure_files includes crystals`, () => {
   const by_name = new Map(structure_files.map((file) => [file.name, file]))
   expect(by_name.get(`Li4Fe3Mn1(PO4)4.cif`)?.category).toBe(`crystal`)
   expect(by_name.get(`Cu-FCC.json`)?.category).toBe(`crystal`)
+  expect(parse_structure_fixture(`Cu-FCC.json`).sites.length).toBeGreaterThan(0)
+  expect(() => parse_structure_fixture(`missing.cif`)).toThrow(`Unknown structure fixture`)
   expect(by_name.get(`mp-19017.json.gz`)).toMatchObject({
     type: `JSON`,
     category: `crystal`,

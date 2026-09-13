@@ -3,6 +3,7 @@ import BarPlot from '$lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
 import Histogram from '$lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+import type { Vec2 } from '$lib/math'
 import { tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { mount_sized, plot_svg, translate_of } from '../setup'
@@ -151,6 +152,43 @@ describe(`alt+drag rect selection`, () => {
 })
 
 describe(`shared plot drag zoom bounds`, () => {
+  test.each(plot_cases)(
+    `%s cancels scrolling only during an active two-finger gesture`,
+    async (_name, mount_plot) => {
+      const svg = plot_svg(await mount_plot())
+      const bounds = svg.getBoundingClientRect()
+      // oxfmt-ignore
+      const gestures: [string, Vec2[], boolean][] = [
+        [`touchstart`, [[100, 100]], false],
+        [`touchmove`, [[120, 100]], false],
+        [`touchstart`, [[10, 100], [100, 100]], false],
+        [`touchmove`, [[100, 100], [200, 100]], false],
+        [`touchstart`, [[100, 100], [200, 100]], true],
+        [`touchmove`, [[80, 100], [220, 100]], true],
+        [`touchcancel`, [], false],
+        [`touchmove`, [[100, 100], [200, 100]], false],
+      ]
+      for (const [type, positions, prevented] of gestures) {
+        const event = new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches: positions.map(
+            ([coord_x, coord_y], identifier) =>
+              new Touch({
+                identifier,
+                target: svg,
+                clientX: bounds.left + coord_x,
+                clientY: bounds.top + coord_y,
+              }),
+          ),
+        })
+        svg.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(prevented)
+      }
+      await tick()
+    },
+  )
+
   test.each(plot_cases)(
     `%s rejects margin starts but allows the endpoint outside`,
     async (_name, mount_plot) => {

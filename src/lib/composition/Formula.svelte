@@ -4,7 +4,6 @@
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import ElementTile from '$lib/element/ElementTile.svelte'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     AMOUNT_FORMAT,
@@ -64,8 +63,8 @@
   }
   const sorted_elements = $derived.by(() => {
     if (ordering === `original`) return parsed_elements
-    const symbols = [...new SvelteSet(parsed_elements.map((token) => token.element))]
-    const rank = new SvelteMap(SORTERS[ordering](symbols).map((symbol, idx) => [symbol, idx]))
+    const symbols = [...new Set(parsed_elements.map((token) => token.element))]
+    const rank = new Map(SORTERS[ordering](symbols).map((symbol, idx) => [symbol, idx]))
     return parsed_elements.toSorted(
       (tok_a, tok_b) => (rank.get(tok_a.element) ?? 0) - (rank.get(tok_b.element) ?? 0),
     )

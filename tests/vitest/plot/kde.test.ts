@@ -36,6 +36,7 @@ const normal_samples = (count: number, seed = 1): number[] => {
 
 // Three ordered divisions replace a multiplied denominator; allow four f64 epsilons.
 const expect_density_close = (actual: number[], reference: number[]) => {
+  expect(actual).toHaveLength(reference.length)
   for (const [idx, value] of actual.entries()) {
     expect(Math.abs(value - reference[idx])).toBeLessThanOrEqual(
       4 * Number.EPSILON * Math.abs(reference[idx]) + 2 * Number.MIN_VALUE,
@@ -55,6 +56,7 @@ describe(`gaussian_kde`, () => {
       n_points,
       cut,
     })
+    expect(grid).toHaveLength(n_points)
     expect(bandwidth).toBeGreaterThan(0)
     if (cut === 0) expect(grid).toEqual(Array(n_points).fill(5))
     const reference = ref_density(samples.filter(Number.isFinite), grid, bandwidth)
@@ -110,6 +112,7 @@ describe(`gaussian_kde`, () => {
       expect(approx.bandwidth).toBeCloseTo(exact.bandwidth, 12)
       expect(approx.grid[0]).toBeCloseTo(exact.grid[0], 12)
       expect(approx.grid.at(-1)).toBeCloseTo(exact.grid.at(-1) as number, 12)
+      expect(approx.density).toHaveLength(n_points)
       const max_abs = Math.max(
         ...approx.density.map((val, idx) => Math.abs(val - exact.density[idx])),
       )
@@ -168,6 +171,8 @@ describe(`gaussian_kde`, () => {
     const samples = Array.from({ length: 2048 }, (_, idx) => (idx % 2 ? 1e-320 : 0))
     const options = { bandwidth: 1, n_points: 20, max_samples: samples.length }
     const { grid, density } = gaussian_kde(samples, options)
+    expect(grid).toHaveLength(options.n_points)
+    expect(density).toHaveLength(options.n_points)
     const reference = ref_density(samples, grid, 1)
     // Binning multiplies each kernel by its count; the reference adds it N times.
     // Bound the accumulation error by N * f64 epsilon, relative to the density.

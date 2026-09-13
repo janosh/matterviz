@@ -252,7 +252,8 @@ body.fullscreen .draggable-pane {
   align-items: center;
   gap: var(--pane-label-gap, 2pt);
 }
-.draggable-pane :where(input[type='text']) {
+/* Native row inputs fill the row; composite widgets manage their own fields. */
+.draggable-pane :where(label > input[type='text'], .setting > input[type='text']) {
   flex: 1;
   padding: var(--pane-input-padding, 4px 6px);
   margin: var(--pane-input-margin, 0 0 0 5pt);

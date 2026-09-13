@@ -41,20 +41,13 @@ const raw_structure_modules = import.meta.glob(`$site/structures/*`, {
   import: `default`,
 })
 
-// Raw text of a structure fixture by filename (e.g. `LiFePO4.cif`), null when unknown
-export function structure_file_text(filename: string): string | null {
+// Parsed structure fixture by filename; throws (at build/test time) for an unknown fixture
+export const parse_structure_fixture = (filename: string): AnyStructure => {
   const entry = Object.entries(raw_structure_modules).find(([path]) =>
     path.endsWith(`/${filename}`),
   )
-  if (!entry) return null
-  const text = glob_text(entry[1])
-  return text === `` ? null : text
-}
-
-// Parsed structure fixture by filename; throws (at build/test time) for an unknown fixture
-export const parse_structure_fixture = (filename: string): AnyStructure => {
-  const text = structure_file_text(filename)
-  if (text === null) throw new Error(`Unknown structure fixture ${filename}`)
+  const text = glob_text(entry?.[1])
+  if (!text) throw new Error(`Unknown structure fixture ${filename}`)
   return parse_structure_file(text, filename)
 }
 

@@ -787,14 +787,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const green_line = plot.locator(`g[data-series-id="1"] path[fill="none"]`)
     const initial_width = (await crimson_marker.boundingBox())?.width ?? NaN
     const { pane } = await open_plot_controls(plot)
-    await expect(pane.locator(`.style-row > label`).first()).toBeVisible()
+    await expect(pane.locator(`.style-row > [data-key]`).first()).toBeVisible()
 
     for (const width of [320, 390, 900]) {
       await page.setViewportSize({ width, height: 900 })
       await expect(pane).toBeVisible()
       const fields_fit = await pane.evaluate((node) => {
         const pane_rect = node.getBoundingClientRect()
-        return [...node.querySelectorAll(`.style-row > label`)].every((field) => {
+        return [...node.querySelectorAll(`.style-row > [data-key]`)].every((field) => {
           const rect = field.getBoundingClientRect()
           return rect.width > 0 && rect.left >= pane_rect.left && rect.right <= pane_rect.right
         })
@@ -824,7 +824,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await pane.getByLabel(`Show lines`, { exact: true }).uncheck()
     const series_select = pane.getByRole(`combobox`, { name: /Series/ })
     await series_select.selectOption(`1`)
-    await pane.locator(`[data-key="point.color"] input`).fill(`#0000ff`)
+    await pane.getByRole(`textbox`, { name: `point color hex`, exact: true }).fill(`#0000ff`)
     await expect(green_marker).toHaveCSS(`fill`, `rgb(0, 0, 255)`)
     await expect(crimson_marker).toHaveCSS(`fill`, `rgb(220, 20, 60)`)
     await pane.getByRole(`button`, { name: `Clear point style overrides` }).click()

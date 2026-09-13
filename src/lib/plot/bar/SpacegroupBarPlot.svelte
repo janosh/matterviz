@@ -8,7 +8,6 @@
   import type { CrystalSystem } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import * as spg from '$lib/symmetry/spacegroups'
-  import { SvelteMap } from 'svelte/reactivity'
 
   // Merge tick label config with default rotation, preserving user overrides
   const with_rotation = (
@@ -53,7 +52,7 @@
 
   // Histogram of space group number counts
   const histogram = $derived.by(() => {
-    const hist = new SvelteMap<number, number>()
+    const hist = new Map<number, number>()
     for (const space_group of normalized_data)
       hist.set(space_group, (hist.get(space_group) ?? 0) + 1)
     return hist
@@ -61,7 +60,7 @@
 
   // Total counts per crystal system
   const crystal_system_counts = $derived.by(() => {
-    const counts = new SvelteMap<CrystalSystem, number>()
+    const counts = new Map<CrystalSystem, number>()
     for (const [space_group, count] of histogram) {
       const system = spg.spacegroup_to_crystal_sys(space_group)
       if (system) counts.set(system, (counts.get(system) ?? 0) + count)
@@ -98,13 +97,9 @@
 
   // Smart tick selection: thin out ticks for dense data
   const x_axis_ticks = $derived.by(() => {
-    const non_zero_count = sorted_spacegroups.filter(
-      (space_group) => (histogram.get(space_group) ?? 0) > 0,
-    ).length
-
     // If data is dense (>40 space groups with data), show only multiples of 5
     const candidates =
-      non_zero_count > 40
+      histogram.size > 40
         ? sorted_spacegroups.filter((space_group) => space_group % 5 === 0)
         : sorted_spacegroups
     // Vertical ticks are rotated 90°, so each label needs ~one line height along the
@@ -122,7 +117,7 @@
 
   // Build BarSeries - one series per crystal system for proper coloring
   const bar_series = $derived.by<BarSeries[]>(() => {
-    const series_by_system = new SvelteMap<CrystalSystem, { x: number[]; y: number[] }>()
+    const series_by_system = new Map<CrystalSystem, { x: number[]; y: number[] }>()
 
     // Group data by crystal system
     for (const space_group of sorted_spacegroups) {
@@ -151,18 +146,14 @@
   })
 
   // Calculate crystal system region boundaries using full theoretical ranges
-  const crystal_system_regions = $derived.by(() => {
-    const [range_min, range_max] = x_range
-
-    return symmetry.CRYSTAL_SYSTEMS.map((system) => {
+  const crystal_system_regions = $derived(
+    symmetry.CRYSTAL_SYSTEMS.map((system) => {
       const [sg_start, sg_end] = symmetry.CRYSTAL_SYSTEM_RANGES[system]
       const count = crystal_system_counts.get(system) ?? 0
       const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
       return { system, sg_start, sg_end, count, color }
-    }).filter(
-      (region) => region.sg_end >= range_min && region.sg_start <= range_max, // Only visible systems
-    )
-  })
+    }),
+  )
 
   const total_count = $derived(normalized_data.length)
   const count_label = (count: number) =>
@@ -173,7 +164,7 @@
   // label is bumped to the first of a few stacked rows where it doesn't collide with
   // the labels already placed. Returns system -> row, omitting labels that fit nowhere.
   const count_label_rows = $derived.by(() => {
-    const rows = new SvelteMap<CrystalSystem, number>()
+    const rows = new Map<CrystalSystem, number>()
     if (orientation !== `vertical`) return rows
     const row_right_edges: number[] = Array(COUNT_LABEL_MAX_ROWS).fill(-Infinity)
     for (const region of crystal_system_regions) {

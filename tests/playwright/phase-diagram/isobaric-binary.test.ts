@@ -111,7 +111,9 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(diagram).not.toHaveClass(/fullscreen/)
   })
 
-  test(`controls pane toggles element visibility`, async ({ page }) => {
+  test(`controls pane toggles visibility and edits colors with compact hex fields`, async ({
+    page,
+  }) => {
     const { diagram, svg } = get_diagram_elements(page)
     await diagram.hover()
 
@@ -134,6 +136,17 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await reset_visibility.click()
     await expect(boundaries).toBeVisible()
     await expect(reset_visibility).toHaveCount(0)
+
+    const hex = pane.getByRole(`textbox`, { name: `Boundaries hex`, exact: true })
+    await hex.fill(`#abc`)
+    await hex.press(`Tab`)
+    await expect(hex).toHaveValue(`#aabbcc`)
+    await expect(pane.locator(`input[type="color"][aria-label="Boundaries"]`)).toHaveValue(
+      `#aabbcc`,
+    )
+    const field_width = await hex.evaluate((input) => input.getBoundingClientRect().width)
+    const pane_width = await pane.evaluate((element) => element.getBoundingClientRect().width)
+    expect(field_width).toBeLessThan(pane_width / 2)
   })
 
   test(`export pane has format options and functional buttons`, async ({ page }) => {

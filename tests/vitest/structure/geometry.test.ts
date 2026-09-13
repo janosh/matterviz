@@ -118,7 +118,7 @@ describe(`cylinder_between`, () => {
 // implementation for the instanced-bond hot loop. Guard against convention drift.
 describe(`write_bond_transform vs quaternion_from_direction`, () => {
   test(`collapses coincident bonds at their shared position`, () => {
-    const matrix_buffer = new Float32Array(16)
+    const matrix_buffer = new Float32Array(16).fill(Number.NaN)
     write_bond_transform(matrix_buffer, 0, [1, 2, 3], [1, 2, 3])
     expect(Array.from(matrix_buffer)).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1])
   })
@@ -150,7 +150,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
     ],
   ] as [Vec3, Vec3][])(`uses a right-handed +Y orientation for %j → %j`, (start, end) => {
     // image of +Y under the bond transform (transformDirection strips translation + scale)
-    const matrix_buffer = new Float32Array(16)
+    const matrix_buffer = new Float32Array(16).fill(Number.NaN)
     write_bond_transform(matrix_buffer, 0, start, end)
     const mat = new Matrix4().fromArray(matrix_buffer)
     const bond_dir = new Vector3(0, 1, 0).transformDirection(mat)
@@ -179,7 +179,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
         bond_length: 1,
         ...(order === undefined ? {} : { bond_order: order }),
       }
-      const matrix_buffer = new Float32Array(3 * 16)
+      const matrix_buffer = new Float32Array(3 * 16).fill(Number.NaN)
 
       expect(count_bond_instances([bond])).toBe(expected_count)
       write_bond_instance_matrices(matrix_buffer, [bond], 0.1, expected_count)

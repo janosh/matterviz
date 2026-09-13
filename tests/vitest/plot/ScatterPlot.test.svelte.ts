@@ -856,7 +856,8 @@ describe(`ScatterPlot`, () => {
         await tick()
         expect(state.styles).not.toHaveProperty(`show_${kind}s`)
         expect(toggle.checked).toBe(true)
-        const input = doc_query(`[data-key="${kind}.color"] input`, HTMLInputElement)
+        const input = doc_query(`[aria-label="${kind} color hex"]`, HTMLInputElement)
+        expect(input.value).toBe(`#ff0000`) // authored CSS colors stay editable as hex
         input.value = `#0000ff`
         input.dispatchEvent(new Event(`input`, { bubbles: true }))
         await tick()

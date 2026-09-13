@@ -22,7 +22,7 @@
   } from 'd3-shape'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteSet } from 'svelte/reactivity'
 
   // Unique instance ID to prevent gradient ID collisions when multiple legends render on the same page
   const instance_id = unique_id()
@@ -162,7 +162,7 @@
 
   // Group header cells look up their members here instead of re-filtering series_data per cell
   const items_by_group = $derived.by(() => {
-    const groups = new SvelteMap<string, LegendItem[]>()
+    const groups = new Map<string, LegendItem[]>()
     for (const item of series_data) {
       if (item.legend_group == null) continue
       const members = groups.get(item.legend_group)

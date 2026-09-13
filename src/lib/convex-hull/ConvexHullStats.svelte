@@ -10,7 +10,6 @@
   import { escape_html } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
   import { get_arity, is_on_hull, visible_entries as filter_visible } from './helpers'
   import type { HullModel } from './model'
   import type { EntryCategoryConfig, PhaseArityField } from './types'
@@ -140,7 +139,7 @@
     if (!phase_stats) return null
     const elements = phase_stats.chemical_system.split(`-`)
     if (elements.length < 3 || elements.length > 10) return null
-    const pair_counts = new SvelteMap<string, number>()
+    const pair_counts = new Map<string, number>()
     for (const entry of all_entries) {
       const active = Object.keys(entry.composition).filter(
         (element) => (entry.composition[element as keyof typeof entry.composition] ?? 0) > 0,
@@ -163,7 +162,7 @@
   const composition_key = (comp: Record<string, number>): string =>
     get_electro_neg_formula(get_reduced_formula(comp), { plain_text: true, delim: `` })
   const polymorph_counts = $derived.by(() => {
-    const counts = new SvelteMap<string, number>()
+    const counts = new Map<string, number>()
     for (const entry of all_entries) {
       const key = composition_key(entry.composition)
       counts.set(key, (counts.get(key) ?? 0) + 1)

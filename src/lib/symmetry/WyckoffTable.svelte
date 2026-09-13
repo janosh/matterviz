@@ -3,7 +3,6 @@
   import { format_fractional } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
-  import { SvelteSet } from 'svelte/reactivity'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { WyckoffPos } from './wyckoff'
   import { enrich_wyckoff_rows, wyckoff_letter } from './wyckoff'
@@ -34,7 +33,7 @@
   // multiplicity first (matches the ascending sort of occupied rows)
   const unoccupied_rows = $derived.by(() => {
     if (!show_unoccupied) return []
-    const occupied_letters = new SvelteSet(rows.map((row) => wyckoff_letter(row.wyckoff)))
+    const occupied_letters = new Set(rows.map((row) => wyckoff_letter(row.wyckoff)))
     return db_positions
       .filter((pos) => !occupied_letters.has(pos.letter))
       .toSorted(

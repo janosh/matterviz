@@ -2,13 +2,7 @@
 import { PLOT_COLORS } from '$lib/colors'
 import { humanize, SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
-import {
-  array_extent,
-  first_non_increasing_index,
-  get_coefficient_of_variation,
-  mean,
-  sample_std,
-} from '$lib/math'
+import { first_non_increasing_index, get_coefficient_of_variation, mean } from '$lib/math'
 import {
   axis_group_key,
   axis_labels as get_axis_labels,
@@ -23,16 +17,14 @@ import type { TrajectoryMetadata } from './index'
 // Configuration constants
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
 const ENERGY_PROPERTIES = [`energy`, `total_energy`, `potential_energy`]
+const ENERGY_KEYS = new Set(ENERGY_PROPERTIES.map(normalize_property_key))
 const FORCE_PROPERTIES = [`force`, `fmax`, `f`]
 // scf_energy_delta lives in its own axis group (see trajectory_property_config), so
 // listing it here only surfaces it when higher-priority groups (energy/force/stress)
 // don't fill both axes — i.e. single-point SCF convergence views.
-const DEFAULT_VISIBLE = new Set([
-  `energy`,
-  `force_max`,
-  `stress_frobenius`,
-  `scf_energy_delta`,
-])
+const DEFAULT_VISIBLE = new Set(
+  [`energy`, `force_max`, `stress_frobenius`, `scf_energy_delta`].map(normalize_property_key),
+)
 // Values already represented by the horizontal axis are navigation coordinates, not
 // observables. Plotting them again on y produces tautologies such as Time vs Time and can
 // consume one of the two default-visible axes before a scientific quantity does.
@@ -188,7 +180,7 @@ export function build_x_map(
     // a few eps off the integer that went in.
     to_x:
       usable === `frame`
-        ? (frame_idx) => frame_idx
+        ? FRAME_X_MAP.to_x
         : (frame_idx) => interpolate(frame_numbers, values, frame_idx) * scale,
     to_frame: (x_value) => Math.round(interpolate(values, frame_numbers, x_value / scale)),
   }
@@ -241,28 +233,13 @@ export function get_frame_step_samples(rows: readonly TrajectoryMetadata[]): Fra
 type PropertyStats = Map<string, { values: number[]; frame_indices: number[] }>
 
 // Normalize property keys for robust matching (handles case, underscores, and common aliases)
-const normalize_property_key = (key: string): string => {
+function normalize_property_key(key: string): string {
   const normalized = strip_html(key.toLowerCase())
     .replaceAll(/[_()[\]]/g, ` `)
     .replaceAll(/\s+/g, ` `)
     .trim()
   // Map common force property aliases to canonical form
   return [`fmax`, `f`, `force maximum`].includes(normalized) ? `force max` : normalized
-}
-
-const is_energy_property = (key: string): boolean =>
-  ENERGY_PROPERTIES.some(
-    (property) => normalize_property_key(property) === normalize_property_key(key),
-  )
-
-const is_default_visible = (
-  property_key: string,
-  default_properties: Set<string>,
-): boolean => {
-  const normalized_key = normalize_property_key(property_key)
-  return [...default_properties].some(
-    (prop) => normalize_property_key(prop) === normalized_key,
-  )
 }
 
 // Per-property value lists from the rows, keyed by property. Rows arrive sorted and
@@ -273,7 +250,11 @@ function cached_property_statistics(rows: readonly TrajectoryMetadata[]): Proper
   if (cached) return cached
   const stats: PropertyStats = new Map()
   const coordinates = new Set<string>()
-  for (const { frame_number, properties } of rows) {
+  // Most properties cover every frame. Share their grid instead of allocating and growing
+  // an identical N-frame index array for each of a log's dozens of scalar columns.
+  const frame_numbers = rows.map((row) => row.frame_number)
+  for (let row_idx = 0; row_idx < rows.length; row_idx++) {
+    const { frame_number, properties } = rows[row_idx]
     for (const key of Object.keys(properties)) {
       const value = properties[key]
       if (typeof value !== `number` || coordinates.has(key)) continue
@@ -284,20 +265,30 @@ function cached_property_statistics(rows: readonly TrajectoryMetadata[]): Proper
           coordinates.add(key)
           continue
         }
-        stats.set(key, (stat = { values: [], frame_indices: [] }))
+        stats.set(key, (stat = { values: [], frame_indices: frame_numbers }))
+      }
+      if (stat.frame_indices === frame_numbers && stat.values.length !== row_idx) {
+        stat.frame_indices = frame_numbers.slice(0, stat.values.length)
       }
       stat.values.push(value)
-      stat.frame_indices.push(frame_number)
+      if (stat.frame_indices !== frame_numbers) stat.frame_indices.push(frame_number)
     }
   }
   // Keep varying properties (plus flat energy for converged runs) seen in at least two frames.
-  for (const [key, { values }] of stats) {
-    if (
+  for (const [key, stat] of stats) {
+    const { values, frame_indices } = stat
+    const keep =
       values.length > 1 &&
-      (is_energy_property(key) || get_coefficient_of_variation(values) >= 1e-6)
-    )
+      (ENERGY_KEYS.has(normalize_property_key(key)) ||
+        get_coefficient_of_variation(values) >= 1e-6)
+    if (!keep) {
+      stats.delete(key)
       continue
-    stats.delete(key)
+    }
+    // A property missing only at the tail never encountered a later row to detect its gap.
+    if (frame_indices === frame_numbers && values.length < rows.length) {
+      stat.frame_indices = frame_numbers.slice(0, values.length)
+    }
   }
   stats_cache.set(rows, stats)
   return stats
@@ -322,32 +313,51 @@ export interface PropertySummary {
 // time axis gives the same drift with the slope in per-time units).
 export function summarize_properties(
   rows: readonly TrajectoryMetadata[],
-  x_of: (row: TrajectoryMetadata) => number = (row) => row.frame_number,
+  x_of?: (row: TrajectoryMetadata) => number,
 ): PropertySummary[] {
-  const by_frame = new Map(rows.map((row) => [row.frame_number, x_of(row)]))
+  const by_frame =
+    x_of === undefined ? null : new Map(rows.map((row) => [row.frame_number, x_of(row)]))
+  // Dense properties share their frame grid. Map and center each grid once per summary,
+  // rather than repeating millions of Map lookups for the same x samples in every column.
+  const axes = new Map<readonly number[], { deltas: number[]; sxx: number; span: number }>()
   return [...cached_property_statistics(rows)].map(([key, { values, frame_indices }]) => {
     const n_samples = values.length
-    const x_values = frame_indices.map(
-      (frame_number) => by_frame.get(frame_number) ?? frame_number,
-    )
-    const mean_x = mean(x_values)
-    const mean_y = mean(values)
-    let [sxx, sxy] = [0, 0]
-    for (const [idx, value] of values.entries()) {
-      const delta_x = x_values[idx] - mean_x
-      sxx += delta_x * delta_x
-      sxy += delta_x * (value - mean_y)
+    let axis = axes.get(frame_indices)
+    if (!axis) {
+      const deltas = by_frame
+        ? frame_indices.map((frame_number) => by_frame.get(frame_number) ?? frame_number)
+        : [...frame_indices]
+      const mean_x = mean(deltas)
+      const span = deltas[deltas.length - 1] - deltas[0]
+      let sxx = 0
+      for (let idx = 0; idx < deltas.length; idx++) {
+        deltas[idx] -= mean_x
+        sxx += deltas[idx] * deltas[idx]
+      }
+      axis = { deltas, sxx, span }
+      axes.set(frame_indices, axis)
     }
-    const [min, max] = array_extent(values)
-    const span = x_values.length > 1 ? x_values[x_values.length - 1] - x_values[0] : 0
+    const mean_y = mean(values)
+    let [sxy, variance_sum] = [0, 0]
+    let [min, max] = [Infinity, -Infinity]
+    // The centered variance, range and regression share a pass and the same mean. Keep
+    // each accumulation in sample order so the numerical result is unchanged.
+    for (let idx = 0; idx < values.length; idx++) {
+      const value = values[idx]
+      const delta_y = value - mean_y
+      sxy += axis.deltas[idx] * delta_y
+      variance_sum += delta_y * delta_y
+      if (value < min) min = value
+      if (value > max) max = value
+    }
     return {
       key,
       n_samples,
       mean: mean_y,
-      std: sample_std(values),
+      std: Math.sqrt(variance_sum / (n_samples - 1)),
       min,
       max,
-      drift: sxx > 0 ? (sxy / sxx) * span : 0,
+      drift: axis.sxx > 0 ? (sxy / axis.sxx) * axis.span : 0,
     }
   })
 }
@@ -396,7 +406,10 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): Propert
     const color = PLOT_COLORS[series.length % PLOT_COLORS.length]
     series.push({
       id: key,
-      x: stat.frame_indices.map(x_map.to_x),
+      x:
+        x_map.to_x === FRAME_X_MAP.to_x
+          ? stat.frame_indices
+          : stat.frame_indices.map(x_map.to_x),
       y: stat.values,
       label: clean_label,
       unit,
@@ -422,7 +435,7 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): Propert
     group.series.some((srs) =>
       default_visible_properties
         ? default_visible_properties.has(srs.id)
-        : is_default_visible(srs.id, DEFAULT_VISIBLE),
+        : DEFAULT_VISIBLE.has(normalize_property_key(srs.id)),
     ),
   )
   const selected_groups = requested_groups.length > 0 ? requested_groups : groups.slice(0, 1)
@@ -482,8 +495,18 @@ export function should_hide_plot(
 
   // Hide when every visible series is constant (ignoring NaN) or has nothing to plot
   return visible_series.every((srs) => {
-    const valid = srs.y.filter((val) => !isNaN(val))
-    return valid.length <= 1 || valid.every((val) => Math.abs(val - valid[0]) <= tolerance)
+    let first: number | undefined
+    for (const value of srs.y) {
+      if (isNaN(value)) continue
+      if (first === undefined) first = value
+      else if (
+        !Number.isFinite(first) ||
+        !Number.isFinite(value) ||
+        !(Math.abs(value - first) <= tolerance)
+      )
+        return false
+    }
+    return true
   })
 }
 
@@ -517,15 +540,15 @@ export function prepare_trajectory_scatter_series(
     const source_raw_y = data_series.raw_y ?? data_series.y
     let window_size = Math.max(5, Math.round(data_series.x.length / 50))
     if (window_size % 2 === 0) window_size++
-    const smoothed_y = smooth_moving_average(data_series.y, window_size)
     const sampled = downsample_indices(data_series.x, source_raw_y, limit)
+    const smoothed_y = smooth_moving_average(data_series.y, window_size, sampled)
     const sampled_x = sampled.map((idx) => data_series.x[idx])
     const sampled_raw_y = sampled.map((idx) => source_raw_y[idx])
     const color = data_series.line_style?.stroke ?? `currentColor`
     return {
       ...data_series,
       x: sampled_x,
-      y: sampled.map((idx) => smoothed_y[idx]),
+      y: smoothed_y,
       raw_y: sampled_raw_y,
       markers: `line`,
       metadata: data_series.metadata,

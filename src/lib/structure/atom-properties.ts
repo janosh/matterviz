@@ -58,10 +58,12 @@ const make_categorical = <T>(
   const uniq = sort_fn
     ? [...new Set(vals)].toSorted(sort_fn)
     : [...new Set(vals)].toSorted((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
-  const colors = uniq.map((_, idx) =>
-    to_hex(interp_fn, uniq.length === 1 ? 0.5 : idx / (uniq.length - 1)),
+  const map = new Map(
+    uniq.map((val, idx) => [
+      val,
+      to_hex(interp_fn, uniq.length === 1 ? 0.5 : idx / (uniq.length - 1)),
+    ]),
   )
-  const map = new Map(uniq.map((val, idx) => [val, colors[idx]]))
   return {
     colors: vals.map((val) => map.get(val) ?? GRAY),
     unique_values: uniq,
@@ -85,10 +87,8 @@ export function apply_color_scale(
   type: ColorScaleType = `continuous`,
 ): { colors: string[]; unique_values?: number[] } {
   if (vals.length === 0) return { colors: [] }
-  if (type === `categorical`) {
-    const result = make_categorical(vals, scale, (val_a, val_b) => val_a - val_b)
-    return { colors: result.colors, unique_values: result.unique_values }
-  }
+  if (type === `categorical`)
+    return make_categorical(vals, scale, (val_a, val_b) => val_a - val_b)
 
   const interp_fn = get_d3_interpolator(scale)
   // array_extent skips NaN: a vals[0] seed of NaN left min = max = NaN, defeating the
@@ -96,14 +96,25 @@ export function apply_color_scale(
   // an all-NaN or empty extent fall back to the scale midpoint.
   const [min, max] = array_extent(vals)
   const constant_scale = !Number.isFinite(min) || !Number.isFinite(max) || max === min
-  return {
-    colors: vals.map((val) =>
-      to_hex(
-        interp_fn,
-        constant_scale || !Number.isFinite(val) ? 0.5 : (val - min) / (max - min),
-      ),
-    ),
+  if (constant_scale) {
+    const midpoint = to_hex(interp_fn, 0.5)
+    return { colors: vals.map(() => midpoint) }
   }
+  const color_for = (val: number) =>
+    to_hex(interp_fn, !Number.isFinite(val) ? 0.5 : (val - min) / (max - min))
+  // Coordination numbers occupy a short integer range. Evaluate its exact colors once,
+  // retaining continuous interpolation for non-integer properties (no quantization).
+  if (Number.isInteger(min) && Number.isInteger(max) && max - min <= 256) {
+    const integer_colors: (string | undefined)[] = []
+    return {
+      colors: vals.map((val) =>
+        Number.isInteger(val)
+          ? (integer_colors[val - min] ??= color_for(val))
+          : color_for(val),
+      ),
+    }
+  }
+  return { colors: vals.map(color_for) }
 }
 
 export const apply_categorical_color_scale = (

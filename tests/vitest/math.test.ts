@@ -453,6 +453,7 @@ describe(`pbc_dist`, () => {
   // oxfmt-ignore
   test.each([
     [`cubic`, [[6, 0, 0], [0, 6, 0], [0, 0, 6]]],
+    [`rectangular with negative vectors`, [[-6, 0, 0], [0, 8, 0], [0, 0, -12]]],
     [`triclinic`, [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]]],
     [`sheared`, [[4, 0, 0], [3.2, 2.4, 0], [1.6, 2.0, 3.5]]],
   ] as [string, math.Matrix3x3][])(`matches brute-force image search: %s`, (_name, lattice) => {
@@ -501,6 +502,43 @@ describe(`pbc_dist`, () => {
       math.min_image_displacement([1, 2, 3], [4, 6, 3], singular, undefined, no_pbc),
     ).toEqual([3, 4, 0])
   })
+
+  test.each([
+    [10, [true, true, true], [-5, -6, -8]],
+    [-10, [true, true, true], [5, -6, -8]],
+    [10, [true, false, true], [-5, 6, -8]],
+  ] as [number, Pbc3, Vec3][])(
+    `preserves half-cell ties for x=%s and PBC=%j`,
+    (length_x, pbc, expected) => {
+      const lattice: math.Matrix3x3 = [
+        [length_x, 0, 0],
+        [0, 12, 0],
+        [0, 0, 16],
+      ]
+      expect(
+        math.min_image_displacement([0, 0, 0], [5, 6, 8], lattice, undefined, pbc),
+      ).toEqual(expected)
+    },
+  )
+
+  test.each([
+    [NaN, 1],
+    [Infinity, 1],
+    [-Infinity, 1],
+    [Number.MAX_VALUE, 1e-100],
+  ])(
+    `rejects non-finite diagonal displacement %s with cell length %s`,
+    (coord_x, length_x) => {
+      const lattice: math.Matrix3x3 = [
+        [length_x, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ]
+      expect(() => math.min_image_displacement([0, 0, 0], [coord_x, 1, 1], lattice)).toThrow(
+        `Minimum-image`,
+      )
+    },
+  )
 
   // Non-orthogonal lattice tests live in measure.test.ts where they exercise
   // displacement_pbc with additional invariants (antisymmetry, half-lattice guard, etc.)
@@ -1564,8 +1602,15 @@ describe(`quantile_unordered`, () => {
 
   // Interpolating as lo + (hi - lo) * frac overflows here: the difference is 2 * MAX_VALUE,
   // i.e. Infinity, so the median of a symmetric pair would come back Infinity instead of 0.
-  test(`stays finite when the bracketing values straddle zero at MAX_VALUE`, () => {
-    expect(math.quantile_unordered([-Number.MAX_VALUE, Number.MAX_VALUE], 0.5)).toBe(0)
+  test.each([
+    [[-Number.MAX_VALUE, Number.MAX_VALUE], 0],
+    [[Number.MAX_VALUE, Number.MAX_VALUE], Number.MAX_VALUE],
+    [[Number.MIN_VALUE, Number.MIN_VALUE], Number.MIN_VALUE],
+    [[Number.MIN_VALUE, 2 * Number.MIN_VALUE], 2 * Number.MIN_VALUE],
+    [[-2 * Number.MIN_VALUE, -Number.MIN_VALUE], -2 * Number.MIN_VALUE],
+  ])(`keeps the midpoint of %j representable`, (values, expected) => {
+    expect(math.quantile_unordered([...values], 0.5)).toBe(expected)
+    expect(math.median(values)).toBe(expected)
   })
 })
 

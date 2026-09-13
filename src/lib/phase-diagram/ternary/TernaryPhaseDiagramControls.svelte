@@ -1,6 +1,5 @@
 <script lang="ts">
   import { DEFAULT_GAS_PRESSURES, type GasSpecies } from '$lib/convex-hull/types'
-  import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import { ControlPane } from '$lib/overlays'
@@ -176,17 +175,6 @@
     ],
     speed: [`play_speed`, `Play speed (K/s)`, `Heating rate of the play button`, 10, 2000, 10],
   } satisfies Record<string, Slider>
-
-  // Slider position previews locally while dragging; the bound pressure (which triggers a
-  // full worker re-sweep) is only committed on release
-  let preview_log_p = $state<Partial<Record<GasSpecies, number>>>({})
-  const log_p = (gas: GasSpecies) =>
-    preview_log_p[gas] ?? Math.log10(gas_pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas])
-  function commit_pressure(gas: GasSpecies, log_pressure: number): void {
-    const { [gas]: _dropped, ...remaining } = preview_log_p
-    preview_log_p = remaining
-    gas_pressures = { ...gas_pressures, [gas]: 10 ** log_pressure }
-  }
 </script>
 
 <!-- One mutually exclusive button per [value, text, tip] option -->
@@ -292,20 +280,18 @@
         <input type="checkbox" bind:checked={gas_enabled} />
       </label>
       {#each gas_enabled ? relevant_gases : [] as gas (gas)}
-        <label {@attach tooltip({ content: `Partial pressure of ${gas} in bar (log scale)` })}>
-          <span>p({gas})</span>
-          <span class="pressure">{format_num(10 ** log_p(gas), `.2~e`)} bar</span>
-          <input
-            type="range"
-            min="-12"
-            max="2"
-            step="0.25"
-            value={log_p(gas)}
-            oninput={(evt) =>
-              (preview_log_p = { ...preview_log_p, [gas]: evt.currentTarget.valueAsNumber })}
-            onchange={(evt) => commit_pressure(gas, evt.currentTarget.valueAsNumber)}
-          />
-        </label>
+        <NumberRangeInput
+          min={1e-12}
+          max={100}
+          step={0.25}
+          scale="log"
+          commit="change"
+          title={`Partial pressure of ${gas} in bar (log scale)`}
+          value={gas_pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas]}
+          on_commit={(value) => {
+            if (value !== undefined) gas_pressures = { ...gas_pressures, [gas]: value }
+          }}>p({gas}) (bar)</NumberRangeInput
+        >
       {/each}
     {/if}
     <p class="model-summary">
@@ -379,10 +365,6 @@
     &.active {
       background: light-dark(rgba(25, 118, 210, 0.15), rgba(100, 180, 255, 0.2));
     }
-  }
-  .pressure {
-    font-size: 0.9em;
-    white-space: nowrap;
   }
   .model-summary {
     grid-column: 1 / -1;

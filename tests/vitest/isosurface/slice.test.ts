@@ -37,6 +37,24 @@ describe(`trilinear_interpolate`, () => {
     ],
     [`midpoint of an x ramp`, x_ramp, [0.375, 0, 0], true, 1.5],
     [`a negative coordinate wrapping to 0.75`, x_ramp, [-0.25, 0, 0], true, 3],
+    [`negative multi-cell seam`, x_ramp, [-1.125, 0, 0], true, 1.5],
+    [`positive multi-cell seam`, x_ramp, [2.875, 0, 0], true, 1.5],
+    [`exact periodic boundary`, x_ramp, [1, 0, 0], true, 0],
+    [
+      `wrapping all three upper corners`,
+      flat(2, 4, 4, (idx_x, idx_y, idx_z) => idx_x * 100 + idx_y * 10 + idx_z),
+      [0.75, 0.875, 0.875],
+      true,
+      66.5,
+    ],
+    [
+      `singleton axes alongside a wrapped axis`,
+      flat(1, 2, 1, (_idx_x, idx_y) => idx_y * 10),
+      [100.5, 0.75, -123.25],
+      true,
+      5,
+    ],
+    [`periodic singleton cell`, flat(1, 1, 1, () => 42), [-3, 2.5, 7.25], true, 42],
     [`the non-periodic midpoint between ix=1 and ix=2`, x_ramp, [0.5, 0, 0], false, 1.5],
     [
       `a non-periodic point below the grid`,
@@ -55,9 +73,8 @@ describe(`trilinear_interpolate`, () => {
   ] as [string, ReturnType<typeof flat>, Vec3, boolean, number][])(
     `%s`,
     (_label, grid, [frac_x, frac_y, frac_z], periodic, expected) => {
-      expect(trilinear_interpolate(grid, frac_x, frac_y, frac_z, periodic)).toBeCloseTo(
-        expected,
-      )
+      // Every in-bounds test value is an integer or an exactly representable half-step.
+      expect(trilinear_interpolate(grid, frac_x, frac_y, frac_z, periodic)).toBe(expected)
     },
   )
 

@@ -357,6 +357,11 @@ export function structure_factors_squared(
   // The occupancy rides on the h-axis table, so the inner loop carries no weights at all.
   let [h_max, k_max, l_max] = [0, 0, 0]
   for (const { hkl } of reflections) {
+    if (!hkl.every(Number.isInteger)) {
+      throw new Error(
+        `structure_factors_squared: Miller indices must be finite integers, got hkl=${hkl.join(`,`)}`,
+      )
+    }
     h_max = Math.max(h_max, Math.abs(hkl[0]))
     k_max = Math.max(k_max, Math.abs(hkl[1]))
     l_max = Math.max(l_max, Math.abs(hkl[2]))
@@ -369,23 +374,40 @@ export function structure_factors_squared(
       const weight = weights?.[idx] ?? 1
       for (let miller = -max_idx; miller <= max_idx; miller++) {
         const phase = 2 * Math.PI * miller * coords[idx][axis]
-        cos_table[idx * span + miller + max_idx] = weight * Math.cos(phase)
-        sin_table[idx * span + miller + max_idx] = weight * Math.sin(phase)
+        cos_table[(miller + max_idx) * n_species + idx] = weight * Math.cos(phase)
+        sin_table[(miller + max_idx) * n_species + idx] = weight * Math.sin(phase)
       }
     }
-    return { cos_table, sin_table, span }
+    return { cos_table, sin_table }
   }
-  const { cos_table: cos_h, sin_table: sin_h, span: span_h } = phase_table(0, h_max, occus)
-  const { cos_table: cos_k, sin_table: sin_k, span: span_k } = phase_table(1, k_max)
-  const { cos_table: cos_l, sin_table: sin_l, span: span_l } = phase_table(2, l_max)
+  const { cos_table: cos_h, sin_table: sin_h } = phase_table(0, h_max, occus)
+  const { cos_table: cos_k, sin_table: sin_k } = phase_table(1, k_max)
+  const { cos_table: cos_l, sin_table: sin_l } = phase_table(2, l_max)
 
   const intensities = new Float64Array(reflections.length)
+  // All supported scattering factors and isotropic thermal damping are real, so Friedel
+  // mates have conjugate amplitudes and identical |F|². Reuse only equal reciprocal norms:
+  // this public kernel can also receive custom reflections with independently supplied g.
+  // Below 64 site-species, looking up a mate costs more than the short geometric sum.
+  const friedel_intensities =
+    n_species >= 64 ? new Map<string, { g_norm: number; intensity: number }>() : undefined
 
   for (let point_idx = 0; point_idx < reflections.length; point_idx++) {
     const { hkl, g_norm } = reflections[point_idx]
-    const h_offset = hkl[0] + h_max
-    const k_offset = hkl[1] + k_max
-    const l_offset = hkl[2] + l_max
+    let reflection_key = ``
+    if (friedel_intensities) {
+      const friedel_sign = (hkl[0] || hkl[1] || hkl[2]) < 0 ? -1 : 1
+      reflection_key = `${hkl[0] * friedel_sign},${hkl[1] * friedel_sign},${hkl[2] * friedel_sign}`
+      const previous = friedel_intensities.get(reflection_key)
+      if (previous?.g_norm === g_norm) {
+        intensities[point_idx] = previous.intensity
+        continue
+      }
+    }
+    // Each reflection reads a contiguous species slice from all six phase tables.
+    const h_offset = (hkl[0] + h_max) * n_species
+    const k_offset = (hkl[1] + k_max) * n_species
+    const l_offset = (hkl[2] + l_max) * n_species
     const s_sq_point = (g_norm / 2) ** 2
 
     let f_real = 0
@@ -425,9 +447,9 @@ export function structure_factors_squared(
       let sum_real = 0
       let sum_imag = 0
       for (let idx = elem_start[elem]; idx < elem_start[elem + 1]; idx++) {
-        const h_at = idx * span_h + h_offset
-        const k_at = idx * span_k + k_offset
-        const l_at = idx * span_l + l_offset
+        const h_at = h_offset + idx
+        const k_at = k_offset + idx
+        const l_at = l_offset + idx
         const re_hk = cos_h[h_at] * cos_k[k_at] - sin_h[h_at] * sin_k[k_at]
         const im_hk = cos_h[h_at] * sin_k[k_at] + sin_h[h_at] * cos_k[k_at]
         sum_real += re_hk * cos_l[l_at] - im_hk * sin_l[l_at]
@@ -437,6 +459,7 @@ export function structure_factors_squared(
       f_imag += factor * sum_imag
     }
     intensities[point_idx] = f_real * f_real + f_imag * f_imag
+    friedel_intensities?.set(reflection_key, { g_norm, intensity: intensities[point_idx] })
   }
 
   return intensities

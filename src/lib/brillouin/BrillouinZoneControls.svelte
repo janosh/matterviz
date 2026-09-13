@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ColorInput } from 'svelte-widgets'
+  import { css_color_to_hex } from '$lib/colors'
   import { track_settings } from '$lib/controls'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { format_num } from '$lib/labels'
@@ -73,10 +75,12 @@
       on_reset={() => ({ surface_color, surface_opacity } = defaults)}
       layout="grid"
     >
-      <label>
-        <span>Color</span>
-        <input type="color" bind:value={surface_color} />
-      </label>
+      <ColorInput
+        label="Color"
+        value={css_color_to_hex(surface_color, defaults.surface_color)}
+        labels={{ picker: `Surface color`, hex: `Surface color hex` }}
+        on_commit={(color) => (surface_color = color)}
+      />
       <label>
         <span>Opacity</span>
         <span>{format_num(surface_opacity, `.2f`)}</span>
@@ -90,10 +94,12 @@
       on_reset={() => ({ edge_color, edge_width } = defaults)}
       layout="grid"
     >
-      <label>
-        <span>Color</span>
-        <input type="color" bind:value={edge_color} />
-      </label>
+      <ColorInput
+        label="Color"
+        value={css_color_to_hex(edge_color, defaults.edge_color)}
+        labels={{ picker: `Edge color`, hex: `Edge color hex` }}
+        on_commit={(color) => (edge_color = color)}
+      />
       <label>
         <span>Width</span>
         <span>{format_num(edge_width, `.3f`)}</span>
@@ -112,10 +118,12 @@
         <input type="checkbox" bind:checked={show_ibz} />
       </label>
       {#if show_ibz}
-        <label>
-          <span>Color</span>
-          <input type="color" bind:value={ibz_color} />
-        </label>
+        <ColorInput
+          label="Color"
+          value={css_color_to_hex(ibz_color, defaults.ibz_color)}
+          labels={{ picker: `IBZ color`, hex: `IBZ color hex` }}
+          on_commit={(color) => (ibz_color = color)}
+        />
         <label>
           <span>Opacity</span>
           <span>{format_num(ibz_opacity, `.2f`)}</span>

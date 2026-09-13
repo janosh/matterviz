@@ -74,7 +74,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap } from 'svelte/reactivity'
   import type {
     BinnedDensityConfig,
     BinnedOverlaysConfig,
@@ -740,7 +740,7 @@
   async function measure_point_labels() {
     await tick()
     if (!label_measure_root) return
-    const active_keys = new SvelteSet<string>()
+    const active_keys = new Set<string>()
     for (const element of label_measure_root.querySelectorAll<HTMLElement>(
       `[data-label-key]`,
     )) {

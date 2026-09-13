@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { normalize_show_controls } from '$lib/controls'
-  import { error_bounds } from '$lib/plot/core/error-bars'
+  import { accumulate_error_extent } from '$lib/plot/core/error-bars'
   import { create_chart_exporter, series_to_csv_rows } from '$lib/plot/core/utils/chart-export'
   import { type D3InterpolateName, plot_color, resolve_computed_color } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
@@ -378,17 +378,9 @@
         // caps get clipped. Underlays carry no error of their own, hence the identity
         // check: only the series itself contributes.
         if (layer_x === srs.x) {
-          const x_bounds = error_bounds(srs.x, srs.x_error, n_points)
-          const y_bounds = error_bounds(srs.y, srs.y_error, n_points)
-          for (const bound of [x_bounds?.lo, x_bounds?.hi]) {
-            if (bound) {
-              accumulate_extent(all_x, bound, n_points)
-              if (x_ax === `x2`) accumulate_extent(coord_x, bound, n_points)
-            }
-          }
-          for (const bound of [y_bounds?.lo, y_bounds?.hi]) {
-            if (bound) accumulate_extent(y_extent, bound, n_points)
-          }
+          accumulate_error_extent(all_x, srs.x, srs.x_error, n_points)
+          if (x_ax === `x2`) accumulate_error_extent(coord_x, srs.x, srs.x_error, n_points)
+          accumulate_error_extent(y_extent, srs.y, srs.y_error, n_points)
         }
         const needs_axis_probe: boolean =
           (x_ax === `x2` && !has_x2_points) || (series_y_axis === `y2` && !has_y2_points)

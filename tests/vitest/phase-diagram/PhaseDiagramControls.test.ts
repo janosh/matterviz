@@ -103,6 +103,14 @@ describe(`PhaseDiagramControls`, () => {
       )?.value
     expect(number_value(8, 20)).toBe(`16`) // font size
     expect(number_value(2, 12)).toBe(`8`) // special point radius
+    const boundary_hex = query<HTMLInputElement>(target, `input[aria-label="Boundaries hex"]`)
+    expect(boundary_hex.value).toBe(`#ff00ff`)
+    boundary_hex.value = `#abc`
+    boundary_hex.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(query<HTMLInputElement>(target, `input[aria-label="Boundaries"]`).value).toBe(
+      `#aabbcc`,
+    )
     query<HTMLButtonElement>(
       target,
       `button[aria-label="Reset appearance to defaults"]`,
@@ -119,6 +127,7 @@ describe(`PhaseDiagramControls`, () => {
       await tick()
       expect(target.querySelector(selector)).toBeNull()
     }
+    expect(boundary_hex.value).toBe(`#333333`) // default #333 is normalized for editing
   })
 
   test.each([

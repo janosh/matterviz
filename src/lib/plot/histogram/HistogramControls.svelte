@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ColorInput } from 'svelte-widgets'
+  import { css_color_to_hex } from '$lib/colors'
   import { track_settings } from '$lib/controls'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
@@ -129,43 +131,38 @@
     on_reset={() => (bar = bar_style_settings.snapshot())}
     layout="flow"
   >
-    <div class="style-row">
-      {#if visible_series.length === 1}
-        <label>
-          <span>Fill</span>
-          <input type="color" bind:value={() => resolved_bar.color, set_bar(`color`)} />
-        </label>
+    {#each [[`color`, `opacity`], [`stroke_color`, `stroke_opacity`]] as const as [color_key, opacity_key] (color_key)}
+      {@const stroke = color_key === `stroke_color`}
+      {@const color_label = stroke ? `Stroke color` : `Fill color`}
+      {#if stroke}
+        <NumberRangeInput
+          min={0}
+          max={5}
+          step={0.1}
+          bind:value={() => resolved_bar.stroke_width, set_bar(`stroke_width`)}
+          >Stroke width</NumberRangeInput
+        >
       {/if}
-      <NumberRangeInput
-        min={0}
-        max={1}
-        step={0.05}
-        bind:value={() => resolved_bar.opacity, set_bar(`opacity`)}>Opacity</NumberRangeInput
-      >
-    </div>
-    <NumberRangeInput
-      min={0}
-      max={5}
-      step={0.1}
-      bind:value={() => resolved_bar.stroke_width, set_bar(`stroke_width`)}
-      >Stroke width</NumberRangeInput
-    >
-    <div class="style-row">
-      <label>
-        <span>Color</span>
-        <input
-          type="color"
-          aria-label="Stroke color"
-          bind:value={() => resolved_bar.stroke_color, set_bar(`stroke_color`)}
-        />
-      </label>
-      <NumberRangeInput
-        min={0}
-        max={1}
-        step={0.05}
-        bind:value={() => resolved_bar.stroke_opacity, set_bar(`stroke_opacity`)}
-        >Stroke opacity</NumberRangeInput
-      >
-    </div>
+      <div class="style-row">
+        {#if stroke || visible_series.length === 1}
+          <ColorInput
+            label={stroke ? `Color` : `Fill`}
+            value={css_color_to_hex(
+              resolved_bar[color_key],
+              DEFAULTS.histogram.bar[color_key],
+            )}
+            labels={{ picker: color_label, hex: `${color_label} hex` }}
+            on_commit={set_bar(color_key)}
+          />
+        {/if}
+        <NumberRangeInput
+          min={0}
+          max={1}
+          step={0.05}
+          bind:value={() => resolved_bar[opacity_key], set_bar(opacity_key)}
+          >{stroke ? `Stroke opacity` : `Opacity`}</NumberRangeInput
+        >
+      </div>
+    {/each}
   </SettingsSection>
 </PlotControls>

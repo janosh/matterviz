@@ -36,6 +36,7 @@ export type MaterializedSeries<Metadata = Record<string, unknown>> = DataSeries<
   points: InternalPoint<Metadata>[]
   x_direction: -1 | 0 | 1
   line_direction: -1 | 0 | 1
+  point_bounds: { x: Vec2; y: Vec2 }
   _id: string | number
   orig_series_idx: number
 }
@@ -68,11 +69,19 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     const get_point_offset = prop_getter(data_series.point_offset)
 
     const points: InternalPoint<Metadata>[] = []
+    let x_min = Infinity
+    let x_max = -Infinity
+    let y_min = Infinity
+    let y_max = -Infinity
     for (let point_idx = 0; point_idx < x_values.length; point_idx++) {
       const coord_x = x_values[point_idx]
       const coord_y = y_values[point_idx]
       if (!Number.isFinite(coord_x) || !Number.isFinite(coord_y)) continue
-      points.push({
+      if (coord_x < x_min) x_min = coord_x
+      if (coord_x > x_max) x_max = coord_x
+      if (coord_y < y_min) y_min = coord_y
+      if (coord_y > y_max) y_max = coord_y
+      const point: InternalPoint<Metadata> = {
         x: coord_x,
         y: coord_y,
         color_value: color_values?.[point_idx],
@@ -84,9 +93,10 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
         series_idx,
         point_idx,
         size_value: size_values?.[point_idx],
-        ...(get_x_error && { x_error: get_x_error(point_idx) }),
-        ...(get_y_error && { y_error: get_y_error(point_idx) }),
-      })
+      }
+      if (get_x_error) point.x_error = get_x_error(point_idx)
+      if (get_y_error) point.y_error = get_y_error(point_idx)
+      points.push(point)
     }
     // orig_series_idx keeps auto-cycled colors/symbols stable across filtering
     out.push({
@@ -99,6 +109,7 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
           ? -1
           : 0,
       line_direction: strict_x_direction(x_values),
+      point_bounds: { x: [x_min, x_max], y: [y_min, y_max] },
       _id: data_series.id ?? series_idx,
       orig_series_idx: series_idx,
     })
@@ -127,13 +138,20 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
   for (const data_series of materialized) {
     const [x_lo, x_hi] = (data_series.x_axis ?? `x`) === `x2` ? x2_bounds : x_bounds
     const [y_lo, y_hi] = (data_series.y_axis ?? `y`) === `y2` ? y2_bounds : y_bounds
-    const filtered_data: InternalPoint<Metadata>[] = []
-    const { points, x_direction } = data_series
+    const { points, x_direction, point_bounds } = data_series
+    // Panning a padded view often leaves every point visible. Reuse the immutable point
+    // array until a bound actually clips the dataset instead of allocating it every frame.
+    const all_visible =
+      point_bounds.x[0] >= x_lo &&
+      point_bounds.x[1] <= x_hi &&
+      point_bounds.y[0] >= y_lo &&
+      point_bounds.y[1] <= y_hi
+    const filtered_data: InternalPoint<Metadata>[] = all_visible ? points : []
     // Sorted curves/time series often show a tiny window of a long recording. Locate
     // that window once rather than scanning off-screen history on every pan frame.
     let start = 0
-    let end = points.length
-    if (x_direction !== 0) {
+    let end = all_visible ? 0 : points.length
+    if (!all_visible && x_direction !== 0) {
       start = partition_point(points, (point) =>
         x_direction > 0 ? point.x < x_lo : point.x > x_hi,
       )

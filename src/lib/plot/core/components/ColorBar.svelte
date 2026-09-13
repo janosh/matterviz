@@ -1,7 +1,7 @@
 <script lang="ts">
   import { pick_contrast_color, resolve_backdrop } from '$lib/colors'
   import { Spinner } from 'svelte-widgets'
-  import { format_num } from '$lib/labels'
+  import { format_tick_values } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import {
     color_ramp_scale,
@@ -180,25 +180,37 @@
       return `inherit`
     }
   }
-  const format_tick = $derived.by(() => {
-    if (!tick_format) return format_num
-    if (!tick_format.startsWith(`%`)) return format(tick_format)
-    const format_date = timeFormat(tick_format)
-    return (value: number) => format_date(new Date(value))
-  })
-
   // Rendered bar length and font, so generated tick labels can be thinned once a narrow
   // host squeezes the bar below the width its labels need. Width stays 0 until measured
   // (and in environments without layout), which leaves the tick list untouched.
   let bar_px = $state(0)
   let tick_font = $state(DEFAULT_FONT_SPEC)
   let tick_spacing = $state(8) // label padding plus a 4px gap
-  const tick_metrics = $derived(
-    ticks.map((value) => {
-      const label = format_tick(value)
-      return { value, label, width: measure_text_line(label, tick_font).width }
-    }),
-  )
+  const tick_metrics = $derived.by(() => {
+    let values = ticks
+    let labels: string[]
+    if (!tick_format) labels = format_tick_values(values)
+    else if (tick_format.startsWith(`%`)) {
+      const format_date = timeFormat(tick_format)
+      labels = values.map((value) => format_date(new Date(value)))
+    } else {
+      const format_number = format(tick_format)
+      // Integer formats need integer positions; explicit tick arrays keep their values.
+      if (!Array.isArray(tick_labels) && tick_format.endsWith(`d`)) {
+        const [lower, upper] = tick_domain.toSorted((left, right) => left - right)
+        values = ticks.map(Math.round).filter((value) => value >= lower && value <= upper)
+      }
+      labels = values.map(format_number)
+    }
+    const seen = new Set<string>()
+    return values.flatMap((value, idx) => {
+      const label = labels[idx]
+      // Explicit precision/date formats can collapse distinct values to the same text.
+      if (seen.has(label)) return []
+      seen.add(label)
+      return [{ value, label, width: measure_text_line(label, tick_font).width }]
+    })
+  })
   // Hosts with a background need room for the centered labels beyond the gradient ends.
   const tick_label_width = $derived(
     Math.max(0, ...tick_metrics.map(({ width }) => width)) + tick_spacing - 4,
@@ -215,7 +227,7 @@
         4
     }
   })
-  // Tick values are unique (deduped above, or generated), so they key the rendered labels
+  // Label deduplication precedes inside-label removal and overlap thinning.
   const visible_ticks = $derived.by(() => {
     const base = tick_side === `inside` ? tick_metrics.slice(1, -1) : tick_metrics
     // explicit tick arrays are the caller's choice; vertical labels stack and never collide

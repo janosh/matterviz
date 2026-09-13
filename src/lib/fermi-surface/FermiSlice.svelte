@@ -108,7 +108,7 @@
   function isolate_band(series_idx: number) {
     const band = slice_data?.isolines[series_idx]?.band_index
     if (band === undefined) return
-    const all_bands = [...new SvelteSet(slice_data?.isolines.map((iso) => iso.band_index))]
+    const all_bands = [...new Set(slice_data?.isolines.map((iso) => iso.band_index))]
     const is_solo = all_bands.every((other) => other === band || hidden_bands.has(other))
     hidden_bands.clear()
     if (!is_solo) {

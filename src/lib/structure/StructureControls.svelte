@@ -6,7 +6,7 @@
   import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ColorSchemeName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-  import { Icon, MultiSelect as Select, Spinner } from 'svelte-widgets'
+  import { ColorInput, Icon, MultiSelect as Select, Spinner } from 'svelte-widgets'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
   import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
@@ -478,7 +478,7 @@
       'aria-description': description,
       [setting_attachment_key]: tooltip({
         content: description,
-        delegate: `[data-key] > span:first-child`,
+        delegate: `[data-key] > :is(span, legend):first-child`,
       }),
     }
   }
@@ -862,6 +862,14 @@
           bind:value={() => row_value(current) as number | undefined, set}
           >{label}</NumberRangeInput
         >
+      {:else if !schema.enum && typeof schema.value !== `boolean`}
+        <ColorInput
+          {...setting_row(key)}
+          {label}
+          value={as_hex_color(row_value(current) as string | undefined, String(schema.value))}
+          labels={{ picker: aria_label ?? label, hex: `${aria_label ?? label} hex` }}
+          on_commit={set}
+        />
       {:else}
         <label {...setting_row(pair?.key ?? key)}>
           <span>{label}</span>
@@ -870,22 +878,8 @@
               <select bind:value={() => row_value(current), set}>
                 {@render enum_options(key)}
               </select>
-            {:else if typeof schema.value === `boolean`}
-              <input type="checkbox" bind:checked={() => Boolean(row_value(current)), set} />
             {:else}
-              <input
-                class="swatch"
-                type="color"
-                aria-label={aria_label}
-                bind:value={
-                  () =>
-                    as_hex_color(
-                      row_value(current) as string | undefined,
-                      String(schema.value),
-                    ),
-                  set
-                }
-              />
+              <input type="checkbox" bind:checked={() => Boolean(row_value(current)), set} />
             {/if}
             {#if pair?.when()}
               <input
@@ -1163,15 +1157,15 @@
           )}
         >
           {@render setting_rows(label_rows)}
-          <label {...setting_row(`site_label_bg_hex`)}>
-            <span>Background</span>
-            <input
-              class="swatch"
-              type="color"
-              aria-label="Site label background color"
-              bind:value={get_label_bg_hex, set_label_bg_hex}
-            />
-          </label>
+          <ColorInput
+            {...setting_row(`site_label_bg_hex`)}
+            label="Background"
+            labels={{
+              picker: `Site label background color`,
+              hex: `Site label background color hex`,
+            }}
+            bind:value={get_label_bg_hex, set_label_bg_hex}
+          />
           <NumberRangeInput
             data-key="site_label_bg_opacity"
             min={0}
@@ -1437,17 +1431,14 @@
           ),
         })}
       >
-        <label {...setting_row(`background_color`)}>
-          <span>Color</span>
-          <!-- not using bind:value to not give a default value of #000000 to background_color,
-          needs to stay undefined to not override --struct-bg theme color -->
-          <input
-            class="swatch"
-            type="color"
-            value={background_color}
-            oninput={(event) => (background_color = event.currentTarget.value)}
-          />
-        </label>
+        <!-- Keep an unset background undefined until an edit, preserving the theme color. -->
+        <ColorInput
+          {...setting_row(`background_color`)}
+          label="Color"
+          value={as_hex_color(background_color, `#000000`)}
+          labels={{ picker: `Background color`, hex: `Background color hex` }}
+          on_commit={(color) => (background_color = color)}
+        />
         <NumberRangeInput
           setting="background_opacity"
           {...number_range_props(SETTINGS_CONFIG.background_opacity, 0.02)}

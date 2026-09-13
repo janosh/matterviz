@@ -10,19 +10,12 @@ import { untrack } from 'svelte'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'
 import type { TrajectoryRun } from './run'
 
-interface TrajectorySessionInputs {
+// Playback inputs bind current_step_idx through index and set_index.
+interface TrajectorySessionInputs extends Omit<
+  Parameters<typeof create_sequence_player>[0],
+  'count'
+> {
   run: () => TrajectoryRun | undefined
-  // The bound step index (current_step_idx) and its writer
-  index: () => number
-  set_index: (idx: number) => void
-  fps: () => number
-  set_fps: (fps: number) => void
-  fps_range: () => readonly [number, number]
-  should_auto_play: () => boolean
-  on_play?: () => void
-  on_pause?: () => void
-  on_end?: () => void
-  on_loop?: () => void
   // Fired after every committed index change (slider, keyboard, plot click, controller, clamp)
   on_step_change?: (idx: number) => void
   on_frame_error?: (frame_idx: number, error: Error) => void

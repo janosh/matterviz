@@ -208,7 +208,7 @@ describe(`ColorBar tick labels`, () => {
     for (const [spec, expected] of [
       [undefined, [`0`, `0.5`, `1`]],
       [`.1f`, [`0.0`, `0.5`, `1.0`]],
-      [`%Y`, [epoch_year, epoch_year, epoch_year]],
+      [`%Y`, [epoch_year]],
       [`.0%`, [`0%`, `50%`, `100%`]],
       [undefined, [`0`, `0.5`, `1`]],
     ] as const) {
@@ -255,51 +255,79 @@ describe(`ColorBar tick labels`, () => {
 
   const day = (month: number, date: number, hours = 0, minutes = 0, seconds = 0) =>
     new Date(2024, month, date, hours, minutes, seconds).getTime()
-  test.each([
-    {
-      name: `a d3-time format`,
-      props: { range: [day(0, 1), day(11, 31)], tick_format: `%Y-%m-%d`, tick_labels: 3 },
-      expected: [`2024-01-01`, `2024-07-01`, `2024-12-31`],
-    },
-    {
-      name: `a numeric d3-format`,
-      props: { range: [0, 10], tick_format: `.1r`, tick_labels: 6, snap_ticks: true },
-      expected: [`0`, `2`, `4`, `6`, `8`, `10`],
-    },
-    {
-      name: `a percentage format`,
-      props: { range: [0, 1], tick_format: `.0%`, tick_labels: 5 },
-      expected: [`0%`, `25%`, `50%`, `75%`, `100%`],
-    },
-    {
-      name: `format_num when tick_format is undefined`,
-      props: { range: [0.1234, 5.6789], tick_labels: 3 },
-      expected: [`0.123`, `2.9`, `5.68`],
-    },
-    {
-      name: `SI suffixes from format_num`,
-      props: { range: [1000, 5000], tick_labels: 2 },
-      expected: [`1k`, `5k`],
-    },
-    {
-      name: `snap_ticks=false with the exact tick count`,
-      props: { range: [0, 99], tick_labels: 4 },
-      expected: [`0`, `33`, `66`, `99`],
-    },
-    {
-      // snap_ticks is ignored when an explicit array is passed
-      name: `an explicit array minus duplicates and non-numbers`,
-      props: {
+  test.each<[Record<string, unknown>, string[]]>([
+    [
+      { range: [day(0, 1), day(11, 31)], tick_format: `%Y-%m-%d`, tick_labels: 3 },
+      [`2024-01-01`, `2024-07-01`, `2024-12-31`],
+    ],
+    [
+      { range: [0, 10], tick_format: `.1r`, tick_labels: 6, snap_ticks: true },
+      [`0`, `2`, `4`, `6`, `8`, `10`],
+    ],
+    [
+      { range: [0, 1], tick_format: `.0%`, tick_labels: 5 },
+      [`0%`, `25%`, `50%`, `75%`, `100%`],
+    ],
+    [{ range: [0.1234, 5.6789], tick_labels: 3 }, [`0.123`, `2.9`, `5.68`]],
+    [{ range: [1000, 5000], tick_labels: 2 }, [`1k`, `5k`]],
+    // Adaptive precision distinguishes values that would otherwise all display as 1k.
+    [{ range: [1000, 1002], tick_labels: 3 }, [`1000`, `1001`, `1002`]],
+    [{ range: [0, 99], tick_labels: 4 }, [`0`, `33`, `66`, `99`]],
+    [
+      // Explicit arrays ignore snap_ticks and discard duplicate values/non-numbers.
+      {
         range: [0, 100],
         tick_labels: [10, 25, `50`, 50, `n/a`, 75, 90],
         snap_ticks: true,
       },
-      expected: [`10`, `25`, `50`, `75`, `90`],
-    },
-  ])(`renders $name`, ({ props, expected }) => {
+      [`10`, `25`, `50`, `75`, `90`],
+    ],
+    [
+      // Rounding must not put a zero tick outside a positive log domain.
+      { range: [0.1, 10], scale_type: `log`, tick_format: `d`, snap_ticks: true },
+      [`1`, `10`],
+    ],
+    [
+      {
+        range: [0, 2],
+        tick_labels: 9,
+        tick_format: `d`,
+        orientation: `vertical`,
+        tick_side: `inside`,
+      },
+      [`1`],
+    ],
+    [
+      // Equal labels can also come from nonadjacent explicit tick values.
+      { range: [0, 2], tick_labels: [0.1, 0.2, 1, 1.1, 0.3, 2], tick_format: `d` },
+      [`0`, `1`, `2`],
+    ],
+    [{ range: [0, 0.1], tick_labels: 5, tick_format: `.1f` }, [`0.0`, `0.1`]],
+  ])(`renders labels for %j`, (props, expected) => {
     mount_bar({ snap_ticks: false, ...props })
     expect(tick_texts()).toEqual(expected)
   })
+
+  test.each([false, true])(
+    `positions rounded arcsinh ticks at their labeled values (reversed=%s)`,
+    (reversed) => {
+      mount_bar({
+        range: reversed ? [38, 0] : [0, 38],
+        scale_type: { type: `arcsinh`, threshold: 0.25 },
+        tick_format: `d`,
+        tick_labels: 4,
+      })
+      expect(tick_texts()).toEqual(reversed ? [`10`, `1`, `0`] : [`0`, `1`, `10`])
+      for (const span of tick_spans()) {
+        const value = Number(span.textContent)
+        const percent = (100 * Math.asinh(value / 0.25)) / Math.asinh(38 / 0.25)
+        const actual_percent = Number(span.style.left.replace(`%`, ``))
+        const expected_percent = reversed ? 100 - percent : percent
+        // CSS serializes double-precision percentages; 1e-10 percentage points is ample.
+        expect(Math.abs(actual_percent - expected_percent)).toBeLessThan(1e-10)
+      }
+    },
+  )
 
   test(`formats intra-day ticks with a time format`, () => {
     mount_bar({

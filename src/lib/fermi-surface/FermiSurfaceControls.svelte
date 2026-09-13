@@ -9,7 +9,6 @@
   import { DEFAULTS } from '$lib/settings'
   import { make_change_detector, parse_num_token } from '$lib/utils'
   import { untrack, type Snippet } from 'svelte'
-  import { SvelteSet } from 'svelte/reactivity'
   import type { BandGridData, FermiSurfaceData, FermiSurfaceSettings } from './types'
 
   const defaults = DEFAULTS.fermi
@@ -65,7 +64,7 @@
 
   let available_bands = $derived(
     fermi_data
-      ? [...new SvelteSet(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
+      ? [...new Set(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
           (left, right) => left - right,
         )
       : [],

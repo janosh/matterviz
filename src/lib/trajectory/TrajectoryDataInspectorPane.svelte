@@ -3,7 +3,6 @@
   import { format_num, trajectory_property_config } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import { type CellVal, HeatmapTable, type Column, type RowData } from '$lib/table'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
 
@@ -110,7 +109,7 @@
   // One pass yields both rows and columns: the columns are the union of the property
   // keys seen across entries, in first-seen order.
   let frame_table = $derived.by(() => {
-    const property_keys = new SvelteSet<string>()
+    const property_keys = new Set<string>()
     const rows = frame_source.entries.map(({ frame_number, step, properties }) => {
       const row: RowData = { frame_idx: frame_number, step }
       for (const [key, value] of Object.entries(properties)) {
@@ -148,7 +147,7 @@
   // per-atom entries they retain (forces, magmoms, charges, selective dynamics, …).
   // Each key maps to whether its values are vec3 (three columns) or scalar (one).
   let site_property_specs = $derived.by(() => {
-    const specs = new SvelteMap<string, boolean>()
+    const specs = new Map<string, boolean>()
     for (const site of active_sites) {
       for (const [key, value] of Object.entries(site.properties ?? {})) {
         if (value != null && !specs.has(key)) specs.set(key, is_vec3_like(value))

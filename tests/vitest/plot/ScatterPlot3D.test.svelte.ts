@@ -1,6 +1,7 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
 import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
+import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type {
   AxisConfig3D,
@@ -87,7 +88,7 @@ const triangulated_surface: Surface3DConfig = {
   opacity: 0.8,
 }
 
-test.each([`surface`, `axes`] as const)(
+test.each([`surface`, `axes`, `reference plane`] as const)(
   `%s releases replaced geometry without Threlte retaining or disposing it again`,
   async (kind) => {
     const inputs = $state({ extent: 1 })
@@ -105,6 +106,13 @@ test.each([`surface`, `axes`] as const)(
           },
           get x_range(): [number, number] {
             return [0, inputs.extent]
+          },
+        })
+      if (kind === `reference plane`)
+        return ReferencePlane(anchor, {
+          ref_plane: { type: `xy`, z: 0, style: { wireframe: true } },
+          get ranges(): ComponentProps<typeof ReferencePlane>[`ranges`] {
+            return { x: [0, inputs.extent], y: [0, 1], z: [0, 1] }
           },
         })
       return ScatterPlot3DScene(anchor, {
@@ -131,7 +139,7 @@ test.each([`surface`, `axes`] as const)(
           if ([`BufferGeometry`, `WireframeGeometry`].includes(geometry.type))
             active.add(geometry)
         })
-        expect(active.size).toBe(kind === `surface` ? 2 : 21)
+        expect(active.size).toBe(kind === `axes` ? 21 : 2)
         for (const geometry of active) {
           if (!geometries.has(geometry))
             geometries.set(geometry, vi.spyOn(geometry, `dispose`))

@@ -5,7 +5,6 @@ import { values_per_sample } from '$lib/trajectory/helpers'
 import type { TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
 import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory/run'
 import { parse_frame_signal } from '$lib/trajectory/runs/accumulate'
-import { SvelteSet } from 'svelte/reactivity'
 import type {
   InfraredSignal,
   SpectroscopyPreprocessing,
@@ -141,7 +140,7 @@ export const trajectory_signal_keys = (
       ? [key]
       : [],
   )
-  return [...new SvelteSet([...declared_keys, ...metadata_keys])].toSorted()
+  return [...new Set([...declared_keys, ...metadata_keys])].toSorted()
 }
 
 const recorded_masses = (run: TrajectoryRun): number[] | null => {

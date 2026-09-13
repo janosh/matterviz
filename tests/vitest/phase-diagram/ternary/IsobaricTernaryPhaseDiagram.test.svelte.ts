@@ -497,13 +497,24 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
   expect(document.body.textContent).toContain(`p(O2)`)
   const p_slider = doc_query<HTMLInputElement>(`input[type=range][min="-12"]`)
   expect(Number(p_slider.value)).toBeCloseTo(Math.log10(0.2095), 6)
-  // Dragging only previews the readout; the bound pressure (a full re-sweep) commits on release
+  // Dragging previews the slider in bar; a full re-sweep commits only on release.
   p_slider.value = `-6`
   p_slider.dispatchEvent(new Event(`input`, { bubbles: true }))
   flushSync()
   expect(state.gas_pressures.O2).toBeUndefined()
-  expect(doc_query(`.pressure`).textContent).toContain(`1e-6`)
+  expect(p_slider.getAttribute(`aria-valuenow`)).toBe(`0.000001`)
   p_slider.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
   expect(state.gas_pressures.O2).toBeCloseTo(1e-6, 12)
+  const p_number = doc_query<HTMLInputElement>(`input[type=number][min="1e-12"]`)
+  expect(p_number.valueAsNumber).toBe(1e-6)
+  for (const value of [`5`, `0`]) {
+    change(p_number, value)
+    expect([state.gas_pressures.O2, p_number.value]).toEqual([5, `5`])
+  }
+  p_slider.dispatchEvent(
+    new KeyboardEvent(`keydown`, { key: `Home`, bubbles: true, cancelable: true }),
+  )
+  flushSync()
+  expect(state.gas_pressures.O2).toBe(1e-12)
 })

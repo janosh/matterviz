@@ -46,16 +46,11 @@ export function extract_columns(data: unknown): Map<string, ColumnInfo> {
     }
   } else if (data && typeof data === `object` && !Array.isArray(data)) {
     // Column-based: { a: [1,2,3], b: ['x','y','z'] }
-    const array_entries = Object.entries(data as Record<string, unknown>).filter(
-      ([, val]) => Array.isArray(val) && (val as unknown[]).length > 0,
-    )
-    if (array_entries.length < 1) return columns
-    const target_len = (array_entries[0][1] as unknown[]).length
-    for (const [key, val] of array_entries) {
-      const arr = val as unknown[]
-      if (arr.length === target_len) {
-        columns.set(key, classify_column(arr))
-      }
+    let target_len: number | undefined
+    for (const [key, values] of Object.entries(data)) {
+      if (!Array.isArray(values) || values.length === 0) continue
+      target_len ??= values.length
+      if (values.length === target_len) columns.set(key, classify_column(values))
     }
   }
   return columns

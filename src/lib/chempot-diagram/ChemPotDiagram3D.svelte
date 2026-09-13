@@ -28,7 +28,6 @@
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, onMount } from 'svelte'
-  import { SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three/webgpu'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { rescale_zoom_to_fit } from './camera'
@@ -353,7 +352,7 @@
   const domain_points = $derived(render_domains.flatMap((domain) => domain.points_3d))
 
   // Formula overlays are cut out of the base hull/edges and drawn in their own colour
-  const overlay_formulas = $derived(new SvelteSet(formulas_to_draw))
+  const overlay_formulas = $derived(new Set(formulas_to_draw))
   const base_domains = $derived(
     render_domains.filter((domain) => !overlay_formulas.has(domain.formula)),
   )

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ColorInput } from 'svelte-widgets'
   import { css_color_to_hex } from '$lib/colors'
   import { first_point_style } from '$lib/plot/core/data-transform'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
@@ -192,15 +193,13 @@
             {#each fields as key (key)}
               {#if (key !== `size` || !has_size_data) && (key !== `color` || !has_color_data)}
                 {#if key === `color` || key === `stroke_color`}
-                  <label data-key={`${kind}.${key}`}>
-                    <span>Color</span>
-                    <input
-                      type="color"
-                      bind:value={
-                        () => css_color_to_hex(style[key], `#000000`), set_style(kind, key)
-                      }
-                    />
-                  </label>
+                  <ColorInput
+                    data-key={`${kind}.${key}`}
+                    label="Color"
+                    value={css_color_to_hex(style[key], `#000000`)}
+                    labels={{ picker: `${kind} ${key}`, hex: `${kind} ${key} hex` }}
+                    on_commit={set_style(kind, key)}
+                  />
                 {:else if key === `dash`}
                   <label data-key="line.dash">
                     <span>Style</span>

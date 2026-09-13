@@ -76,10 +76,11 @@ const slot_color = (slot_idx: number): number[] => {
   return color.toArray()
 }
 
-test(`uploads colors only when composition or ghost mode changes mid-scrub`, () => {
+test(`uploads changed color slots and preserves pending ranges mid-scrub`, () => {
   const props = mount_atoms(ch4())
   const mesh = current_mesh()
   expect(slot_color(0)).toEqual([0, 0, 0])
+  expect(mesh.instanceColor?.updateRanges).toEqual([{ start: 0, count: 15 }])
 
   // scrub to a frame with fewer atoms: same mesh, slot 0 is a different element now
   props.atoms = h2o()
@@ -87,6 +88,11 @@ test(`uploads colors only when composition or ghost mode changes mid-scrub`, () 
   expect(current_mesh()).toBe(mesh) // grow-only capacity, so no new mesh hides the staleness
   expect(mesh.count).toBe(3)
   expect(slot_color(0)).toEqual([1, 0, 0])
+  // A partial repaint before the first render must keep the earlier full-buffer upload.
+  expect(mesh.instanceColor?.updateRanges).toEqual([
+    { start: 0, count: 15 },
+    { start: 0, count: 3 },
+  ])
 
   const color_version = mesh.instanceColor?.version
   props.atoms = h2o(0.5)
@@ -98,12 +104,44 @@ test(`uploads colors only when composition or ghost mode changes mid-scrub`, () 
   expect(mesh.instanceColor?.version).toBe(color_version)
   expect(mesh.instanceMatrix.array[0]).toBe(1)
 
+  const instance_colors = mesh.instanceColor
+  if (!instance_colors) throw new Error(`Expected atom color buffer`)
+  instance_colors.clearUpdateRanges() // Simulate the renderer consuming the initial upload.
+  const matrix_version = mesh.instanceMatrix.version
+  props.atoms[2].color = `blue`
+  flushSync()
+  expect(instance_colors.updateRanges).toEqual([{ start: 6, count: 3 }])
+  expect(slot_color(2)).toEqual([0, 0, 1])
+  props.atoms[1].color = `green`
+  flushSync()
+  expect(instance_colors.updateRanges).toEqual([
+    { start: 6, count: 3 },
+    { start: 3, count: 3 },
+  ])
+  expect(mesh.instanceMatrix.version).toBe(matrix_version)
+
   // measure mode desaturates the same way mid-scrub
   props.ghost = true
   flushSync()
+  expect(mesh.material).toMatchObject({ transparent: true, opacity: 0.5 })
   const ghosted = new Color(1, 0, 0).lerp(new Color(0x999999), 0.4)
   // instanceColor is a f32 buffer, so the readback rounds the f64 expectation
   expect(slot_color(0)).toEqual(ghosted.toArray().map(Math.fround))
+
+  // A newly occupied slot with an omitted color must not reuse its retired color.
+  props.atoms = []
+  flushSync()
+  props.atoms = [{ position: [0, 0, 0], radius: 0.5 }]
+  flushSync()
+  expect(current_mesh()).toBe(mesh)
+  expect(slot_color(0)).toEqual(new Color(0x999999).toArray().map(Math.fround))
+  const default_color_version = mesh.instanceColor?.version
+  props.atoms[0].color = `#999999`
+  flushSync()
+  expect(mesh.instanceColor?.version).toBe(default_color_version)
+  props.ghost = false
+  flushSync()
+  expect(mesh.material).toMatchObject({ transparent: false, opacity: 1 })
 })
 
 test.each([

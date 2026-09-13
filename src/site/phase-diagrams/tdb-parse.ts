@@ -41,7 +41,7 @@ interface TdbParameter {
   expression: string
 }
 
-export interface TdbData {
+interface TdbData {
   elements: TdbElement[]
   phases: TdbPhase[]
   functions: TdbFunction[]

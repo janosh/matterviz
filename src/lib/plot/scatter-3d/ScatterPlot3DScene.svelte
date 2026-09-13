@@ -18,7 +18,7 @@
     Surface3DConfig,
   } from '$lib/plot/core/types'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import type { GizmoOptions } from '$lib/scene'
+  import type { SceneControlProps } from '$lib/scene'
   import {
     bind_renderer,
     create_scene_camera,
@@ -31,7 +31,6 @@
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
   import { type ComponentProps, onDestroy, type Snippet, untrack } from 'svelte'
-  import type { Camera, Scene } from 'three/webgpu'
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
@@ -80,7 +79,7 @@
     orbit_controls = $bindable(),
     width = 0,
     height = 0,
-  }: {
+  }: Omit<SceneControlProps, `zoom_to_cursor` | `initial_zoom`> & {
     series?: DataSeries3D<Metadata>[]
     // Final data-coordinate ranges, computed by the host alongside its controls.
     ranges: Record<`x` | `y` | `z`, Vec2>
@@ -96,26 +95,12 @@
     color_scale_fn?: (value: number) => string
     size_scale?: SizeScaleConfig
     camera_position?: Vec3
-    camera_projection?: CameraProjection3D
-    auto_rotate?: number
-    rotation_damping?: number
-    fov?: number
-    min_zoom?: number
-    max_zoom?: number
-    rotate_speed?: number
-    zoom_speed?: number
-    pan_speed?: number
-    ambient_light?: number
-    directional_light?: number
     sphere_segments?: number
-    gizmo?: boolean | GizmoOptions
     hovered_point?: InternalPoint3D<Metadata> | null
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
     tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
     tooltip_portal?: HTMLElement
-    scene?: Scene
-    camera?: Camera
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number
     height?: number

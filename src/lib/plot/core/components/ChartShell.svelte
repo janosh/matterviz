@@ -1,17 +1,6 @@
-<script lang="ts">
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
-  // Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
-  // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
-  // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
-  // …) so every chart is themed the same way.
-  import { FullscreenButton } from '$lib/layout'
-  import type { PaneToggleProps } from '$lib/overlays'
-  import type { Snippet } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
-
-  // Public CSS knobs mapped onto the shell's own variables, with the defaults every chart shares
-  const css_var_defaults = (prefix: string): Record<string, string> => ({
+<script module lang="ts">
+  // Public CSS knobs shared by Cartesian and non-Cartesian chart shells.
+  export const chart_css_defaults = (prefix: string): Record<string, string> => ({
     width: `100%`,
     height: `auto`,
     'min-height': `300px`,
@@ -23,6 +12,19 @@
     'fullscreen-z-index': `var(--z-index-overlay-nav, 100000001)`,
     'fullscreen-bg': `var(--${prefix}-bg, var(--plot-bg, transparent))`,
   })
+</script>
+
+<script lang="ts">
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
+  // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
+  // Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
+  // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
+  // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
+  // …) so every chart is themed the same way.
+  import { FullscreenButton } from '$lib/layout'
+  import type { PaneToggleProps } from '$lib/overlays'
+  import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   type Dims = { height: number; width: number; fullscreen: boolean }
 
@@ -48,7 +50,7 @@
     chart_class: string
     // Prefix of this chart's public CSS variables (`sankey`, `scatter3d`)
     css_prefix: string
-    // Per-chart fallbacks for css_var_defaults entries whose default differs
+    // Per-chart fallbacks for chart_css_defaults entries whose default differs
     css_var_fallbacks?: Record<string, string>
     wrapper?: HTMLDivElement
     // Measured container size, 0 until the first layout pass
@@ -72,7 +74,7 @@
   } = $props()
 
   const css_vars = $derived(
-    Object.entries(css_var_defaults(css_prefix))
+    Object.entries(chart_css_defaults(css_prefix))
       .map(
         ([key, fallback]) =>
           `--chart-shell-${key}: var(--${css_prefix}-${key}, ${css_var_fallbacks[key] ?? fallback});`,

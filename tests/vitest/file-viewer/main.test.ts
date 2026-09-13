@@ -530,7 +530,10 @@ describe(`LARGE_FILE markers`, () => {
     return (await import(`$lib/file-viewer/parse`)).parse_file_content
   }
 
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
 
   test(`asks the host for the file and serves frames and plot rows from it`, async () => {
     // The host keeps the indexed run and hands over only its summary; plot rows follow
@@ -604,6 +607,84 @@ describe(`LARGE_FILE markers`, () => {
     await expect((await fresh_parse())(marker, `movie.extxyz`)).rejects.toThrow(
       `indexer crashed`,
     )
+  })
+
+  test.each([`batch`, `completion`, `both`] as const)(
+    `finishes host metadata and detaches its listener after %s subscriber failures`,
+    async (phase) => {
+      with_host((request) => ({
+        command: `large_file_response`,
+        request_id: request.request_id,
+        run_summary: { ...summarize_run(backing), properties: { rows: [], complete: false } },
+      }))
+      const add_listener = vi.spyOn(globalThis, `addEventListener`)
+      const remove_listener = vi.spyOn(globalThis, `removeEventListener`)
+      const result = await (await fresh_parse())(marker, `movie.extxyz`)
+      if (result.type !== `trajectory`) throw new Error(`Expected a host trajectory`)
+      const { properties } = result.data
+      const failures = {
+        batch: new Error(`Batch observer failed`),
+        completion: new Error(`Completion observer failed`),
+      }
+      properties.subscribe((_batch, complete) => {
+        const event_phase = complete ? `completion` : `batch`
+        if (phase === `both` || phase === event_phase) throw failures[event_phase]
+      })
+      const observer = vi.fn()
+      properties.subscribe(observer)
+      const handler = add_listener.mock.calls.at(-1)?.[1]
+      if (typeof handler !== `function`) throw new Error(`Missing host metadata listener`)
+      const notify = vi.fn(() =>
+        handler.call(
+          globalThis,
+          new MessageEvent(`message`, {
+            data: {
+              command: `plot_metadata_stream`,
+              file_path: `/data/movie.extxyz`,
+              rows: backing.properties.rows,
+              complete: true,
+            },
+          }),
+        ),
+      )
+      // Invoke directly to inspect errors normally reported by the browser's event loop.
+      expect(notify).toThrow(Error)
+      const error: unknown = notify.mock.results[0].value
+      if (phase === `both`) {
+        expect(error).toBeInstanceOf(AggregateError)
+        expect(error).toHaveProperty(`errors`, Object.values(failures))
+      } else expect(error).toBe(failures[phase])
+      expect(properties.complete).toBe(true)
+      await properties.done
+      expect(properties.rows).toEqual(backing.properties.rows)
+      expect(observer.mock.calls).toEqual([
+        [backing.properties.rows, false],
+        [[], true],
+      ])
+      expect(remove_listener).toHaveBeenCalledWith(`message`, handler)
+      result.data.dispose()
+    },
+  )
+
+  test.each([`send`, `response`])(`cleans up a host request when %s throws`, async (phase) => {
+    const { post_message } = with_host((request) => ({
+      command: `large_file_response`,
+      request_id: request.request_id,
+      run_summary: {},
+    }))
+    const parse = await fresh_parse()
+    const add_listener = vi.spyOn(globalThis, `addEventListener`)
+    const remove_listener = vi.spyOn(globalThis, `removeEventListener`)
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    if (phase === `send`)
+      post_message.mockImplementationOnce(() => {
+        throw new TypeError(`Host transport failed`)
+      })
+    await expect(parse(marker, `movie.extxyz`)).rejects.toThrow(TypeError)
+    const handler = add_listener.mock.calls.at(-1)?.[1]
+    expect(typeof handler).toBe(`function`)
+    expect(remove_listener).toHaveBeenCalledWith(`message`, handler)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   test(`says so plainly when no host is listening`, async () => {

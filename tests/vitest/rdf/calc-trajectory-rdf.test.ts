@@ -153,6 +153,16 @@ describe(`collect_trajectory_rdf`, () => {
     await expect(
       collect_trajectory_rdf(run_of([mixed, shifted]), { n_bins: 20 }),
     ).rejects.toThrow(/different composition/)
+    // Readers may reuse and mutate the same structure between frames. The reference must
+    // copy the original occupancies rather than retaining the first frame's species objects.
+    await expect(
+      collect_trajectory_rdf(run_of([mixed, mixed]), {
+        n_bins: 20,
+        on_progress: (done) => {
+          if (done === 1) mixed.sites[0].species[0].occu = 0.6
+        },
+      }),
+    ).rejects.toThrow(/frame 1 has a different composition/)
   })
 
   test.each<readonly [string, () => TrajectoryRun, RegExp]>([

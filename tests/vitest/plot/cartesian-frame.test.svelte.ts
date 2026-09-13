@@ -24,6 +24,7 @@ import {
   clip_rect,
   doc_query,
   inside_clip_path,
+  mock_fullscreen,
   mount_sized,
   query,
   with_measured_text,
@@ -262,10 +263,22 @@ describe(`cartesian frame`, () => {
   afterEach(() => vi.restoreAllMocks())
 
   test.each(frame_charts)(
-    `$name shares viewer controls visibility and reacts to changes`,
+    `$name shares fullscreen transitions and reactive controls visibility`,
     async (chart) => {
+      mock_fullscreen()
       const state = $state<{ show_controls: ShowControlsProp }>({ show_controls: `hover` })
       const plot = await mount_chart(chart, bind_props(chart.props(), state))
+      const toggle = query<HTMLButtonElement>(plot, `.fullscreen-btn`)
+      expect(plot.classList.contains(`fullscreen`)).toBe(false)
+      expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
+      for (const fullscreen of [true, false]) {
+        toggle.click()
+        await tick()
+        expect(plot.classList.contains(`fullscreen`)).toBe(fullscreen)
+        expect(toggle.getAttribute(`aria-label`)).toBe(
+          fullscreen ? `Exit fullscreen` : `Enter fullscreen`,
+        )
+      }
       expect(query(plot, `.header-controls`).classList.contains(`hover-visible`)).toBe(true)
       expect(query(plot, `.control-pane-toggle`).classList.contains(`hover-visible`)).toBe(
         true,

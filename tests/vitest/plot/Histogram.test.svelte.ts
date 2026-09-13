@@ -423,6 +423,8 @@ describe(`Histogram`, () => {
     expect(option_labels).toEqual([`Repeated`, `Repeated`, `Series 4`, `Series 5`])
     expect(series_select.value).toBe(`1`)
     expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
+    expect(document.querySelector(`input[aria-label="Fill color hex"]`)).toBeNull()
+    expect(document.querySelector(`input[aria-label="Stroke color hex"]`)).not.toBeNull()
     for (const series_idx of [1, 2, 3, 4]) {
       series_select.value = String(series_idx)
       series_select.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -447,6 +449,7 @@ describe(`Histogram`, () => {
     await tick()
     expect(series_select.disabled).toBe(false)
     expect(series_select.value).toBe(`3`)
+    expect(document.querySelector(`input[aria-label="Fill color hex"]`)).not.toBeNull()
     expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
       `3`,
     )
@@ -475,7 +478,12 @@ describe(`Histogram`, () => {
         ),
       )
       const initial_reads = sample_reads
-      const fill_input = doc_query<HTMLInputElement>(`input[type="color"]`)
+      const fill_input = doc_query<HTMLInputElement>(`input[aria-label="Fill color hex"]`)
+      fill_input.value = `#wrong`
+      fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      expect(fill_input.getAttribute(`aria-invalid`)).toBe(`true`)
+      expect(state.bar).toEqual({ color: `#112233` })
       fill_input.value = `#abcdef`
       fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       expect(state.bar).toEqual({ color: `#abcdef` })

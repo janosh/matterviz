@@ -1,7 +1,8 @@
 <script lang="ts">
   // ReferencePlane: 3D reference planes (axis-aligned, normal-defined, or point-defined)
   import type { Vec2, Vec3 } from '$lib/math'
-  import { cross_3d, normalize_vec } from '$lib/math'
+  import { cross_3d, normalize_vec, subtract } from '$lib/math'
+  import { dispose_on_change, positions_geometry } from '$lib/scene'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
   import { create_to_threejs, span_or } from '$lib/plot/scatter-3d/scene-coords'
@@ -38,14 +39,12 @@
     const verts = [value_c_0, value_c_1, value_c_2, value_c_0, value_c_2, value_c_3].flatMap(
       (corner) => [corner.x, corner.y, corner.z],
     )
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute(`position`, new THREE.BufferAttribute(new Float32Array(verts), 3))
+    const geo = positions_geometry(verts)
     geo.computeVertexNormals()
     return geo
   }
 
-  // Compute plane geometry based on type - returns result to use in $effect
-  function compute_geometry(): THREE.BufferGeometry | null {
+  let geometry = $derived.by((): THREE.BufferGeometry | null => {
     if (ref_plane.visible === false) return null
 
     if (ref_plane.type === `xy`) {
@@ -80,32 +79,14 @@
       return create_plane_from_normal(ref_plane.normal, ref_plane.point)
     }
     if (ref_plane.type === `points`) {
-      const { p1: point_1, p2: point, p3: point_3 } = ref_plane
-      const vector_1: Vec3 = [
-        point[0] - point_1[0],
-        point[1] - point_1[1],
-        point[2] - point_1[2],
-      ]
-      const vector_2: Vec3 = [
-        point_3[0] - point_1[0],
-        point_3[1] - point_1[1],
-        point_3[2] - point_1[2],
-      ]
-      const cross = cross_3d(vector_1, vector_2)
+      const { p1: point_1, p2: point_2, p3: point_3 } = ref_plane
+      const cross = cross_3d(subtract(point_2, point_1), subtract(point_3, point_1))
       if (Math.hypot(...cross) < 1e-9) return null // collinear points
       return create_plane_from_normal(normalize_vec(cross), point_1)
     }
     return null
-  }
-
-  // Create geometry with proper disposal on dependency change
-  let geometry: THREE.BufferGeometry | null = $state(null)
-
-  $effect(() => {
-    const geo = compute_geometry()
-    geometry = geo
-    return () => geo?.dispose()
   })
+  dispose_on_change(() => [geometry])
 
   // Create plane from normal and point, scaled to cover bounding box
   function create_plane_from_normal(normal: Vec3, point: Vec3): THREE.BufferGeometry {
@@ -141,14 +122,10 @@
     double_sided: ref_plane.style?.double_sided ?? true,
   })
 
-  // Create wireframe geometry with automatic disposal when dependencies change
-  let wireframe_geometry: THREE.WireframeGeometry | null = $state(null)
-
-  $effect(() => {
-    const wf_geo = geometry && style.wireframe ? new THREE.WireframeGeometry(geometry) : null
-    wireframe_geometry = wf_geo
-    return () => wf_geo?.dispose()
-  })
+  let wireframe_geometry = $derived(
+    geometry && style.wireframe ? new THREE.WireframeGeometry(geometry) : null,
+  )
+  dispose_on_change(() => [wireframe_geometry])
 </script>
 
 {#if geometry}

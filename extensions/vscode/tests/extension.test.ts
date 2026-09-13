@@ -480,9 +480,8 @@ describe(`MatterViz Extension`, () => {
 
   test(`large compressed EXTXYZ request opens an indexed run, streams plot rows and serves frames`, async () => {
     const file_path = `/test/movie.extxyz.gz`
-    // 2100 frames: the first 2000 plot rows are extracted during open (and travel in the
-    // summary), the tail arrives as a plot_metadata_stream batch followed by completion
-    const n_frames = 2100
+    // Exceed the host's 5000-row flush plus a 2000-row scan chunk, leaving a final tail.
+    const n_frames = 7100
     const trajectory = Array.from(
       { length: n_frames },
       (_unused, idx) => `1\nframe=${idx} energy=${-idx}\nH ${idx} 0 0`,
@@ -510,8 +509,7 @@ describe(`MatterViz Extension`, () => {
     expect(response.request_id).toBe(`large-request`)
     expect(response.run_summary.frame_count).toBe(n_frames)
     expect(response.run_summary.preview).toHaveProperty(`structure`)
-    expect(response.run_summary.properties).toMatchObject({ complete: false })
-    expect(response.run_summary.properties.rows).toHaveLength(2000)
+    expect(response.run_summary.properties).toMatchObject({ complete: false, rows: [] })
     // every summary field must survive structured cloning into the webview
     expect(() => structuredClone(response.run_summary)).not.toThrow()
     await run?.properties.done
@@ -519,13 +517,15 @@ describe(`MatterViz Extension`, () => {
     const stream_calls = mock_webview.postMessage.mock.calls
       .map(([message]) => message as StreamMessage)
       .filter((message) => message.command === `plot_metadata_stream`)
-    expect(stream_calls.map(({ rows, complete }) => [rows.length, complete])).toEqual([
-      [100, true],
-    ])
-    expect(stream_calls[0].file_path).toBe(file_path)
-    const all_rows = [...response.run_summary.properties.rows, ...stream_calls[0].rows]
-    expect(all_rows.map((row) => row.properties.energy)).toEqual(
-      Array.from({ length: n_frames }, (_unused, idx) => (idx === 0 ? 0 : -idx)),
+    expect(stream_calls.length).toBeGreaterThan(1)
+    expect(stream_calls.at(-1)).toMatchObject({ file_path, complete: true })
+    expect(stream_calls.every((message) => message.file_path === file_path)).toBe(true)
+    expect(
+      stream_calls.slice(0, -1).every(({ rows, complete }) => rows.length > 0 && !complete),
+    ).toBe(true)
+    const all_rows = stream_calls.flatMap(({ rows }) => rows)
+    expect(all_rows.map((row) => [row.frame_number, row.properties.energy])).toEqual(
+      Array.from({ length: n_frames }, (_unused, idx) => [idx, idx === 0 ? 0 : -idx]),
     )
 
     mock_webview.postMessage.mockClear()

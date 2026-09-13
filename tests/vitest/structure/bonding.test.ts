@@ -1495,6 +1495,12 @@ describe(`neighbor_query`, () => {
     [`clustered, full pbc`, clustered, [true, true, true], 2.1],
     [`clustered, no pbc`, clustered, [false, false, false], 2.1],
     [
+      `image-dominated small cell`,
+      make_crystal(3, [{ element: `Si`, abc: [0.2, 0.3, 0.4] }]),
+      [true, true, true],
+      7.5,
+    ],
+    [
       `reversed clusters, full pbc`,
       { ...clustered, sites: clustered.sites.toReversed() },
       [true, true, true],
@@ -1535,7 +1541,230 @@ describe(`neighbor_query`, () => {
     }
     expect(list.offsets[list.n_centers]).toBe(list.neighbors.length)
     expect(list.offsets[list.n_centers]).toBe(expected.size)
+    const streamed: [number, number, number][] = []
+    bonding.visit_neighbor_distances(structure, { cutoff, pbc }, (center, neighbor, dist) => {
+      streamed.push([center, neighbor, dist])
+    })
+    const listed: typeof streamed = []
+    for (let center = 0; center < list.n_centers; center++) {
+      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
+        listed.push([center, list.neighbors[slot], list.distances[slot]])
+      }
+    }
+    const by_neighbor = (first: number[], second: number[]) =>
+      first[0] - second[0] || first[1] - second[1] || first[2] - second[2]
+    expect(streamed.toSorted(by_neighbor)).toEqual(listed.toSorted(by_neighbor))
   })
+
+  const grid_positions = (count: number, origin = 0): Vec3[] =>
+    Array.from({ length: count }, (_, idx): Vec3 => [
+      origin + Math.floor(idx / 144) * 0.2,
+      origin + (Math.floor(idx / 12) % 12) * 0.2,
+      origin + (idx % 12) * 0.2,
+    ])
+
+  const stream_distance_error = (
+    structure: Crystal,
+    cutoff: number,
+    expected: Map<number, number>,
+  ) => {
+    let max_error = 0
+    bonding.visit_neighbor_distances(
+      structure,
+      { cutoff, pbc: [false, false, false] },
+      (center, neighbor, distance) => {
+        const key = center * structure.sites.length + neighbor
+        const reference = expected.get(key)
+        if (reference === undefined)
+          throw new Error(`Unexpected contact ${center}, ${neighbor}`)
+        max_error = Math.max(max_error, Math.abs(reference - distance))
+        expected.delete(key)
+      },
+    )
+    expect(expected.size).toBe(0)
+    return max_error
+  }
+
+  const stream_list_error = (positions: Vec3[], cutoff: number) => {
+    const structure = make_crystal(
+      10,
+      positions.map((xyz) => ({ element: `Si`, xyz })),
+    )
+    const options = { cutoff, pbc: [false, false, false] as const }
+    const list = bonding.neighbor_query(structure, options)
+    const expected = new Map<number, number>()
+    for (let center = 0; center < positions.length; center++) {
+      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
+        expected.set(center * positions.length + list.neighbors[slot], list.distances[slot])
+      }
+    }
+    expect(expected.size).toBe(list.neighbors.length)
+    return stream_distance_error(structure, cutoff, expected)
+  }
+
+  test.each([
+    [1999, false],
+    [2000, false],
+    [2047, true],
+    [2048, true],
+  ] as const)(
+    `dense streaming across grid-size/density gates: %i sites`,
+    (count, density_gate) => {
+      const positions = density_gate
+        ? Array.from({ length: count }, (_, idx): Vec3 =>
+            // 4³ original bins: 2047/64 < 32, 2048/64 === 32 cloud points per bin.
+            [
+              (Math.floor(idx / 256) * 1.5) / 7,
+              ((Math.floor(idx / 16) % 16) * 1.5) / 15,
+              ((idx % 16) * 1.5) / 15,
+            ],
+          )
+        : grid_positions(count)
+      expect(stream_list_error(positions, density_gate ? 0.5 : 1)).toBe(0)
+    },
+  )
+
+  const next_float = (value: number, direction: number): number => {
+    const view = new DataView(new ArrayBuffer(8))
+    view.setFloat64(0, value)
+    view.setBigUint64(0, view.getBigUint64(0) + BigInt(value < 0 ? -direction : direction))
+    return view.getFloat64(0)
+  }
+
+  test.each([0, -7, 17])(`dense half-bin cutoff boundaries at origin %i`, (origin) => {
+    // 2,000 sites in 27 coarse bins activate the dense grid for every perturbation.
+    const structure = make_crystal(
+      10,
+      grid_positions(2000, origin).map((xyz) => ({ element: `Si`, xyz })),
+    )
+    for (const first_ulp of [-1, 0, 1]) {
+      for (const second_ulp of [-1, 0, 1]) {
+        structure.sites[1].xyz = [next_float(origin + 0.5, first_ulp), origin, origin]
+        structure.sites[2].xyz = [next_float(origin + 1.5, second_ulp), origin, origin]
+        const delta_x = structure.sites[2].xyz[0] - structure.sites[1].xyz[0]
+        const dist_sq = delta_x * delta_x
+        const expected = dist_sq <= 1 ? [Math.sqrt(dist_sq)] : []
+        const visits: number[][] = [[], []]
+        bonding.visit_neighbor_distances(
+          structure,
+          { cutoff: 1, pbc: [false, false, false] },
+          (center, neighbor, distance) => {
+            if (center === 1 && neighbor === 2) visits[0].push(distance)
+            if (center === 2 && neighbor === 1) visits[1].push(distance)
+          },
+        )
+        // .5 - 1 ULP and 1.5 have rounded distance 1, but unpadded half bins 0 and 3.
+        expect(visits).toEqual([expected, expected])
+      }
+    }
+  })
+
+  test.each(
+    Array.from({ length: 8 }, (_, mask) =>
+      [0, 1, 2].map(
+        (axis) =>
+          [[Boolean(mask & 1), Boolean(mask & 2), Boolean(mask & 4)] as const, axis] as const,
+      ),
+    ).flat(),
+  )(`small cutoff boundaries with pbc %j along axis %i`, (pbc, axis) => {
+    const options = { cutoff: 1, pbc }
+    for (const origin of [0, -7, 17]) {
+      for (const boundary of [0.5, 1]) {
+        for (const first_ulp of [-1, 0, 1]) {
+          for (const second_ulp of [-1, 0, 1]) {
+            const first = next_float(origin + boundary, first_ulp)
+            const second = next_float(origin + boundary + 1, second_ulp)
+            const structure = make_crystal(
+              8,
+              [origin, first, second].map((coordinate) => {
+                const xyz: Vec3 = [origin, origin, origin]
+                xyz[axis] = coordinate
+                return { element: `Si`, xyz }
+              }),
+            )
+            const dist_sq = (second - first) ** 2
+            const expected = dist_sq <= 1 ? [Math.sqrt(dist_sq)] : []
+            const visits: number[][] = [[], []]
+            bonding.visit_neighbor_distances(structure, options, (center, neighbor, dist) => {
+              if (center === 1 && neighbor === 2) visits[0].push(dist)
+              if (center === 2 && neighbor === 1) visits[1].push(dist)
+            })
+            expect(visits).toEqual([expected, expected])
+            for (const sorted of [true, false]) {
+              const list = bonding.neighbor_query(structure, { ...options, sorted })
+              for (const center of [1, 2]) {
+                const start = list.offsets[center]
+                const distances = [
+                  ...list.distances.subarray(start, list.offsets[center + 1]),
+                ].filter((_distance, idx) => list.neighbors[start + idx] === 3 - center)
+                expect(distances).toEqual(expected)
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+
+  test(`mixed forward cutoff contact preserves adjacent-bin order`, () => {
+    const structure = make_crystal(8, [
+      { element: `Si`, xyz: [0, 0, 0] },
+      { element: `Si`, xyz: [1 - Number.EPSILON / 2, 2, 0] },
+      { element: `Si`, xyz: [1, 1 - Number.EPSILON / 2, 0] },
+      { element: `Si`, xyz: [1, 2, 0] },
+    ])
+    const options = { cutoff: 1, pbc: [false, false, false] as const }
+    for (const sorted of [true, false]) {
+      const list = bonding.neighbor_query(structure, { ...options, sorted })
+      expect([...list.offsets]).toEqual([0, 0, 2, 4, 6])
+      // From site 1, (+1, 0, 0) must precede the new (+1, -2, 0) contact.
+      expect([...list.neighbors]).toEqual([3, 2, 1, 3, 1, 2])
+      expect([...list.distances]).toEqual([Number.EPSILON / 2, 1, 1, 1, Number.EPSILON / 2, 1])
+    }
+    const streamed: number[][] = []
+    bonding.visit_neighbor_distances(structure, options, (...contact) =>
+      streamed.push(contact),
+    )
+    expect(streamed).toEqual([
+      [2, 3, 1],
+      [3, 2, 1],
+      [1, 3, Number.EPSILON / 2],
+      [3, 1, Number.EPSILON / 2],
+      [1, 2, 1],
+      [2, 1, 1],
+    ])
+  })
+
+  test.each([3, 2000].flatMap((count) => [0, 1, 2].map((axis) => [count, axis] as const)))(
+    `rounded whole-bin cutoff contacts with %i sites along axis %i`,
+    (count, axis) => {
+      const positions = grid_positions(count)
+      positions[1] = [0, 0, 0]
+      positions[2] = [0, 0, 0]
+      positions[1][axis] = 1 - Number.EPSILON / 2
+      positions[2][axis] = 2
+      const structure = make_crystal(
+        10,
+        positions.map((xyz) => ({ element: `Si`, xyz })),
+      )
+      const expected = new Map<number, number>()
+      for (let center = 0; center < positions.length; center++) {
+        for (let neighbor = center + 1; neighbor < positions.length; neighbor++) {
+          const delta_x = positions[neighbor][0] - positions[center][0]
+          const delta_y = positions[neighbor][1] - positions[center][1]
+          const delta_z = positions[neighbor][2] - positions[center][2]
+          const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
+          if (dist_sq > 1) continue
+          expected.set(center * positions.length + neighbor, Math.sqrt(dist_sq))
+          expected.set(neighbor * positions.length + center, Math.sqrt(dist_sq))
+        }
+      }
+      // Rounded subtraction gives distance 1; unpadded whole bins 0 and 2 miss this pair.
+      expect(expected.get(positions.length + 2)).toBe(1)
+      expect(stream_distance_error(structure, 1, expected)).toBe(0)
+      expect(stream_list_error(positions, 1)).toBe(0)
+    },
+  )
 
   test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {
     const simple_cubic = make_crystal(3, [{ element: `Fe`, abc: [0, 0, 0] }])
@@ -1601,6 +1830,11 @@ describe(`neighbor_query`, () => {
     [{ k: 1.5 }, /k must be a positive integer/],
   ])(`rejects %j`, (options, message) => {
     expect(() => bonding.neighbor_query(triclinic, options)).toThrow(message)
+    if (`cutoff` in options) {
+      expect(() => bonding.visit_neighbor_distances(triclinic, options, () => {})).toThrow(
+        message,
+      )
+    }
   })
 
   test(`rejects a degenerate periodic lattice and an absurd cutoff`, () => {
@@ -1632,6 +1866,10 @@ describe(`neighbor_query`, () => {
     expect(() => bonding.neighbor_query(dense, { cutoff: 100 })).toThrow(
       /more than 10,000,000 pairs within 100 A of 4600 sites/,
     )
+    // Streaming has no pair storage to exhaust, so this cloud can be processed in full.
+    let n_visits = 0
+    bonding.visit_neighbor_distances(dense, { cutoff: 100 }, () => n_visits++)
+    expect(n_visits).toBe(4600 * 4599)
   })
 
   // The refusal estimate counts the images that will actually be built (only those within
@@ -1724,7 +1962,7 @@ describe(`neighbor_query`, () => {
     ).toBe(0)
   })
 
-  test(`sorted: false yields the same contacts per center, in some order`, () => {
+  test(`sorted: false preserves slot discovery order and the same contacts`, () => {
     const sorted = bonding.neighbor_query(triclinic, { cutoff: 5.5 })
     const unsorted = bonding.neighbor_query(triclinic, { cutoff: 5.5, sorted: false })
     expect(Array.from(unsorted.offsets)).toEqual(Array.from(sorted.offsets))
@@ -1737,6 +1975,21 @@ describe(`neighbor_query`, () => {
     for (let center = 0; center < sorted.n_centers; center++) {
       expect(keys(unsorted, center).toSorted()).toEqual(keys(sorted, center).toSorted())
     }
+    // Bin-major traversal is reserved for streamed histograms. Materialized contacts keep
+    // their slot order because bond consumers deduplicate geometric vertices in that order.
+    const interleaved = make_crystal(
+      10,
+      [3, 0, 1, 2, 4, 5].map((coord) => ({ element: `Si`, xyz: [coord, 0, 0] as Vec3 })),
+    )
+    const list = bonding.neighbor_query(interleaved, {
+      cutoff: 2.1,
+      sorted: false,
+      pbc: [false, false, false],
+    })
+    expect(Array.from(list.offsets)).toEqual([0, 4, 6, 9, 13, 16, 18])
+    expect(Array.from(list.neighbors)).toEqual([
+      4, 5, 2, 3, 2, 3, 1, 3, 0, 1, 2, 0, 4, 0, 3, 5, 0, 4,
+    ])
   })
 
   test.each([Number.NaN, Infinity])(`rejects a %s coordinate instead of binning it`, (bad) => {

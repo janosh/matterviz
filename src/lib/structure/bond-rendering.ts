@@ -31,13 +31,22 @@ export function write_bond_transform(
   // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- see above
   const height = Math.sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z)
 
-  // The mesh buffer is persistent, so every slot must be reset before sparse matrix writes.
-  matrix_buffer.fill(0, matrix_offset, matrix_offset + 16)
+  // Write fixed entries directly; filling all 16 per bond rewrites the other 12 below.
+  matrix_buffer[matrix_offset + 1] = 0
+  matrix_buffer[matrix_offset + 3] = 0
+  matrix_buffer[matrix_offset + 7] = 0
+  matrix_buffer[matrix_offset + 11] = 0
   matrix_buffer[matrix_offset + 12] = (pos_1[0] + pos_2[0]) / 2
   matrix_buffer[matrix_offset + 13] = (pos_1[1] + pos_2[1]) / 2
   matrix_buffer[matrix_offset + 14] = (pos_1[2] + pos_2[2]) / 2
   matrix_buffer[matrix_offset + 15] = 1
   if (height < 1e-10) {
+    matrix_buffer[matrix_offset + 2] = 0
+    matrix_buffer[matrix_offset + 4] = 0
+    matrix_buffer[matrix_offset + 5] = 0
+    matrix_buffer[matrix_offset + 6] = 0
+    matrix_buffer[matrix_offset + 8] = 0
+    matrix_buffer[matrix_offset + 9] = 0
     matrix_buffer[matrix_offset] = radius_scale
     matrix_buffer[matrix_offset + 10] = radius_scale
     return

@@ -26,8 +26,8 @@ describe(`source links`, () => {
     expect(source_location(`PhononModeExplorer`)).toBe(
       `/src/lib/spectral/PhononModeExplorer.svelte`,
     )
-    // defined in several files, so deliberately unlinked
-    expect(source_location(`dot`)).toBeUndefined()
+    // Overload signatures share one definition and source location.
+    expect(source_location(`dot`)).toMatch(/^\/src\/lib\/math\.ts#L\d+$/)
   })
 
   it(`links matching code spans in place, skipping pre blocks and existing links`, async () => {

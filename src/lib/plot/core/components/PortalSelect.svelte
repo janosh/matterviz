@@ -174,7 +174,7 @@
   .arrow {
     font-size: 1.4em;
     /* keep the larger glyph from inflating the trigger height (and thus the hover bg) */
-    line-height: 1;
+    line-height: 0;
     opacity: 0.8;
   }
   .portal-select-dropdown {
@@ -200,6 +200,7 @@
       width: 100%;
       padding: var(--dropdown-padding-v, 3px) var(--dropdown-padding-h, 10px);
       border: none;
+      border-radius: 0;
       background: transparent;
       font: inherit;
       color: var(--dropdown-color, black);

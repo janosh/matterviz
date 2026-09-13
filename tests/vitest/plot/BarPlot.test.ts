@@ -1,4 +1,5 @@
 import BarPlot from '$lib/plot/bar/BarPlot.svelte'
+import SpacegroupBarPlot from '$lib/plot/bar/SpacegroupBarPlot.svelte'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -28,6 +29,23 @@ const mount_sized_bar_plot = (
 
 describe(`BarPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
+
+  test.each([`vertical`, `horizontal`] as const)(
+    `space-group bars aggregate symbols and numbers in %s orientation`,
+    async (orientation) => {
+      const plot = await mount_sized(
+        SpacegroupBarPlot,
+        { data: [225, `Fm-3m`, 2, 0, 231], orientation },
+        { selector: `.bar-plot` },
+      )
+      expect(
+        [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((bar) =>
+          bar.getAttribute(`aria-label`),
+        ),
+      ).toEqual([`bar 1 of triclinic: 1`, `bar 1 of cubic: 2`])
+      expect(plot.querySelectorAll(`.crystal-system-overlays rect`)).toHaveLength(7)
+    },
+  )
 
   test.each([`vertical`, `horizontal`] as const)(
     `only mounts bars crossing the %s viewport and keeps source indices`,

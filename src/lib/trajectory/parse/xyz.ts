@@ -365,9 +365,12 @@ export function xyz_frame_force_stats(
   let sum_sq = 0
   let counted = 0
   let cursor = atoms_start
+  const required_columns = Math.max(min_cols, forces_col + 3, symbol_col + 1)
   for (let idx = 0; idx < num_atoms && cursor < end; idx++) {
     const eol = line_end(text, cursor, end)
-    const n_cols = scanner.scan(text, cursor, eol)
+    // Atom payloads can carry dozens of velocity, stress and descriptor columns. The plot
+    // only needs coordinates, species and forces; full frame decoding still reads them all.
+    const n_cols = scanner.scan(text, cursor, eol, required_columns)
     cursor = eol + 1
     if (n_cols < min_cols) return null
     // The frame builder rejects an atom whose coordinates are not finite. The frame walk's

@@ -3,7 +3,12 @@
 // identical data, progressive properties and dispose semantics.
 import type { ParseProgress, TrajectoryFrame } from '$lib/trajectory'
 import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
-import { summarize_run, TrajectoryProperties, type TrajectoryRun } from '$lib/trajectory/run'
+import {
+  summarize_run,
+  sync_run,
+  TrajectoryProperties,
+  type TrajectoryRun,
+} from '$lib/trajectory/run'
 import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { host_run } from '$lib/trajectory/runs/host'
@@ -387,15 +392,77 @@ describe(`worker-served run lifecycle`, () => {
     },
   )
 
-  it(`a disposed served run rejects in-flight reads`, async () => {
-    const run = make_worker_run()
-    const pending = run.read_frame(3) as Promise<TrajectoryFrame>
-    run.dispose()
-    await expect(pending).rejects.toThrow(/disposed/)
-  })
+  it.each([`dispose`, `messageerror`, `close failure`])(
+    `rejects pending reads and releases the worker despite observer/port failure during %s`,
+    async (phase) => {
+      const served = trajectory_from_frames(reference_frames)
+      Object.defineProperty(served, `properties`, { value: new TrajectoryProperties() })
+      const port = serve_run_over_port(served)
+      const close_port = port.close.bind(port)
+      const close = vi.spyOn(port, `close`)
+      const add_listener = vi.spyOn(port, `addEventListener`)
+      const release = vi.fn()
+      const run = worker_run(port, summarize_run(served), release)
+      const pending = Promise.resolve(run.read_frame(3))
+      const failure = new Error(`${phase} callback failed`)
+      if (phase === `close failure`)
+        close.mockImplementationOnce(() => {
+          close_port()
+          throw failure
+        })
+      else
+        run.properties.subscribe(() => {
+          throw failure
+        })
+      const dispose = () => {
+        if (phase !== `messageerror`) return run.dispose()
+        const handler = add_listener.mock.calls.find(([type]) => type === `messageerror`)?.[1]
+        if (typeof handler !== `function`) throw new Error(`Missing messageerror handler`)
+        handler.call(port, new MessageEvent(`messageerror`))
+      }
+      expect(dispose).toThrow(failure)
+      const reason = phase === `messageerror` ? /deserialize/ : /disposed/
+      await expect(pending).rejects.toThrow(reason)
+      await run.properties.done
+      run.dispose()
+      expect(close).toHaveBeenCalledOnce()
+      expect(release).toHaveBeenCalledOnce()
+      await expect(Promise.resolve(run.read_frame(0))).rejects.toThrow(reason)
+    },
+  )
 })
 
 describe(`TrajectoryProperties`, () => {
+  it.each([`synchronous`, `host`])(
+    `releases a %s source even when its completion subscriber throws`,
+    async (kind) => {
+      const release = vi.fn()
+      const source = sync_run({
+        label: `test trajectory`,
+        frame_count: 1,
+        read: () => reference_frames[0],
+        properties: new TrajectoryProperties(),
+        release: kind === `synchronous` ? release : undefined,
+        provenance: {},
+        metadata: {},
+        warnings: [],
+      })
+      const run =
+        kind === `host`
+          ? host_run(summarize_run(source), async () => reference_frames[0], release)
+          : source
+      const failure = new Error(`Completion observer failed`)
+      run.properties.subscribe(() => {
+        throw failure
+      })
+      expect(() => run.dispose()).toThrow(failure)
+      await run.properties.done
+      run.dispose()
+      expect(release).toHaveBeenCalledOnce()
+      await expect((async () => run.read_frame(0))()).rejects.toThrow(/disposed/)
+    },
+  )
+
   it(`delivers nested batches before completion and snapshots queued rows`, () => {
     const properties = new TrajectoryProperties()
     properties.subscribe((batch) => {
@@ -476,19 +543,42 @@ describe(`TrajectoryProperties`, () => {
     const seen: number[][] = []
     properties.subscribe((batch) => seen.push(batch.map((row) => row.frame_number)))
     properties.push([{ frame_number: 5, step: 5, properties: {} }])
+    const first_snapshot = properties.rows
     expect(properties.rows.map((row) => row.frame_number)).toEqual([5])
     properties.push([
-      { frame_number: 1, step: 1, properties: {} },
       { frame_number: 5, step: 5, properties: { dup: 1 } },
+      { frame_number: 1, step: 1, properties: {} },
     ])
     expect(properties.rows.map((row) => row.frame_number)).toEqual([1, 5])
-    expect(seen).toEqual([[5], [1, 5]])
+    expect(properties.rows[1].properties).toEqual({}) // The first copy of a frame wins.
+    expect(first_snapshot.map((row) => row.frame_number)).toEqual([5])
+    expect(seen).toEqual([[5], [5, 1]]) // Sorting must not reorder the caller's batch.
     properties.finish()
     expect(properties.complete).toBe(true)
     expect(() => properties.push([{ frame_number: 9, step: 9, properties: {} }])).toThrow(
       /after finish/,
     )
     properties.finish() // idempotent
+  })
+
+  it.each([
+    [0, 1, 2],
+    [2, 1, 0],
+    [0, 1, 2, 1],
+  ])(`owns its initial row snapshot %j`, (...frame_numbers) => {
+    const rows = frame_numbers.map((frame_number) => ({
+      frame_number,
+      step: frame_number,
+      properties: {},
+    }))
+    const properties = new TrajectoryProperties(rows)
+    expect(rows.map((row) => row.frame_number)).toEqual(frame_numbers)
+    rows[0] = { frame_number: 99, step: 99, properties: {} }
+    expect(properties.rows.map((row) => row.frame_number)).toEqual([0, 1, 2])
+    const previous_snapshot = properties.rows
+    properties.push([{ frame_number: 3, step: 3, properties: {} }])
+    expect(previous_snapshot.map((row) => row.frame_number)).toEqual([0, 1, 2])
+    expect(properties.rows.map((row) => row.frame_number)).toEqual([0, 1, 2, 3])
   })
 })
 

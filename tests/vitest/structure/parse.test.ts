@@ -2205,6 +2205,16 @@ describe(`shared numeric coercion`, () => {
         expect(scanner.num(token_idx)).toBe(parse_float_token(token))
       }
       expect(scanner.num(chunk.length)).toBeNaN()
+      for (const max_columns of [0, 1, 3]) {
+        const expected_count = Math.min(max_columns, chunk.length)
+        expect(scanner.scan(line, 0, line.length, max_columns)).toBe(expected_count)
+        for (let token_idx = 0; token_idx < expected_count; token_idx++) {
+          expect(scanner.str(token_idx)).toBe(chunk[token_idx])
+          expect(scanner.num(token_idx)).toBe(parse_float_token(chunk[token_idx]))
+        }
+        // A shorter scan must not expose columns retained from the previous full row.
+        expect(scanner.num(expected_count)).toBeNaN()
+      }
     }
   })
 })

@@ -9,6 +9,7 @@ import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
 import band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { mount, tick, type ComponentProps, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
+import { query } from '../setup'
 
 type ExplorerProps = ComponentProps<typeof PhononModeExplorer>
 const modes = parse_phonon_modes(band_yaml)
@@ -80,13 +81,8 @@ test(`renders a typed phonon dataset`, async () => {
       )?.checked,
     ).toBe(true),
   )
-  const thickness = target.querySelector<HTMLInputElement>(
-    `[aria-label="Eigenvector thickness"]`,
-  )
-  const color = target.querySelector<HTMLInputElement>(`[aria-label="Eigenvector color"]`)
-  expect(thickness).not.toBeNull()
-  expect(color).not.toBeNull()
-  if (!thickness || !color) throw new Error(`Eigenvector style controls missing`)
+  const thickness = query<HTMLInputElement>(target, `[aria-label="Eigenvector thickness"]`)
+  const color = query<HTMLInputElement>(target, `[aria-label="Eigenvector color hex"]`)
   thickness.value = `2.5`
   thickness.dispatchEvent(new Event(`input`, { bubbles: true }))
   color.value = `#123abc`

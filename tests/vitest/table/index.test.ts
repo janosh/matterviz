@@ -47,6 +47,12 @@ describe(`column stats and color domains`, () => {
     expect(compute_column_stats([1, 2, 3], `lower`)?.best).toBe(1)
     expect(compute_column_stats([1, 2, 3])?.best).toBeNull()
     expect(compute_column_stats([null, undefined, NaN])).toBeNull()
+    for (const zero of [-0, 0]) {
+      expect(compute_column_stats([zero, -zero], undefined, false)).toMatchObject({
+        min: zero,
+        max: zero,
+      })
+    }
   })
 
   // Pinned exactly: a loose "somewhere below the outlier" bound would pass for almost any

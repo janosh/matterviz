@@ -146,15 +146,21 @@ export async function collect_trajectory_rdf(
     ...(run.time_step && { time_step: { ...run.time_step } }),
   }
   const frame_steps: number[] = []
-  // Composition signature of the first analysed frame: every species and occupancy per site,
-  // since mixed-occupancy sites feed every partial g(r) they carry
+  // Snapshot every species and occupancy once. Later frames compare these values directly,
+  // avoiding a composition string and fresh count map for every atom in every frame.
   let reference:
-    | { frame_number: number; signature: string; counts: Map<string, number>; n_atoms: number }
+    | {
+        frame_number: number
+        species: { element: string; occu: number }[][]
+        counts: Map<string, number>
+      }
     | undefined
-  let sums: Float64Array[] = []
-  let density_sums: Float64Array[] = []
+  let accumulators: {
+    pair: [string, string]
+    sum: Float64Array
+    density_sum: Float64Array
+  }[] = []
   let radius: number[] = []
-  let pairs: [string, string][] = []
   const {
     results: volumes,
     frame_numbers,
@@ -169,17 +175,34 @@ export async function collect_trajectory_rdf(
         )
       }
       frame_steps.push(step)
-      const counts = new Map<string, number>()
-      const signature = structure.sites
-        .map(({ species }) => {
-          for (const { element, occu } of species) {
+      if (!reference) {
+        const counts = new Map<string, number>()
+        const species = structure.sites.map((site) =>
+          site.species.map(({ element, occu }) => {
             counts.set(element, (counts.get(element) ?? 0) + occu)
-          }
-          return species.map(({ element, occu }) => `${element}:${occu}`).join(`,`)
+            return { element, occu }
+          }),
+        )
+        reference = { frame_number, species, counts }
+      }
+      const reference_species = reference.species
+      const composition_changed =
+        structure.sites.length !== reference_species.length ||
+        structure.sites.some(({ species }, site_idx) => {
+          const expected = reference_species[site_idx]
+          return (
+            species.length !== expected.length ||
+            species.some(({ element, occu }, species_idx) => {
+              const expected_species = expected[species_idx]
+              return (
+                element !== expected_species.element ||
+                (occu !== expected_species.occu &&
+                  !(Number.isNaN(occu) && Number.isNaN(expected_species.occu)))
+              )
+            })
+          )
         })
-        .join(`;`)
-      reference ??= { frame_number, signature, counts, n_atoms: structure.sites.length }
-      if (signature !== reference.signature) {
+      if (composition_changed) {
         throw new Error(
           `collect_trajectory_rdf: frame ${frame_number} has a different composition or atom ` +
             `order than frame ${reference.frame_number}; a time-averaged g(r) needs one composition`,
@@ -191,23 +214,24 @@ export async function collect_trajectory_rdf(
         )
       }
       const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
-      if (sums.length === 0) {
+      if (accumulators.length === 0) {
         radius = patterns[0]?.r ?? []
-        pairs = patterns.map((pattern) => {
+        accumulators = patterns.map((pattern) => {
           if (!pattern.element_pair) {
             throw new Error(
               `collect_trajectory_rdf: frame ${frame_number} returned an unlabelled g(r)`,
             )
           }
-          return pattern.element_pair
+          return {
+            pair: pattern.element_pair,
+            sum: new Float64Array(n_bins),
+            density_sum: new Float64Array(n_bins),
+          }
         })
-        sums = patterns.map(() => new Float64Array(n_bins))
-        density_sums = patterns.map(() => new Float64Array(n_bins))
       }
       const volume = calc_lattice_params(structure.lattice.matrix).volume
       for (const [pair_idx, pattern] of patterns.entries()) {
-        const sum = sums[pair_idx]
-        const density_sum = density_sums[pair_idx]
+        const { sum, density_sum } = accumulators[pair_idx]
         for (let bin = 0; bin < n_bins; bin++) {
           sum[bin] += pattern.g_r[bin]
           density_sum[bin] += pattern.g_r[bin] / volume
@@ -220,21 +244,23 @@ export async function collect_trajectory_rdf(
   if (!reference) throw new Error(`collect_trajectory_rdf: no frames were sampled`)
   // Occupancy-weighted atom counts, as the per-frame normalisation weighted them
   const { counts } = reference
-  const curves = pairs.map(([el_a, el_b], pair_idx): TrajectoryRdfCurve => {
-    const g_r = Array.from(sums[pair_idx], (sum) => sum / n_frames)
-    const [n_a, n_b] = [counts.get(el_a) ?? 0, counts.get(el_b) ?? 0]
-    // Integrate N_b<g/V> directly, with the mean RDF's shell boundary.
-    const coordination_g_r = Array.from(density_sums[pair_idx], (sum) => sum / n_frames)
-    const shell = rdf_shell(radius, g_r, n_b, coordination_g_r)
-    return {
-      element_pair: [el_a, el_b],
-      label: `${el_a}-${el_b}`,
-      g_r,
-      shell,
-      coordination_reverse:
-        shell.coordination === null || n_b === 0 ? null : (shell.coordination * n_a) / n_b,
-    }
-  })
+  const curves = accumulators.map(
+    ({ pair: [el_a, el_b], sum, density_sum }): TrajectoryRdfCurve => {
+      const g_r = Array.from(sum, (value) => value / n_frames)
+      const [n_a, n_b] = [counts.get(el_a) ?? 0, counts.get(el_b) ?? 0]
+      // Integrate N_b<g/V> directly, with the mean RDF's shell boundary.
+      const coordination_g_r = Array.from(density_sum, (value) => value / n_frames)
+      const shell = rdf_shell(radius, g_r, n_b, coordination_g_r)
+      return {
+        element_pair: [el_a, el_b],
+        label: `${el_a}-${el_b}`,
+        g_r,
+        shell,
+        coordination_reverse:
+          shell.coordination === null || n_b === 0 ? null : (shell.coordination * n_a) / n_b,
+      }
+    },
+  )
   return {
     source,
     max_frames,
@@ -247,7 +273,7 @@ export async function collect_trajectory_rdf(
     frame_stride,
     cutoff,
     n_bins,
-    n_atoms: reference.n_atoms,
+    n_atoms: reference.species.length,
     mean_volume: volumes.reduce((total, volume) => total + volume, 0) / n_frames,
   }
 }

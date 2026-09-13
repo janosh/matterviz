@@ -1,4 +1,5 @@
 import type { ElementSymbol } from '$lib'
+import { get_d3_interpolator } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination'
 import * as math from '$lib/math'
 import type { Vec3 } from '$lib/math'
@@ -12,6 +13,7 @@ import { make_supercell } from '$lib/structure/supercell'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES, CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { WyckoffPos } from '$lib/symmetry'
 import { describe, expect, test } from 'vitest'
+import { rgb } from 'd3-color'
 import { make_crystal, make_rocksalt, make_struct } from '../setup'
 
 // Helper: Create cubic structure with PBC for testing
@@ -53,6 +55,25 @@ describe(`Color Scales`, () => {
   test(`large continuous range yields many distinct colors`, () => {
     const values = Array.from({ length: 100 }, (_, idx) => idx * 1000)
     expect(new Set(atom_properties.apply_color_scale(values).colors).size).toBeGreaterThan(50)
+  })
+
+  test.each([
+    [4, 4, 4, Number.NaN],
+    [-2, 0, 0.25, 1, 2, -2, Number.NaN],
+    [Number.NEGATIVE_INFINITY, 0, Number.POSITIVE_INFINITY],
+    [Number.NaN, Number.NaN],
+  ])(`constant and integer palettes preserve exact continuous colors: %j`, (...values) => {
+    const [min, max] = math.array_extent(values)
+    const interp = get_d3_interpolator(`interpolateViridis`)
+    const constant = !Number.isFinite(min) || !Number.isFinite(max) || max === min
+    const expected = values.map((value) =>
+      rgb(
+        interp(constant || !Number.isFinite(value) ? 0.5 : (value - min) / (max - min)),
+      ).formatHex(),
+    )
+    expect(atom_properties.apply_color_scale(values, `interpolateViridis`).colors).toEqual(
+      expected,
+    )
   })
 })
 

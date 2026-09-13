@@ -177,6 +177,32 @@ export function min_image_displacement_into(
 
   const { lattice, reciprocal, reciprocal_axis_norms } =
     converters ?? create_lattice_converters(lattice_matrix)
+  // An exactly diagonal cell has independent axes: rounding each periodic fractional
+  // component already minimizes the Cartesian distance, including negative cell vectors.
+  // Avoid per-atom matrix products and candidate enumeration for ordinary MD boxes.
+  if (
+    lattice[0][1] === 0 &&
+    lattice[0][2] === 0 &&
+    lattice[1][0] === 0 &&
+    lattice[1][2] === 0 &&
+    lattice[2][0] === 0 &&
+    lattice[2][1] === 0
+  ) {
+    const frac_a = reciprocal[0][0] * delta_x
+    const frac_b = reciprocal[1][1] * delta_y
+    const frac_c = reciprocal[2][2] * delta_z
+    if (!Number.isFinite(frac_a) || !Number.isFinite(frac_b) || !Number.isFinite(frac_c)) {
+      throw new TypeError(
+        `Minimum-image displacement is non-finite: from=[${from}], target=[${target}], ` +
+          `fractional=[${frac_a}, ${frac_b}, ${frac_c}]`,
+      )
+    }
+    // Match the positive zero produced by the Cartesian matrix sums below.
+    out[0] = (pbc[0] ? frac_a - Math.round(frac_a) : frac_a) * lattice[0][0] + 0
+    out[1] = (pbc[1] ? frac_b - Math.round(frac_b) : frac_b) * lattice[1][1] + 0
+    out[2] = (pbc[2] ? frac_c - Math.round(frac_c) : frac_c) * lattice[2][2] + 0
+    return out
+  }
   const [
     [lattice_ax, lattice_ay, lattice_az],
     [lattice_bx, lattice_by, lattice_bz],
@@ -1218,20 +1244,18 @@ export function quickselect(values: number[], kth: number): number {
   return values[kth]
 }
 
-// Interpolate between the bracketing order statistics. Weighting both ends rather than
-// adding `(hi - lo) * frac` keeps the result finite when the two straddle zero at a
-// magnitude where their difference overflows, and still returns each endpoint exactly.
-const lerp_quantile = (lo_val: number, hi_val: number, frac: number): number =>
-  frac === 0 ? lo_val : lo_val * (1 - frac) + hi_val * frac
-
 export function quantile_unordered(values: number[], point_value: number): number {
   const idx = (values.length - 1) * point_value
   const lower = Math.floor(idx)
   const upper = Math.ceil(idx)
   const lo_val = quickselect(values, lower)
-  return upper === lower
-    ? lo_val
-    : lerp_quantile(lo_val, quickselect(values, upper), idx - lower)
+  if (upper === lower) return lo_val
+  const hi_val = quickselect(values, upper)
+  const frac = idx - lower
+  // Weighting both ends avoids overflowing hi - lo. For midpoints, add before halving
+  // to preserve subnormals when the sum is finite; otherwise keep the weighted form.
+  const sum = lo_val + hi_val
+  return frac === 0.5 && Number.isFinite(sum) ? sum / 2 : lo_val * (1 - frac) + hi_val * frac
 }
 
 // === Linear programming ===

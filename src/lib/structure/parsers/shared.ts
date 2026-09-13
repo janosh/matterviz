@@ -84,11 +84,12 @@ export class LineScanner {
   // an exact integer mantissa scaled by one exact power of ten, which rounds exactly like
   // Number(); anything else (exponents, long mantissas, `1.0D-3`, symbols) is marked for the
   // slow path that num() takes on demand.
-  scan(line: string, from = 0, target = line.length): number {
+  // `max_columns` leaves unused trailing fields untouched for scalar-only trajectory scans.
+  scan(line: string, from = 0, target = line.length, max_columns = Infinity): number {
     this.line = line
     let { starts, ends, values } = this
     let count = 0
-    const len = target
+    const len = max_columns > 0 ? target : from
     let idx = from
     while (idx < len) {
       let code = line.charCodeAt(idx)
@@ -134,6 +135,7 @@ export class LineScanner {
       ends[count] = idx
       values[count] = value
       count++
+      if (count >= max_columns) break
     }
     this.count = count
     return count

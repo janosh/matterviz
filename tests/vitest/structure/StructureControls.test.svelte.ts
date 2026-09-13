@@ -26,6 +26,7 @@ import {
   IDENTITY_MATRIX3,
   make_crystal,
   make_position_stream,
+  query,
   simple_structure,
   trigger_resize_observer,
 } from '../setup'
@@ -262,7 +263,7 @@ describe(`StructureControls inputs`, () => {
       })
 
       const bg_color_input = doc_query<HTMLInputElement>(
-        `input[aria-label="Site label background color"]`,
+        `input[aria-label="Site label background color hex"]`,
       )
       const opacity_input = doc_query<HTMLInputElement>(
         `[data-key="site_label_bg_opacity"] input[type="number"]`,
@@ -270,10 +271,10 @@ describe(`StructureControls inputs`, () => {
       expect(bg_color_input.value).toBe(expected_hex_color)
       expect(opacity_input.valueAsNumber).toBe(expected_opacity)
 
-      bg_color_input.value = `#123456`
-      bg_color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      opacity_input.value = `0.5`
-      opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(bg_color_input, `#123456`)
+      await tick()
+      expect(opacity_input.valueAsNumber).toBe(expected_opacity)
+      set_input(opacity_input, `0.5`)
       await tick()
 
       doc_query<HTMLButtonElement>(
@@ -304,16 +305,13 @@ describe(`StructureControls schema rows`, () => {
         show_cell_vectors: false,
       } as StructureSettings,
       show_image_atoms: false,
+      background_color: undefined,
     })
     const target = await mount_bound_controls(state, {
       displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
     })
-    const query = (selector: string): HTMLElement => {
-      const node = target.querySelector<HTMLElement>(selector)
-      if (!node) throw new Error(`No element found for selector: ${selector}`)
-      return node
-    }
-    const row_of = (key: string) => query(`[data-key="${key}"]`)
+    expect(state.background_color).toBeUndefined()
+    const row_of = (key: string) => query(target, `[data-key="${key}"]`)
 
     const selects = [
       [`bonding_strategy`, DEFAULTS.structure.bonding_strategy],
@@ -377,19 +375,20 @@ describe(`StructureControls schema rows`, () => {
     }
 
     // writes land on the row's own target
-    const bond_color = query(`[data-key="bond_color"] input[type="color"]`)
-    if (!(bond_color instanceof HTMLInputElement)) throw new Error(`bond color swatch missing`)
-    set_input(bond_color, `#abcdef`)
-    const cell_vectors = row_of(`show_cell_vectors`).querySelector<HTMLInputElement>(`input`)
-    cell_vectors?.click()
-    const image_atoms = row_of(`show_image_atoms`).querySelector<HTMLInputElement>(`input`)
-    image_atoms?.click()
-    const thickness =
-      row_of(`bond_thickness`).querySelector<HTMLInputElement>(`input[type="number"]`)
-    if (!thickness) throw new Error(`bond thickness input missing`)
-    set_input(thickness, `0.35`)
+    const bond_color = query(row_of(`bond_color`), `input[type="text"]`, HTMLInputElement)
+    set_input(bond_color, `#wrong`)
     await tick()
-    expect(state.scene_props.bond_color).toBe(`#abcdef`)
+    expect(bond_color.getAttribute(`aria-invalid`)).toBe(`true`)
+    expect(state.scene_props.bond_color).toBeUndefined()
+    set_input(bond_color, `#abc`)
+    query(row_of(`show_cell_vectors`), `input`).click()
+    query(row_of(`show_image_atoms`), `input`).click()
+    set_input(
+      query(row_of(`bond_thickness`), `input[type="number"]`, HTMLInputElement),
+      `0.35`,
+    )
+    await tick()
+    expect(state.scene_props.bond_color).toBe(`#aabbcc`)
     expect(state.scene_props.bond_thickness).toBe(0.35)
     expect(state.scene_props.show_cell_vectors).toBe(true)
     expect(state.show_image_atoms).toBe(true)
@@ -405,7 +404,7 @@ describe(`StructureControls schema rows`, () => {
 
   // The full row inventory with every conditional section open, in pane order. A row that
   // silently drops out of the schema tables (or loses its data-key) fails here by name.
-  test(`render every control row and write each back to its own target`, async () => {
+  test(`render labelled schema rows with bounds and write each to its own target`, async () => {
     const stream = trail_stream()
     const toggles = $state({
       trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
@@ -454,6 +453,51 @@ describe(`StructureControls schema rows`, () => {
       `show_displacement_arrows`, `displacement_arrow_scale`, `displacement_arrow_color`,
       `show_trajectory_lines`, `trajectory_line_elements`, `trajectory_line_trail_frames`, `trajectory_line_frame_stride`, `trajectory_line_color_mode`, `trajectory_line_wrap_mode`,
     ])
+
+    expect_labelled_settings_grid(target)
+    for (const key of [`show_site_labels`, `bond_color`] as const) {
+      const label = query(target, `[data-key="${key}"]`).firstElementChild
+      if (!label) throw new Error(`${key} label is missing`)
+      label.dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
+      await vi.waitFor(() => {
+        const tooltip = document.querySelector(
+          `[id="${label.getAttribute(`aria-describedby`)}"]`,
+        )
+        expect(tooltip?.textContent).toBe(SETTINGS_CONFIG.structure[key].description)
+      })
+      label.dispatchEvent(new PointerEvent(`pointerout`, { bubbles: true }))
+    }
+    expect(
+      target.querySelectorAll(`section.grid > label, section.grid > .setting`).length,
+    ).toBeGreaterThan(20)
+
+    const sliders = [
+      [`Radius`, `atom_radius`, undefined, 0.05],
+      [`Auto-rotate speed`, `auto_rotate`, undefined, 0.01],
+      [`Trail length`, `trajectory_line_trail_frames`, stream.n_frames, undefined],
+      [`Frame stride`, `trajectory_line_frame_stride`, undefined, undefined],
+    ] as const
+    for (const [label_text, setting, max, step] of sliders) {
+      const config = SETTINGS_CONFIG.structure[setting]
+      const label = find_label(target, label_text)
+      if (!label) throw new Error(`${label_text} slider is missing`)
+      const inputs = [...label.querySelectorAll<HTMLInputElement>(`input`)]
+      expect(inputs).toHaveLength(2)
+      for (const input of inputs) {
+        expect(input.min).toBe(`${config.minimum}`)
+        expect(input.max).toBe(`${max ?? config.maximum}`)
+        const expected_step = step ?? config.multipleOf
+        if (expected_step !== undefined) expect(input.step).toBe(`${expected_step}`)
+      }
+      expect(inputs[1].getAttribute(`aria-label`)).toBe(config.description)
+    }
+    const opacity_inputs = target.querySelectorAll<HTMLInputElement>(
+      `[data-key="background_opacity"] input`,
+    )
+    expect(opacity_inputs).toHaveLength(2)
+    for (const input of opacity_inputs) {
+      expect([input.min, input.max, input.step]).toEqual([`0`, `1`, `0.02`])
+    }
 
     // Every schema-backed slider writes a number (never the input's string) to the object
     // that owns the key, and every schema-backed checkbox flips its own target.
@@ -612,54 +656,6 @@ describe(`StructureControls layout`, () => {
       target.querySelector<HTMLInputElement>(`[data-key="atom_radius"] input[type="number"]`)
         ?.valueAsNumber,
     ).toBe(1.6)
-  })
-
-  test(`uses labelled grids and schema-backed sliders`, async () => {
-    const stream = trail_stream()
-    const target = await mount_controls({
-      structure: simple_structure,
-      controls_open: true,
-      show_trajectory_lines: true,
-      trajectory_position_stream: stream,
-      scene_props: {
-        show_bonds: `always`,
-        show_polyhedra: `always`,
-        show_site_labels: true,
-      },
-      displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
-    })
-    expect_labelled_settings_grid(target)
-    expect(
-      target.querySelectorAll(`section.grid > label, section.grid > .setting`).length,
-    ).toBeGreaterThan(20)
-
-    const sliders = [
-      [`Radius`, `atom_radius`, undefined, 0.05],
-      [`Auto-rotate speed`, `auto_rotate`, undefined, 0.01],
-      [`Trail length`, `trajectory_line_trail_frames`, stream.n_frames, undefined],
-      [`Frame stride`, `trajectory_line_frame_stride`, undefined, undefined],
-    ] as const
-    for (const [label_text, setting, max, step] of sliders) {
-      const config = SETTINGS_CONFIG.structure[setting]
-      const label = find_label(target, label_text)
-      if (!label) throw new Error(`${label_text} slider is missing`)
-      const inputs = [...label.querySelectorAll<HTMLInputElement>(`input`)]
-      expect(inputs).toHaveLength(2)
-      for (const input of inputs) {
-        expect(input.min).toBe(`${config.minimum}`)
-        expect(input.max).toBe(`${max ?? config.maximum}`)
-        const expected_step = step ?? config.multipleOf
-        if (expected_step !== undefined) expect(input.step).toBe(`${expected_step}`)
-      }
-      expect(inputs[1].getAttribute(`aria-label`)).toBe(config.description)
-    }
-    const opacity_inputs = target.querySelectorAll<HTMLInputElement>(
-      `[data-key="background_opacity"] input`,
-    )
-    expect(opacity_inputs).toHaveLength(2)
-    for (const input of opacity_inputs) {
-      expect([input.min, input.max, input.step]).toEqual([`0`, `1`, `0.02`])
-    }
   })
 })
 

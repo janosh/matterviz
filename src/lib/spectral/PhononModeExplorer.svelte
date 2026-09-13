@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Icon, StatusMessage } from 'svelte-widgets'
+  import { ColorInput, Icon, StatusMessage } from 'svelte-widgets'
+  import { css_color_to_hex } from '$lib/colors'
   import { Settings } from 'svelte-widgets/icons'
   import ToolbarMenu from '$lib/overlays/ToolbarMenu.svelte'
   import { capitalize, format_num } from '$lib/labels'
@@ -348,15 +349,15 @@
           <output>{format_num(vector_thickness, `.3~`)}×</output>
         </label>
         <div class="vector-color-control">
-          <label
-            >Color
-            <input
-              type="color"
-              aria-label="Eigenvector color"
-              value={vector_color ?? DEFAULTS.structure.vector_color}
-              oninput={(event) => (vector_color = event.currentTarget.value)}
-            />
-          </label>
+          <ColorInput
+            label="Color"
+            value={css_color_to_hex(
+              vector_color ?? undefined,
+              DEFAULTS.structure.vector_color,
+            )}
+            labels={{ picker: `Eigenvector color`, hex: `Eigenvector color hex` }}
+            on_commit={(color) => (vector_color = color)}
+          />
           <button
             type="button"
             title="Use element colors for eigenvectors"
@@ -652,14 +653,8 @@
   }
   .vector-color-control {
     display: flex;
-    align-items: center;
+    align-items: end;
     gap: 0.5em;
-    input {
-      width: 3em;
-      height: 1.6em;
-      padding: 0;
-      flex-shrink: 0;
-    }
   }
   :global(.phonon-modes-pane) {
     width: 220px;

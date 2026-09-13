@@ -161,24 +161,25 @@ describe(`HeatmapTable`, () => {
     },
   )
 
-  it(`preserves both ends of long plain-text cells for middle ellipsis`, () => {
+  it(`preserves both ends, markup and links of long cells for middle ellipsis`, async () => {
     const identifier = `prefix-middle-suffix`
     // The flag must land wholly in the 8-grapheme suffix. Code-point slicing would retain
     // only its second regional indicator and this exact assertion would fail.
     const unicode_id = `long-prefix-value🇩🇪1234567`
     const symbols = `research & development < threshold`
-    mount_table({
-      data: [
-        {
-          ID: identifier,
-          Unicode: unicode_id,
-          Symbols: symbols,
-          Short: `🇩🇪`,
-          Rich: `<strong>rich-markup</strong>`,
-        },
-      ],
-      columns: plain_columns(`ID`, `Unicode`, `Symbols`, `Short`, `Rich`),
+    const row = $state({
+      ID: identifier,
+      Unicode: unicode_id,
+      Symbols: symbols,
+      Short: `🇩🇪`,
+      Rich: `<strong>rich-markup</strong>`,
+      Linked: `<span title="Full details" data-sort-value="42"><a href="/dataset">prefix &amp; ${unicode_id}</a></span>`,
     })
+    mount_table({
+      data: [row],
+      columns: plain_columns(`ID`, `Unicode`, `Symbols`, `Short`, `Rich`, `Linked`),
+    })
+    await tick()
 
     const id_cell = doc_query(`td[data-col="ID"]`)
     const visual = doc_query(`td[data-col="ID"] .middle-ellipsis-visual`)
@@ -197,6 +198,34 @@ describe(`HeatmapTable`, () => {
     expect(doc_query(`td[data-col="Short"]`).querySelector(`.middle-ellipsis`)).toBeNull()
     // Rich cells retain their sanitized markup instead of being flattened for truncation.
     expect(doc_query(`td[data-col="Rich"] strong`).textContent).toBe(`rich-markup`)
+    const linked_cell = doc_query(`td[data-col="Linked"]`)
+    const clipped = doc_query(`td[data-col="Linked"] .middle-ellipsis-html`)
+    expect(clipped.textContent).toBe(`prefix & ${unicode_id}`)
+    expect(clipped.dataset.title).toBe(clipped.textContent)
+    expect(clipped.lastElementChild?.textContent).toBe(`🇩🇪1234567`)
+    for (const part of clipped.children) {
+      expect(part.querySelector(`a`)?.getAttribute(`href`)).toBe(`/dataset`)
+      expect(part.querySelector(`[title]`)?.getAttribute(`title`)).toBe(`Full details`)
+      expect(part.querySelector(`[data-sort-value]`)?.getAttribute(`data-sort-value`)).toBe(
+        `42`,
+      )
+    }
+    const prefix_link = clipped.firstElementChild?.querySelector(`a`)
+    expect(prefix_link?.getAttribute(`aria-label`)).toBe(`prefix & ${unicode_id}`)
+    const tail_link = clipped.lastElementChild?.querySelector(`a`)
+    expect(tail_link?.getAttribute(`aria-hidden`)).toBe(`true`)
+    expect(tail_link?.getAttribute(`tabindex`)).toBe(`-1`)
+    // Auto-fit must measure the hidden prefix too, not just the clipped cell width.
+    Object.defineProperty(clipped.children[0], `scrollWidth`, { value: 250 })
+    Object.defineProperty(clipped.children[1], `scrollWidth`, { value: 50 })
+    Object.defineProperty(linked_cell, `offsetWidth`, { value: linked_cell.clientWidth })
+    await fire(doc_query(`th[data-col-id="Linked"] .resize-handle`), mouse(`dblclick`))
+    expect(doc_query(`th[data-col-id="Linked"]`).style.width).toBe(`308px`)
+    row.Linked = `<strong>short update</strong>`
+    await tick()
+    expect(linked_cell.querySelector(`.middle-ellipsis-html`)).toBeNull()
+    expect(linked_cell.textContent?.trim()).toBe(`short update`)
+    expect(linked_cell.querySelector(`strong`)?.textContent).toBe(`short update`)
   })
 
   it(`does not loop when data rows carry no discoverable column keys`, async () => {
@@ -222,11 +251,11 @@ describe(`HeatmapTable`, () => {
     expect(tooltip_content.querySelector(`img`)).toBeNull()
     expect(tooltip_content.textContent).toBe(`<img src=x onerror=alert(1)>unsafe`)
 
-    const alpha = () => doc_query(`td[data-col="Model"] span`)
     const activate_tooltip = (expected_title: string) => {
-      expect(alpha().getAttribute(`title`)).toBe(expected_title)
-      alpha().dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
-      expect(alpha().getAttribute(`title`)).toBeNull()
+      const alpha = doc_query(`td[data-col="Model"] span[title]`)
+      expect(alpha.getAttribute(`title`)).toBe(expected_title)
+      alpha.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      expect(alpha.getAttribute(`title`)).toBeNull()
     }
 
     activate_tooltip(`tip alpha v1`)
@@ -1760,7 +1789,7 @@ describe(`HeatmapTable`, () => {
       const props = $state({
         data: metric_rows,
         columns: metrics,
-        summary: [`mean`, `count`] as SummaryStat[],
+        summary: [`mean`, `median`, `count`] as SummaryStat[],
         column_prefs: {} satisfies Record<string, ColumnPrefs>,
       })
       mount_table(props)
@@ -1771,14 +1800,55 @@ describe(`HeatmapTable`, () => {
 
       expect(summary_cells()).toEqual([
         [`mean`, `20`, ``],
+        [`median`, `20`, ``],
         [`count`, `3`, ``],
       ])
       props.column_prefs = { Score: { filter: { kind: `numeric`, min: 20 } } }
       await tick()
       expect(summary_cells()).toEqual([
         [`mean`, `25`, ``],
+        [`median`, `25`, ``],
         [`count`, `2`, ``],
       ])
+    })
+
+    it(`normalizes columns independently and enables median summaries on demand`, async () => {
+      const values = [...Array.from({ length: 20 }, (_, idx) => idx * 5), 10_000]
+      const props = $state({
+        data: values.map((value, idx) => ({
+          Name: `row_${idx}`,
+          Quantile: value,
+          Linear: value,
+        })),
+        columns: [
+          { id: `Name`, label: `Name` },
+          { id: `Quantile`, label: `Quantile`, normalize: `quantile` },
+          { id: `Linear`, label: `Linear` },
+        ] as Column[],
+        summary: [] as SummaryStat[],
+      })
+      mount_table(props)
+      const fill = (row_idx: number, col_idx: number) =>
+        cell_at(row_idx, col_idx).style.getPropertyValue(`--cell-bg`)
+      expect(fill(19, 1)).toBe(fill(20, 1)) // 95 and the outlier saturate above q95
+      expect(fill(19, 2)).not.toBe(fill(20, 2)) // minmax keeps the full domain
+      props.columns[1].normalize = `minmax`
+      props.summary = [`median`]
+      await tick()
+      expect(fill(19, 1)).toBe(fill(19, 2))
+      expect(
+        [...document.querySelectorAll(`tfoot .summary-row td`)].map((cell) =>
+          cell.textContent?.trim(),
+        ),
+      ).toEqual([`median`, `50`, `50`])
+      // A later column widens the shared domain of columns already processed.
+      props.columns[1].domain_group = `values`
+      props.columns[2].domain_group = `values`
+      props.data[19].Linear = 10_000
+      props.data[20].Linear = 20_000
+      await tick()
+      expect(fill(20, 1)).toBe(fill(19, 2))
+      expect(fill(20, 1)).not.toBe(fill(20, 2))
     })
 
     it.each([
@@ -1855,10 +1925,22 @@ describe(`HeatmapTable`, () => {
 
     // column_prefs holds widths and colors as well as filters, so a resize must not look
     // like a filter change — that re-filtered every row and wiped the cell selection.
-    it(`keeps the cell selection when an unrelated pref changes`, async () => {
+    it(`updates preferences without rescanning offscreen rows or clearing selection`, async () => {
+      let offscreen_reads = 0
       const props = $state({
-        data: metric_rows,
-        columns: metrics,
+        data: [
+          ...metric_rows,
+          {
+            Model: `D`,
+            get Score() {
+              offscreen_reads++
+              return 40
+            },
+          },
+        ],
+        columns: metrics.map((col) => ({ ...col, highlight_best: true })),
+        pagination: { page_size: 3 },
+        summary: true,
         column_prefs: {} satisfies Record<string, ColumnPrefs>,
       })
       mount_table(props)
@@ -1869,10 +1951,24 @@ describe(`HeatmapTable`, () => {
       await fire(cell, new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
 
+      offscreen_reads = 0
       props.column_prefs = { Score: { width: 180 } } // a resize, not a filter
       await tick()
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
       expect(cell.style.width).toBe(`180px`)
+      props.column_prefs = {
+        Score: { width: 180, better: `lower`, color_scale: `interpolatePlasma` },
+      }
+      await tick()
+      expect(offscreen_reads).toBe(0)
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+      expect(
+        document.querySelector(`td.best-cell[data-col="Score"]`)?.textContent?.trim(),
+      ).toBe(`10`)
+      expect(document.querySelector(`tfoot td:nth-child(2)`)?.textContent?.trim()).toBe(`25`)
+      props.data[3] = { Model: `D`, Score: 80 }
+      await tick()
+      expect(document.querySelector(`tfoot td:nth-child(2)`)?.textContent?.trim()).toBe(`35`)
     })
 
     // Past the auto-detect cap a checklist would be unusable, but a column explicitly

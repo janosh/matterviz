@@ -15,27 +15,20 @@
     outer_strip_reservation,
   } from '$lib/plot/core/marginals'
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
+  import { chart_css_defaults } from '$lib/plot/core/components/ChartShell.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
   import type { UserContentProps } from '$lib/plot/core/types'
   import type { Snippet } from 'svelte'
   import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
+  import { on } from 'svelte/events'
 
   // Public CSS knobs every Cartesian chart exposes, mapped onto the frame's own
   // variables so the shell can be styled per chart (`--histogram-bg`, `--barplot-bg`, …)
   // without duplicating this stylesheet three times. Values are the historical defaults.
   const css_var_defaults = (prefix: string): Record<string, string> => ({
-    width: `100%`,
-    height: `auto`,
-    'min-height': `300px`,
-    'z-index': `auto`,
-    flex: `1`,
-    display: `flex`,
-    bg: `var(--plot-bg)`,
-    'border-radius': `0`,
-    'fullscreen-z-index': `var(--z-index-overlay-nav, 100000001)`,
-    'fullscreen-bg': `var(--${prefix}-bg, var(--plot-bg, transparent))`,
+    ...chart_css_defaults(prefix),
     'svg-width': `100%`,
     'svg-height': `100%`,
     'svg-max-height': `none`,
@@ -53,7 +46,7 @@
     plot_class: ClassValue
     // Prefix of this chart's public CSS variables (`histogram`, `barplot`, `boxplot`)
     css_prefix: string
-    // Per-chart fallbacks for CSS_VAR_DEFAULTS entries whose default differs
+    // Per-chart fallbacks for css_var_defaults entries whose default differs
     css_var_fallbacks?: Record<string, string>
     // Accessible name when neither the title nor the x/y axis labels give one (`Bar chart`)
     aria_label: string
@@ -225,8 +218,10 @@
       onmousemove={on_mouse_move}
       onclick={(event) => event.detail <= 1 && on_mouse_click?.(event)}
       onwheel={pan_zoom.on_wheel}
-      ontouchstart={pan_zoom.on_touch_start}
-      ontouchmove={pan_zoom.on_touch_move}
+      {@attach (svg: SVGSVGElement) =>
+        on(svg, `touchstart`, pan_zoom.on_touch_start as EventListener, { passive: false })}
+      {@attach (svg: SVGSVGElement) =>
+        on(svg, `touchmove`, pan_zoom.on_touch_move as EventListener, { passive: false })}
       ontouchend={pan_zoom.on_touch_end}
       ontouchcancel={pan_zoom.on_touch_end}
       style:cursor={pan_zoom.cursor ?? idle_cursor}

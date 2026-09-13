@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ColorInput } from 'svelte-widgets'
   import { track_settings } from '$lib/controls'
   import { ControlPane } from '$lib/overlays'
   import { css_color_to_hex } from '$lib/colors'
@@ -226,15 +227,13 @@
       layout="grid"
     >
       {#each color_options as [key, fallback, label, tip] (key)}
-        <label {@attach tooltip({ content: tip })}>
-          <span>{label}</span>
-          <input
-            type="color"
-            value={css_color_to_hex(merged_config.colors[key], fallback)}
-            oninput={(event_value) =>
-              update_nested(`colors`, key, event_value.currentTarget.value)}
-          />
-        </label>
+        <ColorInput
+          {label}
+          title={tip}
+          value={css_color_to_hex(merged_config.colors[key], fallback)}
+          labels={{ picker: label, hex: `${label} hex` }}
+          on_commit={(color) => update_nested(`colors`, key, color)}
+        />
       {/each}
     </SettingsSection>
   </SettingsGroup>
@@ -342,14 +341,5 @@
   }
   input[type='range'] {
     min-width: 40px;
-  }
-  input[type='color'] {
-    width: 32px;
-    height: 24px;
-    box-sizing: border-box;
-    padding: 0;
-    border: 1px solid var(--border-color, #ccc);
-    border-radius: 4px;
-    cursor: pointer;
   }
 </style>

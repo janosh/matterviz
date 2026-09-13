@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { type D3InterpolateName, plot_color } from '$lib/colors'
-  import type { Vec2, Vec3 } from '$lib/math'
+  import type { Vec2 } from '$lib/math'
   import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
@@ -15,34 +15,28 @@
     CameraProjection3D,
     ColorScaleConfig,
     DataSeries3D,
-    DisplayConfig3D,
     InternalPoint3D,
     LegendConfig,
-    RefLine3D,
-    RefPlane,
     Scatter3DHandlerEvent,
-    SizeScaleConfig,
-    StyleOverrides3D,
-    Surface3DConfig,
   } from '$lib/plot/core/types'
   import { assert_series_lengths, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { Canvas } from '@threlte/core'
-  import * as extras from '@threlte/extras'
   import { onMount } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Camera, Scene } from 'three/webgpu'
   import { collect_series_extent, create_color_scale } from '$lib/plot/core/scales'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import { create_renderer, type GizmoOptions, webgpu_available } from '$lib/scene'
+  import { create_renderer, webgpu_available } from '$lib/scene'
   import ScatterPlot3DControls, {
     DISPLAY_DEFAULTS_3D,
   } from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
+
+  type SceneProps = ComponentProps<typeof ScatterPlot3DScene<Metadata>>
 
   let {
     // Data props
@@ -109,45 +103,32 @@
   }: HTMLAttributes<HTMLDivElement> & {
     hidden_series?: readonly (string | number)[]
     series?: readonly DataSeries3D<Metadata>[]
-    surfaces?: Surface3DConfig[]
-    ref_lines?: RefLine3D[]
-    ref_planes?: RefPlane[]
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
-    display?: DisplayConfig3D
-    styles?: StyleOverrides3D
     color_scale?: ColorScaleConfig | D3InterpolateName
     color_bar?: ComponentProps<typeof ColorBar> | null
-    size_scale?: SizeScaleConfig
     legend?: LegendConfig | null
     show_legend?: boolean
-    camera_position?: Vec3
-    camera_projection?: CameraProjection3D
-    auto_rotate?: number
-    rotation_damping?: number
-    fov?: number
-    min_zoom?: number
-    max_zoom?: number
-    rotate_speed?: number
-    zoom_speed?: number
-    pan_speed?: number
-    ambient_light?: number
-    directional_light?: number
-    sphere_segments?: number
-    gizmo?: boolean | GizmoOptions
     tooltip_point?: InternalPoint3D<Metadata> | null
-    on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
-    on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
     wrapper?: HTMLDivElement
-    scene?: Scene
-    camera?: Camera
-    orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
-    tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     controls_extra?: Snippet
-  } & Omit<BasePlotProps, `range_padding` | `padding` | `title` | `children`> = $props()
+  } & Omit<
+      SceneProps,
+      | `series`
+      | `ranges`
+      | `x_axis`
+      | `y_axis`
+      | `z_axis`
+      | `color_scale_fn`
+      | `hovered_point`
+      | `tooltip_portal`
+      | `width`
+      | `height`
+    > &
+    Omit<BasePlotProps, `range_padding` | `padding` | `title` | `children`> = $props()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(

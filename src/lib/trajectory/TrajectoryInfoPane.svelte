@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { InfoPaneRow, ViewerPaneOptions } from '$lib/overlays'
+  import type { InfoPaneCard, InfoPaneRow, ViewerPaneOptions } from '$lib/overlays'
   import { info_pane_icon, ViewerPane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num, trajectory_property_config } from '$lib/labels'
@@ -36,8 +36,6 @@
   let rows = $derived(property_rows ?? run.properties.rows)
   let rows_complete = $derived(properties_complete ?? run.properties.complete)
 
-  type Section = { title: string; items: InfoPaneRow[] }
-
   const is_valid_number = (val: unknown): val is number =>
     typeof val === `number` && Number.isFinite(val)
 
@@ -59,9 +57,9 @@
   const is_info_item = (item: unknown): item is InfoPaneRow => Boolean(item)
 
   // Drop a section whose items all filtered out as falsy
-  const section = (title: string, items: unknown[]): Section | null => {
+  const section = (title: string, items: unknown[]): InfoPaneCard | null => {
     const valid_items = items.filter(is_info_item)
-    return valid_items.length > 0 ? { title, items: valid_items } : null
+    return valid_items.length > 0 ? { title, rows: valid_items } : null
   }
 
   // Properties lead the statistics in this order (substring match on the lower-cased key);
@@ -158,7 +156,7 @@
     return { step_span, duration, stat_sections }
   })
 
-  let info_pane_data = $derived.by((): Section[] => {
+  let info_pane_data = $derived.by((): InfoPaneCard[] => {
     if (total_frames === 0 || current_step_idx < 0 || current_step_idx >= total_frames) {
       return []
     }
@@ -230,12 +228,11 @@
           ...items,
         ])
       }),
-    ].filter((entry): entry is Section => entry !== null)
+    ].filter((entry) => entry !== null)
   })
 
-  let info_cards = $derived(info_pane_data.map(({ title, items }) => ({ title, rows: items })))
   let n_info_items = $derived(
-    info_pane_data.reduce((count, { items }) => count + items.length, 0),
+    info_pane_data.reduce((count, card) => count + card.rows.length, 0),
   )
 </script>
 
@@ -256,7 +253,7 @@
   {#if pane_open}
     <InfoPaneCards
       title="Trajectory Info"
-      cards={info_cards}
+      cards={info_pane_data}
       filter_placeholder="Filter trajectory info"
       empty_label="trajectory info"
       collapsible_filter

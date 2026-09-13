@@ -34,19 +34,11 @@
   // instanceColor buffer so the base color stays white.
   const material = new MeshStandardMaterial()
 
-  $effect(() => {
-    material.transparent = ghost
-    material.opacity = ghost ? 0.5 : 1
-    material.needsUpdate = true
-    invalidate()
-  })
-
   let mesh = $state.raw<AtomInstances | null>(null)
   // Three's WebGPU geometry disposal also frees the mesh's instance attributes. Keep
   // detail geometries alive together with those shared buffers, and reuse them on zoom-out.
   const detail_geometries = new Map<number, SphereGeometry>()
-  let colored_css: (string | undefined)[] = []
-  let colored_ghost = false
+  const colored_css: string[] = []
   $effect(() => {
     let current = untrack(() => mesh)
     if (!current && atoms.length === 0) return
@@ -131,26 +123,42 @@
   const gray = new Color(0x999999)
   const scratch_color = new Color()
   $effect(() => {
+    const is_ghost = ghost
+    const ghost_changed = is_ghost !== material.transparent
+    if (ghost_changed) {
+      material.transparent = is_ghost
+      material.opacity = is_ghost ? 0.5 : 1
+      material.needsUpdate = true
+      invalidate()
+    }
     const current = mesh
     if (!current) return
-    // Slots can change element mid-scrub even when the grow-only mesh is reused.
-    if (
-      ghost === colored_ghost &&
-      colored_css.length === atoms.length &&
-      atoms.every(({ color }, idx) => color === colored_css[idx])
-    )
-      return
+    // Read through the component prop chain once, not twice per atom during recoloring.
+    const instances = atoms
+    const force_colors = ghost_changed || !current.instanceColor
+    let first_changed = instances.length
+    let last_changed = -1
     // set_linear_css_color caches the CSS parse per distinct color (a handful here, >10k atoms)
-    colored_css.length = atoms.length
-    for (let idx = 0; idx < atoms.length; idx++) {
-      const css_color = atoms[idx].color
-      set_linear_css_color(css_color ?? `#999999`, scratch_color)
-      if (ghost) scratch_color.lerp(gray, 0.4)
+    for (let idx = 0; idx < instances.length; idx++) {
+      const css_color = instances[idx].color ?? `#999999`
+      if (!force_colors && css_color === colored_css[idx]) continue
+      set_linear_css_color(css_color, scratch_color)
+      if (is_ghost) scratch_color.lerp(gray, 0.4)
       current.setColorAt(idx, scratch_color)
       colored_css[idx] = css_color
+      first_changed = Math.min(first_changed, idx)
+      last_changed = idx
     }
-    if (current.instanceColor) current.instanceColor.needsUpdate = true
-    colored_ghost = ghost
+    colored_css.length = instances.length
+    if (last_changed < 0) return
+    if (current.instanceColor) {
+      // Preserve updates queued since the last GPU upload, including earlier changed slots.
+      current.instanceColor.addUpdateRange(
+        first_changed * 3,
+        (last_changed - first_changed + 1) * 3,
+      )
+      current.instanceColor.needsUpdate = true
+    }
     invalidate()
   })
 </script>

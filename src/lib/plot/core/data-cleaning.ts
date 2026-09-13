@@ -321,14 +321,29 @@ class SlidingSum {
 }
 
 // Centered finite-aware moving average. Each value enters and leaves a compensated sum,
-// so the cost is linear in the input length, independent of the window width.
-export function smooth_moving_average(values: readonly number[], window: number): number[] {
+// so the cost is linear in the input length, independent of the window width. Optional
+// increasing sample indices avoid computing and allocating outputs a downsampled plot drops.
+export function smooth_moving_average(
+  values: readonly number[],
+  window: number,
+  sample_indices?: readonly number[],
+): number[] {
   if (!Number.isSafeInteger(window) || window < 1) {
     throw new RangeError(
       `Moving average window must be a positive safe integer, got ${window}`,
     )
   }
-  if (values.length === 0 || window === 1) return [...values]
+  let previous_idx = -1
+  for (const idx of sample_indices ?? []) {
+    if (!Number.isInteger(idx) || idx <= previous_idx || idx >= values.length) {
+      throw new RangeError(
+        `Moving average sample indices must increase within 0..${values.length - 1}`,
+      )
+    }
+    previous_idx = idx
+  }
+  if (values.length === 0 || window === 1 || sample_indices?.length === 0)
+    return sample_indices ? sample_indices.map((idx) => values[idx]) : [...values]
   const half_window = Math.floor(window / 2)
   const max_count = Math.min(values.length, 2 * half_window + 1)
   let max_abs = 0
@@ -338,7 +353,8 @@ export function smooth_moving_average(values: readonly number[], window: number)
   const normalizer =
     max_abs >= Number.MAX_VALUE / max_count ? 2 ** Math.ceil(Math.log2(max_count)) : 1
   const min_scaled = normalizer === 1 ? 0 : 2 ** -1022 * normalizer
-  const result = Array<number>(values.length)
+  const result = Array<number>(sample_indices?.length ?? values.length)
+  let sample_idx = 0
   const sum = new SlidingSum()
   const tiny_sum = new SlidingSum()
   let count = 0
@@ -361,7 +377,11 @@ export function smooth_moving_average(values: readonly number[], window: number)
       else sum.add(value / normalizer)
       count++
     }
-    result[idx] = count > 0 ? sum.mean(count, normalizer, tiny_sum) : values[idx]
+    // Retain every add/remove operation even between requested samples: compensated sums
+    // depend on their order. Only output allocation and mean evaluation are sparse.
+    if (!sample_indices || sample_indices[sample_idx] === idx) {
+      result[sample_idx++] = count > 0 ? sum.mean(count, normalizer, tiny_sum) : values[idx]
+    }
   }
   return result
 }
@@ -506,25 +526,10 @@ function remove_local_outliers(
 
 // === Invalid values and bounds ===
 
-function handle_invalid_values(
-  values: number[],
-  mode: InvalidValueMode,
-): { cleaned: number[]; removed_indices: number[]; invalid_count: number } {
-  const removed_indices: number[] = []
+// Interpolate the caller's working copy in place and count invalid values.
+// Edges hold the nearest finite value.
+function interpolate_invalid_values(cleaned: number[]): number {
   let invalid_count = 0
-  if (mode !== `interpolate`) {
-    const cleaned: number[] = []
-    for (let idx = 0; idx < values.length; idx++) {
-      const value = values[idx]
-      const is_valid = Number.isFinite(value)
-      if (!is_valid) invalid_count++
-      if (is_valid || mode === `propagate`) cleaned.push(value)
-      else removed_indices.push(idx)
-    }
-    return { cleaned, removed_indices, invalid_count }
-  }
-  // Linear interpolation between the nearest finite neighbours; edges hold the nearest value
-  const cleaned = [...values]
   let left_idx = -1
   let right_idx = 0
   for (let idx = 0; idx < cleaned.length; idx++) {
@@ -548,7 +553,7 @@ function handle_invalid_values(
     } else cleaned[idx] = has_left ? cleaned[left_idx] : has_right ? cleaned[right_idx] : 0
     if (Number.isFinite(cleaned[idx])) left_idx = idx
   }
-  return { cleaned, removed_indices: [], invalid_count }
+  return invalid_count
 }
 
 // Resolve static or x-dependent bounds at one x. NaN values compare false on both checks and
@@ -614,10 +619,17 @@ export function clean_series<T extends DataSeries>(
     quality.points_removed += removed.length
   }
 
-  const invalid_result = handle_invalid_values(y_arr, invalid_mode)
-  quality.invalid_values_found = invalid_result.invalid_count
-  if (invalid_mode === `remove`) drop(invalid_result.removed_indices)
-  else y_arr = invalid_result.cleaned
+  if (invalid_mode === `interpolate`) {
+    quality.invalid_values_found = interpolate_invalid_values(y_arr)
+  } else {
+    const removed: number[] = []
+    for (const idx of kept) {
+      if (Number.isFinite(y_arr[idx])) continue
+      quality.invalid_values_found++
+      if (invalid_mode === `remove`) removed.push(idx)
+    }
+    drop(removed)
+  }
 
   if (config.bounds) {
     const {
@@ -684,9 +696,7 @@ export function clean_multi_series(
   })
   const cleaned_y = y_arrays.map((array, array_idx) => {
     let cleaned = pick(array, kept_indices)
-    if (invalid_mode === `interpolate`) {
-      cleaned = handle_invalid_values(cleaned, `interpolate`).cleaned
-    }
+    if (invalid_mode === `interpolate`) interpolate_invalid_values(cleaned)
     if (bounds && bounds.mode !== `filter`) {
       const result = apply_bounds(coord_x, cleaned, bounds)
       cleaned = result.y
@@ -726,9 +736,7 @@ export function clean_xyz(
   const quality = create_cleaning_quality(length - kept_indices.length, invalid_count)
   let filtered = pick_rows(columns, kept_indices)
   if (invalid_mode === `interpolate`) {
-    for (const axis of axes) {
-      filtered[axis] = handle_invalid_values(filtered[axis], `interpolate`).cleaned
-    }
+    for (const axis of axes) interpolate_invalid_values(filtered[axis])
   }
   if (bounds?.mode === `filter`) {
     const bounds_kept = index_range(filtered.x.length).filter((idx) =>

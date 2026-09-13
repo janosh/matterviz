@@ -21,7 +21,7 @@ describe(`extract_columns`, () => {
   })
 
   test(`column-based: skips columns with different lengths`, () => {
-    const data = { x: [1, 2, 3], y: [4, 5], label: [`a`, `b`, `c`] }
+    const data = { empty: [], scalar: 1, x: [1, 2, 3], y: [4, 5], label: [`a`, `b`, `c`] }
     const cols = extract_columns(data)
     expect(cols.has(`y`)).toBe(false)
     expect(cols.size).toBe(2)

@@ -64,7 +64,6 @@
           path: circle(outer_radius, 1) + (ring_inner > 0 ? circle(ring_inner, 0) : ``),
           label_x: center,
           label_y: center,
-          outside: false,
           font_scale: fit_font_scale(2.6, label.length, outer_radius * 2),
         }
       }
@@ -99,7 +98,6 @@
         path,
         label_x,
         label_y,
-        outside,
         font_scale: fit_font_scale(base_scale, label.length, available),
         text_color: outside ? `var(--text-color, #333)` : segment.text_color,
       }

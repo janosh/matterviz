@@ -363,7 +363,7 @@ export function watch_dark_mode(
 }
 
 // Convert a CSS color string to hex format for use with <input type="color">.
-// Returns fallback for CSS variables, transparent, invalid colors, or undefined.
+// Transparent displays white; CSS variables, invalid colors and undefined use the fallback.
 export function css_color_to_hex(color: string | undefined, fallback: string): string {
   if (!color) return fallback
   if (color.trim().toLowerCase() === `transparent`) return `#ffffff`

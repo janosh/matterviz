@@ -1,4 +1,5 @@
 import type { DataSeries } from '$lib/plot'
+import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
 import type { TrajectoryMetadata } from '$lib/trajectory'
 import {
   available_x_quantities,
@@ -83,6 +84,8 @@ describe(`generate_plot_series`, () => {
       default_visible_properties: new Set([`energy`, `force_max`]),
     })
     expect(series).toHaveLength(3)
+    // Dense properties share one source-frame grid rather than copying it per column.
+    for (const srs of series) expect(srs.x).toBe(series[0].x)
     // Units belong on the axis label, not duplicated in the legend series text
     for (const srs of series) expect(srs.label).not.toMatch(/\([^)]+\)/)
 
@@ -199,19 +202,28 @@ describe(`generate_plot_series`, () => {
     )
   })
 
-  it(`keeps sparse property values aligned to their source frames`, () => {
-    const series = generate_plot_series(
-      create_rows([
-        { energy: -10, temperature: 300 },
-        { energy: -11 },
-        { energy: -12, temperature: 320 },
-      ]),
-    )
-    expect(find_series_by_label(series, `temperature`)).toMatchObject({
-      x: [0, 2],
-      y: [300, 320],
-    })
-  })
+  it.each([
+    [0, 2, 4],
+    [1, 3],
+    [0, 1],
+    [3, 4],
+  ])(
+    `keeps sparse property samples %j aligned to their source frames`,
+    (...present_frames) => {
+      const rows = create_rows(
+        Array.from({ length: 5 }, (_, idx) => ({
+          energy: -10 - idx,
+          ...(present_frames.includes(idx) ? { temperature: 300 + idx * 10 } : {}),
+        })),
+      )
+      for (const row of rows) row.frame_number = 2 + row.frame_number * 10
+      const series = generate_plot_series(rows)
+      expect(find_series_by_label(series, `temperature`)).toMatchObject({
+        x: present_frames.map((idx) => 2 + idx * 10),
+        y: present_frames.map((idx) => 300 + idx * 10),
+      })
+    },
+  )
 
   it(`renders long eager data as a smoothed trend over a faint peak-preserving trace`, () => {
     const frames = Array.from({ length: 24_001 }, (_unused, frame_number) => ({
@@ -295,6 +307,8 @@ describe(`generate_plot_series`, () => {
       )
       expect(sampled.x).toEqual(indices.map((idx) => source_x[idx]))
       expect(sampled.raw_y).toEqual(indices.map((idx) => source_y[idx]))
+      const smoothed = smooth_moving_average(source_y, 5)
+      expect(sampled.y).toEqual(indices.map((idx) => smoothed[idx]))
     }
   })
 
@@ -323,6 +337,7 @@ describe(`generate_plot_series`, () => {
   // oxfmt-ignore
   it.each([
     { name: `constant`, key: `test_prop`, values: [10.0, 10.0, 10.0], should_include: false },
+    { name: `normalized constant energy`, key: `Potential (Energy)`, values: [10, 10, 10], should_include: true },
     { name: `nearly constant`, key: `test_prop`, values: [10.000001, 10.000002, 10.000001], should_include: false },
     { name: `varying`, key: `test_prop`, values: [10.0, 10.1, 10.2], should_include: true },
     {
@@ -403,10 +418,35 @@ describe(`should_hide_plot`, () => {
     { name: `NaN values`, frames: multi, series: [create_series([1.0, NaN, 1.0])], expected: true },
     { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: false },
     { name: `all NaN values`, frames: multi, series: [create_series([NaN, NaN, NaN])], expected: true },
+    { name: `leading NaN values`, frames: multi, series: [create_series([NaN, 1, 2])], expected: false },
+    { name: `only one Infinity sample`, frames: multi, series: [create_series([NaN, Infinity, NaN])], expected: true },
+    { name: `repeated Infinity samples`, frames: multi, series: [create_series([Infinity, Infinity, NaN])], expected: false },
     { name: `near-constant under a loose tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 1e10, expected: true },
     { name: `near-constant under zero tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 0, expected: false },
   ])(`$name → hide=$expected`, ({ frames, series, tolerance, expected }) => {
     expect(should_hide_plot(frames.length, series, tolerance)).toBe(expected)
+  })
+
+  it.each([Infinity, -Infinity])(
+    `treats %s as varying in either order, even with infinite tolerance`,
+    (value) => {
+      for (const values of [
+        [value, 1],
+        [1, value],
+      ]) {
+        expect(should_hide_plot(2, [create_series(values)], Infinity)).toBe(false)
+      }
+    },
+  )
+
+  it(`stops reading a large series once its first varying pair settles visibility`, () => {
+    const series = create_series([1, 2, 3])
+    Object.defineProperty(series.y, 2, {
+      get: () => {
+        throw new Error(`Visibility must not scan after a varying pair`)
+      },
+    })
+    expect(should_hide_plot(3, [series])).toBe(false)
   })
 })
 

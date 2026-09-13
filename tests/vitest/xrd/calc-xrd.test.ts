@@ -13,7 +13,7 @@ import {
   structure_factors_squared,
   WAVELENGTHS,
 } from '$lib/xrd'
-import type { XrdPattern } from '$lib/xrd'
+import type { RecipPoint, XrdPattern } from '$lib/xrd'
 import file_system from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -490,8 +490,55 @@ describe(`radiation types`, () => {
         expect(Number.isFinite(intensity)).toBe(true)
         expect(intensity).toBeGreaterThanOrEqual(0)
       }
+      const mixed = make_crystal(6, [
+        { element: `Ti`, abc: [0.13, 0.37, 0.51], occu: 0.3 },
+        { element: `O`, abc: [0.71, 0.29, 0.43] },
+      ])
+      mixed.sites[0].species.push({ element: `Fe`, occu: 0.7, oxidation_state: 0 })
+      const reflections: RecipPoint[] = [
+        { hkl: [1, -2, 3], g_norm: 0.7 },
+        { hkl: [-1, 2, -3], g_norm: 0.7 },
+        { hkl: [-1, 2, -3], g_norm: 1.1 },
+        { hkl: [1, -2, 3], g_norm: 1.1 },
+        { hkl: [1, -2, 3], g_norm: 0.7 },
+        { hkl: [0, 0, 0], g_norm: 0 },
+        { hkl: [-0, 0, -0], g_norm: 0 },
+        { hkl: [4, 1, 2], g_norm: 0.9 },
+      ]
+      const thermal = { Ti: 0.4, O: 0.8, Fe: 0.2 }
+      // Friedel mates, repeats and unpaired reflections agree exactly with separate calls.
+      // Equal indices with different supplied norms must retain their own scattering factors.
+      for (const repeats of [1, 32]) {
+        // Cover both direct evaluation and the large-structure Friedel reuse path.
+        const structure = {
+          ...mixed,
+          sites: Array.from({ length: repeats }, () => mixed.sites).flat(),
+        }
+        const expected = reflections.map(
+          (point) => structure_factors_squared(structure, radiation, thermal, [point])[0],
+        )
+        const batched = structure_factors_squared(structure, radiation, thermal, reflections)
+        expect([...batched]).toEqual(expected)
+        expect(batched[0]).toBe(batched[1])
+        expect(batched[2]).toBe(batched[3])
+        expect(batched[0]).not.toBe(batched[2])
+        expect([
+          ...structure_factors_squared(
+            structure,
+            radiation,
+            thermal,
+            reflections.toReversed(),
+          ),
+        ]).toEqual(expected.toReversed())
+      }
     },
   )
+
+  test.each([0.5, Number.NaN, Infinity])(`rejects invalid Miller index %s`, (h_idx) => {
+    expect(() =>
+      structure_factors_squared(tic, `xray`, {}, [{ hkl: [h_idx, 0, 0], g_norm: 0.5 }]),
+    ).toThrow(/Miller indices must be finite integers/)
+  })
 
   // Mott–Bethe divides (Z − f_x) by s², which naively diverges at forward scattering. The
   // s² cancels analytically in $lib/scattering, and this asserts it survives our call path.

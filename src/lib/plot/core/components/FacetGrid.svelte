@@ -24,7 +24,7 @@
   import { observe_size } from '$lib/plot/core/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap } from 'svelte/reactivity'
 
   let {
     panels,
@@ -308,7 +308,7 @@
 
   // Keep all per-panel state and callback identities bounded to the active panel keys.
   const sync_panel_keys = (): void => {
-    const current_keys = new SvelteSet(layout.panels.map(({ key }) => key))
+    const current_keys = new Set(layout.panels.map(({ key }) => key))
     for (const { key } of layout.panels) {
       if (!panel_callbacks.has(key)) panel_callbacks.set(key, create_panel_callbacks(key))
     }

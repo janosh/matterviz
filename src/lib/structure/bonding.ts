@@ -707,18 +707,74 @@ const grow_i32 = (buffer: Int32Array, needed: number, cap = Infinity): Int32Arra
   return next
 }
 
-// The 13 lexicographically "forward" bin offsets. Each unordered pair of adjacent bins is
-// seen from exactly one side, so with own-bin pairs taken only for larger slot indices the
-// sweep below computes every pair once.
-const FORWARD_BIN_OFFSETS: [number, number, number][] = []
-for (let delta_x = -1; delta_x <= 1; delta_x++) {
-  for (let delta_y = -1; delta_y <= 1; delta_y++) {
-    for (let delta_z = -1; delta_z <= 1; delta_z++) {
-      if (delta_x * 9 + delta_y * 3 + delta_z > 0)
-        FORWARD_BIN_OFFSETS.push([delta_x, delta_y, delta_z])
+// Forward offsets for cutoff-wide bins (13 neighbors) and half-width bins (62).
+// Each unordered pair of bins is searched once; own-bin pairs use increasing slots.
+type BinOffset = [...Vec3, opposite_mask: number]
+const FORWARD_BIN_OFFSETS: BinOffset[] = []
+const FINE_BIN_OFFSETS: BinOffset[] = []
+for (let delta_x = -2; delta_x <= 2; delta_x++) {
+  for (let delta_y = -2; delta_y <= 2; delta_y++) {
+    for (let delta_z = -2; delta_z <= 2; delta_z++) {
+      if (delta_x * 25 + delta_y * 5 + delta_z <= 0) continue
+      const offset: BinOffset = [delta_x, delta_y, delta_z, 0]
+      FINE_BIN_OFFSETS.push(offset)
+      if (Math.max(Math.abs(delta_x), Math.abs(delta_y), Math.abs(delta_z)) <= 1)
+        FORWARD_BIN_OFFSETS.push(offset)
     }
   }
 }
+
+// Each mask uses the original 13 neighbors first, then matching nonadjacent bins.
+// Lower/upper edge bits are paired for x, y, then z; the fourth offset field selects
+// the opposite edges that must be occupied in the destination bin.
+const BOUNDARY_BIN_OFFSETS = Array.from({ length: 64 }, () => [...FORWARD_BIN_OFFSETS])
+for (const [delta_x, delta_y, delta_z] of FINE_BIN_OFFSETS) {
+  const delta: Vec3 = [delta_x, delta_y, delta_z]
+  const facing = delta.reduce(
+    (bits, step, axis) =>
+      bits | (Math.abs(step) === 2 ? 1 << (2 * axis + (step > 0 ? 1 : 0)) : 0),
+    0,
+  )
+  if (!facing) continue
+  const offset: BinOffset = [...delta, ((facing & 21) << 1) | ((facing & 42) >> 1)]
+  for (const [mask, offsets] of BOUNDARY_BIN_OFFSETS.entries()) {
+    if ((mask & facing) === facing) offsets.push(offset)
+  }
+}
+
+// Keep coarse bin assignments unchanged so existing contacts retain their discovery order.
+// Only pairs within the rounding error of facing edges can cross two cutoff-wide bins.
+function coarse_boundary_masks(
+  cloud_pos: Float64Array,
+  bin_of: Int32Array,
+  widths: Vec3,
+  shape: Vec3,
+  mins: Vec3,
+  maxs: Vec3,
+  cutoff: number,
+): Uint8Array | undefined {
+  if (shape.every((count) => count < 3)) return undefined
+  const masks = new Uint8Array(shape[0] * shape[1] * shape[2])
+  let upper_boundary = false
+  for (let axis = 0; axis < 3; axis++) {
+    if (shape[axis] < 3) continue
+    const tolerance = (4 * Number.EPSILON * (maxs[axis] - mins[axis] + cutoff)) / widths[axis]
+    const lower = 1 << (2 * axis)
+    const upper = lower << 1
+    for (let slot = 0; slot < bin_of.length; slot++) {
+      const frac = (cloud_pos[slot * 3 + axis] - mins[axis]) / widths[axis]
+      const remainder = frac - Math.floor(frac)
+      if (remainder <= tolerance) masks[bin_of[slot]] |= lower
+      if (1 - remainder <= tolerance) {
+        masks[bin_of[slot]] |= upper
+        upper_boundary = true
+      }
+    }
+  }
+  return upper_boundary ? masks : undefined
+}
+
+type NeighborDistanceVisitor = (center: number, neighbor: number, distance: number) => void
 
 // Fixed-radius query. Base positions are wrapped into the cell on periodic axes (a
 // trajectory frame may sit far outside it) and only images that can reach within `cutoff`
@@ -729,13 +785,32 @@ function neighbor_query_cutoff(
   cutoff: number,
   pbc_override: Pbc | undefined,
   sorted: boolean,
+  unique_pairs?: boolean,
+): NeighborList
+function neighbor_query_cutoff(
+  structure: AnyStructure,
+  cutoff: number,
+  pbc_override: Pbc | undefined,
+  sorted: boolean,
+  unique_pairs: boolean,
+  visit: NeighborDistanceVisitor,
+): void
+function neighbor_query_cutoff(
+  structure: AnyStructure,
+  cutoff: number,
+  pbc_override: Pbc | undefined,
+  sorted: boolean,
   unique_pairs = false,
-): NeighborList {
+  visit?: NeighborDistanceVisitor,
+): NeighborList | void {
   const { sites } = structure
   const n_sites = sites.length
   if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
     throw new Error(`neighbor_query: cutoff must be a positive finite number, got ${cutoff}`)
   }
+  const cutoff_sq = cutoff * cutoff
+  const normal_cutoff =
+    Number.isFinite(cutoff_sq) && cutoff_sq >= Number.MIN_VALUE / Number.EPSILON
   const lattice = `lattice` in structure ? structure.lattice.matrix : null
   const pbc = lattice_pbc_or_throw(structure, pbc_override)
 
@@ -855,6 +930,7 @@ function neighbor_query_cutoff(
   }
 
   if (n_cloud === 0) {
+    if (visit) return
     return {
       n_centers: 0,
       cutoff,
@@ -867,9 +943,9 @@ function neighbor_query_cutoff(
   }
 
   // Dense bins over the cloud's bounding box, filled by counting sort so each bin is one
-  // contiguous slice of `bin_items` (ascending slot, so base sites precede images). Bins are
-  // `cutoff` wide unless that would make the grid much larger than the cloud, in which case
-  // they widen; either way a neighbor can only sit in the 27 bins around the center's.
+  // contiguous slice of `bin_items` (ascending slot, so base sites precede images).
+  // Fine bins reduce candidate pairs in dense clouds; sparse grids widen to fit the cloud.
+  // The selected forward stencil spans at least the cutoff along every axis.
   const mins: Vec3 = [Infinity, Infinity, Infinity]
   const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
   for (let slot = 0; slot < n_cloud; slot++) {
@@ -889,6 +965,23 @@ function neighbor_query_cutoff(
   // cloud ends within 2x of the ideal width, which holds under 0.5 atoms per cutoff-bin.
   const bin: Vec3 = [cutoff, cutoff, cutoff]
   const n_axis: Vec3 = [bins_along(cutoff, 0), bins_along(cutoff, 1), bins_along(cutoff, 2)]
+  // Dense RDF queries spend most of their time rejecting pairs outside the cutoff.
+  // Finer bins reduce these candidates; sparse clouds and small cells keep cheap setup.
+  const fine_bins =
+    Boolean(visit) &&
+    n_sites >= 2000 &&
+    normal_cutoff &&
+    n_cloud / (n_axis[0] * n_axis[1] * n_axis[2]) >= 32
+  if (fine_bins) {
+    for (let axis = 0; axis < 3; axis++) {
+      // Subtracting the origin and dividing into bins each round both endpoints. Include
+      // their span-scaled errors and the rounded distance comparison, so a cutoff pair
+      // cannot straddle three half-width bins. Distance and cutoff arithmetic is unchanged.
+      bin[axis] = cutoff / 2 + 4 * Number.EPSILON * (maxs[axis] - mins[axis] + cutoff)
+      n_axis[axis] = bins_along(bin[axis], axis)
+    }
+  }
+  const forward_offsets = fine_bins ? FINE_BIN_OFFSETS : FORWARD_BIN_OFFSETS
   while (n_axis[0] * n_axis[1] * n_axis[2] > max_bins) {
     const widest = n_axis.indexOf(Math.max(...n_axis))
     bin[widest] *= 2
@@ -906,95 +999,141 @@ function neighbor_query_cutoff(
     bin_of[slot] = bin_idx
     bin_start[bin_idx + 1]++
   }
+  const boundary_masks =
+    !fine_bins && normal_cutoff
+      ? coarse_boundary_masks(cloud_pos, bin_of, bin, n_axis, mins, maxs, cutoff)
+      : undefined
   for (let bin_idx = 0; bin_idx < n_bins; bin_idx++)
     bin_start[bin_idx + 1] += bin_start[bin_idx]
+  // Counting sort keeps base sites before images. Remember their boundary in each bin so
+  // image centers scan only base endpoints, without testing the boundary for every pair.
+  const bin_base_end = bin_start.slice(0, n_bins)
+  for (let slot = 0; slot < n_sites; slot++) bin_base_end[bin_of[slot]]++
   const bin_items = new Int32Array(n_cloud)
-  const item_of = new Int32Array(n_cloud) // slot -> its index in bin_items
+  const item_of = new Int32Array(visit ? 0 : n_cloud)
   const bin_cursor = bin_start.slice(0, n_bins)
   for (let slot = 0; slot < n_cloud; slot++) {
-    item_of[slot] = bin_cursor[bin_of[slot]]
-    bin_items[bin_cursor[bin_of[slot]]++] = slot
+    const item = bin_cursor[bin_of[slot]]++
+    bin_items[item] = slot
+    if (!visit) item_of[slot] = item
   }
 
   // Pair sweep: every pair within cutoff once, from the lexicographically lower bin (own
   // bin: from the lower slot). Pairs between two images are skipped, since images are never
-  // centers - `bin_items` lists base slots first, so an image center stops at the first
-  // image it meets. Pairs are stored once (struct of arrays) and counted towards each base
+  // centers. Streaming histograms reuse adjacent ranges for every slot in an occupied bin.
+  // Materialized lists keep their original slot discovery order: bond consumers use that
+  // order for geometric deduplication and hull construction. Image-only bins can skip
+  // every range that contains no base endpoints.
+  // Pairs are stored once (struct of arrays) and counted towards each base
   // endpoint; the per-center lists are assembled from them below.
-  const cutoff_sq = cutoff * cutoff
-  let pair_a: Int32Array = new Int32Array(Math.max(256, n_sites * 8))
+  let pair_a: Int32Array = new Int32Array(visit ? 0 : Math.max(256, n_sites * 8))
   let pair_b: Int32Array = new Int32Array(pair_a.length)
   let pair_dist_sq: Float64Array = new Float64Array(pair_a.length)
   const offsets = new Int32Array(n_sites + 1) // per-center counts until the prefix sum below
   let n_pairs = 0
-  // the 14 bin ranges to scan per slot, own bin first (starting just past the slot itself)
-  const range_start = new Int32Array(14)
-  const range_end = new Int32Array(14)
-  for (let slot_a = 0; slot_a < n_cloud; slot_a++) {
-    const pos_x = cloud_pos[slot_a * 3]
-    const pos_y = cloud_pos[slot_a * 3 + 1]
-    const pos_z = cloud_pos[slot_a * 3 + 2]
-    const bin_idx = bin_of[slot_a]
-    const idx_x = bin_idx % n_x
-    const idx_y = Math.floor(bin_idx / n_x) % n_y
-    const idx_z = Math.floor(bin_idx / (n_x * n_y))
-    const stop_at_images = slot_a >= n_sites
-    let n_ranges = 0
-    // own bin: only the slots after this one (all images when this one is an image)
-    if (!stop_at_images) {
-      range_start[0] = item_of[slot_a] + 1
-      range_end[0] = bin_start[bin_idx + 1]
-      n_ranges = 1
+  // Scan own bin first (starting just past the slot itself), then forward neighbors.
+  const range_count = (boundary_masks ? FINE_BIN_OFFSETS : forward_offsets).length + 1
+  // Each range stores its start, end, and end of base (non-image) positions.
+  const scratch_ranges = new Int32Array(range_count * 3)
+  // Reuse ranges when materialized queries revisit a bin in site discovery order.
+  const ranges_by_bin = Array.from<Int32Array | undefined>({ length: visit ? 0 : n_bins })
+  const n_groups = visit ? n_bins : n_cloud
+  for (let group_idx = 0; group_idx < n_groups; group_idx++) {
+    const bin_idx = visit ? group_idx : bin_of[group_idx]
+    const bin_first = bin_start[bin_idx]
+    const bin_end = bin_start[bin_idx + 1]
+    if (bin_first === bin_end) continue
+    const images_only = bin_base_end[bin_idx] === bin_first
+    let ranges = ranges_by_bin[bin_idx]
+    if (!ranges) {
+      const idx_x = bin_idx % n_x
+      const idx_y = Math.floor(bin_idx / n_x) % n_y
+      const idx_z = Math.floor(bin_idx / (n_x * n_y))
+      let range_size = 3
+      scratch_ranges[1] = bin_end
+      scratch_ranges[2] = bin_base_end[bin_idx]
+      const bin_mask = boundary_masks?.[bin_idx] ?? 0
+      const bin_offsets = bin_mask ? BOUNDARY_BIN_OFFSETS[bin_mask] : forward_offsets
+      for (const [delta_x, delta_y, delta_z, opposite] of bin_offsets) {
+        const neighbor_x = idx_x + delta_x
+        const neighbor_y = idx_y + delta_y
+        const neighbor_z = idx_z + delta_z
+        if (
+          neighbor_x < 0 ||
+          neighbor_x >= n_x ||
+          neighbor_y < 0 ||
+          neighbor_y >= n_y ||
+          neighbor_z < 0 ||
+          neighbor_z >= n_z
+        )
+          continue
+        const other = neighbor_x + n_x * (neighbor_y + n_y * neighbor_z)
+        if (opposite && ((boundary_masks?.[other] ?? 0) & opposite) !== opposite) continue
+        if (
+          bin_start[other] === bin_start[other + 1] ||
+          (images_only && bin_base_end[other] === bin_start[other])
+        )
+          continue
+        scratch_ranges[range_size++] = bin_start[other]
+        scratch_ranges[range_size++] = bin_start[other + 1]
+        scratch_ranges[range_size++] = bin_base_end[other]
+      }
+      ranges = scratch_ranges.subarray(0, range_size)
+      if (!visit && bin_end - bin_first > 1) {
+        ranges = ranges.slice()
+        ranges_by_bin[bin_idx] = ranges
+      }
     }
-    for (const [delta_x, delta_y, delta_z] of FORWARD_BIN_OFFSETS) {
-      const neighbor_x = idx_x + delta_x
-      const neighbor_y = idx_y + delta_y
-      const neighbor_z = idx_z + delta_z
-      if (
-        neighbor_x < 0 ||
-        neighbor_x >= n_x ||
-        neighbor_y < 0 ||
-        neighbor_y >= n_y ||
-        neighbor_z < 0 ||
-        neighbor_z >= n_z
-      )
-        continue
-      const other = neighbor_x + n_x * (neighbor_y + n_y * neighbor_z)
-      range_start[n_ranges] = bin_start[other]
-      range_end[n_ranges] = bin_start[other + 1]
-      n_ranges++
-    }
-    for (let range = 0; range < n_ranges; range++) {
-      const item_end = range_end[range]
-      for (let item = range_start[range]; item < item_end; item++) {
-        const slot_b = bin_items[item]
-        if (stop_at_images && slot_b >= n_sites) break
-        const delta_x = cloud_pos[slot_b * 3] - pos_x
-        const delta_y = cloud_pos[slot_b * 3 + 1] - pos_y
-        const delta_z = cloud_pos[slot_b * 3 + 2] - pos_z
-        const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
-        if (dist_sq > cutoff_sq) continue
-        if (n_pairs === pair_a.length) {
-          if (n_pairs >= MAX_NEIGHBOR_PAIRS) {
-            throw new Error(
-              `neighbor_query: more than ${MAX_NEIGHBOR_PAIRS.toLocaleString()} pairs within ` +
-                `${cutoff} A of ${n_sites} sites; the neighbor lists would not fit in memory, ` +
-                `lower the cutoff or the site count`,
-            )
+    if (images_only && ranges.length === 3) continue
+    const center_first = visit ? bin_first : item_of[group_idx]
+    const center_end = visit ? bin_end : center_first + 1
+    for (let center_item = center_first; center_item < center_end; center_item++) {
+      const slot_a = bin_items[center_item]
+      const pos_x = cloud_pos[slot_a * 3]
+      const pos_y = cloud_pos[slot_a * 3 + 1]
+      const pos_z = cloud_pos[slot_a * 3 + 2]
+      const stop_at_images = slot_a >= n_sites
+      for (let range = stop_at_images ? 3 : 0; range < ranges.length; range += 3) {
+        const item_start = range === 0 ? center_item + 1 : ranges[range]
+        const item_end = ranges[range + (stop_at_images ? 2 : 1)]
+        for (let item = item_start; item < item_end; item++) {
+          const slot_b = bin_items[item]
+          const delta_x = cloud_pos[slot_b * 3] - pos_x
+          const delta_y = cloud_pos[slot_b * 3 + 1] - pos_y
+          const delta_z = cloud_pos[slot_b * 3 + 2] - pos_z
+          const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
+          if (dist_sq > cutoff_sq) continue
+          // Histogram consumers need neither directed lists nor image/displacement buffers.
+          // Keep the exact distance arithmetic while streaming each base endpoint once.
+          if (visit) {
+            const distance = Math.sqrt(dist_sq)
+            if (slot_a < n_sites) visit(slot_a, cloud_src[slot_b], distance)
+            if (slot_b < n_sites) visit(slot_b, cloud_src[slot_a], distance)
+            continue
           }
-          pair_a = grow_i32(pair_a, n_pairs + 1, MAX_NEIGHBOR_PAIRS)
-          pair_b = grow_i32(pair_b, n_pairs + 1, MAX_NEIGHBOR_PAIRS)
-          pair_dist_sq = grow_f64(pair_dist_sq, n_pairs + 1, MAX_NEIGHBOR_PAIRS)
+          if (n_pairs === pair_a.length) {
+            if (n_pairs >= MAX_NEIGHBOR_PAIRS) {
+              throw new Error(
+                `neighbor_query: more than ${MAX_NEIGHBOR_PAIRS.toLocaleString()} pairs within ` +
+                  `${cutoff} A of ${n_sites} sites; the neighbor lists would not fit in memory, ` +
+                  `lower the cutoff or the site count`,
+              )
+            }
+            pair_a = grow_i32(pair_a, n_pairs + 1, MAX_NEIGHBOR_PAIRS)
+            pair_b = grow_i32(pair_b, n_pairs + 1, MAX_NEIGHBOR_PAIRS)
+            pair_dist_sq = grow_f64(pair_dist_sq, n_pairs + 1, MAX_NEIGHBOR_PAIRS)
+          }
+          pair_a[n_pairs] = slot_a
+          pair_b[n_pairs] = slot_b
+          pair_dist_sq[n_pairs] = dist_sq
+          if (slot_a < n_sites && (!unique_pairs || slot_a < slot_b)) offsets[slot_a + 1]++
+          if (slot_b < n_sites && (!unique_pairs || slot_b < slot_a)) offsets[slot_b + 1]++
+          n_pairs++
         }
-        pair_a[n_pairs] = slot_a
-        pair_b[n_pairs] = slot_b
-        pair_dist_sq[n_pairs] = dist_sq
-        if (slot_a < n_sites && (!unique_pairs || slot_a < slot_b)) offsets[slot_a + 1]++
-        if (slot_b < n_sites && (!unique_pairs || slot_b < slot_a)) offsets[slot_b + 1]++
-        n_pairs++
       }
     }
   }
+  if (visit) return
 
   // Scatter each pair to its base endpoint(s) as a directed entry (2*pair for endpoint a,
   // 2*pair + 1 for endpoint b), then sort every center's block by distance (ties by partner
@@ -1133,6 +1272,17 @@ export function lattice_pbc_or_throw(structure: AnyStructure, override?: Pbc): P
     )
   }
   return pbc
+}
+
+// Visit each directed neighbor without retaining pair records or constructing result
+// arrays. Repeated periodic images are separate visits, including a site's own images.
+// This lets histograms process large cutoffs with memory proportional to the image cloud.
+export function visit_neighbor_distances(
+  structure: AnyStructure,
+  { cutoff, pbc }: { cutoff: number; pbc?: Pbc },
+  visit: NeighborDistanceVisitor,
+): void {
+  neighbor_query_cutoff(structure, cutoff, pbc, false, false, visit)
 }
 
 // Geometric neighbor query with periodic images.

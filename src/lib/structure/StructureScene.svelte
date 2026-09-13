@@ -1271,10 +1271,10 @@
     partial: RenderAtom[]
   }
   const atom_appearance = $derived({ palette, radius_options, effective_atom_radius })
-  let previous_atoms: { appearance: object; groups: AtomGroups } | undefined
+  let previous_atoms: { appearance: object; groups: AtomGroups; colored: boolean } | undefined
 
-  // Build render groups and site anchors together. Coordinate-only frames reuse both
-  // the records and lookup; fresh base arrays still invalidate child instance buffers.
+  // Build render groups and site anchors together. Frames with the same ordered atoms
+  // reuse records and lookup; fresh base arrays still invalidate child instance buffers.
   let atom_groups = $derived.by(() => {
     if (!show_atoms) {
       previous_atoms = undefined
@@ -1295,7 +1295,7 @@
     const radius_scale = effective_atom_radius
     const radius_opts = radius_options
     const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
-    const reusable = !filter_prop_vals && !filter_elements && !prop_colors && !hidden_centers
+    const reusable = !filter_prop_vals && !filter_elements && !hidden_centers
     const appearance = atom_appearance
     if (reusable && previous_atoms?.appearance === appearance && structure) {
       const updated = update_ordered_atom_positions(
@@ -1303,6 +1303,12 @@
         structure.sites,
       )
       if (updated) {
+        if (prop_colors || previous_atoms.colored) {
+          for (const atom of updated) {
+            atom.color = prop_colors?.[atom.site_idx] ?? element_colors?.[atom.element]
+          }
+          previous_atoms.colored = Boolean(prop_colors)
+        }
         return (previous_atoms.groups = { ...previous_atoms.groups, base: updated })
       }
     }
@@ -1352,7 +1358,7 @@
     }
     previous_atoms =
       reusable && groups.image.length === 0 && groups.partial.length === 0
-        ? { appearance, groups }
+        ? { appearance, groups, colored: Boolean(prop_colors) }
         : undefined
     return groups
   })
