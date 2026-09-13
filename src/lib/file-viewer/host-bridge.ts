@@ -59,24 +59,29 @@ function post_request<T>(
       signal?.removeEventListener(`abort`, abort)
       clearTimeout(timer)
     }
-    const timer = setTimeout(() => {
+    const fail = (error: unknown): void => {
       cleanup()
-      reject(new Error(timeout_error))
-    }, timeout_ms)
-    const abort = (): void => {
-      cleanup()
-      reject(to_error(signal?.reason ?? new DOMException(`Request aborted`, `AbortError`)))
+      reject(to_error(error))
     }
+    const timer = setTimeout(() => fail(new Error(timeout_error)), timeout_ms)
+    const abort = (): void =>
+      fail(signal?.reason ?? new DOMException(`Request aborted`, `AbortError`))
     const handler = (event: MessageEvent<HostReply | undefined>) => {
       if (event.data?.request_id !== request_id) return
-      if (on_response(event.data, resolve, reject)) {
-        cleanup()
+      try {
+        if (on_response(event.data, resolve, reject)) cleanup()
+      } catch (error) {
+        fail(error)
       }
     }
     if (signal?.aborted) return abort()
     globalThis.addEventListener(`message`, handler)
     signal?.addEventListener(`abort`, abort, { once: true })
-    api.postMessage({ ...message, request_id })
+    try {
+      api.postMessage({ ...message, request_id })
+    } catch (error) {
+      fail(error)
+    }
   })
 }
 
@@ -96,17 +101,28 @@ export async function request_large_file_content(
   // Plot rows arrive in batches after the summary; they are routed to THIS run instance
   // (matched by the file path the host stamps on them) until it completes or is disposed
   let stop_property_stream = (): void => {}
-  const bind_host_properties = (path: string, run: TrajectoryRun): TrajectoryRun => {
+  const bind_host_properties = (run: TrajectoryRun): TrajectoryRun => {
     if (run.properties.complete) return run
     const handler = (event: MessageEvent<HostToWebviewMessage | undefined>): void => {
       const message = event.data
-      if (message?.command !== `plot_metadata_stream` || message.file_path !== path) return
+      if (message?.command !== `plot_metadata_stream` || message.file_path !== file_path)
+        return
       if (run.properties.complete) return stop_property_stream()
-      run.properties.push(message.rows)
-      if (message.complete) {
-        run.properties.finish()
-        stop_property_stream()
+      // Detach before notifying final rows: subscribers may throw or dispose the run.
+      if (message.complete) stop_property_stream()
+      let errors: unknown[] | undefined
+      try {
+        run.properties.push(message.rows)
+      } catch (error) {
+        errors = [error]
       }
+      try {
+        if (message.complete) run.properties.finish()
+      } catch (error) {
+        ;(errors ??= []).push(error)
+      }
+      if (errors?.length === 1) throw errors[0]
+      if (errors) throw new AggregateError(errors, `Host property notifications failed`)
     }
     globalThis.addEventListener(`message`, handler)
     stop_property_stream = () => globalThis.removeEventListener(`message`, handler)
@@ -124,7 +140,6 @@ export async function request_large_file_content(
       else if (data.run_summary && typeof data.run_summary === `object`) {
         resolve(
           bind_host_properties(
-            file_path,
             host_run(
               data.run_summary,
               (frame_idx, signal) =>

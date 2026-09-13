@@ -228,7 +228,7 @@ describe(`calculate_rdf`, () => {
   test(`pbc defaults to the lattice's own flags`, () => {
     const open = make_crystal(5, [[`Si`, [0, 0, 0]]], { pbc: [false, false, false] })
     const opts = { cutoff: 8, n_bins: 40 }
-    expect(calculate_rdf(open, opts).g_r.every((val) => val === 0)).toBe(true)
+    expect(calculate_rdf(open, opts).g_r).toEqual(Array(opts.n_bins).fill(0))
     expect(
       calculate_rdf(open, { ...opts, pbc: [true, true, true] }).g_r.some((val) => val > 0),
     ).toBe(true)
@@ -237,9 +237,7 @@ describe(`calculate_rdf`, () => {
   test(`distances are binned over the half-open range [0, cutoff)`, () => {
     const one_atom = make_crystal(5, [[`Si`, [0, 0, 0]]])
     // nearest images sit exactly at the cutoff and are excluded...
-    expect(
-      calculate_rdf(one_atom, { cutoff: 5, n_bins: 50 }).g_r.every((val) => val === 0),
-    ).toBe(true)
+    expect(calculate_rdf(one_atom, { cutoff: 5, n_bins: 50 }).g_r).toEqual(Array(50).fill(0))
     // ...and a shell exactly on a bin edge lands in the upper bin, as one shell, not split
     const at_edge = calculate_rdf(one_atom, { cutoff: 6, n_bins: 60 })
     const nonzero = at_edge.g_r.flatMap((val, idx) => (val > 0 ? [idx] : []))
@@ -253,7 +251,7 @@ describe(`calculate_rdf`, () => {
       neighbor_species: `Au`,
     })
     expect(element_pair).toEqual([`Au`, `Au`])
-    expect(g_r.every((val) => val === 0)).toBe(true)
+    expect(g_r).toEqual(Array(75).fill(0))
   })
 
   test(`skewed triclinic cell: the first shell is the minimum-image pair distance`, () => {

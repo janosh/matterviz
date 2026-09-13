@@ -30,8 +30,11 @@ export const host_run = (
     dispose: () => {
       if (disposed) return
       disposed = true
-      fields.properties.finish()
-      release()
+      try {
+        fields.properties.finish()
+      } finally {
+        release()
+      }
     },
   }
 }

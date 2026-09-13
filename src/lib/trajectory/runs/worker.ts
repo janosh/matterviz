@@ -137,9 +137,15 @@ export const worker_run = (
     if (disposed_reason) return
     disposed_reason = reason
     for (const request of pending.values()) request.settle(undefined, reason)
-    properties.finish()
-    dispose_run_port(port)
-    release()
+    try {
+      properties.finish()
+    } finally {
+      try {
+        dispose_run_port(port)
+      } finally {
+        release()
+      }
+    }
   }
   port.addEventListener(`message`, (event: MessageEvent<RunPortReply>) => {
     const reply = event.data

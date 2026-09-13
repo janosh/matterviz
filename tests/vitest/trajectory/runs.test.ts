@@ -392,38 +392,76 @@ describe(`worker-served run lifecycle`, () => {
     },
   )
 
-  it(`a disposed served run rejects in-flight reads`, async () => {
-    const run = make_worker_run()
-    const pending = run.read_frame(3) as Promise<TrajectoryFrame>
-    run.dispose()
-    await expect(pending).rejects.toThrow(/disposed/)
-  })
+  it.each([`dispose`, `messageerror`, `close failure`])(
+    `rejects pending reads and releases the worker despite observer/port failure during %s`,
+    async (phase) => {
+      const served = trajectory_from_frames(reference_frames)
+      Object.defineProperty(served, `properties`, { value: new TrajectoryProperties() })
+      const port = serve_run_over_port(served)
+      const close_port = port.close.bind(port)
+      const close = vi.spyOn(port, `close`)
+      const add_listener = vi.spyOn(port, `addEventListener`)
+      const release = vi.fn()
+      const run = worker_run(port, summarize_run(served), release)
+      const pending = Promise.resolve(run.read_frame(3))
+      const failure = new Error(`${phase} callback failed`)
+      if (phase === `close failure`)
+        close.mockImplementationOnce(() => {
+          close_port()
+          throw failure
+        })
+      else
+        run.properties.subscribe(() => {
+          throw failure
+        })
+      const dispose = () => {
+        if (phase !== `messageerror`) return run.dispose()
+        const handler = add_listener.mock.calls.find(([type]) => type === `messageerror`)?.[1]
+        if (typeof handler !== `function`) throw new Error(`Missing messageerror handler`)
+        handler.call(port, new MessageEvent(`messageerror`))
+      }
+      expect(dispose).toThrow(failure)
+      const reason = phase === `messageerror` ? /deserialize/ : /disposed/
+      await expect(pending).rejects.toThrow(reason)
+      await run.properties.done
+      run.dispose()
+      expect(close).toHaveBeenCalledOnce()
+      expect(release).toHaveBeenCalledOnce()
+      await expect(Promise.resolve(run.read_frame(0))).rejects.toThrow(reason)
+    },
+  )
 })
 
 describe(`TrajectoryProperties`, () => {
-  it(`releases a synchronous source even when its completion subscriber throws`, async () => {
-    const properties = new TrajectoryProperties()
-    const release = vi.fn()
-    const run = sync_run({
-      label: `test trajectory`,
-      frame_count: 1,
-      read: () => reference_frames[0],
-      properties,
-      release,
-      provenance: {},
-      metadata: {},
-      warnings: [],
-    })
-    const failure = new Error(`Completion observer failed`)
-    properties.subscribe(() => {
-      throw failure
-    })
-    expect(() => run.dispose()).toThrow(failure)
-    await properties.done
-    run.dispose()
-    expect(release).toHaveBeenCalledOnce()
-    expect(() => run.read_frame(0)).toThrow(/disposed/)
-  })
+  it.each([`synchronous`, `host`])(
+    `releases a %s source even when its completion subscriber throws`,
+    async (kind) => {
+      const release = vi.fn()
+      const source = sync_run({
+        label: `test trajectory`,
+        frame_count: 1,
+        read: () => reference_frames[0],
+        properties: new TrajectoryProperties(),
+        release: kind === `synchronous` ? release : undefined,
+        provenance: {},
+        metadata: {},
+        warnings: [],
+      })
+      const run =
+        kind === `host`
+          ? host_run(summarize_run(source), async () => reference_frames[0], release)
+          : source
+      const failure = new Error(`Completion observer failed`)
+      run.properties.subscribe(() => {
+        throw failure
+      })
+      expect(() => run.dispose()).toThrow(failure)
+      await run.properties.done
+      run.dispose()
+      expect(release).toHaveBeenCalledOnce()
+      await expect((async () => run.read_frame(0))()).rejects.toThrow(/disposed/)
+    },
+  )
 
   it(`delivers nested batches before completion and snapshots queued rows`, () => {
     const properties = new TrajectoryProperties()
