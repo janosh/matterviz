@@ -1,5 +1,9 @@
 import type { Vec3 } from '$lib/math'
 import type { BondPair } from '$lib/structure'
+import type { AtomPropertyColors } from '$lib/structure/atom-properties'
+import { AtomInstances } from '$lib/structure/atom-instances'
+import { make_site } from '$lib/structure/site'
+import StructureScene from '$lib/structure/StructureScene.svelte'
 import ArrowInstances from '$lib/structure/ArrowInstances.svelte'
 import Bond from '$lib/structure/Bond.svelte'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
@@ -7,6 +11,71 @@ import { mount_scene } from '../scene/mount'
 import { flushSync } from 'svelte'
 import { InstancedMesh } from 'three/webgpu'
 import { expect, onTestFinished, test, vi } from 'vitest'
+
+test(`property-colored Scene frames refresh reused atoms and restore element colors`, async () => {
+  const sites = [
+    make_site(`C`, [0, 0, 0], [0, 0, 0], `C`),
+    make_site(`O`, [0, 0, 0], [2, 0, 0], `O`),
+    make_site(`H`, [0, 0, 0], [3, 0, 0], `H`),
+  ]
+  let structure = $state.raw({ sites })
+  let property_colors = $state.raw<AtomPropertyColors | null>(null)
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      get structure() {
+        return structure
+      },
+      get property_colors() {
+        return property_colors
+      },
+      show_bonds: `never`,
+      show_polyhedra: `never`,
+      gizmo: false,
+      interactive: false,
+    }),
+  )
+  try {
+    flushSync()
+    const atom_meshes: AtomInstances[] = []
+    scene.traverse((object) => {
+      if (object instanceof AtomInstances) atom_meshes.push(object)
+    })
+    const [atoms] = atom_meshes
+    if (!atoms?.instanceColor) throw new Error(`Expected an instanced atom mesh`)
+    const element_colors = atoms.instanceColor.array.slice()
+    property_colors = { colors: [`red`, `blue`, `green`], values: [0, 1, 2] }
+    flushSync()
+    for (const frame_idx of [1, 2]) {
+      structure = {
+        sites: sites.map((site) => ({ ...site, xyz: [site.xyz[0], frame_idx, 0] as Vec3 })),
+      }
+      // The missing property color must use the element palette, even after a colored frame.
+      property_colors = {
+        colors: frame_idx === 1 ? [`blue`, `red`] : [`red`, `blue`],
+        values: [0, 1, 2],
+      }
+      flushSync()
+      expect(Array.from(atoms.instanceColor.array.slice(0, 6))).toEqual(
+        frame_idx === 1 ? [0, 0, 1, 1, 0, 0] : [1, 0, 0, 0, 0, 1],
+      )
+      expect(atoms.instanceColor.array.slice(6, 9)).toEqual(element_colors.slice(6, 9))
+      for (let site_idx = 0; site_idx < sites.length; site_idx++) {
+        expect(atoms.instanceMatrix.array[site_idx * 16 + 13]).toBe(frame_idx)
+      }
+    }
+    property_colors = null
+    flushSync()
+    expect(atoms.instanceColor.array).toEqual(element_colors)
+    property_colors = { colors: [`red`], values: [0, 1, 2] }
+    flushSync()
+    // JavaScript callers can supply a property-color record without its color array.
+    property_colors = { values: [0, 1, 2] } as AtomPropertyColors
+    flushSync()
+    expect(atoms.instanceColor.array).toEqual(element_colors)
+  } finally {
+    await unmount_scene()
+  }
+})
 
 test.each([`atoms`, `arrows`, `bonds`] as const)(
   `%s releases retired meshes during growth and disposes each resource once`,

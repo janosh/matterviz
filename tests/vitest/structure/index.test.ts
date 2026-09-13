@@ -266,6 +266,18 @@ describe(`structure_fit_frame`, () => {
       2 * DEFAULT_FIT_PADDING,
     ],
     [
+      `unequal radii at opposite off-origin corners`,
+      { sites: [site(`H`, [-100, 200, -300]), site(`Mg`, [100, 600, 300])] },
+      {
+        atom_radius_scale: 1,
+        site_radius_overrides: new Map([
+          [0, 1],
+          [1, 3],
+        ]),
+      },
+      2 * (Math.hypot(101, 201, 301) + 1) * DEFAULT_FIT_PADDING,
+    ],
+    [
       `occupancy-weighted disordered site`,
       {
         sites: [

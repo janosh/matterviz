@@ -177,6 +177,32 @@ export function min_image_displacement_into(
 
   const { lattice, reciprocal, reciprocal_axis_norms } =
     converters ?? create_lattice_converters(lattice_matrix)
+  // An exactly diagonal cell has independent axes: rounding each periodic fractional
+  // component already minimizes the Cartesian distance, including negative cell vectors.
+  // Avoid per-atom matrix products and candidate enumeration for ordinary MD boxes.
+  if (
+    lattice[0][1] === 0 &&
+    lattice[0][2] === 0 &&
+    lattice[1][0] === 0 &&
+    lattice[1][2] === 0 &&
+    lattice[2][0] === 0 &&
+    lattice[2][1] === 0
+  ) {
+    const frac_a = reciprocal[0][0] * delta_x
+    const frac_b = reciprocal[1][1] * delta_y
+    const frac_c = reciprocal[2][2] * delta_z
+    if (!Number.isFinite(frac_a) || !Number.isFinite(frac_b) || !Number.isFinite(frac_c)) {
+      throw new TypeError(
+        `Minimum-image displacement is non-finite: from=[${from}], target=[${target}], ` +
+          `fractional=[${frac_a}, ${frac_b}, ${frac_c}]`,
+      )
+    }
+    // Match the positive zero produced by the Cartesian matrix sums below.
+    out[0] = (pbc[0] ? frac_a - Math.round(frac_a) : frac_a) * lattice[0][0] + 0
+    out[1] = (pbc[1] ? frac_b - Math.round(frac_b) : frac_b) * lattice[1][1] + 0
+    out[2] = (pbc[2] ? frac_c - Math.round(frac_c) : frac_c) * lattice[2][2] + 0
+    return out
+  }
   const [
     [lattice_ax, lattice_ay, lattice_az],
     [lattice_bx, lattice_by, lattice_bz],

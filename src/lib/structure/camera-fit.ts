@@ -80,12 +80,9 @@ export function structure_fit_frame(
   if (!sites.length && !lattice) return empty_frame()
 
   const scale = opts.atom_radius_scale ?? 0.7
-  // Sites then the 8 cell corners (radius 0); one typed array of radii instead of a tuple
-  // per site, which a 10k-site supercell allocated on every fit
-  const radii = Float64Array.from(
-    sites,
-    (site, idx) => site_base_radius(site, idx, opts) * scale,
-  )
+  // Compute radii while accumulating the bounds; Float64Array.from first materializes
+  // iterable sites as an intermediate array and adds a separate full pass.
+  const radii = new Float64Array(sites.length)
   const corners: Vec3[] = []
   if (lattice) {
     const [a_vec, b_vec, c_vec] = lattice.matrix
@@ -98,27 +95,37 @@ export function structure_fit_frame(
       )
     }
   }
-  const for_each_sample = (visit: (point: Vec3, radius: number) => void): void => {
-    for (const [idx, site] of sites.entries()) visit(site.xyz, radii[idx])
-    for (const corner of corners) visit(corner, 0)
-  }
-
   const min: Vec3 = [Infinity, Infinity, Infinity]
   const max: Vec3 = [-Infinity, -Infinity, -Infinity]
-  for_each_sample((point, radius) => {
-    for (let axis = 0; axis < 3; axis++) {
-      min[axis] = Math.min(min[axis], point[axis] - radius)
-      max[axis] = Math.max(max[axis], point[axis] + radius)
+  const n_samples = sites.length + corners.length
+  for (let idx = 0; idx < n_samples; idx++) {
+    const point = idx < sites.length ? sites[idx].xyz : corners[idx - sites.length]
+    let radius = 0
+    if (idx < sites.length) {
+      radius = site_base_radius(sites[idx], idx, opts) * scale
+      radii[idx] = radius
     }
-  })
+    min[0] = Math.min(min[0], point[0] - radius)
+    min[1] = Math.min(min[1], point[1] - radius)
+    min[2] = Math.min(min[2], point[2] - radius)
+    max[0] = Math.max(max[0], point[0] + radius)
+    max[1] = Math.max(max[1], point[1] + radius)
+    max[2] = Math.max(max[2], point[2] + radius)
+  }
   if (!Number.isFinite(min[0])) return empty_frame()
 
   const center = math.add(min, math.scale(math.subtract(max, min), 0.5))
   let radius_sq = 0
-  for_each_sample((point, radius) => {
-    const reach = math.euclidean_dist(point, center) + radius
+  for (let idx = 0; idx < n_samples; idx++) {
+    const point = idx < sites.length ? sites[idx].xyz : corners[idx - sites.length]
+    const radius = idx < sites.length ? radii[idx] : 0
+    const delta_x = point[0] - center[0]
+    const delta_y = point[1] - center[1]
+    const delta_z = point[2] - center[2]
+    // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- preserve distance arithmetic
+    const reach = Math.sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z) + radius
     radius_sq = Math.max(radius_sq, reach * reach)
-  })
+  }
   if (!(radius_sq > 0)) return { center, extent: 10 }
   return { center, extent: 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING }
 }

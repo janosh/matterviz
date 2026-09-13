@@ -14,11 +14,15 @@ const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 // both corners to 0 so the n - 2 clamp never goes negative.
 const lower_corner = (count: number, floor_g: number, periodic: boolean): number => {
   if (count === 1) return 0
-  return periodic ? safe_mod(floor_g, count) : clamp(floor_g, 0, count - 2)
+  if (!periodic) return clamp(floor_g, 0, count - 2)
+  // World-coordinate samplers already wrap into the cell. Their integer voxel indices
+  // need no modulo; direct fractional callers can still arrive outside the cell.
+  return floor_g >= 0 && floor_g < count ? floor_g : safe_mod(floor_g, count)
 }
 const upper_corner = (count: number, lower: number, periodic: boolean): number => {
   if (count === 1) return 0
-  return periodic ? (lower + 1) % count : Math.min(lower + 1, count - 1)
+  if (!periodic) return Math.min(lower + 1, count - 1)
+  return lower + 1 === count ? 0 : lower + 1
 }
 
 // Trilinear interpolation of a z-fastest scalar grid at fractional coordinates.
