@@ -311,9 +311,14 @@ describe(`worker-served run lifecycle`, () => {
     run.dispose()
   })
 
-  it.each([false, true])(
-    `streams properties with completion inside a listener: %s`,
-    async (finish_during_batch) => {
+  it.each([
+    [false, 0],
+    [true, 0],
+    [false, 1],
+    [false, 2],
+  ] as const)(
+    `streams properties (nested completion: %s, listener failures: %s)`,
+    async (finish_during_batch, error_count) => {
       const served = trajectory_from_frames(reference_frames, {
         properties: [{ frame_number: 0, step: 0, properties: { energy: 1 } }],
       })
@@ -327,13 +332,55 @@ describe(`worker-served run lifecycle`, () => {
       }
       let released = 0
       const port = serve_run_over_port(served)
+      const add_listener = vi.spyOn(port, `addEventListener`)
       const run = worker_run(port, summarize_run(served), () => released++)
       expect(run.properties.rows).toHaveLength(0)
-      progressive.push([
+      const batch = [
         { frame_number: 0, step: 0, properties: { energy: -1 } },
         { frame_number: 1, step: 10, properties: { energy: -2 } },
-      ])
-      progressive.finish()
+      ]
+      if (error_count) {
+        const failures = [
+          new Error(`Batch observer failed`),
+          new Error(`Finish observer failed`),
+        ]
+        run.properties.subscribe((_batch, complete) => {
+          if (!complete) throw failures[0]
+          if (error_count === 2) throw failures[1]
+        })
+        const observer = vi.fn()
+        run.properties.subscribe(observer)
+        const handler = add_listener.mock.calls.find(([type]) => type === `message`)?.[1]
+        if (typeof handler !== `function`) throw new Error(`Missing worker message handler`)
+        // Invoke directly so the test can assert errors normally reported by the event loop.
+        const deliver = () =>
+          handler.call(
+            port,
+            new MessageEvent(`message`, {
+              data: { properties: batch, complete: true },
+            }),
+          )
+        let caught_error: unknown
+        try {
+          deliver()
+        } catch (error) {
+          caught_error = error
+        }
+        if (error_count === 1) expect(caught_error).toBe(failures[0])
+        else {
+          expect(caught_error).toBeInstanceOf(AggregateError)
+          if (caught_error instanceof AggregateError)
+            expect(caught_error.errors).toEqual(failures)
+        }
+        expect(observer.mock.calls).toEqual([
+          [batch, false],
+          [[], true],
+        ])
+        expect(run.properties.complete).toBe(true)
+      } else {
+        progressive.push(batch)
+        progressive.finish()
+      }
       await run.properties.done
       expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-1, -2])
       run.dispose()

@@ -72,8 +72,15 @@
     controller: AbortController
   } | null>(null)
   let export_error = $state<string | null>(null)
+  let run_lifetime = new AbortController()
   $effect(() => {
-    if (run) return () => running?.controller.abort()
+    if (!run) return
+    const lifetime = new AbortController()
+    run_lifetime = lifetime
+    return () => {
+      lifetime.abort()
+      running?.controller.abort()
+    }
   })
 
   let total_frames_available = $derived(run?.frame_count ?? 0)
@@ -200,6 +207,7 @@
     }
     const original_step = current_step_idx
     const export_run = run
+    const lifetime_signal = run_lifetime.signal
     const first_frame = start_frame
     await run_export(format.toUpperCase(), async (signal) => {
       // The viewer pauses playback here, before a lazy frame read can take over.
@@ -221,12 +229,23 @@
           await on_step_change(frame_idx)
         },
         on_finish: async () => {
-          if (run !== export_run) return
+          if (run !== export_run || lifetime_signal.aborted) return
+          // Cancel still restores the mounted viewer; teardown must also release a read
+          // from a custom resolver that ignores its signal.
+          const stopped = Promise.withResolvers<null>()
+          const on_abort = () => stopped.resolve(null)
+          lifetime_signal.addEventListener(`abort`, on_abort, { once: true })
           try {
-            const frame = await frame_at(original_step)
-            if (!frame) throw new Error(`Trajectory frame ${original_step} is unavailable`)
+            const frame = await Promise.race([
+              frame_at(original_step, lifetime_signal),
+              stopped.promise,
+            ])
+            if (!lifetime_signal.aborted && !frame)
+              throw new Error(`Trajectory frame ${original_step} is unavailable`)
           } finally {
-            if (run === export_run) await on_step_change(original_step)
+            lifetime_signal.removeEventListener(`abort`, on_abort)
+            if (run === export_run && !lifetime_signal.aborted)
+              await on_step_change(original_step)
           }
         },
       })

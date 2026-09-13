@@ -592,9 +592,10 @@ describe(`TrajectoryExportPane property export`, () => {
     [`cancel`, ``],
     [`cancel-read`, ``],
     [`unmount`, ``],
+    [`unmount-restore`, ``],
     [`run-swap`, ``],
   ] as const)(
-    `video export restores its starting frame after %s and allows retry`,
+    `video export handles %s without downloading cancelled output`,
     async (outcome, error_message) => {
       vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
       const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
@@ -609,7 +610,7 @@ describe(`TrajectoryExportPane property export`, () => {
       })
       const resolve_frame = vi.fn(async (idx: number, signal?: AbortSignal) => {
         if (idx === 0 && signal) await read.promise
-        if (idx === 2 && !signal) {
+        if (idx === 2) {
           await restore.promise
           if (outcome === `restore-null`) return null
           if (outcome === `restore-error`) throw new Error(error_message)
@@ -649,6 +650,9 @@ describe(`TrajectoryExportPane property export`, () => {
       })
       await click(`Download WebM`)
       await vi.waitFor(() => expect(resolve_frame).toHaveBeenCalledWith(0, export_signal))
+      const export_settled = vi.fn()
+      const export_result = vi.mocked(io_export.export_trajectory_video).mock.results[0]
+      void Promise.resolve(export_result.value).then(export_settled, export_settled)
       expect(current_step_idx).toBe(2)
       if (outcome === `cancel-read`) await click(`Cancel export`)
       read.resolve(undefined)
@@ -661,21 +665,38 @@ describe(`TrajectoryExportPane property export`, () => {
         await vi.waitFor(() => expect(export_signal?.aborted).toBe(true))
         expect(resolve_frame).toHaveBeenCalledOnce()
         expect(current_step_idx).toBe(0)
-      } else {
-        await vi.waitFor(() => expect(resolve_frame).toHaveBeenCalledWith(2, undefined))
+      } else if (outcome !== `unmount`) {
+        await vi.waitFor(() =>
+          expect(resolve_frame.mock.calls.some(([idx]) => idx === 2)).toBe(true),
+        )
+        const restore_signal = resolve_frame.mock.calls.find(([idx]) => idx === 2)?.[1]
+        expect(restore_signal).toBeInstanceOf(AbortSignal)
+        expect(restore_signal).not.toBe(export_signal)
+        expect(restore_signal?.aborted).toBe(false)
         expect(current_step_idx).toBe(outcome === `cancel-read` ? 2 : 0)
-        restore.resolve(undefined)
-        await vi.waitFor(() => expect(current_step_idx).toBe(2))
+        if (outcome === `unmount-restore`) {
+          await unmount(pane)
+          expect(restore_signal?.aborted).toBe(true)
+        } else {
+          restore.resolve(undefined)
+          await vi.waitFor(() => expect(current_step_idx).toBe(2))
+        }
+      }
+      await vi.waitFor(() => expect(export_settled).toHaveBeenCalledOnce())
+      expect(download).toHaveBeenCalledTimes(outcome === `success` ? 1 : 0)
+      if (outcome.startsWith(`unmount`)) {
+        expect(current_step_idx).toBe(0)
+        expect(resolve_frame).toHaveBeenCalledTimes(outcome === `unmount` ? 1 : 2)
+        expect(on_step_change.mock.calls.map(([idx]) => idx)).toEqual([2, 0])
       }
       if (outcome === `cancel-read`) expect(on_step_change).not.toHaveBeenCalledWith(0)
-      if (outcome !== `unmount`) {
+      if (!outcome.startsWith(`unmount`)) {
         await vi.waitFor(() =>
           expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
         )
         expect(document.querySelector(`.error-message`)?.textContent ?? ``).toBe(
           error_message ? `⚠️ ${error_message}` : ``,
         )
-        expect(download).toHaveBeenCalledTimes(outcome === `success` ? 1 : 0)
         resolve_frame.mockImplementation(async (idx) => frames[idx])
         await click(`Download WebM`)
         await vi.waitFor(() =>

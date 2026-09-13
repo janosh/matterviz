@@ -234,13 +234,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // null for transient non-finite bounds (skip: writing NaN breaks scales and, since
   // NaN !== NaN, loops the effect). Run before rendering so new data is never culled
   // against stale ranges, which would remount markers and discard their active tweens.
-  // Some callers initialize auto ranges after creating the frame.
-  let initialized = $state(false)
-  $effect(() => {
-    initialized = true
-  })
-  $effect.pre(() => {
-    if (!initialized) return
+  const sync_ranges = () => {
     const sources = opts.range_sources?.() ?? opts.axes()
     const next = resolve_axis_ranges(sources, opts.auto_ranges())
     if (!next) return
@@ -275,6 +269,16 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     // sync after the grid reconciles, or a facet panel derives y2 from the pre-grid y
     facet.apply_ranges()
     apply_y2_sync()
+  }
+  // Some callers initialize auto ranges after creating the frame. The first post effect
+  // resolves them before decorations place themselves; later updates precede mark rendering.
+  let initialized = $state(false)
+  $effect(() => {
+    untrack(sync_ranges)
+    initialized = true
+  })
+  $effect.pre(() => {
+    if (initialized) sync_ranges()
   })
 
   // Dynamic padding from measured tick labels and the plot title. Tracks tick values so

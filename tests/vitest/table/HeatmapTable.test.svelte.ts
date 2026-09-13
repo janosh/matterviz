@@ -283,10 +283,15 @@ describe(`HeatmapTable`, () => {
         // Test sort direction toggle
         await click(value_header)
         expect(col_values(`Value`)).toEqual([`300`, `100`, `n/a`])
-        await vi.waitFor(() => expect(flip).toHaveBeenCalled())
-        expect(flip.mock.calls.every(([, , params]) => params?.duration === duration)).toBe(
-          true,
-        )
+        if (duration) {
+          await vi.waitFor(() => expect(flip).toHaveBeenCalled())
+          expect(flip.mock.calls.every(([, , params]) => params?.duration === duration)).toBe(
+            true,
+          )
+        } else {
+          expect(flip).not.toHaveBeenCalled()
+          expect(bounds).not.toHaveBeenCalled()
+        }
       },
     )
 

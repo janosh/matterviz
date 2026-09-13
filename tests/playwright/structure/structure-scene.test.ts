@@ -122,7 +122,12 @@ test(`large atom mesh keeps drawing across zoom detail transitions @source`, asy
   await expect.poll(detail).toEqual([8])
   await hover_canvas_center(canvas)
   await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -2200))
-  await expect.poll(async () => (await detail())[0]).toBeGreaterThan(8)
+  await expect
+    .poll(async () => {
+      const levels = await detail()
+      return levels.length === 1 && levels[0] > 8
+    })
+    .toBe(true)
   // Camera changes after the first detail switch must still produce pixels. A live rAF
   // loop alone misses WebGPU refusing draws against a destroyed instance buffer.
   await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -500))
