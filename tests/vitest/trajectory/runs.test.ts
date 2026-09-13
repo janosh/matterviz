@@ -27,10 +27,18 @@ const ase_buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
 // A port pair in-process: worker side serves a memory run, client side is a worker_run
 const make_worker_run = (): TrajectoryRun => {
   const served = trajectory_from_frames(reference_frames)
-  let released = 0
-  const port = serve_run_over_port(served)
-  const run = worker_run(port, summarize_run(served), () => released++)
-  return Object.assign(run, { released: () => released })
+  return worker_run(serve_run_over_port(served), summarize_run(served))
+}
+
+const expect_listener_errors = (notify: () => void, failures: Error[]): void => {
+  const attempt = vi.fn(notify)
+  expect(attempt).toThrow(Error)
+  const error: unknown = attempt.mock.results[0].value
+  if (failures.length === 1) expect(error).toBe(failures[0])
+  else {
+    expect(error).toBeInstanceOf(AggregateError)
+    expect(error).toHaveProperty(`errors`, failures)
+  }
 }
 
 const make_host_run = (): TrajectoryRun => {
@@ -319,9 +327,7 @@ describe(`worker-served run lifecycle`, () => {
   ] as const)(
     `streams properties (nested completion: %s, listener failures: %s)`,
     async (finish_during_batch, error_count) => {
-      const served = trajectory_from_frames(reference_frames, {
-        properties: [{ frame_number: 0, step: 0, properties: { energy: 1 } }],
-      })
+      const served = trajectory_from_frames(reference_frames)
       // Progressive source: replace the static properties with a streaming one
       const progressive = new TrajectoryProperties()
       Object.defineProperty(served, `properties`, { value: progressive })
@@ -330,10 +336,10 @@ describe(`worker-served run lifecycle`, () => {
           if (!complete) progressive.finish()
         })
       }
-      let released = 0
+      const release = vi.fn()
       const port = serve_run_over_port(served)
       const add_listener = vi.spyOn(port, `addEventListener`)
-      const run = worker_run(port, summarize_run(served), () => released++)
+      const run = worker_run(port, summarize_run(served), release)
       expect(run.properties.rows).toHaveLength(0)
       const batch = [
         { frame_number: 0, step: 0, properties: { energy: -1 } },
@@ -353,22 +359,16 @@ describe(`worker-served run lifecycle`, () => {
         const handler = add_listener.mock.calls.find(([type]) => type === `message`)?.[1]
         if (typeof handler !== `function`) throw new Error(`Missing worker message handler`)
         // Invoke directly so the test can assert errors normally reported by the event loop.
-        const deliver = vi.fn(() =>
-          handler.call(
-            port,
-            new MessageEvent(`message`, {
-              data: { properties: batch, complete: true },
-            }),
-          ),
+        expect_listener_errors(
+          () =>
+            handler.call(
+              port,
+              new MessageEvent(`message`, {
+                data: { properties: batch, complete: true },
+              }),
+            ),
+          failures.slice(0, error_count),
         )
-        expect(deliver).toThrow(Error)
-        const caught_error: unknown = deliver.mock.results[0].value
-        if (error_count === 1) expect(caught_error).toBe(failures[0])
-        else {
-          expect(caught_error).toBeInstanceOf(AggregateError)
-          if (caught_error instanceof AggregateError)
-            expect(caught_error.errors).toEqual(failures)
-        }
         expect(observer.mock.calls).toEqual([
           [batch, false],
           [[], true],
@@ -382,7 +382,7 @@ describe(`worker-served run lifecycle`, () => {
       expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-1, -2])
       run.dispose()
       run.dispose()
-      expect(released).toBe(1)
+      expect(release).toHaveBeenCalledOnce()
       await expect(Promise.resolve(run.read_frame(2))).rejects.toThrow(/disposed/)
     },
   )
@@ -439,35 +439,15 @@ describe(`TrajectoryProperties`, () => {
       }
       const listener = vi.fn()
       properties.subscribe(listener)
-      let caught_error: unknown
-      try {
-        properties.push([{ frame_number: 0, step: 0, properties: {} }])
-      } catch (error) {
-        caught_error = error
-      }
-      if (error_count === 1) expect(caught_error).toBe(failures[0])
-      else {
-        expect(caught_error).toBeInstanceOf(AggregateError)
-        if (caught_error instanceof AggregateError)
-          expect(caught_error.errors).toEqual(failures)
-      }
-      expect(listener).toHaveBeenNthCalledWith(
-        1,
-        [{ frame_number: 0, step: 0, properties: {} }],
-        false,
-      )
-      if (finish_before_throw) {
-        expect(listener).toHaveBeenNthCalledWith(2, [], true)
-        properties.finish()
-      } else {
-        properties.push([{ frame_number: 1, step: 1, properties: {} }])
-        expect(listener).toHaveBeenNthCalledWith(
-          2,
-          [{ frame_number: 1, step: 1, properties: {} }],
-          false,
-        )
-      }
-      expect(listener).toHaveBeenCalledTimes(2)
+      const first_batch = [{ frame_number: 0, step: 0, properties: {} }]
+      const next_batch = [{ frame_number: 1, step: 1, properties: {} }]
+      expect_listener_errors(() => properties.push(first_batch), failures)
+      if (finish_before_throw) properties.finish()
+      else properties.push(next_batch)
+      expect(listener.mock.calls).toEqual([
+        [first_batch, false],
+        [finish_before_throw ? [] : next_batch, finish_before_throw],
+      ])
     },
   )
 

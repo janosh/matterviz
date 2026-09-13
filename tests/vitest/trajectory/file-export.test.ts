@@ -729,37 +729,48 @@ describe(`TrajectoryExportPane property export`, () => {
     },
   )
 
-  test(`downloads the whole frame range as CSV`, async () => {
-    const state = fromStore(writable({ ...trajectory, frame_count: 1 }))
-    open_pane({
-      get run() {
-        return state.current
-      },
-    })
-    await tick()
-    const reset_selector = `button[aria-label="Reset frame range to defaults"]`
-    expect(document.querySelector(reset_selector)).toBeNull()
-    state.current = trajectory
-    await tick()
-    expect(document.querySelector(reset_selector)).toBeNull()
+  // Indexed runs must use resolve_frame to export every frame, not their in-memory window.
+  test.each([
+    [`stored properties`, trajectory, []],
+    [`indexed frames`, run_without_properties, [0, 1, 2]],
+  ] as const)(
+    `downloads the whole frame range as CSV from %s after resetting the range`,
+    async (_source, run, expected_reads) => {
+      const resolve_frame = make_async_resolver()
+      const state = fromStore(writable({ ...run, frame_count: 1 }))
+      open_pane({
+        get run() {
+          return state.current
+        },
+        resolve_frame,
+      })
+      await tick()
+      const reset_selector = `button[aria-label="Reset frame range to defaults"]`
+      expect(document.querySelector(reset_selector)).toBeNull()
+      state.current = run
+      await tick()
+      expect(document.querySelector(reset_selector)).toBeNull()
 
-    const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
-    start_input.value = `1`
-    start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
-    doc_query<HTMLButtonElement>(reset_selector).click()
-    await tick()
-    expect(document.querySelector(reset_selector)).toBeNull()
+      const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
+      start_input.value = `1`
+      start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      doc_query<HTMLButtonElement>(reset_selector).click()
+      await tick()
+      expect(document.querySelector(reset_selector)).toBeNull()
 
-    await click(`Download CSV`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    const [, name, mime] = vi.mocked(download).mock.calls[0]
-    expect(name).toBe(`run_frames_0-2.csv`)
-    expect(mime).toBe(`text/csv`)
-    const lines = downloaded_text()
-    expect(lines).toHaveLength(4)
-    expect(lines[0]).toContain(`energy (eV)`)
-  })
+      await click(`Download CSV`)
+      await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+      const [, name, mime] = vi.mocked(download).mock.calls[0]
+      expect(name).toBe(`run_frames_0-2.csv`)
+      expect(mime).toBe(`text/csv`)
+      expect(resolve_frame.mock.calls.map(([idx]) => idx)).toEqual(expected_reads)
+      const lines = downloaded_text()
+      expect(lines).toHaveLength(4)
+      expect(lines[0]).toContain(`energy (eV)`)
+      expect(lines.slice(1).map((line) => line.split(`,`)[0])).toEqual([`0`, `1`, `2`])
+    },
+  )
 
   // The phonon explorer E2E drives this exact path (End Frame → Download extXYZ) to compare
   // frames, so the button name and the range it honours are a contract, not a detail
@@ -792,21 +803,5 @@ describe(`TrajectoryExportPane property export`, () => {
       -10.5, -11.25, -11.5,
     ])
     expect(download).not.toHaveBeenCalled()
-  })
-
-  // The pane must route through resolve_frame, not `trajectory.frames`, or a streamed
-  // trajectory would export a 1-row CSV for a 3-frame run
-  test(`exports every frame of an indexed trajectory, not its in-memory window`, async () => {
-    const resolve_frame = make_async_resolver()
-    open_pane({ run: run_without_properties, resolve_frame })
-    await click(`Download CSV`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    expect(resolve_frame.mock.calls.map(([idx]) => idx)).toEqual([0, 1, 2])
-    expect(vi.mocked(download).mock.calls[0][1]).toBe(`run_frames_0-2.csv`)
-    expect(
-      downloaded_text()
-        .slice(1)
-        .map((line) => line.split(`,`)[0]),
-    ).toEqual([`0`, `1`, `2`])
   })
 })

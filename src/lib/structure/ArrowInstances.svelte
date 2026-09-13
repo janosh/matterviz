@@ -5,13 +5,13 @@
   // Sizing math mirrors Arrow.svelte so the two render identically.
   import type { VectorArrow } from './arrow-instances'
   import { EPS } from '$lib/math'
-  import { set_linear_css_color } from '$lib/scene/colors'
+  import { css_to_linear_rgb } from '$lib/scene/colors'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import {
-    Color,
     ConeGeometry,
     CylinderGeometry,
+    InstancedBufferAttribute,
     InstancedMesh,
     Matrix4,
     MeshStandardMaterial,
@@ -37,26 +37,10 @@
   const geometries = [new CylinderGeometry(1, 1, 1, 12), new ConeGeometry(1, 1, 12)]
   const material = new MeshStandardMaterial()
 
-  // Grow-only capacity (three caches TSL by mesh uuid); shrink via mesh.count.
+  // Grow geometrically (three caches TSL by mesh uuid); shrink via mesh.count.
   let meshes = $state.raw<InstancedMesh[]>([])
-  $effect(() => {
-    const count = arrows.length
-    let current = untrack(() => meshes)
-    if (count > (current[0]?.instanceMatrix.count ?? 0)) {
-      for (const mesh of current) mesh.dispose()
-      current = geometries.map((geometry) => {
-        const mesh = new InstancedMesh(geometry, material, count)
-        mesh.frustumCulled = false
-        mesh.raycast = () => undefined // arrows are display-only
-        return mesh
-      })
-      meshes = current
-    }
-    for (const mesh of current) mesh.count = count
-    invalidate()
-  })
-  // Unmount-only cleanup (a cleanup on the effect above would dispose meshes
-  // on every re-run, including runs that keep them; cleanups run untracked)
+  const colored_css: string[] = []
+  // Geometry and material outlive retired meshes; dispose them only on unmount.
   $effect(() => () => {
     for (const mesh of meshes) mesh.dispose()
     for (const geometry of geometries) geometry.dispose()
@@ -69,11 +53,8 @@
   const scratch_pos = new Vector3()
   const scratch_scale = new Vector3()
   const scratch_matrix = new Matrix4()
-  const scratch_color = new Color()
 
   $effect(() => {
-    const [shafts, heads] = meshes
-    if (!shafts || !heads) return
     // Read reactive props once, not through the component spread chain for every arrow.
     const [instances, shaft_size, head_size, head_length] = [
       arrows,
@@ -81,14 +62,31 @@
       arrow_head_radius,
       arrow_head_length,
     ]
-    const limit = Math.min(instances.length, shafts.count)
-    for (let idx = 0; idx < limit; idx++) {
-      const { position, vector, scale, color } = instances[idx]
+    const count = instances.length
+    let current = untrack(() => meshes)
+    const capacity = current[0]?.instanceMatrix.count ?? 0
+    if (count > capacity) {
+      for (const mesh of current) mesh.dispose()
+      colored_css.length = 0
+      const next_capacity = Math.max(count, Math.ceil(capacity * 1.5))
+      // Shafts and heads grow and retire together, so their identical colors share one buffer.
+      const colors = new InstancedBufferAttribute(new Float32Array(next_capacity * 3), 3)
+      current = geometries.map((geometry) => {
+        const mesh = new InstancedMesh(geometry, material, next_capacity)
+        mesh.instanceColor = colors
+        mesh.frustumCulled = false
+        mesh.raycast = () => undefined // arrows are display-only
+        return mesh
+      })
+      meshes = current
+    }
+    const [shafts, heads] = current
+    if (!shafts || !heads) return
+    for (const mesh of current) mesh.count = count
+    for (let idx = 0; idx < count; idx++) {
+      const { position, vector, scale } = instances[idx]
       const mag = Math.hypot(vector[0], vector[1], vector[2])
       const vec_len = mag * scale
-      set_linear_css_color(color, scratch_color)
-      shafts.setColorAt(idx, scratch_color)
-      heads.setColorAt(idx, scratch_color)
       if (!Number.isFinite(vec_len) || vec_len <= EPS) {
         scratch_matrix.makeScale(0, 0, 0).setPosition(...position)
         shafts.setMatrixAt(idx, scratch_matrix)
@@ -114,10 +112,40 @@
       scratch_scale.set(head_len > 0 ? head_r : 0, head_len, head_len > 0 ? head_r : 0)
       heads.setMatrixAt(idx, scratch_matrix.compose(scratch_pos, scratch_quat, scratch_scale))
     }
-    for (const mesh of [shafts, heads]) {
+    for (const mesh of current) {
+      mesh.instanceMatrix.clearUpdateRanges()
+      mesh.instanceMatrix.addUpdateRange(0, count * 16)
       mesh.instanceMatrix.needsUpdate = true
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     }
+    invalidate()
+  })
+
+  $effect(() => {
+    const [mesh] = meshes
+    if (!mesh?.instanceColor) return
+    const instances = arrows
+    const limit = Math.min(instances.length, mesh.count)
+    const colors = mesh.instanceColor
+    const { array } = colors
+    let first_change = limit
+    let last_change = -1
+    for (let idx = 0; idx < limit; idx++) {
+      const { color } = instances[idx]
+      if (color === colored_css[idx]) continue
+      const [red, green, blue] = css_to_linear_rgb(color)
+      const offset = idx * 3
+      array[offset] = red
+      array[offset + 1] = green
+      array[offset + 2] = blue
+      colored_css[idx] = color
+      first_change = Math.min(first_change, idx)
+      last_change = idx
+    }
+    colored_css.length = limit
+    if (last_change < 0) return
+    // Preserve pending ranges when several updates happen before the next GPU upload.
+    colors.addUpdateRange(first_change * 3, (last_change - first_change + 1) * 3)
+    colors.needsUpdate = true
     invalidate()
   })
 </script>

@@ -1264,13 +1264,21 @@
       has_partial_occupancy: boolean
       is_image_atom: boolean
     }
+  type AtomGroups = {
+    first_by_site: Map<number, RenderAtom>
+    base: RenderAtom[]
+    image: RenderAtom[]
+    partial: RenderAtom[]
+  }
   const atom_appearance = $derived({ palette, radius_options, effective_atom_radius })
-  let previous_atoms: { appearance: object; atoms: RenderAtom[] } | undefined
+  let previous_atoms: { appearance: object; groups: AtomGroups } | undefined
 
-  let atom_data: RenderAtom[] = $derived.by(() => {
+  // Build render groups and site anchors together. Coordinate-only frames reuse both
+  // the records and lookup; fresh base arrays still invalidate child instance buffers.
+  let atom_groups = $derived.by(() => {
     if (!show_atoms) {
       previous_atoms = undefined
-      return []
+      return { first_by_site: new Map<number, RenderAtom>(), base: [], image: [], partial: [] }
     }
     // Hoist everything constant across sites: this loop runs >10k times for a 3x3x3
     // supercell, and the collections below live on a $state object or are SvelteMap/
@@ -1290,14 +1298,16 @@
     const reusable = !filter_prop_vals && !filter_elements && !prop_colors && !hidden_centers
     const appearance = atom_appearance
     if (reusable && previous_atoms?.appearance === appearance && structure) {
-      const updated = update_ordered_atom_positions(previous_atoms.atoms, structure.sites)
+      const updated = update_ordered_atom_positions(
+        previous_atoms.groups.base,
+        structure.sites,
+      )
       if (updated) {
-        previous_atoms = { appearance, atoms: updated }
-        return updated
+        return (previous_atoms.groups = { ...previous_atoms.groups, base: updated })
       }
     }
 
-    const atoms = []
+    const groups: AtomGroups = { first_by_site: new Map(), base: [], image: [], partial: [] }
     for (const { site_idx, site, is_image_atom } of render_sites) {
       // Skip sites with hidden property values
       if (filter_prop_vals) {
@@ -1324,26 +1334,27 @@
         ? site.species.filter(({ element }) => !hidden_elements.has(element))
         : site.species
       for (const slice_data of compute_slice_geometry(visible_species)) {
-        atoms.push({
+        const atom = {
+          ...slice_data,
           site_idx,
-          element: slice_data.element,
           species: site.species,
-          occupancy: slice_data.occupancy,
           position: site.xyz,
           radius,
           color: site_property_color ?? element_colors?.[slice_data.element],
           has_partial_occupancy: slice_data.occupancy < 1,
-          start_phi: slice_data.start_phi,
-          end_phi: slice_data.end_phi,
-          phi_length: slice_data.phi_length,
-          render_start_cap: slice_data.render_start_cap,
-          render_end_cap: slice_data.render_end_cap,
           is_image_atom,
-        })
+        }
+        // Wedges share one anchor per site; image atoms need a separate ghosted mesh.
+        if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, atom)
+        if (atom.has_partial_occupancy) groups.partial.push(atom)
+        else (is_image_atom ? groups.image : groups.base).push(atom)
       }
     }
-    previous_atoms = reusable ? { appearance, atoms } : undefined
-    return atoms
+    previous_atoms =
+      reusable && groups.image.length === 0 && groups.partial.length === 0
+        ? { appearance, groups }
+        : undefined
+    return groups
   })
 
   // Shared visibility check: site has at least one non-hidden element and
@@ -1591,44 +1602,7 @@
     })
   })
 
-  // One pass over atom_data (>10k entries for a 3x3x3 supercell, rebuilt every trajectory
-  // frame) splits it for rendering and keeps each site's first entry: a partial-occupancy
-  // site contributes one wedge per species, but labels, hit targets and highlight lookups
-  // want one anchor per site. Full-occupancy atoms render as ONE InstancedMesh per set
-  // (per-atom color/radius live in instance buffers); image atoms get their own mesh because
-  // they ghost (desaturate + translucent) and lose interactivity in edit-atoms mode.
-  let previous_groups:
-    | { atoms: RenderAtom[]; first_by_site: Map<number, RenderAtom> }
-    | undefined
-  let atom_groups = $derived.by(() => {
-    const atoms = atom_data
-    if (
-      previous_groups &&
-      atoms.length === previous_groups.atoms.length &&
-      atoms.every((atom, idx) => atom === previous_groups?.atoms[idx])
-    ) {
-      previous_groups.atoms = atoms
-      return {
-        first_by_site: previous_groups.first_by_site,
-        base: atoms,
-        image: [],
-        partial: [],
-      }
-    }
-    const first_by_site = new Map<number, (typeof atom_data)[number]>()
-    const base: typeof atom_data = []
-    const image: typeof atom_data = []
-    const partial: typeof atom_data = []
-    for (const atom of atom_data) {
-      if (!first_by_site.has(atom.site_idx)) first_by_site.set(atom.site_idx, atom)
-      if (atom.has_partial_occupancy) partial.push(atom)
-      else (atom.is_image_atom ? image : base).push(atom)
-    }
-    previous_groups =
-      image.length === 0 && partial.length === 0 ? { atoms, first_by_site } : undefined
-    return { first_by_site, base, image, partial }
-  })
-  const site_anchor = ({ site_idx, position, radius }: (typeof atom_data)[number]) => ({
+  const site_anchor = ({ site_idx, position, radius }: RenderAtom) => ({
     site_idx,
     position,
     radius,
@@ -1657,13 +1631,9 @@
       : [],
   )
 
-  // Radius of a site that atom_data may have filtered out (highlight fallback)
+  // Radius of a site that atom_groups may have filtered out (highlight fallback)
   const get_site_radius = (site: Site, site_idx: number): number =>
-    site_base_radius(site, site_idx, {
-      same_size_atoms,
-      element_radius_overrides,
-      site_radius_overrides,
-    }) * effective_atom_radius
+    site_base_radius(site, site_idx, radius_options) * effective_atom_radius
 
   // Sites to outline with a translucent sphere: hovered + all selected/active sites. Kept
   // independent of the pulse animation so this list (with its per-site radius lookups) only

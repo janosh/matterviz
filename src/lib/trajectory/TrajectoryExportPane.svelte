@@ -304,22 +304,17 @@
     },
     {
       title: `Export Properties`,
-      items: [
-        {
-          label: `CSV`,
-          hint: `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`,
-          disabled: data_export_disabled,
-          on_download: () => download_table(`csv`),
-          copy_text: () => run_export(`CSV`, (signal) => serialize_table(`csv`, signal)),
-        },
-        {
-          label: `JSON`,
-          hint: `Same per-frame numbers as the CSV, with a separate units map`,
-          disabled: data_export_disabled,
-          on_download: () => download_table(`json`),
-          copy_text: () => run_export(`JSON`, (signal) => serialize_table(`json`, signal)),
-        },
-      ],
+      items: ([`csv`, `json`] as const).map((format) => ({
+        label: format.toUpperCase(),
+        hint:
+          format === `csv`
+            ? `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`
+            : `Same per-frame numbers as the CSV, with a separate units map`,
+        disabled: data_export_disabled,
+        on_download: () => download_table(format),
+        copy_text: () =>
+          run_export(format.toUpperCase(), (signal) => serialize_table(format, signal)),
+      })),
     },
   ])
 

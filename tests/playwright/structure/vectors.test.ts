@@ -81,8 +81,11 @@ test.describe(`Site Vectors`, () => {
       await expect(labels_with(pane_div, `${key} scale`)).toBeVisible()
     }
 
-    // toggling a layer off hides its scale slider and changes the canvas
+    // Recoloring and hiding a layer each repaint its arrows.
     const magmom_toggle = pane_div.locator(`[data-key="vector_config:magmom"]`)
+    await expect_canvas_changed_by(structure_canvas(page), () =>
+      magmom_toggle.locator(`input[type="color"]`).fill(`#00ff00`),
+    )
     await expect_canvas_changed_by(structure_canvas(page), async () => {
       await magmom_toggle.locator(`input[type="checkbox"]`).click()
       await expect(labels_with(pane_div, `magmom scale`)).toBeHidden()

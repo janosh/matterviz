@@ -149,17 +149,23 @@ export function build_vector_layers(
       if (site_arrows.length <= 1) continue
       const visual_radius = get_site_radius(sites[site_idx], site_idx) * 0.5
       const gap_abs = vector_origin_gap * visual_radius
-      let mean: Vec3 = [0, 0, 0]
+      const mean: Vec3 = [0, 0, 0]
       for (const { vector } of site_arrows) {
-        mean = math.add(mean, math.normalize_vec(vector))
+        const unit = math.normalize_vec(vector)
+        for (let axis = 0; axis < 3; axis++) mean[axis] += unit[axis]
       }
       const mean_dir = math.normalize_vec(mean, [0, 1, 0] as Vec3)
       const [u_vec, v_vec] = math.compute_in_plane_basis(mean_dir)
       for (const [idx, arrow] of site_arrows.entries()) {
         const angle = (2 * Math.PI * idx) / site_arrows.length
-        const delta_x = math.scale(u_vec, gap_abs * Math.cos(angle))
-        const delta_y = math.scale(v_vec, gap_abs * Math.sin(angle))
-        arrow.position = math.add(sites[site_idx].xyz, math.add(delta_x, delta_y))
+        const along_u = gap_abs * Math.cos(angle)
+        const along_v = gap_abs * Math.sin(angle)
+        const position = sites[site_idx].xyz
+        arrow.position = [
+          position[0] + (u_vec[0] * along_u + v_vec[0] * along_v),
+          position[1] + (u_vec[1] * along_u + v_vec[1] * along_v),
+          position[2] + (u_vec[2] * along_u + v_vec[2] * along_v),
+        ]
       }
     }
   }

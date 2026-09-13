@@ -58,8 +58,9 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
     })
     const meshes = new Map<InstancedMesh, ReturnType<typeof vi.spyOn>>()
     const resources = new Map<{ dispose: () => void }, ReturnType<typeof vi.spyOn>>()
+    let previous_active: InstancedMesh[] = []
     try {
-      for (const count of [2, 3, 6, 2, 0, 2]) {
+      for (const count of [2, 3, 4, 5, 6, 2, 0, 2]) {
         inputs.count = count
         inputs.offset += 1
         flushSync()
@@ -67,8 +68,16 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
           (child): child is InstancedMesh => child instanceof InstancedMesh,
         )
         expect(active).toHaveLength(kind === `arrows` ? 2 : 1)
+        if (kind === `arrows`) {
+          expect(active[0].instanceColor).not.toBeNull()
+          expect(active[0].instanceColor).toBe(active[1].instanceColor)
+        }
+        if (previous_active.length && count <= previous_active[0].instanceMatrix.count) {
+          expect(active).toEqual(previous_active)
+        }
         for (const mesh of active) {
           expect(mesh.count).toBe(count)
+          if (kind === `arrows` && count === 4) expect(mesh.instanceMatrix.count).toBe(5)
           if (count > 0) {
             const center_offset =
               kind === `atoms`
@@ -95,6 +104,7 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
           // Threlte must not retain already-disposed matrices or dispose them a second time.
           if (!active.includes(mesh)) expect(disposable_objects.has(mesh)).toBe(false)
         }
+        previous_active = active
       }
     } finally {
       await unmount_scene()

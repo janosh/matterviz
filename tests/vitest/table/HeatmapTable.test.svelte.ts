@@ -274,15 +274,15 @@ describe(`HeatmapTable`, () => {
 
         mount_table({ data, columns: sample_columns, row_animation_ms, virtual })
 
-        // Test initial sort
         const value_header = document.querySelectorAll(`th`)[2]
-        await click(value_header)
-
-        expect(col_values(`Value`)).toEqual([`100`, `300`, `n/a`])
-
-        // Test sort direction toggle
-        await click(value_header)
-        expect(col_values(`Value`)).toEqual([`300`, `100`, `n/a`])
+        // Missing values stay last in both sort directions.
+        for (const expected of [
+          [`100`, `300`, `n/a`],
+          [`300`, `100`, `n/a`],
+        ]) {
+          await click(value_header)
+          expect(col_values(`Value`)).toEqual(expected)
+        }
         if (duration) {
           await vi.waitFor(() => expect(flip).toHaveBeenCalled())
           expect(flip.mock.calls.every(([, , params]) => params?.duration === duration)).toBe(

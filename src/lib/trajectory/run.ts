@@ -40,21 +40,19 @@ type PropertiesListener = (batch: TrajectoryMetadata[], complete: boolean) => vo
 export class TrajectoryProperties {
   rows: readonly TrajectoryMetadata[]
   complete: boolean
+  private readonly completion = Promise.withResolvers<undefined>()
   // Resolves once `finish()` ran (immediately for static runs)
-  readonly done: Promise<void>
-  private resolve_done: () => void = () => {}
+  readonly done: Promise<void> = this.completion.promise
   // Replace on subscription changes so a callback cannot shift the active notification loop.
   private listeners: readonly PropertiesListener[] = []
   private notifying = false
-  private readonly pending_notifications: [TrajectoryMetadata[], boolean][] = []
+  // A null batch marks completion; queued data batches own their array snapshot.
+  private readonly pending_notifications: (TrajectoryMetadata[] | null)[] = []
 
   constructor(rows: TrajectoryMetadata[] = [], complete = false) {
     this.rows = sort_rows(rows)
     this.complete = complete
-    this.done = new Promise<void>((resolve) => {
-      this.resolve_done = resolve
-    })
-    if (complete) this.resolve_done()
+    if (complete) this.completion.resolve(undefined)
   }
 
   push(batch: readonly TrajectoryMetadata[]): void {
@@ -66,21 +64,21 @@ export class TrajectoryProperties {
       (last === undefined || batch[0].frame_number > last.frame_number) &&
       batch.every((row, idx) => idx === 0 || row.frame_number > batch[idx - 1].frame_number)
     this.rows = in_order ? merged : sort_rows(merged)
-    this.notify(batch, false)
+    this.notify(batch)
   }
 
   finish(): void {
     if (this.complete) return
     this.complete = true
-    this.resolve_done()
-    this.notify([], true)
+    this.completion.resolve(undefined)
+    this.notify(null)
   }
 
   // Reentrant pushes and completion follow the current batch, including across worker ports.
   // Only reentrant calls allocate queue entries; ordinary notifications dispatch directly.
-  private notify(batch: readonly TrajectoryMetadata[], complete: boolean): void {
+  private notify(batch: readonly TrajectoryMetadata[] | null): void {
     if (this.notifying) {
-      this.pending_notifications.push([[...batch], complete])
+      this.pending_notifications.push(batch && [...batch])
       return
     }
     this.notifying = true
@@ -89,7 +87,7 @@ export class TrajectoryProperties {
       for (;;) {
         for (const listener of this.listeners) {
           try {
-            listener([...batch], complete)
+            listener(batch ? [...batch] : [], batch === null)
           } catch (error) {
             // Finish delivery before propagating errors so worker clients receive completion.
             errors ??= []
@@ -97,9 +95,8 @@ export class TrajectoryProperties {
           }
         }
         const next = this.pending_notifications.shift()
-        if (!next) break
-        batch = next[0]
-        complete = next[1]
+        if (next === undefined) break
+        batch = next
       }
     } finally {
       this.notifying = false

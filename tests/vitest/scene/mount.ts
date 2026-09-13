@@ -28,6 +28,6 @@ export function mount_scene(render: Component) {
     return render(anchor, {})
   }
   const component = mount(Harness, { target: document.body })
-  const { scene, disposableObjects: disposable_objects } = contexts[0]
-  return { scene, disposable_objects, unmount_scene: () => unmount(component) }
+  const { scene, camera, disposableObjects: disposable_objects } = contexts[0]
+  return { scene, camera, disposable_objects, unmount_scene: () => unmount(component) }
 }

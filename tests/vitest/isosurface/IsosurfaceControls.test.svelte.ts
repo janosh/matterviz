@@ -125,33 +125,35 @@ describe(`IsosurfaceControls`, () => {
   )
 
   test.each([
-    { show_neg: false, color_count: 1 },
-    { show_neg: true, color_count: 2 },
-  ])(`show_negative=$show_neg updates lobe controls`, ({ show_neg, color_count }) => {
-    mount_controls({
-      settings: {
-        ...DEFAULT_ISOSURFACE_SETTINGS,
-        layers: [make_layer(`0`, { show_negative: show_neg })],
-      },
-    })
-    const checkbox =
-      find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
-    expect(checkbox?.checked).toBe(show_neg)
-    expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(color_count)
-  })
-
-  test(`Neg. lobe toggle sets show_negative on every layer`, () => {
-    const props = mount_controls({
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(`0`), make_layer(`0`)] },
-    })
-    const checkbox = find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input`)
-    if (!checkbox) throw new Error(`checkbox not found`)
-    checkbox.checked = true
-    checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
-    flushSync()
-    expect(props.settings.layers.map((layer) => layer.show_negative)).toEqual([true, true])
-    expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(4)
-  })
+    { show_negative: false, n_layers: 1 },
+    { show_negative: true, n_layers: 1 },
+    { show_negative: false, n_layers: 2 },
+  ])(
+    `negative lobe controls render and toggle $n_layers layers from $show_negative`,
+    ({ show_negative, n_layers }) => {
+      const props = mount_controls({
+        settings: {
+          ...DEFAULT_ISOSURFACE_SETTINGS,
+          layers: Array.from({ length: n_layers }, () => make_layer(`0`, { show_negative })),
+        },
+      })
+      const checkbox = find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input`)
+      if (!checkbox) throw new Error(`Neg. lobe checkbox not found`)
+      expect(checkbox.checked).toBe(show_negative)
+      expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(
+        n_layers * (show_negative ? 2 : 1),
+      )
+      checkbox.checked = !show_negative
+      checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
+      flushSync()
+      expect(props.settings.layers.map((layer) => layer.show_negative)).toEqual(
+        Array(n_layers).fill(!show_negative),
+      )
+      expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(
+        n_layers * (show_negative ? 1 : 2),
+      )
+    },
+  )
 
   test.each([`Wireframe`, `Halo`])(
     `%s edits notify a raw caller and preserve layers`,

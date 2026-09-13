@@ -89,6 +89,20 @@ test.each([
       }
     }
     check([`force`, `magmom`])
+    // The two origins straddle the first atom at the requested fraction of its visual radius.
+    const origin_radius =
+      (vector_origin_gap * options.get_site_radius(structure.sites[0], 0)) / 2
+    const origins = layers.map(({ arrows }) => arrows[0].position)
+    for (const origin of origins) {
+      expect(Math.abs(Math.hypot(...origin) - origin_radius)).toBeLessThanOrEqual(
+        8 * Number.EPSILON,
+      )
+    }
+    for (let axis = 0; axis < 3; axis++) {
+      expect(Math.abs(origins[0][axis] + origins[1][axis])).toBeLessThanOrEqual(
+        8 * Number.EPSILON,
+      )
+    }
     const first_force = layers[0].arrows[0]
     structure.sites[0].xyz = [4, 5, 6]
     structure.sites[0].properties.force = [-3, -2, -1]
@@ -146,30 +160,19 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
   let reused_arrows = $state.raw(layers[0].arrows)
   let fresh_arrows = $state.raw(build_vector_layers(structure, options, [])[0].arrows)
   const { shaft_radius, arrow_head_radius, arrow_head_length } = layers[0]
-  const mounts = [
+  const mounts = [() => reused_arrows, () => fresh_arrows].map((get_arrows) =>
     mount(ArrowInstances, {
       target: document.body,
       props: {
         get arrows() {
-          return reused_arrows
+          return get_arrows()
         },
         shaft_radius,
         arrow_head_radius,
         arrow_head_length,
       },
     }),
-    mount(ArrowInstances, {
-      target: document.body,
-      props: {
-        get arrows() {
-          return fresh_arrows
-        },
-        shaft_radius,
-        arrow_head_radius,
-        arrow_head_length,
-      },
-    }),
-  ]
+  )
   try {
     flushSync()
     const meshes = threlte_stub.nodes.map(({ props }) => props.is)
@@ -206,6 +209,39 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
         expect(actual.instanceColor?.array).toEqual(expected.instanceColor?.array)
         expect(actual.instanceMatrix.version).toBeGreaterThan(initial_version)
       }
+    }
+
+    // Moving reused records must leave colors untouched; repaint only changed slots.
+    const rendered_meshes = meshes.slice(0, 2)
+    const color_versions = rendered_meshes.map((mesh) => mesh.instanceColor?.version)
+    for (const mesh of rendered_meshes) mesh.instanceColor?.clearUpdateRanges()
+    const moved_arrows = layers[0].arrows.map((arrow) => ({
+      ...arrow,
+      position: [2, 3, 4] as Vec3,
+    }))
+    reused_arrows = moved_arrows
+    flushSync()
+    expect(rendered_meshes.map((mesh) => mesh.instanceColor?.version)).toEqual(color_versions)
+    for (const mesh of rendered_meshes) {
+      expect(mesh.instanceColor?.updateRanges).toEqual([])
+      expect(mesh.instanceMatrix.updateRanges).toEqual([
+        { start: 0, count: moved_arrows.length * 16 },
+      ])
+    }
+    // Two flushes before a GPU upload must retain both pending color changes.
+    for (const idx of [0, 2]) {
+      moved_arrows[idx].color = `red`
+      reused_arrows = [...moved_arrows]
+      flushSync()
+    }
+    for (const mesh of rendered_meshes) {
+      expect(mesh.instanceColor?.updateRanges).toEqual([
+        { start: 0, count: 3 },
+        { start: 6, count: 3 },
+      ])
+      expect(mesh.instanceColor?.array.slice(0, 9)).toEqual(
+        new Float32Array([1, 0, 0, 0, 0, 1, 1, 0, 0]),
+      )
     }
   } finally {
     for (const component of mounts) await unmount(component)
